@@ -10,3 +10,7 @@ target_include_directories(fbzz_physics
     PUBLIC  include
     PRIVATE src
 )
+
+target_link_libraries(fbzz_physics
+    PUBLIC fbzz_math
+)

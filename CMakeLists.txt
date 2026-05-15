@@ -6,8 +6,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON) # 必須にする
 set(CMAKE_CXX_EXTENSIONS OFF) # 拡張機能を無効にする
 
-# サブフォルダを追加 (依存順)
+# サブフォルダを追加 (依存順: math → physics → engine → sandbox)
 add_subdirectory(third_party)
+add_subdirectory(math)
 add_subdirectory(physics)
 add_subdirectory(engine)
 add_subdirectory(sandbox)
