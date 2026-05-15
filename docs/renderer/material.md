@@ -1,6 +1,27 @@
 # Renderer / Material
 
-マテリアルは描画に必要なシェーダー・テクスチャ・定数をまとめたデータ。`DrawCall` と合わせて使う。
+マテリアルは描画に必要なシェーダー・テクスチャ・定数・パイプラインステートをまとめたデータ。
+`DrawCall` に展開して `IRenderer::Submit()` に渡す。
+
+---
+
+## MaterialConstants
+
+HLSL の b2 スロット (MaterialConstants) に対応する CPU 側構造体。
+
+```cpp
+namespace fbzz::renderer {
+
+struct MaterialConstants {
+    math::Vector4 albedo     = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float         metallic   = 0.0f;
+    float         roughness  = 0.5f;
+    float         useTexture = 0.0f;   // 0=無効, 1=有効 (bool を HLSL に渡すと型問題)
+    float         _pad       = 0.0f;
+};
+
+} // namespace fbzz::renderer
+```
 
 ---
 
@@ -9,22 +30,54 @@
 ```cpp
 namespace fbzz::renderer {
 
-struct MaterialConstants {
-    math::Vector4 albedo      = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float      metallic    = 0.0f;
-    float      roughness   = 0.5f;
-    float      useTexture  = 0.0f;   // 0=無効, 1=有効 (HLSL に bool を渡すと型問題)
-    float      _pad        = 0.0f;
-};
-
 class Material {
 public:
-    std::shared_ptr<IShader>  m_shader;
-    std::shared_ptr<ITexture> m_albedoTexture;
-    MaterialConstants         m_constants;
+    std::shared_ptr<IShader>        shader;
+    std::shared_ptr<IPipelineState> pipelineState;
+    std::shared_ptr<ITexture>       albedoTexture;   // nullptr = テクスチャなし
 
-    // シェーダーに定数・テクスチャをバインドする
-    void Bind() const;
+    MaterialConstants constants;
+
+    // IRenderer から事前に生成しておく定数バッファ (b2 スロット)
+    std::shared_ptr<IConstantBuffer> constantBuffer;
+
+    // constants を constantBuffer に書き込む
+    void UpdateConstantBuffer();
+};
+
+} // namespace fbzz::renderer
+```
+
+`Material::UpdateConstantBuffer()` は `constants` の内容を GPU に転送するだけ。
+暗黙のステート変更は行わない。
+
+---
+
+## DrawCall
+
+1 回の `IRenderer::Submit()` に渡すデータ。`MeshRenderer` が毎フレーム生成する。
+**DrawCall は完全自己完結** — 描画に必要な全リソースを保持し、暗黙のグローバルステートに依存しない。
+
+```cpp
+namespace fbzz::renderer {
+
+struct DrawCall {
+    std::shared_ptr<IBuffer>        vertexBuffer;
+    std::shared_ptr<IBuffer>        indexBuffer;      // nullptr = 非インデックス描画
+    std::shared_ptr<IShader>        shader;
+    std::shared_ptr<IPipelineState> pipelineState;
+
+    // スロット 0〜3 の定数バッファ
+    std::array<std::shared_ptr<IConstantBuffer>, 4> constantBuffers = {};
+    // スロット 0〜7 のテクスチャ
+    std::array<std::shared_ptr<ITexture>, 8>        textures        = {};
+
+    uint32_t indexCount  = 0;
+    uint32_t vertexCount = 0;
+    uint32_t startIndex  = 0;
+    uint32_t baseVertex  = 0;
+
+    RenderLayer layer = RenderLayer::OPAQUE;  // 描画順制御 (render_queue.md 参照)
 };
 
 } // namespace fbzz::renderer
@@ -32,24 +85,14 @@ public:
 
 ---
 
-## DrawCall
+## 定数バッファスロット規則
 
-1 回の `IRenderer::Submit()` に渡すデータ。`MeshRenderer` が毎フレーム生成する。
-
-```cpp
-namespace fbzz::renderer {
-
-struct DrawCall {
-    std::shared_ptr<IBuffer>   m_vertexBuffer;
-    std::shared_ptr<IBuffer>   m_indexBuffer;
-    uint32_t                   m_indexCount = 0;
-    std::shared_ptr<Material>  m_material;
-    math::Matrix4              m_worldMatrix;
-    RenderLayer                m_layer = RenderLayer::OPAQUE;  // 描画順制御 (render_queue.md 参照)
-};
-
-} // namespace fbzz::renderer
-```
+| スロット | 用途 |
+|----------|------|
+| `b0` | CameraConstants (VP 行列, カメラ位置) |
+| `b1` | ObjectConstants (ワールド行列) |
+| `b2` | MaterialConstants (色, テクスチャフラグ) |
+| `b3` | LightConstants (ライト情報) |
 
 ---
 
@@ -57,26 +100,20 @@ struct DrawCall {
 
 ```cpp
 // MeshRenderer::OnUpdate() 内
+mat->UpdateConstantBuffer();   // MaterialConstants を GPU に転送
+
 DrawCall call;
-call.m_vertexBuffer = m_vertexBuffer;
-call.m_indexBuffer  = m_indexBuffer;
-call.m_indexCount   = m_indexCount;
-call.m_material     = m_material;
-call.m_worldMatrix  = m_owner->GetTransform().GetWorldMatrix();
+call.vertexBuffer        = m_vertexBuffer;
+call.indexBuffer         = m_indexBuffer;
+call.indexCount          = m_indexCount;
+call.shader              = mat->shader;
+call.pipelineState       = mat->pipelineState;
+call.constantBuffers[0]  = m_cameraCB;              // b0: CameraConstants
+call.constantBuffers[1]  = m_objectCB;              // b1: ObjectConstants
+call.constantBuffers[2]  = mat->constantBuffer;     // b2: MaterialConstants
+call.textures[0]         = mat->albedoTexture;      // t0: アルベドテクスチャ
+
 renderer.Submit(call);
-```
-
----
-
-## DX11Renderer::Submit の処理
-
-```cpp
-void DX11Renderer::Submit(const DrawCall& call) {
-    // 頂点・インデックスバッファをバインド
-    // オブジェクト定数バッファ (ワールド行列) を更新
-    // マテリアルのシェーダー・テクスチャをバインド
-    // DrawIndexed
-}
 ```
 
 ---
@@ -91,7 +128,7 @@ void DX11Renderer::Submit(const DrawCall& call) {
 | `PBRMaterial` | DX12 移行後に対応 |
 | `UnlitMaterial` | UI・デバッグ用 |
 
-ただし DX12 移行まで抽象化は不要。シンプルに `Material` 1 クラスで管理する。
+DX12 移行まで抽象化は不要。シンプルに `Material` 1 クラスで管理する。
 
 ---
 

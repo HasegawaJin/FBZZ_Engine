@@ -4,49 +4,53 @@
 
 ---
 
-## 概要
+## 設計方針
 
-`IRenderer` のデバッグ描画メソッドを使う。プロダクションビルドでは `#ifdef FBZZ_DEBUG` で除去する。
+`IRenderer` にデバッグ用の `DrawLine` / `DrawSphere` / `DrawAABB` を仮想メソッドとして持たせない。
+代わりに `DebugDraw` が自身の GPU リソース (頂点バッファ・シェーダー・PSO・定数バッファ) を
+`IRenderer::CreateXxx()` で確保し、`Flush()` 時に `IRenderer::Submit()` を呼ぶ。
 
-```cpp
-// IRenderer のデバッグ描画インターフェース
-virtual void DrawLine(const math::Vector3& from, const math::Vector3& to,
-                      const math::Vector4& color) = 0;
-virtual void DrawSphere(const math::Vector3& center, float radius,
-                         const math::Vector4& color) = 0;
-virtual void DrawAABB(const math::Vector3& min, const math::Vector3& max,
-                      const math::Vector4& color) = 0;
-```
+この設計の利点:
+- IRenderer の実装が DrawCall の自己完結原則を全メソッドで守れる
+- DX12 移行時も DebugDraw 側の変更は不要
 
 ---
 
-## DebugDraw ヘルパー
-
-`IRenderer` を毎回渡すのが煩雑なため、フレーム中にコマンドをキューに積み、
-フレーム末尾でまとめて描画するヘルパーを用意する。
+## DebugDraw
 
 ```cpp
 namespace fbzz::renderer {
 
 class DebugDraw {
 public:
+    // アプリ起動時に一度だけ呼ぶ。GPU リソースを確保する
     static void Init(IRenderer* renderer);
 
-    static void Line(const math::Vector3& from, const math::Vector3& to,
-                     const math::Vector4& color = math::Vector4::WHITE);
+    static void Line  (const math::Vector3& from,   const math::Vector3& to,
+                       const math::Vector4& color = math::Vector4::WHITE);
     static void Sphere(const math::Vector3& center, float radius,
                        const math::Vector4& color = math::Vector4::GREEN);
-    static void AABB(const math::Vector3& min, const math::Vector3& max,
-                     const math::Vector4& color = math::Vector4::RED);
-    static void Cross(const math::Vector3& pos, float size = 0.1f,
-                      const math::Vector4& color = math::Vector4::WHITE);
-    static void Grid(float cellSize = 1.0f, int halfCount = 10);
+    static void AABB  (const math::Vector3& min,    const math::Vector3& max,
+                       const math::Vector4& color = math::Vector4::RED);
+    static void Cross (const math::Vector3& pos, float size = 0.1f,
+                       const math::Vector4& color = math::Vector4::WHITE);
+    static void Grid  (float cellSize = 1.0f, int halfCount = 10);
 
-    // フレーム末尾に呼ぶ。キューをフラッシュして描画
+    // フレーム末尾に呼ぶ。蓄積した頂点を GPU に転送して Submit() する
     static void Flush();
 
 private:
-    static IRenderer* s_renderer;
+    static IRenderer*                      s_renderer;
+    static std::shared_ptr<IBuffer>        s_vertexBuffer;   // DYNAMIC、毎フレーム Update()
+    static std::shared_ptr<IShader>        s_shader;
+    static std::shared_ptr<IPipelineState> s_pso;
+    static std::shared_ptr<IConstantBuffer> s_cameraCB;
+
+    struct LineVertex {
+        math::Vector3 position;
+        math::Vector4 color;
+    };
+    static std::vector<LineVertex> s_vertices;  // CPU 側蓄積バッファ
 };
 
 } // namespace fbzz::renderer
@@ -54,33 +58,50 @@ private:
 
 ---
 
+## Flush() の処理フロー
+
+```
+DebugDraw::Flush()
+│
+├─ s_vertices が空なら return
+├─ s_vertexBuffer->Update(s_vertices.data(), ...)   CPU→GPU 転送
+├─ DrawCall を組み立て
+│   ├─ vertexBuffer    = s_vertexBuffer
+│   ├─ indexBuffer     = nullptr  (非インデックス描画)
+│   ├─ shader          = s_shader
+│   ├─ pipelineState   = s_pso   (WIREFRAME / OPAQUE / DEPTH_OFF)
+│   ├─ constantBuffers[0] = s_cameraCB
+│   ├─ vertexCount     = s_vertices.size()
+│   └─ layer           = RenderLayer::OVERLAY
+├─ s_renderer->Submit(call)
+└─ s_vertices.clear()
+```
+
+---
+
 ## 使用例
 
 ```cpp
-// コライダーのデバッグ表示
+// 毎フレーム: コライダーのデバッグ表示
 DebugDraw::AABB(aabb.min, aabb.max, math::Vector4::RED);
 DebugDraw::Sphere(body->GetPosition(), 0.5f, math::Vector4::GREEN);
 
 // 物体の速度ベクトル
-Vector3 vel = body->GetVelocity();
 DebugDraw::Line(pos, pos + vel * 0.1f, math::Vector4::BLUE);
 
-// フレーム末尾
+// フレーム末尾 (Application::Run ループ内)
 DebugDraw::Flush();
 ```
 
 ---
 
-## DX11 実装方針
-
-ラインは `DebugLine.hlsl` に専用シェーダーを用意し、
-`D3D11_PRIMITIVE_TOPOLOGY_LINELIST` で描画する。
-スフィア・AABB は複数のラインに分解して描画する。
+## HLSL (DebugLine.hlsl)
 
 ```hlsl
-// assets/shaders/DebugLine.hlsl
-cbuffer DebugConstants : register(b0) {
+cbuffer CameraConstants : register(b0) {
     float4x4 viewProjection;
+    float3   cameraPos;
+    float    _pad;
 };
 
 struct VSInput {
@@ -104,6 +125,9 @@ float4 PSMain(PSInput input) : SV_TARGET {
     return input.color;
 }
 ```
+
+トポロジは `D3D11_PRIMITIVE_TOPOLOGY_LINELIST`。
+スフィア・AABB は CPU 側で複数ラインに分解して `s_vertices` に積む。
 
 ---
 

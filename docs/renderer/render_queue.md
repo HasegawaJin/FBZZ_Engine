@@ -1,66 +1,18 @@
 # Renderer / RenderQueue
 
-DrawCall の描画順を管理するキュー。不透明→半透明の正しい順序で描画する。
-`Scene::Render()` が DrawCall を投入し、フレーム末尾に一括 Flush する。
+描画順序の制御。`DrawCall::layer` で描画レイヤーを指定し、`IRenderer` が内部でソートして発行する。
 
 ---
 
 ## RenderLayer
 
-DrawCall に描画レイヤーを付与する。
-
 ```cpp
 namespace fbzz::renderer {
 
 enum class RenderLayer : uint32_t {
-    OPAQUE      = 0,   // 不透明オブジェクト (前→後でソート、Early-Z 効率化)
-    TRANSPARENT = 1,   // 半透明オブジェクト (後→前でソート、正しいブレンド)
-    OVERLAY     = 2,   // UI・デバッグ描画 (ソートなし、常に最前面)
-};
-
-} // namespace fbzz::renderer
-```
-
-### DrawCall に RenderLayer を追加 (material.md の変更)
-
-```cpp
-struct DrawCall {
-    std::shared_ptr<IBuffer>  m_vertexBuffer;
-    std::shared_ptr<IBuffer>  m_indexBuffer;
-    uint32_t                  m_indexCount = 0;
-    std::shared_ptr<Material> m_material;
-    math::Matrix4             m_worldMatrix;
-    RenderLayer               m_layer = RenderLayer::OPAQUE;   // ← 追加
-};
-```
-
----
-
-## RenderQueue
-
-```cpp
-namespace fbzz::renderer {
-
-class RenderQueue {
-public:
-    // MeshRenderer::OnUpdate() から呼ぶ
-    void Submit(const DrawCall& call);
-
-    // Scene::Render() の末尾で呼ぶ
-    void Flush(IRenderer& renderer, const math::Vector3& cameraPos);
-
-    // フレーム先頭でクリアする
-    void Clear();
-
-private:
-    std::vector<DrawCall> m_opaqueQueue;
-    std::vector<DrawCall> m_transparentQueue;
-    std::vector<DrawCall> m_overlayQueue;
-
-    static bool SortOpaque(const DrawCall& a, const DrawCall& b,
-                           const math::Vector3& camPos);
-    static bool SortTransparent(const DrawCall& a, const DrawCall& b,
-                                const math::Vector3& camPos);
+    OPAQUE      = 0,  // 不透明オブジェクト (ソートなし、前から後へ)
+    TRANSPARENT = 1,  // 半透明オブジェクト (デプスソートあり、後から前へ)
+    OVERLAY     = 2,  // デバッグ描画・UI  (デプステストなし、最後に描画)
 };
 
 } // namespace fbzz::renderer
@@ -68,71 +20,61 @@ private:
 
 ---
 
-## Flush の処理順
+## 描画順序
 
 ```
-RenderQueue::Flush(renderer, cameraPos)
+BeginFrame()
 │
-├─ OPAQUE キュー: カメラに近い順でソート (front-to-back)
-│     renderer.SetBlendMode(OPAQUE)
-│     renderer.SetDepthMode(DEPTH_ON)
-│     各 DrawCall を renderer.Submit()
+├─ [OPAQUE]       不透明オブジェクト
+│   └─ Submit 順に描画 (ソートなし)
 │
-├─ TRANSPARENT キュー: カメラから遠い順でソート (back-to-front)
-│     renderer.SetBlendMode(ALPHA_BLEND)
-│     renderer.SetDepthMode(DEPTH_READ)
-│     各 DrawCall を renderer.Submit()
-│     renderer.SetBlendMode(OPAQUE)  ← 戻す
-│     renderer.SetDepthMode(DEPTH_ON)
+├─ [TRANSPARENT]  半透明オブジェクト
+│   └─ カメラからの距離で降順ソートして描画 (後→前)
 │
-└─ OVERLAY キュー: ソートなし
-      renderer.SetDepthMode(DEPTH_OFF)
-      各 DrawCall を renderer.Submit()
-      renderer.SetDepthMode(DEPTH_ON)
+└─ [OVERLAY]      デバッグ描画・UI
+    └─ Submit 順に描画 (DEPTH_OFF PSO を使用)
+│
+EndFrame() → Present
 ```
 
 ---
 
-## Scene との統合
-
-`Scene` が `RenderQueue` を所有する。`MeshRenderer` は `Scene` の `RenderQueue` に Submit する。
+## DrawCall との関係
 
 ```cpp
-// Scene.hpp に追加
-renderer::RenderQueue& GetRenderQueue() { return m_renderQueue; }
+// 不透明メッシュ
+DrawCall opaqueCall;
+opaqueCall.pipelineState = psoOpaque;       // DEPTH_ON
+opaqueCall.layer         = RenderLayer::OPAQUE;
 
-private:
-renderer::RenderQueue m_renderQueue;
-```
+// 半透明メッシュ
+DrawCall transparentCall;
+transparentCall.pipelineState = psoTransparent;  // DEPTH_READ
+transparentCall.layer         = RenderLayer::TRANSPARENT;
 
-```cpp
-// Scene::Render() の更新
-void Scene::Render(IRenderer& renderer) {
-    m_renderQueue.Clear();
-
-    // 全 GameObject の MeshRenderer が m_renderQueue.Submit() を呼ぶ
-    for (auto& obj : m_objects) {
-        obj->Render(renderer);   // MeshRenderer::OnUpdate 相当
-    }
-
-    // ソートして一括描画
-    auto* cam = GetPrimaryCamera();
-    math::Vector3 camPos = cam ? cam->GetCamera().m_position : math::Vector3::ZERO;
-    m_renderQueue.Flush(renderer, camPos);
-}
+// デバッグライン (DebugDraw::Flush() が内部で生成)
+DrawCall debugCall;
+debugCall.pipelineState = psoDebug;         // DEPTH_OFF
+debugCall.layer         = RenderLayer::OVERLAY;
 ```
 
 ---
 
-## ソート基準
+## IRenderer 実装方針
 
-| レイヤー | ソートキー | 理由 |
-|---------|-----------|------|
-| OPAQUE | カメラとの距離 (近→遠) | Early-Z でピクセルシェーダーをスキップ |
-| TRANSPARENT | カメラとの距離 (遠→近) | 正しいアルファブレンドのため |
-| OVERLAY | なし | UI は重ね順を DrawCall の投入順で制御 |
+`Submit()` は DrawCall をレイヤーごとのキューに追加し、`EndFrame()` 内でソート・発行する。
 
-距離は `DrawCall::m_worldMatrix` の平行移動成分とカメラ位置の差分で計算する。
+```
+Submit(call)  →  m_queues[call.layer].push_back(call)
+
+EndFrame()
+├─ flush OPAQUE      (no sort)
+├─ flush TRANSPARENT (sort back-to-front by camera distance)
+├─ flush OVERLAY     (no sort)
+└─ Present
+```
+
+Step 1〜3 の段階では OPAQUE のみ使用し、TRANSPARENT / OVERLAY のソートロジックはスタブで可。
 
 ---
 
@@ -140,10 +82,7 @@ void Scene::Render(IRenderer& renderer) {
 
 ```
 engine/
-├── include/engine/
-│   └── Renderer/
-│       └── RenderQueue.hpp
-└── src/
+└── include/engine/
     └── Renderer/
-        └── RenderQueue.cpp
+        └── RenderLayer.hpp   (enum のみ。ヘッダオンリー)
 ```

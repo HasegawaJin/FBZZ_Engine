@@ -1,7 +1,7 @@
 # Renderer / RenderState
 
 描画ステートの抽象。ラスタライザ・ブレンド・デプスステンシルの 3 種をプリセットで管理する。
-`IRenderer` のメソッドで切り替え、`DX11Renderer` がステートオブジェクトを内部保持する。
+`PipelineStateDesc` にまとめ、`IRenderer::CreatePipelineState()` で `IPipelineState` リソースとして生成する。
 
 ---
 
@@ -27,58 +27,77 @@ enum class DepthMode {
     DEPTH_OFF,   // 深度テスト・書き込みなし (デバッグ描画, UI)
 };
 
+struct PipelineStateDesc {
+    RasterizerMode rasterizer = RasterizerMode::SOLID;
+    BlendMode      blend      = BlendMode::OPAQUE;
+    DepthMode      depth      = DepthMode::DEPTH_ON;
+};
+
 } // namespace fbzz::renderer
 ```
 
 ---
 
-## IRenderer への追加メソッド
+## なぜ IPipelineState を使うか
 
-```cpp
-// IRenderer.hpp に追加
-virtual void SetRasterizerMode(RasterizerMode mode) = 0;
-virtual void SetBlendMode(BlendMode mode)           = 0;
-virtual void SetDepthMode(DepthMode mode)           = 0;
-```
+DX11 はラスタライザ・ブレンド・デプスステートを `Set` 系メソッドで個別に切り替えるが、
+DX12 ではこれらをシェーダーとまとめて **Pipeline State Object (PSO)** として事前コンパイルする。
 
-フレーム先頭のデフォルト状態:
-- `RasterizerMode::SOLID`
-- `BlendMode::OPAQUE`
-- `DepthMode::DEPTH_ON`
+`IRenderer::SetRasterizerMode()` 等の個別 Set API を持つと DX12 で PSO の動的生成が必要になり
+パフォーマンスと設計の両面で問題になる。`IPipelineState` をリソースとして扱うことで
+DX11/DX12 双方が自然に実装できる。
 
 ---
 
 ## DX11 実装方針
 
-`DX11Renderer::Init()` 時に全プリセットのステートオブジェクトを事前生成しておく。
-切り替えは `RSSetState` / `OMSetBlendState` / `OMSetDepthStencilState` の呼び出しのみ。
+`DX11Renderer::CreatePipelineState()` 内で 3 種のステートオブジェクトを事前生成し、
+`DX11PipelineState` にまとめて保持する。`Submit()` 時に個別に `Set` する。
 
 ```cpp
-// DX11Renderer 内部
-Microsoft::WRL::ComPtr<ID3D11RasterizerState>  m_rsStates[2];    // SOLID, WIREFRAME
-Microsoft::WRL::ComPtr<ID3D11BlendState>        m_blendStates[3]; // OPAQUE, ALPHA, ADDITIVE
-Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_dsStates[3];    // ON, READ, OFF
+// DX11PipelineState 内部
+Microsoft::WRL::ComPtr<ID3D11RasterizerState>  rsState;
+Microsoft::WRL::ComPtr<ID3D11BlendState>        blendState;
+Microsoft::WRL::ComPtr<ID3D11DepthStencilState> dsState;
 ```
+
+---
+
+## DX12 実装方針
+
+`DX12Renderer::CreatePipelineState()` 内でシェーダーバイトコードと合わせて
+`ID3D12PipelineState` をコンパイルする。`Submit()` 時は `SetPipelineState` 1 回のみ。
 
 ---
 
 ## 使用例
 
 ```cpp
-// 通常の不透明メッシュ描画 (BeginFrame 後のデフォルト状態)
-renderer.Submit(call);
+// 初期化時にプリセットを生成
+auto psoOpaque = renderer.CreatePipelineState({
+    RasterizerMode::SOLID,
+    BlendMode::OPAQUE,
+    DepthMode::DEPTH_ON
+});
 
-// デバッグライン描画 (深度テストなし・常に最前面)
-renderer.SetDepthMode(DepthMode::DEPTH_OFF);
-DebugDraw::Flush();
-renderer.SetDepthMode(DepthMode::DEPTH_ON);  // 元に戻す
+auto psoTransparent = renderer.CreatePipelineState({
+    RasterizerMode::SOLID,
+    BlendMode::ALPHA_BLEND,
+    DepthMode::DEPTH_READ
+});
 
-// 半透明オブジェクト描画
-renderer.SetBlendMode(BlendMode::ALPHA_BLEND);
-renderer.SetDepthMode(DepthMode::DEPTH_READ);
-renderer.Submit(transparentCall);
-renderer.SetBlendMode(BlendMode::OPAQUE);
-renderer.SetDepthMode(DepthMode::DEPTH_ON);
+auto psoDebug = renderer.CreatePipelineState({
+    RasterizerMode::WIREFRAME,
+    BlendMode::OPAQUE,
+    DepthMode::DEPTH_OFF
+});
+
+// 描画時は DrawCall に渡すだけ
+DrawCall opaqueCall;
+opaqueCall.pipelineState = psoOpaque;
+
+DrawCall transparentCall;
+transparentCall.pipelineState = psoTransparent;
 ```
 
 ---
@@ -89,7 +108,7 @@ renderer.SetDepthMode(DepthMode::DEPTH_ON);
 engine/
 └── include/engine/
     └── Renderer/
-        └── RenderState.hpp   (enum 定義のみ。ヘッダオンリー)
+        └── PipelineStateDesc.hpp   (enum + struct 定義のみ。ヘッダオンリー)
 ```
 
 ---
@@ -97,8 +116,7 @@ engine/
 ## 参考ドキュメント
 
 - [ID3D11RasterizerState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11rasterizerstate) — ポリゴン塗りつぶし・カリング設定
-- [D3D11_RASTERIZER_DESC](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/ns-d3d11-d3d11_rasterizer_desc) — ラスタライザ設定構造体
 - [ID3D11BlendState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11blendstate) — アルファブレンド設定
-- [D3D11_BLEND_DESC](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc) — ブレンド設定構造体
 - [ID3D11DepthStencilState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11depthstencilstate) — 深度テスト・書き込み設定
-- [OMSetDepthStencilState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetdepthstencilstate) — デプスステンシルステートのバインド
+- [ID3D12PipelineState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d12/nn-d3d12-id3d12pipelinestate) — DX12 PSO インターフェース
+- [D3D12_GRAPHICS_PIPELINE_STATE_DESC](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d12/ns-d3d12-d3d12_graphics_pipeline_state_desc) — DX12 PSO 設定構造体
