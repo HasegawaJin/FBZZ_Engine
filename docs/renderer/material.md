@@ -10,7 +10,7 @@
 namespace fbzz::renderer {
 
 struct MaterialConstants {
-    math::Vec4 albedo      = { 1.0f, 1.0f, 1.0f, 1.0f };
+    math::Vector4 albedo      = { 1.0f, 1.0f, 1.0f, 1.0f };
     float      metallic    = 0.0f;
     float      roughness   = 0.5f;
     float      useTexture  = 0.0f;   // 0=無効, 1=有効 (HLSL に bool を渡すと型問題)
@@ -44,7 +44,7 @@ struct DrawCall {
     std::shared_ptr<IBuffer>   m_indexBuffer;
     uint32_t                   m_indexCount = 0;
     std::shared_ptr<Material>  m_material;
-    math::Mat4                 m_worldMatrix;
+    math::Matrix4                 m_worldMatrix;
 };
 
 } // namespace fbzz::renderer

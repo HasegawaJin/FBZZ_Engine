@@ -34,10 +34,11 @@ public:
     // フレーム制御
     virtual void BeginFrame() = 0;
     virtual void EndFrame()   = 0;
-    virtual void Clear(const math::Vec4& color) = 0;
+    virtual void Clear(const math::Vector4& color) = 0;
 
     // リソース生成
-    virtual std::shared_ptr<IBuffer>  CreateVertexBuffer(const void* data, size_t sizeBytes) = 0;
+    // stride: 頂点 1 つのバイト数 (例: sizeof(Vertex))
+    virtual std::shared_ptr<IBuffer>  CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
     virtual std::shared_ptr<IBuffer>  CreateIndexBuffer(const void* data, uint32_t count) = 0;
     virtual std::shared_ptr<IShader>  CreateShader(const std::string& path) = 0;
     virtual std::shared_ptr<ITexture> CreateTexture(const std::string& path) = 0;
@@ -46,12 +47,12 @@ public:
     virtual void Submit(const DrawCall& call) = 0;
 
     // デバッグ描画 (物理コライダーの可視化など)
-    virtual void DrawLine(const math::Vec3& from, const math::Vec3& to,
-                          const math::Vec4& color) = 0;
-    virtual void DrawSphere(const math::Vec3& center, float radius,
-                             const math::Vec4& color) = 0;
-    virtual void DrawAABB(const math::Vec3& min, const math::Vec3& max,
-                          const math::Vec4& color) = 0;
+    virtual void DrawLine(const math::Vector3& from, const math::Vector3& to,
+                          const math::Vector4& color) = 0;
+    virtual void DrawSphere(const math::Vector3& center, float radius,
+                             const math::Vector4& color) = 0;
+    virtual void DrawAABB(const math::Vector3& min, const math::Vector3& max,
+                          const math::Vector4& color) = 0;
 };
 
 } // namespace fbzz::renderer
@@ -72,7 +73,9 @@ public:
     virtual void Update(const void* data, size_t sizeBytes) = 0;
 
     virtual size_t   GetSize()   const = 0;
-    virtual uint32_t GetStride() const = 0;   // 頂点バッファのみ
+    // 頂点バッファのみ有効。インデックスバッファでは 0 を返す。
+    // CreateVertexBuffer に渡した stride がそのまま返る。
+    virtual uint32_t GetStride() const = 0;
 };
 
 } // namespace fbzz::renderer

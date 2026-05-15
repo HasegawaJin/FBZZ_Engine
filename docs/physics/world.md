@@ -17,8 +17,8 @@ public:
     // 1 ステップ進める。dt = 経過秒 (例: 1/60)
     void Step(float dt);
 
-    void SetGravity(const math::Vec3& gravity);
-    math::Vec3 GetGravity() const { return m_gravity; }
+    void SetGravity(const math::Vector3& gravity);
+    math::Vector3 GetGravity() const { return m_gravity; }
 
     const std::vector<std::shared_ptr<RigidBody>>& GetBodies() const;
 
@@ -28,7 +28,7 @@ private:
     void Resolve();         // インパルスで速度を修正
     void Integrate(float dt);
 
-    math::Vec3 m_gravity = { 0.0f, -9.81f, 0.0f };
+    math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
     std::vector<std::shared_ptr<RigidBody>> m_bodies;
     std::vector<CollisionPair> m_collisionPairs;
 };

@@ -10,12 +10,12 @@
 
 ```cpp
 // IRenderer のデバッグ描画インターフェース
-virtual void DrawLine(const math::Vec3& from, const math::Vec3& to,
-                      const math::Vec4& color) = 0;
-virtual void DrawSphere(const math::Vec3& center, float radius,
-                         const math::Vec4& color) = 0;
-virtual void DrawAABB(const math::Vec3& min, const math::Vec3& max,
-                      const math::Vec4& color) = 0;
+virtual void DrawLine(const math::Vector3& from, const math::Vector3& to,
+                      const math::Vector4& color) = 0;
+virtual void DrawSphere(const math::Vector3& center, float radius,
+                         const math::Vector4& color) = 0;
+virtual void DrawAABB(const math::Vector3& min, const math::Vector3& max,
+                      const math::Vector4& color) = 0;
 ```
 
 ---
@@ -32,14 +32,14 @@ class DebugDraw {
 public:
     static void Init(IRenderer* renderer);
 
-    static void Line(const math::Vec3& from, const math::Vec3& to,
-                     const math::Vec4& color = math::Vec4::WHITE);
-    static void Sphere(const math::Vec3& center, float radius,
-                       const math::Vec4& color = math::Vec4::GREEN);
-    static void AABB(const math::Vec3& min, const math::Vec3& max,
-                     const math::Vec4& color = math::Vec4::RED);
-    static void Cross(const math::Vec3& pos, float size = 0.1f,
-                      const math::Vec4& color = math::Vec4::WHITE);
+    static void Line(const math::Vector3& from, const math::Vector3& to,
+                     const math::Vector4& color = math::Vector4::WHITE);
+    static void Sphere(const math::Vector3& center, float radius,
+                       const math::Vector4& color = math::Vector4::GREEN);
+    static void AABB(const math::Vector3& min, const math::Vector3& max,
+                     const math::Vector4& color = math::Vector4::RED);
+    static void Cross(const math::Vector3& pos, float size = 0.1f,
+                      const math::Vector4& color = math::Vector4::WHITE);
     static void Grid(float cellSize = 1.0f, int halfCount = 10);
 
     // フレーム末尾に呼ぶ。キューをフラッシュして描画
@@ -58,12 +58,12 @@ private:
 
 ```cpp
 // コライダーのデバッグ表示
-DebugDraw::AABB(aabb.min, aabb.max, math::Vec4::RED);
-DebugDraw::Sphere(body->GetPosition(), 0.5f, math::Vec4::GREEN);
+DebugDraw::AABB(aabb.min, aabb.max, math::Vector4::RED);
+DebugDraw::Sphere(body->GetPosition(), 0.5f, math::Vector4::GREEN);
 
 // 物体の速度ベクトル
-Vec3 vel = body->GetVelocity();
-DebugDraw::Line(pos, pos + vel * 0.1f, math::Vec4::BLUE);
+Vector3 vel = body->GetVelocity();
+DebugDraw::Line(pos, pos + vel * 0.1f, math::Vector4::BLUE);
 
 // フレーム末尾
 DebugDraw::Flush();

@@ -17,8 +17,8 @@ struct CollisionPair {
 
 // NarrowPhase で生成
 struct ContactPoint {
-    math::Vec3 point;       // 衝突点 (ワールド座標)
-    math::Vec3 normal;      // b から a を向く法線
+    math::Vector3 point;       // 衝突点 (ワールド座標)
+    math::Vector3 normal;      // b から a を向く法線
     float      depth;       // 貫通深度 (正の値)
     std::shared_ptr<RigidBody> bodyA;
     std::shared_ptr<RigidBody> bodyB;

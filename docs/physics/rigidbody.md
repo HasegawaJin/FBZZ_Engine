@@ -12,10 +12,10 @@ namespace fbzz::physics {
 class RigidBody {
 public:
     // 力・インパルスの適用
-    void ApplyForce(const math::Vec3& force);
-    void ApplyForceAtPoint(const math::Vec3& force, const math::Vec3& point);
-    void ApplyImpulse(const math::Vec3& impulse);
-    void ApplyTorque(const math::Vec3& torque);
+    void ApplyForce(const math::Vector3& force);
+    void ApplyForceAtPoint(const math::Vector3& force, const math::Vector3& point);
+    void ApplyImpulse(const math::Vector3& impulse);
+    void ApplyTorque(const math::Vector3& torque);
 
     // 積分 (半陰的オイラー法)
     void Integrate(float dt);
@@ -27,13 +27,13 @@ public:
     bool  IsStatic()       const { return m_isStatic; }
 
     // 状態アクセス
-    math::Vec3       GetPosition()        const { return m_position; }
-    math::Vec3       GetVelocity()        const { return m_velocity; }
+    math::Vector3       GetPosition()        const { return m_position; }
+    math::Vector3       GetVelocity()        const { return m_velocity; }
     math::Quaternion GetRotation()        const { return m_rotation; }
-    math::Vec3       GetAngularVelocity() const { return m_angularVelocity; }
+    math::Vector3       GetAngularVelocity() const { return m_angularVelocity; }
 
-    void SetPosition(const math::Vec3& pos);
-    void SetVelocity(const math::Vec3& vel);
+    void SetPosition(const math::Vector3& pos);
+    void SetVelocity(const math::Vector3& vel);
     void SetRotation(const math::Quaternion& rot);
 
     // 物理マテリアル
@@ -43,12 +43,12 @@ public:
     bool  m_isStatic    = false;  // true のとき積分をスキップ
 
 private:
-    math::Vec3       m_position;
-    math::Vec3       m_velocity;
-    math::Vec3       m_force;
+    math::Vector3       m_position;
+    math::Vector3       m_velocity;
+    math::Vector3       m_force;
     math::Quaternion m_rotation;
-    math::Vec3       m_angularVelocity;
-    math::Vec3       m_torque;
+    math::Vector3       m_angularVelocity;
+    math::Vector3       m_torque;
 
     float m_mass    = 1.0f;
     float m_invMass = 1.0f;   // m_isStatic のとき 0
