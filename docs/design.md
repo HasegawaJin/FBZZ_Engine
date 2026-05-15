@@ -65,6 +65,12 @@ sandbox → engine → physics → math
 | [renderer/material.md](renderer/material.md) | Material、DrawCall |
 | [renderer/dx11.md](renderer/dx11.md) | DX11Renderer / DX11Buffer / DX11Shader の実装 |
 | [renderer/debug_draw.md](renderer/debug_draw.md) | DebugDraw ヘルパー、コライダー可視化 |
+| [renderer/render_state.md](renderer/render_state.md) | RasterizerMode / BlendMode / DepthMode プリセット |
+| [renderer/render_target.md](renderer/render_target.md) | IRenderTarget、オフスクリーン描画、Resize |
+| [renderer/sampler.md](renderer/sampler.md) | SamplerMode プリセット、テクスチャサンプリング設定 |
+| [renderer/texture.md](renderer/texture.md) | DX11Texture、WICTextureLoader による画像読み込み |
+| [renderer/light.md](renderer/light.md) | DirectionalLight / AmbientLight / LightSystem |
+| [renderer/render_queue.md](renderer/render_queue.md) | RenderQueue、RenderLayer、描画順ソート |
 
 ### Engine モジュール
 
@@ -72,10 +78,17 @@ sandbox → engine → physics → math
 |-------------|------|
 | [engine/application.md](engine/application.md) | Application (シングルトン)、ゲームループ |
 | [engine/window.md](engine/window.md) | Window (Win32)、メッセージポンプ |
+| [engine/time.md](engine/time.md) | Time、DeltaTime / TotalTime / TimeScale |
+| [engine/logger.md](engine/logger.md) | Logger、ログレベル、FBZZ_LOG_* マクロ |
 | [engine/scene.md](engine/scene.md) | Scene、GameObject の管理 |
 | [engine/gameobject.md](engine/gameobject.md) | GameObject / Component / Transform |
+| [engine/camera_component.md](engine/camera_component.md) | CameraComponent、主カメラ登録 |
 | [engine/input.md](engine/input.md) | Input、KeyCode、マウス |
 | [engine/mesh.md](engine/mesh.md) | MeshLoader (Assimp)、Vertex フォーマット |
+| [engine/resource_manager.md](engine/resource_manager.md) | ResourceManager、Mesh / Texture キャッシュ |
+| [engine/mesh_renderer.md](engine/mesh_renderer.md) | MeshRenderer、DrawCall 生成・RenderQueue への登録 |
+| [engine/rigidbody_component.md](engine/rigidbody_component.md) | RigidBodyComponent / ColliderComponent、World との接続 |
+| [engine/collision_callback.md](engine/collision_callback.md) | OnCollisionEnter/Stay/Exit、衝突イベントの通知フロー |
 
 ---
 
@@ -98,10 +111,11 @@ sandbox → engine → physics → math
 | ライブラリ | 用途 | 状態 |
 |-----------|------|------|
 | DirectX 11 SDK | レンダリング | Step 1 で導入 |
+| DirectXTex | テクスチャ読み込み (PNG/JPG/DDS) | Step 2 で導入 |
 | Assimp | メッシュ読み込み | Step 5 で導入 |
 | DirectX 12 SDK | レイトレーシング | Step 6 で導入 |
 
-**使用しないもの:** GLM (数学は自作)、GLFW (ウィンドウは Win32)、Bullet / PhysX / Box2D (物理は自作)
+**使用しないもの:** GLM (数学は自作)、GLFW (ウィンドウは Win32)、Bullet / PhysX / Box2D (物理は自作)、WICTextureLoader (DirectXTex で代替)
 
 ---
 

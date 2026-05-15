@@ -42,6 +42,14 @@ public:
 
     bool  m_isStatic    = false;  // true のとき積分をスキップ
 
+    // Collider の紐付け (ColliderComponent::OnAwake から設定される)
+    void SetCollider(std::shared_ptr<Collider> collider);
+    std::shared_ptr<Collider> GetCollider() const { return m_collider; }
+
+    // 衝突コールバック用ユーザーデータ (RigidBodyComponent* を格納する)
+    // 詳細: docs/engine/collision_callback.md
+    void* m_userData = nullptr;
+
 private:
     math::Vector3       m_position;
     math::Vector3       m_velocity;
@@ -105,3 +113,10 @@ physics/
 └── src/
     └── RigidBody.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [半陰的オイラー法 (Wikipedia)](https://en.wikipedia.org/wiki/Semi-implicit_Euler_method) — 積分法の数値安定性の説明
+- [Symplectic Euler (Wikipedia)](https://en.wikipedia.org/wiki/Symplectic_integrator) — 半陰的オイラー法の別名・より詳しい文脈

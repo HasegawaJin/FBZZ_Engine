@@ -1,5 +1,7 @@
+// FBZZ Engine
+// Application.cpp | fbzz::core
+// エンジンのエントリポイントとメインループ
 #include "engine/Core/Application.hpp"
-#include <iostream>
 
 namespace fbzz::core {
 
@@ -9,15 +11,25 @@ Application& Application::Get() {
 }
 
 void Application::Run() {
-    std::cout << "FBZZ Engine started." << std::endl;
+    Window::Config windowConfig;
+    m_window = std::make_unique<Window>();
+    if (!m_window->Initialize(windowConfig))
+        return;
 
     while (m_isRunning) {
+        m_window->PollEvents();
+        if (m_window->ShouldClose()) {
+            Quit();
+            break;
+        }
+
         // TODO: Input::Update()
         // TODO: scene.Update(dt)
         // TODO: physicsWorld.Step(dt)
         // TODO: renderer.BeginFrame() / EndFrame()
-        Quit();
     }
+
+    m_window->Shutdown();
 }
 
 void Application::Quit() {

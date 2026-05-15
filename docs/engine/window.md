@@ -12,13 +12,13 @@ namespace fbzz::core {
 
 class Window {
 public:
-    struct Desc {
+    struct Config {
         std::wstring title  = L"FBZZ Engine";
         uint32_t     width  = 1280;
         uint32_t     height = 720;
     };
 
-    bool Init(const Desc& desc);
+    bool Initialize(const Config& desc);
     void Shutdown();
 
     // メッセージポンプ。WM_QUIT を受け取ったら ShouldClose() が true になる
@@ -53,7 +53,7 @@ private:
 ## Win32 初期化フロー
 
 ```cpp
-bool Window::Init(const Desc& desc) {
+bool Window::Initialize(const Config& desc) {
     // 1. WNDCLASSEX を登録
     WNDCLASSEXW wc = {};
     wc.lpfnWndProc   = WndProc;
@@ -140,3 +140,14 @@ engine/
     └── Core/
         └── Window.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [WNDCLASSEX](https://learn.microsoft.com/ja-jp/windows/win32/api/winuser/ns-winuser-wndclassexa) — ウィンドウクラス登録構造体
+- [CreateWindowExW](https://learn.microsoft.com/ja-jp/windows/win32/api/winuser/nf-winuser-createwindowexw) — ウィンドウ生成
+- [ShowWindow](https://learn.microsoft.com/ja-jp/windows/win32/api/winuser/nf-winuser-showwindow) — ウィンドウ表示
+- [PeekMessage](https://learn.microsoft.com/ja-jp/windows/win32/api/winuser/nf-winuser-peekmessagew) — ノンブロッキングメッセージポンプ
+- [SetWindowLongPtrW](https://learn.microsoft.com/ja-jp/windows/win32/api/winuser/nf-winuser-setwindowlongptrw) — GWLP_USERDATA で Window* を埋め込む
+- [Window Messages](https://learn.microsoft.com/ja-jp/windows/win32/winmsg/window-messages) — WM_DESTROY / WM_SIZE 等のメッセージ一覧

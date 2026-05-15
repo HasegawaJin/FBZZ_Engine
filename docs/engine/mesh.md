@@ -143,3 +143,11 @@ engine/
     └── Scene/
         └── MeshRenderer.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [Assimp ドキュメント](https://assimp-docs.readthedocs.io/en/master/) — 公式リファレンス
+- [Assimp の使い方 (Getting Started)](https://assimp-docs.readthedocs.io/en/master/usage/use_the_lib.html) — Importer・aiScene・aiProcess フラグの説明
+- [aiPostProcessSteps](https://assimp-docs.readthedocs.io/en/master/usage/use_the_lib.html#aipostprocesssteps) — aiProcess_Triangulate 等のフラグ定義

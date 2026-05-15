@@ -136,3 +136,13 @@ engine/
     └── Renderer/
         └── ShaderManager.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [D3DCompileFromFile](https://learn.microsoft.com/ja-jp/windows/win32/api/d3dcompiler/nf-d3dcompiler-d3dcompilefromfile) — HLSL ファイルの実行時コンパイル
+- [HLSL リファレンス](https://learn.microsoft.com/ja-jp/windows/win32/direct3dhlsl/dx-graphics-hlsl-reference) — HLSL 言語仕様全体
+- [定数バッファ (cbuffer)](https://learn.microsoft.com/ja-jp/windows/win32/direct3dhlsl/dx-graphics-hlsl-constants) — cbuffer / register の使い方
+- [シェーダーセマンティクス](https://learn.microsoft.com/ja-jp/windows/win32/direct3dhlsl/dx-graphics-hlsl-semantics) — POSITION / NORMAL / SV_TARGET 等
+- [Shader Model 5.0](https://learn.microsoft.com/ja-jp/windows/win32/direct3dhlsl/d3d11-graphics-reference-sm5) — vs_5_0 / ps_5_0 の機能一覧
