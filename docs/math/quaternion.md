@@ -109,3 +109,12 @@ math/
 └── src/
     └── Quaternion.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [Quaternion (Wikipedia)](https://en.wikipedia.org/wiki/Quaternion) — 四元数の数学的定義
+- [Slerp (Wikipedia)](https://en.wikipedia.org/wiki/Slerp) — 球面線形補間の導出
+- [Gimbal lock (Wikipedia)](https://en.wikipedia.org/wiki/Gimbal_lock) — クォータニオンを使う理由
+- [Quaternion to rotation matrix](https://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToMatrix/) — ToMatrix4/ToMatrix3 の実装参考

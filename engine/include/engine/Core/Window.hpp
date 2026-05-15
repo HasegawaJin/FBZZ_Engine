@@ -1,0 +1,48 @@
+// FBZZ Engine
+// Window.hpp | fbzz::core
+// Win32 ウィンドウの生成・管理
+#pragma once
+#include <string>
+#include <cstdint>
+#include <functional>
+#include <Windows.h>
+
+namespace fbzz::core
+{
+    class Window
+    {
+    public:
+        struct Config
+        {
+            std::wstring title  = L"FBZZ Engine";
+            uint32_t     width  = 1280;
+            uint32_t     height = 720;
+        };
+
+        bool Initialize(const Config& config);
+        void Shutdown();
+
+        // メッセージポンプ。WM_QUIT を受け取ったら ShouldClose() が true になる
+        void PollEvents();
+
+        bool     ShouldClose() const { return m_shouldClose; }
+        HWND     GetHandle()   const { return m_hwnd; }
+        uint32_t GetWidth()    const { return m_width; }
+        uint32_t GetHeight()   const { return m_height; }
+
+        // リサイズコールバック (DX11Renderer が登録する)
+        using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
+        void SetResizeCallback(ResizeCallback cb) { m_resizeCallback = std::move(cb); }
+
+    private:
+        static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg,
+                                        WPARAM wParam, LPARAM lParam);
+
+        HWND     m_hwnd        = nullptr;
+        uint32_t m_width       = 0;
+        uint32_t m_height      = 0;
+        bool     m_shouldClose = false;
+
+        ResizeCallback m_resizeCallback;
+    };
+} // namespace fbzz::core
