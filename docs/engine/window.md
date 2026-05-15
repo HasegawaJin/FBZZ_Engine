@@ -140,3 +140,14 @@ engine/
     └── Core/
         └── Window.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [WNDCLASSEX](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-wndclassexa) — ウィンドウクラス登録構造体
+- [CreateWindowExW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw) — ウィンドウ生成
+- [ShowWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow) — ウィンドウ表示
+- [PeekMessage](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew) — ノンブロッキングメッセージポンプ
+- [SetWindowLongPtrW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowlongptrw) — GWLP_USERDATA で Window* を埋め込む
+- [Window Messages](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-messages) — WM_DESTROY / WM_SIZE 等のメッセージ一覧

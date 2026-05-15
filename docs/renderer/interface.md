@@ -46,6 +46,18 @@ public:
     // 描画
     virtual void Submit(const DrawCall& call) = 0;
 
+    // ウィンドウリサイズ (Window::ResizeCallback から呼ぶ)
+    virtual void Resize(uint32_t width, uint32_t height) = 0;
+
+    // 描画ステート切り替え (詳細: render_state.md)
+    virtual void SetRasterizerMode(RasterizerMode mode) = 0;
+    virtual void SetBlendMode(BlendMode mode)           = 0;
+    virtual void SetDepthMode(DepthMode mode)           = 0;
+
+    // オフスクリーン RT (詳細: render_target.md)
+    virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t width, uint32_t height) = 0;
+    virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;   // nullptr = バックバッファ
+
     // デバッグ描画 (物理コライダーの可視化など)
     virtual void DrawLine(const math::Vector3& from, const math::Vector3& to,
                           const math::Vector4& color) = 0;
