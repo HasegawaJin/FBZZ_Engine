@@ -103,8 +103,8 @@ engine/
 
 ## 参考ドキュメント
 
-- [IDXGISwapChain::ResizeBuffers](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers) — スワップチェーンのリサイズ (解放順序に注意)
-- [ID3D11Texture2D](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nn-d3d11-id3d11texture2d) — レンダーターゲット用テクスチャ
-- [CreateRenderTargetView](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11device-createrendertargetview) — RTV の生成
-- [OMSetRenderTargets](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetrendertargets) — RT のバインド
-- [D3D11_VIEWPORT](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_viewport) — ビューポート設定構造体
+- [IDXGISwapChain::ResizeBuffers](https://learn.microsoft.com/ja-jp/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers) — スワップチェーンのリサイズ (解放順序に注意)
+- [ID3D11Texture2D](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11texture2d) — レンダーターゲット用テクスチャ
+- [CreateRenderTargetView](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nf-d3d11-id3d11device-createrendertargetview) — RTV の生成
+- [OMSetRenderTargets](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetrendertargets) — RT のバインド
+- [D3D11_VIEWPORT](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/ns-d3d11-d3d11_viewport) — ビューポート設定構造体

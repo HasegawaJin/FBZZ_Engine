@@ -132,6 +132,6 @@ engine/
 
 ## 参考ドキュメント
 
-- [OutputDebugStringA](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-outputdebugstringa) — VS デバッグ出力ウィンドウへの出力
+- [OutputDebugStringA](https://learn.microsoft.com/ja-jp/windows/win32/api/debugapi/nf-debugapi-outputdebugstringa) — VS デバッグ出力ウィンドウへの出力
 - [va_list / va_start (cppreference)](https://en.cppreference.com/w/cpp/utility/variadic) — 可変長引数の処理
-- [vsprintf_s](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/vsprintf-s-vsprintf-s-l-vswprintf-s-vswprintf-s-l) — フォーマット文字列をバッファに書き出す
+- [vsprintf_s](https://learn.microsoft.com/ja-jp/cpp/c-runtime-library/reference/vsprintf-s-vsprintf-s-l-vswprintf-s-vswprintf-s-l) — フォーマット文字列をバッファに書き出す

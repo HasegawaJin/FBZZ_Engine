@@ -81,6 +81,6 @@ engine/
 
 ## 参考ドキュメント
 
-- [D3D11_SAMPLER_DESC](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_sampler_desc) — サンプラー設定構造体 (Filter / AddressU/V/W)
-- [ID3D11SamplerState](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nn-d3d11-id3d11samplerstate) — サンプラーステートインターフェース
-- [PSSetSamplers](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-pssetsamplers) — ピクセルシェーダーへのサンプラーバインド
+- [D3D11_SAMPLER_DESC](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/ns-d3d11-d3d11_sampler_desc) — サンプラー設定構造体 (Filter / AddressU/V/W)
+- [ID3D11SamplerState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11samplerstate) — サンプラーステートインターフェース
+- [PSSetSamplers](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-pssetsamplers) — ピクセルシェーダーへのサンプラーバインド

@@ -14,7 +14,7 @@ struct Matrix4 {
     // m[row][col], 行優先
     float m[4][4] = {};
 
-    Matrix4() = default;
+    constexpr Matrix4() = default;
 
     static Matrix4 Identity();
     static Matrix4 Zero();

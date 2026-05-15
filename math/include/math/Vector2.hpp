@@ -8,7 +8,7 @@ namespace fbzz::math {
 struct Vector2 {
     float x = 0.0f, y = 0.0f;
 
-    Vector2() = default;
+    constexpr Vector2() = default;
     constexpr Vector2(float x, float y) : x(x), y(y) {}
 
     Vector2  operator+(const Vector2& rhs) const;
@@ -27,8 +27,11 @@ struct Vector2 {
     static float   Dot(const Vector2& a, const Vector2& b);
     static Vector2 Lerp(const Vector2& a, const Vector2& b, float t);
 
-    static constexpr Vector2 ZERO = {0.0f, 0.0f};
-    static constexpr Vector2 ONE  = {1.0f, 1.0f};
+    static const Vector2 ZERO;
+    static const Vector2 ONE;
 };
+
+inline const Vector2 Vector2::ZERO = {0.0f, 0.0f};
+inline const Vector2 Vector2::ONE  = {1.0f, 1.0f};
 
 } // namespace fbzz::math

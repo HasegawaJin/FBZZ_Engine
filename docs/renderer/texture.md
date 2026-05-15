@@ -134,4 +134,4 @@ third_party/
 - [LoadFromWICFile](https://github.com/microsoft/DirectXTex/wiki/LoadFromWICFile) — PNG/JPG 読み込み
 - [LoadFromDDSFile](https://github.com/microsoft/DirectXTex/wiki/LoadFromDDSFile) — DDS 読み込み
 - [CreateShaderResourceView](https://github.com/microsoft/DirectXTex/wiki/CreateShaderResourceView) — SRV 生成
-- [ID3D11ShaderResourceView](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nn-d3d11-id3d11shaderresourceview) — DX11 公式リファレンス
+- [ID3D11ShaderResourceView](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11shaderresourceview) — DX11 公式リファレンス

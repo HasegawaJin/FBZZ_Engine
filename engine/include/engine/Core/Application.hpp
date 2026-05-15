@@ -1,4 +1,9 @@
+// FBZZ Engine
+// Application.hpp | fbzz::core
+// エンジンのエントリポイントとメインループ
 #pragma once
+#include "engine/Core/Window.hpp"
+#include <memory>
 
 namespace fbzz::core {
 
@@ -15,6 +20,7 @@ private:
     Application() = default;
 
     bool m_isRunning = true;
+    std::unique_ptr<Window> m_window;
 };
 
 } // namespace fbzz::core

@@ -10,7 +10,7 @@ namespace fbzz::math {
 struct Vector4 {
     float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;
 
-    Vector4() = default;
+    constexpr Vector4() = default;
     constexpr Vector4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
     constexpr Vector4(const Vector3& v, float w) : x(v.x), y(v.y), z(v.z), w(w) {}
 
@@ -24,13 +24,21 @@ struct Vector4 {
 
     Vector3 XYZ() const;
 
-    static constexpr Vector4 ZERO  = {0.0f, 0.0f, 0.0f, 0.0f};
-    static constexpr Vector4 ONE   = {1.0f, 1.0f, 1.0f, 1.0f};
-    static constexpr Vector4 WHITE = {1.0f, 1.0f, 1.0f, 1.0f};
-    static constexpr Vector4 BLACK = {0.0f, 0.0f, 0.0f, 1.0f};
-    static constexpr Vector4 RED   = {1.0f, 0.0f, 0.0f, 1.0f};
-    static constexpr Vector4 GREEN = {0.0f, 1.0f, 0.0f, 1.0f};
-    static constexpr Vector4 BLUE  = {0.0f, 0.0f, 1.0f, 1.0f};
+    static const Vector4 ZERO;
+    static const Vector4 ONE;
+    static const Vector4 WHITE;
+    static const Vector4 BLACK;
+    static const Vector4 RED;
+    static const Vector4 GREEN;
+    static const Vector4 BLUE;
 };
+
+inline const Vector4 Vector4::ZERO  = {0.0f, 0.0f, 0.0f, 0.0f};
+inline const Vector4 Vector4::ONE   = {1.0f, 1.0f, 1.0f, 1.0f};
+inline const Vector4 Vector4::WHITE = {1.0f, 1.0f, 1.0f, 1.0f};
+inline const Vector4 Vector4::BLACK = {0.0f, 0.0f, 0.0f, 1.0f};
+inline const Vector4 Vector4::RED   = {1.0f, 0.0f, 0.0f, 1.0f};
+inline const Vector4 Vector4::GREEN = {0.0f, 1.0f, 0.0f, 1.0f};
+inline const Vector4 Vector4::BLUE  = {0.0f, 0.0f, 1.0f, 1.0f};
 
 } // namespace fbzz::math

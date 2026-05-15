@@ -126,5 +126,5 @@ assets/
 
 ## 参考ドキュメント
 
-- [D3D11_PRIMITIVE_TOPOLOGY](https://learn.microsoft.com/en-us/windows/win32/api/d3dcommon/ne-d3dcommon-d3d_primitive_topology) — LINELIST / TRIANGLELIST 等のトポロジ定数
-- [IASetPrimitiveTopology](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-iasetprimitivetopology) — トポロジのバインド
+- [D3D11_PRIMITIVE_TOPOLOGY](https://learn.microsoft.com/ja-jp/windows/win32/api/d3dcommon/ne-d3dcommon-d3d_primitive_topology) — LINELIST / TRIANGLELIST 等のトポロジ定数
+- [IASetPrimitiveTopology](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-iasetprimitivetopology) — トポロジのバインド

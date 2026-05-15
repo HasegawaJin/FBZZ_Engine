@@ -8,7 +8,7 @@ namespace fbzz::math {
 struct Vector3 {
     float x = 0.0f, y = 0.0f, z = 0.0f;
 
-    Vector3() = default;
+    constexpr Vector3() = default;
     constexpr Vector3(float x, float y, float z) : x(x), y(y), z(z) {}
 
     Vector3  operator+(const Vector3& rhs) const;
@@ -29,11 +29,17 @@ struct Vector3 {
     static Vector3 Cross(const Vector3& a, const Vector3& b);
     static Vector3 Lerp(const Vector3& a, const Vector3& b, float t);
 
-    static constexpr Vector3 ZERO    = {0.0f, 0.0f, 0.0f};
-    static constexpr Vector3 ONE     = {1.0f, 1.0f, 1.0f};
-    static constexpr Vector3 UP      = {0.0f, 1.0f, 0.0f};
-    static constexpr Vector3 RIGHT   = {1.0f, 0.0f, 0.0f};
-    static constexpr Vector3 FORWARD = {0.0f, 0.0f, 1.0f};
+    static const Vector3 ZERO;
+    static const Vector3 ONE;
+    static const Vector3 UP;
+    static const Vector3 RIGHT;
+    static const Vector3 FORWARD;
 };
+
+inline const Vector3 Vector3::ZERO    = {0.0f, 0.0f, 0.0f};
+inline const Vector3 Vector3::ONE     = {1.0f, 1.0f, 1.0f};
+inline const Vector3 Vector3::UP      = {0.0f, 1.0f, 0.0f};
+inline const Vector3 Vector3::RIGHT   = {1.0f, 0.0f, 0.0f};
+inline const Vector3 Vector3::FORWARD = {0.0f, 0.0f, 1.0f};
 
 } // namespace fbzz::math
