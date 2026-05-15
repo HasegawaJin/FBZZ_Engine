@@ -132,3 +132,14 @@ engine/
     └── Input/
         └── Input.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [仮想キーコード一覧](https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes) — VK_ESCAPE / VK_SPACE 等の定数
+- [WM_KEYDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-keydown) — キー押下メッセージ
+- [WM_KEYUP](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-keyup) — キー離しメッセージ
+- [WM_MOUSEMOVE](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove) — マウス移動メッセージ
+- [WM_LBUTTONDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-lbuttondown) — マウスボタンメッセージ
+- [GET_X_LPARAM / GET_Y_LPARAM](https://learn.microsoft.com/en-us/windows/win32/api/windowsx/nf-windowsx-get_x_lparam) — lParam からマウス座標を取得するマクロ

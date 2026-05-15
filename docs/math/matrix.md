@@ -122,3 +122,11 @@ math/
     ├── Matrix3.cpp
     └── Matrix4.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [HLSL matrix 型](https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-matrix) — HLSL の Column-Major 解釈と転置の必要性
+- [Perspective projection (Wikipedia)](https://en.wikipedia.org/wiki/Perspective_(graphical)) — 透視投影行列の導出
+- [LookAt matrix (WebGL Fundamentals)](https://webglfundamentals.org/webgl/lessons/webgl-3d-camera.html) — LookAt 行列の仕組み (座標系は異なるが考え方は同じ)

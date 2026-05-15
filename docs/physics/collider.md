@@ -140,3 +140,10 @@ physics/
     ├── SphereCollider.cpp
     └── AABBCollider.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [AABB (Wikipedia)](https://en.wikipedia.org/wiki/Minimum_bounding_box#Axis-aligned_minimum_bounding_box) — 軸整合バウンディングボックスの定義
+- [Sphere-AABB 衝突判定 (Real-Time Collision Detection)](https://realtimecollisiondetection.net/) — Christer Ericson 著の標準的参考書

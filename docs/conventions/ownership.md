@@ -123,3 +123,13 @@ std::shared_ptr<ITexture> m_texture;
 参照するだけ     → T*  (生存期間を所有側が保証すること)
 new/delete 直接  → 禁止
 ```
+
+---
+
+## 参考ドキュメント
+
+- [std::unique_ptr (cppreference)](https://en.cppreference.com/w/cpp/memory/unique_ptr) — unique_ptr の API・使い方
+- [std::shared_ptr (cppreference)](https://en.cppreference.com/w/cpp/memory/shared_ptr) — shared_ptr の API・注意点
+- [std::make_unique (cppreference)](https://en.cppreference.com/w/cpp/memory/unique_ptr/make_unique) — 推奨される生成方法
+- [std::make_shared (cppreference)](https://en.cppreference.com/w/cpp/memory/shared_ptr/make_shared) — 推奨される生成方法
+- [ComPtr クラス](https://learn.microsoft.com/en-us/cpp/cppcx/wrl/comptr-class) — DX11 COM オブジェクト用スマートポインタ

@@ -81,3 +81,10 @@ math/
 ```
 
 `constexpr` / `inline` で実装できるものはヘッダオンリーにする。
+
+---
+
+## 参考ドキュメント
+
+- [&lt;cmath&gt; (cppreference)](https://en.cppreference.com/w/cpp/header/cmath) — std::sqrt / std::floor 等の標準数学関数
+- [constexpr (cppreference)](https://en.cppreference.com/w/cpp/language/constexpr) — コンパイル時定数・関数の書き方

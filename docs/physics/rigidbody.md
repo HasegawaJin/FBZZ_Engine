@@ -105,3 +105,10 @@ physics/
 └── src/
     └── RigidBody.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [半陰的オイラー法 (Wikipedia)](https://en.wikipedia.org/wiki/Semi-implicit_Euler_method) — 積分法の数値安定性の説明
+- [Symplectic Euler (Wikipedia)](https://en.wikipedia.org/wiki/Symplectic_integrator) — 半陰的オイラー法の別名・より詳しい文脈
