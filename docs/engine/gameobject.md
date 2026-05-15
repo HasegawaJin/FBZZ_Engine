@@ -31,6 +31,7 @@ public:
 
     // 毎フレーム
     void Update(float dt);
+    void LateUpdate(float dt);
 
     // アクセサ
     const std::string& GetName()      const { return m_name; }
@@ -71,13 +72,26 @@ class Component {
 public:
     virtual ~Component() = default;
 
-    virtual void OnAwake()          {}  // AddComponent 直後に 1 回
-    virtual void OnStart()          {}  // 最初の Update フレーム前に 1 回
-    virtual void OnUpdate(float dt) {}
-    virtual void OnDestroy()        {}
+    virtual void OnAwake()              {}  // AddComponent 直後に 1 回
+    virtual void OnStart()              {}  // 最初の Update フレーム前に 1 回
+    virtual void OnUpdate(float dt)     {}
+    virtual void OnLateUpdate(float dt) {}  // 同フレームの全 OnUpdate 完了後
+    virtual void OnDestroy()            {}
+
+    // 衝突コールバック (RigidBodyComponent を持つ GameObject のみ呼ばれる)
+    // 詳細: docs/engine/collision_callback.md
+    virtual void OnCollisionEnter(const physics::ContactPoint& contact) {}
+    virtual void OnCollisionStay (const physics::ContactPoint& contact) {}
+    virtual void OnCollisionExit (const physics::ContactPoint& contact) {}
 
 protected:
     bool m_started = false;  // OnStart 呼び出し済みフラグ
+
+    // RigidBodyComponent 等の OnAwake から GameObject にアクセスする用
+    GameObject& GetOwner() {
+        assert(m_owner && "Component is not attached to a GameObject");
+        return *m_owner;
+    }
 
 private:
     friend class GameObject;
@@ -125,16 +139,17 @@ public:
 
 ```
 AddComponent<T>()
-  └─ OnAwake()        生成直後
+  └─ OnAwake()            生成直後
 
 最初の Update フレーム
-  └─ OnStart()        1 回のみ
+  └─ OnStart()            1 回のみ (全 OnAwake 完了後が保証される)
 
 毎フレーム
-  └─ OnUpdate(dt)
+  ├─ OnUpdate(dt)
+  └─ OnLateUpdate(dt)     同フレームの全 OnUpdate 完了後
 
 DestroyObject()
-  └─ OnDestroy()      削除前
+  └─ OnDestroy()          削除前
 ```
 
 ---

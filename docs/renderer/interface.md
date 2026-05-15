@@ -58,6 +58,9 @@ public:
     virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t width, uint32_t height) = 0;
     virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;   // nullptr = バックバッファ
 
+    // サンプラー (詳細: sampler.md)
+    virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
+
     // デバッグ描画 (物理コライダーの可視化など)
     virtual void DrawLine(const math::Vector3& from, const math::Vector3& to,
                           const math::Vector4& color) = 0;
