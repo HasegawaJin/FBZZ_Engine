@@ -83,18 +83,24 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context,
 
 ---
 
-## ITexture / DX11Shader のバインド
+## DX11Renderer::Submit でのバインド
+
+テクスチャのバインドは `IShader` ではなく `DX11Renderer::Submit()` が `DrawCall.textures[]` を見て行う。
+`DX11Texture` へのダウンキャストは `DX11Renderer` の内部に閉じており、上位レイヤーには漏れない。
 
 ```cpp
-// DX11Shader::SetTexture() の実装イメージ
-void DX11Shader::SetTexture(uint32_t slot, std::shared_ptr<ITexture> texture) {
-    auto* dx11Tex = static_cast<DX11Texture*>(texture.get());
-    ID3D11ShaderResourceView* srv = dx11Tex->GetSRV();
-    m_context->PSSetShaderResources(slot, 1, &srv);
+// DX11Renderer::Submit() 内部イメージ
+void DX11Renderer::Submit(const DrawCall& call) {
+    // ...
+    for (uint32_t i = 0; i < call.textures.size(); ++i) {
+        if (!call.textures[i]) continue;
+        auto* dx11Tex = static_cast<DX11Texture*>(call.textures[i].get());
+        ID3D11ShaderResourceView* srv = dx11Tex->GetSRV();
+        m_context->PSSetShaderResources(i, 1, &srv);
+    }
+    // ...
 }
 ```
-
-`DX11Shader` 内での `static_cast<DX11Texture*>` は、`IShader` の具体実装の内部なので許容する。上位レイヤーへの漏れは禁止。
 
 ---
 

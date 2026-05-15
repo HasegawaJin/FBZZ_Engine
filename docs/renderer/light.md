@@ -44,8 +44,8 @@ class LightSystem {
 public:
     LightConstants BuildConstants() const;
 
-    DirectionalLight m_directional;
-    AmbientLight     m_ambient;
+    DirectionalLight directional;
+    AmbientLight     ambient;
 };
 
 } // namespace fbzz::renderer
@@ -55,18 +55,25 @@ public:
 
 ```cpp
 void Scene::Render(IRenderer& renderer) {
-    // 1. カメラ定数バッファ (b0)
+    // 1. カメラ定数バッファ (b0) を更新
     if (m_primaryCamera) {
-        CameraConstants cb = BuildCameraConstants(*m_primaryCamera);
-        m_cameraShader->SetConstantBuffer(0, &cb, sizeof(cb));
+        CameraConstants cb;
+        cb.viewProjection = (m_primaryCamera->GetProjectionMatrix()
+                           * m_primaryCamera->GetViewMatrix()).Transposed();
+        cb.cameraPos      = m_primaryCamera->m_position;
+        m_cameraCB->Update(&cb, sizeof(cb));
     }
 
-    // 2. ライト定数バッファ (b3)
+    // 2. ライト定数バッファ (b3) を更新
     LightConstants lc = m_lightSystem.BuildConstants();
-    // 全シェーダーに broadcast するか、Submit 時に各シェーダーへ設定する
+    m_lightCB->Update(&lc, sizeof(lc));
 
-    // 3. DrawCall を RenderQueue に投入して描画
-    m_renderQueue.Flush(renderer);
+    // 3. 各 MeshRenderer が DrawCall を組み立てて Submit() する
+    //    DrawCall.constantBuffers[0] = m_cameraCB  (b0)
+    //    DrawCall.constantBuffers[3] = m_lightCB   (b3)
+    for (auto& go : m_gameObjects) {
+        go->OnRender(renderer, m_cameraCB, m_lightCB);
+    }
 }
 ```
 

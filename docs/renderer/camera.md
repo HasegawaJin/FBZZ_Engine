@@ -65,20 +65,30 @@ math::Matrix4 Camera::GetProjectionMatrix() const {
 
 ---
 
-## シェーダーへの定数バッファ転送
+## 定数バッファへの転送
+
+`IConstantBuffer` を b0 スロット用に事前生成しておき、フレーム先頭で更新する。
 
 ```cpp
 struct CameraConstants {
     math::Matrix4 viewProjection;   // (proj * view).Transposed()
     math::Vector3 cameraPos;
-    float      _pad;
+    float         _pad;
 };
+
+// 初期化時に生成
+auto cameraCB = renderer.CreateConstantBuffer(sizeof(CameraConstants));
 
 // フレーム先頭で更新
 CameraConstants cb;
 cb.viewProjection = (cam.GetProjectionMatrix() * cam.GetViewMatrix()).Transposed();
 cb.cameraPos      = cam.m_position;
-shader->SetConstantBuffer(0, &cb, sizeof(cb));
+cameraCB->Update(&cb, sizeof(cb));
+
+// DrawCall に渡す
+DrawCall call;
+call.constantBuffers[0] = cameraCB;   // b0: CameraConstants
+// ...
 ```
 
 ---
