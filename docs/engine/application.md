@@ -83,7 +83,7 @@ void Application::Run() {
         m_physicsWorld->Step(dt);         // 物理シミュレーション
 
         m_renderer->BeginFrame();
-        m_renderer->Clear(math::Vec4::BLACK);
+        m_renderer->Clear(math::Vector4::BLACK);
         m_scene->Render(*m_renderer);     // 全 MeshRenderer::Draw() を呼ぶ
         DebugDraw::Flush();               // デバッグ描画をまとめて描画
         m_renderer->EndFrame();           // Present

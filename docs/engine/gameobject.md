@@ -37,10 +37,9 @@ public:
     Transform&         GetTransform()       { return m_transform; }
     const Transform&   GetTransform() const { return m_transform; }
 
+private:
     std::string m_name;
     Transform   m_transform;
-
-private:
     std::vector<std::unique_ptr<Component>> m_components;
 };
 
@@ -77,10 +76,12 @@ public:
     virtual void OnUpdate(float dt) {}
     virtual void OnDestroy()        {}
 
-    GameObject* m_owner = nullptr;
-
 protected:
     bool m_started = false;  // OnStart 呼び出し済みフラグ
+
+private:
+    friend class GameObject;
+    GameObject* m_owner = nullptr;  // 非所有参照。所有は GameObject 側の unique_ptr
 };
 
 } // namespace fbzz::scene
@@ -96,10 +97,10 @@ namespace fbzz::scene {
 class Transform {
 public:
     // ワールド行列 (親の変換を含む)
-    math::Mat4 GetWorldMatrix() const;
+    math::Matrix4 GetWorldMatrix() const;
 
     // ローカル → ワールド変換
-    math::Vec3 GetWorldPosition() const;
+    math::Vector3 GetWorldPosition() const;
     math::Quaternion GetWorldRotation() const;
 
     // 親子関係
@@ -107,9 +108,9 @@ public:
     void AddChild(Transform* child);
     void RemoveChild(Transform* child);
 
-    math::Vec3       m_position = { 0.0f, 0.0f, 0.0f };
+    math::Vector3       m_position = { 0.0f, 0.0f, 0.0f };
     math::Quaternion m_rotation;
-    math::Vec3       m_scale    = { 1.0f, 1.0f, 1.0f };
+    math::Vector3       m_scale    = { 1.0f, 1.0f, 1.0f };
 
     Transform*              m_parent   = nullptr;
     std::vector<Transform*> m_children;

@@ -17,18 +17,18 @@ struct Quaternion {
 
     // 生成
     static Quaternion Identity();
-    static Quaternion FromAxisAngle(const Vec3& axis, float angleRad);
-    static Quaternion FromEuler(const Vec3& eulerRad);   // XYZ 順
-    static Quaternion LookRotation(const Vec3& forward, const Vec3& up = Vec3::UP);
+    static Quaternion FromAxisAngle(const Vector3& axis, float angleRad);
+    static Quaternion FromEuler(const Vector3& eulerRad);   // XYZ 順
+    static Quaternion LookRotation(const Vector3& forward, const Vector3& up = Vector3::UP);
 
     // 変換
-    Vec3  ToEuler()  const;
-    Mat4  ToMat4()   const;
-    Mat3  ToMat3()   const;
+    Vector3 ToEuler()    const;
+    Matrix4 ToMatrix4()  const;
+    Matrix3 ToMatrix3()  const;
 
     // 演算
     Quaternion  operator*(const Quaternion& rhs) const;   // 合成
-    Vec3        operator*(const Vec3& v)         const;   // 点を回転
+    Vector3     operator*(const Vector3& v)      const;   // 点を回転
     Quaternion& operator*=(const Quaternion& rhs);
     bool        operator==(const Quaternion& rhs) const;
 
@@ -56,7 +56,7 @@ struct Quaternion {
 
 ```cpp
 // Y 軸まわりに 90° 回転
-Quaternion q = Quaternion::FromAxisAngle(Vec3::UP, MathUtils::ToRad(90.0f));
+Quaternion q = Quaternion::FromAxisAngle(Vector3::UP, MathUtils::ToRad(90.0f));
 ```
 
 ### `FromEuler`
@@ -64,7 +64,7 @@ Quaternion q = Quaternion::FromAxisAngle(Vec3::UP, MathUtils::ToRad(90.0f));
 XYZ 順 (ピッチ → ヨー → ロール) のオイラー角からクォータニオンを生成する。
 
 ```cpp
-Vec3 euler(MathUtils::ToRad(30.0f), MathUtils::ToRad(45.0f), 0.0f);
+Vector3 euler(MathUtils::ToRad(30.0f), MathUtils::ToRad(45.0f), 0.0f);
 Quaternion q = Quaternion::FromEuler(euler);
 ```
 
@@ -74,7 +74,7 @@ Quaternion q = Quaternion::FromEuler(euler);
 
 ```cpp
 Quaternion start = Quaternion::Identity();
-Quaternion end   = Quaternion::FromAxisAngle(Vec3::UP, MathUtils::ToRad(180.0f));
+Quaternion end   = Quaternion::FromAxisAngle(Vector3::UP, MathUtils::ToRad(180.0f));
 Quaternion mid   = Quaternion::Slerp(start, end, 0.5f);
 ```
 
@@ -83,7 +83,7 @@ Quaternion mid   = Quaternion::Slerp(start, end, 0.5f);
 ある方向を向く回転クォータニオンを生成する。カメラや敵の向き計算に使う。
 
 ```cpp
-Vec3 dir = (target - position).Normalized();
+Vector3 dir = (target - position).Normalized();
 Quaternion rot = Quaternion::LookRotation(dir);
 ```
 

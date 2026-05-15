@@ -62,8 +62,8 @@ public:
     static bool MouseButtonUp(int button);
 
     // マウス座標 (スクリーン座標)
-    static math::Vec2 MousePosition();
-    static math::Vec2 MouseDelta();      // 前フレームからの移動量
+    static math::Vector2 MousePosition();
+    static math::Vector2 MouseDelta();      // 前フレームからの移動量
 
     // WndProc から呼ばれる内部関数
     static void HandleKeyMessage(UINT msg, WPARAM wParam);
@@ -77,8 +77,8 @@ private:
     static std::array<bool, KEY_COUNT> s_previousKeys;
     static std::array<bool, 3>         s_currentMouse;
     static std::array<bool, 3>         s_previousMouse;
-    static math::Vec2                  s_mousePos;
-    static math::Vec2                  s_prevMousePos;
+    static math::Vector2                  s_mousePos;
+    static math::Vector2                  s_prevMousePos;
 };
 
 } // namespace fbzz::input
@@ -113,7 +113,7 @@ if (Input::KeyHeld(KeyCode::W)) {
     camera.m_position += camera.GetForward() * speed * dt;
 }
 
-math::Vec2 delta = Input::MouseDelta();
+math::Vector2 delta = Input::MouseDelta();
 yaw   += delta.x * sensitivity;
 pitch += delta.y * sensitivity;
 ```

@@ -24,14 +24,25 @@ sandbox → engine → physics → math
 
 ---
 
+## 規約ドキュメント
+
+| ドキュメント | 内容 |
+|-------------|------|
+| [conventions/error_handling.md](conventions/error_handling.md) | HRESULT チェック、assert、bool 戻り値の使い分け |
+| [conventions/ownership.md](conventions/ownership.md) | unique_ptr / shared_ptr / raw pointer の使い分け規約 |
+| [conventions/threading.md](conventions/threading.md) | シングルスレッドモデル、Step 6 以降の分離方針 |
+| [conventions/git.md](conventions/git.md) | ブランチ戦略、コミットメッセージ規約、ポートフォリオ管理 |
+
+---
+
 ## 詳細設計ドキュメント
 
 ### Math モジュール
 
 | ドキュメント | 内容 |
 |-------------|------|
-| [math/vector.md](math/vector.md) | Vec2 / Vec3 / Vec4 の API・演算子一覧 |
-| [math/matrix.md](math/matrix.md) | Mat3 / Mat4、HLSL との Row/Column-Major 対応 |
+| [math/vector.md](math/vector.md) | Vector2 / Vector3 / Vector4 の API・演算子一覧 |
+| [math/matrix.md](math/matrix.md) | Matrix3 / Matrix4、HLSL との Row/Column-Major 対応 |
 | [math/quaternion.md](math/quaternion.md) | Quaternion、Slerp、ジンバルロック回避 |
 | [math/utils.md](math/utils.md) | 定数 (PI, DEG2RAD)、Clamp / Lerp 等スカラー関数 |
 
@@ -130,7 +141,7 @@ engine/
     └── Mesh/
 
 math/
-├── include/math/       Vec2.hpp, Vec3.hpp, Mat4.hpp, Quaternion.hpp ...
+├── include/math/       Vector2.hpp, Vector3.hpp, Matrix4.hpp, Quaternion.hpp ...
 └── src/
 
 physics/

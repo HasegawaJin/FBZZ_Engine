@@ -12,9 +12,9 @@ DX11 の入力レイアウトと 1:1 に対応する。
 namespace fbzz::mesh {
 
 struct Vertex {
-    math::Vec3 position;   // POSITION : offset  0, 12 byte
-    math::Vec3 normal;     // NORMAL   : offset 12, 12 byte
-    math::Vec2 uv;         // TEXCOORD : offset 24,  8 byte
+    math::Vector3 position;   // POSITION : offset  0, 12 byte
+    math::Vector3 normal;     // NORMAL   : offset 12, 12 byte
+    math::Vector2 uv;         // TEXCOORD : offset 24,  8 byte
                            // 合計 32 byte / vertex
 };
 

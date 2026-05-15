@@ -21,13 +21,13 @@ Collider  (基底、純粋仮想)
 namespace fbzz::physics {
 
 struct AABB {
-    math::Vec3 min;
-    math::Vec3 max;
+    math::Vector3 min;
+    math::Vector3 max;
 
     bool Overlaps(const AABB& other) const;
     AABB Merge(const AABB& other)    const;
-    math::Vec3 Center() const { return (min + max) * 0.5f; }
-    math::Vec3 Extents() const { return (max - min) * 0.5f; }
+    math::Vector3 Center() const { return (min + max) * 0.5f; }
+    math::Vector3 Extents() const { return (max - min) * 0.5f; }
 };
 
 class Collider {
@@ -38,7 +38,7 @@ public:
     virtual AABB GetAABB() const = 0;
 
     // ワールド座標に追随するため毎フレーム呼ばれる
-    virtual void Update(const math::Vec3& worldPos,
+    virtual void Update(const math::Vector3& worldPos,
                         const math::Quaternion& worldRot) = 0;
 
     std::shared_ptr<RigidBody> m_body;  // 紐付く剛体 (弱参照でもよい)
@@ -59,13 +59,13 @@ public:
     SphereCollider(float radius);
 
     AABB GetAABB() const override;
-    void Update(const math::Vec3& worldPos,
+    void Update(const math::Vector3& worldPos,
                 const math::Quaternion& worldRot) override;
 
     float m_radius;
 
 private:
-    math::Vec3 m_worldCenter;
+    math::Vector3 m_worldCenter;
 };
 
 } // namespace fbzz::physics
@@ -82,16 +82,16 @@ namespace fbzz::physics {
 
 class AABBCollider : public Collider {
 public:
-    AABBCollider(const math::Vec3& halfExtents);
+    AABBCollider(const math::Vector3& halfExtents);
 
     AABB GetAABB() const override;
-    void Update(const math::Vec3& worldPos,
+    void Update(const math::Vector3& worldPos,
                 const math::Quaternion& worldRot) override;
 
-    math::Vec3 m_halfExtents;
+    math::Vector3 m_halfExtents;
 
 private:
-    math::Vec3 m_worldCenter;
+    math::Vector3 m_worldCenter;
 };
 
 } // namespace fbzz::physics

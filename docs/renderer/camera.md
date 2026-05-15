@@ -12,20 +12,20 @@ namespace fbzz::renderer {
 class Camera {
 public:
     // 行列取得
-    math::Mat4 GetViewMatrix()       const;
-    math::Mat4 GetProjectionMatrix() const;
-    math::Mat4 GetViewProjection()   const;
+    math::Matrix4 GetViewMatrix()       const;
+    math::Matrix4 GetProjectionMatrix() const;
+    math::Matrix4 GetViewProjection()   const;
 
     // ベクトル取得
-    math::Vec3 GetForward() const;
-    math::Vec3 GetRight()   const;
-    math::Vec3 GetUp()      const;
+    math::Vector3 GetForward() const;
+    math::Vector3 GetRight()   const;
+    math::Vector3 GetUp()      const;
 
     // ターゲット指定 (LookAt)
-    void LookAt(const math::Vec3& target);
+    void LookAt(const math::Vector3& target);
 
     // パラメーター
-    math::Vec3       m_position = { 0.0f, 0.0f, -10.0f };
+    math::Vector3       m_position = { 0.0f, 0.0f, -10.0f };
     math::Quaternion m_rotation;
 
     float m_fovY   = 60.0f;        // 垂直 FOV (度)
@@ -41,12 +41,12 @@ public:
 
 ## ビュー行列
 
-カメラのワールドトランスフォームの逆行列。`Mat4::LookAt` を使って生成する。
+カメラのワールドトランスフォームの逆行列。`Matrix4::LookAt` を使って生成する。
 
 ```cpp
-math::Mat4 Camera::GetViewMatrix() const {
-    math::Vec3 forward = GetForward();
-    return math::Mat4::LookAt(m_position, m_position + forward, GetUp());
+math::Matrix4 Camera::GetViewMatrix() const {
+    math::Vector3 forward = GetForward();
+    return math::Matrix4::LookAt(m_position, m_position + forward, GetUp());
 }
 ```
 
@@ -57,9 +57,9 @@ math::Mat4 Camera::GetViewMatrix() const {
 透視投影 (Perspective)。FOV はラジアンに変換して渡す。
 
 ```cpp
-math::Mat4 Camera::GetProjectionMatrix() const {
+math::Matrix4 Camera::GetProjectionMatrix() const {
     float fovRad = math::MathUtils::ToRad(m_fovY);
-    return math::Mat4::Perspective(fovRad, m_aspect, m_near, m_far);
+    return math::Matrix4::Perspective(fovRad, m_aspect, m_near, m_far);
 }
 ```
 
@@ -69,8 +69,8 @@ math::Mat4 Camera::GetProjectionMatrix() const {
 
 ```cpp
 struct CameraConstants {
-    math::Mat4 viewProjection;   // (proj * view).Transposed()
-    math::Vec3 cameraPos;
+    math::Matrix4 viewProjection;   // (proj * view).Transposed()
+    math::Vector3 cameraPos;
     float      _pad;
 };
 
