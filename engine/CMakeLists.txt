@@ -14,4 +14,5 @@ target_include_directories(fbzz_engine
 target_link_libraries(fbzz_engine
     PUBLIC
         fbzz_physics
+        fbzz_math
 )

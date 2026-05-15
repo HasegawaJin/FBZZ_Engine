@@ -44,7 +44,8 @@ struct DrawCall {
     std::shared_ptr<IBuffer>   m_indexBuffer;
     uint32_t                   m_indexCount = 0;
     std::shared_ptr<Material>  m_material;
-    math::Matrix4                 m_worldMatrix;
+    math::Matrix4              m_worldMatrix;
+    RenderLayer                m_layer = RenderLayer::OPAQUE;  // 描画順制御 (render_queue.md 参照)
 };
 
 } // namespace fbzz::renderer
