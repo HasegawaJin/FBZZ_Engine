@@ -20,10 +20,11 @@ public:
     bool IsRunning() const { return m_isRunning; }
 
     // サブシステムアクセス
-    Window&            GetWindow()       { return *m_window; }
-    renderer::IRenderer& GetRenderer()  { return *m_renderer; }
-    scene::Scene&      GetScene()        { return *m_scene; }
-    physics::World&    GetPhysicsWorld() { return *m_physicsWorld; }
+    Window&              GetWindow()          { return *m_window; }
+    renderer::IRenderer& GetRenderer()        { return *m_renderer; }
+    scene::Scene&        GetScene()           { return *m_scene; }
+    physics::World&      GetPhysicsWorld()    { return *m_physicsWorld; }
+    ResourceManager&     GetResourceManager() { return *m_resourceManager; }
 
 private:
     Application();
@@ -35,11 +36,15 @@ private:
 
     std::unique_ptr<Window>              m_window;
     std::unique_ptr<renderer::IRenderer> m_renderer;
+    std::unique_ptr<ResourceManager>     m_resourceManager;
     std::unique_ptr<scene::Scene>        m_scene;
     std::unique_ptr<physics::World>      m_physicsWorld;
 
-    bool  m_isRunning = true;
-    float m_lastTime  = 0.0f;
+    bool  m_isRunning   = true;
+    float m_lastTime    = 0.0f;
+    float m_accumulator = 0.0f;
+
+    static constexpr float FIXED_DT = 1.0f / 60.0f;  // 物理固定タイムステップ
 };
 
 } // namespace fbzz::core
@@ -54,6 +59,7 @@ Application::Init()
 │
 ├─ Window::Init(title, width, height)     Win32 ウィンドウ生成
 ├─ DX11Renderer::Init(hwnd, w, h)         DX11 デバイス・スワップチェーン生成
+├─ ResourceManager::Init(renderer)        メッシュ・テクスチャキャッシュ初期化
 ├─ ShaderManager::Init()                  シェーダーキャッシュ初期化
 ├─ DebugDraw::Init(renderer)              デバッグ描画登録
 ├─ Scene::Init()                          シーン初期化
@@ -70,6 +76,7 @@ void Application::Run() {
 
     while (m_isRunning) {
         float dt = CalcDeltaTime();
+        Time::Update(dt);                 // DeltaTime / TotalTime を更新
 
         m_window->PollEvents();           // Win32 メッセージポンプ
         if (m_window->ShouldClose()) {
@@ -79,8 +86,16 @@ void Application::Run() {
 
         Input::Update();                  // 前フレームの状態を保存
 
+        // 固定タイムステップ物理 (フレームレートに依存しない安定した積分)
+        m_accumulator += dt;
+        while (m_accumulator >= FIXED_DT) {
+            m_physicsWorld->Step(FIXED_DT);
+            m_accumulator -= FIXED_DT;
+        }
+        m_scene->DispatchCollisionEvents(*m_physicsWorld);  // Enter/Stay/Exit を通知
+
         m_scene->Update(dt);              // 全 Component::OnUpdate() を呼ぶ
-        m_physicsWorld->Step(dt);         // 物理シミュレーション
+        m_scene->LateUpdate(dt);          // カメラ追従など、Update 後に行う処理
 
         m_renderer->BeginFrame();
         m_renderer->Clear(math::Vector4::BLACK);

@@ -22,15 +22,27 @@ public:
 
     const std::vector<std::shared_ptr<RigidBody>>& GetBodies() const;
 
+    // 衝突イベント (Step() 後に Scene が参照する。詳細: collision_callback.md)
+    const std::vector<CollisionEvent>& GetEnterEvents() const { return m_enterEvents; }
+    const std::vector<CollisionEvent>& GetStayEvents()  const { return m_stayEvents; }
+    const std::vector<CollisionEvent>& GetExitEvents()  const { return m_exitEvents; }
+
 private:
     void BroadPhase();      // AABB で衝突候補ペアを収集
     void NarrowPhase();     // 詳細判定 → ContactPoint 生成
     void Resolve();         // インパルスで速度を修正
     void Integrate(float dt);
+    void ClassifyCollisions();  // Enter / Stay / Exit を前フレームと比較して分類
 
     math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
     std::vector<std::shared_ptr<RigidBody>> m_bodies;
-    std::vector<CollisionPair> m_collisionPairs;
+    std::vector<CollisionPair>              m_collisionPairs;
+
+    using BodyPair = std::pair<RigidBody*, RigidBody*>;
+    std::set<BodyPair>          m_prevPairs;     // 前フレームの衝突ペア
+    std::vector<CollisionEvent> m_enterEvents;
+    std::vector<CollisionEvent> m_stayEvents;
+    std::vector<CollisionEvent> m_exitEvents;
 };
 
 } // namespace fbzz::physics

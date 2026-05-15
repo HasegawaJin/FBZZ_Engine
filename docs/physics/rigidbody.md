@@ -42,6 +42,14 @@ public:
 
     bool  m_isStatic    = false;  // true のとき積分をスキップ
 
+    // Collider の紐付け (ColliderComponent::OnAwake から設定される)
+    void SetCollider(std::shared_ptr<Collider> collider);
+    std::shared_ptr<Collider> GetCollider() const { return m_collider; }
+
+    // 衝突コールバック用ユーザーデータ (RigidBodyComponent* を格納する)
+    // 詳細: docs/engine/collision_callback.md
+    void* m_userData = nullptr;
+
 private:
     math::Vector3       m_position;
     math::Vector3       m_velocity;
