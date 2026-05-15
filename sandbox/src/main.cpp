@@ -1,6 +1,6 @@
-#include <iostream>
+#include "engine/Core/Application.hpp"
 
 int main() {
-    std::cout << "FBZZ Engine started." << std::endl;
+    fbzz::core::Application::Get().Run();
     return 0;
 }
