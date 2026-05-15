@@ -168,3 +168,12 @@ physics/
 └── src/
     └── PhysicsSolver.cpp
 ```
+
+---
+
+## 参考ドキュメント
+
+- [Impulse-based collision response (Wikipedia)](https://en.wikipedia.org/wiki/Collision_response) — インパルス量の導出式
+- [Baumgarte stabilization (Wikipedia)](https://en.wikipedia.org/wiki/Baumgarte_stabilization_method) — 位置補正 (SLOP / BAUMGARTE 定数の意味)
+- [Separating Axis Theorem (Wikipedia)](https://en.wikipedia.org/wiki/Hyperplane_separation_theorem) — SAT の数学的根拠 (NarrowPhase の基礎)
+- [Randy Gaul の衝突検出シリーズ](https://gdcvault.com/browse/gdc-13) — GDC 物理実装解説 (検索: "Game Physics" Randy Gaul)
