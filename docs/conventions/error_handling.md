@@ -129,7 +129,7 @@ engine/
 
 ## 参考ドキュメント
 
-- [HRESULT の構造](https://learn.microsoft.com/en-us/windows/win32/com/structure-of-com-error-codes) — FAILED / SUCCEEDED マクロの仕組み
-- [FAILED マクロ](https://learn.microsoft.com/en-us/windows/win32/api/winerror/nf-winerror-failed) — `if (FAILED(hr))` の定義
-- [__debugbreak](https://learn.microsoft.com/en-us/cpp/intrinsics/debugbreak) — デバッガブレークポイントの組み込み関数
-- [OutputDebugStringA](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-outputdebugstringa) — Visual Studio 出力ウィンドウへのログ出力
+- [HRESULT の構造](https://learn.microsoft.com/ja-jp/windows/win32/com/structure-of-com-error-codes) — FAILED / SUCCEEDED マクロの仕組み
+- [FAILED マクロ](https://learn.microsoft.com/ja-jp/windows/win32/api/winerror/nf-winerror-failed) — `if (FAILED(hr))` の定義
+- [__debugbreak](https://learn.microsoft.com/ja-jp/cpp/intrinsics/debugbreak) — デバッガブレークポイントの組み込み関数
+- [OutputDebugStringA](https://learn.microsoft.com/ja-jp/windows/win32/api/debugapi/nf-debugapi-outputdebugstringa) — Visual Studio 出力ウィンドウへのログ出力

@@ -96,9 +96,9 @@ engine/
 
 ## 参考ドキュメント
 
-- [ID3D11RasterizerState](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nn-d3d11-id3d11rasterizerstate) — ポリゴン塗りつぶし・カリング設定
-- [D3D11_RASTERIZER_DESC](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_rasterizer_desc) — ラスタライザ設定構造体
-- [ID3D11BlendState](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nn-d3d11-id3d11blendstate) — アルファブレンド設定
-- [D3D11_BLEND_DESC](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc) — ブレンド設定構造体
-- [ID3D11DepthStencilState](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nn-d3d11-id3d11depthstencilstate) — 深度テスト・書き込み設定
-- [OMSetDepthStencilState](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetdepthstencilstate) — デプスステンシルステートのバインド
+- [ID3D11RasterizerState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11rasterizerstate) — ポリゴン塗りつぶし・カリング設定
+- [D3D11_RASTERIZER_DESC](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/ns-d3d11-d3d11_rasterizer_desc) — ラスタライザ設定構造体
+- [ID3D11BlendState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11blendstate) — アルファブレンド設定
+- [D3D11_BLEND_DESC](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc) — ブレンド設定構造体
+- [ID3D11DepthStencilState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nn-d3d11-id3d11depthstencilstate) — 深度テスト・書き込み設定
+- [OMSetDepthStencilState](https://learn.microsoft.com/ja-jp/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetdepthstencilstate) — デプスステンシルステートのバインド

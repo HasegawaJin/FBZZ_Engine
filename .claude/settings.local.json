@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\\" 2>&1)",
+      "Read(//c/Program Files/**)"
+    ]
+  }
+}

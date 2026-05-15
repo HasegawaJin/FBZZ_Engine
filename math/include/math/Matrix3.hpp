@@ -12,7 +12,7 @@ struct Matrix4;
 struct Matrix3 {
     float m[3][3] = {};
 
-    Matrix3() = default;
+    constexpr Matrix3() = default;
 
     static Matrix3 Identity();
     static Matrix3 Transpose(const Matrix3& mat);

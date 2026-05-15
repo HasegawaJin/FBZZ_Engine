@@ -89,5 +89,5 @@ engine/
 
 ## 参考ドキュメント
 
-- [QueryPerformanceCounter](https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter) — 高精度タイマー (CalcDeltaTime の実装に使う)
-- [QueryPerformanceFrequency](https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancefrequency) — 周波数取得 (QPC と合わせて秒に変換)
+- [QueryPerformanceCounter](https://learn.microsoft.com/ja-jp/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter) — 高精度タイマー (CalcDeltaTime の実装に使う)
+- [QueryPerformanceFrequency](https://learn.microsoft.com/ja-jp/windows/win32/api/profileapi/nf-profileapi-queryperformancefrequency) — 周波数取得 (QPC と合わせて秒に変換)
