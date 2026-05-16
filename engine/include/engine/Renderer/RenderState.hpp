@@ -1,5 +1,10 @@
 #pragma once
 
+// wingdi.h が OPAQUE=2 を定義するため enum class の enumerator と衝突する
+#ifdef OPAQUE
+#undef OPAQUE
+#endif
+
 namespace fbzz::renderer {
 
     enum class RasterizerMode {

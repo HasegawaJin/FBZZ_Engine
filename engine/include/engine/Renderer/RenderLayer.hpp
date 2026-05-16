@@ -1,6 +1,14 @@
 #pragma once
 #include <cstdint>
 
+// wingdi.h が OPAQUE=2, TRANSPARENT=1 を定義するため enum class の enumerator と衝突する
+#ifdef OPAQUE
+#undef OPAQUE
+#endif
+#ifdef TRANSPARENT
+#undef TRANSPARENT
+#endif
+
 namespace fbzz::renderer {
 
     enum class RenderLayer : uint32_t {
