@@ -5,6 +5,7 @@ project(FBZZ_Engine VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON) # 必須にする
 set(CMAKE_CXX_EXTENSIONS OFF) # 拡張機能を無効にする
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # コンパイルコマンドを出力
 
 # MSVC: ソースを UTF-8 として読む (BOM なし環境でも日本語コメントが壊れない)
 if(MSVC)
