@@ -84,9 +84,6 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
     vp.MaxDepth       = 1.0f;
     m_context->RSSetViewports(1, &vp);
 
-    // プリミティブトポロジーを三角形リストで固定 (Step 2 以降で DrawCall から動的指定に変更可)
-    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
     InitSamplers();
 
     FBZZ_LOG_INFO("DX11Renderer 初期化完了: %ux%u", width, height);
@@ -227,7 +224,13 @@ void DX11Renderer::Submit(const DrawCall& call)
         m_context->PSSetShaderResources(i, 1, &srv);
     }
 
-    // ---- 5. Vertex Buffer (IA ステージ) ------------------------------------------
+    // ---- 5. Primitive Topology (IA ステージ) --------------------------------------
+    m_context->IASetPrimitiveTopology(
+        call.topology == PrimitiveTopology::LINE_LIST
+            ? D3D11_PRIMITIVE_TOPOLOGY_LINELIST
+            : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    // ---- 6. Vertex Buffer (IA ステージ) ------------------------------------------
     if (call.vertexBuffer)
     {
         auto*         dx11vb = static_cast<DX11Buffer*>(call.vertexBuffer.get());
@@ -237,7 +240,7 @@ void DX11Renderer::Submit(const DrawCall& call)
         m_context->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
     }
 
-    // ---- 6. Draw (インデックスあり / なしで分岐) -----------------------------------
+    // ---- 7. Draw (インデックスあり / なしで分岐) -----------------------------------
     if (call.indexBuffer)
     {
         // DXGI_FORMAT_R32_UINT: インデックスは uint32_t 固定

@@ -24,6 +24,11 @@ namespace fbzz::renderer {
         DEPTH_OFF,   // 深度テスト・書き込みなし (デバッグ描画, UI)
     };
 
+    enum class PrimitiveTopology {
+        TRIANGLE_LIST,  // 通常の三角形描画 (デフォルト)
+        LINE_LIST,      // デバッグ線描画
+    };
+
     struct PipelineStateDesc {
         RasterizerMode rasterizer = RasterizerMode::SOLID;
         BlendMode      blend      = BlendMode::OPAQUE;

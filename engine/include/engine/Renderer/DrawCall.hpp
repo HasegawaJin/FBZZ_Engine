@@ -8,6 +8,7 @@
 #include "IConstantBuffer.hpp"
 #include "ITexture.hpp"
 #include "RenderLayer.hpp"
+#include "RenderState.hpp"
 
 namespace fbzz::renderer {
 
@@ -27,7 +28,8 @@ struct DrawCall {
     uint32_t startIndex  = 0;
     uint32_t baseVertex  = 0;
 
-    RenderLayer layer = RenderLayer::OPAQUE;  // 描画順制御 (render_queue.md 参照)
+    RenderLayer      layer    = RenderLayer::OPAQUE;
+    PrimitiveTopology topology = PrimitiveTopology::TRIANGLE_LIST;
 };
 
 } // namespace fbzz::renderer
