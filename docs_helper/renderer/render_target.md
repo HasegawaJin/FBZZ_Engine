@@ -1,4 +1,4 @@
-# Renderer / RenderTarget
+#p# Renderer / RenderTarget
 
 オフスクリーンレンダリング用の抽象インターフェースと、ウィンドウリサイズへの対応。
 
