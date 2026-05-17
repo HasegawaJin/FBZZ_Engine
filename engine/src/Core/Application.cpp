@@ -31,6 +31,8 @@ bool Application::Init() {
         m_renderer->Resize(w, h);
     });
 
+    m_sceneManager = std::make_unique<scene::SceneManager>();
+
     FBZZ_LOG_INFO("Application 起動: %ux%u", m_window->GetWidth(), m_window->GetHeight());
     return true;
 }
