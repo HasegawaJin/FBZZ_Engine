@@ -19,7 +19,7 @@ Quaternion Quaternion::FromAxisAngle(const Vector3& axis, float angleRad) {
 }
 
 Quaternion Quaternion::FromEuler(const Vector3& eulerRad) {
-    // XYZ 順 (Pitch → Yaw → Roll)
+    // 乗算順 X*Y*Z → 列ベクトルへの適用順は Z(Roll) → Y(Yaw) → X(Pitch)
     float cx = std::cos(eulerRad.x * 0.5f), sx = std::sin(eulerRad.x * 0.5f);
     float cy = std::cos(eulerRad.y * 0.5f), sy = std::sin(eulerRad.y * 0.5f);
     float cz = std::cos(eulerRad.z * 0.5f), sz = std::sin(eulerRad.z * 0.5f);
@@ -33,7 +33,13 @@ Quaternion Quaternion::FromEuler(const Vector3& eulerRad) {
 
 Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
     Vector3 f = forward.Normalized();
-    Vector3 r = Vector3::Cross(up, f).Normalized();
+    // forward と up が平行なとき (縮退ケース) は代替 up を使う
+    // RIGHT も平行なら FORWARD を使う (forward が RIGHT 方向のとき)
+    Vector3 safeUp = up;
+    if (NearlyZero(Vector3::Cross(up, f).LengthSq()))
+        safeUp = NearlyZero(Vector3::Cross(Vector3::RIGHT, f).LengthSq())
+               ? Vector3::FORWARD : Vector3::RIGHT;
+    Vector3 r = Vector3::Cross(safeUp, f).Normalized();
     Vector3 u = Vector3::Cross(f, r);
 
     // 回転行列 → クォータニオン変換
