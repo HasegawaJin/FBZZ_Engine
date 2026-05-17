@@ -58,12 +58,14 @@ float4 PSMain(PSInput input) : SV_TARGET {
 ## 使用例
 
 ```cpp
-// マテリアルの Bind() 内でテクスチャと一緒に設定する
-renderer.SetSampler(0, SamplerMode::WRAP_LINEAR);   // 通常テクスチャ
-shader->SetTexture(0, m_albedoTexture);
+// フレーム開始時にサンプラーをセット (通常は BeginFrame 後に一度だけ)
+renderer.SetSampler(0, SamplerMode::WRAP_LINEAR);   // s0: 通常テクスチャ
+renderer.SetSampler(1, SamplerMode::CLAMP_LINEAR);  // s1: RT 参照・UI
 
-// レンダーターゲットの結果をポストプロセスで参照する場合
-renderer.SetSampler(1, SamplerMode::CLAMP_LINEAR);
+// テクスチャ自体は DrawCall に渡す (shader->SetTexture は使わない)
+DrawCall call;
+call.textures[0] = mat->albedoTexture;   // t0 にバインド
+renderer.Submit(call);
 ```
 
 ---

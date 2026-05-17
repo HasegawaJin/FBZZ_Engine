@@ -31,6 +31,14 @@ compile_commands.json
 *.ilk
 *.exp
 
+# Third-party libraries (ソース・バイナリは追跡しない)
+third_party/Assimp/
+third_party/DirectXTex/
+third_party/ImGui/
+
+# コンパイル済みシェーダー (dxc でビルド時生成)
+assets/shaders/compiled/
+
 # OS
 .DS_Store
 Thumbs.db
