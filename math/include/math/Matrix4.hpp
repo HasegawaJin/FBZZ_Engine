@@ -37,7 +37,8 @@ struct Matrix4 {
     static Matrix4 Transpose(const Matrix4& mat);
     static Matrix4 Inverse(const Matrix4& mat);
 
-    // シェーダーへ渡す前に呼ぶ (HLSL は Column-Major)
+    // HLSL cbuffer は column-major で読むため C++ row-major と自動転置される。
+    // 列ベクトル形式の行列はそのままアップロードすれば HLSL 側で正しく解釈される。
     Matrix4 Transposed() const;
 };
 

@@ -12,10 +12,13 @@ class Application {
 public:
     static Application& Get();
 
+    bool Init();
+    void Shutdown();
     void Run();
     void Quit();
 
     bool                    IsRunning()   const { return m_isRunning; }
+    Window&                 GetWindow()   const { return *m_window; }
     renderer::IRenderer&    GetRenderer() const { return *m_renderer; }
 
 private:
