@@ -3,8 +3,10 @@
 // Win32 ウィンドウの生成・メッセージ処理
 
 #include "engine/Core/Window.hpp"
+#include "engine/Input/Input.hpp"
 
 #include <dwmapi.h>
+#include <windowsx.h>
 #include <cassert>
 
 #pragma comment(lib, "dwmapi.lib")
@@ -116,8 +118,19 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
     case WM_KEYDOWN:
     case WM_KEYUP:
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+        fbzz::input::Input::HandleKeyMessage(msg, wParam);
+        return 0;
+
     case WM_MOUSEMOVE:
-        // InputSystem に渡す予定
+        fbzz::input::Input::HandleMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        return 0;
+
+    case WM_LBUTTONDOWN: case WM_LBUTTONUP:
+    case WM_RBUTTONDOWN: case WM_RBUTTONUP:
+    case WM_MBUTTONDOWN: case WM_MBUTTONUP:
+        fbzz::input::Input::HandleMouseButton(msg);
         return 0;
     }
 
