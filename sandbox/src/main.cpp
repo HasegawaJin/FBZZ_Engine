@@ -4,6 +4,7 @@
 #include <engine/Renderer/ShaderManager.hpp>
 #include <engine/Renderer/Camera.hpp>
 #include <engine/Renderer/DrawCall.hpp>
+#include <engine/Renderer/DebugDraw.hpp>
 #include <math/Matrix4.hpp>
 
 struct Vertex {
@@ -89,6 +90,16 @@ int main() {
         renderer.BeginFrame();
         renderer.Clear({0.10f, 0.15f, 0.25f, 1.0f});
         renderer.Submit(call);
+
+        // DebugDraw: ワールド原点に XYZ 軸、三角形を囲む Box と Sphere を描画
+        fbzz::renderer::DebugDraw::BeginFrame(renderer, camera.GetViewProjection());
+        fbzz::renderer::DebugDraw::Line(renderer, {0,0,0}, {1,0,0}, {1,0,0,1}); // X 軸 (赤)
+        fbzz::renderer::DebugDraw::Line(renderer, {0,0,0}, {0,1,0}, {0,1,0,1}); // Y 軸 (緑)
+        fbzz::renderer::DebugDraw::Line(renderer, {0,0,0}, {0,0,1}, {0,0,1,1}); // Z 軸 (青)
+        fbzz::renderer::DebugDraw::Box(renderer, {0,0,0}, {0.6f,0.6f,0.1f});
+        fbzz::renderer::DebugDraw::Sphere(renderer, {0,0,0}, 0.8f);
+        fbzz::renderer::DebugDraw::Flush();
+
         renderer.EndFrame();
     }
 
