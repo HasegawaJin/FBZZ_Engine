@@ -16,6 +16,11 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 {
     if (level < s_minLevel) return;
 
+    // UTF-8 ソースファイルの日本語文字列をコンソールで正しく表示するため
+    // 初回呼び出し時に一度だけコードページを UTF-8 に切り替える。
+    // CP932 (Shift-JIS) のままだと printf が文字化けする。
+    static bool s_cpSet = (SetConsoleOutputCP(CP_UTF8), true);
+
     const char* prefix = nullptr;
     switch (level) {
     case LogLevel::INFO:      prefix = "[FBZZ INFO]  "; break;
