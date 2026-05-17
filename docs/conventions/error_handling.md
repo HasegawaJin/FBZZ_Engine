@@ -47,7 +47,6 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path) {
 
 // 呼び出し側
 if (!shader->Init(device, "shaders/Basic.hlsl")) {
-    // フォールバック or 起動を中断
     return false;
 }
 ```
@@ -94,42 +93,9 @@ public:
     bool Init(HWND hwnd, uint32_t w, uint32_t h);  // 失敗なら false
     void Shutdown();                                 // noexcept, 冪等
 
-    // コンストラクタ・デストラクタは最小限
     DX11Renderer()  = default;
     ~DX11Renderer() { Shutdown(); }
 };
 ```
 
 コンストラクタで `Init` を呼ばない理由: HRESULT をコンストラクタから返せないため。
-
----
-
-## ログ出力 (将来実装)
-
-現時点では `OutputDebugStringA` / `printf` で代替する。
-将来 `fbzz::core::Logger` を実装したら置き換える。
-
-```cpp
-// 暫定ログ (Step 1〜2 まで)
-OutputDebugStringA("[FBZZ] シェーダー読み込み失敗\n");
-```
-
----
-
-## ファイル構成
-
-```
-engine/
-└── include/engine/
-    └── Core/
-        └── HResult.hpp    FBZZ_HR_CHECK マクロの定義
-```
-
----
-
-## 参考ドキュメント
-
-- [HRESULT の構造](https://learn.microsoft.com/ja-jp/windows/win32/com/structure-of-com-error-codes) — FAILED / SUCCEEDED マクロの仕組み
-- [FAILED マクロ](https://learn.microsoft.com/ja-jp/windows/win32/api/winerror/nf-winerror-failed) — `if (FAILED(hr))` の定義
-- [__debugbreak](https://learn.microsoft.com/ja-jp/cpp/intrinsics/debugbreak) — デバッガブレークポイントの組み込み関数
-- [OutputDebugStringA](https://learn.microsoft.com/ja-jp/windows/win32/api/debugapi/nf-debugapi-outputdebugstringa) — Visual Studio 出力ウィンドウへのログ出力
