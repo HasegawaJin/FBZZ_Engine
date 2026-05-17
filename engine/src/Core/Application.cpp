@@ -14,17 +14,17 @@ Application& Application::Get() {
     return instance;
 }
 
-void Application::Run() {
+bool Application::Init() {
     Window::Config windowConfig;
     m_window = std::make_unique<Window>();
     if (!m_window->Initialize(windowConfig))
-        return;
+        return false;
 
     input::Input::Init();
 
     auto dx11 = std::make_unique<renderer::DX11Renderer>();
     if (!dx11->Init(m_window->GetHandle(), m_window->GetWidth(), m_window->GetHeight()))
-        return;
+        return false;
     m_renderer = std::move(dx11);
 
     m_window->SetResizeCallback([this](uint32_t w, uint32_t h) {
@@ -32,6 +32,17 @@ void Application::Run() {
     });
 
     FBZZ_LOG_INFO("Application 起動: %ux%u", m_window->GetWidth(), m_window->GetHeight());
+    return true;
+}
+
+void Application::Shutdown() {
+    m_renderer.reset();
+    m_window->Shutdown();
+    FBZZ_LOG_INFO("Application 終了 (フレーム数: %llu)", Time::FrameCount());
+}
+
+void Application::Run() {
+    if (!Init()) return;
 
     while (m_isRunning) {
         Time::Tick();
@@ -43,16 +54,12 @@ void Application::Run() {
             break;
         }
 
-        // TODO: scene.Update(Time::DeltaTime())
-        // TODO: physicsWorld.Step(Time::DeltaTime())
         m_renderer->BeginFrame();
-        m_renderer->Clear({ 0.10f, 0.15f, 0.25f, 1.0f });  // ネイビーブルー (Step1 動作確認用)
+        m_renderer->Clear({ 0.10f, 0.15f, 0.25f, 1.0f });
         m_renderer->EndFrame();
     }
 
-    m_renderer.reset();
-    m_window->Shutdown();
-    FBZZ_LOG_INFO("Application 終了 (フレーム数: %llu)", Time::FrameCount());
+    Shutdown();
 }
 
 void Application::Quit() {
