@@ -257,4 +257,31 @@ Step 4 マージ後、`develop` を定期的に取り込みながら追加して
 |------|-----|------|
 | `G` | `6.674e-11f` | 万有引力定数 (ゲームスケールでは拡大して使う) |
 | `SLOP` | `0.01f` | Baumgarte 補正の貫通無視閾値 |
-| `BAUMGARTE` | `0.2f` | Baumgarte 補正割合 |
+| `BAUMGARTE` | `0.8f` | Baumgarte 位置補正割合 |
+| `VELOCITY_ITER` | `10` | 速度インパルスの反復回数 (PhysicsSolver::Resolve) |
+| `SUBSTEPS` | `4` | World::Step 内サブステップ数 |
+| `REST_THRESHOLD` | `0.5f` | 相対速度がこれ未満のとき反発係数を 0 に落とす (resting contact ジッター対策) |
+
+---
+
+## ソルバーの既知制限と今後の改善
+
+### 現状の制限
+
+現在の `PhysicsSolver` は **基本的な Sequential Impulse ソルバー** であり、以下の問題が残る。
+
+- **積み重ねオブジェクトの沈み込み**: コンタクトが毎フレーム破棄・再生成されるため、累積インパルスが持続しない。複数コンタクト間の位置補正が干渉し、スタック安定性が低い。
+- `BAUMGARTE` / `REST_THRESHOLD` / `SUBSTEPS` はこのシーンスケール向けのチューニング値であり、汎用ではない。
+
+### 今後の改善計画 (feature/physics で対応)
+
+**累積インパルス管理 (ウォームスタート)**を実装することで根本解決できる。
+
+| 変更点 | 内容 |
+|--------|------|
+| `ContactPoint` に `accumulatedImpulse` 追加 | インパルス累積値を保持 |
+| `World` がコンタクトをフレーム間で持続管理 | `m_contacts` を毎フレーム捨てない |
+| BodyPair + 接触点近傍でコンタクト照合 | 前フレームの累積インパルスを引き継ぐ |
+| インパルスを `[0, ∞)` にクランプ | 引き寄せ方向のインパルスを物理的に禁止 |
+
+実装規模は 50〜100 行 + `ContactPoint` / `World` / `PhysicsSolver` の設計変更。
