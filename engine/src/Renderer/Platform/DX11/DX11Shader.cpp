@@ -4,8 +4,11 @@
 #include "DX11Shader.hpp"
 #include <engine/Core/Logger.hpp>
 #include <engine/Core/HResult.hpp>
+#include <d3dcompiler.h>
+#pragma comment(lib, "d3dcompiler.lib")
 #include <fstream>
 #include <vector>
+#include <string>
 
 namespace fbzz::renderer
 {
@@ -73,23 +76,97 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
         psBlob.data(), psBlob.size(), nullptr, m_pixelShader.GetAddressOf()));
 
     // -------------------------------------------------------------------------
-    // Input Layout
-    //   頂点フォーマット: { POSITION(12B), NORMAL(12B), TEXCOORD(8B) } = 合計 32B
-    //   セマンティクス名は HLSL 側の struct メンバ名と一致させる必要がある。
-    //   InputLayout は VS バイトコードと照合して互換性を検証するため、
-    //   vsBlob を引数として渡す (PS バイトコードは不要)。
+    // Input Layout — VS バイトコードをリフレクションして頂点レイアウトを自動構築する
+    //
+    // 【なぜリフレクションを使うのか】
+    //   CreateInputLayout には、頂点バッファの各要素が HLSL 側のどのセマンティクスに
+    //   対応するかを示す D3D11_INPUT_ELEMENT_DESC の配列が必要になる。
+    //   この配列を手書きでハードコードすると、シェーダーを追加するたびに C++ 側も
+    //   修正しなければならず、見落としが起きやすい。
+    //   D3DReflect を使うと VS バイトコードの入力シグネチャから HLSL 側の宣言を
+    //   直接読み取れるため、C++ を変更せずに任意の頂点フォーマットに対応できる。
+    //
+    // 【D3DReflect の依存関係】
+    //   D3DReflect は d3dcompiler.lib (→ d3dcompiler_47.dll) から提供される。
+    //   ランタイムシェーダーコンパイル (D3DCompile) と同じ DLL だが、
+    //   リフレクションはコンパイル済み CSO を読むだけなので実行時の負荷は軽い。
+    //   IID は __uuidof で取得する (dxguid.lib リンクが不要になる)。
+    //
+    // 【Mask からコンポーネント数を判定する仕組み】
+    //   paramDesc.Mask は VS 入力レジスタの使用ビットを示すビットフィールド。
+    //   float4 なら 0b1111 (=0xF)、float3 なら 0b0111 (=0x7)、
+    //   float2 なら 0b0011 (=0x3)、float1 なら 0b0001 (=0x1)。
+    //   このビット数からバイト幅と DXGI フォーマットを一意に決定できる。
+    //   現状は float 型のみに対応 (int / uint はエンジンの頂点フォーマットに存在しない)。
+    //
+    // 【semanticNames を別途保持する理由】
+    //   D3D11_INPUT_ELEMENT_DESC::SemanticName は const char* (生ポインタ) であり、
+    //   CreateInputLayout の呼び出しが完了するまでその文字列が生存していなければ
+    //   ならない。paramDesc.SemanticName は pReflector 内部のバッファを指しているが、
+    //   pReflector のスコープを超えた後も参照されうるため、std::string にコピーして
+    //   保持する。emplace_back による再アロケーションで c_str() ポインタが無効化
+    //   されるのを防ぐため、ループ前に reserve() で容量を確保する。
     // -------------------------------------------------------------------------
-    D3D11_INPUT_ELEMENT_DESC layout[] =
     {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
+        // --- (1) リフレクターを取得 ---
+        Microsoft::WRL::ComPtr<ID3D11ShaderReflection> pReflector;
+        HRESULT hrRefl = D3DReflect(vsBlob.data(), vsBlob.size(),
+                                     __uuidof(ID3D11ShaderReflection),
+                                     reinterpret_cast<void**>(pReflector.GetAddressOf()));
+        if (FAILED(hrRefl))
+        {
+            FBZZ_LOG_ERROR("頂点シェーダーリフレクション失敗: %s", vsPath.c_str());
+            return false;
+        }
 
-    FBZZ_HR_CHECK(device->CreateInputLayout(
-        layout, ARRAYSIZE(layout),
-        vsBlob.data(), vsBlob.size(),
-        m_inputLayout.GetAddressOf()));
+        // --- (2) 入力パラメーター数を取得 ---
+        D3D11_SHADER_DESC shaderDesc = {};
+        pReflector->GetDesc(&shaderDesc);
+
+        std::vector<D3D11_INPUT_ELEMENT_DESC> inputElements;
+        std::vector<std::string>              semanticNames;
+        semanticNames.reserve(shaderDesc.InputParameters); // c_str() 安定化のため必須
+        UINT byteOffset = 0;
+
+        // --- (3) 各入力パラメーターを D3D11_INPUT_ELEMENT_DESC に変換 ---
+        for (UINT i = 0; i < shaderDesc.InputParameters; ++i)
+        {
+            D3D11_SIGNATURE_PARAMETER_DESC paramDesc = {};
+            pReflector->GetInputParameterDesc(i, &paramDesc);
+
+            // SV_VertexID や SV_InstanceID など D3D 組み込みの系統値はスキップ。
+            // これらは頂点バッファから供給されず IA が自動生成するため
+            // InputLayout に含めると CreateInputLayout が E_INVALIDARG を返す。
+            if (paramDesc.SystemValueType != D3D_NAME_UNDEFINED) continue;
+
+            // SemanticName を std::string にコピーして生存期間を延ばす
+            semanticNames.emplace_back(paramDesc.SemanticName);
+
+            D3D11_INPUT_ELEMENT_DESC elem   = {};
+            elem.SemanticName               = semanticNames.back().c_str();
+            elem.SemanticIndex              = paramDesc.SemanticIndex;
+            elem.InputSlot                  = 0;  // 単一頂点バッファのみ (マルチストリーム未対応)
+            elem.AlignedByteOffset          = byteOffset;
+            elem.InputSlotClass             = D3D11_INPUT_PER_VERTEX_DATA;
+            elem.InstanceDataStepRate       = 0;
+
+            // Mask のビット数 → コンポーネント数 → DXGI フォーマット & バイト幅
+            if      (paramDesc.Mask <= 0x1) { elem.Format = DXGI_FORMAT_R32_FLOAT;          byteOffset += 4;  }
+            else if (paramDesc.Mask <= 0x3) { elem.Format = DXGI_FORMAT_R32G32_FLOAT;       byteOffset += 8;  }
+            else if (paramDesc.Mask <= 0x7) { elem.Format = DXGI_FORMAT_R32G32B32_FLOAT;    byteOffset += 12; }
+            else                            { elem.Format = DXGI_FORMAT_R32G32B32A32_FLOAT; byteOffset += 16; }
+
+            inputElements.push_back(elem);
+        }
+
+        // --- (4) InputLayout オブジェクトを生成 ---
+        // vsBlob を渡すことで D3D11 が InputLayout と VS 入力シグネチャの整合を検証する。
+        // 不一致 (セマンティクス名の typo 等) はここで E_INVALIDARG として検出される。
+        FBZZ_HR_CHECK(device->CreateInputLayout(
+            inputElements.data(), static_cast<UINT>(inputElements.size()),
+            vsBlob.data(), vsBlob.size(),
+            m_inputLayout.GetAddressOf()));
+    }
 
     return true;
 }

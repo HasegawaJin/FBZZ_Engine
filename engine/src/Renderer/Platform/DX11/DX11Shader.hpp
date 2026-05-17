@@ -10,8 +10,9 @@
 //   シェーダーパスは "assets/shaders/Phong.hlsl" 形式で受け取り、
 //   "assets/shaders/compiled/Phong.vs.cso" / ".ps.cso" に解決する。
 //
-//   InputLayout は頂点フォーマット { POSITION(12B), NORMAL(12B), TEXCOORD(8B) } で固定。
-//   複数フォーマットへの対応は Step 2 以降で検討する。
+//   InputLayout は VS バイトコードを D3DReflect でリフレクションして自動構築する。
+//   シェーダーごとに異なる頂点フォーマット (Unlit: POSITION+NORMAL+TEXCOORD,
+//   Debug: POSITION+COLOR 等) に対応できる。
 #pragma once
 
 #include <d3d11.h>
