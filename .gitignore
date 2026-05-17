@@ -39,6 +39,9 @@ third_party/ImGui/
 # コンパイル済みシェーダー (dxc でビルド時生成)
 assets/shaders/compiled/
 
+# Claude Code (ローカル設定)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
