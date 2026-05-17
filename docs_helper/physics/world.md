@@ -1,6 +1,6 @@
 # Physics / World
 
-`fbzz::physics::World`。物理シミュレーション全体を管理するトップレベルクラス。
+`fbzz::physics::World` — シミュレーション全体の管理クラス。
 
 ---
 
@@ -11,38 +11,59 @@ namespace fbzz::physics {
 
 class World {
 public:
+    // ボディ管理
     void AddBody(std::shared_ptr<RigidBody> body);
     void RemoveBody(const std::shared_ptr<RigidBody>& body);
-
-    // 1 ステップ進める。dt = 経過秒 (例: 1/60)
-    void Step(float dt);
-
-    void SetGravity(const math::Vector3& gravity);
-    math::Vector3 GetGravity() const { return m_gravity; }
-
     const std::vector<std::shared_ptr<RigidBody>>& GetBodies() const;
 
-    // 衝突イベント (Step() 後に Scene が参照する。詳細: collision_callback.md)
-    const std::vector<CollisionEvent>& GetEnterEvents() const { return m_enterEvents; }
-    const std::vector<CollisionEvent>& GetStayEvents()  const { return m_stayEvents; }
-    const std::vector<CollisionEvent>& GetExitEvents()  const { return m_exitEvents; }
+    // Volume 管理
+    void AddVolume(std::shared_ptr<Volume> volume);
+    void RemoveVolume(const std::shared_ptr<Volume>& volume);
+
+    // Constraint 管理
+    void AddConstraint(std::shared_ptr<Constraint> constraint);
+    void RemoveConstraint(const std::shared_ptr<Constraint>& constraint);
+
+    // シミュレーション
+    void Step(float dt);
+
+    // グローバル重力 (GravityVolume が存在しない領域に適用)
+    void          SetGravity(const math::Vector3& gravity);
+    math::Vector3 GetGravity() const { return m_gravity; }
+
+    // 衝突イベント (Step() 後に参照する)
+    const std::vector<CollisionEvent>& GetEnterEvents() const;
+    const std::vector<CollisionEvent>& GetStayEvents()  const;
+    const std::vector<CollisionEvent>& GetExitEvents()  const;
 
 private:
-    void BroadPhase();      // AABB で衝突候補ペアを収集
-    void NarrowPhase();     // 詳細判定 → ContactPoint 生成
-    void Resolve();         // インパルスで速度を修正
-    void Integrate(float dt);
-    void ClassifyCollisions();  // Enter / Stay / Exit を前フレームと比較して分類
+    void RemoveExpiredVolumes();
+    void ApplyVolumes(float dt, std::vector<float>& outEffectiveDts,
+                      std::vector<bool>& outInGravityVolume);
+    void ApplyGlobalGravity(const std::vector<bool>& inGravityVolume);
+    void ApplyConstraintForces(float dt);
+    void ApplyGravitationalAttraction(float dt);
+    void IntegrateBodies(const std::vector<float>& effectiveDts);
+    void SolveConstraintPositions(float dt);
+    void UpdateColliders();
+    void BroadPhase();
+    void NarrowPhase();
+    void Resolve();
+    void ClassifyCollisions();
 
     math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
-    std::vector<std::shared_ptr<RigidBody>> m_bodies;
-    std::vector<CollisionPair>              m_collisionPairs;
+
+    std::vector<std::shared_ptr<RigidBody>>  m_bodies;
+    std::vector<std::shared_ptr<Volume>>     m_volumes;
+    std::vector<std::shared_ptr<Constraint>> m_constraints;
+    std::vector<CollisionPair>               m_collisionPairs;
+    std::vector<ContactPoint>                m_contacts;
 
     using BodyPair = std::pair<RigidBody*, RigidBody*>;
-    std::set<BodyPair>          m_prevPairs;     // 前フレームの衝突ペア
-    std::vector<CollisionEvent> m_enterEvents;
-    std::vector<CollisionEvent> m_stayEvents;
-    std::vector<CollisionEvent> m_exitEvents;
+    std::set<BodyPair>           m_prevPairs;
+    std::vector<CollisionEvent>  m_enterEvents;
+    std::vector<CollisionEvent>  m_stayEvents;
+    std::vector<CollisionEvent>  m_exitEvents;
 };
 
 } // namespace fbzz::physics
@@ -50,52 +71,84 @@ private:
 
 ---
 
-## ゲームループとの統合
-
-`Application::Run()` の中で毎フレーム `Step(dt)` を呼ぶ。
+## Step 実装イメージ
 
 ```cpp
-// Application::Run() 内
-float dt = CalcDeltaTime();
-Input::Update();
-m_scene->Update(dt);
-m_physicsWorld->Step(dt);         // 物理ステップ
-m_renderer->BeginFrame();
-m_scene->Render(*m_renderer);
-m_renderer->EndFrame();
+void World::Step(float dt) {
+    RemoveExpiredVolumes();
+
+    // per-body の有効 dt を計算しつつ Volume を適用
+    // inGravityVolume[i] == true のボディはグローバル重力をスキップする
+    std::vector<float> effectiveDts(m_bodies.size(), dt);
+    std::vector<bool>  inGravityVolume(m_bodies.size(), false);
+    for (size_t i = 0; i < m_bodies.size(); ++i) {
+        float timeScale = 1.0f;
+        for (auto& vol : m_volumes) {
+            if (!vol->m_enabled || !vol->Contains(m_bodies[i]->GetPosition())) continue;
+            timeScale *= vol->GetTimeScale();
+            if (vol->GetType() == VolumeType::GRAVITY)  // GravityVolume は重力を上書き
+                inGravityVolume[i] = true;
+        }
+        effectiveDts[i] = dt * timeScale;
+        for (auto& vol : m_volumes) {
+            if (vol->m_enabled && vol->Contains(m_bodies[i]->GetPosition()))
+                vol->Apply(*m_bodies[i], effectiveDts[i]);
+        }
+    }
+
+    // GravityVolume 外のボディにだけグローバル重力を加算
+    for (size_t i = 0; i < m_bodies.size(); ++i) {
+        if (!m_bodies[i]->IsStatic() && !inGravityVolume[i])
+            m_bodies[i]->ApplyForce(m_gravity * m_bodies[i]->GetMass());
+    }
+    ApplyConstraintForces(dt);
+    ApplyGravitationalAttraction(dt);
+    IntegrateBodies(effectiveDts);
+    SolveConstraintPositions(dt);
+    UpdateColliders();
+    BroadPhase();
+    NarrowPhase();
+    Resolve();
+    ClassifyCollisions();
+}
 ```
 
 ---
 
-## シミュレーションループの順序
+## N 体重力引力
 
-```
-World::Step(dt)
-│
-├─ Integrate(dt)
-│     各 RigidBody に重力を加え、速度・位置を更新
-│
-├─ BroadPhase()
-│     全ボディの AABB を更新
-│     重なりがある組み合わせを m_collisionPairs に追加
-│
-├─ NarrowPhase()
-│     各ペアに対して詳細判定
-│     ContactPoint (位置, 法線, 貫通深度) を生成
-│
-└─ Resolve()
-      ContactPoint を元にインパルスを計算し速度を修正
-      摩擦・反発係数を考慮する
+```cpp
+void World::ApplyGravitationalAttraction(float dt) {
+    constexpr float G = 6.674e-4f; // ゲームスケール用定数
+
+    for (size_t i = 0; i < m_bodies.size(); ++i) {
+        if (!m_bodies[i]->m_isGravitationalSource) continue;
+        for (size_t j = i + 1; j < m_bodies.size(); ++j) {
+            auto& a = *m_bodies[i];
+            auto& b = *m_bodies[j];
+            math::Vector3 dir = b.GetPosition() - a.GetPosition();
+            float dist2 = math::Vector3::Dot(dir, dir);
+            if (dist2 < 1e-4f) continue;
+            float f = G * a.m_gravitationalMass * b.m_gravitationalMass / dist2;
+            math::Vector3 force = dir.Normalized() * f;
+            a.ApplyForce( force);
+            b.ApplyForce(-force);
+        }
+    }
+}
 ```
 
 ---
 
-## ファイル構成
+## CollisionEvent
 
+```cpp
+struct CollisionEvent {
+    RigidBody* bodyA;
+    RigidBody* bodyB;
+};
 ```
-physics/
-├── include/physics/
-│   └── World.hpp
-└── src/
-    └── World.cpp
-```
+
+`GetEnterEvents()` / `GetStayEvents()` / `GetExitEvents()` は Step() 後に参照する。
+engine 側の Component (RigidBodyComponent 等) が毎フレームポーリングして
+コールバックを起動する想定 (Step 5 で実装)。
