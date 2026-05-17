@@ -23,9 +23,9 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 
     const char* prefix = nullptr;
     switch (level) {
-    case LogLevel::INFO:      prefix = "[FBZZ INFO]  "; break;
-    case LogLevel::WARNING:   prefix = "[FBZZ WARN]  "; break;
-    case LogLevel::LOG_ERROR: prefix = "[FBZZ ERROR] "; break;
+    case LogLevel::INFO:      prefix = "[INFO]  "; break;
+    case LogLevel::WARNING:   prefix = "[WARNING]  "; break;
+    case LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
     }
 
     char body[1024];

@@ -23,12 +23,14 @@ private:
 
 } // namespace fbzz::core
 
+#define FBZZ_FILENAME (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
+
 #ifdef NDEBUG
     #define FBZZ_LOG_INFO(fmt, ...)  ((void)0)
     #define FBZZ_LOG_WARN(fmt, ...)  ((void)0)
     #define FBZZ_LOG_ERROR(fmt, ...) ((void)0)
 #else
-    #define FBZZ_LOG_INFO(fmt, ...)  ::fbzz::core::Logger::Info ("[%s:%d] " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
-    #define FBZZ_LOG_WARN(fmt, ...)  ::fbzz::core::Logger::Warn ("[%s:%d] " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
-    #define FBZZ_LOG_ERROR(fmt, ...) ::fbzz::core::Logger::Error("[%s:%d] " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+    #define FBZZ_LOG_INFO(fmt, ...)  ::fbzz::core::Logger::Info ("[%s:%d] " fmt, FBZZ_FILENAME, __LINE__, ##__VA_ARGS__)
+    #define FBZZ_LOG_WARN(fmt, ...)  ::fbzz::core::Logger::Warn ("[%s:%d] " fmt, FBZZ_FILENAME, __LINE__, ##__VA_ARGS__)
+    #define FBZZ_LOG_ERROR(fmt, ...) ::fbzz::core::Logger::Error("[%s:%d] " fmt, FBZZ_FILENAME, __LINE__, ##__VA_ARGS__)
 #endif
