@@ -1,6 +1,6 @@
 # FBZZ Engine - Claude への指示
 
-詳細設計は `docs/design.md` を参照。以下の方針から外れないようにすること。
+詳細設計は `docs/Design.md` を参照。以下の方針から外れないようにすること。
 
 ---
 
