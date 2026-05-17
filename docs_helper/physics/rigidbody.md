@@ -99,7 +99,8 @@ public:
 ### 線形
 
 ```
-a = (m_force + gravity) / m_mass
+// gravity は World::Step で事前に ApplyForce 済みのため m_force に含まれる
+a = m_force / m_mass
 
 v(t+dt) = v(t) + a * dt          // 速度を先に更新
 x(t+dt) = x(t) + v(t+dt) * dt   // 更新後の v を使う ← 半陰的

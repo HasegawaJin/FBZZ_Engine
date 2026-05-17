@@ -1,4 +1,46 @@
 // FBZZ Engine
-// Solver.hpp | fbzz::physics
-// 衝突検出と衝突解決
+// PhysicsSolver.hpp | fbzz::physics
+// 衝突検出 (Broad/Narrow フェーズ) と衝突解決 (インパルスベース)
 #pragma once
+#include <physics/ContactPoint.hpp>
+#include <physics/CollisionPair.hpp>
+#include <physics/SphereCollider.hpp>
+#include <physics/AABBCollider.hpp>
+#include <physics/RigidBody.hpp>
+#include <vector>
+#include <memory>
+
+namespace fbzz::physics 
+{
+
+    class CapsuleCollider;
+
+    class PhysicsSolver 
+    {
+    public:
+        void BroadPhase(const std::vector<std::shared_ptr<RigidBody>>& bodies,
+                        std::vector<CollisionPair>& outPairs);
+
+        void NarrowPhase(const std::vector<CollisionPair>& pairs,
+                        std::vector<ContactPoint>& outContacts);
+
+        void Resolve(std::vector<ContactPoint>& contacts);
+
+    private:
+        bool TestSphereSphere(const SphereCollider& a, const SphereCollider& b,
+                            ContactPoint& out);
+        bool TestAABBAABB    (const AABBCollider&   a, const AABBCollider&   b,
+                            ContactPoint& out);
+        bool TestSphereAABB  (const SphereCollider& s, const AABBCollider&   b,
+                            ContactPoint& out);
+        bool TestSphereCapsule(const SphereCollider& s, const CapsuleCollider& c,
+                            ContactPoint& out);
+
+        void ResolveVelocity(ContactPoint& cp);
+        void ResolvePosition(ContactPoint& cp);
+
+        static constexpr float SLOP      = 0.01f;
+        static constexpr float BAUMGARTE = 0.8f;
+    };
+
+} // namespace fbzz::physics
