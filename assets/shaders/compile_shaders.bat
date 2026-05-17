@@ -14,5 +14,12 @@ if %ERRORLEVEL% neq 0 ( echo [FAILED] Unlit VS & exit /b 1 )
 %FXC% /T ps_5_0 /E PSMain /Fo "%OUT%\Unlit.ps.cso" "%SRC%\Unlit.hlsl"
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Unlit PS & exit /b 1 )
 
+echo Compiling Debug.hlsl...
+%FXC% /T vs_5_0 /E VSMain /Fo "%OUT%\Debug.vs.cso" "%SRC%\Debug.hlsl"
+if %ERRORLEVEL% neq 0 ( echo [FAILED] Debug VS & exit /b 1 )
+
+%FXC% /T ps_5_0 /E PSMain /Fo "%OUT%\Debug.ps.cso" "%SRC%\Debug.hlsl"
+if %ERRORLEVEL% neq 0 ( echo [FAILED] Debug PS & exit /b 1 )
+
 echo Done.
 endlocal
