@@ -1,23 +1,35 @@
 // FBZZ Engine
 // Mesh.hlsl | fbzz::renderer
 // Lambert 拡散 + Blinn-Phong 鏡面反射による簡易ライティング
+// cbuffer レイアウトは Constants.hlsli に合わせること
 
+// b0: CameraConstants (Constants.hlsli 準拠)
+// Mesh.hlsl は viewProjection と cameraPos のみ使用するが、
+// オフセットを合わせるため未使用フィールドも宣言する。
 cbuffer CameraConstants : register(b0) {
-    float4x4 viewProjection;
-    float3   cameraPos;
-    float    _pad;
+    float4x4 _view;
+    float4x4 _projection;
+    float4x4 viewProjection;       // offset 128
+    float4x4 _invViewProjection;
+    float3   cameraPos;            // offset 256
+    float    _nearZ;
+    float    _farZ;
+    float3   _camPad;
 };
 
+// b1: ObjectConstants (Constants.hlsli 準拠)
 cbuffer ObjectConstants : register(b1) {
     float4x4 world;
+    // worldInvTranspose は Mesh.hlsl では未使用 (Step 6 以降で対応)
 };
 
+// b2: MaterialConstants (Constants.hlsli 準拠)
 cbuffer MaterialConstants : register(b2) {
     float4 albedo;
     float  metallic;
     float  roughness;
-    float  hasAlbedoTex;  // 1.0 = テクスチャあり、0.0 = 単色
-    float  _pad2;
+    float  _emissiveScale;
+    uint   textureMask;  // bit0=albedo
 };
 
 cbuffer LightConstants : register(b3) {
@@ -33,6 +45,7 @@ SamplerState texSampler : register(s0);
 struct VSInput {
     float3 position : POSITION;
     float3 normal   : NORMAL;
+    float3 tangent  : TANGENT;
     float2 uv       : TEXCOORD;
 };
 
@@ -48,16 +61,14 @@ PSInput VSMain(VSInput input) {
     float4 wp       = mul(float4(input.position, 1.0f), world);
     output.worldPos = wp.xyz;
     output.position = mul(wp, viewProjection);
-    // 非一様スケールへの対応は Step 6 以降。現状は world の上位 3x3 で変換する
     output.normal   = normalize(mul(input.normal, (float3x3)world));
     output.uv       = input.uv;
     return output;
 }
 
 float4 PSMain(PSInput input) : SV_TARGET {
-    // テクスチャがあれば albedo に乗算、なければ albedo 単色を使う
     float4 baseColor = albedo;
-    if (hasAlbedoTex > 0.5f)
+    if (textureMask & 1u)
         baseColor *= albedoTex.Sample(texSampler, input.uv);
 
     float3 N       = normalize(input.normal);
@@ -65,11 +76,9 @@ float4 PSMain(PSInput input) : SV_TARGET {
     float3 V       = normalize(cameraPos - input.worldPos);
     float3 H       = normalize(L + V);
 
-    // Lambert 拡散
     float  NdotL   = max(dot(N, L), 0.0f);
     float3 diffuse = baseColor.rgb * lightColor * lightIntensity * NdotL;
 
-    // Blinn-Phong 鏡面反射 (roughness が高いほど鈍い)
     float  shininess = max(lerp(128.0f, 2.0f, roughness), 2.0f);
     float  NdotH     = max(dot(N, H), 0.0f);
     float3 specular  = lightColor * lightIntensity * pow(NdotH, shininess) * (1.0f - roughness) * 0.5f;
