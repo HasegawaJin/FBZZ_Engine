@@ -115,7 +115,7 @@ int main()
             for (size_t i = 0; i < fbxModel->meshes.size(); ++i) {
                 auto& go = s->CreateGameObject("FBX_" + std::to_string(i));
                 go.transform.localPosition = { 4.0f, 0.5f, 0.0f };
-                go.transform.localScale    = { 0.01f, 0.01f, 0.01f };
+                go.transform.localScale    = { 1.0f, 1.0f, 1.0f };
                 go.AddComponent<scene::MeshRenderer>(
                     { fbxModel->meshes[i], fbxModel->materials[i] });
             }
