@@ -1,6 +1,6 @@
 // FBZZ Engine
 // sandbox/src/main.cpp
-// Scene System テスト: 球が落下・バウンドする様子を DebugDraw + Log で確認
+// Scene System + Mesh Renderer テスト: 球が落下・バウンドし、Cube が静止する様子を確認
 #include <engine/Core/Application.hpp>
 #include <engine/Core/Time.hpp>
 #include <engine/Core/Logger.hpp>
@@ -8,9 +8,14 @@
 #include <engine/Renderer/ShaderManager.hpp>
 #include <engine/Renderer/Camera.hpp>
 #include <engine/Renderer/DebugDraw.hpp>
+#include <engine/Renderer/PrimitiveMesh.hpp>
+#include <engine/Renderer/Material.hpp>
+#include <engine/Renderer/LightSystem.hpp>
 #include <engine/Scene/Scene.hpp>
 #include <engine/Scene/SceneManager.hpp>
+#include <engine/Scene/Systems/RenderSystem.hpp>
 #include <engine/Scene/Components/RigidBodyComponent.hpp>
+#include <engine/Scene/Components/MeshRenderer.hpp>
 #include <physics/World.hpp>
 #include <physics/RigidBody.hpp>
 #include <physics/SphereCollider.hpp>
@@ -27,11 +32,8 @@ int main()
     renderer::ShaderManager::Init(&renderer);
 
     // ---------------------------------------------------------------- 物理ワールド
-    // シーン外の static ボディ (床・台) はここで追加する。
-    // シーン内の動的ボディはシーンファクトリ内で追加する。
     physics::World physWorld;
 
-    // 床 (top y=0)
     auto floorBody = std::make_shared<physics::RigidBody>();
     floorBody->m_isStatic = true;
     floorBody->SetPosition({ 0.0f, -0.1f, 0.0f });
@@ -39,7 +41,6 @@ int main()
         math::Vector3{ 10.0f, 0.1f, 10.0f }));
     physWorld.AddBody(floorBody);
 
-    // 台 (ball が当たって跳ねる中間ターゲット)
     auto platformBody = std::make_shared<physics::RigidBody>();
     platformBody->m_isStatic = true;
     platformBody->SetPosition({ 0.5f, 1.5f, 0.0f });
@@ -47,16 +48,62 @@ int main()
         math::Vector3{ 1.2f, 0.15f, 1.2f }));
     physWorld.AddBody(platformBody);
 
-    // ---------------------------------------------------------------- シーン登録
+    // ---------------------------------------------------------------- メッシュ・マテリアル
+    auto meshShader = renderer::ShaderManager::Load("assets/shaders/Mesh.hlsl");
+
+    auto cubeMesh   = renderer::PrimitiveMesh::Cube(renderer);
+    auto sphereMesh = renderer::PrimitiveMesh::Sphere(renderer, 24);
+    auto planeMesh  = renderer::PrimitiveMesh::Plane(renderer);
+    auto cylinderMesh = renderer::PrimitiveMesh::Cylinder(renderer, 24);
+    auto torusMesh = renderer::PrimitiveMesh::Torus(renderer, 24);
+    auto coneMesh = renderer::PrimitiveMesh::Cone(renderer, 24);
+    auto capsuleMesh = renderer::PrimitiveMesh::Capsule(renderer, 24);
+
+    // 球マテリアル (黄色)
+    auto ballMat = std::make_shared<renderer::Material>();
+    ballMat->shader         = meshShader;
+    ballMat->params.albedo  = { 1.0f, 0.85f, 0.0f, 1.0f };
+    ballMat->params.roughness = 0.4f;
+    ballMat->Init(renderer);
+
+    // 台マテリアル (灰色)
+    auto platformMat = std::make_shared<renderer::Material>();
+    platformMat->shader          = meshShader;
+    platformMat->params.albedo   = { 0.55f, 0.55f, 0.55f, 1.0f };
+    platformMat->params.roughness = 0.9f;
+    platformMat->Init(renderer);
+
+    // 床マテリアル (暗い灰色)
+    auto floorMat = std::make_shared<renderer::Material>();
+    floorMat->shader          = meshShader;
+    floorMat->params.albedo   = { 0.3f, 0.3f, 0.3f, 1.0f };
+    floorMat->params.roughness = 1.0f;
+    floorMat->Init(renderer);
+
+    // ---------------------------------------------------------------- ライト
+    renderer::LightSystem lights;
+    // lightDir: 光が進む方向 (シェーダーで L = -lightDir)
+    // カメラは -Z 側から +Z へ向けて見ている。
+    // 上方かつカメラ方向(-Z側)から来る光にすることで
+    // トップ面・カメラ向き面が両方明るくなる
+    lights.SetDirectional({
+        { -0.4f, -0.8f,  0.45f },  // 右上から前方(カメラ側)へ
+        0.0f,
+        { 1.0f, 0.98f, 0.9f },
+        1.2f
+    });
+
+    // ---------------------------------------------------------------- シーン
     auto& sm = app.GetSceneManager();
 
-    sm.Register("Test", [&physWorld]() -> std::unique_ptr<scene::Scene> {
+    sm.Register("Test", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
 
-        // 球 GameObject — physics と Scene の両方に登録
+        // 球
+        math::Vector3 spawnPos = { 0.0f, 5.0f, 0.0f };
         auto ballRb = std::make_shared<physics::RigidBody>();
         ballRb->SetMass(1.0f);
-        ballRb->SetPosition({ 0.0f, 5.0f, 0.0f });
+        ballRb->SetPosition(spawnPos);
         ballRb->SetCollider(std::make_shared<physics::SphereCollider>(0.3f));
         ballRb->m_material = physics::PhysicsMaterial::Rubber;
         physWorld.AddBody(ballRb);
@@ -64,13 +111,62 @@ int main()
         auto& ball = s->CreateGameObject("Ball");
         ball.tag = "Ball";
         ball.AddComponent<scene::RigidBodyComponent>({ ballRb });
+        ball.AddComponent<scene::MeshRenderer>({ sphereMesh, ballMat });
+        ball.transform.localScale = { 0.6f, 0.6f, 0.6f };
 
-        // 親子関係テスト: Ball に子オブジェクトを付ける
-        auto& shadow = s->CreateGameObject("BallShadow");
-        shadow.transform.localPosition = { 0.0f, -0.4f, 0.0f }; // 少し下にオフセット
-        shadow.SetParent(ball);
+        // 台 (静止 Cube)
+        auto& platform = s->CreateGameObject("Platform");
+        platform.transform.localPosition = { 0.5f, 1.5f, 0.0f };
+        platform.transform.localScale    = { 2.4f, 0.3f, 2.4f };
+        platform.AddComponent<scene::MeshRenderer>({ cubeMesh, platformMat });
 
-        FBZZ_LOG_INFO("Scene 'Test' loaded — %d GameObjects", 2);
+        // 床 (静止 Cube)
+        auto& floor = s->CreateGameObject("Floor");
+        floor.transform.localPosition = { 0.0f, -0.1f, 0.0f };
+        floor.transform.localScale    = { 20.0f, 0.2f, 20.0f };
+        floor.AddComponent<scene::MeshRenderer>({ cubeMesh, floorMat });
+
+            // 追加プリミティブ: Cube / Cylinder / Torus / Cone / Capsule
+            auto& cubeDisplay = s->CreateGameObject("Cube_Display");
+            cubeDisplay.transform.localPosition = { -6.0f, spawnPos.y - 2.5f, 0.0f };
+            cubeDisplay.transform.localScale = { 0.8f, 0.8f, 0.8f };
+            auto cubeMat = std::make_shared<renderer::Material>();
+            cubeMat->shader = meshShader; cubeMat->params.albedo = { 0.9f, 0.2f, 0.2f, 1.0f };
+            cubeMat->params.roughness = 0.6f; cubeMat->Init(renderer);
+            cubeDisplay.AddComponent<scene::MeshRenderer>({ cubeMesh, cubeMat });
+
+            auto& cylDisplay = s->CreateGameObject("Cylinder_Display");
+            cylDisplay.transform.localPosition = { -3.0f, spawnPos.y - 2.5f, 0.0f };
+            cylDisplay.transform.localScale = { 0.8f, 0.8f, 0.8f };
+            auto cylMat = std::make_shared<renderer::Material>();
+            cylMat->shader = meshShader; cylMat->params.albedo = { 0.2f, 0.9f, 0.2f, 1.0f };
+            cylMat->params.roughness = 0.5f; cylMat->Init(renderer);
+            cylDisplay.AddComponent<scene::MeshRenderer>({ cylinderMesh, cylMat });
+
+            auto& torusDisplay = s->CreateGameObject("Torus_Display");
+            torusDisplay.transform.localPosition = { 0.0f, spawnPos.y - 2.5f, 0.0f };
+            torusDisplay.transform.localScale = { 0.8f, 0.8f, 0.8f };
+            auto torusMat = std::make_shared<renderer::Material>();
+            torusMat->shader = meshShader; torusMat->params.albedo = { 0.2f, 0.4f, 0.9f, 1.0f };
+            torusMat->params.roughness = 0.3f; torusMat->Init(renderer);
+            torusDisplay.AddComponent<scene::MeshRenderer>({ torusMesh, torusMat });
+
+            auto& coneDisplay = s->CreateGameObject("Cone_Display");
+            coneDisplay.transform.localPosition = { 3.0f, spawnPos.y - 2.5f, 0.0f };
+            coneDisplay.transform.localScale = { 0.8f, 0.8f, 0.8f };
+            auto coneMat = std::make_shared<renderer::Material>();
+            coneMat->shader = meshShader; coneMat->params.albedo = { 0.9f, 0.2f, 0.9f, 1.0f };
+            coneMat->params.roughness = 0.4f; coneMat->Init(renderer);
+            coneDisplay.AddComponent<scene::MeshRenderer>({ coneMesh, coneMat });
+
+            auto& capsuleDisplay = s->CreateGameObject("Capsule_Display");
+            capsuleDisplay.transform.localPosition = { 6.0f, spawnPos.y - 2.5f, 0.0f };
+            capsuleDisplay.transform.localScale = { 0.8f, 0.8f, 0.8f };
+            auto capsuleMat = std::make_shared<renderer::Material>();
+            capsuleMat->shader = meshShader; capsuleMat->params.albedo = { 0.2f, 0.9f, 0.9f, 1.0f };
+            capsuleMat->params.roughness = 0.4f; capsuleMat->Init(renderer);
+            capsuleDisplay.AddComponent<scene::MeshRenderer>({ capsuleMesh, capsuleMat });
+
         return s;
     });
 
@@ -82,8 +178,8 @@ int main()
     camera.m_aspect   = 1280.0f / 720.0f;
     camera.LookAt({ 0.5f, 2.0f, 0.0f });
 
-    uint64_t frame = 0;
-    bool enableDebugLog = true;  // false にすると毎秒ログを止める
+    uint64_t frame      = 0;
+    bool enableDebugLog = true;
 
     // ---------------------------------------------------------------- ゲームループ
     while (app.IsRunning())
@@ -93,54 +189,26 @@ int main()
 
         const float dt = core::Time::DeltaTime();
 
-        // SceneManager が内部で PhysicsSystem → TransformSystem → FlushDestroyQueue を呼ぶ
-        sm.Update(dt, renderer, physWorld);
+        sm.Update(dt, physWorld);
 
         app.GetWindow().PollEvents();
         if (app.GetWindow().ShouldClose()) { app.Quit(); break; }
 
-        // ---- DebugDraw (視覚確認) ----------------------------------------
+        // ---- 描画 --------------------------------------------------------
         renderer.BeginFrame();
         renderer.Clear({ 0.05f, 0.08f, 0.15f, 1.0f });
 
-        renderer::DebugDraw::BeginFrame(renderer, camera.GetViewProjection());
+        // メッシュ描画 (RenderSystem)
+        if (auto* activeScene = sm.GetActive())
+            scene::RenderSystem(*activeScene, renderer, camera, lights);
 
-        // 座標軸
+        // DebugDraw (座標軸・物理コライダー)
+        renderer::DebugDraw::BeginFrame(renderer, camera.GetViewProjection());
         renderer::DebugDraw::Line(renderer, {0,0,0}, {1,0,0}, {1,0,0,1});
         renderer::DebugDraw::Line(renderer, {0,0,0}, {0,1,0}, {0,1,0,1});
         renderer::DebugDraw::Line(renderer, {0,0,0}, {0,0,1}, {0,0,1,1});
-
-        // 物理ボディを描画
-        for (auto& body : physWorld.GetBodies()) {
-            auto col = body->GetCollider();
-            if (!col) continue;
-            if (col->GetType() == physics::ColliderType::SPHERE) {
-                auto* s = static_cast<physics::SphereCollider*>(col.get());
-                renderer::DebugDraw::Sphere(
-                    renderer, body->GetPosition(), s->m_radius, {1.0f, 0.85f, 0.0f, 1.0f});
-            } else if (col->GetType() == physics::ColliderType::AABB) {
-                auto* a = static_cast<physics::AABBCollider*>(col.get());
-                math::Vector4 color = body->IsStatic()
-                    ? math::Vector4{0.55f, 0.55f, 0.55f, 1.0f}
-                    : math::Vector4{0.2f,  0.75f, 1.0f,  1.0f};
-                renderer::DebugDraw::Box(
-                    renderer, body->GetPosition(), a->m_halfExtents, color);
-            }
-        }
-
-        // Scene の GameObjects を走査して BallShadow の world position をラインで示す
-        if (auto* activeScene = sm.GetActive()) {
-            for (auto& go : activeScene->GameObjects()) {
-                if (!go.activeSelf()) continue;
-                // 親子関係の確認: BallShadow の world position を白点として描画
-                if (go.name == "BallShadow") {
-                    math::Vector3 p = go.transform.position;
-                    renderer::DebugDraw::Sphere(renderer, p, 0.08f, {1,1,1,1});
-                }
-            }
-        }
-
         renderer::DebugDraw::Flush();
+
         renderer.EndFrame();
 
         // ---- Log (1秒ごと) ------------------------------------------------
@@ -166,9 +234,6 @@ int main()
                                 vel.x, vel.y, vel.z);
                         }
                     }
-
-                    if (go.GetParent())
-                        FBZZ_LOG_INFO("          parent=[%s]", go.GetParent()->name.c_str());
                 }
             }
         }

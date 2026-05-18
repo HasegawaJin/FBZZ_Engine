@@ -31,10 +31,14 @@ compile_commands.json
 *.ilk
 *.exp
 
-# Third-party libraries (ソース・バイナリは追跡しない)
-third_party/Assimp/
-third_party/DirectXTex/
+# Third-party libraries (ImGui は未導入のため除外)
 third_party/ImGui/
+
+# third_party の lib / dll / exp は通常は追跡しないが、
+# Assimp / DirectXTex のプリコンパイル済みバイナリはリポジトリに含める
+!third_party/**/*.lib
+!third_party/**/*.dll
+!third_party/**/*.exp
 
 # コンパイル済みシェーダー (dxc でビルド時生成)
 assets/shaders/compiled/

@@ -5,8 +5,8 @@
 #include <memory>
 
 namespace fbzz::renderer {
-class Mesh;
-class Material;
+struct Mesh;     // Mesh.hpp で struct 定義のため struct で前方宣言
+class  Material;
 } // namespace fbzz::renderer
 
 namespace fbzz::scene {

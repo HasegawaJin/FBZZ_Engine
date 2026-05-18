@@ -11,17 +11,22 @@ static void UpdateWorldTransform(GameObject& go, const Transform* parentTransfor
     Transform& tf = go.transform;
 
     if (parentTransform) {
-        // 親の scale でローカル位置をスケール → 親の回転を掛ける → 親のワールド位置を足す
         math::Vector3 scaledLocal = {
-            tf.localPosition.x * parentTransform->localScale.x,
-            tf.localPosition.y * parentTransform->localScale.y,
-            tf.localPosition.z * parentTransform->localScale.z
+            tf.localPosition.x * parentTransform->worldScale.x,
+            tf.localPosition.y * parentTransform->worldScale.y,
+            tf.localPosition.z * parentTransform->worldScale.z
         };
-        tf.rotation = (parentTransform->rotation * tf.localRotation).Normalized();
-        tf.position = parentTransform->position + parentTransform->rotation * scaledLocal;
+        tf.rotation   = (parentTransform->rotation * tf.localRotation).Normalized();
+        tf.position   = parentTransform->position + parentTransform->rotation * scaledLocal;
+        tf.worldScale = {
+            parentTransform->worldScale.x * tf.localScale.x,
+            parentTransform->worldScale.y * tf.localScale.y,
+            parentTransform->worldScale.z * tf.localScale.z
+        };
     } else {
-        tf.rotation = tf.localRotation;
-        tf.position = tf.localPosition;
+        tf.rotation   = tf.localRotation;
+        tf.position   = tf.localPosition;
+        tf.worldScale = tf.localScale;
     }
 }
 
