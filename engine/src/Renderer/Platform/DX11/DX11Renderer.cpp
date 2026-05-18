@@ -181,10 +181,10 @@ std::shared_ptr<IPipelineState> DX11Renderer::CreatePipelineState(const Pipeline
     return pso;
 }
 
-std::shared_ptr<IRenderTarget> DX11Renderer::CreateRenderTarget(uint32_t width, uint32_t height)
+std::shared_ptr<IRenderTarget> DX11Renderer::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
 {
     auto rt = std::make_shared<DX11RenderTarget>();
-    if (!rt->Init(m_device.Get(), width, height))
+    if (!rt->Init(m_device.Get(), width, height, colorCount))
         return nullptr;
     return rt;
 }
@@ -301,11 +301,13 @@ void DX11Renderer::SetRenderTarget(std::shared_ptr<IRenderTarget> rt)
         m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), m_depthStencilView.Get());
         return;
     }
-    // DX11RenderTarget にダウンキャストして RTV を取り出す。
     // IRenderer 経由で渡されるのは必ず CreateRenderTarget() で生成した DX11RenderTarget なので
-    // static_cast は安全。
-    ID3D11RenderTargetView* rtv = static_cast<DX11RenderTarget*>(rt.get())->GetRTV();
-    m_context->OMSetRenderTargets(1, &rtv, m_depthStencilView.Get());
+    // static_cast は安全。MRT の場合は colorCount 枚の RTV を一括バインドする。
+    auto* dx11rt = static_cast<DX11RenderTarget*>(rt.get());
+    ID3D11RenderTargetView* rtvs[DX11RenderTarget::MAX_COLOR] = {};
+    uint32_t count = 0;
+    dx11rt->GetRTVs(rtvs, count);
+    m_context->OMSetRenderTargets(count, rtvs, m_depthStencilView.Get());
 }
 
 void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)

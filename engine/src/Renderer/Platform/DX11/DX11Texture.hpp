@@ -26,6 +26,9 @@ public:
     // path: PNG / JPG / BMP / TGA / DDS いずれも受け付ける
     bool Init(ID3D11Device* device, ID3D11DeviceContext* context, const std::string& path);
 
+    // 既存 SRV から直接初期化する (DX11RenderTarget が GetColorTexture() 用に使用)
+    void InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height);
+
     uint32_t GetWidth()  const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
 

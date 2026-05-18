@@ -42,7 +42,8 @@ namespace fbzz::renderer
         virtual void Resize(uint32_t width, uint32_t height) = 0;
 
         // オフスクリーン RT (詳細: render_target.md)
-        virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t width, uint32_t height) = 0;
+        // colorCount: 同時出力カラーバッファ数 (1=通常, 2=GBuffer 等 MRT)
+        virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) = 0;
         virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;  // nullptr = バックバッファ
 
         // サンプラー (詳細: sampler.md)

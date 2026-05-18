@@ -68,4 +68,11 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const
     return true;
 }
 
+void DX11Texture::InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height)
+{
+    m_srv    = srv;   // ComPtr が AddRef して共同所有する
+    m_width  = width;
+    m_height = height;
+}
+
 } // namespace fbzz::renderer
