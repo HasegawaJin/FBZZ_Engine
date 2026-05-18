@@ -3,7 +3,6 @@
 // シーン遷移管理。LoadScene はフレーム末尾で適用する
 #pragma once
 #include "Scene.hpp"
-#include <engine/Renderer/IRenderer.hpp>
 #include <physics/World.hpp>
 #include <functional>
 #include <memory>
@@ -22,10 +21,9 @@ public:
     // 次フレームの先頭でシーンを切り替える
     void LoadScene(const std::string& name);
 
-    // System を順に呼ぶ。ゲームループから毎フレーム呼ぶ
-    void Update(float dt,
-                renderer::IRenderer& renderer,
-                physics::World& world);
+    // Physics + Transform + FlushDestroyQueue を実行する。
+    // RenderSystem はゲームループ側から BeginFrame/EndFrame の間に直接呼ぶこと
+    void Update(float dt, physics::World& world);
 
     Scene* GetActive();
 
