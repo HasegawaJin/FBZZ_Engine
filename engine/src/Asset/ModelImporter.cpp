@@ -41,12 +41,17 @@ std::shared_ptr<Model> ModelImporter::Import(
 
     // FBX の単位を m に変換。UnitScaleFactor は "1単位 = X cm" を表す。
     // cm モデル(UnitScaleFactor=1) → 0.01、m モデル(UnitScaleFactor=100) → 1.0
-    float unitScale = 1.0f;
+    // メタデータがない場合は FBX の慣例 (cm) を仮定して 0.01 にフォールバック
+    float unitScale = 0.01f;
     if (scene->mMetaData) {
-        double factor = 1.0;
-        if (scene->mMetaData->Get("UnitScaleFactor", factor))
-            unitScale = static_cast<float>(factor) * 0.01f;
+        double factorD = 1.0;
+        float  factorF = 1.0f;
+        if (scene->mMetaData->Get("UnitScaleFactor", factorD))
+            unitScale = static_cast<float>(factorD) * 0.01f;
+        else if (scene->mMetaData->Get("UnitScaleFactor", factorF))
+            unitScale = factorF * 0.01f;
     }
+    FBZZ_LOG_INFO("ModelImporter: %s  unitScale=%.4f", path.c_str(), unitScale);
 
     auto model = std::make_shared<Model>();
 
