@@ -22,7 +22,7 @@ assets/shaders/
 │
 ├── Common/                        基盤ユーティリティ（エントリポイントなし）
 │   ├── Math.hlsli
-│   ├── Types.hlsli
+│   ├── Structs.hlsli
 │   ├── Binding.hlsli
 │   ├── Constants.hlsli
 │   ├── Space.hlsli
@@ -211,7 +211,7 @@ cbuffer AtmosphereConstants : register(b6) {
 
 ---
 
-## 頂点フォーマット（`Common/Types.hlsli`）
+## 頂点フォーマット（`Common/Structs.hlsli`）
 
 ```hlsl
 // 全メッシュ共通（C++ 側 Mesh.hpp の Vertex と一致させること）
@@ -377,6 +377,16 @@ DX11 のビルドパスでは一切コンパイルしない。
 Shadow.lib.hlsl    → dxc -T lib_6_5 -Fo Shadow.lib.dxil
 Reflection.lib.hlsl → dxc -T lib_6_5 -Fo Reflection.lib.dxil
 ```
+
+### hlsli ファイルのインクルードガード規約
+
+```hlsli
+#ifndef 
+#define
+
+#endif
+```
+
 
 ### 移行時に変更が必要なファイル一覧
 
