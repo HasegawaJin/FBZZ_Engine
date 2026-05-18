@@ -127,11 +127,26 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         fbzz::input::Input::HandleMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         return 0;
 
-    case WM_LBUTTONDOWN: case WM_LBUTTONUP:
-    case WM_RBUTTONDOWN: case WM_RBUTTONUP:
-    case WM_MBUTTONDOWN: case WM_MBUTTONUP:
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+        SetCapture(hwnd); // ウィンドウ外でもマウスイベントを受け取る
         fbzz::input::Input::HandleMouseButton(msg);
         return 0;
+
+    case WM_LBUTTONUP:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONUP:
+        ReleaseCapture();
+        fbzz::input::Input::HandleMouseButton(msg);
+        return 0;
+
+    case WM_MOUSEWHEEL:
+    {
+        float delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+        fbzz::input::Input::HandleMouseScroll(delta);
+        return 0;
+    }
     }
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
