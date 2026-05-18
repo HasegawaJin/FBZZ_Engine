@@ -16,9 +16,8 @@ compile_commands.json
 *.vcxproj.filters
 *.vcxproj.user
 
-# VSCode (個人設定のみ除外)
-.vscode/settings.json
-.vscode/extensions.json
+# VSCode
+.vscode/
 
 # Binaries
 *.exe
