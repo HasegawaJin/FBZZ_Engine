@@ -32,10 +32,14 @@ public:
     static math::Vector2 MousePosition();
     static math::Vector2 MouseDelta();
 
+    // マウスホイール (1ノッチ = +1.0 / -1.0)
+    static float MouseScrollDelta();
+
     // Window::WndProc から呼ぶ内部関数
     static void HandleKeyMessage  (UINT msg, WPARAM wParam);
     static void HandleMouseMove   (int x, int y);
     static void HandleMouseButton (UINT msg);
+    static void HandleMouseScroll (float delta);
 
 private:
     static constexpr int KEY_COUNT = 256;
@@ -46,6 +50,7 @@ private:
     static std::array<bool, 3>         s_mousePrevious;
     static math::Vector2               s_mousePos;
     static math::Vector2               s_prevMousePos;
+    static float                       s_scrollDelta;
 };
 
 } // namespace fbzz::input

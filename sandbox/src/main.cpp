@@ -7,6 +7,7 @@
 #include <engine/Input/Input.hpp>
 #include <engine/Renderer/ShaderManager.hpp>
 #include <engine/Renderer/Camera.hpp>
+#include <engine/Renderer/DebugCamera.hpp>
 #include <engine/Renderer/DebugDraw.hpp>
 #include <engine/Renderer/PrimitiveMesh.hpp>
 #include <engine/Renderer/Material.hpp>
@@ -221,10 +222,10 @@ int main()
     sm.LoadScene("Test");
 
     // ---------------------------------------------------------------- カメラ
-    renderer::Camera camera;
-    camera.m_position = { 0.0f, 3.5f, -9.0f };
-    camera.m_aspect   = 1280.0f / 720.0f;
-    camera.LookAt({ 0.5f, 2.0f, 0.0f });
+    renderer::DebugCamera debugCamera;
+    debugCamera.camera.m_position = { 0.0f, 3.5f, -9.0f };
+    debugCamera.camera.m_aspect   = 1280.0f / 720.0f;
+    debugCamera.LookAt({ 0.5f, 2.0f, 0.0f });
 
     uint64_t frame      = 0;
     bool enableDebugLog = true;
@@ -251,6 +252,7 @@ int main()
         if (input::Input::KeyUp(input::KeyCode::SPACE))
             FBZZ_LOG_INFO("SPACE KeyUp");
 
+        debugCamera.Update(dt);
         sm.Update(dt, physWorld);
 
         // ---- 描画 --------------------------------------------------------
@@ -259,10 +261,10 @@ int main()
 
         // メッシュ描画 (RenderSystem)
         if (auto* activeScene = sm.GetActive())
-            scene::RenderSystem(*activeScene, renderer, camera, lights);
+            scene::RenderSystem(*activeScene, renderer, debugCamera.camera, lights);
 
         // DebugDraw (座標軸・物理コライダー)
-        renderer::DebugDraw::BeginFrame(renderer, camera.GetViewProjection());
+        renderer::DebugDraw::BeginFrame(renderer, debugCamera.camera.GetViewProjection());
         renderer::DebugDraw::Line(renderer, {0,0,0}, {1,0,0}, {1,0,0,1});
         renderer::DebugDraw::Line(renderer, {0,0,0}, {0,1,0}, {0,1,0,1});
         renderer::DebugDraw::Line(renderer, {0,0,0}, {0,0,1}, {0,0,1,1});
