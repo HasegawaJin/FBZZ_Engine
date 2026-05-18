@@ -10,10 +10,15 @@ set(DIRECTXTEX_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DirectXTex/in
 set(DIRECTXTEX_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DirectXTex/lib/x64/Debug/DirectXTex.lib")
 set(DIRECTXTEX_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/DirectXTex/lib/x64/Release/DirectXTex.lib")
 
+set(ASSIMP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/Assimp/include")
+set(ASSIMP_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/Assimp/lib/Debug/assimp-vc145-mtd.lib")
+set(ASSIMP_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/Assimp/lib/Release/assimp-vc145-mt.lib")
+
 target_include_directories(fbzz_engine
     PUBLIC  include
     PRIVATE src
     PRIVATE ${DIRECTXTEX_INCLUDE}
+    PRIVATE ${ASSIMP_INCLUDE}
 )
 
 target_link_libraries(fbzz_engine
@@ -23,4 +28,6 @@ target_link_libraries(fbzz_engine
     PRIVATE
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
         "$<$<CONFIG:Release>:${DIRECTXTEX_LIB_RELEASE}>"
+        "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"
+        "$<$<CONFIG:Release>:${ASSIMP_LIB_RELEASE}>"
 )
