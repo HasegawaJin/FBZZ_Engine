@@ -18,6 +18,7 @@
 #include <engine/Scene/Components/MeshRenderer.hpp>
 #include <engine/Asset/AssetManager.hpp>
 #include <engine/Asset/Model.hpp>
+#include <engine/Renderer/ITexture.hpp>
 #include <physics/World.hpp>
 #include <physics/RigidBody.hpp>
 #include <physics/SphereCollider.hpp>
@@ -99,6 +100,9 @@ int main()
     // ---------------------------------------------------------------- シーン
     auto& sm = app.GetSceneManager();
 
+    // ---------------------------------------------------------------- テクスチャロード
+    auto testTex = asset::AssetManager::Load<renderer::ITexture>("textures/test.jpg");
+
     // ---------------------------------------------------------------- FBX ロード
     auto fbxModel = asset::AssetManager::Load<asset::Model>("models/test.fbx");
     if (fbxModel) {
@@ -109,6 +113,17 @@ int main()
 
     sm.Register("Test", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
+
+        // ---- テクスチャ確認用 Plane ----------------------------------------
+        auto& texPlane = s->CreateGameObject("TexturePlane");
+        texPlane.transform.localPosition = { -4.0f, 1.0f, 0.0f };
+        texPlane.transform.localScale    = { 2.0f, 2.0f, 2.0f };
+        auto texMat = std::make_shared<renderer::Material>();
+        texMat->shader        = meshShader;
+        texMat->albedoTexture = testTex;
+        texMat->params.albedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+        texMat->Init(renderer);
+        texPlane.AddComponent<scene::MeshRenderer>({ planeMesh, texMat });
 
         // ---- FBX モデル配置 ----------------------------------------
         if (fbxModel) {
