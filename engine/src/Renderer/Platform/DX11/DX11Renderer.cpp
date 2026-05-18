@@ -371,12 +371,19 @@ void DX11Renderer::InitSamplers()
         desc.ComparisonFunc     = D3D11_COMPARISON_NEVER;
         desc.MinLOD             = 0.0f;
         desc.MaxLOD             = D3D11_FLOAT32_MAX;  // 全ミップレベルを使用
+        // If using anisotropic filtering, set a high MaxAnisotropy
+        if (filter == D3D11_FILTER_ANISOTROPIC) {
+            desc.MaxAnisotropy = 16; // maximum quality on most hardware
+        } else {
+            desc.MaxAnisotropy = 1;
+        }
         m_device->CreateSamplerState(&desc, out.GetAddressOf());
     };
 
-    createSampler(D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_WRAP,  m_samplers[0]);
+    // Use anisotropic filtering (best quality) for linear samplers
+    createSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP,  m_samplers[0]);
     createSampler(D3D11_FILTER_MIN_MAG_MIP_POINT,  D3D11_TEXTURE_ADDRESS_WRAP,  m_samplers[1]);
-    createSampler(D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_CLAMP, m_samplers[2]);
+    createSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_CLAMP, m_samplers[2]);
 }
 
 } // namespace fbzz::renderer
