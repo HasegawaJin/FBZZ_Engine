@@ -1,13 +1,28 @@
+// FBZZ Engine
+// SamplerMode.hpp | fbzz::renderer
+// テクスチャサンプラーのプリセット一覧
 #pragma once
 
 namespace fbzz::renderer
 {
 
-    enum class SamplerMode 
-    {
-        WRAP_LINEAR,    // 繰り返しテクスチャ・線形補間 (デフォルト)
-        WRAP_POINT,     // 繰り返しテクスチャ・最近傍補間 (ピクセルアート)
-        CLAMP_LINEAR,   // 端でクランプ・線形補間 (UI, スカイボックス, レンダーターゲット参照)
-    };
+enum class SamplerMode
+{
+    // ---- Wrap (繰り返し) ----------------------------------------
+    WRAP_ANISOTROPIC,   // 0  メッシュテクスチャ標準。アニソトロピック x16
+    WRAP_TRILINEAR,     // 1  三線形補間。ミップマップあり
+    WRAP_BILINEAR,      // 2  双線形補間。ミップマップなし
+    WRAP_POINT,         // 3  最近傍。ピクセルアート・デバッグ用
+
+    // ---- Clamp (端でクランプ) ------------------------------------
+    CLAMP_ANISOTROPIC,  // 4  スカイボックス・キューブマップ等
+    CLAMP_LINEAR,       // 5  UI・レンダーターゲット参照・ポストプロセス
+    CLAMP_POINT,        // 6  G バッファ参照・ディファードシェーディング
+
+    // ---- Border (境界色 = 0) -------------------------------------
+    BORDER_ZERO,        // 7  シャドウマップ PCF 用
+
+    COUNT
+};
 
 } // namespace fbzz::renderer

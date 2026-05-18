@@ -12,6 +12,7 @@
 #include "engine/Renderer/Material.hpp"
 #include "engine/Renderer/DrawCall.hpp"
 #include "engine/Renderer/RenderState.hpp"
+#include "engine/Renderer/SamplerMode.hpp"
 #include "engine/Renderer/ShaderManager.hpp"
 #include <math/Matrix4.hpp>
 #include <math/Vector3.hpp>
@@ -54,6 +55,8 @@ void RenderSystem(Scene& scene,
     frameCB->Update(&frameData, sizeof(PerFrameCB));
 
     lights.Upload(*lightCB);
+
+    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
 
     // --- Per-object loop ---
     for (auto [tf, mr] : scene.View<Transform, MeshRenderer>()) {
