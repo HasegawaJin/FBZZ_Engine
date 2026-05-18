@@ -28,3 +28,9 @@ target_link_libraries(sandbox
         fbzz_engine
         fbzz_physics
 )
+
+add_custom_command(TARGET sandbox POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/third_party/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/third_party/Assimp/dll/Release/assimp-vc145-mt.dll>"
+        "$<TARGET_FILE_DIR:sandbox>"
+)

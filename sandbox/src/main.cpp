@@ -16,6 +16,8 @@
 #include <engine/Scene/Systems/RenderSystem.hpp>
 #include <engine/Scene/Components/RigidBodyComponent.hpp>
 #include <engine/Scene/Components/MeshRenderer.hpp>
+#include <engine/Asset/AssetManager.hpp>
+#include <engine/Asset/Model.hpp>
 #include <physics/World.hpp>
 #include <physics/RigidBody.hpp>
 #include <physics/SphereCollider.hpp>
@@ -30,6 +32,7 @@ int main()
 
     auto& renderer = app.GetRenderer();
     renderer::ShaderManager::Init(&renderer);
+    asset::AssetManager::Init(renderer, "assets/");
 
     // ---------------------------------------------------------------- 物理ワールド
     physics::World physWorld;
@@ -96,8 +99,27 @@ int main()
     // ---------------------------------------------------------------- シーン
     auto& sm = app.GetSceneManager();
 
+    // ---------------------------------------------------------------- FBX ロード
+    auto fbxModel = asset::AssetManager::Load<asset::Model>("models/test.fbx");
+    if (fbxModel) {
+        // ModelImporter はシェーダーを設定しないため、ここで注入する
+        for (auto& mat : fbxModel->materials)
+            if (mat) mat->shader = meshShader;
+    }
+
     sm.Register("Test", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
+
+        // ---- FBX モデル配置 ----------------------------------------
+        if (fbxModel) {
+            for (size_t i = 0; i < fbxModel->meshes.size(); ++i) {
+                auto& go = s->CreateGameObject("FBX_" + std::to_string(i));
+                go.transform.localPosition = { 4.0f, 0.5f, 0.0f };
+                go.transform.localScale    = { 1.0f, 1.0f, 1.0f };
+                go.AddComponent<scene::MeshRenderer>(
+                    { fbxModel->meshes[i], fbxModel->materials[i] });
+            }
+        }
 
         // 球
         math::Vector3 spawnPos = { 0.0f, 5.0f, 0.0f };
@@ -241,6 +263,7 @@ int main()
         ++frame;
     }
 
+    asset::AssetManager::UnloadAll();
     renderer::ShaderManager::Shutdown();
     app.Shutdown();
     return 0;
