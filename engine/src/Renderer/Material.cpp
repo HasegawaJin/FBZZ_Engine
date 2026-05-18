@@ -16,7 +16,7 @@ void Material::Init(IRenderer& renderer)
 void Material::Upload()
 {
     assert(paramsBuffer);
-    params.hasAlbedoTex = albedoTexture ? 1.0f : 0.0f;
+    params.textureMask = albedoTexture ? 1u : 0u;
     paramsBuffer->Update(&params, sizeof(MaterialParams));
 }
 
