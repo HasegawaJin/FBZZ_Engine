@@ -39,6 +39,15 @@ std::shared_ptr<Model> ModelImporter::Import(
         return nullptr;
     }
 
+    // FBX の単位を m に変換。UnitScaleFactor は "1単位 = X cm" を表す。
+    // cm モデル(UnitScaleFactor=1) → 0.01、m モデル(UnitScaleFactor=100) → 1.0
+    float unitScale = 1.0f;
+    if (scene->mMetaData) {
+        double factor = 1.0;
+        if (scene->mMetaData->Get("UnitScaleFactor", factor))
+            unitScale = static_cast<float>(factor) * 0.01f;
+    }
+
     auto model = std::make_shared<Model>();
 
     for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
@@ -46,9 +55,9 @@ std::shared_ptr<Model> ModelImporter::Import(
 
         std::vector<renderer::Vertex> vertices(aim->mNumVertices);
         for (uint32_t i = 0; i < aim->mNumVertices; ++i) {
-            vertices[i].position = { aim->mVertices[i].x,
-                                     aim->mVertices[i].y,
-                                     aim->mVertices[i].z };
+            vertices[i].position = { aim->mVertices[i].x * unitScale,
+                                     aim->mVertices[i].y * unitScale,
+                                     aim->mVertices[i].z * unitScale };
             vertices[i].normal   = aim->mNormals
                 ? math::Vector3{ aim->mNormals[i].x, aim->mNormals[i].y, aim->mNormals[i].z }
                 : math::Vector3{ 0.0f, 1.0f, 0.0f };
