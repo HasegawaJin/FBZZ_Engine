@@ -18,10 +18,10 @@ struct DrawCall {
     std::shared_ptr<IShader>        shader;
     std::shared_ptr<IPipelineState> pipelineState;
 
-    // スロット 0〜3 の定数バッファ
-    std::array<std::shared_ptr<IConstantBuffer>, 4> constantBuffers = {};
-    // スロット 0〜7 のテクスチャ
-    std::array<std::shared_ptr<ITexture>, 8>        textures        = {};
+    // スロット 0〜7 の定数バッファ (b0〜b6 を収容)
+    std::array<std::shared_ptr<IConstantBuffer>, 8> constantBuffers = {};
+    // スロット 0〜15 のテクスチャ (t0〜t12 を収容)
+    std::array<std::shared_ptr<ITexture>, 16>       textures        = {};
 
     uint32_t indexCount  = 0;
     uint32_t vertexCount = 0;

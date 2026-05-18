@@ -49,7 +49,7 @@ public:
     std::shared_ptr<IShader>         CreateShader(const std::string& path) override;
     std::shared_ptr<ITexture>        CreateTexture(const std::string& path) override;
     std::shared_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc& desc) override;
-    std::shared_ptr<IRenderTarget>   CreateRenderTarget(uint32_t width, uint32_t height) override;
+    std::shared_ptr<IRenderTarget>   CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) override;
 
     // DrawCall を受け取り、パイプラインステート → シェーダー → リソース → Draw の順で実行する
     void Submit(const DrawCall& call) override;
