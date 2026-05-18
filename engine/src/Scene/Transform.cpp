@@ -37,7 +37,7 @@ void Transform::LookAt(const math::Vector3& worldTarget) {
 }
 
 math::Matrix4 Transform::GetWorldMatrix() const {
-    return math::Matrix4::TRS(position, rotation, localScale);
+    return math::Matrix4::TRS(position, rotation, worldScale);
 }
 
 } // namespace fbzz::scene
