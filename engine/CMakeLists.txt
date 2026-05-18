@@ -25,6 +25,10 @@ target_link_libraries(fbzz_engine
     PUBLIC
         fbzz_physics
         fbzz_math
+        xaudio2
+        mfplat
+        mfreadwrite
+        mfuuid
     PRIVATE
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
         "$<$<CONFIG:Release>:${DIRECTXTEX_LIB_RELEASE}>"

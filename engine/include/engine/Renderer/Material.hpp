@@ -13,10 +13,11 @@ namespace fbzz::renderer {
 class IRenderer;
 
 struct MaterialParams {
-    math::Vector4 albedo    = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float         metallic  = 0.0f;
-    float         roughness = 0.8f;
-    float         _pad[2]   = {};
+    math::Vector4 albedo       = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float         metallic     = 0.0f;
+    float         roughness    = 0.8f;
+    float         hasAlbedoTex = 0.0f;  // 1.0 = albedoTexture あり、0.0 = 単色
+    float         _pad         = 0.0f;
 };
 
 class Material {
