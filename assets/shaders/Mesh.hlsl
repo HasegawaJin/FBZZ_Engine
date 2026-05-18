@@ -16,7 +16,8 @@ cbuffer MaterialConstants : register(b2) {
     float4 albedo;
     float  metallic;
     float  roughness;
-    float2 _pad2;
+    float  hasAlbedoTex;  // 1.0 = テクスチャあり、0.0 = 単色
+    float  _pad2;
 };
 
 cbuffer LightConstants : register(b3) {
@@ -25,6 +26,9 @@ cbuffer LightConstants : register(b3) {
     float3 lightColor;
     float  lightIntensity;
 };
+
+Texture2D    albedoTex  : register(t0);
+SamplerState texSampler : register(s0);
 
 struct VSInput {
     float3 position : POSITION;
@@ -51,6 +55,11 @@ PSInput VSMain(VSInput input) {
 }
 
 float4 PSMain(PSInput input) : SV_TARGET {
+    // テクスチャがあれば albedo に乗算、なければ albedo 単色を使う
+    float4 baseColor = albedo;
+    if (hasAlbedoTex > 0.5f)
+        baseColor *= albedoTex.Sample(texSampler, input.uv);
+
     float3 N       = normalize(input.normal);
     float3 L       = normalize(-lightDir);
     float3 V       = normalize(cameraPos - input.worldPos);
@@ -58,14 +67,14 @@ float4 PSMain(PSInput input) : SV_TARGET {
 
     // Lambert 拡散
     float  NdotL   = max(dot(N, L), 0.0f);
-    float3 diffuse = albedo.rgb * lightColor * lightIntensity * NdotL;
+    float3 diffuse = baseColor.rgb * lightColor * lightIntensity * NdotL;
 
     // Blinn-Phong 鏡面反射 (roughness が高いほど鈍い)
     float  shininess = max(lerp(128.0f, 2.0f, roughness), 2.0f);
     float  NdotH     = max(dot(N, H), 0.0f);
     float3 specular  = lightColor * lightIntensity * pow(NdotH, shininess) * (1.0f - roughness) * 0.5f;
 
-    float3 ambient   = albedo.rgb * 0.08f;
+    float3 ambient   = baseColor.rgb * 0.08f;
 
-    return float4(ambient + diffuse + specular, albedo.a);
+    return float4(ambient + diffuse + specular, baseColor.a);
 }

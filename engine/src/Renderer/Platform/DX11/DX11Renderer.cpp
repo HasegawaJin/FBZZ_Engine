@@ -354,36 +354,46 @@ bool DX11Renderer::CreateDepthStencilView()
 
 void DX11Renderer::InitSamplers()
 {
-    // 3 種のサンプラープリセットを Init 時に一括生成してキャッシュする。
-    // SetSampler() で SamplerMode のインデックスを使って参照する。
-    //
-    //   [0] WRAP_LINEAR  : テクスチャ繰り返し + 線形補間 (地形・壁面タイル等の標準)
-    //   [1] WRAP_POINT   : テクスチャ繰り返し + 最近傍 (ピクセルアート・UI 等)
-    //   [2] CLAMP_LINEAR : UV を [0,1] にクランプ + 線形補間 (スカイボックス・GBuffer 等)
-    auto createSampler = [&](D3D11_FILTER filter, D3D11_TEXTURE_ADDRESS_MODE address,
-                             Microsoft::WRL::ComPtr<ID3D11SamplerState>& out)
+    // SamplerMode の列挙値と配列インデックスを一致させる。
+    // SamplerMode::COUNT = 8 個を Init 時に一括生成してキャッシュする。
+    auto make = [&](D3D11_FILTER filter,
+                    D3D11_TEXTURE_ADDRESS_MODE addr,
+                    uint32_t maxAniso,
+                    const FLOAT* borderColor,
+                    Microsoft::WRL::ComPtr<ID3D11SamplerState>& out)
     {
-        D3D11_SAMPLER_DESC desc = {};
-        desc.Filter             = filter;
-        desc.AddressU           = address;
-        desc.AddressV           = address;
-        desc.AddressW           = address;
-        desc.ComparisonFunc     = D3D11_COMPARISON_NEVER;
-        desc.MinLOD             = 0.0f;
-        desc.MaxLOD             = D3D11_FLOAT32_MAX;  // 全ミップレベルを使用
-        // If using anisotropic filtering, set a high MaxAnisotropy
-        if (filter == D3D11_FILTER_ANISOTROPIC) {
-            desc.MaxAnisotropy = 16; // maximum quality on most hardware
-        } else {
-            desc.MaxAnisotropy = 1;
-        }
+        D3D11_SAMPLER_DESC desc  = {};
+        desc.Filter              = filter;
+        desc.AddressU            = addr;
+        desc.AddressV            = addr;
+        desc.AddressW            = addr;
+        desc.MaxAnisotropy       = maxAniso;
+        desc.ComparisonFunc      = D3D11_COMPARISON_NEVER;
+        desc.MinLOD              = 0.0f;
+        desc.MaxLOD              = D3D11_FLOAT32_MAX;
+        if (borderColor)
+            memcpy(desc.BorderColor, borderColor, sizeof(desc.BorderColor));
         m_device->CreateSamplerState(&desc, out.GetAddressOf());
     };
 
-    // Use anisotropic filtering (best quality) for linear samplers
-    createSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP,  m_samplers[0]);
-    createSampler(D3D11_FILTER_MIN_MAG_MIP_POINT,  D3D11_TEXTURE_ADDRESS_WRAP,  m_samplers[1]);
-    createSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_CLAMP, m_samplers[2]);
+    const FLOAT zero[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    // [0] WRAP_ANISOTROPIC
+    make(D3D11_FILTER_ANISOTROPIC,          D3D11_TEXTURE_ADDRESS_WRAP,   16, nullptr, m_samplers[0]);
+    // [1] WRAP_TRILINEAR
+    make(D3D11_FILTER_MIN_MAG_MIP_LINEAR,   D3D11_TEXTURE_ADDRESS_WRAP,    1, nullptr, m_samplers[1]);
+    // [2] WRAP_BILINEAR
+    make(D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D11_TEXTURE_ADDRESS_WRAP, 1, nullptr, m_samplers[2]);
+    // [3] WRAP_POINT
+    make(D3D11_FILTER_MIN_MAG_MIP_POINT,    D3D11_TEXTURE_ADDRESS_WRAP,    1, nullptr, m_samplers[3]);
+    // [4] CLAMP_ANISOTROPIC
+    make(D3D11_FILTER_ANISOTROPIC,          D3D11_TEXTURE_ADDRESS_CLAMP,  16, nullptr, m_samplers[4]);
+    // [5] CLAMP_LINEAR
+    make(D3D11_FILTER_MIN_MAG_MIP_LINEAR,   D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[5]);
+    // [6] CLAMP_POINT
+    make(D3D11_FILTER_MIN_MAG_MIP_POINT,    D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[6]);
+    // [7] BORDER_ZERO
+    make(D3D11_FILTER_MIN_MAG_MIP_LINEAR,   D3D11_TEXTURE_ADDRESS_BORDER,  1, zero,   m_samplers[7]);
 }
 
 } // namespace fbzz::renderer

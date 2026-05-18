@@ -9,8 +9,8 @@
 //   ファクトリー役を担い、それ以外の場所では DX11Renderer を知る必要がない。
 //
 //   サンプラー:
-//     Init() 時に 3 種のサンプラー (WRAP_LINEAR / WRAP_POINT / CLAMP_LINEAR) を
-//     事前生成し、SetSampler() で要求に応じてバインドする。
+//     Init() 時に SamplerMode::COUNT 種のサンプラーを事前生成し、
+//     SetSampler() で要求に応じてバインドする。
 //     毎フレーム生成/破棄するのではなくキャッシュ方式を採用する。
 #pragma once
 
@@ -75,8 +75,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencilView;
     Microsoft::WRL::ComPtr<ID3D11Texture2D>        m_depthStencilBuffer;
 
-    // SamplerMode (WRAP_LINEAR=0, WRAP_POINT=1, CLAMP_LINEAR=2) に対応するプリセット
-    Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplers[3];
+    // SamplerMode::COUNT 個のプリセットを Init 時に一括生成してキャッシュする
+    Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplers[8];
 
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
