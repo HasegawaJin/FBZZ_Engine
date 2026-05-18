@@ -3,7 +3,6 @@
 // シーン遷移と System 実行順序の管理
 #include "engine/Scene/SceneManager.hpp"
 #include "engine/Scene/Systems/TransformSystem.hpp"
-#include "engine/Scene/Systems/RenderSystem.hpp"
 #include "engine/Scene/Systems/PhysicsSystem.hpp"
 #include <cassert>
 
@@ -18,10 +17,7 @@ void SceneManager::LoadScene(const std::string& name) {
     m_pendingLoad = name;
 }
 
-void SceneManager::Update(float dt,
-                          renderer::IRenderer& renderer,
-                          physics::World& world) {
-    // フレーム先頭: ペンディングのシーン切り替えを適用
+void SceneManager::Update(float dt, physics::World& world) {
     if (!m_pendingLoad.empty()) {
         m_active      = m_factories[m_pendingLoad]();
         m_pendingLoad.clear();
@@ -29,13 +25,9 @@ void SceneManager::Update(float dt,
 
     if (!m_active) return;
 
-    // System 実行順序 (変更する場合はここだけ触る)
-    PhysicsSystem(*m_active, world, dt);    // 1. 物理を先に解決
-    TransformSystem(*m_active);             // 2. ワールド行列を更新
-    // RenderSystem は Renderer 追加 (Step 5-3) 後に有効化する
-    // RenderSystem(*m_active, renderer, camera, lights);
-
-    m_active->FlushDestroyQueue(dt);        // フレーム末尾で削除
+    TransformSystem(*m_active);             // 1. 階層を解決 (local → world)
+    PhysicsSystem(*m_active, world, dt);    // 2. 物理が world 座標を上書き
+    m_active->FlushDestroyQueue(dt);        // 3. フレーム末尾で削除
 }
 
 Scene* SceneManager::GetActive() {

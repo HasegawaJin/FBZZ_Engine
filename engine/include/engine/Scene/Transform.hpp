@@ -14,9 +14,10 @@ struct Transform {
     math::Quaternion localRotation = math::Quaternion::Identity();
     math::Vector3    localScale    = math::Vector3::ONE;
 
-    // ワールド空間 (TransformSystem が毎フレーム再計算。直接変更しない)
-    math::Vector3    position = math::Vector3::ZERO;
-    math::Quaternion rotation = math::Quaternion::Identity();
+    // ワールド空間 (TransformSystem / PhysicsSystem が毎フレーム更新。直接変更しない)
+    math::Vector3    position   = math::Vector3::ZERO;
+    math::Quaternion rotation   = math::Quaternion::Identity();
+    math::Vector3    worldScale = math::Vector3::ONE;
 
     // Unity: transform.forward / up / right
     math::Vector3 Forward() const;

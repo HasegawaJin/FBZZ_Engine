@@ -13,8 +13,8 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
 
     for (auto [tf, rb] : scene.View<Transform, RigidBodyComponent>()) {
         if (!rb.enabled || !rb.rigidBody) continue;
-        tf.localPosition = rb.rigidBody->GetPosition();
-        tf.localRotation = rb.rigidBody->GetRotation();
+        tf.position = rb.rigidBody->GetPosition();
+        tf.rotation = rb.rigidBody->GetRotation();
     }
 }
 
