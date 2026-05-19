@@ -93,6 +93,11 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
     auto* window = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
+    // 登録済みフック (ImGui 等) に先にメッセージを渡す
+    if (window && window->m_wndProcHook)
+        if (window->m_wndProcHook(hwnd, msg, wParam, lParam))
+            return true;
+
     switch (msg)
     {
     case WM_CLOSE:

@@ -34,6 +34,10 @@ namespace fbzz::core
         using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
         void SetResizeCallback(ResizeCallback cb) { m_resizeCallback = std::move(cb); }
 
+        // WndProc フック (ImGui 等が登録する。true を返すとそれ以降の処理をスキップ)
+        using WndProcHook = std::function<bool(HWND, UINT, WPARAM, LPARAM)>;
+        void SetWndProcHook(WndProcHook hook) { m_wndProcHook = std::move(hook); }
+
     private:
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam);
@@ -44,5 +48,6 @@ namespace fbzz::core
         bool     m_shouldClose = false;
 
         ResizeCallback m_resizeCallback;
+        WndProcHook    m_wndProcHook;
     };
 } // namespace fbzz::core

@@ -44,6 +44,9 @@ public:
     // DX11Renderer が OMSetRenderTargets に渡す DSV を取得する (DX11 内部用)
     ID3D11DepthStencilView* GetDSV() const { return m_dsv.Get(); }
 
+    // ImGui Viewport 用 SRV ポインタ (IRenderTarget 経由で IRenderer が取得する)
+    void* GetNativeSRV(int slot = 0) const override { return m_srv[slot].Get(); }
+
     static constexpr uint32_t MAX_COLOR = 8;  // DX11 の MRT 上限
 
 private:
