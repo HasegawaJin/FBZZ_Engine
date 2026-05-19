@@ -20,22 +20,51 @@ fbzz::renderer
 ```cpp
 class IRenderer {
 public:
+    virtual ~IRenderer() = default;
+
+    // フレーム制御
     virtual void BeginFrame() = 0;
     virtual void EndFrame()   = 0;
     virtual void Clear(const math::Vector4& color) = 0;
 
-    virtual std::shared_ptr<IBuffer>         CreateVertexBuffer(const void* data, size_t size, uint32_t stride) = 0;
+    // リソース生成
+    virtual std::shared_ptr<IBuffer>         CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
     virtual std::shared_ptr<IBuffer>         CreateIndexBuffer(const void* data, uint32_t count) = 0;
-    virtual std::shared_ptr<IConstantBuffer> CreateConstantBuffer(size_t size) = 0;
+    virtual std::shared_ptr<IConstantBuffer> CreateConstantBuffer(size_t sizeBytes) = 0;
     virtual std::shared_ptr<IShader>         CreateShader(const std::string& path) = 0;
     virtual std::shared_ptr<ITexture>        CreateTexture(const std::string& path) = 0;
-    virtual std::shared_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc&) = 0;
-    virtual std::shared_ptr<IRenderTarget>   CreateRenderTarget(uint32_t w, uint32_t h) = 0;
+    virtual std::shared_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc& desc) = 0;
 
+    // 描画
     virtual void Submit(const DrawCall& call) = 0;
+
+    // Compute Shader ディスパッチ
+    virtual void Dispatch(const ComputeCall& call) = 0;
+    // UAV 出力先テクスチャ生成 (SRV + UAV 両用)
+    virtual std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) = 0;
+
+    // ウィンドウリサイズ
     virtual void Resize(uint32_t w, uint32_t h) = 0;
-    virtual void SetRenderTarget(std::shared_ptr<IRenderTarget>) = 0;
+
+    // 現在のバックバッファサイズ
+    virtual uint32_t GetWidth()  const = 0;
+    virtual uint32_t GetHeight() const = 0;
+
+    // オフスクリーン RT。colorCount: 同時出力カラーバッファ数 (1=通常, 2=MRT)
+    virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t w, uint32_t h, uint32_t colorCount = 1) = 0;
+    virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;  // nullptr = バックバッファ
+
+    // 現在バインド中の RT の深度バッファのみクリア (シャドウパス前に呼ぶ)
+    virtual void ClearDepth(float depth = 1.0f) = 0;
+
     virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
+
+    // ImGui 統合 — バックエンド依存を IRenderer に閉じ込める
+    virtual void ImGuiInit(void* hwnd)      = 0;
+    virtual void ImGuiShutdown()            = 0;
+    virtual void ImGuiNewFrame()            = 0;
+    virtual void ImGuiRenderDrawData()      = 0;
+    virtual void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) = 0;
 };
 ```
 
@@ -106,6 +135,7 @@ public:
 struct Vertex {
     math::Vector3 position;
     math::Vector3 normal;
+    math::Vector3 tangent;
     math::Vector2 uv;
 };
 ```
@@ -160,22 +190,25 @@ public:
 ```cpp
 // Material.hpp
 
+// Constants.hlsli の MaterialConstants (b2) と一致させること
 struct MaterialParams {
-    math::Vector4 albedo    = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float         metallic  = 0.0f;
-    float         roughness = 0.8f;
-    float         _pad[2]   = {};
+    math::Vector4 albedo        = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float         metallic      = 0.0f;
+    float         roughness     = 0.8f;
+    float         emissiveScale = 0.0f;
+    uint32_t      textureMask   = 0;  // bit0=albedo, bit1=normal, bit2=metalRough, bit3=emissive
 };
 
 class Material {
 public:
     std::shared_ptr<IShader>         shader;
-    std::shared_ptr<ITexture>        albedoTexture;  // nullptr = 単色
-    std::shared_ptr<IConstantBuffer> paramsBuffer;   // Init() で生成
+    std::shared_ptr<ITexture>        albedoTexture;  // nullptr = 単色 (bit0)
+    std::shared_ptr<ITexture>        normalTexture;  // nullptr = 法線マップなし (bit1)
+    std::shared_ptr<IConstantBuffer> paramsBuffer;
     MaterialParams                   params;
 
-    void Init(IRenderer& renderer);   // paramsBuffer を生成する
-    void Upload();                    // params → GPU 定数バッファへ転送
+    void Init(IRenderer& renderer);
+    void Upload();
 };
 ```
 
@@ -185,7 +218,8 @@ public:
 
 ### LightSystem
 
-DirectionalLight のみ。`RenderSystem` が定数バッファ経由でシェーダーへ渡す。
+RenderSystem が内部で組み立てる定数バッファ構造体群。ゲームコードからは `LightComponent` を使う。  
+DirectionalLight / PointLight (×8) / SpotLight (×4) を管理し、定数バッファ経由でシェーダーへ渡す。
 
 ```cpp
 // LightSystem.hpp
@@ -197,13 +231,56 @@ struct DirectionalLight {
     float         intensity = 1.0f;
 };
 
+struct PointLight {
+    math::Vector3 position  = {};
+    float         range     = 10.0f;
+    math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
+    float         intensity = 1.0f;
+};
+
+struct SpotLight {
+    math::Vector3 position  = {};
+    float         range     = 10.0f;
+    math::Vector3 direction = { 0.0f, -1.0f, 0.0f };
+    float         innerCos  = 0.966f;   // ~15°
+    math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
+    float         outerCos  = 0.866f;   // ~30°
+    float         intensity = 1.0f;
+    float         _pad[3]   = {};
+};
+
+// Constants.hlsli の LightConstants cbuffer と完全一致 (560 bytes)
+struct LightConstantsCB {
+    math::Vector3 lightDir;
+    float         _lightPad0 = 0.0f;
+    math::Vector3 lightColor;
+    float         lightIntensity = 0.0f;
+    PointLight    pointLights[8];
+    SpotLight     spotLights[4];
+    int           pointLightCount = 0;
+    int           spotLightCount  = 0;
+    float         _lightPad2[2]   = {};
+};
+
 class LightSystem {
 public:
     void SetDirectional(const DirectionalLight& light);
     const DirectionalLight& GetDirectional() const;
+
+    void AddPoint(const PointLight& light);
+    void AddSpot(const SpotLight& light);
+    void Clear();
+
+    std::vector<PointLight>&       GetPointLights();
+    const std::vector<PointLight>& GetPointLights() const;
+    std::vector<SpotLight>&        GetSpotLights();
+    const std::vector<SpotLight>&  GetSpotLights()  const;
+
     void Upload(IConstantBuffer& cb) const;
 private:
-    DirectionalLight m_directional;
+    DirectionalLight         m_directional;
+    std::vector<PointLight>  m_pointLights;
+    std::vector<SpotLight>   m_spotLights;
 };
 ```
 
@@ -216,8 +293,9 @@ private:
 ```hlsl
 cbuffer CameraConstants  : register(b0) { float4x4 viewProjection; float3 cameraPos; float _pad; };
 cbuffer ObjectConstants  : register(b1) { float4x4 world; };
-cbuffer MaterialConstants: register(b2) { float4 albedo; float metallic; float roughness; float2 _pad2; };
-cbuffer LightConstants   : register(b3) { float3 lightDir; float _pad3; float3 lightColor; float lightIntensity; };
+// MaterialConstants (b2): albedo(float4) + metallic + roughness + emissiveScale + textureMask(uint)
+// LightConstants   (b3): DirectionalLight + PointLight[8] + SpotLight[4] + カウント (560 bytes)
+// → 詳細は assets/shaders/Constants.hlsli を参照
 ```
 
 #### ライティングモデル
@@ -250,14 +328,15 @@ return float4(ambient + diffuse + specular, albedo.a);
 void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   const renderer::Camera& camera,
-                  const renderer::LightSystem& lights);
+                  const std::shared_ptr<renderer::IRenderTarget>& outputRT = nullptr,
+                  const renderer::RenderSettings* settings = nullptr);
 ```
 
 #### 内部フロー
 
 ```
 1. PerFrameCB を生成・Upload  (viewProj, cameraPos)
-2. LightCB を生成・Upload
+2. scene.View<Transform, LightComponent>() を走査して LightConstantsCB を組み立て・Upload
 3. scene.View<Transform, MeshRenderer>() を走査
    ├─ !mr.enabled または mr.mesh / mr.material が nullptr → スキップ
    ├─ PerObjectCB を Upload (tf.GetWorldMatrix())
@@ -290,7 +369,7 @@ void Update(float dt, physics::World& world);
 sm.Update(dt, physWorld);
 renderer.BeginFrame();
 renderer.Clear({ 0.05f, 0.08f, 0.15f, 1.0f });
-RenderSystem(*sm.GetActive(), renderer, camera, lights);
+scene::RenderSystem(*sm.GetActive(), renderer, camera);
 renderer.EndFrame();
 ```
 
@@ -307,11 +386,14 @@ renderer.EndFrame();
 | 新規 | `engine/src/Renderer/Material.cpp` |
 | 新規 | `engine/include/engine/Renderer/LightSystem.hpp` |
 | 新規 | `engine/src/Renderer/LightSystem.cpp` |
+| 新規 | `engine/include/engine/Renderer/RenderSettings.hpp` |
 | 新規 | `assets/shaders/Mesh.hlsl` |
-| 修正 | `engine/src/Scene/Systems/RenderSystem.cpp` (stub → 実装) |
+| 新規 | `assets/shaders/Constants.hlsli` |
+| 修正 | `engine/src/Scene/Systems/RenderSystem.cpp` (multi-pass 実装) |
+| 修正 | `engine/include/engine/Scene/Systems/RenderSystem.hpp` (シグネチャ拡張) |
 | 修正 | `engine/include/engine/Scene/SceneManager.hpp` (Update シグネチャ) |
 | 修正 | `engine/src/Scene/SceneManager.cpp` (Update 実装 + RenderSystem 除去) |
-| 修正 | `sandbox/src/main.cpp` (Cube メッシュ + LightSystem + RenderSystem 呼び出し) |
+| 修正 | `sandbox/src/main.cpp` (LightSystem + RenderSystem 呼び出し) |
 
 ---
 

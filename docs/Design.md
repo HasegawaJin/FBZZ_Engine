@@ -17,6 +17,7 @@ C++20 自作 3D ゲームエンジン。数学・物理エンジンを自作し�
 | 5 | シーン管理 (Scene / Entity / Component / System) | **完了** |
 | 5.5 | HLSL シェーダーライブラリ (PBR / Shadow / Bloom / FXAA / Particle) | **完了** |
 | 6 | ImGui エディター (SceneHierarchy / Inspector / Viewport / Light) | **現在地** |
+| 6.5 | SceneSerializer (TOML .fbzz — main.cpp 短縮) | 設計済み |
 | 7 | DX12 / Render Graph 移行 | 未着手 |
 
 ---
@@ -78,7 +79,8 @@ engine/include/engine/
 ├── Renderer/
 │   ├── Mesh.hpp
 │   ├── Material.hpp
-│   └── LightSystem.hpp
+│   ├── LightSystem.hpp
+│   └── RenderSettings.hpp
 ├── Scene/
 │   ├── Entity.hpp
 │   ├── ComponentArray.hpp
@@ -124,14 +126,20 @@ editor/
 │       ├── SceneHierarchyPanel.hpp
 │       ├── InspectorPanel.hpp
 │       ├── ViewportPanel.hpp
-│       └── LightPanel.hpp
+│       ├── LightPanel.hpp
+│       ├── ConsolePanel.hpp
+│       ├── AssetBrowserPanel.hpp
+│       └── StatusBar.hpp
 └── src/
     ├── EditorApp.cpp
     └── Panels/
         ├── SceneHierarchyPanel.cpp
         ├── InspectorPanel.cpp
         ├── ViewportPanel.cpp
-        └── LightPanel.cpp
+        ├── LightPanel.cpp
+        ├── ConsolePanel.cpp
+        ├── AssetBrowserPanel.cpp
+        └── StatusBar.cpp
 
 third_party/
 └── imgui/    Dear ImGui v1.91+ (docking ブランチ)
@@ -253,7 +261,8 @@ third_party/
 
 ## Step 6 実装順
 
-詳細: [docs/editor/Design.md](editor/Design.md)
+詳細: [docs/editor/Design.md](editor/Design.md)  
+engine モジュール横断リファレンス: [docs/engine/Design.md](engine/Design.md)
 
 | 順序 | タスク | 概要 |
 |------|--------|------|
