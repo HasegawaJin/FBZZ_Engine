@@ -16,8 +16,9 @@ compile_commands.json
 *.vcxproj.filters
 *.vcxproj.user
 
-# VSCode
-.vscode/
+# VSCode (個人設定のみ除外、共有設定は追跡する)
+.vscode/settings.json
+.vscode/*.code-workspace
 
 # Binaries
 *.exe
@@ -29,9 +30,6 @@ compile_commands.json
 *.pdb
 *.ilk
 *.exp
-
-# Third-party libraries (ImGui は未導入のため除外)
-third_party/ImGui/
 
 # third_party の lib / dll / exp は通常は追跡しないが、
 # Assimp / DirectXTex のプリコンパイル済みバイナリはリポジトリに含める
