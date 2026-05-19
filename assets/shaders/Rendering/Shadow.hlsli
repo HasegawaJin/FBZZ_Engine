@@ -36,13 +36,14 @@ float SampleShadowPCF(Texture2D<float> shadowMap,
 
 // =========================================================================
 // ComputeShadow — ワールド座標からシャドウ係数を計算する
-//   bias で Self-Shadow アクネを防ぐ。
+//   N, L を受け取りスロープスケールバイアスを適用して Self-Shadow アクネを防ぐ。
 //   UV が [0,1] 外 (ライト錐台外) は常に 1.0 (照らされている) を返す。
 // =========================================================================
 float ComputeShadow(Texture2D<float> shadowMap,
                     SamplerComparisonState shadowSampler,
                     float3 worldPos, float4x4 lightVP,
-                    float2 texelSize, float bias)
+                    float2 texelSize, float bias,
+                    float3 N, float3 L)
 {
     float2 uv;
     float  depth;
@@ -52,7 +53,12 @@ float ComputeShadow(Texture2D<float> shadowMap,
     if (any(uv < 0.0f) || any(uv > 1.0f))
         return 1.0f;
 
-    return SampleShadowPCF(shadowMap, shadowSampler, uv, depth - bias, texelSize, 1);
+    // スロープスケールバイアス: 斜め面で tan(theta) に比例してバイアスを増やす
+    float NdotL        = saturate(dot(N, L));
+    float slope        = sqrt(1.0f - NdotL * NdotL) / max(NdotL, 1e-4f);
+    float adjustedBias = clamp(bias + bias * slope, bias, bias * 6.0f);
+
+    return SampleShadowPCF(shadowMap, shadowSampler, uv, depth - adjustedBias, texelSize, 2);
 }
 
 #endif // SHADOW_HLSLI
