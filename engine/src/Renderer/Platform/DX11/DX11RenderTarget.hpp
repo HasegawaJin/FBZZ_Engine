@@ -24,7 +24,7 @@ namespace fbzz::renderer
 class DX11RenderTarget : public IRenderTarget
 {
 public:
-    // colorCount: 同時出力カラーバッファ数 (最大 MAX_COLOR)
+    // colorCount: 同時出力カラーバッファ数 (0 = 深度専用, 最大 MAX_COLOR)
     // 全スロット RGBA16_FLOAT で生成する (符号付き法線ベクトルも収容できる精度)
     bool Init(ID3D11Device* device, uint32_t width, uint32_t height, uint32_t colorCount = 1);
 
@@ -35,8 +35,14 @@ public:
     // index 枚目のカラーバッファを DX11Texture として返す (次パスで DrawCall::textures[] にセット)
     std::shared_ptr<ITexture> GetColorTexture(uint32_t index = 0) const override;
 
+    // 深度バッファを SRV として返す (シャドウマップ等、次パスで t8 にセット)
+    std::shared_ptr<ITexture> GetDepthTexture() const override;
+
     // DX11Renderer::SetRenderTarget() が OMSetRenderTargets に渡す RTV 配列を取得する
     void GetRTVs(ID3D11RenderTargetView** out, uint32_t& count) const;
+
+    // DX11Renderer が OMSetRenderTargets に渡す DSV を取得する (DX11 内部用)
+    ID3D11DepthStencilView* GetDSV() const { return m_dsv.Get(); }
 
     static constexpr uint32_t MAX_COLOR = 8;  // DX11 の MRT 上限
 
@@ -46,6 +52,12 @@ private:
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView>   m_rtv[MAX_COLOR];
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv[MAX_COLOR];
     std::shared_ptr<ITexture>                        m_colorTexture[MAX_COLOR];
+
+    // 深度バッファ (全 RT で生成。colorCount=0 の場合はシャドウマップ専用)
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_depthBuffer;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView>   m_dsv;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_depthSRV;
+    std::shared_ptr<ITexture>                        m_depthTexture;
 
     uint32_t m_colorCount = 0;
     uint32_t m_width      = 0;

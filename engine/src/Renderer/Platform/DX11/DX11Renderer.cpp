@@ -105,8 +105,12 @@ void DX11Renderer::Shutdown()
 
 void DX11Renderer::BeginFrame()
 {
-    // SetRenderTarget() でオフスクリーン RT に切り替えた後、
-    // バックバッファに戻すためにフレーム先頭で必ず呼ぶ。
+    // 前フレームで残ったSRVバインドを解除してからRTをセットする
+    static ID3D11ShaderResourceView* const kNullSRVs[16] = {};
+    m_context->PSSetShaderResources(0, 16, kNullSRVs);
+    m_context->CSSetShaderResources(0, 16, kNullSRVs);
+
+    m_currentRT = nullptr;
     m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), m_depthStencilView.Get());
 }
 
@@ -119,10 +123,27 @@ void DX11Renderer::EndFrame()
 void DX11Renderer::Clear(const math::Vector4& color)
 {
     float c[4] = { color.x, color.y, color.z, color.w };
-    m_context->ClearRenderTargetView(m_renderTargetView.Get(), c);
-    // D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL を同時クリア
-    m_context->ClearDepthStencilView(m_depthStencilView.Get(),
-        D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+    if (!m_currentRT)
+    {
+        m_context->ClearRenderTargetView(m_renderTargetView.Get(), c);
+        m_context->ClearDepthStencilView(m_depthStencilView.Get(),
+            D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+        return;
+    }
+    ID3D11RenderTargetView* rtvs[DX11RenderTarget::MAX_COLOR] = {};
+    uint32_t count = 0;
+    m_currentRT->GetRTVs(rtvs, count);
+    for (uint32_t i = 0; i < count; ++i)
+        m_context->ClearRenderTargetView(rtvs[i], c);
+    if (auto* dsv = m_currentRT->GetDSV())
+        m_context->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+}
+
+void DX11Renderer::ClearDepth(float depth)
+{
+    auto* dsv = m_currentRT ? m_currentRT->GetDSV() : m_depthStencilView.Get();
+    if (dsv)
+        m_context->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH, depth, 0);
 }
 
 // =============================================================================
@@ -187,6 +208,67 @@ std::shared_ptr<IRenderTarget> DX11Renderer::CreateRenderTarget(uint32_t width, 
     if (!rt->Init(m_device.Get(), width, height, colorCount))
         return nullptr;
     return rt;
+}
+
+std::shared_ptr<ITexture> DX11Renderer::CreateComputeTexture(uint32_t width, uint32_t height)
+{
+    auto tex = std::make_shared<DX11Texture>();
+    if (!tex->InitForCompute(m_device.Get(), width, height))
+        return nullptr;
+    return tex;
+}
+
+// =============================================================================
+// Dispatch — ComputeCall に従って CS を実行する
+// =============================================================================
+
+void DX11Renderer::Dispatch(const ComputeCall& call)
+{
+    if (!call.shader) return;
+
+    // Compute を実行する前に OM の RTV/DSV をアンバインドする。
+    // HDR RT などが RTV と CS-SRV に同時バインドされると HAZARD 警告が出るため。
+    m_context->OMSetRenderTargets(0, nullptr, nullptr);
+    m_currentRT = nullptr;
+
+    // CS バインド
+    auto* cs = static_cast<DX11Shader*>(call.shader.get());
+    m_context->CSSetShader(cs->GetComputeShader(), nullptr, 0);
+
+    // 定数バッファ (CS ステージ)
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
+    {
+        if (!call.constantBuffers[i]) continue;
+        ID3D11Buffer* buf = static_cast<DX11ConstantBuffer*>(call.constantBuffers[i].get())->GetBuffer();
+        m_context->CSSetConstantBuffers(i, 1, &buf);
+    }
+
+    // SRV 入力 (CS ステージ)
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.srvInputs.size()); ++i)
+    {
+        if (!call.srvInputs[i]) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(call.srvInputs[i].get())->GetSRV();
+        m_context->CSSetShaderResources(i, 1, &srv);
+    }
+
+    // UAV 出力 (CS ステージ)
+    ID3D11UnorderedAccessView* uavs[2] = { nullptr, nullptr };
+    for (uint32_t i = 0; i < 2; ++i)
+    {
+        if (call.uavOutputs[i])
+            uavs[i] = static_cast<DX11Texture*>(call.uavOutputs[i].get())->GetUAV();
+    }
+    m_context->CSSetUnorderedAccessViews(0, 2, uavs, nullptr);
+
+    // Dispatch
+    m_context->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
+
+    // UAV / SRV / CS をアンバインドする (次パスでの SRV 競合を防ぐ)
+    ID3D11UnorderedAccessView* nullUAVs[2] = { nullptr, nullptr };
+    m_context->CSSetUnorderedAccessViews(0, 2, nullUAVs, nullptr);
+    ID3D11ShaderResourceView* nullSRVs[16] = {};
+    m_context->CSSetShaderResources(0, 16, nullSRVs);
+    m_context->CSSetShader(nullptr, nullptr, 0);
 }
 
 // =============================================================================
@@ -295,19 +377,38 @@ void DX11Renderer::Resize(uint32_t width, uint32_t height)
 
 void DX11Renderer::SetRenderTarget(std::shared_ptr<IRenderTarget> rt)
 {
+    // RTV/DSV を新たにバインドする前に PS・CS の SRV を全スロット解除する。
+    // 同一サブリソースが SRV と RTV/DSV に同時バインドされると DX11 デバッグ層が
+    // DEVICE_OMSETRENDERTARGETS_HAZARD を報告するため、事前に競合を取り除く。
+    static ID3D11ShaderResourceView* const kNullSRVs[16] = {};
+    m_context->PSSetShaderResources(0, 16, kNullSRVs);
+    m_context->CSSetShaderResources(0, 16, kNullSRVs);
+
+    D3D11_VIEWPORT vp = {};
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+
     if (!rt)
     {
-        // nullptr を渡すとバックバッファ (デフォルト RTV) に戻す
+        m_currentRT = nullptr;
         m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), m_depthStencilView.Get());
+        vp.Width  = static_cast<float>(m_width);
+        vp.Height = static_cast<float>(m_height);
+        m_context->RSSetViewports(1, &vp);
         return;
     }
-    // IRenderer 経由で渡されるのは必ず CreateRenderTarget() で生成した DX11RenderTarget なので
-    // static_cast は安全。MRT の場合は colorCount 枚の RTV を一括バインドする。
-    auto* dx11rt = static_cast<DX11RenderTarget*>(rt.get());
+    m_currentRT = std::static_pointer_cast<DX11RenderTarget>(rt);
     ID3D11RenderTargetView* rtvs[DX11RenderTarget::MAX_COLOR] = {};
     uint32_t count = 0;
-    dx11rt->GetRTVs(rtvs, count);
-    m_context->OMSetRenderTargets(count, rtvs, m_depthStencilView.Get());
+    m_currentRT->GetRTVs(rtvs, count);
+    // colorCount=0 (深度専用 RT) の場合 count=0, rtvs=nullptr → デプスのみバインド
+    m_context->OMSetRenderTargets(count, count > 0 ? rtvs : nullptr, m_currentRT->GetDSV());
+    // RT サイズに合わせてビューポートを更新する。
+    // ビューポートが RT と異なると NDC → ピクセル変換がずれ、シャドウマップの
+    // 深度が誤った UV 位置に書き込まれる (Pass 1 → Pass 2 でサンプル位置不一致)。
+    vp.Width  = static_cast<float>(m_currentRT->GetWidth());
+    vp.Height = static_cast<float>(m_currentRT->GetHeight());
+    m_context->RSSetViewports(1, &vp);
 }
 
 void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)
@@ -394,8 +495,19 @@ void DX11Renderer::InitSamplers()
     make(D3D11_FILTER_MIN_MAG_MIP_LINEAR,   D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[5]);
     // [6] CLAMP_POINT
     make(D3D11_FILTER_MIN_MAG_MIP_POINT,    D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[6]);
-    // [7] BORDER_ZERO
-    make(D3D11_FILTER_MIN_MAG_MIP_LINEAR,   D3D11_TEXTURE_ADDRESS_BORDER,  1, zero,   m_samplers[7]);
+    // [7] BORDER_ZERO → PCF 比較サンプラー (SamplerComparisonState / SAMPLER_SHADOW s1)
+    //   LESS_EQUAL: depth <= stored → 1.0 (照らされている)
+    //   境界色 1.0: ライト錐台外は常に照らされている (影なし) にする
+    {
+        const FLOAT ones[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        D3D11_SAMPLER_DESC desc  = {};
+        desc.Filter              = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+        desc.AddressU = desc.AddressV = desc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+        desc.ComparisonFunc      = D3D11_COMPARISON_LESS_EQUAL;
+        desc.MaxLOD              = D3D11_FLOAT32_MAX;
+        memcpy(desc.BorderColor, ones, sizeof(desc.BorderColor));
+        m_device->CreateSamplerState(&desc, m_samplers[7].GetAddressOf());
+    }
 }
 
 } // namespace fbzz::renderer

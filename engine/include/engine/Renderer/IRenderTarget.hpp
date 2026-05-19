@@ -15,6 +15,9 @@ namespace fbzz::renderer {
 
         // カラーバッファ index 枚目を SRV として取得する (DrawCall::textures[] にセットして次パスで読む)
         virtual std::shared_ptr<ITexture> GetColorTexture(uint32_t index = 0) const = 0;
+
+        // 深度バッファを SRV として取得する (shadowMap → t8 等、次パスで読む)
+        virtual std::shared_ptr<ITexture> GetDepthTexture() const = 0;
     };
 
 } // namespace fbzz::renderer
