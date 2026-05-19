@@ -43,8 +43,29 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 V      = normalize(cameraPos - p.worldPos);
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
-                                  lightViewProjection, shadowMapTexelSize, shadowBias);
+                                  lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
     float3 result = Lighting_BlinnPhong(N, V, L, col, roughness,
                                         lightColor, lightIntensity, shadow);
+
+    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
+    {
+        float3 toLight = pointLights[pi].position - p.worldPos;
+        float  dist    = length(toLight);
+        float3 Lp      = toLight / dist;
+        float  atten   = LightAttenuation(dist, pointLights[pi].range);
+        result += Lighting_BlinnPhong_Direct(N, V, Lp, col, roughness,
+                      pointLights[pi].color, pointLights[pi].intensity * atten);
+    }
+    [loop] for (int si = 0; si < spotLightCount; ++si)
+    {
+        float3 toLight = spotLights[si].position - p.worldPos;
+        float  dist    = length(toLight);
+        float3 Ls      = toLight / dist;
+        float  atten   = LightAttenuation(dist, spotLights[si].range);
+        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
+                             spotLights[si].innerCos, spotLights[si].outerCos);
+        result += Lighting_BlinnPhong_Direct(N, V, Ls, col, roughness,
+                      spotLights[si].color, spotLights[si].intensity * atten * cone);
+    }
     return float4(result, 1.0f);
 }
