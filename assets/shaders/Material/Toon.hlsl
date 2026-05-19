@@ -1,8 +1,6 @@
 // FBZZ Engine
-// Phong.hlsl | Material
-// Phong 鏡面反射 + PCF シャドウ
-#ifndef PHONG_HLSL
-#define PHONG_HLSL
+// Toon.hlsl | Material
+// セル/トゥーンシェーディング — NdotL を 3 段階に量子化して漫画風陰影を作る
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
@@ -33,12 +31,11 @@ float4 PSMain(PSInput p) : SV_Target0
         ? texAlbedo.Sample(sampDefault, p.uv).rgb
         : albedo;
     float3 N      = normalize(p.normal);
-    float3 V      = normalize(cameraPos - p.worldPos);
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    float3 result = Lighting_Phong(N, V, L, col, roughness,
-                                   lightColor, lightIntensity, shadow);
+    float3 result = Lighting_Toon(N, L, col, lightColor, lightIntensity, shadow);
+    float3 V      = normalize(cameraPos - p.worldPos);
 
     [loop] for (int pi = 0; pi < pointLightCount; ++pi)
     {
@@ -46,7 +43,7 @@ float4 PSMain(PSInput p) : SV_Target0
         float  dist    = length(toLight);
         float3 Lp      = toLight / dist;
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_Phong_Direct(N, V, Lp, col, roughness,
+        result += Lighting_Toon_Direct(N, Lp, col,
                       pointLights[pi].color, pointLights[pi].intensity * atten);
     }
     [loop] for (int si = 0; si < spotLightCount; ++si)
@@ -57,10 +54,14 @@ float4 PSMain(PSInput p) : SV_Target0
         float  atten   = LightAttenuation(dist, spotLights[si].range);
         float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
                              spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_Phong_Direct(N, V, Ls, col, roughness,
+        result += Lighting_Toon_Direct(N, Ls, col,
                       spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
+
+    // リム ライト: 輪郭に明るいエッジを加えてセル感を強調
+    float  rim    = 1.0f - saturate(dot(N, V));
+    rim = pow(rim, 3.0f);
+    result += col * rim * 0.4f;
+
     return float4(result, 1.0f);
 }
-
-#endif // PHONG_HLSL

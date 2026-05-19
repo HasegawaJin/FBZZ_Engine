@@ -63,9 +63,30 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 V      = normalize(cameraPos - p.worldPos);
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
-                                  lightViewProjection, shadowMapTexelSize, shadowBias);
+                                  lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
     float3 result = Lighting_PBR(N, V, L, col, met, rough,
                                  lightColor, lightIntensity, shadow, ao);
+
+    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
+    {
+        float3 toLight = pointLights[pi].position - p.worldPos;
+        float  dist    = length(toLight);
+        float3 Lp      = toLight / dist;
+        float  atten   = LightAttenuation(dist, pointLights[pi].range);
+        result += Lighting_PBR_Direct(N, V, Lp, col, met, rough,
+                      pointLights[pi].color, pointLights[pi].intensity * atten);
+    }
+    [loop] for (int si = 0; si < spotLightCount; ++si)
+    {
+        float3 toLight = spotLights[si].position - p.worldPos;
+        float  dist    = length(toLight);
+        float3 Ls      = toLight / dist;
+        float  atten   = LightAttenuation(dist, spotLights[si].range);
+        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
+                             spotLights[si].innerCos, spotLights[si].outerCos);
+        result += Lighting_PBR_Direct(N, V, Ls, col, met, rough,
+                      spotLights[si].color, spotLights[si].intensity * atten * cone);
+    }
 
     // Emissive
     if (textureMask & (1u << 3))

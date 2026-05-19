@@ -1,14 +1,17 @@
 // FBZZ Engine
 // Lit.hlsl | Material
-// Lambert 拡散のみ (影なし・法線マップなし)
+// Lambert 拡散 + PCF シャドウ (法線マップなし)
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
+#include "Rendering/Shadow.hlsli"
 
-Texture2D    texAlbedo   : register(TEX_ALBEDO);
-SamplerState sampDefault : register(SAMPLER_DEFAULT);
+Texture2D<float>       texShadow    : register(TEX_SHADOW);
+Texture2D              texAlbedo    : register(TEX_ALBEDO);
+SamplerState           sampDefault  : register(SAMPLER_DEFAULT);
+SamplerComparisonState sampShadow   : register(SAMPLER_SHADOW);
 
 PSInput VSMain(VSInput v)
 {
@@ -29,6 +32,29 @@ float4 PSMain(PSInput p) : SV_Target0
         : albedo;
     float3 N      = normalize(p.normal);
     float3 L      = normalize(-lightDir);
-    float3 result = Lighting_Lambert(N, L, col, lightColor, lightIntensity, 1.0f);
+    float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
+                                  lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    float3 result = Lighting_Lambert(N, L, col, lightColor, lightIntensity, shadow);
+
+    [loop] for (int pi = 0; pi < pointLightCount; ++pi)
+    {
+        float3 toLight = pointLights[pi].position - p.worldPos;
+        float  dist    = length(toLight);
+        float3 Lp      = toLight / dist;
+        float  atten   = LightAttenuation(dist, pointLights[pi].range);
+        result += Lighting_Lambert_Direct(N, Lp, col,
+                      pointLights[pi].color, pointLights[pi].intensity * atten);
+    }
+    [loop] for (int si = 0; si < spotLightCount; ++si)
+    {
+        float3 toLight = spotLights[si].position - p.worldPos;
+        float  dist    = length(toLight);
+        float3 Ls      = toLight / dist;
+        float  atten   = LightAttenuation(dist, spotLights[si].range);
+        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
+                             spotLights[si].innerCos, spotLights[si].outerCos);
+        result += Lighting_Lambert_Direct(N, Ls, col,
+                      spotLights[si].color, spotLights[si].intensity * atten * cone);
+    }
     return float4(result, 1.0f);
 }
