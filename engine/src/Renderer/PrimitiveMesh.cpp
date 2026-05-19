@@ -12,37 +12,38 @@ namespace fbzz::renderer {
 std::shared_ptr<Mesh> PrimitiveMesh::Cube(IRenderer& renderer)
 {
     // 6面 × 4頂点 = 24頂点。面ごとに法線が異なるため頂点共有なし
+    // tangent は面の U 軸方向 (法線マップ対応。現在は旧シェーダーで未使用)
     const Vertex verts[] = {
-        // +Y (top)
-        {{ -0.5f,  0.5f, -0.5f }, {  0,  1,  0 }, { 0, 0 }},
-        {{  0.5f,  0.5f, -0.5f }, {  0,  1,  0 }, { 1, 0 }},
-        {{  0.5f,  0.5f,  0.5f }, {  0,  1,  0 }, { 1, 1 }},
-        {{ -0.5f,  0.5f,  0.5f }, {  0,  1,  0 }, { 0, 1 }},
-        // -Y (bottom)
-        {{ -0.5f, -0.5f,  0.5f }, {  0, -1,  0 }, { 0, 0 }},
-        {{  0.5f, -0.5f,  0.5f }, {  0, -1,  0 }, { 1, 0 }},
-        {{  0.5f, -0.5f, -0.5f }, {  0, -1,  0 }, { 1, 1 }},
-        {{ -0.5f, -0.5f, -0.5f }, {  0, -1,  0 }, { 0, 1 }},
-        // +Z (front)
-        {{ -0.5f, -0.5f,  0.5f }, {  0,  0,  1 }, { 0, 1 }},
-        {{  0.5f, -0.5f,  0.5f }, {  0,  0,  1 }, { 1, 1 }},
-        {{  0.5f,  0.5f,  0.5f }, {  0,  0,  1 }, { 1, 0 }},
-        {{ -0.5f,  0.5f,  0.5f }, {  0,  0,  1 }, { 0, 0 }},
-        // -Z (back)
-        {{  0.5f, -0.5f, -0.5f }, {  0,  0, -1 }, { 0, 1 }},
-        {{ -0.5f, -0.5f, -0.5f }, {  0,  0, -1 }, { 1, 1 }},
-        {{ -0.5f,  0.5f, -0.5f }, {  0,  0, -1 }, { 1, 0 }},
-        {{  0.5f,  0.5f, -0.5f }, {  0,  0, -1 }, { 0, 0 }},
-        // +X (right)
-        {{  0.5f, -0.5f,  0.5f }, {  1,  0,  0 }, { 0, 1 }},
-        {{  0.5f, -0.5f, -0.5f }, {  1,  0,  0 }, { 1, 1 }},
-        {{  0.5f,  0.5f, -0.5f }, {  1,  0,  0 }, { 1, 0 }},
-        {{  0.5f,  0.5f,  0.5f }, {  1,  0,  0 }, { 0, 0 }},
-        // -X (left)
-        {{ -0.5f, -0.5f, -0.5f }, { -1,  0,  0 }, { 0, 1 }},
-        {{ -0.5f, -0.5f,  0.5f }, { -1,  0,  0 }, { 1, 1 }},
-        {{ -0.5f,  0.5f,  0.5f }, { -1,  0,  0 }, { 1, 0 }},
-        {{ -0.5f,  0.5f, -0.5f }, { -1,  0,  0 }, { 0, 0 }},
+        // +Y (top)  tangent = +X
+        { .position={ -0.5f,  0.5f, -0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
+        { .position={  0.5f,  0.5f, -0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
+        { .position={  0.5f,  0.5f,  0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
+        { .position={ -0.5f,  0.5f,  0.5f }, .normal={ 0, 1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
+        // -Y (bottom)  tangent = +X
+        { .position={ -0.5f, -0.5f,  0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
+        { .position={  0.5f, -0.5f,  0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
+        { .position={  0.5f, -0.5f, -0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
+        { .position={ -0.5f, -0.5f, -0.5f }, .normal={ 0,-1, 0 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
+        // +Z (front)  tangent = +X
+        { .position={ -0.5f, -0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
+        { .position={  0.5f, -0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
+        { .position={  0.5f,  0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
+        { .position={ -0.5f,  0.5f,  0.5f }, .normal={ 0, 0, 1 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
+        // -Z (back)  tangent = -X
+        { .position={  0.5f, -0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 0, 1 }},
+        { .position={ -0.5f, -0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 1, 1 }},
+        { .position={ -0.5f,  0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 1, 0 }},
+        { .position={  0.5f,  0.5f, -0.5f }, .normal={ 0, 0,-1 }, .tangent={-1,0,0 }, .uv={ 0, 0 }},
+        // +X (right)  tangent = -Z
+        { .position={  0.5f, -0.5f,  0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 0, 1 }},
+        { .position={  0.5f, -0.5f, -0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 1, 1 }},
+        { .position={  0.5f,  0.5f, -0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 1, 0 }},
+        { .position={  0.5f,  0.5f,  0.5f }, .normal={ 1, 0, 0 }, .tangent={ 0,0,-1 }, .uv={ 0, 0 }},
+        // -X (left)  tangent = +Z
+        { .position={ -0.5f, -0.5f, -0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 0, 1 }},
+        { .position={ -0.5f, -0.5f,  0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 1, 1 }},
+        { .position={ -0.5f,  0.5f,  0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 1, 0 }},
+        { .position={ -0.5f,  0.5f, -0.5f }, .normal={-1, 0, 0 }, .tangent={ 0,0, 1 }, .uv={ 0, 0 }},
     };
 
     // 面ごとに 2 三角形 (DX11: CW = 表面, FrontCounterClockwise=FALSE)
@@ -82,10 +83,13 @@ std::shared_ptr<Mesh> PrimitiveMesh::Sphere(IRenderer& renderer, int segments)
             float cosTheta = std::cos(theta);
 
             math::Vector3 n = { sinPhi * cosTheta, cosPhi, sinPhi * sinTheta };
+            // tangent = dPos/dTheta 方向 (正規化)
+            math::Vector3 t = { -sinTheta, 0.0f, cosTheta };
             verts.push_back({
-                { n.x * 0.5f, n.y * 0.5f, n.z * 0.5f },
-                n,
-                { static_cast<float>(s) / segments, static_cast<float>(r) / rings }
+                .position = { n.x * 0.5f, n.y * 0.5f, n.z * 0.5f },
+                .normal   = n,
+                .tangent  = t,
+                .uv       = { static_cast<float>(s) / segments, static_cast<float>(r) / rings }
             });
         }
     }
@@ -111,10 +115,10 @@ std::shared_ptr<Mesh> PrimitiveMesh::Sphere(IRenderer& renderer, int segments)
 std::shared_ptr<Mesh> PrimitiveMesh::Plane(IRenderer& renderer)
 {
     const Vertex verts[] = {
-        {{ -0.5f, 0.0f,  0.5f }, { 0, 1, 0 }, { 0, 0 }},
-        {{  0.5f, 0.0f,  0.5f }, { 0, 1, 0 }, { 1, 0 }},
-        {{  0.5f, 0.0f, -0.5f }, { 0, 1, 0 }, { 1, 1 }},
-        {{ -0.5f, 0.0f, -0.5f }, { 0, 1, 0 }, { 0, 1 }},
+        { .position={ -0.5f, 0.0f,  0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
+        { .position={  0.5f, 0.0f,  0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
+        { .position={  0.5f, 0.0f, -0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
+        { .position={ -0.5f, 0.0f, -0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
     };
     const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
 
@@ -136,12 +140,12 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(IRenderer& renderer, int segments)
     // Top cap (normal (0,1,0))
     // winding: (center, ring[s+1], ring[s]) → cross = (0,+1,0) ✓
     uint32_t topCenter = (uint32_t)verts.size();
-    verts.push_back({{ 0.0f, 0.5f, 0.0f }, { 0,1,0 }, { 0.5f, 0.5f }});
+    verts.push_back({ .position={ 0.0f, 0.5f, 0.0f }, .normal={ 0,1,0 }, .uv={ 0.5f, 0.5f }});
     uint32_t topRing = (uint32_t)verts.size();
     for (int s = 0; s < segments; ++s) {
         float t = math::TWO_PI * s / segments;
         float c = std::cos(t), si = std::sin(t);
-        verts.push_back({{ c*r, 0.5f, si*r }, { 0,1,0 }, { c*0.5f+0.5f, si*0.5f+0.5f }});
+        verts.push_back({ .position={ c*r, 0.5f, si*r }, .normal={ 0,1,0 }, .uv={ c*0.5f+0.5f, si*0.5f+0.5f }});
     }
     for (int s = 0; s < segments; ++s) {
         idx.push_back(topCenter);
@@ -152,12 +156,12 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(IRenderer& renderer, int segments)
     // Bottom cap (normal (0,-1,0))
     // winding: (center, ring[s], ring[s+1]) → cross = (0,-1,0) ✓
     uint32_t botCenter = (uint32_t)verts.size();
-    verts.push_back({{ 0.0f, -0.5f, 0.0f }, { 0,-1,0 }, { 0.5f, 0.5f }});
+    verts.push_back({ .position={ 0.0f, -0.5f, 0.0f }, .normal={ 0,-1,0 }, .uv={ 0.5f, 0.5f }});
     uint32_t botRing = (uint32_t)verts.size();
     for (int s = 0; s < segments; ++s) {
         float t = math::TWO_PI * s / segments;
         float c = std::cos(t), si = std::sin(t);
-        verts.push_back({{ c*r, -0.5f, si*r }, { 0,-1,0 }, { c*0.5f+0.5f, -si*0.5f+0.5f }});
+        verts.push_back({ .position={ c*r, -0.5f, si*r }, .normal={ 0,-1,0 }, .uv={ c*0.5f+0.5f, -si*0.5f+0.5f }});
     }
     for (int s = 0; s < segments; ++s) {
         idx.push_back(botCenter);
@@ -165,19 +169,21 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(IRenderer& renderer, int segments)
         idx.push_back(botRing + (s + 1) % segments);
     }
 
-    // Side (outward normal (cos t, 0, sin t))
+    // Side (outward normal (cos t, 0, sin t), tangent = theta direction)
     // winding: (T_s, B_{s+1}, B_s) and (T_s, T_{s+1}, B_{s+1}) → cross = outward ✓
     uint32_t sideTop = (uint32_t)verts.size();
     for (int s = 0; s <= segments; ++s) {
         float t = math::TWO_PI * s / segments;
         float c = std::cos(t), si = std::sin(t);
-        verts.push_back({{ c*r, 0.5f, si*r }, { c,0,si }, { (float)s/segments, 0.0f }});
+        verts.push_back({ .position={ c*r, 0.5f, si*r }, .normal={ c,0,si },
+                          .tangent={ -si, 0, c }, .uv={ (float)s/segments, 0.0f }});
     }
     uint32_t sideBot = (uint32_t)verts.size();
     for (int s = 0; s <= segments; ++s) {
         float t = math::TWO_PI * s / segments;
         float c = std::cos(t), si = std::sin(t);
-        verts.push_back({{ c*r, -0.5f, si*r }, { c,0,si }, { (float)s/segments, 1.0f }});
+        verts.push_back({ .position={ c*r, -0.5f, si*r }, .normal={ c,0,si },
+                          .tangent={ -si, 0, c }, .uv={ (float)s/segments, 1.0f }});
     }
     for (int s = 0; s < segments; ++s) {
         uint32_t T0 = sideTop + s, T1 = sideTop + s + 1;
@@ -210,28 +216,31 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cone(IRenderer& renderer, int segments)
     for (int s = 0; s < segments; ++s) {
         float t0 = math::TWO_PI * s       / segments;
         float t1 = math::TWO_PI * (s + 1) / segments;
-        float tm = (t0 + t1) * 0.5f;  // midpoint angle for apex normal
+        float tm = (t0 + t1) * 0.5f;
 
         math::Vector3 apexN  = { std::cos(tm)*invSlopeLen, 0.5f*invSlopeLen, std::sin(tm)*invSlopeLen };
         math::Vector3 n0     = { std::cos(t0)*invSlopeLen, 0.5f*invSlopeLen, std::sin(t0)*invSlopeLen };
         math::Vector3 n1     = { std::cos(t1)*invSlopeLen, 0.5f*invSlopeLen, std::sin(t1)*invSlopeLen };
 
         uint32_t base = (uint32_t)verts.size();
-        verts.push_back({{ 0.0f,           0.5f, 0.0f          }, apexN, { tm / math::TWO_PI, 0.0f }});
-        verts.push_back({{ std::cos(t0)*r, -0.5f, std::sin(t0)*r }, n0,    { t0 / math::TWO_PI, 1.0f }});
-        verts.push_back({{ std::cos(t1)*r, -0.5f, std::sin(t1)*r }, n1,    { t1 / math::TWO_PI, 1.0f }});
+        verts.push_back({ .position={ 0.0f,           0.5f,            0.0f           }, .normal=apexN,
+                          .tangent={ -std::sin(tm), 0, std::cos(tm) }, .uv={ tm / math::TWO_PI, 0.0f }});
+        verts.push_back({ .position={ std::cos(t0)*r, -0.5f, std::sin(t0)*r }, .normal=n0,
+                          .tangent={ -std::sin(t0), 0, std::cos(t0) }, .uv={ t0 / math::TWO_PI, 1.0f }});
+        verts.push_back({ .position={ std::cos(t1)*r, -0.5f, std::sin(t1)*r }, .normal=n1,
+                          .tangent={ -std::sin(t1), 0, std::cos(t1) }, .uv={ t1 / math::TWO_PI, 1.0f }});
 
         idx.push_back(base); idx.push_back(base + 2); idx.push_back(base + 1);
     }
 
     // Bottom cap (normal (0,-1,0))
     uint32_t botCenter = (uint32_t)verts.size();
-    verts.push_back({{ 0.0f, -0.5f, 0.0f }, { 0,-1,0 }, { 0.5f, 0.5f }});
+    verts.push_back({ .position={ 0.0f, -0.5f, 0.0f }, .normal={ 0,-1,0 }, .uv={ 0.5f, 0.5f }});
     uint32_t botRing = (uint32_t)verts.size();
     for (int s = 0; s < segments; ++s) {
         float t = math::TWO_PI * s / segments;
         float c = std::cos(t), si = std::sin(t);
-        verts.push_back({{ c*r, -0.5f, si*r }, { 0,-1,0 }, { c*0.5f+0.5f, -si*0.5f+0.5f }});
+        verts.push_back({ .position={ c*r, -0.5f, si*r }, .normal={ 0,-1,0 }, .uv={ c*0.5f+0.5f, -si*0.5f+0.5f }});
     }
     for (int s = 0; s < segments; ++s) {
         idx.push_back(botCenter);
@@ -266,10 +275,13 @@ std::shared_ptr<Mesh> PrimitiveMesh::Torus(IRenderer& renderer, int segments)
             float theta    = math::TWO_PI * m / M;
             float cosTheta = std::cos(theta), sinTheta = std::sin(theta);
 
+            // tangent along the phi (major) direction
+            math::Vector3 t = { -sinPhi, 0.0f, cosPhi };
             verts.push_back({
-                { (R + r * cosTheta) * cosPhi,  r * sinTheta,  (R + r * cosTheta) * sinPhi },
-                { cosTheta * cosPhi,             sinTheta,       cosTheta * sinPhi },
-                { (float)n / N,                 (float)m / M }
+                .position = { (R + r * cosTheta) * cosPhi,  r * sinTheta,  (R + r * cosTheta) * sinPhi },
+                .normal   = { cosTheta * cosPhi,             sinTheta,       cosTheta * sinPhi },
+                .tangent  = t,
+                .uv       = { (float)n / N,  (float)m / M }
             });
         }
     }
@@ -317,9 +329,10 @@ std::shared_ptr<Mesh> PrimitiveMesh::Capsule(IRenderer& renderer, int segments)
             float cosT = std::cos(theta), sinT = std::sin(theta);
             math::Vector3 n = { sinPhi * cosT, cosPhi, sinPhi * sinT };
             verts.push_back({
-                { n.x * rcap, n.y * rcap + h, n.z * rcap },
-                n,
-                { (float)s / N, 1.0f - (float)r / M * 0.5f }
+                .position = { n.x * rcap, n.y * rcap + h, n.z * rcap },
+                .normal   = n,
+                .tangent  = { -sinT, 0.0f, cosT },
+                .uv       = { (float)s / N, 1.0f - (float)r / M * 0.5f }
             });
         }
     }
@@ -329,13 +342,15 @@ std::shared_ptr<Mesh> PrimitiveMesh::Capsule(IRenderer& renderer, int segments)
     for (int s = 0; s <= N; ++s) {
         float t = math::TWO_PI * s / N;
         float c = std::cos(t), si = std::sin(t);
-        verts.push_back({ { c*rcap, h, si*rcap }, { c,0,si }, { (float)s / N, 0.5f } });
+        verts.push_back({ .position={ c*rcap, h, si*rcap }, .normal={ c,0,si },
+                          .tangent={ -si, 0, c }, .uv={ (float)s / N, 0.5f } });
     }
     uint32_t cylBotStart = (uint32_t)verts.size();
     for (int s = 0; s <= N; ++s) {
         float t = math::TWO_PI * s / N;
         float c = std::cos(t), si = std::sin(t);
-        verts.push_back({ { c*rcap, -h, si*rcap }, { c,0,si }, { (float)s / N, 0.5f + 0.5f } });
+        verts.push_back({ .position={ c*rcap, -h, si*rcap }, .normal={ c,0,si },
+                          .tangent={ -si, 0, c }, .uv={ (float)s / N, 0.5f + 0.5f } });
     }
 
     // Bottom hemisphere (from equator to pole)
@@ -349,12 +364,11 @@ std::shared_ptr<Mesh> PrimitiveMesh::Capsule(IRenderer& renderer, int segments)
             float cosT = std::cos(theta), sinT = std::sin(theta);
             math::Vector3 n = { sinPhi * cosT, -cosPhi, sinPhi * sinT };
             verts.push_back({
-                { n.x * rcap, -n.y * 0.0f /*unused*/, n.z * rcap } ,
-                n,
-                { (float)s / N, 1.0f }
+                .position = { n.x * rcap, -cosPhi * rcap - h, n.z * rcap },
+                .normal   = n,
+                .tangent  = { -sinT, 0.0f, cosT },
+                .uv       = { (float)s / N, 1.0f }
             });
-            // correct position explicitly to match hemisphere center at -h
-            verts.back().position = { n.x * rcap, -cosPhi * rcap - h, n.z * rcap };
         }
     }
 

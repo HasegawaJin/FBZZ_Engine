@@ -13,6 +13,7 @@ namespace fbzz::renderer {
 struct Vertex {
     math::Vector3 position;
     math::Vector3 normal;
+    math::Vector3 tangent;
     math::Vector2 uv;
 };
 

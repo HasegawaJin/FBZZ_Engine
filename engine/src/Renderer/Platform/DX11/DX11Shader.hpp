@@ -31,8 +31,11 @@ public:
     // → assets/shaders/compiled/Phong.vs.cso / .ps.cso を読み込む
     bool Init(ID3D11Device* device, const std::string& path);
 
-    // VS / PS / InputLayout を IA・VS・PS ステージへ一括バインドする
+    // VS / PS / InputLayout を IA・VS・PS ステージへ一括バインドする (VS+PS シェーダー用)
     void Bind(ID3D11DeviceContext* context) const;
+
+    // Compute Shader を取得する (.cs.hlsl として Init されたシェーダーのみ非 null)
+    ID3D11ComputeShader* GetComputeShader() const { return m_computeShader.Get(); }
 
     const std::string& GetPath() const override { return m_path; }
 
@@ -43,10 +46,11 @@ private:
     // CSO ファイルをバイト列として読み込む (CreateVertexShader 等に渡すため)
     static std::vector<uint8_t>  LoadBinary(const std::string& filePath);
 
-    Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vertexShader;
-    Microsoft::WRL::ComPtr<ID3D11PixelShader>  m_pixelShader;
-    Microsoft::WRL::ComPtr<ID3D11InputLayout>  m_inputLayout;  // 頂点レイアウト定義
-    std::string                                m_path;
+    Microsoft::WRL::ComPtr<ID3D11VertexShader>  m_vertexShader;
+    Microsoft::WRL::ComPtr<ID3D11PixelShader>   m_pixelShader;
+    Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_computeShader;
+    Microsoft::WRL::ComPtr<ID3D11InputLayout>   m_inputLayout;
+    std::string                                 m_path;
 };
 
 } // namespace fbzz::renderer

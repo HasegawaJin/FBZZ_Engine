@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <memory>
 #include <engine/Renderer/IRenderTarget.hpp>
+#include "DX11Texture.hpp"
 
 namespace fbzz::renderer
 {
@@ -23,27 +24,47 @@ namespace fbzz::renderer
 class DX11RenderTarget : public IRenderTarget
 {
 public:
-    bool Init(ID3D11Device* device, uint32_t width, uint32_t height);
+    // colorCount: 同時出力カラーバッファ数 (0 = 深度専用, 最大 MAX_COLOR)
+    // 全スロット RGBA16_FLOAT で生成する (符号付き法線ベクトルも収容できる精度)
+    bool Init(ID3D11Device* device, uint32_t width, uint32_t height, uint32_t colorCount = 1);
 
-    uint32_t GetWidth()  const override { return m_width; }
-    uint32_t GetHeight() const override { return m_height; }
+    uint32_t GetWidth()      const override { return m_width; }
+    uint32_t GetHeight()     const override { return m_height; }
+    uint32_t GetColorCount() const override { return m_colorCount; }
 
-    // カラーバッファを ITexture として取得する (ポストプロセス等で SRV としてバインドする)
-    std::shared_ptr<ITexture> GetColorTexture() const override;
+    // index 枚目のカラーバッファを DX11Texture として返す (次パスで DrawCall::textures[] にセット)
+    std::shared_ptr<ITexture> GetColorTexture(uint32_t index = 0) const override;
 
-    // DX11Renderer::SetRenderTarget() が RTV をバインドする際に使用する
-    ID3D11RenderTargetView* GetRTV() const { return m_rtv.Get(); }
+    // 深度バッファを SRV として返す (シャドウマップ等、次パスで t8 にセット)
+    std::shared_ptr<ITexture> GetDepthTexture() const override;
+
+    // DX11Renderer::SetRenderTarget() が OMSetRenderTargets に渡す RTV 配列を取得する
+    void GetRTVs(ID3D11RenderTargetView** out, uint32_t& count) const;
+
+    // DX11Renderer が OMSetRenderTargets に渡す DSV を取得する (DX11 内部用)
+    ID3D11DepthStencilView* GetDSV() const { return m_dsv.Get(); }
+
+    // ImGui Viewport 用 SRV ポインタ (IRenderTarget 経由で IRenderer が取得する)
+    void* GetNativeSRV(int slot = 0) const override { return m_srv[slot].Get(); }
+
+    static constexpr uint32_t MAX_COLOR = 8;  // DX11 の MRT 上限
 
 private:
-    Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_colorBuffer;  // RTV + SRV 兼用テクスチャ
-    Microsoft::WRL::ComPtr<ID3D11RenderTargetView>   m_rtv;
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv;
 
-    // ITexture ラッパー: m_srv を ITexture::GetSRV() として公開するための薄い実装
-    std::shared_ptr<ITexture>                        m_colorTexture;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_colorBuffer[MAX_COLOR];
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView>   m_rtv[MAX_COLOR];
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv[MAX_COLOR];
+    std::shared_ptr<ITexture>                        m_colorTexture[MAX_COLOR];
 
-    uint32_t m_width  = 0;
-    uint32_t m_height = 0;
+    // 深度バッファ (全 RT で生成。colorCount=0 の場合はシャドウマップ専用)
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_depthBuffer;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView>   m_dsv;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_depthSRV;
+    std::shared_ptr<ITexture>                        m_depthTexture;
+
+    uint32_t m_colorCount = 0;
+    uint32_t m_width      = 0;
+    uint32_t m_height     = 0;
 };
 
 } // namespace fbzz::renderer

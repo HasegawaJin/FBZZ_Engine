@@ -5,68 +5,96 @@
 #include "DX11Texture.hpp"
 #include <engine/Core/Logger.hpp>
 #include <engine/Core/HResult.hpp>
+#include <cassert>
 
 namespace fbzz::renderer
 {
 
-bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height)
+bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height, uint32_t colorCount)
 {
-    m_width  = width;
-    m_height = height;
+    assert(colorCount <= MAX_COLOR);
+    m_width      = width;
+    m_height     = height;
+    m_colorCount = colorCount;
 
     // -------------------------------------------------------------------------
-    // カラーバッファ用テクスチャ
-    //   D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE を同時指定することで
-    //   「描画先として使いながら、別パスでサンプリングもできる」テクスチャになる。
-    //   フォーマット R8G8B8A8_UNORM はスワップチェーンと合わせて一般的な選択。
+    // カラーバッファ (colorCount=0 の深度専用 RT ではスキップ)
     // -------------------------------------------------------------------------
-    D3D11_TEXTURE2D_DESC texDesc = {};
-    texDesc.Width            = width;
-    texDesc.Height           = height;
-    texDesc.MipLevels        = 1;      // オフスクリーン RT はミップ不要
-    texDesc.ArraySize        = 1;
-    texDesc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
-    texDesc.SampleDesc.Count = 1;      // MSAA なし (将来対応の余地あり)
-    texDesc.Usage            = D3D11_USAGE_DEFAULT;
-    texDesc.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-
-    FBZZ_HR_CHECK(device->CreateTexture2D(&texDesc, nullptr, m_colorBuffer.GetAddressOf()));
-
-    // RTV: このテクスチャへ描画するために OM ステージにバインドする
-    FBZZ_HR_CHECK(device->CreateRenderTargetView(m_colorBuffer.Get(), nullptr, m_rtv.GetAddressOf()));
-
-    // SRV: 後段パスでシェーダーからサンプリングするために PS ステージにバインドする
-    FBZZ_HR_CHECK(device->CreateShaderResourceView(m_colorBuffer.Get(), nullptr, m_srv.GetAddressOf()));
-
-    // -------------------------------------------------------------------------
-    // ITexture ラッパー (RTTexture)
-    //   カラーバッファの SRV を ITexture として外部に渡すための最小実装クラス。
-    //   DX11Texture を継承せず ITexture を直接実装しているのは、
-    //   DX11Texture の Init() を経由せずに SRV を直接差し込みたいため。
-    //   このクラスは Init() のスコープ内に定義するが、make_shared で寿命を延ばすため
-    //   Init() 終了後も m_colorTexture 経由で生存する。
-    // -------------------------------------------------------------------------
-    class RTTexture : public ITexture
+    if (colorCount > 0)
     {
-    public:
-        RTTexture(ID3D11ShaderResourceView* srv, uint32_t w, uint32_t h)
-            : m_srv(srv), m_width(w), m_height(h) {}
-        uint32_t GetWidth()  const override { return m_width; }
-        uint32_t GetHeight() const override { return m_height; }
-        ID3D11ShaderResourceView* GetSRV() const { return m_srv; }
-    private:
-        ID3D11ShaderResourceView* m_srv;  // 非所有の参照 (寿命は m_srv ComPtr が管理)
-        uint32_t m_width, m_height;
-    };
+        D3D11_TEXTURE2D_DESC texDesc = {};
+        texDesc.Width            = width;
+        texDesc.Height           = height;
+        texDesc.MipLevels        = 1;
+        texDesc.ArraySize        = 1;
+        texDesc.Format           = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        texDesc.SampleDesc.Count = 1;
+        texDesc.Usage            = D3D11_USAGE_DEFAULT;
+        texDesc.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
-    m_colorTexture = std::make_shared<RTTexture>(m_srv.Get(), width, height);
+        for (uint32_t i = 0; i < colorCount; ++i)
+        {
+            FBZZ_HR_CHECK(device->CreateTexture2D(&texDesc, nullptr, m_colorBuffer[i].GetAddressOf()));
+            FBZZ_HR_CHECK(device->CreateRenderTargetView(m_colorBuffer[i].Get(), nullptr, m_rtv[i].GetAddressOf()));
+            FBZZ_HR_CHECK(device->CreateShaderResourceView(m_colorBuffer[i].Get(), nullptr, m_srv[i].GetAddressOf()));
+
+            auto tex = std::make_shared<DX11Texture>();
+            tex->InitFromSRV(m_srv[i].Get(), width, height);
+            m_colorTexture[i] = tex;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 深度バッファ (全 RT で生成)
+    //   R32_TYPELESS + DSV(D32_FLOAT) + SRV(R32_FLOAT) の組み合わせで
+    //   深度書き込みと SRV 読み取りを両立させる。
+    // -------------------------------------------------------------------------
+    D3D11_TEXTURE2D_DESC depthDesc = {};
+    depthDesc.Width            = width;
+    depthDesc.Height           = height;
+    depthDesc.MipLevels        = 1;
+    depthDesc.ArraySize        = 1;
+    depthDesc.Format           = DXGI_FORMAT_R32_TYPELESS;
+    depthDesc.SampleDesc.Count = 1;
+    depthDesc.Usage            = D3D11_USAGE_DEFAULT;
+    depthDesc.BindFlags        = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    FBZZ_HR_CHECK(device->CreateTexture2D(&depthDesc, nullptr, m_depthBuffer.GetAddressOf()));
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format        = DXGI_FORMAT_D32_FLOAT;
+    dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    FBZZ_HR_CHECK(device->CreateDepthStencilView(m_depthBuffer.Get(), &dsvDesc, m_dsv.GetAddressOf()));
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format                    = DXGI_FORMAT_R32_FLOAT;
+    srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels       = 1;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    FBZZ_HR_CHECK(device->CreateShaderResourceView(m_depthBuffer.Get(), &srvDesc, m_depthSRV.GetAddressOf()));
+
+    auto depthTex = std::make_shared<DX11Texture>();
+    depthTex->InitFromSRV(m_depthSRV.Get(), width, height);
+    m_depthTexture = depthTex;
 
     return true;
 }
 
-std::shared_ptr<ITexture> DX11RenderTarget::GetColorTexture() const
+std::shared_ptr<ITexture> DX11RenderTarget::GetColorTexture(uint32_t index) const
 {
-    return m_colorTexture;
+    assert(index < m_colorCount);
+    return m_colorTexture[index];
+}
+
+std::shared_ptr<ITexture> DX11RenderTarget::GetDepthTexture() const
+{
+    return m_depthTexture;
+}
+
+void DX11RenderTarget::GetRTVs(ID3D11RenderTargetView** out, uint32_t& count) const
+{
+    count = m_colorCount;
+    for (uint32_t i = 0; i < m_colorCount; ++i)
+        out[i] = m_rtv[i].Get();
 }
 
 } // namespace fbzz::renderer
