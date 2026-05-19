@@ -1,0 +1,31 @@
+// FBZZ Engine
+// PlayModeController.hpp | fbzz::editor
+// エディター内のゲームループ実行状態を管理する
+#pragma once
+#include <string>
+
+namespace fbzz::scene { class Scene; }
+
+namespace fbzz::editor {
+
+enum class PlayState { Editor, Playing, Paused };
+
+class PlayModeController {
+public:
+    // シーンを TOML スナップショットに保存してからゲームループを開始する
+    void Play(scene::Scene& scene);
+    void Pause();
+    // スナップショットからシーンを復元してエディターモードに戻る
+    void Stop(scene::Scene& scene);
+
+    PlayState GetState() const  { return m_state; }
+    bool IsPlaying()    const   { return m_state == PlayState::Playing; }
+    bool IsPaused()     const   { return m_state == PlayState::Paused; }
+    bool IsInEditor()   const   { return m_state == PlayState::Editor; }
+
+private:
+    PlayState   m_state    = PlayState::Editor;
+    std::string m_snapshot; // TOML 文字列でシーン状態を保存
+};
+
+} // namespace fbzz::editor

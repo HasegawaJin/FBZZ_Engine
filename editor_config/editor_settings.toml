@@ -1,0 +1,13 @@
+[camera]
+sensitivity = 0.30000001192092896
+speed = 5.0
+
+[scene]
+last_path = ''
+
+[snap]
+distance = 1.0
+enabled = false
+
+[view]
+show_grid = true

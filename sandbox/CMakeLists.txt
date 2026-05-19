@@ -25,6 +25,7 @@ add_dependencies(sandbox compile_shaders)
 
 target_link_libraries(sandbox
     PRIVATE
+        fbzz_editor
         fbzz_engine
         fbzz_physics
 )

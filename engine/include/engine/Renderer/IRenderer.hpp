@@ -63,6 +63,15 @@ namespace fbzz::renderer
 
         // サンプラー (詳細: sampler.md)
         virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
+
+        // ImGui 統合 — バックエンド依存を IRenderer に閉じ込める
+        // hwnd: Win32 ウィンドウハンドル (void* で受けて実装側でキャスト)
+        virtual void ImGuiInit(void* hwnd)      = 0;
+        virtual void ImGuiShutdown()            = 0;
+        virtual void ImGuiNewFrame()            = 0;
+        virtual void ImGuiRenderDrawData()      = 0;
+        // ImGui::Image() に渡すテクスチャ ID (DX11: SRV ポインタ)
+        virtual void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) = 0;
     };
 
 } // namespace fbzz::renderer

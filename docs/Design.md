@@ -28,8 +28,9 @@ FBZZ_Engine/
 ├── math/          独立ライブラリ。依存なし
 ├── physics/       math をリンク
 ├── engine/        physics / math をリンク
-├── sandbox/       動作確認・サンプル。engine をリンク
-├── third_party/   Assimp / DirectXTex
+├── editor/        engine をリンク。ImGui ベースのランタイムエディター
+├── sandbox/       動作確認・サンプル。engine / editor をリンク
+├── third_party/   Assimp / DirectXTex / Dear ImGui
 ├── cmake/         コンパイラオプション等
 └── docs/          設計ドキュメント
 ```
@@ -37,7 +38,7 @@ FBZZ_Engine/
 依存方向 (逆転禁止):
 
 ```
-sandbox → engine → physics → math
+sandbox → editor → engine → physics → math
 ```
 
 engine 内の namespace 依存方向:
@@ -48,6 +49,7 @@ asset → renderer
 audio → (独立)
 renderer → (独立)
 core → (独立)
+util → (独立)
 ```
 
 ---
@@ -85,17 +87,54 @@ engine/include/engine/
 │   ├── SceneManager.hpp
 │   ├── Components/
 │   │   ├── MeshRenderer.hpp
-│   │   └── RigidBodyComponent.hpp
+│   │   ├── RigidBodyComponent.hpp
+│   │   ├── ParticleEmitter.hpp
+│   │   └── SkyRenderer.hpp
 │   └── Systems/
 │       ├── TransformSystem.hpp
 │       ├── RenderSystem.hpp
 │       └── PhysicsSystem.hpp
 ├── Asset/
 │   ├── AssetManager.hpp
-│   ├── MeshImporter.hpp
-│   └── TextureImporter.hpp
+│   ├── Model.hpp
+│   └── ModelImporter.hpp
 └── Audio/
-    └── AudioSystem.hpp
+    ├── AudioSystem.hpp
+    ├── IAudioDevice.hpp
+    └── XAudio2Device.hpp
+```
+
+### Step 6 で追加
+
+詳細: [docs/editor/Design.md](editor/Design.md)
+
+```
+engine/include/engine/
+└── Util/
+    ├── FileSystem.hpp     パス解決・ファイル読み書き
+    └── StringUtils.hpp    wstring ↔ string 変換 (Win32 API 橋渡し)
+
+editor/
+├── CMakeLists.txt
+├── include/editor/
+│   ├── EditorApp.hpp
+│   ├── EditorContext.hpp
+│   └── Panels/
+│       ├── IPanel.hpp
+│       ├── SceneHierarchyPanel.hpp
+│       ├── InspectorPanel.hpp
+│       ├── ViewportPanel.hpp
+│       └── LightPanel.hpp
+└── src/
+    ├── EditorApp.cpp
+    └── Panels/
+        ├── SceneHierarchyPanel.cpp
+        ├── InspectorPanel.cpp
+        ├── ViewportPanel.cpp
+        └── LightPanel.cpp
+
+third_party/
+└── imgui/    Dear ImGui v1.91+ (docking ブランチ)
 ```
 
 ---
@@ -205,9 +244,27 @@ engine/include/engine/
 | 3 | Renderer 追加 (Mesh, Material, LightSystem) | [docs/renderer/Design.md](renderer/Design.md) |
 | 4 | MeshRenderer / RigidBodyComponent | [docs/scene/Design.md](scene/Design.md) |
 | 5 | TransformSystem / RenderSystem / PhysicsSystem | [docs/scene/Design.md](scene/Design.md) |
-| 6 | Asset System (AssetManager, MeshImporter, TextureImporter) | [docs/asset/Design.md](asset/Design.md) |
-| 7 | Audio System (AudioSystem) | [docs/audio/Design.md](audio/Design.md) |
-| 8 | sandbox: サンプルシーンで動作確認 | — |
+| 6 | Asset System (AssetManager, ModelImporter) | [docs/asset/Design.md](asset/Design.md) |
+| 7 | Audio System (AudioSystem, XAudio2Device) | [docs/audio/Design.md](audio/Design.md) |
+| 8 | ParticleEmitter / SkyRenderer / HLSL シェーダーライブラリ | — |
+| 9 | sandbox: サンプルシーンで動作確認 | — |
+
+---
+
+## Step 6 実装順
+
+詳細: [docs/editor/Design.md](editor/Design.md)
+
+| 順序 | タスク | 概要 |
+|------|--------|------|
+| 1 | engine/Util 整備 | `FileSystem`, `StringUtils` を `engine/Util/` に追加 |
+| 2 | ImGui セットアップ | `third_party/imgui` 追加、CMake 設定、`IRenderer` に `ImGuiInit` 等の仮想メソッドを追加、`DX11Renderer` に実装 |
+| 3 | EditorApp 骨格 | `EditorApp`, `EditorContext`, `IPanel` を作成、ドックスペースのみ表示 |
+| 4 | SceneHierarchyPanel | GameObject ツリー表示・選択 |
+| 5 | InspectorPanel | Transform 編集 (DragFloat3) |
+| 6 | LightPanel | DirectionalLight / PointLight / SpotLight 編集 |
+| 7 | ViewportPanel | `IRenderTarget` → `GetImTextureID` → `ImGui::Image` |
+| 8 | InspectorPanel 拡張 | Material / ParticleEmitter 編集 |
 
 ---
 

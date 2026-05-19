@@ -73,6 +73,13 @@ public:
     // スロット番号に対応するサンプラープリセットをバインドする
     void SetSampler(uint32_t slot, SamplerMode mode) override;
 
+    // ImGui バックエンド (imgui_impl_dx11 / imgui_impl_win32)
+    void  ImGuiInit(void* hwnd)   override;
+    void  ImGuiShutdown()         override;
+    void  ImGuiNewFrame()         override;
+    void  ImGuiRenderDrawData()   override;
+    void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) override;
+
     uint32_t GetWidth()  const override { return m_width;  }
     uint32_t GetHeight() const override { return m_height; }
 
