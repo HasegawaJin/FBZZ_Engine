@@ -70,7 +70,8 @@ float3 ComputeAtmosphericScattering(float3 rayDir, float3 sunDir,
 float3 SunDisk(float3 rayDir, float3 sunDir, float sunIntensity)
 {
     float cosAngle = dot(rayDir, sunDir);
-    float disk     = smoothstep(0.9998f, 0.9999f, cosAngle);
+    // 0.9994 ≒ cos(2°) : 実際の太陽 (~0.53°) より少し大きめにして視認しやすくする
+    float disk     = smoothstep(0.9994f, 0.9999f, cosAngle);
     return float3(1.0f, 0.95f, 0.8f) * sunIntensity * disk;
 }
 

@@ -57,7 +57,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float3 V      = normalize(cameraPos - worldPos);
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, worldPos,
-                                  lightViewProjection, shadowMapTexelSize, shadowBias);
+                                  lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
 
     float3 result = Lighting_PBR(N, V, L, col, met, rough,
                                  lightColor, lightIntensity, shadow, ao);
