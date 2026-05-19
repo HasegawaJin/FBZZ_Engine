@@ -173,6 +173,7 @@ public:
     static std::string GetFilename(const std::string& path);    // "scene.fbzz"
     static std::string GetDirectory(const std::string& path);   // "Assets/Scenes/"
     static std::vector<std::string> ListFiles(const std::string& dir, const std::string& ext = "");
+    static bool EnsureDirectory(const std::string& path);
     static bool ReadText(const std::string& path, std::string& out);
     static bool WriteText(const std::string& path, const std::string& text);
 };
@@ -186,9 +187,13 @@ namespace fbzz::util {
 class StringUtils {
 public:
     static bool        Contains(const std::string& s, const std::string& sub);
-    static bool        StartsWithCI(const std::string& s, const std::string& prefix); // case-insensitive
+    static bool        ContainsCI(const std::string& s, const std::string& sub);  // 大文字小文字無視
     static std::string ToLower(const std::string& s);
+    static std::string ToUpper(const std::string& s);
+    static bool        StartsWith(const std::string& s, const std::string& prefix);
+    static bool        EndsWith(const std::string& s, const std::string& suffix);
     static std::vector<std::string> Split(const std::string& s, char delim);
+    static std::string Trim(const std::string& s);
     static std::wstring ToWide(const std::string& s);    // Win32 API 用
     static std::string  ToNarrow(const std::wstring& s);
 };
@@ -214,8 +219,8 @@ struct EditorContext {
 
     // ビューポート
     bool  viewportFocused = false;
-    float viewportWidth   = 0.0f;
-    float viewportHeight  = 0.0f;
+    float viewportWidth   = 1280.0f;
+    float viewportHeight  = 720.0f;
 
     // ギズモ
     enum class GizmoMode  { Translate, Rotate, Scale };
@@ -229,16 +234,17 @@ struct EditorContext {
     bool  snapEnabled  = false;
     float snapDistance = 1.0f;
 
-    // 表示オプション
-    bool wireframeMode       = false;
-    bool showLightRange      = true;
-    bool showColliders       = false;
-    bool showSceneStats      = true;
+    // レンダリング設定 (RenderSystem に渡す)
+    renderer::RenderSettings renderSettings;
 
-    // Util（非所有）
-    UndoStack*           undoStack  = nullptr;
-    PlayModeController*  playMode   = nullptr;
-    NotificationSystem*  notifs     = nullptr;  // 省略可
+    // 表示オプション (エディター固有)
+    bool showLightRange = true;
+    bool showColliders  = false;
+    bool showSceneStats = true;
+
+    // Util (非所有)
+    UndoStack*          undoStack = nullptr;
+    PlayModeController* playMode  = nullptr;
 };
 ```
 
@@ -495,7 +501,7 @@ void DrawComponent(EditorContext& ctx, T& component);
 ```cpp
 class EditorApp {
 public:
-    bool Init(renderer::IRenderer& renderer, void* hwnd);
+    bool Init(renderer::IRenderer& renderer, core::Window& window);
     void Shutdown();
 
     void BeginFrame();                       // ImGui::NewFrame() + DockSpace
@@ -504,9 +510,13 @@ public:
 
     EditorContext& GetContext() { return m_ctx; }
 
+    // Viewport に紐づいたオフスクリーン RT (main.cpp はここに描く)
+    std::shared_ptr<renderer::IRenderTarget> GetViewportRT() const;
+
 private:
     void BuildMenuBar(EditorContext& ctx);
     void RegisterDefaultHotkeys();
+    void ResizeViewportRTIfNeeded();
 
     EditorContext                        m_ctx;
     std::vector<std::unique_ptr<IPanel>> m_panels;
@@ -515,6 +525,10 @@ private:
     PlayModeController                   m_playMode;
     ConsoleSink                          m_consoleSink;
     EditorSettings                       m_settings;
+
+    void*                                    m_hwnd          = nullptr;
+    renderer::IRenderer*                     m_renderer      = nullptr;
+    std::shared_ptr<renderer::IRenderTarget> m_viewportRT;
 };
 ```
 
