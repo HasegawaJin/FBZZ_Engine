@@ -70,7 +70,22 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
 {
     m_path = path;
 
-    const std::string base   = CompiledBase(path);
+    const std::string base = CompiledBase(path);
+
+    // .cs.hlsl は Compute Shader — VS/PS の代わりに単一 .cs.cso をロードする
+    const bool isCompute = (path.size() >= 8 &&
+                             path.substr(path.size() - 8) == ".cs.hlsl");
+    if (isCompute)
+    {
+        const std::string csPath = base + ".cso";
+        auto csBlob = LoadBinary(csPath);
+        if (csBlob.empty()) return false;
+
+        FBZZ_HR_CHECK(device->CreateComputeShader(
+            csBlob.data(), csBlob.size(), nullptr, m_computeShader.GetAddressOf()));
+        return true;
+    }
+
     const std::string vsPath = base + ".vs.cso";
     const std::string psPath = base + ".ps.cso";
 
@@ -179,12 +194,16 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
         }
 
         // --- (4) InputLayout オブジェクトを生成 ---
-        // vsBlob を渡すことで D3D11 が InputLayout と VS 入力シグネチャの整合を検証する。
-        // 不一致 (セマンティクス名の typo 等) はここで E_INVALIDARG として検出される。
-        FBZZ_HR_CHECK(device->CreateInputLayout(
-            inputElements.data(), static_cast<UINT>(inputElements.size()),
-            vsBlob.data(), vsBlob.size(),
-            m_inputLayout.GetAddressOf()));
+        // SV_VertexID のみ使う VS (Composite 等) は inputElements が空になる。
+        // NumElements=0 で CreateInputLayout を呼ぶと E_INVALIDARG になるため
+        // スキップして m_inputLayout を null のままにする。
+        // IASetInputLayout(nullptr) は DX11 で有効 (頂点入力なし)。
+        if (!inputElements.empty()) {
+            FBZZ_HR_CHECK(device->CreateInputLayout(
+                inputElements.data(), static_cast<UINT>(inputElements.size()),
+                vsBlob.data(), vsBlob.size(),
+                m_inputLayout.GetAddressOf()));
+        }
     }
 
     return true;

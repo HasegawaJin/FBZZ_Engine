@@ -20,7 +20,8 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
         D3D11_RASTERIZER_DESC rsDesc = {};
         rsDesc.FillMode              = (desc.rasterizer == RasterizerMode::WIREFRAME)
                                        ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID;
-        rsDesc.CullMode              = D3D11_CULL_BACK;
+        rsDesc.CullMode              = (desc.rasterizer == RasterizerMode::SOLID_NOCULL)
+                                       ? D3D11_CULL_NONE : D3D11_CULL_BACK;
         rsDesc.FrontCounterClockwise = FALSE;
         rsDesc.DepthClipEnable       = TRUE;  // ビューフラスタム外のジオメトリをクリップ
 
@@ -91,6 +92,12 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
             dsDesc.DepthEnable    = FALSE;
             dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
             dsDesc.DepthFunc      = D3D11_COMPARISON_ALWAYS;
+            break;
+
+        case DepthMode::DEPTH_SKY:
+            dsDesc.DepthEnable    = TRUE;
+            dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;   // 書き込みなし
+            dsDesc.DepthFunc      = D3D11_COMPARISON_LESS_EQUAL;   // z=w で最遠面に描画
             break;
 
         default: // DEPTH_ON

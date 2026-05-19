@@ -25,7 +25,8 @@ struct MaterialParams {
 class Material {
 public:
     std::shared_ptr<IShader>         shader;
-    std::shared_ptr<ITexture>        albedoTexture;  // nullptr = 単色
+    std::shared_ptr<ITexture>        albedoTexture;  // nullptr = 単色 (bit0)
+    std::shared_ptr<ITexture>        normalTexture;  // nullptr = 法線マップなし (bit1)
     std::shared_ptr<IConstantBuffer> paramsBuffer;
     MaterialParams                   params;
 

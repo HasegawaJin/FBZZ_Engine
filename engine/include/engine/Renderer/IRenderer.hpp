@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include "ComputeCall.hpp"
 #include "DrawCall.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
@@ -38,13 +39,27 @@ namespace fbzz::renderer
         // 描画 (DrawCall は完全自己完結)
         virtual void Submit(const DrawCall& call) = 0;
 
+        // Compute Shader ディスパッチ
+        // uavOutputs には CreateComputeTexture() で生成した ITexture を渡すこと
+        virtual void Dispatch(const ComputeCall& call) = 0;
+
+        // Compute Shader の UAV 出力先テクスチャを生成する (SRV + UAV の両用テクスチャ)
+        virtual std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) = 0;
+
         // ウィンドウリサイズ (Window::ResizeCallback から呼ぶ)
         virtual void Resize(uint32_t width, uint32_t height) = 0;
+
+        // 現在のバックバッファサイズ (リサイズ後も最新値を返す)
+        virtual uint32_t GetWidth()  const = 0;
+        virtual uint32_t GetHeight() const = 0;
 
         // オフスクリーン RT (詳細: render_target.md)
         // colorCount: 同時出力カラーバッファ数 (1=通常, 2=GBuffer 等 MRT)
         virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) = 0;
         virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;  // nullptr = バックバッファ
+
+        // 現在バインド中の RT の深度バッファのみクリアする (シャドウパス前に呼ぶ)
+        virtual void ClearDepth(float depth = 1.0f) = 0;
 
         // サンプラー (詳細: sampler.md)
         virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
