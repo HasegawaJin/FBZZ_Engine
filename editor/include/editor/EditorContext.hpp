@@ -3,6 +3,7 @@
 // パネル間で共有するエディター状態
 #pragma once
 #include <engine/Scene/Entity.hpp>
+#include <engine/Renderer/RenderSettings.hpp>
 #include <vector>
 
 namespace fbzz::scene    { class Scene; }
@@ -41,8 +42,10 @@ struct EditorContext {
     bool  snapEnabled  = false;
     float snapDistance = 1.0f;
 
-    // 表示オプション
-    bool wireframeMode  = false;
+    // レンダリング設定 (RenderSystem に渡す)
+    renderer::RenderSettings renderSettings;
+
+    // 表示オプション (エディター固有)
     bool showLightRange = true;
     bool showColliders  = false;
     bool showSceneStats = true;

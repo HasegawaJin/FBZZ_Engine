@@ -204,7 +204,19 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::MenuItem("Colliders",   nullptr, &ctx.showColliders);
         ImGui::MenuItem("Stats",       nullptr, &ctx.showSceneStats);
         ImGui::Separator();
-        ImGui::MenuItem("Wireframe",   nullptr, &ctx.wireframeMode);
+        ImGui::MenuItem("Wireframe",   nullptr, &ctx.renderSettings.wireframeMode);
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Post Process")) {
+            ImGui::MenuItem("Shadow",   nullptr, &ctx.renderSettings.shadowEnabled);
+            ImGui::MenuItem("Bloom",    nullptr, &ctx.renderSettings.bloomEnabled);
+            ImGui::MenuItem("Fog",      nullptr, &ctx.renderSettings.fogEnabled);
+            ImGui::MenuItem("FXAA",     nullptr, &ctx.renderSettings.fxaaEnabled);
+            ImGui::Separator();
+            ImGui::SliderFloat("Exposure",    &ctx.renderSettings.exposure,   0.1f, 4.0f);
+            ImGui::SliderFloat("Fog Density", &ctx.renderSettings.fogDensity, 0.0f, 1.0f);
+            ImGui::SliderFloat("Fog Far",     &ctx.renderSettings.fogFar,     1.0f, 100.0f);
+            ImGui::EndMenu();
+        }
         ImGui::EndMenu();
     }
 
