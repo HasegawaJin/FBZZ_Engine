@@ -5,6 +5,7 @@
 // Pass 2: HDR Forward (HDR RT → シャドウ + ライティング)
 // Pass 3: Composite  (HDR → ACES ToneMap → バックバッファ)
 #include "engine/Scene/Systems/RenderSystem.hpp"
+#include "engine/Renderer/RenderSettings.hpp"
 #include "engine/Core/Time.hpp"
 #include "engine/Scene/Scene.hpp"
 #include "engine/Scene/Components/MeshRenderer.hpp"
@@ -104,8 +105,11 @@ void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   const renderer::Camera& camera,
                   const renderer::LightSystem& lights,
-                  const std::shared_ptr<renderer::IRenderTarget>& outputRT)
+                  const std::shared_ptr<renderer::IRenderTarget>& outputRT,
+                  const renderer::RenderSettings* settings)
 {
+    static renderer::RenderSettings sDefaultSettings;
+    const renderer::RenderSettings& rs = settings ? *settings : sDefaultSettings;
     static auto shadowMapRT     = renderer.CreateRenderTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0);
     static auto shadowShader    = renderer::ShaderManager::Load("assets/shaders/Pipeline/ShadowMap.hlsl");
     static auto compositeShader = renderer::ShaderManager::Load("assets/shaders/PostProcess/Composite.hlsl");
@@ -118,6 +122,11 @@ void RenderSystem(Scene& scene,
     static auto postprocCB      = renderer.CreateConstantBuffer(sizeof(PostProcCB));
     static auto pso             = renderer.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::OPAQUE,
+        renderer::DepthMode::DEPTH_ON
+    });
+    static auto wireframePso    = renderer.CreatePipelineState({
+        renderer::RasterizerMode::WIREFRAME,
         renderer::BlendMode::OPAQUE,
         renderer::DepthMode::DEPTH_ON
     });
@@ -196,31 +205,33 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     // Pass 1: Shadow Map — ライト視点から深度のみ書き込む
     // =========================================================================
-    renderer.SetRenderTarget(shadowMapRT);
-    renderer.ClearDepth();
+    if (rs.shadowEnabled)
+    {
+        renderer.SetRenderTarget(shadowMapRT);
+        renderer.ClearDepth();
 
-    // ライトの VP を b0 の viewProjection スロットにセット
-    PerFrameCB lightFrameData{};
-    lightFrameData.viewProjection = lightVP;
-    frameCB->Update(&lightFrameData, sizeof(PerFrameCB));
+        PerFrameCB lightFrameData{};
+        lightFrameData.viewProjection = lightVP;
+        frameCB->Update(&lightFrameData, sizeof(PerFrameCB));
 
-    for (auto [tf, mr] : scene.View<Transform, MeshRenderer>()) {
-        if (!mr.enabled || !mr.mesh || !mr.material) continue;
-        if (!mr.mesh->vertexBuffer || !mr.mesh->indexBuffer) continue;
+        for (auto [tf, mr] : scene.View<Transform, MeshRenderer>()) {
+            if (!mr.enabled || !mr.mesh || !mr.material) continue;
+            if (!mr.mesh->vertexBuffer || !mr.mesh->indexBuffer) continue;
 
-        PerObjectCB objData{};
-        objData.world = tf.GetWorldMatrix();
-        objectCB->Update(&objData, sizeof(PerObjectCB));
+            PerObjectCB objData{};
+            objData.world = tf.GetWorldMatrix();
+            objectCB->Update(&objData, sizeof(PerObjectCB));
 
-        renderer::DrawCall dc;
-        dc.vertexBuffer       = mr.mesh->vertexBuffer;
-        dc.indexBuffer        = mr.mesh->indexBuffer;
-        dc.indexCount         = mr.mesh->indexCount;
-        dc.shader             = shadowShader;
-        dc.pipelineState      = pso;
-        dc.constantBuffers[0] = frameCB;
-        dc.constantBuffers[1] = objectCB;
-        renderer.Submit(dc);
+            renderer::DrawCall dc;
+            dc.vertexBuffer       = mr.mesh->vertexBuffer;
+            dc.indexBuffer        = mr.mesh->indexBuffer;
+            dc.indexCount         = mr.mesh->indexCount;
+            dc.shader             = shadowShader;
+            dc.pipelineState      = pso;
+            dc.constantBuffers[0] = frameCB;
+            dc.constantBuffers[1] = objectCB;
+            renderer.Submit(dc);
+        }
     }
 
     // =========================================================================
@@ -271,7 +282,7 @@ void RenderSystem(Scene& scene,
         dc.indexCount         = mr.mesh->indexCount;
         dc.vertexCount        = mr.mesh->vertexCount;
         dc.shader             = mr.material->shader;
-        dc.pipelineState      = pso;
+        dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
         dc.constantBuffers[0] = frameCB;
         dc.constantBuffers[1] = objectCB;
         dc.constantBuffers[2] = mr.material->paramsBuffer;
@@ -417,7 +428,7 @@ void RenderSystem(Scene& scene,
     // Pass 3a: Bloom Downsample — HDR → 半解像度 Bloom テクスチャ
     // Pass 3b: Bloom Upsample  — 半解像度 → フル解像度 (テントフィルタ)
     // =========================================================================
-    if (bloomDownShader && bloomUpShader && bloomHalf && bloomFull)
+    if (rs.bloomEnabled && bloomDownShader && bloomUpShader && bloomHalf && bloomFull)
     {
         // Downsample: 入力 HDR (SRV) → bloomHalf (UAV)
         PostProcCB halfData{};
@@ -458,20 +469,21 @@ void RenderSystem(Scene& scene,
 
     // =========================================================================
     // Pass 4: Composite — HDR + Bloom → ACES ToneMap → LDR バッファ
+    //         FXAA 無効時はそのまま outputRT へ出力
     // =========================================================================
-    renderer.SetRenderTarget(ldrRT);
+    renderer.SetRenderTarget(rs.fxaaEnabled ? ldrRT : outputRT);
 
     PostProcCB postData{};
     postData.texelSize[0]  = 1.0f / static_cast<float>(sHdrW);
     postData.texelSize[1]  = 1.0f / static_cast<float>(sHdrH);
     postData.screenSize[0] = static_cast<float>(sHdrW);
     postData.screenSize[1] = static_cast<float>(sHdrH);
-    postData.exposure      = 1.0f;
-    postData.fogDensity    = 0.06f;
-    postData.fogFar        = 10.0f;
-    postData.fogColor[0]   = 0.01f;
-    postData.fogColor[1]   = 0.01f;
-    postData.fogColor[2]   = 0.04f;
+    postData.exposure      = rs.exposure;
+    postData.fogDensity    = rs.fogEnabled ? rs.fogDensity : 0.0f;
+    postData.fogFar        = rs.fogFar;
+    postData.fogColor[0]   = rs.fogColor[0];
+    postData.fogColor[1]   = rs.fogColor[1];
+    postData.fogColor[2]   = rs.fogColor[2];
     postprocCB->Update(&postData, sizeof(PostProcCB));
 
     renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
@@ -484,13 +496,13 @@ void RenderSystem(Scene& scene,
     compositeDC.constantBuffers[5] = postprocCB;
     compositeDC.textures[5]        = hdrRT->GetColorTexture(0);
     compositeDC.textures[7]        = hdrRT->GetDepthTexture();
-    compositeDC.textures[10]       = bloomFull;  // TEX_BLOOM = t10
+    compositeDC.textures[10]       = rs.bloomEnabled ? bloomFull : nullptr;
     renderer.Submit(compositeDC);
 
     // =========================================================================
     // Pass 5: FXAA — LDR バッファのエッジをアンチエイリアシング → バックバッファ
     // =========================================================================
-    if (fxaaShader && ldrRT)
+    if (rs.fxaaEnabled && fxaaShader && ldrRT)
     {
         renderer.SetRenderTarget(outputRT);
 
@@ -498,7 +510,7 @@ void RenderSystem(Scene& scene,
         fxaaDC.shader             = fxaaShader;
         fxaaDC.pipelineState      = postprocPSO;
         fxaaDC.vertexCount        = 3;
-        fxaaDC.constantBuffers[5] = postprocCB;  // texelSize を参照
+        fxaaDC.constantBuffers[5] = postprocCB;
         fxaaDC.textures[5]        = ldrRT->GetColorTexture(0);
         renderer.Submit(fxaaDC);
     }
