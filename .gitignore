@@ -39,6 +39,9 @@ third_party/ImGui/
 !third_party/**/*.dll
 !third_party/**/*.exp
 
+# imgui.ini (ImGui の設定ファイル)
+imgui.ini
+
 # コンパイル済みシェーダー (dxc でビルド時生成)
 assets/shaders/compiled/
 
