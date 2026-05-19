@@ -13,18 +13,37 @@
 namespace fbzz::renderer
 {
 
-// "assets/shaders/Phong.hlsl" → "assets/shaders/compiled/Phong"
-// ファイル名のステム (拡張子を除いた部分) を compiled/ サブディレクトリへ移す。
-// 実際のシェーダーファイルは CMake のビルドステップで事前コンパイルして配置する前提。
+// "assets/shaders/Mesh.hlsl"         → "assets/shaders/compiled/Mesh"
+// "assets/shaders/Material/PBR.hlsl" → "assets/shaders/compiled/Material.PBR"
+// shaders/ アンカーより後の相対パス (拡張子除く) の区切り文字を '.' に変換して
+// assets/shaders/compiled/ 以下に配置されたプリコンパイル済み CSO を指す。
 std::string DX11Shader::CompiledBase(const std::string& path)
 {
-    size_t slash = path.find_last_of("/\\");
-    size_t dot   = path.find_last_of('.');
+    const std::string anchor = "shaders/";
+    size_t a = path.find(anchor);
 
-    std::string dir  = (slash != std::string::npos) ? path.substr(0, slash + 1) : "";
-    std::string stem = path.substr(slash + 1, dot - slash - 1);
+    if (a == std::string::npos)
+    {
+        // フォールバック: 旧ロジック (shaders/ が見つからない場合)
+        size_t slash = path.find_last_of("/\\");
+        size_t dot   = path.find_last_of('.');
+        std::string dir  = (slash != std::string::npos) ? path.substr(0, slash + 1) : "";
+        std::string stem = path.substr(slash + 1, dot - slash - 1);
+        return dir + "compiled/" + stem;
+    }
 
-    return dir + "compiled/" + stem;
+    std::string base = path.substr(0, a + anchor.size()); // "assets/shaders/"
+    std::string rel  = path.substr(a + anchor.size());    // "Material/PBR.hlsl"
+
+    // 拡張子を除去
+    size_t dot = rel.find_last_of('.');
+    if (dot != std::string::npos) rel = rel.substr(0, dot); // "Material/PBR"
+
+    // パス区切り文字を '.' に変換 → "Material.PBR"
+    for (char& c : rel)
+        if (c == '/' || c == '\\') c = '.';
+
+    return base + "compiled/" + rel; // "assets/shaders/compiled/Material.PBR"
 }
 
 // CSO バイナリを読み込んで std::vector<uint8_t> で返す。
@@ -51,7 +70,22 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
 {
     m_path = path;
 
-    const std::string base   = CompiledBase(path);
+    const std::string base = CompiledBase(path);
+
+    // .cs.hlsl は Compute Shader — VS/PS の代わりに単一 .cs.cso をロードする
+    const bool isCompute = (path.size() >= 8 &&
+                             path.substr(path.size() - 8) == ".cs.hlsl");
+    if (isCompute)
+    {
+        const std::string csPath = base + ".cso";
+        auto csBlob = LoadBinary(csPath);
+        if (csBlob.empty()) return false;
+
+        FBZZ_HR_CHECK(device->CreateComputeShader(
+            csBlob.data(), csBlob.size(), nullptr, m_computeShader.GetAddressOf()));
+        return true;
+    }
+
     const std::string vsPath = base + ".vs.cso";
     const std::string psPath = base + ".ps.cso";
 
@@ -160,12 +194,16 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
         }
 
         // --- (4) InputLayout オブジェクトを生成 ---
-        // vsBlob を渡すことで D3D11 が InputLayout と VS 入力シグネチャの整合を検証する。
-        // 不一致 (セマンティクス名の typo 等) はここで E_INVALIDARG として検出される。
-        FBZZ_HR_CHECK(device->CreateInputLayout(
-            inputElements.data(), static_cast<UINT>(inputElements.size()),
-            vsBlob.data(), vsBlob.size(),
-            m_inputLayout.GetAddressOf()));
+        // SV_VertexID のみ使う VS (Composite 等) は inputElements が空になる。
+        // NumElements=0 で CreateInputLayout を呼ぶと E_INVALIDARG になるため
+        // スキップして m_inputLayout を null のままにする。
+        // IASetInputLayout(nullptr) は DX11 で有効 (頂点入力なし)。
+        if (!inputElements.empty()) {
+            FBZZ_HR_CHECK(device->CreateInputLayout(
+                inputElements.data(), static_cast<UINT>(inputElements.size()),
+                vsBlob.data(), vsBlob.size(),
+                m_inputLayout.GetAddressOf()));
+        }
     }
 
     return true;

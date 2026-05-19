@@ -145,6 +145,12 @@ MSVC の環境変数 (vcvarsall.bat) が設定されていないためコンパ�
 - 実行: VS のデバッガー or 生成された `.exe` を直接起動
 - Claude がビルド結果を確認する必要がある場合は、ユーザーにビルドを依頼してエラー出力を貼ってもらう
 
+#### VS 更新後に CMake Configure が失敗する場合
+
+`CMAKE_CXX_COMPILER` のフルパスが cmake キャッシュに残るため、VS (MSVC ツールセット) を更新すると古いパスを参照してエラーになる。  
+対処: `build/debug/` と `build/release/` を削除してから VS Code で再 Configure する。  
+VS Code CMake Tools の場合は `...` → **Delete Cache and Reconfigure**。
+
 ### トークン節約ルール
 
 - ファイルを読む前に Grep / Glob でファイルを特定する
@@ -161,8 +167,9 @@ MSVC の環境変数 (vcvarsall.bat) が設定されていないためコンパ�
 Step 0  ビルド環境・Application ループ         完了
 Step 1  Win32 ウィンドウ表示 + DX11 初期化     完了
 Step 2  三角形描画 (頂点バッファ, シェーダー)   完了
-Step 3  デバッグ描画 (線, 矩形, 円)             未着手    ← 現在地
-Step 4  物理エンジン (重力, 衝突)               未着手
-Step 5  シーン管理 (GameObject / Component)     未着手
-Step 6  DX12 / レイトレーシング移行             未着手
+Step 3  デバッグ描画 (線, 矩形, 円)             完了
+Step 4  物理エンジン (重力, 衝突)               完了
+Step 5  シーン管理 (GameObject / Component)     完了
+Step 6  DX12 / レイトレーシング移行             延期
+Step 7  ImGui Editor
 ```

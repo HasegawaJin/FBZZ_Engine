@@ -6,24 +6,27 @@
 #include "IShader.hpp"
 #include "ITexture.hpp"
 #include "IConstantBuffer.hpp"
+#include <cstdint>
 #include <math/Vector4.hpp>
 
 namespace fbzz::renderer {
 
 class IRenderer;
 
+// Constants.hlsli の MaterialConstants (b2) と一致させること
 struct MaterialParams {
-    math::Vector4 albedo       = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float         metallic     = 0.0f;
-    float         roughness    = 0.8f;
-    float         hasAlbedoTex = 0.0f;  // 1.0 = albedoTexture あり、0.0 = 単色
-    float         _pad         = 0.0f;
+    math::Vector4 albedo        = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float         metallic      = 0.0f;
+    float         roughness     = 0.8f;
+    float         emissiveScale = 0.0f;
+    uint32_t      textureMask   = 0;  // bit0=albedo, bit1=normal, bit2=metalRough, bit3=emissive
 };
 
 class Material {
 public:
     std::shared_ptr<IShader>         shader;
-    std::shared_ptr<ITexture>        albedoTexture;  // nullptr = 単色
+    std::shared_ptr<ITexture>        albedoTexture;  // nullptr = 単色 (bit0)
+    std::shared_ptr<ITexture>        normalTexture;  // nullptr = 法線マップなし (bit1)
     std::shared_ptr<IConstantBuffer> paramsBuffer;
     MaterialParams                   params;
 

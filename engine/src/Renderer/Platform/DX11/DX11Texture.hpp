@@ -26,14 +26,24 @@ public:
     // path: PNG / JPG / BMP / TGA / DDS いずれも受け付ける
     bool Init(ID3D11Device* device, ID3D11DeviceContext* context, const std::string& path);
 
+    // 既存 SRV から直接初期化する (DX11RenderTarget が GetColorTexture() 用に使用)
+    void InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height);
+
+    // RGBA16F テクスチャを SRV + UAV 両用で生成する (Compute Shader の出力先として使用)
+    bool InitForCompute(ID3D11Device* device, uint32_t width, uint32_t height);
+
     uint32_t GetWidth()  const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
 
-    // PSSetShaderResources に渡す SRV (Submit 時に DX11Renderer がアクセスする)
-    ID3D11ShaderResourceView* GetSRV() const { return m_srv.Get(); }
+    // PSSetShaderResources / CSSetShaderResources に渡す SRV
+    ID3D11ShaderResourceView*  GetSRV() const { return m_srv.Get(); }
+
+    // CSSetUnorderedAccessViews に渡す UAV (InitForCompute で生成した場合のみ非 null)
+    ID3D11UnorderedAccessView* GetUAV() const { return m_uav.Get(); }
 
 private:
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_srv;
+    Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_uav;
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
 };
