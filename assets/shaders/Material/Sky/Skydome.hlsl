@@ -1,10 +1,11 @@
 // FBZZ Engine
 // Skydome.hlsl | Material/Sky
-// Rayleigh + Mie 大気散乱による手続き型スカイドーム
+// Rayleigh + Mie 大気散乱 + FBM 手続き型雲
 
 #include "Common/Constants.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Atmosphere.hlsli"
+#include "Rendering/Cloud.hlsli"
 #include "Rendering/ToneMap.hlsli"
 
 struct SkyVSInput
@@ -31,16 +32,29 @@ SkyPSInput VSMain(SkyVSInput v)
 float4 PSMain(SkyPSInput p) : SV_Target0
 {
     float3 ray    = normalize(p.rayDir);
-    float3 sunDir = normalize(-lightDir);
+    float3 sunDir = normalize(-lightDir);  // DirectionalLight の向きを反転して太陽方向へ
 
+    // sunIntensity (AtmosphereConstants) を lightIntensity でスケール:
+    // 昼間 lightIntensity≈1.5 なら明るい青空、夜間 ≈0.15 なら暗い空になる
+    float scaled = sunIntensity * lightIntensity;
+
+    // 大気散乱 + 太陽ディスク
     float3 sky = ComputeAtmosphericScattering(
         ray, sunDir,
         rayleighScattering, mieScattering, mieG,
-        sunIntensity);
-    sky += SunDisk(ray, sunDir, sunIntensity);
+        scaled);
+    sky += SunDisk(ray, sunDir, scaled);
 
-    // Skydome 自身でトーンマップして LDR に落とす
+    // lightColor で空全体をティント (月光なら青白く、夕焼けなら橙色になる)
+    sky *= lightColor;
+
+    // 雲レイヤー (地平線より上のみサンプル)
+    if (ray.y > 0.0f)
+    {
+        float4 cloud = ComputeCloud(ray, sunDir, sky, time, scaled);
+        sky = lerp(sky, cloud.rgb, cloud.a);
+    }
+
     sky = ToneMap_ACES(sky * exposure);
-
     return float4(sky, 1.0f);
 }
