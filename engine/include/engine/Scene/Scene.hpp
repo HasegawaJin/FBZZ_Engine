@@ -7,7 +7,9 @@
 #include "Transform.hpp"
 #include "GameObject.hpp"
 #include "Components/MeshRenderer.hpp"
+#include "Components/ParticleEmitter.hpp"
 #include "Components/RigidBodyComponent.hpp"
+#include "Components/SkyRenderer.hpp"
 #include <vector>
 #include <memory>
 #include <string>
@@ -100,7 +102,9 @@ private:
 
     // Component 配列
     ComponentArray<MeshRenderer>       m_meshRenderers;
+    ComponentArray<ParticleEmitter>    m_particleEmitters;
     ComponentArray<RigidBodyComponent> m_rigidBodies;
+    ComponentArray<SkyRenderer>        m_skyRenderers;
 
     // delay 付き Destroy キュー
     struct DestroyEntry { EntityID id; float delay; };
@@ -159,8 +163,12 @@ public:
                 return scene.GetGameObject(id) != nullptr;
             else if constexpr (std::is_same_v<T, MeshRenderer>)
                 return scene.m_meshRenderers.Has(id);
+            else if constexpr (std::is_same_v<T, ParticleEmitter>)
+                return scene.m_particleEmitters.Has(id);
             else if constexpr (std::is_same_v<T, RigidBodyComponent>)
                 return scene.m_rigidBodies.Has(id);
+            else if constexpr (std::is_same_v<T, SkyRenderer>)
+                return scene.m_skyRenderers.Has(id);
             else
                 static_assert(AlwaysFalse<T>, "Component type not registered in SceneView");
         }
@@ -171,8 +179,12 @@ public:
                 return scene.GetGameObject(id)->transform;
             else if constexpr (std::is_same_v<T, MeshRenderer>)
                 return scene.m_meshRenderers.Get(id);
+            else if constexpr (std::is_same_v<T, ParticleEmitter>)
+                return scene.m_particleEmitters.Get(id);
             else if constexpr (std::is_same_v<T, RigidBodyComponent>)
                 return scene.m_rigidBodies.Get(id);
+            else if constexpr (std::is_same_v<T, SkyRenderer>)
+                return scene.m_skyRenderers.Get(id);
             else
                 static_assert(AlwaysFalse<T>, "Component type not registered in SceneView");
         }
@@ -240,9 +252,15 @@ T& Scene::AddComponent(EntityID id, T component) {
     if constexpr (std::is_same_v<T, MeshRenderer>) {
         m_meshRenderers.Add(id, std::move(component));
         return m_meshRenderers.Get(id);
+    } else if constexpr (std::is_same_v<T, ParticleEmitter>) {
+        m_particleEmitters.Add(id, std::move(component));
+        return m_particleEmitters.Get(id);
     } else if constexpr (std::is_same_v<T, RigidBodyComponent>) {
         m_rigidBodies.Add(id, std::move(component));
         return m_rigidBodies.Get(id);
+    } else if constexpr (std::is_same_v<T, SkyRenderer>) {
+        m_skyRenderers.Add(id, std::move(component));
+        return m_skyRenderers.Get(id);
     } else {
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
     }
@@ -253,8 +271,12 @@ T* Scene::GetComponent(EntityID id) {
     if (!IsValid(id)) return nullptr;
     if constexpr (std::is_same_v<T, MeshRenderer>)
         return m_meshRenderers.Has(id) ? &m_meshRenderers.Get(id) : nullptr;
+    else if constexpr (std::is_same_v<T, ParticleEmitter>)
+        return m_particleEmitters.Has(id) ? &m_particleEmitters.Get(id) : nullptr;
     else if constexpr (std::is_same_v<T, RigidBodyComponent>)
         return m_rigidBodies.Has(id) ? &m_rigidBodies.Get(id) : nullptr;
+    else if constexpr (std::is_same_v<T, SkyRenderer>)
+        return m_skyRenderers.Has(id) ? &m_skyRenderers.Get(id) : nullptr;
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
@@ -264,8 +286,12 @@ bool Scene::HasComponent(EntityID id) const {
     if (!IsValid(id)) return false;
     if constexpr (std::is_same_v<T, MeshRenderer>)
         return m_meshRenderers.Has(id);
+    else if constexpr (std::is_same_v<T, ParticleEmitter>)
+        return m_particleEmitters.Has(id);
     else if constexpr (std::is_same_v<T, RigidBodyComponent>)
         return m_rigidBodies.Has(id);
+    else if constexpr (std::is_same_v<T, SkyRenderer>)
+        return m_skyRenderers.Has(id);
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
@@ -274,8 +300,12 @@ template<typename T>
 void Scene::RemoveComponent(EntityID id) {
     if constexpr (std::is_same_v<T, MeshRenderer>)
         m_meshRenderers.Remove(id);
+    else if constexpr (std::is_same_v<T, ParticleEmitter>)
+        m_particleEmitters.Remove(id);
     else if constexpr (std::is_same_v<T, RigidBodyComponent>)
         m_rigidBodies.Remove(id);
+    else if constexpr (std::is_same_v<T, SkyRenderer>)
+        m_skyRenderers.Remove(id);
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
@@ -284,8 +314,12 @@ template<typename T>
 std::span<const EntityID> Scene::GetEntities() const {
     if constexpr (std::is_same_v<T, MeshRenderer>)
         return m_meshRenderers.Entities();
+    else if constexpr (std::is_same_v<T, ParticleEmitter>)
+        return m_particleEmitters.Entities();
     else if constexpr (std::is_same_v<T, RigidBodyComponent>)
         return m_rigidBodies.Entities();
+    else if constexpr (std::is_same_v<T, SkyRenderer>)
+        return m_skyRenderers.Entities();
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
