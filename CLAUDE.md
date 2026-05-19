@@ -167,8 +167,8 @@ VS Code CMake Tools の場合は `...` → **Delete Cache and Reconfigure**。
 Step 0  ビルド環境・Application ループ         完了
 Step 1  Win32 ウィンドウ表示 + DX11 初期化     完了
 Step 2  三角形描画 (頂点バッファ, シェーダー)   完了
-Step 3  デバッグ描画 (線, 矩形, 円)             未着手    ← 現在地
-Step 4  物理エンジン (重力, 衝突)               未着手
-Step 5  シーン管理 (GameObject / Component)     未着手
-Step 6  DX12 / レイトレーシング移行             未着手
+Step 3  デバッグ描画 (線, 矩形, 円)             完了
+Step 4  物理エンジン (重力, 衝突)               完了
+Step 5  シーン管理 (GameObject / Component)     完了
+Step 6  DX12 / レイトレーシング移行             未着手　← 現在地
 ```

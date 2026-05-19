@@ -14,8 +14,10 @@ C++20 自作 3D ゲームエンジン。数学・物理エンジンを自作し�
 | 2 | 三角形描画 (頂点バッファ・シェーダー) | **完了** |
 | 3 | デバッグ描画 (DebugDraw) | **完了** |
 | 4 | 物理エンジン (重力・衝突) | **完了** |
-| 5 | シーン管理 (Scene / Entity / Component / System) | **現在地** |
-| 6 | DX12 / Render Graph 移行 | 未着手 |
+| 5 | シーン管理 (Scene / Entity / Component / System) | **完了** |
+| 5.5 | HLSL シェーダーライブラリ (PBR / Shadow / Bloom / FXAA / Particle) | **完了** |
+| 6 | ImGui エディター (SceneHierarchy / Inspector / Viewport / Light) | **現在地** |
+| 7 | DX12 / Render Graph 移行 | 未着手 |
 
 ---
 
@@ -186,7 +188,8 @@ engine/include/engine/
 | DirectXTex | テクスチャ読み込み | Step 2 |
 | Assimp | メッシュ読み込み | Step 5 |
 | XAudio2 | オーディオ再生 | Step 5 |
-| DirectX 12 SDK | レイトレーシング | Step 6 |
+| Dear ImGui (docking) | エディター UI | Step 6 |
+| DirectX 12 SDK | レイトレーシング | Step 7 |
 | `Microsoft::WRL::ComPtr` | COM リソース管理 | Step 1 |
 
 ---
