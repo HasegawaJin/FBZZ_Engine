@@ -332,7 +332,7 @@ int main()
         renderer.BeginFrame();
 
         if (auto* activeScene = sm.GetActive())
-            scene::RenderSystem(*activeScene, renderer, debugCamera.camera, lights, vpRT);
+            scene::RenderSystem(*activeScene, renderer, debugCamera.camera, lights, vpRT, &editorApp.GetContext().renderSettings);
 
         renderer::DebugDraw::BeginFrame(renderer, debugCamera.camera.GetViewProjection());
         renderer::DebugDraw::Line(renderer, {0,0,0}, {1,0,0}, {1,0,0,1});
