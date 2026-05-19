@@ -20,6 +20,7 @@
 #include <memory>
 #include <engine/Renderer/IRenderer.hpp>
 #include "DX11Buffer.hpp"
+#include "DX11RenderTarget.hpp"
 
 namespace fbzz::renderer
 {
@@ -39,8 +40,11 @@ public:
     // スワップチェーンを Present して画面に反映する (VSyncあり: interval=1)
     void EndFrame() override;
 
-    // RTV と DSV を指定色でクリアする
+    // RTV と DSV を指定色でクリアする (現在バインド中の RT に対して動作する)
     void Clear(const math::Vector4& color) override;
+
+    // 現在バインド中の RT の深度バッファのみクリアする
+    void ClearDepth(float depth = 1.0f) override;
 
     // リソース生成 (GPU バッファ / シェーダー / テクスチャ / PSO)
     std::shared_ptr<IBuffer>         CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) override;
@@ -49,10 +53,16 @@ public:
     std::shared_ptr<IShader>         CreateShader(const std::string& path) override;
     std::shared_ptr<ITexture>        CreateTexture(const std::string& path) override;
     std::shared_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc& desc) override;
-    std::shared_ptr<IRenderTarget>   CreateRenderTarget(uint32_t width, uint32_t height) override;
+    std::shared_ptr<IRenderTarget>   CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) override;
 
     // DrawCall を受け取り、パイプラインステート → シェーダー → リソース → Draw の順で実行する
     void Submit(const DrawCall& call) override;
+
+    // Compute Shader を Dispatch する (SSAO / Bloom 等のポストプロセス CS に使用)
+    void Dispatch(const ComputeCall& call) override;
+
+    // SRV + UAV 両用テクスチャを生成する (Compute パスの出力先)
+    std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) override;
 
     // ウィンドウリサイズ時にスワップチェーン・RTV・DSV を再構築する
     void Resize(uint32_t width, uint32_t height) override;
@@ -62,6 +72,16 @@ public:
 
     // スロット番号に対応するサンプラープリセットをバインドする
     void SetSampler(uint32_t slot, SamplerMode mode) override;
+
+    // ImGui バックエンド (imgui_impl_dx11 / imgui_impl_win32)
+    void  ImGuiInit(void* hwnd)   override;
+    void  ImGuiShutdown()         override;
+    void  ImGuiNewFrame()         override;
+    void  ImGuiRenderDrawData()   override;
+    void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) override;
+
+    uint32_t GetWidth()  const override { return m_width;  }
+    uint32_t GetHeight() const override { return m_height; }
 
     // DX11Buffer 等の DX11 サブシステムが Init 時にデバイスを必要とする場合に使用
     ID3D11Device*        GetDevice()       const { return m_device.Get(); }
@@ -77,6 +97,9 @@ private:
 
     // SamplerMode::COUNT 個のプリセットを Init 時に一括生成してキャッシュする
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplers[8];
+
+    // 現在バインド中のオフスクリーン RT (nullptr = バックバッファ)
+    std::shared_ptr<DX11RenderTarget> m_currentRT;
 
     uint32_t m_width  = 0;
     uint32_t m_height = 0;

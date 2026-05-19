@@ -3,10 +3,13 @@
 // ログレベル付きデバッグ出力 (Release では除去)
 #pragma once
 #include <cstdarg>
+#include <vector>
 
 namespace fbzz::core {
 
 enum class LogLevel { INFO = 0, WARNING = 1, LOG_ERROR = 2 };
+
+class ILogSink;  // 前方宣言
 
 class Logger {
 public:
@@ -16,9 +19,14 @@ public:
 
     static void SetMinLevel(LogLevel level);
 
+    // シンク登録 (非所有。呼び出し元がライフタイムを管理する)
+    static void AddSink(ILogSink* sink);
+    static void RemoveSink(ILogSink* sink);
+
 private:
-    static LogLevel s_minLevel;
-    static void     Log(LogLevel level, const char* fmt, va_list args);
+    static LogLevel            s_minLevel;
+    static std::vector<ILogSink*> s_sinks;
+    static void Log(LogLevel level, const char* fmt, va_list args);
 };
 
 } // namespace fbzz::core

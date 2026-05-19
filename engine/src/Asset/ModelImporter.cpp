@@ -66,6 +66,9 @@ std::shared_ptr<Model> ModelImporter::Import(
             vertices[i].normal   = aim->mNormals
                 ? math::Vector3{ aim->mNormals[i].x, aim->mNormals[i].y, aim->mNormals[i].z }
                 : math::Vector3{ 0.0f, 1.0f, 0.0f };
+            vertices[i].tangent  = aim->mTangents
+                ? math::Vector3{ aim->mTangents[i].x, aim->mTangents[i].y, aim->mTangents[i].z }
+                : math::Vector3{ 1.0f, 0.0f, 0.0f };
             if (aim->mTextureCoords[0])
                 vertices[i].uv = { aim->mTextureCoords[0][i].x,
                                    aim->mTextureCoords[0][i].y };

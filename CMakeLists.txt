@@ -12,11 +12,12 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
-# サブフォルダを追加 (依存順: math → physics → engine → sandbox)
+# サブフォルダを追加 (依存順: math → physics → engine → editor → sandbox)
 add_subdirectory(third_party)
 add_subdirectory(math)
 add_subdirectory(physics)
 add_subdirectory(engine)
+add_subdirectory(editor)
 add_subdirectory(sandbox)
 
 option(FBZZ_BUILD_TESTS "Build unit tests" OFF)
