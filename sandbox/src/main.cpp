@@ -21,6 +21,7 @@
 #include <engine/Scene/Components/ParticleEmitter.hpp>
 #include <engine/Scene/Components/SkyRenderer.hpp>
 #include <physics/World.hpp>
+#include <editor/EditorApp.hpp>
 
 using namespace fbzz;
 
@@ -291,6 +292,17 @@ int main()
 
     sm.LoadScene("RenderTest");
 
+    // ---------------------------------------------------------------- エディター
+    editor::EditorApp editorApp;
+    editorApp.Init(renderer, app.GetWindow());
+
+    editorApp.GetContext().activeScene  = sm.GetActive();
+    editorApp.GetContext().lightSystem  = &lights;
+
+    app.GetWindow().SetResizeCallback([&](uint32_t w, uint32_t h) {
+        renderer.Resize(w, h);
+    });
+
     // ---------------------------------------------------------------- カメラ
     renderer::DebugCamera debugCamera;
     debugCamera.camera.m_position = { 0.0f, 6.0f, -14.0f };
@@ -306,17 +318,21 @@ int main()
         if (app.GetWindow().ShouldClose()) { app.Quit(); break; }
 
         const float dt = core::Time::DeltaTime();
-        debugCamera.camera.m_aspect =
-            static_cast<float>(app.GetWindow().GetWidth()) /
-            static_cast<float>(app.GetWindow().GetHeight());
+
+        // RT リサイズを先に処理してからシーンを描く (EditorApp::BeginFrame 冒頭で実行)
+        editorApp.BeginFrame();
+
+        auto vpRT = editorApp.GetViewportRT();
+        debugCamera.camera.m_aspect = vpRT
+            ? static_cast<float>(vpRT->GetWidth()) / static_cast<float>(vpRT->GetHeight())
+            : 1280.0f / 720.0f;
         debugCamera.Update(dt);
         sm.Update(dt, physWorld);
 
         renderer.BeginFrame();
-        renderer.Clear({ 0.005f, 0.005f, 0.02f, 1.0f });
 
         if (auto* activeScene = sm.GetActive())
-            scene::RenderSystem(*activeScene, renderer, debugCamera.camera, lights);
+            scene::RenderSystem(*activeScene, renderer, debugCamera.camera, lights, vpRT);
 
         renderer::DebugDraw::BeginFrame(renderer, debugCamera.camera.GetViewProjection());
         renderer::DebugDraw::Line(renderer, {0,0,0}, {1,0,0}, {1,0,0,1});
@@ -324,9 +340,18 @@ int main()
         renderer::DebugDraw::Line(renderer, {0,0,0}, {0,0,1}, {0,0,1,1});
         renderer::DebugDraw::Flush();
 
+        // ---- バックバッファに戻して ImGui を描く ----
+        renderer.SetRenderTarget(nullptr);
+        renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
+
+        editorApp.GetContext().activeScene = sm.GetActive();
+        editorApp.RenderPanels(editorApp.GetContext());
+        editorApp.EndFrame(renderer);
+
         renderer.EndFrame();
     }
 
+    editorApp.Shutdown();
     asset::AssetManager::UnloadAll();
     renderer::ShaderManager::Shutdown();
     app.Shutdown();

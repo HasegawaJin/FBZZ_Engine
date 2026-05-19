@@ -103,7 +103,8 @@ inline math::Vector4 LerpVec4(const math::Vector4& a, const math::Vector4& b, fl
 void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   const renderer::Camera& camera,
-                  const renderer::LightSystem& lights)
+                  const renderer::LightSystem& lights,
+                  const std::shared_ptr<renderer::IRenderTarget>& outputRT)
 {
     static auto shadowMapRT     = renderer.CreateRenderTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0);
     static auto shadowShader    = renderer::ShaderManager::Load("assets/shaders/Pipeline/ShadowMap.hlsl");
@@ -165,8 +166,8 @@ void RenderSystem(Scene& scene,
     static std::shared_ptr<renderer::ITexture>      bloomFull;  // フル解像度 (Upsample 出力 → Composite 入力)
     static uint32_t sHdrW = 0, sHdrH = 0;
     {
-        uint32_t curW = renderer.GetWidth();
-        uint32_t curH = renderer.GetHeight();
+        uint32_t curW = outputRT ? outputRT->GetWidth()  : renderer.GetWidth();
+        uint32_t curH = outputRT ? outputRT->GetHeight() : renderer.GetHeight();
         if (!hdrRT || sHdrW != curW || sHdrH != curH)
         {
             hdrRT     = renderer.CreateRenderTarget(curW, curH, 1);
@@ -491,7 +492,7 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     if (fxaaShader && ldrRT)
     {
-        renderer.SetRenderTarget(nullptr);
+        renderer.SetRenderTarget(outputRT);
 
         renderer::DrawCall fxaaDC;
         fxaaDC.shader             = fxaaShader;

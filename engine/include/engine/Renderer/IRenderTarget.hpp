@@ -18,6 +18,10 @@ namespace fbzz::renderer {
 
         // 深度バッファを SRV として取得する (shadowMap → t8 等、次パスで読む)
         virtual std::shared_ptr<ITexture> GetDepthTexture() const = 0;
+
+        // ImGui Viewport 表示用ネイティブテクスチャハンドル
+        // DX11: ID3D11ShaderResourceView*  DX12: GPU descriptor handle (uint64_t として扱う)
+        virtual void* GetNativeSRV(int slot = 0) const = 0;
     };
 
 } // namespace fbzz::renderer

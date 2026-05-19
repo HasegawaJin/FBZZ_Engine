@@ -30,6 +30,7 @@ target_link_libraries(fbzz_engine
         mfreadwrite
         mfuuid
     PRIVATE
+        imgui
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
         "$<$<CONFIG:Release>:${DIRECTXTEX_LIB_RELEASE}>"
         "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"
