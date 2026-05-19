@@ -13,6 +13,7 @@ std::array<bool, 3>                Input::s_mouseCurrent  = {};
 std::array<bool, 3>                Input::s_mousePrevious = {};
 math::Vector2                      Input::s_mousePos      = {};
 math::Vector2                      Input::s_prevMousePos  = {};
+float                              Input::s_scrollDelta   = 0.0f;
 
 void Input::Init()
 {
@@ -27,6 +28,7 @@ void Input::Update()
     s_previous      = s_current;
     s_mousePrevious = s_mouseCurrent;
     s_prevMousePos  = s_mousePos;
+    s_scrollDelta   = 0.0f;
 }
 
 bool Input::KeyDown(KeyCode key)
@@ -66,6 +68,10 @@ void Input::HandleMouseMove(int x, int y)
 {
     s_mousePos = { static_cast<float>(x), static_cast<float>(y) };
 }
+
+float Input::MouseScrollDelta() { return s_scrollDelta; }
+
+void Input::HandleMouseScroll(float delta) { s_scrollDelta += delta; }
 
 void Input::HandleMouseButton(UINT msg)
 {

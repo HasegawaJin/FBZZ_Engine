@@ -26,13 +26,12 @@
             "displayName": "Visual Studio Community 2026 Release - amd64",
             "description": "Visual Studio 18 2026 用のコンパイラ (x64 アーキテクチャ) を使用しています",
             "generator": "Visual Studio 18 2026",
-            "toolset": "host=x64",
+            "toolset": "host=x64,version=14.51",
             "architecture": "x64",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
-                "CMAKE_C_COMPILER": "cl.exe",
-                "CMAKE_CXX_COMPILER": "cl.exe"
+                "CMAKE_VS_PLATFORM_TOOLSET_VERSION": "14.51"
             }
         },
         {
@@ -40,13 +39,12 @@
             "displayName": "Visual Studio Community 2026 Release - amd64",
             "description": "Visual Studio 18 2026 用のコンパイラ (x64 アーキテクチャ) を使用しています",
             "generator": "Visual Studio 18 2026",
-            "toolset": "host=x64",
+            "toolset": "host=x64,version=14.51",
             "architecture": "x64",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
-                "CMAKE_C_COMPILER": "cl.exe",
-                "CMAKE_CXX_COMPILER": "cl.exe"
+                "CMAKE_VS_PLATFORM_TOOLSET_VERSION": "14.51"
             }
         }
     ],
