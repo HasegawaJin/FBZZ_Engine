@@ -19,6 +19,7 @@ target_compile_definitions(imgui
         IMGUI_DEFINE_MATH_OPERATORS
 )
 
-# toml++ (header-only)
+# toml++ (header-only, exception-free モードで使用)
 add_library(tomlplusplus INTERFACE)
 target_include_directories(tomlplusplus INTERFACE TomlPlusPlus/include)
+target_compile_definitions(tomlplusplus INTERFACE TOML_EXCEPTIONS=0)

@@ -17,6 +17,9 @@
 #include "DX11RenderTarget.hpp"
 #include <engine/Core/Logger.hpp>
 #include <engine/Core/HResult.hpp>
+#include <imgui.h>
+#include <imgui_impl_win32.h>
+#include <imgui_impl_dx11.h>
 
 namespace fbzz::renderer
 {
@@ -508,6 +511,39 @@ void DX11Renderer::InitSamplers()
         memcpy(desc.BorderColor, ones, sizeof(desc.BorderColor));
         m_device->CreateSamplerState(&desc, m_samplers[7].GetAddressOf());
     }
+}
+
+// =============================================================================
+// ImGui バックエンド
+// =============================================================================
+
+void DX11Renderer::ImGuiInit(void* hwnd)
+{
+    ImGui_ImplWin32_Init(hwnd);
+    ImGui_ImplDX11_Init(m_device.Get(), m_context.Get());
+}
+
+void DX11Renderer::ImGuiShutdown()
+{
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+}
+
+void DX11Renderer::ImGuiNewFrame()
+{
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+}
+
+void DX11Renderer::ImGuiRenderDrawData()
+{
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+}
+
+void* DX11Renderer::GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot)
+{
+    assert(rt != nullptr);
+    return rt->GetNativeSRV(slot);
 }
 
 } // namespace fbzz::renderer

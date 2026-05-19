@@ -55,6 +55,11 @@ public:
     void AddSpot(const SpotLight& light);
     void Clear();
 
+    std::vector<PointLight>&       GetPointLights()       { return m_pointLights; }
+    const std::vector<PointLight>& GetPointLights() const { return m_pointLights; }
+    std::vector<SpotLight>&        GetSpotLights()        { return m_spotLights;  }
+    const std::vector<SpotLight>&  GetSpotLights()  const { return m_spotLights;  }
+
     void Upload(IConstantBuffer& cb) const;
 
 private:
