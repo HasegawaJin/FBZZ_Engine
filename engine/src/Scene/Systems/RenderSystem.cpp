@@ -204,12 +204,13 @@ void RenderSystem(Scene& scene,
 
     // =========================================================================
     // Pass 1: Shadow Map — ライト視点から深度のみ書き込む
+    // 無効時もクリア (1.0) することで Pass 2 の影比較がすべてパスする
     // =========================================================================
+    renderer.SetRenderTarget(shadowMapRT);
+    renderer.ClearDepth();
+
     if (rs.shadowEnabled)
     {
-        renderer.SetRenderTarget(shadowMapRT);
-        renderer.ClearDepth();
-
         PerFrameCB lightFrameData{};
         lightFrameData.viewProjection = lightVP;
         frameCB->Update(&lightFrameData, sizeof(PerFrameCB));
