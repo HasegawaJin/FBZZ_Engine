@@ -26,15 +26,8 @@ Scene& Scene::operator=(Scene&& other) noexcept
     m_gameObjects = std::move(other.m_gameObjects);
     std::memset(m_entityToGameObject, 0, sizeof(m_entityToGameObject));
 
-    m_meshRenderers    = std::move(other.m_meshRenderers);
-    m_particleEmitters = std::move(other.m_particleEmitters);
-    m_rigidBodies      = std::move(other.m_rigidBodies);
-    m_skyRenderers     = std::move(other.m_skyRenderers);
-    m_lightComponents  = std::move(other.m_lightComponents);
-    m_cameraComponents = std::move(other.m_cameraComponents);
-    m_audioSources     = std::move(other.m_audioSources);
-    m_scriptComponents = std::move(other.m_scriptComponents);
-    m_destroyQueue     = std::move(other.m_destroyQueue);
+    m_arrays       = std::move(other.m_arrays);
+    m_destroyQueue = std::move(other.m_destroyQueue);
 
     FixupOwnership();
     other.Clear();
@@ -78,14 +71,7 @@ void Scene::DestroyImmediate(EntityID id) {
     }
 
     // Component 削除
-    if (m_meshRenderers.Has(id))     m_meshRenderers.Remove(id);
-    if (m_particleEmitters.Has(id))  m_particleEmitters.Remove(id);
-    if (m_rigidBodies.Has(id))       m_rigidBodies.Remove(id);
-    if (m_skyRenderers.Has(id))      m_skyRenderers.Remove(id);
-    if (m_lightComponents.Has(id))   m_lightComponents.Remove(id);
-    if (m_cameraComponents.Has(id))  m_cameraComponents.Remove(id);
-    if (m_audioSources.Has(id))      m_audioSources.Remove(id);
-    if (m_scriptComponents.Has(id))  m_scriptComponents.Remove(id);
+    RemoveAllComponents(id);
 
     // Entity 解放
     m_entityToGameObject[id.index] = nullptr;
@@ -188,19 +174,19 @@ void Scene::Clear()
     m_destroyQueue.clear();
     m_gameObjects.clear();
 
-    m_meshRenderers.Clear();
-    m_particleEmitters.Clear();
-    m_rigidBodies.Clear();
-    m_skyRenderers.Clear();
-    m_lightComponents.Clear();
-    m_cameraComponents.Clear();
-    m_audioSources.Clear();
-    m_scriptComponents.Clear();
+    std::apply([](auto&... arrs) { (..., arrs.Clear()); }, m_arrays);
 
     std::memset(m_generations,       0, sizeof(m_generations));
     std::memset(m_entityToGameObject, 0, sizeof(m_entityToGameObject));
     m_nextIndex = 0;
     m_freeIndices.clear();
+}
+
+void Scene::RemoveAllComponents(EntityID id)
+{
+    std::apply([&](auto&... arrs) {
+        (..., RemoveIfHas(arrs, id));
+    }, m_arrays);
 }
 
 void Scene::FixupOwnership()
@@ -210,8 +196,8 @@ void Scene::FixupOwnership()
         m_entityToGameObject[go->m_id.index] = go.get();
     }
 
-    for (EntityID id : m_scriptComponents.Entities()) {
-        auto& sc = m_scriptComponents.Get(id);
+    for (EntityID id : GetArray<ScriptComponent>().Entities()) {
+        auto& sc = GetArray<ScriptComponent>().Get(id);
         if (sc.script) sc.script->SetContext(this, GetGameObject(id));
     }
 }
