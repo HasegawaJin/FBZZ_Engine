@@ -14,7 +14,7 @@ SamplerState       sampDefault : register(SAMPLER_DEFAULT);
 RWTexture2D<float4> outputDst  : register(UAV_OUTPUT);
 
 // 輝度がこの値を超えたピクセルだけを Bloom に含める
-static const float BLOOM_THRESHOLD = 1.0f;
+static const float BLOOM_THRESHOLD = 0.7f;
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID)

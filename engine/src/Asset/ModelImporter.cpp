@@ -92,6 +92,8 @@ std::shared_ptr<Model> ModelImporter::Import(
             indices.data(), static_cast<uint32_t>(indices.size()));
         mesh->vertexCount  = static_cast<uint32_t>(vertices.size());
         mesh->indexCount   = static_cast<uint32_t>(indices.size());
+        mesh->cpuVertices  = vertices;
+        mesh->cpuIndices   = indices;
 
         auto mat = std::make_shared<renderer::Material>();
         if (aim->mMaterialIndex < scene->mNumMaterials) {

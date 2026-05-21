@@ -62,6 +62,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cube(IRenderer& renderer)
     mesh->indexBuffer  = renderer.CreateIndexBuffer(idx, 36);
     mesh->vertexCount  = 24;
     mesh->indexCount   = 36;
+    mesh->cpuVertices.assign(std::begin(verts), std::end(verts));
+    mesh->cpuIndices.assign(std::begin(idx), std::end(idx));
     return mesh;
 }
 
@@ -109,6 +111,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Sphere(IRenderer& renderer, int segments)
     mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), static_cast<uint32_t>(idx.size()));
     mesh->vertexCount  = static_cast<uint32_t>(verts.size());
     mesh->indexCount   = static_cast<uint32_t>(idx.size());
+    mesh->cpuVertices  = verts;
+    mesh->cpuIndices   = idx;
     return mesh;
 }
 
@@ -127,6 +131,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Plane(IRenderer& renderer)
     mesh->indexBuffer  = renderer.CreateIndexBuffer(idx, 6);
     mesh->vertexCount  = 4;
     mesh->indexCount   = 6;
+    mesh->cpuVertices.assign(std::begin(verts), std::end(verts));
+    mesh->cpuIndices.assign(std::begin(idx), std::end(idx));
     return mesh;
 }
 
@@ -198,6 +204,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(IRenderer& renderer, int segments)
     mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
+    mesh->cpuVertices  = verts;
+    mesh->cpuIndices   = idx;
     return mesh;
 }
 
@@ -254,6 +262,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cone(IRenderer& renderer, int segments)
     mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
+    mesh->cpuVertices  = verts;
+    mesh->cpuIndices   = idx;
     return mesh;
 }
 
@@ -302,6 +312,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Torus(IRenderer& renderer, int segments)
     mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
+    mesh->cpuVertices  = verts;
+    mesh->cpuIndices   = idx;
     return mesh;
 }
 
@@ -428,6 +440,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Capsule(IRenderer& renderer, int segments)
     mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
+    mesh->cpuVertices  = verts;
+    mesh->cpuIndices   = idx;
     return mesh;
 }
 

@@ -9,10 +9,11 @@ Unity ライクな OOP API と、データ指向の高速 System イテレーシ
 
 ```
 fbzz::scene
-├── fbzz::math    (Vector3, Quaternion, Matrix4)
-├── fbzz::physics (World, RigidBody)
-├── fbzz::renderer (IRenderer, Camera, Mesh, Material, LightSystem)
-└── fbzz::core    (Application, Time)
+├── fbzz::math     (Vector3, Quaternion, Matrix4)
+├── fbzz::physics  (World, RigidBody)
+├── fbzz::renderer (IRenderer, Camera, Mesh, Material, RenderSettings)
+├── fbzz::audio    (AudioSystem — AudioSystem free function 経由)
+└── fbzz::core     (Application, Time)
 ```
 
 ---
@@ -280,8 +281,7 @@ public:
     void Register(const std::string& name, SceneFactory factory);
     void LoadScene(const std::string& name);   // 次フレームで切り替え
 
-    void   Update(float dt, renderer::IRenderer& renderer,
-                  physics::World& world);
+    void   Update(float dt, physics::World& world);
     Scene* GetActive();
 
 private:
@@ -301,11 +301,16 @@ System はロジックを持つ free function。ゲームループで明示的�
 // TransformSystem: 親子階層のワールド行列・position・rotation を再計算
 void TransformSystem(Scene& scene);
 
-// RenderSystem: MeshRenderer + Transform → DrawCall を発行
+// RenderSystem: MeshRenderer + LightComponent を走査しマルチパス描画を発行
+//   ライト情報は内部で View<Transform, LightComponent>() から収集する
 void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   const renderer::Camera& camera,
-                  const renderer::LightSystem& lights);
+                  const std::shared_ptr<renderer::IRenderTarget>& outputRT = nullptr,
+                  const renderer::RenderSettings* settings = nullptr);
+
+// AudioSystem: AudioSourceComponent を走査して再生・停止を処理する
+void AudioSystem(Scene& scene, audio::AudioSystem& audioSystem, float dt);
 
 // PhysicsSystem: RigidBodyComponent ↔ physics::World を同期
 void PhysicsSystem(Scene& scene, physics::World& world, float dt);
@@ -314,7 +319,7 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt);
 ### SceneManager::Update の内部実装イメージ
 
 ```cpp
-void SceneManager::Update(float dt, IRenderer& renderer, physics::World& world)
+void SceneManager::Update(float dt, physics::World& world)
 {
     if (!m_pendingLoad.empty())
     {
@@ -324,10 +329,10 @@ void SceneManager::Update(float dt, IRenderer& renderer, physics::World& world)
 
     if (!m_active) return;
 
-    PhysicsSystem(*m_active, world, dt);    // 物理を先に解決
-    TransformSystem(*m_active);             // 次にワールド行列を更新
-    RenderSystem(*m_active, renderer, ...); // 最後に描画
-    m_active->FlushDestroyQueue(dt);        // フレーム末尾で削除
+    PhysicsSystem(*m_active, world, dt);  // 物理を先に解決
+    TransformSystem(*m_active);           // 次にワールド行列を更新
+    m_active->FlushDestroyQueue(dt);      // フレーム末尾で削除
+    // RenderSystem はゲームループ側から BeginFrame/EndFrame の間に呼ぶ
 }
 ```
 
@@ -347,10 +352,11 @@ while (app.IsRunning())
     Time::Tick();
     Input::Update();
 
-    sceneManager.Update(Time::DeltaTime(), renderer, physWorld);
+    sm.Update(dt, physWorld);
 
     renderer.BeginFrame();
     renderer.Clear({ 0.05f, 0.08f, 0.15f, 1.0f });
+    scene::RenderSystem(*sm.GetActive(), renderer, camera);
     renderer.EndFrame();
 }
 ```

@@ -17,6 +17,7 @@ C++20 自作 3D ゲームエンジン。数学・物理エンジンを自作し�
 | 5 | シーン管理 (Scene / Entity / Component / System) | **完了** |
 | 5.5 | HLSL シェーダーライブラリ (PBR / Shadow / Bloom / FXAA / Particle) | **完了** |
 | 6 | ImGui エディター (SceneHierarchy / Inspector / Viewport / Light) | **現在地** |
+| 6.5 | SceneSerializer (TOML .fbzz — main.cpp 短縮) | 設計済み |
 | 7 | DX12 / Render Graph 移行 | 未着手 |
 
 ---
@@ -78,7 +79,8 @@ engine/include/engine/
 ├── Renderer/
 │   ├── Mesh.hpp
 │   ├── Material.hpp
-│   └── LightSystem.hpp
+│   ├── LightSystem.hpp
+│   └── RenderSettings.hpp
 ├── Scene/
 │   ├── Entity.hpp
 │   ├── ComponentArray.hpp
@@ -124,14 +126,20 @@ editor/
 │       ├── SceneHierarchyPanel.hpp
 │       ├── InspectorPanel.hpp
 │       ├── ViewportPanel.hpp
-│       └── LightPanel.hpp
+│       ├── LightPanel.hpp
+│       ├── ConsolePanel.hpp
+│       ├── AssetBrowserPanel.hpp
+│       └── StatusBar.hpp
 └── src/
     ├── EditorApp.cpp
     └── Panels/
         ├── SceneHierarchyPanel.cpp
         ├── InspectorPanel.cpp
         ├── ViewportPanel.cpp
-        └── LightPanel.cpp
+        ├── LightPanel.cpp
+        ├── ConsolePanel.cpp
+        ├── AssetBrowserPanel.cpp
+        └── StatusBar.cpp
 
 third_party/
 └── imgui/    Dear ImGui v1.91+ (docking ブランチ)
@@ -253,18 +261,23 @@ third_party/
 
 ## Step 6 実装順
 
-詳細: [docs/editor/Design.md](editor/Design.md)
+詳細: [docs/editor/Design.md](editor/Design.md)  
+engine モジュール横断リファレンス: [docs/engine/Design.md](engine/Design.md)
 
-| 順序 | タスク | 概要 |
-|------|--------|------|
-| 1 | engine/Util 整備 | `FileSystem`, `StringUtils` を `engine/Util/` に追加 |
-| 2 | ImGui セットアップ | `third_party/imgui` 追加、CMake 設定、`IRenderer` に `ImGuiInit` 等の仮想メソッドを追加、`DX11Renderer` に実装 |
-| 3 | EditorApp 骨格 | `EditorApp`, `EditorContext`, `IPanel` を作成、ドックスペースのみ表示 |
-| 4 | SceneHierarchyPanel | GameObject ツリー表示・選択 |
-| 5 | InspectorPanel | Transform 編集 (DragFloat3) |
-| 6 | LightPanel | DirectionalLight / PointLight / SpotLight 編集 |
-| 7 | ViewportPanel | `IRenderTarget` → `GetImTextureID` → `ImGui::Image` |
-| 8 | InspectorPanel 拡張 | Material / ParticleEmitter 編集 |
+| 順序 | タスク | 状態 | 概要 |
+|------|--------|------|------|
+| 1 | engine/Util 整備 | **完了** | `ILogSink` / `FileSystem` / `StringUtils` を追加、`Logger` に `AddSink` / `RemoveSink` を追加 |
+| 2 | ImGui セットアップ | **完了** | `third_party/imgui` 追加、CMake 設定、`IRenderer` に ImGui 仮想メソッドを追加、`DX11Renderer` に実装 |
+| 3 | EditorApp 骨格 | **完了** | `EditorApp` / `EditorContext` / `IPanel` 作成、DockSpace + MenuBar 実装、`sandbox/main.cpp` 統合済み |
+| 4 | Util 各種 | **完了** | `MathConvert` / `ImGuiWidgets` / `UndoStack` / `HotkeyManager` / `ConsoleSink` / `ModalDialog` / `EditorSettings` |
+| 5 | SceneHierarchyPanel | **完了** | GameObject 一覧表示・Ctrl+クリック Multi-select |
+| 6 | InspectorPanel | **完了** | Transform 編集 (DragFloat3)、UndoStack 連動 |
+| 7 | ViewportPanel | **完了** | `IRenderTarget` → `ImGui::Image`、Stats オーバーレイ |
+| 8 | LightPanel | **完了** | DirectionalLight / PointLight / SpotLight 編集 |
+| 9 | ConsolePanel / AssetBrowserPanel / StatusBar | **完了** | ログ表示・フィルタ、ファイルリスト、ステータスバー |
+| 10 | ImGuizmo 導入 | **完了** | `third_party/ImGuizmo` 追加、CMake に `imguizmo` ターゲットを追加 |
+| 11 | Gizmo (ImGuizmo) + MousePicking | **未着手** | `ViewportPanel` に Translate / Rotate / Scale Gizmo を実装、UndoStack に積む |
+| 12 | SceneSerializer (TOML) | **未着手** | `editor::SceneSerializer` の Save / Load / Serialize / Deserialize を実装 (現在スタブ)。PlayModeController のスナップショット復元もここに依存 |
 
 ---
 

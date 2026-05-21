@@ -9,7 +9,7 @@ C++ 側の実装詳細は `docs/renderer/Design.md` を参照。
 
 | Step | 内容 | 状態 |
 |------|------|------|
-| 6a | HLSL ライブラリ構築 (DX11) | **現在地** |
+| 6a | HLSL ライブラリ構築 (DX11) | **完了** |
 | 6b | DX12Renderer 実装 + RenderGraph | 未着手 |
 | 6c | DXR (レイトレーシング) | 未着手 |
 
@@ -33,6 +33,7 @@ assets/shaders/
 │   ├── BRDF.hlsli                 Cook-Torrance PBR
 │   ├── Lighting.hlsli             Lambert / Phong / Blinn-Phong / PBR 関数
 │   ├── Atmosphere.hlsli           Rayleigh + Mie 大気散乱（Skydome 用）
+│   ├── Cloud.hlsli                体積雲レイマーチング
 │   ├── Shadow.hlsli               PCF シャドウサンプリング
 │   ├── ToneMap.hlsli              ACES Filmic トーンマッピング
 │   ├── Fog.hlsli
@@ -49,17 +50,18 @@ assets/shaders/
 │   ├── Phong.hlsl                 Phong 鏡面反射
 │   ├── BlinnPhong.hlsl            Blinn-Phong（旧 Mesh.hlsl の後継）
 │   ├── PBR.hlsl                   Cook-Torrance フォワード版（デバッグ用途）
+│   ├── Toon.hlsl                  セルシェーディング
+│   ├── Particle.hlsl              パーティクル（加算合成）
 │   └── Sky/                       2ファイルあるためサブフォルダ
 │       ├── Skybox.hlsl            TextureCube サンプリング
 │       └── Skydome.hlsl           手続き大気散乱
 │
-├── PostProcess/
-│   ├── SSAO/
-│   │   ├── SSAO.cs.hlsl
-│   │   └── SSAOBlur.cs.hlsl
-│   ├── Bloom/
-│   │   ├── BloomDownsample.cs.hlsl
-│   │   └── BloomUpsample.cs.hlsl
+├── PostProcess/                   フラット配置（2ファイル未満のグループはサブフォルダ不使用）
+│   ├── SSAO.cs.hlsl
+│   ├── SSAOBlur.cs.hlsl
+│   ├── BloomDownsample.cs.hlsl
+│   ├── BloomUpsample.cs.hlsl
+│   ├── FXAA.hlsl                  Fast Approximate Anti-Aliasing
 │   └── Composite.hlsl             ToneMap + Bloom + Fog 最終合成
 │
 ├── RayTracing/                    ← Step 6c（DX12 + DXR）
@@ -67,8 +69,8 @@ assets/shaders/
 │   └── Reflection.lib.hlsl
 │
 ├── Platform/
-│   ├── DX11.hlsli                 SM 5.0 回避策・型エイリアス
-│   └── DX12.hlsli                 SM 6.x・bindless 拡張（Step 6b）
+│   ├── DX11.hlsli                 SM 5.0 回避策・型エイリアス（実装済み）
+│   └── DX12.hlsli                 SM 6.x・bindless 拡張（Step 6b で追加）
 │
 └── compiled/                      .cso / .dxil 出力先
 ```
@@ -98,7 +100,9 @@ assets/shaders/
 | Lit | Lambert 拡散のみ | Forward | |
 | Phong | Phong 鏡面反射 | Forward | |
 | BlinnPhong | Blinn-Phong | Forward | 旧 Mesh.hlsl の後継 |
-| PBR | Cook-Torrance | **Deferred** | GBuffer 書き込みが主。フォワード版は Material/PBR/ |
+| PBR | Cook-Torrance | **Deferred** | GBuffer 書き込みが主。フォワード版は Material/PBR.hlsl |
+| Toon | セルシェーディング | Forward | 輪郭線・段階的拡散 |
+| Particle | なし（加算合成） | Forward | 深度書き込みなし |
 | Skybox | キューブマップ | Forward | 深度トリック: VS で z = w |
 | Skydome | 手続き大気散乱 | Forward | Atmosphere.hlsli を使用 |
 
@@ -177,11 +181,21 @@ cbuffer MaterialConstants : register(b2) {
     uint   textureMask;          // bit0=albedo bit1=normal bit2=metalRough bit3=emissive
 };
 
+// PointLight: position(12) + range(4) + color(12) + intensity(4) = 32 bytes
+// SpotLight:  position(12) + range(4) + direction(12) + innerCos(4)
+//             + color(12) + outerCos(4) + intensity(4) + _pad(12) = 64 bytes
 cbuffer LightConstants : register(b3) {
     float3 lightDir;
-    float  _pad1;
+    float  _lightPad;
     float3 lightColor;
     float  lightIntensity;
+
+    PointLightData pointLights[8];   // struct は Common/Constants.hlsli で定義
+    SpotLightData  spotLights[4];
+
+    int    pointLightCount;
+    int    spotLightCount;
+    float2 _lightPad2;
 };
 
 cbuffer ShadowConstants : register(b4) {
@@ -192,11 +206,14 @@ cbuffer ShadowConstants : register(b4) {
 };
 
 cbuffer PostProcConstants : register(b5) {
-    float2 texelSize;
+    float2 texelSize;    // 1.0 / screenSize
     float2 screenSize;
     float  exposure;
     float  time;
-    float2 _pad3;
+    float  fogDensity;   // 0.0 = フォグなし
+    float  _ppPad;
+    float3 fogColor;     // フォグの色
+    float  fogFar;       // フォグが始まるカメラ距離 (m)
 };
 
 cbuffer AtmosphereConstants : register(b6) {
@@ -270,14 +287,13 @@ Pass 7  Composite.hlsl               → swapchain（LDR）
 
 ## 既存シェーダーとの移行対応
 
-| 既存ファイル | 移行先 | 備考 |
+| 既存ファイル | 移行先 | 状態 |
 |-------------|--------|------|
-| `Mesh.hlsl` | `Material/BlinnPhong.hlsl` | 内容はほぼそのまま移植 |
-| `Unlit.hlsl` | `Material/Unlit.hlsl` | 内容はほぼそのまま移植 |
+| `Mesh.hlsl` | `Material/BlinnPhong.hlsl` | **移行完了・削除済み** |
+| `Unlit.hlsl` | `Material/Unlit.hlsl` | **移行完了・削除済み** |
 | `Debug.hlsl` | 移動なし | DebugDraw 専用・変更不要 |
 
-`Mesh.hpp` の `Vertex` 構造体に `tangent` フィールドを追加する（法線マップ対応）。  
-既存の `.bat` コンパイルスクリプトも新ファイルに合わせて更新する。
+`Mesh.hpp` の `Vertex` 構造体への `tangent` フィールド追加も完了済み。
 
 ---
 
@@ -297,12 +313,16 @@ Pass 7  Composite.hlsl               → swapchain（LDR）
 | 10 | `Pipeline/GBuffer.hlsl` | Constants, Types, Space |
 | 11 | `Pipeline/DeferredLighting.hlsl` | Lighting, Shadow |
 | 12 | `Material/PBR.hlsl`（フォワード版） | BRDF, Lighting, Shadow |
-| 13 | `PostProcess/SSAO/SSAO.cs.hlsl` + `SSAOBlur.cs.hlsl` | Random, Space |
-| 14 | `PostProcess/Bloom/` | Color |
+| 13 | `PostProcess/SSAO.cs.hlsl` + `SSAOBlur.cs.hlsl` | Random, Space |
+| 14 | `PostProcess/BloomDownsample.cs.hlsl` + `BloomUpsample.cs.hlsl` | Color |
 | 15 | `Rendering/ToneMap.hlsli` | Color |
 | 16 | `PostProcess/Composite.hlsl` | ToneMap, Fog |
-| 17 | `Material/Sky/Skybox.hlsl` | Constants, Types |
-| 18 | `Rendering/Atmosphere.hlsli` + `Material/Sky/Skydome.hlsl` | Atmosphere |
+| 17 | `PostProcess/FXAA.hlsl` | — |
+| 18 | `Material/Toon.hlsl` | Lighting |
+| 19 | `Material/Particle.hlsl` | Constants |
+| 20 | `Material/Sky/Skybox.hlsl` | Constants, Types |
+| 21 | `Rendering/Atmosphere.hlsli` + `Material/Sky/Skydome.hlsl` | Atmosphere |
+| 22 | `Rendering/Cloud.hlsli` | Math, Space |
 
 ---
 
