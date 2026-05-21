@@ -21,6 +21,10 @@ public:
     // renderer: Mesh / Material の GPU リソース生成に使う
     static std::unique_ptr<Scene> Load(const std::string& path,
                                        renderer::IRenderer& renderer);
+
+    // 既存の Scene を path の内容で上書きする (PlayMode Stop / File > Open)
+    static bool LoadInPlace(Scene& scene, const std::string& path,
+                            renderer::IRenderer& renderer);
 };
 
 } // namespace fbzz::scene
