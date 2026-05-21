@@ -2,6 +2,7 @@
 // SceneManager.cpp | fbzz::scene
 // Scene transition and system update order management
 #include "engine/Scene/SceneManager.hpp"
+#include "engine/Scene/SceneSerializer.hpp"
 #include "engine/Scene/Systems/TransformSystem.hpp"
 #include "engine/Scene/Systems/PhysicsSystem.hpp"
 #include "engine/Scene/Systems/ScriptSystem.hpp"
@@ -12,6 +13,14 @@ namespace fbzz::scene {
 void SceneManager::Register(const std::string& name, SceneFactory factory)
 {
     m_factories[name] = std::move(factory);
+}
+
+void SceneManager::RegisterFromFile(const std::string& name, const std::string& path,
+                                    renderer::IRenderer& renderer)
+{
+    Register(name, [path, &renderer]() {
+        return SceneSerializer::Load(path, renderer);
+    });
 }
 
 void SceneManager::LoadScene(const std::string& name)

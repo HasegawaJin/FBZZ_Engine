@@ -108,6 +108,7 @@ git push origin main --tags
 | `[Design]` | 設計ドキュメント追加・変更 |
 | `[Build]` | CMakeLists、ビルド設定 |
 | `[Refactor]` | 動作を変えないリファクタリング |
+| `[Chore]` | .gitignore / TASKS.md / コメント修正など、コードの動作に影響しない雑務 |
 | `[Release]` | develop → main マイルストーンマージ |
 
 ```

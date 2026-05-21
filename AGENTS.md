@@ -112,7 +112,7 @@ NG: Modules / Coroutines / Ranges
 main → develop → feature/<name>
 ```
 
-コミット形式: `[Feature] / [Fix] / [Design] / [Build] / [Refactor] / [Release] + 動詞 + 概要`
+コミット形式: `[Feature] / [Fix] / [Design] / [Build] / [Refactor] / [Chore] / [Release] + 動詞 + 概要`
 
 コミットの Description (本文) は **Markdown で記述する**。
 見出し (`##`) と箇条書き (`-`) を使って構造化すること。

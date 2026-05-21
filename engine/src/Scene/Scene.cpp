@@ -4,8 +4,42 @@
 #include "engine/Scene/Scene.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstring>
+#include <utility>
 
 namespace fbzz::scene {
+
+Scene::Scene(Scene&& other) noexcept
+{
+    *this = std::move(other);
+}
+
+Scene& Scene::operator=(Scene&& other) noexcept
+{
+    if (this == &other) return *this;
+
+    Clear();
+
+    std::memcpy(m_generations, other.m_generations, sizeof(m_generations));
+    m_nextIndex = other.m_nextIndex;
+    m_freeIndices = std::move(other.m_freeIndices);
+    m_gameObjects = std::move(other.m_gameObjects);
+    std::memset(m_entityToGameObject, 0, sizeof(m_entityToGameObject));
+
+    m_meshRenderers    = std::move(other.m_meshRenderers);
+    m_particleEmitters = std::move(other.m_particleEmitters);
+    m_rigidBodies      = std::move(other.m_rigidBodies);
+    m_skyRenderers     = std::move(other.m_skyRenderers);
+    m_lightComponents  = std::move(other.m_lightComponents);
+    m_cameraComponents = std::move(other.m_cameraComponents);
+    m_audioSources     = std::move(other.m_audioSources);
+    m_scriptComponents = std::move(other.m_scriptComponents);
+    m_destroyQueue     = std::move(other.m_destroyQueue);
+
+    FixupOwnership();
+    other.Clear();
+    return *this;
+}
 
 // -----------------------------------------------------------------------
 // Entity 管理
@@ -147,6 +181,39 @@ void Scene::FlushDestroyQueue(float dt) {
 
     for (EntityID id : toDestroy)
         DestroyImmediate(id);
+}
+
+void Scene::Clear()
+{
+    m_destroyQueue.clear();
+    m_gameObjects.clear();
+
+    m_meshRenderers.Clear();
+    m_particleEmitters.Clear();
+    m_rigidBodies.Clear();
+    m_skyRenderers.Clear();
+    m_lightComponents.Clear();
+    m_cameraComponents.Clear();
+    m_audioSources.Clear();
+    m_scriptComponents.Clear();
+
+    std::memset(m_generations,       0, sizeof(m_generations));
+    std::memset(m_entityToGameObject, 0, sizeof(m_entityToGameObject));
+    m_nextIndex = 0;
+    m_freeIndices.clear();
+}
+
+void Scene::FixupOwnership()
+{
+    for (auto& go : m_gameObjects) {
+        go->m_scene = this;
+        m_entityToGameObject[go->m_id.index] = go.get();
+    }
+
+    for (EntityID id : m_scriptComponents.Entities()) {
+        auto& sc = m_scriptComponents.Get(id);
+        if (sc.script) sc.script->SetContext(this, GetGameObject(id));
+    }
 }
 
 } // namespace fbzz::scene

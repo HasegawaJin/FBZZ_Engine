@@ -15,9 +15,9 @@ void HotkeyManager::ProcessInput()
 {
     if (ImGui::GetIO().WantTextInput) return;
     for (const auto& hk : m_hotkeys) {
-        bool modOk = (!hk.ctrl  || ImGui::GetIO().KeyCtrl)
-                  && (!hk.shift || ImGui::GetIO().KeyShift)
-                  && (!hk.alt   || ImGui::GetIO().KeyAlt);
+        bool modOk = hk.ctrl  == ImGui::GetIO().KeyCtrl
+                  && hk.shift == ImGui::GetIO().KeyShift
+                  && hk.alt   == ImGui::GetIO().KeyAlt;
         if (modOk && ImGui::IsKeyPressed(static_cast<ImGuiKey>(hk.imguiKey), false))
             hk.callback();
     }
