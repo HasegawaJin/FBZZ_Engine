@@ -13,12 +13,16 @@
 #include "Components/LightComponent.hpp"
 #include "Components/CameraComponent.hpp"
 #include "Components/AudioSourceComponent.hpp"
+#include "ScriptComponent.hpp"
 #include <vector>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <span>
 #include <cassert>
 #include <type_traits>
+#include <tuple>
+#include <utility>
 
 namespace fbzz::scene {
 
@@ -111,6 +115,7 @@ private:
     ComponentArray<LightComponent>       m_lightComponents;
     ComponentArray<CameraComponent>      m_cameraComponents;
     ComponentArray<AudioSourceComponent> m_audioSources;
+    ComponentArray<ScriptComponent>      m_scriptComponents;
 
     // delay 付き Destroy キュー
     struct DestroyEntry { EntityID id; float delay; };
@@ -181,6 +186,8 @@ public:
                 return scene.m_cameraComponents.Has(id);
             else if constexpr (std::is_same_v<T, AudioSourceComponent>)
                 return scene.m_audioSources.Has(id);
+            else if constexpr (std::is_same_v<T, ScriptComponent>)
+                return scene.m_scriptComponents.Has(id);
             else
                 static_assert(AlwaysFalse<T>, "Component type not registered in SceneView");
         }
@@ -203,6 +210,8 @@ public:
                 return scene.m_cameraComponents.Get(id);
             else if constexpr (std::is_same_v<T, AudioSourceComponent>)
                 return scene.m_audioSources.Get(id);
+            else if constexpr (std::is_same_v<T, ScriptComponent>)
+                return scene.m_scriptComponents.Get(id);
             else
                 static_assert(AlwaysFalse<T>, "Component type not registered in SceneView");
         }
@@ -288,6 +297,9 @@ T& Scene::AddComponent(EntityID id, T component) {
     } else if constexpr (std::is_same_v<T, AudioSourceComponent>) {
         m_audioSources.Add(id, std::move(component));
         return m_audioSources.Get(id);
+    } else if constexpr (std::is_same_v<T, ScriptComponent>) {
+        m_scriptComponents.Add(id, std::move(component));
+        return m_scriptComponents.Get(id);
     } else {
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
     }
@@ -310,6 +322,8 @@ T* Scene::GetComponent(EntityID id) {
         return m_cameraComponents.Has(id) ? &m_cameraComponents.Get(id) : nullptr;
     else if constexpr (std::is_same_v<T, AudioSourceComponent>)
         return m_audioSources.Has(id) ? &m_audioSources.Get(id) : nullptr;
+    else if constexpr (std::is_same_v<T, ScriptComponent>)
+        return m_scriptComponents.Has(id) ? &m_scriptComponents.Get(id) : nullptr;
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
@@ -331,6 +345,8 @@ bool Scene::HasComponent(EntityID id) const {
         return m_cameraComponents.Has(id);
     else if constexpr (std::is_same_v<T, AudioSourceComponent>)
         return m_audioSources.Has(id);
+    else if constexpr (std::is_same_v<T, ScriptComponent>)
+        return m_scriptComponents.Has(id);
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
@@ -351,6 +367,8 @@ void Scene::RemoveComponent(EntityID id) {
         m_cameraComponents.Remove(id);
     else if constexpr (std::is_same_v<T, AudioSourceComponent>)
         m_audioSources.Remove(id);
+    else if constexpr (std::is_same_v<T, ScriptComponent>)
+        m_scriptComponents.Remove(id);
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
@@ -371,6 +389,8 @@ std::span<const EntityID> Scene::GetEntities() const {
         return m_cameraComponents.Entities();
     else if constexpr (std::is_same_v<T, AudioSourceComponent>)
         return m_audioSources.Entities();
+    else if constexpr (std::is_same_v<T, ScriptComponent>)
+        return m_scriptComponents.Entities();
     else
         static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
 }
@@ -389,6 +409,21 @@ template<typename T>
 T* GameObject::GetComponent() {
     if (!m_scene) return nullptr;
     return m_scene->GetComponent<T>(m_id);
+}
+
+template<typename T, typename... Args>
+T& GameObject::AddScript(Args&&... args) {
+    auto& sc = AddComponent<ScriptComponent>();
+    sc.script = std::make_unique<T>(std::forward<Args>(args)...);
+    return static_cast<T&>(*sc.script);
+}
+
+template<typename T>
+T* GameObject::GetScript() {
+    auto* sc = GetComponent<ScriptComponent>();
+    if (!sc || !sc->script) return nullptr;
+    if (std::string_view(sc->script->GetTypeName()) != T::TYPE_NAME) return nullptr;
+    return static_cast<T*>(sc->script.get());
 }
 
 template<typename T>
