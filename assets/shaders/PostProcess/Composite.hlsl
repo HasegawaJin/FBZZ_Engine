@@ -34,7 +34,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float3 bloom = texBloom.Sample(sampDefault, p.uv).rgb;
 
     // Bloom 加算
-    hdr += bloom * 0.04f;
+    hdr += bloom * 0.8f;
 
     // 露出 → ACES トーンマップ → sRGB ガンマ補正
     float3 ldr = FinalOutput(hdr, exposure);
