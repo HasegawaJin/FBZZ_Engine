@@ -4,6 +4,7 @@
 #pragma once
 #include <memory>
 #include <cstdint>
+#include <vector>
 #include "IBuffer.hpp"
 #include <math/Vector2.hpp>
 #include <math/Vector3.hpp>
@@ -22,6 +23,8 @@ struct Mesh {
     std::shared_ptr<IBuffer> indexBuffer;
     uint32_t vertexCount = 0;
     uint32_t indexCount  = 0;
+    std::vector<Vertex>   cpuVertices;
+    std::vector<uint32_t> cpuIndices;
 };
 
 } // namespace fbzz::renderer

@@ -19,6 +19,7 @@
 #include <engine/Core/Window.hpp>
 #include <engine/Util/FileSystem.hpp>
 #include <imgui.h>
+#include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
 #include <Windows.h>
 
@@ -41,6 +42,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -98,6 +100,7 @@ void EditorApp::BeginFrame()
 
     m_renderer->ImGuiNewFrame();
     ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
     m_hotkeys.ProcessInput();
 
     ImGuiViewport* vp = ImGui::GetMainViewport();
