@@ -23,9 +23,9 @@
 | 10 | ConsolePanel / AssetBrowserPanel / StatusBar | ✅ 完了 |
 | 11 | SceneSerializer — engine::scene::SceneSerializer Save/Load | ✅ 完了 |
 | 12 | PlayModeController — Play/Pause/Stop 基本動作 | ✅ 完了 |
-| 13 | InspectorPanel — MeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource Component 編集 | ❌ 未実装 |
-| 14 | editor::SceneSerializer Load/Deserialize — PlayMode Stop 時のスナップショット復元 | ❌ 未実装 |
-| 15 | MenuBar: File > Save Scene / Open Scene | ❌ 未実装 |
+| 13 | InspectorPanel — MeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource Component 編集 | ✅ 完了 |
+| 14 | editor::SceneSerializer Load/Deserialize — PlayMode Stop 時のスナップショット復元 | ✅ 完了 |
+| 15 | MenuBar: File > Save Scene / Open Scene | ✅ 完了 |
 
 ---
 
@@ -85,4 +85,4 @@
 | 3 | ScriptSystem and SceneManager Update integration | Done |
 | 4 | ImGuiReflector and InspectorPanel script section | Done |
 | 5 | Sandbox PlayerController sample | Done |
-| 6 | SceneSerializer v2 ScriptFactory / TOML reflector | Not started |
+| 6 | SceneSerializer v2 ScriptFactory / TOML reflector | Done |
