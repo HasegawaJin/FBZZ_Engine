@@ -73,3 +73,16 @@
 | 7 | DX12 移行 + RenderGraph | ❌ 未着手 |
 | 7 | DXR (Ray Tracing) | ❌ 未着手 |
 | — | Script / Reflect システム | ❌ 未着手 ([docs/scene/Script.md](docs/scene/Script.md)) |
+
+---
+
+## Script / Reflect
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Script base / IReflector / ScriptComponent | Done |
+| 2 | Scene registration / GameObject AddScript / GetScript | Done |
+| 3 | ScriptSystem and SceneManager Update integration | Done |
+| 4 | ImGuiReflector and InspectorPanel script section | Done |
+| 5 | Sandbox PlayerController sample | Done |
+| 6 | SceneSerializer v2 ScriptFactory / TOML reflector | Not started |
