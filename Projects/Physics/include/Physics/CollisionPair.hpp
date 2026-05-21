@@ -3,14 +3,23 @@
 // BroadPhase が生成する衝突候補ペア
 #pragma once
 #include <Physics/Collider.hpp>
+#include <Physics/PhysicsMaterial.hpp>
 #include <memory>
 
 namespace fbzz::physics 
 {
+    class RigidBody;
+
+    struct ColliderInstance {
+        std::shared_ptr<Collider> collider;
+        RigidBody* body = nullptr;
+        const PhysicsMaterial* material = nullptr;
+        bool isTrigger = false;
+    };
 
     struct CollisionPair {
-        std::shared_ptr<Collider> colliderA;
-        std::shared_ptr<Collider> colliderB;
+        ColliderInstance colliderA;
+        ColliderInstance colliderB;
     };
 
 } // namespace fbzz::physics

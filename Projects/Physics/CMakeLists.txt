@@ -1,4 +1,4 @@
-file(GLOB_RECURSE PHYSICS_SOURCES
+file(GLOB_RECURSE PHYSICS_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     src/*.hpp
     include/*.hpp
@@ -12,5 +12,6 @@ target_include_directories(fbzz_physics
 )
 
 target_link_libraries(fbzz_physics
-    PUBLIC fbzz_math
+    PUBLIC  fbzz_math
+    PRIVATE tomlplusplus
 )

@@ -6,6 +6,7 @@
 #include <Physics/CollisionPair.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/CapsuleCollider.hpp>
 #include <Physics/RigidBody.hpp>
 #include <vector>
 #include <memory>
@@ -13,12 +14,10 @@
 namespace fbzz::physics 
 {
 
-    class CapsuleCollider;
-
     class PhysicsSolver 
     {
     public:
-        void BroadPhase(const std::vector<std::shared_ptr<RigidBody>>& bodies,
+        void BroadPhase(const std::vector<ColliderInstance>& colliders,
                         std::vector<CollisionPair>& outPairs);
 
         void NarrowPhase(const std::vector<CollisionPair>& pairs,
@@ -34,6 +33,10 @@ namespace fbzz::physics
         bool TestSphereAABB  (const SphereCollider& s, const AABBCollider&   b,
                             ContactPoint& out);
         bool TestSphereCapsule(const SphereCollider& s, const CapsuleCollider& c,
+                            ContactPoint& out);
+        bool TestAABBCapsule(const AABBCollider& b, const CapsuleCollider& c,
+                            ContactPoint& out);
+        bool TestCapsuleCapsule(const CapsuleCollider& a, const CapsuleCollider& b,
                             ContactPoint& out);
 
         void ResolveVelocity(ContactPoint& cp);

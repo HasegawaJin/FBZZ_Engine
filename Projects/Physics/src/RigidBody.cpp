@@ -4,6 +4,7 @@
 #include <Physics/RigidBody.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/CapsuleCollider.hpp>
 
 namespace fbzz::physics {
 
@@ -41,19 +42,18 @@ void RigidBody::SetMass(float mass)
     RecomputeInertia();
 }
 
-void RigidBody::SetPosition(const math::Vector3& pos) { m_position = pos; }
-void RigidBody::SetVelocity(const math::Vector3& vel) { m_velocity = vel; }
+void RigidBody::SetPosition(const math::Vector3& pos)    { m_position        = pos;    }
+void RigidBody::SetVelocity(const math::Vector3& vel)    { m_velocity        = vel;    }
+void RigidBody::SetAngularVelocity(const math::Vector3& v) { m_angularVelocity = v;    }
 
 void RigidBody::SetRotation(const math::Quaternion& rot)
 {
     m_rotation = rot.Normalized();
 }
 
-void RigidBody::SetCollider(std::shared_ptr<Collider> collider)
+void RigidBody::SetInertiaFromCollider(const Collider* collider)
 {
-    if (m_collider) m_collider->m_body = nullptr;
-    m_collider = std::move(collider);
-    if (m_collider) m_collider->m_body = this;
+    m_inertiaCollider = collider;
     RecomputeInertia();
 }
 
@@ -112,28 +112,44 @@ void RigidBody::RecomputeInertia()
         m_invInertiaDiag = math::Vector3::ZERO;
         return;
     }
-    if (!m_collider || m_mass == 0.0f) return;
+    if (!m_inertiaCollider || m_mass == 0.0f)
+    {
+        m_invInertiaDiag = math::Vector3::ZERO;
+        return;
+    }
 
     const float        m    = m_mass;
-    const ColliderType type = m_collider->GetType();
+    const ColliderType type = m_inertiaCollider->GetType();
 
     if (type == ColliderType::SPHERE)
     {
-        const float r   = static_cast<SphereCollider*>(m_collider.get())->m_radius;
+        const float r   = static_cast<const SphereCollider*>(m_inertiaCollider)->m_radius;
         const float inv = 5.0f / (2.0f * m * r * r);
         m_invInertiaDiag = { inv, inv, inv };
     }
     else if (type == ColliderType::AABB)
     {
         const math::Vector3 h =
-            static_cast<AABBCollider*>(m_collider.get())->m_halfExtents;
+            static_cast<const AABBCollider*>(m_inertiaCollider)->m_halfExtents;
         m_invInertiaDiag = {
             3.0f / (m * (h.y * h.y + h.z * h.z)),
             3.0f / (m * (h.x * h.x + h.z * h.z)),
             3.0f / (m * (h.x * h.x + h.y * h.y))
         };
     }
-    // CapsuleCollider は後回し実装時に追加
+    else if (type == ColliderType::CAPSULE)
+    {
+        const auto* capsule = static_cast<const CapsuleCollider*>(m_inertiaCollider);
+        const float r = capsule->m_radius;
+        const float h = capsule->m_halfHeight * 2.0f;
+        const float ixz = (m * (3.0f * r * r + h * h)) / 12.0f;
+        const float iy = 0.5f * m * r * r;
+        m_invInertiaDiag = {
+            ixz == 0.0f ? 0.0f : 1.0f / ixz,
+            iy == 0.0f ? 0.0f : 1.0f / iy,
+            ixz == 0.0f ? 0.0f : 1.0f / ixz
+        };
+    }
 }
 
 } // namespace fbzz::physics

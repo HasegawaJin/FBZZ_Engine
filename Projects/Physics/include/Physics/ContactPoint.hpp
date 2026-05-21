@@ -8,6 +8,8 @@ namespace fbzz::physics
 {
 
     class RigidBody;
+    class Collider;
+    struct PhysicsMaterial;
 
     // World が bodies を生存管理するため raw pointer で保持する
     struct ContactPoint {
@@ -16,6 +18,11 @@ namespace fbzz::physics
         float         depth;   // 貫通深度 (正の値)
         RigidBody*    bodyA = nullptr;
         RigidBody*    bodyB = nullptr;
+        const Collider* colliderA = nullptr;
+        const Collider* colliderB = nullptr;
+        const PhysicsMaterial* materialA = nullptr;
+        const PhysicsMaterial* materialB = nullptr;
+        bool isTrigger = false;
     };
 
 } // namespace fbzz::physics

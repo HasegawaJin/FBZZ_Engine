@@ -23,7 +23,7 @@
 | 10 | ConsolePanel / AssetBrowserPanel / StatusBar | ✅ 完了 |
 | 11 | SceneSerializer — engine::scene::SceneSerializer Save/Load | ✅ 完了 |
 | 12 | PlayModeController — Play/Pause/Stop 基本動作 | ✅ 完了 |
-| 13 | InspectorPanel — MeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource Component 編集 | ✅ 完了 |
+| 13 | InspectorPanel — MeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource / RigidBody / SkyRenderer Component 編集 | ✅ 完了 |
 | 14 | editor::SceneSerializer Load/Deserialize — PlayMode Stop 時のスナップショット復元 | ✅ 完了 |
 | 15 | MenuBar: File > Save Scene / Open Scene | ✅ 完了 |
 
@@ -60,9 +60,10 @@
 
 | 機能 | 状態 |
 |------|------|
-| CapsuleCollider | ❌ 未実装 |
-| Volume 系 (6 種) | ❌ 未実装 |
-| Constraint 系 (5 種) | ❌ 未実装 |
+| CapsuleCollider | ✅ 完了 |
+| Unity-style ColliderComponent / VolumeComponent 化 | ✅ 完了 |
+| Volume 系 (6 種) | ✅ 完了 (ColliderVolume + VolumeComponent に統合) |
+| Constraint 系 (5 種) | ✅ 完了 |
 
 ---
 

@@ -4,12 +4,11 @@
 #pragma once
 #include <Math/Vector3.hpp> // math::Vector3
 #include <Math/Quaternion.hpp> // math::Quaternion
-#include <memory> // std::shared_ptr
-#include <Physics/Collider.hpp> // physics::Collider
-#include <Physics/PhysicsMaterial.hpp> // physics::PhysicsMaterial
 
 namespace fbzz::physics
 {
+    class Collider;
+
     class RigidBody
     {
     public:
@@ -38,22 +37,17 @@ namespace fbzz::physics
 
         void SetPosition(const math::Vector3& pos);
         void SetVelocity(const math::Vector3& vel);
+        void SetAngularVelocity(const math::Vector3& angVel);
         void SetRotation(const math::Quaternion& rot);
-
-        // 物理マテリアル (反発・摩擦・密度)
-        // 詳細: docs_helper/physics/material.md
-        PhysicsMaterial m_material;
 
         // 動作制御
         bool  m_isStatic    = false;  // true のとき積分・衝突解決をスキップ
 
-        // Collider 紐付け
-        void SetCollider(std::shared_ptr<Collider> collider);
-        std::shared_ptr<Collider> GetCollider() const { return m_collider; }
+        void SetInertiaFromCollider(const Collider* collider);
 
         // --- 拡張プロパティ ---
 
-        // MagneticVolume 用: Lorentz 力 F = m_charge * (v × B)
+        // Magnetic VolumeComponent 用: Lorentz 力 F = m_charge * (v × B)
         // 0 のとき磁場の影響を受けない
         float m_charge = 0.0f;
 
@@ -79,12 +73,12 @@ namespace fbzz::physics
                                 // m_mass < 0 のとき負になる (反重力挙動)
             
         // 対角慣性テンソルの逆数 (ボディ空間)
-        // SetMass() / SetCollider() 呼び出し時に自動再計算される
+        // SetMass() / SetInertiaFromCollider() 呼び出し時に自動再計算される
         // m_isStatic == true のとき {0,0,0}
         math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f };
-        std::shared_ptr<Collider> m_collider;
+        const Collider* m_inertiaCollider = nullptr;
 
-        void RecomputeInertia(); // SetMass / SetCollider から呼ばれる
+        void RecomputeInertia();
 
     public:
         // ワールド空間で I⁻¹ * v を計算する
