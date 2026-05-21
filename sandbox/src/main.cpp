@@ -22,6 +22,7 @@
 #include <engine/Scene/Components/SkyRenderer.hpp>
 #include <physics/World.hpp>
 #include <editor/EditorApp.hpp>
+#include "Scripts/PlayerController.hpp"
 
 using namespace fbzz;
 
@@ -464,6 +465,8 @@ int main()
                 auto& go = s->CreateGameObject("Sphere_" + std::to_string(row * 4 + col));
                 go.transform.localPosition = { (col - 1.5f) * 3.0f, 1.0f, row * 3.0f };
                 go.transform.localScale    = { 0.9f, 0.9f, 0.9f };
+                if (row == 0 && col == 0)
+                    go.AddScript<sandbox::PlayerController>();
                 go.AddComponent<scene::MeshRenderer>({ sphereMesh,
                     MakeMat(renderer, shaderPBR,
                         { 0.9f, 0.9f, 0.9f, 1.0f },
