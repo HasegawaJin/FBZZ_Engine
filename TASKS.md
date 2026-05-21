@@ -23,9 +23,9 @@
 | 10 | ConsolePanel / AssetBrowserPanel / StatusBar | ✅ 完了 |
 | 11 | SceneSerializer — engine::scene::SceneSerializer Save/Load | ✅ 完了 |
 | 12 | PlayModeController — Play/Pause/Stop 基本動作 | ✅ 完了 |
-| 13 | InspectorPanel — MeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource Component 編集 | ❌ 未実装 |
-| 14 | editor::SceneSerializer Load/Deserialize — PlayMode Stop 時のスナップショット復元 | ❌ 未実装 |
-| 15 | MenuBar: File > Save Scene / Open Scene | ❌ 未実装 |
+| 13 | InspectorPanel — MeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource Component 編集 | ✅ 完了 |
+| 14 | editor::SceneSerializer Load/Deserialize — PlayMode Stop 時のスナップショット復元 | ✅ 完了 |
+| 15 | MenuBar: File > Save Scene / Open Scene | ✅ 完了 |
 
 ---
 
@@ -35,8 +35,8 @@
 
 | # | タスク | 状態 |
 |---|--------|------|
-| 1 | sandbox/main.cpp を SceneSerializer::Load で短縮 (~80 行目標) | ❌ 未実装 |
-| 2 | .fbzz シーンファイルの作成 (現 main.cpp のシーン定義を移植) | ❌ 未実装 |
+| 1 | sandbox/main.cpp を SceneSerializer::Load で短縮 (~80 行目標) | 🔄 進行中 (初回起動で assets/scenes/*.fbzz 生成後に短縮可) |
+| 2 | .fbzz シーンファイルの作成 (現 main.cpp のシーン定義を移植) | 🔄 進行中 (初回起動で assets/scenes/ に自動生成) |
 
 ---
 
@@ -85,4 +85,14 @@
 | 3 | ScriptSystem and SceneManager Update integration | Done |
 | 4 | ImGuiReflector and InspectorPanel script section | Done |
 | 5 | Sandbox PlayerController sample | Done |
-| 6 | SceneSerializer v2 ScriptFactory / TOML reflector | Not started |
+| 6 | SceneSerializer v2 ScriptFactory / TOML reflector | Done |
+
+---
+
+## Step 6.5 Progress
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | sandbox/main.cpp loads a .fbzz scene through SceneSerializer | Done |
+| 2 | Physics verification scene moved to assets/scenes/PhysicsTest.fbzz | Done |
+| 3 | Runtime RigidBodyComponent bootstrap for PhysicsTest | Done |

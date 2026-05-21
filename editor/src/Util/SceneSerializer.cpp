@@ -24,19 +24,24 @@ bool SceneSerializer::Save(const scene::Scene& scene, const std::string& path)
 
 bool SceneSerializer::Load(scene::Scene& scene, const std::string& path)
 {
-    (void)scene;
-    (void)path;
-    FBZZ_LOG_WARN("SceneSerializer::Load is currently unsupported in editor wrapper");
-    return false;
+    auto& renderer = core::Application::Get().GetRenderer();
+    return scene::SceneSerializer::LoadInPlace(scene, path, renderer);
 }
 
 std::string SceneSerializer::Serialize(const scene::Scene& scene)
 {
-    if (!Save(scene, kSnapshotPath)) return {};
+    if (!Save(scene, kSnapshotPath)) {
+        FBZZ_LOG_ERROR("SceneSerializer::Serialize save failed: %s", kSnapshotPath);
+        return {};
+    }
 
     std::string text;
     if (!util::FileSystem::ReadText(kSnapshotPath, text)) {
         FBZZ_LOG_ERROR("SceneSerializer::Serialize read failed: %s", kSnapshotPath);
+        return {};
+    }
+    if (text.empty()) {
+        FBZZ_LOG_ERROR("SceneSerializer::Serialize produced an empty snapshot");
         return {};
     }
     return text;
@@ -44,10 +49,15 @@ std::string SceneSerializer::Serialize(const scene::Scene& scene)
 
 bool SceneSerializer::Deserialize(scene::Scene& scene, const std::string& toml)
 {
-    (void)scene;
-    (void)toml;
-    FBZZ_LOG_WARN("SceneSerializer::Deserialize is currently unsupported in editor wrapper");
-    return false;
+    if (toml.empty()) {
+        FBZZ_LOG_ERROR("SceneSerializer::Deserialize rejected an empty snapshot");
+        return false;
+    }
+    if (!util::FileSystem::WriteText(kSnapshotPath, toml)) {
+        FBZZ_LOG_ERROR("SceneSerializer::Deserialize write failed: %s", kSnapshotPath);
+        return false;
+    }
+    return Load(scene, kSnapshotPath);
 }
 
 } // namespace fbzz::editor

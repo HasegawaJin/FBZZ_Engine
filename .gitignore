@@ -49,3 +49,6 @@ assets/shaders/compiled/
 # OS
 .DS_Store
 Thumbs.db
+
+# エディターの個人設定ファイル
+/editor_config
