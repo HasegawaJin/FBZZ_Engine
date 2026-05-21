@@ -9,6 +9,8 @@
 #include <string>
 #include <unordered_map>
 
+namespace fbzz::renderer { class IRenderer; }
+
 namespace fbzz::scene {
 
 class SceneManager {
@@ -17,6 +19,10 @@ public:
 
     // シーンファクトリを登録する
     void Register(const std::string& name, SceneFactory factory);
+
+    // .fbzz ファイルからシーンを登録する。ロードは LoadScene 呼び出し時に行う
+    void RegisterFromFile(const std::string& name, const std::string& path,
+                          renderer::IRenderer& renderer);
 
     // 次フレームの先頭でシーンを切り替える
     void LoadScene(const std::string& name);
