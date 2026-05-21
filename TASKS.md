@@ -86,3 +86,13 @@
 | 4 | ImGuiReflector and InspectorPanel script section | Done |
 | 5 | Sandbox PlayerController sample | Done |
 | 6 | SceneSerializer v2 ScriptFactory / TOML reflector | Done |
+
+---
+
+## Step 6.5 Progress
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | sandbox/main.cpp loads a .fbzz scene through SceneSerializer | Done |
+| 2 | Physics verification scene moved to assets/scenes/PhysicsTest.fbzz | Done |
+| 3 | Runtime RigidBodyComponent bootstrap for PhysicsTest | Done |
