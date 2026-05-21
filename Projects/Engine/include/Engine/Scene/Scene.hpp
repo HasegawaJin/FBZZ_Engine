@@ -6,14 +6,7 @@
 #include "ComponentArray.hpp"
 #include "Transform.hpp"
 #include "GameObject.hpp"
-#include "Components/MeshRenderer.hpp"
-#include "Components/ParticleEmitter.hpp"
-#include "Components/RigidBodyComponent.hpp"
-#include "Components/SkyRenderer.hpp"
-#include "Components/LightComponent.hpp"
-#include "Components/CameraComponent.hpp"
-#include "Components/AudioSourceComponent.hpp"
-#include "ScriptComponent.hpp"
+#include "ComponentRegistry.hpp"
 #include <vector>
 #include <memory>
 #include <string>
@@ -26,8 +19,28 @@
 
 namespace fbzz::scene {
 
-// 前方宣言 (Scene.hpp 内で定義するが、クラス宣言より前に使う場面はない)
 template<typename... Ts> class SceneView;
+
+// -----------------------------------------------------------------------
+// detail: ComponentList → tuple<ComponentArray<Ts>...> 変換ヘルパー
+// -----------------------------------------------------------------------
+namespace detail {
+
+template<typename Tuple> struct ArrayTupleHelper;
+template<typename... Ts>
+struct ArrayTupleHelper<std::tuple<Ts...>> {
+    using type = std::tuple<ComponentArray<Ts>...>;
+};
+template<typename Tuple>
+using ArrayTuple = typename ArrayTupleHelper<Tuple>::type;
+
+// T が ComponentList に含まれるか判定するトレイト
+template<typename T, typename Tuple> struct IsInList;
+template<typename T, typename... Ts>
+struct IsInList<T, std::tuple<Ts...>>
+    : std::disjunction<std::is_same<T, Ts>...> {};
+
+} // namespace detail
 
 // -----------------------------------------------------------------------
 // GameObjectRange  —  scene.GameObjects() が返す Unity ライク foreach 用 range
@@ -106,8 +119,8 @@ public:
 
 private:
     // Entity 管理
-    uint32_t             m_generations[MAX_ENTITIES] = {};
-    uint32_t             m_nextIndex  = 0;
+    uint32_t              m_generations[MAX_ENTITIES] = {};
+    uint32_t              m_nextIndex   = 0;
     std::vector<uint32_t> m_freeIndices;
 
     // GameObjects 所有
@@ -116,15 +129,8 @@ private:
     // EntityID.index → GameObject* (非所有)
     GameObject* m_entityToGameObject[MAX_ENTITIES] = {};
 
-    // Component 配列
-    ComponentArray<MeshRenderer>       m_meshRenderers;
-    ComponentArray<ParticleEmitter>    m_particleEmitters;
-    ComponentArray<RigidBodyComponent> m_rigidBodies;
-    ComponentArray<SkyRenderer>          m_skyRenderers;
-    ComponentArray<LightComponent>       m_lightComponents;
-    ComponentArray<CameraComponent>      m_cameraComponents;
-    ComponentArray<AudioSourceComponent> m_audioSources;
-    ComponentArray<ScriptComponent>      m_scriptComponents;
+    // Component 配列 — ComponentList に登録された全型を自動展開
+    detail::ArrayTuple<ComponentList> m_arrays;
 
     // delay 付き Destroy キュー
     struct DestroyEntry { EntityID id; float delay; };
@@ -132,8 +138,32 @@ private:
 
     EntityID AllocateEntity();
     void     DestroyImmediate(EntityID id);
-    // move 代入後に go->m_scene が古いアドレスを指すのを修正する
     void     FixupOwnership();
+    void     RemoveAllComponents(EntityID id);
+
+    // T が ComponentList に登録済みかコンパイル時に検査する
+    template<typename T>
+    static constexpr bool IsRegistered = detail::IsInList<T, ComponentList>::value;
+
+    template<typename T>
+    ComponentArray<T>& GetArray() {
+        static_assert(IsRegistered<T>,
+            "T is not in ComponentList — add it to ComponentRegistry.hpp");
+        return std::get<ComponentArray<T>>(m_arrays);
+    }
+
+    template<typename T>
+    const ComponentArray<T>& GetArray() const {
+        static_assert(IsRegistered<T>,
+            "T is not in ComponentList — add it to ComponentRegistry.hpp");
+        return std::get<ComponentArray<T>>(m_arrays);
+    }
+
+    // fold expression から呼ぶ per-array ヘルパー
+    template<typename T>
+    static void RemoveIfHas(ComponentArray<T>& arr, EntityID id) {
+        if (arr.Has(id)) arr.Remove(id);
+    }
 
     template<typename... Ts> friend class SceneView;
     friend class GameObject;
@@ -183,48 +213,16 @@ public:
         static bool HasOne(Scene& scene, EntityID id) {
             if constexpr (std::is_same_v<T, Transform>)
                 return scene.GetGameObject(id) != nullptr;
-            else if constexpr (std::is_same_v<T, MeshRenderer>)
-                return scene.m_meshRenderers.Has(id);
-            else if constexpr (std::is_same_v<T, ParticleEmitter>)
-                return scene.m_particleEmitters.Has(id);
-            else if constexpr (std::is_same_v<T, RigidBodyComponent>)
-                return scene.m_rigidBodies.Has(id);
-            else if constexpr (std::is_same_v<T, SkyRenderer>)
-                return scene.m_skyRenderers.Has(id);
-            else if constexpr (std::is_same_v<T, LightComponent>)
-                return scene.m_lightComponents.Has(id);
-            else if constexpr (std::is_same_v<T, CameraComponent>)
-                return scene.m_cameraComponents.Has(id);
-            else if constexpr (std::is_same_v<T, AudioSourceComponent>)
-                return scene.m_audioSources.Has(id);
-            else if constexpr (std::is_same_v<T, ScriptComponent>)
-                return scene.m_scriptComponents.Has(id);
             else
-                static_assert(AlwaysFalse<T>, "Component type not registered in SceneView");
+                return scene.HasComponent<T>(id);
         }
 
         template<typename T>
         static T& GetRef(Scene& scene, EntityID id) {
             if constexpr (std::is_same_v<T, Transform>)
                 return scene.GetGameObject(id)->transform;
-            else if constexpr (std::is_same_v<T, MeshRenderer>)
-                return scene.m_meshRenderers.Get(id);
-            else if constexpr (std::is_same_v<T, ParticleEmitter>)
-                return scene.m_particleEmitters.Get(id);
-            else if constexpr (std::is_same_v<T, RigidBodyComponent>)
-                return scene.m_rigidBodies.Get(id);
-            else if constexpr (std::is_same_v<T, SkyRenderer>)
-                return scene.m_skyRenderers.Get(id);
-            else if constexpr (std::is_same_v<T, LightComponent>)
-                return scene.m_lightComponents.Get(id);
-            else if constexpr (std::is_same_v<T, CameraComponent>)
-                return scene.m_cameraComponents.Get(id);
-            else if constexpr (std::is_same_v<T, AudioSourceComponent>)
-                return scene.m_audioSources.Get(id);
-            else if constexpr (std::is_same_v<T, ScriptComponent>)
-                return scene.m_scriptComponents.Get(id);
             else
-                static_assert(AlwaysFalse<T>, "Component type not registered in SceneView");
+                return *scene.GetComponent<T>(id);
         }
     };
 
@@ -287,123 +285,31 @@ SceneView<Ts...> Scene::View() {
 template<typename T>
 T& Scene::AddComponent(EntityID id, T component) {
     assert(IsValid(id));
-    if constexpr (std::is_same_v<T, MeshRenderer>) {
-        m_meshRenderers.Add(id, std::move(component));
-        return m_meshRenderers.Get(id);
-    } else if constexpr (std::is_same_v<T, ParticleEmitter>) {
-        m_particleEmitters.Add(id, std::move(component));
-        return m_particleEmitters.Get(id);
-    } else if constexpr (std::is_same_v<T, RigidBodyComponent>) {
-        m_rigidBodies.Add(id, std::move(component));
-        return m_rigidBodies.Get(id);
-    } else if constexpr (std::is_same_v<T, SkyRenderer>) {
-        m_skyRenderers.Add(id, std::move(component));
-        return m_skyRenderers.Get(id);
-    } else if constexpr (std::is_same_v<T, LightComponent>) {
-        m_lightComponents.Add(id, std::move(component));
-        return m_lightComponents.Get(id);
-    } else if constexpr (std::is_same_v<T, CameraComponent>) {
-        m_cameraComponents.Add(id, std::move(component));
-        return m_cameraComponents.Get(id);
-    } else if constexpr (std::is_same_v<T, AudioSourceComponent>) {
-        m_audioSources.Add(id, std::move(component));
-        return m_audioSources.Get(id);
-    } else if constexpr (std::is_same_v<T, ScriptComponent>) {
-        m_scriptComponents.Add(id, std::move(component));
-        return m_scriptComponents.Get(id);
-    } else {
-        static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
-    }
+    GetArray<T>().Add(id, std::move(component));
+    return GetArray<T>().Get(id);
 }
 
 template<typename T>
 T* Scene::GetComponent(EntityID id) {
     if (!IsValid(id)) return nullptr;
-    if constexpr (std::is_same_v<T, MeshRenderer>)
-        return m_meshRenderers.Has(id) ? &m_meshRenderers.Get(id) : nullptr;
-    else if constexpr (std::is_same_v<T, ParticleEmitter>)
-        return m_particleEmitters.Has(id) ? &m_particleEmitters.Get(id) : nullptr;
-    else if constexpr (std::is_same_v<T, RigidBodyComponent>)
-        return m_rigidBodies.Has(id) ? &m_rigidBodies.Get(id) : nullptr;
-    else if constexpr (std::is_same_v<T, SkyRenderer>)
-        return m_skyRenderers.Has(id) ? &m_skyRenderers.Get(id) : nullptr;
-    else if constexpr (std::is_same_v<T, LightComponent>)
-        return m_lightComponents.Has(id) ? &m_lightComponents.Get(id) : nullptr;
-    else if constexpr (std::is_same_v<T, CameraComponent>)
-        return m_cameraComponents.Has(id) ? &m_cameraComponents.Get(id) : nullptr;
-    else if constexpr (std::is_same_v<T, AudioSourceComponent>)
-        return m_audioSources.Has(id) ? &m_audioSources.Get(id) : nullptr;
-    else if constexpr (std::is_same_v<T, ScriptComponent>)
-        return m_scriptComponents.Has(id) ? &m_scriptComponents.Get(id) : nullptr;
-    else
-        static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
+    auto& arr = GetArray<T>();
+    return arr.Has(id) ? &arr.Get(id) : nullptr;
 }
 
 template<typename T>
 bool Scene::HasComponent(EntityID id) const {
     if (!IsValid(id)) return false;
-    if constexpr (std::is_same_v<T, MeshRenderer>)
-        return m_meshRenderers.Has(id);
-    else if constexpr (std::is_same_v<T, ParticleEmitter>)
-        return m_particleEmitters.Has(id);
-    else if constexpr (std::is_same_v<T, RigidBodyComponent>)
-        return m_rigidBodies.Has(id);
-    else if constexpr (std::is_same_v<T, SkyRenderer>)
-        return m_skyRenderers.Has(id);
-    else if constexpr (std::is_same_v<T, LightComponent>)
-        return m_lightComponents.Has(id);
-    else if constexpr (std::is_same_v<T, CameraComponent>)
-        return m_cameraComponents.Has(id);
-    else if constexpr (std::is_same_v<T, AudioSourceComponent>)
-        return m_audioSources.Has(id);
-    else if constexpr (std::is_same_v<T, ScriptComponent>)
-        return m_scriptComponents.Has(id);
-    else
-        static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
+    return GetArray<T>().Has(id);
 }
 
 template<typename T>
 void Scene::RemoveComponent(EntityID id) {
-    if constexpr (std::is_same_v<T, MeshRenderer>)
-        m_meshRenderers.Remove(id);
-    else if constexpr (std::is_same_v<T, ParticleEmitter>)
-        m_particleEmitters.Remove(id);
-    else if constexpr (std::is_same_v<T, RigidBodyComponent>)
-        m_rigidBodies.Remove(id);
-    else if constexpr (std::is_same_v<T, SkyRenderer>)
-        m_skyRenderers.Remove(id);
-    else if constexpr (std::is_same_v<T, LightComponent>)
-        m_lightComponents.Remove(id);
-    else if constexpr (std::is_same_v<T, CameraComponent>)
-        m_cameraComponents.Remove(id);
-    else if constexpr (std::is_same_v<T, AudioSourceComponent>)
-        m_audioSources.Remove(id);
-    else if constexpr (std::is_same_v<T, ScriptComponent>)
-        m_scriptComponents.Remove(id);
-    else
-        static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
+    GetArray<T>().Remove(id);
 }
 
 template<typename T>
 std::span<const EntityID> Scene::GetEntities() const {
-    if constexpr (std::is_same_v<T, MeshRenderer>)
-        return m_meshRenderers.Entities();
-    else if constexpr (std::is_same_v<T, ParticleEmitter>)
-        return m_particleEmitters.Entities();
-    else if constexpr (std::is_same_v<T, RigidBodyComponent>)
-        return m_rigidBodies.Entities();
-    else if constexpr (std::is_same_v<T, SkyRenderer>)
-        return m_skyRenderers.Entities();
-    else if constexpr (std::is_same_v<T, LightComponent>)
-        return m_lightComponents.Entities();
-    else if constexpr (std::is_same_v<T, CameraComponent>)
-        return m_cameraComponents.Entities();
-    else if constexpr (std::is_same_v<T, AudioSourceComponent>)
-        return m_audioSources.Entities();
-    else if constexpr (std::is_same_v<T, ScriptComponent>)
-        return m_scriptComponents.Entities();
-    else
-        static_assert(AlwaysFalse<T>, "Component type not registered in Scene");
+    return GetArray<T>().Entities();
 }
 
 // -----------------------------------------------------------------------
