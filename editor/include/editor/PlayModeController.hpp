@@ -17,15 +17,18 @@ public:
     void Pause();
     // スナップショットからシーンを復元してエディターモードに戻る
     void Stop(scene::Scene& scene);
+    bool ApplyPendingRestore(scene::Scene& scene);
 
     PlayState GetState() const  { return m_state; }
     bool IsPlaying()    const   { return m_state == PlayState::Playing; }
     bool IsPaused()     const   { return m_state == PlayState::Paused; }
     bool IsInEditor()   const   { return m_state == PlayState::Editor; }
+    bool HasPendingRestore() const { return m_restorePending; }
 
 private:
     PlayState   m_state    = PlayState::Editor;
     std::string m_snapshot; // TOML 文字列でシーン状態を保存
+    bool        m_restorePending = false;
 };
 
 } // namespace fbzz::editor

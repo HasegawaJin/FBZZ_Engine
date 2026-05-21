@@ -31,6 +31,18 @@ namespace fbzz::editor {
 static constexpr const char* SETTINGS_DIR  = "editor_config";
 static constexpr const char* SETTINGS_PATH = "editor_config/editor_settings.toml";
 
+namespace {
+
+const FileFilter SCENE_FILTER{ "FBZZ Scene", "*.fbzz" };
+
+std::string WithFbzzExtension(const std::string& path)
+{
+    if (path.empty() || !util::FileSystem::GetExtension(path).empty()) return path;
+    return path + ".fbzz";
+}
+
+} // namespace
+
 bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
 {
     m_hwnd     = window.GetHandle();
@@ -170,24 +182,12 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
                 "Changes will be lost. Continue?",
                 [&ctx]() { (void)ctx; });
         }
-        if (ImGui::MenuItem("Open...", "Ctrl+O")) {
-            std::string path;
-            if (ctx.activeScene &&
-                FileDialog::OpenFile(m_hwnd, { {"FBZZ Scene", "*.fbzz"} }, path))
-                SceneSerializer::Load(*ctx.activeScene, path);
-        }
-        if (ImGui::MenuItem("Save", "Ctrl+S")) {
-            if (ctx.activeScene && !m_settings.lastScenePath.empty())
-                SceneSerializer::Save(*ctx.activeScene, m_settings.lastScenePath);
-        }
-        if (ImGui::MenuItem("Save As...")) {
-            std::string path;
-            if (ctx.activeScene &&
-                FileDialog::SaveFile(m_hwnd, { {"FBZZ Scene", "*.fbzz"} }, path)) {
-                m_settings.lastScenePath = path;
-                SceneSerializer::Save(*ctx.activeScene, path);
-            }
-        }
+        if (ImGui::MenuItem("Open...", "Ctrl+O", false, ctx.activeScene != nullptr))
+            OpenSceneFromDialog();
+        if (ImGui::MenuItem("Save", "Ctrl+S", false, ctx.activeScene != nullptr))
+            SaveScene();
+        if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, ctx.activeScene != nullptr))
+            SaveSceneAsDialog();
         ImGui::Separator();
         if (ImGui::MenuItem("Exit")) PostQuitMessage(0);
         ImGui::EndMenu();
@@ -244,6 +244,61 @@ void EditorApp::RegisterDefaultHotkeys()
         [this]() { m_undoStack.Undo(); } });
     m_hotkeys.Register({ "Redo", ImGuiKey_Y, true, false, false,
         [this]() { m_undoStack.Redo(); } });
+    m_hotkeys.Register({ "Open Scene", ImGuiKey_O, true, false, false,
+        [this]() { OpenSceneFromDialog(); } });
+    m_hotkeys.Register({ "Save Scene", ImGuiKey_S, true, false, false,
+        [this]() { SaveScene(); } });
+    m_hotkeys.Register({ "Save Scene As", ImGuiKey_S, true, true, false,
+        [this]() { SaveSceneAsDialog(); } });
+}
+
+bool EditorApp::OpenSceneFromDialog()
+{
+    if (!m_ctx.activeScene) return false;
+
+    std::string path;
+    if (!FileDialog::OpenFile(m_hwnd, { SCENE_FILTER }, path)) return false;
+    if (!SceneSerializer::Load(*m_ctx.activeScene, path)) {
+        FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
+        return false;
+    }
+
+    m_settings.lastScenePath = path;
+    m_ctx.selectedEntities.clear();
+    FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
+    return true;
+}
+
+bool EditorApp::SaveScene()
+{
+    if (!m_ctx.activeScene) return false;
+    if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog();
+
+    if (!SceneSerializer::Save(*m_ctx.activeScene, m_settings.lastScenePath)) {
+        FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
+        return false;
+    }
+
+    FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
+    return true;
+}
+
+bool EditorApp::SaveSceneAsDialog()
+{
+    if (!m_ctx.activeScene) return false;
+
+    std::string path;
+    if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
+    path = WithFbzzExtension(path);
+
+    if (!SceneSerializer::Save(*m_ctx.activeScene, path)) {
+        FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
+        return false;
+    }
+
+    m_settings.lastScenePath = path;
+    FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
+    return true;
 }
 
 } // namespace fbzz::editor
