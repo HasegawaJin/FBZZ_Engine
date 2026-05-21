@@ -1,0 +1,145 @@
+[compile_shaders] 2026/05/21 18:38:16.06 
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Debug.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Debug.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Unlit.hlsl(28,20): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Unlit.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Unlit.hlsl(28,20): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Unlit.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Lit.hlsl(30,21): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Lit.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Lit.hlsl(30,21): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Lit.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Phong.hlsl(32,21): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Phong.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Phong.hlsl(32,21): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Phong.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\BlinnPhong.hlsl(32,18): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.BlinnPhong.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\BlinnPhong.hlsl(32,18): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.BlinnPhong.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\PBR.hlsl(36,18): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.PBR.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\PBR.hlsl(36,18): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.PBR.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Toon.hlsl(30,21): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Toon.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Material\Toon.hlsl(30,21): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Toon.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Particle.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Particle.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Skybox.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Skybox.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Skydome.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Material.Skydome.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Pipeline\GBuffer.hlsl(34,18): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Pipeline.GBuffer.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Pipeline\GBuffer.hlsl(34,18): warning X3206: implicit truncation of vector type
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Pipeline.GBuffer.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Pipeline.DeferredLighting.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Pipeline.DeferredLighting.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Pipeline.ShadowMap.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\Pipeline.ShadowMap.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.SSAO.cs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.SSAOBlur.cs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.BloomDownsample.cs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.BloomUpsample.cs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.Composite.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.Composite.ps.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.FXAA.vs.cso
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\Platform\DX11.hlsli(7,36): warning X1519: 'PLATFORM_DX11' : macro redefinition
+
+compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\Assets\shaders\compiled\PostProcess.FXAA.ps.cso
