@@ -3,38 +3,14 @@
 // 選択 Entity のコンポーネントを表示・編集する
 #include <editor/Panels/InspectorPanel.hpp>
 #include <editor/EditorContext.hpp>
+#include <editor/ImGuiReflector.hpp>
+#include <editor/Util/ImGuiWidgets.hpp>
 #include <engine/Scene/Scene.hpp>
 #include <engine/Scene/GameObject.hpp>
 #include <imgui.h>
-#include <cmath>
 #include <cstdio>
 
 namespace fbzz::editor {
-
-namespace {
-
-// Quaternion → オイラー角 (度) — XYZ 順
-math::Vector3 QuatToEulerDeg(const math::Quaternion& q)
-{
-    constexpr float DEG = 180.0f / 3.14159265f;
-
-    float sinr = 2.0f * (q.w * q.x + q.y * q.z);
-    float cosr = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
-    float roll  = std::atan2(sinr, cosr) * DEG;
-
-    float sinp  = 2.0f * (q.w * q.y - q.z * q.x);
-    float pitch = (std::abs(sinp) >= 1.0f)
-                ? std::copysign(90.0f, sinp)
-                : std::asin(sinp) * DEG;
-
-    float siny = 2.0f * (q.w * q.z + q.x * q.y);
-    float cosy = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
-    float yaw   = std::atan2(siny, cosy) * DEG;
-
-    return { roll, pitch, yaw };
-}
-
-} // namespace
 
 void InspectorPanel::OnRender(EditorContext& ctx)
 {
@@ -67,17 +43,26 @@ void InspectorPanel::OnRender(EditorContext& ctx)
         if (ImGui::DragFloat3("Position", pos, 0.1f))
             t.localPosition = { pos[0], pos[1], pos[2] };
 
-        math::Vector3 euler = QuatToEulerDeg(t.localRotation);
+        math::Vector3 euler = widgets::QuatToEulerDeg(t.localRotation);
         float rot[3] = { euler.x, euler.y, euler.z };
-        if (ImGui::DragFloat3("Rotation", rot, 0.5f)) {
-            constexpr float RAD = 3.14159265f / 180.0f;
-            t.localRotation = math::Quaternion::FromEuler(
-                { rot[0] * RAD, rot[1] * RAD, rot[2] * RAD });
-        }
+        if (ImGui::DragFloat3("Rotation", rot, 0.5f))
+            t.localRotation = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
 
         float scale[3] = { t.localScale.x, t.localScale.y, t.localScale.z };
         if (ImGui::DragFloat3("Scale", scale, 0.01f, 0.001f, 1000.0f))
             t.localScale = { scale[0], scale[1], scale[2] };
+    }
+
+    if (auto* sc = go->GetComponent<scene::ScriptComponent>()) {
+        if (sc->script) {
+            const char* header = sc->script->GetTypeName();
+            if (ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Checkbox("Enabled", &sc->script->enabled);
+                ImGui::Separator();
+                ImGuiReflector reflector;
+                sc->script->Reflect(reflector);
+            }
+        }
     }
 
     ImGui::End();

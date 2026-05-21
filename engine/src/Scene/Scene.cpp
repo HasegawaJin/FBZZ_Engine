@@ -44,8 +44,14 @@ void Scene::DestroyImmediate(EntityID id) {
     }
 
     // Component 削除
-    if (m_meshRenderers.Has(id))  m_meshRenderers.Remove(id);
-    if (m_rigidBodies.Has(id))    m_rigidBodies.Remove(id);
+    if (m_meshRenderers.Has(id))     m_meshRenderers.Remove(id);
+    if (m_particleEmitters.Has(id))  m_particleEmitters.Remove(id);
+    if (m_rigidBodies.Has(id))       m_rigidBodies.Remove(id);
+    if (m_skyRenderers.Has(id))      m_skyRenderers.Remove(id);
+    if (m_lightComponents.Has(id))   m_lightComponents.Remove(id);
+    if (m_cameraComponents.Has(id))  m_cameraComponents.Remove(id);
+    if (m_audioSources.Has(id))      m_audioSources.Remove(id);
+    if (m_scriptComponents.Has(id))  m_scriptComponents.Remove(id);
 
     // Entity 解放
     m_entityToGameObject[id.index] = nullptr;
