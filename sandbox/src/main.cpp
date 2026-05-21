@@ -16,6 +16,7 @@
 #include <engine/Renderer/ITexture.hpp>
 #include <engine/Scene/Scene.hpp>
 #include <engine/Scene/SceneManager.hpp>
+#include <engine/Scene/ScriptFactory.hpp>
 #include <engine/Scene/Systems/RenderSystem.hpp>
 #include <engine/Scene/Components/MeshRenderer.hpp>
 #include <engine/Scene/Components/ParticleEmitter.hpp>
@@ -23,10 +24,22 @@
 #include <physics/World.hpp>
 #include <editor/EditorApp.hpp>
 #include "Scripts/PlayerController.hpp"
+#include <memory>
+#include <string>
+#include <utility>
 
 using namespace fbzz;
 
 namespace {
+
+constexpr const char* SHADER_UNLIT      = "assets/shaders/Material/Unlit.hlsl";
+constexpr const char* SHADER_LIT        = "assets/shaders/Material/Lit.hlsl";
+constexpr const char* SHADER_PHONG      = "assets/shaders/Material/Phong.hlsl";
+constexpr const char* SHADER_BLINNPHONG = "assets/shaders/Material/BlinnPhong.hlsl";
+constexpr const char* SHADER_PBR        = "assets/shaders/Material/PBR.hlsl";
+constexpr const char* SHADER_TOON       = "assets/shaders/Material/Toon.hlsl";
+constexpr const char* TEX_ALBEDO        = "textures/test.jpg";
+constexpr const char* TEX_NORMAL        = "textures/normal/normal_test.png";
 
 std::shared_ptr<renderer::Material> MakeMat(
     renderer::IRenderer& r,
@@ -48,6 +61,25 @@ std::shared_ptr<renderer::Material> MakeMat(
     return mat;
 }
 
+scene::MeshRenderer MakeMeshRenderer(
+    std::shared_ptr<renderer::Mesh> mesh,
+    std::string meshPath,
+    std::shared_ptr<renderer::Material> material,
+    std::string shaderPath,
+    std::string albedoTexPath = {},
+    std::string normalTexPath = {})
+{
+    if (material) material->shaderPath = shaderPath;
+    scene::MeshRenderer mr;
+    mr.mesh          = std::move(mesh);
+    mr.material      = std::move(material);
+    mr.meshPath      = std::move(meshPath);
+    mr.shaderPath    = std::move(shaderPath);
+    mr.albedoTexPath = std::move(albedoTexPath);
+    mr.normalTexPath = std::move(normalTexPath);
+    return mr;
+}
+
 } // namespace
 
 int main()
@@ -58,18 +90,19 @@ int main()
     auto& renderer = app.GetRenderer();
     renderer::ShaderManager::Init(&renderer);
     asset::AssetManager::Init(renderer);
+    scene::ScriptFactory::Register<sandbox::PlayerController>();
 
     // ---------------------------------------------------------------- シェーダー
-    auto shaderUnlit      = renderer::ShaderManager::Load("assets/shaders/Material/Unlit.hlsl");
-    auto shaderLit        = renderer::ShaderManager::Load("assets/shaders/Material/Lit.hlsl");
-    auto shaderPhong      = renderer::ShaderManager::Load("assets/shaders/Material/Phong.hlsl");
-    auto shaderBlinnPhong = renderer::ShaderManager::Load("assets/shaders/Material/BlinnPhong.hlsl");
-    auto shaderPBR        = renderer::ShaderManager::Load("assets/shaders/Material/PBR.hlsl");
-    auto shaderToon       = renderer::ShaderManager::Load("assets/shaders/Material/Toon.hlsl");
+    auto shaderUnlit      = renderer::ShaderManager::Load(SHADER_UNLIT);
+    auto shaderLit        = renderer::ShaderManager::Load(SHADER_LIT);
+    auto shaderPhong      = renderer::ShaderManager::Load(SHADER_PHONG);
+    auto shaderBlinnPhong = renderer::ShaderManager::Load(SHADER_BLINNPHONG);
+    auto shaderPBR        = renderer::ShaderManager::Load(SHADER_PBR);
+    auto shaderToon       = renderer::ShaderManager::Load(SHADER_TOON);
 
     // ---------------------------------------------------------------- テクスチャ
-    auto albedoTex = asset::AssetManager::Load<renderer::ITexture>("textures/test.jpg");
-    auto normalTex = asset::AssetManager::Load<renderer::ITexture>("textures/normal/normal_test.png");
+    auto albedoTex = asset::AssetManager::Load<renderer::ITexture>(TEX_ALBEDO);
+    auto normalTex = asset::AssetManager::Load<renderer::ITexture>(TEX_NORMAL);
 
     // ---------------------------------------------------------------- モデル
     auto testModel = asset::AssetManager::Load<asset::Model>("models/test.fbx");
@@ -95,16 +128,17 @@ int main()
         // ================================================================
         struct ShaderEntry {
             std::shared_ptr<renderer::IShader> shader;
+            const char* shaderPath;
             math::Vector4 color;
             const char* name;
         };
         ShaderEntry row1[] = {
-            { shaderUnlit,      { 1.0f, 0.3f, 0.3f, 1.0f },      "Unlit"      },
-            { shaderLit,        { 0.3f, 0.9f, 0.3f, 1.0f },      "Lit"        },
-            { shaderPhong,      { 0.3f, 0.5f, 1.0f, 1.0f },      "Phong"      },
-            { shaderBlinnPhong, { 1.0f, 0.85f, 0.2f, 1.0f },     "BlinnPhong" },
-            { shaderPBR,        { 0.85f, 0.85f, 0.85f, 1.0f },   "PBR"        },
-            { shaderToon,       { 0.2f, 0.7f, 1.0f, 1.0f },      "Toon"       },
+            { shaderUnlit,      SHADER_UNLIT,      { 1.0f, 0.3f, 0.3f, 1.0f },      "Unlit"      },
+            { shaderLit,        SHADER_LIT,        { 0.3f, 0.9f, 0.3f, 1.0f },      "Lit"        },
+            { shaderPhong,      SHADER_PHONG,      { 0.3f, 0.5f, 1.0f, 1.0f },      "Phong"      },
+            { shaderBlinnPhong, SHADER_BLINNPHONG, { 1.0f, 0.85f, 0.2f, 1.0f },     "BlinnPhong" },
+            { shaderPBR,        SHADER_PBR,        { 0.85f, 0.85f, 0.85f, 1.0f },   "PBR"        },
+            { shaderToon,       SHADER_TOON,       { 0.2f, 0.7f, 1.0f, 1.0f },      "Toon"       },
         };
         constexpr int ROW1_COUNT = 6;
         for (int i = 0; i < ROW1_COUNT; ++i) {
@@ -114,8 +148,10 @@ int main()
             auto& go = s->CreateGameObject(e.name);
             go.transform.localPosition = { (i - 2.5f) * 3.0f, Y, 0.0f };
             go.transform.localScale    = { 0.9f, 0.9f, 0.9f };
-            go.AddComponent<scene::MeshRenderer>({ sphereMesh,
-                MakeMat(renderer, e.shader, e.color, 0.0f, 0.3f, albedoTex, nm) });
+            go.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                sphereMesh, "primitive:sphere",
+                MakeMat(renderer, e.shader, e.color, 0.0f, 0.3f, albedoTex, nm),
+                e.shaderPath, TEX_ALBEDO, nm ? TEX_NORMAL : ""));
         }
 
         // ================================================================
@@ -125,10 +161,12 @@ int main()
             auto& go = s->CreateGameObject("PBR_Rough_" + std::to_string(i));
             go.transform.localPosition = { (i - 2) * 3.0f, Y, 4.0f };
             go.transform.localScale    = { 0.9f, 0.9f, 0.9f };
-            go.AddComponent<scene::MeshRenderer>({ sphereMesh,
+            go.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                sphereMesh, "primitive:sphere",
                 MakeMat(renderer, shaderPBR,
                     { 0.7f, 0.2f, 0.9f, 1.0f },
-                    0.0f, i * 0.25f, albedoTex, normalTex) });
+                    0.0f, i * 0.25f, albedoTex, normalTex),
+                SHADER_PBR, TEX_ALBEDO, TEX_NORMAL));
         }
 
         // ================================================================
@@ -138,10 +176,12 @@ int main()
             auto& go = s->CreateGameObject("PBR_Metal_" + std::to_string(i));
             go.transform.localPosition = { (i - 2) * 3.0f, Y, 8.0f };
             go.transform.localScale    = { 0.9f, 0.9f, 0.9f };
-            go.AddComponent<scene::MeshRenderer>({ sphereMesh,
+            go.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                sphereMesh, "primitive:sphere",
                 MakeMat(renderer, shaderPBR,
                     { 1.0f, 0.78f, 0.34f, 1.0f },
-                    i * 0.25f, 0.2f, albedoTex, normalTex) });
+                    i * 0.25f, 0.2f, albedoTex, normalTex),
+                SHADER_PBR, TEX_ALBEDO, TEX_NORMAL));
         }
 
         // ================================================================
@@ -151,18 +191,19 @@ int main()
         if (testModel && !testModel->meshes.empty()) {
             struct ModelEntry {
                 std::shared_ptr<renderer::IShader> shader;
+                const char* shaderPath;
                 math::Vector4 color;
                 float metallic;
                 float roughness;
                 const char* name;
             };
             ModelEntry mrow[] = {
-                { shaderLit,        { 0.9f, 0.9f, 0.9f, 1.0f }, 0.0f, 0.5f, "M_Lit"        },
-                { shaderPhong,      { 0.8f, 0.5f, 0.3f, 1.0f }, 0.0f, 0.4f, "M_Phong"      },
-                { shaderBlinnPhong, { 0.3f, 0.6f, 0.9f, 1.0f }, 0.0f, 0.3f, "M_BlinnPhong" },
-                { shaderPBR,        { 0.9f, 0.8f, 0.7f, 1.0f }, 0.0f, 0.2f, "M_PBR_Rough"  },
-                { shaderPBR,        { 1.0f, 0.78f, 0.3f, 1.0f }, 1.0f, 0.1f, "M_PBR_Metal" },
-                { shaderToon,       { 0.4f, 0.8f, 0.5f, 1.0f }, 0.0f, 0.5f, "M_Toon"       },
+                { shaderLit,        SHADER_LIT,        { 0.9f, 0.9f, 0.9f, 1.0f }, 0.0f, 0.5f, "M_Lit"        },
+                { shaderPhong,      SHADER_PHONG,      { 0.8f, 0.5f, 0.3f, 1.0f }, 0.0f, 0.4f, "M_Phong"      },
+                { shaderBlinnPhong, SHADER_BLINNPHONG, { 0.3f, 0.6f, 0.9f, 1.0f }, 0.0f, 0.3f, "M_BlinnPhong" },
+                { shaderPBR,        SHADER_PBR,        { 0.9f, 0.8f, 0.7f, 1.0f }, 0.0f, 0.2f, "M_PBR_Rough"  },
+                { shaderPBR,        SHADER_PBR,        { 1.0f, 0.78f, 0.3f, 1.0f }, 1.0f, 0.1f, "M_PBR_Metal" },
+                { shaderToon,       SHADER_TOON,       { 0.4f, 0.8f, 0.5f, 1.0f }, 0.0f, 0.5f, "M_Toon"       },
             };
             constexpr int MROW_COUNT = 6;
 
@@ -176,10 +217,12 @@ int main()
                     auto& go = s->CreateGameObject(name);
                     go.transform.localPosition = { xPos, 0.5f, 14.0f };
                     go.transform.localScale    = { 1.0f, 1.0f, 1.0f };
-                    go.AddComponent<scene::MeshRenderer>({ testModel->meshes[mi],
+                    go.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                        testModel->meshes[mi], "models/test.fbx:" + std::to_string(mi),
                         MakeMat(renderer, entry.shader,
                                 entry.color, entry.metallic, entry.roughness,
-                                albedoTex, nullptr) });
+                                albedoTex, nullptr),
+                        entry.shaderPath, TEX_ALBEDO));
                 }
             }
         }
@@ -281,8 +324,10 @@ int main()
         auto& floor = s->CreateGameObject("Floor");
         floor.transform.localPosition = { 0.0f, 0.0f, 4.0f };
         floor.transform.localScale    = { 30.0f, 0.2f, 22.0f };
-        floor.AddComponent<scene::MeshRenderer>({ cubeMesh,
-            MakeMat(renderer, shaderLit, { 1.0f, 1.0f, 1.0f, 1.0f }, 0.0f, 1.0f, nullptr) });
+        floor.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+            cubeMesh, "primitive:cube",
+            MakeMat(renderer, shaderLit, { 1.0f, 1.0f, 1.0f, 1.0f }, 0.0f, 1.0f, nullptr),
+            SHADER_LIT));
 
         return s;
     });
@@ -329,16 +374,20 @@ int main()
         auto& floor = s->CreateGameObject("Floor");
         floor.transform.localPosition = { 0.0f, -0.1f, 5.0f };
         floor.transform.localScale    = { 22.0f, 0.2f, 22.0f };
-        floor.AddComponent<scene::MeshRenderer>({ cubeMesh,
-            MakeMat(renderer, shaderLit, { 0.65f, 0.63f, 0.60f, 1.0f }, 0.0f, 0.9f) });
+        floor.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+            cubeMesh, "primitive:cube",
+            MakeMat(renderer, shaderLit, { 0.65f, 0.63f, 0.60f, 1.0f }, 0.0f, 0.9f),
+            SHADER_LIT));
 
         // ===== 柱 5 本: 長い影をフロアに落とす =====
         for (int i = 0; i < 5; ++i) {
             auto& col = s->CreateGameObject("Column_" + std::to_string(i));
             col.transform.localPosition = { (i - 2) * 3.8f, 3.0f, 8.0f };
             col.transform.localScale    = { 0.8f, 6.0f, 0.8f };
-            col.AddComponent<scene::MeshRenderer>({ cubeMesh,
-                MakeMat(renderer, shaderLit, { 0.88f, 0.85f, 0.80f, 1.0f }, 0.0f, 0.7f) });
+            col.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                cubeMesh, "primitive:cube",
+                MakeMat(renderer, shaderLit, { 0.88f, 0.85f, 0.80f, 1.0f }, 0.0f, 0.7f),
+                SHADER_LIT));
         }
 
         // ===== Bloom 用: 高 metallic PBR 球 (金・銀・銅) =====
@@ -352,8 +401,10 @@ int main()
             auto& go = s->CreateGameObject(spheres[i].name);
             go.transform.localPosition = { (i - 1) * 3.5f, 1.0f, 1.5f };
             go.transform.localScale    = { 1.3f, 1.3f, 1.3f };
-            go.AddComponent<scene::MeshRenderer>({ sphereMesh,
-                MakeMat(renderer, shaderPBR, spheres[i].color, 1.0f, spheres[i].roughness) });
+            go.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                sphereMesh, "primitive:sphere",
+                MakeMat(renderer, shaderPBR, spheres[i].color, 1.0f, spheres[i].roughness),
+                SHADER_PBR));
         }
 
         // ===== Bloom 追加ソース: 炎パーティクル =====
@@ -456,8 +507,10 @@ int main()
         auto& floor = s->CreateGameObject("Floor");
         floor.transform.localPosition = { 0.0f, -0.1f, 3.0f };
         floor.transform.localScale    = { 20.0f, 0.2f, 20.0f };
-        floor.AddComponent<scene::MeshRenderer>({ cubeMesh,
-            MakeMat(renderer, shaderPBR, { 0.12f, 0.12f, 0.14f, 1.0f }, 0.05f, 0.5f) });
+        floor.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+            cubeMesh, "primitive:cube",
+            MakeMat(renderer, shaderPBR, { 0.12f, 0.12f, 0.14f, 1.0f }, 0.05f, 0.5f),
+            SHADER_PBR));
 
         // 4x3 グリッドの PBR 球 (material バリエーション)
         for (int row = 0; row < 3; ++row) {
@@ -467,12 +520,13 @@ int main()
                 go.transform.localScale    = { 0.9f, 0.9f, 0.9f };
                 if (row == 0 && col == 0)
                     go.AddScript<sandbox::PlayerController>();
-                go.AddComponent<scene::MeshRenderer>({ sphereMesh,
+                go.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                    sphereMesh, "primitive:sphere",
                     MakeMat(renderer, shaderPBR,
                         { 0.9f, 0.9f, 0.9f, 1.0f },
                         static_cast<float>(col) / 3.0f,   // metallic 0→1
-                        static_cast<float>(row) / 2.0f)   // roughness 0→1
-                });
+                        static_cast<float>(row) / 2.0f),  // roughness 0→1
+                    SHADER_PBR));
             }
         }
 
@@ -500,8 +554,10 @@ int main()
         auto& ground = s->CreateGameObject("Ground");
         ground.transform.localPosition = { 0.0f, -0.1f, 10.0f };
         ground.transform.localScale    = { 60.0f, 0.2f, 60.0f };
-        ground.AddComponent<scene::MeshRenderer>({ cubeMesh,
-            MakeMat(renderer, shaderLit, { 0.22f, 0.20f, 0.16f, 1.0f }, 0.0f, 0.9f) });
+        ground.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+            cubeMesh, "primitive:cube",
+            MakeMat(renderer, shaderLit, { 0.22f, 0.20f, 0.16f, 1.0f }, 0.0f, 0.9f),
+            SHADER_LIT));
 
         // 水平線にシルエットの台地 3 本
         float mesaX[] = { -14.0f, 0.0f, 10.0f };
@@ -511,8 +567,10 @@ int main()
             auto& mesa = s->CreateGameObject("Mesa_" + std::to_string(i));
             mesa.transform.localPosition = { mesaX[i], mesaH[i] * 0.5f, 28.0f };
             mesa.transform.localScale    = { mesaW[i], mesaH[i], 4.0f };
-            mesa.AddComponent<scene::MeshRenderer>({ cubeMesh,
-                MakeMat(renderer, shaderLit, { 0.10f, 0.09f, 0.08f, 1.0f }, 0.0f, 0.9f) });
+            mesa.AddComponent<scene::MeshRenderer>(MakeMeshRenderer(
+                cubeMesh, "primitive:cube",
+                MakeMat(renderer, shaderLit, { 0.10f, 0.09f, 0.08f, 1.0f }, 0.0f, 0.9f),
+                SHADER_LIT));
         }
 
         // スカイドーム (夕焼けパラメーター: Mie 散乱を増やして霞感)
@@ -587,12 +645,24 @@ int main()
         // RT リサイズを先に処理してからシーンを描く (EditorApp::BeginFrame 冒頭で実行)
         editorApp.BeginFrame();
 
+        bool sceneRestored = false;
+        if (auto* activeScene = sm.GetActive()) {
+            if (editorApp.GetContext().playMode &&
+                editorApp.GetContext().playMode->HasPendingRestore())
+            {
+                sceneRestored = editorApp.GetContext().playMode->ApplyPendingRestore(*activeScene);
+                editorApp.GetContext().selectedEntities.clear();
+                editorApp.GetContext().activeScene = sm.GetActive();
+            }
+        }
+
         auto vpRT = editorApp.GetViewportRT();
         debugCamera.camera.m_aspect = vpRT
             ? static_cast<float>(vpRT->GetWidth()) / static_cast<float>(vpRT->GetHeight())
             : 1280.0f / 720.0f;
         debugCamera.Update(dt);
-        sm.Update(dt, physWorld);
+        if (!sceneRestored)
+            sm.Update(dt, physWorld);
 
         renderer.BeginFrame();
 
