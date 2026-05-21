@@ -14,18 +14,17 @@ fbzz_physics (static library)
 │
 ├── 内部依存順 (下が上を知る)
 │    PhysicsMaterial
-│    RigidBody  (PhysicsMaterial を値で保持)
+│    RigidBody  (Collider を所有しない。Transform + ColliderComponent から同期)
 │    Collider → SphereCollider / AABBCollider / CapsuleCollider
 │    ContactPoint / CollisionPair
-│    Volume → GravityVolume / VortexVolume / BuoyancyVolume
-│              ExplosionVolume / TimeDilationVolume / MagneticVolume
+│    Volume → ColliderVolume (Trigger Collider + VolumeComponent の内部表現)
 │    Constraint → SpringConstraint / RopeConstraint / DistanceConstraint
 │                 ChainConstraint / HingeConstraint
 │    PhysicsSolver
 │    World  ← 唯一の統合点。上記すべてを知る
 │
 └── engine/ が参照してよいヘッダ
-     World.hpp / RigidBody.hpp / Collider 系 / Volume 系 / Constraint 系
+     World.hpp / RigidBody.hpp / Collider 系 / ColliderVolume / Constraint 系
 ```
 
 ### インクルード依存表
@@ -33,14 +32,14 @@ fbzz_physics (static library)
 | ヘッダ | インクルードするもの |
 |--------|---------------------|
 | `RigidBody.hpp` | `<math/Vector3.hpp>` `<math/Quaternion.hpp>` |
-| `Collider.hpp` | `RigidBody.hpp` |
+| `Collider.hpp` | `Math` |
 | `SphereCollider.hpp` | `Collider.hpp` |
 | `AABBCollider.hpp` | `Collider.hpp` |
 | `CapsuleCollider.hpp` | `Collider.hpp` |
 | `ContactPoint.hpp` | `RigidBody.hpp` |
-| `CollisionPair.hpp` | `Collider.hpp` |
+| `CollisionPair.hpp` | `Collider.hpp` `PhysicsMaterial.hpp` |
 | `Volume.hpp` | `RigidBody.hpp` |
-| `[各 Volume].hpp` | `Volume.hpp` |
+| `ColliderVolume.hpp` | `Volume.hpp` `Collider.hpp` |
 | `Constraint.hpp` | `RigidBody.hpp` |
 | `[各 Constraint].hpp` | `Constraint.hpp` |
 | `PhysicsSolver.hpp` | `ContactPoint.hpp` `CollisionPair.hpp` |
@@ -54,10 +53,10 @@ fbzz_physics (static library)
 |---------|------|
 | `World` | シミュレーション全体の管理・Step 実行 |
 | `RigidBody` | 剛体の状態・力・積分。重力源フラグ・電荷を内包 |
-| `Collider` 系 | 衝突形状 (Sphere / AABB / Capsule) |
-| `Volume` 系 | 空間効果。重力・渦・浮力・爆発・時間膨張・磁場 |
+| `Collider` 系 | 衝突形状 (Sphere / AABB / Capsule)。Scene の `ColliderComponent` が所有する |
+| `ColliderVolume` | Trigger Collider + `VolumeComponent` から生成される空間効果 |
 | `Constraint` 系 | バネ・ひも・剛体ロッド・鎖・ヒンジ |
-| `PhysicsMaterial` | 反発・摩擦・密度のプリセット。RigidBody が値で保持 |
+| `PhysicsMaterial` | 反発・摩擦・密度のプリセット。Scene の `ColliderComponent` が値で保持 |
 | `PhysicsSolver` | Broad/Narrow フェーズ衝突検出 + インパルス解決 |
 | `ContactPoint` | 衝突接触点データ構造 |
 | `CollisionPair` | 衝突候補ペアデータ構造 |
@@ -70,7 +69,7 @@ fbzz_physics (static library)
 World::Step(dt)
 │
 ├─ 1. RemoveExpiredVolumes()
-│       IsExpired() == true の Volume (ExplosionVolume 等) を削除
+│       IsExpired() == true の ColliderVolume を削除
 │
 ├─ 2. Volume 適用 + 有効 dt 計算 (per body)
 │       for body in m_bodies:
@@ -94,7 +93,7 @@ World::Step(dt)
 │       ChainConstraint は Gauss-Seidel で m_solverIterations 回反復
 │
 ├─ 7. UpdateColliders()
-│       Collider::Update(worldPos, worldRot) を全 Collider に通知
+│       PhysicsSystem が Transform から同期済みの Collider を使用
 │
 ├─ 8. BroadPhase()       O(n²) AABB 重なり判定 → m_collisionPairs
 ├─ 9. NarrowPhase()      詳細形状判定 → ContactPoint 生成
@@ -108,17 +107,16 @@ World::Step(dt)
 ## Volume システム
 
 空間上の領域で剛体に継続的な力・インパルス・時間スケールを与える。
+Unity と同じく、Volume は GameObject を継承しない。`Transform + ColliderComponent(isTrigger=true) + VolumeComponent` の組み合わせで表現する。
 
-| クラス | 効果 | 形状 |
+| VolumeComponent type | 効果 | 形状 |
 |--------|------|------|
-| `GravityVolume` | 領域内で重力方向・強さを上書き | Box |
-| `VortexVolume` | 螺旋吸引 + 上昇力 | 円柱 |
-| `BuoyancyVolume` | 浮力 + 水中抵抗 | Box |
-| `ExplosionVolume` | 1フレームだけ放射状インパルス、即 IsExpired | 球 |
-| `TimeDilationVolume` | 局所タイムスケール変更 | 球 |
-| `MagneticVolume` | Lorentz 力 F = charge * (v × B) | Box |
-
-詳細 API: [docs_helper/physics/volume.md](../../docs_helper/physics/volume.md)
+| `Gravity` | 領域内で重力方向・強さを上書き | Trigger Collider |
+| `Vortex` | 螺旋吸引 + 上昇力 | Trigger Collider |
+| `Buoyancy` | 浮力 + 水中抵抗 | Trigger Collider |
+| `Explosion` | 放射状インパルス、duration で寿命管理 | Trigger Collider |
+| `TimeDilation` | 局所タイムスケール変更 | Trigger Collider |
+| `Magnetic` | Lorentz 力 F = charge * (v × B) | Trigger Collider |
 
 ---
 
@@ -141,7 +139,7 @@ World::Step(dt)
 ## 慣性テンソル方針 (対角テンソル近似)
 
 回転動力学には **ボディ空間の対角慣性テンソル** を使う。
-`RigidBody::m_invInertiaDiag` (Vector3) に逆数を格納し、`SetMass()` / `SetCollider()` で自動計算。
+`RigidBody::m_invInertiaDiag` (Vector3) に逆数を格納し、`SetMass()` / `SetInertiaFromCollider()` で自動計算。
 
 ```
 // ワールド空間適用: ApplyInvInertia(v) = R * (invInertiaDiag ⊙ (Rᵀ * v))
@@ -160,7 +158,7 @@ World::Step(dt)
 
 | プロパティ | 説明 |
 |-----------|------|
-| `m_charge` | MagneticVolume の Lorentz 力用。0 なら無効 |
+| `m_charge` | Magnetic VolumeComponent の Lorentz 力用。0 なら無効 |
 | `m_isGravitationalSource` | true のとき他の重力源ボディと N 体引力を計算 |
 | `m_gravitationalMass` | 慣性質量 (m_mass) と独立した重力質量 |
 | `m_mass < 0` | 負質量。力の方向が逆になり反重力的な動きをする |
@@ -180,12 +178,7 @@ physics/
 │   ├── AABBCollider.hpp
 │   ├── CapsuleCollider.hpp
 │   ├── Volume.hpp
-│   ├── GravityVolume.hpp
-│   ├── VortexVolume.hpp
-│   ├── BuoyancyVolume.hpp
-│   ├── ExplosionVolume.hpp
-│   ├── TimeDilationVolume.hpp
-│   ├── MagneticVolume.hpp
+│   ├── ColliderVolume.hpp
 │   ├── Constraint.hpp
 │   ├── SpringConstraint.hpp
 │   ├── RopeConstraint.hpp
@@ -203,12 +196,7 @@ physics/
     ├── SphereCollider.cpp
     ├── AABBCollider.cpp
     ├── CapsuleCollider.cpp
-    ├── GravityVolume.cpp
-    ├── VortexVolume.cpp
-    ├── BuoyancyVolume.cpp
-    ├── ExplosionVolume.cpp
-    ├── TimeDilationVolume.cpp
-    ├── MagneticVolume.cpp
+    ├── ColliderVolume.cpp
     ├── SpringConstraint.cpp
     ├── RopeConstraint.cpp
     ├── DistanceConstraint.cpp
@@ -230,8 +218,8 @@ physics/
 | # | ファイルペア | 依存 |
 |---|------------|------|
 | 1 | `PhysicsMaterial.hpp` / `.cpp` | なし |
-| 2 | `RigidBody.hpp` / `.cpp` | `PhysicsMaterial` / `math::Vector3` / `math::Quaternion` |
-| 3 | `Collider.hpp` / `.cpp` | `RigidBody` |
+| 2 | `RigidBody.hpp` / `.cpp` | `math::Vector3` / `math::Quaternion` |
+| 3 | `Collider.hpp` / `.cpp` | `Math` |
 | 4 | `SphereCollider.hpp` / `.cpp` | `Collider` |
 | 5 | `AABBCollider.hpp` / `.cpp` | `Collider` |
 | 6 | `ContactPoint.hpp` (実装なし) | `RigidBody` |
@@ -246,7 +234,7 @@ Step 4 マージ後、`develop` を定期的に取り込みながら追加して
 | グループ | ファイル | 先送り理由 |
 |---------|---------|-----------|
 | 形状追加 | `CapsuleCollider.hpp` / `.cpp` | Sphere/AABB で動作確認後に追加 |
-| Volume 系 | `Volume.hpp` / `GravityVolume` / `VortexVolume` / `BuoyancyVolume` / `ExplosionVolume` / `TimeDilationVolume` / `MagneticVolume` | Step 4 の必須要件外。独立して追加可能 |
+| Volume 系 | `Volume.hpp` / `ColliderVolume.hpp` / Scene `VolumeComponent` | Unity-style Trigger Collider 前提 |
 | Constraint 系 | `Constraint.hpp` / `SpringConstraint` / `RopeConstraint` / `DistanceConstraint` / `HingeConstraint` / `ChainConstraint` | 同上 |
 
 ---
