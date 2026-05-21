@@ -37,6 +37,9 @@ private:
     void BuildMenuBar(EditorContext& ctx);
     void RegisterDefaultHotkeys();
     void ResizeViewportRTIfNeeded();
+    bool OpenSceneFromDialog();
+    bool SaveScene();
+    bool SaveSceneAsDialog();
 
     EditorContext                        m_ctx;
     std::vector<std::unique_ptr<IPanel>> m_panels;
