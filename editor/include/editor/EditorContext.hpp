@@ -7,16 +7,15 @@
 #include <vector>
 
 namespace fbzz::scene    { class Scene; }
-namespace fbzz::renderer { class LightSystem; class Camera; }
+namespace fbzz::renderer { class Camera; }
 namespace fbzz::editor   { class UndoStack; class PlayModeController; }
 
 namespace fbzz::editor {
 
 struct EditorContext {
     // エンジンオブジェクト (非所有)
-    scene::Scene*          activeScene  = nullptr;
-    renderer::LightSystem* lightSystem  = nullptr;
-    renderer::Camera*      editorCamera = nullptr;
+    scene::Scene*     activeScene  = nullptr;
+    renderer::Camera* editorCamera = nullptr;
 
     // 選択状態 (Multi-select 対応)
     std::vector<scene::EntityID> selectedEntities;

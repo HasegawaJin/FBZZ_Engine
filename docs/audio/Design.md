@@ -160,6 +160,52 @@ RIFF chunk
 
 ---
 
+## Scene との統合 (AudioSourceComponent)
+
+`fbzz::scene` から `fbzz::audio` を使うためのブリッジ層。  
+`scene → audio` 依存を `scene/Systems/AudioSystem.hpp` の free function に閉じ込める。
+
+### AudioSourceComponent
+
+```cpp
+// engine/include/engine/Scene/Components/AudioSourceComponent.hpp
+struct AudioSourceComponent {
+    std::string clipPath;            // "assets/se/jump.wav"
+    bool        playOnAwake = false;
+    bool        loop        = false;
+    float       volume      = 1.0f;
+    bool        enabled     = true;
+};
+```
+
+コンポーネントはデータのみ。再生ロジックは `scene::AudioSystem` free function が持つ。
+
+### scene::AudioSystem free function
+
+```cpp
+// engine/include/engine/Scene/Systems/AudioSystem.hpp
+namespace fbzz::scene {
+    // playOnAwake の初回起動・ループ管理・音量同期を行う
+    void AudioSystem(Scene& scene, audio::AudioSystem& audioSystem, float dt);
+}
+```
+
+内部では `scene.View<AudioSourceComponent>()` を走査し、  
+`enabled && playOnAwake` なら `audioSystem.PlaySE(clipPath)` を呼ぶ。
+
+### 使い方
+
+```cpp
+// ゲームオブジェクトに付ける
+auto& go = scene.CreateGameObject("Explosion");
+go.AddComponent<AudioSourceComponent>({ .clipPath = "assets/se/explosion.wav", .playOnAwake = true });
+
+// ゲームループ (SceneManager::Update の外で呼ぶ)
+scene::AudioSystem(*sm.GetActive(), audioSystem, dt);
+```
+
+---
+
 ## ファイル構成
 
 ```

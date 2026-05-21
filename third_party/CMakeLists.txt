@@ -23,3 +23,6 @@ target_compile_definitions(imgui
 add_library(tomlplusplus INTERFACE)
 target_include_directories(tomlplusplus INTERFACE TomlPlusPlus/include)
 target_compile_definitions(tomlplusplus INTERFACE TOML_EXCEPTIONS=0)
+
+# ImGuizmo
+add_subdirectory(ImGuizmo)

@@ -30,6 +30,8 @@ public:
     std::shared_ptr<IConstantBuffer> paramsBuffer;
     MaterialParams                   params;
 
+    std::string shaderPath;  // シリアライズ用 (ランタイムでは未使用)
+
     void Init(IRenderer& renderer);
     void Upload();
 };

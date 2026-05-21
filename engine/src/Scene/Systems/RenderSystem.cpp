@@ -8,6 +8,7 @@
 #include "engine/Renderer/RenderSettings.hpp"
 #include "engine/Core/Time.hpp"
 #include "engine/Scene/Scene.hpp"
+#include "engine/Scene/Components/LightComponent.hpp"
 #include "engine/Scene/Components/MeshRenderer.hpp"
 #include "engine/Scene/Components/ParticleEmitter.hpp"
 #include "engine/Scene/Components/SkyRenderer.hpp"
@@ -27,6 +28,7 @@
 #include <math/Vector3.hpp>
 #include <math/Vector4.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 namespace fbzz::scene {
@@ -104,7 +106,6 @@ inline math::Vector4 LerpVec4(const math::Vector4& a, const math::Vector4& b, fl
 void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   const renderer::Camera& camera,
-                  const renderer::LightSystem& lights,
                   const std::shared_ptr<renderer::IRenderTarget>& outputRT,
                   const renderer::RenderSettings* settings)
 {
@@ -189,10 +190,41 @@ void RenderSystem(Scene& scene,
     }
 
     // =========================================================================
-    // ライトの View-Projection を計算 (シャドウパス + ShadowConstants で共用)
+    // LightComponent から LightConstantsCB を組み立てる (シャドウ VP にも使う)
     // =========================================================================
-    const auto& dl = lights.GetDirectional();
-    math::Vector3 lightDir = dl.direction.Normalized();
+    renderer::LightConstantsCB lightData{};
+    lightData.lightDir       = { 0.0f, -1.0f, 0.5f };  // fallback directional
+    lightData.lightColor     = { 1.0f,  1.0f, 1.0f };
+    lightData.lightIntensity = 1.0f;
+
+    constexpr float kDegToRad = 3.14159265f / 180.0f;
+    for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
+        if (!lc.enabled) continue;
+        if (lc.type == LightComponent::Type::Directional) {
+            lightData.lightDir       = tf.Forward().Normalized();
+            lightData.lightColor     = lc.color;
+            lightData.lightIntensity = lc.intensity;
+        } else if (lc.type == LightComponent::Type::Point
+                   && lightData.pointLightCount < 8) {
+            auto& pl    = lightData.pointLights[lightData.pointLightCount++];
+            pl.position  = tf.position;
+            pl.range     = lc.range;
+            pl.color     = lc.color;
+            pl.intensity = lc.intensity;
+        } else if (lc.type == LightComponent::Type::Spot
+                   && lightData.spotLightCount < 4) {
+            auto& sl    = lightData.spotLights[lightData.spotLightCount++];
+            sl.position  = tf.position;
+            sl.direction = tf.Forward().Normalized();
+            sl.range     = lc.range;
+            sl.innerCos  = std::cos(lc.innerCone * kDegToRad);
+            sl.outerCos  = std::cos(lc.outerCone * kDegToRad);
+            sl.color     = lc.color;
+            sl.intensity = lc.intensity;
+        }
+    }
+
+    math::Vector3 lightDir = lightData.lightDir.Normalized();
     math::Vector3 sceneCenter = { 0.0f, 1.0f, 4.0f };
     math::Vector3 lightPos    = sceneCenter - lightDir * 30.0f;
     math::Vector3 up = (std::abs(lightDir.y) > 0.99f)
@@ -251,7 +283,7 @@ void RenderSystem(Scene& scene,
     frameData.farZ              = camera.m_far;
     frameCB->Update(&frameData, sizeof(PerFrameCB));
 
-    lights.Upload(*lightCB);
+    lightCB->Update(&lightData, sizeof(renderer::LightConstantsCB));
 
     ShadowConstantsCB shadowData{};
     shadowData.lightViewProjection    = lightVP;

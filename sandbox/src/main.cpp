@@ -10,7 +10,7 @@
 #include <engine/Renderer/DebugDraw.hpp>
 #include <engine/Renderer/PrimitiveMesh.hpp>
 #include <engine/Renderer/Material.hpp>
-#include <engine/Renderer/LightSystem.hpp>
+#include <engine/Scene/Components/LightComponent.hpp>
 #include <engine/Asset/AssetManager.hpp>
 #include <engine/Asset/Model.hpp>
 #include <engine/Renderer/ITexture.hpp>
@@ -77,38 +77,6 @@ int main()
     auto sphereMesh = renderer::PrimitiveMesh::Sphere(renderer, 32);
     auto cubeMesh   = renderer::PrimitiveMesh::Cube(renderer);
     auto planeMesh  = renderer::PrimitiveMesh::Plane(renderer);
-
-    // ---------------------------------------------------------------- ライト (シーン別 3 セット)
-    // Scene 1-3: PostProcessShowcase — 斜め太陽光 + Bloom 用強白光
-    renderer::LightSystem lightsShowcase;
-    lightsShowcase.SetDirectional({ { 0.55f, -0.45f, 0.35f }, 0.0f, { 1.0f, 0.92f, 0.76f }, 3.5f });
-    lightsShowcase.AddPoint({ { 0.0f, 9.0f, 2.0f }, 22.0f, { 1.0f, 0.97f, 0.90f }, 35.0f });
-    lightsShowcase.AddPoint({ { 5.5f, 4.0f, 4.5f }, 10.0f, { 1.0f, 0.40f, 0.10f }, 15.0f });
-
-    // Scene 4: MultiLight — 暗いアンビエント + 色とりどりのポイント/スポット
-    renderer::LightSystem lightsMulti;
-    lightsMulti.SetDirectional({ { 0.0f, -1.0f, 0.0f }, 0.0f, { 0.15f, 0.15f, 0.2f }, 0.08f });
-    lightsMulti.AddPoint({ { -5.0f, 2.5f, 2.0f },  10.0f, { 1.0f, 0.15f, 0.10f }, 20.0f }); // 赤
-    lightsMulti.AddPoint({ {  5.0f, 2.5f, 2.0f },  10.0f, { 0.20f, 0.40f, 1.0f }, 20.0f }); // 青
-    lightsMulti.AddPoint({ {  0.0f, 2.5f, 6.5f },  10.0f, { 0.20f, 1.00f, 0.3f }, 18.0f }); // 緑
-    lightsMulti.AddPoint({ { -4.0f, 2.5f, 5.0f },   9.0f, { 1.0f, 0.60f, 0.1f }, 15.0f }); // オレンジ
-    lightsMulti.AddPoint({ {  4.0f, 2.5f,-1.0f },   9.0f, { 0.85f, 0.2f, 1.0f }, 15.0f }); // 紫
-    lightsMulti.AddSpot({  // 真上から白スポット
-        { 0.0f, 10.0f, 3.0f }, 18.0f,
-        { 0.0f, -1.0f, 0.0f }, 0.97f,
-        { 1.0f,  1.0f, 1.0f }, 0.87f, 25.0f
-    });
-    lightsMulti.AddSpot({  // 左横から冷白スポット
-        { -9.0f, 6.0f, 1.0f }, 18.0f,
-        {  0.75f, -0.55f, 0.36f }, 0.96f,
-        { 0.65f, 0.80f, 1.0f }, 0.85f, 12.0f
-    });
-
-    // Scene 5: Skydome — 水平線近くの夕日
-    renderer::LightSystem lightsSkydome;
-    lightsSkydome.SetDirectional({ { 0.97f, -0.12f, 0.2f }, 0.0f, { 1.0f, 0.65f, 0.30f }, 2.5f });
-
-    renderer::LightSystem* pLights = &lightsShowcase;
 
     // ---------------------------------------------------------------- 物理ワールド (ダミー: ボディなし)
     physics::World physWorld;
@@ -272,6 +240,41 @@ int main()
         });
 
         // ================================================================
+        // ライト (LightComponent)
+        // ================================================================
+        {
+            auto& go = s->CreateGameObject("DirectionalLight");
+            go.transform.localRotation = math::Quaternion::LookRotation(
+                math::Vector3{0.55f, -0.45f, 0.35f}.Normalized());
+            go.transform.rotation = go.transform.localRotation;
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Directional,
+                .color     = { 1.0f, 0.92f, 0.76f },
+                .intensity = 3.5f,
+            });
+        }
+        {
+            auto& go = s->CreateGameObject("PointLight1");
+            go.transform.localPosition = { 0.0f, 9.0f, 2.0f };
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Point,
+                .color     = { 1.0f, 0.97f, 0.90f },
+                .intensity = 35.0f,
+                .range     = 22.0f,
+            });
+        }
+        {
+            auto& go = s->CreateGameObject("PointLight2");
+            go.transform.localPosition = { 5.5f, 4.0f, 4.5f };
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Point,
+                .color     = { 1.0f, 0.40f, 0.10f },
+                .intensity = 15.0f,
+                .range     = 10.0f,
+            });
+        }
+
+        // ================================================================
         // 床 (Lit)
         // ================================================================
         auto& floor = s->CreateGameObject("Floor");
@@ -287,6 +290,39 @@ int main()
     // Shadow / Bloom / FXAA の撮影に特化したシーン
     sm.Register("PostProcessShowcase", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
+
+        // ===== ライト (斜め太陽光 + Bloom 用強白光) =====
+        {
+            auto& go = s->CreateGameObject("DirectionalLight");
+            go.transform.localRotation = math::Quaternion::LookRotation(
+                math::Vector3{0.55f, -0.45f, 0.35f}.Normalized());
+            go.transform.rotation = go.transform.localRotation;
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Directional,
+                .color     = { 1.0f, 0.92f, 0.76f },
+                .intensity = 3.5f,
+            });
+        }
+        {
+            auto& go = s->CreateGameObject("PointLight1");
+            go.transform.localPosition = { 0.0f, 9.0f, 2.0f };
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Point,
+                .color     = { 1.0f, 0.97f, 0.90f },
+                .intensity = 35.0f,
+                .range     = 22.0f,
+            });
+        }
+        {
+            auto& go = s->CreateGameObject("PointLight2");
+            go.transform.localPosition = { 5.5f, 4.0f, 4.5f };
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Point,
+                .color     = { 1.0f, 0.40f, 0.10f },
+                .intensity = 15.0f,
+                .range     = 10.0f,
+            });
+        }
 
         // ===== フロア: 影受け面 =====
         auto& floor = s->CreateGameObject("Floor");
@@ -352,6 +388,69 @@ int main()
     sm.Register("MultiLight", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
 
+        // ===== ライト (暗いアンビエント + 色とりどりのポイント/スポット) =====
+        {
+            auto& go = s->CreateGameObject("DirectionalLight");
+            go.transform.localRotation = math::Quaternion::LookRotation(math::Vector3{0.0f, -1.0f, 0.001f}.Normalized());
+            go.transform.rotation = go.transform.localRotation;
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Directional,
+                .color     = { 0.15f, 0.15f, 0.2f },
+                .intensity = 0.08f,
+            });
+        }
+        {
+            struct PL { math::Vector3 pos; math::Vector3 color; float intensity; float range; };
+            PL pts[] = {
+                { { -5.0f, 2.5f, 2.0f }, { 1.0f, 0.15f, 0.10f }, 20.0f, 10.0f },
+                { {  5.0f, 2.5f, 2.0f }, { 0.20f, 0.40f, 1.0f }, 20.0f, 10.0f },
+                { {  0.0f, 2.5f, 6.5f }, { 0.20f, 1.00f, 0.3f }, 18.0f, 10.0f },
+                { { -4.0f, 2.5f, 5.0f }, { 1.0f, 0.60f, 0.1f  }, 15.0f,  9.0f },
+                { {  4.0f, 2.5f,-1.0f }, { 0.85f, 0.2f, 1.0f  }, 15.0f,  9.0f },
+            };
+            for (int i = 0; i < 5; ++i) {
+                auto& go = s->CreateGameObject("PointLight_" + std::to_string(i));
+                go.transform.localPosition = pts[i].pos;
+                go.AddComponent<scene::LightComponent>({
+                    .type      = scene::LightComponent::Type::Point,
+                    .color     = pts[i].color,
+                    .intensity = pts[i].intensity,
+                    .range     = pts[i].range,
+                });
+            }
+        }
+        {
+            // 真上から白スポット
+            auto& go = s->CreateGameObject("SpotLight1");
+            go.transform.localPosition = { 0.0f, 10.0f, 3.0f };
+            go.transform.localRotation = math::Quaternion::LookRotation(math::Vector3{0.0f, -1.0f, 0.001f}.Normalized());
+            go.transform.rotation = go.transform.localRotation;
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Spot,
+                .color     = { 1.0f, 1.0f, 1.0f },
+                .intensity = 25.0f,
+                .range     = 18.0f,
+                .innerCone = 14.0f,
+                .outerCone = 30.0f,
+            });
+        }
+        {
+            // 左横から冷白スポット
+            auto& go = s->CreateGameObject("SpotLight2");
+            go.transform.localPosition = { -9.0f, 6.0f, 1.0f };
+            go.transform.localRotation = math::Quaternion::LookRotation(
+                math::Vector3{0.75f, -0.55f, 0.36f}.Normalized());
+            go.transform.rotation = go.transform.localRotation;
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Spot,
+                .color     = { 0.65f, 0.80f, 1.0f },
+                .intensity = 12.0f,
+                .range     = 18.0f,
+                .innerCone = 16.0f,
+                .outerCone = 32.0f,
+            });
+        }
+
         // フロア: 暗めで光の反射が見やすい
         auto& floor = s->CreateGameObject("Floor");
         floor.transform.localPosition = { 0.0f, -0.1f, 3.0f };
@@ -380,6 +479,19 @@ int main()
     // ---------------------------------------------------------------- Scene 5: Skydome
     sm.Register("Skydome", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
+
+        // ===== ライト (水平線近くの夕日) =====
+        {
+            auto& go = s->CreateGameObject("DirectionalLight");
+            go.transform.localRotation = math::Quaternion::LookRotation(
+                math::Vector3{0.97f, -0.12f, 0.2f}.Normalized());
+            go.transform.rotation = go.transform.localRotation;
+            go.AddComponent<scene::LightComponent>({
+                .type      = scene::LightComponent::Type::Directional,
+                .color     = { 1.0f, 0.65f, 0.30f },
+                .intensity = 2.5f,
+            });
+        }
 
         // 広い地面
         auto& ground = s->CreateGameObject("Ground");
@@ -418,8 +530,7 @@ int main()
     editor::EditorApp editorApp;
     editorApp.Init(renderer, app.GetWindow());
 
-    editorApp.GetContext().activeScene  = sm.GetActive();
-    editorApp.GetContext().lightSystem  = pLights;
+    editorApp.GetContext().activeScene = sm.GetActive();
 
     app.GetWindow().SetResizeCallback([&](uint32_t w, uint32_t h) {
         renderer.Resize(w, h);
@@ -438,6 +549,7 @@ int main()
     debugCamera.camera.m_position = camPresets[activeCam].pos;
     debugCamera.camera.m_aspect   = 1280.0f / 720.0f;
     debugCamera.LookAt(camPresets[activeCam].target);
+    editorApp.GetContext().editorCamera = &debugCamera.camera;
 
     // ---------------------------------------------------------------- ゲームループ
     while (app.IsRunning())
@@ -450,11 +562,11 @@ int main()
         const float dt = core::Time::DeltaTime();
 
         // F1〜F3 でシーン / ライト / カメラを切り替え
-        struct SceneSwitch { const char* name; renderer::LightSystem* lights; int cam; };
+        struct SceneSwitch { const char* name; int cam; };
         SceneSwitch switches[] = {
-            { "PostProcessShowcase", &lightsShowcase, 0 },
-            { "MultiLight",          &lightsMulti,    1 },
-            { "Skydome",             &lightsSkydome,  2 },
+            { "PostProcessShowcase", 0 },
+            { "MultiLight",          1 },
+            { "Skydome",             2 },
         };
         int switchIdx = -1;
         if (input::Input::KeyDown(input::KeyCode::F1)) switchIdx = 0;
@@ -462,12 +574,11 @@ int main()
         if (input::Input::KeyDown(input::KeyCode::F3)) switchIdx = 2;
         if (switchIdx >= 0) {
             sm.LoadScene(switches[switchIdx].name);
-            pLights   = switches[switchIdx].lights;
             activeCam = switches[switchIdx].cam;
             debugCamera.camera.m_position = camPresets[activeCam].pos;
             debugCamera.LookAt(camPresets[activeCam].target);
             editorApp.GetContext().activeScene = sm.GetActive();
-            editorApp.GetContext().lightSystem = pLights;
+            editorApp.GetContext().editorCamera = &debugCamera.camera;
         }
 
         // RT リサイズを先に処理してからシーンを描く (EditorApp::BeginFrame 冒頭で実行)
@@ -483,7 +594,7 @@ int main()
         renderer.BeginFrame();
 
         if (auto* activeScene = sm.GetActive())
-            scene::RenderSystem(*activeScene, renderer, debugCamera.camera, *pLights, vpRT, &editorApp.GetContext().renderSettings);
+            scene::RenderSystem(*activeScene, renderer, debugCamera.camera, vpRT, &editorApp.GetContext().renderSettings);
 
         renderer::DebugDraw::BeginFrame(renderer, debugCamera.camera.GetViewProjection());
         renderer::DebugDraw::Line(renderer, {0,0,0}, {1,0,0}, {1,0,0,1});

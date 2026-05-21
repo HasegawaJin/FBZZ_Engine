@@ -1,4 +1,4 @@
-[compile_shaders] 2026/05/19 11:39:43.67 
+[compile_shaders] 2026/05/20 12:34:37.60 
 compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\assets\shaders\compiled\Debug.vs.cso
 compilation object save succeeded; see C:\Users\jinhs\Downloads\FBZZ_Engine\assets\shaders\compiled\Debug.ps.cso
 C:\Users\jinhs\Downloads\FBZZ_Engine\assets\shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
