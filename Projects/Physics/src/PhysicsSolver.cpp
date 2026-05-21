@@ -10,21 +10,25 @@ namespace fbzz::physics
 {
 
     // ------------------------------------------------------------------ BroadPhase
-    void PhysicsSolver::BroadPhase(const std::vector<std::shared_ptr<RigidBody>>& bodies,
+    void PhysicsSolver::BroadPhase(const std::vector<ColliderInstance>& colliders,
                                     std::vector<CollisionPair>& outPairs)
     {
-        for (size_t i = 0; i < bodies.size(); ++i)
+        for (size_t i = 0; i < colliders.size(); ++i)
         {
-            if (!bodies[i]->GetCollider()) continue;
-            for (size_t j = i + 1; j < bodies.size(); ++j)
+            if (!colliders[i].collider) continue;
+            for (size_t j = i + 1; j < colliders.size(); ++j)
             {
-                if (!bodies[j]->GetCollider()) continue;
-                if (bodies[i]->IsStatic() && bodies[j]->IsStatic()) continue;
-                if (bodies[i]->GetCollider()->GetAABB()
-                        .Overlaps(bodies[j]->GetCollider()->GetAABB()))
+                if (!colliders[j].collider) continue;
+                if (!colliders[i].isTrigger && !colliders[j].isTrigger)
                 {
-                    outPairs.push_back({ bodies[i]->GetCollider(),
-                                        bodies[j]->GetCollider() });
+                    const bool staticA = !colliders[i].body || colliders[i].body->IsStatic();
+                    const bool staticB = !colliders[j].body || colliders[j].body->IsStatic();
+                    if (staticA && staticB) continue;
+                }
+
+                if (colliders[i].collider->GetAABB().Overlaps(colliders[j].collider->GetAABB()))
+                {
+                    outPairs.push_back({ colliders[i], colliders[j] });
                 }
             }
         }
@@ -36,44 +40,89 @@ namespace fbzz::physics
     {
         for (auto& pair : pairs)
         {
-            ColliderType tA = pair.colliderA->GetType();
-            ColliderType tB = pair.colliderB->GetType();
+            ColliderType tA = pair.colliderA.collider->GetType();
+            ColliderType tB = pair.colliderB.collider->GetType();
             ContactPoint cp;
             bool hit = false;
 
             if (tA == ColliderType::SPHERE && tB == ColliderType::SPHERE)
             {
                 hit = TestSphereSphere(
-                    *static_cast<SphereCollider*>(pair.colliderA.get()),
-                    *static_cast<SphereCollider*>(pair.colliderB.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<SphereCollider*>(pair.colliderB.collider.get()), cp);
             }
             else if (tA == ColliderType::AABB && tB == ColliderType::AABB)
             {
                 hit = TestAABBAABB(
-                    *static_cast<AABBCollider*>(pair.colliderA.get()),
-                    *static_cast<AABBCollider*>(pair.colliderB.get()), cp);
+                    *static_cast<AABBCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<AABBCollider*>(pair.colliderB.collider.get()), cp);
             }
             else if (tA == ColliderType::SPHERE && tB == ColliderType::AABB)
             {
                 hit = TestSphereAABB(
-                    *static_cast<SphereCollider*>(pair.colliderA.get()),
-                    *static_cast<AABBCollider*> (pair.colliderB.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<AABBCollider*> (pair.colliderB.collider.get()), cp);
             }
             else if (tA == ColliderType::AABB && tB == ColliderType::SPHERE)
             {
                 // 引数順を正規化して呼び、法線を反転する
                 hit = TestSphereAABB(
-                    *static_cast<SphereCollider*>(pair.colliderB.get()),
-                    *static_cast<AABBCollider*> (pair.colliderA.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderB.collider.get()),
+                    *static_cast<AABBCollider*> (pair.colliderA.collider.get()), cp);
                 if (hit)
                 {
                     cp.normal  = -cp.normal;
-                    std::swap(cp.bodyA, cp.bodyB);
                 }
             }
-            // Capsule 組み合わせは後回し実装時に追加
+            else if (tA == ColliderType::SPHERE && tB == ColliderType::CAPSULE)
+            {
+                hit = TestSphereCapsule(
+                    *static_cast<SphereCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<CapsuleCollider*>(pair.colliderB.collider.get()), cp);
+            }
+            else if (tA == ColliderType::CAPSULE && tB == ColliderType::SPHERE)
+            {
+                hit = TestSphereCapsule(
+                    *static_cast<SphereCollider*>(pair.colliderB.collider.get()),
+                    *static_cast<CapsuleCollider*>(pair.colliderA.collider.get()), cp);
+                if (hit)
+                {
+                    cp.normal = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::AABB && tB == ColliderType::CAPSULE)
+            {
+                hit = TestAABBCapsule(
+                    *static_cast<AABBCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<CapsuleCollider*>(pair.colliderB.collider.get()), cp);
+            }
+            else if (tA == ColliderType::CAPSULE && tB == ColliderType::AABB)
+            {
+                hit = TestAABBCapsule(
+                    *static_cast<AABBCollider*>(pair.colliderB.collider.get()),
+                    *static_cast<CapsuleCollider*>(pair.colliderA.collider.get()), cp);
+                if (hit)
+                {
+                    cp.normal = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::CAPSULE && tB == ColliderType::CAPSULE)
+            {
+                hit = TestCapsuleCapsule(
+                    *static_cast<CapsuleCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<CapsuleCollider*>(pair.colliderB.collider.get()), cp);
+            }
 
-            if (hit) outContacts.push_back(cp);
+            if (hit) {
+                cp.bodyA = pair.colliderA.body;
+                cp.bodyB = pair.colliderB.body;
+                cp.colliderA = pair.colliderA.collider.get();
+                cp.colliderB = pair.colliderB.collider.get();
+                cp.materialA = pair.colliderA.material;
+                cp.materialB = pair.colliderB.material;
+                cp.isTrigger = pair.colliderA.isTrigger || pair.colliderB.isTrigger;
+                outContacts.push_back(cp);
+            }
         }
     }
 
@@ -92,6 +141,8 @@ namespace fbzz::physics
     // ---------------------------------------------------------- ResolveVelocity
     void PhysicsSolver::ResolveVelocity(ContactPoint& cp)
     {
+        if (cp.isTrigger) return;
+
         RigidBody* bodyA = cp.bodyA;
         RigidBody* bodyB = cp.bodyB;
 
@@ -114,8 +165,8 @@ namespace fbzz::physics
         if (vRelN > 0.0f) return; // 離反中は解決不要
 
         float e = 0.3f;
-        if (bodyA && bodyB)
-            e = PhysicsMaterial::CombineRestitution(bodyA->m_material, bodyB->m_material);
+        if (cp.materialA && cp.materialB)
+            e = PhysicsMaterial::CombineRestitution(*cp.materialA, *cp.materialB);
 
         // resting contact ではジッター防止のため反発なし
         constexpr float REST_THRESHOLD = 0.5f;
@@ -156,6 +207,8 @@ namespace fbzz::physics
     // ---------------------------------------------------------- ResolvePosition
     void PhysicsSolver::ResolvePosition(ContactPoint& cp)
     {
+        if (cp.isTrigger) return;
+
         const float invMassA = cp.bodyA ? cp.bodyA->GetInvMass() : 0.0f;
         const float invMassB = cp.bodyB ? cp.bodyB->GetInvMass() : 0.0f;
         const float invMassSum = invMassA + invMassB;
@@ -187,8 +240,6 @@ namespace fbzz::physics
         out.normal = diff * (1.0f / dist);
         out.depth  = sumR - dist;
         out.point  = posB + out.normal * b.m_radius;
-        out.bodyA  = a.m_body;
-        out.bodyB  = b.m_body;
         return true;
     }
 
@@ -223,8 +274,6 @@ namespace fbzz::physics
         }
 
         out.point = (aabbA.Center() + aabbB.Center()) * 0.5f;
-        out.bodyA = a.m_body;
-        out.bodyB = b.m_body;
         return true;
     }
 
@@ -258,16 +307,120 @@ namespace fbzz::physics
         }
 
         out.point = closest;
-        out.bodyA = s.m_body;
-        out.bodyB = b.m_body;
         return true;
     }
 
-    bool PhysicsSolver::TestSphereCapsule(const SphereCollider& /*s*/,
-                                        const CapsuleCollider& /*c*/,
-                                        ContactPoint& /*out*/)
+    bool PhysicsSolver::TestSphereCapsule(const SphereCollider& s,
+                                        const CapsuleCollider& c,
+                                        ContactPoint& out)
     {
-        return false; // CapsuleCollider 後回し実装時に追加
+        const math::Vector3 center = s.GetAABB().Center();
+        const math::Vector3 segStart = c.GetSegmentStart();
+        const math::Vector3 segEnd = c.GetSegmentEnd();
+        const math::Vector3 seg = segEnd - segStart;
+        const float segLenSq = seg.LengthSq();
+        float t = 0.0f;
+        if (segLenSq > 1e-6f)
+            t = std::clamp(math::Vector3::Dot(center - segStart, seg) / segLenSq, 0.0f, 1.0f);
+
+        const math::Vector3 closest = segStart + seg * t;
+        const math::Vector3 diff = center - closest;
+        const float dist = diff.Length();
+        const float sumR = s.m_radius + c.m_radius;
+        if (dist >= sumR) return false;
+
+        out.normal = dist < 1e-6f ? math::Vector3::UP : diff * (1.0f / dist);
+        out.depth = sumR - dist;
+        out.point = closest + out.normal * c.m_radius;
+        return true;
+    }
+
+    bool PhysicsSolver::TestAABBCapsule(const AABBCollider& b,
+                                        const CapsuleCollider& c,
+                                        ContactPoint& out)
+    {
+        AABB aabb = b.GetAABB();
+        math::Vector3 bestCapsulePoint = c.GetSegmentStart();
+        math::Vector3 bestBoxPoint = aabb.Center();
+        float bestDistSq = 3.402823466e+38f;
+
+        for (int i = 0; i <= 6; ++i)
+        {
+            const float t = static_cast<float>(i) / 6.0f;
+            const math::Vector3 p = c.GetSegmentStart() + (c.GetSegmentEnd() - c.GetSegmentStart()) * t;
+            const math::Vector3 q = {
+                std::max(aabb.min.x, std::min(p.x, aabb.max.x)),
+                std::max(aabb.min.y, std::min(p.y, aabb.max.y)),
+                std::max(aabb.min.z, std::min(p.z, aabb.max.z))
+            };
+            const float distSq = (p - q).LengthSq();
+            if (distSq < bestDistSq)
+            {
+                bestDistSq = distSq;
+                bestCapsulePoint = p;
+                bestBoxPoint = q;
+            }
+        }
+
+        if (bestDistSq >= c.m_radius * c.m_radius) return false;
+
+        const float dist = std::sqrt(bestDistSq);
+        if (dist < 1e-6f)
+        {
+            const math::Vector3 dir = bestCapsulePoint - aabb.Center();
+            if (std::abs(dir.x) >= std::abs(dir.y) && std::abs(dir.x) >= std::abs(dir.z))
+                out.normal = { dir.x >= 0.0f ? 1.0f : -1.0f, 0.0f, 0.0f };
+            else if (std::abs(dir.y) >= std::abs(dir.z))
+                out.normal = { 0.0f, dir.y >= 0.0f ? 1.0f : -1.0f, 0.0f };
+            else
+                out.normal = { 0.0f, 0.0f, dir.z >= 0.0f ? 1.0f : -1.0f };
+            out.depth = c.m_radius;
+        }
+        else
+        {
+            out.normal = (bestBoxPoint - bestCapsulePoint) * (1.0f / dist);
+            out.depth = c.m_radius - dist;
+        }
+
+        out.point = bestBoxPoint;
+        return true;
+    }
+
+    bool PhysicsSolver::TestCapsuleCapsule(const CapsuleCollider& a,
+                                           const CapsuleCollider& b,
+                                           ContactPoint& out)
+    {
+        math::Vector3 bestA = a.GetSegmentStart();
+        math::Vector3 bestB = b.GetSegmentStart();
+        float bestDistSq = 3.402823466e+38f;
+
+        for (int i = 0; i <= 6; ++i)
+        {
+            const float ta = static_cast<float>(i) / 6.0f;
+            const math::Vector3 pa = a.GetSegmentStart() + (a.GetSegmentEnd() - a.GetSegmentStart()) * ta;
+            const math::Vector3 segB = b.GetSegmentEnd() - b.GetSegmentStart();
+            const float lenSqB = segB.LengthSq();
+            float tb = 0.0f;
+            if (lenSqB > 1e-6f)
+                tb = std::clamp(math::Vector3::Dot(pa - b.GetSegmentStart(), segB) / lenSqB, 0.0f, 1.0f);
+            const math::Vector3 pb = b.GetSegmentStart() + segB * tb;
+            const float distSq = (pa - pb).LengthSq();
+            if (distSq < bestDistSq)
+            {
+                bestDistSq = distSq;
+                bestA = pa;
+                bestB = pb;
+            }
+        }
+
+        const float sumR = a.m_radius + b.m_radius;
+        if (bestDistSq >= sumR * sumR) return false;
+
+        const float dist = std::sqrt(bestDistSq);
+        out.normal = dist < 1e-6f ? math::Vector3::UP : (bestA - bestB) * (1.0f / dist);
+        out.depth = sumR - dist;
+        out.point = (bestA + bestB) * 0.5f;
+        return true;
     }
 
 } // namespace fbzz::physics
