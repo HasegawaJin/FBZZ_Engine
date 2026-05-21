@@ -56,6 +56,12 @@ class Scene {
 public:
     static constexpr uint32_t MAX_ENTITIES = ComponentArray<uint8_t>::MAX;
 
+    Scene() = default;
+    Scene(const Scene&) = delete;
+    Scene& operator=(const Scene&) = delete;
+    Scene(Scene&& other) noexcept;
+    Scene& operator=(Scene&& other) noexcept;
+
     // Unity: new GameObject("name")
     GameObject& CreateGameObject(const std::string& name = "GameObject");
 
@@ -80,6 +86,9 @@ public:
 
     // フレーム末尾で呼ぶ。delay 付き Destroy を処理し、期限切れを削除する
     void FlushDestroyQueue(float dt);
+
+    // 全 GameObject・Component を削除してシーンを空にする
+    void Clear();
 
     // --- GameObject / SceneView の template 本体から呼ばれる内部 API ---
 
@@ -123,6 +132,8 @@ private:
 
     EntityID AllocateEntity();
     void     DestroyImmediate(EntityID id);
+    // move 代入後に go->m_scene が古いアドレスを指すのを修正する
+    void     FixupOwnership();
 
     template<typename... Ts> friend class SceneView;
     friend class GameObject;

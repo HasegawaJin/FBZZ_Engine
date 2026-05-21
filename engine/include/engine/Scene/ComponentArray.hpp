@@ -5,6 +5,7 @@
 #include "Entity.hpp"
 #include <span>
 #include <cassert>
+#include <utility>
 
 namespace fbzz::scene {
 
@@ -13,9 +14,14 @@ class ComponentArray {
 public:
     static constexpr uint32_t MAX = 4096;
 
-    ComponentArray()  { for (uint32_t i = 0; i < MAX; ++i) m_sparseToIndex[i] = EMPTY; }
+    ComponentArray() { ResetSparse(); }
     ComponentArray(const ComponentArray&) = delete;
     ComponentArray& operator=(const ComponentArray&) = delete;
+    ComponentArray(ComponentArray&& other) noexcept { MoveFrom(std::move(other)); }
+    ComponentArray& operator=(ComponentArray&& other) noexcept {
+        if (this != &other) MoveFrom(std::move(other));
+        return *this;
+    }
 
     void Add(EntityID id, T component) {
         assert(id.IsValid() && id.index < MAX);
@@ -66,8 +72,32 @@ public:
 
     uint32_t Count() const { return m_count; }
 
+    void Clear() {
+        for (uint32_t i = 0; i < m_count; ++i) {
+            m_dense[i] = {};
+            m_denseToEntity[i] = {};
+        }
+        ResetSparse();
+        m_count = 0;
+    }
+
 private:
     static constexpr uint32_t EMPTY = 0xFFFFFFFFu;
+
+    void ResetSparse() {
+        for (uint32_t i = 0; i < MAX; ++i) m_sparseToIndex[i] = EMPTY;
+    }
+
+    void MoveFrom(ComponentArray&& other) {
+        Clear();
+        m_count = other.m_count;
+        for (uint32_t i = 0; i < m_count; ++i) {
+            m_dense[i] = std::move(other.m_dense[i]);
+            m_denseToEntity[i] = other.m_denseToEntity[i];
+            m_sparseToIndex[m_denseToEntity[i].index] = i;
+        }
+        other.Clear();
+    }
 
     T        m_dense[MAX]         = {};
     EntityID m_denseToEntity[MAX] = {};

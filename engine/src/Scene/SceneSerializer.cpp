@@ -11,6 +11,8 @@
 #include <engine/Scene/Components/AudioSourceComponent.hpp>
 #include <engine/Scene/Components/ParticleEmitter.hpp>
 #include <engine/Scene/Components/SkyRenderer.hpp>
+#include <engine/Scene/ScriptComponent.hpp>
+#include <engine/Scene/ScriptFactory.hpp>
 #include <engine/Renderer/Material.hpp>
 #include <engine/Renderer/PrimitiveMesh.hpp>
 #include <engine/Renderer/ShaderManager.hpp>
@@ -93,6 +95,66 @@ math::Quaternion ArrToQuat(const toml::array* arr)
         (float)(*arr)[3].value_or(1.0)
     };
 }
+
+class TomlWriteReflector : public IReflector {
+public:
+    explicit TomlWriteReflector(toml::table& table) : m_table(table) {}
+
+    void Field(const char* name, float& v) override { m_table.insert(name, (double)v); }
+    void Field(const char* name, int& v) override { m_table.insert(name, (int64_t)v); }
+    void Field(const char* name, bool& v) override { m_table.insert(name, v); }
+    void Field(const char* name, math::Vector3& v) override { m_table.insert(name, Vec3ToArr(v)); }
+    void Field(const char* name, math::Vector4& v) override { m_table.insert(name, Vec4ToArr(v)); }
+    void Field(const char* name, std::string& v) override { m_table.insert(name, v); }
+    void Field(const char* name, math::Quaternion& v) override { m_table.insert(name, QuatToArr(v)); }
+
+private:
+    toml::table& m_table;
+};
+
+class TomlReadReflector : public IReflector {
+public:
+    explicit TomlReadReflector(const toml::table& table) : m_table(table) {}
+
+    void Field(const char* name, float& v) override
+    {
+        v = (float)m_table[name].value_or((double)v);
+    }
+
+    void Field(const char* name, int& v) override
+    {
+        v = (int)m_table[name].value_or((int64_t)v);
+    }
+
+    void Field(const char* name, bool& v) override
+    {
+        v = m_table[name].value_or(v);
+    }
+
+    void Field(const char* name, math::Vector3& v) override
+    {
+        v = ArrToVec3(m_table[name].as_array(), v);
+    }
+
+    void Field(const char* name, math::Vector4& v) override
+    {
+        v = ArrToVec4(m_table[name].as_array(), v);
+    }
+
+    void Field(const char* name, std::string& v) override
+    {
+        v = m_table[name].value_or(v);
+    }
+
+    void Field(const char* name, math::Quaternion& v) override
+    {
+        if (auto* arr = m_table[name].as_array())
+            v = ArrToQuat(arr);
+    }
+
+private:
+    const toml::table& m_table;
+};
 
 // "primitive:sphere" → PrimitiveMesh::Sphere
 // "models/foo.fbx"   → AssetManager::Load<Model> mesh[0]
@@ -254,6 +316,18 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             srTbl.insert("mieG",               (double)sr->mieG);
             srTbl.insert("enabled",            sr->enabled);
             goTbl.insert("SkyRenderer", std::move(srTbl));
+        }
+
+        // ScriptComponent
+        if (auto* sc = go.GetComponent<ScriptComponent>(); sc && sc->script) {
+            toml::table scTbl;
+            toml::table fieldsTbl;
+            scTbl.insert("type", sc->script->GetTypeName());
+            scTbl.insert("enabled", sc->script->enabled);
+            TomlWriteReflector reflector(fieldsTbl);
+            sc->script->Reflect(reflector);
+            scTbl.insert("fields", std::move(fieldsTbl));
+            goTbl.insert("ScriptComponent", std::move(scTbl));
         }
 
         goArr.push_back(std::move(goTbl));
@@ -424,6 +498,23 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sr.enabled       = (*srTbl)["enabled"].value_or(true);
             go.AddComponent<SkyRenderer>(sr);
         }
+
+        // ScriptComponent
+        if (auto* scTbl = (*goTbl)["ScriptComponent"].as_table()) {
+            std::string type = (*scTbl)["type"].value_or(std::string{});
+            auto script = ScriptFactory::Create(type);
+            if (script) {
+                script->enabled = (*scTbl)["enabled"].value_or(true);
+                if (auto* fieldsTbl = (*scTbl)["fields"].as_table()) {
+                    TomlReadReflector reflector(*fieldsTbl);
+                    script->Reflect(reflector);
+                }
+
+                ScriptComponent sc{};
+                sc.script = std::move(script);
+                go.AddComponent<ScriptComponent>(std::move(sc));
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -443,6 +534,18 @@ std::unique_ptr<Scene> SceneSerializer::Load(
     }
 
     return scene;
+}
+
+// -----------------------------------------------------------------------
+// LoadInPlace
+// -----------------------------------------------------------------------
+bool SceneSerializer::LoadInPlace(
+    Scene& scene, const std::string& path, renderer::IRenderer& renderer)
+{
+    auto newScene = Load(path, renderer);
+    if (!newScene) return false;
+    scene = std::move(*newScene);
+    return true;
 }
 
 } // namespace fbzz::scene
