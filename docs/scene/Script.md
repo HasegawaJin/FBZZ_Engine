@@ -84,12 +84,14 @@ public:
 
     bool enabled = true;
 
+    // ScriptSystem が OnStart 前に呼ぶ。ゲームコードは呼ばない
+    void SetContext(class Scene* s, class GameObject* go) {
+        m_scene = s; m_gameObject = go;
+    }
+
 protected:
-    // ScriptSystem が設定する。ゲームコードは Read-Only で使う
     class Scene*      m_scene      = nullptr;  // 非所有参照
     class GameObject* m_gameObject = nullptr;  // 非所有参照
-
-    friend class ScriptSystem; // 実際は ScriptSystem free function が設定
 };
 
 } // namespace fbzz::scene
@@ -108,6 +110,8 @@ namespace fbzz::scene {
 
 struct ScriptComponent {
     std::unique_ptr<Script> script;
+    // m_ プレフィックスは System 管理のランタイム状態であることを示す
+    // (AudioSourceComponent::m_played と同じ規約)
     bool m_started = false;  // OnStart が発火済みか (ScriptSystem が管理)
 };
 
@@ -185,6 +189,8 @@ TransformSystem → PhysicsSystem → ScriptSystem → RenderSystem → AudioSys
 
 ```cpp
 // editor/include/editor/ImGuiReflector.hpp
+#include <editor/Util/ImGuiWidgets.hpp>   // QuatToEulerDeg / EulerDegToQuat
+
 namespace fbzz::editor {
 
 struct ImGuiReflector : scene::IReflector {
@@ -213,8 +219,10 @@ struct ImGuiReflector : scene::IReflector {
         if (ImGui::InputText(name, buf, sizeof(buf))) v = buf;
     }
     void Field(const char* name, math::Quaternion& v) override {
-        // オイラー角 (度) で表示・編集し Quaternion に戻す
-        // 実装は InspectorPanel の QuatToEulerDeg を再利用
+        math::Vector3 euler = widgets::QuatToEulerDeg(v);
+        float arr[3] = { euler.x, euler.y, euler.z };
+        if (ImGui::DragFloat3(name, arr, 0.5f))
+            v = widgets::EulerDegToQuat({ arr[0], arr[1], arr[2] });
     }
 };
 
@@ -383,6 +391,8 @@ ComponentArray<ScriptComponent> m_scriptComponents;
 | 3 | `Scene.hpp` に ScriptComponent を登録 |
 | 4 | `GameObject.hpp` に `AddScript<T>` / `GetScript<T>` を追加 |
 | 5 | `ScriptSystem.hpp` / `.cpp` を作成 |
-| 6 | `ImGuiReflector.hpp` を editor に作成 |
-| 7 | `InspectorPanel.cpp` に Script セクションを追加 |
-| 8 | sandbox にサンプルスクリプトを追加して動作確認 |
+| 6 | `SceneManager.cpp` の `Update` に `ScriptSystem(scene, dt)` 呼び出しを追加 (TransformSystem → PhysicsSystem の後) |
+| 7 | `ImGuiWidgets.hpp` に `QuatToEulerDeg` / `EulerDegToQuat` を追加し、`InspectorPanel.cpp` のローカル重複を削除 |
+| 8 | `ImGuiReflector.hpp` を editor に作成 |
+| 9 | `InspectorPanel.cpp` に Script セクションを追加 |
+| 10 | sandbox にサンプルスクリプトを追加して動作確認 |
