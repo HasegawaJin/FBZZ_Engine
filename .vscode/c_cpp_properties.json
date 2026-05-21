@@ -3,12 +3,12 @@
         {
             "name": "FBZZ Engine",
             "includePath": [
-                "${workspaceFolder}/editor/include",
-                "${workspaceFolder}/engine/include",
-                "${workspaceFolder}/math/include",
-                "${workspaceFolder}/physics/include",
-                "${workspaceFolder}/third_party/DirectXTex/include",
-                "${workspaceFolder}/third_party/Assimp/include"
+                "${workspaceFolder}/Projects/Editor/include",
+                "${workspaceFolder}/Projects/Engine/include",
+                "${workspaceFolder}/Projects/Math/include",
+                "${workspaceFolder}/Projects/Physics/include",
+                "${workspaceFolder}/ThirdParty/DirectXTex/include",
+                "${workspaceFolder}/ThirdParty/Assimp/include"
             ],
             "defines": [
                 "_DEBUG",
