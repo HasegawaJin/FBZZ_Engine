@@ -15,5 +15,6 @@ target_link_libraries(fbzz_editor
     PUBLIC
         fbzz_engine
         imgui
+        imguizmo
         tomlplusplus
 )
