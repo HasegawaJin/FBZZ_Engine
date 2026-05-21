@@ -545,6 +545,7 @@ bool SceneSerializer::LoadInPlace(
     auto newScene = Load(path, renderer);
     if (!newScene) return false;
     scene = std::move(*newScene);
+    scene.FixupOwnership();
     return true;
 }
 
