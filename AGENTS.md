@@ -123,6 +123,7 @@ main → develop → feature/<name>
 
 ### コードを書く前に必ずやること
 
+0. `TASKS.md` を確認し、現在地と残タスクを把握する
 1. `docs/` 以下の対応する設計ドキュメントを読む
 2. `docs/design.md` のロードマップで現在の Step を確認する。未着手 Step は実装しない
 3. 複数ファイルにまたがる変更は、先にユーザーへ列挙する
@@ -133,6 +134,11 @@ main → develop → feature/<name>
 - Step を飛び越えて実装しない
 - 設計書とコードが矛盾している場合、自分で判断して直さず報告してから対処する
 - `docs/` 以下の設計ドキュメントをコード実装のついでに書き換えない
+
+### 作業終了後
+
+- 完了したタスクは `TASKS.md` の状態を更新する
+- 新たに判明した残タスクがあれば `TASKS.md` に追記する
 
 ### 曖昧な指示を受けたとき
 
@@ -166,13 +172,17 @@ VS Code CMake Tools の場合は `...` → **Delete Cache and Reconfigure**。
 
 ## ロードマップ (現在地を把握すること)
 
+残タスクの詳細は `TASKS.md` を参照。
+
 ```
-Step 0  ビルド環境・Application ループ         完了
-Step 1  Win32 ウィンドウ表示 + DX11 初期化     完了
-Step 2  三角形描画 (頂点バッファ, シェーダー)   完了
-Step 3  デバッグ描画 (線, 矩形, 円)             完了
-Step 4  物理エンジン (重力, 衝突)               完了
-Step 5  シーン管理 (GameObject / Component)     完了
-Step 6  DX12 / レイトレーシング移行             延期
-Step 7  ImGui Editor
+Step 0   ビルド環境・Application ループ                   完了
+Step 1   Win32 ウィンドウ表示 + DX11 初期化               完了
+Step 2   三角形描画 (頂点バッファ, シェーダー)             完了
+Step 3   デバッグ描画 (線, 矩形, 円)                       完了
+Step 4   物理エンジン (重力, 衝突)                         完了
+Step 5   シーン管理 (GameObject / Component)               完了
+Step 5.5 HLSL シェーダーライブラリ (PBR / Shadow / Bloom)  完了
+Step 6   ImGui Editor                         完了 (残: InspectorPanel 拡張 / main.cpp 統合)
+Step 6.5 SceneSerializer (TOML .fbzz)         実装済み (main.cpp 統合・MenuBar UI は未)
+Step 7   DX12 / RenderGraph 移行                           未着手
 ```
