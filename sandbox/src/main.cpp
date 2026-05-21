@@ -17,7 +17,9 @@
 #include <engine/Scene/Scene.hpp>
 #include <engine/Scene/SceneManager.hpp>
 #include <engine/Scene/ScriptFactory.hpp>
+#include <engine/Scene/SceneSerializer.hpp>
 #include <engine/Scene/Systems/RenderSystem.hpp>
+#include <engine/Util/FileSystem.hpp>
 #include <engine/Scene/Components/MeshRenderer.hpp>
 #include <engine/Scene/Components/ParticleEmitter.hpp>
 #include <engine/Scene/Components/SkyRenderer.hpp>
@@ -31,6 +33,8 @@
 using namespace fbzz;
 
 namespace {
+
+constexpr const char* SCENE_DIR         = "assets/scenes/";
 
 constexpr const char* SHADER_UNLIT      = "assets/shaders/Material/Unlit.hlsl";
 constexpr const char* SHADER_LIT        = "assets/shaders/Material/Lit.hlsl";
@@ -117,8 +121,24 @@ int main()
 
     // ---------------------------------------------------------------- シーン
     auto& sm = app.GetSceneManager();
+    util::FileSystem::EnsureDirectory(SCENE_DIR);
 
-    sm.Register("RenderTest", [&]() -> std::unique_ptr<scene::Scene> {
+    // .fbzz が存在すればファイルからロード、なければラムダでシーンを構築して保存する
+    // 初回実行後は assets/scenes/*.fbzz が生成され、以降はファイルから直接ロードされる
+    auto initScene = [&](const char* name, scene::SceneManager::SceneFactory factory) {
+        std::string path = std::string(SCENE_DIR) + name + ".fbzz";
+        if (util::FileSystem::Exists(path)) {
+            sm.RegisterFromFile(name, path, renderer);
+        } else {
+            sm.Register(name, [f = std::move(factory), path, &renderer]() mutable {
+                auto s = f();
+                if (s) scene::SceneSerializer::Save(*s, path);
+                return s;
+            });
+        }
+    };
+
+    initScene("RenderTest", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
         constexpr float Y = 1.0f;
 
@@ -334,7 +354,7 @@ int main()
 
     // ---------------------------------------------------------------- PostProcess ショーケースシーン
     // Shadow / Bloom / FXAA の撮影に特化したシーン
-    sm.Register("PostProcessShowcase", [&]() -> std::unique_ptr<scene::Scene> {
+    initScene("PostProcessShowcase", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
 
         // ===== ライト (斜め太陽光 + Bloom 用強白光) =====
@@ -437,7 +457,7 @@ int main()
     });
 
     // ---------------------------------------------------------------- Scene 4: MultiLight
-    sm.Register("MultiLight", [&]() -> std::unique_ptr<scene::Scene> {
+    initScene("MultiLight", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
 
         // ===== ライト (暗いアンビエント + 色とりどりのポイント/スポット) =====
@@ -534,7 +554,7 @@ int main()
     });
 
     // ---------------------------------------------------------------- Scene 5: Skydome
-    sm.Register("Skydome", [&]() -> std::unique_ptr<scene::Scene> {
+    initScene("Skydome", [&]() -> std::unique_ptr<scene::Scene> {
         auto s = std::make_unique<scene::Scene>();
 
         // ===== ライト (水平線近くの夕日) =====
