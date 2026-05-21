@@ -1,6 +1,7 @@
 # Build
 build/
 out/
+build_log.txt
 .cache/
 
 # CMake
@@ -31,17 +32,17 @@ compile_commands.json
 *.ilk
 *.exp
 
-# third_party の lib / dll / exp は通常は追跡しないが、
+# ThirdParty の lib / dll / exp は通常は追跡しないが、
 # Assimp / DirectXTex のプリコンパイル済みバイナリはリポジトリに含める
-!third_party/**/*.lib
-!third_party/**/*.dll
-!third_party/**/*.exp
+!ThirdParty/**/*.lib
+!ThirdParty/**/*.dll
+!ThirdParty/**/*.exp
 
 # imgui.ini (ImGui の設定ファイル)
 imgui.ini
 
 # コンパイル済みシェーダー (dxc でビルド時生成)
-assets/shaders/compiled/
+Assets/shaders/compiled/
 
 # Claude Code (ローカル設定)
 .claude/
