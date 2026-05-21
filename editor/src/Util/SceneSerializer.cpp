@@ -1,30 +1,52 @@
 // FBZZ Engine
 // SceneSerializer.cpp | fbzz::editor
-// シーンの TOML シリアライズ / デシリアライズ (実装は各コンポーネント追加時に拡充)
+// Editor wrapper for scene save/load and in-memory playmode snapshots
 #include <editor/Util/SceneSerializer.hpp>
+#include <engine/Core/Application.hpp>
 #include <engine/Core/Logger.hpp>
+#include <engine/Scene/SceneSerializer.hpp>
+#include <engine/Util/FileSystem.hpp>
 
 namespace fbzz::editor {
 
-bool SceneSerializer::Save(const scene::Scene& /*scene*/, const std::string& path)
+namespace {
+
+constexpr const char* kSnapshotPath = "editor_config/.playmode_snapshot.fbzz";
+
+} // namespace
+
+bool SceneSerializer::Save(const scene::Scene& scene, const std::string& path)
 {
-    FBZZ_LOG_WARN("SceneSerializer::Save: 未実装 (%s)", path.c_str());
+    // engine serializer currently expects non-const Scene&
+    scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
+    return scene::SceneSerializer::Save(mutableScene, path);
+}
+
+bool SceneSerializer::Load(scene::Scene& scene, const std::string& path)
+{
+    (void)scene;
+    (void)path;
+    FBZZ_LOG_WARN("SceneSerializer::Load is currently unsupported in editor wrapper");
     return false;
 }
 
-bool SceneSerializer::Load(scene::Scene& /*scene*/, const std::string& path)
+std::string SceneSerializer::Serialize(const scene::Scene& scene)
 {
-    FBZZ_LOG_WARN("SceneSerializer::Load: 未実装 (%s)", path.c_str());
-    return false;
+    if (!Save(scene, kSnapshotPath)) return {};
+
+    std::string text;
+    if (!util::FileSystem::ReadText(kSnapshotPath, text)) {
+        FBZZ_LOG_ERROR("SceneSerializer::Serialize read failed: %s", kSnapshotPath);
+        return {};
+    }
+    return text;
 }
 
-std::string SceneSerializer::Serialize(const scene::Scene& /*scene*/)
+bool SceneSerializer::Deserialize(scene::Scene& scene, const std::string& toml)
 {
-    return "";
-}
-
-bool SceneSerializer::Deserialize(scene::Scene& /*scene*/, const std::string& /*toml*/)
-{
+    (void)scene;
+    (void)toml;
+    FBZZ_LOG_WARN("SceneSerializer::Deserialize is currently unsupported in editor wrapper");
     return false;
 }
 

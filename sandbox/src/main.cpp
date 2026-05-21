@@ -549,6 +549,7 @@ int main()
     debugCamera.camera.m_position = camPresets[activeCam].pos;
     debugCamera.camera.m_aspect   = 1280.0f / 720.0f;
     debugCamera.LookAt(camPresets[activeCam].target);
+    editorApp.GetContext().editorCamera = &debugCamera.camera;
 
     // ---------------------------------------------------------------- ゲームループ
     while (app.IsRunning())
@@ -577,6 +578,7 @@ int main()
             debugCamera.camera.m_position = camPresets[activeCam].pos;
             debugCamera.LookAt(camPresets[activeCam].target);
             editorApp.GetContext().activeScene = sm.GetActive();
+            editorApp.GetContext().editorCamera = &debugCamera.camera;
         }
 
         // RT リサイズを先に処理してからシーンを描く (EditorApp::BeginFrame 冒頭で実行)
