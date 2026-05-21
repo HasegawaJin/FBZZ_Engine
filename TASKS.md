@@ -35,8 +35,8 @@
 
 | # | タスク | 状態 |
 |---|--------|------|
-| 1 | sandbox/main.cpp を SceneSerializer::Load で短縮 (~80 行目標) | ❌ 未実装 |
-| 2 | .fbzz シーンファイルの作成 (現 main.cpp のシーン定義を移植) | ❌ 未実装 |
+| 1 | sandbox/main.cpp を SceneSerializer::Load で短縮 (~80 行目標) | 🔄 進行中 (初回起動で assets/scenes/*.fbzz 生成後に短縮可) |
+| 2 | .fbzz シーンファイルの作成 (現 main.cpp のシーン定義を移植) | 🔄 進行中 (初回起動で assets/scenes/ に自動生成) |
 
 ---
 

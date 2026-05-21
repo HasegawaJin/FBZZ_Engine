@@ -3,7 +3,7 @@ sensitivity = 0.30000001192092896
 speed = 5.0
 
 [scene]
-last_path = ''
+last_path = 'C:\Users\jinhs\Downloads\FBZZ_Engine\assets\scenes\test.fbzz'
 
 [snap]
 distance = 1.0

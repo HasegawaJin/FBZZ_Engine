@@ -1,0 +1,430 @@
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+name = 'DirectionalLight'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 0.15000000596046448, 0.15000000596046448, 0.20000000298023224 ]
+    enabled = true
+    intensity = 0.07999999821186066
+    type = 'Directional'
+
+    [gameobjects.transform]
+    localPosition = [ 0.0, 0.0, 0.0 ]
+    localRotation = [ 0.49974995851516724, 0.49974995851516724, -0.500249981880188, 0.5002499222755432 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'PointLight_0'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 1.0, 0.15000000596046448, 0.10000000149011612 ]
+    enabled = true
+    intensity = 20.0
+    range = 10.0
+    type = 'Point'
+
+    [gameobjects.transform]
+    localPosition = [ -5.0, 2.5, 2.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'PointLight_1'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 0.20000000298023224, 0.4000000059604645, 1.0 ]
+    enabled = true
+    intensity = 20.0
+    range = 10.0
+    type = 'Point'
+
+    [gameobjects.transform]
+    localPosition = [ 5.0, 2.5, 2.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'PointLight_2'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 0.20000000298023224, 1.0, 0.30000001192092896 ]
+    enabled = true
+    intensity = 18.0
+    range = 10.0
+    type = 'Point'
+
+    [gameobjects.transform]
+    localPosition = [ 0.0, 2.5, 6.5 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'PointLight_3'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 1.0, 0.6000000238418579, 0.10000000149011612 ]
+    enabled = true
+    intensity = 15.0
+    range = 9.0
+    type = 'Point'
+
+    [gameobjects.transform]
+    localPosition = [ -4.0, 2.5, 5.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'PointLight_4'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 0.8500000238418579, 0.20000000298023224, 1.0 ]
+    enabled = true
+    intensity = 15.0
+    range = 9.0
+    type = 'Point'
+
+    [gameobjects.transform]
+    localPosition = [ 4.0, 2.5, -1.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'SpotLight1'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 1.0, 1.0, 1.0 ]
+    enabled = true
+    innerCone = 14.0
+    intensity = 25.0
+    outerCone = 30.0
+    range = 18.0
+    type = 'Spot'
+
+    [gameobjects.transform]
+    localPosition = [ 0.0, 10.0, 3.0 ]
+    localRotation = [ 0.49974995851516724, 0.49974995851516724, -0.500249981880188, 0.5002499222755432 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'SpotLight2'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 0.6499999761581421, 0.800000011920929, 1.0 ]
+    enabled = true
+    innerCone = 16.0
+    intensity = 12.0
+    outerCone = 32.0
+    range = 18.0
+    type = 'Spot'
+
+    [gameobjects.transform]
+    localPosition = [ -9.0, 6.0, 1.0 ]
+    localRotation = [ 0.24370798468589783, 0.5100181102752686, -0.15334933996200562, 0.810538113117218 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+name = 'Floor'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.11999999731779099, 0.11999999731779099, 0.14000000059604645, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:cube'
+    metallic = 0.05000000074505806
+    normalTex = ''
+    roughness = 0.5
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ 0.0, -0.10000000149011612, 3.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 20.0, 0.20000000298023224, 20.0 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_0'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.0
+    normalTex = ''
+    roughness = 0.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.ScriptComponent]
+    enabled = true
+    type = 'PlayerController'
+
+        [gameobjects.ScriptComponent.fields]
+        Move = true
+        Speed = 1.0
+
+    [gameobjects.transform]
+    localPosition = [ -4.5, 1.0, 0.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_1'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.3333333432674408
+    normalTex = ''
+    roughness = 0.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ -1.5, 1.0, 0.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_2'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.6666666865348816
+    normalTex = ''
+    roughness = 0.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ 1.5, 1.0, 0.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_3'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 1.0
+    normalTex = ''
+    roughness = 0.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ 4.5, 1.0, 0.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_4'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.0
+    normalTex = ''
+    roughness = 0.5
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ -4.5, 1.0, 3.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_5'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.3333333432674408
+    normalTex = ''
+    roughness = 0.5
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ -1.5, 1.0, 3.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_6'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.6666666865348816
+    normalTex = ''
+    roughness = 0.5
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ 1.5, 1.0, 3.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_7'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 1.0
+    normalTex = ''
+    roughness = 0.5
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ 4.5, 1.0, 3.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_8'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.0
+    normalTex = ''
+    roughness = 1.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ -4.5, 1.0, 6.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_9'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.3333333432674408
+    normalTex = ''
+    roughness = 1.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ -1.5, 1.0, 6.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_10'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 0.6666666865348816
+    normalTex = ''
+    roughness = 1.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ 1.5, 1.0, 6.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
+
+[[gameobjects]]
+active = true
+name = 'Sphere_11'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    albedo = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421, 1.0 ]
+    albedoTex = ''
+    emissiveScale = 0.0
+    mesh = 'primitive:sphere'
+    metallic = 1.0
+    normalTex = ''
+    roughness = 1.0
+    shader = 'assets/shaders/Material/PBR.hlsl'
+
+    [gameobjects.transform]
+    localPosition = [ 4.5, 1.0, 6.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 0.8999999761581421, 0.8999999761581421, 0.8999999761581421 ]
