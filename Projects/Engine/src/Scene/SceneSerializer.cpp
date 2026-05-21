@@ -10,6 +10,9 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
@@ -22,6 +25,9 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
+#include <Physics/AABBCollider.hpp>
+#include <Physics/CapsuleCollider.hpp>
+#include <Physics/SphereCollider.hpp>
 #include <toml++/toml.hpp>
 #include <sstream>
 #include <string_view>
@@ -94,6 +100,39 @@ math::Quaternion ArrToQuat(const toml::array* arr)
         (float)(*arr)[2].value_or(0.0),
         (float)(*arr)[3].value_or(1.0)
     };
+}
+
+const char* ColliderTypeToString(physics::ColliderType type)
+{
+    switch (type) {
+    case physics::ColliderType::SPHERE:  return "Sphere";
+    case physics::ColliderType::AABB:    return "AABB";
+    case physics::ColliderType::CAPSULE: return "Capsule";
+    }
+    return "AABB";
+}
+
+const char* VolumeTypeToString(physics::VolumeType type)
+{
+    switch (type) {
+    case physics::VolumeType::Gravity:      return "Gravity";
+    case physics::VolumeType::Vortex:       return "Vortex";
+    case physics::VolumeType::Buoyancy:     return "Buoyancy";
+    case physics::VolumeType::Explosion:    return "Explosion";
+    case physics::VolumeType::TimeDilation: return "TimeDilation";
+    case physics::VolumeType::Magnetic:     return "Magnetic";
+    }
+    return "Gravity";
+}
+
+physics::VolumeType StringToVolumeType(const std::string& value)
+{
+    if (value == "Vortex")       return physics::VolumeType::Vortex;
+    if (value == "Buoyancy")     return physics::VolumeType::Buoyancy;
+    if (value == "Explosion")    return physics::VolumeType::Explosion;
+    if (value == "TimeDilation") return physics::VolumeType::TimeDilation;
+    if (value == "Magnetic")     return physics::VolumeType::Magnetic;
+    return physics::VolumeType::Gravity;
 }
 
 class TomlWriteReflector : public IReflector {
@@ -307,6 +346,73 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("ParticleEmitter", std::move(peTbl));
         }
 
+        // ColliderComponent
+        if (auto* col = go.GetComponent<ColliderComponent>()) {
+            toml::table colTbl;
+            colTbl.insert("enabled",   col->enabled);
+            colTbl.insert("isTrigger", col->isTrigger);
+
+            toml::table matTbl;
+            matTbl.insert("restitution",      (double)col->material.restitution);
+            matTbl.insert("staticFriction",   (double)col->material.staticFriction);
+            matTbl.insert("dynamicFriction",  (double)col->material.dynamicFriction);
+            matTbl.insert("density",          (double)col->material.density);
+            colTbl.insert("material", std::move(matTbl));
+
+            if (col->collider) {
+                toml::table shapeTbl;
+                const auto type = col->collider->GetType();
+                shapeTbl.insert("type", ColliderTypeToString(type));
+                if (type == physics::ColliderType::SPHERE) {
+                    auto* sphere = static_cast<physics::SphereCollider*>(col->collider.get());
+                    shapeTbl.insert("radius", (double)sphere->m_radius);
+                } else if (type == physics::ColliderType::AABB) {
+                    auto* box = static_cast<physics::AABBCollider*>(col->collider.get());
+                    shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
+                } else if (type == physics::ColliderType::CAPSULE) {
+                    auto* capsule = static_cast<physics::CapsuleCollider*>(col->collider.get());
+                    shapeTbl.insert("radius",     (double)capsule->m_radius);
+                    shapeTbl.insert("halfHeight", (double)capsule->m_halfHeight);
+                }
+                colTbl.insert("shape", std::move(shapeTbl));
+            }
+
+            goTbl.insert("ColliderComponent", std::move(colTbl));
+        }
+
+        // RigidBodyComponent
+        if (auto* rb = go.GetComponent<RigidBodyComponent>(); rb && rb->rigidBody) {
+            auto& body = *rb->rigidBody;
+            toml::table rbTbl;
+            rbTbl.insert("enabled",                rb->enabled);
+            rbTbl.insert("mass",                   (double)body.GetMass());
+            rbTbl.insert("isStatic",               body.m_isStatic);
+            rbTbl.insert("velocity",               Vec3ToArr(body.GetVelocity()));
+            rbTbl.insert("angularVelocity",        Vec3ToArr(body.GetAngularVelocity()));
+            rbTbl.insert("charge",                 (double)body.m_charge);
+            rbTbl.insert("isGravitationalSource",  body.m_isGravitationalSource);
+            rbTbl.insert("gravitationalMass",      (double)body.m_gravitationalMass);
+            goTbl.insert("RigidBodyComponent", std::move(rbTbl));
+        }
+
+        // VolumeComponent
+        if (auto* volume = go.GetComponent<VolumeComponent>()) {
+            toml::table volTbl;
+            volTbl.insert("enabled",          volume->enabled);
+            volTbl.insert("type",             VolumeTypeToString(volume->type));
+            volTbl.insert("gravity",          Vec3ToArr(volume->gravity));
+            volTbl.insert("magneticField",    Vec3ToArr(volume->magneticField));
+            volTbl.insert("swirlStrength",    (double)volume->swirlStrength);
+            volTbl.insert("inwardStrength",   (double)volume->inwardStrength);
+            volTbl.insert("liftStrength",     (double)volume->liftStrength);
+            volTbl.insert("buoyancy",         (double)volume->buoyancy);
+            volTbl.insert("drag",             (double)volume->drag);
+            volTbl.insert("explosionImpulse", (double)volume->explosionImpulse);
+            volTbl.insert("timeScale",        (double)volume->timeScale);
+            volTbl.insert("duration",         (double)volume->duration);
+            goTbl.insert("VolumeComponent", std::move(volTbl));
+        }
+
         // SkyRenderer
         if (auto* sr = go.GetComponent<SkyRenderer>()) {
             toml::table srTbl;
@@ -485,6 +591,83 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
             pe.enabled        = (*peTbl)["enabled"].value_or(true);
             go.AddComponent<ParticleEmitter>(pe);
+        }
+
+        // ColliderComponent
+        if (auto* colTbl = (*goTbl)["ColliderComponent"].as_table()) {
+            ColliderComponent col{};
+            col.enabled   = (*colTbl)["enabled"].value_or(true);
+            col.isTrigger = (*colTbl)["isTrigger"].value_or(false);
+
+            if (auto* matTbl = (*colTbl)["material"].as_table()) {
+                col.material.restitution     = (float)(*matTbl)["restitution"].value_or(0.3);
+                col.material.staticFriction  = (float)(*matTbl)["staticFriction"].value_or(0.6);
+                col.material.dynamicFriction = (float)(*matTbl)["dynamicFriction"].value_or(0.4);
+                col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
+            }
+
+            if (auto* shapeTbl = (*colTbl)["shape"].as_table()) {
+                std::string type = (*shapeTbl)["type"].value_or(std::string{"AABB"});
+                if (type == "Sphere") {
+                    const float radius = (float)(*shapeTbl)["radius"].value_or(0.5);
+                    col.collider = std::make_shared<physics::SphereCollider>(radius);
+                } else if (type == "Capsule") {
+                    const float radius     = (float)(*shapeTbl)["radius"].value_or(0.5);
+                    const float halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
+                    col.collider = std::make_shared<physics::CapsuleCollider>(radius, halfHeight);
+                } else {
+                    const auto halfExtents = ArrToVec3(
+                        (*shapeTbl)["halfExtents"].as_array(), { 0.5f, 0.5f, 0.5f });
+                    col.collider = std::make_shared<physics::AABBCollider>(halfExtents);
+                }
+            }
+
+            if (col.collider)
+                go.AddComponent<ColliderComponent>(std::move(col));
+        }
+
+        // RigidBodyComponent
+        if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
+            RigidBodyComponent rb{};
+            rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            if (!rb.rigidBody)
+                rb.rigidBody = std::make_shared<physics::RigidBody>();
+
+            rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
+            rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
+            rb.rigidBody->SetPosition(go.transform.localPosition);
+            rb.rigidBody->SetRotation(go.transform.localRotation);
+            rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
+            rb.rigidBody->SetAngularVelocity(
+                ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
+            rb.rigidBody->m_charge = (float)(*rbTbl)["charge"].value_or(0.0);
+            rb.rigidBody->m_isGravitationalSource =
+                (*rbTbl)["isGravitationalSource"].value_or(false);
+            rb.rigidBody->m_gravitationalMass =
+                (float)(*rbTbl)["gravitationalMass"].value_or(1.0);
+            go.AddComponent<RigidBodyComponent>(std::move(rb));
+        }
+
+        // VolumeComponent
+        if (auto* volTbl = (*goTbl)["VolumeComponent"].as_table()) {
+            VolumeComponent volume{};
+            volume.enabled          = (*volTbl)["enabled"].value_or(true);
+            volume.type             = StringToVolumeType(
+                (*volTbl)["type"].value_or(std::string{"Gravity"}));
+            volume.gravity          = ArrToVec3((*volTbl)["gravity"].as_array(),
+                                                { 0.0f, -9.81f, 0.0f });
+            volume.magneticField    = ArrToVec3((*volTbl)["magneticField"].as_array(),
+                                                { 0.0f, 1.0f, 0.0f });
+            volume.swirlStrength    = (float)(*volTbl)["swirlStrength"].value_or(1.0);
+            volume.inwardStrength   = (float)(*volTbl)["inwardStrength"].value_or(0.0);
+            volume.liftStrength     = (float)(*volTbl)["liftStrength"].value_or(0.0);
+            volume.buoyancy         = (float)(*volTbl)["buoyancy"].value_or(10.0);
+            volume.drag             = (float)(*volTbl)["drag"].value_or(1.0);
+            volume.explosionImpulse = (float)(*volTbl)["explosionImpulse"].value_or(10.0);
+            volume.timeScale        = (float)(*volTbl)["timeScale"].value_or(1.0);
+            volume.duration         = (float)(*volTbl)["duration"].value_or(-1.0);
+            volume.elapsed          = 0.0f;
+            go.AddComponent<VolumeComponent>(volume);
         }
 
         // SkyRenderer

@@ -12,7 +12,13 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/VolumeComponent.hpp>
+#include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Physics/ColliderVolume.hpp>
 #include <imgui.h>
 #include <cstdio>
 
@@ -155,6 +161,97 @@ void InspectorPanel::OnRender(EditorContext& ctx)
             char clipBuf[512]; std::snprintf(clipBuf, sizeof(clipBuf), "%s", asc->clipPath.c_str());
             if (ImGui::InputText("Clip Path", clipBuf, sizeof(clipBuf))) asc->clipPath = clipBuf;
             ImGui::SliderFloat("Volume", &asc->volume, 0.0f, 1.0f);
+        }
+    }
+
+    if (auto* col = go->GetComponent<scene::ColliderComponent>()) {
+        if (ImGui::CollapsingHeader("Collider", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enabled##col", &col->enabled);
+            ImGui::Checkbox("Is Trigger", &col->isTrigger);
+            ImGui::Separator();
+
+            const char* colliderName = "None";
+            if (col->collider) {
+                switch (col->collider->GetType()) {
+                case physics::ColliderType::SPHERE:  colliderName = "Sphere"; break;
+                case physics::ColliderType::AABB:    colliderName = "AABB"; break;
+                case physics::ColliderType::CAPSULE: colliderName = "Capsule"; break;
+                }
+            }
+            widgets::ReadOnlyText("Shape", colliderName);
+            ImGui::DragFloat("Restitution", &col->material.restitution, 0.01f, 0.0f, 1.0f);
+            ImGui::DragFloat("Static Friction", &col->material.staticFriction, 0.01f, 0.0f, 10.0f);
+            ImGui::DragFloat("Dynamic Friction", &col->material.dynamicFriction, 0.01f, 0.0f, 10.0f);
+            ImGui::DragFloat("Density", &col->material.density, 0.01f, 0.0f, 100000.0f);
+        }
+    }
+
+    if (auto* rb = go->GetComponent<scene::RigidBodyComponent>()) {
+        if (ImGui::CollapsingHeader("Rigid Body", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enabled##rb", &rb->enabled);
+            ImGui::Separator();
+
+            if (!rb->rigidBody) {
+                ImGui::TextDisabled("No physics::RigidBody assigned");
+            } else {
+                auto& body = *rb->rigidBody;
+
+                bool isStatic = body.IsStatic();
+                if (ImGui::Checkbox("Static", &isStatic)) {
+                    body.m_isStatic = isStatic;
+                    body.SetMass(body.GetMass());
+                }
+
+                float mass = body.GetMass();
+                if (ImGui::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f))
+                    body.SetMass(mass);
+
+                math::Vector3 velocity = body.GetVelocity();
+                if (widgets::DragVec3("Velocity", velocity, 0.05f))
+                    body.SetVelocity(velocity);
+
+                math::Vector3 angularVelocity = body.GetAngularVelocity();
+                if (widgets::DragVec3("Angular Velocity", angularVelocity, 0.05f))
+                    body.SetAngularVelocity(angularVelocity);
+
+                ImGui::DragFloat("Charge", &body.m_charge, 0.01f, -1000.0f, 1000.0f);
+                ImGui::Checkbox("Gravity Source", &body.m_isGravitationalSource);
+                ImGui::DragFloat("Gravity Mass", &body.m_gravitationalMass, 0.05f, 0.0f, 100000.0f);
+            }
+        }
+    }
+
+    if (auto* volume = go->GetComponent<scene::VolumeComponent>()) {
+        if (ImGui::CollapsingHeader("Volume", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enabled##volume", &volume->enabled);
+            static constexpr const char* kVolumeNames[] = {
+                "Gravity", "Vortex", "Buoyancy", "Explosion", "Time Dilation", "Magnetic"
+            };
+            int typeIdx = static_cast<int>(volume->type);
+            if (ImGui::Combo("Type", &typeIdx, kVolumeNames, 6))
+                volume->type = static_cast<physics::VolumeType>(typeIdx);
+
+            widgets::DragVec3("Gravity", volume->gravity, 0.05f);
+            widgets::DragVec3("Magnetic Field", volume->magneticField, 0.05f);
+            ImGui::DragFloat("Swirl", &volume->swirlStrength, 0.05f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Inward", &volume->inwardStrength, 0.05f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Lift", &volume->liftStrength, 0.05f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Buoyancy", &volume->buoyancy, 0.05f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Drag", &volume->drag, 0.01f, 0.0f, 100.0f);
+            ImGui::DragFloat("Explosion Impulse", &volume->explosionImpulse, 0.05f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Time Scale", &volume->timeScale, 0.01f, 0.0f, 10.0f);
+            ImGui::DragFloat("Duration", &volume->duration, 0.05f, -1.0f, 1000.0f);
+        }
+    }
+
+    if (auto* sr = go->GetComponent<scene::SkyRenderer>()) {
+        if (ImGui::CollapsingHeader("Sky Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enabled##sr", &sr->enabled);
+            ImGui::Separator();
+            widgets::DragVec3("Rayleigh", sr->rayleighScattering, 0.0001f, 0.0f, 1.0f);
+            ImGui::DragFloat("Mie Scattering", &sr->mieScattering, 0.0001f, 0.0f, 1.0f);
+            ImGui::DragFloat("Sun Intensity", &sr->sunIntensity, 0.1f, 0.0f, 1000.0f);
+            ImGui::SliderFloat("Mie G", &sr->mieG, -0.99f, 0.99f);
         }
     }
 

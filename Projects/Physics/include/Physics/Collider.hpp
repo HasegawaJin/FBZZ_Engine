@@ -7,9 +7,6 @@
 
 namespace fbzz::physics 
 {
-
-    class RigidBody;
-
     struct AABB {
         math::Vector3 min;
         math::Vector3 max;
@@ -32,8 +29,6 @@ namespace fbzz::physics
         // 毎フレーム World::UpdateColliders() から呼ばれる
         virtual void Update(const math::Vector3& worldPos,
                             const math::Quaternion& worldRot) = 0;
-
-        RigidBody* m_body = nullptr; // 非所有の参照 (所有はRigidBody側)
     };
 
 } // namespace fbzz::physics
