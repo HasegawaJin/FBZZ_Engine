@@ -16,6 +16,7 @@
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ShaderManager.hpp>
@@ -272,10 +273,18 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // MeshRenderer
-        if (auto* mr = go.GetComponent<MeshRenderer>(); mr && !mr->meshPath.empty()) {
+        if (auto* mr = go.GetComponent<MeshRenderer>(); mr) {
+            const std::string shaderPath = !mr->shaderPath.empty()
+                ? mr->shaderPath
+                : (mr->material ? mr->material->shaderPath : std::string{});
+            if (mr->mesh && mr->meshPath.empty())
+                FBZZ_LOG_WARN("SceneSerializer: MeshRenderer '%s' has mesh but no meshPath; it cannot be restored", go.name.c_str());
+            if (mr->material && shaderPath.empty())
+                FBZZ_LOG_WARN("SceneSerializer: MeshRenderer '%s' has material but no shaderPath; it cannot be rendered after restore", go.name.c_str());
             toml::table mrTbl;
             mrTbl.insert("mesh",   mr->meshPath);
-            mrTbl.insert("shader", mr->shaderPath);
+            mrTbl.insert("shader", shaderPath);
+            mrTbl.insert("enabled", mr->enabled);
             if (mr->material) {
                 auto& p = mr->material->params;
                 mrTbl.insert("albedo",        Vec4ToArr(p.albedo));
@@ -503,14 +512,19 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             mr.shaderPath    = (*mrTbl)["shader"].value_or(std::string{});
             mr.albedoTexPath = (*mrTbl)["albedoTex"].value_or(std::string{});
             mr.normalTexPath = (*mrTbl)["normalTex"].value_or(std::string{});
+            mr.enabled       = (*mrTbl)["enabled"].value_or(true);
 
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, renderer);
+                if (!mr.mesh)
+                    FBZZ_LOG_WARN("SceneSerializer: failed to resolve mesh '%s'", mr.meshPath.c_str());
 
                 auto mat         = std::make_shared<renderer::Material>();
                 mat->shaderPath  = mr.shaderPath;
                 if (!mr.shaderPath.empty())
                     mat->shader = renderer::ShaderManager::Load(mr.shaderPath);
+                if (!mat->shader)
+                    FBZZ_LOG_WARN("SceneSerializer: failed to resolve shader '%s'", mr.shaderPath.c_str());
 
                 auto& p         = mat->params;
                 p.albedo        = ArrToVec4((*mrTbl)["albedo"].as_array(),
