@@ -2,11 +2,10 @@
 // EditorContext.hpp | fbzz::editor
 // パネル間で共有するエディター状態
 #pragma once
-#include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <vector>
 
-namespace fbzz::scene    { class Scene; }
 namespace fbzz::renderer { class Camera; }
 namespace fbzz::editor   { class UndoStack; class PlayModeController; }
 
@@ -22,6 +21,15 @@ struct EditorContext {
     scene::EntityID PrimarySelected() const
     {
         return selectedEntities.empty() ? scene::EntityID{} : selectedEntities.front();
+    }
+
+    bool HasActiveScene() const { return activeScene != nullptr; }
+
+    scene::GameObject* GetSelectedGO() const
+    {
+        auto sel = PrimarySelected();
+        if (!sel.IsValid() || !activeScene) return nullptr;
+        return activeScene->GetGameObject(sel);
     }
 
     // ビューポート
