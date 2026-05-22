@@ -9,7 +9,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace fbzz::renderer { class IRenderer; }
+namespace fbzz::renderer { class ResourceManager; }
 
 namespace fbzz::scene {
 
@@ -22,7 +22,7 @@ public:
 
     // .fbzz ファイルからシーンを登録する。ロードは LoadScene 呼び出し時に行う
     void RegisterFromFile(const std::string& name, const std::string& path,
-                          renderer::IRenderer& renderer);
+                          renderer::ResourceManager& resources);
 
     // 次フレームの先頭でシーンを切り替える
     void LoadScene(const std::string& name);
