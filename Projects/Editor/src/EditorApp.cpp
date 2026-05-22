@@ -67,8 +67,13 @@ bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
     {
-        auto vp = std::make_unique<ViewportPanel>();
-        m_viewportPanel = vp.get();
+        auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::Scene);
+        m_sceneViewportPanel = vp.get();
+        m_panels.push_back(std::move(vp));
+    }
+    {
+        auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::Game);
+        m_gameViewportPanel = vp.get();
         m_panels.push_back(std::move(vp));
     }
     m_panels.push_back(std::make_unique<ConsolePanel>(m_consoleSink));
@@ -86,9 +91,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
     m_ctx.snapEnabled = m_settings.snapEnabled;
 
     // 初回 RT をウィンドウサイズで生成する
-    m_viewportRT = renderer.CreateRenderTarget(window.GetWidth(), window.GetHeight());
-    if (m_viewportPanel)
-        m_viewportPanel->hdrRT = m_viewportRT;
+    m_sceneViewportRT = renderer.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    m_gameViewportRT = renderer.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    if (m_sceneViewportPanel)
+        m_sceneViewportPanel->hdrRT = m_sceneViewportRT;
+    if (m_gameViewportPanel)
+        m_gameViewportPanel->hdrRT = m_gameViewportRT;
 
     FBZZ_LOG_INFO("EditorApp init done");
     return true;
@@ -100,7 +108,8 @@ void EditorApp::Shutdown()
         panel->OnShutdown();
 
     m_settings.Save(SETTINGS_PATH);
-    m_viewportRT.reset();
+    m_sceneViewportRT.reset();
+    m_gameViewportRT.reset();
     m_renderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }
@@ -109,7 +118,7 @@ void EditorApp::BeginFrame()
 {
     // Viewport パネルサイズが前フレームで変わった場合は RT を再生成する
     // シーン描画の前に呼ぶことで「空の RT をパネルに表示」を防ぐ
-    ResizeViewportRTIfNeeded();
+    ResizeViewportRTsIfNeeded();
 
     m_renderer->ImGuiNewFrame();
     ImGui::NewFrame();
@@ -160,17 +169,27 @@ void EditorApp::EndFrame(renderer::IRenderer& renderer)
     renderer.ImGuiRenderDrawData();
 }
 
-void EditorApp::ResizeViewportRTIfNeeded()
+void EditorApp::ResizeViewportRTsIfNeeded()
 {
-    if (!m_viewportRT || !m_viewportPanel || !m_renderer) return;
+    if (!m_renderer) return;
 
-    uint32_t vpW = static_cast<uint32_t>(m_ctx.viewportWidth);
-    uint32_t vpH = static_cast<uint32_t>(m_ctx.viewportHeight);
-    if (vpW == 0 || vpH == 0) return;
-    if (vpW == m_viewportRT->GetWidth() && vpH == m_viewportRT->GetHeight()) return;
+    auto resizeRT = [this](std::shared_ptr<renderer::IRenderTarget>& rt,
+                           ViewportPanel* panel,
+                           float width,
+                           float height) {
+        if (!rt || !panel) return;
 
-    m_viewportRT = m_renderer->CreateRenderTarget(vpW, vpH);
-    m_viewportPanel->hdrRT = m_viewportRT;
+        const uint32_t vpW = static_cast<uint32_t>(width);
+        const uint32_t vpH = static_cast<uint32_t>(height);
+        if (vpW == 0 || vpH == 0) return;
+        if (vpW == rt->GetWidth() && vpH == rt->GetHeight()) return;
+
+        rt = m_renderer->CreateRenderTarget(vpW, vpH);
+        panel->hdrRT = rt;
+    };
+
+    resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth, m_ctx.viewportHeight);
+    resizeRT(m_gameViewportRT, m_gameViewportPanel, m_ctx.gameViewportWidth, m_ctx.gameViewportHeight);
 }
 
 void EditorApp::BuildMenuBar(EditorContext& ctx)
@@ -227,8 +246,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     ImGui::Separator();
     PlayModeController* pm = ctx.playMode;
     if (pm && pm->IsInEditor()) {
-        if (ImGui::MenuItem("  Play  ") && ctx.activeScene)
+        if (ImGui::MenuItem("  Play  ") && ctx.activeScene) {
             pm->Play(*ctx.activeScene);
+            if (pm->IsPlaying())
+                ctx.requestGameViewportFocus = true;
+        }
     } else if (pm) {
         if (ImGui::MenuItem("  Stop  ") && ctx.activeScene)
             pm->Stop(*ctx.activeScene);
