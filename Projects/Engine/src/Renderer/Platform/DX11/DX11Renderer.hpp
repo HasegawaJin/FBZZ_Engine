@@ -56,10 +56,10 @@ public:
     std::shared_ptr<IRenderTarget>   CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) override;
 
     // DrawCall を受け取り、パイプラインステート → シェーダー → リソース → Draw の順で実行する
-    void Submit(const DrawCall& call) override;
+    void Submit(const DrawCall& call, ResourceManager& resources) override;
 
     // Compute Shader を Dispatch する (SSAO / Bloom 等のポストプロセス CS に使用)
-    void Dispatch(const ComputeCall& call) override;
+    void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
 
     // SRV + UAV 両用テクスチャを生成する (Compute パスの出力先)
     std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) override;
@@ -69,6 +69,7 @@ public:
 
     // オフスクリーン RT に切り替える (nullptr でバックバッファに戻す)
     void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) override;
+    void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
 
     // スロット番号に対応するサンプラープリセットをバインドする
     void SetSampler(uint32_t slot, SamplerMode mode) override;
@@ -79,6 +80,7 @@ public:
     void  ImGuiNewFrame()         override;
     void  ImGuiRenderDrawData()   override;
     void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) override;
+    void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) override;
 
     uint32_t GetWidth()  const override { return m_width;  }
     uint32_t GetHeight() const override { return m_height; }
