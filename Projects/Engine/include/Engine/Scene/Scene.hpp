@@ -109,6 +109,8 @@ public:
     template<typename T> T*   GetComponent(EntityID id);
     template<typename T> bool HasComponent(EntityID id) const;
     template<typename T> void RemoveComponent(EntityID id);
+    template<typename T> std::vector<T*> GetComponents();
+    template<typename T> std::vector<const T*> GetComponents() const;
 
     // SceneView が entity span を取得するために使う
     template<typename T>
@@ -305,6 +307,26 @@ bool Scene::HasComponent(EntityID id) const {
 template<typename T>
 void Scene::RemoveComponent(EntityID id) {
     GetArray<T>().Remove(id);
+}
+
+template<typename T>
+std::vector<T*> Scene::GetComponents() {
+    auto data = GetArray<T>().Data();
+    std::vector<T*> result;
+    result.reserve(data.size());
+    for (auto& component : data)
+        result.push_back(&component);
+    return result;
+}
+
+template<typename T>
+std::vector<const T*> Scene::GetComponents() const {
+    auto data = GetArray<T>().Data();
+    std::vector<const T*> result;
+    result.reserve(data.size());
+    for (const auto& component : data)
+        result.push_back(&component);
+    return result;
 }
 
 template<typename T>
