@@ -15,6 +15,7 @@
 #include "DX11PipelineState.hpp"
 #include "DX11Texture.hpp"
 #include "DX11RenderTarget.hpp"
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
 #include <imgui.h>
@@ -48,7 +49,7 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
     scDesc.BufferDesc.RefreshRate.Denominator          = 1;
     scDesc.BufferUsage                                 = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scDesc.OutputWindow                                = hwnd;
-    scDesc.SampleDesc.Count                            = 1;  // MSAA なし
+    scDesc.SampleDesc.Count                            = 1;  // MSAA は無効
     scDesc.Windowed                                    = TRUE;
     scDesc.SwapEffect                                  = DXGI_SWAP_EFFECT_DISCARD;
 
@@ -61,8 +62,8 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
     // D3D_FEATURE_LEVEL_11_0 を明示して、それ未満の GPU でエラーを即座に返す
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
     FBZZ_HR_CHECK(D3D11CreateDeviceAndSwapChain(
-        nullptr,                        // デフォルトアダプタ
-        D3D_DRIVER_TYPE_HARDWARE,       // GPU レンダリング (WARP は使わない)
+        nullptr,                        // 既定アダプター
+        D3D_DRIVER_TYPE_HARDWARE,       // GPU ドライバーを使用
         nullptr,
         flags,
         &featureLevel, 1,
@@ -225,9 +226,10 @@ std::shared_ptr<ITexture> DX11Renderer::CreateComputeTexture(uint32_t width, uin
 // Dispatch — ComputeCall に従って CS を実行する
 // =============================================================================
 
-void DX11Renderer::Dispatch(const ComputeCall& call)
+void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
 {
-    if (!call.shader) return;
+    auto* shader = resources.Get(call.shader);
+    if (!shader) return;
 
     // Compute を実行する前に OM の RTV/DSV をアンバインドする。
     // HDR RT などが RTV と CS-SRV に同時バインドされると HAZARD 警告が出るため。
@@ -235,22 +237,24 @@ void DX11Renderer::Dispatch(const ComputeCall& call)
     m_currentRT = nullptr;
 
     // CS バインド
-    auto* cs = static_cast<DX11Shader*>(call.shader.get());
+    auto* cs = static_cast<DX11Shader*>(shader);
     m_context->CSSetShader(cs->GetComputeShader(), nullptr, 0);
 
     // 定数バッファ (CS ステージ)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
     {
-        if (!call.constantBuffers[i]) continue;
-        ID3D11Buffer* buf = static_cast<DX11ConstantBuffer*>(call.constantBuffers[i].get())->GetBuffer();
+        auto* cb = resources.Get(call.constantBuffers[i]);
+        if (!cb) continue;
+        ID3D11Buffer* buf = static_cast<DX11ConstantBuffer*>(cb)->GetBuffer();
         m_context->CSSetConstantBuffers(i, 1, &buf);
     }
 
     // SRV 入力 (CS ステージ)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.srvInputs.size()); ++i)
     {
-        if (!call.srvInputs[i]) continue;
-        ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(call.srvInputs[i].get())->GetSRV();
+        auto* texture = resources.Get(call.srvInputs[i]);
+        if (!texture) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(texture)->GetSRV();
         m_context->CSSetShaderResources(i, 1, &srv);
     }
 
@@ -258,8 +262,8 @@ void DX11Renderer::Dispatch(const ComputeCall& call)
     ID3D11UnorderedAccessView* uavs[2] = { nullptr, nullptr };
     for (uint32_t i = 0; i < 2; ++i)
     {
-        if (call.uavOutputs[i])
-            uavs[i] = static_cast<DX11Texture*>(call.uavOutputs[i].get())->GetUAV();
+        if (auto* texture = resources.Get(call.uavOutputs[i]))
+            uavs[i] = static_cast<DX11Texture*>(texture)->GetUAV();
     }
     m_context->CSSetUnorderedAccessViews(0, 2, uavs, nullptr);
 
@@ -278,25 +282,26 @@ void DX11Renderer::Dispatch(const ComputeCall& call)
 // Submit — DrawCall の内容に従ってパイプラインを構築して Draw を発行する
 // =============================================================================
 
-void DX11Renderer::Submit(const DrawCall& call)
+void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
 {
     // ---- 1. Pipeline State (RS / OM ステート) --------------------------------
     // PipelineState は毎フレーム Apply するが、DX11 ドライバが重複バインドを検出して
     // 実際の状態変更がない場合はステートチェンジコストをスキップする。
-    if (call.pipelineState)
-        static_cast<DX11PipelineState*>(call.pipelineState.get())->Apply(m_context.Get());
+    if (auto* pipelineState = resources.Get(call.pipelineState))
+        static_cast<DX11PipelineState*>(pipelineState)->Apply(m_context.Get());
 
     // ---- 2. Shader + InputLayout (VS / PS / IA) --------------------------------
-    if (call.shader)
-        static_cast<DX11Shader*>(call.shader.get())->Bind(m_context.Get());
+    if (auto* shader = resources.Get(call.shader))
+        static_cast<DX11Shader*>(shader)->Bind(m_context.Get());
 
     // ---- 3. Constant Buffers (VS・PS 両方の同スロットへバインド) ----------------
     // 同じ定数バッファを VS と PS の両方にバインドすることで、
     // シェーダーの種類ごとにスロットを分けずに済む。
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
     {
-        if (!call.constantBuffers[i]) continue;
-        ID3D11Buffer* buf = static_cast<DX11ConstantBuffer*>(call.constantBuffers[i].get())->GetBuffer();
+        auto* cb = resources.Get(call.constantBuffers[i]);
+        if (!cb) continue;
+        ID3D11Buffer* buf = static_cast<DX11ConstantBuffer*>(cb)->GetBuffer();
         m_context->VSSetConstantBuffers(i, 1, &buf);
         m_context->PSSetConstantBuffers(i, 1, &buf);
     }
@@ -304,8 +309,9 @@ void DX11Renderer::Submit(const DrawCall& call)
     // ---- 4. Textures (SRV → PS ステージ) ----------------------------------------
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
     {
-        if (!call.textures[i]) continue;
-        ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(call.textures[i].get())->GetSRV();
+        auto* texture = resources.Get(call.textures[i]);
+        if (!texture) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11Texture*>(texture)->GetSRV();
         m_context->PSSetShaderResources(i, 1, &srv);
     }
 
@@ -316,9 +322,9 @@ void DX11Renderer::Submit(const DrawCall& call)
             : D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     // ---- 6. Vertex Buffer (IA ステージ) ------------------------------------------
-    if (call.vertexBuffer)
+    if (auto* vertexBuffer = resources.Get(call.vertexBuffer))
     {
-        auto*         dx11vb = static_cast<DX11Buffer*>(call.vertexBuffer.get());
+        auto*         dx11vb = static_cast<DX11Buffer*>(vertexBuffer);
         ID3D11Buffer* vb     = dx11vb->GetBuffer();
         UINT          stride = dx11vb->GetStride();
         UINT          offset = 0;
@@ -326,10 +332,10 @@ void DX11Renderer::Submit(const DrawCall& call)
     }
 
     // ---- 7. Draw (インデックスあり / なしで分岐) -----------------------------------
-    if (call.indexBuffer)
+    if (auto* indexBuffer = resources.Get(call.indexBuffer))
     {
         // DXGI_FORMAT_R32_UINT: インデックスは uint32_t 固定
-        ID3D11Buffer* ib = static_cast<DX11Buffer*>(call.indexBuffer.get())->GetBuffer();
+        ID3D11Buffer* ib = static_cast<DX11Buffer*>(indexBuffer)->GetBuffer();
         m_context->IASetIndexBuffer(ib, DXGI_FORMAT_R32_UINT, 0);
         m_context->DrawIndexed(call.indexCount, call.startIndex, static_cast<INT>(call.baseVertex));
     }
@@ -412,6 +418,11 @@ void DX11Renderer::SetRenderTarget(std::shared_ptr<IRenderTarget> rt)
     vp.Width  = static_cast<float>(m_currentRT->GetWidth());
     vp.Height = static_cast<float>(m_currentRT->GetHeight());
     m_context->RSSetViewports(1, &vp);
+}
+
+void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources)
+{
+    SetRenderTarget(resources.GetShared(rt));
 }
 
 void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)
@@ -544,6 +555,13 @@ void* DX11Renderer::GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot)
 {
     assert(rt != nullptr);
     return rt->GetNativeSRV(slot);
+}
+
+void* DX11Renderer::GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot)
+{
+    auto target = resources.GetShared(rt);
+    if (!target) return nullptr;
+    return target->GetNativeSRV(slot);
 }
 
 } // namespace fbzz::renderer
