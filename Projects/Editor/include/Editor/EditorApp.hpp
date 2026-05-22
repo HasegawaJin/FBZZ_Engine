@@ -31,12 +31,13 @@ public:
     EditorContext& GetContext() { return m_ctx; }
 
     // Viewport に紐づいたオフスクリーン RT (main.cpp はここに描く)
-    std::shared_ptr<renderer::IRenderTarget> GetViewportRT() const { return m_viewportRT; }
+    std::shared_ptr<renderer::IRenderTarget> GetViewportRT() const { return m_sceneViewportRT; }
+    std::shared_ptr<renderer::IRenderTarget> GetGameViewportRT() const { return m_gameViewportRT; }
 
 private:
     void BuildMenuBar(EditorContext& ctx);
     void RegisterDefaultHotkeys();
-    void ResizeViewportRTIfNeeded();
+    void ResizeViewportRTsIfNeeded();
     bool OpenSceneFromDialog();
     bool SaveScene();
     bool SaveSceneAsDialog();
@@ -52,8 +53,10 @@ private:
 
     void*                                    m_hwnd          = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
-    ViewportPanel*                           m_viewportPanel = nullptr;
-    std::shared_ptr<renderer::IRenderTarget> m_viewportRT;
+    ViewportPanel*                           m_sceneViewportPanel = nullptr;
+    ViewportPanel*                           m_gameViewportPanel  = nullptr;
+    std::shared_ptr<renderer::IRenderTarget> m_sceneViewportRT;
+    std::shared_ptr<renderer::IRenderTarget> m_gameViewportRT;
 };
 
 } // namespace fbzz::editor

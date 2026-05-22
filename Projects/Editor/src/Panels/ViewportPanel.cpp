@@ -3,6 +3,7 @@
 // Viewport image, mouse picking, and ImGuizmo manipulation
 #include <Editor/Panels/ViewportPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/PlayModeController.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/IRenderTarget.hpp>
@@ -73,11 +74,6 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     const math::Vector3 rayOrigin = ctx.editorCamera->m_position;
     const math::Vector3 rayDir = ScreenRayFromMouse(ctx, viewportMin);
     ImVec2 mouse = ImGui::GetMousePos();
-    FBZZ_LOG_INFO("Pick start: mouse=(%.1f, %.1f) vpMin=(%.1f, %.1f) vpSize=(%.1f, %.1f) rayO=(%.3f, %.3f, %.3f) rayD=(%.3f, %.3f, %.3f)",
-                  mouse.x, mouse.y, viewportMin.x, viewportMin.y,
-                  ctx.viewportWidth, ctx.viewportHeight,
-                  rayOrigin.x, rayOrigin.y, rayOrigin.z,
-                  rayDir.x, rayDir.y, rayDir.z);
 
     scene::EntityID best = scene::EntityID::INVALID;
     float bestT = 1e30f;
@@ -164,15 +160,10 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
         if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
         if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), best) == ctx.selectedEntities.end())
             ctx.selectedEntities.push_back(best);
-        FBZZ_LOG_INFO("Pick hit: index=%u gen=%u selectedCount=%zu",
-                      best.index, best.generation, ctx.selectedEntities.size());
         return true;
     }
 
     if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
-    FBZZ_LOG_INFO("Pick miss: selection cleared=%s selectedCount=%zu",
-                  ImGui::GetIO().KeyCtrl ? "false" : "true",
-                  ctx.selectedEntities.size());
     return false;
 }
 
@@ -218,8 +209,6 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
     if (s_lastOp != opInt || s_lastMode != modeInt) {
         s_lastOp = opInt;
         s_lastMode = modeInt;
-        FBZZ_LOG_INFO("Gizmo mode changed: op=%d mode=%d snap=%s snapDist=%.3f",
-                      opInt, modeInt, ctx.snapEnabled ? "on" : "off", ctx.snapDistance);
     }
 
     ImGuizmo::Manipulate(
@@ -238,10 +227,6 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
     if (gizmoOver != s_prevOver || gizmoUsing != s_prevUsing) {
         s_prevOver = gizmoOver;
         s_prevUsing = gizmoUsing;
-        FBZZ_LOG_INFO("Gizmo state: over=%s using=%s selected=(%u,%u)",
-                      gizmoOver ? "true" : "false",
-                      gizmoUsing ? "true" : "false",
-                      selected.index, selected.generation);
     }
 
     if (!gizmoUsing) return;
@@ -273,34 +258,144 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
         r[1] * math::DEG2RAD,
         r[2] * math::DEG2RAD
     });
-    FBZZ_LOG_INFO("Gizmo applied: id=(%u,%u) localPos=(%.3f, %.3f, %.3f) localRotDeg=(%.3f, %.3f, %.3f) localScale=(%.3f, %.3f, %.3f)",
-                  selected.index, selected.generation,
-                  t[0], t[1], t[2], r[0], r[1], r[2], s[0], s[1], s[2]);
+}
+
+float GetGameViewportAspectRatio(EditorContext::GameViewportAspect aspect)
+{
+    switch (aspect) {
+    case EditorContext::GameViewportAspect::Ratio16x9:  return 16.0f / 9.0f;
+    case EditorContext::GameViewportAspect::Ratio4x3:   return 4.0f / 3.0f;
+    case EditorContext::GameViewportAspect::Ratio1x1:   return 1.0f;
+    case EditorContext::GameViewportAspect::Ratio9x16:  return 9.0f / 16.0f;
+    case EditorContext::GameViewportAspect::HD:          return 1280.0f / 720.0f;
+    case EditorContext::GameViewportAspect::FullHD:      return 1920.0f / 1080.0f;
+    case EditorContext::GameViewportAspect::QHD:         return 2560.0f / 1440.0f;
+    case EditorContext::GameViewportAspect::UHD4K:       return 3840.0f / 2160.0f;
+    case EditorContext::GameViewportAspect::WXGA:        return 1280.0f / 800.0f;
+    case EditorContext::GameViewportAspect::WUXGA:       return 1920.0f / 1200.0f;
+    case EditorContext::GameViewportAspect::iPhonePortrait:  return 1080.0f / 1920.0f;
+    case EditorContext::GameViewportAspect::iPhoneLandscape: return 1920.0f / 1080.0f;
+    case EditorContext::GameViewportAspect::Free:
+    default:                                            return 0.0f;
+    }
+}
+
+const char* GetGameViewportAspectLabel(EditorContext::GameViewportAspect aspect)
+{
+    switch (aspect) {
+    case EditorContext::GameViewportAspect::Ratio16x9:  return "16:9";
+    case EditorContext::GameViewportAspect::Ratio4x3:   return "4:3";
+    case EditorContext::GameViewportAspect::Ratio1x1:   return "1:1";
+    case EditorContext::GameViewportAspect::Ratio9x16:  return "9:16";
+    case EditorContext::GameViewportAspect::HD:          return "HD (1280x720)";
+    case EditorContext::GameViewportAspect::FullHD:      return "Full HD (1920x1080)";
+    case EditorContext::GameViewportAspect::QHD:         return "QHD (2560x1440)";
+    case EditorContext::GameViewportAspect::UHD4K:       return "4K UHD (3840x2160)";
+    case EditorContext::GameViewportAspect::WXGA:        return "WXGA (1280x800)";
+    case EditorContext::GameViewportAspect::WUXGA:       return "WUXGA (1920x1200)";
+    case EditorContext::GameViewportAspect::iPhonePortrait:  return "iPhone Portrait";
+    case EditorContext::GameViewportAspect::iPhoneLandscape: return "iPhone Landscape";
+    case EditorContext::GameViewportAspect::Free:
+    default:                                            return "Free";
+    }
+}
+
+void DrawGameViewportAspectControl(EditorContext& ctx)
+{
+    if (ImGui::BeginCombo("##game_aspect", GetGameViewportAspectLabel(ctx.gameViewportAspect))) {
+        constexpr EditorContext::GameViewportAspect kAspects[] = {
+            EditorContext::GameViewportAspect::Free,
+            EditorContext::GameViewportAspect::Ratio16x9,
+            EditorContext::GameViewportAspect::Ratio4x3,
+            EditorContext::GameViewportAspect::Ratio1x1,
+            EditorContext::GameViewportAspect::Ratio9x16,
+            EditorContext::GameViewportAspect::HD,
+            EditorContext::GameViewportAspect::FullHD,
+            EditorContext::GameViewportAspect::QHD,
+            EditorContext::GameViewportAspect::UHD4K,
+            EditorContext::GameViewportAspect::WXGA,
+            EditorContext::GameViewportAspect::WUXGA,
+            EditorContext::GameViewportAspect::iPhonePortrait,
+            EditorContext::GameViewportAspect::iPhoneLandscape
+        };
+        for (EditorContext::GameViewportAspect aspect : kAspects) {
+            const bool selected = ctx.gameViewportAspect == aspect;
+            if (ImGui::Selectable(GetGameViewportAspectLabel(aspect), selected))
+                ctx.gameViewportAspect = aspect;
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+}
+
+ImVec2 FitSizeToAspect(ImVec2 size, float aspect)
+{
+    if (aspect <= 0.0f) return size;
+    const float availableAspect = size.x / size.y;
+    if (availableAspect > aspect)
+        size.x = size.y * aspect;
+    else
+        size.y = size.x / aspect;
+    return size;
 }
 
 } // namespace
 
-void ViewportPanel::OnBeforeBegin(EditorContext& /*ctx*/)
+ViewportPanel::ViewportPanel(Kind kind)
+    : m_kind(kind)
+    , m_windowName(kind == Kind::Scene ? "Scene" : "Game")
 {
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0.0f, 0.0f });
 }
 
-void ViewportPanel::OnAfterBegin(EditorContext& /*ctx*/)
+void ViewportPanel::OnBeforeBegin(EditorContext& ctx)
 {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0.0f, 0.0f });
+    if (m_kind == Kind::Game && ctx.requestGameViewportFocus)
+        ImGui::SetNextWindowFocus();
+}
+
+void ViewportPanel::OnAfterBegin(EditorContext& ctx)
+{
+    if (m_kind == Kind::Game)
+        ctx.requestGameViewportFocus = false;
     ImGui::PopStyleVar();
 }
 
 void ViewportPanel::OnRenderContent(EditorContext& ctx)
 {
+    const bool isSceneView = m_kind == Kind::Scene;
+    if (!isSceneView) {
+        ImGui::SetNextItemWidth(96.0f);
+        DrawGameViewportAspectControl(ctx);
+    }
+
     ImVec2 size = ImGui::GetContentRegionAvail();
     if (size.x < 1.0f) size.x = 1.0f;
     if (size.y < 1.0f) size.y = 1.0f;
 
-    ctx.viewportWidth = size.x;
-    ctx.viewportHeight = size.y;
-    ctx.viewportFocused = ImGui::IsWindowFocused();
+    if (!isSceneView) {
+        size = FitSizeToAspect(size, GetGameViewportAspectRatio(ctx.gameViewportAspect));
+        if (size.x < 1.0f) size.x = 1.0f;
+        if (size.y < 1.0f) size.y = 1.0f;
+    }
+
+    if (isSceneView) {
+        ctx.viewportWidth = size.x;
+        ctx.viewportHeight = size.y;
+        ctx.viewportFocused = ImGui::IsWindowFocused();
+    } else {
+        ctx.gameViewportWidth = size.x;
+        ctx.gameViewportHeight = size.y;
+        ctx.gameViewportFocused = ImGui::IsWindowFocused();
+    }
 
     ImVec2 viewportMin = ImGui::GetCursorScreenPos();
+    if (!isSceneView) {
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+        viewportMin.x += (std::max)(0.0f, (available.x - size.x) * 0.5f);
+        viewportMin.y += (std::max)(0.0f, (available.y - size.y) * 0.5f);
+    }
     ImVec2 viewportMax = { viewportMin.x + size.x, viewportMin.y + size.y };
     bool viewportHovered = ImGui::IsMouseHoveringRect(viewportMin, viewportMax);
     if (hdrRT) {
@@ -314,18 +409,22 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextDisabled("No Render Target");
     }
 
-    static bool s_prevHovered = false;
-    if (viewportHovered != s_prevHovered) {
-        s_prevHovered = viewportHovered;
-        FBZZ_LOG_INFO("Viewport hover: %s", viewportHovered ? "true" : "false");
-    }
+    const bool inPlayOrPause = ctx.playMode && !ctx.playMode->IsInEditor();
+
     const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
-    if (viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse)
+    if (isSceneView && !inPlayOrPause && viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse)
         PickEntity(ctx, viewportMin);
 
-    DrawGizmo(ctx, viewportMin, size);
+    if (isSceneView && !inPlayOrPause)
+        DrawGizmo(ctx, viewportMin, size);
 
-    if (ctx.showSceneStats) {
+    // Play / Pause 中はボーダーで状態を示す
+    if (!isSceneView && ctx.playMode && ctx.playMode->IsPlaying())
+        ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(80, 200, 80, 220), 0.0f, 0, 3.0f);
+    else if (!isSceneView && ctx.playMode && ctx.playMode->IsPaused())
+        ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(255, 180, 50, 220), 0.0f, 0, 3.0f);
+
+    if (isSceneView && ctx.showSceneStats) {
         int entityCount = 0;
         int meshCount = 0;
         if (ctx.activeScene) {
