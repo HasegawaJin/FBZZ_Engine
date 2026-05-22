@@ -1,3 +1,6 @@
+// FBZZ Engine
+// IPipelineState.hpp | fbzz::renderer
+// Renderer pipeline state interface
 #pragma once
 #include "RenderState.hpp"
 

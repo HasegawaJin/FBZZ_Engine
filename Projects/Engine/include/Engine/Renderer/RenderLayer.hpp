@@ -1,3 +1,6 @@
+// FBZZ Engine
+// RenderLayer.hpp | fbzz::renderer
+// Renderer layer flags
 #pragma once
 #include <cstdint>
 

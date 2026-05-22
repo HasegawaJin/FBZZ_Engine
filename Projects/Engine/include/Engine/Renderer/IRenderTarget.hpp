@@ -1,3 +1,6 @@
+// FBZZ Engine
+// IRenderTarget.hpp | fbzz::renderer
+// Renderer render target interface
 #pragma once
 #include <cstdint>
 #include <memory>

@@ -1,3 +1,6 @@
+// FBZZ Engine
+// IRenderer.hpp | fbzz::renderer
+// Renderer backend interface
 #pragma once
 #include <cstddef>
 #include <cstdint>

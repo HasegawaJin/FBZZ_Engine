@@ -1,3 +1,6 @@
+// FBZZ Engine
+// IShader.hpp | fbzz::renderer
+// Renderer shader interface
 #pragma once
 #include <string>
 
