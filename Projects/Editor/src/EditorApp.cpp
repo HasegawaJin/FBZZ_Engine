@@ -9,7 +9,6 @@
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/ViewportPanel.hpp>
-#include <Editor/Panels/LightPanel.hpp>
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
@@ -62,8 +61,6 @@ bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
 
     renderer.ImGuiInit(m_hwnd);
 
-    core::Logger::AddSink(&m_consoleSink);
-
     m_ctx.undoStack = &m_undoStack;
     m_ctx.playMode  = &m_playMode;
 
@@ -74,10 +71,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
         m_viewportPanel = vp.get();
         m_panels.push_back(std::move(vp));
     }
-    m_panels.push_back(std::make_unique<LightPanel>());
     m_panels.push_back(std::make_unique<ConsolePanel>(m_consoleSink));
     m_panels.push_back(std::make_unique<AssetBrowserPanel>("Assets"));
     m_panels.push_back(std::make_unique<StatusBar>());
+
+    for (auto& panel : m_panels)
+        panel->OnInit(m_ctx);
 
     RegisterDefaultHotkeys();
 
@@ -97,9 +96,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
 
 void EditorApp::Shutdown()
 {
+    for (auto& panel : m_panels)
+        panel->OnShutdown();
+
     m_settings.Save(SETTINGS_PATH);
     m_viewportRT.reset();
-    core::Logger::RemoveSink(&m_consoleSink);
     m_renderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }

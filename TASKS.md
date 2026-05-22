@@ -19,7 +19,7 @@
 | 6 | InspectorPanel — Transform 編集 | ✅ 完了 |
 | 7 | ViewportPanel + EditorCamera | ✅ 完了 |
 | 8 | Gizmo (ImGuizmo) + MousePicking | ✅ 完了 |
-| 9 | LightPanel | ✅ 完了 |
+| 9 | Light editing integrated into InspectorPanel | ✅ 完了 |
 | 10 | ConsolePanel / AssetBrowserPanel / StatusBar | ✅ 完了 |
 | 11 | SceneSerializer — engine::scene::SceneSerializer Save/Load | ✅ 完了 |
 | 12 | PlayModeController — Play/Pause/Stop 基本動作 | ✅ 完了 |
@@ -73,7 +73,7 @@
 |------|------|------|
 | 7 | DX12 移行 + RenderGraph | ❌ 未着手 |
 | 7 | DXR (Ray Tracing) | ❌ 未着手 |
-| — | Script / Reflect システム | ❌ 未着手 ([docs/scene/Script.md](docs/scene/Script.md)) |
+| — | Script / Reflect システム | ✅ 完了 ([docs/scene/Script.md](docs/scene/Script.md)) |
 
 ---
 
@@ -97,3 +97,17 @@
 | 1 | sandbox/main.cpp loads a .fbzz scene through SceneSerializer | Done |
 | 2 | Physics verification scene moved to assets/scenes/PhysicsTest.fbzz | Done |
 | 3 | Runtime RigidBodyComponent bootstrap for PhysicsTest | Done |
+
+---
+
+## Panel Refactoring
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | IPanel template-method lifecycle (GetWindowName / OnRenderContent / OnInit / OnShutdown) | Done |
+| 2 | InspectorPanel DrawComponentSection template refactor | Done |
+| 3 | Engine Component GetTypeName / Reflect entry points | Done |
+| 4 | EditorContext helper methods (HasActiveScene / GetSelectedGO) | Done |
+| 5 | Scene::GetComponents<T>() query helper | Done |
+| 6 | LightComponent editing remains inside the selected object's Inspector component section | Done |
+| 7 | Standalone LightPanel removed | Done |

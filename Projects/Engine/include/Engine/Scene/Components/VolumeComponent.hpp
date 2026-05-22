@@ -2,6 +2,7 @@
 // VolumeComponent.hpp | fbzz::scene
 // Trigger collider area effect component
 #pragma once
+#include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/ColliderVolume.hpp>
 
@@ -23,6 +24,22 @@ struct VolumeComponent {
     float timeScale = 1.0f;
     float duration = -1.0f;
     float elapsed = 0.0f;
+
+    const char* GetTypeName() const { return "Volume"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("gravity", gravity);
+        r.Field("magneticField", magneticField);
+        r.Field("swirlStrength", swirlStrength);
+        r.Field("inwardStrength", inwardStrength);
+        r.Field("liftStrength", liftStrength);
+        r.Field("buoyancy", buoyancy);
+        r.Field("drag", drag);
+        r.Field("explosionImpulse", explosionImpulse);
+        r.Field("timeScale", timeScale);
+        r.Field("duration", duration);
+    }
 };
 
 } // namespace fbzz::scene

@@ -4,16 +4,25 @@
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Engine/Core/ILogSink.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <imgui.h>
 
 namespace fbzz::editor {
 
 ConsolePanel::ConsolePanel(ConsoleSink& sink) : m_sink(sink) {}
 
-void ConsolePanel::OnRender(EditorContext& /*ctx*/)
+void ConsolePanel::OnInit(EditorContext& /*ctx*/)
 {
-    if (!ImGui::Begin("Console")) { ImGui::End(); return; }
+    core::Logger::AddSink(&m_sink);
+}
 
+void ConsolePanel::OnShutdown()
+{
+    core::Logger::RemoveSink(&m_sink);
+}
+
+void ConsolePanel::OnRenderContent(EditorContext& /*ctx*/)
+{
     // ツールバー
     ImGui::Checkbox("INFO",  &m_showInfo);  ImGui::SameLine();
     ImGui::Checkbox("WARN",  &m_showWarn);  ImGui::SameLine();
@@ -45,8 +54,6 @@ void ConsolePanel::OnRender(EditorContext& /*ctx*/)
     if (m_autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
         ImGui::SetScrollHereY(1.0f);
     ImGui::EndChild();
-
-    ImGui::End();
 }
 
 } // namespace fbzz::editor

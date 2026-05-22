@@ -9,11 +9,16 @@ namespace fbzz::editor {
 
 class StatusBar : public IPanel {
 public:
-    void OnRender(EditorContext& ctx) override;
+    const char* GetWindowName() const override { return "##statusbar"; }
 
     void SetMessage(const std::string& msg) { m_message = msg; }
 
 private:
+    void OnRenderContent(EditorContext& ctx) override;
+    ImGuiWindowFlags GetWindowFlags() const override;
+    void OnBeforeBegin(EditorContext& ctx) override;
+    void OnAfterBegin(EditorContext& ctx) override;
+
     std::string m_message;
     float       m_fps       = 0.0f;
     float       m_fpsTimer  = 0.0f;

@@ -12,9 +12,11 @@ namespace fbzz::editor {
 class AssetBrowserPanel : public IPanel {
 public:
     explicit AssetBrowserPanel(const std::string& rootPath);
-    void OnRender(EditorContext& ctx) override;
+    const char* GetWindowName() const override { return "Asset Browser"; }
+    void OnInit(EditorContext& ctx) override;
 
 private:
+    void OnRenderContent(EditorContext& ctx) override;
     void RefreshDirectory();
 
     std::string              m_rootPath;

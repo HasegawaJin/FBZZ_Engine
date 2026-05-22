@@ -280,14 +280,18 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
 
 } // namespace
 
-void ViewportPanel::OnRender(EditorContext& ctx)
+void ViewportPanel::OnBeforeBegin(EditorContext& /*ctx*/)
 {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0.0f, 0.0f });
-    bool open = ImGui::Begin("Viewport");
+}
+
+void ViewportPanel::OnAfterBegin(EditorContext& /*ctx*/)
+{
     ImGui::PopStyleVar();
+}
 
-    if (!open) { ImGui::End(); return; }
-
+void ViewportPanel::OnRenderContent(EditorContext& ctx)
+{
     ImVec2 size = ImGui::GetContentRegionAvail();
     if (size.x < 1.0f) size.x = 1.0f;
     if (size.y < 1.0f) size.y = 1.0f;
@@ -349,7 +353,6 @@ void ViewportPanel::OnRender(EditorContext& ctx)
         ImGui::End();
     }
 
-    ImGui::End();
 }
 
 } // namespace fbzz::editor
