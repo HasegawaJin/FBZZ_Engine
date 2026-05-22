@@ -27,7 +27,7 @@ struct DebugCamCB {
     math::Matrix4 viewProjection;
 };
 
-constexpr uint32_t MAX_DEBUG_VERTICES = 4096;
+constexpr uint32_t MAX_DEBUG_VERTICES = 65536;
 constexpr int      CIRCLE_SEGMENTS    = 24;
 constexpr float    PI                 = 3.14159265358979f;
 
@@ -172,6 +172,32 @@ void DebugDraw::Box(IRenderer& /*r*/,
     AddSegment(c[4], c[5], color); AddSegment(c[5], c[6], color);
     AddSegment(c[6], c[7], color); AddSegment(c[7], c[4], color);
     // 側面
+    AddSegment(c[0], c[4], color); AddSegment(c[1], c[5], color);
+    AddSegment(c[2], c[6], color); AddSegment(c[3], c[7], color);
+}
+
+void DebugDraw::Box(IRenderer& /*r*/,
+                    const math::Vector3& center, const math::Vector3& h,
+                    const math::Quaternion& rotation,
+                    const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    math::Vector3 c[8] = {
+        center + rotation * math::Vector3{-h.x, -h.y, -h.z},
+        center + rotation * math::Vector3{+h.x, -h.y, -h.z},
+        center + rotation * math::Vector3{+h.x, +h.y, -h.z},
+        center + rotation * math::Vector3{-h.x, +h.y, -h.z},
+        center + rotation * math::Vector3{-h.x, -h.y, +h.z},
+        center + rotation * math::Vector3{+h.x, -h.y, +h.z},
+        center + rotation * math::Vector3{+h.x, +h.y, +h.z},
+        center + rotation * math::Vector3{-h.x, +h.y, +h.z},
+    };
+
+    AddSegment(c[0], c[1], color); AddSegment(c[1], c[2], color);
+    AddSegment(c[2], c[3], color); AddSegment(c[3], c[0], color);
+    AddSegment(c[4], c[5], color); AddSegment(c[5], c[6], color);
+    AddSegment(c[6], c[7], color); AddSegment(c[7], c[4], color);
     AddSegment(c[0], c[4], color); AddSegment(c[1], c[5], color);
     AddSegment(c[2], c[6], color); AddSegment(c[3], c[7], color);
 }
