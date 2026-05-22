@@ -7,17 +7,17 @@
 
 namespace fbzz::renderer {
 
-class IRenderer;
+class ResourceManager;
 
 class PrimitiveMesh {
 public:
-    static std::shared_ptr<Mesh> Cube    (IRenderer& renderer);
-    static std::shared_ptr<Mesh> Sphere  (IRenderer& renderer, int segments = 16);
-    static std::shared_ptr<Mesh> Plane   (IRenderer& renderer);
-    static std::shared_ptr<Mesh> Cylinder(IRenderer& renderer, int segments = 16);
-    static std::shared_ptr<Mesh> Cone    (IRenderer& renderer, int segments = 16);
-    static std::shared_ptr<Mesh> Torus   (IRenderer& renderer, int segments = 24);
-    static std::shared_ptr<Mesh> Capsule (IRenderer& renderer, int segments = 24);
+    static std::shared_ptr<Mesh> Cube    (ResourceManager& resources);
+    static std::shared_ptr<Mesh> Sphere  (ResourceManager& resources, int segments = 16);
+    static std::shared_ptr<Mesh> Plane   (ResourceManager& resources);
+    static std::shared_ptr<Mesh> Cylinder(ResourceManager& resources, int segments = 16);
+    static std::shared_ptr<Mesh> Cone    (ResourceManager& resources, int segments = 16);
+    static std::shared_ptr<Mesh> Torus   (ResourceManager& resources, int segments = 24);
+    static std::shared_ptr<Mesh> Capsule (ResourceManager& resources, int segments = 24);
 };
 
 } // namespace fbzz::renderer

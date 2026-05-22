@@ -15,66 +15,50 @@
 #include "IShader.hpp"
 #include "ITexture.hpp"
 #include "RenderState.hpp"
+#include "ResourceHandle.hpp"
 #include "SamplerMode.hpp"
 #include <Math/Vector4.hpp>
 
-namespace fbzz::renderer 
-{
+namespace fbzz::renderer {
 
-    class IRenderer 
-    {
-    public:
-        virtual ~IRenderer() = default;
+class ResourceManager;
 
-        // フレーム制御
-        virtual void BeginFrame() = 0;
-        virtual void EndFrame()   = 0;
-        virtual void Clear(const math::Vector4& color) = 0;
+class IRenderer {
+public:
+    virtual ~IRenderer() = default;
 
-        // リソース生成
-        virtual std::shared_ptr<IBuffer>        CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
-        virtual std::shared_ptr<IBuffer>        CreateIndexBuffer(const void* data, uint32_t count) = 0;
-        virtual std::shared_ptr<IConstantBuffer> CreateConstantBuffer(size_t sizeBytes) = 0;
-        virtual std::shared_ptr<IShader>        CreateShader(const std::string& path) = 0;
-        virtual std::shared_ptr<ITexture>       CreateTexture(const std::string& path) = 0;
-        virtual std::shared_ptr<IPipelineState> CreatePipelineState(const PipelineStateDesc& desc) = 0;
+    virtual void BeginFrame() = 0;
+    virtual void EndFrame() = 0;
+    virtual void Clear(const math::Vector4& color) = 0;
 
-        // 描画 (DrawCall は完全自己完結)
-        virtual void Submit(const DrawCall& call) = 0;
+    virtual std::shared_ptr<IBuffer> CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
+    virtual std::shared_ptr<IBuffer> CreateIndexBuffer(const void* data, uint32_t count) = 0;
+    virtual std::shared_ptr<IConstantBuffer> CreateConstantBuffer(size_t sizeBytes) = 0;
+    virtual std::shared_ptr<IShader> CreateShader(const std::string& path) = 0;
+    virtual std::shared_ptr<ITexture> CreateTexture(const std::string& path) = 0;
+    virtual std::shared_ptr<IPipelineState> CreatePipelineState(const PipelineStateDesc& desc) = 0;
+    virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) = 0;
+    virtual std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) = 0;
 
-        // Compute Shader ディスパッチ
-        // uavOutputs には CreateComputeTexture() で生成した ITexture を渡すこと
-        virtual void Dispatch(const ComputeCall& call) = 0;
+    virtual void Submit(const DrawCall& call, ResourceManager& resources) = 0;
+    virtual void Dispatch(const ComputeCall& call, ResourceManager& resources) = 0;
 
-        // Compute Shader の UAV 出力先テクスチャを生成する (SRV + UAV の両用テクスチャ)
-        virtual std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) = 0;
+    virtual void Resize(uint32_t width, uint32_t height) = 0;
+    virtual uint32_t GetWidth() const = 0;
+    virtual uint32_t GetHeight() const = 0;
 
-        // ウィンドウリサイズ (Window::ResizeCallback から呼ぶ)
-        virtual void Resize(uint32_t width, uint32_t height) = 0;
+    virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;
+    virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
+    virtual void ClearDepth(float depth = 1.0f) = 0;
 
-        // 現在のバックバッファサイズ (リサイズ後も最新値を返す)
-        virtual uint32_t GetWidth()  const = 0;
-        virtual uint32_t GetHeight() const = 0;
+    virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
 
-        // オフスクリーン RT (詳細: render_target.md)
-        // colorCount: 同時出力カラーバッファ数 (1=通常, 2=GBuffer 等 MRT)
-        virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) = 0;
-        virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;  // nullptr = バックバッファ
-
-        // 現在バインド中の RT の深度バッファのみクリアする (シャドウパス前に呼ぶ)
-        virtual void ClearDepth(float depth = 1.0f) = 0;
-
-        // サンプラー (詳細: sampler.md)
-        virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
-
-        // ImGui 統合 — バックエンド依存を IRenderer に閉じ込める
-        // hwnd: Win32 ウィンドウハンドル (void* で受けて実装側でキャスト)
-        virtual void ImGuiInit(void* hwnd)      = 0;
-        virtual void ImGuiShutdown()            = 0;
-        virtual void ImGuiNewFrame()            = 0;
-        virtual void ImGuiRenderDrawData()      = 0;
-        // ImGui::Image() に渡すテクスチャ ID (DX11: SRV ポインタ)
-        virtual void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) = 0;
-    };
+    virtual void ImGuiInit(void* hwnd) = 0;
+    virtual void ImGuiShutdown() = 0;
+    virtual void ImGuiNewFrame() = 0;
+    virtual void ImGuiRenderDrawData() = 0;
+    virtual void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) = 0;
+    virtual void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) = 0;
+};
 
 } // namespace fbzz::renderer

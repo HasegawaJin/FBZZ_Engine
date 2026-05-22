@@ -3,7 +3,7 @@
 // Assimp を使って FBX / OBJ 等を Model に変換する
 #include <Engine/Asset/ModelImporter.hpp>
 #include <Engine/Asset/Model.hpp>
-#include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -29,7 +29,7 @@ constexpr unsigned int ASSIMP_FLAGS =
 
 std::shared_ptr<Model> ModelImporter::Import(
     const std::string& path,
-    renderer::IRenderer& renderer)
+    renderer::ResourceManager& resources)
 {
     Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile(path, ASSIMP_FLAGS);
@@ -84,11 +84,11 @@ std::shared_ptr<Model> ModelImporter::Import(
         }
 
         auto mesh = std::make_shared<renderer::Mesh>();
-        mesh->vertexBuffer = renderer.CreateVertexBuffer(
+        mesh->vertexBuffer = resources.CreateVertexBuffer(
             vertices.data(),
             vertices.size() * sizeof(renderer::Vertex),
             sizeof(renderer::Vertex));
-        mesh->indexBuffer  = renderer.CreateIndexBuffer(
+        mesh->indexBuffer  = resources.CreateIndexBuffer(
             indices.data(), static_cast<uint32_t>(indices.size()));
         mesh->vertexCount  = static_cast<uint32_t>(vertices.size());
         mesh->indexCount   = static_cast<uint32_t>(indices.size());
@@ -102,7 +102,7 @@ std::shared_ptr<Model> ModelImporter::Import(
                 AI_MATKEY_COLOR_DIFFUSE, color);
             mat->params.albedo = { color.r, color.g, color.b, color.a };
         }
-        mat->Init(renderer);
+        mat->Init(resources);
 
         model->meshes.push_back(mesh);
         model->materials.push_back(mat);

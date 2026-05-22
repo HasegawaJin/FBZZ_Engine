@@ -3,10 +3,10 @@
 // IRenderTarget をテクスチャとして表示しカメラ操作を受け付ける
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
-#include <memory>
 #include <string>
+#include <Engine/Renderer/ResourceHandle.hpp>
 
-namespace fbzz::renderer { class IRenderTarget; }
+namespace fbzz::renderer { class IRenderer; class ResourceManager; }
 
 namespace fbzz::editor {
 
@@ -21,7 +21,9 @@ public:
 
     const char* GetWindowName() const override { return m_windowName.c_str(); }
 
-    std::shared_ptr<renderer::IRenderTarget> hdrRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
+    renderer::IRenderer* renderer = nullptr;
+    renderer::ResourceManager* resources = nullptr;
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
