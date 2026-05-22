@@ -111,3 +111,15 @@
 | 5 | Scene::GetComponents<T>() query helper | Done |
 | 6 | LightComponent editing remains inside the selected object's Inspector component section | Done |
 | 7 | Standalone LightPanel removed | Done |
+
+---
+
+## Work Log
+
+| Date | Task | Status |
+|------|------|--------|
+| 2026-05-22 | Split editor viewport into Scene view and Game view rendered from the scene MainCamera | Done |
+| 2026-05-22 | Focus the Game viewport automatically when Play is pressed | Done |
+| 2026-05-22 | Fix PlayMode snapshot restore dropping MeshRenderer primitive mesh and shader data | Done |
+| 2026-05-22 | Add aspect ratio selection to the Game viewport | Done |
+| 2026-05-22 | Add Unity-style Game viewport resolution presets including Full HD | Done |
