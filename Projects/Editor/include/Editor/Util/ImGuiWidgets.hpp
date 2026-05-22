@@ -30,16 +30,16 @@ inline math::Vector3 QuatToEulerDeg(const math::Quaternion& q)
 {
     constexpr float DEG = 180.0f / 3.14159265f;
 
-    float sinr = 2.0f * (q.w * q.x + q.y * q.z);
+    float sinr = 2.0f * (q.w * q.x - q.y * q.z);
     float cosr = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
     float roll  = std::atan2(sinr, cosr) * DEG;
 
-    float sinp  = 2.0f * (q.w * q.y - q.z * q.x);
+    float sinp  = 2.0f * (q.w * q.y + q.z * q.x);
     float pitch = (std::abs(sinp) >= 1.0f)
                 ? std::copysign(90.0f, sinp)
                 : std::asin(sinp) * DEG;
 
-    float siny = 2.0f * (q.w * q.z + q.x * q.y);
+    float siny = 2.0f * (q.w * q.z - q.x * q.y);
     float cosy = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
     float yaw   = std::atan2(siny, cosy) * DEG;
 
