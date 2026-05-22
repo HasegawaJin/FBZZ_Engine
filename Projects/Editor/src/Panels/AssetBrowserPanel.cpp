@@ -12,7 +12,6 @@ namespace fbzz::editor {
 AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
     : m_rootPath(rootPath), m_currentPath(rootPath)
 {
-    RefreshDirectory();
 }
 
 void AssetBrowserPanel::RefreshDirectory()
@@ -20,10 +19,13 @@ void AssetBrowserPanel::RefreshDirectory()
     m_items = util::FileSystem::ListFiles(m_currentPath);
 }
 
-void AssetBrowserPanel::OnRender(EditorContext& /*ctx*/)
+void AssetBrowserPanel::OnInit(EditorContext& /*ctx*/)
 {
-    if (!ImGui::Begin("Asset Browser")) { ImGui::End(); return; }
+    RefreshDirectory();
+}
 
+void AssetBrowserPanel::OnRenderContent(EditorContext& /*ctx*/)
+{
     // パス表示 + 更新ボタン
     ImGui::TextUnformatted(m_currentPath.c_str());
     ImGui::SameLine();
@@ -45,8 +47,6 @@ void AssetBrowserPanel::OnRender(EditorContext& /*ctx*/)
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("%s", item.c_str());
     }
-
-    ImGui::End();
 }
 
 } // namespace fbzz::editor

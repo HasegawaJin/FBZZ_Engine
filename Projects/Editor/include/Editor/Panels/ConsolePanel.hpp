@@ -11,9 +11,13 @@ namespace fbzz::editor {
 class ConsolePanel : public IPanel {
 public:
     explicit ConsolePanel(ConsoleSink& sink);
-    void OnRender(EditorContext& ctx) override;
+    const char* GetWindowName() const override { return "Console"; }
+    void OnInit(EditorContext& ctx) override;
+    void OnShutdown() override;
 
 private:
+    void OnRenderContent(EditorContext& ctx) override;
+
     ConsoleSink& m_sink;
 
     bool m_showInfo   = true;

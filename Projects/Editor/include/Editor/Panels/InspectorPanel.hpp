@@ -8,7 +8,10 @@ namespace fbzz::editor {
 
 class InspectorPanel : public IPanel {
 public:
-    void OnRender(EditorContext& ctx) override;
+    const char* GetWindowName() const override { return "Inspector"; }
+
+protected:
+    void OnRenderContent(EditorContext& ctx) override;
 };
 
 } // namespace fbzz::editor
