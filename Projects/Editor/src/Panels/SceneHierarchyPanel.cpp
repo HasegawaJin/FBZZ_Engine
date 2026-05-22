@@ -9,13 +9,10 @@
 
 namespace fbzz::editor {
 
-void SceneHierarchyPanel::OnRender(EditorContext& ctx)
+void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 {
-    if (!ImGui::Begin("Scene Hierarchy")) { ImGui::End(); return; }
-
     if (!ctx.activeScene) {
         ImGui::TextDisabled("No active scene");
-        ImGui::End();
         return;
     }
 
@@ -50,8 +47,6 @@ void SceneHierarchyPanel::OnRender(EditorContext& ctx)
     if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered() &&
         !ImGui::IsAnyItemHovered())
         ctx.selectedEntities.clear();
-
-    ImGui::End();
 }
 
 } // namespace fbzz::editor
