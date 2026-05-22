@@ -36,6 +36,27 @@ struct EditorContext {
     bool  viewportFocused = false;
     float viewportWidth   = 1280.0f;
     float viewportHeight  = 720.0f;
+    bool  gameViewportFocused = false;
+    float gameViewportWidth   = 1280.0f;
+    float gameViewportHeight  = 720.0f;
+    bool  requestGameViewportFocus = false;
+
+    enum class GameViewportAspect {
+        Free,
+        Ratio16x9,
+        Ratio4x3,
+        Ratio1x1,
+        Ratio9x16,
+        HD,
+        FullHD,
+        QHD,
+        UHD4K,
+        WXGA,
+        WUXGA,
+        iPhonePortrait,
+        iPhoneLandscape
+    };
+    GameViewportAspect gameViewportAspect = GameViewportAspect::Free;
 
     // ギズモ
     enum class GizmoMode  { Translate, Rotate, Scale };
