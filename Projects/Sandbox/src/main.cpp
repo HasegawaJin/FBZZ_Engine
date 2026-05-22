@@ -1,4 +1,4 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // main.cpp | sandbox
 // Physics Volume / Constraint / CapsuleCollider verification scene
 #include <Engine/Core/Application.hpp>
@@ -8,7 +8,8 @@
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
-#include <Engine/Renderer/ShaderManager.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -55,15 +56,15 @@ namespace
         std::shared_ptr<renderer::Material> whiteMaterial;
     };
 
-    std::shared_ptr<renderer::Material> CreateMaterial(renderer::IRenderer& renderer,
+    std::shared_ptr<renderer::Material> CreateMaterial(renderer::ResourceManager& resources,
                                                        const math::Vector4& color)
     {
         auto material = std::make_shared<renderer::Material>();
-        material->shader = renderer::ShaderManager::Load("assets/shaders/Material/Phong.hlsl");
+        material->shader = resources.LoadShader("assets/shaders/Material/Phong.hlsl");
         material->shaderPath = "assets/shaders/Material/Phong.hlsl";
         material->params.albedo = color;
         material->params.roughness = 0.65f;
-        material->Init(renderer);
+        material->Init(resources);
         return material;
     }
 
@@ -199,10 +200,11 @@ int main()
     if (!app.Init()) return 1;
 
     auto& renderer = app.GetRenderer();
-    renderer::ShaderManager::Init(&renderer);
+    renderer::ResourceManager resources(renderer);
+    asset::AssetManager::Init(resources);
 
     editor::EditorApp editorApp;
-    editorApp.Init(renderer, app.GetWindow());
+    editorApp.Init(renderer, resources, app.GetWindow());
 
     physics::World world;
     world.SetGravity({ 0.0f, -9.81f, 0.0f });
@@ -211,10 +213,10 @@ int main()
     editorApp.GetContext().activeScene = scene.get();
 
     VisualAssets assets;
-    assets.cube = renderer::PrimitiveMesh::Cube(renderer);
-    assets.sphere = renderer::PrimitiveMesh::Sphere(renderer, 16);
-    assets.capsule = renderer::PrimitiveMesh::Capsule(renderer, 16);
-    assets.whiteMaterial = CreateMaterial(renderer, { 0.78f, 0.78f, 0.82f, 1.0f });
+    assets.cube = renderer::PrimitiveMesh::Cube(resources);
+    assets.sphere = renderer::PrimitiveMesh::Sphere(resources, 16);
+    assets.capsule = renderer::PrimitiveMesh::Capsule(resources, 16);
+    assets.whiteMaterial = CreateMaterial(resources, { 0.78f, 0.78f, 0.82f, 1.0f });
 
     auto& light = scene->CreateGameObject("DirectionalLight");
     light.transform.localPosition = { 0.0f, 8.0f, -6.0f };
@@ -381,8 +383,8 @@ int main()
 
         auto sceneRT = editorApp.GetViewportRT();
         auto gameRT = editorApp.GetGameViewportRT();
-        if (sceneRT)
-            debugCamera.camera.m_aspect = static_cast<float>(sceneRT->GetWidth()) / static_cast<float>(sceneRT->GetHeight());
+        if (auto* rt = resources.Get(sceneRT))
+            debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
         auto* pm = editorApp.GetContext().playMode;
         pm->ApplyPendingRestore(*scene);
@@ -397,8 +399,8 @@ int main()
         }
 
         renderer::Camera gameCamera = debugCamera.camera;
-        if (gameRT)
-            gameCamera.m_aspect = static_cast<float>(gameRT->GetWidth()) / static_cast<float>(gameRT->GetHeight());
+        if (auto* rt = resources.Get(gameRT))
+            gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
         for (auto [tf, cc] : scene->View<scene::Transform, scene::CameraComponent>()) {
             if (!cc.enabled || !cc.isMain) continue;
@@ -411,15 +413,16 @@ int main()
         }
 
         renderer.BeginFrame();
-        renderer.SetRenderTarget(sceneRT);
+        renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.02f, 0.02f, 0.025f, 1.0f });
         scene::RenderSystem(*scene,
                             renderer,
+                            resources,
                             debugCamera.camera,
                             sceneRT,
                             &editorApp.GetContext().renderSettings);
 
-        renderer::DebugDraw::BeginFrame(renderer, debugCamera.camera.GetViewProjection());
+        renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
         renderer::DebugDraw::Box(renderer, { -14.0f, 1.7f, 0.0f }, { 1.1f, 2.2f, 1.1f }, { 0.2f, 0.55f, 1.0f, 1.0f });
         renderer::DebugDraw::Box(renderer, { -8.0f, 1.6f, 0.0f }, { 1.25f, 2.0f, 1.25f }, { 0.9f, 0.35f, 1.0f, 1.0f });
         renderer::DebugDraw::Box(renderer, { -2.0f, 0.8f, 0.0f }, { 1.1f, 0.8f, 1.1f }, { 0.2f, 1.0f, 0.8f, 1.0f });
@@ -442,17 +445,18 @@ int main()
         renderer::DebugDraw::Line(renderer, { 0, 0, 0 }, { 0, 0, 2 }, { 0, 0, 1, 1 });
         renderer::DebugDraw::Flush();
 
-        if (gameRT) {
-            renderer.SetRenderTarget(gameRT);
+        if (gameRT.IsValid()) {
+            renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.005f, 0.005f, 0.02f, 1.0f });
             scene::RenderSystem(*scene,
                                 renderer,
+                                resources,
                                 gameCamera,
                                 gameRT,
                                 &editorApp.GetContext().renderSettings);
         }
 
-        renderer.SetRenderTarget(nullptr);
+        renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
         renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
         editorApp.GetContext().activeScene = scene.get();
         editorApp.RenderPanels(editorApp.GetContext());
@@ -462,7 +466,7 @@ int main()
     }
 
     editorApp.Shutdown();
-    renderer::ShaderManager::Shutdown();
+    asset::AssetManager::UnloadAll();
     app.Shutdown();
     return 0;
 }
