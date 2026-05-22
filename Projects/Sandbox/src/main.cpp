@@ -9,11 +9,13 @@
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ShaderManager.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
+#include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
@@ -30,6 +32,7 @@
 #include <Physics/World.hpp>
 #include <Math/Vector4.hpp>
 #include <memory>
+#include <utility>
 #include <vector>
 
 using namespace fbzz;
@@ -67,6 +70,7 @@ namespace
     scene::GameObject& AddVisual(scene::Scene& scene,
                                  const char* name,
                                  const std::shared_ptr<renderer::Mesh>& mesh,
+                                 const char* meshPath,
                                  const std::shared_ptr<renderer::Material>& material,
                                  const math::Vector3& position,
                                  const math::Vector3& scale)
@@ -74,7 +78,13 @@ namespace
         scene::GameObject& go = scene.CreateGameObject(name);
         go.transform.localPosition = position;
         go.transform.localScale = scale;
-        go.AddComponent<scene::MeshRenderer>({ mesh, material, true });
+        scene::MeshRenderer meshRenderer{};
+        meshRenderer.mesh = mesh;
+        meshRenderer.material = material;
+        meshRenderer.enabled = true;
+        meshRenderer.meshPath = meshPath;
+        meshRenderer.shaderPath = material ? material->shaderPath : std::string{};
+        go.AddComponent<scene::MeshRenderer>(std::move(meshRenderer));
         return go;
     }
 
@@ -94,7 +104,7 @@ namespace
         body->SetPosition(position);
         body->SetMass(mass);
         auto collider = std::make_shared<physics::SphereCollider>(radius);
-        scene::GameObject& go = AddVisual(scene, name, assets.sphere, assets.whiteMaterial,
+        scene::GameObject& go = AddVisual(scene, name, assets.sphere, "primitive:sphere", assets.whiteMaterial,
                                           position, math::Vector3::ONE * (radius * 2.0f));
         go.AddComponent<scene::RigidBodyComponent>({ body, true });
         go.AddComponent<scene::ColliderComponent>({ collider, physics::PhysicsMaterial::Default, false, true });
@@ -118,7 +128,7 @@ namespace
         body->SetPosition(position);
         body->SetMass(mass);
         auto collider = std::make_shared<physics::AABBCollider>(halfExtents);
-        scene::GameObject& go = AddVisual(scene, name, assets.cube, assets.whiteMaterial,
+        scene::GameObject& go = AddVisual(scene, name, assets.cube, "primitive:cube", assets.whiteMaterial,
                                           position, halfExtents * 2.0f);
         go.AddComponent<scene::RigidBodyComponent>({ body, true });
         go.AddComponent<scene::ColliderComponent>({ collider, physics::PhysicsMaterial::Default, false, true });
@@ -141,7 +151,7 @@ namespace
         body->SetPosition(position);
         body->SetMass(mass);
         auto collider = std::make_shared<physics::CapsuleCollider>(radius, halfHeight);
-        scene::GameObject& go = AddVisual(scene, name, assets.capsule, assets.whiteMaterial,
+        scene::GameObject& go = AddVisual(scene, name, assets.capsule, "primitive:capsule", assets.whiteMaterial,
                                           position, { radius * 4.0f, (halfHeight + radius) * 2.0f, radius * 4.0f });
         go.AddComponent<scene::RigidBodyComponent>({ body, true });
         go.AddComponent<scene::ColliderComponent>({ collider, physics::PhysicsMaterial::Default, false, true });
@@ -210,6 +220,11 @@ int main()
     light.transform.localPosition = { 0.0f, 8.0f, -6.0f };
     light.transform.localRotation = math::Quaternion::LookRotation({ 0.35f, -0.75f, 0.55f });
     light.AddComponent<scene::LightComponent>({});
+
+    auto& mainCamera = scene->CreateGameObject("MainCamera");
+    mainCamera.transform.localPosition = { 0.0f, 4.0f, -12.0f };
+    mainCamera.transform.localRotation = math::Quaternion::LookRotation(math::Vector3{ 0.0f, -0.22f, 1.0f }.Normalized());
+    mainCamera.AddComponent<scene::CameraComponent>({});
 
     std::vector<BodyDebug> bodies;
     AddBox(world, *scene, bodies, assets, "Ground", { 0.0f, -0.5f, 0.0f }, { 26.0f, 0.5f, 16.0f }, 0.0f, { 0.45f, 0.45f, 0.45f, 1.0f }, true);
@@ -364,22 +379,44 @@ int main()
         const float dt = core::Time::DeltaTime();
         editorApp.BeginFrame();
 
-        auto vpRT = editorApp.GetViewportRT();
-        if (vpRT)
-            debugCamera.camera.m_aspect = static_cast<float>(vpRT->GetWidth()) / static_cast<float>(vpRT->GetHeight());
+        auto sceneRT = editorApp.GetViewportRT();
+        auto gameRT = editorApp.GetGameViewportRT();
+        if (sceneRT)
+            debugCamera.camera.m_aspect = static_cast<float>(sceneRT->GetWidth()) / static_cast<float>(sceneRT->GetHeight());
 
-        debugCamera.Update(dt);
+        auto* pm = editorApp.GetContext().playMode;
+        pm->ApplyPendingRestore(*scene);
+
+        if (!pm->IsPlaying())
+            debugCamera.Update(dt);
+
         scene::TransformSystem(*scene);
-        scene::PhysicsSystem(*scene, world, dt);
-        scene::TransformSystem(*scene);
+        if (pm->IsPlaying()) {
+            scene::PhysicsSystem(*scene, world, dt);
+            scene::TransformSystem(*scene);
+        }
+
+        renderer::Camera gameCamera = debugCamera.camera;
+        if (gameRT)
+            gameCamera.m_aspect = static_cast<float>(gameRT->GetWidth()) / static_cast<float>(gameRT->GetHeight());
+
+        for (auto [tf, cc] : scene->View<scene::Transform, scene::CameraComponent>()) {
+            if (!cc.enabled || !cc.isMain) continue;
+            gameCamera.m_position = tf.position;
+            gameCamera.m_rotation = tf.rotation;
+            gameCamera.m_fovY = cc.fovY;
+            gameCamera.m_near = cc.nearZ;
+            gameCamera.m_far = cc.farZ;
+            break;
+        }
 
         renderer.BeginFrame();
-        renderer.SetRenderTarget(vpRT);
+        renderer.SetRenderTarget(sceneRT);
         renderer.Clear({ 0.02f, 0.02f, 0.025f, 1.0f });
         scene::RenderSystem(*scene,
                             renderer,
                             debugCamera.camera,
-                            vpRT,
+                            sceneRT,
                             &editorApp.GetContext().renderSettings);
 
         renderer::DebugDraw::BeginFrame(renderer, debugCamera.camera.GetViewProjection());
@@ -404,6 +441,16 @@ int main()
         renderer::DebugDraw::Line(renderer, { 0, 0, 0 }, { 0, 2, 0 }, { 0, 1, 0, 1 });
         renderer::DebugDraw::Line(renderer, { 0, 0, 0 }, { 0, 0, 2 }, { 0, 0, 1, 1 });
         renderer::DebugDraw::Flush();
+
+        if (gameRT) {
+            renderer.SetRenderTarget(gameRT);
+            renderer.Clear({ 0.005f, 0.005f, 0.02f, 1.0f });
+            scene::RenderSystem(*scene,
+                                renderer,
+                                gameCamera,
+                                gameRT,
+                                &editorApp.GetContext().renderSettings);
+        }
 
         renderer.SetRenderTarget(nullptr);
         renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
