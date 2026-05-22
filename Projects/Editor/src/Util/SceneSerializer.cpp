@@ -5,7 +5,9 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <cassert>
 
 namespace fbzz::editor {
 
@@ -24,8 +26,10 @@ bool SceneSerializer::Save(const scene::Scene& scene, const std::string& path)
 
 bool SceneSerializer::Load(scene::Scene& scene, const std::string& path)
 {
-    auto& renderer = core::Application::Get().GetRenderer();
-    return scene::SceneSerializer::LoadInPlace(scene, path, renderer);
+    (void)core::Application::Get().GetRenderer();
+    auto* resources = renderer::ResourceManager::Active();
+    assert(resources && "ResourceManager must be initialized before editor scene load");
+    return scene::SceneSerializer::LoadInPlace(scene, path, *resources);
 }
 
 std::string SceneSerializer::Serialize(const scene::Scene& scene)
