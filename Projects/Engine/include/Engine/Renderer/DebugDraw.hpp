@@ -10,6 +10,8 @@
 
 namespace fbzz::renderer {
 
+class ResourceManager;
+
 // 使い方:
 //   毎フレーム先頭で BeginFrame() を呼び、描画命令を積み、フレーム末尾で Flush() を呼ぶ。
 //   Line / Box / Sphere / Capsule は内部バッチに追記するだけで即座には描画しない。
@@ -17,7 +19,7 @@ namespace fbzz::renderer {
 class DebugDraw {
 public:
     // フレーム先頭で呼ぶ。リソースを遅延初期化し、カメラ VP 行列を設定する
-    static void BeginFrame(IRenderer& r, const math::Matrix4& viewProjection);
+    static void BeginFrame(IRenderer& r, ResourceManager& resources, const math::Matrix4& viewProjection);
     // フレーム末尾で呼ぶ。蓄積した頂点を一括 Submit し、バッチをクリアする
     static void Flush();
 
