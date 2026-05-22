@@ -44,12 +44,6 @@ public:
         return m_slots[handle.id].resource.get();
     }
 
-    std::shared_ptr<T> GetShared(ResourceHandle<Tag> handle)
-    {
-        if (!IsLive(handle)) return nullptr;
-        return m_slots[handle.id].resource;
-    }
-
     void Remove(ResourceHandle<Tag> handle)
     {
         if (!IsLive(handle)) return;

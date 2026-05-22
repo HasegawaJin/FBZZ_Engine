@@ -17,6 +17,10 @@ fbzz::renderer
 
 ### IRenderer
 
+ResourceSystem 移行（2026-05-22）により、リソース生成の公開 API を廃止した。
+外部からのリソース生成は `ResourceManager` 経由のみとし、`IRenderer` の公開面はフレーム制御・描画・ImGui の 3 つに絞っている。
+`CreateNative*` は `private` にして `ResourceManager` を `friend` にすることで、エンジン内部でのみ生ポインタを扱う範囲を限定している。
+
 ```cpp
 class IRenderer {
 public:
@@ -27,34 +31,17 @@ public:
     virtual void EndFrame()   = 0;
     virtual void Clear(const math::Vector4& color) = 0;
 
-    // リソース生成
-    virtual std::shared_ptr<IBuffer>         CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
-    virtual std::shared_ptr<IBuffer>         CreateIndexBuffer(const void* data, uint32_t count) = 0;
-    virtual std::shared_ptr<IConstantBuffer> CreateConstantBuffer(size_t sizeBytes) = 0;
-    virtual std::shared_ptr<IShader>         CreateShader(const std::string& path) = 0;
-    virtual std::shared_ptr<ITexture>        CreateTexture(const std::string& path) = 0;
-    virtual std::shared_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc& desc) = 0;
-
-    // 描画
-    virtual void Submit(const DrawCall& call) = 0;
-
-    // Compute Shader ディスパッチ
-    virtual void Dispatch(const ComputeCall& call) = 0;
-    // UAV 出力先テクスチャ生成 (SRV + UAV 両用)
-    virtual std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) = 0;
+    // 描画 (ResourceManager 経由でリソースを解決する)
+    virtual void Submit(const DrawCall& call, ResourceManager& resources) = 0;
+    virtual void Dispatch(const ComputeCall& call, ResourceManager& resources) = 0;
 
     // ウィンドウリサイズ
     virtual void Resize(uint32_t w, uint32_t h) = 0;
-
-    // 現在のバックバッファサイズ
     virtual uint32_t GetWidth()  const = 0;
     virtual uint32_t GetHeight() const = 0;
 
-    // オフスクリーン RT。colorCount: 同時出力カラーバッファ数 (1=通常, 2=MRT)
-    virtual std::shared_ptr<IRenderTarget> CreateRenderTarget(uint32_t w, uint32_t h, uint32_t colorCount = 1) = 0;
-    virtual void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) = 0;  // nullptr = バックバッファ
-
-    // 現在バインド中の RT の深度バッファのみクリア (シャドウパス前に呼ぶ)
+    // RT バインド。Handle{0,0} = バックバッファに戻す
+    virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
     virtual void ClearDepth(float depth = 1.0f) = 0;
 
     virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
@@ -64,27 +51,43 @@ public:
     virtual void ImGuiShutdown()            = 0;
     virtual void ImGuiNewFrame()            = 0;
     virtual void ImGuiRenderDrawData()      = 0;
-    virtual void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) = 0;
+    virtual void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) = 0;
+
+private:
+    friend class ResourceManager;  // ResourceManager のみが生成メソッドを呼べる
+
+    virtual std::shared_ptr<IBuffer>         CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
+    virtual std::shared_ptr<IBuffer>         CreateNativeIndexBuffer(const void* data, uint32_t count) = 0;
+    virtual std::shared_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
+    virtual std::shared_ptr<IShader>         CreateNativeShader(const std::string& path) = 0;
+    virtual std::shared_ptr<ITexture>        CreateNativeTexture(const std::string& path) = 0;
+    virtual std::shared_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
+    virtual std::shared_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t w, uint32_t h, uint32_t colorCount) = 0;
+    virtual std::shared_ptr<ITexture>        CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
 };
 ```
 
 ### DrawCall
 
+ResourceSystem 移行により全フィールドが `ResourceHandle` に置き換わった。
+`sizeof(DrawCall)` は旧実装（`shared_ptr` 25 個 ≈ 400 byte）から約 100 byte に削減されている。
+
 ```cpp
 struct DrawCall {
-    std::shared_ptr<IBuffer>        vertexBuffer;
-    std::shared_ptr<IBuffer>        indexBuffer;
-    std::shared_ptr<IShader>        shader;
-    std::shared_ptr<IPipelineState> pipelineState;
+    ResourceHandle<BufferTag>        vertexBuffer;
+    ResourceHandle<BufferTag>        indexBuffer;
+    ResourceHandle<ShaderTag>        shader;
+    ResourceHandle<PipelineStateTag> pipelineState;
 
-    std::array<std::shared_ptr<IConstantBuffer>, 4> constantBuffers = {};
-    std::array<std::shared_ptr<ITexture>, 8>        textures        = {};
+    std::array<ResourceHandle<ConstantBufferTag>, 8>  constantBuffers = {};
+    std::array<ResourceHandle<TextureTag>,        16> textures        = {};
 
-    uint32_t    indexCount  = 0;
-    uint32_t    vertexCount = 0;
-    uint32_t    startIndex  = 0;
-    uint32_t    baseVertex  = 0;
-    RenderLayer layer       = RenderLayer::OPAQUE;
+    uint32_t          indexCount  = 0;
+    uint32_t          vertexCount = 0;
+    uint32_t          startIndex  = 0;
+    uint32_t          baseVertex  = 0;
+    RenderLayer       layer       = RenderLayer::OPAQUE;
+    PrimitiveTopology topology    = PrimitiveTopology::TRIANGLE_LIST;
 };
 ```
 

@@ -46,29 +46,16 @@ public:
     // 現在バインド中の RT の深度バッファのみクリアする
     void ClearDepth(float depth = 1.0f) override;
 
-    // リソース生成 (GPU バッファ / シェーダー / テクスチャ / PSO)
-    std::shared_ptr<IBuffer>         CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) override;
-    std::shared_ptr<IBuffer>         CreateIndexBuffer(const void* data, uint32_t count) override;
-    std::shared_ptr<IConstantBuffer> CreateConstantBuffer(size_t sizeBytes) override;
-    std::shared_ptr<IShader>         CreateShader(const std::string& path) override;
-    std::shared_ptr<ITexture>        CreateTexture(const std::string& path) override;
-    std::shared_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc& desc) override;
-    std::shared_ptr<IRenderTarget>   CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1) override;
-
     // DrawCall を受け取り、パイプラインステート → シェーダー → リソース → Draw の順で実行する
     void Submit(const DrawCall& call, ResourceManager& resources) override;
 
     // Compute Shader を Dispatch する (SSAO / Bloom 等のポストプロセス CS に使用)
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
 
-    // SRV + UAV 両用テクスチャを生成する (Compute パスの出力先)
-    std::shared_ptr<ITexture> CreateComputeTexture(uint32_t width, uint32_t height) override;
-
     // ウィンドウリサイズ時にスワップチェーン・RTV・DSV を再構築する
     void Resize(uint32_t width, uint32_t height) override;
 
     // オフスクリーン RT に切り替える (nullptr でバックバッファに戻す)
-    void SetRenderTarget(std::shared_ptr<IRenderTarget> rt) override;
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
 
     // スロット番号に対応するサンプラープリセットをバインドする
@@ -79,7 +66,6 @@ public:
     void  ImGuiShutdown()         override;
     void  ImGuiNewFrame()         override;
     void  ImGuiRenderDrawData()   override;
-    void* GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot = 0) override;
     void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) override;
 
     uint32_t GetWidth()  const override { return m_width;  }
@@ -90,6 +76,17 @@ public:
     ID3D11DeviceContext* GetDeviceContext() const { return m_context.Get(); }
 
 private:
+    std::shared_ptr<IBuffer>         CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) override;
+    std::shared_ptr<IBuffer>         CreateNativeIndexBuffer(const void* data, uint32_t count) override;
+    std::shared_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) override;
+    std::shared_ptr<IShader>         CreateNativeShader(const std::string& path) override;
+    std::shared_ptr<ITexture>        CreateNativeTexture(const std::string& path) override;
+    std::shared_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
+    std::shared_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
+    std::shared_ptr<ITexture>        CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+
+    void BindRenderTarget(IRenderTarget* rt);
+
     Microsoft::WRL::ComPtr<ID3D11Device>           m_device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext>    m_context;
     Microsoft::WRL::ComPtr<IDXGISwapChain>         m_swapChain;
@@ -101,7 +98,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplers[8];
 
     // 現在バインド中のオフスクリーン RT (nullptr = バックバッファ)
-    std::shared_ptr<DX11RenderTarget> m_currentRT;
+    DX11RenderTarget* m_currentRT = nullptr;
 
     uint32_t m_width  = 0;
     uint32_t m_height = 0;

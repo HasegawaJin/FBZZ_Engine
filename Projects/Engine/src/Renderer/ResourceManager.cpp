@@ -41,7 +41,7 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
     auto it = m_shaderCache.find(key);
     if (it != m_shaderCache.end()) return it->second;
 
-    auto shader = m_renderer.CreateShader(key);
+    auto shader = m_renderer.CreateNativeShader(key);
     if (!shader) {
         FBZZ_LOG_ERROR("Shader load failed: %s", key.c_str());
         return ResourceHandle<ShaderTag>::Null();
@@ -58,7 +58,7 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
-    auto texture = m_renderer.CreateTexture(key);
+    auto texture = m_renderer.CreateNativeTexture(key);
     if (!texture) {
         FBZZ_LOG_ERROR("Texture load failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
@@ -71,27 +71,27 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
 
 ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride)
 {
-    return m_buffers.Insert(m_renderer.CreateVertexBuffer(data, bytes, stride));
+    return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride));
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count)
 {
-    return m_buffers.Insert(m_renderer.CreateIndexBuffer(data, count));
+    return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count));
 }
 
 ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t sizeBytes)
 {
-    return m_constantBuffers.Insert(m_renderer.CreateConstantBuffer(sizeBytes));
+    return m_constantBuffers.Insert(m_renderer.CreateNativeConstantBuffer(sizeBytes));
 }
 
 ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const PipelineStateDesc& desc)
 {
-    return m_pipelineStates.Insert(m_renderer.CreatePipelineState(desc));
+    return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc));
 }
 
 ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
 {
-    auto rt = m_renderer.CreateRenderTarget(width, height, colorCount);
+    auto rt = m_renderer.CreateNativeRenderTarget(width, height, colorCount);
     if (!rt) return ResourceHandle<RenderTargetTag>::Null();
 
     std::vector<ResourceHandle<TextureTag>> colors;
@@ -109,7 +109,7 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
 
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height)
 {
-    return m_textures.Insert(m_renderer.CreateComputeTexture(width, height));
+    return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height));
 }
 
 IShader* ResourceManager::Get(ResourceHandle<ShaderTag> h) { return m_shaders.Get(h); }
@@ -118,7 +118,6 @@ IBuffer* ResourceManager::Get(ResourceHandle<BufferTag> h) { return m_buffers.Ge
 IConstantBuffer* ResourceManager::Get(ResourceHandle<ConstantBufferTag> h) { return m_constantBuffers.Get(h); }
 IPipelineState* ResourceManager::Get(ResourceHandle<PipelineStateTag> h) { return m_pipelineStates.Get(h); }
 IRenderTarget* ResourceManager::Get(ResourceHandle<RenderTargetTag> h) { return m_renderTargets.Get(h); }
-std::shared_ptr<IRenderTarget> ResourceManager::GetShared(ResourceHandle<RenderTargetTag> h) { return m_renderTargets.GetShared(h); }
 
 ResourceHandle<TextureTag> ResourceManager::GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index)
 {

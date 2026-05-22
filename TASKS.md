@@ -125,3 +125,4 @@
 | 2026-05-22 | Add Unity-style Game viewport resolution presets including Full HD | Done |
 | 2026-05-22 | Implement ResourceSystem handle-based renderer resource management | Done |
 | 2026-05-22 | Fix particle vertex buffer leak and lazy-initialize Material params buffer | Done |
+| 2026-05-22 | Fix MissingFeatures A-1/A-2 renderer API and AssetBrowser scene open bugs | Done |

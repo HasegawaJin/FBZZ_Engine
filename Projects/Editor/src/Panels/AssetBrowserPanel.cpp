@@ -3,6 +3,8 @@
 // Assets フォルダをファイルリストで表示する簡易ブラウザ
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/SceneSerializer.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
@@ -24,7 +26,7 @@ void AssetBrowserPanel::OnInit(EditorContext& /*ctx*/)
     RefreshDirectory();
 }
 
-void AssetBrowserPanel::OnRenderContent(EditorContext& /*ctx*/)
+void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
     // パス表示 + 更新ボタン
     ImGui::TextUnformatted(m_currentPath.c_str());
@@ -41,8 +43,17 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& /*ctx*/)
         std::string name = util::FileSystem::GetFilename(item);
         if (!filter.empty() && !util::StringUtils::ContainsCI(name, filter)) continue;
 
-        if (ImGui::Selectable(name.c_str())) {
-            // ダブルクリックでシーンを開く (拡張子 .fbzz)
+        ImGui::Selectable(name.c_str());
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            const std::string extension = util::StringUtils::ToLower(util::FileSystem::GetExtension(item));
+            if (extension == ".fbzz" && ctx.activeScene) {
+                if (SceneSerializer::Load(*ctx.activeScene, item)) {
+                    ctx.selectedEntities.clear();
+                    FBZZ_LOG_INFO("Opened scene from Asset Browser: %s", item.c_str());
+                } else {
+                    FBZZ_LOG_ERROR("Asset Browser failed to open scene: %s", item.c_str());
+                }
+            }
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("%s", item.c_str());
