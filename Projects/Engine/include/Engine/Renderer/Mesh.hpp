@@ -2,10 +2,9 @@
 // Mesh.hpp | fbzz::renderer
 // GPU メッシュ。頂点・インデックスバッファのラッパー
 #pragma once
-#include <memory>
 #include <cstdint>
 #include <vector>
-#include "IBuffer.hpp"
+#include "ResourceHandle.hpp"
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 
@@ -19,8 +18,8 @@ struct Vertex {
 };
 
 struct Mesh {
-    std::shared_ptr<IBuffer> vertexBuffer;
-    std::shared_ptr<IBuffer> indexBuffer;
+    ResourceHandle<BufferTag> vertexBuffer;
+    ResourceHandle<BufferTag> indexBuffer;
     uint32_t vertexCount = 0;
     uint32_t indexCount  = 0;
     std::vector<Vertex>   cpuVertices;
