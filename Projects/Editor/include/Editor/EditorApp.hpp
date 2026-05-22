@@ -9,10 +9,11 @@
 #include <Editor/Util/ConsoleSink.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Engine/Renderer/ResourceHandle.hpp>
 #include <memory>
 #include <vector>
 
-namespace fbzz::renderer { class IRenderer; class IRenderTarget; }
+namespace fbzz::renderer { class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class Window; }
 
 namespace fbzz::editor {
@@ -21,7 +22,7 @@ class ViewportPanel;
 
 class EditorApp {
 public:
-    bool Init(renderer::IRenderer& renderer, core::Window& window);
+    bool Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window);
     void Shutdown();
 
     void BeginFrame();
@@ -31,8 +32,8 @@ public:
     EditorContext& GetContext() { return m_ctx; }
 
     // Viewport に紐づいたオフスクリーン RT (main.cpp はここに描く)
-    std::shared_ptr<renderer::IRenderTarget> GetViewportRT() const { return m_sceneViewportRT; }
-    std::shared_ptr<renderer::IRenderTarget> GetGameViewportRT() const { return m_gameViewportRT; }
+    renderer::ResourceHandle<renderer::RenderTargetTag> GetViewportRT() const { return m_sceneViewportRT; }
+    renderer::ResourceHandle<renderer::RenderTargetTag> GetGameViewportRT() const { return m_gameViewportRT; }
 
 private:
     void BuildMenuBar(EditorContext& ctx);
@@ -53,10 +54,11 @@ private:
 
     void*                                    m_hwnd          = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
+    renderer::ResourceManager*               m_resources     = nullptr;
     ViewportPanel*                           m_sceneViewportPanel = nullptr;
     ViewportPanel*                           m_gameViewportPanel  = nullptr;
-    std::shared_ptr<renderer::IRenderTarget> m_sceneViewportRT;
-    std::shared_ptr<renderer::IRenderTarget> m_gameViewportRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
 };
 
 } // namespace fbzz::editor

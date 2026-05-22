@@ -18,6 +18,7 @@
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Physics/ColliderVolume.hpp>
 #include <imgui.h>
 #include <cstdio>
@@ -126,14 +127,18 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
             if (mr.material) {
                 auto& p = mr.material->params;
+                auto uploadMaterial = [&mr]() {
+                    if (auto* resources = renderer::ResourceManager::Active())
+                        mr.material->Upload(*resources);
+                };
                 float col[4] = { p.albedo.x, p.albedo.y, p.albedo.z, p.albedo.w };
                 if (ImGui::ColorEdit4("Albedo Color", col)) {
                     p.albedo = { col[0], col[1], col[2], col[3] };
-                    mr.material->Upload();
+                    uploadMaterial();
                 }
-                if (ImGui::SliderFloat("Metallic", &p.metallic, 0.0f, 1.0f)) mr.material->Upload();
-                if (ImGui::SliderFloat("Roughness", &p.roughness, 0.0f, 1.0f)) mr.material->Upload();
-                if (ImGui::DragFloat("Emissive Scale", &p.emissiveScale, 0.01f, 0.0f, 10.0f)) mr.material->Upload();
+                if (ImGui::SliderFloat("Metallic", &p.metallic, 0.0f, 1.0f)) uploadMaterial();
+                if (ImGui::SliderFloat("Roughness", &p.roughness, 0.0f, 1.0f)) uploadMaterial();
+                if (ImGui::DragFloat("Emissive Scale", &p.emissiveScale, 0.01f, 0.0f, 10.0f)) uploadMaterial();
             }
         });
 
