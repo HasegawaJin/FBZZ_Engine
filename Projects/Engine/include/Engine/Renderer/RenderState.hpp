@@ -1,3 +1,6 @@
+// FBZZ Engine
+// RenderState.hpp | fbzz::renderer
+// Renderer state descriptors
 #pragma once
 
 // wingdi.h が OPAQUE=2 を定義するため enum class の enumerator と衝突する

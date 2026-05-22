@@ -53,3 +53,7 @@ Thumbs.db
 
 # エディターの個人設定ファイル
 /editor_config
+
+# ThirdParty dependencies are vendored and should be tracked completely.
+!ThirdParty/
+!ThirdParty/**

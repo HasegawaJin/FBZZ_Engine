@@ -1,3 +1,6 @@
+// FBZZ Engine
+// IConstantBuffer.hpp | fbzz::renderer
+// Renderer constant buffer interface
 #pragma once
 #include <cstddef>
 

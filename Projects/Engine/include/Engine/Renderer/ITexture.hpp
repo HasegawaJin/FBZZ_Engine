@@ -1,3 +1,6 @@
+// FBZZ Engine
+// ITexture.hpp | fbzz::renderer
+// Renderer texture interface
 #pragma once
 #include <cstdint>
 

@@ -1,3 +1,6 @@
+// FBZZ Engine
+// IBuffer.hpp | fbzz::renderer
+// Renderer buffer interface
 #pragma once
 #include <cstddef>
 #include <cstdint>
