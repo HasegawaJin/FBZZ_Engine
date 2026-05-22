@@ -123,3 +123,5 @@
 | 2026-05-22 | Fix PlayMode snapshot restore dropping MeshRenderer primitive mesh and shader data | Done |
 | 2026-05-22 | Add aspect ratio selection to the Game viewport | Done |
 | 2026-05-22 | Add Unity-style Game viewport resolution presets including Full HD | Done |
+| 2026-05-22 | Implement ResourceSystem handle-based renderer resource management | Done |
+| 2026-05-22 | Fix particle vertex buffer leak and lazy-initialize Material params buffer | Done |
