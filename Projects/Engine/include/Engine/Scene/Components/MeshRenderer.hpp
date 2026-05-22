@@ -2,6 +2,7 @@
 // MeshRenderer.hpp | fbzz::scene
 // メッシュとマテリアルを持つ描画コンポーネント
 #pragma once
+#include <Engine/Scene/Script.hpp>
 #include <memory>
 #include <string>
 
@@ -23,6 +24,16 @@ struct MeshRenderer {
     std::string shaderPath;     // "assets/shaders/Material/PBR.hlsl"
     std::string albedoTexPath;  // "" = テクスチャなし
     std::string normalTexPath;
+
+    const char* GetTypeName() const { return "Mesh Renderer"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("meshPath", meshPath);
+        r.Field("shaderPath", shaderPath);
+        r.Field("albedoTexPath", albedoTexPath);
+        r.Field("normalTexPath", normalTexPath);
+    }
 };
 
 } // namespace fbzz::scene

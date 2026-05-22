@@ -2,6 +2,7 @@
 // LightComponent.hpp | fbzz::scene
 // ライト情報を持つ Component。方向/位置は Transform から取得する
 #pragma once
+#include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
 
 namespace fbzz::scene {
@@ -16,6 +17,17 @@ struct LightComponent {
     float         innerCone = 15.0f;    // Spot のみ (degrees)
     float         outerCone = 30.0f;    // Spot のみ (degrees)
     bool          enabled   = true;
+
+    const char* GetTypeName() const { return "Light"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("color", color);
+        r.Field("intensity", intensity);
+        r.Field("range", range);
+        r.Field("innerCone", innerCone);
+        r.Field("outerCone", outerCone);
+    }
     // Directional / Spot の方向 → Transform::Forward()
     // Point / Spot の位置      → Transform::position
 };

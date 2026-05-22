@@ -2,6 +2,7 @@
 // ParticleEmitter.hpp | fbzz::scene
 // CPU パーティクルシミュレーション用コンポーネント
 #pragma once
+#include <Engine/Scene/Script.hpp>
 #include <vector>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -31,6 +32,22 @@ struct ParticleEmitter {
 
     std::vector<Particle> particles;
     float                 emitAccum = 0.0f;
+
+    const char* GetTypeName() const { return "Particle Emitter"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("emitPosition", emitPosition);
+        r.Field("emitVelocity", emitVelocity);
+        r.Field("velocitySpread", velocitySpread);
+        r.Field("colorStart", colorStart);
+        r.Field("colorEnd", colorEnd);
+        r.Field("sizeStart", sizeStart);
+        r.Field("sizeEnd", sizeEnd);
+        r.Field("lifetime", lifetime);
+        r.Field("emitRate", emitRate);
+        r.Field("maxParticles", maxParticles);
+    }
 };
 
 } // namespace fbzz::scene
