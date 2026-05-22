@@ -45,7 +45,6 @@ public:
     IConstantBuffer* Get(ResourceHandle<ConstantBufferTag> h);
     IPipelineState* Get(ResourceHandle<PipelineStateTag> h);
     IRenderTarget* Get(ResourceHandle<RenderTargetTag> h);
-    std::shared_ptr<IRenderTarget> GetShared(ResourceHandle<RenderTargetTag> h);
 
     ResourceHandle<TextureTag> GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index = 0);
     ResourceHandle<TextureTag> GetDepthTexture(ResourceHandle<RenderTargetTag> rt);

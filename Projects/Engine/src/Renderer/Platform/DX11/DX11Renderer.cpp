@@ -154,7 +154,7 @@ void DX11Renderer::ClearDepth(float depth)
 // リソース生成
 // =============================================================================
 
-std::shared_ptr<IBuffer> DX11Renderer::CreateVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride)
+std::shared_ptr<IBuffer> DX11Renderer::CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride)
 {
     auto buf = std::make_shared<DX11Buffer>();
     if (!buf->Init(m_device.Get(), m_context.Get(), data, sizeBytes, stride, D3D11_BIND_VERTEX_BUFFER))
@@ -162,7 +162,7 @@ std::shared_ptr<IBuffer> DX11Renderer::CreateVertexBuffer(const void* data, size
     return buf;
 }
 
-std::shared_ptr<IBuffer> DX11Renderer::CreateIndexBuffer(const void* data, uint32_t count)
+std::shared_ptr<IBuffer> DX11Renderer::CreateNativeIndexBuffer(const void* data, uint32_t count)
 {
     // インデックスは uint32_t 固定 (DXGI_FORMAT_R32_UINT)。
     // uint16_t (65536 頂点未満) のほうがメモリ効率は良いが、
@@ -174,7 +174,7 @@ std::shared_ptr<IBuffer> DX11Renderer::CreateIndexBuffer(const void* data, uint3
     return buf;
 }
 
-std::shared_ptr<IConstantBuffer> DX11Renderer::CreateConstantBuffer(size_t sizeBytes)
+std::shared_ptr<IConstantBuffer> DX11Renderer::CreateNativeConstantBuffer(size_t sizeBytes)
 {
     auto cb = std::make_shared<DX11ConstantBuffer>();
     if (!cb->Init(m_device.Get(), m_context.Get(), sizeBytes))
@@ -182,7 +182,7 @@ std::shared_ptr<IConstantBuffer> DX11Renderer::CreateConstantBuffer(size_t sizeB
     return cb;
 }
 
-std::shared_ptr<IShader> DX11Renderer::CreateShader(const std::string& path)
+std::shared_ptr<IShader> DX11Renderer::CreateNativeShader(const std::string& path)
 {
     auto shader = std::make_shared<DX11Shader>();
     if (!shader->Init(m_device.Get(), path))
@@ -190,7 +190,7 @@ std::shared_ptr<IShader> DX11Renderer::CreateShader(const std::string& path)
     return shader;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateTexture(const std::string& path)
+std::shared_ptr<ITexture> DX11Renderer::CreateNativeTexture(const std::string& path)
 {
     auto tex = std::make_shared<DX11Texture>();
     if (!tex->Init(m_device.Get(), m_context.Get(), path))
@@ -198,7 +198,7 @@ std::shared_ptr<ITexture> DX11Renderer::CreateTexture(const std::string& path)
     return tex;
 }
 
-std::shared_ptr<IPipelineState> DX11Renderer::CreatePipelineState(const PipelineStateDesc& desc)
+std::shared_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const PipelineStateDesc& desc)
 {
     auto pso = std::make_shared<DX11PipelineState>();
     if (!pso->Init(m_device.Get(), desc))
@@ -206,7 +206,7 @@ std::shared_ptr<IPipelineState> DX11Renderer::CreatePipelineState(const Pipeline
     return pso;
 }
 
-std::shared_ptr<IRenderTarget> DX11Renderer::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
+std::shared_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
 {
     auto rt = std::make_shared<DX11RenderTarget>();
     if (!rt->Init(m_device.Get(), width, height, colorCount))
@@ -214,7 +214,7 @@ std::shared_ptr<IRenderTarget> DX11Renderer::CreateRenderTarget(uint32_t width, 
     return rt;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateComputeTexture(uint32_t width, uint32_t height)
+std::shared_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t width, uint32_t height)
 {
     auto tex = std::make_shared<DX11Texture>();
     if (!tex->InitForCompute(m_device.Get(), width, height))
@@ -384,7 +384,7 @@ void DX11Renderer::Resize(uint32_t width, uint32_t height)
 // SetRenderTarget / SetSampler
 // =============================================================================
 
-void DX11Renderer::SetRenderTarget(std::shared_ptr<IRenderTarget> rt)
+void DX11Renderer::BindRenderTarget(IRenderTarget* rt)
 {
     // RTV/DSV を新たにバインドする前に PS・CS の SRV を全スロット解除する。
     // 同一サブリソースが SRV と RTV/DSV に同時バインドされると DX11 デバッグ層が
@@ -406,7 +406,7 @@ void DX11Renderer::SetRenderTarget(std::shared_ptr<IRenderTarget> rt)
         m_context->RSSetViewports(1, &vp);
         return;
     }
-    m_currentRT = std::static_pointer_cast<DX11RenderTarget>(rt);
+    m_currentRT = static_cast<DX11RenderTarget*>(rt);
     ID3D11RenderTargetView* rtvs[DX11RenderTarget::MAX_COLOR] = {};
     uint32_t count = 0;
     m_currentRT->GetRTVs(rtvs, count);
@@ -422,7 +422,7 @@ void DX11Renderer::SetRenderTarget(std::shared_ptr<IRenderTarget> rt)
 
 void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources)
 {
-    SetRenderTarget(resources.GetShared(rt));
+    BindRenderTarget(resources.Get(rt));
 }
 
 void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)
@@ -551,15 +551,9 @@ void DX11Renderer::ImGuiRenderDrawData()
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
 
-void* DX11Renderer::GetImTextureID(std::shared_ptr<IRenderTarget> rt, int slot)
-{
-    assert(rt != nullptr);
-    return rt->GetNativeSRV(slot);
-}
-
 void* DX11Renderer::GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot)
 {
-    auto target = resources.GetShared(rt);
+    auto* target = resources.Get(rt);
     if (!target) return nullptr;
     return target->GetNativeSRV(slot);
 }

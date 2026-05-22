@@ -21,16 +21,16 @@
 
 以下をすべて満たした時点で本タスク完了とする。
 
-- [ ] `ResourceHandle<Tag>` が世代付きで型安全に動作する
-- [ ] `ResourcePool<T>` が Insert / Get / Remove を正しく行い、古い Handle の Get が nullptr を返す
-- [ ] `ResourceManager` が Shader / Texture / Buffer / RenderTarget を一元管理する
-- [ ] `ShaderManager` の静的キャッシュを `ResourceManager` に統合し、`ShaderManager` を削除する
-- [ ] `DrawCall` / `ComputeCall` から `shared_ptr` が消え、Handle のみになる
-- [ ] `MeshRenderer` / `Material` / `Mesh` が保持する `shared_ptr<IXxx>` を Handle に置換する
-- [ ] `IRenderer::Create*()` の戻り値が Handle になる
-- [ ] `RenderSystem` が `ResourceManager` を受け取り、Handle 経由でリソースを参照する
-- [ ] ビルドが通り、エディターでメッシュ・マテリアル・シャドウが正常に描画される
-- [ ] `Docs/renderer/Design.md` の `IRenderer` インターフェース記述を更新する
+- [x] `ResourceHandle<Tag>` が世代付きで型安全に動作する
+- [x] `ResourcePool<T>` が Insert / Get / Remove を正しく行い、古い Handle の Get が nullptr を返す
+- [x] `ResourceManager` が Shader / Texture / Buffer / RenderTarget を一元管理する
+- [x] `ShaderManager` の静的キャッシュを `ResourceManager` に統合し、`ShaderManager` を削除する
+- [x] `DrawCall` / `ComputeCall` から `shared_ptr` が消え、Handle のみになる
+- [x] `MeshRenderer` / `Material` / `Mesh` が保持する `shared_ptr<IXxx>` を Handle に置換する
+- [x] `IRenderer::Create*()` を `private` の `CreateNative*()` に変更し、`ResourceManager` を `friend` にすることで外部からの直接呼び出しを禁止する
+- [x] `RenderSystem` が `ResourceManager` を受け取り、Handle 経由でリソースを参照する
+- [x] ビルドが通り、エディターでメッシュ・マテリアル・シャドウが正常に描画される
+- [x] `Docs/renderer/Design.md` の `IRenderer` / `DrawCall` インターフェース記述を更新する
 
 ---
 
