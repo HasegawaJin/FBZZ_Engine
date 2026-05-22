@@ -5,7 +5,7 @@
 #include <string>
 #include <memory>
 
-namespace fbzz::renderer { class IRenderer; }
+namespace fbzz::renderer { class ResourceManager; }
 
 namespace fbzz::scene {
 
@@ -20,11 +20,11 @@ public:
     // .fbzz ファイルから Scene を復元する
     // renderer: Mesh / Material の GPU リソース生成に使う
     static std::unique_ptr<Scene> Load(const std::string& path,
-                                       renderer::IRenderer& renderer);
+                                       renderer::ResourceManager& resources);
 
     // 既存の Scene を path の内容で上書きする (PlayMode Stop / File > Open)
     static bool LoadInPlace(Scene& scene, const std::string& path,
-                            renderer::IRenderer& renderer);
+                            renderer::ResourceManager& resources);
 };
 
 } // namespace fbzz::scene

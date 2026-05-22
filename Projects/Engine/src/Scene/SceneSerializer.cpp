@@ -19,7 +19,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
-#include <Engine/Renderer/ShaderManager.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -200,16 +200,16 @@ private:
 // "models/foo.fbx"   → AssetManager::Load<Model> mesh[0]
 // "models/foo.fbx:2" → mesh[2]
 std::shared_ptr<renderer::Mesh> ResolveMesh(
-    const std::string& path, renderer::IRenderer& renderer)
+    const std::string& path, renderer::ResourceManager& resources)
 {
     if (path.starts_with("primitive:")) {
-        if (path == "primitive:cube")     return renderer::PrimitiveMesh::Cube(renderer);
-        if (path == "primitive:sphere")   return renderer::PrimitiveMesh::Sphere(renderer, 32);
-        if (path == "primitive:plane")    return renderer::PrimitiveMesh::Plane(renderer);
-        if (path == "primitive:cylinder") return renderer::PrimitiveMesh::Cylinder(renderer);
-        if (path == "primitive:cone")     return renderer::PrimitiveMesh::Cone(renderer);
-        if (path == "primitive:torus")    return renderer::PrimitiveMesh::Torus(renderer);
-        if (path == "primitive:capsule")  return renderer::PrimitiveMesh::Capsule(renderer);
+        if (path == "primitive:cube")     return renderer::PrimitiveMesh::Cube(resources);
+        if (path == "primitive:sphere")   return renderer::PrimitiveMesh::Sphere(resources, 32);
+        if (path == "primitive:plane")    return renderer::PrimitiveMesh::Plane(resources);
+        if (path == "primitive:cylinder") return renderer::PrimitiveMesh::Cylinder(resources);
+        if (path == "primitive:cone")     return renderer::PrimitiveMesh::Cone(resources);
+        if (path == "primitive:torus")    return renderer::PrimitiveMesh::Torus(resources);
+        if (path == "primitive:capsule")  return renderer::PrimitiveMesh::Capsule(resources);
         return nullptr;
     }
 
@@ -461,7 +461,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 // Load
 // -----------------------------------------------------------------------
 std::unique_ptr<Scene> SceneSerializer::Load(
-    const std::string& path, renderer::IRenderer& renderer)
+    const std::string& path, renderer::ResourceManager& resources)
 {
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) {
@@ -515,15 +515,15 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             mr.enabled       = (*mrTbl)["enabled"].value_or(true);
 
             if (!mr.meshPath.empty()) {
-                mr.mesh = ResolveMesh(mr.meshPath, renderer);
+                mr.mesh = ResolveMesh(mr.meshPath, resources);
                 if (!mr.mesh)
                     FBZZ_LOG_WARN("SceneSerializer: failed to resolve mesh '%s'", mr.meshPath.c_str());
 
                 auto mat         = std::make_shared<renderer::Material>();
                 mat->shaderPath  = mr.shaderPath;
                 if (!mr.shaderPath.empty())
-                    mat->shader = renderer::ShaderManager::Load(mr.shaderPath);
-                if (!mat->shader)
+                    mat->shader = resources.LoadShader(mr.shaderPath);
+                if (!mat->shader.IsValid())
                     FBZZ_LOG_WARN("SceneSerializer: failed to resolve shader '%s'", mr.shaderPath.c_str());
 
                 auto& p         = mat->params;
@@ -535,13 +535,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
                 if (!mr.albedoTexPath.empty())
                     mat->albedoTexture =
-                        asset::AssetManager::Load<renderer::ITexture>(mr.albedoTexPath);
+                        asset::AssetManager::LoadTexture(mr.albedoTexPath);
                 if (!mr.normalTexPath.empty())
                     mat->normalTexture =
-                        asset::AssetManager::Load<renderer::ITexture>(mr.normalTexPath);
+                        asset::AssetManager::LoadTexture(mr.normalTexPath);
 
-                mat->Init(renderer);
-                mat->Upload();
+                mat->Init(resources);
+                mat->Upload(resources);
                 mr.material = std::move(mat);
 
                 go.AddComponent<MeshRenderer>(std::move(mr));
@@ -737,9 +737,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 // LoadInPlace
 // -----------------------------------------------------------------------
 bool SceneSerializer::LoadInPlace(
-    Scene& scene, const std::string& path, renderer::IRenderer& renderer)
+    Scene& scene, const std::string& path, renderer::ResourceManager& resources)
 {
-    auto newScene = Load(path, renderer);
+    auto newScene = Load(path, resources);
     if (!newScene) return false;
     scene = std::move(*newScene);
     return true;

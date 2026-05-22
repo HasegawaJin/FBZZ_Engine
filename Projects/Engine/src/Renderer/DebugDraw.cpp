@@ -1,9 +1,9 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // DebugDraw.cpp | fbzz::renderer
-// ワイヤーフレームのデバッグ描画ユーティリティ実装
+// ワイヤーフレームのデバッグ描画ユーティリティ
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
-#include <Engine/Renderer/ShaderManager.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Math/MathUtils.hpp>
 #include <cassert>
@@ -13,7 +13,7 @@
 namespace fbzz::renderer {
 
 // =============================================================================
-// 内部型・定数
+// ローカル型と定数
 // =============================================================================
 
 namespace {
@@ -34,48 +34,49 @@ constexpr float    PI                 = 3.14159265358979f;
 } // namespace
 
 // =============================================================================
-// 静的メンバ
+// 静的状態
 // =============================================================================
 
-static IRenderer*                       s_renderer  = nullptr;
-static std::shared_ptr<IBuffer>         s_vb;
-static std::shared_ptr<IShader>         s_shader;
-static std::shared_ptr<IConstantBuffer> s_cameraCB;
-static std::shared_ptr<IPipelineState>  s_pso;
+static IRenderer* s_renderer = nullptr;
+static ResourceManager* s_resources = nullptr;
+static ResourceHandle<BufferTag> s_vb;
+static ResourceHandle<ShaderTag> s_shader;
+static ResourceHandle<ConstantBufferTag> s_cameraCB;
+static ResourceHandle<PipelineStateTag> s_pso;
 static std::vector<DebugVertex>         s_batch;
 
 // =============================================================================
-// 内部ヘルパー
+// ローカルヘルパー
 // =============================================================================
 
-static void EnsureInit(IRenderer& r)
+static void EnsureInit(ResourceManager& resources)
 {
-    if (s_vb) return; // 初期化済み
+    if (s_vb.IsValid()) return; // 初期化済み
 
-    s_vb       = r.CreateVertexBuffer(nullptr,
+    s_vb       = resources.CreateVertexBuffer(nullptr,
                                        MAX_DEBUG_VERTICES * sizeof(DebugVertex),
                                        sizeof(DebugVertex));
-    s_shader   = ShaderManager::Load("assets/shaders/Debug.hlsl");
-    s_cameraCB = r.CreateConstantBuffer(sizeof(DebugCamCB));
-    s_pso      = r.CreatePipelineState({ RasterizerMode::SOLID,
+    s_shader   = resources.LoadShader("assets/shaders/Debug.hlsl");
+    s_cameraCB = resources.CreateConstantBuffer(sizeof(DebugCamCB));
+    s_pso      = resources.CreatePipelineState({ RasterizerMode::SOLID,
                                          BlendMode::OPAQUE,
                                          DepthMode::DEPTH_OFF });
 
-    assert(s_vb && s_shader && s_cameraCB && s_pso && "DebugDraw 初期化失敗");
+    assert(s_vb.IsValid() && s_shader.IsValid() && s_cameraCB.IsValid() && s_pso.IsValid() && "DebugDraw initialization failed");
 }
 
 static void AddSegment(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color)
 {
     if (s_batch.size() + 2 > MAX_DEBUG_VERTICES)
     {
-        FBZZ_LOG_WARN("DebugDraw: 頂点バッファが満杯です (上限 %u)", MAX_DEBUG_VERTICES);
+        FBZZ_LOG_WARN("DebugDraw: vertex batch reached max capacity (%u)", MAX_DEBUG_VERTICES);
         return;
     }
     s_batch.push_back({ a, color });
     s_batch.push_back({ b, color });
 }
 
-// center + axis1*cos(t)*r + axis2*sin(t)*r の円弧 [fromAngle, toAngle) を追加する
+// axis1/axis2 が張る平面に円弧を追加
 static void AddArc(const math::Vector3& center,
                    const math::Vector3& axis1,
                    const math::Vector3& axis2,
@@ -107,13 +108,14 @@ static void AddCircle(const math::Vector3& center,
 // 公開 API
 // =============================================================================
 
-void DebugDraw::BeginFrame(IRenderer& r, const math::Matrix4& viewProjection)
+void DebugDraw::BeginFrame(IRenderer& r, ResourceManager& resources, const math::Matrix4& viewProjection)
 {
     s_renderer = &r;
-    EnsureInit(r);
+    s_resources = &resources;
+    EnsureInit(resources);
 
     DebugCamCB cb{ viewProjection };
-    s_cameraCB->Update(&cb, sizeof(cb));
+    resources.Update(s_cameraCB, &cb, sizeof(cb));
 
     s_batch.clear();
 }
@@ -122,7 +124,7 @@ void DebugDraw::Flush()
 {
     if (!s_renderer || s_batch.empty()) { s_batch.clear(); return; }
 
-    s_vb->Update(s_batch.data(), s_batch.size() * sizeof(DebugVertex));
+    s_resources->Update(s_vb, s_batch.data(), s_batch.size() * sizeof(DebugVertex));
 
     DrawCall call;
     call.vertexBuffer       = s_vb;
@@ -132,7 +134,7 @@ void DebugDraw::Flush()
     call.vertexCount        = static_cast<uint32_t>(s_batch.size());
     call.topology           = PrimitiveTopology::LINE_LIST;
 
-    s_renderer->Submit(call);
+    s_renderer->Submit(call, *s_resources);
     s_batch.clear();
 }
 
@@ -140,7 +142,7 @@ void DebugDraw::Line(IRenderer& /*r*/,
                      const math::Vector3& from, const math::Vector3& to,
                      const math::Vector4& color)
 {
-    assert(s_renderer && "DebugDraw::BeginFrame を先に呼ぶこと");
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
     AddSegment(from, to, color);
 }
 
@@ -148,7 +150,7 @@ void DebugDraw::Box(IRenderer& /*r*/,
                     const math::Vector3& center, const math::Vector3& h,
                     const math::Vector4& color)
 {
-    assert(s_renderer && "DebugDraw::BeginFrame を先に呼ぶこと");
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
 
     // 8 頂点
     math::Vector3 c[8] = {
@@ -169,7 +171,7 @@ void DebugDraw::Box(IRenderer& /*r*/,
     // 上面
     AddSegment(c[4], c[5], color); AddSegment(c[5], c[6], color);
     AddSegment(c[6], c[7], color); AddSegment(c[7], c[4], color);
-    // 柱
+    // 側面
     AddSegment(c[0], c[4], color); AddSegment(c[1], c[5], color);
     AddSegment(c[2], c[6], color); AddSegment(c[3], c[7], color);
 }
@@ -178,38 +180,38 @@ void DebugDraw::Sphere(IRenderer& /*r*/,
                        const math::Vector3& center, float radius,
                        const math::Vector4& color)
 {
-    assert(s_renderer && "DebugDraw::BeginFrame を先に呼ぶこと");
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
 
     const math::Vector3 X{1,0,0}, Y{0,1,0}, Z{0,0,1};
-    AddCircle(center, X, Y, radius, color); // XY 面
-    AddCircle(center, X, Z, radius, color); // XZ 面
-    AddCircle(center, Y, Z, radius, color); // YZ 面
+    AddCircle(center, X, Y, radius, color); // XY 平面
+    AddCircle(center, X, Z, radius, color); // XZ 平面
+    AddCircle(center, Y, Z, radius, color); // YZ 平面
 }
 
 void DebugDraw::Capsule(IRenderer& /*r*/,
                         const math::Vector3& center, float radius, float halfHeight,
                         const math::Vector4& color)
 {
-    assert(s_renderer && "DebugDraw::BeginFrame を先に呼ぶこと");
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
 
     const math::Vector3 X{1,0,0}, Y{0,1,0}, Z{0,0,1};
     math::Vector3 top    = center + math::Vector3{0, halfHeight, 0};
     math::Vector3 bottom = center - math::Vector3{0, halfHeight, 0};
     int half             = CIRCLE_SEGMENTS / 2;
 
-    // 上下端の円リング (XZ 面)
+    // 上下リング (XZ 平面)
     AddCircle(top,    X, Z, radius, color);
     AddCircle(bottom, X, Z, radius, color);
 
-    // 上半球 (0 → π = Y 正側) を XY / ZY 面で描く
+    // 上半球の円弧 (0..pi, +Y 側) を XY / ZY 平面で追加
     AddArc(top, X, Y, radius, color, 0.0f,  PI, half);
     AddArc(top, Z, Y, radius, color, 0.0f,  PI, half);
 
-    // 下半球 (π → 2π = Y 負側)
+    // 下半球の円弧 (pi..2pi, -Y 側)
     AddArc(bottom, X, Y, radius, color, PI, 2.0f * PI, half);
     AddArc(bottom, Z, Y, radius, color, PI, 2.0f * PI, half);
 
-    // 4 本の縦連絡線
+    // 側面 4 本
     AddSegment(top + X *  radius, bottom + X *  radius, color);
     AddSegment(top + X * -radius, bottom + X * -radius, color);
     AddSegment(top + Z *  radius, bottom + Z *  radius, color);

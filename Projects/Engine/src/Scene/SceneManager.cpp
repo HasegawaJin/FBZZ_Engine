@@ -16,10 +16,10 @@ void SceneManager::Register(const std::string& name, SceneFactory factory)
 }
 
 void SceneManager::RegisterFromFile(const std::string& name, const std::string& path,
-                                    renderer::IRenderer& renderer)
+                                    renderer::ResourceManager& resources)
 {
-    Register(name, [path, &renderer]() {
-        return SceneSerializer::Load(path, renderer);
+    Register(name, [path, &resources]() {
+        return SceneSerializer::Load(path, resources);
     });
 }
 

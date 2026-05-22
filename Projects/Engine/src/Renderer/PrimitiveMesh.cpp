@@ -2,14 +2,14 @@
 // PrimitiveMesh.cpp | fbzz::renderer
 // 手続き生成メッシュ (Cube / Sphere / Plane) の実装
 #include "Engine/Renderer/PrimitiveMesh.hpp"
-#include "Engine/Renderer/IRenderer.hpp"
+#include "Engine/Renderer/ResourceManager.hpp"
 #include <Math/MathUtils.hpp>
 #include <cmath>
 #include <vector>
 
 namespace fbzz::renderer {
 
-std::shared_ptr<Mesh> PrimitiveMesh::Cube(IRenderer& renderer)
+std::shared_ptr<Mesh> PrimitiveMesh::Cube(ResourceManager& resources)
 {
     // 6面 × 4頂点 = 24頂点。面ごとに法線が異なるため頂点共有なし
     // tangent は面の U 軸方向 (法線マップ対応。現在は旧シェーダーで未使用)
@@ -58,8 +58,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cube(IRenderer& renderer)
     };
 
     auto mesh = std::make_shared<Mesh>();
-    mesh->vertexBuffer = renderer.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
-    mesh->indexBuffer  = renderer.CreateIndexBuffer(idx, 36);
+    mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 36);
     mesh->vertexCount  = 24;
     mesh->indexCount   = 36;
     mesh->cpuVertices.assign(std::begin(verts), std::end(verts));
@@ -67,7 +67,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cube(IRenderer& renderer)
     return mesh;
 }
 
-std::shared_ptr<Mesh> PrimitiveMesh::Sphere(IRenderer& renderer, int segments)
+std::shared_ptr<Mesh> PrimitiveMesh::Sphere(ResourceManager& resources, int segments)
 {
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
@@ -106,9 +106,9 @@ std::shared_ptr<Mesh> PrimitiveMesh::Sphere(IRenderer& renderer, int segments)
     }
 
     auto mesh = std::make_shared<Mesh>();
-    mesh->vertexBuffer = renderer.CreateVertexBuffer(
+    mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
-    mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), static_cast<uint32_t>(idx.size()));
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), static_cast<uint32_t>(idx.size()));
     mesh->vertexCount  = static_cast<uint32_t>(verts.size());
     mesh->indexCount   = static_cast<uint32_t>(idx.size());
     mesh->cpuVertices  = verts;
@@ -116,7 +116,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Sphere(IRenderer& renderer, int segments)
     return mesh;
 }
 
-std::shared_ptr<Mesh> PrimitiveMesh::Plane(IRenderer& renderer)
+std::shared_ptr<Mesh> PrimitiveMesh::Plane(ResourceManager& resources)
 {
     const Vertex verts[] = {
         { .position={ -0.5f, 0.0f,  0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
@@ -127,8 +127,8 @@ std::shared_ptr<Mesh> PrimitiveMesh::Plane(IRenderer& renderer)
     const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
 
     auto mesh = std::make_shared<Mesh>();
-    mesh->vertexBuffer = renderer.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
-    mesh->indexBuffer  = renderer.CreateIndexBuffer(idx, 6);
+    mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 6);
     mesh->vertexCount  = 4;
     mesh->indexCount   = 6;
     mesh->cpuVertices.assign(std::begin(verts), std::end(verts));
@@ -136,7 +136,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Plane(IRenderer& renderer)
     return mesh;
 }
 
-std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(IRenderer& renderer, int segments)
+std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(ResourceManager& resources, int segments)
 {
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
@@ -199,9 +199,9 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(IRenderer& renderer, int segments)
     }
 
     auto mesh = std::make_shared<Mesh>();
-    mesh->vertexBuffer = renderer.CreateVertexBuffer(
+    mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
-    mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;
@@ -209,14 +209,14 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(IRenderer& renderer, int segments)
     return mesh;
 }
 
-std::shared_ptr<Mesh> PrimitiveMesh::Cone(IRenderer& renderer, int segments)
+std::shared_ptr<Mesh> PrimitiveMesh::Cone(ResourceManager& resources, int segments)
 {
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
 
     constexpr float r = 0.5f;
     // Slope normal at angle t: normalize(cos(t)*h, r, sin(t)*h) with h=1.0
-    // |N| = sqrt(1 + r²) = sqrt(1.25)
+    // |N| = sqrt(1 + rﾂｲ) = sqrt(1.25)
     constexpr float invSlopeLen = 1.0f / 1.118033989f; // 1/sqrt(1.25)
 
     // Side: per-segment triangle (apex, ring[s+1], ring[s])
@@ -257,9 +257,9 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cone(IRenderer& renderer, int segments)
     }
 
     auto mesh = std::make_shared<Mesh>();
-    mesh->vertexBuffer = renderer.CreateVertexBuffer(
+    mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
-    mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;
@@ -267,7 +267,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cone(IRenderer& renderer, int segments)
     return mesh;
 }
 
-std::shared_ptr<Mesh> PrimitiveMesh::Torus(IRenderer& renderer, int segments)
+std::shared_ptr<Mesh> PrimitiveMesh::Torus(ResourceManager& resources, int segments)
 {
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
@@ -307,9 +307,9 @@ std::shared_ptr<Mesh> PrimitiveMesh::Torus(IRenderer& renderer, int segments)
     }
 
     auto mesh = std::make_shared<Mesh>();
-    mesh->vertexBuffer = renderer.CreateVertexBuffer(
+    mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
-    mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;
@@ -317,7 +317,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Torus(IRenderer& renderer, int segments)
     return mesh;
 }
 
-std::shared_ptr<Mesh> PrimitiveMesh::Capsule(IRenderer& renderer, int segments)
+std::shared_ptr<Mesh> PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
 {
     std::vector<Vertex>   verts;
     std::vector<uint32_t> idx;
@@ -435,9 +435,9 @@ std::shared_ptr<Mesh> PrimitiveMesh::Capsule(IRenderer& renderer, int segments)
     }
 
     auto mesh = std::make_shared<Mesh>();
-    mesh->vertexBuffer = renderer.CreateVertexBuffer(
+    mesh->vertexBuffer = resources.CreateVertexBuffer(
         verts.data(), verts.size() * sizeof(Vertex), sizeof(Vertex));
-    mesh->indexBuffer  = renderer.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx.data(), (uint32_t)idx.size());
     mesh->vertexCount  = (uint32_t)verts.size();
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;

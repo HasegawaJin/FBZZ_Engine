@@ -13,7 +13,7 @@
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
-#include <Engine/Renderer/IRenderTarget.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Window.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -42,10 +42,11 @@ std::string WithFbzzExtension(const std::string& path)
 
 } // namespace
 
-bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
+bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window)
 {
     m_hwnd     = window.GetHandle();
     m_renderer = &renderer;
+    m_resources = &resources;
 
     window.SetWndProcHook([](HWND h, UINT msg, WPARAM wp, LPARAM lp) -> bool {
         return ImGui_ImplWin32_WndProcHandler(h, msg, wp, lp) != 0;
@@ -91,12 +92,20 @@ bool EditorApp::Init(renderer::IRenderer& renderer, core::Window& window)
     m_ctx.snapEnabled = m_settings.snapEnabled;
 
     // 初回 RT をウィンドウサイズで生成する
-    m_sceneViewportRT = renderer.CreateRenderTarget(window.GetWidth(), window.GetHeight());
-    m_gameViewportRT = renderer.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    m_gameViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
     if (m_sceneViewportPanel)
+    {
         m_sceneViewportPanel->hdrRT = m_sceneViewportRT;
+        m_sceneViewportPanel->renderer = &renderer;
+        m_sceneViewportPanel->resources = &resources;
+    }
     if (m_gameViewportPanel)
+    {
         m_gameViewportPanel->hdrRT = m_gameViewportRT;
+        m_gameViewportPanel->renderer = &renderer;
+        m_gameViewportPanel->resources = &resources;
+    }
 
     FBZZ_LOG_INFO("EditorApp init done");
     return true;
@@ -108,8 +117,8 @@ void EditorApp::Shutdown()
         panel->OnShutdown();
 
     m_settings.Save(SETTINGS_PATH);
-    m_sceneViewportRT.reset();
-    m_gameViewportRT.reset();
+    m_sceneViewportRT = {};
+    m_gameViewportRT = {};
     m_renderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }
@@ -173,18 +182,19 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 {
     if (!m_renderer) return;
 
-    auto resizeRT = [this](std::shared_ptr<renderer::IRenderTarget>& rt,
+    auto resizeRT = [this](renderer::ResourceHandle<renderer::RenderTargetTag>& rt,
                            ViewportPanel* panel,
                            float width,
                            float height) {
-        if (!rt || !panel) return;
+        if (!rt.IsValid() || !panel) return;
 
         const uint32_t vpW = static_cast<uint32_t>(width);
         const uint32_t vpH = static_cast<uint32_t>(height);
         if (vpW == 0 || vpH == 0) return;
-        if (vpW == rt->GetWidth() && vpH == rt->GetHeight()) return;
+        auto* currentRT = m_resources->Get(rt);
+        if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) return;
 
-        rt = m_renderer->CreateRenderTarget(vpW, vpH);
+        rt = m_resources->CreateRenderTarget(vpW, vpH);
         panel->hdrRT = rt;
     };
 
