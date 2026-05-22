@@ -20,32 +20,6 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
             }
-        },
-        {
-            "name": "Debug",
-            "displayName": "Visual Studio Community 2026 Release - amd64",
-            "description": "Visual Studio 18 2026 用のコンパイラ (x64 アーキテクチャ) を使用しています",
-            "generator": "Visual Studio 18 2026",
-            "toolset": "host=x64,version=14.51",
-            "architecture": "x64",
-            "binaryDir": "${sourceDir}/out/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
-                "CMAKE_VS_PLATFORM_TOOLSET_VERSION": "14.51"
-            }
-        },
-        {
-            "name": "Visual Studio Community 2026 Release - amd64",
-            "displayName": "Visual Studio Community 2026 Release - amd64",
-            "description": "Visual Studio 18 2026 用のコンパイラ (x64 アーキテクチャ) を使用しています",
-            "generator": "Visual Studio 18 2026",
-            "toolset": "host=x64,version=14.51",
-            "architecture": "x64",
-            "binaryDir": "${sourceDir}/out/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
-                "CMAKE_VS_PLATFORM_TOOLSET_VERSION": "14.51"
-            }
         }
     ],
     "buildPresets": [
@@ -56,18 +30,6 @@
         {
             "name": "release",
             "configurePreset": "release"
-        },
-        {
-            "name": "Debug-debug",
-            "displayName": "Visual Studio Community 2026 Release - amd64 - Debug",
-            "configurePreset": "Debug",
-            "configuration": "Debug"
-        },
-        {
-            "name": "Visual Studio Community 2026 Release - amd64-debug",
-            "displayName": "Visual Studio Community 2026 Release - amd64 - Debug",
-            "configurePreset": "Visual Studio Community 2026 Release - amd64",
-            "configuration": "Debug"
         }
     ]
 }

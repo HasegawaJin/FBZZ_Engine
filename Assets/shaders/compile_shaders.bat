@@ -141,7 +141,6 @@ echo.
 echo Done. All shaders compiled successfully.
 echo Log: %LOG%
 endlocal
-pause
 exit /b 0
 
 :error
@@ -149,5 +148,4 @@ echo.
 echo *** FAILED  E詳細は compile_log.txt を確誁E***
 echo Log: %LOG%
 endlocal
-pause
 exit /b 1
