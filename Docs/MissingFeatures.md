@@ -3,19 +3,6 @@
 最終更新: 2026-05-24（Orientation Gizmo 実装）  
 調査対象ブランチ: `develop`
 
----
-
-## A. バグ / 不一致
-
-| # | 問題 | 場所 | 詳細 | 状態 |
-|---|------|------|------|------|
-| A-1 | IRenderer の Create* が shared_ptr を返したまま | `Engine/include/Engine/Renderer/IRenderer.hpp` | ResourceSystem 移行後も `CreateVertexBuffer` 等は `shared_ptr<IBuffer>` 返却。`SetRenderTarget` / `GetImTextureID` だけ Handle 版オーバーロードが存在する混在状態 | **修正済み** — `CreateNative*` として `private` 化し `ResourceManager` を friend に。公開 API は全 Handle ベースに統一 |
-| A-2 | AssetBrowserPanel ダブルクリック未実装 | `Editor/src/Panels/AssetBrowserPanel.cpp` | `// ダブルクリックでシーンを開く (.fbzz)` のコメントのみ。SceneSerializer::Load() 呼び出しなし | **修正済み** — 拡張子 `.fbzz` 判定 → `SceneSerializer::Load()` 呼び出し実装 |
-| A-3 | 設計書が実装より古い | `Docs/renderer/Design.md` / `Docs/renderer/ResourceSystem.md` | `Material.hpp` / `Mesh.hpp` は既に ResourceHandle ベースだが設計書は `shared_ptr<IBuffer>` と記載。ResourceSystem.md のチェックリストが全て `[ ]` のまま | **修正済み** — `Design.md` の IRenderer / DrawCall 記述を Handle ベースに更新。ResourceSystem.md のチェックリストを全て `[x]` に更新 |
-| A-4 | Gizmo を触るとオブジェクトが回転する | `Editor/src/Panels/ViewportPanel.cpp` `DrawGizmo` | ImGuizmo の `DecomposeMatrixToComponents` は左手系 Euler を返すが、`Quaternion::FromEuler` は右手系で適用するため多軸回転時に結果が狂う。単軸なら偶然一致するため見逃しやすい | **修正済み** — `Quaternion::FromMatrix4`（Shepperd 法）を追加し、`DrawGizmo` で `DecomposeMatrixToComponents + FromEuler` を排除。`localRow` から直接 T / S を抽出し、正規化した回転行列を `FromMatrix4` で変換 |
-
----
-
 ## B. 部分実装（骨格はあるが機能が欠けている）
 
 | # | 機能 | 場所 | 欠けている部分 |
@@ -134,7 +121,6 @@
 | D-9-3 | OnDestroy() ライフサイクル | Script 基底クラスに `OnDestroy` がない。`FlushDestroyQueue` 実行前に Script の後処理（イベント購読解除・ネイティブリソース解放など）を呼ぶ手段が存在しない | 中 |
 | D-9-4 | IReflector — enum / ResourceHandle 型対応 | 現状の `IReflector::Field` は `float` / `int` / `bool` / `Vector3` / `Vector4` / `Quaternion` / `string` の 7 型のみ。`enum class` や `ResourceHandle<T>`（テクスチャ・メッシュ参照）をフィールドとして宣言・Inspector 編集・TOML 保存できない | 中 |
 | D-9-5 | 1 GameObject に複数 Script アタッチ | `ComponentArray` の制約上、`ScriptComponent` は 1 エンティティにつき 1 つまで。Unity 相当の複数スクリプトが必要な場合は内部で `Composite Script` パターンを使うか、ECS 側で複数コンポーネント対応が必要 | 低 |
-| D-9-6 | Script ホットリロード | スクリプトは C++ ネイティブのため再コンパイルなしに変更不可。DLL 差し替えや Lua / Python バインディング、あるいは C++ ホットリロードライブラリ (cr.h 等) の導入が選択肢。Step 7 以降 | 低 (Step 7 以降) |
 
 ### D-10. Tag/Layer システム — **完全実装済み**
 
@@ -156,5 +142,5 @@
 |--------|------|
 | 今すぐ | — (A-1〜A-3 はすべて解消済み) |
 | 近い将来 | D-5-1, D-5-2, D-5-3 |
-| Step 7 | C-1 〜 C-6, D-6-1, D-9-6 |
+| Step 7 | C-1 〜 C-6, D-6-1 |
 | 余裕があれば | D-1-1 〜 D-4-4, D-5-4 〜 D-5-9, D-6-2 〜 D-6-6, D-7-2 〜 D-7-7, D-9-3 〜 D-9-5 |
