@@ -2,6 +2,7 @@
 // RenderSystem.hpp | fbzz::scene
 // MeshRenderer + Transform を走査し、DrawCall を発行する
 #pragma once
+#include <Physics/Layer.hpp>
 #include <memory>
 #include <Engine/Renderer/ResourceHandle.hpp>
 
@@ -20,6 +21,7 @@ void RenderSystem(Scene& scene,
                   renderer::ResourceManager& resources,
                   const renderer::Camera& camera,
                   renderer::ResourceHandle<renderer::RenderTargetTag> outputRT = {},
-                  const renderer::RenderSettings* settings = nullptr);
+                  const renderer::RenderSettings* settings = nullptr,
+                  fbzz::LayerMask cullingMask = fbzz::Layer::Everything);
 
 } // namespace fbzz::scene
