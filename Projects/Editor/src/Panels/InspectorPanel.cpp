@@ -262,17 +262,72 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     DrawComponentSection<scene::MeshRenderer>(go, ctx, "Mesh Renderer",
         [](scene::MeshRenderer& mr, EditorContext&) {
             widgets::ReadOnlyText("Mesh", mr.meshPath.c_str());
-            widgets::ReadOnlyText("Shader", mr.shaderPath.c_str());
 
+            auto applyShader = [&mr]() {
+                if (mr.material)
+                    if (auto* res = renderer::ResourceManager::Active())
+                        mr.material->shader = res->LoadShader(mr.shaderPath);
+            };
+            auto applyAlbedo = [&mr]() {
+                if (mr.material)
+                    if (auto* res = renderer::ResourceManager::Active()) {
+                        mr.material->albedoTexture = mr.albedoTexPath.empty()
+                            ? renderer::ResourceHandle<renderer::TextureTag>{}
+                            : res->LoadTexture(mr.albedoTexPath);
+                        mr.material->Upload(*res);
+                    }
+            };
+            auto applyNormal = [&mr]() {
+                if (mr.material)
+                    if (auto* res = renderer::ResourceManager::Active()) {
+                        mr.material->normalTexture = mr.normalTexPath.empty()
+                            ? renderer::ResourceHandle<renderer::TextureTag>{}
+                            : res->LoadTexture(mr.normalTexPath);
+                        mr.material->Upload(*res);
+                    }
+            };
+
+            // Shader
+            char shaderBuf[256];
+            std::snprintf(shaderBuf, sizeof(shaderBuf), "%s", mr.shaderPath.c_str());
+            if (ImGui::InputText("Shader", shaderBuf, sizeof(shaderBuf)))
+                mr.shaderPath = shaderBuf;
+            if (ImGui::IsItemDeactivatedAfterEdit()) applyShader();
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    mr.shaderPath = static_cast<const char*>(p->Data);
+                    applyShader();
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            // Albedo Tex
             char albedoBuf[256];
             std::snprintf(albedoBuf, sizeof(albedoBuf), "%s", mr.albedoTexPath.c_str());
             if (ImGui::InputText("Albedo Tex", albedoBuf, sizeof(albedoBuf)))
                 mr.albedoTexPath = albedoBuf;
+            if (ImGui::IsItemDeactivatedAfterEdit()) applyAlbedo();
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    mr.albedoTexPath = static_cast<const char*>(p->Data);
+                    applyAlbedo();
+                }
+                ImGui::EndDragDropTarget();
+            }
 
+            // Normal Tex
             char normalBuf[256];
             std::snprintf(normalBuf, sizeof(normalBuf), "%s", mr.normalTexPath.c_str());
             if (ImGui::InputText("Normal Tex", normalBuf, sizeof(normalBuf)))
                 mr.normalTexPath = normalBuf;
+            if (ImGui::IsItemDeactivatedAfterEdit()) applyNormal();
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    mr.normalTexPath = static_cast<const char*>(p->Data);
+                    applyNormal();
+                }
+                ImGui::EndDragDropTarget();
+            }
 
             if (mr.material) {
                 auto& p = mr.material->params;

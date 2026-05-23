@@ -17,6 +17,8 @@ public:
 
     static std::vector<std::string> ListFiles(const std::string& dir,
                                                const std::string& ext = "");
+    // ファイルとディレクトリの両方を返す (. / .. を除く)
+    static std::vector<std::string> ListAll(const std::string& dir);
 
     static bool EnsureDirectory(const std::string& path);
 
