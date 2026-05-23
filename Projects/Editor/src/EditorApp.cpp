@@ -143,6 +143,7 @@ void EditorApp::BeginFrame()
     ImGui::NewFrame();
     ImGuizmo::BeginFrame();
     m_hotkeys.ProcessInput();
+    CheckHotReload();
 
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
@@ -254,6 +255,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::MenuItem("Light Range", nullptr, &ctx.showLightRange);
         ImGui::MenuItem("Colliders",   nullptr, &ctx.showColliders);
         ImGui::MenuItem("Stats",       nullptr, &ctx.showSceneStats);
+        ImGui::MenuItem("Hot Reload",  nullptr, &ctx.hotReloadEnabled);
         ImGui::Separator();
         ImGui::MenuItem("Wireframe",   nullptr, &ctx.renderSettings.wireframeMode);
         ImGui::Separator();
@@ -316,6 +318,7 @@ bool EditorApp::OpenSceneFromDialog()
 
     m_settings.lastScenePath = path;
     m_ctx.selectedEntities.clear();
+    CacheSceneWriteTime();
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
     return true;
 }
@@ -330,6 +333,7 @@ bool EditorApp::SaveScene()
         return false;
     }
 
+    CacheSceneWriteTime();
     FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
     return true;
 }
@@ -348,8 +352,45 @@ bool EditorApp::SaveSceneAsDialog()
     }
 
     m_settings.lastScenePath = path;
+    CacheSceneWriteTime();
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
     return true;
+}
+
+void EditorApp::CacheSceneWriteTime()
+{
+    if (m_settings.lastScenePath.empty()) return;
+    WIN32_FILE_ATTRIBUTE_DATA info{};
+    if (GetFileAttributesExA(m_settings.lastScenePath.c_str(), GetFileExInfoStandard, &info))
+        m_lastSceneWriteTime = info.ftLastWriteTime;
+}
+
+void EditorApp::CheckHotReload()
+{
+    if (!m_ctx.hotReloadEnabled) return;
+    if (m_settings.lastScenePath.empty() || !m_ctx.activeScene) return;
+    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
+
+    WIN32_FILE_ATTRIBUTE_DATA info{};
+    if (!GetFileAttributesExA(m_settings.lastScenePath.c_str(), GetFileExInfoStandard, &info))
+        return;
+
+    const FILETIME& ft = info.ftLastWriteTime;
+    // キャッシュが未設定 (初回) の場合はリロードせずに記録だけする
+    if (m_lastSceneWriteTime.dwLowDateTime == 0 && m_lastSceneWriteTime.dwHighDateTime == 0) {
+        m_lastSceneWriteTime = ft;
+        return;
+    }
+
+    if (CompareFileTime(&ft, &m_lastSceneWriteTime) != 0) {
+        m_lastSceneWriteTime = ft;
+        if (!SceneSerializer::Load(*m_ctx.activeScene, m_settings.lastScenePath))
+            FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
+        else {
+            m_ctx.selectedEntities.clear();
+            FBZZ_LOG_INFO("Hot reloaded: %s", m_settings.lastScenePath.c_str());
+        }
+    }
 }
 
 } // namespace fbzz::editor
