@@ -10,3 +10,6 @@
 #include "Quaternion.hpp"
 #include "Matrix3.hpp"
 #include "Matrix4.hpp"
+#include "Plane.hpp"
+#include "Ray.hpp"
+#include "Frustum.hpp"
