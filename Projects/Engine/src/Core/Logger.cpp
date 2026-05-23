@@ -1,17 +1,27 @@
 // FBZZ Engine
 // Logger.cpp | fbzz::core
-// ログ出力実装
+// Log output implementation
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/ILogSink.hpp"
 
-#include <cstdio>
 #include <Windows.h>
 #include <algorithm>
+#include <cstddef>
+#include <cstdio>
 
 namespace fbzz::core {
 
-LogLevel             Logger::s_minLevel = LogLevel::INFO;
+LogLevel Logger::s_minLevel = LogLevel::INFO;
 std::vector<ILogSink*> Logger::s_sinks;
+
+namespace {
+
+void BuildLocatedFormat(char* out, size_t outSize, const char* file, int line, const char* fmt)
+{
+    snprintf(out, outSize, "[%s:%d] %s", file ? file : "unknown", line, fmt ? fmt : "");
+}
+
+} // namespace
 
 void Logger::SetMinLevel(LogLevel level) { s_minLevel = level; }
 
@@ -19,10 +29,8 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 {
     if (level < s_minLevel) return;
 
-    // UTF-8 ソースファイルの日本語文字列をコンソールで正しく表示するため
-    // 初回呼び出し時に一度だけコードページを UTF-8 に切り替える。
-    // CP932 (Shift-JIS) のままだと printf が文字化けする。
     static bool s_cpSet = (SetConsoleOutputCP(CP_UTF8), true);
+    (void)s_cpSet;
 
     const char* prefix = nullptr;
     switch (level) {
@@ -31,17 +39,17 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
     case LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
     }
 
-    char body[1024];
-    vsnprintf_s(body, sizeof(body), _TRUNCATE, fmt, args);
+    char body[1024] = {};
+    const int written = vsnprintf_s(body, sizeof(body), _TRUNCATE, fmt, args);
+    if (written < 0)
+        snprintf(body, sizeof(body), "[Logger format error]");
 
-    char line[1200];
+    char line[1200] = {};
     snprintf(line, sizeof(line), "%s%s\n", prefix, body);
 
-    // VS デバッグ出力 + stdout の両方に出す
     OutputDebugStringA(line);
     printf("%s", line);
 
-    // 登録済みシンクに配信
     LogEntry entry{ level, body };
     for (ILogSink* sink : s_sinks)
         sink->OnLog(entry);
@@ -58,8 +66,61 @@ void Logger::RemoveSink(ILogSink* sink)
     if (it != s_sinks.end()) s_sinks.erase(it);
 }
 
-void Logger::Info (const char* fmt, ...) { va_list a; va_start(a, fmt); Log(LogLevel::INFO,      fmt, a); va_end(a); }
-void Logger::Warn (const char* fmt, ...) { va_list a; va_start(a, fmt); Log(LogLevel::WARNING,   fmt, a); va_end(a); }
-void Logger::Error(const char* fmt, ...) { va_list a; va_start(a, fmt); Log(LogLevel::LOG_ERROR, fmt, a); va_end(a); }
+void Logger::Info(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::INFO, fmt, args);
+    va_end(args);
+}
+
+void Logger::Warn(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::WARNING, fmt, args);
+    va_end(args);
+}
+
+void Logger::Error(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::LOG_ERROR, fmt, args);
+    va_end(args);
+}
+
+void Logger::InfoAt(const char* file, int line, const char* fmt, ...)
+{
+    char locatedFmt[1200] = {};
+    BuildLocatedFormat(locatedFmt, sizeof(locatedFmt), file, line, fmt);
+
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::INFO, locatedFmt, args);
+    va_end(args);
+}
+
+void Logger::WarnAt(const char* file, int line, const char* fmt, ...)
+{
+    char locatedFmt[1200] = {};
+    BuildLocatedFormat(locatedFmt, sizeof(locatedFmt), file, line, fmt);
+
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::WARNING, locatedFmt, args);
+    va_end(args);
+}
+
+void Logger::ErrorAt(const char* file, int line, const char* fmt, ...)
+{
+    char locatedFmt[1200] = {};
+    BuildLocatedFormat(locatedFmt, sizeof(locatedFmt), file, line, fmt);
+
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::LOG_ERROR, locatedFmt, args);
+    va_end(args);
+}
 
 } // namespace fbzz::core

@@ -15,6 +15,12 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/UIImage.hpp>
+#include <Engine/Scene/Components/UIButton.hpp>
+#include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/Components/UILayoutGroup.hpp>
+#include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -25,6 +31,7 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector2.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <Physics/AABBCollider.hpp>
@@ -52,6 +59,14 @@ toml::array Vec3ToArr(const math::Vector3& v)
     return a;
 }
 
+toml::array Vec2ToArr(const math::Vector2& v)
+{
+    toml::array a;
+    a.push_back((double)v.x);
+    a.push_back((double)v.y);
+    return a;
+}
+
 toml::array Vec4ToArr(const math::Vector4& v)
 {
     toml::array a;
@@ -70,6 +85,15 @@ toml::array QuatToArr(const math::Quaternion& q)
     a.push_back((double)q.z);
     a.push_back((double)q.w);
     return a;
+}
+
+math::Vector2 ArrToVec2(const toml::array* arr, math::Vector2 def = {})
+{
+    if (!arr || arr->size() < 2) return def;
+    return {
+        (float)(*arr)[0].value_or(0.0),
+        (float)(*arr)[1].value_or(0.0)
+    };
 }
 
 math::Vector3 ArrToVec3(const toml::array* arr, math::Vector3 def = {})
@@ -144,6 +168,7 @@ public:
     void Field(const char* name, float& v) override { m_table.insert(name, (double)v); }
     void Field(const char* name, int& v) override { m_table.insert(name, (int64_t)v); }
     void Field(const char* name, bool& v) override { m_table.insert(name, v); }
+    void Field(const char* name, math::Vector2& v) override { m_table.insert(name, Vec2ToArr(v)); }
     void Field(const char* name, math::Vector3& v) override { m_table.insert(name, Vec3ToArr(v)); }
     void Field(const char* name, math::Vector4& v) override { m_table.insert(name, Vec4ToArr(v)); }
     void Field(const char* name, std::string& v) override { m_table.insert(name, v); }
@@ -175,6 +200,11 @@ public:
     void Field(const char* name, math::Vector3& v) override
     {
         v = ArrToVec3(m_table[name].as_array(), v);
+    }
+
+    void Field(const char* name, math::Vector2& v) override
+    {
+        v = ArrToVec2(m_table[name].as_array(), v);
     }
 
     void Field(const char* name, math::Vector4& v) override
@@ -434,6 +464,93 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             srTbl.insert("mieG",               (double)sr->mieG);
             srTbl.insert("enabled",            sr->enabled);
             goTbl.insert("SkyRenderer", std::move(srTbl));
+        }
+
+        // UICanvas
+        if (auto* canvas = go.GetComponent<UICanvas>()) {
+            toml::table uiTbl;
+            uiTbl.insert("enabled",      canvas->enabled);
+            uiTbl.insert("canvasWidth",  (double)canvas->canvasWidth);
+            uiTbl.insert("canvasHeight", (double)canvas->canvasHeight);
+            uiTbl.insert("sortOrder",    (int64_t)canvas->sortOrder);
+            uiTbl.insert("renderMode",   (int64_t)static_cast<int>(canvas->renderMode));
+            uiTbl.insert("worldScale",   (double)canvas->worldScale);
+            goTbl.insert("UICanvas", std::move(uiTbl));
+        }
+
+        // UIImage
+        if (auto* image = go.GetComponent<UIImage>()) {
+            toml::table uiTbl;
+            uiTbl.insert("enabled",           image->enabled);
+            uiTbl.insert("position",          Vec2ToArr(image->position));
+            uiTbl.insert("size",              Vec2ToArr(image->size));
+            uiTbl.insert("useAnchor",         image->useAnchor);
+            uiTbl.insert("anchorMin",         Vec2ToArr(image->anchorMin));
+            uiTbl.insert("anchorMax",         Vec2ToArr(image->anchorMax));
+            uiTbl.insert("pivot",             Vec2ToArr(image->pivot));
+            uiTbl.insert("anchoredPosition",  Vec2ToArr(image->anchoredPosition));
+            uiTbl.insert("sizeDelta",         Vec2ToArr(image->sizeDelta));
+            uiTbl.insert("texturePath",       image->texturePath);
+            uiTbl.insert("color",             Vec4ToArr(image->color));
+            uiTbl.insert("uvMin",             Vec2ToArr(image->uvMin));
+            uiTbl.insert("uvMax",             Vec2ToArr(image->uvMax));
+            goTbl.insert("UIImage", std::move(uiTbl));
+        }
+
+        // UIButton
+        if (auto* button = go.GetComponent<UIButton>()) {
+            toml::table uiTbl;
+            uiTbl.insert("enabled", button->enabled);
+            uiTbl.insert("isInteractable", button->isInteractable);
+            uiTbl.insert("normalColor", Vec4ToArr(button->normalColor));
+            uiTbl.insert("hoverColor", Vec4ToArr(button->hoverColor));
+            uiTbl.insert("pressedColor", Vec4ToArr(button->pressedColor));
+            goTbl.insert("UIButton", std::move(uiTbl));
+        }
+
+        // UIText
+        if (auto* text = go.GetComponent<UIText>()) {
+            toml::table uiTbl;
+            uiTbl.insert("enabled", text->enabled);
+            uiTbl.insert("text", text->text);
+            uiTbl.insert("position", Vec2ToArr(text->position));
+            uiTbl.insert("fontSize", (double)text->fontSize);
+            uiTbl.insert("letterSpacing", (double)text->letterSpacing);
+            uiTbl.insert("color", Vec4ToArr(text->color));
+            goTbl.insert("UIText", std::move(uiTbl));
+        }
+
+        // UILayoutGroup
+        if (auto* layout = go.GetComponent<UILayoutGroup>()) {
+            toml::table tbl;
+            tbl.insert("enabled",      layout->enabled);
+            tbl.insert("axis",         (int64_t)static_cast<int>(layout->axis));
+            tbl.insert("spacing",      (double)layout->spacing);
+            tbl.insert("paddingLeft",  (double)layout->paddingLeft);
+            tbl.insert("paddingRight", (double)layout->paddingRight);
+            tbl.insert("paddingTop",   (double)layout->paddingTop);
+            tbl.insert("paddingBottom",(double)layout->paddingBottom);
+            tbl.insert("reverseOrder", layout->reverseOrder);
+            goTbl.insert("UILayoutGroup", std::move(tbl));
+        }
+
+        // UIAnimator
+        if (auto* anim = go.GetComponent<UIAnimator>()) {
+            toml::table tbl;
+            tbl.insert("enabled",         anim->enabled);
+            tbl.insert("colorFrom",       Vec4ToArr(anim->colorTween.from));
+            tbl.insert("colorTo",         Vec4ToArr(anim->colorTween.to));
+            tbl.insert("colorDuration",   (double)anim->colorTween.duration);
+            tbl.insert("colorLoop",       anim->colorTween.loop);
+            tbl.insert("colorPingPong",   anim->colorTween.pingPong);
+            tbl.insert("colorActive",     anim->colorTween.active);
+            tbl.insert("posFrom",         Vec2ToArr(anim->positionTween.from));
+            tbl.insert("posTo",           Vec2ToArr(anim->positionTween.to));
+            tbl.insert("posDuration",     (double)anim->positionTween.duration);
+            tbl.insert("posLoop",         anim->positionTween.loop);
+            tbl.insert("posPingPong",     anim->positionTween.pingPong);
+            tbl.insert("posActive",       anim->positionTween.active);
+            goTbl.insert("UIAnimator", std::move(tbl));
         }
 
         // ScriptComponent
@@ -699,6 +816,93 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
             sr.enabled       = (*srTbl)["enabled"].value_or(true);
             go.AddComponent<SkyRenderer>(sr);
+        }
+
+        // UICanvas
+        if (auto* uiTbl = (*goTbl)["UICanvas"].as_table()) {
+            UICanvas canvas{};
+            canvas.enabled      = (*uiTbl)["enabled"].value_or(true);
+            canvas.canvasWidth  = (float)(*uiTbl)["canvasWidth"].value_or(1920.0);
+            canvas.canvasHeight = (float)(*uiTbl)["canvasHeight"].value_or(1080.0);
+            canvas.sortOrder    = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
+            canvas.renderMode   = static_cast<UIRenderMode>((*uiTbl)["renderMode"].value_or((int64_t)0));
+            canvas.worldScale   = (float)(*uiTbl)["worldScale"].value_or(0.01);
+            go.AddComponent<UICanvas>(canvas);
+        }
+
+        // UIImage
+        if (auto* uiTbl = (*goTbl)["UIImage"].as_table()) {
+            UIImage image{};
+            image.enabled          = (*uiTbl)["enabled"].value_or(true);
+            image.position         = ArrToVec2((*uiTbl)["position"].as_array());
+            image.size             = ArrToVec2((*uiTbl)["size"].as_array(), { 100.0f, 100.0f });
+            image.useAnchor        = (*uiTbl)["useAnchor"].value_or(false);
+            image.anchorMin        = ArrToVec2((*uiTbl)["anchorMin"].as_array(), { 0.5f, 0.5f });
+            image.anchorMax        = ArrToVec2((*uiTbl)["anchorMax"].as_array(), { 0.5f, 0.5f });
+            image.pivot            = ArrToVec2((*uiTbl)["pivot"].as_array(), { 0.5f, 0.5f });
+            image.anchoredPosition = ArrToVec2((*uiTbl)["anchoredPosition"].as_array(), { 0.0f, 0.0f });
+            image.sizeDelta        = ArrToVec2((*uiTbl)["sizeDelta"].as_array(), { 100.0f, 100.0f });
+            image.texturePath      = (*uiTbl)["texturePath"].value_or(std::string{});
+            image.color            = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
+            image.uvMin            = ArrToVec2((*uiTbl)["uvMin"].as_array(), { 0.0f, 0.0f });
+            image.uvMax            = ArrToVec2((*uiTbl)["uvMax"].as_array(), { 1.0f, 1.0f });
+            go.AddComponent<UIImage>(image);
+        }
+
+        // UIButton
+        if (auto* uiTbl = (*goTbl)["UIButton"].as_table()) {
+            UIButton button{};
+            button.enabled = (*uiTbl)["enabled"].value_or(true);
+            button.isInteractable = (*uiTbl)["isInteractable"].value_or(true);
+            button.normalColor = ArrToVec4((*uiTbl)["normalColor"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
+            button.hoverColor = ArrToVec4((*uiTbl)["hoverColor"].as_array(), { 0.85f, 0.85f, 0.85f, 1.0f });
+            button.pressedColor = ArrToVec4((*uiTbl)["pressedColor"].as_array(), { 0.7f, 0.7f, 0.7f, 1.0f });
+            go.AddComponent<UIButton>(button);
+        }
+
+        // UIText
+        if (auto* uiTbl = (*goTbl)["UIText"].as_table()) {
+            UIText text{};
+            text.enabled = (*uiTbl)["enabled"].value_or(true);
+            text.text = (*uiTbl)["text"].value_or(std::string{"Text"});
+            text.position = ArrToVec2((*uiTbl)["position"].as_array());
+            text.fontSize = (float)(*uiTbl)["fontSize"].value_or(42.0);
+            text.letterSpacing = (float)(*uiTbl)["letterSpacing"].value_or(4.0);
+            text.color = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
+            go.AddComponent<UIText>(text);
+        }
+
+        // UILayoutGroup
+        if (auto* tbl = (*goTbl)["UILayoutGroup"].as_table()) {
+            UILayoutGroup layout{};
+            layout.enabled       = (*tbl)["enabled"].value_or(true);
+            layout.axis          = static_cast<UILayoutAxis>((*tbl)["axis"].value_or((int64_t)0));
+            layout.spacing       = (float)(*tbl)["spacing"].value_or(8.0);
+            layout.paddingLeft   = (float)(*tbl)["paddingLeft"].value_or(0.0);
+            layout.paddingRight  = (float)(*tbl)["paddingRight"].value_or(0.0);
+            layout.paddingTop    = (float)(*tbl)["paddingTop"].value_or(0.0);
+            layout.paddingBottom = (float)(*tbl)["paddingBottom"].value_or(0.0);
+            layout.reverseOrder  = (*tbl)["reverseOrder"].value_or(false);
+            go.AddComponent<UILayoutGroup>(layout);
+        }
+
+        // UIAnimator
+        if (auto* tbl = (*goTbl)["UIAnimator"].as_table()) {
+            UIAnimator anim{};
+            anim.enabled = (*tbl)["enabled"].value_or(true);
+            anim.colorTween.from     = ArrToVec4((*tbl)["colorFrom"].as_array(), { 1,1,1,1 });
+            anim.colorTween.to       = ArrToVec4((*tbl)["colorTo"].as_array(),   { 1,1,1,0 });
+            anim.colorTween.duration = (float)(*tbl)["colorDuration"].value_or(1.0);
+            anim.colorTween.loop     = (*tbl)["colorLoop"].value_or(false);
+            anim.colorTween.pingPong = (*tbl)["colorPingPong"].value_or(false);
+            anim.colorTween.active   = (*tbl)["colorActive"].value_or(false);
+            anim.positionTween.from     = ArrToVec2((*tbl)["posFrom"].as_array(), { 0,0 });
+            anim.positionTween.to       = ArrToVec2((*tbl)["posTo"].as_array(),   { 100,0 });
+            anim.positionTween.duration = (float)(*tbl)["posDuration"].value_or(1.0);
+            anim.positionTween.loop     = (*tbl)["posLoop"].value_or(false);
+            anim.positionTween.pingPong = (*tbl)["posPingPong"].value_or(false);
+            anim.positionTween.active   = (*tbl)["posActive"].value_or(false);
+            go.AddComponent<UIAnimator>(anim);
         }
 
         // ScriptComponent

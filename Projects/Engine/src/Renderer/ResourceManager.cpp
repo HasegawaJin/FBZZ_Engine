@@ -2,6 +2,7 @@
 // ResourceManager.cpp | fbzz::renderer
 // Central renderer resource ownership and handle lookup
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <cstdint>
 #include <Engine/Renderer/IBuffer.hpp>
 #include <Engine/Renderer/IConstantBuffer.hpp>
 #include <Engine/Renderer/IPipelineState.hpp>
@@ -67,6 +68,16 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     ResourceHandle<TextureTag> handle = m_textures.Insert(std::move(texture));
     m_textureCache[key] = handle;
     return handle;
+}
+
+ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height)
+{
+    auto texture = m_renderer.CreateNativeTextureFromData(rgba, width, height);
+    if (!texture) {
+        FBZZ_LOG_ERROR("ResourceManager::CreateTexture failed (%ux%u)", width, height);
+        return ResourceHandle<TextureTag>::Null();
+    }
+    return m_textures.Insert(std::move(texture));
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride)

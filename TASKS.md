@@ -135,3 +135,10 @@
 | 2026-05-23 | Fix Hierarchy delete handling and add GameObject order movement operations | Done |
 | 2026-05-23 | Add Hierarchy tree display, drag parent assignment, and Set As Root action | Done |
 | 2026-05-23 | Guard Hierarchy recursion and route all parent assignment through cycle-safe GameObject API | Done |
+| 2026-05-23 | Implement Phase 1 runtime UI components, UISystem, Inspector/Serializer integration, and Game viewport submission | Done |
+| 2026-05-23 | Add UI viewport tab and UI-only render target preview | Done |
+| 2026-05-23 | Fix UISprite canvas-space projection and add sandbox 3D+UI overlay verification scene | Done |
+| 2026-05-23 | Fix Logger macros for MSVC builds without /Zc:preprocessor | Done |
+| 2026-05-23 | Fix UI culling and sandbox Play/Stop stale button references | Done |
+| 2026-05-23 | Add UIText debug rendering and remove sandbox UI debug logs | Done |
+| 2026-05-23 | UI Phase 2: dynamic VB (persistent Map/Unmap), SDF font atlas (CPU-generated 24x24 glyphs, UIText.hlsl), Anchor/Pivot layout, texturePath Inspector, UILayoutGroup (H/V), UIAnimator (Color/Position Tween), World Space Canvas RenderMode, full Inspector and Serializer integration | Done |

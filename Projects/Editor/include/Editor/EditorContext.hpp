@@ -38,9 +38,16 @@ struct EditorContext {
     float viewportWidth   = 1280.0f;
     float viewportHeight  = 720.0f;
     bool  gameViewportFocused = false;
+    float gameViewportOriginX = 0.0f;
+    float gameViewportOriginY = 0.0f;
     float gameViewportWidth   = 1280.0f;
     float gameViewportHeight  = 720.0f;
     bool  requestGameViewportFocus = false;
+    bool  uiViewportFocused = false;
+    float uiViewportOriginX = 0.0f;
+    float uiViewportOriginY = 0.0f;
+    float uiViewportWidth = 1280.0f;
+    float uiViewportHeight = 720.0f;
 
     enum class GameViewportAspect {
         Free,
