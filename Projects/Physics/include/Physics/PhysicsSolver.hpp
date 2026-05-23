@@ -2,6 +2,7 @@
 // PhysicsSolver.hpp | fbzz::physics
 // 衝突検出 (Broad/Narrow フェーズ) と衝突解決 (インパルスベース)
 #pragma once
+#include <functional>
 #include <Physics/ContactPoint.hpp>
 #include <Physics/CollisionPair.hpp>
 #include <Physics/SphereCollider.hpp>
@@ -18,7 +19,8 @@ namespace fbzz::physics
     {
     public:
         void BroadPhase(const std::vector<ColliderInstance>& colliders,
-                        std::vector<CollisionPair>& outPairs);
+                        std::vector<CollisionPair>& outPairs,
+                        const std::function<bool(int, int)>& layerFilter);
 
         void NarrowPhase(const std::vector<CollisionPair>& pairs,
                         std::vector<ContactPoint>& outContacts);

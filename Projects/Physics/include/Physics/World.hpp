@@ -13,6 +13,7 @@
 #include <Physics/DistanceConstraint.hpp>
 #include <Physics/ChainConstraint.hpp>
 #include <Physics/HingeConstraint.hpp>
+#include <functional>
 #include <vector>
 #include <map>
 #include <memory>
@@ -38,7 +39,7 @@ namespace fbzz::physics
         void SetVolumes(std::vector<std::shared_ptr<Volume>> volumes);
         void AddConstraint(std::shared_ptr<Constraint> constraint);
 
-        void Step(float dt);
+        void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
 
         void          SetGravity(const math::Vector3& gravity);
         math::Vector3 GetGravity() const { return m_gravity; }
@@ -62,6 +63,7 @@ namespace fbzz::physics
         void ClassifyCollisions();
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
+        std::function<bool(int, int)> m_layerFilter;
 
         std::vector<std::shared_ptr<RigidBody>> m_bodies;
         std::vector<ColliderInstance>           m_colliders;

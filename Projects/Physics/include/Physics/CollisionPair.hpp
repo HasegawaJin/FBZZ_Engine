@@ -15,6 +15,7 @@ namespace fbzz::physics
         RigidBody* body = nullptr;
         const PhysicsMaterial* material = nullptr;
         bool isTrigger = false;
+        int layer = 0;
     };
 
     struct CollisionPair {
