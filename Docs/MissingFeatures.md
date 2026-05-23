@@ -1,6 +1,6 @@
 # FBZZ Engine — 未実装・不足機能一覧
 
-最終更新: 2026-05-24（Gizmo 回転バグ修正・`Quaternion::FromMatrix4` 追加）  
+最終更新: 2026-05-24（Orientation Gizmo 実装）  
 調査対象ブランチ: `develop`
 
 ---
@@ -80,6 +80,7 @@
 | D-4-2 | SceneHierarchyPanel 右クリックメニュー | GameObject 追加 / 削除 / Duplicate。設計書に記載あり。実装状況を要確認 | **実装済み** (`feature/editor`) |
 | D-4-3 | Shader 切り替え UI | InspectorPanel > MeshRenderer でシェーダーファイルを差し替える UI | 中 |
 | D-4-4 | テクスチャプレビュー | AssetBrowserPanel でサムネイル表示。現状はファイル名テキストのみ | 低 |
+| D-4-5 | Orientation Gizmo | Viewport 右上に方向キューブを表示。面・辺・角クリックで正面/上面/側面にスナップ。`ImGuizmo::ViewManipulate()` を使用し補間アニメーションも内蔵 | **実装済み** — `DrawOrientationGizmo` を追加。変更後の view 行列を逆算して `Camera::m_position` / `m_rotation` に反映。`Quaternion::FromMatrix4` を流用 |
 
 ### D-5. UI システム　実装済み (のちのち改善予定)
 
