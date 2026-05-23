@@ -75,8 +75,8 @@
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
-| D-4-1 | Scene Hot Reload | TOML ファイルの変更を検知し自動再読み込み。設計方針「TOML + AI → Hot Reload → Viewport」に明記されているが未実装 | 高 |
-| D-4-2 | SceneHierarchyPanel 右クリックメニュー | GameObject 追加 / 削除 / Duplicate。設計書に記載あり。実装状況を要確認 | 中 |
+| D-4-1 | Scene Hot Reload | TOML ファイルの変更を検知し自動再読み込み。設計方針「TOML + AI → Hot Reload → Viewport」に明記されているが未実装 | **実装済み** (`feature/editor`) |
+| D-4-2 | SceneHierarchyPanel 右クリックメニュー | GameObject 追加 / 削除 / Duplicate。設計書に記載あり。実装状況を要確認 | **実装済み** (`feature/editor`) |
 | D-4-3 | Shader 切り替え UI | InspectorPanel > MeshRenderer でシェーダーファイルを差し替える UI | 中 |
 | D-4-4 | テクスチャプレビュー | AssetBrowserPanel でサムネイル表示。現状はファイル名テキストのみ | 低 |
 
@@ -153,6 +153,6 @@
 | 優先度 | 項目 |
 |--------|------|
 | 今すぐ | — (A-1〜A-3 はすべて解消済み) |
-| 近い将来 | D-4-1, D-4-2, D-5-1, D-5-2, D-5-3 |
+| 近い将来 | D-5-1, D-5-2, D-5-3 |
 | Step 7 | C-1 〜 C-6, D-6-1, D-9-6 |
 | 余裕があれば | D-1-1 〜 D-4-4, D-5-4 〜 D-5-9, D-6-2 〜 D-6-6, D-7-2 〜 D-7-7, D-9-3 〜 D-9-5 |
