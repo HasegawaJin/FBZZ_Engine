@@ -8,6 +8,82 @@
 
 namespace fbzz::physics 
 {
+    namespace
+    {
+        void ClosestPointsOnSegments(const math::Vector3& p1,
+                                     const math::Vector3& q1,
+                                     const math::Vector3& p2,
+                                     const math::Vector3& q2,
+                                     math::Vector3& outC1,
+                                     math::Vector3& outC2)
+        {
+            constexpr float EPS = 1e-6f;
+
+            const math::Vector3 d1 = q1 - p1;
+            const math::Vector3 d2 = q2 - p2;
+            const math::Vector3 r = p1 - p2;
+            const float a = math::Vector3::Dot(d1, d1);
+            const float e = math::Vector3::Dot(d2, d2);
+            const float f = math::Vector3::Dot(d2, r);
+
+            float s = 0.0f;
+            float t = 0.0f;
+
+            if (a <= EPS && e <= EPS)
+            {
+                outC1 = p1;
+                outC2 = p2;
+                return;
+            }
+
+            if (a <= EPS)
+            {
+                t = std::clamp(f / e, 0.0f, 1.0f);
+            }
+            else
+            {
+                const float c = math::Vector3::Dot(d1, r);
+                if (e <= EPS)
+                {
+                    s = std::clamp(-c / a, 0.0f, 1.0f);
+                }
+                else
+                {
+                    const float b = math::Vector3::Dot(d1, d2);
+                    const float denom = a * e - b * b;
+                    if (denom > EPS)
+                    {
+                        s = std::clamp((b * f - c * e) / denom, 0.0f, 1.0f);
+                    }
+                    else
+                    {
+                        const float s0 = math::Vector3::Dot(p2 - p1, d1) / a;
+                        const float s1 = math::Vector3::Dot(q2 - p1, d1) / a;
+                        const float overlapMin = std::max(0.0f, std::min(s0, s1));
+                        const float overlapMax = std::min(1.0f, std::max(s0, s1));
+                        s = overlapMin <= overlapMax
+                            ? (overlapMin + overlapMax) * 0.5f
+                            : std::clamp((s0 + s1) * 0.5f, 0.0f, 1.0f);
+                    }
+
+                    t = (b * s + f) / e;
+                    if (t < 0.0f)
+                    {
+                        t = 0.0f;
+                        s = std::clamp(-c / a, 0.0f, 1.0f);
+                    }
+                    else if (t > 1.0f)
+                    {
+                        t = 1.0f;
+                        s = std::clamp((b - c) / a, 0.0f, 1.0f);
+                    }
+                }
+            }
+
+            outC1 = p1 + d1 * s;
+            outC2 = p2 + d2 * t;
+        }
+    } // namespace
 
     // ------------------------------------------------------------------ BroadPhase
     void PhysicsSolver::BroadPhase(const std::vector<ColliderInstance>& colliders,
@@ -390,30 +466,14 @@ namespace fbzz::physics
                                            const CapsuleCollider& b,
                                            ContactPoint& out)
     {
-        math::Vector3 bestA = a.GetSegmentStart();
-        math::Vector3 bestB = b.GetSegmentStart();
-        float bestDistSq = 3.402823466e+38f;
-
-        for (int i = 0; i <= 6; ++i)
-        {
-            const float ta = static_cast<float>(i) / 6.0f;
-            const math::Vector3 pa = a.GetSegmentStart() + (a.GetSegmentEnd() - a.GetSegmentStart()) * ta;
-            const math::Vector3 segB = b.GetSegmentEnd() - b.GetSegmentStart();
-            const float lenSqB = segB.LengthSq();
-            float tb = 0.0f;
-            if (lenSqB > 1e-6f)
-                tb = std::clamp(math::Vector3::Dot(pa - b.GetSegmentStart(), segB) / lenSqB, 0.0f, 1.0f);
-            const math::Vector3 pb = b.GetSegmentStart() + segB * tb;
-            const float distSq = (pa - pb).LengthSq();
-            if (distSq < bestDistSq)
-            {
-                bestDistSq = distSq;
-                bestA = pa;
-                bestB = pb;
-            }
-        }
+        math::Vector3 bestA;
+        math::Vector3 bestB;
+        ClosestPointsOnSegments(a.GetSegmentStart(), a.GetSegmentEnd(),
+                                b.GetSegmentStart(), b.GetSegmentEnd(),
+                                bestA, bestB);
 
         const float sumR = a.m_radius + b.m_radius;
+        const float bestDistSq = (bestA - bestB).LengthSq();
         if (bestDistSq >= sumR * sumR) return false;
 
         const float dist = std::sqrt(bestDistSq);

@@ -40,14 +40,6 @@ using namespace fbzz;
 
 namespace
 {
-    struct BodyDebug
-    {
-        std::shared_ptr<physics::RigidBody> body;
-        std::shared_ptr<physics::Collider> collider;
-        scene::GameObject* gameObject = nullptr;
-        math::Vector4 color;
-    };
-
     struct VisualAssets
     {
         std::shared_ptr<renderer::Mesh> cube;
@@ -89,15 +81,12 @@ namespace
         return go;
     }
 
-    std::shared_ptr<physics::RigidBody> AddSphere(physics::World& world,
-                                                  scene::Scene& scene,
-                                                  std::vector<BodyDebug>& debugBodies,
+    std::shared_ptr<physics::RigidBody> AddSphere(scene::Scene& scene,
                                                   const VisualAssets& assets,
                                                   const char* name,
                                                   const math::Vector3& position,
                                                   float radius,
                                                   float mass,
-                                                  const math::Vector4& color,
                                                   bool isStatic = false)
     {
         auto body = std::make_shared<physics::RigidBody>();
@@ -109,19 +98,15 @@ namespace
                                           position, math::Vector3::ONE * (radius * 2.0f));
         go.AddComponent<scene::RigidBodyComponent>({ body, true });
         go.AddComponent<scene::ColliderComponent>({ collider, physics::PhysicsMaterial::Default, false, true });
-        debugBodies.push_back({ body, collider, &go, color });
         return body;
     }
 
-    std::shared_ptr<physics::RigidBody> AddBox(physics::World& world,
-                                               scene::Scene& scene,
-                                               std::vector<BodyDebug>& debugBodies,
+    std::shared_ptr<physics::RigidBody> AddBox(scene::Scene& scene,
                                                const VisualAssets& assets,
                                                const char* name,
                                                const math::Vector3& position,
                                                const math::Vector3& halfExtents,
                                                float mass,
-                                               const math::Vector4& color,
                                                bool isStatic = false)
     {
         auto body = std::make_shared<physics::RigidBody>();
@@ -133,20 +118,16 @@ namespace
                                           position, halfExtents * 2.0f);
         go.AddComponent<scene::RigidBodyComponent>({ body, true });
         go.AddComponent<scene::ColliderComponent>({ collider, physics::PhysicsMaterial::Default, false, true });
-        debugBodies.push_back({ body, collider, &go, color });
         return body;
     }
 
-    std::shared_ptr<physics::RigidBody> AddCapsule(physics::World& world,
-                                                  scene::Scene& scene,
-                                                  std::vector<BodyDebug>& debugBodies,
+    std::shared_ptr<physics::RigidBody> AddCapsule(scene::Scene& scene,
                                                   const VisualAssets& assets,
                                                   const char* name,
                                                   const math::Vector3& position,
                                                   float radius,
                                                   float halfHeight,
-                                                  float mass,
-                                                  const math::Vector4& color)
+                                                  float mass)
     {
         auto body = std::make_shared<physics::RigidBody>();
         body->SetPosition(position);
@@ -156,40 +137,102 @@ namespace
                                           position, { radius * 4.0f, (halfHeight + radius) * 2.0f, radius * 4.0f });
         go.AddComponent<scene::RigidBodyComponent>({ body, true });
         go.AddComponent<scene::ColliderComponent>({ collider, physics::PhysicsMaterial::Default, false, true });
-        debugBodies.push_back({ body, collider, &go, color });
         return body;
     }
 
-    void SyncVisuals(const std::vector<BodyDebug>& debugBodies)
+    void DrawColliderShape(renderer::IRenderer& renderer,
+                           const scene::Transform& transform,
+                           const scene::ColliderComponent& colliderComponent,
+                           const math::Vector4& color)
     {
-        for (const BodyDebug& debug : debugBodies)
-        {
-            if (!debug.gameObject) continue;
-            debug.gameObject->transform.localPosition = debug.body->GetPosition();
-            debug.gameObject->transform.localRotation = debug.body->GetRotation();
-        }
-    }
-
-    void DrawBody(renderer::IRenderer& renderer, const BodyDebug& debug)
-    {
-        const auto collider = debug.collider;
+        const auto& collider = colliderComponent.collider;
         if (!collider) return;
 
-        const math::Vector3 position = debug.body->GetPosition();
+        const math::Vector3 position = transform.position;
         if (collider->GetType() == physics::ColliderType::SPHERE)
         {
             auto* sphere = static_cast<physics::SphereCollider*>(collider.get());
-            renderer::DebugDraw::Sphere(renderer, position, sphere->m_radius, debug.color);
+            renderer::DebugDraw::Sphere(renderer, position, sphere->m_radius, color);
         }
         else if (collider->GetType() == physics::ColliderType::AABB)
         {
             auto* box = static_cast<physics::AABBCollider*>(collider.get());
-            renderer::DebugDraw::Box(renderer, position, box->m_halfExtents, debug.color);
+            renderer::DebugDraw::Box(renderer, position, box->m_halfExtents, transform.rotation, color);
         }
         else if (collider->GetType() == physics::ColliderType::CAPSULE)
         {
             auto* capsule = static_cast<physics::CapsuleCollider*>(collider.get());
-            renderer::DebugDraw::Capsule(renderer, position, capsule->m_radius, capsule->m_halfHeight, debug.color);
+            renderer::DebugDraw::Capsule(renderer, position, capsule->m_radius, capsule->m_halfHeight, transform.rotation, color);
+        }
+    }
+
+    void DrawSceneColliders(renderer::IRenderer& renderer, scene::Scene& scene)
+    {
+        for (auto [tf, collider] : scene.View<scene::Transform, scene::ColliderComponent>())
+        {
+            if (!collider.enabled || !collider.collider) continue;
+            const math::Vector4 color = collider.isTrigger
+                ? math::Vector4{ 0.2f, 0.7f, 1.0f, 1.0f }
+                : math::Vector4{ 0.2f, 1.0f, 0.45f, 1.0f };
+            DrawColliderShape(renderer, tf, collider, color);
+        }
+    }
+
+    void DrawSpotRange(renderer::IRenderer& renderer,
+                       const math::Vector3& position,
+                       const math::Vector3& direction,
+                       float range,
+                       float outerConeDegrees,
+                       const math::Vector4& color)
+    {
+        if (range <= 0.0f) return;
+
+        constexpr int kSegments = 24;
+        constexpr float kPi = 3.14159265358979f;
+        constexpr float kDegToRad = kPi / 180.0f;
+
+        const math::Vector3 forward = direction.Normalized();
+        math::Vector3 right = math::Vector3::Cross(math::Vector3::UP, forward);
+        if (right.LengthSq() < 1e-5f)
+            right = math::Vector3::Cross(math::Vector3::RIGHT, forward);
+        right = right.Normalized();
+        const math::Vector3 up = math::Vector3::Cross(forward, right).Normalized();
+
+        const math::Vector3 center = position + forward * range;
+        const float radius = std::tan(outerConeDegrees * kDegToRad) * range;
+        math::Vector3 first = center + right * radius;
+        math::Vector3 prev = first;
+        for (int i = 1; i <= kSegments; ++i)
+        {
+            const float angle = (2.0f * kPi * static_cast<float>(i)) / static_cast<float>(kSegments);
+            const math::Vector3 next = center
+                + right * (std::cos(angle) * radius)
+                + up * (std::sin(angle) * radius);
+            renderer::DebugDraw::Line(renderer, prev, next, color);
+            prev = next;
+        }
+
+        renderer::DebugDraw::Line(renderer, position, first, color);
+        renderer::DebugDraw::Line(renderer, position, center + right * -radius, color);
+        renderer::DebugDraw::Line(renderer, position, center + up * radius, color);
+        renderer::DebugDraw::Line(renderer, position, center + up * -radius, color);
+    }
+
+    void DrawLightRanges(renderer::IRenderer& renderer, scene::Scene& scene)
+    {
+        for (auto [tf, light] : scene.View<scene::Transform, scene::LightComponent>())
+        {
+            if (!light.enabled || light.type == scene::LightComponent::Type::Directional) continue;
+
+            const math::Vector4 color = { light.color.x, light.color.y, light.color.z, 1.0f };
+            if (light.type == scene::LightComponent::Type::Point)
+            {
+                renderer::DebugDraw::Sphere(renderer, tf.position, light.range, color);
+            }
+            else if (light.type == scene::LightComponent::Type::Spot)
+            {
+                DrawSpotRange(renderer, tf.position, tf.Forward(), light.range, light.outerCone, color);
+            }
         }
     }
 } // namespace
@@ -211,6 +254,7 @@ int main()
 
     auto scene = std::make_unique<scene::Scene>();
     editorApp.GetContext().activeScene = scene.get();
+    editorApp.GetContext().showColliders = true;
 
     VisualAssets assets;
     assets.cube = renderer::PrimitiveMesh::Cube(resources);
@@ -223,24 +267,56 @@ int main()
     light.transform.localRotation = math::Quaternion::LookRotation({ 0.35f, -0.75f, 0.55f });
     light.AddComponent<scene::LightComponent>({});
 
+    auto& pointLight = scene->CreateGameObject("PointLight_DebugRange");
+    pointLight.transform.localPosition = { -6.0f, 4.0f, -2.0f };
+    scene::LightComponent pointLightComponent{};
+    pointLightComponent.type = scene::LightComponent::Type::Point;
+    pointLightComponent.color = { 0.25f, 0.65f, 1.0f };
+    pointLightComponent.range = 4.0f;
+    pointLight.AddComponent<scene::LightComponent>(pointLightComponent);
+
+    auto& spotLight = scene->CreateGameObject("SpotLight_DebugRange");
+    spotLight.transform.localPosition = { 6.0f, 5.0f, -4.0f };
+    spotLight.transform.localRotation = math::Quaternion::LookRotation(math::Vector3{ -0.2f, -0.6f, 1.0f }.Normalized());
+    scene::LightComponent spotLightComponent{};
+    spotLightComponent.type = scene::LightComponent::Type::Spot;
+    spotLightComponent.color = { 1.0f, 0.75f, 0.25f };
+    spotLightComponent.range = 6.0f;
+    spotLightComponent.outerCone = 25.0f;
+    spotLight.AddComponent<scene::LightComponent>(spotLightComponent);
+
     auto& mainCamera = scene->CreateGameObject("MainCamera");
     mainCamera.transform.localPosition = { 0.0f, 4.0f, -12.0f };
     mainCamera.transform.localRotation = math::Quaternion::LookRotation(math::Vector3{ 0.0f, -0.22f, 1.0f }.Normalized());
     mainCamera.AddComponent<scene::CameraComponent>({});
 
-    std::vector<BodyDebug> bodies;
-    AddBox(world, *scene, bodies, assets, "Ground", { 0.0f, -0.5f, 0.0f }, { 26.0f, 0.5f, 16.0f }, 0.0f, { 0.45f, 0.45f, 0.45f, 1.0f }, true);
+    AddBox(*scene, assets, "Ground", { 0.0f, -0.5f, 0.0f }, { 26.0f, 0.5f, 16.0f }, 0.0f, true);
 
-    auto capsule = AddCapsule(world, *scene, bodies, assets, "CapsuleToSphere", { -18.0f, 4.0f, 7.0f }, 0.25f, 0.6f, 1.0f, { 1.0f, 0.85f, 0.2f, 1.0f });
-    auto capsuleTarget = AddSphere(world, *scene, bodies, assets, "CapsuleSphereTarget", { -15.6f, 1.0f, 7.0f }, 0.32f, 1.0f, { 1.0f, 0.55f, 0.2f, 1.0f });
-    auto capsulePairA = AddCapsule(world, *scene, bodies, assets, "CapsulePairA", { -11.0f, 3.5f, 7.0f }, 0.22f, 0.55f, 1.0f, { 1.0f, 0.95f, 0.35f, 1.0f });
-    auto capsulePairB = AddCapsule(world, *scene, bodies, assets, "CapsulePairB", { -9.6f, 3.5f, 7.0f }, 0.22f, 0.55f, 1.0f, { 1.0f, 0.65f, 0.25f, 1.0f });
+    auto& rotatedBox = AddVisual(*scene,
+                                 "RotatedBox_DebugOBB",
+                                 assets.cube,
+                                 "primitive:cube",
+                                 assets.whiteMaterial,
+                                 { 0.0f, 1.0f, 4.0f },
+                                 { 1.8f, 0.8f, 1.2f });
+    rotatedBox.transform.localRotation = math::Quaternion::FromEuler({ 0.0f, 0.65f, 0.35f });
+    rotatedBox.AddComponent<scene::ColliderComponent>({
+        std::make_shared<physics::AABBCollider>(math::Vector3{ 0.9f, 0.4f, 0.6f }),
+        physics::PhysicsMaterial::Default,
+        false,
+        true
+    });
 
-    auto gravityBody = AddSphere(world, *scene, bodies, assets, "GravityAreaBody", { -14.0f, 3.8f, 0.0f }, 0.28f, 1.0f, { 0.2f, 0.7f, 1.0f, 1.0f });
-    auto vortexBody = AddSphere(world, *scene, bodies, assets, "VortexAreaBody", { -8.0f, 3.5f, 0.9f }, 0.28f, 1.0f, { 0.9f, 0.35f, 1.0f, 1.0f });
-    auto buoyantBody = AddSphere(world, *scene, bodies, assets, "BuoyancyAreaBody", { -2.0f, 1.3f, 0.0f }, 0.28f, 0.8f, { 0.2f, 1.0f, 0.8f, 1.0f });
-    auto timeBody = AddSphere(world, *scene, bodies, assets, "TimeDilationAreaBody", { 4.0f, 3.2f, 0.0f }, 0.28f, 1.0f, { 0.7f, 0.7f, 1.0f, 1.0f });
-    auto magneticBody = AddSphere(world, *scene, bodies, assets, "MagneticAreaBody", { 8.0f, 3.0f, -0.9f }, 0.28f, 1.0f, { 1.0f, 0.35f, 0.35f, 1.0f });
+    auto capsule = AddCapsule(*scene, assets, "CapsuleToSphere", { -18.0f, 4.0f, 7.0f }, 0.25f, 0.6f, 1.0f);
+    auto capsuleTarget = AddSphere(*scene, assets, "CapsuleSphereTarget", { -15.6f, 1.0f, 7.0f }, 0.32f, 1.0f);
+    auto capsulePairA = AddCapsule(*scene, assets, "CapsulePairA", { -11.0f, 3.5f, 7.0f }, 0.22f, 0.55f, 1.0f);
+    auto capsulePairB = AddCapsule(*scene, assets, "CapsulePairB", { -9.6f, 3.5f, 7.0f }, 0.22f, 0.55f, 1.0f);
+
+    auto gravityBody = AddSphere(*scene, assets, "GravityAreaBody", { -14.0f, 3.8f, 0.0f }, 0.28f, 1.0f);
+    auto vortexBody = AddSphere(*scene, assets, "VortexAreaBody", { -8.0f, 3.5f, 0.9f }, 0.28f, 1.0f);
+    auto buoyantBody = AddSphere(*scene, assets, "BuoyancyAreaBody", { -2.0f, 1.3f, 0.0f }, 0.28f, 0.8f);
+    auto timeBody = AddSphere(*scene, assets, "TimeDilationAreaBody", { 4.0f, 3.2f, 0.0f }, 0.28f, 1.0f);
+    auto magneticBody = AddSphere(*scene, assets, "MagneticAreaBody", { 8.0f, 3.0f, -0.9f }, 0.28f, 1.0f);
     magneticBody->m_charge = 8.0f;
     magneticBody->SetVelocity({ 2.0f, 0.0f, 0.0f });
 
@@ -315,31 +391,31 @@ int main()
         true
     });
     explosionVolume.AddComponent<scene::VolumeComponent>({ .type = physics::VolumeType::Explosion, .explosionImpulse = 4.0f, .duration = 0.05f });
-    auto explosionBody = AddSphere(world, *scene, bodies, assets, "ExplosionAreaBody", { 14.6f, 1.7f, 0.0f }, 0.28f, 1.0f, { 1.0f, 0.7f, 0.2f, 1.0f });
+    AddSphere(*scene, assets, "ExplosionAreaBody", { 14.6f, 1.7f, 0.0f }, 0.28f, 1.0f);
 
-    auto springA = AddSphere(world, *scene, bodies, assets, "SpringAnchor", { -18.0f, 4.2f, -8.0f }, 0.22f, 0.0f, { 0.4f, 1.0f, 0.4f, 1.0f }, true);
-    auto springB = AddSphere(world, *scene, bodies, assets, "SpringBody", { -16.5f, 4.2f, -8.0f }, 0.22f, 1.0f, { 0.4f, 1.0f, 0.4f, 1.0f });
+    auto springA = AddSphere(*scene, assets, "SpringAnchor", { -18.0f, 4.2f, -8.0f }, 0.22f, 0.0f, true);
+    auto springB = AddSphere(*scene, assets, "SpringBody", { -16.5f, 4.2f, -8.0f }, 0.22f, 1.0f);
     world.AddConstraint(std::make_shared<physics::SpringConstraint>(springA.get(), springB.get(), 1.5f, 18.0f, 1.0f));
 
-    auto ropeA = AddSphere(world, *scene, bodies, assets, "RopeAnchor", { -10.0f, 4.8f, -8.0f }, 0.22f, 0.0f, { 1.0f, 0.7f, 0.2f, 1.0f }, true);
-    auto ropeB = AddSphere(world, *scene, bodies, assets, "RopeBody", { -8.2f, 3.8f, -8.0f }, 0.22f, 1.0f, { 1.0f, 0.7f, 0.2f, 1.0f });
+    auto ropeA = AddSphere(*scene, assets, "RopeAnchor", { -10.0f, 4.8f, -8.0f }, 0.22f, 0.0f, true);
+    auto ropeB = AddSphere(*scene, assets, "RopeBody", { -8.2f, 3.8f, -8.0f }, 0.22f, 1.0f);
     world.AddConstraint(std::make_shared<physics::RopeConstraint>(ropeA.get(), ropeB.get(), 2.1f));
 
-    auto distanceA = AddSphere(world, *scene, bodies, assets, "DistanceBodyA", { -2.0f, 4.0f, -8.0f }, 0.22f, 1.0f, { 0.35f, 0.55f, 1.0f, 1.0f });
-    auto distanceB = AddSphere(world, *scene, bodies, assets, "DistanceBodyB", { -0.4f, 4.0f, -8.0f }, 0.22f, 1.0f, { 0.35f, 0.55f, 1.0f, 1.0f });
+    auto distanceA = AddSphere(*scene, assets, "DistanceBodyA", { -2.0f, 4.0f, -8.0f }, 0.22f, 1.0f);
+    auto distanceB = AddSphere(*scene, assets, "DistanceBodyB", { -0.4f, 4.0f, -8.0f }, 0.22f, 1.0f);
     world.AddConstraint(std::make_shared<physics::DistanceConstraint>(distanceA.get(), distanceB.get(), 1.6f));
 
     std::vector<physics::RigidBody*> chainNodes;
     for (int i = 0; i < 5; ++i)
     {
-        auto node = AddSphere(world, *scene, bodies, assets, "ChainNode", { 6.0f + i * 0.65f, 4.8f - i * 0.22f, -8.0f }, 0.18f,
-                              i == 0 ? 0.0f : 1.0f, { 0.8f, 0.45f, 1.0f, 1.0f }, i == 0);
+        auto node = AddSphere(*scene, assets, "ChainNode", { 6.0f + i * 0.65f, 4.8f - i * 0.22f, -8.0f }, 0.18f,
+                              i == 0 ? 0.0f : 1.0f, i == 0);
         chainNodes.push_back(node.get());
     }
     world.AddConstraint(std::make_shared<physics::ChainConstraint>(chainNodes, 0.7f, 6));
 
-    auto hingeA = AddBox(world, *scene, bodies, assets, "HingeAnchor", { 15.0f, 3.0f, -8.0f }, { 0.25f, 0.25f, 0.25f }, 0.0f, { 1.0f, 0.45f, 0.45f, 1.0f }, true);
-    auto hingeB = AddBox(world, *scene, bodies, assets, "HingeBody", { 15.95f, 3.0f, -8.0f }, { 0.7f, 0.18f, 0.18f }, 1.0f, { 1.0f, 0.45f, 0.45f, 1.0f });
+    auto hingeA = AddBox(*scene, assets, "HingeAnchor", { 15.0f, 3.0f, -8.0f }, { 0.25f, 0.25f, 0.25f }, 0.0f, true);
+    auto hingeB = AddBox(*scene, assets, "HingeBody", { 15.95f, 3.0f, -8.0f }, { 0.7f, 0.18f, 0.18f }, 1.0f);
     hingeB->ApplyAngularImpulse({ 0.0f, 0.0f, 3.0f });
     world.AddConstraint(std::make_shared<physics::HingeConstraint>(
         hingeA.get(),
@@ -363,7 +439,7 @@ int main()
 
     renderer::DebugCamera debugCamera;
     debugCamera.camera.m_position = { 0.0f, 10.0f, -26.0f };
-    debugCamera.camera.m_aspect = 1280.0f / 720.0f;
+    debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
     debugCamera.LookAt({ 0.0f, 2.2f, 0.0f });
     editorApp.GetContext().editorCamera = &debugCamera.camera;
 
@@ -422,16 +498,12 @@ int main()
                             sceneRT,
                             &editorApp.GetContext().renderSettings);
 
+        auto& editorContext = editorApp.GetContext();
         renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
-        renderer::DebugDraw::Box(renderer, { -14.0f, 1.7f, 0.0f }, { 1.1f, 2.2f, 1.1f }, { 0.2f, 0.55f, 1.0f, 1.0f });
-        renderer::DebugDraw::Box(renderer, { -8.0f, 1.6f, 0.0f }, { 1.25f, 2.0f, 1.25f }, { 0.9f, 0.35f, 1.0f, 1.0f });
-        renderer::DebugDraw::Box(renderer, { -2.0f, 0.8f, 0.0f }, { 1.1f, 0.8f, 1.1f }, { 0.2f, 1.0f, 0.8f, 1.0f });
-        renderer::DebugDraw::Sphere(renderer, { 4.0f, 1.6f, 0.0f }, 1.15f, { 1.0f, 0.35f, 0.35f, 1.0f });
-        renderer::DebugDraw::Box(renderer, { 8.0f, 1.6f, 0.0f }, { 1.2f, 1.7f, 1.2f }, { 1.0f, 0.2f, 0.2f, 1.0f });
-        renderer::DebugDraw::Sphere(renderer, { 14.0f, 1.7f, 0.0f }, 1.25f, { 1.0f, 0.7f, 0.2f, 1.0f });
-
-        for (const BodyDebug& body : bodies)
-            DrawBody(renderer, body);
+        if (editorContext.showColliders)
+            DrawSceneColliders(renderer, *scene);
+        if (editorContext.showLightRange)
+            DrawLightRanges(renderer, *scene);
 
         renderer::DebugDraw::Line(renderer, springA->GetPosition(), springB->GetPosition(), { 0.4f, 1.0f, 0.4f, 1.0f });
         renderer::DebugDraw::Line(renderer, ropeA->GetPosition(), ropeB->GetPosition(), { 1.0f, 0.7f, 0.2f, 1.0f });
