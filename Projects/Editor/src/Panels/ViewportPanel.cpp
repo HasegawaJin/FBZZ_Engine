@@ -120,6 +120,46 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     return false;
 }
 
+void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
+{
+    if (!ctx.editorCamera) return;
+
+    constexpr float kSize = 120.0f;
+    const ImVec2 pos = { viewportMin.x + viewportSize.x - kSize - 8.0f, viewportMin.y + 8.0f };
+
+    math::Matrix4 viewCol = ToColumnMajor(ctx.editorCamera->GetViewMatrix());
+
+    ImGuizmo::SetDrawlist();
+    ImGuizmo::SetRect(viewportMin.x, viewportMin.y, viewportSize.x, viewportSize.y);
+
+    const float dist = ctx.editorCamera->m_position.Length();
+    ImGuizmo::ViewManipulate(
+        &viewCol.m[0][0],
+        (dist > 0.1f ? dist : 10.0f),
+        pos, { kSize, kSize },
+        0x40000000);
+
+    if (!ImGuizmo::IsUsingViewManipulate()) return;
+
+    // column-major → row-major に戻す
+    const math::Matrix4 viewRow = math::Matrix4::Transpose(viewCol);
+
+    // カメラ位置: pos = -R^T * t  (view の 3x3 = R^T, t = viewRow の平行移動列)
+    const float tx = viewRow.m[0][3], ty = viewRow.m[1][3], tz = viewRow.m[2][3];
+    ctx.editorCamera->m_position = {
+        -(viewRow.m[0][0]*tx + viewRow.m[1][0]*ty + viewRow.m[2][0]*tz),
+        -(viewRow.m[0][1]*tx + viewRow.m[1][1]*ty + viewRow.m[2][1]*tz),
+        -(viewRow.m[0][2]*tx + viewRow.m[1][2]*ty + viewRow.m[2][2]*tz)
+    };
+
+    // カメラ回転: ワールド回転行列の列 = view の 3x3 の行 → 転置して FromMatrix4
+    math::Matrix4 rotMat = math::Matrix4::Identity();
+    rotMat.m[0][0] = viewRow.m[0][0]; rotMat.m[0][1] = viewRow.m[1][0]; rotMat.m[0][2] = viewRow.m[2][0];
+    rotMat.m[1][0] = viewRow.m[0][1]; rotMat.m[1][1] = viewRow.m[1][1]; rotMat.m[1][2] = viewRow.m[2][1];
+    rotMat.m[2][0] = viewRow.m[0][2]; rotMat.m[2][1] = viewRow.m[1][2]; rotMat.m[2][2] = viewRow.m[2][2];
+    ctx.editorCamera->m_rotation = math::Quaternion::FromMatrix4(rotMat);
+}
+
 void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
 {
     scene::EntityID selected = ctx.PrimarySelected();
@@ -371,12 +411,15 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     const bool inPlayOrPause = ctx.playMode && !ctx.playMode->IsInEditor();
 
-    const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
+    const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver()
+                              || ImGuizmo::IsUsingViewManipulate() || ImGuizmo::IsViewManipulateHovered();
     if (isSceneView && !inPlayOrPause && viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse)
         PickEntity(ctx, viewportMin);
 
-    if (isSceneView && !inPlayOrPause)
+    if (isSceneView && !inPlayOrPause) {
         DrawGizmo(ctx, viewportMin, size);
+        DrawOrientationGizmo(ctx, viewportMin, size);
+    }
 
     // Play / Pause 中はボーダーで状態を示す
     if (isGameView && ctx.playMode && ctx.playMode->IsPlaying())
