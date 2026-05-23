@@ -2,6 +2,7 @@
 // Quaternion.cpp | fbzz::math
 // クォータニオンの演算実装
 #include "Math/Quaternion.hpp"
+#include "Math/Matrix4.hpp"
 #include "Math/MathUtils.hpp"
 #include <cmath>
 #include <cassert>
@@ -56,6 +57,37 @@ Quaternion Quaternion::LookRotation(const Vector3& forward, const Vector3& up) {
     } else {
         float s = 2.0f * std::sqrt(1.0f + f.z - r.x - u.y);
         return {(f.x + r.z) / s, (u.z + f.y) / s, 0.25f * s, (r.y - u.x) / s};
+    }
+}
+
+// Shepperd's method: extracts rotation from a pure rotation matrix (no scale/translation).
+// m[row][col], column-vector convention: column i = rotated basis vector i.
+Quaternion Quaternion::FromMatrix4(const Matrix4& m) {
+    float trace = m.m[0][0] + m.m[1][1] + m.m[2][2];
+    if (trace > 0.0f) {
+        float s = 2.0f * std::sqrt(trace + 1.0f); // s = 4w
+        return { (m.m[2][1] - m.m[1][2]) / s,
+                 (m.m[0][2] - m.m[2][0]) / s,
+                 (m.m[1][0] - m.m[0][1]) / s,
+                 s * 0.25f };
+    } else if (m.m[0][0] > m.m[1][1] && m.m[0][0] > m.m[2][2]) {
+        float s = 2.0f * std::sqrt(1.0f + m.m[0][0] - m.m[1][1] - m.m[2][2]); // s = 4x
+        return { s * 0.25f,
+                 (m.m[0][1] + m.m[1][0]) / s,
+                 (m.m[0][2] + m.m[2][0]) / s,
+                 (m.m[2][1] - m.m[1][2]) / s };
+    } else if (m.m[1][1] > m.m[2][2]) {
+        float s = 2.0f * std::sqrt(1.0f + m.m[1][1] - m.m[0][0] - m.m[2][2]); // s = 4y
+        return { (m.m[0][1] + m.m[1][0]) / s,
+                 s * 0.25f,
+                 (m.m[1][2] + m.m[2][1]) / s,
+                 (m.m[0][2] - m.m[2][0]) / s };
+    } else {
+        float s = 2.0f * std::sqrt(1.0f + m.m[2][2] - m.m[0][0] - m.m[1][1]); // s = 4z
+        return { (m.m[0][2] + m.m[2][0]) / s,
+                 (m.m[1][2] + m.m[2][1]) / s,
+                 s * 0.25f,
+                 (m.m[1][0] - m.m[0][1]) / s };
     }
 }
 
