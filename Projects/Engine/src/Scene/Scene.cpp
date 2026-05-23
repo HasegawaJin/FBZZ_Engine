@@ -209,6 +209,13 @@ void Scene::RemoveAllComponents(EntityID id)
     }, m_arrays);
 }
 
+void Scene::DuplicateComponents(EntityID src, EntityID dst)
+{
+    std::apply([&](auto&... arrs) {
+        (..., CopyIfHas(arrs, src, dst));
+    }, m_arrays);
+}
+
 void Scene::FixupOwnership()
 {
     for (auto& go : m_gameObjects) {
