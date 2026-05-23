@@ -1,6 +1,6 @@
 # FBZZ Engine — 未実装・不足機能一覧
 
-最終更新: 2026-05-23（feature/layer-system 反映）  
+最終更新: 2026-05-23（develop 実装済み項目を全反映）  
 調査対象ブランチ: `develop`
 
 ---
@@ -19,8 +19,8 @@
 
 | # | 機能 | 場所 | 欠けている部分 |
 |---|------|------|--------------|
-| B-1 | showColliders 描画 | `EditorContext` に `bool showColliders = false` が存在 | Viewport の描画ループで `DebugDraw::Box/Sphere` を呼ぶコードが未接続 |
-| B-2 | showLightRange 描画 | `EditorContext` に `bool showLightRange = true` が存在 | PointLight / SpotLight の範囲球・コーンを DebugDraw で描く処理が未接続 |
+| B-1 | showColliders 描画 | `EditorContext` に `bool showColliders = false` が存在 | **実装済み** — `feature/debug-draw` で Viewport 描画ループに `DebugDraw::Box/Sphere` を接続済み |
+| B-2 | showLightRange 描画 | `EditorContext` に `bool showLightRange = true` が存在 | **実装済み** — `feature/debug-draw` で PointLight / SpotLight の範囲球・コーンを DebugDraw で描画済み |
 | B-3 | 音声システム | `Engine/src/Audio/XAudio2Device.cpp` | 3D 音声定位・リバーブ等エフェクト・ストリーミング再生が未実装。2D BGM / SE のみ動作 |
 
 ---
@@ -61,7 +61,7 @@
 | D-2-1 | TriangleMeshCollider | 任意の三角形メッシュとの衝突。地形・建物に必須 | 中 |
 | D-2-2 | ConvexHullCollider | 任意形状の凸コライダー（GJK / EPA ベース） | 中 |
 | D-2-3 | CCD (Continuous Collision Detection) | 高速オブジェクトが薄い壁をすり抜けない仕組み | 中 |
-| D-2-4 | Trigger / Collision イベント通知 | `isTrigger` フラグは存在するが、PhysicsSystem が衝突ペアを Script に通知するパイプラインが未実装。Script 側コールバックは D-9-1 / D-9-2 を参照 | 中 |
+| D-2-4 | Trigger / Collision イベント通知 | `isTrigger` フラグは存在するが、PhysicsSystem が衝突ペアを Script に通知するパイプラインが未実装。Script 側コールバックは D-9-1 / D-9-2 を参照 | **実装済み** (`feature/collision-events`) |
 
 ### D-3. 数学ライブラリ
 
@@ -75,8 +75,8 @@
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
-| D-4-1 | Scene Hot Reload | TOML ファイルの変更を検知し自動再読み込み。設計方針「TOML + AI → Hot Reload → Viewport」に明記されているが未実装 | 高 |
-| D-4-2 | SceneHierarchyPanel 右クリックメニュー | GameObject 追加 / 削除 / Duplicate。設計書に記載あり。実装状況を要確認 | 中 |
+| D-4-1 | Scene Hot Reload | TOML ファイルの変更を検知し自動再読み込み。設計方針「TOML + AI → Hot Reload → Viewport」に明記されているが未実装 | **実装済み** (`feature/editor`) |
+| D-4-2 | SceneHierarchyPanel 右クリックメニュー | GameObject 追加 / 削除 / Duplicate。設計書に記載あり。実装状況を要確認 | **実装済み** (`feature/editor`) |
 | D-4-3 | Shader 切り替え UI | InspectorPanel > MeshRenderer でシェーダーファイルを差し替える UI | 中 |
 | D-4-4 | テクスチャプレビュー | AssetBrowserPanel でサムネイル表示。現状はファイル名テキストのみ | 低 |
 
@@ -113,7 +113,7 @@
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
-| D-7-1 | OBB 描画（回転付き Box） | `Box(center, halfExtents, rotation: Quaternion, color)` のオーバーロード追加。コライダー・オブジェクトの向きを正しく表示するために必須 | 高 |
+| D-7-1 | OBB 描画（回転付き Box） | `Box(center, halfExtents, rotation: Quaternion, color)` のオーバーロード追加。コライダー・オブジェクトの向きを正しく表示するために必須 | **実装済み** (`feature/debug-draw`) |
 | D-7-2 | Arrow（方向ベクトル） | `Arrow(origin, direction, length, color)` — velocity・force・法線の可視化。Line + 小コーンで実装 | 中 |
 | D-7-3 | Axes（座標軸） | `Axes(origin, rotation, size)` — Transform の軸を RGB 3 本の Arrow で描画。現状は呼び出し側が毎回 `Line` 3 本を手書き | 中 |
 | D-7-4 | Cone（コーン） | `Cone(apex, direction, halfAngle, height, color)` — SpotLight の照射範囲可視化（B-2）に必要 | 中 |
@@ -127,8 +127,8 @@
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
-| D-9-1 | OnCollisionEnter / Stay / Exit | 衝突検出は `PhysicsSystem` で動作しているが、Script へのイベント通知パイプラインが未実装。`World::Step` 後の接触ペアを取得し、前フレームとの差分から Enter / Stay / Exit を判定して該当 Script のメソッドを呼ぶ仕組みが必要 | 高 |
-| D-9-2 | OnTriggerEnter / Stay / Exit | `isTrigger` フラグは存在（D-2-4 参照）するが、Script 基底クラスへのコールバックが未定義。D-9-1 と同じ通知パイプラインで実現可能 | 高 |
+| D-9-1 | OnCollisionEnter / Stay / Exit | 衝突検出は `PhysicsSystem` で動作しているが、Script へのイベント通知パイプラインが未実装。`World::Step` 後の接触ペアを取得し、前フレームとの差分から Enter / Stay / Exit を判定して該当 Script のメソッドを呼ぶ仕組みが必要 | **実装済み** (`feature/collision-events`) |
+| D-9-2 | OnTriggerEnter / Stay / Exit | `isTrigger` フラグは存在（D-2-4 参照）するが、Script 基底クラスへのコールバックが未定義。D-9-1 と同じ通知パイプラインで実現可能 | **実装済み** (`feature/collision-events`) |
 | D-9-3 | OnDestroy() ライフサイクル | Script 基底クラスに `OnDestroy` がない。`FlushDestroyQueue` 実行前に Script の後処理（イベント購読解除・ネイティブリソース解放など）を呼ぶ手段が存在しない | 中 |
 | D-9-4 | IReflector — enum / ResourceHandle 型対応 | 現状の `IReflector::Field` は `float` / `int` / `bool` / `Vector3` / `Vector4` / `Quaternion` / `string` の 7 型のみ。`enum class` や `ResourceHandle<T>`（テクスチャ・メッシュ参照）をフィールドとして宣言・Inspector 編集・TOML 保存できない | 中 |
 | D-9-5 | 1 GameObject に複数 Script アタッチ | `ComponentArray` の制約上、`ScriptComponent` は 1 エンティティにつき 1 つまで。Unity 相当の複数スクリプトが必要な場合は内部で `Composite Script` パターンを使うか、ECS 側で複数コンポーネント対応が必要 | 低 |
@@ -153,6 +153,6 @@
 | 優先度 | 項目 |
 |--------|------|
 | 今すぐ | — (A-1〜A-3 はすべて解消済み) |
-| 近い将来 | B-1, B-2, D-4-1, D-4-2, D-5-1, D-5-2, D-5-3, D-7-1 (OBB), D-9-1, D-9-2 |
+| 近い将来 | D-5-1, D-5-2, D-5-3 |
 | Step 7 | C-1 〜 C-6, D-6-1, D-9-6 |
 | 余裕があれば | D-1-1 〜 D-4-4, D-5-4 〜 D-5-9, D-6-2 〜 D-6-6, D-7-2 〜 D-7-7, D-9-3 〜 D-9-5 |

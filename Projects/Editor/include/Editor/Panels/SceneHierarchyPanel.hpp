@@ -3,6 +3,7 @@
 // シーン内 GameObject をツリー表示し選択状態を EditorContext に書き込む
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
+#include <Engine/Scene/Entity.hpp>
 
 namespace fbzz::editor {
 
@@ -12,6 +13,10 @@ public:
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
+
+private:
+    // SetParent 成功後、次フレームで強制 open するノードの EntityID
+    scene::EntityID m_pendingExpand;
 };
 
 } // namespace fbzz::editor
