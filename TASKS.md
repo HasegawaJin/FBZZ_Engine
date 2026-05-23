@@ -130,3 +130,4 @@
 | 2026-05-23 | Connect MissingFeatures B-1/B-2 showColliders and showLightRange debug drawing | Done |
 | 2026-05-23 | Fix Capsule-Capsule closest-point contact torque bias | Done |
 | 2026-05-23 | Implement MissingFeatures D-9-1/D-9-2 collision and trigger script callbacks | Done |
+| 2026-05-23 | Implement feature/layer-system GameObject layers, culling masks, physics filtering, serializer, and Inspector UI | Done |
