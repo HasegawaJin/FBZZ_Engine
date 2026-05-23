@@ -16,10 +16,10 @@
 #include <Math/MathUtils.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
+#include <Math/Ray.hpp>
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <algorithm>
-#include <cmath>
 
 namespace fbzz::editor {
 
@@ -30,30 +30,15 @@ math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor)
     return math::Matrix4::Transpose(rowMajor);
 }
 
-math::Vector3 ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin)
+math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin)
 {
     ImVec2 mouse = ImGui::GetMousePos();
-    float vx = mouse.x - viewportMin.x;
-    float vy = mouse.y - viewportMin.y;
+    float nx = ((mouse.x - viewportMin.x) / ctx.viewportWidth)  * 2.0f - 1.0f;
+    float ny = 1.0f - ((mouse.y - viewportMin.y) / ctx.viewportHeight) * 2.0f;
 
-    float nx = (vx / ctx.viewportWidth) * 2.0f - 1.0f;
-    float ny = 1.0f - (vy / ctx.viewportHeight) * 2.0f;
-
-    const math::Matrix4 view = ctx.editorCamera->GetViewMatrix();
-    const math::Matrix4 proj = ctx.editorCamera->GetProjectionMatrix();
-    const math::Matrix4 invVP = math::Matrix4::Inverse(proj * view);
-
-    math::Vector4 nearClip = { nx, ny, 0.0f, 1.0f };
-    math::Vector4 farClip = { nx, ny, 1.0f, 1.0f };
-
-    math::Vector4 nearWorld4 = invVP * nearClip;
-    math::Vector4 farWorld4 = invVP * farClip;
-    if (!math::NearlyZero(nearWorld4.w)) nearWorld4 = nearWorld4 * (1.0f / nearWorld4.w);
-    if (!math::NearlyZero(farWorld4.w)) farWorld4 = farWorld4 * (1.0f / farWorld4.w);
-
-    math::Vector3 nearWorld = { nearWorld4.x, nearWorld4.y, nearWorld4.z };
-    math::Vector3 farWorld = { farWorld4.x, farWorld4.y, farWorld4.z };
-    return (farWorld - nearWorld).Normalized();
+    const math::Matrix4 invVP = math::Matrix4::Inverse(
+        ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix());
+    return math::Ray::FromNDC(nx, ny, ctx.editorCamera->m_position, invVP);
 }
 
 void HandleGizmoShortcuts(EditorContext& ctx)
@@ -72,46 +57,23 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
 {
     if (!ctx.activeScene || !ctx.editorCamera) return false;
 
-    const math::Vector3 rayOrigin = ctx.editorCamera->m_position;
-    const math::Vector3 rayDir = ScreenRayFromMouse(ctx, viewportMin);
-    ImVec2 mouse = ImGui::GetMousePos();
+    const math::Ray ray = ScreenRayFromMouse(ctx, viewportMin);
 
-    scene::EntityID best = scene::EntityID::INVALID;
-    float bestT = 1e30f;
+    scene::EntityID best         = scene::EntityID::INVALID;
+    float           bestT        = 1e30f;
     scene::EntityID bestFallback = scene::EntityID::INVALID;
-    float bestFallbackT = 1e30f;
+    float           bestFallbackT = 1e30f;
 
     auto transformPoint = [](const math::Matrix4& m, const math::Vector3& p) {
         math::Vector4 v = m * math::Vector4{ p.x, p.y, p.z, 1.0f };
         if (!math::NearlyZero(v.w)) v = v * (1.0f / v.w);
         return math::Vector3{ v.x, v.y, v.z };
     };
-    auto rayTriangle = [](const math::Vector3& ro, const math::Vector3& rd,
-                          const math::Vector3& v0, const math::Vector3& v1, const math::Vector3& v2,
-                          float& outT) {
-        const float kEps = 1e-6f;
-        math::Vector3 e1 = v1 - v0;
-        math::Vector3 e2 = v2 - v0;
-        math::Vector3 p = math::Vector3::Cross(rd, e2);
-        float det = math::Vector3::Dot(e1, p);
-        if (det > -kEps && det < kEps) return false;
-        float invDet = 1.0f / det;
-        math::Vector3 t = ro - v0;
-        float u = math::Vector3::Dot(t, p) * invDet;
-        if (u < 0.0f || u > 1.0f) return false;
-        math::Vector3 q = math::Vector3::Cross(t, e1);
-        float v = math::Vector3::Dot(rd, q) * invDet;
-        if (v < 0.0f || (u + v) > 1.0f) return false;
-        float hitT = math::Vector3::Dot(e2, q) * invDet;
-        if (hitT <= kEps) return false;
-        outT = hitT;
-        return true;
-    };
 
     for (auto& go : ctx.activeScene->GameObjects()) {
         auto* mr = go.GetComponent<scene::MeshRenderer>();
         if (!mr || !mr->mesh) continue;
-        const auto& verts = mr->mesh->cpuVertices;
+        const auto& verts   = mr->mesh->cpuVertices;
         const auto& indices = mr->mesh->cpuIndices;
         if (verts.empty() || indices.size() < 3) continue;
 
@@ -127,28 +89,18 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
             const math::Vector3 v2 = transformPoint(world, verts[i2].position);
 
             float t = 0.0f;
-            if (rayTriangle(rayOrigin, rayDir, v0, v1, v2, t) && t < bestT) {
+            if (ray.IntersectTriangle(v0, v1, v2, t) && t < bestT) {
                 bestT = t;
-                best = go.GetID();
+                best  = go.GetID();
             }
         }
 
         const math::Vector3 center = go.transform.position;
         const float radius = (std::max)(0.5f, go.transform.worldScale.Length() / 3.0f);
-        math::Vector3 oc = rayOrigin - center;
-        float a = math::Vector3::Dot(rayDir, rayDir);
-        float b = 2.0f * math::Vector3::Dot(oc, rayDir);
-        float c = math::Vector3::Dot(oc, oc) - radius * radius;
-        float disc = b * b - 4.0f * a * c;
-        if (disc >= 0.0f) {
-            float s = std::sqrt(disc);
-            float t0 = (-b - s) / (2.0f * a);
-            float t1 = (-b + s) / (2.0f * a);
-            float t = (t0 > 0.0f) ? t0 : ((t1 > 0.0f) ? t1 : -1.0f);
-            if (t > 0.0f && t < bestFallbackT) {
-                bestFallbackT = t;
-                bestFallback = go.GetID();
-            }
+        float t = 0.0f;
+        if (ray.IntersectSphere(center, radius, t) && t < bestFallbackT) {
+            bestFallbackT = t;
+            bestFallback  = go.GetID();
         }
     }
 
@@ -239,26 +191,20 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
         localRow = parentInv * worldRow;
     }
 
-    const math::Matrix4 localCol = math::Matrix4::Transpose(localRow);
-    float m[16] = {
-        localCol.m[0][0], localCol.m[0][1], localCol.m[0][2], localCol.m[0][3],
-        localCol.m[1][0], localCol.m[1][1], localCol.m[1][2], localCol.m[1][3],
-        localCol.m[2][0], localCol.m[2][1], localCol.m[2][2], localCol.m[2][3],
-        localCol.m[3][0], localCol.m[3][1], localCol.m[3][2], localCol.m[3][3]
-    };
+    // Extract TRS directly from localRow to avoid convention mismatch between
+    // ImGuizmo's left-hand Euler decomposition and the engine's right-hand quaternion.
+    const float sx = std::sqrt(localRow.m[0][0]*localRow.m[0][0] + localRow.m[1][0]*localRow.m[1][0] + localRow.m[2][0]*localRow.m[2][0]);
+    const float sy = std::sqrt(localRow.m[0][1]*localRow.m[0][1] + localRow.m[1][1]*localRow.m[1][1] + localRow.m[2][1]*localRow.m[2][1]);
+    const float sz = std::sqrt(localRow.m[0][2]*localRow.m[0][2] + localRow.m[1][2]*localRow.m[1][2] + localRow.m[2][2]*localRow.m[2][2]);
 
-    float t[3] = {};
-    float r[3] = {};
-    float s[3] = {};
-    ImGuizmo::DecomposeMatrixToComponents(m, t, r, s);
+    math::Matrix4 rotMat = math::Matrix4::Identity();
+    if (!math::NearlyZero(sx)) { rotMat.m[0][0] = localRow.m[0][0]/sx; rotMat.m[1][0] = localRow.m[1][0]/sx; rotMat.m[2][0] = localRow.m[2][0]/sx; }
+    if (!math::NearlyZero(sy)) { rotMat.m[0][1] = localRow.m[0][1]/sy; rotMat.m[1][1] = localRow.m[1][1]/sy; rotMat.m[2][1] = localRow.m[2][1]/sy; }
+    if (!math::NearlyZero(sz)) { rotMat.m[0][2] = localRow.m[0][2]/sz; rotMat.m[1][2] = localRow.m[1][2]/sz; rotMat.m[2][2] = localRow.m[2][2]/sz; }
 
-    go->transform.localPosition = { t[0], t[1], t[2] };
-    go->transform.localScale = { s[0], s[1], s[2] };
-    go->transform.localRotation = math::Quaternion::FromEuler({
-        r[0] * math::DEG2RAD,
-        r[1] * math::DEG2RAD,
-        r[2] * math::DEG2RAD
-    });
+    go->transform.localPosition = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
+    go->transform.localScale    = { sx, sy, sz };
+    go->transform.localRotation = math::Quaternion::FromMatrix4(rotMat);
 }
 
 float GetGameViewportAspectRatio(EditorContext::GameViewportAspect aspect)
