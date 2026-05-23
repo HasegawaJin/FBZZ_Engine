@@ -4,7 +4,9 @@
 #include "Engine/Scene/Scene.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstring>
+#include <iterator>
 #include <utility>
 
 namespace fbzz::scene {
@@ -159,6 +161,47 @@ std::vector<GameObject*> Scene::GetRootGameObjects() const {
 // -----------------------------------------------------------------------
 GameObjectRange Scene::GameObjects() {
     return GameObjectRange(m_gameObjects.begin(), m_gameObjects.end());
+}
+
+bool Scene::DestroyGameObject(EntityID id)
+{
+    if (!IsValid(id)) return false;
+    DestroyImmediate(id);
+    return true;
+}
+
+bool Scene::MoveGameObject(EntityID id, int offset)
+{
+    if (offset == 0 || !IsValid(id) || m_gameObjects.empty()) return false;
+
+    auto it = std::find_if(m_gameObjects.begin(), m_gameObjects.end(),
+        [id](const auto& go) { return go->GetID() == id; });
+    if (it == m_gameObjects.end()) return false;
+
+    const auto currentIndex = static_cast<int>(std::distance(m_gameObjects.begin(), it));
+    int targetIndex = currentIndex + offset;
+    targetIndex = std::max(0, std::min(targetIndex, static_cast<int>(m_gameObjects.size()) - 1));
+    if (targetIndex == currentIndex) return false;
+
+    return MoveGameObjectToIndex(id, static_cast<size_t>(targetIndex));
+}
+
+bool Scene::MoveGameObjectToIndex(EntityID id, size_t newIndex)
+{
+    if (!IsValid(id) || m_gameObjects.empty()) return false;
+
+    auto it = std::find_if(m_gameObjects.begin(), m_gameObjects.end(),
+        [id](const auto& go) { return go->GetID() == id; });
+    if (it == m_gameObjects.end()) return false;
+
+    const size_t currentIndex = static_cast<size_t>(std::distance(m_gameObjects.begin(), it));
+    newIndex = std::min(newIndex, m_gameObjects.size() - 1);
+    if (newIndex == currentIndex) return false;
+
+    auto moved = std::move(*it);
+    m_gameObjects.erase(it);
+    m_gameObjects.insert(m_gameObjects.begin() + static_cast<std::ptrdiff_t>(newIndex), std::move(moved));
+    return true;
 }
 
 // -----------------------------------------------------------------------

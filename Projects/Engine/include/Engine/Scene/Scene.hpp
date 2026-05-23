@@ -13,6 +13,7 @@
 #include <string_view>
 #include <span>
 #include <cassert>
+#include <cstddef>
 #include <type_traits>
 #include <tuple>
 #include <utility>
@@ -92,6 +93,12 @@ public:
 
     // Unity ライク foreach (ゲームロジック向け)
     GameObjectRange GameObjects();
+    size_t GameObjectCount() const { return m_gameObjects.size(); }
+
+    // Editor / serializer support for stable hierarchy operations.
+    bool DestroyGameObject(EntityID id);
+    bool MoveGameObject(EntityID id, int offset);
+    bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
 
     // System 向け高速マルチ Component イテレータ
     template<typename... Ts>
