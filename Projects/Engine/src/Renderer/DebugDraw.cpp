@@ -27,7 +27,7 @@ struct DebugCamCB {
     math::Matrix4 viewProjection;
 };
 
-constexpr uint32_t MAX_DEBUG_VERTICES = 4096;
+constexpr uint32_t MAX_DEBUG_VERTICES = 65536;
 constexpr int      CIRCLE_SEGMENTS    = 24;
 constexpr float    PI                 = 3.14159265358979f;
 
@@ -176,6 +176,32 @@ void DebugDraw::Box(IRenderer& /*r*/,
     AddSegment(c[2], c[6], color); AddSegment(c[3], c[7], color);
 }
 
+void DebugDraw::Box(IRenderer& /*r*/,
+                    const math::Vector3& center, const math::Vector3& h,
+                    const math::Quaternion& rotation,
+                    const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    math::Vector3 c[8] = {
+        center + rotation * math::Vector3{-h.x, -h.y, -h.z},
+        center + rotation * math::Vector3{+h.x, -h.y, -h.z},
+        center + rotation * math::Vector3{+h.x, +h.y, -h.z},
+        center + rotation * math::Vector3{-h.x, +h.y, -h.z},
+        center + rotation * math::Vector3{-h.x, -h.y, +h.z},
+        center + rotation * math::Vector3{+h.x, -h.y, +h.z},
+        center + rotation * math::Vector3{+h.x, +h.y, +h.z},
+        center + rotation * math::Vector3{-h.x, +h.y, +h.z},
+    };
+
+    AddSegment(c[0], c[1], color); AddSegment(c[1], c[2], color);
+    AddSegment(c[2], c[3], color); AddSegment(c[3], c[0], color);
+    AddSegment(c[4], c[5], color); AddSegment(c[5], c[6], color);
+    AddSegment(c[6], c[7], color); AddSegment(c[7], c[4], color);
+    AddSegment(c[0], c[4], color); AddSegment(c[1], c[5], color);
+    AddSegment(c[2], c[6], color); AddSegment(c[3], c[7], color);
+}
+
 void DebugDraw::Sphere(IRenderer& /*r*/,
                        const math::Vector3& center, float radius,
                        const math::Vector4& color)
@@ -212,6 +238,34 @@ void DebugDraw::Capsule(IRenderer& /*r*/,
     AddArc(bottom, Z, Y, radius, color, PI, 2.0f * PI, half);
 
     // 側面 4 本
+    AddSegment(top + X *  radius, bottom + X *  radius, color);
+    AddSegment(top + X * -radius, bottom + X * -radius, color);
+    AddSegment(top + Z *  radius, bottom + Z *  radius, color);
+    AddSegment(top + Z * -radius, bottom + Z * -radius, color);
+}
+
+void DebugDraw::Capsule(IRenderer& /*r*/,
+                        const math::Vector3& center, float radius, float halfHeight,
+                        const math::Quaternion& rotation,
+                        const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const math::Vector3 X = rotation * math::Vector3{1,0,0};
+    const math::Vector3 Y = rotation * math::Vector3{0,1,0};
+    const math::Vector3 Z = rotation * math::Vector3{0,0,1};
+    math::Vector3 top    = center + Y * halfHeight;
+    math::Vector3 bottom = center - Y * halfHeight;
+    int half             = CIRCLE_SEGMENTS / 2;
+
+    AddCircle(top,    X, Z, radius, color);
+    AddCircle(bottom, X, Z, radius, color);
+
+    AddArc(top,    X, Y, radius, color, 0.0f, PI,        half);
+    AddArc(top,    Z, Y, radius, color, 0.0f, PI,        half);
+    AddArc(bottom, X, Y, radius, color, PI,   2.0f * PI, half);
+    AddArc(bottom, Z, Y, radius, color, PI,   2.0f * PI, half);
+
     AddSegment(top + X *  radius, bottom + X *  radius, color);
     AddSegment(top + X * -radius, bottom + X * -radius, color);
     AddSegment(top + Z *  radius, bottom + Z *  radius, color);

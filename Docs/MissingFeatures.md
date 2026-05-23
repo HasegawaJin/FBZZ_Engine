@@ -1,7 +1,7 @@
 # FBZZ Engine — 未実装・不足機能一覧
 
-最終更新: 2026-05-22  
-調査対象ブランチ: `refactor/handle-based-resource-system`
+最終更新: 2026-05-23  
+調査対象ブランチ: `develop`
 
 ---
 
@@ -61,7 +61,7 @@
 | D-2-1 | TriangleMeshCollider | 任意の三角形メッシュとの衝突。地形・建物に必須 | 中 |
 | D-2-2 | ConvexHullCollider | 任意形状の凸コライダー（GJK / EPA ベース） | 中 |
 | D-2-3 | CCD (Continuous Collision Detection) | 高速オブジェクトが薄い壁をすり抜けない仕組み | 中 |
-| D-2-4 | Trigger コールバック | `IsTrigger` フラグは存在するが、Script 側から Enter / Stay / Exit を購読する仕組みが不明 | 中 |
+| D-2-4 | Trigger / Collision イベント通知 | `isTrigger` フラグは存在するが、PhysicsSystem が衝突ペアを Script に通知するパイプラインが未実装。Script 側コールバックは D-9-1 / D-9-2 を参照 | 中 |
 
 ### D-3. 数学ライブラリ
 
@@ -107,6 +107,53 @@
 | D-6-5 | カスタムメモリアロケーター | 全て `std::allocator` 任せ。メモリ使用量トラッキングなし | 低 |
 | D-6-6 | GPU プロファイラー統合 | StatusBar に FPS のみ。GPU タイムスタンプ・各パス CPU/GPU 時間の内訳なし | 低 |
 
+### D-7. DebugDraw 拡張
+
+現状の `DebugDraw` は `Line` / `Box` (AABB のみ) / `Sphere` / `Capsule` の 4 関数のみ。最大頂点数 4096 固定・DepthTest 常時 OFF・回転パラメータなし。B-1 / B-2 のコライダー・ライト範囲描画を接続する前に拡張が必要。
+
+| # | 機能 | 概要 | 優先度 |
+|---|------|------|--------|
+| D-7-1 | OBB 描画（回転付き Box） | `Box(center, halfExtents, rotation: Quaternion, color)` のオーバーロード追加。コライダー・オブジェクトの向きを正しく表示するために必須 | 高 |
+| D-7-2 | Arrow（方向ベクトル） | `Arrow(origin, direction, length, color)` — velocity・force・法線の可視化。Line + 小コーンで実装 | 中 |
+| D-7-3 | Axes（座標軸） | `Axes(origin, rotation, size)` — Transform の軸を RGB 3 本の Arrow で描画。現状は呼び出し側が毎回 `Line` 3 本を手書き | 中 |
+| D-7-4 | Cone（コーン） | `Cone(apex, direction, halfAngle, height, color)` — SpotLight の照射範囲可視化（B-2）に必要 | 中 |
+| D-7-5 | 深度テスト切り替え | `DepthMode` パラメータ追加（`DEPTH_OFF` / `DEPTH_READ`）。オブジェクト裏側のコライダーをオクルージョン付きで表示するか選択できる | 低 |
+| D-7-6 | 持続時間（duration） | `duration` 秒間だけ残る描画。毎フレーム呼ばなくても一定時間表示し続けられる（衝突点・イベント可視化） | 低 |
+| D-7-7 | 最大頂点数の動的拡張 | 現状 4096 頂点ハードリミット。シーン規模が増えると超過して描画が欠ける。動的に頂点バッファを確保するか上限を引き上げる | 低 |
+
+### D-9. スクリプトシステム
+
+骨格（`Script` 基底クラス・`ScriptFactory`・`ScriptSystem`・`IReflector`・Inspector 統合・TOML シリアライズ）は実装済み。以下は未実装の拡張機能。
+
+| # | 機能 | 概要 | 優先度 |
+|---|------|------|--------|
+| D-9-1 | OnCollisionEnter / Stay / Exit | 衝突検出は `PhysicsSystem` で動作しているが、Script へのイベント通知パイプラインが未実装。`World::Step` 後の接触ペアを取得し、前フレームとの差分から Enter / Stay / Exit を判定して該当 Script のメソッドを呼ぶ仕組みが必要 | 高 |
+| D-9-2 | OnTriggerEnter / Stay / Exit | `isTrigger` フラグは存在（D-2-4 参照）するが、Script 基底クラスへのコールバックが未定義。D-9-1 と同じ通知パイプラインで実現可能 | 高 |
+| D-9-3 | OnDestroy() ライフサイクル | Script 基底クラスに `OnDestroy` がない。`FlushDestroyQueue` 実行前に Script の後処理（イベント購読解除・ネイティブリソース解放など）を呼ぶ手段が存在しない | 中 |
+| D-9-4 | IReflector — enum / ResourceHandle 型対応 | 現状の `IReflector::Field` は `float` / `int` / `bool` / `Vector3` / `Vector4` / `Quaternion` / `string` の 7 型のみ。`enum class` や `ResourceHandle<T>`（テクスチャ・メッシュ参照）をフィールドとして宣言・Inspector 編集・TOML 保存できない | 中 |
+| D-9-5 | 1 GameObject に複数 Script アタッチ | `ComponentArray` の制約上、`ScriptComponent` は 1 エンティティにつき 1 つまで。Unity 相当の複数スクリプトが必要な場合は内部で `Composite Script` パターンを使うか、ECS 側で複数コンポーネント対応が必要 | 低 |
+| D-9-6 | Script ホットリロード | スクリプトは C++ ネイティブのため再コンパイルなしに変更不可。DLL 差し替えや Lua / Python バインディング、あるいは C++ ホットリロードライブラリ (cr.h 等) の導入が選択肢。Step 7 以降 | 低 (Step 7 以降) |
+
+### D-10. Tag/Layer システム
+
+**実装済み（Tag のみ部分実装）**
+- `GameObject::tag` フィールド（デフォルト `"Untagged"`）と `CompareTag()` は実装済み
+- `Scene::FindWithTag()` 実装済み
+- `SceneSerializer` で tag の保存・読み込み対応済み
+
+**未実装**
+
+| # | 機能 | 概要 | 優先度 |
+|---|------|------|--------|
+| D-10-1 | Tag 編集 UI | InspectorPanel で Tag を表示・編集できる UI がない。現状は name のみ編集可能 | 中 |
+| D-10-2 | Layer フィールド | `GameObject` に `int layer = 0;` フィールドが存在しない。Layer 自体が未定義 | 高 |
+| D-10-3 | LayerMask 型 | ビットマスクで複数レイヤーを表現する `LayerMask` 型と定義済みレイヤー名の列挙が未実装 | 高 |
+| D-10-4 | Physics レイヤーフィルタ | `PhysicsSystem` がレイヤーを参照しない。Layer × Layer の衝突マトリクス（ProjectSettings 相当）が未実装。全コライダーが無条件に衝突判定される | 高 |
+| D-10-5 | Render レイヤーフィルタ | Camera に `cullingMask` がなく、`RenderSystem` がレイヤー別カリングを行わない | 中 |
+| D-10-6 | Layer 編集 UI | InspectorPanel で Layer ドロップダウンを表示・変更する UI がない | 中 |
+| D-10-7 | Layer シリアライズ | `SceneSerializer` で layer フィールドの保存・読み込みが未実装 | 中 |
+| D-10-8 | FindWithLayer() | タグ検索相当の `Scene::FindWithLayer()` / `FindAllWithLayer()` が未実装 | 低 |
+
 ---
 
 ## 優先度まとめ
@@ -114,6 +161,6 @@
 | 優先度 | 項目 |
 |--------|------|
 | 今すぐ | — (A-1〜A-3 はすべて解消済み) |
-| 近い将来 | B-1, B-2, D-4-1, D-4-2, D-5-1, D-5-2, D-5-3 |
-| Step 7 | C-1 〜 C-6, D-6-1 |
-| 余裕があれば | D-1-1 〜 D-4-4, D-5-4 〜 D-5-9, D-6-2 〜 D-6-6 |
+| 近い将来 | B-1, B-2, D-4-1, D-4-2, D-5-1, D-5-2, D-5-3, D-7-1 (OBB), D-9-1, D-9-2, D-10-2, D-10-3, D-10-4 |
+| Step 7 | C-1 〜 C-6, D-6-1, D-9-6 |
+| 余裕があれば | D-1-1 〜 D-4-4, D-5-4 〜 D-5-9, D-6-2 〜 D-6-6, D-7-2 〜 D-7-7, D-9-3 〜 D-9-5 |

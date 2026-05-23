@@ -4,6 +4,7 @@
 #pragma once
 
 #include "IRenderer.hpp"
+#include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Matrix4.hpp>
@@ -27,10 +28,14 @@ public:
                      const math::Vector4& color = {1,1,1,1});
     static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,
                     const math::Vector4& color = {0,1,0,1});
+    static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,
+                    const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
     static void Sphere(IRenderer& r, const math::Vector3& center, float radius,
                        const math::Vector4& color = {0,1,0,1});
     static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Vector4& color = {0,1,0,1});
+    static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
+                        const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
 };
 
 } // namespace fbzz::renderer

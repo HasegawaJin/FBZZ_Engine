@@ -126,3 +126,6 @@
 | 2026-05-22 | Implement ResourceSystem handle-based renderer resource management | Done |
 | 2026-05-22 | Fix particle vertex buffer leak and lazy-initialize Material params buffer | Done |
 | 2026-05-22 | Fix MissingFeatures A-1/A-2 renderer API and AssetBrowser scene open bugs | Done |
+| 2026-05-23 | Implement MissingFeatures D-7-1 OBB DebugDraw box overload | Done |
+| 2026-05-23 | Connect MissingFeatures B-1/B-2 showColliders and showLightRange debug drawing | Done |
+| 2026-05-23 | Fix Capsule-Capsule closest-point contact torque bias | Done |
