@@ -14,7 +14,7 @@
 #include <Physics/ChainConstraint.hpp>
 #include <Physics/HingeConstraint.hpp>
 #include <vector>
-#include <set>
+#include <map>
 #include <memory>
 
 namespace fbzz::physics 
@@ -26,6 +26,7 @@ namespace fbzz::physics
         const Collider* colliderB;
         RigidBody* bodyA;
         RigidBody* bodyB;
+        bool isTrigger = false;
     };
 
     class World 
@@ -71,7 +72,7 @@ namespace fbzz::physics
         PhysicsSolver                           m_solver;
 
         using ColliderPair = std::pair<const Collider*, const Collider*>;
-        std::set<ColliderPair>      m_prevPairs;
+        std::map<ColliderPair, CollisionEvent> m_prevEvents;
         std::vector<CollisionEvent> m_enterEvents;
         std::vector<CollisionEvent> m_stayEvents;
         std::vector<CollisionEvent> m_exitEvents;

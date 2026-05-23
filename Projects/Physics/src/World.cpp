@@ -176,40 +176,35 @@ namespace fbzz::physics
         m_stayEvents.clear();
         m_exitEvents.clear();
 
-        std::set<ColliderPair> currentPairs;
+        std::map<ColliderPair, CollisionEvent> currentEvents;
         for (auto& cp : m_contacts)
         {
             const Collider* a = cp.colliderA;
             const Collider* b = cp.colliderB;
             if (a > b) std::swap(a, b);
-            currentPairs.insert({ a, b });
+
+            const ColliderPair pair{ a, b };
+            currentEvents.insert({
+                pair,
+                { cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB, cp.isTrigger }
+            });
         }
 
-        for (auto& pair : currentPairs)
+        for (auto& [pair, event] : currentEvents)
         {
-            const ContactPoint* contact = nullptr;
-            for (auto& cp : m_contacts) {
-                if ((cp.colliderA == pair.first && cp.colliderB == pair.second) ||
-                    (cp.colliderA == pair.second && cp.colliderB == pair.first)) {
-                    contact = &cp;
-                    break;
-                }
-            }
-            if (!contact) continue;
-
-            if (m_prevPairs.count(pair) == 0)
-                m_enterEvents.push_back({ contact->colliderA, contact->colliderB, contact->bodyA, contact->bodyB });
+            if (m_prevEvents.count(pair) == 0)
+                m_enterEvents.push_back(event);
             else
-                m_stayEvents.push_back({ contact->colliderA, contact->colliderB, contact->bodyA, contact->bodyB });
+                m_stayEvents.push_back(event);
         }
 
-        for (auto& pair : m_prevPairs)
+        for (auto& [pair, event] : m_prevEvents)
         {
-            if (currentPairs.count(pair) == 0)
-                m_exitEvents.push_back({ pair.first, pair.second, nullptr, nullptr });
+            if (currentEvents.count(pair) == 0)
+                m_exitEvents.push_back(event);
         }
 
-        m_prevPairs = std::move(currentPairs);
+        m_prevEvents = std::move(currentEvents);
     }
 
     const std::vector<CollisionEvent>& World::GetEnterEvents() const { return m_enterEvents; }
