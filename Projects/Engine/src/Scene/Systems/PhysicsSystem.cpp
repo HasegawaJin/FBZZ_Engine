@@ -6,17 +6,90 @@
 #include "Engine/Scene/Components/ColliderComponent.hpp"
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
 #include "Engine/Scene/Components/VolumeComponent.hpp"
+#include "Engine/Scene/ScriptComponent.hpp"
 #include <Physics/ColliderVolume.hpp>
 #include <Physics/World.hpp>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::scene {
+
+namespace {
+
+struct ColliderOwner {
+    GameObject* gameObject = nullptr;
+    ColliderComponent* collider = nullptr;
+};
+
+using ColliderOwnerMap = std::unordered_map<const physics::Collider*, ColliderOwner>;
+using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
+
+void DispatchToScript(Scene& scene,
+                      const ColliderOwner& self,
+                      const ColliderOwner& other,
+                      ScriptCollisionCallback callback)
+{
+    if (!self.gameObject || !other.gameObject) return;
+
+    auto* scriptComponent = self.gameObject->GetComponent<ScriptComponent>();
+    if (!scriptComponent || !scriptComponent->script || !scriptComponent->script->enabled) return;
+
+    scriptComponent->script->SetContext(&scene, self.gameObject);
+    CollisionInfo info;
+    info.self = self.gameObject;
+    info.other = other.gameObject;
+    info.selfCollider = self.collider;
+    info.otherCollider = other.collider;
+    (scriptComponent->script.get()->*callback)(info);
+}
+
+void DispatchCollisionEvent(Scene& scene,
+                            const ColliderOwnerMap& owners,
+                            const physics::CollisionEvent& event,
+                            ScriptCollisionCallback callback)
+{
+    auto ownerA = owners.find(event.colliderA);
+    auto ownerB = owners.find(event.colliderB);
+    if (ownerA == owners.end() || ownerB == owners.end()) return;
+
+    DispatchToScript(scene, ownerA->second, ownerB->second, callback);
+    DispatchToScript(scene, ownerB->second, ownerA->second, callback);
+}
+
+void DispatchCollisionEvents(Scene& scene,
+                             physics::World& world,
+                             const ColliderOwnerMap& owners)
+{
+    for (const auto& event : world.GetEnterEvents())
+    {
+        DispatchCollisionEvent(scene, owners, event, event.isTrigger
+            ? &Script::OnTriggerEnter
+            : &Script::OnCollisionEnter);
+    }
+
+    for (const auto& event : world.GetStayEvents())
+    {
+        DispatchCollisionEvent(scene, owners, event, event.isTrigger
+            ? &Script::OnTriggerStay
+            : &Script::OnCollisionStay);
+    }
+
+    for (const auto& event : world.GetExitEvents())
+    {
+        DispatchCollisionEvent(scene, owners, event, event.isTrigger
+            ? &Script::OnTriggerExit
+            : &Script::OnCollisionExit);
+    }
+}
+
+} // namespace
 
 void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
     std::vector<std::shared_ptr<physics::RigidBody>> bodies;
     std::vector<physics::ColliderInstance> colliders;
     std::vector<std::shared_ptr<physics::Volume>> volumes;
+    ColliderOwnerMap colliderOwners;
 
     for (auto [tf, rb] : scene.View<Transform, RigidBodyComponent>()) {
         if (!rb.enabled || !rb.rigidBody) continue;
@@ -37,6 +110,7 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
             body->SetInertiaFromCollider(col->collider.get());
 
         colliders.push_back({ col->collider, body, &col->material, col->isTrigger });
+        colliderOwners[col->collider.get()] = { &go, col };
 
         auto* volume = go.GetComponent<VolumeComponent>();
         if (volume && volume->enabled && col->isTrigger) {
@@ -63,6 +137,7 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
     world.SetColliders(std::move(colliders));
     world.SetVolumes(std::move(volumes));
     world.Step(dt);
+    DispatchCollisionEvents(scene, world, colliderOwners);
 
     for (auto [tf, rb] : scene.View<Transform, RigidBodyComponent>()) {
         if (!rb.enabled || !rb.rigidBody) continue;
