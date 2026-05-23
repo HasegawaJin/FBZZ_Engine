@@ -2,6 +2,7 @@
 // CameraComponent.hpp | fbzz::scene
 // カメラパラメータを持つ Component。位置/回転は Transform から取得する
 #pragma once
+#include <Physics/Layer.hpp>
 #include <Engine/Scene/Script.hpp>
 
 namespace fbzz::scene {
@@ -12,6 +13,7 @@ struct CameraComponent {
     float farZ    = 1000.0f;
     bool  isMain  = true;
     bool  enabled = true;
+    fbzz::LayerMask cullingMask = fbzz::Layer::Everything;
 
     const char* GetTypeName() const { return "Camera"; }
     void Reflect(IReflector& r)
@@ -21,6 +23,7 @@ struct CameraComponent {
         r.Field("fovY", fovY);
         r.Field("nearZ", nearZ);
         r.Field("farZ", farZ);
+        r.Field("cullingMask", reinterpret_cast<int&>(cullingMask));
     }
 };
 

@@ -2,6 +2,7 @@
 // SceneSerializer.cpp | fbzz::scene
 // TOML ベースのシーン保存・復元
 #include <Engine/Scene/SceneSerializer.hpp>
+#include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Transform.hpp>
@@ -258,6 +259,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         toml::table goTbl;
         goTbl.insert("name",   go.name);
         goTbl.insert("tag",    go.tag);
+        goTbl.insert("layer",  (int64_t)go.layer);
         goTbl.insert("active", go.activeSelf());
         goTbl.insert("parent",
             go.GetParent() ? go.GetParent()->name : std::string{});
@@ -322,6 +324,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ccTbl.insert("farZ",    (double)cc->farZ);
             ccTbl.insert("isMain",  cc->isMain);
             ccTbl.insert("enabled", cc->enabled);
+            ccTbl.insert("cullingMask", (int64_t)cc->cullingMask);
             goTbl.insert("CameraComponent", std::move(ccTbl));
         }
 
@@ -494,6 +497,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
         auto& go = scene->CreateGameObject(name);
         go.tag = tag;
+        go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
         go.SetActive(active);
 
         // Transform
@@ -573,6 +577,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.farZ    = (float)(*ccTbl)["farZ"].value_or(1000.0);
             cc.isMain  = (*ccTbl)["isMain"].value_or(true);
             cc.enabled = (*ccTbl)["enabled"].value_or(true);
+            cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);
             go.AddComponent<CameraComponent>(cc);
         }
 
