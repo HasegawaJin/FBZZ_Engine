@@ -131,3 +131,7 @@
 | 2026-05-23 | Fix Capsule-Capsule closest-point contact torque bias | Done |
 | 2026-05-23 | Implement MissingFeatures D-9-1/D-9-2 collision and trigger script callbacks | Done |
 | 2026-05-23 | Implement feature/layer-system GameObject layers, culling masks, physics filtering, serializer, and Inspector UI | Done |
+| 2026-05-23 | Add Inspector Add Component menu and Hierarchy template object creation menu | Done |
+| 2026-05-23 | Fix Hierarchy delete handling and add GameObject order movement operations | Done |
+| 2026-05-23 | Add Hierarchy tree display, drag parent assignment, and Set As Root action | Done |
+| 2026-05-23 | Guard Hierarchy recursion and route all parent assignment through cycle-safe GameObject API | Done |
