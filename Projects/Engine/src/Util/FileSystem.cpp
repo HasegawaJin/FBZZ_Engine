@@ -61,6 +61,25 @@ std::vector<std::string> FileSystem::ListFiles(const std::string& dir, const std
     return result;
 }
 
+std::vector<std::string> FileSystem::ListAll(const std::string& dir)
+{
+    std::vector<std::string> result;
+    std::string pattern = dir + "\\*";
+
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return result;
+
+    do {
+        std::string name = fd.cFileName;
+        if (name == "." || name == "..") continue;
+        result.push_back(dir + "\\" + name);
+    } while (FindNextFileA(h, &fd));
+
+    FindClose(h);
+    return result;
+}
+
 bool FileSystem::EnsureDirectory(const std::string& path)
 {
     if (IsDirectory(path)) return true;
