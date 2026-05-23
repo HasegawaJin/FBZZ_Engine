@@ -19,10 +19,14 @@
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Physics/AABBCollider.hpp>
 #include <Physics/ColliderVolume.hpp>
+#include <Physics/RigidBody.hpp>
 #include <imgui.h>
 #include <cstdio>
+#include <memory>
 
 namespace fbzz::editor {
 
@@ -74,6 +78,84 @@ void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
         float dir[3] = { fwd.x, fwd.y, fwd.z };
         ImGui::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
     }
+}
+
+std::shared_ptr<renderer::Material> CreateDefaultMaterial()
+{
+    auto* resources = renderer::ResourceManager::Active();
+    if (!resources) return {};
+
+    auto material = std::make_shared<renderer::Material>();
+    material->shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    material->shader = resources->LoadShader(material->shaderPath);
+    material->params.roughness = 0.65f;
+    material->Init(*resources);
+    return material;
+}
+
+scene::MeshRenderer CreateDefaultMeshRenderer()
+{
+    scene::MeshRenderer mr;
+    mr.meshPath = "primitive:cube";
+    mr.shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    if (auto* resources = renderer::ResourceManager::Active()) {
+        mr.mesh = renderer::PrimitiveMesh::Cube(*resources);
+        mr.material = CreateDefaultMaterial();
+    }
+    return mr;
+}
+
+scene::ColliderComponent CreateAabbCollider(const math::Vector3& halfExtents = { 0.5f, 0.5f, 0.5f })
+{
+    scene::ColliderComponent collider;
+    collider.collider = std::make_shared<physics::AABBCollider>(halfExtents);
+    return collider;
+}
+
+scene::RigidBodyComponent CreateDefaultRigidBody()
+{
+    scene::RigidBodyComponent rb;
+    rb.rigidBody = std::make_shared<physics::RigidBody>();
+    rb.rigidBody->SetMass(1.0f);
+    return rb;
+}
+
+template<typename T>
+void DrawAddComponentItem(scene::GameObject& go, const char* label)
+{
+    const bool hasComponent = go.GetComponent<T>() != nullptr;
+    if (ImGui::MenuItem(label, nullptr, false, !hasComponent))
+        go.AddComponent<T>();
+}
+
+void DrawAddComponentMenu(scene::GameObject& go)
+{
+    if (ImGui::Button("Add Component", { -1.0f, 0.0f }))
+        ImGui::OpenPopup("##add_component");
+
+    if (!ImGui::BeginPopup("##add_component")) return;
+
+    const bool hasMeshRenderer = go.GetComponent<scene::MeshRenderer>() != nullptr;
+    if (ImGui::MenuItem("Mesh Renderer", nullptr, false, !hasMeshRenderer))
+        go.AddComponent<scene::MeshRenderer>(CreateDefaultMeshRenderer());
+
+    DrawAddComponentItem<scene::LightComponent>(go, "Light");
+    DrawAddComponentItem<scene::CameraComponent>(go, "Camera");
+    DrawAddComponentItem<scene::ParticleEmitter>(go, "Particle Emitter");
+    DrawAddComponentItem<scene::AudioSourceComponent>(go, "Audio Source");
+
+    const bool hasCollider = go.GetComponent<scene::ColliderComponent>() != nullptr;
+    if (ImGui::MenuItem("Collider", nullptr, false, !hasCollider))
+        go.AddComponent<scene::ColliderComponent>(CreateAabbCollider());
+
+    const bool hasRigidBody = go.GetComponent<scene::RigidBodyComponent>() != nullptr;
+    if (ImGui::MenuItem("Rigid Body", nullptr, false, !hasRigidBody))
+        go.AddComponent<scene::RigidBodyComponent>(CreateDefaultRigidBody());
+
+    DrawAddComponentItem<scene::VolumeComponent>(go, "Volume");
+    DrawAddComponentItem<scene::SkyRenderer>(go, "Sky Renderer");
+
+    ImGui::EndPopup();
 }
 
 } // namespace
@@ -339,6 +421,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
         }
     }
+
+    ImGui::Separator();
+    DrawAddComponentMenu(*go);
 }
 
 } // namespace fbzz::editor
