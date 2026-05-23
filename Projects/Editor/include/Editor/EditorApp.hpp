@@ -12,6 +12,7 @@
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <memory>
 #include <vector>
+#include <Windows.h>
 
 namespace fbzz::renderer { class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class Window; }
@@ -40,6 +41,8 @@ private:
     void BuildMenuBar(EditorContext& ctx);
     void RegisterDefaultHotkeys();
     void ResizeViewportRTsIfNeeded();
+    void CheckHotReload();
+    void CacheSceneWriteTime();
     bool OpenSceneFromDialog();
     bool SaveScene();
     bool SaveSceneAsDialog();
@@ -53,6 +56,7 @@ private:
     EditorSettings     m_settings;
     PlayModeController m_playMode;
 
+    FILETIME                                 m_lastSceneWriteTime = {};
     void*                                    m_hwnd          = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
     renderer::ResourceManager*               m_resources     = nullptr;

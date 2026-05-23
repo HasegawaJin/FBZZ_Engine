@@ -13,6 +13,7 @@
 #include <string_view>
 #include <span>
 #include <cassert>
+#include <cstddef>
 #include <type_traits>
 #include <tuple>
 #include <utility>
@@ -92,6 +93,12 @@ public:
 
     // Unity ライク foreach (ゲームロジック向け)
     GameObjectRange GameObjects();
+    size_t GameObjectCount() const { return m_gameObjects.size(); }
+
+    // Editor / serializer support for stable hierarchy operations.
+    bool DestroyGameObject(EntityID id);
+    bool MoveGameObject(EntityID id, int offset);
+    bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
 
     // System 向け高速マルチ Component イテレータ
     template<typename... Ts>
@@ -114,6 +121,9 @@ public:
     template<typename T> void RemoveComponent(EntityID id);
     template<typename T> std::vector<T*> GetComponents();
     template<typename T> std::vector<const T*> GetComponents() const;
+
+    // src の全 Component を dst にコピーする (Duplicate 用)
+    void DuplicateComponents(EntityID src, EntityID dst);
 
     // SceneView が entity span を取得するために使う
     template<typename T>
@@ -168,6 +178,13 @@ private:
     template<typename T>
     static void RemoveIfHas(ComponentArray<T>& arr, EntityID id) {
         if (arr.Has(id)) arr.Remove(id);
+    }
+
+    template<typename T>
+    static void CopyIfHas(ComponentArray<T>& arr, EntityID src, EntityID dst) {
+        if constexpr (std::is_copy_constructible_v<T>) {
+            if (arr.Has(src) && !arr.Has(dst)) arr.Add(dst, arr.Get(src));
+        }
     }
 
     template<typename... Ts> friend class SceneView;

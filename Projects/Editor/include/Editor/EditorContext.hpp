@@ -78,9 +78,10 @@ struct EditorContext {
     fbzz::ProjectSettings projectSettings;
 
     // 表示オプション (エディター固有)
-    bool showLightRange = true;
-    bool showColliders  = false;
-    bool showSceneStats = true;
+    bool showLightRange  = true;
+    bool showColliders   = false;
+    bool showSceneStats  = true;
+    bool hotReloadEnabled = true;
 
     // パネル間リクエスト
     bool requestOpenProjectSettings = false;

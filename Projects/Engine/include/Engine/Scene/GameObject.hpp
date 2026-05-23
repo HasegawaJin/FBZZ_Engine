@@ -37,6 +37,9 @@ public:
 
     // Unity: transform.SetParent / childCount / GetChild
     void        SetParent(GameObject& parent);
+    bool        SetParent(GameObject* parent);
+    bool        ClearParent();
+    bool        IsDescendantOf(const GameObject& ancestor) const;
     GameObject* GetParent()         const;
     int         GetChildCount()     const;
     GameObject* GetChild(int index) const;
