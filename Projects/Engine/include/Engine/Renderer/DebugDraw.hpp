@@ -34,6 +34,8 @@ public:
                        const math::Vector4& color = {0,1,0,1});
     static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Vector4& color = {0,1,0,1});
+    static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
+                        const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
 };
 
 } // namespace fbzz::renderer

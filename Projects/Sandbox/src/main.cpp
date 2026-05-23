@@ -162,7 +162,7 @@ namespace
         else if (collider->GetType() == physics::ColliderType::CAPSULE)
         {
             auto* capsule = static_cast<physics::CapsuleCollider*>(collider.get());
-            renderer::DebugDraw::Capsule(renderer, position, capsule->m_radius, capsule->m_halfHeight, color);
+            renderer::DebugDraw::Capsule(renderer, position, capsule->m_radius, capsule->m_halfHeight, transform.rotation, color);
         }
     }
 
@@ -439,7 +439,7 @@ int main()
 
     renderer::DebugCamera debugCamera;
     debugCamera.camera.m_position = { 0.0f, 10.0f, -26.0f };
-    debugCamera.camera.m_aspect = 1280.0f / 720.0f;
+    debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
     debugCamera.LookAt({ 0.0f, 2.2f, 0.0f });
     editorApp.GetContext().editorCamera = &debugCamera.camera;
 

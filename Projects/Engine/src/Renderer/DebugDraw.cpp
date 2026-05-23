@@ -244,4 +244,32 @@ void DebugDraw::Capsule(IRenderer& /*r*/,
     AddSegment(top + Z * -radius, bottom + Z * -radius, color);
 }
 
+void DebugDraw::Capsule(IRenderer& /*r*/,
+                        const math::Vector3& center, float radius, float halfHeight,
+                        const math::Quaternion& rotation,
+                        const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const math::Vector3 X = rotation * math::Vector3{1,0,0};
+    const math::Vector3 Y = rotation * math::Vector3{0,1,0};
+    const math::Vector3 Z = rotation * math::Vector3{0,0,1};
+    math::Vector3 top    = center + Y * halfHeight;
+    math::Vector3 bottom = center - Y * halfHeight;
+    int half             = CIRCLE_SEGMENTS / 2;
+
+    AddCircle(top,    X, Z, radius, color);
+    AddCircle(bottom, X, Z, radius, color);
+
+    AddArc(top,    X, Y, radius, color, 0.0f, PI,        half);
+    AddArc(top,    Z, Y, radius, color, 0.0f, PI,        half);
+    AddArc(bottom, X, Y, radius, color, PI,   2.0f * PI, half);
+    AddArc(bottom, Z, Y, radius, color, PI,   2.0f * PI, half);
+
+    AddSegment(top + X *  radius, bottom + X *  radius, color);
+    AddSegment(top + X * -radius, bottom + X * -radius, color);
+    AddSegment(top + Z *  radius, bottom + Z *  radius, color);
+    AddSegment(top + Z * -radius, bottom + Z * -radius, color);
+}
+
 } // namespace fbzz::renderer
