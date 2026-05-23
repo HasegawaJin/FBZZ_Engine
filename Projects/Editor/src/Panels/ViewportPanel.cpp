@@ -345,7 +345,7 @@ ImVec2 FitSizeToAspect(ImVec2 size, float aspect)
 
 ViewportPanel::ViewportPanel(Kind kind)
     : m_kind(kind)
-    , m_windowName(kind == Kind::Scene ? "Scene" : "Game")
+    , m_windowName(kind == Kind::Scene ? "Scene" : (kind == Kind::Game ? "Game" : "UI"))
 {
 }
 
@@ -366,7 +366,9 @@ void ViewportPanel::OnAfterBegin(EditorContext& ctx)
 void ViewportPanel::OnRenderContent(EditorContext& ctx)
 {
     const bool isSceneView = m_kind == Kind::Scene;
-    if (!isSceneView) {
+    const bool isGameView = m_kind == Kind::Game;
+    const bool isUIView = m_kind == Kind::UI;
+    if (isGameView) {
         ImGui::SetNextItemWidth(96.0f);
         DrawGameViewportAspectControl(ctx);
     }
@@ -375,7 +377,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     if (size.x < 1.0f) size.x = 1.0f;
     if (size.y < 1.0f) size.y = 1.0f;
 
-    if (!isSceneView) {
+    if (isGameView || isUIView) {
         size = FitSizeToAspect(size, GetGameViewportAspectRatio(ctx.gameViewportAspect));
         if (size.x < 1.0f) size.x = 1.0f;
         if (size.y < 1.0f) size.y = 1.0f;
@@ -385,17 +387,28 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         ctx.viewportWidth = size.x;
         ctx.viewportHeight = size.y;
         ctx.viewportFocused = ImGui::IsWindowFocused();
-    } else {
+    } else if (isGameView) {
         ctx.gameViewportWidth = size.x;
         ctx.gameViewportHeight = size.y;
         ctx.gameViewportFocused = ImGui::IsWindowFocused();
+    } else if (isUIView) {
+        ctx.uiViewportWidth = size.x;
+        ctx.uiViewportHeight = size.y;
+        ctx.uiViewportFocused = ImGui::IsWindowFocused();
     }
 
     ImVec2 viewportMin = ImGui::GetCursorScreenPos();
-    if (!isSceneView) {
+    if (isGameView || isUIView) {
         const ImVec2 available = ImGui::GetContentRegionAvail();
         viewportMin.x += (std::max)(0.0f, (available.x - size.x) * 0.5f);
         viewportMin.y += (std::max)(0.0f, (available.y - size.y) * 0.5f);
+        if (isGameView) {
+            ctx.gameViewportOriginX = viewportMin.x;
+            ctx.gameViewportOriginY = viewportMin.y;
+        } else {
+            ctx.uiViewportOriginX = viewportMin.x;
+            ctx.uiViewportOriginY = viewportMin.y;
+        }
     }
     ImVec2 viewportMax = { viewportMin.x + size.x, viewportMin.y + size.y };
     bool viewportHovered = ImGui::IsMouseHoveringRect(viewportMin, viewportMax);
@@ -420,9 +433,9 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         DrawGizmo(ctx, viewportMin, size);
 
     // Play / Pause 中はボーダーで状態を示す
-    if (!isSceneView && ctx.playMode && ctx.playMode->IsPlaying())
+    if (isGameView && ctx.playMode && ctx.playMode->IsPlaying())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(80, 200, 80, 220), 0.0f, 0, 3.0f);
-    else if (!isSceneView && ctx.playMode && ctx.playMode->IsPaused())
+    else if (isGameView && ctx.playMode && ctx.playMode->IsPaused())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(255, 180, 50, 220), 0.0f, 0, 3.0f);
 
     if (isSceneView && ctx.showSceneStats) {

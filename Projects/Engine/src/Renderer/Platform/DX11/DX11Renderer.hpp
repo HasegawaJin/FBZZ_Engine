@@ -81,6 +81,7 @@ private:
     std::shared_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) override;
     std::shared_ptr<IShader>         CreateNativeShader(const std::string& path) override;
     std::shared_ptr<ITexture>        CreateNativeTexture(const std::string& path) override;
+    std::shared_ptr<ITexture>        CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) override;
     std::shared_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
     std::shared_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
     std::shared_ptr<ITexture>        CreateNativeComputeTexture(uint32_t width, uint32_t height) override;

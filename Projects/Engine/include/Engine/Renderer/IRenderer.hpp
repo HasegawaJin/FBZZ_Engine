@@ -57,6 +57,7 @@ private:
     virtual std::shared_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
     virtual std::shared_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
     virtual std::shared_ptr<ITexture> CreateNativeTexture(const std::string& path) = 0;
+    virtual std::shared_ptr<ITexture> CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
     virtual std::shared_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
     virtual std::shared_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
     virtual std::shared_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;

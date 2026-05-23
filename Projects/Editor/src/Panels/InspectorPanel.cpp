@@ -17,6 +17,12 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/UIImage.hpp>
+#include <Engine/Scene/Components/UIButton.hpp>
+#include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/Components/UILayoutGroup.hpp>
+#include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
@@ -154,8 +160,22 @@ void DrawAddComponentMenu(scene::GameObject& go)
 
     DrawAddComponentItem<scene::VolumeComponent>(go, "Volume");
     DrawAddComponentItem<scene::SkyRenderer>(go, "Sky Renderer");
+    DrawAddComponentItem<scene::UICanvas>(go, "UI Canvas");
+    DrawAddComponentItem<scene::UIImage>(go, "UI Image");
+    DrawAddComponentItem<scene::UIButton>(go, "UI Button");
+    DrawAddComponentItem<scene::UIText>(go, "UI Text");
+    DrawAddComponentItem<scene::UILayoutGroup>(go, "UI Layout Group");
+    DrawAddComponentItem<scene::UIAnimator>(go, "UI Animator");
 
     ImGui::EndPopup();
+}
+
+bool DragVec2(const char* label, math::Vector2& value, float speed = 0.1f, float min = 0.0f, float max = 0.0f)
+{
+    float data[2] = { value.x, value.y };
+    if (!ImGui::DragFloat2(label, data, speed, min, max)) return false;
+    value = { data[0], data[1] };
+    return true;
 }
 
 } // namespace
@@ -408,6 +428,114 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragFloat("Mie Scattering", &sr.mieScattering, 0.0001f, 0.0f, 1.0f);
             ImGui::DragFloat("Sun Intensity", &sr.sunIntensity, 0.1f, 0.0f, 1000.0f);
             ImGui::SliderFloat("Mie G", &sr.mieG, -0.99f, 0.99f);
+        });
+
+    DrawComponentSection<scene::UICanvas>(go, ctx, "UI Canvas",
+        [go](scene::UICanvas& canvas, EditorContext&) {
+            if (go->GetParent())
+                ImGui::TextDisabled("Only root GameObjects are rendered as canvases.");
+            ImGui::DragFloat("Canvas Width",  &canvas.canvasWidth,  1.0f, 1.0f, 16384.0f);
+            ImGui::DragFloat("Canvas Height", &canvas.canvasHeight, 1.0f, 1.0f, 16384.0f);
+            ImGui::DragInt("Sort Order", &canvas.sortOrder);
+            static constexpr const char* kModeNames[] = { "Screen Space", "World Space" };
+            int modeIdx = static_cast<int>(canvas.renderMode);
+            if (ImGui::Combo("Render Mode", &modeIdx, kModeNames, 2))
+                canvas.renderMode = static_cast<scene::UIRenderMode>(modeIdx);
+            if (canvas.renderMode == scene::UIRenderMode::WorldSpace)
+                ImGui::DragFloat("World Scale", &canvas.worldScale, 0.0001f, 0.00001f, 1.0f, "%.5f");
+        });
+
+    DrawComponentSection<scene::UIImage>(go, ctx, "UI Image",
+        [](scene::UIImage& image, EditorContext&) {
+            ImGui::Checkbox("Use Anchor", &image.useAnchor);
+            if (image.useAnchor) {
+                DragVec2("Anchor Min",          image.anchorMin,        0.01f, 0.0f, 1.0f);
+                DragVec2("Anchor Max",          image.anchorMax,        0.01f, 0.0f, 1.0f);
+                DragVec2("Pivot",               image.pivot,            0.01f, 0.0f, 1.0f);
+                DragVec2("Anchored Position",   image.anchoredPosition, 1.0f);
+                DragVec2("Size Delta",          image.sizeDelta,        1.0f);
+            } else {
+                DragVec2("Position", image.position, 1.0f);
+                DragVec2("Size",     image.size,     1.0f, 1.0f, 16384.0f);
+            }
+            float color[4] = { image.color.x, image.color.y, image.color.z, image.color.w };
+            if (ImGui::ColorEdit4("Color", color))
+                image.color = { color[0], color[1], color[2], color[3] };
+            DragVec2("UV Min", image.uvMin, 0.01f, 0.0f, 1.0f);
+            DragVec2("UV Max", image.uvMax, 0.01f, 0.0f, 1.0f);
+            // texturePath
+            char texBuf[512];
+            std::snprintf(texBuf, sizeof(texBuf), "%s", image.texturePath.c_str());
+            if (ImGui::InputText("Texture Path", texBuf, sizeof(texBuf)))
+                image.texturePath = texBuf;
+        });
+
+    DrawComponentSection<scene::UIButton>(go, ctx, "UI Button",
+        [](scene::UIButton& button, EditorContext&) {
+            ImGui::Checkbox("Interactable", &button.isInteractable);
+            float normal[4] = { button.normalColor.x, button.normalColor.y, button.normalColor.z, button.normalColor.w };
+            if (ImGui::ColorEdit4("Normal Color", normal))
+                button.normalColor = { normal[0], normal[1], normal[2], normal[3] };
+            float hover[4] = { button.hoverColor.x, button.hoverColor.y, button.hoverColor.z, button.hoverColor.w };
+            if (ImGui::ColorEdit4("Hover Color", hover))
+                button.hoverColor = { hover[0], hover[1], hover[2], hover[3] };
+            float pressed[4] = { button.pressedColor.x, button.pressedColor.y, button.pressedColor.z, button.pressedColor.w };
+            if (ImGui::ColorEdit4("Pressed Color", pressed))
+                button.pressedColor = { pressed[0], pressed[1], pressed[2], pressed[3] };
+            static constexpr const char* kStateNames[] = { "Normal", "Hovered", "Pressed" };
+            widgets::ReadOnlyText("State", kStateNames[static_cast<int>(button.state)]);
+        });
+
+    DrawComponentSection<scene::UIText>(go, ctx, "UI Text",
+        [](scene::UIText& text, EditorContext&) {
+            char textBuf[512];
+            std::snprintf(textBuf, sizeof(textBuf), "%s", text.text.c_str());
+            if (ImGui::InputText("Text", textBuf, sizeof(textBuf)))
+                text.text = textBuf;
+            DragVec2("Position", text.position, 1.0f);
+            ImGui::DragFloat("Font Size", &text.fontSize, 1.0f, 1.0f, 512.0f);
+            ImGui::DragFloat("Letter Spacing", &text.letterSpacing, 0.1f, 0.0f, 128.0f);
+            float color[4] = { text.color.x, text.color.y, text.color.z, text.color.w };
+            if (ImGui::ColorEdit4("Color", color))
+                text.color = { color[0], color[1], color[2], color[3] };
+        });
+
+    DrawComponentSection<scene::UILayoutGroup>(go, ctx, "UI Layout Group",
+        [](scene::UILayoutGroup& layout, EditorContext&) {
+            static constexpr const char* kAxisNames[] = { "Horizontal", "Vertical" };
+            int axisIdx = static_cast<int>(layout.axis);
+            if (ImGui::Combo("Axis", &axisIdx, kAxisNames, 2))
+                layout.axis = static_cast<scene::UILayoutAxis>(axisIdx);
+            ImGui::DragFloat("Spacing", &layout.spacing, 1.0f, 0.0f, 1024.0f);
+            ImGui::DragFloat("Pad Left",   &layout.paddingLeft,   1.0f, 0.0f, 512.0f);
+            ImGui::DragFloat("Pad Right",  &layout.paddingRight,  1.0f, 0.0f, 512.0f);
+            ImGui::DragFloat("Pad Top",    &layout.paddingTop,    1.0f, 0.0f, 512.0f);
+            ImGui::DragFloat("Pad Bottom", &layout.paddingBottom, 1.0f, 0.0f, 512.0f);
+            ImGui::Checkbox("Reverse Order", &layout.reverseOrder);
+        });
+
+    DrawComponentSection<scene::UIAnimator>(go, ctx, "UI Animator",
+        [](scene::UIAnimator& anim, EditorContext&) {
+            if (ImGui::TreeNodeEx("Color Tween", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Checkbox("Active##ct", &anim.colorTween.active);
+                float from[4] = { anim.colorTween.from.x, anim.colorTween.from.y, anim.colorTween.from.z, anim.colorTween.from.w };
+                if (ImGui::ColorEdit4("From##ct", from)) anim.colorTween.from = { from[0], from[1], from[2], from[3] };
+                float to[4] = { anim.colorTween.to.x, anim.colorTween.to.y, anim.colorTween.to.z, anim.colorTween.to.w };
+                if (ImGui::ColorEdit4("To##ct", to)) anim.colorTween.to = { to[0], to[1], to[2], to[3] };
+                ImGui::DragFloat("Duration##ct", &anim.colorTween.duration, 0.05f, 0.01f, 60.0f);
+                ImGui::Checkbox("Loop##ct",     &anim.colorTween.loop);
+                ImGui::Checkbox("Ping Pong##ct",&anim.colorTween.pingPong);
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNodeEx("Position Tween", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Checkbox("Active##pt", &anim.positionTween.active);
+                DragVec2("From##pt", anim.positionTween.from, 1.0f);
+                DragVec2("To##pt",   anim.positionTween.to,   1.0f);
+                ImGui::DragFloat("Duration##pt", &anim.positionTween.duration, 0.05f, 0.01f, 60.0f);
+                ImGui::Checkbox("Loop##pt",     &anim.positionTween.loop);
+                ImGui::Checkbox("Ping Pong##pt",&anim.positionTween.pingPong);
+                ImGui::TreePop();
+            }
         });
 
     if (auto* sc = go->GetComponent<scene::ScriptComponent>()) {

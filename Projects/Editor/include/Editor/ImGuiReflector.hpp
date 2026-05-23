@@ -26,6 +26,13 @@ struct ImGuiReflector : scene::IReflector {
         ImGui::Checkbox(name, &v);
     }
 
+    void Field(const char* name, math::Vector2& v) override
+    {
+        float arr[2] = { v.x, v.y };
+        if (ImGui::DragFloat2(name, arr, 0.1f))
+            v = { arr[0], arr[1] };
+    }
+
     void Field(const char* name, math::Vector3& v) override
     {
         float arr[3] = { v.x, v.y, v.z };
