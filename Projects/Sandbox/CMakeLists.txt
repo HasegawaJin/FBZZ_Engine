@@ -6,14 +6,16 @@ file(GLOB_RECURSE SANDBOX_SOURCES
 add_executable(sandbox ${SANDBOX_SOURCES})
 
 # シェーダーを HLSL ファイルが更新されるたびに自動コンパイルする
-set(SHADER_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
-set(SHADER_STAMP  "${CMAKE_BINARY_DIR}/shaders_compiled.stamp")
+set(SHADER_SCRIPT    "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
+set(SHADER_UI_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_ui_shaders.bat")
+set(SHADER_STAMP     "${CMAKE_BINARY_DIR}/shaders_compiled.stamp")
 
-file(GLOB HLSL_FILES "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsl")
+file(GLOB_RECURSE HLSL_FILES "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsl")
 
 add_custom_command(
     OUTPUT  ${SHADER_STAMP}
     COMMAND cmd /c "${SHADER_SCRIPT}"
+    COMMAND cmd /c "${SHADER_UI_SCRIPT}"
     COMMAND ${CMAKE_COMMAND} -E touch ${SHADER_STAMP}
     DEPENDS ${HLSL_FILES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"

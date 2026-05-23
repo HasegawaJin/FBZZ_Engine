@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Math/Quaternion.hpp>
+#include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <string>
@@ -27,6 +28,7 @@ struct IReflector {
     virtual void Field(const char* name, float& v) = 0;
     virtual void Field(const char* name, int& v) = 0;
     virtual void Field(const char* name, bool& v) = 0;
+    virtual void Field(const char* name, math::Vector2& v) = 0;
     virtual void Field(const char* name, math::Vector3& v) = 0;
     virtual void Field(const char* name, math::Vector4& v) = 0;
     virtual void Field(const char* name, std::string& v) = 0;

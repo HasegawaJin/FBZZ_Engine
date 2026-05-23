@@ -26,6 +26,9 @@ public:
     // path: PNG / JPG / BMP / TGA / DDS いずれも受け付ける
     bool Init(ID3D11Device* device, ID3D11DeviceContext* context, const std::string& path);
 
+    // CPU メモリ上の RGBA8 ピクセルデータからテクスチャを生成する (白 1×1 等の手続き生成用)
+    bool InitFromData(ID3D11Device* device, const uint8_t* rgba, uint32_t width, uint32_t height);
+
     // 既存 SRV から直接初期化する (DX11RenderTarget が GetColorTexture() 用に使用)
     void InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height);
 

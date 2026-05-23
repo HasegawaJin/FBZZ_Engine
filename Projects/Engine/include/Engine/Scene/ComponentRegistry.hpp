@@ -11,6 +11,12 @@
 #include "Components/CameraComponent.hpp"
 #include "Components/AudioSourceComponent.hpp"
 #include "Components/SkyRenderer.hpp"
+#include "Components/UICanvas.hpp"
+#include "Components/UIImage.hpp"
+#include "Components/UIButton.hpp"
+#include "Components/UIText.hpp"
+#include "Components/UILayoutGroup.hpp"
+#include "Components/UIAnimator.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -26,6 +32,12 @@ using ComponentList = std::tuple<
     CameraComponent,
     AudioSourceComponent,
     SkyRenderer,
+    UICanvas,
+    UIImage,
+    UIButton,
+    UIText,
+    UILayoutGroup,
+    UIAnimator,
     ScriptComponent
     // 新型はここに1行追加するだけ
 >;

@@ -68,6 +68,40 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const
     return true;
 }
 
+bool DX11Texture::InitFromData(ID3D11Device* device, const uint8_t* rgba, uint32_t width, uint32_t height)
+{
+    D3D11_TEXTURE2D_DESC desc = {};
+    desc.Width            = width;
+    desc.Height           = height;
+    desc.MipLevels        = 1;
+    desc.ArraySize        = 1;
+    desc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc       = { 1, 0 };
+    desc.Usage            = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem      = rgba;
+    initData.SysMemPitch  = width * 4;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
+    HRESULT hr = device->CreateTexture2D(&desc, &initData, tex.GetAddressOf());
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("DX11Texture::InitFromData: CreateTexture2D failed 0x%08X", (unsigned)hr);
+        return false;
+    }
+
+    hr = device->CreateShaderResourceView(tex.Get(), nullptr, m_srv.GetAddressOf());
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("DX11Texture::InitFromData: CreateSRV failed 0x%08X", (unsigned)hr);
+        return false;
+    }
+
+    m_width  = width;
+    m_height = height;
+    return true;
+}
+
 void DX11Texture::InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height)
 {
     m_srv    = srv;   // ComPtr が AddRef して共同所有する

@@ -14,7 +14,8 @@ class ViewportPanel : public IPanel {
 public:
     enum class Kind {
         Scene,
-        Game
+        Game,
+        UI
     };
 
     explicit ViewportPanel(Kind kind = Kind::Scene);

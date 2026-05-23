@@ -198,6 +198,14 @@ std::shared_ptr<ITexture> DX11Renderer::CreateNativeTexture(const std::string& p
     return tex;
 }
 
+std::shared_ptr<ITexture> DX11Renderer::CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height)
+{
+    auto tex = std::make_shared<DX11Texture>();
+    if (!tex->InitFromData(m_device.Get(), rgba, width, height))
+        return nullptr;
+    return tex;
+}
+
 std::shared_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const PipelineStateDesc& desc)
 {
     auto pso = std::make_shared<DX11PipelineState>();

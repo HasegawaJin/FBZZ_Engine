@@ -31,6 +31,7 @@ public:
 
     ResourceHandle<ShaderTag> LoadShader(std::string_view path);
     ResourceHandle<TextureTag> LoadTexture(std::string_view path);
+    ResourceHandle<TextureTag> CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height);
 
     ResourceHandle<BufferTag> CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride);
     ResourceHandle<BufferTag> CreateIndexBuffer(const void* data, uint32_t count);
