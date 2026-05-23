@@ -16,6 +16,7 @@ public:
     // Unity: gameObject.name / .tag (直接変数)
     std::string name = "GameObject";
     std::string tag  = "Untagged";
+    int layer = 0;
 
     // Unity: gameObject.transform (常に存在。ComponentArray には入れない)
     Transform transform;

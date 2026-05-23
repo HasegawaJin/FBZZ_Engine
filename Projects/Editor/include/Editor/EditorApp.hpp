@@ -19,6 +19,7 @@ namespace fbzz::core     { class Window; }
 namespace fbzz::editor {
 
 class ViewportPanel;
+class ProjectSettingsPanel;
 
 class EditorApp {
 public:
@@ -55,8 +56,9 @@ private:
     void*                                    m_hwnd          = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
     renderer::ResourceManager*               m_resources     = nullptr;
-    ViewportPanel*                           m_sceneViewportPanel = nullptr;
-    ViewportPanel*                           m_gameViewportPanel  = nullptr;
+    ViewportPanel*                           m_sceneViewportPanel     = nullptr;
+    ViewportPanel*                           m_gameViewportPanel      = nullptr;
+    ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
 };

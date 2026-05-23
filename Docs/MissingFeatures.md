@@ -1,6 +1,6 @@
 # FBZZ Engine — 未実装・不足機能一覧
 
-最終更新: 2026-05-23  
+最終更新: 2026-05-23（feature/layer-system 反映）  
 調査対象ブランチ: `develop`
 
 ---
@@ -134,25 +134,17 @@
 | D-9-5 | 1 GameObject に複数 Script アタッチ | `ComponentArray` の制約上、`ScriptComponent` は 1 エンティティにつき 1 つまで。Unity 相当の複数スクリプトが必要な場合は内部で `Composite Script` パターンを使うか、ECS 側で複数コンポーネント対応が必要 | 低 |
 | D-9-6 | Script ホットリロード | スクリプトは C++ ネイティブのため再コンパイルなしに変更不可。DLL 差し替えや Lua / Python バインディング、あるいは C++ ホットリロードライブラリ (cr.h 等) の導入が選択肢。Step 7 以降 | 低 (Step 7 以降) |
 
-### D-10. Tag/Layer システム
+### D-10. Tag/Layer システム — **完全実装済み**
 
-**実装済み（Tag のみ部分実装）**
-- `GameObject::tag` フィールド（デフォルト `"Untagged"`）と `CompareTag()` は実装済み
-- `Scene::FindWithTag()` 実装済み
-- `SceneSerializer` で tag の保存・読み込み対応済み
-
-**未実装**
-
-| # | 機能 | 概要 | 優先度 |
-|---|------|------|--------|
-| D-10-1 | Tag 編集 UI | InspectorPanel で Tag を表示・編集できる UI がない。現状は name のみ編集可能 | 中 |
-| D-10-2 | Layer フィールド | `GameObject` に `int layer = 0;` フィールドが存在しない。Layer 自体が未定義 | 高 |
-| D-10-3 | LayerMask 型 | ビットマスクで複数レイヤーを表現する `LayerMask` 型と定義済みレイヤー名の列挙が未実装 | 高 |
-| D-10-4 | Physics レイヤーフィルタ | `PhysicsSystem` がレイヤーを参照しない。Layer × Layer の衝突マトリクス（ProjectSettings 相当）が未実装。全コライダーが無条件に衝突判定される | 高 |
-| D-10-5 | Render レイヤーフィルタ | Camera に `cullingMask` がなく、`RenderSystem` がレイヤー別カリングを行わない | 中 |
-| D-10-6 | Layer 編集 UI | InspectorPanel で Layer ドロップダウンを表示・変更する UI がない | 中 |
-| D-10-7 | Layer シリアライズ | `SceneSerializer` で layer フィールドの保存・読み込みが未実装 | 中 |
-| D-10-8 | FindWithLayer() | タグ検索相当の `Scene::FindWithLayer()` / `FindAllWithLayer()` が未実装 | 低 |
+- `GameObject::tag` / `layer` フィールド実装済み
+- `LayerMask` 型・`Layer` 定数・`LayerCollisionMatrix` を `Physics/Layer.hpp` に定義
+- Physics BroadPhase レイヤーフィルタ（`std::function<bool(int,int)>` 経由）実装済み
+- `CameraComponent::cullingMask` + `RenderSystem` レイヤーカリング実装済み
+- `SceneSerializer` で `layer` / `cullingMask` の保存・読み込み対応済み
+- `ProjectSettings`（動的タグ一覧・レイヤー名 32 本）+ TOML シリアライズ実装済み
+- InspectorPanel: Unity スタイル Tag/Layer ドロップダウン・cullingMask チェックボックス UI 実装済み
+- `ProjectSettingsPanel`（Edit メニューから開く）でタグ追加削除・レイヤー名編集可能
+- `Scene::FindWithTag()` / `FindWithLayer()` / `FindAllWithTag()` / `FindAllWithLayer()` 実装済み
 
 ---
 
@@ -161,6 +153,6 @@
 | 優先度 | 項目 |
 |--------|------|
 | 今すぐ | — (A-1〜A-3 はすべて解消済み) |
-| 近い将来 | B-1, B-2, D-4-1, D-4-2, D-5-1, D-5-2, D-5-3, D-7-1 (OBB), D-9-1, D-9-2, D-10-2, D-10-3, D-10-4 |
+| 近い将来 | B-1, B-2, D-4-1, D-4-2, D-5-1, D-5-2, D-5-3, D-7-1 (OBB), D-9-1, D-9-2 |
 | Step 7 | C-1 〜 C-6, D-6-1, D-9-6 |
 | 余裕があれば | D-1-1 〜 D-4-4, D-5-4 〜 D-5-9, D-6-2 〜 D-6-6, D-7-2 〜 D-7-7, D-9-3 〜 D-9-5 |

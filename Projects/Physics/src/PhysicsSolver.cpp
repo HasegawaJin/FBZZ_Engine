@@ -87,7 +87,8 @@ namespace fbzz::physics
 
     // ------------------------------------------------------------------ BroadPhase
     void PhysicsSolver::BroadPhase(const std::vector<ColliderInstance>& colliders,
-                                    std::vector<CollisionPair>& outPairs)
+                                    std::vector<CollisionPair>& outPairs,
+                                    const std::function<bool(int, int)>& layerFilter)
     {
         for (size_t i = 0; i < colliders.size(); ++i)
         {
@@ -95,6 +96,7 @@ namespace fbzz::physics
             for (size_t j = i + 1; j < colliders.size(); ++j)
             {
                 if (!colliders[j].collider) continue;
+                if (layerFilter && !layerFilter(colliders[i].layer, colliders[j].layer)) continue;
                 if (!colliders[i].isTrigger && !colliders[j].isTrigger)
                 {
                     const bool staticA = !colliders[i].body || colliders[i].body->IsStatic();

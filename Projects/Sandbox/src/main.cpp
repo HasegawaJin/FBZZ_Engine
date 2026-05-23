@@ -3,6 +3,7 @@
 // Physics Volume / Constraint / CapsuleCollider verification scene
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Time.hpp>
+#include <Physics/Layer.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
@@ -475,6 +476,7 @@ int main()
         }
 
         renderer::Camera gameCamera = debugCamera.camera;
+        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
         if (auto* rt = resources.Get(gameRT))
             gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
@@ -485,6 +487,7 @@ int main()
             gameCamera.m_fovY = cc.fovY;
             gameCamera.m_near = cc.nearZ;
             gameCamera.m_far = cc.farZ;
+            gameCullingMask = cc.cullingMask;
             break;
         }
 
@@ -525,7 +528,8 @@ int main()
                                 resources,
                                 gameCamera,
                                 gameRT,
-                                &editorApp.GetContext().renderSettings);
+                                &editorApp.GetContext().renderSettings,
+                                gameCullingMask);
         }
 
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);

@@ -79,10 +79,13 @@ public:
     GameObject& CreateGameObject(const std::string& name = "GameObject");
 
     // Unity: GameObject.Find 系の実体
-    GameObject*              Find(const std::string& name)    const;
-    GameObject*              FindWithTag(const std::string& t) const;
+    GameObject*              Find(const std::string& name)     const;
+    GameObject*              FindWithTag(const std::string& t)  const;
+    GameObject*              FindWithLayer(int layer)            const;
+    std::vector<GameObject*> FindAllWithTag(const std::string& t) const;
+    std::vector<GameObject*> FindAllWithLayer(int layer)          const;
     template<typename T>
-    std::vector<GameObject*> FindObjectsOfType()              const;
+    std::vector<GameObject*> FindObjectsOfType()               const;
 
     // Unity: scene.GetRootGameObjects()
     std::vector<GameObject*> GetRootGameObjects() const;

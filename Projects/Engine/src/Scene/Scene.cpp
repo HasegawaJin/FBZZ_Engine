@@ -126,6 +126,26 @@ GameObject* Scene::FindWithTag(const std::string& t) const {
     return nullptr;
 }
 
+GameObject* Scene::FindWithLayer(int layer) const {
+    for (auto& go : m_gameObjects)
+        if (go->layer == layer) return go.get();
+    return nullptr;
+}
+
+std::vector<GameObject*> Scene::FindAllWithTag(const std::string& t) const {
+    std::vector<GameObject*> result;
+    for (auto& go : m_gameObjects)
+        if (go->tag == t) result.push_back(go.get());
+    return result;
+}
+
+std::vector<GameObject*> Scene::FindAllWithLayer(int layer) const {
+    std::vector<GameObject*> result;
+    for (auto& go : m_gameObjects)
+        if (go->layer == layer) result.push_back(go.get());
+    return result;
+}
+
 std::vector<GameObject*> Scene::GetRootGameObjects() const {
     std::vector<GameObject*> result;
     for (auto& go : m_gameObjects)

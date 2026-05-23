@@ -2,6 +2,7 @@
 // EditorContext.hpp | fbzz::editor
 // パネル間で共有するエディター状態
 #pragma once
+#include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <vector>
@@ -73,10 +74,16 @@ struct EditorContext {
     // レンダリング設定 (RenderSystem に渡す)
     renderer::RenderSettings renderSettings;
 
+    // プロジェクト設定
+    fbzz::ProjectSettings projectSettings;
+
     // 表示オプション (エディター固有)
     bool showLightRange = true;
     bool showColliders  = false;
     bool showSceneStats = true;
+
+    // パネル間リクエスト
+    bool requestOpenProjectSettings = false;
 
     // Util (非所有)
     UndoStack*          undoStack = nullptr;

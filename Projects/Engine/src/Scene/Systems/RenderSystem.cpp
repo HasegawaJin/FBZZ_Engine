@@ -108,7 +108,8 @@ void RenderSystem(Scene& scene,
                   renderer::ResourceManager& resources,
                   const renderer::Camera& camera,
                   renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
-                  const renderer::RenderSettings* settings)
+                  const renderer::RenderSettings* settings,
+                  fbzz::LayerMask cullingMask)
 {
     static renderer::RenderSettings sDefaultSettings;
     const renderer::RenderSettings& rs = settings ? *settings : sDefaultSettings;
@@ -262,18 +263,21 @@ void RenderSystem(Scene& scene,
         lightFrameData.viewProjection = lightVP;
         resources.Update(frameCB, &lightFrameData, sizeof(PerFrameCB));
 
-        for (auto [tf, mr] : scene.View<Transform, MeshRenderer>()) {
-            if (!mr.enabled || !mr.mesh || !mr.material) continue;
-            if (!mr.mesh->vertexBuffer.IsValid() || !mr.mesh->indexBuffer.IsValid()) continue;
+        for (auto& go : scene.GameObjects()) {
+            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            auto* mr = go.GetComponent<MeshRenderer>();
+            if (!mr || !mr->enabled || !mr->mesh || !mr->material) continue;
+            if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
+            auto& tf = go.transform;
 
             PerObjectCB objData{};
             objData.world = tf.GetWorldMatrix();
             resources.Update(objectCB, &objData, sizeof(PerObjectCB));
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = mr.mesh->vertexBuffer;
-            dc.indexBuffer        = mr.mesh->indexBuffer;
-            dc.indexCount         = mr.mesh->indexCount;
+            dc.vertexBuffer       = mr->mesh->vertexBuffer;
+            dc.indexBuffer        = mr->mesh->indexBuffer;
+            dc.indexCount         = mr->mesh->indexCount;
             dc.shader             = shadowShader;
             dc.pipelineState      = pso;
             dc.constantBuffers[0] = frameCB;
@@ -312,32 +316,35 @@ void RenderSystem(Scene& scene,
 
     auto shadowDepthTex = resources.GetDepthTexture(shadowMapRT);
 
-    for (auto [tf, mr] : scene.View<Transform, MeshRenderer>()) {
-        if (!mr.enabled || !mr.mesh || !mr.material) continue;
-        if (!mr.mesh->vertexBuffer.IsValid() || !mr.mesh->indexBuffer.IsValid()) continue;
-        if (!mr.material->shader.IsValid()) continue;
+    for (auto& go : scene.GameObjects()) {
+        if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+        auto* mr = go.GetComponent<MeshRenderer>();
+        if (!mr || !mr->enabled || !mr->mesh || !mr->material) continue;
+        if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
+        if (!mr->material->shader.IsValid()) continue;
+        auto& tf = go.transform;
 
         PerObjectCB objData{};
         objData.world             = tf.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
         resources.Update(objectCB, &objData, sizeof(PerObjectCB));
 
-        mr.material->Upload(resources);
+        mr->material->Upload(resources);
 
         renderer::DrawCall dc;
-        dc.vertexBuffer       = mr.mesh->vertexBuffer;
-        dc.indexBuffer        = mr.mesh->indexBuffer;
-        dc.indexCount         = mr.mesh->indexCount;
-        dc.vertexCount        = mr.mesh->vertexCount;
-        dc.shader             = mr.material->shader;
+        dc.vertexBuffer       = mr->mesh->vertexBuffer;
+        dc.indexBuffer        = mr->mesh->indexBuffer;
+        dc.indexCount         = mr->mesh->indexCount;
+        dc.vertexCount        = mr->mesh->vertexCount;
+        dc.shader             = mr->material->shader;
         dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
         dc.constantBuffers[0] = frameCB;
         dc.constantBuffers[1] = objectCB;
-        dc.constantBuffers[2] = mr.material->paramsBuffer;
+        dc.constantBuffers[2] = mr->material->paramsBuffer;
         dc.constantBuffers[3] = lightCB;
         dc.constantBuffers[4] = shadowCB;
-        if (mr.material->albedoTexture.IsValid())  dc.textures[0] = mr.material->albedoTexture;
-        if (mr.material->normalTexture.IsValid())  dc.textures[1] = mr.material->normalTexture;
+        if (mr->material->albedoTexture.IsValid())  dc.textures[0] = mr->material->albedoTexture;
+        if (mr->material->normalTexture.IsValid())  dc.textures[1] = mr->material->normalTexture;
         dc.textures[8] = shadowDepthTex;
         renderer.Submit(dc, resources);
     }
@@ -348,8 +355,10 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     if (skydomeShader.IsValid() && skydomeMesh && skydomeMesh->vertexBuffer.IsValid() && skydomeMesh->indexBuffer.IsValid())
     {
-        for (auto [tf, sky] : scene.View<Transform, SkyRenderer>()) {
-            if (!sky.enabled) continue;
+        for (auto& go : scene.GameObjects()) {
+            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            auto* sky = go.GetComponent<SkyRenderer>();
+            if (!sky || !sky->enabled) continue;
 
             // exposure 繧・Skydome 逕ｨ縺ｫ莠句燕繧ｻ繝・ヨ (Pass 3 繧医ｊ蜈医↓螳溯｡後＆繧後ｋ縺溘ａ)
             PostProcCB skyPostData{};
@@ -358,14 +367,14 @@ void RenderSystem(Scene& scene,
             resources.Update(postprocCB, &skyPostData, sizeof(PostProcCB));
 
             AtmosphereCB atmData{};
-            atmData.rayleighScattering[0] = sky.rayleighScattering.x;
-            atmData.rayleighScattering[1] = sky.rayleighScattering.y;
-            atmData.rayleighScattering[2] = sky.rayleighScattering.z;
-            atmData.mieScattering         = sky.mieScattering;
+            atmData.rayleighScattering[0] = sky->rayleighScattering.x;
+            atmData.rayleighScattering[1] = sky->rayleighScattering.y;
+            atmData.rayleighScattering[2] = sky->rayleighScattering.z;
+            atmData.mieScattering         = sky->mieScattering;
             atmData.planetRadius          = 6371.0f;
             atmData.atmosphereRadius      = 6471.0f;
-            atmData.sunIntensity          = sky.sunIntensity;
-            atmData.mieG                  = sky.mieG;
+            atmData.sunIntensity          = sky->sunIntensity;
+            atmData.mieG                  = sky->mieG;
             resources.Update(atmCB, &atmData, sizeof(AtmosphereCB));
 
             renderer::DrawCall skyDC;
@@ -390,54 +399,57 @@ void RenderSystem(Scene& scene,
     {
         const float dt = core::Time::DeltaTime();
 
-        for (auto [tf, emitter] : scene.View<Transform, ParticleEmitter>()) {
-            if (!emitter.enabled) continue;
+        for (auto& go : scene.GameObjects()) {
+            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            auto* emitter = go.GetComponent<ParticleEmitter>();
+            if (!emitter || !emitter->enabled) continue;
+            auto& tf = go.transform;
 
             // ----- 繝代・繝・ぅ繧ｯ繝ｫ逋ｺ逕・-----
-            emitter.emitAccum += emitter.emitRate * dt;
-            while (emitter.emitAccum >= 1.0f
-                   && static_cast<int>(emitter.particles.size()) < emitter.maxParticles)
+            emitter->emitAccum += emitter->emitRate * dt;
+            while (emitter->emitAccum >= 1.0f
+                   && static_cast<int>(emitter->particles.size()) < emitter->maxParticles)
             {
-                emitter.emitAccum -= 1.0f;
+                emitter->emitAccum -= 1.0f;
                 Particle p;
-                p.position = tf.localPosition + emitter.emitPosition;
-                float rx = ((std::rand() / float(RAND_MAX)) * 2.0f - 1.0f) * emitter.velocitySpread;
-                float rz = ((std::rand() / float(RAND_MAX)) * 2.0f - 1.0f) * emitter.velocitySpread;
-                p.velocity = { emitter.emitVelocity.x + rx,
-                               emitter.emitVelocity.y,
-                               emitter.emitVelocity.z + rz };
-                p.color = emitter.colorStart;
-                p.size  = emitter.sizeStart;
+                p.position = tf.localPosition + emitter->emitPosition;
+                float rx = ((std::rand() / float(RAND_MAX)) * 2.0f - 1.0f) * emitter->velocitySpread;
+                float rz = ((std::rand() / float(RAND_MAX)) * 2.0f - 1.0f) * emitter->velocitySpread;
+                p.velocity = { emitter->emitVelocity.x + rx,
+                               emitter->emitVelocity.y,
+                               emitter->emitVelocity.z + rz };
+                p.color = emitter->colorStart;
+                p.size  = emitter->sizeStart;
                 p.age   = 0.0f;
-                emitter.particles.push_back(std::move(p));
+                emitter->particles.push_back(std::move(p));
             }
 
             // ----- 譖ｴ譁ｰ + 蟇ｿ蜻ｽ蛻・ｌ髯､蜴ｻ -----
-            for (auto it = emitter.particles.begin(); it != emitter.particles.end(); ) {
+            for (auto it = emitter->particles.begin(); it != emitter->particles.end(); ) {
                 it->age += dt;
-                if (it->age >= emitter.lifetime) {
-                    it = emitter.particles.erase(it);
+                if (it->age >= emitter->lifetime) {
+                    it = emitter->particles.erase(it);
                     continue;
                 }
-                float t = it->age / emitter.lifetime;
+                float t = it->age / emitter->lifetime;
                 it->position.x += it->velocity.x * dt;
                 it->position.y += it->velocity.y * dt;
                 it->position.z += it->velocity.z * dt;
                 it->velocity.y -= 5.0f * dt;  // 驥榊鴨
-                it->color = LerpVec4(emitter.colorStart, emitter.colorEnd, t);
-                it->size  = emitter.sizeStart + (emitter.sizeEnd - emitter.sizeStart) * t;
+                it->color = LerpVec4(emitter->colorStart, emitter->colorEnd, t);
+                it->size  = emitter->sizeStart + (emitter->sizeEnd - emitter->sizeStart) * t;
                 ++it;
             }
 
             // ----- 繝薙Ν繝懊・繝峨け繝ｯ繝・ラ繧呈ｧ狗ｯ峨＠縺ｦ謠冗判 -----
-            int count = std::min(static_cast<int>(emitter.particles.size()), MAX_PARTICLE_DRAW);
+            int count = std::min(static_cast<int>(emitter->particles.size()), MAX_PARTICLE_DRAW);
             if (count == 0) continue;
 
             static const float kUV[4][2] = { {0,0},{1,0},{0,1},{1,1} };
             std::vector<ParticleVertex> verts;
             verts.reserve(static_cast<size_t>(count * 4));
             for (int i = 0; i < count; ++i) {
-                const auto& p = emitter.particles[i];
+                const auto& p = emitter->particles[i];
                 for (int c = 0; c < 4; ++c) {
                     ParticleVertex v;
                     v.center[0] = p.position.x;
