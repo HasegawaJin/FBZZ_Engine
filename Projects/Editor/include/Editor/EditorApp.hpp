@@ -36,6 +36,7 @@ public:
     // Viewport に紐づいたオフスクリーン RT (main.cpp はここに描く)
     renderer::ResourceHandle<renderer::RenderTargetTag> GetViewportRT() const { return m_sceneViewportRT; }
     renderer::ResourceHandle<renderer::RenderTargetTag> GetGameViewportRT() const { return m_gameViewportRT; }
+    renderer::ResourceHandle<renderer::RenderTargetTag> GetUIViewportRT() const { return m_uiViewportRT; }
 
 private:
     void BuildMenuBar(EditorContext& ctx);
@@ -62,9 +63,11 @@ private:
     renderer::ResourceManager*               m_resources     = nullptr;
     ViewportPanel*                           m_sceneViewportPanel     = nullptr;
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
+    ViewportPanel*                           m_uiViewportPanel        = nullptr;
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> m_uiViewportRT;
 };
 
 } // namespace fbzz::editor

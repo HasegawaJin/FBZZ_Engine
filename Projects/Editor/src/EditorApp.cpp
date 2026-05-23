@@ -79,6 +79,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
         m_gameViewportPanel = vp.get();
         m_panels.push_back(std::move(vp));
     }
+    {
+        auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::UI);
+        m_uiViewportPanel = vp.get();
+        m_panels.push_back(std::move(vp));
+    }
     m_panels.push_back(std::make_unique<ConsolePanel>(m_consoleSink));
     m_panels.push_back(std::make_unique<AssetBrowserPanel>("Assets"));
     m_panels.push_back(std::make_unique<StatusBar>());
@@ -103,6 +108,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     // 初回 RT をウィンドウサイズで生成する
     m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
     m_gameViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    m_uiViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
     if (m_sceneViewportPanel)
     {
         m_sceneViewportPanel->hdrRT = m_sceneViewportRT;
@@ -114,6 +120,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
         m_gameViewportPanel->hdrRT = m_gameViewportRT;
         m_gameViewportPanel->renderer = &renderer;
         m_gameViewportPanel->resources = &resources;
+    }
+    if (m_uiViewportPanel)
+    {
+        m_uiViewportPanel->hdrRT = m_uiViewportRT;
+        m_uiViewportPanel->renderer = &renderer;
+        m_uiViewportPanel->resources = &resources;
     }
 
     FBZZ_LOG_INFO("EditorApp init done");
@@ -129,6 +141,7 @@ void EditorApp::Shutdown()
     m_ctx.projectSettings.Save(PROJECT_SETTINGS_PATH);
     m_sceneViewportRT = {};
     m_gameViewportRT = {};
+    m_uiViewportRT = {};
     m_renderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }
@@ -216,6 +229,7 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 
     resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth, m_ctx.viewportHeight);
     resizeRT(m_gameViewportRT, m_gameViewportPanel, m_ctx.gameViewportWidth, m_ctx.gameViewportHeight);
+    resizeRT(m_uiViewportRT, m_uiViewportPanel, m_ctx.uiViewportWidth, m_ctx.uiViewportHeight);
 }
 
 void EditorApp::BuildMenuBar(EditorContext& ctx)
