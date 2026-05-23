@@ -12,6 +12,7 @@
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
+#include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -27,8 +28,9 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace fbzz::editor {
 
-static constexpr const char* SETTINGS_DIR  = "editor_config";
-static constexpr const char* SETTINGS_PATH = "editor_config/editor_settings.toml";
+static constexpr const char* SETTINGS_DIR             = "editor_config";
+static constexpr const char* SETTINGS_PATH            = "editor_config/editor_settings.toml";
+static constexpr const char* PROJECT_SETTINGS_PATH    = "editor_config/project_settings.toml";
 
 namespace {
 
@@ -80,6 +82,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     m_panels.push_back(std::make_unique<ConsolePanel>(m_consoleSink));
     m_panels.push_back(std::make_unique<AssetBrowserPanel>("Assets"));
     m_panels.push_back(std::make_unique<StatusBar>());
+    {
+        auto ps = std::make_unique<ProjectSettingsPanel>();
+        ps->visible = false;
+        m_projectSettingsPanel = ps.get();
+        m_panels.push_back(std::move(ps));
+    }
 
     for (auto& panel : m_panels)
         panel->OnInit(m_ctx);
@@ -88,6 +96,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
     util::FileSystem::EnsureDirectory(SETTINGS_DIR);
     m_settings.Load(SETTINGS_PATH);
+    m_ctx.projectSettings.Load(PROJECT_SETTINGS_PATH);
     m_ctx.showGrid    = m_settings.showGrid;
     m_ctx.snapEnabled = m_settings.snapEnabled;
 
@@ -117,6 +126,7 @@ void EditorApp::Shutdown()
         panel->OnShutdown();
 
     m_settings.Save(SETTINGS_PATH);
+    m_ctx.projectSettings.Save(PROJECT_SETTINGS_PATH);
     m_sceneViewportRT = {};
     m_gameViewportRT = {};
     m_renderer->ImGuiShutdown();
@@ -170,6 +180,11 @@ void EditorApp::RenderPanels(EditorContext& ctx)
 {
     for (auto& panel : m_panels)
         if (panel->visible) panel->OnRender(ctx);
+
+    if (ctx.requestOpenProjectSettings) {
+        if (m_projectSettingsPanel) m_projectSettingsPanel->visible = true;
+        ctx.requestOpenProjectSettings = false;
+    }
 }
 
 void EditorApp::EndFrame(renderer::IRenderer& renderer)
@@ -228,6 +243,9 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         bool canRedo = ctx.undoStack && ctx.undoStack->CanRedo();
         if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo)) ctx.undoStack->Undo();
         if (ImGui::MenuItem("Redo", "Ctrl+Y", false, canRedo)) ctx.undoStack->Redo();
+        ImGui::Separator();
+        if (ImGui::MenuItem("Project Settings") && m_projectSettingsPanel)
+            m_projectSettingsPanel->visible = true;
         ImGui::EndMenu();
     }
 

@@ -109,7 +109,7 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         if (body)
             body->SetInertiaFromCollider(col->collider.get());
 
-        colliders.push_back({ col->collider, body, &col->material, col->isTrigger });
+        colliders.push_back({ col->collider, body, &col->material, col->isTrigger, go.layer });
         colliderOwners[col->collider.get()] = { &go, col };
 
         auto* volume = go.GetComponent<VolumeComponent>();

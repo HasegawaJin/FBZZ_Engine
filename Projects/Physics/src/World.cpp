@@ -38,8 +38,9 @@ namespace fbzz::physics
         m_gravity = gravity;
     }
 
-    void World::Step(float dt)
+    void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
+        m_layerFilter = std::move(layerFilter);
         constexpr int SUBSTEPS = 4;
         const float subDt = dt / SUBSTEPS;
         std::vector<float> effectiveDts;
@@ -156,7 +157,7 @@ namespace fbzz::physics
     void World::BroadPhase()
     {
         m_collisionPairs.clear();
-        m_solver.BroadPhase(m_colliders, m_collisionPairs);
+        m_solver.BroadPhase(m_colliders, m_collisionPairs, m_layerFilter);
     }
 
     void World::NarrowPhase()

@@ -5,6 +5,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -91,6 +92,52 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     if (ImGui::InputText("##name", nameBuf, sizeof(nameBuf)))
         go->name = nameBuf;
 
+    auto& ps = ctx.projectSettings;
+
+    {
+        const float spacing   = ImGui::GetStyle().ItemSpacing.x;
+        const float labelTagW = ImGui::CalcTextSize("Tag").x   + spacing;
+        const float labelLayW = ImGui::CalcTextSize("Layer").x + spacing;
+        const float comboW    = (ImGui::GetContentRegionAvail().x - labelTagW - labelLayW - spacing) * 0.5f;
+
+        // Tag
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Tag");
+        ImGui::SameLine();
+        int tagIdx = 0;
+        for (int i = 0; i < (int)ps.tags.size(); ++i)
+            if (go->tag == ps.tags[i]) { tagIdx = i; break; }
+        const char* tagLabel = ps.tags.empty() ? "(none)" : ps.tags[tagIdx].c_str();
+        ImGui::SetNextItemWidth(comboW);
+        if (ImGui::BeginCombo("##tag", tagLabel)) {
+            for (int i = 0; i < (int)ps.tags.size(); ++i) {
+                bool selected = (i == tagIdx);
+                if (ImGui::Selectable(ps.tags[i].c_str(), selected))
+                    go->tag = ps.tags[i];
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::Separator();
+            if (ImGui::Selectable("Add Tag..."))
+                ctx.requestOpenProjectSettings = true;
+            ImGui::EndCombo();
+        }
+
+        // Layer
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Layer");
+        ImGui::SameLine();
+        int layerIdx = go->layer & 31;
+        auto layerGetter = [](void* data, int idx) -> const char* {
+            auto* names = static_cast<std::array<std::string, 32>*>(data);
+            if (idx < 0 || idx >= 32) return "";
+            return (*names)[idx].c_str();
+        };
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::Combo("##layer", &layerIdx, layerGetter, &ps.layerNames, 32))
+            go->layer = layerIdx;
+    }
+
     ImGui::Separator();
 
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -148,11 +195,28 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         });
 
     DrawComponentSection<scene::CameraComponent>(go, ctx, "Camera",
-        [](scene::CameraComponent& cc, EditorContext&) {
+        [](scene::CameraComponent& cc, EditorContext& c) {
             ImGui::Checkbox("Is Main", &cc.isMain);
             ImGui::DragFloat("FOV", &cc.fovY, 0.5f, 1.0f, 170.0f);
             ImGui::DragFloat("Near", &cc.nearZ, 0.001f, 0.001f, 10.0f);
             ImGui::DragFloat("Far", &cc.farZ, 1.0f, 1.0f, 10000.0f);
+            const char* maskLabel = cc.cullingMask == fbzz::Layer::Everything ? "Everything"
+                                  : cc.cullingMask == fbzz::Layer::Nothing    ? "Nothing"
+                                  : "Mixed...";
+            if (ImGui::BeginCombo("Culling Mask", maskLabel)) {
+                bool all = cc.cullingMask == fbzz::Layer::Everything;
+                if (ImGui::Checkbox("Everything", &all))
+                    cc.cullingMask = all ? fbzz::Layer::Everything : fbzz::Layer::Nothing;
+                ImGui::Separator();
+                for (int i = 0; i < 32; ++i) {
+                    bool on = fbzz::Layer::Contains(cc.cullingMask, i);
+                    if (ImGui::Checkbox(c.projectSettings.layerNames[i].c_str(), &on)) {
+                        if (on) cc.cullingMask |=  fbzz::Layer::Mask(i);
+                        else    cc.cullingMask &= ~fbzz::Layer::Mask(i);
+                    }
+                }
+                ImGui::EndCombo();
+            }
         });
 
     DrawComponentSection<scene::ParticleEmitter>(go, ctx, "Particle Emitter",
