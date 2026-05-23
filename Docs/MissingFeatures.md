@@ -1,6 +1,6 @@
 # FBZZ Engine — 未実装・不足機能一覧
 
-最終更新: 2026-05-23（develop 実装済み項目を全反映）  
+最終更新: 2026-05-24（Gizmo 回転バグ修正・`Quaternion::FromMatrix4` 追加）  
 調査対象ブランチ: `develop`
 
 ---
@@ -12,6 +12,7 @@
 | A-1 | IRenderer の Create* が shared_ptr を返したまま | `Engine/include/Engine/Renderer/IRenderer.hpp` | ResourceSystem 移行後も `CreateVertexBuffer` 等は `shared_ptr<IBuffer>` 返却。`SetRenderTarget` / `GetImTextureID` だけ Handle 版オーバーロードが存在する混在状態 | **修正済み** — `CreateNative*` として `private` 化し `ResourceManager` を friend に。公開 API は全 Handle ベースに統一 |
 | A-2 | AssetBrowserPanel ダブルクリック未実装 | `Editor/src/Panels/AssetBrowserPanel.cpp` | `// ダブルクリックでシーンを開く (.fbzz)` のコメントのみ。SceneSerializer::Load() 呼び出しなし | **修正済み** — 拡張子 `.fbzz` 判定 → `SceneSerializer::Load()` 呼び出し実装 |
 | A-3 | 設計書が実装より古い | `Docs/renderer/Design.md` / `Docs/renderer/ResourceSystem.md` | `Material.hpp` / `Mesh.hpp` は既に ResourceHandle ベースだが設計書は `shared_ptr<IBuffer>` と記載。ResourceSystem.md のチェックリストが全て `[ ]` のまま | **修正済み** — `Design.md` の IRenderer / DrawCall 記述を Handle ベースに更新。ResourceSystem.md のチェックリストを全て `[x]` に更新 |
+| A-4 | Gizmo を触るとオブジェクトが回転する | `Editor/src/Panels/ViewportPanel.cpp` `DrawGizmo` | ImGuizmo の `DecomposeMatrixToComponents` は左手系 Euler を返すが、`Quaternion::FromEuler` は右手系で適用するため多軸回転時に結果が狂う。単軸なら偶然一致するため見逃しやすい | **修正済み** — `Quaternion::FromMatrix4`（Shepperd 法）を追加し、`DrawGizmo` で `DecomposeMatrixToComponents + FromEuler` を排除。`localRow` から直接 T / S を抽出し、正規化した回転行列を `FromMatrix4` で変換 |
 
 ---
 
@@ -67,9 +68,9 @@
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
-| D-3-1 | Ray クラス | `origin + t * direction`。現在 MousePicking は ViewportPanel 内に直書きで再利用不可 | 中 |
-| D-3-2 | Frustum クラス | 視錐台の 6 平面。Frustum Culling に必要 | 中 |
-| D-3-3 | Plane クラス | 平面定義。交差判定・反射ベクトル計算に使用 | 低 |
+| D-3-1 | Ray クラス | `origin + t * direction`。現在 MousePicking は ViewportPanel 内に直書きで再利用不可 | **実装済み** — `Ray.hpp/cpp` を追加。`IntersectPlane` / `IntersectSphere` / `IntersectTriangle` / `FromNDC` を実装。`ViewportPanel` のインライン交差判定を `Ray` メソッドで置き換え |
+| D-3-2 | Frustum クラス | 視錐台の 6 平面。Frustum Culling に必要 | **実装済み** — `Frustum.hpp/cpp` を追加。Gribb–Hartmann 法で VP 行列から 6 平面を抽出。`Contains` / `IntersectsSphere` / `IntersectsAABB` を実装 |
+| D-3-3 | Plane クラス | 平面定義。交差判定・反射ベクトル計算に使用 | **実装済み** — `Plane.hpp/cpp` を追加。`SignedDistanceTo` / `IsOnPositiveSide` / `FromPoints` / `FromNormalAndPoint` を実装 |
 
 ### D-4. エディター
 
@@ -80,7 +81,7 @@
 | D-4-3 | Shader 切り替え UI | InspectorPanel > MeshRenderer でシェーダーファイルを差し替える UI | 中 |
 | D-4-4 | テクスチャプレビュー | AssetBrowserPanel でサムネイル表示。現状はファイル名テキストのみ | 低 |
 
-### D-5. UI システム
+### D-5. UI システム　実装済み (のちのち改善予定)
 
 エンジンには現在 2D UI 専用の描画レイヤーが存在しない。ImGui はエディター専用であり、ゲームランタイム UI には使用しない設計とする。
 
