@@ -47,6 +47,7 @@ public:
     virtual void OnTriggerEnter(const CollisionInfo&) {}
     virtual void OnTriggerStay(const CollisionInfo&) {}
     virtual void OnTriggerExit(const CollisionInfo&) {}
+    virtual void OnDestroy() {}
     virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 
