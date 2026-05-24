@@ -1,6 +1,8 @@
 // FBZZ Engine
 // UIAnimator.hpp | fbzz::scene
-// Tween-based color and position animation for UIImage
+// UIImage 向け Tween アニメーションコンポーネント
+// 色と位置の変化を時間で補間し、UIAnimatorSystem が結果を書き込む。
+// UI 表示そのものは UISystem に委譲する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector2.hpp>
@@ -17,7 +19,7 @@ struct UIColorTween {
     float         elapsed  = 0.0f;
     UIEasingType  easing   = UIEasingType::Linear;
     bool          loop     = false;
-    bool          pingPong = false; // reverse on each loop iteration
+    bool          pingPong = false; // ループごとに再生方向を反転する
     bool          active   = false;
 };
 
@@ -41,7 +43,7 @@ struct UIAnimator {
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
-        // Tween params exposed for Inspector editing
+        // Inspector で編集する Tween パラメーター
         r.Field("colorFrom",        colorTween.from);
         r.Field("colorTo",          colorTween.to);
         r.Field("colorDuration",    colorTween.duration);

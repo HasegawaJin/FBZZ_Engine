@@ -1,6 +1,8 @@
 // FBZZ Engine
 // XAudio2Device.cpp | fbzz::audio
 // XAudio2 バックエンド実装
+// COM / XAudio2 の初期化と voice の寿命管理を閉じ込める。
+// 上位は IAudioDevice 経由で操作し、XAudio2 型へ依存しない。
 #include "Engine/Audio/XAudio2Device.hpp"
 #include "Engine/Core/Logger.hpp"
 #include <cassert>

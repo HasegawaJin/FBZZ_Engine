@@ -1,6 +1,8 @@
 // FBZZ Engine
 // UISystem.hpp | fbzz::scene
-// Runtime UI draw and button hit processing
+// ランタイム UI の描画とボタン入力処理
+// UICanvas / UIImage / UIText / UIButton を走査して DrawCall とヒット状態を作る。
+// WorldSpace UI には viewProjection を渡して座標変換する。
 #pragma once
 #include <Math/Vector2.hpp>
 #include <Math/Matrix4.hpp>
@@ -17,7 +19,7 @@ class Scene;
 
 namespace fbzz::scene {
 
-// viewProjection: camera VP matrix for WorldSpace canvases (pass identity if no WorldSpace canvases).
+// viewProjection: WorldSpace canvas 用のカメラ VP 行列。WorldSpace を使わない場合は単位行列でよい。
 void UISystem(Scene& scene,
               renderer::IRenderer& renderer,
               renderer::ResourceManager& resources,

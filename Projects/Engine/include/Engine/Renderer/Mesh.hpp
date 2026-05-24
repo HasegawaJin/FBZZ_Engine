@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Mesh.hpp | fbzz::renderer
-// GPU メッシュ。頂点・インデックスバッファのラッパー
+// GPU メッシュと頂点フォーマットの定義
+// 静的メッシュとスキンメッシュの両方を扱う。
+// CPU 側頂点配列はデバッグや再生成用に必要な範囲だけ保持する。
 #pragma once
 #include <cstdint>
 #include <vector>

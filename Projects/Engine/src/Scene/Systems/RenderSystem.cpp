@@ -1,6 +1,8 @@
 // FBZZ Engine
 // RenderSystem.cpp | fbzz::scene
-// レンダラー抽象を通じてシーンのレンダーコンポーネントを描画する。
+// Scene から DrawCall を生成する描画 System
+// Mesh / Light / Camera / UI / Particle を集約し、IRenderer へ送信する。
+// DX11 実装には直接依存せず、Renderer 抽象と ResourceManager を使う。
 // Pass 1: シャドウマップ深度。
 // Pass 2: HDR フォワードレンダリング、スカイドーム、パーティクル、デバッグオーバーレイ。
 // Pass 3: ブルーム、コンポジット、オプションの FXAA。

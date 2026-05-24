@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Input.hpp | fbzz::input
-// キーボード・マウス入力の一元管理
+// キーボード・マウス入力のフレーム状態管理
+// Window の Win32 メッセージから現在状態を更新し、Update で前フレーム状態を保存する。
+// KeyDown / KeyUp は 1 フレームだけ true になる。
 #pragma once
 #include "KeyCode.hpp"
 #include "Math/Vector2.hpp"

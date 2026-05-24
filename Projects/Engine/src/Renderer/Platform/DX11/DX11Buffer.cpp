@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Buffer.cpp | fbzz::renderer
 // DX11 頂点・インデックスバッファ実装
+// IBuffer の抽象 API を D3D11Buffer に対応付ける。
+// 動的更新を前提に Map / Unmap で CPU から内容を書き換える。
 //
 // バッファ戦略:
 //   D3D11_USAGE_DYNAMIC + D3D11_CPU_ACCESS_WRITE を採用。

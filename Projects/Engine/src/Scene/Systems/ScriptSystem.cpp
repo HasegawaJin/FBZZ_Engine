@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ScriptSystem.cpp | fbzz::scene
-// Executes user script lifecycle callbacks
+// ユーザースクリプトのライフサイクル実行
+// ScriptComponent を走査し、Start / Update を適切な順序で呼ぶ。
+// Script の所有は Component 側に残し、System は呼び出しだけを行う。
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"

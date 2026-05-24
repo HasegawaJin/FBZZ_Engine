@@ -1,6 +1,8 @@
 // FBZZ Engine
 // RigidBodyComponent.hpp | fbzz::scene
 // physics::RigidBody を Scene に紐付けるコンポーネント
+// Scene の Transform と physics::World の剛体状態を同期するための橋渡し。
+// RigidBody の共有所有は World と Component の間で行う。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Physics/RigidBody.hpp>

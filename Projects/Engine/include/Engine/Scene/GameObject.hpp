@@ -1,6 +1,8 @@
 // FBZZ Engine
 // GameObject.hpp | fbzz::scene
-// Unity ライクな OOP ラッパー。Scene が unique_ptr で所有する
+// Unity ライクな OOP ラッパー
+// Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
+// 親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
 #include "Entity.hpp"
 #include "Transform.hpp"

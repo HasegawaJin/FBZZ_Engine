@@ -1,6 +1,8 @@
 // FBZZ Engine
 // UIAnimatorSystem.cpp | fbzz::scene
-// Evaluates UIAnimator tweens and writes updated values into UIImage.
+// UIAnimator の Tween 評価
+// 時間経過に応じて UIImage の色と Transform の位置を更新する。
+// UISystem より前に呼ぶことで描画へ反映される。
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
@@ -19,7 +21,7 @@ float ApplyEasing(float t, UIEasingType easing)
     case UIEasingType::EaseIn:    return t * t;
     case UIEasingType::EaseOut:   return 1.0f - (1.0f - t) * (1.0f - t);
     case UIEasingType::EaseInOut: return t < 0.5f ? 2.0f * t * t : 1.0f - 2.0f * (1.0f - t) * (1.0f - t);
-    default: return t; // Linear
+    default: return t; // 線形
     }
 }
 
@@ -44,7 +46,7 @@ void AdvanceTween(float& elapsed, float duration, bool loop, bool pingPong, floa
         if (loop) {
             elapsed = std::fmod(elapsed, duration);
             if (pingPong) {
-                // swap from/to handled by caller
+                // from / to の入れ替えは呼び出し側で行う
             }
         } else {
             elapsed = duration;
@@ -61,7 +63,7 @@ void ProcessGO(GameObject& go, float dt)
     auto* image = go.GetComponent<UIImage>();
 
     if (anim && anim->enabled && image && image->enabled) {
-        // Color tween
+        // 色 Tween
         UIColorTween& ct = anim->colorTween;
         if (ct.active) {
             AdvanceTween(ct.elapsed, ct.duration, ct.loop, ct.pingPong, dt, ct.active);
@@ -69,10 +71,10 @@ void ProcessGO(GameObject& go, float dt)
             t = ApplyEasing(t, ct.easing);
             image->color = LerpV4(ct.from, ct.to, t);
             if (ct.loop && ct.pingPong && ct.elapsed == 0.0f)
-                std::swap(ct.from, ct.to); // flip direction next loop
+                std::swap(ct.from, ct.to); // 次のループで方向を反転する
         }
 
-        // Position tween
+        // 位置 Tween
         UIPositionTween& pt = anim->positionTween;
         if (pt.active) {
             AdvanceTween(pt.elapsed, pt.duration, pt.loop, pt.pingPong, dt, pt.active);

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // RenderLayer.hpp | fbzz::renderer
-// Renderer layer flags
+// 描画レイヤーの分類
+// Opaque / Transparent などの送信順制御に使う軽量 enum。
+// RenderSystem と Renderer が同じ基準でソートできるようにする。
 #pragma once
 #include <cstdint>
 

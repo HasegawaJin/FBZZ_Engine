@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ConstraintDebugDrawSystem.hpp | fbzz::scene
-// Physics constraint debug wire drawing
+// 物理拘束のデバッグワイヤー描画
+// physics::World の拘束情報を読み取り、DebugDraw へ送る。
+// Scene 側の状態は変更しない。
 #pragma once
 #include <Math/Vector4.hpp>
 

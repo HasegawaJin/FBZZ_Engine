@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ModelImporter.cpp | fbzz::asset
-// Assimp-based static and skeletal model import
+// Assimp を使った静的・スキンメッシュのインポート
+// 外部モデル形式を Engine の Model / Mesh / Material / Skeleton へ変換する。
+// 読み込み失敗は nullptr で返し、例外には頼らない。
 #include <Engine/Asset/ModelImporter.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -403,7 +405,7 @@ std::shared_ptr<Model> ModelImporter::Import(
     if (skinned)
         return ImportSkinnedModel(probeScene, probeUnitScale, resources);
 
-    // Static path: re-import with vertex-welding flags
+    // 静的メッシュとして、頂点結合フラグ付きで再インポートする
     Assimp::Importer staticImporter;
     const aiScene* staticScene = staticImporter.ReadFile(path, STATIC_ASSIMP_FLAGS);
     if (!staticScene || staticScene->mNumMeshes == 0) {

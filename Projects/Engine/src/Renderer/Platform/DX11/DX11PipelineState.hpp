@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11PipelineState.hpp | fbzz::renderer
-// DX11 パイプラインステート (ラスタライザ・ブレンド・深度ステンシル) 管理
+// DX11 パイプラインステート管理
+// IPipelineState を継承し、RenderStateDesc を DX11 state 群へ変換する。
+// 描画時は DX11Renderer がこの state をバインドする。
 //
 // 設計方針:
 //   DX11 にはモノリシックな PSO (Pipeline State Object) が存在しないため、

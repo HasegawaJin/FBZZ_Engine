@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Texture.hpp | fbzz::renderer
-// DX11 2D テクスチャ (DirectXTex による画像読み込み)
+// DX11 2D テクスチャ実装
+// ITexture を継承し、SRV / UAV とサイズ情報を保持する。
+// DirectXTex の読み込み結果を Renderer 抽象へ接続する。
 //
 // 設計方針:
 //   DirectXTex を採用した理由:

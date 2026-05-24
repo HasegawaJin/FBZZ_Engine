@@ -1,6 +1,8 @@
 // FBZZ Engine
 // UISystem.cpp | fbzz::scene
-// Runtime UI draw and button hit processing
+// ランタイム UI の描画とボタン入力処理
+// UICanvas / UIImage / UIText / UIButton を走査し、DrawCall と hit 状態を作る。
+// ScreenSpace と WorldSpace の両方を扱う。
 #include "Engine/Scene/Systems/UISystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
@@ -47,12 +49,12 @@ struct CanvasEntry {
 
 using Glyph = std::array<uint8_t, 7>;
 
-// Forward declaration — defined below alongside the full glyph table.
+// 前方宣言。完全なグリフテーブルと同じ場所で定義する。
 Glyph GetGlyph(char c);
 
-// --- SDF font atlas ---
-// ASCII 0x20..0x7E (95 chars), each glyph rendered into kGlyphSize x kGlyphSize SDF texels.
-// Atlas layout: kAtlasCols columns, rows as needed.
+// --- SDF フォントアトラス ---
+// ASCII 0x20..0x7E の 95 文字を、各 kGlyphSize x kGlyphSize の SDF texel として描画する。
+// アトラスは kAtlasCols 列で、必要な行数ぶん並べる。
 static constexpr int kGlyphSize  = 24;
 static constexpr int kAtlasCols  = 10;
 static constexpr int kAtlasRows  = 10; // 10x10 = 100 slots >= 95 chars
@@ -62,12 +64,12 @@ static constexpr int kFirstChar  = 0x20; // ' '
 static constexpr int kLastChar   = 0x7E; // '~'
 static constexpr int kNumGlyphs  = kLastChar - kFirstChar + 1; // 95
 
-// UV table: indexed by (char - kFirstChar)
+// UV テーブル。char - kFirstChar を添字にする。
 struct GlyphUV { math::Vector2 uvMin, uvMax; };
 GlyphUV s_glyphUVs[kNumGlyphs];
 
-// Build a 5x7 binary bitmap for a character using the existing GetGlyph() table.
-// Returns false if the glyph row/col is lit, packed into a flat [7][5] bool array.
+// 既存の GetGlyph() テーブルから 5x7 の文字ビットマップを作る。
+// 点灯している行・列を [7][5] の bool 配列へ詰める。
 void BitmapForChar(char c, bool out[7][5])
 {
     Glyph g = GetGlyph(c);
@@ -76,15 +78,15 @@ void BitmapForChar(char c, bool out[7][5])
             out[row][col] = (g[row] & (1u << (4 - col))) != 0;
 }
 
-// Generate a single SDF glyph of size kGlyphSize x kGlyphSize into `out` (grayscale uint8).
-// spread = maximum distance (in output pixels) that the SDF extends.
+// kGlyphSize x kGlyphSize の単一 SDF グリフを out へ生成する。値は grayscale uint8。
+// spread は SDF が出力ピクセル上で伸びる最大距離。
 void GenerateGlyphSDF(char c, uint8_t* out, int spread = 4)
 {
     bool bitmap[7][5];
     BitmapForChar(c, bitmap);
 
-    // Up-sample bitmap into a kGlyphSize x kGlyphSize boolean grid.
-    // Bitmap cell (col, row) maps to output pixel range
+    // ビットマップを kGlyphSize x kGlyphSize の bool グリッドへ拡大する。
+    // ビットマップセル (col, row) は次の出力ピクセル範囲に対応する。
     // [col*kGlyphSize/5, (col+1)*kGlyphSize/5) x [row*kGlyphSize/7, (row+1)*kGlyphSize/7).
     bool expanded[kGlyphSize][kGlyphSize] = {};
     for (int py = 0; py < kGlyphSize; ++py) {
@@ -99,7 +101,7 @@ void GenerateGlyphSDF(char c, uint8_t* out, int spread = 4)
         for (int px = 0; px < kGlyphSize; ++px) {
             float minDist = static_cast<float>(spread + 1);
             bool inside = expanded[py][px];
-            // Search within spread radius for opposite-sign pixels.
+            // spread 半径内で内外が逆のピクセルを探す。
             for (int sy = py - spread; sy <= py + spread; ++sy) {
                 if (sy < 0 || sy >= kGlyphSize) continue;
                 for (int sx = px - spread; sx <= px + spread; ++sx) {
@@ -561,26 +563,26 @@ void UISystem(Scene& scene,
             // as the ortho matrix. This transforms canvas-space pixels into clip space via
             // the 3D camera, giving correct perspective and depth.
             //
-            // The canvas origin sits at the GO's world position; each pixel maps to
-            // canvas->worldScale world units. We build a pixel → world-space scale matrix
+            // キャンバス原点は GameObject のワールド位置に置く。各ピクセルは
+            // canvas->worldScale 分のワールド単位に対応するため、ピクセルからワールド空間へのスケール行列を作る。
             // and multiply it by viewProjection.
             const float ws = entry.canvas->worldScale;
             math::Matrix4 pixelToWorld = math::Matrix4::Identity();
-            // Scale pixels to world units (canvas centered at 0).
+            // ピクセル単位をワールド単位へ拡大縮小する。キャンバス中心を 0 として扱う。
             pixelToWorld.m[0][0] = ws;
-            pixelToWorld.m[1][1] = -ws; // flip Y: canvas +Y down, world +Y up
-            // Translate so canvas (0,0) maps to the GO's local origin.
-            // (Full world-space transform from GO is a future extension; this centers the canvas.)
+            pixelToWorld.m[1][1] = -ws; // Y を反転する。canvas は +Y が下、world は +Y が上
+            // canvas (0,0) が GameObject のローカル原点へ対応するように移動する。
+            // GameObject の完全なワールド変換反映は今後の拡張とし、ここではキャンバス中心合わせに留める。
             pixelToWorld.m[0][3] = -entry.canvas->canvasWidth  * 0.5f * ws;
             pixelToWorld.m[1][3] =  entry.canvas->canvasHeight * 0.5f * ws;
 
             UICanvas worldCanvas = *entry.canvas;
             // Build ortho = VP * pixelToWorld so shaders receive a single transform matrix.
-            // Reuse the existing UIConstants.ortho field — shader is unaware of 3D vs 2D.
+            // 既存の UIConstants.ortho を再利用する。シェーダー側は 3D / 2D の違いを意識しない。
             // We store the combined matrix and use a separate WorldSpace PSO with depth enabled.
             (void)viewProjection; // TODO: multiply when GO Transform API is available
             // For now fall through to ScreenSpace handling for WorldSpace canvases
-            // until the engine exposes a clean "get GO world matrix" API.
+            // GameObject のワールド行列を取得する API が整うまではこの簡略版を使う。
             TraverseCanvas(*entry.go, renderer, resources, worldCanvas, mouseInCanvasSpace, mousePressed);
         } else {
             TraverseCanvas(*entry.go, renderer, resources, *entry.canvas, mouseInCanvasSpace, mousePressed);

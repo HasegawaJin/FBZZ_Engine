@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Time.cpp | fbzz::core
-// フレームタイム計測 (QueryPerformanceCounter)
+// QueryPerformanceCounter によるフレーム時間計測
+// Tick で生の delta と TimeScale 適用後 delta を更新する。
+// シングルスレッドのゲームループから呼ばれる前提。
 #include "Engine/Core/Time.hpp"
 
 #define NOMINMAX

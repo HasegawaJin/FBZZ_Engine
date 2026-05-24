@@ -1,6 +1,8 @@
 // FBZZ Engine
 // RenderState.hpp | fbzz::renderer
-// Renderer state descriptors
+// Renderer のパイプライン状態記述
+// トポロジー・ブレンド・深度・カリングなどをバックエンド非依存で表す。
+// PipelineState の生成キーとして使うため、値型として扱う。
 #pragma once
 
 // wingdi.h が OPAQUE=2 を定義するため enum class の enumerator と衝突する

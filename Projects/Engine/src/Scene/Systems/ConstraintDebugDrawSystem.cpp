@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ConstraintDebugDrawSystem.cpp | fbzz::scene
-// Physics constraint debug wire drawing
+// 物理拘束のデバッグワイヤー描画
+// physics::World から拘束表示用ジオメトリを取得し、DebugDraw へ渡す。
+// Scene / physics の状態は変更しない。
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Physics/ConstraintDebugGeometry.hpp>

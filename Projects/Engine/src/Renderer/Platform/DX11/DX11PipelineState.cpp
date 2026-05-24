@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11PipelineState.cpp | fbzz::renderer
-// DX11 パイプラインステート (ラスタライザ・ブレンド・深度ステンシル) 管理
+// DX11 パイプラインステート管理
+// Rasterizer / Blend / DepthStencil の各 state を RenderState から生成する。
+// DX11 の分割された state を Engine 側の PipelineState としてまとめる。
 #include "DX11PipelineState.hpp"
 #include <Engine/Core/HResult.hpp>
 

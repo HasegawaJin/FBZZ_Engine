@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Skeleton.hpp | fbzz::asset
-// Skeletal hierarchy and bind-pose data for skinned models
+// スキンメッシュ用の階層ノードとボーン情報
+// AnimationClip の nodeName と対応付け、AnimatorSystem が行列パレットを作る。
+// インデックス参照を使い、ランタイム中の所有関係は Model 側に集約する。
 #pragma once
 #include <Math/Matrix4.hpp>
 #include <string>

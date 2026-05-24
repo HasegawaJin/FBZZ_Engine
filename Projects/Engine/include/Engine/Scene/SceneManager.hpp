@@ -1,6 +1,8 @@
 // FBZZ Engine
 // SceneManager.hpp | fbzz::scene
-// シーン遷移管理。LoadScene はフレーム末尾で適用する
+// シーン遷移とアクティブ Scene 管理
+// LoadScene 要求を保持し、フレーム境界で安全に切り替える。
+// Scene の所有は manager が持ち、利用側は非所有参照で扱う。
 #pragma once
 #include "Scene.hpp"
 #include <Physics/World.hpp>

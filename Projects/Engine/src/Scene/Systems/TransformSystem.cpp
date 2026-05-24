@@ -1,6 +1,8 @@
 // FBZZ Engine
 // TransformSystem.cpp | fbzz::scene
-// 親子階層を BFS で走査し、world 空間の position / rotation を計算する
+// 親子階層のワールド Transform 更新
+// ルートから BFS で辿り、ローカル値からワールドの position / rotation を再計算する。
+// 循環しない親子関係を前提にする。
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include <queue>

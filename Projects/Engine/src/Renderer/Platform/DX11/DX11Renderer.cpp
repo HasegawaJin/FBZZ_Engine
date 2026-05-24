@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Renderer.cpp | fbzz::renderer
-// IRenderer の DX11 実装 — デバイス・スワップチェーン・フレーム管理
+// IRenderer の DX11 実装
+// デバイス・スワップチェーン・バックバッファ・フレーム送信を管理する。
+// 上位レイヤーには IRenderer と ResourceManager の境界だけを見せる。
 //
 // d3d11.lib / dxgi.lib はプラグマリンクで解決する。
 // CMakeLists で target_link_libraries に追加してもよいが、

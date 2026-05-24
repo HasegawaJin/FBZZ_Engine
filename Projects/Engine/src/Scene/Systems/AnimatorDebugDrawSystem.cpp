@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AnimatorDebugDrawSystem.cpp | fbzz::scene
-// Draws skeleton bone hierarchy as lines using DebugDraw
+// スケルトンボーンのデバッグワイヤー描画
+// Animator の現在姿勢を線分として DebugDraw へ積む。
+// Scene の状態は変更せず、可視化だけを行う。
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>

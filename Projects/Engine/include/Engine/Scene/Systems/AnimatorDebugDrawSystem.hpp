@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AnimatorDebugDrawSystem.hpp | fbzz::scene
-// Skeleton bone debug wire drawing
+// スケルトンボーンのデバッグワイヤー描画
+// AnimatorComponent / Skeleton の現在姿勢を DebugDraw へ送る。
+// 描画専用 System として Scene データを書き換えない。
 #pragma once
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
