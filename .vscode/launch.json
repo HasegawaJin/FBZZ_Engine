@@ -1,11 +1,25 @@
 {
     "version": "0.2.0",
     "configurations": [
+        
         {
             "name": "Debug (sandbox)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/debug/Projects/Sandbox/sandbox.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "justMyCode": true
+        },
+        {
+            "name": "Debug (tests)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Projects/Tests/fbzz_tests.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

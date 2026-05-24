@@ -12,6 +12,7 @@ namespace fbzz::physics
         DistanceConstraint(RigidBody* bodyA, RigidBody* bodyB, float distance);
 
         void SolvePosition(float dt) override;
+        ConstraintType GetType() const override { return ConstraintType::DISTANCE; }
 
         float m_distance = 1.0f;
     };

@@ -16,6 +16,7 @@ namespace fbzz::physics
                         const math::Vector3& axis);
 
         void SolvePosition(float dt) override;
+        ConstraintType GetType() const override { return ConstraintType::HINGE; }
 
         math::Vector3 m_localAnchorA;
         math::Vector3 m_localAnchorB;

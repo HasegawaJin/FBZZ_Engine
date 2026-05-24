@@ -6,6 +6,8 @@
 #include <Physics/ContactPoint.hpp>
 #include <Physics/CollisionPair.hpp>
 #include <Physics/PhysicsSolver.hpp>
+#include <Physics/ContactCache.hpp>
+#include <Physics/CCDSolver.hpp>
 #include <Physics/Volume.hpp>
 #include <Physics/Constraint.hpp>
 #include <Physics/SpringConstraint.hpp>
@@ -38,6 +40,7 @@ namespace fbzz::physics
         void SetColliders(std::vector<ColliderInstance> colliders);
         void SetVolumes(std::vector<std::shared_ptr<Volume>> volumes);
         void AddConstraint(std::shared_ptr<Constraint> constraint);
+        const std::vector<std::shared_ptr<Constraint>>& GetConstraints() const;
 
         void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
 
@@ -58,9 +61,10 @@ namespace fbzz::physics
         void SolveConstraintPositions(float dt);
         void UpdateColliders();
         void BroadPhase();
-        void NarrowPhase();
+        void NarrowPhase(bool doWarmStart = false);
         void Resolve();
         void ClassifyCollisions();
+        void CCDPhase(float dt);    // 高速物体のトンネリング防止 (IntegrateBodies の前)
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
         std::function<bool(int, int)> m_layerFilter;
@@ -72,6 +76,7 @@ namespace fbzz::physics
         std::vector<CollisionPair>              m_collisionPairs;
         std::vector<ContactPoint>               m_contacts;
         PhysicsSolver                           m_solver;
+        ContactCache                            m_contactCache;
 
         using ColliderPair = std::pair<const Collider*, const Collider*>;
         std::map<ColliderPair, CollisionEvent> m_prevEvents;

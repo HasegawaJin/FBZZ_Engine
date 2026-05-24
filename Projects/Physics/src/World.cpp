@@ -2,7 +2,9 @@
 // World.cpp | fbzz::physics
 // 物理シミュレーション世界の管理と Step 実行
 #include <Physics/World.hpp>
+#include <Physics/SphereCollider.hpp>
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <utility>
 
@@ -33,6 +35,11 @@ namespace fbzz::physics
         m_constraints.push_back(std::move(constraint));
     }
 
+    const std::vector<std::shared_ptr<Constraint>>& World::GetConstraints() const
+    {
+        return m_constraints;
+    }
+
     void World::SetGravity(const math::Vector3& gravity)
     {
         m_gravity = gravity;
@@ -53,13 +60,18 @@ namespace fbzz::physics
             ApplyForcesAndVolumes(subDt, effectiveDts);
             ApplyConstraintForces(subDt);
             ApplyGravitationalAttraction();
+            CCDPhase(subDt);
             IntegrateBodies(effectiveDts);
             SolveConstraintPositions(subDt);
             UpdateColliders();
             BroadPhase();
-            NarrowPhase();
+            NarrowPhase(s == 0); // WarmStart は最初のサブステップのみ
             Resolve();
         }
+
+        // フレーム末尾に蓄積インパルスを保存し古いキャッシュを削除する
+        m_contactCache.UpdateCache(m_contacts);
+        m_contactCache.PurgeStale();
 
         ClassifyCollisions();
     }
@@ -160,15 +172,100 @@ namespace fbzz::physics
         m_solver.BroadPhase(m_colliders, m_collisionPairs, m_layerFilter);
     }
 
-    void World::NarrowPhase()
+    void World::NarrowPhase(bool doWarmStart)
     {
         m_contacts.clear();
         m_solver.NarrowPhase(m_collisionPairs, m_contacts);
+
+        for (auto& cp : m_contacts)
+        {
+            if (cp.isTrigger) continue;
+            math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
+            if (t0.LengthSq() < 1e-6f)
+                t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
+            t0            = t0.Normalized();
+            cp.tangent[0] = t0;
+            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).Normalized();
+        }
+
+        if (doWarmStart)
+            m_contactCache.WarmStart(m_contacts);
     }
 
     void World::Resolve()
     {
         m_solver.Resolve(m_contacts);
+    }
+
+    void World::CCDPhase(float dt)
+    {
+        // m_useCCD が true かつ速度が十分に速い物体について、
+        // 他の球コライダー持ち物体との TOI を計算し速度をクランプする。
+        // この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
+        for (size_t i = 0; i < m_bodies.size(); ++i)
+        {
+            auto& bodyA = m_bodies[i];
+            if (!bodyA->m_useCCD) continue;
+            if (bodyA->IsStatic()) continue;
+            if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, dt)) continue;
+
+            // bodyA に紐づくコライダーを探す (SphereCollider のみ対応)
+            const SphereCollider* sphereA = nullptr;
+            for (const auto& inst : m_colliders)
+            {
+                if (inst.body == bodyA.get() &&
+                    inst.collider &&
+                    inst.collider->GetType() == ColliderType::SPHERE)
+                {
+                    sphereA = static_cast<const SphereCollider*>(inst.collider.get());
+                    break;
+                }
+            }
+            if (!sphereA) continue;
+
+            const math::Vector3 centerA = sphereA->GetAABB().Center();
+            const float         radiusA = sphereA->m_radius;
+            float minToi = 1.0f;
+
+            // 全ボディと TOI を計算し最小値を採用する
+            for (size_t j = 0; j < m_bodies.size(); ++j)
+            {
+                if (i == j) continue;
+                auto& bodyB = m_bodies[j];
+
+                // bodyB の SphereCollider を探す
+                const SphereCollider* sphereB = nullptr;
+                for (const auto& inst : m_colliders)
+                {
+                    if (inst.body == bodyB.get() &&
+                        inst.collider &&
+                        inst.collider->GetType() == ColliderType::SPHERE)
+                    {
+                        sphereB = static_cast<const SphereCollider*>(inst.collider.get());
+                        break;
+                    }
+                }
+                if (!sphereB) continue;
+
+                const math::Vector3 centerB = sphereB->GetAABB().Center();
+                const float         radiusB = sphereB->m_radius;
+
+                // 相対速度を使った Swept Sphere テスト
+                const math::Vector3 relVel = bodyA->GetVelocity()
+                                           - (bodyB->IsStatic() ? math::Vector3::ZERO
+                                                                 : bodyB->GetVelocity());
+                const CCDResult res = CCDSolver::SweptSphereSphere(
+                    centerA, radiusA, relVel, centerB, radiusB, dt);
+
+                if (res.hit && res.toi < minToi)
+                    minToi = res.toi;
+            }
+
+            // 速度を TOI でスケールし、衝突時点までしか進まないようにする
+            // 残りの速度解決は通常の NarrowPhase/Resolve が担う
+            if (minToi < 1.0f)
+                bodyA->SetVelocity(bodyA->GetVelocity() * minToi);
+        }
     }
 
     void World::ClassifyCollisions()

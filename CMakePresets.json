@@ -9,7 +9,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-                "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0",
+                "FBZZ_BUILD_TESTS": "ON"
             }
         },
         {
