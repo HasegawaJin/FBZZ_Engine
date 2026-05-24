@@ -1,6 +1,6 @@
 // FBZZ Engine
 // PhysicsSolver.hpp | fbzz::physics
-// 衝突検出 (Broad/Narrow フェーズ) と衝突解決 (インパルスベース)
+// 衝突検出 (Broad/Narrow フェーズ) と衝突解決 (PGS インパルスベース)
 #pragma once
 #include <functional>
 #include <Physics/ContactPoint.hpp>
@@ -8,14 +8,17 @@
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/TriangleMeshCollider.hpp>
+#include <Physics/ConvexHullCollider.hpp>
+#include <Physics/EPA.hpp>
 #include <Physics/RigidBody.hpp>
 #include <vector>
 #include <memory>
 
-namespace fbzz::physics 
+namespace fbzz::physics
 {
 
-    class PhysicsSolver 
+    class PhysicsSolver
     {
     public:
         void BroadPhase(const std::vector<ColliderInstance>& colliders,
@@ -25,6 +28,7 @@ namespace fbzz::physics
         void NarrowPhase(const std::vector<CollisionPair>& pairs,
                         std::vector<ContactPoint>& outContacts);
 
+        // PGS ベースの衝突解決 (Warm Starting 済みの蓄積インパルスを引き継ぐ)
         void Resolve(std::vector<ContactPoint>& contacts);
 
     private:
@@ -41,11 +45,30 @@ namespace fbzz::physics
         bool TestCapsuleCapsule(const CapsuleCollider& a, const CapsuleCollider& b,
                             ContactPoint& out);
 
+        // TriangleMesh 用テスト関数
+        bool TestSphereTriangle  (const SphereCollider&  s, const Triangle& tri, ContactPoint& out);
+        bool TestAABBTriangle    (const AABBCollider&    b, const Triangle& tri, ContactPoint& out);
+        bool TestCapsuleTriangle (const CapsuleCollider& c, const Triangle& tri, ContactPoint& out);
+
+        bool TestSphereTriangleMesh  (const SphereCollider&,  const TriangleMeshCollider&, ContactPoint& out);
+        bool TestAABBTriangleMesh    (const AABBCollider&,    const TriangleMeshCollider&, ContactPoint& out);
+        bool TestCapsuleTriangleMesh (const CapsuleCollider&, const TriangleMeshCollider&, ContactPoint& out);
+
+        // ConvexHull 用テスト関数 (GJK + EPA)
+        bool TestConvexConvex  (const ConvexHullCollider&, const ConvexHullCollider&, ContactPoint& out);
+        bool TestSphereConvex  (const SphereCollider&,     const ConvexHullCollider&, ContactPoint& out);
+        bool TestAABBConvex    (const AABBCollider&,        const ConvexHullCollider&, ContactPoint& out);
+        bool TestCapsuleConvex (const CapsuleCollider&,     const ConvexHullCollider&, ContactPoint& out);
+
+        // 法線方向の PGS インパルス解決 (クランプ付き蓄積)
         void ResolveVelocity(ContactPoint& cp);
+        // 摩擦インパルス解決 (コーン制約)
+        void ResolveFriction(ContactPoint& cp);
         void ResolvePosition(ContactPoint& cp);
 
-        static constexpr float SLOP      = 0.01f;
-        static constexpr float BAUMGARTE = 0.8f;
+        static constexpr int   VELOCITY_ITER = 6;   // Warm Starting で削減
+        static constexpr float SLOP          = 0.01f;
+        static constexpr float BAUMGARTE     = 0.8f;
     };
 
 } // namespace fbzz::physics

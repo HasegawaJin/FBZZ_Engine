@@ -23,6 +23,12 @@ namespace fbzz::physics
         const PhysicsMaterial* materialA = nullptr;
         const PhysicsMaterial* materialB = nullptr;
         bool isTrigger = false;
+        bool cacheImpulse = true;
+
+        // Warm Starting / PGS 用: ContactCache が設定し ResolveVelocity が更新する
+        math::Vector3 tangent[2];                    // 摩擦平面の 2 軸 (Resolve 冒頭で計算)
+        float cachedNormalImpulse       = 0.0f;      // 蓄積法線インパルス (Λn ≥ 0 にクランプ)
+        float cachedTangentImpulse[2]   = {0.0f, 0.0f}; // 蓄積摩擦インパルス
     };
 
 } // namespace fbzz::physics

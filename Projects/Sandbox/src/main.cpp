@@ -1,10 +1,11 @@
 // FBZZ Engine
 // main.cpp | sandbox
-// UISystem verification scene with 3D overlay test
+// Physics test visualizer scene
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
+#include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -13,111 +14,420 @@
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/UICanvas.hpp>
-#include <Engine/Scene/Components/UIImage.hpp>
-#include <Engine/Scene/Components/UIButton.hpp>
-#include <Engine/Scene/Components/UIText.hpp>
-#include <Engine/Scene/Components/UILayoutGroup.hpp>
-#include <Engine/Scene/Components/UIAnimator.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
-#include <Engine/Scene/Systems/UIAnimatorSystem.hpp>
+#include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Editor/EditorApp.hpp>
+#include <Physics/World.hpp>
+#include <Physics/SphereCollider.hpp>
+#include <Physics/AABBCollider.hpp>
+#include <Physics/CapsuleCollider.hpp>
+#include <Physics/TriangleMeshCollider.hpp>
+#include <Physics/ConvexHullCollider.hpp>
+#include <Physics/PhysicsMaterial.hpp>
+#include <Physics/DistanceConstraint.hpp>
+#include <Physics/SpringConstraint.hpp>
+#include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
+#include <Math/Quaternion.hpp>
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 using namespace fbzz;
+
 namespace {
 
-std::shared_ptr<renderer::Material> CreateMaterial(renderer::ResourceManager& resources,
-                                                   const math::Vector4& color)
+struct VisualAssets
 {
-    auto material = std::make_shared<renderer::Material>();
-    material->shader = resources.LoadShader("assets/shaders/Material/Phong.hlsl");
-    material->shaderPath = "assets/shaders/Material/Phong.hlsl";
-    material->params.albedo = color;
-    material->params.roughness = 0.65f;
-    material->Init(resources);
-    return material;
+    std::shared_ptr<renderer::Mesh> cube;
+    std::shared_ptr<renderer::Mesh> sphere;
+    std::shared_ptr<renderer::Material> floor;
+    std::shared_ptr<renderer::Material> red;
+    std::shared_ptr<renderer::Material> green;
+    std::shared_ptr<renderer::Material> blue;
+    std::shared_ptr<renderer::Material> yellow;
+    std::shared_ptr<renderer::Material> orange;
+    std::shared_ptr<renderer::Material> purple;
+    std::shared_ptr<renderer::Material> cyan;
+    std::shared_ptr<renderer::Material> rubber;
+    std::shared_ptr<renderer::Material> stone;
+    std::shared_ptr<renderer::Material> ice;
+    std::shared_ptr<renderer::Material> trigger;
+};
+
+std::shared_ptr<renderer::Material> MakeMaterial(renderer::ResourceManager& res,
+                                                  const math::Vector4& color,
+                                                  float roughness = 0.6f)
+{
+    auto mat = std::make_shared<renderer::Material>();
+    mat->shader = res.LoadShader("assets/shaders/Material/Phong.hlsl");
+    mat->shaderPath = "assets/shaders/Material/Phong.hlsl";
+    mat->params.albedo = color;
+    mat->params.roughness = roughness;
+    mat->Init(res);
+    return mat;
 }
 
-scene::GameObject& MakeButton(scene::Scene& scene,
-                               scene::GameObject& parent,
-                               const char* name,
-                               math::Vector2 pos,
-                               math::Vector2 sz,
-                               math::Vector4 baseColor)
+VisualAssets CreateAssets(renderer::ResourceManager& res)
+{
+    VisualAssets assets;
+    assets.cube = renderer::PrimitiveMesh::Cube(res);
+    assets.sphere = renderer::PrimitiveMesh::Sphere(res, 16);
+    assets.floor = MakeMaterial(res, { 0.45f, 0.48f, 0.52f, 1.0f });
+    assets.red = MakeMaterial(res, { 0.95f, 0.20f, 0.18f, 1.0f });
+    assets.green = MakeMaterial(res, { 0.25f, 0.85f, 0.35f, 1.0f });
+    assets.blue = MakeMaterial(res, { 0.20f, 0.45f, 1.00f, 1.0f });
+    assets.yellow = MakeMaterial(res, { 1.00f, 0.86f, 0.22f, 1.0f });
+    assets.orange = MakeMaterial(res, { 1.00f, 0.48f, 0.12f, 1.0f });
+    assets.purple = MakeMaterial(res, { 0.68f, 0.35f, 0.95f, 1.0f });
+    assets.cyan = MakeMaterial(res, { 0.16f, 0.86f, 0.92f, 1.0f });
+    assets.rubber = MakeMaterial(res, { 0.95f, 0.12f, 0.18f, 1.0f }, 0.35f);
+    assets.stone = MakeMaterial(res, { 0.48f, 0.46f, 0.42f, 1.0f }, 0.9f);
+    assets.ice = MakeMaterial(res, { 0.60f, 0.92f, 1.00f, 1.0f }, 0.2f);
+    assets.trigger = MakeMaterial(res, { 1.00f, 0.38f, 0.95f, 1.0f }, 0.5f);
+    return assets;
+}
+
+void AttachVisual(scene::GameObject& go,
+                  std::shared_ptr<renderer::Mesh> mesh,
+                  std::shared_ptr<renderer::Material> mat,
+                  const char* meshPath)
+{
+    scene::MeshRenderer mr{};
+    mr.mesh = std::move(mesh);
+    mr.meshPath = meshPath;
+    go.AddComponent<scene::MeshRenderer>(mr);
+
+    scene::MaterialComponent mc{};
+    mc.material = std::move(mat);
+    mc.shaderPath = mc.material->shaderPath;
+    go.AddComponent<scene::MaterialComponent>(mc);
+}
+
+std::shared_ptr<physics::RigidBody> AttachPhysics(scene::GameObject& go,
+                                                   std::shared_ptr<physics::Collider> col,
+                                                   bool isStatic,
+                                                   float mass,
+                                                   const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default,
+                                                   bool isTrigger = false)
+{
+    auto rb = std::make_shared<physics::RigidBody>();
+    rb->m_isStatic = isStatic;
+    rb->SetMass(isStatic ? 0.0f : mass);
+    rb->SetPosition(go.transform.localPosition);
+    rb->SetRotation(go.transform.localRotation);
+
+    scene::RigidBodyComponent rbc{};
+    rbc.rigidBody = rb;
+    go.AddComponent<scene::RigidBodyComponent>(rbc);
+
+    scene::ColliderComponent cc{};
+    cc.collider = std::move(col);
+    cc.material = material;
+    cc.isTrigger = isTrigger;
+    go.AddComponent<scene::ColliderComponent>(cc);
+    return rb;
+}
+
+std::shared_ptr<physics::RigidBody> AddBox(scene::Scene& scene,
+                                            const VisualAssets& assets,
+                                            const std::string& name,
+                                            const math::Vector3& position,
+                                            const math::Vector3& halfExtents,
+                                            std::shared_ptr<renderer::Material> mat,
+                                            bool isStatic = false,
+                                            float mass = 1.0f,
+                                            const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default,
+                                            bool isTrigger = false)
 {
     auto& go = scene.CreateGameObject(name);
-    go.SetParent(parent);
-    go.transform.localPosition = { pos.x, pos.y, 0.0f };
-    go.transform.localScale    = { sz.x,  sz.y,  1.0f };
-
-    scene::UIImage img{};
-    img.color    = baseColor;
-    go.AddComponent<scene::UIImage>(img);
-
-    scene::UIButton btn{};
-    btn.normalColor  = { 1.0f, 1.0f, 1.0f, 1.0f };
-    btn.hoverColor   = { 1.25f, 1.25f, 1.25f, 1.0f };
-    btn.pressedColor = { 0.6f,  0.6f,  0.6f,  1.0f };
-    go.AddComponent<scene::UIButton>(btn);
-
-    return go;
+    go.transform.localPosition = position;
+    go.transform.localScale = halfExtents * 2.0f;
+    AttachVisual(go, assets.cube, std::move(mat), "primitive:cube");
+    return AttachPhysics(go, std::make_shared<physics::AABBCollider>(halfExtents),
+                         isStatic, mass, material, isTrigger);
 }
 
-scene::GameObject& MakePanel(scene::Scene& scene,
-                              scene::GameObject& parent,
-                              const char* name,
-                              math::Vector2 pos,
-                              math::Vector2 sz,
-                              math::Vector4 color)
+std::shared_ptr<physics::RigidBody> AddSphere(scene::Scene& scene,
+                                               const VisualAssets& assets,
+                                               const std::string& name,
+                                               const math::Vector3& position,
+                                               float radius,
+                                               std::shared_ptr<renderer::Material> mat,
+                                               bool isStatic = false,
+                                               float mass = 1.0f,
+                                               const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default,
+                                               bool isTrigger = false)
 {
     auto& go = scene.CreateGameObject(name);
-    go.SetParent(parent);
-    go.transform.localPosition = { pos.x, pos.y, 0.0f };
-    go.transform.localScale    = { sz.x,  sz.y,  1.0f };
-
-    scene::UIImage img{};
-    img.color    = color;
-    go.AddComponent<scene::UIImage>(img);
-
-    return go;
+    go.transform.localPosition = position;
+    go.transform.localScale = { radius * 2.0f, radius * 2.0f, radius * 2.0f };
+    AttachVisual(go, assets.sphere, std::move(mat), "primitive:sphere");
+    return AttachPhysics(go, std::make_shared<physics::SphereCollider>(radius),
+                         isStatic, mass, material, isTrigger);
 }
 
-scene::GameObject& MakeText(scene::Scene& scene,
-                             scene::GameObject& parent,
-                             const char* name,
-                             const char* value,
-                             math::Vector2 pos,
-                             float fontSize,
-                             math::Vector4 color)
+std::shared_ptr<physics::RigidBody> AddCapsule(scene::Scene& scene,
+                                                const VisualAssets& assets,
+                                                const std::string& name,
+                                                const math::Vector3& position,
+                                                float radius,
+                                                float halfHeight,
+                                                std::shared_ptr<renderer::Material> mat,
+                                                bool isStatic = false)
 {
     auto& go = scene.CreateGameObject(name);
-    go.SetParent(parent);
-    go.transform.localPosition = { pos.x, pos.y, 0.0f };
-
-    scene::UIText text{};
-    text.text = value;
-    text.fontSize = fontSize;
-    text.color = color;
-    go.AddComponent<scene::UIText>(text);
-
-    return go;
+    go.transform.localPosition = position;
+    go.transform.localScale = { radius * 2.0f, (halfHeight + radius) * 2.0f, radius * 2.0f };
+    AttachVisual(go, assets.sphere, std::move(mat), "primitive:sphere");
+    return AttachPhysics(go, std::make_shared<physics::CapsuleCollider>(radius, halfHeight),
+                         isStatic, 1.0f);
 }
 
-scene::UICanvas* FindFirstRootCanvas(scene::Scene& scene)
+std::shared_ptr<physics::RigidBody> AddConvexCube(scene::Scene& scene,
+                                                   const VisualAssets& assets,
+                                                   const std::string& name,
+                                                   const math::Vector3& position,
+                                                   std::shared_ptr<renderer::Material> mat,
+                                                   bool isStatic = false)
 {
-    for (scene::GameObject* root : scene.GetRootGameObjects())
+    static const std::vector<math::Vector3> verts = {
+        { -0.5f, -0.5f, -0.5f }, {  0.5f, -0.5f, -0.5f },
+        {  0.5f,  0.5f, -0.5f }, { -0.5f,  0.5f, -0.5f },
+        { -0.5f, -0.5f,  0.5f }, {  0.5f, -0.5f,  0.5f },
+        {  0.5f,  0.5f,  0.5f }, { -0.5f,  0.5f,  0.5f },
+    };
+
+    auto& go = scene.CreateGameObject(name);
+    go.transform.localPosition = position;
+    go.transform.localScale = { 1.0f, 1.0f, 1.0f };
+    AttachVisual(go, assets.cube, std::move(mat), "primitive:cube");
+    return AttachPhysics(go, std::make_shared<physics::ConvexHullCollider>(verts),
+                         isStatic, 1.0f);
+}
+
+void AddFloor(scene::Scene& scene,
+              const VisualAssets& assets,
+              const std::string& name,
+              const math::Vector3& center,
+              float width = 6.0f,
+              float depth = 6.0f)
+{
+    AddBox(scene, assets, name, center + math::Vector3{ 0.0f, -0.5f, 0.0f },
+           { width * 0.5f, 0.5f, depth * 0.5f }, assets.floor, true);
+}
+
+void AddTriangleMeshFloor(scene::Scene& scene,
+                          const VisualAssets& assets,
+                          const math::Vector3& origin)
+{
+    std::vector<math::Vector3> positions = {
+        { -3.0f, 0.0f, -3.0f }, {  3.0f, 0.0f, -3.0f },
+        {  3.0f, 0.0f,  3.0f }, { -3.0f, 0.0f,  3.0f },
+    };
+    std::vector<uint32_t> indices = { 0, 1, 2, 0, 2, 3 };
+
+    auto& go = scene.CreateGameObject("P2_TriangleMesh_Floor");
+    go.transform.localPosition = origin;
+    go.transform.localScale = { 6.0f, 0.04f, 6.0f };
+    AttachVisual(go, assets.cube, assets.green, "primitive:cube");
+    AttachPhysics(go, std::make_shared<physics::TriangleMeshCollider>(positions, indices),
+                  true, 0.0f);
+}
+
+physics::RigidBody* FindBody(scene::Scene& scene, const char* name)
+{
+    auto* go = scene.Find(name);
+    if (!go) return nullptr;
+
+    auto* rb = go->GetComponent<scene::RigidBodyComponent>();
+    if (!rb || !rb->rigidBody) return nullptr;
+    return rb->rigidBody.get();
+}
+
+void RegisterPhysicsTestConstraints(scene::Scene& scene, physics::World& world)
+{
+    auto* anchor = FindBody(scene, "P11_Distance_Anchor");
+    auto* limited = FindBody(scene, "P11_Distance_Limited");
+    if (anchor && limited)
+        world.AddConstraint(std::make_shared<physics::DistanceConstraint>(anchor, limited, 3.0f));
+
+    auto* springA = FindBody(scene, "P11_Spring_A");
+    auto* springB = FindBody(scene, "P11_Spring_B");
+    if (springA && springB)
+        world.AddConstraint(std::make_shared<physics::SpringConstraint>(springA, springB, 1.5f, 25.0f, 0.4f));
+}
+
+void ResetPhysicsWorld(scene::Scene& scene, physics::World& world)
+{
+    world = physics::World{};
+    world.SetGravity({ 0.0f, -9.81f, 0.0f });
+    RegisterPhysicsTestConstraints(scene, world);
+}
+
+void BuildPhysicsTestScene(scene::Scene& scene,
+                           renderer::ResourceManager& res)
+{
+    const VisualAssets assets = CreateAssets(res);
+
+    // Phase 1: warm-started stack.
     {
-        if (!root || !root->activeSelf()) continue;
-        auto* canvas = root->GetComponent<scene::UICanvas>();
-        if (canvas && canvas->enabled) return canvas;
+        const math::Vector3 o{ -24.0f, 0.0f, 0.0f };
+        AddFloor(scene, assets, "P1_Floor", o);
+        for (int i = 0; i < 5; ++i)
+            AddSphere(scene, assets, "P1_StackSphere", o + math::Vector3{ 0.0f, 0.5f + i * 1.02f, 0.0f },
+                      0.5f, (i % 2 == 0) ? assets.red : assets.blue);
     }
-    return nullptr;
+
+    // Phase 2: triangle mesh floor with sphere.
+    {
+        const math::Vector3 o{ -18.0f, 0.0f, 0.0f };
+        AddTriangleMeshFloor(scene, assets, o);
+        AddSphere(scene, assets, "P2_Sphere_On_BVH_Mesh", o + math::Vector3{ 0.0f, 3.0f, 0.0f },
+                  0.35f, assets.yellow);
+    }
+
+    // Phase 3: overlapping convex cubes for GJK/EPA inspection.
+    {
+        const math::Vector3 o{ -12.0f, 0.0f, 0.0f };
+        AddFloor(scene, assets, "P3_Reference_Floor", o, 4.0f, 4.0f);
+        AddConvexCube(scene, assets, "P3_Convex_A", o + math::Vector3{ -0.4f, 0.5f, 0.0f }, assets.orange, true);
+        AddConvexCube(scene, assets, "P3_Convex_B_Overlap_X", o + math::Vector3{ 0.4f, 0.5f, 0.0f }, assets.cyan, true);
+    }
+
+    // Phase 4: CCD fast sphere toward a thin wall and target sphere.
+    {
+        const math::Vector3 o{ -6.0f, 0.0f, 0.0f };
+        AddFloor(scene, assets, "P4_Floor", o, 5.0f, 8.0f);
+        auto bullet = AddSphere(scene, assets, "P4_CCD_Bullet", o + math::Vector3{ 0.0f, 1.0f, -3.0f },
+                                0.25f, assets.yellow, false, 0.5f);
+        bullet->SetVelocity({ 0.0f, 0.0f, 35.0f });
+        bullet->m_useCCD = true;
+        bullet->m_ccdRadius = 0.25f;
+        AddSphere(scene, assets, "P4_CCD_Target", o + math::Vector3{ 0.0f, 1.0f, 2.2f },
+                  0.5f, assets.green, true);
+        AddBox(scene, assets, "P4_Thin_Wall", o + math::Vector3{ 0.0f, 1.0f, 3.2f },
+               { 2.0f, 1.0f, 0.08f }, assets.stone, true);
+    }
+
+    // Phase 5: stress towers and high-speed drop.
+    {
+        const math::Vector3 o{ 0.0f, 0.0f, 0.0f };
+        AddFloor(scene, assets, "P5_Floor", o, 8.0f, 8.0f);
+        for (int i = 0; i < 10; ++i)
+            AddSphere(scene, assets, "P5_10Sphere_Tower",
+                      o + math::Vector3{ -1.6f, 0.35f + i * 0.72f, 0.0f },
+                      0.35f, assets.purple);
+        for (int i = 0; i < 5; ++i)
+            AddBox(scene, assets, "P5_AABB_Stack",
+                   o + math::Vector3{ 1.2f, 0.35f + i * 0.72f, 0.0f },
+                   { 0.35f, 0.35f, 0.35f }, assets.blue);
+        auto drop = AddSphere(scene, assets, "P5_HighSpeed_Drop",
+                              o + math::Vector3{ 3.0f, 5.5f, 0.0f },
+                              0.35f, assets.red);
+        drop->SetVelocity({ 0.0f, -25.0f, 0.0f });
+    }
+
+    // Phase 6: capsule contacts.
+    {
+        const math::Vector3 o{ 7.0f, 0.0f, 0.0f };
+        AddFloor(scene, assets, "P6_Floor", o, 7.0f, 6.0f);
+        AddCapsule(scene, assets, "P6_Capsule_On_AABB", o + math::Vector3{ -2.0f, 2.5f, 0.0f },
+                   0.3f, 0.5f, assets.orange);
+        AddCapsule(scene, assets, "P6_Lower_Capsule", o + math::Vector3{ 0.2f, 0.8f, 0.0f },
+                   0.3f, 0.5f, assets.cyan, true);
+        AddSphere(scene, assets, "P6_Sphere_On_Capsule", o + math::Vector3{ 0.2f, 3.0f, 0.0f },
+                  0.3f, assets.yellow);
+        AddCapsule(scene, assets, "P6_Capsule_Stack_A", o + math::Vector3{ 2.0f, 0.8f, 0.0f },
+                   0.3f, 0.5f, assets.blue, true);
+        AddCapsule(scene, assets, "P6_Capsule_Stack_B", o + math::Vector3{ 2.0f, 2.4f, 0.0f },
+                   0.3f, 0.5f, assets.green);
+    }
+
+    // Phase 7: momentum conservation pairs.
+    {
+        const math::Vector3 o{ 14.0f, 0.0f, 0.0f };
+        AddFloor(scene, assets, "P7_Floor", o, 7.0f, 4.0f);
+        auto a = AddSphere(scene, assets, "P7_Momentum_A", o + math::Vector3{ -2.0f, 0.5f, 0.0f },
+                           0.5f, assets.red);
+        auto b = AddSphere(scene, assets, "P7_Momentum_B", o + math::Vector3{ 2.0f, 0.5f, 0.0f },
+                           0.5f, assets.blue);
+        a->SetVelocity({ 4.0f, 0.0f, 0.0f });
+        b->SetVelocity({ -4.0f, 0.0f, 0.0f });
+    }
+
+    // Phase 8: restitution and friction materials.
+    {
+        const math::Vector3 o{ -18.0f, 0.0f, 9.0f };
+        AddBox(scene, assets, "P8_Rubber_Floor", o + math::Vector3{ -1.2f, -0.5f, 0.0f },
+               { 1.2f, 0.5f, 1.2f }, assets.rubber, true, 0.0f, physics::PhysicsMaterial::Rubber);
+        AddSphere(scene, assets, "P8_Rubber_Bounce", o + math::Vector3{ -1.2f, 4.0f, 0.0f },
+                  0.3f, assets.rubber, false, 1.0f, physics::PhysicsMaterial::Rubber);
+        AddBox(scene, assets, "P8_Stone_Floor", o + math::Vector3{ 1.2f, -0.5f, 0.0f },
+               { 1.2f, 0.5f, 1.2f }, assets.stone, true, 0.0f, physics::PhysicsMaterial::Stone);
+        AddSphere(scene, assets, "P8_Stone_Bounce", o + math::Vector3{ 1.2f, 4.0f, 0.0f },
+                  0.3f, assets.stone, false, 1.0f, physics::PhysicsMaterial::Stone);
+
+        AddBox(scene, assets, "P8_Slide_Floor", o + math::Vector3{ 0.0f, -0.5f, 3.0f },
+               { 6.0f, 0.5f, 1.5f }, assets.floor, true, 0.0f, physics::PhysicsMaterial::Stone);
+        auto ice = AddBox(scene, assets, "P8_Ice_Slider", o + math::Vector3{ -2.0f, 0.5f, 3.0f },
+                          { 0.35f, 0.35f, 0.35f }, assets.ice, false, 1.0f, physics::PhysicsMaterial::Ice);
+        auto stone = AddBox(scene, assets, "P8_Stone_Slider", o + math::Vector3{ -2.0f, 1.4f, 3.0f },
+                            { 0.35f, 0.35f, 0.35f }, assets.stone, false, 1.0f, physics::PhysicsMaterial::Stone);
+        ice->SetVelocity({ 5.0f, 0.0f, 0.0f });
+        stone->SetVelocity({ 5.0f, 0.0f, 0.0f });
+    }
+
+    // Phase 9: convex hull integration.
+    {
+        const math::Vector3 o{ -8.0f, 0.0f, 9.0f };
+        AddFloor(scene, assets, "P9_Floor", o, 8.0f, 6.0f);
+        AddConvexCube(scene, assets, "P9_Convex_Drop", o + math::Vector3{ -2.5f, 3.0f, 0.0f }, assets.orange);
+        AddConvexCube(scene, assets, "P9_Static_Hull", o + math::Vector3{ 0.0f, 0.5f, 0.0f }, assets.cyan, true);
+        AddSphere(scene, assets, "P9_Sphere_On_Hull", o + math::Vector3{ 0.0f, 4.0f, 0.0f },
+                  0.3f, assets.yellow);
+        auto hullA = AddConvexCube(scene, assets, "P9_Convex_Impact_A",
+                                   o + math::Vector3{ 2.0f, 0.6f, -1.4f }, assets.red);
+        AddConvexCube(scene, assets, "P9_Convex_Impact_B",
+                      o + math::Vector3{ 4.3f, 0.6f, -1.4f }, assets.blue);
+        hullA->SetVelocity({ 3.0f, 0.0f, 0.0f });
+    }
+
+    // Phase 10: trigger and collision events.
+    {
+        const math::Vector3 o{ 2.0f, 0.0f, 9.0f };
+        AddFloor(scene, assets, "P10_Floor", o, 6.0f, 4.0f);
+        AddSphere(scene, assets, "P10_Trigger_A", o + math::Vector3{ -1.0f, 0.7f, 0.0f },
+                  0.7f, assets.trigger, false, 1.0f, physics::PhysicsMaterial::Default, true);
+        AddSphere(scene, assets, "P10_Trigger_B", o + math::Vector3{ -0.1f, 0.7f, 0.0f },
+                  0.7f, assets.purple, false, 1.0f, physics::PhysicsMaterial::Default, true);
+        auto solid = AddSphere(scene, assets, "P10_Solid_Into_Trigger", o + math::Vector3{ 2.4f, 0.7f, 0.0f },
+                               0.7f, assets.yellow);
+        solid->SetVelocity({ -2.0f, 0.0f, 0.0f });
+    }
+
+    // Phase 11: constraints.
+    {
+        const math::Vector3 o{ 11.0f, 0.0f, 9.0f };
+        AddFloor(scene, assets, "P11_Floor", o, 8.0f, 5.0f);
+        AddSphere(scene, assets, "P11_Distance_Anchor", o + math::Vector3{ -2.5f, 1.0f, 0.0f },
+                  0.25f, assets.green, true);
+        auto limited = AddSphere(scene, assets, "P11_Distance_Limited", o + math::Vector3{ 1.5f, 1.0f, 0.0f },
+                                 0.25f, assets.red);
+        limited->SetVelocity({ 6.0f, 0.0f, 0.0f });
+
+        AddSphere(scene, assets, "P11_Spring_A", o + math::Vector3{ -2.0f, 2.5f, 1.4f },
+                  0.25f, assets.cyan, true);
+        AddSphere(scene, assets, "P11_Spring_B", o + math::Vector3{ 2.0f, 2.5f, 1.4f },
+                  0.25f, assets.orange);
+    }
 }
 
 } // namespace
@@ -137,310 +447,96 @@ int main()
     auto scene = std::make_unique<scene::Scene>();
     editorApp.GetContext().activeScene = scene.get();
 
-    // 3D scene used to verify UI overlay composition.
-    auto& mainCamera = scene->CreateGameObject("MainCamera");
-    mainCamera.transform.localPosition = { 0.0f, 0.0f, -5.0f };
-    mainCamera.AddComponent<scene::CameraComponent>({});
+    auto& camGO = scene->CreateGameObject("MainCamera");
+    camGO.transform.localPosition = { 0.0f, 13.0f, -24.0f };
+    camGO.transform.localRotation = math::Quaternion::FromEuler({ 0.48f, 0.0f, 0.0f });
+    camGO.AddComponent<scene::CameraComponent>({});
 
-    auto& light = scene->CreateGameObject("DirectionalLight");
-    light.transform.localPosition = { 0.0f, 8.0f, -6.0f };
-    light.transform.localRotation = math::Quaternion::LookRotation({ 0.35f, -0.75f, 0.55f });
-    light.AddComponent<scene::LightComponent>({});
+    auto& lightGO = scene->CreateGameObject("Light");
+    lightGO.transform.localPosition = { 4.0f, 16.0f, -8.0f };
+    lightGO.transform.localRotation = math::Quaternion::LookRotation({ -0.25f, -0.9f, 0.25f });
+    lightGO.AddComponent<scene::LightComponent>({});
 
-    auto cubeMesh = renderer::PrimitiveMesh::Cube(resources);
-    auto cubeMaterial = CreateMaterial(resources, { 0.15f, 0.65f, 1.0f, 1.0f });
-    auto& cube = scene->CreateGameObject("UIOverlayTestCube");
-    cube.transform.localPosition = { 0.0f, 0.0f, 3.0f };
-    cube.transform.localRotation = math::Quaternion::FromEuler({ 0.3f, 0.5f, 0.0f });
-    cube.transform.localScale = { 1.4f, 1.4f, 1.4f };
-    scene::MeshRenderer cubeRenderer{};
-    cubeRenderer.mesh = cubeMesh;
-    cubeRenderer.meshPath = "primitive:cube";
-    cube.AddComponent<scene::MeshRenderer>(cubeRenderer);
+    physics::World physWorld;
+    BuildPhysicsTestScene(*scene, resources);
+    ResetPhysicsWorld(*scene, physWorld);
 
-    scene::MaterialComponent cubeMat{};
-    cubeMat.material = cubeMaterial;
-    cubeMat.shaderPath = cubeMaterial->shaderPath;
-    cube.AddComponent<scene::MaterialComponent>(cubeMat);
-
-    // UI scene: root canvas plus colored panels/buttons.
-    auto& canvasGO = scene->CreateGameObject("Canvas");
-    {
-        scene::UICanvas canvas{};
-        canvas.canvasWidth = 1920.0f;
-        canvas.canvasHeight = 1080.0f;
-        canvasGO.AddComponent<scene::UICanvas>(canvas);
-    }
-
-    MakePanel(*scene, canvasGO, "BG_Panel",
-              { 560.0f, 180.0f }, { 800.0f, 720.0f },
-              { 0.12f, 0.12f, 0.16f, 0.95f });
-    MakePanel(*scene, canvasGO, "Header",
-              { 560.0f, 180.0f }, { 800.0f, 90.0f },
-              { 0.18f, 0.32f, 0.72f, 1.0f });
-    MakePanel(*scene, canvasGO, "Header_Accent",
-              { 560.0f, 270.0f }, { 800.0f, 4.0f },
-              { 0.3f, 0.7f, 1.0f, 1.0f });
-    MakeText(*scene, canvasGO, "Title_Text", "FBZZ UI TEXT OK",
-             { 610.0f, 205.0f }, 42.0f,
-             { 0.95f, 0.98f, 1.0f, 1.0f });
-
-    MakeButton(*scene, canvasGO, "Btn_Start",
-               { 680.0f, 330.0f }, { 560.0f, 90.0f },
-               { 0.22f, 0.65f, 0.28f, 1.0f });
-    MakeText(*scene, canvasGO, "Btn_Start_Text", "START",
-             { 845.0f, 357.0f }, 34.0f,
-             { 0.98f, 1.0f, 0.98f, 1.0f });
-    MakeButton(*scene, canvasGO, "Btn_Options",
-               { 680.0f, 450.0f }, { 560.0f, 90.0f },
-               { 0.38f, 0.38f, 0.75f, 1.0f });
-    MakeText(*scene, canvasGO, "Btn_Options_Text", "OPTIONS",
-             { 805.0f, 477.0f }, 34.0f,
-             { 0.98f, 0.98f, 1.0f, 1.0f });
-    MakeButton(*scene, canvasGO, "Btn_Exit",
-               { 680.0f, 570.0f }, { 560.0f, 90.0f },
-               { 0.72f, 0.22f, 0.22f, 1.0f });
-    MakeText(*scene, canvasGO, "Btn_Exit_Text", "EXIT",
-             { 870.0f, 597.0f }, 34.0f,
-             { 1.0f, 0.95f, 0.95f, 1.0f });
-
-    MakePanel(*scene, canvasGO, "Footer_Line",
-              { 560.0f, 840.0f }, { 800.0f, 2.0f },
-              { 0.4f, 0.4f, 0.45f, 1.0f });
-    MakePanel(*scene, canvasGO, "Footer",
-              { 560.0f, 842.0f }, { 800.0f, 58.0f },
-              { 0.08f, 0.08f, 0.1f, 1.0f });
-    MakeText(*scene, canvasGO, "Footer_Text", "TEXT RENDER CHECK",
-             { 615.0f, 860.0f }, 24.0f,
-             { 0.65f, 0.85f, 1.0f, 1.0f });
-    MakePanel(*scene, canvasGO, "Status_Indicator",
-              { 20.0f, 20.0f }, { 220.0f, 50.0f },
-              { 0.9f, 0.55f, 0.1f, 1.0f });
-    MakePanel(*scene, canvasGO, "Dot_1",
-              { 1680.0f, 20.0f }, { 18.0f, 18.0f },
-              { 0.3f, 0.8f, 1.0f, 1.0f });
-    MakePanel(*scene, canvasGO, "Dot_2",
-              { 1710.0f, 20.0f }, { 18.0f, 18.0f },
-              { 0.3f, 0.8f, 1.0f, 0.6f });
-    MakePanel(*scene, canvasGO, "Dot_3",
-              { 1740.0f, 20.0f }, { 18.0f, 18.0f },
-              { 0.3f, 0.8f, 1.0f, 0.3f });
-
-    // --- Phase 2 test: UILayoutGroup (Horizontal) ---
-    // A dark container at the bottom-left with 4 color chips auto-arranged by UILayoutGroup.
-    {
-        auto& layoutGO = scene->CreateGameObject("LayoutGroup_Test");
-        layoutGO.SetParent(canvasGO);
-        layoutGO.transform.localPosition = { 20.0f, 700.0f, 0.0f };
-        layoutGO.transform.localScale    = { 420.0f, 60.0f, 1.0f };
-        scene::UIImage containerImg{};
-        containerImg.color    = { 0.08f, 0.08f, 0.12f, 0.9f };
-        layoutGO.AddComponent<scene::UIImage>(containerImg);
-
-        scene::UILayoutGroup layout{};
-        layout.axis        = scene::UILayoutAxis::Horizontal;
-        layout.spacing     = 8.0f;
-        layout.paddingLeft = 8.0f;
-        layout.paddingTop  = 8.0f;
-        layoutGO.AddComponent<scene::UILayoutGroup>(layout);
-
-        const char*        slotNames[]  = { "Slot_R", "Slot_G", "Slot_B", "Slot_Y" };
-        const math::Vector4 slotColors[] = {
-            { 0.85f, 0.3f,  0.3f,  1.0f },
-            { 0.3f,  0.82f, 0.35f, 1.0f },
-            { 0.3f,  0.5f,  0.9f,  1.0f },
-            { 0.9f,  0.82f, 0.25f, 1.0f },
-        };
-        for (int i = 0; i < 4; ++i) {
-            auto& slot = scene->CreateGameObject(slotNames[i]);
-            slot.SetParent(layoutGO);
-            slot.transform.localScale = { 96.0f, 44.0f, 1.0f };
-            scene::UIImage img{};
-            img.color = slotColors[i];
-            slot.AddComponent<scene::UIImage>(img);
-        }
-        MakeText(*scene, layoutGO, "LayoutLabel", "LAYOUT",
-                 { 340.0f, 22.0f }, 20.0f, { 0.7f, 0.9f, 1.0f, 1.0f });
-    }
-
-    // --- Phase 2 test: UIAnimator color tween (blue <-> red, ping-pong) ---
-    {
-        auto& animGO = scene->CreateGameObject("ColorAnim_Test");
-        animGO.SetParent(canvasGO);
-        animGO.transform.localPosition = { 20.0f, 775.0f, 0.0f };
-        animGO.transform.localScale    = { 195.0f, 42.0f, 1.0f };
-        scene::UIImage img{};
-        img.color    = { 0.2f, 0.6f, 0.9f, 1.0f };
-        animGO.AddComponent<scene::UIImage>(img);
-
-        scene::UIAnimator anim{};
-        anim.colorTween.from     = { 0.2f, 0.6f, 0.9f, 1.0f };
-        anim.colorTween.to       = { 0.9f, 0.3f, 0.2f, 1.0f };
-        anim.colorTween.duration = 1.5f;
-        anim.colorTween.loop     = true;
-        anim.colorTween.pingPong = true;
-        anim.colorTween.active   = true;
-        anim.colorTween.easing   = scene::UIEasingType::EaseInOut;
-        animGO.AddComponent<scene::UIAnimator>(anim);
-
-        MakeText(*scene, animGO, "ColorAnimLabel", "COLOR TWEEN",
-                 { 20.0f, 785.0f }, 20.0f, { 1.0f, 1.0f, 1.0f, 1.0f });
-    }
-
-    // --- Phase 2 test: UIAnimator position tween (slides left-right, ping-pong) ---
-    {
-        auto& posGO = scene->CreateGameObject("PosAnim_Test");
-        posGO.SetParent(canvasGO);
-        posGO.transform.localPosition = { 230.0f, 775.0f, 0.0f };
-        posGO.transform.localScale    = { 110.0f, 42.0f, 1.0f };
-        scene::UIImage img{};
-        img.color    = { 0.75f, 0.4f, 0.9f, 1.0f };
-        posGO.AddComponent<scene::UIImage>(img);
-
-        scene::UIAnimator anim{};
-        anim.positionTween.from     = { 230.0f, 775.0f };
-        anim.positionTween.to       = { 370.0f, 775.0f };
-        anim.positionTween.duration = 0.7f;
-        anim.positionTween.loop     = true;
-        anim.positionTween.pingPong = true;
-        anim.positionTween.active   = true;
-        anim.positionTween.easing   = scene::UIEasingType::EaseInOut;
-        posGO.AddComponent<scene::UIAnimator>(anim);
-
-        MakeText(*scene, posGO, "PosAnimLabel", "POS",
-                 { 240.0f, 783.0f }, 20.0f, { 1.0f, 1.0f, 1.0f, 1.0f });
-    }
-
-    // --- Phase 2 test: Anchor/Pivot (bottom-right corner badge) ---
-    {
-        auto& anchorGO = scene->CreateGameObject("Anchor_Test");
-        anchorGO.SetParent(canvasGO);
-        anchorGO.transform.localPosition = { 1724.0f, 1020.0f, 0.0f };
-        anchorGO.transform.localScale    = { 180.0f, 44.0f, 1.0f };
-        scene::UIImage img{};
-        img.color = { 0.2f, 0.65f, 0.35f, 0.95f };
-        anchorGO.AddComponent<scene::UIImage>(img);
-        MakeText(*scene, anchorGO, "AnchorLabel", "ANCHOR OK",
-                 { 1728.0f, 1030.0f }, 22.0f, { 0.95f, 1.0f, 0.95f, 1.0f });
-    }
-
-    // Window and editor camera setup.
     app.GetWindow().SetResizeCallback([&](uint32_t w, uint32_t h) {
         renderer.Resize(w, h);
     });
 
     renderer::DebugCamera debugCamera;
-    debugCamera.camera.m_position = { 0.0f, 0.0f, -5.0f };
-    debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
+    debugCamera.camera.m_position = { 0.0f, 13.0f, -24.0f };
+    debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
     editorApp.GetContext().editorCamera = &debugCamera.camera;
 
-    // Main loop.
     while (app.IsRunning())
     {
         core::Time::Tick();
         input::Input::Update();
         app.GetWindow().PollEvents();
-        if (app.GetWindow().ShouldClose())
-        {
-            app.Quit();
-            break;
-        }
+        if (app.GetWindow().ShouldClose()) { app.Quit(); break; }
 
         const float dt = core::Time::DeltaTime();
+
         editorApp.BeginFrame();
 
-        auto sceneRT = editorApp.GetViewportRT();
-        auto gameRT  = editorApp.GetGameViewportRT();
-        auto uiRT    = editorApp.GetUIViewportRT();
-
-        if (auto* rt = resources.Get(sceneRT))
-            debugCamera.camera.m_aspect =
-                static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
-
         auto* pm = editorApp.GetContext().playMode;
-        pm->ApplyPendingRestore(*scene);
+        if (pm->ApplyPendingRestore(*scene))
+            ResetPhysicsWorld(*scene, physWorld);
 
         if (!pm->IsPlaying())
             debugCamera.Update(dt);
 
         scene::TransformSystem(*scene);
-        scene::UIAnimatorSystem(*scene, dt);
 
-        renderer::Camera gameCamera = debugCamera.camera;
-        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
-        if (auto* rt = resources.Get(gameRT))
-            gameCamera.m_aspect =
-                static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
-
-        for (auto [tf, cc] : scene->View<scene::Transform, scene::CameraComponent>()) {
-            if (!cc.enabled || !cc.isMain) continue;
-            gameCamera.m_position = tf.position;
-            gameCamera.m_rotation = tf.rotation;
-            gameCamera.m_fovY    = cc.fovY;
-            gameCamera.m_near    = cc.nearZ;
-            gameCamera.m_far     = cc.farZ;
-            gameCullingMask      = cc.cullingMask;
-            break;
+        if (pm->IsPlaying())
+        {
+            scene::PhysicsSystem(*scene, physWorld, dt);
+            scene::TransformSystem(*scene);
         }
 
-        auto& ctx = editorApp.GetContext();
-        scene::UICanvas* activeCanvas = FindFirstRootCanvas(*scene);
+        const auto sceneRT = editorApp.GetViewportRT();
+        const auto gameRT = editorApp.GetGameViewportRT();
+
+        if (auto* rt = resources.Get(sceneRT))
+            debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) /
+                                          static_cast<float>(rt->GetHeight());
+
+        renderer::Camera gameCamera = debugCamera.camera;
+        if (auto* rt = resources.Get(gameRT))
+            gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) /
+                                  static_cast<float>(rt->GetHeight());
 
         renderer.BeginFrame();
 
-        // Scene viewport: editor camera.
         renderer.SetRenderTarget(sceneRT, resources);
-        renderer.Clear({ 0.02f, 0.02f, 0.025f, 1.0f });
+        renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
         scene::RenderSystem(*scene, renderer, resources,
                             debugCamera.camera, sceneRT,
                             &editorApp.GetContext().renderSettings);
-
-        // UI viewport: UISystem preview only.
-        if (uiRT.IsValid()) {
-            renderer.SetRenderTarget(uiRT, resources);
-            renderer.Clear({ 0.035f, 0.035f, 0.04f, 1.0f });
-
-            math::Vector2 mouseInCanvas = { -100000.0f, -100000.0f };
-            if (activeCanvas) {
-                math::Vector2 mouse = input::Input::MousePosition();
-                const float w = ctx.uiViewportWidth  > 0.0f ? ctx.uiViewportWidth  : 1.0f;
-                const float h = ctx.uiViewportHeight > 0.0f ? ctx.uiViewportHeight : 1.0f;
-                mouseInCanvas = {
-                    (mouse.x - ctx.uiViewportOriginX) / w * activeCanvas->canvasWidth,
-                    (mouse.y - ctx.uiViewportOriginY) / h * activeCanvas->canvasHeight
-                };
-            }
-            scene::UISystem(*scene, renderer, resources,
-                            ctx.uiViewportWidth, ctx.uiViewportHeight,
-                            mouseInCanvas, false);
+        if (editorApp.GetContext().renderSettings.showColliders)
+        {
+            renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
+            scene::ConstraintDebugDrawSystem(physWorld, renderer);
+            renderer::DebugDraw::Flush();
         }
 
-        // Game viewport: 3D scene plus UI overlay.
-        if (gameRT.IsValid()) {
+        if (gameRT.IsValid())
+        {
             renderer.SetRenderTarget(gameRT, resources);
-            renderer.Clear({ 0.005f, 0.005f, 0.02f, 1.0f });
+            renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
             scene::RenderSystem(*scene, renderer, resources,
                                 gameCamera, gameRT,
-                                &editorApp.GetContext().renderSettings,
-                                gameCullingMask);
-
-            math::Vector2 mouse         = input::Input::MousePosition();
-            math::Vector2 mouseInCanvas = mouse;
-            if (activeCanvas) {
-                const float w = ctx.gameViewportWidth  > 0.0f ? ctx.gameViewportWidth  : 1.0f;
-                const float h = ctx.gameViewportHeight > 0.0f ? ctx.gameViewportHeight : 1.0f;
-                mouseInCanvas = {
-                    (mouse.x - ctx.gameViewportOriginX) / w * activeCanvas->canvasWidth,
-                    (mouse.y - ctx.gameViewportOriginY) / h * activeCanvas->canvasHeight
-                };
+                                &editorApp.GetContext().renderSettings);
+            if (editorApp.GetContext().renderSettings.showColliders)
+            {
+                renderer::DebugDraw::BeginFrame(renderer, resources, gameCamera.GetViewProjection());
+                scene::ConstraintDebugDrawSystem(physWorld, renderer);
+                renderer::DebugDraw::Flush();
             }
-            const bool mousePressed = input::Input::MouseButton(0);
-            scene::UISystem(*scene, renderer, resources,
-                            ctx.gameViewportWidth, ctx.gameViewportHeight,
-                            mouseInCanvas, mousePressed);
         }
 
-        // Editor UI.
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
         renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
         editorApp.GetContext().activeScene = scene.get();

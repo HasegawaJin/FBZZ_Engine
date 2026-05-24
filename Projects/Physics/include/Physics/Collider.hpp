@@ -17,7 +17,7 @@ namespace fbzz::physics
         math::Vector3 Extents() const { return (max - min) * 0.5f; }
     };
 
-    enum class ColliderType { SPHERE, AABB, CAPSULE };
+    enum class ColliderType { SPHERE, AABB, CAPSULE, TRIANGLE_MESH, CONVEX_HULL };
 
     class Collider {
     public:

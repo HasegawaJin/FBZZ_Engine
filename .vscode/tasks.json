@@ -28,6 +28,13 @@
             "presentation": { "panel": "shared", "reveal": "always" }
         },
         {
+            "label": "CMake: Build (Tests)",
+            "type": "shell",
+            "command": "cmake --build build/debug --target fbzz_tests",
+            "group": "build",
+            "presentation": { "panel": "shared", "reveal": "always" }
+        },
+        {
             "label": "CMake: Configure (Release)",
             "type": "shell",
             "command": "cmake --preset release",

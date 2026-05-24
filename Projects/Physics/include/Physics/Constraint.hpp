@@ -6,6 +6,15 @@
 
 namespace fbzz::physics
 {
+    enum class ConstraintType
+    {
+        DISTANCE,
+        SPRING,
+        ROPE,
+        CHAIN,
+        HINGE
+    };
+
     class Constraint
     {
     public:
@@ -14,6 +23,10 @@ namespace fbzz::physics
 
         virtual void ApplyForce(float dt) {}
         virtual void SolvePosition(float dt) {}
+        virtual ConstraintType GetType() const = 0;
+
+        RigidBody* GetBodyA() const { return m_bodyA; }
+        RigidBody* GetBodyB() const { return m_bodyB; }
 
     protected:
         RigidBody* m_bodyA = nullptr;
