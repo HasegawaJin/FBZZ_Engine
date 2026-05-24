@@ -296,6 +296,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     mr.shaderPath = static_cast<const char*>(p->Data);
+                    for (char& c : mr.shaderPath) if (c == '\\') c = '/';
                     applyShader();
                 }
                 ImGui::EndDragDropTarget();
@@ -310,6 +311,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     mr.albedoTexPath = static_cast<const char*>(p->Data);
+                    for (char& c : mr.albedoTexPath) if (c == '\\') c = '/';
                     applyAlbedo();
                 }
                 ImGui::EndDragDropTarget();
@@ -324,6 +326,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     mr.normalTexPath = static_cast<const char*>(p->Data);
+                    for (char& c : mr.normalTexPath) if (c == '\\') c = '/';
                     applyNormal();
                 }
                 ImGui::EndDragDropTarget();

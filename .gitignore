@@ -45,6 +45,10 @@ imgui.ini
 # コンパイル済みシェーダー (dxc でビルド時生成)
 Assets/shaders/compiled/
 
+# シェーダーコンパイルログ
+Assets/shaders/compile_log.txt
+Assets/shaders/compile_ui_log.txt
+
 # Claude Code (ローカル設定)
 .claude/
 

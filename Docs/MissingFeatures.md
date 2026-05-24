@@ -118,7 +118,7 @@
 |---|------|------|--------|
 | D-9-1 | OnCollisionEnter / Stay / Exit | 衝突検出は `PhysicsSystem` で動作しているが、Script へのイベント通知パイプラインが未実装。`World::Step` 後の接触ペアを取得し、前フレームとの差分から Enter / Stay / Exit を判定して該当 Script のメソッドを呼ぶ仕組みが必要 | **実装済み** (`feature/collision-events`) |
 | D-9-2 | OnTriggerEnter / Stay / Exit | `isTrigger` フラグは存在（D-2-4 参照）するが、Script 基底クラスへのコールバックが未定義。D-9-1 と同じ通知パイプラインで実現可能 | **実装済み** (`feature/collision-events`) |
-| D-9-3 | OnDestroy() ライフサイクル | Script 基底クラスに `OnDestroy` がない。`FlushDestroyQueue` 実行前に Script の後処理（イベント購読解除・ネイティブリソース解放など）を呼ぶ手段が存在しない | 中 |
+| D-9-3 | OnDestroy() ライフサイクル | Script 基底クラスに `OnDestroy` がない。`FlushDestroyQueue` 実行前に Script の後処理（イベント購読解除・ネイティブリソース解放など）を呼ぶ手段が存在しない | **実装済み** — `Script` 基底に `OnDestroy()` を追加。`DestroyImmediate` で `RemoveAllComponents` 前・`Clear` でシーン切替時に全スクリプトへ呼び出し |
 | D-9-4 | IReflector — enum / ResourceHandle 型対応 | 現状の `IReflector::Field` は `float` / `int` / `bool` / `Vector3` / `Vector4` / `Quaternion` / `string` の 7 型のみ。`enum class` や `ResourceHandle<T>`（テクスチャ・メッシュ参照）をフィールドとして宣言・Inspector 編集・TOML 保存できない | 中 |
 | D-9-5 | 1 GameObject に複数 Script アタッチ | `ComponentArray` の制約上、`ScriptComponent` は 1 エンティティにつき 1 つまで。Unity 相当の複数スクリプトが必要な場合は内部で `Composite Script` パターンを使うか、ECS 側で複数コンポーネント対応が必要 | 低 |
 
