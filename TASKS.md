@@ -1,79 +1,79 @@
-# TASKS — FBZZ Engine
+# TASKS 遯ｶ繝ｻFBZZ Engine
 
-作業開始時に確認し、作業終了時に更新すること。  
-詳細設計は `docs/` 以下の各 Design.md を参照。
+闖ｴ諛茨ｽ･・ｭ鬮｢蜿･・ｧ蛹ｺ蜃ｾ邵ｺ・ｫ驕抵ｽｺ髫ｱ髦ｪ・邵ｲ竏ｽ・ｽ諛茨ｽ･・ｭ驍ｨ繧・ｽｺ繝ｻ蜃ｾ邵ｺ・ｫ隴厄ｽｴ隴・ｽｰ邵ｺ蜷ｶ・狗ｸｺ阮吮・邵ｲ繝ｻ
+髫ｧ・ｳ驍擾ｽｰ髫ｪ・ｭ髫ｪ蛹ｻ繝ｻ `docs/` 闔会ｽ･闕ｳ荵昴・陷ｷ繝ｻDesign.md 郢ｧ雋樒崟霎｣・ｧ邵ｲ繝ｻ
 
 ---
 
-## 現在地: Step 6 — ImGui Editor
+## 霑ｴ・ｾ陜ｨ・ｨ陜ｨ・ｰ: Step 6 遯ｶ繝ｻImGui Editor
 
-詳細: [docs/editor/Design.md](docs/editor/Design.md)
+髫ｧ・ｳ驍擾ｽｰ: [docs/editor/Design.md](docs/editor/Design.md)
 
-| # | タスク | 状態 |
+| # | 郢ｧ・ｿ郢ｧ・ｹ郢ｧ・ｯ | 霑･・ｶ隲ｷ繝ｻ|
 |---|--------|------|
-| 1 | Engine Util 整備 (ILogSink / FileSystem / StringUtils) | ✅ 完了 |
-| 2 | ImGui → IRenderer 統合 | ✅ 完了 |
-| 3 | EditorApp 骨格 (DockSpace + MenuBar) | ✅ 完了 |
-| 4 | Util 各種 (MathConvert / ImGuiWidgets / UndoStack / HotkeyManager / ConsoleSink / ModalDialog / EditorSettings / FileDialog) | ✅ 完了 |
-| 5 | SceneHierarchyPanel | ✅ 完了 |
-| 6 | InspectorPanel — Transform 編集 | ✅ 完了 |
-| 7 | ViewportPanel + EditorCamera | ✅ 完了 |
-| 8 | Gizmo (ImGuizmo) + MousePicking | ✅ 完了 |
-| 9 | Light editing integrated into InspectorPanel | ✅ 完了 |
-| 10 | ConsolePanel / AssetBrowserPanel / StatusBar | ✅ 完了 |
-| 11 | SceneSerializer — engine::scene::SceneSerializer Save/Load | ✅ 完了 |
-| 12 | PlayModeController — Play/Pause/Stop 基本動作 | ✅ 完了 |
-| 13 | InspectorPanel — MeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource / RigidBody / SkyRenderer Component 編集 | ✅ 完了 |
-| 14 | editor::SceneSerializer Load/Deserialize — PlayMode Stop 時のスナップショット復元 | ✅ 完了 |
-| 15 | MenuBar: File > Save Scene / Open Scene | ✅ 完了 |
+| 1 | Engine Util 隰ｨ・ｴ陋ｯ繝ｻ(ILogSink / FileSystem / StringUtils) | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 2 | ImGui 遶翫・IRenderer 驍ｨ・ｱ陷ｷ繝ｻ| 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 3 | EditorApp 鬯ｪ・ｨ隴ｬ・ｼ (DockSpace + MenuBar) | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 4 | Util 陷ｷ繝ｻ・ｨ・ｮ (MathConvert / ImGuiWidgets / UndoStack / HotkeyManager / ConsoleSink / ModalDialog / EditorSettings / FileDialog) | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 5 | SceneHierarchyPanel | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 6 | InspectorPanel 遯ｶ繝ｻTransform 驍ｱ・ｨ鬮ｮ繝ｻ| 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 7 | ViewportPanel + EditorCamera | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 8 | Gizmo (ImGuizmo) + MousePicking | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 9 | Light editing integrated into InspectorPanel | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 10 | ConsolePanel / AssetBrowserPanel / StatusBar | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 11 | SceneSerializer 遯ｶ繝ｻengine::scene::SceneSerializer Save/Load | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 12 | PlayModeController 遯ｶ繝ｻPlay/Pause/Stop 陜難ｽｺ隴幢ｽｬ陷咲ｩゑｽｽ繝ｻ| 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 13 | InspectorPanel 遯ｶ繝ｻMeshRenderer / LightComponent / CameraComponent / ParticleEmitter / AudioSource / RigidBody / SkyRenderer Component 驍ｱ・ｨ鬮ｮ繝ｻ| 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 14 | editor::SceneSerializer Load/Deserialize 遯ｶ繝ｻPlayMode Stop 隴弱ｅ繝ｻ郢ｧ・ｹ郢晉ｿｫ繝｣郢晏干縺咏ｹ晢ｽｧ郢昴・繝ｨ陟包ｽｩ陷医・| 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| 15 | MenuBar: File > Save Scene / Open Scene | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
 
 ---
 
-## Step 6.5 — SceneSerializer 統合
+## Step 6.5 遯ｶ繝ｻSceneSerializer 驍ｨ・ｱ陷ｷ繝ｻ
 
-詳細: [docs/scene/SceneSerializer.md](docs/scene/SceneSerializer.md)
+髫ｧ・ｳ驍擾ｽｰ: [docs/scene/SceneSerializer.md](docs/scene/SceneSerializer.md)
 
-| # | タスク | 状態 |
+| # | 郢ｧ・ｿ郢ｧ・ｹ郢ｧ・ｯ | 霑･・ｶ隲ｷ繝ｻ|
 |---|--------|------|
-| 1 | sandbox/main.cpp を SceneSerializer::Load で短縮 (~80 行目標) | 🔄 進行中 (初回起動で assets/scenes/*.fbzz 生成後に短縮可) |
-| 2 | .fbzz シーンファイルの作成 (現 main.cpp のシーン定義を移植) | 🔄 進行中 (初回起動で assets/scenes/ に自動生成) |
+| 1 | sandbox/main.cpp 郢ｧ繝ｻSceneSerializer::Load 邵ｺ・ｧ驕擾ｽｭ驍ｵ・ｮ (~80 髯ｦ讙主ｲｼ隶薙・ | 﨟槫｣ｲ 鬨ｾ・ｲ髯ｦ蠕｡・ｸ・ｭ (陋ｻ譎丞ｱ楢･搾ｽｷ陷崎ｼ斐・assets/scenes/*.fbzz 騾墓ｻ薙・陟募ｾ娯・驕擾ｽｭ驍ｵ・ｮ陷ｿ・ｯ) |
+| 2 | .fbzz 郢ｧ・ｷ郢晢ｽｼ郢晢ｽｳ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｺ・ｮ闖ｴ諛医・ (霑ｴ・ｾ main.cpp 邵ｺ・ｮ郢ｧ・ｷ郢晢ｽｼ郢晢ｽｳ陞ｳ螟ゑｽｾ・ｩ郢ｧ蝣､・ｧ・ｻ隶繝ｻ | 﨟槫｣ｲ 鬨ｾ・ｲ髯ｦ蠕｡・ｸ・ｭ (陋ｻ譎丞ｱ楢･搾ｽｷ陷崎ｼ斐・assets/scenes/ 邵ｺ・ｫ髢ｾ・ｪ陷肴・蜃ｽ隰後・ |
 
 ---
 
-## エンジン モジュール
+## 郢ｧ・ｨ郢晢ｽｳ郢ｧ・ｸ郢晢ｽｳ 郢晢ｽ｢郢ｧ・ｸ郢晢ｽ･郢晢ｽｼ郢晢ｽｫ
 
-詳細: [docs/engine/Design.md](docs/engine/Design.md)
+髫ｧ・ｳ驍擾ｽｰ: [docs/engine/Design.md](docs/engine/Design.md)
 
-| モジュール | 状態 | 備考 |
+| 郢晢ｽ｢郢ｧ・ｸ郢晢ｽ･郢晢ｽｼ郢晢ｽｫ | 霑･・ｶ隲ｷ繝ｻ| 陋ｯ蜻ｵﾂ繝ｻ|
 |-----------|------|------|
-| Core / Input / Renderer / Scene 基盤 | ✅ 完了 | |
-| Asset / Audio / Util | ✅ 完了 | |
-| LightComponent / CameraComponent / AudioSourceComponent | ✅ 完了 | docs の「未実装」表記は誤り |
-| AudioSystem free function (scene::AudioSystem) | ✅ 完了 | docs の「未実装」表記は誤り |
-| RenderSystem LightComponent 収集 (LightSystem 引数削除) | ✅ 完了 | docs の「未実装」表記は誤り |
+| Core / Input / Renderer / Scene 陜難ｽｺ騾ｶ・､ | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ| |
+| Asset / Audio / Util | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ| |
+| LightComponent / CameraComponent / AudioSourceComponent | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ| docs 邵ｺ・ｮ邵ｲ譴ｧ謔ｴ陞ｳ貅ｯ・｣繝ｻﾂ蟠趣ｽ｡・ｨ髫ｪ蛟･繝ｻ髫ｱ・､郢ｧ繝ｻ|
+| AudioSystem free function (scene::AudioSystem) | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ| docs 邵ｺ・ｮ邵ｲ譴ｧ謔ｴ陞ｳ貅ｯ・｣繝ｻﾂ蟠趣ｽ｡・ｨ髫ｪ蛟･繝ｻ髫ｱ・､郢ｧ繝ｻ|
+| RenderSystem LightComponent 陷ｿ譛ｱ蟇・(LightSystem 陟大｢鍋・陷台ｼ∝求) | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ| docs 邵ｺ・ｮ邵ｲ譴ｧ謔ｴ陞ｳ貅ｯ・｣繝ｻﾂ蟠趣ｽ｡・ｨ髫ｪ蛟･繝ｻ髫ｱ・､郢ｧ繝ｻ|
 
 ---
 
-## 物理エンジン (Step 4 以降)
+## 霑夲ｽｩ騾・・縺顔ｹ晢ｽｳ郢ｧ・ｸ郢晢ｽｳ (Step 4 闔会ｽ･鬮ｯ繝ｻ
 
-詳細: [docs/physics/Design.md](docs/physics/Design.md)
+髫ｧ・ｳ驍擾ｽｰ: [docs/physics/Design.md](docs/physics/Design.md)
 
-| 機能 | 状態 |
+| 隶匁ｺｯ繝ｻ | 霑･・ｶ隲ｷ繝ｻ|
 |------|------|
-| CapsuleCollider | ✅ 完了 |
-| Unity-style ColliderComponent / VolumeComponent 化 | ✅ 完了 |
-| Volume 系 (6 種) | ✅ 完了 (ColliderVolume + VolumeComponent に統合) |
-| Constraint 系 (5 種) | ✅ 完了 |
+| CapsuleCollider | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| Unity-style ColliderComponent / VolumeComponent 陋ｹ繝ｻ| 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
+| Volume 驍会ｽｻ (6 驕橸ｽｮ) | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ(ColliderVolume + VolumeComponent 邵ｺ・ｫ驍ｨ・ｱ陷ｷ繝ｻ |
+| Constraint 驍会ｽｻ (5 驕橸ｽｮ) | 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ|
 
 ---
 
-## Step 7 以降
+## Step 7 闔会ｽ･鬮ｯ繝ｻ
 
-| Step | 内容 | 状態 |
+| Step | 陷繝ｻ・ｮ・ｹ | 霑･・ｶ隲ｷ繝ｻ|
 |------|------|------|
-| 7 | DX12 移行 + RenderGraph | ❌ 未着手 |
-| 7 | DXR (Ray Tracing) | ❌ 未着手 |
-| — | Script / Reflect システム | ✅ 完了 ([docs/scene/Script.md](docs/scene/Script.md)) |
+| 7 | DX12 驕假ｽｻ髯ｦ繝ｻ+ RenderGraph | 隨ｶ繝ｻ隴幢ｽｪ騾ｹﾂ隰・・|
+| 7 | DXR (Ray Tracing) | 隨ｶ繝ｻ隴幢ｽｪ騾ｹﾂ隰・・|
+| 遯ｶ繝ｻ| Script / Reflect 郢ｧ・ｷ郢ｧ・ｹ郢昴・ﾎ・| 隨ｨ繝ｻ陞ｳ蠕｡・ｺ繝ｻ([docs/scene/Script.md](docs/scene/Script.md)) |
 
 ---
 
@@ -151,3 +151,5 @@
 | 2026-05-24 | Add ConstraintDebugGeometry and Sandbox constraint debug rendering | Done |
 | 2026-05-24 | Implement Skeletal Animation v1 core: Assimp bone/clip import, AnimatorComponent, GPU skinning shaders, RenderSystem and SceneSerializer integration | Done |
 | 2026-05-24 | Skeletal Animation v2: nodeGlobalTransforms cache, AnimatorDebugDrawSystem (bone line draw + View > Skeleton toggle), Inspector clip browser with Combo + ProgressBar | Done |
+| 2026-05-24 | Fix per-object MaterialComponent synchronization and duplicate material isolation | Done |
+| 2026-05-25 | Audit RenderSystem and shader compile/load paths; rewrite broken comments | Done |
