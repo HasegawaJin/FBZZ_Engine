@@ -145,6 +145,18 @@ scene::MaterialComponent CreateDefaultMaterialComponent()
     return mc;
 }
 
+renderer::Material& EnsureMaterial(scene::MaterialComponent& mc)
+{
+    if (!mc.material)
+        mc.material = std::make_shared<renderer::Material>();
+    else if (mc.material.use_count() > 1) {
+        auto cloned = std::make_shared<renderer::Material>(*mc.material);
+        cloned->paramsBuffer = renderer::ResourceHandle<renderer::ConstantBufferTag>{};
+        mc.material = std::move(cloned);
+    }
+    return *mc.material;
+}
+
 scene::ColliderComponent CreateAabbCollider(const math::Vector3& halfExtents = { 0.5f, 0.5f, 0.5f })
 {
     scene::ColliderComponent collider;
@@ -540,28 +552,37 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     DrawComponentSection<scene::MaterialComponent>(go, ctx, "Material",
         [](scene::MaterialComponent& mc, EditorContext&) {
             auto applyShader = [&mc]() {
-                if (mc.material)
-                    if (auto* res = renderer::ResourceManager::Active())
-                        mc.material->shader = res->LoadShader(mc.shaderPath);
+                auto& material = EnsureMaterial(mc);
+                material.shaderPath = mc.shaderPath;
+                if (auto* res = renderer::ResourceManager::Active()) {
+                    material.shader = mc.shaderPath.empty()
+                        ? renderer::ResourceHandle<renderer::ShaderTag>{}
+                        : res->LoadShader(mc.shaderPath);
+                    material.Init(*res);
+                    material.Upload(*res);
+                }
             };
             auto applyAlbedo = [&mc]() {
-                if (mc.material)
-                    if (auto* res = renderer::ResourceManager::Active()) {
-                        mc.material->albedoTexture = mc.albedoTexPath.empty()
-                            ? renderer::ResourceHandle<renderer::TextureTag>{}
-                            : res->LoadTexture(mc.albedoTexPath);
-                        mc.material->Upload(*res);
-                    }
+                auto& material = EnsureMaterial(mc);
+                if (auto* res = renderer::ResourceManager::Active()) {
+                    material.albedoTexture = mc.albedoTexPath.empty()
+                        ? renderer::ResourceHandle<renderer::TextureTag>{}
+                        : res->LoadTexture(mc.albedoTexPath);
+                    material.Upload(*res);
+                }
             };
             auto applyNormal = [&mc]() {
-                if (mc.material)
-                    if (auto* res = renderer::ResourceManager::Active()) {
-                        mc.material->normalTexture = mc.normalTexPath.empty()
-                            ? renderer::ResourceHandle<renderer::TextureTag>{}
-                            : res->LoadTexture(mc.normalTexPath);
-                        mc.material->Upload(*res);
-                    }
+                auto& material = EnsureMaterial(mc);
+                if (auto* res = renderer::ResourceManager::Active()) {
+                    material.normalTexture = mc.normalTexPath.empty()
+                        ? renderer::ResourceHandle<renderer::TextureTag>{}
+                        : res->LoadTexture(mc.normalTexPath);
+                    material.Upload(*res);
+                }
             };
+
+            if (!mc.material)
+                applyShader();
 
             // Shader
             char shaderBuf[256];
