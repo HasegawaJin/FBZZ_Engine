@@ -1,11 +1,12 @@
 // FBZZ Engine
 // HingeConstraint.hpp | fbzz::physics
-// Pivot anchor hinge constraint
+// ピボット点を共有する簡易ヒンジ制約
 #pragma once
 #include <Physics/Constraint.hpp>
 
 namespace fbzz::physics
 {
+    // 2 つのローカルアンカーを同じワールド位置へ寄せる。軸はデバッグ表示と将来の角度制限用に保持する。
     class HingeConstraint : public Constraint
     {
     public:

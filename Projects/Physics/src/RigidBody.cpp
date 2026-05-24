@@ -61,12 +61,12 @@ void RigidBody::Integrate(float dt)
 {
     if (!m_isStatic)
     {
-        // Linear (semi-implicit Euler)
-        // m_force には World が事前に重力を ApplyForce 済み
+        // 線形運動は半陰的オイラーで積分する。速度を先に更新するため単純な陽的オイラーより安定する。
+        // m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
         m_velocity += m_force * m_invMass * dt;
         m_position += m_velocity * dt;
 
-        // Angular
+        // 角運動はボディ空間の対角慣性テンソルで角加速度を求め、ワールド空間へ戻す。
         math::Vector3 tauBody   = m_rotation.Conjugate() * m_torque;
         math::Vector3 alphaBody = {
             m_invInertiaDiag.x * tauBody.x,
@@ -87,7 +87,7 @@ void RigidBody::Integrate(float dt)
         ).Normalized();
     }
 
-    // static ボディ含め毎フレームリセット (蓄積防止)
+    // static ボディ含め毎フレームリセットする。力は「そのフレームだけ有効」な入力として扱う。
     m_force  = math::Vector3::ZERO;
     m_torque = math::Vector3::ZERO;
 }
@@ -129,6 +129,7 @@ void RigidBody::RecomputeInertia()
     }
     else if (type == ColliderType::AABB)
     {
+        // AABB は軸整合前提のため回転を許すと形状定義と衝突判定がずれる。
         m_invInertiaDiag = math::Vector3::ZERO;
         m_angularVelocity = math::Vector3::ZERO;
     }

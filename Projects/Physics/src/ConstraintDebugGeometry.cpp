@@ -1,6 +1,6 @@
 // FBZZ Engine
 // ConstraintDebugGeometry.cpp | fbzz::physics
-// Constraint debug wire geometry generation
+// 制約可視化用のワイヤージオメトリ生成
 #include <Physics/ConstraintDebugGeometry.hpp>
 #include <Physics/ChainConstraint.hpp>
 #include <Physics/HingeConstraint.hpp>
@@ -33,8 +33,8 @@ namespace
         const math::Vector3 center = (anchorA + anchorB) * 0.5f;
         const math::Vector3 axis = hinge.m_axis.Normalized() * 0.35f;
 
-        out.lines.push_back({ anchorA, anchorB });
-        out.lines.push_back({ center - axis, center + axis });
+        out.lines.push_back({ anchorA, anchorB });        // 2 つのアンカーのずれ
+        out.lines.push_back({ center - axis, center + axis }); // ヒンジ軸の向き
     }
 } // namespace
 

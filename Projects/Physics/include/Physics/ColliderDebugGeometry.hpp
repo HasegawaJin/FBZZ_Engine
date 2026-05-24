@@ -1,6 +1,6 @@
 // FBZZ Engine
 // ColliderDebugGeometry.hpp | fbzz::physics
-// Collider debug wire geometry generation
+// コライダー可視化用のワイヤージオメトリ生成
 #pragma once
 #include <Math/Vector3.hpp>
 #include <Physics/Collider.hpp>
@@ -8,6 +8,7 @@
 
 namespace fbzz::physics
 {
+    // Renderer へ直接依存しないよう、Physics は線分リストだけを返す。
     struct DebugLine
     {
         math::Vector3 from;

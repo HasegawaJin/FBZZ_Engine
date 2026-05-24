@@ -16,7 +16,8 @@ namespace fbzz::physics
         math::Vector3 contactB;   // shape B 上の接触点
     };
 
-    // GJK で交差確認済みの Simplex から EPA を実行する
+    // GJK で交差確認済みの Simplex から EPA を実行する。
+    // 返した接触点は PhysicsSolver が ContactPoint へ変換し、PGS 解決で使う。
     // maxIter: 反復上限
     // tolerance: 収束判定 (新しいサポート点がポリトープ面より tolerance 以内なら収束)
     EPAResult EPA_GetContactInfo(

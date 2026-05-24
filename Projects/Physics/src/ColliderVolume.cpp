@@ -1,6 +1,6 @@
 // FBZZ Engine
 // ColliderVolume.cpp | fbzz::physics
-// Trigger collider backed area effects
+// Trigger コライダーを範囲として使う空間効果
 #include <Physics/ColliderVolume.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
@@ -34,6 +34,7 @@ namespace fbzz::physics
                    position.z >= aabb.min.z && position.z <= aabb.max.z;
         }
 
+        // Capsule は線分上の最近傍点との距離で内外を判定する。
         const auto* capsule = static_cast<const CapsuleCollider*>(m_collider.get());
         const math::Vector3 segment = capsule->GetSegmentEnd() - capsule->GetSegmentStart();
         const float lenSq = segment.LengthSq();
@@ -73,12 +74,15 @@ namespace fbzz::physics
             break;
         case VolumeType::Explosion:
         {
+            // Explosion は継続力ではなく瞬間インパルスとして扱う。
+            // duration が短い Volume と組み合わせて 1 回だけ発火させる想定。
             const math::Vector3 delta = body.GetPosition() - center;
             const math::Vector3 dir = delta.LengthSq() > 1e-6f ? delta.Normalized() : math::Vector3::UP;
             body.ApplyImpulse(dir * m_settings.explosionImpulse);
             break;
         }
         case VolumeType::TimeDilation:
+            // 時間スケールは World 側で effectiveDt に反映済み。
             break;
         case VolumeType::Magnetic:
             body.ApplyForce(math::Vector3::Cross(body.GetVelocity(), m_settings.magneticField) * body.m_charge);
