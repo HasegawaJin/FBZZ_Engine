@@ -149,3 +149,5 @@
 | 2026-05-24 | Fix Sandbox Play/Stop physics world constraint rebinding | Done |
 | 2026-05-24 | Add ColliderDebugGeometry and wire it to View > Colliders debug rendering | Done |
 | 2026-05-24 | Add ConstraintDebugGeometry and Sandbox constraint debug rendering | Done |
+| 2026-05-24 | Implement Skeletal Animation v1 core: Assimp bone/clip import, AnimatorComponent, GPU skinning shaders, RenderSystem and SceneSerializer integration | Done |
+| 2026-05-24 | Skeletal Animation v2: nodeGlobalTransforms cache, AnimatorDebugDrawSystem (bone line draw + View > Skeleton toggle), Inspector clip browser with Combo + ProgressBar | Done |
