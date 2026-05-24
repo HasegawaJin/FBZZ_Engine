@@ -16,6 +16,7 @@ struct Matrix3 {
 
     static Matrix3 Identity();
     static Matrix3 Transpose(const Matrix3& mat);
+    // 非一様スケールを含む行列では法線変換に使えない。その場合は Inverse(mat3).Transposed() を使う
     static Matrix3 FromMatrix4(const Matrix4& mat);
 
     Matrix3 operator*(const Matrix3& rhs) const;

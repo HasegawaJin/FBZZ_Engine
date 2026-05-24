@@ -22,6 +22,7 @@ inline float Clamp(float v, float minVal, float maxVal) {
 }
 inline float Clamp01(float v)                { return Clamp(v, 0.0f, 1.0f); }
 inline float Lerp(float a, float b, float t) { return a + (b - a) * t; }
+// a == b のとき (ゼロ幅区間): v が区間先頭と解釈して 0 を返す
 inline float InverseLerp(float a, float b, float v) {
     return (b - a) < EPSILON ? 0.0f : (v - a) / (b - a);
 }
