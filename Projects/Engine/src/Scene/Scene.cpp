@@ -3,11 +3,15 @@
 // Scene の実装: Entity 管理・GameObject 所有・Destroy キュー処理
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Renderer/Material.hpp"
+#include "Engine/Renderer/ResourceManager.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
 #include <iterator>
+#include <memory>
 #include <utility>
 
 namespace fbzz::scene {
@@ -272,6 +276,24 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
     std::apply([&](auto&... arrs) {
         (..., CopyIfHas(arrs, src, dst));
     }, m_arrays);
+
+    auto* srcMaterial = GetComponent<MaterialComponent>(src);
+    auto* dstMaterial = GetComponent<MaterialComponent>(dst);
+    if (!srcMaterial || !dstMaterial || !srcMaterial->material) return;
+
+    auto cloned = std::make_shared<renderer::Material>();
+    cloned->shader        = srcMaterial->material->shader;
+    cloned->albedoTexture = srcMaterial->material->albedoTexture;
+    cloned->normalTexture = srcMaterial->material->normalTexture;
+    cloned->params        = srcMaterial->material->params;
+    cloned->shaderPath    = srcMaterial->material->shaderPath;
+
+    if (auto* resources = renderer::ResourceManager::Active()) {
+        cloned->Init(*resources);
+        cloned->Upload(*resources);
+    }
+
+    dstMaterial->material = std::move(cloned);
 }
 
 void Scene::FixupOwnership()
