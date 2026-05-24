@@ -16,6 +16,11 @@ public:
     virtual void OnInit(EditorContext& ctx) { (void)ctx; }
     virtual void OnShutdown() {}
 
+    // テンプレートメソッド。フック呼び出し順序:
+    //  OnBeforeBegin  → ImGui::Begin → OnAfterBegin → OnRenderContent → ImGui::End → OnAfterEnd
+    // OnBeforeBegin : SetNextWindowPos/Size など Begin より前に必要な ImGui 設定を行う場所
+    // OnAfterBegin  : Begin 内部で消費された PushStyleVar を PopStyleVar で戻す場所
+    // OnAfterEnd    : ウィンドウが閉じられた後のクリーンアップ
     void OnRender(EditorContext& ctx)
     {
         OnBeforeBegin(ctx);

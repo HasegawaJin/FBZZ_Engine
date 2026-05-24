@@ -19,7 +19,9 @@ constexpr const char* kSnapshotPath = "editor_config/.playmode_snapshot.fbzz";
 
 bool SceneSerializer::Save(const scene::Scene& scene, const std::string& path)
 {
-    // engine serializer currently expects non-const Scene&
+    // Engine の SceneSerializer::Save が非const Scene& を要求する設計になっているため const_cast で対応。
+    // Save は概念的に読み取り専用 (シーンを変更しない) なので安全だが、
+    // Engine 側が const 対応になったタイミングで除去すること。
     scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
     return scene::SceneSerializer::Save(mutableScene, path);
 }
@@ -34,6 +36,8 @@ bool SceneSerializer::Load(scene::Scene& scene, const std::string& path)
 
 std::string SceneSerializer::Serialize(const scene::Scene& scene)
 {
+    // メモリ上の TOML 文字列を返したいが、Engine 側 API がファイル経由のみ対応しているため
+    // 一時ファイル (kSnapshotPath) を介してテキストを読み戻す。
     if (!Save(scene, kSnapshotPath)) {
         FBZZ_LOG_ERROR("SceneSerializer::Serialize save failed: %s", kSnapshotPath);
         return {};
