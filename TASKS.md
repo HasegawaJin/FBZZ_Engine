@@ -142,3 +142,10 @@
 | 2026-05-23 | Fix UI culling and sandbox Play/Stop stale button references | Done |
 | 2026-05-23 | Add UIText debug rendering and remove sandbox UI debug logs | Done |
 | 2026-05-23 | UI Phase 2: dynamic VB (persistent Map/Unmap), SDF font atlas (CPU-generated 24x24 glyphs, UIText.hlsl), Anchor/Pivot layout, texturePath Inspector, UILayoutGroup (H/V), UIAnimator (Color/Position Tween), World Space Canvas RenderMode, full Inspector and Serializer integration | Done |
+| 2026-05-24 | Fix physics restitution warm-start caching and ConvexHull EPA/contact normal stability | Done |
+| 2026-05-24 | Fix EPA cube normal refinement and restitution test contact-height sampling | Done |
+| 2026-05-24 | Visualize Physics Tests Phase 1-11 in Sandbox main scene | Done |
+| 2026-05-24 | Fix AABB contact point and lock AABB angular response | Done |
+| 2026-05-24 | Fix Sandbox Play/Stop physics world constraint rebinding | Done |
+| 2026-05-24 | Add ColliderDebugGeometry and wire it to View > Colliders debug rendering | Done |
+| 2026-05-24 | Add ConstraintDebugGeometry and Sandbox constraint debug rendering | Done |
