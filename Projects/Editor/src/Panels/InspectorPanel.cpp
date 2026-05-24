@@ -18,6 +18,8 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -28,12 +30,16 @@
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/Model.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/ColliderVolume.hpp>
 #include <Physics/RigidBody.hpp>
 #include <imgui.h>
+#include <algorithm>
 #include <cstdio>
 #include <memory>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -195,6 +201,24 @@ void DrawAddComponentMenu(scene::GameObject& go)
 
     DrawAddComponentItem<scene::VolumeComponent>(go, "Volume");
     DrawAddComponentItem<scene::SkyRenderer>(go, "Sky Renderer");
+    {
+        const bool hasSMR = go.GetComponent<scene::SkinnedMeshRenderer>() != nullptr;
+        if (ImGui::MenuItem("Skinned Mesh Renderer", nullptr, false, !hasSMR)) {
+            go.AddComponent<scene::SkinnedMeshRenderer>();
+            if (!go.GetComponent<scene::MaterialComponent>())
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+        }
+    }
+    {
+        const bool hasAnimator = go.GetComponent<scene::AnimatorComponent>() != nullptr;
+        if (ImGui::MenuItem("Animator", nullptr, false, !hasAnimator)) {
+            go.AddComponent<scene::AnimatorComponent>();
+            if (!go.GetComponent<scene::SkinnedMeshRenderer>())
+                go.AddComponent<scene::SkinnedMeshRenderer>();
+            if (!go.GetComponent<scene::MaterialComponent>())
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+        }
+    }
     DrawAddComponentItem<scene::UICanvas>(go, "UI Canvas");
     DrawAddComponentItem<scene::UIImage>(go, "UI Image");
     DrawAddComponentItem<scene::UIButton>(go, "UI Button");
@@ -375,14 +399,142 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 std::snprintf(meshBuf, sizeof(meshBuf), "%s", mr.meshPath.c_str());
                 if (ImGui::InputText("Mesh Path", meshBuf, sizeof(meshBuf)))
                     mr.meshPath = meshBuf;
+
+                auto loadCustomMesh = [&mr]() {
+                    if (mr.meshPath.empty()) return;
+                    if (auto model = asset::AssetManager::Load<asset::Model>(mr.meshPath)) {
+                        if (!model->meshes.empty())
+                            mr.mesh = model->meshes[0];
+                    }
+                };
+                if (ImGui::IsItemDeactivatedAfterEdit()) loadCustomMesh();
+
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         mr.meshPath = static_cast<const char*>(p->Data);
                         for (char& c : mr.meshPath) if (c == '\\') c = '/';
+                        loadCustomMesh();
                     }
                     ImGui::EndDragDropTarget();
                 }
             }
+        });
+
+    DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, "Skinned Mesh Renderer",
+        [](scene::SkinnedMeshRenderer& smr, EditorContext& ctx) {
+            auto loadModel = [&smr]() {
+                smr.model.reset();
+                if (smr.modelPath.empty()) return;
+                smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
+            };
+
+            char pathBuf[256];
+            std::snprintf(pathBuf, sizeof(pathBuf), "%s", smr.modelPath.c_str());
+            if (ImGui::InputText("Model", pathBuf, sizeof(pathBuf)))
+                smr.modelPath = pathBuf;
+            if (ImGui::IsItemDeactivatedAfterEdit()) loadModel();
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    smr.modelPath = static_cast<const char*>(p->Data);
+                    for (char& c : smr.modelPath) if (c == '\\') c = '/';
+                    loadModel();
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            if (smr.model) {
+                const int meshCount = static_cast<int>(smr.model->meshes.size());
+                ImGui::DragInt("Mesh Index", &smr.meshIndex, 1.0f, 0, std::max(0, meshCount - 1));
+                ImGui::TextDisabled("%d mesh(es) | %s skeleton",
+                    meshCount, smr.model->skeleton ? "has" : "no");
+
+                if (!ctx.GetSelectedGO()->GetComponent<scene::MaterialComponent>()) {
+                    ImGui::TextColored({ 1.0f, 0.8f, 0.2f, 1.0f }, "! Material component required");
+                    if (ImGui::Button("Add Material")) {
+                        if (auto* go2 = ctx.GetSelectedGO())
+                            go2->AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+                    }
+                }
+            }
+        });
+
+    DrawComponentSection<scene::AnimatorComponent>(go, ctx, "Animator",
+        [](scene::AnimatorComponent& anim, EditorContext&) {
+            // --- Clip Sources list ---
+            ImGui::Text("Clip Sources");
+
+            for (int i = 0; i < static_cast<int>(anim.clipSources.size()); ++i) {
+                ImGui::PushID(i);
+                char buf[256];
+                std::snprintf(buf, sizeof(buf), "%s", anim.clipSources[i].c_str());
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 24.0f);
+                if (ImGui::InputText("##src", buf, sizeof(buf)))
+                    anim.clipSources[i] = buf;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    { anim.clips.clear(); anim.clipsLoaded = false; }
+                // DragDrop target must be right after InputText, before SameLine
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        anim.clipSources[i] = static_cast<const char*>(p->Data);
+                        for (char& c : anim.clipSources[i]) if (c == '\\') c = '/';
+                        anim.clips.clear(); anim.clipsLoaded = false;
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("x")) {
+                    anim.clipSources.erase(anim.clipSources.begin() + i);
+                    anim.clips.clear(); anim.clipsLoaded = false;
+                    ImGui::PopID(); break;
+                }
+                ImGui::PopID();
+            }
+            // "+ Add Source" also acts as drop zone: drag FBX directly onto it
+            if (ImGui::Button("+ Add Source  (or drop FBX)", { -1.0f, 0.0f }))
+                anim.clipSources.emplace_back();
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string path = static_cast<const char*>(p->Data);
+                    for (char& c : path) if (c == '\\') c = '/';
+                    anim.clipSources.push_back(std::move(path));
+                    anim.clips.clear(); anim.clipsLoaded = false;
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            ImGui::Separator();
+
+            // --- Clip selector ---
+            if (!anim.clips.empty()) {
+                const int clipCount = static_cast<int>(anim.clips.size());
+                int sel = std::clamp(anim.clipIndex, 0, clipCount - 1);
+                std::vector<const char*> names;
+                names.reserve(static_cast<size_t>(clipCount));
+                for (const auto& c : anim.clips) names.push_back(c.name.c_str());
+                if (ImGui::Combo("Clip", &sel, names.data(), clipCount)) {
+                    anim.clipIndex = sel;
+                    anim.clipName  = anim.clips[static_cast<size_t>(sel)].name;
+                    anim.time = 0.0f;
+                }
+                const auto& cur = anim.clips[static_cast<size_t>(sel)];
+                const double tps = cur.ticksPerSecond > 0.0 ? cur.ticksPerSecond : 30.0;
+                const float dur  = static_cast<float>(cur.durationTicks / tps);
+                const float t    = (dur > 0.0f) ? std::clamp(anim.time / dur, 0.0f, 1.0f) : 0.0f;
+                char overlay[32];
+                std::snprintf(overlay, sizeof(overlay), "%.2f / %.2fs", anim.time, dur);
+                ImGui::ProgressBar(t, { -1.0f, 0.0f }, overlay);
+                ImGui::TextDisabled("%d clip(s) | %d tracks", clipCount,
+                                    static_cast<int>(cur.tracks.size()));
+            } else if (anim.clipsLoaded) {
+                ImGui::TextDisabled("No clips loaded");
+            } else {
+                ImGui::TextDisabled("(clips not loaded yet)");
+            }
+
+            ImGui::DragFloat("Time",  &anim.time,  0.01f, 0.0f, 100000.0f);
+            ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
+            ImGui::Checkbox("Loop",    &anim.loop);
+            ImGui::Checkbox("Playing", &anim.playing);
         });
 
     DrawComponentSection<scene::MaterialComponent>(go, ctx, "Material",
