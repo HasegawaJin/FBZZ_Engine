@@ -60,6 +60,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename = "editor_config/imgui_layout.ini";
     ImGui::StyleColorsDark();
 
     renderer.ImGuiInit(m_hwnd);
@@ -180,7 +181,7 @@ void EditorApp::BeginFrame()
     ImGui::PopStyleVar(3);
 
     ImGuiID dockId = ImGui::GetID("MainDockSpace");
-    ImGui::DockSpace(dockId, { 0, 0 }, ImGuiDockNodeFlags_PassthruCentralNode);
+    ImGui::DockSpace(dockId, { 0, 0 }, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
 
     BuildMenuBar(m_ctx);
 

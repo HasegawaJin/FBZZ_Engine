@@ -78,7 +78,9 @@ void ProcessGO(GameObject& go, float dt)
             AdvanceTween(pt.elapsed, pt.duration, pt.loop, pt.pingPong, dt, pt.active);
             float t = (pt.duration > 0.0f) ? std::clamp(pt.elapsed / pt.duration, 0.0f, 1.0f) : 1.0f;
             t = ApplyEasing(t, pt.easing);
-            image->position = LerpV2(pt.from, pt.to, t);
+            auto posVal = LerpV2(pt.from, pt.to, t);
+            go.transform.localPosition.x = posVal.x;
+            go.transform.localPosition.y = posVal.y;
             if (pt.loop && pt.pingPong && pt.elapsed == 0.0f)
                 std::swap(pt.from, pt.to);
         }
