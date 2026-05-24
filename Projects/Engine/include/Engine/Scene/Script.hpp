@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Script.hpp | fbzz::scene
-// User script base class and reflection visitor
+// ユーザースクリプト基底クラスとリフレクション補助
+// GameObject にアタッチされる振る舞いの共通ライフサイクルを定義する。
+// engine 側の Component とは分け、ScriptComponent が所有する。
 #pragma once
 
 #include <Math/Quaternion.hpp>

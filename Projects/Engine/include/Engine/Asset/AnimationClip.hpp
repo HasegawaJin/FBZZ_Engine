@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AnimationClip.hpp | fbzz::asset
-// Skeletal animation keyframes imported from model files
+// モデルファイルから読み込んだスケルタルアニメーションのキー列
+// ModelImporter が生成し、AnimatorSystem がサンプリングする読み取り中心のデータ定義。
+// 再生中の時刻やブレンド状態は AnimatorComponent 側に置き、この型には持たせない。
 #pragma once
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>

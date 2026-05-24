@@ -1,6 +1,8 @@
 // FBZZ Engine
 // IRenderer.hpp | fbzz::renderer
-// Renderer backend interface
+// Renderer バックエンドの抽象インターフェース
+// 上位レイヤーは DX11 実装を直接参照せず、このインターフェースだけを使う。
+// リソース生成は ResourceManager に閉じ、描画 API は Submit / Dispatch に集約する。
 #pragma once
 #include <cstddef>
 #include <cstdint>

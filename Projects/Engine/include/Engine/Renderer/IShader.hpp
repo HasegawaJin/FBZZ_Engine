@@ -1,6 +1,8 @@
 // FBZZ Engine
 // IShader.hpp | fbzz::renderer
-// Renderer shader interface
+// Shader の抽象インターフェース
+// HLSL コンパイル済みオブジェクトなどの具体表現を隠す。
+// Renderer は DrawCall のシェーダーハンドルを ResourceManager で解決して使う。
 #pragma once
 #include <string>
 

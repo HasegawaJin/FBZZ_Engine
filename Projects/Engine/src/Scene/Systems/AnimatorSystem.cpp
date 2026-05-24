@@ -1,8 +1,10 @@
 // FBZZ Engine
 // AnimatorSystem.cpp | fbzz::scene
-// Skeletal animation sampling and GPU skinning palette upload.
-// Skeleton source  : SkinnedMeshRenderer.model->skeleton
-// Animation clips  : AnimatorComponent.clipSources (one FBX per source)
+// スケルタルアニメーションのサンプリングと骨行列転送
+// AnimationClip を評価し、SkinnedMeshRenderer 用の行列パレットを更新する。
+// 描画自体は RenderSystem が担当する。
+// スケルトン取得元: SkinnedMeshRenderer.model->skeleton
+// アニメーションクリップ取得元: AnimatorComponent.clipSources (1 つの参照元につき 1 つの FBX)
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -157,7 +159,7 @@ void UploadBindPose(AnimatorComponent& animator, renderer::ResourceManager& reso
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
-// Load and merge clips from all clipSources into animator.clips
+// clipSources すべてからクリップを読み込み、animator.clips へ統合する
 void LoadClips(AnimatorComponent& animator)
 {
     animator.clips.clear();
@@ -182,15 +184,15 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
 
-        // Lazy-load clips from clipSources
+        // clipSources から必要になった時点でクリップを読み込む
         if (!animator->clipsLoaded)
             LoadClips(*animator);
 
-        // Ensure skinning CB exists
+        // スキニング用定数バッファがなければ作成する
         if (!animator->skinningBuffer.IsValid())
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
 
-        // Get skeleton from SkinnedMeshRenderer on the same GameObject
+        // 同じ GameObject の SkinnedMeshRenderer から Skeleton を取得する
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
         if (smr && !smr->model && !smr->modelPath.empty())
             smr->model = asset::AssetManager::Load<asset::Model>(smr->modelPath);

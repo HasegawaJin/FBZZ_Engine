@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DebugDraw.hpp | fbzz::renderer
-// ワイヤーフレームのデバッグ描画ユーティリティ (Line / Box / Sphere / Capsule)
+// ワイヤーフレームのデバッグ描画ユーティリティ
+// Line / Box / Sphere / Capsule をフレーム内バッチとして集めて一括送信する。
+// 描画は BeginFrame から Flush までの間だけ有効。
 #pragma once
 
 #include "IRenderer.hpp"

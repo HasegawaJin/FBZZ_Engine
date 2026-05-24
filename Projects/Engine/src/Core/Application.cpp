@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Application.cpp | fbzz::core
-// エンジンのエントリポイントとメインループ
+// Application シングルトンの初期化とメインループ
+// Window / Renderer / SceneManager を所有し、エンジン全体の寿命を管理する。
+// sandbox 側で手動ループする場合も、初期化済みサブシステムの入口になる。
 #include "Engine/Core/Application.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"

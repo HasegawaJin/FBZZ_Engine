@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Entity.hpp | fbzz::scene
-// Entity の識別子。generation カウンタで破棄済み参照を検出する
+// Scene 内の GameObject を識別する ID
+// index と generation を組み合わせ、破棄済み参照を検出する。
+// 外部公開は GameObject 経由を基本とし、System 内部で軽量参照として使う。
 #pragma once
 #include <cstdint>
 
@@ -20,7 +22,7 @@ struct EntityID {
 
 inline const EntityID EntityID::INVALID = {};
 
-// if constexpr の else 節で使う dependent false
+// if constexpr の else 節で使う依存 false
 template<typename T>
 inline constexpr bool AlwaysFalse = false;
 

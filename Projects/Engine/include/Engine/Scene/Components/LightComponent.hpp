@@ -1,6 +1,8 @@
 // FBZZ Engine
 // LightComponent.hpp | fbzz::scene
-// ライト情報を持つ Component。方向/位置は Transform から取得する
+// ライト情報を持つコンポーネント
+// 方向と位置は Transform から取り、色や強度などの発光設定だけを持つ。
+// RenderSystem が LightSystem へ集約して GPU へ送る。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DebugCamera.cpp | fbzz::renderer
-// Unity Scene View 風デバッグカメラの入力処理
+// Scene View 風デバッグカメラの入力処理
+// マウス・キーボード入力を Camera の回転、パン、ドリーへ変換する。
+// エディタ操作向けの一時視点であり、ゲームカメラとは分ける。
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Math/MathUtils.hpp>

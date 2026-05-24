@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Input.cpp | fbzz::input
 // 入力状態の更新と照会
+// Win32 メッセージで現在状態を更新し、Update で前フレーム状態を保存する。
+// KeyDown / MouseButtonDown は現在と前回の差分から判定する。
 #include "Engine/Input/Input.hpp"
 
 #include <windowsx.h>

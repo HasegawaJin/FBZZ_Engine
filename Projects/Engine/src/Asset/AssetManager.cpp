@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AssetManager.cpp | fbzz::asset
-// Model and texture asset cache
+// Model と Texture のロードおよびキャッシュ管理
+// 相対パスを正規化し、同じアセットを重複ロードしない。
+// Texture は ResourceManager、Model は ModelImporter を通して生成する。
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/ModelImporter.hpp>

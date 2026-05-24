@@ -1,6 +1,8 @@
 // FBZZ Engine
 // SceneSerializer.hpp | fbzz::scene
 // TOML ベースのシーン保存・復元
+// GameObject 階層と登録済み Component を .fbzz に変換する。
+// 未知の型は ScriptFactory / ComponentRegistry との対応を見て扱う。
 #pragma once
 #include <string>
 #include <memory>
@@ -14,7 +16,7 @@ class Scene;
 class SceneSerializer {
 public:
     // Scene を .fbzz ファイルに保存する
-    // 設計書と異なり Scene& (non-const) — GetComponent が non-const のため
+    // 設計書と異なり Scene&。GetComponent が const 未対応のため
     static bool Save(Scene& scene, const std::string& path);
 
     // .fbzz ファイルから Scene を復元する

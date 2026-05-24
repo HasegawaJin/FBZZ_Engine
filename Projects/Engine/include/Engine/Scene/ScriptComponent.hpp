@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ScriptComponent.hpp | fbzz::scene
-// Owns one user script instance attached to a GameObject
+// GameObject に紐付く Script インスタンスの所有者
+// std::unique_ptr で 1 つの Script を保持し、owner を注入する。
+// 実行順とライフサイクル呼び出しは ScriptSystem が担う。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>

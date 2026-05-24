@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Window.cpp | fbzz::core
-// Win32 ウィンドウの生成・メッセージ処理
+// Win32 ウィンドウの生成とメッセージ処理
+// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
+// Renderer / ImGui とはコールバックで疎結合に接続する。
 
 #include "Engine/Core/Window.hpp"
 #include "Engine/Input/Input.hpp"

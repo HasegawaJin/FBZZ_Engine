@@ -1,6 +1,8 @@
 // FBZZ Engine
 // SceneSerializer.cpp | fbzz::scene
-// TOML ベースのシーン保存・復元
+// TOML ベースの Scene 保存・復元
+// GameObject 階層と登録済み Component を .fbzz へ書き出す。
+// ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -49,7 +51,7 @@
 namespace fbzz::scene {
 
 // -----------------------------------------------------------------------
-// private helpers
+// 内部ヘルパー
 // -----------------------------------------------------------------------
 namespace {
 
@@ -250,7 +252,7 @@ std::shared_ptr<renderer::Mesh> ResolveMesh(
     std::string filePath  = path;
     int         meshIndex = 0;
 
-    // Find ':' after the last '/' to avoid misidentifying Windows drive letters
+    // Windows のドライブ文字を誤判定しないように、最後の '/' より後ろの ':' を探す
     size_t slashPos   = path.find_last_of('/');
     size_t searchFrom = (slashPos != std::string::npos) ? slashPos : 0;
     size_t colonPos   = path.find(':', searchFrom);
@@ -992,7 +994,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 }
 
 // -----------------------------------------------------------------------
-// LoadInPlace
+// 既存 Scene への読み込み
 // -----------------------------------------------------------------------
 bool SceneSerializer::LoadInPlace(
     Scene& scene, const std::string& path, renderer::ResourceManager& resources)

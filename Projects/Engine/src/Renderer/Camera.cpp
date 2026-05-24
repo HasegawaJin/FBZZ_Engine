@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Camera.cpp | fbzz::renderer
-// ビュー・プロジェクション行列の計算とカメラ姿勢管理
+// Camera の行列計算と LookAt 実装
+// Transform 由来の姿勢から View / Projection / ViewProjection を生成する。
+// 入力制御は DebugCamera や Scene 側に分離する。
 #include <Engine/Renderer/Camera.hpp>
 #include <Math/MathUtils.hpp>
 

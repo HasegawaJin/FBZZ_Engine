@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ParticleEmitter.hpp | fbzz::scene
-// CPU パーティクルシミュレーション用コンポーネント
+// CPU パーティクルシミュレーション設定コンポーネント
+// 発生率・寿命・速度などを保持し、System が毎フレーム粒子状態を進める。
+// 描画リソースの所有は Renderer 側に分ける。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <vector>

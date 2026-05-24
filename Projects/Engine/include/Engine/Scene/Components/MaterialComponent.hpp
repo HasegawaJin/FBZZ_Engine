@@ -1,6 +1,8 @@
 // FBZZ Engine
 // MaterialComponent.hpp | fbzz::scene
-// シェーダー・テクスチャ・マテリアルパラメータを管理するコンポーネント
+// マテリアル設定を GameObject に持たせるコンポーネント
+// シェーダー・テクスチャ・係数を Renderer::Material へ反映する。
+// Inspector / SceneSerializer で編集しやすい値型として保持する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <memory>

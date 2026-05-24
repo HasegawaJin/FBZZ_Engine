@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AudioSystem.cpp | fbzz::audio
-// BGM / SE の高レベル管理。WAV キャッシュと IAudioDevice の橋渡し
+// BGM / SE の高レベル管理
+// WAV をキャッシュし、実再生は IAudioDevice に委譲する。
+// ゲーム側はファイルパス・ループ有無・音量だけを扱う。
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/Logger.hpp"
 #include <fstream>

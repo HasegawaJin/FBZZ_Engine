@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ComponentRegistry.hpp | fbzz::scene
-// 全コンポーネント型を一箇所で登録する。新型を追加するときはここだけ編集する。
+// Scene が扱う全コンポーネント型の登録点
+// 新しい Component 型を追加するときの編集箇所を一箇所に集約する。
+// SceneSerializer や Inspector が同じ型一覧を参照できるようにする。
 #pragma once
 #include "Components/MeshRenderer.hpp"
 #include "Components/MaterialComponent.hpp"

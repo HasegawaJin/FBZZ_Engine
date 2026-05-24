@@ -1,6 +1,8 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // AssetManager.hpp | fbzz::asset
-// Model / ITexture のロードとキャッシュ管理 (static クラス)
+// Model と Texture のロードおよびキャッシュ管理
+// Renderer の ResourceManager を経由して GPU リソースを作り、ハンドルを利用側へ渡す。
+// 同じ相対パスは共有キャッシュとして扱い、明示的な Unload / UnloadAll まで保持する。
 #pragma once
 #include <memory>
 #include <string>

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // LightSystem.hpp | fbzz::renderer
-// DirectionalLight / PointLight / SpotLight 管理と定数バッファへの転送
+// ライト情報の管理と定数バッファ転送
+// Directional / Point / Spot を HLSL の LightConstants と一致する形に詰める。
+// 配列上限はシェーダー側レイアウトと同期して変更する。
 #pragma once
 #include "IConstantBuffer.hpp"
 #include <Math/Vector3.hpp>

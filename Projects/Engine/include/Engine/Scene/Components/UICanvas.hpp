@@ -1,14 +1,16 @@
 // FBZZ Engine
 // UICanvas.hpp | fbzz::scene
-// Runtime UI canvas coordinate space (Screen Space or World Space)
+// ランタイム UI の座標空間設定コンポーネント
+// ScreenSpace と WorldSpace の変換基準を Scene に持たせる。
+// UISystem は sortOrder と renderMode を見て描画順を決める。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 
 namespace fbzz::scene {
 
 enum class UIRenderMode {
-    ScreenSpace, // Overlay on top of 3D, ignores depth
-    WorldSpace   // Placed in 3D space, affected by depth
+    ScreenSpace, // 3D 描画の上に重ね、深度を無視する
+    WorldSpace   // 3D 空間に配置し、深度の影響を受ける
 };
 
 struct UICanvas {
@@ -16,7 +18,7 @@ struct UICanvas {
     float        canvasHeight = 1080.0f;
     int          sortOrder    = 0;
     UIRenderMode renderMode   = UIRenderMode::ScreenSpace;
-    // WorldSpace: canvas pixel size in world units (smaller = physically smaller canvas)
+    // WorldSpace 時の 1 キャンバスピクセルあたりのワールド単位。小さいほど物理サイズも小さい
     float        worldScale   = 0.01f;
     bool         enabled      = true;
 
