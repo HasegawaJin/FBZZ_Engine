@@ -11,7 +11,8 @@ namespace fbzz::physics
     class Collider;
     struct PhysicsMaterial;
 
-    // World が bodies を生存管理するため raw pointer で保持する
+    // World が bodies を生存管理するため raw pointer で保持する。
+    // normal は bodyB から bodyA へ押し戻す向きで統一する。
     struct ContactPoint {
         math::Vector3 point;   // 衝突点 (ワールド座標)
         math::Vector3 normal;  // b → a 方向の法線

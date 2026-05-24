@@ -10,6 +10,7 @@ namespace fbzz::physics
 {
     class RigidBody;
 
+    // World に登録されるコライダー参照。RigidBody と Material は非所有ポインタで紐づける。
     struct ColliderInstance {
         std::shared_ptr<Collider> collider;
         RigidBody* body = nullptr;
@@ -18,6 +19,7 @@ namespace fbzz::physics
         int layer = 0;
     };
 
+    // NarrowPhase はこのペアだけを詳細判定する。
     struct CollisionPair {
         ColliderInstance colliderA;
         ColliderInstance colliderB;

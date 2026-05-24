@@ -21,10 +21,12 @@ namespace fbzz::physics
     class PhysicsSolver
     {
     public:
+        // AABB の重なりだけを見て NarrowPhase 対象を絞る。レイヤー行列はここで適用する。
         void BroadPhase(const std::vector<ColliderInstance>& colliders,
                         std::vector<CollisionPair>& outPairs,
                         const std::function<bool(int, int)>& layerFilter);
 
+        // 形状の組み合わせごとに詳細判定し、ContactPoint を生成する。
         void NarrowPhase(const std::vector<CollisionPair>& pairs,
                         std::vector<ContactPoint>& outContacts);
 
@@ -45,7 +47,7 @@ namespace fbzz::physics
         bool TestCapsuleCapsule(const CapsuleCollider& a, const CapsuleCollider& b,
                             ContactPoint& out);
 
-        // TriangleMesh 用テスト関数
+        // TriangleMesh 用テスト関数。メッシュ全体ではなく BVH で候補三角形を絞ってから呼ぶ。
         bool TestSphereTriangle  (const SphereCollider&  s, const Triangle& tri, ContactPoint& out);
         bool TestAABBTriangle    (const AABBCollider&    b, const Triangle& tri, ContactPoint& out);
         bool TestCapsuleTriangle (const CapsuleCollider& c, const Triangle& tri, ContactPoint& out);
@@ -54,7 +56,7 @@ namespace fbzz::physics
         bool TestAABBTriangleMesh    (const AABBCollider&,    const TriangleMeshCollider&, ContactPoint& out);
         bool TestCapsuleTriangleMesh (const CapsuleCollider&, const TriangleMeshCollider&, ContactPoint& out);
 
-        // ConvexHull 用テスト関数 (GJK + EPA)
+        // ConvexHull 用テスト関数 (GJK + EPA)。形状差分をサポート関数で抽象化する。
         bool TestConvexConvex  (const ConvexHullCollider&, const ConvexHullCollider&, ContactPoint& out);
         bool TestSphereConvex  (const SphereCollider&,     const ConvexHullCollider&, ContactPoint& out);
         bool TestAABBConvex    (const AABBCollider&,        const ConvexHullCollider&, ContactPoint& out);
@@ -64,6 +66,7 @@ namespace fbzz::physics
         void ResolveVelocity(ContactPoint& cp);
         // 摩擦インパルス解決 (コーン制約)
         void ResolveFriction(ContactPoint& cp);
+        // 速度解決だけでは残る貫通を Baumgarte で補正する。
         void ResolvePosition(ContactPoint& cp);
 
         static constexpr int   VELOCITY_ITER = 6;   // Warm Starting で削減

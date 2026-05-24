@@ -9,10 +9,12 @@
 namespace fbzz::physics
 {
 
+    // 任意点群を凸形状として扱うためのコライダー。詳細判定は GJK/EPA に委譲する。
     class ConvexHullCollider : public Collider
     {
     public:
-        // 点群から Quickhull で凸包を構築する (最大頂点数 MAX_HULL_VERTS)
+        // 点群から Quickhull で凸包を構築する (最大頂点数 MAX_HULL_VERTS)。
+        // 上限を設けることでサポート点探索の線形コストを抑える。
         explicit ConvexHullCollider(std::vector<math::Vector3> points);
 
         AABB         GetAABB() const override { return m_worldAABB; }
@@ -26,7 +28,7 @@ namespace fbzz::physics
         // PhysicsSolver から SupportFn として渡すための static ラッパー
         static math::Vector3 SupportFnImpl(const void* shape, const math::Vector3& dir);
 
-        static constexpr int MAX_HULL_VERTS = 64;
+        static constexpr int MAX_HULL_VERTS = 64; // Sandbox 検証用の凸形状を安定して処理する上限
 
     private:
         std::vector<math::Vector3> m_localVerts;  // ローカル空間の凸包頂点

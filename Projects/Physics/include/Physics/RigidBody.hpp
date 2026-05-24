@@ -9,10 +9,11 @@ namespace fbzz::physics
 {
     class Collider;
 
+    // PhysicsSystem から同期される剛体状態。Scene の Transform は直接所有せず、World::Step 後に外側で反映する。
     class RigidBody
     {
     public:
-        // 力・インパルスの適用
+        // 力・インパルスの適用。Force は積分時まで蓄積し、Impulse は速度へ即時反映する。
         void ApplyForce(const math::Vector3& force);
         void ApplyForceAtPoint(const math::Vector3& force,
                                 const math::Vector3& worldPoint);
@@ -23,7 +24,7 @@ namespace fbzz::physics
         // 積分 (半陰的オイラー法、World::Step から呼ばれる)
         void Integrate(float dt);
 
-        // 質量管理
+        // 質量管理。負の質量はゲーム的な反重力挙動用として許容する。
         void SetMass(float mass); // 負値可 (反重力挙動)
         float GetMass()    const { return m_mass; }
         float GetInvMass() const { return m_isStatic ? 0.0f : m_invMass; }
@@ -56,7 +57,7 @@ namespace fbzz::physics
         bool  m_isGravitationalSource = false;
         float m_gravitationalMass     = 1.0f;  // 慣性質量 m_mass と独立して設定可
 
-        // engine 側コンポーネントへのポインタ (衝突コールバック用)
+        // engine 側コンポーネントへのポインタ (衝突コールバック用)。Physics は型を知らない。
         void* m_userData = nullptr;
 
         // CCD (Continuous Collision Detection) 設定
@@ -77,7 +78,8 @@ namespace fbzz::physics
         float m_invMass = 1.0f; // m_isStatic == true のとき 0
                                 // m_mass < 0 のとき負になる (反重力挙動)
             
-        // 対角慣性テンソルの逆数 (ボディ空間)
+        // 対角慣性テンソルの逆数 (ボディ空間)。
+        // 完全な 3x3 テンソルではなく対角近似にして、Step 4-6 の単純なソルバーに合わせる。
         // SetMass() / SetInertiaFromCollider() 呼び出し時に自動再計算される
         // m_isStatic == true のとき {0,0,0}
         math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f };
