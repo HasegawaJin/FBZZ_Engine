@@ -12,6 +12,8 @@
 #include "Components/CameraComponent.hpp"
 #include "Components/AudioSourceComponent.hpp"
 #include "Components/SkyRenderer.hpp"
+#include "Components/AnimatorComponent.hpp"
+#include "Components/SkinnedMeshRenderer.hpp"
 #include "Components/UICanvas.hpp"
 #include "Components/UIImage.hpp"
 #include "Components/UIButton.hpp"
@@ -34,6 +36,8 @@ using ComponentList = std::tuple<
     CameraComponent,
     AudioSourceComponent,
     SkyRenderer,
+    AnimatorComponent,
+    SkinnedMeshRenderer,
     UICanvas,
     UIImage,
     UIButton,
