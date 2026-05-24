@@ -16,6 +16,7 @@ namespace fbzz::physics
                          float damping);
 
         void ApplyForce(float dt) override;
+        ConstraintType GetType() const override { return ConstraintType::SPRING; }
 
         float m_restLength = 1.0f;
         float m_stiffness = 10.0f;

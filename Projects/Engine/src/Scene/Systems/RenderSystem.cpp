@@ -6,6 +6,7 @@
 // Pass 3: Composite  (HDR 竊・ACES ToneMap 竊・繝舌ャ繧ｯ繝舌ャ繝輔ぃ)
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
+#include "Engine/Scene/Systems/ColliderDebugDrawSystem.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
@@ -23,6 +24,7 @@
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/PrimitiveMesh.hpp"
 #include "Engine/Renderer/RenderState.hpp"
+#include "Engine/Renderer/DebugDraw.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Math/Matrix4.hpp>
@@ -481,6 +483,13 @@ void RenderSystem(Scene& scene,
             dc.constantBuffers[0] = frameCB;
             renderer.Submit(dc, resources);
         }
+    }
+
+    if (rs.showColliders)
+    {
+        renderer::DebugDraw::BeginFrame(renderer, resources, camera.GetViewProjection());
+        ColliderDebugDrawSystem(scene, renderer);
+        renderer::DebugDraw::Flush();
     }
 
     // =========================================================================

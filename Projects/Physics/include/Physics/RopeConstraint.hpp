@@ -12,6 +12,7 @@ namespace fbzz::physics
         RopeConstraint(RigidBody* bodyA, RigidBody* bodyB, float maxLength);
 
         void SolvePosition(float dt) override;
+        ConstraintType GetType() const override { return ConstraintType::ROPE; }
 
         float m_maxLength = 1.0f;
     };
