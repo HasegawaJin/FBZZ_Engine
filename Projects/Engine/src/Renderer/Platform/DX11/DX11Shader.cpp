@@ -185,10 +185,23 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
             elem.InstanceDataStepRate       = 0;
 
             // Mask のビット数 → コンポーネント数 → DXGI フォーマット & バイト幅
-            if      (paramDesc.Mask <= 0x1) { elem.Format = DXGI_FORMAT_R32_FLOAT;          byteOffset += 4;  }
-            else if (paramDesc.Mask <= 0x3) { elem.Format = DXGI_FORMAT_R32G32_FLOAT;       byteOffset += 8;  }
-            else if (paramDesc.Mask <= 0x7) { elem.Format = DXGI_FORMAT_R32G32B32_FLOAT;    byteOffset += 12; }
-            else                            { elem.Format = DXGI_FORMAT_R32G32B32A32_FLOAT; byteOffset += 16; }
+            const bool isUInt = paramDesc.ComponentType == D3D_REGISTER_COMPONENT_UINT32;
+            if (paramDesc.Mask <= 0x1) {
+                elem.Format = isUInt ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R32_FLOAT;
+                byteOffset += 4;
+            }
+            else if (paramDesc.Mask <= 0x3) {
+                elem.Format = isUInt ? DXGI_FORMAT_R32G32_UINT : DXGI_FORMAT_R32G32_FLOAT;
+                byteOffset += 8;
+            }
+            else if (paramDesc.Mask <= 0x7) {
+                elem.Format = isUInt ? DXGI_FORMAT_R32G32B32_UINT : DXGI_FORMAT_R32G32B32_FLOAT;
+                byteOffset += 12;
+            }
+            else {
+                elem.Format = isUInt ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT;
+                byteOffset += 16;
+            }
 
             inputElements.push_back(elem);
         }
