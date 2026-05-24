@@ -129,13 +129,8 @@ void RigidBody::RecomputeInertia()
     }
     else if (type == ColliderType::AABB)
     {
-        const math::Vector3 h =
-            static_cast<const AABBCollider*>(m_inertiaCollider)->m_halfExtents;
-        m_invInertiaDiag = {
-            3.0f / (m * (h.y * h.y + h.z * h.z)),
-            3.0f / (m * (h.x * h.x + h.z * h.z)),
-            3.0f / (m * (h.x * h.x + h.y * h.y))
-        };
+        m_invInertiaDiag = math::Vector3::ZERO;
+        m_angularVelocity = math::Vector3::ZERO;
     }
     else if (type == ColliderType::CAPSULE)
     {

@@ -59,6 +59,11 @@ namespace fbzz::physics
         // engine 側コンポーネントへのポインタ (衝突コールバック用)
         void* m_userData = nullptr;
 
+        // CCD (Continuous Collision Detection) 設定
+        // SphereCollider を持つ高速・小型オブジェクトのみ有効にする
+        bool  m_useCCD    = false;  // true のとき World::CCDPhase で TOI を計算する
+        float m_ccdRadius = 0.5f;   // CCD 判定の代表半径 (SphereCollider の半径に合わせる)
+
     private:
         // 状態
         math::Vector3    m_position;            // ワールド空間の位置
