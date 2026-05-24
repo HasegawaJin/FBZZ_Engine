@@ -12,6 +12,8 @@
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Scene/Components/AnimatorComponent.hpp"
+#include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Scene/Components/SkyRenderer.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -27,6 +29,7 @@
 #include "Engine/Renderer/DebugDraw.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Asset/Skeleton.hpp"
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -118,6 +121,16 @@ void RenderSystem(Scene& scene,
     const renderer::RenderSettings& rs = settings ? *settings : sDefaultSettings;
     static auto shadowMapRT     = resources.CreateRenderTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0);
     static auto shadowShader    = resources.LoadShader("assets/shaders/Pipeline/ShadowMap.hlsl");
+    static auto skinnedShadowShader = resources.LoadShader("assets/shaders/Pipeline/SkinnedShadowMap.hlsl");
+    static auto skinnedPbrShader = resources.LoadShader("assets/shaders/Material/SkinnedPBR.hlsl");
+    static renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
+    if (!bindPoseSkinningCB.IsValid()) {
+        struct BindPoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };
+        BindPoseData bp{};
+        for (auto& m : bp.bones) m = math::Matrix4::Identity();
+        bindPoseSkinningCB = resources.CreateConstantBuffer(sizeof(BindPoseData));
+        resources.Update(bindPoseSkinningCB, &bp, sizeof(BindPoseData));
+    }
     static auto compositeShader = resources.LoadShader("assets/shaders/PostProcess/Composite.hlsl");
     static auto bloomDownShader = resources.LoadShader("assets/shaders/PostProcess/BloomDownsample.cs.hlsl");
     static auto bloomUpShader   = resources.LoadShader("assets/shaders/PostProcess/BloomUpsample.cs.hlsl");
@@ -267,16 +280,17 @@ void RenderSystem(Scene& scene,
         lightFrameData.viewProjection = lightVP;
         resources.Update(frameCB, &lightFrameData, sizeof(PerFrameCB));
 
+        // Pass 1a: static MeshRenderer shadow
         for (auto& go : scene.GameObjects()) {
             if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
             auto* mr  = go.GetComponent<MeshRenderer>();
             auto* mat = go.GetComponent<MaterialComponent>();
             if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->material) continue;
             if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
-            auto& tf = go.transform;
+            if (mr->mesh->isSkinned) continue; // skinned meshes handled below
 
             PerObjectCB objData{};
-            objData.world = tf.GetWorldMatrix();
+            objData.world = go.transform.GetWorldMatrix();
             resources.Update(objectCB, &objData, sizeof(PerObjectCB));
 
             renderer::DrawCall dc;
@@ -288,6 +302,41 @@ void RenderSystem(Scene& scene,
             dc.constantBuffers[0] = frameCB;
             dc.constantBuffers[1] = objectCB;
             renderer.Submit(dc, resources);
+        }
+
+        // Pass 1b: SkinnedMeshRenderer shadow — iterate ALL meshes in the model
+        if (skinnedShadowShader.IsValid()) {
+            for (auto& go : scene.GameObjects()) {
+                if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+                auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
+                auto* mat  = go.GetComponent<MaterialComponent>();
+                auto* anim = go.GetComponent<AnimatorComponent>();
+                if (!smr || !smr->enabled || !smr->model) continue;
+                if (!mat || !mat->material) continue;
+
+                PerObjectCB objData{};
+                objData.world = go.transform.GetWorldMatrix();
+                resources.Update(objectCB, &objData, sizeof(PerObjectCB));
+
+                const auto skinCB = (anim && anim->skinningBuffer.IsValid())
+                    ? anim->skinningBuffer : bindPoseSkinningCB;
+
+                for (const auto& meshPtr : smr->model->meshes) {
+                    if (!meshPtr) continue;
+                    if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+
+                    renderer::DrawCall dc;
+                    dc.vertexBuffer       = meshPtr->vertexBuffer;
+                    dc.indexBuffer        = meshPtr->indexBuffer;
+                    dc.indexCount         = meshPtr->indexCount;
+                    dc.shader             = skinnedShadowShader;
+                    dc.pipelineState      = pso;
+                    dc.constantBuffers[0] = frameCB;
+                    dc.constantBuffers[1] = objectCB;
+                    dc.constantBuffers[7] = skinCB;
+                    renderer.Submit(dc, resources);
+                }
+            }
         }
     }
 
@@ -321,17 +370,18 @@ void RenderSystem(Scene& scene,
 
     auto shadowDepthTex = resources.GetDepthTexture(shadowMapRT);
 
+    // Pass 2a: static MeshRenderer
     for (auto& go : scene.GameObjects()) {
         if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
         if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->material) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
+        if (mr->mesh->isSkinned) continue; // skinned meshes handled by SkinnedMeshRenderer
         if (!mat->material->shader.IsValid()) continue;
-        auto& tf = go.transform;
 
         PerObjectCB objData{};
-        objData.world             = tf.GetWorldMatrix();
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
         resources.Update(objectCB, &objData, sizeof(PerObjectCB));
 
@@ -349,10 +399,55 @@ void RenderSystem(Scene& scene,
         dc.constantBuffers[2] = mat->material->paramsBuffer;
         dc.constantBuffers[3] = lightCB;
         dc.constantBuffers[4] = shadowCB;
-        if (mat->material->albedoTexture.IsValid())  dc.textures[0] = mat->material->albedoTexture;
-        if (mat->material->normalTexture.IsValid())  dc.textures[1] = mat->material->normalTexture;
+        if (mat->material->albedoTexture.IsValid()) dc.textures[0] = mat->material->albedoTexture;
+        if (mat->material->normalTexture.IsValid()) dc.textures[1] = mat->material->normalTexture;
         dc.textures[8] = shadowDepthTex;
         renderer.Submit(dc, resources);
+    }
+
+    // Pass 2b: SkinnedMeshRenderer — iterate ALL meshes in the model
+    if (skinnedPbrShader.IsValid()) {
+        for (auto& go : scene.GameObjects()) {
+            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
+            auto* mat  = go.GetComponent<MaterialComponent>();
+            auto* anim = go.GetComponent<AnimatorComponent>();
+            if (!smr || !smr->enabled || !smr->model) continue;
+            if (!mat || !mat->material) continue;
+
+            PerObjectCB objData{};
+            objData.world             = go.transform.GetWorldMatrix();
+            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+            resources.Update(objectCB, &objData, sizeof(PerObjectCB));
+
+            mat->material->Upload(resources);
+
+            const auto skinCB = (anim && anim->skinningBuffer.IsValid())
+                ? anim->skinningBuffer : bindPoseSkinningCB;
+
+            for (const auto& meshPtr : smr->model->meshes) {
+                if (!meshPtr) continue;
+                if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+
+                renderer::DrawCall dc;
+                dc.vertexBuffer       = meshPtr->vertexBuffer;
+                dc.indexBuffer        = meshPtr->indexBuffer;
+                dc.indexCount         = meshPtr->indexCount;
+                dc.vertexCount        = meshPtr->vertexCount;
+                dc.shader             = skinnedPbrShader;
+                dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
+                dc.constantBuffers[0] = frameCB;
+                dc.constantBuffers[1] = objectCB;
+                dc.constantBuffers[2] = mat->material->paramsBuffer;
+                dc.constantBuffers[3] = lightCB;
+                dc.constantBuffers[4] = shadowCB;
+                dc.constantBuffers[7] = skinCB;
+                if (mat->material->albedoTexture.IsValid()) dc.textures[0] = mat->material->albedoTexture;
+                if (mat->material->normalTexture.IsValid()) dc.textures[1] = mat->material->normalTexture;
+                dc.textures[8] = shadowDepthTex;
+                renderer.Submit(dc, resources);
+            }
+        }
     }
 
     // =========================================================================
