@@ -3,19 +3,26 @@
         {
             "name": "FBZZ Engine",
             "includePath": [
-                "${workspaceFolder}/editor/include",
-                "${workspaceFolder}/engine/include",
-                "${workspaceFolder}/math/include",
-                "${workspaceFolder}/physics/include",
-                "${workspaceFolder}/third_party/DirectXTex/include",
-                "${workspaceFolder}/third_party/Assimp/include"
+                "${workspaceFolder}/Projects/Editor/include",
+                "${workspaceFolder}/Projects/Engine/include",
+                "${workspaceFolder}/Projects/Math/include",
+                "${workspaceFolder}/Projects/Physics/include",
+                "${workspaceFolder}/ThirdParty/ImGui",
+                "${workspaceFolder}/ThirdParty/ImGui/backends",
+                "${workspaceFolder}/ThirdParty/ImGuizmo/src",
+                "${workspaceFolder}/ThirdParty/TomlPlusPlus/include",
+                "${workspaceFolder}/ThirdParty/DirectXTex/include",
+                "${workspaceFolder}/ThirdParty/Assimp/include"
             ],
             "defines": [
                 "_DEBUG",
                 "UNICODE",
-                "_UNICODE"
+                "_UNICODE",
+                "TOML_EXCEPTIONS=0",
+                "IMGUI_DEFINE_MATH_OPERATORS"
             ],
             "compilerPath": "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe",
+            "compileCommands": "${workspaceFolder}/build/debug/compile_commands.json",
             "windowsSdkVersion": "10.0.26100.0",
             "cppStandard": "c++20",
             "intelliSenseMode": "windows-msvc-x64"

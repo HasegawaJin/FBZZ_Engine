@@ -1,6 +1,7 @@
 # Build
 build/
 out/
+build_log.txt
 .cache/
 
 # CMake
@@ -8,6 +9,7 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 compile_commands.json
+CMakeUserPresets.json
 
 # Visual Studio
 .vs/
@@ -31,17 +33,21 @@ compile_commands.json
 *.ilk
 *.exp
 
-# third_party の lib / dll / exp は通常は追跡しないが、
+# ThirdParty の lib / dll / exp は通常は追跡しないが、
 # Assimp / DirectXTex のプリコンパイル済みバイナリはリポジトリに含める
-!third_party/**/*.lib
-!third_party/**/*.dll
-!third_party/**/*.exp
+!ThirdParty/**/*.lib
+!ThirdParty/**/*.dll
+!ThirdParty/**/*.exp
 
 # imgui.ini (ImGui の設定ファイル)
 imgui.ini
 
 # コンパイル済みシェーダー (dxc でビルド時生成)
-assets/shaders/compiled/
+Assets/shaders/compiled/
+
+# シェーダーコンパイルログ
+Assets/shaders/compile_log.txt
+Assets/shaders/compile_ui_log.txt
 
 # Claude Code (ローカル設定)
 .claude/
@@ -49,3 +55,10 @@ assets/shaders/compiled/
 # OS
 .DS_Store
 Thumbs.db
+
+# エディターの個人設定ファイル
+/editor_config
+
+# ThirdParty dependencies are vendored and should be tracked completely.
+!ThirdParty/
+!ThirdParty/**
