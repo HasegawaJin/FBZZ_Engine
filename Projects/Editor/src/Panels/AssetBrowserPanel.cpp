@@ -7,6 +7,8 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <imgui.h>
 #include <algorithm>
 
@@ -164,6 +166,14 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
                     IM_COL32(255, 255, 255, 220), lbl);
     }
 
+    // 選択ハイライト (FBX のみ)
+    const bool isFbxSelected = (e.path == m_selectedFbxPath);
+    if (isFbxSelected) {
+        ImGui::GetWindowDrawList()->AddRect(
+            origin, { origin.x + sz, origin.y + sz * 0.85f },
+            IM_COL32(255, 200, 80, 220), 3.0f, 0, 2.0f);
+    }
+
     // ドラッグソース (ファイルのみ)
     if (!e.isDir && ImGui::BeginDragDropSource()) {
         ImGui::SetDragDropPayload("ASSET_PATH", e.path.c_str(), e.path.size() + 1);
@@ -173,10 +183,22 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     if (hov) ImGui::SetTooltip("%s", e.path.c_str());
 
+    if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const bool isMesh = (e.ext == ".fbx" || e.ext == ".obj" ||
+                             e.ext == ".gltf" || e.ext == ".glb");
+        if (!e.isDir && isMesh) {
+            // FBX をシングルクリック → 内容を非同期ロード
+            if (m_selectedFbxPath != e.path) {
+                m_selectedFbxPath = e.path;
+                m_selectedModel.reset();
+                if (auto* res = renderer::ResourceManager::Active())
+                    m_selectedModel = asset::AssetManager::Load<asset::Model>(e.path);
+            }
+        }
+    }
+
     if (hov && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         if (e.isDir) {
-            // ループ中に m_entries を変更すると UB になるため、
-            // 遷移先を記録してループ後に処理する
             m_pendingNavigate = e.path;
         } else if (e.ext == ".fbzz" && ctx.activeScene) {
             if (SceneSerializer::Load(*ctx.activeScene, e.path)) {
@@ -200,6 +222,136 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     ImGui::TextUnformatted(display.c_str());
 
     ImGui::PopID();
+}
+
+// ─── FBX 内容プレビュー (サブアセットアイコン) ────────────────────────────────
+
+void AssetBrowserPanel::DrawFbxContents()
+{
+    if (m_selectedFbxPath.empty()) return;
+
+    ImGui::Separator();
+    ImGui::TextDisabled("  %s", util::FileSystem::GetFilename(m_selectedFbxPath).c_str());
+    ImGui::Spacing();
+
+    if (!m_selectedModel) {
+        ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "Failed to load");
+        return;
+    }
+
+    const auto& model = *m_selectedModel;
+    const bool hasMesh = !model.meshes.empty();
+    const bool hasClip = !model.clips.empty();
+    if (!hasMesh && !hasClip) {
+        ImGui::TextDisabled("  (no meshes or clips)");
+        return;
+    }
+
+    // アイコン描画ラムダ (DrawEntry と同じスタイル)
+    const float padding = 8.0f;
+    const float avail   = ImGui::GetContentRegionAvail().x;
+    const int   cols    = std::max(1, (int)(avail / (m_iconSize + padding)));
+    int col     = 0;
+    int iconIdx = 0;
+
+    auto drawSubIcon = [&](const char* label, const char* displayName,
+                           const char* tooltip, ImVec4 color,
+                           const std::string& payload)
+    {
+        if (col > 0 && (col % cols) != 0) ImGui::SameLine(0.0f, padding);
+
+        char uid[64];
+        std::snprintf(uid, sizeof(uid), "##sub%d", iconIdx++);
+
+        ImGui::BeginGroup();
+        ImGui::PushID(uid);
+
+        const ImU32 cFill = ImGui::ColorConvertFloat4ToU32(color);
+        const ImU32 cHov  = ImGui::ColorConvertFloat4ToU32(Lighten(color));
+        const ImU32 cDark = ImGui::ColorConvertFloat4ToU32(
+            { color.x * 0.5f, color.y * 0.5f, color.z * 0.5f, 1.0f });
+
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        const float  sz     = m_iconSize;
+
+        ImGui::InvisibleButton("##icon", { sz, sz });
+        const bool   hov  = ImGui::IsItemHovered();
+        const ImU32  fill = hov ? cHov : cFill;
+
+        ImDrawList* dl    = ImGui::GetWindowDrawList();
+        const float bodyH = sz * 0.85f;
+        const float dog   = sz * 0.22f;
+
+        ImVec2 pts[5] = {
+            { origin.x,        origin.y       },
+            { origin.x+sz-dog, origin.y       },
+            { origin.x+sz,     origin.y+dog   },
+            { origin.x+sz,     origin.y+bodyH },
+            { origin.x,        origin.y+bodyH },
+        };
+        dl->AddConvexPolyFilled(pts, 5, fill);
+        dl->AddPolyline(pts, 5, cDark, ImDrawFlags_Closed, 1.0f);
+
+        ImVec2 tri[3] = {
+            { origin.x+sz-dog, origin.y     },
+            { origin.x+sz,     origin.y+dog },
+            { origin.x+sz-dog, origin.y+dog },
+        };
+        dl->AddConvexPolyFilled(tri, 3, cDark);
+
+        const ImVec2 tsz = ImGui::CalcTextSize(label);
+        dl->AddText({ origin.x + (sz - tsz.x) * 0.5f,
+                      origin.y + bodyH * 0.52f - tsz.y * 0.5f },
+                    IM_COL32(255, 255, 255, 220), label);
+
+        if (ImGui::BeginDragDropSource()) {
+            ImGui::SetDragDropPayload("ASSET_PATH", payload.c_str(), payload.size() + 1);
+            ImGui::Text("%s: %s", label,
+                util::FileSystem::GetFilename(payload).c_str());
+            ImGui::EndDragDropSource();
+        }
+
+        if (hov) ImGui::SetTooltip("%s", tooltip);
+
+        // 名前テキスト (省略、中央揃え)
+        std::string disp(displayName);
+        const std::string full(displayName);
+        while (disp.size() > 2 &&
+               ImGui::CalcTextSize(disp.c_str()).x + ImGui::CalcTextSize("..").x > sz)
+            disp.pop_back();
+        if (disp.size() < full.size()) disp += "..";
+
+        const float ind = (sz - ImGui::CalcTextSize(disp.c_str()).x) * 0.5f;
+        if (ind > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ind);
+        ImGui::TextUnformatted(disp.c_str());
+
+        ImGui::PopID();
+        ImGui::EndGroup();
+        ++col;
+    };
+
+    // ── MESH アイコン ──
+    if (hasMesh) {
+        char tip[256];
+        std::snprintf(tip, sizeof(tip), "%zu mesh(es)%s\nDrag → Skinned Mesh Renderer",
+            model.meshes.size(),
+            model.skeleton
+                ? (std::string(" + skeleton (") +
+                   std::to_string(model.skeleton->bones.size()) + " bones)").c_str()
+                : "");
+        drawSubIcon("MESH", "Mesh", tip, { 0.80f, 0.45f, 0.10f, 1.0f }, m_selectedFbxPath);
+    }
+
+    // ── ANIM アイコン (クリップ1件につき1個) ──
+    for (const auto& clip : model.clips) {
+        const float dur = static_cast<float>(clip.durationTicks /
+            (clip.ticksPerSecond > 0.0 ? clip.ticksPerSecond : 30.0));
+        char tip[256];
+        std::snprintf(tip, sizeof(tip), "%s  (%.2fs)\nDrag → Animator",
+            clip.name.c_str(), dur);
+        drawSubIcon("ANIM", clip.name.c_str(), tip,
+                    { 0.20f, 0.70f, 0.30f, 1.0f }, m_selectedFbxPath);
+    }
 }
 
 // ─── メインレイアウト ─────────────────────────────────────────────────────────
@@ -271,12 +423,15 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ++col;
     }
 
-    // ループ外でナビゲートを処理 (ループ中の m_entries 変更による UB を防ぐ)
+    // ループ外でナビゲートを処理
     if (!m_pendingNavigate.empty()) {
         m_currentPath = std::move(m_pendingNavigate);
         m_pendingNavigate.clear();
         RefreshDirectory();
     }
+
+    // 選択 FBX の内容プレビュー
+    DrawFbxContents();
 
     ImGui::EndChild();
 }
