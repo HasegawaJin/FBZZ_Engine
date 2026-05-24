@@ -100,6 +100,7 @@ Quaternion Quaternion::operator*(const Quaternion& rhs) const {
     };
 }
 
+// q*v*q^-1 の展開形: v + 2w(q×v) + 2(q×(q×v)) — フル四元数乗算より乗算回数が少ない
 Vector3 Quaternion::operator*(const Vector3& v) const {
     Vector3 qv  = {x, y, z};
     Vector3 t   = Vector3::Cross(qv, v) * 2.0f;

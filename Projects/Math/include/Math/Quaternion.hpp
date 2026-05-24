@@ -33,6 +33,7 @@ struct Quaternion {
 
     static Quaternion FromMatrix4(const Matrix4& m);
 
+    // NLerp: 等角速度ではないが Slerp より軽量。短弧補間には Slerp を使う
     static Quaternion Lerp(const Quaternion& a, const Quaternion& b, float t);
     static Quaternion Slerp(const Quaternion& a, const Quaternion& b, float t);
     static float      Dot(const Quaternion& a, const Quaternion& b);
