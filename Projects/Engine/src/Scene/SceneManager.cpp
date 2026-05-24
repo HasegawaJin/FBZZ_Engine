@@ -6,6 +6,8 @@
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
+#include "Engine/Scene/Systems/AnimatorSystem.hpp"
+#include "Engine/Renderer/ResourceManager.hpp"
 #include <cassert>
 
 namespace fbzz::scene {
@@ -40,6 +42,8 @@ void SceneManager::Update(float dt, physics::World& world)
 
     TransformSystem(*m_active);
     PhysicsSystem(*m_active, world, dt);
+    if (auto* resources = renderer::ResourceManager::Active())
+        AnimatorSystem(*m_active, *resources, dt);
     ScriptSystem(*m_active, dt);
     m_active->FlushDestroyQueue(dt);
 }
