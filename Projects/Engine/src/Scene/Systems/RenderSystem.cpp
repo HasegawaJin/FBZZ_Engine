@@ -191,6 +191,7 @@ void RenderSystem(Scene& scene,
         const auto* output = resources.Get(outputRT);
         uint32_t curW = output ? output->GetWidth()  : renderer.GetWidth();
         uint32_t curH = output ? output->GetHeight() : renderer.GetHeight();
+        if (curW == 0 || curH == 0) return;
         if (!hdrRT.IsValid() || sHdrW != curW || sHdrH != curH)
         {
             if (hdrRT.IsValid()) resources.Release(hdrRT);
@@ -199,7 +200,7 @@ void RenderSystem(Scene& scene,
             if (bloomFull.IsValid()) resources.Release(bloomFull);
             hdrRT     = resources.CreateRenderTarget(curW, curH, 1);
             ldrRT     = resources.CreateRenderTarget(curW, curH, 1);
-            bloomHalf = resources.CreateComputeTexture(curW / 2, curH / 2);
+            bloomHalf = resources.CreateComputeTexture(std::max(1u, curW / 2), std::max(1u, curH / 2));
             bloomFull = resources.CreateComputeTexture(curW, curH);
             sHdrW     = curW;
             sHdrH     = curH;

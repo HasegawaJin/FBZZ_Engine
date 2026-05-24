@@ -370,6 +370,11 @@ T* GameObject::GetComponent() {
     return m_scene->GetComponent<T>(m_id);
 }
 
+template<typename T>
+void GameObject::RemoveComponent() {
+    if (m_scene) m_scene->RemoveComponent<T>(m_id);
+}
+
 template<typename T, typename... Args>
 T& GameObject::AddScript(Args&&... args) {
     auto& sc = AddComponent<ScriptComponent>();

@@ -53,10 +53,10 @@ scene::GameObject& MakeButton(scene::Scene& scene,
 {
     auto& go = scene.CreateGameObject(name);
     go.SetParent(parent);
+    go.transform.localPosition = { pos.x, pos.y, 0.0f };
+    go.transform.localScale    = { sz.x,  sz.y,  1.0f };
 
     scene::UIImage img{};
-    img.position = pos;
-    img.size     = sz;
     img.color    = baseColor;
     go.AddComponent<scene::UIImage>(img);
 
@@ -78,10 +78,10 @@ scene::GameObject& MakePanel(scene::Scene& scene,
 {
     auto& go = scene.CreateGameObject(name);
     go.SetParent(parent);
+    go.transform.localPosition = { pos.x, pos.y, 0.0f };
+    go.transform.localScale    = { sz.x,  sz.y,  1.0f };
 
     scene::UIImage img{};
-    img.position = pos;
-    img.size     = sz;
     img.color    = color;
     go.AddComponent<scene::UIImage>(img);
 
@@ -98,10 +98,10 @@ scene::GameObject& MakeText(scene::Scene& scene,
 {
     auto& go = scene.CreateGameObject(name);
     go.SetParent(parent);
+    go.transform.localPosition = { pos.x, pos.y, 0.0f };
 
     scene::UIText text{};
     text.text = value;
-    text.position = pos;
     text.fontSize = fontSize;
     text.color = color;
     go.AddComponent<scene::UIText>(text);
@@ -231,9 +231,9 @@ int main()
     {
         auto& layoutGO = scene->CreateGameObject("LayoutGroup_Test");
         layoutGO.SetParent(canvasGO);
+        layoutGO.transform.localPosition = { 20.0f, 700.0f, 0.0f };
+        layoutGO.transform.localScale    = { 420.0f, 60.0f, 1.0f };
         scene::UIImage containerImg{};
-        containerImg.position = { 20.0f, 700.0f };
-        containerImg.size     = { 420.0f, 60.0f };
         containerImg.color    = { 0.08f, 0.08f, 0.12f, 0.9f };
         layoutGO.AddComponent<scene::UIImage>(containerImg);
 
@@ -254,8 +254,8 @@ int main()
         for (int i = 0; i < 4; ++i) {
             auto& slot = scene->CreateGameObject(slotNames[i]);
             slot.SetParent(layoutGO);
+            slot.transform.localScale = { 96.0f, 44.0f, 1.0f };
             scene::UIImage img{};
-            img.size  = { 96.0f, 44.0f };
             img.color = slotColors[i];
             slot.AddComponent<scene::UIImage>(img);
         }
@@ -267,9 +267,9 @@ int main()
     {
         auto& animGO = scene->CreateGameObject("ColorAnim_Test");
         animGO.SetParent(canvasGO);
+        animGO.transform.localPosition = { 20.0f, 775.0f, 0.0f };
+        animGO.transform.localScale    = { 195.0f, 42.0f, 1.0f };
         scene::UIImage img{};
-        img.position = { 20.0f, 775.0f };
-        img.size     = { 195.0f, 42.0f };
         img.color    = { 0.2f, 0.6f, 0.9f, 1.0f };
         animGO.AddComponent<scene::UIImage>(img);
 
@@ -291,9 +291,9 @@ int main()
     {
         auto& posGO = scene->CreateGameObject("PosAnim_Test");
         posGO.SetParent(canvasGO);
+        posGO.transform.localPosition = { 230.0f, 775.0f, 0.0f };
+        posGO.transform.localScale    = { 110.0f, 42.0f, 1.0f };
         scene::UIImage img{};
-        img.position = { 230.0f, 775.0f };
-        img.size     = { 110.0f, 42.0f };
         img.color    = { 0.75f, 0.4f, 0.9f, 1.0f };
         posGO.AddComponent<scene::UIImage>(img);
 
@@ -315,17 +315,13 @@ int main()
     {
         auto& anchorGO = scene->CreateGameObject("Anchor_Test");
         anchorGO.SetParent(canvasGO);
+        anchorGO.transform.localPosition = { 1724.0f, 1020.0f, 0.0f };
+        anchorGO.transform.localScale    = { 180.0f, 44.0f, 1.0f };
         scene::UIImage img{};
-        img.useAnchor        = true;
-        img.anchorMin        = { 1.0f, 1.0f }; // bottom-right of canvas
-        img.anchorMax        = { 1.0f, 1.0f };
-        img.pivot            = { 1.0f, 1.0f };
-        img.anchoredPosition = { -16.0f, -16.0f };
-        img.sizeDelta        = { 180.0f, 44.0f };
-        img.color            = { 0.2f, 0.65f, 0.35f, 0.95f };
+        img.color = { 0.2f, 0.65f, 0.35f, 0.95f };
         anchorGO.AddComponent<scene::UIImage>(img);
         MakeText(*scene, anchorGO, "AnchorLabel", "ANCHOR OK",
-                 { 1752.0f, 1030.0f }, 22.0f, { 0.95f, 1.0f, 0.95f, 1.0f });
+                 { 1728.0f, 1030.0f }, 22.0f, { 0.95f, 1.0f, 0.95f, 1.0f });
     }
 
     // Window and editor camera setup.

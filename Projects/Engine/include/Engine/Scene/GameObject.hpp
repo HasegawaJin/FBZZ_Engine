@@ -32,6 +32,7 @@ public:
     // template 本体は Scene.hpp の末尾で定義する (Scene が完全型である必要があるため)
     template<typename T> T& AddComponent(T component = {});
     template<typename T> T* GetComponent();
+    template<typename T> void RemoveComponent();
     template<typename T, typename... Args> T& AddScript(Args&&... args);
     template<typename T> T* GetScript();
 

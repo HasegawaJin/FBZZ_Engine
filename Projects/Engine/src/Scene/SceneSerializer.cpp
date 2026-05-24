@@ -487,14 +487,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* image = go.GetComponent<UIImage>()) {
             toml::table uiTbl;
             uiTbl.insert("enabled",           image->enabled);
-            uiTbl.insert("position",          Vec2ToArr(image->position));
-            uiTbl.insert("size",              Vec2ToArr(image->size));
-            uiTbl.insert("useAnchor",         image->useAnchor);
-            uiTbl.insert("anchorMin",         Vec2ToArr(image->anchorMin));
-            uiTbl.insert("anchorMax",         Vec2ToArr(image->anchorMax));
-            uiTbl.insert("pivot",             Vec2ToArr(image->pivot));
-            uiTbl.insert("anchoredPosition",  Vec2ToArr(image->anchoredPosition));
-            uiTbl.insert("sizeDelta",         Vec2ToArr(image->sizeDelta));
             uiTbl.insert("texturePath",       image->texturePath);
             uiTbl.insert("color",             Vec4ToArr(image->color));
             uiTbl.insert("uvMin",             Vec2ToArr(image->uvMin));
@@ -518,7 +510,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table uiTbl;
             uiTbl.insert("enabled", text->enabled);
             uiTbl.insert("text", text->text);
-            uiTbl.insert("position", Vec2ToArr(text->position));
             uiTbl.insert("fontSize", (double)text->fontSize);
             uiTbl.insert("letterSpacing", (double)text->letterSpacing);
             uiTbl.insert("color", Vec4ToArr(text->color));
@@ -842,14 +833,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* uiTbl = (*goTbl)["UIImage"].as_table()) {
             UIImage image{};
             image.enabled          = (*uiTbl)["enabled"].value_or(true);
-            image.position         = ArrToVec2((*uiTbl)["position"].as_array());
-            image.size             = ArrToVec2((*uiTbl)["size"].as_array(), { 100.0f, 100.0f });
-            image.useAnchor        = (*uiTbl)["useAnchor"].value_or(false);
-            image.anchorMin        = ArrToVec2((*uiTbl)["anchorMin"].as_array(), { 0.5f, 0.5f });
-            image.anchorMax        = ArrToVec2((*uiTbl)["anchorMax"].as_array(), { 0.5f, 0.5f });
-            image.pivot            = ArrToVec2((*uiTbl)["pivot"].as_array(), { 0.5f, 0.5f });
-            image.anchoredPosition = ArrToVec2((*uiTbl)["anchoredPosition"].as_array(), { 0.0f, 0.0f });
-            image.sizeDelta        = ArrToVec2((*uiTbl)["sizeDelta"].as_array(), { 100.0f, 100.0f });
             image.texturePath      = (*uiTbl)["texturePath"].value_or(std::string{});
             image.color            = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
             image.uvMin            = ArrToVec2((*uiTbl)["uvMin"].as_array(), { 0.0f, 0.0f });
@@ -873,7 +856,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             UIText text{};
             text.enabled = (*uiTbl)["enabled"].value_or(true);
             text.text = (*uiTbl)["text"].value_or(std::string{"Text"});
-            text.position = ArrToVec2((*uiTbl)["position"].as_array());
             text.fontSize = (float)(*uiTbl)["fontSize"].value_or(42.0);
             text.letterSpacing = (float)(*uiTbl)["letterSpacing"].value_or(4.0);
             text.color = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
