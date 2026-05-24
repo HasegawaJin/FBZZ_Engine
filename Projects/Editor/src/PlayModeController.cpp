@@ -36,6 +36,9 @@ void PlayModeController::Stop(scene::Scene& scene)
         m_state = PlayState::Editor;
         return;
     }
+    // ここで直接 Deserialize しない。Stop() は Update/Render ループの途中から呼ばれる可能性があり、
+    // 即座にシーンを書き換えるとその後のフレーム処理中のポインタが無効になる。
+    // main ループが ApplyPendingRestore() を次フレーム開始前に呼ぶことで安全に復元する。
     m_restorePending = true;
 }
 

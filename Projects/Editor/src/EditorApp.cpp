@@ -149,8 +149,9 @@ void EditorApp::Shutdown()
 
 void EditorApp::BeginFrame()
 {
-    // Viewport パネルサイズが前フレームで変わった場合は RT を再生成する
-    // シーン描画の前に呼ぶことで「空の RT をパネルに表示」を防ぐ
+    // Viewport パネルサイズが前フレームで変わった場合は RT を再生成する。
+    // main ループの「シーン描画」より前に呼ぶことで、RT のサイズが確定した状態で
+    // シーンをレンダリングでき、リサイズ直後のフレームで古い解像度の画像が表示されるのを防ぐ。
     ResizeViewportRTsIfNeeded();
 
     m_renderer->ImGuiNewFrame();
@@ -185,7 +186,8 @@ void EditorApp::BeginFrame()
 
     BuildMenuBar(m_ctx);
 
-    // ModalDialog は OpenPopup を Begin/End 内から発行する必要がある
+    // ModalDialog::OpenPopup は ImGui ウィンドウ (Begin/End) のスコープ内でしか機能しない。
+    // DockSpaceHost ウィンドウの内側に置くことでその制約を満たす。
     ModalDialog::OnRender();
 
     ImGui::End();

@@ -150,6 +150,9 @@ renderer::Material& EnsureMaterial(scene::MaterialComponent& mc)
     if (!mc.material)
         mc.material = std::make_shared<renderer::Material>();
     else if (mc.material.use_count() > 1) {
+        // clone-on-write: 複数の MaterialComponent が同一 Material を共有しているとき、
+        // パラメータ編集が他の GameObject に波及しないようにプライベートコピーを作る。
+        // paramsBuffer は GPU リソースのため共有できない (新規 Upload が必要) → 無効化する。
         auto cloned = std::make_shared<renderer::Material>(*mc.material);
         cloned->paramsBuffer = renderer::ResourceHandle<renderer::ConstantBufferTag>{};
         mc.material = std::move(cloned);
