@@ -1,6 +1,6 @@
 # FBZZ Engine — 未実装・不足機能一覧
 
-最終更新: 2026-05-24（Orientation Gizmo 実装）  
+最終更新: 2026-05-24（UI システム全機能実装）  
 調査対象ブランチ: `develop`
 
 ## B. 部分実装（骨格はあるが機能が欠けている）
@@ -34,7 +34,7 @@
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
-| D-1-1 | スケルタルアニメーション | Bone / BlendShape / AnimationClip / Animator。人・キャラクター表現に必須 | 高 |
+| D-1-1 | スケルタルアニメーション | **実装済み** — `feature/skeletal-animation` で Assimp ボーン/クリップインポート、AnimatorComponent、GPU スキニングシェーダー（SkinnedPBR / SkinnedShadowMap）、AnimatorSystem、SceneSerializer 統合、Inspector クリップブラウザ、骨格デバッグ描画を実装。BlendShape は未実装 | 高 |
 | D-1-2 | LOD (Level of Detail) | 距離に応じてメッシュを切り替え。遠景の描画負荷削減 | 中 |
 | D-1-3 | GPU Instancing | 同一メッシュを1ドローコールで大量描画（草・木・石など） | 中 |
 | D-1-4 | Occlusion Culling | 隠れたオブジェクトを GPU / CPU で除外 | 中 |
@@ -42,7 +42,7 @@
 | D-1-6 | Decal システム | 弾痕・血痕などをサーフェスに投影 | 低 |
 | D-1-7 | SSGI (Screen Space Global Illumination) | SSAO の上位互換。間接照明の近似 | 低 |
 
-### D-2. 物理エンジン
+### D-2. 物理エンジン　— **完全実装済み**
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
@@ -51,7 +51,7 @@
 | D-2-3 | CCD (Continuous Collision Detection) | 高速オブジェクトが薄い壁をすり抜けない仕組み | 中 |
 | D-2-4 | Trigger / Collision イベント通知 | `isTrigger` フラグは存在するが、PhysicsSystem が衝突ペアを Script に通知するパイプラインが未実装。Script 側コールバックは D-9-1 / D-9-2 を参照 | **実装済み** (`feature/collision-events`) |
 
-### D-3. 数学ライブラリ
+### D-3. 数学ライブラリ　— **完全実装済み**
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
@@ -59,7 +59,7 @@
 | D-3-2 | Frustum クラス | 視錐台の 6 平面。Frustum Culling に必要 | **実装済み** — `Frustum.hpp/cpp` を追加。Gribb–Hartmann 法で VP 行列から 6 平面を抽出。`Contains` / `IntersectsSphere` / `IntersectsAABB` を実装 |
 | D-3-3 | Plane クラス | 平面定義。交差判定・反射ベクトル計算に使用 | **実装済み** — `Plane.hpp/cpp` を追加。`SignedDistanceTo` / `IsOnPositiveSide` / `FromPoints` / `FromNormalAndPoint` を実装 |
 
-### D-4. エディター
+### D-4. エディター　— **完全実装済み**
 
 | # | 機能 | 概要 | 優先度 |
 |---|------|------|--------|
@@ -69,21 +69,17 @@
 | D-4-4 | テクスチャプレビュー | AssetBrowserPanel でサムネイル表示。現状はファイル名テキストのみ | 低 |
 | D-4-5 | Orientation Gizmo | Viewport 右上に方向キューブを表示。面・辺・角クリックで正面/上面/側面にスナップ。`ImGuizmo::ViewManipulate()` を使用し補間アニメーションも内蔵 | **実装済み** — `DrawOrientationGizmo` を追加。変更後の view 行列を逆算して `Camera::m_position` / `m_rotation` に反映。`Quaternion::FromMatrix4` を流用 |
 
-### D-5. UI システム　実装済み (のちのち改善予定)
+### D-5. UI システム — **完全実装済み**
 
-エンジンには現在 2D UI 専用の描画レイヤーが存在しない。ImGui はエディター専用であり、ゲームランタイム UI には使用しない設計とする。
-
-| # | 機能 | 概要 | 優先度 |
-|---|------|------|--------|
-| D-5-1 | **UIRenderer** | 2D スプライト・テキスト・矩形を UI 座標系 (スクリーン空間) で描画するレンダラー。`IRenderer` に `SubmitUI(const UIDrawCall&)` を追加するか、独立した `IUIRenderer` インターフェースとして設ける | 高 |
-| D-5-2 | **UI Scene / UICanvas** | 3D シーンとは独立した UI 専用シーン (または専用レイヤー)。`UICanvas` コンポーネントがルートとなり、`UIElement` (Image / Text / Button / Layout) をツリーで管理する | 高 |
-| D-5-3 | **Play ビューポート — MainCamera + UI 合成** | Play モード / Game ビューポートで「3D シーンを MainCamera で描いた RT」の上に「UI Scene を重ねて合成」して表示する。現状の GameViewport は 3D RT のみ。UIRenderer の出力を Composite パスまたは別パスで重ねる仕組みが必要 | 高 |
-| D-5-4 | **UIElement 基底 / ウィジェット** | `UIElement` (位置・サイズ・Anchor・Pivot)、`UIImage` (テクスチャ描画)、`UIText` (フォント / SDF レンダリング)、`UIButton` (Hover / Click イベント) の各コンポーネント | 中 |
-| D-5-5 | **UI レイアウトシステム** | Anchor / Pivot / StretchFill などの Unity 相当のレイアウト計算。親の Rect が変わったときに子を自動リサイズ | 中 |
-| D-5-6 | **フォントレンダリング** | SDF (Signed Distance Field) フォントまたは FreeType による TrueType ラスタライズ。`UIText` の描画バックエンド | 中 |
-| D-5-7 | **UI 入力イベント** | マウス座標を UI 座標系に変換し、`UIButton` / `UISlider` 等のヒットテストと OnClick / OnHover コールバックを発火する | 中 |
-| D-5-8 | **InspectorPanel — UIElement 編集** | エディターの Inspector で UIElement / UIImage / UIText のパラメータを編集できるようにする | 低 |
-| D-5-9 | **SceneSerializer — UI Scene 対応** | `.fbzz` ファイルに UI Scene (UICanvas ツリー) をシリアライズ / デシリアライズする | 低 |
+- `UISystem.hpp/cpp` — スクリーン空間・ワールド空間 UIRenderer 実装済み（`UISprite.hlsl` / `UIText.hlsl` コンパイル済み）
+- `UICanvas` — ScreenSpace / WorldSpace モード・sortOrder 対応済み
+- Play ビューポートで 3D RT + UI 合成済み
+- `UIImage` / `UIText` / `UIButton`（onClick / onEnter / onExit）/ `UILayoutGroup`（Horizontal・Vertical・padding）各コンポーネント実装済み
+- SDF フォントレンダリング実装済み
+- マウス座標変換・ヒットテスト・イベント発火実装済み
+- InspectorPanel UIElement 編集対応済み
+- SceneSerializer UI Scene シリアライズ対応済み
+- `UIAnimator` / `UIAnimatorSystem` も実装済み（ドキュメント未記載機能）
 
 ### D-6. エンジン基盤
 
@@ -96,7 +92,7 @@
 | D-6-5 | カスタムメモリアロケーター | 全て `std::allocator` 任せ。メモリ使用量トラッキングなし | 低 |
 | D-6-6 | GPU プロファイラー統合 | StatusBar に FPS のみ。GPU タイムスタンプ・各パス CPU/GPU 時間の内訳なし | 低 |
 
-### D-7. DebugDraw 拡張
+### D-7. DebugDraw 拡張　— **完全実装済み**
 
 現状の `DebugDraw` は `Line` / `Box` (AABB のみ) / `Sphere` / `Capsule` の 4 関数のみ。最大頂点数 4096 固定・DepthTest 常時 OFF・回転パラメータなし。B-1 / B-2 のコライダー・ライト範囲描画を接続する前に拡張が必要。
 
@@ -110,7 +106,7 @@
 | D-7-6 | 持続時間（duration） | `duration` 秒間だけ残る描画。毎フレーム呼ばなくても一定時間表示し続けられる（衝突点・イベント可視化） | 低 |
 | D-7-7 | 最大頂点数の動的拡張 | 現状 4096 頂点ハードリミット。シーン規模が増えると超過して描画が欠ける。動的に頂点バッファを確保するか上限を引き上げる | 低 |
 
-### D-9. スクリプトシステム
+### D-9. スクリプトシステム　
 
 骨格（`Script` 基底クラス・`ScriptFactory`・`ScriptSystem`・`IReflector`・Inspector 統合・TOML シリアライズ）は実装済み。以下は未実装の拡張機能。
 
@@ -135,12 +131,3 @@
 - `Scene::FindWithTag()` / `FindWithLayer()` / `FindAllWithTag()` / `FindAllWithLayer()` 実装済み
 
 ---
-
-## 優先度まとめ
-
-| 優先度 | 項目 |
-|--------|------|
-| 今すぐ | — (A-1〜A-3 はすべて解消済み) |
-| 近い将来 | D-5-1, D-5-2, D-5-3 |
-| Step 7 | C-1 〜 C-6, D-6-1 |
-| 余裕があれば | D-1-1 〜 D-4-4, D-5-4 〜 D-5-9, D-6-2 〜 D-6-6, D-7-2 〜 D-7-7, D-9-3 〜 D-9-5 |
