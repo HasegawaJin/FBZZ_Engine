@@ -3,6 +3,7 @@
 // 全コンポーネント型を一箇所で登録する。新型を追加するときはここだけ編集する。
 #pragma once
 #include "Components/MeshRenderer.hpp"
+#include "Components/MaterialComponent.hpp"
 #include "Components/ParticleEmitter.hpp"
 #include "Components/ColliderComponent.hpp"
 #include "Components/RigidBodyComponent.hpp"
@@ -24,6 +25,7 @@ namespace fbzz::scene {
 
 using ComponentList = std::tuple<
     MeshRenderer,
+    MaterialComponent,
     ParticleEmitter,
     ColliderComponent,
     RigidBodyComponent,

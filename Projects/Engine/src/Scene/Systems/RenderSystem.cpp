@@ -10,6 +10,7 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
+#include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Scene/Components/SkyRenderer.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -265,8 +266,9 @@ void RenderSystem(Scene& scene,
 
         for (auto& go : scene.GameObjects()) {
             if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
-            auto* mr = go.GetComponent<MeshRenderer>();
-            if (!mr || !mr->enabled || !mr->mesh || !mr->material) continue;
+            auto* mr  = go.GetComponent<MeshRenderer>();
+            auto* mat = go.GetComponent<MaterialComponent>();
+            if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->material) continue;
             if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
             auto& tf = go.transform;
 
@@ -318,10 +320,11 @@ void RenderSystem(Scene& scene,
 
     for (auto& go : scene.GameObjects()) {
         if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
-        auto* mr = go.GetComponent<MeshRenderer>();
-        if (!mr || !mr->enabled || !mr->mesh || !mr->material) continue;
+        auto* mr  = go.GetComponent<MeshRenderer>();
+        auto* mat = go.GetComponent<MaterialComponent>();
+        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->material) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
-        if (!mr->material->shader.IsValid()) continue;
+        if (!mat->material->shader.IsValid()) continue;
         auto& tf = go.transform;
 
         PerObjectCB objData{};
@@ -329,22 +332,22 @@ void RenderSystem(Scene& scene,
         objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
         resources.Update(objectCB, &objData, sizeof(PerObjectCB));
 
-        mr->material->Upload(resources);
+        mat->material->Upload(resources);
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = mr->mesh->vertexBuffer;
         dc.indexBuffer        = mr->mesh->indexBuffer;
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
-        dc.shader             = mr->material->shader;
+        dc.shader             = mat->material->shader;
         dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
         dc.constantBuffers[0] = frameCB;
         dc.constantBuffers[1] = objectCB;
-        dc.constantBuffers[2] = mr->material->paramsBuffer;
+        dc.constantBuffers[2] = mat->material->paramsBuffer;
         dc.constantBuffers[3] = lightCB;
         dc.constantBuffers[4] = shadowCB;
-        if (mr->material->albedoTexture.IsValid())  dc.textures[0] = mr->material->albedoTexture;
-        if (mr->material->normalTexture.IsValid())  dc.textures[1] = mr->material->normalTexture;
+        if (mat->material->albedoTexture.IsValid())  dc.textures[0] = mat->material->albedoTexture;
+        if (mat->material->normalTexture.IsValid())  dc.textures[1] = mat->material->normalTexture;
         dc.textures[8] = shadowDepthTex;
         renderer.Submit(dc, resources);
     }

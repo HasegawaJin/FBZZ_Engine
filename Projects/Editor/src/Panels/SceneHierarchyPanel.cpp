@@ -8,6 +8,7 @@
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -109,10 +110,14 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
 
     scene::MeshRenderer mr;
     mr.meshPath = GetPrimitivePath(type);
-    mr.shaderPath = "Assets/shaders/Material/Phong.hlsl";
     mr.mesh = CreatePrimitiveMesh(type);
-    mr.material = CreateTemplateMaterial();
     go.AddComponent<scene::MeshRenderer>(mr);
+
+    scene::MaterialComponent mc;
+    mc.shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    mc.material = CreateTemplateMaterial();
+    go.AddComponent<scene::MaterialComponent>(mc);
+
     go.AddComponent<scene::ColliderComponent>(CreateTemplateCollider(type));
 
     ctx.selectedEntities = { go.GetID() };
