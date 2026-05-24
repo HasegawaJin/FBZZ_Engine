@@ -14,6 +14,9 @@ namespace fbzz::physics
 
         void ApplyForce(float /*dt*/) override {}
         void SolvePosition(float dt) override;
+        ConstraintType GetType() const override { return ConstraintType::CHAIN; }
+
+        const std::vector<RigidBody*>& GetBodies() const { return m_bodies; }
 
     private:
         std::vector<RigidBody*> m_bodies;

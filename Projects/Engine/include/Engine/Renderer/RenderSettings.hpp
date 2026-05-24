@@ -12,6 +12,7 @@ struct RenderSettings {
     bool bloomEnabled  = true;
     bool fxaaEnabled   = true;
     bool fogEnabled    = true;
+    bool showColliders = false;
 
     // ポストプロセスパラメーター
     float exposure   = 1.0f;
