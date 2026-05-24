@@ -16,6 +16,8 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -471,6 +473,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("SkyRenderer", std::move(srTbl));
         }
 
+        // SkinnedMeshRenderer
+        if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
+            toml::table smrTbl;
+            smrTbl.insert("enabled",   smr->enabled);
+            smrTbl.insert("modelPath", smr->modelPath);
+            smrTbl.insert("meshIndex", (int64_t)smr->meshIndex);
+            goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
+        }
+
+        // AnimatorComponent
+        if (auto* anim = go.GetComponent<AnimatorComponent>()) {
+            toml::table animTbl;
+            animTbl.insert("clipName",  anim->clipName);
+            animTbl.insert("clipIndex", (int64_t)anim->clipIndex);
+            animTbl.insert("time",      (double)anim->time);
+            animTbl.insert("speed",     (double)anim->speed);
+            animTbl.insert("enabled",   anim->enabled);
+            animTbl.insert("loop",      anim->loop);
+            animTbl.insert("playing",   anim->playing);
+            toml::array srcArr;
+            for (const auto& s : anim->clipSources) srcArr.push_back(s);
+            animTbl.insert("clipSources", std::move(srcArr));
+            goTbl.insert("AnimatorComponent", std::move(animTbl));
+        }
+
         // UICanvas
         if (auto* canvas = go.GetComponent<UICanvas>()) {
             toml::table uiTbl;
@@ -815,6 +842,38 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
             sr.enabled       = (*srTbl)["enabled"].value_or(true);
             go.AddComponent<SkyRenderer>(sr);
+        }
+
+        // SkinnedMeshRenderer
+        if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
+            SkinnedMeshRenderer smr{};
+            smr.enabled   = (*smrTbl)["enabled"].value_or(true);
+            smr.modelPath = (*smrTbl)["modelPath"].value_or(std::string{});
+            smr.meshIndex = (int)(*smrTbl)["meshIndex"].value_or((int64_t)0);
+            if (!smr.modelPath.empty()) {
+                smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
+                if (!smr.model)
+                    FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
+            }
+            go.AddComponent<SkinnedMeshRenderer>(std::move(smr));
+        }
+
+        // AnimatorComponent
+        if (auto* animTbl = (*goTbl)["AnimatorComponent"].as_table()) {
+            AnimatorComponent anim{};
+            anim.clipName  = (*animTbl)["clipName"].value_or(std::string{});
+            anim.clipIndex = (int)(*animTbl)["clipIndex"].value_or((int64_t)0);
+            anim.time      = (float)(*animTbl)["time"].value_or(0.0);
+            anim.speed     = (float)(*animTbl)["speed"].value_or(1.0);
+            anim.enabled   = (*animTbl)["enabled"].value_or(true);
+            anim.loop      = (*animTbl)["loop"].value_or(true);
+            anim.playing   = (*animTbl)["playing"].value_or(true);
+            if (const auto* srcArr = (*animTbl)["clipSources"].as_array()) {
+                for (const auto& elem : *srcArr)
+                    if (auto s = elem.value<std::string>())
+                        anim.clipSources.push_back(*s);
+            }
+            go.AddComponent<AnimatorComponent>(std::move(anim));
         }
 
         // UICanvas
