@@ -2,6 +2,7 @@
 // Scene.cpp | fbzz::scene
 // Scene の実装: Entity 管理・GameObject 所有・Destroy キュー処理
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/ScriptComponent.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -71,6 +72,11 @@ void Scene::DestroyImmediate(EntityID id) {
             }
         }
     }
+
+    // Script の後処理
+    if (auto* sc = GetComponent<ScriptComponent>(id))
+        if (sc->script && sc->m_started)
+            sc->script->OnDestroy();
 
     // Component 削除
     RemoveAllComponents(id);
@@ -234,6 +240,15 @@ void Scene::FlushDestroyQueue(float dt) {
 
 void Scene::Clear()
 {
+    // シーン破棄前に全スクリプトの OnDestroy を呼ぶ
+    std::vector<EntityID> scriptIds(GetEntities<ScriptComponent>().begin(),
+                                    GetEntities<ScriptComponent>().end());
+    for (EntityID id : scriptIds) {
+        auto* sc = GetComponent<ScriptComponent>(id);
+        if (sc && sc->script && sc->m_started)
+            sc->script->OnDestroy();
+    }
+
     m_destroyQueue.clear();
     m_gameObjects.clear();
 
