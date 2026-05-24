@@ -20,7 +20,7 @@ add_subdirectory(Projects/Engine)
 add_subdirectory(Projects/Editor)
 add_subdirectory(Projects/Sandbox)
 
-option(FBZZ_BUILD_TESTS "Build unit tests" OFF)
+option(FBZZ_BUILD_TESTS "Build unit tests" ON)
 if(FBZZ_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Projects/Tests)
