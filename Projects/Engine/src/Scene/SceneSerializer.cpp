@@ -7,6 +7,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -306,27 +307,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
         // MeshRenderer
         if (auto* mr = go.GetComponent<MeshRenderer>(); mr) {
-            const std::string shaderPath = !mr->shaderPath.empty()
-                ? mr->shaderPath
-                : (mr->material ? mr->material->shaderPath : std::string{});
             if (mr->mesh && mr->meshPath.empty())
                 FBZZ_LOG_WARN("SceneSerializer: MeshRenderer '%s' has mesh but no meshPath; it cannot be restored", go.name.c_str());
-            if (mr->material && shaderPath.empty())
-                FBZZ_LOG_WARN("SceneSerializer: MeshRenderer '%s' has material but no shaderPath; it cannot be rendered after restore", go.name.c_str());
             toml::table mrTbl;
-            mrTbl.insert("mesh",   mr->meshPath);
-            mrTbl.insert("shader", shaderPath);
+            mrTbl.insert("mesh",    mr->meshPath);
             mrTbl.insert("enabled", mr->enabled);
-            if (mr->material) {
-                auto& p = mr->material->params;
-                mrTbl.insert("albedo",        Vec4ToArr(p.albedo));
-                mrTbl.insert("metallic",      (double)p.metallic);
-                mrTbl.insert("roughness",     (double)p.roughness);
-                mrTbl.insert("emissiveScale", (double)p.emissiveScale);
-            }
-            mrTbl.insert("albedoTex", mr->albedoTexPath);
-            mrTbl.insert("normalTex", mr->normalTexPath);
             goTbl.insert("MeshRenderer", std::move(mrTbl));
+        }
+
+        // MaterialComponent
+        if (auto* mc = go.GetComponent<MaterialComponent>(); mc) {
+            if (mc->material && mc->shaderPath.empty())
+                FBZZ_LOG_WARN("SceneSerializer: MaterialComponent '%s' has material but no shaderPath; it cannot be rendered after restore", go.name.c_str());
+            toml::table matTbl;
+            matTbl.insert("shader",    mc->shaderPath);
+            matTbl.insert("albedoTex", mc->albedoTexPath);
+            matTbl.insert("normalTex", mc->normalTexPath);
+            matTbl.insert("enabled",   mc->enabled);
+            if (mc->material) {
+                auto& p = mc->material->params;
+                matTbl.insert("albedo",        Vec4ToArr(p.albedo));
+                matTbl.insert("metallic",      (double)p.metallic);
+                matTbl.insert("roughness",     (double)p.roughness);
+                matTbl.insert("emissiveScale", (double)p.emissiveScale);
+            }
+            goTbl.insert("MaterialComponent", std::move(matTbl));
         }
 
         // LightComponent
@@ -629,44 +634,47 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // MeshRenderer
         if (auto* mrTbl = (*goTbl)["MeshRenderer"].as_table()) {
             MeshRenderer mr{};
-            mr.meshPath      = (*mrTbl)["mesh"].value_or(std::string{});
-            mr.shaderPath    = (*mrTbl)["shader"].value_or(std::string{});
-            mr.albedoTexPath = (*mrTbl)["albedoTex"].value_or(std::string{});
-            mr.normalTexPath = (*mrTbl)["normalTex"].value_or(std::string{});
-            mr.enabled       = (*mrTbl)["enabled"].value_or(true);
+            mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
+            mr.enabled  = (*mrTbl)["enabled"].value_or(true);
 
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, resources);
                 if (!mr.mesh)
                     FBZZ_LOG_WARN("SceneSerializer: failed to resolve mesh '%s'", mr.meshPath.c_str());
-
-                auto mat         = std::make_shared<renderer::Material>();
-                mat->shaderPath  = mr.shaderPath;
-                if (!mr.shaderPath.empty())
-                    mat->shader = resources.LoadShader(mr.shaderPath);
-                if (!mat->shader.IsValid())
-                    FBZZ_LOG_WARN("SceneSerializer: failed to resolve shader '%s'", mr.shaderPath.c_str());
-
-                auto& p         = mat->params;
-                p.albedo        = ArrToVec4((*mrTbl)["albedo"].as_array(),
-                                            { 1.0f, 1.0f, 1.0f, 1.0f });
-                p.metallic      = (float)(*mrTbl)["metallic"].value_or(0.0);
-                p.roughness     = (float)(*mrTbl)["roughness"].value_or(0.8);
-                p.emissiveScale = (float)(*mrTbl)["emissiveScale"].value_or(0.0);
-
-                if (!mr.albedoTexPath.empty())
-                    mat->albedoTexture =
-                        asset::AssetManager::LoadTexture(mr.albedoTexPath);
-                if (!mr.normalTexPath.empty())
-                    mat->normalTexture =
-                        asset::AssetManager::LoadTexture(mr.normalTexPath);
-
-                mat->Init(resources);
-                mat->Upload(resources);
-                mr.material = std::move(mat);
-
-                go.AddComponent<MeshRenderer>(std::move(mr));
             }
+            go.AddComponent<MeshRenderer>(std::move(mr));
+        }
+
+        // MaterialComponent
+        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
+            MaterialComponent mc{};
+            mc.shaderPath    = (*matTbl)["shader"].value_or(std::string{});
+            mc.albedoTexPath = (*matTbl)["albedoTex"].value_or(std::string{});
+            mc.normalTexPath = (*matTbl)["normalTex"].value_or(std::string{});
+            mc.enabled       = (*matTbl)["enabled"].value_or(true);
+
+            auto mat        = std::make_shared<renderer::Material>();
+            mat->shaderPath = mc.shaderPath;
+            if (!mc.shaderPath.empty())
+                mat->shader = resources.LoadShader(mc.shaderPath);
+            if (!mat->shader.IsValid())
+                FBZZ_LOG_WARN("SceneSerializer: failed to resolve shader '%s'", mc.shaderPath.c_str());
+
+            auto& p     = mat->params;
+            p.albedo    = ArrToVec4((*matTbl)["albedo"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
+            p.metallic      = (float)(*matTbl)["metallic"].value_or(0.0);
+            p.roughness     = (float)(*matTbl)["roughness"].value_or(0.8);
+            p.emissiveScale = (float)(*matTbl)["emissiveScale"].value_or(0.0);
+
+            if (!mc.albedoTexPath.empty())
+                mat->albedoTexture = asset::AssetManager::LoadTexture(mc.albedoTexPath);
+            if (!mc.normalTexPath.empty())
+                mat->normalTexture = asset::AssetManager::LoadTexture(mc.normalTexPath);
+
+            mat->Init(resources);
+            mat->Upload(resources);
+            mc.material = std::move(mat);
+            go.AddComponent<MaterialComponent>(std::move(mc));
         }
 
         // LightComponent

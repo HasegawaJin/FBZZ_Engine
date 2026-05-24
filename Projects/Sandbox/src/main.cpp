@@ -12,6 +12,7 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -154,10 +155,13 @@ int main()
     cube.transform.localScale = { 1.4f, 1.4f, 1.4f };
     scene::MeshRenderer cubeRenderer{};
     cubeRenderer.mesh = cubeMesh;
-    cubeRenderer.material = cubeMaterial;
     cubeRenderer.meshPath = "primitive:cube";
-    cubeRenderer.shaderPath = cubeMaterial->shaderPath;
     cube.AddComponent<scene::MeshRenderer>(cubeRenderer);
+
+    scene::MaterialComponent cubeMat{};
+    cubeMat.material = cubeMaterial;
+    cubeMat.shaderPath = cubeMaterial->shaderPath;
+    cube.AddComponent<scene::MaterialComponent>(cubeMat);
 
     // UI scene: root canvas plus colored panels/buttons.
     auto& canvasGO = scene->CreateGameObject("Canvas");
