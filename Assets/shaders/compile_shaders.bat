@@ -12,11 +12,11 @@ set LOG=%~dp0compile_log.txt
 
 if not exist "%OUT%" mkdir "%OUT%"
 
-REM ログファイルを�E期化
+REM Reset compile log.
 echo [compile_shaders] %date% %time% > "%LOG%"
 
 REM =========================================================================
-REM Debug shader (DebugDraw 専用)
+REM Debug shader used by DebugDraw.
 REM =========================================================================
 
 echo [Debug] Debug.hlsl...
@@ -77,15 +77,15 @@ if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Particle VS & goto :error )
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Particle PS & goto :error )
 
 echo [Material] Sky/Skybox.hlsl...
-%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Skybox.vs.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Sky.Skybox.vs.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skybox VS & goto :error )
-%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Skybox.ps.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Sky.Skybox.ps.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skybox PS & goto :error )
 
 echo [Material] Sky/Skydome.hlsl...
-%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Skydome.vs.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Sky.Skydome.vs.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skydome VS & goto :error )
-%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Skydome.ps.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Sky.Skydome.ps.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skydome PS & goto :error )
 
 REM =========================================================================
@@ -155,7 +155,7 @@ exit /b 0
 
 :error
 echo.
-echo *** FAILED  E詳細は compile_log.txt を確誁E***
+echo *** FAILED - see compile_log.txt for details ***
 echo Log: %LOG%
 endlocal
 exit /b 1
