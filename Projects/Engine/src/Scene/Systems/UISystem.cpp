@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -165,28 +166,14 @@ renderer::ResourceHandle<renderer::BufferTag>         s_textVB;
 static constexpr uint32_t kImageVBVertices = 6;
 static constexpr uint32_t kTextVBVertices  = 4096; // up to ~682 glyphs
 
+// Transform から UI 矩形を取得する
+// localPosition.xy = 左上座標 (キャンバス空間, Y↓)
+// localScale.xy    = 幅・高さ (px)
 struct Rect { math::Vector2 pos; math::Vector2 size; };
-
-// Resolve the final canvas-space rect for a UIImage, applying Anchor/Pivot if enabled.
-Rect ResolveRect(const UIImage& image, const UICanvas& canvas)
+Rect RectFromTransform(const scene::Transform& t)
 {
-    if (!image.useAnchor)
-        return { image.position, image.size };
-
-    const float cw = canvas.canvasWidth;
-    const float ch = canvas.canvasHeight;
-    math::Vector2 anchorPosMin = { image.anchorMin.x * cw, image.anchorMin.y * ch };
-    math::Vector2 anchorPosMax = { image.anchorMax.x * cw, image.anchorMax.y * ch };
-    math::Vector2 stretch      = { anchorPosMax.x - anchorPosMin.x, anchorPosMax.y - anchorPosMin.y };
-    math::Vector2 rectSize     = { stretch.x + image.sizeDelta.x, stretch.y + image.sizeDelta.y };
-    // pivot point in canvas space = anchor center + anchoredPosition
-    math::Vector2 anchorCenter = { (anchorPosMin.x + anchorPosMax.x) * 0.5f,
-                                   (anchorPosMin.y + anchorPosMax.y) * 0.5f };
-    math::Vector2 pivotPos     = { anchorCenter.x + image.anchoredPosition.x,
-                                   anchorCenter.y + image.anchoredPosition.y };
-    math::Vector2 topLeft      = { pivotPos.x - image.pivot.x * rectSize.x,
-                                   pivotPos.y - image.pivot.y * rectSize.y };
-    return { topLeft, rectSize };
+    return { { t.localPosition.x, t.localPosition.y },
+             { t.localScale.x,    t.localScale.y    } };
 }
 
 math::Vector4 Multiply(const math::Vector4& a, const math::Vector4& b)
@@ -298,32 +285,32 @@ void CollectCanvases(Scene& scene, std::vector<CanvasEntry>& canvases)
         });
 }
 
-void UpdateButton(UIButton& button, const UIImage& image, math::Vector2 mouse, bool mousePressed)
+void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool mousePressed)
 {
     const UIButtonState previousState = button.state;
     button.onClick = false;
     button.onEnter = false;
-    button.onExit = false;
+    button.onExit  = false;
 
     if (!button.enabled || !button.isInteractable) {
         button.state = UIButtonState::NORMAL;
         return;
     }
 
-    const bool hit = mouse.x >= image.position.x && mouse.x <= image.position.x + image.size.x
-        && mouse.y >= image.position.y && mouse.y <= image.position.y + image.size.y;
+    const bool hit = mouse.x >= rect.pos.x && mouse.x <= rect.pos.x + rect.size.x
+                  && mouse.y >= rect.pos.y && mouse.y <= rect.pos.y + rect.size.y;
 
     if (hit && mousePressed) {
-        button.state = UIButtonState::PRESSED;
+        button.state   = UIButtonState::PRESSED;
     } else if (hit) {
-        button.state = UIButtonState::HOVERED;
+        button.state   = UIButtonState::HOVERED;
         button.onClick = previousState == UIButtonState::PRESSED;
     } else {
-        button.state = UIButtonState::NORMAL;
+        button.state   = UIButtonState::NORMAL;
     }
 
-    button.onEnter = previousState == UIButtonState::NORMAL && button.state != UIButtonState::NORMAL;
-    button.onExit = previousState != UIButtonState::NORMAL && button.state == UIButtonState::NORMAL;
+    button.onEnter = previousState == UIButtonState::NORMAL  && button.state != UIButtonState::NORMAL;
+    button.onExit  = previousState != UIButtonState::NORMAL  && button.state == UIButtonState::NORMAL;
 }
 
 math::Vector4 ButtonTint(const UIButton& button)
@@ -342,15 +329,27 @@ void SubmitImage(renderer::IRenderer& renderer,
                  const math::Vector4& color,
                  const math::Vector2& uvMin,
                  const math::Vector2& uvMax,
-                 renderer::ResourceHandle<renderer::TextureTag> texture)
+                 renderer::ResourceHandle<renderer::TextureTag> texture,
+                 float zAngle = 0.0f)
 {
+    const float cx = position.x + size.x * 0.5f;
+    const float cy = position.y + size.y * 0.5f;
+    const float cosZ = std::cosf(zAngle);
+    const float sinZ = std::sinf(zAngle);
+    const float hW = size.x * 0.5f, hH = size.y * 0.5f;
+
+    auto rot = [&](float lx, float ly) -> math::Vector2 {
+        return { cx + lx * cosZ - ly * sinZ,
+                 cy + lx * sinZ + ly * cosZ };
+    };
+
     UIVertex vertices[6] = {
-        { { position.x,          position.y          }, { 0.0f, 0.0f } },
-        { { position.x,          position.y + size.y  }, { 0.0f, 1.0f } },
-        { { position.x + size.x, position.y          }, { 1.0f, 0.0f } },
-        { { position.x + size.x, position.y          }, { 1.0f, 0.0f } },
-        { { position.x,          position.y + size.y  }, { 0.0f, 1.0f } },
-        { { position.x + size.x, position.y + size.y  }, { 1.0f, 1.0f } },
+        { rot(-hW, -hH), { 0.0f, 0.0f } },
+        { rot(-hW,  hH), { 0.0f, 1.0f } },
+        { rot( hW, -hH), { 1.0f, 0.0f } },
+        { rot( hW, -hH), { 1.0f, 0.0f } },
+        { rot(-hW,  hH), { 0.0f, 1.0f } },
+        { rot( hW,  hH), { 1.0f, 1.0f } },
     };
     resources.Update(s_imageVB, vertices, sizeof(vertices));
 
@@ -386,22 +385,22 @@ void SubmitRect(renderer::IRenderer& renderer,
 void SubmitText(renderer::IRenderer& renderer,
                 renderer::ResourceManager& resources,
                 const UICanvas& canvas,
-                const UIText& text)
+                const UIText& text,
+                math::Vector2 position)
 {
     if (!text.enabled || text.text.empty() || text.fontSize <= 0.0f) return;
 
-    // SDF atlas: 1 glyph = 1 quad (6 vertices). Width ≈ fontSize * 5/7, height = fontSize.
-    const float glyphH      = text.fontSize;
-    const float glyphW      = glyphH * 5.0f / 7.0f;
+    const float glyphH       = text.fontSize;
+    const float glyphW       = glyphH * 5.0f / 7.0f;
     const float glyphAdvance = glyphW + text.letterSpacing;
-    math::Vector2 pen = text.position;
+    math::Vector2 pen = position;
 
     std::vector<UIVertex> verts;
     verts.reserve(text.text.size() * 6);
 
     for (char c : text.text) {
         if (c == '\n') {
-            pen.x = text.position.x;
+            pen.x = position.x;
             pen.y += glyphH * 1.2f;
             continue;
         }
@@ -450,39 +449,34 @@ void SubmitText(renderer::IRenderer& renderer,
     renderer.Submit(call, resources);
 }
 
-// Apply UILayoutGroup to compute the layout-overridden position for each active child UIImage.
-// Stores results into a parallel array indexed by child order (size == go.GetChildCount()).
-void ComputeLayoutPositions(GameObject& go, const UILayoutGroup& layout,
-                             std::vector<math::Vector2>& outPositions)
+// UILayoutGroup が管理する子 GO の transform.localPosition を上書きする
+void ApplyLayout(GameObject& go, const UILayoutGroup& layout)
 {
     const int count = go.GetChildCount();
-    outPositions.assign(count, { 0.0f, 0.0f });
 
-    // Collect active children with UIImage.
     std::vector<int> indices;
     indices.reserve(count);
     for (int i = 0; i < count; ++i) {
         GameObject* child = go.GetChild(i);
         if (!child || !child->activeSelf()) continue;
-        auto* img = child->GetComponent<UIImage>();
-        if (img && img->enabled) indices.push_back(i);
+        if (auto* img = child->GetComponent<UIImage>(); img && img->enabled)
+            indices.push_back(i);
     }
     if (layout.reverseOrder)
         std::reverse(indices.begin(), indices.end());
 
-    float cursor = (layout.axis == UILayoutAxis::Horizontal)
-                 ? layout.paddingLeft
-                 : layout.paddingTop;
-
+    float cursor = (layout.axis == UILayoutAxis::Horizontal) ? layout.paddingLeft : layout.paddingTop;
     for (int idx : indices) {
         GameObject* child = go.GetChild(idx);
-        auto* img = child->GetComponent<UIImage>();
+        auto& t = child->transform;
         if (layout.axis == UILayoutAxis::Horizontal) {
-            outPositions[idx] = { cursor, layout.paddingTop };
-            cursor += img->size.x + layout.spacing;
+            t.localPosition.x = cursor;
+            t.localPosition.y = layout.paddingTop;
+            cursor += t.localScale.x + layout.spacing;
         } else {
-            outPositions[idx] = { layout.paddingLeft, cursor };
-            cursor += img->size.y + layout.spacing;
+            t.localPosition.x = layout.paddingLeft;
+            t.localPosition.y = cursor;
+            cursor += t.localScale.y + layout.spacing;
         }
     }
 }
@@ -496,6 +490,10 @@ void TraverseCanvas(GameObject& go,
 {
     if (!go.activeSelf()) return;
 
+    // UILayoutGroup はこのフレームで子 transform を上書きしてからトラバースする
+    if (auto* layout = go.GetComponent<UILayoutGroup>(); layout && layout->enabled)
+        ApplyLayout(go, *layout);
+
     auto* image  = go.GetComponent<UIImage>();
     auto* button = go.GetComponent<UIButton>();
     auto* text   = go.GetComponent<UIText>();
@@ -504,19 +502,20 @@ void TraverseCanvas(GameObject& go,
         if (!image->texturePath.empty())
             image->texture = resources.LoadTexture(image->texturePath);
 
-        const Rect    r     = ResolveRect(*image, canvas);
+        const Rect    r     = RectFromTransform(go.transform);
         math::Vector4 color = image->color;
         if (button) {
-            UIImage hitProxy = *image;
-            hitProxy.position = r.pos;
-            hitProxy.size     = r.size;
-            UpdateButton(*button, hitProxy, mouseInCanvasSpace, mousePressed);
+            UpdateButton(*button, r, mouseInCanvasSpace, mousePressed);
             color = Multiply(color, ButtonTint(*button));
         }
+        const auto& qr = go.transform.localRotation;
+        const float zAngle = std::atan2f(2.0f*(qr.w*qr.z + qr.x*qr.y),
+                                          1.0f - 2.0f*(qr.y*qr.y + qr.z*qr.z));
         SubmitImage(renderer, resources, canvas,
                     r.pos, r.size, color,
                     image->uvMin, image->uvMax,
-                    image->texture.IsValid() ? image->texture : s_whiteTexture);
+                    image->texture.IsValid() ? image->texture : s_whiteTexture,
+                    zAngle);
     } else if (button) {
         button->onClick = false;
         button->onEnter = false;
@@ -524,33 +523,14 @@ void TraverseCanvas(GameObject& go,
         button->state   = UIButtonState::NORMAL;
     }
 
-    if (text)
-        SubmitText(renderer, resources, canvas, *text);
-
-    // If this GO has a UILayoutGroup, pre-compute child positions before traversal.
-    auto* layout = go.GetComponent<UILayoutGroup>();
-    std::vector<math::Vector2> layoutPositions;
-    if (layout && layout->enabled)
-        ComputeLayoutPositions(go, *layout, layoutPositions);
+    if (text && text->enabled) {
+        const math::Vector2 pos = { go.transform.localPosition.x, go.transform.localPosition.y };
+        SubmitText(renderer, resources, canvas, *text, pos);
+    }
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
-        GameObject* child = go.GetChild(i);
-        if (!child) continue;
-
-        // Temporarily override child UIImage position with layout result.
-        UIImage* childImg = child->GetComponent<UIImage>();
-        math::Vector2 savedPos = {};
-        bool          overridden = false;
-        if (layout && layout->enabled && !layoutPositions.empty() && childImg && childImg->enabled) {
-            savedPos          = childImg->position;
-            childImg->position = layoutPositions[i];
-            overridden        = true;
-        }
-
-        TraverseCanvas(*child, renderer, resources, canvas, mouseInCanvasSpace, mousePressed);
-
-        if (overridden)
-            childImg->position = savedPos; // restore so serialization is not polluted
+        if (GameObject* child = go.GetChild(i))
+            TraverseCanvas(*child, renderer, resources, canvas, mouseInCanvasSpace, mousePressed);
     }
 }
 

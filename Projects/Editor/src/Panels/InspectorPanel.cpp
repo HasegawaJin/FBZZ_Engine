@@ -39,6 +39,8 @@ namespace fbzz::editor {
 
 namespace {
 
+// コンポーネントヘッダー: [✓] ComponentName        [...]
+// ... ボタン → Remove Component
 template<typename T, typename DrawFn>
 void DrawComponentSection(scene::GameObject* go, EditorContext& ctx, const char* label, DrawFn drawFn)
 {
@@ -46,12 +48,38 @@ void DrawComponentSection(scene::GameObject* go, EditorContext& ctx, const char*
     if (!comp) return;
 
     ImGui::PushID(label);
-    if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Checkbox("Enabled", &comp->enabled);
-        ImGui::Separator();
-        drawFn(*comp, ctx);
+
+    // Enabled チェックボックス (ヘッダー左)
+    ImGui::Checkbox("##en", &comp->enabled);
+    ImGui::SameLine();
+
+    // CollapsingHeader: AllowOverlap で右端ボタンとの競合を回避
+    bool open = ImGui::CollapsingHeader(label,
+        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+
+    // [...] ボタンをヘッダー右端に重ねて配置
+    const float btnW = ImGui::GetFrameHeight();
+    ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+    if (ImGui::SmallButton("..."))
+        ImGui::OpenPopup("##comp_opts");
+
+    bool removeRequested = false;
+    if (ImGui::BeginPopup("##comp_opts")) {
+        if (ImGui::MenuItem("Remove Component"))
+            removeRequested = true;
+        ImGui::EndPopup();
     }
+
+    if (open) {
+        ImGui::Spacing();
+        drawFn(*comp, ctx);
+        ImGui::Spacing();
+    }
+
     ImGui::PopID();
+
+    if (removeRequested)
+        go->RemoveComponent<T>();
 }
 
 void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
@@ -251,19 +279,59 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto& t = go->transform;
+        ImGui::Spacing();
 
-        float pos[3] = { t.localPosition.x, t.localPosition.y, t.localPosition.z };
-        if (ImGui::DragFloat3("Position", pos, 0.1f))
-            t.localPosition = { pos[0], pos[1], pos[2] };
+        const bool isUI = go->GetComponent<scene::UIImage>() || go->GetComponent<scene::UIText>();
 
-        math::Vector3 euler = widgets::QuatToEulerDeg(t.localRotation);
-        float rot[3] = { euler.x, euler.y, euler.z };
-        if (ImGui::DragFloat3("Rotation", rot, 0.5f))
-            t.localRotation = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
+        if (isUI) {
+            // X / Y を横並びで表示
+            const float itemW = (ImGui::GetContentRegionAvail().x
+                                 - ImGui::CalcTextSize("X").x * 2
+                                 - ImGui::GetStyle().ItemSpacing.x * 3) * 0.5f;
 
-        float scale[3] = { t.localScale.x, t.localScale.y, t.localScale.z };
-        if (ImGui::DragFloat3("Scale", scale, 0.01f, 0.001f, 1000.0f))
-            t.localScale = { scale[0], scale[1], scale[2] };
+            ImGui::Text("Pos");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(itemW);
+            ImGui::DragFloat("##px", &t.localPosition.x, 1.0f, 0.0f, 0.0f, "X %.0f");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(itemW);
+            ImGui::DragFloat("##py", &t.localPosition.y, 1.0f, 0.0f, 0.0f, "Y %.0f");
+
+            // Rotation Z のみ
+            math::Vector3 euler = widgets::QuatToEulerDeg(t.localRotation);
+            float rotZ = euler.z;
+            ImGui::Text("Rot");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::DragFloat("##rz", &rotZ, 0.5f, -360.0f, 360.0f, "Z %.1f deg"))
+                t.localRotation = widgets::EulerDegToQuat({ euler.x, euler.y, rotZ });
+
+            // W / H (UIImage のみ)
+            if (go->GetComponent<scene::UIImage>()) {
+                ImGui::Text("Size");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(itemW);
+                ImGui::DragFloat("##sw", &t.localScale.x, 1.0f, 1.0f, 0.0f, "W %.0f");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(itemW);
+                ImGui::DragFloat("##sh", &t.localScale.y, 1.0f, 1.0f, 0.0f, "H %.0f");
+            }
+        } else {
+            float pos[3] = { t.localPosition.x, t.localPosition.y, t.localPosition.z };
+            if (ImGui::DragFloat3("Position", pos, 0.1f))
+                t.localPosition = { pos[0], pos[1], pos[2] };
+
+            math::Vector3 euler = widgets::QuatToEulerDeg(t.localRotation);
+            float rot[3] = { euler.x, euler.y, euler.z };
+            if (ImGui::DragFloat3("Rotation", rot, 0.5f))
+                t.localRotation = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
+
+            float scale[3] = { t.localScale.x, t.localScale.y, t.localScale.z };
+            if (ImGui::DragFloat3("Scale", scale, 0.01f, 0.001f, 1000.0f))
+                t.localScale = { scale[0], scale[1], scale[2] };
+        }
+
+        ImGui::Spacing();
     }
 
     DrawComponentSection<scene::MeshRenderer>(go, ctx, "Mesh Renderer",
@@ -561,27 +629,23 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     DrawComponentSection<scene::UIImage>(go, ctx, "UI Image",
         [](scene::UIImage& image, EditorContext&) {
-            ImGui::Checkbox("Use Anchor", &image.useAnchor);
-            if (image.useAnchor) {
-                DragVec2("Anchor Min",          image.anchorMin,        0.01f, 0.0f, 1.0f);
-                DragVec2("Anchor Max",          image.anchorMax,        0.01f, 0.0f, 1.0f);
-                DragVec2("Pivot",               image.pivot,            0.01f, 0.0f, 1.0f);
-                DragVec2("Anchored Position",   image.anchoredPosition, 1.0f);
-                DragVec2("Size Delta",          image.sizeDelta,        1.0f);
-            } else {
-                DragVec2("Position", image.position, 1.0f);
-                DragVec2("Size",     image.size,     1.0f, 1.0f, 16384.0f);
-            }
+            // 位置・サイズは Transform で管理 (上の Transform セクションを参照)
             float color[4] = { image.color.x, image.color.y, image.color.z, image.color.w };
             if (ImGui::ColorEdit4("Color", color))
                 image.color = { color[0], color[1], color[2], color[3] };
             DragVec2("UV Min", image.uvMin, 0.01f, 0.0f, 1.0f);
             DragVec2("UV Max", image.uvMax, 0.01f, 0.0f, 1.0f);
-            // texturePath
             char texBuf[512];
             std::snprintf(texBuf, sizeof(texBuf), "%s", image.texturePath.c_str());
             if (ImGui::InputText("Texture Path", texBuf, sizeof(texBuf)))
                 image.texturePath = texBuf;
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    image.texturePath = static_cast<const char*>(p->Data);
+                    for (char& c : image.texturePath) if (c == '\\') c = '/';
+                }
+                ImGui::EndDragDropTarget();
+            }
         });
 
     DrawComponentSection<scene::UIButton>(go, ctx, "UI Button",
@@ -602,12 +666,12 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     DrawComponentSection<scene::UIText>(go, ctx, "UI Text",
         [](scene::UIText& text, EditorContext&) {
+            // 位置は Transform で管理
             char textBuf[512];
             std::snprintf(textBuf, sizeof(textBuf), "%s", text.text.c_str());
             if (ImGui::InputText("Text", textBuf, sizeof(textBuf)))
                 text.text = textBuf;
-            DragVec2("Position", text.position, 1.0f);
-            ImGui::DragFloat("Font Size", &text.fontSize, 1.0f, 1.0f, 512.0f);
+            ImGui::DragFloat("Font Size",      &text.fontSize,      1.0f, 1.0f, 512.0f);
             ImGui::DragFloat("Letter Spacing", &text.letterSpacing, 0.1f, 0.0f, 128.0f);
             float color[4] = { text.color.x, text.color.y, text.color.z, text.color.w };
             if (ImGui::ColorEdit4("Color", color))
@@ -655,16 +719,41 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     if (auto* sc = go->GetComponent<scene::ScriptComponent>()) {
         if (sc->script) {
             const char* header = sc->script->GetTypeName();
-            if (ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::Checkbox("Enabled", &sc->script->enabled);
-                ImGui::Separator();
+            ImGui::PushID("ScriptComponent");
+
+            ImGui::Checkbox("##en", &sc->script->enabled);
+            ImGui::SameLine();
+
+            bool open = ImGui::CollapsingHeader(header,
+                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+
+            const float btnW = ImGui::GetFrameHeight();
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+            if (ImGui::SmallButton("..."))
+                ImGui::OpenPopup("##script_opts");
+
+            bool removeScript = false;
+            if (ImGui::BeginPopup("##script_opts")) {
+                if (ImGui::MenuItem("Remove Component"))
+                    removeScript = true;
+                ImGui::EndPopup();
+            }
+
+            if (open) {
+                ImGui::Spacing();
                 ImGuiReflector reflector;
                 sc->script->Reflect(reflector);
+                ImGui::Spacing();
             }
+
+            ImGui::PopID();
+
+            if (removeScript)
+                go->RemoveComponent<scene::ScriptComponent>();
         }
     }
 
-    ImGui::Separator();
+    ImGui::Spacing();
     DrawAddComponentMenu(*go);
 }
 
