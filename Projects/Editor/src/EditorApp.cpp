@@ -269,6 +269,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::MenuItem("Grid",        nullptr, &ctx.showGrid);
         ImGui::MenuItem("Light Range", nullptr, &ctx.showLightRange);
         ImGui::MenuItem("Colliders",   nullptr, &ctx.renderSettings.showColliders);
+        ImGui::MenuItem("Skeleton",    nullptr, &ctx.showSkeleton);
         ImGui::MenuItem("Stats",       nullptr, &ctx.showSceneStats);
         ImGui::MenuItem("Hot Reload",  nullptr, &ctx.hotReloadEnabled);
         ImGui::Separator();

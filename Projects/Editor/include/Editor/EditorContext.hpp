@@ -87,6 +87,7 @@ struct EditorContext {
     // 表示オプション (エディター固有)
     bool showLightRange  = true;
     bool showColliders   = false;
+    bool showSkeleton    = false;
     bool showSceneStats  = true;
     bool hotReloadEnabled = true;
 
