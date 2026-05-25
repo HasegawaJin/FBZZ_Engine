@@ -7,6 +7,7 @@
 #include <Physics/CollisionPair.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
@@ -38,11 +39,19 @@ namespace fbzz::physics
                             ContactPoint& out);
         bool TestAABBAABB    (const AABBCollider&   a, const AABBCollider&   b,
                             ContactPoint& out);
+        bool TestOBBOBB      (const OBBCollider&    a, const OBBCollider&    b,
+                            ContactPoint& out);
+        bool TestSphereOBB   (const SphereCollider& s, const OBBCollider&    b,
+                            ContactPoint& out);
+        bool TestAABBOBB     (const AABBCollider&   a, const OBBCollider&    b,
+                            ContactPoint& out);
         bool TestSphereAABB  (const SphereCollider& s, const AABBCollider&   b,
                             ContactPoint& out);
         bool TestSphereCapsule(const SphereCollider& s, const CapsuleCollider& c,
                             ContactPoint& out);
         bool TestAABBCapsule(const AABBCollider& b, const CapsuleCollider& c,
+                            ContactPoint& out);
+        bool TestOBBCapsule (const OBBCollider& b, const CapsuleCollider& c,
                             ContactPoint& out);
         bool TestCapsuleCapsule(const CapsuleCollider& a, const CapsuleCollider& b,
                             ContactPoint& out);
@@ -60,6 +69,7 @@ namespace fbzz::physics
         bool TestConvexConvex  (const ConvexHullCollider&, const ConvexHullCollider&, ContactPoint& out);
         bool TestSphereConvex  (const SphereCollider&,     const ConvexHullCollider&, ContactPoint& out);
         bool TestAABBConvex    (const AABBCollider&,        const ConvexHullCollider&, ContactPoint& out);
+        bool TestOBBConvex     (const OBBCollider&,         const ConvexHullCollider&, ContactPoint& out);
         bool TestCapsuleConvex (const CapsuleCollider&,     const ConvexHullCollider&, ContactPoint& out);
 
         // 法線方向の PGS インパルス解決 (クランプ付き蓄積)
