@@ -20,6 +20,8 @@ struct ResourceHandle {
     static ResourceHandle Null() { return {}; }
 };
 
+// 各タグは ResourceHandle<T> の型安全性確保のための空型。
+// ResourceHandle<TextureTag> と ResourceHandle<ShaderTag> は暗黙変換できない。
 struct TextureTag {};
 struct ShaderTag {};
 struct BufferTag {};

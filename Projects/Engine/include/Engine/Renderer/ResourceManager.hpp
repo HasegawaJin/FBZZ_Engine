@@ -29,6 +29,8 @@ class ResourceManager {
 public:
     explicit ResourceManager(IRenderer& renderer);
     ~ResourceManager();
+    // Application が初期化時に登録する唯一のインスタンス。
+    // System から ResourceManager& を受け取れない場面で使うフォールバック。
     static ResourceManager* Active();
 
     ResourceHandle<ShaderTag> LoadShader(std::string_view path);

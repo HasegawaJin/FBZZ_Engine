@@ -31,9 +31,9 @@ public:
         assert(m_count < MAX);
 
         uint32_t di = m_count++;
-        m_dense[di]         = std::move(component);
-        m_denseToEntity[di] = id;
-        m_sparseToIndex[id.index] = di;
+        m_dense[di]               = std::move(component);
+        m_denseToEntity[di]       = id;
+        m_sparseToIndex[id.index] = di; // sparse[entity.index] → dense position
     }
 
     void Remove(EntityID id) {
@@ -41,10 +41,11 @@ public:
         uint32_t di   = m_sparseToIndex[id.index];
         uint32_t last = m_count - 1;
 
+        // 末尾要素を削除位置に swap して穴を埋める。O(1) だが順序は保たない。
         if (di != last) {
             m_dense[di]         = std::move(m_dense[last]);
             m_denseToEntity[di] = m_denseToEntity[last];
-            m_sparseToIndex[m_denseToEntity[last].index] = di;
+            m_sparseToIndex[m_denseToEntity[last].index] = di; // swap した要素の sparse を更新
         }
 
         m_sparseToIndex[id.index] = EMPTY;
@@ -55,6 +56,7 @@ public:
         if (!id.IsValid() || id.index >= MAX) return false;
         uint32_t di = m_sparseToIndex[id.index];
         if (di == EMPTY || di >= m_count) return false;
+        // generation を含む EntityID 全体で比較し、同じ index に再割り当てされた別 Entity を弾く
         return m_denseToEntity[di] == id;
     }
 

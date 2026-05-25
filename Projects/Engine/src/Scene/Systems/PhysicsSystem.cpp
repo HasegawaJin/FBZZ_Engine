@@ -24,6 +24,9 @@ struct ColliderOwner {
     ColliderComponent* collider = nullptr;
 };
 
+// physics::CollisionEvent は Collider* のペアを持つが Scene 側の情報を持たない。
+// このマップで Collider* → (GameObject*, ColliderComponent*) を O(1) で逆引きし、
+// Script へのコールバック発火で使う。
 using ColliderOwnerMap = std::unordered_map<const physics::Collider*, ColliderOwner>;
 using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
 

@@ -15,7 +15,7 @@ struct AudioSourceComponent {
     bool        loop        = false;
     float       volume      = 1.0f;
     bool        enabled     = true;
-    bool        m_played    = false;
+    bool        m_played    = false; // PlayOnAwake が発火済みかを追跡し、重複再生を防ぐ
 
     const char* GetTypeName() const { return "Audio Source"; }
     void Reflect(IReflector& r)

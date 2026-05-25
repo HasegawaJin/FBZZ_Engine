@@ -30,8 +30,8 @@ struct NodeAnimationTrack {
 
 struct AnimationClip {
     std::string name;
-    double durationTicks = 0.0;
-    double ticksPerSecond = 30.0;
+    double durationTicks   = 0.0;  // FBX の時間軸単位。実秒 = durationTicks / ticksPerSecond
+    double ticksPerSecond  = 30.0; // 0 が来た場合は 30 を使う (AnimatorSystem で保証)
     std::vector<NodeAnimationTrack> tracks;
 };
 

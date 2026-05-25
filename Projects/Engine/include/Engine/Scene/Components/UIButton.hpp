@@ -23,9 +23,11 @@ struct UIButton {
     bool enabled = true;
 
     UIButtonState state = UIButtonState::NORMAL;
+    // 以下の 3 フラグは UISystem が毎フレーム更新する 1 フレーム限定イベント。
+    // Script の OnUpdate() 内で読み取り、次フレームには false に戻る。
     bool onClick = false;
     bool onEnter = false;
-    bool onExit = false;
+    bool onExit  = false;
 
     const char* GetTypeName() const { return "UIButton"; }
     void Reflect(IReflector& r)

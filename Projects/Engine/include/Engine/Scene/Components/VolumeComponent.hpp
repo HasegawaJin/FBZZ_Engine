@@ -24,8 +24,8 @@ struct VolumeComponent {
     float drag = 1.0f;
     float explosionImpulse = 10.0f;
     float timeScale = 1.0f;
-    float duration = -1.0f;
-    float elapsed = 0.0f;
+    float duration  = -1.0f; // 負値は無限継続。正値は秒単位の有効期間
+    float elapsed   = 0.0f;  // 経過時間。duration >= 0 のときだけ PhysicsSystem が加算する
 
     const char* GetTypeName() const { return "Volume"; }
     void Reflect(IReflector& r)

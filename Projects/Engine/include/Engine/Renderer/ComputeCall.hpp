@@ -13,8 +13,8 @@ namespace fbzz::renderer {
 struct ComputeCall {
     ResourceHandle<ShaderTag> shader;
     std::array<ResourceHandle<ConstantBufferTag>, 8> constantBuffers = {};
-    std::array<ResourceHandle<TextureTag>, 16> srvInputs = {};
-    std::array<ResourceHandle<TextureTag>, 2> uavOutputs = {};
+    std::array<ResourceHandle<TextureTag>, 16> srvInputs  = {}; // SRV (読み取り専用): Texture2D t0〜t15
+    std::array<ResourceHandle<TextureTag>, 2>  uavOutputs = {}; // UAV (書き込み可): RWTexture2D u0〜u1
 
     uint32_t dispatchX = 1;
     uint32_t dispatchY = 1;
