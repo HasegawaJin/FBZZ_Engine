@@ -1,4 +1,4 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // InspectorPanel.cpp | fbzz::editor
 // Selected Entity component inspector and editor
 #include <Editor/Panels/InspectorPanel.hpp>
@@ -37,33 +37,42 @@
 #include <Physics/RigidBody.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <any>
+#include <cctype>
 #include <cstdio>
 #include <memory>
+#include <typeinfo>
 #include <vector>
 
 namespace fbzz::editor {
 
 namespace {
 
-// コンポーネントヘッダー: [✓] ComponentName        [...]
-// ... ボタン → Remove Component
+// 繧ｳ繝ｳ繝昴・繝阪Φ繝医け繝ｪ繝・・繝懊・繝・(蝙句ｮ牙・縲，opy/Paste 縺ｫ菴ｿ逕ｨ)
+// 繧ｳ繝ｳ繝昴・繝阪Φ繝医・繝・ム繝ｼ: [笨転 ComponentName        [...]
+// ... 繝懊ち繝ｳ 竊・Reset / Copy Component / Paste Component Values / Remove Component
 template<typename T, typename DrawFn>
-void DrawComponentSection(scene::GameObject* go, EditorContext& ctx, const char* label, DrawFn drawFn)
+void DrawComponentSection(scene::GameObject* go,
+                          EditorContext& ctx,
+                          std::any& compClipboard,
+                          const std::type_info*& compClipboardType,
+                          const char* label,
+                          DrawFn drawFn)
 {
     auto* comp = go->GetComponent<T>();
     if (!comp) return;
 
     ImGui::PushID(label);
 
-    // Enabled チェックボックス (ヘッダー左)
+    // Enabled 繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ (繝倥ャ繝繝ｼ蟾ｦ)
     ImGui::Checkbox("##en", &comp->enabled);
     ImGui::SameLine();
 
-    // CollapsingHeader: AllowOverlap で右端ボタンとの競合を回避
+    // CollapsingHeader: AllowOverlap 縺ｧ蜿ｳ遶ｯ繝懊ち繝ｳ縺ｨ縺ｮ遶ｶ蜷医ｒ蝗樣∩
     bool open = ImGui::CollapsingHeader(label,
         ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
 
-    // [...] ボタンをヘッダー右端に重ねて配置
+    // [...] 繝懊ち繝ｳ繧偵・繝・ム繝ｼ蜿ｳ遶ｯ縺ｫ驥阪・縺ｦ驟咲ｽｮ
     const float btnW = ImGui::GetFrameHeight();
     ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
     if (ImGui::SmallButton("..."))
@@ -71,6 +80,25 @@ void DrawComponentSection(scene::GameObject* go, EditorContext& ctx, const char*
 
     bool removeRequested = false;
     if (ImGui::BeginPopup("##comp_opts")) {
+        if (ImGui::MenuItem("Reset")) {
+            const bool wasEnabled = comp->enabled;
+            *comp = T{};
+            comp->enabled = wasEnabled;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Copy Component"))
+        {
+            compClipboard     = *comp;
+            compClipboardType = &typeid(T);
+        }
+        const bool canPaste = compClipboardType && *compClipboardType == typeid(T);
+        if (ImGui::MenuItem("Paste Component Values", nullptr, false, canPaste))
+        {
+            const bool wasEnabled = comp->enabled;
+            *comp = std::any_cast<T>(compClipboard);
+            comp->enabled = wasEnabled;
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem("Remove Component"))
             removeRequested = true;
         ImGui::EndPopup();
@@ -150,9 +178,9 @@ renderer::Material& EnsureMaterial(scene::MaterialComponent& mc)
     if (!mc.material)
         mc.material = std::make_shared<renderer::Material>();
     else if (mc.material.use_count() > 1) {
-        // clone-on-write: 複数の MaterialComponent が同一 Material を共有しているとき、
-        // パラメータ編集が他の GameObject に波及しないようにプライベートコピーを作る。
-        // paramsBuffer は GPU リソースのため共有できない (新規 Upload が必要) → 無効化する。
+        // clone-on-write: 隍・焚縺ｮ MaterialComponent 縺悟酔荳 Material 繧貞・譛峨＠縺ｦ縺・ｋ縺ｨ縺阪・
+        // 繝代Λ繝｡繝ｼ繧ｿ邱ｨ髮・′莉悶・ GameObject 縺ｫ豕｢蜿翫＠縺ｪ縺・ｈ縺・↓繝励Λ繧､繝吶・繝医さ繝斐・繧剃ｽ懊ｋ縲・
+        // paramsBuffer 縺ｯ GPU 繝ｪ繧ｽ繝ｼ繧ｹ縺ｮ縺溘ａ蜈ｱ譛峨〒縺阪↑縺・(譁ｰ隕・Upload 縺悟ｿ・ｦ・ 竊・辟｡蜉ｹ蛹悶☆繧九・
         auto cloned = std::make_shared<renderer::Material>(*mc.material);
         cloned->paramsBuffer = renderer::ResourceHandle<renderer::ConstantBufferTag>{};
         mc.material = std::move(cloned);
@@ -175,71 +203,99 @@ scene::RigidBodyComponent CreateDefaultRigidBody()
     return rb;
 }
 
-template<typename T>
-void DrawAddComponentItem(scene::GameObject& go, const char* label)
+bool ComponentMatchesFilter(const char* label, const char* filter)
 {
+    if (filter[0] == '\0') return true;
+    // 螟ｧ譁・ｭ怜ｰ乗枚蟄礼┌隕悶・驛ｨ蛻・ｸ閾ｴ
+    const char* p = label;
+    const char* f = filter;
+    while (*p) {
+        const char* pi = p;
+        const char* fi = f;
+        while (*pi && *fi && (std::tolower((unsigned char)*pi) == std::tolower((unsigned char)*fi)))
+            { ++pi; ++fi; }
+        if (*fi == '\0') return true;
+        ++p;
+    }
+    return false;
+}
+
+template<typename T>
+bool DrawAddComponentItem(scene::GameObject& go, const char* label, const char* filter)
+{
+    if (!ComponentMatchesFilter(label, filter)) return false;
     const bool hasComponent = go.GetComponent<T>() != nullptr;
     if (ImGui::MenuItem(label, nullptr, false, !hasComponent))
         go.AddComponent<T>();
+    return true;
 }
 
-void DrawAddComponentMenu(scene::GameObject& go)
+void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
 {
     if (ImGui::Button("Add Component", { -1.0f, 0.0f }))
         ImGui::OpenPopup("##add_component");
 
     if (!ImGui::BeginPopup("##add_component")) return;
 
-    const bool hasMeshRenderer = go.GetComponent<scene::MeshRenderer>() != nullptr;
-    if (ImGui::MenuItem("Mesh Renderer", nullptr, false, !hasMeshRenderer)) {
+    // 繝昴ャ繝励い繝・・縺碁幕縺・◆迸ｬ髢薙↓繝輔ぅ繝ｫ繧ｿ繧偵け繝ｪ繧｢縺励※繝輔か繝ｼ繧ｫ繧ｹ繧貞ｽ薙※繧・
+    if (ImGui::IsWindowAppearing()) {
+        filterBuffer[0] = '\0';
+        ImGui::SetKeyboardFocusHere();
+    }
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##comp_search", "Search...", filterBuffer, sizeof(filterBuffer));
+    ImGui::Separator();
+
+    const char* filter  = filterBuffer;
+    bool        anyShown = false;
+
+    auto menuItem = [&](const char* label, bool enabled, auto action) -> bool {
+        if (!ComponentMatchesFilter(label, filter)) return false;
+        if (ImGui::MenuItem(label, nullptr, false, enabled)) action();
+        return true;
+    };
+
+    anyShown |= menuItem("Mesh Renderer", !go.GetComponent<scene::MeshRenderer>(), [&]() {
         go.AddComponent<scene::MeshRenderer>(CreateDefaultMeshRenderer());
         if (!go.GetComponent<scene::MaterialComponent>())
             go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-    }
-
-    const bool hasMaterial = go.GetComponent<scene::MaterialComponent>() != nullptr;
-    if (ImGui::MenuItem("Material", nullptr, false, !hasMaterial))
+    });
+    anyShown |= menuItem("Material", !go.GetComponent<scene::MaterialComponent>(), [&]() {
         go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-
-    DrawAddComponentItem<scene::LightComponent>(go, "Light");
-    DrawAddComponentItem<scene::CameraComponent>(go, "Camera");
-    DrawAddComponentItem<scene::ParticleEmitter>(go, "Particle Emitter");
-    DrawAddComponentItem<scene::AudioSourceComponent>(go, "Audio Source");
-
-    const bool hasCollider = go.GetComponent<scene::ColliderComponent>() != nullptr;
-    if (ImGui::MenuItem("Collider", nullptr, false, !hasCollider))
+    });
+    anyShown |= DrawAddComponentItem<scene::LightComponent>(go, "Light", filter);
+    anyShown |= DrawAddComponentItem<scene::CameraComponent>(go, "Camera", filter);
+    anyShown |= DrawAddComponentItem<scene::ParticleEmitter>(go, "Particle Emitter", filter);
+    anyShown |= DrawAddComponentItem<scene::AudioSourceComponent>(go, "Audio Source", filter);
+    anyShown |= menuItem("Collider", !go.GetComponent<scene::ColliderComponent>(), [&]() {
         go.AddComponent<scene::ColliderComponent>(CreateAabbCollider());
-
-    const bool hasRigidBody = go.GetComponent<scene::RigidBodyComponent>() != nullptr;
-    if (ImGui::MenuItem("Rigid Body", nullptr, false, !hasRigidBody))
+    });
+    anyShown |= menuItem("Rigid Body", !go.GetComponent<scene::RigidBodyComponent>(), [&]() {
         go.AddComponent<scene::RigidBodyComponent>(CreateDefaultRigidBody());
-
-    DrawAddComponentItem<scene::VolumeComponent>(go, "Volume");
-    DrawAddComponentItem<scene::SkyRenderer>(go, "Sky Renderer");
-    {
-        const bool hasSMR = go.GetComponent<scene::SkinnedMeshRenderer>() != nullptr;
-        if (ImGui::MenuItem("Skinned Mesh Renderer", nullptr, false, !hasSMR)) {
+    });
+    anyShown |= DrawAddComponentItem<scene::VolumeComponent>(go, "Volume", filter);
+    anyShown |= DrawAddComponentItem<scene::SkyRenderer>(go, "Sky Renderer", filter);
+    anyShown |= menuItem("Skinned Mesh Renderer", !go.GetComponent<scene::SkinnedMeshRenderer>(), [&]() {
+        go.AddComponent<scene::SkinnedMeshRenderer>();
+        if (!go.GetComponent<scene::MaterialComponent>())
+            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+    });
+    anyShown |= menuItem("Animator", !go.GetComponent<scene::AnimatorComponent>(), [&]() {
+        go.AddComponent<scene::AnimatorComponent>();
+        if (!go.GetComponent<scene::SkinnedMeshRenderer>())
             go.AddComponent<scene::SkinnedMeshRenderer>();
-            if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-        }
-    }
-    {
-        const bool hasAnimator = go.GetComponent<scene::AnimatorComponent>() != nullptr;
-        if (ImGui::MenuItem("Animator", nullptr, false, !hasAnimator)) {
-            go.AddComponent<scene::AnimatorComponent>();
-            if (!go.GetComponent<scene::SkinnedMeshRenderer>())
-                go.AddComponent<scene::SkinnedMeshRenderer>();
-            if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-        }
-    }
-    DrawAddComponentItem<scene::UICanvas>(go, "UI Canvas");
-    DrawAddComponentItem<scene::UIImage>(go, "UI Image");
-    DrawAddComponentItem<scene::UIButton>(go, "UI Button");
-    DrawAddComponentItem<scene::UIText>(go, "UI Text");
-    DrawAddComponentItem<scene::UILayoutGroup>(go, "UI Layout Group");
-    DrawAddComponentItem<scene::UIAnimator>(go, "UI Animator");
+        if (!go.GetComponent<scene::MaterialComponent>())
+            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+    });
+    anyShown |= DrawAddComponentItem<scene::UICanvas>(go, "UI Canvas", filter);
+    anyShown |= DrawAddComponentItem<scene::UIImage>(go, "UI Image", filter);
+    anyShown |= DrawAddComponentItem<scene::UIButton>(go, "UI Button", filter);
+    anyShown |= DrawAddComponentItem<scene::UIText>(go, "UI Text", filter);
+    anyShown |= DrawAddComponentItem<scene::UILayoutGroup>(go, "UI Layout Group", filter);
+    anyShown |= DrawAddComponentItem<scene::UIAnimator>(go, "UI Animator", filter);
+
+    if (!anyShown)
+        ImGui::TextDisabled("No results");
 
     ImGui::EndPopup();
 }
@@ -323,7 +379,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         const bool isUI = go->GetComponent<scene::UIImage>() || go->GetComponent<scene::UIText>();
 
         if (isUI) {
-            // X / Y を横並びで表示
+            // X / Y 繧呈ｨｪ荳ｦ縺ｳ縺ｧ陦ｨ遉ｺ
             const float itemW = (ImGui::GetContentRegionAvail().x
                                  - ImGui::CalcTextSize("X").x * 2
                                  - ImGui::GetStyle().ItemSpacing.x * 3) * 0.5f;
@@ -336,7 +392,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SetNextItemWidth(itemW);
             ImGui::DragFloat("##py", &t.localPosition.y, 1.0f, 0.0f, 0.0f, "Y %.0f");
 
-            // Rotation Z のみ
+            // Rotation Z 縺ｮ縺ｿ
             math::Vector3 euler = widgets::QuatToEulerDeg(t.localRotation);
             float rotZ = euler.z;
             ImGui::Text("Rot");
@@ -345,7 +401,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::DragFloat("##rz", &rotZ, 0.5f, -360.0f, 360.0f, "Z %.1f deg"))
                 t.localRotation = widgets::EulerDegToQuat({ euler.x, euler.y, rotZ });
 
-            // W / H (UIImage のみ)
+            // W / H (UIImage 縺ｮ縺ｿ)
             if (go->GetComponent<scene::UIImage>()) {
                 ImGui::Text("Size");
                 ImGui::SameLine();
@@ -373,7 +429,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Spacing();
     }
 
-    DrawComponentSection<scene::MeshRenderer>(go, ctx, "Mesh Renderer",
+    DrawComponentSection<scene::MeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Renderer",
         [](scene::MeshRenderer& mr, EditorContext&) {
             static constexpr const char* kPrimitiveNames[] = {
                 "Custom", "Cube", "Sphere", "Plane", "Cylinder", "Cone", "Torus", "Capsule"
@@ -435,7 +491,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
         });
 
-    DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, "Skinned Mesh Renderer",
+    DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
         [](scene::SkinnedMeshRenderer& smr, EditorContext& ctx) {
             auto loadModel = [&smr]() {
                 smr.model.reset();
@@ -473,7 +529,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
         });
 
-    DrawComponentSection<scene::AnimatorComponent>(go, ctx, "Animator",
+    DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
         [](scene::AnimatorComponent& anim, EditorContext&) {
             // --- Clip Sources list ---
             ImGui::Text("Clip Sources");
@@ -552,7 +608,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::Checkbox("Playing", &anim.playing);
         });
 
-    DrawComponentSection<scene::MaterialComponent>(go, ctx, "Material",
+    DrawComponentSection<scene::MaterialComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Material",
         [](scene::MaterialComponent& mc, EditorContext&) {
             auto applyShader = [&mc]() {
                 auto& material = EnsureMaterial(mc);
@@ -649,12 +705,12 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
         });
 
-    DrawComponentSection<scene::LightComponent>(go, ctx, "Light",
+    DrawComponentSection<scene::LightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light",
         [go](scene::LightComponent& lc, EditorContext&) {
             DrawLightFields(*go, lc);
         });
 
-    DrawComponentSection<scene::CameraComponent>(go, ctx, "Camera",
+    DrawComponentSection<scene::CameraComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Camera",
         [](scene::CameraComponent& cc, EditorContext& c) {
             ImGui::Checkbox("Is Main", &cc.isMain);
             ImGui::DragFloat("FOV", &cc.fovY, 0.5f, 1.0f, 170.0f);
@@ -679,7 +735,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
         });
 
-    DrawComponentSection<scene::ParticleEmitter>(go, ctx, "Particle Emitter",
+    DrawComponentSection<scene::ParticleEmitter>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Emitter",
         [](scene::ParticleEmitter& pe, EditorContext&) {
             widgets::DragVec3("Emit Position", pe.emitPosition);
             widgets::DragVec3("Emit Velocity", pe.emitVelocity);
@@ -699,7 +755,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragInt("Max Particles", &pe.maxParticles, 1, 1, 10000);
         });
 
-    DrawComponentSection<scene::AudioSourceComponent>(go, ctx, "Audio Source",
+    DrawComponentSection<scene::AudioSourceComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Audio Source",
         [](scene::AudioSourceComponent& asc, EditorContext&) {
             ImGui::Checkbox("Play On Awake", &asc.playOnAwake);
             ImGui::Checkbox("Loop", &asc.loop);
@@ -710,7 +766,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SliderFloat("Volume", &asc.volume, 0.0f, 1.0f);
         });
 
-    DrawComponentSection<scene::ColliderComponent>(go, ctx, "Collider",
+    DrawComponentSection<scene::ColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Collider",
         [](scene::ColliderComponent& col, EditorContext&) {
             ImGui::Checkbox("Is Trigger", &col.isTrigger);
             const char* colliderName = "None";
@@ -731,7 +787,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragFloat("Density", &col.material.density, 0.01f, 0.0f, 100000.0f);
         });
 
-    DrawComponentSection<scene::RigidBodyComponent>(go, ctx, "Rigid Body",
+    DrawComponentSection<scene::RigidBodyComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Rigid Body",
         [](scene::RigidBodyComponent& rb, EditorContext&) {
             if (!rb.rigidBody) {
                 ImGui::TextDisabled("No physics::RigidBody assigned");
@@ -762,7 +818,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragFloat("Gravity Mass", &body.m_gravitationalMass, 0.05f, 0.0f, 100000.0f);
         });
 
-    DrawComponentSection<scene::VolumeComponent>(go, ctx, "Volume",
+    DrawComponentSection<scene::VolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volume",
         [](scene::VolumeComponent& volume, EditorContext&) {
             static constexpr const char* kVolumeNames[] = {
                 "Gravity", "Vortex", "Buoyancy", "Explosion", "Time Dilation", "Magnetic"
@@ -783,7 +839,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragFloat("Duration", &volume.duration, 0.05f, -1.0f, 1000.0f);
         });
 
-    DrawComponentSection<scene::SkyRenderer>(go, ctx, "Sky Renderer",
+    DrawComponentSection<scene::SkyRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Sky Renderer",
         [](scene::SkyRenderer& sr, EditorContext&) {
             widgets::DragVec3("Rayleigh", sr.rayleighScattering, 0.0001f, 0.0f, 1.0f);
             ImGui::DragFloat("Mie Scattering", &sr.mieScattering, 0.0001f, 0.0f, 1.0f);
@@ -791,7 +847,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SliderFloat("Mie G", &sr.mieG, -0.99f, 0.99f);
         });
 
-    DrawComponentSection<scene::UICanvas>(go, ctx, "UI Canvas",
+    DrawComponentSection<scene::UICanvas>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Canvas",
         [go](scene::UICanvas& canvas, EditorContext&) {
             if (go->GetParent())
                 ImGui::TextDisabled("Only root GameObjects are rendered as canvases.");
@@ -806,9 +862,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::DragFloat("World Scale", &canvas.worldScale, 0.0001f, 0.00001f, 1.0f, "%.5f");
         });
 
-    DrawComponentSection<scene::UIImage>(go, ctx, "UI Image",
+    DrawComponentSection<scene::UIImage>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Image",
         [](scene::UIImage& image, EditorContext&) {
-            // 位置・サイズは Transform で管理 (上の Transform セクションを参照)
+            // 菴咲ｽｮ繝ｻ繧ｵ繧､繧ｺ縺ｯ Transform 縺ｧ邂｡逅・(荳翫・ Transform 繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ繧貞盾辣ｧ)
             float color[4] = { image.color.x, image.color.y, image.color.z, image.color.w };
             if (ImGui::ColorEdit4("Color", color))
                 image.color = { color[0], color[1], color[2], color[3] };
@@ -827,7 +883,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             }
         });
 
-    DrawComponentSection<scene::UIButton>(go, ctx, "UI Button",
+    DrawComponentSection<scene::UIButton>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Button",
         [](scene::UIButton& button, EditorContext&) {
             ImGui::Checkbox("Interactable", &button.isInteractable);
             float normal[4] = { button.normalColor.x, button.normalColor.y, button.normalColor.z, button.normalColor.w };
@@ -843,9 +899,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             widgets::ReadOnlyText("State", kStateNames[static_cast<int>(button.state)]);
         });
 
-    DrawComponentSection<scene::UIText>(go, ctx, "UI Text",
+    DrawComponentSection<scene::UIText>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Text",
         [](scene::UIText& text, EditorContext&) {
-            // 位置は Transform で管理
+            // 菴咲ｽｮ縺ｯ Transform 縺ｧ邂｡逅・
             char textBuf[512];
             std::snprintf(textBuf, sizeof(textBuf), "%s", text.text.c_str());
             if (ImGui::InputText("Text", textBuf, sizeof(textBuf)))
@@ -857,7 +913,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 text.color = { color[0], color[1], color[2], color[3] };
         });
 
-    DrawComponentSection<scene::UILayoutGroup>(go, ctx, "UI Layout Group",
+    DrawComponentSection<scene::UILayoutGroup>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Layout Group",
         [](scene::UILayoutGroup& layout, EditorContext&) {
             static constexpr const char* kAxisNames[] = { "Horizontal", "Vertical" };
             int axisIdx = static_cast<int>(layout.axis);
@@ -871,7 +927,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::Checkbox("Reverse Order", &layout.reverseOrder);
         });
 
-    DrawComponentSection<scene::UIAnimator>(go, ctx, "UI Animator",
+    DrawComponentSection<scene::UIAnimator>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Animator",
         [](scene::UIAnimator& anim, EditorContext&) {
             if (ImGui::TreeNodeEx("Color Tween", ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::Checkbox("Active##ct", &anim.colorTween.active);
@@ -933,7 +989,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     ImGui::Spacing();
-    DrawAddComponentMenu(*go);
+    DrawAddComponentMenu(*go, m_addComponentFilter);
 }
 
 } // namespace fbzz::editor
