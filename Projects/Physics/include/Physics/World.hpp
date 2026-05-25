@@ -49,6 +49,8 @@ namespace fbzz::physics
 
         void          SetGravity(const math::Vector3& gravity);
         math::Vector3 GetGravity() const { return m_gravity; }
+        void SetSubsteps(int substeps);
+        int  GetSubsteps() const { return m_substeps; }
 
         // Step() 後に参照する衝突イベント
         const std::vector<CollisionEvent>& GetEnterEvents() const;
@@ -70,6 +72,7 @@ namespace fbzz::physics
         void CCDPhase(float dt);    // 高速物体のトンネリング防止 (IntegrateBodies の前)
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
+        int m_substeps = 4;
         // BroadPhase 中に使う一時フィルタ。Scene の LayerCollisionMatrix から渡される。
         std::function<bool(int, int)> m_layerFilter;
 
