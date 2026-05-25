@@ -98,8 +98,8 @@ std::wstring ProcessLauncher::ResolveEditorPath(const HubConfig& config)
     const bool isDebugHub = exeDirText.find("/debug/") != std::string::npos
         || exeDirText.find("\\debug\\") != std::string::npos;
     const std::filesystem::path matchingBuildEditor = isDebugHub
-        ? cwd / L"build" / L"debug" / L"Projects" / L"EditorLauncher" / L"FBZZEditor.exe"
-        : cwd / L"build" / L"release" / L"Projects" / L"EditorLauncher" / L"FBZZEditor.exe";
+        ? cwd / L"build" / L"debug" / L"Projects" / L"EditorLauncher" / L"Debug" / L"FBZZEditor.exe"
+        : cwd / L"build" / L"release" / L"Projects" / L"EditorLauncher" / L"Release" / L"FBZZEditor.exe";
 
     const std::array<std::filesystem::path, 3> candidates = {
         exeDir / L"FBZZEditor.exe",
