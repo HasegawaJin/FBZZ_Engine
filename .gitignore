@@ -41,6 +41,7 @@ CMakeUserPresets.json
 
 # imgui.ini (ImGui の設定ファイル)
 imgui.ini
+hub_imgui.ini
 
 # コンパイル済みシェーダー (dxc でビルド時生成)
 Assets/shaders/compiled/
