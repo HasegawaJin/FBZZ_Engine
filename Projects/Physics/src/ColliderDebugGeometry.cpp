@@ -3,8 +3,10 @@
 // コライダー可視化用のワイヤージオメトリ生成
 #include <Physics/ColliderDebugGeometry.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/SphereCollider.hpp>
+#include <array>
 #include <cmath>
 
 namespace fbzz::physics
@@ -33,6 +35,16 @@ namespace
             center + math::Vector3{ -h.x,  h.y,  h.z },
         };
 
+        AddLine(out, c[0], c[1]); AddLine(out, c[1], c[2]);
+        AddLine(out, c[2], c[3]); AddLine(out, c[3], c[0]);
+        AddLine(out, c[4], c[5]); AddLine(out, c[5], c[6]);
+        AddLine(out, c[6], c[7]); AddLine(out, c[7], c[4]);
+        AddLine(out, c[0], c[4]); AddLine(out, c[1], c[5]);
+        AddLine(out, c[2], c[6]); AddLine(out, c[3], c[7]);
+    }
+
+    void AddBox(ColliderDebugGeometry& out, const std::array<math::Vector3, 8>& c)
+    {
         AddLine(out, c[0], c[1]); AddLine(out, c[1], c[2]);
         AddLine(out, c[2], c[3]); AddLine(out, c[3], c[0]);
         AddLine(out, c[4], c[5]); AddLine(out, c[5], c[6]);
@@ -113,6 +125,13 @@ namespace
         return out;
     }
 
+    ColliderDebugGeometry BuildOBBGeometry(const OBBCollider& obb)
+    {
+        ColliderDebugGeometry out;
+        AddBox(out, obb.GetCorners());
+        return out;
+    }
+
     ColliderDebugGeometry BuildCapsuleGeometry(const CapsuleCollider& capsule)
     {
         ColliderDebugGeometry out;
@@ -150,6 +169,8 @@ ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider)
         return BuildSphereGeometry(static_cast<const SphereCollider&>(collider));
     case ColliderType::AABB:
         return BuildAABBGeometry(collider);
+    case ColliderType::OBB:
+        return BuildOBBGeometry(static_cast<const OBBCollider&>(collider));
     case ColliderType::CAPSULE:
         return BuildCapsuleGeometry(static_cast<const CapsuleCollider&>(collider));
     case ColliderType::TRIANGLE_MESH:
