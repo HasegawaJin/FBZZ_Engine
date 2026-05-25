@@ -3,6 +3,7 @@
         {
             "name": "FBZZ Engine",
             "includePath": [
+                "${workspaceFolder}/Projects/GameHub/Src",
                 "${workspaceFolder}/Projects/Editor/include",
                 "${workspaceFolder}/Projects/Engine/include",
                 "${workspaceFolder}/Projects/Math/include",

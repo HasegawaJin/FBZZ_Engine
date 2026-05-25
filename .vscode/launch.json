@@ -3,6 +3,19 @@
     "configurations": [
         
         {
+            "name": "Debug (GameHub)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Projects/GameHub/FBZZHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "justMyCode": true
+        },
+        {
             "name": "Debug (sandbox)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -20,6 +33,19 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/debug/Projects/Tests/fbzz_tests.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "justMyCode": true
+        },
+        {
+            "name": "Release (GameHub)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/release/Projects/GameHub/FBZZHub.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
