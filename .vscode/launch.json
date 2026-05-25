@@ -29,6 +29,20 @@
             "justMyCode": true
         },
         {
+            "name": "Debug (Sandbox)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Projects/Sandbox/Debug/sandbox.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/debug/Projects/Sandbox/Debug",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "justMyCode": true,
+            "preLaunchTask": "CMake: Build Sandbox (Debug)"
+        },
+        {
             "name": "Debug (GameHub)",
             "type": "cppvsdbg",
             "request": "launch",
