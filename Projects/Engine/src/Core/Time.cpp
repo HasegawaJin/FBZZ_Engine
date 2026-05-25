@@ -18,9 +18,26 @@ float    Time::s_timeScale    = 1.0f;
 uint64_t Time::s_frameCount   = 0;
 int64_t  Time::s_lastCount    = 0;
 int64_t  Time::s_frequency    = 0;
+int      Time::s_targetFps    = 0;
 
 void Time::Tick()
 {
+    // FPS キャップ: 目標フレーム時間になるまで待機してから delta を計測
+    // sleep で大半を消費し、最後の 2ms はビジーウェイトで精度を確保する
+    if (s_targetFps > 0 && s_frequency > 0) {
+        const LONGLONG targetTicks = s_frequency / s_targetFps;
+        LARGE_INTEGER  cur;
+        QueryPerformanceCounter(&cur);
+        const LONGLONG remaining = targetTicks - (cur.QuadPart - s_lastCount);
+        if (remaining > 0) {
+            const LONGLONG sleepTicks = remaining - s_frequency / 500LL; // 2ms 前まで sleep
+            if (sleepTicks > 0)
+                Sleep((DWORD)(sleepTicks * 1000LL / s_frequency));
+            do { QueryPerformanceCounter(&cur); }
+            while ((cur.QuadPart - s_lastCount) < targetTicks);
+        }
+    }
+
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
 
@@ -50,6 +67,11 @@ void Time::Tick()
 void Time::SetTimeScale(float scale)
 {
     s_timeScale = std::max(0.0f, scale);
+}
+
+void Time::SetTargetFps(int fps)
+{
+    s_targetFps = fps < 0 ? 0 : fps;
 }
 
 } // namespace fbzz::core

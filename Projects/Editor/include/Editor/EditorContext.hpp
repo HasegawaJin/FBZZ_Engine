@@ -4,7 +4,6 @@
 #pragma once
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Renderer/RenderSettings.hpp>
 #include <vector>
 
 namespace fbzz::renderer { class Camera; }
@@ -77,9 +76,6 @@ struct EditorContext {
     float gridSize     = 1.0f;
     bool  snapEnabled  = false;
     float snapDistance = 1.0f;
-
-    // レンダリング設定 (RenderSystem に渡す)
-    renderer::RenderSettings renderSettings;
 
     // プロジェクト設定
     fbzz::ProjectSettings projectSettings;

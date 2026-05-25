@@ -122,8 +122,8 @@ void DX11Renderer::BeginFrame()
 
 void DX11Renderer::EndFrame()
 {
-    // interval=1: リフレッシュレートに同期して Present する (VSync ON)
-    m_swapChain->Present(1, 0);
+    // FPS limiting is handled by core::Time::SetTargetFps().
+    m_swapChain->Present(0, 0);
 }
 
 void DX11Renderer::Clear(const math::Vector4& color)

@@ -26,6 +26,10 @@ public:
     // 0.0f で停止, 0.5f でスローモーション, 1.0f が通常
     static void  SetTimeScale(float scale);
 
+    static int  TargetFps()            { return s_targetFps; }
+    // 0 = 無制限, 正値 = フレームレート上限
+    static void SetTargetFps(int fps);
+
 private:
     static float    s_rawDeltaTime;
     static float    s_deltaTime;
@@ -34,6 +38,7 @@ private:
     static uint64_t s_frameCount;
     static int64_t  s_lastCount;
     static int64_t  s_frequency;
+    static int      s_targetFps;
 };
 
 } // namespace fbzz::core

@@ -13,6 +13,145 @@ namespace fbzz::physics
 {
     namespace
     {
+        struct ContactManifold
+        {
+            ContactPoint points[4];
+            int count = 0;
+        };
+
+        void AddManifoldPoint(ContactManifold& manifold, const ContactPoint& base,
+                              const math::Vector3& point)
+        {
+            ContactPoint cp = base;
+            cp.point = point;
+            manifold.points[manifold.count++] = cp;
+        }
+
+        ContactManifold BuildAABBManifold(const AABB& aabbA, const AABB& aabbB,
+                                          const ContactPoint& base)
+        {
+            constexpr float EPS = 1e-5f;
+
+            ContactManifold manifold;
+            const float minX = std::max(aabbA.min.x, aabbB.min.x);
+            const float maxX = std::min(aabbA.max.x, aabbB.max.x);
+            const float minY = std::max(aabbA.min.y, aabbB.min.y);
+            const float maxY = std::min(aabbA.max.y, aabbB.max.y);
+            const float minZ = std::max(aabbA.min.z, aabbB.min.z);
+            const float maxZ = std::min(aabbA.max.z, aabbB.max.z);
+
+            auto AddRect = [&](float fixed, int axis)
+            {
+                float u0 = minX;
+                float u1 = maxX;
+                float v0 = minZ;
+                float v1 = maxZ;
+
+                if (axis == 0)
+                {
+                    u0 = minY;
+                    u1 = maxY;
+                }
+                else if (axis == 2)
+                {
+                    v0 = minY;
+                    v1 = maxY;
+                }
+
+                if ((u1 - u0) <= EPS || (v1 - v0) <= EPS)
+                {
+                    AddManifoldPoint(manifold, base, base.point);
+                    return;
+                }
+
+                const float us[2] = { u0, u1 };
+                const float vs[2] = { v0, v1 };
+                for (float u : us)
+                {
+                    for (float v : vs)
+                    {
+                        if (axis == 0)
+                            AddManifoldPoint(manifold, base, { fixed, u, v });
+                        else if (axis == 1)
+                            AddManifoldPoint(manifold, base, { u, fixed, v });
+                        else
+                            AddManifoldPoint(manifold, base, { u, v, fixed });
+                    }
+                }
+            };
+
+            if (std::abs(base.normal.x) > 0.5f)
+                AddRect(base.point.x, 0);
+            else if (std::abs(base.normal.y) > 0.5f)
+                AddRect(base.point.y, 1);
+            else
+                AddRect(base.point.z, 2);
+
+            if (manifold.count == 0)
+                AddManifoldPoint(manifold, base, base.point);
+
+            const float weight = 1.0f / static_cast<float>(manifold.count);
+            for (int i = 0; i < manifold.count; ++i)
+                manifold.points[i].positionCorrectionWeight = weight;
+
+            return manifold;
+        }
+
+        bool IsPointInsideOBB(const math::Vector3& point, const OBBCollider& box, float tolerance)
+        {
+            const math::Vector3 delta = point - box.GetCenter();
+            for (int i = 0; i < 3; ++i)
+            {
+                const float extent = i == 0 ? box.m_halfExtents.x : (i == 1 ? box.m_halfExtents.y : box.m_halfExtents.z);
+                if (std::abs(math::Vector3::Dot(delta, box.GetAxis(i))) > extent + tolerance)
+                    return false;
+            }
+            return true;
+        }
+
+        void AddUniqueManifoldPoint(ContactManifold& manifold, const ContactPoint& base,
+                                    const math::Vector3& point)
+        {
+            constexpr float MATCH_RADIUS_SQ = 1e-4f;
+            for (int i = 0; i < manifold.count; ++i)
+            {
+                if ((manifold.points[i].point - point).LengthSq() <= MATCH_RADIUS_SQ)
+                    return;
+            }
+
+            if (manifold.count < 4)
+                AddManifoldPoint(manifold, base, point);
+        }
+
+        ContactManifold BuildOBBManifold(const OBBCollider& a, const OBBCollider& b,
+                                         const ContactPoint& base)
+        {
+            ContactManifold manifold;
+            const float tolerance = std::max(base.depth, 0.01f) + 1e-4f;
+            const auto cornersA = a.GetCorners();
+            const auto cornersB = b.GetCorners();
+
+            for (const math::Vector3& point : cornersA)
+            {
+                if (IsPointInsideOBB(point, b, tolerance))
+                    AddUniqueManifoldPoint(manifold, base, point);
+            }
+            for (const math::Vector3& point : cornersB)
+            {
+                if (IsPointInsideOBB(point, a, tolerance))
+                    AddUniqueManifoldPoint(manifold, base, point);
+            }
+
+            if (manifold.count == 0)
+                AddManifoldPoint(manifold, base, base.point);
+
+            const float weight = 1.0f / static_cast<float>(manifold.count);
+            for (int i = 0; i < manifold.count; ++i)
+                manifold.points[i].positionCorrectionWeight = weight;
+
+            return manifold;
+        }
+
         void ClosestPointsOnSegments(const math::Vector3& p1,
                                      const math::Vector3& q1,
                                      const math::Vector3& p2,
@@ -128,6 +267,28 @@ namespace fbzz::physics
             ColliderType tB = pair.colliderB.collider->GetType();
             ContactPoint cp;
             bool hit = false;
+            bool pushedContacts = false;
+
+            auto PushContact = [&](ContactPoint contact)
+            {
+                contact.bodyA = pair.colliderA.body;
+                contact.bodyB = pair.colliderB.body;
+                contact.colliderA = pair.colliderA.collider.get();
+                contact.colliderB = pair.colliderB.collider.get();
+                contact.materialA = pair.colliderA.material;
+                contact.materialB = pair.colliderB.material;
+                contact.isTrigger = pair.colliderA.isTrigger || pair.colliderB.isTrigger;
+                if (contact.bodyA && contact.bodyB)
+                {
+                    const math::Vector3 bodyDelta = contact.bodyA->GetPosition() - contact.bodyB->GetPosition();
+                    if (bodyDelta.LengthSq() > 1e-8f &&
+                        math::Vector3::Dot(contact.normal, bodyDelta) < 0.0f)
+                    {
+                        contact.normal = -contact.normal;
+                    }
+                }
+                outContacts.push_back(contact);
+            };
 
             if (tA == ColliderType::SPHERE && tB == ColliderType::SPHERE)
             {
@@ -140,6 +301,32 @@ namespace fbzz::physics
                 hit = TestAABBAABB(
                     *static_cast<AABBCollider*>(pair.colliderA.collider.get()),
                     *static_cast<AABBCollider*>(pair.colliderB.collider.get()), cp);
+                if (hit)
+                {
+                    const ContactManifold manifold = BuildAABBManifold(
+                        static_cast<AABBCollider*>(pair.colliderA.collider.get())->GetAABB(),
+                        static_cast<AABBCollider*>(pair.colliderB.collider.get())->GetAABB(),
+                        cp);
+                    for (int i = 0; i < manifold.count; ++i)
+                        PushContact(manifold.points[i]);
+                    pushedContacts = true;
+                }
+            }
+            else if (tA == ColliderType::OBB && tB == ColliderType::OBB)
+            {
+                hit = TestOBBOBB(
+                    *static_cast<OBBCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<OBBCollider*>(pair.colliderB.collider.get()), cp);
+                if (hit)
+                {
+                    const ContactManifold manifold = BuildOBBManifold(
+                        *static_cast<OBBCollider*>(pair.colliderA.collider.get()),
+                        *static_cast<OBBCollider*>(pair.colliderB.collider.get()),
+                        cp);
+                    for (int i = 0; i < manifold.count; ++i)
+                        PushContact(manifold.points[i]);
+                    pushedContacts = true;
+                }
             }
             else if (tA == ColliderType::SPHERE && tB == ColliderType::AABB)
             {
@@ -156,6 +343,38 @@ namespace fbzz::physics
                 if (hit)
                 {
                     cp.normal  = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::SPHERE && tB == ColliderType::OBB)
+            {
+                hit = TestSphereOBB(
+                    *static_cast<SphereCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<OBBCollider*> (pair.colliderB.collider.get()), cp);
+            }
+            else if (tA == ColliderType::OBB && tB == ColliderType::SPHERE)
+            {
+                hit = TestSphereOBB(
+                    *static_cast<SphereCollider*>(pair.colliderB.collider.get()),
+                    *static_cast<OBBCollider*> (pair.colliderA.collider.get()), cp);
+                if (hit)
+                {
+                    cp.normal = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::AABB && tB == ColliderType::OBB)
+            {
+                hit = TestAABBOBB(
+                    *static_cast<AABBCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<OBBCollider*> (pair.colliderB.collider.get()), cp);
+            }
+            else if (tA == ColliderType::OBB && tB == ColliderType::AABB)
+            {
+                hit = TestAABBOBB(
+                    *static_cast<AABBCollider*>(pair.colliderB.collider.get()),
+                    *static_cast<OBBCollider*> (pair.colliderA.collider.get()), cp);
+                if (hit)
+                {
+                    cp.normal = -cp.normal;
                 }
             }
             else if (tA == ColliderType::SPHERE && tB == ColliderType::CAPSULE)
@@ -184,6 +403,22 @@ namespace fbzz::physics
             {
                 hit = TestAABBCapsule(
                     *static_cast<AABBCollider*>(pair.colliderB.collider.get()),
+                    *static_cast<CapsuleCollider*>(pair.colliderA.collider.get()), cp);
+                if (hit)
+                {
+                    cp.normal = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::OBB && tB == ColliderType::CAPSULE)
+            {
+                hit = TestOBBCapsule(
+                    *static_cast<OBBCollider*>(pair.colliderA.collider.get()),
+                    *static_cast<CapsuleCollider*>(pair.colliderB.collider.get()), cp);
+            }
+            else if (tA == ColliderType::CAPSULE && tB == ColliderType::OBB)
+            {
+                hit = TestOBBCapsule(
+                    *static_cast<OBBCollider*>(pair.colliderB.collider.get()),
                     *static_cast<CapsuleCollider*>(pair.colliderA.collider.get()), cp);
                 if (hit)
                 {
@@ -222,6 +457,9 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::AABB)
                         hit = TestAABBConvex(
                             *static_cast<AABBCollider*>(dynInst.collider.get()), hull, cp);
+                    else if (dynType == ColliderType::OBB)
+                        hit = TestOBBConvex(
+                            *static_cast<OBBCollider*>(dynInst.collider.get()), hull, cp);
                     else if (dynType == ColliderType::CAPSULE)
                         hit = TestCapsuleConvex(
                             *static_cast<CapsuleCollider*>(dynInst.collider.get()), hull, cp);
@@ -262,7 +500,7 @@ namespace fbzz::physics
                 }
             }
 
-            if (hit) {
+            if (hit && !pushedContacts) {
                 cp.bodyA = pair.colliderA.body;
                 cp.bodyB = pair.colliderB.body;
                 cp.colliderA = pair.colliderA.collider.get();
@@ -412,26 +650,29 @@ namespace fbzz::physics
         const float invMassB = bodyB ? bodyB->GetInvMass() : 0.0f;
         if (invMassA + invMassB == 0.0f) return;
 
-        float mu = 0.5f;
+        float dynamicMu = 0.5f;
+        float staticMu = 0.7f;
         if (cp.materialA && cp.materialB)
-            mu = PhysicsMaterial::CombineFriction(*cp.materialA, *cp.materialB);
+        {
+            dynamicMu = PhysicsMaterial::CombineFriction(*cp.materialA, *cp.materialB);
+            staticMu = PhysicsMaterial::CombineStaticFriction(*cp.materialA, *cp.materialB);
+        }
 
         // 摩擦コーン制約: |Λt| ≤ μ * Λn
-        const float maxFriction = mu * cp.cachedNormalImpulse;
+        const float maxDynamicFriction = dynamicMu * cp.cachedNormalImpulse;
+        const float maxStaticFriction = staticMu * cp.cachedNormalImpulse;
 
         const math::Vector3 rA = bodyA ? cp.point - bodyA->GetPosition() : math::Vector3::ZERO;
         const math::Vector3 rB = bodyB ? cp.point - bodyB->GetPosition() : math::Vector3::ZERO;
 
-        const math::Vector3 vA = bodyA ? bodyA->GetVelocity()        : math::Vector3::ZERO;
-        const math::Vector3 vB = bodyB ? bodyB->GetVelocity()        : math::Vector3::ZERO;
-        const math::Vector3 wA = bodyA ? bodyA->GetAngularVelocity() : math::Vector3::ZERO;
-        const math::Vector3 wB = bodyB ? bodyB->GetAngularVelocity() : math::Vector3::ZERO;
-
-        const math::Vector3 vRel = (vA + math::Vector3::Cross(wA, rA))
-                                 - (vB + math::Vector3::Cross(wB, rB));
-
         for (int k = 0; k < 2; ++k)
         {
+            const math::Vector3 vA = bodyA ? bodyA->GetVelocity()        : math::Vector3::ZERO;
+            const math::Vector3 vB = bodyB ? bodyB->GetVelocity()        : math::Vector3::ZERO;
+            const math::Vector3 wA = bodyA ? bodyA->GetAngularVelocity() : math::Vector3::ZERO;
+            const math::Vector3 wB = bodyB ? bodyB->GetAngularVelocity() : math::Vector3::ZERO;
+            const math::Vector3 vRel = (vA + math::Vector3::Cross(wA, rA))
+                                     - (vB + math::Vector3::Cross(wB, rB));
             const math::Vector3& t     = cp.tangent[k];
             const float          vRelT = math::Vector3::Dot(vRel, t);
 
@@ -454,7 +695,10 @@ namespace fbzz::physics
             const float deltaJt  = -vRelT / denom;
             const float oldAccum = cp.cachedTangentImpulse[k];
             // 蓄積摩擦インパルスを摩擦コーン内に投影する。
-            const float newAccum = std::clamp(oldAccum + deltaJt, -maxFriction, maxFriction);
+            const float targetAccum = oldAccum + deltaJt;
+            const float newAccum = std::abs(targetAccum) <= maxStaticFriction
+                ? targetAccum
+                : std::clamp(targetAccum, -maxDynamicFriction, maxDynamicFriction);
             const float applyJt  = newAccum - oldAccum;
             cp.cachedTangentImpulse[k] = newAccum;
 
@@ -484,7 +728,7 @@ namespace fbzz::physics
 
         // SLOP 分の浅い貫通は許容し、接触面の小さな振動を抑える。
         const float penetration = std::max(cp.depth - SLOP, 0.0f);
-        const float scalar      = penetration / invMassSum * BAUMGARTE;
+        const float scalar      = penetration / invMassSum * BAUMGARTE * cp.positionCorrectionWeight;
         math::Vector3 correction = cp.normal * scalar;
 
         if (cp.bodyA)
@@ -563,6 +807,73 @@ namespace fbzz::physics
         return true;
     }
 
+    bool PhysicsSolver::TestOBBOBB(const OBBCollider& a, const OBBCollider& b,
+                                   ContactPoint& out)
+    {
+        constexpr float EPS = 1e-6f;
+
+        const math::Vector3 axesA[3] = { a.GetAxis(0), a.GetAxis(1), a.GetAxis(2) };
+        const math::Vector3 axesB[3] = { b.GetAxis(0), b.GetAxis(1), b.GetAxis(2) };
+        const float extA[3] = { a.m_halfExtents.x, a.m_halfExtents.y, a.m_halfExtents.z };
+        const float extB[3] = { b.m_halfExtents.x, b.m_halfExtents.y, b.m_halfExtents.z };
+
+        float minOverlap = std::numeric_limits<float>::max();
+        math::Vector3 bestAxis = math::Vector3::UP;
+
+        auto ProjectRadius = [](const math::Vector3 boxAxes[3],
+                                const float extents[3],
+                                const math::Vector3& axis) -> float
+        {
+            return extents[0] * std::abs(math::Vector3::Dot(boxAxes[0], axis))
+                 + extents[1] * std::abs(math::Vector3::Dot(boxAxes[1], axis))
+                 + extents[2] * std::abs(math::Vector3::Dot(boxAxes[2], axis));
+        };
+
+        auto TestAxis = [&](math::Vector3 axis) -> bool
+        {
+            const float lenSq = axis.LengthSq();
+            if (lenSq < EPS) return true;
+
+            axis = axis * (1.0f / std::sqrt(lenSq));
+            const float centerA = math::Vector3::Dot(a.GetCenter(), axis);
+            const float centerB = math::Vector3::Dot(b.GetCenter(), axis);
+            const float radiusA = ProjectRadius(axesA, extA, axis);
+            const float radiusB = ProjectRadius(axesB, extB, axis);
+            const float overlap = radiusA + radiusB - std::abs(centerA - centerB);
+
+            if (overlap <= 0.0f) return false;
+            if (overlap < minOverlap)
+            {
+                minOverlap = overlap;
+                bestAxis = axis;
+            }
+            return true;
+        };
+
+        for (int i = 0; i < 3; ++i)
+        {
+            if (!TestAxis(axesA[i])) return false;
+            if (!TestAxis(axesB[i])) return false;
+        }
+
+        for (int i = 0; i < 3; ++i)
+        {
+            for (int j = 0; j < 3; ++j)
+            {
+                if (!TestAxis(math::Vector3::Cross(axesA[i], axesB[j]))) return false;
+            }
+        }
+
+        const math::Vector3 delta = a.GetCenter() - b.GetCenter();
+        if (math::Vector3::Dot(bestAxis, delta) < 0.0f)
+            bestAxis = -bestAxis;
+
+        out.normal = bestAxis;
+        out.depth = minOverlap;
+        out.point = (a.SupportPoint(-bestAxis) + b.SupportPoint(bestAxis)) * 0.5f;
+        return true;
+    }
+
     bool PhysicsSolver::TestSphereAABB(const SphereCollider& s, const AABBCollider& b,
                                         ContactPoint& out)
     {
@@ -590,6 +901,55 @@ namespace fbzz::physics
         {
             out.normal = diff * (1.0f / dist);
             out.depth  = s.m_radius - dist;
+        }
+
+        out.point = closest;
+        return true;
+    }
+
+    bool PhysicsSolver::TestSphereOBB(const SphereCollider& s, const OBBCollider& b,
+                                      ContactPoint& out)
+    {
+        const math::Vector3 center = s.GetAABB().Center();
+        const math::Vector3 delta = center - b.GetCenter();
+        math::Vector3 closest = b.GetCenter();
+
+        for (int i = 0; i < 3; ++i)
+        {
+            const math::Vector3 axis = b.GetAxis(i);
+            const float extent = i == 0 ? b.m_halfExtents.x : (i == 1 ? b.m_halfExtents.y : b.m_halfExtents.z);
+            const float distance = std::clamp(math::Vector3::Dot(delta, axis), -extent, extent);
+            closest += axis * distance;
+        }
+
+        const math::Vector3 diff = center - closest;
+        const float distSq = diff.LengthSq();
+        if (distSq >= s.m_radius * s.m_radius) return false;
+
+        const float dist = std::sqrt(distSq);
+        if (dist < 1e-6f)
+        {
+            math::Vector3 bestAxis = b.GetAxis(0);
+            float minFaceDistance = b.m_halfExtents.x - std::abs(math::Vector3::Dot(delta, bestAxis));
+            for (int i = 1; i < 3; ++i)
+            {
+                const math::Vector3 axis = b.GetAxis(i);
+                const float extent = i == 1 ? b.m_halfExtents.y : b.m_halfExtents.z;
+                const float faceDistance = extent - std::abs(math::Vector3::Dot(delta, axis));
+                if (faceDistance < minFaceDistance)
+                {
+                    minFaceDistance = faceDistance;
+                    bestAxis = axis * (math::Vector3::Dot(delta, axis) >= 0.0f ? 1.0f : -1.0f);
+                }
+            }
+
+            out.normal = bestAxis;
+            out.depth = s.m_radius + minFaceDistance;
+        }
+        else
+        {
+            out.normal = diff * (1.0f / dist);
+            out.depth = s.m_radius - dist;
         }
 
         out.point = closest;
@@ -950,6 +1310,11 @@ namespace fbzz::physics
             };
         }
 
+        math::Vector3 SupportOBB(const void* shape, const math::Vector3& dir)
+        {
+            return static_cast<const OBBCollider*>(shape)->SupportPoint(dir);
+        }
+
         math::Vector3 SupportCapsule(const void* shape, const math::Vector3& dir)
         {
             const auto* c = static_cast<const CapsuleCollider*>(shape);
@@ -979,6 +1344,20 @@ namespace fbzz::physics
         }
     } // anonymous namespace
 
+    bool PhysicsSolver::TestAABBOBB(const AABBCollider& a,
+                                    const OBBCollider& b,
+                                    ContactPoint& out)
+    {
+        return GJKEPAToContact(&a, SupportAABB, &b, SupportOBB, out);
+    }
+
+    bool PhysicsSolver::TestOBBCapsule(const OBBCollider& b,
+                                       const CapsuleCollider& c,
+                                       ContactPoint& out)
+    {
+        return GJKEPAToContact(&b, SupportOBB, &c, SupportCapsule, out);
+    }
+
     bool PhysicsSolver::TestConvexConvex(const ConvexHullCollider& a,
                                           const ConvexHullCollider& b,
                                           ContactPoint& out)
@@ -1000,6 +1379,14 @@ namespace fbzz::physics
                                         ContactPoint& out)
     {
         return GJKEPAToContact(&b,    SupportAABB,
+                               &hull, ConvexHullCollider::SupportFnImpl, out);
+    }
+
+    bool PhysicsSolver::TestOBBConvex(const OBBCollider& b,
+                                      const ConvexHullCollider& hull,
+                                      ContactPoint& out)
+    {
+        return GJKEPAToContact(&b,    SupportOBB,
                                &hull, ConvexHullCollider::SupportFnImpl, out);
     }
 

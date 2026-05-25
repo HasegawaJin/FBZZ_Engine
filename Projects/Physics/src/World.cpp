@@ -45,14 +45,19 @@ namespace fbzz::physics
         m_gravity = gravity;
     }
 
+    void World::SetSubsteps(int substeps)
+    {
+        m_substeps = std::clamp(substeps, 1, 32);
+    }
+
     void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
         m_layerFilter = std::move(layerFilter);
-        constexpr int SUBSTEPS = 4;
-        const float subDt = dt / SUBSTEPS;
+        const int substeps = std::max(m_substeps, 1);
+        const float subDt = dt / static_cast<float>(substeps);
         std::vector<float> effectiveDts;
 
-        for (int s = 0; s < SUBSTEPS; ++s)
+        for (int s = 0; s < substeps; ++s)
         {
             RemoveExpiredVolumes();
             for (auto& volume : m_volumes)

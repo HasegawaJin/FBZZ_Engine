@@ -30,6 +30,7 @@ namespace fbzz::physics
         math::Vector3 tangent[2];                    // 摩擦平面の 2 軸 (Resolve 冒頭で計算)
         float cachedNormalImpulse       = 0.0f;      // 蓄積法線インパルス (Λn ≥ 0 にクランプ)
         float cachedTangentImpulse[2]   = {0.0f, 0.0f}; // 蓄積摩擦インパルス
+        float positionCorrectionWeight  = 1.0f;
     };
 
 } // namespace fbzz::physics
