@@ -40,6 +40,7 @@
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <toml++/toml.hpp>
@@ -138,7 +139,10 @@ const char* ColliderTypeToString(physics::ColliderType type)
     switch (type) {
     case physics::ColliderType::SPHERE:  return "Sphere";
     case physics::ColliderType::AABB:    return "AABB";
+    case physics::ColliderType::OBB:     return "OBB";
     case physics::ColliderType::CAPSULE: return "Capsule";
+    case physics::ColliderType::TRIANGLE_MESH: return "TriangleMesh";
+    case physics::ColliderType::CONVEX_HULL:   return "ConvexHull";
     }
     return "AABB";
 }
@@ -419,6 +423,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                     shapeTbl.insert("radius", (double)sphere->m_radius);
                 } else if (type == physics::ColliderType::AABB) {
                     auto* box = static_cast<physics::AABBCollider*>(col->collider.get());
+                    shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
+                } else if (type == physics::ColliderType::OBB) {
+                    auto* box = static_cast<physics::OBBCollider*>(col->collider.get());
                     shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
                 } else if (type == physics::ColliderType::CAPSULE) {
                     auto* capsule = static_cast<physics::CapsuleCollider*>(col->collider.get());
@@ -775,6 +782,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 if (type == "Sphere") {
                     const float radius = (float)(*shapeTbl)["radius"].value_or(0.5);
                     col.collider = std::make_shared<physics::SphereCollider>(radius);
+                } else if (type == "OBB") {
+                    const auto halfExtents = ArrToVec3(
+                        (*shapeTbl)["halfExtents"].as_array(), { 0.5f, 0.5f, 0.5f });
+                    col.collider = std::make_shared<physics::OBBCollider>(halfExtents);
                 } else if (type == "Capsule") {
                     const float radius     = (float)(*shapeTbl)["radius"].value_or(0.5);
                     const float halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
