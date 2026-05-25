@@ -120,17 +120,49 @@ std::filesystem::path FindProjectPathFromArgs()
     return projectPath;
 }
 
+std::filesystem::path FindDefaultSandboxProjectPath()
+{
+    std::filesystem::path current = GetExecutableDirectory();
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        const std::filesystem::path candidate = current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
+        if (Exists(candidate / L".fbzz_proj")) {
+            return candidate;
+        }
+        current = current.parent_path();
+    }
+
+    current = MakeAbsolute(std::filesystem::current_path());
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        const std::filesystem::path candidate = current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
+        if (Exists(candidate / L".fbzz_proj")) {
+            return candidate;
+        }
+        current = current.parent_path();
+    }
+
+    return {};
+}
+
 std::filesystem::path ReadTomlRelativePath(const toml::table& table, const char* tableName, const char* key)
 {
     const std::string value = table[tableName][key].value_or(std::string{});
     return value.empty() ? std::filesystem::path{} : std::filesystem::path(Utf8ToWide(value));
 }
 
+bool IsTemplatePlaceholder(const std::filesystem::path& path)
+{
+    const std::wstring value = path.wstring();
+    return value.size() >= 4 && value.rfind(L"{{", 0) == 0;
+}
+
 bool ResolveProject(LaunchProject& project, std::wstring& errorMessage)
 {
     project.root = MakeAbsolute(FindProjectPathFromArgs());
     if (project.root.empty()) {
-        errorMessage = L"Project path was not specified.\n\nFBZZEditor.exe --project <path>";
+        project.root = MakeAbsolute(FindDefaultSandboxProjectPath());
+    }
+    if (project.root.empty()) {
+        errorMessage = L"Project path was not specified and the Sandbox default project was not found.\n\nsandbox.exe --project <path>";
         return false;
     }
     if (!Exists(project.root)) {
@@ -152,8 +184,11 @@ bool ResolveProject(LaunchProject& project, std::wstring& errorMessage)
     }
 
     const toml::table& projectTable = projectResult.table();
-    const std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
+    std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
     const std::filesystem::path defaultScene = ReadTomlRelativePath(projectTable, "project", "default_scene");
+    if (IsTemplatePlaceholder(settingsPath)) {
+        settingsPath = L"ProjectSettings/ProjectSettings.toml";
+    }
     if (settingsPath.empty()) {
         errorMessage = L".fbzz_proj does not define project.settings_path.";
         return false;
@@ -304,7 +339,7 @@ int Run()
                     focusAnim.t      = 1.0f;
                     focusAnim.active = false;
                 }
-                // smoothstep: 貊代ｉ縺九↑蜉騾溘・貂幃・
+                // smoothstep easing.
                 const float s = focusAnim.t * focusAnim.t * (3.0f - 2.0f * focusAnim.t);
                 debugCamera.camera.m_position = focusAnim.startPos
                     + (focusAnim.endPos - focusAnim.startPos) * s;
@@ -320,7 +355,7 @@ int Run()
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-            // 繧ｹ繝・ャ繝怜ｮ溯｡梧凾縺ｯ蝗ｺ螳・1 繧ｹ繝・ャ繝励・縺ｿ騾ｲ繧√ｋ
+            // Step mode advances exactly one fixed physics tick.
             if (stepFrame) {
                 scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
             } else {
