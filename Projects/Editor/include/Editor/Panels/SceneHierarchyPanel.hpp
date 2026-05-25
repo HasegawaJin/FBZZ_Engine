@@ -17,6 +17,8 @@ protected:
 private:
     // SetParent 成功後、次フレームで強制 open するノードの EntityID
     scene::EntityID m_pendingExpand;
+
+    char m_searchFilter[128] = {};
 };
 
 } // namespace fbzz::editor
