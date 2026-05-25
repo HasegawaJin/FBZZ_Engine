@@ -4,6 +4,7 @@
 #include "HubConfig.hpp"
 
 #include <toml++/toml.hpp>
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -118,6 +119,34 @@ bool HubConfig::Save() const
 void HubConfig::SetProjects(std::vector<ConfigProject> projects)
 {
     m_projects = std::move(projects);
+}
+
+bool HubConfig::AddProject(const std::string& path, const std::string& lastOpened)
+{
+    if (path.empty() || ContainsProject(path)) {
+        return false;
+    }
+
+    m_projects.push_back({ path, lastOpened });
+    return true;
+}
+
+bool HubConfig::RemoveProject(const std::string& path)
+{
+    const auto oldSize = m_projects.size();
+    m_projects.erase(
+        std::remove_if(m_projects.begin(), m_projects.end(), [&path](const ConfigProject& project) {
+            return project.path == path;
+        }),
+        m_projects.end());
+    return m_projects.size() != oldSize;
+}
+
+bool HubConfig::ContainsProject(const std::string& path) const
+{
+    return std::any_of(m_projects.begin(), m_projects.end(), [&path](const ConfigProject& project) {
+        return project.path == path;
+    });
 }
 
 void HubConfig::UpdateLastOpened(const std::string& path, const std::string& lastOpened)

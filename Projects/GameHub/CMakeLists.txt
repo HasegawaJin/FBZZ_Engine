@@ -17,6 +17,7 @@ target_compile_definitions(fbzz_hub
     PRIVATE
         UNICODE
         _UNICODE
+        FBZZ_VERSION="${PROJECT_VERSION}"
 )
 
 target_link_libraries(fbzz_hub
@@ -26,4 +27,11 @@ target_link_libraries(fbzz_hub
         d3d11
         dxgi
         dwmapi
+        shell32
+)
+
+add_custom_command(TARGET fbzz_hub POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/Templates"
+        "$<TARGET_FILE_DIR:fbzz_hub>/Templates"
 )

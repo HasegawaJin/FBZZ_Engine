@@ -1,0 +1,6 @@
+[template]
+id = "empty"
+display_name = "Empty"
+description = "Minimal FBZZ project with a default scene and public API header."
+thumbnail = ""
+engine_version_min = "0.1.0"
