@@ -1,4 +1,4 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // ViewportPanel.cpp | fbzz::editor
 // Viewport image, mouse picking, and ImGuizmo manipulation
 #include <Editor/Panels/ViewportPanel.hpp>
@@ -13,6 +13,8 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Math/MathUtils.hpp>
@@ -29,8 +31,8 @@ namespace fbzz::editor {
 
 namespace {
 
-// ImGuizmo は OpenGL 列優先規約を前提とするが、エンジンは行優先で行列を格納する。
-// Transpose することで ImGuizmo が期待するメモリレイアウト (列優先) に変換する。
+// ImGuizmo 縺ｯ OpenGL 蛻怜━蜈郁ｦ冗ｴ・ｒ蜑肴署縺ｨ縺吶ｋ縺後√お繝ｳ繧ｸ繝ｳ縺ｯ陦悟━蜈医〒陦悟・繧呈ｼ邏阪☆繧九・
+// Transpose 縺吶ｋ縺薙→縺ｧ ImGuizmo 縺梧悄蠕・☆繧九Γ繝｢繝ｪ繝ｬ繧､繧｢繧ｦ繝・(蛻怜━蜈・ 縺ｫ螟画鋤縺吶ｋ縲・
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor)
 {
     return math::Matrix4::Transpose(rowMajor);
@@ -115,7 +117,7 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
         bestT = bestFallbackT;
     }
 
-    if (best.IsValid()) {
+    if (best.IsValid() && !ctx.IsLocked(best)) {
         if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
         if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), best) == ctx.selectedEntities.end())
             ctx.selectedEntities.push_back(best);
@@ -126,7 +128,7 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     return false;
 }
 
-// UIビューポートでクリックした UI 要素を選択する
+// UI繝薙Η繝ｼ繝昴・繝医〒繧ｯ繝ｪ繝・け縺励◆ UI 隕∫ｴ繧帝∈謚槭☆繧・
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
 {
     if (!ctx.activeScene) return;
@@ -174,9 +176,9 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
     if (best.IsValid()) ctx.selectedEntities.push_back(best);
 }
 
-// --- UI ギズモ用ヘルパー ---
+// --- UI 繧ｮ繧ｺ繝｢逕ｨ繝倥Ν繝代・ ---
 
-// 色定数
+// 濶ｲ螳壽焚
 constexpr ImU32 kUIColX       = IM_COL32(220,  60,  60, 255);
 constexpr ImU32 kUIColXHov    = IM_COL32(255, 160, 160, 255);
 constexpr ImU32 kUIColY       = IM_COL32( 60, 200,  60, 255);
@@ -218,13 +220,23 @@ bool IsMouseNearLine(ImVec2 a, ImVec2 b, float tol = 7.0f)
     return (m.x-cx)*(m.x-cx) + (m.y-cy)*(m.y-cy) < tol*tol;
 }
 
-// UIビューポート専用 2D ギズモ (QWER で 3D ギズモと同じ操作感)
-//   W = 移動 (X/Y 軸制約 + 自由移動)
-//   E = 回転 (Z軸, リング操作)
-//   R = リサイズ (8ハンドル, 中心固定)
-//   Q = World/Local トグル (3D ギズモと共有)
-// 戻り値: true = マウスクリックをギズモが消費済み
-bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
+// UI繝薙Η繝ｼ繝昴・繝亥ｰら畑 2D 繧ｮ繧ｺ繝｢ (QWER 縺ｧ 3D 繧ｮ繧ｺ繝｢縺ｨ蜷後§謫堺ｽ懈─)
+//   W = 遘ｻ蜍・(X/Y 霆ｸ蛻ｶ邏・+ 閾ｪ逕ｱ遘ｻ蜍・
+//   E = 蝗櫁ｻ｢ (Z霆ｸ, 繝ｪ繝ｳ繧ｰ謫堺ｽ・
+//   R = 繝ｪ繧ｵ繧､繧ｺ (8繝上Φ繝峨Ν, 荳ｭ蠢・崋螳・
+//   Q = World/Local 繝医げ繝ｫ (3D 繧ｮ繧ｺ繝｢縺ｨ蜈ｱ譛・
+// 謌ｻ繧雁､: true = 繝槭え繧ｹ繧ｯ繝ｪ繝・け繧偵ぐ繧ｺ繝｢縺梧ｶ郁ｲｻ貂医∩
+bool DrawUIGizmo(EditorContext& ctx,
+                 const ImVec2& viewportMin,
+                 const ImVec2& viewportSize,
+                 int& drag,
+                 ImVec2& dragStart,
+                 float& startX,
+                 float& startY,
+                 float& startWidth,
+                 float& startHeight,
+                 float& startAngle,
+                 float& startZ)
 {
     HandleGizmoShortcuts(ctx);
 
@@ -255,35 +267,30 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
     const float sw = img ? t.localScale.x : 0.0f;
     const float sh = img ? t.localScale.y : 0.0f;
 
-    // Z 回転を quaternion から取り出す
+    // Z 蝗櫁ｻ｢繧・quaternion 縺九ｉ蜿悶ｊ蜃ｺ縺・
     const math::Quaternion& q = t.localRotation;
     const float zAngle = std::atan2f(2.0f*(q.w*q.z + q.x*q.y),
                                       1.0f - 2.0f*(q.y*q.y + q.z*q.z));
     const float cosZ = std::cosf(zAngle), sinZ = std::sinf(zAngle);
 
-    // 矩形中心 (キャンバス/スクリーン)
+    // 遏ｩ蠖｢荳ｭ蠢・(繧ｭ繝｣繝ｳ繝舌せ/繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ)
     const float cenCX = px + sw * 0.5f, cenCY = py + sh * 0.5f;
     const ImVec2 centerScr = toScreen(cenCX, cenCY);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     bool wantsMouse = false;
 
-    // s_drag: ドラッグ操作中のモードを保持するステートマシン変数。
-    //   -1  = 操作なし
-    //    0  = 自由移動 (中心クリック)
-    //    1  = X 軸拘束移動
-    //    2  = Y 軸拘束移動
-    //  3-10 = リサイズハンドル 0-7 (左上→右下, 時計回り)
-    //   20  = 回転リング
-    // IsMouseReleased でリセットされるためフレームをまたいで保持される。
-    static int    s_drag       = -1;
-    static ImVec2 s_start      = {};
-    static float  s_ox = 0, s_oy = 0, s_ow = 0, s_oh = 0;
-    static float  s_startAngle = 0.0f, s_startZ = 0.0f;
-
+    // drag: 繝峨Λ繝・げ謫堺ｽ應ｸｭ縺ｮ繝｢繝ｼ繝峨ｒ菫晄戟縺吶ｋ繧ｹ繝・・繝医・繧ｷ繝ｳ螟画焚縲・
+    //   -1  = 謫堺ｽ懊↑縺・
+    //    0  = 閾ｪ逕ｱ遘ｻ蜍・(荳ｭ蠢・け繝ｪ繝・け)
+    //    1  = X 霆ｸ諡俶據遘ｻ蜍・
+    //    2  = Y 霆ｸ諡俶據遘ｻ蜍・
+    //  3-10 = 繝ｪ繧ｵ繧､繧ｺ繝上Φ繝峨Ν 0-7 (蟾ｦ荳岩・蜿ｳ荳・ 譎りｨ亥屓繧・
+    //   20  = 蝗櫁ｻ｢繝ｪ繝ｳ繧ｰ
+    // IsMouseReleased 縺ｧ繝ｪ繧ｻ繝・ヨ縺輔ｌ繧九◆繧√ヵ繝ｬ繝ｼ繝繧偵∪縺溘＞縺ｧ菫晄戟縺輔ｌ繧九・
     const EditorContext::GizmoMode mode = ctx.gizmoMode;
 
-    // --- 回転を考慮した矩形アウトライン (常時表示) ---
+    // --- 蝗櫁ｻ｢繧定・・縺励◆遏ｩ蠖｢繧｢繧ｦ繝医Λ繧､繝ｳ (蟶ｸ譎り｡ｨ遉ｺ) ---
     auto rotOfs = [&](float lx, float ly) -> ImVec2 {
         return {
             centerScr.x + (lx*cosZ - ly*sinZ) * scaleX,
@@ -296,7 +303,7 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
         dl->AddQuad(c[0], c[1], c[2], c[3], kUIColOutline, 1.5f);
     }
 
-    // --- スクリーン空間のローカル軸ベクトル (単位長) ---
+    // --- 繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ遨ｺ髢薙・繝ｭ繝ｼ繧ｫ繝ｫ霆ｸ繝吶け繝医Ν (蜊倅ｽ埼聞) ---
     auto screenUnitAxis = [&](float ax, float ay) -> ImVec2 {
         ImVec2 v = { ax * scaleX, ay * scaleY };
         const float len = std::sqrt(v.x*v.x + v.y*v.y);
@@ -308,7 +315,7 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
     const ImVec2 tipY = { centerScr.x + dirY.x * kUIArrowLen, centerScr.y + dirY.y * kUIArrowLen };
 
     // ==============================
-    // W : 移動モード
+    // W : 遘ｻ蜍輔Δ繝ｼ繝・
     // ==============================
     if (mode == EditorContext::GizmoMode::Translate) {
         const bool hovX = IsMouseNearLine(centerScr, tipX, 7.0f);
@@ -324,7 +331,7 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
         dl->AddCircleFilled(centerScr, kUICenterR, hovC ? kUIColCtrHov : kUIColCtr);
         dl->AddCircle(centerScr, kUICenterR + 1.0f, IM_COL32(0,0,0,120));
 
-        // UIText の場合は外周の十字も描く
+        // UIText 縺ｮ蝣ｴ蜷医・螟門捉縺ｮ蜊∝ｭ励ｂ謠上￥
         if (txt) {
             constexpr float kR = 10.0f;
             dl->AddLine({ centerScr.x - kR, centerScr.y }, { centerScr.x + kR, centerScr.y }, IM_COL32(0,200,255,180), 1.5f);
@@ -332,28 +339,28 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
         }
 
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            if      (hovX) { s_drag = 1; }
-            else if (hovY) { s_drag = 2; }
-            else if (hovC) { s_drag = 0; }
-            if (s_drag >= 0) { s_start = mp; s_ox = px; s_oy = py; }
+            if      (hovX) { drag = 1; }
+            else if (hovY) { drag = 2; }
+            else if (hovC) { drag = 0; }
+            if (drag >= 0) { dragStart = mp; startX = px; startY = py; }
         }
 
-        if (s_drag >= 0 && s_drag <= 2 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (drag >= 0 && drag <= 2 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const ImVec2 mm = ImGui::GetMousePos();
-            const float dcx = (mm.x - s_start.x) / scaleX;
-            const float dcy = (mm.y - s_start.y) / scaleY;
-            float newX = s_ox, newY = s_oy;
-            if (s_drag == 0) {
-                newX = s_ox + dcx;
-                newY = s_oy + dcy;
-            } else if (s_drag == 1) {
+            const float dcx = (mm.x - dragStart.x) / scaleX;
+            const float dcy = (mm.y - dragStart.y) / scaleY;
+            float newX = startX, newY = startY;
+            if (drag == 0) {
+                newX = startX + dcx;
+                newY = startY + dcy;
+            } else if (drag == 1) {
                 const float proj = dcx * cosZ + dcy * sinZ;
-                newX = s_ox + proj * cosZ;
-                newY = s_oy + proj * sinZ;
+                newX = startX + proj * cosZ;
+                newY = startY + proj * sinZ;
             } else {
                 const float proj = dcx * (-sinZ) + dcy * cosZ;
-                newX = s_ox + proj * (-sinZ);
-                newY = s_oy + proj * cosZ;
+                newX = startX + proj * (-sinZ);
+                newY = startY + proj * cosZ;
             }
             if (ctx.snapEnabled) { newX = std::round(newX); newY = std::round(newY); }
             t.localPosition.x = newX;
@@ -361,7 +368,7 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
         }
     }
     // ==============================
-    // E : 回転モード
+    // E : 蝗櫁ｻ｢繝｢繝ｼ繝・
     // ==============================
     else if (mode == EditorContext::GizmoMode::Rotate) {
         const float hW = sw * 0.5f * scaleX, hH = sh * 0.5f * scaleY;
@@ -377,21 +384,21 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
             wantsMouse = true;
         }
 
-        // 角度インジケーター
+        // 隗貞ｺｦ繧､繝ｳ繧ｸ繧ｱ繝ｼ繧ｿ繝ｼ
         const ImVec2 rotTip = { centerScr.x + cosZ * ringR, centerScr.y + sinZ * ringR };
         dl->AddLine(centerScr, rotTip, IM_COL32(0,200,255,180), 1.5f);
         dl->AddCircleFilled(rotTip, 4.0f, IM_COL32(0,200,255,255));
 
         if (hovRing && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            s_drag = 20;
-            s_startAngle = std::atan2f(mp.y - centerScr.y, mp.x - centerScr.x);
-            s_startZ = zAngle;
+            drag = 20;
+            startAngle = std::atan2f(mp.y - centerScr.y, mp.x - centerScr.x);
+            startZ = zAngle;
         }
 
-        if (s_drag == 20 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (drag == 20 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const ImVec2 mm = ImGui::GetMousePos();
             const float curAngle = std::atan2f(mm.y - centerScr.y, mm.x - centerScr.x);
-            float newZ = s_startZ + (curAngle - s_startAngle);
+            float newZ = startZ + (curAngle - startAngle);
             if (ctx.snapEnabled) {
                 constexpr float k15deg = 3.14159265f / 12.0f;
                 newZ = std::round(newZ / k15deg) * k15deg;
@@ -399,14 +406,14 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
             t.localRotation = math::Quaternion::FromEuler({ 0.0f, 0.0f, newZ });
         }
 
-        // 角度テキスト
+        // 隗貞ｺｦ繝・く繧ｹ繝・
         char buf[32];
         snprintf(buf, sizeof(buf), "%.1f deg", zAngle * (180.0f / 3.14159265f));
         dl->AddText({ centerScr.x + ringR + 6.0f, centerScr.y - 7.0f },
                     IM_COL32(200, 220, 255, 200), buf);
     }
     // ==============================
-    // R : スケールモード (UIImage のみ)
+    // R : 繧ｹ繧ｱ繝ｼ繝ｫ繝｢繝ｼ繝・(UIImage 縺ｮ縺ｿ)
     // ==============================
     else if (mode == EditorContext::GizmoMode::Scale && img) {
         const float hW = sw * 0.5f, hH = sh * 0.5f;
@@ -424,41 +431,196 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
             dl->AddRectFilled(hMin, hMax, hov ? kUIColHndHov : kUIColHandle);
             dl->AddRect(hMin, hMax, IM_COL32(0,0,0,100));
             if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                s_drag = 3 + i; s_start = ImGui::GetMousePos();
-                s_ox = px; s_oy = py; s_ow = sw; s_oh = sh;
+                drag = 3 + i; dragStart = ImGui::GetMousePos();
+                startX = px; startY = py; startWidth = sw; startHeight = sh;
             }
         }
 
-        if (s_drag >= 3 && s_drag <= 10 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (drag >= 3 && drag <= 10 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const ImVec2 mm = ImGui::GetMousePos();
-            const float dcx = (mm.x - s_start.x) / scaleX;
-            const float dcy = (mm.y - s_start.y) / scaleY;
-            // ローカル軸にプロジェクション
+            const float dcx = (mm.x - dragStart.x) / scaleX;
+            const float dcy = (mm.y - dragStart.y) / scaleY;
+            // 繝ｭ繝ｼ繧ｫ繝ｫ霆ｸ縺ｫ繝励Ο繧ｸ繧ｧ繧ｯ繧ｷ繝ｧ繝ｳ
             const float projX =  dcx * cosZ + dcy * sinZ;
             const float projY = -dcx * sinZ + dcy * cosZ;
 
-            const int hi = s_drag - 3;
-            float nw = s_ow, nh = s_oh;
-            if (hi == 0 || hi == 3 || hi == 5) nw = s_ow - projX; // left
-            if (hi == 2 || hi == 4 || hi == 7) nw = s_ow + projX; // right
-            if (hi == 0 || hi == 1 || hi == 2) nh = s_oh - projY; // top
-            if (hi == 5 || hi == 6 || hi == 7) nh = s_oh + projY; // bottom
+            const int hi = drag - 3;
+            float nw = startWidth, nh = startHeight;
+            if (hi == 0 || hi == 3 || hi == 5) nw = startWidth - projX; // left
+            if (hi == 2 || hi == 4 || hi == 7) nw = startWidth + projX; // right
+            if (hi == 0 || hi == 1 || hi == 2) nh = startHeight - projY; // top
+            if (hi == 5 || hi == 6 || hi == 7) nh = startHeight + projY; // bottom
             nw = (std::max)(1.0f, nw);
             nh = (std::max)(1.0f, nh);
             if (ctx.snapEnabled) { nw = std::round(nw); nh = std::round(nh); }
 
-            // 中心を固定して位置を調整
+            // 荳ｭ蠢・ｒ蝗ｺ螳壹＠縺ｦ菴咲ｽｮ繧定ｪｿ謨ｴ
             t.localScale.x = nw;
             t.localScale.y = nh;
-            t.localPosition.x = (s_ox + s_ow * 0.5f) - nw * 0.5f;
-            t.localPosition.y = (s_oy + s_oh * 0.5f) - nh * 0.5f;
+            t.localPosition.x = (startX + startWidth * 0.5f) - nw * 0.5f;
+            t.localPosition.y = (startY + startHeight * 0.5f) - nh * 0.5f;
         }
     }
 
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-        s_drag = -1;
+        drag = -1;
 
-    return wantsMouse || s_drag != -1;
+    return wantsMouse || drag != -1;
+}
+
+// 繝ｯ繝ｼ繝ｫ繝牙ｺｧ讓・竊・繝薙Η繝ｼ繝昴・繝医せ繧ｯ繝ｪ繝ｼ繝ｳ蠎ｧ讓吶∈謚募ｽｱ (w<=0 縺ｪ繧・false)
+bool WorldToScreen(const math::Vector3& world,
+                   const EditorContext& ctx,
+                   const ImVec2& vpMin, const ImVec2& vpSize,
+                   ImVec2& out)
+{
+    if (!ctx.editorCamera) return false;
+    const math::Matrix4 vp = ctx.editorCamera->GetProjectionMatrix()
+                           * ctx.editorCamera->GetViewMatrix();
+    const math::Vector4 clip = vp * math::Vector4{ world.x, world.y, world.z, 1.0f };
+    if (clip.w <= 0.001f) return false;
+    const float ndcX =  clip.x / clip.w;
+    const float ndcY = -clip.y / clip.w;
+    out = {
+        vpMin.x + (ndcX * 0.5f + 0.5f) * vpSize.x,
+        vpMin.y + (ndcY * 0.5f + 0.5f) * vpSize.y
+    };
+    return true;
+}
+
+void DrawSelectionOutline(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
+{
+    if (!ctx.activeScene || !ctx.editorCamera || ctx.selectedEntities.empty()) return;
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    constexpr ImU32 kOuterCol  = IM_COL32(255, 165,  0,  55);
+    constexpr ImU32 kInnerCol  = IM_COL32(255, 185, 50, 230);
+    constexpr float kThickOuter = 4.0f;
+    constexpr float kThickInner = 1.5f;
+
+    auto transformByWorld = [](const math::Matrix4& m, const math::Vector3& p) -> math::Vector3 {
+        math::Vector4 v = m * math::Vector4{ p.x, p.y, p.z, 1.0f };
+        if (v.w > 0.0001f) v = v * (1.0f / v.w);
+        return { v.x, v.y, v.z };
+    };
+
+    for (scene::EntityID id : ctx.selectedEntities) {
+        scene::GameObject* go = ctx.activeScene->GetGameObject(id);
+        if (!go) continue;
+
+        const math::Matrix4 world = go->transform.GetWorldMatrix();
+        auto* mr = go->GetComponent<scene::MeshRenderer>();
+
+        // 繝｡繝・す繝･縺九ｉ AABB 繧定ｨ育ｮ・
+        math::Vector3 bMin = {}, bMax = {};
+        bool hasBounds = false;
+        if (mr && mr->mesh && !mr->mesh->cpuVertices.empty()) {
+            bMin = bMax = mr->mesh->cpuVertices[0].position;
+            for (const auto& v : mr->mesh->cpuVertices) {
+                bMin.x = (std::min)(bMin.x, v.position.x);
+                bMin.y = (std::min)(bMin.y, v.position.y);
+                bMin.z = (std::min)(bMin.z, v.position.z);
+                bMax.x = (std::max)(bMax.x, v.position.x);
+                bMax.y = (std::max)(bMax.y, v.position.y);
+                bMax.z = (std::max)(bMax.z, v.position.z);
+            }
+            hasBounds = true;
+        }
+
+        if (!hasBounds) {
+            // 繝｡繝・す繝･縺ｪ縺・ 繝斐・繝・ヨ轤ｹ縺ｫ蜀・ｒ謠上￥
+            ImVec2 sp;
+            if (WorldToScreen(go->transform.position, ctx, vpMin, vpSize, sp)) {
+                dl->AddCircle(sp, 16.0f, kOuterCol,  24, kThickOuter);
+                dl->AddCircle(sp, 16.0f, kInnerCol,  24, kThickInner);
+            }
+            continue;
+        }
+
+        // AABB 縺ｮ 8 繧ｳ繝ｼ繝翫・繧偵Ρ繝ｼ繝ｫ繝臥ｩｺ髢薙∈螟画鋤縺励※繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ謚募ｽｱ
+        const math::Vector3 localCorners[8] = {
+            {bMin.x, bMin.y, bMin.z}, {bMax.x, bMin.y, bMin.z},
+            {bMax.x, bMax.y, bMin.z}, {bMin.x, bMax.y, bMin.z},
+            {bMin.x, bMin.y, bMax.z}, {bMax.x, bMin.y, bMax.z},
+            {bMax.x, bMax.y, bMax.z}, {bMin.x, bMax.y, bMax.z},
+        };
+
+        ImVec2 sc[8];
+        bool   vis[8];
+        for (int i = 0; i < 8; ++i)
+            vis[i] = WorldToScreen(transformByWorld(world, localCorners[i]), ctx, vpMin, vpSize, sc[i]);
+
+        // AABB 縺ｮ 12 霎ｺ
+        constexpr int kEdges[12][2] = {
+            {0,1},{1,2},{2,3},{3,0},   // 蜑埼擇 4 霎ｺ
+            {4,5},{5,6},{6,7},{7,4},   // 閭碁擇 4 霎ｺ
+            {0,4},{1,5},{2,6},{3,7},   // 謗･邯・4 霎ｺ
+        };
+        for (const auto& e : kEdges) {
+            if (!vis[e[0]] || !vis[e[1]]) continue;
+            dl->AddLine(sc[e[0]], sc[e[1]], kOuterCol,  kThickOuter);
+            dl->AddLine(sc[e[0]], sc[e[1]], kInnerCol,  kThickInner);
+        }
+    }
+}
+
+void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
+{
+    if (!ctx.activeScene || !ctx.editorCamera) return;
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 vpMax = { vpMin.x + vpSize.x, vpMin.y + vpSize.y };
+
+    for (auto& go : ctx.activeScene->GameObjects()) {
+        if (!go.activeSelf()) continue;
+
+        ImVec2 sp;
+        if (!WorldToScreen(go.transform.position, ctx, vpMin, vpSize, sp)) continue;
+        if (sp.x < vpMin.x || sp.x > vpMax.x || sp.y < vpMin.y || sp.y > vpMax.y) continue;
+
+        const bool isSelected = std::find(ctx.selectedEntities.begin(),
+                                          ctx.selectedEntities.end(),
+                                          go.GetID()) != ctx.selectedEntities.end();
+        const ImU32 selCol = IM_COL32(255, 220, 60, 255);
+
+        if (auto* light = go.GetComponent<scene::LightComponent>()) {
+            // 繝ｩ繧､繝医い繧､繧ｳ繝ｳ: 荳ｭ蠢・・ + 謾ｾ蟆・ｷ・
+            constexpr float kR = 8.0f;
+            constexpr float kRay = 14.0f;
+            constexpr int   kRays = 8;
+            const ImU32 col = isSelected ? selCol : IM_COL32(255, 200, 60, 200);
+            dl->AddCircleFilled(sp, kR, col);
+            dl->AddCircle(sp, kR, IM_COL32(0, 0, 0, 120), 16, 1.5f);
+            for (int i = 0; i < kRays; ++i) {
+                const float ang = static_cast<float>(i) * (2.0f * 3.14159265f / kRays);
+                const ImVec2 a = { sp.x + std::cosf(ang) * (kR + 3.0f),
+                                   sp.y + std::sinf(ang) * (kR + 3.0f) };
+                const ImVec2 b = { sp.x + std::cosf(ang) * (kR + kRay),
+                                   sp.y + std::sinf(ang) * (kR + kRay) };
+                dl->AddLine(a, b, col, 1.5f);
+            }
+        } else if (go.GetComponent<scene::CameraComponent>()) {
+            // 繧ｫ繝｡繝ｩ繧｢繧､繧ｳ繝ｳ: 遏ｩ蠖｢繝懊ョ繧｣ + 蜿ｰ蠖｢繝ｬ繝ｳ繧ｺ
+            constexpr float kW = 16.0f, kH = 11.0f;
+            constexpr float kLW = 7.0f, kLH = 5.0f, kLX = 9.0f;
+            const ImU32 col  = isSelected ? selCol : IM_COL32(120, 200, 255, 200);
+            const ImU32 dark = IM_COL32(0, 0, 0, 140);
+            // 繝懊ョ繧｣
+            dl->AddRectFilled({ sp.x - kW, sp.y - kH * 0.5f },
+                              { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, col, 2.0f);
+            dl->AddRect({ sp.x - kW, sp.y - kH * 0.5f },
+                        { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, dark, 2.0f);
+            // 繝ｬ繝ｳ繧ｺ蜿ｰ蠖｢
+            ImVec2 lens[4] = {
+                { sp.x + kW * 0.4f, sp.y - kLH },
+                { sp.x + kLX,       sp.y - kLW  },
+                { sp.x + kLX,       sp.y + kLW  },
+                { sp.x + kW * 0.4f, sp.y + kLH  },
+            };
+            dl->AddConvexPolyFilled(lens, 4, col);
+            dl->AddPolyline(lens, 4, dark, ImDrawFlags_Closed, 1.0f);
+        }
+    }
 }
 
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
@@ -482,10 +644,10 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
 
     if (!ImGuizmo::IsUsingViewManipulate()) return;
 
-    // column-major → row-major に戻す
+    // column-major 竊・row-major 縺ｫ謌ｻ縺・
     const math::Matrix4 viewRow = math::Matrix4::Transpose(viewCol);
 
-    // カメラ位置: pos = -R^T * t  (view の 3x3 = R^T, t = viewRow の平行移動列)
+    // 繧ｫ繝｡繝ｩ菴咲ｽｮ: pos = -R^T * t  (view 縺ｮ 3x3 = R^T, t = viewRow 縺ｮ蟷ｳ陦檎ｧｻ蜍募・)
     const float tx = viewRow.m[0][3], ty = viewRow.m[1][3], tz = viewRow.m[2][3];
     ctx.editorCamera->m_position = {
         -(viewRow.m[0][0]*tx + viewRow.m[1][0]*ty + viewRow.m[2][0]*tz),
@@ -493,7 +655,7 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
         -(viewRow.m[0][2]*tx + viewRow.m[1][2]*ty + viewRow.m[2][2]*tz)
     };
 
-    // カメラ回転: ワールド回転行列の列 = view の 3x3 の行 → 転置して FromMatrix4
+    // 繧ｫ繝｡繝ｩ蝗櫁ｻ｢: 繝ｯ繝ｼ繝ｫ繝牙屓霆｢陦悟・縺ｮ蛻・= view 縺ｮ 3x3 縺ｮ陦・竊・霆｢鄂ｮ縺励※ FromMatrix4
     math::Matrix4 rotMat = math::Matrix4::Identity();
     rotMat.m[0][0] = viewRow.m[0][0]; rotMat.m[0][1] = viewRow.m[1][0]; rotMat.m[0][2] = viewRow.m[2][0];
     rotMat.m[1][0] = viewRow.m[0][1]; rotMat.m[1][1] = viewRow.m[1][1]; rotMat.m[1][2] = viewRow.m[2][1];
@@ -501,7 +663,13 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
     ctx.editorCamera->m_rotation = math::Quaternion::FromMatrix4(rotMat);
 }
 
-void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
+void DrawGizmo(EditorContext& ctx,
+               const ImVec2& viewportMin,
+               const ImVec2& viewportSize,
+               int& lastOp,
+               int& lastMode,
+               bool& prevOver,
+               bool& prevUsing)
 {
     scene::EntityID selected = ctx.PrimarySelected();
     if (!selected.IsValid() || !ctx.activeScene || !ctx.editorCamera) return;
@@ -536,13 +704,11 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
         : ImGuizmo::LOCAL;
 
     float snap[3] = { ctx.snapDistance, ctx.snapDistance, ctx.snapDistance };
-    static int s_lastOp = -1;
-    static int s_lastMode = -1;
     const int opInt = static_cast<int>(op);
     const int modeInt = static_cast<int>(mode);
-    if (s_lastOp != opInt || s_lastMode != modeInt) {
-        s_lastOp = opInt;
-        s_lastMode = modeInt;
+    if (lastOp != opInt || lastMode != modeInt) {
+        lastOp = opInt;
+        lastMode = modeInt;
     }
 
     ImGuizmo::Manipulate(
@@ -556,11 +722,9 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
 
     const bool gizmoOver = ImGuizmo::IsOver();
     const bool gizmoUsing = ImGuizmo::IsUsing();
-    static bool s_prevOver = false;
-    static bool s_prevUsing = false;
-    if (gizmoOver != s_prevOver || gizmoUsing != s_prevUsing) {
-        s_prevOver = gizmoOver;
-        s_prevUsing = gizmoUsing;
+    if (gizmoOver != prevOver || gizmoUsing != prevUsing) {
+        prevOver = gizmoOver;
+        prevUsing = gizmoUsing;
     }
 
     if (!gizmoUsing) return;
@@ -572,8 +736,8 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
         localRow = parentInv * worldRow;
     }
 
-    // ImGuizmo の DecomposeMatrixToComponents は左手系オイラー角で TRS を返すため、
-    // エンジンの右手系クォータニオンと符号が合わない。行列から直接 TRS を抽出することで回避する。
+    // ImGuizmo 縺ｮ DecomposeMatrixToComponents 縺ｯ蟾ｦ謇狗ｳｻ繧ｪ繧､繝ｩ繝ｼ隗偵〒 TRS 繧定ｿ斐☆縺溘ａ縲・
+    // 繧ｨ繝ｳ繧ｸ繝ｳ縺ｮ蜿ｳ謇狗ｳｻ繧ｯ繧ｩ繝ｼ繧ｿ繝九が繝ｳ縺ｨ隨ｦ蜿ｷ縺悟粋繧上↑縺・り｡悟・縺九ｉ逶ｴ謗･ TRS 繧呈歓蜃ｺ縺吶ｋ縺薙→縺ｧ蝗樣∩縺吶ｋ縲・
     const float sx = std::sqrt(localRow.m[0][0]*localRow.m[0][0] + localRow.m[1][0]*localRow.m[1][0] + localRow.m[2][0]*localRow.m[2][0]);
     const float sy = std::sqrt(localRow.m[0][1]*localRow.m[0][1] + localRow.m[1][1]*localRow.m[1][1] + localRow.m[2][1]*localRow.m[2][1]);
     const float sz = std::sqrt(localRow.m[0][2]*localRow.m[0][2] + localRow.m[1][2]*localRow.m[1][2] + localRow.m[2][2]*localRow.m[2][2]);
@@ -758,17 +922,27 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         PickEntity(ctx, viewportMin);
 
     if (isSceneView && !inPlayOrPause) {
-        DrawGizmo(ctx, viewportMin, size);
+        DrawSelectionOutline(ctx, viewportMin, size);
+        DrawSceneIcons(ctx, viewportMin, size);
+        DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
         DrawOrientationGizmo(ctx, viewportMin, size);
+
+        // F 繧ｭ繝ｼ: 驕ｸ謚槭が繝悶ず繧ｧ繧ｯ繝医∈繝輔か繝ｼ繧ｫ繧ｹ (繝薙Η繝ｼ繝昴・繝医↓繧ｭ繝ｼ繝懊・繝峨ヵ繧ｩ繝ｼ繧ｫ繧ｹ縺後≠繧句ｴ蜷医・縺ｿ)
+        if (ctx.viewportFocused && input::Input::KeyDown(input::KeyCode::F)) {
+            if (auto* go = ctx.GetSelectedGO()) {
+                ctx.focusTargetPosition    = go->transform.position;
+                ctx.requestFocusOnSelected = true;
+            }
+        }
     }
     bool uiGizmoActive = false;
     if (isUIView && !inPlayOrPause)
-        uiGizmoActive = DrawUIGizmo(ctx, viewportMin, size);
+        uiGizmoActive = DrawUIGizmo(ctx, viewportMin, size, m_uiGizmoDrag, m_uiGizmoDragStart, m_uiGizmoStartX, m_uiGizmoStartY, m_uiGizmoStartWidth, m_uiGizmoStartHeight, m_uiGizmoStartAngle, m_uiGizmoStartZ);
     if (isUIView && !inPlayOrPause && viewportHovered
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !uiGizmoActive)
         PickUIEntity(ctx, viewportMin, size);
 
-    // Play / Pause 中はボーダーで状態を示す
+    // Play / Pause 荳ｭ縺ｯ繝懊・繝繝ｼ縺ｧ迥ｶ諷九ｒ遉ｺ縺・
     if (isGameView && ctx.playMode && ctx.playMode->IsPlaying())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(80, 200, 80, 220), 0.0f, 0, 3.0f);
     else if (isGameView && ctx.playMode && ctx.playMode->IsPaused())

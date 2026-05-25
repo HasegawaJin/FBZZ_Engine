@@ -35,6 +35,20 @@ protected:
 private:
     Kind m_kind = Kind::Scene;
     std::string m_windowName;
+
+    int m_uiGizmoDrag = -1;
+    ImVec2 m_uiGizmoDragStart = {};
+    float m_uiGizmoStartX = 0.0f;
+    float m_uiGizmoStartY = 0.0f;
+    float m_uiGizmoStartWidth = 0.0f;
+    float m_uiGizmoStartHeight = 0.0f;
+    float m_uiGizmoStartAngle = 0.0f;
+    float m_uiGizmoStartZ = 0.0f;
+
+    int m_lastGizmoOp = -1;
+    int m_lastGizmoMode = -1;
+    bool m_prevGizmoOver = false;
+    bool m_prevGizmoUsing = false;
 };
 
 } // namespace fbzz::editor
