@@ -44,6 +44,14 @@
             "presentation": { "panel": "shared", "reveal": "always" }
         },
         {
+            "label": "CMake: Build Sandbox (Debug)",
+            "type": "shell",
+            "command": "cmake --build --preset debug --target sandbox",
+            "group": "build",
+            "dependsOn": "CMake: Configure (Debug)",
+            "presentation": { "panel": "shared", "reveal": "always" }
+        },
+        {
             "label": "CMake: Build (Tests)",
             "type": "shell",
             "command": "cmake --build build/debug --target fbzz_tests",
