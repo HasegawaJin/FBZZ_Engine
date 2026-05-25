@@ -1,0 +1,26 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "fbzz-vs",
+      "displayName": "FBZZ Visual Studio",
+      "binaryDir": "${sourceDir}/Build/VS",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release",
+        "FBZZ_ENGINE_ROOT": "{{ENGINE_ROOT}}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "fbzz-debug",
+      "configurePreset": "fbzz-vs",
+      "configuration": "Debug"
+    },
+    {
+      "name": "fbzz-release",
+      "configurePreset": "fbzz-vs",
+      "configuration": "Release"
+    }
+  ]
+}

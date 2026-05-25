@@ -22,6 +22,7 @@ struct ProjectEntry {
     bool settingsExists = false;
     bool cmakeExists = false;
     bool layoutValid = false;
+    bool generatedRootsExist = false;
 };
 
 } // namespace fbzz::hub

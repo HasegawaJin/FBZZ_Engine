@@ -30,6 +30,9 @@ public:
     void SetTheme(const std::string& theme) { m_theme = theme; }
 
     void SetProjects(std::vector<ConfigProject> projects);
+    bool AddProject(const std::string& path, const std::string& lastOpened);
+    bool RemoveProject(const std::string& path);
+    [[nodiscard]] bool ContainsProject(const std::string& path) const;
     void UpdateLastOpened(const std::string& path, const std::string& lastOpened);
 
 private:
