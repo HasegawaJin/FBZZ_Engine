@@ -61,6 +61,91 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = "editor_config/imgui_layout.ini";
+
+    // ini がなければデフォルトレイアウトをメモリから適用する。
+    // LoadIniSettingsFromMemory は SettingsLoaded フラグを立てるため、
+    // その後の NewFrame() でファイルから上書きされることはない。
+    if (!util::FileSystem::Exists("editor_config/imgui_layout.ini")) {
+        static constexpr const char* DEFAULT_IMGUI_LAYOUT =
+            "[Window][##statusbar]\n"
+            "Pos=0,970\n"
+            "Size=1904,32\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Window][##DockSpaceHost]\n"
+            "Pos=0,0\n"
+            "Size=1904,993\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Window][Debug##Default]\n"
+            "Pos=60,60\n"
+            "Size=400,400\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Window][Scene Hierarchy]\n"
+            "Pos=0,19\n"
+            "Size=209,974\n"
+            "Collapsed=0\n"
+            "DockId=0x00000001,0\n"
+            "\n"
+            "[Window][Inspector]\n"
+            "Pos=1675,19\n"
+            "Size=229,974\n"
+            "Collapsed=0\n"
+            "DockId=0x00000004,0\n"
+            "\n"
+            "[Window][Scene]\n"
+            "Pos=211,19\n"
+            "Size=1462,667\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,0\n"
+            "\n"
+            "[Window][Game]\n"
+            "Pos=211,19\n"
+            "Size=1462,667\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,2\n"
+            "\n"
+            "[Window][UI]\n"
+            "Pos=211,19\n"
+            "Size=1462,667\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,1\n"
+            "\n"
+            "[Window][Console]\n"
+            "Pos=211,688\n"
+            "Size=1462,305\n"
+            "Collapsed=0\n"
+            "DockId=0x00000005,1\n"
+            "\n"
+            "[Window][Asset Browser]\n"
+            "Pos=211,688\n"
+            "Size=1462,305\n"
+            "Collapsed=0\n"
+            "DockId=0x00000005,0\n"
+            "\n"
+            "[Window][Project Settings]\n"
+            "Pos=211,19\n"
+            "Size=1462,594\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,3\n"
+            "\n"
+            "[Window][New Scene]\n"
+            "Pos=820,459\n"
+            "Size=264,75\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Docking][Data]\n"
+            "DockSpace       ID=0xFF535877 Window=0xE26AC72C Pos=0,19 Size=1904,974 Split=X\n"
+            "  DockNode      ID=0x00000001 Parent=0xFF535877 SizeRef=209,1042 HiddenTabBar=1 Selected=0xB8729153\n"
+            "  DockNode      ID=0x00000006 Parent=0xFF535877 SizeRef=1703,1042 Split=X\n"
+            "    DockNode    ID=0x00000003 Parent=0x00000006 SizeRef=1478,1042 Split=Y\n"
+            "      DockNode  ID=0x00000007 Parent=0x00000003 SizeRef=1464,683 CentralNode=1 Selected=0xD1EB2482\n"
+            "      DockNode  ID=0x00000005 Parent=0x00000003 SizeRef=1464,305 Selected=0x36AF052B\n"
+            "    DockNode    ID=0x00000004 Parent=0x00000006 SizeRef=229,1042 HiddenTabBar=1 Selected=0x36DC96AB\n";
+        ImGui::LoadIniSettingsFromMemory(DEFAULT_IMGUI_LAYOUT);
+    }
+
     ImGui::StyleColorsDark();
 
     renderer.ImGuiInit(m_hwnd);
@@ -276,7 +361,13 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         if (ImGui::MenuItem("New Scene")) {
             ModalDialog::OpenConfirm("New Scene",
                 "Changes will be lost. Continue?",
-                [&ctx]() { (void)ctx; });
+                [this, &ctx]() {
+                    if (ctx.activeScene) ctx.activeScene->Clear();
+                    ctx.selectedEntities.clear();
+                    m_settings.lastScenePath.clear();
+                    m_lastSceneWriteTime = {};
+                    FBZZ_LOG_INFO("New scene created");
+                });
         }
         if (ImGui::MenuItem("Open...", "Ctrl+O", false, ctx.activeScene != nullptr))
             OpenSceneFromDialog();
@@ -342,6 +433,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             pm->Stop(*ctx.activeScene);
         if (ImGui::MenuItem(pm->IsPaused() ? " Resume " : " Pause  "))
             pm->Pause();
+        if (pm->IsPaused() && ImGui::MenuItem("  Step   "))
+            pm->RequestStep();
     }
 
     ImGui::EndMenuBar();
