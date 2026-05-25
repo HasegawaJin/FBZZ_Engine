@@ -92,14 +92,13 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
             ps.tags.erase(ps.tags.begin() + removeIdx);
 
         ImGui::Spacing();
-        static char s_newTag[64] = {};
         ImGui::SetNextItemWidth(-60.0f);
-        ImGui::InputText("##newtag", s_newTag, sizeof(s_newTag));
+        ImGui::InputText("##newtag", m_newTag, sizeof(m_newTag));
         ImGui::SameLine();
-        if (ImGui::SmallButton("Add") && s_newTag[0] != '\0')
+        if (ImGui::SmallButton("Add") && m_newTag[0] != '\0')
         {
-            ps.tags.push_back(s_newTag);
-            s_newTag[0] = '\0';
+            ps.tags.push_back(m_newTag);
+            m_newTag[0] = '\0';
         }
     }
 
