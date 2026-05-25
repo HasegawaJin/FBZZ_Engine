@@ -16,6 +16,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
@@ -103,6 +104,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     util::FileSystem::EnsureDirectory(SETTINGS_DIR);
     m_settings.Load(SETTINGS_PATH);
     m_ctx.projectSettings.Load(PROJECT_SETTINGS_PATH);
+    core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
     m_ctx.showGrid    = m_settings.showGrid;
     m_ctx.snapEnabled = m_settings.snapEnabled;
 
@@ -261,31 +263,36 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         bool canRedo = ctx.undoStack && ctx.undoStack->CanRedo();
         if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo)) ctx.undoStack->Undo();
         if (ImGui::MenuItem("Redo", "Ctrl+Y", false, canRedo)) ctx.undoStack->Redo();
-        ImGui::Separator();
-        if (ImGui::MenuItem("Project Settings") && m_projectSettingsPanel)
-            m_projectSettingsPanel->visible = true;
         ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("View")) {
+        if (ImGui::BeginMenu("Panels")) {
+            for (auto& panel : m_panels) {
+                if (panel->ShowInViewMenu())
+                    ImGui::MenuItem(panel->GetViewMenuName(), nullptr, &panel->visible);
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
         ImGui::MenuItem("Grid",        nullptr, &ctx.showGrid);
         ImGui::MenuItem("Light Range", nullptr, &ctx.showLightRange);
-        ImGui::MenuItem("Colliders",   nullptr, &ctx.renderSettings.showColliders);
+        ImGui::MenuItem("Colliders",   nullptr, &ctx.projectSettings.render.showColliders);
         ImGui::MenuItem("Skeleton",    nullptr, &ctx.showSkeleton);
         ImGui::MenuItem("Stats",       nullptr, &ctx.showSceneStats);
         ImGui::MenuItem("Hot Reload",  nullptr, &ctx.hotReloadEnabled);
         ImGui::Separator();
-        ImGui::MenuItem("Wireframe",   nullptr, &ctx.renderSettings.wireframeMode);
+        ImGui::MenuItem("Wireframe",   nullptr, &ctx.projectSettings.render.wireframeMode);
         ImGui::Separator();
         if (ImGui::BeginMenu("Post Process")) {
-            ImGui::MenuItem("Shadow",   nullptr, &ctx.renderSettings.shadowEnabled);
-            ImGui::MenuItem("Bloom",    nullptr, &ctx.renderSettings.bloomEnabled);
-            ImGui::MenuItem("Fog",      nullptr, &ctx.renderSettings.fogEnabled);
-            ImGui::MenuItem("FXAA",     nullptr, &ctx.renderSettings.fxaaEnabled);
+            ImGui::MenuItem("Shadow",   nullptr, &ctx.projectSettings.render.shadowEnabled);
+            ImGui::MenuItem("Bloom",    nullptr, &ctx.projectSettings.render.bloomEnabled);
+            ImGui::MenuItem("Fog",      nullptr, &ctx.projectSettings.render.fogEnabled);
+            ImGui::MenuItem("FXAA",     nullptr, &ctx.projectSettings.render.fxaaEnabled);
             ImGui::Separator();
-            ImGui::SliderFloat("Exposure",    &ctx.renderSettings.exposure,   0.1f, 4.0f);
-            ImGui::SliderFloat("Fog Density", &ctx.renderSettings.fogDensity, 0.0f, 1.0f);
-            ImGui::SliderFloat("Fog Far",     &ctx.renderSettings.fogFar,     1.0f, 100.0f);
+            ImGui::SliderFloat("Exposure",    &ctx.projectSettings.render.exposure,   0.1f, 4.0f);
+            ImGui::SliderFloat("Fog Density", &ctx.projectSettings.render.fogDensity, 0.0f, 1.0f);
+            ImGui::SliderFloat("Fog Far",     &ctx.projectSettings.render.fogFar,     1.0f, 100.0f);
             ImGui::EndMenu();
         }
         ImGui::EndMenu();
@@ -350,6 +357,7 @@ bool EditorApp::SaveScene()
         FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
         return false;
     }
+    m_ctx.projectSettings.Save(PROJECT_SETTINGS_PATH);
 
     CacheSceneWriteTime();
     FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
@@ -368,6 +376,7 @@ bool EditorApp::SaveSceneAsDialog()
         FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
         return false;
     }
+    m_ctx.projectSettings.Save(PROJECT_SETTINGS_PATH);
 
     m_settings.lastScenePath = path;
     CacheSceneWriteTime();
