@@ -4,6 +4,7 @@
 #include <Physics/RigidBody.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 
 namespace fbzz::physics {
@@ -132,6 +133,21 @@ void RigidBody::RecomputeInertia()
         // AABB は軸整合前提のため回転を許すと形状定義と衝突判定がずれる。
         m_invInertiaDiag = math::Vector3::ZERO;
         m_angularVelocity = math::Vector3::ZERO;
+    }
+    else if (type == ColliderType::OBB)
+    {
+        const auto* box = static_cast<const OBBCollider*>(m_inertiaCollider);
+        const float hx = box->m_halfExtents.x;
+        const float hy = box->m_halfExtents.y;
+        const float hz = box->m_halfExtents.z;
+        const float ix = (m * (hy * hy + hz * hz)) / 3.0f;
+        const float iy = (m * (hx * hx + hz * hz)) / 3.0f;
+        const float iz = (m * (hx * hx + hy * hy)) / 3.0f;
+        m_invInertiaDiag = {
+            ix == 0.0f ? 0.0f : 1.0f / ix,
+            iy == 0.0f ? 0.0f : 1.0f / iy,
+            iz == 0.0f ? 0.0f : 1.0f / iz
+        };
     }
     else if (type == ColliderType::CAPSULE)
     {

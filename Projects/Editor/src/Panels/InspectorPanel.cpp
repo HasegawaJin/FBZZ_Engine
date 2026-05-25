@@ -718,7 +718,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 switch (col.collider->GetType()) {
                 case physics::ColliderType::SPHERE: colliderName = "Sphere"; break;
                 case physics::ColliderType::AABB: colliderName = "AABB"; break;
+                case physics::ColliderType::OBB: colliderName = "OBB"; break;
                 case physics::ColliderType::CAPSULE: colliderName = "Capsule"; break;
+                case physics::ColliderType::TRIANGLE_MESH: colliderName = "Triangle Mesh"; break;
+                case physics::ColliderType::CONVEX_HULL: colliderName = "Convex Hull"; break;
                 }
             }
             widgets::ReadOnlyText("Shape", colliderName);

@@ -5,14 +5,41 @@
 // 読み書きは bool で成否を返し、例外は使わない。
 #pragma once
 #include <array>
+#include <Math/Vector3.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
 #include <string>
 #include <vector>
 
 namespace fbzz {
 
+struct PhysicsSettings {
+    int           hz       = 60;
+    int           substeps = 4;
+    math::Vector3 gravity  = { 0.0f, -9.81f, 0.0f };
+};
+
+struct AudioSettings {
+    float bgmVolume = 1.0f;
+    float seVolume  = 1.0f;
+};
+
+struct ScreenSettings {
+    int width  = 1920;
+    int height = 1080;
+};
+
+struct AppSettings {
+    int targetFps = 0;  // 0 = unlimited
+};
+
 struct ProjectSettings {
     std::vector<std::string>    tags;
     std::array<std::string, 32> layerNames;
+    PhysicsSettings             physics;
+    renderer::RenderSettings    render;
+    AudioSettings               audio;
+    ScreenSettings              screen;
+    AppSettings                 app;
 
     static ProjectSettings Default();
     bool Load(const std::string& path);

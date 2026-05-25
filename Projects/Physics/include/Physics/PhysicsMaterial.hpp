@@ -16,6 +16,7 @@ namespace fbzz::physics
         // 反発は小さい方、摩擦は幾何平均を使い、極端な材質が支配しすぎないようにする。
         static float CombineRestitution(const PhysicsMaterial& a, const PhysicsMaterial& b);
         static float CombineFriction(const PhysicsMaterial& a, const PhysicsMaterial& b);
+        static float CombineStaticFriction(const PhysicsMaterial& a, const PhysicsMaterial& b);
 
         // プリセット。Scene 側から値を直接持つため、これは初期値として使う。
         static const PhysicsMaterial Default;   // 汎用

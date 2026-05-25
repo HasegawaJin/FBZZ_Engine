@@ -13,6 +13,8 @@ public:
     virtual ~IPanel() = default;
 
     virtual const char* GetWindowName() const = 0;
+    virtual const char* GetViewMenuName() const { return GetWindowName(); }
+    virtual bool ShowInViewMenu() const { return true; }
     virtual void OnInit(EditorContext& ctx) { (void)ctx; }
     virtual void OnShutdown() {}
 
@@ -24,9 +26,9 @@ public:
     void OnRender(EditorContext& ctx)
     {
         OnBeforeBegin(ctx);
-        bool open = ImGui::Begin(GetWindowName(), nullptr, GetWindowFlags());
+        bool open = ImGui::Begin(GetWindowName(), CanClose() ? &visible : nullptr, GetWindowFlags());
         OnAfterBegin(ctx);
-        if (!open) {
+        if (!open || !visible) {
             ImGui::End();
             OnAfterEnd(ctx);
             return;
@@ -41,6 +43,7 @@ public:
 
 protected:
     virtual void OnRenderContent(EditorContext& ctx) = 0;
+    virtual bool CanClose() const { return true; }
     virtual ImGuiWindowFlags GetWindowFlags() const { return ImGuiWindowFlags_None; }
     virtual void OnBeforeBegin(EditorContext& ctx) { (void)ctx; }
     virtual void OnAfterBegin(EditorContext& ctx) { (void)ctx; }
