@@ -58,6 +58,7 @@ bool IsTextTemplate(const std::filesystem::path& path)
 {
     const std::string extension = path.extension().string();
     return extension == ".tmpl"
+        || extension == ".fbzz_proj"
         || extension == ".txt"
         || extension == ".toml"
         || extension == ".json"
@@ -70,38 +71,20 @@ bool IsTextTemplate(const std::filesystem::path& path)
         || extension.empty();
 }
 
+bool Exists(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    return std::filesystem::exists(path, ec);
+}
+
 } // namespace
 
 void TemplateManager::Refresh()
 {
     m_templates.clear();
 
-    const std::filesystem::path templatesRoot = ResolveTemplatesRoot();
-    std::error_code ec;
-    if (!std::filesystem::exists(templatesRoot, ec)) {
-        return;
-    }
-
-    std::filesystem::directory_iterator iter(templatesRoot, ec);
-    const std::filesystem::directory_iterator end;
-    while (iter != end) {
-        if (ec) {
-            return;
-        }
-
-        const std::filesystem::directory_entry entry = *iter;
-        iter.increment(ec);
-
-        std::error_code entryEc;
-        if (!entry.is_directory(entryEc)) {
-            continue;
-        }
-
-        TemplateInfo info;
-        if (ReadTemplateInfo(entry.path(), info)) {
-            m_templates.push_back(std::move(info));
-        }
-    }
+    CollectTemplatesFromRoot(ResolveSourceTemplatesRoot(), m_templates);
+    CollectTemplatesFromRoot(GetExecutableDirectory() / "Templates", m_templates);
 
     std::sort(m_templates.begin(), m_templates.end(), [](const TemplateInfo& a, const TemplateInfo& b) {
         return a.displayName < b.displayName;
@@ -113,6 +96,7 @@ bool TemplateManager::Instantiate(
     const std::filesystem::path& destinationRoot,
     const ProjectNameInfo& nameInfo,
     const std::string& createdAt,
+    const std::string& engineRoot,
     std::string& errorMessage) const
 {
     if (!IsValidProjectNameInfo(nameInfo)) {
@@ -151,7 +135,7 @@ bool TemplateManager::Instantiate(
 
         std::filesystem::path outputRelative;
         for (const auto& part : relativePath) {
-            outputRelative /= ApplyPlaceholders(part.string(), nameInfo, createdAt);
+            outputRelative /= ApplyPlaceholders(part.string(), nameInfo, createdAt, engineRoot);
         }
 
         std::filesystem::path outputPath = projectRoot / outputRelative;
@@ -178,7 +162,7 @@ bool TemplateManager::Instantiate(
 
         if (IsTextTemplate(entry.path())) {
             const std::string text = ReadText(entry.path());
-            if (!WriteText(outputPath, ApplyPlaceholders(text, nameInfo, createdAt))) {
+            if (!WriteText(outputPath, ApplyPlaceholders(text, nameInfo, createdAt, engineRoot))) {
                 errorMessage = "Failed to write a project file.";
                 return false;
             }
@@ -190,6 +174,58 @@ bool TemplateManager::Instantiate(
                 return false;
             }
         }
+    }
+
+    if (!engineRoot.empty()) {
+        if (!CopyEngineAssets(engineRoot, projectRoot, errorMessage)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool TemplateManager::CopyEngineAssets(
+    const std::filesystem::path& engineRoot,
+    const std::filesystem::path& projectRoot,
+    std::string& errorMessage)
+{
+    const std::filesystem::path src = engineRoot / "Assets";
+    std::error_code ec;
+    if (!std::filesystem::exists(src, ec)) {
+        return true;
+    }
+
+    std::filesystem::recursive_directory_iterator iter(src, ec);
+    const std::filesystem::recursive_directory_iterator end;
+    while (iter != end) {
+        if (ec) {
+            errorMessage = "Failed to enumerate engine assets.";
+            return false;
+        }
+
+        const std::filesystem::directory_entry entry = *iter;
+        iter.increment(ec);
+
+        std::error_code entryEc;
+        const std::filesystem::path relative = std::filesystem::relative(entry.path(), src, entryEc);
+        if (entryEc) {
+            continue;
+        }
+
+        const std::filesystem::path dest = projectRoot / "Assets" / relative;
+
+        if (entry.is_directory(entryEc)) {
+            std::filesystem::create_directories(dest, ec);
+            continue;
+        }
+
+        if (!entry.is_regular_file(entryEc)) {
+            continue;
+        }
+
+        std::filesystem::create_directories(dest.parent_path(), ec);
+        std::filesystem::copy_file(entry.path(), dest, std::filesystem::copy_options::skip_existing, ec);
     }
 
     return true;
@@ -258,6 +294,62 @@ std::filesystem::path TemplateManager::ResolveTemplatesRoot()
     return std::filesystem::current_path() / "Projects" / "GameHub" / "Templates";
 }
 
+std::filesystem::path TemplateManager::ResolveSourceTemplatesRoot()
+{
+    std::error_code ec;
+    std::vector<std::filesystem::path> starts;
+    starts.push_back(std::filesystem::current_path(ec));
+    starts.push_back(GetExecutableDirectory());
+
+    for (std::filesystem::path current : starts) {
+        for (int i = 0; i < 8 && !current.empty(); ++i) {
+            const std::filesystem::path candidate = current / "Projects" / "GameHub" / "Templates";
+            if (Exists(candidate)) {
+                return candidate;
+            }
+            current = current.parent_path();
+        }
+    }
+
+    return {};
+}
+
+void TemplateManager::CollectTemplatesFromRoot(const std::filesystem::path& templatesRoot, std::vector<TemplateInfo>& templates)
+{
+    if (templatesRoot.empty() || !Exists(templatesRoot)) {
+        return;
+    }
+
+    std::error_code ec;
+    std::filesystem::directory_iterator iter(templatesRoot, ec);
+    const std::filesystem::directory_iterator end;
+    while (iter != end) {
+        if (ec) {
+            return;
+        }
+
+        const std::filesystem::directory_entry entry = *iter;
+        iter.increment(ec);
+
+        std::error_code entryEc;
+        if (!entry.is_directory(entryEc)) {
+            continue;
+        }
+
+        TemplateInfo info;
+        if (!ReadTemplateInfo(entry.path(), info)) {
+            continue;
+        }
+
+        const bool alreadyAdded = std::any_of(templates.begin(), templates.end(), [&info](const TemplateInfo& item) {
+            return item.id == info.id;
+        });
+        if (!alreadyAdded) {
+            templates.push_back(std::move(info));
+        }
+    }
+}
+
 bool TemplateManager::ReadTemplateInfo(const std::filesystem::path& rootPath, TemplateInfo& outInfo)
 {
     const std::string text = ReadText(rootPath / "template.toml");
@@ -281,7 +373,8 @@ bool TemplateManager::ReadTemplateInfo(const std::filesystem::path& rootPath, Te
 std::string TemplateManager::ApplyPlaceholders(
     const std::string& text,
     const ProjectNameInfo& nameInfo,
-    const std::string& createdAt)
+    const std::string& createdAt,
+    const std::string& engineRoot)
 {
     std::string result = text;
     result = ReplaceAll(result, "{{PROJECT_NAME}}", nameInfo.name);
@@ -297,7 +390,7 @@ std::string TemplateManager::ApplyPlaceholders(
     result = ReplaceAll(result, "{{LIBRARY_ROOT}}", "Lib/");
     result = ReplaceAll(result, "{{BINARY_ROOT}}", "Binaries/");
     result = ReplaceAll(result, "{{BUILD_ROOT}}", "Build/");
-    result = ReplaceAll(result, "{{ENGINE_ROOT}}", "");
+    result = ReplaceAll(result, "{{ENGINE_ROOT}}", engineRoot);
     return result;
 }
 

@@ -33,6 +33,7 @@ public:
         const std::filesystem::path& destinationRoot,
         const ProjectNameInfo& nameInfo,
         const std::string& createdAt,
+        const std::string& engineRoot,
         std::string& errorMessage) const;
 
     static ProjectNameInfo MakeProjectNameInfo(const std::string& displayName);
@@ -40,11 +41,18 @@ public:
 
 private:
     static std::filesystem::path ResolveTemplatesRoot();
+    static std::filesystem::path ResolveSourceTemplatesRoot();
+    static void CollectTemplatesFromRoot(const std::filesystem::path& templatesRoot, std::vector<TemplateInfo>& templates);
     static bool ReadTemplateInfo(const std::filesystem::path& rootPath, TemplateInfo& outInfo);
     static std::string ApplyPlaceholders(
         const std::string& text,
         const ProjectNameInfo& nameInfo,
-        const std::string& createdAt);
+        const std::string& createdAt,
+        const std::string& engineRoot);
+    static bool CopyEngineAssets(
+        const std::filesystem::path& engineRoot,
+        const std::filesystem::path& projectRoot,
+        std::string& errorMessage);
 
     std::vector<TemplateInfo> m_templates;
 };

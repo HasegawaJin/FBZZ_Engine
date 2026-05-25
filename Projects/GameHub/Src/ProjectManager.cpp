@@ -42,6 +42,22 @@ bool HasGeneratedRoots(const std::filesystem::path& root)
         && std::filesystem::exists(root / "Build");
 }
 
+std::string FindThumbnailPath(const std::filesystem::path& root)
+{
+    const std::filesystem::path thumbnail = root / "thumbnail.png";
+    std::error_code ec;
+    if (std::filesystem::exists(thumbnail, ec)) {
+        return thumbnail.string();
+    }
+
+    const std::filesystem::path assetThumbnail = root / "Assets" / "thumbnail.png";
+    if (std::filesystem::exists(assetThumbnail, ec)) {
+        return assetThumbnail.string();
+    }
+
+    return {};
+}
+
 bool HasStringField(toml::table& table, const std::string& tableName, const std::string& key)
 {
     return table[tableName][key].is_string();
@@ -158,6 +174,8 @@ ProjectEntry ProjectManager::BuildEntry(const ConfigProject& configProject)
     entry.cmakeExists = std::filesystem::exists(root / "CMakeLists.txt");
     entry.layoutValid = HasStandardLayout(root);
     entry.generatedRootsExist = HasGeneratedRoots(root);
+    entry.thumbnailPath = FindThumbnailPath(root);
+    entry.thumbnailExists = !entry.thumbnailPath.empty();
     entry.engineVersionMismatch = entry.engineVersion != FBZZ_VERSION && entry.engineVersion != "-";
     entry.migrationRequired = NeedsMigration(entry.engineVersion);
 

@@ -1,0 +1,59 @@
+[scene]
+format_version = 1
+
+[[gameobjects]]
+name = "MainCamera"
+tag = "MainCamera"
+layer = 0
+active = true
+parent = ""
+
+[gameobjects.transform]
+localPosition = [0.0, 1.5, -6.0]
+localRotation = [0.0, 0.0, 0.0, 1.0]
+localScale = [1.0, 1.0, 1.0]
+
+[gameobjects.CameraComponent]
+fovY = 60.0
+nearZ = 0.1
+farZ = 1000.0
+isMain = true
+enabled = true
+cullingMask = 4294967295
+
+[[gameobjects]]
+name = "DirectionalLight"
+tag = "Untagged"
+layer = 0
+active = true
+parent = ""
+
+[gameobjects.transform]
+localPosition = [0.0, 3.0, 0.0]
+localRotation = [-0.2391176, -0.3696438, 0.0990458, 0.8923991]
+localScale = [1.0, 1.0, 1.0]
+
+[gameobjects.LightComponent]
+type = "Directional"
+color = [1.0, 0.9568627, 0.8392157]
+intensity = 1.25
+enabled = true
+
+[[gameobjects]]
+name = "Skydome"
+tag = "Untagged"
+layer = 0
+active = true
+parent = ""
+
+[gameobjects.transform]
+localPosition = [0.0, 0.0, 0.0]
+localRotation = [0.0, 0.0, 0.0, 1.0]
+localScale = [1.0, 1.0, 1.0]
+
+[gameobjects.SkyRenderer]
+rayleighScattering = [0.0058, 0.0135, 0.0331]
+mieScattering = 0.0021
+sunIntensity = 20.0
+mieG = 0.76
+enabled = true

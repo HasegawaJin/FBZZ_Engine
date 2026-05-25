@@ -1,0 +1,6 @@
+[template]
+id = "standard"
+display_name = "Standard"
+description = "FBZZ project with MainCamera, DirectionalLight, and Skydome."
+thumbnail = ""
+engine_version_min = "0.1.0"

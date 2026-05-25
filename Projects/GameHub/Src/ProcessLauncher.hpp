@@ -1,6 +1,6 @@
 // FBZZ Engine
 // ProcessLauncher.hpp | fbzz::hub
-// Editor プロセスの検索と起動
+// Editor process lookup and launch
 #pragma once
 
 #include "HubConfig.hpp"

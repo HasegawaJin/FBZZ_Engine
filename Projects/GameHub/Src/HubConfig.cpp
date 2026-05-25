@@ -1,8 +1,9 @@
 // FBZZ Engine
 // HubConfig.cpp | fbzz::hub
-// Hub 設定 TOML の永続化
+// Hub settings TOML persistence
 #include "HubConfig.hpp"
 
+#include <Windows.h>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cstdlib>
@@ -30,6 +31,45 @@ bool WriteText(const std::filesystem::path& path, const std::string& text)
 
     file << text;
     return static_cast<bool>(file);
+}
+
+std::wstring Utf8ToWide(const std::string& text)
+{
+    if (text.empty()) return {};
+
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) {
+        return std::filesystem::path(text).wstring();
+    }
+
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
+}
+
+std::string WideToUtf8(const std::wstring& text)
+{
+    if (text.empty()) return {};
+
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 0) {
+        return std::filesystem::path(text).string();
+    }
+
+    std::string utf8(static_cast<size_t>(size - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
+    return utf8;
+}
+
+std::string NormalizeProjectPath(const std::string& path)
+{
+    if (path.empty()) return {};
+
+    std::error_code ec;
+    const std::filesystem::path source(Utf8ToWide(path));
+    const std::filesystem::path absolute = std::filesystem::absolute(source, ec);
+    const std::filesystem::path normalized = ec ? source : absolute.lexically_normal();
+    return WideToUtf8(normalized.wstring());
 }
 
 } // namespace
@@ -78,7 +118,7 @@ bool HubConfig::Load()
             if (!project) continue;
 
             ConfigProject entry;
-            entry.path = (*project)["path"].value_or(std::string{});
+            entry.path = NormalizeProjectPath((*project)["path"].value_or(std::string{}));
             entry.lastOpened = (*project)["last_opened"].value_or(std::string{});
             if (!entry.path.empty()) {
                 m_projects.push_back(std::move(entry));
@@ -123,20 +163,22 @@ void HubConfig::SetProjects(std::vector<ConfigProject> projects)
 
 bool HubConfig::AddProject(const std::string& path, const std::string& lastOpened)
 {
-    if (path.empty() || ContainsProject(path)) {
+    const std::string normalizedPath = NormalizeProjectPath(path);
+    if (normalizedPath.empty() || ContainsProject(normalizedPath)) {
         return false;
     }
 
-    m_projects.push_back({ path, lastOpened });
+    m_projects.push_back({ normalizedPath, lastOpened });
     return true;
 }
 
 bool HubConfig::RemoveProject(const std::string& path)
 {
+    const std::string normalizedPath = NormalizeProjectPath(path);
     const auto oldSize = m_projects.size();
     m_projects.erase(
-        std::remove_if(m_projects.begin(), m_projects.end(), [&path](const ConfigProject& project) {
-            return project.path == path;
+        std::remove_if(m_projects.begin(), m_projects.end(), [&normalizedPath](const ConfigProject& project) {
+            return project.path == normalizedPath;
         }),
         m_projects.end());
     return m_projects.size() != oldSize;
@@ -144,21 +186,23 @@ bool HubConfig::RemoveProject(const std::string& path)
 
 bool HubConfig::ContainsProject(const std::string& path) const
 {
-    return std::any_of(m_projects.begin(), m_projects.end(), [&path](const ConfigProject& project) {
-        return project.path == path;
+    const std::string normalizedPath = NormalizeProjectPath(path);
+    return std::any_of(m_projects.begin(), m_projects.end(), [&normalizedPath](const ConfigProject& project) {
+        return project.path == normalizedPath;
     });
 }
 
 void HubConfig::UpdateLastOpened(const std::string& path, const std::string& lastOpened)
 {
+    const std::string normalizedPath = NormalizeProjectPath(path);
     for (auto& project : m_projects) {
-        if (project.path == path) {
+        if (project.path == normalizedPath) {
             project.lastOpened = lastOpened;
             return;
         }
     }
 
-    m_projects.push_back({ path, lastOpened });
+    m_projects.push_back({ normalizedPath, lastOpened });
 }
 
 } // namespace fbzz::hub
