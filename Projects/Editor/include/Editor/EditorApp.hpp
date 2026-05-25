@@ -11,6 +11,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <memory>
+#include <string>
 #include <vector>
 #include <Windows.h>
 
@@ -21,11 +22,13 @@ namespace fbzz::editor {
 
 class ViewportPanel;
 class ProjectSettingsPanel;
+class AssetBrowserPanel;
 
 class EditorApp {
 public:
     bool Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window);
     void Shutdown();
+    bool OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath);
 
     void BeginFrame();
     void RenderPanels(EditorContext& ctx);
@@ -55,6 +58,8 @@ private:
     HotkeyManager      m_hotkeys;
     ConsoleSink        m_consoleSink;
     EditorSettings     m_settings;
+    std::string        m_projectRoot;
+    std::string        m_projectSettingsPath = "editor_config/project_settings.toml";
     PlayModeController m_playMode;
 
     FILETIME                                 m_lastSceneWriteTime = {};
@@ -65,6 +70,7 @@ private:
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
     ViewportPanel*                           m_uiViewportPanel        = nullptr;
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
+    AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_uiViewportRT;

@@ -31,7 +31,6 @@ namespace fbzz::editor {
 
 static constexpr const char* SETTINGS_DIR             = "editor_config";
 static constexpr const char* SETTINGS_PATH            = "editor_config/editor_settings.toml";
-static constexpr const char* PROJECT_SETTINGS_PATH    = "editor_config/project_settings.toml";
 
 namespace {
 
@@ -87,7 +86,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
         m_panels.push_back(std::move(vp));
     }
     m_panels.push_back(std::make_unique<ConsolePanel>(m_consoleSink));
-    m_panels.push_back(std::make_unique<AssetBrowserPanel>("Assets"));
+    {
+        auto assets = std::make_unique<AssetBrowserPanel>("Assets");
+        m_assetBrowserPanel = assets.get();
+        m_panels.push_back(std::move(assets));
+    }
     m_panels.push_back(std::make_unique<StatusBar>());
     {
         auto ps = std::make_unique<ProjectSettingsPanel>();
@@ -103,7 +106,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
     util::FileSystem::EnsureDirectory(SETTINGS_DIR);
     m_settings.Load(SETTINGS_PATH);
-    m_ctx.projectSettings.Load(PROJECT_SETTINGS_PATH);
+    m_ctx.projectSettings.Load(m_projectSettingsPath);
     core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
     m_ctx.showGrid    = m_settings.showGrid;
     m_ctx.snapEnabled = m_settings.snapEnabled;
@@ -135,13 +138,41 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     return true;
 }
 
+bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath)
+{
+    if (!m_ctx.activeScene || !m_resources) return false;
+
+    m_projectRoot = projectRoot;
+    if (m_assetBrowserPanel && !m_projectRoot.empty()) {
+        m_assetBrowserPanel->SetRootPath(m_projectRoot + "/Assets");
+    }
+    if (!projectSettingsPath.empty()) {
+        m_projectSettingsPath = projectSettingsPath;
+        m_ctx.projectSettings.Load(m_projectSettingsPath);
+        core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
+    }
+
+    if (!scenePath.empty()) {
+        if (!SceneSerializer::Load(*m_ctx.activeScene, scenePath)) {
+            FBZZ_LOG_ERROR("Open project scene failed: %s", scenePath.c_str());
+            return false;
+        }
+        m_settings.lastScenePath = scenePath;
+        m_ctx.selectedEntities.clear();
+        CacheSceneWriteTime();
+    }
+
+    FBZZ_LOG_INFO("Opened project: %s", m_projectRoot.c_str());
+    return true;
+}
+
 void EditorApp::Shutdown()
 {
     for (auto& panel : m_panels)
         panel->OnShutdown();
 
     m_settings.Save(SETTINGS_PATH);
-    m_ctx.projectSettings.Save(PROJECT_SETTINGS_PATH);
+    m_ctx.projectSettings.Save(m_projectSettingsPath);
     m_sceneViewportRT = {};
     m_gameViewportRT = {};
     m_uiViewportRT = {};
@@ -357,7 +388,7 @@ bool EditorApp::SaveScene()
         FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
         return false;
     }
-    m_ctx.projectSettings.Save(PROJECT_SETTINGS_PATH);
+    m_ctx.projectSettings.Save(m_projectSettingsPath);
 
     CacheSceneWriteTime();
     FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
@@ -376,7 +407,7 @@ bool EditorApp::SaveSceneAsDialog()
         FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
         return false;
     }
-    m_ctx.projectSettings.Save(PROJECT_SETTINGS_PATH);
+    m_ctx.projectSettings.Save(m_projectSettingsPath);
 
     m_settings.lastScenePath = path;
     CacheSceneWriteTime();

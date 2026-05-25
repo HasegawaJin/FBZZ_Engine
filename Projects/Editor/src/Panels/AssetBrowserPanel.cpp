@@ -30,6 +30,15 @@ AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
 
 void AssetBrowserPanel::OnInit(EditorContext&) { RefreshDirectory(); }
 
+void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
+{
+    if (rootPath.empty() || rootPath == m_rootPath) return;
+    m_rootPath = rootPath;
+    m_currentPath = rootPath;
+    m_pendingNavigate.clear();
+    RefreshDirectory();
+}
+
 void AssetBrowserPanel::RefreshDirectory()
 {
     m_entries.clear();
