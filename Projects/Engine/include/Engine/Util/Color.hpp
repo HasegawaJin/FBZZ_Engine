@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Color.hpp | fbzz::util
-// RGBA カラー型 (ヘッダーオンリー)
+// RGBA カラー型と変換ユーティリティ
+// Vector4 / RGBA32 / HSV / Hex との相互変換をまとめる。
+// Renderer へ渡す色は float 0.0f から 1.0f を基準にする。
 #pragma once
 #include <Math/Vector4.hpp>
 #include <algorithm>
@@ -29,7 +31,7 @@ struct Color {
         };
     }
 
-    // "#RRGGBB" or "#RRGGBBAA" 形式の文字列
+    // "#RRGGBB" または "#RRGGBBAA" 形式の文字列
     static Color FromHex(const char* hex);
 
     constexpr uint32_t ToRGBA32() const {
@@ -86,7 +88,7 @@ struct Color {
     static const Color Cyan;
     static const Color Magenta;
     static const Color Gray;
-    static const Color Clear;   // alpha = 0
+    static const Color Clear;   // アルファ 0
 };
 
 // ── プリセット定義 ────────────────────────────────────────────────────────
@@ -101,7 +103,7 @@ inline const Color Color::Magenta = { 1.0f, 0.0f, 1.0f, 1.0f };
 inline const Color Color::Gray    = { 0.5f, 0.5f, 0.5f, 1.0f };
 inline const Color Color::Clear   = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-// ── FromHex ──────────────────────────────────────────────────────────────
+// ── 16進カラー文字列 ─────────────────────────────────────────────────────
 inline Color Color::FromHex(const char* hex)
 {
     if (!hex) return {};

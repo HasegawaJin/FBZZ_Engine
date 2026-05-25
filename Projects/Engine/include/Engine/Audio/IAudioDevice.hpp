@@ -1,6 +1,8 @@
 // FBZZ Engine
 // IAudioDevice.hpp | fbzz::audio
 // オーディオバックエンドの抽象インターフェース
+// XAudio2 などの具体 API 依存を audio モジュールの境界で隠蔽する。
+// 再生失敗は戻り値や voiceId で表し、例外は使わない。
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +25,7 @@ public:
     virtual bool Init()     = 0;
     virtual void Shutdown() = 0;
 
-    // 0 は無効ハンドル。loop=true でループ再生
+    // 0 は無効ハンドル。loop が true ならループ再生
     [[nodiscard]] virtual uint32_t PlayBuffer(
         const void* pcmData, size_t bytes,
         const WaveFormat& fmt, bool loop) = 0;

@@ -1,11 +1,12 @@
 // FBZZ Engine
 // RopeConstraint.hpp | fbzz::physics
-// Maximum distance rope constraint
+// 最大距離のみを拘束するロープ制約
 #pragma once
 #include <Physics/Constraint.hpp>
 
 namespace fbzz::physics
 {
+    // m_maxLength 以下では何もしないため、たるみを表現できる。
     class RopeConstraint : public Constraint
     {
     public:

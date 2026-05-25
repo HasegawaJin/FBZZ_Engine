@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Mathf.hpp | fbzz::util
-// スカラー数学ユーティリティ (ヘッダーオンリー)
+// スカラー数学ユーティリティ
+// Unity ライクな Clamp / Lerp / SmoothDamp などをまとめる。
+// ベクトルや行列は Math モジュール側を使い、ここでは float 中心に扱う。
 #pragma once
 #include <cmath>
 #include <algorithm>

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AudioSystem.hpp | fbzz::audio
-// BGM / SE の高レベル管理。WAV キャッシュと IAudioDevice の橋渡し
+// BGM / SE の高レベル管理と WAV キャッシュ
+// IAudioDevice に実再生を委譲し、ゲーム側はパスと音量だけを扱う。
+// 読み込み済みバッファを再利用し、Shutdown で音声リソースを解放する。
 #pragma once
 #include "IAudioDevice.hpp"
 #include <string>

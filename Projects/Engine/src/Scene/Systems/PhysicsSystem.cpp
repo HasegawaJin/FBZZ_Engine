@@ -1,6 +1,8 @@
 // FBZZ Engine
 // PhysicsSystem.cpp | fbzz::scene
-// physics::World を Step し、RigidBodyComponent の結果を Transform に書き戻す
+// Scene と physics::World の同期
+// RigidBodyComponent と ColliderComponent を physics に反映し、Step 後に Transform へ戻す。
+// Scene から physics への依存方向を保つ。
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"

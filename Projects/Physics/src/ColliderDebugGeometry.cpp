@@ -1,6 +1,6 @@
 // FBZZ Engine
 // ColliderDebugGeometry.cpp | fbzz::physics
-// Collider debug wire geometry generation
+// コライダー可視化用のワイヤージオメトリ生成
 #include <Physics/ColliderDebugGeometry.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
@@ -89,6 +89,7 @@ namespace
     void BuildBasis(const math::Vector3& axis, math::Vector3& outX, math::Vector3& outY, math::Vector3& outZ)
     {
         outY = axis.Normalized();
+        // 軸が UP に近いと外積が小さくなるため、参照軸を切り替えて安定した直交基底を作る。
         const math::Vector3 ref = std::abs(outY.y) > 0.95f ? math::Vector3::RIGHT : math::Vector3::UP;
         outX = math::Vector3::Cross(ref, outY).Normalized();
         outZ = math::Vector3::Cross(outY, outX).Normalized();
@@ -153,6 +154,7 @@ ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider)
         return BuildCapsuleGeometry(static_cast<const CapsuleCollider&>(collider));
     case ColliderType::TRIANGLE_MESH:
     case ColliderType::CONVEX_HULL:
+        // 複雑形状は全ワイヤーを生成せず、編集時に見やすい AABB 表示へフォールバックする。
         return BuildAABBGeometry(collider);
     }
 

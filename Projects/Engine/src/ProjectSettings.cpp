@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ProjectSettings.cpp | fbzz
 // プロジェクト設定の TOML 永続化実装
+// タグ・レイヤーなどエディタとランタイムで共有する設定を読み書きする。
+// 失敗時は bool で返し、例外は使わない。
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

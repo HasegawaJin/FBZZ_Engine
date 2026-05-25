@@ -1,6 +1,8 @@
 // FBZZ Engine
 // PrimitiveMesh.hpp | fbzz::renderer
 // 手続き生成メッシュのファクトリ
+// Cube / Sphere / Plane などを ResourceManager 経由で GPU リソース化する。
+// テスト用・デバッグ用の基本形状をアセット読み込みなしで作る。
 #pragma once
 #include <memory>
 #include "Mesh.hpp"

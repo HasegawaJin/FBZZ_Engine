@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ModelImporter.hpp | fbzz::asset
-// Assimp を使って FBX / OBJ 等を Model に変換する
+// Assimp を使って外部モデルを Model へ変換する入口
+// ファイル形式依存の読み取りをここに閉じ込め、Scene / Renderer には持ち込まない。
+// 失敗時は nullptr を返し、例外は使わない。
 #pragma once
 #include <memory>
 #include <string>

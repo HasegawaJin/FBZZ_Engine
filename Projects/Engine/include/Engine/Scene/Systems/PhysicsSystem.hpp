@@ -1,6 +1,8 @@
 // FBZZ Engine
 // PhysicsSystem.hpp | fbzz::scene
-// RigidBodyComponent ↔ physics::World を同期し、Transform に結果を書き戻す
+// Scene と physics::World の同期 System
+// RigidBodyComponent から World へ入力し、シミュレーション後の結果を Transform へ戻す。
+// 依存方向は Scene から physics への一方向に保つ。
 #pragma once
 
 namespace fbzz::scene   { class Scene; }

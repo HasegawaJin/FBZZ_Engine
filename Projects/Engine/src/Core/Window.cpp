@@ -1,25 +1,100 @@
 // FBZZ Engine
 // Window.cpp | fbzz::core
-// Win32 ウィンドウの生成・メッセージ処理
+// Win32 ウィンドウの生成とメッセージ処理
+// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
+// Renderer / ImGui とはコールバックで疎結合に接続する。
 
 #include "Engine/Core/Window.hpp"
 #include "Engine/Input/Input.hpp"
 
 #include <dwmapi.h>
 #include <windowsx.h>
+#include <algorithm>
 #include <cassert>
 
 #pragma comment(lib, "dwmapi.lib")
+
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+#endif
 
 using namespace fbzz::core;
 
 namespace
 {
     constexpr wchar_t kWindowClassName[] = L"FBZZWindowClass";
+
+    void EnableDpiAwareness()
+    {
+        if (SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+            return;
+
+        SetProcessDPIAware();
+    }
+
+    bool AdjustWindowRectForDpi(RECT& rect, DWORD style, DWORD exStyle, UINT dpi)
+    {
+        if (AdjustWindowRectExForDpi(&rect, style, FALSE, exStyle, dpi))
+            return true;
+
+        return AdjustWindowRectEx(&rect, style, FALSE, exStyle) != FALSE;
+    }
+
+    RECT GetPrimaryWorkArea()
+    {
+        POINT origin{ 0, 0 };
+        HMONITOR monitor = MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY);
+
+        MONITORINFO monitorInfo{};
+        monitorInfo.cbSize = sizeof(MONITORINFO);
+        if (!GetMonitorInfoW(monitor, &monitorInfo))
+            return { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+
+        return monitorInfo.rcWork;
+    }
+
+    RECT CalculateInitialWindowRect(uint32_t desiredClientWidth, uint32_t desiredClientHeight,
+                                    DWORD style, DWORD exStyle, UINT dpi)
+    {
+        const RECT work = GetPrimaryWorkArea();
+        const int workWidth  = work.right - work.left;
+        const int workHeight = work.bottom - work.top;
+
+        RECT frameRect = { 0, 0, 0, 0 };
+        AdjustWindowRectForDpi(frameRect, style, exStyle, dpi);
+
+        const int horizontalFrame = (frameRect.right - frameRect.left);
+        const int verticalFrame   = (frameRect.bottom - frameRect.top);
+
+        const int clientWidth = (std::max)(1, (std::min)(
+            static_cast<int>(desiredClientWidth),
+            workWidth - horizontalFrame));
+        const int clientHeight = (std::max)(1, (std::min)(
+            static_cast<int>(desiredClientHeight),
+            workHeight - verticalFrame));
+
+        RECT windowRect = { 0, 0, clientWidth, clientHeight };
+        AdjustWindowRectForDpi(windowRect, style, exStyle, dpi);
+
+        const int windowWidth  = windowRect.right - windowRect.left;
+        const int windowHeight = windowRect.bottom - windowRect.top;
+
+        const int x = work.left + (std::max)(0, (workWidth  - windowWidth)  / 2);
+        const int y = work.top  + (std::max)(0, (workHeight - windowHeight) / 2);
+
+        return {
+            static_cast<LONG>(x),
+            static_cast<LONG>(y),
+            static_cast<LONG>(x + windowWidth),
+            static_cast<LONG>(y + windowHeight)
+        };
+    }
 }
 
 bool Window::Initialize(const Config& config)
 {
+    EnableDpiAwareness();
+
     m_width  = config.width;
     m_height = config.height;
 
@@ -33,17 +108,20 @@ bool Window::Initialize(const Config& config)
 
     RegisterClassExW(&wc);
 
-    RECT rect = { 0, 0, static_cast<LONG>(config.width), static_cast<LONG>(config.height) };
-    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+    const DWORD style   = WS_OVERLAPPEDWINDOW;
+    const DWORD exStyle = 0;
+
+    const UINT dpi = GetDpiForSystem();
+    const RECT windowRect = CalculateInitialWindowRect(config.width, config.height, style, exStyle, dpi);
 
     m_hwnd = CreateWindowExW(
-        0,
+        exStyle,
         kWindowClassName,
         config.title.c_str(),
-        WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT,
-        rect.right - rect.left,
-        rect.bottom - rect.top,
+        style,
+        windowRect.left, windowRect.top,
+        windowRect.right - windowRect.left,
+        windowRect.bottom - windowRect.top,
         nullptr, nullptr,
         GetModuleHandleW(nullptr),
         this);
@@ -56,6 +134,11 @@ bool Window::Initialize(const Config& config)
 
     ShowWindow(m_hwnd, SW_SHOW);
     UpdateWindow(m_hwnd);
+
+    RECT clientRect{};
+    GetClientRect(m_hwnd, &clientRect);
+    m_width  = static_cast<uint32_t>(clientRect.right - clientRect.left);
+    m_height = static_cast<uint32_t>(clientRect.bottom - clientRect.top);
 
     return m_hwnd != nullptr;
 }

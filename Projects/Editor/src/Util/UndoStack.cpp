@@ -8,13 +8,13 @@ namespace fbzz::editor {
 
 void UndoStack::Push(std::unique_ptr<ICommand> cmd)
 {
-    // カーソルより後ろの履歴を破棄 (新しい操作でやり直し履歴は消える)
+    // カーソルより後ろの履歴を破棄 (新しい操作でやり直し履歴は消える — 線形履歴)
     if (m_cursor + 1 < static_cast<int>(m_history.size()))
         m_history.erase(m_history.begin() + m_cursor + 1, m_history.end());
 
     m_history.push_back(std::move(cmd));
 
-    // 最大履歴数を超えた場合は先頭を削除
+    // 最大履歴数を超えた場合は先頭を削除 (m_cursor も連動して先頭分だけ縮む)
     if (static_cast<int>(m_history.size()) > MAX_HISTORY)
         m_history.erase(m_history.begin());
 

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Shader.hpp | fbzz::renderer
 // DX11 頂点・ピクセルシェーダーと InputLayout の管理
+// IShader を継承し、CSO から作ったネイティブシェーダーを保持する。
+// InputLayout は頂点シェーダーの反射情報から作る。
 //
 // 設計方針:
 //   実行時コンパイル (D3DCompile) ではなく、ビルド済み CSO (Compiled Shader Object) を

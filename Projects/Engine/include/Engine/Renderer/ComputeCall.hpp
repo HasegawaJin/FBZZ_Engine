@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ComputeCall.hpp | fbzz::renderer
-// Compute shader dispatch submission data
+// コンピュートシェーダーの実行要求データ
+// IRenderer::Dispatch に渡す軽量な値型。
+// GPU リソースは ResourceHandle で参照し、共有ポインタは持たない。
 #pragma once
 #include <array>
 #include <cstdint>

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Random.hpp | fbzz::util
-// 擬似乱数ユーティリティ (mt19937 ベース)
+// 擬似乱数ユーティリティ
+// mt19937 ベースで数値範囲と単位円・単位球サンプリングを提供する。
+// 再現性が必要な場面では SetSeed を先に呼ぶ。
 #pragma once
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>

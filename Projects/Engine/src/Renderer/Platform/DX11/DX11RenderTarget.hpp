@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11RenderTarget.hpp | fbzz::renderer
-// DX11 オフスクリーン描画ターゲット (Render-To-Texture)
+// DX11 オフスクリーン描画ターゲット実装
+// IRenderTarget を継承し、RTV / DSV / SRV の組を管理する。
+// バックバッファ以外の描画先を Renderer 抽象から扱えるようにする。
 //
 // 設計方針:
 //   IRenderTarget を継承し、ポストプロセス・シャドウマップ等の RTT パターンを抽象化する。

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ScopeTimer.hpp | fbzz::util
-// RAII スコープタイマー (ヘッダーオンリー)
+// RAII スコープタイマー
+// 生成から破棄までの経過時間を計測し、軽量な性能確認に使う。
+// 本格的なプロファイラではなく局所計測用の補助。
 #pragma once
 #include <Engine/Core/Logger.hpp>
 #include <chrono>

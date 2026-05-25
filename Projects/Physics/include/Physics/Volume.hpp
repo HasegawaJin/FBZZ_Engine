@@ -6,6 +6,7 @@
 
 namespace fbzz::physics
 {
+    // 範囲内の剛体に継続効果を与える抽象基底。実際の形状判定は派生クラスが担う。
     class Volume
     {
     public:

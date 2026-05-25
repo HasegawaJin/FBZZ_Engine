@@ -6,6 +6,7 @@
 
 namespace fbzz::physics {
 
+    // 回転の影響を受けない球形状。安価で CCD の代表形状としても使う。
     class SphereCollider : public Collider 
     {
     public:

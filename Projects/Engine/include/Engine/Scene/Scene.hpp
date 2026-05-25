@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Scene.hpp | fbzz::scene
-// GameObject の所有・ComponentArray の管理・GameObjectRange / SceneView の提供
+// GameObject 所有と ComponentArray 管理
+// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
+// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
 #include "Entity.hpp"
 #include "ComponentArray.hpp"
@@ -44,7 +46,7 @@ struct IsInList<T, std::tuple<Ts...>>
 } // namespace detail
 
 // -----------------------------------------------------------------------
-// GameObjectRange  —  scene.GameObjects() が返す Unity ライク foreach 用 range
+// GameObjectRange  —  scene.GameObjects() が返す Unity ライクな範囲 for 用 range
 // -----------------------------------------------------------------------
 class GameObjectRange {
     using VecT = std::vector<std::unique_ptr<GameObject>>;
@@ -91,11 +93,11 @@ public:
     // Unity: scene.GetRootGameObjects()
     std::vector<GameObject*> GetRootGameObjects() const;
 
-    // Unity ライク foreach (ゲームロジック向け)
+    // Unity ライクな範囲 for (ゲームロジック向け)
     GameObjectRange GameObjects();
     size_t GameObjectCount() const { return m_gameObjects.size(); }
 
-    // Editor / serializer support for stable hierarchy operations.
+    // Editor / serializer 用。階層操作を安定した API に集約する。
     bool DestroyGameObject(EntityID id);
     bool MoveGameObject(EntityID id, int offset);
     bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
@@ -174,7 +176,7 @@ private:
         return std::get<ComponentArray<T>>(m_arrays);
     }
 
-    // fold expression から呼ぶ per-array ヘルパー
+    // fold expression から呼ぶ配列ごとのヘルパー
     template<typename T>
     static void RemoveIfHas(ComponentArray<T>& arr, EntityID id) {
         if (arr.Has(id)) arr.Remove(id);

@@ -33,7 +33,7 @@ public:
 
 private:
     std::vector<std::unique_ptr<ICommand>> m_history;
-    int m_cursor = -1;
+    int m_cursor = -1; // -1 = 履歴なし。0 以上は m_history 内の現在位置を指す
 };
 
 } // namespace fbzz::editor

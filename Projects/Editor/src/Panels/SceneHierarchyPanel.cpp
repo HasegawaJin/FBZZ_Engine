@@ -383,6 +383,9 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
+    // deferred: ノード描画ループ内でシーンを変更すると、その後のイテレーションで
+    // ポインタが無効になる。変更操作 (生成/削除/親付け) はすべてラムダに包み、
+    // ループ終了後にまとめて実行する。
     std::function<void()> deferred;
     std::vector<scene::EntityID> visited;
     visited.reserve(ctx.activeScene->GameObjectCount());

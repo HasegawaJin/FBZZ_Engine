@@ -22,6 +22,7 @@ public:
 
     const char* GetWindowName() const override { return m_windowName.c_str(); }
 
+    // EditorApp がパネル生成後に直接セットするためpublic。これらが有効でない間はプレースホルダを描画する
     renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
     renderer::IRenderer* renderer = nullptr;
     renderer::ResourceManager* resources = nullptr;

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Logger.hpp | fbzz::core
-// Log output with file and line metadata
+// ファイル名と行番号を含むログ出力
+// マクロ経由で呼ぶと呼び出し位置を LogEntry に残せる。
+// ログ出力先は非所有参照として扱い、Logger は所有しない。
 #pragma once
 #include <cstdarg>
 #include <cstring>

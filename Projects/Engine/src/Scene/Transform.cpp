@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Transform.cpp | fbzz::scene
 // Transform メソッドの実装
+// ローカル移動・回転・LookAt とワールド行列生成を提供する。
+// 親子階層の再計算は TransformSystem が担当する。
 #include "Engine/Scene/Transform.hpp"
 #include <Math/MathUtils.hpp>
 #include <cmath>

@@ -34,6 +34,7 @@ namespace fbzz::physics
 
             if (a <= EPS && e <= EPS)
             {
+                // どちらも点に縮退している。
                 outC1 = p1;
                 outC2 = p2;
                 return;
@@ -60,6 +61,7 @@ namespace fbzz::physics
                     }
                     else
                     {
+                        // ほぼ平行な線分は、重なっている区間の中央を代表点にする。
                         const float s0 = math::Vector3::Dot(p2 - p1, d1) / a;
                         const float s1 = math::Vector3::Dot(q2 - p1, d1) / a;
                         const float overlapMin = std::max(0.0f, std::min(s0, s1));
@@ -102,6 +104,7 @@ namespace fbzz::physics
                 if (layerFilter && !layerFilter(colliders[i].layer, colliders[j].layer)) continue;
                 if (!colliders[i].isTrigger && !colliders[j].isTrigger)
                 {
+                    // 非 Trigger 同士の Static-Static ペアは解決しても状態が変わらないため除外する。
                     const bool staticA = !colliders[i].body || colliders[i].body->IsStatic();
                     const bool staticB = !colliders[j].body || colliders[j].body->IsStatic();
                     if (staticA && staticB) continue;
@@ -269,6 +272,7 @@ namespace fbzz::physics
                 cp.isTrigger = pair.colliderA.isTrigger || pair.colliderB.isTrigger;
                 if (cp.bodyA && cp.bodyB)
                 {
+                    // 各テスト関数の戻り方向を最終的に bodyB → bodyA へ揃える。
                     const math::Vector3 bodyDelta = cp.bodyA->GetPosition() - cp.bodyB->GetPosition();
                     if (bodyDelta.LengthSq() > 1e-8f &&
                         math::Vector3::Dot(cp.normal, bodyDelta) < 0.0f)
@@ -300,6 +304,7 @@ namespace fbzz::physics
 
         for (int i = 0; i < VELOCITY_ITER; ++i)
         {
+            // PGS は接触を順に解くため、少ない反復でも前回フレームの Warm Start が効く。
             for (auto& cp : contacts)
             {
                 ResolveVelocity(cp);
@@ -341,6 +346,7 @@ namespace fbzz::physics
         if (cp.materialA && cp.materialB)
             e = PhysicsMaterial::CombineRestitution(*cp.materialA, *cp.materialB);
 
+        // 静止接触の微小反発を消し、床上の物体が跳ね続けるのを防ぐ。
         constexpr float REST_THRESHOLD = 0.5f;
         if (std::abs(vRelN) < REST_THRESHOLD) e = 0.0f;
         const bool usesRestitution = e > 0.0f;
@@ -363,10 +369,12 @@ namespace fbzz::physics
         const float denom = invMassA + invMassB + angTermA + angTermB;
         if (denom == 0.0f) return;
 
+        // deltaJ は今回追加すべき法線インパルス。蓄積値は 0 未満にしない。
         const float deltaJ = -(1.0f + e) * vRelN / denom;
         float applyJ = 0.0f;
         if (usesRestitution)
         {
+            // 反発インパルスは瞬間的な効果なので Warm Start へ持ち越さない。
             applyJ = std::max(0.0f, deltaJ);
             cp.cachedNormalImpulse = applyJ;
             cp.cacheImpulse = false;
@@ -445,6 +453,7 @@ namespace fbzz::physics
 
             const float deltaJt  = -vRelT / denom;
             const float oldAccum = cp.cachedTangentImpulse[k];
+            // 蓄積摩擦インパルスを摩擦コーン内に投影する。
             const float newAccum = std::clamp(oldAccum + deltaJt, -maxFriction, maxFriction);
             const float applyJt  = newAccum - oldAccum;
             cp.cachedTangentImpulse[k] = newAccum;
@@ -473,6 +482,7 @@ namespace fbzz::physics
         const float invMassSum = invMassA + invMassB;
         if (invMassSum == 0.0f) return;
 
+        // SLOP 分の浅い貫通は許容し、接触面の小さな振動を抑える。
         const float penetration = std::max(cp.depth - SLOP, 0.0f);
         const float scalar      = penetration / invMassSum * BAUMGARTE;
         math::Vector3 correction = cp.normal * scalar;

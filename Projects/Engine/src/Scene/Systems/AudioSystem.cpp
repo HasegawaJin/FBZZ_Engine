@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AudioSystem.cpp | fbzz::scene
-// AudioSourceComponent を走査して audio::AudioSystem に再生命令を出す
+// AudioSourceComponent から再生命令を発行する System
+// Scene を走査し、audio::AudioSystem へ BGM / SE の操作を渡す。
+// オーディオデバイス固有処理は audio モジュール側に閉じ込める。
 #include "Engine/Scene/Systems/AudioSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/AudioSourceComponent.hpp"

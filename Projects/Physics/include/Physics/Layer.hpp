@@ -1,6 +1,6 @@
 // FBZZ Engine
 // Layer.hpp | fbzz
-// GameObject layer masks and collision matrix
+// GameObject レイヤーマスクと衝突行列
 #pragma once
 
 #include <cstdint>
@@ -9,6 +9,7 @@ namespace fbzz {
 
 using LayerMask = uint32_t;
 
+// Unity 風の 0-31 レイヤー。Physics 側では BroadPhase のフィルタに使う。
 struct Layer {
     static constexpr int Default       = 0;
     static constexpr int TransparentFX = 1;
@@ -23,6 +24,7 @@ struct Layer {
     static bool Contains(LayerMask mask, int layer) { return (mask & Mask(layer)) != 0; }
 };
 
+// 衝突可否は対称行列として保持し、片側の変更で逆方向も同時に更新する。
 struct LayerCollisionMatrix {
     bool data[32][32];
 

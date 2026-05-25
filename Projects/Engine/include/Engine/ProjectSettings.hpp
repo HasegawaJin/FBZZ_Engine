@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ProjectSettings.hpp | fbzz
-// プロジェクト共通設定（タグ・レイヤー名）の定義と永続化
+// プロジェクト共通設定の定義と永続化
+// タグ名・レイヤー名など、エディタとランタイムで共有する軽量設定。
+// 読み書きは bool で成否を返し、例外は使わない。
 #pragma once
 #include <array>
 #include <string>

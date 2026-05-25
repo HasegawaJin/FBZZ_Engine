@@ -1,6 +1,8 @@
 // FBZZ Engine
 // UIButton.hpp | fbzz::scene
-// Runtime UI button state
+// ランタイム UI ボタンの状態コンポーネント
+// ヒット判定結果と遷移状態を保持し、UISystem が入力から更新する。
+// クリック時の処理は script / event 側へ接続する。
 #pragma once
 #include <Math/Vector4.hpp>
 #include <Engine/Scene/Script.hpp>

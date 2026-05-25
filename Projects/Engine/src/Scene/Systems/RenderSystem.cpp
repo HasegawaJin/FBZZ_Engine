@@ -1,9 +1,11 @@
 // FBZZ Engine
 // RenderSystem.cpp | fbzz::scene
-// MeshRenderer + Transform 繧定ｵｰ譟ｻ縺励・繝代せ縺ｧ謠冗判縺吶ｋ
-// Pass 1: ShadowMap  (豺ｱ蠎ｦ蟆ら畑 RT 竊・shadow depth tex)
-// Pass 2: HDR Forward (HDR RT 竊・繧ｷ繝｣繝峨え + 繝ｩ繧､繝・ぅ繝ｳ繧ｰ)
-// Pass 3: Composite  (HDR 竊・ACES ToneMap 竊・繝舌ャ繧ｯ繝舌ャ繝輔ぃ)
+// Scene から DrawCall を生成する描画 System
+// Mesh / Light / Camera / UI / Particle を集約し、IRenderer へ送信する。
+// DX11 実装には直接依存せず、Renderer 抽象と ResourceManager を使う。
+// Pass 1: シャドウマップ深度。
+// Pass 2: HDR フォワードレンダリング、スカイドーム、パーティクル、デバッグオーバーレイ。
+// Pass 3: ブルーム、コンポジット、オプションの FXAA。
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Scene/Systems/ColliderDebugDrawSystem.hpp"
@@ -12,6 +14,8 @@
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Scene/Components/AnimatorComponent.hpp"
+#include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Scene/Components/SkyRenderer.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -27,18 +31,20 @@
 #include "Engine/Renderer/DebugDraw.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Asset/Skeleton.hpp"
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <memory>
 
 namespace fbzz::scene {
 
 namespace {
 
-// b0: CameraConstants 窶・Constants.hlsli 縺ｨ荳閾ｴ縺輔○繧九％縺ｨ
+// b0: CameraConstants。Constants.hlsli と同期を保つ。
 struct PerFrameCB {
     math::Matrix4 view;
     math::Matrix4 projection;
@@ -50,13 +56,13 @@ struct PerFrameCB {
     float         _pad[3];
 };
 
-// b1: ObjectConstants 窶・Constants.hlsli 縺ｨ荳閾ｴ縺輔○繧九％縺ｨ
+// b1: ObjectConstants。Constants.hlsli と同期を保つ。
 struct PerObjectCB {
     math::Matrix4 world;
     math::Matrix4 worldInvTranspose;
 };
 
-// b4: ShadowConstants 窶・Constants.hlsli 縺ｨ荳閾ｴ縺輔○繧九％縺ｨ
+// b4: ShadowConstants。Constants.hlsli と同期を保つ。
 struct ShadowConstantsCB {
     math::Matrix4 lightViewProjection;
     float         shadowMapTexelSize[2];
@@ -64,7 +70,7 @@ struct ShadowConstantsCB {
     float         _pad;
 };
 
-// b6: AtmosphereConstants 窶・Constants.hlsli 縺ｨ荳閾ｴ縺輔○繧九％縺ｨ
+// b6: AtmosphereConstants。Constants.hlsli と同期を保つ。
 struct AtmosphereCB {
     float rayleighScattering[3];
     float mieScattering;
@@ -74,7 +80,7 @@ struct AtmosphereCB {
     float mieG;
 };
 
-// b5: PostProcConstants 窶・Constants.hlsli 縺ｨ荳閾ｴ縺輔○繧九％縺ｨ
+// b5: PostProcConstants。Constants.hlsli と同期を保つ。
 struct PostProcCB {
     float texelSize[2];
     float screenSize[2];
@@ -88,13 +94,13 @@ struct PostProcCB {
 
 constexpr uint32_t SHADOW_MAP_SIZE = 8192;
 
-// Particle.hlsl 縺ｮ ParticleVSIn 縺ｨ螳悟・荳閾ｴ縺輔○繧・(DX11Shader 縺後Μ繝輔Ξ繧ｯ繧ｷ繝ｧ繝ｳ縺ｧ隗｣譫・
+// Particle.hlsl の ParticleVSIn に対応。DX11Shader がこのレイアウトをリフレクションする。
 struct ParticleVertex {
     float center[3];  // POSITION   12 bytes
     float uv[2];      // TEXCOORD0   8 bytes
     float color[4];   // COLOR       16 bytes
     float size;       // TEXCOORD1   4 bytes
-};                    // 蜷郁ｨ・40 bytes
+};                    // 40 bytes
 
 inline math::Vector4 LerpVec4(const math::Vector4& a, const math::Vector4& b, float t)
 {
@@ -102,6 +108,34 @@ inline math::Vector4 LerpVec4(const math::Vector4& a, const math::Vector4& b, fl
              a.y + (b.y - a.y) * t,
              a.z + (b.z - a.z) * t,
              a.w + (b.w - a.w) * t };
+}
+
+renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources)
+{
+    if (!mc.enabled) return nullptr;
+
+    if (!mc.material)
+        mc.material = std::make_shared<renderer::Material>();
+
+    if (mc.material.use_count() > 1) {
+        auto cloned = std::make_shared<renderer::Material>(*mc.material);
+        cloned->paramsBuffer = renderer::ResourceHandle<renderer::ConstantBufferTag>{};
+        mc.material = std::move(cloned);
+    }
+
+    auto& material = *mc.material;
+    material.shaderPath = mc.shaderPath;
+    material.shader = material.shaderPath.empty()
+        ? renderer::ResourceHandle<renderer::ShaderTag>{}
+        : resources.LoadShader(material.shaderPath);
+    material.albedoTexture = mc.albedoTexPath.empty()
+        ? renderer::ResourceHandle<renderer::TextureTag>{}
+        : resources.LoadTexture(mc.albedoTexPath);
+    material.normalTexture = mc.normalTexPath.empty()
+        ? renderer::ResourceHandle<renderer::TextureTag>{}
+        : resources.LoadTexture(mc.normalTexPath);
+    material.Upload(resources);
+    return &material;
 }
 
 } // namespace
@@ -118,6 +152,16 @@ void RenderSystem(Scene& scene,
     const renderer::RenderSettings& rs = settings ? *settings : sDefaultSettings;
     static auto shadowMapRT     = resources.CreateRenderTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0);
     static auto shadowShader    = resources.LoadShader("assets/shaders/Pipeline/ShadowMap.hlsl");
+    static auto skinnedShadowShader = resources.LoadShader("assets/shaders/Pipeline/SkinnedShadowMap.hlsl");
+    static auto skinnedPbrShader = resources.LoadShader("assets/shaders/Material/SkinnedPBR.hlsl");
+    static renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
+    if (!bindPoseSkinningCB.IsValid()) {
+        struct BindPoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };
+        BindPoseData bp{};
+        for (auto& m : bp.bones) m = math::Matrix4::Identity();
+        bindPoseSkinningCB = resources.CreateConstantBuffer(sizeof(BindPoseData));
+        resources.Update(bindPoseSkinningCB, &bp, sizeof(BindPoseData));
+    }
     static auto compositeShader = resources.LoadShader("assets/shaders/PostProcess/Composite.hlsl");
     static auto bloomDownShader = resources.LoadShader("assets/shaders/PostProcess/BloomDownsample.cs.hlsl");
     static auto bloomUpShader   = resources.LoadShader("assets/shaders/PostProcess/BloomUpsample.cs.hlsl");
@@ -136,8 +180,8 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::OPAQUE,
         renderer::DepthMode::DEPTH_ON
     });
-    // CSO 縺ｯ Material.Skydome.*.cso 縺ｨ縺励※繧ｳ繝ｳ繝代う繝ｫ縺輔ｌ縺ｦ縺・ｋ縺溘ａ縲√ヱ繧ｹ縺ｯ Sky/ 繧堤怐縺・
-    static auto skydomeShader = resources.LoadShader("assets/shaders/Material/Skydome.hlsl");
+    // スカイドーム CSO は Material/Sky/Skydome.hlsl から生成される。
+    static auto skydomeShader = resources.LoadShader("assets/shaders/Material/Sky/Skydome.hlsl");
     static auto skydomePSO    = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::OPAQUE,
@@ -152,7 +196,7 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_READ
     });
-    // 豺ｱ蠎ｦ繝・せ繝井ｸ崎ｦ√↑繝輔Ν繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ繝代せ蜈ｱ逕ｨ PSO
+    // 深度不要なフルスクリーンパス共通 PSO。
     static auto postprocPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE,
@@ -160,7 +204,7 @@ void RenderSystem(Scene& scene,
     });
     static auto fxaaShader = resources.LoadShader("assets/shaders/PostProcess/FXAA.hlsl");
 
-    // 繝代・繝・ぅ繧ｯ繝ｫ逕ｨ繧､繝ｳ繝・ャ繧ｯ繧ｹ繝舌ャ繝輔ぃ (譛螟ｧ 1000 繝代・繝・ぅ繧ｯ繝ｫ蛻・ｒ莠句燕逕滓・)
+    // 最大パーティクル数分のバッファを事前確保する。
     static renderer::ResourceHandle<renderer::BufferTag> particleVB;
     static renderer::ResourceHandle<renderer::BufferTag> particleIB;
     constexpr int MAX_PARTICLE_DRAW = 1000;
@@ -183,11 +227,11 @@ void RenderSystem(Scene& scene,
         particleIB = resources.CreateIndexBuffer(idx.data(), static_cast<uint32_t>(idx.size()));
     }
 
-    // 繧ｦ繧｣繝ｳ繝峨え繝ｪ繧ｵ繧､繧ｺ縺ｫ霑ｽ蠕薙＠縺ｦ HDR RT 縺ｨ Bloom 繝・け繧ｹ繝√Ε繧貞・逕滓・縺吶ｋ
+    // HDR・ブルームターゲットを出力サイズに追従させる。
     static renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;   // Composite 蜃ｺ蜉・(FXAA 蜈･蜉・
-    static renderer::ResourceHandle<renderer::TextureTag>      bloomHalf;  // HDR 1/2 隗｣蜒丞ｺｦ (Downsample 蜃ｺ蜉・
-    static renderer::ResourceHandle<renderer::TextureTag>      bloomFull;  // 繝輔Ν隗｣蜒丞ｺｦ (Upsample 蜃ｺ蜉・竊・Composite 蜈･蜉・
+    static renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;      // FXAA 入力用コンポジット出力。
+    static renderer::ResourceHandle<renderer::TextureTag>      bloomHalf;  // 半解像度ブルームテクスチャ。
+    static renderer::ResourceHandle<renderer::TextureTag>      bloomFull;  // コンポジット用フル解像度ブルームテクスチャ。
     static uint32_t sHdrW = 0, sHdrH = 0;
     {
         const auto* output = resources.Get(outputRT);
@@ -210,10 +254,10 @@ void RenderSystem(Scene& scene,
     }
 
     // =========================================================================
-    // LightComponent 縺九ｉ LightConstantsCB 繧堤ｵ・∩遶九※繧・(繧ｷ繝｣繝峨え VP 縺ｫ繧ゆｽｿ縺・
+    // LightComponent データから LightConstantsCB を構築する。
     // =========================================================================
     renderer::LightConstantsCB lightData{};
-    lightData.lightDir       = { 0.0f, -1.0f, 0.5f };  // fallback directional
+    lightData.lightDir       = { 0.0f, -1.0f, 0.5f };  // フォールバック平行光源
     lightData.lightColor     = { 1.0f,  1.0f, 1.0f };
     lightData.lightIntensity = 1.0f;
 
@@ -255,8 +299,8 @@ void RenderSystem(Scene& scene,
     math::Matrix4 lightVP   = lightProj * lightView;
 
     // =========================================================================
-    // Pass 1: Shadow Map 窶・繝ｩ繧､繝郁ｦ也せ縺九ｉ豺ｱ蠎ｦ縺ｮ縺ｿ譖ｸ縺崎ｾｼ繧
-    // 辟｡蜉ｹ譎ゅｂ繧ｯ繝ｪ繧｢ (1.0) 縺吶ｋ縺薙→縺ｧ Pass 2 縺ｮ蠖ｱ豈碑ｼ・′縺吶∋縺ｦ繝代せ縺吶ｋ
+    // Pass 1: ライト視点からシャドウマップ深度を描画する。
+    // シャドウ無効時もクリアしてサンプリングデータを安定させる。
     // =========================================================================
     renderer.SetRenderTarget(shadowMapRT, resources);
     renderer.ClearDepth();
@@ -267,16 +311,17 @@ void RenderSystem(Scene& scene,
         lightFrameData.viewProjection = lightVP;
         resources.Update(frameCB, &lightFrameData, sizeof(PerFrameCB));
 
+        // Pass 1a: 静的 MeshRenderer のシャドウ描画
         for (auto& go : scene.GameObjects()) {
             if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
             auto* mr  = go.GetComponent<MeshRenderer>();
             auto* mat = go.GetComponent<MaterialComponent>();
-            if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->material) continue;
+            if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->enabled) continue;
             if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
-            auto& tf = go.transform;
+            if (mr->mesh->isSkinned) continue; // スキンメッシュは下で処理する。
 
             PerObjectCB objData{};
-            objData.world = tf.GetWorldMatrix();
+            objData.world = go.transform.GetWorldMatrix();
             resources.Update(objectCB, &objData, sizeof(PerObjectCB));
 
             renderer::DrawCall dc;
@@ -289,10 +334,45 @@ void RenderSystem(Scene& scene,
             dc.constantBuffers[1] = objectCB;
             renderer.Submit(dc, resources);
         }
+
+        // Pass 1b: SkinnedMeshRenderer のシャドウ描画。モデル内の全メッシュを送出する。
+        if (skinnedShadowShader.IsValid()) {
+            for (auto& go : scene.GameObjects()) {
+                if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+                auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
+                auto* mat  = go.GetComponent<MaterialComponent>();
+                auto* anim = go.GetComponent<AnimatorComponent>();
+                if (!smr || !smr->enabled || !smr->model) continue;
+                if (!mat || !mat->enabled) continue;
+
+                PerObjectCB objData{};
+                objData.world = go.transform.GetWorldMatrix();
+                resources.Update(objectCB, &objData, sizeof(PerObjectCB));
+
+                const auto skinCB = (anim && anim->skinningBuffer.IsValid())
+                    ? anim->skinningBuffer : bindPoseSkinningCB;
+
+                for (const auto& meshPtr : smr->model->meshes) {
+                    if (!meshPtr) continue;
+                    if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+
+                    renderer::DrawCall dc;
+                    dc.vertexBuffer       = meshPtr->vertexBuffer;
+                    dc.indexBuffer        = meshPtr->indexBuffer;
+                    dc.indexCount         = meshPtr->indexCount;
+                    dc.shader             = skinnedShadowShader;
+                    dc.pipelineState      = pso;
+                    dc.constantBuffers[0] = frameCB;
+                    dc.constantBuffers[1] = objectCB;
+                    dc.constantBuffers[7] = skinCB;
+                    renderer.Submit(dc, resources);
+                }
+            }
+        }
     }
 
     // =========================================================================
-    // Pass 2: HDR Forward 窶・繧ｫ繝｡繝ｩ隕也せ縺ｧ繧ｷ繝｣繝峨え + 繝ｩ繧､繝・ぅ繝ｳ繧ｰ
+    // Pass 2: カメラ視点から HDR フォワードパスを描画する。
     // =========================================================================
     renderer.SetRenderTarget(hdrRT, resources);
     renderer.Clear({ 0.005f, 0.005f, 0.02f, 1.0f });
@@ -321,43 +401,88 @@ void RenderSystem(Scene& scene,
 
     auto shadowDepthTex = resources.GetDepthTexture(shadowMapRT);
 
+    // Pass 2a: 静的 MeshRenderer
     for (auto& go : scene.GameObjects()) {
         if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->material) continue;
+        if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
-        if (!mat->material->shader.IsValid()) continue;
-        auto& tf = go.transform;
+        if (mr->mesh->isSkinned) continue; // スキンメッシュは SkinnedMeshRenderer で処理する。
+        auto* material = SyncMaterial(*mat, resources);
+        if (!material || !material->shader.IsValid()) continue;
 
         PerObjectCB objData{};
-        objData.world             = tf.GetWorldMatrix();
+        objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
         resources.Update(objectCB, &objData, sizeof(PerObjectCB));
-
-        mat->material->Upload(resources);
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = mr->mesh->vertexBuffer;
         dc.indexBuffer        = mr->mesh->indexBuffer;
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
-        dc.shader             = mat->material->shader;
+        dc.shader             = material->shader;
         dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
         dc.constantBuffers[0] = frameCB;
         dc.constantBuffers[1] = objectCB;
-        dc.constantBuffers[2] = mat->material->paramsBuffer;
+        dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = lightCB;
         dc.constantBuffers[4] = shadowCB;
-        if (mat->material->albedoTexture.IsValid())  dc.textures[0] = mat->material->albedoTexture;
-        if (mat->material->normalTexture.IsValid())  dc.textures[1] = mat->material->normalTexture;
+        if (material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
+        if (material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
         dc.textures[8] = shadowDepthTex;
         renderer.Submit(dc, resources);
     }
 
+    // Pass 2b: SkinnedMeshRenderer — モデル内の全メッシュを走査する
+    if (skinnedPbrShader.IsValid()) {
+        for (auto& go : scene.GameObjects()) {
+            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
+            auto* mat  = go.GetComponent<MaterialComponent>();
+            auto* anim = go.GetComponent<AnimatorComponent>();
+            if (!smr || !smr->enabled || !smr->model) continue;
+            if (!mat) continue;
+            auto* material = SyncMaterial(*mat, resources);
+            if (!material) continue;
+
+            PerObjectCB objData{};
+            objData.world             = go.transform.GetWorldMatrix();
+            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+            resources.Update(objectCB, &objData, sizeof(PerObjectCB));
+
+            const auto skinCB = (anim && anim->skinningBuffer.IsValid())
+                ? anim->skinningBuffer : bindPoseSkinningCB;
+
+            for (const auto& meshPtr : smr->model->meshes) {
+                if (!meshPtr) continue;
+                if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+
+                renderer::DrawCall dc;
+                dc.vertexBuffer       = meshPtr->vertexBuffer;
+                dc.indexBuffer        = meshPtr->indexBuffer;
+                dc.indexCount         = meshPtr->indexCount;
+                dc.vertexCount        = meshPtr->vertexCount;
+                dc.shader             = skinnedPbrShader;
+                dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
+                dc.constantBuffers[0] = frameCB;
+                dc.constantBuffers[1] = objectCB;
+                dc.constantBuffers[2] = material->paramsBuffer;
+                dc.constantBuffers[3] = lightCB;
+                dc.constantBuffers[4] = shadowCB;
+                dc.constantBuffers[7] = skinCB;
+                if (material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
+                if (material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
+                dc.textures[8] = shadowDepthTex;
+                renderer.Submit(dc, resources);
+            }
+        }
+    }
+
     // =========================================================================
-    // Pass 2b: Skydome 窶・繧ｷ繝ｼ繝ｳ蜀・・ SkyRenderer 繧ｳ繝ｳ繝昴・繝阪Φ繝医ｒ謗｢縺励※謠冗判
-    //          DEPTH_SKY (LESS_EQUAL + 譖ｸ縺崎ｾｼ縺ｿ縺ｪ縺・ 縺ｧ譛驕髱｢縺ｫ驟咲ｽｮ
+    // Pass 2c: スカイドーム。有効な SkyRenderer を最初の 1 つだけ遠平面に描画する。
+    // DEPTH_SKY は深度書き込みなしの less-equal 深度テストを使用する。
     // =========================================================================
     if (skydomeShader.IsValid() && skydomeMesh && skydomeMesh->vertexBuffer.IsValid() && skydomeMesh->indexBuffer.IsValid())
     {
@@ -366,7 +491,7 @@ void RenderSystem(Scene& scene,
             auto* sky = go.GetComponent<SkyRenderer>();
             if (!sky || !sky->enabled) continue;
 
-            // exposure 繧・Skydome 逕ｨ縺ｫ莠句燕繧ｻ繝・ヨ (Pass 3 繧医ｊ蜈医↓螳溯｡後＆繧後ｋ縺溘ａ)
+            // スカイドームはコンポジット前に実行するため、必要なポストデータをここで書き込む。
             PostProcCB skyPostData{};
             skyPostData.exposure = 1.0f;
             skyPostData.time     = core::Time::TotalTime();
@@ -394,12 +519,12 @@ void RenderSystem(Scene& scene,
             skyDC.constantBuffers[5] = postprocCB;
             skyDC.constantBuffers[6] = atmCB;
             renderer.Submit(skyDC, resources);
-            break; // 繧ｹ繧ｫ繧､繝峨・繝縺ｯ 1 縺､縺ｮ縺ｿ
+            break; // スカイドームは 1 つだけ描画する。
         }
     }
 
     // =========================================================================
-    // Pass 2c: Particle System 窶・繧ｨ繝溘ャ繧ｿ繝ｼ縺斐→縺ｫ繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ 竊・謠冗判
+    // Pass 2d: パーティクルシステム。エミッターごとにシミュレーションしてビルボードを送出する。
     // =========================================================================
     if (particleShader.IsValid() && particleVB.IsValid() && particleIB.IsValid())
     {
@@ -411,7 +536,7 @@ void RenderSystem(Scene& scene,
             if (!emitter || !emitter->enabled) continue;
             auto& tf = go.transform;
 
-            // ----- 繝代・繝・ぅ繧ｯ繝ｫ逋ｺ逕・-----
+            // パーティクルを放出する。
             emitter->emitAccum += emitter->emitRate * dt;
             while (emitter->emitAccum >= 1.0f
                    && static_cast<int>(emitter->particles.size()) < emitter->maxParticles)
@@ -430,7 +555,7 @@ void RenderSystem(Scene& scene,
                 emitter->particles.push_back(std::move(p));
             }
 
-            // ----- 譖ｴ譁ｰ + 蟇ｿ蜻ｽ蛻・ｌ髯､蜴ｻ -----
+            // パーティクルを更新し、寿命切れを削除する。
             for (auto it = emitter->particles.begin(); it != emitter->particles.end(); ) {
                 it->age += dt;
                 if (it->age >= emitter->lifetime) {
@@ -441,13 +566,13 @@ void RenderSystem(Scene& scene,
                 it->position.x += it->velocity.x * dt;
                 it->position.y += it->velocity.y * dt;
                 it->position.z += it->velocity.z * dt;
-                it->velocity.y -= 5.0f * dt;  // 驥榊鴨
+                it->velocity.y -= 5.0f * dt;  // 重力
                 it->color = LerpVec4(emitter->colorStart, emitter->colorEnd, t);
                 it->size  = emitter->sizeStart + (emitter->sizeEnd - emitter->sizeStart) * t;
                 ++it;
             }
 
-            // ----- 繝薙Ν繝懊・繝峨け繝ｯ繝・ラ繧呈ｧ狗ｯ峨＠縺ｦ謠冗判 -----
+            // ビルボード頂点を構築して送出する。
             int count = std::min(static_cast<int>(emitter->particles.size()), MAX_PARTICLE_DRAW);
             if (count == 0) continue;
 
@@ -493,12 +618,12 @@ void RenderSystem(Scene& scene,
     }
 
     // =========================================================================
-    // Pass 3a: Bloom Downsample 窶・HDR 竊・蜊願ｧ｣蜒丞ｺｦ Bloom 繝・け繧ｹ繝√Ε
-    // Pass 3b: Bloom Upsample  窶・蜊願ｧ｣蜒丞ｺｦ 竊・繝輔Ν隗｣蜒丞ｺｦ (繝・Φ繝医ヵ繧｣繝ｫ繧ｿ)
+    // Pass 3a: HDR から半解像度テクスチャへブルームダウンサンプル。
+    // Pass 3b: 半解像度テクスチャからフル解像度へブルームアップサンプル。
     // =========================================================================
     if (rs.bloomEnabled && bloomDownShader.IsValid() && bloomUpShader.IsValid() && bloomHalf.IsValid() && bloomFull.IsValid())
     {
-        // Downsample: 蜈･蜉・HDR (SRV) 竊・bloomHalf (UAV)
+        // ダウンサンプル: HDR SRV → bloomHalf UAV。
         PostProcCB halfData{};
         halfData.texelSize[0]  = 1.0f / static_cast<float>(sHdrW);
         halfData.texelSize[1]  = 1.0f / static_cast<float>(sHdrH);
@@ -516,7 +641,7 @@ void RenderSystem(Scene& scene,
         bloomDownDC.dispatchZ               = 1;
         renderer.Dispatch(bloomDownDC, resources);
 
-        // Upsample: 蜈･蜉・bloomHalf (SRV) 竊・bloomFull (UAV)
+        // アップサンプル: bloomHalf SRV → bloomFull UAV。
         PostProcCB fullData{};
         fullData.texelSize[0]  = 1.0f / static_cast<float>(sHdrW / 2);
         fullData.texelSize[1]  = 1.0f / static_cast<float>(sHdrH / 2);
@@ -536,8 +661,8 @@ void RenderSystem(Scene& scene,
     }
 
     // =========================================================================
-    // Pass 4: Composite 窶・HDR + Bloom 竊・ACES ToneMap 竊・LDR 繝舌ャ繝輔ぃ
-    //         FXAA 辟｡蜉ｹ譎ゅ・縺昴・縺ｾ縺ｾ outputRT 縺ｸ蜃ｺ蜉・
+    // Pass 4: HDR とブルームを ACES トーンマッピングで LDR にコンポジットする。
+    // FXAA 無効時は outputRT に直接書き込む。
     // =========================================================================
     renderer.SetRenderTarget(rs.fxaaEnabled ? ldrRT : outputRT, resources);
 
@@ -568,7 +693,7 @@ void RenderSystem(Scene& scene,
     renderer.Submit(compositeDC, resources);
 
     // =========================================================================
-    // Pass 5: FXAA 窶・LDR 繝舌ャ繝輔ぃ縺ｮ繧ｨ繝・ず繧偵い繝ｳ繝√お繧､繝ｪ繧｢繧ｷ繝ｳ繧ｰ 竊・繝舌ャ繧ｯ繝舌ャ繝輔ぃ
+    // Pass 5: FXAA。LDR ターゲットをフィルタリングして outputRT に出力する。
     // =========================================================================
     if (rs.fxaaEnabled && fxaaShader.IsValid() && ldrRT.IsValid())
     {

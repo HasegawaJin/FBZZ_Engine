@@ -1,6 +1,8 @@
 // FBZZ Engine
 // IBuffer.hpp | fbzz::renderer
-// Renderer buffer interface
+// GPU バッファの抽象インターフェース
+// 具体バックエンドのバッファ実装を隠し、サイズや stride だけを公開する。
+// 生成は ResourceManager 経由に限定する。
 #pragma once
 #include <cstddef>
 #include <cstdint>

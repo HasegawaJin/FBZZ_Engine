@@ -42,7 +42,7 @@ struct EditorContext {
     float gameViewportOriginY = 0.0f;
     float gameViewportWidth   = 1280.0f;
     float gameViewportHeight  = 720.0f;
-    bool  requestGameViewportFocus = false;
+    bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
     bool  uiViewportFocused = false;
     float uiViewportOriginX = 0.0f;
     float uiViewportOriginY = 0.0f;
@@ -87,10 +87,11 @@ struct EditorContext {
     // 表示オプション (エディター固有)
     bool showLightRange  = true;
     bool showColliders   = false;
+    bool showSkeleton    = false;
     bool showSceneStats  = true;
     bool hotReloadEnabled = true;
 
-    // パネル間リクエスト
+    // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings = false;
 
     // Util (非所有)

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Application.hpp | fbzz::core
 // エンジンのエントリポイントとメインループ
+// Window / Renderer / SceneManager を一箇所で所有する Application シングルトン。
+// sandbox や editor は Get() から各サブシステムへアクセスする。
 #pragma once
 #include "Engine/Core/Window.hpp"
 #include "Engine/Renderer/IRenderer.hpp"

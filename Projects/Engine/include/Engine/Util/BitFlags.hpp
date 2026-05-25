@@ -1,12 +1,8 @@
 // FBZZ Engine
 // BitFlags.hpp | fbzz::util
-// enum class を型安全なビットフラグとして扱うラッパー (ヘッダーオンリー)
-//
-// 使い方:
-//   enum class Layer : uint32_t { Default = 1 << 0, Player = 1 << 1, Enemy = 1 << 2 };
-//   BitFlags<Layer> mask;
-//   mask.Set(Layer::Player).Set(Layer::Enemy);
-//   if (mask.Has(Layer::Player)) { ... }
+// enum class を型安全に扱うビットフラグ
+// レイヤーマスクや状態フラグを整数演算へ安全に変換する薄いラッパー。
+// ヘッダーオンリーで constexpr 利用を前提にする。
 #pragma once
 #include <type_traits>
 

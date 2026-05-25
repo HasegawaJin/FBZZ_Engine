@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Window.hpp | fbzz::core
-// Win32 ウィンドウの生成・管理
+// Win32 ウィンドウの生成・イベント処理
+// Renderer のリサイズ通知と ImGui の WndProc フックをつなぐ境界。
+// HWND は必要なバックエンドへ渡すために公開する。
 #pragma once
 #include <string>
 #include <cstdint>

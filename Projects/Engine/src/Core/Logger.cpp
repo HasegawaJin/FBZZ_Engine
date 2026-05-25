@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Logger.cpp | fbzz::core
-// Log output implementation
+// Logger の出力処理実装
+// ログレベルでフィルタし、登録済み ILogSink へ LogEntry を配信する。
+// 出力先は非所有ポインタとして扱い、寿命管理は登録側が行う。
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/ILogSink.hpp"
 
