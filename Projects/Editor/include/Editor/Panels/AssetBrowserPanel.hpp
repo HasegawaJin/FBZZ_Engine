@@ -17,6 +17,7 @@ public:
     explicit AssetBrowserPanel(const std::string& rootPath);
     const char* GetWindowName() const override { return "Asset Browser"; }
     void OnInit(EditorContext& ctx) override;
+    void SetRootPath(const std::string& rootPath);
 
 private:
     struct Entry {
