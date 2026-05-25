@@ -28,6 +28,7 @@
 #include <Physics/World.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
@@ -157,6 +158,26 @@ std::shared_ptr<physics::RigidBody> AddBox(scene::Scene& scene,
                          isStatic, mass, material, isTrigger);
 }
 
+std::shared_ptr<physics::RigidBody> AddOBB(scene::Scene& scene,
+                                           const VisualAssets& assets,
+                                           const std::string& name,
+                                           const math::Vector3& position,
+                                           const math::Vector3& halfExtents,
+                                           const math::Quaternion& rotation,
+                                           std::shared_ptr<renderer::Material> mat,
+                                           bool isStatic = false,
+                                           float mass = 1.0f,
+                                           const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default)
+{
+    auto& go = scene.CreateGameObject(name);
+    go.transform.localPosition = position;
+    go.transform.localRotation = rotation;
+    go.transform.localScale = halfExtents * 2.0f;
+    AttachVisual(go, assets.cube, std::move(mat), "primitive:cube");
+    return AttachPhysics(go, std::make_shared<physics::OBBCollider>(halfExtents),
+                         isStatic, mass, material);
+}
+
 std::shared_ptr<physics::RigidBody> AddSphere(scene::Scene& scene,
                                                const VisualAssets& assets,
                                                const std::string& name,
@@ -267,10 +288,16 @@ void RegisterPhysicsTestConstraints(scene::Scene& scene, physics::World& world)
         world.AddConstraint(std::make_shared<physics::SpringConstraint>(springA, springB, 1.5f, 25.0f, 0.4f));
 }
 
-void ResetPhysicsWorld(scene::Scene& scene, physics::World& world)
+void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings)
+{
+    world.SetGravity(settings.physics.gravity);
+    world.SetSubsteps(settings.physics.substeps);
+}
+
+void ResetPhysicsWorld(scene::Scene& scene, physics::World& world, const ProjectSettings& settings)
 {
     world = physics::World{};
-    world.SetGravity({ 0.0f, -9.81f, 0.0f });
+    ApplyPhysicsSettings(world, settings);
     RegisterPhysicsTestConstraints(scene, world);
 }
 
@@ -331,6 +358,20 @@ void BuildPhysicsTestScene(scene::Scene& scene,
             AddBox(scene, assets, "P5_AABB_Stack",
                    o + math::Vector3{ 1.2f, 0.35f + i * 0.72f, 0.0f },
                    { 0.35f, 0.35f, 0.35f }, assets.blue);
+        AddOBB(scene, assets, "P5_OBB_Base",
+               o + math::Vector3{ 2.35f, 0.25f, 0.0f },
+               { 0.55f, 0.25f, 0.55f },
+               math::Quaternion::FromEuler({ 0.0f, 0.22f, 0.0f }),
+               assets.stone, true, 0.0f, physics::PhysicsMaterial::Stone);
+        for (int i = 0; i < 5; ++i)
+        {
+            AddOBB(scene, assets, "P5_OBB_Stack",
+                   o + math::Vector3{ 2.35f, 0.82f + i * 0.72f, 0.0f },
+                   { 0.35f, 0.35f, 0.35f },
+                   math::Quaternion::FromEuler({ 0.0f, 0.22f, 0.0f }),
+                   (i % 2 == 0) ? assets.orange : assets.cyan,
+                   false, 1.0f, physics::PhysicsMaterial::Stone);
+        }
         auto drop = AddSphere(scene, assets, "P5_HighSpeed_Drop",
                               o + math::Vector3{ 3.0f, 5.5f, 0.0f },
                               0.35f, assets.red);
@@ -461,7 +502,8 @@ int main()
 
     physics::World physWorld;
     BuildPhysicsTestScene(*scene, resources);
-    ResetPhysicsWorld(*scene, physWorld);
+    ResetPhysicsWorld(*scene, physWorld, editorApp.GetContext().projectSettings);
+    float physicsAccumulator = 0.0f;
 
     app.GetWindow().SetResizeCallback([&](uint32_t w, uint32_t h) {
         renderer.Resize(w, h);
@@ -485,7 +527,10 @@ int main()
 
         auto* pm = editorApp.GetContext().playMode;
         if (pm->ApplyPendingRestore(*scene))
-            ResetPhysicsWorld(*scene, physWorld);
+        {
+            ResetPhysicsWorld(*scene, physWorld, editorApp.GetContext().projectSettings);
+            physicsAccumulator = 0.0f;
+        }
 
         if (!pm->IsPlaying())
             debugCamera.Update(dt);
@@ -494,12 +539,27 @@ int main()
 
         if (pm->IsPlaying())
         {
-            scene::PhysicsSystem(*scene, physWorld, dt);
+            auto& projectSettings = editorApp.GetContext().projectSettings;
+            ApplyPhysicsSettings(physWorld, projectSettings);
+
+            const int physicsHz = projectSettings.physics.hz < 1 ? 1 : projectSettings.physics.hz;
+            const float fixedDt = 1.0f / static_cast<float>(physicsHz);
+            physicsAccumulator += dt;
+            const float maxAccumulatedTime = fixedDt * 8.0f;
+            if (physicsAccumulator > maxAccumulatedTime)
+                physicsAccumulator = maxAccumulatedTime;
+
+            while (physicsAccumulator >= fixedDt)
+            {
+                scene::PhysicsSystem(*scene, physWorld, fixedDt);
+                physicsAccumulator -= fixedDt;
+            }
             scene::TransformSystem(*scene);
             scene::AnimatorSystem(*scene, resources, dt);
         }
         else
         {
+            physicsAccumulator = 0.0f;
             scene::AnimatorSystem(*scene, resources, dt);
         }
 
@@ -521,8 +581,8 @@ int main()
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
         scene::RenderSystem(*scene, renderer, resources,
                             debugCamera.camera, sceneRT,
-                            &editorApp.GetContext().renderSettings);
-        if (editorApp.GetContext().renderSettings.showColliders)
+                            &editorApp.GetContext().projectSettings.render);
+        if (editorApp.GetContext().projectSettings.render.showColliders)
         {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
             scene::ConstraintDebugDrawSystem(physWorld, renderer);
@@ -540,8 +600,8 @@ int main()
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
             scene::RenderSystem(*scene, renderer, resources,
                                 gameCamera, gameRT,
-                                &editorApp.GetContext().renderSettings);
-            if (editorApp.GetContext().renderSettings.showColliders)
+                                &editorApp.GetContext().projectSettings.render);
+            if (editorApp.GetContext().projectSettings.render.showColliders)
             {
                 renderer::DebugDraw::BeginFrame(renderer, resources, gameCamera.GetViewProjection());
                 scene::ConstraintDebugDrawSystem(physWorld, renderer);
