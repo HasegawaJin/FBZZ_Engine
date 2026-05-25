@@ -3,6 +3,7 @@
 // Unity スタイルの2ペインアセットブラウザ
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -11,6 +12,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <filesystem>
 
 namespace fbzz::editor {
 
@@ -190,7 +192,39 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         ImGui::EndDragDropSource();
     }
 
-    if (hov) ImGui::SetTooltip("%s", e.path.c_str());
+    if (hov && m_renamingPath != e.path) ImGui::SetTooltip("%s", e.path.c_str());
+
+    // 右クリックコンテキストメニュー (リネーム / 削除)
+    if (ImGui::BeginPopupContextItem("##entry_ctx")) {
+        if (ImGui::MenuItem("Rename")) {
+            m_renamingPath    = e.path;
+            const std::string stem = util::FileSystem::GetFilename(e.path);
+            std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
+            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+            m_renameNeedFocus = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete")) {
+            const std::string path = e.path;
+            ModalDialog::OpenConfirm("Delete",
+                "Delete \"" + util::FileSystem::GetFilename(path) + "\"?",
+                [this, path]() {
+                    std::error_code ec;
+                    std::filesystem::remove_all(
+                        std::filesystem::path(path.begin(), path.end()), ec);
+                    if (ec) {
+                        FBZZ_LOG_ERROR("Delete failed: %s", path.c_str());
+                    } else {
+                        if (m_selectedFbxPath == path) {
+                            m_selectedFbxPath.clear();
+                            m_selectedModel.reset();
+                        }
+                        RefreshDirectory();
+                    }
+                });
+        }
+        ImGui::EndPopup();
+    }
 
     if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const bool isMesh = (e.ext == ".fbx" || e.ext == ".obj" ||
@@ -219,16 +253,59 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         }
     }
 
-    // ファイル名 (アイコン幅に収まるよう末尾省略、中央揃え)
-    std::string display = e.name;
-    while (display.size() > 2 &&
-           ImGui::CalcTextSize(display.c_str()).x + ImGui::CalcTextSize("..").x > m_iconSize)
-        display.pop_back();
-    if (display.size() < e.name.size()) display += "..";
+    // ファイル名 (リネーム中は InputText、通常は省略ラベル)
+    if (m_renamingPath == e.path) {
+        ImGui::SetNextItemWidth(m_iconSize);
+        if (m_renameNeedFocus) {
+            ImGui::SetKeyboardFocusHere();
+            m_renameNeedFocus = false;
+        }
+        constexpr ImGuiInputTextFlags renameFlags =
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll;
+        const bool enterPressed = ImGui::InputText("##rename", m_renameBuffer,
+                                                   sizeof(m_renameBuffer), renameFlags);
+        if (enterPressed) {
+            if (m_renameBuffer[0] != '\0') {
+                const std::string dir     = util::FileSystem::GetDirectory(e.path);
+                const std::string newPath = dir + m_renameBuffer;
+                if (newPath != e.path) {
+                    std::error_code ec;
+                    std::filesystem::rename(
+                        std::filesystem::path(e.path.begin(), e.path.end()),
+                        std::filesystem::path(newPath.begin(), newPath.end()), ec);
+                    if (ec) {
+                        FBZZ_LOG_ERROR("Rename failed: %s -> %s", e.path.c_str(), newPath.c_str());
+                    } else {
+                        if (m_selectedFbxPath == e.path) m_selectedFbxPath = newPath;
+                        RefreshDirectory();
+                    }
+                }
+            }
+            m_renamingPath.clear();
+        } else if (ImGui::IsItemDeactivated()) {
+            // Escape またはフォーカス外れ → キャンセル
+            m_renamingPath.clear();
+        }
+    } else {
+        std::string display = e.name;
+        while (display.size() > 2 &&
+               ImGui::CalcTextSize(display.c_str()).x + ImGui::CalcTextSize("..").x > m_iconSize)
+            display.pop_back();
+        if (display.size() < e.name.size()) display += "..";
 
-    float indent = (m_iconSize - ImGui::CalcTextSize(display.c_str()).x) * 0.5f;
-    if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
-    ImGui::TextUnformatted(display.c_str());
+        float indent = (m_iconSize - ImGui::CalcTextSize(display.c_str()).x) * 0.5f;
+        if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
+        ImGui::TextUnformatted(display.c_str());
+
+        // F2 でリネーム開始 (ホバー中)
+        if (hov && ImGui::IsKeyPressed(ImGuiKey_F2)) {
+            m_renamingPath    = e.path;
+            const std::string stem = e.name;
+            std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
+            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+            m_renameNeedFocus = true;
+        }
+    }
 
     ImGui::PopID();
 }
@@ -437,6 +514,40 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         m_currentPath = std::move(m_pendingNavigate);
         m_pendingNavigate.clear();
         RefreshDirectory();
+    }
+
+    // 空白右クリック: Create メニュー
+    if (ImGui::BeginPopupContextWindow("##content_ctx",
+            ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+        if (ImGui::BeginMenu("Create")) {
+            if (ImGui::MenuItem("Folder")) {
+                std::string newDir = m_currentPath + "/New Folder";
+                // 重複回避
+                int suffix = 1;
+                while (util::FileSystem::Exists(newDir))
+                    newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
+                util::FileSystem::EnsureDirectory(newDir);
+                RefreshDirectory();
+                // 新規フォルダをリネームモードで開く
+                m_renamingPath = newDir;
+                std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(newDir).c_str(),
+                             sizeof(m_renameBuffer) - 1);
+                m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+                m_renameNeedFocus = true;
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Scene")) {
+                std::string newPath = m_currentPath + "/New Scene.fbzz";
+                int suffix = 1;
+                while (util::FileSystem::Exists(newPath))
+                    newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".fbzz";
+                // 空シーンファイル（最小限の TOML）を書き出す
+                util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
+                RefreshDirectory();
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
     }
 
     // 選択 FBX の内容プレビュー
