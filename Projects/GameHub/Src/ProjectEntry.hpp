@@ -13,6 +13,7 @@ struct ProjectEntry {
     std::string path;
     std::string engineVersion;
     std::string lastOpened;
+    std::string thumbnailPath;
 
     bool engineVersionMismatch = false;
     bool migrationRequired = false;
@@ -23,6 +24,7 @@ struct ProjectEntry {
     bool cmakeExists = false;
     bool layoutValid = false;
     bool generatedRootsExist = false;
+    bool thumbnailExists = false;
 };
 
 } // namespace fbzz::hub

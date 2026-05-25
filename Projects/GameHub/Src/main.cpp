@@ -240,7 +240,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     InitImGui(hwnd);
 
     fbzz::hub::HubApp app;
-    app.Init();
+    app.Init(g_d3d.device.Get());
 
     while (g_running) {
         MSG msg{};

@@ -1,7 +1,8 @@
 // FBZZ Engine
 // HubApp.cpp | fbzz::hub
-// Hub の ImGui UI 実装
+// Hub ImGui UI implementation
 #include "HubApp.hpp"
+#include "MigrationManager.hpp"
 #include "ProcessLauncher.hpp"
 
 #include <Windows.h>
@@ -23,11 +24,24 @@ namespace {
 
 constexpr float SIDEBAR_WIDTH = 160.0f;
 constexpr float TOOLBAR_HEIGHT = 40.0f;
-constexpr float CARD_HEIGHT = 104.0f;
+constexpr float CARD_HEIGHT = 116.0f;
+constexpr float THUMBNAIL_SIZE = 72.0f;
 
 bool IsProjectOpenRequested()
 {
     return ImGui::IsItemClicked(0) && ImGui::IsMouseDoubleClicked(0);
+}
+
+int ParseVersionMajor(const std::string& version)
+{
+    int value = 0;
+    for (char ch : version) {
+        if (ch < '0' || ch > '9') {
+            break;
+        }
+        value = value * 10 + (ch - '0');
+    }
+    return value;
 }
 
 std::wstring Utf8ToWide(const std::string& text)
@@ -56,6 +70,19 @@ std::string WideToUtf8(const std::wstring& text)
     std::string utf8(static_cast<size_t>(size - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
     return utf8;
+}
+
+std::filesystem::path Utf8ToPath(const std::string& text)
+{
+    return std::filesystem::path(Utf8ToWide(text));
+}
+
+std::string ToStoredPath(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+    const std::filesystem::path normalized = ec ? path : absolute.lexically_normal();
+    return WideToUtf8(normalized.wstring());
 }
 
 bool SelectFolder(const wchar_t* title, std::string& outPath)
@@ -88,11 +115,81 @@ std::string ToLower(std::string text)
     return text;
 }
 
+std::filesystem::path GetExecutableDirectory()
+{
+    wchar_t buffer[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    return std::filesystem::path(buffer).parent_path();
+}
+
+bool IsEngineRoot(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    return std::filesystem::exists(path / "CMakeLists.txt", ec)
+        && std::filesystem::exists(path / "Projects" / "Engine", ec)
+        && std::filesystem::exists(path / "Projects" / "Math", ec);
+}
+
+std::string ResolveEngineRootForTemplate(const HubConfig& config)
+{
+    if (!config.GetEngineRoot().empty()) {
+        return std::filesystem::path(config.GetEngineRoot()).generic_string();
+    }
+
+    std::error_code ec;
+    std::filesystem::path current = std::filesystem::current_path(ec);
+    if (!ec && IsEngineRoot(current)) {
+        return current.generic_string();
+    }
+
+    current = GetExecutableDirectory();
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        if (IsEngineRoot(current)) {
+            return current.generic_string();
+        }
+        current = current.parent_path();
+    }
+
+    return {};
+}
+
+void ApplyEngineEnvironment(const std::string& engineRoot)
+{
+    if (engineRoot.empty()) {
+        return;
+    }
+
+    const std::wstring rootW = Utf8ToWide(engineRoot);
+    SetEnvironmentVariableW(L"FBZZ_ENGINE_ROOT", rootW.c_str());
+
+    HKEY key{};
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &key) == ERROR_SUCCESS) {
+        RegSetValueExW(
+            key,
+            L"FBZZ_ENGINE_ROOT",
+            0,
+            REG_EXPAND_SZ,
+            reinterpret_cast<const BYTE*>(rootW.c_str()),
+            static_cast<DWORD>((rootW.size() + 1) * sizeof(wchar_t)));
+        RegCloseKey(key);
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            reinterpret_cast<LPARAM>(L"Environment"),
+            SMTO_ABORTIFHUNG,
+            100,
+            nullptr);
+    }
+}
+
 } // namespace
 
-bool HubApp::Init()
+bool HubApp::Init(ID3D11Device* device)
 {
+    m_thumbnailCache.Init(device);
     m_config.Load();
+    ApplyEngineEnvironment(ResolveEngineRootForTemplate(m_config));
     m_templateManager.Refresh();
     m_projectManager.LoadFromConfig(m_config);
     return true;
@@ -101,6 +198,7 @@ bool HubApp::Init()
 void HubApp::Shutdown()
 {
     m_config.Save();
+    m_thumbnailCache.Clear();
 }
 
 void HubApp::Render()
@@ -131,6 +229,7 @@ void HubApp::Render()
     ImGui::End();
 
     RenderNewProjectDialog();
+    RenderMigrationDialog();
     RenderErrorModal();
 }
 
@@ -215,6 +314,10 @@ void HubApp::RenderProjectCard(const ProjectEntry& project)
     ImGui::PushID(project.path.c_str());
     ImGui::BeginChild("Card", ImVec2(0, CARD_HEIGHT), true);
 
+    RenderProjectThumbnail(project);
+    ImGui::SameLine();
+
+    ImGui::BeginGroup();
     ImGui::TextUnformatted(project.name.c_str());
     if (IsProjectOpenRequested() && project.pathExists) {
         OpenProject(project);
@@ -225,11 +328,19 @@ void HubApp::RenderProjectCard(const ProjectEntry& project)
         project.lastOpened.empty() ? "-" : project.lastOpened.c_str(),
         project.engineVersion.empty() ? "-" : project.engineVersion.c_str());
 
-    if (!project.projFileValid || !project.layoutValid || !project.cmakeExists || !project.apiHeaderExists || !project.settingsExists) {
+    if (project.path == m_failedMigrationProject) {
+        ImGui::TextColored(ImVec4(1.0f, 0.38f, 0.32f, 1.0f), "Migration failed");
+    } else if (!project.projFileValid || !project.layoutValid || !project.cmakeExists || !project.apiHeaderExists || !project.settingsExists) {
         ImGui::TextColored(ImVec4(1.0f, 0.74f, 0.24f, 1.0f), "Project layout warning");
     } else if (project.engineVersionMismatch) {
-        ImGui::TextColored(ImVec4(0.55f, 0.78f, 1.0f, 1.0f),
-            project.migrationRequired ? "Migration recommended" : "Update available");
+        const char* label = project.migrationRequired ? "Migration recommended" : "Update available";
+        ImGui::TextColored(ImVec4(0.55f, 0.78f, 1.0f, 1.0f), "%s", label);
+        if (project.migrationRequired) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Migrate")) {
+                RequestMigration(project);
+            }
+        }
     } else {
         ImGui::TextDisabled("Ready");
     }
@@ -249,6 +360,9 @@ void HubApp::RenderProjectCard(const ProjectEntry& project)
         if (ImGui::MenuItem("Reveal in Explorer", nullptr, false, project.pathExists)) {
             RevealProject(project);
         }
+        if (ImGui::MenuItem("Migrate", nullptr, false, project.pathExists && project.migrationRequired)) {
+            RequestMigration(project);
+        }
         ImGui::Separator();
         if (ImGui::MenuItem("Remove from List")) {
             RemoveProject(project);
@@ -260,9 +374,54 @@ void HubApp::RenderProjectCard(const ProjectEntry& project)
         ImGui::SetTooltip("Project path was not found.");
     }
 
+    ImGui::EndGroup();
     ImGui::EndChild();
     ImGui::Spacing();
     ImGui::PopID();
+}
+
+void HubApp::RenderProjectThumbnail(const ProjectEntry& project)
+{
+    const ImVec2 size(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+    const ThumbnailTexture* texture = project.thumbnailExists
+        ? m_thumbnailCache.GetOrLoad(project.thumbnailPath)
+        : nullptr;
+
+    if (texture && texture->shaderResourceView) {
+        ImGui::Image(
+            texture->shaderResourceView.Get(),
+            size,
+            ImVec2(0.0f, 0.0f),
+            ImVec2(1.0f, 1.0f));
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", project.thumbnailPath.c_str());
+        }
+        return;
+    }
+
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    const ImU32 fillColor = project.thumbnailExists
+        ? IM_COL32(42, 68, 92, 255)
+        : IM_COL32(42, 42, 46, 255);
+    const ImU32 borderColor = project.thumbnailExists
+        ? IM_COL32(86, 150, 210, 255)
+        : IM_COL32(92, 92, 96, 255);
+    drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), fillColor, 4.0f);
+    drawList->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), borderColor, 4.0f);
+
+    const char* label = project.thumbnailExists ? "Load Failed" : "No Image";
+    const ImVec2 textSize = ImGui::CalcTextSize(label);
+    drawList->AddText(
+        ImVec2(pos.x + (size.x - textSize.x) * 0.5f, pos.y + (size.y - textSize.y) * 0.5f),
+        IM_COL32(230, 232, 236, 255),
+        label);
+
+    ImGui::Dummy(size);
+    if (project.thumbnailExists && ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", project.thumbnailPath.c_str());
+    }
 }
 
 void HubApp::RenderNewProjectDialog()
@@ -326,11 +485,12 @@ void HubApp::RenderNewProjectDialog()
         const std::string createdAt = CurrentTimestamp();
         if (m_templateManager.Instantiate(
                 selectedTemplate,
-                std::filesystem::path(m_newProjectDestinationBuffer.data()),
+                Utf8ToPath(m_newProjectDestinationBuffer.data()),
                 nameInfo,
                 createdAt,
+                ResolveEngineRootForTemplate(m_config),
                 error)) {
-            const std::string projectPath = (std::filesystem::path(m_newProjectDestinationBuffer.data()) / nameInfo.targetName).string();
+            const std::string projectPath = ToStoredPath(Utf8ToPath(m_newProjectDestinationBuffer.data()) / nameInfo.targetName);
             m_config.AddProject(projectPath, createdAt);
             m_config.Save();
             m_reloadProjectsAfterRender = true;
@@ -349,11 +509,71 @@ void HubApp::RenderNewProjectDialog()
     ImGui::EndPopup();
 }
 
+void HubApp::RenderMigrationDialog()
+{
+    if (m_showMigrationDialog) {
+        ImGui::OpenPopup("Project Migration");
+        m_showMigrationDialog = false;
+    }
+
+    if (!ImGui::BeginPopupModal("Project Migration", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+
+    ImGui::TextUnformatted(m_pendingMigrationName.c_str());
+    ImGui::Separator();
+    if (m_pendingMigrationIsMajor) {
+        ImGui::TextWrapped("This project has a major engine version difference. A backup will be created before generated project files are updated.");
+    } else {
+        ImGui::TextWrapped("A backup will be created before generated project files are updated.");
+    }
+    ImGui::TextWrapped("Assets and Src/Scripts are not modified by this migration.");
+
+    if (ImGui::Button("Migrate", ImVec2(96.0f, 0.0f))) {
+        std::string error;
+        if (MigrationManager::MigrateProject(m_pendingMigrationProject, error)) {
+            m_reloadProjectsAfterRender = true;
+            m_failedMigrationProject.clear();
+            m_pendingMigrationProject.clear();
+            m_pendingMigrationName.clear();
+            ImGui::CloseCurrentPopup();
+        } else {
+            m_failedMigrationProject = m_pendingMigrationProject;
+            m_errorMessage = error;
+        }
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(96.0f, 0.0f))) {
+        m_pendingMigrationProject.clear();
+        m_pendingMigrationName.clear();
+        ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+}
+
 void HubApp::RenderLearnPanel()
 {
     ImGui::TextUnformatted("Learn");
     ImGui::Separator();
-    ImGui::TextDisabled("Documentation links will be added in Phase 3.");
+    if (ImGui::Button("Design")) {
+        ShellExecuteW(nullptr, L"open", L"docs\\Design.md", nullptr, nullptr, SW_SHOWNORMAL);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Hub Design")) {
+        ShellExecuteW(nullptr, L"open", L"docs\\hub\\Design.md", nullptr, nullptr, SW_SHOWNORMAL);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Repository")) {
+        ShellExecuteW(nullptr, L"open", L"https://github.com/", nullptr, nullptr, SW_SHOWNORMAL);
+    }
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("References");
+    ImGui::BulletText("Project metadata: .fbzz_proj");
+    ImGui::BulletText("Generated public API: Include/<ProjectName>/ProjectAPI.hpp");
+    ImGui::BulletText("Launch contract: FBZZEditor.exe --project <path>");
 }
 
 void HubApp::RenderSettingsPanel()
@@ -372,13 +592,13 @@ void HubApp::AddExistingProject()
         return;
     }
 
-    const std::filesystem::path root(selectedPath);
+    const std::filesystem::path root = Utf8ToPath(selectedPath);
     if (!std::filesystem::exists(root / ".fbzz_proj")) {
         m_errorMessage = "The selected folder does not contain .fbzz_proj.";
         return;
     }
 
-    if (!m_config.AddProject(selectedPath, CurrentTimestamp())) {
+    if (!m_config.AddProject(ToStoredPath(root), CurrentTimestamp())) {
         m_errorMessage = "The selected project is already registered.";
         return;
     }
@@ -389,6 +609,11 @@ void HubApp::AddExistingProject()
 
 void HubApp::OpenProject(const ProjectEntry& project)
 {
+    if (project.migrationRequired) {
+        RequestMigration(project);
+        return;
+    }
+
     std::string error;
     if (ProcessLauncher::OpenInEditor(m_config, project.path, error)) {
         const std::string now = CurrentTimestamp();
@@ -409,6 +634,14 @@ void HubApp::RevealProject(const ProjectEntry& project)
 {
     const std::wstring path = Utf8ToWide(project.path);
     ShellExecuteW(nullptr, L"explore", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void HubApp::RequestMigration(const ProjectEntry& project)
+{
+    m_pendingMigrationProject = project.path;
+    m_pendingMigrationName = project.name;
+    m_pendingMigrationIsMajor = ParseVersionMajor(project.engineVersion) != ParseVersionMajor(FBZZ_VERSION);
+    m_showMigrationDialog = true;
 }
 
 bool HubApp::MatchesSearch(const ProjectEntry& project) const

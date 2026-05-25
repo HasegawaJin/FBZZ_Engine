@@ -10,7 +10,9 @@ set_target_properties(fbzz_hub PROPERTIES
 )
 
 target_include_directories(fbzz_hub
-    PRIVATE Src
+    PRIVATE
+        Src
+        "${CMAKE_SOURCE_DIR}/ThirdParty/Stb"
 )
 
 target_compile_definitions(fbzz_hub

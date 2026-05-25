@@ -1,9 +1,10 @@
 // FBZZ Engine
 // ProcessLauncher.cpp | fbzz::hub
-// CreateProcess による Editor 起動
+// Launch Editor process
 #include "ProcessLauncher.hpp"
 
 #include <Windows.h>
+#include <array>
 #include <filesystem>
 #include <vector>
 
@@ -32,6 +33,12 @@ std::filesystem::path GetExecutableDirectory()
     return std::filesystem::path(buffer).parent_path();
 }
 
+bool Exists(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    return std::filesystem::exists(path, ec);
+}
+
 std::wstring Quote(const std::wstring& text)
 {
     return L"\"" + text + L"\"";
@@ -42,8 +49,8 @@ std::wstring Quote(const std::wstring& text)
 bool ProcessLauncher::OpenInEditor(const HubConfig& config, const std::string& projectPath, std::string& errorMessage)
 {
     const std::wstring editorPath = ResolveEditorPath(config);
-    if (editorPath.empty() || !std::filesystem::exists(editorPath)) {
-        errorMessage = "FBZZEditor.exe が見つかりません。Settings で設定してください。";
+    if (editorPath.empty() || !Exists(editorPath)) {
+        errorMessage = "FBZZEditor.exe was not found. Build the editor launcher target or set it in Settings.";
         return false;
     }
 
@@ -62,14 +69,14 @@ bool ProcessLauncher::OpenInEditor(const HubConfig& config, const std::string& p
         nullptr,
         nullptr,
         FALSE,
-        CREATE_NEW_PROCESS_GROUP,
+        CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
         nullptr,
         nullptr,
         &startup,
         &process);
 
     if (!ok) {
-        errorMessage = "FBZZEditor.exe の起動に失敗しました。";
+        errorMessage = "Failed to launch the editor executable.";
         return false;
     }
 
@@ -84,7 +91,29 @@ std::wstring ProcessLauncher::ResolveEditorPath(const HubConfig& config)
         return Utf8ToWide(config.GetEditorExe());
     }
 
-    return (GetExecutableDirectory() / L"FBZZEditor.exe").wstring();
+    const std::filesystem::path exeDir = GetExecutableDirectory();
+    std::error_code ec;
+    const std::filesystem::path cwd = std::filesystem::current_path(ec);
+    const std::string exeDirText = exeDir.generic_string();
+    const bool isDebugHub = exeDirText.find("/debug/") != std::string::npos
+        || exeDirText.find("\\debug\\") != std::string::npos;
+    const std::filesystem::path matchingBuildEditor = isDebugHub
+        ? cwd / L"build" / L"debug" / L"Projects" / L"EditorLauncher" / L"FBZZEditor.exe"
+        : cwd / L"build" / L"release" / L"Projects" / L"EditorLauncher" / L"FBZZEditor.exe";
+
+    const std::array<std::filesystem::path, 3> candidates = {
+        exeDir / L"FBZZEditor.exe",
+        exeDir.parent_path() / L"EditorLauncher" / L"FBZZEditor.exe",
+        matchingBuildEditor
+    };
+
+    for (const auto& candidate : candidates) {
+        if (Exists(candidate)) {
+            return candidate.wstring();
+        }
+    }
+
+    return (exeDir / L"FBZZEditor.exe").wstring();
 }
 
 } // namespace fbzz::hub
