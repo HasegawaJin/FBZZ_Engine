@@ -18,6 +18,8 @@ struct MaterialParams {
     float metallic = 0.0f;
     float roughness = 0.8f;
     float emissiveScale = 0.0f;
+    // ビット 0 = albedo テクスチャあり, ビット 1 = normal テクスチャあり。
+    // HLSL 側の HAS_ALBEDO_TEX / HAS_NORMAL_TEX マクロと対応する。
     uint32_t textureMask = 0;
 };
 

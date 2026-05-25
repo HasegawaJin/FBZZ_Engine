@@ -108,6 +108,9 @@ math::Matrix4 SampleNodeLocal(const asset::SkeletonNode& node,
     const auto* track = FindTrack(clip, node.name);
     if (!track) return node.localBindTransform;
 
+    // バインドポーズ行列から TRS 成分を抽出してフォールバック値にする。
+    // アニメーションクリップが対象ノードのキーを持たない場合に使われる。
+    // 列ベクトル行列: m[行][列] = m[0..2][3] が Translation、各列の長さが Scale。
     math::Vector3 bindTranslation = {
         node.localBindTransform.m[0][3],
         node.localBindTransform.m[1][3],
@@ -126,6 +129,11 @@ math::Matrix4 SampleNodeLocal(const asset::SkeletonNode& node,
     return math::Matrix4::TRS(translation, rotation, scale);
 }
 
+// 骨格ツリーをルートから前順 DFS で走査し、各ノードのグローバル変換と骨パレットを計算する。
+// スキニング行列 = rootInverse * nodeGlobal * offsetMatrix
+//   rootInverse : FBX エクスポート座標系の補正
+//   nodeGlobal  : アニメーションを適用したワールド変換
+//   offsetMatrix: メッシュ空間からボーン空間へ変換する逆バインドポーズ行列
 void EvaluateNode(const asset::Skeleton& skeleton,
                   const asset::AnimationClip& clip,
                   int nodeIndex,

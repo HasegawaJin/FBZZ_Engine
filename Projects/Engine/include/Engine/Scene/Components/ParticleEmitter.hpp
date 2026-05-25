@@ -33,6 +33,8 @@ struct ParticleEmitter {
     bool          enabled        = true;
 
     std::vector<Particle> particles;
+    // emitRate * dt の累積値。1.0 を超えるたびに 1 粒子を発生させる。
+    // こうすることで低フレームレートでも発生数が dt に比例して安定する。
     float                 emitAccum = 0.0f;
 
     const char* GetTypeName() const { return "Particle Emitter"; }

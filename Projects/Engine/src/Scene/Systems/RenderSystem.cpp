@@ -154,6 +154,9 @@ void RenderSystem(Scene& scene,
     static auto shadowShader    = resources.LoadShader("assets/shaders/Pipeline/ShadowMap.hlsl");
     static auto skinnedShadowShader = resources.LoadShader("assets/shaders/Pipeline/SkinnedShadowMap.hlsl");
     static auto skinnedPbrShader = resources.LoadShader("assets/shaders/Material/SkinnedPBR.hlsl");
+    // アニメーターがない SkinnedMeshRenderer のフォールバック用バインドポーズ。
+    // スキンメッシュシェーダーは常に b7 からスキニング行列を読む仕様のため、
+    // AnimatorComponent がない場合でも単位行列パレットを送ってメッシュ変形なし状態を表す。
     static renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
     if (!bindPoseSkinningCB.IsValid()) {
         struct BindPoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };

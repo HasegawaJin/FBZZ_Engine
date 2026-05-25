@@ -283,6 +283,9 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
     auto* dstMaterial = GetComponent<MaterialComponent>(dst);
     if (!srcMaterial || !dstMaterial || !srcMaterial->material) return;
 
+    // MaterialComponent は shared_ptr<Material> を持つ。単純コピーでは同じ Material を共有し、
+    // 片方のパラメーター変更がもう片方に波及する。GPU 定数バッファも独立させる必要があるため、
+    // Material を深コピーし、定数バッファのハンドルだけリセットして再作成する。
     auto cloned = std::make_shared<renderer::Material>();
     cloned->shader        = srcMaterial->material->shader;
     cloned->albedoTexture = srcMaterial->material->albedoTexture;
@@ -300,11 +303,14 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
 
 void Scene::FixupOwnership()
 {
+    // ムーブ後、GameObject が保持する m_scene 生ポインタは旧 Scene を指したままになる。
+    // m_entityToGameObject も新アドレスで再構築が必要。ここで両方を修正する。
     for (auto& go : m_gameObjects) {
         go->m_scene = this;
         m_entityToGameObject[go->m_id.index] = go.get();
     }
 
+    // Script が保持する Scene* / GameObject* も同様に旧ポインタになっているため更新する。
     for (EntityID id : GetArray<ScriptComponent>().Entities()) {
         auto& sc = GetArray<ScriptComponent>().Get(id);
         if (sc.script) sc.script->SetContext(this, GetGameObject(id));

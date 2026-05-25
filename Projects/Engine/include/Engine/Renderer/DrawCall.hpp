@@ -18,13 +18,21 @@ struct DrawCall {
     ResourceHandle<ShaderTag> shader;
     ResourceHandle<PipelineStateTag> pipelineState;
 
+    // スロット割り当て (Constants.hlsli と同期すること):
+    //   [0] = CameraConstants (b0)   [1] = ObjectConstants (b1)
+    //   [2] = MaterialConstants (b2) [3] = LightConstants (b3)
+    //   [4] = ShadowConstants (b4)   [5] = PostProcConstants (b5)
+    //   [6] = AtmosphereConstants (b6) [7] = SkinningConstants (b7)
     std::array<ResourceHandle<ConstantBufferTag>, 8> constantBuffers = {};
+
+    // スロット割り当て (Constants.hlsli と同期すること):
+    //   [0]=Albedo [1]=Normal [5]=HDR [7]=Depth [8]=ShadowMap [10]=Bloom
     std::array<ResourceHandle<TextureTag>, 16> textures = {};
 
-    uint32_t indexCount = 0;
-    uint32_t vertexCount = 0;
-    uint32_t startIndex = 0;
-    uint32_t baseVertex = 0;
+    uint32_t indexCount  = 0;
+    uint32_t vertexCount = 0; // indexCount=0 かつ vertexCount>0 でインデックスなし描画 (フルスクリーントライアングル等)
+    uint32_t startIndex  = 0;
+    uint32_t baseVertex  = 0;
 
     RenderLayer layer = RenderLayer::OPAQUE;
     PrimitiveTopology topology = PrimitiveTopology::TRIANGLE_LIST;
