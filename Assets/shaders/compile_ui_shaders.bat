@@ -1,7 +1,16 @@
 @echo off
 setlocal
 
-set FXC="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\fxc.exe"
+set "FXC="
+if defined FBZZ_FXC set "FXC=%FBZZ_FXC%" & goto :found_fxc
+for /f "delims=" %%F in ('where fxc.exe 2^>nul') do set "FXC=%%F" & goto :found_fxc
+if defined WindowsSdkDir if defined WindowsSDKVersion if exist "%WindowsSdkDir%bin\%WindowsSDKVersion%x64\fxc.exe" set "FXC=%WindowsSdkDir%bin\%WindowsSDKVersion%x64\fxc.exe" & goto :found_fxc
+
+:found_fxc
+if "%FXC%"=="" (
+    echo fxc.exe was not found. Install the Windows SDK or set FBZZ_FXC to fxc.exe.
+    exit /b 1
+)
 set SRC=%~dp0
 set OUT=%~dp0compiled
 set LOG=%~dp0compile_ui_log.txt
@@ -17,15 +26,15 @@ REM UI shaders
 REM =========================================================================
 
 echo [UI] UISprite.hlsl...
-%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\UI.UISprite.vs.cso" "%SRC%UI\UISprite.hlsl" >> "%LOG%" 2>&1
+"%FXC%" %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\UI.UISprite.vs.cso" "%SRC%UI\UISprite.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] UI/UISprite VS & goto :error )
-%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\UI.UISprite.ps.cso" "%SRC%UI\UISprite.hlsl" >> "%LOG%" 2>&1
+"%FXC%" %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\UI.UISprite.ps.cso" "%SRC%UI\UISprite.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] UI/UISprite PS & goto :error )
 
 echo [UI] UIText.hlsl...
-%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\UI.UIText.vs.cso" "%SRC%UI\UIText.hlsl" >> "%LOG%" 2>&1
+"%FXC%" %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\UI.UIText.vs.cso" "%SRC%UI\UIText.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] UI/UIText VS & goto :error )
-%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\UI.UIText.ps.cso" "%SRC%UI\UIText.hlsl" >> "%LOG%" 2>&1
+"%FXC%" %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\UI.UIText.ps.cso" "%SRC%UI\UIText.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] UI/UIText PS & goto :error )
 
 echo.
