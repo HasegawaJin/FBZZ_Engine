@@ -142,7 +142,7 @@ main → develop → feature/<name>
 
 ### ビルド確認
 
-**ビルドは必ず Visual Studio 2026 から行う。**  
+**ビルドは　VSCode / Visual Studio 2026 から行う。**  
 ターミナル (PowerShell / Bash) から `ninja` や `cmake --build` を実行しない。  
 MSVC の環境変数 (vcvarsall.bat) が設定されていないためコンパイルエラーになる。
 
@@ -165,20 +165,3 @@ VS Code CMake Tools の場合は `...` → **Delete Cache and Reconfigure**。
 - 独立した調査・ファイル操作は並行ツール呼び出しでまとめる
 
 ---
-
-## ロードマップ (現在地を把握すること)
-
-残タスクの詳細は `TASKS.md` を参照。
-
-```
-Step 0   ビルド環境・Application ループ                   完了
-Step 1   Win32 ウィンドウ表示 + DX11 初期化               完了
-Step 2   三角形描画 (頂点バッファ, シェーダー)             完了
-Step 3   デバッグ描画 (線, 矩形, 円)                       完了
-Step 4   物理エンジン (重力, 衝突)                         完了
-Step 5   シーン管理 (GameObject / Component)               完了
-Step 5.5 HLSL シェーダーライブラリ (PBR / Shadow / Bloom)  完了
-Step 6   ImGui Editor                         完了 (残: InspectorPanel 拡張 / main.cpp 統合)
-Step 6.5 SceneSerializer (TOML .fbzz)         実装済み (main.cpp 統合・MenuBar UI は未)
-Step 7   DX12 / RenderGraph 移行                           未着手
-```

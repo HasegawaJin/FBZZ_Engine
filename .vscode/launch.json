@@ -3,11 +3,50 @@
     "configurations": [
         
         {
-            "name": "Debug (sandbox)",
+            "name": "Release (GameHub)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/debug/Projects/Sandbox/sandbox.exe",
+            "program": "${workspaceFolder}/build/release/Projects/GameHub/Release/FBZZHub.exe",
             "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "justMyCode": true
+        },
+        {
+            "name": "Release (FBZZEditor)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/release/Projects/EditorLauncher/Release/FBZZEditor.exe",
+            "args": ["--project", "${input:fbzzProjectPath}"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "justMyCode": true
+        },
+        {
+            "name": "Debug (GameHub)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Projects/GameHub/Debug/FBZZHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "justMyCode": true
+        },
+        {
+            "name": "Debug (FBZZEditor)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Projects/EditorLauncher/Debug/FBZZEditor.exe",
+            "args": ["--project", "${input:fbzzProjectPath}"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
@@ -19,7 +58,7 @@
             "name": "Debug (tests)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/debug/Projects/Tests/fbzz_tests.exe",
+            "program": "${workspaceFolder}/build/debug/Projects/Tests/Debug/fbzz_tests.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -27,19 +66,14 @@
             "console": "integratedTerminal",
             "requireExactSource": false,
             "justMyCode": true
-        },
+        }
+    ],
+    "inputs": [
         {
-            "name": "Release (sandbox)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/release/Projects/Sandbox/sandbox.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "justMyCode": true
+            "id": "fbzzProjectPath",
+            "type": "promptString",
+            "description": "FBZZ project folder",
+            "default": ""
         }
     ]
 }
