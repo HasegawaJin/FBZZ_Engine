@@ -17,6 +17,7 @@
 #include <Physics/SphereCollider.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -249,6 +250,8 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool hasChildren = go.GetChildCount() > 0;
     const bool selected    = ContainsEntity(ctx.selectedEntities, id);
     const bool isRoot      = go.GetParent() == nullptr;
+    const bool isActive    = go.activeSelf();
+    const bool isLocked    = ctx.IsLocked(id);
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth
                              | ImGuiTreeNodeFlags_OpenOnArrow
@@ -265,19 +268,74 @@ void DrawHierarchyNode(EditorContext& ctx,
         *pendingExpand = scene::EntityID{};
     }
 
+    // 非アクティブはグレーアウト、ロック中はオレンジ
+    if (!isActive)     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 130, 130, 255));
+    else if (isLocked) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 175, 80, 255));
     const bool opened = ImGui::TreeNodeEx(go.name.c_str(), flags);
+    if (!isActive || isLocked) ImGui::PopStyleColor();
 
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
-        if (!ImGui::GetIO().KeyCtrl)
-            ctx.selectedEntities.clear();
-        auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);
-        if (it != ctx.selectedEntities.end())
-            ctx.selectedEntities.erase(it);
-        else
-            ctx.selectedEntities.push_back(id);
+    // --- 右端 visibility/lock アイコン (DrawList で直接描画) ---
+    {
+        const ImVec2 nodeMin = ImGui::GetItemRectMin();
+        const ImVec2 nodeMax = ImGui::GetItemRectMax();
+        const float  h       = nodeMax.y - nodeMin.y;
+        const float  btnW    = h + 2.0f;
+        // SpanAvailWidth のためnodeMax.x = ウィンドウコンテンツ右端
+        const float  rx      = nodeMax.x;
+
+        // ヒット判定 (DrawList ボタンは ImGui のアイテム系から独立して判定)
+        const ImVec2 visMin  = { rx - btnW * 2.0f, nodeMin.y };
+        const ImVec2 visMax  = { rx - btnW,         nodeMax.y };
+        const ImVec2 lockMin = { rx - btnW,          nodeMin.y };
+        const ImVec2 lockMax = { rx,                 nodeMax.y };
+
+        const bool visHov  = ImGui::IsMouseHoveringRect(visMin,  visMax,  false);
+        const bool lockHov = ImGui::IsMouseHoveringRect(lockMin, lockMax, false);
+        const bool visClick  = visHov  && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        const bool lockClick = lockHov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+        if (visClick)  deferred = [&ctx, id]() {
+            if (auto* g = ctx.activeScene->GetGameObject(id)) g->SetActive(!g->activeSelf());
+        };
+        if (lockClick) ctx.ToggleLock(id);
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+
+        // visibility アイコン
+        if (visHov) dl->AddRectFilled(visMin, visMax, IM_COL32(80, 80, 80, 160), 2.0f);
+        const char* visChar = isActive ? "o" : "-";
+        ImVec2 vts = ImGui::CalcTextSize(visChar);
+        dl->AddText({ visMin.x + (btnW - vts.x) * 0.5f, visMin.y + (h - vts.y) * 0.5f },
+                    isActive ? IM_COL32(200, 200, 200, 200) : IM_COL32(100, 100, 100, 200), visChar);
+
+        // lock アイコン (常時描画: ロック中はオレンジ、非ロック+ホバーは薄く)
+        if (lockHov || isLocked) {
+            if (lockHov) dl->AddRectFilled(lockMin, lockMax, IM_COL32(80, 80, 80, 160), 2.0f);
+            ImVec2 lts = ImGui::CalcTextSize("L");
+            dl->AddText({ lockMin.x + (btnW - lts.x) * 0.5f, lockMin.y + (h - lts.y) * 0.5f },
+                        isLocked ? IM_COL32(255, 175, 50, 240) : IM_COL32(120, 120, 120, 140), "L");
+        }
+
+        // ノードのクリック/ダブルクリック判定 (アイコン領域は除外)
+        const bool iconAreaClick = visClick || lockClick;
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()
+            && !isLocked && !iconAreaClick) {
+            if (!ImGui::GetIO().KeyCtrl)
+                ctx.selectedEntities.clear();
+            auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);
+            if (it != ctx.selectedEntities.end())
+                ctx.selectedEntities.erase(it);
+            else
+                ctx.selectedEntities.push_back(id);
+        }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
+            && !isLocked && !iconAreaClick) {
+            ctx.focusTargetPosition    = go.transform.position;
+            ctx.requestFocusOnSelected = true;
+        }
     }
 
-    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+    if (!isLocked && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         ImGui::SetDragDropPayload("FBZZ_HIERARCHY_ENTITY", &id, sizeof(id));
         ImGui::TextUnformatted(go.name.c_str());
         ImGui::EndDragDropSource();
@@ -301,6 +359,14 @@ void DrawHierarchyNode(EditorContext& ctx,
 
     if (ImGui::BeginPopupContextItem()) {
         ctx.selectedEntities = { id };
+
+        if (ImGui::MenuItem(isActive ? "Hide" : "Show"))
+            deferred = [&ctx, id]() {
+                if (auto* g = ctx.activeScene->GetGameObject(id)) g->SetActive(!g->activeSelf());
+            };
+        if (ImGui::MenuItem(isLocked ? "Unlock" : "Lock"))
+            ctx.ToggleLock(id);
+        ImGui::Separator();
 
         if (ImGui::BeginMenu("Create")) {
             DrawCreateObjectMenu(ctx, deferred);
@@ -380,6 +446,60 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 {
     if (!ctx.activeScene) {
         ImGui::TextDisabled("No active scene");
+        return;
+    }
+
+    // --- 検索バー ---
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
+
+    // フィルタが有効なときはフラットリストで一致オブジェクトだけ表示する
+    if (m_searchFilter[0] != '\0') {
+        std::function<void()> deferred;
+
+        // 大文字小文字を無視した部分一致
+        auto toLower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
+        auto contains = [&](const std::string& name) {
+            std::string nameLow  = name;
+            std::string filtLow  = m_searchFilter;
+            for (char& c : nameLow)  c = toLower(c);
+            for (char& c : filtLow)  c = toLower(c);
+            return nameLow.find(filtLow) != std::string::npos;
+        };
+
+        for (auto& go : ctx.activeScene->GameObjects()) {
+            if (!contains(go.name)) continue;
+            const scene::EntityID id = go.GetID();
+            const bool selected = ContainsEntity(ctx.selectedEntities, id);
+            ImGui::PushID(static_cast<int>(id.index));
+            if (ImGui::Selectable(go.name.c_str(), selected)) {
+                if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
+                if (selected)
+                    RemoveSelection(ctx, id);
+                else
+                    ctx.selectedEntities.push_back(id);
+            }
+            if (ImGui::BeginPopupContextItem()) {
+                ctx.selectedEntities = { id };
+                if (ImGui::MenuItem("Delete")) {
+                    deferred = [&ctx, id]() {
+                        ctx.activeScene->DestroyGameObject(id);
+                        RemoveSelection(ctx, id);
+                        PruneSelection(ctx);
+                    };
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+
+        if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            ImGui::IsKeyPressed(ImGuiKey_Delete) && !ctx.selectedEntities.empty()) {
+            std::vector<scene::EntityID> ids = ctx.selectedEntities;
+            deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
+        }
+
+        if (deferred) deferred();
         return;
     }
 
