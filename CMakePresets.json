@@ -4,7 +4,8 @@
         {
             "name": "debug",
             "displayName": "Debug",
-            "generator": "Ninja",
+            "generator": "Visual Studio 18 2026",
+            "architecture": "x64",
             "binaryDir": "${sourceDir}/build/debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
@@ -16,21 +17,25 @@
         {
             "name": "release",
             "displayName": "Release",
-            "generator": "Ninja",
+            "generator": "Visual Studio 18 2026",
+            "architecture": "x64",
             "binaryDir": "${sourceDir}/build/release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
             }
         }
     ],
     "buildPresets": [
         {
             "name": "debug",
-            "configurePreset": "debug"
+            "configurePreset": "debug",
+            "configuration": "Debug"
         },
         {
             "name": "release",
-            "configurePreset": "release"
+            "configurePreset": "release",
+            "configuration": "Release"
         }
     ]
 }
