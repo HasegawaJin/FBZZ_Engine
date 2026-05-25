@@ -207,7 +207,7 @@ void InitImGui(HWND hwnd)
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = "hub_imgui.ini";
+    io.IniFilename = "editor_config/hub_imgui.ini";
 
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_Init(hwnd);
