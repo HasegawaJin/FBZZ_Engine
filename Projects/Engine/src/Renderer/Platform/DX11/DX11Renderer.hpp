@@ -39,7 +39,7 @@ public:
     // OM に RTV + DSV をバインドし直す (SetRenderTarget() 後のフレーム先頭で呼ぶ)
     void BeginFrame() override;
 
-    // スワップチェーンを Present して画面に反映する (VSyncあり: interval=1)
+    // Present the swap chain. Frame pacing is controlled by Time.
     void EndFrame() override;
 
     // RTV と DSV を指定色でクリアする (現在バインド中の RT に対して動作する)
