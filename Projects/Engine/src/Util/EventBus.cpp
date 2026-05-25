@@ -1,5 +1,8 @@
 // FBZZ Engine
 // EventBus.cpp | fbzz::util
+// EventBus の購読管理実装
+// type_index ごとに handler を保持し、Publish 時に同型の購読者へ配信する。
+// SubscriberID による解除と Clear による一括解除を提供する。
 #include <Engine/Util/EventBus.hpp>
 #include <unordered_map>
 #include <vector>

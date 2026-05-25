@@ -1,6 +1,8 @@
 // FBZZ Engine
 // KeyCode.hpp | fbzz::input
-// キーコード定義 (Win32 仮想キーコードに対応)
+// Win32 仮想キーコードに対応するキー定義
+// ゲーム側が OS の定数を直接見ないための薄い列挙。
+// 値は Win32 メッセージからそのまま変換できるように保つ。
 #pragma once
 #include <cstdint>
 #include <Windows.h>

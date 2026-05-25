@@ -1,6 +1,8 @@
 // FBZZ Engine
 // SceneSerializer.cpp | fbzz::scene
-// TOML ベースのシーン保存・復元
+// TOML ベースの Scene 保存・復元
+// GameObject 階層と登録済み Component を .fbzz へ書き出す。
+// ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -16,6 +18,8 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -47,7 +51,7 @@
 namespace fbzz::scene {
 
 // -----------------------------------------------------------------------
-// private helpers
+// 内部ヘルパー
 // -----------------------------------------------------------------------
 namespace {
 
@@ -248,7 +252,7 @@ std::shared_ptr<renderer::Mesh> ResolveMesh(
     std::string filePath  = path;
     int         meshIndex = 0;
 
-    // Find ':' after the last '/' to avoid misidentifying Windows drive letters
+    // Windows のドライブ文字を誤判定しないように、最後の '/' より後ろの ':' を探す
     size_t slashPos   = path.find_last_of('/');
     size_t searchFrom = (slashPos != std::string::npos) ? slashPos : 0;
     size_t colonPos   = path.find(':', searchFrom);
@@ -469,6 +473,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             srTbl.insert("mieG",               (double)sr->mieG);
             srTbl.insert("enabled",            sr->enabled);
             goTbl.insert("SkyRenderer", std::move(srTbl));
+        }
+
+        // SkinnedMeshRenderer
+        if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
+            toml::table smrTbl;
+            smrTbl.insert("enabled",   smr->enabled);
+            smrTbl.insert("modelPath", smr->modelPath);
+            smrTbl.insert("meshIndex", (int64_t)smr->meshIndex);
+            goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
+        }
+
+        // AnimatorComponent
+        if (auto* anim = go.GetComponent<AnimatorComponent>()) {
+            toml::table animTbl;
+            animTbl.insert("clipName",  anim->clipName);
+            animTbl.insert("clipIndex", (int64_t)anim->clipIndex);
+            animTbl.insert("time",      (double)anim->time);
+            animTbl.insert("speed",     (double)anim->speed);
+            animTbl.insert("enabled",   anim->enabled);
+            animTbl.insert("loop",      anim->loop);
+            animTbl.insert("playing",   anim->playing);
+            toml::array srcArr;
+            for (const auto& s : anim->clipSources) srcArr.push_back(s);
+            animTbl.insert("clipSources", std::move(srcArr));
+            goTbl.insert("AnimatorComponent", std::move(animTbl));
         }
 
         // UICanvas
@@ -817,6 +846,38 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<SkyRenderer>(sr);
         }
 
+        // SkinnedMeshRenderer
+        if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
+            SkinnedMeshRenderer smr{};
+            smr.enabled   = (*smrTbl)["enabled"].value_or(true);
+            smr.modelPath = (*smrTbl)["modelPath"].value_or(std::string{});
+            smr.meshIndex = (int)(*smrTbl)["meshIndex"].value_or((int64_t)0);
+            if (!smr.modelPath.empty()) {
+                smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
+                if (!smr.model)
+                    FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
+            }
+            go.AddComponent<SkinnedMeshRenderer>(std::move(smr));
+        }
+
+        // AnimatorComponent
+        if (auto* animTbl = (*goTbl)["AnimatorComponent"].as_table()) {
+            AnimatorComponent anim{};
+            anim.clipName  = (*animTbl)["clipName"].value_or(std::string{});
+            anim.clipIndex = (int)(*animTbl)["clipIndex"].value_or((int64_t)0);
+            anim.time      = (float)(*animTbl)["time"].value_or(0.0);
+            anim.speed     = (float)(*animTbl)["speed"].value_or(1.0);
+            anim.enabled   = (*animTbl)["enabled"].value_or(true);
+            anim.loop      = (*animTbl)["loop"].value_or(true);
+            anim.playing   = (*animTbl)["playing"].value_or(true);
+            if (const auto* srcArr = (*animTbl)["clipSources"].as_array()) {
+                for (const auto& elem : *srcArr)
+                    if (auto s = elem.value<std::string>())
+                        anim.clipSources.push_back(*s);
+            }
+            go.AddComponent<AnimatorComponent>(std::move(anim));
+        }
+
         // UICanvas
         if (auto* uiTbl = (*goTbl)["UICanvas"].as_table()) {
             UICanvas canvas{};
@@ -933,7 +994,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 }
 
 // -----------------------------------------------------------------------
-// LoadInPlace
+// 既存 Scene への読み込み
 // -----------------------------------------------------------------------
 bool SceneSerializer::LoadInPlace(
     Scene& scene, const std::string& path, renderer::ResourceManager& resources)

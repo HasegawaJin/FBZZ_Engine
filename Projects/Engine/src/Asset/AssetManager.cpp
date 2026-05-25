@@ -1,10 +1,13 @@
 // FBZZ Engine
 // AssetManager.cpp | fbzz::asset
-// Model and texture asset cache
+// Model と Texture のロードおよびキャッシュ管理
+// 相対パスを正規化し、同じアセットを重複ロードしない。
+// Texture は ResourceManager、Model は ModelImporter を通して生成する。
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/ModelImporter.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <algorithm>
 #include <cassert>
@@ -22,6 +25,15 @@ std::string AssetManager::Normalize(const std::string& path)
     std::string result = path;
     std::replace(result.begin(), result.end(), '\\', '/');
     return result;
+}
+
+// basePath + key を優先して試し、存在しなければ key をそのまま使う
+static std::string ResolvePath(const std::string& key, const std::string& basePath)
+{
+    const std::string full = basePath + key;
+    if (util::FileSystem::Exists(full)) return full;
+    if (util::FileSystem::Exists(key))  return key;
+    return full; // 存在しなくても呼び出し元に任せる (エラーログは呼び出し元で)
 }
 
 void AssetManager::Init(renderer::ResourceManager& resources, const std::string& basePath)
@@ -48,7 +60,7 @@ renderer::ResourceHandle<renderer::TextureTag> AssetManager::LoadTexture(const s
     auto it = s_textures.find(key);
     if (it != s_textures.end()) return it->second;
 
-    const std::string fullPath = s_basePath + key;
+    const std::string fullPath = ResolvePath(key, s_basePath);
     renderer::ResourceHandle<renderer::TextureTag> texture = s_resources->LoadTexture(fullPath);
     if (!texture.IsValid()) {
         FBZZ_LOG_ERROR("AssetManager: Texture load failed [%s]", fullPath.c_str());
@@ -68,7 +80,7 @@ std::shared_ptr<Model> AssetManager::Load<Model>(const std::string& relativePath
     auto it = s_models.find(key);
     if (it != s_models.end()) return it->second;
 
-    const std::string fullPath = s_basePath + key;
+    const std::string fullPath = ResolvePath(key, s_basePath);
     auto model = ModelImporter::Import(fullPath, *s_resources);
     if (!model) {
         FBZZ_LOG_ERROR("AssetManager: Model load failed [%s]", fullPath.c_str());

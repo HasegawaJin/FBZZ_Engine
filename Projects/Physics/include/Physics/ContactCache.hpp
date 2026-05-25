@@ -26,7 +26,8 @@ namespace fbzz::physics
     class ContactCache
     {
     public:
-        // 接触点が前フレームの同一ペアと近傍と見なす距離の閾値
+        // 接触点が前フレームの同一ペアと近傍と見なす距離の閾値。
+        // 位置が少し揺れても同じ接触として扱い、静止接触のジッターを抑える。
         static constexpr float MATCH_RADIUS_SQ = 0.05f * 0.05f;
 
         // NarrowPhase 後に呼ぶ。前フレームの蓄積インパルスを cp に書き戻す
@@ -35,7 +36,8 @@ namespace fbzz::physics
         // Resolve 後に呼ぶ。今フレームの蓄積インパルスをキャッシュに保存する
         void UpdateCache(const std::vector<ContactPoint>& contacts);
 
-        // フレーム末尾で呼ぶ。一定フレーム以上接触がないエントリを削除する
+        // フレーム末尾で呼ぶ。一定フレーム以上接触がないエントリを削除する。
+        // Collider のポインタをキーにするため、古いエントリを残し続けない。
         void PurgeStale();
 
     private:

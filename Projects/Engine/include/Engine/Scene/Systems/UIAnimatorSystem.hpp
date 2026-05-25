@@ -1,7 +1,8 @@
 // FBZZ Engine
 // UIAnimatorSystem.hpp | fbzz::scene
-// Advances UIAnimator tweens and writes results into UIImage each frame.
-// Call before UISystem each frame.
+// UIAnimator の Tween を進める System
+// 色や位置の補間結果を UIImage / Transform へ書き込む。
+// UISystem より前に呼ぶことで描画へ反映させる。
 #pragma once
 
 namespace fbzz::scene {

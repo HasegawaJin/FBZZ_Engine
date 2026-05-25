@@ -33,7 +33,7 @@ struct Vector3 {
     static const Vector3 ONE;
     static const Vector3 UP;
     static const Vector3 RIGHT;
-    static const Vector3 FORWARD;
+    static const Vector3 FORWARD; // DirectX 左手系: +Z が画面奥方向 (OpenGL は -Z)
 };
 
 inline const Vector3 Vector3::ZERO    = {0.0f, 0.0f, 0.0f};

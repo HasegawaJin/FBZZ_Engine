@@ -23,6 +23,7 @@
 namespace fbzz::physics 
 {
 
+    // Step() の最後に前フレームとの差分から生成するイベント。
     struct CollisionEvent 
     {
         const Collider* colliderA;
@@ -32,6 +33,7 @@ namespace fbzz::physics
         bool isTrigger = false;
     };
 
+    // Physics モジュールの統合点。剛体・コライダー・制約を受け取り、1 フレーム分の物理を進める。
     class World 
     {
     public:
@@ -42,6 +44,7 @@ namespace fbzz::physics
         void AddConstraint(std::shared_ptr<Constraint> constraint);
         const std::vector<std::shared_ptr<Constraint>>& GetConstraints() const;
 
+        // サブステップ、Volume、制約、衝突検出、衝突解決、イベント分類をこの順で実行する。
         void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
 
         void          SetGravity(const math::Vector3& gravity);
@@ -67,6 +70,7 @@ namespace fbzz::physics
         void CCDPhase(float dt);    // 高速物体のトンネリング防止 (IntegrateBodies の前)
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
+        // BroadPhase 中に使う一時フィルタ。Scene の LayerCollisionMatrix から渡される。
         std::function<bool(int, int)> m_layerFilter;
 
         std::vector<std::shared_ptr<RigidBody>> m_bodies;

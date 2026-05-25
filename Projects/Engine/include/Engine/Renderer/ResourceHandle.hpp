@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ResourceHandle.hpp | fbzz::renderer
-// Generation checked renderer resource handles
+// 世代番号付き Renderer リソースハンドル
+// ResourceManager が所有する実体を安全に参照するための軽量 ID。
+// slot と generation の組み合わせで破棄済み参照を検出する。
 #pragma once
 #include <cstdint>
 

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Material.hpp | fbzz::renderer
-// Shader, texture, and parameter bindings for a material
+// シェーダー・テクスチャ・パラメータの束
+// MaterialParams は HLSL の MaterialConstants と一致させる。
+// GPU リソースは ResourceHandle で保持し、ResourceManager が所有する。
 #pragma once
 #include "ResourceHandle.hpp"
 #include <cstdint>

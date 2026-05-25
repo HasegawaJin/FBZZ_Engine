@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Time.hpp | fbzz::core
-// フレームタイム・経過時間の管理
+// フレーム時間・経過時間・タイムスケール管理
+// ゲームループ先頭で Tick し、以降の System は DeltaTime を参照する。
+// UI や演出用に UnscaledDeltaTime も保持する。
 #pragma once
 #include <cstdint>
 

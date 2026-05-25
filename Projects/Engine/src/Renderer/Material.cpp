@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Material.cpp | fbzz::renderer
-// Material GPU parameter initialization and upload
+// Material の GPU パラメーター初期化と転送
+// MaterialParams を定数バッファへアップロードし、テクスチャマスクを同期する。
+// ResourceManager 経由でリソース実体へアクセスする。
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 

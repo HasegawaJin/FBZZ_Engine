@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ColliderComponent.hpp | fbzz::scene
-// Unity-style collider component driven by GameObject Transform
+// GameObject Transform で駆動する Collider コンポーネント
+// 形状設定を physics::Collider 生成へ渡し、Scene と physics の境界を保つ。
+// 実際の衝突判定は physics モジュールに委譲する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Physics/Collider.hpp>

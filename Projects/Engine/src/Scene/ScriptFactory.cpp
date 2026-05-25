@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ScriptFactory.cpp | fbzz::scene
-// Script type name to factory registry implementation
+// Script 型名から生成関数を引くレジストリ実装
+// SceneSerializer が文字列名からユーザースクリプトを復元するために使う。
+// 登録されていない型は生成失敗として扱う。
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <unordered_map>
 #include <utility>

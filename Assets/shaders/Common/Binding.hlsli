@@ -11,6 +11,7 @@
 #define CB_LIGHT        b3  // LightConstants    per-frame
 #define CB_SHADOW       b4  // ShadowConstants   per-frame
 #define CB_POSTPROC     b5  // PostProcConstants per-pass
+#define CB_SKINNING     b7  // SkinningConstants per-animated draw
 #define CB_ATMOSPHERE   b6  // AtmosphereConstants per-frame (Skydome のみ)
 
 // ---- Texture (マテリアル, per-draw) ----------------------------------

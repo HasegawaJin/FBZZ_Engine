@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Easing.hpp | fbzz::util
-// イージング曲線関数集 — 入力 t は [0, 1] を想定 (ヘッダーオンリー)
+// イージング曲線関数集
+// UI や演出の Tween で使う補間曲線をヘッダーオンリーで提供する。
+// 入力 t は基本的に 0.0f から 1.0f を想定する。
 #pragma once
 #include <cmath>
 

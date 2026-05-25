@@ -15,13 +15,16 @@ namespace fbzz::physics
         HINGE
     };
 
+    // World が shared_ptr で寿命を管理し、制約対象の RigidBody は非所有ポインタで参照する。
     class Constraint
     {
     public:
         Constraint(RigidBody* bodyA, RigidBody* bodyB);
         virtual ~Constraint() = default;
 
+        // バネのような力ベース制約は積分前に ApplyForce() で処理する。
         virtual void ApplyForce(float dt) {}
+        // ロープやヒンジのような位置ベース制約は積分後に SolvePosition() で補正する。
         virtual void SolvePosition(float dt) {}
         virtual ConstraintType GetType() const = 0;
 

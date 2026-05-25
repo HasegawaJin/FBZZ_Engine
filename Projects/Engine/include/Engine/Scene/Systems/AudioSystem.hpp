@@ -1,6 +1,8 @@
 // FBZZ Engine
 // AudioSystem.hpp | fbzz::scene
-// AudioSourceComponent を走査して audio::AudioSystem に再生命令を出す
+// AudioSourceComponent から再生命令を発行する Scene System
+// Scene のデータを走査し、audio::AudioSystem へ高レベル操作を渡す。
+// デバイス API 依存は audio モジュール内に閉じ込める。
 #pragma once
 
 namespace fbzz::scene { class Scene; }

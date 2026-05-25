@@ -1,11 +1,15 @@
 // FBZZ Engine
 // SceneManager.cpp | fbzz::scene
-// Scene transition and system update order management
+// Scene 遷移と System 更新順の管理
+// 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
+// RenderSystem は BeginFrame / EndFrame の都合でゲームループ側から呼ぶ。
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
+#include "Engine/Scene/Systems/AnimatorSystem.hpp"
+#include "Engine/Renderer/ResourceManager.hpp"
 #include <cassert>
 
 namespace fbzz::scene {
@@ -40,6 +44,8 @@ void SceneManager::Update(float dt, physics::World& world)
 
     TransformSystem(*m_active);
     PhysicsSystem(*m_active, world, dt);
+    if (auto* resources = renderer::ResourceManager::Active())
+        AnimatorSystem(*m_active, *resources, dt);
     ScriptSystem(*m_active, dt);
     m_active->FlushDestroyQueue(dt);
 }

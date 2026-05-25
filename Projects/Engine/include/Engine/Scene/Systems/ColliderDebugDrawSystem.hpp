@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ColliderDebugDrawSystem.hpp | fbzz::scene
-// Scene collider debug wire drawing
+// Scene の Collider デバッグワイヤー描画
+// ColliderComponent と Transform を読んで DebugDraw へ形状を送る。
+// 物理判定には関与せず、可視化だけを担当する。
 #pragma once
 #include <Math/Vector4.hpp>
 

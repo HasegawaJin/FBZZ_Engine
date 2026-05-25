@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Renderer.hpp | fbzz::renderer
-// IRenderer の DX11 実装 — デバイス・スワップチェーン・フレーム管理
+// IRenderer の DX11 実装
+// DX11 固有のデバイスオブジェクトと各種バインド処理を保持する。
+// Application からは IRenderer として所有される。
 //
 // 設計方針:
 //   上位レイヤー (Application / Sandbox) は IRenderer& のみを参照し、

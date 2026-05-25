@@ -1,8 +1,8 @@
 // FBZZ Engine
 // UIImage.hpp | fbzz::scene
-// UI スプライト。位置・サイズは GameObject::transform で管理する
-//   localPosition.xy = キャンバス座標 (左上原点, Y↓)
-//   localScale.xy    = 幅・高さ (px)
+// UI スプライト描画コンポーネント
+// 位置とサイズは GameObject::transform の local 値から読む。
+// Texture は ResourceHandle で参照し、AssetManager / ResourceManager が所有する。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector4.hpp>

@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Camera.hpp | fbzz::renderer
-// ビュー・プロジェクション行列の計算とカメラ姿勢管理
+// ビュー・プロジェクション行列とカメラ姿勢の管理
+// Renderer へ渡す行列計算だけを持ち、入力処理は DebugCamera など外側に分ける。
+// LookAt は現在位置から対象点へ向く回転を更新する。
 #pragma once
 
 #include <Math/Matrix4.hpp>

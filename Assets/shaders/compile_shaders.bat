@@ -5,18 +5,18 @@ REM Use fxc.exe (SM5.0 / DXBC) for DX11. dxc.exe outputs DXIL (DX12 only).
 set FXC="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\fxc.exe"
 set SRC=%~dp0
 set OUT=%~dp0compiled
-REM %~dp0 ends with a backslash; strip it so /I "path\" does not mis-parse the closing quote
+REM %~dp0 ends with a backslash; strip it so /I "path" does not mis-parse the closing quote
 set SRCDIR=%SRC:~0,-1%
 set INC=/nologo /I "%SRCDIR%"
 set LOG=%~dp0compile_log.txt
 
 if not exist "%OUT%" mkdir "%OUT%"
 
-REM ログファイルを�E期化
+REM Reset compile log.
 echo [compile_shaders] %date% %time% > "%LOG%"
 
 REM =========================================================================
-REM Debug shader (DebugDraw 専用)
+REM Debug shader used by DebugDraw.
 REM =========================================================================
 
 echo [Debug] Debug.hlsl...
@@ -58,6 +58,11 @@ echo [Material] PBR.hlsl...
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/PBR VS & goto :error )
 %FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.PBR.ps.cso" "%SRC%Material\PBR.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/PBR PS & goto :error )
+echo [Material] SkinnedPBR.hlsl...
+%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.SkinnedPBR.vs.cso" "%SRC%Material\SkinnedPBR.hlsl" >> "%LOG%" 2>&1
+if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/SkinnedPBR VS & goto :error )
+%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.SkinnedPBR.ps.cso" "%SRC%Material\SkinnedPBR.hlsl" >> "%LOG%" 2>&1
+if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/SkinnedPBR PS & goto :error )
 
 echo [Material] Toon.hlsl...
 %FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Toon.vs.cso" "%SRC%Material\Toon.hlsl" >> "%LOG%" 2>&1
@@ -72,15 +77,15 @@ if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Particle VS & goto :error )
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Particle PS & goto :error )
 
 echo [Material] Sky/Skybox.hlsl...
-%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Skybox.vs.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Sky.Skybox.vs.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skybox VS & goto :error )
-%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Skybox.ps.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Sky.Skybox.ps.cso" "%SRC%Material\Sky\Skybox.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skybox PS & goto :error )
 
 echo [Material] Sky/Skydome.hlsl...
-%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Skydome.vs.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Material.Sky.Skydome.vs.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skydome VS & goto :error )
-%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Skydome.ps.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
+%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Material.Sky.Skydome.ps.cso" "%SRC%Material\Sky\Skydome.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Material/Skydome PS & goto :error )
 
 REM =========================================================================
@@ -104,6 +109,11 @@ echo [Pipeline] ShadowMap.hlsl...
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Pipeline/ShadowMap VS & goto :error )
 %FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Pipeline.ShadowMap.ps.cso" "%SRC%Pipeline\ShadowMap.hlsl" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] Pipeline/ShadowMap PS & goto :error )
+echo [Pipeline] SkinnedShadowMap.hlsl...
+%FXC% %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\Pipeline.SkinnedShadowMap.vs.cso" "%SRC%Pipeline\SkinnedShadowMap.hlsl" >> "%LOG%" 2>&1
+if %ERRORLEVEL% neq 0 ( echo [FAILED] Pipeline/SkinnedShadowMap VS & goto :error )
+%FXC% %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\Pipeline.SkinnedShadowMap.ps.cso" "%SRC%Pipeline\SkinnedShadowMap.hlsl" >> "%LOG%" 2>&1
+if %ERRORLEVEL% neq 0 ( echo [FAILED] Pipeline/SkinnedShadowMap PS & goto :error )
 
 REM =========================================================================
 REM PostProcess shaders (CS requires SM5.0)
@@ -145,7 +155,7 @@ exit /b 0
 
 :error
 echo.
-echo *** FAILED  E詳細は compile_log.txt を確誁E***
+echo *** FAILED - see compile_log.txt for details ***
 echo Log: %LOG%
 endlocal
 exit /b 1

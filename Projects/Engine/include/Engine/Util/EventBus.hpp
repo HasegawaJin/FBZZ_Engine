@@ -1,6 +1,8 @@
 // FBZZ Engine
 // EventBus.hpp | fbzz::util
 // 型安全なグローバル Pub/Sub システム
+// type_index ごとに購読関数を管理し、イベント型を明示して Publish する。
+// SubscriberID は登録解除に必要なので呼び出し側で保持する。
 #pragma once
 #include <functional>
 #include <typeindex>

@@ -31,7 +31,6 @@ if %ERRORLEVEL% neq 0 ( echo [FAILED] UI/UIText PS & goto :error )
 echo.
 echo Done. UI shaders compiled successfully.
 echo Log: %LOG%
-pause
 endlocal
 exit /b 0
 
@@ -39,6 +38,5 @@ exit /b 0
 echo.
 echo *** FAILED - see compile_ui_log.txt for details ***
 echo Log: %LOG%
-pause
 endlocal
 exit /b 1

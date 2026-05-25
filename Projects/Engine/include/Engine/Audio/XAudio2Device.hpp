@@ -1,6 +1,8 @@
 // FBZZ Engine
 // XAudio2Device.hpp | fbzz::audio
-// XAudio2 バックエンド実装
+// XAudio2 を使った IAudioDevice 実装
+// COM / XAudio2 の寿命管理をこのクラスに閉じ込め、上位は IAudioDevice だけを見る。
+// 終了済み voice は PurgeFinishedVoices で回収する。
 #pragma once
 #include "IAudioDevice.hpp"
 #include <xaudio2.h>

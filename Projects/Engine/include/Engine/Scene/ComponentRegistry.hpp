@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ComponentRegistry.hpp | fbzz::scene
-// 全コンポーネント型を一箇所で登録する。新型を追加するときはここだけ編集する。
+// Scene が扱う全コンポーネント型の登録点
+// 新しい Component 型を追加するときの編集箇所を一箇所に集約する。
+// SceneSerializer や Inspector が同じ型一覧を参照できるようにする。
 #pragma once
 #include "Components/MeshRenderer.hpp"
 #include "Components/MaterialComponent.hpp"
@@ -12,6 +14,8 @@
 #include "Components/CameraComponent.hpp"
 #include "Components/AudioSourceComponent.hpp"
 #include "Components/SkyRenderer.hpp"
+#include "Components/AnimatorComponent.hpp"
+#include "Components/SkinnedMeshRenderer.hpp"
 #include "Components/UICanvas.hpp"
 #include "Components/UIImage.hpp"
 #include "Components/UIButton.hpp"
@@ -34,6 +38,8 @@ using ComponentList = std::tuple<
     CameraComponent,
     AudioSourceComponent,
     SkyRenderer,
+    AnimatorComponent,
+    SkinnedMeshRenderer,
     UICanvas,
     UIImage,
     UIButton,

@@ -17,6 +17,9 @@ public:
     void Pause();
     // スナップショットからシーンを復元してエディターモードに戻る
     void Stop(scene::Scene& scene);
+    // Stop() はスナップショット復元を即座に行わず、このメソッドを次フレームに呼ばせる。
+    // Stop() 呼び出し時は Update ループが実行中の可能性があり、その最中にシーンを書き換えると
+    // イテレーション中のポインタが無効になる恐れがあるため。
     bool ApplyPendingRestore(scene::Scene& scene);
 
     PlayState GetState() const  { return m_state; }

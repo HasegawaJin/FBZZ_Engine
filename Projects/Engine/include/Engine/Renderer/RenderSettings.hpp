@@ -1,6 +1,8 @@
 // FBZZ Engine
 // RenderSettings.hpp | fbzz::renderer
-// RenderSystem に渡すレンダリング設定フラグとポストプロセスパラメーター
+// レンダリング設定とポストプロセスパラメーター
+// RenderSystem に渡すフレーム単位の設定値をまとめる。
+// 機能フラグと調整値を分け、UI から変更しやすくする。
 #pragma once
 
 namespace fbzz::renderer {

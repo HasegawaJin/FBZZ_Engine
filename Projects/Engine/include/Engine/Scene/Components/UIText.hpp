@@ -1,6 +1,8 @@
 // FBZZ Engine
 // UIText.hpp | fbzz::scene
-// Runtime UI debug text
+// ランタイム UI のテキスト表示コンポーネント
+// デバッグ表示や簡易 UI の文字列・サイズ・色を保持する。
+// 本格的なフォント管理は Renderer / UI 側の責務に分ける。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector2.hpp>

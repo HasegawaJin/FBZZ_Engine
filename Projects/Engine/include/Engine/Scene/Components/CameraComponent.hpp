@@ -1,6 +1,8 @@
 // FBZZ Engine
 // CameraComponent.hpp | fbzz::scene
-// カメラパラメータを持つ Component。位置/回転は Transform から取得する
+// カメラパラメータを持つコンポーネント
+// 位置と回転は GameObject の Transform を正とし、この型は投影設定を持つ。
+// RenderSystem が Camera へ変換して描画に使う。
 #pragma once
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Script.hpp>

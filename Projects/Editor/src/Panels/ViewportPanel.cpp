@@ -29,6 +29,8 @@ namespace fbzz::editor {
 
 namespace {
 
+// ImGuizmo は OpenGL 列優先規約を前提とするが、エンジンは行優先で行列を格納する。
+// Transpose することで ImGuizmo が期待するメモリレイアウト (列優先) に変換する。
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor)
 {
     return math::Matrix4::Transpose(rowMajor);
@@ -266,8 +268,14 @@ bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& vi
     ImDrawList* dl = ImGui::GetWindowDrawList();
     bool wantsMouse = false;
 
-    // s_drag: -1=なし  0=自由移動  1=X軸移動  2=Y軸移動
-    //         3..10=スケールハンドル(0..7)  20=回転
+    // s_drag: ドラッグ操作中のモードを保持するステートマシン変数。
+    //   -1  = 操作なし
+    //    0  = 自由移動 (中心クリック)
+    //    1  = X 軸拘束移動
+    //    2  = Y 軸拘束移動
+    //  3-10 = リサイズハンドル 0-7 (左上→右下, 時計回り)
+    //   20  = 回転リング
+    // IsMouseReleased でリセットされるためフレームをまたいで保持される。
     static int    s_drag       = -1;
     static ImVec2 s_start      = {};
     static float  s_ox = 0, s_oy = 0, s_ow = 0, s_oh = 0;
@@ -564,8 +572,8 @@ void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& view
         localRow = parentInv * worldRow;
     }
 
-    // Extract TRS directly from localRow to avoid convention mismatch between
-    // ImGuizmo's left-hand Euler decomposition and the engine's right-hand quaternion.
+    // ImGuizmo の DecomposeMatrixToComponents は左手系オイラー角で TRS を返すため、
+    // エンジンの右手系クォータニオンと符号が合わない。行列から直接 TRS を抽出することで回避する。
     const float sx = std::sqrt(localRow.m[0][0]*localRow.m[0][0] + localRow.m[1][0]*localRow.m[1][0] + localRow.m[2][0]*localRow.m[2][0]);
     const float sy = std::sqrt(localRow.m[0][1]*localRow.m[0][1] + localRow.m[1][1]*localRow.m[1][1] + localRow.m[2][1]*localRow.m[2][1]);
     const float sz = std::sqrt(localRow.m[0][2]*localRow.m[0][2] + localRow.m[1][2]*localRow.m[1][2] + localRow.m[2][2]*localRow.m[2][2]);

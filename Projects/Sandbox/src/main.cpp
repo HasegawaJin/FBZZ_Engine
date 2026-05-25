@@ -22,6 +22,8 @@
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
+#include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Editor/EditorApp.hpp>
 #include <Physics/World.hpp>
 #include <Physics/SphereCollider.hpp>
@@ -494,6 +496,11 @@ int main()
         {
             scene::PhysicsSystem(*scene, physWorld, dt);
             scene::TransformSystem(*scene);
+            scene::AnimatorSystem(*scene, resources, dt);
+        }
+        else
+        {
+            scene::AnimatorSystem(*scene, resources, dt);
         }
 
         const auto sceneRT = editorApp.GetViewportRT();
@@ -520,6 +527,11 @@ int main()
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
             scene::ConstraintDebugDrawSystem(physWorld, renderer);
             renderer::DebugDraw::Flush();
+        }
+        if (editorApp.GetContext().showSkeleton)
+        {
+            scene::AnimatorDebugDrawSystem(*scene, renderer, resources,
+                                           debugCamera.camera.GetViewProjection());
         }
 
         if (gameRT.IsValid())

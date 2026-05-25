@@ -1,6 +1,8 @@
 // FBZZ Engine
 // FileSystem.cpp | fbzz::util
-// ファイル・ディレクトリ操作 (Win32)
+// ファイル・ディレクトリ操作の Win32 実装
+// 存在確認、列挙、読み書き、ディレクトリ作成をまとめる。
+// 失敗は bool や空配列で返し、例外は使わない。
 #include <Engine/Util/FileSystem.hpp>
 #include <Windows.h>
 #include <fstream>

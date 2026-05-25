@@ -28,17 +28,17 @@ namespace fbzz::physics
         bool IsLeaf() const { return left == -1; }
     };
 
-    // BVH ツリー本体 (フラット配列で管理)
+    // BVH ツリー本体。再帰ポインタではなくフラット配列で管理し、再構築時の所有を単純にする。
     struct BVHTree
     {
         std::vector<BVHNode> nodes;
         std::vector<Triangle> triangles;
 
-        // ワールド変換済み三角形リストから中点分割で BVH を構築する
-        // maxLeafTris: 葉ノードの最大三角形数
+        // ワールド変換済み三角形リストから中点分割で BVH を構築する。
+        // maxLeafTris は、葉ノードに格納する最大三角形数。
         void Build(std::vector<Triangle>&& tris, int maxLeafTris = 8);
 
-        // AABB と重なる三角形を列挙し predicate を呼ぶ (非再帰 DFS)
+        // AABB と重なる三角形だけを列挙する。非再帰 DFS にして深いメッシュでも C++ の呼び出しスタックを使わない。
         // predicate: void(const Triangle&)
         template<typename Pred>
         void Query(const AABB& queryAABB, Pred&& predicate) const
@@ -63,7 +63,7 @@ namespace fbzz::physics
                 }
                 else
                 {
-                    // スタックオーバーフロー防止 (深さ 64 は maxLeafTris=8 で事実上到達不可)
+                    // 固定長スタックで上限を明示する。maxLeafTris=8 の通常分割では深さ 64 に到達しない想定。
                     if (top + 1 < static_cast<int>(stack.size()))
                     {
                         stack[top++] = node.right;

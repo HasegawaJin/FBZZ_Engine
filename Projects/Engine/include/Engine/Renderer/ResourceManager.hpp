@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ResourceManager.hpp | fbzz::renderer
-// Central renderer resource ownership and handle lookup
+// Renderer リソースの所有とハンドル解決
+// IRenderer の非公開生成 API を呼べる唯一の窓口。
+// 上位システムは shared_ptr ではなく ResourceHandle を保持する。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourcePool.hpp>

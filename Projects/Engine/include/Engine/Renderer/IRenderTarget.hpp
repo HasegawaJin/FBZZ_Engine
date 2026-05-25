@@ -1,6 +1,8 @@
 // FBZZ Engine
 // IRenderTarget.hpp | fbzz::renderer
-// Renderer render target interface
+// RenderTarget の抽象インターフェース
+// バックバッファ以外の描画先をバックエンド非依存に扱う。
+// 複数カラーバッファや ImGui 表示用 SRV は実装側が管理する。
 #pragma once
 #include <cstdint>
 #include <memory>
@@ -23,7 +25,7 @@ namespace fbzz::renderer {
         virtual std::shared_ptr<ITexture> GetDepthTexture() const = 0;
 
         // ImGui Viewport 表示用ネイティブテクスチャハンドル
-        // DX11: ID3D11ShaderResourceView*  DX12: GPU descriptor handle (uint64_t として扱う)
+        // DX11 は ID3D11ShaderResourceView*、DX12 は GPU descriptor handle を uint64_t として扱う
         virtual void* GetNativeSRV(int slot = 0) const = 0;
     };
 

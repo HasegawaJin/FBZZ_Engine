@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DrawCall.hpp | fbzz::renderer
-// Renderer draw submission data
+// レンダラーへ渡す描画要求データ
+// 頂点・インデックス・シェーダー・定数バッファを ResourceHandle で参照する。
+// RenderSystem が生成し、IRenderer が ResourceManager で実体へ解決する。
 #pragma once
 #include <array>
 #include <cstdint>
