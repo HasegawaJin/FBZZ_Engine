@@ -52,10 +52,14 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Checkbox("Wireframe",   &r.wireframeMode);
         ImGui::SameLine();
         ImGui::Checkbox("Colliders",   &r.showColliders);
+        ImGui::SameLine();
+        ImGui::Checkbox("Selection Outline", &r.showSelectionOutline);
         ImGui::SliderFloat("Exposure",    &r.exposure,   0.1f, 4.0f);
         ImGui::SliderFloat("Fog Density", &r.fogDensity, 0.0f, 1.0f);
         ImGui::SliderFloat("Fog Far",     &r.fogFar,     1.0f, 100.0f);
         ImGui::ColorEdit3("Fog Color",    r.fogColor);
+        ImGui::SliderFloat("Outline Width", &r.outlineWidth, 0.005f, 0.2f);
+        ImGui::ColorEdit4("Outline Color", r.outlineColor);
     }
 
     ImGui::Spacing();
