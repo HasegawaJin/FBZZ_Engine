@@ -5,6 +5,8 @@ file(GLOB_RECURSE SANDBOX_SOURCES
 
 add_executable(sandbox ${SANDBOX_SOURCES})
 
+set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:sandbox>/SandboxProject")
+
 # シェーダーを HLSL ファイルが更新されるたびに自動コンパイルする
 set(SHADER_SCRIPT    "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
 set(SHADER_UI_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_ui_shaders.bat")
@@ -56,6 +58,12 @@ add_custom_command(TARGET sandbox POST_BUILD
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:sandbox>"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:sandbox>/assets"
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "$<TARGET_FILE_DIR:sandbox>/Assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
 )

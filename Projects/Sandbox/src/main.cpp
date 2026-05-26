@@ -12,14 +12,19 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Editor/EditorApp.hpp>
 #include <Physics/World.hpp>
+
+#include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
 
 #include <Windows.h>
 #include <shellapi.h>
@@ -122,6 +127,11 @@ std::filesystem::path FindProjectPathFromArgs()
 
 std::filesystem::path FindDefaultSandboxProjectPath()
 {
+    const std::filesystem::path executableProject = GetExecutableDirectory() / L"SandboxProject";
+    if (Exists(executableProject / L".fbzz_proj")) {
+        return executableProject;
+    }
+
     std::filesystem::path current = GetExecutableDirectory();
     for (int i = 0; i < 8 && !current.empty(); ++i) {
         const std::filesystem::path candidate = current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
@@ -237,6 +247,12 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
     world.SetSubsteps(settings.physics.substeps);
 }
 
+void RegisterSandboxScripts()
+{
+    scene::ScriptFactory::Register<::sandbox::PlayerControllerComponent>();
+    scene::ScriptFactory::Register<::sandbox::TpsCameraComponent>();
+}
+
 } // namespace
 
 int Run()
@@ -252,6 +268,7 @@ int Run()
 
     auto& app = core::Application::Get();
     if (!app.Init()) return 1;
+    RegisterSandboxScripts();
 
     auto& renderer = app.GetRenderer();
     renderer::ResourceManager resources(renderer);
@@ -352,6 +369,8 @@ int Run()
         if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
             ApplyPhysicsSettings(physicsWorld, settings);
+            scene::ScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
+            scene::TransformSystem(*scene);
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
@@ -407,7 +426,12 @@ int Run()
 
         renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
-        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &editorApp.GetContext().projectSettings.render);
+        auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
+        sceneRenderSettings.selectedObjects.clear();
+        sceneRenderSettings.selectedObjects.reserve(editorApp.GetContext().selectedEntities.size());
+        for (scene::EntityID id : editorApp.GetContext().selectedEntities)
+            sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
+        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
             scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
@@ -420,12 +444,17 @@ int Run()
         if (gameRT.IsValid()) {
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
+            auto gameRenderSettings = editorApp.GetContext().projectSettings.render;
+            gameRenderSettings.wireframeMode = false;
+            gameRenderSettings.showColliders = false;
+            gameRenderSettings.showSelectionOutline = false;
+            gameRenderSettings.selectedObjects.clear();
             scene::RenderSystem(*scene,
                                 renderer,
                                 resources,
                                 gameCamera,
                                 gameRT,
-                                &editorApp.GetContext().projectSettings.render,
+                                &gameRenderSettings,
                                 gameCullingMask);
         }
 
