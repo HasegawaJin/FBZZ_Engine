@@ -10,6 +10,7 @@
 #include <Physics/RigidBody.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
@@ -21,6 +22,7 @@
 #include <Physics/DistanceConstraint.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
+#include <Math/MathUtils.hpp>
 
 using namespace fbzz::physics;
 using namespace fbzz::math;
@@ -652,6 +654,59 @@ static void TestPhase6_Capsule()
         const float by = capBodyB->GetPosition().y;
         checkF(by >= -0.1f, "Capsule-Capsule: upper capsule rests on lower", by, "y >= -0.1");
     }
+
+    // 6-4: centerOffset が Step 後も collider に残るか
+    {
+        auto body = std::make_shared<RigidBody>();
+        body->m_isStatic = true;
+        body->SetPosition({ 0.0f, 0.0f, 0.0f });
+
+        auto sphereCol = std::make_shared<SphereCollider>(0.5f);
+        sphereCol->Update({ 1.0f, 0.0f, 0.0f }, body->GetRotation());
+
+        ColliderInstance inst = makeInstance(sphereCol, body.get());
+        inst.centerOffset = { 1.0f, 0.0f, 0.0f };
+
+        World world;
+        world.SetGravity({ 0.0f, 0.0f, 0.0f });
+        world.SetBodies({ body });
+        world.SetColliders({ inst });
+        world.Step(1.0f / 60.0f);
+
+        const float centerX = sphereCol->GetAABB().Center().x;
+        checkF(std::abs(centerX - 1.0f) < 0.001f,
+               "Collider center offset persists after Step",
+               centerX,
+               "|centerX - 1| < 0.001");
+    }
+
+    // 6-5: rotated capsule と OBB が BroadPhase/NarrowPhase を通るか
+    {
+        auto boxBody = std::make_shared<RigidBody>();
+        boxBody->m_isStatic = true;
+        boxBody->SetPosition({ 0.65f, 0.0f, 0.0f });
+        auto boxCol = std::make_shared<OBBCollider>(Vector3{ 0.25f, 0.25f, 0.25f });
+        boxCol->Update(boxBody->GetPosition(), boxBody->GetRotation());
+
+        auto capBody = std::make_shared<RigidBody>();
+        capBody->SetMass(1.0f);
+        capBody->SetPosition({ 0.0f, 0.0f, 0.0f });
+        capBody->SetRotation(Quaternion::FromAxisAngle(Vector3::FORWARD, 90.0f * DEG2RAD));
+        auto capCol = std::make_shared<CapsuleCollider>(0.3f, 0.5f);
+        capCol->Update(capBody->GetPosition(), capBody->GetRotation());
+
+        World world;
+        world.SetGravity({ 0.0f, 0.0f, 0.0f });
+        world.SetBodies({ boxBody, capBody });
+        world.SetColliders({
+            makeInstance(boxCol, boxBody.get()),
+            makeInstance(capCol, capBody.get())
+        });
+        world.Step(1.0f / 60.0f);
+
+        check(!world.GetEnterEvents().empty(),
+              "Capsule-Box: rotated capsule overlaps OBB");
+    }
 }
 
 // ─── Phase 7: 運動量保存テスト ────────────────────────────────────────────────
@@ -1254,6 +1309,40 @@ static void TestPhase11_Constraints()
 
 // ─── エントリポイント ────────────────────────────────────────────────────────
 
+static void TestPhase7_RigidBodyFreeze()
+{
+    std::printf("\n=== Phase 7b: RigidBody Freeze Axes ===\n");
+
+    {
+        RigidBody body;
+        body.SetMass(1.0f);
+        body.SetFreezePosition({ true, false, false });
+        body.ApplyForce({ 10.0f, 5.0f, 0.0f });
+        body.Integrate(1.0f);
+
+        const Vector3 position = body.GetPosition();
+        const Vector3 velocity = body.GetVelocity();
+        checkF(std::abs(position.x) < 0.001f, "Freeze Position X: position x stays locked", position.x, "|x| < 0.001");
+        checkF(std::abs(velocity.x) < 0.001f, "Freeze Position X: velocity x stays locked", velocity.x, "|vx| < 0.001");
+        check(position.y > 0.0f, "Freeze Position X: unfrozen axis still moves");
+    }
+
+    {
+        RigidBody body;
+        body.SetMass(1.0f);
+        body.SetFreezeRotation({ false, true, false });
+        body.ApplyAngularImpulse({ 1.0f, 2.0f, 3.0f });
+
+        const Vector3 angularVelocity = body.GetAngularVelocity();
+        checkF(std::abs(angularVelocity.y) < 0.001f,
+               "Freeze Rotation Y: angular velocity y stays locked",
+               angularVelocity.y,
+               "|wy| < 0.001");
+        check(std::abs(angularVelocity.x) > 0.0f || std::abs(angularVelocity.z) > 0.0f,
+              "Freeze Rotation Y: unfrozen angular axes still respond");
+    }
+}
+
 int main()
 {
     std::printf("FBZZ Physics Test\n");
@@ -1266,6 +1355,7 @@ int main()
     TestPhase5_StackStress();
     TestPhase6_Capsule();
     TestPhase7_Momentum();
+    TestPhase7_RigidBodyFreeze();
     TestPhase8_Materials();
     TestPhase9_ConvexHullWorld();
     TestPhase10_Triggers();
