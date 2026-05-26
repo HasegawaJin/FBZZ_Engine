@@ -185,6 +185,13 @@ void ImportNodesRecursive(const aiNode* node,
     outNode.name = NormalizeName(node->mName);
     outNode.parentIndex = parentIndex;
     outNode.localBindTransform = ToMatrix4(node->mTransformation, unitScale);
+    aiVector3D scaling;
+    aiVector3D position;
+    aiQuaternion rotation;
+    node->mTransformation.Decompose(scaling, rotation, position);
+    outNode.bindTranslation = ToVector3(position, unitScale);
+    outNode.bindRotation = ToQuaternion(rotation);
+    outNode.bindScale = { scaling.x, scaling.y, scaling.z };
 
     skeleton.nodeMap[outNode.name] = nodeIndex;
     skeleton.nodes.push_back(std::move(outNode));
@@ -219,6 +226,9 @@ int EnsureBone(const aiBone* aiBonePtr,
         SkeletonNode node{};
         node.name = name;
         node.parentIndex = skeleton.rootNodeIndex;
+        node.bindTranslation = math::Vector3::ZERO;
+        node.bindRotation = math::Quaternion::Identity();
+        node.bindScale = math::Vector3::ONE;
         skeleton.nodes.push_back(node);
         skeleton.nodeMap[name] = nodeIndex;
         if (skeleton.rootNodeIndex >= 0)
