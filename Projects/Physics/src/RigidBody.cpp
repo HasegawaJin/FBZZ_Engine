@@ -9,31 +9,47 @@
 
 namespace fbzz::physics {
 
+namespace {
+
+math::Vector3 ApplyAxisLock(const math::Vector3& value,
+                            const AxisLock& lock,
+                            const math::Vector3& fallback)
+{
+    return {
+        lock.x ? fallback.x : value.x,
+        lock.y ? fallback.y : value.y,
+        lock.z ? fallback.z : value.z
+    };
+}
+
+} // namespace
+
 void RigidBody::ApplyForce(const math::Vector3& force)
 {
-    m_force += force;
+    m_force += ApplyPositionFreeze(force, math::Vector3::ZERO);
 }
 
 void RigidBody::ApplyForceAtPoint(const math::Vector3& force,
                                    const math::Vector3& worldPoint)
 {
-    m_force  += force;
+    m_force  += ApplyPositionFreeze(force, math::Vector3::ZERO);
     m_torque += math::Vector3::Cross(worldPoint - m_position, force);
+    m_torque = ApplyRotationFreeze(m_torque);
 }
 
 void RigidBody::ApplyImpulse(const math::Vector3& impulse)
 {
-    m_velocity += impulse * m_invMass;
+    m_velocity = ApplyPositionFreeze(m_velocity + impulse * m_invMass, math::Vector3::ZERO);
 }
 
 void RigidBody::ApplyAngularImpulse(const math::Vector3& angularImpulse)
 {
-    m_angularVelocity += ApplyInvInertia(angularImpulse);
+    m_angularVelocity = ApplyRotationFreeze(m_angularVelocity + ApplyInvInertia(angularImpulse));
 }
 
 void RigidBody::ApplyTorque(const math::Vector3& torque)
 {
-    m_torque += torque;
+    m_torque += ApplyRotationFreeze(torque);
 }
 
 void RigidBody::SetMass(float mass)
@@ -43,13 +59,38 @@ void RigidBody::SetMass(float mass)
     RecomputeInertia();
 }
 
-void RigidBody::SetPosition(const math::Vector3& pos)    { m_position        = pos;    }
-void RigidBody::SetVelocity(const math::Vector3& vel)    { m_velocity        = vel;    }
-void RigidBody::SetAngularVelocity(const math::Vector3& v) { m_angularVelocity = v;    }
+void RigidBody::SetPosition(const math::Vector3& pos)
+{
+    m_position = ApplyPositionFreeze(pos, m_position);
+}
+
+void RigidBody::SetVelocity(const math::Vector3& vel)
+{
+    m_velocity = ApplyPositionFreeze(vel, math::Vector3::ZERO);
+}
+
+void RigidBody::SetAngularVelocity(const math::Vector3& v)
+{
+    m_angularVelocity = ApplyRotationFreeze(v);
+}
 
 void RigidBody::SetRotation(const math::Quaternion& rot)
 {
     m_rotation = rot.Normalized();
+}
+
+void RigidBody::SetFreezePosition(const AxisLock& lock)
+{
+    m_freezePosition = lock;
+    m_velocity = ApplyPositionFreeze(m_velocity, math::Vector3::ZERO);
+    m_force = ApplyPositionFreeze(m_force, math::Vector3::ZERO);
+}
+
+void RigidBody::SetFreezeRotation(const AxisLock& lock)
+{
+    m_freezeRotation = lock;
+    m_angularVelocity = ApplyRotationFreeze(m_angularVelocity);
+    m_torque = ApplyRotationFreeze(m_torque);
 }
 
 void RigidBody::SetInertiaFromCollider(const Collider* collider)
@@ -65,7 +106,8 @@ void RigidBody::Integrate(float dt)
         // 線形運動は半陰的オイラーで積分する。速度を先に更新するため単純な陽的オイラーより安定する。
         // m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
         m_velocity += m_force * m_invMass * dt;
-        m_position += m_velocity * dt;
+        m_velocity = ApplyPositionFreeze(m_velocity, math::Vector3::ZERO);
+        m_position = ApplyPositionFreeze(m_position + m_velocity * dt, m_position);
 
         // 角運動はボディ空間の対角慣性テンソルで角加速度を求め、ワールド空間へ戻す。
         math::Vector3 tauBody   = m_rotation.Conjugate() * m_torque;
@@ -75,6 +117,7 @@ void RigidBody::Integrate(float dt)
             m_invInertiaDiag.z * tauBody.z
         };
         m_angularVelocity += (m_rotation * alphaBody) * dt;
+        m_angularVelocity = ApplyRotationFreeze(m_angularVelocity);
 
         // q_dot = 0.5 * [0, ω] * q
         math::Quaternion omegaQuat(
@@ -103,7 +146,7 @@ math::Vector3 RigidBody::ApplyInvInertia(const math::Vector3& v) const
         m_invInertiaDiag.y * local.y,
         m_invInertiaDiag.z * local.z
     };
-    return m_rotation * scaled;
+    return ApplyRotationFreeze(m_rotation * scaled);
 }
 
 void RigidBody::RecomputeInertia()
@@ -162,6 +205,17 @@ void RigidBody::RecomputeInertia()
             ixz == 0.0f ? 0.0f : 1.0f / ixz
         };
     }
+}
+
+math::Vector3 RigidBody::ApplyPositionFreeze(const math::Vector3& value,
+                                             const math::Vector3& base) const
+{
+    return ApplyAxisLock(value, m_freezePosition, base);
+}
+
+math::Vector3 RigidBody::ApplyRotationFreeze(const math::Vector3& value) const
+{
+    return ApplyAxisLock(value, m_freezeRotation, math::Vector3::ZERO);
 }
 
 } // namespace fbzz::physics
