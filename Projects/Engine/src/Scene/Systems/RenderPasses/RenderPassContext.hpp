@@ -57,9 +57,23 @@ struct PostProcCB {
     float exposure;
     float time;
     float fogDensity;
-    float _pad;
+    float bloomIntensity;
     float fogColor[3];
     float fogFar;
+    float contrast;
+    float saturation;
+    float hueShift;
+    float temperature;
+    float tint;
+    float vignetteIntensity;
+    float vignetteSmoothness;
+    float vignetteRoundness;
+    float vignetteColor[3];
+    float filmGrainIntensity;
+    float filmGrainResponse;
+    float chromaticAberration;
+    float lensDistortion;
+    float _pad;
 };
 
 struct OutlineCB {

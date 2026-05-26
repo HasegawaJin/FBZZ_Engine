@@ -7,6 +7,7 @@
 #include "Platform/DX11.hlsli"
 #include "Rendering/ToneMap.hlsli"
 #include "Rendering/Fog.hlsli"
+#include "Rendering/PostProcess.hlsli"
 
 Texture2D          texHDR      : register(TEX_GBUFFER0);  // ライティング結果 HDR バッファ
 Texture2D          texBloom    : register(TEX_BLOOM);
@@ -30,11 +31,19 @@ FSTriVSOut VSMain(uint id : SV_VertexID)
 
 float4 PSMain(FSTriVSOut p) : SV_Target0
 {
-    float3 hdr   = texHDR.Sample(sampDefault, p.uv).rgb;
-    float3 bloom = texBloom.Sample(sampDefault, p.uv).rgb;
+    float2 uv = LensDistortUV(p.uv, lensDistortion);
+    if (any(uv < 0.0f) || any(uv > 1.0f))
+        return float4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    float2 caOffset = (uv - 0.5f) * chromaticAberration;
+    float3 hdr;
+    hdr.r = texHDR.Sample(sampDefault, uv + caOffset).r;
+    hdr.g = texHDR.Sample(sampDefault, uv).g;
+    hdr.b = texHDR.Sample(sampDefault, uv - caOffset).b;
+    float3 bloom = texBloom.Sample(sampDefault, uv).rgb;
 
     // Bloom 加算
-    hdr += bloom * 0.8f;
+    hdr += bloom * bloomIntensity;
 
     // 露出 → ACES トーンマップ → sRGB ガンマ補正
     float3 ldr = FinalOutput(hdr, exposure);
@@ -43,7 +52,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     // ndcZ ≥ 0.9999 はスカイドーム（clip.xyww で z=w → NDC z=1.0）なので霧を掛けない
     if (fogDensity > 0.0f)
     {
-        float ndcZ = texDepth.Sample(sampDefault, p.uv).r;
+        float ndcZ = texDepth.Sample(sampDefault, uv).r;
         if (ndcZ < 0.9999f)
         {
             float linDepth = nearZ * farZ / (farZ - ndcZ * (farZ - nearZ));
@@ -52,6 +61,10 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
             ldr = ApplyFog(ldr, factor, fogColor);
         }
     }
+
+    ldr = ApplyColorAdjustments(ldr, contrast, saturation, hueShift, temperature, tint);
+    ldr = ApplyVignette(ldr, uv, vignetteIntensity, vignetteSmoothness, vignetteRoundness, vignetteColor);
+    ldr = ApplyFilmGrain(ldr, uv, filmGrainIntensity, filmGrainResponse);
 
     return float4(ldr, 1.0f);
 }

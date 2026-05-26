@@ -26,7 +26,7 @@ void ExecuteSelectionOutlinePass(RenderPassContext& ctx)
     outlineData.width = rs.outlineWidth;
     resources.Update(h.outlineCB, &outlineData, sizeof(OutlineCB));
 
-    r.SetRenderTarget(rs.fxaaEnabled ? h.outlineRT : ctx.outputRT, resources);
+    r.SetRenderTarget(rs.postProcess.fxaaEnabled ? h.outlineRT : ctx.outputRT, resources);
 
     renderer::DrawCall outlineDC;
     outlineDC.shader = h.selectionOutlineShader;

@@ -102,7 +102,10 @@ void RenderSystem(Scene& scene,
                   fbzz::LayerMask cullingMask)
 {
     static renderer::RenderSettings sDefaultSettings;
-    const renderer::RenderSettings& rs = settings ? *settings : sDefaultSettings;
+    renderer::RenderSettings effectiveSettings = settings ? *settings : sDefaultSettings;
+    if (const auto* runtimePostProcess = scene.TryGetRuntimePostProcessSettings())
+        effectiveSettings.postProcess = *runtimePostProcess;
+    const renderer::RenderSettings& rs = effectiveSettings;
     static auto shadowMapRT     = resources.CreateRenderTarget(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0);
     static auto shadowShader    = resources.LoadShader("assets/shaders/Pipeline/Shadow/ShadowMap.hlsl");
     static auto skinnedShadowShader = resources.LoadShader("assets/shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
@@ -635,14 +638,14 @@ void RenderSystem(Scene& scene,
         ExecuteDebugCollidersPass(passCtx);
     });
 
-    if (rs.bloomEnabled) {
+    if (rs.postProcess.bloom.enabled) {
         graph.AddPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
             ExecuteBloomPass(passCtx);
         });
     }
 
-    const bool needsLdrIntermediate = rs.fxaaEnabled || selectionOutlineEnabled;
-    if (rs.bloomEnabled) {
+    const bool needsLdrIntermediate = rs.postProcess.fxaaEnabled || selectionOutlineEnabled;
+    if (rs.postProcess.bloom.enabled) {
         graph.AddPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
         });
@@ -653,12 +656,12 @@ void RenderSystem(Scene& scene,
     }
 
     if (selectionOutlineEnabled) {
-        graph.AddPass("SelectionOutline", { "LDR", "SelectionMask" }, { rs.fxaaEnabled ? "Outline" : "Output" }, [&]() {
+        graph.AddPass("SelectionOutline", { "LDR", "SelectionMask" }, { rs.postProcess.fxaaEnabled ? "Outline" : "Output" }, [&]() {
             ExecuteSelectionOutlinePass(passCtx);
         });
     }
 
-    if (rs.fxaaEnabled) {
+    if (rs.postProcess.fxaaEnabled) {
         if (selectionOutlineEnabled) {
             graph.AddPass("FXAA", { "Outline" }, { "Output" }, [&]() {
                 ExecuteFxaaPass(passCtx);
