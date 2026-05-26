@@ -3,6 +3,7 @@
 // Scene GameObject hierarchy and selection editing
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -12,10 +13,12 @@
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Physics/AABBCollider.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -44,7 +47,7 @@ std::shared_ptr<renderer::Material> CreateTemplateMaterial()
     if (!resources) return {};
 
     auto material = std::make_shared<renderer::Material>();
-    material->shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    material->shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
     material->shader = resources->LoadShader(material->shaderPath);
     material->params.roughness = 0.65f;
     material->Init(*resources);
@@ -82,27 +85,52 @@ const char* GetPrimitivePath(PrimitiveTemplate type)
     return "";
 }
 
-scene::ColliderComponent CreateTemplateCollider(PrimitiveTemplate type)
+scene::BoxColliderComponent CreateTemplateBoxCollider(const math::Vector3& halfExtents)
 {
-    scene::ColliderComponent collider;
+    scene::BoxColliderComponent collider;
+    collider.size = halfExtents * 2.0f;
+    collider.collider = std::make_shared<physics::OBBCollider>(halfExtents);
+    return collider;
+}
+
+scene::SphereColliderComponent CreateTemplateSphereCollider()
+{
+    scene::SphereColliderComponent collider;
+    collider.radius = 0.5f;
+    collider.collider = std::make_shared<physics::SphereCollider>(0.5f);
+    return collider;
+}
+
+scene::CapsuleColliderComponent CreateTemplateCapsuleCollider()
+{
+    scene::CapsuleColliderComponent collider;
+    collider.radius = 0.25f;
+    collider.halfHeight = 0.25f;
+    collider.collider = std::make_shared<physics::CapsuleCollider>(0.25f, 0.25f);
+    return collider;
+}
+
+void AddTemplateCollider(scene::GameObject& go, PrimitiveTemplate type)
+{
     switch (type) {
     case PrimitiveTemplate::Sphere:
-        collider.collider = std::make_shared<physics::SphereCollider>(0.5f);
+        go.AddComponent<scene::SphereColliderComponent>(CreateTemplateSphereCollider());
         break;
     case PrimitiveTemplate::Capsule:
-        collider.collider = std::make_shared<physics::CapsuleCollider>(0.25f, 0.25f);
+        go.AddComponent<scene::CapsuleColliderComponent>(CreateTemplateCapsuleCollider());
         break;
     case PrimitiveTemplate::Plane:
-        collider.collider = std::make_shared<physics::AABBCollider>(math::Vector3{ 0.5f, 0.01f, 0.5f });
+        go.AddComponent<scene::BoxColliderComponent>(
+            CreateTemplateBoxCollider(math::Vector3{ 0.5f, 0.01f, 0.5f }));
         break;
     case PrimitiveTemplate::Cube:
     case PrimitiveTemplate::Cylinder:
     case PrimitiveTemplate::Cone:
     case PrimitiveTemplate::Torus:
-        collider.collider = std::make_shared<physics::AABBCollider>(math::Vector3{ 0.5f, 0.5f, 0.5f });
+        go.AddComponent<scene::BoxColliderComponent>(
+            CreateTemplateBoxCollider(math::Vector3{ 0.5f, 0.5f, 0.5f }));
         break;
     }
-    return collider;
 }
 
 void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTemplate type)
@@ -115,11 +143,11 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
     go.AddComponent<scene::MeshRenderer>(mr);
 
     scene::MaterialComponent mc;
-    mc.shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    mc.shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
     mc.material = CreateTemplateMaterial();
     go.AddComponent<scene::MaterialComponent>(mc);
 
-    go.AddComponent<scene::ColliderComponent>(CreateTemplateCollider(type));
+    AddTemplateCollider(go, type);
 
     ctx.selectedEntities = { go.GetID() };
 }
@@ -224,6 +252,46 @@ bool ContainsEntity(const std::vector<scene::EntityID>& entities, scene::EntityI
 
 // 子孫を再帰的に visited に追加するだけ（ImGui 呼び出しなし）。
 // 親が閉じているとき子が第2ループで誤って root 描画されるのを防ぐ。
+std::string SanitizeAssetName(const std::string& name)
+{
+    std::string result = name.empty() ? "Prefab" : name;
+    for (char& c : result) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok) c = '_';
+    }
+    return result;
+}
+
+std::string UniquePrefabPath(const EditorContext& ctx, const std::string& objectName)
+{
+    const std::string assetRoot = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
+    const std::string prefabDir = assetRoot + "/Prefabs";
+    util::FileSystem::EnsureDirectory(prefabDir);
+
+    const std::string base = prefabDir + "/" + SanitizeAssetName(objectName);
+    std::string path = base + ".fbzzprefab";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".fbzzprefab";
+    return path;
+}
+
+void SaveSelectedAsPrefab(EditorContext& ctx, const std::string& objectName)
+{
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
+
+    const std::string path = UniquePrefabPath(ctx, objectName);
+    if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, path))
+        ctx.requestAssetBrowserRefresh = true;
+}
+
+bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
+{
+    if (!payload || payload->DataSize <= 0) return false;
+    outPath.assign(static_cast<const char*>(payload->Data),
+                   static_cast<size_t>(payload->DataSize - 1));
+    return !outPath.empty();
+}
+
 void MarkDescendantsVisited(scene::GameObject& go,
                             std::vector<scene::EntityID>& visited)
 {
@@ -354,6 +422,21 @@ void DrawHierarchyNode(EditorContext& ctx,
                 }
             };
         }
+        std::string assetPath;
+        if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath) &&
+            util::FileSystem::GetExtension(assetPath) == ".fbzzprefab") {
+            deferred = [&ctx, assetPath, id, pendingExpand]() {
+                std::vector<scene::EntityID> roots;
+                if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots)) return;
+                for (scene::EntityID rootId : roots) {
+                    auto* root = ctx.activeScene->GetGameObject(rootId);
+                    auto* parent = ctx.activeScene->GetGameObject(id);
+                    if (root && parent) root->SetParent(parent);
+                }
+                ctx.selectedEntities = roots;
+                if (pendingExpand) *pendingExpand = id;
+            };
+        }
         ImGui::EndDragDropTarget();
     }
 
@@ -386,6 +469,9 @@ void DrawHierarchyNode(EditorContext& ctx,
                 ctx.activeScene->DuplicateComponents(id, dst.GetID());
                 ctx.selectedEntities = { dst.GetID() };
             };
+        }
+        if (ImGui::MenuItem("Save As Prefab")) {
+            SaveSelectedAsPrefab(ctx, go.name);
         }
         if (ImGui::BeginMenu("Hierarchy")) {
             const bool hasParent = go.GetParent() != nullptr;
@@ -499,7 +585,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
         }
 
-        if (deferred) deferred();
+        if (deferred) {
+            deferred();
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
         return;
     }
 
@@ -509,6 +598,12 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     std::function<void()> deferred;
     std::vector<scene::EntityID> visited;
     visited.reserve(ctx.activeScene->GameObjectCount());
+    const ImVec2 hierarchyMin = ImGui::GetWindowPos();
+    const ImVec2 hierarchyMax = {
+        hierarchyMin.x + ImGui::GetWindowSize().x,
+        hierarchyMin.y + ImGui::GetWindowSize().y
+    };
+    const ImGuiID hierarchyDropId = ImGui::GetID("##hierarchy_drop_target");
 
     // root オブジェクトだけを起点にツリーを描画する。
     // DrawHierarchyNode 内で子孫も全て visited に登録される（collapsed でも）。
@@ -524,7 +619,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             DrawHierarchyNode(ctx, go, 0, 0, visited, deferred, &m_pendingExpand);
     }
 
-    if (ImGui::BeginDragDropTarget()) {
+    if (ImGui::BeginDragDropTargetCustom(ImRect(hierarchyMin, hierarchyMax), hierarchyDropId)) {
         scene::EntityID draggedId;
         if (ReadEntityPayload(ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), draggedId)) {
             deferred = [&ctx, draggedId]() {
@@ -532,6 +627,15 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                     dragged->ClearParent();
                     ctx.selectedEntities = { draggedId };
                 }
+            };
+        }
+        std::string assetPath;
+        if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath) &&
+            util::FileSystem::GetExtension(assetPath) == ".fbzzprefab") {
+            deferred = [&ctx, assetPath]() {
+                std::vector<scene::EntityID> roots;
+                if (PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
+                    ctx.selectedEntities = roots;
             };
         }
         ImGui::EndDragDropTarget();
@@ -553,7 +657,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndPopup();
     }
 
-    if (deferred) deferred();
+    if (deferred) {
+        deferred();
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
 }
 
 } // namespace fbzz::editor
