@@ -53,6 +53,8 @@ public:
         Slot& slot = m_slots[handle.id];
         slot.resource.reset();
         slot.occupied = false;
+        // generation を進めて、同じ id を再利用しても古いハンドルが IsLive を通過しないようにする。
+        // 0 に戻すと ResourceHandle のデフォルト値 (gen=0) と衝突するため 1 に巻き戻す。
         slot.gen = (slot.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : slot.gen + 1u;
         m_freeList.push_back(handle.id);
     }
@@ -60,7 +62,7 @@ public:
 private:
     struct Slot {
         std::shared_ptr<T> resource;
-        uint32_t gen = 1;
+        uint32_t gen = 1; // 初期値を 1 にし、ResourceHandle デフォルトの gen=0 とは絶対に一致しない
         bool occupied = false;
     };
 

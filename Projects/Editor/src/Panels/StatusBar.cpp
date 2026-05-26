@@ -8,8 +8,10 @@
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Renderer/Camera.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <cstdio>
+#include <string>
 
 namespace fbzz::editor {
 
@@ -82,6 +84,12 @@ void StatusBar::OnRenderContent(EditorContext& ctx)
     }
 
     // ── FPS ─────────────────────────────────────────────────────────
+    const std::string sceneName = ctx.currentScenePath.empty()
+        ? "Untitled"
+        : util::FileSystem::GetFilename(ctx.currentScenePath);
+    ImGui::Text("Scene: %s%s", sceneName.c_str(), ctx.sceneDirty ? "*" : "");
+    Separator();
+
     ImGui::Text("FPS: %.1f  (%.2f ms)", m_fps, ms);
 
     // ── シーン統計 ────────────────────────────────────────────────────

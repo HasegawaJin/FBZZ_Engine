@@ -24,6 +24,9 @@ struct CollisionInfo {
     const ColliderComponent* otherCollider = nullptr;
 };
 
+// Script::Reflect() に渡されるビジターインターフェース。
+// Inspector が ImGui を介してフィールドを表示・編集し、
+// SceneSerializer が JSON にシリアライズ/デシリアライズする際にこれを実装する。
 struct IReflector {
     virtual ~IReflector() = default;
 
@@ -41,20 +44,23 @@ class Script {
 public:
     virtual ~Script() = default;
 
-    virtual void OnStart() {}
-    virtual void OnUpdate(float) {}
+    virtual void OnStart() {}                              // 初回 Update 直前に 1 度だけ呼ばれる
+    virtual void OnUpdate(float) {}                        // 毎フレーム呼ばれる
     virtual void OnCollisionEnter(const CollisionInfo&) {}
     virtual void OnCollisionStay(const CollisionInfo&) {}
     virtual void OnCollisionExit(const CollisionInfo&) {}
     virtual void OnTriggerEnter(const CollisionInfo&) {}
     virtual void OnTriggerStay(const CollisionInfo&) {}
     virtual void OnTriggerExit(const CollisionInfo&) {}
-    virtual void OnDestroy() {}
-    virtual void Reflect(IReflector&) {}
+    virtual void OnDestroy() {}                            // GameObject 破棄時に呼ばれる
+    virtual void Reflect(IReflector&) {}                   // Inspector / Serializer からフィールドを列挙
+    // GetScript<T>() の型判別に使う。派生クラスは TYPE_NAME static constexpr も定義する
     virtual const char* GetTypeName() const { return "Script"; }
 
     bool enabled = true;
 
+    // ScriptSystem が各ライフサイクル呼び出しの前に設定する。
+    // 派生クラスは m_scene / m_gameObject を介して Scene / GameObject にアクセスする。
     void SetContext(Scene* scene, GameObject* gameObject)
     {
         m_scene = scene;
@@ -62,8 +68,8 @@ public:
     }
 
 protected:
-    Scene* m_scene = nullptr;
-    GameObject* m_gameObject = nullptr;
+    Scene*      m_scene      = nullptr; // 非所有参照
+    GameObject* m_gameObject = nullptr; // 非所有参照
 };
 
 } // namespace fbzz::scene

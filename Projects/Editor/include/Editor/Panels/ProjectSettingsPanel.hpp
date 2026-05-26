@@ -12,6 +12,9 @@ public:
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
+
+private:
+    char m_newTag[64] = {};
 };
 
 } // namespace fbzz::editor

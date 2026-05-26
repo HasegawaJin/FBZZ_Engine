@@ -3,6 +3,7 @@
 // Scene GameObject hierarchy and selection editing
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -12,11 +13,14 @@
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Physics/AABBCollider.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -43,7 +47,7 @@ std::shared_ptr<renderer::Material> CreateTemplateMaterial()
     if (!resources) return {};
 
     auto material = std::make_shared<renderer::Material>();
-    material->shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    material->shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
     material->shader = resources->LoadShader(material->shaderPath);
     material->params.roughness = 0.65f;
     material->Init(*resources);
@@ -81,27 +85,52 @@ const char* GetPrimitivePath(PrimitiveTemplate type)
     return "";
 }
 
-scene::ColliderComponent CreateTemplateCollider(PrimitiveTemplate type)
+scene::BoxColliderComponent CreateTemplateBoxCollider(const math::Vector3& halfExtents)
 {
-    scene::ColliderComponent collider;
+    scene::BoxColliderComponent collider;
+    collider.size = halfExtents * 2.0f;
+    collider.collider = std::make_shared<physics::OBBCollider>(halfExtents);
+    return collider;
+}
+
+scene::SphereColliderComponent CreateTemplateSphereCollider()
+{
+    scene::SphereColliderComponent collider;
+    collider.radius = 0.5f;
+    collider.collider = std::make_shared<physics::SphereCollider>(0.5f);
+    return collider;
+}
+
+scene::CapsuleColliderComponent CreateTemplateCapsuleCollider()
+{
+    scene::CapsuleColliderComponent collider;
+    collider.radius = 0.25f;
+    collider.halfHeight = 0.25f;
+    collider.collider = std::make_shared<physics::CapsuleCollider>(0.25f, 0.25f);
+    return collider;
+}
+
+void AddTemplateCollider(scene::GameObject& go, PrimitiveTemplate type)
+{
     switch (type) {
     case PrimitiveTemplate::Sphere:
-        collider.collider = std::make_shared<physics::SphereCollider>(0.5f);
+        go.AddComponent<scene::SphereColliderComponent>(CreateTemplateSphereCollider());
         break;
     case PrimitiveTemplate::Capsule:
-        collider.collider = std::make_shared<physics::CapsuleCollider>(0.25f, 0.25f);
+        go.AddComponent<scene::CapsuleColliderComponent>(CreateTemplateCapsuleCollider());
         break;
     case PrimitiveTemplate::Plane:
-        collider.collider = std::make_shared<physics::AABBCollider>(math::Vector3{ 0.5f, 0.01f, 0.5f });
+        go.AddComponent<scene::BoxColliderComponent>(
+            CreateTemplateBoxCollider(math::Vector3{ 0.5f, 0.01f, 0.5f }));
         break;
     case PrimitiveTemplate::Cube:
     case PrimitiveTemplate::Cylinder:
     case PrimitiveTemplate::Cone:
     case PrimitiveTemplate::Torus:
-        collider.collider = std::make_shared<physics::AABBCollider>(math::Vector3{ 0.5f, 0.5f, 0.5f });
+        go.AddComponent<scene::BoxColliderComponent>(
+            CreateTemplateBoxCollider(math::Vector3{ 0.5f, 0.5f, 0.5f }));
         break;
     }
-    return collider;
 }
 
 void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTemplate type)
@@ -114,11 +143,11 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
     go.AddComponent<scene::MeshRenderer>(mr);
 
     scene::MaterialComponent mc;
-    mc.shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    mc.shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
     mc.material = CreateTemplateMaterial();
     go.AddComponent<scene::MaterialComponent>(mc);
 
-    go.AddComponent<scene::ColliderComponent>(CreateTemplateCollider(type));
+    AddTemplateCollider(go, type);
 
     ctx.selectedEntities = { go.GetID() };
 }
@@ -223,6 +252,46 @@ bool ContainsEntity(const std::vector<scene::EntityID>& entities, scene::EntityI
 
 // 子孫を再帰的に visited に追加するだけ（ImGui 呼び出しなし）。
 // 親が閉じているとき子が第2ループで誤って root 描画されるのを防ぐ。
+std::string SanitizeAssetName(const std::string& name)
+{
+    std::string result = name.empty() ? "Prefab" : name;
+    for (char& c : result) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok) c = '_';
+    }
+    return result;
+}
+
+std::string UniquePrefabPath(const EditorContext& ctx, const std::string& objectName)
+{
+    const std::string assetRoot = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
+    const std::string prefabDir = assetRoot + "/Prefabs";
+    util::FileSystem::EnsureDirectory(prefabDir);
+
+    const std::string base = prefabDir + "/" + SanitizeAssetName(objectName);
+    std::string path = base + ".fbzzprefab";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".fbzzprefab";
+    return path;
+}
+
+void SaveSelectedAsPrefab(EditorContext& ctx, const std::string& objectName)
+{
+    if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
+
+    const std::string path = UniquePrefabPath(ctx, objectName);
+    if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, path))
+        ctx.requestAssetBrowserRefresh = true;
+}
+
+bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
+{
+    if (!payload || payload->DataSize <= 0) return false;
+    outPath.assign(static_cast<const char*>(payload->Data),
+                   static_cast<size_t>(payload->DataSize - 1));
+    return !outPath.empty();
+}
+
 void MarkDescendantsVisited(scene::GameObject& go,
                             std::vector<scene::EntityID>& visited)
 {
@@ -249,6 +318,8 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool hasChildren = go.GetChildCount() > 0;
     const bool selected    = ContainsEntity(ctx.selectedEntities, id);
     const bool isRoot      = go.GetParent() == nullptr;
+    const bool isActive    = go.activeSelf();
+    const bool isLocked    = ctx.IsLocked(id);
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth
                              | ImGuiTreeNodeFlags_OpenOnArrow
@@ -265,19 +336,74 @@ void DrawHierarchyNode(EditorContext& ctx,
         *pendingExpand = scene::EntityID{};
     }
 
+    // 非アクティブはグレーアウト、ロック中はオレンジ
+    if (!isActive)     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 130, 130, 255));
+    else if (isLocked) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 175, 80, 255));
     const bool opened = ImGui::TreeNodeEx(go.name.c_str(), flags);
+    if (!isActive || isLocked) ImGui::PopStyleColor();
 
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
-        if (!ImGui::GetIO().KeyCtrl)
-            ctx.selectedEntities.clear();
-        auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);
-        if (it != ctx.selectedEntities.end())
-            ctx.selectedEntities.erase(it);
-        else
-            ctx.selectedEntities.push_back(id);
+    // --- 右端 visibility/lock アイコン (DrawList で直接描画) ---
+    {
+        const ImVec2 nodeMin = ImGui::GetItemRectMin();
+        const ImVec2 nodeMax = ImGui::GetItemRectMax();
+        const float  h       = nodeMax.y - nodeMin.y;
+        const float  btnW    = h + 2.0f;
+        // SpanAvailWidth のためnodeMax.x = ウィンドウコンテンツ右端
+        const float  rx      = nodeMax.x;
+
+        // ヒット判定 (DrawList ボタンは ImGui のアイテム系から独立して判定)
+        const ImVec2 visMin  = { rx - btnW * 2.0f, nodeMin.y };
+        const ImVec2 visMax  = { rx - btnW,         nodeMax.y };
+        const ImVec2 lockMin = { rx - btnW,          nodeMin.y };
+        const ImVec2 lockMax = { rx,                 nodeMax.y };
+
+        const bool visHov  = ImGui::IsMouseHoveringRect(visMin,  visMax,  false);
+        const bool lockHov = ImGui::IsMouseHoveringRect(lockMin, lockMax, false);
+        const bool visClick  = visHov  && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        const bool lockClick = lockHov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+        if (visClick)  deferred = [&ctx, id]() {
+            if (auto* g = ctx.activeScene->GetGameObject(id)) g->SetActive(!g->activeSelf());
+        };
+        if (lockClick) ctx.ToggleLock(id);
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+
+        // visibility アイコン
+        if (visHov) dl->AddRectFilled(visMin, visMax, IM_COL32(80, 80, 80, 160), 2.0f);
+        const char* visChar = isActive ? "o" : "-";
+        ImVec2 vts = ImGui::CalcTextSize(visChar);
+        dl->AddText({ visMin.x + (btnW - vts.x) * 0.5f, visMin.y + (h - vts.y) * 0.5f },
+                    isActive ? IM_COL32(200, 200, 200, 200) : IM_COL32(100, 100, 100, 200), visChar);
+
+        // lock アイコン (常時描画: ロック中はオレンジ、非ロック+ホバーは薄く)
+        if (lockHov || isLocked) {
+            if (lockHov) dl->AddRectFilled(lockMin, lockMax, IM_COL32(80, 80, 80, 160), 2.0f);
+            ImVec2 lts = ImGui::CalcTextSize("L");
+            dl->AddText({ lockMin.x + (btnW - lts.x) * 0.5f, lockMin.y + (h - lts.y) * 0.5f },
+                        isLocked ? IM_COL32(255, 175, 50, 240) : IM_COL32(120, 120, 120, 140), "L");
+        }
+
+        // ノードのクリック/ダブルクリック判定 (アイコン領域は除外)
+        const bool iconAreaClick = visClick || lockClick;
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()
+            && !isLocked && !iconAreaClick) {
+            if (!ImGui::GetIO().KeyCtrl)
+                ctx.selectedEntities.clear();
+            auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);
+            if (it != ctx.selectedEntities.end())
+                ctx.selectedEntities.erase(it);
+            else
+                ctx.selectedEntities.push_back(id);
+        }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
+            && !isLocked && !iconAreaClick) {
+            ctx.focusTargetPosition    = go.transform.position;
+            ctx.requestFocusOnSelected = true;
+        }
     }
 
-    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+    if (!isLocked && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         ImGui::SetDragDropPayload("FBZZ_HIERARCHY_ENTITY", &id, sizeof(id));
         ImGui::TextUnformatted(go.name.c_str());
         ImGui::EndDragDropSource();
@@ -296,11 +422,34 @@ void DrawHierarchyNode(EditorContext& ctx,
                 }
             };
         }
+        std::string assetPath;
+        if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath) &&
+            util::FileSystem::GetExtension(assetPath) == ".fbzzprefab") {
+            deferred = [&ctx, assetPath, id, pendingExpand]() {
+                std::vector<scene::EntityID> roots;
+                if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots)) return;
+                for (scene::EntityID rootId : roots) {
+                    auto* root = ctx.activeScene->GetGameObject(rootId);
+                    auto* parent = ctx.activeScene->GetGameObject(id);
+                    if (root && parent) root->SetParent(parent);
+                }
+                ctx.selectedEntities = roots;
+                if (pendingExpand) *pendingExpand = id;
+            };
+        }
         ImGui::EndDragDropTarget();
     }
 
     if (ImGui::BeginPopupContextItem()) {
         ctx.selectedEntities = { id };
+
+        if (ImGui::MenuItem(isActive ? "Hide" : "Show"))
+            deferred = [&ctx, id]() {
+                if (auto* g = ctx.activeScene->GetGameObject(id)) g->SetActive(!g->activeSelf());
+            };
+        if (ImGui::MenuItem(isLocked ? "Unlock" : "Lock"))
+            ctx.ToggleLock(id);
+        ImGui::Separator();
 
         if (ImGui::BeginMenu("Create")) {
             DrawCreateObjectMenu(ctx, deferred);
@@ -320,6 +469,9 @@ void DrawHierarchyNode(EditorContext& ctx,
                 ctx.activeScene->DuplicateComponents(id, dst.GetID());
                 ctx.selectedEntities = { dst.GetID() };
             };
+        }
+        if (ImGui::MenuItem("Save As Prefab")) {
+            SaveSelectedAsPrefab(ctx, go.name);
         }
         if (ImGui::BeginMenu("Hierarchy")) {
             const bool hasParent = go.GetParent() != nullptr;
@@ -383,12 +535,75 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
+    // --- 検索バー ---
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
+
+    // フィルタが有効なときはフラットリストで一致オブジェクトだけ表示する
+    if (m_searchFilter[0] != '\0') {
+        std::function<void()> deferred;
+
+        // 大文字小文字を無視した部分一致
+        auto toLower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
+        auto contains = [&](const std::string& name) {
+            std::string nameLow  = name;
+            std::string filtLow  = m_searchFilter;
+            for (char& c : nameLow)  c = toLower(c);
+            for (char& c : filtLow)  c = toLower(c);
+            return nameLow.find(filtLow) != std::string::npos;
+        };
+
+        for (auto& go : ctx.activeScene->GameObjects()) {
+            if (!contains(go.name)) continue;
+            const scene::EntityID id = go.GetID();
+            const bool selected = ContainsEntity(ctx.selectedEntities, id);
+            ImGui::PushID(static_cast<int>(id.index));
+            if (ImGui::Selectable(go.name.c_str(), selected)) {
+                if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
+                if (selected)
+                    RemoveSelection(ctx, id);
+                else
+                    ctx.selectedEntities.push_back(id);
+            }
+            if (ImGui::BeginPopupContextItem()) {
+                ctx.selectedEntities = { id };
+                if (ImGui::MenuItem("Delete")) {
+                    deferred = [&ctx, id]() {
+                        ctx.activeScene->DestroyGameObject(id);
+                        RemoveSelection(ctx, id);
+                        PruneSelection(ctx);
+                    };
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+
+        if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            ImGui::IsKeyPressed(ImGuiKey_Delete) && !ctx.selectedEntities.empty()) {
+            std::vector<scene::EntityID> ids = ctx.selectedEntities;
+            deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
+        }
+
+        if (deferred) {
+            deferred();
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        return;
+    }
+
     // deferred: ノード描画ループ内でシーンを変更すると、その後のイテレーションで
     // ポインタが無効になる。変更操作 (生成/削除/親付け) はすべてラムダに包み、
     // ループ終了後にまとめて実行する。
     std::function<void()> deferred;
     std::vector<scene::EntityID> visited;
     visited.reserve(ctx.activeScene->GameObjectCount());
+    const ImVec2 hierarchyMin = ImGui::GetWindowPos();
+    const ImVec2 hierarchyMax = {
+        hierarchyMin.x + ImGui::GetWindowSize().x,
+        hierarchyMin.y + ImGui::GetWindowSize().y
+    };
+    const ImGuiID hierarchyDropId = ImGui::GetID("##hierarchy_drop_target");
 
     // root オブジェクトだけを起点にツリーを描画する。
     // DrawHierarchyNode 内で子孫も全て visited に登録される（collapsed でも）。
@@ -404,7 +619,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             DrawHierarchyNode(ctx, go, 0, 0, visited, deferred, &m_pendingExpand);
     }
 
-    if (ImGui::BeginDragDropTarget()) {
+    if (ImGui::BeginDragDropTargetCustom(ImRect(hierarchyMin, hierarchyMax), hierarchyDropId)) {
         scene::EntityID draggedId;
         if (ReadEntityPayload(ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), draggedId)) {
             deferred = [&ctx, draggedId]() {
@@ -412,6 +627,15 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                     dragged->ClearParent();
                     ctx.selectedEntities = { draggedId };
                 }
+            };
+        }
+        std::string assetPath;
+        if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath) &&
+            util::FileSystem::GetExtension(assetPath) == ".fbzzprefab") {
+            deferred = [&ctx, assetPath]() {
+                std::vector<scene::EntityID> roots;
+                if (PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
+                    ctx.selectedEntities = roots;
             };
         }
         ImGui::EndDragDropTarget();
@@ -433,7 +657,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndPopup();
     }
 
-    if (deferred) deferred();
+    if (deferred) {
+        deferred();
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
 }
 
 } // namespace fbzz::editor

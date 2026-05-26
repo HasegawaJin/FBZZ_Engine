@@ -22,8 +22,12 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
         D3D11_RASTERIZER_DESC rsDesc = {};
         rsDesc.FillMode              = (desc.rasterizer == RasterizerMode::WIREFRAME)
                                        ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID;
-        rsDesc.CullMode              = (desc.rasterizer == RasterizerMode::SOLID_NOCULL)
-                                       ? D3D11_CULL_NONE : D3D11_CULL_BACK;
+        if (desc.rasterizer == RasterizerMode::SOLID_NOCULL)
+            rsDesc.CullMode = D3D11_CULL_NONE;
+        else if (desc.rasterizer == RasterizerMode::SOLID_FRONT_CULL)
+            rsDesc.CullMode = D3D11_CULL_FRONT;
+        else
+            rsDesc.CullMode = D3D11_CULL_BACK;
         rsDesc.FrontCounterClockwise = FALSE;
         rsDesc.DepthClipEnable       = TRUE;  // ビューフラスタム外のジオメトリをクリップ
 

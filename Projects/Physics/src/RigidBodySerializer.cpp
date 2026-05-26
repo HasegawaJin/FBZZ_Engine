@@ -65,6 +65,16 @@ std::string RigidBodySerializer::Serialize(const RigidBody& body)
     tbl.insert("velocity",         Vec3ToArr(body.GetVelocity()));
     tbl.insert("rotation",         QuatToArr(body.GetRotation()));
     tbl.insert("angular_velocity", Vec3ToArr(body.GetAngularVelocity()));
+    tbl.insert("freeze_position",  Vec3ToArr({
+        body.GetFreezePosition().x ? 1.0f : 0.0f,
+        body.GetFreezePosition().y ? 1.0f : 0.0f,
+        body.GetFreezePosition().z ? 1.0f : 0.0f
+    }));
+    tbl.insert("freeze_rotation",  Vec3ToArr({
+        body.GetFreezeRotation().x ? 1.0f : 0.0f,
+        body.GetFreezeRotation().y ? 1.0f : 0.0f,
+        body.GetFreezeRotation().z ? 1.0f : 0.0f
+    }));
 
     // 基本設定
     tbl.insert("mass",      (double)body.GetMass());
@@ -102,6 +112,18 @@ bool RigidBodySerializer::Deserialize(RigidBody& body, std::string_view tomlText
     body.SetVelocity(ArrToVec3(tbl["velocity"].as_array()));
     body.SetRotation(ArrToQuat(tbl["rotation"].as_array()));
     body.SetAngularVelocity(ArrToVec3(tbl["angular_velocity"].as_array()));
+    const math::Vector3 freezePosition = ArrToVec3(tbl["freeze_position"].as_array(), math::Vector3::ZERO);
+    const math::Vector3 freezeRotation = ArrToVec3(tbl["freeze_rotation"].as_array(), math::Vector3::ZERO);
+    body.SetFreezePosition({
+        freezePosition.x != 0.0f,
+        freezePosition.y != 0.0f,
+        freezePosition.z != 0.0f
+    });
+    body.SetFreezeRotation({
+        freezeRotation.x != 0.0f,
+        freezeRotation.y != 0.0f,
+        freezeRotation.z != 0.0f
+    });
 
     // 拡張プロパティ
     body.m_charge                = (float)tbl["charge"].value_or(0.0);

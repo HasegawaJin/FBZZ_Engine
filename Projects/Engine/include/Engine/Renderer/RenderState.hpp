@@ -16,6 +16,7 @@ namespace fbzz::renderer {
         SOLID,        // 通常の塗りつぶし描画 (デフォルト)
         WIREFRAME,    // ワイヤーフレーム
         SOLID_NOCULL, // 塗りつぶし・背面カリングなし (スカイドーム内面描画)
+        SOLID_FRONT_CULL, // 選択アウトライン用
     };
 
     enum class BlendMode {

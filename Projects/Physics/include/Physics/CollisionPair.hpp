@@ -15,6 +15,7 @@ namespace fbzz::physics
         std::shared_ptr<Collider> collider;
         RigidBody* body = nullptr;
         const PhysicsMaterial* material = nullptr;
+        math::Vector3 centerOffset = math::Vector3::ZERO;
         bool isTrigger = false;
         int layer = 0;
     };

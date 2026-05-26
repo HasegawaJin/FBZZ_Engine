@@ -167,7 +167,12 @@ namespace fbzz::physics
         for (auto& instance : m_colliders)
         {
             if (instance.body && instance.collider)
-                instance.collider->Update(instance.body->GetPosition(), instance.body->GetRotation());
+            {
+                const math::Quaternion bodyRotation = instance.body->GetRotation();
+                const math::Vector3 worldCenter = instance.body->GetPosition()
+                    + bodyRotation * instance.centerOffset;
+                instance.collider->Update(worldCenter, bodyRotation);
+            }
         }
     }
 

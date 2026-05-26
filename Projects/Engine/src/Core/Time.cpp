@@ -71,7 +71,10 @@ void Time::SetTimeScale(float scale)
 
 void Time::SetTargetFps(int fps)
 {
-    s_targetFps = fps < 0 ? 0 : fps;
+    if (fps <= 0)
+        s_targetFps = 0;
+    else
+        s_targetFps = std::max(fps, 30);
 }
 
 } // namespace fbzz::core

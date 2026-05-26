@@ -3,6 +3,8 @@
 // Unity スタイルの2ペインアセットブラウザ
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/ModalDialog.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -10,11 +12,52 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <algorithm>
+#include <cctype>
+#include <cstring>
+#include <filesystem>
 
 namespace fbzz::editor {
 
 namespace {
+
+std::string SanitizeEntityName(const std::string& name)
+{
+    std::string result = name.empty() ? "Prefab" : name;
+    for (char& c : result) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok) c = '_';
+    }
+    return result;
+}
+
+std::string UniquePrefabPathInDir(const std::string& dir, const std::string& objectName)
+{
+    util::FileSystem::EnsureDirectory(dir);
+    const std::string base = dir + "/" + SanitizeEntityName(objectName);
+    std::string path = base + ".fbzzprefab";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".fbzzprefab";
+    return path;
+}
+
+bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
+                                  EditorContext& ctx,
+                                  const std::string& targetDir)
+{
+    if (!payload || payload->DataSize != sizeof(scene::EntityID) || !ctx.activeScene)
+        return false;
+
+    scene::EntityID droppedId;
+    std::memcpy(&droppedId, payload->Data, sizeof(droppedId));
+
+    auto* go = ctx.activeScene->GetGameObject(droppedId);
+    if (!go) return false;
+
+    const std::string path = UniquePrefabPathInDir(targetDir, go->name);
+    return PrefabSerializer::SaveSelection(*ctx.activeScene, { droppedId }, path);
+}
 
 ImVec4 Lighten(ImVec4 c) {
     return { std::min(c.x + 0.15f, 1.0f), std::min(c.y + 0.15f, 1.0f),
@@ -65,6 +108,7 @@ ImVec4 AssetBrowserPanel::EntryColor(const Entry& e)
                                                           return { 0.15f, 0.40f, 0.80f, 1.0f };
     if (e.ext == ".fbx"  || e.ext == ".obj" ||
         e.ext == ".gltf" || e.ext == ".glb")              return { 0.80f, 0.45f, 0.10f, 1.0f };
+    if (e.ext == ".fbzzprefab")                           return { 0.25f, 0.65f, 0.75f, 1.0f };
     if (e.ext == ".fbzz")                                 return { 0.60f, 0.15f, 0.70f, 1.0f };
     if (e.ext == ".toml" || e.ext == ".json")             return { 0.65f, 0.65f, 0.10f, 1.0f };
     if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
@@ -81,6 +125,7 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
                                                           return "TEX";
     if (e.ext == ".fbx"  || e.ext == ".obj" ||
         e.ext == ".gltf" || e.ext == ".glb")              return "MESH";
+    if (e.ext == ".fbzzprefab")                           return "PREFAB";
     if (e.ext == ".fbzz")                                 return "SCENE";
     if (e.ext == ".toml")                                 return "TOML";
     if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
@@ -190,7 +235,39 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         ImGui::EndDragDropSource();
     }
 
-    if (hov) ImGui::SetTooltip("%s", e.path.c_str());
+    if (hov && m_renamingPath != e.path) ImGui::SetTooltip("%s", e.path.c_str());
+
+    // 右クリックコンテキストメニュー (リネーム / 削除)
+    if (ImGui::BeginPopupContextItem("##entry_ctx")) {
+        if (ImGui::MenuItem("Rename")) {
+            m_renamingPath    = e.path;
+            const std::string stem = util::FileSystem::GetFilename(e.path);
+            std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
+            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+            m_renameNeedFocus = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete")) {
+            const std::string path = e.path;
+            ModalDialog::OpenConfirm("Delete",
+                "Delete \"" + util::FileSystem::GetFilename(path) + "\"?",
+                [this, path]() {
+                    std::error_code ec;
+                    std::filesystem::remove_all(
+                        std::filesystem::path(path.begin(), path.end()), ec);
+                    if (ec) {
+                        FBZZ_LOG_ERROR("Delete failed: %s", path.c_str());
+                    } else {
+                        if (m_selectedFbxPath == path) {
+                            m_selectedFbxPath.clear();
+                            m_selectedModel.reset();
+                        }
+                        RefreshDirectory();
+                    }
+                });
+        }
+        ImGui::EndPopup();
+    }
 
     if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const bool isMesh = (e.ext == ".fbx" || e.ext == ".obj" ||
@@ -210,25 +287,77 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         if (e.isDir) {
             m_pendingNavigate = e.path;
         } else if (e.ext == ".fbzz" && ctx.activeScene) {
-            if (SceneSerializer::Load(*ctx.activeScene, e.path)) {
+            if (ctx.requestOpenScene) {
+                ctx.requestOpenScene(e.path);
+            } else if (SceneSerializer::Load(*ctx.activeScene, e.path)) {
                 ctx.selectedEntities.clear();
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
                 FBZZ_LOG_INFO("Opened scene: %s", e.path.c_str());
             } else {
                 FBZZ_LOG_ERROR("Failed to open scene: %s", e.path.c_str());
             }
+        } else if (e.ext == ".fbzzprefab" && ctx.activeScene) {
+            std::vector<scene::EntityID> roots;
+            if (PrefabSerializer::Instantiate(*ctx.activeScene, e.path, roots)) {
+                ctx.selectedEntities = roots;
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
         }
     }
 
-    // ファイル名 (アイコン幅に収まるよう末尾省略、中央揃え)
-    std::string display = e.name;
-    while (display.size() > 2 &&
-           ImGui::CalcTextSize(display.c_str()).x + ImGui::CalcTextSize("..").x > m_iconSize)
-        display.pop_back();
-    if (display.size() < e.name.size()) display += "..";
+    // ファイル名 (リネーム中は InputText、通常は省略ラベル)
+    if (m_renamingPath == e.path) {
+        ImGui::SetNextItemWidth(m_iconSize);
+        if (m_renameNeedFocus) {
+            ImGui::SetKeyboardFocusHere();
+            m_renameNeedFocus = false;
+        }
+        constexpr ImGuiInputTextFlags renameFlags =
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll;
+        const bool enterPressed = ImGui::InputText("##rename", m_renameBuffer,
+                                                   sizeof(m_renameBuffer), renameFlags);
+        if (enterPressed) {
+            if (m_renameBuffer[0] != '\0') {
+                const std::string dir     = util::FileSystem::GetDirectory(e.path);
+                const std::string newPath = dir + m_renameBuffer;
+                if (newPath != e.path) {
+                    std::error_code ec;
+                    std::filesystem::rename(
+                        std::filesystem::path(e.path.begin(), e.path.end()),
+                        std::filesystem::path(newPath.begin(), newPath.end()), ec);
+                    if (ec) {
+                        FBZZ_LOG_ERROR("Rename failed: %s -> %s", e.path.c_str(), newPath.c_str());
+                    } else {
+                        if (m_selectedFbxPath == e.path) m_selectedFbxPath = newPath;
+                        RefreshDirectory();
+                    }
+                }
+            }
+            m_renamingPath.clear();
+        } else if (ImGui::IsItemDeactivated()) {
+            // Escape またはフォーカス外れ → キャンセル
+            m_renamingPath.clear();
+        }
+    } else {
+        std::string display = e.name;
+        while (display.size() > 2 &&
+               ImGui::CalcTextSize(display.c_str()).x + ImGui::CalcTextSize("..").x > m_iconSize)
+            display.pop_back();
+        if (display.size() < e.name.size()) display += "..";
 
-    float indent = (m_iconSize - ImGui::CalcTextSize(display.c_str()).x) * 0.5f;
-    if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
-    ImGui::TextUnformatted(display.c_str());
+        float indent = (m_iconSize - ImGui::CalcTextSize(display.c_str()).x) * 0.5f;
+        if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
+        ImGui::TextUnformatted(display.c_str());
+
+        // F2 でリネーム開始 (ホバー中)
+        if (hov && ImGui::IsKeyPressed(ImGuiKey_F2)) {
+            m_renamingPath    = e.path;
+            const std::string stem = e.name;
+            std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
+            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+            m_renameNeedFocus = true;
+        }
+    }
 
     ImGui::PopID();
 }
@@ -367,6 +496,11 @@ void AssetBrowserPanel::DrawFbxContents()
 
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
+    if (ctx.requestAssetBrowserRefresh) {
+        RefreshDirectory();
+        ctx.requestAssetBrowserRefresh = false;
+    }
+
     // ── 左ペイン: フォルダツリー ─────────────────────────────────────────
     ImGui::BeginChild("##tree", { 150.0f, 0.0f }, true);
 
@@ -390,6 +524,12 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     // ── 右ペイン: コンテンツエリア ───────────────────────────────────────
     ImGui::BeginChild("##content", { 0.0f, 0.0f }, false);
+    const ImVec2 contentMin = ImGui::GetWindowPos();
+    const ImVec2 contentMax = {
+        contentMin.x + ImGui::GetWindowSize().x,
+        contentMin.y + ImGui::GetWindowSize().y
+    };
+    const ImGuiID contentDropId = ImGui::GetID("##content_drop_target");
 
     // ナビゲーションバー
     if (m_currentPath != m_rootPath) {
@@ -437,6 +577,49 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         m_currentPath = std::move(m_pendingNavigate);
         m_pendingNavigate.clear();
         RefreshDirectory();
+    }
+
+    // 空白右クリック: Create メニュー
+    if (ImGui::BeginPopupContextWindow("##content_ctx",
+            ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+        if (ImGui::BeginMenu("Create")) {
+            if (ImGui::MenuItem("Folder")) {
+                std::string newDir = m_currentPath + "/New Folder";
+                // 重複回避
+                int suffix = 1;
+                while (util::FileSystem::Exists(newDir))
+                    newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
+                util::FileSystem::EnsureDirectory(newDir);
+                RefreshDirectory();
+                // 新規フォルダをリネームモードで開く
+                m_renamingPath = newDir;
+                std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(newDir).c_str(),
+                             sizeof(m_renameBuffer) - 1);
+                m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+                m_renameNeedFocus = true;
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Scene")) {
+                std::string newPath = m_currentPath + "/New Scene.fbzz";
+                int suffix = 1;
+                while (util::FileSystem::Exists(newPath))
+                    newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".fbzz";
+                // 空シーンファイル（最小限の TOML）を書き出す
+                util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
+                RefreshDirectory();
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
+    }
+
+    // ヒエラルキーからエンティティをドロップ → Prefab 化
+    if (ImGui::BeginDragDropTargetCustom(ImRect(contentMin, contentMax), contentDropId)) {
+        if (SaveHierarchyPayloadAsPrefab(
+                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_currentPath)) {
+            RefreshDirectory();
+        }
+        ImGui::EndDragDropTarget();
     }
 
     // 選択 FBX の内容プレビュー

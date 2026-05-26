@@ -14,6 +14,19 @@ set(ASSIMP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/include"
 set(ASSIMP_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Debug/assimp-vc145-mtd.lib")
 set(ASSIMP_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Release/assimp-vc145-mt.lib")
 
+foreach(REQUIRED_PATH
+    "${DIRECTXTEX_INCLUDE}"
+    "${DIRECTXTEX_LIB_DEBUG}"
+    "${DIRECTXTEX_LIB_RELEASE}"
+    "${ASSIMP_INCLUDE}"
+    "${ASSIMP_LIB_DEBUG}"
+    "${ASSIMP_LIB_RELEASE}"
+)
+    if(NOT EXISTS "${REQUIRED_PATH}")
+        message(FATAL_ERROR "Required third-party dependency was not found: ${REQUIRED_PATH}")
+    endif()
+endforeach()
+
 target_include_directories(fbzz_engine
     PUBLIC  include
     PRIVATE src
@@ -30,6 +43,7 @@ target_link_libraries(fbzz_engine
         mfplat
         mfreadwrite
         mfuuid
+        winmm
     PRIVATE
         imgui
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"

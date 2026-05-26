@@ -27,7 +27,7 @@ public:
     static void  SetTimeScale(float scale);
 
     static int  TargetFps()            { return s_targetFps; }
-    // 0 = 無制限, 正値 = フレームレート上限
+    // 0 = 無制限, 正値 = フレームレート上限 (最低 30 FPS にクランプ)
     static void SetTargetFps(int fps);
 
 private:

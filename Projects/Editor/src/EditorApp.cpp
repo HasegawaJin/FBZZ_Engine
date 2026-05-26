@@ -23,6 +23,7 @@
 #include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
 #include <Windows.h>
+#include <utility>
 
 // imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -42,6 +43,18 @@ std::string WithFbzzExtension(const std::string& path)
     return path + ".fbzz";
 }
 
+std::wstring Utf8ToWide(const std::string& text)
+{
+    if (text.empty()) return {};
+
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
+}
+
 } // namespace
 
 bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window)
@@ -50,8 +63,14 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     m_renderer = &renderer;
     m_resources = &resources;
 
-    window.SetWndProcHook([](HWND h, UINT msg, WPARAM wp, LPARAM lp) -> bool {
-        return ImGui_ImplWin32_WndProcHandler(h, msg, wp, lp) != 0;
+    window.SetWndProcHook([this](HWND h, UINT msg, WPARAM wp, LPARAM lp) -> bool {
+        if (ImGui_ImplWin32_WndProcHandler(h, msg, wp, lp) != 0)
+            return true;
+        if (msg == WM_CLOSE) {
+            RequestExit();
+            return true;
+        }
+        return false;
     });
 
     IMGUI_CHECKVERSION();
@@ -61,12 +80,99 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = "editor_config/imgui_layout.ini";
+
+    // ini がなければデフォルトレイアウトをメモリから適用する。
+    // LoadIniSettingsFromMemory は SettingsLoaded フラグを立てるため、
+    // その後の NewFrame() でファイルから上書きされることはない。
+    if (!util::FileSystem::Exists("editor_config/imgui_layout.ini")) {
+        static constexpr const char* DEFAULT_IMGUI_LAYOUT =
+            "[Window][##statusbar]\n"
+            "Pos=0,970\n"
+            "Size=1904,32\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Window][##DockSpaceHost]\n"
+            "Pos=0,0\n"
+            "Size=1904,993\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Window][Debug##Default]\n"
+            "Pos=60,60\n"
+            "Size=400,400\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Window][Scene Hierarchy]\n"
+            "Pos=0,19\n"
+            "Size=209,974\n"
+            "Collapsed=0\n"
+            "DockId=0x00000001,0\n"
+            "\n"
+            "[Window][Inspector]\n"
+            "Pos=1675,19\n"
+            "Size=229,974\n"
+            "Collapsed=0\n"
+            "DockId=0x00000004,0\n"
+            "\n"
+            "[Window][Scene]\n"
+            "Pos=211,19\n"
+            "Size=1462,667\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,0\n"
+            "\n"
+            "[Window][Game]\n"
+            "Pos=211,19\n"
+            "Size=1462,667\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,2\n"
+            "\n"
+            "[Window][UI]\n"
+            "Pos=211,19\n"
+            "Size=1462,667\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,1\n"
+            "\n"
+            "[Window][Console]\n"
+            "Pos=211,688\n"
+            "Size=1462,305\n"
+            "Collapsed=0\n"
+            "DockId=0x00000005,1\n"
+            "\n"
+            "[Window][Asset Browser]\n"
+            "Pos=211,688\n"
+            "Size=1462,305\n"
+            "Collapsed=0\n"
+            "DockId=0x00000005,0\n"
+            "\n"
+            "[Window][Project Settings]\n"
+            "Pos=211,19\n"
+            "Size=1462,594\n"
+            "Collapsed=0\n"
+            "DockId=0x00000007,3\n"
+            "\n"
+            "[Window][New Scene]\n"
+            "Pos=820,459\n"
+            "Size=264,75\n"
+            "Collapsed=0\n"
+            "\n"
+            "[Docking][Data]\n"
+            "DockSpace       ID=0xFF535877 Window=0xE26AC72C Pos=0,19 Size=1904,974 Split=X\n"
+            "  DockNode      ID=0x00000001 Parent=0xFF535877 SizeRef=209,1042 HiddenTabBar=1 Selected=0xB8729153\n"
+            "  DockNode      ID=0x00000006 Parent=0xFF535877 SizeRef=1703,1042 Split=X\n"
+            "    DockNode    ID=0x00000003 Parent=0x00000006 SizeRef=1478,1042 Split=Y\n"
+            "      DockNode  ID=0x00000007 Parent=0x00000003 SizeRef=1464,683 CentralNode=1 Selected=0xD1EB2482\n"
+            "      DockNode  ID=0x00000005 Parent=0x00000003 SizeRef=1464,305 Selected=0x36AF052B\n"
+            "    DockNode    ID=0x00000004 Parent=0x00000006 SizeRef=229,1042 HiddenTabBar=1 Selected=0x36DC96AB\n";
+        ImGui::LoadIniSettingsFromMemory(DEFAULT_IMGUI_LAYOUT);
+    }
+
     ImGui::StyleColorsDark();
 
     renderer.ImGuiInit(m_hwnd);
 
     m_ctx.undoStack = &m_undoStack;
     m_ctx.playMode  = &m_playMode;
+    m_ctx.markSceneDirty = [this]() { MarkSceneDirty(); };
+    m_ctx.requestOpenScene = [this](const std::string& path) { RequestOpenScenePath(path); };
 
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
@@ -135,6 +241,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     }
 
     FBZZ_LOG_INFO("EditorApp init done");
+    UpdateWindowTitle();
     return true;
 }
 
@@ -143,6 +250,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     if (!m_ctx.activeScene || !m_resources) return false;
 
     m_projectRoot = projectRoot;
+    m_ctx.projectRoot = projectRoot;
     if (m_assetBrowserPanel && !m_projectRoot.empty()) {
         m_assetBrowserPanel->SetRootPath(m_projectRoot + "/Assets");
     }
@@ -158,11 +266,13 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
             return false;
         }
         m_settings.lastScenePath = scenePath;
+        m_ctx.currentScenePath = scenePath;
         m_ctx.selectedEntities.clear();
-        CacheSceneWriteTime();
+        CaptureCleanScene();
     }
 
     FBZZ_LOG_INFO("Opened project: %s", m_projectRoot.c_str());
+    UpdateWindowTitle();
     return true;
 }
 
@@ -192,6 +302,7 @@ void EditorApp::BeginFrame()
     ImGuizmo::BeginFrame();
     m_hotkeys.ProcessInput();
     CheckHotReload();
+    RefreshSceneDirtyState(false);
 
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
@@ -273,19 +384,16 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     if (!ImGui::BeginMenuBar()) return;
 
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("New Scene")) {
-            ModalDialog::OpenConfirm("New Scene",
-                "Changes will be lost. Continue?",
-                [&ctx]() { (void)ctx; });
-        }
+        if (ImGui::MenuItem("New Scene"))
+            RequestNewScene();
         if (ImGui::MenuItem("Open...", "Ctrl+O", false, ctx.activeScene != nullptr))
-            OpenSceneFromDialog();
+            RequestOpenSceneFromDialog();
         if (ImGui::MenuItem("Save", "Ctrl+S", false, ctx.activeScene != nullptr))
             SaveScene();
         if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, ctx.activeScene != nullptr))
             SaveSceneAsDialog();
         ImGui::Separator();
-        if (ImGui::MenuItem("Exit")) PostQuitMessage(0);
+        if (ImGui::MenuItem("Exit")) RequestExit();
         ImGui::EndMenu();
     }
 
@@ -342,6 +450,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             pm->Stop(*ctx.activeScene);
         if (ImGui::MenuItem(pm->IsPaused() ? " Resume " : " Pause  "))
             pm->Pause();
+        if (pm->IsPaused() && ImGui::MenuItem("  Step   "))
+            pm->RequestStep();
     }
 
     ImGui::EndMenuBar();
@@ -354,11 +464,122 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.Register({ "Redo", ImGuiKey_Y, true, false, false,
         [this]() { m_undoStack.Redo(); } });
     m_hotkeys.Register({ "Open Scene", ImGuiKey_O, true, false, false,
-        [this]() { OpenSceneFromDialog(); } });
+        [this]() { RequestOpenSceneFromDialog(); } });
     m_hotkeys.Register({ "Save Scene", ImGuiKey_S, true, false, false,
         [this]() { SaveScene(); } });
     m_hotkeys.Register({ "Save Scene As", ImGuiKey_S, true, true, false,
         [this]() { SaveSceneAsDialog(); } });
+}
+
+void EditorApp::CaptureCleanScene()
+{
+    if (!m_ctx.activeScene) {
+        m_dirtyTracker.Reset();
+        m_ctx.sceneDirty = false;
+        return;
+    }
+
+    CacheSceneWriteTime();
+    m_dirtyTracker.CaptureClean(*m_ctx.activeScene);
+    m_ctx.sceneDirty = false;
+    m_dirtyPollTimer = 0.0f;
+    UpdateWindowTitle();
+}
+
+void EditorApp::RefreshSceneDirtyState(bool force)
+{
+    if (!m_ctx.activeScene) return;
+    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
+
+    m_dirtyPollTimer += ImGui::GetIO().DeltaTime;
+    if (!force && m_dirtyPollTimer < 0.5f && m_ctx.sceneDirty == m_dirtyTracker.IsDirty())
+        return;
+    m_dirtyPollTimer = 0.0f;
+
+    const bool wasDirty = m_ctx.sceneDirty;
+    m_ctx.sceneDirty = m_dirtyTracker.Evaluate(*m_ctx.activeScene);
+    if (wasDirty != m_ctx.sceneDirty)
+        UpdateWindowTitle();
+}
+
+void EditorApp::UpdateWindowTitle()
+{
+    if (!m_hwnd) return;
+
+    const std::string sceneName = m_ctx.currentScenePath.empty()
+        ? "Untitled"
+        : util::FileSystem::GetFilename(m_ctx.currentScenePath);
+
+    if (m_titleInitialized &&
+        m_lastTitleDirty == m_ctx.sceneDirty &&
+        m_lastTitleScenePath == m_ctx.currentScenePath)
+        return;
+
+    m_titleInitialized = true;
+    m_lastTitleDirty = m_ctx.sceneDirty;
+    m_lastTitleScenePath = m_ctx.currentScenePath;
+
+    std::string title = "FBZZ Editor - " + sceneName;
+    if (m_ctx.sceneDirty) title += "*";
+    SetWindowTextW(m_hwnd, Utf8ToWide(title).c_str());
+}
+
+void EditorApp::MarkSceneDirty()
+{
+    m_dirtyTracker.MarkDirty();
+    if (!m_ctx.sceneDirty) {
+        m_ctx.sceneDirty = true;
+        UpdateWindowTitle();
+    }
+}
+
+void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::function<void()> action)
+{
+    if (!m_ctx.sceneDirty) {
+        if (action) action();
+        return;
+    }
+
+    ModalDialog::OpenUnsavedChanges(actionName,
+        "The current scene has unsaved changes.",
+        [this, action]() {
+            if (!SaveScene()) return false;
+            if (action) action();
+            return true;
+        },
+        std::move(action));
+}
+
+void EditorApp::NewScene()
+{
+    if (!m_ctx.activeScene) return;
+    m_ctx.activeScene->Clear();
+    m_ctx.selectedEntities.clear();
+    m_settings.lastScenePath.clear();
+    m_ctx.currentScenePath.clear();
+    m_lastSceneWriteTime = {};
+    CaptureCleanScene();
+    FBZZ_LOG_INFO("New scene created");
+}
+
+void EditorApp::RequestNewScene()
+{
+    ConfirmDiscardUnsaved("New Scene", [this]() { NewScene(); });
+}
+
+void EditorApp::RequestOpenSceneFromDialog()
+{
+    ConfirmDiscardUnsaved("Open Scene", [this]() { OpenSceneFromDialog(); });
+}
+
+void EditorApp::RequestOpenScenePath(const std::string& path)
+{
+    ConfirmDiscardUnsaved("Open Scene", [this, path]() { OpenScenePath(path); });
+}
+
+void EditorApp::RequestExit()
+{
+    ConfirmDiscardUnsaved("Exit", []() { PostQuitMessage(0); });
 }
 
 bool EditorApp::OpenSceneFromDialog()
@@ -367,14 +588,22 @@ bool EditorApp::OpenSceneFromDialog()
 
     std::string path;
     if (!FileDialog::OpenFile(m_hwnd, { SCENE_FILTER }, path)) return false;
+    return OpenScenePath(path);
+}
+
+bool EditorApp::OpenScenePath(const std::string& path)
+{
+    if (!m_ctx.activeScene || path.empty()) return false;
+
     if (!SceneSerializer::Load(*m_ctx.activeScene, path)) {
         FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
         return false;
     }
 
     m_settings.lastScenePath = path;
+    m_ctx.currentScenePath = path;
     m_ctx.selectedEntities.clear();
-    CacheSceneWriteTime();
+    CaptureCleanScene();
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
     return true;
 }
@@ -390,7 +619,8 @@ bool EditorApp::SaveScene()
     }
     m_ctx.projectSettings.Save(m_projectSettingsPath);
 
-    CacheSceneWriteTime();
+    m_ctx.currentScenePath = m_settings.lastScenePath;
+    CaptureCleanScene();
     FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
     return true;
 }
@@ -410,7 +640,8 @@ bool EditorApp::SaveSceneAsDialog()
     m_ctx.projectSettings.Save(m_projectSettingsPath);
 
     m_settings.lastScenePath = path;
-    CacheSceneWriteTime();
+    m_ctx.currentScenePath = path;
+    CaptureCleanScene();
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
     return true;
 }
@@ -446,6 +677,7 @@ void EditorApp::CheckHotReload()
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
             m_ctx.selectedEntities.clear();
+            CaptureCleanScene();
             FBZZ_LOG_INFO("Hot reloaded: %s", m_settings.lastScenePath.c_str());
         }
     }

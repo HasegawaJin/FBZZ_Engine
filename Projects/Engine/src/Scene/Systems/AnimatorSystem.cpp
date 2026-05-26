@@ -1,10 +1,6 @@
 // FBZZ Engine
 // AnimatorSystem.cpp | fbzz::scene
-// スケルタルアニメーションのサンプリングと骨行列転送
-// AnimationClip を評価し、SkinnedMeshRenderer 用の行列パレットを更新する。
-// 描画自体は RenderSystem が担当する。
-// スケルトン取得元: SkinnedMeshRenderer.model->skeleton
-// アニメーションクリップ取得元: AnimatorComponent.clipSources (1 つの参照元につき 1 つの FBX)
+// skeletal animation sampling and skinning palette upload
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -108,21 +104,9 @@ math::Matrix4 SampleNodeLocal(const asset::SkeletonNode& node,
     const auto* track = FindTrack(clip, node.name);
     if (!track) return node.localBindTransform;
 
-    math::Vector3 bindTranslation = {
-        node.localBindTransform.m[0][3],
-        node.localBindTransform.m[1][3],
-        node.localBindTransform.m[2][3]
-    };
-    math::Vector3 bindScale = {
-        math::Vector3{ node.localBindTransform.m[0][0], node.localBindTransform.m[1][0], node.localBindTransform.m[2][0] }.Length(),
-        math::Vector3{ node.localBindTransform.m[0][1], node.localBindTransform.m[1][1], node.localBindTransform.m[2][1] }.Length(),
-        math::Vector3{ node.localBindTransform.m[0][2], node.localBindTransform.m[1][2], node.localBindTransform.m[2][2] }.Length()
-    };
-    math::Quaternion bindRotation = math::Quaternion::FromMatrix4(node.localBindTransform);
-
-    const math::Vector3    translation = SampleVectorKeys(track->positions, ticks, bindTranslation);
-    const math::Quaternion rotation    = SampleQuaternionKeys(track->rotations, ticks, bindRotation);
-    const math::Vector3    scale       = SampleVectorKeys(track->scales, ticks, bindScale);
+    const math::Vector3 translation = SampleVectorKeys(track->positions, ticks, node.bindTranslation);
+    const math::Quaternion rotation = SampleQuaternionKeys(track->rotations, ticks, node.bindRotation);
+    const math::Vector3 scale = SampleVectorKeys(track->scales, ticks, node.bindScale);
     return math::Matrix4::TRS(translation, rotation, scale);
 }
 
@@ -134,8 +118,8 @@ void EvaluateNode(const asset::Skeleton& skeleton,
                   std::vector<math::Matrix4>& palette,
                   std::vector<math::Matrix4>& nodeGlobals)
 {
-    const auto& node   = skeleton.nodes[static_cast<size_t>(nodeIndex)];
-    const math::Matrix4 local  = SampleNodeLocal(node, clip, ticks);
+    const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
+    const math::Matrix4 local = SampleNodeLocal(node, clip, ticks);
     const math::Matrix4 global = parentGlobal * local;
 
     if (nodeIndex < static_cast<int>(nodeGlobals.size()))
@@ -159,7 +143,6 @@ void UploadBindPose(AnimatorComponent& animator, renderer::ResourceManager& reso
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
-// clipSources すべてからクリップを読み込み、animator.clips へ統合する
 void LoadClips(AnimatorComponent& animator)
 {
     animator.clips.clear();
@@ -184,15 +167,12 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
 
-        // clipSources から必要になった時点でクリップを読み込む
         if (!animator->clipsLoaded)
             LoadClips(*animator);
 
-        // スキニング用定数バッファがなければ作成する
         if (!animator->skinningBuffer.IsValid())
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
 
-        // 同じ GameObject の SkinnedMeshRenderer から Skeleton を取得する
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
         if (smr && !smr->model && !smr->modelPath.empty())
             smr->model = asset::AssetManager::Load<asset::Model>(smr->modelPath);
@@ -212,8 +192,8 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
             continue;
         }
 
-        const double ticksPerSecond  = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-        const float  durationSeconds = static_cast<float>(clip->durationTicks / ticksPerSecond);
+        const double ticksPerSecond = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
+        const float durationSeconds = static_cast<float>(clip->durationTicks / ticksPerSecond);
         if (animator->playing) {
             animator->time += dt * animator->speed;
             animator->time = animator->loop
@@ -227,9 +207,13 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         animator->nodeGlobalTransforms.assign(skeleton->nodes.size(), math::Matrix4::Identity());
 
         if (skeleton->rootNodeIndex >= 0 && !skeleton->nodes.empty()) {
-            EvaluateNode(*skeleton, *clip, skeleton->rootNodeIndex, math::Matrix4::Identity(),
+            EvaluateNode(*skeleton,
+                         *clip,
+                         skeleton->rootNodeIndex,
+                         math::Matrix4::Identity(),
                          static_cast<double>(animator->time) * ticksPerSecond,
-                         animator->boneMatrices, animator->nodeGlobalTransforms);
+                         animator->boneMatrices,
+                         animator->nodeGlobalTransforms);
         }
 
         SkinningCB cb{};
