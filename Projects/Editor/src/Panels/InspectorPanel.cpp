@@ -27,20 +27,29 @@
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/CapsuleCollider.hpp>
 #include <Physics/ColliderVolume.hpp>
+#include <Physics/ConvexHullCollider.hpp>
+#include <Physics/OBBCollider.hpp>
 #include <Physics/RigidBody.hpp>
+#include <Physics/SphereCollider.hpp>
+#include <Physics/TriangleMeshCollider.hpp>
 #include <imgui.h>
 #include <algorithm>
 #include <any>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
+#include <type_traits>
 #include <typeinfo>
 #include <vector>
 
@@ -48,9 +57,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// 繧ｳ繝ｳ繝昴・繝阪Φ繝医け繝ｪ繝・・繝懊・繝・(蝙句ｮ牙・縲，opy/Paste 縺ｫ菴ｿ逕ｨ)
-// 繧ｳ繝ｳ繝昴・繝阪Φ繝医・繝・ム繝ｼ: [笨転 ComponentName        [...]
-// ... 繝懊ち繝ｳ 竊・Reset / Copy Component / Paste Component Values / Remove Component
+
 template<typename T, typename DrawFn>
 void DrawComponentSection(scene::GameObject* go,
                           EditorContext& ctx,
@@ -64,15 +71,13 @@ void DrawComponentSection(scene::GameObject* go,
 
     ImGui::PushID(label);
 
-    // Enabled 繝√ぉ繝・け繝懊ャ繧ｯ繧ｹ (繝倥ャ繝繝ｼ蟾ｦ)
     ImGui::Checkbox("##en", &comp->enabled);
     ImGui::SameLine();
 
-    // CollapsingHeader: AllowOverlap 縺ｧ蜿ｳ遶ｯ繝懊ち繝ｳ縺ｨ縺ｮ遶ｶ蜷医ｒ蝗樣∩
+
     bool open = ImGui::CollapsingHeader(label,
         ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
 
-    // [...] 繝懊ち繝ｳ繧偵・繝・ム繝ｼ蜿ｳ遶ｯ縺ｫ驥阪・縺ｦ驟咲ｽｮ
     const float btnW = ImGui::GetFrameHeight();
     ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
     if (ImGui::SmallButton("..."))
@@ -161,7 +166,7 @@ scene::MeshRenderer CreateDefaultMeshRenderer()
 scene::MaterialComponent CreateDefaultMaterialComponent()
 {
     scene::MaterialComponent mc;
-    mc.shaderPath = "Assets/shaders/Material/Phong.hlsl";
+    mc.shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
     auto material = std::make_shared<renderer::Material>();
     material->shaderPath = mc.shaderPath;
     if (auto* resources = renderer::ResourceManager::Active()) {
@@ -178,9 +183,6 @@ renderer::Material& EnsureMaterial(scene::MaterialComponent& mc)
     if (!mc.material)
         mc.material = std::make_shared<renderer::Material>();
     else if (mc.material.use_count() > 1) {
-        // clone-on-write: 隍・焚縺ｮ MaterialComponent 縺悟酔荳 Material 繧貞・譛峨＠縺ｦ縺・ｋ縺ｨ縺阪・
-        // 繝代Λ繝｡繝ｼ繧ｿ邱ｨ髮・′莉悶・ GameObject 縺ｫ豕｢蜿翫＠縺ｪ縺・ｈ縺・↓繝励Λ繧､繝吶・繝医さ繝斐・繧剃ｽ懊ｋ縲・
-        // paramsBuffer 縺ｯ GPU 繝ｪ繧ｽ繝ｼ繧ｹ縺ｮ縺溘ａ蜈ｱ譛峨〒縺阪↑縺・(譁ｰ隕・Upload 縺悟ｿ・ｦ・ 竊・辟｡蜉ｹ蛹悶☆繧九・
         auto cloned = std::make_shared<renderer::Material>(*mc.material);
         cloned->paramsBuffer = renderer::ResourceHandle<renderer::ConstantBufferTag>{};
         mc.material = std::move(cloned);
@@ -188,11 +190,161 @@ renderer::Material& EnsureMaterial(scene::MaterialComponent& mc)
     return *mc.material;
 }
 
-scene::ColliderComponent CreateAabbCollider(const math::Vector3& halfExtents = { 0.5f, 0.5f, 0.5f })
+scene::AabbColliderComponent CreateAabbCollider(const math::Vector3& size = math::Vector3::ONE)
 {
-    scene::ColliderComponent collider;
-    collider.collider = std::make_shared<physics::AABBCollider>(halfExtents);
+    scene::AabbColliderComponent collider;
+    collider.size = size;
+    collider.collider = std::make_shared<physics::AABBCollider>(size * 0.5f);
     return collider;
+}
+
+scene::BoxColliderComponent CreateBoxCollider(const math::Vector3& halfExtents = { 0.5f, 0.5f, 0.5f })
+{
+    scene::BoxColliderComponent collider;
+    collider.size = halfExtents * 2.0f;
+    collider.collider = std::make_shared<physics::OBBCollider>(halfExtents);
+    return collider;
+}
+
+scene::SphereColliderComponent CreateSphereCollider(float radius = 0.5f)
+{
+    scene::SphereColliderComponent collider;
+    collider.radius = radius;
+    collider.collider = std::make_shared<physics::SphereCollider>(radius);
+    return collider;
+}
+
+scene::CapsuleColliderComponent CreateCapsuleCollider(float radius = 0.5f, float halfHeight = 1.0f)
+{
+    scene::CapsuleColliderComponent collider;
+    collider.radius = radius;
+    collider.halfHeight = halfHeight;
+    collider.collider = std::make_shared<physics::CapsuleCollider>(radius, halfHeight);
+    return collider;
+}
+
+math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
+{
+    return { a.x * b.x, a.y * b.y, a.z * b.z };
+}
+
+math::Vector3 ColliderWorldCenter(const scene::GameObject& go, const scene::ColliderComponent& col)
+{
+    return go.transform.position + go.transform.rotation * ComponentScale(col.center, go.transform.worldScale);
+}
+
+template<typename T>
+void SyncColliderPreview(scene::GameObject& go, T& col)
+{
+    if (!col.collider) return;
+
+    const math::Vector3 worldCenter = ColliderWorldCenter(go, col);
+    if (auto* mesh = col.collider->GetType() == physics::ColliderType::TRIANGLE_MESH
+            ? static_cast<physics::TriangleMeshCollider*>(col.collider.get())
+            : nullptr) {
+        math::Vector3 scale = go.transform.worldScale;
+        if constexpr (std::is_same_v<T, scene::MeshColliderComponent>) {
+            if (!col.useTransformScale)
+                scale = math::Vector3::ONE;
+        }
+        mesh->UpdateWithScale(worldCenter, go.transform.rotation, scale);
+    } else if (auto* hull = col.collider->GetType() == physics::ColliderType::CONVEX_HULL
+            ? static_cast<physics::ConvexHullCollider*>(col.collider.get())
+            : nullptr) {
+        math::Vector3 scale = go.transform.worldScale;
+        if constexpr (std::is_same_v<T, scene::ConvexHullColliderComponent>) {
+            if (!col.useTransformScale)
+                scale = math::Vector3::ONE;
+        }
+        hull->UpdateWithScale(worldCenter, go.transform.rotation, scale);
+    } else {
+        col.collider->Update(worldCenter, go.transform.rotation);
+    }
+}
+
+std::string NormalizeAssetPath(std::string path)
+{
+    for (char& c : path) {
+        if (c == '\\') c = '/';
+    }
+    return path;
+}
+
+std::shared_ptr<renderer::Mesh> MeshFromModelPath(const std::string& path, int meshIndex)
+{
+    if (path.empty()) return {};
+    std::string filePath = path;
+    int resolvedIndex = meshIndex;
+    const size_t slashPos = path.find_last_of('/');
+    const size_t searchFrom = slashPos != std::string::npos ? slashPos : 0;
+    const size_t colonPos = path.find(':', searchFrom);
+    if (colonPos != std::string::npos) {
+        std::string suffix = path.substr(colonPos + 1);
+        bool allDigits = !suffix.empty();
+        for (char c : suffix) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) {
+                allDigits = false;
+                break;
+            }
+        }
+        if (allDigits) {
+            filePath = path.substr(0, colonPos);
+            resolvedIndex = std::atoi(suffix.c_str());
+        }
+    }
+
+    auto model = asset::AssetManager::Load<asset::Model>(filePath);
+    if (!model || resolvedIndex < 0 || resolvedIndex >= static_cast<int>(model->meshes.size()))
+        return {};
+    return model->meshes[static_cast<size_t>(resolvedIndex)];
+}
+
+std::shared_ptr<renderer::Mesh> SourceMeshFromGameObject(scene::GameObject& go,
+                                                         std::string& outPath,
+                                                         int& outMeshIndex)
+{
+    if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh) {
+        outPath = mr->meshPath;
+        outMeshIndex = 0;
+        return mr->mesh;
+    }
+
+    if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>()) {
+        if (!smr->model && !smr->modelPath.empty())
+            smr->model = asset::AssetManager::Load<asset::Model>(smr->modelPath);
+        if (smr->model && smr->meshIndex >= 0 &&
+            smr->meshIndex < static_cast<int>(smr->model->meshes.size())) {
+            outPath = smr->modelPath;
+            outMeshIndex = smr->meshIndex;
+            return smr->model->meshes[static_cast<size_t>(smr->meshIndex)];
+        }
+    }
+
+    return {};
+}
+
+std::vector<math::Vector3> MeshPositions(const renderer::Mesh& mesh)
+{
+    std::vector<math::Vector3> positions;
+    positions.reserve(mesh.cpuVertices.size());
+    for (const auto& vertex : mesh.cpuVertices)
+        positions.push_back(vertex.position);
+    return positions;
+}
+
+bool BuildMeshCollider(scene::MeshColliderComponent& col, const std::shared_ptr<renderer::Mesh>& mesh)
+{
+    if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) return false;
+    col.collider = std::make_shared<physics::TriangleMeshCollider>(
+        MeshPositions(*mesh), mesh->cpuIndices);
+    return true;
+}
+
+bool BuildConvexHullCollider(scene::ConvexHullColliderComponent& col, const std::shared_ptr<renderer::Mesh>& mesh)
+{
+    if (!mesh || mesh->cpuVertices.empty()) return false;
+    col.collider = std::make_shared<physics::ConvexHullCollider>(MeshPositions(*mesh));
+    return true;
 }
 
 scene::RigidBodyComponent CreateDefaultRigidBody()
@@ -206,7 +358,6 @@ scene::RigidBodyComponent CreateDefaultRigidBody()
 bool ComponentMatchesFilter(const char* label, const char* filter)
 {
     if (filter[0] == '\0') return true;
-    // 螟ｧ譁・ｭ怜ｰ乗枚蟄礼┌隕悶・驛ｨ蛻・ｸ閾ｴ
     const char* p = label;
     const char* f = filter;
     while (*p) {
@@ -220,14 +371,17 @@ bool ComponentMatchesFilter(const char* label, const char* filter)
     return false;
 }
 
-template<typename T>
-bool DrawAddComponentItem(scene::GameObject& go, const char* label, const char* filter)
+bool AddComponentCategory(const char* label, const char* filter, auto drawItems)
 {
-    if (!ComponentMatchesFilter(label, filter)) return false;
-    const bool hasComponent = go.GetComponent<T>() != nullptr;
-    if (ImGui::MenuItem(label, nullptr, false, !hasComponent))
-        go.AddComponent<T>();
-    return true;
+    if (filter[0] == '\0') {
+        if (ImGui::BeginMenu(label)) {
+            drawItems(label, "");
+            ImGui::EndMenu();
+        }
+        return true;
+    }
+
+    return drawItems(label, filter);
 }
 
 void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
@@ -237,7 +391,6 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
 
     if (!ImGui::BeginPopup("##add_component")) return;
 
-    // 繝昴ャ繝励い繝・・縺碁幕縺・◆迸ｬ髢薙↓繝輔ぅ繝ｫ繧ｿ繧偵け繝ｪ繧｢縺励※繝輔か繝ｼ繧ｫ繧ｹ繧貞ｽ薙※繧・
     if (ImGui::IsWindowAppearing()) {
         filterBuffer[0] = '\0';
         ImGui::SetKeyboardFocusHere();
@@ -248,56 +401,155 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
 
     const char* filter  = filterBuffer;
     bool        anyShown = false;
+    bool        didAdd = false;
 
-    auto menuItem = [&](const char* label, bool enabled, auto action) -> bool {
-        if (!ComponentMatchesFilter(label, filter)) return false;
-        if (ImGui::MenuItem(label, nullptr, false, enabled)) action();
+    auto addItem = [&](const char* category, const char* label, bool enabled, auto action) -> bool {
+        char path[128];
+        std::snprintf(path, sizeof(path), "%s/%s", category, label);
+        char colonPath[128];
+        std::snprintf(colonPath, sizeof(colonPath), "%s: %s", category, label);
+        if (!ComponentMatchesFilter(path, filter) &&
+            !ComponentMatchesFilter(colonPath, filter) &&
+            !ComponentMatchesFilter(label, filter))
+            return false;
+        if (ImGui::MenuItem(filter[0] == '\0' ? label : path, nullptr, false, enabled)) {
+            action();
+            didAdd = true;
+            ImGui::CloseCurrentPopup();
+        }
         return true;
     };
 
-    anyShown |= menuItem("Mesh Renderer", !go.GetComponent<scene::MeshRenderer>(), [&]() {
-        go.AddComponent<scene::MeshRenderer>(CreateDefaultMeshRenderer());
-        if (!go.GetComponent<scene::MaterialComponent>())
-            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-    });
-    anyShown |= menuItem("Material", !go.GetComponent<scene::MaterialComponent>(), [&]() {
-        go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-    });
-    anyShown |= DrawAddComponentItem<scene::LightComponent>(go, "Light", filter);
-    anyShown |= DrawAddComponentItem<scene::CameraComponent>(go, "Camera", filter);
-    anyShown |= DrawAddComponentItem<scene::ParticleEmitter>(go, "Particle Emitter", filter);
-    anyShown |= DrawAddComponentItem<scene::AudioSourceComponent>(go, "Audio Source", filter);
-    anyShown |= menuItem("Collider", !go.GetComponent<scene::ColliderComponent>(), [&]() {
-        go.AddComponent<scene::ColliderComponent>(CreateAabbCollider());
-    });
-    anyShown |= menuItem("Rigid Body", !go.GetComponent<scene::RigidBodyComponent>(), [&]() {
-        go.AddComponent<scene::RigidBodyComponent>(CreateDefaultRigidBody());
-    });
-    anyShown |= DrawAddComponentItem<scene::VolumeComponent>(go, "Volume", filter);
-    anyShown |= DrawAddComponentItem<scene::SkyRenderer>(go, "Sky Renderer", filter);
-    anyShown |= menuItem("Skinned Mesh Renderer", !go.GetComponent<scene::SkinnedMeshRenderer>(), [&]() {
-        go.AddComponent<scene::SkinnedMeshRenderer>();
-        if (!go.GetComponent<scene::MaterialComponent>())
-            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-    });
-    anyShown |= menuItem("Animator", !go.GetComponent<scene::AnimatorComponent>(), [&]() {
-        go.AddComponent<scene::AnimatorComponent>();
-        if (!go.GetComponent<scene::SkinnedMeshRenderer>())
+    anyShown |= AddComponentCategory("Rendering", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "Mesh Renderer", !go.GetComponent<scene::MeshRenderer>(), [&]() {
+            go.AddComponent<scene::MeshRenderer>(CreateDefaultMeshRenderer());
+            if (!go.GetComponent<scene::MaterialComponent>())
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+        });
+        shown |= addItem(category, "Skinned Mesh Renderer", !go.GetComponent<scene::SkinnedMeshRenderer>(), [&]() {
             go.AddComponent<scene::SkinnedMeshRenderer>();
-        if (!go.GetComponent<scene::MaterialComponent>())
+            if (!go.GetComponent<scene::MaterialComponent>())
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+        });
+        shown |= addItem(category, "Material", !go.GetComponent<scene::MaterialComponent>(), [&]() {
             go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+        });
+        shown |= addItem(category, "Light", !go.GetComponent<scene::LightComponent>(), [&]() {
+            go.AddComponent<scene::LightComponent>();
+        });
+        shown |= addItem(category, "Camera", !go.GetComponent<scene::CameraComponent>(), [&]() {
+            go.AddComponent<scene::CameraComponent>();
+        });
+        shown |= addItem(category, "Particle Emitter", !go.GetComponent<scene::ParticleEmitter>(), [&]() {
+            go.AddComponent<scene::ParticleEmitter>();
+        });
+        shown |= addItem(category, "Sky Renderer", !go.GetComponent<scene::SkyRenderer>(), [&]() {
+            go.AddComponent<scene::SkyRenderer>();
+        });
+        return shown;
     });
-    anyShown |= DrawAddComponentItem<scene::UICanvas>(go, "UI Canvas", filter);
-    anyShown |= DrawAddComponentItem<scene::UIImage>(go, "UI Image", filter);
-    anyShown |= DrawAddComponentItem<scene::UIButton>(go, "UI Button", filter);
-    anyShown |= DrawAddComponentItem<scene::UIText>(go, "UI Text", filter);
-    anyShown |= DrawAddComponentItem<scene::UILayoutGroup>(go, "UI Layout Group", filter);
-    anyShown |= DrawAddComponentItem<scene::UIAnimator>(go, "UI Animator", filter);
+
+    anyShown |= AddComponentCategory("Physics", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "Rigidbody", !go.GetComponent<scene::RigidBodyComponent>(), [&]() {
+            go.AddComponent<scene::RigidBodyComponent>(CreateDefaultRigidBody());
+        });
+        shown |= addItem(category, "AABB Collider", !go.GetComponent<scene::AabbColliderComponent>(), [&]() {
+            go.AddComponent<scene::AabbColliderComponent>(CreateAabbCollider());
+        });
+        shown |= addItem(category, "Box Collider", !go.GetComponent<scene::BoxColliderComponent>(), [&]() {
+            go.AddComponent<scene::BoxColliderComponent>(CreateBoxCollider());
+        });
+        shown |= addItem(category, "Sphere Collider", !go.GetComponent<scene::SphereColliderComponent>(), [&]() {
+            go.AddComponent<scene::SphereColliderComponent>(CreateSphereCollider());
+        });
+        shown |= addItem(category, "Capsule Collider", !go.GetComponent<scene::CapsuleColliderComponent>(), [&]() {
+            go.AddComponent<scene::CapsuleColliderComponent>(CreateCapsuleCollider());
+        });
+        shown |= addItem(category, "Mesh Collider", !go.GetComponent<scene::MeshColliderComponent>(), [&]() {
+            scene::MeshColliderComponent col;
+            auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
+            BuildMeshCollider(col, mesh);
+            go.AddComponent<scene::MeshColliderComponent>(std::move(col));
+        });
+        shown |= addItem(category, "Convex Hull Collider", !go.GetComponent<scene::ConvexHullColliderComponent>(), [&]() {
+            scene::ConvexHullColliderComponent col;
+            auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
+            BuildConvexHullCollider(col, mesh);
+            go.AddComponent<scene::ConvexHullColliderComponent>(std::move(col));
+        });
+        shown |= addItem(category, "Volume", !go.GetComponent<scene::VolumeComponent>(), [&]() {
+            go.AddComponent<scene::VolumeComponent>();
+        });
+        return shown;
+    });
+
+    anyShown |= AddComponentCategory("Animation", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "Animator", !go.GetComponent<scene::AnimatorComponent>(), [&]() {
+            go.AddComponent<scene::AnimatorComponent>();
+            if (!go.GetComponent<scene::SkinnedMeshRenderer>())
+                go.AddComponent<scene::SkinnedMeshRenderer>();
+            if (!go.GetComponent<scene::MaterialComponent>())
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+        });
+        return shown;
+    });
+
+    anyShown |= AddComponentCategory("Audio", filter, [&](const char* category, const char*) {
+        return addItem(category, "Audio Source", !go.GetComponent<scene::AudioSourceComponent>(), [&]() {
+            go.AddComponent<scene::AudioSourceComponent>();
+        });
+    });
+
+    anyShown |= AddComponentCategory("UI", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "UICanvas", !go.GetComponent<scene::UICanvas>(), [&]() {
+            go.AddComponent<scene::UICanvas>();
+        });
+        shown |= addItem(category, "UIImage", !go.GetComponent<scene::UIImage>(), [&]() {
+            go.AddComponent<scene::UIImage>();
+        });
+        shown |= addItem(category, "UIButton", !go.GetComponent<scene::UIButton>(), [&]() {
+            go.AddComponent<scene::UIButton>();
+        });
+        shown |= addItem(category, "UIText", !go.GetComponent<scene::UIText>(), [&]() {
+            go.AddComponent<scene::UIText>();
+        });
+        shown |= addItem(category, "UILayout Group", !go.GetComponent<scene::UILayoutGroup>(), [&]() {
+            go.AddComponent<scene::UILayoutGroup>();
+        });
+        shown |= addItem(category, "UIAnimator", !go.GetComponent<scene::UIAnimator>(), [&]() {
+            go.AddComponent<scene::UIAnimator>();
+        });
+        return shown;
+    });
+
+    anyShown |= AddComponentCategory("Scripts", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        const bool hasScriptComponent = go.GetComponent<scene::ScriptComponent>() != nullptr;
+        const auto scriptTypeNames = scene::ScriptFactory::RegisteredTypeNames();
+        for (const std::string& typeName : scriptTypeNames) {
+            shown |= addItem(category, typeName.c_str(), !hasScriptComponent, [&]() {
+                auto script = scene::ScriptFactory::Create(typeName);
+                if (!script) return;
+
+                scene::ScriptComponent sc;
+                sc.script = std::move(script);
+                go.AddComponent<scene::ScriptComponent>(std::move(sc));
+            });
+        }
+        return shown;
+    });
 
     if (!anyShown)
         ImGui::TextDisabled("No results");
 
     ImGui::EndPopup();
+
+    if (didAdd)
+        filterBuffer[0] = '\0';
 }
 
 bool DragVec2(const char* label, math::Vector2& value, float speed = 0.1f, float min = 0.0f, float max = 0.0f)
@@ -309,6 +561,13 @@ bool DragVec2(const char* label, math::Vector2& value, float speed = 0.1f, float
 }
 
 } // namespace
+
+void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go);
+void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go);
+void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& go);
+void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject& go);
+void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go);
+void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go);
 
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -379,7 +638,6 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         const bool isUI = go->GetComponent<scene::UIImage>() || go->GetComponent<scene::UIText>();
 
         if (isUI) {
-            // X / Y 繧呈ｨｪ荳ｦ縺ｳ縺ｧ陦ｨ遉ｺ
             const float itemW = (ImGui::GetContentRegionAvail().x
                                  - ImGui::CalcTextSize("X").x * 2
                                  - ImGui::GetStyle().ItemSpacing.x * 3) * 0.5f;
@@ -392,7 +650,6 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SetNextItemWidth(itemW);
             ImGui::DragFloat("##py", &t.localPosition.y, 1.0f, 0.0f, 0.0f, "Y %.0f");
 
-            // Rotation Z 縺ｮ縺ｿ
             math::Vector3 euler = widgets::QuatToEulerDeg(t.localRotation);
             float rotZ = euler.z;
             ImGui::Text("Rot");
@@ -401,7 +658,6 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::DragFloat("##rz", &rotZ, 0.5f, -360.0f, 360.0f, "Z %.1f deg"))
                 t.localRotation = widgets::EulerDegToQuat({ euler.x, euler.y, rotZ });
 
-            // W / H (UIImage 縺ｮ縺ｿ)
             if (go->GetComponent<scene::UIImage>()) {
                 ImGui::Text("Size");
                 ImGui::SameLine();
@@ -416,10 +672,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::DragFloat3("Position", pos, 0.1f))
                 t.localPosition = { pos[0], pos[1], pos[2] };
 
-            math::Vector3 euler = widgets::QuatToEulerDeg(t.localRotation);
-            float rot[3] = { euler.x, euler.y, euler.z };
-            if (ImGui::DragFloat3("Rotation", rot, 0.5f))
-                t.localRotation = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
+            widgets::DragQuatEuler3("Rotation", t.localRotation, 0.5f);
 
             float scale[3] = { t.localScale.x, t.localScale.y, t.localScale.z };
             if (ImGui::DragFloat3("Scale", scale, 0.01f, 0.001f, 1000.0f))
@@ -766,25 +1019,34 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SliderFloat("Volume", &asc.volume, 0.0f, 1.0f);
         });
 
-    DrawComponentSection<scene::ColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Collider",
-        [](scene::ColliderComponent& col, EditorContext&) {
-            ImGui::Checkbox("Is Trigger", &col.isTrigger);
-            const char* colliderName = "None";
-            if (col.collider) {
-                switch (col.collider->GetType()) {
-                case physics::ColliderType::SPHERE: colliderName = "Sphere"; break;
-                case physics::ColliderType::AABB: colliderName = "AABB"; break;
-                case physics::ColliderType::OBB: colliderName = "OBB"; break;
-                case physics::ColliderType::CAPSULE: colliderName = "Capsule"; break;
-                case physics::ColliderType::TRIANGLE_MESH: colliderName = "Triangle Mesh"; break;
-                case physics::ColliderType::CONVEX_HULL: colliderName = "Convex Hull"; break;
-                }
-            }
-            widgets::ReadOnlyText("Shape", colliderName);
-            ImGui::DragFloat("Restitution", &col.material.restitution, 0.01f, 0.0f, 1.0f);
-            ImGui::DragFloat("Static Friction", &col.material.staticFriction, 0.01f, 0.0f, 10.0f);
-            ImGui::DragFloat("Dynamic Friction", &col.material.dynamicFriction, 0.01f, 0.0f, 10.0f);
-            ImGui::DragFloat("Density", &col.material.density, 0.01f, 0.0f, 100000.0f);
+    DrawComponentSection<scene::AabbColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "AABB Collider",
+        [go](scene::AabbColliderComponent& col, EditorContext&) {
+            DrawAabbCollider(col, *go);
+        });
+
+    DrawComponentSection<scene::BoxColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Box Collider",
+        [go](scene::BoxColliderComponent& col, EditorContext&) {
+            DrawBoxCollider(col, *go);
+        });
+
+    DrawComponentSection<scene::SphereColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Sphere Collider",
+        [go](scene::SphereColliderComponent& col, EditorContext&) {
+            DrawSphereCollider(col, *go);
+        });
+
+    DrawComponentSection<scene::CapsuleColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Capsule Collider",
+        [go](scene::CapsuleColliderComponent& col, EditorContext&) {
+            DrawCapsuleCollider(col, *go);
+        });
+
+    DrawComponentSection<scene::MeshColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Collider",
+        [&go](scene::MeshColliderComponent& col, EditorContext&) {
+            DrawMeshCollider(col, *go);
+        });
+
+    DrawComponentSection<scene::ConvexHullColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Convex Hull Collider",
+        [&go](scene::ConvexHullColliderComponent& col, EditorContext&) {
+            DrawConvexHullCollider(col, *go);
         });
 
     DrawComponentSection<scene::RigidBodyComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Rigid Body",
@@ -812,6 +1074,26 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             math::Vector3 angularVelocity = body.GetAngularVelocity();
             if (widgets::DragVec3("Angular Velocity", angularVelocity, 0.05f))
                 body.SetAngularVelocity(angularVelocity);
+
+            auto freezePosition = body.GetFreezePosition();
+            if (ImGui::Checkbox("Freeze Position X", &freezePosition.x))
+                body.SetFreezePosition(freezePosition);
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Y##FreezePosition", &freezePosition.y))
+                body.SetFreezePosition(freezePosition);
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Z##FreezePosition", &freezePosition.z))
+                body.SetFreezePosition(freezePosition);
+
+            auto freezeRotation = body.GetFreezeRotation();
+            if (ImGui::Checkbox("Freeze Rotation X", &freezeRotation.x))
+                body.SetFreezeRotation(freezeRotation);
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Y##FreezeRotation", &freezeRotation.y))
+                body.SetFreezeRotation(freezeRotation);
+            ImGui::SameLine();
+            if (ImGui::Checkbox("Z##FreezeRotation", &freezeRotation.z))
+                body.SetFreezeRotation(freezeRotation);
 
             ImGui::DragFloat("Charge", &body.m_charge, 0.01f, -1000.0f, 1000.0f);
             ImGui::Checkbox("Gravity Source", &body.m_isGravitationalSource);
@@ -990,6 +1272,154 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::Spacing();
     DrawAddComponentMenu(*go, m_addComponentFilter);
+}
+
+void DrawColliderCommon(scene::ColliderComponent& col)
+{
+    widgets::DragVec3("Center", col.center, 0.01f, -1000.0f, 1000.0f);
+    ImGui::Checkbox("Is Trigger", &col.isTrigger);
+    ImGui::DragFloat("Restitution", &col.material.restitution, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Static Friction", &col.material.staticFriction, 0.01f, 0.0f, 10.0f);
+    ImGui::DragFloat("Dynamic Friction", &col.material.dynamicFriction, 0.01f, 0.0f, 10.0f);
+    ImGui::DragFloat("Density", &col.material.density, 0.01f, 0.0f, 100000.0f);
+}
+
+void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go)
+{
+    DrawColliderCommon(col);
+    widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
+    auto* box = col.collider && col.collider->GetType() == physics::ColliderType::AABB
+        ? static_cast<physics::AABBCollider*>(col.collider.get())
+        : nullptr;
+    if (!box) {
+        col.collider = std::make_shared<physics::AABBCollider>(col.size * 0.5f);
+        box = static_cast<physics::AABBCollider*>(col.collider.get());
+    }
+    box->m_halfExtents = col.size * 0.5f;
+    SyncColliderPreview(go, col);
+}
+
+void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go)
+{
+    DrawColliderCommon(col);
+    widgets::DragVec3("Size", col.size, 0.01f, 0.001f, 1000.0f);
+    auto* box = col.collider && col.collider->GetType() == physics::ColliderType::OBB
+        ? static_cast<physics::OBBCollider*>(col.collider.get())
+        : nullptr;
+    if (!box) {
+        col.collider = std::make_shared<physics::OBBCollider>(col.size * 0.5f);
+        box = static_cast<physics::OBBCollider*>(col.collider.get());
+    }
+    box->m_halfExtents = col.size * 0.5f;
+    SyncColliderPreview(go, col);
+}
+
+void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& go)
+{
+    DrawColliderCommon(col);
+    auto* sphere = col.collider && col.collider->GetType() == physics::ColliderType::SPHERE
+        ? static_cast<physics::SphereCollider*>(col.collider.get())
+        : nullptr;
+    if (!sphere) {
+        col.collider = std::make_shared<physics::SphereCollider>(col.radius);
+        sphere = static_cast<physics::SphereCollider*>(col.collider.get());
+    }
+    ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
+    sphere->m_radius = col.radius;
+    SyncColliderPreview(go, col);
+}
+
+void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject& go)
+{
+    DrawColliderCommon(col);
+    auto* capsule = col.collider && col.collider->GetType() == physics::ColliderType::CAPSULE
+        ? static_cast<physics::CapsuleCollider*>(col.collider.get())
+        : nullptr;
+    if (!capsule) {
+        col.collider = std::make_shared<physics::CapsuleCollider>(col.radius, col.halfHeight);
+        capsule = static_cast<physics::CapsuleCollider*>(col.collider.get());
+    }
+    ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
+    ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
+    capsule->m_radius = col.radius;
+    capsule->m_halfHeight = col.halfHeight;
+    SyncColliderPreview(go, col);
+}
+
+void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go)
+{
+    DrawColliderCommon(col);
+    ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
+    char pathBuf[256];
+    std::snprintf(pathBuf, sizeof(pathBuf), "%s", col.meshPath.c_str());
+    if (ImGui::InputText("Model Path", pathBuf, sizeof(pathBuf))) {
+        col.meshPath = NormalizeAssetPath(pathBuf);
+        col.collider.reset();
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            col.meshPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
+            col.collider.reset();
+            BuildMeshCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        col.collider.reset();
+        BuildMeshCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
+    }
+    if (ImGui::Button("Rebuild From MeshRenderer")) {
+        col.collider.reset();
+        auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
+        BuildMeshCollider(col, mesh);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Rebuild From FBX")) {
+        col.collider.reset();
+        BuildMeshCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
+    }
+    if (!col.collider)
+        ImGui::TextDisabled("No mesh collider data. Drop FBX or rebuild from renderer.");
+    SyncColliderPreview(go, col);
+}
+
+void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go)
+{
+    DrawColliderCommon(col);
+    ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
+    char pathBuf[256];
+    std::snprintf(pathBuf, sizeof(pathBuf), "%s", col.meshPath.c_str());
+    if (ImGui::InputText("Model Path", pathBuf, sizeof(pathBuf))) {
+        col.meshPath = NormalizeAssetPath(pathBuf);
+        col.collider.reset();
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            col.meshPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
+            col.collider.reset();
+            BuildConvexHullCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        col.collider.reset();
+        BuildConvexHullCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
+    }
+    if (ImGui::Button("Rebuild From MeshRenderer")) {
+        col.collider.reset();
+        auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
+        BuildConvexHullCollider(col, mesh);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Rebuild From FBX")) {
+        col.collider.reset();
+        BuildConvexHullCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
+    }
+    if (!col.collider)
+        ImGui::TextDisabled("No hull data. Drop FBX or rebuild from renderer.");
+    SyncColliderPreview(go, col);
 }
 
 } // namespace fbzz::editor
