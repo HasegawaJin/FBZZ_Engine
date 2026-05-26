@@ -1,27 +1,42 @@
 // FBZZ Engine
 // ModalDialog.cpp | fbzz::editor
-// ImGui モーダル確認ダイアログ実装
+// ImGui modal confirmation dialogs
 #include <Editor/Util/ModalDialog.hpp>
 #include <imgui.h>
+#include <utility>
 
 namespace fbzz::editor {
 
 ModalDialog::State ModalDialog::s_state;
 
 void ModalDialog::OpenConfirm(const std::string& title,
-                               const std::string& message,
-                               std::function<void()> onConfirm)
+                              const std::string& message,
+                              std::function<void()> onConfirm)
 {
-    // ImGui::OpenPopup は OnRender 内 (Begin/End ブロック内) で呼ぶ必要があるため、
-    // ここではフラグだけ立てる
-    s_state = { title, message, std::move(onConfirm), true, false };
+    s_state = {};
+    s_state.title = title;
+    s_state.message = message;
+    s_state.onConfirm = std::move(onConfirm);
+    s_state.pending = true;
+}
+
+void ModalDialog::OpenUnsavedChanges(const std::string& title,
+                                     const std::string& message,
+                                     std::function<bool()> onSave,
+                                     std::function<void()> onDiscard)
+{
+    s_state = {};
+    s_state.title = title;
+    s_state.message = message;
+    s_state.onSave = std::move(onSave);
+    s_state.onDiscard = std::move(onDiscard);
+    s_state.pending = true;
 }
 
 void ModalDialog::OnRender()
 {
     if (!s_state.pending) return;
 
-    // 最初のフレームだけ OpenPopup を発行する (BeginPopupModal と同じウィンドウ内で呼ぶこと)
     if (!s_state.opened) {
         ImGui::OpenPopup(s_state.title.c_str());
         s_state.opened = true;
@@ -36,23 +51,47 @@ void ModalDialog::OnRender()
         ImGui::TextUnformatted(s_state.message.c_str());
         ImGui::Spacing();
 
-        if (ImGui::Button("OK", { 120, 0 })) {
-            if (s_state.onConfirm) s_state.onConfirm();
-            s_state.pending = false;
-            s_state.opened  = false;
-            ImGui::CloseCurrentPopup();
+        if (s_state.onSave || s_state.onDiscard) {
+            if (ImGui::Button("Save", { 120, 0 })) {
+                const bool saved = s_state.onSave ? s_state.onSave() : true;
+                if (saved) {
+                    s_state.pending = false;
+                    s_state.opened = false;
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Discard", { 120, 0 })) {
+                if (s_state.onDiscard) s_state.onDiscard();
+                s_state.pending = false;
+                s_state.opened = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", { 120, 0 })) {
+                s_state.pending = false;
+                s_state.opened = false;
+                ImGui::CloseCurrentPopup();
+            }
+        } else {
+            if (ImGui::Button("OK", { 120, 0 })) {
+                if (s_state.onConfirm) s_state.onConfirm();
+                s_state.pending = false;
+                s_state.opened = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", { 120, 0 })) {
+                s_state.pending = false;
+                s_state.opened = false;
+                ImGui::CloseCurrentPopup();
+            }
         }
-        ImGui::SameLine();
-        if (ImGui::Button("キャンセル", { 120, 0 })) {
-            s_state.pending = false;
-            s_state.opened  = false;
-            ImGui::CloseCurrentPopup();
-        }
+
         ImGui::EndPopup();
     } else {
-        // ESC 等で外部から閉じられた
         s_state.pending = false;
-        s_state.opened  = false;
+        s_state.opened = false;
     }
 }
 
