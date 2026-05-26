@@ -372,7 +372,12 @@ int Run()
 
         renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
-        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &editorApp.GetContext().projectSettings.render);
+        auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
+        sceneRenderSettings.selectedObjects.clear();
+        sceneRenderSettings.selectedObjects.reserve(editorApp.GetContext().selectedEntities.size());
+        for (scene::EntityID id : editorApp.GetContext().selectedEntities)
+            sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
+        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
             scene::ConstraintDebugDrawSystem(physicsWorld, renderer);

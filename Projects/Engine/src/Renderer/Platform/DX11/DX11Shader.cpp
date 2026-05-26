@@ -17,8 +17,8 @@
 namespace fbzz::renderer
 {
 
-// "assets/shaders/Mesh.hlsl"         -> "assets/shaders/compiled/Mesh"
-// "assets/shaders/Material/PBR.hlsl" -> "assets/shaders/compiled/Material.PBR"
+// "assets/shaders/Debug/DebugDraw.hlsl"       -> "assets/shaders/compiled/Debug.DebugDraw"
+// "assets/shaders/Material/Surface/PBR.hlsl"  -> "assets/shaders/compiled/Material.Surface.PBR"
 // shaders/ アンカーより後ろの部分から CSO の基底パスを作る。
 // コンパイル済み CSO は assets/shaders/compiled/ に置く。
 std::string DX11Shader::CompiledBase(const std::string& path)
@@ -45,17 +45,40 @@ std::string DX11Shader::CompiledBase(const std::string& path)
     }
 
     std::string base = normalized.substr(0, a + anchor.size()); // "assets/shaders/"
-    std::string rel  = normalized.substr(a + anchor.size());    // "Material/PBR.hlsl"
+    std::string rel  = normalized.substr(a + anchor.size());    // "Material/Surface/PBR.hlsl"
+
+    if (rel == "Debug.hlsl") rel = "Debug/DebugDraw.hlsl";
+    else if (rel == "DebugSelectionMask.hlsl") rel = "Debug/SelectionMask.hlsl";
+    else if (rel == "DebugSelectionMaskSkinnedMesh.hlsl") rel = "Debug/SelectionMaskSkinnedMesh.hlsl";
+    else if (rel == "Material/Unlit.hlsl") rel = "Material/Surface/Unlit.hlsl";
+    else if (rel == "Material/Lit.hlsl") rel = "Material/Surface/Lit.hlsl";
+    else if (rel == "Material/Phong.hlsl") rel = "Material/Surface/Phong.hlsl";
+    else if (rel == "Material/BlinnPhong.hlsl") rel = "Material/Surface/BlinnPhong.hlsl";
+    else if (rel == "Material/PBR.hlsl") rel = "Material/Surface/PBR.hlsl";
+    else if (rel == "Material/Toon.hlsl") rel = "Material/Surface/Toon.hlsl";
+    else if (rel == "Material/SkinnedPBR.hlsl") rel = "Material/Skinned/SkinnedPBR.hlsl";
+    else if (rel == "Material/Particle.hlsl") rel = "Material/Effects/Particle.hlsl";
+    else if (rel == "Pipeline/GBuffer.hlsl") rel = "Pipeline/Deferred/GBuffer.hlsl";
+    else if (rel == "Pipeline/DeferredLighting.hlsl") rel = "Pipeline/Deferred/DeferredLighting.hlsl";
+    else if (rel == "Pipeline/ShadowMap.hlsl") rel = "Pipeline/Shadow/ShadowMap.hlsl";
+    else if (rel == "Pipeline/SkinnedShadowMap.hlsl") rel = "Pipeline/Shadow/SkinnedShadowMap.hlsl";
+    else if (rel == "PostProcess/SSAO.cs.hlsl") rel = "PostProcess/AmbientOcclusion/SSAO.cs.hlsl";
+    else if (rel == "PostProcess/SSAOBlur.cs.hlsl") rel = "PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl";
+    else if (rel == "PostProcess/BloomDownsample.cs.hlsl") rel = "PostProcess/Bloom/BloomDownsample.cs.hlsl";
+    else if (rel == "PostProcess/BloomUpsample.cs.hlsl") rel = "PostProcess/Bloom/BloomUpsample.cs.hlsl";
+    else if (rel == "PostProcess/Composite.hlsl") rel = "PostProcess/Color/Composite.hlsl";
+    else if (rel == "PostProcess/FXAA.hlsl") rel = "PostProcess/AntiAliasing/FXAA.hlsl";
+    else if (rel == "PostProcess/SelectionOutline.hlsl") rel = "PostProcess/Outline/SelectionOutline.hlsl";
 
     // 元ファイルの拡張子を取り除く。
     size_t dot = rel.find_last_of('.');
-    if (dot != std::string::npos) rel = rel.substr(0, dot); // "Material/PBR"
+    if (dot != std::string::npos) rel = rel.substr(0, dot); // "Material/Surface/PBR"
 
     // サブディレクトリをドット区切りに変換し、コンパイル済みシェーダー名に合わせる。
     for (char& c : rel)
         if (c == '/' || c == '\\') c = '.';
 
-    return base + "compiled/" + rel; // "assets/shaders/compiled/Material.PBR"
+    return base + "compiled/" + rel; // "assets/shaders/compiled/Material.Surface.PBR"
 }
 
 // コンパイル済みシェーダーバイナリを byte 配列へ読み込む。

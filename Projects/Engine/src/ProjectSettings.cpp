@@ -100,13 +100,21 @@ bool ProjectSettings::Load(const std::string& path)
         render.fxaaEnabled   = (*renderTbl)["fxaa"].value_or(render.fxaaEnabled);
         render.fogEnabled    = (*renderTbl)["fog"].value_or(render.fogEnabled);
         render.showColliders = (*renderTbl)["showColliders"].value_or(render.showColliders);
+        render.showSelectionOutline = (*renderTbl)["showSelectionOutline"].value_or(render.showSelectionOutline);
         render.exposure      = (float)(*renderTbl)["exposure"].value_or((double)render.exposure);
         render.fogDensity    = (float)(*renderTbl)["fogDensity"].value_or((double)render.fogDensity);
         render.fogFar        = (float)(*renderTbl)["fogFar"].value_or((double)render.fogFar);
+        render.outlineWidth  = (float)(*renderTbl)["outlineWidth"].value_or((double)render.outlineWidth);
         if (auto* fogColorArr = (*renderTbl)["fogColor"].as_array(); fogColorArr && fogColorArr->size() >= 3) {
             render.fogColor[0] = (float)(*fogColorArr)[0].value_or((double)render.fogColor[0]);
             render.fogColor[1] = (float)(*fogColorArr)[1].value_or((double)render.fogColor[1]);
             render.fogColor[2] = (float)(*fogColorArr)[2].value_or((double)render.fogColor[2]);
+        }
+        if (auto* outlineColorArr = (*renderTbl)["outlineColor"].as_array(); outlineColorArr && outlineColorArr->size() >= 4) {
+            render.outlineColor[0] = (float)(*outlineColorArr)[0].value_or((double)render.outlineColor[0]);
+            render.outlineColor[1] = (float)(*outlineColorArr)[1].value_or((double)render.outlineColor[1]);
+            render.outlineColor[2] = (float)(*outlineColorArr)[2].value_or((double)render.outlineColor[2]);
+            render.outlineColor[3] = (float)(*outlineColorArr)[3].value_or((double)render.outlineColor[3]);
         }
     }
 
@@ -160,6 +168,12 @@ bool ProjectSettings::Save(const std::string& path) const
     fogColorArr.push_back((double)render.fogColor[1]);
     fogColorArr.push_back((double)render.fogColor[2]);
 
+    toml::array outlineColorArr;
+    outlineColorArr.push_back((double)render.outlineColor[0]);
+    outlineColorArr.push_back((double)render.outlineColor[1]);
+    outlineColorArr.push_back((double)render.outlineColor[2]);
+    outlineColorArr.push_back((double)render.outlineColor[3]);
+
     toml::table renderTbl;
     renderTbl.insert("wireframe",    render.wireframeMode);
     renderTbl.insert("shadow",       render.shadowEnabled);
@@ -167,10 +181,13 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("fxaa",         render.fxaaEnabled);
     renderTbl.insert("fog",          render.fogEnabled);
     renderTbl.insert("showColliders",render.showColliders);
+    renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("exposure",     (double)render.exposure);
     renderTbl.insert("fogDensity",   (double)render.fogDensity);
     renderTbl.insert("fogFar",       (double)render.fogFar);
     renderTbl.insert("fogColor",     std::move(fogColorArr));
+    renderTbl.insert("outlineWidth", (double)render.outlineWidth);
+    renderTbl.insert("outlineColor", std::move(outlineColorArr));
 
     toml::table audioTbl;
     audioTbl.insert("bgmVolume", (double)audio.bgmVolume);
