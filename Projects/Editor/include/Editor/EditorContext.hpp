@@ -6,6 +6,8 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
+#include <functional>
+#include <string>
 #include <vector>
 
 namespace fbzz::renderer { class Camera; }
@@ -17,6 +19,9 @@ struct EditorContext {
     // エンジンオブジェクト (非所有)
     scene::Scene*     activeScene  = nullptr;
     renderer::Camera* editorCamera = nullptr;
+    std::string       projectRoot;
+    std::string       currentScenePath;
+    bool              sceneDirty = false;
 
     // 選択状態 (Multi-select 対応)
     std::vector<scene::EntityID> selectedEntities;
@@ -110,6 +115,9 @@ struct EditorContext {
     // Util (非所有)
     UndoStack*          undoStack = nullptr;
     PlayModeController* playMode  = nullptr;
+    std::function<void()>                   markSceneDirty;
+    std::function<void(const std::string&)> requestOpenScene;
+    bool                                    requestAssetBrowserRefresh = false;
 };
 
 } // namespace fbzz::editor

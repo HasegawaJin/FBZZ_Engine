@@ -4,6 +4,7 @@
 #include <Editor/Panels/ViewportPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -13,26 +14,31 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Ray.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <ImGuizmo.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
+#include <vector>
 
 namespace fbzz::editor {
 
 namespace {
 
-// ImGuizmo 縺ｯ OpenGL 蛻怜━蜈郁ｦ冗ｴ・ｒ蜑肴署縺ｨ縺吶ｋ縺後√お繝ｳ繧ｸ繝ｳ縺ｯ陦悟━蜈医〒陦悟・繧呈ｼ邏阪☆繧九・
-// Transpose 縺吶ｋ縺薙→縺ｧ ImGuizmo 縺梧悄蠕・☆繧九Γ繝｢繝ｪ繝ｬ繧､繧｢繧ｦ繝・(蛻怜━蜈・ 縺ｫ螟画鋤縺吶ｋ縲・
+// ImGuizmo expects column-major matrices, while the engine stores row-major matrices.
+// Transpose converts between the two layouts at the editor boundary.
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor)
 {
     return math::Matrix4::Transpose(rowMajor);
@@ -47,6 +53,51 @@ math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin
     const math::Matrix4 invVP = math::Matrix4::Inverse(
         ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix());
     return math::Ray::FromNDC(nx, ny, ctx.editorCamera->m_position, invVP);
+}
+
+bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
+{
+    if (!payload || payload->DataSize <= 0) return false;
+    outPath.assign(static_cast<const char*>(payload->Data),
+                   static_cast<size_t>(payload->DataSize - 1));
+    return !outPath.empty();
+}
+
+math::Vector3 PrefabDropPosition(const EditorContext& ctx, const ImVec2& viewportMin)
+{
+    const math::Ray ray = ScreenRayFromMouse(ctx, viewportMin);
+    float planeT = 0.0f;
+    if (ray.IntersectPlane(math::Plane({ 0.0f, 1.0f, 0.0f }, 0.0f), planeT) && planeT > 0.0f)
+        return ray.At(planeT);
+    return ray.At(5.0f);
+}
+
+bool InstantiatePrefabAsset(EditorContext& ctx, const std::string& assetPath)
+{
+    if (!ctx.activeScene || util::FileSystem::GetExtension(assetPath) != ".fbzzprefab")
+        return false;
+
+    std::vector<scene::EntityID> roots;
+    if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
+        return false;
+
+    ctx.selectedEntities = roots;
+    return true;
+}
+
+bool InstantiatePrefabAssetAtViewport(EditorContext& ctx,
+                                      const std::string& assetPath,
+                                      const ImVec2& viewportMin)
+{
+    if (!InstantiatePrefabAsset(ctx, assetPath))
+        return false;
+
+    const math::Vector3 position = PrefabDropPosition(ctx, viewportMin);
+    for (scene::EntityID id : ctx.selectedEntities) {
+        if (auto* go = ctx.activeScene->GetGameObject(id))
+            go->transform.localPosition = position;
+    }
+    return true;
 }
 
 void HandleGizmoShortcuts(EditorContext& ctx)
@@ -78,14 +129,12 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
         return math::Vector3{ v.x, v.y, v.z };
     };
 
-    for (auto& go : ctx.activeScene->GameObjects()) {
-        auto* mr = go.GetComponent<scene::MeshRenderer>();
-        if (!mr || !mr->mesh) continue;
-        const auto& verts   = mr->mesh->cpuVertices;
-        const auto& indices = mr->mesh->cpuIndices;
-        if (verts.empty() || indices.size() < 3) continue;
+    auto testMesh = [&](const auto& verts,
+                        const auto& indices,
+                        const math::Matrix4& world,
+                        scene::EntityID id) {
+        if (verts.empty() || indices.size() < 3) return;
 
-        const math::Matrix4 world = go.transform.GetWorldMatrix();
         for (size_t i = 0; i + 2 < indices.size(); i += 3) {
             const uint32_t i0 = indices[i + 0];
             const uint32_t i1 = indices[i + 1];
@@ -99,7 +148,22 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
             float t = 0.0f;
             if (ray.IntersectTriangle(v0, v1, v2, t) && t < bestT) {
                 bestT = t;
-                best  = go.GetID();
+                best  = id;
+            }
+        }
+    };
+
+    for (auto& go : ctx.activeScene->GameObjects()) {
+        auto* mr = go.GetComponent<scene::MeshRenderer>();
+        const math::Matrix4 world = go.transform.GetWorldMatrix();
+        if (mr && mr->mesh) {
+            testMesh(mr->mesh->cpuVertices, mr->mesh->cpuIndices, world, go.GetID());
+        }
+
+        if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
+            for (const auto& meshPtr : smr->model->meshes) {
+                if (!meshPtr) continue;
+                testMesh(meshPtr->cpuSkinnedVertices, meshPtr->cpuIndices, world, go.GetID());
             }
         }
 
@@ -128,7 +192,7 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     return false;
 }
 
-// UI繝薙Η繝ｼ繝昴・繝医〒繧ｯ繝ｪ繝・け縺励◆ UI 隕∫ｴ繧帝∈謚槭☆繧・
+// Pick the topmost UI element clicked in the UI viewport.
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
 {
     if (!ctx.activeScene) return;
@@ -176,9 +240,9 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
     if (best.IsValid()) ctx.selectedEntities.push_back(best);
 }
 
-// --- UI 繧ｮ繧ｺ繝｢逕ｨ繝倥Ν繝代・ ---
+// --- UI gizmo helpers ---
 
-// 濶ｲ螳壽焚
+// Colors.
 constexpr ImU32 kUIColX       = IM_COL32(220,  60,  60, 255);
 constexpr ImU32 kUIColXHov    = IM_COL32(255, 160, 160, 255);
 constexpr ImU32 kUIColY       = IM_COL32( 60, 200,  60, 255);
@@ -220,12 +284,12 @@ bool IsMouseNearLine(ImVec2 a, ImVec2 b, float tol = 7.0f)
     return (m.x-cx)*(m.x-cx) + (m.y-cy)*(m.y-cy) < tol*tol;
 }
 
-// UI繝薙Η繝ｼ繝昴・繝亥ｰら畑 2D 繧ｮ繧ｺ繝｢ (QWER 縺ｧ 3D 繧ｮ繧ｺ繝｢縺ｨ蜷後§謫堺ｽ懈─)
-//   W = 遘ｻ蜍・(X/Y 霆ｸ蛻ｶ邏・+ 閾ｪ逕ｱ遘ｻ蜍・
-//   E = 蝗櫁ｻ｢ (Z霆ｸ, 繝ｪ繝ｳ繧ｰ謫堺ｽ・
-//   R = 繝ｪ繧ｵ繧､繧ｺ (8繝上Φ繝峨Ν, 荳ｭ蠢・崋螳・
-//   Q = World/Local 繝医げ繝ｫ (3D 繧ｮ繧ｺ繝｢縺ｨ蜈ｱ譛・
-// 謌ｻ繧雁､: true = 繝槭え繧ｹ繧ｯ繝ｪ繝・け繧偵ぐ繧ｺ繝｢縺梧ｶ郁ｲｻ貂医∩
+// 2D gizmo for UI viewport. Uses the same Q/W/E/R controls as the 3D gizmo.
+//   W = translate, with constrained X/Y axes and free center drag
+//   E = rotate around Z using the ring
+//   R = resize UIImage with 8 handles
+//   Q = toggle World/Local space
+// Returns true when the gizmo consumed mouse input.
 bool DrawUIGizmo(EditorContext& ctx,
                  const ImVec2& viewportMin,
                  const ImVec2& viewportSize,
@@ -267,30 +331,29 @@ bool DrawUIGizmo(EditorContext& ctx,
     const float sw = img ? t.localScale.x : 0.0f;
     const float sh = img ? t.localScale.y : 0.0f;
 
-    // Z 蝗櫁ｻ｢繧・quaternion 縺九ｉ蜿悶ｊ蜃ｺ縺・
+    // Extract Z rotation from the quaternion.
     const math::Quaternion& q = t.localRotation;
     const float zAngle = std::atan2f(2.0f*(q.w*q.z + q.x*q.y),
                                       1.0f - 2.0f*(q.y*q.y + q.z*q.z));
     const float cosZ = std::cosf(zAngle), sinZ = std::sinf(zAngle);
 
-    // 遏ｩ蠖｢荳ｭ蠢・(繧ｭ繝｣繝ｳ繝舌せ/繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ)
+    // Rectangle center in canvas and screen space.
     const float cenCX = px + sw * 0.5f, cenCY = py + sh * 0.5f;
     const ImVec2 centerScr = toScreen(cenCX, cenCY);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     bool wantsMouse = false;
 
-    // drag: 繝峨Λ繝・げ謫堺ｽ應ｸｭ縺ｮ繝｢繝ｼ繝峨ｒ菫晄戟縺吶ｋ繧ｹ繝・・繝医・繧ｷ繝ｳ螟画焚縲・
-    //   -1  = 謫堺ｽ懊↑縺・
-    //    0  = 閾ｪ逕ｱ遘ｻ蜍・(荳ｭ蠢・け繝ｪ繝・け)
-    //    1  = X 霆ｸ諡俶據遘ｻ蜍・
-    //    2  = Y 霆ｸ諡俶據遘ｻ蜍・
-    //  3-10 = 繝ｪ繧ｵ繧､繧ｺ繝上Φ繝峨Ν 0-7 (蟾ｦ荳岩・蜿ｳ荳・ 譎りｨ亥屓繧・
-    //   20  = 蝗櫁ｻ｢繝ｪ繝ｳ繧ｰ
-    // IsMouseReleased 縺ｧ繝ｪ繧ｻ繝・ヨ縺輔ｌ繧九◆繧√ヵ繝ｬ繝ｼ繝繧偵∪縺溘＞縺ｧ菫晄戟縺輔ｌ繧九・
+    // drag stores the active UI gizmo operation across frames:
+    //   -1  = none
+    //    0  = free translate from center
+    //    1  = constrained X-axis translate
+    //    2  = constrained Y-axis translate
+    //  3-10 = resize handles 0-7
+    //   20  = rotation ring
     const EditorContext::GizmoMode mode = ctx.gizmoMode;
 
-    // --- 蝗櫁ｻ｢繧定・・縺励◆遏ｩ蠖｢繧｢繧ｦ繝医Λ繧､繝ｳ (蟶ｸ譎り｡ｨ遉ｺ) ---
+    // Rotated rectangle outline.
     auto rotOfs = [&](float lx, float ly) -> ImVec2 {
         return {
             centerScr.x + (lx*cosZ - ly*sinZ) * scaleX,
@@ -303,7 +366,7 @@ bool DrawUIGizmo(EditorContext& ctx,
         dl->AddQuad(c[0], c[1], c[2], c[3], kUIColOutline, 1.5f);
     }
 
-    // --- 繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ遨ｺ髢薙・繝ｭ繝ｼ繧ｫ繝ｫ霆ｸ繝吶け繝医Ν (蜊倅ｽ埼聞) ---
+    // Local axes converted to unit vectors in screen space.
     auto screenUnitAxis = [&](float ax, float ay) -> ImVec2 {
         ImVec2 v = { ax * scaleX, ay * scaleY };
         const float len = std::sqrt(v.x*v.x + v.y*v.y);
@@ -315,7 +378,7 @@ bool DrawUIGizmo(EditorContext& ctx,
     const ImVec2 tipY = { centerScr.x + dirY.x * kUIArrowLen, centerScr.y + dirY.y * kUIArrowLen };
 
     // ==============================
-    // W : 遘ｻ蜍輔Δ繝ｼ繝・
+    // W: translate mode.
     // ==============================
     if (mode == EditorContext::GizmoMode::Translate) {
         const bool hovX = IsMouseNearLine(centerScr, tipX, 7.0f);
@@ -331,7 +394,7 @@ bool DrawUIGizmo(EditorContext& ctx,
         dl->AddCircleFilled(centerScr, kUICenterR, hovC ? kUIColCtrHov : kUIColCtr);
         dl->AddCircle(centerScr, kUICenterR + 1.0f, IM_COL32(0,0,0,120));
 
-        // UIText 縺ｮ蝣ｴ蜷医・螟門捉縺ｮ蜊∝ｭ励ｂ謠上￥
+        // UIText has no image bounds, so draw a small cross at its origin.
         if (txt) {
             constexpr float kR = 10.0f;
             dl->AddLine({ centerScr.x - kR, centerScr.y }, { centerScr.x + kR, centerScr.y }, IM_COL32(0,200,255,180), 1.5f);
@@ -368,7 +431,7 @@ bool DrawUIGizmo(EditorContext& ctx,
         }
     }
     // ==============================
-    // E : 蝗櫁ｻ｢繝｢繝ｼ繝・
+    // E: rotate mode.
     // ==============================
     else if (mode == EditorContext::GizmoMode::Rotate) {
         const float hW = sw * 0.5f * scaleX, hH = sh * 0.5f * scaleY;
@@ -384,7 +447,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             wantsMouse = true;
         }
 
-        // 隗貞ｺｦ繧､繝ｳ繧ｸ繧ｱ繝ｼ繧ｿ繝ｼ
+        // Angle indicator.
         const ImVec2 rotTip = { centerScr.x + cosZ * ringR, centerScr.y + sinZ * ringR };
         dl->AddLine(centerScr, rotTip, IM_COL32(0,200,255,180), 1.5f);
         dl->AddCircleFilled(rotTip, 4.0f, IM_COL32(0,200,255,255));
@@ -406,14 +469,14 @@ bool DrawUIGizmo(EditorContext& ctx,
             t.localRotation = math::Quaternion::FromEuler({ 0.0f, 0.0f, newZ });
         }
 
-        // 隗貞ｺｦ繝・く繧ｹ繝・
+        // Angle label.
         char buf[32];
         snprintf(buf, sizeof(buf), "%.1f deg", zAngle * (180.0f / 3.14159265f));
         dl->AddText({ centerScr.x + ringR + 6.0f, centerScr.y - 7.0f },
                     IM_COL32(200, 220, 255, 200), buf);
     }
     // ==============================
-    // R : 繧ｹ繧ｱ繝ｼ繝ｫ繝｢繝ｼ繝・(UIImage 縺ｮ縺ｿ)
+    // R: scale mode for UIImage.
     // ==============================
     else if (mode == EditorContext::GizmoMode::Scale && img) {
         const float hW = sw * 0.5f, hH = sh * 0.5f;
@@ -440,7 +503,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             const ImVec2 mm = ImGui::GetMousePos();
             const float dcx = (mm.x - dragStart.x) / scaleX;
             const float dcy = (mm.y - dragStart.y) / scaleY;
-            // 繝ｭ繝ｼ繧ｫ繝ｫ霆ｸ縺ｫ繝励Ο繧ｸ繧ｧ繧ｯ繧ｷ繝ｧ繝ｳ
+            // Project mouse delta onto local axes.
             const float projX =  dcx * cosZ + dcy * sinZ;
             const float projY = -dcx * sinZ + dcy * cosZ;
 
@@ -454,7 +517,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             nh = (std::max)(1.0f, nh);
             if (ctx.snapEnabled) { nw = std::round(nw); nh = std::round(nh); }
 
-            // 荳ｭ蠢・ｒ蝗ｺ螳壹＠縺ｦ菴咲ｽｮ繧定ｪｿ謨ｴ
+            // Keep the center fixed while resizing from handles.
             t.localScale.x = nw;
             t.localScale.y = nh;
             t.localPosition.x = (startX + startWidth * 0.5f) - nw * 0.5f;
@@ -468,7 +531,7 @@ bool DrawUIGizmo(EditorContext& ctx,
     return wantsMouse || drag != -1;
 }
 
-// 繝ｯ繝ｼ繝ｫ繝牙ｺｧ讓・竊・繝薙Η繝ｼ繝昴・繝医せ繧ｯ繝ｪ繝ｼ繝ｳ蠎ｧ讓吶∈謚募ｽｱ (w<=0 縺ｪ繧・false)
+// Project world position into viewport screen space. Returns false behind the camera.
 bool WorldToScreen(const math::Vector3& world,
                    const EditorContext& ctx,
                    const ImVec2& vpMin, const ImVec2& vpSize,
@@ -488,79 +551,88 @@ bool WorldToScreen(const math::Vector3& world,
     return true;
 }
 
-void DrawSelectionOutline(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
+void DrawDirectionLine(EditorContext& ctx,
+                       ImDrawList* dl,
+                       const math::Vector3& start,
+                       const math::Vector3& direction,
+                       float length,
+                       const ImVec2& vpMin,
+                       const ImVec2& vpSize,
+                       ImU32 color)
 {
-    if (!ctx.activeScene || !ctx.editorCamera || ctx.selectedEntities.empty()) return;
+    ImVec2 a;
+    ImVec2 b;
+    if (!WorldToScreen(start, ctx, vpMin, vpSize, a)) return;
+    if (!WorldToScreen(start + direction.Normalized() * length, ctx, vpMin, vpSize, b)) return;
 
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    constexpr ImU32 kOuterCol  = IM_COL32(255, 165,  0,  55);
-    constexpr ImU32 kInnerCol  = IM_COL32(255, 185, 50, 230);
-    constexpr float kThickOuter = 4.0f;
-    constexpr float kThickInner = 1.5f;
+    dl->AddLine(a, b, color, 2.0f);
 
-    auto transformByWorld = [](const math::Matrix4& m, const math::Vector3& p) -> math::Vector3 {
-        math::Vector4 v = m * math::Vector4{ p.x, p.y, p.z, 1.0f };
-        if (v.w > 0.0001f) v = v * (1.0f / v.w);
-        return { v.x, v.y, v.z };
+    const float dx = b.x - a.x;
+    const float dy = b.y - a.y;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len <= 0.001f) return;
+
+    const float ux = dx / len;
+    const float uy = dy / len;
+    const ImVec2 left  = { b.x - ux * 9.0f - uy * 4.5f, b.y - uy * 9.0f + ux * 4.5f };
+    const ImVec2 right = { b.x - ux * 9.0f + uy * 4.5f, b.y - uy * 9.0f - ux * 4.5f };
+    dl->AddTriangleFilled(b, left, right, color);
+}
+
+void DrawCameraFrustum(EditorContext& ctx,
+                       ImDrawList* dl,
+                       const scene::Transform& transform,
+                       const scene::CameraComponent& camera,
+                       const ImVec2& vpMin,
+                       const ImVec2& vpSize,
+                       ImU32 color)
+{
+    const float nearDist = 0.45f;
+    const float farDist = 2.5f;
+    const float aspect = 16.0f / 9.0f;
+    const float tanHalfFov = std::tanf(math::ToRad(camera.fovY) * 0.5f);
+
+    const math::Vector3 origin = transform.position;
+    const math::Vector3 forward = transform.Forward().Normalized();
+    const math::Vector3 right = transform.Right().Normalized();
+    const math::Vector3 up = transform.Up().Normalized();
+
+    auto corner = [&](float dist, float sx, float sy) {
+        const float halfHeight = tanHalfFov * dist;
+        const float halfWidth = halfHeight * aspect;
+        return origin + forward * dist + right * (sx * halfWidth) + up * (sy * halfHeight);
     };
 
-    for (scene::EntityID id : ctx.selectedEntities) {
-        scene::GameObject* go = ctx.activeScene->GetGameObject(id);
-        if (!go) continue;
+    const math::Vector3 nearCorners[4] = {
+        corner(nearDist, -1.0f,  1.0f),
+        corner(nearDist,  1.0f,  1.0f),
+        corner(nearDist,  1.0f, -1.0f),
+        corner(nearDist, -1.0f, -1.0f)
+    };
+    const math::Vector3 farCorners[4] = {
+        corner(farDist, -1.0f,  1.0f),
+        corner(farDist,  1.0f,  1.0f),
+        corner(farDist,  1.0f, -1.0f),
+        corner(farDist, -1.0f, -1.0f)
+    };
 
-        const math::Matrix4 world = go->transform.GetWorldMatrix();
-        auto* mr = go->GetComponent<scene::MeshRenderer>();
+    ImVec2 nearScreen[4];
+    ImVec2 farScreen[4];
+    bool nearVisible[4];
+    bool farVisible[4];
+    for (int i = 0; i < 4; ++i) {
+        nearVisible[i] = WorldToScreen(nearCorners[i], ctx, vpMin, vpSize, nearScreen[i]);
+        farVisible[i] = WorldToScreen(farCorners[i], ctx, vpMin, vpSize, farScreen[i]);
+    }
 
-        // 繝｡繝・す繝･縺九ｉ AABB 繧定ｨ育ｮ・
-        math::Vector3 bMin = {}, bMax = {};
-        bool hasBounds = false;
-        if (mr && mr->mesh && !mr->mesh->cpuVertices.empty()) {
-            bMin = bMax = mr->mesh->cpuVertices[0].position;
-            for (const auto& v : mr->mesh->cpuVertices) {
-                bMin.x = (std::min)(bMin.x, v.position.x);
-                bMin.y = (std::min)(bMin.y, v.position.y);
-                bMin.z = (std::min)(bMin.z, v.position.z);
-                bMax.x = (std::max)(bMax.x, v.position.x);
-                bMax.y = (std::max)(bMax.y, v.position.y);
-                bMax.z = (std::max)(bMax.z, v.position.z);
-            }
-            hasBounds = true;
-        }
-
-        if (!hasBounds) {
-            // 繝｡繝・す繝･縺ｪ縺・ 繝斐・繝・ヨ轤ｹ縺ｫ蜀・ｒ謠上￥
-            ImVec2 sp;
-            if (WorldToScreen(go->transform.position, ctx, vpMin, vpSize, sp)) {
-                dl->AddCircle(sp, 16.0f, kOuterCol,  24, kThickOuter);
-                dl->AddCircle(sp, 16.0f, kInnerCol,  24, kThickInner);
-            }
-            continue;
-        }
-
-        // AABB 縺ｮ 8 繧ｳ繝ｼ繝翫・繧偵Ρ繝ｼ繝ｫ繝臥ｩｺ髢薙∈螟画鋤縺励※繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ謚募ｽｱ
-        const math::Vector3 localCorners[8] = {
-            {bMin.x, bMin.y, bMin.z}, {bMax.x, bMin.y, bMin.z},
-            {bMax.x, bMax.y, bMin.z}, {bMin.x, bMax.y, bMin.z},
-            {bMin.x, bMin.y, bMax.z}, {bMax.x, bMin.y, bMax.z},
-            {bMax.x, bMax.y, bMax.z}, {bMin.x, bMax.y, bMax.z},
-        };
-
-        ImVec2 sc[8];
-        bool   vis[8];
-        for (int i = 0; i < 8; ++i)
-            vis[i] = WorldToScreen(transformByWorld(world, localCorners[i]), ctx, vpMin, vpSize, sc[i]);
-
-        // AABB 縺ｮ 12 霎ｺ
-        constexpr int kEdges[12][2] = {
-            {0,1},{1,2},{2,3},{3,0},   // 蜑埼擇 4 霎ｺ
-            {4,5},{5,6},{6,7},{7,4},   // 閭碁擇 4 霎ｺ
-            {0,4},{1,5},{2,6},{3,7},   // 謗･邯・4 霎ｺ
-        };
-        for (const auto& e : kEdges) {
-            if (!vis[e[0]] || !vis[e[1]]) continue;
-            dl->AddLine(sc[e[0]], sc[e[1]], kOuterCol,  kThickOuter);
-            dl->AddLine(sc[e[0]], sc[e[1]], kInnerCol,  kThickInner);
-        }
+    for (int i = 0; i < 4; ++i) {
+        const int next = (i + 1) % 4;
+        if (nearVisible[i] && nearVisible[next])
+            dl->AddLine(nearScreen[i], nearScreen[next], color, 1.5f);
+        if (farVisible[i] && farVisible[next])
+            dl->AddLine(farScreen[i], farScreen[next], color, 1.5f);
+        if (nearVisible[i] && farVisible[i])
+            dl->AddLine(nearScreen[i], farScreen[i], color, 1.5f);
     }
 }
 
@@ -584,7 +656,7 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
         const ImU32 selCol = IM_COL32(255, 220, 60, 255);
 
         if (auto* light = go.GetComponent<scene::LightComponent>()) {
-            // 繝ｩ繧､繝医い繧､繧ｳ繝ｳ: 荳ｭ蠢・・ + 謾ｾ蟆・ｷ・
+            // Light icon: center point with rays.
             constexpr float kR = 8.0f;
             constexpr float kRay = 14.0f;
             constexpr int   kRays = 8;
@@ -599,18 +671,22 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
                                    sp.y + std::sinf(ang) * (kR + kRay) };
                 dl->AddLine(a, b, col, 1.5f);
             }
-        } else if (go.GetComponent<scene::CameraComponent>()) {
-            // 繧ｫ繝｡繝ｩ繧｢繧､繧ｳ繝ｳ: 遏ｩ蠖｢繝懊ョ繧｣ + 蜿ｰ蠖｢繝ｬ繝ｳ繧ｺ
+            if (light->enabled && light->type == scene::LightComponent::Type::Directional) {
+                DrawDirectionLine(ctx, dl, go.transform.position, go.transform.Forward(),
+                                  2.5f, vpMin, vpSize, col);
+            }
+        } else if (auto* camera = go.GetComponent<scene::CameraComponent>()) {
+            // Camera icon: body rectangle and lens trapezoid.
             constexpr float kW = 16.0f, kH = 11.0f;
             constexpr float kLW = 7.0f, kLH = 5.0f, kLX = 9.0f;
             const ImU32 col  = isSelected ? selCol : IM_COL32(120, 200, 255, 200);
             const ImU32 dark = IM_COL32(0, 0, 0, 140);
-            // 繝懊ョ繧｣
+            // Body.
             dl->AddRectFilled({ sp.x - kW, sp.y - kH * 0.5f },
                               { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, col, 2.0f);
             dl->AddRect({ sp.x - kW, sp.y - kH * 0.5f },
                         { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, dark, 2.0f);
-            // 繝ｬ繝ｳ繧ｺ蜿ｰ蠖｢
+            // Lens.
             ImVec2 lens[4] = {
                 { sp.x + kW * 0.4f, sp.y - kLH },
                 { sp.x + kLX,       sp.y - kLW  },
@@ -619,6 +695,10 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
             };
             dl->AddConvexPolyFilled(lens, 4, col);
             dl->AddPolyline(lens, 4, dark, ImDrawFlags_Closed, 1.0f);
+            DrawDirectionLine(ctx, dl, go.transform.position, go.transform.Forward(),
+                              2.0f, vpMin, vpSize, col);
+            if (camera->enabled)
+                DrawCameraFrustum(ctx, dl, go.transform, *camera, vpMin, vpSize, col);
         }
     }
 }
@@ -644,10 +724,10 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
 
     if (!ImGuizmo::IsUsingViewManipulate()) return;
 
-    // column-major 竊・row-major 縺ｫ謌ｻ縺・
+    // Convert column-major back to row-major.
     const math::Matrix4 viewRow = math::Matrix4::Transpose(viewCol);
 
-    // 繧ｫ繝｡繝ｩ菴咲ｽｮ: pos = -R^T * t  (view 縺ｮ 3x3 = R^T, t = viewRow 縺ｮ蟷ｳ陦檎ｧｻ蜍募・)
+    // Camera position: pos = -R^T * t. The 3x3 part of view is R^T.
     const float tx = viewRow.m[0][3], ty = viewRow.m[1][3], tz = viewRow.m[2][3];
     ctx.editorCamera->m_position = {
         -(viewRow.m[0][0]*tx + viewRow.m[1][0]*ty + viewRow.m[2][0]*tz),
@@ -655,7 +735,7 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
         -(viewRow.m[0][2]*tx + viewRow.m[1][2]*ty + viewRow.m[2][2]*tz)
     };
 
-    // 繧ｫ繝｡繝ｩ蝗櫁ｻ｢: 繝ｯ繝ｼ繝ｫ繝牙屓霆｢陦悟・縺ｮ蛻・= view 縺ｮ 3x3 縺ｮ陦・竊・霆｢鄂ｮ縺励※ FromMatrix4
+    // Camera rotation: rebuild the world rotation matrix from the view matrix.
     math::Matrix4 rotMat = math::Matrix4::Identity();
     rotMat.m[0][0] = viewRow.m[0][0]; rotMat.m[0][1] = viewRow.m[1][0]; rotMat.m[0][2] = viewRow.m[2][0];
     rotMat.m[1][0] = viewRow.m[0][1]; rotMat.m[1][1] = viewRow.m[1][1]; rotMat.m[1][2] = viewRow.m[2][1];
@@ -736,8 +816,8 @@ void DrawGizmo(EditorContext& ctx,
         localRow = parentInv * worldRow;
     }
 
-    // ImGuizmo 縺ｮ DecomposeMatrixToComponents 縺ｯ蟾ｦ謇狗ｳｻ繧ｪ繧､繝ｩ繝ｼ隗偵〒 TRS 繧定ｿ斐☆縺溘ａ縲・
-    // 繧ｨ繝ｳ繧ｸ繝ｳ縺ｮ蜿ｳ謇狗ｳｻ繧ｯ繧ｩ繝ｼ繧ｿ繝九が繝ｳ縺ｨ隨ｦ蜿ｷ縺悟粋繧上↑縺・り｡悟・縺九ｉ逶ｴ謗･ TRS 繧呈歓蜃ｺ縺吶ｋ縺薙→縺ｧ蝗樣∩縺吶ｋ縲・
+    // ImGuizmo decomposes with Euler angles that do not match the engine quaternion convention.
+    // Extract TRS directly from the matrix to avoid handedness and sign mismatches.
     const float sx = std::sqrt(localRow.m[0][0]*localRow.m[0][0] + localRow.m[1][0]*localRow.m[1][0] + localRow.m[2][0]*localRow.m[2][0]);
     const float sy = std::sqrt(localRow.m[0][1]*localRow.m[0][1] + localRow.m[1][1]*localRow.m[1][1] + localRow.m[2][1]*localRow.m[2][1]);
     const float sz = std::sqrt(localRow.m[0][2]*localRow.m[0][2] + localRow.m[1][2]*localRow.m[1][2] + localRow.m[2][2]*localRow.m[2][2]);
@@ -916,18 +996,29 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     const bool inPlayOrPause = ctx.playMode && !ctx.playMode->IsInEditor();
 
+    if (isSceneView && !inPlayOrPause) {
+        const ImGuiID viewportDropId = ImGui::GetID("##scene_view_prefab_drop_target");
+        if (ImGui::BeginDragDropTargetCustom(ImRect(viewportMin, viewportMax), viewportDropId)) {
+            std::string assetPath;
+            if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath) &&
+                InstantiatePrefabAssetAtViewport(ctx, assetPath, viewportMin)) {
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
+            ImGui::EndDragDropTarget();
+        }
+    }
+
     const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver()
                               || ImGuizmo::IsUsingViewManipulate() || ImGuizmo::IsViewManipulateHovered();
     if (isSceneView && !inPlayOrPause && viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse)
         PickEntity(ctx, viewportMin);
 
     if (isSceneView && !inPlayOrPause) {
-        DrawSelectionOutline(ctx, viewportMin, size);
         DrawSceneIcons(ctx, viewportMin, size);
         DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
         DrawOrientationGizmo(ctx, viewportMin, size);
 
-        // F 繧ｭ繝ｼ: 驕ｸ謚槭が繝悶ず繧ｧ繧ｯ繝医∈繝輔か繝ｼ繧ｫ繧ｹ (繝薙Η繝ｼ繝昴・繝医↓繧ｭ繝ｼ繝懊・繝峨ヵ繧ｩ繝ｼ繧ｫ繧ｹ縺後≠繧句ｴ蜷医・縺ｿ)
+        // F: focus the editor camera on the selected object when the Scene viewport has keyboard focus.
         if (ctx.viewportFocused && input::Input::KeyDown(input::KeyCode::F)) {
             if (auto* go = ctx.GetSelectedGO()) {
                 ctx.focusTargetPosition    = go->transform.position;
@@ -942,7 +1033,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !uiGizmoActive)
         PickUIEntity(ctx, viewportMin, size);
 
-    // Play / Pause 荳ｭ縺ｯ繝懊・繝繝ｼ縺ｧ迥ｶ諷九ｒ遉ｺ縺・
+    // Show play/pause state with a viewport border.
     if (isGameView && ctx.playMode && ctx.playMode->IsPlaying())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(80, 200, 80, 220), 0.0f, 0, 3.0f);
     else if (isGameView && ctx.playMode && ctx.playMode->IsPaused())

@@ -4,6 +4,7 @@
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ModalDialog.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -11,12 +12,52 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <filesystem>
 
 namespace fbzz::editor {
 
 namespace {
+
+std::string SanitizeEntityName(const std::string& name)
+{
+    std::string result = name.empty() ? "Prefab" : name;
+    for (char& c : result) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok) c = '_';
+    }
+    return result;
+}
+
+std::string UniquePrefabPathInDir(const std::string& dir, const std::string& objectName)
+{
+    util::FileSystem::EnsureDirectory(dir);
+    const std::string base = dir + "/" + SanitizeEntityName(objectName);
+    std::string path = base + ".fbzzprefab";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".fbzzprefab";
+    return path;
+}
+
+bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
+                                  EditorContext& ctx,
+                                  const std::string& targetDir)
+{
+    if (!payload || payload->DataSize != sizeof(scene::EntityID) || !ctx.activeScene)
+        return false;
+
+    scene::EntityID droppedId;
+    std::memcpy(&droppedId, payload->Data, sizeof(droppedId));
+
+    auto* go = ctx.activeScene->GetGameObject(droppedId);
+    if (!go) return false;
+
+    const std::string path = UniquePrefabPathInDir(targetDir, go->name);
+    return PrefabSerializer::SaveSelection(*ctx.activeScene, { droppedId }, path);
+}
 
 ImVec4 Lighten(ImVec4 c) {
     return { std::min(c.x + 0.15f, 1.0f), std::min(c.y + 0.15f, 1.0f),
@@ -67,6 +108,7 @@ ImVec4 AssetBrowserPanel::EntryColor(const Entry& e)
                                                           return { 0.15f, 0.40f, 0.80f, 1.0f };
     if (e.ext == ".fbx"  || e.ext == ".obj" ||
         e.ext == ".gltf" || e.ext == ".glb")              return { 0.80f, 0.45f, 0.10f, 1.0f };
+    if (e.ext == ".fbzzprefab")                           return { 0.25f, 0.65f, 0.75f, 1.0f };
     if (e.ext == ".fbzz")                                 return { 0.60f, 0.15f, 0.70f, 1.0f };
     if (e.ext == ".toml" || e.ext == ".json")             return { 0.65f, 0.65f, 0.10f, 1.0f };
     if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
@@ -83,6 +125,7 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
                                                           return "TEX";
     if (e.ext == ".fbx"  || e.ext == ".obj" ||
         e.ext == ".gltf" || e.ext == ".glb")              return "MESH";
+    if (e.ext == ".fbzzprefab")                           return "PREFAB";
     if (e.ext == ".fbzz")                                 return "SCENE";
     if (e.ext == ".toml")                                 return "TOML";
     if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
@@ -244,11 +287,20 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         if (e.isDir) {
             m_pendingNavigate = e.path;
         } else if (e.ext == ".fbzz" && ctx.activeScene) {
-            if (SceneSerializer::Load(*ctx.activeScene, e.path)) {
+            if (ctx.requestOpenScene) {
+                ctx.requestOpenScene(e.path);
+            } else if (SceneSerializer::Load(*ctx.activeScene, e.path)) {
                 ctx.selectedEntities.clear();
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
                 FBZZ_LOG_INFO("Opened scene: %s", e.path.c_str());
             } else {
                 FBZZ_LOG_ERROR("Failed to open scene: %s", e.path.c_str());
+            }
+        } else if (e.ext == ".fbzzprefab" && ctx.activeScene) {
+            std::vector<scene::EntityID> roots;
+            if (PrefabSerializer::Instantiate(*ctx.activeScene, e.path, roots)) {
+                ctx.selectedEntities = roots;
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
             }
         }
     }
@@ -444,6 +496,11 @@ void AssetBrowserPanel::DrawFbxContents()
 
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
+    if (ctx.requestAssetBrowserRefresh) {
+        RefreshDirectory();
+        ctx.requestAssetBrowserRefresh = false;
+    }
+
     // ── 左ペイン: フォルダツリー ─────────────────────────────────────────
     ImGui::BeginChild("##tree", { 150.0f, 0.0f }, true);
 
@@ -467,6 +524,12 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     // ── 右ペイン: コンテンツエリア ───────────────────────────────────────
     ImGui::BeginChild("##content", { 0.0f, 0.0f }, false);
+    const ImVec2 contentMin = ImGui::GetWindowPos();
+    const ImVec2 contentMax = {
+        contentMin.x + ImGui::GetWindowSize().x,
+        contentMin.y + ImGui::GetWindowSize().y
+    };
+    const ImGuiID contentDropId = ImGui::GetID("##content_drop_target");
 
     // ナビゲーションバー
     if (m_currentPath != m_rootPath) {
@@ -548,6 +611,15 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             ImGui::EndMenu();
         }
         ImGui::EndPopup();
+    }
+
+    // ヒエラルキーからエンティティをドロップ → Prefab 化
+    if (ImGui::BeginDragDropTargetCustom(ImRect(contentMin, contentMax), contentDropId)) {
+        if (SaveHierarchyPayloadAsPrefab(
+                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_currentPath)) {
+            RefreshDirectory();
+        }
+        ImGui::EndDragDropTarget();
     }
 
     // 選択 FBX の内容プレビュー
