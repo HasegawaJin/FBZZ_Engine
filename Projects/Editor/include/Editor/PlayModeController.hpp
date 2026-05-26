@@ -22,6 +22,11 @@ public:
     // イテレーション中のポインタが無効になる恐れがあるため。
     bool ApplyPendingRestore(scene::Scene& scene);
 
+    // Paused 中に 1 フレームだけゲームシステムを走らせる
+    void RequestStep() { if (m_state == PlayState::Paused) m_stepRequested = true; }
+    // main ループが毎フレーム呼び、消費したら true を返す (一度だけ true)
+    bool ConsumeStep() { if (!m_stepRequested) return false; m_stepRequested = false; return true; }
+
     PlayState GetState() const  { return m_state; }
     bool IsPlaying()    const   { return m_state == PlayState::Playing; }
     bool IsPaused()     const   { return m_state == PlayState::Paused; }
@@ -32,6 +37,7 @@ private:
     PlayState   m_state    = PlayState::Editor;
     std::string m_snapshot; // TOML 文字列でシーン状態を保存
     bool        m_restorePending = false;
+    bool        m_stepRequested  = false;
 };
 
 } // namespace fbzz::editor

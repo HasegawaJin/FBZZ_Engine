@@ -1,291 +1,244 @@
 // FBZZ Engine
 // main.cpp | sandbox
-// Physics test visualizer scene
+// Project-aware editor executable used for integration testing
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
+#include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
-#include <Engine/Renderer/Material.hpp>
-#include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
-#include <Engine/Scene/Components/LightComponent.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/RigidBodyComponent.hpp>
-#include <Engine/Scene/Components/ColliderComponent.hpp>
-#include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
-#include <Engine/Scene/Systems/PhysicsSystem.hpp>
-#include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/PhysicsSystem.hpp>
+#include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/ScriptSystem.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Editor/EditorApp.hpp>
 #include <Physics/World.hpp>
-#include <Physics/SphereCollider.hpp>
-#include <Physics/AABBCollider.hpp>
-#include <Physics/OBBCollider.hpp>
-#include <Physics/CapsuleCollider.hpp>
-#include <Physics/TriangleMeshCollider.hpp>
-#include <Physics/ConvexHullCollider.hpp>
-#include <Physics/PhysicsMaterial.hpp>
-#include <Physics/DistanceConstraint.hpp>
-#include <Physics/SpringConstraint.hpp>
-#include <Math/Vector3.hpp>
-#include <Math/Vector4.hpp>
-#include <Math/Quaternion.hpp>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <vector>
 
-using namespace fbzz;
+#include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
+
+#include <Windows.h>
+#include <shellapi.h>
+#include <toml++/toml.hpp>
+
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <string>
+
+namespace fbzz::sandbox {
 
 namespace {
 
-struct VisualAssets
-{
-    std::shared_ptr<renderer::Mesh> cube;
-    std::shared_ptr<renderer::Mesh> sphere;
-    std::shared_ptr<renderer::Material> floor;
-    std::shared_ptr<renderer::Material> red;
-    std::shared_ptr<renderer::Material> green;
-    std::shared_ptr<renderer::Material> blue;
-    std::shared_ptr<renderer::Material> yellow;
-    std::shared_ptr<renderer::Material> orange;
-    std::shared_ptr<renderer::Material> purple;
-    std::shared_ptr<renderer::Material> cyan;
-    std::shared_ptr<renderer::Material> rubber;
-    std::shared_ptr<renderer::Material> stone;
-    std::shared_ptr<renderer::Material> ice;
-    std::shared_ptr<renderer::Material> trigger;
+struct LaunchProject {
+    std::filesystem::path root;
+    std::filesystem::path projectFile;
+    std::filesystem::path settingsFile;
+    std::filesystem::path sceneFile;
 };
 
-std::shared_ptr<renderer::Material> MakeMaterial(renderer::ResourceManager& res,
-                                                  const math::Vector4& color,
-                                                  float roughness = 0.6f)
+std::wstring Utf8ToWide(const std::string& text)
 {
-    auto mat = std::make_shared<renderer::Material>();
-    mat->shader = res.LoadShader("assets/shaders/Material/Phong.hlsl");
-    mat->shaderPath = "assets/shaders/Material/Phong.hlsl";
-    mat->params.albedo = color;
-    mat->params.roughness = roughness;
-    mat->Init(res);
-    return mat;
+    if (text.empty()) return {};
+
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
 }
 
-VisualAssets CreateAssets(renderer::ResourceManager& res)
+std::string WideToUtf8(const std::wstring& text)
 {
-    VisualAssets assets;
-    assets.cube = renderer::PrimitiveMesh::Cube(res);
-    assets.sphere = renderer::PrimitiveMesh::Sphere(res, 16);
-    assets.floor = MakeMaterial(res, { 0.45f, 0.48f, 0.52f, 1.0f });
-    assets.red = MakeMaterial(res, { 0.95f, 0.20f, 0.18f, 1.0f });
-    assets.green = MakeMaterial(res, { 0.25f, 0.85f, 0.35f, 1.0f });
-    assets.blue = MakeMaterial(res, { 0.20f, 0.45f, 1.00f, 1.0f });
-    assets.yellow = MakeMaterial(res, { 1.00f, 0.86f, 0.22f, 1.0f });
-    assets.orange = MakeMaterial(res, { 1.00f, 0.48f, 0.12f, 1.0f });
-    assets.purple = MakeMaterial(res, { 0.68f, 0.35f, 0.95f, 1.0f });
-    assets.cyan = MakeMaterial(res, { 0.16f, 0.86f, 0.92f, 1.0f });
-    assets.rubber = MakeMaterial(res, { 0.95f, 0.12f, 0.18f, 1.0f }, 0.35f);
-    assets.stone = MakeMaterial(res, { 0.48f, 0.46f, 0.42f, 1.0f }, 0.9f);
-    assets.ice = MakeMaterial(res, { 0.60f, 0.92f, 1.00f, 1.0f }, 0.2f);
-    assets.trigger = MakeMaterial(res, { 1.00f, 0.38f, 0.95f, 1.0f }, 0.5f);
-    return assets;
+    if (text.empty()) return {};
+
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return {};
+
+    std::string utf8(static_cast<size_t>(size - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
+    return utf8;
 }
 
-void AttachVisual(scene::GameObject& go,
-                  std::shared_ptr<renderer::Mesh> mesh,
-                  std::shared_ptr<renderer::Material> mat,
-                  const char* meshPath)
+std::string PathToUtf8(const std::filesystem::path& path)
 {
-    scene::MeshRenderer mr{};
-    mr.mesh = std::move(mesh);
-    mr.meshPath = meshPath;
-    go.AddComponent<scene::MeshRenderer>(mr);
-
-    scene::MaterialComponent mc{};
-    mc.material = std::move(mat);
-    mc.shaderPath = mc.material->shaderPath;
-    go.AddComponent<scene::MaterialComponent>(mc);
+    return WideToUtf8(path.wstring());
 }
 
-std::shared_ptr<physics::RigidBody> AttachPhysics(scene::GameObject& go,
-                                                   std::shared_ptr<physics::Collider> col,
-                                                   bool isStatic,
-                                                   float mass,
-                                                   const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default,
-                                                   bool isTrigger = false)
+bool Exists(const std::filesystem::path& path)
 {
-    auto rb = std::make_shared<physics::RigidBody>();
-    rb->m_isStatic = isStatic;
-    rb->SetMass(isStatic ? 0.0f : mass);
-    rb->SetPosition(go.transform.localPosition);
-    rb->SetRotation(go.transform.localRotation);
-
-    scene::RigidBodyComponent rbc{};
-    rbc.rigidBody = rb;
-    go.AddComponent<scene::RigidBodyComponent>(rbc);
-
-    scene::ColliderComponent cc{};
-    cc.collider = std::move(col);
-    cc.material = material;
-    cc.isTrigger = isTrigger;
-    go.AddComponent<scene::ColliderComponent>(cc);
-    return rb;
+    std::error_code ec;
+    return std::filesystem::exists(path, ec);
 }
 
-std::shared_ptr<physics::RigidBody> AddBox(scene::Scene& scene,
-                                            const VisualAssets& assets,
-                                            const std::string& name,
-                                            const math::Vector3& position,
-                                            const math::Vector3& halfExtents,
-                                            std::shared_ptr<renderer::Material> mat,
-                                            bool isStatic = false,
-                                            float mass = 1.0f,
-                                            const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default,
-                                            bool isTrigger = false)
+std::string ReadText(const std::filesystem::path& path)
 {
-    auto& go = scene.CreateGameObject(name);
-    go.transform.localPosition = position;
-    go.transform.localScale = halfExtents * 2.0f;
-    AttachVisual(go, assets.cube, std::move(mat), "primitive:cube");
-    return AttachPhysics(go, std::make_shared<physics::AABBCollider>(halfExtents),
-                         isStatic, mass, material, isTrigger);
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return {};
+
+    std::ostringstream ss;
+    ss << file.rdbuf();
+    return ss.str();
 }
 
-std::shared_ptr<physics::RigidBody> AddOBB(scene::Scene& scene,
-                                           const VisualAssets& assets,
-                                           const std::string& name,
-                                           const math::Vector3& position,
-                                           const math::Vector3& halfExtents,
-                                           const math::Quaternion& rotation,
-                                           std::shared_ptr<renderer::Material> mat,
-                                           bool isStatic = false,
-                                           float mass = 1.0f,
-                                           const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default)
+std::filesystem::path MakeAbsolute(const std::filesystem::path& path)
 {
-    auto& go = scene.CreateGameObject(name);
-    go.transform.localPosition = position;
-    go.transform.localRotation = rotation;
-    go.transform.localScale = halfExtents * 2.0f;
-    AttachVisual(go, assets.cube, std::move(mat), "primitive:cube");
-    return AttachPhysics(go, std::make_shared<physics::OBBCollider>(halfExtents),
-                         isStatic, mass, material);
+    std::error_code ec;
+    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+    return ec ? path : absolute.lexically_normal();
 }
 
-std::shared_ptr<physics::RigidBody> AddSphere(scene::Scene& scene,
-                                               const VisualAssets& assets,
-                                               const std::string& name,
-                                               const math::Vector3& position,
-                                               float radius,
-                                               std::shared_ptr<renderer::Material> mat,
-                                               bool isStatic = false,
-                                               float mass = 1.0f,
-                                               const physics::PhysicsMaterial& material = physics::PhysicsMaterial::Default,
-                                               bool isTrigger = false)
+std::filesystem::path GetExecutableDirectory()
 {
-    auto& go = scene.CreateGameObject(name);
-    go.transform.localPosition = position;
-    go.transform.localScale = { radius * 2.0f, radius * 2.0f, radius * 2.0f };
-    AttachVisual(go, assets.sphere, std::move(mat), "primitive:sphere");
-    return AttachPhysics(go, std::make_shared<physics::SphereCollider>(radius),
-                         isStatic, mass, material, isTrigger);
+    wchar_t buffer[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    return std::filesystem::path(buffer).parent_path();
 }
 
-std::shared_ptr<physics::RigidBody> AddCapsule(scene::Scene& scene,
-                                                const VisualAssets& assets,
-                                                const std::string& name,
-                                                const math::Vector3& position,
-                                                float radius,
-                                                float halfHeight,
-                                                std::shared_ptr<renderer::Material> mat,
-                                                bool isStatic = false)
+std::filesystem::path FindProjectPathFromArgs()
 {
-    auto& go = scene.CreateGameObject(name);
-    go.transform.localPosition = position;
-    go.transform.localScale = { radius * 2.0f, (halfHeight + radius) * 2.0f, radius * 2.0f };
-    AttachVisual(go, assets.sphere, std::move(mat), "primitive:sphere");
-    return AttachPhysics(go, std::make_shared<physics::CapsuleCollider>(radius, halfHeight),
-                         isStatic, 1.0f);
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argv == nullptr) return {};
+
+    std::filesystem::path projectPath;
+    for (int i = 1; i < argc; ++i) {
+        const std::wstring arg = argv[i];
+        if (arg == L"--project" && i + 1 < argc) {
+            projectPath = argv[i + 1];
+            break;
+        }
+    }
+
+    LocalFree(argv);
+    return projectPath;
 }
 
-std::shared_ptr<physics::RigidBody> AddConvexCube(scene::Scene& scene,
-                                                   const VisualAssets& assets,
-                                                   const std::string& name,
-                                                   const math::Vector3& position,
-                                                   std::shared_ptr<renderer::Material> mat,
-                                                   bool isStatic = false)
+std::filesystem::path FindDefaultSandboxProjectPath()
 {
-    static const std::vector<math::Vector3> verts = {
-        { -0.5f, -0.5f, -0.5f }, {  0.5f, -0.5f, -0.5f },
-        {  0.5f,  0.5f, -0.5f }, { -0.5f,  0.5f, -0.5f },
-        { -0.5f, -0.5f,  0.5f }, {  0.5f, -0.5f,  0.5f },
-        {  0.5f,  0.5f,  0.5f }, { -0.5f,  0.5f,  0.5f },
-    };
+    const std::filesystem::path executableProject = GetExecutableDirectory() / L"SandboxProject";
+    if (Exists(executableProject / L".fbzz_proj")) {
+        return executableProject;
+    }
 
-    auto& go = scene.CreateGameObject(name);
-    go.transform.localPosition = position;
-    go.transform.localScale = { 1.0f, 1.0f, 1.0f };
-    AttachVisual(go, assets.cube, std::move(mat), "primitive:cube");
-    return AttachPhysics(go, std::make_shared<physics::ConvexHullCollider>(verts),
-                         isStatic, 1.0f);
+    std::filesystem::path current = GetExecutableDirectory();
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        const std::filesystem::path candidate = current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
+        if (Exists(candidate / L".fbzz_proj")) {
+            return candidate;
+        }
+        current = current.parent_path();
+    }
+
+    current = MakeAbsolute(std::filesystem::current_path());
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        const std::filesystem::path candidate = current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
+        if (Exists(candidate / L".fbzz_proj")) {
+            return candidate;
+        }
+        current = current.parent_path();
+    }
+
+    return {};
 }
 
-void AddFloor(scene::Scene& scene,
-              const VisualAssets& assets,
-              const std::string& name,
-              const math::Vector3& center,
-              float width = 6.0f,
-              float depth = 6.0f)
+std::filesystem::path ReadTomlRelativePath(const toml::table& table, const char* tableName, const char* key)
 {
-    AddBox(scene, assets, name, center + math::Vector3{ 0.0f, -0.5f, 0.0f },
-           { width * 0.5f, 0.5f, depth * 0.5f }, assets.floor, true);
+    const std::string value = table[tableName][key].value_or(std::string{});
+    return value.empty() ? std::filesystem::path{} : std::filesystem::path(Utf8ToWide(value));
 }
 
-void AddTriangleMeshFloor(scene::Scene& scene,
-                          const VisualAssets& assets,
-                          const math::Vector3& origin)
+bool IsTemplatePlaceholder(const std::filesystem::path& path)
 {
-    std::vector<math::Vector3> positions = {
-        { -3.0f, 0.0f, -3.0f }, {  3.0f, 0.0f, -3.0f },
-        {  3.0f, 0.0f,  3.0f }, { -3.0f, 0.0f,  3.0f },
-    };
-    std::vector<uint32_t> indices = { 0, 1, 2, 0, 2, 3 };
-
-    auto& go = scene.CreateGameObject("P2_TriangleMesh_Floor");
-    go.transform.localPosition = origin;
-    go.transform.localScale = { 6.0f, 0.04f, 6.0f };
-    AttachVisual(go, assets.cube, assets.green, "primitive:cube");
-    AttachPhysics(go, std::make_shared<physics::TriangleMeshCollider>(positions, indices),
-                  true, 0.0f);
+    const std::wstring value = path.wstring();
+    return value.size() >= 4 && value.rfind(L"{{", 0) == 0;
 }
 
-physics::RigidBody* FindBody(scene::Scene& scene, const char* name)
+bool ResolveProject(LaunchProject& project, std::wstring& errorMessage)
 {
-    auto* go = scene.Find(name);
-    if (!go) return nullptr;
+    project.root = MakeAbsolute(FindProjectPathFromArgs());
+    if (project.root.empty()) {
+        project.root = MakeAbsolute(FindDefaultSandboxProjectPath());
+    }
+    if (project.root.empty()) {
+        errorMessage = L"Project path was not specified and the Sandbox default project was not found.\n\nsandbox.exe --project <path>";
+        return false;
+    }
+    if (!Exists(project.root)) {
+        errorMessage = L"Project folder was not found.\n\n" + project.root.wstring();
+        return false;
+    }
 
-    auto* rb = go->GetComponent<scene::RigidBodyComponent>();
-    if (!rb || !rb->rigidBody) return nullptr;
-    return rb->rigidBody.get();
-}
+    project.projectFile = project.root / L".fbzz_proj";
+    const std::string projectText = ReadText(project.projectFile);
+    if (projectText.empty()) {
+        errorMessage = L".fbzz_proj could not be read.\n\n" + project.projectFile.wstring();
+        return false;
+    }
 
-void RegisterPhysicsTestConstraints(scene::Scene& scene, physics::World& world)
-{
-    auto* anchor = FindBody(scene, "P11_Distance_Anchor");
-    auto* limited = FindBody(scene, "P11_Distance_Limited");
-    if (anchor && limited)
-        world.AddConstraint(std::make_shared<physics::DistanceConstraint>(anchor, limited, 3.0f));
+    toml::parse_result projectResult = toml::parse(projectText);
+    if (!projectResult) {
+        errorMessage = L".fbzz_proj could not be parsed.\n\n" + project.projectFile.wstring();
+        return false;
+    }
 
-    auto* springA = FindBody(scene, "P11_Spring_A");
-    auto* springB = FindBody(scene, "P11_Spring_B");
-    if (springA && springB)
-        world.AddConstraint(std::make_shared<physics::SpringConstraint>(springA, springB, 1.5f, 25.0f, 0.4f));
+    const toml::table& projectTable = projectResult.table();
+    std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
+    const std::filesystem::path defaultScene = ReadTomlRelativePath(projectTable, "project", "default_scene");
+    if (IsTemplatePlaceholder(settingsPath)) {
+        settingsPath = L"ProjectSettings/ProjectSettings.toml";
+    }
+    if (settingsPath.empty()) {
+        errorMessage = L".fbzz_proj does not define project.settings_path.";
+        return false;
+    }
+
+    project.settingsFile = MakeAbsolute(project.root / settingsPath);
+    if (!Exists(project.settingsFile)) {
+        errorMessage = L"ProjectSettings file was not found.\n\n" + project.settingsFile.wstring();
+        return false;
+    }
+
+    const std::string settingsText = ReadText(project.settingsFile);
+    if (settingsText.empty()) {
+        errorMessage = L"ProjectSettings file could not be read.\n\n" + project.settingsFile.wstring();
+        return false;
+    }
+
+    toml::parse_result settingsResult = toml::parse(settingsText);
+    if (!settingsResult) {
+        errorMessage = L"ProjectSettings file could not be parsed.\n\n" + project.settingsFile.wstring();
+        return false;
+    }
+
+    const toml::table& settingsTable = settingsResult.table();
+    std::filesystem::path scenePath = ReadTomlRelativePath(settingsTable, "runtime", "start_scene");
+    if (scenePath.empty()) {
+        scenePath = defaultScene;
+    }
+    if (scenePath.empty()) {
+        errorMessage = L"Project does not define a start scene.";
+        return false;
+    }
+
+    project.sceneFile = MakeAbsolute(project.root / scenePath);
+    if (!Exists(project.sceneFile)) {
+        errorMessage = L"Start scene file was not found.\n\n" + project.sceneFile.wstring();
+        return false;
+    }
+
+    return true;
 }
 
 void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings)
@@ -294,319 +247,215 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
     world.SetSubsteps(settings.physics.substeps);
 }
 
-void ResetPhysicsWorld(scene::Scene& scene, physics::World& world, const ProjectSettings& settings)
+void RegisterSandboxScripts()
 {
-    world = physics::World{};
-    ApplyPhysicsSettings(world, settings);
-    RegisterPhysicsTestConstraints(scene, world);
-}
-
-void BuildPhysicsTestScene(scene::Scene& scene,
-                           renderer::ResourceManager& res)
-{
-    const VisualAssets assets = CreateAssets(res);
-
-    // Phase 1: warm-started stack.
-    {
-        const math::Vector3 o{ -24.0f, 0.0f, 0.0f };
-        AddFloor(scene, assets, "P1_Floor", o);
-        for (int i = 0; i < 5; ++i)
-            AddSphere(scene, assets, "P1_StackSphere", o + math::Vector3{ 0.0f, 0.5f + i * 1.02f, 0.0f },
-                      0.5f, (i % 2 == 0) ? assets.red : assets.blue);
-    }
-
-    // Phase 2: triangle mesh floor with sphere.
-    {
-        const math::Vector3 o{ -18.0f, 0.0f, 0.0f };
-        AddTriangleMeshFloor(scene, assets, o);
-        AddSphere(scene, assets, "P2_Sphere_On_BVH_Mesh", o + math::Vector3{ 0.0f, 3.0f, 0.0f },
-                  0.35f, assets.yellow);
-    }
-
-    // Phase 3: overlapping convex cubes for GJK/EPA inspection.
-    {
-        const math::Vector3 o{ -12.0f, 0.0f, 0.0f };
-        AddFloor(scene, assets, "P3_Reference_Floor", o, 4.0f, 4.0f);
-        AddConvexCube(scene, assets, "P3_Convex_A", o + math::Vector3{ -0.4f, 0.5f, 0.0f }, assets.orange, true);
-        AddConvexCube(scene, assets, "P3_Convex_B_Overlap_X", o + math::Vector3{ 0.4f, 0.5f, 0.0f }, assets.cyan, true);
-    }
-
-    // Phase 4: CCD fast sphere toward a thin wall and target sphere.
-    {
-        const math::Vector3 o{ -6.0f, 0.0f, 0.0f };
-        AddFloor(scene, assets, "P4_Floor", o, 5.0f, 8.0f);
-        auto bullet = AddSphere(scene, assets, "P4_CCD_Bullet", o + math::Vector3{ 0.0f, 1.0f, -3.0f },
-                                0.25f, assets.yellow, false, 0.5f);
-        bullet->SetVelocity({ 0.0f, 0.0f, 35.0f });
-        bullet->m_useCCD = true;
-        bullet->m_ccdRadius = 0.25f;
-        AddSphere(scene, assets, "P4_CCD_Target", o + math::Vector3{ 0.0f, 1.0f, 2.2f },
-                  0.5f, assets.green, true);
-        AddBox(scene, assets, "P4_Thin_Wall", o + math::Vector3{ 0.0f, 1.0f, 3.2f },
-               { 2.0f, 1.0f, 0.08f }, assets.stone, true);
-    }
-
-    // Phase 5: stress towers and high-speed drop.
-    {
-        const math::Vector3 o{ 0.0f, 0.0f, 0.0f };
-        AddFloor(scene, assets, "P5_Floor", o, 8.0f, 8.0f);
-        for (int i = 0; i < 10; ++i)
-            AddSphere(scene, assets, "P5_10Sphere_Tower",
-                      o + math::Vector3{ -1.6f, 0.35f + i * 0.72f, 0.0f },
-                      0.35f, assets.purple);
-        for (int i = 0; i < 5; ++i)
-            AddBox(scene, assets, "P5_AABB_Stack",
-                   o + math::Vector3{ 1.2f, 0.35f + i * 0.72f, 0.0f },
-                   { 0.35f, 0.35f, 0.35f }, assets.blue);
-        AddOBB(scene, assets, "P5_OBB_Base",
-               o + math::Vector3{ 2.35f, 0.25f, 0.0f },
-               { 0.55f, 0.25f, 0.55f },
-               math::Quaternion::FromEuler({ 0.0f, 0.22f, 0.0f }),
-               assets.stone, true, 0.0f, physics::PhysicsMaterial::Stone);
-        for (int i = 0; i < 5; ++i)
-        {
-            AddOBB(scene, assets, "P5_OBB_Stack",
-                   o + math::Vector3{ 2.35f, 0.82f + i * 0.72f, 0.0f },
-                   { 0.35f, 0.35f, 0.35f },
-                   math::Quaternion::FromEuler({ 0.0f, 0.22f, 0.0f }),
-                   (i % 2 == 0) ? assets.orange : assets.cyan,
-                   false, 1.0f, physics::PhysicsMaterial::Stone);
-        }
-        auto drop = AddSphere(scene, assets, "P5_HighSpeed_Drop",
-                              o + math::Vector3{ 3.0f, 5.5f, 0.0f },
-                              0.35f, assets.red);
-        drop->SetVelocity({ 0.0f, -25.0f, 0.0f });
-    }
-
-    // Phase 6: capsule contacts.
-    {
-        const math::Vector3 o{ 7.0f, 0.0f, 0.0f };
-        AddFloor(scene, assets, "P6_Floor", o, 7.0f, 6.0f);
-        AddCapsule(scene, assets, "P6_Capsule_On_AABB", o + math::Vector3{ -2.0f, 2.5f, 0.0f },
-                   0.3f, 0.5f, assets.orange);
-        AddCapsule(scene, assets, "P6_Lower_Capsule", o + math::Vector3{ 0.2f, 0.8f, 0.0f },
-                   0.3f, 0.5f, assets.cyan, true);
-        AddSphere(scene, assets, "P6_Sphere_On_Capsule", o + math::Vector3{ 0.2f, 3.0f, 0.0f },
-                  0.3f, assets.yellow);
-        AddCapsule(scene, assets, "P6_Capsule_Stack_A", o + math::Vector3{ 2.0f, 0.8f, 0.0f },
-                   0.3f, 0.5f, assets.blue, true);
-        AddCapsule(scene, assets, "P6_Capsule_Stack_B", o + math::Vector3{ 2.0f, 2.4f, 0.0f },
-                   0.3f, 0.5f, assets.green);
-    }
-
-    // Phase 7: momentum conservation pairs.
-    {
-        const math::Vector3 o{ 14.0f, 0.0f, 0.0f };
-        AddFloor(scene, assets, "P7_Floor", o, 7.0f, 4.0f);
-        auto a = AddSphere(scene, assets, "P7_Momentum_A", o + math::Vector3{ -2.0f, 0.5f, 0.0f },
-                           0.5f, assets.red);
-        auto b = AddSphere(scene, assets, "P7_Momentum_B", o + math::Vector3{ 2.0f, 0.5f, 0.0f },
-                           0.5f, assets.blue);
-        a->SetVelocity({ 4.0f, 0.0f, 0.0f });
-        b->SetVelocity({ -4.0f, 0.0f, 0.0f });
-    }
-
-    // Phase 8: restitution and friction materials.
-    {
-        const math::Vector3 o{ -18.0f, 0.0f, 9.0f };
-        AddBox(scene, assets, "P8_Rubber_Floor", o + math::Vector3{ -1.2f, -0.5f, 0.0f },
-               { 1.2f, 0.5f, 1.2f }, assets.rubber, true, 0.0f, physics::PhysicsMaterial::Rubber);
-        AddSphere(scene, assets, "P8_Rubber_Bounce", o + math::Vector3{ -1.2f, 4.0f, 0.0f },
-                  0.3f, assets.rubber, false, 1.0f, physics::PhysicsMaterial::Rubber);
-        AddBox(scene, assets, "P8_Stone_Floor", o + math::Vector3{ 1.2f, -0.5f, 0.0f },
-               { 1.2f, 0.5f, 1.2f }, assets.stone, true, 0.0f, physics::PhysicsMaterial::Stone);
-        AddSphere(scene, assets, "P8_Stone_Bounce", o + math::Vector3{ 1.2f, 4.0f, 0.0f },
-                  0.3f, assets.stone, false, 1.0f, physics::PhysicsMaterial::Stone);
-
-        AddBox(scene, assets, "P8_Slide_Floor", o + math::Vector3{ 0.0f, -0.5f, 3.0f },
-               { 6.0f, 0.5f, 1.5f }, assets.floor, true, 0.0f, physics::PhysicsMaterial::Stone);
-        auto ice = AddBox(scene, assets, "P8_Ice_Slider", o + math::Vector3{ -2.0f, 0.5f, 3.0f },
-                          { 0.35f, 0.35f, 0.35f }, assets.ice, false, 1.0f, physics::PhysicsMaterial::Ice);
-        auto stone = AddBox(scene, assets, "P8_Stone_Slider", o + math::Vector3{ -2.0f, 1.4f, 3.0f },
-                            { 0.35f, 0.35f, 0.35f }, assets.stone, false, 1.0f, physics::PhysicsMaterial::Stone);
-        ice->SetVelocity({ 5.0f, 0.0f, 0.0f });
-        stone->SetVelocity({ 5.0f, 0.0f, 0.0f });
-    }
-
-    // Phase 9: convex hull integration.
-    {
-        const math::Vector3 o{ -8.0f, 0.0f, 9.0f };
-        AddFloor(scene, assets, "P9_Floor", o, 8.0f, 6.0f);
-        AddConvexCube(scene, assets, "P9_Convex_Drop", o + math::Vector3{ -2.5f, 3.0f, 0.0f }, assets.orange);
-        AddConvexCube(scene, assets, "P9_Static_Hull", o + math::Vector3{ 0.0f, 0.5f, 0.0f }, assets.cyan, true);
-        AddSphere(scene, assets, "P9_Sphere_On_Hull", o + math::Vector3{ 0.0f, 4.0f, 0.0f },
-                  0.3f, assets.yellow);
-        auto hullA = AddConvexCube(scene, assets, "P9_Convex_Impact_A",
-                                   o + math::Vector3{ 2.0f, 0.6f, -1.4f }, assets.red);
-        AddConvexCube(scene, assets, "P9_Convex_Impact_B",
-                      o + math::Vector3{ 4.3f, 0.6f, -1.4f }, assets.blue);
-        hullA->SetVelocity({ 3.0f, 0.0f, 0.0f });
-    }
-
-    // Phase 10: trigger and collision events.
-    {
-        const math::Vector3 o{ 2.0f, 0.0f, 9.0f };
-        AddFloor(scene, assets, "P10_Floor", o, 6.0f, 4.0f);
-        AddSphere(scene, assets, "P10_Trigger_A", o + math::Vector3{ -1.0f, 0.7f, 0.0f },
-                  0.7f, assets.trigger, false, 1.0f, physics::PhysicsMaterial::Default, true);
-        AddSphere(scene, assets, "P10_Trigger_B", o + math::Vector3{ -0.1f, 0.7f, 0.0f },
-                  0.7f, assets.purple, false, 1.0f, physics::PhysicsMaterial::Default, true);
-        auto solid = AddSphere(scene, assets, "P10_Solid_Into_Trigger", o + math::Vector3{ 2.4f, 0.7f, 0.0f },
-                               0.7f, assets.yellow);
-        solid->SetVelocity({ -2.0f, 0.0f, 0.0f });
-    }
-
-    // Phase 11: constraints.
-    {
-        const math::Vector3 o{ 11.0f, 0.0f, 9.0f };
-        AddFloor(scene, assets, "P11_Floor", o, 8.0f, 5.0f);
-        AddSphere(scene, assets, "P11_Distance_Anchor", o + math::Vector3{ -2.5f, 1.0f, 0.0f },
-                  0.25f, assets.green, true);
-        auto limited = AddSphere(scene, assets, "P11_Distance_Limited", o + math::Vector3{ 1.5f, 1.0f, 0.0f },
-                                 0.25f, assets.red);
-        limited->SetVelocity({ 6.0f, 0.0f, 0.0f });
-
-        AddSphere(scene, assets, "P11_Spring_A", o + math::Vector3{ -2.0f, 2.5f, 1.4f },
-                  0.25f, assets.cyan, true);
-        AddSphere(scene, assets, "P11_Spring_B", o + math::Vector3{ 2.0f, 2.5f, 1.4f },
-                  0.25f, assets.orange);
-    }
+    scene::ScriptFactory::Register<::sandbox::PlayerControllerComponent>();
+    scene::ScriptFactory::Register<::sandbox::TpsCameraComponent>();
 }
 
 } // namespace
 
-int main()
+int Run()
 {
+    LaunchProject project;
+    std::wstring errorMessage;
+    if (!ResolveProject(project, errorMessage)) {
+        MessageBoxW(nullptr, errorMessage.c_str(), L"FBZZ Editor", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
+
     auto& app = core::Application::Get();
     if (!app.Init()) return 1;
+    RegisterSandboxScripts();
 
     auto& renderer = app.GetRenderer();
     renderer::ResourceManager resources(renderer);
-    asset::AssetManager::Init(resources);
+
+    const std::filesystem::path assetRoot = project.root / L"Assets";
+    asset::AssetManager::Init(resources, PathToUtf8(assetRoot) + "/");
 
     editor::EditorApp editorApp;
-    editorApp.Init(renderer, resources, app.GetWindow());
+    if (!editorApp.Init(renderer, resources, app.GetWindow())) {
+        app.Shutdown();
+        return 1;
+    }
 
     auto scene = std::make_unique<scene::Scene>();
     editorApp.GetContext().activeScene = scene.get();
+    if (!editorApp.OpenProject(PathToUtf8(project.root), PathToUtf8(project.settingsFile), PathToUtf8(project.sceneFile))) {
+        editorApp.Shutdown();
+        asset::AssetManager::UnloadAll();
+        app.Shutdown();
+        return 1;
+    }
 
-    auto& camGO = scene->CreateGameObject("MainCamera");
-    camGO.transform.localPosition = { 0.0f, 13.0f, -24.0f };
-    camGO.transform.localRotation = math::Quaternion::FromEuler({ 0.48f, 0.0f, 0.0f });
-    camGO.AddComponent<scene::CameraComponent>({});
-
-    auto& lightGO = scene->CreateGameObject("Light");
-    lightGO.transform.localPosition = { 4.0f, 16.0f, -8.0f };
-    lightGO.transform.localRotation = math::Quaternion::LookRotation({ -0.25f, -0.9f, 0.25f });
-    lightGO.AddComponent<scene::LightComponent>({});
-
-    physics::World physWorld;
-    BuildPhysicsTestScene(*scene, resources);
-    ResetPhysicsWorld(*scene, physWorld, editorApp.GetContext().projectSettings);
+    physics::World physicsWorld;
+    ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
     float physicsAccumulator = 0.0f;
 
-    app.GetWindow().SetResizeCallback([&](uint32_t w, uint32_t h) {
-        renderer.Resize(w, h);
-    });
+    constexpr float kFocusAnimDuration = 0.30f;
+    struct FocusAnim {
+        bool          active   = false;
+        math::Vector3 startPos = {};
+        math::Vector3 endPos   = {};
+        math::Vector3 target   = {};
+        float         t        = 0.0f;
+    } focusAnim;
 
     renderer::DebugCamera debugCamera;
-    debugCamera.camera.m_position = { 0.0f, 13.0f, -24.0f };
+    debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
     debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
     editorApp.GetContext().editorCamera = &debugCamera.camera;
 
-    while (app.IsRunning())
-    {
+    while (app.IsRunning()) {
         core::Time::Tick();
         input::Input::Update();
         app.GetWindow().PollEvents();
-        if (app.GetWindow().ShouldClose()) { app.Quit(); break; }
+        if (app.GetWindow().ShouldClose()) {
+            app.Quit();
+            break;
+        }
 
         const float dt = core::Time::DeltaTime();
-
         editorApp.BeginFrame();
 
-        auto* pm = editorApp.GetContext().playMode;
-        if (pm->ApplyPendingRestore(*scene))
-        {
-            ResetPhysicsWorld(*scene, physWorld, editorApp.GetContext().projectSettings);
+        auto* playMode = editorApp.GetContext().playMode;
+        if (playMode->ApplyPendingRestore(*scene)) {
+            ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
             physicsAccumulator = 0.0f;
         }
 
-        if (!pm->IsPlaying())
+        if (!playMode->IsPlaying()) {
             debugCamera.Update(dt);
+        }
+
+        {
+            auto& ctx = editorApp.GetContext();
+            if (ctx.requestFocusOnSelected) {
+                ctx.requestFocusOnSelected = false;
+                const math::Vector3 target = ctx.focusTargetPosition;
+                const math::Vector3 dir    = debugCamera.camera.m_position - target;
+                const float dist           = dir.Length();
+                constexpr float kFocusDist = 5.0f;
+                const math::Vector3 camDir = (dist > 0.01f)
+                    ? dir * (1.0f / dist)
+                    : math::Vector3{ 0.0f, 0.5f, -1.0f }.Normalized();
+
+                focusAnim.active   = true;
+                focusAnim.startPos = debugCamera.camera.m_position;
+                focusAnim.endPos   = target + camDir * kFocusDist;
+                focusAnim.target   = target;
+                focusAnim.t        = 0.0f;
+            }
+
+            if (focusAnim.active) {
+                focusAnim.t += dt / kFocusAnimDuration;
+                if (focusAnim.t >= 1.0f) {
+                    focusAnim.t      = 1.0f;
+                    focusAnim.active = false;
+                }
+                // smoothstep easing.
+                const float s = focusAnim.t * focusAnim.t * (3.0f - 2.0f * focusAnim.t);
+                debugCamera.camera.m_position = focusAnim.startPos
+                    + (focusAnim.endPos - focusAnim.startPos) * s;
+                debugCamera.LookAt(focusAnim.target);
+            }
+        }
 
         scene::TransformSystem(*scene);
+        const bool stepFrame = playMode->ConsumeStep();
+        if (playMode->IsPlaying() || stepFrame) {
+            const auto& settings = editorApp.GetContext().projectSettings;
+            ApplyPhysicsSettings(physicsWorld, settings);
+            scene::ScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
+            scene::TransformSystem(*scene);
 
-        if (pm->IsPlaying())
-        {
-            auto& projectSettings = editorApp.GetContext().projectSettings;
-            ApplyPhysicsSettings(physWorld, projectSettings);
-
-            const int physicsHz = projectSettings.physics.hz < 1 ? 1 : projectSettings.physics.hz;
+            const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-            physicsAccumulator += dt;
-            const float maxAccumulatedTime = fixedDt * 8.0f;
-            if (physicsAccumulator > maxAccumulatedTime)
-                physicsAccumulator = maxAccumulatedTime;
-
-            while (physicsAccumulator >= fixedDt)
-            {
-                scene::PhysicsSystem(*scene, physWorld, fixedDt);
-                physicsAccumulator -= fixedDt;
+            // Step mode advances exactly one fixed physics tick.
+            if (stepFrame) {
+                scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
+            } else {
+                physicsAccumulator += dt;
+                const float maxAccumulatedTime = fixedDt * 8.0f;
+                if (physicsAccumulator > maxAccumulatedTime)
+                    physicsAccumulator = maxAccumulatedTime;
+                while (physicsAccumulator >= fixedDt) {
+                    scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
+                    physicsAccumulator -= fixedDt;
+                }
             }
             scene::TransformSystem(*scene);
-            scene::AnimatorSystem(*scene, resources, dt);
-        }
-        else
-        {
+        } else {
             physicsAccumulator = 0.0f;
-            scene::AnimatorSystem(*scene, resources, dt);
         }
+        scene::AnimatorSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
 
         const auto sceneRT = editorApp.GetViewportRT();
         const auto gameRT = editorApp.GetGameViewportRT();
 
-        if (auto* rt = resources.Get(sceneRT))
-            debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) /
-                                          static_cast<float>(rt->GetHeight());
+        if (auto* rt = resources.Get(sceneRT)) {
+            debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+        }
 
+        float gameAspect = debugCamera.camera.m_aspect;
+        if (auto* rt = resources.Get(gameRT)) {
+            gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+        }
         renderer::Camera gameCamera = debugCamera.camera;
-        if (auto* rt = resources.Get(gameRT))
-            gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) /
-                                  static_cast<float>(rt->GetHeight());
+        gameCamera.m_aspect = gameAspect;
+        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
+        for (auto& go : scene->GameObjects()) {
+            auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
+            if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
+                continue;
+
+            gameCamera.m_position = go.transform.position;
+            gameCamera.m_rotation = go.transform.rotation;
+            gameCamera.m_fovY     = cameraComponent->fovY;
+            gameCamera.m_aspect   = gameAspect;
+            gameCamera.m_near     = cameraComponent->nearZ;
+            gameCamera.m_far      = cameraComponent->farZ;
+            gameCullingMask       = cameraComponent->cullingMask;
+            break;
+        }
 
         renderer.BeginFrame();
 
         renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
-        scene::RenderSystem(*scene, renderer, resources,
-                            debugCamera.camera, sceneRT,
-                            &editorApp.GetContext().projectSettings.render);
-        if (editorApp.GetContext().projectSettings.render.showColliders)
-        {
+        auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
+        sceneRenderSettings.selectedObjects.clear();
+        sceneRenderSettings.selectedObjects.reserve(editorApp.GetContext().selectedEntities.size());
+        for (scene::EntityID id : editorApp.GetContext().selectedEntities)
+            sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
+        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
+        if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
-            scene::ConstraintDebugDrawSystem(physWorld, renderer);
+            scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
             renderer::DebugDraw::Flush();
         }
-        if (editorApp.GetContext().showSkeleton)
-        {
-            scene::AnimatorDebugDrawSystem(*scene, renderer, resources,
-                                           debugCamera.camera.GetViewProjection());
+        if (editorApp.GetContext().showSkeleton) {
+            scene::AnimatorDebugDrawSystem(*scene, renderer, resources, debugCamera.camera.GetViewProjection());
         }
 
-        if (gameRT.IsValid())
-        {
+        if (gameRT.IsValid()) {
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
-            scene::RenderSystem(*scene, renderer, resources,
-                                gameCamera, gameRT,
-                                &editorApp.GetContext().projectSettings.render);
-            if (editorApp.GetContext().projectSettings.render.showColliders)
-            {
-                renderer::DebugDraw::BeginFrame(renderer, resources, gameCamera.GetViewProjection());
-                scene::ConstraintDebugDrawSystem(physWorld, renderer);
-                renderer::DebugDraw::Flush();
-            }
+            auto gameRenderSettings = editorApp.GetContext().projectSettings.render;
+            gameRenderSettings.wireframeMode = false;
+            gameRenderSettings.showColliders = false;
+            gameRenderSettings.showSelectionOutline = false;
+            gameRenderSettings.selectedObjects.clear();
+            scene::RenderSystem(*scene,
+                                renderer,
+                                resources,
+                                gameCamera,
+                                gameRT,
+                                &gameRenderSettings,
+                                gameCullingMask);
         }
 
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
@@ -622,4 +471,11 @@ int main()
     asset::AssetManager::UnloadAll();
     app.Shutdown();
     return 0;
+}
+
+} // namespace fbzz::sandbox
+
+int main()
+{
+    return fbzz::sandbox::Run();
 }

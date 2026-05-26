@@ -8,8 +8,10 @@
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
 #include <Editor/Util/EditorSettings.hpp>
+#include <Editor/Util/SceneDirtyTracker.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -47,7 +49,18 @@ private:
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();
     void CacheSceneWriteTime();
+    void CaptureCleanScene();
+    void RefreshSceneDirtyState(bool force);
+    void UpdateWindowTitle();
+    void MarkSceneDirty();
+    void ConfirmDiscardUnsaved(const std::string& actionName, std::function<void()> action);
+    void NewScene();
+    void RequestNewScene();
+    void RequestOpenSceneFromDialog();
+    void RequestOpenScenePath(const std::string& path);
+    void RequestExit();
     bool OpenSceneFromDialog();
+    bool OpenScenePath(const std::string& path);
     bool SaveScene();
     bool SaveSceneAsDialog();
 
@@ -58,12 +71,17 @@ private:
     HotkeyManager      m_hotkeys;
     ConsoleSink        m_consoleSink;
     EditorSettings     m_settings;
+    SceneDirtyTracker  m_dirtyTracker;
     std::string        m_projectRoot;
     std::string        m_projectSettingsPath = "editor_config/project_settings.toml";
+    float              m_dirtyPollTimer = 0.0f;
+    bool               m_titleInitialized = false;
+    bool               m_lastTitleDirty = false;
+    std::string        m_lastTitleScenePath;
     PlayModeController m_playMode;
 
     FILETIME                                 m_lastSceneWriteTime = {};
-    void*                                    m_hwnd          = nullptr;
+    HWND                                     m_hwnd          = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
     renderer::ResourceManager*               m_resources     = nullptr;
     ViewportPanel*                           m_sceneViewportPanel     = nullptr;

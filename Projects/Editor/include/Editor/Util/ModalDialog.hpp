@@ -13,6 +13,10 @@ public:
     static void OpenConfirm(const std::string& title,
                             const std::string& message,
                             std::function<void()> onConfirm);
+    static void OpenUnsavedChanges(const std::string& title,
+                                   const std::string& message,
+                                   std::function<bool()> onSave,
+                                   std::function<void()> onDiscard);
 
     // 毎フレーム EditorApp から呼ぶ
     static void OnRender();
@@ -22,6 +26,8 @@ private:
         std::string           title;
         std::string           message;
         std::function<void()> onConfirm;
+        std::function<bool()> onSave;
+        std::function<void()> onDiscard;
         bool                  pending = false;
         bool                  opened  = false;
     };

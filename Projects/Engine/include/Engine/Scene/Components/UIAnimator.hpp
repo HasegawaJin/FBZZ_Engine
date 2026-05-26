@@ -19,8 +19,10 @@ struct UIColorTween {
     float         elapsed  = 0.0f;
     UIEasingType  easing   = UIEasingType::Linear;
     bool          loop     = false;
-    bool          pingPong = false; // ループごとに再生方向を反転する
-    bool          active   = false;
+    // ループごとに from/to を反転する。往復アニメーションに使う。
+    // 単純な loop との違い: loop は終端でリセット、pingPong は折り返す。
+    bool          pingPong = false;
+    bool          active   = false; // false のとき UIAnimatorSystem はこのトゥイーンをスキップする
 };
 
 struct UIPositionTween {

@@ -38,6 +38,8 @@ public:
 private:
     std::unordered_map<std::string, SceneFactory> m_factories;
     std::unique_ptr<Scene>                        m_active;
+    // LoadScene() が呼ばれた時点では切り替えず、次フレームの Update() 先頭で適用する。
+    // フレーム途中に m_active を差し替えると、走査中の System が dangling 参照を掴む危険がある。
     std::string                                   m_pendingLoad;
 };
 

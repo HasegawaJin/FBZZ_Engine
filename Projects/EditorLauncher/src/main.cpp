@@ -1,4 +1,4 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // main.cpp | fbzz::editor_launcher
 // Standalone project-aware editor executable
 #include <Engine/Asset/AssetManager.hpp>
@@ -10,6 +10,7 @@
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
@@ -242,6 +243,15 @@ int Run()
     ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
     float physicsAccumulator = 0.0f;
 
+    constexpr float kFocusAnimDuration = 0.30f;
+    struct FocusAnim {
+        bool          active   = false;
+        math::Vector3 startPos = {};
+        math::Vector3 endPos   = {};
+        math::Vector3 target   = {};
+        float         t        = 0.0f;
+    } focusAnim;
+
     renderer::DebugCamera debugCamera;
     debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
     debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
@@ -269,28 +279,65 @@ int Run()
             debugCamera.Update(dt);
         }
 
+        {
+            auto& ctx = editorApp.GetContext();
+            if (ctx.requestFocusOnSelected) {
+                ctx.requestFocusOnSelected = false;
+                const math::Vector3 target = ctx.focusTargetPosition;
+                const math::Vector3 dir    = debugCamera.camera.m_position - target;
+                const float dist           = dir.Length();
+                constexpr float kFocusDist = 5.0f;
+                const math::Vector3 camDir = (dist > 0.01f)
+                    ? dir * (1.0f / dist)
+                    : math::Vector3{ 0.0f, 0.5f, -1.0f }.Normalized();
+
+                focusAnim.active   = true;
+                focusAnim.startPos = debugCamera.camera.m_position;
+                focusAnim.endPos   = target + camDir * kFocusDist;
+                focusAnim.target   = target;
+                focusAnim.t        = 0.0f;
+            }
+
+            if (focusAnim.active) {
+                focusAnim.t += dt / kFocusAnimDuration;
+                if (focusAnim.t >= 1.0f) {
+                    focusAnim.t      = 1.0f;
+                    focusAnim.active = false;
+                }
+                // smoothstep: 貊代ｉ縺九↑蜉騾溘・貂幃・
+                const float s = focusAnim.t * focusAnim.t * (3.0f - 2.0f * focusAnim.t);
+                debugCamera.camera.m_position = focusAnim.startPos
+                    + (focusAnim.endPos - focusAnim.startPos) * s;
+                debugCamera.LookAt(focusAnim.target);
+            }
+        }
+
         scene::TransformSystem(*scene);
-        if (playMode->IsPlaying()) {
+        const bool stepFrame = playMode->ConsumeStep();
+        if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
             ApplyPhysicsSettings(physicsWorld, settings);
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-            physicsAccumulator += dt;
-            const float maxAccumulatedTime = fixedDt * 8.0f;
-            if (physicsAccumulator > maxAccumulatedTime) {
-                physicsAccumulator = maxAccumulatedTime;
-            }
-
-            while (physicsAccumulator >= fixedDt) {
+            // 繧ｹ繝・ャ繝怜ｮ溯｡梧凾縺ｯ蝗ｺ螳・1 繧ｹ繝・ャ繝励・縺ｿ騾ｲ繧√ｋ
+            if (stepFrame) {
                 scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
-                physicsAccumulator -= fixedDt;
+            } else {
+                physicsAccumulator += dt;
+                const float maxAccumulatedTime = fixedDt * 8.0f;
+                if (physicsAccumulator > maxAccumulatedTime)
+                    physicsAccumulator = maxAccumulatedTime;
+                while (physicsAccumulator >= fixedDt) {
+                    scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
+                    physicsAccumulator -= fixedDt;
+                }
             }
             scene::TransformSystem(*scene);
         } else {
             physicsAccumulator = 0.0f;
         }
-        scene::AnimatorSystem(*scene, resources, dt);
+        scene::AnimatorSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
 
         const auto sceneRT = editorApp.GetViewportRT();
         const auto gameRT = editorApp.GetGameViewportRT();
@@ -299,16 +346,38 @@ int Run()
             debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
         }
 
-        renderer::Camera gameCamera = debugCamera.camera;
+        float gameAspect = debugCamera.camera.m_aspect;
         if (auto* rt = resources.Get(gameRT)) {
-            gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+            gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+        }
+        renderer::Camera gameCamera = debugCamera.camera;
+        gameCamera.m_aspect = gameAspect;
+        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
+        for (auto& go : scene->GameObjects()) {
+            auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
+            if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
+                continue;
+
+            gameCamera.m_position = go.transform.position;
+            gameCamera.m_rotation = go.transform.rotation;
+            gameCamera.m_fovY     = cameraComponent->fovY;
+            gameCamera.m_aspect   = gameAspect;
+            gameCamera.m_near     = cameraComponent->nearZ;
+            gameCamera.m_far      = cameraComponent->farZ;
+            gameCullingMask       = cameraComponent->cullingMask;
+            break;
         }
 
         renderer.BeginFrame();
 
         renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
-        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &editorApp.GetContext().projectSettings.render);
+        auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
+        sceneRenderSettings.selectedObjects.clear();
+        sceneRenderSettings.selectedObjects.reserve(editorApp.GetContext().selectedEntities.size());
+        for (scene::EntityID id : editorApp.GetContext().selectedEntities)
+            sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
+        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
             scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
@@ -321,7 +390,13 @@ int Run()
         if (gameRT.IsValid()) {
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
-            scene::RenderSystem(*scene, renderer, resources, gameCamera, gameRT, &editorApp.GetContext().projectSettings.render);
+            scene::RenderSystem(*scene,
+                                renderer,
+                                resources,
+                                gameCamera,
+                                gameRT,
+                                &editorApp.GetContext().projectSettings.render,
+                                gameCullingMask);
         }
 
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);

@@ -4,6 +4,7 @@
 // SceneSerializer が文字列名からユーザースクリプトを復元するために使う。
 // 登録されていない型は生成失敗として扱う。
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <algorithm>
 #include <unordered_map>
 #include <utility>
 
@@ -32,6 +33,19 @@ std::unique_ptr<Script> ScriptFactory::Create(const std::string& typeName)
     auto it = registry.find(typeName);
     if (it == registry.end()) return nullptr;
     return it->second();
+}
+
+std::vector<std::string> ScriptFactory::RegisteredTypeNames()
+{
+    std::vector<std::string> names;
+    auto& registry = Registry();
+    names.reserve(registry.size());
+    for (const auto& [typeName, factory] : registry) {
+        if (!typeName.empty() && factory)
+            names.push_back(typeName);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 } // namespace fbzz::scene

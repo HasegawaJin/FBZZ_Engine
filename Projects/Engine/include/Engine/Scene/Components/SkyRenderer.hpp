@@ -10,9 +10,13 @@
 namespace fbzz::scene {
 
 struct SkyRenderer {
+    // Rayleigh 散乱係数 (m⁻¹)。波長ごとに異なり、空が青い理由となる。
+    // デフォルト値は地球の標準大気に基づく一般的な近似値。
     math::Vector3 rayleighScattering = { 5.8e-3f, 13.5e-3f, 33.1e-3f };
     float         mieScattering      = 21.0e-4f;
     float         sunIntensity       = 20.0f;
+    // Henyey-Greenstein 位相関数の非対称パラメーター (0=等方散乱, 1=完全前方散乱)。
+    // 0.76 は大気中のエアロゾルに典型的な値で、太陽周辺のグローを再現する。
     float         mieG               = 0.76f;
     bool          enabled            = true;
 

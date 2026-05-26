@@ -4,6 +4,10 @@
 #pragma once
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Math/Vector3.hpp>
+#include <algorithm>
+#include <functional>
+#include <string>
 #include <vector>
 
 namespace fbzz::renderer { class Camera; }
@@ -15,6 +19,9 @@ struct EditorContext {
     // エンジンオブジェクト (非所有)
     scene::Scene*     activeScene  = nullptr;
     renderer::Camera* editorCamera = nullptr;
+    std::string       projectRoot;
+    std::string       currentScenePath;
+    bool              sceneDirty = false;
 
     // 選択状態 (Multi-select 対応)
     std::vector<scene::EntityID> selectedEntities;
@@ -90,9 +97,27 @@ struct EditorContext {
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings = false;
 
+    // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
+    bool            requestFocusOnSelected = false;
+    math::Vector3   focusTargetPosition    = {};
+
+    // エディター専用: ロック中の EntityID 一覧（シリアライズしない）
+    std::vector<scene::EntityID> lockedEntities;
+    bool IsLocked(scene::EntityID id) const {
+        return std::find(lockedEntities.begin(), lockedEntities.end(), id) != lockedEntities.end();
+    }
+    void ToggleLock(scene::EntityID id) {
+        auto it = std::find(lockedEntities.begin(), lockedEntities.end(), id);
+        if (it != lockedEntities.end()) lockedEntities.erase(it);
+        else lockedEntities.push_back(id);
+    }
+
     // Util (非所有)
     UndoStack*          undoStack = nullptr;
     PlayModeController* playMode  = nullptr;
+    std::function<void()>                   markSceneDirty;
+    std::function<void(const std::string&)> requestOpenScene;
+    bool                                    requestAssetBrowserRefresh = false;
 };
 
 } // namespace fbzz::editor

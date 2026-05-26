@@ -57,10 +57,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void Field(const char* name, math::Quaternion& v) override
     {
-        math::Vector3 euler = widgets::QuatToEulerDeg(v);
-        float arr[3] = { euler.x, euler.y, euler.z };
-        if (ImGui::DragFloat3(name, arr, 0.5f))
-            v = widgets::EulerDegToQuat({ arr[0], arr[1], arr[2] });
+        widgets::DragQuatEuler3(name, v, 0.5f);
     }
 };
 

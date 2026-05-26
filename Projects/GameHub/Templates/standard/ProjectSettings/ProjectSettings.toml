@@ -1,6 +1,66 @@
-[project]
-name = "{{PROJECT_NAME}}"
-default_scene = "Assets/Scenes/Main.fbzz"
+[app]
+targetFps = 0
 
-[runtime]
-start_scene = "Assets/Scenes/Main.fbzz"
+[audio]
+bgmVolume = 1.0
+seVolume = 1.0
+
+[layers]
+names = [
+    'Default',
+    'TransparentFX',
+    'IgnoreRaycast',
+    '3',
+    'Water',
+    'UI',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    '11',
+    '12',
+    '13',
+    '14',
+    '15',
+    '16',
+    '17',
+    '18',
+    '19',
+    '20',
+    '21',
+    '22',
+    '23',
+    '24',
+    '25',
+    '26',
+    '27',
+    '28',
+    '29',
+    '30',
+    '31'
+]
+
+[physics]
+gravity = [ 0.0, -9.8100004196167, 0.0 ]
+hz = 60
+substeps = 4
+
+[render]
+bloom = true
+exposure = 1.0
+fog = true
+fogColor = [ 0.009999999776482582, 0.009999999776482582, 0.03999999910593033 ]
+fogDensity = 0.05999999865889549
+fogFar = 10.0
+fxaa = true
+shadow = true
+showColliders = false
+wireframe = false
+
+[screen]
+height = 1080
+width = 1920
+
+[tags]
+list = [ 'Untagged', 'Respawn', 'Finish', 'EditorOnly', 'MainCamera', 'Player', 'GameController' ]

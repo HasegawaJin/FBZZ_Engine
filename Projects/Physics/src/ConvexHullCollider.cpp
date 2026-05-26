@@ -3,8 +3,10 @@
 // Quickhull による凸包構築と GJK サポート関数
 #include <Physics/ConvexHullCollider.hpp>
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <vector>
 
@@ -33,6 +35,12 @@ namespace fbzz::physics
             math::Vector3 normal;
         };
 
+        struct HullBuildResult
+        {
+            std::vector<math::Vector3> vertices;
+            std::vector<std::array<uint32_t, 3>> faces;
+        };
+
         math::Vector3 FaceNormal(const std::vector<math::Vector3>& pts, const HullFace& f)
         {
             const math::Vector3 e1 = pts[f.v[1]] - pts[f.v[0]];
@@ -44,10 +52,22 @@ namespace fbzz::physics
 
         // 簡易 Quickhull: 全点を処理して凸包頂点インデックスを返す
         // ここでは Incremental 法（面を追加しながら外部点を処理）を簡略実装する
-        std::vector<math::Vector3> SimpleQuickhull(std::vector<math::Vector3> pts)
+        HullBuildResult SimpleQuickhull(std::vector<math::Vector3> pts)
         {
             const int n = static_cast<int>(pts.size());
-            if (n <= 4) return pts;
+            if (n <= 4) {
+                HullBuildResult result;
+                result.vertices = std::move(pts);
+                if (n == 4) {
+                    result.faces = {
+                        std::array<uint32_t, 3>{ 0, 1, 2 },
+                        std::array<uint32_t, 3>{ 0, 2, 3 },
+                        std::array<uint32_t, 3>{ 0, 3, 1 },
+                        std::array<uint32_t, 3>{ 1, 3, 2 },
+                    };
+                }
+                return result;
+            }
 
             // 初期四面体を構築する
             // 最遠 X 軸ペアを選ぶ
@@ -57,7 +77,7 @@ namespace fbzz::physics
                 if (pts[i].x < pts[minX].x) minX = i;
                 if (pts[i].x > pts[maxX].x) maxX = i;
             }
-            if (minX == maxX) return pts;
+            if (minX == maxX) return { std::move(pts), {} };
 
             // 直線 (minX, maxX) から最遠点
             int far1 = -1;
@@ -70,7 +90,7 @@ namespace fbzz::physics
                 const float dist = d.Length();
                 if (dist > bestDist) { bestDist = dist; far1 = i; }
             }
-            if (far1 < 0) return pts;
+            if (far1 < 0) return { std::move(pts), {} };
 
             // 平面 (minX, maxX, far1) から最遠点
             const math::Vector3 triN = math::Vector3::Cross(
@@ -83,7 +103,7 @@ namespace fbzz::physics
                 const float dist = std::abs(DistToPlane(triN, pts[minX], pts[i]));
                 if (dist > bestDist) { bestDist = dist; far2 = i; }
             }
-            if (far2 < 0) return pts;
+            if (far2 < 0) return { std::move(pts), {} };
 
             // 4 点から凸包を構築する (簡易: 全点に対して外側テスト)
             const std::vector<int> initIdx = {minX, maxX, far1, far2};
@@ -178,17 +198,35 @@ namespace fbzz::physics
 
             std::vector<math::Vector3> result;
             result.reserve(static_cast<size_t>(n));
-            for (int i = 0; i < n; ++i)
-                if (used[i]) result.push_back(pts[i]);
+            std::vector<int> remap(static_cast<size_t>(n), -1);
+            for (int i = 0; i < n; ++i) {
+                if (!used[i]) continue;
+                remap[static_cast<size_t>(i)] = static_cast<int>(result.size());
+                result.push_back(pts[i]);
+            }
 
-            return result;
+            std::vector<std::array<uint32_t, 3>> resultFaces;
+            resultFaces.reserve(faces.size());
+            for (const auto& f : faces) {
+                const int a = remap[static_cast<size_t>(f.v[0])];
+                const int b = remap[static_cast<size_t>(f.v[1])];
+                const int c = remap[static_cast<size_t>(f.v[2])];
+                if (a < 0 || b < 0 || c < 0) continue;
+                resultFaces.push_back({
+                    static_cast<uint32_t>(a),
+                    static_cast<uint32_t>(b),
+                    static_cast<uint32_t>(c)
+                });
+            }
+
+            return { std::move(result), std::move(resultFaces) };
         }
     } // anonymous namespace
 
     ConvexHullCollider::ConvexHullCollider(std::vector<math::Vector3> points)
     {
         BuildHull(std::move(points));
-        UpdateWorldVerts(math::Vector3::ZERO, math::Quaternion::Identity());
+        UpdateWorldVerts(math::Vector3::ZERO, math::Quaternion::Identity(), { 1.0f, 1.0f, 1.0f });
     }
 
     void ConvexHullCollider::BuildHull(std::vector<math::Vector3> points)
@@ -199,7 +237,9 @@ namespace fbzz::physics
         if (static_cast<int>(points.size()) > MAX_HULL_VERTS)
             points.resize(static_cast<size_t>(MAX_HULL_VERTS));
 
-        m_localVerts = SimpleQuickhull(std::move(points));
+        HullBuildResult hull = SimpleQuickhull(std::move(points));
+        m_localVerts = std::move(hull.vertices);
+        m_faces = std::move(hull.faces);
 
         // 上限を超えた場合はさらにトリミング (精度よりも安全を優先)
         if (static_cast<int>(m_localVerts.size()) > MAX_HULL_VERTS)
@@ -209,14 +249,23 @@ namespace fbzz::physics
     void ConvexHullCollider::Update(const math::Vector3& worldPos,
                                     const math::Quaternion& worldRot)
     {
-        UpdateWorldVerts(worldPos, worldRot);
+        UpdateWithScale(worldPos, worldRot, m_worldScale);
+    }
+
+    void ConvexHullCollider::UpdateWithScale(const math::Vector3& worldPos,
+                                             const math::Quaternion& worldRot,
+                                             const math::Vector3& worldScale)
+    {
+        UpdateWorldVerts(worldPos, worldRot, worldScale);
     }
 
     void ConvexHullCollider::UpdateWorldVerts(const math::Vector3& pos,
-                                               const math::Quaternion& rot)
+                                              const math::Quaternion& rot,
+                                              const math::Vector3& scale)
     {
         m_worldCenter = pos;
         m_worldRot    = rot;
+        m_worldScale  = scale;
         m_worldVerts.resize(m_localVerts.size());
 
         m_worldAABB.min = { std::numeric_limits<float>::max(),
@@ -228,7 +277,12 @@ namespace fbzz::physics
 
         for (size_t i = 0; i < m_localVerts.size(); ++i)
         {
-            m_worldVerts[i] = pos + rot * m_localVerts[i];
+            const math::Vector3 scaled = {
+                m_localVerts[i].x * scale.x,
+                m_localVerts[i].y * scale.y,
+                m_localVerts[i].z * scale.z
+            };
+            m_worldVerts[i] = pos + rot * scaled;
 
             m_worldAABB.min.x = std::min(m_worldAABB.min.x, m_worldVerts[i].x);
             m_worldAABB.min.y = std::min(m_worldAABB.min.y, m_worldVerts[i].y);

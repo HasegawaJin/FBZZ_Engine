@@ -47,6 +47,11 @@ private:
     // FBX inspection
     std::string                   m_selectedFbxPath;
     std::shared_ptr<asset::Model> m_selectedModel;
+
+    // Rename state
+    std::string m_renamingPath;
+    char        m_renameBuffer[256] = {};
+    bool        m_renameNeedFocus   = false;
 };
 
 } // namespace fbzz::editor

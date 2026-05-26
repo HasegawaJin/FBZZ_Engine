@@ -52,10 +52,14 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Checkbox("Wireframe",   &r.wireframeMode);
         ImGui::SameLine();
         ImGui::Checkbox("Colliders",   &r.showColliders);
+        ImGui::SameLine();
+        ImGui::Checkbox("Selection Outline", &r.showSelectionOutline);
         ImGui::SliderFloat("Exposure",    &r.exposure,   0.1f, 4.0f);
         ImGui::SliderFloat("Fog Density", &r.fogDensity, 0.0f, 1.0f);
         ImGui::SliderFloat("Fog Far",     &r.fogFar,     1.0f, 100.0f);
         ImGui::ColorEdit3("Fog Color",    r.fogColor);
+        ImGui::SliderFloat("Outline Width", &r.outlineWidth, 0.005f, 0.2f);
+        ImGui::ColorEdit4("Outline Color", r.outlineColor);
     }
 
     ImGui::Spacing();
@@ -92,14 +96,13 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
             ps.tags.erase(ps.tags.begin() + removeIdx);
 
         ImGui::Spacing();
-        static char s_newTag[64] = {};
         ImGui::SetNextItemWidth(-60.0f);
-        ImGui::InputText("##newtag", s_newTag, sizeof(s_newTag));
+        ImGui::InputText("##newtag", m_newTag, sizeof(m_newTag));
         ImGui::SameLine();
-        if (ImGui::SmallButton("Add") && s_newTag[0] != '\0')
+        if (ImGui::SmallButton("Add") && m_newTag[0] != '\0')
         {
-            ps.tags.push_back(s_newTag);
-            s_newTag[0] = '\0';
+            ps.tags.push_back(m_newTag);
+            m_newTag[0] = '\0';
         }
     }
 

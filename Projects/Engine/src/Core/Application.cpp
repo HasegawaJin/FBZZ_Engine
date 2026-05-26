@@ -3,6 +3,9 @@
 // Application シングルトンの初期化とメインループ
 // Window / Renderer / SceneManager を所有し、エンジン全体の寿命を管理する。
 // sandbox 側で手動ループする場合も、初期化済みサブシステムの入口になる。
+#define NOMINMAX
+#include <Windows.h>
+#include <timeapi.h>
 #include "Engine/Core/Application.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
@@ -17,6 +20,8 @@ Application& Application::Get() {
 }
 
 bool Application::Init() {
+    timeBeginPeriod(1);
+
     Window::Config windowConfig;
     m_window = std::make_unique<Window>();
     if (!m_window->Initialize(windowConfig))
@@ -43,6 +48,7 @@ void Application::Shutdown() {
     m_renderer.reset();
     m_window->Shutdown();
     FBZZ_LOG_INFO("Application 終了 (フレーム数: %llu)", Time::FrameCount());
+    timeEndPeriod(1);
 }
 
 void Application::Run() {

@@ -9,6 +9,13 @@ namespace fbzz::physics
 {
     class Collider;
 
+    struct AxisLock
+    {
+        bool x = false;
+        bool y = false;
+        bool z = false;
+    };
+
     // PhysicsSystem から同期される剛体状態。Scene の Transform は直接所有せず、World::Step 後に外側で反映する。
     class RigidBody
     {
@@ -40,6 +47,10 @@ namespace fbzz::physics
         void SetVelocity(const math::Vector3& vel);
         void SetAngularVelocity(const math::Vector3& angVel);
         void SetRotation(const math::Quaternion& rot);
+        void SetFreezePosition(const AxisLock& lock);
+        void SetFreezeRotation(const AxisLock& lock);
+        AxisLock GetFreezePosition() const { return m_freezePosition; }
+        AxisLock GetFreezeRotation() const { return m_freezeRotation; }
 
         // 動作制御
         bool  m_isStatic    = false;  // true のとき積分・衝突解決をスキップ
@@ -84,8 +95,13 @@ namespace fbzz::physics
         // m_isStatic == true のとき {0,0,0}
         math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f };
         const Collider* m_inertiaCollider = nullptr;
+        AxisLock m_freezePosition;
+        AxisLock m_freezeRotation;
 
         void RecomputeInertia();
+        math::Vector3 ApplyPositionFreeze(const math::Vector3& value,
+                                          const math::Vector3& base) const;
+        math::Vector3 ApplyRotationFreeze(const math::Vector3& value) const;
 
     public:
         // ワールド空間で I⁻¹ * v を計算する

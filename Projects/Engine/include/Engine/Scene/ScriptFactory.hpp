@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -26,6 +27,7 @@ public:
 
     static bool Register(const std::string& typeName, Factory factory);
     static std::unique_ptr<Script> Create(const std::string& typeName);
+    static std::vector<std::string> RegisteredTypeNames();
 };
 
 } // namespace fbzz::scene

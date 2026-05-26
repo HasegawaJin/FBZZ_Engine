@@ -147,6 +147,118 @@ const char* ColliderTypeToString(physics::ColliderType type)
     return "AABB";
 }
 
+toml::table SerializeCollider(const ColliderComponent& col)
+{
+    toml::table colTbl;
+    colTbl.insert("enabled",   col.enabled);
+    colTbl.insert("center",    Vec3ToArr(col.center));
+    colTbl.insert("isTrigger", col.isTrigger);
+
+    toml::table matTbl;
+    matTbl.insert("restitution",      (double)col.material.restitution);
+    matTbl.insert("staticFriction",   (double)col.material.staticFriction);
+    matTbl.insert("dynamicFriction",  (double)col.material.dynamicFriction);
+    matTbl.insert("density",          (double)col.material.density);
+    colTbl.insert("material", std::move(matTbl));
+
+    if (col.collider) {
+        toml::table shapeTbl;
+        const auto type = col.collider->GetType();
+        shapeTbl.insert("type", ColliderTypeToString(type));
+        if (type == physics::ColliderType::SPHERE) {
+            auto* sphere = static_cast<physics::SphereCollider*>(col.collider.get());
+            shapeTbl.insert("radius", (double)sphere->m_radius);
+        } else if (type == physics::ColliderType::AABB) {
+            auto* box = static_cast<physics::AABBCollider*>(col.collider.get());
+            shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
+        } else if (type == physics::ColliderType::OBB) {
+            auto* box = static_cast<physics::OBBCollider*>(col.collider.get());
+            shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
+        } else if (type == physics::ColliderType::CAPSULE) {
+            auto* capsule = static_cast<physics::CapsuleCollider*>(col.collider.get());
+            shapeTbl.insert("radius",     (double)capsule->m_radius);
+            shapeTbl.insert("halfHeight", (double)capsule->m_halfHeight);
+        }
+        colTbl.insert("shape", std::move(shapeTbl));
+    }
+
+    return colTbl;
+}
+
+void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
+{
+    col.enabled   = colTbl["enabled"].value_or(true);
+    col.center    = ArrToVec3(colTbl["center"].as_array(), math::Vector3::ZERO);
+    col.isTrigger = colTbl["isTrigger"].value_or(false);
+
+    if (auto* matTbl = colTbl["material"].as_table()) {
+        col.material.restitution     = (float)(*matTbl)["restitution"].value_or(0.3);
+        col.material.staticFriction  = (float)(*matTbl)["staticFriction"].value_or(0.6);
+        col.material.dynamicFriction = (float)(*matTbl)["dynamicFriction"].value_or(0.4);
+        col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
+    }
+}
+
+void ReadAabbCollider(const toml::table& colTbl, AabbColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    math::Vector3 halfExtents = { 0.5f, 0.5f, 0.5f };
+    if (auto* shapeTbl = colTbl["shape"].as_table())
+        halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
+    col.size = halfExtents * 2.0f;
+    col.collider = std::make_shared<physics::AABBCollider>(halfExtents);
+}
+
+void ReadBoxCollider(const toml::table& colTbl, BoxColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    math::Vector3 halfExtents = { 0.5f, 0.5f, 0.5f };
+    if (auto* shapeTbl = colTbl["shape"].as_table())
+        halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
+    col.size = halfExtents * 2.0f;
+    col.collider = std::make_shared<physics::OBBCollider>(halfExtents);
+}
+
+void ReadSphereCollider(const toml::table& colTbl, SphereColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    float radius = 0.5f;
+    if (auto* shapeTbl = colTbl["shape"].as_table())
+        radius = (float)(*shapeTbl)["radius"].value_or(0.5);
+    col.radius = radius;
+    col.collider = std::make_shared<physics::SphereCollider>(radius);
+}
+
+void ReadCapsuleCollider(const toml::table& colTbl, CapsuleColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    float radius = 0.5f;
+    float halfHeight = 1.0f;
+    if (auto* shapeTbl = colTbl["shape"].as_table()) {
+        radius = (float)(*shapeTbl)["radius"].value_or(0.5);
+        halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
+    }
+    col.radius = radius;
+    col.halfHeight = halfHeight;
+    col.collider = std::make_shared<physics::CapsuleCollider>(radius, halfHeight);
+}
+
+void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    col.meshPath = colTbl["meshPath"].value_or(std::string{});
+    col.meshIndex = (int)colTbl["meshIndex"].value_or((int64_t)0);
+    col.useTransformScale = colTbl["useTransformScale"].value_or(true);
+}
+
+void ReadConvexHullCollider(const toml::table& colTbl, ConvexHullColliderComponent& col)
+{
+    ReadColliderCommon(colTbl, col);
+    col.meshPath = colTbl["meshPath"].value_or(std::string{});
+    col.meshIndex = (int)colTbl["meshIndex"].value_or((int64_t)0);
+    col.useTransformScale = colTbl["useTransformScale"].value_or(true);
+}
+
 const char* VolumeTypeToString(physics::VolumeType type)
 {
     switch (type) {
@@ -401,41 +513,32 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("ParticleEmitter", std::move(peTbl));
         }
 
-        // ColliderComponent
-        if (auto* col = go.GetComponent<ColliderComponent>()) {
-            toml::table colTbl;
-            colTbl.insert("enabled",   col->enabled);
-            colTbl.insert("isTrigger", col->isTrigger);
+        if (auto* col = go.GetComponent<AabbColliderComponent>())
+            goTbl.insert("AabbColliderComponent", SerializeCollider(*col));
 
-            toml::table matTbl;
-            matTbl.insert("restitution",      (double)col->material.restitution);
-            matTbl.insert("staticFriction",   (double)col->material.staticFriction);
-            matTbl.insert("dynamicFriction",  (double)col->material.dynamicFriction);
-            matTbl.insert("density",          (double)col->material.density);
-            colTbl.insert("material", std::move(matTbl));
+        if (auto* col = go.GetComponent<BoxColliderComponent>())
+            goTbl.insert("BoxColliderComponent", SerializeCollider(*col));
 
-            if (col->collider) {
-                toml::table shapeTbl;
-                const auto type = col->collider->GetType();
-                shapeTbl.insert("type", ColliderTypeToString(type));
-                if (type == physics::ColliderType::SPHERE) {
-                    auto* sphere = static_cast<physics::SphereCollider*>(col->collider.get());
-                    shapeTbl.insert("radius", (double)sphere->m_radius);
-                } else if (type == physics::ColliderType::AABB) {
-                    auto* box = static_cast<physics::AABBCollider*>(col->collider.get());
-                    shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
-                } else if (type == physics::ColliderType::OBB) {
-                    auto* box = static_cast<physics::OBBCollider*>(col->collider.get());
-                    shapeTbl.insert("halfExtents", Vec3ToArr(box->m_halfExtents));
-                } else if (type == physics::ColliderType::CAPSULE) {
-                    auto* capsule = static_cast<physics::CapsuleCollider*>(col->collider.get());
-                    shapeTbl.insert("radius",     (double)capsule->m_radius);
-                    shapeTbl.insert("halfHeight", (double)capsule->m_halfHeight);
-                }
-                colTbl.insert("shape", std::move(shapeTbl));
-            }
+        if (auto* col = go.GetComponent<SphereColliderComponent>())
+            goTbl.insert("SphereColliderComponent", SerializeCollider(*col));
 
-            goTbl.insert("ColliderComponent", std::move(colTbl));
+        if (auto* col = go.GetComponent<CapsuleColliderComponent>())
+            goTbl.insert("CapsuleColliderComponent", SerializeCollider(*col));
+
+        if (auto* col = go.GetComponent<MeshColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            colTbl.insert("meshPath", col->meshPath);
+            colTbl.insert("meshIndex", (int64_t)col->meshIndex);
+            colTbl.insert("useTransformScale", col->useTransformScale);
+            goTbl.insert("MeshColliderComponent", std::move(colTbl));
+        }
+
+        if (auto* col = go.GetComponent<ConvexHullColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            colTbl.insert("meshPath", col->meshPath);
+            colTbl.insert("meshIndex", (int64_t)col->meshIndex);
+            colTbl.insert("useTransformScale", col->useTransformScale);
+            goTbl.insert("ConvexHullColliderComponent", std::move(colTbl));
         }
 
         // RigidBodyComponent
@@ -447,6 +550,16 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             rbTbl.insert("isStatic",               body.m_isStatic);
             rbTbl.insert("velocity",               Vec3ToArr(body.GetVelocity()));
             rbTbl.insert("angularVelocity",        Vec3ToArr(body.GetAngularVelocity()));
+            rbTbl.insert("freezePosition",         Vec3ToArr({
+                body.GetFreezePosition().x ? 1.0f : 0.0f,
+                body.GetFreezePosition().y ? 1.0f : 0.0f,
+                body.GetFreezePosition().z ? 1.0f : 0.0f
+            }));
+            rbTbl.insert("freezeRotation",         Vec3ToArr({
+                body.GetFreezeRotation().x ? 1.0f : 0.0f,
+                body.GetFreezeRotation().y ? 1.0f : 0.0f,
+                body.GetFreezeRotation().z ? 1.0f : 0.0f
+            }));
             rbTbl.insert("charge",                 (double)body.m_charge);
             rbTbl.insert("isGravitationalSource",  body.m_isGravitationalSource);
             rbTbl.insert("gravitationalMass",      (double)body.m_gravitationalMass);
@@ -764,41 +877,40 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<ParticleEmitter>(pe);
         }
 
-        // ColliderComponent
-        if (auto* colTbl = (*goTbl)["ColliderComponent"].as_table()) {
-            ColliderComponent col{};
-            col.enabled   = (*colTbl)["enabled"].value_or(true);
-            col.isTrigger = (*colTbl)["isTrigger"].value_or(false);
+        if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
+            AabbColliderComponent col{};
+            ReadAabbCollider(*colTbl, col);
+            go.AddComponent<AabbColliderComponent>(std::move(col));
+        }
 
-            if (auto* matTbl = (*colTbl)["material"].as_table()) {
-                col.material.restitution     = (float)(*matTbl)["restitution"].value_or(0.3);
-                col.material.staticFriction  = (float)(*matTbl)["staticFriction"].value_or(0.6);
-                col.material.dynamicFriction = (float)(*matTbl)["dynamicFriction"].value_or(0.4);
-                col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
-            }
+        if (auto* colTbl = (*goTbl)["BoxColliderComponent"].as_table()) {
+            BoxColliderComponent col{};
+            ReadBoxCollider(*colTbl, col);
+            go.AddComponent<BoxColliderComponent>(std::move(col));
+        }
 
-            if (auto* shapeTbl = (*colTbl)["shape"].as_table()) {
-                std::string type = (*shapeTbl)["type"].value_or(std::string{"AABB"});
-                if (type == "Sphere") {
-                    const float radius = (float)(*shapeTbl)["radius"].value_or(0.5);
-                    col.collider = std::make_shared<physics::SphereCollider>(radius);
-                } else if (type == "OBB") {
-                    const auto halfExtents = ArrToVec3(
-                        (*shapeTbl)["halfExtents"].as_array(), { 0.5f, 0.5f, 0.5f });
-                    col.collider = std::make_shared<physics::OBBCollider>(halfExtents);
-                } else if (type == "Capsule") {
-                    const float radius     = (float)(*shapeTbl)["radius"].value_or(0.5);
-                    const float halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
-                    col.collider = std::make_shared<physics::CapsuleCollider>(radius, halfHeight);
-                } else {
-                    const auto halfExtents = ArrToVec3(
-                        (*shapeTbl)["halfExtents"].as_array(), { 0.5f, 0.5f, 0.5f });
-                    col.collider = std::make_shared<physics::AABBCollider>(halfExtents);
-                }
-            }
+        if (auto* colTbl = (*goTbl)["SphereColliderComponent"].as_table()) {
+            SphereColliderComponent col{};
+            ReadSphereCollider(*colTbl, col);
+            go.AddComponent<SphereColliderComponent>(std::move(col));
+        }
 
-            if (col.collider)
-                go.AddComponent<ColliderComponent>(std::move(col));
+        if (auto* colTbl = (*goTbl)["CapsuleColliderComponent"].as_table()) {
+            CapsuleColliderComponent col{};
+            ReadCapsuleCollider(*colTbl, col);
+            go.AddComponent<CapsuleColliderComponent>(std::move(col));
+        }
+
+        if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
+            MeshColliderComponent col{};
+            ReadMeshCollider(*colTbl, col);
+            go.AddComponent<MeshColliderComponent>(std::move(col));
+        }
+
+        if (auto* colTbl = (*goTbl)["ConvexHullColliderComponent"].as_table()) {
+            ConvexHullColliderComponent col{};
+            ReadConvexHullCollider(*colTbl, col);
+            go.AddComponent<ConvexHullColliderComponent>(std::move(col));
         }
 
         // RigidBodyComponent
@@ -815,6 +927,18 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
             rb.rigidBody->SetAngularVelocity(
                 ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
+            const math::Vector3 freezePosition = ArrToVec3((*rbTbl)["freezePosition"].as_array(), math::Vector3::ZERO);
+            const math::Vector3 freezeRotation = ArrToVec3((*rbTbl)["freezeRotation"].as_array(), math::Vector3::ZERO);
+            rb.rigidBody->SetFreezePosition({
+                freezePosition.x != 0.0f,
+                freezePosition.y != 0.0f,
+                freezePosition.z != 0.0f
+            });
+            rb.rigidBody->SetFreezeRotation({
+                freezeRotation.x != 0.0f,
+                freezeRotation.y != 0.0f,
+                freezeRotation.z != 0.0f
+            });
             rb.rigidBody->m_charge = (float)(*rbTbl)["charge"].value_or(0.0);
             rb.rigidBody->m_isGravitationalSource =
                 (*rbTbl)["isGravitationalSource"].value_or(false);

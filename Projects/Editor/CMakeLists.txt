@@ -1,4 +1,4 @@
-file(GLOB_RECURSE EDITOR_SOURCES
+file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     src/*.hpp
     include/*.hpp
