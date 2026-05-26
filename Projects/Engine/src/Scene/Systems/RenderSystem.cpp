@@ -311,6 +311,14 @@ void RenderSystem(Scene& scene,
     };
 
     renderer::RenderGraph graph;
+    graph.DeclareResource("Output", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true, false });
+    graph.DeclareResource("ShadowMap", { renderer::RenderGraph::ResourceKind::RenderTarget, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, false, false });
+    graph.DeclareResource("HDR", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.DeclareResource("LDR", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.DeclareResource("Outline", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.DeclareResource("Bloom", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    graph.SetOutputs({ "Output" });
 
     graph.AddPass("Shadow", {}, { "ShadowMap" }, [&]() {
     renderer.SetRenderTarget(shadowMapRT, resources);
@@ -617,29 +625,50 @@ void RenderSystem(Scene& scene,
 
     });
 
-    graph.AddPass("SelectionMask", { "HDR" }, { "SelectionMask" }, [&]() {
-        ExecuteSelectionMaskPass(passCtx);
-    });
+    if (selectionOutlineEnabled) {
+        graph.AddPass("SelectionMask", { "HDR" }, { "SelectionMask" }, [&]() {
+            ExecuteSelectionMaskPass(passCtx);
+        });
+    }
 
     graph.AddPass("DebugColliders", { "HDR" }, { "HDR" }, [&]() {
         ExecuteDebugCollidersPass(passCtx);
     });
 
-    graph.AddPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
-        ExecuteBloomPass(passCtx);
-    });
+    if (rs.bloomEnabled) {
+        graph.AddPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
+            ExecuteBloomPass(passCtx);
+        });
+    }
 
-    graph.AddPass("Composite", { "HDR", "Bloom" }, { "LDR" }, [&]() {
-        ExecuteCompositePass(passCtx);
-    });
+    const bool needsLdrIntermediate = rs.fxaaEnabled || selectionOutlineEnabled;
+    if (rs.bloomEnabled) {
+        graph.AddPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+            ExecuteCompositePass(passCtx);
+        });
+    } else {
+        graph.AddPass("Composite", { "HDR" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+            ExecuteCompositePass(passCtx);
+        });
+    }
 
-    graph.AddPass("SelectionOutline", { "LDR", "SelectionMask" }, { "Outline" }, [&]() {
-        ExecuteSelectionOutlinePass(passCtx);
-    });
+    if (selectionOutlineEnabled) {
+        graph.AddPass("SelectionOutline", { "LDR", "SelectionMask" }, { rs.fxaaEnabled ? "Outline" : "Output" }, [&]() {
+            ExecuteSelectionOutlinePass(passCtx);
+        });
+    }
 
-    graph.AddPass("FXAA", { "LDR", "Outline" }, { "Output" }, [&]() {
-        ExecuteFxaaPass(passCtx);
-    });
+    if (rs.fxaaEnabled) {
+        if (selectionOutlineEnabled) {
+            graph.AddPass("FXAA", { "Outline" }, { "Output" }, [&]() {
+                ExecuteFxaaPass(passCtx);
+            });
+        } else {
+            graph.AddPass("FXAA", { "LDR" }, { "Output" }, [&]() {
+                ExecuteFxaaPass(passCtx);
+            });
+        }
+    }
 
     const bool graphExecuted = graph.Execute();
     assert(graphExecuted);
