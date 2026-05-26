@@ -1,5 +1,5 @@
 // FBZZ Engine
-// SkinnedPBR.hlsl | Material
+// Material/Skinned/SkinnedPBR.hlsl | Material
 // GPU-skinned Cook-Torrance PBR forward pass
 
 #include "Common/Constants.hlsli"

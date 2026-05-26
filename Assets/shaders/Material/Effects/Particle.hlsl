@@ -1,5 +1,5 @@
 // FBZZ Engine
-// Particle.hlsl | Material
+// Material/Effects/Particle.hlsl | Material
 // CPU パーティクル用ビルボードシェーダー
 // PSO: SOLID_NOCULL + ADDITIVE + DEPTH_READ
 

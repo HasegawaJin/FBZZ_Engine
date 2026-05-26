@@ -1,5 +1,5 @@
 // FBZZ Engine
-// ShadowMap.hlsl | Pipeline
+// Pipeline/Shadow/ShadowMap.hlsl | Pipeline
 // シャドウマップ生成パス — 深度値のみ書き出す (カラー出力なし)
 //
 // ライトの viewProjection をそのまま ObjectConstants.world と組み合わせて

@@ -1,5 +1,5 @@
 // FBZZ Engine
-// DeferredLighting.hlsl | Pipeline
+// Pipeline/Deferred/DeferredLighting.hlsl | Pipeline
 // ディファードライティングパス — GBuffer を読み取り PBR ライティングを適用する
 //
 // フルスクリーン三角形 (頂点バッファなし) で描画する。

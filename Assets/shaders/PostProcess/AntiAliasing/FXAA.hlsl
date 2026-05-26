@@ -1,5 +1,5 @@
 // FBZZ Engine
-// FXAA.hlsl | PostProcess
+// PostProcess/AntiAliasing/FXAA.hlsl | PostProcess
 // Fast Approximate Anti-Aliasing — FXAA 3.11 console 版の PS 移植
 // 入力: TEX_GBUFFER0 (t5) = Composite 出力 LDR カラー
 

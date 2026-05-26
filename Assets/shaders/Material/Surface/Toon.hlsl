@@ -1,5 +1,5 @@
 // FBZZ Engine
-// Toon.hlsl | Material
+// Material/Surface/Toon.hlsl | Material
 // セル/トゥーンシェーディング — NdotL を 3 段階に量子化して漫画風陰影を作る
 
 #include "Common/Constants.hlsli"

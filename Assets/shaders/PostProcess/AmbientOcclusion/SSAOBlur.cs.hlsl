@@ -1,5 +1,5 @@
 // FBZZ Engine
-// SSAOBlur.cs.hlsl | PostProcess
+// PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl | PostProcess
 // SSAO の 4x4 ボックスブラー — ノイズを平滑化する
 //
 // Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1

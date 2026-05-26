@@ -1,5 +1,5 @@
 // FBZZ Engine
-// SSAO.cs.hlsl | PostProcess
+// PostProcess/AmbientOcclusion/SSAO.cs.hlsl | PostProcess
 // Screen Space Ambient Occlusion — 半球サンプリングで遮蔽率を計算する
 //
 // Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1
