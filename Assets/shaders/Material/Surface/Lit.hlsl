@@ -1,5 +1,5 @@
 // FBZZ Engine
-// Lit.hlsl | Material
+// Material/Surface/Lit.hlsl | Material
 // Lambert 拡散 + PCF シャドウ (法線マップなし)
 
 #include "Common/Constants.hlsli"

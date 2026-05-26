@@ -1,5 +1,5 @@
 // FBZZ Engine
-// BloomDownsample.cs.hlsl | PostProcess
+// PostProcess/Bloom/BloomDownsample.cs.hlsl | PostProcess
 // Bloom ダウンサンプル — 輝度閾値でフィルタしながら半分解像度に縮小する
 //
 // Dispatch サイズ: ceil(dstWidth/8) x ceil(dstHeight/8) x 1

@@ -1,5 +1,5 @@
 // FBZZ Engine
-// GBuffer.hlsl | Pipeline
+// Pipeline/Deferred/GBuffer.hlsl | Pipeline
 // ジオメトリパス — 法線マップ・PBR テクスチャを 2 枚の MRT に書き出す
 //
 // MRT レイアウト:

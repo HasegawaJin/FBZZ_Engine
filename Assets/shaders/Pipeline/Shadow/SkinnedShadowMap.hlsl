@@ -1,5 +1,5 @@
 // FBZZ Engine
-// SkinnedShadowMap.hlsl | Pipeline
+// Pipeline/Shadow/SkinnedShadowMap.hlsl | Pipeline
 // Depth-only shadow map pass for GPU-skinned meshes
 
 #include "Common/Constants.hlsli"

@@ -1,5 +1,5 @@
 // FBZZ Engine
-// BloomUpsample.cs.hlsl | PostProcess
+// PostProcess/Bloom/BloomUpsample.cs.hlsl | PostProcess
 // Bloom アップサンプル — テントフィルタで 2 倍解像度に拡大・加算する
 //
 // Dispatch サイズ: ceil(dstWidth/8) x ceil(dstHeight/8) x 1

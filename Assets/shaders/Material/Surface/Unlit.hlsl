@@ -1,5 +1,5 @@
 // FBZZ Engine
-// Unlit.hlsl | Material
+// Material/Surface/Unlit.hlsl | Material
 // ライティングなし — アルベドをそのまま出力する
 #ifndef UNLIT_HLSL
 #define UNLIT_HLSL

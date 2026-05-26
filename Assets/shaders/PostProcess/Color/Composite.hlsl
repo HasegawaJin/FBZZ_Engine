@@ -1,5 +1,5 @@
 // FBZZ Engine
-// Composite.hlsl | PostProcess
+// PostProcess/Color/Composite.hlsl | PostProcess
 // 最終合成パス — HDR + Bloom を合成してトーンマップ・ガンマ補正し LDR に出力する
 // フォグ: 深度バッファから線形距離を復元して指数フォグを適用する
 

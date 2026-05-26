@@ -1,17 +1,17 @@
 // FBZZ Engine
-// Phong.hlsl | Material
-// Phong 鏡面反射 + PCF シャドウ
-#ifndef PHONG_HLSL
-#define PHONG_HLSL
+// Material/Surface/BlinnPhong.hlsl | Material
+// Blinn-Phong 鏡面反射 + 法線マップ + PCF シャドウ
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+// ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で提供される
 
 Texture2D<float>       texShadow   : register(TEX_SHADOW);
 Texture2D              texAlbedo   : register(TEX_ALBEDO);
+Texture2D              texNormal   : register(TEX_NORMAL);
 SamplerState           sampDefault : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 
@@ -29,16 +29,23 @@ PSInput VSMain(VSInput v)
 
 float4 PSMain(PSInput p) : SV_Target0
 {
-    float3 col    = (textureMask & 1u)
+    float3 col = (textureMask & 1u)
         ? texAlbedo.Sample(sampDefault, p.uv).rgb
         : albedo;
-    float3 N      = normalize(p.normal);
+
+    float3 N = normalize(p.normal);
+    if (textureMask & (1u << 1))
+    {
+        float3 normalSample = texNormal.Sample(sampDefault, p.uv).rgb;
+        N = ApplyNormalMap(normalSample, N, normalize(p.tangent));
+    }
+
     float3 V      = normalize(cameraPos - p.worldPos);
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    float3 result = Lighting_Phong(N, V, L, col, roughness,
-                                   lightColor, lightIntensity, shadow);
+    float3 result = Lighting_BlinnPhong(N, V, L, col, roughness,
+                                        lightColor, lightIntensity, shadow);
 
     [loop] for (int pi = 0; pi < pointLightCount; ++pi)
     {
@@ -46,7 +53,7 @@ float4 PSMain(PSInput p) : SV_Target0
         float  dist    = length(toLight);
         float3 Lp      = toLight / dist;
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_Phong_Direct(N, V, Lp, col, roughness,
+        result += Lighting_BlinnPhong_Direct(N, V, Lp, col, roughness,
                       pointLights[pi].color, pointLights[pi].intensity * atten);
     }
     [loop] for (int si = 0; si < spotLightCount; ++si)
@@ -57,10 +64,8 @@ float4 PSMain(PSInput p) : SV_Target0
         float  atten   = LightAttenuation(dist, spotLights[si].range);
         float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
                              spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_Phong_Direct(N, V, Ls, col, roughness,
+        result += Lighting_BlinnPhong_Direct(N, V, Ls, col, roughness,
                       spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
     return float4(result, 1.0f);
 }
-
-#endif // PHONG_HLSL
