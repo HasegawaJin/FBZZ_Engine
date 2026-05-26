@@ -83,9 +83,23 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  exposure;
     float  time;
     float  fogDensity;
-    float  _ppPad;
+    float  bloomIntensity;
     float3 fogColor;
     float  fogFar;
+    float  contrast;
+    float  saturation;
+    float  hueShift;
+    float  temperature;
+    float  tint;
+    float  vignetteIntensity;
+    float  vignetteSmoothness;
+    float  vignetteRoundness;
+    float3 vignetteColor;
+    float  filmGrainIntensity;
+    float  filmGrainResponse;
+    float  chromaticAberration;
+    float  lensDistortion;
+    float  _ppPad;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)
