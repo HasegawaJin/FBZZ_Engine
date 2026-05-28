@@ -47,6 +47,7 @@ hz = 60
 substeps = 4
 
 [render]
+pipeline = 'forward'
 bloom = true
 bloomIntensity = 0.8
 chromaticAberration = 0.005
@@ -77,6 +78,14 @@ vignetteIntensity = 0.25
 vignetteRoundness = 1.0
 vignetteSmoothness = 0.45
 wireframe = false
+
+[[render.customPostProcesses]]
+blend = 1.0
+enabled = false
+intensity = 1.0
+name = 'Default Custom'
+parameters = [ 0.0, 0.0, 0.0, 0.0 ]
+shader = 'assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl'
 
 [screen]
 height = 1080

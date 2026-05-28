@@ -8,6 +8,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <sstream>
+#include <utility>
 
 namespace fbzz {
 
@@ -95,6 +96,12 @@ bool ProjectSettings::Load(const std::string& path)
 
     if (auto* renderTbl = tbl["render"].as_table()) {
         auto& pp = render.postProcess;
+        {
+            const auto s = (*renderTbl)["pipeline"].value_or(std::string("forward"));
+            render.pipeline = (s == "deferred")
+                ? renderer::RenderingPipeline::Deferred
+                : renderer::RenderingPipeline::Forward;
+        }
         render.wireframeMode = (*renderTbl)["wireframe"].value_or(render.wireframeMode);
         render.shadowEnabled = (*renderTbl)["shadow"].value_or(render.shadowEnabled);
         pp.bloom.enabled = (*renderTbl)["bloom"].value_or(pp.bloom.enabled);
@@ -139,6 +146,40 @@ bool ProjectSettings::Load(const std::string& path)
             render.outlineColor[1] = (float)(*outlineColorArr)[1].value_or((double)render.outlineColor[1]);
             render.outlineColor[2] = (float)(*outlineColorArr)[2].value_or((double)render.outlineColor[2]);
             render.outlineColor[3] = (float)(*outlineColorArr)[3].value_or((double)render.outlineColor[3]);
+        }
+        if (auto* customArr = (*renderTbl)["customPostProcesses"].as_array()) {
+            pp.customEffects.clear();
+            for (auto& elem : *customArr) {
+                auto* customTbl = elem.as_table();
+                if (!customTbl) continue;
+
+                renderer::CustomPostProcessSettings custom;
+                custom.name = (*customTbl)["name"].value_or(custom.name);
+                custom.enabled = (*customTbl)["enabled"].value_or(custom.enabled);
+                custom.shaderPath = (*customTbl)["shader"].value_or(custom.shaderPath);
+                custom.intensity = (float)(*customTbl)["intensity"].value_or((double)custom.intensity);
+                custom.blend = (float)(*customTbl)["blend"].value_or((double)custom.blend);
+                if (auto* paramsArr = (*customTbl)["parameters"].as_array(); paramsArr && paramsArr->size() >= 4) {
+                    custom.parameters[0] = (float)(*paramsArr)[0].value_or((double)custom.parameters[0]);
+                    custom.parameters[1] = (float)(*paramsArr)[1].value_or((double)custom.parameters[1]);
+                    custom.parameters[2] = (float)(*paramsArr)[2].value_or((double)custom.parameters[2]);
+                    custom.parameters[3] = (float)(*paramsArr)[3].value_or((double)custom.parameters[3]);
+                }
+                pp.customEffects.push_back(std::move(custom));
+            }
+        } else if ((*renderTbl)["customPostProcess"].value_or(false)) {
+            renderer::CustomPostProcessSettings custom;
+            custom.enabled = true;
+            custom.shaderPath = (*renderTbl)["customPostProcessShader"].value_or(custom.shaderPath);
+            custom.intensity = (float)(*renderTbl)["customPostProcessIntensity"].value_or((double)custom.intensity);
+            custom.blend = (float)(*renderTbl)["customPostProcessBlend"].value_or((double)custom.blend);
+            if (auto* customParamsArr = (*renderTbl)["customPostProcessParameters"].as_array(); customParamsArr && customParamsArr->size() >= 4) {
+                custom.parameters[0] = (float)(*customParamsArr)[0].value_or((double)custom.parameters[0]);
+                custom.parameters[1] = (float)(*customParamsArr)[1].value_or((double)custom.parameters[1]);
+                custom.parameters[2] = (float)(*customParamsArr)[2].value_or((double)custom.parameters[2]);
+                custom.parameters[3] = (float)(*customParamsArr)[3].value_or((double)custom.parameters[3]);
+            }
+            pp.customEffects.push_back(std::move(custom));
         }
     }
 
@@ -205,7 +246,26 @@ bool ProjectSettings::Save(const std::string& path) const
     outlineColorArr.push_back((double)render.outlineColor[2]);
     outlineColorArr.push_back((double)render.outlineColor[3]);
 
+    toml::array customEffectsArr;
+    for (const auto& custom : pp.customEffects) {
+        toml::array customParamsArr;
+        customParamsArr.push_back((double)custom.parameters[0]);
+        customParamsArr.push_back((double)custom.parameters[1]);
+        customParamsArr.push_back((double)custom.parameters[2]);
+        customParamsArr.push_back((double)custom.parameters[3]);
+
+        toml::table customTbl;
+        customTbl.insert("name", custom.name);
+        customTbl.insert("enabled", custom.enabled);
+        customTbl.insert("shader", custom.shaderPath);
+        customTbl.insert("intensity", (double)custom.intensity);
+        customTbl.insert("blend", (double)custom.blend);
+        customTbl.insert("parameters", std::move(customParamsArr));
+        customEffectsArr.push_back(std::move(customTbl));
+    }
+
     toml::table renderTbl;
+    renderTbl.insert("pipeline", render.pipeline == renderer::RenderingPipeline::Deferred ? "deferred" : "forward");
     renderTbl.insert("wireframe",    render.wireframeMode);
     renderTbl.insert("shadow",       render.shadowEnabled);
     renderTbl.insert("bloom",        pp.bloom.enabled);
@@ -236,6 +296,7 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("filmGrainResponse", (double)pp.filmGrain.response);
     renderTbl.insert("chromaticAberration", (double)pp.lens.chromaticAberration);
     renderTbl.insert("lensDistortion", (double)pp.lens.distortion);
+    renderTbl.insert("customPostProcesses", std::move(customEffectsArr));
     renderTbl.insert("outlineWidth", (double)render.outlineWidth);
     renderTbl.insert("outlineColor", std::move(outlineColorArr));
 
