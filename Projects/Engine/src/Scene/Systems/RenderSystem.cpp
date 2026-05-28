@@ -38,6 +38,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -171,6 +173,11 @@ void RenderSystem(Scene& scene,
     });
     static auto fxaaShader = resources.LoadShader("assets/shaders/PostProcess/AntiAliasing/FXAA.hlsl");
 
+    // Deferred pipeline shaders — loaded once and reused across frames.
+    static auto gbufferShader          = resources.LoadShader("assets/shaders/Pipeline/Deferred/GBuffer.hlsl");
+    static auto deferredLightingShader = resources.LoadShader("assets/shaders/Pipeline/Deferred/DeferredLighting.hlsl");
+    static auto depthCopyShader        = resources.LoadShader("assets/shaders/Pipeline/Deferred/DepthCopy.hlsl");
+
     // Preallocate buffers for the maximum particle draw count.
     static renderer::ResourceHandle<renderer::BufferTag> particleVB;
     static renderer::ResourceHandle<renderer::BufferTag> particleIB;
@@ -199,6 +206,8 @@ void RenderSystem(Scene& scene,
     static renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
+    static renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
+    static renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;   // Deferred: MRT (color×2 + depth)
     static renderer::ResourceHandle<renderer::TextureTag>      bloomHalf;
     static renderer::ResourceHandle<renderer::TextureTag>      bloomFull;
     static uint32_t sHdrW = 0, sHdrH = 0;
@@ -209,16 +218,22 @@ void RenderSystem(Scene& scene,
         if (curW == 0 || curH == 0) return;
         if (!hdrRT.IsValid() || sHdrW != curW || sHdrH != curH)
         {
-            if (hdrRT.IsValid()) resources.Release(hdrRT);
-            if (ldrRT.IsValid()) resources.Release(ldrRT);
-            if (selectionMaskRT.IsValid()) resources.Release(selectionMaskRT);
-            if (outlineRT.IsValid()) resources.Release(outlineRT);
-            if (bloomHalf.IsValid()) resources.Release(bloomHalf);
-            if (bloomFull.IsValid()) resources.Release(bloomFull);
+            if (hdrRT.IsValid())            resources.Release(hdrRT);
+            if (ldrRT.IsValid())            resources.Release(ldrRT);
+            if (selectionMaskRT.IsValid())  resources.Release(selectionMaskRT);
+            if (outlineRT.IsValid())        resources.Release(outlineRT);
+            if (customPostProcessRT[0].IsValid()) resources.Release(customPostProcessRT[0]);
+            if (customPostProcessRT[1].IsValid()) resources.Release(customPostProcessRT[1]);
+            if (gbufferRT.IsValid())        resources.Release(gbufferRT);
+            if (bloomHalf.IsValid())        resources.Release(bloomHalf);
+            if (bloomFull.IsValid())        resources.Release(bloomFull);
             hdrRT           = resources.CreateRenderTarget(curW, curH, 1);
             ldrRT           = resources.CreateRenderTarget(curW, curH, 1);
             selectionMaskRT = resources.CreateRenderTarget(curW, curH, 1);
             outlineRT       = resources.CreateRenderTarget(curW, curH, 1);
+            customPostProcessRT[0] = resources.CreateRenderTarget(curW, curH, 1);
+            customPostProcessRT[1] = resources.CreateRenderTarget(curW, curH, 1);
+            gbufferRT       = resources.CreateRenderTarget(curW, curH, 2); // GBuffer0 + GBuffer1
             bloomHalf       = resources.CreateComputeTexture(std::max(1u, curW / 2), std::max(1u, curH / 2));
             bloomFull       = resources.CreateComputeTexture(curW, curH);
             sHdrW           = curW;
@@ -282,6 +297,8 @@ void RenderSystem(Scene& scene,
     passHandles.ldrRT = ldrRT;
     passHandles.selectionMaskRT = selectionMaskRT;
     passHandles.outlineRT = outlineRT;
+    passHandles.customPostProcessRT[0] = customPostProcessRT[0];
+    passHandles.customPostProcessRT[1] = customPostProcessRT[1];
     passHandles.bloomHalf = bloomHalf;
     passHandles.bloomFull = bloomFull;
     passHandles.bloomDownShader = bloomDownShader;
@@ -291,6 +308,16 @@ void RenderSystem(Scene& scene,
     passHandles.selectionMaskSkinnedShader = selectionMaskSkinnedShader;
     passHandles.selectionOutlineShader = selectionOutlineShader;
     passHandles.fxaaShader = fxaaShader;
+    passHandles.customPostProcessShaders.resize(rs.postProcess.customEffects.size());
+    std::vector<uint32_t> customPostProcessIndices;
+    customPostProcessIndices.reserve(rs.postProcess.customEffects.size());
+    for (uint32_t i = 0; i < static_cast<uint32_t>(rs.postProcess.customEffects.size()); ++i) {
+        const auto& custom = rs.postProcess.customEffects[i];
+        if (!custom.enabled || custom.shaderPath.empty()) continue;
+        passHandles.customPostProcessShaders[i] = resources.LoadShader(custom.shaderPath);
+        if (passHandles.customPostProcessShaders[i].IsValid())
+            customPostProcessIndices.push_back(i);
+    }
     passHandles.selectionMaskPSO = selectionMaskPso;
     passHandles.postprocPSO = postprocPSO;
     passHandles.frameCB = frameCB;
@@ -313,6 +340,8 @@ void RenderSystem(Scene& scene,
         selectionOutlineEnabled
     };
 
+    const bool isDeferred = (rs.pipeline == renderer::RenderingPipeline::Deferred);
+
     renderer::RenderGraph graph;
     graph.DeclareResource("Output", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true, false });
     graph.DeclareResource("ShadowMap", { renderer::RenderGraph::ResourceKind::RenderTarget, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0, false, false });
@@ -320,7 +349,11 @@ void RenderSystem(Scene& scene,
     graph.DeclareResource("LDR", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("Outline", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("Bloom", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    if (isDeferred)
+        graph.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, false });
     graph.SetOutputs({ "Output" });
 
     graph.AddPass("Shadow", {}, { "ShadowMap" }, [&]() {
@@ -394,6 +427,11 @@ void RenderSystem(Scene& scene,
     }
 
     });
+
+    // =========================================================================
+    // Forward pipeline: opaque static + skinned meshes in one pass.
+    // =========================================================================
+    if (!isDeferred) {
 
     graph.AddPass("ForwardOpaque", { "ShadowMap" }, { "HDR" }, [&]() {
     renderer.SetRenderTarget(hdrRT, resources);
@@ -501,7 +539,98 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    });
+    }); // ForwardOpaque
+
+    } // if (!isDeferred)
+
+    // =========================================================================
+    // Deferred pipeline:
+    //   GBuffer → DepthCopy → Sky → DeferredLighting → DeferredSkinnedForward
+    //
+    // パス実行順:
+    //   1. GBuffer: 静的メッシュをジオメトリバッファへ書き込む
+    //   2. DepthCopy: GBuffer 深度を hdrRT 深度へ転写し、Sky / スキンドが正しく深度テストできるようにする
+    //   3. Sky: hdrRT 深度 == 1.0 の背景部分にのみ描画 (DEPTH_SKY)
+    //   4. DeferredLighting: フルスクリーンで PBR ライティングを適用。gbuf_depth==1.0 は discard して Sky 色を保持
+    //   5. DeferredSkinnedForward: スキンドメッシュをフォワードで描画 (hdrRT の GBuffer 深度を利用)
+    // =========================================================================
+    if (isDeferred) {
+
+    graph.AddPass("DeferredGBuffer", { "ShadowMap" }, { "GBuffer" }, [&]() {
+    renderer.SetRenderTarget(gbufferRT, resources);
+    renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
+
+    PerFrameCB frameData{};
+    frameData.view              = camera.GetViewMatrix();
+    frameData.projection        = camera.GetProjectionMatrix();
+    frameData.viewProjection    = camera.GetViewProjection();
+    frameData.invViewProjection = math::Matrix4::Inverse(frameData.viewProjection);
+    frameData.cameraPos         = camera.m_position;
+    frameData.nearZ             = camera.m_near;
+    frameData.farZ              = camera.m_far;
+    resources.Update(frameCB, &frameData, sizeof(PerFrameCB));
+
+    resources.Update(lightCB, &lightData, sizeof(renderer::LightConstantsCB));
+
+    ShadowConstantsCB shadowData{};
+    shadowData.lightViewProjection    = lightVP;
+    shadowData.shadowMapTexelSize[0]  = 1.0f / static_cast<float>(SHADOW_MAP_SIZE);
+    shadowData.shadowMapTexelSize[1]  = 1.0f / static_cast<float>(SHADOW_MAP_SIZE);
+    shadowData.shadowBias             = 0.005f;
+    resources.Update(shadowCB, &shadowData, sizeof(ShadowConstantsCB));
+
+    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
+    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+
+    if (gbufferShader.IsValid()) {
+        for (auto& go : scene.GameObjects()) {
+            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            auto* mr  = go.GetComponent<MeshRenderer>();
+            auto* mat = go.GetComponent<MaterialComponent>();
+            if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
+            if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
+            if (mr->mesh->isSkinned) continue;
+            auto* material = SyncMaterial(*mat, resources);
+
+            PerObjectCB objData{};
+            objData.world             = go.transform.GetWorldMatrix();
+            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+            resources.Update(objectCB, &objData, sizeof(PerObjectCB));
+
+            renderer::DrawCall dc;
+            dc.vertexBuffer       = mr->mesh->vertexBuffer;
+            dc.indexBuffer        = mr->mesh->indexBuffer;
+            dc.indexCount         = mr->mesh->indexCount;
+            dc.vertexCount        = mr->mesh->vertexCount;
+            dc.shader             = gbufferShader;
+            dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
+            dc.constantBuffers[0] = frameCB;
+            dc.constantBuffers[1] = objectCB;
+            dc.constantBuffers[2] = material ? material->paramsBuffer : renderer::ResourceHandle<renderer::ConstantBufferTag>{};
+            if (material && material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
+            if (material && material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
+            renderer.Submit(dc, resources);
+        }
+    }
+    }); // DeferredGBuffer
+
+    graph.AddPass("DeferredDepthCopy", { "GBuffer" }, { "HDR" }, [&]() {
+    // hdrRT をクリア (カラー・深度 1.0 にリセット) してから GBuffer 深度を転写する。
+    // この深度は Sky (DEPTH_SKY) と DeferredSkinnedForward (DEPTH_ON) が参照する。
+    renderer.SetRenderTarget(hdrRT, resources);
+    renderer.Clear({ 0.0f, 0.0f, 0.0f, 1.0f });
+
+    if (depthCopyShader.IsValid() && gbufferRT.IsValid()) {
+        renderer::DrawCall dc;
+        dc.shader        = depthCopyShader;
+        dc.pipelineState = pso;  // DEPTH_ON: 深度テスト + 書き込みあり
+        dc.vertexCount   = 3;
+        dc.textures[7]   = resources.GetDepthTexture(gbufferRT);  // TEX_DEPTH
+        renderer.Submit(dc, resources);
+    }
+    }); // DeferredDepthCopy
+
+    } // if (isDeferred)
 
     graph.AddPass("Sky", { "HDR" }, { "HDR" }, [&]() {
     if (skydomeShader.IsValid() && skydomeMesh && skydomeMesh->vertexBuffer.IsValid() && skydomeMesh->indexBuffer.IsValid())
@@ -542,7 +671,88 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    });
+    }); // Sky
+
+    if (isDeferred) {
+
+    graph.AddPass("DeferredLighting", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+    // Sky 色・深度を保持したまま上書きするため SetRenderTarget のみ (Clear しない)。
+    renderer.SetRenderTarget(hdrRT, resources);
+    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
+    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+
+    if (deferredLightingShader.IsValid() && gbufferRT.IsValid()) {
+        renderer::DrawCall dc;
+        dc.shader             = deferredLightingShader;
+        dc.pipelineState      = postprocPSO;  // DEPTH_OFF: 深度テスト・書き込みなし
+        dc.vertexCount        = 3;
+        dc.constantBuffers[0] = frameCB;
+        dc.constantBuffers[3] = lightCB;
+        dc.constantBuffers[4] = shadowCB;
+        dc.textures[5]        = resources.GetColorTexture(gbufferRT, 0);  // TEX_GBUFFER0
+        dc.textures[6]        = resources.GetColorTexture(gbufferRT, 1);  // TEX_GBUFFER1
+        dc.textures[7]        = resources.GetDepthTexture(gbufferRT);     // TEX_DEPTH
+        dc.textures[8]        = resources.GetDepthTexture(shadowMapRT);   // TEX_SHADOW
+        renderer.Submit(dc, resources);
+    }
+    }); // DeferredLighting
+
+    graph.AddPass("DeferredSkinnedForward", { "HDR" }, { "HDR" }, [&]() {
+    // スキンドメッシュはフォワードパスで描画する。
+    // hdrRT の深度には DeferredDepthCopy で転写した GBuffer 深度が入っているため
+    // 静的ジオメトリとの正しいオクルージョンが保たれる。
+    renderer.SetRenderTarget(hdrRT, resources);
+    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
+    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+
+    const auto shadowDepthTex = resources.GetDepthTexture(shadowMapRT);
+
+    if (skinnedPbrShader.IsValid()) {
+        for (auto& go : scene.GameObjects()) {
+            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
+            auto* mat  = go.GetComponent<MaterialComponent>();
+            auto* anim = go.GetComponent<AnimatorComponent>();
+            if (!smr || !smr->enabled || !smr->model) continue;
+            if (!mat) continue;
+            auto* material = SyncMaterial(*mat, resources);
+            if (!material) continue;
+
+            PerObjectCB objData{};
+            objData.world             = go.transform.GetWorldMatrix();
+            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+            resources.Update(objectCB, &objData, sizeof(PerObjectCB));
+
+            const auto skinCB = (anim && anim->skinningBuffer.IsValid())
+                ? anim->skinningBuffer : bindPoseSkinningCB;
+
+            for (const auto& meshPtr : smr->model->meshes) {
+                if (!meshPtr) continue;
+                if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+
+                renderer::DrawCall dc;
+                dc.vertexBuffer       = meshPtr->vertexBuffer;
+                dc.indexBuffer        = meshPtr->indexBuffer;
+                dc.indexCount         = meshPtr->indexCount;
+                dc.vertexCount        = meshPtr->vertexCount;
+                dc.shader             = skinnedPbrShader;
+                dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
+                dc.constantBuffers[0] = frameCB;
+                dc.constantBuffers[1] = objectCB;
+                dc.constantBuffers[2] = material->paramsBuffer;
+                dc.constantBuffers[3] = lightCB;
+                dc.constantBuffers[4] = shadowCB;
+                dc.constantBuffers[7] = skinCB;
+                if (material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
+                if (material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
+                dc.textures[8] = shadowDepthTex;
+                renderer.Submit(dc, resources);
+            }
+        }
+    }
+    }); // DeferredSkinnedForward
+
+    } // if (isDeferred)
 
     graph.AddPass("Particle", { "HDR" }, { "HDR" }, [&]() {
     if (particleShader.IsValid() && particleVB.IsValid() && particleIB.IsValid())
@@ -644,7 +854,12 @@ void RenderSystem(Scene& scene,
         });
     }
 
-    const bool needsLdrIntermediate = rs.postProcess.fxaaEnabled || selectionOutlineEnabled;
+    const bool customPostProcessEnabled =
+        !customPostProcessIndices.empty() &&
+        customPostProcessRT[0].IsValid() &&
+        customPostProcessRT[1].IsValid();
+    const bool needsLdrIntermediate =
+        rs.postProcess.fxaaEnabled || selectionOutlineEnabled || customPostProcessEnabled;
     if (rs.postProcess.bloom.enabled) {
         graph.AddPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
@@ -655,8 +870,37 @@ void RenderSystem(Scene& scene,
         });
     }
 
+    std::string postCustomResource = "LDR";
+    if (customPostProcessEnabled) {
+        std::string inputResource = "LDR";
+        for (uint32_t passIndex = 0; passIndex < static_cast<uint32_t>(customPostProcessIndices.size()); ++passIndex) {
+            const bool lastCustomPass = passIndex + 1 == static_cast<uint32_t>(customPostProcessIndices.size());
+            const bool writesOutput = lastCustomPass && !rs.postProcess.fxaaEnabled && !selectionOutlineEnabled;
+            const uint32_t outputIndex = writesOutput ? 2u : (passIndex % 2u);
+            const std::string outputResource = writesOutput
+                ? std::string("Output")
+                : std::string(outputIndex == 0 ? "CustomPostProcess0" : "CustomPostProcess1");
+            const std::string passName = "CustomPostProcess" + std::to_string(passIndex);
+            const uint32_t customIndex = customPostProcessIndices[passIndex];
+
+            graph.AddPass(
+                std::string_view(passName),
+                { std::string_view(inputResource) },
+                { std::string_view(outputResource) },
+                [&, customIndex, outputIndex]() {
+                    ExecuteCustomPostProcessPass(passCtx, customIndex, outputIndex);
+                });
+
+            inputResource = outputResource;
+        }
+        postCustomResource = inputResource;
+    }
+
     if (selectionOutlineEnabled) {
-        graph.AddPass("SelectionOutline", { "LDR", "SelectionMask" }, { rs.postProcess.fxaaEnabled ? "Outline" : "Output" }, [&]() {
+        graph.AddPass("SelectionOutline",
+            { std::string_view(postCustomResource), "SelectionMask" },
+            { rs.postProcess.fxaaEnabled ? "Outline" : "Output" },
+            [&]() {
             ExecuteSelectionOutlinePass(passCtx);
         });
     }
@@ -664,6 +908,10 @@ void RenderSystem(Scene& scene,
     if (rs.postProcess.fxaaEnabled) {
         if (selectionOutlineEnabled) {
             graph.AddPass("FXAA", { "Outline" }, { "Output" }, [&]() {
+                ExecuteFxaaPass(passCtx);
+            });
+        } else if (customPostProcessEnabled) {
+            graph.AddPass("FXAA", { std::string_view(postCustomResource) }, { "Output" }, [&]() {
                 ExecuteFxaaPass(passCtx);
             });
         } else {
