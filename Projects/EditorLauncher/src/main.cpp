@@ -202,6 +202,45 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
     world.SetSubsteps(settings.physics.substeps);
 }
 
+void WarmupRenderResources(scene::Scene& scene,
+                           renderer::IRenderer& renderer,
+                           renderer::ResourceManager& resources,
+                           editor::EditorApp& editorApp,
+                           const renderer::Camera& sceneCamera,
+                           const renderer::Camera& gameCamera,
+                           fbzz::LayerMask gameCullingMask)
+{
+    // WHY: RenderSystem は初回呼び出しで shader / PSO / shadow map / GBuffer などを lazy initialize する。
+    // その負荷を最初の可視フレームに乗せると、Release では起動直後だけ FPS 表示が大きく落ちる。
+    // WHAT: メインループ開始前に viewport RT へ 1 回描画し、描画リソースを先に生成しておく。
+    renderer.BeginFrame();
+
+    const auto sceneRT = editorApp.GetViewportRT();
+    if (sceneRT.IsValid()) {
+        renderer.SetRenderTarget(sceneRT, resources);
+        renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
+        auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
+        scene::RenderSystem(scene, renderer, resources, sceneCamera, sceneRT, &sceneRenderSettings);
+    }
+
+    const auto gameRT = editorApp.GetGameViewportRT();
+    if (gameRT.IsValid()) {
+        renderer.SetRenderTarget(gameRT, resources);
+        renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
+        scene::RenderSystem(scene,
+                            renderer,
+                            resources,
+                            gameCamera,
+                            gameRT,
+                            &editorApp.GetContext().projectSettings.render,
+                            gameCullingMask);
+    }
+
+    renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
+    renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
+    renderer.EndFrame();
+}
+
 } // namespace
 
 int Run()
@@ -257,6 +296,40 @@ int Run()
     debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
     editorApp.GetContext().editorCamera = &debugCamera.camera;
 
+    {
+        const auto sceneRT = editorApp.GetViewportRT();
+        if (auto* rt = resources.Get(sceneRT)) {
+            debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+        }
+
+        renderer::Camera gameCamera = debugCamera.camera;
+        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
+        const auto gameRT = editorApp.GetGameViewportRT();
+        if (auto* rt = resources.Get(gameRT)) {
+            gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+        }
+
+        for (auto& go : scene->GameObjects()) {
+            auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
+            if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
+                continue;
+
+            gameCamera.m_position = go.transform.position;
+            gameCamera.m_rotation = go.transform.rotation;
+            gameCamera.m_fovY     = cameraComponent->fovY;
+            gameCamera.m_near     = cameraComponent->nearZ;
+            gameCamera.m_far      = cameraComponent->farZ;
+            gameCullingMask       = cameraComponent->cullingMask;
+            break;
+        }
+
+        WarmupRenderResources(*scene, renderer, resources, editorApp, debugCamera.camera, gameCamera, gameCullingMask);
+
+        // WHY: warmup にかかった時間を最初の DeltaTime / FPS 表示へ混ぜない。
+        // WHAT: Time をここで初期化し、メインループの次フレームから通常計測を始める。
+        core::Time::Tick();
+    }
+
     while (app.IsRunning()) {
         core::Time::Tick();
         input::Input::Update();
@@ -304,7 +377,7 @@ int Run()
                     focusAnim.t      = 1.0f;
                     focusAnim.active = false;
                 }
-                // smoothstep: 貊代ｉ縺九↑蜉騾溘・貂幃・
+                // smoothstep
                 const float s = focusAnim.t * focusAnim.t * (3.0f - 2.0f * focusAnim.t);
                 debugCamera.camera.m_position = focusAnim.startPos
                     + (focusAnim.endPos - focusAnim.startPos) * s;
@@ -320,7 +393,7 @@ int Run()
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-            // 繧ｹ繝・ャ繝怜ｮ溯｡梧凾縺ｯ蝗ｺ螳・1 繧ｹ繝・ャ繝励・縺ｿ騾ｲ繧√ｋ
+
             if (stepFrame) {
                 scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
             } else {

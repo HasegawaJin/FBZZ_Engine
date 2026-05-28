@@ -23,6 +23,7 @@ using namespace fbzz::core;
 namespace
 {
     constexpr wchar_t kWindowClassName[] = L"FBZZWindowClass";
+    constexpr int kDefaultApplicationIconId = 101;
 
     void EnableDpiAwareness()
     {
@@ -89,6 +90,19 @@ namespace
             static_cast<LONG>(y + windowHeight)
         };
     }
+
+    HICON LoadApplicationIcon(HINSTANCE instance, int size)
+    {
+        // WHY: Window クラスにアイコンを設定しないと、exe に埋め込んだアイコンがタイトルバーや Alt+Tab に
+        // 反映されない環境がある。LR_SHARED により HICON の寿命を OS 管理にして、Window 側の解放責務を持たない。
+        return static_cast<HICON>(LoadImageW(
+            instance,
+            MAKEINTRESOURCEW(kDefaultApplicationIconId),
+            IMAGE_ICON,
+            size,
+            size,
+            LR_DEFAULTCOLOR | LR_SHARED));
+    }
 }
 
 bool Window::Initialize(const Config& config)
@@ -99,10 +113,13 @@ bool Window::Initialize(const Config& config)
     m_height = config.height;
 
     WNDCLASSEXW wc{};
+    HINSTANCE instance = GetModuleHandleW(nullptr);
     wc.cbSize        = sizeof(WNDCLASSEXW);
     wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     wc.lpfnWndProc   = WndProc;
-    wc.hInstance     = GetModuleHandleW(nullptr);
+    wc.hInstance     = instance;
+    wc.hIcon         = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXICON));
+    wc.hIconSm       = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXSMICON));
     wc.hCursor       = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
     wc.lpszClassName = kWindowClassName;
 
@@ -123,7 +140,7 @@ bool Window::Initialize(const Config& config)
         windowRect.right - windowRect.left,
         windowRect.bottom - windowRect.top,
         nullptr, nullptr,
-        GetModuleHandleW(nullptr),
+        instance,
         this);
 
     assert(m_hwnd && "Window creation failed");

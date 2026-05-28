@@ -3,7 +3,17 @@ file(GLOB_RECURSE EDITOR_LAUNCHER_SOURCES
     src/*.hpp
 )
 
-add_executable(fbzz_editor_launcher WIN32 ${EDITOR_LAUNCHER_SOURCES})
+set(EDITOR_LAUNCHER_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/editor_launcher.rc")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/editor_launcher.rc.in"
+    "${EDITOR_LAUNCHER_RESOURCE}"
+    @ONLY
+)
+
+add_executable(fbzz_editor_launcher WIN32
+    ${EDITOR_LAUNCHER_SOURCES}
+    "${EDITOR_LAUNCHER_RESOURCE}"
+)
 
 set_target_properties(fbzz_editor_launcher PROPERTIES
     OUTPUT_NAME "FBZZEditor"
