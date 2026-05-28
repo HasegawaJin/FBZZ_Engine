@@ -43,13 +43,13 @@ private:
     static std::string          s_basePath;
     static bool                 s_initialized;
 
-    static std::unordered_map<std::string, std::shared_ptr<Model>> s_models;
+    static std::unordered_map<std::string, std::shared_ptr<Model>>    s_models;
     static std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>> s_textures;
 
     static std::string Normalize(const std::string& path);
 };
 
-template<> std::shared_ptr<Model> AssetManager::Load<Model>(const std::string&);
-template<> void AssetManager::Unload<Model>(const std::string&);
+template<> std::shared_ptr<Model>    AssetManager::Load<Model>   (const std::string&);
+template<> void AssetManager::Unload<Model>   (const std::string&);
 
 } // namespace fbzz::asset
