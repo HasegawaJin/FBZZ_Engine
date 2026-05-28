@@ -11,13 +11,14 @@
 #include <Engine/Core/Logger.hpp>
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 
 namespace fbzz::asset {
 
 renderer::ResourceManager* AssetManager::s_resources = nullptr;
-std::string AssetManager::s_basePath = "assets/";
+std::string AssetManager::s_basePath = "Assets/";
 bool AssetManager::s_initialized = false;
-std::unordered_map<std::string, std::shared_ptr<Model>> AssetManager::s_models;
+std::unordered_map<std::string, std::shared_ptr<Model>>    AssetManager::s_models;
 std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>> AssetManager::s_textures;
 
 std::string AssetManager::Normalize(const std::string& path)
@@ -28,9 +29,44 @@ std::string AssetManager::Normalize(const std::string& path)
 }
 
 // basePath + key を優先して試し、存在しなければ key をそのまま使う
+static bool StartsWithIgnoreCase(const std::string& s, const char* prefix)
+{
+    for (size_t i = 0; prefix[i] != '\0'; ++i) {
+        if (i >= s.size()) return false;
+        const auto a = static_cast<unsigned char>(s[i]);
+        const auto b = static_cast<unsigned char>(prefix[i]);
+        if (std::tolower(a) != std::tolower(b)) return false;
+    }
+    return true;
+}
+
+static bool IsAbsolutePath(const std::string& path)
+{
+    if (path.empty()) return false;
+    if (path[0] == '/') return true;
+    return path.size() >= 3 &&
+           std::isalpha(static_cast<unsigned char>(path[0])) &&
+           path[1] == ':' &&
+           path[2] == '/';
+}
+
+static std::string EnsureTrailingSlash(std::string path)
+{
+    if (!path.empty() && path.back() != '/')
+        path.push_back('/');
+    return path;
+}
+
 static std::string ResolvePath(const std::string& key, const std::string& basePath)
 {
-    const std::string full = basePath + key;
+    if (IsAbsolutePath(key))
+        return key;
+
+    std::string assetKey = key;
+    if (StartsWithIgnoreCase(assetKey, "Assets/"))
+        assetKey = assetKey.substr(7);
+
+    const std::string full = EnsureTrailingSlash(basePath) + assetKey;
     if (util::FileSystem::Exists(full)) return full;
     if (util::FileSystem::Exists(key))  return key;
     return full; // 存在しなくても呼び出し元に任せる (エラーログは呼び出し元で)
@@ -40,7 +76,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
 {
     assert(!s_initialized && "AssetManager::Init() must be called once");
     s_resources = &resources;
-    s_basePath = basePath;
+    s_basePath = Normalize(basePath);
     s_initialized = true;
 }
 

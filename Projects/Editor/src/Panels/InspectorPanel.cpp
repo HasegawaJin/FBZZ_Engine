@@ -163,10 +163,12 @@ scene::MeshRenderer CreateDefaultMeshRenderer()
     return mr;
 }
 
-scene::MaterialComponent CreateDefaultMaterialComponent()
+scene::MaterialComponent CreateDefaultMaterialComponent(bool skinned = false)
 {
     scene::MaterialComponent mc;
-    mc.shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
+    mc.shaderPath = skinned
+        ? "Assets/shaders/Material/Skinned/SkinnedPBR.hlsl"
+        : "Assets/shaders/Material/Surface/Phong.hlsl";
     auto material = std::make_shared<renderer::Material>();
     material->shaderPath = mc.shaderPath;
     if (auto* resources = renderer::ResourceManager::Active()) {
@@ -430,10 +432,11 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
         shown |= addItem(category, "Skinned Mesh Renderer", !go.GetComponent<scene::SkinnedMeshRenderer>(), [&]() {
             go.AddComponent<scene::SkinnedMeshRenderer>();
             if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
         });
         shown |= addItem(category, "Material", !go.GetComponent<scene::MaterialComponent>(), [&]() {
-            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+            go.AddComponent<scene::MaterialComponent>(
+                CreateDefaultMaterialComponent(go.GetComponent<scene::SkinnedMeshRenderer>() != nullptr));
         });
         shown |= addItem(category, "Light", !go.GetComponent<scene::LightComponent>(), [&]() {
             go.AddComponent<scene::LightComponent>();
@@ -492,7 +495,7 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
             if (!go.GetComponent<scene::SkinnedMeshRenderer>())
                 go.AddComponent<scene::SkinnedMeshRenderer>();
             if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
         });
         return shown;
     });
@@ -776,7 +779,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     ImGui::TextColored({ 1.0f, 0.8f, 0.2f, 1.0f }, "! Material component required");
                     if (ImGui::Button("Add Material")) {
                         if (auto* go2 = ctx.GetSelectedGO())
-                            go2->AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+                            go2->AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
                     }
                 }
             }
@@ -863,99 +866,67 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     DrawComponentSection<scene::MaterialComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Material",
         [](scene::MaterialComponent& mc, EditorContext&) {
-            auto applyShader = [&mc]() {
+
+            // テクスチャパス入力 + ドロップターゲット共通ヘルパー
+            auto texField = [](const char* label, std::string& path) {
+                char buf[256];
+                std::snprintf(buf, sizeof(buf), "%s", path.c_str());
+                if (ImGui::InputText(label, buf, sizeof(buf)))
+                    path = buf;
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        path = static_cast<const char*>(p->Data);
+                        for (char& c : path) if (c == '\\') c = '/';
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+            };
+
+            if (!mc.material) {
                 auto& material = EnsureMaterial(mc);
-                material.shaderPath = mc.shaderPath;
                 if (auto* res = renderer::ResourceManager::Active()) {
-                    material.shader = mc.shaderPath.empty()
-                        ? renderer::ResourceHandle<renderer::ShaderTag>{}
-                        : res->LoadShader(mc.shaderPath);
                     material.Init(*res);
                     material.Upload(*res);
                 }
-            };
-            auto applyAlbedo = [&mc]() {
-                auto& material = EnsureMaterial(mc);
-                if (auto* res = renderer::ResourceManager::Active()) {
-                    material.albedoTexture = mc.albedoTexPath.empty()
-                        ? renderer::ResourceHandle<renderer::TextureTag>{}
-                        : res->LoadTexture(mc.albedoTexPath);
-                    material.Upload(*res);
-                }
-            };
-            auto applyNormal = [&mc]() {
-                auto& material = EnsureMaterial(mc);
-                if (auto* res = renderer::ResourceManager::Active()) {
-                    material.normalTexture = mc.normalTexPath.empty()
-                        ? renderer::ResourceHandle<renderer::TextureTag>{}
-                        : res->LoadTexture(mc.normalTexPath);
-                    material.Upload(*res);
-                }
-            };
+            }
 
-            if (!mc.material)
-                applyShader();
-
-            // Shader
+            ImGui::SeparatorText("Shader");
             char shaderBuf[256];
             std::snprintf(shaderBuf, sizeof(shaderBuf), "%s", mc.shaderPath.c_str());
-            if (ImGui::InputText("Shader", shaderBuf, sizeof(shaderBuf)))
+            if (ImGui::InputText("Shader (HLSL)", shaderBuf, sizeof(shaderBuf)))
                 mc.shaderPath = shaderBuf;
-            if (ImGui::IsItemDeactivatedAfterEdit()) applyShader();
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     mc.shaderPath = static_cast<const char*>(p->Data);
                     for (char& c : mc.shaderPath) if (c == '\\') c = '/';
-                    applyShader();
                 }
                 ImGui::EndDragDropTarget();
             }
 
-            // Albedo Tex
-            char albedoBuf[256];
-            std::snprintf(albedoBuf, sizeof(albedoBuf), "%s", mc.albedoTexPath.c_str());
-            if (ImGui::InputText("Albedo Tex", albedoBuf, sizeof(albedoBuf)))
-                mc.albedoTexPath = albedoBuf;
-            if (ImGui::IsItemDeactivatedAfterEdit()) applyAlbedo();
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    mc.albedoTexPath = static_cast<const char*>(p->Data);
-                    for (char& c : mc.albedoTexPath) if (c == '\\') c = '/';
-                    applyAlbedo();
-                }
-                ImGui::EndDragDropTarget();
-            }
+            ImGui::SeparatorText("Textures");
+            texField("Albedo (t0)",        mc.albedoTexPath);
+            texField("Normal (t1)",        mc.normalTexPath);
+            texField("MetallicRough (t2)", mc.metallicRoughTexPath);
+            texField("Emissive (t3)",      mc.emissiveTexPath);
+            texField("AO (t4)",            mc.aoTexPath);
 
-            // Normal Tex
-            char normalBuf[256];
-            std::snprintf(normalBuf, sizeof(normalBuf), "%s", mc.normalTexPath.c_str());
-            if (ImGui::InputText("Normal Tex", normalBuf, sizeof(normalBuf)))
-                mc.normalTexPath = normalBuf;
-            if (ImGui::IsItemDeactivatedAfterEdit()) applyNormal();
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    mc.normalTexPath = static_cast<const char*>(p->Data);
-                    for (char& c : mc.normalTexPath) if (c == '\\') c = '/';
-                    applyNormal();
-                }
-                ImGui::EndDragDropTarget();
-            }
+            ImGui::SeparatorText("Surface");
+            ImGui::ColorEdit4("Albedo Color",        mc.albedoColor);
+            ImGui::SliderFloat("Metallic",           &mc.metallic,          0.0f, 1.0f);
+            ImGui::SliderFloat("Roughness",          &mc.roughness,         0.0f, 1.0f);
+            ImGui::SliderFloat("Normal Strength",    &mc.normalStrength,    0.0f, 2.0f);
+            ImGui::SliderFloat("Occlusion Strength", &mc.occlusionStrength, 0.0f, 1.0f);
 
-            if (mc.material) {
-                auto& p = mc.material->params;
-                auto uploadMaterial = [&mc]() {
-                    if (auto* resources = renderer::ResourceManager::Active())
-                        mc.material->Upload(*resources);
-                };
-                float col[4] = { p.albedo.x, p.albedo.y, p.albedo.z, p.albedo.w };
-                if (ImGui::ColorEdit4("Albedo Color", col)) {
-                    p.albedo = { col[0], col[1], col[2], col[3] };
-                    uploadMaterial();
-                }
-                if (ImGui::SliderFloat("Metallic",      &p.metallic,      0.0f, 1.0f))  uploadMaterial();
-                if (ImGui::SliderFloat("Roughness",     &p.roughness,     0.0f, 1.0f))  uploadMaterial();
-                if (ImGui::DragFloat("Emissive Scale",  &p.emissiveScale, 0.01f, 0.0f, 10.0f)) uploadMaterial();
-            }
+            ImGui::SeparatorText("Emissive");
+            ImGui::ColorEdit3("Emissive Color", mc.emissiveColor);
+            ImGui::DragFloat("Emissive Scale",  &mc.emissiveScale, 0.01f, 0.0f, 100.0f);
+
+            ImGui::SeparatorText("UV");
+            ImGui::DragFloat2("Tiling", mc.uvTiling, 0.01f, 0.0f, 100.0f);
+            ImGui::DragFloat2("Offset", mc.uvOffset, 0.01f, -10.0f, 10.0f);
+
+            ImGui::SeparatorText("Alpha");
+            ImGui::SliderFloat("Cutoff", &mc.alphaCutoff, 0.0f, 1.0f);
         });
 
     DrawComponentSection<scene::LightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light",

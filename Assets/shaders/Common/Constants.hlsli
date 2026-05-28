@@ -23,13 +23,22 @@ cbuffer ObjectConstants : register(CB_OBJECT)
     float4x4 worldInvTranspose;
 };
 
+// MaterialParams (C++) と完全に一致させること。offset / padding を変えないこと。
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
-    float4 albedo;
-    float  metallic;
-    float  roughness;
-    float  emissiveScale;
-    uint   textureMask;
+    float4 albedo;                // RGBA ベースカラー               offset  0
+    float  metallic;              // 金属度 [0, 1]                   offset 16
+    float  roughness;             // 粗さ   [0, 1]                   offset 20
+    float  normalStrength;        // 法線マップ強度                   offset 24
+    float  occlusionStrength;     // AO 強度 [0, 1]                  offset 28
+    float3 emissiveColor;         // エミッシブ色 (emissiveScale と乗算) offset 32
+    float  emissiveScale;         // エミッシブ強度                   offset 44
+    float2 uvTiling;              // UV タイリング (X, Y)             offset 48
+    float2 uvOffset;              // UV オフセット (X, Y)             offset 56
+    float  alphaCutoff;           // アルファカットオフしきい値         offset 64
+    float3 _matPad0;              //                                  offset 68
+    uint   textureMask;           // テクスチャ存在フラグ (bit 0-4)    offset 80
+    float3 _matPad1;              //                                  offset 84
 };
 
 #define MAX_POINT_LIGHTS 8

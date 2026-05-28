@@ -117,6 +117,17 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
     ImGui::Checkbox("Selection Outline", &render.showSelectionOutline);
 
     ImGui::Spacing();
+    ImGui::SeparatorText("Debug");
+    ImGui::Checkbox("Pass Viewer", &render.passViewerEnabled);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            "各レンダーパスの RT サムネイルと CPU タイミングを\n"
+            "ImGui ウィンドウ \"Render Debug\" に表示します。");
+    }
+
+    ImGui::Spacing();
     ImGui::SliderFloat("Outline Width", &render.outlineWidth, 0.005f, 0.2f);
     ImGui::ColorEdit4("Outline Color", render.outlineColor);
 }
