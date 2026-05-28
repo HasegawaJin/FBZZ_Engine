@@ -507,6 +507,12 @@ void EditorApp::RefreshSceneDirtyState(bool force)
     if (!m_ctx.activeScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
+    // WHY: SceneDirtyTracker::Evaluate() はシーン全体を serialize して hash 化するため、
+    // 未編集のアイドル状態で 0.5 秒ごとに呼ぶと Release ビルドでは FPS の周期的な落ち込みとして見える。
+    // WHAT: 編集操作は MarkDirty() で dirty に遷移させる設計なので、clean 状態では重い再評価を省略する。
+    if (!force && !m_ctx.sceneDirty && !m_dirtyTracker.IsDirty())
+        return;
+
     m_dirtyPollTimer += ImGui::GetIO().DeltaTime;
     if (!force && m_dirtyPollTimer < 0.5f && m_ctx.sceneDirty == m_dirtyTracker.IsDirty())
         return;
