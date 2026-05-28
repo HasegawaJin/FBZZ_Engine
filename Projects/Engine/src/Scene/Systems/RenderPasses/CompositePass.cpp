@@ -3,6 +3,7 @@
 // Composite render pass implementation
 #include "PostProcessPasses.hpp"
 #include "RenderPassContext.hpp"
+#include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/SamplerMode.hpp>
 
@@ -16,7 +17,16 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     const auto& rs = ctx.settings;
 
     const auto& pp = rs.postProcess;
-    const bool needsLdrIntermediate = pp.fxaaEnabled || ctx.selectionOutlineEnabled;
+    bool hasCustomPostProcess = false;
+    for (const auto shader : h.customPostProcessShaders) {
+        if (shader.IsValid()) {
+            hasCustomPostProcess = true;
+            break;
+        }
+    }
+    const bool needsLdrIntermediate =
+        pp.fxaaEnabled || ctx.selectionOutlineEnabled ||
+        (hasCustomPostProcess && h.customPostProcessRT[0].IsValid());
     r.SetRenderTarget(needsLdrIntermediate ? h.ldrRT : ctx.outputRT, resources);
 
     PostProcCB postData{};
@@ -25,6 +35,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.screenSize[0] = static_cast<float>(ctx.width);
     postData.screenSize[1] = static_cast<float>(ctx.height);
     postData.exposure = pp.exposure;
+    postData.time = core::Time::TotalTime();
     postData.bloomIntensity = pp.bloom.enabled ? pp.bloom.intensity : 0.0f;
     postData.fogDensity = pp.fog.enabled ? pp.fog.density : 0.0f;
     postData.fogFar = pp.fog.farDistance;
@@ -61,7 +72,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     compositeDC.textures[10] = pp.bloom.enabled ? h.bloomFull : renderer::ResourceHandle<renderer::TextureTag>{};
     r.Submit(compositeDC, resources);
 
-    h.fxaaInput = resources.GetColorTexture(h.ldrRT, 0);
+    h.postProcessInput = resources.GetColorTexture(h.ldrRT, 0);
+    h.fxaaInput = h.postProcessInput;
 }
 
 } // namespace fbzz::scene
