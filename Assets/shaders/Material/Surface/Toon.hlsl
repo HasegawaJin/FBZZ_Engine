@@ -58,7 +58,7 @@ float4 PSMain(PSInput p) : SV_Target0
                       spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
 
-    // リム ライト: 輪郭に明るいエッジを加えてセル感を強調
+    // リムライト: 輪郭に明るいエッジを加えてセル感を強調
     float  rim    = 1.0f - saturate(dot(N, V));
     rim = pow(rim, 3.0f);
     result += col * rim * 0.4f;

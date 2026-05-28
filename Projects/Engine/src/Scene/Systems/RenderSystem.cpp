@@ -4,6 +4,7 @@
 // Builds render graph passes and submits renderer draw calls.
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
+#include "Engine/Renderer/RenderDebugOverlay.hpp"
 #include "RenderPasses/DebugPasses.hpp"
 #include "RenderPasses/PostProcessPasses.hpp"
 #include "RenderPasses/RenderPassContext.hpp"
@@ -13,6 +14,7 @@
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
@@ -35,6 +37,7 @@
 #include <Math/Vector4.hpp>
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <memory>
@@ -65,6 +68,15 @@ inline math::Vector4 LerpVec4(const math::Vector4& a, const math::Vector4& b, fl
              a.w + (b.w - a.w) * t };
 }
 
+bool IsSurfaceMaterialShader(std::string_view path)
+{
+    std::string lower(path);
+    std::replace(lower.begin(), lower.end(), '\\', '/');
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return lower.find("/material/surface/") != std::string::npos;
+}
+
 renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources)
 {
     if (!mc.enabled) return nullptr;
@@ -79,16 +91,38 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
     }
 
     auto& material = *mc.material;
+
     material.shaderPath = mc.shaderPath;
+
     material.shader = material.shaderPath.empty()
         ? renderer::ResourceHandle<renderer::ShaderTag>{}
         : resources.LoadShader(material.shaderPath);
-    material.albedoTexture = mc.albedoTexPath.empty()
-        ? renderer::ResourceHandle<renderer::TextureTag>{}
-        : resources.LoadTexture(mc.albedoTexPath);
-    material.normalTexture = mc.normalTexPath.empty()
-        ? renderer::ResourceHandle<renderer::TextureTag>{}
-        : resources.LoadTexture(mc.normalTexPath);
+
+    auto loadTex = [&](const std::string& path) {
+        return path.empty()
+            ? renderer::ResourceHandle<renderer::TextureTag>{}
+            : resources.LoadTexture(path);
+    };
+    material.albedoTexture        = loadTex(mc.albedoTexPath);
+    material.normalTexture        = loadTex(mc.normalTexPath);
+    material.metallicRoughTexture = loadTex(mc.metallicRoughTexPath);
+    material.emissiveTexture      = loadTex(mc.emissiveTexPath);
+    material.aoTexture            = loadTex(mc.aoTexPath);
+
+    auto& p = material.params;
+    p.albedo            = { mc.albedoColor[0], mc.albedoColor[1], mc.albedoColor[2], mc.albedoColor[3] };
+    p.metallic          = mc.metallic;
+    p.roughness         = mc.roughness;
+    p.normalStrength    = mc.normalStrength;
+    p.occlusionStrength = mc.occlusionStrength;
+    p.emissiveColor     = { mc.emissiveColor[0], mc.emissiveColor[1], mc.emissiveColor[2] };
+    p.emissiveScale     = mc.emissiveScale;
+    p.uvTiling[0]       = mc.uvTiling[0];
+    p.uvTiling[1]       = mc.uvTiling[1];
+    p.uvOffset[0]       = mc.uvOffset[0];
+    p.uvOffset[1]       = mc.uvOffset[1];
+    p.alphaCutoff       = mc.alphaCutoff;
+
     material.Upload(resources);
     return &material;
 }
@@ -489,13 +523,16 @@ void RenderSystem(Scene& scene,
         dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = lightCB;
         dc.constantBuffers[4] = shadowCB;
-        if (material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
-        if (material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
+        if (material->albedoTexture.IsValid())        dc.textures[0] = material->albedoTexture;
+        if (material->normalTexture.IsValid())        dc.textures[1] = material->normalTexture;
+        if (material->metallicRoughTexture.IsValid()) dc.textures[2] = material->metallicRoughTexture;
+        if (material->emissiveTexture.IsValid())      dc.textures[3] = material->emissiveTexture;
+        if (material->aoTexture.IsValid())            dc.textures[4] = material->aoTexture;
         dc.textures[8] = passHandles.shadowDepthTex;
         renderer.Submit(dc, resources);
     }
 
-    if (skinnedPbrShader.IsValid()) {
+    {
         for (auto& go : scene.GameObjects()) {
             if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
             auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
@@ -505,6 +542,9 @@ void RenderSystem(Scene& scene,
             if (!mat) continue;
             auto* material = SyncMaterial(*mat, resources);
             if (!material) continue;
+            const auto skinnedShader = (material->shader.IsValid() && !IsSurfaceMaterialShader(material->shaderPath))
+                ? material->shader : skinnedPbrShader;
+            if (!skinnedShader.IsValid()) continue;
 
             PerObjectCB objData{};
             objData.world             = go.transform.GetWorldMatrix();
@@ -523,7 +563,7 @@ void RenderSystem(Scene& scene,
                 dc.indexBuffer        = meshPtr->indexBuffer;
                 dc.indexCount         = meshPtr->indexCount;
                 dc.vertexCount        = meshPtr->vertexCount;
-                dc.shader             = skinnedPbrShader;
+                dc.shader             = skinnedShader;
                 dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
                 dc.constantBuffers[0] = frameCB;
                 dc.constantBuffers[1] = objectCB;
@@ -531,8 +571,11 @@ void RenderSystem(Scene& scene,
                 dc.constantBuffers[3] = lightCB;
                 dc.constantBuffers[4] = shadowCB;
                 dc.constantBuffers[7] = skinCB;
-                if (material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
-                if (material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
+                if (material->albedoTexture.IsValid())        dc.textures[0] = material->albedoTexture;
+                if (material->normalTexture.IsValid())        dc.textures[1] = material->normalTexture;
+                if (material->metallicRoughTexture.IsValid()) dc.textures[2] = material->metallicRoughTexture;
+                if (material->emissiveTexture.IsValid())      dc.textures[3] = material->emissiveTexture;
+                if (material->aoTexture.IsValid())            dc.textures[4] = material->aoTexture;
                 dc.textures[8] = passHandles.shadowDepthTex;
                 renderer.Submit(dc, resources);
             }
@@ -607,8 +650,11 @@ void RenderSystem(Scene& scene,
             dc.constantBuffers[0] = frameCB;
             dc.constantBuffers[1] = objectCB;
             dc.constantBuffers[2] = material ? material->paramsBuffer : renderer::ResourceHandle<renderer::ConstantBufferTag>{};
-            if (material && material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
-            if (material && material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
+            if (material && material->albedoTexture.IsValid())        dc.textures[0] = material->albedoTexture;
+            if (material && material->normalTexture.IsValid())        dc.textures[1] = material->normalTexture;
+            if (material && material->metallicRoughTexture.IsValid()) dc.textures[2] = material->metallicRoughTexture;
+            if (material && material->emissiveTexture.IsValid())      dc.textures[3] = material->emissiveTexture;
+            if (material && material->aoTexture.IsValid())            dc.textures[4] = material->aoTexture;
             renderer.Submit(dc, resources);
         }
     }
@@ -707,7 +753,7 @@ void RenderSystem(Scene& scene,
 
     const auto shadowDepthTex = resources.GetDepthTexture(shadowMapRT);
 
-    if (skinnedPbrShader.IsValid()) {
+    {
         for (auto& go : scene.GameObjects()) {
             if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
             auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
@@ -717,6 +763,9 @@ void RenderSystem(Scene& scene,
             if (!mat) continue;
             auto* material = SyncMaterial(*mat, resources);
             if (!material) continue;
+            const auto skinnedShader = (material->shader.IsValid() && !IsSurfaceMaterialShader(material->shaderPath))
+                ? material->shader : skinnedPbrShader;
+            if (!skinnedShader.IsValid()) continue;
 
             PerObjectCB objData{};
             objData.world             = go.transform.GetWorldMatrix();
@@ -735,7 +784,7 @@ void RenderSystem(Scene& scene,
                 dc.indexBuffer        = meshPtr->indexBuffer;
                 dc.indexCount         = meshPtr->indexCount;
                 dc.vertexCount        = meshPtr->vertexCount;
-                dc.shader             = skinnedPbrShader;
+                dc.shader             = skinnedShader;
                 dc.pipelineState      = rs.wireframeMode ? wireframePso : pso;
                 dc.constantBuffers[0] = frameCB;
                 dc.constantBuffers[1] = objectCB;
@@ -743,8 +792,11 @@ void RenderSystem(Scene& scene,
                 dc.constantBuffers[3] = lightCB;
                 dc.constantBuffers[4] = shadowCB;
                 dc.constantBuffers[7] = skinCB;
-                if (material->albedoTexture.IsValid()) dc.textures[0] = material->albedoTexture;
-                if (material->normalTexture.IsValid()) dc.textures[1] = material->normalTexture;
+                if (material->albedoTexture.IsValid())        dc.textures[0] = material->albedoTexture;
+                if (material->normalTexture.IsValid())        dc.textures[1] = material->normalTexture;
+                if (material->metallicRoughTexture.IsValid()) dc.textures[2] = material->metallicRoughTexture;
+                if (material->emissiveTexture.IsValid())      dc.textures[3] = material->emissiveTexture;
+                if (material->aoTexture.IsValid())            dc.textures[4] = material->aoTexture;
                 dc.textures[8] = shadowDepthTex;
                 renderer.Submit(dc, resources);
             }
@@ -924,6 +976,23 @@ void RenderSystem(Scene& scene,
     const bool graphExecuted = graph.Execute();
     assert(graphExecuted);
     (void)graphExecuted;
+
+    // パスビューア用スナップショットを更新する。
+    // GetImTextureID は DX11 ステートに副作用を持つ可能性があるため、GPU 実行中は
+    // ハンドルの保存のみ行い、実際の Draw は ImGui フレーム内 (RenderPanels 等) で行う。
+    {
+        renderer::RenderDebugOverlay::Snapshot dbgSnap;
+        dbgSnap.hdrRT           = hdrRT;
+        dbgSnap.ldrRT           = ldrRT;
+        dbgSnap.selectionMaskRT = selectionMaskRT;
+        dbgSnap.outlineRT       = outlineRT;
+        dbgSnap.gbufferRT       = gbufferRT;
+        dbgSnap.width           = sHdrW;
+        dbgSnap.height          = sHdrH;
+        for (const auto& profile : graph.GetLastReport().profiles)
+            dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
+        renderer::RenderDebugOverlay::UpdateSnapshot(dbgSnap, rs.passViewerEnabled);
+    }
 }
 
 } // namespace fbzz::scene

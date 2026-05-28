@@ -1,7 +1,7 @@
 // FBZZ Engine
-// Material/Skinned/SkinnedPBR.hlsl | Material
-// GPU スキニング + Cook-Torrance PBR フォワードパス
-// PS ロジックは Surface/PBR.hlsl と完全に一致させること。
+// Material/Skinned/SkinnedDissolve.hlsl | Material
+// GPU スキニング + ディゾルブエフェクト
+// PS ロジックは Surface/Dissolve.hlsl と完全に一致させること。
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
@@ -42,6 +42,31 @@ PSInput VSMain(SkinnedVSInput v)
     return o;
 }
 
+float Hash21(float2 p)
+{
+    p = frac(p * float2(127.1f, 311.7f));
+    p += dot(p, p + 19.19f);
+    return frac(p.x * p.y);
+}
+
+float ValueNoise(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    float2 u = f * f * (3.0f - 2.0f * f);
+    return lerp(lerp(Hash21(i),                Hash21(i + float2(1.0f, 0.0f)), u.x),
+                lerp(Hash21(i + float2(0.0f, 1.0f)), Hash21(i + float2(1.0f, 1.0f)), u.x), u.y);
+}
+
+float DissolveMask(float2 uv)
+{
+    float n  = ValueNoise(uv * 4.0f)  * 0.500f;
+          n += ValueNoise(uv * 8.0f)  * 0.250f;
+          n += ValueNoise(uv * 16.0f) * 0.125f;
+          n += ValueNoise(uv * 32.0f) * 0.125f;
+    return saturate(n);
+}
+
 float4 PSMain(PSInput p) : SV_Target0
 {
     float2 uv = p.uv * uvTiling + uvOffset;
@@ -51,7 +76,11 @@ float4 PSMain(PSInput p) : SV_Target0
         : albedo;
     float3 col   = albedoSample.rgb * albedo.rgb;
     float  alpha = albedoSample.a  * albedo.a;
-    clip(alpha - alphaCutoff);
+
+    float  mask      = DissolveMask(uv);
+    float  edgeWidth = 0.06f;
+    clip(mask - alphaCutoff);
+    float  edgeFactor = saturate((mask - alphaCutoff) / edgeWidth);
 
     float3 N = normalize(p.normal);
     if (textureMask & (1u << 1))
@@ -106,6 +135,7 @@ float4 PSMain(PSInput p) : SV_Target0
         ? texEmissive.Sample(sampDefault, uv).rgb
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
+    result += emissiveColor * emissiveScale * max(0.5f, 1.0f) * (1.0f - edgeFactor);
 
     return float4(result, alpha);
 }

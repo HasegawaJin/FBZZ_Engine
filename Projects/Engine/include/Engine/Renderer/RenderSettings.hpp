@@ -87,6 +87,9 @@ struct RenderSettings {
     bool shadowEnabled = true;
     bool showColliders = false;
     bool showSelectionOutline = true;
+    // true のとき、各パスの RT サムネイルと CPU タイミングを ImGui ウィンドウで表示する。
+    // ImGui フレーム内 (ImGuiNewFrame〜Render の間) で RenderSystem を呼ぶ構成が前提。
+    bool passViewerEnabled = false;
 
     PostProcessSettings postProcess;
 
