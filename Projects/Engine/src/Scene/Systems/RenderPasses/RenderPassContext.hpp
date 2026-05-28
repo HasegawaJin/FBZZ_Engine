@@ -86,6 +86,18 @@ struct OutlineCB {
     float         _pad[3];
 };
 
+// DecalConstants (b2) — HLSL の DecalConstants cbuffer と完全に一致させること。
+struct DecalCB {
+    math::Matrix4 invDecalWorld;    // ワールド→デカールローカル (64 bytes)
+    float         albedo[4];        // RGBA アルベドカラー        (16 bytes)
+    float         emissiveColor[3]; // エミッシブカラー           (12 bytes)
+    float         emissiveScale;    //                            ( 4 bytes)
+    float         normalStrength;   //                            ( 4 bytes)
+    float         alpha;            // フェードアルファ           ( 4 bytes)
+    uint32_t      textureMask;      // bit0=albedo bit1=normal bit2=emissive bit3=decalMask ( 4 bytes)
+    float         _pad;             //                            ( 4 bytes)
+};                                  // 合計 112 bytes (16 byte 境界)
+
 struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
@@ -117,6 +129,14 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> postprocCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
+
+    renderer::ResourceHandle<renderer::RenderTargetTag>   decalDepthRT;  // 深度専用 RT (decal 読み取り用コピー先)
+    renderer::ResourceHandle<renderer::RenderTargetTag>   decalMaskRT;   // 除外オブジェクト描画先 (1-color)
+    renderer::ResourceHandle<renderer::ShaderTag>         decalShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         decalMaskShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  decalPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  decalMaskPSO;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> decalCB;
 };
 
 struct RenderPassContext {

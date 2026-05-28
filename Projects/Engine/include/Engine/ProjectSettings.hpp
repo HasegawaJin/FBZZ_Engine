@@ -32,7 +32,18 @@ struct AppSettings {
     int targetFps = 0;  // 0 = unlimited
 };
 
+struct ProjectMetadataSettings {
+    std::string name;
+    std::string defaultScene = "Assets/Scenes/Main.fbzz";
+};
+
+struct RuntimeSettings {
+    std::string startScene = "Assets/Scenes/Main.fbzz";
+};
+
 struct ProjectSettings {
+    ProjectMetadataSettings      project;
+    RuntimeSettings              runtime;
     std::vector<std::string>    tags;
     std::array<std::string, 32> layerNames;
     PhysicsSettings             physics;

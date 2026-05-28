@@ -5,12 +5,14 @@
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
+#include "RenderPasses/DecalPass.hpp"
 #include "RenderPasses/DebugPasses.hpp"
 #include "RenderPasses/PostProcessPasses.hpp"
 #include "RenderPasses/RenderPassContext.hpp"
 #include "RenderPasses/SelectionPasses.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/Components/DecalComponent.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
@@ -207,6 +209,20 @@ void RenderSystem(Scene& scene,
     });
     static auto fxaaShader = resources.LoadShader("assets/shaders/PostProcess/AntiAliasing/FXAA.hlsl");
 
+    static auto decalShader = resources.LoadShader("assets/shaders/Material/Decal/Decal.hlsl");
+    static auto decalPSO    = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_OFF
+    });
+    static auto decalCB     = resources.CreateConstantBuffer(sizeof(DecalCB));
+    static auto decalMaskShader = resources.LoadShader("assets/shaders/Material/Decal/DecalMask.hlsl");
+    static auto decalMaskPso    = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::OPAQUE,
+        renderer::DepthMode::DEPTH_OFF
+    });
+
     // Deferred pipeline shaders — loaded once and reused across frames.
     static auto gbufferShader          = resources.LoadShader("assets/shaders/Pipeline/Deferred/GBuffer.hlsl");
     static auto deferredLightingShader = resources.LoadShader("assets/shaders/Pipeline/Deferred/DeferredLighting.hlsl");
@@ -241,7 +257,9 @@ void RenderSystem(Scene& scene,
     static renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
-    static renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;   // Deferred: MRT (color×2 + depth)
+    static renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;      // Deferred: MRT (color×2 + depth)
+    static renderer::ResourceHandle<renderer::RenderTargetTag> decalDepthRT;   // デカール深度読み取り用コピー先
+    static renderer::ResourceHandle<renderer::RenderTargetTag> decalMaskRT;    // 除外オブジェクト描画先 (1-color)
     static renderer::ResourceHandle<renderer::TextureTag>      bloomHalf;
     static renderer::ResourceHandle<renderer::TextureTag>      bloomFull;
     static uint32_t sHdrW = 0, sHdrH = 0;
@@ -259,6 +277,8 @@ void RenderSystem(Scene& scene,
             if (customPostProcessRT[0].IsValid()) resources.Release(customPostProcessRT[0]);
             if (customPostProcessRT[1].IsValid()) resources.Release(customPostProcessRT[1]);
             if (gbufferRT.IsValid())        resources.Release(gbufferRT);
+            if (decalDepthRT.IsValid())     resources.Release(decalDepthRT);
+            if (decalMaskRT.IsValid())      resources.Release(decalMaskRT);
             if (bloomHalf.IsValid())        resources.Release(bloomHalf);
             if (bloomFull.IsValid())        resources.Release(bloomFull);
             hdrRT           = resources.CreateRenderTarget(curW, curH, 1);
@@ -268,6 +288,8 @@ void RenderSystem(Scene& scene,
             customPostProcessRT[0] = resources.CreateRenderTarget(curW, curH, 1);
             customPostProcessRT[1] = resources.CreateRenderTarget(curW, curH, 1);
             gbufferRT       = resources.CreateRenderTarget(curW, curH, 2); // GBuffer0 + GBuffer1
+            decalDepthRT    = resources.CreateRenderTarget(curW, curH, 0); // 深度のみ
+            decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1); // 除外マスク (1-color)
             bloomHalf       = resources.CreateComputeTexture(std::max(1u, curW / 2), std::max(1u, curH / 2));
             bloomFull       = resources.CreateComputeTexture(curW, curH);
             sHdrW           = curW;
@@ -359,6 +381,13 @@ void RenderSystem(Scene& scene,
     passHandles.bindPoseSkinningCB = bindPoseSkinningCB;
     passHandles.postprocCB = postprocCB;
     passHandles.outlineCB = outlineCB;
+    passHandles.decalDepthRT    = decalDepthRT;
+    passHandles.decalMaskRT     = decalMaskRT;
+    passHandles.decalShader     = decalShader;
+    passHandles.decalMaskShader = decalMaskShader;
+    passHandles.decalPSO        = decalPSO;
+    passHandles.decalMaskPSO    = decalMaskPso;
+    passHandles.decalCB         = decalCB;
 
     RenderPassContext passCtx{
         scene,
@@ -806,6 +835,29 @@ void RenderSystem(Scene& scene,
 
     } // if (isDeferred)
 
+    // デカール用深度スナップショット — hdrRT の DSV/SRV 競合を回避するため
+    // 別の深度専用 RT へコピーしてからデカールが読み取る。
+    // Forward: hdrRT 深度をコピー  / Deferred: gbufferRT 深度をコピー
+    graph.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.AddPass("DecalDepthCopy", { isDeferred ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
+        renderer.SetRenderTarget(decalDepthRT, resources);
+        renderer.ClearDepth();
+        if (depthCopyShader.IsValid()) {
+            renderer::DrawCall dc;
+            dc.shader        = depthCopyShader;
+            dc.pipelineState = pso;   // DEPTH_ON: 深度書き込みあり
+            dc.vertexCount   = 3;
+            dc.textures[7]   = isDeferred
+                ? resources.GetDepthTexture(gbufferRT)
+                : resources.GetDepthTexture(hdrRT);
+            renderer.Submit(dc, resources);
+        }
+    });
+
+    graph.AddPass("Decal", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
+        ExecuteDecalPass(passCtx);
+    });
+
     graph.AddPass("Particle", { "HDR" }, { "HDR" }, [&]() {
     if (particleShader.IsValid() && particleVB.IsValid() && particleIB.IsValid())
     {
@@ -898,6 +950,10 @@ void RenderSystem(Scene& scene,
 
     graph.AddPass("DebugColliders", { "HDR" }, { "HDR" }, [&]() {
         ExecuteDebugCollidersPass(passCtx);
+    });
+
+    graph.AddPass("DebugDecalBounds", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteDecalDebugPass(passCtx);
     });
 
     if (rs.postProcess.bloom.enabled) {

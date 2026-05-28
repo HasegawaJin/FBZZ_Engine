@@ -24,6 +24,9 @@
 #include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
 #include <Windows.h>
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
 #include <utility>
 
 // imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
@@ -54,6 +57,63 @@ std::wstring Utf8ToWide(const std::string& text)
     std::wstring wide(static_cast<size_t>(size - 1), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
     return wide;
+}
+
+std::string WideToUtf8(const std::wstring& text)
+{
+    if (text.empty()) return {};
+
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return {};
+
+    std::string utf8(static_cast<size_t>(size - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
+    return utf8;
+}
+
+std::filesystem::path MakeAbsolutePath(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+    return ec ? path.lexically_normal() : absolute.lexically_normal();
+}
+
+std::string ToLowerAscii(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
+
+std::string ResolveScenePathForProject(const std::string& projectRoot, const std::string& scenePath)
+{
+    if (scenePath.empty()) return {};
+
+    const std::filesystem::path rootPath = std::filesystem::path(Utf8ToWide(projectRoot));
+    std::filesystem::path candidate = std::filesystem::path(Utf8ToWide(scenePath));
+    if (!candidate.is_absolute())
+        candidate = rootPath / candidate;
+
+    return WideToUtf8(MakeAbsolutePath(candidate).wstring());
+}
+
+bool IsScenePathInsideProject(const std::string& projectRoot, const std::string& scenePath)
+{
+    if (projectRoot.empty() || scenePath.empty()) return false;
+    if (ToLowerAscii(util::FileSystem::GetExtension(scenePath)) != ".fbzz") return false;
+    if (!util::FileSystem::Exists(scenePath)) return false;
+
+    const std::filesystem::path rootPath = MakeAbsolutePath(std::filesystem::path(Utf8ToWide(projectRoot)));
+    const std::filesystem::path sceneFsPath = MakeAbsolutePath(std::filesystem::path(Utf8ToWide(scenePath)));
+
+    const std::string rootText = ToLowerAscii(WideToUtf8(rootPath.wstring()));
+    std::string sceneText = ToLowerAscii(WideToUtf8(sceneFsPath.wstring()));
+    std::string prefix = rootText;
+    if (!prefix.empty() && prefix.back() != '\\' && prefix.back() != '/')
+        prefix += '\\';
+
+    return sceneText == rootText || sceneText.rfind(prefix, 0) == 0;
 }
 
 } // namespace
@@ -261,13 +321,21 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
     }
 
-    if (!scenePath.empty()) {
-        if (!SceneSerializer::Load(*m_ctx.activeScene, scenePath)) {
-            FBZZ_LOG_ERROR("Open project scene failed: %s", scenePath.c_str());
+    std::string sceneToOpen = scenePath;
+    const std::string lastScenePath = ResolveScenePathForProject(projectRoot, m_settings.lastScenePath);
+    if (IsScenePathInsideProject(projectRoot, lastScenePath)) {
+        sceneToOpen = lastScenePath;
+    } else if (sceneToOpen.empty() && !m_ctx.projectSettings.runtime.startScene.empty()) {
+        sceneToOpen = ResolveScenePathForProject(projectRoot, m_ctx.projectSettings.runtime.startScene);
+    }
+
+    if (!sceneToOpen.empty()) {
+        if (!SceneSerializer::Load(*m_ctx.activeScene, sceneToOpen)) {
+            FBZZ_LOG_ERROR("Open project scene failed: %s", sceneToOpen.c_str());
             return false;
         }
-        m_settings.lastScenePath = scenePath;
-        m_ctx.currentScenePath = scenePath;
+        m_settings.lastScenePath = sceneToOpen;
+        m_ctx.currentScenePath = sceneToOpen;
         m_ctx.selectedEntities.clear();
         CaptureCleanScene();
     }
@@ -422,8 +490,9 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::Separator();
         ImGui::MenuItem("Grid",        nullptr, &ctx.showGrid);
         ImGui::MenuItem("Light Range", nullptr, &ctx.showLightRange);
-        ImGui::MenuItem("Colliders",   nullptr, &ctx.projectSettings.render.showColliders);
-        ImGui::MenuItem("Skeleton",    nullptr, &ctx.showSkeleton);
+        ImGui::MenuItem("Colliders",    nullptr, &ctx.projectSettings.render.showColliders);
+        ImGui::MenuItem("Decal Bounds", nullptr, &ctx.projectSettings.render.showDecalBounds);
+        ImGui::MenuItem("Skeleton",     nullptr, &ctx.showSkeleton);
         ImGui::MenuItem("Stats",       nullptr, &ctx.showSceneStats);
         ImGui::MenuItem("Hot Reload",  nullptr, &ctx.hotReloadEnabled);
         ImGui::Separator();

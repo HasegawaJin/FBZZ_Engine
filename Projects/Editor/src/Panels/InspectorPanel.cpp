@@ -18,6 +18,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
@@ -450,6 +451,9 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
         shown |= addItem(category, "Sky Renderer", !go.GetComponent<scene::SkyRenderer>(), [&]() {
             go.AddComponent<scene::SkyRenderer>();
         });
+        shown |= addItem(category, "Decal", !go.GetComponent<scene::DecalComponent>(), [&]() {
+            go.AddComponent<scene::DecalComponent>();
+        });
         return shown;
     });
 
@@ -622,14 +626,22 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Text("Layer");
         ImGui::SameLine();
         int layerIdx = go->layer & 31;
-        auto layerGetter = [](void* data, int idx) -> const char* {
-            auto* names = static_cast<std::array<std::string, 32>*>(data);
-            if (idx < 0 || idx >= 32) return "";
-            return (*names)[idx].c_str();
-        };
         ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::Combo("##layer", &layerIdx, layerGetter, &ps.layerNames, 32))
-            go->layer = layerIdx;
+        const std::string currentLayerLabel = ps.layerNames[layerIdx].empty()
+            ? ("User Layer " + std::to_string(layerIdx))
+            : ps.layerNames[layerIdx];
+        if (ImGui::BeginCombo("##layer", currentLayerLabel.c_str())) {
+            for (int i = 0; i < 32; ++i) {
+                const std::string layerLabel = ps.layerNames[i].empty()
+                    ? ("User Layer " + std::to_string(i))
+                    : ps.layerNames[i];
+                const bool selected = i == layerIdx;
+                if (ImGui::Selectable(layerLabel.c_str(), selected))
+                    go->layer = i;
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
     }
 
     ImGui::Separator();
@@ -1098,6 +1110,62 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragFloat("Mie Scattering", &sr.mieScattering, 0.0001f, 0.0f, 1.0f);
             ImGui::DragFloat("Sun Intensity", &sr.sunIntensity, 0.1f, 0.0f, 1000.0f);
             ImGui::SliderFloat("Mie G", &sr.mieG, -0.99f, 0.99f);
+        });
+
+    DrawComponentSection<scene::DecalComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Decal",
+        [](scene::DecalComponent& dc, EditorContext&) {
+
+            auto texField = [](const char* label, std::string& path) {
+                char buf[256];
+                std::snprintf(buf, sizeof(buf), "%s", path.c_str());
+                if (ImGui::InputText(label, buf, sizeof(buf)))
+                    path = buf;
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        path = static_cast<const char*>(p->Data);
+                        for (char& c : path) if (c == '\\') c = '/';
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+            };
+
+            ImGui::SeparatorText("Textures");
+            texField("Albedo (t0)",   dc.albedoTexPath);
+            texField("Normal (t1)",   dc.normalTexPath);
+            texField("Emissive (t3)", dc.emissiveTexPath);
+
+            ImGui::SeparatorText("Surface");
+            ImGui::ColorEdit4("Albedo Color",     dc.albedoColor);
+            ImGui::SliderFloat("Normal Strength", &dc.normalStrength, 0.0f, 2.0f);
+
+            ImGui::SeparatorText("Emissive");
+            ImGui::ColorEdit3("Emissive Color", dc.emissiveColor);
+            ImGui::DragFloat("Emissive Scale",  &dc.emissiveScale, 0.01f, 0.0f, 100.0f);
+
+            ImGui::SeparatorText("Lifetime");
+            ImGui::DragFloat("Lifetime (s)",  &dc.lifetime, 0.1f, -1.0f, 3600.0f, dc.lifetime < 0.0f ? "Permanent" : "%.1f s");
+            ImGui::DragFloat("Fade Time (s)", &dc.fadeTime, 0.05f, 0.0f, 60.0f);
+            ImGui::BeginDisabled();
+            ImGui::DragFloat("Age (s)", &dc.age, 0.0f, 0.0f, 0.0f, "%.2f s");
+            ImGui::EndDisabled();
+
+            ImGui::SeparatorText("Receiver Layer Mask");
+            // ビット 0〜7 を個別チェックボックスで表示。残りは hex 入力で直接編集。
+            static constexpr const char* kLayerNames[] = {
+                "Default", "TransparentFX", "Ignore Raycast", "User Layer 3",
+                "Water",   "UI",            "User Layer 6",   "User Layer 7"
+            };
+            for (int i = 0; i < 8; ++i) {
+                bool checked = (dc.receiverLayerMask & (1u << i)) != 0;
+                if (ImGui::Checkbox(kLayerNames[i], &checked)) {
+                    if (checked) dc.receiverLayerMask |=  (1u << i);
+                    else         dc.receiverLayerMask &= ~(1u << i);
+                }
+                if (i % 2 == 0) ImGui::SameLine(160.0f);
+            }
+            ImGui::InputScalar("Mask (hex)", ImGuiDataType_U32, &dc.receiverLayerMask,
+                               nullptr, nullptr, "%08X",
+                               ImGuiInputTextFlags_CharsHexadecimal);
         });
 
     DrawComponentSection<scene::UICanvas>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Canvas",
