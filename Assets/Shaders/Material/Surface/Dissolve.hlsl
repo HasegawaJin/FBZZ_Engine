@@ -1,7 +1,10 @@
 // FBZZ Engine
-// Material/Skinned/SkinnedPBR.hlsl | Material
-// GPU スキニング + Cook-Torrance PBR フォワードパス
-// PS ロジックは Surface/PBR.hlsl と完全に一致させること。
+// Material/Surface/Dissolve.hlsl | Material
+// ディゾルブ (消滅) エフェクト — プロシージャルノイズで面をカットし、
+// 消滅エッジを emissiveColor で発光させる PBR ベースシェーダー。
+//
+// alphaCutoff : ディゾルブ進行量 (0 = 完全表示, 1 = 完全消滅)
+// emissiveColor * emissiveScale : エッジ発光色と強度
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
@@ -18,26 +21,44 @@ Texture2D              texAO            : register(TEX_AO);
 SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
 
-float4x4 BlendSkinMatrix(SkinnedVSInput v)
+// --- ノイズ -----------------------------------------------------------
+// 格子点ハッシュ: 2D → [0,1]
+float Hash21(float2 p)
 {
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
+    p = frac(p * float2(127.1f, 311.7f));
+    p += dot(p, p + 19.19f);
+    return frac(p.x * p.y);
 }
 
-PSInput VSMain(SkinnedVSInput v)
+// バイキュービックスムーズ補間によるバリューノイズ
+float ValueNoise(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    float2 u = f * f * (3.0f - 2.0f * f);
+    return lerp(lerp(Hash21(i),                Hash21(i + float2(1.0f, 0.0f)), u.x),
+                lerp(Hash21(i + float2(0.0f, 1.0f)), Hash21(i + float2(1.0f, 1.0f)), u.x), u.y);
+}
+
+// 4 オクターブ fBm — 細かい凹凸入り繊維状パターン
+float DissolveMask(float2 uv)
+{
+    float n  = ValueNoise(uv * 4.0f)         * 0.500f;
+          n += ValueNoise(uv * 8.0f)         * 0.250f;
+          n += ValueNoise(uv * 16.0f)        * 0.125f;
+          n += ValueNoise(uv * 32.0f)        * 0.125f;
+    return saturate(n);
+}
+// ----------------------------------------------------------------------
+
+PSInput VSMain(VSInput v)
 {
     PSInput o;
-    float4x4 skin    = BlendSkinMatrix(v);
-    float4 localPos  = mul(float4(v.position, 1.0f), skin);
-    float3 localN    = normalize(mul(v.normal,  (float3x3)skin));
-    float3 localT    = normalize(mul(v.tangent, (float3x3)skin));
-    float4 worldPos4 = mul(localPos, world);
+    float4 worldPos4 = mul(float4(v.position, 1.0f), world);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(localN, (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(localT, (float3x3)world));
+    o.normal     = normalize(mul(v.normal,  (float3x3)worldInvTranspose));
+    o.tangent    = normalize(mul(v.tangent, (float3x3)world));
     o.uv         = v.uv;
     return o;
 }
@@ -46,13 +67,21 @@ float4 PSMain(PSInput p) : SV_Target0
 {
     float2 uv = p.uv * uvTiling + uvOffset;
 
+    // Albedo
     float4 albedoSample = (textureMask & (1u << 0))
         ? texAlbedo.Sample(sampDefault, uv)
         : albedo;
     float3 col   = albedoSample.rgb * albedo.rgb;
     float  alpha = albedoSample.a  * albedo.a;
-    clip(alpha - alphaCutoff);
 
+    // ディゾルブ: alphaCutoff をしきい値にノイズでカット。
+    // エッジ幅 0.06 のバンドで発光強度を計算する。
+    float  mask      = DissolveMask(uv);
+    float  edgeWidth = 0.06f;
+    clip(mask - alphaCutoff);
+    float  edgeFactor = saturate((mask - alphaCutoff) / edgeWidth);
+
+    // Normal
     float3 N = normalize(p.normal);
     if (textureMask & (1u << 1))
     {
@@ -61,6 +90,7 @@ float4 PSMain(PSInput p) : SV_Target0
         N = normalize(lerp(N, nm, normalStrength));
     }
 
+    // Metallic / Roughness
     float met   = metallic;
     float rough = roughness;
     if (textureMask & (1u << 2))
@@ -70,6 +100,7 @@ float4 PSMain(PSInput p) : SV_Target0
         met   = mr.y;
     }
 
+    // AO
     float ao = 1.0f;
     if (textureMask & (1u << 4))
         ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
@@ -102,10 +133,15 @@ float4 PSMain(PSInput p) : SV_Target0
                       spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
 
+    // 通常エミッシブ
     float3 emissiveTex = (textureMask & (1u << 3))
         ? texEmissive.Sample(sampDefault, uv).rgb
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
+
+    // エッジ発光: しきい値直上の帯が emissiveColor * emissiveScale で燃える。
+    // edgeFactor=0 がしきい値エッジ、1 が帯の外側 (消灯)。
+    result += emissiveColor * emissiveScale * max(0.5f, 1.0f) * (1.0f - edgeFactor);
 
     return float4(result, alpha);
 }

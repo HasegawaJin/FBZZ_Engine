@@ -1,22 +1,26 @@
 // FBZZ Engine
-// Material/Surface/PBR.hlsl | Material
-// Cook-Torrance PBR フォワードパス (法線マップ / AO / エミッシブ / PCF シャドウ)
+// Material/Surface/Subsurface.hlsl | Material
+// 簡易サブサーフェス スキャッタリング (SSS) — 皮膚・蝋・葉など透過感のある素材向け
+//
+// ラップ拡散 (wrap diffuse) で影境界を柔らかくし、
+// ビュー依存バックスキャターで薄い部分の透過光を再現する。
+//
+// emissiveColor  : サブサーフェス散乱色 (皮膚なら赤みがかった肌色)
+// emissiveScale  : 散乱強度 (0 = 通常 Lambert, 1 = 強い SSS)
+// roughness      : ラップ量制御 (高いほど影側にも光が回り込む)
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
-// ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で提供される
 
-Texture2D<float>       texShadow        : register(TEX_SHADOW);
-Texture2D              texAlbedo        : register(TEX_ALBEDO);
-Texture2D              texNormal        : register(TEX_NORMAL);
-Texture2D              texMetallicRough : register(TEX_METALLIC_ROUGH);
-Texture2D              texEmissive      : register(TEX_EMISSIVE);
-Texture2D              texAO            : register(TEX_AO);
-SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
-SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
+Texture2D<float>       texShadow   : register(TEX_SHADOW);
+Texture2D              texAlbedo   : register(TEX_ALBEDO);
+Texture2D              texNormal   : register(TEX_NORMAL);
+Texture2D              texAO       : register(TEX_AO);
+SamplerState           sampDefault : register(SAMPLER_DEFAULT);
+SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 
 PSInput VSMain(VSInput v)
 {
@@ -32,40 +36,23 @@ PSInput VSMain(VSInput v)
 
 float4 PSMain(PSInput p) : SV_Target0
 {
-    // UV タイリング / オフセットをすべてのサンプルに適用する。
     float2 uv = p.uv * uvTiling + uvOffset;
 
-    // Albedo + alpha
     float4 albedoSample = (textureMask & (1u << 0))
         ? texAlbedo.Sample(sampDefault, uv)
         : albedo;
     float3 col   = albedoSample.rgb * albedo.rgb;
     float  alpha = albedoSample.a  * albedo.a;
-
-    // alphaCutoff: カットアウト描画。不透明パスでディザリングなし早期棄却。
     clip(alpha - alphaCutoff);
 
-    // Normal
     float3 N = normalize(p.normal);
     if (textureMask & (1u << 1))
     {
         float3 ns = texNormal.Sample(sampDefault, uv).rgb;
         float3 nm = ApplyNormalMap(ns, N, normalize(p.tangent));
-        // normalStrength=0 でサーフェス法線に戻る線形ブレンド。
         N = normalize(lerp(N, nm, normalStrength));
     }
 
-    // Metallic / Roughness (glTF 規約: G チャンネル = roughness, B チャンネル = metallic)
-    float met   = metallic;
-    float rough = roughness;
-    if (textureMask & (1u << 2))
-    {
-        float2 mr = texMetallicRough.Sample(sampDefault, uv).gb;
-        rough = mr.x;
-        met   = mr.y;
-    }
-
-    // AO
     float ao = 1.0f;
     if (textureMask & (1u << 4))
         ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
@@ -74,8 +61,22 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    float3 result = Lighting_PBR(N, V, L, col, met, rough,
-                                 lightColor, lightIntensity, shadow, ao);
+
+    // ラップ拡散: roughness が高いほど光が影側に回り込む。
+    // wrap=0 で通常 Lambert、wrap=1 で半球全体がほぼ均等に照らされる。
+    float  wrap        = roughness * 0.8f;
+    float  NdotL_wrap  = saturate((dot(N, L) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
+    float3 ambient     = col * 0.08f * ao;
+    float3 diffuse     = col * lightColor * lightIntensity * NdotL_wrap * shadow;
+
+    // ビュー依存バックスキャター: カメラ-ライト-サーフェス が直線に近いほど強い透過光。
+    // 薄い素材 (耳、手など) で裏側からの透過光を模倣する。
+    float  backScatter = pow(saturate(dot(V, -L)), 2.5f) * shadow;
+    float3 scatter     = emissiveColor * emissiveScale
+                       * (backScatter + 0.15f)
+                       * lightColor * lightIntensity * ao;
+
+    float3 result = ambient + diffuse + scatter;
 
     [loop] for (int pi = 0; pi < pointLightCount; ++pi)
     {
@@ -83,8 +84,8 @@ float4 PSMain(PSInput p) : SV_Target0
         float  dist    = length(toLight);
         float3 Lp      = toLight / dist;
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_PBR_Direct(N, V, Lp, col, met, rough,
-                      pointLights[pi].color, pointLights[pi].intensity * atten);
+        float  ndotlp  = saturate((dot(N, Lp) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
+        result += col * pointLights[pi].color * pointLights[pi].intensity * atten * ndotlp;
     }
     [loop] for (int si = 0; si < spotLightCount; ++si)
     {
@@ -94,15 +95,9 @@ float4 PSMain(PSInput p) : SV_Target0
         float  atten   = LightAttenuation(dist, spotLights[si].range);
         float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
                              spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_PBR_Direct(N, V, Ls, col, met, rough,
-                      spotLights[si].color, spotLights[si].intensity * atten * cone);
+        float  ndotls  = saturate((dot(N, Ls) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
+        result += col * spotLights[si].color * spotLights[si].intensity * atten * cone * ndotls;
     }
-
-    // Emissive: テクスチャがあれば乗算、なければ emissiveColor のみ。emissiveScale=0 で非発光。
-    float3 emissiveTex = (textureMask & (1u << 3))
-        ? texEmissive.Sample(sampDefault, uv).rgb
-        : float3(1.0f, 1.0f, 1.0f);
-    result += emissiveTex * emissiveColor * emissiveScale;
 
     return float4(result, alpha);
 }

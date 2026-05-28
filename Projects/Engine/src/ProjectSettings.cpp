@@ -7,12 +7,41 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
+#include <cmath>
 #include <sstream>
 #include <utility>
 
 namespace fbzz {
 
 namespace {
+
+double RoundTomlFloat(double value)
+{
+    constexpr double SCALE = 1000000.0;
+    const double rounded = std::round(value * SCALE) / SCALE;
+    return rounded == 0.0 ? 0.0 : rounded;
+}
+
+void NormalizeTomlFloats(toml::node& node)
+{
+    if (auto* value = node.as_floating_point()) {
+        value->get() = RoundTomlFloat(value->get());
+        return;
+    }
+
+    if (auto* table = node.as_table()) {
+        for (auto&& [key, child] : *table) {
+            (void)key;
+            NormalizeTomlFloats(child);
+        }
+        return;
+    }
+
+    if (auto* array = node.as_array()) {
+        for (auto& child : *array)
+            NormalizeTomlFloats(child);
+    }
+}
 
 toml::array Vec3ToArr(const math::Vector3& v)
 {
@@ -319,6 +348,8 @@ bool ProjectSettings::Save(const std::string& path) const
     root.insert("audio",   std::move(audioTbl));
     root.insert("screen",  std::move(screenTbl));
     root.insert("app",     std::move(appTbl));
+
+    NormalizeTomlFloats(root);
 
     std::ostringstream ss;
     ss << root;

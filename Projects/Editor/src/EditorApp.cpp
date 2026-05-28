@@ -14,6 +14,7 @@
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -341,6 +342,11 @@ void EditorApp::RenderPanels(EditorContext& ctx)
 {
     for (auto& panel : m_panels)
         if (panel->visible) panel->OnRender(ctx);
+
+    // GPU レンダリング完了後・ImGui フレーム内のここで描画する。
+    // RenderSystem は GPU 実行中のため直接 ImGui を呼べず、スナップショットだけ保存している。
+    if (m_renderer && m_resources)
+        renderer::RenderDebugOverlay::DrawIfEnabled(*m_renderer, *m_resources);
 
     if (ctx.requestOpenProjectSettings) {
         if (m_projectSettingsPanel) m_projectSettingsPanel->visible = true;
