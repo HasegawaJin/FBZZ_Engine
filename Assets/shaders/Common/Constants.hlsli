@@ -99,7 +99,10 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  filmGrainResponse;
     float  chromaticAberration;
     float  lensDistortion;
-    float  _ppPad;
+    float  customIntensity;
+    float  customBlend;
+    float4 customParameters;
+    float2 _ppPad;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)

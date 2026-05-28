@@ -14,6 +14,7 @@
 #include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
 #include <cstdint>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -73,7 +74,10 @@ struct PostProcCB {
     float filmGrainResponse;
     float chromaticAberration;
     float lensDistortion;
-    float _pad;
+    float customIntensity;
+    float customBlend;
+    float customParameters[4];
+    float _pad[2];
 };
 
 struct OutlineCB {
@@ -88,11 +92,13 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
 
     renderer::ResourceHandle<renderer::TextureTag> bloomHalf;
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> shadowDepthTex;
     renderer::ResourceHandle<renderer::TextureTag> fxaaInput;
+    renderer::ResourceHandle<renderer::TextureTag> postProcessInput;
 
     renderer::ResourceHandle<renderer::ShaderTag> bloomDownShader;
     renderer::ResourceHandle<renderer::ShaderTag> bloomUpShader;
@@ -101,6 +107,7 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskSkinnedShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
     renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
+    std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
 
     renderer::ResourceHandle<renderer::PipelineStateTag> selectionMaskPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag> postprocPSO;
