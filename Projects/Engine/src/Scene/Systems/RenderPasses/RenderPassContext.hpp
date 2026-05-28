@@ -96,7 +96,13 @@ struct DecalCB {
     float         alpha;            // フェードアルファ           ( 4 bytes)
     uint32_t      textureMask;      // bit0=albedo bit1=normal bit2=emissive bit3=decalMask ( 4 bytes)
     float         _pad;             //                            ( 4 bytes)
-};                                  // 合計 112 bytes (16 byte 境界)
+    math::Vector3 decalTangent;     // Decal local +X. Normal-map T axis.
+    float         _pad1;
+    math::Vector3 decalBitangent;   // Decal local +Z. Projected UV V axis.
+    float         _pad2;
+    math::Vector3 decalNormal;      // Base normal for flat normal maps.
+    float         _pad3;
+};                                  // 160 bytes (16 byte aligned)
 
 struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
@@ -126,6 +132,7 @@ struct RenderPassHandles {
 
     renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> postprocCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;

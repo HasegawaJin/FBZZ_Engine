@@ -51,6 +51,22 @@ cbuffer DecalConstants : register(CB_MATERIAL)
     float    alpha;           // フェードアルファ (ライフタイム込み)
     uint     textureMask;     // bit0=albedo  bit1=normal  bit2=emissive  bit3=decalMask
     float    _pad;
+    float3   decalTangent;    // Decal local +X in world space. Normal-map T axis.
+    float    _pad1;
+    float3   decalBitangent;  // Decal local +Z in world space. Projected UV V axis.
+    float    _pad2;
+    float3   decalNormal;     // Decal projection-plane normal in world space.
+    float    _pad3;
+};
+
+// b3: The HDR decal pass keeps the existing composite path and only needs
+// the main directional light for normal-map shading.
+cbuffer LightConstants : register(CB_LIGHT)
+{
+    float3 lightDir;
+    float  _lightPad;
+    float3 lightColor;
+    float  lightIntensity;
 };
 
 struct FSTriOut
@@ -67,6 +83,26 @@ FSTriOut VSMain(uint id : SV_VertexID)
                           (id & 2u) ? 2.0f : 0.0f);
     o.svPosition = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
     return o;
+}
+
+float3 DecodeDecalNormal(float3 normalSample)
+{
+    float3 tangentNormal = normalSample * 2.0f - 1.0f;
+    float3 T = normalize(decalTangent);
+    float3 B = normalize(decalBitangent);
+    float3 N = normalize(decalNormal);
+    return normalize(T * tangentNormal.x + B * tangentNormal.y + N * tangentNormal.z);
+}
+
+float ComputeDirectionalLightRatio(float3 baseNormal, float3 mappedNormal)
+{
+    // WHY: Decals are composited into HDR after DeferredLighting, so this pass
+    // cannot update GBuffer normals. Apply only the relative lighting delta so
+    // a flat normal map keeps the previous decal brightness.
+    float3 L = normalize(-lightDir);
+    float baseLight = 0.25f + saturate(dot(normalize(baseNormal), L)) * max(lightIntensity, 0.0f);
+    float mappedLight = 0.25f + saturate(dot(normalize(mappedNormal), L)) * max(lightIntensity, 0.0f);
+    return clamp(mappedLight / max(baseLight, 0.001f), 0.25f, 2.0f);
 }
 
 float4 PSMain(FSTriOut p) : SV_Target
@@ -104,10 +140,20 @@ float4 PSMain(FSTriOut p) : SV_Target
     if (finalAlpha < 0.001f)
         discard;
 
+    float3 decalColor = albedoSample.rgb;
+    if ((textureMask & 2u) && normalStrength > 0.0f)
+    {
+        float3 baseNormal = normalize(decalNormal);
+        float3 normalSample = texNormal.Sample(sampDefault, decalUV).rgb;
+        float3 mappedNormal = DecodeDecalNormal(normalSample);
+        float normalRatio = ComputeDirectionalLightRatio(baseNormal, mappedNormal);
+        decalColor *= lerp(1.0f, normalRatio, saturate(normalStrength));
+    }
+
     // --- Emissive (テクスチャがなければ emissiveColor * emissiveScale のみ) ---
     float3 emissive = (textureMask & 4u)
         ? texEmissive.Sample(sampDefault, decalUV).rgb * emissiveColor * emissiveScale
         : emissiveColor * emissiveScale;
 
-    return float4(albedoSample.rgb + emissive, finalAlpha);
+    return float4(decalColor + emissive, finalAlpha);
 }

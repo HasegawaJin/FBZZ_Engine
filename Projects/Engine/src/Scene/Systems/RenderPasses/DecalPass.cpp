@@ -143,6 +143,15 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         // HDR RT に戻してデカールを描画
         r.SetRenderTarget(h.hdrRT, resources);
 
+        auto loadTex = [&](const std::string& path) {
+            return path.empty()
+                ? renderer::ResourceHandle<renderer::TextureTag>{}
+                : resources.LoadTexture(path);
+        };
+        const auto albedoTex   = loadTex(dc->albedoTexPath);
+        const auto normalTex   = loadTex(dc->normalTexPath);
+        const auto emissiveTex = loadTex(dc->emissiveTexPath);
+
         // 定数バッファ更新
         DecalCB data{};
         data.invDecalWorld    = math::Matrix4::Inverse(go.transform.GetWorldMatrix());
@@ -156,20 +165,14 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         data.emissiveScale    = dc->emissiveScale;
         data.normalStrength   = dc->normalStrength;
         data.alpha            = alpha;
-        data.textureMask      = (!dc->albedoTexPath.empty()   ? 1u : 0u)
-                              | (!dc->normalTexPath.empty()   ? 2u : 0u)
-                              | (!dc->emissiveTexPath.empty() ? 4u : 0u)
+        data.textureMask      = (albedoTex.IsValid()          ? 1u : 0u)
+                              | (normalTex.IsValid()          ? 2u : 0u)
+                              | (emissiveTex.IsValid()        ? 4u : 0u)
                               | (needsMask                    ? 8u : 0u);
+        data.decalTangent     = go.transform.Right().Normalized();
+        data.decalBitangent   = go.transform.Forward().Normalized();
+        data.decalNormal      = go.transform.Up().Normalized();
         resources.Update(h.decalCB, &data, sizeof(DecalCB));
-
-        auto loadTex = [&](const std::string& path) {
-            return path.empty()
-                ? renderer::ResourceHandle<renderer::TextureTag>{}
-                : resources.LoadTexture(path);
-        };
-        const auto albedoTex   = loadTex(dc->albedoTexPath);
-        const auto normalTex   = loadTex(dc->normalTexPath);
-        const auto emissiveTex = loadTex(dc->emissiveTexPath);
 
         renderer::DrawCall drawCall;
         drawCall.shader             = h.decalShader;
@@ -177,6 +180,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         drawCall.vertexCount        = 3;
         drawCall.constantBuffers[0] = h.frameCB;
         drawCall.constantBuffers[2] = h.decalCB;
+        drawCall.constantBuffers[3] = h.lightCB;
         if (albedoTex.IsValid())   drawCall.textures[0] = albedoTex;
         if (normalTex.IsValid())   drawCall.textures[1] = normalTex;
         if (emissiveTex.IsValid()) drawCall.textures[3] = emissiveTex;

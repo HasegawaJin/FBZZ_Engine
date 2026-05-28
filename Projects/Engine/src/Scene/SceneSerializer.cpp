@@ -14,6 +14,7 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
@@ -483,6 +484,33 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("MaterialComponent", std::move(matTbl));
         }
 
+        // DecalComponent
+        if (auto* decal = go.GetComponent<DecalComponent>()) {
+            toml::table decalTbl;
+            decalTbl.insert("enabled",           decal->enabled);
+            decalTbl.insert("albedoTex",         decal->albedoTexPath);
+            decalTbl.insert("normalTex",         decal->normalTexPath);
+            decalTbl.insert("emissiveTex",       decal->emissiveTexPath);
+            decalTbl.insert("albedo",            Vec4ToArr({
+                decal->albedoColor[0],
+                decal->albedoColor[1],
+                decal->albedoColor[2],
+                decal->albedoColor[3]
+            }));
+            decalTbl.insert("normalStrength",    (double)decal->normalStrength);
+            decalTbl.insert("emissiveColor",     Vec3ToArr({
+                decal->emissiveColor[0],
+                decal->emissiveColor[1],
+                decal->emissiveColor[2]
+            }));
+            decalTbl.insert("emissiveScale",     (double)decal->emissiveScale);
+            decalTbl.insert("lifetime",          (double)decal->lifetime);
+            decalTbl.insert("fadeTime",          (double)decal->fadeTime);
+            decalTbl.insert("age",               (double)decal->age);
+            decalTbl.insert("receiverLayerMask", (int64_t)decal->receiverLayerMask);
+            goTbl.insert("DecalComponent", std::move(decalTbl));
+        }
+
         // LightComponent
         if (auto* lc = go.GetComponent<LightComponent>()) {
             static constexpr const char* kTypeNames[] = { "Directional", "Point", "Spot" };
@@ -846,6 +874,40 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             mat->Upload(resources);
             mc.material = std::move(mat);
             go.AddComponent<MaterialComponent>(std::move(mc));
+        }
+
+        // DecalComponent
+        if (auto* decalTbl = (*goTbl)["DecalComponent"].as_table()) {
+            DecalComponent decal{};
+            decal.enabled         = (*decalTbl)["enabled"].value_or(true);
+            decal.albedoTexPath   = (*decalTbl)["albedoTex"].value_or(std::string{});
+            decal.normalTexPath   = (*decalTbl)["normalTex"].value_or(std::string{});
+            decal.emissiveTexPath = (*decalTbl)["emissiveTex"].value_or(std::string{});
+
+            const math::Vector4 albedo = ArrToVec4(
+                (*decalTbl)["albedo"].as_array(),
+                { 1.0f, 1.0f, 1.0f, 1.0f });
+            decal.albedoColor[0] = albedo.x;
+            decal.albedoColor[1] = albedo.y;
+            decal.albedoColor[2] = albedo.z;
+            decal.albedoColor[3] = albedo.w;
+
+            decal.normalStrength = (float)(*decalTbl)["normalStrength"].value_or(1.0);
+
+            const math::Vector3 emissive = ArrToVec3(
+                (*decalTbl)["emissiveColor"].as_array(),
+                { 1.0f, 1.0f, 1.0f });
+            decal.emissiveColor[0] = emissive.x;
+            decal.emissiveColor[1] = emissive.y;
+            decal.emissiveColor[2] = emissive.z;
+            decal.emissiveScale    = (float)(*decalTbl)["emissiveScale"].value_or(0.0);
+
+            decal.lifetime          = (float)(*decalTbl)["lifetime"].value_or(-1.0);
+            decal.fadeTime          = (float)(*decalTbl)["fadeTime"].value_or(1.0);
+            decal.age               = (float)(*decalTbl)["age"].value_or(0.0);
+            decal.receiverLayerMask = static_cast<fbzz::LayerMask>(
+                static_cast<uint32_t>((*decalTbl)["receiverLayerMask"].value_or((int64_t)fbzz::Layer::Everything)));
+            go.AddComponent<DecalComponent>(std::move(decal));
         }
 
         // LightComponent
