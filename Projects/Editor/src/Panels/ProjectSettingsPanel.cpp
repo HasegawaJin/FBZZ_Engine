@@ -7,6 +7,7 @@
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <imgui.h>
+#include <cstddef>
 #include <cstdio>
 
 namespace fbzz::editor {
@@ -42,6 +43,8 @@ void DrawPostProcessToggles(renderer::PostProcessSettings& p)
     ImGui::Checkbox("Chromatic Aberration", &p.lens.chromaticAberrationEnabled);
     ImGui::SameLine();
     ImGui::Checkbox("Lens Distortion", &p.lens.distortionEnabled);
+    ImGui::SameLine();
+    ImGui::Text("Custom: %d", static_cast<int>(p.customEffects.size()));
 }
 
 } // namespace
@@ -100,6 +103,12 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
     ImGui::TextUnformatted("Render");
     ImGui::Separator();
 
+    const char* pipelineItems[] = { "Forward", "Deferred" };
+    int pipelineIdx = static_cast<int>(render.pipeline);
+    if (ImGui::Combo("Pipeline", &pipelineIdx, pipelineItems, 2))
+        render.pipeline = static_cast<renderer::RenderingPipeline>(pipelineIdx);
+
+    ImGui::Spacing();
     ImGui::Checkbox("Shadow", &render.shadowEnabled);
     ImGui::SameLine();
     ImGui::Checkbox("Wireframe", &render.wireframeMode);
@@ -187,6 +196,54 @@ void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
         ImGui::BeginDisabled(!postProcess.lens.distortionEnabled);
         ImGui::SliderFloat("Distortion", &postProcess.lens.distortion, -0.5f, 0.5f);
         ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+
+    if (ImGui::CollapsingHeader("Custom")) {
+        ImGui::PushID("CustomPostProcessSettings");
+
+        int removeIndex = -1;
+        for (int i = 0; i < static_cast<int>(postProcess.customEffects.size()); ++i) {
+            auto& custom = postProcess.customEffects[static_cast<size_t>(i)];
+            ImGui::PushID(i);
+
+            char header[96];
+            std::snprintf(header, sizeof(header), "%02d  %s", i, custom.name.c_str());
+            if (ImGui::TreeNodeEx("CustomPass", ImGuiTreeNodeFlags_DefaultOpen, "%s", header)) {
+                ImGui::Checkbox("Enabled", &custom.enabled);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Remove"))
+                    removeIndex = i;
+
+                char name[64];
+                std::snprintf(name, sizeof(name), "%s", custom.name.c_str());
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::InputText("Name", name, sizeof(name)))
+                    custom.name = name;
+
+                char shaderPath[260];
+                std::snprintf(shaderPath, sizeof(shaderPath), "%s", custom.shaderPath.c_str());
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::InputText("Shader", shaderPath, sizeof(shaderPath)))
+                    custom.shaderPath = shaderPath;
+
+                ImGui::BeginDisabled(!custom.enabled);
+                ImGui::SliderFloat("Intensity", &custom.intensity, 0.0f, 4.0f);
+                ImGui::SliderFloat("Blend", &custom.blend, 0.0f, 1.0f);
+                ImGui::DragFloat4("Parameters", custom.parameters, 0.01f, -10.0f, 10.0f);
+                ImGui::EndDisabled();
+                ImGui::TreePop();
+            }
+
+            ImGui::PopID();
+        }
+
+        if (removeIndex >= 0)
+            postProcess.customEffects.erase(postProcess.customEffects.begin() + removeIndex);
+
+        if (ImGui::SmallButton("Add Custom Pass"))
+            postProcess.customEffects.push_back(renderer::CustomPostProcessSettings{});
+
         ImGui::PopID();
     }
 }
