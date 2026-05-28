@@ -3,7 +3,17 @@ file(GLOB_RECURSE HUB_SOURCES
     Src/*.hpp
 )
 
-add_executable(fbzz_hub WIN32 ${HUB_SOURCES})
+set(HUB_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/hub.rc")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/hub.rc.in"
+    "${HUB_RESOURCE}"
+    @ONLY
+)
+
+add_executable(fbzz_hub WIN32
+    ${HUB_SOURCES}
+    "${HUB_RESOURCE}"
+)
 
 set_target_properties(fbzz_hub PROPERTIES
     OUTPUT_NAME "FBZZHub"

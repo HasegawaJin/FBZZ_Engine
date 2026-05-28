@@ -24,6 +24,7 @@ using Microsoft::WRL::ComPtr;
 constexpr wchar_t WINDOW_CLASS_NAME[] = L"FBZZHubWindowClass";
 constexpr int INITIAL_WIDTH = 960;
 constexpr int INITIAL_HEIGHT = 640;
+constexpr int APP_ICON_ID = 101;
 
 struct D3DState {
     ComPtr<ID3D11Device> device;
@@ -34,6 +35,20 @@ struct D3DState {
 
 D3DState g_d3d;
 bool g_running = true;
+
+HICON LoadApplicationIcon(HINSTANCE instance, int size)
+{
+    // WHY: exe に埋め込んだ Hub 専用アイコンを、Explorer だけでなくタイトルバーと Alt+Tab にも反映する。
+    // LR_SHARED により HICON の寿命を OS 管理にして、Hub 側の解放責務を持たない。
+    // WHAT: rc ファイルと同じ ID 101 から、Win32 が要求する大/小サイズの HICON を取得する。
+    return static_cast<HICON>(LoadImageW(
+        instance,
+        MAKEINTRESOURCEW(APP_ICON_ID),
+        IMAGE_ICON,
+        size,
+        size,
+        LR_DEFAULTCOLOR | LR_SHARED));
+}
 
 void EnableDpiAwareness()
 {
@@ -171,6 +186,8 @@ HWND CreateHubWindow(HINSTANCE instance)
     wc.style = CS_CLASSDC;
     wc.lpfnWndProc = WndProc;
     wc.hInstance = instance;
+    wc.hIcon = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXICON));
+    wc.hIconSm = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXSMICON));
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.lpszClassName = WINDOW_CLASS_NAME;
     RegisterClassExW(&wc);
