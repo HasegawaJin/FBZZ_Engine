@@ -8,6 +8,7 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -176,6 +177,15 @@ void CreateCameraObject(EditorContext& ctx)
     ctx.selectedEntities = { go.GetID() };
 }
 
+// デカール投影ボリューム: X/Z が投影面サイズ、Y が投影深度
+void CreateDecalObject(EditorContext& ctx, const char* name, float sizeXZ, float depth)
+{
+    auto& go = ctx.activeScene->CreateGameObject(name);
+    go.transform.localScale = { sizeXZ, depth, sizeXZ };
+    go.AddComponent<scene::DecalComponent>();
+    ctx.selectedEntities = { go.GetID() };
+}
+
 void RemoveSelection(EditorContext& ctx, scene::EntityID id)
 {
     auto& selected = ctx.selectedEntities;
@@ -236,6 +246,16 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred)
 
     if (ImGui::MenuItem("Camera"))
         deferred = [&ctx]() { CreateCameraObject(ctx); };
+
+    if (ImGui::BeginMenu("Decal")) {
+        if (ImGui::MenuItem("Decal (2m x 2m)"))
+            deferred = [&ctx]() { CreateDecalObject(ctx, "Decal", 2.0f, 0.5f); };
+        if (ImGui::MenuItem("Decal (1m x 1m)"))
+            deferred = [&ctx]() { CreateDecalObject(ctx, "Decal (Small)", 1.0f, 0.3f); };
+        if (ImGui::MenuItem("Decal (5m x 5m)"))
+            deferred = [&ctx]() { CreateDecalObject(ctx, "Decal (Large)", 5.0f, 1.0f); };
+        ImGui::EndMenu();
+    }
 }
 
 bool ReadEntityPayload(const ImGuiPayload* payload, scene::EntityID& outId)

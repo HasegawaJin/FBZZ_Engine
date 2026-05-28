@@ -57,6 +57,8 @@ call :CompileVSPS Material\Skinned\SkinnedAnisotropic.hlsl Material.Skinned.Skin
 call :CompileVSPS Material\Effects\Particle.hlsl Material.Effects.Particle || goto :error
 call :CompileVSPS Material\Sky\Skybox.hlsl Material.Sky.Skybox || goto :error
 call :CompileVSPS Material\Sky\Skydome.hlsl Material.Sky.Skydome || goto :error
+call :CompileVSPS Material\Decal\Decal.hlsl     Material.Decal.Decal     || goto :error
+call :CompileVSPS Material\Decal\DecalMask.hlsl Material.Decal.DecalMask || goto :error
 
 REM =========================================================================
 REM Pipeline
