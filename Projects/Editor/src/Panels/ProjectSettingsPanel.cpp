@@ -96,6 +96,20 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
         core::Time::SetTargetFps(settings.app.targetFps);
     ImGui::SameLine();
     ImGui::TextDisabled("(0 = unlimited)");
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Scenes");
+    char defaultScene[260];
+    std::snprintf(defaultScene, sizeof(defaultScene), "%s", settings.project.defaultScene.c_str());
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputText("Default Scene", defaultScene, sizeof(defaultScene)))
+        settings.project.defaultScene = defaultScene;
+
+    char startScene[260];
+    std::snprintf(startScene, sizeof(startScene), "%s", settings.runtime.startScene.c_str());
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputText("Start Scene", startScene, sizeof(startScene)))
+        settings.runtime.startScene = startScene;
 }
 
 void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
@@ -113,7 +127,9 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
     ImGui::SameLine();
     ImGui::Checkbox("Wireframe", &render.wireframeMode);
     ImGui::SameLine();
-    ImGui::Checkbox("Colliders", &render.showColliders);
+    ImGui::Checkbox("Colliders",    &render.showColliders);
+    ImGui::SameLine();
+    ImGui::Checkbox("Decal Bounds", &render.showDecalBounds);
     ImGui::Checkbox("Selection Outline", &render.showSelectionOutline);
 
     ImGui::Spacing();
@@ -299,6 +315,12 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
     ImGui::TextUnformatted("Tags");
     ImGui::Separator();
 
+    if (ImGui::SmallButton("Reset Unity Preset")) {
+        settings.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
+                          "MainCamera", "Player", "GameController" };
+    }
+    ImGui::Spacing();
+
     int removeIdx = -1;
     for (int i = 0; i < static_cast<int>(settings.tags.size()); ++i) {
         ImGui::PushID(i);
@@ -331,12 +353,26 @@ void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
     ImGui::TextUnformatted("Layers");
     ImGui::Separator();
 
+    if (ImGui::SmallButton("Reset Unity Preset")) {
+        settings.layerNames = {
+            "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
+            "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "", ""
+        };
+    }
+    ImGui::Spacing();
+
     for (int i = 0; i < 32; ++i) {
         ImGui::PushID(i);
         ImGui::Text("%2d", i);
         ImGui::SameLine();
         char buf[64];
         std::snprintf(buf, sizeof(buf), "%s", settings.layerNames[i].c_str());
+        if (settings.layerNames[i].empty()) {
+            ImGui::TextDisabled("User Layer %d", i);
+            ImGui::SameLine();
+        }
         ImGui::SetNextItemWidth(-1.0f);
         if (ImGui::InputText("##layer", buf, sizeof(buf)))
             settings.layerNames[i] = buf;

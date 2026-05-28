@@ -1,5 +1,12 @@
 [app]
-targetFps = 0
+targetFps = 144
+
+[project]
+name = "{{PROJECT_NAME}}"
+default_scene = "Assets/Scenes/Main.fbzz"
+
+[runtime]
+start_scene = "Assets/Scenes/Main.fbzz"
 
 [audio]
 bgmVolume = 1.0
@@ -9,36 +16,36 @@ seVolume = 1.0
 names = [
     'Default',
     'TransparentFX',
-    'IgnoreRaycast',
-    '3',
+    'Ignore Raycast',
+    '',
     'Water',
     'UI',
-    '6',
-    '7',
-    '8',
-    '9',
-    '10',
-    '11',
-    '12',
-    '13',
-    '14',
-    '15',
-    '16',
-    '17',
-    '18',
-    '19',
-    '20',
-    '21',
-    '22',
-    '23',
-    '24',
-    '25',
-    '26',
-    '27',
-    '28',
-    '29',
-    '30',
-    '31'
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    ''
 ]
 
 [physics]
@@ -69,7 +76,9 @@ lensDistortionEnabled = false
 saturation = 1.0
 shadow = true
 showColliders = false
+showDecalBounds = false
 showSelectionOutline = true
+passViewerEnabled = false
 temperature = 0.0
 tint = 0.0
 vignette = false

@@ -67,13 +67,15 @@ math::Vector3 ArrToVec3(const toml::array* arr, const math::Vector3& def)
 ProjectSettings ProjectSettings::Default()
 {
     ProjectSettings ps;
+    ps.project.defaultScene = "Assets/Scenes/Main.fbzz";
+    ps.runtime.startScene   = "Assets/Scenes/Main.fbzz";
     ps.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
                 "MainCamera", "Player", "GameController" };
     ps.layerNames = {
-        "Default", "TransparentFX", "IgnoreRaycast", "3", "Water", "UI",
-        "6",  "7",  "8",  "9",  "10", "11", "12", "13", "14", "15",
-        "16", "17", "18", "19", "20", "21", "22", "23", "24", "25",
-        "26", "27", "28", "29", "30", "31"
+        "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", ""
     };
     ps.physics.hz       = 60;
     ps.physics.substeps = 4;
@@ -98,6 +100,15 @@ bool ProjectSettings::Load(const std::string& path)
     auto& tbl = result.table();
 
     *this = Default();
+
+    if (auto* projectTbl = tbl["project"].as_table()) {
+        project.name = (*projectTbl)["name"].value_or(project.name);
+        project.defaultScene = (*projectTbl)["default_scene"].value_or(project.defaultScene);
+    }
+
+    if (auto* runtimeTbl = tbl["runtime"].as_table()) {
+        runtime.startScene = (*runtimeTbl)["start_scene"].value_or(runtime.startScene);
+    }
 
     if (auto* tagArr = tbl["tags"]["list"].as_array()) {
         tags.clear();
@@ -142,7 +153,9 @@ bool ProjectSettings::Load(const std::string& path)
         pp.lens.chromaticAberrationEnabled = (*renderTbl)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled);
         pp.lens.distortionEnabled = (*renderTbl)["lensDistortionEnabled"].value_or(pp.lens.distortionEnabled);
         render.showColliders = (*renderTbl)["showColliders"].value_or(render.showColliders);
+        render.showDecalBounds = (*renderTbl)["showDecalBounds"].value_or(render.showDecalBounds);
         render.showSelectionOutline = (*renderTbl)["showSelectionOutline"].value_or(render.showSelectionOutline);
+        render.passViewerEnabled = (*renderTbl)["passViewerEnabled"].value_or(render.passViewerEnabled);
         pp.exposure = (float)(*renderTbl)["exposure"].value_or((double)pp.exposure);
         pp.bloom.intensity = (float)(*renderTbl)["bloomIntensity"].value_or((double)pp.bloom.intensity);
         pp.fog.density = (float)(*renderTbl)["fogDensity"].value_or((double)pp.fog.density);
@@ -306,7 +319,9 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("chromaticAberrationEnabled", pp.lens.chromaticAberrationEnabled);
     renderTbl.insert("lensDistortionEnabled", pp.lens.distortionEnabled);
     renderTbl.insert("showColliders",render.showColliders);
+    renderTbl.insert("showDecalBounds", render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
+    renderTbl.insert("passViewerEnabled", render.passViewerEnabled);
     renderTbl.insert("exposure",     (double)pp.exposure);
     renderTbl.insert("bloomIntensity", (double)pp.bloom.intensity);
     renderTbl.insert("fogDensity",   (double)pp.fog.density);
@@ -340,7 +355,16 @@ bool ProjectSettings::Save(const std::string& path) const
     toml::table appTbl;
     appTbl.insert("targetFps", (int64_t)app.targetFps);
 
+    toml::table projectTbl;
+    projectTbl.insert("name", project.name);
+    projectTbl.insert("default_scene", project.defaultScene);
+
+    toml::table runtimeTbl;
+    runtimeTbl.insert("start_scene", runtime.startScene);
+
     toml::table root;
+    root.insert("project", std::move(projectTbl));
+    root.insert("runtime", std::move(runtimeTbl));
     root.insert("tags",    std::move(tagTbl));
     root.insert("layers",  std::move(layTbl));
     root.insert("physics", std::move(physicsTbl));

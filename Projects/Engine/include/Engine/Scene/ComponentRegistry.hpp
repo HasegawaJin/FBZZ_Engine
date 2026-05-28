@@ -22,6 +22,7 @@
 #include "Components/UIText.hpp"
 #include "Components/UILayoutGroup.hpp"
 #include "Components/UIAnimator.hpp"
+#include "Components/DecalComponent.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -51,7 +52,8 @@ using ComponentList = std::tuple<
     UIText,
     UILayoutGroup,
     UIAnimator,
-    ScriptComponent
+    ScriptComponent,
+    DecalComponent
     // 新型はここに1行追加するだけ
 >;
 
