@@ -425,13 +425,23 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::Separator();
         if (ImGui::BeginMenu("Post Process")) {
             ImGui::MenuItem("Shadow",   nullptr, &ctx.projectSettings.render.shadowEnabled);
-            ImGui::MenuItem("Bloom",    nullptr, &ctx.projectSettings.render.bloomEnabled);
-            ImGui::MenuItem("Fog",      nullptr, &ctx.projectSettings.render.fogEnabled);
-            ImGui::MenuItem("FXAA",     nullptr, &ctx.projectSettings.render.fxaaEnabled);
+            auto& pp = ctx.projectSettings.render.postProcess;
+            ImGui::MenuItem("Bloom",    nullptr, &pp.bloom.enabled);
+            ImGui::MenuItem("Fog",      nullptr, &pp.fog.enabled);
+            ImGui::MenuItem("FXAA",     nullptr, &pp.fxaaEnabled);
+            ImGui::MenuItem("Color Grading", nullptr, &pp.colorGrading.enabled);
+            ImGui::MenuItem("Vignette", nullptr, &pp.vignette.enabled);
+            ImGui::MenuItem("Film Grain", nullptr, &pp.filmGrain.enabled);
+            ImGui::MenuItem("Chromatic Aberration", nullptr, &pp.lens.chromaticAberrationEnabled);
+            ImGui::MenuItem("Lens Distortion", nullptr, &pp.lens.distortionEnabled);
             ImGui::Separator();
-            ImGui::SliderFloat("Exposure",    &ctx.projectSettings.render.exposure,   0.1f, 4.0f);
-            ImGui::SliderFloat("Fog Density", &ctx.projectSettings.render.fogDensity, 0.0f, 1.0f);
-            ImGui::SliderFloat("Fog Far",     &ctx.projectSettings.render.fogFar,     1.0f, 100.0f);
+            ImGui::SliderFloat("Exposure",    &pp.exposure,   0.1f, 4.0f);
+            ImGui::SliderFloat("Bloom Intensity", &pp.bloom.intensity, 0.0f, 3.0f);
+            ImGui::SliderFloat("Contrast", &pp.colorGrading.contrast, -1.0f, 1.0f);
+            ImGui::SliderFloat("Saturation", &pp.colorGrading.saturation, 0.0f, 2.0f);
+            ImGui::SliderFloat("Hue Shift", &pp.colorGrading.hueShift, -180.0f, 180.0f);
+            ImGui::SliderFloat("Fog Density", &pp.fog.density, 0.0f, 1.0f);
+            ImGui::SliderFloat("Fog Far",     &pp.fog.farDistance,     1.0f, 100.0f);
             ImGui::EndMenu();
         }
         ImGui::EndMenu();

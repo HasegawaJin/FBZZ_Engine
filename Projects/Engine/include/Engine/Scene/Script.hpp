@@ -17,6 +17,14 @@ struct ColliderComponent;
 class GameObject;
 class Scene;
 
+} // namespace fbzz::scene
+
+namespace fbzz::renderer {
+struct PostProcessSettings;
+}
+
+namespace fbzz::scene {
+
 struct CollisionInfo {
     GameObject* self = nullptr;
     GameObject* other = nullptr;
@@ -68,6 +76,11 @@ public:
     }
 
 protected:
+    renderer::PostProcessSettings& GetRuntimePostProcessSettings();
+    const renderer::PostProcessSettings* TryGetRuntimePostProcessSettings() const;
+    void SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings);
+    void ClearRuntimePostProcessSettings();
+
     Scene*      m_scene      = nullptr; // 非所有参照
     GameObject* m_gameObject = nullptr; // 非所有参照
 };

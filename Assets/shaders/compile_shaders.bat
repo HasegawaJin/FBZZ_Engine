@@ -53,6 +53,7 @@ REM =========================================================================
 
 call :CompileVSPS Pipeline\Deferred\GBuffer.hlsl Pipeline.Deferred.GBuffer || goto :error
 call :CompileVSPS Pipeline\Deferred\DeferredLighting.hlsl Pipeline.Deferred.DeferredLighting || goto :error
+call :CompileVSPS Pipeline\Deferred\DepthCopy.hlsl Pipeline.Deferred.DepthCopy || goto :error
 call :CompileVSPS Pipeline\Shadow\ShadowMap.hlsl Pipeline.Shadow.ShadowMap || goto :error
 call :CompileVSPS Pipeline\Shadow\SkinnedShadowMap.hlsl Pipeline.Shadow.SkinnedShadowMap || goto :error
 
@@ -65,6 +66,7 @@ call :CompileCS PostProcess\AmbientOcclusion\SSAOBlur.cs.hlsl PostProcess.Ambien
 call :CompileCS PostProcess\Bloom\BloomDownsample.cs.hlsl PostProcess.Bloom.BloomDownsample.cs || goto :error
 call :CompileCS PostProcess\Bloom\BloomUpsample.cs.hlsl PostProcess.Bloom.BloomUpsample.cs || goto :error
 call :CompileVSPS PostProcess\Color\Composite.hlsl PostProcess.Color.Composite || goto :error
+for %%S in ("%SRC%PostProcess\Custom\*.hlsl") do call :CompileVSPS PostProcess\Custom\%%~nxS PostProcess.Custom.%%~nS || goto :error
 call :CompileVSPS PostProcess\AntiAliasing\FXAA.hlsl PostProcess.AntiAliasing.FXAA || goto :error
 call :CompileVSPS PostProcess\Outline\SelectionOutline.hlsl PostProcess.Outline.SelectionOutline || goto :error
 

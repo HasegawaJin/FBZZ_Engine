@@ -26,7 +26,7 @@ void ExecuteSelectionOutlinePass(RenderPassContext& ctx)
     outlineData.width = rs.outlineWidth;
     resources.Update(h.outlineCB, &outlineData, sizeof(OutlineCB));
 
-    r.SetRenderTarget(rs.fxaaEnabled ? h.outlineRT : ctx.outputRT, resources);
+    r.SetRenderTarget(rs.postProcess.fxaaEnabled ? h.outlineRT : ctx.outputRT, resources);
 
     renderer::DrawCall outlineDC;
     outlineDC.shader = h.selectionOutlineShader;
@@ -34,7 +34,9 @@ void ExecuteSelectionOutlinePass(RenderPassContext& ctx)
     outlineDC.vertexCount = 3;
     outlineDC.constantBuffers[2] = h.outlineCB;
     outlineDC.constantBuffers[5] = h.postprocCB;
-    outlineDC.textures[5] = resources.GetColorTexture(h.ldrRT, 0);
+    outlineDC.textures[5] = h.postProcessInput.IsValid()
+        ? h.postProcessInput
+        : resources.GetColorTexture(h.ldrRT, 0);
     outlineDC.textures[6] = resources.GetColorTexture(h.selectionMaskRT, 0);
     outlineDC.textures[7] = resources.GetDepthTexture(h.hdrRT);
     outlineDC.textures[8] = resources.GetDepthTexture(h.selectionMaskRT);

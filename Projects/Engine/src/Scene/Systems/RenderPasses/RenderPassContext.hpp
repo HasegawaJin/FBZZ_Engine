@@ -14,6 +14,7 @@
 #include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
 #include <cstdint>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -57,9 +58,26 @@ struct PostProcCB {
     float exposure;
     float time;
     float fogDensity;
-    float _pad;
+    float bloomIntensity;
     float fogColor[3];
     float fogFar;
+    float contrast;
+    float saturation;
+    float hueShift;
+    float temperature;
+    float tint;
+    float vignetteIntensity;
+    float vignetteSmoothness;
+    float vignetteRoundness;
+    float vignetteColor[3];
+    float filmGrainIntensity;
+    float filmGrainResponse;
+    float chromaticAberration;
+    float lensDistortion;
+    float customIntensity;
+    float customBlend;
+    float customParameters[4];
+    float _pad[2];
 };
 
 struct OutlineCB {
@@ -74,11 +92,13 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
 
     renderer::ResourceHandle<renderer::TextureTag> bloomHalf;
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> shadowDepthTex;
     renderer::ResourceHandle<renderer::TextureTag> fxaaInput;
+    renderer::ResourceHandle<renderer::TextureTag> postProcessInput;
 
     renderer::ResourceHandle<renderer::ShaderTag> bloomDownShader;
     renderer::ResourceHandle<renderer::ShaderTag> bloomUpShader;
@@ -87,6 +107,7 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskSkinnedShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
     renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
+    std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
 
     renderer::ResourceHandle<renderer::PipelineStateTag> selectionMaskPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag> postprocPSO;

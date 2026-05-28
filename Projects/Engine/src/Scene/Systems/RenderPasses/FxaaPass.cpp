@@ -12,7 +12,7 @@ void ExecuteFxaaPass(RenderPassContext& ctx)
     auto& h = ctx.handles;
     const auto& rs = ctx.settings;
 
-    if (rs.fxaaEnabled && h.fxaaShader.IsValid() && h.ldrRT.IsValid())
+    if (rs.postProcess.fxaaEnabled && h.fxaaShader.IsValid() && h.ldrRT.IsValid())
     {
         ctx.renderer.SetRenderTarget(ctx.outputRT, ctx.resources);
 
