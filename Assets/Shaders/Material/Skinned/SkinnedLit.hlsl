@@ -1,7 +1,7 @@
 // FBZZ Engine
-// Material/Skinned/SkinnedPBR.hlsl | Material
-// GPU スキニング + Cook-Torrance PBR フォワードパス
-// PS ロジックは Surface/PBR.hlsl と完全に一致させること。
+// Material/Skinned/SkinnedLit.hlsl | Material
+// GPU スキニング + Lambert 拡散 + PCF シャドウ
+// PS ロジックは Surface/Lit.hlsl と完全に一致させること。
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
@@ -9,14 +9,10 @@
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 
-Texture2D<float>       texShadow        : register(TEX_SHADOW);
-Texture2D              texAlbedo        : register(TEX_ALBEDO);
-Texture2D              texNormal        : register(TEX_NORMAL);
-Texture2D              texMetallicRough : register(TEX_METALLIC_ROUGH);
-Texture2D              texEmissive      : register(TEX_EMISSIVE);
-Texture2D              texAO            : register(TEX_AO);
-SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
-SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
+Texture2D<float>       texShadow   : register(TEX_SHADOW);
+Texture2D              texAlbedo   : register(TEX_ALBEDO);
+SamplerState           sampDefault : register(SAMPLER_DEFAULT);
+SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 
 float4x4 BlendSkinMatrix(SkinnedVSInput v)
 {
@@ -44,42 +40,14 @@ PSInput VSMain(SkinnedVSInput v)
 
 float4 PSMain(PSInput p) : SV_Target0
 {
-    float2 uv = p.uv * uvTiling + uvOffset;
-
-    float4 albedoSample = (textureMask & (1u << 0))
-        ? texAlbedo.Sample(sampDefault, uv)
-        : albedo;
-    float3 col   = albedoSample.rgb * albedo.rgb;
-    float  alpha = albedoSample.a  * albedo.a;
-    clip(alpha - alphaCutoff);
-
-    float3 N = normalize(p.normal);
-    if (textureMask & (1u << 1))
-    {
-        float3 ns = texNormal.Sample(sampDefault, uv).rgb;
-        float3 nm = ApplyNormalMap(ns, N, normalize(p.tangent));
-        N = normalize(lerp(N, nm, normalStrength));
-    }
-
-    float met   = metallic;
-    float rough = roughness;
-    if (textureMask & (1u << 2))
-    {
-        float2 mr = texMetallicRough.Sample(sampDefault, uv).gb;
-        rough = mr.x;
-        met   = mr.y;
-    }
-
-    float ao = 1.0f;
-    if (textureMask & (1u << 4))
-        ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
-
-    float3 V      = normalize(cameraPos - p.worldPos);
+    float3 col    = (textureMask & 1u)
+        ? texAlbedo.Sample(sampDefault, p.uv).rgb
+        : albedo.rgb;
+    float3 N      = normalize(p.normal);
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    float3 result = Lighting_PBR(N, V, L, col, met, rough,
-                                 lightColor, lightIntensity, shadow, ao);
+    float3 result = Lighting_Lambert(N, L, col, lightColor, lightIntensity, shadow);
 
     [loop] for (int pi = 0; pi < pointLightCount; ++pi)
     {
@@ -87,7 +55,7 @@ float4 PSMain(PSInput p) : SV_Target0
         float  dist    = length(toLight);
         float3 Lp      = toLight / dist;
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_PBR_Direct(N, V, Lp, col, met, rough,
+        result += Lighting_Lambert_Direct(N, Lp, col,
                       pointLights[pi].color, pointLights[pi].intensity * atten);
     }
     [loop] for (int si = 0; si < spotLightCount; ++si)
@@ -98,14 +66,8 @@ float4 PSMain(PSInput p) : SV_Target0
         float  atten   = LightAttenuation(dist, spotLights[si].range);
         float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
                              spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_PBR_Direct(N, V, Ls, col, met, rough,
+        result += Lighting_Lambert_Direct(N, Ls, col,
                       spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
-
-    float3 emissiveTex = (textureMask & (1u << 3))
-        ? texEmissive.Sample(sampDefault, uv).rgb
-        : float3(1.0f, 1.0f, 1.0f);
-    result += emissiveTex * emissiveColor * emissiveScale;
-
-    return float4(result, alpha);
+    return float4(result, 1.0f);
 }

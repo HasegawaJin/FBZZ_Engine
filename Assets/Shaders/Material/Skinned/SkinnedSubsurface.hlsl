@@ -1,7 +1,7 @@
 // FBZZ Engine
-// Material/Skinned/SkinnedPBR.hlsl | Material
-// GPU スキニング + Cook-Torrance PBR フォワードパス
-// PS ロジックは Surface/PBR.hlsl と完全に一致させること。
+// Material/Skinned/SkinnedSubsurface.hlsl | Material
+// GPU スキニング + 簡易サブサーフェス スキャッタリング
+// PS ロジックは Surface/Subsurface.hlsl と完全に一致させること。
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
@@ -9,14 +9,12 @@
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 
-Texture2D<float>       texShadow        : register(TEX_SHADOW);
-Texture2D              texAlbedo        : register(TEX_ALBEDO);
-Texture2D              texNormal        : register(TEX_NORMAL);
-Texture2D              texMetallicRough : register(TEX_METALLIC_ROUGH);
-Texture2D              texEmissive      : register(TEX_EMISSIVE);
-Texture2D              texAO            : register(TEX_AO);
-SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
-SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
+Texture2D<float>       texShadow   : register(TEX_SHADOW);
+Texture2D              texAlbedo   : register(TEX_ALBEDO);
+Texture2D              texNormal   : register(TEX_NORMAL);
+Texture2D              texAO       : register(TEX_AO);
+SamplerState           sampDefault : register(SAMPLER_DEFAULT);
+SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 
 float4x4 BlendSkinMatrix(SkinnedVSInput v)
 {
@@ -61,15 +59,6 @@ float4 PSMain(PSInput p) : SV_Target0
         N = normalize(lerp(N, nm, normalStrength));
     }
 
-    float met   = metallic;
-    float rough = roughness;
-    if (textureMask & (1u << 2))
-    {
-        float2 mr = texMetallicRough.Sample(sampDefault, uv).gb;
-        rough = mr.x;
-        met   = mr.y;
-    }
-
     float ao = 1.0f;
     if (textureMask & (1u << 4))
         ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
@@ -78,8 +67,18 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    float3 result = Lighting_PBR(N, V, L, col, met, rough,
-                                 lightColor, lightIntensity, shadow, ao);
+
+    float  wrap       = roughness * 0.8f;
+    float  NdotL_wrap = saturate((dot(N, L) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
+    float3 ambient    = col * 0.08f * ao;
+    float3 diffuse    = col * lightColor * lightIntensity * NdotL_wrap * shadow;
+
+    float  backScatter = pow(saturate(dot(V, -L)), 2.5f) * shadow;
+    float3 scatter     = emissiveColor * emissiveScale
+                       * (backScatter + 0.15f)
+                       * lightColor * lightIntensity * ao;
+
+    float3 result = ambient + diffuse + scatter;
 
     [loop] for (int pi = 0; pi < pointLightCount; ++pi)
     {
@@ -87,8 +86,8 @@ float4 PSMain(PSInput p) : SV_Target0
         float  dist    = length(toLight);
         float3 Lp      = toLight / dist;
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
-        result += Lighting_PBR_Direct(N, V, Lp, col, met, rough,
-                      pointLights[pi].color, pointLights[pi].intensity * atten);
+        float  ndotlp  = saturate((dot(N, Lp) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
+        result += col * pointLights[pi].color * pointLights[pi].intensity * atten * ndotlp;
     }
     [loop] for (int si = 0; si < spotLightCount; ++si)
     {
@@ -98,14 +97,9 @@ float4 PSMain(PSInput p) : SV_Target0
         float  atten   = LightAttenuation(dist, spotLights[si].range);
         float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
                              spotLights[si].innerCos, spotLights[si].outerCos);
-        result += Lighting_PBR_Direct(N, V, Ls, col, met, rough,
-                      spotLights[si].color, spotLights[si].intensity * atten * cone);
+        float  ndotls  = saturate((dot(N, Ls) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
+        result += col * spotLights[si].color * spotLights[si].intensity * atten * cone * ndotls;
     }
-
-    float3 emissiveTex = (textureMask & (1u << 3))
-        ? texEmissive.Sample(sampDefault, uv).rgb
-        : float3(1.0f, 1.0f, 1.0f);
-    result += emissiveTex * emissiveColor * emissiveScale;
 
     return float4(result, alpha);
 }
