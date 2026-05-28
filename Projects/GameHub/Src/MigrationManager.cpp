@@ -156,7 +156,7 @@ bool MigrationManager::EnsureGeneratedLayout(const std::filesystem::path& projec
 
     return EnsureTextFile(
         projectRoot / "ProjectSettings/ProjectSettings.toml",
-        "[project]\ndefault_scene = \"Assets/Scenes/Main.fbzz\"\n",
+        "[project]\ndefault_scene = \"Assets/Scenes/Main.fbzz\"\n\n[runtime]\nstart_scene = \"Assets/Scenes/Main.fbzz\"\n",
         errorMessage);
 }
 
