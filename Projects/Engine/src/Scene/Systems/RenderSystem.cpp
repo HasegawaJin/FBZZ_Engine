@@ -378,6 +378,7 @@ void RenderSystem(Scene& scene,
     passHandles.postprocPSO = postprocPSO;
     passHandles.frameCB = frameCB;
     passHandles.objectCB = objectCB;
+    passHandles.lightCB = lightCB;
     passHandles.bindPoseSkinningCB = bindPoseSkinningCB;
     passHandles.postprocCB = postprocCB;
     passHandles.outlineCB = outlineCB;
