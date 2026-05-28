@@ -14,7 +14,7 @@ tag = 'MainCamera'
     farZ = 1000.0
     fovY = 60.0
     isMain = true
-    nearZ = 0.10000000149011612
+    nearZ = 0.1
 
     [gameobjects.ScriptComponent]
     enabled = true
@@ -22,11 +22,11 @@ tag = 'MainCamera'
 
         [gameobjects.ScriptComponent.fields]
         Distance = 5.0
-        Height = 1.600000023841858
+        Height = 1.6
         'Max Pitch' = 65.0
         'Min Pitch' = -20.0
         'Mouse Orbit' = true
-        'Mouse Sensitivity' = 0.20000000298023224
+        'Mouse Sensitivity' = 0.2
         Pitch = 15.0
         'Target Tag' = 'Player'
         Yaw = 0.0
@@ -44,14 +44,14 @@ parent = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
-    color = [ 1.0, 0.9568626880645752, 0.8392156958580017 ]
+    color = [ 1.0, 0.956863, 0.839216 ]
     enabled = true
     intensity = 1.25
     type = 'Directional'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 3.0, 0.0 ]
-    localRotation = [ 0.5132800936698914, -0.3181890845298767, -0.21260705590248108, 0.7681779861450195 ]
+    localRotation = [ 0.51328, -0.318189, -0.212607, 0.768178 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -63,9 +63,9 @@ tag = 'Untagged'
 
     [gameobjects.SkyRenderer]
     enabled = true
-    mieG = 0.7599999904632568
-    mieScattering = 0.002099999925121665
-    rayleighScattering = [ 0.005799999926239252, 0.013500000350177288, 0.03310000151395798 ]
+    mieG = 0.76
+    mieScattering = 0.0021
+    rayleighScattering = [ 0.0058, 0.0135, 0.0331 ]
     sunIntensity = 20.0
 
     [gameobjects.transform]
@@ -84,27 +84,27 @@ tag = 'Player'
     clipIndex = 0
     clipName = ''
     clipSources = [
-        'C:/Users/jinhs/Downloads/FBZZ_Engine/build/debug/Projects/Sandbox/Debug/SandboxProject/Assets/Models/Walk.fbx'
+        'Assets/Models/Walk.fbx'
     ]
     enabled = true
     loop = true
     playing = true
     speed = 1.0
-    time = 0.8589041829109192
+    time = 0.858904
 
     [gameobjects.CapsuleColliderComponent]
-    center = [ 0.0, 0.8999999761581421, 0.0 ]
+    center = [ 0.0, 0.9, 0.0 ]
     enabled = true
     isTrigger = false
 
         [gameobjects.CapsuleColliderComponent.material]
         density = 1.0
-        dynamicFriction = 0.4000000059604645
-        restitution = 0.30000001192092896
-        staticFriction = 0.6000000238418579
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
 
         [gameobjects.CapsuleColliderComponent.shape]
-        halfHeight = 0.4399999976158142
+        halfHeight = 0.44
         radius = 0.5
         type = 'Capsule'
 
@@ -115,8 +115,8 @@ tag = 'Player'
     enabled = true
     metallic = 0.0
     normalTex = ''
-    roughness = 0.6499999761581421
-    shader = 'Assets/shaders/Material/Surface/Phong.hlsl'
+    roughness = 0.65
+    shader = 'Assets/shaders/Material/Skinned/SkinnedToon.hlsl'
 
     [gameobjects.RigidBodyComponent]
     angularVelocity = [ 0.0, 0.0, 0.0 ]
@@ -137,13 +137,13 @@ tag = 'Player'
         [gameobjects.ScriptComponent.fields]
         'Move Speed' = 4.0
         'Rotate To Move Direction' = true
-        'Sprint Multiplier' = 1.7999999523162842
+        'Sprint Multiplier' = 1.8
         'Use Camera Forward' = true
 
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
     meshIndex = 0
-    modelPath = 'C:/Users/jinhs/Downloads/FBZZ_Engine/build/debug/Projects/Sandbox/Debug/SandboxProject/Assets/Models/test.fbx'
+    modelPath = 'Assets/Models/test.fbx'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.0, 0.0 ]
@@ -158,18 +158,18 @@ parent = ''
 tag = 'Untagged'
 
     [gameobjects.AabbColliderComponent]
-    center = [ 0.0, -0.11999999731779099, 0.0 ]
+    center = [ 0.0, -0.12, 0.0 ]
     enabled = true
     isTrigger = false
 
         [gameobjects.AabbColliderComponent.material]
         density = 1.0
-        dynamicFriction = 0.4000000059604645
-        restitution = 0.30000001192092896
-        staticFriction = 0.6000000238418579
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
 
         [gameobjects.AabbColliderComponent.shape]
-        halfExtents = [ 5.0, 0.10000000149011612, 5.0 ]
+        halfExtents = [ 5.0, 0.1, 5.0 ]
         type = 'AABB'
 
     [gameobjects.MaterialComponent]
@@ -179,7 +179,7 @@ tag = 'Untagged'
     enabled = true
     metallic = 0.0
     normalTex = ''
-    roughness = 0.6499999761581421
+    roughness = 0.65
     shader = 'Assets/shaders/Material/Surface/Phong.hlsl'
 
     [gameobjects.MeshRenderer]
