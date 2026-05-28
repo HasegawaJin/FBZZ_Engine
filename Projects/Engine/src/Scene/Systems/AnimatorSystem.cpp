@@ -94,6 +94,37 @@ const asset::NodeAnimationTrack* FindTrack(const asset::AnimationClip& clip,
     for (const auto& track : clip.tracks)
         if (track.nodeName == nodeName)
             return &track;
+
+    // FBX は DCC / exporter の設定により、同じボーンでも
+    //   mixamorig:RightFoot
+    //   RightFoot
+    //   mixamorig:RightFoot_$AssimpFbx$_PreRotation
+    // のようにチャンネル名が揺れることがある。
+    // exact match を優先した上で、補助ノード suffix と namespace 差だけを吸収する。
+    auto canonical = [](std::string name) {
+        std::replace(name.begin(), name.end(), '\\', '/');
+
+        const std::string helper = "_$AssimpFbx$_";
+        const size_t helperPos = name.find(helper);
+        if (helperPos != std::string::npos)
+            name = name.substr(0, helperPos);
+
+        const size_t pathPos = name.find_last_of("/|");
+        if (pathPos != std::string::npos)
+            name = name.substr(pathPos + 1);
+
+        const size_t namespacePos = name.find_last_of(':');
+        if (namespacePos != std::string::npos)
+            name = name.substr(namespacePos + 1);
+
+        return name;
+    };
+
+    const std::string canonicalNodeName = canonical(nodeName);
+    for (const auto& track : clip.tracks)
+        if (canonical(track.nodeName) == canonicalNodeName)
+            return &track;
+
     return nullptr;
 }
 
