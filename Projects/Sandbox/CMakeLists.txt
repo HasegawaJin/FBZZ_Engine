@@ -6,6 +6,8 @@ file(GLOB_RECURSE SANDBOX_SOURCES
 add_executable(sandbox ${SANDBOX_SOURCES})
 
 set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:sandbox>/SandboxProject")
+set(SANDBOX_PROJECT_TEMPLATE_DIR "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard")
+set(SANDBOX_ENSURE_PROJECT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/EnsureSandboxProject.cmake")
 
 # シェーダーを HLSL ファイルが更新されるたびに自動コンパイルする
 set(SHADER_SCRIPT    "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
@@ -32,7 +34,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_SCRIPT}"
     COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_UI_SCRIPT}"
     COMMAND ${CMAKE_COMMAND} -E touch ${SHADER_STAMP}
-    DEPENDS ${HLSL_FILES}
+    DEPENDS ${HLSL_FILES} "${SHADER_SCRIPT}" "${SHADER_UI_SCRIPT}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders..."
 )
@@ -57,13 +59,35 @@ add_custom_command(TARGET sandbox POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:sandbox>"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
+        "$<TARGET_FILE_DIR:sandbox>/Assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
         "$<TARGET_FILE_DIR:sandbox>/Assets"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets"
+    COMMAND ${CMAKE_COMMAND}
+        -D "SOURCE_DIR=${SANDBOX_PROJECT_TEMPLATE_DIR}"
+        -D "DEST_DIR=${SANDBOX_DEFAULT_PROJECT_DIR}"
+        -P "${SANDBOX_ENSURE_PROJECT_SCRIPT}"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
         "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${SANDBOX_PROJECT_TEMPLATE_DIR}/Assets"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/ProjectSettings"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${SANDBOX_PROJECT_TEMPLATE_DIR}/ProjectSettings"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/ProjectSettings"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets/Shaders"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets/Models"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Models"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets/Textures"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Textures"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets/Sounds"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Sounds"
 )

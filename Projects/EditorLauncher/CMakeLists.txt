@@ -53,7 +53,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_SCRIPT}"
     COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_UI_SCRIPT}"
     COMMAND ${CMAKE_COMMAND} -E touch ${SHADER_STAMP}
-    DEPENDS ${EDITOR_LAUNCHER_HLSL_FILES}
+    DEPENDS ${EDITOR_LAUNCHER_HLSL_FILES} "${SHADER_SCRIPT}" "${SHADER_UI_SCRIPT}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders for FBZZEditor..."
 )
@@ -65,6 +65,8 @@ add_custom_command(TARGET fbzz_editor_launcher POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:fbzz_editor_launcher>"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
+        "$<TARGET_FILE_DIR:fbzz_editor_launcher>/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:fbzz_editor_launcher>/assets"
