@@ -30,6 +30,7 @@
 #define TEX_BLOOM       t10
 #define TEX_ENV_CUBE    t11  // Skybox キューブマップ / IBL
 #define TEX_ENV_EQUIRECT t12 // Skydome 等緯度テクスチャ
+#define TEX_DECAL_MASK   t13 // デカール受信除外マスク (bit3 有効時のみバインド)
 
 // ---- UAV (コンピュートシェーダー出力) ---------------------------------
 #define UAV_OUTPUT      u0
