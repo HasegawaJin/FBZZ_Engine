@@ -3,9 +3,15 @@
 // Rendering and post-process settings
 #pragma once
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace fbzz::renderer {
+
+enum class RenderingPipeline : uint8_t {
+    Forward  = 0,
+    Deferred = 1,
+};
 
 struct RenderSelectionID {
     uint32_t index = 0xFFFFFFFFu;
@@ -54,6 +60,15 @@ struct LensSettings {
     float distortion = 0.0f;
 };
 
+struct CustomPostProcessSettings {
+    std::string name = "Custom";
+    bool enabled = false;
+    std::string shaderPath = "assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl";
+    float intensity = 1.0f;
+    float blend = 1.0f;
+    float parameters[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+};
+
 struct PostProcessSettings {
     bool fxaaEnabled = true;
     float exposure = 1.0f;
@@ -63,9 +78,11 @@ struct PostProcessSettings {
     VignetteSettings vignette;
     FilmGrainSettings filmGrain;
     LensSettings lens;
+    std::vector<CustomPostProcessSettings> customEffects;
 };
 
 struct RenderSettings {
+    RenderingPipeline pipeline = RenderingPipeline::Forward;
     bool wireframeMode = false;
     bool shadowEnabled = true;
     bool showColliders = false;
