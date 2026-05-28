@@ -37,6 +37,8 @@ Scene& Scene::operator=(Scene&& other) noexcept
 
     m_arrays       = std::move(other.m_arrays);
     m_destroyQueue = std::move(other.m_destroyQueue);
+    m_runtimePostProcessSettings = other.m_runtimePostProcessSettings;
+    m_hasRuntimePostProcessSettings = other.m_hasRuntimePostProcessSettings;
 
     FixupOwnership();
     other.Clear();
@@ -264,6 +266,30 @@ void Scene::Clear()
     std::memset(m_entityToGameObject, 0, sizeof(m_entityToGameObject));
     m_nextIndex = 0;
     m_freeIndices.clear();
+    ClearRuntimePostProcessSettings();
+}
+
+renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()
+{
+    m_hasRuntimePostProcessSettings = true;
+    return m_runtimePostProcessSettings;
+}
+
+const renderer::PostProcessSettings* Scene::TryGetRuntimePostProcessSettings() const
+{
+    return m_hasRuntimePostProcessSettings ? &m_runtimePostProcessSettings : nullptr;
+}
+
+void Scene::SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings)
+{
+    m_runtimePostProcessSettings = settings;
+    m_hasRuntimePostProcessSettings = true;
+}
+
+void Scene::ClearRuntimePostProcessSettings()
+{
+    m_runtimePostProcessSettings = {};
+    m_hasRuntimePostProcessSettings = false;
 }
 
 void Scene::RemoveAllComponents(EntityID id)

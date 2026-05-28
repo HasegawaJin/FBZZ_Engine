@@ -14,7 +14,6 @@
 Texture2D      texGBuffer0  : register(TEX_GBUFFER0);   // albedo(RGB) + roughness(A)
 Texture2D      texGBuffer1  : register(TEX_GBUFFER1);   // normal(RGB) + metallic(A)
 Texture2D      texDepth     : register(TEX_DEPTH);
-Texture2D      texSSAO      : register(TEX_SSAO);
 Texture2D<float>       texShadow    : register(TEX_SHADOW);
 SamplerState           sampDefault  : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow   : register(SAMPLER_SHADOW);
@@ -39,6 +38,10 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
 {
     float2 uv = p.uv;
 
+    // 深度を先読みし、ジオメトリがないピクセル (空・背景) を除外する
+    float  ndcDepth = texDepth.Sample(sampDefault, uv).r;
+    if (ndcDepth >= 1.0f) discard;
+
     // GBuffer 展開
     float4 gb0    = texGBuffer0.Sample(sampDefault, uv);
     float4 gb1    = texGBuffer1.Sample(sampDefault, uv);
@@ -48,11 +51,10 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float  met    = gb1.a;
 
     // 深度から worldPos を復元
-    float  ndcDepth = texDepth.Sample(sampDefault, uv).r;
     float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
 
-    // SSAO
-    float ao = texSSAO.Sample(sampDefault, uv).r;
+    // SSAO は未配線のため 1.0 (遮蔽なし) で固定
+    float ao = 1.0f;
 
     float3 V      = normalize(cameraPos - worldPos);
     float3 L      = normalize(-lightDir);

@@ -15,7 +15,7 @@ void ExecuteBloomPass(RenderPassContext& ctx)
     auto& h = ctx.handles;
     const auto& rs = ctx.settings;
 
-    if (rs.bloomEnabled && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid() &&
+    if (rs.postProcess.bloom.enabled && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid() &&
         h.bloomHalf.IsValid() && h.bloomFull.IsValid())
     {
         PostProcCB halfData{};

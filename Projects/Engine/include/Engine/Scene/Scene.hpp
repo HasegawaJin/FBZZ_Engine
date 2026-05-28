@@ -9,6 +9,7 @@
 #include "Transform.hpp"
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
+#include <Engine/Renderer/RenderSettings.hpp>
 #include <vector>
 #include <memory>
 #include <string>
@@ -115,6 +116,11 @@ public:
     // 全 GameObject・Component を削除してシーンを空にする
     void Clear();
 
+    renderer::PostProcessSettings& GetRuntimePostProcessSettings();
+    const renderer::PostProcessSettings* TryGetRuntimePostProcessSettings() const;
+    void SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings);
+    void ClearRuntimePostProcessSettings();
+
     // --- GameObject / SceneView の template 本体から呼ばれる内部 API ---
 
     template<typename T> T&   AddComponent(EntityID id, T component);
@@ -152,6 +158,9 @@ private:
     // delay 付き Destroy キュー
     struct DestroyEntry { EntityID id; float delay; };
     std::vector<DestroyEntry> m_destroyQueue;
+
+    renderer::PostProcessSettings m_runtimePostProcessSettings;
+    bool m_hasRuntimePostProcessSettings = false;
 
     EntityID AllocateEntity();
     void     DestroyImmediate(EntityID id);

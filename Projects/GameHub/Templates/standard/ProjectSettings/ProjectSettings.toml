@@ -47,16 +47,45 @@ hz = 60
 substeps = 4
 
 [render]
+pipeline = 'forward'
 bloom = true
+bloomIntensity = 0.8
+chromaticAberration = 0.005
+chromaticAberrationEnabled = false
+colorGrading = true
+contrast = 0.0
 exposure = 1.0
+filmGrain = false
+filmGrainIntensity = 0.03
+filmGrainResponse = 0.8
 fog = true
 fogColor = [ 0.009999999776482582, 0.009999999776482582, 0.03999999910593033 ]
 fogDensity = 0.05999999865889549
 fogFar = 10.0
 fxaa = true
+hueShift = 0.0
+lensDistortion = 0.0
+lensDistortionEnabled = false
+saturation = 1.0
 shadow = true
 showColliders = false
+showSelectionOutline = true
+temperature = 0.0
+tint = 0.0
+vignette = true
+vignetteColor = [ 0.0, 0.0, 0.0 ]
+vignetteIntensity = 0.25
+vignetteRoundness = 1.0
+vignetteSmoothness = 0.45
 wireframe = false
+
+[[render.customPostProcesses]]
+blend = 1.0
+enabled = false
+intensity = 1.0
+name = 'Default Custom'
+parameters = [ 0.0, 0.0, 0.0, 0.0 ]
+shader = 'assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl'
 
 [screen]
 height = 1080
