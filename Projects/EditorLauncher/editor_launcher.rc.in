@@ -1,0 +1,3 @@
+#define FBZZ_APP_ICON 101
+
+FBZZ_APP_ICON ICON "@CMAKE_SOURCE_DIR@/Assets/Icons/editor.ico"

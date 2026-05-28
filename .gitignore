@@ -63,3 +63,7 @@ Thumbs.db
 # ThirdParty dependencies are vendored and should be tracked completely.
 !ThirdParty/
 !ThirdParty/**
+
+# Application icons are source assets and must be tracked.
+!Assets/Icons/
+!Assets/Icons/*.ico
