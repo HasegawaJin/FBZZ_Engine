@@ -84,7 +84,7 @@ tag = 'Player'
     clipIndex = 0
     clipName = ''
     clipSources = [
-        'Assets/Models/Walk.fbx'
+        'Assets/Models/DebugCharacter/Idle.fbx'
     ]
     enabled = true
     loop = true
@@ -143,7 +143,7 @@ tag = 'Player'
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
     meshIndex = 0
-    modelPath = 'Assets/Models/test.fbx'
+    modelPath = 'Assets/Models/DebugCharacter/Player.fbx'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.0, 0.0 ]
