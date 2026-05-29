@@ -21,6 +21,7 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -49,6 +50,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <type_traits>
 #include <typeinfo>
@@ -58,6 +60,24 @@ namespace fbzz::editor {
 
 namespace {
 
+
+// Hierarchy パネルからのドラッグ＆ドロップを受け取り、ドロップされた GameObject を返す。
+// WHY: IK Solver の Bone 名・Target 名フィールドに Hierarchy から直接ドロップできるようにする。
+//      nullptr の場合はドロップなし (BeginDragDropTarget が false を返すか payload 不正)。
+scene::GameObject* AcceptHierarchyDrop(scene::Scene* scene)
+{
+    if (!ImGui::BeginDragDropTarget()) return nullptr;
+    scene::GameObject* result = nullptr;
+    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY")) {
+        if (p->DataSize == sizeof(scene::EntityID) && scene) {
+            scene::EntityID id;
+            std::memcpy(&id, p->Data, sizeof(id));
+            result = scene->GetGameObject(id);
+        }
+    }
+    ImGui::EndDragDropTarget();
+    return result;
+}
 
 template<typename T, typename DrawFn>
 void DrawComponentSection(scene::GameObject* go,
@@ -501,6 +521,9 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
             if (!go.GetComponent<scene::MaterialComponent>())
                 go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
         });
+        shown |= addItem(category, "IK Solver", !go.GetComponent<scene::IKSolverComponent>(), [&]() {
+            go.AddComponent<scene::IKSolverComponent>();
+        });
         return shown;
     });
 
@@ -578,7 +601,69 @@ void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::Game
 
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
-    scene::GameObject* go = ctx.GetSelectedGO();
+    // ------------------------------------------------------------------
+    // ロック解決
+    // ロック中は m_lockedEntityId のオブジェクトを表示する。
+    // ロック先が破棄されていた場合は自動解除する。
+    // ------------------------------------------------------------------
+    scene::GameObject* selectedGo = ctx.GetSelectedGO();
+    scene::GameObject* go = nullptr;
+
+    if (m_locked) {
+        if (ctx.activeScene)
+            go = ctx.activeScene->GetGameObject(m_lockedEntityId);
+        if (!go) {
+            // 破棄 / シーン切り替えで無効になった場合は自動解除
+            m_locked = false;
+            m_lockedEntityId = {};
+        }
+    } else {
+        go = selectedGo;
+    }
+
+    // ------------------------------------------------------------------
+    // ロックボタン (右端に配置)
+    // WHY: ボタン押下で m_locked が変化するため、PushStyleColor / PopStyleColor の
+    //      対応を保証するには押下前の状態を wasLocked に固定しておく必要がある。
+    //      m_locked を Push 判定と Pop 判定の両方で使うと片方が空振りしてクラッシュする。
+    // ------------------------------------------------------------------
+    {
+        // ボタン描画前の状態を保存して Push/Pop を必ず対称にする
+        const bool wasLocked = m_locked;
+        const char* label    = wasLocked ? "Unlock" : "Lock";
+        const float padX     = ImGui::GetStyle().FramePadding.x;
+        const float btnW     = ImGui::CalcTextSize(label).x + padX * 2.0f;
+        ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - btnW);
+
+        if (wasLocked)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.55f, 0.85f, 1.0f));
+
+        if (ImGui::Button(label)) {
+            if (wasLocked) {
+                m_locked         = false;
+                m_lockedEntityId = {};
+            } else if (go) {
+                m_locked         = true;
+                m_lockedEntityId = go->GetID();
+            }
+        }
+
+        if (wasLocked) ImGui::PopStyleColor();  // wasLocked で対称を保証
+
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(wasLocked
+                ? "ロック解除 — 選択変更に追従する"
+                : "現在の選択で Inspector をロック");
+
+        // ロック中はロック先の名前をバナー表示
+        if (wasLocked && go) {
+            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
+            ImGui::TextDisabled("Locked: %s", go->name.c_str());
+        }
+    }
+
+    ImGui::Spacing();
+
     if (!go) {
         ImGui::TextDisabled("Nothing selected");
         return;
@@ -874,6 +959,158 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
             ImGui::Checkbox("Loop",    &anim.loop);
             ImGui::Checkbox("Playing", &anim.playing);
+        });
+
+    // -----------------------------------------------------------------------
+    // IK Solver
+    // IKChain は可変長配列のため IReflector では表現できず、直接 ImGui で描画する。
+    // -----------------------------------------------------------------------
+    DrawComponentSection<scene::IKSolverComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "IK Solver",
+        [go](scene::IKSolverComponent& ik, EditorContext& ctx) {
+            int removeIdx = -1;
+
+            for (int ci = 0; ci < static_cast<int>(ik.chains.size()); ++ci) {
+                auto& chain = ik.chains[static_cast<size_t>(ci)];
+
+                ImGui::PushID(ci);
+
+                // チェーンのヘッダー (enabled + 折りたたみ)
+                char header[64];
+                std::snprintf(header, sizeof(header), "Chain %d  (%s)", ci,
+                              chain.tipBoneName.empty() ? "—" : chain.tipBoneName.c_str());
+                bool open = ImGui::TreeNodeEx(header, ImGuiTreeNodeFlags_DefaultOpen);
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::GetFrameHeight());
+                if (ImGui::SmallButton("x"))
+                    removeIdx = ci;
+
+                if (open) {
+                    ImGui::Checkbox("Enabled", &chain.enabled);
+
+                    // ボーン名 (Hierarchy からドラッグ＆ドロップで設定可能)
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Bones  (drag from Hierarchy)");
+                    {
+                        char buf[256];
+
+                        std::snprintf(buf, sizeof(buf), "%s", chain.rootBoneName.c_str());
+                        if (ImGui::InputText("Root Bone", buf, sizeof(buf)))
+                            chain.rootBoneName = buf;
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                            chain.rootBoneName = dropped->name;
+
+                        std::snprintf(buf, sizeof(buf), "%s", chain.midBoneName.c_str());
+                        if (ImGui::InputText("Mid Bone",  buf, sizeof(buf)))
+                            chain.midBoneName = buf;
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                            chain.midBoneName = dropped->name;
+
+                        std::snprintf(buf, sizeof(buf), "%s", chain.tipBoneName.c_str());
+                        if (ImGui::InputText("Tip Bone",  buf, sizeof(buf)))
+                            chain.tipBoneName = buf;
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                            chain.tipBoneName = dropped->name;
+                    }
+
+                    // ターゲット / ポール GameObject (Hierarchy からドラッグ＆ドロップで設定可能)
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Targets  (drag from Hierarchy)");
+                    {
+                        char buf[256];
+
+                        // Target
+                        std::snprintf(buf, sizeof(buf), "%s", chain.targetName.c_str());
+                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 60.0f);
+                        if (ImGui::InputText("##tgt", buf, sizeof(buf)))
+                            chain.targetName = buf;
+                        // D&D: 名前と EntityID を同時に設定
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
+                            chain.targetName   = dropped->name;
+                            chain.targetEntity = dropped->GetID();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Resolve##t")) {
+                            if (ctx.activeScene) {
+                                auto* tgt = ctx.activeScene->Find(chain.targetName);
+                                chain.targetEntity = tgt ? tgt->GetID() : scene::EntityID::INVALID;
+                            }
+                        }
+                        ImGui::SameLine();
+                        ImGui::TextUnformatted("Target");
+
+                        // Pole
+                        std::snprintf(buf, sizeof(buf), "%s", chain.poleName.c_str());
+                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 60.0f);
+                        if (ImGui::InputText("##pole", buf, sizeof(buf)))
+                            chain.poleName = buf;
+                        // D&D: 名前と EntityID を同時に設定
+                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
+                            chain.poleName   = dropped->name;
+                            chain.poleEntity = dropped->GetID();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Resolve##p")) {
+                            if (ctx.activeScene) {
+                                auto* pole = ctx.activeScene->Find(chain.poleName);
+                                chain.poleEntity = pole ? pole->GetID() : scene::EntityID::INVALID;
+                            }
+                        }
+                        ImGui::SameLine();
+                        ImGui::TextUnformatted("Pole");
+
+                        // 現在の解決状態を表示
+                        ImGui::TextDisabled("  target: %s  pole: %s",
+                            chain.targetEntity.IsValid() ? "OK" : "unresolved",
+                            chain.poleEntity.IsValid()   ? "OK" : "unresolved");
+                    }
+
+                    // IK パラメーター
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Parameters");
+                    ImGui::DragFloat("Weight",        &chain.weight,       0.01f,  0.0f, 1.0f);
+                    ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f);
+                    // C: Soft IK — 伸び切り手前の指数減衰量 (0 で無効)
+                    ImGui::DragFloat("Softness",      &chain.softness,     0.005f, 0.0f, 0.5f);
+                    ImGui::Checkbox("Use Ground Snap",    &chain.useGroundSnap);
+                    // D: Hip 高さ補正の対象チェーンとして登録する
+                    ImGui::Checkbox("Is Leg",             &chain.isLeg);
+                    widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
+                    // 斜面での足首傾き補正軸 (ゼロで無効)
+                    // 例: Mixamo = (0,-1,0)  Blender Z-up = (0,0,-1)
+                    widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
+
+                    ImGui::TreePop();
+                }
+
+                ImGui::PopID();
+                ImGui::Spacing();
+            }
+
+            // チェーン削除
+            if (removeIdx >= 0)
+                ik.chains.erase(ik.chains.begin() + removeIdx);
+
+            // D: Hip 高さ補正のターゲットボーン名
+            ImGui::Separator();
+            ImGui::TextDisabled("Hip Height Correction");
+            {
+                char hipBuf[256];
+                std::snprintf(hipBuf, sizeof(hipBuf), "%s", ik.hipBoneName.c_str());
+                if (ImGui::InputText("Hip Bone", hipBuf, sizeof(hipBuf)))
+                    ik.hipBoneName = hipBuf;
+                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                    ik.hipBoneName = dropped->name;
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Clear##hip"))
+                    ik.hipBoneName.clear();
+            }
+
+            // チェーン追加
+            ImGui::Spacing();
+            if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f })) {
+                scene::IKChain chain;
+                chain.enabled = true;
+                ik.chains.push_back(std::move(chain));
+            }
         });
 
     DrawComponentSection<scene::MaterialComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Material",
@@ -1185,7 +1422,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     DrawComponentSection<scene::UIImage>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Image",
         [](scene::UIImage& image, EditorContext&) {
-            // 菴咲ｽｮ繝ｻ繧ｵ繧､繧ｺ縺ｯ Transform 縺ｧ邂｡逅・(荳翫・ Transform 繧ｻ繧ｯ繧ｷ繝ｧ繝ｳ繧貞盾辣ｧ)
+            // 位置・サイズは Transform で管理 (上の Transform セクションを参照)
             float color[4] = { image.color.x, image.color.y, image.color.z, image.color.w };
             if (ImGui::ColorEdit4("Color", color))
                 image.color = { color[0], color[1], color[2], color[3] };
@@ -1222,7 +1459,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     DrawComponentSection<scene::UIText>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Text",
         [](scene::UIText& text, EditorContext&) {
-            // 菴咲ｽｮ縺ｯ Transform 縺ｧ邂｡逅・
+            // 位置は Transform で管理
             char textBuf[512];
             std::snprintf(textBuf, sizeof(textBuf), "%s", text.text.c_str());
             if (ImGui::InputText("Text", textBuf, sizeof(textBuf)))
