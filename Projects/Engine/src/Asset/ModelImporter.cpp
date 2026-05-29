@@ -5,6 +5,7 @@
 #include <Engine/Asset/ModelImporter.hpp>
 #include <Engine/Core/Logger.hpp>
 #include "ModelImporterInternal.hpp"
+#include <assimp/config.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
@@ -32,6 +33,15 @@ constexpr unsigned int SKINNED_ASSIMP_FLAGS =
   | aiProcess_FlipWindingOrder
   | aiProcess_FlipUVs;
 
+void ConfigureFbxImporter(Assimp::Importer& importer)
+{
+    // FBX の Pivot / PreRotation を Assimp の補助ノードとして残すと、
+    // メッシュ FBX とモーション専用 FBX でチャンネル名や階層がずれやすい。
+    // SkinnedMesh は「同じボーン名に同じアニメーションを流す」ことを優先するため、
+    // 補助ノードは Assimp 側でローカル変換へ畳み込ませる。
+    importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+}
+
 } // namespace
 
 std::shared_ptr<Model> ModelImporter::Import(
@@ -41,6 +51,7 @@ std::shared_ptr<Model> ModelImporter::Import(
     // WHY: スキニング判定のためにまず SKINNED_FLAGS で読み込む (プローブ)。
     //      静的メッシュの最終インポートには STATIC_FLAGS が必要なため、判定後に再読み込みする。
     Assimp::Importer probeImporter;
+    ConfigureFbxImporter(probeImporter);
     const aiScene* probeScene = probeImporter.ReadFile(path, SKINNED_ASSIMP_FLAGS);
     if (!probeScene) {
         FBZZ_LOG_ERROR("ModelImporter: failed to load %s — %s",
@@ -60,6 +71,7 @@ std::shared_ptr<Model> ModelImporter::Import(
 
     // 静的メッシュとして、頂点結合フラグ付きで再インポートする
     Assimp::Importer staticImporter;
+    ConfigureFbxImporter(staticImporter);
     const aiScene* staticScene = staticImporter.ReadFile(path, STATIC_ASSIMP_FLAGS);
     if (!staticScene || staticScene->mNumMeshes == 0) {
         FBZZ_LOG_ERROR("ModelImporter: failed to load static model %s", path.c_str());
