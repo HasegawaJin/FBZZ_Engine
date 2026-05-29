@@ -9,6 +9,7 @@
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
+#include "Engine/Scene/Systems/IKSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <cassert>
 
@@ -44,8 +45,12 @@ void SceneManager::Update(float dt, physics::World& world)
 
     TransformSystem(*m_active);
     PhysicsSystem(*m_active, world, dt);
-    if (auto* resources = renderer::ResourceManager::Active())
+    if (auto* resources = renderer::ResourceManager::Active()) {
         AnimatorSystem(*m_active, *resources, dt);
+        // AnimatorSystem が FK ポーズとスキニング行列を作った直後に IK を適用する。
+        // WHY: IK はアニメーション結果を補正する後段処理なので、先に呼ぶと AnimatorSystem に上書きされる。
+        IKSystem(*m_active, *resources, dt);
+    }
     ScriptSystem(*m_active, dt);
     m_active->FlushDestroyQueue(dt);
 }

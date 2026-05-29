@@ -1,11 +1,12 @@
 // FBZZ Engine
 // AnimatorSystem.cpp | fbzz::scene
-// skeletal animation sampling and skinning palette upload
+// スケルタルアニメーションのサンプリングとスキニングパレットのアップロード
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -13,6 +14,9 @@
 #include <Math/MathUtils.hpp>
 #include <algorithm>
 #include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -20,6 +24,12 @@ namespace {
 
 struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
+};
+
+struct NodeLocalPose {
+    math::Vector3 translation = math::Vector3::ZERO;
+    math::Quaternion rotation = math::Quaternion::Identity();
+    math::Vector3 scale = math::Vector3::ONE;
 };
 
 float WrapTime(float time, float duration)
@@ -141,6 +151,188 @@ math::Matrix4 SampleNodeLocal(const asset::SkeletonNode& node,
     return math::Matrix4::TRS(translation, rotation, scale);
 }
 
+NodeLocalPose SampleNodeLocalPose(const asset::SkeletonNode& node,
+                                  const asset::AnimationClip& clip,
+                                  double ticks)
+{
+    const auto* track = FindTrack(clip, node.name);
+    if (!track) {
+        return {
+            node.bindTranslation,
+            node.bindRotation,
+            node.bindScale
+        };
+    }
+
+    return {
+        SampleVectorKeys(track->positions, ticks, node.bindTranslation),
+        SampleQuaternionKeys(track->rotations, ticks, node.bindRotation),
+        SampleVectorKeys(track->scales, ticks, node.bindScale)
+    };
+}
+
+void UpdateWorldTransform(GameObject& go, const Transform& parentTransform)
+{
+    Transform& tf = go.transform;
+    math::Vector3 scaledLocal = {
+        tf.localPosition.x * parentTransform.worldScale.x,
+        tf.localPosition.y * parentTransform.worldScale.y,
+        tf.localPosition.z * parentTransform.worldScale.z
+    };
+    tf.rotation   = (parentTransform.rotation * tf.localRotation).Normalized();
+    tf.position   = parentTransform.position + parentTransform.rotation * scaledLocal;
+    tf.worldScale = {
+        parentTransform.worldScale.x * tf.localScale.x,
+        parentTransform.worldScale.y * tf.localScale.y,
+        parentTransform.worldScale.z * tf.localScale.z
+    };
+}
+
+GameObject* FindBoneDescendant(GameObject& root, int nodeIndex)
+{
+    for (int i = 0; i < root.GetChildCount(); ++i) {
+        GameObject* child = root.GetChild(i);
+        if (!child) continue;
+
+        if (auto* bone = child->GetComponent<BoneComponent>())
+            if (bone->nodeIndex == nodeIndex)
+                return child;
+
+        if (GameObject* found = FindBoneDescendant(*child, nodeIndex))
+            return found;
+    }
+    return nullptr;
+}
+
+GameObject& EnsureBoneObject(Scene& scene,
+                             GameObject& owner,
+                             SkinnedMeshRenderer& smr,
+                             const asset::Skeleton& skeleton,
+                             int nodeIndex)
+{
+    auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
+
+    if (nodeIndex < static_cast<int>(smr.nodeEntities.size())) {
+        if (auto* existing = scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(nodeIndex)])) {
+            if (auto* bone = existing->GetComponent<BoneComponent>()) {
+                bone->boneName = node.name;
+                bone->boneIndex = node.boneIndex;
+                bone->skinnedMeshEntity = owner.GetID();
+            }
+            return *existing;
+        }
+    }
+
+    if (GameObject* found = FindBoneDescendant(owner, nodeIndex)) {
+        if (auto* bone = found->GetComponent<BoneComponent>()) {
+            bone->boneName = node.name;
+            bone->boneIndex = node.boneIndex;
+            bone->skinnedMeshEntity = owner.GetID();
+        }
+        smr.nodeEntities[static_cast<size_t>(nodeIndex)] = found->GetID();
+        if (nodeIndex == skeleton.rootNodeIndex)
+            smr.skeletonRootEntity = found->GetID();
+        return *found;
+    }
+
+    GameObject* parent = &owner;
+    if (node.parentIndex >= 0)
+        parent = &EnsureBoneObject(scene, owner, smr, skeleton, node.parentIndex);
+
+    GameObject& boneObject = scene.CreateGameObject(node.name);
+    boneObject.layer = owner.layer;
+    boneObject.transform.localPosition = node.bindTranslation;
+    boneObject.transform.localRotation = node.bindRotation;
+    boneObject.transform.localScale = node.bindScale;
+    boneObject.SetParent(parent);
+
+    BoneComponent bone{};
+    bone.boneName = node.name;
+    bone.nodeIndex = nodeIndex;
+    bone.boneIndex = node.boneIndex;
+    bone.skinnedMeshEntity = owner.GetID();
+    bone.generated = true;
+    boneObject.AddComponent<BoneComponent>(std::move(bone));
+
+    smr.nodeEntities[static_cast<size_t>(nodeIndex)] = boneObject.GetID();
+    if (nodeIndex == skeleton.rootNodeIndex)
+        smr.skeletonRootEntity = boneObject.GetID();
+    return boneObject;
+}
+
+void EnsureBoneHierarchy(Scene& scene,
+                         GameObject& owner,
+                         SkinnedMeshRenderer& smr,
+                         const asset::Skeleton& skeleton)
+{
+    if (smr.nodeEntities.size() != skeleton.nodes.size())
+        smr.nodeEntities.assign(skeleton.nodes.size(), EntityID::INVALID);
+
+    for (size_t i = 0; i < skeleton.nodes.size(); ++i)
+        EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i));
+}
+
+void ApplyAnimatedPoseToBones(Scene& scene,
+                              const asset::Skeleton& skeleton,
+                              const asset::AnimationClip& clip,
+                              double ticks,
+                              SkinnedMeshRenderer& smr)
+{
+    for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
+        GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[i]);
+        if (!boneObject) continue;
+
+        const NodeLocalPose pose = SampleNodeLocalPose(skeleton.nodes[i], clip, ticks);
+        boneObject->transform.localPosition = pose.translation;
+        boneObject->transform.localRotation = pose.rotation;
+        boneObject->transform.localScale = pose.scale;
+    }
+}
+
+void PropagateBoneTransforms(Scene& scene,
+                             const asset::Skeleton& skeleton,
+                             SkinnedMeshRenderer& smr,
+                             int nodeIndex,
+                             const Transform& parentTransform)
+{
+    GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[static_cast<size_t>(nodeIndex)]);
+    if (!boneObject) return;
+
+    UpdateWorldTransform(*boneObject, parentTransform);
+
+    for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
+        PropagateBoneTransforms(scene, skeleton, smr, child, boneObject->transform);
+}
+
+void RebuildSkinningFromBoneTransforms(Scene& scene,
+                                       GameObject& owner,
+                                       const asset::Skeleton& skeleton,
+                                       SkinnedMeshRenderer& smr,
+                                       AnimatorComponent& animator)
+{
+    const math::Matrix4 ownerInverse = math::Matrix4::Inverse(owner.transform.GetWorldMatrix());
+
+    for (size_t nodeIndex = 0; nodeIndex < skeleton.nodes.size(); ++nodeIndex) {
+        GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[nodeIndex]);
+        if (!boneObject) continue;
+
+        animator.nodeGlobalTransforms[nodeIndex] =
+            ownerInverse * boneObject->transform.GetWorldMatrix();
+    }
+
+    for (size_t boneIndex = 0; boneIndex < animator.boneMatrices.size(); ++boneIndex) {
+        const auto& bone = skeleton.bones[boneIndex];
+        if (bone.nodeIndex < 0 ||
+            bone.nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
+            continue;
+
+        animator.boneMatrices[boneIndex] =
+            skeleton.rootInverseTransform
+          * animator.nodeGlobalTransforms[static_cast<size_t>(bone.nodeIndex)]
+          * bone.offsetMatrix;
+    }
+}
+
 void EvaluateNode(const asset::Skeleton& skeleton,
                   const asset::AnimationClip& clip,
                   int nodeIndex,
@@ -194,7 +386,16 @@ void LoadClips(AnimatorComponent& animator)
 
 void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt)
 {
-    for (auto& go : scene.GameObjects()) {
+    const auto animatorSpan = scene.GetEntities<AnimatorComponent>();
+    const auto animatorEntities = std::vector<EntityID>(
+        animatorSpan.begin(),
+        animatorSpan.end());
+
+    for (EntityID id : animatorEntities) {
+        GameObject* gameObject = scene.GetGameObject(id);
+        if (!gameObject) continue;
+        GameObject& go = *gameObject;
+
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
 
@@ -238,6 +439,8 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         animator->nodeGlobalTransforms.assign(skeleton->nodes.size(), math::Matrix4::Identity());
 
         if (skeleton->rootNodeIndex >= 0 && !skeleton->nodes.empty()) {
+            EnsureBoneHierarchy(scene, go, *smr, *skeleton);
+
             EvaluateNode(*skeleton,
                          *clip,
                          skeleton->rootNodeIndex,
@@ -245,6 +448,11 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
                          static_cast<double>(animator->time) * ticksPerSecond,
                          animator->boneMatrices,
                          animator->nodeGlobalTransforms);
+
+            const double ticks = static_cast<double>(animator->time) * ticksPerSecond;
+            ApplyAnimatedPoseToBones(scene, *skeleton, *clip, ticks, *smr);
+            PropagateBoneTransforms(scene, *skeleton, *smr, skeleton->rootNodeIndex, go.transform);
+            RebuildSkinningFromBoneTransforms(scene, go, *skeleton, *smr, *animator);
         }
 
         SkinningCB cb{};
