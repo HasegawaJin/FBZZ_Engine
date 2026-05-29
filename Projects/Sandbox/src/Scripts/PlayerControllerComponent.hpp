@@ -5,6 +5,7 @@
 
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -46,15 +47,31 @@ struct PlayerControllerComponent : fbzz::scene::Script {
         if (fbzz::input::Input::KeyHeld(fbzz::input::KeyCode::D)) move += right;
         if (fbzz::input::Input::KeyHeld(fbzz::input::KeyCode::A)) move -= right;
 
-        if (move.LengthSq() <= fbzz::math::EPSILON) return;
+        auto* rigidBody = m_gameObject->GetComponent<fbzz::scene::RigidBodyComponent>();
+        const bool usePhysicsMove = rigidBody && rigidBody->enabled && rigidBody->rigidBody;
+        if (move.LengthSq() <= fbzz::math::EPSILON) {
+            StopHorizontalPhysicsVelocity(rigidBody);
+            return;
+        }
 
         const float speed = fbzz::input::Input::KeyHeld(fbzz::input::KeyCode::SHIFT)
             ? moveSpeed * sprintMultiplier
             : moveSpeed;
         const fbzz::math::Vector3 direction = move.Normalized();
 
-        m_gameObject->transform.localPosition += direction * (speed * dt);
-        m_gameObject->transform.position = m_gameObject->transform.localPosition;
+        if (usePhysicsMove) {
+            // WHY: カプセルを Transform で直接ワープさせると、坂の接触法線による押し上げを
+            // physics::World が速度として解決できない。水平速度だけを入力で上書きし、Y 速度は
+            // 重力・接触解決に任せることで、斜面上では通常の衝突解決で登れるようにする。
+            fbzz::math::Vector3 velocity = rigidBody->rigidBody->GetVelocity();
+            velocity.x = direction.x * speed;
+            velocity.z = direction.z * speed;
+            rigidBody->rigidBody->SetVelocity(velocity);
+        } else {
+            // RigidBody を持たないテスト用 GameObject では従来通り Transform 移動にフォールバックする。
+            m_gameObject->transform.localPosition += direction * (speed * dt);
+            m_gameObject->transform.position = m_gameObject->transform.localPosition;
+        }
 
         if (rotateToMoveDirection) {
             const fbzz::math::Quaternion moveRotation = fbzz::math::Quaternion::LookRotation(direction);
@@ -88,6 +105,17 @@ private:
         fbzz::math::Vector3 right = fbzz::math::Vector3::Cross(fbzz::math::Vector3::UP, forward);
         if (right.LengthSq() <= fbzz::math::EPSILON) return fbzz::math::Vector3::RIGHT;
         return right.Normalized();
+    }
+
+    void StopHorizontalPhysicsVelocity(fbzz::scene::RigidBodyComponent* rigidBody) const
+    {
+        if (!rigidBody || !rigidBody->enabled || !rigidBody->rigidBody) return;
+
+        // WHAT: 入力がないフレームでは XZ 速度だけを止め、Y 速度は落下・接地判定に残す。
+        fbzz::math::Vector3 velocity = rigidBody->rigidBody->GetVelocity();
+        velocity.x = 0.0f;
+        velocity.z = 0.0f;
+        rigidBody->rigidBody->SetVelocity(velocity);
     }
 };
 

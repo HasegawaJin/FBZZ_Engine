@@ -1013,14 +1013,34 @@ namespace fbzz::physics
         const float dist = std::sqrt(bestDistSq);
         if (dist < 1e-6f)
         {
-            const math::Vector3 dir = bestCapsulePoint - aabb.Center();
-            if (std::abs(dir.x) >= std::abs(dir.y) && std::abs(dir.x) >= std::abs(dir.z))
-                out.normal = { dir.x >= 0.0f ? 1.0f : -1.0f, 0.0f, 0.0f };
-            else if (std::abs(dir.y) >= std::abs(dir.z))
-                out.normal = { 0.0f, dir.y >= 0.0f ? 1.0f : -1.0f, 0.0f };
-            else
-                out.normal = { 0.0f, 0.0f, dir.z >= 0.0f ? 1.0f : -1.0f };
-            out.depth = c.m_radius;
+            const float toMinX = bestCapsulePoint.x - aabb.min.x;
+            const float toMaxX = aabb.max.x - bestCapsulePoint.x;
+            const float toMinY = bestCapsulePoint.y - aabb.min.y;
+            const float toMaxY = aabb.max.y - bestCapsulePoint.y;
+            const float toMinZ = bestCapsulePoint.z - aabb.min.z;
+            const float toMaxZ = aabb.max.z - bestCapsulePoint.z;
+
+            float faceDistance = toMinX;
+            math::Vector3 faceOut = -math::Vector3::RIGHT;
+            auto SelectFace = [&](float distance, const math::Vector3& outward)
+            {
+                if (distance < faceDistance)
+                {
+                    faceDistance = distance;
+                    faceOut = outward;
+                }
+            };
+            SelectFace(toMaxX, math::Vector3::RIGHT);
+            SelectFace(toMinY, -math::Vector3::UP);
+            SelectFace(toMaxY, math::Vector3::UP);
+            SelectFace(toMinZ, -math::Vector3::FORWARD);
+            SelectFace(toMaxZ, math::Vector3::FORWARD);
+
+            // 接触法線は「B(カプセル)→A(ボックス)」方向に統一。
+            // カプセル軸がボックス内部に埋まっている場合、最近接面の外向きノーマルの反対方向へ押し出す。
+            out.normal = -faceOut;
+            out.depth = c.m_radius + faceDistance;
+            bestBoxPoint = bestCapsulePoint + faceOut * faceDistance;
         }
         else
         {
@@ -1355,7 +1375,82 @@ namespace fbzz::physics
                                        const CapsuleCollider& c,
                                        ContactPoint& out)
     {
-        return GJKEPAToContact(&b, SupportOBB, &c, SupportCapsule, out);
+        const math::Vector3 axes[3] = { b.GetAxis(0), b.GetAxis(1), b.GetAxis(2) };
+        const float extents[3] = { b.m_halfExtents.x, b.m_halfExtents.y, b.m_halfExtents.z };
+        const math::Vector3 segment = c.GetSegmentEnd() - c.GetSegmentStart();
+
+        math::Vector3 bestCapsulePoint = c.GetSegmentStart();
+        math::Vector3 bestBoxPoint = b.GetCenter();
+        math::Vector3 bestLocalPoint = math::Vector3::ZERO;
+        float bestDistSq = std::numeric_limits<float>::max();
+
+        for (int i = 0; i <= 8; ++i)
+        {
+            const float t = static_cast<float>(i) / 8.0f;
+            const math::Vector3 capsulePoint = c.GetSegmentStart() + segment * t;
+            const math::Vector3 delta = capsulePoint - b.GetCenter();
+            const math::Vector3 localPoint = {
+                math::Vector3::Dot(delta, axes[0]),
+                math::Vector3::Dot(delta, axes[1]),
+                math::Vector3::Dot(delta, axes[2])
+            };
+            const math::Vector3 clampedLocal = {
+                std::clamp(localPoint.x, -b.m_halfExtents.x, b.m_halfExtents.x),
+                std::clamp(localPoint.y, -b.m_halfExtents.y, b.m_halfExtents.y),
+                std::clamp(localPoint.z, -b.m_halfExtents.z, b.m_halfExtents.z)
+            };
+            const math::Vector3 boxPoint =
+                b.GetCenter() +
+                axes[0] * clampedLocal.x +
+                axes[1] * clampedLocal.y +
+                axes[2] * clampedLocal.z;
+            const float distSq = (capsulePoint - boxPoint).LengthSq();
+            if (distSq < bestDistSq)
+            {
+                bestDistSq = distSq;
+                bestCapsulePoint = capsulePoint;
+                bestBoxPoint = boxPoint;
+                bestLocalPoint = localPoint;
+            }
+        }
+
+        if (bestDistSq >= c.m_radius * c.m_radius) return false;
+
+        const float dist = std::sqrt(bestDistSq);
+        if (dist < 1e-6f)
+        {
+            float faceDistance = extents[0] - std::abs(bestLocalPoint.x);
+            int faceAxis = 0;
+            float faceSign = bestLocalPoint.x >= 0.0f ? 1.0f : -1.0f;
+
+            for (int axis = 1; axis < 3; ++axis)
+            {
+                const float localValue =
+                    axis == 1 ? bestLocalPoint.y : bestLocalPoint.z;
+                const float distance = extents[axis] - std::abs(localValue);
+                if (distance < faceDistance)
+                {
+                    faceDistance = distance;
+                    faceAxis = axis;
+                    faceSign = localValue >= 0.0f ? 1.0f : -1.0f;
+                }
+            }
+
+            const math::Vector3 faceOut = axes[faceAxis] * faceSign;
+            // 接触法線は「B(カプセル)→A(OBB)」方向に統一。
+            // OBB 内部では最近接面の外向きノーマルの反対方向へカプセルを押し出す。
+            out.normal = -faceOut;
+            out.depth = c.m_radius + faceDistance;
+            bestBoxPoint = bestCapsulePoint + faceOut * faceDistance;
+        }
+        else
+        {
+            out.normal = (bestBoxPoint - bestCapsulePoint) * (1.0f / dist);
+            out.depth = c.m_radius - dist;
+        }
+
+        out.point = bestBoxPoint;
+        return true;
     }
 
     bool PhysicsSolver::TestConvexConvex(const ConvexHullCollider& a,
