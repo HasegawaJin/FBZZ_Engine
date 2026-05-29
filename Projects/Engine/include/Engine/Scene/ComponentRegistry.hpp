@@ -16,6 +16,7 @@
 #include "Components/SkyRenderer.hpp"
 #include "Components/AnimatorComponent.hpp"
 #include "Components/SkinnedMeshRenderer.hpp"
+#include "Components/BoneComponent.hpp"
 #include "Components/UICanvas.hpp"
 #include "Components/UIImage.hpp"
 #include "Components/UIButton.hpp"
@@ -23,6 +24,7 @@
 #include "Components/UILayoutGroup.hpp"
 #include "Components/UIAnimator.hpp"
 #include "Components/DecalComponent.hpp"
+#include "Components/IKSolverComponent.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -46,6 +48,7 @@ using ComponentList = std::tuple<
     SkyRenderer,
     AnimatorComponent,
     SkinnedMeshRenderer,
+    BoneComponent,
     UICanvas,
     UIImage,
     UIButton,
@@ -53,7 +56,8 @@ using ComponentList = std::tuple<
     UILayoutGroup,
     UIAnimator,
     ScriptComponent,
-    DecalComponent
+    DecalComponent,
+    IKSolverComponent
     // 新型はここに1行追加するだけ
 >;
 

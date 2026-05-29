@@ -127,9 +127,13 @@ namespace fbzz::physics
 
             for (const math::Vector3& axis : axes)
             {
-                const math::Vector3 suppA = supportA(shapeA, axis);
-                const math::Vector3 suppB = supportB(shapeB, -axis);
-                const float depth = math::Vector3::Dot(suppA - suppB, axis);
+                // ContactPoint::normal は「B から A」へ押し戻す向きで統一している。
+                // そのため候補軸 axis の貫通量は、A の axis 反対側の面と B の axis 側の面の
+                // 重なりとして測る。ここを逆にすると、床(OBB=A)の上にある Capsule(B)で
+                // 浅い上向き法線を選び、ResolvePosition が Capsule を床へ押し込んでしまう。
+                const math::Vector3 suppA = supportA(shapeA, -axis);
+                const math::Vector3 suppB = supportB(shapeB, axis);
+                const float depth = math::Vector3::Dot(suppB - suppA, axis);
                 if (depth > 0.0f && depth < bestDepth)
                 {
                     bestDepth = depth;
