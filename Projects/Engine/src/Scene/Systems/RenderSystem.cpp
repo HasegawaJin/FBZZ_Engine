@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // RenderSystem.cpp | fbzz::scene
 // Scene render system entry point
 // Builds render graph passes and submits renderer draw calls.
@@ -77,6 +77,13 @@ bool IsSurfaceMaterialShader(std::string_view path)
     std::transform(lower.begin(), lower.end(), lower.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return lower.find("/material/surface/") != std::string::npos;
+}
+
+bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask cullingMask)
+{
+    // WHY: Hierarchy の非表示は GameObject::activeSelf に集約する。
+    //      各描画パスで同じ条件を使い、通常描画・影・選択表示の不一致を防ぐ。
+    return go.activeSelf() && fbzz::Layer::Contains(cullingMask, go.layer);
 }
 
 renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources)
@@ -432,7 +439,7 @@ void RenderSystem(Scene& scene,
 
         // Pass 1a: static mesh shadows.
         for (auto& go : scene.GameObjects()) {
-            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            if (!ShouldRenderGameObject(go, cullingMask)) continue;
             auto* mr  = go.GetComponent<MeshRenderer>();
             auto* mat = go.GetComponent<MaterialComponent>();
             if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->enabled) continue;
@@ -457,7 +464,7 @@ void RenderSystem(Scene& scene,
 
         if (skinnedShadowShader.IsValid()) {
             for (auto& go : scene.GameObjects()) {
-                if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+                if (!ShouldRenderGameObject(go, cullingMask)) continue;
                 auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
                 auto* mat  = go.GetComponent<MaterialComponent>();
                 auto* anim = go.GetComponent<AnimatorComponent>();
@@ -527,7 +534,7 @@ void RenderSystem(Scene& scene,
 
     // Pass 2a: static meshes.
     for (auto& go : scene.GameObjects()) {
-        if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+        if (!ShouldRenderGameObject(go, cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
         if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
@@ -564,7 +571,7 @@ void RenderSystem(Scene& scene,
 
     {
         for (auto& go : scene.GameObjects()) {
-            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            if (!ShouldRenderGameObject(go, cullingMask)) continue;
             auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
             auto* mat  = go.GetComponent<MaterialComponent>();
             auto* anim = go.GetComponent<AnimatorComponent>();
@@ -657,7 +664,7 @@ void RenderSystem(Scene& scene,
 
     if (gbufferShader.IsValid()) {
         for (auto& go : scene.GameObjects()) {
-            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            if (!ShouldRenderGameObject(go, cullingMask)) continue;
             auto* mr  = go.GetComponent<MeshRenderer>();
             auto* mat = go.GetComponent<MaterialComponent>();
             if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
@@ -712,7 +719,7 @@ void RenderSystem(Scene& scene,
     if (skydomeShader.IsValid() && skydomeMesh && skydomeMesh->vertexBuffer.IsValid() && skydomeMesh->indexBuffer.IsValid())
     {
         for (auto& go : scene.GameObjects()) {
-            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            if (!ShouldRenderGameObject(go, cullingMask)) continue;
             auto* sky = go.GetComponent<SkyRenderer>();
             if (!sky || !sky->enabled) continue;
 
@@ -785,7 +792,7 @@ void RenderSystem(Scene& scene,
 
     {
         for (auto& go : scene.GameObjects()) {
-            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            if (!ShouldRenderGameObject(go, cullingMask)) continue;
             auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
             auto* mat  = go.GetComponent<MaterialComponent>();
             auto* anim = go.GetComponent<AnimatorComponent>();
@@ -865,7 +872,7 @@ void RenderSystem(Scene& scene,
         const float dt = core::Time::DeltaTime();
 
         for (auto& go : scene.GameObjects()) {
-            if (!fbzz::Layer::Contains(cullingMask, go.layer)) continue;
+            if (!ShouldRenderGameObject(go, cullingMask)) continue;
             auto* emitter = go.GetComponent<ParticleEmitter>();
             if (!emitter || !emitter->enabled) continue;
             auto& tf = go.transform;

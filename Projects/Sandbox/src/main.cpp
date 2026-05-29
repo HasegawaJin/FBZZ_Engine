@@ -15,6 +15,7 @@
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
@@ -392,6 +393,7 @@ int Run()
             physicsAccumulator = 0.0f;
         }
         scene::AnimatorSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
+        scene::IKSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
 
         const auto sceneRT = editorApp.GetViewportRT();
         const auto gameRT = editorApp.GetGameViewportRT();

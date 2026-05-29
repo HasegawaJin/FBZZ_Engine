@@ -43,6 +43,7 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     for (auto& go : ctx.scene.GameObjects()) {
+        if (!go.activeSelf()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
         // receiverLayerMask に含まれているレイヤーはデカールを受け取る → マスクに描かない
         if (fbzz::Layer::Contains(receiverLayerMask, go.layer)) continue;
@@ -114,6 +115,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
     const float dt = core::Time::DeltaTime();
 
     for (auto& go : ctx.scene.GameObjects()) {
+        if (!go.activeSelf()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
         auto* dc = go.GetComponent<DecalComponent>();
         if (!dc || !dc->enabled) continue;

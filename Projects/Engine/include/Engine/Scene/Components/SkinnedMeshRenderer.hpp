@@ -1,13 +1,14 @@
 // FBZZ Engine
 // SkinnedMeshRenderer.hpp | fbzz::scene
-// スキンメッシュ描画用コンポーネント
-// Model の mesh / skeleton と Animator の骨行列を使って描画する。
-// 静的 MeshRenderer と分け、スキニング固有の状態をここに集める。
+// Component that draws a skinned model and owns runtime bone entity links.
 #pragma once
-#include <Engine/Scene/Script.hpp>
+
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/Script.hpp>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -16,7 +17,13 @@ struct SkinnedMeshRenderer {
     std::string modelPath;
     int meshIndex = 0;
 
-    std::shared_ptr<asset::Model> model; // ランタイム専用。シリアライズしない
+    std::shared_ptr<asset::Model> model;
+
+    // WHY: Transform is the common base for scene editing, animation and rigging.
+    // SkeletonNode remains the asset-side lookup table; these EntityID values are
+    // rebuilt at load/runtime and point at the visible Bone GameObjects.
+    EntityID skeletonRootEntity = EntityID::INVALID;
+    std::vector<EntityID> nodeEntities;
 
     const char* GetTypeName() const { return "Skinned Mesh Renderer"; }
     void Reflect(IReflector& r)

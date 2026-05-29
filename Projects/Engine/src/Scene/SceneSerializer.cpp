@@ -21,6 +21,8 @@
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -661,6 +663,23 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
         }
 
+        // BoneComponent
+        // WHY: skinnedMeshEntity は EntityID (実行ごとに変わる) のため
+        //      オーナー GameObject の名前として保存し、ロード後の Pass 3 で解決する。
+        if (auto* bone = go.GetComponent<BoneComponent>()) {
+            toml::table boneTbl;
+            boneTbl.insert("boneName",  bone->boneName);
+            boneTbl.insert("nodeIndex", (int64_t)bone->nodeIndex);
+            boneTbl.insert("boneIndex", (int64_t)bone->boneIndex);
+            boneTbl.insert("generated", bone->generated);
+            std::string ownerName;
+            if (bone->skinnedMeshEntity.IsValid())
+                if (auto* owner = scene.GetGameObject(bone->skinnedMeshEntity))
+                    ownerName = owner->name;
+            boneTbl.insert("skinnedMeshOwner", ownerName);
+            goTbl.insert("BoneComponent", std::move(boneTbl));
+        }
+
         // AnimatorComponent
         if (auto* anim = go.GetComponent<AnimatorComponent>()) {
             toml::table animTbl;
@@ -675,6 +694,43 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             for (const auto& s : anim->clipSources) srcArr.push_back(s);
             animTbl.insert("clipSources", std::move(srcArr));
             goTbl.insert("AnimatorComponent", std::move(animTbl));
+        }
+
+        // IKSolverComponent
+        // WHY: targetEntity / poleEntity は EntityID (実行ごとに変わる) のため
+        //      参照先 GameObject の名前として保存し、ロード後の Pass 3 で解決する。
+        if (auto* ikSolver = go.GetComponent<IKSolverComponent>()) {
+            toml::table ikTbl;
+            ikTbl.insert("enabled", ikSolver->enabled);
+            toml::array chainsArr;
+            for (const auto& chain : ikSolver->chains) {
+                toml::table chainTbl;
+                chainTbl.insert("rootBone",      chain.rootBoneName);
+                chainTbl.insert("midBone",       chain.midBoneName);
+                chainTbl.insert("tipBone",       chain.tipBoneName);
+                chainTbl.insert("weight",        (double)chain.weight);
+                chainTbl.insert("enabled",       chain.enabled);
+                chainTbl.insert("maxExtension",    (double)chain.maxExtension);
+                chainTbl.insert("useGroundSnap",   chain.useGroundSnap);
+                chainTbl.insert("softness",        (double)chain.softness);
+                chainTbl.insert("isLeg",           chain.isLeg);
+                chainTbl.insert("footNormalAxis",  Vec3ToArr(chain.footNormalAxis));
+                chainTbl.insert("targetOffset",    Vec3ToArr(chain.targetOffset));
+                std::string targetName;
+                if (chain.targetEntity.IsValid())
+                    if (auto* tgt = scene.GetGameObject(chain.targetEntity))
+                        targetName = tgt->name;
+                chainTbl.insert("targetName", targetName);
+                std::string poleName;
+                if (chain.poleEntity.IsValid())
+                    if (auto* pole = scene.GetGameObject(chain.poleEntity))
+                        poleName = pole->name;
+                chainTbl.insert("poleName", poleName);
+                chainsArr.push_back(std::move(chainTbl));
+            }
+            ikTbl.insert("chains",      std::move(chainsArr));
+            ikTbl.insert("hipBoneName", ikSolver->hipBoneName);
+            goTbl.insert("IKSolverComponent", std::move(ikTbl));
         }
 
         // UICanvas
@@ -1088,6 +1144,16 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<SkinnedMeshRenderer>(std::move(smr));
         }
 
+        // BoneComponent
+        if (auto* boneTbl = (*goTbl)["BoneComponent"].as_table()) {
+            BoneComponent bone{};
+            bone.boneName  = (*boneTbl)["boneName"].value_or(std::string{});
+            bone.nodeIndex = (int)(*boneTbl)["nodeIndex"].value_or((int64_t)-1);
+            bone.boneIndex = (int)(*boneTbl)["boneIndex"].value_or((int64_t)-1);
+            bone.generated = (*boneTbl)["generated"].value_or(true);
+            go.AddComponent<BoneComponent>(std::move(bone));
+        }
+
         // AnimatorComponent
         if (auto* animTbl = (*goTbl)["AnimatorComponent"].as_table()) {
             AnimatorComponent anim{};
@@ -1104,6 +1170,38 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         anim.clipSources.push_back(*s);
             }
             go.AddComponent<AnimatorComponent>(std::move(anim));
+        }
+
+        // IKSolverComponent
+        if (auto* ikTbl = (*goTbl)["IKSolverComponent"].as_table()) {
+            IKSolverComponent ikSolver{};
+            ikSolver.enabled = (*ikTbl)["enabled"].value_or(true);
+            if (const auto* chainsArr = (*ikTbl)["chains"].as_array()) {
+                for (const auto& elem : *chainsArr) {
+                    const auto* chainTbl = elem.as_table();
+                    if (!chainTbl) continue;
+                    IKChain chain{};
+                    chain.rootBoneName = (*chainTbl)["rootBone"].value_or(std::string{});
+                    chain.midBoneName  = (*chainTbl)["midBone"].value_or(std::string{});
+                    chain.tipBoneName  = (*chainTbl)["tipBone"].value_or(std::string{});
+                    chain.weight        = (float)(*chainTbl)["weight"].value_or(1.0);
+                    chain.enabled       = (*chainTbl)["enabled"].value_or(true);
+                    chain.maxExtension    = (float)(*chainTbl)["maxExtension"].value_or(0.98);
+                    chain.useGroundSnap   = (*chainTbl)["useGroundSnap"].value_or(true);
+                    chain.softness        = (float)(*chainTbl)["softness"].value_or(0.05);
+                    chain.isLeg           = (*chainTbl)["isLeg"].value_or(false);
+                    chain.footNormalAxis  = ArrToVec3((*chainTbl)["footNormalAxis"].as_array(),
+                                                      math::Vector3::ZERO);
+                    chain.targetOffset    = ArrToVec3((*chainTbl)["targetOffset"].as_array(),
+                                                      math::Vector3::ZERO);
+                    // targetEntity / poleEntity は Pass 3 で解決するため名前だけ保持
+                    chain.targetName   = (*chainTbl)["targetName"].value_or(std::string{});
+                    chain.poleName     = (*chainTbl)["poleName"].value_or(std::string{});
+                    ikSolver.chains.push_back(std::move(chain));
+                }
+            }
+            ikSolver.hipBoneName = (*ikTbl)["hipBoneName"].value_or(std::string{});
+            go.AddComponent<IKSolverComponent>(std::move(ikSolver));
         }
 
         // UICanvas
@@ -1216,6 +1314,49 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         auto* child  = scene->Find(childName);
         auto* parent = scene->Find(parentName);
         if (child && parent) child->SetParent(*parent);
+    }
+
+    // ------------------------------------------------------------------
+    // Pass 3: EntityID 参照を名前から解決する
+    // WHY: EntityID は実行ごとに変わりうるためシリアライズ時は名前で保存している。
+    //      全 GameObject がロードされた後にまとめて解決する。
+    // ------------------------------------------------------------------
+
+    // IKSolverComponent: targetEntity / poleEntity
+    for (auto& go : scene->GameObjects()) {
+        auto* ik = go.GetComponent<IKSolverComponent>();
+        if (!ik) continue;
+        for (auto& chain : ik->chains) {
+            if (!chain.targetName.empty()) {
+                auto* tgt = scene->Find(chain.targetName);
+                if (tgt) chain.targetEntity = tgt->GetID();
+            }
+            if (!chain.poleName.empty()) {
+                auto* pole = scene->Find(chain.poleName);
+                if (pole) chain.poleEntity = pole->GetID();
+            }
+        }
+    }
+
+    // BoneComponent: skinnedMeshEntity
+    // WHY: SkinnedMeshRenderer オーナーの EntityID は Pass 1 時点では確定していないため
+    //      名前で保存していたものをここで EntityID へ変換する。
+    //      nodeEntities / skeletonRootEntity は AnimatorSystem 初回 tick の
+    //      EnsureBoneHierarchy が nodeIndex を元に自動再構築するので保存不要。
+    for (size_t i = 0; i < goArr->size(); ++i) {
+        auto* goTbl = (*goArr)[i].as_table();
+        if (!goTbl) continue;
+        auto* boneTbl = (*goTbl)["BoneComponent"].as_table();
+        if (!boneTbl) continue;
+        std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
+        if (ownerName.empty()) continue;
+        std::string boneName = (*goTbl)["name"].value_or(std::string{});
+        auto* boneGo = scene->Find(boneName);
+        if (!boneGo) continue;
+        auto* bone = boneGo->GetComponent<BoneComponent>();
+        if (!bone) continue;
+        auto* owner = scene->Find(ownerName);
+        if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
 
     return scene;
