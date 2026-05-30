@@ -9,10 +9,12 @@
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
+#include "OcclusionCuller.hpp"
 #include <cstdint>
 #include <vector>
 
@@ -199,6 +201,11 @@ struct RenderPassContext {
     math::Matrix4               lightVP;    // 影投射ライトの VP 行列
     bool                        isDeferred  = false;
     bool                        ssaoEnabled = false;
+
+    // カリング
+    math::Frustum  cameraFrustum; // カメラ視錐台 (Gribb-Hartmann 法で VP から抽出)
+    math::Frustum  lightFrustum;  // ライト視錐台 (シャドウパスのフラスタムカリング用)
+    OcclusionCuller occlusionCuller; // CPU ソフトウェアオクルージョンカリング
 };
 
 } // namespace fbzz::scene

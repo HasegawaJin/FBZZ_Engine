@@ -31,6 +31,7 @@ std::shared_ptr<Model> ImportStaticModel(const aiScene* scene,
         mesh->indexCount  = static_cast<uint32_t>(indices.size());
         mesh->cpuVertices = vertices;
         mesh->cpuIndices  = indices;
+        mesh->ComputeBounds();
 
         model->meshes.push_back(mesh);
         model->materials.push_back(ImportMaterial(scene, src, resources));

@@ -1,6 +1,17 @@
 // FBZZ Engine
 // RenderPasses/ForwardPasses.cpp | fbzz::scene
 // Forward パイプライン: 不透明 + 半透明の静的・スキンドメッシュ描画
+//
+// カリング戦略:
+//   1. Frustum Culling (フラスタムカリング)
+//      カメラ視錐台に交差しないバウンディング球を持つオブジェクトを除外する。
+//      Frustum::IntersectsSphere() で 6 平面テストを行う。
+//
+//   2. Software Occlusion Culling (ソフトウェアオクルージョンカリング)
+//      不透明静的オブジェクトを前から後ろ順にソートし、CPU 上の小型深度バッファで
+//      完全に隠蔽されているかどうかを判定する。
+//      スキンドメッシュはバインドポーズ球がアニメーション後の姿勢と乖離するため除外。
+//      半透明は深度書き込みを行わないためオクルージョンカリング対象外。
 #include "GeometryPasses.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -19,6 +30,23 @@
 namespace fbzz::scene {
 
 namespace {
+
+// 不透明静的メッシュのギャザーエントリ (ソート + オクルージョンカリング用)
+struct OpaqueStaticEntry {
+    GameObject*        go;
+    MeshRenderer*      mr;
+    MaterialComponent* mat;
+    float              distSq; // カメラからの距離^2 (前から後ろ順ソート用)
+};
+
+// 不透明スキンドメッシュのギャザーエントリ
+struct OpaqueSkinnedEntry {
+    GameObject*          go;
+    SkinnedMeshRenderer* smr;
+    MaterialComponent*   mat;
+    AnimatorComponent*   anim;
+    float                distSq;
+};
 
 struct TransparentEntry {
     renderer::DrawCall dc;
@@ -79,10 +107,19 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
 
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
+    const auto& frustum       = ctx.cameraFrustum;
 
-    std::vector<TransparentEntry> transparentQueue;
+    // =========================================================================
+    // Phase 1: フラスタムカリング + ギャザー
+    // =========================================================================
+    // フラスタム外のオブジェクトを除外し、不透明 / 半透明ごとに収集する。
+    // 不透明は Phase 2 でソートし、Phase 3 でオクルージョンカリングを行う。
 
-    // ── 不透明 static meshes ───────────────────────────────────────────────────
+    std::vector<OpaqueStaticEntry>  opaqueStaticQueue;
+    std::vector<OpaqueSkinnedEntry> opaqueSkinnedQueue;
+    std::vector<TransparentEntry>   transparentQueue;
+
+    // ── 静的メッシュのギャザー ─────────────────────────────────────────────────
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
@@ -90,9 +127,146 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
-        if (mat->blendMode != renderer::BlendMode::OPAQUE) continue;
+
+        // フラスタムカリング: バウンディング球が視錐台外なら除外
+        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
+
+        const float dx = go.transform.position.x - cam.m_position.x;
+        const float dy = go.transform.position.y - cam.m_position.y;
+        const float dz = go.transform.position.z - cam.m_position.z;
+        const float distSq = dx*dx + dy*dy + dz*dz;
+
+        if (mat->blendMode == renderer::BlendMode::OPAQUE) {
+            opaqueStaticQueue.push_back({ &go, mr, mat, distSq });
+        } else {
+            // 半透明は即収集 (オクルージョンカリング対象外)
+            auto* material = SyncMaterial(*mat, resources);
+            if (!material || !material->shader.IsValid()) continue;
+
+            PerObjectCB objData{};
+            objData.world             = go.transform.GetWorldMatrix();
+            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+
+            renderer::DrawCall dc;
+            dc.vertexBuffer       = mr->mesh->vertexBuffer;
+            dc.indexBuffer        = mr->mesh->indexBuffer;
+            dc.indexCount         = mr->mesh->indexCount;
+            dc.vertexCount        = mr->mesh->vertexCount;
+            dc.shader             = material->shader;
+            dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+                                                     : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+            dc.layer              = renderer::RenderLayer::TRANSPARENT;
+            dc.constantBuffers[0] = h.frameCB;
+            dc.constantBuffers[1] = h.objectCB;
+            dc.constantBuffers[2] = material->paramsBuffer;
+            dc.constantBuffers[3] = h.lightCB;
+            dc.constantBuffers[4] = h.shadowCB;
+            for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+                if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
+            dc.textures[8] = shadowDepthTex;
+            transparentQueue.push_back({ dc, objData, distSq, mat->renderQueue });
+        }
+    }
+
+    // ── スキンドメッシュのギャザー ─────────────────────────────────────────────
+    for (auto& go : ctx.scene.GameObjects()) {
+        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
+        auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
+        auto* mat  = go.GetComponent<MaterialComponent>();
+        auto* anim = go.GetComponent<AnimatorComponent>();
+        if (!smr || !smr->enabled || !smr->model || !mat) continue;
+
+        // WHY: スキンドメッシュには共通の bounds が設定されていないため
+        //      Transform の位置でフラスタムの簡易チェックを行う。
+        //      保守的な球を用意したい場合は SkinnedMeshRenderer に
+        //      aggregateBounds フィールドを追加する拡張が考えられる。
+        const float dx = go.transform.position.x - cam.m_position.x;
+        const float dy = go.transform.position.y - cam.m_position.y;
+        const float dz = go.transform.position.z - cam.m_position.z;
+        const float distSq = dx*dx + dy*dy + dz*dz;
+
+        if (mat->blendMode == renderer::BlendMode::OPAQUE) {
+            opaqueSkinnedQueue.push_back({ &go, smr, mat, anim, distSq });
+        } else {
+            auto* material = SyncMaterial(*mat, resources);
+            if (!material) continue;
+            const bool surfaceMisassigned =
+                material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
+            if (surfaceMisassigned)
+                FBZZ_LOG_WARN("SkinnedMeshRenderer に Surface シェーダーが設定されています: %s"
+                              " → SkinnedPBR にフォールバック。Skinned/ 以下のシェーダーを使用してください。",
+                              material->shaderPath.c_str());
+            const auto skinnedShader = (!surfaceMisassigned && material->shader.IsValid())
+                ? material->shader : h.skinnedPbrShader;
+            if (!skinnedShader.IsValid()) continue;
+
+            PerObjectCB objData{};
+            objData.world             = go.transform.GetWorldMatrix();
+            objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+            const auto skinCB = (anim && anim->skinningBuffer.IsValid())
+                ? anim->skinningBuffer : h.bindPoseSkinningCB;
+
+            for (const auto& meshPtr : smr->model->meshes) {
+                if (!meshPtr) continue;
+                if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
+
+                renderer::DrawCall dc;
+                dc.vertexBuffer       = meshPtr->vertexBuffer;
+                dc.indexBuffer        = meshPtr->indexBuffer;
+                dc.indexCount         = meshPtr->indexCount;
+                dc.vertexCount        = meshPtr->vertexCount;
+                dc.shader             = skinnedShader;
+                dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+                                                         : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                dc.layer              = renderer::RenderLayer::TRANSPARENT;
+                dc.constantBuffers[0] = h.frameCB;
+                dc.constantBuffers[1] = h.objectCB;
+                dc.constantBuffers[2] = material->paramsBuffer;
+                dc.constantBuffers[3] = h.lightCB;
+                dc.constantBuffers[4] = h.shadowCB;
+                dc.constantBuffers[7] = skinCB;
+                for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+                    if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
+                dc.textures[8] = shadowDepthTex;
+                transparentQueue.push_back({ dc, objData, distSq, mat->renderQueue });
+            }
+        }
+    }
+
+    // =========================================================================
+    // Phase 2: 不透明オブジェクトを前から後ろ順にソート
+    // =========================================================================
+    // WHY: 前→後ろ順で描画すると GPU の Early-Z Rejection が機能しやすくなり、
+    //      シェーダー実行コストを削減できる。
+    //      また SW オクルージョンカリングは前に描かれたオブジェクトほど
+    //      後続オブジェクトを効率よく遮蔽できるため、ソートが前提となる。
+
+    std::sort(opaqueStaticQueue.begin(), opaqueStaticQueue.end(),
+        [](const OpaqueStaticEntry& a, const OpaqueStaticEntry& b) {
+            return a.distSq < b.distSq;
+        });
+    std::sort(opaqueSkinnedQueue.begin(), opaqueSkinnedQueue.end(),
+        [](const OpaqueSkinnedEntry& a, const OpaqueSkinnedEntry& b) {
+            return a.distSq < b.distSq;
+        });
+
+    // =========================================================================
+    // Phase 3: オクルージョンカリング + 不透明描画
+    // =========================================================================
+    ctx.occlusionCuller.Reset(cam);
+
+    // ── 不透明静的メッシュ ─────────────────────────────────────────────────────
+    for (auto& entry : opaqueStaticQueue) {
+        auto& go  = *entry.go;
+        auto* mr  = entry.mr;
+        auto* mat = entry.mat;
+
         auto* material = SyncMaterial(*mat, resources);
         if (!material || !material->shader.IsValid()) continue;
+
+        // オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
+        const auto bounds = ComputeWorldBounds(go.transform, *mr->mesh);
+        if (!ctx.occlusionCuller.TestAndRaster(bounds.center, bounds.radius)) continue;
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
@@ -119,22 +293,21 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         renderer.Submit(dc, resources);
     }
 
-    // ── 不透明 skinned meshes ──────────────────────────────────────────────────
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
-        auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
-        auto* mat  = go.GetComponent<MaterialComponent>();
-        auto* anim = go.GetComponent<AnimatorComponent>();
-        if (!smr || !smr->enabled || !smr->model) continue;
-        if (!mat) continue;
-        if (mat->blendMode != renderer::BlendMode::OPAQUE) continue;
+    // ── 不透明スキンドメッシュ ─────────────────────────────────────────────────
+    // バインドポーズ球はアニメーション後の実際の姿勢と乖離するため
+    // SW オクルージョンカリングは適用しない。
+    for (auto& entry : opaqueSkinnedQueue) {
+        auto& go   = *entry.go;
+        auto* smr  = entry.smr;
+        auto* mat  = entry.mat;
+        auto* anim = entry.anim;
+
         auto* material = SyncMaterial(*mat, resources);
         if (!material) continue;
 
         const bool surfaceMisassigned =
             material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
-        if (surfaceMisassigned)
-        {
+        if (surfaceMisassigned) {
             FBZZ_LOG_WARN("SkinnedMeshRenderer に Surface シェーダーが設定されています: %s"
                           " → SkinnedPBR にフォールバック。Skinned/ 以下のシェーダーを使用してください。",
                           material->shaderPath.c_str());
@@ -174,107 +347,6 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
             renderer.Submit(dc, resources);
-        }
-    }
-
-    // ── 半透明 static meshes (キュー蓄積) ────────────────────────────────────
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
-        auto* mr  = go.GetComponent<MeshRenderer>();
-        auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
-        if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
-        if (mr->mesh->isSkinned) continue;
-        if (mat->blendMode == renderer::BlendMode::OPAQUE) continue;
-        auto* material = SyncMaterial(*mat, resources);
-        if (!material || !material->shader.IsValid()) continue;
-
-        PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
-
-        renderer::DrawCall dc;
-        dc.vertexBuffer       = mr->mesh->vertexBuffer;
-        dc.indexBuffer        = mr->mesh->indexBuffer;
-        dc.indexCount         = mr->mesh->indexCount;
-        dc.vertexCount        = mr->mesh->vertexCount;
-        dc.shader             = material->shader;
-        dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-        dc.layer              = renderer::RenderLayer::TRANSPARENT;
-        dc.constantBuffers[0] = h.frameCB;
-        dc.constantBuffers[1] = h.objectCB;
-        dc.constantBuffers[2] = material->paramsBuffer;
-        dc.constantBuffers[3] = h.lightCB;
-        dc.constantBuffers[4] = h.shadowCB;
-        for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
-            if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
-        dc.textures[8] = shadowDepthTex;
-
-        const float dx = objData.world.m[0][3] - cam.m_position.x;
-        const float dy = objData.world.m[1][3] - cam.m_position.y;
-        const float dz = objData.world.m[2][3] - cam.m_position.z;
-        transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->renderQueue });
-    }
-
-    // ── 半透明 skinned meshes (キュー蓄積) ───────────────────────────────────
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
-        auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
-        auto* mat  = go.GetComponent<MaterialComponent>();
-        auto* anim = go.GetComponent<AnimatorComponent>();
-        if (!smr || !smr->enabled || !smr->model) continue;
-        if (!mat) continue;
-        if (mat->blendMode == renderer::BlendMode::OPAQUE) continue;
-        auto* material = SyncMaterial(*mat, resources);
-        if (!material) continue;
-
-        const bool surfaceMisassigned =
-            material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
-        if (surfaceMisassigned)
-        {
-            FBZZ_LOG_WARN("SkinnedMeshRenderer に Surface シェーダーが設定されています: %s"
-                          " → SkinnedPBR にフォールバック。Skinned/ 以下のシェーダーを使用してください。",
-                          material->shaderPath.c_str());
-        }
-        const auto skinnedShader = (!surfaceMisassigned && material->shader.IsValid())
-            ? material->shader : h.skinnedPbrShader;
-        if (!skinnedShader.IsValid()) continue;
-
-        PerObjectCB objData{};
-        objData.world             = go.transform.GetWorldMatrix();
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
-
-        const auto skinCB = (anim && anim->skinningBuffer.IsValid())
-            ? anim->skinningBuffer : h.bindPoseSkinningCB;
-
-        for (const auto& meshPtr : smr->model->meshes) {
-            if (!meshPtr) continue;
-            if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
-
-            renderer::DrawCall dc;
-            dc.vertexBuffer       = meshPtr->vertexBuffer;
-            dc.indexBuffer        = meshPtr->indexBuffer;
-            dc.indexCount         = meshPtr->indexCount;
-            dc.vertexCount        = meshPtr->vertexCount;
-            dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-            dc.layer              = renderer::RenderLayer::TRANSPARENT;
-            dc.constantBuffers[0] = h.frameCB;
-            dc.constantBuffers[1] = h.objectCB;
-            dc.constantBuffers[2] = material->paramsBuffer;
-            dc.constantBuffers[3] = h.lightCB;
-            dc.constantBuffers[4] = h.shadowCB;
-            dc.constantBuffers[7] = skinCB;
-            for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
-                if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
-            dc.textures[8] = shadowDepthTex;
-
-            const float dx = objData.world.m[0][3] - cam.m_position.x;
-            const float dy = objData.world.m[1][3] - cam.m_position.y;
-            const float dz = objData.world.m[2][3] - cam.m_position.z;
-            transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->renderQueue });
         }
     }
 
