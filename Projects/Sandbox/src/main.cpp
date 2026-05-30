@@ -21,10 +21,12 @@
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Editor/EditorApp.hpp>
 #include <Physics/World.hpp>
 
 #include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/PlayerWorldSpaceUIComponent.hpp"
 #include "Scripts/TpsCameraComponent.hpp"
 
 #include <Windows.h>
@@ -251,6 +253,7 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
 void RegisterSandboxScripts()
 {
     scene::ScriptFactory::Register<::sandbox::PlayerControllerComponent>();
+    scene::ScriptFactory::Register<::sandbox::PlayerWorldSpaceUIComponent>();
     scene::ScriptFactory::Register<::sandbox::TpsCameraComponent>();
 }
 
@@ -435,6 +438,16 @@ int Run()
         for (scene::EntityID id : editorApp.GetContext().selectedEntities)
             sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
         scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
+        // WorldSpace UI をシーンビューポートに描画する (エディターカメラの VP を使用)
+        {
+            float w = 1920.0f, h = 1080.0f;
+            if (auto* rt = resources.Get(sceneRT)) {
+                w = static_cast<float>(rt->GetWidth());
+                h = static_cast<float>(rt->GetHeight());
+            }
+            scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
+                            debugCamera.camera.GetViewProjection());
+        }
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
             scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
@@ -458,6 +471,16 @@ int Run()
                                 gameRT,
                                 &gameRenderSettings,
                                 gameCullingMask);
+            // WorldSpace UI をゲームビューポートに描画する (ゲームカメラの VP を使用)
+            {
+                float w = 1920.0f, h = 1080.0f;
+                if (auto* rt = resources.Get(gameRT)) {
+                    w = static_cast<float>(rt->GetWidth());
+                    h = static_cast<float>(rt->GetHeight());
+                }
+                scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
+                                gameCamera.GetViewProjection());
+            }
         }
 
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);

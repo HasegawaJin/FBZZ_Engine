@@ -18,6 +18,7 @@
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Editor/EditorApp.hpp>
 #include <Physics/World.hpp>
 
@@ -451,6 +452,15 @@ int Run()
         for (scene::EntityID id : editorApp.GetContext().selectedEntities)
             sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
         scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
+        {
+            float w = 1920.0f, h = 1080.0f;
+            if (auto* rt = resources.Get(sceneRT)) {
+                w = static_cast<float>(rt->GetWidth());
+                h = static_cast<float>(rt->GetHeight());
+            }
+            scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
+                            debugCamera.camera.GetViewProjection());
+        }
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
             scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
@@ -470,6 +480,15 @@ int Run()
                                 gameRT,
                                 &editorApp.GetContext().projectSettings.render,
                                 gameCullingMask);
+            {
+                float w = 1920.0f, h = 1080.0f;
+                if (auto* rt = resources.Get(gameRT)) {
+                    w = static_cast<float>(rt->GetWidth());
+                    h = static_cast<float>(rt->GetHeight());
+                }
+                scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
+                                gameCamera.GetViewProjection());
+            }
         }
 
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
