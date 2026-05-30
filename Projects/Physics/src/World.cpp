@@ -294,7 +294,7 @@ namespace fbzz::physics
             const ColliderPair pair{ a, b };
             currentEvents.insert({
                 pair,
-                { cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB, cp.isTrigger }
+                { cp.colliderA, cp.colliderB, cp.bodyA, cp.bodyB, cp.point, cp.normal, cp.depth, cp.isTrigger }
             });
         }
 
