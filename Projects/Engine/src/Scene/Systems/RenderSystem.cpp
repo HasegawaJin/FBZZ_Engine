@@ -26,6 +26,7 @@
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Asset/Skeleton.hpp"
+#include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
@@ -351,11 +352,18 @@ void RenderSystem(Scene& scene,
     passHandles.depthCopyShader      = depthCopyShader;
     passHandles.skinnedPbrShader     = skinnedPbrShader;
 
+    // カメラ視錐台とライト視錐台を事前に抽出する。
+    // WHY: Gribb-Hartmann 法は VP 行列の各行の和・差から 6 平面を直接導出するため
+    //      逆行列を使わず高速に抽出できる。全ジオメトリパスで共有する。
+    const math::Frustum cameraFrustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+    const math::Frustum lightFrustum  = math::Frustum::FromViewProjection(lightVP);
+
     RenderPassContext passCtx{
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles,
         sHdrW, sHdrH, selectionOutlineEnabled,
-        lightData, lightVP, isDeferred, ssaoEnabled
+        lightData, lightVP, isDeferred, ssaoEnabled,
+        cameraFrustum, lightFrustum
     };
 
     // =========================================================================
@@ -554,6 +562,15 @@ void RenderSystem(Scene& scene,
         dbgSnap.height          = sHdrH;
         for (const auto& profile : graph.GetLastReport().profiles)
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
+
+        // カリング統計を Snapshot に詰める
+        dbgSnap.renderStats.totalObjects    = passCtx.statsTotalObjects;
+        dbgSnap.renderStats.frustumCulled   = passCtx.statsFrustumCulled;
+        dbgSnap.renderStats.occlusionCulled = passCtx.statsOcclusionCulled;
+        dbgSnap.renderStats.drawCalls       = passCtx.statsDrawCalls;
+        dbgSnap.renderStats.vertexCount     = passCtx.statsVertexCount;
+        dbgSnap.renderStats.triangleCount   = passCtx.statsTriangleCount;
+
         renderer::RenderDebugOverlay::UpdateSnapshot(dbgSnap, rs.passViewerEnabled);
     }
 }
