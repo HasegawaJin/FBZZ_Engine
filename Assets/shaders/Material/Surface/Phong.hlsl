@@ -4,11 +4,19 @@
 #ifndef PHONG_HLSL
 #define PHONG_HLSL
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;       // RGBA ベースカラー         offset 0
+    float  roughness;    // スペキュラの広がり [0,1]   offset 16
+    uint   textureMask;  // テクスチャフラグ           offset 20
+};
 
 Texture2D<float>       texShadow   : register(TEX_SHADOW);
 Texture2D              texAlbedo   : register(TEX_ALBEDO);
@@ -31,7 +39,7 @@ float4 PSMain(PSInput p) : SV_Target0
 {
     float3 col    = (textureMask & 1u)
         ? texAlbedo.Sample(sampDefault, p.uv).rgb
-        : albedo;
+        : albedo.rgb;
     float3 N      = normalize(p.normal);
     float3 V      = normalize(cameraPos - p.worldPos);
     float3 L      = normalize(-lightDir);

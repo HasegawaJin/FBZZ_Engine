@@ -31,6 +31,8 @@
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Renderer/IShader.hpp>
+#include <Engine/Renderer/ShaderDescriptor.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -194,8 +196,18 @@ scene::MaterialComponent CreateDefaultMaterialComponent(bool skinned = false)
     material->shaderPath = mc.shaderPath;
     if (auto* resources = renderer::ResourceManager::Active()) {
         material->shader = resources->LoadShader(mc.shaderPath);
-        material->params.roughness = 0.65f;
-        material->Init(*resources);
+        static renderer::ShaderDescriptor s_fallback;
+        const renderer::ShaderDescriptor* desc = &s_fallback;
+        if (auto* sh = resources->Get(material->shader))
+            desc = &sh->GetDescriptor();
+        material->Init(*resources, desc->cbufferSize);
+        mc.InitFromDescriptor(*desc);
+        if (const auto* v = desc->FindVar("roughness"))
+        {
+            float rough = 0.65f;
+            std::memcpy(mc.paramData.data() + v->offset, &rough, sizeof(float));
+        }
+        material->paramData = mc.paramData;
     }
     mc.material = std::move(material);
     return mc;
@@ -1131,51 +1143,123 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 }
             };
 
-            if (!mc.material) {
-                auto& material = EnsureMaterial(mc);
-                if (auto* res = renderer::ResourceManager::Active()) {
-                    material.Init(*res);
-                    material.Upload(*res);
+            // ShaderVarDesc 1 変数分の ImGui ウィジェットを描画し paramData を直接編集する。
+            // 命名規則でウィジェット種別を決定する (メタコメント不要)。
+            auto drawShaderVar = [](std::vector<uint8_t>& data,
+                                    const renderer::ShaderVarDesc& v)
+            {
+                if (v.varType != renderer::ShaderVarType::Float) return;
+                if (v.offset + v.size > static_cast<uint32_t>(data.size())) return;
+                float* ptr = reinterpret_cast<float*>(data.data() + v.offset);
+
+                // 小文字化した名前で色かどうかを判定する
+                std::string lc = v.name;
+                for (auto& c : lc) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                const bool isColor = lc.find("color")   != std::string::npos
+                                  || lc.find("albedo")  != std::string::npos
+                                  || lc.find("emissive")!= std::string::npos;
+
+                switch (v.columns) {
+                case 1: {
+                    const bool isNorm = lc.find("metallic")  != std::string::npos
+                                     || lc.find("roughness") != std::string::npos
+                                     || lc.find("strength")  != std::string::npos
+                                     || lc.find("cutoff")    != std::string::npos
+                                     || lc.find("occlusion") != std::string::npos;
+                    if (isNorm)
+                        ImGui::SliderFloat(v.name.c_str(), ptr, 0.0f, 1.0f);
+                    else
+                        ImGui::DragFloat(v.name.c_str(), ptr, 0.01f);
+                    break;
                 }
+                case 2: ImGui::DragFloat2(v.name.c_str(), ptr, 0.01f); break;
+                case 3:
+                    if (isColor) ImGui::ColorEdit3(v.name.c_str(), ptr);
+                    else         ImGui::DragFloat3(v.name.c_str(), ptr, 0.01f);
+                    break;
+                case 4:
+                    if (isColor) ImGui::ColorEdit4(v.name.c_str(), ptr);
+                    else         ImGui::DragFloat4(v.name.c_str(), ptr, 0.01f);
+                    break;
+                default: break;
+                }
+            };
+
+            // ── Rendering ───────────────────────────────────────────────────
+            ImGui::SeparatorText("Rendering");
+            {
+                // Blend Mode
+                static const char* blendLabels[] = { "Opaque", "Alpha Blend", "Additive" };
+                int blendIdx = static_cast<int>(mc.blendMode);
+                if (ImGui::Combo("Blend Mode", &blendIdx, blendLabels, 3))
+                    mc.blendMode = static_cast<renderer::BlendMode>(blendIdx);
+
+                // Double Sided
+                ImGui::Checkbox("Double Sided", &mc.doubleSided);
+
+                // Render Queue
+                ImGui::DragInt("Render Queue", &mc.renderQueue, 1.0f, -1000, 5000);
+                ImGui::SameLine();
+                ImGui::TextDisabled("(0=Opaque  2000=Transparent)");
             }
 
+            // ── Shader ──────────────────────────────────────────────────────
             ImGui::SeparatorText("Shader");
-            char shaderBuf[256];
-            std::snprintf(shaderBuf, sizeof(shaderBuf), "%s", mc.shaderPath.c_str());
-            if (ImGui::InputText("Shader (HLSL)", shaderBuf, sizeof(shaderBuf)))
-                mc.shaderPath = shaderBuf;
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    mc.shaderPath = static_cast<const char*>(p->Data);
-                    for (char& c : mc.shaderPath) if (c == '\\') c = '/';
+            {
+                char buf[256];
+                std::snprintf(buf, sizeof(buf), "%s", mc.shaderPath.c_str());
+                if (ImGui::InputText("Shader (HLSL)", buf, sizeof(buf)))
+                    mc.shaderPath = buf;
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        mc.shaderPath = static_cast<const char*>(p->Data);
+                        for (char& c : mc.shaderPath) if (c == '\\') c = '/';
+                    }
+                    ImGui::EndDragDropTarget();
                 }
-                ImGui::EndDragDropTarget();
             }
 
+            // Descriptor 取得 (シェーダー未ロード時は nullptr)
+            const renderer::ShaderDescriptor* desc = nullptr;
+            if (mc.material && mc.material->shader.IsValid())
+                if (auto* res = renderer::ResourceManager::Active())
+                    if (auto* sh = res->Get(mc.material->shader))
+                        desc = &sh->GetDescriptor();
+
+            // Descriptor に合わせて paramData・texturePaths を初期化
+            if (desc && mc.paramData.size() != desc->cbufferSize)
+                mc.InitFromDescriptor(*desc);
+
+            // ── Textures ────────────────────────────────────────────────────
             ImGui::SeparatorText("Textures");
-            texField("Albedo (t0)",        mc.albedoTexPath);
-            texField("Normal (t1)",        mc.normalTexPath);
-            texField("MetallicRough (t2)", mc.metallicRoughTexPath);
-            texField("Emissive (t3)",      mc.emissiveTexPath);
-            texField("AO (t4)",            mc.aoTexPath);
+            if (desc && !desc->textures.empty())
+            {
+                for (const auto& t : desc->textures)
+                {
+                    // スロット番号とテクスチャ名をラベルに使う
+                    std::string label = t.name + "  (t" + std::to_string(t.slot) + ")";
+                    if (t.slot < mc.texturePaths.size())
+                        texField(label.c_str(), mc.texturePaths[t.slot]);
+                }
+            }
+            else
+            {
+                // シェーダー未ロード時は汎用スロットを表示
+                mc.texturePaths.resize(5);
+                texField("Albedo  (t0)",        mc.texturePaths[0]);
+                texField("Normal  (t1)",        mc.texturePaths[1]);
+                texField("MetalRough (t2)",     mc.texturePaths[2]);
+                texField("Emissive  (t3)",      mc.texturePaths[3]);
+                texField("AO  (t4)",            mc.texturePaths[4]);
+            }
 
-            ImGui::SeparatorText("Surface");
-            ImGui::ColorEdit4("Albedo Color",        mc.albedoColor);
-            ImGui::SliderFloat("Metallic",           &mc.metallic,          0.0f, 1.0f);
-            ImGui::SliderFloat("Roughness",          &mc.roughness,         0.0f, 1.0f);
-            ImGui::SliderFloat("Normal Strength",    &mc.normalStrength,    0.0f, 2.0f);
-            ImGui::SliderFloat("Occlusion Strength", &mc.occlusionStrength, 0.0f, 1.0f);
-
-            ImGui::SeparatorText("Emissive");
-            ImGui::ColorEdit3("Emissive Color", mc.emissiveColor);
-            ImGui::DragFloat("Emissive Scale",  &mc.emissiveScale, 0.01f, 0.0f, 100.0f);
-
-            ImGui::SeparatorText("UV");
-            ImGui::DragFloat2("Tiling", mc.uvTiling, 0.01f, 0.0f, 100.0f);
-            ImGui::DragFloat2("Offset", mc.uvOffset, 0.01f, -10.0f, 10.0f);
-
-            ImGui::SeparatorText("Alpha");
-            ImGui::SliderFloat("Cutoff", &mc.alphaCutoff, 0.0f, 1.0f);
+            // ── Parameters (Descriptor 駆動) ────────────────────────────────
+            if (desc && !desc->vars.empty())
+            {
+                ImGui::SeparatorText("Parameters");
+                for (const auto& v : desc->vars)
+                    drawShaderVar(mc.paramData, v);
+            }
         });
 
     DrawComponentSection<scene::LightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light",

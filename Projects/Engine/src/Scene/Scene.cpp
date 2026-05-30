@@ -7,6 +7,7 @@
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Renderer/Material.hpp"
+#include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <algorithm>
 #include <cassert>
@@ -313,15 +314,23 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
     // 片方のパラメーター変更がもう片方に波及する。GPU 定数バッファも独立させる必要があるため、
     // Material を深コピーし、定数バッファのハンドルだけリセットして再作成する。
     auto cloned = std::make_shared<renderer::Material>();
-    cloned->shader        = srcMaterial->material->shader;
-    cloned->albedoTexture = srcMaterial->material->albedoTexture;
-    cloned->normalTexture = srcMaterial->material->normalTexture;
-    cloned->params        = srcMaterial->material->params;
-    cloned->shaderPath    = srcMaterial->material->shaderPath;
+    cloned->shader      = srcMaterial->material->shader;
+    cloned->textures    = srcMaterial->material->textures;
+    cloned->paramData   = srcMaterial->material->paramData;
+    cloned->shaderPath  = srcMaterial->material->shaderPath;
 
-    if (auto* resources = renderer::ResourceManager::Active()) {
-        cloned->Init(*resources);
-        cloned->Upload(*resources);
+    if (auto* resources = renderer::ResourceManager::Active())
+    {
+        const uint32_t cbSize = static_cast<uint32_t>(cloned->paramData.size());
+        if (cbSize > 0)
+        {
+            cloned->paramsBuffer = resources->CreateConstantBuffer(cbSize);
+            static renderer::ShaderDescriptor s_fallback;
+            const renderer::ShaderDescriptor* desc = &s_fallback;
+            if (auto* sh = resources->Get(cloned->shader))
+                desc = &sh->GetDescriptor();
+            cloned->Upload(*resources, *desc);
+        }
     }
 
     dstMaterial->material = std::move(cloned);

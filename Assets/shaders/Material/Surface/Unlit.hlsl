@@ -4,9 +4,16 @@
 #ifndef UNLIT_HLSL
 #define UNLIT_HLSL
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
+
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;       // RGBA ベースカラー  offset 0
+    uint   textureMask;  // テクスチャフラグ   offset 16
+};
 
 Texture2D    texAlbedo   : register(TEX_ALBEDO);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
@@ -27,7 +34,7 @@ float4 PSMain(PSInput p) : SV_Target0
 {
     float3 color = (textureMask & 1u)
         ? texAlbedo.Sample(sampDefault, p.uv).rgb
-        : albedo;
+        : albedo.rgb;
     return float4(color, 1.0f);
 }
 

@@ -23,7 +23,10 @@ cbuffer ObjectConstants : register(CB_OBJECT)
     float4x4 worldInvTranspose;
 };
 
-// MaterialParams (C++) と完全に一致させること。offset / padding を変えないこと。
+// シェーダーごとに独自の MaterialConstants を宣言したい場合は
+// #include より前に #define FBZZ_MATERIAL_CONSTANTS を定義する。
+// 全パラメータが必要な PBR 系シェーダーはこのデフォルト定義を使う。
+#ifndef FBZZ_MATERIAL_CONSTANTS
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
     float4 albedo;                // RGBA ベースカラー               offset  0
@@ -40,6 +43,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     uint   textureMask;           // テクスチャ存在フラグ (bit 0-4)    offset 80
     float3 _matPad1;              //                                  offset 84
 };
+#endif // FBZZ_MATERIAL_CONSTANTS
 
 #define MAX_POINT_LIGHTS 8
 #define MAX_SPOT_LIGHTS  4
@@ -108,10 +112,11 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  filmGrainResponse;
     float  chromaticAberration;
     float  lensDistortion;
+    float  ssaoIntensity;
     float  customIntensity;
     float  customBlend;
     float4 customParameters;
-    float2 _ppPad;
+    float  _ppPad;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)

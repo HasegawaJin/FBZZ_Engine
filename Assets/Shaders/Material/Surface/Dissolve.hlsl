@@ -6,11 +6,29 @@
 // alphaCutoff : ディゾルブ進行量 (0 = 完全表示, 1 = 完全消滅)
 // emissiveColor * emissiveScale : エッジ発光色と強度
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;             // RGBA ベースカラー              offset  0
+    float  metallic;           // 金属度 [0,1]                   offset 16
+    float  roughness;          // 粗さ   [0,1]                   offset 20
+    float  normalStrength;     // 法線マップ強度                  offset 24
+    float  occlusionStrength;  // AO 強度 [0,1]                  offset 28
+    float3 emissiveColor;      // エッジ発光色                   offset 32
+    float  emissiveScale;      // エッジ発光強度                 offset 44
+    float2 uvTiling;           // UV タイリング                  offset 48
+    float2 uvOffset;           // UV オフセット                  offset 56
+    float  alphaCutoff;        // ディゾルブ進行量 (0=表示, 1=消滅) offset 64
+    float3 _pad0;              //                                offset 68
+    uint   textureMask;        // テクスチャフラグ                offset 80
+    float3 _pad1;              //                                offset 84
+};
 
 Texture2D<float>       texShadow        : register(TEX_SHADOW);
 Texture2D              texAlbedo        : register(TEX_ALBEDO);
@@ -139,9 +157,11 @@ float4 PSMain(PSInput p) : SV_Target0
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
 
-    // エッジ発光: しきい値直上の帯が emissiveColor * emissiveScale で燃える。
-    // edgeFactor=0 がしきい値エッジ、1 が帯の外側 (消灯)。
-    result += emissiveColor * emissiveScale * max(0.5f, 1.0f) * (1.0f - edgeFactor);
+    // エッジ発光: しきい値直上の帯が通常エミッシブより 2 倍明るく燃える。
+    // edgeFactor=0 がしきい値エッジ (最大発光)、1 が帯の外側 (消灯)。
+    // WHY: emissiveScale だけでは通常エミッシブと同強度になり「燃える」印象が出ないため、
+    //      定数 2.0 を掛けてエッジ帯を明示的に強調する。
+    result += emissiveColor * emissiveScale * 2.0f * (1.0f - edgeFactor);
 
     return float4(result, alpha);
 }

@@ -3,11 +3,19 @@
 // GPU スキニング + Phong 鏡面反射 + PCF シャドウ
 // PS ロジックは Surface/Phong.hlsl と完全に一致させること。
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;
+    float  roughness;
+    uint   textureMask;
+};
 
 Texture2D<float>       texShadow   : register(TEX_SHADOW);
 Texture2D              texAlbedo   : register(TEX_ALBEDO);
