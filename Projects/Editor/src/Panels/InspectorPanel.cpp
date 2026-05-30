@@ -967,10 +967,295 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::TextDisabled("(clips not loaded yet)");
             }
 
-            ImGui::DragFloat("Time",  &anim.time,  0.01f, 0.0f, 100000.0f);
             ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
-            ImGui::Checkbox("Loop",    &anim.loop);
             ImGui::Checkbox("Playing", &anim.playing);
+            // Time / Loop はステートマシン未使用時のみ表示する（ステートマシン使用時は per-state で管理）
+            if (anim.states.empty()) {
+                ImGui::DragFloat("Time", &anim.time, 0.01f, 0.0f, 100000.0f);
+                ImGui::Checkbox("Loop", &anim.loop);
+            }
+
+            // ── ステートマシン UI ────────────────────────────────────────────────
+            if (!anim.states.empty() || true) {
+                ImGui::Separator();
+                ImGui::TextColored({ 0.9f, 0.7f, 0.2f, 1.0f }, "State Machine");
+
+                // ── ランタイム状態表示 ─────────────────────────────────────────
+                if (!anim.currentStateName.empty()) {
+                    ImGui::Text("Current: %s", anim.currentStateName.c_str());
+                    const float nt = anim.GetNormalizedTime();
+                    char overlay[64];
+                    std::snprintf(overlay, sizeof(overlay), "%.2f", nt);
+                    ImGui::ProgressBar(nt, { -1.0f, 0.0f }, overlay);
+                    if (!anim.blendToState.empty()) {
+                        ImGui::TextDisabled(" -> %s  (blend: %.0f%%)",
+                            anim.blendToState.c_str(),
+                            anim.blendWeight * 100.0f);
+                    }
+                    ImGui::Separator();
+                }
+
+                // ── Default State コンボ ──────────────────────────────────────
+                if (!anim.states.empty()) {
+                    int defIdx = 0;
+                    std::vector<const char*> stateNames;
+                    stateNames.reserve(anim.states.size());
+                    for (int si = 0; si < static_cast<int>(anim.states.size()); ++si) {
+                        stateNames.push_back(anim.states[static_cast<size_t>(si)].name.c_str());
+                        if (anim.states[static_cast<size_t>(si)].name == anim.defaultStateName)
+                            defIdx = si;
+                    }
+                    if (ImGui::Combo("Default State", &defIdx,
+                                     stateNames.data(), static_cast<int>(stateNames.size()))) {
+                        anim.defaultStateName  = anim.states[static_cast<size_t>(defIdx)].name;
+                        anim.currentStateName  = "";  // 再初期化トリガー
+                    }
+                }
+
+                // ── Parameters ────────────────────────────────────────────────
+                ImGui::Separator();
+                if (ImGui::CollapsingHeader("Parameters")) {
+                    static const char* kParamTypes[] = { "Float", "Int", "Bool", "Trigger" };
+                    int removeParamIdx = -1;
+
+                    for (int pi = 0; pi < static_cast<int>(anim.parameters.size()); ++pi) {
+                        auto& param = anim.parameters[static_cast<size_t>(pi)];
+                        ImGui::PushID(pi);
+
+                        // 型コンボ（幅を絞る）
+                        ImGui::SetNextItemWidth(70.0f);
+                        int typeIdx = static_cast<int>(param.type);
+                        if (ImGui::Combo("##ptype", &typeIdx, kParamTypes, 4))
+                            param.type = static_cast<scene::ParamType>(typeIdx);
+                        ImGui::SameLine();
+
+                        // 名前入力
+                        char buf[64];
+                        std::snprintf(buf, sizeof(buf), "%s", param.name.c_str());
+                        ImGui::SetNextItemWidth(100.0f);
+                        if (ImGui::InputText("##pname", buf, sizeof(buf)))
+                            param.name = buf;
+                        ImGui::SameLine();
+
+                        // 値ウィジェット
+                        switch (param.type) {
+                        case scene::ParamType::Float:
+                            ImGui::SetNextItemWidth(80.0f);
+                            ImGui::DragFloat("##pval", &param.floatValue, 0.01f);
+                            break;
+                        case scene::ParamType::Int:
+                            ImGui::SetNextItemWidth(80.0f);
+                            ImGui::DragInt("##pval", &param.intValue);
+                            break;
+                        case scene::ParamType::Bool:
+                            ImGui::Checkbox("##pval", &param.boolValue);
+                            break;
+                        case scene::ParamType::Trigger:
+                            if (ImGui::SmallButton("Fire"))
+                                param.boolValue = true;
+                            break;
+                        }
+                        ImGui::SameLine();
+
+                        if (ImGui::SmallButton("x"))
+                            removeParamIdx = pi;
+
+                        ImGui::PopID();
+                    }
+                    if (removeParamIdx >= 0)
+                        anim.parameters.erase(anim.parameters.begin() + removeParamIdx);
+
+                    // "+ Add Parameter" ボタン（型コンボ付き）
+                    static int s_newParamType = 0;
+                    ImGui::SetNextItemWidth(70.0f);
+                    ImGui::Combo("##newptype", &s_newParamType, kParamTypes, 4);
+                    ImGui::SameLine();
+                    if (ImGui::Button("+ Add Parameter")) {
+                        scene::AnimatorParameter p;
+                        p.name = "NewParam";
+                        p.type = static_cast<scene::ParamType>(s_newParamType);
+                        anim.parameters.push_back(std::move(p));
+                    }
+                }
+
+                // ── States ────────────────────────────────────────────────────
+                ImGui::Separator();
+                if (ImGui::CollapsingHeader("States")) {
+                    // 利用可能なクリップ名リスト（Clip コンボ用）
+                    std::vector<const char*> clipNames;
+                    clipNames.push_back("(none)");
+                    for (const auto& c : anim.clips)
+                        clipNames.push_back(c.name.c_str());
+
+                    // 利用可能なステート名リスト（遷移先コンボ用）
+                    std::vector<const char*> stateNamesForTrans;
+                    for (const auto& s : anim.states)
+                        stateNamesForTrans.push_back(s.name.c_str());
+
+                    static const char* kOpNames[] = {
+                        "Greater", "Less", "Equal", "NotEqual", "True", "False"
+                    };
+
+                    int removeStateIdx = -1;
+                    for (int si = 0; si < static_cast<int>(anim.states.size()); ++si) {
+                        auto& st = anim.states[static_cast<size_t>(si)];
+                        ImGui::PushID(si);
+
+                        const bool isCurrent = (st.name == anim.currentStateName);
+                        if (isCurrent)
+                            ImGui::PushStyleColor(ImGuiCol_Header, { 0.3f, 0.6f, 0.3f, 1.0f });
+
+                        const bool open = ImGui::CollapsingHeader(st.name.c_str());
+
+                        if (isCurrent) ImGui::PopStyleColor();
+
+                        if (open) {
+                            ImGui::Indent();
+
+                            // State 名入力
+                            char nameBuf[64];
+                            std::snprintf(nameBuf, sizeof(nameBuf), "%s", st.name.c_str());
+                            if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
+                                // defaultStateName / currentStateName も追随して更新する
+                                if (anim.defaultStateName == st.name)
+                                    anim.defaultStateName = nameBuf;
+                                if (anim.currentStateName == st.name)
+                                    anim.currentStateName = nameBuf;
+                                st.name = nameBuf;
+                            }
+
+                            // Clip コンボ
+                            int clipSel = 0;
+                            for (int ci = 1; ci < static_cast<int>(clipNames.size()); ++ci)
+                                if (st.clipName == clipNames[static_cast<size_t>(ci)])
+                                    { clipSel = ci; break; }
+                            if (ImGui::Combo("Clip", &clipSel,
+                                             clipNames.data(),
+                                             static_cast<int>(clipNames.size()))) {
+                                st.clipName = (clipSel == 0)
+                                    ? ""
+                                    : clipNames[static_cast<size_t>(clipSel)];
+                            }
+                            ImGui::DragFloat("Speed##st", &st.speed, 0.01f, -10.0f, 10.0f);
+                            ImGui::Checkbox("Loop##st", &st.loop);
+
+                            // ── Transitions ──────────────────────────────────
+                            ImGui::Separator();
+                            ImGui::Text("Transitions");
+                            int removeTrIdx = -1;
+                            for (int ti = 0; ti < static_cast<int>(st.transitions.size()); ++ti) {
+                                auto& tr = st.transitions[static_cast<size_t>(ti)];
+                                ImGui::PushID(ti);
+
+                                // 遷移先コンボ
+                                int toIdx = 0;
+                                for (int xi = 0; xi < static_cast<int>(stateNamesForTrans.size()); ++xi)
+                                    if (tr.toStateName == stateNamesForTrans[static_cast<size_t>(xi)])
+                                        { toIdx = xi; break; }
+                                ImGui::SetNextItemWidth(120.0f);
+                                if (ImGui::Combo("->##to", &toIdx,
+                                                 stateNamesForTrans.data(),
+                                                 static_cast<int>(stateNamesForTrans.size())))
+                                    tr.toStateName = stateNamesForTrans[static_cast<size_t>(toIdx)];
+
+                                ImGui::SameLine();
+                                ImGui::Checkbox("ExitTime", &tr.hasExitTime);
+                                if (tr.hasExitTime) {
+                                    ImGui::SameLine();
+                                    ImGui::SetNextItemWidth(60.0f);
+                                    ImGui::DragFloat("##et", &tr.exitTime, 0.01f, 0.0f, 1.0f);
+                                }
+                                ImGui::SetNextItemWidth(80.0f);
+                                ImGui::DragFloat("Duration", &tr.transitionDuration, 0.01f, 0.0f, 5.0f);
+
+                                // 条件リスト
+                                ImGui::Indent();
+                                int removeCondIdx = -1;
+                                for (int ci = 0; ci < static_cast<int>(tr.conditions.size()); ++ci) {
+                                    auto& cond = tr.conditions[static_cast<size_t>(ci)];
+                                    ImGui::PushID(ci);
+
+                                    // パラメーター名コンボ
+                                    std::vector<const char*> paramNamesList;
+                                    for (const auto& pp : anim.parameters)
+                                        paramNamesList.push_back(pp.name.c_str());
+                                    int pIdx = 0;
+                                    for (int xi = 0; xi < static_cast<int>(paramNamesList.size()); ++xi)
+                                        if (cond.paramName == paramNamesList[static_cast<size_t>(xi)])
+                                            { pIdx = xi; break; }
+                                    ImGui::SetNextItemWidth(90.0f);
+                                    if (!paramNamesList.empty() &&
+                                        ImGui::Combo("##cp", &pIdx,
+                                                     paramNamesList.data(),
+                                                     static_cast<int>(paramNamesList.size())))
+                                        cond.paramName = paramNamesList[static_cast<size_t>(pIdx)];
+                                    ImGui::SameLine();
+
+                                    // 演算子コンボ
+                                    int opIdx = static_cast<int>(cond.op);
+                                    ImGui::SetNextItemWidth(70.0f);
+                                    if (ImGui::Combo("##cop", &opIdx, kOpNames, 6))
+                                        cond.op = static_cast<scene::ConditionOp>(opIdx);
+                                    ImGui::SameLine();
+
+                                    // 閾値（Greater/Less/Equal/NotEqual のとき表示）
+                                    if (opIdx < 4) {
+                                        ImGui::SetNextItemWidth(60.0f);
+                                        ImGui::DragFloat("##cth", &cond.threshold, 0.01f);
+                                        ImGui::SameLine();
+                                    }
+                                    if (ImGui::SmallButton("x##cond"))
+                                        removeCondIdx = ci;
+
+                                    ImGui::PopID();
+                                }
+                                if (removeCondIdx >= 0)
+                                    tr.conditions.erase(tr.conditions.begin() + removeCondIdx);
+
+                                if (ImGui::SmallButton("+ Condition")) {
+                                    scene::AnimatorCondition c;
+                                    if (!anim.parameters.empty())
+                                        c.paramName = anim.parameters[0].name;
+                                    tr.conditions.push_back(std::move(c));
+                                }
+                                ImGui::Unindent();
+
+                                ImGui::SameLine();
+                                if (ImGui::SmallButton("x##tr"))
+                                    removeTrIdx = ti;
+
+                                ImGui::PopID();
+                            }
+                            if (removeTrIdx >= 0)
+                                st.transitions.erase(st.transitions.begin() + removeTrIdx);
+
+                            if (ImGui::Button("+ Add Transition")) {
+                                scene::AnimationTransition tr;
+                                if (!anim.states.empty())
+                                    tr.toStateName = anim.states[0].name;
+                                st.transitions.push_back(std::move(tr));
+                            }
+
+                            ImGui::Separator();
+                            if (ImGui::SmallButton("Remove State"))
+                                removeStateIdx = si;
+
+                            ImGui::Unindent();
+                        }
+                        ImGui::PopID();
+                    }
+                    if (removeStateIdx >= 0)
+                        anim.states.erase(anim.states.begin() + removeStateIdx);
+
+                    if (ImGui::Button("+ Add State")) {
+                        scene::AnimationState newSt;
+                        newSt.name = "NewState";
+                        if (anim.defaultStateName.empty())
+                            anim.defaultStateName = newSt.name;
+                        anim.states.push_back(std::move(newSt));
+                    }
+                }
+            }
         });
 
     // -----------------------------------------------------------------------
