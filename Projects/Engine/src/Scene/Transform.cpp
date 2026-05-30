@@ -23,8 +23,7 @@ void Transform::Translate(const math::Vector3& delta, bool worldSpace) {
 }
 
 void Transform::Rotate(const math::Vector3& eulerDegrees, bool worldSpace) {
-    constexpr float DEG2RAD = 3.14159265f / 180.0f;
-    math::Vector3 rad = eulerDegrees * DEG2RAD;
+    math::Vector3 rad = eulerDegrees * math::DEG2RAD;
     auto q = math::Quaternion::FromEuler(rad);
     if (worldSpace) {
         math::Quaternion parentRot = rotation * localRotation.Inverse();
