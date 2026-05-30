@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace fbzz::physics 
 {
@@ -152,6 +153,227 @@ namespace fbzz::physics
             return manifold;
         }
 
+        struct BroadPhaseProxy
+        {
+            size_t index = 0;
+            AABB bounds;
+            math::Vector3 center = math::Vector3::ZERO;
+        };
+
+        struct BroadPhaseNode
+        {
+            AABB bounds;
+            int left = -1;
+            int right = -1;
+            int start = 0;
+            int count = 0;
+
+            bool IsLeaf() const { return left < 0 && right < 0; }
+        };
+
+        float AxisValue(const math::Vector3& v, int axis)
+        {
+            if (axis == 0) return v.x;
+            if (axis == 1) return v.y;
+            return v.z;
+        }
+
+        int LongestAxis(const math::Vector3& size)
+        {
+            if (size.x >= size.y && size.x >= size.z) return 0;
+            if (size.y >= size.z) return 1;
+            return 2;
+        }
+
+        AABB MergeBounds(const AABB& a, const AABB& b)
+        {
+            AABB out;
+            out.min.x = std::min(a.min.x, b.min.x);
+            out.min.y = std::min(a.min.y, b.min.y);
+            out.min.z = std::min(a.min.z, b.min.z);
+            out.max.x = std::max(a.max.x, b.max.x);
+            out.max.y = std::max(a.max.y, b.max.y);
+            out.max.z = std::max(a.max.z, b.max.z);
+            return out;
+        }
+
+        AABB ComputeBounds(const std::vector<BroadPhaseProxy>& proxies,
+                           const std::vector<int>& order,
+                           int start,
+                           int count)
+        {
+            AABB bounds = proxies[static_cast<size_t>(order[static_cast<size_t>(start)])].bounds;
+            for (int i = 1; i < count; ++i)
+            {
+                const int proxyIndex = order[static_cast<size_t>(start + i)];
+                bounds = MergeBounds(bounds, proxies[static_cast<size_t>(proxyIndex)].bounds);
+            }
+            return bounds;
+        }
+
+        AABB ComputeCenterBounds(const std::vector<BroadPhaseProxy>& proxies,
+                                 const std::vector<int>& order,
+                                 int start,
+                                 int count)
+        {
+            const math::Vector3 first = proxies[static_cast<size_t>(order[static_cast<size_t>(start)])].center;
+            AABB bounds{ first, first };
+            for (int i = 1; i < count; ++i)
+            {
+                const math::Vector3 center = proxies[static_cast<size_t>(order[static_cast<size_t>(start + i)])].center;
+                bounds.min.x = std::min(bounds.min.x, center.x);
+                bounds.min.y = std::min(bounds.min.y, center.y);
+                bounds.min.z = std::min(bounds.min.z, center.z);
+                bounds.max.x = std::max(bounds.max.x, center.x);
+                bounds.max.y = std::max(bounds.max.y, center.y);
+                bounds.max.z = std::max(bounds.max.z, center.z);
+            }
+            return bounds;
+        }
+
+        int BuildBroadPhaseBVH(const std::vector<BroadPhaseProxy>& proxies,
+                               std::vector<int>& order,
+                               std::vector<BroadPhaseNode>& nodes,
+                               int start,
+                               int count)
+        {
+            constexpr int LEAF_SIZE = 4;
+
+            const int nodeIndex = static_cast<int>(nodes.size());
+            nodes.push_back({});
+
+            BroadPhaseNode& node = nodes[static_cast<size_t>(nodeIndex)];
+            node.bounds = ComputeBounds(proxies, order, start, count);
+            node.start = start;
+            node.count = count;
+
+            if (count <= LEAF_SIZE)
+                return nodeIndex;
+
+            const AABB centerBounds = ComputeCenterBounds(proxies, order, start, count);
+            const math::Vector3 centerSize = centerBounds.max - centerBounds.min;
+            const int splitAxis = LongestAxis(centerSize);
+            const int split = start + count / 2;
+
+            // WHY: 毎フレーム再構築する一時 BVH なので、SAH ではなく中央値分割を使う。
+            //      構築を O(n log n) に抑えつつ、総当たりより候補ペア数を安定して削減する。
+            std::nth_element(order.begin() + start,
+                             order.begin() + split,
+                             order.begin() + start + count,
+                             [&](int a, int b) {
+                                 return AxisValue(proxies[static_cast<size_t>(a)].center, splitAxis) <
+                                        AxisValue(proxies[static_cast<size_t>(b)].center, splitAxis);
+                             });
+
+            // WHAT: 全中心が同一点に潰れても split は count/2 で進むため、再帰は必ず収束する。
+            node.left = BuildBroadPhaseBVH(proxies, order, nodes, start, split - start);
+            node.right = BuildBroadPhaseBVH(proxies, order, nodes, split, start + count - split);
+            return nodeIndex;
+        }
+
+        bool ShouldSkipBroadPhasePair(const ColliderInstance& a,
+                                      const ColliderInstance& b,
+                                      const std::function<bool(int, int)>& layerFilter)
+        {
+            if (layerFilter && !layerFilter(a.layer, b.layer)) return true;
+            if (a.isTrigger || b.isTrigger) return false;
+
+            // WHY: 非 Trigger の Static-Static は解決しても状態が変わらないため、NarrowPhase 対象から外す。
+            const bool staticA = !a.body || a.body->IsStatic();
+            const bool staticB = !b.body || b.body->IsStatic();
+            return staticA && staticB;
+        }
+
+        void AddBroadPhasePair(const std::vector<ColliderInstance>& colliders,
+                               const BroadPhaseProxy& a,
+                               const BroadPhaseProxy& b,
+                               std::vector<CollisionPair>& outPairs,
+                               const std::function<bool(int, int)>& layerFilter)
+        {
+            const ColliderInstance& colliderA = colliders[a.index];
+            const ColliderInstance& colliderB = colliders[b.index];
+            if (ShouldSkipBroadPhasePair(colliderA, colliderB, layerFilter)) return;
+            if (!a.bounds.Overlaps(b.bounds)) return;
+
+            outPairs.push_back({ colliderA, colliderB });
+        }
+
+        void CollectLeafPairs(const std::vector<ColliderInstance>& colliders,
+                              const std::vector<BroadPhaseProxy>& proxies,
+                              const std::vector<int>& order,
+                              const BroadPhaseNode& node,
+                              std::vector<CollisionPair>& outPairs,
+                              const std::function<bool(int, int)>& layerFilter)
+        {
+            for (int i = 0; i < node.count; ++i)
+            {
+                const BroadPhaseProxy& a = proxies[static_cast<size_t>(order[static_cast<size_t>(node.start + i)])];
+                for (int j = i + 1; j < node.count; ++j)
+                {
+                    const BroadPhaseProxy& b = proxies[static_cast<size_t>(order[static_cast<size_t>(node.start + j)])];
+                    AddBroadPhasePair(colliders, a, b, outPairs, layerFilter);
+                }
+            }
+        }
+
+        void CollectNodePairs(const std::vector<ColliderInstance>& colliders,
+                              const std::vector<BroadPhaseProxy>& proxies,
+                              const std::vector<int>& order,
+                              const std::vector<BroadPhaseNode>& nodes,
+                              int nodeAIndex,
+                              int nodeBIndex,
+                              std::vector<CollisionPair>& outPairs,
+                              const std::function<bool(int, int)>& layerFilter)
+        {
+            const BroadPhaseNode& nodeA = nodes[static_cast<size_t>(nodeAIndex)];
+            const BroadPhaseNode& nodeB = nodes[static_cast<size_t>(nodeBIndex)];
+            if (!nodeA.bounds.Overlaps(nodeB.bounds)) return;
+
+            if (nodeA.IsLeaf() && nodeB.IsLeaf())
+            {
+                for (int i = 0; i < nodeA.count; ++i)
+                {
+                    const BroadPhaseProxy& a = proxies[static_cast<size_t>(order[static_cast<size_t>(nodeA.start + i)])];
+                    for (int j = 0; j < nodeB.count; ++j)
+                    {
+                        const BroadPhaseProxy& b = proxies[static_cast<size_t>(order[static_cast<size_t>(nodeB.start + j)])];
+                        AddBroadPhasePair(colliders, a, b, outPairs, layerFilter);
+                    }
+                }
+                return;
+            }
+
+            if (nodeB.IsLeaf() || (!nodeA.IsLeaf() && nodeA.count >= nodeB.count))
+            {
+                CollectNodePairs(colliders, proxies, order, nodes, nodeA.left, nodeBIndex, outPairs, layerFilter);
+                CollectNodePairs(colliders, proxies, order, nodes, nodeA.right, nodeBIndex, outPairs, layerFilter);
+                return;
+            }
+
+            CollectNodePairs(colliders, proxies, order, nodes, nodeAIndex, nodeB.left, outPairs, layerFilter);
+            CollectNodePairs(colliders, proxies, order, nodes, nodeAIndex, nodeB.right, outPairs, layerFilter);
+        }
+
+        void CollectSelfPairs(const std::vector<ColliderInstance>& colliders,
+                              const std::vector<BroadPhaseProxy>& proxies,
+                              const std::vector<int>& order,
+                              const std::vector<BroadPhaseNode>& nodes,
+                              int nodeIndex,
+                              std::vector<CollisionPair>& outPairs,
+                              const std::function<bool(int, int)>& layerFilter)
+        {
+            const BroadPhaseNode& node = nodes[static_cast<size_t>(nodeIndex)];
+            if (node.IsLeaf())
+            {
+                CollectLeafPairs(colliders, proxies, order, node, outPairs, layerFilter);
+                return;
+            }
+
+            CollectSelfPairs(colliders, proxies, order, nodes, node.left, outPairs, layerFilter);
+            CollectNodePairs(colliders, proxies, order, nodes, node.left, node.right, outPairs, layerFilter);
+            CollectSelfPairs(colliders, proxies, order, nodes, node.right, outPairs, layerFilter);
+        }
+
         void ClosestPointsOnSegments(const math::Vector3& p1,
                                      const math::Vector3& q1,
                                      const math::Vector3& p2,
@@ -234,27 +456,35 @@ namespace fbzz::physics
                                     std::vector<CollisionPair>& outPairs,
                                     const std::function<bool(int, int)>& layerFilter)
     {
+        std::vector<BroadPhaseProxy> proxies;
+        proxies.reserve(colliders.size());
+
         for (size_t i = 0; i < colliders.size(); ++i)
         {
             if (!colliders[i].collider) continue;
-            for (size_t j = i + 1; j < colliders.size(); ++j)
-            {
-                if (!colliders[j].collider) continue;
-                if (layerFilter && !layerFilter(colliders[i].layer, colliders[j].layer)) continue;
-                if (!colliders[i].isTrigger && !colliders[j].isTrigger)
-                {
-                    // 非 Trigger 同士の Static-Static ペアは解決しても状態が変わらないため除外する。
-                    const bool staticA = !colliders[i].body || colliders[i].body->IsStatic();
-                    const bool staticB = !colliders[j].body || colliders[j].body->IsStatic();
-                    if (staticA && staticB) continue;
-                }
 
-                if (colliders[i].collider->GetAABB().Overlaps(colliders[j].collider->GetAABB()))
-                {
-                    outPairs.push_back({ colliders[i], colliders[j] });
-                }
-            }
+            const AABB bounds = colliders[i].collider->GetAABB();
+            BroadPhaseProxy proxy;
+            proxy.index = i;
+            proxy.bounds = bounds;
+            proxy.center = bounds.Center();
+            proxies.push_back(proxy);
         }
+
+        if (proxies.size() < 2) return;
+
+        std::vector<int> order(proxies.size());
+        for (size_t i = 0; i < order.size(); ++i)
+            order[i] = static_cast<int>(i);
+
+        std::vector<BroadPhaseNode> nodes;
+        nodes.reserve(proxies.size() * 2);
+        // WHAT: コライダー AABB から毎ステップ一時 BVH を構築し、重なり得るノード同士だけを走査する。
+        // WHY: 全ペア比較 O(n^2) は、非接触の遠いオブジェクトが増えるほど NarrowPhase 前に詰まるため。
+        const int root = BuildBroadPhaseBVH(proxies, order, nodes, 0, static_cast<int>(proxies.size()));
+        CollectSelfPairs(colliders, proxies, order, nodes, root, outPairs, layerFilter);
+        return;
+
     }
 
     // ----------------------------------------------------------------- NarrowPhase
@@ -578,7 +808,9 @@ namespace fbzz::physics
         const math::Vector3 vRel      = vAContact - vBContact;
         const float         vRelN     = math::Vector3::Dot(vRel, cp.normal);
 
-        if (vRelN > 0.0f) return;
+        // WHY: Warm Start の過去インパルスが強すぎると、小さい Collider が大きい床上で微小な上向き速度を持つ。
+        //      cachedNormalImpulse が残っている接触では即 return せず、下の PGS 累積クランプで過剰分を戻す。
+        if (vRelN > 0.0f && (!cp.cacheImpulse || cp.cachedNormalImpulse <= 0.0f)) return;
 
         float e = 0.3f;
         if (cp.materialA && cp.materialB)
@@ -586,7 +818,7 @@ namespace fbzz::physics
 
         // 静止接触の微小反発を消し、床上の物体が跳ね続けるのを防ぐ。
         constexpr float REST_THRESHOLD = 0.5f;
-        if (std::abs(vRelN) < REST_THRESHOLD) e = 0.0f;
+        if (vRelN >= 0.0f || std::abs(vRelN) < REST_THRESHOLD) e = 0.0f;
         const bool usesRestitution = e > 0.0f;
 
         float angTermA = 0.0f;
