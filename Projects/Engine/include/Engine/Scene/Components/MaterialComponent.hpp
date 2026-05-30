@@ -1,14 +1,17 @@
 // FBZZ Engine
 // MaterialComponent.hpp | fbzz::scene
-// マテリアル設定を GameObject に持たせるコンポーネント
-// Unity Standard シェーダー相当のパラメータと 5 枚のテクスチャスロットを保持する。
-// RenderSystem の SyncMaterial() がここの値を Renderer::Material へ反映する。
-// Inspector / SceneSerializer で編集しやすい値型として保持し、
-// GPU リソースは Material 側の ResourceHandle に持たせる。
+// GameObject に割り当てるマテリアル設定と、シェーダー反映用パラメータを保持する。
 #pragma once
+
+#include <Engine/Renderer/RenderState.hpp>
+#include <Engine/Renderer/ShaderDescriptor.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace fbzz::renderer {
 class Material;
@@ -18,64 +21,68 @@ namespace fbzz::scene {
 
 struct MaterialComponent {
     std::shared_ptr<renderer::Material> material;
-    bool enabled = true;
-
-    // ── Shader ─────────────────────────────────────────────────────────────
-    // マテリアルが参照する HLSL ファイル。描画パス側の既定 PSO と組み合わせて使用する。
+    bool        enabled    = true;
     std::string shaderPath;
 
-    // ── Textures ────────────────────────────────────────────────────────────
-    std::string albedoTexPath;        // t0  ベースカラー
-    std::string normalTexPath;        // t1  法線マップ (OpenGL 規約 Y-up)
-    std::string metallicRoughTexPath; // t2  G=roughness / B=metallic (glTF 規約)
-    std::string emissiveTexPath;      // t3  エミッシブテクスチャ
-    std::string aoTexPath;            // t4  アンビエントオクルージョン
+    // ── 描画状態 ──────────────────────────────────────────────────────────────
+    // WHY: Unity/Unreal と同様にブレンドモード・カリング・描画優先度をマテリアルが持つ。
+    //      RenderSystem はこれらをもとに PipelineState を動的に選択する。
 
-    // ── Surface params ──────────────────────────────────────────────────────
-    float albedoColor[4]    = { 1.0f, 1.0f, 1.0f, 1.0f }; // RGBA ベースカラー
-    float metallic          = 0.0f;
-    float roughness         = 0.8f;
-    float normalStrength    = 1.0f; // 法線マップ強度
-    float occlusionStrength = 1.0f; // AO 強度
+    // アルファブレンド方式。ALPHA_BLEND / ADDITIVE は半透明パスで後から描画される。
+    renderer::BlendMode blendMode   = renderer::BlendMode::OPAQUE;
 
-    // ── Emissive ────────────────────────────────────────────────────────────
-    float emissiveColor[3]  = { 1.0f, 1.0f, 1.0f }; // エミッシブ色
-    float emissiveScale     = 0.0f;                   // エミッシブ強度
+    // true にすると背面カリングを無効化し、両面描画になる (草・布・薄い板など)。
+    bool                doubleSided = false;
 
-    // ── UV ──────────────────────────────────────────────────────────────────
-    float uvTiling[2] = { 1.0f, 1.0f };
-    float uvOffset[2] = { 0.0f, 0.0f };
+    // 描画キュー。値が小さいほど先に描画される。
+    // 目安: 0 = Opaque 通常物体、1000 = AlphaTest、2000 = Transparent。
+    // WHY: 同一 RenderLayer 内でキャラ → エフェクト → UI のような順序制御に使う。
+    int32_t             renderQueue = 0;
 
-    // ── Alpha ───────────────────────────────────────────────────────────────
-    float alphaCutoff = 0.5f; // カットアウトシェーダー用しきい値
+    // CB_MATERIAL と同じサイズ・同じレイアウトの生バイト列。
+    // WHY: シェーダーごとの定数バッファ差分を ShaderDescriptor に閉じ、RenderSystem はそのまま GPU へ転送できる。
+    std::vector<uint8_t> paramData;
+
+    // マテリアルテクスチャパス。slot 番号を index として保持する。
+    // texturePaths[0]=albedo, [1]=normal, [2]=metallicRough, [3]=emissive, [4]=ao
+    // WHAT: 未使用 slot は空文字にして、保存形式と Inspector 表示を単純に保つ。
+    std::vector<std::string> texturePaths;
+
+    // 型安全なアクセサ。offset は ShaderDescriptor が決める CB 内バイト位置。
+    template<typename T>
+    T GetParam(uint32_t offset) const
+    {
+        T v{};
+        if (offset + sizeof(T) <= paramData.size())
+            std::memcpy(&v, paramData.data() + offset, sizeof(T));
+        return v;
+    }
+
+    // 型安全なアクセサ。offset は ShaderDescriptor が決める CB 内バイト位置。
+    template<typename T>
+    void SetParam(uint32_t offset, const T& v)
+    {
+        if (offset + sizeof(T) <= paramData.size())
+            std::memcpy(paramData.data() + offset, &v, sizeof(T));
+    }
+
+    // Descriptor に合わせて paramData と texturePaths を初期化する。
+    // WHY: シェーダー切り替え時に古いレイアウトのデータを残すと、GPU 側の解釈がずれるため。
+    void InitFromDescriptor(const renderer::ShaderDescriptor& desc)
+    {
+        paramData.assign(desc.cbufferSize, 0u);
+        const uint32_t slotCount = desc.textures.empty() ? 0u
+            : desc.textures.back().slot + 1u;
+        texturePaths.resize((std::max)(slotCount, 5u));
+    }
 
     const char* GetTypeName() const { return "Material"; }
+
+    // シリアライズ用。paramData は SceneSerializer が Descriptor と合わせて直接扱う。
     void Reflect(IReflector& r)
     {
-        r.Field("enabled",              enabled);
-        r.Field("shaderPath",           shaderPath);
-        r.Field("albedoTexPath",        albedoTexPath);
-        r.Field("normalTexPath",        normalTexPath);
-        r.Field("metallicRoughTexPath", metallicRoughTexPath);
-        r.Field("emissiveTexPath",      emissiveTexPath);
-        r.Field("aoTexPath",            aoTexPath);
-        r.Field("albedoR",              albedoColor[0]);
-        r.Field("albedoG",              albedoColor[1]);
-        r.Field("albedoB",              albedoColor[2]);
-        r.Field("albedoA",              albedoColor[3]);
-        r.Field("metallic",             metallic);
-        r.Field("roughness",            roughness);
-        r.Field("normalStrength",       normalStrength);
-        r.Field("occlusionStrength",    occlusionStrength);
-        r.Field("emissiveR",            emissiveColor[0]);
-        r.Field("emissiveG",            emissiveColor[1]);
-        r.Field("emissiveB",            emissiveColor[2]);
-        r.Field("emissiveScale",        emissiveScale);
-        r.Field("uvTilingX",            uvTiling[0]);
-        r.Field("uvTilingY",            uvTiling[1]);
-        r.Field("uvOffsetX",            uvOffset[0]);
-        r.Field("uvOffsetY",            uvOffset[1]);
-        r.Field("alphaCutoff",          alphaCutoff);
+        r.Field("enabled",    enabled);
+        r.Field("shaderPath", shaderPath);
     }
 };
 
