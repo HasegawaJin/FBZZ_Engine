@@ -39,6 +39,16 @@ struct PlayerControllerComponent : fbzz::scene::Script {
         reflector.Field("Rotate To Move Direction", rotateToMoveDirection);
     }
 
+    void OnStart() override
+    {
+        if (!m_gameObject) return;
+        auto* rb = m_gameObject->GetComponent<fbzz::scene::RigidBodyComponent>();
+        if (!rb || !rb->rigidBody) return;
+        // WHY: 接触摩擦トルクでカプセルが傾くと接触法線が変化し、Baumgarte 補正が
+        //      水平成分を持って前後ジッターを引き起こす。全軸 freeze でこれを防ぐ。
+        rb->rigidBody->SetFreezeRotation({ true, true, true });
+    }
+
     void OnUpdate(float dt) override
     {
         if (!m_gameObject) return;

@@ -48,7 +48,9 @@ struct TpsCameraComponent : fbzz::scene::Script {
         FindTarget();
     }
 
-    void OnUpdate(float dt) override
+    // WHY: PhysicsSystem 後の最新プレイヤー位置を使うことで、カメラ位置と
+    //      プレイヤーメッシュ位置の 1 フレームずれによる前後ジッターを防ぐ。
+    void OnLateUpdate(float dt) override
     {
         (void)dt;
         if (!m_gameObject) return;
