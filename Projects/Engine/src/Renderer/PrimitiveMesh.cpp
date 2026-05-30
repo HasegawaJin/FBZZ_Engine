@@ -66,6 +66,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cube(ResourceManager& resources)
     mesh->indexCount   = 36;
     mesh->cpuVertices.assign(std::begin(verts), std::end(verts));
     mesh->cpuIndices.assign(std::begin(idx), std::end(idx));
+    mesh->ComputeBounds();
     return mesh;
 }
 
@@ -115,6 +116,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Sphere(ResourceManager& resources, int segm
     mesh->indexCount   = static_cast<uint32_t>(idx.size());
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
+    mesh->ComputeBounds();
     return mesh;
 }
 
@@ -135,6 +137,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Plane(ResourceManager& resources)
     mesh->indexCount   = 6;
     mesh->cpuVertices.assign(std::begin(verts), std::end(verts));
     mesh->cpuIndices.assign(std::begin(idx), std::end(idx));
+    mesh->ComputeBounds();
     return mesh;
 }
 
@@ -208,6 +211,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cylinder(ResourceManager& resources, int se
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
+    mesh->ComputeBounds();
     return mesh;
 }
 
@@ -266,6 +270,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Cone(ResourceManager& resources, int segmen
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
+    mesh->ComputeBounds();
     return mesh;
 }
 
@@ -316,6 +321,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Torus(ResourceManager& resources, int segme
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
+    mesh->ComputeBounds();
     return mesh;
 }
 
@@ -444,6 +450,7 @@ std::shared_ptr<Mesh> PrimitiveMesh::Capsule(ResourceManager& resources, int seg
     mesh->indexCount   = (uint32_t)idx.size();
     mesh->cpuVertices  = verts;
     mesh->cpuIndices   = idx;
+    mesh->ComputeBounds();
     return mesh;
 }
 

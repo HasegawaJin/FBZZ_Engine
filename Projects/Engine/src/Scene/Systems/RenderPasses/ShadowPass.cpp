@@ -30,6 +30,11 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     resources.Update(h.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     // 静的メッシュのシャドウ
+    // ライト視錐台カリング: シャドウマップに映らないオブジェクトのシャドウ DrawCall を省く。
+    // WHY: シャドウマップは平行投影のため視錐台が直方体形状になる。
+    //      光源から見えないジオメトリはシャドウを落とさないため除外して安全。
+    const auto& lightFrustum = ctx.lightFrustum;
+
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
@@ -37,6 +42,9 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->enabled) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
+
+        // ライトフラスタムカリング
+        if (!IsVisibleInFrustum(lightFrustum, go.transform, *mr->mesh)) continue;
 
         PerObjectCB objData{};
         objData.world = go.transform.GetWorldMatrix();
