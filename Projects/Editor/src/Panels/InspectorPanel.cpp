@@ -1264,116 +1264,182 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     // -----------------------------------------------------------------------
     DrawComponentSection<scene::IKSolverComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "IK Solver",
         [go](scene::IKSolverComponent& ik, EditorContext& ctx) {
+
+            // ── Hip Height Correction ────────────────────────────────────────
+            // WHY: チェーンより上位にある設定のため最初に表示し、設定忘れを防ぐ。
+            {
+                char hipBuf[256];
+                std::snprintf(hipBuf, sizeof(hipBuf), "%s", ik.hipBoneName.c_str());
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Clear").x - 24.0f);
+                if (ImGui::InputText("Hip Bone", hipBuf, sizeof(hipBuf)))
+                    ik.hipBoneName = hipBuf;
+                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                    ik.hipBoneName = dropped->name;
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Clear"))
+                    ik.hipBoneName.clear();
+                if (!ik.hipBoneName.empty())
+                    ImGui::TextDisabled("  Hip height correction enabled");
+            }
+
+            ImGui::Separator();
+
+            // ── IK Chains ────────────────────────────────────────────────────
             int removeIdx = -1;
 
             for (int ci = 0; ci < static_cast<int>(ik.chains.size()); ++ci) {
                 auto& chain = ik.chains[static_cast<size_t>(ci)];
-
                 ImGui::PushID(ci);
 
-                // チェーンのヘッダー (enabled + 折りたたみ)
+                // ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]
+                // WHY: Unity の Constraint コンポーネントと同様に enabled を
+                //      折りたたみ矢印の横に置き、開かずに ON/OFF できるようにする。
+                const char* tipLabel = chain.tipBoneName.empty() ? "—" : chain.tipBoneName.c_str();
                 char header[64];
-                std::snprintf(header, sizeof(header), "Chain %d  (%s)", ci,
-                              chain.tipBoneName.empty() ? "—" : chain.tipBoneName.c_str());
-                bool open = ImGui::TreeNodeEx(header, ImGuiTreeNodeFlags_DefaultOpen);
-                ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::GetFrameHeight());
-                if (ImGui::SmallButton("x"))
-                    removeIdx = ci;
+                std::snprintf(header, sizeof(header), "##chain%d", ci);
+
+                const float removeW   = ImGui::CalcTextSize("Remove").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float checkboxW = ImGui::GetFrameHeight();
+
+                bool open = ImGui::TreeNodeEx(header,
+                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap,
+                    "Chain %d  (%s)", ci, tipLabel);
+
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - removeW - checkboxW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::Checkbox("##en", &chain.enabled);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Enable / Disable this chain");
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.6f, 0.15f, 0.15f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.25f, 0.25f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.9f, 0.10f, 0.10f, 1.0f));
+                if (ImGui::SmallButton("Remove")) removeIdx = ci;
+                ImGui::PopStyleColor(3);
 
                 if (open) {
-                    ImGui::Checkbox("Enabled", &chain.enabled);
+                    // 無効チェーンは薄く表示
+                    if (!chain.enabled)
+                        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
 
-                    // ボーン名 (Hierarchy からドラッグ＆ドロップで設定可能)
-                    ImGui::Separator();
-                    ImGui::TextDisabled("Bones  (drag from Hierarchy)");
+                    // ── Bones ─────────────────────────────────────────────────
+                    ImGui::SeparatorText("Bones");
+                    ImGui::TextDisabled("Drag from Hierarchy or type name");
                     {
                         char buf[256];
-
                         std::snprintf(buf, sizeof(buf), "%s", chain.rootBoneName.c_str());
-                        if (ImGui::InputText("Root Bone", buf, sizeof(buf)))
+                        if (ImGui::InputText("Root", buf, sizeof(buf)))
                             chain.rootBoneName = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
                             chain.rootBoneName = dropped->name;
 
                         std::snprintf(buf, sizeof(buf), "%s", chain.midBoneName.c_str());
-                        if (ImGui::InputText("Mid Bone",  buf, sizeof(buf)))
+                        if (ImGui::InputText("Mid",  buf, sizeof(buf)))
                             chain.midBoneName = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
                             chain.midBoneName = dropped->name;
 
                         std::snprintf(buf, sizeof(buf), "%s", chain.tipBoneName.c_str());
-                        if (ImGui::InputText("Tip Bone",  buf, sizeof(buf)))
+                        if (ImGui::InputText("Tip",  buf, sizeof(buf)))
                             chain.tipBoneName = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
                             chain.tipBoneName = dropped->name;
                     }
 
-                    // ターゲット / ポール GameObject (Hierarchy からドラッグ＆ドロップで設定可能)
-                    ImGui::Separator();
-                    ImGui::TextDisabled("Targets  (drag from Hierarchy)");
+                    // ── Targets ───────────────────────────────────────────────
+                    // WHY: Target/Pole は名前文字列で保持し、Resolve ボタンで EntityID を
+                    //      解決する。解決状態を色付きドットで即座に確認できる。
+                    ImGui::SeparatorText("Targets");
                     {
                         char buf[256];
+                        const float resolveW = ImGui::CalcTextSize("Resolve").x
+                                             + ImGui::GetStyle().FramePadding.x * 2.0f;
+                        const float dotW     = ImGui::GetFrameHeight();
 
-                        // Target
-                        std::snprintf(buf, sizeof(buf), "%s", chain.targetName.c_str());
-                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 60.0f);
-                        if (ImGui::InputText("##tgt", buf, sizeof(buf)))
-                            chain.targetName = buf;
-                        // D&D: 名前と EntityID を同時に設定
-                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
-                            chain.targetName   = dropped->name;
-                            chain.targetEntity = dropped->GetID();
-                        }
-                        ImGui::SameLine();
-                        if (ImGui::SmallButton("Resolve##t")) {
-                            if (ctx.activeScene) {
-                                auto* tgt = ctx.activeScene->Find(chain.targetName);
-                                chain.targetEntity = tgt ? tgt->GetID() : scene::EntityID::INVALID;
+                        auto DrawObjectField = [&](const char* label,
+                                                   const char* idStr,
+                                                   std::string& name,
+                                                   scene::EntityID& eid)
+                        {
+                            const bool resolved = eid.IsValid();
+                            // 解決状態ドット (緑=OK / 赤=未解決)
+                            const ImVec4 dotColor = resolved
+                                ? ImVec4(0.2f, 0.8f, 0.2f, 1.0f)
+                                : ImVec4(0.8f, 0.2f, 0.2f, 1.0f);
+                            ImGui::TextColored(dotColor, resolved ? "●" : "○");
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip(resolved ? "Resolved" : "Not resolved — click Resolve");
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(
+                                ImGui::GetContentRegionAvail().x - resolveW
+                                - ImGui::GetStyle().ItemSpacing.x);
+                            std::snprintf(buf, sizeof(buf), "%s", name.c_str());
+                            if (ImGui::InputText(idStr, buf, sizeof(buf))) name = buf;
+                            if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
+                                name = dropped->name;
+                                eid  = dropped->GetID();
                             }
-                        }
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton(label)) {
+                                if (ctx.activeScene) {
+                                    auto* found = ctx.activeScene->Find(name);
+                                    eid = found ? found->GetID() : scene::EntityID::INVALID;
+                                }
+                            }
+                        };
+
+                        DrawObjectField("Resolve##t", "##tgt",  chain.targetName, chain.targetEntity);
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Target");
 
-                        // Pole
-                        std::snprintf(buf, sizeof(buf), "%s", chain.poleName.c_str());
-                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 60.0f);
-                        if (ImGui::InputText("##pole", buf, sizeof(buf)))
-                            chain.poleName = buf;
-                        // D&D: 名前と EntityID を同時に設定
-                        if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
-                            chain.poleName   = dropped->name;
-                            chain.poleEntity = dropped->GetID();
-                        }
-                        ImGui::SameLine();
-                        if (ImGui::SmallButton("Resolve##p")) {
-                            if (ctx.activeScene) {
-                                auto* pole = ctx.activeScene->Find(chain.poleName);
-                                chain.poleEntity = pole ? pole->GetID() : scene::EntityID::INVALID;
-                            }
-                        }
+                        DrawObjectField("Resolve##p", "##pole", chain.poleName,   chain.poleEntity);
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Pole");
-
-                        // 現在の解決状態を表示
-                        ImGui::TextDisabled("  target: %s  pole: %s",
-                            chain.targetEntity.IsValid() ? "OK" : "unresolved",
-                            chain.poleEntity.IsValid()   ? "OK" : "unresolved");
                     }
 
-                    // IK パラメーター
-                    ImGui::Separator();
-                    ImGui::TextDisabled("Parameters");
-                    ImGui::DragFloat("Weight",        &chain.weight,       0.01f,  0.0f, 1.0f);
-                    ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f);
-                    // C: Soft IK — 伸び切り手前の指数減衰量 (0 で無効)
-                    ImGui::DragFloat("Softness",      &chain.softness,     0.005f, 0.0f, 0.5f);
-                    ImGui::Checkbox("Use Ground Snap",    &chain.useGroundSnap);
-                    // D: Hip 高さ補正の対象チェーンとして登録する
-                    ImGui::Checkbox("Is Leg",             &chain.isLeg);
-                    widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
-                    // 斜面での足首傾き補正軸 (ゼロで無効)
-                    // 例: Mixamo = (0,-1,0)  Blender Z-up = (0,0,-1)
-                    widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
+                    // ── Settings ──────────────────────────────────────────────
+                    ImGui::SeparatorText("Settings");
+                    ImGui::DragFloat("Weight",        &chain.weight,       0.01f,  0.0f, 1.0f, "%.2f");
+                    ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f, "%.3f");
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Limits how far the chain can stretch (ratio of total bone length)");
+                    ImGui::DragFloat("Softness",      &chain.softness,     0.005f, 0.0f, 0.5f, "%.3f");
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
+                    ImGui::Checkbox("Is Leg", &chain.isLeg);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Include in Hip height correction (requires Hip Bone set above)");
+
+                    // ── Ground Snap ───────────────────────────────────────────
+                    // WHY: Ground Snap は足 IK 専用の機能群なので独立したセクションに集約する。
+                    //      targetOffset は Ground Snap 時は footSurfaceOffset に統合済みのため非表示。
+                    ImGui::SeparatorText("Ground Snap");
+                    ImGui::Checkbox("Enable##gs", &chain.useGroundSnap);
+                    if (chain.useGroundSnap) {
+                        ImGui::DragFloat("Ray Up Ratio",   &chain.rayUpRatio,        0.01f,  0.1f, 2.0f, "%.2f");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Ray starts this many * leg-length above the FK foot position");
+                        ImGui::DragFloat("Ray Down Ratio", &chain.rayDownRatio,      0.01f,  0.5f, 4.0f, "%.2f");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Total downward ray length in leg-length multiples");
+                        ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Distance to lift the ankle above the ground hit point");
+                        // 斜面での足首傾き補正 (Ground Snap と一体で使うため同セクション)
+                        widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Bone-local axis pointing through the foot sole.\n"
+                                              "Mixamo: (0,-1,0)   Blender Z-up: (0,0,-1)\n"
+                                              "Zero = no slope tilt correction");
+                    } else {
+                        // Ground Snap OFF のときのみ targetOffset が IK ゴールに加算される
+                        widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("World-space offset added to the target position\n"
+                                              "(hidden when Ground Snap is ON — use Surface Offset instead)");
+                    }
+
+                    if (!chain.enabled)
+                        ImGui::PopStyleVar();
 
                     ImGui::TreePop();
                 }
@@ -1386,23 +1452,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (removeIdx >= 0)
                 ik.chains.erase(ik.chains.begin() + removeIdx);
 
-            // D: Hip 高さ補正のターゲットボーン名
-            ImGui::Separator();
-            ImGui::TextDisabled("Hip Height Correction");
-            {
-                char hipBuf[256];
-                std::snprintf(hipBuf, sizeof(hipBuf), "%s", ik.hipBoneName.c_str());
-                if (ImGui::InputText("Hip Bone", hipBuf, sizeof(hipBuf)))
-                    ik.hipBoneName = hipBuf;
-                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
-                    ik.hipBoneName = dropped->name;
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Clear##hip"))
-                    ik.hipBoneName.clear();
-            }
-
             // チェーン追加
-            ImGui::Spacing();
             if (ImGui::Button("+ Add Chain", { -1.0f, 0.0f })) {
                 scene::IKChain chain;
                 chain.enabled = true;
