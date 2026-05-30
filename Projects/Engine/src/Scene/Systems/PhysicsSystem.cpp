@@ -227,6 +227,9 @@ void AddColliderInstance(GameObject& go,
 void DispatchToScript(Scene& scene,
                       const ColliderOwner& self,
                       const ColliderOwner& other,
+                      const math::Vector3& contactNormal,
+                      const math::Vector3& contactPoint,
+                      float contactDepth,
                       ScriptCollisionCallback callback)
 {
     if (!self.gameObject || !other.gameObject) return;
@@ -240,6 +243,9 @@ void DispatchToScript(Scene& scene,
     info.other = other.gameObject;
     info.selfCollider = self.collider;
     info.otherCollider = other.collider;
+    info.contactNormal = contactNormal;
+    info.contactPoint = contactPoint;
+    info.contactDepth = contactDepth;
     (scriptComponent->script.get()->*callback)(info);
 }
 
@@ -252,8 +258,10 @@ void DispatchCollisionEvent(Scene& scene,
     auto ownerB = owners.find(event.colliderB);
     if (ownerA == owners.end() || ownerB == owners.end()) return;
 
-    DispatchToScript(scene, ownerA->second, ownerB->second, callback);
-    DispatchToScript(scene, ownerB->second, ownerA->second, callback);
+    DispatchToScript(scene, ownerA->second, ownerB->second,
+                     event.normal, event.point, event.depth, callback);
+    DispatchToScript(scene, ownerB->second, ownerA->second,
+                     -event.normal, event.point, event.depth, callback);
 }
 
 void DispatchCollisionEvents(Scene& scene,

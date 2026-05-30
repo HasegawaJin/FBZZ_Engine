@@ -56,6 +56,19 @@ struct IKChain {
     //      ユーザーがリグを見て正しい軸を指定する必要がある。
     //      例: Mixamo 系 = {0,-1,0} / Blender Z-up 系 = {0,0,-1}
     math::Vector3 footNormalAxis = math::Vector3::ZERO;
+
+    // E: 地面レイキャストの感度パラメータ。脚長に対する比率で指定する。
+    // rayUpRatio   : 足 FK 位置からレイ開始点を上にずらす量 (脚長倍率)。
+    //                大きいほど段差の「上り坂」をより高い位置から拾える。
+    // rayDownRatio : 下向きレイの全長 (脚長倍率)。
+    //                大きいほど足元が深く沈んだ地形や「下り坂」まで追従する。
+    // footSurfaceOffset : 接地ヒット点から法線方向に浮かせる距離 (ワールド単位)。
+    //                     足首ジョイントが足裏より内側にあるため必要。小さいほど地面に密着する。
+    // WHY: 固定定数では脚長・カメラ距離・ステージ段差高さがリグごとに異なるため調整不能。
+    //      チェーン単位でパラメータを持つことで、片足だけ感度を変えるといった柔軟な運用が可能。
+    float rayUpRatio        = 0.4f;
+    float rayDownRatio      = 1.3f;
+    float footSurfaceOffset = 0.06f;
 };
 
 struct IKSolverComponent {
