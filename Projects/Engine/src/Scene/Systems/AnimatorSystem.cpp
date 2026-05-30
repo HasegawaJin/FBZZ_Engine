@@ -382,7 +382,408 @@ void LoadClips(AnimatorComponent& animator)
     animator.clipsLoaded = true;
 }
 
+// ── ステートマシン用ヘルパー ──────────────────────────────────────────────────
+
+// animator.clips からクリップ名で探す。
+// 完全一致 → 大文字小文字無視の含有一致 の順でフォールバックする。
+// WHY: FBX エクスポーターによっては "Walk" → "Armature|Walk" のように
+//      オブジェクト名がプレフィックスとして付くため、完全一致だけでは取得できない。
+const asset::AnimationClip* FindClipByName(const AnimatorComponent& animator,
+                                           const std::string& clipName)
+{
+    if (clipName.empty() || animator.clips.empty()) return nullptr;
+
+    // 1st pass: 完全一致
+    for (const auto& c : animator.clips)
+        if (c.name == clipName) return &c;
+
+    // 2nd pass: 大文字小文字無視の部分一致
+    //   FBX の clip.name が clipName を含んでいれば採用
+    auto toLower = [](std::string s) {
+        for (auto& ch : s) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        return s;
+    };
+    const std::string lowerTarget = toLower(clipName);
+    for (const auto& c : animator.clips) {
+        if (toLower(c.name).find(lowerTarget) != std::string::npos) return &c;
+    }
+
+    return nullptr;
+}
+
+// ステートに対応するクリップを返す。
+// clipName 名前検索 → clipIndex 直接指定 の順でフォールバックする。
+// WHY: Mixamo 等は FBX 内クリップ名を "mixamo.com" にするため名前検索が失敗する。
+//      clipIndex を明示することで任意の FBX でも確実に動作させる。
+const asset::AnimationClip* FindClipForState(const AnimatorComponent& animator,
+                                             const AnimationState& state)
+{
+    if (!state.clipName.empty()) {
+        if (const auto* c = FindClipByName(animator, state.clipName)) return c;
+    }
+    const int idx = state.clipIndex;
+    if (idx >= 0 && idx < static_cast<int>(animator.clips.size()))
+        return &animator.clips[idx];
+    return nullptr;
+}
+
+// animator.states からステート名で探す。見つからなければ nullptr。
+const AnimationState* FindState(const AnimatorComponent& animator,
+                                const std::string& stateName)
+{
+    for (const auto& s : animator.states)
+        if (s.name == stateName) return &s;
+    return nullptr;
+}
+
+// animator.parameters からパラメーター名で探す。見つからなければ nullptr。
+AnimatorParameter* FindParam(AnimatorComponent& animator, const std::string& paramName)
+{
+    for (auto& p : animator.parameters)
+        if (p.name == paramName) return &p;
+    return nullptr;
+}
+
+// 2クリップをブレンドした NodeLocalPose をノード階層に再帰適用し、
+// boneMatrices と nodeGlobalTransforms を構築する。
+// WHY: Matrix4 を直接 lerp すると回転の精度が落ちるため、
+//      TRS 分解済みの NodeLocalPose レベルで Lerp/Slerp してから Matrix4 に変換する。
+void EvaluateBlendedNodeRecursive(const asset::Skeleton& skeleton,
+                                  const asset::AnimationClip& clipA, double ticksA,
+                                  const asset::AnimationClip& clipB, double ticksB,
+                                  float weight,
+                                  int nodeIndex,
+                                  const math::Matrix4& parentGlobal,
+                                  std::vector<math::Matrix4>& palette,
+                                  std::vector<math::Matrix4>& nodeGlobals)
+{
+    const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
+
+    const NodeLocalPose poseA = SampleNodeLocalPose(node, clipA, ticksA);
+    const NodeLocalPose poseB = SampleNodeLocalPose(node, clipB, ticksB);
+
+    NodeLocalPose blended;
+    blended.translation = math::Vector3::Lerp(poseA.translation, poseB.translation, weight);
+    blended.rotation    = math::Quaternion::Slerp(poseA.rotation, poseB.rotation, weight);
+    blended.scale       = math::Vector3::Lerp(poseA.scale, poseB.scale, weight);
+
+    const math::Matrix4 local  = math::Matrix4::TRS(blended.translation,
+                                                     blended.rotation,
+                                                     blended.scale);
+    const math::Matrix4 global = parentGlobal * local;
+
+    if (nodeIndex < static_cast<int>(nodeGlobals.size()))
+        nodeGlobals[static_cast<size_t>(nodeIndex)] = global;
+
+    if (node.boneIndex >= 0 && node.boneIndex < static_cast<int>(palette.size())) {
+        const auto& bone = skeleton.bones[static_cast<size_t>(node.boneIndex)];
+        palette[static_cast<size_t>(node.boneIndex)] =
+            skeleton.rootInverseTransform * global * bone.offsetMatrix;
+    }
+
+    for (int child : node.children)
+        EvaluateBlendedNodeRecursive(skeleton, clipA, ticksA, clipB, ticksB, weight,
+                                     child, global, palette, nodeGlobals);
+}
+
+// ApplyAnimatedPoseToBones のブレンド版。
+// 各 BoneComponent GameObject のローカル TRS に2クリップのブレンドポーズを書き込む。
+void ApplyBlendedPoseToBones(Scene& scene,
+                             const asset::Skeleton& skeleton,
+                             const asset::AnimationClip& clipA, double ticksA,
+                             const asset::AnimationClip& clipB, double ticksB,
+                             float weight,
+                             SkinnedMeshRenderer& smr)
+{
+    for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
+        GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[i]);
+        if (!boneObject) continue;
+
+        const NodeLocalPose poseA = SampleNodeLocalPose(skeleton.nodes[i], clipA, ticksA);
+        const NodeLocalPose poseB = SampleNodeLocalPose(skeleton.nodes[i], clipB, ticksB);
+
+        boneObject->transform.localPosition =
+            math::Vector3::Lerp(poseA.translation, poseB.translation, weight);
+        boneObject->transform.localRotation =
+            math::Quaternion::Slerp(poseA.rotation, poseB.rotation, weight);
+        boneObject->transform.localScale =
+            math::Vector3::Lerp(poseA.scale, poseB.scale, weight);
+    }
+}
+
+// 遷移条件を1つ評価する。パラメーターが見つからない場合は false。
+bool CheckCondition(const AnimatorCondition& cond, const AnimatorParameter* param)
+{
+    if (!param) return false;
+
+    switch (cond.op) {
+    case ConditionOp::Greater:
+        if (param->type == ParamType::Int)
+            return static_cast<float>(param->intValue) > cond.threshold;
+        return param->floatValue > cond.threshold;
+    case ConditionOp::Less:
+        if (param->type == ParamType::Int)
+            return static_cast<float>(param->intValue) < cond.threshold;
+        return param->floatValue < cond.threshold;
+    case ConditionOp::Equal:
+        if (param->type == ParamType::Int)
+            return param->intValue == static_cast<int>(cond.threshold);
+        return std::abs(param->floatValue - cond.threshold) < 1e-4f;
+    case ConditionOp::NotEqual:
+        if (param->type == ParamType::Int)
+            return param->intValue != static_cast<int>(cond.threshold);
+        return std::abs(param->floatValue - cond.threshold) >= 1e-4f;
+    case ConditionOp::True:
+        return param->boolValue;
+    case ConditionOp::False:
+        return !param->boolValue;
+    }
+    return false;
+}
+
+// 遷移の全条件（AND）と hasExitTime を評価する。
+bool EvaluateTransition(const AnimationTransition& tr,
+                        AnimatorComponent& animator,
+                        float normalizedTime)
+{
+    // hasExitTime: 再生位置が exitTime に達していないと遷移しない
+    if (tr.hasExitTime && normalizedTime < tr.exitTime) return false;
+
+    // 条件リストが空で hasExitTime=false → 無効定義として遷移しない
+    if (tr.conditions.empty()) return tr.hasExitTime;
+
+    // 全条件 AND
+    for (const auto& cond : tr.conditions) {
+        const AnimatorParameter* param = FindParam(animator, cond.paramName);
+        if (!CheckCondition(cond, param)) return false;
+    }
+    return true;
+}
+
+// 遷移に使われた Trigger パラメーターを false にリセットする。
+// WHY: Trigger は「1フレームの発火信号」なので、遷移に消費されたら自動で戻す必要がある。
+void ConsumeTriggers(AnimatorComponent& animator, const AnimationTransition& tr)
+{
+    for (const auto& cond : tr.conditions) {
+        auto* param = FindParam(animator, cond.paramName);
+        if (param && param->type == ParamType::Trigger)
+            param->boolValue = false;
+    }
+}
+
+// ステートマシンを defaultStateName または states[0] で初期化する。
+// currentStateName が既に設定されている場合は何もしない。
+void InitStateMachine(AnimatorComponent& animator)
+{
+    if (!animator.currentStateName.empty()) return;
+    if (animator.states.empty()) return;
+
+    if (!animator.defaultStateName.empty() &&
+        FindState(animator, animator.defaultStateName))
+        animator.currentStateName = animator.defaultStateName;
+    else
+        animator.currentStateName = animator.states[0].name;
+
+    animator.stateTime   = 0.0f;
+    animator.blendToState = "";
+    animator.blendWeight = 0.0f;
+}
+
+// ステートマシンを1フレーム分更新する。
+// 遷移中のブレンド進行 → stateTime 進行 → 遷移条件チェックの順で処理する。
+void UpdateStateMachine(AnimatorComponent& animator, float dt)
+{
+    // ── ブレンド進行 ───────────────────────────────────────────────────────
+    if (!animator.blendToState.empty()) {
+        animator.blendWeight += dt / std::max(animator.blendDuration, 1e-4f);
+
+        // 遷移先ステートの時刻も進める
+        const AnimationState* nextSt = FindState(animator, animator.blendToState);
+        if (nextSt) {
+            const auto* nextClip = FindClipForState(animator, *nextSt);
+            if (nextClip) {
+                const double tps = nextClip->ticksPerSecond > 0.0 ? nextClip->ticksPerSecond : 30.0;
+                const float dur  = static_cast<float>(nextClip->durationTicks / tps);
+                animator.blendToTime += dt * nextSt->speed * animator.speed;
+                if (nextSt->loop)
+                    animator.blendToTime = WrapTime(animator.blendToTime, dur);
+                else
+                    animator.blendToTime = std::clamp(animator.blendToTime, 0.0f, dur);
+            }
+        }
+
+        if (animator.blendWeight >= 1.0f) {
+            // 遷移完了: 現ステートを次ステートに切り替える
+            animator.currentStateName = animator.blendToState;
+            animator.stateTime        = animator.blendToTime;
+            animator.blendToState     = "";
+            animator.blendWeight      = 0.0f;
+        }
+        // 遷移中は新たな遷移チェックをしない
+        return;
+    }
+
+    // ── 現ステートの時刻進行 ──────────────────────────────────────────────
+    const AnimationState* curSt = FindState(animator, animator.currentStateName);
+    if (!curSt) return;
+
+    const auto* curClip = FindClipForState(animator, *curSt);
+    float duration = 0.0f;
+    if (curClip) {
+        const double tps = curClip->ticksPerSecond > 0.0 ? curClip->ticksPerSecond : 30.0;
+        duration = static_cast<float>(curClip->durationTicks / tps);
+        if (animator.playing) {
+            animator.stateTime += dt * curSt->speed * animator.speed;
+            if (curSt->loop)
+                animator.stateTime = WrapTime(animator.stateTime, duration);
+            else
+                animator.stateTime = std::clamp(animator.stateTime, 0.0f, duration);
+        }
+    }
+
+    // ── 遷移条件チェック ──────────────────────────────────────────────────
+    const float normalizedTime = (duration > 0.0f)
+        ? std::clamp(animator.stateTime / duration, 0.0f, 1.0f)
+        : 0.0f;
+
+    for (const auto& tr : curSt->transitions) {
+        if (tr.toStateName.empty()) continue;
+        if (!FindState(animator, tr.toStateName)) continue;
+        if (!EvaluateTransition(tr, animator, normalizedTime)) continue;
+
+        // 遷移開始
+        animator.blendToState    = tr.toStateName;
+        animator.blendToTime     = 0.0f;
+        animator.blendWeight     = 0.0f;
+        animator.blendDuration   = tr.transitionDuration;
+        ConsumeTriggers(animator, tr);
+        break;
+    }
+}
+
 } // namespace
+
+// ── 後方互換パス（states が空のとき）────────────────────────────────────────
+static void RunLegacyAnimatorPath(AnimatorComponent& animator,
+                                  const asset::Skeleton& skeleton,
+                                  Scene& scene,
+                                  GameObject& go,
+                                  SkinnedMeshRenderer& smr,
+                                  renderer::ResourceManager& resources,
+                                  float dt)
+{
+    const auto* clip = ResolveClip(animator);
+    if (!clip) {
+        UploadBindPose(animator, resources);
+        return;
+    }
+
+    const double ticksPerSecond = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
+    const float durationSeconds = static_cast<float>(clip->durationTicks / ticksPerSecond);
+    if (animator.playing) {
+        animator.time += dt * animator.speed;
+        animator.time = animator.loop
+            ? WrapTime(animator.time, durationSeconds)
+            : std::clamp(animator.time, 0.0f, durationSeconds);
+    }
+
+    const size_t boneCount = std::min(skeleton.bones.size(),
+                                      static_cast<size_t>(asset::MAX_SKINNING_BONES));
+    animator.boneMatrices.assign(boneCount, math::Matrix4::Identity());
+    animator.nodeGlobalTransforms.assign(skeleton.nodes.size(), math::Matrix4::Identity());
+
+    if (skeleton.rootNodeIndex >= 0 && !skeleton.nodes.empty()) {
+        EnsureBoneHierarchy(scene, go, smr, skeleton);
+
+        EvaluateNode(skeleton, *clip, skeleton.rootNodeIndex,
+                     math::Matrix4::Identity(),
+                     static_cast<double>(animator.time) * ticksPerSecond,
+                     animator.boneMatrices, animator.nodeGlobalTransforms);
+
+        const double ticks = static_cast<double>(animator.time) * ticksPerSecond;
+        ApplyAnimatedPoseToBones(scene, skeleton, *clip, ticks, smr);
+        PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex, go.transform);
+        RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
+    }
+}
+
+// ── ステートマシンパス（states が存在するとき）──────────────────────────────
+static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
+                                        const asset::Skeleton& skeleton,
+                                        Scene& scene,
+                                        GameObject& go,
+                                        SkinnedMeshRenderer& smr,
+                                        renderer::ResourceManager& resources,
+                                        float dt)
+{
+    InitStateMachine(animator);
+    UpdateStateMachine(animator, dt);
+
+    const AnimationState* curSt = FindState(animator, animator.currentStateName);
+    if (!curSt) {
+        UploadBindPose(animator, resources);
+        return;
+    }
+
+    const auto* curClip = FindClipForState(animator, *curSt);
+    if (!curClip) {
+        UploadBindPose(animator, resources);
+        return;
+    }
+
+    const size_t boneCount = std::min(skeleton.bones.size(),
+                                      static_cast<size_t>(asset::MAX_SKINNING_BONES));
+    animator.boneMatrices.assign(boneCount, math::Matrix4::Identity());
+    animator.nodeGlobalTransforms.assign(skeleton.nodes.size(), math::Matrix4::Identity());
+
+    if (skeleton.rootNodeIndex < 0 || skeleton.nodes.empty()) return;
+
+    EnsureBoneHierarchy(scene, go, smr, skeleton);
+
+    const double tpsA = curClip->ticksPerSecond > 0.0 ? curClip->ticksPerSecond : 30.0;
+    const double ticksA = static_cast<double>(animator.stateTime) * tpsA;
+
+    if (!animator.blendToState.empty()) {
+        // ── クロスフェードモード ─────────────────────────────────────────
+        const AnimationState* nextSt = FindState(animator, animator.blendToState);
+        const auto* nextClip = nextSt ? FindClipForState(animator, *nextSt) : nullptr;
+
+        if (nextClip) {
+            const double tpsB  = nextClip->ticksPerSecond > 0.0 ? nextClip->ticksPerSecond : 30.0;
+            const double ticksB = static_cast<double>(animator.blendToTime) * tpsB;
+            const float w = std::clamp(animator.blendWeight, 0.0f, 1.0f);
+
+            EvaluateBlendedNodeRecursive(skeleton,
+                                         *curClip,  ticksA,
+                                         *nextClip, ticksB,
+                                         w,
+                                         skeleton.rootNodeIndex,
+                                         math::Matrix4::Identity(),
+                                         animator.boneMatrices,
+                                         animator.nodeGlobalTransforms);
+
+            ApplyBlendedPoseToBones(scene, skeleton,
+                                    *curClip, ticksA,
+                                    *nextClip, ticksB,
+                                    w, smr);
+        } else {
+            // 遷移先クリップが見つからなければ現クリップ単独で続ける
+            EvaluateNode(skeleton, *curClip, skeleton.rootNodeIndex,
+                         math::Matrix4::Identity(), ticksA,
+                         animator.boneMatrices, animator.nodeGlobalTransforms);
+            ApplyAnimatedPoseToBones(scene, skeleton, *curClip, ticksA, smr);
+        }
+    } else {
+        // ── 単一クリップモード ───────────────────────────────────────────
+        EvaluateNode(skeleton, *curClip, skeleton.rootNodeIndex,
+                     math::Matrix4::Identity(), ticksA,
+                     animator.boneMatrices, animator.nodeGlobalTransforms);
+        ApplyAnimatedPoseToBones(scene, skeleton, *curClip, ticksA, smr);
+    }
+
+    PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex, go.transform);
+    RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
+}
 
 void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt)
 {
@@ -418,42 +819,11 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
             continue;
         }
 
-        const auto* clip = ResolveClip(*animator);
-        if (!clip) {
-            UploadBindPose(*animator, resources);
-            continue;
-        }
-
-        const double ticksPerSecond = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-        const float durationSeconds = static_cast<float>(clip->durationTicks / ticksPerSecond);
-        if (animator->playing) {
-            animator->time += dt * animator->speed;
-            animator->time = animator->loop
-                ? WrapTime(animator->time, durationSeconds)
-                : std::clamp(animator->time, 0.0f, durationSeconds);
-        }
-
-        const size_t boneCount = std::min(skeleton->bones.size(),
-                                          static_cast<size_t>(asset::MAX_SKINNING_BONES));
-        animator->boneMatrices.assign(boneCount, math::Matrix4::Identity());
-        animator->nodeGlobalTransforms.assign(skeleton->nodes.size(), math::Matrix4::Identity());
-
-        if (skeleton->rootNodeIndex >= 0 && !skeleton->nodes.empty()) {
-            EnsureBoneHierarchy(scene, go, *smr, *skeleton);
-
-            EvaluateNode(*skeleton,
-                         *clip,
-                         skeleton->rootNodeIndex,
-                         math::Matrix4::Identity(),
-                         static_cast<double>(animator->time) * ticksPerSecond,
-                         animator->boneMatrices,
-                         animator->nodeGlobalTransforms);
-
-            const double ticks = static_cast<double>(animator->time) * ticksPerSecond;
-            ApplyAnimatedPoseToBones(scene, *skeleton, *clip, ticks, *smr);
-            PropagateBoneTransforms(scene, *skeleton, *smr, skeleton->rootNodeIndex, go.transform);
-            RebuildSkinningFromBoneTransforms(scene, go, *skeleton, *smr, *animator);
-        }
+        // states が空なら後方互換パス、存在すればステートマシンパス
+        if (animator->states.empty())
+            RunLegacyAnimatorPath(*animator, *skeleton, scene, go, *smr, resources, dt);
+        else
+            RunStateMachineAnimatorPath(*animator, *skeleton, scene, go, *smr, resources, dt);
 
         SkinningCB cb{};
         for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)

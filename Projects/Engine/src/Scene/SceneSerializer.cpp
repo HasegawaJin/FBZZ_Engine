@@ -725,6 +725,54 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::array srcArr;
             for (const auto& s : anim->clipSources) srcArr.push_back(s);
             animTbl.insert("clipSources", std::move(srcArr));
+
+            animTbl.insert("defaultStateName", anim->defaultStateName);
+
+            // ── ステートマシン: states ──────────────────────────────────────
+            toml::array statesArr;
+            for (const auto& st : anim->states) {
+                toml::table stTbl;
+                stTbl.insert("name",      st.name);
+                stTbl.insert("clipName",  st.clipName);
+                stTbl.insert("clipIndex", (int64_t)st.clipIndex);
+                stTbl.insert("speed",     (double)st.speed);
+                stTbl.insert("loop",      st.loop);
+                toml::array transArr;
+                for (const auto& tr : st.transitions) {
+                    toml::table trTbl;
+                    trTbl.insert("toStateName",        tr.toStateName);
+                    trTbl.insert("hasExitTime",        tr.hasExitTime);
+                    trTbl.insert("exitTime",           (double)tr.exitTime);
+                    trTbl.insert("transitionDuration", (double)tr.transitionDuration);
+                    toml::array condArr;
+                    for (const auto& c : tr.conditions) {
+                        toml::table cTbl;
+                        cTbl.insert("paramName", c.paramName);
+                        cTbl.insert("op",        (int64_t)c.op);
+                        cTbl.insert("threshold", (double)c.threshold);
+                        condArr.push_back(std::move(cTbl));
+                    }
+                    trTbl.insert("conditions", std::move(condArr));
+                    transArr.push_back(std::move(trTbl));
+                }
+                stTbl.insert("transitions", std::move(transArr));
+                statesArr.push_back(std::move(stTbl));
+            }
+            animTbl.insert("states", std::move(statesArr));
+
+            // ── ステートマシン: parameters ─────────────────────────────────
+            toml::array paramsArr;
+            for (const auto& p : anim->parameters) {
+                toml::table pTbl;
+                pTbl.insert("name",       p.name);
+                pTbl.insert("type",       (int64_t)p.type);
+                pTbl.insert("floatValue", (double)p.floatValue);
+                pTbl.insert("intValue",   (int64_t)p.intValue);
+                pTbl.insert("boolValue",  p.boolValue);
+                paramsArr.push_back(std::move(pTbl));
+            }
+            animTbl.insert("parameters", std::move(paramsArr));
+
             goTbl.insert("AnimatorComponent", std::move(animTbl));
         }
 
@@ -1278,6 +1326,62 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     if (auto s = elem.value<std::string>())
                         anim.clipSources.push_back(*s);
             }
+
+            anim.defaultStateName = (*animTbl)["defaultStateName"].value_or(std::string{});
+
+            // ── ステートマシン: states ──────────────────────────────────────
+            if (const auto* statesArr = (*animTbl)["states"].as_array()) {
+                for (const auto& stElem : *statesArr) {
+                    const auto* stTbl = stElem.as_table();
+                    if (!stTbl) continue;
+                    AnimationState st{};
+                    st.name      = (*stTbl)["name"].value_or(std::string{});
+                    st.clipName  = (*stTbl)["clipName"].value_or(std::string{});
+                    st.clipIndex = (int)(*stTbl)["clipIndex"].value_or((int64_t)-1);
+                    st.speed     = (float)(*stTbl)["speed"].value_or(1.0);
+                    st.loop      = (*stTbl)["loop"].value_or(true);
+                    if (const auto* transArr = (*stTbl)["transitions"].as_array()) {
+                        for (const auto& trElem : *transArr) {
+                            const auto* trTbl = trElem.as_table();
+                            if (!trTbl) continue;
+                            AnimationTransition tr{};
+                            tr.toStateName        = (*trTbl)["toStateName"].value_or(std::string{});
+                            tr.hasExitTime        = (*trTbl)["hasExitTime"].value_or(false);
+                            tr.exitTime           = (float)(*trTbl)["exitTime"].value_or(1.0);
+                            tr.transitionDuration = (float)(*trTbl)["transitionDuration"].value_or(0.25);
+                            if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
+                                for (const auto& cElem : *condArr) {
+                                    const auto* cTbl = cElem.as_table();
+                                    if (!cTbl) continue;
+                                    AnimatorCondition cond{};
+                                    cond.paramName = (*cTbl)["paramName"].value_or(std::string{});
+                                    cond.op        = (ConditionOp)(*cTbl)["op"].value_or((int64_t)4);
+                                    cond.threshold = (float)(*cTbl)["threshold"].value_or(0.0);
+                                    tr.conditions.push_back(std::move(cond));
+                                }
+                            }
+                            st.transitions.push_back(std::move(tr));
+                        }
+                    }
+                    anim.states.push_back(std::move(st));
+                }
+            }
+
+            // ── ステートマシン: parameters ─────────────────────────────────
+            if (const auto* paramsArr = (*animTbl)["parameters"].as_array()) {
+                for (const auto& pElem : *paramsArr) {
+                    const auto* pTbl = pElem.as_table();
+                    if (!pTbl) continue;
+                    AnimatorParameter p{};
+                    p.name       = (*pTbl)["name"].value_or(std::string{});
+                    p.type       = (ParamType)(*pTbl)["type"].value_or((int64_t)0);
+                    p.floatValue = (float)(*pTbl)["floatValue"].value_or(0.0);
+                    p.intValue   = (int)(*pTbl)["intValue"].value_or((int64_t)0);
+                    p.boolValue  = (*pTbl)["boolValue"].value_or(false);
+                    anim.parameters.push_back(std::move(p));
+                }
+            }
+
             go.AddComponent<AnimatorComponent>(std::move(anim));
         }
 
