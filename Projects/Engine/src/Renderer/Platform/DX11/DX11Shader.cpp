@@ -13,6 +13,7 @@
 #include <string>
 #include <algorithm>
 #include <cctype>
+#include <string_view>
 
 namespace fbzz::renderer
 {
@@ -101,6 +102,80 @@ std::vector<uint8_t> DX11Shader::LoadBinary(const std::string& filePath)
     return blob;
 }
 
+ShaderDescriptor DX11Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
+{
+    ShaderDescriptor desc;
+
+    Microsoft::WRL::ComPtr<ID3D11ShaderReflection> refl;
+    if (FAILED(D3DReflect(psBlob.data(), psBlob.size(),
+        __uuidof(ID3D11ShaderReflection),
+        reinterpret_cast<void**>(refl.GetAddressOf()))))
+        return desc;
+
+    // ---- MaterialConstants (b2) から編集可能変数を列挙 ----
+    auto* cb = refl->GetConstantBufferByName("MaterialConstants");
+    if (cb)
+    {
+        D3D11_SHADER_BUFFER_DESC cbDesc{};
+        if (SUCCEEDED(cb->GetDesc(&cbDesc)))
+        {
+            desc.cbufferSize = cbDesc.Size;
+            for (UINT i = 0; i < cbDesc.Variables; ++i)
+            {
+                auto* var = cb->GetVariableByIndex(i);
+                D3D11_SHADER_VARIABLE_DESC vDesc{};
+                D3D11_SHADER_TYPE_DESC     tDesc{};
+                if (FAILED(var->GetDesc(&vDesc))) continue;
+                if (FAILED(var->GetType()->GetDesc(&tDesc))) continue;
+
+                std::string_view n = vDesc.Name;
+                // パディング変数はスキップ
+                if (n.starts_with("_")) continue;
+                // textureMask は Inspector に出さないが offset を記録する
+                if (n == "textureMask") {
+                    desc.textureMaskOffset = vDesc.StartOffset;
+                    continue;
+                }
+
+                ShaderVarDesc svd;
+                svd.name    = vDesc.Name;
+                svd.offset  = vDesc.StartOffset;
+                svd.size    = vDesc.Size;
+                svd.rows    = static_cast<uint8_t>(tDesc.Rows);
+                svd.columns = static_cast<uint8_t>(tDesc.Columns);
+                svd.varClass = (tDesc.Class == D3D_SVC_SCALAR) ? ShaderVarClass::Scalar
+                             : (tDesc.Class == D3D_SVC_VECTOR) ? ShaderVarClass::Vector
+                             :                                    ShaderVarClass::Matrix;
+                svd.varType  = (tDesc.Type == D3D_SVT_FLOAT)   ? ShaderVarType::Float
+                             : (tDesc.Type == D3D_SVT_INT)     ? ShaderVarType::Int
+                             : (tDesc.Type == D3D_SVT_UINT)    ? ShaderVarType::UInt
+                             :                                    ShaderVarType::Bool;
+                desc.vars.push_back(std::move(svd));
+            }
+        }
+    }
+
+    // ---- t0-t4 のテクスチャバインドを列挙 ----
+    D3D11_SHADER_DESC shDesc{};
+    refl->GetDesc(&shDesc);
+    for (UINT i = 0; i < shDesc.BoundResources; ++i)
+    {
+        D3D11_SHADER_INPUT_BIND_DESC bDesc{};
+        refl->GetResourceBindingDesc(i, &bDesc);
+        if (bDesc.Type == D3D_SIT_TEXTURE && bDesc.BindPoint < 5)
+        {
+            ShaderTexBindDesc t;
+            t.name = bDesc.Name;
+            t.slot = bDesc.BindPoint;
+            desc.textures.push_back(std::move(t));
+        }
+    }
+    std::sort(desc.textures.begin(), desc.textures.end(),
+        [](const auto& a, const auto& b) { return a.slot < b.slot; });
+
+    return desc;
+}
+
 bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
 {
     m_path = path;
@@ -143,6 +218,9 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
 
     FBZZ_HR_CHECK(device->CreatePixelShader(
         psBlob.data(), psBlob.size(), nullptr, m_pixelShader.GetAddressOf()));
+
+    // PS バイトコードから MaterialConstants とテクスチャバインドを取得する。
+    m_descriptor = BuildDescriptor(psBlob);
 
     // -------------------------------------------------------------------------
     // Input Layout
