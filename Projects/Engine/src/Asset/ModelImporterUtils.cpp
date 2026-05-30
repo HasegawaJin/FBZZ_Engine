@@ -98,12 +98,9 @@ std::shared_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
                                                     renderer::ResourceManager& resources)
 {
     auto mat = std::make_shared<renderer::Material>();
-    if (mesh->mMaterialIndex < scene->mNumMaterials) {
-        aiColor4D color(1.0f, 1.0f, 1.0f, 1.0f);
-        scene->mMaterials[mesh->mMaterialIndex]->Get(AI_MATKEY_COLOR_DIFFUSE, color);
-        mat->params.albedo = { color.r, color.g, color.b, color.a };
-    }
-    mat->Init(resources);
+    // paramData はシェーダー確定後に SyncMaterial が初期化するため、ここでは設定しない。
+    // assimp の diffuse color は MaterialComponent 経由で設定する必要がある。
+    (void)resources;
     return mat;
 }
 

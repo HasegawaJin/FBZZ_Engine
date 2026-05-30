@@ -9,6 +9,7 @@ namespace fbzz::scene {
 struct RenderPassContext;
 
 void ExecuteBloomPass(RenderPassContext& ctx);
+void ExecuteSSAOPass(RenderPassContext& ctx);
 void ExecuteCompositePass(RenderPassContext& ctx);
 void ExecuteSelectionOutlinePass(RenderPassContext& ctx);
 void ExecuteFxaaPass(RenderPassContext& ctx);
