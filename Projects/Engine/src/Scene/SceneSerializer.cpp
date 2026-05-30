@@ -791,8 +791,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 chainTbl.insert("weight",        (double)chain.weight);
                 chainTbl.insert("enabled",       chain.enabled);
                 chainTbl.insert("maxExtension",    (double)chain.maxExtension);
-                chainTbl.insert("useGroundSnap",   chain.useGroundSnap);
-                chainTbl.insert("softness",        (double)chain.softness);
+                chainTbl.insert("useGroundSnap",      chain.useGroundSnap);
+                chainTbl.insert("rayUpRatio",        (double)chain.rayUpRatio);
+                chainTbl.insert("rayDownRatio",      (double)chain.rayDownRatio);
+                chainTbl.insert("footSurfaceOffset", (double)chain.footSurfaceOffset);
+                chainTbl.insert("softness",          (double)chain.softness);
                 chainTbl.insert("isLeg",           chain.isLeg);
                 chainTbl.insert("footNormalAxis",  Vec3ToArr(chain.footNormalAxis));
                 chainTbl.insert("targetOffset",    Vec3ToArr(chain.targetOffset));
@@ -1400,8 +1403,11 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     chain.weight        = (float)(*chainTbl)["weight"].value_or(1.0);
                     chain.enabled       = (*chainTbl)["enabled"].value_or(true);
                     chain.maxExtension    = (float)(*chainTbl)["maxExtension"].value_or(0.98);
-                    chain.useGroundSnap   = (*chainTbl)["useGroundSnap"].value_or(true);
-                    chain.softness        = (float)(*chainTbl)["softness"].value_or(0.05);
+                    chain.useGroundSnap      = (*chainTbl)["useGroundSnap"].value_or(true);
+                    chain.rayUpRatio         = (float)(*chainTbl)["rayUpRatio"].value_or(0.4);
+                    chain.rayDownRatio       = (float)(*chainTbl)["rayDownRatio"].value_or(1.3);
+                    chain.footSurfaceOffset  = (float)(*chainTbl)["footSurfaceOffset"].value_or(0.06);
+                    chain.softness           = (float)(*chainTbl)["softness"].value_or(0.05);
                     chain.isLeg           = (*chainTbl)["isLeg"].value_or(false);
                     chain.footNormalAxis  = ArrToVec3((*chainTbl)["footNormalAxis"].as_array(),
                                                       math::Vector3::ZERO);
