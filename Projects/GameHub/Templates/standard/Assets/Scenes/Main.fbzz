@@ -27,13 +27,13 @@ tag = 'MainCamera'
         'Min Pitch' = -20.0
         'Mouse Orbit' = true
         'Mouse Sensitivity' = 0.2
-        Pitch = 15.0
+        Pitch = 0.399991
         'Target Tag' = 'Player'
-        Yaw = 0.0
+        Yaw = -104.199936
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 1.5, -6.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localPosition = [ 4.030951, 1.594863, 0.646411 ]
+    localRotation = [ 0.002144, -0.789079, 0.002754, 0.614282 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -86,7 +86,10 @@ tag = 'Player'
     clipSources = [
         'Assets/Models/DebugCharacter/Idle.fbx',
         'Assets/Models/DebugCharacter/Walking.fbx',
-        'Assets/Models/DebugCharacter/Running.fbx'
+        'Assets/Models/DebugCharacter/Running.fbx',
+        'Assets/Models/DebugCharacter/JumpingUp.fbx',
+        'Assets/Models/DebugCharacter/FallingIdle.fbx',
+        'Assets/Models/DebugCharacter/Landing.fbx'
     ]
     defaultStateName = 'Idle'
     enabled = true
@@ -94,14 +97,259 @@ tag = 'Player'
     playing = true
     speed = 1.0
     time = 0.0
-    states = [
-        {name = 'Idle', clipName = 'Idle', clipIndex = 0, speed = 1.0, loop = true, transitions = [{toStateName = 'Walk', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 0, threshold = 0.1}]}]},
-        {name = 'Walk', clipName = 'Walking', clipIndex = 1, speed = 1.0, loop = true, transitions = [{toStateName = 'Idle', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 1, threshold = 0.1}]}, {toStateName = 'Run', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 0, threshold = 5.0}]}]},
-        {name = 'Run', clipName = 'Running', clipIndex = 2, speed = 1.0, loop = true, transitions = [{toStateName = 'Idle', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 1, threshold = 0.1}]}, {toStateName = 'Walk', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 1, threshold = 5.0}]}]}
-    ]
-    parameters = [
-        {name = 'Speed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false}
-    ]
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Speed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'VerticalSpeed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = true
+        floatValue = 0.0
+        intValue = 0
+        name = 'IsGrounded'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = 0
+        clipName = 'Idle'
+        loop = true
+        name = 'Idle'
+        speed = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'JumpUp'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'VerticalSpeed'
+                threshold = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Fall'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'VerticalSpeed'
+                threshold = -1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Walk'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'Speed'
+                threshold = 0.1
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = 1
+        clipName = 'Walking'
+        loop = true
+        name = 'Walk'
+        speed = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'JumpUp'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'VerticalSpeed'
+                threshold = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Fall'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'VerticalSpeed'
+                threshold = -1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Idle'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'Speed'
+                threshold = 0.1
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Run'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'Speed'
+                threshold = 5.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = 2
+        clipName = 'Running'
+        loop = true
+        name = 'Run'
+        speed = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'JumpUp'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'VerticalSpeed'
+                threshold = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Fall'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'VerticalSpeed'
+                threshold = -1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Idle'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'Speed'
+                threshold = 0.1
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Walk'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'Speed'
+                threshold = 5.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = 3
+        clipName = 'JumpingUp'
+        loop = false
+        name = 'JumpUp'
+        speed = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Fall'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'VerticalSpeed'
+                threshold = -0.5
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = 4
+        clipName = 'FallingIdle'
+        loop = true
+        name = 'Fall'
+        speed = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Landing'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 4
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = 5
+        clipName = 'Landing'
+        loop = false
+        name = 'Landing'
+        speed = 1.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            hasExitTime = false
+            toStateName = 'Fall'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 5
+                paramName = 'IsGrounded'
+                threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 0.9
+            hasExitTime = true
+            toStateName = 'Idle'
+            transitionDuration = 0.2
 
     [gameobjects.CapsuleColliderComponent]
     center = [ 0.0, 0.93, 0.0 ]
@@ -115,7 +363,7 @@ tag = 'Player'
         staticFriction = 0.6
 
         [gameobjects.CapsuleColliderComponent.shape]
-        halfHeight = 0.67
+        halfHeight = 0.73
         radius = 0.19
         type = 'Capsule'
 
@@ -154,14 +402,15 @@ tag = 'Player'
         weight = 1.0
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Skinned/SkinnedToon.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
 
     [gameobjects.RigidBodyComponent]
     angularVelocity = [ 0.0, 0.0, 0.0 ]
@@ -180,6 +429,7 @@ tag = 'Player'
     type = 'PlayerControllerComponent'
 
         [gameobjects.ScriptComponent.fields]
+        'Jump Force' = 5.0
         'Move Speed' = 4.0
         'Rotate To Move Direction' = true
         'Sprint Multiplier' = 1.8
@@ -191,8 +441,8 @@ tag = 'Player'
     modelPath = 'Assets/Models/DebugCharacter/Player.fbx'
 
     [gameobjects.transform]
-    localPosition = [ -0.075695, 0.010824, -1.769892 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localPosition = [ -0.81616, -0.040043, -0.580091 ]
+    localRotation = [ 0.0, 0.999994, 0.0, 0.00349 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -203,21 +453,22 @@ parent = 'Player'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Unlit.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
 
     [gameobjects.MeshRenderer]
     enabled = true
     mesh = 'primitive:sphere'
 
     [gameobjects.transform]
-    localPosition = [ 0.118991, 0.029176, -0.401369 ]
+    localPosition = [ 0.177429, 0.080043, -0.068025 ]
     localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
     localScale = [ 0.22, 0.22, 0.22 ]
 
@@ -229,21 +480,22 @@ parent = 'Player'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Unlit.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
 
     [gameobjects.MeshRenderer]
     enabled = true
     mesh = 'primitive:sphere'
 
     [gameobjects.transform]
-    localPosition = [ -0.072672, 0.029176, 0.251639 ]
+    localPosition = [ -0.091347, 0.080043, 0.041758 ]
     localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
     localScale = [ 0.22, 0.22, 0.22 ]
 
@@ -255,14 +507,15 @@ parent = 'Player'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Unlit.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -281,14 +534,15 @@ parent = 'Player'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Unlit.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -322,14 +576,16 @@ tag = 'Untagged'
         type = 'AABB'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Phong.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        roughness = 0.8
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -363,14 +619,16 @@ tag = 'Untagged'
         type = 'OBB'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Phong.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        roughness = 0.8
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -404,14 +662,16 @@ tag = 'Untagged'
         type = 'OBB'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Phong.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        roughness = 0.8
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -445,14 +705,16 @@ tag = 'Untagged'
         type = 'OBB'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Phong.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        roughness = 0.8
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -486,14 +748,16 @@ tag = 'Untagged'
         type = 'OBB'
 
     [gameobjects.MaterialComponent]
-    albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-    albedoTex = ''
-    emissiveScale = 0.0
+    blendMode = 0
+    doubleSided = false
     enabled = true
-    metallic = 0.0
-    normalTex = ''
-    roughness = 0.8
+    renderQueue = 0
     shader = 'Assets/shaders/Material/Surface/Phong.hlsl'
+    textures = [ '', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        roughness = 0.8
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -538,8 +802,8 @@ tag = 'Untagged'
     skinnedMeshOwner = 'Player'
 
     [gameobjects.transform]
-    localPosition = [ 0.01186, 0.953376, 0.009601 ]
-    localRotation = [ -0.034624, 0.022693, -0.027918, 0.998753 ]
+    localPosition = [ -0.003619, 0.989395, -0.007927 ]
+    localRotation = [ 0.036416, 0.046429, -0.025877, 0.997922 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -558,7 +822,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 9e-06, 0.099235, 0.012273 ]
-    localRotation = [ 0.026869, -0.030007, 0.039954, 0.998389 ]
+    localRotation = [ 0.026171, -0.016277, 0.026003, 0.999187 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -577,7 +841,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.11732, 0.0 ]
-    localRotation = [ -0.017619, -0.007304, -0.015315, 0.999701 ]
+    localRotation = [ -0.011575, -0.003107, 0.015005, 0.999816 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -596,7 +860,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.134588, 0.0 ]
-    localRotation = [ -0.074415, -0.006202, -0.015492, 0.997088 ]
+    localRotation = [ -0.068843, -0.004167, 0.014831, 0.997509 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -615,7 +879,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.150278, -0.008779 ]
-    localRotation = [ 0.002242, -0.003302, 0.009541, 0.999946 ]
+    localRotation = [ -0.056391, 0.001819, 0.002728, 0.998403 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -634,7 +898,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.103218, -0.031424 ]
-    localRotation = [ 0.038565, -0.009198, -0.021418, 0.998984 ]
+    localRotation = [ 0.073163, -0.009013, -0.001503, 0.997278 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -672,7 +936,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.061058, 0.091063, -0.007571 ]
-    localRotation = [ 0.543503, 0.473142, 0.570448, -0.39412 ]
+    localRotation = [ -0.600595, -0.432029, -0.507783, 0.441355 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -691,7 +955,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.52115, -0.227241, 0.064865, 0.820096 ]
+    localRotation = [ -0.542737, -0.17813, 0.208504, 0.793872 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -710,7 +974,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.074683, 0.997207 ]
+    localRotation = [ 0.0, 0.0, 0.015604, 0.999878 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -729,7 +993,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.146168, -0.013837, 0.015335, 0.989044 ]
+    localRotation = [ -0.041294, 0.287747, 0.032478, 0.956265 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -748,7 +1012,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ -0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.169479, -0.001168, 0.188887, 0.967263 ]
+    localRotation = [ -0.20986, 0.059562, 0.207505, 0.9536 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -767,7 +1031,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ 0.028218, -0.061704, -0.082012, 0.994319 ]
+    localRotation = [ 0.14272, -0.086594, -0.240537, 0.956177 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -786,7 +1050,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.142684, -0.119884, 0.071283, 0.979892 ]
+    localRotation = [ 0.121023, 0.075541, 0.024054, 0.989479 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -824,7 +1088,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ -0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.172878, 0.012921, 0.028569, 0.984444 ]
+    localRotation = [ -0.066216, -0.000733, 0.008426, 0.997769 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -843,7 +1107,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.132123, -1e-06, -0.013533, 0.991141 ]
+    localRotation = [ -0.150998, -1e-06, -0.015468, 0.988413 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -862,7 +1126,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.132123, 0.0, -0.01354, 0.991141 ]
+    localRotation = [ -0.070082, 0.0, -0.007182, 0.997515 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -900,7 +1164,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.242523, 0.004745, -0.043705, 0.969149 ]
+    localRotation = [ -0.13653, 0.003836, -0.022952, 0.990363 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -919,7 +1183,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.103777, 0.0, -0.010635, 0.994544 ]
+    localRotation = [ -0.151255, 0.0, -0.0155, 0.988373 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -938,7 +1202,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.121027, 0.0, -0.012403, 0.992572 ]
+    localRotation = [ -0.159933, 0.0, -0.016389, 0.986992 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -976,7 +1240,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.250241, -0.000378, -0.064828, 0.966011 ]
+    localRotation = [ -0.18325, 0.004654, -0.03146, 0.982552 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -995,7 +1259,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.16791, -1e-06, -0.017199, 0.985652 ]
+    localRotation = [ -0.18139, -1e-06, -0.01858, 0.983236 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1014,7 +1278,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.184955, 0.0, -0.018954, 0.982564 ]
+    localRotation = [ -0.155213, 0.0, -0.015906, 0.987753 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1052,7 +1316,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.295693, -0.001226, -0.080903, 0.95185 ]
+    localRotation = [ -0.233867, 0.003506, -0.049009, 0.971026 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1071,7 +1335,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.153366, 0.0, -0.015716, 0.988045 ]
+    localRotation = [ -0.151258, 0.0, -0.0155, 0.988373 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1090,7 +1354,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.153366, 0.0, -0.015716, 0.988045 ]
+    localRotation = [ -0.143498, 0.0, -0.014705, 0.989541 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1128,7 +1392,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ -0.061057, 0.091064, -0.007571 ]
-    localRotation = [ -0.552941, 0.465447, 0.565697, 0.396991 ]
+    localRotation = [ -0.604954, 0.429386, 0.52314, 0.419504 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1147,7 +1411,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.277501, 0.146413, -0.373843, 0.87281 ]
+    localRotation = [ -0.463129, 0.262515, -0.227231, 0.815453 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1166,7 +1430,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, -0.297334, 0.954774 ]
+    localRotation = [ 0.0, 0.0, -0.058895, 0.998264 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1185,7 +1449,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.089563, 0.001038, 0.02182, 0.995742 ]
+    localRotation = [ -0.052716, -0.178135, -0.004735, 0.982582 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1204,7 +1468,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.23937, 0.047072, -0.172893, 0.954251 ]
+    localRotation = [ -0.213786, -0.065372, -0.225648, 0.948212 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1223,7 +1487,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ 0.069653, 0.017626, 0.143651, 0.987017 ]
+    localRotation = [ 0.1441, 0.07617, 0.277208, 0.946884 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1242,7 +1506,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.151773, -0.073153, -0.046645, 0.9846 ]
+    localRotation = [ 0.1552, -0.074679, -0.026045, 0.984712 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1280,7 +1544,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.211632, -0.020003, -0.039957, 0.976327 ]
+    localRotation = [ -0.059512, 0.000991, -0.010971, 0.998167 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1299,7 +1563,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.204576, 1e-06, 0.016659, 0.978709 ]
+    localRotation = [ -0.151288, 1e-06, 0.012318, 0.988413 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1318,7 +1582,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.090247, 0.0, 0.007352, 0.995892 ]
+    localRotation = [ -0.070216, 0.0, 0.00572, 0.997515 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1356,7 +1620,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.210182, -0.011408, 0.00075, 0.977596 ]
+    localRotation = [ -0.130514, -0.00369, 0.018922, 0.991259 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1375,7 +1639,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.305203, 0.0, 0.024863, 0.951963 ]
+    localRotation = [ -0.151545, 0.0, 0.012345, 0.988373 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1394,7 +1658,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.180305, 0.0, 0.014688, 0.983501 ]
+    localRotation = [ -0.16024, 0.0, 0.013054, 0.986992 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1432,7 +1696,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ -0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.232486, -0.009602, 0.015767, 0.972424 ]
+    localRotation = [ -0.177451, -0.004503, 0.026464, 0.983763 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1451,7 +1715,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.402073, 3e-06, 0.032747, 0.915022 ]
+    localRotation = [ -0.181736, 1e-06, 0.014797, 0.983236 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1470,7 +1734,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.20095, 0.0, 0.01637, 0.979465 ]
+    localRotation = [ -0.155511, 0.0, 0.012668, 0.987753 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1508,7 +1772,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ -0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.268945, -0.019756, 0.009726, 0.962904 ]
+    localRotation = [ -0.228493, -0.003404, 0.042984, 0.97259 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1527,7 +1791,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.247875, 0.0, 0.020192, 0.968582 ]
+    localRotation = [ -0.151548, 0.0, 0.012346, 0.988373 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1546,7 +1810,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.138553, 0.0, 0.011287, 0.990291 ]
+    localRotation = [ -0.143773, 0.0, 0.011712, 0.989541 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1584,7 +1848,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.091239, -0.066572, 0.000554 ]
-    localRotation = [ -0.044216, -0.330042, 0.94259, -0.025334 ]
+    localRotation = [ -0.141049, -0.068606, 0.984416, -0.079519 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1603,7 +1867,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.074495, 0.029519, 0.025504, 0.996458 ]
+    localRotation = [ 0.13399, 0.008581, 0.031906, 0.990432 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1622,7 +1886,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.584633, 0.015469, -0.017195, 0.810968 ]
+    localRotation = [ -0.537858, 0.023132, -0.028956, 0.84222 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1641,7 +1905,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.157216, 0.0 ]
-    localRotation = [ -0.294685, 0.032256, -0.014103, 0.954946 ]
+    localRotation = [ -0.269564, 0.032375, -0.014588, 0.962328 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1679,7 +1943,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ -0.09125, -0.066556, 0.000554 ]
-    localRotation = [ 0.113164, 0.033512, 0.99288, -0.016113 ]
+    localRotation = [ 0.092356, 0.023103, 0.99514, -0.025147 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1698,7 +1962,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.154928, 0.021312, -0.016223, 0.987563 ]
+    localRotation = [ 0.08353, -0.08408, -0.026151, 0.992607 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1717,7 +1981,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.686899, 0.08511, 0.024157, 0.721348 ]
+    localRotation = [ -0.575007, -0.009863, -0.006817, 0.81806 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1736,7 +2000,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.157216, 0.0 ]
-    localRotation = [ -0.275556, -0.031953, 0.014346, 0.960647 ]
+    localRotation = [ -0.287504, -0.031898, 0.01411, 0.957144 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
