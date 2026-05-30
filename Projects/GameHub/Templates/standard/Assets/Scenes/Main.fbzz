@@ -84,13 +84,24 @@ tag = 'Player'
     clipIndex = 0
     clipName = ''
     clipSources = [
-        'C:/Users/jinhs/Downloads/FBZZ_Engine/build/debug/Projects/Sandbox/Debug/SandboxProject/Assets/Models/DebugCharacter/Walking.fbx'
+        'Assets/Models/DebugCharacter/Idle.fbx',
+        'Assets/Models/DebugCharacter/Walking.fbx',
+        'Assets/Models/DebugCharacter/Running.fbx'
     ]
+    defaultStateName = 'Idle'
     enabled = true
     loop = true
     playing = true
     speed = 1.0
-    time = 0.155275
+    time = 0.0
+    states = [
+        {name = 'Idle', clipName = 'Idle', clipIndex = 0, speed = 1.0, loop = true, transitions = [{toStateName = 'Walk', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 0, threshold = 0.1}]}]},
+        {name = 'Walk', clipName = 'Walking', clipIndex = 1, speed = 1.0, loop = true, transitions = [{toStateName = 'Idle', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 1, threshold = 0.1}]}, {toStateName = 'Run', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 0, threshold = 5.0}]}]},
+        {name = 'Run', clipName = 'Running', clipIndex = 2, speed = 1.0, loop = true, transitions = [{toStateName = 'Idle', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 1, threshold = 0.1}]}, {toStateName = 'Walk', hasExitTime = false, exitTime = 1.0, transitionDuration = 0.2, conditions = [{paramName = 'Speed', op = 1, threshold = 5.0}]}]}
+    ]
+    parameters = [
+        {name = 'Speed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false}
+    ]
 
     [gameobjects.CapsuleColliderComponent]
     center = [ 0.0, 0.93, 0.0 ]
@@ -177,7 +188,7 @@ tag = 'Player'
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
     meshIndex = 0
-    modelPath = 'C:/Users/jinhs/Downloads/FBZZ_Engine/build/debug/Projects/Sandbox/Debug/SandboxProject/Assets/Models/DebugCharacter/Player.fbx'
+    modelPath = 'Assets/Models/DebugCharacter/Player.fbx'
 
     [gameobjects.transform]
     localPosition = [ -0.075695, 0.010824, -1.769892 ]
