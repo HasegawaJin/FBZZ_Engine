@@ -49,13 +49,18 @@ struct PlayerControllerComponent : fbzz::scene::Script {
         // 接地・空中状態の更新とアニメーターへの反映を移動入力より先に行う。
         // WHY: 移動なし時の早期 return の前に処理しないとジャンプ・落下が検出されない。
         if (usePhysics) {
-            const float vy = rigidBody->rigidBody->GetVelocity().y;
+            UpdateGroundContactTimer(dt);
+            float vy = rigidBody->rigidBody->GetVelocity().y;
             UpdateGrounding(vy, dt);
-            SetAnimatorFloat("VerticalSpeed", vy);
+            StabilizeGroundedVerticalVelocity(rigidBody, vy);
+            UpdateIntentionalJumpState(vy, dt);
+            SetAnimatorFloat("VerticalSpeed", ComputeAnimatorVerticalSpeed(vy));
             SetAnimatorBool("IsGrounded", m_isGrounded);
         }
         UpdateIK();
         HandleJump(rigidBody, usePhysics);
+        if (usePhysics)
+            m_hasGroundContact = false;
 
         const fbzz::math::Vector3 forward = GetMoveForward();
         const fbzz::math::Vector3 right   = GetMoveRight(forward);
@@ -102,6 +107,16 @@ struct PlayerControllerComponent : fbzz::scene::Script {
         }
     }
 
+    void OnCollisionEnter(const fbzz::scene::CollisionInfo& info) override
+    {
+        RegisterGroundContact(info);
+    }
+
+    void OnCollisionStay(const fbzz::scene::CollisionInfo& info) override
+    {
+        RegisterGroundContact(info);
+    }
+
 private:
     // インパルス直後の誤判定防止用の最低待機時間 (秒)。
     // WHY: ApplyImpulse 直後は velocity.y がまだ物理ステップに反映されていない場合があり、
@@ -113,10 +128,26 @@ private:
     static constexpr float GROUND_VEL_THRESHOLD = 0.3f;
     // 崖落ちとみなす velocity.y の閾値 (m/s)。接地中にこれを下回ると空中扱いに切り替える。
     static constexpr float LEDGE_FALL_THRESHOLD = -1.0f;
+    // WHY: 斜面下降時は Y 速度が負になり続けるため、歩ける面との接触を接地の主判定にする。
+    static constexpr float MIN_GROUND_NORMAL_Y = 0.5f;
+    // WHY: 物理の固定ステップと ScriptSystem の更新差で 1 フレームだけ接触が欠けても空中扱いにしない。
+    static constexpr float GROUND_CONTACT_GRACE_TIME = 0.12f;
+    // WHY: ジャンプ直後は床接触が残るため、その接触で即座に着地へ戻るのを防ぐ。
+    static constexpr float JUMP_GROUND_IGNORE_TIME = 0.12f;
+    // WHAT: 接地中に残る微小な Y 速度をゼロへ寄せ、着地後の小刻みな Jump/Fall 遷移を抑える。
+    static constexpr float GROUNDED_Y_VELOCITY_SNAP = 0.35f;
+    // WHY: JumpUp は「上向き速度」ではなく「プレイヤーがジャンプ入力を出した事実」で駆動する。
+    //      着地補正や接触キャッシュの微小な上向き速度を JumpUp と誤認しないための上限時間。
+    static constexpr float INTENTIONAL_JUMP_MAX_TIME = 1.0f;
 
     bool  m_isGrounded = true;   // 地面に接触しているか
     bool  m_wasFalling = false;  // 落下フェーズ (vy < FALL_VEL_THRESHOLD) を経験したか
+    bool  m_hasGroundContact = false;
+    bool  m_isIntentionalJump = false;
     float m_jumpTimer  = 0.0f;   // ジャンプ後の滞空経過秒数
+    float m_groundContactTimer = GROUND_CONTACT_GRACE_TIME;
+    float m_ignoreGroundTimer = 0.0f;
+    float m_intentionalJumpTimer = 0.0f;
 
     // 接地状態の更新。接地・空中どちらの方向にも遷移する。
     // WHY: VerticalSpeed float でステートマシンの JumpUp/Fall 遷移を駆動するため、
@@ -124,7 +155,19 @@ private:
     //      ジャンプ弧の頂点誤判定は m_wasFalling フラグで防ぐ。
     void UpdateGrounding(float vy, float dt)
     {
+        const bool hasGroundContact = HasGroundContact();
+        const bool hasRecentGroundContact =
+            m_groundContactTimer > 0.0f && m_ignoreGroundTimer <= 0.0f;
+
         if (m_isGrounded) {
+            if (hasRecentGroundContact) {
+                m_wasFalling = false;
+                m_jumpTimer  = 0.0f;
+                m_isIntentionalJump = false;
+                m_intentionalJumpTimer = 0.0f;
+                return;
+            }
+
             // 崖落ち検出: 接地中に velocity.y が閾値を下回ったら空中へ移行する。
             if (vy < LEDGE_FALL_THRESHOLD) {
                 m_isGrounded = false;
@@ -134,12 +177,22 @@ private:
         } else {
             // 着地検出: ジャンプ直後の誤判定を避けるため、いったん落下フェーズを経由してから判定する。
             m_jumpTimer += dt;
+            if (hasGroundContact && m_jumpTimer >= JUMP_MIN_AIR_TIME) {
+                m_isGrounded = true;
+                m_wasFalling = false;
+                m_jumpTimer  = 0.0f;
+                m_isIntentionalJump = false;
+                m_intentionalJumpTimer = 0.0f;
+                return;
+            }
             if (m_jumpTimer >= JUMP_MIN_AIR_TIME && vy < FALL_VEL_THRESHOLD)
                 m_wasFalling = true;
             if (m_wasFalling && std::fabsf(vy) < GROUND_VEL_THRESHOLD) {
                 m_isGrounded = true;
                 m_wasFalling = false;
                 m_jumpTimer  = 0.0f;
+                m_isIntentionalJump = false;
+                m_intentionalJumpTimer = 0.0f;
             }
         }
     }
@@ -160,6 +213,95 @@ private:
         SetIKEnabled(!inAirState);
     }
 
+    // 接地接触の猶予時間を更新する。固定物理ステップと描画フレームのズレをここで吸収する。
+    void UpdateGroundContactTimer(float dt)
+    {
+        if (m_groundContactTimer > 0.0f) {
+            m_groundContactTimer -= dt;
+            if (m_groundContactTimer < 0.0f) m_groundContactTimer = 0.0f;
+        }
+
+        if (m_ignoreGroundTimer > 0.0f) {
+            m_ignoreGroundTimer -= dt;
+            if (m_ignoreGroundTimer < 0.0f) m_ignoreGroundTimer = 0.0f;
+        }
+    }
+
+    // 歩ける面との接触を記録する。壁や急斜面は contactNormal.y で除外する。
+    void RegisterGroundContact(const fbzz::scene::CollisionInfo& info)
+    {
+        if (info.contactNormal.y < MIN_GROUND_NORMAL_Y) return;
+        if (m_ignoreGroundTimer > 0.0f) return;
+
+        m_hasGroundContact = true;
+        m_groundContactTimer = GROUND_CONTACT_GRACE_TIME;
+        m_isGrounded = true;
+        m_wasFalling = false;
+        m_jumpTimer = 0.0f;
+        m_isIntentionalJump = false;
+        m_intentionalJumpTimer = 0.0f;
+        RemoveVelocityIntoGround(info.contactNormal);
+        SetAnimatorBool("IsGrounded", true);
+        SetAnimatorFloat("VerticalSpeed", 0.0f);
+    }
+
+    // 接地中の微小な上下速度だけを抑える。大きい下り速度は斜面追従のため物理に残す。
+    void StabilizeGroundedVerticalVelocity(fbzz::scene::RigidBodyComponent* rigidBody, float& vy) const
+    {
+        if (!m_isGrounded || !rigidBody || !rigidBody->rigidBody) return;
+        if (!HasGroundContact()) return;
+        if (std::fabsf(vy) > GROUNDED_Y_VELOCITY_SNAP) return;
+
+        fbzz::math::Vector3 vel = rigidBody->rigidBody->GetVelocity();
+        vel.y = 0.0f;
+        rigidBody->rigidBody->SetVelocity(vel);
+        vy = 0.0f;
+    }
+
+    // ジャンプ入力から発生した上昇だけを JumpUp 用の速度として残す。
+    // WHY: 物理ソルバーの接触補正は速度を小さく揺らすため、raw velocity.y を Animator に直結すると
+    //      着地直後の押し戻しが「もう一度ジャンプした」と誤解される。
+    void UpdateIntentionalJumpState(float vy, float dt)
+    {
+        if (!m_isIntentionalJump) return;
+
+        m_intentionalJumpTimer += dt;
+        if (m_isGrounded || vy < FALL_VEL_THRESHOLD || m_intentionalJumpTimer >= INTENTIONAL_JUMP_MAX_TIME) {
+            m_isIntentionalJump = false;
+            m_intentionalJumpTimer = 0.0f;
+        }
+    }
+
+    // Animator に渡す縦速度を、物理速度からアニメーション意味へ変換する。
+    // WHAT: 接地中は 0、入力由来ではない上向き速度も 0 に丸め、落下速度だけは Fall 判定へ残す。
+    float ComputeAnimatorVerticalSpeed(float vy) const
+    {
+        if (m_isGrounded) return 0.0f;
+        if (vy > 0.0f && !m_isIntentionalJump) return 0.0f;
+        return vy;
+    }
+
+    // 接地面に垂直な速度成分を両方向とも除去する。斜面に沿う速度は残すため、下り坂で接着を壊さない。
+    // WHY: Resolve() でインパルス適用後は vy が正（上向きバウンス）に反転していることがある。
+    //      大きいコライダーほど貫通深度が大きく Baumgarte 補正も強いため、このバウンスが顕著になる。
+    //      負方向（地面へ向かう）だけでなく正方向（バウンス）も除去することで Landing 直後の再浮遊を防ぐ。
+    void RemoveVelocityIntoGround(const fbzz::math::Vector3& groundNormal) const
+    {
+        if (!m_gameObject) return;
+        auto* rigidBody = m_gameObject->GetComponent<fbzz::scene::RigidBodyComponent>();
+        if (!rigidBody || !rigidBody->enabled || !rigidBody->rigidBody) return;
+
+        fbzz::math::Vector3 vel = rigidBody->rigidBody->GetVelocity();
+        if (groundNormal.LengthSq() <= fbzz::math::EPSILON) return;
+
+        const fbzz::math::Vector3 normal = groundNormal.Normalized();
+        const float normalSpeed = fbzz::math::Vector3::Dot(vel, normal);
+        if (std::fabsf(normalSpeed) < fbzz::math::EPSILON) return;
+
+        vel -= normal * normalSpeed;
+        rigidBody->rigidBody->SetVelocity(vel);
+    }
+
     // Space キー押下時、接地中であれば Y 方向インパルスでジャンプさせる。
     void HandleJump(fbzz::scene::RigidBodyComponent* rigidBody, bool usePhysics)
     {
@@ -171,7 +313,19 @@ private:
         rigidBody->rigidBody->ApplyImpulse({ 0.0f, impulse, 0.0f });
         m_isGrounded = false;
         m_wasFalling = false;
+        m_hasGroundContact = false;
         m_jumpTimer  = 0.0f;
+        m_groundContactTimer = 0.0f;
+        m_ignoreGroundTimer = JUMP_GROUND_IGNORE_TIME;
+        m_isIntentionalJump = true;
+        m_intentionalJumpTimer = 0.0f;
+        SetAnimatorBool("IsGrounded", false);
+        SetAnimatorFloat("VerticalSpeed", jumpForce);
+    }
+
+    bool HasGroundContact() const
+    {
+        return m_hasGroundContact && m_ignoreGroundTimer <= 0.0f;
     }
 
     fbzz::math::Vector3 GetMoveForward() const
