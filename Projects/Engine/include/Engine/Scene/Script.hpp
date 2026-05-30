@@ -30,6 +30,10 @@ struct CollisionInfo {
     GameObject* other = nullptr;
     const ColliderComponent* selfCollider = nullptr;
     const ColliderComponent* otherCollider = nullptr;
+    // WHAT: self から見た接触法線。地面判定など、衝突相手がどちら側にあるかを Script で判断するために渡す。
+    math::Vector3 contactNormal = math::Vector3::UP;
+    math::Vector3 contactPoint = math::Vector3::ZERO;
+    float contactDepth = 0.0f;
 };
 
 // Script::Reflect() に渡されるビジターインターフェース。
@@ -53,7 +57,8 @@ public:
     virtual ~Script() = default;
 
     virtual void OnStart() {}                              // 初回 Update 直前に 1 度だけ呼ばれる
-    virtual void OnUpdate(float) {}                        // 毎フレーム呼ばれる
+    virtual void OnUpdate(float) {}                        // 毎フレーム呼ばれる (PhysicsSystem 前)
+    virtual void OnLateUpdate(float) {}                   // 毎フレーム呼ばれる (PhysicsSystem 後)
     virtual void OnCollisionEnter(const CollisionInfo&) {}
     virtual void OnCollisionStay(const CollisionInfo&) {}
     virtual void OnCollisionExit(const CollisionInfo&) {}

@@ -179,7 +179,12 @@ cd FBZZ_Engine
 cmake -B build -G "Visual Studio 17 2022" -A x64
 ```
 
-Visual Studio で `FBZZ_Engine.sln` を開き `Ctrl+Shift+B` でビルド。
+```手動
+"VSCode"             : そのままビルド可能
+"Visual Studio 2026" : ビルド ⇒ ビルド構成 
+                        ⇒ ALL_BUILDにチェック
+                        ⇒ そのままビルド可能
+```
 
 シェーダーコンパイルは `Assets/shaders/compile_shaders.bat` を実行。
 
@@ -189,14 +194,16 @@ Visual Studio で `FBZZ_Engine.sln` を開き `Ctrl+Shift+B` でビルド。
 
 | ライブラリ | 用途 |
 |-----------|------|
-| DirectX 11 SDK | レンダリング API |
-| Microsoft::WRL (ComPtr) | COM リソース RAII |
-| XAudio2 | 3D オーディオ |
-| Assimp | FBX / OBJ メッシュ・スケルタルデータ読み込み |
-| ImGui | エディター UI |
-| toml++ | シーンシリアライゼーション |
+| DirectX 11 SDK           | レンダリング API|
+| Microsoft::WRL (ComPtr)  | COM リソース RAII |
+| XAudio2                  | 3D オーディオ |
+| Assimp                   | FBX / OBJ メッシュ・スケルタルデータ読み込み |
+| ImGui                    | エディター UI |
+| ImGuizmo                 | エディター Guizmo |
+| toml++                   | シーンシリアライゼーション |
+| stb                      | stb::image |
+| DirectXTex               | テクスチャ読み込み |
 
-**使用しないライブラリ:** GLM (数学は自作) / GLFW (ウィンドウは Win32) / Bullet・PhysX (物理は自作)
 
 ---
 

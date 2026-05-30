@@ -30,6 +30,9 @@ namespace fbzz::physics
         const Collider* colliderB;
         RigidBody* bodyA;
         RigidBody* bodyB;
+        math::Vector3 point = math::Vector3::ZERO;
+        math::Vector3 normal = math::Vector3::UP;
+        float depth = 0.0f;
         bool isTrigger = false;
     };
 

@@ -28,4 +28,16 @@ void ScriptSystem(Scene& scene, float dt)
     }
 }
 
+
+void LateScriptSystem(Scene& scene, float dt)
+{
+    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+        auto* sc = scene.GetComponent<ScriptComponent>(id);
+        auto* go = scene.GetGameObject(id);
+        if (!sc || !sc->script || !go) continue;
+        if (sc->script->enabled)
+            sc->script->OnLateUpdate(dt);
+    }
+}
+
 } // namespace fbzz::scene

@@ -389,6 +389,7 @@ int Run()
                 }
             }
             scene::TransformSystem(*scene);
+            scene::LateScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
         } else {
             physicsAccumulator = 0.0f;
         }
@@ -448,7 +449,6 @@ int Run()
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
             auto gameRenderSettings = editorApp.GetContext().projectSettings.render;
             gameRenderSettings.wireframeMode = false;
-            gameRenderSettings.showColliders = false;
             gameRenderSettings.showSelectionOutline = false;
             gameRenderSettings.selectedObjects.clear();
             scene::RenderSystem(*scene,
