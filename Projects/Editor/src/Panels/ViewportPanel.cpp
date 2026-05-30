@@ -11,6 +11,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/Mesh.hpp>
+#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -1046,11 +1047,19 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             for ([[maybe_unused]] auto& go : ctx.activeScene->GameObjects()) ++entityCount;
             meshCount = static_cast<int>(ctx.activeScene->GetEntities<scene::MeshRenderer>().size());
         }
+        const auto& rs = renderer::RenderDebugOverlay::GetLastSnapshot().renderStats;
 
-        ImVec2 winPos = ImGui::GetWindowPos();
+        // 左下に配置 (タブバー・ツールバーと重ならないよう上マージンを考慮)
+        // WHY: 右上は ImGuizmo のビューキューブと重なりやすく、
+        //      左下はほぼ空きスペースになるため視認性が高い。
+        ImVec2 winPos  = ImGui::GetWindowPos();
         ImVec2 winSize = ImGui::GetWindowSize();
-        ImGui::SetNextWindowPos({ winPos.x + winSize.x - 8.0f, winPos.y + 8.0f }, ImGuiCond_Always, { 1.0f, 0.0f });
-        ImGui::SetNextWindowBgAlpha(0.55f);
+        constexpr float kMargin = 10.0f;
+        ImGui::SetNextWindowPos(
+            { winPos.x + kMargin, winPos.y + winSize.y - kMargin },
+            ImGuiCond_Always,
+            { 0.0f, 1.0f }); // pivot: 左下
+        ImGui::SetNextWindowBgAlpha(0.60f);
         constexpr ImGuiWindowFlags kOverlayFlags =
             ImGuiWindowFlags_NoDecoration |
             ImGuiWindowFlags_NoNav |
@@ -1060,9 +1069,54 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             ImGuiWindowFlags_NoInputs |
             ImGuiWindowFlags_NoFocusOnAppearing;
         if (ImGui::Begin("##vp_stats", nullptr, kOverlayFlags)) {
-            ImGui::Text("FPS      %.1f", ImGui::GetIO().Framerate);
-            ImGui::Text("Entities %d", entityCount);
-            ImGui::Text("Meshes   %d", meshCount);
+            // ── 基本情報 ───────────────────────────────────────────────────────
+            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Scene ---");
+            ImGui::Text("FPS        %.1f (%.2f ms)",
+                        ImGui::GetIO().Framerate,
+                        1000.0f / ImGui::GetIO().Framerate);
+            ImGui::Text("Entities   %d", entityCount);
+            ImGui::Text("Meshes     %d", meshCount);
+
+            // ── 描画統計 ───────────────────────────────────────────────────────
+            ImGui::Spacing();
+            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Render ---");
+            ImGui::Text("Draw Calls %d", rs.drawCalls);
+
+            // 頂点数・三角形数をカンマ区切りで読みやすく表示する
+            // (snprintf で手動フォーマット。printf の %'d はクロスプラットフォームで動作しないため)
+            char vtxBuf[32], triBuf[32];
+            auto fmtK = [](char* buf, int n) {
+                if (n >= 1000000)      std::snprintf(buf, 32, "%.1fM", n / 1000000.0f);
+                else if (n >= 1000)    std::snprintf(buf, 32, "%.1fK", n / 1000.0f);
+                else                   std::snprintf(buf, 32, "%d", n);
+            };
+            fmtK(vtxBuf, rs.vertexCount);
+            fmtK(triBuf, rs.triangleCount);
+            ImGui::Text("Vertices   %s", vtxBuf);
+            ImGui::Text("Triangles  %s", triBuf);
+
+            // ── カリング統計 ───────────────────────────────────────────────────
+            ImGui::Spacing();
+            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Culling ---");
+            ImGui::Text("Total      %d", rs.totalObjects);
+
+            // カリング済み数を割合付きで表示する
+            const float total = static_cast<float>(rs.totalObjects > 0 ? rs.totalObjects : 1);
+            ImGui::Text("Frustum    %d (%.0f%%)",
+                        rs.frustumCulled,
+                        rs.frustumCulled / total * 100.0f);
+            ImGui::Text("Occlusion  %d (%.0f%%)",
+                        rs.occlusionCulled,
+                        rs.occlusionCulled / total * 100.0f);
+
+            // 合計カリング率を色付きで表示 (50% 以上は緑、30% 未満は赤)
+            const int totalCulled = rs.frustumCulled + rs.occlusionCulled;
+            const float cullRate  = totalCulled / total * 100.0f;
+            ImVec4 rateColor = cullRate >= 50.0f
+                ? ImVec4{ 0.4f, 1.0f, 0.4f, 1.0f }
+                : (cullRate >= 30.0f ? ImVec4{ 1.0f, 1.0f, 0.4f, 1.0f }
+                                     : ImVec4{ 1.0f, 0.5f, 0.4f, 1.0f });
+            ImGui::TextColored(rateColor, "Rate       %.0f%%", cullRate);
         }
         ImGui::End();
     }

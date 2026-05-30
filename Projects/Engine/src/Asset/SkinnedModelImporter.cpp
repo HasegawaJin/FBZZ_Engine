@@ -241,6 +241,7 @@ std::shared_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         mesh->cpuSkinnedVertices = vertices;
         mesh->cpuVertices        = cpuStaticVertices;
         mesh->cpuIndices         = indices;
+        mesh->ComputeBounds();
 
         model->meshes.push_back(mesh);
         model->materials.push_back(ImportMaterial(scene, src, resources));

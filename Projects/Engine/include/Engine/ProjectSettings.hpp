@@ -29,7 +29,7 @@ struct ScreenSettings {
 };
 
 struct AppSettings {
-    int targetFps = 0;  // 0 = unlimited
+    int targetFps = 60;  // 0 = unlimited
 };
 
 struct ProjectMetadataSettings {
