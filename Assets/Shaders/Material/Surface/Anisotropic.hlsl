@@ -9,11 +9,29 @@
 // roughness      : スペキュラの広がり (低=細い鋭いハイライト、高=広いぼんやり)
 // metallic       : 色付きスペキュラの強度 (1=アルベドで染まる金属ハイライト)
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;             // RGBA ベースカラー              offset  0
+    float  metallic;           // 色付きスペキュラ強度 [0,1]      offset 16
+    float  roughness;          // スペキュラ広がり (低=鋭い)      offset 20
+    float  normalStrength;     // タンジェントシフト量            offset 24
+    float  occlusionStrength;  // AO 強度 [0,1]                  offset 28
+    float3 emissiveColor;      // エミッシブ色                   offset 32
+    float  emissiveScale;      // エミッシブ強度                 offset 44
+    float2 uvTiling;           // UV タイリング                  offset 48
+    float2 uvOffset;           // UV オフセット                  offset 56
+    float  alphaCutoff;        // アルファカットオフ               offset 64
+    float3 _pad0;              //                                offset 68
+    uint   textureMask;        // テクスチャフラグ                offset 80
+    float3 _pad1;              //                                offset 84
+};
 
 Texture2D<float>       texShadow        : register(TEX_SHADOW);
 Texture2D              texAlbedo        : register(TEX_ALBEDO);

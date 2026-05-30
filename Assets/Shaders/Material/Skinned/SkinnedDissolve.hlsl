@@ -3,11 +3,29 @@
 // GPU スキニング + ディゾルブエフェクト
 // PS ロジックは Surface/Dissolve.hlsl と完全に一致させること。
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;
+    float  metallic;
+    float  roughness;
+    float  normalStrength;
+    float  occlusionStrength;
+    float3 emissiveColor;
+    float  emissiveScale;
+    float2 uvTiling;
+    float2 uvOffset;
+    float  alphaCutoff;
+    float3 _pad0;
+    uint   textureMask;
+    float3 _pad1;
+};
 
 Texture2D<float>       texShadow        : register(TEX_SHADOW);
 Texture2D              texAlbedo        : register(TEX_ALBEDO);
@@ -135,7 +153,8 @@ float4 PSMain(PSInput p) : SV_Target0
         ? texEmissive.Sample(sampDefault, uv).rgb
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
-    result += emissiveColor * emissiveScale * max(0.5f, 1.0f) * (1.0f - edgeFactor);
+    // WHY: 定数 2.0 でエッジ帯を通常エミッシブより明示的に強調する (Surface 版 Dissolve.hlsl と同じ理由)。
+    result += emissiveColor * emissiveScale * 2.0f * (1.0f - edgeFactor);
 
     return float4(result, alpha);
 }

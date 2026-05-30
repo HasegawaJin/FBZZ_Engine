@@ -74,10 +74,11 @@ struct PostProcCB {
     float filmGrainResponse;
     float chromaticAberration;
     float lensDistortion;
+    float ssaoIntensity;
     float customIntensity;
     float customBlend;
     float customParameters[4];
-    float _pad[2];
+    float _pad[1];
 };
 
 struct OutlineCB {
@@ -111,15 +112,20 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
+    renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
 
     renderer::ResourceHandle<renderer::TextureTag> bloomHalf;
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
+    renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
+    renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
     renderer::ResourceHandle<renderer::TextureTag> shadowDepthTex;
     renderer::ResourceHandle<renderer::TextureTag> fxaaInput;
     renderer::ResourceHandle<renderer::TextureTag> postProcessInput;
 
     renderer::ResourceHandle<renderer::ShaderTag> bloomDownShader;
     renderer::ResourceHandle<renderer::ShaderTag> bloomUpShader;
+    renderer::ResourceHandle<renderer::ShaderTag> ssaoShader;
+    renderer::ResourceHandle<renderer::ShaderTag> ssaoBlurShader;
     renderer::ResourceHandle<renderer::ShaderTag> compositeShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskSkinnedShader;

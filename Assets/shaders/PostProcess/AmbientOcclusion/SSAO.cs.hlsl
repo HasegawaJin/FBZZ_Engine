@@ -13,7 +13,7 @@ Texture2D    texGBuffer1 : register(TEX_GBUFFER1);  // normal(RGB) + metallic(A)
 Texture2D    texDepth    : register(TEX_DEPTH);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
 
-RWTexture2D<float> outputSSAO : register(UAV_OUTPUT);
+RWTexture2D<float4> outputSSAO : register(UAV_OUTPUT);
 
 static const int   SAMPLE_COUNT  = 16;
 static const float SAMPLE_RADIUS = 0.5f;
@@ -23,11 +23,14 @@ static const float BIAS          = 0.025f;
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
     uint2  pixel = dtid.xy;
+    if (pixel.x >= (uint)screenSize.x || pixel.y >= (uint)screenSize.y)
+        return;
+
     float2 uv    = (float2(pixel) + 0.5f) * texelSize;
 
     if (uv.x > 1.0f || uv.y > 1.0f)
     {
-        outputSSAO[pixel] = 1.0f;
+        outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);
         return;
     }
 
@@ -75,5 +78,6 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
         occlusion += (sampleW2.z <= samplePos.z - BIAS ? 1.0f : 0.0f) * rangeCheck;
     }
 
-    outputSSAO[pixel] = 1.0f - (occlusion / float(SAMPLE_COUNT));
+    const float ao = 1.0f - (occlusion / float(SAMPLE_COUNT));
+    outputSSAO[pixel] = float4(ao, ao, ao, 1.0f);
 }
