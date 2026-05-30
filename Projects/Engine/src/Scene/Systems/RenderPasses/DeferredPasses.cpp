@@ -80,6 +80,8 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 
     if (!h.gbufferShader.IsValid()) return;
 
+    const auto& frustum = ctx.cameraFrustum;
+
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
@@ -90,6 +92,9 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         // 半透明・加算マテリアルは GBuffer に書き込まない。フォワードパスで描画する。
         // WHY: GBuffer はアルファブレンドをサポートしない (MRT への書き込みが 1 つの値のため)。
         if (mat->blendMode != renderer::BlendMode::OPAQUE) continue;
+
+        // フラスタムカリング: バウンディング球が視錐台外なら除外
+        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
         auto* material = SyncMaterial(*mat, resources);
 
         PerObjectCB objData{};
@@ -342,6 +347,8 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 
     std::vector<TransparentEntry> transparentQueue;
 
+    const auto& frustumTransp = ctx.cameraFrustum;
+
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
@@ -350,6 +357,9 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
         if (mat->blendMode == renderer::BlendMode::OPAQUE) continue;  // 透明のみ
+
+        // フラスタムカリング: バウンディング球が視錐台外なら除外
+        if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) continue;
 
         auto* material = SyncMaterial(*mat, resources);
         if (!material || !material->shader.IsValid()) continue;

@@ -4,7 +4,11 @@
 #pragma once
 #include "RenderPassContext.hpp"
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/RenderState.hpp>
+#include "Engine/Scene/Transform.hpp"
+#include <Math/Frustum.hpp>
+#include <Math/Vector3.hpp>
 #include <Physics/Layer.hpp>
 #include <algorithm>
 #include <cctype>
@@ -52,5 +56,23 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
 
 bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask);
 bool IsSurfaceMaterialShader(std::string_view path);
+
+// ── カリング ヘルパー ────────────────────────────────────────────────────────
+
+// ワールド空間バウンディング球 (カリング用)
+struct WorldBounds {
+    math::Vector3 center;
+    float         radius;
+};
+
+// メッシュのローカルバウンディング球をワールド空間に変換する。
+// boundsRadius が 0 のメッシュ (ComputeBounds 未実行) は半径 0 を返す。
+WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh);
+
+// バウンディング球が視錐台と交差するかを判定する。
+// false → フラスタム外確定 → 描画スキップ可能。
+bool IsVisibleInFrustum(const math::Frustum& frustum,
+                        const Transform& tf,
+                        const renderer::Mesh& mesh);
 
 } // namespace fbzz::scene

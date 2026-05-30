@@ -8,8 +8,10 @@
 #include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RenderState.hpp"
+#include <Math/Matrix4.hpp>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <string>
@@ -99,6 +101,46 @@ bool IsSurfaceMaterialShader(std::string_view path)
     std::transform(lower.begin(), lower.end(), lower.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return lower.find("/material/surface/") != std::string::npos;
+}
+
+// ── カリング ヘルパー ────────────────────────────────────────────────────────
+
+WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh)
+{
+    const math::Matrix4& world = tf.GetWorldMatrix();
+
+    // ローカル空間バウンディング球中心をワールド空間に変換する。
+    // 行列は列ベクトル規則 (M * v) なので:
+    //   wx = m[0][0]*bx + m[0][1]*by + m[0][2]*bz + m[0][3]
+    const float bx = mesh.boundsCenter.x;
+    const float by = mesh.boundsCenter.y;
+    const float bz = mesh.boundsCenter.z;
+    const math::Vector3 worldCenter = {
+        world.m[0][0]*bx + world.m[0][1]*by + world.m[0][2]*bz + world.m[0][3],
+        world.m[1][0]*bx + world.m[1][1]*by + world.m[1][2]*bz + world.m[1][3],
+        world.m[2][0]*bx + world.m[2][1]*by + world.m[2][2]*bz + world.m[2][3],
+    };
+
+    // ワールド行列の各軸ベクトルのノルムからスケールを取得し、最大値を掛ける。
+    // WHY: 非一様スケールの場合は最大成分で保守的な球にする。
+    //      球半径を過大評価しても偽カリング (見えているのに消える) は発生しない。
+    const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
+    const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
+    const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
+    const float maxScale = std::max({ sx, sy, sz });
+
+    return { worldCenter, mesh.boundsRadius * maxScale };
+}
+
+bool IsVisibleInFrustum(const math::Frustum& frustum,
+                        const Transform& tf,
+                        const renderer::Mesh& mesh)
+{
+    // boundsRadius が 0 なら ComputeBounds 未実行メッシュ → カリングしない
+    if (mesh.boundsRadius <= 0.0f) return true;
+
+    const auto bounds = ComputeWorldBounds(tf, mesh);
+    return frustum.IntersectsSphere(bounds.center, bounds.radius);
 }
 
 } // namespace fbzz::scene
