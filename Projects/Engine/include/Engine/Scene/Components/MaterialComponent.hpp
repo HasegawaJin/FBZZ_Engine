@@ -11,6 +11,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::renderer {
@@ -64,6 +65,22 @@ struct MaterialComponent {
     {
         if (offset + sizeof(T) <= paramData.size())
             std::memcpy(paramData.data() + offset, &v, sizeof(T));
+    }
+
+    // 名前引きアクセサ。ShaderDescriptor::FindVar でオフセットを解決してから読み書きする。
+    template<typename T>
+    T GetParam(std::string_view name, const renderer::ShaderDescriptor& desc) const
+    {
+        if (const auto* v = desc.FindVar(name))
+            return GetParam<T>(v->offset);
+        return T{};
+    }
+
+    template<typename T>
+    void SetParam(std::string_view name, const T& val, const renderer::ShaderDescriptor& desc)
+    {
+        if (const auto* v = desc.FindVar(name))
+            SetParam<T>(v->offset, val);
     }
 
     // Descriptor に合わせて paramData と texturePaths を初期化する。
