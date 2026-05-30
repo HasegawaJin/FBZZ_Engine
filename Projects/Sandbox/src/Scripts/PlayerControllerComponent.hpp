@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Engine/Input/Input.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -51,6 +52,7 @@ struct PlayerControllerComponent : fbzz::scene::Script {
         const bool usePhysicsMove = rigidBody && rigidBody->enabled && rigidBody->rigidBody;
         if (move.LengthSq() <= fbzz::math::EPSILON) {
             StopHorizontalPhysicsVelocity(rigidBody);
+            SetAnimatorSpeed(0.0f);
             return;
         }
 
@@ -58,6 +60,7 @@ struct PlayerControllerComponent : fbzz::scene::Script {
             ? moveSpeed * sprintMultiplier
             : moveSpeed;
         const fbzz::math::Vector3 direction = move.Normalized();
+        SetAnimatorSpeed(speed);
 
         if (usePhysicsMove) {
             // WHY: カプセルを Transform で直接ワープさせると、坂の接触法線による押し上げを
@@ -116,6 +119,13 @@ private:
         velocity.x = 0.0f;
         velocity.z = 0.0f;
         rigidBody->rigidBody->SetVelocity(velocity);
+    }
+
+    void SetAnimatorSpeed(float speed) const
+    {
+        if (!m_gameObject) return;
+        auto* anim = m_gameObject->GetComponent<fbzz::scene::AnimatorComponent>();
+        if (anim) anim->SetFloat("Speed", speed);
     }
 };
 
