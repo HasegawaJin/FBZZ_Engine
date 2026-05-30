@@ -23,6 +23,11 @@ struct BloomSettings {
     float intensity = 0.8f;
 };
 
+struct AmbientOcclusionSettings {
+    bool enabled = true;
+    float intensity = 1.0f;
+};
+
 struct FogSettings {
     bool enabled = true;
     float density = 0.06f;
@@ -73,6 +78,7 @@ struct PostProcessSettings {
     bool fxaaEnabled = true;
     float exposure = 1.0f;
     BloomSettings bloom;
+    AmbientOcclusionSettings ambientOcclusion;
     FogSettings fog;
     ColorGradingSettings colorGrading;
     VignetteSettings vignette;
