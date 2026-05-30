@@ -269,16 +269,16 @@ void SetWorldPosition(GameObject& go, const math::Vector3& worldPosition)
 // E: 脚長ベースの動的レイ高さで地面を問い合わせる。
 // WHAT: 脚長から開始高さと最大距離を決め、スケールに依存しない接地判定を行う。
 // WHY: 固定距離だとモデルサイズの違いで空振りや誤検出が起きるため、脚長比率で扱う。
+//      比率はチェーンごとに異なるため引数で受け取る。
 bool QueryGroundHit(Scene& scene,
                     const math::Vector3& footFkPosition,
                     float legLength,
+                    float rayUpRatio,
+                    float rayDownRatio,
                     GroundHit& outHit)
 {
-    // 開始点は脚長の 40% 上、レイ長は 130% にして斜面や段差でも足元を拾う。
-    constexpr float RAY_UP_RATIO   = 0.4f;
-    constexpr float RAY_DOWN_RATIO = 1.3f;
-    const float rayStartHeight = legLength * RAY_UP_RATIO;
-    const float rayDistance    = legLength * RAY_DOWN_RATIO;
+    const float rayStartHeight = legLength * rayUpRatio;
+    const float rayDistance    = legLength * rayDownRatio;
     const math::Vector3 rayOrigin = footFkPosition + math::Vector3::UP * rayStartHeight;
     return RaycastGround(scene, rayOrigin, -math::Vector3::UP, rayDistance, outHit);
 }
@@ -289,12 +289,14 @@ bool UpdateFootTargetFromGround(Scene& scene,
                                 GameObject& target,
                                 const math::Vector3& footFkPosition,
                                 float legLength,
+                                float rayUpRatio,
+                                float rayDownRatio,
+                                float footSurfaceOffset,
                                 GroundHit& outHit)
 {
-    // 足首ジョイントは足裏より内側にあるため、接地点から法線方向へ少し浮かせる。
-    constexpr float FOOT_SURFACE_OFFSET = 0.06f;
-    if (!QueryGroundHit(scene, footFkPosition, legLength, outHit)) return false;
-    const math::Vector3 targetPosition = outHit.point + outHit.normal * FOOT_SURFACE_OFFSET;
+    if (!QueryGroundHit(scene, footFkPosition, legLength, rayUpRatio, rayDownRatio, outHit))
+        return false;
+    const math::Vector3 targetPosition = outHit.point + outHit.normal * footSurfaceOffset;
     SetWorldPosition(target, targetPosition);
     return true;
 }
@@ -433,7 +435,8 @@ void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
 
                     const float legLen = LA_pre + LB_pre;
                     GroundHit hit;
-                    if (!QueryGroundHit(scene, bC->transform.position, legLen, hit)) continue;
+                    if (!QueryGroundHit(scene, bC->transform.position, legLen,
+                                        chain.rayUpRatio, chain.rayDownRatio, hit)) continue;
 
                     offsetSum += hit.point.y - bC->transform.position.y;
                     legLenSum += legLen;
@@ -530,9 +533,17 @@ void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
             GroundHit groundHit;
             const bool hasGroundHit =
                 chain.useGroundSnap &&
-                UpdateFootTargetFromGround(scene, *targetGO, pC_fk, totalLength, groundHit);
+                UpdateFootTargetFromGround(scene, *targetGO, pC_fk, totalLength,
+                                           chain.rayUpRatio, chain.rayDownRatio,
+                                           chain.footSurfaceOffset, groundHit);
 
-            const math::Vector3 pT = targetGO->transform.position + chain.targetOffset;
+            // Ground Snap 時は footSurfaceOffset だけを使うため targetOffset を加算しない。
+            // WHY: UpdateFootTargetFromGround が position = hit + normal*footSurfaceOffset に確定済みで、
+            //      さらに targetOffset を足すと二重オフセットになる。
+            //      非 Ground Snap 時は position が FK 足位置のままなので targetOffset が有効。
+            const math::Vector3 pT = hasGroundHit
+                ? targetGO->transform.position
+                : targetGO->transform.position + chain.targetOffset;
 
             math::Vector3 pP     = math::Vector3::ZERO;
             bool          hasPole = chain.poleEntity.IsValid();
