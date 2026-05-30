@@ -562,6 +562,15 @@ void RenderSystem(Scene& scene,
         dbgSnap.height          = sHdrH;
         for (const auto& profile : graph.GetLastReport().profiles)
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
+
+        // カリング統計を Snapshot に詰める
+        dbgSnap.renderStats.totalObjects    = passCtx.statsTotalObjects;
+        dbgSnap.renderStats.frustumCulled   = passCtx.statsFrustumCulled;
+        dbgSnap.renderStats.occlusionCulled = passCtx.statsOcclusionCulled;
+        dbgSnap.renderStats.drawCalls       = passCtx.statsDrawCalls;
+        dbgSnap.renderStats.vertexCount     = passCtx.statsVertexCount;
+        dbgSnap.renderStats.triangleCount   = passCtx.statsTriangleCount;
+
         renderer::RenderDebugOverlay::UpdateSnapshot(dbgSnap, rs.passViewerEnabled);
     }
 }
