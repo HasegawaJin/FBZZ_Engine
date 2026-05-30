@@ -33,6 +33,7 @@
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -48,6 +49,7 @@
 #include <Physics/SphereCollider.hpp>
 #include <toml++/toml.hpp>
 #include <cmath>
+#include <cstring>
 #include <sstream>
 #include <string_view>
 #include <cctype>
@@ -472,16 +474,46 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             if (mc->material && mc->shaderPath.empty())
                 FBZZ_LOG_WARN("SceneSerializer: MaterialComponent '%s' has material but no shaderPath; it cannot be rendered after restore", go.name.c_str());
             toml::table matTbl;
-            matTbl.insert("shader",    mc->shaderPath);
-            matTbl.insert("albedoTex", mc->albedoTexPath);
-            matTbl.insert("normalTex", mc->normalTexPath);
-            matTbl.insert("enabled",   mc->enabled);
-            if (mc->material) {
-                auto& p = mc->material->params;
-                matTbl.insert("albedo",        Vec4ToArr(p.albedo));
-                matTbl.insert("metallic",      (double)p.metallic);
-                matTbl.insert("roughness",     (double)p.roughness);
-                matTbl.insert("emissiveScale", (double)p.emissiveScale);
+            matTbl.insert("shader",      mc->shaderPath);
+            matTbl.insert("enabled",     mc->enabled);
+            matTbl.insert("blendMode",   static_cast<int64_t>(mc->blendMode));
+            matTbl.insert("doubleSided", mc->doubleSided);
+            matTbl.insert("renderQueue", static_cast<int64_t>(mc->renderQueue));
+
+            // テクスチャパス (スロット順に配列で保存)
+            toml::array texArr;
+            for (const auto& p : mc->texturePaths)
+                texArr.push_back(p);
+            matTbl.insert("textures", std::move(texArr));
+
+            // cbuffer パラメータ (Descriptor 変数名をキーに保存)
+            const renderer::ShaderDescriptor* desc = nullptr;
+            if (mc->material && mc->material->shader.IsValid())
+                if (auto* res = renderer::ResourceManager::Active())
+                    if (auto* sh = res->Get(mc->material->shader))
+                        desc = &sh->GetDescriptor();
+
+            if (desc && !desc->vars.empty() && mc->paramData.size() == desc->cbufferSize)
+            {
+                toml::table paramTbl;
+                for (const auto& v : desc->vars)
+                {
+                    if (v.varType != renderer::ShaderVarType::Float) continue;
+                    if (v.offset + v.size > static_cast<uint32_t>(mc->paramData.size())) continue;
+                    const float* ptr = reinterpret_cast<const float*>(mc->paramData.data() + v.offset);
+                    if (v.columns == 1)
+                    {
+                        paramTbl.insert(v.name, static_cast<double>(*ptr));
+                    }
+                    else
+                    {
+                        toml::array arr;
+                        for (uint8_t ci = 0; ci < v.columns; ++ci)
+                            arr.push_back(static_cast<double>(ptr[ci]));
+                        paramTbl.insert(v.name, std::move(arr));
+                    }
+                }
+                matTbl.insert("params", std::move(paramTbl));
             }
             goTbl.insert("MaterialComponent", std::move(matTbl));
         }
@@ -903,10 +935,11 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // MaterialComponent
         if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
             MaterialComponent mc{};
-            mc.shaderPath    = (*matTbl)["shader"].value_or(std::string{});
-            mc.albedoTexPath = (*matTbl)["albedoTex"].value_or(std::string{});
-            mc.normalTexPath = (*matTbl)["normalTex"].value_or(std::string{});
-            mc.enabled       = (*matTbl)["enabled"].value_or(true);
+            mc.shaderPath   = (*matTbl)["shader"].value_or(std::string{});
+            mc.enabled      = (*matTbl)["enabled"].value_or(true);
+            mc.blendMode    = static_cast<renderer::BlendMode>((*matTbl)["blendMode"].value_or(int64_t{0}));
+            mc.doubleSided  = (*matTbl)["doubleSided"].value_or(false);
+            mc.renderQueue  = static_cast<int32_t>((*matTbl)["renderQueue"].value_or(int64_t{0}));
 
             auto mat        = std::make_shared<renderer::Material>();
             mat->shaderPath = mc.shaderPath;
@@ -915,19 +948,95 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             if (!mat->shader.IsValid())
                 FBZZ_LOG_WARN("SceneSerializer: failed to resolve shader '%s'", mc.shaderPath.c_str());
 
-            auto& p     = mat->params;
-            p.albedo    = ArrToVec4((*matTbl)["albedo"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
-            p.metallic      = (float)(*matTbl)["metallic"].value_or(0.0);
-            p.roughness     = (float)(*matTbl)["roughness"].value_or(0.8);
-            p.emissiveScale = (float)(*matTbl)["emissiveScale"].value_or(0.0);
+            // Descriptor を取得して paramData を初期化する
+            const renderer::ShaderDescriptor* desc = nullptr;
+            if (auto* sh = resources.Get(mat->shader))
+                desc = &sh->GetDescriptor();
+            if (desc)
+                mc.InitFromDescriptor(*desc);
+            else
+                mc.texturePaths.resize(5);
 
-            if (!mc.albedoTexPath.empty())
-                mat->albedoTexture = asset::AssetManager::LoadTexture(mc.albedoTexPath);
-            if (!mc.normalTexPath.empty())
-                mat->normalTexture = asset::AssetManager::LoadTexture(mc.normalTexPath);
+            // 新フォーマット: "textures" 配列
+            if (auto* texArr = (*matTbl)["textures"].as_array())
+            {
+                for (size_t i = 0; i < texArr->size() && i < mc.texturePaths.size(); ++i)
+                    mc.texturePaths[i] = texArr->get(i)->value_or(std::string{});
+            }
+            else
+            {
+                // 旧フォーマット互換: "albedoTex" / "normalTex" を slot 0/1 にマップ
+                if (mc.texturePaths.size() > 0)
+                    mc.texturePaths[0] = (*matTbl)["albedoTex"].value_or(std::string{});
+                if (mc.texturePaths.size() > 1)
+                    mc.texturePaths[1] = (*matTbl)["normalTex"].value_or(std::string{});
+            }
 
-            mat->Init(resources);
-            mat->Upload(resources);
+            // テクスチャをロード
+            mat->textures.resize(mc.texturePaths.size());
+            for (size_t i = 0; i < mc.texturePaths.size(); ++i)
+                if (!mc.texturePaths[i].empty())
+                    mat->textures[i] = asset::AssetManager::LoadTexture(mc.texturePaths[i]);
+
+            // 新フォーマット: "params" テーブル
+            if (desc && (*matTbl)["params"].as_table())
+            {
+                auto& paramTbl = *(*matTbl)["params"].as_table();
+                for (const auto& v : desc->vars)
+                {
+                    if (v.varType != renderer::ShaderVarType::Float) continue;
+                    if (v.offset + v.size > static_cast<uint32_t>(mc.paramData.size())) continue;
+                    float* ptr = reinterpret_cast<float*>(mc.paramData.data() + v.offset);
+                    if (v.columns == 1)
+                    {
+                        *ptr = static_cast<float>(paramTbl[v.name].value_or(static_cast<double>(*ptr)));
+                    }
+                    else if (auto* arr = paramTbl[v.name].as_array())
+                    {
+                        for (uint8_t ci = 0; ci < v.columns && ci < arr->size(); ++ci)
+                            ptr[ci] = static_cast<float>(arr->get(ci)->value_or(static_cast<double>(ptr[ci])));
+                    }
+                }
+            }
+            else if (desc)
+            {
+                // 旧フォーマット互換: 個別フィールド (albedo/metallic/roughness/emissiveScale) を
+                // Descriptor の変数名で照合して paramData に書き込む。
+                // WHY: シリアライズ形式が "params" テーブルに統一される前のシーンを無破損で移行できる。
+                auto writeScalar = [&](const char* key, const char* varName, float defaultVal) {
+                    if (const auto* v = desc->FindVar(varName)) {
+                        if (v->columns == 1 && v->varType == renderer::ShaderVarType::Float &&
+                            v->offset + sizeof(float) <= static_cast<uint32_t>(mc.paramData.size()))
+                        {
+                            float f = static_cast<float>((*matTbl)[key].value_or(static_cast<double>(defaultVal)));
+                            std::memcpy(mc.paramData.data() + v->offset, &f, sizeof(float));
+                        }
+                    }
+                };
+                auto writeVec4 = [&](const char* key, const char* varName, float r, float g, float b, float a) {
+                    if (const auto* v = desc->FindVar(varName)) {
+                        if (v->varType == renderer::ShaderVarType::Float &&
+                            v->offset + v->size <= static_cast<uint32_t>(mc.paramData.size()))
+                        {
+                            float def[4] = { r, g, b, a };
+                            if (auto* arr = (*matTbl)[key].as_array()) {
+                                for (uint8_t ci = 0; ci < v->columns && ci < arr->size(); ++ci)
+                                    def[ci] = static_cast<float>(arr->get(ci)->value_or(static_cast<double>(def[ci])));
+                            }
+                            std::memcpy(mc.paramData.data() + v->offset, def, v->columns * sizeof(float));
+                        }
+                    }
+                };
+                writeVec4("albedo",       "albedo",       1.0f, 1.0f, 1.0f, 1.0f);
+                writeScalar("metallic",      "metallic",      0.0f);
+                writeScalar("roughness",     "roughness",     0.8f);
+                writeScalar("emissiveScale", "emissiveScale", 0.0f);
+            }
+
+            mat->paramData = mc.paramData;
+            static renderer::ShaderDescriptor s_fallback;
+            mat->Init(resources, desc ? desc->cbufferSize : 0u);
+            mat->Upload(resources, desc ? *desc : s_fallback);
             mc.material = std::move(mat);
             go.AddComponent<MaterialComponent>(std::move(mc));
         }

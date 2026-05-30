@@ -9,11 +9,27 @@
 // emissiveScale  : 散乱強度 (0 = 通常 Lambert, 1 = 強い SSS)
 // roughness      : ラップ量制御 (高いほど影側にも光が回り込む)
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
+
+// SSS で使うパラメータのみ宣言 (metallic は不要)
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;             // RGBA ベースカラー            offset  0
+    float  roughness;          // ラップ量制御 (高=光が回り込む) offset 16
+    float  normalStrength;     // 法線マップ強度                offset 20
+    float  occlusionStrength;  // AO ブレンド強度              offset 24
+    float  alphaCutoff;        // アルファカットオフ             offset 28
+    float3 emissiveColor;      // SSS 散乱色                   offset 32
+    float  emissiveScale;      // SSS 散乱強度                 offset 44
+    float2 uvTiling;           // UV タイリング                offset 48
+    float2 uvOffset;           // UV オフセット                offset 56
+    uint   textureMask;        // テクスチャフラグ              offset 64
+};
 
 Texture2D<float>       texShadow   : register(TEX_SHADOW);
 Texture2D              texAlbedo   : register(TEX_ALBEDO);

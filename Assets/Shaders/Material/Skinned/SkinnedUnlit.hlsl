@@ -3,9 +3,16 @@
 // GPU スキニング + ライティングなし — アルベドをそのまま出力する
 // PS ロジックは Surface/Unlit.hlsl と完全に一致させること。
 
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
+
+cbuffer MaterialConstants : register(CB_MATERIAL)
+{
+    float4 albedo;
+    uint   textureMask;
+};
 
 Texture2D    texAlbedo   : register(TEX_ALBEDO);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);
