@@ -150,6 +150,35 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::PipelineStateTag>  decalPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  decalMaskPSO;
     renderer::ResourceHandle<renderer::ConstantBufferTag> decalCB;
+
+    // ── Shadow ────────────────────────────────────────────────────────────────
+    renderer::ResourceHandle<renderer::ShaderTag>         shadowShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+
+    // ── 共用 PSO ─────────────────────────────────────────────────────────────
+    renderer::ResourceHandle<renderer::PipelineStateTag>  defaultPSO;   // SOLID / OPAQUE / DEPTH_ON
+    renderer::ResourceHandle<renderer::PipelineStateTag>  wireframePSO;
+
+    // ── Sky ───────────────────────────────────────────────────────────────────
+    renderer::ResourceHandle<renderer::ShaderTag>         skyShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  skyPSO;
+    renderer::ResourceHandle<renderer::BufferTag>         skyVB;
+    renderer::ResourceHandle<renderer::BufferTag>         skyIB;
+    uint32_t                                              skyIndexCount = 0;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> atmosphereCB;
+
+    // ── Particle ──────────────────────────────────────────────────────────────
+    renderer::ResourceHandle<renderer::ShaderTag>         particleShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
+    renderer::ResourceHandle<renderer::BufferTag>         particleVB;
+    renderer::ResourceHandle<renderer::BufferTag>         particleIB;
+
+    // ── Deferred ジオメトリ ───────────────────────────────────────────────────
+    renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         skinnedPbrShader;
 };
 
 struct RenderPassContext {
@@ -165,6 +194,11 @@ struct RenderPassContext {
     uint32_t width = 0;
     uint32_t height = 0;
     bool selectionOutlineEnabled = false;
+
+    renderer::LightConstantsCB lightData;   // RenderSystem が毎フレーム設定
+    math::Matrix4               lightVP;    // 影投射ライトの VP 行列
+    bool                        isDeferred  = false;
+    bool                        ssaoEnabled = false;
 };
 
 } // namespace fbzz::scene
