@@ -85,15 +85,15 @@ bool InitD3D(HWND hwnd)
     desc.BufferDesc.Width = 0;
     desc.BufferDesc.Height = 0;
     desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.BufferDesc.RefreshRate.Numerator = 60;
+    desc.BufferDesc.RefreshRate.Numerator = 0;
     desc.BufferDesc.RefreshRate.Denominator = 1;
-    desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    desc.Flags = 0;
     desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     desc.OutputWindow = hwnd;
     desc.SampleDesc.Count = 1;
     desc.SampleDesc.Quality = 0;
     desc.Windowed = TRUE;
-    desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
     UINT flags = 0;
 #ifdef _DEBUG

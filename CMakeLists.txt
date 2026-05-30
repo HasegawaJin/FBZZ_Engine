@@ -22,6 +22,9 @@ add_subdirectory(Projects/EditorLauncher)
 add_subdirectory(Projects/GameHub)
 add_subdirectory(Projects/Sandbox)
 
+# VS ソリューションを開いたときのデフォルトスタートアッププロジェクトを sandbox に設定する
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT sandbox)
+
 option(FBZZ_BUILD_TESTS "Build unit tests" ON)
 if(FBZZ_BUILD_TESTS)
     enable_testing()

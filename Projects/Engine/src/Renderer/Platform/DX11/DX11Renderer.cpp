@@ -23,6 +23,7 @@
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx11.h>
+#include <string>
 
 namespace fbzz::renderer
 {
@@ -38,22 +39,22 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
     // -------------------------------------------------------------------------
     // スワップチェーン設定
-    //   BufferCount=1 は DX11 の FLIP_DISCARD 非対応環境向けの古典的な単バッファ構成。
-    //   DXGI_SWAP_EFFECT_DISCARD との組み合わせが必須。
-    //   DX12 移行時は BufferCount=2 + FLIP_DISCARD に切り替える。
+    //   DXGI の blt-model(DISCARD/SEQUENTIAL) は現在ではレガシー扱い。
+    //   WHY: flip-model は DWM との合成経路が現代的で、デバッグレイヤーの #294 警告も避けられる。
+    //        FLIP_DISCARD は BufferCount >= 2 かつ MSAA 無効が前提なので、バックバッファを 2 枚にする。
     // -------------------------------------------------------------------------
     DXGI_SWAP_CHAIN_DESC scDesc                        = {};
-    scDesc.BufferCount                                 = 1;
+    scDesc.BufferCount                                 = 2;
     scDesc.BufferDesc.Width                            = width;
     scDesc.BufferDesc.Height                           = height;
     scDesc.BufferDesc.Format                           = DXGI_FORMAT_R8G8B8A8_UNORM;
-    scDesc.BufferDesc.RefreshRate.Numerator            = 60;
+    scDesc.BufferDesc.RefreshRate.Numerator            = 0;
     scDesc.BufferDesc.RefreshRate.Denominator          = 1;
     scDesc.BufferUsage                                 = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scDesc.OutputWindow                                = hwnd;
     scDesc.SampleDesc.Count                            = 1;  // MSAA は無効
     scDesc.Windowed                                    = TRUE;
-    scDesc.SwapEffect                                  = DXGI_SWAP_EFFECT_DISCARD;
+    scDesc.SwapEffect                                  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
     // DEBUG ビルドではデバッグレイヤーを有効化し、DX11 の検証エラーを OutputDebugString に出力する
     UINT flags = 0;
@@ -250,6 +251,12 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     auto* cs = static_cast<DX11Shader*>(shader);
     m_context->CSSetShader(cs->GetComputeShader(), nullptr, 0);
 
+    // WHY: HLSL 側の Compute Shader は SAMPLER_DEFAULT(s0) を使うパスがある。
+    //      DX11 は NULL Sampler でも既定動作にフォールバックするが、デバッグレイヤー警告を避けるため
+    //      ポストプロセスで最も一般的な clamp + linear を Dispatch ごとに明示する。
+    ID3D11SamplerState* defaultSampler = m_samplers[static_cast<uint32_t>(SamplerMode::CLAMP_LINEAR)].Get();
+    m_context->CSSetSamplers(0, 1, &defaultSampler);
+
     // 定数バッファ (CS ステージ)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
     {
@@ -301,8 +308,17 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         static_cast<DX11PipelineState*>(pipelineState)->Apply(m_context.Get());
 
     // ---- 2. Shader + InputLayout (VS / PS / IA) --------------------------------
-    if (auto* shader = resources.Get(call.shader))
-        static_cast<DX11Shader*>(shader)->Bind(m_context.Get());
+    auto* boundShader = resources.Get(call.shader);
+    if (boundShader)
+        static_cast<DX11Shader*>(boundShader)->Bind(m_context.Get());
+
+    // WHY: ShadowMap は VS が出した SV_POSITION の深度だけを書き込むパスで、PS は空実装。
+    //      PS を残したまま colorCount=0 の RT に Draw すると RTV 未設定警告が出るため、
+    //      DepthCopy のように PS 側で SV_Depth を生成するパスは除外し、ShadowMap だけ PS を外す。
+    const bool isShadowMapShader = boundShader &&
+        static_cast<DX11Shader*>(boundShader)->GetPath().find("ShadowMap") != std::string::npos;
+    if (m_currentRT && m_currentRT->GetColorCount() == 0 && isShadowMapShader)
+        m_context->PSSetShader(nullptr, nullptr, 0);
 
     // ---- 3. Constant Buffers (VS・PS 両方の同スロットへバインド) ----------------
     // 同じ定数バッファを VS と PS の両方にバインドすることで、
@@ -439,7 +455,9 @@ void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)
 {
     // m_samplers のインデックスは SamplerMode の列挙値と一致させている (InitSamplers 参照)
     uint32_t idx = static_cast<uint32_t>(mode);
-    m_context->PSSetSamplers(slot, 1, m_samplers[idx].GetAddressOf());
+    ID3D11SamplerState* sampler = m_samplers[idx].Get();
+    m_context->PSSetSamplers(slot, 1, &sampler);
+    m_context->CSSetSamplers(slot, 1, &sampler);
 }
 
 // =============================================================================
