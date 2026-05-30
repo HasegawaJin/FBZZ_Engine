@@ -158,7 +158,8 @@ std::vector<uint8_t> BuildFontAtlas()
 renderer::ResourceHandle<renderer::ShaderTag>        s_shader;
 renderer::ResourceHandle<renderer::ShaderTag>        s_textShader;
 renderer::ResourceHandle<renderer::ConstantBufferTag> s_constants;
-renderer::ResourceHandle<renderer::PipelineStateTag>  s_pso;
+renderer::ResourceHandle<renderer::PipelineStateTag>  s_pso;       // ScreenSpace: 深度テストなし
+renderer::ResourceHandle<renderer::PipelineStateTag>  s_worldPso;  // WorldSpace: 深度テストあり (DEPTH_READ)
 renderer::ResourceHandle<renderer::TextureTag>        s_whiteTexture;
 renderer::ResourceHandle<renderer::TextureTag>        s_fontAtlas;
 renderer::ResourceHandle<renderer::BufferTag>         s_imageVB;
@@ -235,10 +236,17 @@ void EnsureInit(renderer::ResourceManager& resources)
     s_shader     = resources.LoadShader("Assets/shaders/UI/UISprite.hlsl");
     s_textShader = resources.LoadShader("Assets/shaders/UI/UIText.hlsl");
     s_constants  = resources.CreateConstantBuffer(sizeof(UIConstants));
-    s_pso        = resources.CreatePipelineState({
+    s_pso = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
-        renderer::DepthMode::DEPTH_OFF
+        renderer::DepthMode::DEPTH_OFF  // ScreenSpace UI は深度を無視して常に最前面
+    });
+    // WorldSpace UI: 深度テストあり (3D オブジェクトで遮蔽される)・深度書き込みなし
+    // (アルファブレンドと両立させるため書き込みは行わない)
+    s_worldPso = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
     });
 
     static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
@@ -255,13 +263,14 @@ void EnsureInit(renderer::ResourceManager& resources)
                                           static_cast<uint32_t>(kAtlasH));
 
     if (!s_shader.IsValid() || !s_textShader.IsValid() || !s_constants.IsValid() ||
-        !s_pso.IsValid() || !s_whiteTexture.IsValid() ||
+        !s_pso.IsValid() || !s_worldPso.IsValid() || !s_whiteTexture.IsValid() ||
         !s_imageVB.IsValid() || !s_textVB.IsValid() || !s_fontAtlas.IsValid()) {
-        FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d white=%d imageVB=%d textVB=%d atlas=%d",
+        FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d worldPso=%d white=%d imageVB=%d textVB=%d atlas=%d",
                        static_cast<int>(s_shader.IsValid()),
                        static_cast<int>(s_textShader.IsValid()),
                        static_cast<int>(s_constants.IsValid()),
                        static_cast<int>(s_pso.IsValid()),
+                       static_cast<int>(s_worldPso.IsValid()),
                        static_cast<int>(s_whiteTexture.IsValid()),
                        static_cast<int>(s_imageVB.IsValid()),
                        static_cast<int>(s_textVB.IsValid()),
@@ -323,9 +332,14 @@ math::Vector4 ButtonTint(const UIButton& button)
     return button.normalColor;
 }
 
+// canvasToClip: キャンバスピクセル座標をクリップ空間へ変換する行列。
+//   ScreenSpace: Matrix4::Orthographic(0, W, H, 0, 0, 1)
+//   WorldSpace:  VP * TRS(worldPos, worldRot, ONE) * pixelToLocal
 void SubmitImage(renderer::IRenderer& renderer,
                  renderer::ResourceManager& resources,
-                 const UICanvas& canvas,
+                 const math::Matrix4& canvasToClip,
+                 renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                 renderer::RenderLayer layer,
                  const math::Vector2& position,
                  const math::Vector2& size,
                  const math::Vector4& color,
@@ -356,7 +370,7 @@ void SubmitImage(renderer::IRenderer& renderer,
     resources.Update(s_imageVB, vertices, sizeof(vertices));
 
     UIConstants constants{};
-    constants.ortho  = math::Matrix4::Orthographic(0.0f, canvas.canvasWidth, canvas.canvasHeight, 0.0f, 0.0f, 1.0f);
+    constants.ortho  = canvasToClip;
     constants.color  = color;
     constants.uvRect = { uvMin.x, uvMin.y, uvMax.x, uvMax.y };
     resources.Update(s_constants, &constants, sizeof(constants));
@@ -364,10 +378,10 @@ void SubmitImage(renderer::IRenderer& renderer,
     renderer::DrawCall call;
     call.vertexBuffer       = s_imageVB;
     call.shader             = s_shader;
-    call.pipelineState      = s_pso;
+    call.pipelineState      = pso;
     call.constantBuffers[0] = s_constants;
     call.vertexCount        = 6;
-    call.layer              = renderer::RenderLayer::OVERLAY;
+    call.layer              = layer;
     call.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
     call.textures[0]        = texture.IsValid() ? texture : s_whiteTexture;
     renderer.Submit(call, resources);
@@ -375,18 +389,23 @@ void SubmitImage(renderer::IRenderer& renderer,
 
 void SubmitRect(renderer::IRenderer& renderer,
                 renderer::ResourceManager& resources,
-                const UICanvas& canvas,
+                const math::Matrix4& canvasToClip,
+                renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                renderer::RenderLayer layer,
                 math::Vector2 position,
                 math::Vector2 size,
                 const math::Vector4& color)
 {
-    SubmitImage(renderer, resources, canvas, position, size, color,
+    SubmitImage(renderer, resources, canvasToClip, pso, layer,
+                position, size, color,
                 { 0.0f, 0.0f }, { 1.0f, 1.0f }, s_whiteTexture);
 }
 
 void SubmitText(renderer::IRenderer& renderer,
                 renderer::ResourceManager& resources,
-                const UICanvas& canvas,
+                const math::Matrix4& canvasToClip,
+                renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                renderer::RenderLayer layer,
                 const UIText& text,
                 math::Vector2 position)
 {
@@ -434,7 +453,7 @@ void SubmitText(renderer::IRenderer& renderer,
     resources.Update(s_textVB, verts.data(), vertCount * sizeof(UIVertex));
 
     UIConstants constants{};
-    constants.ortho  = math::Matrix4::Orthographic(0.0f, canvas.canvasWidth, canvas.canvasHeight, 0.0f, 0.0f, 1.0f);
+    constants.ortho  = canvasToClip;
     constants.color  = text.color;
     constants.uvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
     resources.Update(s_constants, &constants, sizeof(constants));
@@ -442,10 +461,10 @@ void SubmitText(renderer::IRenderer& renderer,
     renderer::DrawCall call;
     call.vertexBuffer       = s_textVB;
     call.shader             = s_textShader.IsValid() ? s_textShader : s_shader;
-    call.pipelineState      = s_pso;
+    call.pipelineState      = pso;
     call.constantBuffers[0] = s_constants;
     call.vertexCount        = vertCount;
-    call.layer              = renderer::RenderLayer::OVERLAY;
+    call.layer              = layer;
     call.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
     call.textures[0]        = s_fontAtlas.IsValid() ? s_fontAtlas : s_whiteTexture;
     renderer.Submit(call, resources);
@@ -483,10 +502,15 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout)
     }
 }
 
+// canvasToClip: SubmitImage / SubmitText へそのまま渡す変換行列。
+// pso / layer:  ScreenSpace と WorldSpace で異なる PSO とレイヤーを切り替える。
 void TraverseCanvas(GameObject& go,
                     renderer::IRenderer& renderer,
                     renderer::ResourceManager& resources,
                     const UICanvas& canvas,
+                    const math::Matrix4& canvasToClip,
+                    renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                    renderer::RenderLayer layer,
                     math::Vector2 mouseInCanvasSpace,
                     bool mousePressed)
 {
@@ -513,7 +537,7 @@ void TraverseCanvas(GameObject& go,
         const auto& qr = go.transform.localRotation;
         const float zAngle = std::atan2f(2.0f*(qr.w*qr.z + qr.x*qr.y),
                                           1.0f - 2.0f*(qr.y*qr.y + qr.z*qr.z));
-        SubmitImage(renderer, resources, canvas,
+        SubmitImage(renderer, resources, canvasToClip, pso, layer,
                     r.pos, r.size, color,
                     image->uvMin, image->uvMax,
                     image->texture.IsValid() ? image->texture : s_whiteTexture,
@@ -527,12 +551,13 @@ void TraverseCanvas(GameObject& go,
 
     if (text && text->enabled) {
         const math::Vector2 pos = { go.transform.localPosition.x, go.transform.localPosition.y };
-        SubmitText(renderer, resources, canvas, *text, pos);
+        SubmitText(renderer, resources, canvasToClip, pso, layer, *text, pos);
     }
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            TraverseCanvas(*child, renderer, resources, canvas, mouseInCanvasSpace, mousePressed);
+            TraverseCanvas(*child, renderer, resources, canvas,
+                           canvasToClip, pso, layer, mouseInCanvasSpace, mousePressed);
     }
 }
 
@@ -548,7 +573,8 @@ void UISystem(Scene& scene,
               const math::Matrix4& viewProjection)
 {
     EnsureInit(resources);
-    if (!s_shader.IsValid() || !s_constants.IsValid() || !s_pso.IsValid() ||
+    if (!s_shader.IsValid() || !s_constants.IsValid() ||
+        !s_pso.IsValid() || !s_worldPso.IsValid() ||
         !s_whiteTexture.IsValid() || !s_imageVB.IsValid() || !s_textVB.IsValid())
         return;
 
@@ -559,33 +585,54 @@ void UISystem(Scene& scene,
 
     for (const CanvasEntry& entry : canvases) {
         if (entry.canvas->renderMode == UIRenderMode::WorldSpace) {
-            // For WorldSpace canvases we pass the combined VP * World(canvas GO transform)
-            // as the ortho matrix. This transforms canvas-space pixels into clip space via
-            // the 3D camera, giving correct perspective and depth.
+            // ================================================================
+            // WorldSpace Canvas の座標変換
+            // ================================================================
+            // キャンバスピクセル座標 (px, py) → クリップ座標 の変換を 1 行列で表す。
+            //   clip = VP * World * pixelToLocal * [px, py, 0, 1]^T
             //
-            // キャンバス原点は GameObject のワールド位置に置く。各ピクセルは
-            // canvas->worldScale 分のワールド単位に対応するため、ピクセルからワールド空間へのスケール行列を作る。
-            // and multiply it by viewProjection.
+            // pixelToLocal: ピクセル座標をオブジェクト中心基準のローカル空間へ変換する。
+            //   - worldScale (ws) でスケールし、1 ピクセル = ws ワールド単位にする。
+            //   - キャンバス中心 (W/2, H/2) をローカル原点に合わせるためオフセットする。
+            //   - canvas の Y は下向き (+Y = down)、ワールドは上向き (+Y = up) なので Y 反転する。
+            //
+            // World: GameObject の位置・回転を持つ TRS 行列 (スケールは pixelToLocal で処理済みなので ONE)。
+            // VP: カメラの ViewProjection 行列 (呼び出し元から渡す)。
+            //
+            // シェーダーは既存の UISprite.hlsl / UIText.hlsl を使い回す。
+            // HLSL: mul(float4(px, py, 0, 1), g_Ortho) = M_combined * [px,py,0,1]^T
+            // ※ C++ row-major → HLSL column-major の自動転置により等価になる。
             const float ws = entry.canvas->worldScale;
-            math::Matrix4 pixelToWorld = math::Matrix4::Identity();
-            // ピクセル単位をワールド単位へ拡大縮小する。キャンバス中心を 0 として扱う。
-            pixelToWorld.m[0][0] = ws;
-            pixelToWorld.m[1][1] = -ws; // Y を反転する。canvas は +Y が下、world は +Y が上
-            // canvas (0,0) が GameObject のローカル原点へ対応するように移動する。
-            // GameObject の完全なワールド変換反映は今後の拡張とし、ここではキャンバス中心合わせに留める。
-            pixelToWorld.m[0][3] = -entry.canvas->canvasWidth  * 0.5f * ws;
-            pixelToWorld.m[1][3] =  entry.canvas->canvasHeight * 0.5f * ws;
 
-            UICanvas worldCanvas = *entry.canvas;
-            // Build ortho = VP * pixelToWorld so shaders receive a single transform matrix.
-            // 既存の UIConstants.ortho を再利用する。シェーダー側は 3D / 2D の違いを意識しない。
-            // We store the combined matrix and use a separate WorldSpace PSO with depth enabled.
-            (void)viewProjection; // TODO: multiply when GO Transform API is available
-            // For now fall through to ScreenSpace handling for WorldSpace canvases
-            // GameObject のワールド行列を取得する API が整うまではこの簡略版を使う。
-            TraverseCanvas(*entry.go, renderer, resources, worldCanvas, mouseInCanvasSpace, mousePressed);
+            math::Matrix4 pixelToLocal = math::Matrix4::Identity();
+            pixelToLocal.m[0][0] =  ws;                                     // X スケール
+            pixelToLocal.m[1][1] = -ws;                                     // Y スケール & 反転
+            pixelToLocal.m[0][3] = -entry.canvas->canvasWidth  * 0.5f * ws; // X センタリング
+            pixelToLocal.m[1][3] =  entry.canvas->canvasHeight * 0.5f * ws; // Y センタリング
+
+            // GameObject のワールド行列 (TransformSystem が更新済みの position / rotation を使う)
+            const math::Matrix4 worldMatrix = math::Matrix4::TRS(
+                entry.go->transform.position,
+                entry.go->transform.rotation,
+                math::Vector3::ONE
+            );
+
+            // 3 段階の変換を 1 行列に合成する
+            const math::Matrix4 canvasToClip = viewProjection * worldMatrix * pixelToLocal;
+
+            TraverseCanvas(*entry.go, renderer, resources, *entry.canvas,
+                           canvasToClip, s_worldPso, renderer::RenderLayer::TRANSPARENT,
+                           mouseInCanvasSpace, mousePressed);
         } else {
-            TraverseCanvas(*entry.go, renderer, resources, *entry.canvas, mouseInCanvasSpace, mousePressed);
+            // ScreenSpace: 標準正射影でピクセル座標をクリップ座標へ変換する
+            const math::Matrix4 canvasToClip = math::Matrix4::Orthographic(
+                0.0f, entry.canvas->canvasWidth,
+                entry.canvas->canvasHeight, 0.0f,
+                0.0f, 1.0f);
+
+            TraverseCanvas(*entry.go, renderer, resources, *entry.canvas,
+                           canvasToClip, s_pso, renderer::RenderLayer::OVERLAY,
+                           mouseInCanvasSpace, mousePressed);
         }
     }
 }
