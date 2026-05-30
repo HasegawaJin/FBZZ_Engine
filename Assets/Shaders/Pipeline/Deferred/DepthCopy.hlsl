@@ -23,16 +23,9 @@ FSTriVSOut VSMain(uint id : SV_VertexID)
     return o;
 }
 
-struct DepthCopyOut
+float PSMain(FSTriVSOut p) : SV_Depth
 {
-    float color : SV_Target;
-    float depth : SV_Depth;
-};
-
-DepthCopyOut PSMain(FSTriVSOut p)
-{
-    DepthCopyOut o;
-    o.depth = texGBufDepth.Load(int3((int)p.svPosition.x, (int)p.svPosition.y, 0)).r;
-    o.color = 0.0f;
-    return o;
+    // WHY: このパスの出力先は colorCount=0 の深度専用 RT。
+    //      SV_Target を宣言すると D3D11 は RTV slot 0 を要求するため、深度だけを返す。
+    return texGBufDepth.Load(int3((int)p.svPosition.x, (int)p.svPosition.y, 0)).r;
 }
