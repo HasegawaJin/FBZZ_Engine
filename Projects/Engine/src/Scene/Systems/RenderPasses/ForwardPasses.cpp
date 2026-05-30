@@ -128,8 +128,13 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
 
+        ++ctx.statsTotalObjects;
+
         // フラスタムカリング: バウンディング球が視錐台外なら除外
-        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
+        if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) {
+            ++ctx.statsFrustumCulled;
+            continue;
+        }
 
         const float dx = go.transform.position.x - cam.m_position.x;
         const float dy = go.transform.position.y - cam.m_position.y;
@@ -266,7 +271,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
         // オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
         const auto bounds = ComputeWorldBounds(go.transform, *mr->mesh);
-        if (!ctx.occlusionCuller.TestAndRaster(bounds.center, bounds.radius)) continue;
+        if (!ctx.occlusionCuller.TestAndRaster(bounds.center, bounds.radius)) {
+            ++ctx.statsOcclusionCulled;
+            continue;
+        }
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
@@ -291,6 +299,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
         renderer.Submit(dc, resources);
+
+        ++ctx.statsDrawCalls;
+        ctx.statsVertexCount   += static_cast<int>(mr->mesh->vertexCount);
+        ctx.statsTriangleCount += static_cast<int>(mr->mesh->indexCount / 3u);
     }
 
     // ── 不透明スキンドメッシュ ─────────────────────────────────────────────────
@@ -347,6 +359,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
             renderer.Submit(dc, resources);
+
+            ++ctx.statsDrawCalls;
+            ctx.statsVertexCount   += static_cast<int>(meshPtr->vertexCount);
+            ctx.statsTriangleCount += static_cast<int>(meshPtr->indexCount / 3u);
         }
     }
 

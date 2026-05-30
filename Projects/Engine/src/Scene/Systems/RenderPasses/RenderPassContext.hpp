@@ -206,6 +206,14 @@ struct RenderPassContext {
     math::Frustum  cameraFrustum; // カメラ視錐台 (Gribb-Hartmann 法で VP から抽出)
     math::Frustum  lightFrustum;  // ライト視錐台 (シャドウパスのフラスタムカリング用)
     OcclusionCuller occlusionCuller; // CPU ソフトウェアオクルージョンカリング
+
+    // レンダリング統計 (各パスでインクリメント → RenderSystem が Snapshot に書き出す)
+    int statsTotalObjects    = 0; // フラスタムカリング前の候補オブジェクト数
+    int statsFrustumCulled   = 0; // フラスタムで除外した数
+    int statsOcclusionCulled = 0; // オクルージョンで除外した数
+    int statsDrawCalls       = 0; // 実際に発行した DrawCall 数
+    int statsVertexCount     = 0; // 描画頂点数の合計
+    int statsTriangleCount   = 0; // 描画三角形数の合計
 };
 
 } // namespace fbzz::scene

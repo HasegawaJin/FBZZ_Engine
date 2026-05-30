@@ -24,6 +24,16 @@ public:
     // RenderSystem が各パス終了後にハンドルを詰めて Draw() に渡す。
     // 無効なハンドルは自動でスキップされるため、パイプライン種別 (Forward/Deferred)
     // に関わらず同じ構造体を使いまわせる。
+    // 1 フレームあたりのレンダリング統計。RenderSystem が集計し Snapshot に詰める。
+    struct RenderStats {
+        int totalObjects    = 0; // カリング前の描画候補オブジェクト数
+        int frustumCulled   = 0; // フラスタムカリングで除外した数
+        int occlusionCulled = 0; // オクルージョンカリングで除外した数
+        int drawCalls       = 0; // 実際に発行した DrawCall 数 (不透明・半透明合計)
+        int vertexCount     = 0; // 描画した総頂点数
+        int triangleCount   = 0; // 描画した総三角形数 (indexCount / 3)
+    };
+
     struct Snapshot {
         ResourceHandle<RenderTargetTag> hdrRT;           // HDR カラーバッファ (フォワード/ディファード共通)
         ResourceHandle<RenderTargetTag> ldrRT;           // トーンマップ後 LDR バッファ
@@ -37,7 +47,14 @@ public:
 
         uint32_t width  = 0;
         uint32_t height = 0;
+
+        // レンダリング統計 (Stats UI で使用)
+        RenderStats renderStats;
     };
+
+    // 最後の UpdateSnapshot() で保存されたスナップショットを返す。
+    // ViewportPanel の Stats オーバーレイから renderStats を読む用途を想定。
+    static const Snapshot& GetLastSnapshot();
 
     // RenderSystem 末尾から呼ぶ。ハンドルを静的領域に保存するだけで ImGui / DX11 に触れない。
     // ImGui フレーム外 (GPU レンダリング中) から安全に呼べる。

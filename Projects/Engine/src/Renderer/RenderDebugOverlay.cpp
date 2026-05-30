@@ -47,6 +47,11 @@ void RenderDebugOverlay::UpdateSnapshot(const Snapshot& snapshot, bool enabled)
     s_state.enabled = enabled;
 }
 
+const RenderDebugOverlay::Snapshot& RenderDebugOverlay::GetLastSnapshot()
+{
+    return s_state.snap;
+}
+
 void RenderDebugOverlay::DrawIfEnabled(IRenderer& renderer, ResourceManager& resources)
 {
     if (!s_state.enabled) return;
