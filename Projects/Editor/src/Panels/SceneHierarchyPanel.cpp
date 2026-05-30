@@ -12,8 +12,10 @@
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <cstring>
 #include <Engine/Util/FileSystem.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/OBBCollider.hpp>
@@ -50,8 +52,16 @@ std::shared_ptr<renderer::Material> CreateTemplateMaterial()
     auto material = std::make_shared<renderer::Material>();
     material->shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
     material->shader = resources->LoadShader(material->shaderPath);
-    material->params.roughness = 0.65f;
-    material->Init(*resources);
+    static renderer::ShaderDescriptor s_fallback;
+    const renderer::ShaderDescriptor* desc = &s_fallback;
+    if (auto* sh = resources->Get(material->shader))
+        desc = &sh->GetDescriptor();
+    material->Init(*resources, desc->cbufferSize);
+    if (const auto* v = desc->FindVar("roughness"))
+    {
+        float rough = 0.65f;
+        std::memcpy(material->paramData.data() + v->offset, &rough, sizeof(float));
+    }
     return material;
 }
 
