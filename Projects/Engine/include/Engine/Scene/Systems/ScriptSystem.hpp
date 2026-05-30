@@ -11,4 +11,7 @@ class Scene;
 
 void ScriptSystem(Scene& scene, float dt);
 
+// PhysicsSystem 後に実行するスクリプト更新。カメラ追従など、物理適用後の位置を必要とする処理に使う。
+void LateScriptSystem(Scene& scene, float dt);
+
 } // namespace fbzz::scene
