@@ -15,6 +15,7 @@ Texture2D      texGBuffer0  : register(TEX_GBUFFER0);   // albedo(RGB) + roughne
 Texture2D      texGBuffer1  : register(TEX_GBUFFER1);   // normal(RGB) + metallic(A)
 Texture2D      texDepth     : register(TEX_DEPTH);
 Texture2D<float>       texShadow    : register(TEX_SHADOW);
+Texture2D              texSSAO      : register(TEX_SSAO);
 SamplerState           sampDefault  : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow   : register(SAMPLER_SHADOW);
 
@@ -53,8 +54,13 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     // 深度から worldPos を復元
     float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
 
-    // SSAO は未配線のため 1.0 (遮蔽なし) で固定
+    // SSAO が有効なときだけ遮蔽テクスチャを反映する。
     float ao = 1.0f;
+    if (ssaoIntensity > 0.0f)
+    {
+        float ssao = texSSAO.Sample(sampDefault, uv).r;
+        ao = lerp(1.0f, saturate(ssao), saturate(ssaoIntensity));
+    }
 
     float3 V      = normalize(cameraPos - worldPos);
     float3 L      = normalize(-lightDir);
