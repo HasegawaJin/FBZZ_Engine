@@ -1,13 +1,6 @@
 [app]
 targetFps = 144
 
-[project]
-name = "{{PROJECT_NAME}}"
-default_scene = "Assets/Scenes/Main.fbzz"
-
-[runtime]
-start_scene = "Assets/Scenes/Main.fbzz"
-
 [audio]
 bgmVolume = 1.0
 seVolume = 1.0
@@ -53,8 +46,13 @@ gravity = [ 0.0, -9.81, 0.0 ]
 hz = 60
 substeps = 4
 
+[project]
+default_scene = 'Assets/Scenes/Main.fbzz'
+name = '{{PROJECT_NAME}}'
+
 [render]
-pipeline = 'forward'
+ambientOcclusion = true
+ambientOcclusionIntensity = 1.0
 bloom = true
 bloomIntensity = 0.8
 chromaticAberration = 0.005
@@ -73,12 +71,15 @@ fxaa = true
 hueShift = 0.0
 lensDistortion = 0.0
 lensDistortionEnabled = false
+outlineColor = [ 1.0, 0.82, 0.22, 1.0 ]
+outlineWidth = 0.045
+passViewerEnabled = false
+pipeline = 'forward'
 saturation = 1.0
 shadow = true
 showColliders = false
 showDecalBounds = false
 showSelectionOutline = true
-passViewerEnabled = false
 temperature = 0.0
 tint = 0.0
 vignette = false
@@ -88,13 +89,16 @@ vignetteRoundness = 1.0
 vignetteSmoothness = 0.45
 wireframe = false
 
-[[render.customPostProcesses]]
-blend = 1.0
-enabled = false
-intensity = 1.0
-name = 'Default Custom'
-parameters = [ 0.0, 0.0, 0.0, 0.0 ]
-shader = 'assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl'
+    [[render.customPostProcesses]]
+    blend = 1.0
+    enabled = false
+    intensity = 1.0
+    name = 'Default Custom'
+    parameters = [ 0.0, 0.0, 0.0, 0.0 ]
+    shader = 'assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl'
+
+[runtime]
+start_scene = 'Assets/Scenes/Main.fbzz'
 
 [screen]
 height = 1080
@@ -102,3 +106,9 @@ width = 1920
 
 [tags]
 list = [ 'Untagged', 'Respawn', 'Finish', 'EditorOnly', 'MainCamera', 'Player', 'GameController' ]
+
+[window]
+fullscreen = false
+height = 1080
+title = 'FBZZ Game'
+width = 1920

@@ -1,34 +1,39 @@
-// FBZZ Engine
-// main.cpp | fbzz::editor_launcher
-// エディタ / スタンドアロン両対応のエントリポイント
+// {{PROJECT_NAME}}
+// AppMain.cpp | {{CPP_NAMESPACE}}
+// Editor / standalone dual-mode entry point.
+// To add game scripts, edit GameMain.cpp — do not modify this file.
 //
-// WHAT: コマンドライン引数を解析し、エディタモードとスタンドアロンモードを切り替える。
-//   FBZZEditor.exe --project <path>              → エディタ起動 (既存)
-//   FBZZEditor.exe --project <path> --standalone → エディタ UI なし・ゲームのみ起動
-//   FBZZEditor.exe (引数なし)                    → exe 隣の .fbzz_proj を自動検出して Standalone 扱い
-//
-// WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
-//      配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
-#include "StandaloneApp.hpp"
+// WHAT:
+//   {{TARGET_NAME}}.exe --project <path>              -> editor mode
+//   {{TARGET_NAME}}.exe --project <path> --standalone -> game-only mode
+//   {{TARGET_NAME}}.exe (no args, .fbzz_proj next to exe) -> distribution standalone
+//   {{TARGET_NAME}}.exe (no args, no .fbzz_proj)          -> dev mode: walk up to find project root
+#include "{{TARGET_NAME}}/ProjectAPI.hpp"
+
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Editor/EditorApp.hpp>
+#include <Editor/Util/SceneSerializer.hpp>
 #include <Physics/World.hpp>
 
 #include <Windows.h>
@@ -41,16 +46,9 @@
 #include <sstream>
 #include <string>
 
-namespace fbzz::editor_launcher {
+namespace {{CPP_NAMESPACE}} {
 
 namespace {
-
-// --project と --standalone フラグを格納する構造体。
-// WHY: 引数解析結果を Run() へ渡すための軽量な値型として分離する。
-struct LaunchArgs {
-    std::filesystem::path projectPath;
-    bool                  standalone = false;
-};
 
 struct LaunchProject {
     std::filesystem::path root;
@@ -59,13 +57,16 @@ struct LaunchProject {
     std::filesystem::path sceneFile;
 };
 
+struct LaunchArgs {
+    std::filesystem::path projectPath;
+    bool                  standalone = false;
+};
+
 std::wstring Utf8ToWide(const std::string& text)
 {
     if (text.empty()) return {};
-
     const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
     if (size <= 0) return {};
-
     std::wstring wide(static_cast<size_t>(size - 1), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
     return wide;
@@ -74,10 +75,8 @@ std::wstring Utf8ToWide(const std::string& text)
 std::string WideToUtf8(const std::wstring& text)
 {
     if (text.empty()) return {};
-
     const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
     if (size <= 0) return {};
-
     std::string utf8(static_cast<size_t>(size - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
     return utf8;
@@ -98,7 +97,6 @@ std::string ReadText(const std::filesystem::path& path)
 {
     std::ifstream file(path, std::ios::binary);
     if (!file) return {};
-
     std::ostringstream ss;
     ss << file.rdbuf();
     return ss.str();
@@ -118,9 +116,23 @@ std::filesystem::path GetExecutableDirectory()
     return std::filesystem::path(buffer).parent_path();
 }
 
-// コマンドライン引数を解析して LaunchArgs を返す。
-// WHY: 引数なし起動 = 配布版。exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする。
-//      これにより配布ユーザーは FBZZGame.exe をダブルクリックするだけで起動できる。
+// 開発時: exe から親ディレクトリを辿って .fbzz_proj を探す。
+// WHY: exe は Binaries/$<CONFIG>/ に出力されるため、プロジェクトルートは
+//      exe の 2 段上にある。最大 6 段まで遡って探す。
+std::filesystem::path FindDefaultProjectPath()
+{
+    std::filesystem::path dir = GetExecutableDirectory();
+    for (int i = 0; i < 6 && !dir.empty(); ++i) {
+        if (Exists(dir / L".fbzz_proj"))
+            return dir;
+        dir = dir.parent_path();
+    }
+    return {};
+}
+
+// WHY: 引数なし起動の挙動を 2 段階で決める。
+//   1. exe 隣に .fbzz_proj がある → 配布版: Standalone モードで起動。
+//   2. ない → 開発モード: FindDefaultProjectPath() でエディタ起動。
 LaunchArgs ParseArgs()
 {
     LaunchArgs args;
@@ -137,10 +149,14 @@ LaunchArgs ParseArgs()
     }
     LocalFree(argv);
 
-    // 引数なし起動 = 配布版: exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする
     if (args.projectPath.empty()) {
-        args.projectPath = GetExecutableDirectory();
-        args.standalone  = true;
+        const std::filesystem::path exeDir = GetExecutableDirectory();
+        if (Exists(exeDir / L".fbzz_proj")) {
+            args.projectPath = exeDir;
+            args.standalone  = true;
+        } else {
+            args.projectPath = FindDefaultProjectPath();
+        }
     }
 
     return args;
@@ -152,11 +168,17 @@ std::filesystem::path ReadTomlRelativePath(const toml::table& table, const char*
     return value.empty() ? std::filesystem::path{} : std::filesystem::path(Utf8ToWide(value));
 }
 
+bool IsTemplatePlaceholder(const std::filesystem::path& path)
+{
+    const std::wstring value = path.wstring();
+    return value.size() >= 4 && value.rfind(L"{{", 0) == 0;
+}
+
 bool ResolveProject(LaunchProject& project, const std::filesystem::path& projectPath, std::wstring& errorMessage)
 {
     project.root = MakeAbsolute(projectPath);
     if (project.root.empty()) {
-        errorMessage = L"Project path was not specified.\n\nFBZZEditor.exe --project <path>";
+        errorMessage = L"Project path was not specified and the default project was not found.\n\n{{TARGET_NAME}}.exe --project <path>";
         return false;
     }
     if (!Exists(project.root)) {
@@ -180,12 +202,8 @@ bool ResolveProject(LaunchProject& project, const std::filesystem::path& project
     const toml::table& projectTable = projectResult.table();
     std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
     const std::filesystem::path defaultScene = ReadTomlRelativePath(projectTable, "project", "default_scene");
-    // "{{...}}" 形式のプレースホルダは未解決: Sandbox テンプレートの規約に合わせてフォールバック
-    if (!settingsPath.empty()) {
-        const std::wstring sv = settingsPath.wstring();
-        if (sv.size() >= 2 && sv.rfind(L"{{", 0) == 0)
-            settingsPath = L"ProjectSettings/ProjectSettings.toml";
-    }
+    if (IsTemplatePlaceholder(settingsPath))
+        settingsPath = L"ProjectSettings/ProjectSettings.toml";
     if (settingsPath.empty()) {
         errorMessage = L".fbzz_proj does not define project.settings_path.";
         return false;
@@ -211,9 +229,8 @@ bool ResolveProject(LaunchProject& project, const std::filesystem::path& project
 
     const toml::table& settingsTable = settingsResult.table();
     std::filesystem::path scenePath = ReadTomlRelativePath(settingsTable, "runtime", "start_scene");
-    if (scenePath.empty()) {
+    if (scenePath.empty())
         scenePath = defaultScene;
-    }
     if (scenePath.empty()) {
         errorMessage = L"Project does not define a start scene.";
         return false;
@@ -234,48 +251,95 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
     world.SetSubsteps(settings.physics.substeps);
 }
 
-void WarmupRenderResources(scene::Scene& scene,
-                           renderer::IRenderer& renderer,
-                           renderer::ResourceManager& resources,
-                           editor::EditorApp& editorApp,
-                           const renderer::Camera& sceneCamera,
-                           const renderer::Camera& gameCamera,
-                           fbzz::LayerMask gameCullingMask)
+renderer::Camera ResolveGameCamera(scene::Scene& scene, float aspectRatio)
 {
-    // WHY: RenderSystem は初回呼び出しで shader / PSO / shadow map / GBuffer などを lazy initialize する。
-    // その負荷を最初の可視フレームに乗せると、Release では起動直後だけ FPS 表示が大きく落ちる。
-    // WHAT: メインループ開始前に viewport RT へ 1 回描画し、描画リソースを先に生成しておく。
-    renderer.BeginFrame();
+    for (auto& go : scene.GameObjects()) {
+        auto* cam = go.GetComponent<scene::CameraComponent>();
+        if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
 
-    const auto sceneRT = editorApp.GetViewportRT();
-    if (sceneRT.IsValid()) {
-        renderer.SetRenderTarget(sceneRT, resources);
-        renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
-        auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
-        scene::RenderSystem(scene, renderer, resources, sceneCamera, sceneRT, &sceneRenderSettings);
+        renderer::Camera result;
+        result.m_position = go.transform.position;
+        result.m_rotation = go.transform.rotation;
+        result.m_fovY     = cam->fovY;
+        result.m_near     = cam->nearZ;
+        result.m_far      = cam->farZ;
+        result.m_aspect   = aspectRatio;
+        return result;
     }
-
-    const auto gameRT = editorApp.GetGameViewportRT();
-    if (gameRT.IsValid()) {
-        renderer.SetRenderTarget(gameRT, resources);
-        renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
-        scene::RenderSystem(scene,
-                            renderer,
-                            resources,
-                            gameCamera,
-                            gameRT,
-                            &editorApp.GetContext().projectSettings.render,
-                            gameCullingMask);
-    }
-
-    renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
-    renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
-    renderer.EndFrame();
+    renderer::Camera fallback;
+    fallback.m_aspect = aspectRatio;
+    return fallback;
 }
 
-// エディタモードのメインループ。
-// WHY: Run() から切り出すことで Standalone 分岐が明確になり、
-//      将来的なリファクタリングの境界をはっきりさせる。
+// =============================================================================
+// スタンドアロンゲームループ
+// =============================================================================
+
+void RunStandaloneLoop(renderer::IRenderer& renderer,
+                       renderer::ResourceManager& resources,
+                       const LaunchProject& project,
+                       const ProjectSettings& settings)
+{
+    auto& app = core::Application::Get();
+
+    auto scene = std::make_unique<scene::Scene>();
+    if (!editor::SceneSerializer::Load(*scene, project.sceneFile.string())) {
+        FBZZ_LOG_ERROR("{{TARGET_NAME}} Standalone: scene load failed: %s", project.sceneFile.string().c_str());
+        return;
+    }
+
+    physics::World physicsWorld;
+    ApplyPhysicsSettings(physicsWorld, settings);
+    float physicsAccumulator = 0.0f;
+
+    core::Time::Tick();
+
+    while (app.IsRunning()) {
+        core::Time::Tick();
+        input::Input::Update();
+        app.GetWindow().PollEvents();
+        if (app.GetWindow().ShouldClose()) { app.Quit(); break; }
+
+        const float dt = core::Time::DeltaTime();
+
+        scene::ScriptSystem(*scene, dt);
+        scene::TransformSystem(*scene);
+
+        const int   physicsHz = settings.physics.hz < 1 ? 60 : settings.physics.hz;
+        const float fixedDt   = 1.0f / static_cast<float>(physicsHz);
+        physicsAccumulator += dt;
+        const float maxAccum  = fixedDt * 8.0f;
+        if (physicsAccumulator > maxAccum) physicsAccumulator = maxAccum;
+        while (physicsAccumulator >= fixedDt) {
+            scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
+            physicsAccumulator -= fixedDt;
+        }
+        scene::TransformSystem(*scene);
+        scene::LateScriptSystem(*scene, dt);
+        scene::AnimatorSystem(*scene, resources, dt);
+        scene::IKSystem(*scene, resources, dt);
+
+        renderer.BeginFrame();
+        renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
+        renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
+
+        const uint32_t w = app.GetWindow().GetWidth();
+        const uint32_t h = app.GetWindow().GetHeight();
+        const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
+        const renderer::Camera gameCamera = ResolveGameCamera(*scene, aspect);
+
+        scene::RenderSystem(*scene, renderer, resources, gameCamera, {}, &settings.render);
+        scene::UISystem(*scene, renderer, resources,
+                        static_cast<float>(w), static_cast<float>(h),
+                        {}, true, gameCamera.GetViewProjection());
+        renderer.EndFrame();
+    }
+}
+
+// =============================================================================
+// エディタループ
+// =============================================================================
+
 void RunEditorLoop(renderer::IRenderer& renderer,
                    renderer::ResourceManager& resources,
                    const LaunchProject& project)
@@ -283,14 +347,14 @@ void RunEditorLoop(renderer::IRenderer& renderer,
     auto& app = core::Application::Get();
 
     editor::EditorApp editorApp;
-    if (!editorApp.Init(renderer, resources, app.GetWindow())) {
-        app.Shutdown();
+    if (!editorApp.Init(renderer, resources, app.GetWindow()))
         return;
-    }
 
     auto scene = std::make_unique<scene::Scene>();
     editorApp.GetContext().activeScene = scene.get();
-    if (!editorApp.OpenProject(PathToUtf8(project.root), PathToUtf8(project.settingsFile), PathToUtf8(project.sceneFile))) {
+    if (!editorApp.OpenProject(PathToUtf8(project.root),
+                               PathToUtf8(project.settingsFile),
+                               PathToUtf8(project.sceneFile))) {
         editorApp.Shutdown();
         return;
     }
@@ -310,51 +374,14 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
     renderer::DebugCamera debugCamera;
     debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
-    debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
+    debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
     editorApp.GetContext().editorCamera = &debugCamera.camera;
-
-    {
-        const auto sceneRT = editorApp.GetViewportRT();
-        if (auto* rt = resources.Get(sceneRT)) {
-            debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
-        }
-
-        renderer::Camera gameCamera = debugCamera.camera;
-        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
-        const auto gameRT = editorApp.GetGameViewportRT();
-        if (auto* rt = resources.Get(gameRT)) {
-            gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
-        }
-
-        for (auto& go : scene->GameObjects()) {
-            auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
-            if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
-                continue;
-
-            gameCamera.m_position = go.transform.position;
-            gameCamera.m_rotation = go.transform.rotation;
-            gameCamera.m_fovY     = cameraComponent->fovY;
-            gameCamera.m_near     = cameraComponent->nearZ;
-            gameCamera.m_far      = cameraComponent->farZ;
-            gameCullingMask       = cameraComponent->cullingMask;
-            break;
-        }
-
-        WarmupRenderResources(*scene, renderer, resources, editorApp, debugCamera.camera, gameCamera, gameCullingMask);
-
-        // WHY: warmup にかかった時間を最初の DeltaTime / FPS 表示へ混ぜない。
-        // WHAT: Time をここで初期化し、メインループの次フレームから通常計測を始める。
-        core::Time::Tick();
-    }
 
     while (app.IsRunning()) {
         core::Time::Tick();
         input::Input::Update();
         app.GetWindow().PollEvents();
-        if (app.GetWindow().ShouldClose()) {
-            app.Quit();
-            break;
-        }
+        if (app.GetWindow().ShouldClose()) { app.Quit(); break; }
 
         const float dt = core::Time::DeltaTime();
         editorApp.BeginFrame();
@@ -365,15 +392,8 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             physicsAccumulator = 0.0f;
         }
 
-        if (!playMode->IsPlaying()) {
-            // WHY: DebugCamera の速度・感度は EditorContext に保持され、
-            //      EditorSettings によって起動間で永続化される。
-            //      毎フレーム適用することで、将来的に設定 UI からリアルタイム変更できる。
-            const auto& ctx = editorApp.GetContext();
-            debugCamera.moveSpeed = ctx.cameraSpeed;
-            debugCamera.mouseSens = ctx.cameraSensitivity;
+        if (!playMode->IsPlaying())
             debugCamera.Update(dt);
-        }
 
         {
             auto& ctx = editorApp.GetContext();
@@ -400,7 +420,6 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                     focusAnim.t      = 1.0f;
                     focusAnim.active = false;
                 }
-                // smoothstep
                 const float s = focusAnim.t * focusAnim.t * (3.0f - 2.0f * focusAnim.t);
                 debugCamera.camera.m_position = focusAnim.startPos
                     + (focusAnim.endPos - focusAnim.startPos) * s;
@@ -413,39 +432,40 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
             ApplyPhysicsSettings(physicsWorld, settings);
+            scene::ScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
+            scene::TransformSystem(*scene);
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-
             if (stepFrame) {
                 scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
             } else {
                 physicsAccumulator += dt;
-                const float maxAccumulatedTime = fixedDt * 8.0f;
-                if (physicsAccumulator > maxAccumulatedTime)
-                    physicsAccumulator = maxAccumulatedTime;
+                const float maxAccumulated = fixedDt * 8.0f;
+                if (physicsAccumulator > maxAccumulated) physicsAccumulator = maxAccumulated;
                 while (physicsAccumulator >= fixedDt) {
                     scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
                     physicsAccumulator -= fixedDt;
                 }
             }
             scene::TransformSystem(*scene);
+            scene::LateScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
         } else {
             physicsAccumulator = 0.0f;
         }
         scene::AnimatorSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
+        scene::IKSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
 
         const auto sceneRT = editorApp.GetViewportRT();
-        const auto gameRT = editorApp.GetGameViewportRT();
+        const auto gameRT  = editorApp.GetGameViewportRT();
 
-        if (auto* rt = resources.Get(sceneRT)) {
+        if (auto* rt = resources.Get(sceneRT))
             debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
-        }
 
         float gameAspect = debugCamera.camera.m_aspect;
-        if (auto* rt = resources.Get(gameRT)) {
+        if (auto* rt = resources.Get(gameRT))
             gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
-        }
+
         renderer::Camera gameCamera = debugCamera.camera;
         gameCamera.m_aspect = gameAspect;
         fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
@@ -453,7 +473,6 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
             if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
                 continue;
-
             gameCamera.m_position = go.transform.position;
             gameCamera.m_rotation = go.transform.rotation;
             gameCamera.m_fovY     = cameraComponent->fovY;
@@ -476,10 +495,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
         {
             float w = 1920.0f, h = 1080.0f;
-            if (auto* rt = resources.Get(sceneRT)) {
-                w = static_cast<float>(rt->GetWidth());
-                h = static_cast<float>(rt->GetHeight());
-            }
+            if (auto* rt = resources.Get(sceneRT)) { w = static_cast<float>(rt->GetWidth()); h = static_cast<float>(rt->GetHeight()); }
             scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
                             debugCamera.camera.GetViewProjection());
         }
@@ -488,26 +504,21 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
             renderer::DebugDraw::Flush();
         }
-        if (editorApp.GetContext().showSkeleton) {
+        if (editorApp.GetContext().showSkeleton)
             scene::AnimatorDebugDrawSystem(*scene, renderer, resources, debugCamera.camera.GetViewProjection());
-        }
 
         if (gameRT.IsValid()) {
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
-            scene::RenderSystem(*scene,
-                                renderer,
-                                resources,
-                                gameCamera,
-                                gameRT,
-                                &editorApp.GetContext().projectSettings.render,
-                                gameCullingMask);
+            auto gameRenderSettings = editorApp.GetContext().projectSettings.render;
+            gameRenderSettings.wireframeMode         = false;
+            gameRenderSettings.showSelectionOutline  = false;
+            gameRenderSettings.selectedObjects.clear();
+            scene::RenderSystem(*scene, renderer, resources, gameCamera, gameRT,
+                                &gameRenderSettings, gameCullingMask);
             {
                 float w = 1920.0f, h = 1080.0f;
-                if (auto* rt = resources.Get(gameRT)) {
-                    w = static_cast<float>(rt->GetWidth());
-                    h = static_cast<float>(rt->GetHeight());
-                }
+                if (auto* rt = resources.Get(gameRT)) { w = static_cast<float>(rt->GetWidth()); h = static_cast<float>(rt->GetHeight()); }
                 scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
                                 gameCamera.GetViewProjection());
             }
@@ -531,24 +542,33 @@ int Run()
 {
     const LaunchArgs args = ParseArgs();
 
+    if (args.projectPath.empty()) {
+        MessageBoxW(nullptr,
+                    L"Project path was not specified and the project was not found.\n\n{{TARGET_NAME}}.exe --project <path>",
+                    L"{{PROJECT_NAME}}", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
     LaunchProject project;
     std::wstring errorMessage;
     if (!ResolveProject(project, args.projectPath, errorMessage)) {
-        MessageBoxW(nullptr, errorMessage.c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
+        MessageBoxW(nullptr, errorMessage.c_str(), L"{{PROJECT_NAME}}", MB_OK | MB_ICONERROR);
         return 1;
     }
 
     SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
 
+    // WHY: RegisterScripts() はエディタ・スタンドアロンどちらでも必要。
+    //      SceneSerializer がシーンを復元するときに ScriptFactory を参照するため
+    //      シーンロードより前に呼ぶ必要がある。
+    RegisterScripts();
+
     auto& app = core::Application::Get();
 
     if (args.standalone) {
-        // WHY: Standalone モードではウィンドウを正しいサイズで生成するために
-        //      Application::Init() の前に ProjectSettings を読み込む必要がある。
-        //      Init 後に Resize() するとウィンドウが一瞬デフォルトサイズで表示されてしまう。
         ProjectSettings settings;
         if (!settings.Load(PathToUtf8(project.settingsFile))) {
-            MessageBoxW(nullptr, L"ProjectSettings を読み込めませんでした。", L"FBZZ", MB_OK | MB_ICONERROR);
+            MessageBoxW(nullptr, L"Failed to load ProjectSettings.", L"{{PROJECT_NAME}}", MB_OK | MB_ICONERROR);
             return 1;
         }
 
@@ -557,31 +577,20 @@ int Run()
         windowConfig.width      = static_cast<uint32_t>(settings.window.width);
         windowConfig.height     = static_cast<uint32_t>(settings.window.height);
         windowConfig.fullscreen = settings.window.fullscreen;
-
         if (!app.Init(windowConfig)) return 1;
 
         auto& renderer = app.GetRenderer();
         renderer::ResourceManager resources(renderer);
         asset::AssetManager::Init(resources, PathToUtf8(project.root / L"Assets") + "/");
 
-        StandaloneApp standaloneApp;
-        if (!standaloneApp.Init(renderer, resources,
-                                project.root / L"Assets",
-                                project.sceneFile,
-                                settings)) {
-            app.Shutdown();
-            return 1;
-        }
-        standaloneApp.RunLoop(renderer, resources);
-        standaloneApp.Shutdown();
+        RunStandaloneLoop(renderer, resources, project, settings);
     } else {
         if (!app.Init()) return 1;
 
         auto& renderer = app.GetRenderer();
         renderer::ResourceManager resources(renderer);
 
-        const std::filesystem::path assetRoot = project.root / L"Assets";
-        asset::AssetManager::Init(resources, PathToUtf8(assetRoot) + "/");
+        asset::AssetManager::Init(resources, PathToUtf8(project.root / L"Assets") + "/");
 
         RunEditorLoop(renderer, resources, project);
     }
@@ -591,9 +600,9 @@ int Run()
     return 0;
 }
 
-} // namespace fbzz::editor_launcher
+} // namespace {{CPP_NAMESPACE}}
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
+int main()
 {
-    return fbzz::editor_launcher::Run();
+    return {{CPP_NAMESPACE}}::Run();
 }
