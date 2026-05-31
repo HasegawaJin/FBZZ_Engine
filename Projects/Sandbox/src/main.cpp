@@ -204,6 +204,34 @@ bool IsTemplatePlaceholder(const std::filesystem::path& path)
     return value.size() >= 4 && value.rfind(L"{{", 0) == 0;
 }
 
+// 絶対パスが root 直下に存在しない場合 (プロジェクト移動後) に
+// パスの末尾からサフィックスを順に試して root 相対でファイルを探す。
+// WHY: .fbzz_proj の settings_path / start_scene が絶対パスで書かれていると
+//      プロジェクトフォルダを別の場所へ移動した際に Exists() が失敗する。
+//      パスの末尾コンポーネントから順に root との組み合わせを試すことで
+//      フォルダ移動後も正しく解決できる。
+std::filesystem::path ResolvePathUnderRoot(const std::filesystem::path& filePath,
+                                           const std::filesystem::path& root)
+{
+    if (!filePath.is_absolute())
+        return MakeAbsolute(root / filePath);
+
+    if (Exists(filePath))
+        return filePath;
+
+    std::filesystem::path suffix;
+    std::filesystem::path p = filePath;
+    while (p.has_relative_path()) {
+        const auto component = p.filename();
+        suffix = suffix.empty() ? component : (component / suffix);
+        p = p.parent_path();
+        const auto candidate = MakeAbsolute(root / suffix);
+        if (Exists(candidate))
+            return candidate;
+    }
+    return MakeAbsolute(root / filePath);
+}
+
 bool ResolveProject(LaunchProject& project, const std::filesystem::path& projectPath, std::wstring& errorMessage)
 {
     project.root = MakeAbsolute(projectPath);
@@ -240,7 +268,7 @@ bool ResolveProject(LaunchProject& project, const std::filesystem::path& project
         return false;
     }
 
-    project.settingsFile = MakeAbsolute(project.root / settingsPath);
+    project.settingsFile = ResolvePathUnderRoot(settingsPath, project.root);
     if (!Exists(project.settingsFile)) {
         errorMessage = L"ProjectSettings file was not found.\n\n" + project.settingsFile.wstring();
         return false;
@@ -268,7 +296,7 @@ bool ResolveProject(LaunchProject& project, const std::filesystem::path& project
         return false;
     }
 
-    project.sceneFile = MakeAbsolute(project.root / scenePath);
+    project.sceneFile = ResolvePathUnderRoot(scenePath, project.root);
     if (!Exists(project.sceneFile)) {
         errorMessage = L"Start scene file was not found.\n\n" + project.sceneFile.wstring();
         return false;
