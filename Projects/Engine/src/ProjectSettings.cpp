@@ -248,6 +248,15 @@ bool ProjectSettings::Load(const std::string& path)
         if (app.targetFps < 0) app.targetFps = 0;
     }
 
+    if (auto* windowTbl = tbl["window"].as_table()) {
+        window.title      = (*windowTbl)["title"].value_or(window.title);
+        window.width      = (int)(*windowTbl)["width"].value_or((int64_t)window.width);
+        window.height     = (int)(*windowTbl)["height"].value_or((int64_t)window.height);
+        window.fullscreen = (*windowTbl)["fullscreen"].value_or(window.fullscreen);
+        if (window.width  < 1) window.width  = 1;
+        if (window.height < 1) window.height = 1;
+    }
+
     return true;
 }
 
@@ -359,6 +368,12 @@ bool ProjectSettings::Save(const std::string& path) const
     toml::table appTbl;
     appTbl.insert("targetFps", (int64_t)app.targetFps);
 
+    toml::table windowTbl;
+    windowTbl.insert("title",      window.title);
+    windowTbl.insert("width",      (int64_t)window.width);
+    windowTbl.insert("height",     (int64_t)window.height);
+    windowTbl.insert("fullscreen", window.fullscreen);
+
     toml::table projectTbl;
     projectTbl.insert("name", project.name);
     projectTbl.insert("default_scene", project.defaultScene);
@@ -376,6 +391,7 @@ bool ProjectSettings::Save(const std::string& path) const
     root.insert("audio",   std::move(audioTbl));
     root.insert("screen",  std::move(screenTbl));
     root.insert("app",     std::move(appTbl));
+    root.insert("window",  std::move(windowTbl));
 
     NormalizeTomlFloats(root);
 
