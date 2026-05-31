@@ -20,9 +20,14 @@ Application& Application::Get() {
 }
 
 bool Application::Init() {
+    // WHY: エディタは常にデフォルト設定 (1920x1080 ウィンドウ) で起動する。
+    //      Standalone モードのみ ProjectSettings から取得した Config を渡す。
+    return Init(Window::Config{});
+}
+
+bool Application::Init(const Window::Config& windowConfig) {
     timeBeginPeriod(1);
 
-    Window::Config windowConfig;
     m_window = std::make_unique<Window>();
     if (!m_window->Initialize(windowConfig))
         return false;
