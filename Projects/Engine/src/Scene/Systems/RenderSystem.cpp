@@ -3,6 +3,7 @@
 // Scene から DrawCall を生成するオーケストレーター
 // 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include "Engine/Scene/Systems/RenderSystem.hpp"
+#include "Engine/Scene/Systems/TerrainRenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
 #include "RenderPasses/DecalPass.hpp"
@@ -406,6 +407,17 @@ void RenderSystem(Scene& scene,
             ExecuteDeferredDepthCopyPass(passCtx);
         });
     }
+
+    // ── Terrain (フォワードオペーク) ───────────────────────────────────────────
+    // ForwardOpaque / GBuffer DepthCopy の後・Sky の前に描画する。
+    // WHY: Sky より前に描画することで地形の上に空が被らない。
+    //      ForwardOpaque と同じ HDR RT (depth buffer 共有) で描画することで
+    //      Player 等の不透明オブジェクトと正しく depth test される。
+    //      RenderSystem 内に統合することでポストプロセス（bloom/SSAO等）も適用される。
+    graph.AddPass("TerrainForward", { "ShadowMap", "HDR" }, { "HDR" }, [&]() {
+        renderer.SetRenderTarget(passHandles.hdrRT, resources);
+        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT);
+    });
 
     // ── Sky ───────────────────────────────────────────────────────────────────
     graph.AddPass("Sky", { "HDR" }, { "HDR" }, [&]() {

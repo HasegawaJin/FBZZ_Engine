@@ -145,6 +145,8 @@ bool ProjectSettings::Load(const std::string& path)
         render.wireframeMode = (*renderTbl)["wireframe"].value_or(render.wireframeMode);
         render.shadowEnabled = (*renderTbl)["shadow"].value_or(render.shadowEnabled);
         pp.bloom.enabled = (*renderTbl)["bloom"].value_or(pp.bloom.enabled);
+        pp.ambientOcclusion.enabled   = (*renderTbl)["ambientOcclusion"].value_or(pp.ambientOcclusion.enabled);
+        pp.ambientOcclusion.intensity = (float)(*renderTbl)["ambientOcclusionIntensity"].value_or((double)pp.ambientOcclusion.intensity);
         pp.fxaaEnabled = (*renderTbl)["fxaa"].value_or(pp.fxaaEnabled);
         pp.fog.enabled = (*renderTbl)["fog"].value_or(pp.fog.enabled);
         pp.colorGrading.enabled = (*renderTbl)["colorGrading"].value_or(pp.colorGrading.enabled);
@@ -310,8 +312,10 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("pipeline", render.pipeline == renderer::RenderingPipeline::Deferred ? "deferred" : "forward");
     renderTbl.insert("wireframe",    render.wireframeMode);
     renderTbl.insert("shadow",       render.shadowEnabled);
-    renderTbl.insert("bloom",        pp.bloom.enabled);
-    renderTbl.insert("fxaa",         pp.fxaaEnabled);
+    renderTbl.insert("bloom",                   pp.bloom.enabled);
+    renderTbl.insert("ambientOcclusion",        pp.ambientOcclusion.enabled);
+    renderTbl.insert("ambientOcclusionIntensity", (double)pp.ambientOcclusion.intensity);
+    renderTbl.insert("fxaa",                    pp.fxaaEnabled);
     renderTbl.insert("fog",          pp.fog.enabled);
     renderTbl.insert("colorGrading", pp.colorGrading.enabled);
     renderTbl.insert("vignette",     pp.vignette.enabled);

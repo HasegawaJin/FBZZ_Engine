@@ -1,0 +1,206 @@
+// FBZZ Engine
+// Terrain.hlsl | Terrain
+// ハイトマップ地形の頂点・ピクセルシェーダー
+//
+// フェーズ別実装状態:
+//   Phase 1 (完了): Blinn-Phong 単色ライティング
+//   Phase 2 (完了): layer[0] ディフューズテクスチャ
+//   Phase 3 (完了): チャンク分割対応（シェーダー変更なし）
+//   Phase 4 (完了): スプラットマップ 4 レイヤーブレンド
+//
+// 定数バッファスロット:
+//   b0 = CameraConstants   (per-frame)
+//   b1 = TerrainCB         (per-chunk: world / WVP / layer tiling / normal strength)
+//   b3 = LightConstants    (per-frame)
+//
+// テクスチャスロット:
+//   t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
+//   t1 = layer0 ディフューズ
+//   t2 = layer1 ディフューズ
+//   t3 = layer2 ディフューズ
+//   t4 = layer3 ディフューズ
+//
+// サンプラースロット:
+//   s0 = WRAP_ANISOTROPIC  ディフューズ用（タイリングあり）
+//   s1 = CLAMP_LINEAR      スプラットマップ用（UV を [0,1] にクランプ）
+//
+// 頂点フォーマット (C++ 側 TerrainVertex と同期すること):
+//   POSITION  : float3  offset  0  (12 bytes)
+//   NORMAL    : float3  offset 12  (12 bytes)
+//   TEXCOORD0 : float2  offset 24  ( 8 bytes)
+//   stride = 32 bytes
+
+#include "Common/Binding.hlsli"
+#include "Rendering/Lighting.hlsli"
+
+// ============================================================================
+// 定数バッファ宣言
+// WHY: Common/Constants.hlsli は b1 に ObjectConstants を定義するが、
+//      地形は同スロットを TerrainCB として使うためここで直接宣言する。
+// ============================================================================
+
+cbuffer CameraConstants : register(CB_CAMERA)
+{
+    float4x4 view;
+    float4x4 projection;
+    float4x4 viewProjection;
+    float4x4 invViewProjection;
+    float3   cameraPos;
+    float    nearZ;
+    float    farZ;
+    float3   _camPad;
+};
+
+cbuffer TerrainCB : register(CB_OBJECT)
+{
+    float4x4 worldMatrix;           // テレインローカル → ワールド変換
+    float4x4 wvpMatrix;            // テレインローカル → クリップ空間変換
+    float4   layerTiling[4];       // xy = tilingX, tilingZ (per layer)
+    float4   layerNormalStrength;  // xyzw = normalStrength (per layer)
+};
+
+#define MAX_POINT_LIGHTS 8
+#define MAX_SPOT_LIGHTS  4
+
+struct PointLightData { float3 position; float range; float3 color; float intensity; };
+struct SpotLightData  {
+    float3 position; float range;
+    float3 direction; float innerCos;
+    float3 color; float outerCos;
+    float  intensity; float3 _pad;
+};
+
+cbuffer LightConstants : register(CB_LIGHT)
+{
+    float3         lightDir;       float _lightPad;
+    float3         lightColor;     float lightIntensity;
+    PointLightData pointLights[MAX_POINT_LIGHTS];
+    SpotLightData  spotLights[MAX_SPOT_LIGHTS];
+    int            pointLightCount;
+    int            spotLightCount;
+    float2         _lightPad2;
+};
+
+// ============================================================================
+// テクスチャ・サンプラー宣言 (Phase 4)
+//
+// [Phase 4] g_splatmap (t0):
+//   RGBA8 スプラットマップ。各チャンネルが各レイヤーのブレンドウェイトを表す。
+//   4 チャンネルの合計が 1 になるよう正規化してある（ペイントツールが保証）。
+//   シェーダー側でも安全のため正規化する。
+//
+// [Phase 4] g_diffuse[4] (t1-t4):
+//   各レイヤーのアルベドテクスチャ。未設定レイヤーは 1×1 白テクスチャで代替。
+//   WHY: シェーダーは常に [unroll] 4 レイヤー固定でブレンドする。
+//        未設定レイヤーの splat ウェイトは 0 なので白テクスチャの寄与は 0 になる。
+//        動的分岐を排除することで GPU パイプラインの効率を上げる。
+//
+// s0 = ディフューズ用 Wrap Anisotropic（タイリング UV で繰り返しサンプリング）
+// s1 = スプラットマップ用 Clamp Linear（UV が [0,1] を超えた場合に端値を維持）
+// ============================================================================
+Texture2D    g_splatmap      : register(t0);
+Texture2D    g_diffuse[4]    : register(t1); // t1, t2, t3, t4
+SamplerState g_sampler       : register(s0); // Wrap Anisotropic
+SamplerState g_samplerClamp  : register(s1); // Clamp Linear
+
+// ============================================================================
+// 頂点入力・補間構造体
+// WHY: 標準 VSInput はタンジェントを含むが、地形 Phase 4 は法線マップを使わないため
+//      タンジェントなしで stride を 32 bytes に抑える。
+// ============================================================================
+struct TerrainVSInput
+{
+    float3 position : POSITION;
+    float3 normal   : NORMAL;
+    float2 uv       : TEXCOORD0;
+};
+
+struct TerrainPSInput
+{
+    float4 svPosition  : SV_POSITION;
+    float3 worldPos    : TEXCOORD0;
+    float3 worldNormal : TEXCOORD1;
+    float2 uv          : TEXCOORD2;
+};
+
+// ============================================================================
+// 頂点シェーダー
+// ============================================================================
+TerrainPSInput VSMain(TerrainVSInput v)
+{
+    TerrainPSInput o;
+    o.svPosition  = mul(float4(v.position, 1.0f), wvpMatrix);
+    float4 wpos4  = mul(float4(v.position, 1.0f), worldMatrix);
+    o.worldPos    = wpos4.xyz;
+    o.worldNormal = normalize(mul(v.normal, (float3x3)worldMatrix));
+    o.uv          = v.uv;
+    return o;
+}
+
+// ============================================================================
+// ピクセルシェーダー (Phase 4: スプラットマップ 4 レイヤーブレンド)
+// ============================================================================
+float4 PSMain(TerrainPSInput p) : SV_Target0
+{
+    float3 N = normalize(p.worldNormal);
+    float3 V = normalize(cameraPos - p.worldPos);
+    float3 L = normalize(-lightDir);
+
+    // ── [Phase 4] スプラットマップからレイヤーウェイトを取得 ─────────────────
+    // スプラットマップは Clamp サンプラーでサンプリングする。
+    // WHY: UV が地形端に近い頂点でわずかに [0,1] をはみ出すことがあり、
+    //      Wrap だと反対端の値を参照してブレンドが壊れる。
+    float4 splat = g_splatmap.Sample(g_samplerClamp, p.uv);
+
+    // 4 チャンネルの合計で正規化（ペイントツールが保証するが数値誤差を安全に処理）
+    float wsum = splat.r + splat.g + splat.b + splat.a;
+    if (wsum > 0.001f) splat /= wsum;
+
+    // ── [Phase 4] 4 レイヤーのアルベドをウェイトブレンド ───────────────────
+    // [unroll] を使って静的展開する。
+    // WHY: ループ変数で Texture2D 配列を動的インデックスすると SM 5.0 では
+    //      テクスチャフェッチが最適化されない場合がある。
+    //      [unroll] で展開することで各テクスチャフェッチが独立したコンパイル済み
+    //      命令になり、GPU パイプラインが並列フェッチを行いやすくなる。
+    float3 albedo = float3(0.0f, 0.0f, 0.0f);
+    [unroll]
+    for (int i = 0; i < 4; ++i)
+    {
+        float2 tiledUV = p.uv * layerTiling[i].xy;
+        float3 d       = g_diffuse[i].Sample(g_sampler, tiledUV).rgb;
+        albedo        += d * splat[i];
+    }
+
+    // ── Blinn-Phong ライティング ──────────────────────────────────────────
+    static const float ROUGHNESS = 0.8f;
+
+    float3 result = Lighting_BlinnPhong(
+        N, V, L, albedo, ROUGHNESS, lightColor, lightIntensity, /*shadow=*/1.0f);
+
+    [loop]
+    for (int pi = 0; pi < pointLightCount; ++pi)
+    {
+        float3 toLight = pointLights[pi].position - p.worldPos;
+        float  dist    = length(toLight);
+        float  atten   = LightAttenuation(dist, pointLights[pi].range);
+        result += Lighting_BlinnPhong_Direct(
+            N, V, toLight / dist, albedo, ROUGHNESS,
+            pointLights[pi].color, pointLights[pi].intensity * atten);
+    }
+
+    [loop]
+    for (int si = 0; si < spotLightCount; ++si)
+    {
+        float3 toLight = spotLights[si].position - p.worldPos;
+        float  dist    = length(toLight);
+        float3 Ls      = toLight / dist;
+        float  atten   = LightAttenuation(dist, spotLights[si].range);
+        float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
+                             spotLights[si].innerCos, spotLights[si].outerCos);
+        result += Lighting_BlinnPhong_Direct(
+            N, V, Ls, albedo, ROUGHNESS,
+            spotLights[si].color, spotLights[si].intensity * atten * cone);
+    }
+
+    return float4(result, 1.0f);
+}

@@ -42,6 +42,8 @@ void DrawPostProcessToggles(renderer::PostProcessSettings& p)
     ImGui::SameLine();
     ImGui::Checkbox("Film Grain##PostProcessEnableFilmGrain", &p.filmGrain.enabled);
 
+    ImGui::Checkbox("Ambient Occlusion##PostProcessEnableSSAO", &p.ambientOcclusion.enabled);
+    ImGui::SameLine();
     ImGui::Checkbox("Chromatic Aberration##PostProcessEnableChromaticAberration", &p.lens.chromaticAberrationEnabled);
     ImGui::SameLine();
     ImGui::Checkbox("Lens Distortion##PostProcessEnableLensDistortion", &p.lens.distortionEnabled);
@@ -163,6 +165,14 @@ void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
     if (ImGui::CollapsingHeader("Tonemapping", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::PushID("TonemappingSettings");
         ImGui::SliderFloat("Exposure", &postProcess.exposure, 0.1f, 4.0f);
+        ImGui::PopID();
+    }
+
+    if (ImGui::CollapsingHeader("Ambient Occlusion", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::PushID("AmbientOcclusionSettings");
+        ImGui::BeginDisabled(!postProcess.ambientOcclusion.enabled);
+        ImGui::SliderFloat("Intensity", &postProcess.ambientOcclusion.intensity, 0.0f, 3.0f);
+        ImGui::EndDisabled();
         ImGui::PopID();
     }
 

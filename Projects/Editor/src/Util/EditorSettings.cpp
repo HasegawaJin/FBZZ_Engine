@@ -31,7 +31,7 @@ bool EditorSettings::Load(const std::string& path)
     if (auto v = tbl["view"]["grid_size"].value<float>())     gridSize      = *v;
     if (auto v = tbl["view"]["show_light_range"].value<bool>()) showLightRange = *v;
     if (auto v = tbl["view"]["show_skeleton"].value<bool>())  showSkeleton  = *v;
-    if (auto v = tbl["view"]["show_stats"].value<bool>())     showSceneStats = *v;
+    if (auto v = tbl["view"]["show_stats"].value<bool>())     showStats = *v;
 
     // スナップ
     if (auto v = tbl["snap"]["enabled"].value<bool>())        snapEnabled   = *v;
@@ -62,7 +62,7 @@ bool EditorSettings::Save(const std::string& path) const
     viewTbl.insert("grid_size",       gridSize);
     viewTbl.insert("show_light_range", showLightRange);
     viewTbl.insert("show_skeleton",   showSkeleton);
-    viewTbl.insert("show_stats",      showSceneStats);
+    viewTbl.insert("show_stats",      showStats);
 
     toml::table snapTbl;
     snapTbl.insert("enabled",  snapEnabled);

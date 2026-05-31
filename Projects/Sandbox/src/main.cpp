@@ -19,6 +19,7 @@
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/TerrainRenderSystem.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
@@ -437,6 +438,7 @@ int Run()
         sceneRenderSettings.selectedObjects.reserve(editorApp.GetContext().selectedEntities.size());
         for (scene::EntityID id : editorApp.GetContext().selectedEntities)
             sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
+        // TerrainRenderSystem は RenderSystem の RenderGraph 内 (ForwardOpaque 直後) に統合済み
         scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
         // WorldSpace UI をシーンビューポートに描画する (エディターカメラの VP を使用)
         {
