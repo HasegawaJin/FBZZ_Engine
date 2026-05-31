@@ -39,6 +39,13 @@ struct EditorContext {
         return activeScene->GetGameObject(sel);
     }
 
+    // カメラ操作設定 (EditorSettings からロードされ、main.cpp が DebugCamera へ適用する)
+    // WHY: DebugCamera は Engine 層に属しパネルから直接参照できない。
+    //      EditorContext を仲介とすることで、将来的にカメラ設定 UI を
+    //      任意のパネルから編集できるようにしている。
+    float cameraSpeed         = 5.0f;
+    float cameraSensitivity   = 0.15f;
+
     // ビューポート
     bool  viewportFocused = false;
     float viewportWidth   = 1280.0f;

@@ -3,6 +3,7 @@ format_version = 1
 
 [[gameobjects]]
 active = true
+instanceId = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
 layer = 0
 name = 'MainCamera'
 parent = ''
@@ -27,17 +28,18 @@ tag = 'MainCamera'
         'Min Pitch' = -20.0
         'Mouse Orbit' = true
         'Mouse Sensitivity' = 0.2
-        Pitch = -13.399998
+        Pitch = 5.800001
         'Target Tag' = 'Player'
-        Yaw = -88.799965
+        Yaw = -90.199966
 
     [gameobjects.transform]
-    localPosition = [ 4.362036, 0.401218, 1.531963 ]
-    localRotation = [ -0.083358, -0.694885, -0.08163, 0.709594 ]
+    localPosition = [ 4.470995, 3.479089, 3.888255 ]
+    localRotation = [ 0.035712, -0.707433, 0.035837, 0.704968 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
 layer = 0
 name = 'DirectionalLight'
 parent = ''
@@ -56,6 +58,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '9dc731b0-a17c-431b-bbe1-a6757b40e84f'
 layer = 0
 name = 'Skydome'
 parent = ''
@@ -75,6 +78,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 layer = 0
 name = 'Player'
 parent = ''
@@ -401,11 +405,13 @@ tag = 'Player'
         isLeg = false
         maxExtension = 0.98
         midBone = 'mixamorig:LeftLeg'
+        poleGuid = 'c94e4ab2-e2c4-4acc-8082-3c6425ab3020'
         poleName = 'IK_LeftKnee_Pole'
         rayDownRatio = 1.5
         rayUpRatio = 0.9
         rootBone = 'mixamorig:LeftUpLeg'
         softness = 0.05
+        targetGuid = '7890a521-fcea-41e6-9850-27b0780a0601'
         targetName = 'IK_LeftFoot_Target'
         targetOffset = [ 0.0, 0.07, 0.0 ]
         tipBone = 'mixamorig:LeftFoot'
@@ -419,11 +425,13 @@ tag = 'Player'
         isLeg = false
         maxExtension = 0.98
         midBone = 'mixamorig:RightLeg'
+        poleGuid = '72934e16-382f-40a0-80b0-56eeb32867c1'
         poleName = 'IK_RightKnee_Pole'
         rayDownRatio = 1.5
         rayUpRatio = 0.9
         rootBone = 'mixamorig:RightUpLeg'
         softness = 0.05
+        targetGuid = '49ecd804-9f61-493e-aeff-d16410ff3564'
         targetName = 'IK_RightFoot_Target'
         targetOffset = [ 0.0, 0.07, 0.0 ]
         tipBone = 'mixamorig:RightFoot'
@@ -470,12 +478,13 @@ tag = 'Player'
     modelPath = 'Assets/Models/DebugCharacter/Player.fbx'
 
     [gameobjects.transform]
-    localPosition = [ -0.500777, -0.040043, 1.633827 ]
-    localRotation = [ 0.0, 0.999945, 0.0, -0.010472 ]
+    localPosition = [ -0.503379, 1.373807, 3.870894 ]
+    localRotation = [ 0.0, 0.999998, 0.0, 0.001745 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = false
+instanceId = '7890a521-fcea-41e6-9850-27b0780a0601'
 layer = 0
 name = 'IK_LeftFoot_Target'
 parent = 'Player'
@@ -497,12 +506,13 @@ tag = 'Untagged'
     mesh = 'primitive:sphere'
 
     [gameobjects.transform]
-    localPosition = [ 0.104174, 0.080043, 0.025 ]
+    localPosition = [ 0.104282, 0.005606, 0.060661 ]
     localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
     localScale = [ 0.22, 0.22, 0.22 ]
 
 [[gameobjects]]
 active = false
+instanceId = '49ecd804-9f61-493e-aeff-d16410ff3564'
 layer = 0
 name = 'IK_RightFoot_Target'
 parent = 'Player'
@@ -524,12 +534,13 @@ tag = 'Untagged'
     mesh = 'primitive:sphere'
 
     [gameobjects.transform]
-    localPosition = [ -0.167633, 0.080043, 0.002841 ]
+    localPosition = [ -0.167711, 0.022648, 0.038579 ]
     localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
     localScale = [ 0.22, 0.22, 0.22 ]
 
 [[gameobjects]]
 active = false
+instanceId = 'c94e4ab2-e2c4-4acc-8082-3c6425ab3020'
 layer = 0
 name = 'IK_LeftKnee_Pole'
 parent = 'Player'
@@ -557,6 +568,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = false
+instanceId = '72934e16-382f-40a0-80b0-56eeb32867c1'
 layer = 0
 name = 'IK_RightKnee_Pole'
 parent = 'Player'
@@ -584,6 +596,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '7f3b0e3b-9f39-4584-b866-9a841c67b381'
 layer = 0
 name = 'Ground'
 parent = ''
@@ -627,6 +640,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '460babf8-13be-4ad9-9e51-d65c1b90a64c'
 layer = 0
 name = 'Ramp_Forward'
 parent = ''
@@ -670,6 +684,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'd20b9443-8309-430d-acd9-d4af6d570f64'
 layer = 0
 name = 'Ramp_Side'
 parent = ''
@@ -713,6 +728,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'edb6882b-a1a3-4050-a1d6-82ca638e42fb'
 layer = 0
 name = 'Step_Block'
 parent = ''
@@ -756,6 +772,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '4dedb0c6-520d-4bc5-a263-05dd743e597e'
 layer = 0
 name = 'RootNode'
 parent = 'Player'
@@ -767,6 +784,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 0
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.0, 0.0 ]
@@ -775,6 +793,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '5fadfe70-733e-40eb-b05d-95faab080efa'
 layer = 0
 name = 'mixamorig:Hips'
 parent = 'RootNode'
@@ -786,14 +805,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 1
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.002851, 0.961021, -0.006559 ]
-    localRotation = [ 0.02802, 0.001905, -0.017489, 0.999453 ]
+    localPosition = [ -0.011899, 0.961768, -0.004294 ]
+    localRotation = [ 0.025746, 0.001707, -0.015561, 0.999546 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'ccad4aa0-cb9b-4bde-ab3a-32f8ca1b2174'
 layer = 0
 name = 'mixamorig:Spine'
 parent = 'mixamorig:Hips'
@@ -805,14 +826,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 2
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 9e-06, 0.099235, 0.012273 ]
-    localRotation = [ 0.049599, -0.000703, -0.002045, 0.998767 ]
+    localRotation = [ 0.050372, -2.9e-05, -0.000636, 0.99873 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '049baf7f-b39b-4d8f-be32-847826a9bb3a'
 layer = 0
 name = 'mixamorig:Spine1'
 parent = 'mixamorig:Spine'
@@ -824,14 +847,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 3
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.11732, 0.0 ]
-    localRotation = [ -0.013096, 0.017678, -0.004169, 0.999749 ]
+    localRotation = [ -0.011394, 0.020234, -0.002008, 0.999728 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '69f953d7-c0c5-4d58-b4d1-23e24ddcc45b'
 layer = 0
 name = 'mixamorig:Spine2'
 parent = 'mixamorig:Spine1'
@@ -843,14 +868,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 4
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.134588, 0.0 ]
-    localRotation = [ -0.070658, 0.017895, -0.002687, 0.997336 ]
+    localRotation = [ -0.068861, 0.020295, -0.00041, 0.99742 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'b8b15d09-c5ab-4211-acbd-bc418e457df4'
 layer = 0
 name = 'mixamorig:Neck'
 parent = 'mixamorig:Spine2'
@@ -862,14 +889,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 5
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.150278, -0.008779 ]
-    localRotation = [ -0.023655, -0.006103, -0.004592, 0.999691 ]
+    localRotation = [ -0.017667, -0.006624, -0.007601, 0.999793 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '59c97eec-3030-49bd-bb8b-05d5a0e1c3f2'
 layer = 0
 name = 'mixamorig:Head'
 parent = 'mixamorig:Neck'
@@ -881,14 +910,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 6
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.103218, -0.031424 ]
-    localRotation = [ -0.053404, 0.01366, 0.031725, 0.997976 ]
+    localRotation = [ -0.051193, 0.015936, 0.033413, 0.998002 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '370ff9b2-3b8a-42d4-af3a-b57fb5aec577'
 layer = 0
 name = 'mixamorig:HeadTop_End'
 parent = 'mixamorig:Head'
@@ -900,6 +931,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 7
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 2e-06, 0.184747, -0.066364 ]
@@ -908,6 +940,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '019925e1-dd50-4866-b81f-97c4493266d8'
 layer = 0
 name = 'mixamorig:LeftShoulder'
 parent = 'mixamorig:Spine2'
@@ -919,14 +952,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 8
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.061058, 0.091063, -0.007571 ]
-    localRotation = [ 0.458171, 0.543924, 0.548039, -0.440317 ]
+    localRotation = [ 0.456458, 0.54468, 0.554077, -0.433554 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'ce1d289d-c9fc-41ce-bb6d-a2432ddc5ddf'
 layer = 0
 name = 'mixamorig:LeftArm'
 parent = 'mixamorig:LeftShoulder'
@@ -938,14 +973,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 9
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.571065, -0.182177, 0.188647, 0.777888 ]
+    localRotation = [ -0.564607, -0.189785, 0.200041, 0.777936 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'ae41fe4e-aad0-40f0-aff8-58e4ec50efec'
 layer = 0
 name = 'mixamorig:LeftForeArm'
 parent = 'mixamorig:LeftArm'
@@ -957,14 +994,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 10
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.240637, 0.970615 ]
+    localRotation = [ 0.0, 0.0, 0.241005, 0.970524 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
 layer = 0
 name = 'mixamorig:LeftHand'
 parent = 'mixamorig:LeftForeArm'
@@ -976,14 +1015,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 11
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.09164, -0.056194, -0.118958, 0.987063 ]
+    localRotation = [ -0.092502, -0.048397, -0.120547, 0.987203 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'cb0b3e0d-1ddd-4e99-bcd9-14ad89c8b888'
 layer = 0
 name = 'mixamorig:LeftHandThumb1'
 parent = 'mixamorig:LeftHand'
@@ -995,14 +1036,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 12
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ -0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.166769, 0.172009, 0.112112, 0.964382 ]
+    localRotation = [ -0.167243, 0.171984, 0.112843, 0.964219 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '8ef702ce-d352-4543-9290-883d7069429f'
 layer = 0
 name = 'mixamorig:LeftHandThumb2'
 parent = 'mixamorig:LeftHandThumb1'
@@ -1014,14 +1057,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 13
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ 0.012626, 0.024115, -0.08567, 0.995952 ]
+    localRotation = [ 0.012649, 0.023966, -0.085841, 0.99594 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'b2ac81b9-a3bd-45c0-a9f5-c1ae01bbc5bd'
 layer = 0
 name = 'mixamorig:LeftHandThumb3'
 parent = 'mixamorig:LeftHandThumb2'
@@ -1033,14 +1078,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 14
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.028422, -0.001243, 0.012726, 0.999514 ]
+    localRotation = [ 0.027643, -0.000975, 0.007748, 0.999587 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '23d242ff-b0f3-476c-983d-ddeef5eacb32'
 layer = 0
 name = 'mixamorig:LeftHandThumb4'
 parent = 'mixamorig:LeftHandThumb3'
@@ -1052,6 +1099,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 15
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034591, 0.0 ]
@@ -1060,6 +1108,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'b1cbfd2a-1219-4d2d-9556-956af8576070'
 layer = 0
 name = 'mixamorig:LeftHandIndex1'
 parent = 'mixamorig:LeftHand'
@@ -1071,14 +1120,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 16
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ -0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.179453, 0.002563, -0.007483, 0.983735 ]
+    localRotation = [ -0.174454, 0.002669, -0.005845, 0.984644 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '0e6e371b-a4dc-46c1-a9b7-c94567be3add'
 layer = 0
 name = 'mixamorig:LeftHandIndex2'
 parent = 'mixamorig:LeftHandIndex1'
@@ -1090,14 +1141,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 17
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.306025, -2e-06, -0.036925, 0.951307 ]
+    localRotation = [ -0.31187, -2e-06, -0.037631, 0.949379 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '5dde1b8d-314d-42c5-ad26-b8cf248da328'
 layer = 0
 name = 'mixamorig:LeftHandIndex3'
 parent = 'mixamorig:LeftHandIndex2'
@@ -1109,14 +1162,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 18
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.151821, 0.0, -0.018322, 0.988238 ]
+    localRotation = [ -0.154975, 0.0, -0.018702, 0.987741 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '4591315d-f43f-4a1c-a5ef-de42efe527be'
 layer = 0
 name = 'mixamorig:LeftHandIndex4'
 parent = 'mixamorig:LeftHandIndex3'
@@ -1128,6 +1183,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 19
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03078, 0.0 ]
@@ -1136,6 +1192,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'adb8f539-697c-415a-a8e3-c1064d2f964e'
 layer = 0
 name = 'mixamorig:LeftHandMiddle1'
 parent = 'mixamorig:LeftHand'
@@ -1147,14 +1204,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 20
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.220015, 0.001486, -0.019951, 0.975291 ]
+    localRotation = [ -0.217166, 0.001663, -0.018715, 0.975954 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'd01549c2-0053-4673-beaa-612ef952e0ff'
 layer = 0
 name = 'mixamorig:LeftHandMiddle2'
 parent = 'mixamorig:LeftHandMiddle1'
@@ -1166,14 +1225,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 21
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.208308, 0.0, -0.025139, 0.97774 ]
+    localRotation = [ -0.212212, 0.0, -0.02561, 0.976888 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '0e39d5f3-10b8-43ae-9e21-0dd8a73e20e6'
 layer = 0
 name = 'mixamorig:LeftHandMiddle3'
 parent = 'mixamorig:LeftHandMiddle2'
@@ -1185,14 +1246,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 22
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.13002, 0.0, -0.015691, 0.991387 ]
+    localRotation = [ -0.132516, 0.0, -0.015992, 0.991052 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'ada66269-585a-4a1c-bd53-56809d3a59e3'
 layer = 0
 name = 'mixamorig:LeftHandMiddle4'
 parent = 'mixamorig:LeftHandMiddle3'
@@ -1204,6 +1267,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 23
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036802, 0.0 ]
@@ -1212,6 +1276,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '12c41e3a-7506-44b0-b2a9-4fe022cd5669'
 layer = 0
 name = 'mixamorig:LeftHandRing1'
 parent = 'mixamorig:LeftHand'
@@ -1223,14 +1288,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 24
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.268157, 0.003672, -0.019102, 0.963179 ]
+    localRotation = [ -0.268013, 0.003865, -0.018375, 0.963232 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '0bf7f40e-95b4-46e4-9bf8-cb9219ebbbc0'
 layer = 0
 name = 'mixamorig:LeftHandRing2'
 parent = 'mixamorig:LeftHandRing1'
@@ -1242,14 +1309,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 25
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.150256, -1e-06, -0.018125, 0.988481 ]
+    localRotation = [ -0.151848, -1e-06, -0.018317, 0.988234 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '4f739062-bd49-4a35-bf47-5aca71c63a91'
 layer = 0
 name = 'mixamorig:LeftHandRing3'
 parent = 'mixamorig:LeftHandRing2'
@@ -1261,14 +1330,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 26
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.096865, 0.0, -0.01169, 0.995229 ]
+    localRotation = [ -0.098021, 0.0, -0.011829, 0.995114 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'f169e1dd-fa56-40ec-8123-f135eb0cbab0'
 layer = 0
 name = 'mixamorig:LeftHandRing4'
 parent = 'mixamorig:LeftHandRing3'
@@ -1280,6 +1351,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 27
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036601, 0.0 ]
@@ -1288,6 +1360,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '42e229ad-3e39-456f-8b48-65863d1e3e38'
 layer = 0
 name = 'mixamorig:LeftHandPinky1'
 parent = 'mixamorig:LeftHand'
@@ -1299,14 +1372,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 28
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.354997, -0.011168, -0.071866, 0.932034 ]
+    localRotation = [ -0.35623, -0.01098, -0.071423, 0.9316 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'e51df4fe-bd15-483e-96aa-53ab73a72d1b'
 layer = 0
 name = 'mixamorig:LeftHandPinky2'
 parent = 'mixamorig:LeftHandPinky1'
@@ -1318,14 +1393,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 29
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.187139, -0.006567, 0.012712, 0.982229 ]
+    localRotation = [ -0.186663, -0.00655, 0.012772, 0.982319 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '6f8bbc6f-88bb-4c59-9492-6eaae095f281'
 layer = 0
 name = 'mixamorig:LeftHandPinky3'
 parent = 'mixamorig:LeftHandPinky2'
@@ -1337,14 +1414,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 30
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.067498, 0.0, -0.008146, 0.997686 ]
+    localRotation = [ -0.067532, 0.0, -0.00815, 0.997684 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '93a92bc0-d8b9-46a6-a26b-04409343bfed'
 layer = 0
 name = 'mixamorig:LeftHandPinky4'
 parent = 'mixamorig:LeftHandPinky3'
@@ -1356,6 +1435,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 31
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.029239, 0.0 ]
@@ -1364,6 +1444,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '033412d2-0ab4-4fc8-a748-53ff01ad7d0e'
 layer = 0
 name = 'mixamorig:RightShoulder'
 parent = 'mixamorig:Spine2'
@@ -1375,14 +1456,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 32
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ -0.061057, 0.091064, -0.007571 ]
-    localRotation = [ -0.517258, 0.511867, 0.498611, 0.470982 ]
+    localRotation = [ 0.506082, -0.519118, -0.502744, -0.470793 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '50e7240b-06a8-49e9-bfb4-7cf479cbadd3'
 layer = 0
 name = 'mixamorig:RightArm'
 parent = 'mixamorig:RightShoulder'
@@ -1394,14 +1477,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 33
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.536791, 0.189027, -0.240507, 0.786308 ]
+    localRotation = [ -0.540003, 0.192462, -0.252413, 0.779515 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '50aca9e4-7df9-4174-9426-439c579005ed'
 layer = 0
 name = 'mixamorig:RightForeArm'
 parent = 'mixamorig:RightArm'
@@ -1413,14 +1498,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 34
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, -0.25466, 0.967031 ]
+    localRotation = [ 0.0, 0.0, -0.250764, 0.968048 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
 layer = 0
 name = 'mixamorig:RightHand'
 parent = 'mixamorig:RightForeArm'
@@ -1432,14 +1519,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 35
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.007877, -0.039674, 0.122485, 0.991646 ]
+    localRotation = [ -0.009474, -0.037244, 0.123517, 0.991598 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'b13a015c-4b92-4300-97d8-cd09c2cebba3'
 layer = 0
 name = 'mixamorig:RightHandThumb1'
 parent = 'mixamorig:RightHand'
@@ -1451,14 +1540,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 36
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.18935, -0.044002, -0.0258, 0.980584 ]
+    localRotation = [ -0.192009, -0.049438, -0.030574, 0.97967 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '6f0bd885-fcf3-45e1-9737-29c394e9c2e7'
 layer = 0
 name = 'mixamorig:RightHandThumb2'
 parent = 'mixamorig:RightHandThumb1'
@@ -1470,14 +1561,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 37
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ -0.020225, 0.049805, 0.025229, 0.998235 ]
+    localRotation = [ -0.020141, 0.055458, 0.03331, 0.997702 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '07e65d21-c86c-4593-b091-bb6ee40496bd'
 layer = 0
 name = 'mixamorig:RightHandThumb3'
 parent = 'mixamorig:RightHandThumb2'
@@ -1489,14 +1582,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 38
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.02881, 0.001204, -0.011057, 0.999523 ]
+    localRotation = [ 0.029496, 0.001088, -0.006099, 0.999546 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '5eb30863-a1db-4877-b5c3-8163b16fc9e9'
 layer = 0
 name = 'mixamorig:RightHandThumb4'
 parent = 'mixamorig:RightHandThumb3'
@@ -1508,6 +1603,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 39
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034591, 0.0 ]
@@ -1516,6 +1612,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'f56cf4d9-e086-47c0-9fc8-8d90cfae4e11'
 layer = 0
 name = 'mixamorig:RightHandIndex1'
 parent = 'mixamorig:RightHand'
@@ -1527,14 +1624,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 40
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.060811, 0.002338, 0.043227, 0.99721 ]
+    localRotation = [ -0.054692, 0.002042, 0.041296, 0.997647 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'ccfc3bc2-13f3-44b8-94b3-5f6633e63b1a'
 layer = 0
 name = 'mixamorig:RightHandIndex2'
 parent = 'mixamorig:RightHandIndex1'
@@ -1546,14 +1645,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 41
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.375775, 2e-06, 0.045789, 0.925579 ]
+    localRotation = [ -0.375488, 2e-06, 0.045754, 0.925697 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'a1bb834d-730f-40c1-bbc2-cc920922a58b'
 layer = 0
 name = 'mixamorig:RightHandIndex3'
 parent = 'mixamorig:RightHandIndex2'
@@ -1565,14 +1666,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 42
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.092156, 0.0, 0.011231, 0.995681 ]
+    localRotation = [ -0.096589, 0.0, 0.011771, 0.995255 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '6646d1f1-b732-459d-bad8-2765e118f931'
 layer = 0
 name = 'mixamorig:RightHandIndex4'
 parent = 'mixamorig:RightHandIndex3'
@@ -1584,6 +1687,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 43
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03078, 0.0 ]
@@ -1592,6 +1696,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '7ab8c974-5b90-4b17-a3af-9d3521b7d42e'
 layer = 0
 name = 'mixamorig:RightHandMiddle1'
 parent = 'mixamorig:RightHand'
@@ -1603,14 +1708,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 44
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.094369, 0.004813, 0.059285, 0.993759 ]
+    localRotation = [ -0.089106, 0.004455, 0.057633, 0.994343 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'a9e7840d-3e84-413a-9c71-29e54f099a5c'
 layer = 0
 name = 'mixamorig:RightHandMiddle2'
 parent = 'mixamorig:RightHandMiddle1'
@@ -1622,14 +1729,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 45
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.326449, 0.0, 0.039784, 0.944377 ]
+    localRotation = [ -0.325551, 0.0, 0.039674, 0.944692 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '581fdc48-143b-4a68-ae21-47cd01eabb96'
 layer = 0
 name = 'mixamorig:RightHandMiddle3'
 parent = 'mixamorig:RightHandMiddle2'
@@ -1641,14 +1750,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 46
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.080095, -0.00524, 0.010188, 0.996721 ]
+    localRotation = [ -0.0841, -0.005226, 0.010697, 0.996386 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '7eda2398-e5b4-4c19-8802-145c7b992b23'
 layer = 0
 name = 'mixamorig:RightHandMiddle4'
 parent = 'mixamorig:RightHandMiddle3'
@@ -1660,6 +1771,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 47
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036802, 0.0 ]
@@ -1668,6 +1780,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '796169bc-8fa6-410a-b52d-428d30cb5942'
 layer = 0
 name = 'mixamorig:RightHandRing1'
 parent = 'mixamorig:RightHand'
@@ -1679,14 +1792,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 48
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ -0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.202034, 0.004639, 0.046804, 0.978249 ]
+    localRotation = [ -0.200009, 0.004414, 0.04571, 0.978717 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'aebb89f9-1fdb-414a-81f5-5b0fde31daa9'
 layer = 0
 name = 'mixamorig:RightHandRing2'
 parent = 'mixamorig:RightHandRing1'
@@ -1698,14 +1813,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 49
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.270533, 2e-06, 0.032962, 0.962146 ]
+    localRotation = [ -0.267351, 2e-06, 0.032574, 0.963049 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '917a9444-6e94-4e19-b37c-7becd2c6b255'
 layer = 0
 name = 'mixamorig:RightHandRing3'
 parent = 'mixamorig:RightHandRing2'
@@ -1717,14 +1834,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 50
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.093128, -0.006637, 0.01198, 0.99556 ]
+    localRotation = [ -0.094733, -0.006644, 0.012187, 0.995406 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'd39c286e-4c3c-4bf9-80a4-c4191b1bbe8c'
 layer = 0
 name = 'mixamorig:RightHandRing4'
 parent = 'mixamorig:RightHandRing3'
@@ -1736,6 +1855,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 51
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.036601, 0.0 ]
@@ -1744,6 +1864,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '05075131-5126-4cfb-b850-9e9b80eb4561'
 layer = 0
 name = 'mixamorig:RightHandPinky1'
 parent = 'mixamorig:RightHand'
@@ -1755,14 +1876,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 52
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ -0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.291762, 0.012234, 0.074906, 0.953475 ]
+    localRotation = [ -0.290043, 0.01193, 0.073981, 0.954075 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '279e6b08-0838-4f05-8016-cf2373bf7109'
 layer = 0
 name = 'mixamorig:RightHandPinky2'
 parent = 'mixamorig:RightHandPinky1'
@@ -1774,14 +1897,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 53
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.208481, 0.0, 0.025407, 0.977696 ]
+    localRotation = [ -0.20802, 0.0, 0.025351, 0.977796 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '2520010e-2a2b-410c-a189-bfa0c3b30529'
 layer = 0
 name = 'mixamorig:RightHandPinky3'
 parent = 'mixamorig:RightHandPinky2'
@@ -1793,14 +1918,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 54
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.103478, 0.0, 0.012611, 0.994552 ]
+    localRotation = [ -0.105641, 0.0, 0.012874, 0.994321 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '10c32862-b5e1-4597-8b03-3cdb4e44aa80'
 layer = 0
 name = 'mixamorig:RightHandPinky4'
 parent = 'mixamorig:RightHandPinky3'
@@ -1812,6 +1939,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 55
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.029239, 0.0 ]
@@ -1820,6 +1948,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '40782709-5fa6-4005-af0b-6ec16023a160'
 layer = 0
 name = 'mixamorig:LeftUpLeg'
 parent = 'mixamorig:Hips'
@@ -1831,14 +1960,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 56
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.091239, -0.066572, 0.000554 ]
-    localRotation = [ -0.024852, -0.108252, 0.993179, -0.035502 ]
+    localRotation = [ -0.022501, -0.10983, 0.992979, -0.037735 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'b1f7e766-d6a2-4a17-b9b5-8d5f74f875aa'
 layer = 0
 name = 'mixamorig:LeftLeg'
 parent = 'mixamorig:LeftUpLeg'
@@ -1850,14 +1981,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 57
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.304551, 0.082347, 0.024948, 0.948602 ]
+    localRotation = [ 0.299856, 0.081897, 0.025902, 0.95011 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'aab50f55-8d07-461b-8dda-2548625e04c4'
 layer = 0
 name = 'mixamorig:LeftFoot'
 parent = 'mixamorig:LeftLeg'
@@ -1869,14 +2002,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 58
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.655012, 0.031841, -0.003954, 0.754937 ]
+    localRotation = [ -0.650722, 0.035873, -0.007712, 0.758429 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '15d51758-e8f4-4476-ad28-81cf3e5b7e30'
 layer = 0
 name = 'mixamorig:LeftToeBase'
 parent = 'mixamorig:LeftFoot'
@@ -1888,14 +2023,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 59
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.157216, 0.0 ]
-    localRotation = [ -0.229779, 0.032515, -0.015328, 0.972579 ]
+    localRotation = [ -0.227978, 0.032521, -0.01536, 0.973002 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = '944dce4d-c85f-475d-8ffb-a32d5e2b46f2'
 layer = 0
 name = 'mixamorig:LeftToe_End'
 parent = 'mixamorig:LeftToeBase'
@@ -1907,6 +2044,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 60
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.1, 0.0 ]
@@ -1915,6 +2053,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '464d769b-eae5-47de-9ba0-cebdf55536f9'
 layer = 0
 name = 'mixamorig:RightUpLeg'
 parent = 'mixamorig:Hips'
@@ -1926,14 +2065,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 61
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ -0.09125, -0.066556, 0.000554 ]
-    localRotation = [ 0.119872, -0.106845, 0.98595, 0.046004 ]
+    localRotation = [ 0.11495, -0.11079, 0.986251, 0.042668 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'caad1d91-ad4d-451c-9ebc-ef9cf0004017'
 layer = 0
 name = 'mixamorig:RightLeg'
 parent = 'mixamorig:RightUpLeg'
@@ -1945,14 +2086,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 62
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.270321, -0.032565, -0.014655, 0.962108 ]
+    localRotation = [ 0.272083, -0.034267, -0.012481, 0.961583 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'd1497b21-3312-4d44-94f8-bbdfba3f4e67'
 layer = 0
 name = 'mixamorig:RightFoot'
 parent = 'mixamorig:RightLeg'
@@ -1964,14 +2107,16 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 63
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.620841, -0.047134, 0.012561, 0.782417 ]
+    localRotation = [ -0.622039, -0.047406, 0.005547, 0.78153 ]
     localScale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
+instanceId = 'a3dc6b39-ed9b-44db-a3c2-ef8b9af58698'
 layer = 0
 name = 'mixamorig:RightToeBase'
 parent = 'mixamorig:RightFoot'
@@ -1983,6 +2128,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 64
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.157216, 0.0 ]
@@ -1991,6 +2137,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '0f29a4d3-6637-49fd-81c3-9107c7536dff'
 layer = 0
 name = 'mixamorig:RightToe_End'
 parent = 'mixamorig:RightToeBase'
@@ -2002,6 +2149,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 65
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.1, 0.0 ]
@@ -2010,6 +2158,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = '987f7658-e97d-4f64-9fc8-afb1432d6655'
 layer = 0
 name = 'Alpha_Surface'
 parent = 'RootNode'
@@ -2021,6 +2170,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 66
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.0, 0.0 ]
@@ -2029,6 +2179,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
+instanceId = 'badade77-b138-42e2-8354-6822da2f9be8'
 layer = 0
 name = 'Alpha_Joints'
 parent = 'RootNode'
@@ -2040,6 +2191,7 @@ tag = 'Untagged'
     generated = true
     nodeIndex = 67
     skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     localPosition = [ 0.0, 0.0, 0.0 ]

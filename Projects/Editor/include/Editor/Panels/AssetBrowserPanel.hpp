@@ -29,7 +29,7 @@ private:
 
     void OnRenderContent(EditorContext& ctx) override;
     void RefreshDirectory();
-    void DrawFolderTree(const std::string& dirPath);
+    void DrawFolderTree(const std::string& dirPath, EditorContext& ctx);
     void DrawEntry(const Entry& e, EditorContext& ctx);
 
     static ImVec4      EntryColor(const Entry& e);

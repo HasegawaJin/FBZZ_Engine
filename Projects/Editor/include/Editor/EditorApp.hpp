@@ -45,6 +45,7 @@ public:
 
 private:
     void BuildMenuBar(EditorContext& ctx);
+    void BuildPlayToolbar(EditorContext& ctx);
     void RegisterDefaultHotkeys();
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();
