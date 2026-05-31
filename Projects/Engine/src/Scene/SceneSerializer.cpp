@@ -22,6 +22,7 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
@@ -658,6 +659,21 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("RigidBodyComponent", std::move(rbTbl));
         }
 
+        // CharacterControllerComponent
+        if (auto* cc = go.GetComponent<CharacterControllerComponent>()) {
+            toml::table ccTbl;
+            ccTbl.insert("jumpMinAirTime",        (double)cc->jumpMinAirTime);
+            ccTbl.insert("fallVelThreshold",      (double)cc->fallVelThreshold);
+            ccTbl.insert("groundVelThreshold",    (double)cc->groundVelThreshold);
+            ccTbl.insert("ledgeFallThreshold",    (double)cc->ledgeFallThreshold);
+            ccTbl.insert("minGroundNormalY",      (double)cc->minGroundNormalY);
+            ccTbl.insert("groundContactGrace",    (double)cc->groundContactGrace);
+            ccTbl.insert("jumpGroundIgnoreTime",  (double)cc->jumpGroundIgnoreTime);
+            ccTbl.insert("groundedVelSnap",       (double)cc->groundedVelSnap);
+            ccTbl.insert("intentionalJumpMaxTime",(double)cc->intentionalJumpMaxTime);
+            goTbl.insert("CharacterControllerComponent", std::move(ccTbl));
+        }
+
         // VolumeComponent
         if (auto* volume = go.GetComponent<VolumeComponent>()) {
             toml::table volTbl;
@@ -744,6 +760,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 stTbl.insert("clipIndex", (int64_t)st.clipIndex);
                 stTbl.insert("speed",     (double)st.speed);
                 stTbl.insert("loop",      st.loop);
+                stTbl.insert("ikWeight",  (double)st.ikWeight);
                 toml::array transArr;
                 for (const auto& tr : st.transitions) {
                     toml::table trTbl;
@@ -1292,6 +1309,21 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<RigidBodyComponent>(std::move(rb));
         }
 
+        // CharacterControllerComponent
+        if (auto* ccTbl = (*goTbl)["CharacterControllerComponent"].as_table()) {
+            CharacterControllerComponent cc{};
+            cc.jumpMinAirTime        = (float)(*ccTbl)["jumpMinAirTime"].value_or(0.2);
+            cc.fallVelThreshold      = (float)(*ccTbl)["fallVelThreshold"].value_or(-0.5);
+            cc.groundVelThreshold    = (float)(*ccTbl)["groundVelThreshold"].value_or(0.3);
+            cc.ledgeFallThreshold    = (float)(*ccTbl)["ledgeFallThreshold"].value_or(-1.0);
+            cc.minGroundNormalY      = (float)(*ccTbl)["minGroundNormalY"].value_or(0.5);
+            cc.groundContactGrace    = (float)(*ccTbl)["groundContactGrace"].value_or(0.12);
+            cc.jumpGroundIgnoreTime  = (float)(*ccTbl)["jumpGroundIgnoreTime"].value_or(0.12);
+            cc.groundedVelSnap       = (float)(*ccTbl)["groundedVelSnap"].value_or(0.35);
+            cc.intentionalJumpMaxTime= (float)(*ccTbl)["intentionalJumpMaxTime"].value_or(1.0);
+            go.AddComponent<CharacterControllerComponent>(std::move(cc));
+        }
+
         // VolumeComponent
         if (auto* volTbl = (*goTbl)["VolumeComponent"].as_table()) {
             VolumeComponent volume{};
@@ -1379,6 +1411,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     st.clipIndex = (int)(*stTbl)["clipIndex"].value_or((int64_t)-1);
                     st.speed     = (float)(*stTbl)["speed"].value_or(1.0);
                     st.loop      = (*stTbl)["loop"].value_or(true);
+                    st.ikWeight  = (float)(*stTbl)["ikWeight"].value_or(1.0);
                     if (const auto* transArr = (*stTbl)["transitions"].as_array()) {
                         for (const auto& trElem : *transArr) {
                             const auto* trTbl = trElem.as_table();

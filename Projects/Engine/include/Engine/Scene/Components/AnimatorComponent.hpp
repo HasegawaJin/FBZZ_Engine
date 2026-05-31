@@ -63,8 +63,11 @@ struct AnimationState {
     std::string                      name;
     std::string                      clipName;
     int                              clipIndex = -1;
-    float                            speed = 1.0f;
-    bool                             loop  = true;
+    float                            speed    = 1.0f;
+    bool                             loop     = true;
+    // このステートでの IK ブレンド量。0=FK のみ、1=フル IK。
+    // WHY: ステートごとに IK 影響度を制御し、Run や JumpUp で地面スナップを段階的に抑える。
+    float                            ikWeight = 1.0f;
     std::vector<AnimationTransition> transitions;
 };
 
@@ -196,6 +199,21 @@ struct AnimatorComponent {
     [[nodiscard]] bool IsInState(std::string_view stateName) const
     {
         return currentStateName == stateName;
+    }
+
+    // 現在ステート（遷移中はブレンド込み）の IK Weight を返す。
+    // WHY: Run/JumpUp などステートごとに IK 影響度が変わるため、
+    //      クロスフェード中も滑らかに補間する必要がある。
+    [[nodiscard]] float GetCurrentIKWeight() const
+    {
+        auto findWeight = [this](const std::string& stateName) -> float {
+            for (const auto& s : states)
+                if (s.name == stateName) return s.ikWeight;
+            return 1.0f;
+        };
+        const float weightA = findWeight(currentStateName);
+        if (blendToState.empty()) return weightA;
+        return weightA + (findWeight(blendToState) - weightA) * blendWeight;
     }
 
     // 現在ステートの再生位置を 0..1 で返す。クリップ情報が取れない場合は 0。

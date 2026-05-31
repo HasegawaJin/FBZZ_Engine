@@ -5,15 +5,18 @@
 // engine 側の Component とは分け、ScriptComponent が所有する。
 #pragma once
 
+#include <Engine/Scene/Entity.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <string>
+#include <string_view>
 
 namespace fbzz::scene {
 
 struct ColliderComponent;
+struct Transform;
 class GameObject;
 class Scene;
 
@@ -72,13 +75,45 @@ public:
 
     bool enabled = true;
 
+    // ── Unity 風ショートハンド ──────────────────────────────────────────────
+    // WHY: MonoBehaviour 相当の利便性を提供し、スクリプト記述量を削減する。
+    //      m_gameObject / m_scene への直接参照は引き続き使用可能。
+
+    // Unity: transform (自 GameObject の Transform への直接ポインタ)
+    // SetContext で設定される。OnStart より前は nullptr の可能性がある。
+    Transform* transform = nullptr;
+
+    // Unity: GetComponent<T>()
+    // WHY: template 定義は Scene.hpp 末尾で行う (GameObject が完全型である必要があるため)
+    template<typename T>
+    T* GetComponent() const;
+
+    // Unity: GameObject.Find / FindWithTag
+    GameObject* Find(const std::string& name)       const;
+    GameObject* FindWithTag(const std::string& tag) const;
+    // EntityID から GameObject を引く (ScriptComponent 間の相互参照に使う)
+    GameObject* GetGameObject(EntityID id)          const;
+
+    // Unity: Instantiate に相当する GO 生成
+    GameObject& CreateGameObject(const std::string& name = "GameObject") const;
+
+    // シーン内のメインカメラ GameObject を返す。見つからなければ nullptr
+    GameObject* GetMainCameraObject() const;
+
+    // Unity: Destroy(gameObject)
+    static void Destroy(GameObject& go, float delay = 0.0f);
+
+    // ── Animator ショートハンド ──────────────────────────────────────────────
+    // 自 GameObject の AnimatorComponent に転送する。Animator が無ければ何もしない。
+    void SetAnimatorFloat(std::string_view name, float v)   const;
+    void SetAnimatorInt  (std::string_view name, int v)     const;
+    void SetAnimatorBool (std::string_view name, bool v)    const;
+    void SetAnimatorTrigger(std::string_view name)          const;
+    bool IsAnimatorInState(std::string_view name)           const;
+
     // ScriptSystem が各ライフサイクル呼び出しの前に設定する。
     // 派生クラスは m_scene / m_gameObject を介して Scene / GameObject にアクセスする。
-    void SetContext(Scene* scene, GameObject* gameObject)
-    {
-        m_scene = scene;
-        m_gameObject = gameObject;
-    }
+    void SetContext(Scene* scene, GameObject* gameObject);
 
 protected:
     renderer::PostProcessSettings& GetRuntimePostProcessSettings();
