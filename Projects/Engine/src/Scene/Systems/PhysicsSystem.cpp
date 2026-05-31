@@ -10,6 +10,7 @@
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/VolumeComponent.hpp"
+#include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
@@ -303,6 +304,61 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         rb.rigidBody->SetPosition(tf.position);
         rb.rigidBody->SetRotation(tf.rotation);
         bodies.push_back(rb.rigidBody);
+    }
+
+    // ── [Phase 7] TerrainComponent + MeshColliderComponent → TriangleMeshCollider 自動構築 ──
+    // TerrainComponent と MeshColliderComponent の両方を持つ GO を検出し、
+    // ハイトマップから三角形メッシュを自動的に構築する。
+    // WHY: TriangleMeshCollider が既存の collision pipeline に乗れるため、
+    //      新たな物理コードを追加せずに地形コリジョンを実現できる。
+    //      colliderDirty フラグでエディタ彫刻後の再構築をトリガーする。
+    for (auto& go : scene.GameObjects()) {
+        auto* terrain = go.GetComponent<TerrainComponent>();
+        auto* meshCol = go.GetComponent<MeshColliderComponent>();
+        if (!terrain || !meshCol || !terrain->enabled || terrain->heightData.empty()) continue;
+
+        // colliderDirty が立っているか未生成の場合のみ再構築する。
+        // EnsureMeshCollider は collider が set 済みなら skip するため、
+        // このブロックで先に set しておくことで自動ビルドが阻害されない。
+        if (terrain->colliderDirty || !meshCol->collider) {
+            const int cols = terrain->columns;
+            const int rows = terrain->rows;
+
+            // ローカル空間の頂点座標を生成する
+            // WHY: TriangleMeshCollider の UpdateWithScale が Transform を適用するため、
+            //      ここではローカル座標のみ渡す。
+            std::vector<math::Vector3> positions;
+            positions.reserve(static_cast<size_t>(cols) * static_cast<size_t>(rows));
+            for (int z = 0; z < rows; ++z) {
+                for (int x = 0; x < cols; ++x) {
+                    const float h = terrain->heightData[
+                        static_cast<size_t>(z) * static_cast<size_t>(cols) + static_cast<size_t>(x)]
+                        * terrain->maxHeight;
+                    positions.push_back({
+                        static_cast<float>(x) * terrain->cellSize,
+                        h,
+                        static_cast<float>(z) * terrain->cellSize
+                    });
+                }
+            }
+
+            // クアッド → 2 三角形（頂点法線と揃えるため CW）
+            std::vector<uint32_t> indices;
+            indices.reserve(static_cast<size_t>(cols - 1) * static_cast<size_t>(rows - 1) * 6u);
+            for (int z = 0; z < rows - 1; ++z) {
+                for (int x = 0; x < cols - 1; ++x) {
+                    const uint32_t i00 = static_cast<uint32_t>(z * cols + x);
+                    const uint32_t i10 = i00 + 1u;
+                    const uint32_t i01 = i00 + static_cast<uint32_t>(cols);
+                    const uint32_t i11 = i01 + 1u;
+                    indices.push_back(i00); indices.push_back(i01); indices.push_back(i10);
+                    indices.push_back(i10); indices.push_back(i01); indices.push_back(i11);
+                }
+            }
+
+            meshCol->collider = std::make_shared<physics::TriangleMeshCollider>(positions, indices);
+            terrain->colliderDirty = false;
+        }
     }
 
     for (auto& go : scene.GameObjects()) {

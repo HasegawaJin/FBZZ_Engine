@@ -175,7 +175,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::MenuItem("Colliders",    nullptr, &ctx.projectSettings.render.showColliders);
         ImGui::MenuItem("Decal Bounds", nullptr, &ctx.projectSettings.render.showDecalBounds);
         ImGui::MenuItem("Skeleton",     nullptr, &ctx.showSkeleton);
-        ImGui::MenuItem("Stats",        nullptr, &ctx.showSceneStats);
+        ImGui::MenuItem("Stats",        nullptr, &ctx.showStats);
         ImGui::MenuItem("Hot Reload",   nullptr, &ctx.hotReloadEnabled);
         ImGui::Separator();
         ImGui::MenuItem("Wireframe",    nullptr, &ctx.projectSettings.render.wireframeMode);
@@ -191,6 +191,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::MenuItem("Film Grain",          nullptr, &pp.filmGrain.enabled);
             ImGui::MenuItem("Chromatic Aberration",nullptr, &pp.lens.chromaticAberrationEnabled);
             ImGui::MenuItem("Lens Distortion",     nullptr, &pp.lens.distortionEnabled);
+            ImGui::MenuItem("Ambient Occlusion",   nullptr, &pp.ambientOcclusion.enabled);
             ImGui::Separator();
             ImGui::SliderFloat("Exposure",        &pp.exposure,                0.1f, 4.0f);
             ImGui::SliderFloat("Bloom Intensity", &pp.bloom.intensity,         0.0f, 3.0f);
@@ -201,6 +202,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::SliderFloat("Fog Far",         &pp.fog.farDistance,         1.0f, 100.0f);
             ImGui::EndMenu();
         }
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Tools")) {
+        ImGui::MenuItem("Terrain Tool", nullptr, &ctx.showTerrainTool);
         ImGui::EndMenu();
     }
 

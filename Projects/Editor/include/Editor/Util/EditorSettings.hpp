@@ -23,7 +23,7 @@ struct EditorSettings {
     float gridSize            = 1.0f;
     bool  showLightRange      = true;
     bool  showSkeleton        = false;
-    bool  showSceneStats      = true;
+    bool  showStats           = true;  // Game Viewport の Stats オーバーレイ
 
     // --- スナップ ---------------------------------------------------------
     bool  snapEnabled         = false;

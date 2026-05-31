@@ -2,6 +2,7 @@
 // ViewportPanel.cpp | fbzz::editor
 // Viewport image, mouse picking, and ImGuizmo manipulation
 #include <Editor/Panels/ViewportPanel.hpp>
+#include "../Tools/TerrainTool.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
@@ -1034,13 +1035,32 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !uiGizmoActive)
         PickUIEntity(ctx, viewportMin, size);
 
+    // ── TerrainTool: Sculpt / Paint 操作 ───────────────────────────────────
+    // プレイ中は編集を無効化する（データが実行時状態と混在しないよう）。
+    // TerrainComponent が 1 つもなければ Update は何もしない。
+    if (isSceneView && ctx.terrainTool && ctx.activeScene
+        && !(ctx.playMode && !ctx.playMode->IsInEditor()))
+    {
+        const bool vpHovered = ImGui::IsWindowHovered();
+        ctx.terrainTool->Update(
+            *ctx.activeScene,
+            *ctx.editorCamera,
+            ImGui::GetIO().DeltaTime,
+            vpHovered,
+            viewportMin,
+            size,
+            ctx.markSceneDirty);
+        if (ctx.showTerrainTool)
+            ctx.terrainTool->OnEditorGUI(*ctx.activeScene);
+    }
+
     // Show play/pause state with a viewport border.
     if (isGameView && ctx.playMode && ctx.playMode->IsPlaying())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(80, 200, 80, 220), 0.0f, 0, 3.0f);
     else if (isGameView && ctx.playMode && ctx.playMode->IsPaused())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(255, 180, 50, 220), 0.0f, 0, 3.0f);
 
-    if (isSceneView && ctx.showSceneStats) {
+    if (isGameView && ctx.showStats) {
         int entityCount = 0;
         int meshCount = 0;
         if (ctx.activeScene) {
@@ -1070,7 +1090,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             ImGuiWindowFlags_NoFocusOnAppearing;
         if (ImGui::Begin("##vp_stats", nullptr, kOverlayFlags)) {
             // ── 基本情報 ───────────────────────────────────────────────────────
-            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Scene ---");
+            ImGui::TextColored({ 0.9f, 0.9f, 0.5f, 1.0f }, "--- Game ---");
             ImGui::Text("FPS        %.1f (%.2f ms)",
                         ImGui::GetIO().Framerate,
                         1000.0f / ImGui::GetIO().Framerate);
