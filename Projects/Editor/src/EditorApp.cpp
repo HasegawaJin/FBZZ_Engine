@@ -286,7 +286,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     RegisterDefaultHotkeys();
 
     util::FileSystem::EnsureDirectory(SETTINGS_DIR);
-    m_settings.Load(SETTINGS_PATH);
+    m_settings.Load(SETTINGS_PATH, m_ctx.projectRoot);
     m_ctx.projectSettings.Load(m_projectSettingsPath);
     core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
 
@@ -357,7 +357,7 @@ void EditorApp::Shutdown()
     m_settings.cameraSpeed        = m_ctx.cameraSpeed;
     m_settings.cameraSensitivity  = m_ctx.cameraSensitivity;
 
-    m_settings.Save(SETTINGS_PATH);
+    m_settings.Save(SETTINGS_PATH, m_ctx.projectRoot);
     m_ctx.projectSettings.Save(m_projectSettingsPath);
     m_sceneViewportRT = {};
     m_gameViewportRT  = {};
