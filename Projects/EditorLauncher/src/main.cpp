@@ -1,6 +1,15 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // main.cpp | fbzz::editor_launcher
-// Standalone project-aware editor executable
+// エディタ / スタンドアロン両対応のエントリポイント
+//
+// WHAT: コマンドライン引数を解析し、エディタモードとスタンドアロンモードを切り替える。
+//   FBZZEditor.exe --project <path>              → エディタ起動 (既存)
+//   FBZZEditor.exe --project <path> --standalone → エディタ UI なし・ゲームのみ起動
+//   FBZZEditor.exe (引数なし)                    → exe 隣の .fbzz_proj を自動検出して Standalone 扱い
+//
+// WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
+//      配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
+#include "StandaloneApp.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -35,6 +44,13 @@
 namespace fbzz::editor_launcher {
 
 namespace {
+
+// --project と --standalone フラグを格納する構造体。
+// WHY: 引数解析結果を Run() へ渡すための軽量な値型として分離する。
+struct LaunchArgs {
+    std::filesystem::path projectPath;
+    bool                  standalone = false;
+};
 
 struct LaunchProject {
     std::filesystem::path root;
@@ -102,23 +118,32 @@ std::filesystem::path GetExecutableDirectory()
     return std::filesystem::path(buffer).parent_path();
 }
 
-std::filesystem::path FindProjectPathFromArgs()
+// コマンドライン引数を解析して LaunchArgs を返す。
+// WHY: 引数なし起動 = 配布版。exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする。
+//      これにより配布ユーザーは FBZZGame.exe をダブルクリックするだけで起動できる。
+LaunchArgs ParseArgs()
 {
+    LaunchArgs args;
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    if (argv == nullptr) return {};
+    if (!argv) return args;
 
-    std::filesystem::path projectPath;
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i];
-        if (arg == L"--project" && i + 1 < argc) {
-            projectPath = argv[i + 1];
-            break;
-        }
+        if (arg == L"--project" && i + 1 < argc)
+            args.projectPath = argv[++i];
+        else if (arg == L"--standalone")
+            args.standalone = true;
+    }
+    LocalFree(argv);
+
+    // 引数なし起動 = 配布版: exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする
+    if (args.projectPath.empty()) {
+        args.projectPath = GetExecutableDirectory();
+        args.standalone  = true;
     }
 
-    LocalFree(argv);
-    return projectPath;
+    return args;
 }
 
 std::filesystem::path ReadTomlRelativePath(const toml::table& table, const char* tableName, const char* key)
@@ -127,9 +152,9 @@ std::filesystem::path ReadTomlRelativePath(const toml::table& table, const char*
     return value.empty() ? std::filesystem::path{} : std::filesystem::path(Utf8ToWide(value));
 }
 
-bool ResolveProject(LaunchProject& project, std::wstring& errorMessage)
+bool ResolveProject(LaunchProject& project, const std::filesystem::path& projectPath, std::wstring& errorMessage)
 {
-    project.root = MakeAbsolute(FindProjectPathFromArgs());
+    project.root = MakeAbsolute(projectPath);
     if (project.root.empty()) {
         errorMessage = L"Project path was not specified.\n\nFBZZEditor.exe --project <path>";
         return false;
@@ -153,8 +178,14 @@ bool ResolveProject(LaunchProject& project, std::wstring& errorMessage)
     }
 
     const toml::table& projectTable = projectResult.table();
-    const std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
+    std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
     const std::filesystem::path defaultScene = ReadTomlRelativePath(projectTable, "project", "default_scene");
+    // "{{...}}" 形式のプレースホルダは未解決: Sandbox テンプレートの規約に合わせてフォールバック
+    if (!settingsPath.empty()) {
+        const std::wstring sv = settingsPath.wstring();
+        if (sv.size() >= 2 && sv.rfind(L"{{", 0) == 0)
+            settingsPath = L"ProjectSettings/ProjectSettings.toml";
+    }
     if (settingsPath.empty()) {
         errorMessage = L".fbzz_proj does not define project.settings_path.";
         return false;
@@ -242,41 +273,26 @@ void WarmupRenderResources(scene::Scene& scene,
     renderer.EndFrame();
 }
 
-} // namespace
-
-int Run()
+// エディタモードのメインループ。
+// WHY: Run() から切り出すことで Standalone 分岐が明確になり、
+//      将来的なリファクタリングの境界をはっきりさせる。
+void RunEditorLoop(renderer::IRenderer& renderer,
+                   renderer::ResourceManager& resources,
+                   const LaunchProject& project)
 {
-    LaunchProject project;
-    std::wstring errorMessage;
-    if (!ResolveProject(project, errorMessage)) {
-        MessageBoxW(nullptr, errorMessage.c_str(), L"FBZZ Editor", MB_OK | MB_ICONERROR);
-        return 1;
-    }
-
-    SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
-
     auto& app = core::Application::Get();
-    if (!app.Init()) return 1;
-
-    auto& renderer = app.GetRenderer();
-    renderer::ResourceManager resources(renderer);
-
-    const std::filesystem::path assetRoot = project.root / L"Assets";
-    asset::AssetManager::Init(resources, PathToUtf8(assetRoot) + "/");
 
     editor::EditorApp editorApp;
     if (!editorApp.Init(renderer, resources, app.GetWindow())) {
         app.Shutdown();
-        return 1;
+        return;
     }
 
     auto scene = std::make_unique<scene::Scene>();
     editorApp.GetContext().activeScene = scene.get();
     if (!editorApp.OpenProject(PathToUtf8(project.root), PathToUtf8(project.settingsFile), PathToUtf8(project.sceneFile))) {
         editorApp.Shutdown();
-        asset::AssetManager::UnloadAll();
-        app.Shutdown();
-        return 1;
+        return;
     }
 
     physics::World physicsWorld;
@@ -507,6 +523,69 @@ int Run()
     }
 
     editorApp.Shutdown();
+}
+
+} // namespace
+
+int Run()
+{
+    const LaunchArgs args = ParseArgs();
+
+    LaunchProject project;
+    std::wstring errorMessage;
+    if (!ResolveProject(project, args.projectPath, errorMessage)) {
+        MessageBoxW(nullptr, errorMessage.c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
+
+    auto& app = core::Application::Get();
+
+    if (args.standalone) {
+        // WHY: Standalone モードではウィンドウを正しいサイズで生成するために
+        //      Application::Init() の前に ProjectSettings を読み込む必要がある。
+        //      Init 後に Resize() するとウィンドウが一瞬デフォルトサイズで表示されてしまう。
+        ProjectSettings settings;
+        if (!settings.Load(PathToUtf8(project.settingsFile))) {
+            MessageBoxW(nullptr, L"ProjectSettings を読み込めませんでした。", L"FBZZ", MB_OK | MB_ICONERROR);
+            return 1;
+        }
+
+        core::Window::Config windowConfig;
+        windowConfig.title      = Utf8ToWide(settings.window.title);
+        windowConfig.width      = static_cast<uint32_t>(settings.window.width);
+        windowConfig.height     = static_cast<uint32_t>(settings.window.height);
+        windowConfig.fullscreen = settings.window.fullscreen;
+
+        if (!app.Init(windowConfig)) return 1;
+
+        auto& renderer = app.GetRenderer();
+        renderer::ResourceManager resources(renderer);
+        asset::AssetManager::Init(resources, PathToUtf8(project.root / L"Assets") + "/");
+
+        StandaloneApp standaloneApp;
+        if (!standaloneApp.Init(renderer, resources,
+                                project.root / L"Assets",
+                                project.sceneFile,
+                                settings)) {
+            app.Shutdown();
+            return 1;
+        }
+        standaloneApp.RunLoop(renderer, resources);
+        standaloneApp.Shutdown();
+    } else {
+        if (!app.Init()) return 1;
+
+        auto& renderer = app.GetRenderer();
+        renderer::ResourceManager resources(renderer);
+
+        const std::filesystem::path assetRoot = project.root / L"Assets";
+        asset::AssetManager::Init(resources, PathToUtf8(assetRoot) + "/");
+
+        RunEditorLoop(renderer, resources, project);
+    }
+
     asset::AssetManager::UnloadAll();
     app.Shutdown();
     return 0;
