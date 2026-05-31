@@ -35,7 +35,7 @@ private:
     static ImVec4      EntryColor(const Entry& e);
     static const char* EntryLabel(const Entry& e);
 
-    void DrawFbxContents();
+    void DrawFbxContents(EditorContext& ctx);
 
     std::string           m_rootPath;
     std::string           m_currentPath;

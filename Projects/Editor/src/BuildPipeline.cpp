@@ -9,6 +9,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <toml++/toml.hpp>
 #include <Windows.h>
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -35,6 +36,16 @@ std::string WideToUtf8(const std::wstring& text)
     std::string utf8(static_cast<size_t>(size - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
     return utf8;
+}
+
+std::wstring Utf8ToWide(const std::string& text)
+{
+    if (text.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
 }
 
 // 今日の日付を YYYY-MM-DD 形式で返す
@@ -195,16 +206,25 @@ bool BuildPipeline::ExecuteStep()
         m_status = "Copying project files...";
         const std::filesystem::path root(m_projectRoot);
 
-        // --- .fbzz_proj を読んで実際の settings_path を取得する ---
-        // WHY: settings_path は "ProjectSettings.toml" とは限らず
-        //      "editor_config/project_settings.toml" 等になる場合がある。
-        //      ハードコードせずに .fbzz_proj から動的に読む。
-        // WHY (プレースホルダ対応): standard テンプレートの .fbzz_proj は
-        //      settings_path = "{{SETTINGS_PATH}}" のまま EnsureSandboxProject で
-        //      コピーされる場合がある。"{{" で始まる値はプレースホルダと判断し、
-        //      Sandbox の規約に合わせて "ProjectSettings/ProjectSettings.toml" に
-        //      フォールバックする。
-        std::string settingsRelPath = "ProjectSettings/ProjectSettings.toml"; // デフォルト
+        // 絶対パスをプロジェクトルートからの相対パス (/ 区切り) に変換するヘルパー。
+        // すでに相対パスならそのまま返す。
+        auto MakeRel = [&](const std::string& rawPath) -> std::string {
+            if (rawPath.empty()) return rawPath;
+            std::filesystem::path p(Utf8ToWide(rawPath));
+            if (!p.is_absolute()) return p.generic_string();
+            std::error_code relEc;
+            const auto rel = std::filesystem::relative(p, root, relEc);
+            return (!relEc && !rel.empty()) ? rel.generic_string() : rawPath;
+        };
+
+        // --- .fbzz_proj を読んで settings_path / default_scene を取得し相対パスに変換 ---
+        // WHY (プレースホルダ対応): standard テンプレートの settings_path は "{{SETTINGS_PATH}}"
+        //      のまま残る場合がある。"{{" で始まる値はプレースホルダと判断してデフォルトを使う。
+        // WHY (絶対パス対応): GameHub Creator が settings_path を絶対パスで書き込む場合がある。
+        //      ビルド出力では相対パスに変換することで別 PC 移動後も動作させる。
+        std::string settingsRelPath = "ProjectSettings/ProjectSettings.toml";
+        std::string defaultSceneRel = "Assets/Scenes/Main.fbzz";
+        std::string startSceneRel;   // ProjectSettings の runtime.start_scene (自動コピー用)
         {
             const std::filesystem::path projFile = root / ".fbzz_proj";
             std::ifstream projIfs(projFile, std::ios::binary);
@@ -213,51 +233,122 @@ bool BuildPipeline::ExecuteStep()
                 ss << projIfs.rdbuf();
                 auto parsed = toml::parse(ss.str());
                 if (parsed) {
-                    const auto v = parsed.table()["project"]["settings_path"].value<std::string>();
-                    // "{{...}}" 形式のプレースホルダは未解決なのでデフォルトを使う
-                    if (v && v->size() >= 2 && v->rfind("{{", 0) != 0)
-                        settingsRelPath = *v;
+                    const auto sp = parsed.table()["project"]["settings_path"].value<std::string>();
+                    if (sp && sp->size() >= 2 && sp->rfind("{{", 0) != 0)
+                        settingsRelPath = MakeRel(*sp);
+
+                    const auto ds = parsed.table()["project"]["default_scene"].value<std::string>();
+                    if (ds && !ds->empty() && ds->rfind("{{", 0) != 0)
+                        defaultSceneRel = MakeRel(*ds);
                 }
             }
         }
 
-        // --- .fbzz_proj をコピー ---
+        // --- ビルド向け最小 .fbzz_proj を書き出す (開発環境固有の絶対パスを除去) ---
+        // WHY: 元の .fbzz_proj には engine.root / api_root / script_root 等の
+        //      開発環境固有の絶対パスが含まれる。別 PC で起動した際にパスが無効になるため、
+        //      ランタイムに必要な最小フィールドのみを相対パスで書き出す。
         {
-            const std::filesystem::path src = root / ".fbzz_proj";
-            if (std::filesystem::exists(src, ec)) {
-                std::filesystem::copy_file(src, m_tmpDir / ".fbzz_proj",
-                    std::filesystem::copy_options::overwrite_existing, ec);
-                if (ec) { SetFailed("Failed to copy .fbzz_proj"); return false; }
-            }
+            std::ostringstream proj;
+            proj << "[project]\n";
+            proj << "name          = \"" << m_settings.productName << "\"\n";
+            proj << "settings_path = \"" << settingsRelPath << "\"\n";
+            proj << "default_scene = \"" << defaultSceneRel << "\"\n";
+
+            const std::filesystem::path dst = m_tmpDir / ".fbzz_proj";
+            std::ofstream ofs(dst, std::ios::binary);
+            if (!ofs) { SetFailed("Failed to write .fbzz_proj"); return false; }
+            ofs << proj.str();
         }
 
-        // --- ProjectSettings (実際のパスを相対位置に保ってコピー) ---
+        // --- ProjectSettings を相対パスに修正してコピー ---
+        // WHY: default_scene / start_scene が絶対パスで保存されている場合、
+        //      別 PC で起動した際にシーンが見つからなくなる。
+        //      パースして絶対パスフィールドのみ相対変換し、それ以外は元の値を保持する。
         {
             const std::filesystem::path src = root / settingsRelPath;
             const std::filesystem::path dst = m_tmpDir / settingsRelPath;
             std::filesystem::create_directories(dst.parent_path(), ec);
             if (std::filesystem::exists(src, ec)) {
-                std::filesystem::copy_file(src, dst,
-                    std::filesystem::copy_options::overwrite_existing, ec);
-                if (ec) { SetFailed("Failed to copy settings file: " + src.string()); return false; }
+                std::ifstream settingsIfs(src, std::ios::binary);
+                std::string settingsText;
+                if (settingsIfs) {
+                    std::ostringstream ss;
+                    ss << settingsIfs.rdbuf();
+                    settingsText = ss.str();
+                }
+
+                auto settingsParsed = toml::parse(settingsText);
+                bool modified = false;
+
+                if (settingsParsed) {
+                    auto& settingsTbl = settingsParsed.table();
+
+                    if (auto* projTbl = settingsTbl["project"].as_table()) {
+                        if (auto* strNode = (*projTbl)["default_scene"].as_string()) {
+                            const std::string fixed = MakeRel(strNode->get());
+                            if (fixed != strNode->get()) { strNode->get() = fixed; modified = true; }
+                        }
+                    }
+                    if (auto* runtimeTbl = settingsTbl["runtime"].as_table()) {
+                        if (auto* strNode = (*runtimeTbl)["start_scene"].as_string()) {
+                            const std::string fixed = MakeRel(strNode->get());
+                            if (fixed != strNode->get()) { strNode->get() = fixed; modified = true; }
+                            // 自動コピー対象として記録する
+                            startSceneRel = fixed.empty() ? strNode->get() : fixed;
+                        }
+                    }
+
+                    if (modified) {
+                        std::ostringstream ss;
+                        ss << settingsTbl;
+                        std::ofstream ofs(dst, std::ios::binary);
+                        if (!ofs) { SetFailed("Failed to write patched ProjectSettings: " + src.string()); return false; }
+                        ofs << ss.str();
+                    } else {
+                        std::filesystem::copy_file(src, dst,
+                            std::filesystem::copy_options::overwrite_existing, ec);
+                        if (ec) { SetFailed("Failed to copy settings file: " + src.string()); return false; }
+                    }
+                } else {
+                    // パース失敗の場合はそのままコピーする
+                    std::filesystem::copy_file(src, dst,
+                        std::filesystem::copy_options::overwrite_existing, ec);
+                    if (ec) { SetFailed("Failed to copy settings file: " + src.string()); return false; }
+                }
             }
         }
 
-        // --- enabled=true のシーンをコピー ---
-        // WHY: シーンファイルはエンジンの assets/ ディレクトリには含まれない。
-        //      BuildSettings に追加されたシーンだけをプロジェクトルートからの
-        //      相対パスを保ってコピーすることで、配布 exe がシーンを発見できるようにする。
-        for (const auto& scenePath : m_settings.EnabledScenes()) {
-            const std::filesystem::path src = root / scenePath;
-            const std::filesystem::path dst = m_tmpDir / scenePath;
-            std::filesystem::create_directories(dst.parent_path(), ec);
-            if (std::filesystem::exists(src, ec)) {
-                std::filesystem::copy_file(src, dst,
-                    std::filesystem::copy_options::overwrite_existing, ec);
-                if (ec) { SetFailed("Failed to copy scene: " + src.string()); return false; }
-            } else {
-                // シーンが見つからなくてもビルドは続行する (警告のみ)
-                FBZZ_LOG_WARN("BuildPipeline: scene not found, skipping: %s", src.string().c_str());
+        // --- シーンをコピー ---
+        // WHY: EnabledScenes() は BuildSettings パネルでユーザーが手動追加したシーン。
+        //      それに加えて ProjectSettings の runtime.start_scene / project.default_scene も
+        //      自動でコピーする。これにより BuildSettings パネルに何も追加しなくても
+        //      ゲームが起動できる。
+        {
+            // コピー対象セット: EnabledScenes + start_scene + default_scene (重複排除)
+            std::vector<std::string> scenesToCopy = m_settings.EnabledScenes();
+            auto autoAdd = [&](const std::string& scene) {
+                if (!scene.empty() && scene.rfind("{{", 0) != 0) {
+                    const bool already = std::any_of(scenesToCopy.begin(), scenesToCopy.end(),
+                        [&scene](const std::string& s) { return s == scene; });
+                    if (!already) scenesToCopy.push_back(scene);
+                }
+            };
+            autoAdd(startSceneRel);   // runtime.start_scene から取得
+            autoAdd(defaultSceneRel); // .fbzz_proj の default_scene から取得
+
+            for (const auto& scenePath : scenesToCopy) {
+                const std::filesystem::path src = root / scenePath;
+                const std::filesystem::path dst = m_tmpDir / scenePath;
+                std::filesystem::create_directories(dst.parent_path(), ec);
+                if (std::filesystem::exists(src, ec)) {
+                    std::filesystem::copy_file(src, dst,
+                        std::filesystem::copy_options::overwrite_existing, ec);
+                    if (ec) { SetFailed("Failed to copy scene: " + src.string()); return false; }
+                } else {
+                    // シーンが見つからなくてもビルドは続行する (警告のみ)
+                    FBZZ_LOG_WARN("BuildPipeline: scene not found, skipping: %s", src.string().c_str());
+                }
             }
         }
 

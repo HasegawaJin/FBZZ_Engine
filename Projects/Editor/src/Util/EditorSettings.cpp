@@ -5,11 +5,12 @@
 #include <toml++/toml.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <filesystem>
 #include <sstream>
 
 namespace fbzz::editor {
 
-bool EditorSettings::Load(const std::string& path)
+bool EditorSettings::Load(const std::string& path, const std::string& projectRoot)
 {
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) return false;
@@ -46,12 +47,24 @@ bool EditorSettings::Load(const std::string& path)
 
     // その他
     if (auto v = tbl["misc"]["hot_reload"].value<bool>())     hotReloadEnabled = *v;
-    if (auto v = tbl["scene"]["last_path"].value<std::string>()) lastScenePath = *v;
+    if (auto v = tbl["scene"]["last_path"].value<std::string>()) {
+        lastScenePath = *v;
+        // 相対パスで保存されていた場合は projectRoot と組み合わせて絶対パスに戻す
+        if (!projectRoot.empty() && !lastScenePath.empty()) {
+            std::error_code ec;
+            std::filesystem::path p(lastScenePath);
+            if (p.is_relative()) {
+                const auto abs = std::filesystem::absolute(
+                    std::filesystem::path(projectRoot) / p, ec);
+                if (!ec) lastScenePath = abs.string();
+            }
+        }
+    }
 
     return true;
 }
 
-bool EditorSettings::Save(const std::string& path) const
+bool EditorSettings::Save(const std::string& path, const std::string& projectRoot) const
 {
     toml::table camTbl;
     camTbl.insert("speed",       cameraSpeed);
@@ -78,8 +91,19 @@ bool EditorSettings::Save(const std::string& path) const
     toml::table miscTbl;
     miscTbl.insert("hot_reload", hotReloadEnabled);
 
+    // lastScenePath を projectRoot 相対パスに変換して保存する
+    // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後にシーンが見つからなくなる
+    std::string scenePathToSave = lastScenePath;
+    if (!projectRoot.empty() && !lastScenePath.empty()) {
+        std::error_code ec;
+        const std::filesystem::path rel = std::filesystem::relative(
+            std::filesystem::path(lastScenePath), std::filesystem::path(projectRoot), ec);
+        if (!ec && !rel.empty())
+            scenePathToSave = rel.generic_string();
+    }
+
     toml::table sceneTbl;
-    sceneTbl.insert("last_path", lastScenePath);
+    sceneTbl.insert("last_path", scenePathToSave);
 
     toml::table root;
     root.insert("camera",    std::move(camTbl));
