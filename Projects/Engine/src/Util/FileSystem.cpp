@@ -7,6 +7,23 @@
 #include <Windows.h>
 #include <fstream>
 #include <sstream>
+#include <string>
+
+namespace {
+// UTF-8 文字列をワイド文字列に変換する。
+// WHY: std::ifstream(std::string) は Windows ANSI (CP_ACP) でパスを解釈するため、
+//      UTF-8 の多バイト文字を含むパスが正しく開けない。
+//      ワイド文字列を使うと Win32 Unicode API 経由で開くため常に正しく動く。
+std::wstring Utf8ToWide(const std::string& s)
+{
+    if (s.empty()) return {};
+    const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    if (n <= 0) return {};
+    std::wstring w(static_cast<size_t>(n - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
+    return w;
+}
+} // namespace
 
 namespace fbzz::util {
 
@@ -91,7 +108,7 @@ bool FileSystem::EnsureDirectory(const std::string& path)
 
 bool FileSystem::ReadText(const std::string& path, std::string& out)
 {
-    std::ifstream f(path);
+    std::ifstream f(Utf8ToWide(path));
     if (!f.is_open()) return false;
     std::ostringstream ss;
     ss << f.rdbuf();
@@ -101,7 +118,7 @@ bool FileSystem::ReadText(const std::string& path, std::string& out)
 
 bool FileSystem::WriteText(const std::string& path, const std::string& text)
 {
-    std::ofstream f(path);
+    std::ofstream f(Utf8ToWide(path));
     if (!f.is_open()) return false;
     f << text;
     return true;
