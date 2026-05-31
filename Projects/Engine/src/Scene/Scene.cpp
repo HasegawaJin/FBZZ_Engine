@@ -9,6 +9,7 @@
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Util/Uuid.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -116,16 +117,24 @@ bool Scene::IsValid(EntityID id) const {
 GameObject& Scene::CreateGameObject(const std::string& name) {
     EntityID id = AllocateEntity();
 
-    auto go        = std::make_unique<GameObject>();
-    go->name       = name;
-    go->m_id       = id;
-    go->m_scene    = this;
+    auto go            = std::make_unique<GameObject>();
+    go->name           = name;
+    go->instanceId     = util::GenerateUUID();
+    go->m_id           = id;
+    go->m_scene        = this;
 
     GameObject* ptr = go.get();
     m_entityToGameObject[id.index] = ptr;
     m_gameObjects.push_back(std::move(go));
 
     return *ptr;
+}
+
+GameObject* Scene::FindByGuid(const std::string& guid) const {
+    if (guid.empty()) return nullptr;
+    for (const auto& go : m_gameObjects)
+        if (go->instanceId == guid) return go.get();
+    return nullptr;
 }
 
 // -----------------------------------------------------------------------

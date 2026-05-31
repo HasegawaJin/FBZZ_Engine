@@ -135,7 +135,7 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
 
 // ─── フォルダツリー (左ペイン) ───────────────────────────────────────────────
 
-void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath)
+void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext& ctx)
 {
     for (const auto& p : util::FileSystem::ListAll(dirPath)) {
         if (!util::FileSystem::IsDirectory(p)) continue;
@@ -150,8 +150,16 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath)
             m_currentPath = p;
             RefreshDirectory();
         }
+        // ヒエラルキーエンティティをフォルダノードにドロップ → そのフォルダへ Prefab 保存
+        if (ImGui::BeginDragDropTarget()) {
+            if (SaveHierarchyPayloadAsPrefab(
+                    ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, p)) {
+                RefreshDirectory();
+            }
+            ImGui::EndDragDropTarget();
+        }
         if (open) {
-            DrawFolderTree(p);
+            DrawFolderTree(p, ctx);
             ImGui::TreePop();
         }
     }
@@ -233,6 +241,15 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         ImGui::SetDragDropPayload("ASSET_PATH", e.path.c_str(), e.path.size() + 1);
         ImGui::TextUnformatted(e.name.c_str());
         ImGui::EndDragDropSource();
+    }
+    // ドロップターゲット (ディレクトリのみ)
+    // WHY: コンテンツエリア全体ではなく特定サブフォルダへ直接ドロップして保存先を選べるようにする。
+    if (e.isDir && ImGui::BeginDragDropTarget()) {
+        if (SaveHierarchyPayloadAsPrefab(
+                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, e.path)) {
+            RefreshDirectory();
+        }
+        ImGui::EndDragDropTarget();
     }
 
     if (hov && m_renamingPath != e.path) ImGui::SetTooltip("%s", e.path.c_str());
@@ -514,8 +531,16 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         m_currentPath = m_rootPath;
         RefreshDirectory();
     }
+    // Assets ルートへのドロップ
+    if (ImGui::BeginDragDropTarget()) {
+        if (SaveHierarchyPayloadAsPrefab(
+                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_rootPath)) {
+            RefreshDirectory();
+        }
+        ImGui::EndDragDropTarget();
+    }
     if (rootOpen) {
-        DrawFolderTree(m_rootPath);
+        DrawFolderTree(m_rootPath, ctx);
         ImGui::TreePop();
     }
 

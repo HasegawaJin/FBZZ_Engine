@@ -84,6 +84,7 @@ public:
 
     // Unity: GameObject.Find 系の実体
     GameObject*              Find(const std::string& name)     const;
+    GameObject*              FindByGuid(const std::string& guid) const;
     GameObject*              FindWithTag(const std::string& t)  const;
     GameObject*              FindWithLayer(int layer)            const;
     std::vector<GameObject*> FindAllWithTag(const std::string& t) const;

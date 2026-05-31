@@ -16,8 +16,11 @@ class Scene;
 class GameObject {
 public:
     // Unity: gameObject.name / .tag (直接変数)
-    std::string name = "GameObject";
-    std::string tag  = "Untagged";
+    std::string name       = "GameObject";
+    std::string tag        = "Untagged";
+    // クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
+    // UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
+    std::string instanceId;
     int layer = 0;
 
     // Unity: gameObject.transform (常に存在。ComponentArray には入れない)
@@ -49,6 +52,7 @@ public:
 
     // Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
     static GameObject*              Find(const std::string& n);
+    static GameObject*              FindByGuid(const std::string& guid);
     static GameObject*              FindWithTag(const std::string& t);
     template<typename T>
     static std::vector<GameObject*> FindObjectsOfType();
