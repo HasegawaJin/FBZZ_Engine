@@ -97,6 +97,42 @@ NG: Modules / Coroutines / Ranges
 
 ---
 
+## Script 便利 API (Engine/Scene/Script.hpp)
+
+`Script` 基底クラスは Unity の `MonoBehaviour` に相当する便利メソッドを提供する。
+ユーザースクリプトでは `m_gameObject->` / `m_scene->` の代わりにこれらを使う。
+
+| メソッド | 説明 |
+|---|---|
+| `GetComponent<T>()` | `m_gameObject->GetComponent<T>()` の短縮形 |
+| `transform->position` | 自 GO の Transform への直接ポインタ (SetContext で設定) |
+| `Find(name)` / `FindWithTag(tag)` | `m_scene->Find / FindWithTag` の短縮形 |
+| `GetGameObject(id)` | EntityID から GO を取得 |
+| `CreateGameObject(name)` | `m_scene->CreateGameObject` の短縮形 |
+| `GetMainCameraObject()` | シーン内のメインカメラ GO を返す |
+| `Destroy(go, delay)` | `GameObject::Destroy` の短縮形 |
+| `SetAnimatorFloat/Int/Bool/Trigger` | 自 GO の AnimatorComponent に転送 |
+| `IsAnimatorInState(name)` | 現在のアニメーターステートを確認 |
+
+`GetComponent<T>()` の template 定義は循環依存回避のため `Scene.hpp` 末尾に置く。
+
+---
+
+## Sandbox スクリプトの using namespace 規則
+
+`Projects/Sandbox/src/Scripts/` 以下のヘッダファイルに限り、以下の `using` を許可する。
+
+```cpp
+using namespace fbzz::scene;
+using namespace fbzz::math;
+using namespace fbzz::input;
+```
+
+**WHY**: Sandbox スクリプトはエンジン層からインクルードされない末端ヘッダであり、
+名前空間汚染が生じない。エンジン側の `.hpp` での `using namespace` は引き続き禁止。
+
+---
+
 ## 禁止パターン
 
 | パターン | 理由 |

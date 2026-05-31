@@ -390,6 +390,9 @@ void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
         const math::Matrix4 ownerInv =
             math::Matrix4::Inverse(go->transform.GetWorldMatrix());
         bool anyChainModified = false;
+        // ステートごとの IK Weight をクロスフェードを考慮して取得する。
+        // IKChain::weight に乗算することで、ステート設定を chain ごとの細かい調整と独立させる。
+        const float stateIKWeight = animator->GetCurrentIKWeight();
 
         // ================================================================
         // D: Hip 鬮倥＆陬懈ｭ｣ pre-pass
@@ -531,19 +534,29 @@ void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
 
             // E: 動的レイ高さで地面スナップを実行してターゲット位置を更新する。
             GroundHit groundHit;
-            const bool hasGroundHit =
+            const bool groundFound =
                 chain.useGroundSnap &&
                 UpdateFootTargetFromGround(scene, *targetGO, pC_fk, totalLength,
                                            chain.rayUpRatio, chain.rayDownRatio,
                                            chain.footSurfaceOffset, groundHit);
 
-            // Ground Snap 時は footSurfaceOffset だけを使うため targetOffset を加算しない。
-            // WHY: UpdateFootTargetFromGround が position = hit + normal*footSurfaceOffset に確定済みで、
-            //      さらに targetOffset を足すと二重オフセットになる。
-            //      非 Ground Snap 時は position が FK 足位置のままなので targetOffset が有効。
+            // 根本修正: FK 足位置が地面面より上にあるときはスナップを適用しない。
+            // WHY: スイング相 (Run/Walk の足上げ) では FK 足は地面より高い位置にある。
+            //      地面が見つかっても無条件にスナップすると、アニメーションで持ち上がった足が
+            //      地面に引きずられる現象の直接原因になる。
+            //      スナップは「FK 足が地面面を下回りそうなとき」だけ補正するべき。
+            const bool hasGroundHit = groundFound &&
+                (pC_fk.y < groundHit.point.y + chain.footSurfaceOffset + math::EPSILON);
+
+            // pT の決定:
+            //   スナップあり → 地面ヒット点 (targetOffset は UpdateFootTargetFromGround 内で確定済み)
+            //   地面未検出   → ユーザー配置ターゲット + targetOffset
+            //   地面はあるが足が上にある → FK 足位置を直接ターゲットにして IK を無効化 (no-op)
             const math::Vector3 pT = hasGroundHit
                 ? targetGO->transform.position
-                : targetGO->transform.position + chain.targetOffset;
+                : (!groundFound
+                    ? targetGO->transform.position + chain.targetOffset
+                    : pC_fk);
 
             math::Vector3 pP     = math::Vector3::ZERO;
             bool          hasPole = chain.poleEntity.IsValid();
@@ -613,7 +626,7 @@ void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
                 (FromToRotation((pC_fk - pB_fk).Normalized(),
                                 (pTEffective - pB_ik).Normalized()) * rotB_fk).Normalized();
 
-            const float weight = math::Clamp01(chain.weight);
+            const float weight = math::Clamp01(chain.weight * stateIKWeight);
             const math::Quaternion rotA_final =
                 math::Quaternion::Slerp(rotA_fk, rotA_ik, weight);
             const math::Quaternion rotB_final =
