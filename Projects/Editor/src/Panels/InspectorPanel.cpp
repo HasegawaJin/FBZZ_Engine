@@ -305,6 +305,16 @@ std::string NormalizeAssetPath(std::string path)
     for (char& c : path) {
         if (c == '\\') c = '/';
     }
+
+    // WHY: Inspector で OS の絶対パスを保存すると、プロジェクトを移動しただけで
+    //      シーン復元に失敗する。Assets 配下のファイルは必ず Assets 起点に丸める。
+    if (path.rfind("Assets/", 0) == 0) return path;
+
+    const std::string marker = "/Assets/";
+    const size_t assetsPos = path.find(marker);
+    if (assetsPos != std::string::npos)
+        return path.substr(assetsPos + 1);
+
     return path;
 }
 
@@ -891,7 +901,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 char meshBuf[256];
                 std::snprintf(meshBuf, sizeof(meshBuf), "%s", mr.meshPath.c_str());
                 if (ImGui::InputText("Mesh Path", meshBuf, sizeof(meshBuf)))
-                    mr.meshPath = meshBuf;
+                    mr.meshPath = NormalizeAssetPath(meshBuf);
 
                 auto loadCustomMesh = [&mr]() {
                     if (mr.meshPath.empty()) return;
@@ -904,8 +914,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        mr.meshPath = static_cast<const char*>(p->Data);
-                        for (char& c : mr.meshPath) if (c == '\\') c = '/';
+                        mr.meshPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
                         loadCustomMesh();
                     }
                     ImGui::EndDragDropTarget();
@@ -924,12 +933,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             char pathBuf[256];
             std::snprintf(pathBuf, sizeof(pathBuf), "%s", smr.modelPath.c_str());
             if (ImGui::InputText("Model", pathBuf, sizeof(pathBuf)))
-                smr.modelPath = pathBuf;
+                smr.modelPath = NormalizeAssetPath(pathBuf);
             if (ImGui::IsItemDeactivatedAfterEdit()) loadModel();
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    smr.modelPath = static_cast<const char*>(p->Data);
-                    for (char& c : smr.modelPath) if (c == '\\') c = '/';
+                    smr.modelPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
                     loadModel();
                 }
                 ImGui::EndDragDropTarget();
@@ -962,14 +970,13 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 std::snprintf(buf, sizeof(buf), "%s", anim.clipSources[i].c_str());
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 24.0f);
                 if (ImGui::InputText("##src", buf, sizeof(buf)))
-                    anim.clipSources[i] = buf;
+                    anim.clipSources[i] = NormalizeAssetPath(buf);
                 if (ImGui::IsItemDeactivatedAfterEdit())
                     { anim.clips.clear(); anim.clipsLoaded = false; }
                 // DragDrop target must be right after InputText, before SameLine
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        anim.clipSources[i] = static_cast<const char*>(p->Data);
-                        for (char& c : anim.clipSources[i]) if (c == '\\') c = '/';
+                        anim.clipSources[i] = NormalizeAssetPath(static_cast<const char*>(p->Data));
                         anim.clips.clear(); anim.clipsLoaded = false;
                     }
                     ImGui::EndDragDropTarget();
@@ -987,8 +994,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 anim.clipSources.emplace_back();
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    std::string path = static_cast<const char*>(p->Data);
-                    for (char& c : path) if (c == '\\') c = '/';
+                    std::string path = NormalizeAssetPath(static_cast<const char*>(p->Data));
                     anim.clipSources.push_back(std::move(path));
                     anim.clips.clear(); anim.clipsLoaded = false;
                 }
@@ -1534,11 +1540,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 char buf[256];
                 std::snprintf(buf, sizeof(buf), "%s", path.c_str());
                 if (ImGui::InputText(label, buf, sizeof(buf)))
-                    path = buf;
+                    path = NormalizeAssetPath(buf);
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        path = static_cast<const char*>(p->Data);
-                        for (char& c : path) if (c == '\\') c = '/';
+                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -1610,11 +1615,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 char buf[256];
                 std::snprintf(buf, sizeof(buf), "%s", mc.shaderPath.c_str());
                 if (ImGui::InputText("Shader (HLSL)", buf, sizeof(buf)))
-                    mc.shaderPath = buf;
+                    mc.shaderPath = NormalizeAssetPath(buf);
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        mc.shaderPath = static_cast<const char*>(p->Data);
-                        for (char& c : mc.shaderPath) if (c == '\\') c = '/';
+                        mc.shaderPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -1841,11 +1845,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 char buf[256];
                 std::snprintf(buf, sizeof(buf), "%s", path.c_str());
                 if (ImGui::InputText(label, buf, sizeof(buf)))
-                    path = buf;
+                    path = NormalizeAssetPath(buf);
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        path = static_cast<const char*>(p->Data);
-                        for (char& c : path) if (c == '\\') c = '/';
+                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -1916,11 +1919,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             char texBuf[512];
             std::snprintf(texBuf, sizeof(texBuf), "%s", image.texturePath.c_str());
             if (ImGui::InputText("Texture Path", texBuf, sizeof(texBuf)))
-                image.texturePath = texBuf;
+                image.texturePath = NormalizeAssetPath(texBuf);
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    image.texturePath = static_cast<const char*>(p->Data);
-                    for (char& c : image.texturePath) if (c == '\\') c = '/';
+                    image.texturePath = NormalizeAssetPath(static_cast<const char*>(p->Data));
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -1996,11 +1998,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     char buf[256];
                     std::snprintf(buf, sizeof(buf), "%s", layer.diffusePath.c_str());
                     if (ImGui::InputText("Diffuse##d", buf, sizeof(buf)))
-                        layer.diffusePath = buf;
+                        layer.diffusePath = NormalizeAssetPath(buf);
                     if (ImGui::IsItemDeactivatedAfterEdit()) tc.splatDirty = true;
                     if (ImGui::BeginDragDropTarget()) {
                         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                            layer.diffusePath = static_cast<const char*>(p->Data);
+                            layer.diffusePath = NormalizeAssetPath(static_cast<const char*>(p->Data));
                             tc.splatDirty = true;
                         }
                         ImGui::EndDragDropTarget();
@@ -2011,8 +2013,15 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     char buf[256];
                     std::snprintf(buf, sizeof(buf), "%s", layer.normalPath.c_str());
                     if (ImGui::InputText("Normal##n", buf, sizeof(buf)))
-                        layer.normalPath = buf;
+                        layer.normalPath = NormalizeAssetPath(buf);
                     if (ImGui::IsItemDeactivatedAfterEdit()) tc.splatDirty = true;
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                            layer.normalPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
+                            tc.splatDirty = true;
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
                 }
                 ImGui::DragFloat("Tiling X##tx", &layer.tilingX, 0.1f, 0.1f, 100.0f);
                 ImGui::DragFloat("Tiling Z##tz", &layer.tilingZ, 0.1f, 0.1f, 100.0f);
