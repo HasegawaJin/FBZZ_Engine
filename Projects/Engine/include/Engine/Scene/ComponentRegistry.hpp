@@ -25,6 +25,7 @@
 #include "Components/UIAnimator.hpp"
 #include "Components/DecalComponent.hpp"
 #include "Components/IKSolverComponent.hpp"
+#include "Components/CharacterControllerComponent.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -57,7 +58,8 @@ using ComponentList = std::tuple<
     UIAnimator,
     ScriptComponent,
     DecalComponent,
-    IKSolverComponent
+    IKSolverComponent,
+    CharacterControllerComponent
     // 新型はここに1行追加するだけ
 >;
 
