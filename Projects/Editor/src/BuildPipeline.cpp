@@ -9,6 +9,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <toml++/toml.hpp>
 #include <Windows.h>
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -223,6 +224,7 @@ bool BuildPipeline::ExecuteStep()
         //      ビルド出力では相対パスに変換することで別 PC 移動後も動作させる。
         std::string settingsRelPath = "ProjectSettings/ProjectSettings.toml";
         std::string defaultSceneRel = "Assets/Scenes/Main.fbzz";
+        std::string startSceneRel;   // ProjectSettings の runtime.start_scene (自動コピー用)
         {
             const std::filesystem::path projFile = root / ".fbzz_proj";
             std::ifstream projIfs(projFile, std::ios::binary);
@@ -292,6 +294,8 @@ bool BuildPipeline::ExecuteStep()
                         if (auto* strNode = (*runtimeTbl)["start_scene"].as_string()) {
                             const std::string fixed = MakeRel(strNode->get());
                             if (fixed != strNode->get()) { strNode->get() = fixed; modified = true; }
+                            // 自動コピー対象として記録する
+                            startSceneRel = fixed.empty() ? strNode->get() : fixed;
                         }
                     }
 
@@ -315,21 +319,36 @@ bool BuildPipeline::ExecuteStep()
             }
         }
 
-        // --- enabled=true のシーンをコピー ---
-        // WHY: シーンファイルはエンジンの assets/ ディレクトリには含まれない。
-        //      BuildSettings に追加されたシーンだけをプロジェクトルートからの
-        //      相対パスを保ってコピーすることで、配布 exe がシーンを発見できるようにする。
-        for (const auto& scenePath : m_settings.EnabledScenes()) {
-            const std::filesystem::path src = root / scenePath;
-            const std::filesystem::path dst = m_tmpDir / scenePath;
-            std::filesystem::create_directories(dst.parent_path(), ec);
-            if (std::filesystem::exists(src, ec)) {
-                std::filesystem::copy_file(src, dst,
-                    std::filesystem::copy_options::overwrite_existing, ec);
-                if (ec) { SetFailed("Failed to copy scene: " + src.string()); return false; }
-            } else {
-                // シーンが見つからなくてもビルドは続行する (警告のみ)
-                FBZZ_LOG_WARN("BuildPipeline: scene not found, skipping: %s", src.string().c_str());
+        // --- シーンをコピー ---
+        // WHY: EnabledScenes() は BuildSettings パネルでユーザーが手動追加したシーン。
+        //      それに加えて ProjectSettings の runtime.start_scene / project.default_scene も
+        //      自動でコピーする。これにより BuildSettings パネルに何も追加しなくても
+        //      ゲームが起動できる。
+        {
+            // コピー対象セット: EnabledScenes + start_scene + default_scene (重複排除)
+            std::vector<std::string> scenesToCopy = m_settings.EnabledScenes();
+            auto autoAdd = [&](const std::string& scene) {
+                if (!scene.empty() && scene.rfind("{{", 0) != 0) {
+                    const bool already = std::any_of(scenesToCopy.begin(), scenesToCopy.end(),
+                        [&scene](const std::string& s) { return s == scene; });
+                    if (!already) scenesToCopy.push_back(scene);
+                }
+            };
+            autoAdd(startSceneRel);   // runtime.start_scene から取得
+            autoAdd(defaultSceneRel); // .fbzz_proj の default_scene から取得
+
+            for (const auto& scenePath : scenesToCopy) {
+                const std::filesystem::path src = root / scenePath;
+                const std::filesystem::path dst = m_tmpDir / scenePath;
+                std::filesystem::create_directories(dst.parent_path(), ec);
+                if (std::filesystem::exists(src, ec)) {
+                    std::filesystem::copy_file(src, dst,
+                        std::filesystem::copy_options::overwrite_existing, ec);
+                    if (ec) { SetFailed("Failed to copy scene: " + src.string()); return false; }
+                } else {
+                    // シーンが見つからなくてもビルドは続行する (警告のみ)
+                    FBZZ_LOG_WARN("BuildPipeline: scene not found, skipping: %s", src.string().c_str());
+                }
             }
         }
 
