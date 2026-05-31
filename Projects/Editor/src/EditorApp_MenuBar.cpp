@@ -163,7 +163,13 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             }
             ImGui::EndMenu();
         }
-        ImGui::Separator();
+        ImGui::EndMenu();
+    }
+
+    // --- Debug -----------------------------------------------------------
+    if (ImGui::BeginMenu("Debug")) {
+        // WHY: Godot は表示パネル操作とデバッグ描画切替を別メニューに分けている。
+        //      FBZZ でも View はレイアウト・パネル、Debug は実行/描画診断に寄せることで項目の意味を読み取りやすくする。
         ImGui::MenuItem("Grid",         nullptr, &ctx.showGrid);
         ImGui::MenuItem("Light Range",  nullptr, &ctx.showLightRange);
         ImGui::MenuItem("Colliders",    nullptr, &ctx.projectSettings.render.showColliders);
