@@ -30,6 +30,7 @@
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -487,6 +488,23 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
         });
         shown |= addItem(category, "Decal", !go.GetComponent<scene::DecalComponent>(), [&]() {
             go.AddComponent<scene::DecalComponent>();
+        });
+        // Terrain は 1 GO に 1 つ。MeshColliderComponent も同時に追加してすぐ物理が有効になる。
+        shown |= addItem(category, "Terrain", !go.GetComponent<scene::TerrainComponent>(), [&]() {
+            scene::TerrainComponent tc{};
+            tc.columns   = 33;
+            tc.rows      = 33;
+            tc.cellSize  = 2.0f;
+            tc.maxHeight = 10.0f;
+            tc.chunkSize = 32;
+            tc.InitFlat(0.0f);
+            tc.heightDirty   = true;
+            tc.colliderDirty = true;
+            go.AddComponent<scene::TerrainComponent>(std::move(tc));
+            // 物理コライダーのキャリアとして MeshColliderComponent を追加
+            // (meshPath = "" → PhysicsSystem が TerrainComponent から自動構築する)
+            if (!go.GetComponent<scene::MeshColliderComponent>())
+                go.AddComponent<scene::MeshColliderComponent>();
         });
         return shown;
     });
@@ -1950,6 +1968,86 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragFloat("Pad Top",    &layout.paddingTop,    1.0f, 0.0f, 512.0f);
             ImGui::DragFloat("Pad Bottom", &layout.paddingBottom, 1.0f, 0.0f, 512.0f);
             ImGui::Checkbox("Reverse Order", &layout.reverseOrder);
+        });
+
+    DrawComponentSection<scene::TerrainComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain",
+        [go](scene::TerrainComponent& tc, EditorContext&) {
+            // ── グリッド設定 ──────────────────────────────────────────────────
+            ImGui::SeparatorText("Grid");
+            if (ImGui::DragInt("Columns",    &tc.columns,   1.0f, 2, 4097))
+                tc.heightDirty = true;
+            if (ImGui::DragInt("Rows",       &tc.rows,      1.0f, 2, 4097))
+                tc.heightDirty = true;
+            if (ImGui::DragFloat("Cell Size",   &tc.cellSize,  0.01f, 0.01f, 100.0f))
+                tc.heightDirty = true;
+            if (ImGui::DragFloat("Max Height",  &tc.maxHeight, 0.5f, 0.5f, 1000.0f))
+                tc.heightDirty = true;
+            ImGui::DragInt("Chunk Size", &tc.chunkSize, 1.0f, 8, 256);
+
+            // ── テクスチャレイヤー ─────────────────────────────────────────────
+            ImGui::SeparatorText("Layers");
+            for (int i = 0; i < static_cast<int>(tc.layers.size()); ++i) {
+                auto& layer = tc.layers[static_cast<size_t>(i)];
+                ImGui::PushID(i);
+                ImGui::Text("Layer %d", i);
+
+                // Diffuse パス (ドラッグ&ドロップ対応)
+                {
+                    char buf[256];
+                    std::snprintf(buf, sizeof(buf), "%s", layer.diffusePath.c_str());
+                    if (ImGui::InputText("Diffuse##d", buf, sizeof(buf)))
+                        layer.diffusePath = buf;
+                    if (ImGui::IsItemDeactivatedAfterEdit()) tc.splatDirty = true;
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                            layer.diffusePath = static_cast<const char*>(p->Data);
+                            tc.splatDirty = true;
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                }
+                // Normal パス
+                {
+                    char buf[256];
+                    std::snprintf(buf, sizeof(buf), "%s", layer.normalPath.c_str());
+                    if (ImGui::InputText("Normal##n", buf, sizeof(buf)))
+                        layer.normalPath = buf;
+                    if (ImGui::IsItemDeactivatedAfterEdit()) tc.splatDirty = true;
+                }
+                ImGui::DragFloat("Tiling X##tx", &layer.tilingX, 0.1f, 0.1f, 100.0f);
+                ImGui::DragFloat("Tiling Z##tz", &layer.tilingZ, 0.1f, 0.1f, 100.0f);
+                ImGui::DragFloat("Normal Str##ns", &layer.normalStrength, 0.01f, 0.0f, 10.0f);
+
+                if (ImGui::SmallButton("Remove##rm")) {
+                    tc.layers.erase(tc.layers.begin() + i);
+                    tc.splatDirty = true;
+                    ImGui::PopID();
+                    break; // イテレーション中の削除なのでループを抜ける
+                }
+                ImGui::Separator();
+                ImGui::PopID();
+            }
+            if (static_cast<int>(tc.layers.size()) < 4) {
+                if (ImGui::Button("+ Add Layer")) {
+                    tc.layers.emplace_back();
+                    tc.splatDirty = true;
+                }
+            }
+
+            // ── コライダー ─────────────────────────────────────────────────────
+            ImGui::SeparatorText("Collider");
+            if (ImGui::Button("Rebuild Collider Now")) {
+                tc.colliderDirty = true;
+            }
+
+            // ── デバッグ情報 ───────────────────────────────────────────────────
+            ImGui::SeparatorText("Info");
+            ImGui::Text("Vertices : %d", tc.columns * tc.rows);
+            ImGui::Text("Triangles: %d", (tc.columns - 1) * (tc.rows - 1) * 2);
+            ImGui::TextColored(tc.heightDirty   ? ImVec4{1,0.5f,0.2f,1} : ImVec4{0.5f,1,0.5f,1},
+                               "Height Dirty : %s", tc.heightDirty   ? "Yes" : "No");
+            ImGui::TextColored(tc.colliderDirty ? ImVec4{1,0.5f,0.2f,1} : ImVec4{0.5f,1,0.5f,1},
+                               "Collider Dirty: %s", tc.colliderDirty ? "Yes" : "No");
         });
 
     DrawComponentSection<scene::UIAnimator>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Animator",

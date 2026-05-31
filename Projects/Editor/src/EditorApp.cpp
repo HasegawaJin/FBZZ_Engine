@@ -19,6 +19,7 @@
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
+#include "Tools/TerrainTool.hpp"
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -113,6 +114,14 @@ bool IsScenePathInsideProject(const std::string& projectRoot, const std::string&
 // =============================================================================
 // 初期化 / 終了
 // =============================================================================
+
+// コンストラクタ・デストラクタをここで定義する。
+// WHY: EditorApp.hpp は TerrainTool を前方宣言のみにとどめているため、
+//      ヘッダーのインクルード先 (main.cpp 等) では TerrainTool の定義が見えない。
+//      std::unique_ptr のデストラクタは完全型を要求するので、
+//      TerrainTool.hpp をインクルードしているこの .cpp で定義する必要がある。
+EditorApp::EditorApp()  = default;
+EditorApp::~EditorApp() = default;
 
 bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window)
 {
@@ -226,8 +235,10 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
     renderer.ImGuiInit(m_hwnd);
 
-    m_ctx.undoStack = &m_undoStack;
-    m_ctx.playMode  = &m_playMode;
+    m_ctx.undoStack   = &m_undoStack;
+    m_ctx.playMode    = &m_playMode;
+    m_terrainTool     = std::make_unique<TerrainTool>();
+    m_ctx.terrainTool = m_terrainTool.get();
     m_ctx.markSceneDirty  = [this]() { MarkSceneDirty(); };
     m_ctx.requestOpenScene = [this](const std::string& path) { RequestOpenScenePath(path); };
 
@@ -285,7 +296,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     m_ctx.gizmoSpace        = static_cast<EditorContext::GizmoSpace>(m_settings.gizmoSpace);
     m_ctx.showLightRange    = m_settings.showLightRange;
     m_ctx.showSkeleton      = m_settings.showSkeleton;
-    m_ctx.showSceneStats    = m_settings.showSceneStats;
+    m_ctx.showStats         = m_settings.showStats;
     m_ctx.hotReloadEnabled  = m_settings.hotReloadEnabled;
     m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(m_settings.gameViewportAspect);
     m_ctx.cameraSpeed       = m_settings.cameraSpeed;
@@ -333,7 +344,7 @@ void EditorApp::Shutdown()
     m_settings.gizmoSpace         = static_cast<int>(m_ctx.gizmoSpace);
     m_settings.showLightRange     = m_ctx.showLightRange;
     m_settings.showSkeleton       = m_ctx.showSkeleton;
-    m_settings.showSceneStats     = m_ctx.showSceneStats;
+    m_settings.showStats          = m_ctx.showStats;
     m_settings.hotReloadEnabled   = m_ctx.hotReloadEnabled;
     m_settings.gameViewportAspect = static_cast<int>(m_ctx.gameViewportAspect);
     m_settings.cameraSpeed        = m_ctx.cameraSpeed;
