@@ -20,9 +20,12 @@ struct IKChain {
     EntityID targetEntity = EntityID::INVALID;
     EntityID poleEntity   = EntityID::INVALID;
 
-    // EntityID はロードごとに変わるため、シーンファイルには安定した GameObject 名で保存する。
+    // EntityID はロードごとに変わるため、シーンファイルには安定した識別子で保存する。
+    // 解決優先順位: GUID (リネーム耐性あり) → 名前 (後方互換フォールバック)
     std::string targetName;
+    std::string targetGuid;
     std::string poleName;
+    std::string poleGuid;
 
     // IK のブレンド量。0 は FK 維持、1 は IK 解を完全適用する。
     float weight  = 1.0f;

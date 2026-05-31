@@ -442,10 +442,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
     for (auto& go : scene.GameObjects()) {
         toml::table goTbl;
-        goTbl.insert("name",   go.name);
-        goTbl.insert("tag",    go.tag);
-        goTbl.insert("layer",  (int64_t)go.layer);
-        goTbl.insert("active", go.activeSelf());
+        goTbl.insert("name",       go.name);
+        goTbl.insert("instanceId", go.instanceId);
+        goTbl.insert("tag",        go.tag);
+        goTbl.insert("layer",      (int64_t)go.layer);
+        goTbl.insert("active",     go.activeSelf());
         goTbl.insert("parent",
             go.GetParent() ? go.GetParent()->name : std::string{});
 
@@ -704,11 +705,17 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             boneTbl.insert("nodeIndex", (int64_t)bone->nodeIndex);
             boneTbl.insert("boneIndex", (int64_t)bone->boneIndex);
             boneTbl.insert("generated", bone->generated);
+            // skinnedMeshEntity の参照を GUID + 名前の両方で保存する。
+            // WHY: GUID はリネームに耐性があり、名前は古いファイルとの後方互換フォールバック。
             std::string ownerName;
+            std::string ownerGuid;
             if (bone->skinnedMeshEntity.IsValid())
-                if (auto* owner = scene.GetGameObject(bone->skinnedMeshEntity))
+                if (auto* owner = scene.GetGameObject(bone->skinnedMeshEntity)) {
                     ownerName = owner->name;
-            boneTbl.insert("skinnedMeshOwner", ownerName);
+                    ownerGuid = owner->instanceId;
+                }
+            boneTbl.insert("skinnedMeshOwner",     ownerName);
+            boneTbl.insert("skinnedMeshOwnerGuid", ownerGuid);
             goTbl.insert("BoneComponent", std::move(boneTbl));
         }
 
@@ -799,16 +806,38 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 chainTbl.insert("isLeg",           chain.isLeg);
                 chainTbl.insert("footNormalAxis",  Vec3ToArr(chain.footNormalAxis));
                 chainTbl.insert("targetOffset",    Vec3ToArr(chain.targetOffset));
-                std::string targetName;
+                // EntityID が有効なら実 GameObject 名を優先取得し、
+                // 無効 (未 Resolve / ロード直後など) の場合は文字列フィールドをフォールバックに使う。
+                // WHY: Inspector でテキスト直打ちしたまま Resolve せずに保存すると
+                //      EntityID が INVALID で chain.targetName / chain.poleName だけに正しい値がある。
+                //      EntityID のみを参照すると名前が空文字列になり Prefab/シーン再ロード後に
+                //      KneePole 等の参照が消える。
+                // target: EntityID が有効なら実 GO から名前と GUID を取得。
+                // GUID 優先で保存し、古いシーンとの互換性のため名前も保持する。
+                std::string savedTargetName;
+                std::string savedTargetGuid;
                 if (chain.targetEntity.IsValid())
-                    if (auto* tgt = scene.GetGameObject(chain.targetEntity))
-                        targetName = tgt->name;
-                chainTbl.insert("targetName", targetName);
-                std::string poleName;
+                    if (auto* tgt = scene.GetGameObject(chain.targetEntity)) {
+                        savedTargetName = tgt->name;
+                        savedTargetGuid = tgt->instanceId;
+                    }
+                if (savedTargetName.empty()) savedTargetName = chain.targetName;
+                if (savedTargetGuid.empty()) savedTargetGuid = chain.targetGuid;
+                chainTbl.insert("targetName", savedTargetName);
+                chainTbl.insert("targetGuid", savedTargetGuid);
+
+                // pole: 同上
+                std::string savedPoleName;
+                std::string savedPoleGuid;
                 if (chain.poleEntity.IsValid())
-                    if (auto* pole = scene.GetGameObject(chain.poleEntity))
-                        poleName = pole->name;
-                chainTbl.insert("poleName", poleName);
+                    if (auto* pole = scene.GetGameObject(chain.poleEntity)) {
+                        savedPoleName = pole->name;
+                        savedPoleGuid = pole->instanceId;
+                    }
+                if (savedPoleName.empty()) savedPoleName = chain.poleName;
+                if (savedPoleGuid.empty()) savedPoleGuid = chain.poleGuid;
+                chainTbl.insert("poleName", savedPoleName);
+                chainTbl.insert("poleGuid", savedPoleGuid);
                 chainsArr.push_back(std::move(chainTbl));
             }
             ikTbl.insert("chains",      std::move(chainsArr));
@@ -956,9 +985,16 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         bool        active = (*goTbl)["active"].value_or(true);
 
         auto& go = scene->CreateGameObject(name);
-        go.tag = tag;
+        go.tag   = tag;
         go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
         go.SetActive(active);
+        // instanceId: ファイルに保存された UUID を復元する。
+        // 古いシーンファイルには instanceId がないため、その場合は CreateGameObject が
+        // 生成した UUID をそのまま使う (後方互換)。
+        {
+            std::string id = (*goTbl)["instanceId"].value_or(std::string{});
+            if (!id.empty()) go.instanceId = std::move(id);
+        }
 
         // Transform
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
@@ -1413,9 +1449,11 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                                                       math::Vector3::ZERO);
                     chain.targetOffset    = ArrToVec3((*chainTbl)["targetOffset"].as_array(),
                                                       math::Vector3::ZERO);
-                    // targetEntity / poleEntity は Pass 3 で解決するため名前だけ保持
-                    chain.targetName   = (*chainTbl)["targetName"].value_or(std::string{});
-                    chain.poleName     = (*chainTbl)["poleName"].value_or(std::string{});
+                    // targetEntity / poleEntity は Pass 3 で解決するため識別子だけ保持
+                    chain.targetName = (*chainTbl)["targetName"].value_or(std::string{});
+                    chain.targetGuid = (*chainTbl)["targetGuid"].value_or(std::string{});
+                    chain.poleName   = (*chainTbl)["poleName"].value_or(std::string{});
+                    chain.poleGuid   = (*chainTbl)["poleGuid"].value_or(std::string{});
                     ikSolver.chains.push_back(std::move(chain));
                 }
             }
@@ -1541,25 +1579,38 @@ std::unique_ptr<Scene> SceneSerializer::Load(
     //      全 GameObject がロードされた後にまとめて解決する。
     // ------------------------------------------------------------------
 
-    // IKSolverComponent: targetEntity / poleEntity
+    // IKSolverComponent: targetEntity / poleEntity を GUID 優先・名前フォールバックで解決する。
+    // WHY: GUID はリネームに耐性があり複数インスタンス時も衝突しない。
+    //      古いシーンファイルには GUID がないため名前フォールバックで後方互換を保つ。
     for (auto& go : scene->GameObjects()) {
         auto* ik = go.GetComponent<IKSolverComponent>();
         if (!ik) continue;
         for (auto& chain : ik->chains) {
-            if (!chain.targetName.empty()) {
-                auto* tgt = scene->Find(chain.targetName);
-                if (tgt) chain.targetEntity = tgt->GetID();
+            // target
+            {
+                GameObject* resolved = nullptr;
+                if (!chain.targetGuid.empty())
+                    resolved = scene->FindByGuid(chain.targetGuid);
+                if (!resolved && !chain.targetName.empty())
+                    resolved = scene->Find(chain.targetName);
+                if (resolved) chain.targetEntity = resolved->GetID();
             }
-            if (!chain.poleName.empty()) {
-                auto* pole = scene->Find(chain.poleName);
-                if (pole) chain.poleEntity = pole->GetID();
+            // pole
+            {
+                GameObject* resolved = nullptr;
+                if (!chain.poleGuid.empty())
+                    resolved = scene->FindByGuid(chain.poleGuid);
+                if (!resolved && !chain.poleName.empty())
+                    resolved = scene->Find(chain.poleName);
+                if (resolved) chain.poleEntity = resolved->GetID();
             }
         }
     }
 
     // BoneComponent: skinnedMeshEntity
     // WHY: SkinnedMeshRenderer オーナーの EntityID は Pass 1 時点では確定していないため
-    //      名前で保存していたものをここで EntityID へ変換する。
+    //      識別子で保存していたものをここで EntityID へ変換する。
+    //      解決優先順位: GUID (リネーム耐性あり) → 名前 (後方互換フォールバック)
     //      nodeEntities / skeletonRootEntity は AnimatorSystem 初回 tick の
     //      EnsureBoneHierarchy が nodeIndex を元に自動再構築するので保存不要。
     for (size_t i = 0; i < goArr->size(); ++i) {
@@ -1567,14 +1618,17 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (!goTbl) continue;
         auto* boneTbl = (*goTbl)["BoneComponent"].as_table();
         if (!boneTbl) continue;
-        std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
-        if (ownerName.empty()) continue;
-        std::string boneName = (*goTbl)["name"].value_or(std::string{});
+        const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
+        const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
+        if (ownerGuid.empty() && ownerName.empty()) continue;
+        const std::string boneName = (*goTbl)["name"].value_or(std::string{});
         auto* boneGo = scene->Find(boneName);
         if (!boneGo) continue;
         auto* bone = boneGo->GetComponent<BoneComponent>();
         if (!bone) continue;
-        auto* owner = scene->Find(ownerName);
+        GameObject* owner = nullptr;
+        if (!ownerGuid.empty()) owner = scene->FindByGuid(ownerGuid);
+        if (!owner && !ownerName.empty()) owner = scene->Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
 
