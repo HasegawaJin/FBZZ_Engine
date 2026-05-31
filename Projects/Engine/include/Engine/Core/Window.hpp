@@ -16,9 +16,12 @@ namespace fbzz::core
     public:
         struct Config
         {
-            std::wstring title  = L"FBZZ Engine";
-            uint32_t     width  = 1920;
-            uint32_t     height = 1080;
+            std::wstring title      = L"FBZZ Engine";
+            uint32_t     width      = 1920;
+            uint32_t     height     = 1080;
+            // Standalone モードでフルスクリーン起動する場合に true にする。
+            // エディタは常に false (ウィンドウモード)。
+            bool         fullscreen = false;
         };
 
         bool Initialize(const Config& config);
