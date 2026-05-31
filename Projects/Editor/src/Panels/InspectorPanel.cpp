@@ -5,6 +5,8 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -681,6 +683,43 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
+    // ── Save as Prefab ───────────────────────────────────────────────────────
+    // WHY: Hierarchy のコンテキストメニューを使わずに Inspector から直接 Prefab 化できる動線。
+    //      Unity の Inspector ヘッダーと同様に最上部に配置する。
+    {
+        static constexpr const char* kSaveLabel = "Save as Prefab";
+        const float btnW = ImGui::CalcTextSize(kSaveLabel).x
+                         + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - btnW);
+        if (ImGui::SmallButton(kSaveLabel) && !ctx.selectedEntities.empty() && ctx.activeScene) {
+            // 保存先: <projectRoot>/Assets/Prefabs/<name>.fbzzprefab (重複時は連番付き)
+            const std::string assetRoot = ctx.projectRoot.empty()
+                ? "Assets"
+                : ctx.projectRoot + "/Assets";
+            const std::string prefabDir = assetRoot + "/Prefabs";
+            util::FileSystem::EnsureDirectory(prefabDir);
+
+            // ファイル名として使えない文字をアンダースコアに置換する
+            std::string safeName;
+            for (char c : go->name) {
+                const bool ok = std::isalnum(static_cast<unsigned char>(c))
+                             || c == '_' || c == '-' || c == ' ';
+                safeName += ok ? c : '_';
+            }
+            if (safeName.empty()) safeName = "Prefab";
+
+            const std::string base = prefabDir + "/" + safeName;
+            std::string savePath = base + ".fbzzprefab";
+            for (int i = 1; util::FileSystem::Exists(savePath) && i < 10000; ++i)
+                savePath = base + " " + std::to_string(i) + ".fbzzprefab";
+
+            if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, savePath))
+                ctx.requestAssetBrowserRefresh = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("選択中のオブジェクトを Assets/Prefabs に保存");
+    }
+
     char nameBuf[256];
     std::snprintf(nameBuf, sizeof(nameBuf), "%s", go->name.c_str());
     ImGui::SetNextItemWidth(-1.0f);
@@ -1355,9 +1394,13 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                                              + ImGui::GetStyle().FramePadding.x * 2.0f;
                         const float dotW     = ImGui::GetFrameHeight();
 
+                        // WHY: guid を追加することでリネーム後も参照が壊れなくなる。
+                        //      手入力時は guid をクリアし名前フォールバックで解決させる。
+                        //      ドロップ・Resolve 時は dropped/found の instanceId を記録する。
                         auto DrawObjectField = [&](const char* label,
                                                    const char* idStr,
                                                    std::string& name,
+                                                   std::string& guid,
                                                    scene::EntityID& eid)
                         {
                             const bool resolved = eid.IsValid();
@@ -1373,25 +1416,30 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                                 ImGui::GetContentRegionAvail().x - resolveW
                                 - ImGui::GetStyle().ItemSpacing.x);
                             std::snprintf(buf, sizeof(buf), "%s", name.c_str());
-                            if (ImGui::InputText(idStr, buf, sizeof(buf))) name = buf;
+                            if (ImGui::InputText(idStr, buf, sizeof(buf))) {
+                                name = buf;
+                                guid.clear(); // 手入力時は GUID をクリアして名前で再解決させる
+                            }
                             if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
                                 name = dropped->name;
+                                guid = dropped->instanceId;
                                 eid  = dropped->GetID();
                             }
                             ImGui::SameLine();
                             if (ImGui::SmallButton(label)) {
                                 if (ctx.activeScene) {
                                     auto* found = ctx.activeScene->Find(name);
-                                    eid = found ? found->GetID() : scene::EntityID::INVALID;
+                                    eid  = found ? found->GetID()    : scene::EntityID::INVALID;
+                                    guid = found ? found->instanceId : std::string{};
                                 }
                             }
                         };
 
-                        DrawObjectField("Resolve##t", "##tgt",  chain.targetName, chain.targetEntity);
+                        DrawObjectField("Resolve##t", "##tgt",  chain.targetName, chain.targetGuid, chain.targetEntity);
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Target");
 
-                        DrawObjectField("Resolve##p", "##pole", chain.poleName,   chain.poleEntity);
+                        DrawObjectField("Resolve##p", "##pole", chain.poleName,   chain.poleGuid,   chain.poleEntity);
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Pole");
                     }
