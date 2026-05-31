@@ -407,4 +407,16 @@ std::vector<GameObject*> GameObject::FindObjectsOfType() {
     return {};  // Application::Get().GetSceneManager().GetActive() 追加後に実装
 }
 
+// -----------------------------------------------------------------------
+// Script::GetComponent<T> template 本体
+// WHY: Script.hpp は Scene.hpp をインクルードできない (循環依存) ため、
+//      GameObject が完全型になるこのタイミングで定義する。
+//      同様のパターンは GameObject::GetComponent<T>() でも採用している。
+// -----------------------------------------------------------------------
+template<typename T>
+T* Script::GetComponent() const
+{
+    return m_gameObject ? m_gameObject->GetComponent<T>() : nullptr;
+}
+
 } // namespace fbzz::scene
