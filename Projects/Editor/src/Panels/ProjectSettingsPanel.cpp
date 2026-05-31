@@ -28,21 +28,23 @@ bool SectionButton(const char* label, ProjectSettingsPanel::Section value, Proje
 
 void DrawPostProcessToggles(renderer::PostProcessSettings& p)
 {
-    ImGui::Checkbox("Bloom", &p.bloom.enabled);
+    // WHY: 下部の CollapsingHeader と同じ表示名を使うため、ImGui ID は ## 以降で明示的に分離する。
+    // WHAT: 画面に見えるラベルは維持しつつ、チェックボックスだけ Enable 用の内部 ID を持たせる。
+    ImGui::Checkbox("Bloom##PostProcessEnableBloom", &p.bloom.enabled);
     ImGui::SameLine();
-    ImGui::Checkbox("Fog", &p.fog.enabled);
+    ImGui::Checkbox("Fog##PostProcessEnableFog", &p.fog.enabled);
     ImGui::SameLine();
-    ImGui::Checkbox("FXAA", &p.fxaaEnabled);
+    ImGui::Checkbox("FXAA##PostProcessEnableFXAA", &p.fxaaEnabled);
 
-    ImGui::Checkbox("Color Grading", &p.colorGrading.enabled);
+    ImGui::Checkbox("Color Grading##PostProcessEnableColorGrading", &p.colorGrading.enabled);
     ImGui::SameLine();
-    ImGui::Checkbox("Vignette", &p.vignette.enabled);
+    ImGui::Checkbox("Vignette##PostProcessEnableVignette", &p.vignette.enabled);
     ImGui::SameLine();
-    ImGui::Checkbox("Film Grain", &p.filmGrain.enabled);
+    ImGui::Checkbox("Film Grain##PostProcessEnableFilmGrain", &p.filmGrain.enabled);
 
-    ImGui::Checkbox("Chromatic Aberration", &p.lens.chromaticAberrationEnabled);
+    ImGui::Checkbox("Chromatic Aberration##PostProcessEnableChromaticAberration", &p.lens.chromaticAberrationEnabled);
     ImGui::SameLine();
-    ImGui::Checkbox("Lens Distortion", &p.lens.distortionEnabled);
+    ImGui::Checkbox("Lens Distortion##PostProcessEnableLensDistortion", &p.lens.distortionEnabled);
     ImGui::SameLine();
     ImGui::Text("Custom: %d", static_cast<int>(p.customEffects.size()));
 }

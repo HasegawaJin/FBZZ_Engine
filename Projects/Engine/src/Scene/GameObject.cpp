@@ -100,6 +100,12 @@ GameObject* GameObject::Find(const std::string& n)
     return scene ? scene->Find(n) : nullptr;
 }
 
+GameObject* GameObject::FindByGuid(const std::string& guid)
+{
+    auto* scene = core::Application::Get().GetSceneManager().GetActive();
+    return scene ? scene->FindByGuid(guid) : nullptr;
+}
+
 GameObject* GameObject::FindWithTag(const std::string& t)
 {
     auto* scene = core::Application::Get().GetSceneManager().GetActive();
