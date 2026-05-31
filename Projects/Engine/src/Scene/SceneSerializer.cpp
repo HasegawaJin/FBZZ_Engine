@@ -30,6 +30,7 @@
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -941,6 +942,48 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         // ScriptComponent
+        // TerrainComponent
+        if (auto* tc = go.GetComponent<TerrainComponent>()) {
+            toml::table terrainTbl;
+            terrainTbl.insert("enabled",   tc->enabled);
+            terrainTbl.insert("columns",   (int64_t)tc->columns);
+            terrainTbl.insert("rows",      (int64_t)tc->rows);
+            terrainTbl.insert("cellSize",  (double)tc->cellSize);
+            terrainTbl.insert("maxHeight", (double)tc->maxHeight);
+            terrainTbl.insert("chunkSize", (int64_t)tc->chunkSize);
+
+            // ハイトマップ（float 配列）
+            // WHY: バイナリシリアライズの方が効率的だが、TOML 配列で保存することで
+            //      シーンファイルをテキストエディタで確認・手動編集できる。
+            toml::array heightArr;
+            for (float h : tc->heightData)
+                heightArr.push_back(static_cast<double>(h));
+            terrainTbl.insert("heightData", std::move(heightArr));
+
+            // スプラットマップ（uint8 → int64 配列。空のときは省略）
+            if (!tc->splatData.empty()) {
+                toml::array splatArr;
+                for (uint8_t s : tc->splatData)
+                    splatArr.push_back(static_cast<int64_t>(s));
+                terrainTbl.insert("splatData", std::move(splatArr));
+            }
+
+            // テクスチャレイヤー（配列テーブル）
+            toml::array layersArr;
+            for (const auto& layer : tc->layers) {
+                toml::table layerTbl;
+                layerTbl.insert("diffusePath",    layer.diffusePath);
+                layerTbl.insert("normalPath",     layer.normalPath);
+                layerTbl.insert("tilingX",        static_cast<double>(layer.tilingX));
+                layerTbl.insert("tilingZ",        static_cast<double>(layer.tilingZ));
+                layerTbl.insert("normalStrength", static_cast<double>(layer.normalStrength));
+                layersArr.push_back(std::move(layerTbl));
+            }
+            terrainTbl.insert("layers", std::move(layersArr));
+
+            goTbl.insert("TerrainComponent", std::move(terrainTbl));
+        }
+
         if (auto* sc = go.GetComponent<ScriptComponent>(); sc && sc->script) {
             toml::table scTbl;
             toml::table fieldsTbl;
@@ -1570,6 +1613,54 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             anim.positionTween.pingPong = (*tbl)["posPingPong"].value_or(false);
             anim.positionTween.active   = (*tbl)["posActive"].value_or(false);
             go.AddComponent<UIAnimator>(anim);
+        }
+
+        // TerrainComponent
+        if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
+            TerrainComponent tc{};
+            tc.enabled   = (*terrainTbl)["enabled"].value_or(true);
+            tc.columns   = static_cast<int>((*terrainTbl)["columns"].value_or(int64_t{129}));
+            tc.rows      = static_cast<int>((*terrainTbl)["rows"].value_or(int64_t{129}));
+            tc.cellSize  = static_cast<float>((*terrainTbl)["cellSize"].value_or(1.0));
+            tc.maxHeight = static_cast<float>((*terrainTbl)["maxHeight"].value_or(30.0));
+            tc.chunkSize = static_cast<int>((*terrainTbl)["chunkSize"].value_or(int64_t{32}));
+
+            // ハイトマップ
+            if (auto* heightArr = (*terrainTbl)["heightData"].as_array()) {
+                tc.heightData.reserve(heightArr->size());
+                for (auto& v : *heightArr)
+                    tc.heightData.push_back(static_cast<float>(v.value_or(0.0)));
+            } else {
+                // heightData がなければ平坦に初期化する
+                tc.InitFlat(0.0f);
+            }
+
+            // スプラットマップ（省略時は空のまま → TerrainRenderSystem が layer0=100% として扱う）
+            if (auto* splatArr = (*terrainTbl)["splatData"].as_array()) {
+                tc.splatData.reserve(splatArr->size());
+                for (auto& v : *splatArr)
+                    tc.splatData.push_back(static_cast<uint8_t>(v.value_or(int64_t{0})));
+            }
+
+            // テクスチャレイヤー
+            if (auto* layersArr = (*terrainTbl)["layers"].as_array()) {
+                for (auto& layerNode : *layersArr) {
+                    if (auto* layerTbl = layerNode.as_table()) {
+                        TerrainLayer layer{};
+                        layer.diffusePath    = (*layerTbl)["diffusePath"].value_or(std::string{});
+                        layer.normalPath     = (*layerTbl)["normalPath"].value_or(std::string{});
+                        layer.tilingX        = static_cast<float>((*layerTbl)["tilingX"].value_or(8.0));
+                        layer.tilingZ        = static_cast<float>((*layerTbl)["tilingZ"].value_or(8.0));
+                        layer.normalStrength = static_cast<float>((*layerTbl)["normalStrength"].value_or(1.0));
+                        if (tc.layers.size() < 4) tc.layers.push_back(std::move(layer));
+                    }
+                }
+            }
+
+            // 読み込み直後は GPU バッファ・コライダーを両方再構築する
+            tc.heightDirty   = true;
+            tc.colliderDirty = true;
+            go.AddComponent<TerrainComponent>(std::move(tc));
         }
 
         // ScriptComponent
