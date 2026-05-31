@@ -7539,7 +7539,7 @@ tag = 'Untagged'
         tilingZ = 8.0
 
         [[gameobjects.TerrainComponent.layers]]
-        diffusePath = 'C:\Users\jinhs\Downloads\FBZZ_Engine\build\debug\Projects\Sandbox\Debug\SandboxProject/Assets\Textures\test2.jpg'
+        diffusePath = 'Assets/Textures/test2.jpg'
         normalPath = ''
         normalStrength = 1.0
         tilingX = 8.0
