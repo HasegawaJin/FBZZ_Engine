@@ -28,6 +28,7 @@ namespace fbzz::editor {
 
 class ViewportPanel;
 class ProjectSettingsPanel;
+class BuildSettingsPanel;
 class AssetBrowserPanel;
 class TerrainTool;
 
@@ -98,6 +99,7 @@ private:
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
     ViewportPanel*                           m_uiViewportPanel        = nullptr;
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
+    BuildSettingsPanel*                      m_buildSettingsPanel     = nullptr;
     AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
