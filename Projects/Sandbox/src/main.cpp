@@ -356,8 +356,9 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
 
     // シーンをロード (editor::SceneSerializer は .fbzz 形式を読む)
     auto scene = std::make_unique<scene::Scene>();
-    if (!editor::SceneSerializer::Load(*scene, project.sceneFile.string())) {
-        FBZZ_LOG_ERROR("Sandbox Standalone: シーンのロードに失敗: %s", project.sceneFile.string().c_str());
+    const std::string scenePathUtf8 = PathToUtf8(project.sceneFile);
+    if (!editor::SceneSerializer::Load(*scene, scenePathUtf8)) {
+        FBZZ_LOG_ERROR("Sandbox Standalone: シーンのロードに失敗: %s", scenePathUtf8.c_str());
         return;
     }
 
