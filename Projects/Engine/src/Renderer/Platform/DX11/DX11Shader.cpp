@@ -6,6 +6,7 @@
 #include "DX11Shader.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
+#include <Windows.h>
 #include <d3dcompiler.h>
 #pragma comment(lib, "d3dcompiler.lib")
 #include <fstream>
@@ -17,6 +18,20 @@
 
 namespace fbzz::renderer
 {
+
+namespace {
+
+std::wstring Utf8ToWide(const std::string& text)
+{
+    if (text.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
+}
+
+} // namespace
 
 // "assets/shaders/Debug/DebugDraw.hlsl"       -> "assets/shaders/compiled/Debug.DebugDraw"
 // "assets/shaders/Material/Surface/PBR.hlsl"  -> "assets/shaders/compiled/Material.Surface.PBR"
@@ -87,7 +102,9 @@ std::string DX11Shader::CompiledBase(const std::string& path)
 // byte 列を vector に保持することで、D3D 呼び出し中の保存領域を安定させる。
 std::vector<uint8_t> DX11Shader::LoadBinary(const std::string& filePath)
 {
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    // WHY: カレントディレクトリまたは shader path に日本語が含まれる配布環境でも、
+    //      CSO を Unicode パスで開けるよう UTF-8 から wide path に変換する。
+    std::ifstream file(Utf8ToWide(filePath), std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
         FBZZ_LOG_ERROR("Shader binary open failed: %s", filePath.c_str());

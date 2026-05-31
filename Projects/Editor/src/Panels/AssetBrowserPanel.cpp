@@ -64,6 +64,38 @@ ImVec4 Lighten(ImVec4 c) {
              std::min(c.z + 0.15f, 1.0f), c.w };
 }
 
+std::string NormalizePathSeparators(std::string path)
+{
+    for (char& c : path) {
+        if (c == '\\') c = '/';
+    }
+    return path;
+}
+
+std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx)
+{
+    // WHY: Asset Browser の内部パスは実ファイル操作のため絶対パスを保持するが、
+    //      Scene / Prefab に保存する payload は配布後も壊れない Assets 起点の相対パスにする。
+    std::string normalizedPath = NormalizePathSeparators(path);
+    if (normalizedPath.rfind("Assets/", 0) == 0) return normalizedPath;
+
+    std::string normalizedRoot = NormalizePathSeparators(ctx.projectRoot);
+    while (!normalizedRoot.empty() && normalizedRoot.back() == '/')
+        normalizedRoot.pop_back();
+
+    if (!normalizedRoot.empty() &&
+        normalizedPath.rfind(normalizedRoot + "/Assets/", 0) == 0) {
+        return normalizedPath.substr(normalizedRoot.size() + 1);
+    }
+
+    const std::string marker = "/Assets/";
+    const size_t assetsPos = normalizedPath.find(marker);
+    if (assetsPos != std::string::npos)
+        return normalizedPath.substr(assetsPos + 1);
+
+    return normalizedPath;
+}
+
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,7 +270,8 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     // ドラッグソース (ファイルのみ)
     if (!e.isDir && ImGui::BeginDragDropSource()) {
-        ImGui::SetDragDropPayload("ASSET_PATH", e.path.c_str(), e.path.size() + 1);
+        const std::string payloadPath = ToProjectAssetPath(e.path, ctx);
+        ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
         ImGui::TextUnformatted(e.name.c_str());
         ImGui::EndDragDropSource();
     }
@@ -381,7 +414,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
 // ─── FBX 内容プレビュー (サブアセットアイコン) ────────────────────────────────
 
-void AssetBrowserPanel::DrawFbxContents()
+void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
 {
     if (m_selectedFbxPath.empty()) return;
 
@@ -411,7 +444,8 @@ void AssetBrowserPanel::DrawFbxContents()
 
     auto drawSubIcon = [&](const char* label, const char* displayName,
                            const char* tooltip, ImVec4 color,
-                           const std::string& payload)
+                           const std::string& payload,
+                           EditorContext& ctx)
     {
         if (col > 0 && (col % cols) != 0) ImGui::SameLine(0.0f, padding);
 
@@ -460,9 +494,10 @@ void AssetBrowserPanel::DrawFbxContents()
                     IM_COL32(255, 255, 255, 220), label);
 
         if (ImGui::BeginDragDropSource()) {
-            ImGui::SetDragDropPayload("ASSET_PATH", payload.c_str(), payload.size() + 1);
+            const std::string payloadPath = ToProjectAssetPath(payload, ctx);
+            ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
             ImGui::Text("%s: %s", label,
-                util::FileSystem::GetFilename(payload).c_str());
+                util::FileSystem::GetFilename(payloadPath).c_str());
             ImGui::EndDragDropSource();
         }
 
@@ -494,7 +529,7 @@ void AssetBrowserPanel::DrawFbxContents()
                 ? (std::string(" + skeleton (") +
                    std::to_string(model.skeleton->bones.size()) + " bones)").c_str()
                 : "");
-        drawSubIcon("MESH", "Mesh", tip, { 0.80f, 0.45f, 0.10f, 1.0f }, m_selectedFbxPath);
+        drawSubIcon("MESH", "Mesh", tip, { 0.80f, 0.45f, 0.10f, 1.0f }, m_selectedFbxPath, ctx);
     }
 
     // ── ANIM アイコン (クリップ1件につき1個) ──
@@ -505,7 +540,7 @@ void AssetBrowserPanel::DrawFbxContents()
         std::snprintf(tip, sizeof(tip), "%s  (%.2fs)\nDrag → Animator",
             clip.name.c_str(), dur);
         drawSubIcon("ANIM", clip.name.c_str(), tip,
-                    { 0.20f, 0.70f, 0.30f, 1.0f }, m_selectedFbxPath);
+                    { 0.20f, 0.70f, 0.30f, 1.0f }, m_selectedFbxPath, ctx);
     }
 }
 
@@ -648,7 +683,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     }
 
     // 選択 FBX の内容プレビュー
-    DrawFbxContents();
+    DrawFbxContents(ctx);
 
     ImGui::EndChild();
 }
