@@ -17,6 +17,7 @@
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/MathUtils.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -173,6 +174,66 @@ bool RaycastOBB(const math::Vector3& origin,
     return true;
 }
 
+bool RaycastTriangle(const math::Vector3& origin,
+                     const math::Vector3& dir,
+                     float maxDistance,
+                     const physics::Triangle& tri,
+                     GroundHit& out)
+{
+    // WHAT: Moller-Trumbore 法でレイと三角形の交差距離を求める。
+    // WHY: TriangleMeshCollider は TerrainCollider の実体でもあるため、
+    //      BVH で候補三角形を絞ったあと、IK 専用に最短ヒットを決める必要がある。
+    constexpr float EPS = 1e-6f;
+    const math::Vector3 e0 = tri.v[1] - tri.v[0];
+    const math::Vector3 e1 = tri.v[2] - tri.v[0];
+    const math::Vector3 p  = math::Vector3::Cross(dir, e1);
+    const float det = math::Vector3::Dot(e0, p);
+    if (std::abs(det) < EPS) return false;
+
+    const float invDet = 1.0f / det;
+    const math::Vector3 s = origin - tri.v[0];
+    const float u = math::Vector3::Dot(s, p) * invDet;
+    if (u < 0.0f || u > 1.0f) return false;
+
+    const math::Vector3 q = math::Vector3::Cross(s, e0);
+    const float v = math::Vector3::Dot(dir, q) * invDet;
+    if (v < 0.0f || u + v > 1.0f) return false;
+
+    const float t = math::Vector3::Dot(e1, q) * invDet;
+    if (t < 0.0f || t > maxDistance) return false;
+
+    math::Vector3 normal = tri.normal;
+    if (math::Vector3::Dot(normal, -dir) < 0.0f)
+        normal = -normal;
+
+    out.point    = origin + dir * t;
+    out.normal   = normal.LengthSq() > math::EPSILON * math::EPSILON
+        ? normal.Normalized()
+        : math::Vector3::UP;
+    out.distance = t;
+    return true;
+}
+
+physics::AABB MakeRayAABB(const math::Vector3& origin,
+                          const math::Vector3& dir,
+                          float maxDistance)
+{
+    const math::Vector3 end = origin + dir * maxDistance;
+    constexpr float PAD = 0.001f;
+    return {
+        {
+            std::min(origin.x, end.x) - PAD,
+            std::min(origin.y, end.y) - PAD,
+            std::min(origin.z, end.z) - PAD
+        },
+        {
+            std::max(origin.x, end.x) + PAD,
+            std::max(origin.y, end.y) + PAD,
+            std::max(origin.z, end.z) + PAD
+        }
+    };
+}
+
 bool RaycastCollider(GameObject& go,
                      AabbColliderComponent& collider,
                      const math::Vector3& origin,
@@ -202,6 +263,44 @@ bool RaycastCollider(GameObject& go,
                       collider.size * 0.5f, out);
 }
 
+bool RaycastCollider(GameObject& go,
+                     MeshColliderComponent& collider,
+                     const math::Vector3& origin,
+                     const math::Vector3& dir,
+                     float maxDistance,
+                     GroundHit& out)
+{
+    if (!IsGroundCandidate(go, collider) || !collider.collider) return false;
+    if (collider.collider->GetType() != physics::ColliderType::TRIANGLE_MESH) return false;
+
+    auto* mesh = static_cast<physics::TriangleMeshCollider*>(collider.collider.get());
+    math::Vector3 scale = collider.useTransformScale
+        ? go.transform.worldScale
+        : math::Vector3::ONE;
+    const math::Vector3 center =
+        go.transform.position +
+        go.transform.rotation * ComponentScale(collider.center, go.transform.worldScale);
+    mesh->UpdateWithScale(center, go.transform.rotation, scale);
+
+    bool hit = false;
+    GroundHit best;
+    best.distance = std::numeric_limits<float>::max();
+    const physics::AABB rayAABB = MakeRayAABB(origin, dir, maxDistance);
+
+    mesh->GetBVH().Query(rayAABB, [&](const physics::Triangle& tri)
+    {
+        GroundHit candidate;
+        if (!RaycastTriangle(origin, dir, maxDistance, tri, candidate)) return;
+        if (candidate.distance < best.distance) {
+            best = candidate;
+            hit  = true;
+        }
+    });
+
+    if (hit) out = best;
+    return hit;
+}
+
 bool RaycastGround(Scene& scene,
                    const math::Vector3& origin,
                    const math::Vector3& dir,
@@ -227,6 +326,9 @@ bool RaycastGround(Scene& scene,
                 TryHit(candidate);
         if (auto* box = go.GetComponent<BoxColliderComponent>())
             if (RaycastCollider(go, *box, origin, dir, maxDistance, candidate))
+                TryHit(candidate);
+        if (auto* mesh = go.GetComponent<MeshColliderComponent>())
+            if (RaycastCollider(go, *mesh, origin, dir, maxDistance, candidate))
                 TryHit(candidate);
     }
 
