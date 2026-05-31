@@ -19,6 +19,7 @@
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
+#include <Editor/Panels/BuildSettingsPanel.hpp>
 #include "Tools/TerrainTool.hpp"
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
@@ -272,6 +273,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
         m_projectSettingsPanel = ps.get();
         m_panels.push_back(std::move(ps));
     }
+    {
+        auto bs = std::make_unique<BuildSettingsPanel>();
+        bs->visible = false;
+        m_buildSettingsPanel = bs.get();
+        m_panels.push_back(std::move(bs));
+    }
 
     for (auto& panel : m_panels)
         panel->OnInit(m_ctx);
@@ -489,6 +496,14 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     if (ctx.requestOpenProjectSettings) {
         if (m_projectSettingsPanel) m_projectSettingsPanel->visible = true;
         ctx.requestOpenProjectSettings = false;
+    }
+
+    if (ctx.requestOpenBuildSettings) {
+        ctx.requestOpenBuildSettings = false;
+        if (m_buildSettingsPanel) {
+            m_buildSettingsPanel->visible = true;
+            ImGui::SetNextWindowFocus();
+        }
     }
 }
 

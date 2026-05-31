@@ -32,6 +32,16 @@ struct AppSettings {
     int targetFps = 60;  // 0 = unlimited
 };
 
+// Standalone モード (配布ゲーム) のウィンドウ設定。
+// Application::Init() より前に ProjectSettings を読み込み、
+// 正しいサイズ・タイトルでウィンドウを生成するために使う。
+struct WindowSettings {
+    std::string title      = "FBZZ Game";
+    int         width      = 1920;
+    int         height     = 1080;
+    bool        fullscreen = false;
+};
+
 struct ProjectMetadataSettings {
     std::string name;
     std::string defaultScene = "Assets/Scenes/Main.fbzz";
@@ -51,6 +61,7 @@ struct ProjectSettings {
     AudioSettings               audio;
     ScreenSettings              screen;
     AppSettings                 app;
+    WindowSettings              window;
 
     static ProjectSettings Default();
     bool Load(const std::string& path);

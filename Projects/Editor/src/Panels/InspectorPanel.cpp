@@ -735,7 +735,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 ctx.requestAssetBrowserRefresh = true;
         }
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("選択中のオブジェクトを Assets/Prefabs に保存");
+            ImGui::SetTooltip("Save selected object as prefab to Assets/Prefabs");
     }
 
     char nameBuf[256];

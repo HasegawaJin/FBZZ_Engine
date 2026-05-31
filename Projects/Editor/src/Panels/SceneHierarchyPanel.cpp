@@ -292,7 +292,7 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred)
             }
         }
         if (!anyFound)
-            ImGui::TextDisabled("(Assets/Prefabs にプレファブがありません)");
+            ImGui::TextDisabled("(No prefabs found in Assets/Prefabs)");
 
         ImGui::EndMenu();
     }
