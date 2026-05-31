@@ -15,7 +15,12 @@ class Application {
 public:
     static Application& Get();
 
+    // デフォルト設定 (エディタモード) で初期化する。
     bool Init();
+    // Standalone モード用: ウィンドウ設定を外部から指定して初期化する。
+    // ProjectSettings を Application::Init() より前に読み込んでウィンドウを正しいサイズで生成するため、
+    // Window::Config を受け取るオーバーロードを別途用意する。
+    bool Init(const Window::Config& windowConfig);
     void Shutdown();
     void Run();
     void Quit();
