@@ -350,6 +350,12 @@ int Run()
         }
 
         if (!playMode->IsPlaying()) {
+            // WHY: DebugCamera の速度・感度は EditorContext に保持され、
+            //      EditorSettings によって起動間で永続化される。
+            //      毎フレーム適用することで、将来的に設定 UI からリアルタイム変更できる。
+            const auto& ctx = editorApp.GetContext();
+            debugCamera.moveSpeed = ctx.cameraSpeed;
+            debugCamera.mouseSens = ctx.cameraSensitivity;
             debugCamera.Update(dt);
         }
 
