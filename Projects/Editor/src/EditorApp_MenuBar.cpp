@@ -8,7 +8,9 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/StandaloneLauncher.hpp>
 #include <imgui.h>
+#include <Windows.h>
 
 namespace fbzz::editor {
 
@@ -207,6 +209,32 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
 
     if (ImGui::BeginMenu("Tools")) {
         ImGui::MenuItem("Terrain Tool", nullptr, &ctx.showTerrainTool);
+        ImGui::Separator();
+
+        // WHY: Standalone ボタンは Play と独立した位置に置き、
+        //      「配布版と同じ状態を手軽に確認できる」という意図を明示する。
+        const bool hasProject = !ctx.projectRoot.empty();
+        if (ImGui::MenuItem("Standalone", nullptr, false, hasProject)) {
+            // GetModuleFileNameW で自身のパスを取得して子プロセスとして起動する
+            wchar_t exePathBuf[MAX_PATH]{};
+            GetModuleFileNameW(nullptr, exePathBuf, MAX_PATH);
+            std::wstring exePathW(exePathBuf);
+            const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0,
+                exePathW.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            std::string exePath(static_cast<size_t>(sizeNeeded - 1), '\0');
+            WideCharToMultiByte(CP_UTF8, 0, exePathW.c_str(), -1,
+                exePath.data(), sizeNeeded, nullptr, nullptr);
+
+            StandaloneLauncher::Launch(exePath, ctx.projectRoot);
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+            ImGui::SetTooltip("Launch game without editor UI");
+        }
+
+        ImGui::Separator();
+        if (ImGui::MenuItem("Build Settings...", "Ctrl+Shift+B")) {
+            ctx.requestOpenBuildSettings = true;
+        }
         ImGui::EndMenu();
     }
 

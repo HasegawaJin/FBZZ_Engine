@@ -104,6 +104,7 @@ struct EditorContext {
 
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings = false;
+    bool requestOpenBuildSettings   = false;
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
