@@ -10,6 +10,10 @@
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/SceneDirtyTracker.hpp>
 #include <Editor/PlayModeController.hpp>
+// TerrainTool は src/ 内の内部ヘッダーなので前方宣言で対応する
+// WHY: TerrainTool.hpp は imgui.h に依存しており、EditorApp.hpp に直接インクルードすると
+//      Engine 層のヘッダーが imgui に依存してしまう。std::unique_ptr で所有して隠蔽する。
+#include <memory>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <functional>
 #include <memory>
@@ -25,9 +29,13 @@ namespace fbzz::editor {
 class ViewportPanel;
 class ProjectSettingsPanel;
 class AssetBrowserPanel;
+class TerrainTool;
 
 class EditorApp {
 public:
+    EditorApp();
+    ~EditorApp(); // TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
+
     bool Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window);
     void Shutdown();
     bool OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath);
@@ -79,7 +87,8 @@ private:
     bool               m_titleInitialized = false;
     bool               m_lastTitleDirty = false;
     std::string        m_lastTitleScenePath;
-    PlayModeController m_playMode;
+    PlayModeController              m_playMode;
+    std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
 
     FILETIME                                 m_lastSceneWriteTime = {};
     HWND                                     m_hwnd          = nullptr;
