@@ -266,6 +266,36 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred)
             deferred = [&ctx]() { CreateDecalObject(ctx, "Decal (Large)", 5.0f, 1.0f); };
         ImGui::EndMenu();
     }
+
+    // Assets/Prefabs にある .fbzzprefab ファイルをメニューからインスタンス化できる。
+    // WHY: AssetBrowser からのドラッグ操作なしで Prefab を配置できる動線を用意する。
+    //      ListAll は存在しないディレクトリに対して空リストを返すため、事前チェック不要。
+    if (ImGui::BeginMenu("Prefab")) {
+        const std::string assetRoot = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
+        const std::string prefabDir = assetRoot + "/Prefabs";
+
+        bool anyFound = false;
+        for (const auto& path : util::FileSystem::ListAll(prefabDir)) {
+            // 拡張子を小文字で比較して .fbzzprefab だけを列挙する
+            std::string ext = util::FileSystem::GetExtension(path);
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (ext != ".fbzzprefab") continue;
+
+            anyFound = true;
+            const std::string name = util::FileSystem::GetFilename(path);
+            if (ImGui::MenuItem(name.c_str())) {
+                deferred = [&ctx, path]() {
+                    std::vector<scene::EntityID> roots;
+                    if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots))
+                        ctx.selectedEntities = roots;
+                };
+            }
+        }
+        if (!anyFound)
+            ImGui::TextDisabled("(Assets/Prefabs にプレファブがありません)");
+
+        ImGui::EndMenu();
+    }
 }
 
 bool ReadEntityPayload(const ImGuiPayload* payload, scene::EntityID& outId)
@@ -597,6 +627,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             }
             if (ImGui::BeginPopupContextItem()) {
                 ctx.selectedEntities = { id };
+                // 検索結果でも Prefab 化できるよう、通常モードと同じ操作を提供する
+                if (ImGui::MenuItem("Save As Prefab"))
+                    SaveSelectedAsPrefab(ctx, go.name);
+                ImGui::Separator();
                 if (ImGui::MenuItem("Delete")) {
                     deferred = [&ctx, id]() {
                         ctx.activeScene->DestroyGameObject(id);
