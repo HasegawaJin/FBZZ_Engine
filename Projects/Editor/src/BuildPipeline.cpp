@@ -37,6 +37,16 @@ std::string WideToUtf8(const std::wstring& text)
     return utf8;
 }
 
+std::wstring Utf8ToWide(const std::string& text)
+{
+    if (text.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
+}
+
 // 今日の日付を YYYY-MM-DD 形式で返す
 std::string TodayStr()
 {
