@@ -3,19 +3,21 @@
 // Third-person camera follow script
 #pragma once
 
+// WHY: Sandbox スクリプトは engine 層からインクルードされない末端ヘッダのため、
+//      using namespace を許可する。詳細は AGENTS.md を参照。
 #include <Engine/Input/Input.hpp>
-#include <Engine/Scene/GameObject.hpp>
-#include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector2.hpp>
-#include <Math/Vector3.hpp>
 #include <string>
+
+using namespace fbzz::scene;
+using namespace fbzz::math;
+using namespace fbzz::input;
 
 namespace sandbox {
 
-struct TpsCameraComponent : fbzz::scene::Script {
+class TpsCameraComponent : public Script {
+public:
     static constexpr const char* TYPE_NAME = "TpsCameraComponent";
 
     const char* GetTypeName() const override { return TYPE_NAME; }
@@ -30,17 +32,17 @@ struct TpsCameraComponent : fbzz::scene::Script {
     float mouseSensitivity = 0.2f;
     bool mouseOrbit = true;
 
-    void Reflect(fbzz::scene::IReflector& reflector) override
+    void Reflect(IReflector& reflector) override
     {
-        reflector.Field("Target Tag", targetTag);
-        reflector.Field("Distance", distance);
-        reflector.Field("Height", height);
-        reflector.Field("Yaw", yaw);
-        reflector.Field("Pitch", pitch);
-        reflector.Field("Min Pitch", minPitch);
-        reflector.Field("Max Pitch", maxPitch);
+        reflector.Field("Target Tag",        targetTag);
+        reflector.Field("Distance",          distance);
+        reflector.Field("Height",            height);
+        reflector.Field("Yaw",               yaw);
+        reflector.Field("Pitch",             pitch);
+        reflector.Field("Min Pitch",         minPitch);
+        reflector.Field("Max Pitch",         maxPitch);
         reflector.Field("Mouse Sensitivity", mouseSensitivity);
-        reflector.Field("Mouse Orbit", mouseOrbit);
+        reflector.Field("Mouse Orbit",       mouseOrbit);
     }
 
     void OnStart() override
@@ -57,38 +59,31 @@ struct TpsCameraComponent : fbzz::scene::Script {
         if (!m_target || !m_target->IsValid()) FindTarget();
         if (!m_target) return;
 
-        if (mouseOrbit && fbzz::input::Input::MouseButton(1)) {
-            const fbzz::math::Vector2 delta = fbzz::input::Input::MouseDelta();
-            yaw += delta.x * mouseSensitivity;
-            pitch = fbzz::math::Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);
+        if (mouseOrbit && Input::MouseButton(1)) {
+            const Vector2 delta = Input::MouseDelta();
+            yaw   += delta.x * mouseSensitivity;
+            pitch  = Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);
         }
 
-        const fbzz::math::Quaternion yawRotation =
-            fbzz::math::Quaternion::FromAxisAngle(fbzz::math::Vector3::UP, fbzz::math::ToRad(yaw));
-        const fbzz::math::Quaternion pitchRotation =
-            fbzz::math::Quaternion::FromAxisAngle(fbzz::math::Vector3::RIGHT, fbzz::math::ToRad(pitch));
-        const fbzz::math::Quaternion rotation = (yawRotation * pitchRotation).Normalized();
-        const fbzz::math::Vector3 focus = m_target->transform.position + fbzz::math::Vector3::UP * height;
-        const fbzz::math::Vector3 cameraPosition = focus - (rotation * fbzz::math::Vector3::FORWARD) * distance;
+        const Quaternion yawRot   = Quaternion::FromAxisAngle(Vector3::UP,    ToRad(yaw));
+        const Quaternion pitchRot = Quaternion::FromAxisAngle(Vector3::RIGHT, ToRad(pitch));
+        const Quaternion rotation = (yawRot * pitchRot).Normalized();
+        const Vector3    focus    = m_target->transform.position + Vector3::UP * height;
+        const Vector3    camPos   = focus - (rotation * Vector3::FORWARD) * distance;
 
-        m_gameObject->transform.localPosition = cameraPosition;
-        m_gameObject->transform.position = cameraPosition;
-        m_gameObject->transform.localRotation = rotation;
-        m_gameObject->transform.rotation = rotation;
+        transform->localPosition = camPos;
+        transform->position      = camPos;
+        transform->localRotation = rotation;
+        transform->rotation      = rotation;
     }
 
 private:
     void FindTarget()
     {
-        m_target = nullptr;
-        if (!m_scene) return;
-
-        if (!targetTag.empty()) {
-            m_target = m_scene->FindWithTag(targetTag);
-        }
+        m_target = targetTag.empty() ? nullptr : FindWithTag(targetTag);
     }
 
-    fbzz::scene::GameObject* m_target = nullptr;
+    GameObject* m_target = nullptr;
 };
 
 } // namespace sandbox
