@@ -110,6 +110,26 @@ struct PostProcCB {
     float _underwaterPad[2];
     float underwaterColor[3];
     float underwaterFogDensity;
+    float sharpenStrength;
+    float sharpenRadius;
+    float dofFocusDistance;
+    float dofFocusRange;
+    float dofBlurRadius;
+    float sepiaIntensity;
+    float invertIntensity;
+    float posterizeLevels;
+    float pixelSize;
+    float _stylizedPad[3];
+    float bloomThreshold;
+    float bloomSoftKnee;
+    float clarityStrength;
+    float clarityRadius;
+    float shadowLift;
+    float highlightCompression;
+    float colorFilterIntensity;
+    float _qualityPad0;
+    float colorFilter[3];
+    float _qualityPad1;
 };
 
 struct OutlineCB {

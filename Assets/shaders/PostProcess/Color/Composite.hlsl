@@ -29,9 +29,86 @@ FSTriVSOut VSMain(uint id : SV_VertexID)
     return o;
 }
 
+float LinearDepth(float2 uv)
+{
+    float ndcZ = texDepth.Sample(sampDefault, uv).r;
+    if (ndcZ >= 0.9999f)
+        return farZ;
+
+    return nearZ * farZ / (farZ - ndcZ * (farZ - nearZ));
+}
+
+float3 SampleHdrWithBloom(float2 uv)
+{
+    float3 color = texHDR.Sample(sampDefault, uv).rgb;
+    color += texBloom.Sample(sampDefault, uv).rgb * bloomIntensity;
+    return color;
+}
+
+float3 ApplyDepthOfFieldHDR(float3 hdr, float2 uv)
+{
+    if (dofBlurRadius <= 0.0f)
+        return hdr;
+
+    // WHAT: 焦点距離から離れたピクセルほど、固定 8 点サンプルのぼかしを強く混ぜる。
+    // WHY: 専用 CoC バッファを増やさない軽量版として、Composite 内で完結させる。
+    float depth = LinearDepth(uv);
+    float blur = saturate(abs(depth - dofFocusDistance) / max(dofFocusRange, 0.001f));
+    float2 radius = texelSize * dofBlurRadius * blur;
+
+    float3 sum = hdr;
+    sum += SampleHdrWithBloom(saturate(uv + float2( radius.x,  0.0f)));
+    sum += SampleHdrWithBloom(saturate(uv + float2(-radius.x,  0.0f)));
+    sum += SampleHdrWithBloom(saturate(uv + float2( 0.0f,  radius.y)));
+    sum += SampleHdrWithBloom(saturate(uv + float2( 0.0f, -radius.y)));
+    sum += SampleHdrWithBloom(saturate(uv + float2( radius.x,  radius.y)));
+    sum += SampleHdrWithBloom(saturate(uv + float2(-radius.x,  radius.y)));
+    sum += SampleHdrWithBloom(saturate(uv + float2( radius.x, -radius.y)));
+    sum += SampleHdrWithBloom(saturate(uv + float2(-radius.x, -radius.y)));
+
+    return lerp(hdr, sum / 9.0f, blur);
+}
+
+float3 ApplySharpenHDR(float3 hdr, float2 uv)
+{
+    if (sharpenStrength <= 0.0f)
+        return hdr;
+
+    // WHAT: 十字 4 近傍の平均を引いたアンシャープマスク。
+    // WHY: Sobel のような輪郭抽出より安価で、Bloom 後の HDR に自然な解像感を足せる。
+    float2 r = texelSize * max(sharpenRadius, 0.25f);
+    float3 blur =
+        SampleHdrWithBloom(saturate(uv + float2( r.x, 0.0f))) +
+        SampleHdrWithBloom(saturate(uv + float2(-r.x, 0.0f))) +
+        SampleHdrWithBloom(saturate(uv + float2(0.0f,  r.y))) +
+        SampleHdrWithBloom(saturate(uv + float2(0.0f, -r.y)));
+    blur *= 0.25f;
+
+    return max(hdr + (hdr - blur) * sharpenStrength, 0.0f);
+}
+
+float3 ApplyClarity(float3 ldr, float2 uv)
+{
+    if (clarityStrength <= 0.0f)
+        return ldr;
+
+    // WHAT: 少し広い近傍平均との差分を LDR に戻すローカルコントラスト補正。
+    // WHY: シャープ化より大きい面の明暗差を強調し、ディテールが眠い画を自然に引き締める。
+    float2 r = texelSize * max(clarityRadius, 0.5f);
+    float3 blur =
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2( r.x, 0.0f))), exposure) +
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(-r.x, 0.0f))), exposure) +
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(0.0f,  r.y))), exposure) +
+        FinalOutput(SampleHdrWithBloom(saturate(uv + float2(0.0f, -r.y))), exposure);
+    blur *= 0.25f;
+
+    return saturate(ldr + (ldr - blur) * clarityStrength);
+}
+
 float4 PSMain(FSTriVSOut p) : SV_Target0
 {
-    float2 uv = LensDistortUV(p.uv, lensDistortion);
+    float2 sourceUV = ApplyPixelateUV(p.uv, pixelSize);
+    float2 uv = LensDistortUV(sourceUV, lensDistortion);
     if (any(uv < 0.0f) || any(uv > 1.0f))
         return float4(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -41,12 +118,13 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     hdr.g = texHDR.Sample(sampDefault, uv).g;
     hdr.b = texHDR.Sample(sampDefault, uv - caOffset).b;
     float3 bloom = texBloom.Sample(sampDefault, uv).rgb;
-
-    // Bloom 加算
     hdr += bloom * bloomIntensity;
+    hdr = ApplyDepthOfFieldHDR(hdr, uv);
+    hdr = ApplySharpenHDR(hdr, uv);
 
     // 露出 → ACES トーンマップ → sRGB ガンマ補正
     float3 ldr = FinalOutput(hdr, exposure);
+    ldr = ApplyClarity(ldr, uv);
 
     // 深度から線形距離を復元して指数フォグを適用する
     // ndcZ ≥ 0.9999 はスカイドーム（clip.xyww で z=w → NDC z=1.0）なので霧を掛けない
@@ -55,7 +133,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
         float ndcZ = texDepth.Sample(sampDefault, uv).r;
         if (ndcZ < 0.9999f)
         {
-            float linDepth = nearZ * farZ / (farZ - ndcZ * (farZ - nearZ));
+            float linDepth = LinearDepth(uv);
             float dist     = max(linDepth - fogFar, 0.0f);
             float factor   = FogFactor(dist, fogDensity);
             ldr = ApplyFog(ldr, factor, fogColor);
@@ -71,7 +149,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
         float ndcZ = texDepth.Sample(sampDefault, uv).r;
         if (ndcZ < 0.9999f)
         {
-            float linDepth = nearZ * farZ / (farZ - ndcZ * (farZ - nearZ));
+            float linDepth = LinearDepth(uv);
             depthFactor = saturate((1.0f - exp(-underwaterFogDensity * linDepth)) * underwaterStrength);
         }
 
@@ -88,6 +166,11 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     }
 
     ldr = ApplyColorAdjustments(ldr, contrast, saturation, hueShift, temperature, tint);
+    ldr = ApplyShadowHighlight(ldr, shadowLift, highlightCompression);
+    ldr = ApplyColorFilter(ldr, colorFilter, colorFilterIntensity);
+    ldr = ApplySepia(ldr, sepiaIntensity);
+    ldr = ApplyInvert(ldr, invertIntensity);
+    ldr = ApplyPosterize(ldr, posterizeLevels);
     ldr = ApplyVignette(ldr, uv, vignetteIntensity, vignetteSmoothness, vignetteRoundness, vignetteColor);
     ldr = ApplyFilmGrain(ldr, uv, filmGrainIntensity, filmGrainResponse);
 

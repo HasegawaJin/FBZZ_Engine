@@ -23,6 +23,8 @@ void ExecuteBloomPass(RenderPassContext& ctx)
         halfData.texelSize[1] = 1.0f / static_cast<float>(ctx.height);
         halfData.screenSize[0] = static_cast<float>(ctx.width);
         halfData.screenSize[1] = static_cast<float>(ctx.height);
+        halfData.bloomThreshold = rs.postProcess.bloom.threshold;
+        halfData.bloomSoftKnee = rs.postProcess.bloom.softKnee;
         resources.Update(h.postprocCB, &halfData, sizeof(PostProcCB));
 
         renderer::ComputeCall bloomDownDC;
