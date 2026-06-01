@@ -107,7 +107,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
 
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
-    const auto& frustum       = ctx.cameraFrustum;
+    const auto& frustum       = *ctx.cameraFrustum;
 
     // =========================================================================
     // Phase 1: フラスタムカリング + ギャザー
@@ -239,26 +239,32 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     }
 
     // =========================================================================
-    // Phase 2: 不透明オブジェクトを前から後ろ順にソート
+    // Phase 2: 不透明オブジェクトを RenderQueue → 前から後ろ順にソート
     // =========================================================================
-    // WHY: 前→後ろ順で描画すると GPU の Early-Z Rejection が機能しやすくなり、
+    // WHY: RenderQueue で AlphaTest などの明示順を守り、その内側では前→後ろ順にする。
+    //      前→後ろ順で描画すると GPU の Early-Z Rejection が機能しやすくなり、
     //      シェーダー実行コストを削減できる。
     //      また SW オクルージョンカリングは前に描かれたオブジェクトほど
     //      後続オブジェクトを効率よく遮蔽できるため、ソートが前提となる。
 
     std::sort(opaqueStaticQueue.begin(), opaqueStaticQueue.end(),
         [](const OpaqueStaticEntry& a, const OpaqueStaticEntry& b) {
+            if (a.mat->renderQueue != b.mat->renderQueue)
+                return a.mat->renderQueue < b.mat->renderQueue;
             return a.distSq < b.distSq;
         });
     std::sort(opaqueSkinnedQueue.begin(), opaqueSkinnedQueue.end(),
         [](const OpaqueSkinnedEntry& a, const OpaqueSkinnedEntry& b) {
+            if (a.mat->renderQueue != b.mat->renderQueue)
+                return a.mat->renderQueue < b.mat->renderQueue;
             return a.distSq < b.distSq;
         });
 
     // =========================================================================
     // Phase 3: オクルージョンカリング + 不透明描画
     // =========================================================================
-    ctx.occlusionCuller.Reset(cam);
+    if (ctx.occlusionCuller)
+        ctx.occlusionCuller->Reset(cam);
 
     // ── 不透明静的メッシュ ─────────────────────────────────────────────────────
     for (auto& entry : opaqueStaticQueue) {
@@ -271,7 +277,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
         // オクルージョンカリング: 完全に隠蔽されていれば描画スキップ
         const auto bounds = ComputeWorldBounds(go.transform, *mr->mesh);
-        if (!ctx.occlusionCuller.TestAndRaster(bounds.center, bounds.radius)) {
+        if (ctx.occlusionCuller && !ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius)) {
             ++ctx.statsOcclusionCulled;
             continue;
         }

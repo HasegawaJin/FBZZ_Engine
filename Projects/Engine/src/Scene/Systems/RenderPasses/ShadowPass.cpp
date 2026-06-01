@@ -33,7 +33,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     // ライト視錐台カリング: シャドウマップに映らないオブジェクトのシャドウ DrawCall を省く。
     // WHY: シャドウマップは平行投影のため視錐台が直方体形状になる。
     //      光源から見えないジオメトリはシャドウを落とさないため除外して安全。
-    const auto& lightFrustum = ctx.lightFrustum;
+    const auto& lightFrustum = *ctx.lightFrustum;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;

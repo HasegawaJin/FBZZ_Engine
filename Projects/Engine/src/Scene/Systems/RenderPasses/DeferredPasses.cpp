@@ -105,7 +105,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 
     if (!h.gbufferShader.IsValid()) return;
 
-    const auto& frustum = ctx.cameraFrustum;
+    const auto& frustum = *ctx.cameraFrustum;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
@@ -372,7 +372,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 
     std::vector<TransparentEntry> transparentQueue;
 
-    const auto& frustumTransp = ctx.cameraFrustum;
+    const auto& frustumTransp = *ctx.cameraFrustum;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;

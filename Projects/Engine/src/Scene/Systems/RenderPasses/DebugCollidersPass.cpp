@@ -2,7 +2,7 @@
 // DebugCollidersPass.cpp | fbzz::scene
 // Debug collider render pass implementation
 #include "DebugPasses.hpp"
-#include "RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Scene/Systems/ColliderDebugDrawSystem.hpp>
 

@@ -7,7 +7,10 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Renderer/IShader.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <cassert>
+#include <utility>
 
 namespace fbzz::scene {
 
@@ -100,6 +103,26 @@ bool Script::IsAnimatorInState(std::string_view name) const
     if (!m_gameObject) return false;
     auto* anim = m_gameObject->GetComponent<AnimatorComponent>();
     return anim && anim->IsInState(name);
+}
+
+void Script::QueueRenderPass(UserRenderPassDesc desc) const
+{
+    if (m_scene)
+        m_scene->QueueUserRenderPass(std::move(desc));
+}
+
+const renderer::ShaderDescriptor* Script::GetShaderDescriptor(std::string_view shaderPath) const
+{
+    if (shaderPath.empty()) return nullptr;
+    auto* resources = renderer::ResourceManager::Active();
+    if (!resources) return nullptr;
+
+    // WHY: Script は ResourceManager を直接所有しない。ここで解決だけを代行し、
+    //      MaterialComponent は渡された Descriptor に従って純粋にバイト列を書き換える。
+    const auto handle = resources->LoadShader(std::string(shaderPath));
+    if (const auto* shader = resources->Get(handle))
+        return &shader->GetDescriptor();
+    return nullptr;
 }
 
 // ── PostProcess ─────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
 // Transform の worldScale * 0.5 を halfExtents として DebugDraw::Box を呼ぶ。
 // 投影方向 (-Y) を示す矢印線も中心から描画する。
 #include "DebugPasses.hpp"
-#include "RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
