@@ -31,6 +31,7 @@
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -316,6 +317,38 @@ std::string NormalizeAssetPath(std::string path)
         return path.substr(assetsPos + 1);
 
     return path;
+}
+
+std::string SanitizeTerrainAssetName(const std::string& name)
+{
+    std::string result = name.empty() ? "Terrain" : name;
+    for (char& c : result) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok) c = '_';
+    }
+    return result;
+}
+
+std::string UniqueTerrainAssetPath(const EditorContext& ctx, const std::string& objectName)
+{
+    const std::string assetRoot = ctx.projectRoot.empty()
+        ? "Assets"
+        : ctx.projectRoot + "/Assets";
+    const std::string terrainDir = assetRoot + "/Terrain";
+    util::FileSystem::EnsureDirectory(terrainDir);
+
+    const std::string base = terrainDir + "/" + SanitizeTerrainAssetName(objectName);
+    std::string path = base + ".fbzzterrain";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".fbzzterrain";
+    return NormalizeAssetPath(path);
+}
+
+std::string TerrainAssetDiskPath(const EditorContext& ctx, const std::string& assetPath)
+{
+    if (assetPath.rfind("Assets/", 0) == 0 && !ctx.projectRoot.empty())
+        return ctx.projectRoot + "/" + assetPath;
+    return assetPath;
 }
 
 std::shared_ptr<renderer::Mesh> MeshFromModelPath(const std::string& path, int meshIndex)
@@ -1973,7 +2006,52 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         });
 
     DrawComponentSection<scene::TerrainComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain",
-        [go](scene::TerrainComponent& tc, EditorContext&) {
+        [go](scene::TerrainComponent& tc, EditorContext& ctx) {
+            // ── 外部 Terrain Asset ─────────────────────────────────────────────
+            ImGui::SeparatorText("Asset");
+            {
+                char pathBuf[512];
+                std::snprintf(pathBuf, sizeof(pathBuf), "%s", tc.terrainAssetPath.c_str());
+                if (ImGui::InputText("Asset Path", pathBuf, sizeof(pathBuf)))
+                    tc.terrainAssetPath = NormalizeAssetPath(pathBuf);
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        std::string path = NormalizeAssetPath(static_cast<const char*>(p->Data));
+                        if (util::FileSystem::GetExtension(path) == ".fbzzterrain")
+                            tc.terrainAssetPath = path;
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                if (tc.terrainAssetPath.empty()) {
+                    if (ImGui::Button("Create Terrain Asset")) {
+                        const std::string path = UniqueTerrainAssetPath(ctx, go ? go->name : "Terrain");
+                        if (scene::TerrainAssetSerializer::Save(tc, TerrainAssetDiskPath(ctx, path))) {
+                            tc.terrainAssetPath = path;
+                            ctx.requestAssetBrowserRefresh = true;
+                        }
+                    }
+                } else {
+                    if (ImGui::Button("Save Asset")) {
+                        scene::TerrainAssetSerializer::Save(tc, TerrainAssetDiskPath(ctx, tc.terrainAssetPath));
+                        ctx.requestAssetBrowserRefresh = true;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Load Asset")) {
+                        const bool enabled = tc.enabled;
+                        const std::string path = tc.terrainAssetPath;
+                        if (scene::TerrainAssetSerializer::Load(TerrainAssetDiskPath(ctx, path), tc)) {
+                            tc.enabled = enabled;
+                            tc.terrainAssetPath = path;
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Unlink")) {
+                        tc.terrainAssetPath.clear();
+                    }
+                }
+            }
+
             // ── グリッド設定 ──────────────────────────────────────────────────
             ImGui::SeparatorText("Grid");
             if (ImGui::DragInt("Columns",    &tc.columns,   1.0f, 2, 4097))
@@ -1991,8 +2069,12 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             for (int i = 0; i < static_cast<int>(tc.layers.size()); ++i) {
                 auto& layer = tc.layers[static_cast<size_t>(i)];
                 ImGui::PushID(i);
-                ImGui::Text("Layer %d", i);
+                const bool layerOpen = ImGui::TreeNodeEx(
+                    "LayerHeader",
+                    ImGuiTreeNodeFlags_DefaultOpen,
+                    "Layer %d", i);
 
+                if (layerOpen) {
                 // Diffuse パス (ドラッグ&ドロップ対応)
                 {
                     char buf[256];
@@ -2023,17 +2105,49 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                         ImGui::EndDragDropTarget();
                     }
                 }
+                // AO/Roughness パス
+                // R=AO, G=Roughness の packed texture。未設定時は下の数値パラメータを使う。
+                {
+                    char buf[256];
+                    std::snprintf(buf, sizeof(buf), "%s", layer.aoRoughnessPath.c_str());
+                    if (ImGui::InputText("AO Roughness##ar", buf, sizeof(buf)))
+                        layer.aoRoughnessPath = NormalizeAssetPath(buf);
+                    if (ImGui::IsItemDeactivatedAfterEdit()) tc.splatDirty = true;
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                            layer.aoRoughnessPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
+                            tc.splatDirty = true;
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                }
                 ImGui::DragFloat("Tiling X##tx", &layer.tilingX, 0.1f, 0.1f, 100.0f);
                 ImGui::DragFloat("Tiling Z##tz", &layer.tilingZ, 0.1f, 0.1f, 100.0f);
                 ImGui::DragFloat("Normal Str##ns", &layer.normalStrength, 0.01f, 0.0f, 10.0f);
+                ImGui::DragFloat("Roughness##rough", &layer.roughness, 0.01f, 0.0f, 1.0f);
+                ImGui::DragFloat("AO##ao", &layer.ambientOcclusion, 0.01f, 0.0f, 1.0f);
+                if (ImGui::TreeNodeEx("Auto Blend##auto", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::Checkbox("Enable##abe", &layer.autoBlendEnabled);
+                    ImGui::DragFloat("Strength##abs", &layer.autoBlendStrength, 0.01f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Min Height##abhmin", &layer.autoMinHeight, 0.1f, -10000.0f, 10000.0f);
+                    ImGui::DragFloat("Max Height##abhmax", &layer.autoMaxHeight, 0.1f, -10000.0f, 10000.0f);
+                    ImGui::DragFloat("Height Fade##abhf", &layer.autoHeightFade, 0.05f, 0.001f, 1000.0f);
+                    ImGui::DragFloat("Min Slope##absmin", &layer.autoMinSlope, 0.01f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Max Slope##absmax", &layer.autoMaxSlope, 0.01f, 0.0f, 1.0f);
+                    ImGui::DragFloat("Slope Fade##absf", &layer.autoSlopeFade, 0.01f, 0.001f, 1.0f);
+                    ImGui::TreePop();
+                }
 
                 if (ImGui::SmallButton("Remove##rm")) {
                     tc.layers.erase(tc.layers.begin() + i);
                     tc.splatDirty = true;
+                    ImGui::TreePop();
                     ImGui::PopID();
                     break; // イテレーション中の削除なのでループを抜ける
                 }
                 ImGui::Separator();
+                ImGui::TreePop();
+                }
                 ImGui::PopID();
             }
             if (static_cast<int>(tc.layers.size()) < 4) {

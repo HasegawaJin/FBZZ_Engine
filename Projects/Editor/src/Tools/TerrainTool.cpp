@@ -19,6 +19,17 @@
 
 namespace fbzz::editor {
 
+namespace {
+
+float TerrainMinWorldHeight(const scene::TerrainComponent& terrain)
+{
+    if (terrain.heightData.empty()) return 0.0f;
+    const auto minIt = std::min_element(terrain.heightData.begin(), terrain.heightData.end());
+    return *minIt * terrain.maxHeight;
+}
+
+} // namespace
+
 // =============================================================================
 // Update — メイン入力処理
 // =============================================================================
@@ -189,6 +200,7 @@ bool TerrainTool::RaycastSingleTerrain(
     // テレイン全体の AABB（ローカル空間）
     const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
     const float terrainD = static_cast<float>(terrain.rows    - 1) * terrain.cellSize;
+    const float minH     = std::min(0.0f, TerrainMinWorldHeight(terrain));
     const float maxH     = terrain.maxHeight;
 
     // AABB スラブテスト
@@ -207,7 +219,7 @@ bool TerrainTool::RaycastSingleTerrain(
 
     float tMin = 0.0f, tMax = 1e30f;
     if (!slab(rayOriginLocal.x, rayDir.x, 0.0f, terrainW, tMin, tMax)) return false;
-    if (!slab(rayOriginLocal.y, rayDir.y, 0.0f, maxH,     tMin, tMax)) return false;
+    if (!slab(rayOriginLocal.y, rayDir.y, minH, maxH,     tMin, tMax)) return false;
     if (!slab(rayOriginLocal.z, rayDir.z, 0.0f, terrainD, tMin, tMax)) return false;
     if (tMax <= 0.0f) return false;
     tMin = std::max(tMin, 0.0f);
@@ -343,10 +355,12 @@ void TerrainTool::ApplySculpt(
 
             switch (m_sculpt) {
                 case SculptMode::Raise:
-                    h = std::clamp(h + m_brush.strength * w * dt, 0.0f, 1.0f);
+                    h = std::clamp(h + m_brush.strength * w * dt, -1.0f, 1.0f);
                     break;
                 case SculptMode::Lower:
-                    h = std::clamp(h - m_brush.strength * w * dt, 0.0f, 1.0f);
+                    // heightData=0 はフラットな基準面。Lower は負値を許可して地形を掘り下げる。
+                    // WHY: 0 でクランプすると、平坦な Terrain から溝・川床・クレーターを作れない。
+                    h = std::clamp(h - m_brush.strength * w * dt, -1.0f, 1.0f);
                     break;
                 case SculptMode::Flatten: {
                     // m_flattenTarget は Update() で記録した基準高さ（ワールド単位）
@@ -514,14 +528,13 @@ void TerrainTool::OnEditorGUI(scene::Scene& scene)
           mainVP->WorkPos.y + mainVP->WorkSize.y - 10.0f },
         ImGuiCond_FirstUseEver, { 1.0f, 1.0f });
     ImGui::SetNextWindowBgAlpha(0.85f);
-    ImGui::SetNextWindowSize({ 220.0f, 0.0f }, ImGuiCond_Always); // 幅固定・高さ自動
+    ImGui::SetNextWindowSize({ 260.0f, 0.0f }, ImGuiCond_FirstUseEver);
 
     constexpr ImGuiWindowFlags kFlags =
         ImGuiWindowFlags_NoNav              |
         ImGuiWindowFlags_NoSavedSettings    |
         ImGuiWindowFlags_NoDocking          |
-        ImGuiWindowFlags_NoFocusOnAppearing |
-        ImGuiWindowFlags_NoResize;          // 幅は固定。タイトルバーでドラッグ移動できる
+        ImGuiWindowFlags_NoFocusOnAppearing;
 
     // タイトルバーにアクティブ状態を反映する
     const char* windowTitle = m_active ? "Terrain Tool" : "Terrain Tool [OFF]";
@@ -598,10 +611,9 @@ void TerrainTool::OnEditorGUI(scene::Scene& scene)
                     if (label.size() > 16) label = label.substr(0, 14) + "..";
                 }
                 if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
-                if (ImGui::SmallButton(label.c_str()))
+                if (ImGui::Button(label.c_str(), { -1.0f, 0.0f }))
                     m_paintLayer = static_cast<uint32_t>(i);
                 if (active) ImGui::PopStyleColor();
-                if (i < layerCount - 1) ImGui::SameLine();
             }
         }
     }

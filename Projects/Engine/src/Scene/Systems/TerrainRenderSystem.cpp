@@ -2,18 +2,21 @@
 // TerrainRenderSystem.cpp | fbzz::scene
 // TerrainComponent → GPU チャンクメッシュ生成・描画の実装
 //
-// 実装フェーズ:
-//   Phase 1 (完了): 全頂点 1 チャンク・Blinn-Phong 単色ライティング
-//   Phase 2 (完了): シングルテクスチャ (layer[0] ディフューズ)
-//   Phase 3 (完了): チャンク分割 + フラスタムカリング
-//   Phase 4 (完了): スプラットマップ 4 レイヤーブレンド
-//
-// テクスチャスロット (Terrain.hlsl と同期すること):
+// 実装:
+//   テクスチャスロット (Terrain.hlsl と同期すること):
 //   t0 = スプラットマップ  RGBA8 (R=layer0, G=layer1, B=layer2, A=layer3)
 //   t1 = layer0 ディフューズ
 //   t2 = layer1 ディフューズ
 //   t3 = layer2 ディフューズ
 //   t4 = layer3 ディフューズ
+//   t5 = layer0 法線
+//   t6 = layer1 法線
+//   t7 = layer2 法線
+//   t8 = layer3 法線
+//   t9  = layer0 AO/Roughness (R=AO, G=Roughness)
+//   t10 = layer1 AO/Roughness
+//   t11 = layer2 AO/Roughness
+//   t12 = layer3 AO/Roughness
 //
 // サンプラースロット (Terrain.hlsl と同期すること):
 //   s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
@@ -89,6 +92,8 @@ struct TerrainChunkKey {
 struct TerrainTextures {
     renderer::ResourceHandle<renderer::TextureTag> splatmap;        // t0
     std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> diffuse; // t1-t4
+    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> normal;  // t5-t8
+    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> aoRoughness; // t9-t12
 };
 
 } // namespace fbzz::scene
@@ -129,8 +134,12 @@ struct TerrainObjectCB {
     math::Matrix4 wvpMatrix;
     math::Vector4 layerTiling[4];       // xy = tilingX, tilingZ per layer
     math::Vector4 layerNormalStrength;  // xyzw = normalStrength per layer
+    math::Vector4 layerMaterial[4];     // x=roughness, y=AO
+    math::Vector4 layerTextureFlags;     // xyzw = AO/Roughness texture exists per layer
+    math::Vector4 layerAutoHeight[4];    // x=minHeight, y=maxHeight, z=fade, w=enabled
+    math::Vector4 layerAutoSlope[4];     // x=minSlope, y=maxSlope, z=fade, w=strength
 };
-static_assert(sizeof(TerrainObjectCB) == 208, "TerrainObjectCB size mismatch");
+static_assert(sizeof(TerrainObjectCB) == 416, "TerrainObjectCB size mismatch");
 
 // =============================================================================
 // チャンクメッシュ生成
@@ -261,17 +270,27 @@ static TerrainTextures BuildTextureSet(
     const TerrainComponent&    terrain,
     renderer::ResourceManager& resources,
     renderer::ResourceHandle<renderer::TextureTag> splatFallback,
-    renderer::ResourceHandle<renderer::TextureTag> whiteTex)
+    renderer::ResourceHandle<renderer::TextureTag> whiteTex,
+    renderer::ResourceHandle<renderer::TextureTag> flatNormalTex,
+    renderer::ResourceHandle<renderer::TextureTag> blackTex)
 {
     TerrainTextures ts;
     ts.splatmap = BuildSplatmapTexture(terrain, resources, splatFallback);
 
     for (int i = 0; i < 4; ++i) {
-        const bool hasLayer = i < static_cast<int>(terrain.layers.size())
-                           && !terrain.layers[i].diffusePath.empty();
-        ts.diffuse[i] = hasLayer
+        const bool hasLayer = i < static_cast<int>(terrain.layers.size());
+        const bool hasDiffuse = hasLayer && !terrain.layers[i].diffusePath.empty();
+        const bool hasNormal  = hasLayer && !terrain.layers[i].normalPath.empty();
+        const bool hasAoRoughness = hasLayer && !terrain.layers[i].aoRoughnessPath.empty();
+        ts.diffuse[i] = hasDiffuse
             ? resources.LoadTexture(terrain.layers[i].diffusePath)
             : whiteTex;
+        ts.normal[i] = hasNormal
+            ? resources.LoadTexture(terrain.layers[i].normalPath)
+            : flatNormalTex;
+        ts.aoRoughness[i] = hasAoRoughness
+            ? resources.LoadTexture(terrain.layers[i].aoRoughnessPath)
+            : blackTex;
     }
     return ts;
 }
@@ -312,6 +331,18 @@ void TerrainRenderSystem(
     static auto s_splatFallback = [&] {
         const uint8_t s[4] = { 255, 0, 0, 0 };
         return resources.CreateTexture(s, 1, 1);
+    }();
+
+    // フォールバック: 1×1 フラット法線 (DX/Tangent space: +Z)
+    static auto s_flatNormalTex = [&] {
+        const uint8_t n[4] = { 128, 128, 255, 255 };
+        return resources.CreateTexture(n, 1, 1);
+    }();
+
+    // フォールバック: AO/Roughness テクスチャ未設定を表す黒。実値は CB 側の数値を使う。
+    static auto s_blackTex = [&] {
+        const uint8_t b[4] = { 0, 0, 0, 255 };
+        return resources.CreateTexture(b, 1, 1);
     }();
 
     // チャンクキャッシュ: テレインエンティティ × チャンクグリッド → GPU バッファ
@@ -426,7 +457,8 @@ void TerrainRenderSystem(
         // スプラットマップやレイヤーパスが変更されたとき呼び出し側がこのフラグを立てる。
         if (terrain.splatDirty || !s_texCache.contains(eid.index)) {
             s_texCache[eid.index] = BuildTextureSet(terrain, resources,
-                                                    s_splatFallback, s_whiteTex);
+                                                    s_splatFallback, s_whiteTex,
+                                                    s_flatNormalTex, s_blackTex);
             terrain.splatDirty = false;
         }
         const TerrainTextures& textures = s_texCache.at(eid.index);
@@ -444,15 +476,42 @@ void TerrainRenderSystem(
         terrainCBData.wvpMatrix   = wvp;
         {
             float normalStr[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+            float materialTextureFlags[4] = {};
             for (int li = 0; li < 4; ++li) {
                 const bool hasLayer = li < static_cast<int>(terrain.layers.size());
                 const float tx = hasLayer ? terrain.layers[li].tilingX : 8.0f;
                 const float tz = hasLayer ? terrain.layers[li].tilingZ : 8.0f;
                 normalStr[li]  = hasLayer ? terrain.layers[li].normalStrength : 1.0f;
+                materialTextureFlags[li] =
+                    hasLayer && !terrain.layers[li].aoRoughnessPath.empty() ? 1.0f : 0.0f;
                 terrainCBData.layerTiling[li] = { tx, tz, 0.0f, 0.0f };
+                terrainCBData.layerMaterial[li] = {
+                    hasLayer ? terrain.layers[li].roughness : 0.8f,
+                    hasLayer ? terrain.layers[li].ambientOcclusion : 1.0f,
+                    0.0f,
+                    0.0f
+                };
+                terrainCBData.layerAutoHeight[li] = {
+                    hasLayer ? terrain.layers[li].autoMinHeight : -10000.0f,
+                    hasLayer ? terrain.layers[li].autoMaxHeight :  10000.0f,
+                    hasLayer ? terrain.layers[li].autoHeightFade : 1.0f,
+                    hasLayer && terrain.layers[li].autoBlendEnabled ? 1.0f : 0.0f
+                };
+                terrainCBData.layerAutoSlope[li] = {
+                    hasLayer ? terrain.layers[li].autoMinSlope : 0.0f,
+                    hasLayer ? terrain.layers[li].autoMaxSlope : 1.0f,
+                    hasLayer ? terrain.layers[li].autoSlopeFade : 0.1f,
+                    hasLayer ? terrain.layers[li].autoBlendStrength : 1.0f
+                };
             }
             terrainCBData.layerNormalStrength = {
                 normalStr[0], normalStr[1], normalStr[2], normalStr[3]
+            };
+            terrainCBData.layerTextureFlags = {
+                materialTextureFlags[0],
+                materialTextureFlags[1],
+                materialTextureFlags[2],
+                materialTextureFlags[3]
             };
         }
 
@@ -507,13 +566,23 @@ void TerrainRenderSystem(
                 call.constantBuffers[1] = terrainCBH;
                 call.constantBuffers[3] = lightCBH;
 
-                // テクスチャスロット (Phase 4)
+                // テクスチャスロット
                 //   [0]=splatmap(t0)  [1-4]=layer0-3 diffuse(t1-t4)
+                //   [5-8]=layer0-3 normal(t5-t8)
+                //   [9-12]=layer0-3 AO/Roughness(t9-t12)
                 call.textures[0] = textures.splatmap;
                 call.textures[1] = textures.diffuse[0];
                 call.textures[2] = textures.diffuse[1];
                 call.textures[3] = textures.diffuse[2];
                 call.textures[4] = textures.diffuse[3];
+                call.textures[5] = textures.normal[0];
+                call.textures[6] = textures.normal[1];
+                call.textures[7] = textures.normal[2];
+                call.textures[8] = textures.normal[3];
+                call.textures[9]  = textures.aoRoughness[0];
+                call.textures[10] = textures.aoRoughness[1];
+                call.textures[11] = textures.aoRoughness[2];
+                call.textures[12] = textures.aoRoughness[3];
 
                 renderer.Submit(call, resources);
             }
