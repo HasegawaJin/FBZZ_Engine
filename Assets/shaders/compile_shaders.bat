@@ -31,6 +31,12 @@ REM =========================================================================
 call :CompileVSPS Terrain\Terrain.hlsl Terrain.Terrain || goto :error
 
 REM =========================================================================
+REM Water
+REM =========================================================================
+
+call :CompileVSPS Water\Water.hlsl Water.Water || goto :error
+
+REM =========================================================================
 REM Debug
 REM =========================================================================
 
@@ -84,7 +90,9 @@ call :CompileCS PostProcess\AmbientOcclusion\SSAO.cs.hlsl PostProcess.AmbientOcc
 call :CompileCS PostProcess\AmbientOcclusion\SSAOBlur.cs.hlsl PostProcess.AmbientOcclusion.SSAOBlur.cs || goto :error
 call :CompileCS PostProcess\Bloom\BloomDownsample.cs.hlsl PostProcess.Bloom.BloomDownsample.cs || goto :error
 call :CompileCS PostProcess\Bloom\BloomUpsample.cs.hlsl PostProcess.Bloom.BloomUpsample.cs || goto :error
+call :CompileVSPS PostProcess\Color\CopyColor.hlsl PostProcess.Color.CopyColor || goto :error
 call :CompileVSPS PostProcess\Color\Composite.hlsl PostProcess.Color.Composite || goto :error
+call :CompileVSPS PostProcess\Water\Caustics.hlsl PostProcess.Water.Caustics || goto :error
 for %%S in ("%SRC%PostProcess\Custom\*.hlsl") do call :CompileVSPS PostProcess\Custom\%%~nxS PostProcess.Custom.%%~nS || goto :error
 call :CompileVSPS PostProcess\AntiAliasing\FXAA.hlsl PostProcess.AntiAliasing.FXAA || goto :error
 call :CompileVSPS PostProcess\Outline\SelectionOutline.hlsl PostProcess.Outline.SelectionOutline || goto :error

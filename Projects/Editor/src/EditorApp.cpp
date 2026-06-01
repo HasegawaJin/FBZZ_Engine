@@ -21,6 +21,7 @@
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/Panels/BuildSettingsPanel.hpp>
 #include "Tools/TerrainTool.hpp"
+#include "Tools/WaterTool.hpp"
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -240,6 +241,8 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     m_ctx.playMode    = &m_playMode;
     m_terrainTool     = std::make_unique<TerrainTool>();
     m_ctx.terrainTool = m_terrainTool.get();
+    m_waterTool       = std::make_unique<WaterTool>();
+    m_ctx.waterTool   = m_waterTool.get();
     m_ctx.markSceneDirty  = [this]() { MarkSceneDirty(); };
     m_ctx.requestOpenScene = [this](const std::string& path) { RequestOpenScenePath(path); };
 

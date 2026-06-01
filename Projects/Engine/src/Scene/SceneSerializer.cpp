@@ -31,7 +31,9 @@
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
+#include <Engine/Scene/WaterAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -294,6 +296,125 @@ void ReadConvexHullCollider(const toml::table& colTbl, ConvexHullColliderCompone
     col.meshPath = colTbl["meshPath"].value_or(std::string{});
     col.meshIndex = (int)colTbl["meshIndex"].value_or((int64_t)0);
     col.useTransformScale = colTbl["useTransformScale"].value_or(true);
+}
+
+toml::table SerializeWater(const WaterComponent& water)
+{
+    // WHY: WaterComponent は std::array<GerstnerWave,4> を持つため、IReflector だけでは
+    //      波配列まで表現できない。基本値は明示的に保存し、配列は TOML array に展開する。
+    toml::table tbl;
+    tbl.insert("enabled", water.enabled);
+    tbl.insert("resolutionX", static_cast<int64_t>(water.resolutionX));
+    tbl.insert("resolutionZ", static_cast<int64_t>(water.resolutionZ));
+    tbl.insert("chunkCount",  static_cast<int64_t>(water.chunkCount));
+    tbl.insert("extentX", static_cast<double>(water.extentX));
+    tbl.insert("extentZ", static_cast<double>(water.extentZ));
+    tbl.insert("shallowColor", Vec3ToArr(water.shallowColor));
+    tbl.insert("deepColor", Vec3ToArr(water.deepColor));
+    tbl.insert("shallowDepth", static_cast<double>(water.shallowDepth));
+    tbl.insert("deepDepth", static_cast<double>(water.deepDepth));
+    tbl.insert("opacity", static_cast<double>(water.opacity));
+    tbl.insert("reflectivity", static_cast<double>(water.reflectivity));
+    tbl.insert("fresnelBias", static_cast<double>(water.fresnelBias));
+    tbl.insert("fresnelPower", static_cast<double>(water.fresnelPower));
+    tbl.insert("normalMap1Path", water.normalMap1Path);
+    tbl.insert("normalMap2Path", water.normalMap2Path);
+    tbl.insert("normalMap1Tiling", static_cast<double>(water.normalMap1Tiling));
+    tbl.insert("normalMap2Tiling", static_cast<double>(water.normalMap2Tiling));
+    tbl.insert("normalStrength", static_cast<double>(water.normalStrength));
+    tbl.insert("normalMap1Scroll", Vec2ToArr(water.normalMap1Scroll));
+    tbl.insert("normalMap2Scroll", Vec2ToArr(water.normalMap2Scroll));
+    tbl.insert("enableGerstnerWaves", water.enableGerstnerWaves);
+    tbl.insert("foamThreshold", static_cast<double>(water.foamThreshold));
+    tbl.insert("foamFade", static_cast<double>(water.foamFade));
+    tbl.insert("foamStrength", static_cast<double>(water.foamStrength));
+    tbl.insert("foamTexPath", water.foamTexPath);
+    tbl.insert("foamTiling", static_cast<double>(water.foamTiling));
+    tbl.insert("refractionStrength", static_cast<double>(water.refractionStrength));
+    tbl.insert("enableFlowMap", water.enableFlowMap);
+    tbl.insert("flowMapPath", water.flowMapPath);
+    tbl.insert("flowSpeed", static_cast<double>(water.flowSpeed));
+    tbl.insert("flowTiling", static_cast<double>(water.flowTiling));
+    tbl.insert("enableCaustics", water.enableCaustics);
+    tbl.insert("causticsIntensity", static_cast<double>(water.causticsIntensity));
+    tbl.insert("causticsTiling", static_cast<double>(water.causticsTiling));
+    tbl.insert("causticsSpeed", static_cast<double>(water.causticsSpeed));
+    tbl.insert("causticsTexPath", water.causticsTexPath);
+    tbl.insert("envCubemapPath", water.envCubemapPath);
+
+    toml::array waves;
+    for (const GerstnerWave& wave : water.waves) {
+        toml::table waveTbl;
+        waveTbl.insert("direction", Vec2ToArr(wave.direction));
+        waveTbl.insert("amplitude", static_cast<double>(wave.amplitude));
+        waveTbl.insert("wavelength", static_cast<double>(wave.wavelength));
+        waveTbl.insert("steepness", static_cast<double>(wave.steepness));
+        waves.push_back(std::move(waveTbl));
+    }
+    tbl.insert("waves", std::move(waves));
+    return tbl;
+}
+
+WaterComponent ReadWater(const toml::table& tbl)
+{
+    WaterComponent water{};
+    water.enabled = tbl["enabled"].value_or(true);
+    water.resolutionX = static_cast<uint32_t>(std::max<int64_t>(1, tbl["resolutionX"].value_or(int64_t{64})));
+    water.resolutionZ = static_cast<uint32_t>(std::max<int64_t>(1, tbl["resolutionZ"].value_or(int64_t{64})));
+    water.chunkCount  = static_cast<uint32_t>(std::max<int64_t>(1, tbl["chunkCount"].value_or(int64_t{4})));
+    water.extentX = static_cast<float>(tbl["extentX"].value_or(100.0));
+    water.extentZ = static_cast<float>(tbl["extentZ"].value_or(100.0));
+    water.shallowColor = ArrToVec3(tbl["shallowColor"].as_array(), water.shallowColor);
+    water.deepColor = ArrToVec3(tbl["deepColor"].as_array(), water.deepColor);
+    water.shallowDepth = static_cast<float>(tbl["shallowDepth"].value_or(0.5));
+    water.deepDepth = static_cast<float>(tbl["deepDepth"].value_or(5.0));
+    water.opacity = static_cast<float>(tbl["opacity"].value_or(0.85));
+    water.reflectivity = static_cast<float>(tbl["reflectivity"].value_or(0.5));
+    water.fresnelBias = static_cast<float>(tbl["fresnelBias"].value_or(0.02));
+    water.fresnelPower = static_cast<float>(tbl["fresnelPower"].value_or(5.0));
+    water.normalMap1Path = tbl["normalMap1Path"].value_or(std::string{});
+    water.normalMap2Path = tbl["normalMap2Path"].value_or(std::string{});
+    water.normalMap1Tiling = static_cast<float>(tbl["normalMap1Tiling"].value_or(4.0));
+    water.normalMap2Tiling = static_cast<float>(tbl["normalMap2Tiling"].value_or(6.0));
+    water.normalStrength = static_cast<float>(tbl["normalStrength"].value_or(1.0));
+    water.normalMap1Scroll = ArrToVec2(tbl["normalMap1Scroll"].as_array(), water.normalMap1Scroll);
+    water.normalMap2Scroll = ArrToVec2(tbl["normalMap2Scroll"].as_array(), water.normalMap2Scroll);
+    water.enableGerstnerWaves = tbl["enableGerstnerWaves"].value_or(true);
+    water.foamThreshold = static_cast<float>(tbl["foamThreshold"].value_or(0.3));
+    water.foamFade = static_cast<float>(tbl["foamFade"].value_or(0.5));
+    water.foamStrength = static_cast<float>(tbl["foamStrength"].value_or(1.0));
+    water.foamTexPath = tbl["foamTexPath"].value_or(std::string{});
+    water.foamTiling = static_cast<float>(tbl["foamTiling"].value_or(8.0));
+    water.refractionStrength = static_cast<float>(tbl["refractionStrength"].value_or(0.03));
+    water.enableFlowMap = tbl["enableFlowMap"].value_or(false);
+    water.flowMapPath = tbl["flowMapPath"].value_or(std::string{});
+    water.flowSpeed = static_cast<float>(tbl["flowSpeed"].value_or(0.3));
+    water.flowTiling = static_cast<float>(tbl["flowTiling"].value_or(1.0));
+    water.enableCaustics = tbl["enableCaustics"].value_or(true);
+    water.causticsIntensity = static_cast<float>(tbl["causticsIntensity"].value_or(0.4));
+    water.causticsTiling = static_cast<float>(tbl["causticsTiling"].value_or(0.5));
+    water.causticsSpeed = static_cast<float>(tbl["causticsSpeed"].value_or(0.15));
+    water.causticsTexPath = tbl["causticsTexPath"].value_or(std::string{});
+    water.envCubemapPath = tbl["envCubemapPath"].value_or(std::string{});
+
+    if (const auto* waves = tbl["waves"].as_array()) {
+        size_t index = 0;
+        for (const auto& node : *waves) {
+            const auto* waveTbl = node.as_table();
+            if (!waveTbl || index >= water.waves.size()) continue;
+            GerstnerWave wave{};
+            wave.direction = ArrToVec2((*waveTbl)["direction"].as_array(), wave.direction);
+            wave.amplitude = static_cast<float>((*waveTbl)["amplitude"].value_or(0.0));
+            wave.wavelength = static_cast<float>((*waveTbl)["wavelength"].value_or(10.0));
+            wave.steepness = static_cast<float>((*waveTbl)["steepness"].value_or(0.5));
+            water.waves[index++] = wave;
+        }
+    }
+
+    water.meshDirty = true;
+    water.foamDirty = true;
+    water.texDirty = true;
+    return water;
 }
 
 const char* VolumeTypeToString(physics::VolumeType type)
@@ -1049,6 +1170,37 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
         }
 
+        // WaterComponent
+        // WHY: waterAssetPath が設定されていれば TerrainComponent と同様に外部 .fbzzwater に
+        //      視覚パラメータを分離保存する。Scene 側には enabled とジオメトリ情報のみ残す。
+        //      assetPath 未設定または保存失敗時は従来どおりインライン保存してデータ喪失を防ぐ。
+        if (auto* water = go.GetComponent<WaterComponent>()) {
+            bool savedToAsset = false;
+            if (!water->waterAssetPath.empty()) {
+                const std::string diskPath =
+                    ResolveAssetDiskPathForScene(path, water->waterAssetPath);
+                savedToAsset = WaterAssetSerializer::Save(*water, diskPath);
+            }
+
+            if (!water->waterAssetPath.empty() && savedToAsset) {
+                // 外部アセット参照モード: Scene にはジオメトリ情報のみ保存する
+                toml::table waterTbl;
+                waterTbl.insert("enabled",        water->enabled);
+                waterTbl.insert("waterAssetPath", water->waterAssetPath);
+                waterTbl.insert("extentX",        (double)water->extentX);
+                waterTbl.insert("extentZ",        (double)water->extentZ);
+                waterTbl.insert("resolutionX",    (int64_t)water->resolutionX);
+                waterTbl.insert("resolutionZ",    (int64_t)water->resolutionZ);
+                waterTbl.insert("chunkCount",     (int64_t)water->chunkCount);
+                goTbl.insert("WaterComponent", std::move(waterTbl));
+            } else {
+                // インラインモード: 全パラメータを Scene に保存（旧形式 / フォールバック）
+                toml::table waterTbl = SerializeWater(*water);
+                waterTbl.insert_or_assign("waterAssetPath", water->waterAssetPath);
+                goTbl.insert("WaterComponent", std::move(waterTbl));
+            }
+        }
+
         if (auto* sc = go.GetComponent<ScriptComponent>(); sc && sc->script) {
             toml::table scTbl;
             toml::table fieldsTbl;
@@ -1759,6 +1911,45 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             tc.heightDirty   = true;
             tc.colliderDirty = true;
             go.AddComponent<TerrainComponent>(std::move(tc));
+        }
+
+        // WaterComponent
+        // WHY: waterAssetPath が設定されていれば外部 .fbzzwater から視覚パラメータを復元し、
+        //      ジオメトリ（extentX/Z, resolutionX/Z）と enabled はシーン側の値で上書きする。
+        //      ロード失敗時はインラインデータにフォールバックしてデータ喪失を防ぐ。
+        if (auto* waterTbl = (*goTbl)["WaterComponent"].as_table()) {
+            const std::string waterAssetPath = (*waterTbl)["waterAssetPath"].value_or(std::string{});
+
+            bool loadedFromAsset = false;
+            WaterComponent water{};
+
+            if (!waterAssetPath.empty()) {
+                const std::string diskPath =
+                    ResolveAssetDiskPathForScene(path, waterAssetPath);
+                loadedFromAsset = WaterAssetSerializer::Load(diskPath, water);
+                // enabled と geometry はシーン側の値を優先する
+                water.waterAssetPath = waterAssetPath;
+                water.enabled     = (*waterTbl)["enabled"].value_or(true);
+                water.extentX     = (float)(*waterTbl)["extentX"].value_or(100.0);
+                water.extentZ     = (float)(*waterTbl)["extentZ"].value_or(100.0);
+                water.resolutionX = static_cast<uint32_t>(
+                    std::max<int64_t>(1, (*waterTbl)["resolutionX"].value_or(int64_t{64})));
+                water.resolutionZ = static_cast<uint32_t>(
+                    std::max<int64_t>(1, (*waterTbl)["resolutionZ"].value_or(int64_t{64})));
+                water.chunkCount = static_cast<uint32_t>(
+                    std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
+            }
+
+            if (!loadedFromAsset) {
+                // インラインフォールバック（旧形式 / 外部ロード失敗時）
+                water = ReadWater(*waterTbl);
+                water.waterAssetPath = waterAssetPath;
+            }
+
+            water.meshDirty = true;
+            water.foamDirty = true;
+            water.texDirty  = true;
+            go.AddComponent<WaterComponent>(std::move(water));
         }
 
         // ScriptComponent

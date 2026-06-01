@@ -11,7 +11,9 @@
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/VolumeComponent.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
+#include "Engine/Scene/Components/WaterComponent.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include <Engine/Core/Time.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Renderer/Mesh.hpp>
@@ -19,6 +21,9 @@
 #include <Physics/ConvexHullCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/World.hpp>
+#include <Math/MathUtils.hpp>
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
@@ -38,6 +43,64 @@ struct ColliderOwner {
 // Script へのコールバック発火で使う。
 using ColliderOwnerMap = std::unordered_map<const physics::Collider*, ColliderOwner>;
 using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
+
+// WaterBuoyancyVolume — WaterComponent の Gerstner 波を CPU 側で評価する浮力 Volume。
+// WHY: physics モジュールに WaterComponent 依存を入れると依存方向が逆転するため、
+//      Engine の PhysicsSystem 内で physics::Volume を実装し、World には抽象 Volume として渡す。
+class WaterBuoyancyVolume final : public physics::Volume {
+public:
+    WaterBuoyancyVolume(const WaterComponent& water,
+                        const Transform& transform,
+                        const physics::VolumeSettings& settings)
+        : m_water(water)
+        , m_position(transform.position)
+        , m_settings(settings)
+        , m_time(core::Time::TotalTime())
+    {
+    }
+
+    bool Contains(const math::Vector3& position) const override
+    {
+        const float localX = position.x - m_position.x;
+        const float localZ = position.z - m_position.z;
+        if (std::abs(localX) > m_water.extentX * 0.5f || std::abs(localZ) > m_water.extentZ * 0.5f)
+            return false;
+        const float surfaceY = SurfaceY(localX, localZ);
+        const float bottomY  = surfaceY - std::max(m_water.deepDepth, 0.001f);
+        return position.y <= surfaceY && position.y >= bottomY;
+    }
+
+    void Apply(physics::RigidBody& body, float /*dt*/) override
+    {
+        if (body.IsStatic()) return;
+
+        const math::Vector3 pos = body.GetPosition();
+        const float localX = pos.x - m_position.x;
+        const float localZ = pos.z - m_position.z;
+        const float surfaceY = SurfaceY(localX, localZ);
+        const float depth = std::max(surfaceY - pos.y, 0.0f);
+        const float submersion = math::Clamp01(depth / std::max(m_water.deepDepth, 0.001f));
+
+        body.ApplyForce(math::Vector3::UP * (m_settings.buoyancy * body.GetMass() * submersion));
+        body.ApplyForce(-body.GetVelocity() * (m_settings.drag * submersion));
+    }
+
+    void Tick(float dt) override
+    {
+        m_time += dt;
+    }
+
+private:
+    float SurfaceY(float localX, float localZ) const
+    {
+        return m_position.y + m_water.GetSurfaceHeightAt(localX, localZ, m_time);
+    }
+
+    WaterComponent m_water;
+    math::Vector3 m_position;
+    physics::VolumeSettings m_settings;
+    float m_time = 0.0f;
+};
 
 math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 {
@@ -161,7 +224,8 @@ void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
 }
 
 template<typename T>
-void AddColliderInstance(GameObject& go,
+void AddColliderInstance(Scene& scene,
+                         GameObject& go,
                          T& col,
                          std::vector<physics::ColliderInstance>& colliders,
                          ColliderOwnerMap& colliderOwners,
@@ -221,6 +285,13 @@ void AddColliderInstance(GameObject& go,
         settings.explosionImpulse = volume->explosionImpulse;
         settings.timeScale = volume->timeScale;
         settings.duration = volume->duration;
+        if (settings.type == physics::VolumeType::Buoyancy) {
+            if (auto* water = go.GetComponent<WaterComponent>()) {
+                volumes.push_back(std::make_shared<WaterBuoyancyVolume>(*water, go.transform, settings));
+                return;
+            }
+        }
+
         volumes.push_back(std::make_shared<physics::ColliderVolume>(col.collider, settings));
     }
 }
@@ -363,20 +434,20 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
 
     for (auto& go : scene.GameObjects()) {
         if (auto* col = go.GetComponent<AabbColliderComponent>())
-            AddColliderInstance(go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
         if (auto* col = go.GetComponent<BoxColliderComponent>())
-            AddColliderInstance(go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
         if (auto* col = go.GetComponent<SphereColliderComponent>())
-            AddColliderInstance(go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
         if (auto* col = go.GetComponent<CapsuleColliderComponent>())
-            AddColliderInstance(go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
         if (auto* col = go.GetComponent<MeshColliderComponent>()) {
             EnsureMeshCollider(go, *col);
-            AddColliderInstance(go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
         }
         if (auto* col = go.GetComponent<ConvexHullColliderComponent>()) {
             EnsureConvexHullCollider(go, *col);
-            AddColliderInstance(go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
         }
     }
 

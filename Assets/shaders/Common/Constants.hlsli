@@ -115,8 +115,13 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  ssaoIntensity;
     float  customIntensity;
     float  customBlend;
+    float2 _customPad;
     float4 customParameters;
-    float  _ppPad;
+    float  underwaterStrength;
+    float  underwaterDepth;
+    float2 _underwaterPad;
+    float3 underwaterColor;
+    float  underwaterFogDensity;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)
