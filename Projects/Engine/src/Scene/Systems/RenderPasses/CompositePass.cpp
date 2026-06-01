@@ -6,8 +6,61 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/SamplerMode.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Transform.hpp>
+#include <Engine/Util/Mathf.hpp>
+#include <cmath>
 
 namespace fbzz::scene {
+
+namespace {
+
+struct UnderwaterInfo {
+    bool enabled = false;
+    float strength = 0.0f;
+    float depth = 0.0f;
+    float fogDensity = 0.0f;
+    math::Vector3 color = math::Vector3::ZERO;
+};
+
+UnderwaterInfo EvaluateUnderwaterInfo(const RenderPassContext& ctx)
+{
+    UnderwaterInfo best{};
+    const float time = core::Time::TotalTime();
+
+    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
+        if (!water.enabled) continue;
+
+        const float localX = ctx.camera.m_position.x - transform.position.x;
+        const float localZ = ctx.camera.m_position.z - transform.position.z;
+        if (std::abs(localX) > water.extentX * 0.5f || std::abs(localZ) > water.extentZ * 0.5f) {
+            continue;
+        }
+
+        // WHY: 水面は GPU で揺らすが、カメラ水没判定はポストプロセス前に CPU で決める必要がある。
+        //      WaterComponent の Gerstner 評価を再利用し、描画された水面と近い高さで判定する。
+        const float surfaceY = transform.position.y + water.GetSurfaceHeightAt(localX, localZ, time);
+        const float depth = surfaceY - ctx.camera.m_position.y;
+        if (depth <= 0.0f || depth <= best.depth) continue;
+
+        const float deepDepth = util::Mathf::Max(water.deepDepth, 0.001f);
+        const float t = util::Mathf::Clamp01(depth / deepDepth);
+        best.enabled = true;
+        best.depth = depth;
+        best.strength = util::Mathf::Clamp01(depth / 2.0f);
+        best.fogDensity = util::Mathf::Lerp(0.04f, 0.35f, t);
+        best.color = {
+            util::Mathf::Lerp(water.shallowColor.x, water.deepColor.x, t),
+            util::Mathf::Lerp(water.shallowColor.y, water.deepColor.y, t),
+            util::Mathf::Lerp(water.shallowColor.z, water.deepColor.z, t)
+        };
+    }
+
+    return best;
+}
+
+} // anonymous namespace
 
 void ExecuteCompositePass(RenderPassContext& ctx)
 {
@@ -57,6 +110,15 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.filmGrainResponse = pp.filmGrain.response;
     postData.chromaticAberration = pp.lens.chromaticAberrationEnabled ? pp.lens.chromaticAberration : 0.0f;
     postData.lensDistortion = pp.lens.distortionEnabled ? pp.lens.distortion : 0.0f;
+    const UnderwaterInfo underwater = EvaluateUnderwaterInfo(ctx);
+    if (underwater.enabled) {
+        postData.underwaterStrength = underwater.strength;
+        postData.underwaterDepth = underwater.depth;
+        postData.underwaterColor[0] = underwater.color.x;
+        postData.underwaterColor[1] = underwater.color.y;
+        postData.underwaterColor[2] = underwater.color.z;
+        postData.underwaterFogDensity = underwater.fogDensity;
+    }
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
     r.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);

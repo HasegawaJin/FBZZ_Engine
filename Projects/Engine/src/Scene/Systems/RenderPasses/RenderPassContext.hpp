@@ -79,8 +79,13 @@ struct PostProcCB {
     float ssaoIntensity;
     float customIntensity;
     float customBlend;
+    float _customPad[2];
     float customParameters[4];
-    float _pad[1];
+    float underwaterStrength;
+    float underwaterDepth;
+    float _underwaterPad[2];
+    float underwaterColor[3];
+    float underwaterFogDensity;
 };
 
 struct OutlineCB {
@@ -129,6 +134,7 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> ssaoShader;
     renderer::ResourceHandle<renderer::ShaderTag> ssaoBlurShader;
     renderer::ResourceHandle<renderer::ShaderTag> compositeShader;
+    renderer::ResourceHandle<renderer::ShaderTag> causticsShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskSkinnedShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
@@ -137,6 +143,7 @@ struct RenderPassHandles {
 
     renderer::ResourceHandle<renderer::PipelineStateTag> selectionMaskPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag> postprocPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag> causticsPSO;
 
     renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
