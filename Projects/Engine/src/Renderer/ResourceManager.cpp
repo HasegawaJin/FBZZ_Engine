@@ -13,6 +13,7 @@
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <algorithm>
 #include <cassert>
 
 namespace fbzz::renderer {
@@ -29,6 +30,9 @@ ResourceManager::ResourceManager(IRenderer& renderer)
 
 ResourceManager::~ResourceManager()
 {
+    ReleaseOwnedResourcesForShutdown();
+    LogLiveDebugResources();
+
     if (s_activeResourceManager == this)
         s_activeResourceManager = nullptr;
 }
@@ -50,7 +54,7 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
         return ResourceHandle<ShaderTag>::Null();
     }
 
-    ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader));
+    ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader), "Shader", __FILE__, __LINE__);
     m_shaderCache[key] = handle;
     return handle;
 }
@@ -67,7 +71,7 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
         return ResourceHandle<TextureTag>::Null();
     }
 
-    ResourceHandle<TextureTag> handle = m_textures.Insert(std::move(texture));
+    ResourceHandle<TextureTag> handle = m_textures.Insert(std::move(texture), "Texture", __FILE__, __LINE__);
     m_textureCache[key] = handle;
     return handle;
 }
@@ -79,27 +83,27 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, u
         FBZZ_LOG_ERROR("ResourceManager::CreateTexture failed (%ux%u)", width, height);
         return ResourceHandle<TextureTag>::Null();
     }
-    return m_textures.Insert(std::move(texture));
+    return m_textures.Insert(std::move(texture), "TextureFromData", __FILE__, __LINE__);
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride));
+    return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride), "VertexBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count));
+    return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count), "IndexBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t sizeBytes)
 {
-    return m_constantBuffers.Insert(m_renderer.CreateNativeConstantBuffer(sizeBytes));
+    return m_constantBuffers.Insert(m_renderer.CreateNativeConstantBuffer(sizeBytes), "ConstantBuffer", __FILE__, __LINE__);
 }
 
 ResourceHandle<PipelineStateTag> ResourceManager::CreatePipelineState(const PipelineStateDesc& desc)
 {
-    return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc));
+    return m_pipelineStates.Insert(m_renderer.CreateNativePipelineState(desc), "PipelineState", __FILE__, __LINE__);
 }
 
 ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
@@ -110,10 +114,10 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
     std::vector<ResourceHandle<TextureTag>> colors;
     colors.reserve(colorCount);
     for (uint32_t i = 0; i < colorCount; ++i)
-        colors.push_back(m_textures.Insert(rt->GetColorTexture(i)));
-    ResourceHandle<TextureTag> depth = m_textures.Insert(rt->GetDepthTexture());
+        colors.push_back(m_textures.Insert(rt->GetColorTexture(i), "RenderTargetColorTexture", __FILE__, __LINE__));
+    ResourceHandle<TextureTag> depth = m_textures.Insert(rt->GetDepthTexture(), "RenderTargetDepthTexture", __FILE__, __LINE__);
 
-    ResourceHandle<RenderTargetTag> handle = m_renderTargets.Insert(std::move(rt));
+    ResourceHandle<RenderTargetTag> handle = m_renderTargets.Insert(std::move(rt), "RenderTarget", __FILE__, __LINE__);
     const uint64_t key = Key(handle);
     m_renderTargetColors[key] = std::move(colors);
     m_renderTargetDepths[key] = depth;
@@ -122,7 +126,7 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
 
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height)
 {
-    return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height));
+    return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height), "ComputeTexture", __FILE__, __LINE__);
 }
 
 IShader* ResourceManager::Get(ResourceHandle<ShaderTag> h) { return m_shaders.Get(h); }
@@ -185,6 +189,88 @@ void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 uint64_t ResourceManager::Key(ResourceHandle<RenderTargetTag> h)
 {
     return (static_cast<uint64_t>(h.id) << 32) | static_cast<uint64_t>(h.gen);
+}
+
+void ResourceManager::ReleaseOwnedResourcesForShutdown()
+{
+    // WHY: RenderTarget は内部で color/depth texture の shared_ptr を持つため、
+    //      TexturePool より先に解放しないと、RT 内部所有を外部リークと誤判定してしまう。
+    m_renderTargetColors.clear();
+    m_renderTargetDepths.clear();
+    m_shaderCache.clear();
+    m_textureCache.clear();
+
+    m_renderTargets.ReleaseOwnedForShutdown();
+    m_textures.ReleaseOwnedForShutdown();
+    m_buffers.ReleaseOwnedForShutdown();
+    m_constantBuffers.ReleaseOwnedForShutdown();
+    m_pipelineStates.ReleaseOwnedForShutdown();
+    m_shaders.ReleaseOwnedForShutdown();
+}
+
+void ResourceManager::LogLiveDebugResources() const
+{
+    const std::size_t liveCount = GetLiveDebugResourceCount();
+    if (liveCount == 0) {
+        return;
+    }
+
+    FBZZ_LOG_WARN("ResourceManager shutdown: %zu externally-held renderer resources remain", liveCount);
+
+    const std::size_t reportCount = (std::min)(liveCount, static_cast<std::size_t>(16));
+    for (std::size_t i = 0; i < reportCount; ++i) {
+        const core::AllocationInfo* info = GetLiveDebugResource(i);
+        if (info == nullptr) {
+            continue;
+        }
+
+        FBZZ_LOG_WARN(
+            "  #%llu %s %zu bytes (%s:%d)",
+            static_cast<unsigned long long>(info->allocationId),
+            info->allocatorName,
+            info->size,
+            info->file,
+            info->line);
+    }
+
+    if (liveCount > reportCount) {
+        FBZZ_LOG_WARN("  ... %zu more externally-held renderer resources", liveCount - reportCount);
+    }
+}
+
+std::size_t ResourceManager::GetLiveDebugResourceCount() const
+{
+    return m_shaders.GetLiveDebugCount()
+         + m_textures.GetLiveDebugCount()
+         + m_buffers.GetLiveDebugCount()
+         + m_constantBuffers.GetLiveDebugCount()
+         + m_pipelineStates.GetLiveDebugCount()
+         + m_renderTargets.GetLiveDebugCount();
+}
+
+const core::AllocationInfo* ResourceManager::GetLiveDebugResource(std::size_t index) const
+{
+    const std::size_t shaderCount = m_shaders.GetLiveDebugCount();
+    if (index < shaderCount) return m_shaders.GetLiveDebugInfo(index);
+    index -= shaderCount;
+
+    const std::size_t textureCount = m_textures.GetLiveDebugCount();
+    if (index < textureCount) return m_textures.GetLiveDebugInfo(index);
+    index -= textureCount;
+
+    const std::size_t bufferCount = m_buffers.GetLiveDebugCount();
+    if (index < bufferCount) return m_buffers.GetLiveDebugInfo(index);
+    index -= bufferCount;
+
+    const std::size_t constantBufferCount = m_constantBuffers.GetLiveDebugCount();
+    if (index < constantBufferCount) return m_constantBuffers.GetLiveDebugInfo(index);
+    index -= constantBufferCount;
+
+    const std::size_t pipelineStateCount = m_pipelineStates.GetLiveDebugCount();
+    if (index < pipelineStateCount) return m_pipelineStates.GetLiveDebugInfo(index);
+    index -= pipelineStateCount;
+
+    return m_renderTargets.GetLiveDebugInfo(index);
 }
 
 } // namespace fbzz::renderer

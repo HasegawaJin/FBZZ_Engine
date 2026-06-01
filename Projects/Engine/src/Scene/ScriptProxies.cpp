@@ -97,6 +97,141 @@ RaycastHit ToScriptHit(Scene* scene, const physics::World::RaycastHit& worldHit)
 
 } // namespace
 
+bool ScriptMemoryProxy::InitializeFrame(std::size_t capacity) const
+{
+    if (capacity == 0) {
+        return false;
+    }
+
+    // WHY: 既存領域を保持したまま容量だけ変えると旧ポインタの寿命が曖昧になるため、明示的に作り直す。
+    if (m_frameAllocator.IsInitialized()) {
+        m_frameAllocator.Shutdown();
+    }
+
+    return m_frameAllocator.Initialize(capacity);
+}
+
+void* ScriptMemoryProxy::AllocateFrame(std::size_t size, std::size_t alignment) const
+{
+    if (size == 0) {
+        return nullptr;
+    }
+
+    // WHAT: 小規模 Script が OnAwake で明示初期化しなくても使えるよう、初回確保時に既定容量を用意する。
+    if (!m_frameAllocator.IsInitialized() && !m_frameAllocator.Initialize(DEFAULT_FRAME_CAPACITY)) {
+        return nullptr;
+    }
+
+    return m_frameAllocator.Allocate(size, alignment);
+}
+
+void ScriptMemoryProxy::ResetFrame() const
+{
+    if (!m_frameAllocator.IsInitialized()) {
+        return;
+    }
+
+    m_frameAllocator.Reset();
+}
+
+void ScriptMemoryProxy::ShutdownFrame() const
+{
+    if (!m_frameAllocator.IsInitialized()) {
+        return;
+    }
+
+    m_frameAllocator.Shutdown();
+}
+
+bool ScriptMemoryProxy::InitializePool(std::size_t blockSize,
+                                       std::size_t blockCount,
+                                       std::size_t alignment) const
+{
+    if (blockSize == 0 || blockCount == 0) {
+        return false;
+    }
+
+    // WHY: PoolAllocator は固定 stride のため、用途変更時は古いブロックを破棄してから作り直す。
+    if (m_poolAllocator.IsInitialized()) {
+        m_poolAllocator.Shutdown();
+    }
+
+    return m_poolAllocator.Initialize(blockSize, blockCount, alignment);
+}
+
+void* ScriptMemoryProxy::AllocatePool(std::size_t size, std::size_t alignment) const
+{
+    if (size == 0 || !m_poolAllocator.IsInitialized()) {
+        return nullptr;
+    }
+
+    return m_poolAllocator.Allocate(size, alignment);
+}
+
+void ScriptMemoryProxy::FreePool(void* ptr) const
+{
+    if (ptr == nullptr || !m_poolAllocator.IsInitialized()) {
+        return;
+    }
+
+    m_poolAllocator.Free(ptr);
+}
+
+void ScriptMemoryProxy::ResetPool() const
+{
+    if (!m_poolAllocator.IsInitialized()) {
+        return;
+    }
+
+    m_poolAllocator.Reset();
+}
+
+void ScriptMemoryProxy::ShutdownPool() const
+{
+    if (!m_poolAllocator.IsInitialized()) {
+        return;
+    }
+
+    m_poolAllocator.Shutdown();
+}
+
+bool ScriptMemoryProxy::IsFrameInitialized() const
+{
+    return m_frameAllocator.IsInitialized();
+}
+
+bool ScriptMemoryProxy::IsPoolInitialized() const
+{
+    return m_poolAllocator.IsInitialized();
+}
+
+core::MemoryStats ScriptMemoryProxy::GetFrameStats() const
+{
+    if (!m_frameAllocator.IsInitialized()) {
+        return {};
+    }
+
+    return m_frameAllocator.GetStats();
+}
+
+core::MemoryStats ScriptMemoryProxy::GetPoolStats() const
+{
+    if (!m_poolAllocator.IsInitialized()) {
+        return {};
+    }
+
+    return m_poolAllocator.GetStats();
+}
+
+void ScriptMemoryProxy::BeginFrame() const
+{
+    if (!m_frameAllocator.IsInitialized()) {
+        return;
+    }
+
+    m_frameAllocator.BeginFrame();
+}
+
 Transform* ScriptTransformProxy::Get() const
 {
     return script && script->m_gameObject ? &script->m_gameObject->transform : nullptr;
