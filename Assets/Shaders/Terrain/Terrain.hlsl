@@ -19,6 +19,14 @@
 //   t2 = layer1 ディフューズ
 //   t3 = layer2 ディフューズ
 //   t4 = layer3 ディフューズ
+//   t5 = layer0 法線
+//   t6 = layer1 法線
+//   t7 = layer2 法線
+//   t8 = layer3 法線
+//   t9  = layer0 AO/Roughness (R=AO, G=Roughness)
+//   t10 = layer1 AO/Roughness
+//   t11 = layer2 AO/Roughness
+//   t12 = layer3 AO/Roughness
 //
 // サンプラースロット:
 //   s0 = WRAP_ANISOTROPIC  ディフューズ用（タイリングあり）
@@ -57,6 +65,10 @@ cbuffer TerrainCB : register(CB_OBJECT)
     float4x4 wvpMatrix;            // テレインローカル → クリップ空間変換
     float4   layerTiling[4];       // xy = tilingX, tilingZ (per layer)
     float4   layerNormalStrength;  // xyzw = normalStrength (per layer)
+    float4   layerMaterial[4];     // x=roughness, y=AO
+    float4   layerTextureFlags;     // xyzw = AO/Roughness texture exists per layer
+    float4   layerAutoHeight[4];    // x=minHeight, y=maxHeight, z=fade, w=enabled
+    float4   layerAutoSlope[4];     // x=minSlope, y=maxSlope, z=fade, w=strength
 };
 
 #define MAX_POINT_LIGHTS 8
@@ -100,6 +112,8 @@ cbuffer LightConstants : register(CB_LIGHT)
 // ============================================================================
 Texture2D    g_splatmap      : register(t0);
 Texture2D    g_diffuse[4]    : register(t1); // t1, t2, t3, t4
+Texture2D    g_normal[4]     : register(t5); // t5, t6, t7, t8
+Texture2D    g_aoRoughness[4] : register(t9); // R=AO, G=Roughness
 SamplerState g_sampler       : register(s0); // Wrap Anisotropic
 SamplerState g_samplerClamp  : register(s1); // Clamp Linear
 
@@ -121,6 +135,7 @@ struct TerrainPSInput
     float3 worldPos    : TEXCOORD0;
     float3 worldNormal : TEXCOORD1;
     float2 uv          : TEXCOORD2;
+    float  localHeight : TEXCOORD3;
 };
 
 // ============================================================================
@@ -134,7 +149,90 @@ TerrainPSInput VSMain(TerrainVSInput v)
     o.worldPos    = wpos4.xyz;
     o.worldNormal = normalize(mul(v.normal, (float3x3)worldMatrix));
     o.uv          = v.uv;
+    o.localHeight = v.position.y;
     return o;
+}
+
+float3 BlendTerrainNormal(float3 worldPos, float3 geometricNormal, float2 uv, float4 splat)
+{
+    // WHAT: 画面微分から TBN を作り、各レイヤーの tangent-space normal を地形ワールド法線へ変換する。
+    // WHY: TerrainVertex に tangent を持たせると頂点 stride とチャンク生成コストが増えるため、
+    //      地形 UV は連続している前提でピクセルシェーダー側の微分から安定した基底を復元する。
+    float3 dp1 = ddx_fine(worldPos);
+    float3 dp2 = ddy_fine(worldPos);
+    float2 duv1 = ddx_fine(uv);
+    float2 duv2 = ddy_fine(uv);
+
+    float det = duv1.x * duv2.y - duv1.y * duv2.x;
+    float3 rawT = abs(det) > 1e-5f
+        ? (dp1 * duv2.y - dp2 * duv1.y) / det
+        : float3(1.0f, 0.0f, 0.0f);
+    rawT = rawT - geometricNormal * dot(geometricNormal, rawT);
+    float3 T = dot(rawT, rawT) > 1e-5f
+        ? normalize(rawT)
+        : normalize(abs(geometricNormal.y) < 0.9f
+            ? cross(float3(0.0f, 1.0f, 0.0f), geometricNormal)
+            : cross(float3(1.0f, 0.0f, 0.0f), geometricNormal));
+    float3 B = normalize(cross(geometricNormal, T));
+
+    float3 blended = float3(0.0f, 0.0f, 0.0f);
+    [unroll]
+    for (int i = 0; i < 4; ++i)
+    {
+        float2 tiledUV = uv * layerTiling[i].xy;
+        float3 tn = g_normal[i].Sample(g_sampler, tiledUV).xyz * 2.0f - 1.0f;
+        tn.xy *= layerNormalStrength[i];
+        tn = normalize(tn);
+        blended += normalize(T * tn.x + B * tn.y + geometricNormal * tn.z) * splat[i];
+    }
+    return normalize(blended);
+}
+
+float TerrainBandMask(float value, float minValue, float maxValue, float fade)
+{
+    // WHAT: [minValue, maxValue] の範囲内を 1、範囲外を 0 に近づける滑らかなマスク。
+    // WHY: 高さ・傾斜の境界を硬く切ると等高線状の境目が見えるため、fade 幅で自然に混ぜる。
+    if (maxValue <= minValue)
+        return 1.0f;
+
+    float f = max(fade, 0.0001f);
+    float lower = smoothstep(minValue, minValue + f, value);
+    float upper = 1.0f - smoothstep(maxValue - f, maxValue, value);
+    return saturate(lower * upper);
+}
+
+float4 ApplyAutoBlend(float4 paintedSplat, float localHeight, float slope)
+{
+    float4 autoWeight = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    float4 autoStrength = float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    [unroll]
+    for (int i = 0; i < 4; ++i)
+    {
+        float heightMask = TerrainBandMask(
+            localHeight,
+            layerAutoHeight[i].x,
+            layerAutoHeight[i].y,
+            layerAutoHeight[i].z);
+        float slopeMask = TerrainBandMask(
+            slope,
+            layerAutoSlope[i].x,
+            layerAutoSlope[i].y,
+            layerAutoSlope[i].z);
+        float enabled = saturate(layerAutoHeight[i].w);
+        autoStrength[i] = saturate(layerAutoSlope[i].w) * enabled;
+        autoWeight[i] = heightMask * slopeMask * autoStrength[i];
+    }
+
+    float autoSum = autoWeight.r + autoWeight.g + autoWeight.b + autoWeight.a;
+    if (autoSum <= 0.001f)
+        return paintedSplat;
+
+    autoWeight /= autoSum;
+    float blend = saturate(max(max(autoStrength.r, autoStrength.g), max(autoStrength.b, autoStrength.a)));
+    float4 result = lerp(paintedSplat, autoWeight, blend);
+    float sum = result.r + result.g + result.b + result.a;
+    return sum > 0.001f ? result / sum : paintedSplat;
 }
 
 // ============================================================================
@@ -155,6 +253,8 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     // 4 チャンネルの合計で正規化（ペイントツールが保証するが数値誤差を安全に処理）
     float wsum = splat.r + splat.g + splat.b + splat.a;
     if (wsum > 0.001f) splat /= wsum;
+    float slope = saturate(1.0f - abs(N.y));
+    splat = ApplyAutoBlend(splat, p.localHeight, slope);
 
     // ── [Phase 4] 4 レイヤーのアルベドをウェイトブレンド ───────────────────
     // [unroll] を使って静的展開する。
@@ -163,19 +263,26 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     //      [unroll] で展開することで各テクスチャフェッチが独立したコンパイル済み
     //      命令になり、GPU パイプラインが並列フェッチを行いやすくなる。
     float3 albedo = float3(0.0f, 0.0f, 0.0f);
+    float  roughness = 0.0f;
+    float  ao = 0.0f;
     [unroll]
     for (int i = 0; i < 4; ++i)
     {
         float2 tiledUV = p.uv * layerTiling[i].xy;
         float3 d       = g_diffuse[i].Sample(g_sampler, tiledUV).rgb;
+        float2 aoRoughnessTex = g_aoRoughness[i].Sample(g_sampler, tiledUV).rg;
+        float hasAoRoughnessTex = saturate(layerTextureFlags[i]);
+        float layerAO = lerp(saturate(layerMaterial[i].y), aoRoughnessTex.r, hasAoRoughnessTex);
+        float layerRoughness = lerp(saturate(layerMaterial[i].x), aoRoughnessTex.g, hasAoRoughnessTex);
         albedo        += d * splat[i];
+        roughness     += layerRoughness * splat[i];
+        ao            += layerAO * splat[i];
     }
 
-    // ── Blinn-Phong ライティング ──────────────────────────────────────────
-    static const float ROUGHNESS = 0.8f;
+    N = BlendTerrainNormal(p.worldPos, N, p.uv, splat);
 
     float3 result = Lighting_BlinnPhong(
-        N, V, L, albedo, ROUGHNESS, lightColor, lightIntensity, /*shadow=*/1.0f);
+        N, V, L, albedo, roughness, lightColor, lightIntensity, /*shadow=*/1.0f);
 
     [loop]
     for (int pi = 0; pi < pointLightCount; ++pi)
@@ -184,7 +291,7 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
         float  dist    = length(toLight);
         float  atten   = LightAttenuation(dist, pointLights[pi].range);
         result += Lighting_BlinnPhong_Direct(
-            N, V, toLight / dist, albedo, ROUGHNESS,
+            N, V, toLight / dist, albedo, roughness,
             pointLights[pi].color, pointLights[pi].intensity * atten);
     }
 
@@ -198,9 +305,12 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
         float  cone    = SpotConeWeight(Ls, spotLights[si].direction,
                              spotLights[si].innerCos, spotLights[si].outerCos);
         result += Lighting_BlinnPhong_Direct(
-            N, V, Ls, albedo, ROUGHNESS,
+            N, V, Ls, albedo, roughness,
             spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
+
+    // AO は直接光を完全に消さず、地形の谷・泥・岩陰の環境光成分を中心に抑える。
+    result *= lerp(0.35f + ao * 0.65f, 1.0f, saturate(dot(N, L)));
 
     return float4(result, 1.0f);
 }

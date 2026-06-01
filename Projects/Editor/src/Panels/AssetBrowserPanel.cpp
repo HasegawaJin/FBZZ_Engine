@@ -141,6 +141,7 @@ ImVec4 AssetBrowserPanel::EntryColor(const Entry& e)
     if (e.ext == ".fbx"  || e.ext == ".obj" ||
         e.ext == ".gltf" || e.ext == ".glb")              return { 0.80f, 0.45f, 0.10f, 1.0f };
     if (e.ext == ".fbzzprefab")                           return { 0.25f, 0.65f, 0.75f, 1.0f };
+    if (e.ext == ".fbzzterrain")                          return { 0.35f, 0.70f, 0.30f, 1.0f };
     if (e.ext == ".fbzz")                                 return { 0.60f, 0.15f, 0.70f, 1.0f };
     if (e.ext == ".toml" || e.ext == ".json")             return { 0.65f, 0.65f, 0.10f, 1.0f };
     if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
@@ -158,6 +159,7 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
     if (e.ext == ".fbx"  || e.ext == ".obj" ||
         e.ext == ".gltf" || e.ext == ".glb")              return "MESH";
     if (e.ext == ".fbzzprefab")                           return "PREFAB";
+    if (e.ext == ".fbzzterrain")                          return "TERRAIN";
     if (e.ext == ".fbzz")                                 return "SCENE";
     if (e.ext == ".toml")                                 return "TOML";
     if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
