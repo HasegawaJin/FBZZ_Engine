@@ -7,6 +7,7 @@
 #include "Engine/Scene/Systems/WaterRenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
+#include "Engine/Renderer/DebugDraw.hpp"
 #include "RenderPasses/DecalPass.hpp"
 #include "RenderPasses/DebugPasses.hpp"
 #include "RenderPasses/GeometryPasses.hpp"
@@ -224,7 +225,7 @@ void RenderSystem(Scene& scene,
             gbufferRT       = resources.CreateRenderTarget(curW, curH, 2);
             decalDepthRT    = resources.CreateRenderTarget(curW, curH, 0);
             decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1);
-            bloomHalf       = resources.CreateComputeTexture(std::max(1u, curW / 2), std::max(1u, curH / 2));
+            bloomHalf       = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             bloomFull       = resources.CreateComputeTexture(curW, curH);
             ssaoRaw         = resources.CreateComputeTexture(curW, curH);
             ssaoBlur        = resources.CreateComputeTexture(curW, curH);
@@ -578,6 +579,28 @@ void RenderSystem(Scene& scene,
         ExecuteDebugCollidersPass(passCtx);
     });
 
+    graph.AddPass("ScriptDebugDraw", { "HDR" }, { "HDR" }, [&]() {
+        scene.TickScriptDebugDrawCommands(core::Time::DeltaTime());
+        renderer::DebugDraw::BeginFrame(passCtx.renderer, passCtx.resources, passCtx.camera.GetViewProjection());
+        for (const auto& command : scene.GetScriptDebugDrawCommands()) {
+            switch (command.type) {
+            case ScriptDebugDrawType::Line:
+                renderer::DebugDraw::Line(passCtx.renderer, command.a, command.b, command.color);
+                break;
+            case ScriptDebugDrawType::Sphere:
+                renderer::DebugDraw::Sphere(passCtx.renderer, command.a, command.radius, command.color);
+                break;
+            case ScriptDebugDrawType::Box:
+                renderer::DebugDraw::Box(passCtx.renderer, command.a, command.halfExtents, command.color);
+                break;
+            case ScriptDebugDrawType::Ray:
+                renderer::DebugDraw::Line(passCtx.renderer, command.a, command.b, command.color);
+                break;
+            }
+        }
+        renderer::DebugDraw::Flush();
+    });
+
     graph.AddPass("DebugDecalBounds", { "HDR" }, { "HDR" }, [&]() {
         ExecuteDecalDebugPass(passCtx);
     });
@@ -651,12 +674,30 @@ void RenderSystem(Scene& scene,
         }
     }
 
+    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+        auto* sc = scene.GetComponent<ScriptComponent>(id);
+        auto* go = scene.GetGameObject(id);
+        if (!sc || !sc->script || !go || !sc->script->enabled)
+            continue;
+        sc->script->SetContext(&scene, go);
+        sc->script->OnPreRender();
+    }
+
     // =========================================================================
     // RenderGraph 実行 + デバッグスナップショット更新
     // =========================================================================
     const bool graphExecuted = graph.Execute();
     assert(graphExecuted);
     (void)graphExecuted;
+
+    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+        auto* sc = scene.GetComponent<ScriptComponent>(id);
+        auto* go = scene.GetGameObject(id);
+        if (!sc || !sc->script || !go || !sc->script->enabled)
+            continue;
+        sc->script->SetContext(&scene, go);
+        sc->script->OnPostRender();
+    }
 
     {
         renderer::RenderDebugOverlay::Snapshot dbgSnap;
