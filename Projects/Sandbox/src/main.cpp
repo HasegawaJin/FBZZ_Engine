@@ -378,6 +378,7 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
         const float dt = core::Time::DeltaTime();
 
         // --- スクリプト・物理・アニメーション更新 ---
+        scene::Script::SetPhysicsWorld(&physicsWorld);
         scene::ScriptSystem(*scene, dt);
         scene::TransformSystem(*scene);
 
@@ -393,7 +394,7 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
         scene::TransformSystem(*scene);
         scene::LateScriptSystem(*scene, dt);
         scene::AnimatorSystem(*scene, resources, dt);
-        scene::IKSystem(*scene, resources, dt);
+        scene::IKSystem(*scene, physicsWorld, resources, dt);
 
         // --- 描画 (バックバッファへ直接) ---
         renderer.BeginFrame();
@@ -513,6 +514,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
             ApplyPhysicsSettings(physicsWorld, settings);
+            scene::Script::SetPhysicsWorld(&physicsWorld);
             scene::ScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
             scene::TransformSystem(*scene);
 
@@ -536,7 +538,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             physicsAccumulator = 0.0f;
         }
         scene::AnimatorSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
-        scene::IKSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
+        scene::IKSystem(*scene, physicsWorld, resources, stepFrame ? (1.0f / 60.0f) : dt);
 
         const auto sceneRT = editorApp.GetViewportRT();
         const auto gameRT = editorApp.GetGameViewportRT();
