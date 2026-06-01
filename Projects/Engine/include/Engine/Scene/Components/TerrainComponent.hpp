@@ -32,6 +32,7 @@ struct TerrainLayer {
     // AssetManager がロードするファイルパス。空文字 = 未設定（白テクスチャで代替）
     std::string diffusePath; // 例: "assets/terrain/grass_d.png"
     std::string normalPath;  // 例: "assets/terrain/grass_n.png"  空文字 = フラット法線
+    std::string aoRoughnessPath; // R=AO, G=Roughness。空文字なら下の数値を使う。
 
     // UV タイリング係数。地形全体 UV に掛け算する倍率。
     // WHY: 地形は広大なので UV を [0,1] のままにするとテクスチャが間延びする。
@@ -40,13 +41,43 @@ struct TerrainLayer {
     float tilingZ        = 8.0f;
     float normalStrength = 1.0f; // 法線マップの強度スケール [0, ∞)
 
+    // ライティング用の表面パラメータ。スプラットウェイトでレイヤー間を補間する。
+    // WHY: Terrain は MaterialComponent を持たず専用シェーダーで描くため、
+    //      粗さと AO を TerrainLayer に集約してペイント結果と一緒に管理する。
+    float roughness        = 0.8f; // 0=鏡面に近い、1=拡散に近い
+    float ambientOcclusion = 1.0f; // 0=強く遮蔽、1=遮蔽なし
+
+    // 高さ・傾斜による自動ブレンド設定。
+    // WHAT: height は Terrain ローカル高さ [m]、slope は 0=水平、1=垂直に近い面として評価する。
+    // WHY: 草・岩・雪のような自然地形は手塗りだけだと制作コストが高いため、
+    //      大まかなルールをレイヤーに持たせて、手塗り splat と合成できるようにする。
+    bool  autoBlendEnabled  = false;
+    float autoBlendStrength = 1.0f;
+    float autoMinHeight     = -10000.0f;
+    float autoMaxHeight     =  10000.0f;
+    float autoHeightFade    =  1.0f;
+    float autoMinSlope      =  0.0f;
+    float autoMaxSlope      =  1.0f;
+    float autoSlopeFade     =  0.1f;
+
     void Reflect(IReflector& r)
     {
         r.Field("diffusePath",    diffusePath);
         r.Field("normalPath",     normalPath);
+        r.Field("aoRoughnessPath", aoRoughnessPath);
         r.Field("tilingX",        tilingX);
         r.Field("tilingZ",        tilingZ);
         r.Field("normalStrength", normalStrength);
+        r.Field("roughness",      roughness);
+        r.Field("ambientOcclusion", ambientOcclusion);
+        r.Field("autoBlendEnabled", autoBlendEnabled);
+        r.Field("autoBlendStrength", autoBlendStrength);
+        r.Field("autoMinHeight", autoMinHeight);
+        r.Field("autoMaxHeight", autoMaxHeight);
+        r.Field("autoHeightFade", autoHeightFade);
+        r.Field("autoMinSlope", autoMinSlope);
+        r.Field("autoMaxSlope", autoMaxSlope);
+        r.Field("autoSlopeFade", autoSlopeFade);
     }
 };
 
@@ -56,7 +87,9 @@ struct TerrainLayer {
 struct TerrainComponent {
     // ── ハイトマップ (CPU) ─────────────────────────────────────────────────────
     // row-major: index = z * columns + x
-    // 値域 [0, 1] → ワールド高さ = value * maxHeight
+    // 値域 [-1, 1] → ワールド高さ = value * maxHeight
+    // WHY: 0 を「フラットな基準面」とし、Lower ブラシで地面を基準面より下へ掘れるようにする。
+    //      maxHeight は正負両方向の最大振幅として扱う。
     std::vector<float> heightData;
 
     int   columns   = 129;    // X 方向の頂点数（2^n + 1 推奨: チャンク境界整合・LOD 二分割容易）
@@ -70,6 +103,12 @@ struct TerrainComponent {
     // WHY: 4 チャンネルの合計が 255 になるよう正規化する。
     //      シェーダーが除算するため float 変換は描画時に行い、CPU では uint8 のまま保持する。
     std::vector<uint8_t> splatData;
+
+    // ── 外部 Terrain Asset ─────────────────────────────────────────────────────
+    // Assets/Terrain/*.fbzzterrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
+    // WHY: 大きい地形では heightData / splatData がシーンファイルを肥大化させるため、
+    //      Prefab や Scene には参照だけを残し、重い編集データは専用アセットへ分離する。
+    std::string terrainAssetPath;
 
     // ── テクスチャレイヤー (最大 4) ────────────────────────────────────────────
     std::vector<TerrainLayer> layers; // .size() <= 4
@@ -96,6 +135,7 @@ struct TerrainComponent {
         r.Field("cellSize",   cellSize);
         r.Field("maxHeight",  maxHeight);
         r.Field("chunkSize",  chunkSize);
+        r.Field("terrainAssetPath", terrainAssetPath);
         // layers / heightData / splatData は IReflector の対応型（float/int/bool/string）に
         // 収まらないため、SceneSerializer が TerrainComponent を直接扱う専用コードで読み書きする。
     }

@@ -204,6 +204,9 @@ cmake -B build -G "Visual Studio 17 2022" -A x64
 | stb                      | stb::image |
 | DirectXTex               | テクスチャ読み込み |
 
+## 使用アセット
+Some terrain textures from ambientCG (CC0)
+https://ambientcg.com/
 
 ---
 
