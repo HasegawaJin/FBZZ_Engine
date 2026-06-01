@@ -3,6 +3,7 @@
 // Viewport image, mouse picking, and ImGuizmo manipulation
 #include <Editor/Panels/ViewportPanel.hpp>
 #include "../Tools/TerrainTool.hpp"
+#include "../Tools/WaterTool.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
@@ -1052,6 +1053,24 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             ctx.markSceneDirty);
         if (ctx.showTerrainTool)
             ctx.terrainTool->OnEditorGUI(*ctx.activeScene);
+    }
+
+    // ── WaterTool: 水面の範囲・波向き可視化とツールウィンドウ ──────────────
+    // プレイ中は編集を無効化する。WaterComponent がなければ Update/OnEditorGUI は何もしない。
+    if (isSceneView && ctx.waterTool && ctx.activeScene
+        && !(ctx.playMode && !ctx.playMode->IsInEditor()))
+    {
+        ctx.waterTool->Update(
+            *ctx.activeScene,
+            *ctx.editorCamera,
+            viewportMin,
+            size,
+            ctx.markSceneDirty);
+        if (ctx.showWaterTool)
+            ctx.waterTool->OnEditorGUI(
+                *ctx.activeScene,
+                ctx.projectRoot,
+                ctx.markSceneDirty);
     }
 
     // Show play/pause state with a viewport border.
