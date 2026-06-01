@@ -64,7 +64,7 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
         ? renderer::RasterizerMode::SOLID_NOCULL
         : renderer::RasterizerMode::SOLID;
     // 半透明・加算は深度書き込みをオフにし、背後のオブジェクトが透けて見えるようにする。
-    const renderer::DepthMode depth = (blend == renderer::BlendMode::OPAQUE)
+    const renderer::DepthMode depth = (blend == renderer::BlendMode::OPAQUE_BLEND)
         ? renderer::DepthMode::DEPTH_ON
         : renderer::DepthMode::DEPTH_READ;
 
