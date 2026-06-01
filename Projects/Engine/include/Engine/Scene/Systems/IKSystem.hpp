@@ -4,11 +4,15 @@
 #pragma once
 
 namespace fbzz::renderer { class ResourceManager; }
+namespace fbzz::physics  { class World; }
 
 namespace fbzz::scene {
 
 class Scene;
 
-void IKSystem(Scene& scene, renderer::ResourceManager& resources, float dt);
+// WHY: 地面スナップレイキャストを World::Raycast に委譲するため World を受け取る。
+//      重複していたローカル RaycastAABB/OBB/Triangle ヘルパーはこれにより不要になった。
+void IKSystem(Scene& scene, physics::World& world,
+              renderer::ResourceManager& resources, float dt);
 
 } // namespace fbzz::scene

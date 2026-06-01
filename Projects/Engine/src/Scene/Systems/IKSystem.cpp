@@ -8,11 +8,10 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Scene/Components/ColliderComponent.hpp>
-#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Physics/World.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
@@ -31,11 +30,8 @@ struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
 };
 
-struct GroundHit {
-    math::Vector3 point  = math::Vector3::ZERO;
-    math::Vector3 normal = math::Vector3::UP;
-    float         distance = 0.0f;
-};
+// WHY: World::RaycastHit の別名。IK 内部でフィールド名を変えずに使えるようにする。
+using GroundHit = physics::World::RaycastHit;
 
 math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 {
@@ -71,270 +67,12 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
     return math::Quaternion{ axis.x, axis.y, axis.z, w }.Normalized();
 }
 
-// 地面候補コライダーを判定する。
-// WHY: キャラクター自身や動的オブジェクトを足 IK の接地面にすると揺れや自己ヒットが起きるため、
-//      静的な有効コライダーだけを地面として扱う。
-bool IsGroundCandidate(GameObject& go, ColliderComponent& collider)
-{
-    if (!go.activeSelf() || !collider.enabled || collider.isTrigger)
-        return false;
-    auto* rb = go.GetComponent<RigidBodyComponent>();
-    return !rb || !rb->enabled || !rb->rigidBody || rb->rigidBody->IsStatic();
-}
-
-bool RaycastAABB(const math::Vector3& origin,
-                 const math::Vector3& dir,
-                 float maxDistance,
-                 const math::Vector3& center,
-                 const math::Vector3& halfExtents,
-                 GroundHit& out)
-{
-    float tMin = 0.0f;
-    float tMax = maxDistance;
-    math::Vector3 hitNormal = math::Vector3::UP;
-
-    auto TestAxis = [&](float originValue, float dirValue, float minValue, float maxValue,
-                        const math::Vector3& negativeNormal,
-                        const math::Vector3& positiveNormal) -> bool
-    {
-        constexpr float EPS = 1e-6f;
-        if (std::abs(dirValue) < EPS)
-            return originValue >= minValue && originValue <= maxValue;
-
-        float t1 = (minValue - originValue) / dirValue;
-        float t2 = (maxValue - originValue) / dirValue;
-        math::Vector3 axisNormal = negativeNormal;
-        if (t1 > t2) {
-            std::swap(t1, t2);
-            axisNormal = positiveNormal;
-        }
-
-        if (t1 > tMin) {
-            tMin = t1;
-            hitNormal = axisNormal;
-        }
-        tMax = std::min(tMax, t2);
-        return tMin <= tMax;
-    };
-
-    const math::Vector3 min = center - halfExtents;
-    const math::Vector3 max = center + halfExtents;
-    if (!TestAxis(origin.x, dir.x, min.x, max.x, -math::Vector3::RIGHT, math::Vector3::RIGHT)) return false;
-    if (!TestAxis(origin.y, dir.y, min.y, max.y, -math::Vector3::UP,    math::Vector3::UP))    return false;
-    if (!TestAxis(origin.z, dir.z, min.z, max.z, -math::Vector3::FORWARD, math::Vector3::FORWARD)) return false;
-    if (tMin < 0.0f || tMin > maxDistance) return false;
-
-    out.point    = origin + dir * tMin;
-    out.normal   = hitNormal;
-    out.distance = tMin;
-    return true;
-}
-
-bool RaycastOBB(const math::Vector3& origin,
-                const math::Vector3& dir,
-                float maxDistance,
-                const math::Vector3& center,
-                const math::Quaternion& rotation,
-                const math::Vector3& halfExtents,
-                GroundHit& out)
-{
-    const math::Vector3 axes[3] = {
-        rotation * math::Vector3::RIGHT,
-        rotation * math::Vector3::UP,
-        rotation * math::Vector3::FORWARD
-    };
-
-    const math::Vector3 relOrigin = origin - center;
-    const math::Vector3 localOrigin = {
-        math::Vector3::Dot(relOrigin, axes[0]),
-        math::Vector3::Dot(relOrigin, axes[1]),
-        math::Vector3::Dot(relOrigin, axes[2])
-    };
-    const math::Vector3 localDir = {
-        math::Vector3::Dot(dir, axes[0]),
-        math::Vector3::Dot(dir, axes[1]),
-        math::Vector3::Dot(dir, axes[2])
-    };
-
-    GroundHit localHit;
-    if (!RaycastAABB(localOrigin, localDir, maxDistance,
-                     math::Vector3::ZERO, halfExtents, localHit))
-        return false;
-
-    out.point    = origin + dir * localHit.distance;
-    out.distance = localHit.distance;
-
-    const math::Vector3 worldNormal =
-        axes[0] * localHit.normal.x +
-        axes[1] * localHit.normal.y +
-        axes[2] * localHit.normal.z;
-    out.normal = worldNormal.LengthSq() > math::EPSILON * math::EPSILON
-        ? worldNormal.Normalized()
-        : math::Vector3::UP;
-    return true;
-}
-
-bool RaycastTriangle(const math::Vector3& origin,
-                     const math::Vector3& dir,
-                     float maxDistance,
-                     const physics::Triangle& tri,
-                     GroundHit& out)
-{
-    // WHAT: Moller-Trumbore 法でレイと三角形の交差距離を求める。
-    // WHY: TriangleMeshCollider は TerrainCollider の実体でもあるため、
-    //      BVH で候補三角形を絞ったあと、IK 専用に最短ヒットを決める必要がある。
-    constexpr float EPS = 1e-6f;
-    const math::Vector3 e0 = tri.v[1] - tri.v[0];
-    const math::Vector3 e1 = tri.v[2] - tri.v[0];
-    const math::Vector3 p  = math::Vector3::Cross(dir, e1);
-    const float det = math::Vector3::Dot(e0, p);
-    if (std::abs(det) < EPS) return false;
-
-    const float invDet = 1.0f / det;
-    const math::Vector3 s = origin - tri.v[0];
-    const float u = math::Vector3::Dot(s, p) * invDet;
-    if (u < 0.0f || u > 1.0f) return false;
-
-    const math::Vector3 q = math::Vector3::Cross(s, e0);
-    const float v = math::Vector3::Dot(dir, q) * invDet;
-    if (v < 0.0f || u + v > 1.0f) return false;
-
-    const float t = math::Vector3::Dot(e1, q) * invDet;
-    if (t < 0.0f || t > maxDistance) return false;
-
-    math::Vector3 normal = tri.normal;
-    if (math::Vector3::Dot(normal, -dir) < 0.0f)
-        normal = -normal;
-
-    out.point    = origin + dir * t;
-    out.normal   = normal.LengthSq() > math::EPSILON * math::EPSILON
-        ? normal.Normalized()
-        : math::Vector3::UP;
-    out.distance = t;
-    return true;
-}
-
-physics::AABB MakeRayAABB(const math::Vector3& origin,
-                          const math::Vector3& dir,
-                          float maxDistance)
-{
-    const math::Vector3 end = origin + dir * maxDistance;
-    constexpr float PAD = 0.001f;
-    return {
-        {
-            std::min(origin.x, end.x) - PAD,
-            std::min(origin.y, end.y) - PAD,
-            std::min(origin.z, end.z) - PAD
-        },
-        {
-            std::max(origin.x, end.x) + PAD,
-            std::max(origin.y, end.y) + PAD,
-            std::max(origin.z, end.z) + PAD
-        }
-    };
-}
-
-bool RaycastCollider(GameObject& go,
-                     AabbColliderComponent& collider,
-                     const math::Vector3& origin,
-                     const math::Vector3& dir,
-                     float maxDistance,
-                     GroundHit& out)
-{
-    if (!IsGroundCandidate(go, collider)) return false;
-    const math::Vector3 center =
-        go.transform.position +
-        go.transform.rotation * ComponentScale(collider.center, go.transform.worldScale);
-    return RaycastAABB(origin, dir, maxDistance, center, collider.size * 0.5f, out);
-}
-
-bool RaycastCollider(GameObject& go,
-                     BoxColliderComponent& collider,
-                     const math::Vector3& origin,
-                     const math::Vector3& dir,
-                     float maxDistance,
-                     GroundHit& out)
-{
-    if (!IsGroundCandidate(go, collider)) return false;
-    const math::Vector3 center =
-        go.transform.position +
-        go.transform.rotation * ComponentScale(collider.center, go.transform.worldScale);
-    return RaycastOBB(origin, dir, maxDistance, center, go.transform.rotation,
-                      collider.size * 0.5f, out);
-}
-
-bool RaycastCollider(GameObject& go,
-                     MeshColliderComponent& collider,
-                     const math::Vector3& origin,
-                     const math::Vector3& dir,
-                     float maxDistance,
-                     GroundHit& out)
-{
-    if (!IsGroundCandidate(go, collider) || !collider.collider) return false;
-    if (collider.collider->GetType() != physics::ColliderType::TRIANGLE_MESH) return false;
-
-    auto* mesh = static_cast<physics::TriangleMeshCollider*>(collider.collider.get());
-    math::Vector3 scale = collider.useTransformScale
-        ? go.transform.worldScale
-        : math::Vector3::ONE;
-    const math::Vector3 center =
-        go.transform.position +
-        go.transform.rotation * ComponentScale(collider.center, go.transform.worldScale);
-    mesh->UpdateWithScale(center, go.transform.rotation, scale);
-
-    bool hit = false;
-    GroundHit best;
-    best.distance = std::numeric_limits<float>::max();
-    const physics::AABB rayAABB = MakeRayAABB(origin, dir, maxDistance);
-
-    mesh->GetBVH().Query(rayAABB, [&](const physics::Triangle& tri)
-    {
-        GroundHit candidate;
-        if (!RaycastTriangle(origin, dir, maxDistance, tri, candidate)) return;
-        if (candidate.distance < best.distance) {
-            best = candidate;
-            hit  = true;
-        }
-    });
-
-    if (hit) out = best;
-    return hit;
-}
-
-bool RaycastGround(Scene& scene,
-                   const math::Vector3& origin,
-                   const math::Vector3& dir,
-                   float maxDistance,
-                   GroundHit& out)
-{
-    bool hit = false;
-    GroundHit best;
-    best.distance = std::numeric_limits<float>::max();
-
-    auto TryHit = [&](GroundHit candidate)
-    {
-        if (candidate.distance < best.distance) {
-            best = candidate;
-            hit  = true;
-        }
-    };
-
-    for (GameObject& go : scene.GameObjects()) {
-        GroundHit candidate;
-        if (auto* aabb = go.GetComponent<AabbColliderComponent>())
-            if (RaycastCollider(go, *aabb, origin, dir, maxDistance, candidate))
-                TryHit(candidate);
-        if (auto* box = go.GetComponent<BoxColliderComponent>())
-            if (RaycastCollider(go, *box, origin, dir, maxDistance, candidate))
-                TryHit(candidate);
-        if (auto* mesh = go.GetComponent<MeshColliderComponent>())
-            if (RaycastCollider(go, *mesh, origin, dir, maxDistance, candidate))
-                TryHit(candidate);
-    }
-
-    if (hit) out = best;
-    return hit;
-}
+// WHY: トリガーや動的剛体は地面の候補にならない。
+//      PhysicsSystem が enabled / activeSelf を確認してから World へ登録するため、
+//      ここでは isTrigger と IsStatic だけを見ればよい。
+const physics::World::ColliderFilter kGroundFilter = [](const physics::ColliderInstance& inst) {
+    return !inst.isTrigger && (!inst.body || inst.body->IsStatic());
+};
 
 // C: Blender 風の Soft IK 距離変換。
 // WHAT: ゴール距離が上限へ近づくほど指数関数で減速し、膝が伸び切る直前の跳ねを抑える。
@@ -372,31 +110,31 @@ void SetWorldPosition(GameObject& go, const math::Vector3& worldPosition)
 // WHAT: 脚長から開始高さと最大距離を決め、スケールに依存しない接地判定を行う。
 // WHY: 固定距離だとモデルサイズの違いで空振りや誤検出が起きるため、脚長比率で扱う。
 //      比率はチェーンごとに異なるため引数で受け取る。
-bool QueryGroundHit(Scene& scene,
+bool QueryGroundHit(physics::World& world,
                     const math::Vector3& footFkPosition,
                     float legLength,
                     float rayUpRatio,
                     float rayDownRatio,
-                    GroundHit& outHit)
+                    physics::World::RaycastHit& outHit)
 {
     const float rayStartHeight = legLength * rayUpRatio;
     const float rayDistance    = legLength * rayDownRatio;
     const math::Vector3 rayOrigin = footFkPosition + math::Vector3::UP * rayStartHeight;
-    return RaycastGround(scene, rayOrigin, -math::Vector3::UP, rayDistance, outHit);
+    return world.Raycast(rayOrigin, -math::Vector3::UP, rayDistance, outHit, kGroundFilter);
 }
 
 // 地面スナップでターゲット位置を接地点へ更新し、ヒット情報を返す。
 // outHit は足首傾き補正 (footNormalAxis が非ゼロのとき) に使用する。
-bool UpdateFootTargetFromGround(Scene& scene,
+bool UpdateFootTargetFromGround(physics::World& world,
                                 GameObject& target,
                                 const math::Vector3& footFkPosition,
                                 float legLength,
                                 float rayUpRatio,
                                 float rayDownRatio,
                                 float footSurfaceOffset,
-                                GroundHit& outHit)
+                                physics::World::RaycastHit& outHit)
 {
-    if (!QueryGroundHit(scene, footFkPosition, legLength, rayUpRatio, rayDownRatio, outHit))
+    if (!QueryGroundHit(world, footFkPosition, legLength, rayUpRatio, rayDownRatio, outHit))
         return false;
     const math::Vector3 targetPosition = outHit.point + outHit.normal * footSurfaceOffset;
     SetWorldPosition(target, targetPosition);
@@ -473,7 +211,8 @@ void TranslateDescendantsKeepFkRotation(Scene& scene,
 
 } // namespace
 
-void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
+void IKSystem(Scene& scene, physics::World& world,
+              renderer::ResourceManager& resources, float /*dt*/)
 {
     const auto span     = scene.GetEntities<IKSolverComponent>();
     const auto entities = std::vector<EntityID>(span.begin(), span.end());
@@ -540,7 +279,7 @@ void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
 
                     const float legLen = LA_pre + LB_pre;
                     GroundHit hit;
-                    if (!QueryGroundHit(scene, bC->transform.position, legLen,
+                    if (!QueryGroundHit(world, bC->transform.position, legLen,
                                         chain.rayUpRatio, chain.rayDownRatio, hit)) continue;
 
                     offsetSum += hit.point.y - bC->transform.position.y;
@@ -638,7 +377,7 @@ void IKSystem(Scene& scene, renderer::ResourceManager& resources, float /*dt*/)
             GroundHit groundHit;
             const bool groundFound =
                 chain.useGroundSnap &&
-                UpdateFootTargetFromGround(scene, *targetGO, pC_fk, totalLength,
+                UpdateFootTargetFromGround(world, *targetGO, pC_fk, totalLength,
                                            chain.rayUpRatio, chain.rayDownRatio,
                                            chain.footSurfaceOffset, groundHit);
 
