@@ -11,6 +11,7 @@
 #include "Transform.hpp"
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
+#include <Math/Vector4.hpp>
 #include <vector>
 #include <memory>
 #include <string>
@@ -18,6 +19,7 @@
 #include <span>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 #include <tuple>
 #include <utility>
@@ -25,6 +27,28 @@
 namespace fbzz::scene {
 
 template<typename... Ts> class SceneView;
+
+// ScriptDebugDrawType — Script から要求されたデバッグ描画の形状種別。
+// WHY: DebugDraw 具体 API を Script 側へ漏らさず、Scene が描画要求だけを保持するための軽量な中間表現。
+enum class ScriptDebugDrawType {
+    Line,
+    Sphere,
+    Box,
+    Ray
+};
+
+// ScriptDebugDrawCommand — OnUpdate など任意のタイミングで発行されたデバッグ描画要求。
+// WHY: renderer::DebugDraw は RenderSystem の BeginFrame/Flush 区間でしか使えないため、Script はコマンドを積むだけにする。
+struct ScriptDebugDrawCommand {
+    ScriptDebugDrawType type = ScriptDebugDrawType::Line;
+    math::Vector3 a = math::Vector3::ZERO;
+    math::Vector3 b = math::Vector3::ZERO;
+    math::Vector3 halfExtents = math::Vector3::ZERO;
+    math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float radius = 0.0f;
+    float duration = 0.0f;
+    uint64_t frameCreated = 0;
+};
 
 // -----------------------------------------------------------------------
 // detail: ComponentList → tuple<ComponentArray<Ts>...> 変換ヘルパー
@@ -129,6 +153,12 @@ public:
     void ClearUserRenderPasses();
     const std::vector<UserRenderPassDesc>& GetUserRenderPasses() const;
 
+    // QueueScriptDebugDraw — ScriptDebugProxy から来た描画要求を RenderSystem まで保持する。
+    // WHY: DebugDraw は BeginFrame/Flush の間でしか使えないため、OnUpdate から即時描画せずキューに積む。
+    void QueueScriptDebugDraw(ScriptDebugDrawCommand command);
+    void TickScriptDebugDrawCommands(float dt);
+    const std::vector<ScriptDebugDrawCommand>& GetScriptDebugDrawCommands() const;
+
     // --- GameObject / SceneView の template 本体から呼ばれる内部 API ---
 
     template<typename T> T&   AddComponent(EntityID id, T component);
@@ -170,6 +200,8 @@ private:
     renderer::PostProcessSettings m_runtimePostProcessSettings;
     bool m_hasRuntimePostProcessSettings = false;
     std::vector<UserRenderPassDesc> m_userRenderPasses;
+    std::vector<ScriptDebugDrawCommand> m_scriptDebugDrawCommands;
+    uint64_t m_lastScriptDebugDrawTickFrame = 0;
 
     EntityID AllocateEntity();
     void     DestroyImmediate(EntityID id);
@@ -425,6 +457,55 @@ template<typename T>
 T* Script::GetComponent() const
 {
     return m_gameObject ? m_gameObject->GetComponent<T>() : nullptr;
+}
+
+template<typename T>
+GameObject* ScriptSceneProxy::FindObjectOfType() const
+{
+    if (!script || !script->m_scene) return nullptr;
+    auto objects = script->m_scene->FindObjectsOfType<T>();
+    return objects.empty() ? nullptr : objects.front();
+}
+
+template<typename T>
+std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
+{
+    return script && script->m_scene ? script->m_scene->FindObjectsOfType<T>() : std::vector<GameObject*>{};
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetScript() const
+{
+    return script && script->m_gameObject ? script->m_gameObject->GetScript<T>() : nullptr;
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetScript(GameObject& go) const
+{
+    return go.GetScript<T>();
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetComponent() const
+{
+    return script ? script->GetComponent<T>() : nullptr;
+}
+
+template<typename T>
+T& ScriptSceneProxy::GetOrAddComponent() const
+{
+    assert(script && script->m_gameObject && "Script context is not set");
+    if (auto* component = script->m_gameObject->GetComponent<T>())
+        return *component;
+    return script->m_gameObject->AddComponent<T>();
+}
+
+template<typename T>
+T& ScriptSceneProxy::RequireComponent() const
+{
+    auto* component = GetComponent<T>();
+    assert(component && "Required component is missing");
+    return *component;
 }
 
 } // namespace fbzz::scene
