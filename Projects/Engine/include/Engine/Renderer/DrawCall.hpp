@@ -34,7 +34,7 @@ struct DrawCall {
     uint32_t startIndex  = 0;
     uint32_t baseVertex  = 0;
 
-    RenderLayer layer = RenderLayer::OPAQUE;
+    RenderLayer layer = RenderLayer::OPAQUE_LAYER;
     PrimitiveTopology topology = PrimitiveTopology::TRIANGLE_LIST;
 };
 

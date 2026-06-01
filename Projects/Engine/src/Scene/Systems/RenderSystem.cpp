@@ -113,22 +113,22 @@ void RenderSystem(Scene& scene,
     //        ResourceManager に Reset() API を追加し、Application ループから呼び出す設計が必要。
     static auto defaultPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
-        renderer::BlendMode::OPAQUE,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_ON
     });
     static auto wireframePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::WIREFRAME,
-        renderer::BlendMode::OPAQUE,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_ON
     });
     static auto selectionMaskPso = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
-        renderer::BlendMode::OPAQUE,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_ON
     });
     static auto skydomePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
-        renderer::BlendMode::OPAQUE,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_SKY
     });
     static auto particlePSO = resources.CreatePipelineState({
@@ -138,7 +138,7 @@ void RenderSystem(Scene& scene,
     });
     static auto postprocPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
-        renderer::BlendMode::OPAQUE,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_OFF
     });
     static auto causticsPSO = resources.CreatePipelineState({
@@ -153,7 +153,7 @@ void RenderSystem(Scene& scene,
     });
     static auto decalMaskPso = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
-        renderer::BlendMode::OPAQUE,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_OFF
     });
 

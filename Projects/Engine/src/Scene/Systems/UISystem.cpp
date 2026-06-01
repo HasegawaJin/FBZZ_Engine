@@ -621,7 +621,7 @@ void UISystem(Scene& scene,
             const math::Matrix4 canvasToClip = viewProjection * worldMatrix * pixelToLocal;
 
             TraverseCanvas(*entry.go, renderer, resources, *entry.canvas,
-                           canvasToClip, s_worldPso, renderer::RenderLayer::TRANSPARENT,
+                           canvasToClip, s_worldPso, renderer::RenderLayer::TRANSPARENT_LAYER,
                            mouseInCanvasSpace, mousePressed);
         } else {
             // ScreenSpace: 標準正射影でピクセル座標をクリップ座標へ変換する
@@ -631,7 +631,7 @@ void UISystem(Scene& scene,
                 0.0f, 1.0f);
 
             TraverseCanvas(*entry.go, renderer, resources, *entry.canvas,
-                           canvasToClip, s_pso, renderer::RenderLayer::OVERLAY,
+                           canvasToClip, s_pso, renderer::RenderLayer::OVERLAY_LAYER,
                            mouseInCanvasSpace, mousePressed);
         }
     }
