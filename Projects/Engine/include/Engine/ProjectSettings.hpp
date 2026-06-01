@@ -54,8 +54,16 @@ struct RuntimeSettings {
 struct ProjectSettings {
     ProjectMetadataSettings      project;
     RuntimeSettings              runtime;
-    std::vector<std::string>    tags;
-    std::array<std::string, 32> layerNames;
+    std::vector<std::string>    tags = {
+        "Untagged", "Respawn", "Finish", "EditorOnly",
+        "MainCamera", "Player", "GameController"
+    };
+    std::array<std::string, 32> layerNames = {
+        "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", ""
+    };
     PhysicsSettings             physics;
     renderer::RenderSettings    render;
     AudioSettings               audio;

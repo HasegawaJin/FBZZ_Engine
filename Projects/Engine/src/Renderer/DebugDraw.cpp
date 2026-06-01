@@ -61,7 +61,7 @@ static void EnsureInit(ResourceManager& resources)
     s_shader   = resources.LoadShader("assets/shaders/Debug/DebugDraw.hlsl");
     s_cameraCB = resources.CreateConstantBuffer(sizeof(DebugCamCB));
     s_pso      = resources.CreatePipelineState({ RasterizerMode::SOLID,
-                                         BlendMode::OPAQUE,
+                                         BlendMode::OPAQUE_BLEND,
                                          DepthMode::DEPTH_OFF });
 
     assert(s_vb.IsValid() && s_shader.IsValid() && s_cameraCB.IsValid() && s_pso.IsValid() && "DebugDraw initialization failed");

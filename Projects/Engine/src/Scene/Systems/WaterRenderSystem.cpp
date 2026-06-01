@@ -703,7 +703,7 @@ void WaterRenderSystem(
             call.shader       = waterShader;
             call.pipelineState = waterPSO;
             call.indexCount   = chunk.indexCount;
-            call.layer        = renderer::RenderLayer::TRANSPARENT;
+            call.layer        = renderer::RenderLayer::TRANSPARENT_LAYER;
             call.topology     = renderer::PrimitiveTopology::TRIANGLE_LIST;
             call.constantBuffers[0] = cameraCBH;
             call.constantBuffers[1] = waterCBH;

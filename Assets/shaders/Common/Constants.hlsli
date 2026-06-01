@@ -122,6 +122,26 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float2 _underwaterPad;
     float3 underwaterColor;
     float  underwaterFogDensity;
+    float  sharpenStrength;
+    float  sharpenRadius;
+    float  dofFocusDistance;
+    float  dofFocusRange;
+    float  dofBlurRadius;
+    float  sepiaIntensity;
+    float  invertIntensity;
+    float  posterizeLevels;
+    float  pixelSize;
+    float3 _stylizedPad;
+    float  bloomThreshold;
+    float  bloomSoftKnee;
+    float  clarityStrength;
+    float  clarityRadius;
+    float  shadowLift;
+    float  highlightCompression;
+    float  colorFilterIntensity;
+    float  _qualityPad0;
+    float3 colorFilter;
+    float  _qualityPad1;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)

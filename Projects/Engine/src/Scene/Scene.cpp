@@ -40,8 +40,7 @@ Scene& Scene::operator=(Scene&& other) noexcept
 
     m_arrays       = std::move(other.m_arrays);
     m_destroyQueue = std::move(other.m_destroyQueue);
-    m_runtimePostProcessSettings = other.m_runtimePostProcessSettings;
-    m_hasRuntimePostProcessSettings = other.m_hasRuntimePostProcessSettings;
+    m_runtimePostProcessSettings = std::move(other.m_runtimePostProcessSettings);
     m_userRenderPasses = std::move(other.m_userRenderPasses);
     m_scriptDebugDrawCommands = std::move(other.m_scriptDebugDrawCommands);
     m_lastScriptDebugDrawTickFrame = other.m_lastScriptDebugDrawTickFrame;
@@ -288,25 +287,27 @@ void Scene::Clear()
 
 renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()
 {
-    m_hasRuntimePostProcessSettings = true;
-    return m_runtimePostProcessSettings;
+    if (!m_runtimePostProcessSettings)
+        m_runtimePostProcessSettings = std::make_unique<renderer::PostProcessSettings>();
+    return *m_runtimePostProcessSettings;
 }
 
 const renderer::PostProcessSettings* Scene::TryGetRuntimePostProcessSettings() const
 {
-    return m_hasRuntimePostProcessSettings ? &m_runtimePostProcessSettings : nullptr;
+    return m_runtimePostProcessSettings.get();
 }
 
 void Scene::SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings)
 {
-    m_runtimePostProcessSettings = settings;
-    m_hasRuntimePostProcessSettings = true;
+    if (!m_runtimePostProcessSettings)
+        m_runtimePostProcessSettings = std::make_unique<renderer::PostProcessSettings>(settings);
+    else
+        *m_runtimePostProcessSettings = settings;
 }
 
 void Scene::ClearRuntimePostProcessSettings()
 {
-    m_runtimePostProcessSettings = {};
-    m_hasRuntimePostProcessSettings = false;
+    m_runtimePostProcessSettings.reset();
 }
 
 void Scene::QueueUserRenderPass(UserRenderPassDesc desc)

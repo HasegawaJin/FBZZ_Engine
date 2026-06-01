@@ -191,8 +191,14 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::MenuItem("Color Grading",       nullptr, &pp.colorGrading.enabled);
             ImGui::MenuItem("Vignette",            nullptr, &pp.vignette.enabled);
             ImGui::MenuItem("Film Grain",          nullptr, &pp.filmGrain.enabled);
+            ImGui::MenuItem("Sharpen",             nullptr, &pp.sharpen.enabled);
+            ImGui::MenuItem("Depth of Field",      nullptr, &pp.depthOfField.enabled);
             ImGui::MenuItem("Chromatic Aberration",nullptr, &pp.lens.chromaticAberrationEnabled);
             ImGui::MenuItem("Lens Distortion",     nullptr, &pp.lens.distortionEnabled);
+            ImGui::MenuItem("Sepia",               nullptr, &pp.stylized.sepiaEnabled);
+            ImGui::MenuItem("Invert",              nullptr, &pp.stylized.invertEnabled);
+            ImGui::MenuItem("Posterize",           nullptr, &pp.stylized.posterizeEnabled);
+            ImGui::MenuItem("Pixelate",            nullptr, &pp.stylized.pixelateEnabled);
             ImGui::MenuItem("Ambient Occlusion",   nullptr, &pp.ambientOcclusion.enabled);
             ImGui::Separator();
             ImGui::SliderFloat("Exposure",        &pp.exposure,                0.1f, 4.0f);
@@ -200,6 +206,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::SliderFloat("Contrast",        &pp.colorGrading.contrast,  -1.0f, 1.0f);
             ImGui::SliderFloat("Saturation",      &pp.colorGrading.saturation, 0.0f, 2.0f);
             ImGui::SliderFloat("Hue Shift",       &pp.colorGrading.hueShift, -180.0f, 180.0f);
+            ImGui::SliderFloat("Sharpen Strength", &pp.sharpen.strength,        0.0f, 2.0f);
+            ImGui::SliderFloat("DOF Focus",        &pp.depthOfField.focusDistance, 0.1f, 100.0f);
+            ImGui::SliderFloat("DOF Blur",         &pp.depthOfField.blurRadius, 0.0f, 12.0f);
+            ImGui::SliderFloat("Posterize Levels", &pp.stylized.posterizeLevels, 2.0f, 32.0f);
+            ImGui::SliderFloat("Pixel Size",       &pp.stylized.pixelSize,      1.0f, 32.0f);
             ImGui::SliderFloat("Fog Density",     &pp.fog.density,             0.0f, 1.0f);
             ImGui::SliderFloat("Fog Far",         &pp.fog.farDistance,         1.0f, 100.0f);
             ImGui::EndMenu();

@@ -5,10 +5,8 @@
 // PipelineState の生成キーとして使うため、値型として扱う。
 #pragma once
 
-// wingdi.h が OPAQUE=2 を定義するため enum class の enumerator と衝突する
-#ifdef OPAQUE
-#undef OPAQUE
-#endif
+// wingdi.h が OPAQUE=2 を定義するため、公開 API 名には接尾辞を付ける。
+// WHY: #undef に依存すると include 順で再定義される危険が残るため、名前自体を衝突しない形にする。
 
 namespace fbzz::renderer {
 
@@ -20,7 +18,7 @@ namespace fbzz::renderer {
     };
 
     enum class BlendMode {
-        OPAQUE,      // 不透明 (デフォルト)
+        OPAQUE_BLEND, // 不透明 (デフォルト)
         ALPHA_BLEND, // アルファブレンド (半透明)
         ADDITIVE,    // 加算合成 (パーティクル・エフェクト)
     };
@@ -39,7 +37,7 @@ namespace fbzz::renderer {
 
     struct PipelineStateDesc {
         RasterizerMode rasterizer = RasterizerMode::SOLID;
-        BlendMode      blend      = BlendMode::OPAQUE;
+        BlendMode      blend      = BlendMode::OPAQUE_BLEND;
         DepthMode      depth      = DepthMode::DEPTH_ON;
     };
 

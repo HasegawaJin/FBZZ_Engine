@@ -110,6 +110,25 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.filmGrainResponse = pp.filmGrain.response;
     postData.chromaticAberration = pp.lens.chromaticAberrationEnabled ? pp.lens.chromaticAberration : 0.0f;
     postData.lensDistortion = pp.lens.distortionEnabled ? pp.lens.distortion : 0.0f;
+    postData.sharpenStrength = pp.sharpen.enabled ? pp.sharpen.strength : 0.0f;
+    postData.sharpenRadius = pp.sharpen.radius;
+    postData.dofFocusDistance = pp.depthOfField.focusDistance;
+    postData.dofFocusRange = pp.depthOfField.focusRange;
+    postData.dofBlurRadius = pp.depthOfField.enabled ? pp.depthOfField.blurRadius : 0.0f;
+    postData.sepiaIntensity = pp.stylized.sepiaEnabled ? pp.stylized.sepiaIntensity : 0.0f;
+    postData.invertIntensity = pp.stylized.invertEnabled ? pp.stylized.invertIntensity : 0.0f;
+    postData.posterizeLevels = pp.stylized.posterizeEnabled ? pp.stylized.posterizeLevels : 0.0f;
+    postData.pixelSize = pp.stylized.pixelateEnabled ? pp.stylized.pixelSize : 0.0f;
+    postData.bloomThreshold = pp.bloom.threshold;
+    postData.bloomSoftKnee = pp.bloom.softKnee;
+    postData.clarityStrength = pp.imageQuality.clarityEnabled ? pp.imageQuality.clarityStrength : 0.0f;
+    postData.clarityRadius = pp.imageQuality.clarityRadius;
+    postData.shadowLift = pp.imageQuality.shadowHighlightEnabled ? pp.imageQuality.shadowLift : 0.0f;
+    postData.highlightCompression = pp.imageQuality.shadowHighlightEnabled ? pp.imageQuality.highlightCompression : 0.0f;
+    postData.colorFilterIntensity = pp.imageQuality.colorFilterEnabled ? pp.imageQuality.colorFilterIntensity : 0.0f;
+    postData.colorFilter[0] = pp.imageQuality.colorFilter[0];
+    postData.colorFilter[1] = pp.imageQuality.colorFilter[1];
+    postData.colorFilter[2] = pp.imageQuality.colorFilter[2];
     const UnderwaterInfo underwater = EvaluateUnderwaterInfo(ctx);
     if (underwater.enabled) {
         postData.underwaterStrength = underwater.strength;

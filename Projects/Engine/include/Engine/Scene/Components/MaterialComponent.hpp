@@ -15,16 +15,6 @@
 #include <string_view>
 #include <vector>
 
-// WHY: Windows.h が別経路から先に入る翻訳単位では wingdi.h の
-//      OPAQUE / TRANSPARENT マクロが enum / RenderQueue 名を壊す。
-//      Material の公開ヘッダは多くの場所から読まれるため、ここでも防御する。
-#ifdef OPAQUE
-#undef OPAQUE
-#endif
-#ifdef TRANSPARENT
-#undef TRANSPARENT
-#endif
-
 namespace fbzz::renderer {
 class Material;
 } // namespace fbzz::renderer
@@ -41,7 +31,7 @@ struct MaterialComponent {
     //      RenderSystem はこれらをもとに PipelineState を動的に選択する。
 
     // アルファブレンド方式。ALPHA_BLEND / ADDITIVE は半透明パスで後から描画される。
-    renderer::BlendMode blendMode   = renderer::BlendMode::OPAQUE;
+    renderer::BlendMode blendMode   = renderer::BlendMode::OPAQUE_BLEND;
 
     // true にすると背面カリングを無効化し、両面描画になる (草・布・薄い板など)。
     bool                doubleSided = false;
