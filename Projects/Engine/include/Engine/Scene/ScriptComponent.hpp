@@ -12,6 +12,7 @@ namespace fbzz::scene {
 
 struct ScriptComponent {
     std::unique_ptr<Script> script;
+    bool m_awoken = false;
     bool m_started = false;
 };
 
