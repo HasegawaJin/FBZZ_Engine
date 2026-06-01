@@ -20,6 +20,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 
 namespace fbzz::renderer {
@@ -173,6 +174,31 @@ void RenderDebugOverlay::Draw(IRenderer& renderer, ResourceManager& resources,
             ImGui::SameLine();
             ImGui::Text("%-20s  %.3f ms", name.c_str(), ms);
         }
+    }
+
+    // ─── MemoryDebug: ResourceManager が保持しているスマートポインタ所有リソース ───
+    // WHY: GPU リソースは見た目上動いていても、リサイズやシーン遷移で古いハンドルが残るとメモリが増え続ける。
+    //      ResourcePool の weak_ptr 台帳をここで可視化し、どの生成経路が残っているかを確認できるようにする。
+    ImGui::Separator();
+    const std::size_t liveResourceCount = resources.GetLiveDebugResourceCount();
+    ImGui::Text("Live renderer resources: %zu", liveResourceCount);
+    const std::size_t visibleCount = (std::min)(liveResourceCount, static_cast<std::size_t>(12));
+    for (std::size_t i = 0; i < visibleCount; ++i) {
+        const core::AllocationInfo* info = resources.GetLiveDebugResource(i);
+        if (info == nullptr) {
+            continue;
+        }
+
+        ImGui::BulletText(
+            "#%llu %s %zu bytes (%s:%d)",
+            static_cast<unsigned long long>(info->allocationId),
+            info->allocatorName,
+            info->size,
+            info->file,
+            info->line);
+    }
+    if (liveResourceCount > visibleCount) {
+        ImGui::TextDisabled("... %zu more", liveResourceCount - visibleCount);
     }
 
     ImGui::End();
