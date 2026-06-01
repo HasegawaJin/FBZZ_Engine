@@ -6,6 +6,7 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -42,6 +43,8 @@ Scene& Scene::operator=(Scene&& other) noexcept
     m_runtimePostProcessSettings = other.m_runtimePostProcessSettings;
     m_hasRuntimePostProcessSettings = other.m_hasRuntimePostProcessSettings;
     m_userRenderPasses = std::move(other.m_userRenderPasses);
+    m_scriptDebugDrawCommands = std::move(other.m_scriptDebugDrawCommands);
+    m_lastScriptDebugDrawTickFrame = other.m_lastScriptDebugDrawTickFrame;
 
     FixupOwnership();
     other.Clear();
@@ -279,6 +282,8 @@ void Scene::Clear()
     m_freeIndices.clear();
     ClearRuntimePostProcessSettings();
     ClearUserRenderPasses();
+    m_scriptDebugDrawCommands.clear();
+    m_lastScriptDebugDrawTickFrame = 0;
 }
 
 renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()
@@ -317,6 +322,38 @@ void Scene::ClearUserRenderPasses()
 const std::vector<UserRenderPassDesc>& Scene::GetUserRenderPasses() const
 {
     return m_userRenderPasses;
+}
+
+void Scene::QueueScriptDebugDraw(ScriptDebugDrawCommand command)
+{
+    // WHAT: 発行フレームを記録して、duration=0 の描画も同一フレーム内の複数ビューに表示する。
+    command.frameCreated = core::Time::FrameCount();
+    m_scriptDebugDrawCommands.push_back(command);
+}
+
+void Scene::TickScriptDebugDrawCommands(float dt)
+{
+    const uint64_t currentFrame = core::Time::FrameCount();
+    if (m_lastScriptDebugDrawTickFrame == currentFrame)
+        return;
+
+    m_lastScriptDebugDrawTickFrame = currentFrame;
+    for (auto& command : m_scriptDebugDrawCommands) {
+        if (command.frameCreated < currentFrame)
+            command.duration -= dt;
+    }
+
+    m_scriptDebugDrawCommands.erase(
+        std::remove_if(m_scriptDebugDrawCommands.begin(), m_scriptDebugDrawCommands.end(),
+            [currentFrame](const ScriptDebugDrawCommand& command) {
+                return command.frameCreated < currentFrame && command.duration <= 0.0f;
+            }),
+        m_scriptDebugDrawCommands.end());
+}
+
+const std::vector<ScriptDebugDrawCommand>& Scene::GetScriptDebugDrawCommands() const
+{
+    return m_scriptDebugDrawCommands;
 }
 
 void Scene::RemoveAllComponents(EntityID id)
