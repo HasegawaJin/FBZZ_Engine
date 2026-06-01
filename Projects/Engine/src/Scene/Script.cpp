@@ -9,10 +9,18 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <algorithm>
 #include <cassert>
 #include <utility>
 
 namespace fbzz::scene {
+
+physics::World* Script::s_physicsWorld = nullptr;
+
+Script::~Script()
+{
+    CancelEventSubscriptions();
+}
 
 // ── コンテキスト設定 ────────────────────────────────────────────────────────
 
@@ -20,9 +28,150 @@ void Script::SetContext(Scene* scene, GameObject* gameObject)
 {
     m_scene      = scene;
     m_gameObject = gameObject;
-    // WHY: transform ポインタを SetContext で同期することで、
-    //      派生クラスが m_gameObject->transform と書かずに transform-> で直接アクセスできる。
-    transform = gameObject ? &gameObject->transform : nullptr;
+}
+
+void Script::SyncEnabledState()
+{
+    // WHY: enabled は public 互換性を維持するため setter 化しない。
+    //      その代わり ScriptSystem の同期点で前回値と比較し、変化した瞬間だけ通知する。
+    if (!m_enableStateInitialized) {
+        m_lastEnabled = enabled;
+        m_enableStateInitialized = true;
+        if (enabled) OnEnable();
+        return;
+    }
+
+    if (m_lastEnabled == enabled) return;
+    m_lastEnabled = enabled;
+    if (enabled)
+        OnEnable();
+    else
+        OnDisable();
+}
+
+void Script::SetDeltaTime(float dt)
+{
+    // WHAT: OnUpdate / OnLateUpdate 以外のメソッドからも同じフレーム時間を読めるように保持する。
+    m_deltaTime = dt;
+    m_unscaledDeltaTime = dt;
+    m_time += dt;
+    ++m_frameCount;
+}
+
+void Script::Invoke(std::function<void()> fn, float delay)
+{
+    // WHY: 負の delay は「次の ScriptSystem 更新で実行」と同じ扱いにし、呼び出し側の防御コードを減らす。
+    if (!fn) return;
+    InvokeEntry entry{};
+    entry.fn = std::move(fn);
+    entry.remaining = delay > 0.0f ? delay : 0.0f;
+    m_invokes.push_back(std::move(entry));
+}
+
+void Script::InvokeRepeating(std::function<void()> fn, float delay, float interval)
+{
+    if (!fn) return;
+    if (interval <= 0.0f) {
+        Invoke(std::move(fn), delay);
+        return;
+    }
+
+    InvokeEntry entry{};
+    entry.fn = std::move(fn);
+    entry.remaining = delay > 0.0f ? delay : 0.0f;
+    entry.interval = interval;
+    entry.repeating = true;
+    m_invokes.push_back(std::move(entry));
+}
+
+void Script::CancelInvoke()
+{
+    // WHY: Invoke コールバック実行中に vector を即 clear するとイテレーションが不安定になる。
+    //      実行中は canceled フラグだけ立て、TickInvokes の末尾でまとめて除去する。
+    if (!m_isTickingInvokes) {
+        m_invokes.clear();
+        m_frameDelays.clear();
+        return;
+    }
+
+    for (auto& entry : m_invokes)
+        entry.canceled = true;
+    for (auto& entry : m_frameDelays)
+        entry.canceled = true;
+}
+
+void Script::TickInvokes(float dt)
+{
+    if (m_invokes.empty()) return;
+
+    m_isTickingInvokes = true;
+    const size_t initialCount = m_invokes.size();
+    for (size_t i = 0; i < initialCount && i < m_invokes.size(); ++i) {
+        auto& entry = m_invokes[i];
+        if (entry.canceled) continue;
+
+        entry.remaining -= dt;
+        if (entry.remaining > 0.0f) continue;
+
+        auto fn = entry.fn;
+        if (entry.repeating)
+            entry.remaining += entry.interval;
+        else
+            entry.canceled = true;
+
+        // WHAT: callback 内から Invoke / CancelInvoke が呼ばれてもよい。
+        //      fn はコピーしてから呼び、vector の再配置や canceled 更新の影響を受けないようにする。
+        if (fn) fn();
+    }
+    m_isTickingInvokes = false;
+
+    m_invokes.erase(
+        std::remove_if(m_invokes.begin(), m_invokes.end(),
+            [](const InvokeEntry& entry) { return entry.canceled; }),
+        m_invokes.end());
+}
+
+void Script::FrameDelay(uint32_t n, std::function<void()> fn)
+{
+    if (!fn) return;
+    FrameDelayEntry entry{};
+    entry.fn = std::move(fn);
+    entry.remainingFrames = n;
+    m_frameDelays.push_back(std::move(entry));
+}
+
+void Script::TickFrameDelays()
+{
+    if (m_frameDelays.empty()) return;
+
+    for (auto& entry : m_frameDelays) {
+        if (entry.canceled) continue;
+        if (entry.remainingFrames > 0) {
+            --entry.remainingFrames;
+            continue;
+        }
+        auto fn = entry.fn;
+        entry.canceled = true;
+        if (fn) fn();
+    }
+
+    m_frameDelays.erase(
+        std::remove_if(m_frameDelays.begin(), m_frameDelays.end(),
+            [](const FrameDelayEntry& entry) { return entry.canceled; }),
+        m_frameDelays.end());
+}
+
+void Script::CancelEventSubscriptions()
+{
+    for (auto& unsubscribe : m_eventUnsubscribers) {
+        if (unsubscribe) unsubscribe(this);
+    }
+    m_eventUnsubscribers.clear();
+}
+
+void Script::SetPhysicsWorld(physics::World* world)
+{
+    s_physicsWorld = world;
 }
 
 // ── シーン操作ショートハンド ────────────────────────────────────────────────
