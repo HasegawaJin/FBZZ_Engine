@@ -2,7 +2,7 @@
 // RenderPasses/GeometryPasses.hpp | fbzz::scene
 // ジオメトリ描画パスの宣言とインラインヘルパー
 #pragma once
-#include "RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/RenderState.hpp>
