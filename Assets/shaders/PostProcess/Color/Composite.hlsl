@@ -62,6 +62,31 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
         }
     }
 
+    // 水没カメラ用の全画面補正。
+    // WHY: 水面そのものは Water パスで描くが、カメラが水中に入った時の吸収・濁り・視界歪みは
+    //      画面全体にかかる効果なので Composite で一括処理する。
+    if (underwaterStrength > 0.0f)
+    {
+        float depthFactor = underwaterStrength;
+        float ndcZ = texDepth.Sample(sampDefault, uv).r;
+        if (ndcZ < 0.9999f)
+        {
+            float linDepth = nearZ * farZ / (farZ - ndcZ * (farZ - nearZ));
+            depthFactor = saturate((1.0f - exp(-underwaterFogDensity * linDepth)) * underwaterStrength);
+        }
+
+        float wave = sin((uv.x + uv.y) * 28.0f + time * 2.4f) * 0.003f * underwaterStrength;
+        float2 distortedUV = saturate(uv + float2(wave, wave * 0.5f));
+        float3 distortedHdr = texHDR.Sample(sampDefault, distortedUV).rgb;
+        float3 distortedLdr = FinalOutput(distortedHdr, exposure);
+
+        ldr = lerp(ldr, distortedLdr, underwaterStrength * 0.25f);
+        ldr = lerp(ldr, underwaterColor, depthFactor);
+
+        float gray = dot(ldr, float3(0.299f, 0.587f, 0.114f));
+        ldr = lerp(float3(gray, gray, gray), ldr, lerp(1.0f, 0.55f, underwaterStrength));
+    }
+
     ldr = ApplyColorAdjustments(ldr, contrast, saturation, hueShift, temperature, tint);
     ldr = ApplyVignette(ldr, uv, vignetteIntensity, vignetteSmoothness, vignetteRoundness, vignetteColor);
     ldr = ApplyFilmGrain(ldr, uv, filmGrainIntensity, filmGrainResponse);
