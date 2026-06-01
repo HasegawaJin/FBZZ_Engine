@@ -13,9 +13,6 @@ SamplerState       sampDefault : register(SAMPLER_DEFAULT);
 
 RWTexture2D<float4> outputDst  : register(UAV_OUTPUT);
 
-// 輝度がこの値を超えたピクセルだけを Bloom に含める
-static const float BLOOM_THRESHOLD = 0.7f;
-
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
@@ -30,9 +27,13 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
     float4 s3 = texSrc.SampleLevel(sampDefault, srcUV + texelSize * float2( 0.5f,  0.5f), 0);
     float4 avg = (s0 + s1 + s2 + s3) * 0.25f;
 
-    // 輝度閾値
+    // 輝度閾値。
+    // WHY: 固定値では昼夜や屋内外の露出差に合わせにくいため、ProjectSettings から調整できるようにする。
     float lum    = Luminance(avg.rgb);
-    float weight = max(lum - BLOOM_THRESHOLD, 0.0f) / max(lum, 0.0001f);
+    float knee   = max(bloomThreshold * bloomSoftKnee, 0.0001f);
+    float soft   = saturate((lum - bloomThreshold + knee) / (2.0f * knee));
+    soft = soft * soft * knee;
+    float weight = max(lum - bloomThreshold, soft) / max(lum, 0.0001f);
 
     outputDst[pixel] = float4(avg.rgb * weight, avg.a);
 }
