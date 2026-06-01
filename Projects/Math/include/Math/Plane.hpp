@@ -5,6 +5,12 @@
 
 #include "Vector3.hpp"
 
+// Windows 系ヘッダや外部 SDK が Plane をマクロ定義した場合、fbzz::math::Plane の宣言が壊れる。
+// WHY: Math は engine の最下層なので、上位レイヤー由来のプリプロセッサ汚染をここで遮断する。
+#ifdef Plane
+#undef Plane
+#endif
+
 namespace fbzz::math {
 
 struct Plane {
