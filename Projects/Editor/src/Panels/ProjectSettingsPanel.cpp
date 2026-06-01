@@ -42,12 +42,24 @@ void DrawPostProcessToggles(renderer::PostProcessSettings& p)
     ImGui::SameLine();
     ImGui::Checkbox("Film Grain##PostProcessEnableFilmGrain", &p.filmGrain.enabled);
 
-    ImGui::Checkbox("Ambient Occlusion##PostProcessEnableSSAO", &p.ambientOcclusion.enabled);
+    ImGui::Checkbox("Sharpen##PostProcessEnableSharpen", &p.sharpen.enabled);
     ImGui::SameLine();
+    ImGui::Checkbox("Depth of Field##PostProcessEnableDepthOfField", &p.depthOfField.enabled);
+    ImGui::SameLine();
+    ImGui::Checkbox("Ambient Occlusion##PostProcessEnableSSAO", &p.ambientOcclusion.enabled);
+
     ImGui::Checkbox("Chromatic Aberration##PostProcessEnableChromaticAberration", &p.lens.chromaticAberrationEnabled);
     ImGui::SameLine();
     ImGui::Checkbox("Lens Distortion##PostProcessEnableLensDistortion", &p.lens.distortionEnabled);
+
+    ImGui::Checkbox("Sepia##PostProcessEnableSepia", &p.stylized.sepiaEnabled);
     ImGui::SameLine();
+    ImGui::Checkbox("Invert##PostProcessEnableInvert", &p.stylized.invertEnabled);
+    ImGui::SameLine();
+    ImGui::Checkbox("Posterize##PostProcessEnablePosterize", &p.stylized.posterizeEnabled);
+    ImGui::SameLine();
+    ImGui::Checkbox("Pixelate##PostProcessEnablePixelate", &p.stylized.pixelateEnabled);
+
     ImGui::Text("Custom: %d", static_cast<int>(p.customEffects.size()));
 }
 
@@ -226,6 +238,25 @@ void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
         ImGui::PopID();
     }
 
+    if (ImGui::CollapsingHeader("Sharpen")) {
+        ImGui::PushID("SharpenSettings");
+        ImGui::BeginDisabled(!postProcess.sharpen.enabled);
+        ImGui::SliderFloat("Strength", &postProcess.sharpen.strength, 0.0f, 2.0f);
+        ImGui::SliderFloat("Radius", &postProcess.sharpen.radius, 0.25f, 4.0f);
+        ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+
+    if (ImGui::CollapsingHeader("Depth of Field")) {
+        ImGui::PushID("DepthOfFieldSettings");
+        ImGui::BeginDisabled(!postProcess.depthOfField.enabled);
+        ImGui::SliderFloat("Focus Distance", &postProcess.depthOfField.focusDistance, 0.1f, 100.0f);
+        ImGui::SliderFloat("Focus Range", &postProcess.depthOfField.focusRange, 0.1f, 50.0f);
+        ImGui::SliderFloat("Blur Radius", &postProcess.depthOfField.blurRadius, 0.0f, 12.0f);
+        ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+
     if (ImGui::CollapsingHeader("Lens")) {
         ImGui::PushID("LensSettings");
         ImGui::BeginDisabled(!postProcess.lens.chromaticAberrationEnabled);
@@ -234,6 +265,26 @@ void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
 
         ImGui::BeginDisabled(!postProcess.lens.distortionEnabled);
         ImGui::SliderFloat("Distortion", &postProcess.lens.distortion, -0.5f, 0.5f);
+        ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+
+    if (ImGui::CollapsingHeader("Stylized")) {
+        ImGui::PushID("StylizedPostProcessSettings");
+        ImGui::BeginDisabled(!postProcess.stylized.sepiaEnabled);
+        ImGui::SliderFloat("Sepia Intensity", &postProcess.stylized.sepiaIntensity, 0.0f, 1.0f);
+        ImGui::EndDisabled();
+
+        ImGui::BeginDisabled(!postProcess.stylized.invertEnabled);
+        ImGui::SliderFloat("Invert Intensity", &postProcess.stylized.invertIntensity, 0.0f, 1.0f);
+        ImGui::EndDisabled();
+
+        ImGui::BeginDisabled(!postProcess.stylized.posterizeEnabled);
+        ImGui::SliderFloat("Posterize Levels", &postProcess.stylized.posterizeLevels, 2.0f, 32.0f);
+        ImGui::EndDisabled();
+
+        ImGui::BeginDisabled(!postProcess.stylized.pixelateEnabled);
+        ImGui::SliderFloat("Pixel Size", &postProcess.stylized.pixelSize, 1.0f, 32.0f);
         ImGui::EndDisabled();
         ImGui::PopID();
     }
