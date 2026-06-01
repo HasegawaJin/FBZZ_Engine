@@ -31,6 +31,7 @@ class ProjectSettingsPanel;
 class BuildSettingsPanel;
 class AssetBrowserPanel;
 class TerrainTool;
+class WaterTool;
 
 class EditorApp {
 public:
@@ -90,6 +91,7 @@ private:
     std::string        m_lastTitleScenePath;
     PlayModeController              m_playMode;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
+    std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
 
     FILETIME                                 m_lastSceneWriteTime = {};
     HWND                                     m_hwnd          = nullptr;

@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace fbzz::renderer { class Camera; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; }
 
 namespace fbzz::editor {
 
@@ -100,6 +100,7 @@ struct EditorContext {
     bool showSkeleton    = false;
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
     bool showTerrainTool = true;  // Terrain Tool ウィンドウを表示する
+    bool showWaterTool   = true;  // Water Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
 
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
@@ -125,6 +126,7 @@ struct EditorContext {
     UndoStack*          undoStack   = nullptr;
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
+    WaterTool*          waterTool   = nullptr; // EditorApp が所有、ViewportPanel が使用
     std::function<void()>                   markSceneDirty;
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
