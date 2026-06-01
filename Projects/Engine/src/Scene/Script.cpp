@@ -56,6 +56,10 @@ void Script::SetDeltaTime(float dt)
     m_unscaledDeltaTime = dt;
     m_time += dt;
     ++m_frameCount;
+
+    // WHY: ScriptMemoryProxy のフレーム一時領域は Script のフレーム寿命に紐付ける。
+    //      Script 作者が手動 Reset を忘れても、前フレームの一時データを次フレームへ持ち越さない。
+    memory.BeginFrame();
 }
 
 void Script::Invoke(std::function<void()> fn, float delay)

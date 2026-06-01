@@ -117,7 +117,9 @@ void ExecuteCausticsPass(RenderPassContext& ctx)
     dc.constantBuffers[0] = ctx.handles.frameCB;
     dc.constantBuffers[5] = ctx.handles.postprocCB;
     dc.textures[0] = causticsTex;
-    dc.textures[7] = ctx.resources.GetDepthTexture(ctx.handles.hdrRT);
+    // WHY: hdrRT を RTV/DSV としてバインドしたまま、その depth を SRV(t7) として読むことは DX11 で禁止。
+    //      必要な場合は Water と同様に、描画前の depth を別リソースへコピーしてから t7 に渡す。
+    dc.textures[7] = {};
     ctx.renderer.Submit(dc, ctx.resources);
 }
 

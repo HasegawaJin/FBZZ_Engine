@@ -4,6 +4,7 @@
 // IRenderer の非公開生成 API を呼べる唯一の窓口。
 // 上位システムは shared_ptr ではなく ResourceHandle を保持する。
 #pragma once
+#include <Engine/Core/Memory/AllocationInfo.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourcePool.hpp>
 #include <Engine/Renderer/RenderState.hpp>
@@ -64,8 +65,13 @@ public:
     void Release(ResourceHandle<PipelineStateTag> h);
     void Release(ResourceHandle<RenderTargetTag> h);
 
+    [[nodiscard]] std::size_t GetLiveDebugResourceCount() const;
+    [[nodiscard]] const core::AllocationInfo* GetLiveDebugResource(std::size_t index) const;
+
 private:
     static uint64_t Key(ResourceHandle<RenderTargetTag> h);
+    void ReleaseOwnedResourcesForShutdown();
+    void LogLiveDebugResources() const;
 
     IRenderer& m_renderer;
 
