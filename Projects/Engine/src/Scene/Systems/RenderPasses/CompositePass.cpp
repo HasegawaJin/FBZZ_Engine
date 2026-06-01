@@ -2,7 +2,7 @@
 // CompositePass.cpp | fbzz::scene
 // Composite render pass implementation
 #include "PostProcessPasses.hpp"
-#include "RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/SamplerMode.hpp>
