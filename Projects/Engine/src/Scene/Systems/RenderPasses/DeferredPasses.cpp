@@ -9,11 +9,14 @@
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
+#include "Engine/Scene/Components/WaterComponent.hpp"
 #include "Engine/Core/Logger.hpp"
+#include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace fbzz::scene {
@@ -42,6 +45,28 @@ void SortAndSubmitTransparent(
         resources.Update(objectCB, &entry.objData, sizeof(PerObjectCB));
         renderer.Submit(entry.dc, resources);
     }
+}
+
+bool IsCameraUnderwater(const RenderPassContext& ctx)
+{
+    const float time = core::Time::TotalTime();
+    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
+        if (!water.enabled) continue;
+
+        const float localX = ctx.camera.m_position.x - transform.position.x;
+        const float localZ = ctx.camera.m_position.z - transform.position.z;
+        if (std::abs(localX) > water.extentX * 0.5f || std::abs(localZ) > water.extentZ * 0.5f) {
+            continue;
+        }
+
+        // WHY: 水中では画面全体の濁りと散乱が支配的になり、SSAO の接触影がノイズに見えやすい。
+        //      Deferred 合成時点で強度だけ 0 にして、既存の SSAO パス構成を変えずに見た目を無効化する。
+        const float surfaceY = transform.position.y + water.GetSurfaceHeightAt(localX, localZ, time);
+        if (ctx.camera.m_position.y < surfaceY) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // anonymous namespace
@@ -156,7 +181,7 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
 
     PostProcCB lightingPostData{};
-    lightingPostData.ssaoIntensity = ctx.ssaoEnabled
+    lightingPostData.ssaoIntensity = ctx.ssaoEnabled && !IsCameraUnderwater(ctx)
         ? rs.postProcess.ambientOcclusion.intensity
         : 0.0f;
     resources.Update(h.postprocCB, &lightingPostData, sizeof(PostProcCB));

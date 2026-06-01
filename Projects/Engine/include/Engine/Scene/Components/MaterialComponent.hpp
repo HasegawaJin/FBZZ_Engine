@@ -3,7 +3,9 @@
 // GameObject に割り当てるマテリアル設定と、シェーダー反映用パラメータを保持する。
 #pragma once
 
+#include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/RenderState.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/ShaderDescriptor.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
@@ -67,7 +69,7 @@ struct MaterialComponent {
             std::memcpy(paramData.data() + offset, &v, sizeof(T));
     }
 
-    // 名前引きアクセサ。ShaderDescriptor::FindVar でオフセットを解決してから読み書きする。
+    // 名前引きアクセサ (ShaderDescriptor 明示版)
     template<typename T>
     T GetParam(std::string_view name, const renderer::ShaderDescriptor& desc) const
     {
@@ -81,6 +83,38 @@ struct MaterialComponent {
     {
         if (const auto* v = desc.FindVar(name))
             SetParam<T>(v->offset, val);
+    }
+
+    // ── Script フレンドリー API (Unity の material.SetFloat / SetColor 相当) ──────
+    // Descriptor を手動で取得せずに呼べる。内部で ResourceManager::Active() から
+    // ShaderDescriptor を解決し、paramData の正しいオフセットへ書き込む。
+    // WHY: Script の Update() で mc->SetParam<float>("rimGlow", t) のように呼ぶだけで
+    //      SyncMaterial が次フレームの描画前に GPU へ転送する。
+    template<typename T>
+    bool SetParam(std::string_view name, const T& val)
+    {
+        auto* rm = renderer::ResourceManager::Active();
+        if (!rm || shaderPath.empty()) return false;
+        const auto handle = rm->LoadShader(shaderPath);
+        if (const auto* sh = rm->Get(handle)) {
+            const auto& desc = sh->GetDescriptor();
+            if (paramData.size() != desc.cbufferSize)
+                InitFromDescriptor(desc);
+            SetParam<T>(name, val, desc);
+            return true;
+        }
+        return false;
+    }
+
+    template<typename T>
+    T GetParam(std::string_view name) const
+    {
+        auto* rm = renderer::ResourceManager::Active();
+        if (!rm || shaderPath.empty()) return T{};
+        const auto handle = rm->LoadShader(shaderPath);
+        if (const auto* sh = rm->Get(handle))
+            return GetParam<T>(name, sh->GetDescriptor());
+        return T{};
     }
 
     // Descriptor に合わせて paramData と texturePaths を初期化する。

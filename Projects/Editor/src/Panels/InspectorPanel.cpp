@@ -31,7 +31,9 @@
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
+#include <Engine/Scene/WaterAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -351,6 +353,33 @@ std::string TerrainAssetDiskPath(const EditorContext& ctx, const std::string& as
     return assetPath;
 }
 
+// WHAT: "Assets/Water/..." → プロジェクトルートからの絶対パスに変換する。
+std::string WaterAssetDiskPath(const EditorContext& ctx, const std::string& assetPath)
+{
+    if (assetPath.rfind("Assets/", 0) == 0 && !ctx.projectRoot.empty())
+        return ctx.projectRoot + "/" + assetPath;
+    return assetPath;
+}
+
+// WHAT: 重複しないデフォルトの .fbzzwater パスを生成する。
+std::string UniqueWaterAssetPath(const EditorContext& ctx, const std::string& objectName)
+{
+    std::string safe = objectName;
+    for (char& c : safe) { if (c == ' ' || c == '/' || c == '\\') c = '_'; }
+
+    const std::string assetRoot = ctx.projectRoot.empty()
+        ? "Assets"
+        : ctx.projectRoot + "/Assets";
+    const std::string waterDir = assetRoot + "/Water";
+    util::FileSystem::EnsureDirectory(waterDir);
+
+    const std::string base = waterDir + "/" + safe;
+    std::string path = base + ".fbzzwater";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".fbzzwater";
+    return NormalizeAssetPath(path);
+}
+
 std::shared_ptr<renderer::Mesh> MeshFromModelPath(const std::string& path, int meshIndex)
 {
     if (path.empty()) return {};
@@ -548,6 +577,17 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
             // (meshPath = "" → PhysicsSystem が TerrainComponent から自動構築する)
             if (!go.GetComponent<scene::MeshColliderComponent>())
                 go.AddComponent<scene::MeshColliderComponent>();
+        });
+        shown |= addItem(category, "Water", !go.GetComponent<scene::WaterComponent>(), [&]() {
+            scene::WaterComponent water{};
+            water.resolutionX = 64;
+            water.resolutionZ = 64;
+            water.extentX = 80.0f;
+            water.extentZ = 80.0f;
+            water.meshDirty = true;
+            water.foamDirty = true;
+            water.texDirty = true;
+            go.AddComponent<scene::WaterComponent>(std::move(water));
         });
         return shown;
     });
@@ -2171,6 +2211,211 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                                "Height Dirty : %s", tc.heightDirty   ? "Yes" : "No");
             ImGui::TextColored(tc.colliderDirty ? ImVec4{1,0.5f,0.2f,1} : ImVec4{0.5f,1,0.5f,1},
                                "Collider Dirty: %s", tc.colliderDirty ? "Yes" : "No");
+        });
+
+    DrawComponentSection<scene::WaterComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Water",
+        [go](scene::WaterComponent& water, EditorContext& ctx) {
+            // ── Asset 管理セクション ────────────────────────────────────────────
+            // WHY: TerrainComponent と同様に .fbzzwater への外部化と
+            //      Create / Save / Load / Unlink の操作を Inspector から行えるようにする。
+            ImGui::SeparatorText("Asset (.fbzzwater)");
+
+            // アセットパス入力（ドラッグ&ドロップ対応）
+            char assetBuf[256];
+            std::snprintf(assetBuf, sizeof(assetBuf), "%s", water.waterAssetPath.c_str());
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 4.0f);
+            if (ImGui::InputText("##water_asset_path", assetBuf, sizeof(assetBuf)))
+                water.waterAssetPath = NormalizeAssetPath(assetBuf);
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
+                    if (dropped.size() > 10 &&
+                        dropped.substr(dropped.size() - 10) == ".fbzzwater")
+                    {
+                        water.waterAssetPath = dropped;
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            if (water.waterAssetPath.empty()) {
+                // 外部アセット未設定: Create ボタンで新規作成する
+                if (ImGui::Button("Create Water Asset")) {
+                    const std::string assetPath = UniqueWaterAssetPath(ctx, go ? go->name : "Water");
+                    const std::string diskPath  = WaterAssetDiskPath(ctx, assetPath);
+                    if (scene::WaterAssetSerializer::Save(water, diskPath)) {
+                        water.waterAssetPath = assetPath;
+                        ctx.requestAssetBrowserRefresh = true;
+                    }
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(inline mode)");
+            } else {
+                // 外部アセット設定済み: Save / Load / Unlink
+                if (ImGui::Button("Save")) {
+                    scene::WaterAssetSerializer::Save(water, WaterAssetDiskPath(ctx, water.waterAssetPath));
+                    ctx.requestAssetBrowserRefresh = true;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Load")) {
+                    scene::WaterAssetSerializer::Load(WaterAssetDiskPath(ctx, water.waterAssetPath), water);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Unlink")) {
+                    water.waterAssetPath.clear();
+                }
+            }
+
+            ImGui::Spacing();
+            ImGui::SeparatorText("Geometry");
+            int resX = static_cast<int>(water.resolutionX);
+            int resZ = static_cast<int>(water.resolutionZ);
+            if (ImGui::DragInt("Resolution X", &resX, 1.0f, 1, 512)) {
+                water.resolutionX = static_cast<uint32_t>(resX);
+                water.meshDirty = true;
+                water.foamDirty = true;
+            }
+            if (ImGui::DragInt("Resolution Z", &resZ, 1.0f, 1, 512)) {
+                water.resolutionZ = static_cast<uint32_t>(resZ);
+                water.meshDirty = true;
+                water.foamDirty = true;
+            }
+            if (ImGui::DragFloat("Extent X", &water.extentX, 0.5f, 0.1f, 10000.0f)) {
+                water.meshDirty = true;
+                water.foamDirty = true;
+            }
+            if (ImGui::DragFloat("Extent Z", &water.extentZ, 0.5f, 0.1f, 10000.0f)) {
+                water.meshDirty = true;
+                water.foamDirty = true;
+            }
+            {
+                int chunks = static_cast<int>(water.chunkCount);
+                if (ImGui::DragInt("Chunk Count", &chunks, 1.0f, 1, 64)) {
+                    water.chunkCount = static_cast<uint32_t>(chunks < 1 ? 1 : chunks);
+                    water.meshDirty = true;
+                }
+                ImGui::TextDisabled("(%d x %d chunks = %d draw calls)", chunks, chunks, chunks * chunks);
+            }
+
+            ImGui::SeparatorText("Physics");
+            if (ImGui::Button("Setup Buoyancy Volume")) {
+                // WHY: Water の浮力は Trigger Collider + VolumeComponent の組み合わせで動く。
+                //      手作業で 2 Component のサイズと種別を合わせるミスを避けるため、代表的な設定を一括で作る。
+                auto* box = go->GetComponent<scene::BoxColliderComponent>();
+                if (!box) {
+                    box = &go->AddComponent<scene::BoxColliderComponent>();
+                }
+                box->enabled = true;
+                box->isTrigger = true;
+                box->center = { 0.0f, -water.deepDepth * 0.5f, 0.0f };
+                box->size = {
+                    water.extentX,
+                    std::max(water.deepDepth, 0.1f),
+                    water.extentZ
+                };
+
+                auto* volume = go->GetComponent<scene::VolumeComponent>();
+                if (!volume) {
+                    volume = &go->AddComponent<scene::VolumeComponent>();
+                }
+                volume->enabled = true;
+                volume->type = physics::VolumeType::Buoyancy;
+                volume->buoyancy = 15.0f;
+                volume->drag = 2.0f;
+                volume->duration = -1.0f;
+                volume->elapsed = 0.0f;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Sync Collider Size")) {
+                if (auto* box = go->GetComponent<scene::BoxColliderComponent>()) {
+                    box->isTrigger = true;
+                    box->center = { 0.0f, -water.deepDepth * 0.5f, 0.0f };
+                    box->size = {
+                        water.extentX,
+                        std::max(water.deepDepth, 0.1f),
+                        water.extentZ
+                    };
+                }
+            }
+
+            ImGui::SeparatorText("Color");
+            widgets::ColorEdit3("Shallow Color", water.shallowColor);
+            widgets::ColorEdit3("Deep Color", water.deepColor);
+            ImGui::DragFloat("Shallow Depth", &water.shallowDepth, 0.05f, 0.01f, 100.0f);
+            ImGui::DragFloat("Deep Depth", &water.deepDepth, 0.05f, 0.01f, 1000.0f);
+            ImGui::DragFloat("Opacity", &water.opacity, 0.01f, 0.0f, 1.0f);
+
+            ImGui::SeparatorText("Surface");
+            ImGui::DragFloat("Reflectivity", &water.reflectivity, 0.01f, 0.0f, 1.0f);
+            ImGui::DragFloat("Fresnel Bias", &water.fresnelBias, 0.001f, 0.0f, 1.0f);
+            ImGui::DragFloat("Fresnel Power", &water.fresnelPower, 0.1f, 0.1f, 16.0f);
+            ImGui::DragFloat("Refraction", &water.refractionStrength, 0.001f, 0.0f, 0.1f);
+
+            ImGui::SeparatorText("Textures");
+            auto texturePath = [](const char* label, std::string& path, bool& dirtyFlag) {
+                char buf[256];
+                std::snprintf(buf, sizeof(buf), "%s", path.c_str());
+                if (ImGui::InputText(label, buf, sizeof(buf))) {
+                    path = NormalizeAssetPath(buf);
+                    dirtyFlag = true;
+                }
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
+                        dirtyFlag = true;
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+            };
+            texturePath("Normal Map 1", water.normalMap1Path, water.texDirty);
+            texturePath("Normal Map 2", water.normalMap2Path, water.texDirty);
+            texturePath("Foam Texture", water.foamTexPath, water.texDirty);
+            texturePath("Flow Map", water.flowMapPath, water.texDirty);
+            DragVec2("Normal Scroll 1", water.normalMap1Scroll, 0.001f, -10.0f, 10.0f);
+            DragVec2("Normal Scroll 2", water.normalMap2Scroll, 0.001f, -10.0f, 10.0f);
+            ImGui::DragFloat("Normal Tiling 1", &water.normalMap1Tiling, 0.1f, 0.01f, 100.0f);
+            ImGui::DragFloat("Normal Tiling 2", &water.normalMap2Tiling, 0.1f, 0.01f, 100.0f);
+            ImGui::DragFloat("Normal Strength", &water.normalStrength, 0.01f, 0.0f, 5.0f);
+
+            ImGui::SeparatorText("Foam / Flow");
+            if (ImGui::DragFloat("Foam Threshold", &water.foamThreshold, 0.01f, -100.0f, 100.0f))
+                water.foamDirty = true;
+            if (ImGui::DragFloat("Foam Fade", &water.foamFade, 0.01f, 0.001f, 100.0f))
+                water.foamDirty = true;
+            ImGui::DragFloat("Foam Strength", &water.foamStrength, 0.01f, 0.0f, 5.0f);
+            ImGui::DragFloat("Foam Tiling", &water.foamTiling, 0.1f, 0.01f, 100.0f);
+            ImGui::Checkbox("Enable Flow Map", &water.enableFlowMap);
+            ImGui::DragFloat("Flow Speed", &water.flowSpeed, 0.01f, -10.0f, 10.0f);
+            ImGui::DragFloat("Flow Tiling", &water.flowTiling, 0.1f, 0.01f, 100.0f);
+
+            ImGui::SeparatorText("Gerstner Waves");
+            ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
+            for (int i = 0; i < static_cast<int>(water.waves.size()); ++i) {
+                auto& wave = water.waves[static_cast<size_t>(i)];
+                ImGui::PushID(i);
+                if (ImGui::TreeNodeEx("Wave", ImGuiTreeNodeFlags_DefaultOpen, "Wave %d", i)) {
+                    DragVec2("Direction", wave.direction, 0.01f, -1.0f, 1.0f);
+                    ImGui::DragFloat("Amplitude", &wave.amplitude, 0.01f, 0.0f, 100.0f);
+                    ImGui::DragFloat("Wavelength", &wave.wavelength, 0.1f, 0.01f, 10000.0f);
+                    ImGui::DragFloat("Steepness", &wave.steepness, 0.01f, 0.0f, 1.0f);
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+
+            ImGui::SeparatorText("Caustics");
+            ImGui::Checkbox("Enable Caustics", &water.enableCaustics);
+            if (water.enableCaustics) {
+                ImGui::DragFloat("Caustics Intensity", &water.causticsIntensity, 0.01f, 0.0f, 5.0f);
+                ImGui::DragFloat("Caustics Tiling", &water.causticsTiling, 0.01f, 0.01f, 100.0f);
+                ImGui::DragFloat("Caustics Speed", &water.causticsSpeed, 0.001f, 0.0f, 5.0f);
+                texturePath("Caustics Texture", water.causticsTexPath, water.texDirty);
+                ImGui::TextDisabled("(empty = procedural fallback)");
+            }
+
+            ImGui::SeparatorText("Environment");
+            texturePath("Env Cubemap", water.envCubemapPath, water.texDirty);
+            ImGui::TextDisabled("(empty = no environment reflection)");
         });
 
     DrawComponentSection<scene::UIAnimator>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Animator",
