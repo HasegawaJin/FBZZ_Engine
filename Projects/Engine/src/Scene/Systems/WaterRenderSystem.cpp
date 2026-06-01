@@ -684,8 +684,10 @@ void WaterRenderSystem(
         }
 
         const WaterTextures& textures = s_texCache.at(eid.index);
-        const renderer::ResourceHandle<renderer::TextureTag> depthTex =
-            outputRT.IsValid() ? resources.GetDepthTexture(outputRT) : renderer::ResourceHandle<renderer::TextureTag>{};
+        // WHY: outputRT を RTV/DSV としてバインドしたまま、その depth を SRV(t5) として読むことは DX11 で禁止。
+        //      以前はデバッグレイヤーが "PSSetShaderResources: still bound on output" を出して NULL 化していた。
+        //      正しい深度参照を復活させる場合は、描画前に depth copy 用 RT/Texture を別途渡す設計にする。
+        const renderer::ResourceHandle<renderer::TextureTag> depthTex = {};
         const renderer::ResourceHandle<renderer::TextureTag> colorTex =
             sceneColor.IsValid() ? sceneColor : blackTex;
         const renderer::ResourceHandle<renderer::TextureTag> rippleTex =
