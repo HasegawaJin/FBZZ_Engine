@@ -333,6 +333,11 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
 
     // ---- 4. Textures (SRV → PS ステージ) ----------------------------------------
+    // WHY: DrawCall ごとに未使用スロットを NULL に戻す。
+    //      前の DrawCall の SRV が残ると、次のパスで同じリソースを RTV/DSV として使った際に
+    //      DX11 デバッグレイヤーの HAZARD 警告や意図しないサンプリングが起きる。
+    static ID3D11ShaderResourceView* const kNullSRVs[16] = {};
+    m_context->PSSetShaderResources(0, 16, kNullSRVs);
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
     {
         auto* texture = resources.Get(call.textures[i]);
