@@ -116,7 +116,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         if (mr->mesh->isSkinned) continue;
         // 半透明・加算マテリアルは GBuffer に書き込まない。フォワードパスで描画する。
         // WHY: GBuffer はアルファブレンドをサポートしない (MRT への書き込みが 1 つの値のため)。
-        if (mat->blendMode != renderer::BlendMode::OPAQUE) continue;
+        if (mat->blendMode != renderer::BlendMode::OPAQUE_BLEND) continue;
 
         // フラスタムカリング: バウンディング球が視錐台外なら除外
         if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
@@ -233,7 +233,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         auto* anim = go.GetComponent<AnimatorComponent>();
         if (!smr || !smr->enabled || !smr->model) continue;
         if (!mat) continue;
-        if (mat->blendMode != renderer::BlendMode::OPAQUE) continue;
+        if (mat->blendMode != renderer::BlendMode::OPAQUE_BLEND) continue;
         auto* material = SyncMaterial(*mat, resources);
         if (!material) continue;
 
@@ -272,7 +272,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.shader             = skinnedShader;
             dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-            dc.layer              = renderer::RenderLayer::OPAQUE;
+            dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[2] = material->paramsBuffer;
@@ -294,7 +294,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         auto* anim = go.GetComponent<AnimatorComponent>();
         if (!smr || !smr->enabled || !smr->model) continue;
         if (!mat) continue;
-        if (mat->blendMode == renderer::BlendMode::OPAQUE) continue;
+        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) continue;
         auto* material = SyncMaterial(*mat, resources);
         if (!material) continue;
 
@@ -329,7 +329,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.shader             = skinnedShader;
             dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-            dc.layer              = renderer::RenderLayer::TRANSPARENT;
+            dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[2] = material->paramsBuffer;
@@ -381,7 +381,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
-        if (mat->blendMode == renderer::BlendMode::OPAQUE) continue;  // 透明のみ
+        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) continue;  // 透明のみ
 
         // フラスタムカリング: バウンディング球が視錐台外なら除外
         if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) continue;
@@ -401,7 +401,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.shader             = material->shader;
         dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
                                                  : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-        dc.layer              = renderer::RenderLayer::TRANSPARENT;
+        dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = material->paramsBuffer;

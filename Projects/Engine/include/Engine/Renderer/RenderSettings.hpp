@@ -21,6 +21,8 @@ struct RenderSelectionID {
 struct BloomSettings {
     bool enabled = true;
     float intensity = 0.8f;
+    float threshold = 0.7f;
+    float softKnee = 0.35f;
 };
 
 struct AmbientOcclusionSettings {
@@ -58,11 +60,55 @@ struct FilmGrainSettings {
     float response = 0.8f;
 };
 
+// SharpenSettings — 画面全体の輪郭を軽く強調するポストプロセス設定。
+// WHY: モデルやテクスチャ側を変えず、最終出力だけで画の解像感を調整できるようにする。
+struct SharpenSettings {
+    bool enabled = false;
+    float strength = 0.35f;
+    float radius = 1.0f;
+};
+
+// DepthOfFieldSettings — 深度バッファを使った簡易被写界深度。
+// WHY: 速度バッファを必要としない Composite 内の軽量実装に留め、既存 RenderGraph を複雑にしない。
+struct DepthOfFieldSettings {
+    bool enabled = false;
+    float focusDistance = 8.0f;
+    float focusRange = 4.0f;
+    float blurRadius = 3.0f;
+};
+
 struct LensSettings {
     bool chromaticAberrationEnabled = false;
     bool distortionEnabled = false;
     float chromaticAberration = 0.005f;
     float distortion = 0.0f;
+};
+
+// StylizedPostProcessSettings — 演出寄りの色・解像度変換をまとめた設定。
+// WHAT: セピア、反転、ポスタライズ、ピクセル化を Composite パス内で順番に適用する。
+struct StylizedPostProcessSettings {
+    bool sepiaEnabled = false;
+    bool invertEnabled = false;
+    bool posterizeEnabled = false;
+    bool pixelateEnabled = false;
+    float sepiaIntensity = 0.75f;
+    float invertIntensity = 1.0f;
+    float posterizeLevels = 6.0f;
+    float pixelSize = 4.0f;
+};
+
+// ImageQualitySettings — 写実寄りの最終画質補正をまとめた設定。
+// WHY: セピアや反転のような演出効果とは分け、通常のゲーム画面を自然に見やすくする調整を扱う。
+struct ImageQualitySettings {
+    bool clarityEnabled = true;
+    bool shadowHighlightEnabled = true;
+    bool colorFilterEnabled = false;
+    float clarityStrength = 0.12f;
+    float clarityRadius = 2.0f;
+    float shadowLift = 0.08f;
+    float highlightCompression = 0.08f;
+    float colorFilter[3] = { 1.0f, 1.0f, 1.0f };
+    float colorFilterIntensity = 0.0f;
 };
 
 struct CustomPostProcessSettings {
@@ -83,7 +129,11 @@ struct PostProcessSettings {
     ColorGradingSettings colorGrading;
     VignetteSettings vignette;
     FilmGrainSettings filmGrain;
+    SharpenSettings sharpen;
+    DepthOfFieldSettings depthOfField;
     LensSettings lens;
+    StylizedPostProcessSettings stylized;
+    ImageQualitySettings imageQuality;
     std::vector<CustomPostProcessSettings> customEffects;
 };
 

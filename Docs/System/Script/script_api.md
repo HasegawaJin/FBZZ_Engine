@@ -514,13 +514,62 @@ hit.body;     // RigidBody*      — 紐づく剛体 (static コライダーな�
 
 | API | 説明 |
 |---|---|
+| `material.Get()` | 自 GO の MaterialComponent を取得。なければ `nullptr` | ✅ 実装済み |
+| `material.Ensure()` | 自 GO に MaterialComponent がなければ追加して返す | ✅ 実装済み |
+| `material.SetShader(shaderPath, resetParameters)` | 任意 HLSL を割り当て、必要なら Descriptor で初期化 | ✅ 実装済み |
+| `material.EnsureCustomMaterial(shaderPath, resetParameters)` | CustomMaterial を冪等に確保 | ✅ 実装済み |
+| `material.HasParam(param)` | 現在の shader が指定パラメータを持つか確認 | ✅ 実装済み |
 | `material.SetFloat(std::string_view param, float v)` | シェーダーパラメータを名前で設定 |
 | `material.SetInt(std::string_view param, int v)` | 〃 |
 | `material.SetVector3(std::string_view param, const math::Vector3& v)` | 〃 |
 | `material.SetVector4(std::string_view param, const math::Vector4& v)` | 〃 |
 | `material.SetTexture(std::string_view slot, std::string_view texPath)` | テクスチャスロットを差し替え |
+| `material.SetEnabled(enabled)` | MaterialComponent の描画有効状態を変更 | ✅ 実装済み |
+| `material.SetBlendMode(blendMode)` | `OPAQUE_BLEND` / `ALPHA_BLEND` / `ADDITIVE` を変更 | ✅ 実装済み |
+| `material.SetDoubleSided(doubleSided)` | 両面描画を切り替え | ✅ 実装済み |
+| `material.SetRenderQueue(renderQueue)` | 描画順を直接指定。標準値は `renderer::RenderQueue` | ✅ 実装済み |
 | `material.QueueRenderPass(UserRenderPassDesc)` | カスタム描画パスを登録 | ✅ 実装済み (旧 `Script::QueueRenderPass`) |
 | `material.GetShaderDescriptor(std::string_view path)` | ShaderDescriptor を取得 | ✅ 実装済み (旧 `Script::GetShaderDescriptor`) |
+
+### CustomMaterial のユーザー定義
+
+Script 側は `EnsureCustomMaterial()` で MaterialComponent と shader layout を確保し、ゲーム状態で変わる値だけ `SetFloat()` などで更新する。
+
+```cpp
+class DissolveMaterialScript final : public Script {
+public:
+    void OnStart() override
+    {
+        material.EnsureCustomMaterial("assets/shaders/Material/Surface/Dissolve.hlsl");
+        material.SetBlendMode(renderer::BlendMode::ALPHA_BLEND);
+        material.SetRenderQueue(renderer::RenderQueue::TRANSPARENT_QUEUE);
+    }
+
+    void OnUpdate(float dt) override
+    {
+        m_dissolve += dt * 0.25f;
+        if (m_dissolve > 1.0f) m_dissolve = 1.0f;
+        material.SetFloat("dissolveAmount", m_dissolve);
+        material.SetTexture("noiseTex", "assets/textures/noise/dissolve.png");
+    }
+
+private:
+    float m_dissolve = 0.0f;
+};
+```
+
+CustomMaterial shader は `MaterialConstants` cbuffer と Texture2D bind を通常の Material shader と同じ規則で宣言する。  
+Inspector / Script / SceneSerializer は `ShaderDescriptor` の反射結果を使うため、パラメータ名を HLSL と Script で一致させる。
+
+| Shader 側 | Script 側 |
+|---|---|
+| `float dissolveAmount;` | `material.SetFloat("dissolveAmount", v)` |
+| `float3 tintColor;` | `material.SetVector3("tintColor", v)` |
+| `float4 emissionColor;` | `material.SetVector4("emissionColor", v)` |
+| `Texture2D noiseTex : register(t5);` | `material.SetTexture("noiseTex", path)` または `material.SetTexture("t5", path)` |
+
+WHY: `CustomMaterial` 専用クラスを増やさず、既存の `MaterialComponent` と `ShaderDescriptor` を使う。  
+これにより Inspector 編集、Script 更新、Scene 保存が同じデータ構造に集約される。
 
 ---
 
@@ -624,10 +673,65 @@ GameObject 検索・生成・シーン遷移をまとめた Proxy。
 `ScriptProxy/ScriptPostProcessProxy.hpp`
 
 `renderer::PostProcessSettings` への動的変更。  
-Script が破棄されると設定は自動的にクリアされる。
+Scene 破棄時は自動的にクリアされる。個別 Script が所有する効果は `OnDestroy()` で `RemoveCustom()` または `Clear()` する。
 
 | API | 説明 |
 |---|---|
 | `postprocess.Get()` | 現在の PostProcessSettings への参照 | ✅ 実装済み (旧 `Script::GetRuntimePostProcessSettings`) |
 | `postprocess.Set(settings)` | PostProcessSettings を上書き | ✅ 実装済み (旧 `Script::SetRuntimePostProcessSettings`) |
 | `postprocess.Clear()` | Script 由来の設定をリセット | ✅ 実装済み (旧 `Script::ClearRuntimePostProcessSettings`) |
+| `postprocess.AddCustom(name, shaderPath, enabled)` | CustomPostProcess を末尾に追加し、設定参照を返す | ✅ 実装済み |
+| `postprocess.EnsureCustom(name, shaderPath, enabled)` | 同名 CustomPostProcess を再利用、なければ追加 | ✅ 実装済み |
+| `postprocess.FindCustom(name)` | 同名 CustomPostProcess を検索 | ✅ 実装済み |
+| `postprocess.RemoveCustom(name)` | 同名 CustomPostProcess を削除 | ✅ 実装済み |
+| `postprocess.SetCustomEnabled(name, enabled)` | 同名 CustomPostProcess の有効状態を変更 | ✅ 実装済み |
+| `postprocess.SetCustomParameter(name, index, value)` | `customParameters[index]` を更新。`index` は 0〜3 | ✅ 実装済み |
+| `postprocess.SetCustomParameters(name, x, y, z, w)` | `customParameters.xyzw` をまとめて更新 | ✅ 実装済み |
+
+### CustomPostProcess のユーザー定義
+
+Script 側は `EnsureCustom()` で効果を登録し、毎フレーム変わる値だけ `SetCustomParameter()` / `SetCustomParameters()` で更新する。
+
+```cpp
+class DamageVignetteScript final : public Script {
+public:
+    void OnStart() override
+    {
+        auto& effect = postprocess.EnsureCustom(
+            "DamageVignette",
+            "assets/shaders/PostProcess/Custom/DamageVignette.hlsl",
+            true);
+        effect.intensity = 1.0f;
+        effect.blend = 1.0f;
+    }
+
+    void OnUpdate(float dt) override
+    {
+        m_damageFlash -= dt * 2.0f;
+        if (m_damageFlash < 0.0f) m_damageFlash = 0.0f;
+        postprocess.SetCustomParameter("DamageVignette", 0, m_damageFlash);
+    }
+
+    void OnDestroy() override
+    {
+        postprocess.RemoveCustom("DamageVignette");
+    }
+
+private:
+    float m_damageFlash = 0.0f;
+};
+```
+
+CustomPostProcess shader は `Assets/Shaders/PostProcess/Custom/CustomPostProcess.hlsl` を雛形にする。
+
+| Shader 側 | 内容 |
+|---|---|
+| `texInput : register(TEX_GBUFFER0)` | 直前の LDR PostProcess 結果 |
+| `customIntensity` | `CustomPostProcessSettings::intensity` |
+| `customBlend` | `CustomPostProcessSettings::blend` |
+| `customParameters.xyzw` | Script / ProjectSettings から渡す 4 つの自由パラメータ |
+| `time` | エンジン経過時間 |
+| `texelSize` / `screenSize` | 画面サイズ由来の UV 補助値 |
+
+WHY: `CustomPostProcessSettings` は ProjectSettings と Script で同じ構造体を使う。  
+静的な効果は ProjectSettings、ゲーム状態に応じて変わる効果は Script から同じ `name` で登録・更新する。

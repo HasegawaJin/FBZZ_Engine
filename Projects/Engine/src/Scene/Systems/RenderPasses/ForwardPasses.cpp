@@ -141,7 +141,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const float dz = go.transform.position.z - cam.m_position.z;
         const float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (mat->blendMode == renderer::BlendMode::OPAQUE) {
+        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) {
             opaqueStaticQueue.push_back({ &go, mr, mat, distSq });
         } else {
             // 半透明は即収集 (オクルージョンカリング対象外)
@@ -160,7 +160,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.shader             = material->shader;
             dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-            dc.layer              = renderer::RenderLayer::TRANSPARENT;
+            dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[2] = material->paramsBuffer;
@@ -190,7 +190,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const float dz = go.transform.position.z - cam.m_position.z;
         const float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (mat->blendMode == renderer::BlendMode::OPAQUE) {
+        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) {
             opaqueSkinnedQueue.push_back({ &go, smr, mat, anim, distSq });
         } else {
             auto* material = SyncMaterial(*mat, resources);
@@ -223,7 +223,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 dc.shader             = skinnedShader;
                 dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
                                                          : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-                dc.layer              = renderer::RenderLayer::TRANSPARENT;
+                dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
                 dc.constantBuffers[0] = h.frameCB;
                 dc.constantBuffers[1] = h.objectCB;
                 dc.constantBuffers[2] = material->paramsBuffer;
@@ -295,7 +295,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.shader             = material->shader;
         dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
                                                  : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-        dc.layer              = renderer::RenderLayer::OPAQUE;
+        dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = material->paramsBuffer;
@@ -354,7 +354,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.shader             = skinnedShader;
             dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
-            dc.layer              = renderer::RenderLayer::OPAQUE;
+            dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[2] = material->paramsBuffer;

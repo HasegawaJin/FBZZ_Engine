@@ -9,6 +9,7 @@
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -50,6 +51,18 @@ physics::RigidBody* SelfRigidBody(const Script* script)
 {
     auto* component = SelfComponent<RigidBodyComponent>(script);
     return component && component->enabled ? component->rigidBody.get() : nullptr;
+}
+
+uint32_t ParseTextureSlot(std::string_view slot)
+{
+    if (slot.size() < 2 || slot[0] != 't') return UINT32_MAX;
+
+    uint32_t value = 0;
+    for (size_t i = 1; i < slot.size(); ++i) {
+        if (slot[i] < '0' || slot[i] > '9') return UINT32_MAX;
+        value = value * 10u + static_cast<uint32_t>(slot[i] - '0');
+    }
+    return value < 16u ? value : UINT32_MAX;
 }
 
 GameObject* FindGameObjectByCollider(Scene* scene, const physics::Collider* collider)
@@ -336,6 +349,68 @@ math::Vector3 ScriptCameraProxy::ScreenToWorldPoint(const math::Vector3& screenP
     return screenPos;
 }
 
+MaterialComponent* ScriptMaterialProxy::Get() const
+{
+    return SelfComponent<MaterialComponent>(script);
+}
+
+MaterialComponent* ScriptMaterialProxy::Ensure() const
+{
+    if (!script || !script->m_gameObject) return nullptr;
+    if (auto* material = script->m_gameObject->GetComponent<MaterialComponent>())
+        return material;
+    return &script->m_gameObject->AddComponent<MaterialComponent>();
+}
+
+bool ScriptMaterialProxy::SetShader(std::string_view shaderPath, bool resetParameters) const
+{
+    auto* material = Ensure();
+    if (!material) return false;
+
+    material->shaderPath = std::string(shaderPath);
+    if (!resetParameters) return true;
+
+    if (const auto* desc = script->GetShaderDescriptor(shaderPath)) {
+        material->InitFromDescriptor(*desc);
+        return true;
+    }
+
+    // WHY: shader がまだロードできない場合でも、Script から t0〜t4 を先に設定できる余地を残す。
+    if (material->texturePaths.empty())
+        material->texturePaths.resize(5);
+    material->paramData.clear();
+    return false;
+}
+
+bool ScriptMaterialProxy::EnsureCustomMaterial(std::string_view shaderPath, bool resetParameters) const
+{
+    auto* material = Ensure();
+    if (!material) return false;
+
+    const bool shaderChanged = material->shaderPath != shaderPath;
+    const bool needsLayout = resetParameters && material->paramData.empty();
+    if (shaderChanged || needsLayout)
+        return SetShader(shaderPath, resetParameters);
+
+    if (resetParameters) {
+        if (const auto* desc = script->GetShaderDescriptor(shaderPath)) {
+            if (material->paramData.size() != desc->cbufferSize)
+                material->InitFromDescriptor(*desc);
+        }
+    }
+
+    return true;
+}
+
+bool ScriptMaterialProxy::HasParam(std::string_view param) const
+{
+    const auto* material = Get();
+    if (!material || !script) return false;
+
+    const auto* desc = script->GetShaderDescriptor(material->shaderPath);
+    return desc && desc->FindVar(param) != nullptr;
+}
+
 void ScriptMaterialProxy::SetFloat(std::string_view param, float v) const
 {
     if (auto* m = SelfComponent<MaterialComponent>(script)) {
@@ -382,13 +457,45 @@ void ScriptMaterialProxy::SetTexture(std::string_view slot, std::string_view tex
             }
         }
     }
-    if (targetSlot == UINT32_MAX && slot.size() == 2 && slot[0] == 't' && slot[1] >= '0' && slot[1] <= '9')
-        targetSlot = static_cast<uint32_t>(slot[1] - '0');
+    if (targetSlot == UINT32_MAX)
+        targetSlot = ParseTextureSlot(slot);
     if (targetSlot == UINT32_MAX) return;
 
     if (m->texturePaths.size() <= targetSlot)
         m->texturePaths.resize(targetSlot + 1u);
     m->texturePaths[targetSlot] = std::string(texPath);
+}
+
+bool ScriptMaterialProxy::SetEnabled(bool enabled) const
+{
+    auto* material = Get();
+    if (!material) return false;
+    material->enabled = enabled;
+    return true;
+}
+
+bool ScriptMaterialProxy::SetBlendMode(renderer::BlendMode blendMode) const
+{
+    auto* material = Get();
+    if (!material) return false;
+    material->blendMode = blendMode;
+    return true;
+}
+
+bool ScriptMaterialProxy::SetDoubleSided(bool doubleSided) const
+{
+    auto* material = Get();
+    if (!material) return false;
+    material->doubleSided = doubleSided;
+    return true;
+}
+
+bool ScriptMaterialProxy::SetRenderQueue(int32_t renderQueue) const
+{
+    auto* material = Get();
+    if (!material) return false;
+    material->renderQueue = renderQueue;
+    return true;
 }
 
 void ScriptMaterialProxy::QueueRenderPass(UserRenderPassDesc desc) const
@@ -608,6 +715,89 @@ void ScriptPostProcessProxy::Set(const renderer::PostProcessSettings& settings) 
 void ScriptPostProcessProxy::Clear() const
 {
     if (script) script->ClearRuntimePostProcessSettings();
+}
+
+renderer::CustomPostProcessSettings& ScriptPostProcessProxy::AddCustom(
+    std::string_view name,
+    std::string_view shaderPath,
+    bool enabled) const
+{
+    auto& settings = Get();
+    auto& custom = settings.customEffects.emplace_back();
+    custom.name = std::string(name);
+    custom.shaderPath = std::string(shaderPath);
+    custom.enabled = enabled;
+    return custom;
+}
+
+renderer::CustomPostProcessSettings& ScriptPostProcessProxy::EnsureCustom(
+    std::string_view name,
+    std::string_view shaderPath,
+    bool enabled) const
+{
+    if (auto* custom = FindCustom(name)) {
+        if (!shaderPath.empty())
+            custom->shaderPath = std::string(shaderPath);
+        custom->enabled = enabled;
+        return *custom;
+    }
+
+    return AddCustom(name, shaderPath, enabled);
+}
+
+renderer::CustomPostProcessSettings* ScriptPostProcessProxy::FindCustom(std::string_view name) const
+{
+    if (!script) return nullptr;
+
+    auto& effects = script->GetRuntimePostProcessSettings().customEffects;
+    auto it = std::find_if(effects.begin(), effects.end(), [name](const renderer::CustomPostProcessSettings& custom) {
+        return custom.name == name;
+    });
+    return it != effects.end() ? &(*it) : nullptr;
+}
+
+bool ScriptPostProcessProxy::RemoveCustom(std::string_view name) const
+{
+    if (!script) return false;
+
+    auto& effects = script->GetRuntimePostProcessSettings().customEffects;
+    const auto oldSize = effects.size();
+    effects.erase(
+        std::remove_if(effects.begin(), effects.end(), [name](const renderer::CustomPostProcessSettings& custom) {
+            return custom.name == name;
+        }),
+        effects.end());
+    return effects.size() != oldSize;
+}
+
+bool ScriptPostProcessProxy::SetCustomEnabled(std::string_view name, bool enabled) const
+{
+    auto* custom = FindCustom(name);
+    if (!custom) return false;
+    custom->enabled = enabled;
+    return true;
+}
+
+bool ScriptPostProcessProxy::SetCustomParameter(std::string_view name, uint32_t index, float value) const
+{
+    if (index >= 4) return false;
+
+    auto* custom = FindCustom(name);
+    if (!custom) return false;
+    custom->parameters[index] = value;
+    return true;
+}
+
+bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x, float y, float z, float w) const
+{
+    auto* custom = FindCustom(name);
+    if (!custom) return false;
+
+    custom->parameters[0] = x;
+    custom->parameters[1] = y;
+    custom->parameters[2] = z;
+    custom->parameters[3] = w;
+    return true;
 }
 
 } // namespace fbzz::scene

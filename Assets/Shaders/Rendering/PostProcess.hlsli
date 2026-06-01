@@ -76,4 +76,58 @@ float3 ApplyFilmGrain(float3 color, float2 uv, float intensity, float response)
     return saturate(color + noise * intensity * weight);
 }
 
+float2 ApplyPixelateUV(float2 uv, float pixelBlockSize)
+{
+    if (pixelBlockSize <= 1.0f)
+        return uv;
+
+    // WHAT: 画面座標を指定ピクセル単位のグリッド中央へ丸める。
+    // WHY: 解像度依存の見た目を避けるため、UV ではなく screenSize 基準で量子化する。
+    float2 block = max(float2(pixelBlockSize, pixelBlockSize), float2(1.0f, 1.0f));
+    float2 pixel = floor(uv * screenSize / block) * block + block * 0.5f;
+    return saturate(pixel / max(screenSize, float2(1.0f, 1.0f)));
+}
+
+float3 ApplySepia(float3 color, float intensity)
+{
+    float3 sepia = float3(
+        dot(color, float3(0.393f, 0.769f, 0.189f)),
+        dot(color, float3(0.349f, 0.686f, 0.168f)),
+        dot(color, float3(0.272f, 0.534f, 0.131f)));
+    return lerp(color, saturate(sepia), saturate(intensity));
+}
+
+float3 ApplyInvert(float3 color, float intensity)
+{
+    return lerp(color, float3(1.0f, 1.0f, 1.0f) - color, saturate(intensity));
+}
+
+float3 ApplyPosterize(float3 color, float levels)
+{
+    if (levels <= 1.0f)
+        return color;
+
+    float quantizedLevels = max(floor(levels), 2.0f);
+    return floor(saturate(color) * quantizedLevels) / quantizedLevels;
+}
+
+float3 ApplyShadowHighlight(float3 color, float shadowAmount, float highlightAmount)
+{
+    // WHAT: 暗部は持ち上げ、明部は軽く圧縮して白飛びを抑える。
+    // WHY: HDR トーンマップ後の LDR に対する軽量な見た目補正として、露出を変えずに階調を残す。
+    float luma = Luminance(color);
+    float shadowMask = 1.0f - smoothstep(0.08f, 0.45f, luma);
+    float highlightMask = smoothstep(0.55f, 1.0f, luma);
+    color = lerp(color, color + (1.0f - color) * shadowAmount, shadowMask);
+    color = lerp(color, color / (1.0f + color * highlightAmount * 2.0f), highlightMask);
+    return saturate(color);
+}
+
+float3 ApplyColorFilter(float3 color, float3 filterColor, float intensity)
+{
+    // WHAT: ホワイトバランス後の最終色に薄いフィルター色を乗算する。
+    // WHY: LUT を導入せず、昼/夕方/室内などのルックをシーン設定だけで寄せられるようにする。
+    return saturate(lerp(color, color * max(filterColor, 0.0f), saturate(intensity)));
+}
+
 #endif // POSTPROCESS_HLSLI
