@@ -39,7 +39,7 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
     //   RenderTarget[0] のみ設定。ブレンド方程式:
     //     ALPHA_BLEND : out = src.rgb * src.a + dst.rgb * (1 - src.a)  (標準アルファ合成)
     //     ADDITIVE    : out = src.rgb * src.a + dst.rgb                 (加算。エフェクト向け)
-    //     OPAQUE      : ブレンドなし (最も高速)
+    //     OPAQUE_BLEND : ブレンドなし (最も高速)
     // -------------------------------------------------------------------------
     {
         D3D11_BLEND_DESC bsDesc = {};
@@ -68,7 +68,7 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
             rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
             break;
 
-        default: // OPAQUE
+        default: // OPAQUE_BLEND
             rt.BlendEnable = FALSE;
             break;
         }

@@ -9,7 +9,7 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 - **数学ライブラリ自作** — Vector2 / Vector3 / Vector4 / Matrix3 / Matrix4 / Quaternion / Ray / Frustum / Plane を GLM に頼らず実装
 - **物理エンジン自作** — GJK + EPA による凸形状衝突検出、BVH ブロードフェーズ、インパルスベース衝突解決、CCD、各種コンストレイント (Distance / Hinge / Spring / Rope / Chain)
 - **抽象レンダラー** — `IRenderer` インターフェースで DX11 を隠蔽。将来 DX12 / レイトレに差し替え可
-- **PBR + 遅延レンダリング** — GBuffer パス・遅延ライティング・シャドウマップ・SSAO・Bloom・FXAA を実装
+- **PBR + 遅延レンダリング** — GBuffer パス・遅延ライティング・シャドウマップ・SSAO・Bloom・FXAA・各種 PostProcess を実装
 - **スケルタルアニメーション** — FBX からボーン・ウェイトをインポートし GPU スキニングでアニメーション再生
 - **ImGui エディター** — Hierarchy / Inspector / AssetBrowser / Viewport / Console / StatusBar を備えたエディター
 - **シーン永続化** — TOML ベースの `.fbzz` フォーマットでシーンを保存・読み込み
@@ -84,6 +84,7 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 | SSAO | コンピュートシェーダーによるスクリーンスペース AO |
 | Bloom | Downsample / Upsample コンピュートシェーダー |
 | FXAA | ファストアンチエイリアシング |
+| PostProcess | Fog / Color Grading / Vignette / Film Grain / Lens Distortion / Chromatic Aberration / Sharpen / Depth of Field / Sepia / Invert / Posterize / Pixelate |
 | DebugDraw | 線・矩形・球・カプセルのワイヤーフレーム即時描画 |
 
 ### シェーダー (HLSL)

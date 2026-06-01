@@ -62,6 +62,37 @@ math::Vector3 ArrToVec3(const toml::array* arr, const math::Vector3& def)
     };
 }
 
+bool ReadBool(const toml::table& table, const char* key, bool fallback)
+{
+    if (auto value = table[key].value<bool>())
+        return *value;
+    return fallback;
+}
+
+float ReadFloat(const toml::table& table, const char* key, float fallback)
+{
+    if (auto value = table[key].value<double>())
+        return static_cast<float>(*value);
+    if (auto value = table[key].value<int64_t>())
+        return static_cast<float>(*value);
+    return fallback;
+}
+
+void ReadFloat3(const toml::table& table, const char* key, float out[3])
+{
+    const auto* arr = table[key].as_array();
+    if (!arr || arr->size() < 3)
+        return;
+
+    for (int i = 0; i < 3; ++i) {
+        if (auto value = (*arr)[static_cast<size_t>(i)].value<double>()) {
+            out[i] = static_cast<float>(*value);
+        } else if (auto intValue = (*arr)[static_cast<size_t>(i)].value<int64_t>()) {
+            out[i] = static_cast<float>(*intValue);
+        }
+    }
+}
+
 } // namespace
 
 ProjectSettings ProjectSettings::Default()
@@ -87,19 +118,18 @@ bool ProjectSettings::Load(const std::string& path)
 {
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) {
-        *this = Default();
+        // WHY: Load 失敗時に既存設定を代入で破棄すると、呼び出し側が保持していた設定や UI 参照まで巻き戻る。
+        //      失敗は bool で伝え、現在の設定はそのまま残す。
+        FBZZ_LOG_WARN("ProjectSettings: read failed: %s", path.c_str());
         return false;
     }
 
     auto result = toml::parse(text);
     if (!result) {
         FBZZ_LOG_WARN("ProjectSettings: parse failed: %s", path.c_str());
-        *this = Default();
         return false;
     }
     auto& tbl = result.table();
-
-    *this = Default();
 
     if (auto* projectTbl = tbl["project"].as_table()) {
         project.name = (*projectTbl)["name"].value_or(project.name);
@@ -152,14 +182,25 @@ bool ProjectSettings::Load(const std::string& path)
         pp.colorGrading.enabled = (*renderTbl)["colorGrading"].value_or(pp.colorGrading.enabled);
         pp.vignette.enabled = (*renderTbl)["vignette"].value_or(pp.vignette.enabled);
         pp.filmGrain.enabled = (*renderTbl)["filmGrain"].value_or(pp.filmGrain.enabled);
+        pp.sharpen.enabled = ReadBool(*renderTbl, "sharpen", pp.sharpen.enabled);
+        pp.depthOfField.enabled = ReadBool(*renderTbl, "depthOfField", pp.depthOfField.enabled);
         pp.lens.chromaticAberrationEnabled = (*renderTbl)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled);
         pp.lens.distortionEnabled = (*renderTbl)["lensDistortionEnabled"].value_or(pp.lens.distortionEnabled);
+        pp.stylized.sepiaEnabled = ReadBool(*renderTbl, "sepia", pp.stylized.sepiaEnabled);
+        pp.stylized.invertEnabled = ReadBool(*renderTbl, "invert", pp.stylized.invertEnabled);
+        pp.stylized.posterizeEnabled = ReadBool(*renderTbl, "posterize", pp.stylized.posterizeEnabled);
+        pp.stylized.pixelateEnabled = ReadBool(*renderTbl, "pixelate", pp.stylized.pixelateEnabled);
+        pp.imageQuality.clarityEnabled = ReadBool(*renderTbl, "clarity", pp.imageQuality.clarityEnabled);
+        pp.imageQuality.shadowHighlightEnabled = ReadBool(*renderTbl, "shadowHighlight", pp.imageQuality.shadowHighlightEnabled);
+        pp.imageQuality.colorFilterEnabled = ReadBool(*renderTbl, "colorFilter", pp.imageQuality.colorFilterEnabled);
         render.showColliders = (*renderTbl)["showColliders"].value_or(render.showColliders);
         render.showDecalBounds = (*renderTbl)["showDecalBounds"].value_or(render.showDecalBounds);
         render.showSelectionOutline = (*renderTbl)["showSelectionOutline"].value_or(render.showSelectionOutline);
         render.passViewerEnabled = (*renderTbl)["passViewerEnabled"].value_or(render.passViewerEnabled);
         pp.exposure = (float)(*renderTbl)["exposure"].value_or((double)pp.exposure);
         pp.bloom.intensity = (float)(*renderTbl)["bloomIntensity"].value_or((double)pp.bloom.intensity);
+        pp.bloom.threshold = ReadFloat(*renderTbl, "bloomThreshold", pp.bloom.threshold);
+        pp.bloom.softKnee = ReadFloat(*renderTbl, "bloomSoftKnee", pp.bloom.softKnee);
         pp.fog.density = (float)(*renderTbl)["fogDensity"].value_or((double)pp.fog.density);
         pp.fog.farDistance = (float)(*renderTbl)["fogFar"].value_or((double)pp.fog.farDistance);
         pp.colorGrading.contrast = (float)(*renderTbl)["contrast"].value_or((double)pp.colorGrading.contrast);
@@ -172,8 +213,22 @@ bool ProjectSettings::Load(const std::string& path)
         pp.vignette.roundness = (float)(*renderTbl)["vignetteRoundness"].value_or((double)pp.vignette.roundness);
         pp.filmGrain.intensity = (float)(*renderTbl)["filmGrainIntensity"].value_or((double)pp.filmGrain.intensity);
         pp.filmGrain.response = (float)(*renderTbl)["filmGrainResponse"].value_or((double)pp.filmGrain.response);
+        pp.sharpen.strength = ReadFloat(*renderTbl, "sharpenStrength", pp.sharpen.strength);
+        pp.sharpen.radius = ReadFloat(*renderTbl, "sharpenRadius", pp.sharpen.radius);
+        pp.depthOfField.focusDistance = ReadFloat(*renderTbl, "dofFocusDistance", pp.depthOfField.focusDistance);
+        pp.depthOfField.focusRange = ReadFloat(*renderTbl, "dofFocusRange", pp.depthOfField.focusRange);
+        pp.depthOfField.blurRadius = ReadFloat(*renderTbl, "dofBlurRadius", pp.depthOfField.blurRadius);
         pp.lens.chromaticAberration = (float)(*renderTbl)["chromaticAberration"].value_or((double)pp.lens.chromaticAberration);
         pp.lens.distortion = (float)(*renderTbl)["lensDistortion"].value_or((double)pp.lens.distortion);
+        pp.stylized.sepiaIntensity = ReadFloat(*renderTbl, "sepiaIntensity", pp.stylized.sepiaIntensity);
+        pp.stylized.invertIntensity = ReadFloat(*renderTbl, "invertIntensity", pp.stylized.invertIntensity);
+        pp.stylized.posterizeLevels = ReadFloat(*renderTbl, "posterizeLevels", pp.stylized.posterizeLevels);
+        pp.stylized.pixelSize = ReadFloat(*renderTbl, "pixelSize", pp.stylized.pixelSize);
+        pp.imageQuality.clarityStrength = ReadFloat(*renderTbl, "clarityStrength", pp.imageQuality.clarityStrength);
+        pp.imageQuality.clarityRadius = ReadFloat(*renderTbl, "clarityRadius", pp.imageQuality.clarityRadius);
+        pp.imageQuality.shadowLift = ReadFloat(*renderTbl, "shadowLift", pp.imageQuality.shadowLift);
+        pp.imageQuality.highlightCompression = ReadFloat(*renderTbl, "highlightCompression", pp.imageQuality.highlightCompression);
+        pp.imageQuality.colorFilterIntensity = ReadFloat(*renderTbl, "colorFilterIntensity", pp.imageQuality.colorFilterIntensity);
         render.outlineWidth  = (float)(*renderTbl)["outlineWidth"].value_or((double)render.outlineWidth);
         if (auto* fogColorArr = (*renderTbl)["fogColor"].as_array(); fogColorArr && fogColorArr->size() >= 3) {
             pp.fog.color[0] = (float)(*fogColorArr)[0].value_or((double)pp.fog.color[0]);
@@ -185,6 +240,7 @@ bool ProjectSettings::Load(const std::string& path)
             pp.vignette.color[1] = (float)(*vignetteColorArr)[1].value_or((double)pp.vignette.color[1]);
             pp.vignette.color[2] = (float)(*vignetteColorArr)[2].value_or((double)pp.vignette.color[2]);
         }
+        ReadFloat3(*renderTbl, "colorFilterColor", pp.imageQuality.colorFilter);
         if (auto* outlineColorArr = (*renderTbl)["outlineColor"].as_array(); outlineColorArr && outlineColorArr->size() >= 4) {
             render.outlineColor[0] = (float)(*outlineColorArr)[0].value_or((double)render.outlineColor[0]);
             render.outlineColor[1] = (float)(*outlineColorArr)[1].value_or((double)render.outlineColor[1]);
@@ -293,6 +349,11 @@ bool ProjectSettings::Save(const std::string& path) const
     vignetteColorArr.push_back((double)pp.vignette.color[1]);
     vignetteColorArr.push_back((double)pp.vignette.color[2]);
 
+    toml::array colorFilterArr;
+    colorFilterArr.push_back((double)pp.imageQuality.colorFilter[0]);
+    colorFilterArr.push_back((double)pp.imageQuality.colorFilter[1]);
+    colorFilterArr.push_back((double)pp.imageQuality.colorFilter[2]);
+
     toml::array outlineColorArr;
     outlineColorArr.push_back((double)render.outlineColor[0]);
     outlineColorArr.push_back((double)render.outlineColor[1]);
@@ -329,14 +390,25 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("colorGrading", pp.colorGrading.enabled);
     renderTbl.insert("vignette",     pp.vignette.enabled);
     renderTbl.insert("filmGrain",    pp.filmGrain.enabled);
+    renderTbl.insert("sharpen",      pp.sharpen.enabled);
+    renderTbl.insert("depthOfField", pp.depthOfField.enabled);
     renderTbl.insert("chromaticAberrationEnabled", pp.lens.chromaticAberrationEnabled);
     renderTbl.insert("lensDistortionEnabled", pp.lens.distortionEnabled);
+    renderTbl.insert("sepia",        pp.stylized.sepiaEnabled);
+    renderTbl.insert("invert",       pp.stylized.invertEnabled);
+    renderTbl.insert("posterize",    pp.stylized.posterizeEnabled);
+    renderTbl.insert("pixelate",     pp.stylized.pixelateEnabled);
+    renderTbl.insert("clarity",      pp.imageQuality.clarityEnabled);
+    renderTbl.insert("shadowHighlight", pp.imageQuality.shadowHighlightEnabled);
+    renderTbl.insert("colorFilter",  pp.imageQuality.colorFilterEnabled);
     renderTbl.insert("showColliders",render.showColliders);
     renderTbl.insert("showDecalBounds", render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("passViewerEnabled", render.passViewerEnabled);
     renderTbl.insert("exposure",     (double)pp.exposure);
     renderTbl.insert("bloomIntensity", (double)pp.bloom.intensity);
+    renderTbl.insert("bloomThreshold", (double)pp.bloom.threshold);
+    renderTbl.insert("bloomSoftKnee", (double)pp.bloom.softKnee);
     renderTbl.insert("fogDensity",   (double)pp.fog.density);
     renderTbl.insert("fogFar",       (double)pp.fog.farDistance);
     renderTbl.insert("fogColor",     std::move(fogColorArr));
@@ -351,8 +423,23 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("vignetteColor", std::move(vignetteColorArr));
     renderTbl.insert("filmGrainIntensity", (double)pp.filmGrain.intensity);
     renderTbl.insert("filmGrainResponse", (double)pp.filmGrain.response);
+    renderTbl.insert("sharpenStrength", (double)pp.sharpen.strength);
+    renderTbl.insert("sharpenRadius", (double)pp.sharpen.radius);
+    renderTbl.insert("dofFocusDistance", (double)pp.depthOfField.focusDistance);
+    renderTbl.insert("dofFocusRange", (double)pp.depthOfField.focusRange);
+    renderTbl.insert("dofBlurRadius", (double)pp.depthOfField.blurRadius);
     renderTbl.insert("chromaticAberration", (double)pp.lens.chromaticAberration);
     renderTbl.insert("lensDistortion", (double)pp.lens.distortion);
+    renderTbl.insert("sepiaIntensity", (double)pp.stylized.sepiaIntensity);
+    renderTbl.insert("invertIntensity", (double)pp.stylized.invertIntensity);
+    renderTbl.insert("posterizeLevels", (double)pp.stylized.posterizeLevels);
+    renderTbl.insert("pixelSize", (double)pp.stylized.pixelSize);
+    renderTbl.insert("clarityStrength", (double)pp.imageQuality.clarityStrength);
+    renderTbl.insert("clarityRadius", (double)pp.imageQuality.clarityRadius);
+    renderTbl.insert("shadowLift", (double)pp.imageQuality.shadowLift);
+    renderTbl.insert("highlightCompression", (double)pp.imageQuality.highlightCompression);
+    renderTbl.insert("colorFilterColor", std::move(colorFilterArr));
+    renderTbl.insert("colorFilterIntensity", (double)pp.imageQuality.colorFilterIntensity);
     renderTbl.insert("customPostProcesses", std::move(customEffectsArr));
     renderTbl.insert("outlineWidth", (double)render.outlineWidth);
     renderTbl.insert("outlineColor", std::move(outlineColorArr));
