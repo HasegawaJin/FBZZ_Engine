@@ -428,6 +428,44 @@ std::shared_ptr<renderer::Mesh> ResolveMesh(
     return model->meshes[meshIndex];
 }
 
+// SceneSerializer が扱う Asset パスを、現在保存/読込している Scene の場所から解決する。
+// WHY: TerrainComponent は Scene には "Assets/Terrain/..." という移動可能な参照を保存する。
+//      ただし FileSystem はプロジェクトルートを知らないため、そのまま読むと実行時カレント
+//      ディレクトリに依存して .fbzzterrain を見失う。Scene が Assets 配下にある前提から
+//      プロジェクトルートを逆算し、ディスクアクセス時だけ絶対寄りのパスへ変換する。
+std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std::string& assetPath)
+{
+    if (assetPath.empty()) return {};
+
+    std::string normalizedAsset = assetPath;
+    for (char& c : normalizedAsset) {
+        if (c == '\\') c = '/';
+    }
+
+    const bool isWindowsAbsolute =
+        normalizedAsset.size() >= 3
+        && std::isalpha(static_cast<unsigned char>(normalizedAsset[0]))
+        && normalizedAsset[1] == ':'
+        && normalizedAsset[2] == '/';
+    if (isWindowsAbsolute || normalizedAsset.starts_with("/"))
+        return normalizedAsset;
+
+    if (!normalizedAsset.starts_with("Assets/"))
+        return normalizedAsset;
+
+    std::string normalizedScene = scenePath;
+    for (char& c : normalizedScene) {
+        if (c == '\\') c = '/';
+    }
+
+    const std::string marker = "/Assets/";
+    const size_t assetsPos = normalizedScene.find(marker);
+    if (assetsPos == std::string::npos)
+        return normalizedAsset;
+
+    return normalizedScene.substr(0, assetsPos + 1) + normalizedAsset;
+}
+
 } // namespace
 
 // -----------------------------------------------------------------------
@@ -954,10 +992,22 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             terrainTbl.insert("maxHeight", (double)tc->maxHeight);
             terrainTbl.insert("chunkSize", (int64_t)tc->chunkSize);
 
-            if (tc->terrainAssetPath.empty()) {
+            bool savedToTerrainAsset = false;
+            if (!tc->terrainAssetPath.empty()) {
+                const std::string terrainDiskPath =
+                    ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
+
+                // WHY: シーン終了時の保存では Inspector の「Save Asset」ボタンを押さないため、
+                //      参照だけ保存すると .fbzzterrain の実体が古いまま、または未作成のまま残る。
+                //      Scene 保存と同じタイミングで外部 Terrain Asset も更新し、再起動後の白地形を防ぐ。
+                savedToTerrainAsset = TerrainAssetSerializer::Save(*tc, terrainDiskPath);
+            }
+
+            if (tc->terrainAssetPath.empty() || !savedToTerrainAsset) {
                 // ハイトマップ（float 配列）
                 // WHY: assetPath 未設定の既存 Terrain は従来どおり自己完結させ、
                 //      古いシーン / Prefab と同じ扱いで保存できるようにする。
+                //      asset 保存に失敗した場合も、Scene 側へフォールバックを残してデータ喪失を避ける。
                 toml::array heightArr;
                 for (float h : tc->heightData)
                     heightArr.push_back(static_cast<double>(h));
@@ -1645,7 +1695,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             if (!tc.terrainAssetPath.empty()) {
                 // WHY: Prefab / Scene には参照だけを保存し、重い height/splat/layer は
                 //      .fbzzterrain から復元する。失敗時は下のインライン形式にフォールバックする。
-                loadedFromAsset = TerrainAssetSerializer::Load(tc.terrainAssetPath, tc);
+                const std::string terrainDiskPath =
+                    ResolveAssetDiskPathForScene(path, tc.terrainAssetPath);
+                loadedFromAsset = TerrainAssetSerializer::Load(terrainDiskPath, tc);
                 tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
                 tc.enabled = (*terrainTbl)["enabled"].value_or(true);
             }
