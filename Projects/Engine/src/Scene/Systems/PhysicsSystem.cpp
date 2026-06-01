@@ -365,6 +365,8 @@ void DispatchCollisionEvents(Scene& scene,
 } // namespace
 
 void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
+    Script::SetPhysicsWorld(&world);
+
     std::vector<std::shared_ptr<physics::RigidBody>> bodies;
     std::vector<physics::ColliderInstance> colliders;
     std::vector<std::shared_ptr<physics::Volume>> volumes;

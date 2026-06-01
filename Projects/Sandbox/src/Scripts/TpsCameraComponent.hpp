@@ -55,12 +55,12 @@ public:
     void OnLateUpdate(float dt) override
     {
         (void)dt;
-        if (!m_gameObject) return;
+        if (!transform) return;
         if (!m_target || !m_target->IsValid()) FindTarget();
         if (!m_target) return;
 
-        if (mouseOrbit && Input::MouseButton(1)) {
-            const Vector2 delta = Input::MouseDelta();
+        if (mouseOrbit && input.MouseButton(1)) {
+            const Vector2 delta = input.GetMouseDelta();
             yaw   += delta.x * mouseSensitivity;
             pitch  = Clamp(pitch + delta.y * mouseSensitivity, minPitch, maxPitch);
         }
@@ -80,7 +80,7 @@ public:
 private:
     void FindTarget()
     {
-        m_target = targetTag.empty() ? nullptr : FindWithTag(targetTag);
+        m_target = targetTag.empty() ? nullptr : scene.FindWithTag(targetTag);
     }
 
     GameObject* m_target = nullptr;
