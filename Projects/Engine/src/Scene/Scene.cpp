@@ -41,6 +41,7 @@ Scene& Scene::operator=(Scene&& other) noexcept
     m_destroyQueue = std::move(other.m_destroyQueue);
     m_runtimePostProcessSettings = other.m_runtimePostProcessSettings;
     m_hasRuntimePostProcessSettings = other.m_hasRuntimePostProcessSettings;
+    m_userRenderPasses = std::move(other.m_userRenderPasses);
 
     FixupOwnership();
     other.Clear();
@@ -277,6 +278,7 @@ void Scene::Clear()
     m_nextIndex = 0;
     m_freeIndices.clear();
     ClearRuntimePostProcessSettings();
+    ClearUserRenderPasses();
 }
 
 renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()
@@ -300,6 +302,21 @@ void Scene::ClearRuntimePostProcessSettings()
 {
     m_runtimePostProcessSettings = {};
     m_hasRuntimePostProcessSettings = false;
+}
+
+void Scene::QueueUserRenderPass(UserRenderPassDesc desc)
+{
+    m_userRenderPasses.push_back(std::move(desc));
+}
+
+void Scene::ClearUserRenderPasses()
+{
+    m_userRenderPasses.clear();
+}
+
+const std::vector<UserRenderPassDesc>& Scene::GetUserRenderPasses() const
+{
+    return m_userRenderPasses;
 }
 
 void Scene::RemoveAllComponents(EntityID id)

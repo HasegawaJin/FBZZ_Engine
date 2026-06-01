@@ -23,10 +23,14 @@ class Scene;
 } // namespace fbzz::scene
 
 namespace fbzz::renderer {
+class RenderGraph;
+struct ShaderDescriptor;
 struct PostProcessSettings;
 }
 
 namespace fbzz::scene {
+struct RenderPassContext;
+struct UserRenderPassDesc;
 
 struct CollisionInfo {
     GameObject* self = nullptr;
@@ -69,6 +73,8 @@ public:
     virtual void OnTriggerStay(const CollisionInfo&) {}
     virtual void OnTriggerExit(const CollisionInfo&) {}
     virtual void OnDestroy() {}                            // GameObject 破棄時に呼ばれる
+    // OnSetupRenderPasses — RenderSystem が RenderGraph 登録中に呼ぶ、Script 側の描画パス注入フック。
+    virtual void OnSetupRenderPasses(renderer::RenderGraph&, RenderPassContext&) {}
     virtual void Reflect(IReflector&) {}                   // Inspector / Serializer からフィールドを列挙
     // GetScript<T>() の型判別に使う。派生クラスは TYPE_NAME static constexpr も定義する
     virtual const char* GetTypeName() const { return "Script"; }
@@ -110,6 +116,15 @@ public:
     void SetAnimatorBool (std::string_view name, bool v)    const;
     void SetAnimatorTrigger(std::string_view name)          const;
     bool IsAnimatorInState(std::string_view name)           const;
+
+    // QueueRenderPass — OnSetupRenderPasses 内から RenderGraph 注入パスを登録する。
+    // WHY: Script が RenderGraph の登録順や RenderSystem.cpp の内部構造を知らなくても、
+    //      VFX / 水面 / カスタム描画を Scene に閉じて拡張できるようにする。
+    void QueueRenderPass(UserRenderPassDesc desc) const;
+
+    // GetShaderDescriptor — MaterialComponent の名前引き SetParam に渡す ShaderDescriptor を取得する。
+    // WHY: MaterialComponent から ResourceManager::Active() 依存を除去し、リソース解決の責務を Script 側へ移す。
+    const renderer::ShaderDescriptor* GetShaderDescriptor(std::string_view shaderPath) const;
 
     // ScriptSystem が各ライフサイクル呼び出しの前に設定する。
     // 派生クラスは m_scene / m_gameObject を介して Scene / GameObject にアクセスする。
