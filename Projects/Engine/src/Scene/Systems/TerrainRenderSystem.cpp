@@ -313,7 +313,7 @@ void TerrainRenderSystem(
     static auto terrainShader = resources.LoadShader("assets/shaders/Terrain/Terrain.hlsl");
     static auto terrainPSO    = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
-        renderer::BlendMode::OPAQUE,
+        renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_ON
     });
     static auto cameraCBH  = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
@@ -557,7 +557,7 @@ void TerrainRenderSystem(
                 call.shader        = terrainShader;
                 call.pipelineState = terrainPSO;
                 call.indexCount    = chunk.indexCount;
-                call.layer         = renderer::RenderLayer::OPAQUE;
+                call.layer         = renderer::RenderLayer::OPAQUE_LAYER;
                 call.topology      = renderer::PrimitiveTopology::TRIANGLE_LIST;
 
                 // 定数バッファスロット
