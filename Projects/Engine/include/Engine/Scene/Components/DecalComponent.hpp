@@ -5,8 +5,8 @@
 // テクスチャを投影する。Albedo / Normal / Emissive の 3 チャンネルに対応する。
 // lifetime < 0 で永続、>= 0 で時間経過によりフェードアウト→削除される。
 #pragma once
-#include <Engine/Scene/Script.hpp>
 #include <Physics/Layer.hpp>
+#include <Engine/Scene/Script.hpp>
 #include <string>
 
 namespace fbzz::scene {

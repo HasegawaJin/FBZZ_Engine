@@ -11,10 +11,11 @@
 #include "RenderPasses/DebugPasses.hpp"
 #include "RenderPasses/GeometryPasses.hpp"
 #include "RenderPasses/PostProcessPasses.hpp"
-#include "RenderPasses/RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include "RenderPasses/SelectionPasses.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Asset/AssetManager.hpp"
@@ -371,13 +372,14 @@ void RenderSystem(Scene& scene,
     //      逆行列を使わず高速に抽出できる。全ジオメトリパスで共有する。
     const math::Frustum cameraFrustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
     const math::Frustum lightFrustum  = math::Frustum::FromViewProjection(lightVP);
+    OcclusionCuller occlusionCuller;
 
     RenderPassContext passCtx{
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles,
         sHdrW, sHdrH, selectionOutlineEnabled,
         lightData, lightVP, isDeferred, ssaoEnabled,
-        cameraFrustum, lightFrustum
+        &cameraFrustum, &lightFrustum, &occlusionCuller
     };
 
     // =========================================================================
@@ -399,6 +401,65 @@ void RenderSystem(Scene& scene,
     if (ssaoEnabled)
         graph.DeclareResource("SSAO", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
     graph.SetOutputs({ "Output" });
+
+    scene.ClearUserRenderPasses();
+
+    auto appendQueuedUserPasses = [&](UserRenderPassInjectionPoint injectionPoint) {
+        for (const auto& desc : scene.GetUserRenderPasses()) {
+            if (desc.injectionPoint != injectionPoint)
+                continue;
+            assert(!desc.name.empty() && "UserRenderPassDesc.name is required");
+            auto execute = desc.execute;
+            graph.AddPass(desc.name, desc.accesses, [&, execute]() {
+                if (execute)
+                    execute(passCtx);
+            }, desc.allowCulling);
+        }
+    };
+
+    auto queueWaterPasses = [&]() {
+        // WHY: Water も Script と同じ UserRenderPassDesc 経路で登録する。
+        //      これにより組み込み機能とユーザー VFX が同じ RenderGraph 拡張モデルに乗り、
+        //      将来的に Sandbox 側の専用 Script へ移しても RenderSystem の構造を変えずに済む。
+        UserRenderPassDesc copyPass{};
+        copyPass.name = "WaterSceneColorCopy";
+        copyPass.injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
+        copyPass.accesses = {
+            { "HDR", renderer::RenderGraph::ResourceUsage::Read },
+            { "SceneColor", renderer::RenderGraph::ResourceUsage::Write }
+        };
+        copyPass.execute = [=](RenderPassContext& ctx) {
+            ctx.renderer.SetRenderTarget(sceneColorRT, ctx.resources);
+            ctx.renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
+            if (copyColorShader.IsValid()) {
+                renderer::DrawCall dc;
+                dc.shader = copyColorShader;
+                dc.pipelineState = postprocPSO;
+                dc.vertexCount = 3;
+                dc.textures[5] = ctx.resources.GetColorTexture(hdrRT, 0);
+                ctx.renderer.Submit(dc, ctx.resources);
+            }
+        };
+        scene.QueueUserRenderPass(std::move(copyPass));
+
+        UserRenderPassDesc waterPass{};
+        waterPass.name = "WaterForward";
+        waterPass.injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
+        waterPass.accesses = {
+            { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite },
+            { "SceneColor", renderer::RenderGraph::ResourceUsage::Read }
+        };
+        waterPass.execute = [=](RenderPassContext& ctx) {
+            ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+            WaterRenderSystem(ctx.scene, ctx.renderer, ctx.resources, ctx.camera,
+                              ctx.handles.hdrRT,
+                              copyColorShader.IsValid()
+                                  ? ctx.resources.GetColorTexture(sceneColorRT, 0)
+                                  : renderer::ResourceHandle<renderer::TextureTag>{},
+                              core::Time::TotalTime(), &ctx.settings);
+        };
+        scene.QueueUserRenderPass(std::move(waterPass));
+    };
 
     // ── Shadow ────────────────────────────────────────────────────────────────
     graph.AddPass("Shadow", {}, { "ShadowMap" }, [&]() {
@@ -462,6 +523,18 @@ void RenderSystem(Scene& scene,
         });
     }
 
+    queueWaterPasses();
+    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+        auto* sc = scene.GetComponent<ScriptComponent>(id);
+        auto* go = scene.GetGameObject(id);
+        if (!sc || !sc->script || !go || !sc->script->enabled)
+            continue;
+        sc->script->SetContext(&scene, go);
+        sc->script->OnSetupRenderPasses(graph, passCtx);
+    }
+
+    appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterOpaque);
+
     // ── デカール用深度スナップショット ────────────────────────────────────────
     graph.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.AddPass("DecalDepthCopy", { isDeferred ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
@@ -488,31 +561,7 @@ void RenderSystem(Scene& scene,
         ExecuteParticlePass(passCtx);
     });
 
-    // ── Water (透明水面) ─────────────────────────────────────────────────────
-    // WHY: 水面は HDR カラーと深度を読みながら同じ HDR へ半透明合成する。
-    //      不透明・地形・空・デカール・パーティクル後、ポストプロセス前に実行する。
-    graph.AddPass("WaterSceneColorCopy", { "HDR" }, { "SceneColor" }, [&]() {
-        renderer.SetRenderTarget(sceneColorRT, resources);
-        renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
-        if (copyColorShader.IsValid()) {
-            renderer::DrawCall dc;
-            dc.shader = copyColorShader;
-            dc.pipelineState = postprocPSO;
-            dc.vertexCount = 3;
-            dc.textures[5] = resources.GetColorTexture(hdrRT, 0);
-            renderer.Submit(dc, resources);
-        }
-    });
-
-    graph.AddPass("WaterForward", { "HDR", "SceneColor" }, { "HDR" }, [&]() {
-        renderer.SetRenderTarget(passHandles.hdrRT, resources);
-        WaterRenderSystem(scene, renderer, resources, camera,
-                          passHandles.hdrRT,
-                          copyColorShader.IsValid()
-                              ? resources.GetColorTexture(sceneColorRT, 0)
-                              : renderer::ResourceHandle<renderer::TextureTag>{},
-                          core::Time::TotalTime(), &rs);
-    });
+    appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
     // ── Selection / Debug ─────────────────────────────────────────────────────
     graph.AddPass("UnderwaterCaustics", { "HDR" }, { "HDR" }, [&]() {
@@ -532,6 +581,8 @@ void RenderSystem(Scene& scene,
     graph.AddPass("DebugDecalBounds", { "HDR" }, { "HDR" }, [&]() {
         ExecuteDecalDebugPass(passCtx);
     });
+
+    appendQueuedUserPasses(UserRenderPassInjectionPoint::BeforePostProcess);
 
     // ── PostProcess チェーン ──────────────────────────────────────────────────
     if (rs.postProcess.bloom.enabled) {

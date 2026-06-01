@@ -1303,7 +1303,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             mc.enabled      = (*matTbl)["enabled"].value_or(true);
             mc.blendMode    = static_cast<renderer::BlendMode>((*matTbl)["blendMode"].value_or(int64_t{0}));
             mc.doubleSided  = (*matTbl)["doubleSided"].value_or(false);
-            mc.renderQueue  = static_cast<int32_t>((*matTbl)["renderQueue"].value_or(int64_t{0}));
+            mc.renderQueue  = static_cast<int32_t>((*matTbl)["renderQueue"].value_or(
+                static_cast<int64_t>(renderer::RenderQueue::GEOMETRY)));
 
             auto mat        = std::make_shared<renderer::Material>();
             mat->shaderPath = mc.shaderPath;
