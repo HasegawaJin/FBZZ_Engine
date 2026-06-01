@@ -1,26 +1,50 @@
 // FBZZ Engine
 // RenderPassContext.hpp | fbzz::scene
-// RenderSystem pass shared state
+// RenderGraph 注入パスと各描画パスが共有する実行コンテキスト
 #pragma once
 
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/LightSystem.hpp>
+#include <Engine/Renderer/RenderGraph.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Systems/OcclusionCuller.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
-#include "OcclusionCuller.hpp"
 #include <cstdint>
+#include <functional>
+#include <string>
 #include <vector>
 
 namespace fbzz::scene {
 
 class Scene;
+struct RenderPassContext;
+
+// UserRenderPassInjectionPoint — Script が追加するパスを既存パイプラインのどこへ挿入するかを表す。
+// WHY: RenderGraph は依存関係で実行順を決めるが、HDR へ ReadWrite する透明系パスは同じ依存を持ちやすい。
+//      明示的な挿入点を持たせ、Water / VFX / PostProcess 前処理の意図をコードから読めるようにする。
+enum class UserRenderPassInjectionPoint : uint8_t {
+    AfterOpaque,
+    AfterTransparent,
+    BeforePostProcess
+};
+
+// UserRenderPassDesc — Script / Scene が RenderGraph へ追加したい 1 パス分の宣言。
+// WHAT: reads / writes は RenderGraph 上の論理リソース名、execute は実際の描画処理を受け持つ。
+//       execute は RenderSystem が保持する RenderPassContext を渡して呼ぶため、Script 側は renderer/resources/handles を参照できる。
+struct UserRenderPassDesc {
+    std::string name;
+    UserRenderPassInjectionPoint injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
+    std::vector<renderer::RenderGraph::ResourceAccess> accesses;
+    std::function<void(RenderPassContext&)> execute;
+    bool allowCulling = true;
+};
 
 struct PerFrameCB {
     math::Matrix4 view;
@@ -96,21 +120,21 @@ struct OutlineCB {
 
 // DecalConstants (b2) — HLSL の DecalConstants cbuffer と完全に一致させること。
 struct DecalCB {
-    math::Matrix4 invDecalWorld;    // ワールド→デカールローカル (64 bytes)
-    float         albedo[4];        // RGBA アルベドカラー        (16 bytes)
-    float         emissiveColor[3]; // エミッシブカラー           (12 bytes)
-    float         emissiveScale;    //                            ( 4 bytes)
-    float         normalStrength;   //                            ( 4 bytes)
-    float         alpha;            // フェードアルファ           ( 4 bytes)
-    uint32_t      textureMask;      // bit0=albedo bit1=normal bit2=emissive bit3=decalMask ( 4 bytes)
-    float         _pad;             //                            ( 4 bytes)
-    math::Vector3 decalTangent;     // Decal local +X. Normal-map T axis.
+    math::Matrix4 invDecalWorld;
+    float         albedo[4];
+    float         emissiveColor[3];
+    float         emissiveScale;
+    float         normalStrength;
+    float         alpha;
+    uint32_t      textureMask;
+    float         _pad;
+    math::Vector3 decalTangent;
     float         _pad1;
-    math::Vector3 decalBitangent;   // Decal local +Z. Projected UV V axis.
+    math::Vector3 decalBitangent;
     float         _pad2;
-    math::Vector3 decalNormal;      // Base normal for flat normal maps.
+    math::Vector3 decalNormal;
     float         _pad3;
-};                                  // 160 bytes (16 byte aligned)
+};
 
 struct RenderPassHandles {
     renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
@@ -152,24 +176,21 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> postprocCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
 
-    renderer::ResourceHandle<renderer::RenderTargetTag>   decalDepthRT;  // 深度専用 RT (decal 読み取り用コピー先)
-    renderer::ResourceHandle<renderer::RenderTargetTag>   decalMaskRT;   // 除外オブジェクト描画先 (1-color)
+    renderer::ResourceHandle<renderer::RenderTargetTag>   decalDepthRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag>   decalMaskRT;
     renderer::ResourceHandle<renderer::ShaderTag>         decalShader;
     renderer::ResourceHandle<renderer::ShaderTag>         decalMaskShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  decalPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  decalMaskPSO;
     renderer::ResourceHandle<renderer::ConstantBufferTag> decalCB;
 
-    // ── Shadow ────────────────────────────────────────────────────────────────
     renderer::ResourceHandle<renderer::ShaderTag>         shadowShader;
     renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
 
-    // ── 共用 PSO ─────────────────────────────────────────────────────────────
-    renderer::ResourceHandle<renderer::PipelineStateTag>  defaultPSO;   // SOLID / OPAQUE / DEPTH_ON
+    renderer::ResourceHandle<renderer::PipelineStateTag>  defaultPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  wireframePSO;
 
-    // ── Sky ───────────────────────────────────────────────────────────────────
     renderer::ResourceHandle<renderer::ShaderTag>         skyShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  skyPSO;
     renderer::ResourceHandle<renderer::BufferTag>         skyVB;
@@ -177,13 +198,11 @@ struct RenderPassHandles {
     uint32_t                                              skyIndexCount = 0;
     renderer::ResourceHandle<renderer::ConstantBufferTag> atmosphereCB;
 
-    // ── Particle ──────────────────────────────────────────────────────────────
     renderer::ResourceHandle<renderer::ShaderTag>         particleShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
     renderer::ResourceHandle<renderer::BufferTag>         particleVB;
     renderer::ResourceHandle<renderer::BufferTag>         particleIB;
 
-    // ── Deferred ジオメトリ ───────────────────────────────────────────────────
     renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
     renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
     renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
@@ -204,23 +223,21 @@ struct RenderPassContext {
     uint32_t height = 0;
     bool selectionOutlineEnabled = false;
 
-    renderer::LightConstantsCB lightData;   // RenderSystem が毎フレーム設定
-    math::Matrix4               lightVP;    // 影投射ライトの VP 行列
+    renderer::LightConstantsCB lightData;
+    math::Matrix4               lightVP;
     bool                        isDeferred  = false;
     bool                        ssaoEnabled = false;
 
-    // カリング
-    math::Frustum  cameraFrustum; // カメラ視錐台 (Gribb-Hartmann 法で VP から抽出)
-    math::Frustum  lightFrustum;  // ライト視錐台 (シャドウパスのフラスタムカリング用)
-    OcclusionCuller occlusionCuller; // CPU ソフトウェアオクルージョンカリング
+    const math::Frustum* cameraFrustum = nullptr;
+    const math::Frustum* lightFrustum  = nullptr;
+    OcclusionCuller* occlusionCuller = nullptr;
 
-    // レンダリング統計 (各パスでインクリメント → RenderSystem が Snapshot に書き出す)
-    int statsTotalObjects    = 0; // フラスタムカリング前の候補オブジェクト数
-    int statsFrustumCulled   = 0; // フラスタムで除外した数
-    int statsOcclusionCulled = 0; // オクルージョンで除外した数
-    int statsDrawCalls       = 0; // 実際に発行した DrawCall 数
-    int statsVertexCount     = 0; // 描画頂点数の合計
-    int statsTriangleCount   = 0; // 描画三角形数の合計
+    int statsTotalObjects    = 0;
+    int statsFrustumCulled   = 0;
+    int statsOcclusionCulled = 0;
+    int statsDrawCalls       = 0;
+    int statsVertexCount     = 0;
+    int statsTriangleCount   = 0;
 };
 
 } // namespace fbzz::scene

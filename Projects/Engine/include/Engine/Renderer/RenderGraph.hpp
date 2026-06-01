@@ -143,6 +143,19 @@ public:
         m_passes.push_back(std::move(pass));
     }
 
+    void AddPass(std::string_view name,
+                 std::vector<ResourceAccess> accesses,
+                 ExecuteFn execute,
+                 bool allowCulling = true)
+    {
+        RenderPass pass;
+        pass.name = name;
+        pass.accesses = std::move(accesses);
+        pass.execute = std::move(execute);
+        pass.allowCulling = allowCulling;
+        m_passes.push_back(std::move(pass));
+    }
+
     void DeclareResource(std::string_view name, const ResourceDesc& desc)
     {
         m_resources[std::string(name)] = desc;
@@ -386,7 +399,7 @@ private:
             });
 
         struct AliasGroupState {
-            int lastPass = std::numeric_limits<int>::min();
+            int lastPass = (std::numeric_limits<int>::min)();
             ResourceDesc desc;
         };
         std::vector<AliasGroupState> groups;
@@ -407,7 +420,7 @@ private:
 
             if (chosen < 0) {
                 chosen = static_cast<int>(groups.size());
-                groups.push_back({ std::numeric_limits<int>::min(), lifetime.desc });
+                groups.push_back({ (std::numeric_limits<int>::min)(), lifetime.desc });
             }
 
             lifetime.aliasGroup = chosen;

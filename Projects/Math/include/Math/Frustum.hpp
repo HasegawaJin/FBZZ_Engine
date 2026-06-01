@@ -7,6 +7,12 @@
 #include "Vector3.hpp"
 #include "Matrix4.hpp"
 
+// Plane.hpp include 後に別ヘッダ経由で Plane マクロが再定義された場合に備える。
+// WHAT: Frustum は Plane 型を配列で保持するため、ここで名前を必ず型として解決させる。
+#ifdef Plane
+#undef Plane
+#endif
+
 namespace fbzz::math {
 
 struct Frustum {
