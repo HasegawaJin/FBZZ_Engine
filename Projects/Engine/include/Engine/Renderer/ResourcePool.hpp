@@ -4,6 +4,7 @@
 // 任意のリソース型を slot / generation で管理する内部コンテナ。
 // 削除された slot を再利用しても古いハンドルが通らないようにする。
 #pragma once
+#include <Engine/Core/Memory/MemoryDebug.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <cstdint>
 #include <limits>
@@ -15,9 +16,15 @@ namespace fbzz::renderer {
 template<typename T, typename Tag>
 class ResourcePool {
 public:
-    ResourceHandle<Tag> Insert(std::shared_ptr<T> resource)
+    ResourceHandle<Tag> Insert(std::shared_ptr<T> resource,
+                               const char* debugName = "ResourcePool",
+                               const char* file = "Unknown",
+                               int line = 0)
     {
         if (!resource) return ResourceHandle<Tag>::Null();
+
+        // WHY: ResourcePool は GPU リソースの実所有者なので、ここで追跡すれば各呼び出し元へ侵襲せず解放漏れを見つけられる。
+        m_debug.TrackShared(resource, core::MemoryTag::RENDERER, debugName, file, line);
 
         uint32_t id = 0;
         if (!m_freeList.empty()) {
@@ -51,12 +58,43 @@ public:
         if (!IsLive(handle)) return;
 
         Slot& slot = m_slots[handle.id];
+        m_debug.Untrack(slot.resource.get());
         slot.resource.reset();
         slot.occupied = false;
         // generation を進めて、同じ id を再利用しても古いハンドルが IsLive を通過しないようにする。
         // 0 に戻すと ResourceHandle のデフォルト値 (gen=0) と衝突するため 1 に巻き戻す。
         slot.gen = (slot.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : slot.gen + 1u;
         m_freeList.push_back(handle.id);
+    }
+
+    [[nodiscard]] std::size_t GetLiveDebugCount() const
+    {
+        return m_debug.GetLiveCount();
+    }
+
+    [[nodiscard]] const core::AllocationInfo* GetLiveDebugInfo(std::size_t index) const
+    {
+        return m_debug.GetLive(index);
+    }
+
+    void ReleaseOwnedForShutdown()
+    {
+        // WHY: ResourceManager 破棄時は ResourcePool 自身が持つ shared_ptr は正常な所有であり、
+        //      そのまま MemoryDebug を見ると全リソースがリークに見える。
+        //      先に所有を手放し、weak_ptr がまだ生きているものだけを外部保持の疑いとして残す。
+        m_freeList.clear();
+        for (uint32_t id = 0; id < static_cast<uint32_t>(m_slots.size()); ++id) {
+            Slot& slot = m_slots[id];
+            if (slot.occupied) {
+                slot.resource.reset();
+                slot.occupied = false;
+                slot.gen = (slot.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : slot.gen + 1u;
+                if (id != 0) {
+                    m_freeList.push_back(id);
+                }
+            }
+        }
+        m_debug.SweepExpired();
     }
 
 private:
@@ -76,6 +114,7 @@ private:
 
     std::vector<Slot> m_slots = { Slot{} };
     std::vector<uint32_t> m_freeList;
+    core::MemoryDebug m_debug;
 };
 
 } // namespace fbzz::renderer

@@ -84,10 +84,8 @@ NG: GLM / GLFW / Bullet / PhysX / Box2D
 
 ---
 
-## スレッドモデル (詳細: `docs/conventions/threading.md`)
-
-Step 1〜5 はシングルスレッド。`std::thread` / `std::mutex` / `std::atomic` を engine / physics / math に持ち込まない。
-
+## メモリ管理
+    スマートポインタ + MemoryDebug  (CustomMemoryAllocator)
 ---
 
 ## C++20

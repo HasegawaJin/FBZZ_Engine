@@ -13,6 +13,7 @@
 #include <Engine/Scene/ScriptProxy/ScriptInputProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptLightProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPhysicsProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPostProcessProxy.hpp>
@@ -133,6 +134,7 @@ public:
     ScriptAnimatorProxy animator{ this };
     ScriptDebugProxy debug{ this };
     ScriptPostProcessProxy postprocess{ this };
+    ScriptMemoryProxy memory{ this };
 
     // Unity: GetComponent<T>()
     // WHY: template 定義は Scene.hpp 末尾で行う (GameObject が完全型である必要があるため)
@@ -227,6 +229,7 @@ private:
     friend struct ScriptAnimatorProxy;
     friend struct ScriptDebugProxy;
     friend struct ScriptPostProcessProxy;
+    friend struct ScriptMemoryProxy;
 
     struct InvokeEntry {
         std::function<void()> fn;
