@@ -27,6 +27,7 @@
 #include "Components/IKSolverComponent.hpp"
 #include "Components/CharacterControllerComponent.hpp"
 #include "Components/TerrainComponent.hpp"
+#include "Components/WaterComponent.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -61,7 +62,8 @@ using ComponentList = std::tuple<
     DecalComponent,
     IKSolverComponent,
     CharacterControllerComponent,
-    TerrainComponent
+    TerrainComponent,
+    WaterComponent
     // 新型はここに1行追加するだけ
 >;
 

@@ -4,6 +4,7 @@
 // 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Scene/Systems/TerrainRenderSystem.hpp"
+#include "Engine/Scene/Systems/WaterRenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
 #include "RenderPasses/DecalPass.hpp"
@@ -73,6 +74,8 @@ void RenderSystem(Scene& scene,
     }
 
     static auto compositeShader         = resources.LoadShader("assets/shaders/PostProcess/Color/Composite.hlsl");
+    static auto copyColorShader         = resources.LoadShader("assets/shaders/PostProcess/Color/CopyColor.hlsl");
+    static auto causticsShader          = resources.LoadShader("assets/shaders/PostProcess/Water/Caustics.hlsl");
     static auto ssaoShader              = resources.LoadShader("assets/shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
     static auto ssaoBlurShader          = resources.LoadShader("assets/shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
     static auto bloomDownShader         = resources.LoadShader("assets/shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
@@ -136,6 +139,11 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::OPAQUE,
         renderer::DepthMode::DEPTH_OFF
     });
+    static auto causticsPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_OFF
+    });
     static auto decalPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::ALPHA_BLEND,
@@ -174,6 +182,7 @@ void RenderSystem(Scene& scene,
     static renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
+    static renderer::ResourceHandle<renderer::RenderTargetTag> sceneColorRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
     static renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> decalDepthRT;
@@ -194,6 +203,7 @@ void RenderSystem(Scene& scene,
             if (ldrRT.IsValid())            resources.Release(ldrRT);
             if (selectionMaskRT.IsValid())  resources.Release(selectionMaskRT);
             if (outlineRT.IsValid())        resources.Release(outlineRT);
+            if (sceneColorRT.IsValid())     resources.Release(sceneColorRT);
             if (customPostProcessRT[0].IsValid()) resources.Release(customPostProcessRT[0]);
             if (customPostProcessRT[1].IsValid()) resources.Release(customPostProcessRT[1]);
             if (gbufferRT.IsValid())        resources.Release(gbufferRT);
@@ -207,6 +217,7 @@ void RenderSystem(Scene& scene,
             ldrRT           = resources.CreateRenderTarget(curW, curH, 1);
             selectionMaskRT = resources.CreateRenderTarget(curW, curH, 1);
             outlineRT       = resources.CreateRenderTarget(curW, curH, 1);
+            sceneColorRT    = resources.CreateRenderTarget(curW, curH, 1);
             customPostProcessRT[0] = resources.CreateRenderTarget(curW, curH, 1);
             customPostProcessRT[1] = resources.CreateRenderTarget(curW, curH, 1);
             gbufferRT       = resources.CreateRenderTarget(curW, curH, 2);
@@ -301,6 +312,7 @@ void RenderSystem(Scene& scene,
     passHandles.bloomDownShader   = bloomDownShader;
     passHandles.bloomUpShader     = bloomUpShader;
     passHandles.compositeShader   = compositeShader;
+    passHandles.causticsShader    = causticsShader;
     passHandles.selectionMaskShader       = selectionMaskShader;
     passHandles.selectionMaskSkinnedShader = selectionMaskSkinnedShader;
     passHandles.selectionOutlineShader    = selectionOutlineShader;
@@ -317,6 +329,7 @@ void RenderSystem(Scene& scene,
     }
     passHandles.selectionMaskPSO  = selectionMaskPso;
     passHandles.postprocPSO       = postprocPSO;
+    passHandles.causticsPSO       = causticsPSO;
     passHandles.frameCB           = frameCB;
     passHandles.objectCB          = objectCB;
     passHandles.lightCB           = lightCB;
@@ -377,6 +390,7 @@ void RenderSystem(Scene& scene,
     graph.DeclareResource("LDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("Outline",    { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    graph.DeclareResource("SceneColor", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     graph.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
@@ -474,7 +488,37 @@ void RenderSystem(Scene& scene,
         ExecuteParticlePass(passCtx);
     });
 
+    // ── Water (透明水面) ─────────────────────────────────────────────────────
+    // WHY: 水面は HDR カラーと深度を読みながら同じ HDR へ半透明合成する。
+    //      不透明・地形・空・デカール・パーティクル後、ポストプロセス前に実行する。
+    graph.AddPass("WaterSceneColorCopy", { "HDR" }, { "SceneColor" }, [&]() {
+        renderer.SetRenderTarget(sceneColorRT, resources);
+        renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
+        if (copyColorShader.IsValid()) {
+            renderer::DrawCall dc;
+            dc.shader = copyColorShader;
+            dc.pipelineState = postprocPSO;
+            dc.vertexCount = 3;
+            dc.textures[5] = resources.GetColorTexture(hdrRT, 0);
+            renderer.Submit(dc, resources);
+        }
+    });
+
+    graph.AddPass("WaterForward", { "HDR", "SceneColor" }, { "HDR" }, [&]() {
+        renderer.SetRenderTarget(passHandles.hdrRT, resources);
+        WaterRenderSystem(scene, renderer, resources, camera,
+                          passHandles.hdrRT,
+                          copyColorShader.IsValid()
+                              ? resources.GetColorTexture(sceneColorRT, 0)
+                              : renderer::ResourceHandle<renderer::TextureTag>{},
+                          core::Time::TotalTime(), &rs);
+    });
+
     // ── Selection / Debug ─────────────────────────────────────────────────────
+    graph.AddPass("UnderwaterCaustics", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteCausticsPass(passCtx);
+    });
+
     if (selectionOutlineEnabled) {
         graph.AddPass("SelectionMask", { "HDR" }, { "SelectionMask" }, [&]() {
             ExecuteSelectionMaskPass(passCtx);
