@@ -4,12 +4,13 @@
 // GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
 // Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
+#include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include "Entity.hpp"
 #include "ComponentArray.hpp"
 #include "Transform.hpp"
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
-#include <Engine/Renderer/RenderSettings.hpp>
 #include <vector>
 #include <memory>
 #include <string>
@@ -122,6 +123,12 @@ public:
     void SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings);
     void ClearRuntimePostProcessSettings();
 
+    // QueueUserRenderPass — Script から RenderGraph へ追加するパスを 1 フレーム分キューに積む。
+    // WHY: Script が RenderSystem 内部の登録順に直接依存せず、意図した挿入点だけを宣言できるようにする。
+    void QueueUserRenderPass(UserRenderPassDesc desc);
+    void ClearUserRenderPasses();
+    const std::vector<UserRenderPassDesc>& GetUserRenderPasses() const;
+
     // --- GameObject / SceneView の template 本体から呼ばれる内部 API ---
 
     template<typename T> T&   AddComponent(EntityID id, T component);
@@ -162,6 +169,7 @@ private:
 
     renderer::PostProcessSettings m_runtimePostProcessSettings;
     bool m_hasRuntimePostProcessSettings = false;
+    std::vector<UserRenderPassDesc> m_userRenderPasses;
 
     EntityID AllocateEntity();
     void     DestroyImmediate(EntityID id);
