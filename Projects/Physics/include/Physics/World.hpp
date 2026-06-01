@@ -60,6 +60,50 @@ namespace fbzz::physics
         const std::vector<CollisionEvent>& GetStayEvents()  const;
         const std::vector<CollisionEvent>& GetExitEvents()  const;
 
+        // ── レイキャスト / 形状クエリ ────────────────────────────────────────────
+        // Step() の前後どちらでも呼べる。コライダーは UpdateColliders() 後の状態を使う。
+
+        // レイキャストの結果。hit = false のときフィールドは未定義。
+        struct RaycastHit {
+            math::Vector3 point;        // ヒット点 (ワールド空間)
+            math::Vector3 normal;       // ヒット面の外向き法線
+            float         distance = 0; // origin からの距離
+            const Collider* collider = nullptr; // ヒットしたコライダー
+            RigidBody*      body     = nullptr; // 紐づく剛体 (static なら nullptr)
+        };
+
+        // filter: nullptr のとき全コライダーを対象にする。
+        //         渡すと false を返したコライダーをスキップする。
+        //         例: 静的かつ非トリガーのみ → [](const ColliderInstance& i){ return !i.isTrigger && (!i.body || i.body->IsStatic()); }
+        using ColliderFilter = std::function<bool(const ColliderInstance&)>;
+
+        // 最も近い 1 件のみ返す。戻り値は hit の有無。
+        bool Raycast(const math::Vector3& origin,
+                     const math::Vector3& direction,
+                     float                maxDistance,
+                     RaycastHit&          hit,
+                     ColliderFilter        filter = nullptr) const;
+
+        // 全ヒットを距離昇順で返す。
+        std::vector<RaycastHit> RaycastAll(const math::Vector3& origin,
+                                           const math::Vector3& direction,
+                                           float                maxDistance,
+                                           ColliderFilter        filter = nullptr) const;
+
+        // 球形スイープ (Sphere Cast)。最も近い 1 件のみ返す。
+        bool SphereCast(const math::Vector3& origin,
+                        float                radius,
+                        const math::Vector3& direction,
+                        float                maxDistance,
+                        RaycastHit&          hit,
+                        ColliderFilter        filter = nullptr) const;
+
+        // 球と重なるコライダーを全て返す (順序未定義)。
+        std::vector<const ColliderInstance*> OverlapSphere(
+                        const math::Vector3& center,
+                        float                radius,
+                        ColliderFilter        filter = nullptr) const;
+
     private:
         void RemoveExpiredVolumes();
         void ApplyForcesAndVolumes(float dt, std::vector<float>& effectiveDts);
