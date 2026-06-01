@@ -80,7 +80,7 @@ public:
 
     void OnStart() override
     {
-        auto* rb = GetComponent<RigidBodyComponent>();
+        auto* rb = scene.GetComponent<RigidBodyComponent>();
         if (!rb || !rb->rigidBody) return;
         // WHY: 接触摩擦トルクでカプセルが傾くと接触法線が変化し、Baumgarte 補正が
         //      水平成分を持って前後ジッターを引き起こす。全軸 freeze でこれを防ぐ。
@@ -89,15 +89,15 @@ public:
 
     void OnUpdate(float dt) override
     {
-        if (!m_gameObject) return;
-        auto* cc  = GetComponent<CharacterControllerComponent>();
-        auto* rb  = GetComponent<RigidBodyComponent>();
+        if (!transform) return;
+        auto* cc  = scene.GetComponent<CharacterControllerComponent>();
+        auto* rb  = scene.GetComponent<RigidBodyComponent>();
         auto* phy = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
 
         if (cc) {
             cc->Tick(phy, dt);
-            SetAnimatorFloat(paramVerticalSpeed, cc->verticalSpeed);
-            SetAnimatorBool(paramIsGrounded,     cc->isGrounded);
+            animator.SetFloat(paramVerticalSpeed, cc->verticalSpeed);
+            animator.SetBool(paramIsGrounded,     cc->isGrounded);
         }
         UpdateIK();
         HandleJump(cc, phy);
@@ -105,10 +105,10 @@ public:
         const Vector3 forward = GetMoveForward();
         const Vector3 right   = GetMoveRight(forward);
         Vector3 move = Vector3::ZERO;
-        if (Input::KeyHeld((KeyCode)keyForward))  move += forward;
-        if (Input::KeyHeld((KeyCode)keyBackward)) move -= forward;
-        if (Input::KeyHeld((KeyCode)keyRight))    move += right;
-        if (Input::KeyHeld((KeyCode)keyLeft))     move -= right;
+        if (input.GetKey((KeyCode)keyForward))  move += forward;
+        if (input.GetKey((KeyCode)keyBackward)) move -= forward;
+        if (input.GetKey((KeyCode)keyRight))    move += right;
+        if (input.GetKey((KeyCode)keyLeft))     move -= right;
 
         if (move.LengthSq() <= EPSILON) {
             if (phy) {
@@ -117,13 +117,13 @@ public:
                 vel.x = vel.z = 0.0f;
                 phy->SetVelocity(vel);
             }
-            SetAnimatorFloat(paramSpeed, 0.0f);
+            animator.SetFloat(paramSpeed, 0.0f);
             return;
         }
 
-        const float   speed     = Input::KeyHeld((KeyCode)keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
+        const float   speed     = input.GetKey((KeyCode)keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
         const Vector3 direction = move.Normalized();
-        SetAnimatorFloat(paramSpeed, speed);
+        animator.SetFloat(paramSpeed, speed);
 
         if (phy) {
             // WHY: カプセルを Transform で直接ワープさせると、坂の接触法線による押し上げを
@@ -148,13 +148,13 @@ public:
 
     void OnCollisionEnter(const CollisionInfo& info) override
     {
-        auto* cc = GetComponent<CharacterControllerComponent>();
+        auto* cc = scene.GetComponent<CharacterControllerComponent>();
         if (cc) cc->RegisterGroundContact(info);
     }
 
     void OnCollisionStay(const CollisionInfo& info) override
     {
-        auto* cc = GetComponent<CharacterControllerComponent>();
+        auto* cc = scene.GetComponent<CharacterControllerComponent>();
         if (cc) cc->RegisterGroundContact(info);
     }
 
@@ -162,13 +162,13 @@ private:
     void HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
     {
         if (!cc || !cc->isGrounded || !phy) return;
-        if (!Input::KeyDown((KeyCode)keyJump)) return;
+        if (!input.GetKeyDown((KeyCode)keyJump)) return;
 
         // WHY: インパルス = jumpForce * mass とすることで、質量に関わらず同じ跳躍高さを保つ。
         phy->ApplyImpulse({ 0.0f, jumpForce * phy->GetMass(), 0.0f });
         cc->Jump();
-        SetAnimatorBool(paramIsGrounded, false);
-        SetAnimatorFloat(paramVerticalSpeed, jumpForce);
+        animator.SetBool(paramIsGrounded, false);
+        animator.SetFloat(paramVerticalSpeed, jumpForce);
     }
 
     // IK は地上ステート (Idle/Walk/Run) のときのみ有効にする。
@@ -176,17 +176,17 @@ private:
     //      アニメーションが破綻するため。
     void UpdateIK()
     {
-        const bool ikOff = IsAnimatorInState(stateJumpUp)  ||
-                           IsAnimatorInState(stateFall)    ||
-                           IsAnimatorInState(stateLanding);
-        auto* ik = GetComponent<IKSolverComponent>();
+        const bool ikOff = animator.IsInState(stateJumpUp)  ||
+                           animator.IsInState(stateFall)    ||
+                           animator.IsInState(stateLanding);
+        auto* ik = scene.GetComponent<IKSolverComponent>();
         if (ik) ik->enabled = !ikOff;
     }
 
     Vector3 GetMoveForward() const
     {
         if (!useCameraForward) return Vector3::FORWARD;
-        auto* camGO = GetMainCameraObject();
+        auto* camGO = scene.GetMainCameraObject();
         if (!camGO) return Vector3::FORWARD;
         Vector3 fwd = camGO->transform.Forward();
         fwd.y = 0.0f;

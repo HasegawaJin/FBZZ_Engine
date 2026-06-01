@@ -17,14 +17,25 @@ void ScriptSystem(Scene& scene, float dt)
         auto* go = scene.GetGameObject(id);
         if (!sc || !sc->script || !go) continue;
 
+        sc->script->SetContext(&scene, go);
+        sc->script->SetDeltaTime(dt);
+        sc->script->SyncEnabledState();
+
+        if (!sc->m_awoken) {
+            sc->script->OnAwake();
+            sc->m_awoken = true;
+        }
+
         if (!sc->m_started) {
-            sc->script->SetContext(&scene, go);
             sc->script->OnStart();
             sc->m_started = true;
         }
 
-        if (sc->script->enabled)
+        if (sc->script->enabled) {
+            sc->script->TickFrameDelays();
+            sc->script->TickInvokes(dt);
             sc->script->OnUpdate(dt);
+        }
     }
 }
 
@@ -35,6 +46,10 @@ void LateScriptSystem(Scene& scene, float dt)
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
         if (!sc || !sc->script || !go) continue;
+
+        sc->script->SetContext(&scene, go);
+        sc->script->SyncEnabledState();
+
         if (sc->script->enabled)
             sc->script->OnLateUpdate(dt);
     }

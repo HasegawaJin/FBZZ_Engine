@@ -43,16 +43,16 @@ public:
 
     void OnStart() override
     {
-        // 追跡先 GO を名前で検索する。見つからなければ m_gameObject 自身を使う。
-        m_targetGO = Find(targetName);
-        if (!m_targetGO) m_targetGO = m_gameObject;
+        // 追跡先 GO を名前で検索する。見つからなければ自分自身を使う。
+        m_targetGO = scene.Find(targetName);
+        if (!m_targetGO) m_targetGO = scene.Self();
 
         // ----------------------------------------------------------------
         // キャンバス Root GO を生成 (Scene の root に置く)
         // WHY: CollectCanvases() はルート GO のみ UICanvas を探索するため、
         //      親を持たない root GameObject として配置する必要がある。
         // ----------------------------------------------------------------
-        auto& canvasGO = CreateGameObject("__NamePlate_Canvas__");
+        auto& canvasGO = scene.Create("__NamePlate_Canvas__");
         m_canvasID = canvasGO.GetID();
 
         UICanvas canvas;
@@ -69,7 +69,7 @@ public:
         // transform.localPosition.xy = キャンバスローカルの左上座標 (px)
         // transform.localScale.xy    = 幅・高さ (px)
         // ----------------------------------------------------------------
-        auto& bgGO = CreateGameObject("__NamePlate_BG__");
+        auto& bgGO = scene.Create("__NamePlate_BG__");
         bgGO.SetParent(canvasGO);
         bgGO.transform.localPosition = { 0.0f, 0.0f, 0.0f };
         bgGO.transform.localScale    = { 300.0f, 60.0f, 1.0f };
@@ -81,7 +81,7 @@ public:
         // ----------------------------------------------------------------
         // テキストラベル: プレイヤー名を表示する
         // ----------------------------------------------------------------
-        auto& textGO = CreateGameObject("__NamePlate_Text__");
+        auto& textGO = scene.Create("__NamePlate_Text__");
         textGO.SetParent(canvasGO);
         // キャンバス内 (20px, 14px) から描画開始
         textGO.transform.localPosition = { 20.0f, 14.0f, 0.0f };
@@ -100,8 +100,8 @@ public:
 
     void OnDestroy() override
     {
-        auto* go = GetGameObject(m_canvasID);
-        if (go) GameObject::Destroy(*go);
+        auto* go = scene.GetGameObject(m_canvasID);
+        if (go) scene.Destroy(*go);
     }
 
 private:
@@ -111,7 +111,7 @@ private:
     void SyncPosition()
     {
         if (!m_targetGO) return;
-        auto* canvasGO = GetGameObject(m_canvasID);
+        auto* canvasGO = scene.GetGameObject(m_canvasID);
         if (!canvasGO) return;
 
         const Vector3 headPos = m_targetGO->transform.position
