@@ -1677,9 +1677,36 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::Checkbox("Double Sided", &mc.doubleSided);
 
                 // Render Queue
-                ImGui::DragInt("Render Queue", &mc.renderQueue, 1.0f, -1000, 5000);
-                ImGui::SameLine();
-                ImGui::TextDisabled("(0=Opaque  2000=Transparent)");
+                // WHY: Unity と同じ数値帯を Inspector でも明示し、Custom VFX 用の差し込み値だけ手入力にする。
+                static const char* queueLabels[] = {
+                    "Background (1000)",
+                    "Geometry (2000)",
+                    "Alpha Test (2450)",
+                    "Transparent (3000)",
+                    "Custom",
+                    "Overlay (4000)"
+                };
+                static const int32_t queueValues[] = {
+                    renderer::RenderQueue::BACKGROUND,
+                    renderer::RenderQueue::GEOMETRY,
+                    renderer::RenderQueue::ALPHA_TEST,
+                    renderer::RenderQueue::TRANSPARENT,
+                    renderer::RenderQueue::CUSTOM,
+                    renderer::RenderQueue::OVERLAY
+                };
+                int queuePreset = 4;
+                for (int i = 0; i < 6; ++i) {
+                    if (mc.renderQueue == queueValues[i]) {
+                        queuePreset = i;
+                        break;
+                    }
+                }
+                if (ImGui::Combo("Render Queue", &queuePreset, queueLabels, 6))
+                    mc.renderQueue = queueValues[queuePreset];
+                if (queuePreset == 4)
+                    ImGui::DragInt("Custom Queue", &mc.renderQueue, 1.0f,
+                        renderer::RenderQueue::CUSTOM_MIN, renderer::RenderQueue::CUSTOM_MAX);
+                ImGui::TextDisabled("Lower values draw first. Custom: 3100-3999.");
             }
 
             // ── Shader ──────────────────────────────────────────────────────
