@@ -31,6 +31,7 @@
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -946,40 +947,54 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* tc = go.GetComponent<TerrainComponent>()) {
             toml::table terrainTbl;
             terrainTbl.insert("enabled",   tc->enabled);
+            terrainTbl.insert("terrainAssetPath", tc->terrainAssetPath);
             terrainTbl.insert("columns",   (int64_t)tc->columns);
             terrainTbl.insert("rows",      (int64_t)tc->rows);
             terrainTbl.insert("cellSize",  (double)tc->cellSize);
             terrainTbl.insert("maxHeight", (double)tc->maxHeight);
             terrainTbl.insert("chunkSize", (int64_t)tc->chunkSize);
 
-            // ハイトマップ（float 配列）
-            // WHY: バイナリシリアライズの方が効率的だが、TOML 配列で保存することで
-            //      シーンファイルをテキストエディタで確認・手動編集できる。
-            toml::array heightArr;
-            for (float h : tc->heightData)
-                heightArr.push_back(static_cast<double>(h));
-            terrainTbl.insert("heightData", std::move(heightArr));
+            if (tc->terrainAssetPath.empty()) {
+                // ハイトマップ（float 配列）
+                // WHY: assetPath 未設定の既存 Terrain は従来どおり自己完結させ、
+                //      古いシーン / Prefab と同じ扱いで保存できるようにする。
+                toml::array heightArr;
+                for (float h : tc->heightData)
+                    heightArr.push_back(static_cast<double>(h));
+                terrainTbl.insert("heightData", std::move(heightArr));
 
-            // スプラットマップ（uint8 → int64 配列。空のときは省略）
-            if (!tc->splatData.empty()) {
-                toml::array splatArr;
-                for (uint8_t s : tc->splatData)
-                    splatArr.push_back(static_cast<int64_t>(s));
-                terrainTbl.insert("splatData", std::move(splatArr));
-            }
+                // スプラットマップ（uint8 → int64 配列。空のときは省略）
+                if (!tc->splatData.empty()) {
+                    toml::array splatArr;
+                    for (uint8_t s : tc->splatData)
+                        splatArr.push_back(static_cast<int64_t>(s));
+                    terrainTbl.insert("splatData", std::move(splatArr));
+                }
 
-            // テクスチャレイヤー（配列テーブル）
-            toml::array layersArr;
-            for (const auto& layer : tc->layers) {
-                toml::table layerTbl;
-                layerTbl.insert("diffusePath",    layer.diffusePath);
-                layerTbl.insert("normalPath",     layer.normalPath);
-                layerTbl.insert("tilingX",        static_cast<double>(layer.tilingX));
-                layerTbl.insert("tilingZ",        static_cast<double>(layer.tilingZ));
-                layerTbl.insert("normalStrength", static_cast<double>(layer.normalStrength));
-                layersArr.push_back(std::move(layerTbl));
+                // テクスチャレイヤー（配列テーブル）
+                toml::array layersArr;
+                for (const auto& layer : tc->layers) {
+                    toml::table layerTbl;
+                    layerTbl.insert("diffusePath",    layer.diffusePath);
+                    layerTbl.insert("normalPath",     layer.normalPath);
+                    layerTbl.insert("aoRoughnessPath", layer.aoRoughnessPath);
+                    layerTbl.insert("tilingX",        static_cast<double>(layer.tilingX));
+                    layerTbl.insert("tilingZ",        static_cast<double>(layer.tilingZ));
+                    layerTbl.insert("normalStrength", static_cast<double>(layer.normalStrength));
+                    layerTbl.insert("roughness",      static_cast<double>(layer.roughness));
+                    layerTbl.insert("ambientOcclusion", static_cast<double>(layer.ambientOcclusion));
+                    layerTbl.insert("autoBlendEnabled", layer.autoBlendEnabled);
+                    layerTbl.insert("autoBlendStrength", static_cast<double>(layer.autoBlendStrength));
+                    layerTbl.insert("autoMinHeight", static_cast<double>(layer.autoMinHeight));
+                    layerTbl.insert("autoMaxHeight", static_cast<double>(layer.autoMaxHeight));
+                    layerTbl.insert("autoHeightFade", static_cast<double>(layer.autoHeightFade));
+                    layerTbl.insert("autoMinSlope", static_cast<double>(layer.autoMinSlope));
+                    layerTbl.insert("autoMaxSlope", static_cast<double>(layer.autoMaxSlope));
+                    layerTbl.insert("autoSlopeFade", static_cast<double>(layer.autoSlopeFade));
+                    layersArr.push_back(std::move(layerTbl));
+                }
+                terrainTbl.insert("layers", std::move(layersArr));
             }
-            terrainTbl.insert("layers", std::move(layersArr));
 
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
         }
@@ -1619,12 +1634,23 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
             TerrainComponent tc{};
             tc.enabled   = (*terrainTbl)["enabled"].value_or(true);
+            tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
             tc.columns   = static_cast<int>((*terrainTbl)["columns"].value_or(int64_t{129}));
             tc.rows      = static_cast<int>((*terrainTbl)["rows"].value_or(int64_t{129}));
             tc.cellSize  = static_cast<float>((*terrainTbl)["cellSize"].value_or(1.0));
             tc.maxHeight = static_cast<float>((*terrainTbl)["maxHeight"].value_or(30.0));
             tc.chunkSize = static_cast<int>((*terrainTbl)["chunkSize"].value_or(int64_t{32}));
 
+            bool loadedFromAsset = false;
+            if (!tc.terrainAssetPath.empty()) {
+                // WHY: Prefab / Scene には参照だけを保存し、重い height/splat/layer は
+                //      .fbzzterrain から復元する。失敗時は下のインライン形式にフォールバックする。
+                loadedFromAsset = TerrainAssetSerializer::Load(tc.terrainAssetPath, tc);
+                tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
+                tc.enabled = (*terrainTbl)["enabled"].value_or(true);
+            }
+
+            if (!loadedFromAsset) {
             // ハイトマップ
             if (auto* heightArr = (*terrainTbl)["heightData"].as_array()) {
                 tc.heightData.reserve(heightArr->size());
@@ -1649,12 +1675,32 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         TerrainLayer layer{};
                         layer.diffusePath    = (*layerTbl)["diffusePath"].value_or(std::string{});
                         layer.normalPath     = (*layerTbl)["normalPath"].value_or(std::string{});
+                        layer.aoRoughnessPath = (*layerTbl)["aoRoughnessPath"].value_or(std::string{});
                         layer.tilingX        = static_cast<float>((*layerTbl)["tilingX"].value_or(8.0));
                         layer.tilingZ        = static_cast<float>((*layerTbl)["tilingZ"].value_or(8.0));
                         layer.normalStrength = static_cast<float>((*layerTbl)["normalStrength"].value_or(1.0));
+                        layer.roughness      = static_cast<float>((*layerTbl)["roughness"].value_or(0.8));
+                        layer.ambientOcclusion =
+                            static_cast<float>((*layerTbl)["ambientOcclusion"].value_or(1.0));
+                        layer.autoBlendEnabled = (*layerTbl)["autoBlendEnabled"].value_or(false);
+                        layer.autoBlendStrength =
+                            static_cast<float>((*layerTbl)["autoBlendStrength"].value_or(1.0));
+                        layer.autoMinHeight =
+                            static_cast<float>((*layerTbl)["autoMinHeight"].value_or(-10000.0));
+                        layer.autoMaxHeight =
+                            static_cast<float>((*layerTbl)["autoMaxHeight"].value_or(10000.0));
+                        layer.autoHeightFade =
+                            static_cast<float>((*layerTbl)["autoHeightFade"].value_or(1.0));
+                        layer.autoMinSlope =
+                            static_cast<float>((*layerTbl)["autoMinSlope"].value_or(0.0));
+                        layer.autoMaxSlope =
+                            static_cast<float>((*layerTbl)["autoMaxSlope"].value_or(1.0));
+                        layer.autoSlopeFade =
+                            static_cast<float>((*layerTbl)["autoSlopeFade"].value_or(0.1));
                         if (tc.layers.size() < 4) tc.layers.push_back(std::move(layer));
                     }
                 }
+            }
             }
 
             // 読み込み直後は GPU バッファ・コライダーを両方再構築する
