@@ -19,8 +19,12 @@ std::wstring Utf8ToWide(const std::string& s)
     if (s.empty()) return {};
     const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
     if (n <= 0) return {};
-    std::wstring w(static_cast<size_t>(n - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
+    // WHY: MultiByteToWideChar は -1 指定時に終端 NUL も含めて n 文字を書き込む。
+    //      n - 1 だけ確保して n を渡すと 1 文字分オーバーランし、ReadText などの呼び出し元でクラッシュする。
+    std::wstring w(static_cast<size_t>(n), L'\0');
+    const int written = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
+    if (written <= 0) return {};
+    w.resize(static_cast<size_t>(written - 1));
     return w;
 }
 
@@ -29,8 +33,11 @@ std::string WideToUtf8(const std::wstring& w)
     if (w.empty()) return {};
     const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
     if (n <= 0) return {};
-    std::string s(static_cast<size_t>(n - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
+    // WHY: WideCharToMultiByte も終端 NUL を含めて n バイトを書き込むため、同じく n 分を確保してから縮める。
+    std::string s(static_cast<size_t>(n), '\0');
+    const int written = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
+    if (written <= 0) return {};
+    s.resize(static_cast<size_t>(written - 1));
     return s;
 }
 } // namespace
@@ -118,7 +125,10 @@ bool FileSystem::EnsureDirectory(const std::string& path)
 
 bool FileSystem::ReadText(const std::string& path, std::string& out)
 {
-    std::ifstream f(Utf8ToWide(path));
+    const std::wstring widePath = Utf8ToWide(path);
+    if (widePath.empty()) return false;
+
+    std::ifstream f(widePath);
     if (!f.is_open()) return false;
     std::ostringstream ss;
     ss << f.rdbuf();
@@ -128,7 +138,10 @@ bool FileSystem::ReadText(const std::string& path, std::string& out)
 
 bool FileSystem::WriteText(const std::string& path, const std::string& text)
 {
-    std::ofstream f(Utf8ToWide(path));
+    const std::wstring widePath = Utf8ToWide(path);
+    if (widePath.empty()) return false;
+
+    std::ofstream f(widePath);
     if (!f.is_open()) return false;
     f << text;
     return true;
