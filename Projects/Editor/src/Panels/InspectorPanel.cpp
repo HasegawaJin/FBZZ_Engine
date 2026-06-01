@@ -1690,7 +1690,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     renderer::RenderQueue::BACKGROUND,
                     renderer::RenderQueue::GEOMETRY,
                     renderer::RenderQueue::ALPHA_TEST,
-                    renderer::RenderQueue::TRANSPARENT,
+                    renderer::RenderQueue::TRANSPARENT_QUEUE,
                     renderer::RenderQueue::CUSTOM,
                     renderer::RenderQueue::OVERLAY
                 };
