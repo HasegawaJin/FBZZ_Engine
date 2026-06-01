@@ -2,7 +2,7 @@
 // RenderPasses/CausticsPass.cpp | fbzz::scene
 // 水中コースティクスを HDR バッファへ加算合成するポストプロセスパス
 #include "PostProcessPasses.hpp"
-#include "RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>

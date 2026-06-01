@@ -2,7 +2,7 @@
 // SelectionMaskPass.cpp | fbzz::scene
 // Selection mask render pass implementation
 #include "SelectionPasses.hpp"
-#include "RenderPassContext.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
