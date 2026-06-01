@@ -197,8 +197,9 @@ private:
     struct DestroyEntry { EntityID id; float delay; };
     std::vector<DestroyEntry> m_destroyQueue;
 
-    renderer::PostProcessSettings m_runtimePostProcessSettings;
-    bool m_hasRuntimePostProcessSettings = false;
+    // runtime PostProcess は Script から一時的に上書きされる optional な状態。
+    // WHY: 値メンバにすると Clear 時の全体代入で std::vector を破棄/再構築し、レイアウト変更時のクラッシュ地点になりやすい。
+    std::unique_ptr<renderer::PostProcessSettings> m_runtimePostProcessSettings;
     std::vector<UserRenderPassDesc> m_userRenderPasses;
     std::vector<ScriptDebugDrawCommand> m_scriptDebugDrawCommands;
     uint64_t m_lastScriptDebugDrawTickFrame = 0;
