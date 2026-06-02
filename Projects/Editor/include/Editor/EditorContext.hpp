@@ -25,6 +25,8 @@ struct EditorContext {
     renderer::ResourceManager* resources = nullptr;
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
+    std::string       projectBuildRoot;
+    std::string       standaloneTargetName = "SandboxStandalone";
     std::string       currentScenePath;
     bool              sceneDirty = false;
 

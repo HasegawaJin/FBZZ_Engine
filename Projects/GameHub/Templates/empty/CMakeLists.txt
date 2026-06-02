@@ -12,6 +12,10 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/Binaries/Debug")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/Binaries/Release")
+set(FBZZ_RUNTIME_BUILD_EXE_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/{{TARGET_NAME}}Standalone.exe")
+set(FBZZ_RUNTIME_BUILD_EXE_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/{{TARGET_NAME}}Standalone.exe")
 
 add_subdirectory("${FBZZ_ENGINE_ROOT}/ThirdParty" "${CMAKE_BINARY_DIR}/FBZZ/ThirdParty")
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Math" "${CMAKE_BINARY_DIR}/FBZZ/Math")
@@ -25,7 +29,20 @@ add_executable({{TARGET_NAME}}
     Include/{{TARGET_NAME}}/ProjectAPI.hpp
 )
 
+add_executable({{TARGET_NAME}}Standalone
+    Src/AppMain.cpp
+    Src/GameMain.cpp
+    Include/{{TARGET_NAME}}/ProjectAPI.hpp
+)
+target_compile_definitions({{TARGET_NAME}}Standalone PRIVATE FBZZ_STANDALONE_TARGET)
+
 target_include_directories({{TARGET_NAME}}
+    PRIVATE
+        Include
+        Src
+)
+
+target_include_directories({{TARGET_NAME}}Standalone
     PRIVATE
         Include
         Src
@@ -37,4 +54,17 @@ target_link_libraries({{TARGET_NAME}}
         fbzz_physics
         fbzz_math
         fbzz_editor
+)
+
+target_link_libraries({{TARGET_NAME}}Standalone
+    PRIVATE
+        fbzz_engine
+        fbzz_physics
+        fbzz_math
+)
+
+configure_file(
+    "${FBZZ_ENGINE_ROOT}/CMake/build.config.in"
+    "${CMAKE_BINARY_DIR}/build.config"
+    @ONLY
 )

@@ -6,12 +6,12 @@
 #include "ModuleUtils.hpp"
 #include "Util/PathUtil.hpp"
 
-#include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
@@ -39,7 +39,7 @@ bool StandaloneModule::OnInit()
 {
     m_scene = std::make_unique<scene::Scene>();
     const std::string scenePathUtf8 = util::PathToUtf8(m_project.sceneFile);
-    if (!editor::SceneSerializer::Load(*m_scene, scenePathUtf8)) {
+    if (!scene::SceneSerializer::LoadInPlace(*m_scene, scenePathUtf8, m_resources)) {
         FBZZ_LOG_ERROR("Sandbox Standalone: シーンのロードに失敗しました: %s", scenePathUtf8.c_str());
         return false;
     }

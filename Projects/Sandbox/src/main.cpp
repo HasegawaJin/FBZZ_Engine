@@ -11,7 +11,9 @@
 // WHY: main.cpp は起動順序だけを読み取れる入口にする。
 //      引数解析、プロジェクト解決、Editor / Standalone のループ本体は専用ファイルへ分割し、
 //      実行モードごとの依存関係と責務を明確にする。
+#ifndef FBZZ_STANDALONE_TARGET
 #include "EditorModule.hpp"
+#endif
 #include "LaunchArgs.hpp"
 #include "ProjectResolver.hpp"
 #include "StandaloneModule.hpp"
@@ -66,6 +68,11 @@ core::Window::Config BuildWindowConfig(const ProjectSettings& settings)
 /// Engine / Renderer / AssetManager 初期化後に EditorModule を起動する。
 [[nodiscard]] int RunEditor(core::Application& app, const LaunchProject& project)
 {
+#ifdef FBZZ_STANDALONE_TARGET
+    (void)app;
+    (void)project;
+    return 1;
+#else
     if (!app.Init()) return 1;
 
     auto& renderer = app.GetRenderer();
@@ -77,6 +84,7 @@ core::Window::Config BuildWindowConfig(const ProjectSettings& settings)
     EditorModule module(renderer, resources, project);
     app.Run(module);
     return 0;
+#endif
 }
 
 } // namespace
@@ -102,7 +110,12 @@ int Run()
     SetCurrentDirectoryW(util::GetExecutableDirectory().wstring().c_str());
 
     auto& app = core::Application::Get();
+#ifdef FBZZ_STANDALONE_TARGET
+    // WHY: 配布用 exe は --standalone の指定漏れや引数なし起動でも必ずゲーム本体として起動する。
+    const int result = RunStandalone(app, project);
+#else
     const int result = args.standalone ? RunStandalone(app, project) : RunEditor(app, project);
+#endif
 
     asset::AssetManager::UnloadAll();
     app.Shutdown();

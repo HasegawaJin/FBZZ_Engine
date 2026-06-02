@@ -34,6 +34,7 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
+#include <toml++/toml.hpp>
 #include <Windows.h>
 #include <algorithm>
 #include <cctype>
@@ -111,6 +112,39 @@ bool IsScenePathInsideProject(const std::string& projectRoot, const std::string&
         prefix += '\\';
 
     return sceneText == rootText || sceneText.rfind(prefix, 0) == 0;
+}
+
+void LoadRuntimeBuildMetadata(EditorContext& ctx)
+{
+    ctx.projectBuildRoot.clear();
+    ctx.standaloneTargetName = "SandboxStandalone";
+    if (ctx.projectRoot.empty()) return;
+
+    std::string projectText;
+    if (!util::FileSystem::ReadText(ctx.projectRoot + "/.fbzz_proj", projectText))
+        return;
+
+    toml::parse_result result = toml::parse(projectText);
+    if (!result) return;
+
+    const toml::table& table = result.table();
+    const std::string buildRoot = table["project"]["build_root"].value_or(std::string{});
+    if (!buildRoot.empty() && buildRoot.rfind("{{", 0) != 0) {
+        std::filesystem::path path(Utf8ToWide(buildRoot));
+        if (!path.is_absolute())
+            path = std::filesystem::path(Utf8ToWide(ctx.projectRoot)) / path;
+        ctx.projectBuildRoot = WideToUtf8(path.lexically_normal().wstring());
+    }
+
+    const std::string standaloneTarget = table["project"]["standalone_target_name"].value_or(std::string{});
+    if (!standaloneTarget.empty() && standaloneTarget.rfind("{{", 0) != 0) {
+        ctx.standaloneTargetName = standaloneTarget;
+        return;
+    }
+
+    const std::string targetName = table["project"]["target_name"].value_or(std::string{});
+    if (!targetName.empty() && targetName.rfind("{{", 0) != 0)
+        ctx.standaloneTargetName = targetName + "Standalone";
 }
 
 } // namespace
@@ -387,6 +421,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     m_projectRoot      = projectRoot;
     m_ctx.projectRoot  = projectRoot;
+    LoadRuntimeBuildMetadata(m_ctx);
     if (m_assetBrowserPanel && !m_projectRoot.empty())
         m_assetBrowserPanel->SetRootPath(m_projectRoot + "/Assets");
 
