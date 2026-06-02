@@ -133,7 +133,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = h.gbufferShader;
-        dc.pipelineState      = rs.wireframeMode ? h.wireframePSO : h.defaultPSO;
+        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO : h.defaultPSO;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = material ? material->paramsBuffer
@@ -270,7 +270,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
             dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;
@@ -327,7 +327,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
             dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
@@ -399,7 +399,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
-        dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
                                                  : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
         dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
         dc.constantBuffers[0] = h.frameCB;

@@ -63,6 +63,15 @@ public:
     // スロット番号に対応するサンプラープリセットをバインドする
     void SetSampler(uint32_t slot, SamplerMode mode) override;
 
+    // GPU プロファイリング (D3D11_QUERY_TIMESTAMP_DISJOINT / D3D11_QUERY_TIMESTAMP)
+    // QUERY_LATENCY フレーム遅延のリングバッファ方式で非同期計測する。
+    void GpuProfBeginFrame()                    override;
+    void GpuProfEndFrame()                      override;
+    void GpuProfBeginPass(const char* name)     override;
+    void GpuProfEndPass(const char* name)       override;
+    void GpuProfCollect()                       override;
+    const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuResults; }
+
     // ImGui バックエンド (imgui_impl_dx11 / imgui_impl_win32)
     void  ImGuiInit(void* hwnd)   override;
     void  ImGuiShutdown()         override;
@@ -89,6 +98,34 @@ private:
     std::shared_ptr<ITexture>        CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
 
     void BindRenderTarget(IRenderTarget* rt);
+
+    // -------------------------------------------------------------------------
+    // GPU Timestamp Query プール
+    // -------------------------------------------------------------------------
+    // WHY: D3D11 の GPU クエリ結果は発行した数フレーム後にしか CPU から読めない。
+    //      QUERY_LATENCY フレーム分の Query オブジェクトをリングバッファで循環させ、
+    //      毎フレーム GpuProfCollect() で古いフレームの結果を取り出す。
+    static constexpr int GPU_QUERY_LATENCY = 3;
+    static constexpr int GPU_MAX_PASSES    = 32;
+
+    struct GpuQueryFrame {
+        Microsoft::WRL::ComPtr<ID3D11Query> disjoint;
+        Microsoft::WRL::ComPtr<ID3D11Query> beginTs[GPU_MAX_PASSES];
+        Microsoft::WRL::ComPtr<ID3D11Query> endTs[GPU_MAX_PASSES];
+        char                                names[GPU_MAX_PASSES][64];
+        int                                 count  = 0;
+        bool                                begun  = false;
+        bool                                ended  = false;
+    };
+
+    GpuQueryFrame            m_gpuFrames[GPU_QUERY_LATENCY];
+    int                      m_gpuWriteIdx   = 0;  // 現在書き込んでいるフレームのインデックス
+    int                      m_gpuCollectIdx = 0;  // 次に読み出すフレームのインデックス
+    int                      m_gpuFilled     = 0;  // 書き終えたフレーム数 (latency に達するまで収集しない)
+    std::vector<GpuPassProfile> m_gpuResults;
+
+    // GPU Timestamp クエリを初期化する (BeginFrame の遅延初期化から呼ぶ)
+    void InitGpuQueryFrame(GpuQueryFrame& frame);
 
     Microsoft::WRL::ComPtr<ID3D11Device>           m_device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext>    m_context;

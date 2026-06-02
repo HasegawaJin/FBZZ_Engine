@@ -591,4 +591,118 @@ void* DX11Renderer::GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceM
     return target->GetNativeSRV(slot);
 }
 
+// =============================================================================
+// GPU Timestamp Query プロファイリング
+// =============================================================================
+
+void DX11Renderer::InitGpuQueryFrame(GpuQueryFrame& frame)
+{
+    // WHY: クエリオブジェクトは生成コストがあるため、フレームごとではなく初回のみ生成する。
+    //      GPU_QUERY_LATENCY フレーム分を事前に生成し、リングバッファで循環させる。
+    D3D11_QUERY_DESC disjDesc = {};
+    disjDesc.Query            = D3D11_QUERY_TIMESTAMP_DISJOINT;
+    m_device->CreateQuery(&disjDesc, frame.disjoint.GetAddressOf());
+
+    D3D11_QUERY_DESC tsDesc = {};
+    tsDesc.Query            = D3D11_QUERY_TIMESTAMP;
+    for (int i = 0; i < GPU_MAX_PASSES; ++i) {
+        m_device->CreateQuery(&tsDesc, frame.beginTs[i].GetAddressOf());
+        m_device->CreateQuery(&tsDesc, frame.endTs[i].GetAddressOf());
+    }
+}
+
+void DX11Renderer::GpuProfBeginFrame()
+{
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.disjoint)
+        InitGpuQueryFrame(frame);
+
+    frame.count = 0;
+    frame.begun = true;
+    frame.ended = false;
+
+    // TIMESTAMP_DISJOINT クエリで GPU クロック周波数の一貫性を保証する。
+    // Begin 〜 End の間に発行した TIMESTAMP クエリが有効かどうかも disjoint 結果で判断する。
+    m_context->Begin(frame.disjoint.Get());
+}
+
+void DX11Renderer::GpuProfEndFrame()
+{
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.begun) return;
+
+    m_context->End(frame.disjoint.Get());
+    frame.ended = true;
+
+    // 書き込みインデックスを次のフレームへ進める
+    m_gpuWriteIdx = (m_gpuWriteIdx + 1) % GPU_QUERY_LATENCY;
+    if (m_gpuFilled < GPU_QUERY_LATENCY)
+        ++m_gpuFilled;
+}
+
+void DX11Renderer::GpuProfBeginPass(const char* name)
+{
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.begun || frame.count >= GPU_MAX_PASSES) return;
+
+    const int idx = frame.count;
+    // strncpy_s: バッファオーバーランを防ぐ。名前が長い場合は末尾を切り捨てる。
+    strncpy_s(frame.names[idx], sizeof(frame.names[idx]),
+              name ? name : "Unknown", _TRUNCATE);
+
+    // パス開始直前のタイムスタンプを GPU コマンドキューに積む。
+    // WHY: End() を Begin() のように使うのが D3D11 Timestamp クエリの慣例。
+    m_context->End(frame.beginTs[idx].Get());
+}
+
+void DX11Renderer::GpuProfEndPass(const char* /*name*/)
+{
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.begun || frame.count >= GPU_MAX_PASSES) return;
+
+    m_context->End(frame.endTs[frame.count].Get());
+    ++frame.count;
+}
+
+void DX11Renderer::GpuProfCollect()
+{
+    m_gpuResults.clear();
+
+    // QUERY_LATENCY フレーム分溜まるまで収集しない。
+    // WHY: GPU が処理しきれていないフレームの結果を読もうとすると GetData がビジー待ちになりパフォーマンス劣化する。
+    if (m_gpuFilled < GPU_QUERY_LATENCY) return;
+
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuCollectIdx];
+    if (!frame.ended) return;
+
+    // D3D11_ASYNC_GETDATA_DONOTFLUSH: フラッシュを避けてノンブロッキングで読む。
+    // まだ GPU が終わっていない場合は S_FALSE が返り、その周のフレームをスキップする。
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjData = {};
+    HRESULT hr = m_context->GetData(frame.disjoint.Get(), &disjData,
+                                    sizeof(disjData), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    if (hr != S_OK || disjData.Disjoint) {
+        // GPU クロックが不安定 (リモートデスクトップ切替等) な場合は Disjoint = true になる。
+        // スキップしてインデックスは進めない (次フレームで再試行)。
+        return;
+    }
+
+    const double freqMs = static_cast<double>(disjData.Frequency) / 1000.0;
+
+    for (int i = 0; i < frame.count; ++i) {
+        UINT64 tsBegin = 0, tsEnd = 0;
+        hr = m_context->GetData(frame.beginTs[i].Get(), &tsBegin,
+                                sizeof(UINT64), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (hr != S_OK) continue;
+
+        hr = m_context->GetData(frame.endTs[i].Get(), &tsEnd,
+                                sizeof(UINT64), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (hr != S_OK) continue;
+
+        const double gpuMs = static_cast<double>(tsEnd - tsBegin) / freqMs;
+        m_gpuResults.push_back({ frame.names[i], gpuMs });
+    }
+
+    m_gpuCollectIdx = (m_gpuCollectIdx + 1) % GPU_QUERY_LATENCY;
+}
+
 } // namespace fbzz::renderer

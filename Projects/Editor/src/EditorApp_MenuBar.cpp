@@ -172,6 +172,10 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     if (ImGui::BeginMenu("Debug")) {
         // WHY: Godot は表示パネル操作とデバッグ描画切替を別メニューに分けている。
         //      FBZZ でも View はレイアウト・パネル、Debug は実行/描画診断に寄せることで項目の意味を読み取りやすくする。
+        if (ImGui::MenuItem("Analysis")) {
+            ctx.requestOpenAnalysis = true;
+        }
+        ImGui::Separator();
         ImGui::MenuItem("Grid",         nullptr, &ctx.showGrid);
         ImGui::MenuItem("Light Range",  nullptr, &ctx.showLightRange);
         ImGui::MenuItem("Colliders",    nullptr, &ctx.projectSettings.render.showColliders);
@@ -180,7 +184,14 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::MenuItem("Stats",        nullptr, &ctx.showStats);
         ImGui::MenuItem("Hot Reload",   nullptr, &ctx.hotReloadEnabled);
         ImGui::Separator();
-        ImGui::MenuItem("Wireframe",    nullptr, &ctx.projectSettings.render.wireframeMode);
+        if (ImGui::BeginMenu("View Mode")) {
+            auto& vm = ctx.projectSettings.render.viewMode;
+            if (ImGui::MenuItem("Lit",            nullptr, vm == renderer::ViewMode::Lit))           vm = renderer::ViewMode::Lit;
+            if (ImGui::MenuItem("Unlit",          nullptr, vm == renderer::ViewMode::Unlit))         vm = renderer::ViewMode::Unlit;
+            if (ImGui::MenuItem("Wireframe Lit",  nullptr, vm == renderer::ViewMode::WireframeLit))  vm = renderer::ViewMode::WireframeLit;
+            if (ImGui::MenuItem("Wireframe Unlit",nullptr, vm == renderer::ViewMode::WireframeUnlit))vm = renderer::ViewMode::WireframeUnlit;
+            ImGui::EndMenu();
+        }
         ImGui::Separator();
         if (ImGui::BeginMenu("Post Process")) {
             ImGui::MenuItem("Shadow",              nullptr, &ctx.projectSettings.render.shadowEnabled);
@@ -325,6 +336,23 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         pauseColor,
         BUTTON_SIZE))
         pm->RequestStep();
+
+    // WHY: ボタンの色変化だけでは Play / Pause / Editor の状態が曖昧。
+    //      Unity 同様、ツールバー右端に現在の状態をテキストで表示することで
+    //      視線を動かさず一目で把握できるようにする。
+    if (!isEditor) {
+        const char* label     = isPlaying ? "PLAYING" : "PAUSED";
+        const ImVec4 labelCol = isPlaying
+            ? ImVec4{ 0.28f, 0.88f, 0.53f, 1.0f } // 緑: Play
+            : ImVec4{ 0.92f, 0.72f, 0.28f, 1.0f }; // 黄: Pause
+        const float textWidth = ImGui::CalcTextSize(label).x;
+        const float posX = availableWidth - textWidth - 12.0f;
+        const float posY = (TOOLBAR_HEIGHT - ImGui::GetTextLineHeight()) * 0.5f;
+        if (posX > 0.0f) {
+            ImGui::SetCursorPos({ posX, posY });
+            ImGui::TextColored(labelCol, "%s", label);
+        }
+    }
 
     const ImVec2 min = ImGui::GetWindowPos();
     const ImVec2 max = { min.x + ImGui::GetWindowWidth(), min.y + ImGui::GetWindowHeight() };

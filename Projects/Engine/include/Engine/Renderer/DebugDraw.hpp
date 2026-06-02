@@ -38,6 +38,21 @@ public:
                         const math::Vector4& color = {0,1,0,1});
     static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
+
+    // from → to の方向を示す矢印 (シャフト + コーン型ヘッド)。
+    // headLength: ヘッド部分のワールド単位の長さ (シャフト全体を超えるとクランプする)
+    // headRadius: ヘッドの底面半径
+    static void Arrow(IRenderer& r,
+                      const math::Vector3& from, const math::Vector3& to,
+                      float headLength = 0.2f, float headRadius = 0.05f,
+                      const math::Vector4& color = {1,1,0,1});
+
+    // ワイヤーフレームのコーン。
+    // apex: 頂点、direction: 底面方向の正規化ベクトル、height: 高さ、baseRadius: 底面半径
+    static void Cone(IRenderer& r,
+                     const math::Vector3& apex, const math::Vector3& direction,
+                     float height, float baseRadius,
+                     const math::Vector4& color = {1,1,0,1});
 };
 
 } // namespace fbzz::renderer

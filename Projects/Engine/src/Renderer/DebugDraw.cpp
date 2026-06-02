@@ -274,4 +274,74 @@ void DebugDraw::Capsule(IRenderer& /*r*/,
     AddSegment(top + Z * -radius, bottom + Z * -radius, color);
 }
 
+void DebugDraw::Arrow(IRenderer& /*r*/,
+                      const math::Vector3& from, const math::Vector3& to,
+                      float headLength, float headRadius,
+                      const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const math::Vector3 diff = to - from;
+    const float length = diff.Length();
+    if (length < 1e-6f) return;
+
+    const math::Vector3 n = diff.Normalized();
+
+    // ヘッド長が全体を超えないようクランプする
+    const float clampedHead = std::min(headLength, length);
+    const math::Vector3 shaftTip = to - n * clampedHead;
+
+    // シャフト
+    AddSegment(from, shaftTip, color);
+
+    // コーンヘッド部分を Cone ヘルパーで描く
+    // WHY: Arrow の先端コーンは底面が shaftTip、頂点が to なので
+    //      Cone の direction を n (from → to 方向) にして apex = to に合わせる。
+    //      内部で AddCircle / AddSegment を呼ぶ実装と同等にインライン化する。
+
+    // n に直交する 2 軸を求める
+    math::Vector3 right = (std::abs(n.y) < 0.99f)
+        ? math::Vector3::Cross(n, {0,1,0}).Normalized()
+        : math::Vector3::Cross(n, {1,0,0}).Normalized();
+    const math::Vector3 up = math::Vector3::Cross(right, n).Normalized();
+
+    // 底面の円
+    AddCircle(shaftTip, right, up, headRadius, color);
+
+    // 頂点から底面の等間隔 4 点へ線 (90° ごと)
+    AddSegment(to, shaftTip + right *  headRadius, color);
+    AddSegment(to, shaftTip - right *  headRadius, color);
+    AddSegment(to, shaftTip + up    *  headRadius, color);
+    AddSegment(to, shaftTip - up    *  headRadius, color);
+}
+
+void DebugDraw::Cone(IRenderer& /*r*/,
+                     const math::Vector3& apex, const math::Vector3& direction,
+                     float height, float baseRadius,
+                     const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const float len = direction.Length();
+    if (len < 1e-6f || height < 1e-6f) return;
+
+    const math::Vector3 n = direction * (1.0f / len);
+    const math::Vector3 baseCenter = apex + n * height;
+
+    // 底面の直交基底を求める
+    math::Vector3 right = (std::abs(n.y) < 0.99f)
+        ? math::Vector3::Cross(n, {0,1,0}).Normalized()
+        : math::Vector3::Cross(n, {1,0,0}).Normalized();
+    const math::Vector3 up = math::Vector3::Cross(right, n).Normalized();
+
+    // 底面の円
+    AddCircle(baseCenter, right, up, baseRadius, color);
+
+    // 頂点から底面の等間隔 4 点へ稜線 (90° ごと)
+    AddSegment(apex, baseCenter + right *  baseRadius, color);
+    AddSegment(apex, baseCenter - right *  baseRadius, color);
+    AddSegment(apex, baseCenter + up    *  baseRadius, color);
+    AddSegment(apex, baseCenter - up    *  baseRadius, color);
+}
+
 } // namespace fbzz::renderer

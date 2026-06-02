@@ -87,6 +87,8 @@ public:
     struct PassProfile {
         std::string name;
         double cpuMilliseconds = 0.0;
+        // -1.0 = 未計測 (GPU フックが未設定 or まだ latency 待ち)
+        double gpuMilliseconds = -1.0;
     };
 
     struct ExecutionReport {
@@ -192,9 +194,13 @@ public:
                 const auto start = std::chrono::steady_clock::now();
                 if (m_profilerBegin)
                     m_profilerBegin(pass.name);
+                if (m_gpuProfilerBegin)
+                    m_gpuProfilerBegin(pass.name);
 
                 pass.execute();
 
+                if (m_gpuProfilerEnd)
+                    m_gpuProfilerEnd(pass.name);
                 if (m_profilerEnd)
                     m_profilerEnd(pass.name);
                 const auto end = std::chrono::steady_clock::now();
@@ -223,10 +229,12 @@ public:
         m_profilerEnd = std::move(end);
     }
 
+    // WHY: CPU フックとは独立した GPU 専用フック。旧実装は SetProfilerHooks を上書きしていた。
     void SetGpuProfilerHooks(std::function<void(std::string_view)> begin,
                              std::function<void(std::string_view)> end)
     {
-        SetProfilerHooks(std::move(begin), std::move(end));
+        m_gpuProfilerBegin = std::move(begin);
+        m_gpuProfilerEnd   = std::move(end);
     }
 
 private:
@@ -444,6 +452,8 @@ private:
     ExecutionReport m_report;
     std::function<void(std::string_view)> m_profilerBegin;
     std::function<void(std::string_view)> m_profilerEnd;
+    std::function<void(std::string_view)> m_gpuProfilerBegin;
+    std::function<void(std::string_view)> m_gpuProfilerEnd;
 };
 
 } // namespace fbzz::renderer

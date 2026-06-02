@@ -30,6 +30,7 @@
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Asset/Skeleton.hpp"
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
@@ -49,8 +50,11 @@ void RenderSystem(Scene& scene,
                   const renderer::Camera& camera,
                   renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
                   const renderer::RenderSettings* settings,
-                  fbzz::LayerMask cullingMask)
+                  fbzz::LayerMask cullingMask,
+                  const RenderSystemUIOptions* uiOptions)
 {
+    FBZZ_PROFILE_SCOPE("RenderSystem");
+
     static renderer::RenderSettings sDefaultSettings;
     renderer::RenderSettings effectiveSettings = settings ? *settings : sDefaultSettings;
     if (const auto* runtimePostProcess = scene.TryGetRuntimePostProcessSettings())
@@ -267,6 +271,15 @@ void RenderSystem(Scene& scene,
             sl.color     = lc.color;
             sl.intensity = lc.intensity;
         }
+    }
+
+    // ambientColor: Lit モードでは AMBIENT_SCALE 相当値、Unlit 系では白に上書き
+    lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
+    if (rs.IsUnlit()) {
+        lightData.ambientColor    = { 1.0f, 1.0f, 1.0f };
+        lightData.lightIntensity  = 0.0f;
+        lightData.pointLightCount = 0;
+        lightData.spotLightCount  = 0;
     }
 
     math::Vector3 lightDir    = lightData.lightDir.Normalized();
@@ -492,7 +505,7 @@ void RenderSystem(Scene& scene,
     //      RenderSystem 内に統合することでポストプロセス（bloom/SSAO等）も適用される。
     graph.AddPass("TerrainForward", { "ShadowMap", "HDR" }, { "HDR" }, [&]() {
         renderer.SetRenderTarget(passHandles.hdrRT, resources);
-        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT);
+        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT, settings);
     });
 
     // ── Sky ───────────────────────────────────────────────────────────────────
@@ -582,6 +595,21 @@ void RenderSystem(Scene& scene,
     graph.AddPass("ScriptDebugDraw", { "HDR" }, { "HDR" }, [&]() {
         scene.TickScriptDebugDrawCommands(core::Time::DeltaTime());
         renderer::DebugDraw::BeginFrame(passCtx.renderer, passCtx.resources, passCtx.camera.GetViewProjection());
+
+        // OnDrawGizmos: DebugDraw::BeginFrame/Flush の区間内で Script が gizmo プロキシを使って
+        // 視野錐・ウェイポイント・検知範囲などを直接描画する。
+        // WHY: コマンドキュー経由の ScriptDebugProxy と異なり、Gizmo の複合プリミティブは
+        //      レンダリング区間内で直接呼ぶ必要があるため、専用コールバックを設ける。
+        for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+            auto* sc = scene.GetComponent<ScriptComponent>(id);
+            auto* go = scene.GetGameObject(id);
+            if (!sc || !sc->script || !go || !sc->script->enabled) continue;
+            sc->script->SetContext(&scene, go);
+            sc->script->gizmo.renderer = &passCtx.renderer;
+            sc->script->OnDrawGizmos();
+            sc->script->gizmo.renderer = nullptr;
+        }
+
         for (const auto& command : scene.GetScriptDebugDrawCommands()) {
             switch (command.type) {
             case ScriptDebugDrawType::Line:
@@ -595,6 +623,16 @@ void RenderSystem(Scene& scene,
                 break;
             case ScriptDebugDrawType::Ray:
                 renderer::DebugDraw::Line(passCtx.renderer, command.a, command.b, command.color);
+                break;
+            case ScriptDebugDrawType::Arrow:
+                // headLength = radius, headRadius = halfExtents.x
+                renderer::DebugDraw::Arrow(passCtx.renderer, command.a, command.b,
+                                           command.radius, command.halfExtents.x, command.color);
+                break;
+            case ScriptDebugDrawType::Cone:
+                // direction = b, height = halfExtents.x, baseRadius = radius
+                renderer::DebugDraw::Cone(passCtx.renderer, command.a, command.b,
+                                          command.halfExtents.x, command.radius, command.color);
                 break;
             }
         }
@@ -674,6 +712,35 @@ void RenderSystem(Scene& scene,
         }
     }
 
+    if (uiOptions && uiOptions->enabled) {
+        graph.AddPass(
+            "UIPass",
+            { { "Output", renderer::RenderGraph::ResourceUsage::ReadWrite } },
+            [&]() {
+                // WHY: UI は最終フレームへの合成であり、Composite / FXAA / CustomPostProcess の
+                //      どの分岐が最後に Output を書いたかに依存してはいけない。
+                //      Output を ReadWrite する RenderGraph pass として登録し、この pass 内で
+                //      明示的に outputRT をバインドすることで、Game / Scene / UI Viewport の
+                //      いずれでも同じ順序と同じ RT に描画できる。
+                renderer.SetRenderTarget(outputRT, resources);
+                const float uiWidth = uiOptions->viewportWidth > 0.0f
+                    ? uiOptions->viewportWidth
+                    : static_cast<float>(sHdrW);
+                const float uiHeight = uiOptions->viewportHeight > 0.0f
+                    ? uiOptions->viewportHeight
+                    : static_cast<float>(sHdrH);
+                UISystem(scene,
+                         renderer,
+                         resources,
+                         uiWidth,
+                         uiHeight,
+                         uiOptions->mouseInCanvasSpace,
+                         uiOptions->mousePressed,
+                         camera.GetViewProjection(),
+                         uiOptions->targetView);
+            });
+    }
+
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
@@ -686,7 +753,26 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     // RenderGraph 実行 + デバッグスナップショット更新
     // =========================================================================
-    const bool graphExecuted = graph.Execute();
+
+    // GPU Timestamp Query の前フレーム結果を収集してからフレームを開始する。
+    // WHY: GpuProfCollect を先に呼ぶことで前フレームの非同期クエリが確定している可能性を最大化する。
+    renderer.GpuProfCollect();
+    renderer.GpuProfBeginFrame();
+
+    // GPU フックを RenderGraph に設定する。CPU フックとは独立しているため、
+    // Profiler の CPU スコープ計測と干渉しない。
+    graph.SetGpuProfilerHooks(
+        [&](std::string_view name) { renderer.GpuProfBeginPass(name.data()); },
+        [&](std::string_view name) { renderer.GpuProfEndPass(name.data()); }
+    );
+
+    bool graphExecuted = false;
+    {
+        FBZZ_PROFILE_SCOPE("RenderGraph::Execute");
+        graphExecuted = graph.Execute();
+    }
+
+    renderer.GpuProfEndFrame();
     assert(graphExecuted);
     (void)graphExecuted;
 
@@ -710,6 +796,10 @@ void RenderSystem(Scene& scene,
         dbgSnap.height          = sHdrH;
         for (const auto& profile : graph.GetLastReport().profiles)
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
+
+        // GPU 計測結果を Snapshot に詰める。QUERY_LATENCY フレーム以内は空になる。
+        for (const auto& gp : renderer.GpuProfGetResults())
+            dbgSnap.gpuPassTimings.push_back({ gp.name, gp.gpuMs });
 
         // カリング統計を Snapshot に詰める
         dbgSnap.renderStats.totalObjects    = passCtx.statsTotalObjects;

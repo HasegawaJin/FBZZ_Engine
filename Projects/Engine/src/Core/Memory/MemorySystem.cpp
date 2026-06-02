@@ -4,6 +4,7 @@
 // フレームアロケータとトラッカーの寿命を明示的に管理する。
 #include "Engine/Core/Memory/MemorySystem.hpp"
 
+#include <cassert>
 #include <utility>
 
 namespace fbzz::core {

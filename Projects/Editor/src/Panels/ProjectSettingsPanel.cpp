@@ -141,7 +141,13 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
     ImGui::Spacing();
     ImGui::Checkbox("Shadow", &render.shadowEnabled);
     ImGui::SameLine();
-    ImGui::Checkbox("Wireframe", &render.wireframeMode);
+    {
+        const char* kViewModeLabels[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
+        int idx = static_cast<int>(render.viewMode);
+        ImGui::SetNextItemWidth(130.0f);
+        if (ImGui::Combo("View Mode", &idx, kViewModeLabels, 4))
+            render.viewMode = static_cast<renderer::ViewMode>(idx);
+    }
     ImGui::SameLine();
     ImGui::Checkbox("Colliders",    &render.showColliders);
     ImGui::SameLine();
@@ -155,8 +161,8 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            "各レンダーパスの RT サムネイルと CPU タイミングを\n"
-            "ImGui ウィンドウ \"Render Debug\" に表示します。");
+            "Shows RT thumbnails and CPU timings for each render pass\n"
+            "in the ImGui window \"Render Debug\".");
     }
 
     ImGui::Spacing();
