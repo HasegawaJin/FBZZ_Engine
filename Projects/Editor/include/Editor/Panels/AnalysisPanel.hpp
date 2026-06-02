@@ -20,6 +20,8 @@ protected:
 private:
     void DrawProfiler();
     void DrawMemory(EditorContext& ctx);
+    // DrawCall / ポリゴン数・GPU パスタイミングを表示するレンダリング統計タブ。
+    void DrawRendering();
 };
 
 } // namespace fbzz::editor
