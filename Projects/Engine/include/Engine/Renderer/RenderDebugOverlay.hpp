@@ -45,6 +45,10 @@ public:
         // 空のままにするとタイミング表示をスキップする。
         std::vector<std::pair<std::string, double>> passTimings;
 
+        // GpuProfGetResults() から詰めた {パス名, GPU時間(ms)} リスト。
+        // QUERY_LATENCY フレーム分溜まるまでは空。
+        std::vector<std::pair<std::string, double>> gpuPassTimings;
+
         uint32_t width  = 0;
         uint32_t height = 0;
 
