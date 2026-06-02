@@ -1,0 +1,4 @@
+cmake_exe=@CMAKE_COMMAND@
+build_dir=@CMAKE_BINARY_DIR@
+exe_debug=@FBZZ_RUNTIME_BUILD_EXE_DEBUG@
+exe_release=@FBZZ_RUNTIME_BUILD_EXE_RELEASE@

@@ -6,6 +6,7 @@
 //       段階的にファイルをコピーしてパッケージを生成する。
 //       各ステップの詳細は BuildPipeline.hpp のコメントを参照。
 #include <Editor/BuildPipeline.hpp>
+#include <Editor/ToolchainLocator.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <toml++/toml.hpp>
 #include <Windows.h>
@@ -19,14 +20,6 @@
 namespace fbzz::editor {
 
 namespace {
-
-// GetModuleFileNameW で自身の exe パスを取得する
-std::filesystem::path GetSelfExePath()
-{
-    wchar_t buf[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    return std::filesystem::path(buf);
-}
 
 std::string WideToUtf8(const std::wstring& text)
 {
@@ -69,20 +62,25 @@ std::string TodayStr()
 
 void BuildPipeline::Start(const BuildSettings& settings,
                           const std::string& projectRoot,
+                          const std::string& buildRoot,
+                          const std::string& targetName,
                           bool runAfterBuild)
 {
     m_settings      = settings;
     m_projectRoot   = projectRoot;
+    m_buildRoot     = buildRoot;
+    m_targetName    = targetName.empty() ? "SandboxStandalone" : targetName;
     m_runAfterBuild = runAfterBuild;
     m_state         = State::Running;
-    m_step          = Step::PrepareTempDir;
+    m_step          = Step::Compile;
     m_progress      = 0.0f;
     m_status        = "Starting build...";
     m_error.clear();
     m_assetFiles.clear();
     m_assetIdx    = 0;
+    m_compileStarted = false;
 
-    m_exeSrcPath = GetSelfExePath();
+    m_exeSrcPath.clear();
     m_outputDir  = settings.ResolveOutputPath(projectRoot);
     m_tmpDir     = std::filesystem::path(m_outputDir.wstring() + L"_tmp");
 
@@ -92,6 +90,48 @@ void BuildPipeline::Start(const BuildSettings& settings,
 void BuildPipeline::Tick()
 {
     if (m_state != State::Running) return;
+
+    // Compile は CMake 子プロセスが複数フレーム継続するため、専用処理で状態を監視する。
+    if (m_step == Step::Compile) {
+        if (!m_compileStarted) {
+            ToolchainLocator::Result toolchain = ToolchainLocator::Locate(std::filesystem::path(Utf8ToWide(m_buildRoot)));
+            if (!toolchain.found) {
+                SetFailed("RuntimeBuild toolchain not found: " + toolchain.error);
+                return;
+            }
+
+            Compiler::Config config;
+            config.cmakeExe      = toolchain.cmakeExe;
+            config.buildDir      = toolchain.buildDir;
+            config.exePath       = m_settings.developmentBuild ? toolchain.exeDebug : toolchain.exeRelease;
+            config.target        = m_targetName;
+            config.configuration = m_settings.developmentBuild ? "Debug" : "Release";
+
+            if (!m_compiler.Start(config)) {
+                SetFailed("Failed to start RuntimeBuild compiler.");
+                return;
+            }
+            m_exeSrcPath = config.exePath;
+            m_status    = "Compiling " + m_targetName + "...";
+            m_progress  = 0.02f;
+            m_compileStarted = true;
+            return;
+        }
+
+        m_compiler.Tick();
+        m_status = "Compiling " + m_targetName + "...";
+        m_progress = 0.04f;
+
+        if (m_compiler.GetState() == Compiler::State::Done) {
+            m_exeSrcPath = m_compiler.GetOutputExePath();
+            m_step = Step::PrepareTempDir;
+        } else if (m_compiler.GetState() == Compiler::State::Failed) {
+            SetFailed("RuntimeBuild compile failed. Exit code: " + std::to_string(m_compiler.GetExitCode()));
+        } else if (m_compiler.GetState() == Compiler::State::Cancelled) {
+            SetFailed("RuntimeBuild compile was cancelled.");
+        }
+        return;
+    }
 
     // CopyAssets は 1 Tick = 1 ファイルで処理する
     if (m_step == Step::CopyAssets) {
@@ -131,6 +171,15 @@ void BuildPipeline::Reset()
     m_progress = 0.0f;
     m_status.clear();
     m_error.clear();
+}
+
+void BuildPipeline::Cancel()
+{
+    if (m_state != State::Running) return;
+
+    if (m_step == Step::Compile)
+        m_compiler.Cancel();
+    SetFailed("Build cancelled.");
 }
 
 std::string BuildPipeline::GetOutputExePath() const
@@ -173,16 +222,12 @@ bool BuildPipeline::ExecuteStep()
     // ------------------------------------------------------------------
     case Step::CopyDlls: {
         m_status = "Copying DLLs...";
-        // WHY: Debug ビルドでは assimp-vc145-mtd.dll、Release では assimp-vc145-mt.dll が
-        //      CMakeLists によって exe 隣にコピーされる。NDEBUG マクロでビルド構成を判定し、
-        //      対応する DLL だけを配布パッケージに含める。
-        //      配布用パッケージは Release ビルドで作成することを推奨する。
+        // WHY: RuntimeBuild の構成はエディタ自身の Debug/Release ではなく BuildSettings で決まる。
+        //      developmentBuild=true なら Debug、false なら Release の Assimp DLL を成果物 exe 隣からコピーする。
         const std::filesystem::path exeDir = m_exeSrcPath.parent_path();
-#ifdef NDEBUG
-        const std::wstring assimpDLL = L"assimp-vc145-mt.dll";   // Release
-#else
-        const std::wstring assimpDLL = L"assimp-vc145-mtd.dll";  // Debug
-#endif
+        const std::wstring assimpDLL = m_settings.developmentBuild
+            ? L"assimp-vc145-mtd.dll"
+            : L"assimp-vc145-mt.dll";
         const std::filesystem::path src = exeDir / assimpDLL;
         if (std::filesystem::exists(src, ec)) {
             std::filesystem::copy_file(src, m_tmpDir / assimpDLL,
@@ -398,9 +443,9 @@ bool BuildPipeline::ExecuteStep()
 void BuildPipeline::BeginEnumerateAssets()
 {
     m_assetFiles.clear();
-    const std::filesystem::path exeAssetsDir = m_exeSrcPath.parent_path() / "assets";
+    const std::filesystem::path projectAssetsDir = std::filesystem::path(m_projectRoot) / "Assets";
     std::error_code ec;
-    for (auto& entry : std::filesystem::recursive_directory_iterator(exeAssetsDir, ec)) {
+    for (auto& entry : std::filesystem::recursive_directory_iterator(projectAssetsDir, ec)) {
         if (entry.is_regular_file(ec))
             m_assetFiles.push_back(entry.path());
     }
@@ -413,9 +458,9 @@ bool BuildPipeline::TickCopyOneFile()
     if (m_assetIdx >= m_assetFiles.size()) return false;
 
     const auto& src = m_assetFiles[m_assetIdx];
-    const std::filesystem::path exeAssetsDir = m_exeSrcPath.parent_path() / "assets";
-    const std::filesystem::path rel = std::filesystem::relative(src, exeAssetsDir);
-    const std::filesystem::path dst = m_tmpDir / "assets" / rel;
+    const std::filesystem::path projectAssetsDir = std::filesystem::path(m_projectRoot) / "Assets";
+    const std::filesystem::path rel = std::filesystem::relative(src, projectAssetsDir);
+    const std::filesystem::path dst = m_tmpDir / "Assets" / rel;
 
     std::error_code ec;
     std::filesystem::create_directories(dst.parent_path(), ec);
