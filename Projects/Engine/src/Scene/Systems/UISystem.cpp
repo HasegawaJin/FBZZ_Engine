@@ -47,6 +47,13 @@ struct CanvasEntry {
     UICanvas* canvas = nullptr;
 };
 
+struct CanvasRuntimeState {
+    math::Matrix4 canvasToClip = math::Matrix4::Identity();
+    math::Vector2 mouseInCanvasSpace = {};
+    renderer::ResourceHandle<renderer::PipelineStateTag> pso;
+    renderer::RenderLayer layer = renderer::RenderLayer::OVERLAY_LAYER;
+};
+
 using Glyph = std::array<uint8_t, 7>;
 
 // 前方宣言。完全なグリフテーブルと同じ場所で定義する。
@@ -296,6 +303,94 @@ void CollectCanvases(Scene& scene, std::vector<CanvasEntry>& canvases)
         });
 }
 
+bool IsScreenSpaceRenderMode(UIRenderMode mode);
+
+bool ShouldRenderCanvas(const UICanvas& canvas, UIRenderTargetView targetView)
+{
+    // WHY: UIViewport は Unity / Unreal の UI Designer に近い Canvas Editor として扱う。
+    //      WorldSpace Canvas は 3D シーン内の UI なので、UI 専用編集ビューへ混ぜると
+    //      HUD / メニュー編集時に奥行きやカメラ依存の情報が混在して役割が曖昧になる。
+    // WHAT: GameViewport は最終出力として全 Canvas、SceneViewport は WorldSpace、
+    //       CanvasEditor は ScreenSpace だけ描く。
+    if (targetView == UIRenderTargetView::SceneViewport)
+        return canvas.renderMode == UIRenderMode::WorldSpace;
+    if (targetView == UIRenderTargetView::CanvasEditor)
+        return IsScreenSpaceRenderMode(canvas.renderMode);
+    return true;
+}
+
+bool IsScreenSpaceRenderMode(UIRenderMode mode)
+{
+    return mode == UIRenderMode::ScreenSpaceOverlay
+        || mode == UIRenderMode::ScreenSpaceCamera;
+}
+
+float ResolveCanvasScale(const UICanvas& canvas, float viewportWidth, float viewportHeight)
+{
+    // WHY: Unity の Canvas Scaler と同じ考え方で、基準解像度と現在 Viewport の差を
+    //      UI 座標変換に集約する。個々の UIImage / UIText の値を書き換えないため、
+    //      編集データは常に reference 解像度の座標として保てる。
+    if (canvas.scaleMode != UICanvasScaleMode::ScaleWithScreenSize)
+        return 1.0f;
+
+    const float refW = (std::max)(1.0f, canvas.referenceWidth);
+    const float refH = (std::max)(1.0f, canvas.referenceHeight);
+    const float scaleW = (std::max)(1.0f, viewportWidth) / refW;
+    const float scaleH = (std::max)(1.0f, viewportHeight) / refH;
+    const float match = std::clamp(canvas.matchWidthOrHeight, 0.0f, 1.0f);
+    return std::exp(std::log(scaleW) * (1.0f - match) + std::log(scaleH) * match);
+}
+
+CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
+                                           const GameObject& canvasGO,
+                                           float viewportWidth,
+                                           float viewportHeight,
+                                           math::Vector2 rawMouseInViewport,
+                                           const math::Matrix4& viewProjection,
+                                           UIRenderTargetView targetView)
+{
+    CanvasRuntimeState state{};
+    if (canvas.renderMode == UIRenderMode::WorldSpace) {
+        const float ws = canvas.worldScale;
+
+        math::Matrix4 pixelToLocal = math::Matrix4::Identity();
+        pixelToLocal.m[0][0] =  ws;
+        pixelToLocal.m[1][1] = -ws;
+        pixelToLocal.m[0][3] = -canvas.canvasWidth  * 0.5f * ws;
+        pixelToLocal.m[1][3] =  canvas.canvasHeight * 0.5f * ws;
+
+        const math::Matrix4 worldMatrix = math::Matrix4::TRS(
+            canvasGO.transform.position,
+            canvasGO.transform.rotation,
+            math::Vector3::ONE
+        );
+
+        state.canvasToClip = viewProjection * worldMatrix * pixelToLocal;
+        state.mouseInCanvasSpace = rawMouseInViewport;
+        state.pso = s_worldPso;
+        state.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
+        return state;
+    }
+
+    float scale = ResolveCanvasScale(canvas, viewportWidth, viewportHeight);
+    float visibleCanvasW = (std::max)(1.0f, viewportWidth) / scale;
+    float visibleCanvasH = (std::max)(1.0f, viewportHeight) / scale;
+    if (targetView == UIRenderTargetView::CanvasEditor) {
+        visibleCanvasW = (std::max)(1.0f, canvas.canvasWidth);
+        visibleCanvasH = (std::max)(1.0f, canvas.canvasHeight);
+        scale = (std::max)(1.0f, viewportWidth) / visibleCanvasW;
+    }
+
+    state.canvasToClip = math::Matrix4::Orthographic(
+        0.0f, visibleCanvasW,
+        visibleCanvasH, 0.0f,
+        0.0f, 1.0f);
+    state.mouseInCanvasSpace = { rawMouseInViewport.x / scale, rawMouseInViewport.y / scale };
+    state.pso = s_pso;
+    state.layer = renderer::RenderLayer::OVERLAY_LAYER;
+    return state;
+}
+
 void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool mousePressed)
 {
     const UIButtonState previousState = button.state;
@@ -502,23 +597,52 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout)
     }
 }
 
-// canvasToClip: SubmitImage / SubmitText へそのまま渡す変換行列。
-// pso / layer:  ScreenSpace と WorldSpace で異なる PSO とレイヤーを切り替える。
-void TraverseCanvas(GameObject& go,
-                    renderer::IRenderer& renderer,
-                    renderer::ResourceManager& resources,
-                    const UICanvas& canvas,
-                    const math::Matrix4& canvasToClip,
-                    renderer::ResourceHandle<renderer::PipelineStateTag> pso,
-                    renderer::RenderLayer layer,
-                    math::Vector2 mouseInCanvasSpace,
-                    bool mousePressed)
+void ApplyUILayoutRecursive(GameObject& go)
 {
     if (!go.activeSelf()) return;
 
-    // UILayoutGroup はこのフレームで子 transform を上書きしてからトラバースする
     if (auto* layout = go.GetComponent<UILayoutGroup>(); layout && layout->enabled)
         ApplyLayout(go, *layout);
+
+    for (int i = 0; i < go.GetChildCount(); ++i) {
+        if (GameObject* child = go.GetChild(i))
+            ApplyUILayoutRecursive(*child);
+    }
+}
+
+void ProcessUIEventsRecursive(GameObject& go, math::Vector2 mouseInCanvasSpace, bool mousePressed)
+{
+    if (!go.activeSelf()) return;
+
+    auto* image  = go.GetComponent<UIImage>();
+    auto* button = go.GetComponent<UIButton>();
+    if (button) {
+        if (image && image->enabled)
+            UpdateButton(*button, RectFromTransform(go.transform), mouseInCanvasSpace, mousePressed);
+        else {
+            button->onClick = false;
+            button->onEnter = false;
+            button->onExit  = false;
+            button->state   = UIButtonState::NORMAL;
+        }
+    }
+
+    for (int i = 0; i < go.GetChildCount(); ++i) {
+        if (GameObject* child = go.GetChild(i))
+            ProcessUIEventsRecursive(*child, mouseInCanvasSpace, mousePressed);
+    }
+}
+
+// canvasToClip: SubmitImage / SubmitText へそのまま渡す変換行列。
+// pso / layer:  ScreenSpace と WorldSpace で異なる PSO とレイヤーを切り替える。
+void RenderCanvasRecursive(GameObject& go,
+                           renderer::IRenderer& renderer,
+                           renderer::ResourceManager& resources,
+                           const math::Matrix4& canvasToClip,
+                           renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                           renderer::RenderLayer layer)
+{
+    if (!go.activeSelf()) return;
 
     auto* image  = go.GetComponent<UIImage>();
     auto* button = go.GetComponent<UIButton>();
@@ -530,10 +654,8 @@ void TraverseCanvas(GameObject& go,
 
         const Rect    r     = RectFromTransform(go.transform);
         math::Vector4 color = image->color;
-        if (button) {
-            UpdateButton(*button, r, mouseInCanvasSpace, mousePressed);
+        if (button)
             color = Multiply(color, ButtonTint(*button));
-        }
         const auto& qr = go.transform.localRotation;
         const float zAngle = std::atan2f(2.0f*(qr.w*qr.z + qr.x*qr.y),
                                           1.0f - 2.0f*(qr.y*qr.y + qr.z*qr.z));
@@ -542,11 +664,6 @@ void TraverseCanvas(GameObject& go,
                     image->uvMin, image->uvMax,
                     image->texture.IsValid() ? image->texture : s_whiteTexture,
                     zAngle);
-    } else if (button) {
-        button->onClick = false;
-        button->onEnter = false;
-        button->onExit  = false;
-        button->state   = UIButtonState::NORMAL;
     }
 
     if (text && text->enabled) {
@@ -556,8 +673,56 @@ void TraverseCanvas(GameObject& go,
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            TraverseCanvas(*child, renderer, resources, canvas,
-                           canvasToClip, pso, layer, mouseInCanvasSpace, mousePressed);
+            RenderCanvasRecursive(*child, renderer, resources, canvasToClip, pso, layer);
+    }
+}
+
+void UILayoutSystem(const std::vector<CanvasEntry>& canvases)
+{
+    for (const CanvasEntry& entry : canvases)
+        ApplyUILayoutRecursive(*entry.go);
+}
+
+void UIEventSystem(const std::vector<CanvasEntry>& canvases,
+                   float viewportWidth,
+                   float viewportHeight,
+                   math::Vector2 rawMouseInViewport,
+                   bool mousePressed,
+                   const math::Matrix4& viewProjection,
+                   UIRenderTargetView targetView)
+{
+    for (const CanvasEntry& entry : canvases) {
+        if (!ShouldRenderCanvas(*entry.canvas, targetView))
+            continue;
+        if (!IsScreenSpaceRenderMode(entry.canvas->renderMode))
+            continue;
+
+        const CanvasRuntimeState state = BuildCanvasRuntimeState(
+            *entry.canvas, *entry.go, viewportWidth, viewportHeight, rawMouseInViewport,
+            viewProjection, targetView);
+        ProcessUIEventsRecursive(*entry.go, state.mouseInCanvasSpace, mousePressed);
+    }
+}
+
+void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
+                    renderer::IRenderer& renderer,
+                    renderer::ResourceManager& resources,
+                    float viewportWidth,
+                    float viewportHeight,
+                    math::Vector2 rawMouseInViewport,
+                    const math::Matrix4& viewProjection,
+                    UIRenderTargetView targetView)
+{
+    renderer.SetSampler(5, renderer::SamplerMode::CLAMP_LINEAR);
+
+    for (const CanvasEntry& entry : canvases) {
+        if (!ShouldRenderCanvas(*entry.canvas, targetView))
+            continue;
+
+        const CanvasRuntimeState state = BuildCanvasRuntimeState(
+            *entry.canvas, *entry.go, viewportWidth, viewportHeight, rawMouseInViewport,
+            viewProjection, targetView);
+        RenderCanvasRecursive(*entry.go, renderer, resources, state.canvasToClip, state.pso, state.layer);
     }
 }
 
@@ -566,11 +731,12 @@ void TraverseCanvas(GameObject& go,
 void UISystem(Scene& scene,
               renderer::IRenderer& renderer,
               renderer::ResourceManager& resources,
-              float,
-              float,
+              float viewportWidth,
+              float viewportHeight,
               math::Vector2 mouseInCanvasSpace,
               bool mousePressed,
-              const math::Matrix4& viewProjection)
+              const math::Matrix4& viewProjection,
+              UIRenderTargetView targetView)
 {
     EnsureInit(resources);
     if (!s_shader.IsValid() || !s_constants.IsValid() ||
@@ -578,63 +744,14 @@ void UISystem(Scene& scene,
         !s_whiteTexture.IsValid() || !s_imageVB.IsValid() || !s_textVB.IsValid())
         return;
 
-    renderer.SetSampler(5, renderer::SamplerMode::CLAMP_LINEAR);
-
     std::vector<CanvasEntry> canvases;
     CollectCanvases(scene, canvases);
 
-    for (const CanvasEntry& entry : canvases) {
-        if (entry.canvas->renderMode == UIRenderMode::WorldSpace) {
-            // ================================================================
-            // WorldSpace Canvas の座標変換
-            // ================================================================
-            // キャンバスピクセル座標 (px, py) → クリップ座標 の変換を 1 行列で表す。
-            //   clip = VP * World * pixelToLocal * [px, py, 0, 1]^T
-            //
-            // pixelToLocal: ピクセル座標をオブジェクト中心基準のローカル空間へ変換する。
-            //   - worldScale (ws) でスケールし、1 ピクセル = ws ワールド単位にする。
-            //   - キャンバス中心 (W/2, H/2) をローカル原点に合わせるためオフセットする。
-            //   - canvas の Y は下向き (+Y = down)、ワールドは上向き (+Y = up) なので Y 反転する。
-            //
-            // World: GameObject の位置・回転を持つ TRS 行列 (スケールは pixelToLocal で処理済みなので ONE)。
-            // VP: カメラの ViewProjection 行列 (呼び出し元から渡す)。
-            //
-            // シェーダーは既存の UISprite.hlsl / UIText.hlsl を使い回す。
-            // HLSL: mul(float4(px, py, 0, 1), g_Ortho) = M_combined * [px,py,0,1]^T
-            // ※ C++ row-major → HLSL column-major の自動転置により等価になる。
-            const float ws = entry.canvas->worldScale;
-
-            math::Matrix4 pixelToLocal = math::Matrix4::Identity();
-            pixelToLocal.m[0][0] =  ws;                                     // X スケール
-            pixelToLocal.m[1][1] = -ws;                                     // Y スケール & 反転
-            pixelToLocal.m[0][3] = -entry.canvas->canvasWidth  * 0.5f * ws; // X センタリング
-            pixelToLocal.m[1][3] =  entry.canvas->canvasHeight * 0.5f * ws; // Y センタリング
-
-            // GameObject のワールド行列 (TransformSystem が更新済みの position / rotation を使う)
-            const math::Matrix4 worldMatrix = math::Matrix4::TRS(
-                entry.go->transform.position,
-                entry.go->transform.rotation,
-                math::Vector3::ONE
-            );
-
-            // 3 段階の変換を 1 行列に合成する
-            const math::Matrix4 canvasToClip = viewProjection * worldMatrix * pixelToLocal;
-
-            TraverseCanvas(*entry.go, renderer, resources, *entry.canvas,
-                           canvasToClip, s_worldPso, renderer::RenderLayer::TRANSPARENT_LAYER,
-                           mouseInCanvasSpace, mousePressed);
-        } else {
-            // ScreenSpace: 標準正射影でピクセル座標をクリップ座標へ変換する
-            const math::Matrix4 canvasToClip = math::Matrix4::Orthographic(
-                0.0f, entry.canvas->canvasWidth,
-                entry.canvas->canvasHeight, 0.0f,
-                0.0f, 1.0f);
-
-            TraverseCanvas(*entry.go, renderer, resources, *entry.canvas,
-                           canvasToClip, s_pso, renderer::RenderLayer::OVERLAY_LAYER,
-                           mouseInCanvasSpace, mousePressed);
-        }
-    }
+    UILayoutSystem(canvases);
+    UIEventSystem(canvases, viewportWidth, viewportHeight, mouseInCanvasSpace,
+                  mousePressed, viewProjection, targetView);
+    UIRenderSystem(canvases, renderer, resources, viewportWidth, viewportHeight,
+                   mouseInCanvasSpace, viewProjection, targetView);
 }
 
 } // namespace fbzz::scene
