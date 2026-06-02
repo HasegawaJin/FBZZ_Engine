@@ -5,6 +5,7 @@
 #include "../Tools/TerrainTool.hpp"
 #include "../Tools/WaterTool.hpp"
 #include <Editor/EditorContext.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Engine/Input/Input.hpp>
@@ -915,6 +916,46 @@ ImVec2 FitSizeToAspect(ImVec2 size, float aspect)
     return size;
 }
 
+void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
+{
+    struct ModeEntry {
+        const char*        label;
+        const char*        tooltip;
+        renderer::ViewMode mode;
+    };
+    static constexpr ModeEntry kModes[] = {
+        { "Lit",    "Lit \xe2\x80\x94 full lighting",                    renderer::ViewMode::Lit            },
+        { "Unlit",  "Unlit \xe2\x80\x94 no lighting",                   renderer::ViewMode::Unlit          },
+        { "Wf Lit", "Wireframe Lit \xe2\x80\x94 wireframe + lighting",  renderer::ViewMode::WireframeLit   },
+        { "Wf",     "Wireframe Unlit \xe2\x80\x94 wireframe only",      renderer::ViewMode::WireframeUnlit },
+    };
+
+    renderer::ViewMode& current = ctx.projectSettings.render.viewMode;
+
+    ImGui::SetCursorScreenPos({ viewportMin.x + 6.0f, viewportMin.y + 6.0f });
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3.0f, 0.0f });
+
+    for (const auto& entry : kModes) {
+        const bool active = current == entry.mode;
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            active ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
+                   : ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+
+        if (ImGui::SmallButton(entry.label))
+            current = entry.mode;
+
+        ImGui::PopStyleColor();
+
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", entry.tooltip);
+
+        ImGui::SameLine();
+    }
+
+    ImGui::PopStyleVar(2);
+}
+
 } // namespace
 
 ViewportPanel::ViewportPanel(Kind kind)
@@ -1015,6 +1056,9 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                               || ImGuizmo::IsUsingViewManipulate() || ImGuizmo::IsViewManipulateHovered();
     if (isSceneView && !inPlayOrPause && viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse)
         PickEntity(ctx, viewportMin);
+
+    if (isSceneView && !inPlayOrPause)
+        DrawViewModeToolbar(ctx, viewportMin);
 
     if (isSceneView && !inPlayOrPause) {
         DrawSceneIcons(ctx, viewportMin, size);
