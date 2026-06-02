@@ -430,10 +430,15 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
         const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
         const renderer::Camera gameCamera = ResolveGameCamera(*scene, aspect);
 
-        scene::RenderSystem(*scene, renderer, resources, gameCamera, {}, &settings.render);
-        scene::UISystem(*scene, renderer, resources,
-                        static_cast<float>(w), static_cast<float>(h),
-                        {}, true, gameCamera.GetViewProjection());
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled = true;
+        uiOptions.viewportWidth = static_cast<float>(w);
+        uiOptions.viewportHeight = static_cast<float>(h);
+        uiOptions.mouseInCanvasSpace = input::Input::MousePosition();
+        uiOptions.mousePressed = input::Input::MouseButton(0);
+        uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+        scene::RenderSystem(*scene, renderer, resources, gameCamera, {}, &settings.render,
+                            fbzz::Layer::Everything, &uiOptions);
         {
             FBZZ_PROFILE_SCOPE("Renderer::EndFrame");
             renderer.EndFrame();
@@ -633,7 +638,6 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         for (scene::EntityID id : editorApp.GetContext().selectedEntities)
             sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
         // TerrainRenderSystem は RenderSystem の RenderGraph 内 (ForwardOpaque 直後) に統合済み
-        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
         // WorldSpace UI をシーンビューポートに描画する (エディターカメラの VP を使用)
         {
             float w = 1920.0f, h = 1080.0f;
@@ -641,8 +645,19 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                 w = static_cast<float>(rt->GetWidth());
                 h = static_cast<float>(rt->GetHeight());
             }
-            scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
-                            debugCamera.camera.GetViewProjection());
+            scene::RenderSystemUIOptions uiOptions{};
+            uiOptions.enabled = true;
+            uiOptions.viewportWidth = w;
+            uiOptions.viewportHeight = h;
+            uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
+            scene::RenderSystem(*scene,
+                                renderer,
+                                resources,
+                                debugCamera.camera,
+                                sceneRT,
+                                &sceneRenderSettings,
+                                fbzz::Layer::Everything,
+                                &uiOptions);
         }
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
@@ -660,13 +675,6 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             gameRenderSettings.viewMode = renderer::ViewMode::Lit;
             gameRenderSettings.showSelectionOutline = false;
             gameRenderSettings.selectedObjects.clear();
-            scene::RenderSystem(*scene,
-                                renderer,
-                                resources,
-                                gameCamera,
-                                gameRT,
-                                &gameRenderSettings,
-                                gameCullingMask);
             // WorldSpace UI をゲームビューポートに描画する (ゲームカメラの VP を使用)
             {
                 float w = 1920.0f, h = 1080.0f;
@@ -674,8 +682,19 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                     w = static_cast<float>(rt->GetWidth());
                     h = static_cast<float>(rt->GetHeight());
                 }
-                scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
-                                gameCamera.GetViewProjection());
+                scene::RenderSystemUIOptions uiOptions{};
+                uiOptions.enabled = true;
+                uiOptions.viewportWidth = w;
+                uiOptions.viewportHeight = h;
+                uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+                scene::RenderSystem(*scene,
+                                    renderer,
+                                    resources,
+                                    gameCamera,
+                                    gameRT,
+                                    &gameRenderSettings,
+                                    gameCullingMask,
+                                    &uiOptions);
             }
         }
 
