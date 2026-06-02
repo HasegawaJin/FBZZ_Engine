@@ -52,7 +52,9 @@ public:
     // Viewport に紐づいたオフスクリーン RT (main.cpp はここに描く)
     renderer::ResourceHandle<renderer::RenderTargetTag> GetViewportRT() const { return m_sceneViewportRT; }
     renderer::ResourceHandle<renderer::RenderTargetTag> GetGameViewportRT() const { return m_gameViewportRT; }
-    renderer::ResourceHandle<renderer::RenderTargetTag> GetUIViewportRT() const { return m_uiViewportRT; }
+    // WHY: UI Viewport は Game View の完成済み RT を共有し、編集ガイドだけを ImGui で重ねる。
+    //      専用 RT を返す API にすると、Clear 済みの空 RT を表示する経路が再発しやすい。
+    renderer::ResourceHandle<renderer::RenderTargetTag> GetUIViewportRT() const { return m_gameViewportRT; }
 
 private:
     void BuildMenuBar(EditorContext& ctx);
@@ -107,7 +109,6 @@ private:
     AnalysisPanel*                           m_analysisPanel          = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
-    renderer::ResourceHandle<renderer::RenderTargetTag> m_uiViewportRT;
 };
 
 } // namespace fbzz::editor
