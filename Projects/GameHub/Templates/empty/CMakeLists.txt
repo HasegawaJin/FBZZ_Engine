@@ -16,6 +16,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/Binaries/Debug")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/Binaries/Release")
 set(FBZZ_RUNTIME_BUILD_EXE_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/{{TARGET_NAME}}Standalone.exe")
 set(FBZZ_RUNTIME_BUILD_EXE_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/{{TARGET_NAME}}Standalone.exe")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/{{TARGET_NAME}}Scripts.dll")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/{{TARGET_NAME}}Scripts.dll")
 
 add_subdirectory("${FBZZ_ENGINE_ROOT}/ThirdParty" "${CMAKE_BINARY_DIR}/FBZZ/ThirdParty")
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Math" "${CMAKE_BINARY_DIR}/FBZZ/Math")
@@ -23,17 +25,37 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Physics" "${CMAKE_BINARY_DIR}/FBZ
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Engine" "${CMAKE_BINARY_DIR}/FBZZ/Engine")
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ/Editor")
 
+# スクリプト DLL (ホットリロード用)
+file(GLOB_RECURSE {{TARGET_NAME}}_SCRIPT_DLL_SOURCES
+    Src/Scripts/*.cpp
+    Src/Scripts/*.hpp
+    Src/{{TARGET_NAME}}ScriptsDll.cpp
+)
+add_library({{TARGET_NAME}}Scripts SHARED ${{{TARGET_NAME}}_SCRIPT_DLL_SOURCES})
+target_compile_definitions({{TARGET_NAME}}Scripts PRIVATE GAMESCRIPTS_EXPORTS)
+target_include_directories({{TARGET_NAME}}Scripts PRIVATE Src)
+target_link_libraries({{TARGET_NAME}}Scripts
+    PRIVATE
+        fbzz_engine
+        fbzz_physics
+)
+set_target_properties({{TARGET_NAME}}Scripts PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>"
+)
+
 add_executable({{TARGET_NAME}}
     Src/AppMain.cpp
     Src/GameMain.cpp
     Include/{{TARGET_NAME}}/ProjectAPI.hpp
 )
+add_dependencies({{TARGET_NAME}} {{TARGET_NAME}}Scripts)
 
 add_executable({{TARGET_NAME}}Standalone
     Src/AppMain.cpp
     Src/GameMain.cpp
     Include/{{TARGET_NAME}}/ProjectAPI.hpp
 )
+add_dependencies({{TARGET_NAME}}Standalone {{TARGET_NAME}}Scripts)
 target_compile_definitions({{TARGET_NAME}}Standalone PRIVATE FBZZ_STANDALONE_TARGET)
 
 target_include_directories({{TARGET_NAME}}
