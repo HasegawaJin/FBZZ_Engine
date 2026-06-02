@@ -1031,6 +1031,10 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             uiTbl.insert("canvasHeight", (double)canvas->canvasHeight);
             uiTbl.insert("sortOrder",    (int64_t)canvas->sortOrder);
             uiTbl.insert("renderMode",   (int64_t)static_cast<int>(canvas->renderMode));
+            uiTbl.insert("scaleMode",    (int64_t)static_cast<int>(canvas->scaleMode));
+            uiTbl.insert("referenceWidth",  (double)canvas->referenceWidth);
+            uiTbl.insert("referenceHeight", (double)canvas->referenceHeight);
+            uiTbl.insert("matchWidthOrHeight", (double)canvas->matchWidthOrHeight);
             uiTbl.insert("worldScale",   (double)canvas->worldScale);
             goTbl.insert("UICanvas", std::move(uiTbl));
         }
@@ -1763,6 +1767,10 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             canvas.canvasHeight = (float)(*uiTbl)["canvasHeight"].value_or(1080.0);
             canvas.sortOrder    = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
             canvas.renderMode   = static_cast<UIRenderMode>((*uiTbl)["renderMode"].value_or((int64_t)0));
+            canvas.scaleMode    = static_cast<UICanvasScaleMode>((*uiTbl)["scaleMode"].value_or((int64_t)0));
+            canvas.referenceWidth  = (float)(*uiTbl)["referenceWidth"].value_or(1920.0);
+            canvas.referenceHeight = (float)(*uiTbl)["referenceHeight"].value_or(1080.0);
+            canvas.matchWidthOrHeight = (float)(*uiTbl)["matchWidthOrHeight"].value_or(0.0);
             canvas.worldScale   = (float)(*uiTbl)["worldScale"].value_or(0.01);
             go.AddComponent<UICanvas>(canvas);
         }
