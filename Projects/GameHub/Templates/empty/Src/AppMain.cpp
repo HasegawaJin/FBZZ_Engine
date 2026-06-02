@@ -535,11 +535,11 @@ public:
 
 private:
     struct FocusAnim {
-        bool              active   = false;
+        bool                active   = false;
         fbzz::math::Vector3 startPos = {};
         fbzz::math::Vector3 endPos   = {};
         fbzz::math::Vector3 target   = {};
-        float             t        = 0.0f;
+        float               t        = 0.0f;
     };
 
     [[nodiscard]] float SimulationDeltaTime() const
