@@ -326,7 +326,6 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
     // 初回 RT をウィンドウサイズで生成する
     m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
     m_gameViewportRT  = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
-    m_uiViewportRT    = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
     if (m_sceneViewportPanel) {
         m_sceneViewportPanel->hdrRT     = m_sceneViewportRT;
         m_sceneViewportPanel->renderer  = &renderer;
@@ -338,7 +337,10 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
         m_gameViewportPanel->resources = &resources;
     }
     if (m_uiViewportPanel) {
-        m_uiViewportPanel->hdrRT     = m_uiViewportRT;
+        // WHY: UI Viewport は Game View の完成フレームを背景として共有する。
+        //      UI 専用 RT を別描画すると、Clear 順や RenderGraph 経路の差で青い空 RT が表示される。
+        //      編集用ガイドとギズモだけを ImGui 側で重ねることで、Game View と同じ出力を見ながら UI を編集できる。
+        m_uiViewportPanel->hdrRT     = m_gameViewportRT;
         m_uiViewportPanel->renderer  = &renderer;
         m_uiViewportPanel->resources = &resources;
     }
@@ -375,7 +377,6 @@ void EditorApp::Shutdown()
     m_ctx.projectSettings.Save(m_projectSettingsPath);
     m_sceneViewportRT = {};
     m_gameViewportRT  = {};
-    m_uiViewportRT    = {};
     m_renderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }
@@ -458,6 +459,32 @@ void EditorApp::BeginFrame()
 
     m_renderer->ImGuiNewFrame();
     ImGui::NewFrame();
+
+    // WHY: Unity 同様、Play 中・Pause 中はエディターとの区別を一目で把握できるようにする。
+    //      ImGui のスタイルカラーをフレームごとに上書きすることで
+    //      全ウィンドウ背景にティントを掛けられる。
+    //      Push/Pop ではなくフレームごと直接書き換えることで、
+    //      ウィンドウ単位でなく全体へ適用できる。
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        if (m_playMode.IsPlaying()) {
+            // Play 中: 青系ティント (#1A2433)
+            style.Colors[ImGuiCol_WindowBg]  = { 0.10f, 0.14f, 0.20f, 1.0f };
+            style.Colors[ImGuiCol_ChildBg]   = { 0.08f, 0.12f, 0.18f, 1.0f };
+            style.Colors[ImGuiCol_MenuBarBg] = { 0.07f, 0.10f, 0.16f, 1.0f };
+        } else if (m_playMode.IsPaused()) {
+            // Pause 中: 黄系ティント (#2E2614)
+            style.Colors[ImGuiCol_WindowBg]  = { 0.18f, 0.16f, 0.10f, 1.0f };
+            style.Colors[ImGuiCol_ChildBg]   = { 0.15f, 0.13f, 0.08f, 1.0f };
+            style.Colors[ImGuiCol_MenuBarBg] = { 0.13f, 0.11f, 0.07f, 1.0f };
+        } else {
+            // Editor モードのデフォルト色を毎フレーム復元する
+            style.Colors[ImGuiCol_WindowBg]  = { 0.173f, 0.173f, 0.173f, 1.0f }; // BG_BASE
+            style.Colors[ImGuiCol_ChildBg]   = { 0.141f, 0.141f, 0.141f, 1.0f }; // BG_DARK
+            style.Colors[ImGuiCol_MenuBarBg] = { 0.102f, 0.102f, 0.102f, 1.0f }; // BG_DARKEST
+        }
+    }
+
     ImGuizmo::BeginFrame();
     m_hotkeys.ProcessInput();
     CheckHotReload();
@@ -561,7 +588,10 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 
     resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth,     m_ctx.viewportHeight);
     resizeRT(m_gameViewportRT,  m_gameViewportPanel,  m_ctx.gameViewportWidth,  m_ctx.gameViewportHeight);
-    resizeRT(m_uiViewportRT,    m_uiViewportPanel,    m_ctx.uiViewportWidth,    m_ctx.uiViewportHeight);
+    // WHY: UI Viewport は専用 RT を持たず、Game View の完成済み RT を参照する。
+    //      リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
+    if (m_uiViewportPanel)
+        m_uiViewportPanel->hdrRT = m_gameViewportRT;
 }
 
 } // namespace fbzz::editor
