@@ -172,7 +172,10 @@ bool ProjectSettings::Load(const std::string& path)
                 ? renderer::RenderingPipeline::Deferred
                 : renderer::RenderingPipeline::Forward;
         }
-        render.wireframeMode = (*renderTbl)["wireframe"].value_or(render.wireframeMode);
+        {
+            const int vm = (*renderTbl)["viewMode"].value_or(static_cast<int>(render.viewMode));
+            render.viewMode = static_cast<renderer::ViewMode>(vm);
+        }
         render.shadowEnabled = (*renderTbl)["shadow"].value_or(render.shadowEnabled);
         pp.bloom.enabled = (*renderTbl)["bloom"].value_or(pp.bloom.enabled);
         pp.ambientOcclusion.enabled   = (*renderTbl)["ambientOcclusion"].value_or(pp.ambientOcclusion.enabled);
@@ -380,7 +383,7 @@ bool ProjectSettings::Save(const std::string& path) const
 
     toml::table renderTbl;
     renderTbl.insert("pipeline", render.pipeline == renderer::RenderingPipeline::Deferred ? "deferred" : "forward");
-    renderTbl.insert("wireframe",    render.wireframeMode);
+    renderTbl.insert("viewMode",     static_cast<int>(render.viewMode));
     renderTbl.insert("shadow",       render.shadowEnabled);
     renderTbl.insert("bloom",                   pp.bloom.enabled);
     renderTbl.insert("ambientOcclusion",        pp.ambientOcclusion.enabled);

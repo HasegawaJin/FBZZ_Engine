@@ -137,9 +137,16 @@ struct PostProcessSettings {
     std::vector<CustomPostProcessSettings> customEffects;
 };
 
+enum class ViewMode : uint8_t {
+    Lit             = 0,
+    Unlit           = 1,
+    WireframeLit    = 2,
+    WireframeUnlit  = 3,
+};
+
 struct RenderSettings {
-    RenderingPipeline pipeline = RenderingPipeline::Forward;
-    bool wireframeMode = false;
+    RenderingPipeline pipeline  = RenderingPipeline::Forward;
+    ViewMode          viewMode  = ViewMode::Lit;
     bool shadowEnabled = true;
     bool showColliders   = false;
     bool showDecalBounds = false;
@@ -147,6 +154,9 @@ struct RenderSettings {
     // true のとき、各パスの RT サムネイルと CPU タイミングを ImGui ウィンドウで表示する。
     // ImGui フレーム内 (ImGuiNewFrame〜Render の間) で RenderSystem を呼ぶ構成が前提。
     bool passViewerEnabled = false;
+
+    bool IsWireframe() const { return viewMode == ViewMode::WireframeLit || viewMode == ViewMode::WireframeUnlit; }
+    bool IsUnlit()     const { return viewMode == ViewMode::Unlit        || viewMode == ViewMode::WireframeUnlit; }
 
     PostProcessSettings postProcess;
 
