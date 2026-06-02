@@ -41,7 +41,7 @@ bool BuildSettings::Save(const std::string& projectRoot) const
 
     const std::string path = projectRoot + "/" + BUILD_SETTINGS_FILE;
     if (!util::FileSystem::WriteText(path, ss.str())) {
-        FBZZ_LOG_ERROR("BuildSettings: 保存失敗: %s", path.c_str());
+        FBZZ_LOG_ERROR("BuildSettings: failed to save: %s", path.c_str());
         return false;
     }
     return true;
@@ -58,7 +58,7 @@ bool BuildSettings::Load(const std::string& projectRoot)
 
     auto result = toml::parse(text);
     if (!result) {
-        FBZZ_LOG_WARN("BuildSettings: パース失敗: %s", path.c_str());
+        FBZZ_LOG_WARN("BuildSettings: failed to parse: %s", path.c_str());
         return false;
     }
     auto& tbl = result.table();
