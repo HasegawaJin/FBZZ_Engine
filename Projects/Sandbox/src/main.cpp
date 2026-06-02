@@ -313,6 +313,11 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
     world.SetSubsteps(settings.physics.substeps);
 }
 
+void ApplyUISettings(const ProjectSettings& settings)
+{
+    scene::UISystemSetDefaultFontPath(settings.ui.defaultFontPath);
+}
+
 void RegisterSandboxScripts()
 {
     scene::ScriptFactory::Register<::sandbox::PlayerControllerComponent>();
@@ -366,6 +371,7 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
 
     physics::World physicsWorld;
     ApplyPhysicsSettings(physicsWorld, settings);
+    ApplyUISettings(settings);
     float physicsAccumulator = 0.0f;
 
     // WHY: warmup フレームの時間をゲームの DeltaTime に混入させない
@@ -472,6 +478,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
     physics::World physicsWorld;
     ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
+    ApplyUISettings(editorApp.GetContext().projectSettings);
     float physicsAccumulator = 0.0f;
 
     constexpr float kFocusAnimDuration = 0.30f;

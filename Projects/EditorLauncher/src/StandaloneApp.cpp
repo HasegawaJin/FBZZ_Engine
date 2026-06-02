@@ -33,9 +33,10 @@ bool StandaloneApp::Init(renderer::IRenderer& /*renderer*/,
     m_scene        = std::make_unique<scene::Scene>();
     m_physicsWorld = std::make_unique<physics::World>();
 
-    // 物理設定を ProjectSettings から適用する
+    // 物理・UI 設定を ProjectSettings から適用する
     m_physicsWorld->SetGravity(settings.physics.gravity);
     m_physicsWorld->SetSubsteps(settings.physics.substeps);
+    scene::UISystemSetDefaultFontPath(settings.ui.defaultFontPath);
 
     // シーンをロードする
     // WHY: editor::SceneSerializer はエディタが保存する .fbzz 形式を読み書きする。

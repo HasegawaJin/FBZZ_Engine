@@ -6,6 +6,7 @@
 #pragma once
 #include <Math/Vector2.hpp>
 #include <Math/Matrix4.hpp>
+#include <string>
 
 namespace fbzz {
 namespace renderer {
@@ -24,6 +25,10 @@ enum class UIRenderTargetView {
     SceneViewport, // 3D 編集ビュー。シーン内オブジェクトである WorldSpace Canvas だけ描く。
     CanvasEditor   // UI 専用編集ビュー。3D 空間に属する WorldSpace Canvas は描かない。
 };
+
+// UIText.fontPath が空のときに使用するデフォルトフォントアトラスのベースパス (拡張子なし) を設定する。
+// ProjectSettings のロード後に一度呼ぶ。呼ばなければコンパイル時デフォルトが使われる。
+void UISystemSetDefaultFontPath(const std::string& basePath);
 
 // viewProjection: WorldSpace canvas 用のカメラ VP 行列。WorldSpace を使わない場合は単位行列でよい。
 // targetView: Game / UI Editor など、呼び出し元 Viewport の役割に応じて描画対象 Canvas を絞る。

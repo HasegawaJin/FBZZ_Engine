@@ -55,7 +55,10 @@ struct CanvasRuntimeState {
     renderer::RenderLayer layer = renderer::RenderLayer::OVERLAY_LAYER;
 };
 
+std::string s_defaultFontPath = "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
+
 renderer::ResourceHandle<renderer::ShaderTag>         s_shader;
+renderer::ResourceHandle<renderer::ShaderTag>         s_textShader; // TTF アトラス用 (.r チャンネルを coverage として使う)
 renderer::ResourceHandle<renderer::ConstantBufferTag> s_constants;
 renderer::ResourceHandle<renderer::PipelineStateTag>  s_pso;      // ScreenSpace: 深度テストなし
 renderer::ResourceHandle<renderer::PipelineStateTag>  s_worldPso; // WorldSpace: 深度テストあり (DEPTH_READ)
@@ -120,8 +123,9 @@ void EnsureInit(renderer::ResourceManager& resources)
 {
     if (s_shader.IsValid()) return;
 
-    s_shader    = resources.LoadShader("Assets/shaders/UI/UISprite.hlsl");
-    s_constants = resources.CreateConstantBuffer(sizeof(UIConstants));
+    s_shader     = resources.LoadShader("Assets/shaders/UI/UISprite.hlsl");
+    s_textShader = resources.LoadShader("Assets/shaders/UI/UIText.hlsl");
+    s_constants  = resources.CreateConstantBuffer(sizeof(UIConstants));
     s_pso = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
@@ -142,11 +146,12 @@ void EnsureInit(renderer::ResourceManager& resources)
     s_imageVB = resources.CreateVertexBuffer(nullptr, kImageVBVertices * sizeof(UIVertex), sizeof(UIVertex));
     s_textVB  = resources.CreateVertexBuffer(nullptr, kTextVBVertices  * sizeof(UIVertex), sizeof(UIVertex));
 
-    if (!s_shader.IsValid() || !s_constants.IsValid() ||
+    if (!s_shader.IsValid() || !s_textShader.IsValid() || !s_constants.IsValid() ||
         !s_pso.IsValid() || !s_worldPso.IsValid() ||
         !s_whiteTexture.IsValid() || !s_imageVB.IsValid() || !s_textVB.IsValid()) {
-        FBZZ_LOG_ERROR("UISystem init failed: shader=%d cb=%d pso=%d worldPso=%d white=%d imageVB=%d textVB=%d",
+        FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d worldPso=%d white=%d imageVB=%d textVB=%d",
                        static_cast<int>(s_shader.IsValid()),
+                       static_cast<int>(s_textShader.IsValid()),
                        static_cast<int>(s_constants.IsValid()),
                        static_cast<int>(s_pso.IsValid()),
                        static_cast<int>(s_worldPso.IsValid()),
@@ -477,11 +482,11 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
 
     renderer::DrawCall call;
     call.vertexBuffer       = s_textVB;
-    // TTF アトラスはシェーダー側で SDF しきい値処理を行わないため、通常の UISprite シェーダーを使う。
-    // WHY: UIText.hlsl は内蔵 SDF グリフ用に step() 処理を入れているが、
-    //      TTF アトラスは Pillow のアンチエイリアス済みビットマップなので、
-    //      アルファをそのまま出力する UISprite.hlsl の方が忠実に描画できる。
-    call.shader             = s_shader;
+    // WHY: UISprite.hlsl はテクスチャの alpha チャンネルをそのまま出力するが、
+    //      WIC の PNG ロードが alpha を失うと背景が黒矩形として描画される。
+    //      UIText.hlsl は .r チャンネルを coverage として読み clip() で背景を除去するため、
+    //      alpha チャンネルの保持に依存せず正しく透明を扱える。
+    call.shader             = s_textShader;
     call.pipelineState      = pso;
     call.constantBuffers[0] = s_constants;
     call.vertexCount        = vertCount;
@@ -502,7 +507,9 @@ void SubmitText(renderer::IRenderer& renderer,
     if (!text.enabled || text.text.empty() || text.fontSize <= 0.0f) return;
 
     if (text.fontPath.empty()) {
-        FBZZ_LOG_ERROR("UISystem: UIText.fontPath が未設定です。Assets/Fonts/Kenney/ 配下のフォントを指定してください。");
+        UIText defaulted = text;
+        defaulted.fontPath = s_defaultFontPath;
+        SubmitTextWithAtlas(renderer, resources, canvasToClip, pso, layer, defaulted, position);
         return;
     }
     SubmitTextWithAtlas(renderer, resources, canvasToClip, pso, layer, text, position);
@@ -681,6 +688,11 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
 }
 
 } // namespace
+
+void UISystemSetDefaultFontPath(const std::string& basePath)
+{
+    s_defaultFontPath = basePath;
+}
 
 void UISystem(Scene& scene,
               renderer::IRenderer& renderer,
