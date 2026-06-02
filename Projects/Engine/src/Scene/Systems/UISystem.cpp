@@ -12,6 +12,7 @@
 #include "Engine/Scene/Components/UIText.hpp"
 #include "Engine/Scene/Components/UILayoutGroup.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
+#include "Engine/Renderer/FontAtlas.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RenderLayer.hpp"
@@ -21,10 +22,10 @@
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Core/Logger.hpp"
 #include <algorithm>
-#include <array>
-#include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::scene {
@@ -54,186 +55,68 @@ struct CanvasRuntimeState {
     renderer::RenderLayer layer = renderer::RenderLayer::OVERLAY_LAYER;
 };
 
-using Glyph = std::array<uint8_t, 7>;
+std::string s_defaultFontPath = "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
 
-// 前方宣言。完全なグリフテーブルと同じ場所で定義する。
-Glyph GetGlyph(char c);
-
-// --- SDF フォントアトラス ---
-// ASCII 0x20..0x7E の 95 文字を、各 kGlyphSize x kGlyphSize の SDF texel として描画する。
-// アトラスは kAtlasCols 列で、必要な行数ぶん並べる。
-static constexpr int kGlyphSize  = 24;
-static constexpr int kAtlasCols  = 10;
-static constexpr int kAtlasRows  = 10; // 10x10 = 100 slots >= 95 chars
-static constexpr int kAtlasW     = kGlyphSize * kAtlasCols; // 240
-static constexpr int kAtlasH     = kGlyphSize * kAtlasRows; // 240
-static constexpr int kFirstChar  = 0x20; // ' '
-static constexpr int kLastChar   = 0x7E; // '~'
-static constexpr int kNumGlyphs  = kLastChar - kFirstChar + 1; // 95
-
-// UV テーブル。char - kFirstChar を添字にする。
-struct GlyphUV { math::Vector2 uvMin, uvMax; };
-GlyphUV s_glyphUVs[kNumGlyphs];
-
-// 既存の GetGlyph() テーブルから 5x7 の文字ビットマップを作る。
-// 点灯している行・列を [7][5] の bool 配列へ詰める。
-void BitmapForChar(char c, bool out[7][5])
-{
-    Glyph g = GetGlyph(c);
-    for (int row = 0; row < 7; ++row)
-        for (int col = 0; col < 5; ++col)
-            out[row][col] = (g[row] & (1u << (4 - col))) != 0;
-}
-
-// kGlyphSize x kGlyphSize の単一 SDF グリフを out へ生成する。値は grayscale uint8。
-// spread は SDF が出力ピクセル上で伸びる最大距離。
-void GenerateGlyphSDF(char c, uint8_t* out, int spread = 4)
-{
-    bool bitmap[7][5];
-    BitmapForChar(c, bitmap);
-
-    // ビットマップを kGlyphSize x kGlyphSize の bool グリッドへ拡大する。
-    // ビットマップセル (col, row) は次の出力ピクセル範囲に対応する。
-    // [col*kGlyphSize/5, (col+1)*kGlyphSize/5) x [row*kGlyphSize/7, (row+1)*kGlyphSize/7).
-    bool expanded[kGlyphSize][kGlyphSize] = {};
-    for (int py = 0; py < kGlyphSize; ++py) {
-        int brow = py * 7 / kGlyphSize;
-        for (int px = 0; px < kGlyphSize; ++px) {
-            int bcol = px * 5 / kGlyphSize;
-            expanded[py][px] = bitmap[brow][bcol];
-        }
-    }
-
-    for (int py = 0; py < kGlyphSize; ++py) {
-        for (int px = 0; px < kGlyphSize; ++px) {
-            float minDist = static_cast<float>(spread + 1);
-            bool inside = expanded[py][px];
-            // spread 半径内で内外が逆のピクセルを探す。
-            for (int sy = py - spread; sy <= py + spread; ++sy) {
-                if (sy < 0 || sy >= kGlyphSize) continue;
-                for (int sx = px - spread; sx <= px + spread; ++sx) {
-                    if (sx < 0 || sx >= kGlyphSize) continue;
-                    if (expanded[sy][sx] != inside) {
-                        float d = std::sqrt(static_cast<float>((sx - px) * (sx - px) + (sy - py) * (sy - py)));
-                        if (d < minDist) minDist = d;
-                    }
-                }
-            }
-            float sdf = inside
-                ? 0.5f + 0.5f * std::min(minDist, static_cast<float>(spread)) / static_cast<float>(spread)
-                : 0.5f - 0.5f * std::min(minDist, static_cast<float>(spread)) / static_cast<float>(spread);
-            out[py * kGlyphSize + px] = static_cast<uint8_t>(std::clamp(sdf * 255.0f, 0.0f, 255.0f));
-        }
-    }
-}
-
-// Build the full RGBA atlas and return it as a flat RGBA vector.
-std::vector<uint8_t> BuildFontAtlas()
-{
-    std::vector<uint8_t> atlas(kAtlasW * kAtlasH * 4, 0);
-
-    uint8_t glyphBuf[kGlyphSize * kGlyphSize];
-    for (int i = 0; i < kNumGlyphs; ++i) {
-        char c = static_cast<char>(kFirstChar + i);
-        GenerateGlyphSDF(c, glyphBuf);
-
-        int col = i % kAtlasCols;
-        int row = i / kAtlasCols;
-        int ox  = col * kGlyphSize;
-        int oy  = row * kGlyphSize;
-
-        for (int py = 0; py < kGlyphSize; ++py) {
-            for (int px = 0; px < kGlyphSize; ++px) {
-                int atlasIdx = ((oy + py) * kAtlasW + (ox + px)) * 4;
-                uint8_t v = glyphBuf[py * kGlyphSize + px];
-                atlas[atlasIdx + 0] = v;
-                atlas[atlasIdx + 1] = v;
-                atlas[atlasIdx + 2] = v;
-                atlas[atlasIdx + 3] = v;
-            }
-        }
-
-        float u0 = static_cast<float>(ox) / kAtlasW;
-        float v0 = static_cast<float>(oy) / kAtlasH;
-        float u1 = static_cast<float>(ox + kGlyphSize) / kAtlasW;
-        float v1 = static_cast<float>(oy + kGlyphSize) / kAtlasH;
-        s_glyphUVs[i] = { { u0, v0 }, { u1, v1 } };
-    }
-    return atlas;
-}
-
-renderer::ResourceHandle<renderer::ShaderTag>        s_shader;
-renderer::ResourceHandle<renderer::ShaderTag>        s_textShader;
+renderer::ResourceHandle<renderer::ShaderTag>         s_shader;
+renderer::ResourceHandle<renderer::ShaderTag>         s_textShader; // TTF アトラス用 (.r チャンネルを coverage として使う)
 renderer::ResourceHandle<renderer::ConstantBufferTag> s_constants;
-renderer::ResourceHandle<renderer::PipelineStateTag>  s_pso;       // ScreenSpace: 深度テストなし
-renderer::ResourceHandle<renderer::PipelineStateTag>  s_worldPso;  // WorldSpace: 深度テストあり (DEPTH_READ)
+renderer::ResourceHandle<renderer::PipelineStateTag>  s_pso;      // ScreenSpace: 深度テストなし
+renderer::ResourceHandle<renderer::PipelineStateTag>  s_worldPso; // WorldSpace: 深度テストあり (DEPTH_READ)
 renderer::ResourceHandle<renderer::TextureTag>        s_whiteTexture;
-renderer::ResourceHandle<renderer::TextureTag>        s_fontAtlas;
 renderer::ResourceHandle<renderer::BufferTag>         s_imageVB;
 renderer::ResourceHandle<renderer::BufferTag>         s_textVB;
+
+// フォントアトラスキャッシュ。
+// WHY: UIText ごとに毎フレームロードすると IO コストが爆発するため、
+//      basePath をキーに初回ロード後はキャッシュから返す。
+std::unordered_map<std::string, renderer::FontAtlas> s_fontAtlasCache;
 
 // Fixed VB capacities
 static constexpr uint32_t kImageVBVertices = 6;
 static constexpr uint32_t kTextVBVertices  = 4096; // up to ~682 glyphs
 
-// Transform から UI 矩形を取得する
-// localPosition.xy = 左上座標 (キャンバス空間, Y↓)
-// localScale.xy    = 幅・高さ (px)
 struct Rect { math::Vector2 pos; math::Vector2 size; };
-Rect RectFromTransform(const scene::Transform& t)
+
+struct UITransform2D {
+    math::Vector2 position = math::Vector2::ZERO;
+    float rotationZ = 0.0f;
+};
+
+float ExtractZRotation(const math::Quaternion& q)
 {
-    return { { t.localPosition.x, t.localPosition.y },
+    return std::atan2f(2.0f * (q.w * q.z + q.x * q.y),
+                       1.0f - 2.0f * (q.y * q.y + q.z * q.z));
+}
+
+math::Vector2 Rotate2D(const math::Vector2& v, float angle)
+{
+    const float c = std::cosf(angle);
+    const float s = std::sinf(angle);
+    return { v.x * c - v.y * s, v.x * s + v.y * c };
+}
+
+UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Transform& local)
+{
+    // WHY: UI の localScale.xy は「倍率」ではなく「幅・高さ」なので、
+    //      通常の TransformSystem のように親 scale を子 position へ掛けると、
+    //      親要素のサイズ変更だけで子が大きく飛んでしまう。
+    // WHAT: 親の位置と回転は継承し、サイズは各 UI 要素自身の localScale.xy から読む。
+    const math::Vector2 localPos = { local.localPosition.x, local.localPosition.y };
+    UITransform2D result{};
+    result.position = parent.position + Rotate2D(localPos, parent.rotationZ);
+    result.rotationZ = parent.rotationZ + ExtractZRotation(local.localRotation);
+    return result;
+}
+
+Rect RectFromTransform(const scene::Transform& t, const UITransform2D& resolved)
+{
+    return { resolved.position,
              { t.localScale.x,    t.localScale.y    } };
 }
 
 math::Vector4 Multiply(const math::Vector4& a, const math::Vector4& b)
 {
     return { a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w };
-}
-
-Glyph GetGlyph(char c)
-{
-    switch (static_cast<char>(std::toupper(static_cast<unsigned char>(c)))) {
-    case 'A': return { 0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 };
-    case 'B': return { 0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E };
-    case 'C': return { 0x0F, 0x10, 0x10, 0x10, 0x10, 0x10, 0x0F };
-    case 'D': return { 0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E };
-    case 'E': return { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F };
-    case 'F': return { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10 };
-    case 'G': return { 0x0F, 0x10, 0x10, 0x17, 0x11, 0x11, 0x0F };
-    case 'H': return { 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 };
-    case 'I': return { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1F };
-    case 'J': return { 0x01, 0x01, 0x01, 0x01, 0x11, 0x11, 0x0E };
-    case 'K': return { 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 };
-    case 'L': return { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F };
-    case 'M': return { 0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11 };
-    case 'N': return { 0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11 };
-    case 'O': return { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E };
-    case 'P': return { 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10 };
-    case 'Q': return { 0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D };
-    case 'R': return { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 };
-    case 'S': return { 0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E };
-    case 'T': return { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 };
-    case 'U': return { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E };
-    case 'V': return { 0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04 };
-    case 'W': return { 0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A };
-    case 'X': return { 0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11 };
-    case 'Y': return { 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04 };
-    case 'Z': return { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F };
-    case '0': return { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E };
-    case '1': return { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E };
-    case '2': return { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F };
-    case '3': return { 0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E };
-    case '4': return { 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 };
-    case '5': return { 0x1F, 0x10, 0x10, 0x1E, 0x01, 0x01, 0x1E };
-    case '6': return { 0x0E, 0x10, 0x10, 0x1E, 0x11, 0x11, 0x0E };
-    case '7': return { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 };
-    case '8': return { 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E };
-    case '9': return { 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E };
-    case '-': return { 0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00 };
-    case ':': return { 0x00, 0x04, 0x04, 0x00, 0x04, 0x04, 0x00 };
-    default:  return { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-    }
 }
 
 void EnsureInit(renderer::ResourceManager& resources)
@@ -259,20 +142,14 @@ void EnsureInit(renderer::ResourceManager& resources)
     static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
     s_whiteTexture = resources.CreateTexture(kWhite, 1, 1);
 
-    // Persistent vertex buffers — allocated once, updated each use.
+    // 頂点バッファは一度だけ確保し、毎フレーム Update で上書きする。
     s_imageVB = resources.CreateVertexBuffer(nullptr, kImageVBVertices * sizeof(UIVertex), sizeof(UIVertex));
     s_textVB  = resources.CreateVertexBuffer(nullptr, kTextVBVertices  * sizeof(UIVertex), sizeof(UIVertex));
 
-    // Build SDF font atlas from built-in 5x7 bitmap glyphs.
-    auto atlasData = BuildFontAtlas();
-    s_fontAtlas = resources.CreateTexture(atlasData.data(),
-                                          static_cast<uint32_t>(kAtlasW),
-                                          static_cast<uint32_t>(kAtlasH));
-
     if (!s_shader.IsValid() || !s_textShader.IsValid() || !s_constants.IsValid() ||
-        !s_pso.IsValid() || !s_worldPso.IsValid() || !s_whiteTexture.IsValid() ||
-        !s_imageVB.IsValid() || !s_textVB.IsValid() || !s_fontAtlas.IsValid()) {
-        FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d worldPso=%d white=%d imageVB=%d textVB=%d atlas=%d",
+        !s_pso.IsValid() || !s_worldPso.IsValid() ||
+        !s_whiteTexture.IsValid() || !s_imageVB.IsValid() || !s_textVB.IsValid()) {
+        FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d worldPso=%d white=%d imageVB=%d textVB=%d",
                        static_cast<int>(s_shader.IsValid()),
                        static_cast<int>(s_textShader.IsValid()),
                        static_cast<int>(s_constants.IsValid()),
@@ -280,8 +157,7 @@ void EnsureInit(renderer::ResourceManager& resources)
                        static_cast<int>(s_worldPso.IsValid()),
                        static_cast<int>(s_whiteTexture.IsValid()),
                        static_cast<int>(s_imageVB.IsValid()),
-                       static_cast<int>(s_textVB.IsValid()),
-                       static_cast<int>(s_fontAtlas.IsValid()));
+                       static_cast<int>(s_textVB.IsValid()));
     }
 }
 
@@ -341,6 +217,28 @@ float ResolveCanvasScale(const UICanvas& canvas, float viewportWidth, float view
     return std::exp(std::log(scaleW) * (1.0f - match) + std::log(scaleH) * match);
 }
 
+void ResolveScreenSpaceCanvasArea(const UICanvas& canvas,
+                                  float viewportWidth,
+                                  float viewportHeight,
+                                  float& visibleCanvasW,
+                                  float& visibleCanvasH)
+{
+    // WHY: ScreenSpace UI の編集値は Canvas の論理ピクセル座標として保存する。
+    //      ConstantPixelSize で Viewport 実ピクセルを座標系にしてしまうと、UI Viewport で
+    //      配置した値が Play 時の Game View サイズに依存してずれる。
+    // WHAT: ConstantPixelSize は canvasWidth/canvasHeight をそのまま使い、
+    //       ScaleWithScreenSize は Canvas Scaler 後に見える論理範囲へ変換する。
+    if (canvas.scaleMode == UICanvasScaleMode::ScaleWithScreenSize) {
+        const float scale = ResolveCanvasScale(canvas, viewportWidth, viewportHeight);
+        visibleCanvasW = (std::max)(1.0f, viewportWidth) / scale;
+        visibleCanvasH = (std::max)(1.0f, viewportHeight) / scale;
+        return;
+    }
+
+    visibleCanvasW = (std::max)(1.0f, canvas.canvasWidth);
+    visibleCanvasH = (std::max)(1.0f, canvas.canvasHeight);
+}
+
 CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
                                            const GameObject& canvasGO,
                                            float viewportWidth,
@@ -349,6 +247,7 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
                                            const math::Matrix4& viewProjection,
                                            UIRenderTargetView targetView)
 {
+    (void)targetView;
     CanvasRuntimeState state{};
     if (canvas.renderMode == UIRenderMode::WorldSpace) {
         const float ws = canvas.worldScale;
@@ -372,20 +271,19 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
         return state;
     }
 
-    float scale = ResolveCanvasScale(canvas, viewportWidth, viewportHeight);
-    float visibleCanvasW = (std::max)(1.0f, viewportWidth) / scale;
-    float visibleCanvasH = (std::max)(1.0f, viewportHeight) / scale;
-    if (targetView == UIRenderTargetView::CanvasEditor) {
-        visibleCanvasW = (std::max)(1.0f, canvas.canvasWidth);
-        visibleCanvasH = (std::max)(1.0f, canvas.canvasHeight);
-        scale = (std::max)(1.0f, viewportWidth) / visibleCanvasW;
-    }
+    float visibleCanvasW = 1.0f;
+    float visibleCanvasH = 1.0f;
+    ResolveScreenSpaceCanvasArea(canvas, viewportWidth, viewportHeight,
+                                 visibleCanvasW, visibleCanvasH);
+
+    const float scaleX = (std::max)(1.0f, viewportWidth) / visibleCanvasW;
+    const float scaleY = (std::max)(1.0f, viewportHeight) / visibleCanvasH;
 
     state.canvasToClip = math::Matrix4::Orthographic(
         0.0f, visibleCanvasW,
         visibleCanvasH, 0.0f,
         0.0f, 1.0f);
-    state.mouseInCanvasSpace = { rawMouseInViewport.x / scale, rawMouseInViewport.y / scale };
+    state.mouseInCanvasSpace = { rawMouseInViewport.x / scaleX, rawMouseInViewport.y / scaleY };
     state.pso = s_pso;
     state.layer = renderer::RenderLayer::OVERLAY_LAYER;
     return state;
@@ -496,20 +394,44 @@ void SubmitRect(renderer::IRenderer& renderer,
                 { 0.0f, 0.0f }, { 1.0f, 1.0f }, s_whiteTexture);
 }
 
-void SubmitText(renderer::IRenderer& renderer,
-                renderer::ResourceManager& resources,
-                const math::Matrix4& canvasToClip,
-                renderer::ResourceHandle<renderer::PipelineStateTag> pso,
-                renderer::RenderLayer layer,
-                const UIText& text,
-                math::Vector2 position)
+// TTF アトラスをキャッシュから取得し、未ロードなら初回ロードする。
+// IsValid() == false の場合は内蔵 SDF へフォールバックすること。
+renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
+                                        renderer::ResourceManager& resources)
 {
-    if (!text.enabled || text.text.empty() || text.fontSize <= 0.0f) return;
+    auto it = s_fontAtlasCache.find(basePath);
+    if (it != s_fontAtlasCache.end())
+        return it->second;
 
-    const float glyphH       = text.fontSize;
-    const float glyphW       = glyphH * 5.0f / 7.0f;
-    const float glyphAdvance = glyphW + text.letterSpacing;
-    math::Vector2 pen = position;
+    renderer::FontAtlas& atlas = s_fontAtlasCache[basePath];
+    if (!atlas.Load(basePath, resources))
+        FBZZ_LOG_ERROR("UISystem: FontAtlas のロードに失敗しました: %s", basePath.c_str());
+
+    return atlas;
+}
+
+// TTF 由来のフォントアトラスを使ってテキストをサブミットする。
+// WHY: 内蔵 SDF は 5x7 ピクセルビットマップが限界だが、Kenney 等の TTF アトラスは
+//      任意フォントサイズで高品質な文字を描画できる。
+// WHAT:
+//   scale = fontSize / atlas.line_height でアトラスピクセルを論理ピクセルへ変換する。
+//   各グリフのセル UV を使い、advance でペンを進める。透明部分はアルファブレンドで消える。
+void SubmitTextWithAtlas(renderer::IRenderer& renderer,
+                         renderer::ResourceManager& resources,
+                         const math::Matrix4& canvasToClip,
+                         renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                         renderer::RenderLayer layer,
+                         const UIText& text,
+                         math::Vector2 position)
+{
+    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(text.fontPath, resources);
+    if (!atlas.IsValid()) return;
+
+    // アトラスのレンダリングサイズから論理ピクセルへのスケール係数
+    const float scale     = text.fontSize / atlas.GetLineHeight();
+    const float cellW     = atlas.GetCellW() * scale;
+    const float cellH     = atlas.GetLineHeight() * scale;
+    math::Vector2 pen     = position;
 
     std::vector<UIVertex> verts;
     verts.reserve(text.text.size() * 6);
@@ -517,32 +439,37 @@ void SubmitText(renderer::IRenderer& renderer,
     for (char c : text.text) {
         if (c == '\n') {
             pen.x = position.x;
-            pen.y += glyphH * 1.2f;
+            pen.y += cellH;
             continue;
         }
-        if (c < kFirstChar || c > kLastChar) {
-            pen.x += glyphAdvance;
+
+        const renderer::FontGlyph* g = atlas.GetGlyph(c);
+        if (!g) {
+            // 未登録文字: スペース幅相当だけ進める
+            pen.x += cellW * 0.5f + text.letterSpacing;
             continue;
         }
-        const GlyphUV& uv = s_glyphUVs[c - kFirstChar];
+
         const float x  = pen.x;
         const float y  = pen.y;
-        const float x2 = x + glyphW;
-        const float y2 = y + glyphH;
-        verts.push_back({ {x,  y},  { uv.uvMin.x, uv.uvMin.y } });
-        verts.push_back({ {x,  y2}, { uv.uvMin.x, uv.uvMax.y } });
-        verts.push_back({ {x2, y},  { uv.uvMax.x, uv.uvMin.y } });
-        verts.push_back({ {x2, y},  { uv.uvMax.x, uv.uvMin.y } });
-        verts.push_back({ {x,  y2}, { uv.uvMin.x, uv.uvMax.y } });
-        verts.push_back({ {x2, y2}, { uv.uvMax.x, uv.uvMax.y } });
-        pen.x += glyphAdvance;
+        const float x2 = x + cellW;
+        const float y2 = y + cellH;
+
+        verts.push_back({ {x,  y},  { g->u0, g->v0 } });
+        verts.push_back({ {x,  y2}, { g->u0, g->v1 } });
+        verts.push_back({ {x2, y},  { g->u1, g->v0 } });
+        verts.push_back({ {x2, y},  { g->u1, g->v0 } });
+        verts.push_back({ {x,  y2}, { g->u0, g->v1 } });
+        verts.push_back({ {x2, y2}, { g->u1, g->v1 } });
+
+        pen.x += g->advance * scale + text.letterSpacing;
     }
 
     if (verts.empty()) return;
 
     const uint32_t vertCount = static_cast<uint32_t>(verts.size());
     if (vertCount > kTextVBVertices) {
-        FBZZ_LOG_ERROR("UISystem: text too long (%u verts > %u capacity)", vertCount, kTextVBVertices);
+        FBZZ_LOG_ERROR("UISystem: テキストが長すぎます (%u verts > %u capacity)", vertCount, kTextVBVertices);
         return;
     }
     resources.Update(s_textVB, verts.data(), vertCount * sizeof(UIVertex));
@@ -555,14 +482,37 @@ void SubmitText(renderer::IRenderer& renderer,
 
     renderer::DrawCall call;
     call.vertexBuffer       = s_textVB;
-    call.shader             = s_textShader.IsValid() ? s_textShader : s_shader;
+    // WHY: UISprite.hlsl はテクスチャの alpha チャンネルをそのまま出力するが、
+    //      WIC の PNG ロードが alpha を失うと背景が黒矩形として描画される。
+    //      UIText.hlsl は .r チャンネルを coverage として読み clip() で背景を除去するため、
+    //      alpha チャンネルの保持に依存せず正しく透明を扱える。
+    call.shader             = s_textShader;
     call.pipelineState      = pso;
     call.constantBuffers[0] = s_constants;
     call.vertexCount        = vertCount;
     call.layer              = layer;
     call.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
-    call.textures[0]        = s_fontAtlas.IsValid() ? s_fontAtlas : s_whiteTexture;
+    call.textures[0]        = atlas.GetTexture();
     renderer.Submit(call, resources);
+}
+
+void SubmitText(renderer::IRenderer& renderer,
+                renderer::ResourceManager& resources,
+                const math::Matrix4& canvasToClip,
+                renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                renderer::RenderLayer layer,
+                const UIText& text,
+                math::Vector2 position)
+{
+    if (!text.enabled || text.text.empty() || text.fontSize <= 0.0f) return;
+
+    if (text.fontPath.empty()) {
+        UIText defaulted = text;
+        defaulted.fontPath = s_defaultFontPath;
+        SubmitTextWithAtlas(renderer, resources, canvasToClip, pso, layer, defaulted, position);
+        return;
+    }
+    SubmitTextWithAtlas(renderer, resources, canvasToClip, pso, layer, text, position);
 }
 
 // UILayoutGroup が管理する子 GO の transform.localPosition を上書きする
@@ -610,15 +560,22 @@ void ApplyUILayoutRecursive(GameObject& go)
     }
 }
 
-void ProcessUIEventsRecursive(GameObject& go, math::Vector2 mouseInCanvasSpace, bool mousePressed)
+void ProcessUIEventsRecursive(GameObject& go,
+                              const UITransform2D& parentTransform,
+                              math::Vector2 mouseInCanvasSpace,
+                              bool mousePressed,
+                              bool applySelfTransform = true)
 {
     if (!go.activeSelf()) return;
 
+    const UITransform2D resolved = applySelfTransform
+        ? ComposeUITransform(parentTransform, go.transform)
+        : parentTransform;
     auto* image  = go.GetComponent<UIImage>();
     auto* button = go.GetComponent<UIButton>();
     if (button) {
         if (image && image->enabled)
-            UpdateButton(*button, RectFromTransform(go.transform), mouseInCanvasSpace, mousePressed);
+            UpdateButton(*button, RectFromTransform(go.transform, resolved), mouseInCanvasSpace, mousePressed);
         else {
             button->onClick = false;
             button->onEnter = false;
@@ -629,21 +586,26 @@ void ProcessUIEventsRecursive(GameObject& go, math::Vector2 mouseInCanvasSpace, 
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            ProcessUIEventsRecursive(*child, mouseInCanvasSpace, mousePressed);
+            ProcessUIEventsRecursive(*child, resolved, mouseInCanvasSpace, mousePressed);
     }
 }
 
 // canvasToClip: SubmitImage / SubmitText へそのまま渡す変換行列。
 // pso / layer:  ScreenSpace と WorldSpace で異なる PSO とレイヤーを切り替える。
 void RenderCanvasRecursive(GameObject& go,
+                           const UITransform2D& parentTransform,
                            renderer::IRenderer& renderer,
                            renderer::ResourceManager& resources,
                            const math::Matrix4& canvasToClip,
                            renderer::ResourceHandle<renderer::PipelineStateTag> pso,
-                           renderer::RenderLayer layer)
+                           renderer::RenderLayer layer,
+                           bool applySelfTransform = true)
 {
     if (!go.activeSelf()) return;
 
+    const UITransform2D resolved = applySelfTransform
+        ? ComposeUITransform(parentTransform, go.transform)
+        : parentTransform;
     auto* image  = go.GetComponent<UIImage>();
     auto* button = go.GetComponent<UIButton>();
     auto* text   = go.GetComponent<UIText>();
@@ -652,28 +614,24 @@ void RenderCanvasRecursive(GameObject& go,
         if (!image->texturePath.empty())
             image->texture = resources.LoadTexture(image->texturePath);
 
-        const Rect    r     = RectFromTransform(go.transform);
+        const Rect    r     = RectFromTransform(go.transform, resolved);
         math::Vector4 color = image->color;
         if (button)
             color = Multiply(color, ButtonTint(*button));
-        const auto& qr = go.transform.localRotation;
-        const float zAngle = std::atan2f(2.0f*(qr.w*qr.z + qr.x*qr.y),
-                                          1.0f - 2.0f*(qr.y*qr.y + qr.z*qr.z));
         SubmitImage(renderer, resources, canvasToClip, pso, layer,
                     r.pos, r.size, color,
                     image->uvMin, image->uvMax,
                     image->texture.IsValid() ? image->texture : s_whiteTexture,
-                    zAngle);
+                    resolved.rotationZ);
     }
 
     if (text && text->enabled) {
-        const math::Vector2 pos = { go.transform.localPosition.x, go.transform.localPosition.y };
-        SubmitText(renderer, resources, canvasToClip, pso, layer, *text, pos);
+        SubmitText(renderer, resources, canvasToClip, pso, layer, *text, resolved.position);
     }
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            RenderCanvasRecursive(*child, renderer, resources, canvasToClip, pso, layer);
+            RenderCanvasRecursive(*child, resolved, renderer, resources, canvasToClip, pso, layer);
     }
 }
 
@@ -700,7 +658,8 @@ void UIEventSystem(const std::vector<CanvasEntry>& canvases,
         const CanvasRuntimeState state = BuildCanvasRuntimeState(
             *entry.canvas, *entry.go, viewportWidth, viewportHeight, rawMouseInViewport,
             viewProjection, targetView);
-        ProcessUIEventsRecursive(*entry.go, state.mouseInCanvasSpace, mousePressed);
+        const UITransform2D canvasRoot{};
+        ProcessUIEventsRecursive(*entry.go, canvasRoot, state.mouseInCanvasSpace, mousePressed, false);
     }
 }
 
@@ -722,11 +681,18 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
         const CanvasRuntimeState state = BuildCanvasRuntimeState(
             *entry.canvas, *entry.go, viewportWidth, viewportHeight, rawMouseInViewport,
             viewProjection, targetView);
-        RenderCanvasRecursive(*entry.go, renderer, resources, state.canvasToClip, state.pso, state.layer);
+        const UITransform2D canvasRoot{};
+        RenderCanvasRecursive(*entry.go, canvasRoot, renderer, resources,
+                              state.canvasToClip, state.pso, state.layer, false);
     }
 }
 
 } // namespace
+
+void UISystemSetDefaultFontPath(const std::string& basePath)
+{
+    s_defaultFontPath = basePath;
+}
 
 void UISystem(Scene& scene,
               renderer::IRenderer& renderer,

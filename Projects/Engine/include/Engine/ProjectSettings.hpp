@@ -42,6 +42,10 @@ struct WindowSettings {
     bool        fullscreen = false;
 };
 
+struct UISettings {
+    std::string defaultFontPath = "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
+};
+
 struct ProjectMetadataSettings {
     std::string name;
     std::string defaultScene = "Assets/Scenes/Main.fbzz";
@@ -67,6 +71,7 @@ struct ProjectSettings {
     PhysicsSettings             physics;
     renderer::RenderSettings    render;
     AudioSettings               audio;
+    UISettings                  ui;
     ScreenSettings              screen;
     AppSettings                 app;
     WindowSettings              window;

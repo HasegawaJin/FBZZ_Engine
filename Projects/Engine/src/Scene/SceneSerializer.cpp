@@ -1064,11 +1064,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // UIText
         if (auto* text = go.GetComponent<UIText>()) {
             toml::table uiTbl;
-            uiTbl.insert("enabled", text->enabled);
-            uiTbl.insert("text", text->text);
-            uiTbl.insert("fontSize", (double)text->fontSize);
+            uiTbl.insert("enabled",       text->enabled);
+            uiTbl.insert("text",          text->text);
+            uiTbl.insert("fontSize",      (double)text->fontSize);
             uiTbl.insert("letterSpacing", (double)text->letterSpacing);
-            uiTbl.insert("color", Vec4ToArr(text->color));
+            uiTbl.insert("color",         Vec4ToArr(text->color));
+            uiTbl.insert("fontPath",      text->fontPath);
             goTbl.insert("UIText", std::move(uiTbl));
         }
 
@@ -1093,12 +1094,14 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             tbl.insert("colorFrom",       Vec4ToArr(anim->colorTween.from));
             tbl.insert("colorTo",         Vec4ToArr(anim->colorTween.to));
             tbl.insert("colorDuration",   (double)anim->colorTween.duration);
+            tbl.insert("colorEasing",     (int64_t)static_cast<int>(anim->colorTween.easing));
             tbl.insert("colorLoop",       anim->colorTween.loop);
             tbl.insert("colorPingPong",   anim->colorTween.pingPong);
             tbl.insert("colorActive",     anim->colorTween.active);
             tbl.insert("posFrom",         Vec2ToArr(anim->positionTween.from));
             tbl.insert("posTo",           Vec2ToArr(anim->positionTween.to));
             tbl.insert("posDuration",     (double)anim->positionTween.duration);
+            tbl.insert("posEasing",       (int64_t)static_cast<int>(anim->positionTween.easing));
             tbl.insert("posLoop",         anim->positionTween.loop);
             tbl.insert("posPingPong",     anim->positionTween.pingPong);
             tbl.insert("posActive",       anim->positionTween.active);
@@ -1800,11 +1803,12 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // UIText
         if (auto* uiTbl = (*goTbl)["UIText"].as_table()) {
             UIText text{};
-            text.enabled = (*uiTbl)["enabled"].value_or(true);
-            text.text = (*uiTbl)["text"].value_or(std::string{"Text"});
-            text.fontSize = (float)(*uiTbl)["fontSize"].value_or(42.0);
+            text.enabled       = (*uiTbl)["enabled"].value_or(true);
+            text.text          = (*uiTbl)["text"].value_or(std::string{"Text"});
+            text.fontSize      = (float)(*uiTbl)["fontSize"].value_or(42.0);
             text.letterSpacing = (float)(*uiTbl)["letterSpacing"].value_or(4.0);
-            text.color = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
+            text.color         = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
+            text.fontPath      = (*uiTbl)["fontPath"].value_or(std::string{});
             go.AddComponent<UIText>(text);
         }
 
@@ -1829,12 +1833,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             anim.colorTween.from     = ArrToVec4((*tbl)["colorFrom"].as_array(), { 1,1,1,1 });
             anim.colorTween.to       = ArrToVec4((*tbl)["colorTo"].as_array(),   { 1,1,1,0 });
             anim.colorTween.duration = (float)(*tbl)["colorDuration"].value_or(1.0);
+            anim.colorTween.easing   = static_cast<UIEasingType>((*tbl)["colorEasing"].value_or((int64_t)0));
             anim.colorTween.loop     = (*tbl)["colorLoop"].value_or(false);
             anim.colorTween.pingPong = (*tbl)["colorPingPong"].value_or(false);
             anim.colorTween.active   = (*tbl)["colorActive"].value_or(false);
             anim.positionTween.from     = ArrToVec2((*tbl)["posFrom"].as_array(), { 0,0 });
             anim.positionTween.to       = ArrToVec2((*tbl)["posTo"].as_array(),   { 100,0 });
             anim.positionTween.duration = (float)(*tbl)["posDuration"].value_or(1.0);
+            anim.positionTween.easing   = static_cast<UIEasingType>((*tbl)["posEasing"].value_or((int64_t)0));
             anim.positionTween.loop     = (*tbl)["posLoop"].value_or(false);
             anim.positionTween.pingPong = (*tbl)["posPingPong"].value_or(false);
             anim.positionTween.active   = (*tbl)["posActive"].value_or(false);
