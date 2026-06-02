@@ -9,6 +9,7 @@
 #include <Engine/Scene/ScriptProxy/ScriptAnimatorProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptCameraProxy.hpp>
+#include <Engine/Scene/ScriptProxy/GizmoProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptDebugProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptInputProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptLightProxy.hpp>
@@ -94,6 +95,10 @@ public:
     virtual void OnLateUpdate(float) {}                   // 毎フレーム呼ばれる (PhysicsSystem 後)
     virtual void OnPreRender() {}                          // カメラ描画直前に呼ぶための予約フック
     virtual void OnPostRender() {}                         // カメラ描画直後に呼ぶための予約フック
+    // OnDrawGizmos — DebugDraw::BeginFrame/Flush 区間内で呼ばれる。
+    // gizmo プロキシ経由で SightCone / WaypointPath / DetectionRange / TargetLine などを描く。
+    // WHY: OnUpdate から DebugDraw を直接呼べないため、RenderSystem が確保した描画区間を Script に開放する。
+    virtual void OnDrawGizmos() {}
     virtual void OnCollisionEnter(const CollisionInfo&) {}
     virtual void OnCollisionStay(const CollisionInfo&) {}
     virtual void OnCollisionExit(const CollisionInfo&) {}
@@ -133,6 +138,9 @@ public:
     ScriptSceneProxy scene{ this };
     ScriptAnimatorProxy animator{ this };
     ScriptDebugProxy debug{ this };
+    // GizmoProxy は Script* を保持しない (renderer ポインタのみ)。
+    // OnDrawGizmos() の前後で RenderSystem が renderer を注入/クリアする。
+    GizmoProxy gizmo;
     ScriptPostProcessProxy postprocess{ this };
     ScriptMemoryProxy memory{ this };
 
