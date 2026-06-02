@@ -11,6 +11,8 @@
 #include <vector>
 
 namespace fbzz::renderer { class Camera; }
+namespace fbzz::renderer { class IRenderer; class ResourceManager; }
+namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; }
 
 namespace fbzz::editor {
@@ -19,6 +21,9 @@ struct EditorContext {
     // エンジンオブジェクト (非所有)
     scene::Scene*     activeScene  = nullptr;
     renderer::Camera* editorCamera = nullptr;
+    renderer::IRenderer* renderer = nullptr;
+    renderer::ResourceManager* resources = nullptr;
+    core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
     std::string       currentScenePath;
     bool              sceneDirty = false;
@@ -106,6 +111,7 @@ struct EditorContext {
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings = false;
     bool requestOpenBuildSettings   = false;
+    bool requestOpenAnalysis        = false;
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
