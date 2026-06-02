@@ -30,6 +30,7 @@ class ViewportPanel;
 class ProjectSettingsPanel;
 class BuildSettingsPanel;
 class AssetBrowserPanel;
+class AnalysisPanel;
 class TerrainTool;
 class WaterTool;
 
@@ -103,6 +104,7 @@ private:
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
     BuildSettingsPanel*                      m_buildSettingsPanel     = nullptr;
     AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
+    AnalysisPanel*                           m_analysisPanel          = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_uiViewportRT;

@@ -20,8 +20,10 @@
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/Panels/BuildSettingsPanel.hpp>
+#include <Editor/Panels/AnalysisPanel.hpp>
 #include "Tools/TerrainTool.hpp"
 #include "Tools/WaterTool.hpp"
+#include <Engine/Core/Application.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -239,6 +241,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
     m_ctx.undoStack   = &m_undoStack;
     m_ctx.playMode    = &m_playMode;
+    m_ctx.renderer    = &renderer;
+    m_ctx.resources   = &resources;
+    m_ctx.memorySystem = &core::Application::Get().GetMemorySystem();
     m_terrainTool     = std::make_unique<TerrainTool>();
     m_ctx.terrainTool = m_terrainTool.get();
     m_waterTool       = std::make_unique<WaterTool>();
@@ -281,6 +286,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
         bs->visible = false;
         m_buildSettingsPanel = bs.get();
         m_panels.push_back(std::move(bs));
+    }
+    {
+        auto analysis = std::make_unique<AnalysisPanel>();
+        analysis->visible = false;
+        m_analysisPanel = analysis.get();
+        m_panels.push_back(std::move(analysis));
     }
 
     for (auto& panel : m_panels)
@@ -505,6 +516,14 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         ctx.requestOpenBuildSettings = false;
         if (m_buildSettingsPanel) {
             m_buildSettingsPanel->visible = true;
+            ImGui::SetNextWindowFocus();
+        }
+    }
+
+    if (ctx.requestOpenAnalysis) {
+        ctx.requestOpenAnalysis = false;
+        if (m_analysisPanel) {
+            m_analysisPanel->visible = true;
             ImGui::SetNextWindowFocus();
         }
     }

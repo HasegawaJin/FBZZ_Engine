@@ -767,8 +767,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip(wasLocked
-                ? "ロック解除 — 選択変更に追従する"
-                : "現在の選択で Inspector をロック");
+                ? "Unlock — follow selection changes"
+                : "Lock Inspector to current selection");
 
         // ロック中はロック先の名前をバナー表示
         if (wasLocked && go) {
