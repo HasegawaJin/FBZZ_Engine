@@ -22,6 +22,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 
 namespace fbzz::renderer {
 
@@ -146,13 +148,18 @@ void RenderDebugOverlay::Draw(IRenderer& renderer, ResourceManager& resources,
         ImGui::TextDisabled("No render targets available.");
     }
 
-    // ─── 下段: パス CPU タイミングバーチャート ─────────────────────────────────
+    // ─── 下段: パス CPU / GPU タイミングバーチャート ─────────────────────────────
     if (!snapshot.passTimings.empty()) {
         ImGui::Separator();
-        ImGui::TextUnformatted("Pass CPU timing");
+        ImGui::TextUnformatted("Pass timings  [CPU | GPU]");
         ImGui::Spacing();
 
-        // 最長パスを 1.0 として正規化し、短いパスのバーが潰れないよう最小値を設ける。
+        // GPU 時間を名前引きできるよう map に変換する。
+        std::unordered_map<std::string, double> gpuMap;
+        for (const auto& [name, ms] : snapshot.gpuPassTimings)
+            gpuMap[name] = ms;
+
+        // 最長パスを 1.0 として正規化する。
         double maxMs = 0.0;
         for (const auto& [name, ms] : snapshot.passTimings)
             maxMs = std::max(maxMs, ms);
@@ -162,17 +169,21 @@ void RenderDebugOverlay::Draw(IRenderer& renderer, ResourceManager& resources,
         for (const auto& [name, ms] : snapshot.passTimings) {
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-            // バー背景
-            const float normalizedW = static_cast<float>(ms / maxMs) * BAR_MAX_W;
-            const ImVec2 barMin = cursor;
-            const ImVec2 barMax = { cursor.x + normalizedW, cursor.y + BAR_H };
-            drawList->AddRectFilled(barMin, barMax, IM_COL32(80, 160, 255, 200));
-
-            // バーの右にパス名と ms 値を表示する。
-            // SameLine で ImGui カーソルをバー幅分スキップしてテキストを配置する。
+            // CPU バー (青)
+            const float cpuW = static_cast<float>(ms / maxMs) * BAR_MAX_W;
+            drawList->AddRectFilled(cursor,
+                                    { cursor.x + cpuW, cursor.y + BAR_H },
+                                    IM_COL32(80, 160, 255, 200));
             ImGui::Dummy({ BAR_MAX_W + 8.0f, BAR_H });
             ImGui::SameLine();
-            ImGui::Text("%-20s  %.3f ms", name.c_str(), ms);
+
+            auto gpuIt = gpuMap.find(name);
+            if (gpuIt != gpuMap.end()) {
+                ImGui::Text("%-20s  CPU %.3f ms  GPU %.3f ms",
+                            name.c_str(), ms, gpuIt->second);
+            } else {
+                ImGui::Text("%-20s  CPU %.3f ms", name.c_str(), ms);
+            }
         }
     }
 
