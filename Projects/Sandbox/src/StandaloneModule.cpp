@@ -40,7 +40,7 @@ bool StandaloneModule::OnInit()
     m_scene = std::make_unique<scene::Scene>();
     const std::string scenePathUtf8 = util::PathToUtf8(m_project.sceneFile);
     if (!scene::SceneSerializer::LoadInPlace(*m_scene, scenePathUtf8, m_resources)) {
-        FBZZ_LOG_ERROR("Sandbox Standalone: シーンのロードに失敗しました: %s", scenePathUtf8.c_str());
+        FBZZ_LOG_ERROR("Sandbox Standalone: failed to load scene: %s", scenePathUtf8.c_str());
         return false;
     }
 
