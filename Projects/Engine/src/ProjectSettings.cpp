@@ -316,6 +316,9 @@ bool ProjectSettings::Load(const std::string& path)
         if (window.height < 1) window.height = 1;
     }
 
+    if (auto* uiTbl = tbl["ui"].as_table())
+        ui.defaultFontPath = (*uiTbl)["default_font"].value_or(ui.defaultFontPath);
+
     return true;
 }
 
@@ -471,6 +474,9 @@ bool ProjectSettings::Save(const std::string& path) const
     toml::table runtimeTbl;
     runtimeTbl.insert("start_scene", runtime.startScene);
 
+    toml::table uiTbl;
+    uiTbl.insert("default_font", ui.defaultFontPath);
+
     toml::table root;
     root.insert("project", std::move(projectTbl));
     root.insert("runtime", std::move(runtimeTbl));
@@ -482,6 +488,7 @@ bool ProjectSettings::Save(const std::string& path) const
     root.insert("screen",  std::move(screenTbl));
     root.insert("app",     std::move(appTbl));
     root.insert("window",  std::move(windowTbl));
+    root.insert("ui",      std::move(uiTbl));
 
     NormalizeTomlFloats(root);
 

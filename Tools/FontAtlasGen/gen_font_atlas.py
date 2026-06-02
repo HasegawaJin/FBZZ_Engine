@@ -83,8 +83,11 @@ def generate_atlas(ttf_path: str, size: int) -> tuple:
     atlas_w = next_pow2(cols * cell_w)
     atlas_h = next_pow2(rows * cell_h)
 
-    # RGBA アトラスを生成する
-    atlas = Image.new("RGBA", (atlas_w, atlas_h), (0, 0, 0, 0))
+    # グレースケールアトラスを生成する。
+    # WHY: RGBA で保存すると WIC (DirectXTex) が alpha チャンネルを失うことがある。
+    #      グレースケール "L" モードにすることで、グリフの coverage が R チャンネルに入り
+    #      UIText.hlsl が .r で読み取るパスと一致する。アンチエイリアス情報も保持される。
+    atlas = Image.new("L", (atlas_w, atlas_h), 0)
     draw  = ImageDraw.Draw(atlas)
 
     glyphs = {}
@@ -95,7 +98,7 @@ def generate_atlas(ttf_path: str, size: int) -> tuple:
         oy  = row * cell_h + 1   # 1 px パディング
 
         # ベースラインを oy + ascent に合わせて描画する (anchor="ls" = left, baseline)
-        draw.text((ox, oy + ascent), c, font=font, fill=(255, 255, 255, 255), anchor="ls")
+        draw.text((ox, oy + ascent), c, font=font, fill=255, anchor="ls")
 
         # セル全体を UV 範囲とする。透明部分はシェーダーで破棄される。
         u0 = ox / atlas_w
