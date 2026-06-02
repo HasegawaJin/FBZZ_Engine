@@ -35,6 +35,11 @@ std::unique_ptr<Script> ScriptFactory::Create(const std::string& typeName)
     return it->second();
 }
 
+void ScriptFactory::UnregisterAll()
+{
+    Registry().clear();
+}
+
 std::vector<std::string> ScriptFactory::RegisteredTypeNames()
 {
     std::vector<std::string> names;
