@@ -2078,6 +2078,37 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             float color[4] = { text.color.x, text.color.y, text.color.z, text.color.w };
             if (ImGui::ColorEdit4("Color", color))
                 text.color = { color[0], color[1], color[2], color[3] };
+
+            // Font Path: gen_font_atlas.py で生成したアトラスのベースパス (拡張子なし)。
+            // 例: Assets/Fonts/Kenney/Future → Future.png + Future.fnt を参照する。
+            // 空欄 = 内蔵 5x7 SDF フォント (後方互換)。
+            // .png または .fnt ファイルをドロップすると拡張子を除いたパスを自動セットする。
+            ImGui::TextUnformatted("Font Path");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("TTF アトラスのベースパス (拡張子なし)。\n"
+                                  "例: Assets/Fonts/Kenney/Future\n"
+                                  "空欄 = 内蔵 SDF フォント\n"
+                                  ".png / .fnt ファイルをドロップして指定可能");
+            char fontBuf[512];
+            std::snprintf(fontBuf, sizeof(fontBuf), "%s", text.fontPath.c_str());
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::InputText("##fontPath", fontBuf, sizeof(fontBuf)))
+                text.fontPath = fontBuf;
+            // D&D: .png / .fnt をドロップしたとき拡張子を除いてベースパスにセットする。
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
+                    // .png / .fnt どちらをドロップしても拡張子を取り除く
+                    const std::string ext4 = dropped.size() >= 4
+                        ? dropped.substr(dropped.size() - 4) : "";
+                    if (ext4 == ".png" || ext4 == ".fnt")
+                        dropped = dropped.substr(0, dropped.size() - 4);
+                    text.fontPath = dropped;
+                }
+                ImGui::EndDragDropTarget();
+            }
         });
 
     DrawComponentSection<scene::UILayoutGroup>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Layout Group",

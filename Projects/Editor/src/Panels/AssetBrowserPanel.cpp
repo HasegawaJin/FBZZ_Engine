@@ -15,6 +15,8 @@
 #include <imgui_internal.h>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 
@@ -116,6 +118,7 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
 
 void AssetBrowserPanel::RefreshDirectory()
 {
+    m_resetScroll = true;
     m_entries.clear();
     for (const auto& p : util::FileSystem::ListAll(m_currentPath)) {
         Entry e;
@@ -131,40 +134,95 @@ void AssetBrowserPanel::RefreshDirectory()
     });
 }
 
+// 既知の拡張子グループに対応する固定色テーブル。
+// WHY: 同じカテゴリのファイルは同色にすることで、ディレクトリ内を一瞥したとき
+//      テクスチャ・シェーダー・メッシュ等の割合を直感的に把握できる。
+//      未知の拡張子は拡張子文字列のハッシュから色を生成し、
+//      追加のコード変更なしにどんなファイルでも識別色が付く。
+struct ExtGroup {
+    const char*  exts[6];   // 最大 6 拡張子。nullptr 終番。
+    ImVec4       color;
+    const char*  label;
+};
+
+static constexpr ExtGroup kExtGroups[] = {
+    { { ".hlsl", ".hlsli", nullptr },                          { 0.15f, 0.65f, 0.25f, 1.0f }, "HLSL"    },
+    { { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga" },     { 0.15f, 0.40f, 0.80f, 1.0f }, "TEX"     },
+    { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
+    { { ".fbzzprefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
+    { { ".fbzzterrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
+    { { ".fbzz", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
+    { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
+    { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
+    { { ".ttf", ".otf", nullptr },                             { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
+    { { ".fnt", nullptr },                                     { 0.50f, 0.20f, 0.75f, 1.0f }, "FNT"     },
+    { { ".txt", ".md", ".rst", nullptr },                      { 0.55f, 0.55f, 0.55f, 1.0f }, "TEXT"    },
+    { { ".py", ".lua", ".cs", nullptr },                       { 0.20f, 0.70f, 0.55f, 1.0f }, "SCRIPT"  },
+    { { ".lib", ".dll", ".a", nullptr },                       { 0.45f, 0.45f, 0.45f, 1.0f }, "LIB"     },
+};
+
+// 未知拡張子をハッシュで色付けする。
+// WHAT: FNV-1a の下位ビットを色相に変換し、彩度・明度は固定で
+//       読みやすい明るさに調整する。同じ拡張子なら常に同じ色になる。
+static ImVec4 ColorFromExt(const std::string& ext)
+{
+    uint32_t h = 2166136261u;
+    for (unsigned char c : ext)
+        h = (h ^ c) * 16777619u;
+    const float hue = static_cast<float>(h & 0xFFFF) / 65536.0f; // 0..1
+    // HSV → RGB (S=0.55, V=0.72)
+    const float s = 0.55f, v = 0.72f;
+    const float hi = std::fmodf(hue * 6.0f, 6.0f);
+    const int   i  = static_cast<int>(hi);
+    const float f  = hi - static_cast<float>(i);
+    const float p  = v * (1.0f - s);
+    const float q  = v * (1.0f - s * f);
+    const float t  = v * (1.0f - s * (1.0f - f));
+    switch (i % 6) {
+    case 0: return { v, t, p, 1.0f };
+    case 1: return { q, v, p, 1.0f };
+    case 2: return { p, v, t, 1.0f };
+    case 3: return { p, q, v, 1.0f };
+    case 4: return { t, p, v, 1.0f };
+    default:return { v, p, q, 1.0f };
+    }
+}
+
+// 拡張子がグループに含まれるか確認する。
+static const ExtGroup* FindGroup(const std::string& ext)
+{
+    for (const auto& g : kExtGroups) {
+        for (int i = 0; i < 6 && g.exts[i]; ++i)
+            if (ext == g.exts[i]) return &g;
+    }
+    return nullptr;
+}
+
 ImVec4 AssetBrowserPanel::EntryColor(const Entry& e)
 {
-    if (e.isDir)                                          return { 0.80f, 0.60f, 0.10f, 1.0f };
-    if (e.ext == ".hlsl" || e.ext == ".hlsli")            return { 0.15f, 0.65f, 0.25f, 1.0f };
-    if (e.ext == ".png"  || e.ext == ".jpg" ||
-        e.ext == ".dds"  || e.ext == ".bmp" || e.ext == ".tga")
-                                                          return { 0.15f, 0.40f, 0.80f, 1.0f };
-    if (e.ext == ".fbx"  || e.ext == ".obj" ||
-        e.ext == ".gltf" || e.ext == ".glb")              return { 0.80f, 0.45f, 0.10f, 1.0f };
-    if (e.ext == ".fbzzprefab")                           return { 0.25f, 0.65f, 0.75f, 1.0f };
-    if (e.ext == ".fbzzterrain")                          return { 0.35f, 0.70f, 0.30f, 1.0f };
-    if (e.ext == ".fbzz")                                 return { 0.60f, 0.15f, 0.70f, 1.0f };
-    if (e.ext == ".toml" || e.ext == ".json")             return { 0.65f, 0.65f, 0.10f, 1.0f };
-    if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
-                                                          return { 0.70f, 0.20f, 0.50f, 1.0f };
-    return { 0.38f, 0.38f, 0.38f, 1.0f };
+    if (e.isDir) return { 0.80f, 0.60f, 0.10f, 1.0f };
+    if (const ExtGroup* g = FindGroup(e.ext)) return g->color;
+    if (e.ext.empty()) return { 0.38f, 0.38f, 0.38f, 1.0f };
+    // 未知拡張子: ハッシュで自動着色
+    return ColorFromExt(e.ext);
 }
 
 const char* AssetBrowserPanel::EntryLabel(const Entry& e)
 {
-    if (e.isDir)                                          return "DIR";
-    if (e.ext == ".hlsl" || e.ext == ".hlsli")            return "HLSL";
-    if (e.ext == ".png"  || e.ext == ".jpg" ||
-        e.ext == ".dds"  || e.ext == ".bmp" || e.ext == ".tga")
-                                                          return "TEX";
-    if (e.ext == ".fbx"  || e.ext == ".obj" ||
-        e.ext == ".gltf" || e.ext == ".glb")              return "MESH";
-    if (e.ext == ".fbzzprefab")                           return "PREFAB";
-    if (e.ext == ".fbzzterrain")                          return "TERRAIN";
-    if (e.ext == ".fbzz")                                 return "SCENE";
-    if (e.ext == ".toml")                                 return "TOML";
-    if (e.ext == ".wav"  || e.ext == ".mp3" || e.ext == ".ogg")
-                                                          return "SFX";
-    return "FILE";
+    if (e.isDir) return "DIR";
+    if (const ExtGroup* g = FindGroup(e.ext)) return g->label;
+    // 未知拡張子: 拡張子文字列をそのままラベルに使う (最大 6 文字、先頭の . を除く)
+    // WHY: 静的バッファに詰めることでどんな拡張子でもラベル表示できる。
+    //      ImGui はフレーム内で文字列を参照するため static thread_local を使う。
+    static thread_local char buf[8];
+    const char* src = e.ext.size() > 1 ? e.ext.c_str() + 1 : e.ext.c_str(); // skip '.'
+    std::size_t len = 0;
+    while (src[len] && len < 6) {
+        buf[len] = static_cast<char>(std::toupper(static_cast<unsigned char>(src[len])));
+        ++len;
+    }
+    buf[len] = '\0';
+    return len > 0 ? buf : "FILE";
 }
 
 // ─── フォルダツリー (左ペイン) ───────────────────────────────────────────────
@@ -287,7 +345,14 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         ImGui::EndDragDropTarget();
     }
 
-    if (hov && m_renamingPath != e.path) ImGui::SetTooltip("%s", e.path.c_str());
+    if (hov && m_renamingPath != e.path) {
+        if (e.ext == ".fnt")
+            ImGui::SetTooltip("%s\n\nFont Atlas メタデータ\nUI Text の Font Path へドラッグ&ドロップで設定できます", e.path.c_str());
+        else if (e.ext == ".ttf" || e.ext == ".otf")
+            ImGui::SetTooltip("%s\n\nTTF フォント\ngen_font_atlas.py で PNG + FNT アトラスに変換してから使用します", e.path.c_str());
+        else
+            ImGui::SetTooltip("%s", e.path.c_str());
+    }
 
     // 右クリックコンテキストメニュー (リネーム / 削除)
     if (ImGui::BeginPopupContextItem("##entry_ctx")) {
@@ -586,6 +651,13 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     // ── 右ペイン: コンテンツエリア ───────────────────────────────────────
     ImGui::BeginChild("##content", { 0.0f, 0.0f }, false);
+    // ディレクトリ移動後にスクロールをトップへ戻す。
+    // WHY: 深いディレクトリで下にスクロールした後に親へ戻ると、
+    //      前のスクロール位置が残りトップにある Fonts 等が見えなくなる。
+    if (m_resetScroll) {
+        ImGui::SetScrollY(0.0f);
+        m_resetScroll = false;
+    }
     const ImVec2 contentMin = ImGui::GetWindowPos();
     const ImVec2 contentMax = {
         contentMin.x + ImGui::GetWindowSize().x,
