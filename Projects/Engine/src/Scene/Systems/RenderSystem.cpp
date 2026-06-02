@@ -50,7 +50,8 @@ void RenderSystem(Scene& scene,
                   const renderer::Camera& camera,
                   renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
                   const renderer::RenderSettings* settings,
-                  fbzz::LayerMask cullingMask)
+                  fbzz::LayerMask cullingMask,
+                  const RenderSystemUIOptions* uiOptions)
 {
     FBZZ_PROFILE_SCOPE("RenderSystem");
 
@@ -709,6 +710,35 @@ void RenderSystem(Scene& scene,
         } else {
             graph.AddPass("FXAA", { "LDR" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
         }
+    }
+
+    if (uiOptions && uiOptions->enabled) {
+        graph.AddPass(
+            "UIPass",
+            { { "Output", renderer::RenderGraph::ResourceUsage::ReadWrite } },
+            [&]() {
+                // WHY: UI は最終フレームへの合成であり、Composite / FXAA / CustomPostProcess の
+                //      どの分岐が最後に Output を書いたかに依存してはいけない。
+                //      Output を ReadWrite する RenderGraph pass として登録し、この pass 内で
+                //      明示的に outputRT をバインドすることで、Game / Scene / UI Viewport の
+                //      いずれでも同じ順序と同じ RT に描画できる。
+                renderer.SetRenderTarget(outputRT, resources);
+                const float uiWidth = uiOptions->viewportWidth > 0.0f
+                    ? uiOptions->viewportWidth
+                    : static_cast<float>(sHdrW);
+                const float uiHeight = uiOptions->viewportHeight > 0.0f
+                    ? uiOptions->viewportHeight
+                    : static_cast<float>(sHdrH);
+                UISystem(scene,
+                         renderer,
+                         resources,
+                         uiWidth,
+                         uiHeight,
+                         uiOptions->mouseInCanvasSpace,
+                         uiOptions->mousePressed,
+                         camera.GetViewProjection(),
+                         uiOptions->targetView);
+            });
     }
 
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
