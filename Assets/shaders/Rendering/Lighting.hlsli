@@ -9,8 +9,8 @@
 
 #include "Rendering/BRDF.hlsli"
 
-// 環境光の定数 (IBL が未実装の間の仮固定値)
-static const float AMBIENT_SCALE = 0.08f;
+// 環境光スケール: ambientColor は LightConstants cbuffer から来るグローバル変数。
+// Lit モード: ambientColor = (0.08, 0.08, 0.08)  Unlit モード: ambientColor = (1, 1, 1)
 
 // =========================================================================
 // Lambert 拡散のみ
@@ -21,7 +21,7 @@ float3 Lighting_Lambert(float3 N, float3 L,
                          float shadow)
 {
     float NdotL  = saturate(dot(N, L));
-    float3 ambient = albedo * AMBIENT_SCALE;
+    float3 ambient = albedo * ambientColor;
     float3 diffuse = albedo * lightColor * lightIntensity * NdotL * shadow;
     return ambient + diffuse;
 }
@@ -40,7 +40,7 @@ float3 Lighting_Phong(float3 N, float3 V, float3 L,
     float3 R        = reflect(-L, N);
     float  RdotV    = saturate(dot(R, V));
 
-    float3 ambient  = albedo * AMBIENT_SCALE;
+    float3 ambient  = albedo * ambientColor;
     float3 diffuse  = albedo * lightColor * lightIntensity * NdotL * shadow;
     float3 specular = lightColor * lightIntensity
                     * pow(RdotV, shininess)
@@ -63,7 +63,7 @@ float3 Lighting_BlinnPhong(float3 N, float3 V, float3 L,
     float NdotH    = saturate(dot(N, H));
     float shininess = max(lerp(128.0f, 2.0f, roughness), 2.0f);
 
-    float3 ambient  = albedo * AMBIENT_SCALE;
+    float3 ambient  = albedo * ambientColor;
     float3 diffuse  = albedo * lightColor * lightIntensity * NdotL * shadow;
     float3 specular = lightColor * lightIntensity
                     * pow(NdotH, shininess)
@@ -84,7 +84,7 @@ float3 Lighting_PBR(float3 N, float3 V, float3 L,
     BRDFResult brdf  = EvaluateBRDF(N, V, L, albedo, metallic, roughness);
     float3 light     = lightColor * lightIntensity * shadow * brdf.NdotL;
     float3 direct    = (brdf.diffuse + brdf.specular) * light;
-    float3 ambient   = albedo * AMBIENT_SCALE * ao;
+    float3 ambient   = albedo * ambientColor * ao;
     return ambient + direct;
 }
 
@@ -99,7 +99,7 @@ float3 Lighting_Toon(float3 N, float3 L,
 {
     float NdotL = dot(N, L);
     float band  = NdotL > 0.5f ? 1.0f : (NdotL > 0.0f ? 0.5f : 0.12f);
-    float3 ambient = albedo * AMBIENT_SCALE;
+    float3 ambient = albedo * ambientColor;
     float3 diffuse = albedo * lightColor * lightIntensity * band * shadow;
     return ambient + diffuse;
 }

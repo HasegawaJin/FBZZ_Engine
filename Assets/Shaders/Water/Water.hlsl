@@ -5,7 +5,6 @@
 // WHY: 水面は Terrain / Mesh と異なり半透明で、シーン深度と HDR カラーを読む必要がある。
 //      専用シェーダーに閉じることで通常マテリアルのテクスチャスロットを圧迫しない。
 #include "Common/Binding.hlsli"
-#include "Rendering/Lighting.hlsli"
 
 #define MAX_POINT_LIGHTS 8
 #define MAX_SPOT_LIGHTS 4
