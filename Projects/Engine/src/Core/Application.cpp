@@ -10,6 +10,8 @@
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Input/Input.hpp"
+#include "Engine/Profiler/ProfileScope.hpp"
+#include "Engine/Profiler/Profiler.hpp"
 #include "../Renderer/Platform/DX11/DX11Renderer.hpp"
 
 namespace fbzz::core {
@@ -27,6 +29,12 @@ bool Application::Init() {
 
 bool Application::Init(const Window::Config& windowConfig) {
     timeBeginPeriod(1);
+
+    // WHY: フレームアロケータとメモリ統計はエンジン全体の診断基盤なので、
+    //      Window / Renderer より先に初期化し、以後のサブシステムから参照できる状態にする。
+    constexpr std::size_t FRAME_ALLOCATOR_CAPACITY = 8u * 1024u * 1024u;
+    if (!m_memorySystem.Initialize(FRAME_ALLOCATOR_CAPACITY))
+        return false;
 
     m_window = std::make_unique<Window>();
     if (!m_window->Initialize(windowConfig))
@@ -51,7 +59,9 @@ bool Application::Init(const Window::Config& windowConfig) {
 
 void Application::Shutdown() {
     m_renderer.reset();
-    m_window->Shutdown();
+    if (m_window)
+        m_window->Shutdown();
+    m_memorySystem.Shutdown();
     FBZZ_LOG_INFO("Application 終了 (フレーム数: %llu)", Time::FrameCount());
     timeEndPeriod(1);
 }
@@ -61,17 +71,34 @@ void Application::Run() {
 
     while (m_isRunning) {
         Time::Tick();
-        input::Input::Update();
+        m_memorySystem.BeginFrame();
+        profiler::Profiler::BeginFrame();
 
-        m_window->PollEvents();
+        {
+            FBZZ_PROFILE_SCOPE("Input::Update");
+            input::Input::Update();
+        }
+
+        {
+            FBZZ_PROFILE_SCOPE("Window::PollEvents");
+            m_window->PollEvents();
+        }
         if (m_window->ShouldClose()) {
+            profiler::Profiler::EndFrame();
+            m_memorySystem.EndFrame();
             Quit();
             break;
         }
 
-        m_renderer->BeginFrame();
-        m_renderer->Clear({ 0.10f, 0.15f, 0.25f, 1.0f });
-        m_renderer->EndFrame();
+        {
+            FBZZ_PROFILE_SCOPE("Renderer::Frame");
+            m_renderer->BeginFrame();
+            m_renderer->Clear({ 0.10f, 0.15f, 0.25f, 1.0f });
+            m_renderer->EndFrame();
+        }
+
+        profiler::Profiler::EndFrame();
+        m_memorySystem.EndFrame();
     }
 
     Shutdown();
