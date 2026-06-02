@@ -6,6 +6,7 @@
 
 #include <Engine/Core/Memory/MemorySystem.hpp>
 #include <Engine/Profiler/Profiler.hpp>
+#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 
 #include <imgui.h>
@@ -15,6 +16,8 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::editor {
@@ -299,6 +302,10 @@ void AnalysisPanel::OnRenderContent(EditorContext& ctx)
             DrawMemory(ctx);
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("Rendering")) {
+            DrawRendering();
+            ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
     }
 }
@@ -465,6 +472,96 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
             ImGui::TextDisabled("... %zu more", liveResourceCount - visibleCount);
         }
     }
+}
+
+void AnalysisPanel::DrawRendering()
+{
+    const renderer::RenderDebugOverlay::Snapshot& snap =
+        renderer::RenderDebugOverlay::GetLastSnapshot();
+    const renderer::RenderDebugOverlay::RenderStats& stats = snap.renderStats;
+
+    // ── DrawCall / ポリゴン統計 ─────────────────────────────────────────────
+    // WHY: DrawCall 数とポリゴン数はレンダリング負荷の最重要指標。
+    //      カリング統計と並べることで、頂点数だけでなく削減率も一目で把握できる。
+    if (ImGui::BeginTable("RenderStats##Analysis", 2,
+                           ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+    {
+        ImGui::TableSetupColumn("項目",  ImGuiTableColumnFlags_WidthFixed, 160.0f);
+        ImGui::TableSetupColumn("値",    ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+
+        auto row = [](const char* label, int value) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(label);
+            ImGui::TableNextColumn(); ImGui::Text("%d", value);
+        };
+
+        row("Draw Calls",       stats.drawCalls);
+        row("Triangles",        stats.triangleCount);
+        row("Vertices",         stats.vertexCount);
+
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TableNextColumn();
+
+        row("Objects (pre-cull)",     stats.totalObjects);
+        row("Frustum Culled",         stats.frustumCulled);
+        row("Occlusion Culled",       stats.occlusionCulled);
+
+        const int rendered = stats.totalObjects - stats.frustumCulled - stats.occlusionCulled;
+        row("Rendered Objects",        rendered);
+
+        ImGui::EndTable();
+    }
+
+    // ── GPU パスタイミング ─────────────────────────────────────────────────
+    // WHY: Profiler タブは CPU スコープを表示するが、GPU 時間は別物。
+    //      どのパスが GPU 負荷のボトルネックか把握するためにここで可視化する。
+    ImGui::Separator();
+    ImGui::TextUnformatted("GPU pass timings");
+
+    if (snap.gpuPassTimings.empty()) {
+        ImGui::TextDisabled("計測中 (latency 待ち)...");
+        return;
+    }
+
+    double maxGpuMs = 0.0;
+    for (const auto& [name, ms] : snap.gpuPassTimings)
+        maxGpuMs = (std::max)(maxGpuMs, ms);
+    if (maxGpuMs <= 0.0) maxGpuMs = 1.0;
+
+    // CPU 時間を名前引きできるよう map に変換する。
+    std::unordered_map<std::string, double> cpuMap;
+    for (const auto& [name, ms] : snap.passTimings)
+        cpuMap[name] = ms;
+
+    constexpr float GPU_BAR_MAX_W = 200.0f;
+    constexpr float GPU_BAR_H     = 12.0f;
+
+    ImGui::BeginChild("GpuPassList##Analysis", { 0.0f, 0.0f }, true);
+    double totalGpuMs = 0.0;
+    for (const auto& [name, ms] : snap.gpuPassTimings) {
+        totalGpuMs += ms;
+        const float barW = static_cast<float>(ms / maxGpuMs) * GPU_BAR_MAX_W;
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        // GPU バー (オレンジ系)
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            cursor, { cursor.x + barW, cursor.y + GPU_BAR_H },
+            IM_COL32(255, 170, 50, 220));
+        ImGui::Dummy({ GPU_BAR_MAX_W + 8.0f, GPU_BAR_H });
+        ImGui::SameLine();
+
+        auto cpuIt = cpuMap.find(name);
+        if (cpuIt != cpuMap.end()) {
+            ImGui::Text("%-22s  GPU %.3f ms  CPU %.3f ms",
+                        name.c_str(), ms, cpuIt->second);
+        } else {
+            ImGui::Text("%-22s  GPU %.3f ms", name.c_str(), ms);
+        }
+    }
+    ImGui::Separator();
+    ImGui::Text("GPU total: %.3f ms", totalGpuMs);
+    ImGui::EndChild();
 }
 
 } // namespace fbzz::editor
