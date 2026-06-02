@@ -11,6 +11,12 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/UIImage.hpp>
+#include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/Components/UIButton.hpp>
+#include <Engine/Scene/Components/UILayoutGroup.hpp>
+#include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
@@ -196,6 +202,81 @@ void CreateDecalObject(EditorContext& ctx, const char* name, float sizeXZ, float
     ctx.selectedEntities = { go.GetID() };
 }
 
+// -----------------------------------------------------------------------
+// UI オブジェクト生成ヘルパー
+// WHY: Unity の GameObject/UI メニューに倣い、よく使う UI 要素を
+//      1 操作で配置できるようにする。コンポーネントの組み合わせを
+//      ここで確定させることで、ユーザーが手動で Add Component する手間を省く。
+// -----------------------------------------------------------------------
+
+// UICanvas ルートを生成する。ScreenSpace を既定値とする。
+void CreateUICanvasObject(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Canvas");
+    go.AddComponent<scene::UICanvas>();
+    ctx.selectedEntities = { go.GetID() };
+    ctx.activeUICanvas = go.GetID();
+}
+
+// UIImage のみのシンプルな画像要素。サイズは transform.localScale.xy で制御する。
+void CreateUIImageObject(EditorContext& ctx, const char* name,
+                         const math::Vector4& color, float w, float h)
+{
+    auto& go = ctx.activeScene->CreateGameObject(name);
+    go.transform.localScale = { w, h, 1.0f };
+    scene::UIImage img;
+    img.color = color;
+    go.AddComponent<scene::UIImage>(img);
+    ctx.selectedEntities = { go.GetID() };
+}
+
+// UIText テキスト要素。デフォルト文字列と白色で生成する。
+void CreateUITextObject(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Text");
+    scene::UIText txt;
+    txt.text     = "Text";
+    txt.fontSize = 42.0f;
+    txt.color    = { 1.0f, 1.0f, 1.0f, 1.0f };
+    go.AddComponent<scene::UIText>(txt);
+    ctx.selectedEntities = { go.GetID() };
+}
+
+// UIButton: 背景 Image + Button コンポーネントを親に、
+//           ラベル Text を子として持つ Unity 標準構成で生成する。
+void CreateUIButtonObject(EditorContext& ctx)
+{
+    auto& go = ctx.activeScene->CreateGameObject("Button");
+    go.transform.localScale = { 160.0f, 40.0f, 1.0f };
+
+    scene::UIImage img;
+    img.color = { 0.90f, 0.90f, 0.90f, 1.0f };
+    go.AddComponent<scene::UIImage>(img);
+    go.AddComponent<scene::UIButton>();
+
+    // ラベル: 暗めテキストで中央配置 (位置は inspector で調整)
+    auto& label = ctx.activeScene->CreateGameObject("Label");
+    scene::UIText txt;
+    txt.text     = "Button";
+    txt.fontSize = 24.0f;
+    txt.color    = { 0.20f, 0.20f, 0.20f, 1.0f };
+    label.AddComponent<scene::UIText>(txt);
+    label.SetParent(&go);
+
+    ctx.selectedEntities = { go.GetID() };
+}
+
+// UILayoutGroup 水平 / 垂直レイアウト
+void CreateUILayoutGroupObject(EditorContext& ctx, const char* name, scene::UILayoutAxis axis)
+{
+    auto& go = ctx.activeScene->CreateGameObject(name);
+    scene::UILayoutGroup layout;
+    layout.axis    = axis;
+    layout.spacing = 8.0f;
+    go.AddComponent<scene::UILayoutGroup>(layout);
+    ctx.selectedEntities = { go.GetID() };
+}
+
 void RemoveSelection(EditorContext& ctx, scene::EntityID id)
 {
     auto& selected = ctx.selectedEntities;
@@ -256,6 +337,45 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred)
 
     if (ImGui::MenuItem("Camera"))
         deferred = [&ctx]() { CreateCameraObject(ctx); };
+
+    // WHY: Unity と同様に UI 系オブジェクトを右クリック 1 操作で配置できる動線を用意する。
+    //      Canvas 配下への自動ペアレントは行わず、ユーザーがヒエラルキーで自由に構成できるよう
+    //      root レベルに生成する（3D Object / Light と同じ方針）。
+    if (ImGui::BeginMenu("UI")) {
+        if (ImGui::MenuItem("Canvas"))
+            deferred = [&ctx]() { CreateUICanvasObject(ctx); };
+        ImGui::Separator();
+        if (ImGui::MenuItem("Image"))
+            deferred = [&ctx]() {
+                CreateUIImageObject(ctx, "Image",
+                    { 1.0f, 1.0f, 1.0f, 1.0f }, 100.0f, 100.0f);
+            };
+        if (ImGui::MenuItem("Text"))
+            deferred = [&ctx]() { CreateUITextObject(ctx); };
+        if (ImGui::MenuItem("Button"))
+            deferred = [&ctx]() { CreateUIButtonObject(ctx); };
+        if (ImGui::MenuItem("Panel"))
+            // 半透明グレーで canvas 全体を覆う背景パネル
+            deferred = [&ctx]() {
+                CreateUIImageObject(ctx, "Panel",
+                    { 0.20f, 0.20f, 0.20f, 0.80f }, 1920.0f, 1080.0f);
+            };
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Layout Group")) {
+            if (ImGui::MenuItem("Horizontal"))
+                deferred = [&ctx]() {
+                    CreateUILayoutGroupObject(ctx, "Horizontal Layout Group",
+                        scene::UILayoutAxis::Horizontal);
+                };
+            if (ImGui::MenuItem("Vertical"))
+                deferred = [&ctx]() {
+                    CreateUILayoutGroupObject(ctx, "Vertical Layout Group",
+                        scene::UILayoutAxis::Vertical);
+                };
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
+    }
 
     if (ImGui::BeginMenu("Decal")) {
         if (ImGui::MenuItem("Decal (2m x 2m)"))
