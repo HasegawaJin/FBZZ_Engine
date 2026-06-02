@@ -11,6 +11,7 @@
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
 #include "Engine/Scene/Systems/IKSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <cassert>
 
 namespace fbzz::scene {
@@ -36,14 +37,20 @@ void SceneManager::LoadScene(const std::string& name)
 
 void SceneManager::Update(float dt, physics::World& world)
 {
+    FBZZ_PROFILE_SCOPE("SceneManager::Update");
+
     if (!m_pendingLoad.empty()) {
+        FBZZ_PROFILE_SCOPE("SceneManager::LoadPendingScene");
         m_active = m_factories[m_pendingLoad]();
         m_pendingLoad.clear();
     }
 
     if (!m_active) return;
 
-    TransformSystem(*m_active);
+    {
+        FBZZ_PROFILE_SCOPE("TransformSystem");
+        TransformSystem(*m_active);
+    }
     PhysicsSystem(*m_active, world, dt);
     if (auto* resources = renderer::ResourceManager::Active()) {
         AnimatorSystem(*m_active, *resources, dt);
@@ -52,7 +59,10 @@ void SceneManager::Update(float dt, physics::World& world)
         IKSystem(*m_active, world, *resources, dt);
     }
     ScriptSystem(*m_active, dt);
-    m_active->FlushDestroyQueue(dt);
+    {
+        FBZZ_PROFILE_SCOPE("Scene::FlushDestroyQueue");
+        m_active->FlushDestroyQueue(dt);
+    }
 }
 
 Scene* SceneManager::GetActive()
