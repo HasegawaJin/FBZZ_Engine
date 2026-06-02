@@ -20,6 +20,7 @@
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Renderer/LightSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Frustum.hpp>
@@ -465,11 +466,16 @@ void WaterRenderSystem(
     renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
     renderer::ResourceHandle<renderer::TextureTag> sceneColor,
     float elapsedTime,
-    const renderer::RenderSettings* /*settings*/)
+    const renderer::RenderSettings* settings)
 {
     static auto waterShader = resources.LoadShader("assets/shaders/Water/Water.hlsl");
     static auto waterPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto waterWireframePSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::WIREFRAME,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
     });
@@ -619,6 +625,11 @@ void WaterRenderSystem(
                 sl.intensity = lc.intensity;
             }
         }
+        if (settings && settings->IsUnlit()) {
+            lightData.lightIntensity  = 0.0f;
+            lightData.pointLightCount = 0;
+            lightData.spotLightCount  = 0;
+        }
         resources.Update(lightCBH, &lightData, sizeof(lightData));
     }
 
@@ -703,7 +714,7 @@ void WaterRenderSystem(
             call.vertexBuffer = chunk.vertexBuffer;
             call.indexBuffer  = chunk.indexBuffer;
             call.shader       = waterShader;
-            call.pipelineState = waterPSO;
+            call.pipelineState = (settings && settings->IsWireframe()) ? waterWireframePSO : waterPSO;
             call.indexCount   = chunk.indexCount;
             call.layer        = renderer::RenderLayer::TRANSPARENT_LAYER;
             call.topology     = renderer::PrimitiveTopology::TRIANGLE_LIST;

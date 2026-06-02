@@ -158,7 +158,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.indexCount         = mr->mesh->indexCount;
             dc.vertexCount        = mr->mesh->vertexCount;
             dc.shader             = material->shader;
-            dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
             dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
@@ -221,7 +221,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 dc.indexCount         = meshPtr->indexCount;
                 dc.vertexCount        = meshPtr->vertexCount;
                 dc.shader             = skinnedShader;
-                dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+                dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
                                                          : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
                 dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
                 dc.constantBuffers[0] = h.frameCB;
@@ -293,7 +293,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.indexCount         = mr->mesh->indexCount;
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
-        dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
                                                  : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
         dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
@@ -352,7 +352,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
-            dc.pipelineState      = rs.wireframeMode ? h.wireframePSO
+            dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
                                                      : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
             dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;

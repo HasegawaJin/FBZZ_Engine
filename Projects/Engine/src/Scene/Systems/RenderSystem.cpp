@@ -30,6 +30,7 @@
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Asset/Skeleton.hpp"
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
@@ -51,6 +52,8 @@ void RenderSystem(Scene& scene,
                   const renderer::RenderSettings* settings,
                   fbzz::LayerMask cullingMask)
 {
+    FBZZ_PROFILE_SCOPE("RenderSystem");
+
     static renderer::RenderSettings sDefaultSettings;
     renderer::RenderSettings effectiveSettings = settings ? *settings : sDefaultSettings;
     if (const auto* runtimePostProcess = scene.TryGetRuntimePostProcessSettings())
@@ -267,6 +270,15 @@ void RenderSystem(Scene& scene,
             sl.color     = lc.color;
             sl.intensity = lc.intensity;
         }
+    }
+
+    // ambientColor: Lit モードでは AMBIENT_SCALE 相当値、Unlit 系では白に上書き
+    lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
+    if (rs.IsUnlit()) {
+        lightData.ambientColor    = { 1.0f, 1.0f, 1.0f };
+        lightData.lightIntensity  = 0.0f;
+        lightData.pointLightCount = 0;
+        lightData.spotLightCount  = 0;
     }
 
     math::Vector3 lightDir    = lightData.lightDir.Normalized();
@@ -492,7 +504,7 @@ void RenderSystem(Scene& scene,
     //      RenderSystem 内に統合することでポストプロセス（bloom/SSAO等）も適用される。
     graph.AddPass("TerrainForward", { "ShadowMap", "HDR" }, { "HDR" }, [&]() {
         renderer.SetRenderTarget(passHandles.hdrRT, resources);
-        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT);
+        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT, settings);
     });
 
     // ── Sky ───────────────────────────────────────────────────────────────────
@@ -686,7 +698,11 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     // RenderGraph 実行 + デバッグスナップショット更新
     // =========================================================================
-    const bool graphExecuted = graph.Execute();
+    bool graphExecuted = false;
+    {
+        FBZZ_PROFILE_SCOPE("RenderGraph::Execute");
+        graphExecuted = graph.Execute();
+    }
     assert(graphExecuted);
     (void)graphExecuted;
 
