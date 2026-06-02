@@ -66,6 +66,9 @@ struct EditorContext {
     float uiViewportOriginY = 0.0f;
     float uiViewportWidth = 1280.0f;
     float uiViewportHeight = 720.0f;
+    // UIViewport が編集対象にする ScreenSpace Canvas。
+    // WHY: 複数 Canvas があると「最初の Canvas」を暗黙選択するだけでは編集対象が不安定になる。
+    scene::EntityID activeUICanvas = scene::EntityID::INVALID;
 
     enum class GameViewportAspect {
         Free,
