@@ -537,7 +537,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
             auto gameRenderSettings = editorApp.GetContext().projectSettings.render;
-            gameRenderSettings.wireframeMode         = false;
+            gameRenderSettings.viewMode = renderer::ViewMode::Lit;
             gameRenderSettings.showSelectionOutline  = false;
             gameRenderSettings.selectedObjects.clear();
             scene::RenderSystem(*scene, renderer, resources, gameCamera, gameRT,
