@@ -17,8 +17,10 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/ThirdParty" "${CMAKE_BINARY_DIR}/FBZZ/Thir
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Math" "${CMAKE_BINARY_DIR}/FBZZ/Math")
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Physics" "${CMAKE_BINARY_DIR}/FBZZ/Physics")
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Engine" "${CMAKE_BINARY_DIR}/FBZZ/Engine")
+add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ/Editor")
 
 add_executable({{TARGET_NAME}}
+    Src/AppMain.cpp
     Src/GameMain.cpp
     Include/{{TARGET_NAME}}/ProjectAPI.hpp
 )
@@ -34,4 +36,5 @@ target_link_libraries({{TARGET_NAME}}
         fbzz_engine
         fbzz_physics
         fbzz_math
+        fbzz_editor
 )
