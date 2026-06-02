@@ -31,3 +31,16 @@ public:
 };
 
 } // namespace fbzz::scene
+
+// スクリプト型を ScriptFactory に静的登録するマクロ。
+// WHY: main.cpp に RegisterXxxScripts() を置くと、スクリプト追加のたびに起動コードを触る必要がある。
+//      各ゲーム側 Translation Unit に登録を置くことで、Script の所有者が登録責務も持てる。
+#define FBZZ_SCRIPT_FACTORY_CONCAT_INNER(a, b) a##b
+#define FBZZ_SCRIPT_FACTORY_CONCAT(a, b) FBZZ_SCRIPT_FACTORY_CONCAT_INNER(a, b)
+#define FBZZ_REGISTER_SCRIPT(T) \
+    namespace { \
+        [[maybe_unused]] const bool FBZZ_SCRIPT_FACTORY_CONCAT(s_fbzzScriptRegistered_, __COUNTER__) = []() { \
+            ::fbzz::scene::ScriptFactory::Register<T>(); \
+            return true; \
+        }(); \
+    }
