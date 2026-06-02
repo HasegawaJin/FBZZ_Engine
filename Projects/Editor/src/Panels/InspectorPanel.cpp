@@ -1994,16 +1994,38 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         });
 
     DrawComponentSection<scene::UICanvas>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Canvas",
-        [go](scene::UICanvas& canvas, EditorContext&) {
+        [go](scene::UICanvas& canvas, EditorContext& ctx) {
             if (go->GetParent())
                 ImGui::TextDisabled("Only root GameObjects are rendered as canvases.");
             ImGui::DragFloat("Canvas Width",  &canvas.canvasWidth,  1.0f, 1.0f, 16384.0f);
             ImGui::DragFloat("Canvas Height", &canvas.canvasHeight, 1.0f, 1.0f, 16384.0f);
             ImGui::DragInt("Sort Order", &canvas.sortOrder);
-            static constexpr const char* kModeNames[] = { "Screen Space", "World Space" };
+            static constexpr const char* kModeNames[] = {
+                "Screen Space Overlay",
+                "World Space",
+                "Screen Space Camera"
+            };
             int modeIdx = static_cast<int>(canvas.renderMode);
-            if (ImGui::Combo("Render Mode", &modeIdx, kModeNames, 2))
+            if (ImGui::Combo("Render Mode", &modeIdx, kModeNames, 3))
                 canvas.renderMode = static_cast<scene::UIRenderMode>(modeIdx);
+
+            if (canvas.renderMode != scene::UIRenderMode::WorldSpace) {
+                static constexpr const char* kScaleNames[] = {
+                    "Constant Pixel Size",
+                    "Scale With Screen Size"
+                };
+                int scaleIdx = static_cast<int>(canvas.scaleMode);
+                if (ImGui::Combo("Scale Mode", &scaleIdx, kScaleNames, 2))
+                    canvas.scaleMode = static_cast<scene::UICanvasScaleMode>(scaleIdx);
+                if (canvas.scaleMode == scene::UICanvasScaleMode::ScaleWithScreenSize) {
+                    ImGui::DragFloat("Reference Width",  &canvas.referenceWidth,  1.0f, 1.0f, 16384.0f);
+                    ImGui::DragFloat("Reference Height", &canvas.referenceHeight, 1.0f, 1.0f, 16384.0f);
+                    ImGui::SliderFloat("Match Width/Height", &canvas.matchWidthOrHeight, 0.0f, 1.0f);
+                }
+                if (ImGui::Button("Set Active UI Canvas"))
+                    ctx.activeUICanvas = go->GetID();
+            }
+
             if (canvas.renderMode == scene::UIRenderMode::WorldSpace)
                 ImGui::DragFloat("World Scale", &canvas.worldScale, 0.0001f, 0.00001f, 1.0f, "%.5f");
         });
