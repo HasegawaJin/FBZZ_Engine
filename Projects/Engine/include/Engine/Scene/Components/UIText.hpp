@@ -2,7 +2,8 @@
 // UIText.hpp | fbzz::scene
 // ランタイム UI のテキスト表示コンポーネント
 // デバッグ表示や簡易 UI の文字列・サイズ・色を保持する。
-// 本格的なフォント管理は Renderer / UI 側の責務に分ける。
+// fontPath が空の場合は内蔵 5x7 SDF アトラスを使用する。
+// fontPath を指定した場合は gen_font_atlas.py で生成した PNG + FNT アトラスを使用する。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector2.hpp>
@@ -17,6 +18,11 @@ struct UIText {
     float         fontSize      = 42.0f;
     float         letterSpacing = 4.0f;
     math::Vector4 color         = { 1.0f, 1.0f, 1.0f, 1.0f };
+    // フォントアトラスのベースパス (拡張子なし)。
+    // 例: "Assets/Fonts/Kenney/Future"
+    //   → "Assets/Fonts/Kenney/Future.png" + ".fnt" を UISystem がロードする。
+    // 空文字列のままにすると内蔵 SDF アトラス (後方互換) を使用する。
+    std::string   fontPath      = "";
     bool          enabled       = true;
 
     const char* GetTypeName() const { return "UIText"; }
@@ -27,6 +33,7 @@ struct UIText {
         r.Field("fontSize",      fontSize);
         r.Field("letterSpacing", letterSpacing);
         r.Field("color",         color);
+        r.Field("fontPath",      fontPath);
     }
 };
 

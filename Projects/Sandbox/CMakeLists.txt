@@ -78,16 +78,10 @@ add_custom_command(TARGET sandbox POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${SANDBOX_PROJECT_TEMPLATE_DIR}/ProjectSettings"
         "${SANDBOX_DEFAULT_PROJECT_DIR}/ProjectSettings"
+    # WHY: Editor の AssetBrowser は実行時プロジェクトの Assets を表示する。
+    #      Shaders / Models などを個別列挙すると Fonts / Icons のような新カテゴリが漏れるため、
+    #      テンプレート固有 Assets にエンジン共通 Assets 全体をマージして同期する。
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets/Shaders"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Shaders"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets/Models"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Models"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets/Textures"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Textures"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets/Sounds"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets/Sounds"
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
 )

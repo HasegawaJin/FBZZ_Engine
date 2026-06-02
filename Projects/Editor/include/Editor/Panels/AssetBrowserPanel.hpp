@@ -43,6 +43,7 @@ private:
     std::vector<Entry>    m_entries;
     std::array<char, 256> m_searchBuf = {};
     float                 m_iconSize  = 64.0f;
+    bool                  m_resetScroll = false; // ディレクトリ移動後に右ペインをトップへ戻す
 
     // FBX inspection
     std::string                   m_selectedFbxPath;
