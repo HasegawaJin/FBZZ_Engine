@@ -7,6 +7,7 @@
 #include <Windows.h>
 #include <timeapi.h>
 #include "Engine/Core/Application.hpp"
+#include "Engine/Core/IModule.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Input/Input.hpp"
@@ -102,6 +103,51 @@ void Application::Run() {
     }
 
     Shutdown();
+}
+
+void Application::Run(IModule& module) {
+    // WHY: Init() やシーンロードにかかった時間を最初のゲームフレームの DeltaTime に混ぜない。
+    //      先に Time::Tick() を呼んで時刻基準を作り、OnInit() 後の最初の Tick で実フレーム時間だけを得る。
+    Time::Tick();
+
+    if (!module.OnInit()) {
+        module.OnShutdown();
+        return;
+    }
+
+    while (m_isRunning) {
+        Time::Tick();
+        m_memorySystem.BeginFrame();
+        profiler::Profiler::BeginFrame();
+
+        {
+            FBZZ_PROFILE_SCOPE("Input::Update");
+            input::Input::Update();
+        }
+
+        {
+            FBZZ_PROFILE_SCOPE("Window::PollEvents");
+            m_window->PollEvents();
+        }
+        if (m_window->ShouldClose()) {
+            // WHY: BeginFrame() 済みの Profiler / MemorySystem を必ず対で閉じる。
+            //      break 前に EndFrame() することで終了フレームでも診断状態を壊さない。
+            profiler::Profiler::EndFrame();
+            m_memorySystem.EndFrame();
+            Quit();
+            break;
+        }
+
+        const float dt = Time::DeltaTime();
+        module.OnUpdate(dt);
+        module.OnLateUpdate(dt);
+        module.OnRender();
+
+        profiler::Profiler::EndFrame();
+        m_memorySystem.EndFrame();
+    }
+
+    module.OnShutdown();
 }
 
 void Application::Quit() {

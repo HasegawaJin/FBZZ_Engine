@@ -12,6 +12,8 @@
 
 namespace fbzz::core {
 
+class IModule;
+
 class Application {
 public:
     static Application& Get();
@@ -24,6 +26,7 @@ public:
     bool Init(const Window::Config& windowConfig);
     void Shutdown();
     void Run();
+    void Run(IModule& module);
     void Quit();
 
     bool                    IsRunning()      const { return m_isRunning; }
