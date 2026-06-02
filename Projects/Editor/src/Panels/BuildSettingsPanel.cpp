@@ -234,12 +234,12 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
 
     if (ImGui::Button("Build")) {
         m_settings.Save(ctx.projectRoot);
-        m_pipeline.Start(m_settings, ctx.projectRoot, false);
+        m_pipeline.Start(m_settings, ctx.projectRoot, ctx.projectBuildRoot, ctx.standaloneTargetName, false);
     }
     ImGui::SameLine();
     if (ImGui::Button("Build and Run")) {
         m_settings.Save(ctx.projectRoot);
-        m_pipeline.Start(m_settings, ctx.projectRoot, true);
+        m_pipeline.Start(m_settings, ctx.projectRoot, ctx.projectBuildRoot, ctx.standaloneTargetName, true);
     }
 
     ImGui::EndDisabled();
@@ -247,6 +247,18 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
     // 進捗バーとステータス
     if (isBuilding) {
         ImGui::ProgressBar(m_pipeline.GetProgress(), { -1.0f, 0.0f }, m_pipeline.GetStatus());
+        const std::string& buildLog = m_pipeline.GetBuildLog();
+        if (!buildLog.empty()) {
+            // WHY: CMake / MSBuild の失敗理由は標準出力に出るため、エディタ内で読めるようにする。
+            ImGui::BeginChild("##RuntimeBuildLog", { 0.0f, 180.0f }, true, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::TextUnformatted(buildLog.c_str());
+            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
+                ImGui::SetScrollHereY(1.0f);
+            ImGui::EndChild();
+        }
+        if (ImGui::Button("Cancel")) {
+            m_pipeline.Cancel();
+        }
         m_pipeline.Tick();
     }
 

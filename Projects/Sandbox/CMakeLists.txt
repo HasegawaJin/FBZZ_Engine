@@ -5,6 +5,16 @@ file(GLOB_RECURSE SANDBOX_SOURCES
 
 add_executable(sandbox ${SANDBOX_SOURCES})
 
+set(SANDBOX_STANDALONE_SOURCES ${SANDBOX_SOURCES})
+list(REMOVE_ITEM SANDBOX_STANDALONE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/EditorModule.cpp"
+)
+
+# RuntimeBuild 用の配布 exe。EditorModule と fbzz_editor へ依存しないため、
+# Build Settings からゲーム本体だけを再コンパイルできる。
+add_executable(SandboxStandalone ${SANDBOX_STANDALONE_SOURCES})
+target_compile_definitions(SandboxStandalone PRIVATE FBZZ_STANDALONE_TARGET)
+
 set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:sandbox>/SandboxProject")
 set(SANDBOX_PROJECT_TEMPLATE_DIR "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard")
 set(SANDBOX_ENSURE_PROJECT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/EnsureSandboxProject.cmake")
@@ -41,10 +51,23 @@ add_custom_command(
 
 add_custom_target(compile_shaders DEPENDS ${SHADER_STAMP})
 add_dependencies(sandbox compile_shaders)
+add_dependencies(SandboxStandalone compile_shaders)
 
 target_link_libraries(sandbox
     PRIVATE
         fbzz_editor
+        fbzz_engine
+        fbzz_physics
+        tomlplusplus
+        user32
+        d3d11
+        dxgi
+        dwmapi
+        shell32
+)
+
+target_link_libraries(SandboxStandalone
+    PRIVATE
         fbzz_engine
         fbzz_physics
         tomlplusplus
@@ -84,4 +107,15 @@ add_custom_command(TARGET sandbox POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
         "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
+)
+
+add_custom_command(TARGET SandboxStandalone POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
+        "$<TARGET_FILE_DIR:SandboxStandalone>"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
+        "$<TARGET_FILE_DIR:SandboxStandalone>/Assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "$<TARGET_FILE_DIR:SandboxStandalone>/Assets"
 )
