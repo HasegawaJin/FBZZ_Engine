@@ -196,19 +196,98 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin)
     return false;
 }
 
+bool IsCanvasEditorCanvas(const scene::UICanvas& canvas)
+{
+    return canvas.enabled && canvas.renderMode != scene::UIRenderMode::WorldSpace;
+}
+
+bool IsUnderCanvas(scene::GameObject& go, scene::EntityID canvasID)
+{
+    if (!canvasID.IsValid()) return true;
+    scene::GameObject* current = &go;
+    while (current) {
+        if (current->GetID() == canvasID)
+            return true;
+        current = current->GetParent();
+    }
+    return false;
+}
+
+const scene::UICanvas* FindCanvasEditorCanvas(const EditorContext& ctx)
+{
+    if (!ctx.activeScene) return nullptr;
+
+    // WHY: Canvas Editor は ScreenSpace UI を編集するビューとして扱う。
+    //      activeUICanvas → 選択中 Canvas → 最初の ScreenSpace 系 Canvas の順に決めることで、
+    //      複数 Canvas の編集対象がフレームごとに揺れない。
+    if (ctx.activeUICanvas.IsValid()) {
+        if (scene::GameObject* go = ctx.activeScene->GetGameObject(ctx.activeUICanvas)) {
+            if (auto* canvas = go->GetComponent<scene::UICanvas>(); canvas && IsCanvasEditorCanvas(*canvas))
+                return canvas;
+        }
+    }
+
+    if (scene::GameObject* selected = ctx.GetSelectedGO()) {
+        if (auto* canvas = selected->GetComponent<scene::UICanvas>();
+            canvas && IsCanvasEditorCanvas(*canvas)) {
+            return canvas;
+        }
+    }
+
+    for (auto& go : ctx.activeScene->GameObjects()) {
+        if (auto* canvas = go.GetComponent<scene::UICanvas>();
+            canvas && IsCanvasEditorCanvas(*canvas)) {
+            return canvas;
+        }
+    }
+    return nullptr;
+}
+
+void GetCanvasEditorSize(const EditorContext& ctx, float& canvasW, float& canvasH)
+{
+    canvasW = 1920.0f;
+    canvasH = 1080.0f;
+    if (const scene::UICanvas* canvas = FindCanvasEditorCanvas(ctx)) {
+        canvasW = (std::max)(1.0f, canvas->canvasWidth);
+        canvasH = (std::max)(1.0f, canvas->canvasHeight);
+    }
+}
+
+void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
+{
+    float canvasW = 1920.0f, canvasH = 1080.0f;
+    GetCanvasEditorSize(ctx, canvasW, canvasH);
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 viewportMax = { viewportMin.x + viewportSize.x, viewportMin.y + viewportSize.y };
+    const ImU32 border = IM_COL32(120, 180, 255, 180);
+    const ImU32 guide  = IM_COL32(120, 180, 255, 70);
+
+    // WHAT: Canvas 外周、中央線、一般的な Safe Area 目安を描く。
+    // WHY: UI 実描画は RT 側、編集補助は ImGui 側に分離すると、Game 出力へガイドが混入しない。
+    dl->AddRect(viewportMin, viewportMax, border, 0.0f, 0, 1.5f);
+    dl->AddLine({ viewportMin.x + viewportSize.x * 0.5f, viewportMin.y },
+                { viewportMin.x + viewportSize.x * 0.5f, viewportMax.y }, guide, 1.0f);
+    dl->AddLine({ viewportMin.x, viewportMin.y + viewportSize.y * 0.5f },
+                { viewportMax.x, viewportMin.y + viewportSize.y * 0.5f }, guide, 1.0f);
+
+    const float scaleX = viewportSize.x / canvasW;
+    const float scaleY = viewportSize.y / canvasH;
+    const float safeX = canvasW * 0.05f * scaleX;
+    const float safeY = canvasH * 0.05f * scaleY;
+    dl->AddRect({ viewportMin.x + safeX, viewportMin.y + safeY },
+                { viewportMax.x - safeX, viewportMax.y - safeY },
+                IM_COL32(120, 255, 180, 90), 0.0f, 0, 1.0f);
+}
+
 // Pick the topmost UI element clicked in the UI viewport.
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
 {
     if (!ctx.activeScene) return;
 
     float canvasW = 1920.0f, canvasH = 1080.0f;
-    for (auto& other : ctx.activeScene->GameObjects()) {
-        if (auto* canvas = other.GetComponent<scene::UICanvas>()) {
-            canvasW = canvas->canvasWidth;
-            canvasH = canvas->canvasHeight;
-            break;
-        }
-    }
+    GetCanvasEditorSize(ctx, canvasW, canvasH);
+    const scene::EntityID activeCanvas = ctx.activeUICanvas;
 
     const ImVec2 mouse = ImGui::GetMousePos();
     const float cx = (mouse.x - viewportMin.x) / viewportSize.x * canvasW;
@@ -218,14 +297,23 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
     float bestArea = FLT_MAX;
 
     for (auto& go : ctx.activeScene->GameObjects()) {
+        if (!IsUnderCanvas(go, activeCanvas))
+            continue;
+
         auto* img = go.GetComponent<scene::UIImage>();
         auto* txt = go.GetComponent<scene::UIText>();
-        if (!img && !txt) continue;
+        auto* canvas = go.GetComponent<scene::UICanvas>();
+        if (!img && !txt && !canvas) continue;
 
         const float ox = go.transform.localPosition.x;
         const float oy = go.transform.localPosition.y;
 
-        if (img) {
+        if (canvas && IsCanvasEditorCanvas(*canvas)) {
+            if (cx >= 0.0f && cx <= canvas->canvasWidth && cy >= 0.0f && cy <= canvas->canvasHeight) {
+                const float area = canvas->canvasWidth * canvas->canvasHeight;
+                if (area < bestArea) { bestArea = area; best = go.GetID(); }
+            }
+        } else if (img) {
             const float ow = go.transform.localScale.x;
             const float oh = go.transform.localScale.y;
             if (cx >= ox && cx <= ox + ow && cy >= oy && cy <= oy + oh) {
@@ -241,7 +329,19 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
     }
 
     if (!ImGui::GetIO().KeyCtrl) ctx.selectedEntities.clear();
-    if (best.IsValid()) ctx.selectedEntities.push_back(best);
+    if (best.IsValid()) {
+        ctx.selectedEntities.push_back(best);
+        if (scene::GameObject* picked = ctx.activeScene->GetGameObject(best)) {
+            scene::GameObject* current = picked;
+            while (current) {
+                if (auto* canvas = current->GetComponent<scene::UICanvas>(); canvas && IsCanvasEditorCanvas(*canvas)) {
+                    ctx.activeUICanvas = current->GetID();
+                    break;
+                }
+                current = current->GetParent();
+            }
+        }
+    }
 }
 
 // --- UI gizmo helpers ---
@@ -316,13 +416,7 @@ bool DrawUIGizmo(EditorContext& ctx,
     if (!img && !txt) return false;
 
     float canvasW = 1920.0f, canvasH = 1080.0f;
-    for (auto& other : ctx.activeScene->GameObjects()) {
-        if (auto* canvas = other.GetComponent<scene::UICanvas>()) {
-            canvasW = canvas->canvasWidth;
-            canvasH = canvas->canvasHeight;
-            break;
-        }
-    }
+    GetCanvasEditorSize(ctx, canvasW, canvasH);
 
     const float scaleX = viewportSize.x / canvasW;
     const float scaleY = viewportSize.y / canvasH;
@@ -993,7 +1087,10 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     if (size.y < 1.0f) size.y = 1.0f;
 
     if (isGameView || isUIView) {
-        size = FitSizeToAspect(size, GetGameViewportAspectRatio(ctx.gameViewportAspect));
+        // WHY: UI Viewport は Game View の完成済み RT を共有するため、表示枠も Game View と同じ比率にする。
+        //      Canvas 比率で引き伸ばすと、背景とクリック座標が Game 出力からずれてしまう。
+        const float viewportAspect = GetGameViewportAspectRatio(ctx.gameViewportAspect);
+        size = FitSizeToAspect(size, viewportAspect);
         if (size.x < 1.0f) size.x = 1.0f;
         if (size.y < 1.0f) size.y = 1.0f;
     }
@@ -1039,6 +1136,9 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     }
 
     const bool inPlayOrPause = ctx.playMode && !ctx.playMode->IsInEditor();
+
+    if (isUIView && !inPlayOrPause)
+        DrawCanvasEditorGuides(ctx, viewportMin, size);
 
     if (isSceneView && !inPlayOrPause) {
         const ImGuiID viewportDropId = ImGui::GetID("##scene_view_prefab_drop_target");
