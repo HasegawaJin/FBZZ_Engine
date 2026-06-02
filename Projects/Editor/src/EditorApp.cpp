@@ -386,6 +386,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
 void EditorApp::Shutdown()
 {
+    // DLL 仮想デストラクタが DLL コードを参照するため、パネル・シーンより先にアンロードする。
+    m_scriptDll.Unload(m_ctx.activeScene);
+
     for (auto& panel : m_panels)
         panel->OnShutdown();
 
@@ -452,6 +455,11 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     FBZZ_LOG_INFO("Opened project: %s", m_projectRoot.c_str());
     UpdateWindowTitle();
+
+    // スクリプト DLL のロードとファイル監視を初期化する。
+    // WHY: projectBuildRoot が OpenProject のタイミングで確定するため Init ではなくここで呼ぶ。
+    InitScriptDll();
+
     return true;
 }
 
@@ -523,6 +531,8 @@ void EditorApp::BeginFrame()
     ImGuizmo::BeginFrame();
     m_hotkeys.ProcessInput();
     CheckHotReload();
+    CheckScriptDirtyAndRebuild();
+    CheckHlslDirty();
     RefreshSceneDirtyState(false);
 
     ImGuiViewport* vp = ImGui::GetMainViewport();

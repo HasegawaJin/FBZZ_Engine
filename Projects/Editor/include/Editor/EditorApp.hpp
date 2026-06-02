@@ -2,8 +2,10 @@
 // EditorApp.hpp | fbzz::editor
 // エディター全体のライフサイクルを管理する
 #pragma once
+#include <Editor/Compiler.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/ScriptDllLoader.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
@@ -15,6 +17,7 @@
 //      Engine 層のヘッダーが imgui に依存してしまう。std::unique_ptr で所有して隠蔽する。
 #include <memory>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -63,6 +66,18 @@ private:
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();
     void CacheSceneWriteTime();
+
+    // スクリプト DLL ホットリロード
+    void InitScriptDll();
+    void CheckScriptDirtyAndRebuild();
+    void TickScriptCompile();
+
+    // HLSL ホットリロード
+    void CheckHlslDirty();
+    void TickHlslCompile();
+
+    // ホットリロード共通
+    void SetHotReloadState(EditorContext::HotReloadState state, const std::string& msg = "");
     void CaptureCleanScene();
     void RefreshSceneDirtyState(bool force);
     void UpdateWindowTitle();
@@ -95,6 +110,23 @@ private:
     PlayModeController              m_playMode;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
     std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
+
+    // スクリプト DLL ホットリロード
+    ScriptDllLoader          m_scriptDll;
+    std::filesystem::path    m_scriptDllPath;      // SandboxScripts.dll のビルド出力パス
+    std::filesystem::path    m_scriptsSourceDir;   // Scripts/ ソースディレクトリ (変更検知用)
+    FILETIME                 m_lastScriptWriteTime = {};  // Scripts/ ディレクトリの最終変更時刻
+    Compiler                 m_scriptCompiler;
+    bool                     m_scriptCompilePending = false; // 変更検知からビルド開始待ち
+    float                    m_scriptDebounceTimer  = 0.0f;  // デバウンス用タイマー (秒)
+
+    // HLSL ホットリロード
+    std::filesystem::path    m_hlslSourceDir;      // Assets/shaders/ ディレクトリ
+    std::filesystem::path    m_compileShadersScript; // compile_shaders.bat パス
+    FILETIME                 m_lastHlslWriteTime = {};
+    Compiler                 m_hlslCompiler;
+    bool                     m_hlslCompilePending = false;
+    float                    m_hlslDebounceTimer  = 0.0f;
 
     FILETIME                                 m_lastSceneWriteTime = {};
     HWND                                     m_hwnd          = nullptr;
