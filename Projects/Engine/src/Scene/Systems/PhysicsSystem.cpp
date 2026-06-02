@@ -15,6 +15,7 @@
 #include "Engine/Scene/ScriptComponent.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Physics/ColliderVolume.hpp>
@@ -365,6 +366,8 @@ void DispatchCollisionEvents(Scene& scene,
 } // namespace
 
 void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
+    FBZZ_PROFILE_SCOPE("PhysicsSystem");
+
     Script::SetPhysicsWorld(&world);
 
     std::vector<std::shared_ptr<physics::RigidBody>> bodies;
@@ -453,11 +456,20 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         }
     }
 
-    world.SetBodies(std::move(bodies));
-    world.SetColliders(std::move(colliders));
-    world.SetVolumes(std::move(volumes));
-    world.Step(dt);
-    DispatchCollisionEvents(scene, world, colliderOwners);
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::SubmitSceneState");
+        world.SetBodies(std::move(bodies));
+        world.SetColliders(std::move(colliders));
+        world.SetVolumes(std::move(volumes));
+    }
+    {
+        FBZZ_PROFILE_SCOPE("physics::World::Step");
+        world.Step(dt);
+    }
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::DispatchCollisionEvents");
+        DispatchCollisionEvents(scene, world, colliderOwners);
+    }
 
     for (auto [tf, rb] : scene.View<Transform, RigidBodyComponent>()) {
         if (!rb.enabled || !rb.rigidBody) continue;
