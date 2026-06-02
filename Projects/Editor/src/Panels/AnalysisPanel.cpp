@@ -486,8 +486,8 @@ void AnalysisPanel::DrawRendering()
     if (ImGui::BeginTable("RenderStats##Analysis", 2,
                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
     {
-        ImGui::TableSetupColumn("項目",  ImGuiTableColumnFlags_WidthFixed, 160.0f);
-        ImGui::TableSetupColumn("値",    ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Item",  ImGuiTableColumnFlags_WidthFixed, 160.0f);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
 
         auto row = [](const char* label, int value) {
@@ -521,7 +521,7 @@ void AnalysisPanel::DrawRendering()
     ImGui::TextUnformatted("GPU pass timings");
 
     if (snap.gpuPassTimings.empty()) {
-        ImGui::TextDisabled("計測中 (latency 待ち)...");
+        ImGui::TextDisabled("Measuring, waiting for GPU latency...");
         return;
     }
 

@@ -24,14 +24,14 @@ bool FontAtlas::Load(const std::string& basePath, ResourceManager& resources)
     // テクスチャをロード
     m_texture = resources.LoadTexture(pngPath);
     if (!m_texture.IsValid()) {
-        FBZZ_LOG_ERROR("FontAtlas: テクスチャのロードに失敗しました: %s", pngPath.c_str());
+        FBZZ_LOG_ERROR("FontAtlas: failed to load texture: %s", pngPath.c_str());
         return false;
     }
 
     // FNT メタデータをテキスト読み込み
     std::string fntText;
     if (!util::FileSystem::ReadText(fntPath, fntText)) {
-        FBZZ_LOG_ERROR("FontAtlas: FNT ファイルのロードに失敗しました: %s", fntPath.c_str());
+        FBZZ_LOG_ERROR("FontAtlas: failed to load FNT file: %s", fntPath.c_str());
         return false;
     }
 
@@ -65,7 +65,7 @@ bool FontAtlas::Load(const std::string& basePath, ResourceManager& resources)
     }
 
     if (m_lineHeight <= 0.0f) {
-        FBZZ_LOG_ERROR("FontAtlas: line_height が FNT ファイルに見つかりません: %s", fntPath.c_str());
+        FBZZ_LOG_ERROR("FontAtlas: line_height not found in FNT file: %s", fntPath.c_str());
         return false;
     }
 
