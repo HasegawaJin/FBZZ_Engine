@@ -213,6 +213,53 @@ bool IsUnderCanvas(scene::GameObject& go, scene::EntityID canvasID)
     return false;
 }
 
+struct UITransform2D {
+    math::Vector2 position = math::Vector2::ZERO;
+    float rotationZ = 0.0f;
+};
+
+float ExtractUIZRotation(const math::Quaternion& q)
+{
+    return std::atan2f(2.0f * (q.w * q.z + q.x * q.y),
+                       1.0f - 2.0f * (q.y * q.y + q.z * q.z));
+}
+
+math::Vector2 RotateUIVector(const math::Vector2& v, float angle)
+{
+    const float c = std::cosf(angle);
+    const float s = std::sinf(angle);
+    return { v.x * c - v.y * s, v.x * s + v.y * c };
+}
+
+UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Transform& local)
+{
+    // WHY: UI の localScale.xy は矩形サイズであり、親サイズを子の移動量へ掛けると
+    //      Editor と Play の双方で子要素が親から大きく外れる。
+    // WHAT: 親の位置・回転だけを UI 階層として合成し、サイズは各要素の localScale.xy を使う。
+    const math::Vector2 localPos = { local.localPosition.x, local.localPosition.y };
+    UITransform2D result{};
+    result.position = parent.position + RotateUIVector(localPos, parent.rotationZ);
+    result.rotationZ = parent.rotationZ + ExtractUIZRotation(local.localRotation);
+    return result;
+}
+
+UITransform2D ResolveUITransform(scene::GameObject& go, bool includeSelf)
+{
+    std::vector<scene::GameObject*> chain;
+    scene::GameObject* current = includeSelf ? &go : go.GetParent();
+    while (current) {
+        if (auto* canvas = current->GetComponent<scene::UICanvas>(); canvas && IsCanvasEditorCanvas(*canvas))
+            break;
+        chain.push_back(current);
+        current = current->GetParent();
+    }
+
+    UITransform2D resolved{};
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it)
+        resolved = ComposeUITransform(resolved, (*it)->transform);
+    return resolved;
+}
+
 const scene::UICanvas* FindCanvasEditorCanvas(const EditorContext& ctx)
 {
     if (!ctx.activeScene) return nullptr;
@@ -243,11 +290,36 @@ const scene::UICanvas* FindCanvasEditorCanvas(const EditorContext& ctx)
     return nullptr;
 }
 
+float ResolveCanvasEditorScale(const scene::UICanvas& canvas, float viewportWidth, float viewportHeight)
+{
+    // WHY: Editor の gizmo / pick と実描画で Canvas Scaler の解釈が分かれると、
+    //      UI Viewport で合わせた位置が Play 開始時にずれて見える。
+    // WHAT: UISystem::ResolveCanvasScale と同じ式で、Game RT 上の論理 Canvas 範囲を求める。
+    if (canvas.scaleMode != scene::UICanvasScaleMode::ScaleWithScreenSize)
+        return 1.0f;
+
+    const float refW = (std::max)(1.0f, canvas.referenceWidth);
+    const float refH = (std::max)(1.0f, canvas.referenceHeight);
+    const float scaleW = (std::max)(1.0f, viewportWidth) / refW;
+    const float scaleH = (std::max)(1.0f, viewportHeight) / refH;
+    const float match = std::clamp(canvas.matchWidthOrHeight, 0.0f, 1.0f);
+    return std::exp(std::log(scaleW) * (1.0f - match) + std::log(scaleH) * match);
+}
+
 void GetCanvasEditorSize(const EditorContext& ctx, float& canvasW, float& canvasH)
 {
     canvasW = 1920.0f;
     canvasH = 1080.0f;
     if (const scene::UICanvas* canvas = FindCanvasEditorCanvas(ctx)) {
+        if (canvas->scaleMode == scene::UICanvasScaleMode::ScaleWithScreenSize) {
+            const float viewportW = ctx.gameViewportWidth > 1.0f ? ctx.gameViewportWidth : ctx.uiViewportWidth;
+            const float viewportH = ctx.gameViewportHeight > 1.0f ? ctx.gameViewportHeight : ctx.uiViewportHeight;
+            const float scale = ResolveCanvasEditorScale(*canvas, viewportW, viewportH);
+            canvasW = (std::max)(1.0f, viewportW) / scale;
+            canvasH = (std::max)(1.0f, viewportH) / scale;
+            return;
+        }
+
         canvasW = (std::max)(1.0f, canvas->canvasWidth);
         canvasH = (std::max)(1.0f, canvas->canvasHeight);
     }
@@ -305,8 +377,9 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
         auto* canvas = go.GetComponent<scene::UICanvas>();
         if (!img && !txt && !canvas) continue;
 
-        const float ox = go.transform.localPosition.x;
-        const float oy = go.transform.localPosition.y;
+        const UITransform2D resolved = ResolveUITransform(go, true);
+        const float ox = resolved.position.x;
+        const float oy = resolved.position.y;
 
         if (canvas && IsCanvasEditorCanvas(*canvas)) {
             if (cx >= 0.0f && cx <= canvas->canvasWidth && cy >= 0.0f && cy <= canvas->canvasHeight) {
@@ -425,14 +498,17 @@ bool DrawUIGizmo(EditorContext& ctx,
     };
 
     auto& t = go->transform;
-    const float px = t.localPosition.x, py = t.localPosition.y;
+    const UITransform2D parentResolved = ResolveUITransform(*go, false);
+    const UITransform2D resolved = ComposeUITransform(parentResolved, t);
+    const float px = resolved.position.x, py = resolved.position.y;
+    const float localPx = t.localPosition.x, localPy = t.localPosition.y;
     const float sw = img ? t.localScale.x : 0.0f;
     const float sh = img ? t.localScale.y : 0.0f;
 
     // Extract Z rotation from the quaternion.
     const math::Quaternion& q = t.localRotation;
-    const float zAngle = std::atan2f(2.0f*(q.w*q.z + q.x*q.y),
-                                      1.0f - 2.0f*(q.y*q.y + q.z*q.z));
+    const float localZAngle = ExtractUIZRotation(q);
+    const float zAngle = resolved.rotationZ;
     const float cosZ = std::cosf(zAngle), sinZ = std::sinf(zAngle);
 
     // Rectangle center in canvas and screen space.
@@ -503,26 +579,29 @@ bool DrawUIGizmo(EditorContext& ctx,
             if      (hovX) { drag = 1; }
             else if (hovY) { drag = 2; }
             else if (hovC) { drag = 0; }
-            if (drag >= 0) { dragStart = mp; startX = px; startY = py; }
+            if (drag >= 0) { dragStart = mp; startX = localPx; startY = localPy; }
         }
 
         if (drag >= 0 && drag <= 2 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             const ImVec2 mm = ImGui::GetMousePos();
-            const float dcx = (mm.x - dragStart.x) / scaleX;
-            const float dcy = (mm.y - dragStart.y) / scaleY;
+            const math::Vector2 canvasDelta = {
+                (mm.x - dragStart.x) / scaleX,
+                (mm.y - dragStart.y) / scaleY
+            };
+            math::Vector2 canvasMove = canvasDelta;
             float newX = startX, newY = startY;
-            if (drag == 0) {
-                newX = startX + dcx;
-                newY = startY + dcy;
-            } else if (drag == 1) {
-                const float proj = dcx * cosZ + dcy * sinZ;
-                newX = startX + proj * cosZ;
-                newY = startY + proj * sinZ;
-            } else {
-                const float proj = dcx * (-sinZ) + dcy * cosZ;
-                newX = startX + proj * (-sinZ);
-                newY = startY + proj * cosZ;
+            if (drag == 1) {
+                const math::Vector2 axis = { cosZ, sinZ };
+                const float proj = canvasDelta.x * axis.x + canvasDelta.y * axis.y;
+                canvasMove = { axis.x * proj, axis.y * proj };
+            } else if (drag == 2) {
+                const math::Vector2 axis = { -sinZ, cosZ };
+                const float proj = canvasDelta.x * axis.x + canvasDelta.y * axis.y;
+                canvasMove = { axis.x * proj, axis.y * proj };
             }
+            const math::Vector2 localMove = RotateUIVector(canvasMove, -parentResolved.rotationZ);
+            newX = startX + localMove.x;
+            newY = startY + localMove.y;
             if (ctx.snapEnabled) { newX = std::round(newX); newY = std::round(newY); }
             t.localPosition.x = newX;
             t.localPosition.y = newY;
@@ -553,7 +632,7 @@ bool DrawUIGizmo(EditorContext& ctx,
         if (hovRing && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             drag = 20;
             startAngle = std::atan2f(mp.y - centerScr.y, mp.x - centerScr.x);
-            startZ = zAngle;
+            startZ = localZAngle;
         }
 
         if (drag == 20 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -593,7 +672,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             dl->AddRect(hMin, hMax, IM_COL32(0,0,0,100));
             if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                 drag = 3 + i; dragStart = ImGui::GetMousePos();
-                startX = px; startY = py; startWidth = sw; startHeight = sh;
+                startX = localPx; startY = localPy; startWidth = sw; startHeight = sh;
             }
         }
 
