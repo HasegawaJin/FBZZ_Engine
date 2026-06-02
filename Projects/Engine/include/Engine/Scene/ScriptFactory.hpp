@@ -28,6 +28,11 @@ public:
     static bool Register(const std::string& typeName, Factory factory);
     static std::unique_ptr<Script> Create(const std::string& typeName);
     static std::vector<std::string> RegisteredTypeNames();
+
+    // DLL ホットリロード用: レジストリを全クリアする。
+    // WHY: スクリプト DLL をアンロードする前に呼び、古い型の factory (DLL へのポインタを含む)
+    //      が残らないようにする。DLL ロード時の静的初期化子が再登録する。
+    static void UnregisterAll();
 };
 
 } // namespace fbzz::scene
