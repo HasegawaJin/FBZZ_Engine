@@ -47,6 +47,8 @@ struct LightConstantsCB {
     int           pointLightCount = 0;
     int           spotLightCount  = 0;
     float         _lightPad2[2]   = {};
+    math::Vector3 ambientColor    = { 0.08f, 0.08f, 0.08f };
+    float         _ambientPad     = 0.0f;
 };
 
 class LightSystem {
