@@ -18,6 +18,8 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
@@ -371,16 +373,32 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
 
     while (app.IsRunning()) {
         core::Time::Tick();
-        input::Input::Update();
-        app.GetWindow().PollEvents();
-        if (app.GetWindow().ShouldClose()) { app.Quit(); break; }
+        app.GetMemorySystem().BeginFrame();
+        profiler::Profiler::BeginFrame();
+        {
+            FBZZ_PROFILE_SCOPE("Input::Update");
+            input::Input::Update();
+        }
+        {
+            FBZZ_PROFILE_SCOPE("Window::PollEvents");
+            app.GetWindow().PollEvents();
+        }
+        if (app.GetWindow().ShouldClose()) {
+            profiler::Profiler::EndFrame();
+            app.GetMemorySystem().EndFrame();
+            app.Quit();
+            break;
+        }
 
         const float dt = core::Time::DeltaTime();
 
         // --- スクリプト・物理・アニメーション更新 ---
         scene::Script::SetPhysicsWorld(&physicsWorld);
         scene::ScriptSystem(*scene, dt);
-        scene::TransformSystem(*scene);
+        {
+            FBZZ_PROFILE_SCOPE("TransformSystem");
+            scene::TransformSystem(*scene);
+        }
 
         const int   physicsHz = settings.physics.hz < 1 ? 60 : settings.physics.hz;
         const float fixedDt   = 1.0f / static_cast<float>(physicsHz);
@@ -391,13 +409,19 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
             scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
             physicsAccumulator -= fixedDt;
         }
-        scene::TransformSystem(*scene);
+        {
+            FBZZ_PROFILE_SCOPE("TransformSystem");
+            scene::TransformSystem(*scene);
+        }
         scene::LateScriptSystem(*scene, dt);
         scene::AnimatorSystem(*scene, resources, dt);
         scene::IKSystem(*scene, physicsWorld, resources, dt);
 
         // --- 描画 (バックバッファへ直接) ---
-        renderer.BeginFrame();
+        {
+            FBZZ_PROFILE_SCOPE("Renderer::BeginFrame");
+            renderer.BeginFrame();
+        }
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
         renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
 
@@ -410,7 +434,12 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
         scene::UISystem(*scene, renderer, resources,
                         static_cast<float>(w), static_cast<float>(h),
                         {}, true, gameCamera.GetViewProjection());
-        renderer.EndFrame();
+        {
+            FBZZ_PROFILE_SCOPE("Renderer::EndFrame");
+            renderer.EndFrame();
+        }
+        profiler::Profiler::EndFrame();
+        app.GetMemorySystem().EndFrame();
     }
 }
 
@@ -456,15 +485,28 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
     while (app.IsRunning()) {
         core::Time::Tick();
-        input::Input::Update();
-        app.GetWindow().PollEvents();
+        app.GetMemorySystem().BeginFrame();
+        profiler::Profiler::BeginFrame();
+        {
+            FBZZ_PROFILE_SCOPE("Input::Update");
+            input::Input::Update();
+        }
+        {
+            FBZZ_PROFILE_SCOPE("Window::PollEvents");
+            app.GetWindow().PollEvents();
+        }
         if (app.GetWindow().ShouldClose()) {
+            profiler::Profiler::EndFrame();
+            app.GetMemorySystem().EndFrame();
             app.Quit();
             break;
         }
 
         const float dt = core::Time::DeltaTime();
-        editorApp.BeginFrame();
+        {
+            FBZZ_PROFILE_SCOPE("EditorApp::BeginFrame");
+            editorApp.BeginFrame();
+        }
 
         auto* playMode = editorApp.GetContext().playMode;
         if (playMode->ApplyPendingRestore(*scene)) {
@@ -509,14 +551,20 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             }
         }
 
-        scene::TransformSystem(*scene);
+        {
+            FBZZ_PROFILE_SCOPE("TransformSystem");
+            scene::TransformSystem(*scene);
+        }
         const bool stepFrame = playMode->ConsumeStep();
         if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
             ApplyPhysicsSettings(physicsWorld, settings);
             scene::Script::SetPhysicsWorld(&physicsWorld);
             scene::ScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
-            scene::TransformSystem(*scene);
+            {
+                FBZZ_PROFILE_SCOPE("TransformSystem");
+                scene::TransformSystem(*scene);
+            }
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
@@ -532,7 +580,10 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                     physicsAccumulator -= fixedDt;
                 }
             }
-            scene::TransformSystem(*scene);
+            {
+                FBZZ_PROFILE_SCOPE("TransformSystem");
+                scene::TransformSystem(*scene);
+            }
             scene::LateScriptSystem(*scene, stepFrame ? (1.0f / 60.0f) : dt);
         } else {
             physicsAccumulator = 0.0f;
@@ -569,7 +620,10 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             break;
         }
 
-        renderer.BeginFrame();
+        {
+            FBZZ_PROFILE_SCOPE("Renderer::BeginFrame");
+            renderer.BeginFrame();
+        }
 
         renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
@@ -603,7 +657,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
             auto gameRenderSettings = editorApp.GetContext().projectSettings.render;
-            gameRenderSettings.wireframeMode = false;
+            gameRenderSettings.viewMode = renderer::ViewMode::Lit;
             gameRenderSettings.showSelectionOutline = false;
             gameRenderSettings.selectedObjects.clear();
             scene::RenderSystem(*scene,
@@ -628,10 +682,21 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
         renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
         editorApp.GetContext().activeScene = scene.get();
-        editorApp.RenderPanels(editorApp.GetContext());
-        editorApp.EndFrame(renderer);
+        {
+            FBZZ_PROFILE_SCOPE("EditorApp::RenderPanels");
+            editorApp.RenderPanels(editorApp.GetContext());
+        }
+        {
+            FBZZ_PROFILE_SCOPE("EditorApp::EndFrame");
+            editorApp.EndFrame(renderer);
+        }
 
-        renderer.EndFrame();
+        {
+            FBZZ_PROFILE_SCOPE("Renderer::EndFrame");
+            renderer.EndFrame();
+        }
+        profiler::Profiler::EndFrame();
+        app.GetMemorySystem().EndFrame();
     }
 
     editorApp.Shutdown();
