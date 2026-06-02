@@ -7,11 +7,14 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include <Engine/Profiler/ProfileScope.hpp>
 
 namespace fbzz::scene {
 
 void ScriptSystem(Scene& scene, float dt)
 {
+    FBZZ_PROFILE_SCOPE("ScriptSystem");
+
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
@@ -42,6 +45,8 @@ void ScriptSystem(Scene& scene, float dt)
 
 void LateScriptSystem(Scene& scene, float dt)
 {
+    FBZZ_PROFILE_SCOPE("LateScriptSystem");
+
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);

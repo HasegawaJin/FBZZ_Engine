@@ -353,10 +353,15 @@ void RunStandaloneLoop(renderer::IRenderer& renderer,
         const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
         const renderer::Camera gameCamera = ResolveGameCamera(*scene, aspect);
 
-        scene::RenderSystem(*scene, renderer, resources, gameCamera, {}, &settings.render);
-        scene::UISystem(*scene, renderer, resources,
-                        static_cast<float>(w), static_cast<float>(h),
-                        {}, true, gameCamera.GetViewProjection());
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled = true;
+        uiOptions.viewportWidth = static_cast<float>(w);
+        uiOptions.viewportHeight = static_cast<float>(h);
+        uiOptions.mouseInCanvasSpace = input::Input::MousePosition();
+        uiOptions.mousePressed = input::Input::MouseButton(0);
+        uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+        scene::RenderSystem(*scene, renderer, resources, gameCamera, {}, &settings.render,
+                            fbzz::Layer::Everything, &uiOptions);
         renderer.EndFrame();
     }
 }
@@ -518,12 +523,16 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         sceneRenderSettings.selectedObjects.reserve(editorApp.GetContext().selectedEntities.size());
         for (scene::EntityID id : editorApp.GetContext().selectedEntities)
             sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
-        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
         {
             float w = 1920.0f, h = 1080.0f;
             if (auto* rt = resources.Get(sceneRT)) { w = static_cast<float>(rt->GetWidth()); h = static_cast<float>(rt->GetHeight()); }
-            scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
-                            debugCamera.camera.GetViewProjection());
+            scene::RenderSystemUIOptions uiOptions{};
+            uiOptions.enabled = true;
+            uiOptions.viewportWidth = w;
+            uiOptions.viewportHeight = h;
+            uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
+            scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings,
+                                fbzz::Layer::Everything, &uiOptions);
         }
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
@@ -537,16 +546,19 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
             auto gameRenderSettings = editorApp.GetContext().projectSettings.render;
-            gameRenderSettings.wireframeMode         = false;
+            gameRenderSettings.viewMode = renderer::ViewMode::Lit;
             gameRenderSettings.showSelectionOutline  = false;
             gameRenderSettings.selectedObjects.clear();
-            scene::RenderSystem(*scene, renderer, resources, gameCamera, gameRT,
-                                &gameRenderSettings, gameCullingMask);
             {
                 float w = 1920.0f, h = 1080.0f;
                 if (auto* rt = resources.Get(gameRT)) { w = static_cast<float>(rt->GetWidth()); h = static_cast<float>(rt->GetHeight()); }
-                scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
-                                gameCamera.GetViewProjection());
+                scene::RenderSystemUIOptions uiOptions{};
+                uiOptions.enabled = true;
+                uiOptions.viewportWidth = w;
+                uiOptions.viewportHeight = h;
+                uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+                scene::RenderSystem(*scene, renderer, resources, gameCamera, gameRT,
+                                    &gameRenderSettings, gameCullingMask, &uiOptions);
             }
         }
 

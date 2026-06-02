@@ -79,6 +79,8 @@ cbuffer LightConstants : register(CB_LIGHT)
     int   pointLightCount;
     int   spotLightCount;
     float2 _lightPad2;
+    float3 ambientColor;
+    float  _ambientPad;
 };
 
 cbuffer ShadowConstants : register(CB_SHADOW)

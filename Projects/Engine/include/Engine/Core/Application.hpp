@@ -4,6 +4,7 @@
 // Window / Renderer / SceneManager を一箇所で所有する Application シングルトン。
 // sandbox や editor は Get() から各サブシステムへアクセスする。
 #pragma once
+#include "Engine/Core/Memory/MemorySystem.hpp"
 #include "Engine/Core/Window.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Scene/SceneManager.hpp"
@@ -29,6 +30,8 @@ public:
     Window&                 GetWindow()      const { return *m_window; }
     renderer::IRenderer&    GetRenderer()    const { return *m_renderer; }
     scene::SceneManager&    GetSceneManager() const { return *m_sceneManager; }
+    MemorySystem&           GetMemorySystem() { return m_memorySystem; }
+    const MemorySystem&     GetMemorySystem() const { return m_memorySystem; }
 
 private:
     Application() = default;
@@ -37,6 +40,7 @@ private:
     std::unique_ptr<Window>              m_window;
     std::unique_ptr<renderer::IRenderer> m_renderer;
     std::unique_ptr<scene::SceneManager> m_sceneManager;
+    MemorySystem                         m_memorySystem;
 };
 
 } // namespace fbzz::core

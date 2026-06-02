@@ -34,7 +34,9 @@ enum class ScriptDebugDrawType {
     Line,
     Sphere,
     Box,
-    Ray
+    Ray,
+    Arrow, // from=a, to=b, headLength=radius, headRadius=halfExtents.x
+    Cone   // apex=a, direction=b, height=halfExtents.x, baseRadius=radius
 };
 
 // ScriptDebugDrawCommand — OnUpdate など任意のタイミングで発行されたデバッグ描画要求。

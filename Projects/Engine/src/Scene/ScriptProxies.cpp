@@ -8,6 +8,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
+#include <Engine/Renderer/Gizmo.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -831,6 +832,28 @@ void ScriptDebugProxy::DrawRay(const math::Vector3& origin, const math::Vector3&
     script->m_scene->QueueScriptDebugDraw({ ScriptDebugDrawType::Ray, origin, origin + dir, {}, color, 0.0f, duration });
 }
 
+void ScriptDebugProxy::DrawArrow(const math::Vector3& from, const math::Vector3& to,
+                                  float headLength, float headRadius,
+                                  const math::Vector4& color, float duration) const
+{
+    if (!script || !script->m_scene) return;
+    // headLength を radius、headRadius を halfExtents.x に格納する (ScriptDebugDrawCommand の多重利用)
+    script->m_scene->QueueScriptDebugDraw({
+        ScriptDebugDrawType::Arrow, from, to, { headRadius, 0.0f, 0.0f }, color, headLength, duration
+    });
+}
+
+void ScriptDebugProxy::DrawCone(const math::Vector3& apex, const math::Vector3& direction,
+                                 float height, float baseRadius,
+                                 const math::Vector4& color, float duration) const
+{
+    if (!script || !script->m_scene) return;
+    // height を halfExtents.x、baseRadius を radius に格納する
+    script->m_scene->QueueScriptDebugDraw({
+        ScriptDebugDrawType::Cone, apex, direction, { height, 0.0f, 0.0f }, color, baseRadius, duration
+    });
+}
+
 renderer::PostProcessSettings& ScriptPostProcessProxy::Get() const
 {
     assert(script && "Script context is not set");
@@ -934,5 +957,94 @@ bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x,
     custom->parameters[3] = w;
     return true;
 }
+
+// =============================================================================
+// GizmoProxy — OnDrawGizmos 区間内で Gizmo:: / DebugDraw:: を直接呼ぶプロキシ
+// =============================================================================
+// WHY: OnDrawGizmos は DebugDraw::BeginFrame/Flush の間で呼ばれるため、
+//      コマンドキューを介さず直接描画できる。renderer ポインタは RenderSystem が注入する。
+
+#define GIZMO_ASSERT assert(renderer && "GizmoProxy is only valid inside OnDrawGizmos()")
+
+void GizmoProxy::DrawTransformAxes(const math::Vector3& position,
+                                    const math::Quaternion& rotation,
+                                    float size) const
+{
+    GIZMO_ASSERT;
+    renderer::Gizmo::TransformAxes(*renderer, position, rotation, size);
+}
+
+void GizmoProxy::DrawLine(const math::Vector3& from, const math::Vector3& to,
+                           const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Line(*renderer, from, to, color);
+}
+
+void GizmoProxy::DrawArrow(const math::Vector3& from, const math::Vector3& to,
+                             float headLength, float headRadius,
+                             const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Arrow(*renderer, from, to, headLength, headRadius, color);
+}
+
+void GizmoProxy::DrawSphere(const math::Vector3& center, float radius,
+                              const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Sphere(*renderer, center, radius, color);
+}
+
+void GizmoProxy::DrawBox(const math::Vector3& center, const math::Vector3& halfExtents,
+                          const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Box(*renderer, center, halfExtents, color);
+}
+
+void GizmoProxy::DrawBox(const math::Vector3& center, const math::Vector3& halfExtents,
+                          const math::Quaternion& rotation,
+                          const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::DebugDraw::Box(*renderer, center, halfExtents, rotation, color);
+}
+
+void GizmoProxy::DrawSightCone(const math::Vector3& position,
+                                 const math::Vector3& forward,
+                                 float fovDegrees, float range,
+                                 const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::Gizmo::SightCone(*renderer, position, forward, fovDegrees, range, color);
+}
+
+void GizmoProxy::DrawWaypointPath(std::span<const math::Vector3> waypoints,
+                                    bool loop,
+                                    const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::Gizmo::WaypointPath(*renderer, waypoints, loop, color);
+}
+
+void GizmoProxy::DrawDetectionRange(const math::Vector3& center,
+                                      float innerRadius, float outerRadius,
+                                      const math::Vector4& innerColor,
+                                      const math::Vector4& outerColor) const
+{
+    GIZMO_ASSERT;
+    renderer::Gizmo::DetectionRange(*renderer, center, innerRadius, outerRadius,
+                                     innerColor, outerColor);
+}
+
+void GizmoProxy::DrawTargetLine(const math::Vector3& from, const math::Vector3& to,
+                                  const math::Vector4& color) const
+{
+    GIZMO_ASSERT;
+    renderer::Gizmo::TargetLine(*renderer, from, to, color);
+}
+
+#undef GIZMO_ASSERT
 
 } // namespace fbzz::scene

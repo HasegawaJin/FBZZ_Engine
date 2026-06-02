@@ -37,6 +37,7 @@
 #include "Engine/Renderer/Camera.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
+#include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Renderer/LightSystem.hpp"
@@ -305,7 +306,7 @@ void TerrainRenderSystem(
     renderer::ResourceManager&                    resources,
     const renderer::Camera&                       camera,
     renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
-    const renderer::RenderSettings* /*settings*/)
+    const renderer::RenderSettings* settings)
 {
     // =========================================================================
     // 静的リソースの遅延初期化（初回呼び出し時のみ実行）
@@ -313,6 +314,11 @@ void TerrainRenderSystem(
     static auto terrainShader = resources.LoadShader("assets/shaders/Terrain/Terrain.hlsl");
     static auto terrainPSO    = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_ON
+    });
+    static auto terrainWireframePSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::WIREFRAME,
         renderer::BlendMode::OPAQUE_BLEND,
         renderer::DepthMode::DEPTH_ON
     });
@@ -418,6 +424,13 @@ void TerrainRenderSystem(
                 sl.color      = lc.color;
                 sl.intensity  = lc.intensity;
             }
+        }
+        lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
+        if (settings && settings->IsUnlit()) {
+            lightData.ambientColor    = { 1.0f, 1.0f, 1.0f };
+            lightData.lightIntensity  = 0.0f;
+            lightData.pointLightCount = 0;
+            lightData.spotLightCount  = 0;
         }
         resources.Update(lightCBH, &lightData, sizeof(lightData));
     }
@@ -555,7 +568,7 @@ void TerrainRenderSystem(
                 call.vertexBuffer  = chunk.vertexBuffer;
                 call.indexBuffer   = chunk.indexBuffer;
                 call.shader        = terrainShader;
-                call.pipelineState = terrainPSO;
+                call.pipelineState = (settings && settings->IsWireframe()) ? terrainWireframePSO : terrainPSO;
                 call.indexCount    = chunk.indexCount;
                 call.layer         = renderer::RenderLayer::OPAQUE_LAYER;
                 call.topology      = renderer::PrimitiveTopology::TRIANGLE_LIST;

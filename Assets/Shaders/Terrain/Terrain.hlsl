@@ -39,7 +39,6 @@
 //   stride = 32 bytes
 
 #include "Common/Binding.hlsli"
-#include "Rendering/Lighting.hlsli"
 
 // ============================================================================
 // 定数バッファ宣言
@@ -91,7 +90,12 @@ cbuffer LightConstants : register(CB_LIGHT)
     int            pointLightCount;
     int            spotLightCount;
     float2         _lightPad2;
+    float3         ambientColor;
+    float          _ambientPad;
 };
+
+// WHY: LightConstants の ambientColor グローバルを参照するため cbuffer 宣言の後に include する。
+#include "Rendering/Lighting.hlsli"
 
 // ============================================================================
 // テクスチャ・サンプラー宣言 (Phase 4)

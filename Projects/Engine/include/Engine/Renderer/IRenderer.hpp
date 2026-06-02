@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 #include "ComputeCall.hpp"
 #include "DrawCall.hpp"
 #include "IBuffer.hpp"
@@ -24,6 +25,13 @@
 namespace fbzz::renderer {
 
 class ResourceManager;
+
+// GPU プロファイリング 1 パス分の結果。
+// WHY: IRenderer を経由することで上位レイヤーが DX11Renderer を知らずに GPU 時間を取得できる。
+struct GpuPassProfile {
+    std::string name;
+    double gpuMs = 0.0;
+};
 
 class IRenderer {
 public:
@@ -44,6 +52,21 @@ public:
     virtual void ClearDepth(float depth = 1.0f) = 0;
 
     virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
+
+    // GPU プロファイリング。DX11Renderer のみ実装し、他バックエンドは no-op。
+    // WHY: パスごとの GPU 実行時間を上位レイヤーから取得するために抽象化する。
+    //      D3D11_QUERY_TIMESTAMP_DISJOINT / D3D11_QUERY_TIMESTAMP を使って非同期に計測する。
+    //      GpuProfCollect() を呼んだ時点で QUERY_LATENCY フレーム前の結果が確定する。
+    virtual void GpuProfBeginFrame()                      {}
+    virtual void GpuProfEndFrame()                        {}
+    virtual void GpuProfBeginPass(const char* /*name*/)   {}
+    virtual void GpuProfEndPass(const char* /*name*/)     {}
+    virtual void GpuProfCollect()                         {}
+    virtual const std::vector<GpuPassProfile>& GpuProfGetResults() const
+    {
+        static const std::vector<GpuPassProfile> s_empty;
+        return s_empty;
+    }
 
     virtual void ImGuiInit(void* hwnd) = 0;
     virtual void ImGuiShutdown() = 0;
