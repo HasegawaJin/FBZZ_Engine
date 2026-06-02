@@ -337,6 +337,23 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         BUTTON_SIZE))
         pm->RequestStep();
 
+    // WHY: ボタンの色変化だけでは Play / Pause / Editor の状態が曖昧。
+    //      Unity 同様、ツールバー右端に現在の状態をテキストで表示することで
+    //      視線を動かさず一目で把握できるようにする。
+    if (!isEditor) {
+        const char* label     = isPlaying ? "PLAYING" : "PAUSED";
+        const ImVec4 labelCol = isPlaying
+            ? ImVec4{ 0.28f, 0.88f, 0.53f, 1.0f } // 緑: Play
+            : ImVec4{ 0.92f, 0.72f, 0.28f, 1.0f }; // 黄: Pause
+        const float textWidth = ImGui::CalcTextSize(label).x;
+        const float posX = availableWidth - textWidth - 12.0f;
+        const float posY = (TOOLBAR_HEIGHT - ImGui::GetTextLineHeight()) * 0.5f;
+        if (posX > 0.0f) {
+            ImGui::SetCursorPos({ posX, posY });
+            ImGui::TextColored(labelCol, "%s", label);
+        }
+    }
+
     const ImVec2 min = ImGui::GetWindowPos();
     const ImVec2 max = { min.x + ImGui::GetWindowWidth(), min.y + ImGui::GetWindowHeight() };
     ImGui::GetWindowDrawList()->AddLine({ min.x, max.y - 1.0f }, { max.x, max.y - 1.0f },
