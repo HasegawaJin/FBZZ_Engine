@@ -18,6 +18,11 @@ public:
         std::filesystem::path buildDir;
         std::filesystem::path exeDebug;
         std::filesystem::path exeRelease;
+        // スクリプト DLL のパス (build.config の scripts_dll_debug/release から解決)
+        // WHY: DLL 名はプロジェクトごとに異なる (SandboxScripts / MyGameScripts 等) ため
+        //      build.config に記録して Editor が動的に解決できるようにする。
+        std::filesystem::path scriptsDllDebug;
+        std::filesystem::path scriptsDllRelease;
         bool                  found = false;
         std::string           error;
     };
