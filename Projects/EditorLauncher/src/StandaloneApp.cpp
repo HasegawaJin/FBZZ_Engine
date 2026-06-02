@@ -95,10 +95,15 @@ void StandaloneApp::RunLoop(renderer::IRenderer& renderer,
         const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
         const renderer::Camera gameCamera = ResolveGameCamera(aspect);
 
-        scene::RenderSystem(*m_scene, renderer, resources, gameCamera, {}, &m_settings.render);
-        scene::UISystem(*m_scene, renderer, resources,
-                        static_cast<float>(w), static_cast<float>(h),
-                        {}, true, gameCamera.GetViewProjection());
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled = true;
+        uiOptions.viewportWidth = static_cast<float>(w);
+        uiOptions.viewportHeight = static_cast<float>(h);
+        uiOptions.mouseInCanvasSpace = input::Input::MousePosition();
+        uiOptions.mousePressed = input::Input::MouseButton(0);
+        uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+        scene::RenderSystem(*m_scene, renderer, resources, gameCamera, {}, &m_settings.render,
+                            fbzz::Layer::Everything, &uiOptions);
 
         renderer.EndFrame();
     }
