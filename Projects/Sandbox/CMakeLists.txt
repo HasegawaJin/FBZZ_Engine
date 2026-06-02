@@ -2,8 +2,64 @@ file(GLOB_RECURSE SANDBOX_SOURCES
     src/*.cpp
     src/*.hpp
 )
+# SandboxScriptsDll.cpp は DLL 専用エントリポイント。EXE に含めると dllimport/dllexport が衝突する。
+list(REMOVE_ITEM SANDBOX_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/SandboxScriptsDll.cpp"
+)
+
+# スクリプト DLL (ホットリロード用)
+# WHY: SandboxScripts.dll だけを再ビルドすることで、エディタを再起動せずに
+#      スクリプトの変更を反映できる。DLL は EXE のコールバック経由で
+#      ScriptFactory に登録する (dual registry 問題を回避するため)。
+# WHY (スクリプトを Assets/ に配置):
+#      AssetBrowser からスクリプトを Unity 同様に Assets/Scripts/ で確認・作成できるよう、
+#      ソース置き場を Projects/Sandbox/src/Scripts/ から Assets/Scripts/ に移動した。
+#      CMake の include_directories に Assets/ を追加することで
+#      #include "Scripts/Foo.hpp" → Assets/Scripts/Foo.hpp と解決する。
+file(GLOB_RECURSE SANDBOX_SCRIPT_DLL_SOURCES
+    ${CMAKE_SOURCE_DIR}/Assets/Scripts/*.cpp
+    ${CMAKE_SOURCE_DIR}/Assets/Scripts/*.hpp
+    src/SandboxScriptsDll.cpp
+)
+add_library(SandboxScripts SHARED ${SANDBOX_SCRIPT_DLL_SOURCES})
+target_compile_definitions(SandboxScripts PRIVATE SANDBOXSCRIPTS_EXPORTS)
+target_include_directories(SandboxScripts PRIVATE
+    src
+    ${CMAKE_SOURCE_DIR}/Assets
+)
+target_link_libraries(SandboxScripts PRIVATE fbzz_engine fbzz_physics)
+# DLL を sandbox.exe と同じディレクトリに出力する
+set_target_properties(SandboxScripts PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>"
+)
 
 add_executable(sandbox ${SANDBOX_SOURCES})
+add_dependencies(sandbox SandboxScripts)
+
+# WHY: post-build コマンドや sync_sandbox_assets ターゲットで参照するため、
+#      add_executable(sandbox) の直後に定義する。
+set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:sandbox>/SandboxProject")
+set(SANDBOX_PROJECT_TEMPLATE_DIR "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard")
+set(SANDBOX_ENSURE_PROJECT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/EnsureSandboxProject.cmake")
+
+# エンジン全アセットを sandbox 実行ディレクトリと SandboxProject に常時同期するターゲット。
+# WHY: post-build は sandbox.exe が再ビルドされたときのみ実行される。
+#      Scripts/ などのアセットを追加・変更したときも確実に反映されるよう、
+#      ALL キーワードで毎 cmake --build 実行時に走るターゲットを分離する。
+#      rm -rf を行わず copy_directory だけで上書き同期するため、既存ファイルは保持される。
+add_custom_target(sync_sandbox_assets ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "$<TARGET_FILE_DIR:sandbox>/Assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
+    COMMENT "Syncing engine Assets to SandboxProject..."
+    VERBATIM
+)
+# WHY: SandboxProject ディレクトリは sandbox の post-build で初回作成されるため、
+#      sync_sandbox_assets はその後に実行する必要がある。
+add_dependencies(sync_sandbox_assets sandbox)
 
 set(SANDBOX_STANDALONE_SOURCES ${SANDBOX_SOURCES})
 list(REMOVE_ITEM SANDBOX_STANDALONE_SOURCES
@@ -14,10 +70,6 @@ list(REMOVE_ITEM SANDBOX_STANDALONE_SOURCES
 # Build Settings からゲーム本体だけを再コンパイルできる。
 add_executable(SandboxStandalone ${SANDBOX_STANDALONE_SOURCES})
 target_compile_definitions(SandboxStandalone PRIVATE FBZZ_STANDALONE_TARGET)
-
-set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:sandbox>/SandboxProject")
-set(SANDBOX_PROJECT_TEMPLATE_DIR "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard")
-set(SANDBOX_ENSURE_PROJECT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/EnsureSandboxProject.cmake")
 
 # シェーダーを HLSL ファイルが更新されるたびに自動コンパイルする
 set(SHADER_SCRIPT    "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
@@ -53,6 +105,10 @@ add_custom_target(compile_shaders DEPENDS ${SHADER_STAMP})
 add_dependencies(sandbox compile_shaders)
 add_dependencies(SandboxStandalone compile_shaders)
 
+target_include_directories(sandbox PRIVATE
+    src
+    ${CMAKE_SOURCE_DIR}/Assets
+)
 target_link_libraries(sandbox
     PRIVATE
         fbzz_editor
@@ -66,6 +122,10 @@ target_link_libraries(sandbox
         shell32
 )
 
+target_include_directories(SandboxStandalone PRIVATE
+    src
+    ${CMAKE_SOURCE_DIR}/Assets
+)
 target_link_libraries(SandboxStandalone
     PRIVATE
         fbzz_engine
