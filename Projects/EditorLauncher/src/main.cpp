@@ -276,21 +276,46 @@ void WarmupRenderResources(scene::Scene& scene,
         renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
         auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
-        scene::RenderSystem(scene, renderer, resources, sceneCamera, sceneRT, &sceneRenderSettings);
+        float w = 1920.0f, h = 1080.0f;
+        if (auto* rt = resources.Get(sceneRT)) {
+            w = static_cast<float>(rt->GetWidth());
+            h = static_cast<float>(rt->GetHeight());
+        }
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled = true;
+        uiOptions.viewportWidth = w;
+        uiOptions.viewportHeight = h;
+        uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
+        scene::RenderSystem(scene, renderer, resources, sceneCamera, sceneRT, &sceneRenderSettings,
+                            fbzz::Layer::Everything, &uiOptions);
     }
 
     const auto gameRT = editorApp.GetGameViewportRT();
     if (gameRT.IsValid()) {
         renderer.SetRenderTarget(gameRT, resources);
         renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
+        float w = 1920.0f, h = 1080.0f;
+        if (auto* rt = resources.Get(gameRT)) {
+            w = static_cast<float>(rt->GetWidth());
+            h = static_cast<float>(rt->GetHeight());
+        }
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled = true;
+        uiOptions.viewportWidth = w;
+        uiOptions.viewportHeight = h;
+        uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
         scene::RenderSystem(scene,
                             renderer,
                             resources,
                             gameCamera,
                             gameRT,
                             &editorApp.GetContext().projectSettings.render,
-                            gameCullingMask);
+                            gameCullingMask,
+                            &uiOptions);
     }
+
+    // WHY: UI Viewport は Game View の完成済み RT を共有するため、ここで別 RT を描画しない。
+    //      Warmup 時に UI 専用 RT を Clear すると、初期フレームで青い空 RT を表示する経路が残る。
 
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
     renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
@@ -490,6 +515,9 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         renderer.BeginFrame();
 
+        // WHY: UI Viewport は Game View の完成済み RT を共有する。
+        //      UI 用に RenderSystem を二重実行すると、Clear 済みの別 RT を表示する不整合が起きる。
+
         renderer.SetRenderTarget(sceneRT, resources);
         renderer.Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
         auto sceneRenderSettings = editorApp.GetContext().projectSettings.render;
@@ -497,15 +525,27 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         sceneRenderSettings.selectedObjects.reserve(editorApp.GetContext().selectedEntities.size());
         for (scene::EntityID id : editorApp.GetContext().selectedEntities)
             sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
-        scene::RenderSystem(*scene, renderer, resources, debugCamera.camera, sceneRT, &sceneRenderSettings);
+        // WHY: Scene ビューは 3D 編集用途なので、画面固定 UI は CanvasEditor へ分離する。
+        //      ただし WorldSpace Canvas は 3D シーン内オブジェクトなので SceneViewport に重ねて描く。
         {
             float w = 1920.0f, h = 1080.0f;
             if (auto* rt = resources.Get(sceneRT)) {
                 w = static_cast<float>(rt->GetWidth());
                 h = static_cast<float>(rt->GetHeight());
             }
-            scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
-                            debugCamera.camera.GetViewProjection());
+            scene::RenderSystemUIOptions uiOptions{};
+            uiOptions.enabled = true;
+            uiOptions.viewportWidth = w;
+            uiOptions.viewportHeight = h;
+            uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
+            scene::RenderSystem(*scene,
+                                renderer,
+                                resources,
+                                debugCamera.camera,
+                                sceneRT,
+                                &sceneRenderSettings,
+                                fbzz::Layer::Everything,
+                                &uiOptions);
         }
         if (editorApp.GetContext().projectSettings.render.showColliders) {
             renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
@@ -519,21 +559,25 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         if (gameRT.IsValid()) {
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
-            scene::RenderSystem(*scene,
-                                renderer,
-                                resources,
-                                gameCamera,
-                                gameRT,
-                                &editorApp.GetContext().projectSettings.render,
-                                gameCullingMask);
             {
                 float w = 1920.0f, h = 1080.0f;
                 if (auto* rt = resources.Get(gameRT)) {
                     w = static_cast<float>(rt->GetWidth());
                     h = static_cast<float>(rt->GetHeight());
                 }
-                scene::UISystem(*scene, renderer, resources, w, h, { 0.f, 0.f }, false,
-                                gameCamera.GetViewProjection());
+                scene::RenderSystemUIOptions uiOptions{};
+                uiOptions.enabled = true;
+                uiOptions.viewportWidth = w;
+                uiOptions.viewportHeight = h;
+                uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+                scene::RenderSystem(*scene,
+                                    renderer,
+                                    resources,
+                                    gameCamera,
+                                    gameRT,
+                                    &editorApp.GetContext().projectSettings.render,
+                                    gameCullingMask,
+                                    &uiOptions);
             }
         }
 
