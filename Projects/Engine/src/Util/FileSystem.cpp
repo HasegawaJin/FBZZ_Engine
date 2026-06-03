@@ -147,4 +147,43 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
     return true;
 }
 
+// --- std::filesystem::path オーバーロード ---
+
+bool FileSystem::Exists(const std::filesystem::path& path)
+{
+    // WHY: filesystem::path::c_str() は Windows で const wchar_t* を返すため、
+    //      GetFileAttributesW に直接渡せて UTF-8 変換が不要。
+    DWORD attr = GetFileAttributesW(path.c_str());
+    return attr != INVALID_FILE_ATTRIBUTES;
+}
+
+bool FileSystem::ReadText(const std::filesystem::path& path, std::string& out)
+{
+    // WHY: std::ifstream(filesystem::path) は Windows で wchar_t パスを使うため
+    //      マルチバイト文字を含むパスも正しく開ける。
+    std::ifstream f(path, std::ios::binary);
+    if (!f.is_open()) return false;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    out = ss.str();
+    return true;
+}
+
+std::filesystem::path FileSystem::MakeAbsolute(const std::filesystem::path& path)
+{
+    // WHY: 失敗時は入力をそのまま返し、呼び出し元にフォールバック処理を課さない。
+    std::error_code ec;
+    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+    return ec ? path : absolute.lexically_normal();
+}
+
+std::filesystem::path FileSystem::GetExecutableDirectory()
+{
+    // WHY: GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。
+    //      parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
+    wchar_t buffer[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    return std::filesystem::path(buffer).parent_path();
+}
+
 } // namespace fbzz::util
