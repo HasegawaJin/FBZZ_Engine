@@ -3,14 +3,13 @@
 // Sandbox のエディタ実行 Module
 #include "EditorModule.hpp"
 
-#include "ModuleUtils.hpp"
-#include "Util/PathUtil.hpp"
+#include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 #include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
-#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
@@ -23,6 +22,8 @@
 #include <Physics/Layer.hpp>
 
 namespace fbzz::sandbox {
+
+using fbzz::util::StringUtils;
 
 EditorModule::EditorModule(renderer::IRenderer& renderer,
                            renderer::ResourceManager& resources,
@@ -42,14 +43,14 @@ bool EditorModule::OnInit()
 
     m_scene = std::make_unique<scene::Scene>();
     m_editorApp.GetContext().activeScene = m_scene.get();
-    if (!m_editorApp.OpenProject(util::PathToUtf8(m_project.root),
-                                 util::PathToUtf8(m_project.settingsFile),
-                                 util::PathToUtf8(m_project.sceneFile))) {
+    if (!m_editorApp.OpenProject(StringUtils::PathToUtf8(m_project.root),
+                                 StringUtils::PathToUtf8(m_project.settingsFile),
+                                 StringUtils::PathToUtf8(m_project.sceneFile))) {
         return false;
     }
 
-    ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-    ApplyUISettings(m_editorApp.GetContext().projectSettings);
+    scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
+    scene::ApplyUISettings(m_editorApp.GetContext().projectSettings);
     m_physicsAccumulator = 0.0f;
 
     m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
@@ -68,7 +69,7 @@ void EditorModule::OnUpdate(float dt)
 
     auto* playMode = m_editorApp.GetContext().playMode;
     if (playMode->ApplyPendingRestore(*m_scene)) {
-        ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
+        scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
         m_physicsAccumulator = 0.0f;
     }
 
@@ -86,7 +87,7 @@ void EditorModule::OnUpdate(float dt)
     const float simulationDt = SimulationDeltaTime();
     if (playMode->IsPlaying() || m_stepFrame) {
         const auto& settings = m_editorApp.GetContext().projectSettings;
-        ApplyPhysicsSettings(m_physicsWorld, settings);
+        scene::ApplyPhysicsSettings(m_physicsWorld, settings);
         scene::Script::SetPhysicsWorld(&m_physicsWorld);
         scene::ScriptSystem(*m_scene, simulationDt);
         {
@@ -139,8 +140,8 @@ void EditorModule::OnRender()
         gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
     }
 
-    renderer::Camera gameCamera = ResolveEditorGameCamera(gameAspect);
-    fbzz::LayerMask gameCullingMask = ResolveGameCullingMask();
+    renderer::Camera gameCamera = scene::ResolveEditorGameCamera(*m_scene, m_debugCamera.camera, gameAspect);
+    fbzz::LayerMask gameCullingMask = scene::ResolveGameCullingMask(*m_scene);
 
     {
         FBZZ_PROFILE_SCOPE("Renderer::BeginFrame");
@@ -202,39 +203,6 @@ void EditorModule::UpdateFocusAnimation(float dt)
     m_debugCamera.camera.m_position = m_focusAnim.startPos
         + (m_focusAnim.endPos - m_focusAnim.startPos) * s;
     m_debugCamera.LookAt(m_focusAnim.target);
-}
-
-renderer::Camera EditorModule::ResolveEditorGameCamera(float gameAspect)
-{
-    renderer::Camera gameCamera = m_debugCamera.camera;
-    gameCamera.m_aspect = gameAspect;
-
-    for (auto& go : m_scene->GameObjects()) {
-        auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
-        if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
-            continue;
-
-        gameCamera.m_position = go.transform.position;
-        gameCamera.m_rotation = go.transform.rotation;
-        gameCamera.m_fovY     = cameraComponent->fovY;
-        gameCamera.m_aspect   = gameAspect;
-        gameCamera.m_near     = cameraComponent->nearZ;
-        gameCamera.m_far      = cameraComponent->farZ;
-        break;
-    }
-
-    return gameCamera;
-}
-
-fbzz::LayerMask EditorModule::ResolveGameCullingMask()
-{
-    for (auto& go : m_scene->GameObjects()) {
-        auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
-        if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
-            continue;
-        return cameraComponent->cullingMask;
-    }
-    return fbzz::Layer::Everything;
 }
 
 void EditorModule::RenderSceneViewport(renderer::ResourceHandle<renderer::RenderTargetTag> sceneRT)

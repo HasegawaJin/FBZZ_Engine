@@ -3,10 +3,9 @@
 // Sandbox のスタンドアロンゲーム実行 Module
 #include "StandaloneModule.hpp"
 
-#include "ModuleUtils.hpp"
-#include "Util/PathUtil.hpp"
-
 #include <Engine/Core/Application.hpp>
+#include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -24,6 +23,8 @@
 
 namespace fbzz::sandbox {
 
+using fbzz::util::StringUtils;
+
 StandaloneModule::StandaloneModule(renderer::IRenderer& renderer,
                                    renderer::ResourceManager& resources,
                                    const LaunchProject& project,
@@ -38,14 +39,14 @@ StandaloneModule::StandaloneModule(renderer::IRenderer& renderer,
 bool StandaloneModule::OnInit()
 {
     m_scene = std::make_unique<scene::Scene>();
-    const std::string scenePathUtf8 = util::PathToUtf8(m_project.sceneFile);
+    const std::string scenePathUtf8 = StringUtils::PathToUtf8(m_project.sceneFile);
     if (!scene::SceneSerializer::LoadInPlace(*m_scene, scenePathUtf8, m_resources)) {
         FBZZ_LOG_ERROR("Sandbox Standalone: failed to load scene: %s", scenePathUtf8.c_str());
         return false;
     }
 
-    ApplyPhysicsSettings(m_physicsWorld, m_settings);
-    ApplyUISettings(m_settings);
+    scene::ApplyPhysicsSettings(m_physicsWorld, m_settings);
+    scene::ApplyUISettings(m_settings);
     m_physicsAccumulator = 0.0f;
     return true;
 }
@@ -97,7 +98,7 @@ void StandaloneModule::OnRender()
     const uint32_t w = app.GetWindow().GetWidth();
     const uint32_t h = app.GetWindow().GetHeight();
     const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
-    const renderer::Camera gameCamera = ResolveGameCamera(*m_scene, aspect);
+    const renderer::Camera gameCamera = scene::ResolveGameCamera(*m_scene, aspect);
 
     scene::RenderSystemUIOptions uiOptions{};
     uiOptions.enabled = true;

@@ -3,35 +3,37 @@
 // Sandbox のコマンドライン引数解析
 #include "LaunchArgs.hpp"
 
-#include "Util/FileUtil.hpp"
-#include "Util/PathUtil.hpp"
+#include <Engine/Util/FileSystem.hpp>
 
 #include <Windows.h>
 #include <shellapi.h>
 
 namespace fbzz::sandbox {
+
+using fbzz::util::FileSystem;
+
 namespace {
 
 std::filesystem::path FindDefaultSandboxProjectPath()
 {
-    const std::filesystem::path executableProject = util::GetExecutableDirectory() / L"SandboxProject";
-    if (util::Exists(executableProject / L".fbzz_proj")) {
+    const std::filesystem::path executableProject = FileSystem::GetExecutableDirectory() / L"SandboxProject";
+    if (FileSystem::Exists(executableProject / L".fbzz_proj")) {
         return executableProject;
     }
 
-    std::filesystem::path current = util::GetExecutableDirectory();
+    std::filesystem::path current = FileSystem::GetExecutableDirectory();
     for (int i = 0; i < 8 && !current.empty(); ++i) {
         const std::filesystem::path candidate = current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
-        if (util::Exists(candidate / L".fbzz_proj")) {
+        if (FileSystem::Exists(candidate / L".fbzz_proj")) {
             return candidate;
         }
         current = current.parent_path();
     }
 
-    current = util::MakeAbsolute(std::filesystem::current_path());
+    current = FileSystem::MakeAbsolute(std::filesystem::current_path());
     for (int i = 0; i < 8 && !current.empty(); ++i) {
         const std::filesystem::path candidate = current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
-        if (util::Exists(candidate / L".fbzz_proj")) {
+        if (FileSystem::Exists(candidate / L".fbzz_proj")) {
             return candidate;
         }
         current = current.parent_path();
@@ -59,8 +61,8 @@ LaunchArgs LaunchArgs::Parse()
     LocalFree(argv);
 
     if (args.projectPath.empty()) {
-        const std::filesystem::path exeDir = util::GetExecutableDirectory();
-        if (util::Exists(exeDir / L".fbzz_proj")) {
+        const std::filesystem::path exeDir = FileSystem::GetExecutableDirectory();
+        if (FileSystem::Exists(exeDir / L".fbzz_proj")) {
             // WHY: 配布 exe はプロジェクト直下に置かれるため、引数なしなら Standalone とみなす。
             args.projectPath = exeDir;
             args.standalone  = true;
