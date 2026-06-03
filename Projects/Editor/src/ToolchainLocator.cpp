@@ -35,6 +35,15 @@ std::filesystem::path NormalizeConfigPath(const std::filesystem::path& configPat
     return path.lexically_normal();
 }
 
+std::string TrimLine(const std::string& text)
+{
+    const auto begin = text.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) return {};
+
+    const auto end = text.find_last_not_of(" \t\r\n");
+    return text.substr(begin, end - begin + 1);
+}
+
 std::filesystem::path FindBuildConfig()
 {
     std::filesystem::path dir = GetSelfExePath().parent_path();
@@ -75,8 +84,8 @@ bool ReadBuildConfig(const std::filesystem::path& path, ToolchainLocator::Result
         const size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
 
-        const std::string key = line.substr(0, eq);
-        const std::string value = line.substr(eq + 1);
+        const std::string key = TrimLine(line.substr(0, eq));
+        const std::string value = TrimLine(line.substr(eq + 1));
         if (key == "cmake_exe") {
             out.cmakeExe = NormalizeConfigPath(path, value);
         } else if (key == "build_dir") {
