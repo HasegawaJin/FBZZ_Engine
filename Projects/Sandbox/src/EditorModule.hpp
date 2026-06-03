@@ -3,7 +3,7 @@
 // Sandbox のエディタ実行 Module
 #pragma once
 
-#include "LaunchProject.hpp"
+#include <Engine/ProjectResolver.hpp>
 
 #include <Editor/EditorApp.hpp>
 #include <Engine/Core/IModule.hpp>
@@ -45,8 +45,6 @@ private:
 
     [[nodiscard]] float SimulationDeltaTime() const;
     void UpdateFocusAnimation(float dt);
-    [[nodiscard]] renderer::Camera ResolveEditorGameCamera(float gameAspect);
-    [[nodiscard]] fbzz::LayerMask ResolveGameCullingMask();
     void RenderSceneViewport(renderer::ResourceHandle<renderer::RenderTargetTag> sceneRT);
     void RenderGameViewport(renderer::ResourceHandle<renderer::RenderTargetTag> gameRT,
                             const renderer::Camera& gameCamera,
