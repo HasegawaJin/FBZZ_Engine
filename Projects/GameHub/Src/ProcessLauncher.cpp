@@ -3,6 +3,8 @@
 // Launch Editor process
 #include "ProcessLauncher.hpp"
 
+#include "Util/HubUtil.hpp"
+
 #include <Windows.h>
 #include <array>
 #include <filesystem>
@@ -12,26 +14,7 @@ namespace fbzz::hub {
 
 namespace {
 
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) {
-        return std::filesystem::path(text).wstring();
-    }
-
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-std::filesystem::path GetExecutableDirectory()
-{
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return std::filesystem::path(buffer).parent_path();
-}
+namespace util = fbzz::hub::util;
 
 bool Exists(const std::filesystem::path& path)
 {
@@ -54,7 +37,7 @@ bool ProcessLauncher::OpenInEditor(const HubConfig& config, const std::string& p
         return false;
     }
 
-    const std::wstring projectWide = Utf8ToWide(projectPath);
+    const std::wstring projectWide = util::Utf8ToWide(projectPath);
     std::wstring commandLine = Quote(editorPath) + L" --project " + Quote(projectWide);
     std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
     mutableCommand.push_back(L'\0');
@@ -88,10 +71,10 @@ bool ProcessLauncher::OpenInEditor(const HubConfig& config, const std::string& p
 std::wstring ProcessLauncher::ResolveEditorPath(const HubConfig& config)
 {
     if (!config.GetEditorExe().empty()) {
-        return Utf8ToWide(config.GetEditorExe());
+        return util::Utf8ToWide(config.GetEditorExe());
     }
 
-    const std::filesystem::path exeDir = GetExecutableDirectory();
+    const std::filesystem::path exeDir = util::GetExecutableDirectory();
     std::error_code ec;
     const std::filesystem::path cwd = std::filesystem::current_path(ec);
     const std::string exeDirText = exeDir.generic_string();
