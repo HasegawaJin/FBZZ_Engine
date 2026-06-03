@@ -13,7 +13,6 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "justMyCode": true
         },
         {
             "name": "Release (FBZZEditor)",
@@ -26,7 +25,6 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "justMyCode": true
         },
         {
             "name": "Debug (Sandbox)",
@@ -39,7 +37,6 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "justMyCode": true,
             "preLaunchTask": "CMake: Build Sandbox (Debug)"
         },
         {
@@ -53,7 +50,6 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "justMyCode": true
         },
         {
             "name": "Debug (FBZZEditor)",
@@ -66,7 +62,6 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "justMyCode": true
         },
         {
             "name": "Debug (tests)",
@@ -79,7 +74,6 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "justMyCode": true
         }
     ],
     "inputs": [
