@@ -3,6 +3,8 @@
 // Project template discovery and instantiation
 #include "TemplateManager.hpp"
 
+#include "Util/HubUtil.hpp"
+
 #include <Windows.h>
 #include <toml++/toml.hpp>
 #include <algorithm>
@@ -13,6 +15,8 @@
 namespace fbzz::hub {
 
 namespace {
+
+namespace util = fbzz::hub::util;
 
 std::string ReadText(const std::filesystem::path& path)
 {
@@ -35,13 +39,6 @@ bool WriteText(const std::filesystem::path& path, const std::string& text)
 
     file << text;
     return static_cast<bool>(file);
-}
-
-std::filesystem::path GetExecutableDirectory()
-{
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return std::filesystem::path(buffer).parent_path();
 }
 
 std::string ReplaceAll(std::string text, const std::string& from, const std::string& to)
@@ -84,7 +81,7 @@ void TemplateManager::Refresh()
     m_templates.clear();
 
     CollectTemplatesFromRoot(ResolveSourceTemplatesRoot(), m_templates);
-    CollectTemplatesFromRoot(GetExecutableDirectory() / "Templates", m_templates);
+    CollectTemplatesFromRoot(util::GetExecutableDirectory() / "Templates", m_templates);
 
     std::sort(m_templates.begin(), m_templates.end(), [](const TemplateInfo& a, const TemplateInfo& b) {
         return a.displayName < b.displayName;
@@ -286,7 +283,7 @@ bool TemplateManager::IsValidProjectNameInfo(const ProjectNameInfo& nameInfo)
 std::filesystem::path TemplateManager::ResolveTemplatesRoot()
 {
     std::error_code ec;
-    const std::filesystem::path runtimeRoot = GetExecutableDirectory() / "Templates";
+    const std::filesystem::path runtimeRoot = util::GetExecutableDirectory() / "Templates";
     if (std::filesystem::exists(runtimeRoot, ec)) {
         return runtimeRoot;
     }
@@ -299,7 +296,7 @@ std::filesystem::path TemplateManager::ResolveSourceTemplatesRoot()
     std::error_code ec;
     std::vector<std::filesystem::path> starts;
     starts.push_back(std::filesystem::current_path(ec));
-    starts.push_back(GetExecutableDirectory());
+    starts.push_back(util::GetExecutableDirectory());
 
     for (std::filesystem::path current : starts) {
         for (int i = 0; i < 8 && !current.empty(); ++i) {
