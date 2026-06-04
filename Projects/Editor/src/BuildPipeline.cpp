@@ -65,13 +65,15 @@ void BuildPipeline::Start(const BuildSettings& settings,
                           const std::string& projectRoot,
                           const std::string& buildRoot,
                           const std::string& targetName,
+                          const std::string& scriptsDllPath,
                           bool runAfterBuild)
 {
-    m_settings      = settings;
-    m_projectRoot   = projectRoot;
-    m_buildRoot     = buildRoot;
-    m_targetName    = targetName.empty() ? "SandboxStandalone" : targetName;
-    m_runAfterBuild = runAfterBuild;
+    m_settings          = settings;
+    m_projectRoot       = projectRoot;
+    m_buildRoot         = buildRoot;
+    m_targetName        = targetName.empty() ? "SandboxStandalone" : targetName;
+    m_scriptsDllSrcPath = scriptsDllPath;
+    m_runAfterBuild     = runAfterBuild;
     m_state         = State::Running;
     m_step          = Step::Compile;
     m_progress      = 0.0f;
@@ -266,6 +268,21 @@ bool BuildPipeline::ExecuteStep()
                 std::filesystem::copy_options::overwrite_existing, ec);
             if (ec) { SetFailed("Failed to copy DLL: " + WideToUtf8(src.wstring())); return false; }
         }
+
+        // スクリプト DLL をコピーする。
+        // WHY: DLL 名はプロジェクトごとに異なるため、上の固定リストに含めず
+        //      呼び出し元 (BuildSettingsPanel) が EditorContext.scriptsDllPath から渡す。
+        if (!m_scriptsDllSrcPath.empty()) {
+            const std::filesystem::path scriptsSrc(Utf8ToWide(m_scriptsDllSrcPath));
+            ec.clear();
+            if (std::filesystem::exists(scriptsSrc, ec)) {
+                std::filesystem::copy_file(scriptsSrc, m_tmpDir / scriptsSrc.filename(),
+                    std::filesystem::copy_options::overwrite_existing, ec);
+                if (ec) { SetFailed("Failed to copy scripts DLL: " + m_scriptsDllSrcPath); return false; }
+            } else {
+                FBZZ_LOG_WARN("BuildPipeline: scripts DLL not found, skipping: %s", m_scriptsDllSrcPath.c_str());
+            }
+        }
         m_progress = 0.15f;
         return true;
     }
@@ -331,6 +348,12 @@ bool BuildPipeline::ExecuteStep()
             proj << "name          = \"" << m_settings.productName << "\"\n";
             proj << "settings_path = \"" << settingsRelPath << "\"\n";
             proj << "default_scene = \"" << defaultSceneRel << "\"\n";
+            // WHY: StandaloneApp はこのフィールドを読んでスクリプト DLL をロードする。
+            //      DLL 名はプロジェクトごとに異なるためハードコードせず、ここに記録する。
+            if (!m_scriptsDllSrcPath.empty()) {
+                const std::filesystem::path scriptsDll(Utf8ToWide(m_scriptsDllSrcPath));
+                proj << "scripts_dll   = \"" << WideToUtf8(scriptsDll.filename().wstring()) << "\"\n";
+            }
 
             const std::filesystem::path dst = m_tmpDir / ".fbzz_proj";
             std::ofstream ofs(dst, std::ios::binary);
