@@ -27,11 +27,13 @@ public:
     enum class State { Idle, Running, Done, Failed };
 
     // ビルドを開始する。State が Running に移行する。
+    // @param scriptsDllPath コンパイル済みスクリプト DLL の絶対パス (空の場合はコピーをスキップ)
     // @param runAfterBuild true なら Done 後に呼び出し元が exe を起動する ("Build and Run" 用)
     void Start(const BuildSettings& settings,
                const std::string& projectRoot,
                const std::string& buildRoot,
                const std::string& targetName,
+               const std::string& scriptsDllPath,
                bool runAfterBuild = false);
 
     // 毎フレーム 1 ステップ (CopyAssets は 1 ファイル) 進める。
@@ -88,6 +90,7 @@ private:
     std::string   m_projectRoot;
     std::string   m_buildRoot;
     std::string   m_targetName = "SandboxStandalone";
+    std::string   m_scriptsDllSrcPath; // 配布物にコピーするスクリプト DLL の絶対パス
     BuildSettings m_settings;
     Compiler      m_compiler;
     bool          m_compileStarted = false;
