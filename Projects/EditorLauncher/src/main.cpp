@@ -28,8 +28,10 @@
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -277,9 +279,13 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         scene::TransformSystem(*scene);
         const bool stepFrame = playMode->ConsumeStep();
+        const float simulationDt = stepFrame ? (1.0f / 60.0f) : dt;
         if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
             scene::ApplyPhysicsSettings(physicsWorld, settings);
+            scene::Script::SetPhysicsWorld(&physicsWorld);
+            scene::ScriptSystem(*scene, simulationDt);
+            scene::TransformSystem(*scene);
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
@@ -297,10 +303,12 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                 }
             }
             scene::TransformSystem(*scene);
+            scene::LateScriptSystem(*scene, simulationDt);
         } else {
             physicsAccumulator = 0.0f;
         }
-        scene::AnimatorSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
+        scene::AnimatorSystem(*scene, resources, simulationDt);
+        scene::IKSystem(*scene, physicsWorld, resources, simulationDt);
 
         const auto sceneRT = editorApp.GetViewportRT();
         const auto gameRT = editorApp.GetGameViewportRT();

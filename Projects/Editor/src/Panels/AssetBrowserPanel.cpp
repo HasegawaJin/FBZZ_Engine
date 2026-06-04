@@ -835,6 +835,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         const std::string engineScriptsDir = ctx.scriptsSourceDir;
         const std::string projScriptsDir   = ctx.projectRoot + "/Assets/Scripts";
         const std::string dllPath          = ctx.scriptsDllCppPath;
+        const std::string staticPath       = ctx.scriptsStaticCppPath;
         // パス未解決のときはフォールバック: プロジェクト側の Scripts/ に直接作成する
         // WHY: ToolchainLocator が失敗した環境 (build.config なし) でも
         //      DLL 登録なしでヘッダだけを生成できるようにする。
@@ -843,17 +844,17 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ModalDialog::OpenInput(
             "New C++ Script",
             "NewScript",
-            [this, resolvedScriptsDir, projScriptsDir, dllPath]
+            [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
             (const std::string& name) {
                 const std::string path =
-                    ScriptCodeGen::CreateScript(name, resolvedScriptsDir, dllPath);
+                    ScriptCodeGen::CreateScript(name, resolvedScriptsDir, dllPath, staticPath);
                 if (path.empty()) {
                     FBZZ_LOG_WARN("C++ Script creation failed: %s", name.c_str());
                     return;
                 }
                 // プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
                 if (!projScriptsDir.empty() && projScriptsDir != resolvedScriptsDir)
-                    ScriptCodeGen::CreateScript(name, projScriptsDir, "");
+                    ScriptCodeGen::CreateScript(name, projScriptsDir, "", "");
                 m_pendingNavigate = projScriptsDir;
                 RefreshDirectory();
                 FBZZ_LOG_INFO("C++ Script generated: %s", path.c_str());
