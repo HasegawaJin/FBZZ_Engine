@@ -4,6 +4,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Input/Input.hpp>
 
 namespace fbzz::editor {
 
@@ -18,6 +19,8 @@ void PlayModeController::Play(scene::Scene& scene)
         return;
     }
     m_state    = PlayState::Playing;
+    // WHY: Editor は同一プロセス内で Play を繰り返すため、前セッションの押下状態を新しい実行へ持ち越さない。
+    input::Input::Reset();
     FBZZ_LOG_INFO("PlayMode: → Playing");
 }
 
@@ -57,6 +60,8 @@ bool PlayModeController::ApplyPendingRestore(scene::Scene& scene)
     m_snapshot.clear();
     m_restorePending = false;
     m_state = PlayState::Editor;
+    // WHAT: Stop クリックや GameView 操作中のマウス・キー状態を Editor モードへ残さない。
+    input::Input::Reset();
     FBZZ_LOG_INFO("PlayMode: → Editor (scene restored)");
     return true;
 }
