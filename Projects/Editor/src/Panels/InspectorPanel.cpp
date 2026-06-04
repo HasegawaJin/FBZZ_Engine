@@ -2556,6 +2556,38 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
             if (removeScript)
                 go->RemoveComponent<scene::ScriptComponent>();
+        } else if (sc->serialized && !sc->serialized->type.empty()) {
+            ImGui::PushID("MissingScriptComponent");
+            ImGui::Checkbox("##en", &sc->serialized->enabled);
+            ImGui::SameLine();
+
+            const std::string header = "Missing Script: " + sc->serialized->type;
+            const bool open = ImGui::CollapsingHeader(
+                header.c_str(),
+                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+
+            const float btnW = ImGui::GetFrameHeight();
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+            if (ImGui::SmallButton("..."))
+                ImGui::OpenPopup("##missing_script_opts");
+
+            bool removeScript = false;
+            if (ImGui::BeginPopup("##missing_script_opts")) {
+                if (ImGui::MenuItem("Remove Component"))
+                    removeScript = true;
+                ImGui::EndPopup();
+            }
+
+            if (open) {
+                ImGui::Spacing();
+                ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
+                ImGui::Spacing();
+            }
+
+            ImGui::PopID();
+
+            if (removeScript)
+                go->RemoveComponent<scene::ScriptComponent>();
         }
     }
 
