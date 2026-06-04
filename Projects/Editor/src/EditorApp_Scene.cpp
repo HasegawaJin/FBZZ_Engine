@@ -12,10 +12,12 @@
 #include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <Windows.h>
 #include <filesystem>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -225,6 +227,7 @@ void EditorApp::NewScene()
     if (!m_ctx.activeScene) return;
     m_ctx.activeScene->Clear();
     m_ctx.selectedEntities.clear();
+    RebuildEditorUIFromScene();
     m_settings.lastScenePath.clear();
     m_ctx.currentScenePath.clear();
     m_lastSceneWriteTime = {};
@@ -272,6 +275,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
     m_ctx.selectedEntities.clear();
+    RebuildEditorUIFromScene();
     CaptureCleanScene();
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
     return true;
@@ -362,6 +366,7 @@ void EditorApp::CheckHotReload()
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
             m_ctx.selectedEntities.clear();
+            RebuildEditorUIFromScene();
             CaptureCleanScene();
             FBZZ_LOG_INFO("Hot reloaded: %s", m_settings.lastScenePath.c_str());
         }
@@ -387,41 +392,78 @@ void EditorApp::CheckHotReload()
 // スクリプト DLL ホットリロード
 // =============================================================================
 
+namespace {
+
+// WHY: GameHub プロジェクトは初回開封時に cmake configure が済んでいない場合がある。
+//      build.config がないと ToolchainLocator が失敗してスクリプトが動かないため、
+//      CMakePresets.json が存在すれば自動で cmake --preset fbzz-vs を実行する。
+bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engineRoot)
+{
+    wchar_t cmakeBuf[MAX_PATH]{};
+    if (!SearchPathW(nullptr, L"cmake.exe", nullptr, MAX_PATH, cmakeBuf, nullptr)) {
+        FBZZ_LOG_WARN("ScriptDll: cmake.exe が PATH に見つかりません。cmake --preset fbzz-vs を手動実行してください。");
+        return false;
+    }
+
+    if (!engineRoot.empty()) {
+        const int sz = MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, nullptr, 0);
+        if (sz > 0) {
+            std::wstring w(static_cast<size_t>(sz - 1), L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, w.data(), sz);
+            SetEnvironmentVariableW(L"FBZZ_ENGINE_ROOT", w.c_str());
+        }
+    }
+
+    const int projSz = MultiByteToWideChar(CP_UTF8, 0, projectRoot.c_str(), -1, nullptr, 0);
+    std::wstring projRootW;
+    if (projSz > 0) {
+        projRootW.resize(static_cast<size_t>(projSz - 1));
+        MultiByteToWideChar(CP_UTF8, 0, projectRoot.c_str(), -1, projRootW.data(), projSz);
+    }
+
+    // WHY: --preset の cacheVariables に "$env{FBZZ_ENGINE_ROOT}" があっても
+    //      既に CMakeCache.txt が存在する場合はキャッシュ値が優先される。
+    //      -D で明示的に上書きすることで既存キャッシュがあっても正しいパスが使われる。
+    const int engSz = MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, nullptr, 0);
+    std::wstring engineRootW;
+    if (engSz > 0) {
+        engineRootW.resize(static_cast<size_t>(engSz - 1));
+        MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, engineRootW.data(), engSz);
+    }
+    std::wstring cmd = std::wstring(L"\"") + cmakeBuf + L"\" --preset fbzz-vs";
+    if (!engineRootW.empty())
+        cmd += L" -DFBZZ_ENGINE_ROOT:PATH=\"" + engineRootW + L"\"";
+    std::vector<wchar_t> mutableCmd(cmd.begin(), cmd.end());
+    mutableCmd.push_back(L'\0');
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    const BOOL ok = CreateProcessW(
+        nullptr, mutableCmd.data(),
+        nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+        nullptr, projRootW.empty() ? nullptr : projRootW.c_str(),
+        &si, &pi);
+
+    if (!ok) {
+        FBZZ_LOG_WARN("ScriptDll: cmake configure の起動に失敗しました。");
+        return false;
+    }
+
+    // WHY: cmake configure はメインスレッドをブロックしない。
+    //      バックグラウンドで実行し、完了後にエディタを再起動するよう促す。
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    FBZZ_LOG_INFO("ScriptDll: cmake --preset fbzz-vs をバックグラウンドで起動しました。完了後にエディタを再起動してください。");
+    return false;
+}
+
+} // namespace
+
 void EditorApp::InitScriptDll()
 {
     if (!m_ctx.hotReloadEnabled) return;
 
-    // ToolchainLocator でビルドディレクトリを特定し、
-    // SandboxScripts.dll のパスとスクリプトソースディレクトリを解決する。
-    ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
-        std::filesystem::path(m_ctx.projectBuildRoot));
-    if (!toolchain.found) {
-        FBZZ_LOG_WARN("ScriptDll: ToolchainLocator failed - script hot reload is disabled");
-        return;
-    }
-
-    // DLL パスは build.config の scripts_dll_debug から解決する。
-    // WHY: DLL 名はプロジェクトごとに異なる (SandboxScripts / MyGameScripts 等) ため
-    //      build.config に記録して Editor が動的に解決できるようにする。
-    //      フォールバック: scripts_dll_debug が空ならば exeDir / SandboxScripts.dll を使う (後方互換)。
-    if (!toolchain.scriptsDllDebug.empty()) {
-        m_scriptDllPath = toolchain.scriptsDllDebug;
-    } else {
-        m_scriptDllPath = toolchain.exeDebug.parent_path() / L"SandboxScripts.dll";
-    }
-
-    // スクリプトソースディレクトリ: build_dir の 2 階層上が engine ソースルート
-    // 例: build/debug → C:/FBZZ_Engine → Assets/Scripts/
-    // WHY: スクリプトを Assets/Scripts/ に移動したことで AssetBrowser から
-    //      Unity 同様に Scripts を確認・作成できるようになった。
-    const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
-    m_scriptsSourceDir = engineRoot / L"Assets" / L"Scripts";
-
-    // HLSL ソース / バッチスクリプトのパスを解決する
-    m_hlslSourceDir        = engineRoot / L"Assets" / L"shaders";
-    m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.bat";
-
-    // EditorContext にパスを共有してパネルから ScriptCodeGen が使えるようにする
     auto Utf8ToWideLocal = [](const std::string& s) -> std::wstring {
         if (s.empty()) return {};
         const int sz = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
@@ -439,19 +481,129 @@ void EditorApp::InitScriptDll()
         for (char& c : s) if (c == '\\') c = '/';
         return s;
     };
-    m_ctx.scriptsSourceDir    = WideToUtf8Local(m_scriptsSourceDir);
-    m_ctx.scriptsDllCppPath   = WideToUtf8Local(
-        engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScriptsDll.cpp");
-    m_ctx.scriptsStaticCppPath = WideToUtf8Local(
-        engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScripts.cpp");
-    m_ctx.hlslSourceDir       = WideToUtf8Local(m_hlslSourceDir);
 
-    // 初回ロード
-    if (std::filesystem::exists(m_scriptDllPath))
+    ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
+        std::filesystem::path(m_ctx.projectBuildRoot));
+
+    // WHY: GameHub プロジェクトは初回開封時に cmake configure が済んでいない場合がある。
+    //      CMakePresets.json が存在するなら自動 configure を実行し再度解決を試みる。
+    if (!toolchain.found && !m_ctx.projectRoot.empty()) {
+        const std::filesystem::path presetsJson = std::filesystem::path(Utf8ToWideLocal(m_ctx.projectRoot)) / L"CMakePresets.json";
+        std::error_code ec;
+        if (std::filesystem::exists(presetsJson, ec)) {
+            if (TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot))
+                toolchain = ToolchainLocator::Locate(std::filesystem::path(m_ctx.projectBuildRoot));
+        }
+    }
+
+    if (toolchain.found) {
+        // WHY: Release Editor が Debug DLL をロードすると CRT ミスマッチ (MSVCRT vs MSVCRTD) が
+        //      発生し、DLL 境界を越えた std::function ファクトリ呼び出しでクラッシュする。
+        //      Editor のビルド構成と DLL の構成を一致させることで ABI を統一する。
+#ifdef NDEBUG
+        if (!toolchain.scriptsDllRelease.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllRelease;
+        } else {
+            m_scriptDllPath = toolchain.exeRelease.parent_path() / L"SandboxScripts.dll";
+        }
+#else
+        if (!toolchain.scriptsDllDebug.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllDebug;
+        } else {
+            m_scriptDllPath = toolchain.exeDebug.parent_path() / L"SandboxScripts.dll";
+        }
+#endif
+
+        const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
+        m_scriptsSourceDir     = engineRoot / L"Assets" / L"Scripts";
+        m_hlslSourceDir        = engineRoot / L"Assets" / L"shaders";
+        m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.bat";
+
+        m_ctx.scriptsSourceDir = WideToUtf8Local(m_scriptsSourceDir);
+        m_ctx.hlslSourceDir    = WideToUtf8Local(m_hlslSourceDir);
+
+        if (!m_ctx.projectTargetName.empty()) {
+            const std::filesystem::path projRoot(Utf8ToWidePath(m_ctx.projectRoot));
+            const std::wstring targetW = Utf8ToWidePath(m_ctx.projectTargetName);
+            m_ctx.scriptsDllCppPath    = WideToUtf8Local(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
+            m_ctx.scriptsStaticCppPath = WideToUtf8Local(projRoot / L"Src" / L"GameMain.cpp");
+        } else {
+            m_ctx.scriptsDllCppPath    = WideToUtf8Local(
+                engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScriptsDll.cpp");
+            m_ctx.scriptsStaticCppPath = WideToUtf8Local(
+                engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScripts.cpp");
+        }
+    } else {
+        // WHY: ToolchainLocator の失敗は cmake/build.config が未生成の場合に起こる。
+        //      hot reload は無効になるが、DLL が既にビルド済みならスクリプトは Play 中に動く。
+        //      build.config が部分的に読めた場合 (cmake なし等) は scriptsDllDebug が設定済み。
+        //      そうでなければ build_root を 2 段まで検索して DLL を探す。
+        FBZZ_LOG_WARN("ScriptDll: ToolchainLocator failed - script hot reload is disabled");
+
+#ifdef NDEBUG
+        if (!toolchain.scriptsDllRelease.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllRelease;
+        }
+#else
+        if (!toolchain.scriptsDllDebug.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllDebug;
+        }
+#endif
+        else if (!m_ctx.projectBuildRoot.empty()) {
+            const std::wstring dllName = Utf8ToWideLocal(
+                m_ctx.projectTargetName.empty()
+                    ? "SandboxScripts.dll"
+                    : (m_ctx.projectTargetName + "Scripts.dll"));
+            const std::filesystem::path buildRoot(Utf8ToWideLocal(m_ctx.projectBuildRoot));
+            std::error_code ec;
+            for (const auto& sub1 : std::filesystem::directory_iterator(buildRoot, ec)) {
+                if (std::filesystem::exists(sub1.path() / dllName, ec)) {
+                    m_scriptDllPath = sub1.path() / dllName;
+                    break;
+                }
+                if (!sub1.is_directory(ec)) continue;
+                for (const auto& sub2 : std::filesystem::directory_iterator(sub1.path(), ec)) {
+                    if (!sub2.is_directory(ec)) continue;
+                    if (std::filesystem::exists(sub2.path() / dllName, ec)) {
+                        m_scriptDllPath = sub2.path() / dllName;
+                        break;
+                    }
+                }
+                if (!m_scriptDllPath.empty()) break;
+            }
+        }
+
+        // GameHub プロジェクトなら toolchain なしでも scriptsDllCppPath を設定できる
+        if (!m_ctx.projectTargetName.empty()) {
+            const std::filesystem::path projRoot(Utf8ToWidePath(m_ctx.projectRoot));
+            const std::wstring targetW = Utf8ToWidePath(m_ctx.projectTargetName);
+            m_ctx.scriptsDllCppPath    = WideToUtf8Local(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
+            m_ctx.scriptsStaticCppPath = WideToUtf8Local(projRoot / L"Src" / L"GameMain.cpp");
+        }
+    }
+
+    // DLL ロード (toolchain の成否に関わらず実行)
+    m_ctx.scriptsDllPath = WideToUtf8Local(m_scriptDllPath);
+    if (!m_scriptDllPath.empty() && std::filesystem::exists(m_scriptDllPath)) {
         (void)m_scriptDll.Load(m_scriptDllPath);
-    else
+        FBZZ_LOG_INFO("ScriptDll: loaded %ls (%d types)",
+            m_scriptDllPath.wstring().c_str(),
+            static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+    } else if (toolchain.found) {
+        // WHY: cmake configure 直後は DLL がまだ存在しない。
+        //      初回ビルドを TickScriptCompile() に委譲することで非同期ビルドを起動する。
+        FBZZ_LOG_INFO("ScriptDll: DLL が未ビルドです。初回ビルドを開始します...");
+        m_scriptCompilePending = true;
+        m_scriptInitialBuild   = true;   // 初回ビルドは依存ターゲットも含めてビルドする
+        m_scriptDebounceTimer  = 0.0f;
+        m_ctx.scriptReloadBusy = true;
+        SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: initial build...");
+    } else {
         FBZZ_LOG_WARN("ScriptDll: %ls not found; generate it with cmake --build",
                       m_scriptDllPath.wstring().c_str());
+    }
+
+    if (!toolchain.found) return;
 
     // ── 起動時 Assets 即時同期 ──────────────────────────────────────────────
     // WHY: cmake --build の post-build は EXE が再ビルドされたときのみ実行される。
@@ -459,6 +611,7 @@ void EditorApp::InitScriptDll()
     //      InitScriptDll() でエンジンソースのパスが分かった時点で Assets/ を即時同期することで、
     //      cmake を実行せずともスクリプト・カスタムシェーダーが AssetBrowser に表示される。
     {
+        const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         const std::filesystem::path projectAssetsDir =
             std::filesystem::path(Utf8ToWideLocal(m_ctx.projectRoot)) / L"Assets";
         const std::filesystem::path engineAssetsDir  = engineRoot / L"Assets";
@@ -564,15 +717,25 @@ void EditorApp::TickScriptCompile()
         // WHY: DLL ファイル名 (例: SandboxScripts.dll) から cmake ターゲット名を導出する。
         //      ハードコードすると GameHub プロジェクト (MyGameScripts 等) で壊れる。
         config.target        = m_scriptDllPath.stem().string();
-        config.configuration = "Debug";  // WHY: エディタは常に Debug DLL を使う
-        config.skipDeps      = true;     // WHY: エディタがエンジン DLL をロック中のため依存再ビルドをスキップ
+        // WHY: Editor と Scripts DLL の CRT を統一して ABI ミスマッチを防ぐ。
+        //      Release Editor には Release DLL、Debug Editor には Debug DLL を使う。
+#ifdef NDEBUG
+        config.configuration = "Release";
+#else
+        config.configuration = "Debug";
+#endif
+        // WHY: 初回ビルド (DLL 未存在) はエンジン libs がまだないため依存ターゲットも含めてビルドする。
+        //      ホットリロード時はエディタがエンジン DLL をロック中のためスキップする。
+        config.skipDeps      = !m_scriptInitialBuild;
+        m_scriptInitialBuild = false;
 
         if (!m_scriptCompiler.Start(config)) {
             m_ctx.scriptReloadBusy = false;
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: failed to start compile");
             return;
         }
-        FBZZ_LOG_DEBUG("ScriptDll: starting compile: target=%s cfg=Debug", config.target.c_str());
+        FBZZ_LOG_DEBUG("ScriptDll: starting compile: target=%s cfg=%s",
+            config.target.c_str(), config.configuration.c_str());
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: compiling...");
     }
 

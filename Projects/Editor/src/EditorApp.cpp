@@ -27,6 +27,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
@@ -69,6 +70,13 @@ std::string WideToUtf8(const std::wstring& text)
     std::string utf8(static_cast<size_t>(size - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
     return utf8;
+}
+
+bool IsEditorUICanvas(const scene::UICanvas& canvas)
+{
+    return canvas.enabled
+        && (canvas.renderMode == scene::UIRenderMode::ScreenSpaceOverlay
+            || canvas.renderMode == scene::UIRenderMode::ScreenSpaceCamera);
 }
 
 std::filesystem::path MakeAbsolutePath(const std::filesystem::path& path)
@@ -143,8 +151,18 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
     }
 
     const std::string targetName = table["project"]["target_name"].value_or(std::string{});
-    if (!targetName.empty() && targetName.rfind("{{", 0) != 0)
+    if (!targetName.empty() && targetName.rfind("{{", 0) != 0) {
         ctx.standaloneTargetName = targetName + "Standalone";
+        ctx.projectTargetName    = targetName;
+    }
+
+    const std::string engineRoot = table["engine"]["root"].value_or(std::string{});
+    if (!engineRoot.empty() && engineRoot.rfind("{{", 0) != 0) {
+        std::filesystem::path path(Utf8ToWide(engineRoot));
+        if (!path.is_absolute())
+            path = std::filesystem::path(Utf8ToWide(ctx.projectRoot)) / path;
+        ctx.engineRoot = WideToUtf8(path.lexically_normal().wstring());
+    }
 }
 
 } // namespace
@@ -432,6 +450,12 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
     }
 
+    // WHY: SceneSerializer::Load() がシーン内の ScriptComponent を復元する際に
+    //      ScriptFactory からファクトリ関数を引く。DLL が未ロードだとスクリプトインスタンスが
+    //      生成されず Play 中も OnUpdate() が呼ばれない。
+    //      必ずシーンロードより前に DLL をロードして ScriptFactory を準備する。
+    InitScriptDll();
+
     std::string sceneToOpen = scenePath;
     const std::string lastScenePath = ResolveScenePathForProject(projectRoot, m_settings.lastScenePath);
     if (IsScenePathInsideProject(projectRoot, lastScenePath)) {
@@ -448,17 +472,36 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_settings.lastScenePath = sceneToOpen;
         m_ctx.currentScenePath   = sceneToOpen;
         m_ctx.selectedEntities.clear();
+        RebuildEditorUIFromScene();
         CaptureCleanScene();
     }
 
     FBZZ_LOG_INFO("Opened project: %s", m_projectRoot.c_str());
     UpdateWindowTitle();
 
-    // スクリプト DLL のロードとファイル監視を初期化する。
-    // WHY: projectBuildRoot が OpenProject のタイミングで確定するため Init ではなくここで呼ぶ。
-    InitScriptDll();
-
     return true;
+}
+
+void EditorApp::RebuildEditorUIFromScene()
+{
+    // WHY: UI Viewport の編集対象は EditorContext の一時状態であり、.fbzz には保存しない。
+    //      シーンを読み込んだ直後に Scene 内の UICanvas から復元しないと、初回表示で UI 編集ガイドや
+    //      pick 対象が前シーンの無効 ID のままになり、Canvas をクリックするまで再構築されない。
+    m_ctx.activeUICanvas = scene::EntityID::INVALID;
+    if (!m_ctx.activeScene) {
+        return;
+    }
+
+    for (auto& go : m_ctx.activeScene->GameObjects()) {
+        auto* canvas = go.GetComponent<scene::UICanvas>();
+        if (!canvas || !IsEditorUICanvas(*canvas)) {
+            continue;
+        }
+
+        m_ctx.activeUICanvas = go.GetID();
+        FBZZ_LOG_DEBUG("EditorUI: active Canvas restored from scene data");
+        return;
+    }
 }
 
 // =============================================================================

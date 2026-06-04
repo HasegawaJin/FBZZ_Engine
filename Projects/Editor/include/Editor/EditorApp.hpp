@@ -79,6 +79,7 @@ private:
     // ホットリロード共通
     void SetHotReloadState(EditorContext::HotReloadState state, const std::string& msg = "");
     void CaptureCleanScene();
+    void RebuildEditorUIFromScene();
     void RefreshSceneDirtyState(bool force);
     void UpdateWindowTitle();
     void MarkSceneDirty();
@@ -117,8 +118,9 @@ private:
     std::filesystem::path    m_scriptsSourceDir;   // Scripts/ ソースディレクトリ (変更検知用)
     FILETIME                 m_lastScriptWriteTime = {};  // Scripts/ ツリー内で最も新しい更新時刻
     Compiler                 m_scriptCompiler;
-    bool                     m_scriptCompilePending = false; // 変更検知からビルド開始待ち
-    float                    m_scriptDebounceTimer  = 0.0f;  // デバウンス用タイマー (秒)
+    bool                     m_scriptCompilePending  = false; // 変更検知からビルド開始待ち
+    bool                     m_scriptInitialBuild    = false; // true のとき初回ビルド (skipDeps=false)
+    float                    m_scriptDebounceTimer   = 0.0f;  // デバウンス用タイマー (秒)
 
     // HLSL ホットリロード
     std::filesystem::path    m_hlslSourceDir;      // Assets/shaders/ ディレクトリ
