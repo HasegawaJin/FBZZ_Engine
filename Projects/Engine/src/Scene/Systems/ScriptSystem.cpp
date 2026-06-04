@@ -7,6 +7,7 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 
 namespace fbzz::scene {
@@ -25,11 +26,13 @@ void ScriptSystem(Scene& scene, float dt)
         sc->script->SyncEnabledState();
 
         if (!sc->m_awoken) {
+            FBZZ_LOG_DEBUG("ScriptSystem: OnAwake  [%s]", sc->script->GetTypeName());
             sc->script->OnAwake();
             sc->m_awoken = true;
         }
 
         if (!sc->m_started) {
+            FBZZ_LOG_DEBUG("ScriptSystem: OnStart  [%s]", sc->script->GetTypeName());
             sc->script->OnStart();
             sc->m_started = true;
         }
