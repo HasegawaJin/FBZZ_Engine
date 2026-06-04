@@ -238,14 +238,31 @@ bool BuildPipeline::ExecuteStep()
     case Step::CopyDlls: {
         m_status = "Copying DLLs...";
         // WHY: RuntimeBuild の構成はエディタ自身の Debug/Release ではなく BuildSettings で決まる。
-        //      developmentBuild=true なら Debug、false なら Release の Assimp DLL を成果物 exe 隣からコピーする。
+        //      developmentBuild=true なら Debug、false なら Release の成果物 exe 隣から
+        //      実行時に必要な DLL をコピーする。fbzz_* は shared_runtime 化により EXE / Script DLL
+        //      から同じ Engine 状態を参照するため、配布物にも必ず同梱する。
         const std::filesystem::path exeDir = m_exeSrcPath.parent_path();
         const std::wstring assimpDLL = m_settings.developmentBuild
             ? L"assimp-vc145-mtd.dll"
             : L"assimp-vc145-mt.dll";
-        const std::filesystem::path src = exeDir / assimpDLL;
-        if (std::filesystem::exists(src, ec)) {
-            std::filesystem::copy_file(src, m_tmpDir / assimpDLL,
+
+        const std::array<std::wstring, 5> runtimeDlls = {
+            L"imgui.dll",
+            L"fbzz_math.dll",
+            L"fbzz_physics.dll",
+            L"fbzz_engine.dll",
+            assimpDLL,
+        };
+
+        for (const std::wstring& dllName : runtimeDlls) {
+            const std::filesystem::path src = exeDir / dllName;
+            ec.clear();
+            if (!std::filesystem::exists(src, ec)) {
+                continue;
+            }
+
+            ec.clear();
+            std::filesystem::copy_file(src, m_tmpDir / dllName,
                 std::filesystem::copy_options::overwrite_existing, ec);
             if (ec) { SetFailed("Failed to copy DLL: " + WideToUtf8(src.wstring())); return false; }
         }
