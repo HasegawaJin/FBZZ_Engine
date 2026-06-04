@@ -60,6 +60,7 @@ bool ScriptDllLoader::Load(const std::filesystem::path& dllPath)
     m_hotCopy = CopyToHot(dllPath);
     if (m_hotCopy.empty()) return false;
 
+    FBZZ_LOG_DEBUG("ScriptDllLoader: loading hot copy: %ls", m_hotCopy.wstring().c_str());
     m_hDll = LoadLibraryW(m_hotCopy.wstring().c_str());
     if (!m_hDll) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Load: LoadLibrary failed: %ls (GLE=%lu)",
@@ -79,10 +80,13 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
 
     // FreeLibrary 前に仮想デストラクタが DLL コード内にある Script インスタンスをすべて破棄する。
     // WHY: FreeLibrary 後に仮想デストラクタを呼ぶとアクセス違反になるため。
-    if (scene)
+    if (scene) {
+        FBZZ_LOG_DEBUG("ScriptDllLoader: destroying all script instances before unload");
         DestroyAllScripts(*scene);
+    }
 
     scene::ScriptFactory::UnregisterAll();
+    FBZZ_LOG_DEBUG("ScriptDllLoader: ScriptFactory unregistered all");
 
     FreeLibrary(m_hDll);
     m_hDll = nullptr;
@@ -180,8 +184,9 @@ void ScriptDllLoader::RegisterScripts()
         scene::ScriptFactory::Register(typeName, std::move(factory));
     });
 
-    FBZZ_LOG_INFO("ScriptDllLoader: scripts registered (%s)",
-                  kRegisterFnName);
+    FBZZ_LOG_DEBUG("ScriptDllLoader: scripts registered via %s (%d types)",
+                  kRegisterFnName,
+                  static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
 }
 
 void ScriptDllLoader::DestroyAllScripts(scene::Scene& scene)
