@@ -116,7 +116,7 @@ void StatusBar::OnRenderContent(EditorContext& ctx)
         selName = go->name.c_str();
     ImGui::Text("Sel: %s", selName);
 
-    // ── ホットリロード状態 (右端) ─────────────────────────────────────
+    // ── ホットリロード状態 + 手動リロードボタン (右端) ──────────────────
     {
         const char* reloadText = nullptr;
         ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };

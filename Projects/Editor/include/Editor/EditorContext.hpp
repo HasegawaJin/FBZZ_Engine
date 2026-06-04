@@ -130,6 +130,7 @@ struct EditorContext {
     bool requestOpenProjectSettings = false;
     bool requestOpenBuildSettings   = false;
     bool requestOpenAnalysis        = false;
+    bool requestScriptReload        = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
