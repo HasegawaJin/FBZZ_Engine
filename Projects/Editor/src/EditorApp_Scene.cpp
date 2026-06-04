@@ -30,6 +30,119 @@ std::string WithFbzzExtension(const std::string& path)
     return path + ".fbzz";
 }
 
+// UTF-8 のプロジェクトパスを Windows の filesystem path へ変換する。
+// WHY: EditorContext は UI / TOML と相性の良い UTF-8 文字列でパスを保持する一方、
+//      std::filesystem は Windows 環境で wide path を使う方が日本語パスに強い。
+std::wstring Utf8ToWidePath(const std::string& text)
+{
+    if (text.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
+}
+
+// FILETIME が未初期化のゼロ値かどうかを判定する。
+bool IsEmptyFileTime(const FILETIME& ft)
+{
+    return ft.dwLowDateTime == 0 && ft.dwHighDateTime == 0;
+}
+
+// 指定パス自身の Windows 更新時刻を取得する。
+// WHY: std::filesystem::file_time_type は実装依存の clock を使うため、既存コードの
+//      CompareFileTime と同じ FILETIME に揃えて扱う。
+bool TryGetWriteTime(const std::filesystem::path& path, FILETIME& out)
+{
+    WIN32_FILE_ATTRIBUTE_DATA info{};
+    if (!GetFileAttributesExW(path.wstring().c_str(), GetFileExInfoStandard, &info))
+        return false;
+
+    out = info.ftLastWriteTime;
+    return true;
+}
+
+// ディレクトリ配下で最も新しい更新時刻を返す。
+// WHY: Windows では既存ファイルの中身を書き換えても親ディレクトリの更新時刻は変わらない。
+//      Scripts/ や shaders/ のディレクトリ時刻だけを監視すると、ホットリロード対象の .hpp / .hlsl
+//      編集を検知できないため、ツリー内の各エントリを確認する。
+FILETIME GetLatestWriteTimeInTree(const std::filesystem::path& root)
+{
+    FILETIME latest{};
+    if (!TryGetWriteTime(root, latest))
+        return latest;
+
+    std::error_code ec;
+    const std::filesystem::recursive_directory_iterator end;
+    std::filesystem::recursive_directory_iterator it(
+        root,
+        std::filesystem::directory_options::skip_permission_denied,
+        ec);
+
+    while (!ec && it != end) {
+        FILETIME ft{};
+        if (TryGetWriteTime(it->path(), ft) && CompareFileTime(&ft, &latest) > 0)
+            latest = ft;
+
+        it.increment(ec);
+    }
+
+    return latest;
+}
+
+// HLSL の再コンパイル結果を現在開いているプロジェクトへ反映する。
+// WHY: compile_shaders.bat はエンジンソース側 Assets/shaders/compiled に CSO を出力する。
+//      しかし実行中の renderer はプロジェクト側 Assets/shaders/compiled を読むため、
+//      ReloadAllShaders() の前に CSO を同期しないと古いバイナリを再ロードしてしまう。
+bool SyncCompiledShadersToProject(const std::filesystem::path& hlslSourceDir,
+                                  const std::string& projectRoot)
+{
+    if (hlslSourceDir.empty() || projectRoot.empty()) return false;
+
+    const std::filesystem::path src = hlslSourceDir / L"compiled";
+    const std::filesystem::path dst = std::filesystem::path(Utf8ToWidePath(projectRoot)) /
+                                      L"Assets" / L"shaders" / L"compiled";
+
+    std::error_code ec;
+    if (!std::filesystem::exists(src, ec)) return false;
+    if (std::filesystem::equivalent(src, dst, ec)) return true;
+    ec.clear();
+    std::filesystem::create_directories(dst, ec);
+    if (ec) return false;
+
+    std::filesystem::copy(src, dst,
+        std::filesystem::copy_options::recursive |
+        std::filesystem::copy_options::overwrite_existing,
+        ec);
+    return !ec;
+}
+
+// HLSL の再コンパイル結果を renderer の実際の読込先へ反映する。
+// WHY: EditorLauncher / sandbox は起動時にカレントディレクトリを exe 隣へ変更する。
+//      DX11Shader は "assets/shaders/compiled/..." を相対パスで開くため、
+//      ReloadAllShaders() の前に exe 隣の Assets にも CSO を同期する必要がある。
+bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceDir)
+{
+    if (hlslSourceDir.empty()) return false;
+
+    const std::filesystem::path src = hlslSourceDir / L"compiled";
+    std::error_code ec;
+    const std::filesystem::path dst = std::filesystem::current_path(ec) /
+                                      L"Assets" / L"shaders" / L"compiled";
+    if (ec) return false;
+    if (!std::filesystem::exists(src, ec)) return false;
+    if (std::filesystem::equivalent(src, dst, ec)) return true;
+    ec.clear();
+    std::filesystem::create_directories(dst, ec);
+    if (ec) return false;
+
+    std::filesystem::copy(src, dst,
+        std::filesystem::copy_options::recursive |
+        std::filesystem::copy_options::overwrite_existing,
+        ec);
+    return !ec;
+}
+
 } // namespace
 
 // =============================================================================
@@ -390,14 +503,11 @@ void EditorApp::InitScriptDll()
     }
 
     // 最終更新時刻をキャッシュする (初回は変更なしと判定)
-    WIN32_FILE_ATTRIBUTE_DATA info{};
     if (!m_scriptsSourceDir.empty()) {
-        GetFileAttributesExW(m_scriptsSourceDir.wstring().c_str(), GetFileExInfoStandard, &info);
-        m_lastScriptWriteTime = info.ftLastWriteTime;
+        m_lastScriptWriteTime = GetLatestWriteTimeInTree(m_scriptsSourceDir);
     }
     if (!m_hlslSourceDir.empty()) {
-        GetFileAttributesExW(m_hlslSourceDir.wstring().c_str(), GetFileExInfoStandard, &info);
-        m_lastHlslWriteTime = info.ftLastWriteTime;
+        m_lastHlslWriteTime = GetLatestWriteTimeInTree(m_hlslSourceDir);
     }
 }
 
@@ -409,13 +519,12 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     if (m_scriptCompiler.GetState() == Compiler::State::Building) return;
     if (m_scriptCompilePending) return;
 
-    // Scripts ディレクトリの最終変更時刻を確認する
-    WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (!GetFileAttributesExW(m_scriptsSourceDir.wstring().c_str(), GetFileExInfoStandard, &info))
+    // Scripts ツリー全体の最終変更時刻を確認する。
+    const FILETIME ft = GetLatestWriteTimeInTree(m_scriptsSourceDir);
+    if (IsEmptyFileTime(ft))
         return;
 
-    const FILETIME& ft = info.ftLastWriteTime;
-    if (m_lastScriptWriteTime.dwLowDateTime == 0 && m_lastScriptWriteTime.dwHighDateTime == 0) {
+    if (IsEmptyFileTime(m_lastScriptWriteTime)) {
         m_lastScriptWriteTime = ft;
         return;
     }
@@ -456,6 +565,7 @@ void EditorApp::TickScriptCompile()
         //      ハードコードすると GameHub プロジェクト (MyGameScripts 等) で壊れる。
         config.target        = m_scriptDllPath.stem().string();
         config.configuration = "Debug";  // WHY: エディタは常に Debug DLL を使う
+        config.skipDeps      = true;     // WHY: エディタがエンジン DLL をロック中のため依存再ビルドをスキップ
 
         if (!m_scriptCompiler.Start(config)) {
             m_ctx.scriptReloadBusy = false;
@@ -475,11 +585,28 @@ void EditorApp::TickScriptCompile()
     if (m_scriptCompiler.GetState() == Compiler::State::Done) {
         m_ctx.scriptReloadBusy = true;
         SetHotReloadState(EditorContext::HotReloadState::Reloading, "Scripts: reloading...");
+
+        // リロード前に選択中エンティティの instanceId を保存する。
+        // WHY: Reload() はシーンを move で置き換えるため EntityID が変わるが、
+        //      instanceId (UUID v4) はシリアライズ経由で保持されるため復元に使える。
+        std::vector<std::string> savedGuids;
+        if (m_ctx.activeScene) {
+            for (auto id : m_ctx.selectedEntities) {
+                if (auto* go = m_ctx.activeScene->GetGameObject(id))
+                    savedGuids.push_back(go->instanceId);
+            }
+        }
+
         if (m_ctx.activeScene && m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)) {
             m_ctx.selectedEntities.clear();
+            for (const auto& guid : savedGuids) {
+                if (auto* go = scene::GameObject::FindByGuid(guid))
+                    m_ctx.selectedEntities.push_back(go->GetID());
+            }
             SetHotReloadState(EditorContext::HotReloadState::Done, "Scripts: hot reload complete");
             m_ctx.hotReloadDoneTimer = 3.0f;
         } else {
+            m_ctx.selectedEntities.clear();
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: reload failed");
             m_ctx.hotReloadDoneTimer = 5.0f;
         }
@@ -491,6 +618,7 @@ void EditorApp::TickScriptCompile()
     if (m_scriptCompiler.GetState() == Compiler::State::Failed) {
         const std::string msg = "Scripts: compile error (exit=" +
                                 std::to_string(m_scriptCompiler.GetExitCode()) + ")";
+        FBZZ_LOG_ERROR("ScriptDll: %s\n%s", msg.c_str(), m_scriptCompiler.GetLog().c_str());
         SetHotReloadState(EditorContext::HotReloadState::Failed, msg);
         m_ctx.hotReloadDoneTimer = 8.0f;
         m_scriptCompiler.Reset();
@@ -510,12 +638,11 @@ void EditorApp::CheckHlslDirty()
     if (m_hlslCompiler.GetState() == Compiler::State::Building) return;
     if (m_hlslCompilePending) return;
 
-    WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (!GetFileAttributesExW(m_hlslSourceDir.wstring().c_str(), GetFileExInfoStandard, &info))
+    const FILETIME ft = GetLatestWriteTimeInTree(m_hlslSourceDir);
+    if (IsEmptyFileTime(ft))
         return;
 
-    const FILETIME& ft = info.ftLastWriteTime;
-    if (m_lastHlslWriteTime.dwLowDateTime == 0 && m_lastHlslWriteTime.dwHighDateTime == 0) {
+    if (IsEmptyFileTime(m_lastHlslWriteTime)) {
         m_lastHlslWriteTime = ft;
         return;
     }
@@ -567,6 +694,12 @@ void EditorApp::TickHlslCompile()
     }
 
     if (m_hlslCompiler.GetState() == Compiler::State::Done) {
+        if (!SyncCompiledShadersToProject(m_hlslSourceDir, m_ctx.projectRoot)) {
+            FBZZ_LOG_WARN("HLSL: compiled CSO sync failed; renderer may still use stale shader binaries");
+        }
+        if (!SyncCompiledShadersToRuntimeAssets(m_hlslSourceDir)) {
+            FBZZ_LOG_WARN("HLSL: runtime CSO sync failed; renderer may still use stale shader binaries");
+        }
         if (renderer::ResourceManager::Active())
             renderer::ResourceManager::Active()->ReloadAllShaders();
         SetHotReloadState(EditorContext::HotReloadState::Done, "HLSL: shader reload complete");

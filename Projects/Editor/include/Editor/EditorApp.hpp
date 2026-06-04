@@ -115,7 +115,7 @@ private:
     ScriptDllLoader          m_scriptDll;
     std::filesystem::path    m_scriptDllPath;      // SandboxScripts.dll のビルド出力パス
     std::filesystem::path    m_scriptsSourceDir;   // Scripts/ ソースディレクトリ (変更検知用)
-    FILETIME                 m_lastScriptWriteTime = {};  // Scripts/ ディレクトリの最終変更時刻
+    FILETIME                 m_lastScriptWriteTime = {};  // Scripts/ ツリー内で最も新しい更新時刻
     Compiler                 m_scriptCompiler;
     bool                     m_scriptCompilePending = false; // 変更検知からビルド開始待ち
     float                    m_scriptDebounceTimer  = 0.0f;  // デバウンス用タイマー (秒)
@@ -123,7 +123,7 @@ private:
     // HLSL ホットリロード
     std::filesystem::path    m_hlslSourceDir;      // Assets/shaders/ ディレクトリ
     std::filesystem::path    m_compileShadersScript; // compile_shaders.bat パス
-    FILETIME                 m_lastHlslWriteTime = {};
+    FILETIME                 m_lastHlslWriteTime = {}; // HLSL ツリー内で最も新しい更新時刻
     Compiler                 m_hlslCompiler;
     bool                     m_hlslCompilePending = false;
     float                    m_hlslDebounceTimer  = 0.0f;
