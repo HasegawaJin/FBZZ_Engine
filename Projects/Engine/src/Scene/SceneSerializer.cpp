@@ -832,6 +832,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ccTbl.insert("jumpGroundIgnoreTime",  (double)cc->jumpGroundIgnoreTime);
             ccTbl.insert("groundedVelSnap",       (double)cc->groundedVelSnap);
             ccTbl.insert("intentionalJumpMaxTime",(double)cc->intentionalJumpMaxTime);
+            // WHY: isGrounded はゲームプレイ中に変化するランタイム状態だが、
+            //      スナップショットに含めることでエディタ編集中の初期状態を正確に復元する。
+            //      (デフォルト true のため、シリアライズしなくても起動時は問題ないが
+            //       エディタで false に変更した場合に備えて保存する)
+            ccTbl.insert("isGrounded",            cc->isGrounded);
             goTbl.insert("CharacterControllerComponent", std::move(ccTbl));
         }
 
@@ -1589,6 +1594,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.jumpGroundIgnoreTime  = (float)(*ccTbl)["jumpGroundIgnoreTime"].value_or(0.12);
             cc.groundedVelSnap       = (float)(*ccTbl)["groundedVelSnap"].value_or(0.35);
             cc.intentionalJumpMaxTime= (float)(*ccTbl)["intentionalJumpMaxTime"].value_or(1.0);
+            cc.isGrounded            = (*ccTbl)["isGrounded"].value_or(true);
             go.AddComponent<CharacterControllerComponent>(std::move(cc));
         }
 
