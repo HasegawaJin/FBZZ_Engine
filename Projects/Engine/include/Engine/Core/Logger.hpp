@@ -43,14 +43,16 @@ private:
 
 #define FBZZ_FILENAME (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
 
+// FBZZ_LOG_DEBUG は Release で無効 (パフォーマンスに敏感な詳細ログ)
+// INFO / WARN / ERROR は Debug・Release 共通で有効
+// WHY: Unity のエディタと同様に、リリースビルドでも重要なイベント・警告・
+//      エラーをログで確認できるようにする。DEBUG だけを開発専用とする。
 #ifdef NDEBUG
     #define FBZZ_LOG_DEBUG(...) ((void)0)
-    #define FBZZ_LOG_INFO(...)  ((void)0)
-    #define FBZZ_LOG_WARN(...)  ((void)0)
-    #define FBZZ_LOG_ERROR(...) ((void)0)
 #else
     #define FBZZ_LOG_DEBUG(...) ::fbzz::core::Logger::DebugAt(FBZZ_FILENAME, __LINE__, __VA_ARGS__)
-    #define FBZZ_LOG_INFO(...)  ::fbzz::core::Logger::InfoAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
-    #define FBZZ_LOG_WARN(...)  ::fbzz::core::Logger::WarnAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
-    #define FBZZ_LOG_ERROR(...) ::fbzz::core::Logger::ErrorAt(FBZZ_FILENAME, __LINE__, __VA_ARGS__)
 #endif
+
+#define FBZZ_LOG_INFO(...)  ::fbzz::core::Logger::InfoAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
+#define FBZZ_LOG_WARN(...)  ::fbzz::core::Logger::WarnAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
+#define FBZZ_LOG_ERROR(...) ::fbzz::core::Logger::ErrorAt(FBZZ_FILENAME, __LINE__, __VA_ARGS__)
