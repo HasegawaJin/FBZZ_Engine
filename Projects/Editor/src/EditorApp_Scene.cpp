@@ -424,7 +424,8 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     m_lastScriptWriteTime  = ft;
     m_scriptCompilePending = true;
     m_scriptDebounceTimer  = 0.5f;  // 500ms デバウンス
-    FBZZ_LOG_INFO("ScriptDll: script change detected; rebuilding after 500 ms");
+    FBZZ_LOG_DEBUG("ScriptDll: change detected in %s; rebuilding after 500 ms debounce",
+                   m_ctx.scriptsSourceDir.c_str());
 }
 
 void EditorApp::TickScriptCompile()
@@ -456,6 +457,7 @@ void EditorApp::TickScriptCompile()
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: failed to start compile");
             return;
         }
+        FBZZ_LOG_DEBUG("ScriptDll: starting compile: target=%s cfg=Debug", config.target.c_str());
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: compiling...");
     }
 
@@ -513,7 +515,8 @@ void EditorApp::CheckHlslDirty()
     m_lastHlslWriteTime  = ft;
     m_hlslCompilePending = true;
     m_hlslDebounceTimer  = 0.5f;
-    FBZZ_LOG_INFO("HLSL: shader file change detected; recompiling after 500 ms");
+    FBZZ_LOG_DEBUG("HLSL: change detected in %s; recompiling after 500 ms debounce",
+                   m_ctx.hlslSourceDir.c_str());
 }
 
 void EditorApp::TickHlslCompile()

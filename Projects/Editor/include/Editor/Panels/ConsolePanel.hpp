@@ -20,6 +20,7 @@ private:
 
     ConsoleSink& m_sink;
 
+    bool m_showDebug  = false;
     bool m_showInfo   = true;
     bool m_showWarn   = true;
     bool m_showError  = true;
