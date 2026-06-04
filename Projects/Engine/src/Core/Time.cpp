@@ -69,6 +69,36 @@ void Time::SetTimeScale(float scale)
     s_timeScale = std::max(0.0f, scale);
 }
 
+float Time::DeltaTime()
+{
+    return s_deltaTime;
+}
+
+float Time::UnscaledDeltaTime()
+{
+    return s_rawDeltaTime;
+}
+
+float Time::TotalTime()
+{
+    return s_totalTime;
+}
+
+uint64_t Time::FrameCount()
+{
+    return s_frameCount;
+}
+
+float Time::TimeScale()
+{
+    return s_timeScale;
+}
+
+int Time::TargetFps()
+{
+    return s_targetFps;
+}
+
 void Time::SetTargetFps(int fps)
 {
     if (fps <= 0)
