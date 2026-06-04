@@ -82,39 +82,18 @@ public:
     void OnStart() override
     {
         auto* rb = scene.GetComponent<RigidBodyComponent>();
-        FBZZ_LOG_DEBUG("PlayerController: OnStart rb=%s rigidBody=%s",
-            rb ? "ok" : "NULL",
-            (rb && rb->rigidBody) ? "ok" : "NULL");
         if (!rb || !rb->rigidBody) return;
         // WHY: 接触摩擦トルクでカプセルが傾くと接触法線が変化し、Baumgarte 補正が
         //      水平成分を持って前後ジッターを引き起こす。全軸 freeze でこれを防ぐ。
         rb->rigidBody->SetFreezeRotation({ true, true, true });
-        FBZZ_LOG_DEBUG("PlayerController: OnStart complete – FreezeRotation set");
-        m_updateFrameCount = 0;
     }
 
     void OnUpdate(float dt) override
     {
-        if (!transform) {
-            FBZZ_LOG_DEBUG("PlayerController: OnUpdate skip – transform null");
-            return;
-        }
+        if (!transform) return;
         auto* cc  = scene.GetComponent<CharacterControllerComponent>();
         auto* rb  = scene.GetComponent<RigidBodyComponent>();
         auto* phy = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
-
-        // 最初の数フレームだけ詳細ログを出す
-        const bool verbose = m_updateFrameCount < 5;
-        if (verbose) {
-            FBZZ_LOG_DEBUG("PlayerController: OnUpdate #%d  cc=%s rb=%s phy=%s",
-                m_updateFrameCount,
-                cc  ? "ok"   : "NULL",
-                rb  ? "ok"   : "NULL",
-                phy ? "ok"   : "NULL");
-            if (rb && !rb->rigidBody)
-                FBZZ_LOG_DEBUG("PlayerController:   rb->rigidBody is null (enabled=%d)", rb->enabled);
-        }
-        ++m_updateFrameCount;
 
         if (cc) {
             cc->Tick(phy, dt);
@@ -132,15 +111,6 @@ public:
         if (input.GetKey((KeyCode)keyRight))    move += right;
         if (input.GetKey((KeyCode)keyLeft))     move -= right;
 
-        if (verbose) {
-            FBZZ_LOG_DEBUG("PlayerController:   W=%d A=%d S=%d D=%d  move=(%.2f,%.2f,%.2f)",
-                (int)input.GetKey((KeyCode)keyForward),
-                (int)input.GetKey((KeyCode)keyLeft),
-                (int)input.GetKey((KeyCode)keyBackward),
-                (int)input.GetKey((KeyCode)keyRight),
-                move.x, move.y, move.z);
-        }
-
         if (move.LengthSq() <= EPSILON) {
             if (phy) {
                 // WHAT: 入力がないフレームでは XZ 速度だけを止め、Y 速度は落下・接地判定に残す。
@@ -152,7 +122,7 @@ public:
             return;
         }
 
-        const float   speed     = input.GetKey((KeyCode)keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
+        const float speed = input.GetKey((KeyCode)keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
         const Vector3 direction = move.Normalized();
         animator.SetFloat(paramSpeed, speed);
 
@@ -164,13 +134,10 @@ public:
             vel.x = direction.x * speed;
             vel.z = direction.z * speed;
             phy->SetVelocity(vel);
-            FBZZ_LOG_DEBUG("PlayerController: SetVelocity (%.2f, %.2f, %.2f)",
-                vel.x, vel.y, vel.z);
         } else {
             // RigidBody を持たないテスト用 GameObject では Transform 移動にフォールバックする。
             transform->localPosition += direction * (speed * dt);
             transform->position       = transform->localPosition;
-            FBZZ_LOG_DEBUG("PlayerController: transform fallback move (no RigidBody)");
         }
 
         if (rotateToMoveDirection) {
@@ -193,8 +160,6 @@ public:
     }
 
 private:
-    int m_updateFrameCount = 0;
-
     void HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
     {
         if (!cc || !cc->isGrounded || !phy) return;
