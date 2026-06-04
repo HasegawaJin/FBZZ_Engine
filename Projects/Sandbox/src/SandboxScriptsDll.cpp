@@ -1,0 +1,97 @@
+// FBZZ Engine
+// SandboxScriptsDll.cpp | sandbox
+// スクリプト DLL のエントリポイント
+//
+// WHY (コールバック渡し設計):
+//   fbzz_engine は静的ライブラリとして EXE と DLL 双方にリンクされる。
+//   静的ライブラリの関数スコープ static (ScriptFactory::Registry()) は
+//   リンク先ごとに別インスタンスとなるため、DLL から直接 ScriptFactory::Register() を
+//   呼んでも EXE 側のレジストリには登録されない。
+//   そこで EXE が SandboxScripts_Register() に ScriptFactory::Register を関数ポインタとして渡し、
+//   DLL はそのポインタ経由で EXE のレジストリに書き込む。
+
+// @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+// WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
+//      Assets/Scripts/Foo.hpp に解決される。
+#include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/PlayerWorldSpaceUIComponent.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
+// @@FBZZ_SCRIPT_INCLUDES_END
+
+// WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。
+//      スクリプトヘッダは Script.hpp しかインクルードしないため、
+//      DLL エントリポイントで Scene.hpp を明示的にインクルードして
+//      全 GetComponent 特殊化をこの TU でインスタンス化する。
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Script.hpp>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+// DLL API マクロ
+#ifdef SANDBOXSCRIPTS_EXPORTS
+#  define SANDBOXSCRIPTS_API __declspec(dllexport)
+#else
+#  define SANDBOXSCRIPTS_API __declspec(dllimport)
+#endif
+
+using ScriptRegisterFn = std::function<void(
+    const std::string&,
+    std::function<std::unique_ptr<fbzz::scene::Script>()>
+)>;
+
+namespace {
+
+struct ScriptEntry {
+    std::string name;
+    std::function<std::unique_ptr<fbzz::scene::Script>()> factory;
+};
+
+// WHY: DLL 内に登録済みスクリプト一覧を保持することで、
+//      SandboxScripts_Register() を複数回呼んでも正しく再登録できる。
+const std::vector<ScriptEntry>& AllEntries()
+{
+    // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+    static const std::vector<ScriptEntry> entries = {
+        { ::sandbox::PlayerControllerComponent::TYPE_NAME,
+          []() { return std::make_unique<::sandbox::PlayerControllerComponent>(); } },
+        { ::sandbox::PlayerWorldSpaceUIComponent::TYPE_NAME,
+          []() { return std::make_unique<::sandbox::PlayerWorldSpaceUIComponent>(); } },
+        { ::sandbox::TpsCameraComponent::TYPE_NAME,
+          []() { return std::make_unique<::sandbox::TpsCameraComponent>(); } },
+    };
+    // @@FBZZ_SCRIPT_ENTRIES_END
+    return entries;
+}
+
+} // namespace
+
+extern "C" {
+
+// DLL に登録されているスクリプト数を返す
+SANDBOXSCRIPTS_API int SandboxScripts_Count()
+{
+    return static_cast<int>(AllEntries().size());
+}
+
+// i 番目のスクリプト型名を返す
+SANDBOXSCRIPTS_API const char* SandboxScripts_TypeName(int i)
+{
+    const auto& entries = AllEntries();
+    if (i < 0 || i >= static_cast<int>(entries.size())) return "";
+    return entries[static_cast<size_t>(i)].name.c_str();
+}
+
+// EXE 側の ScriptFactory::Register を関数ポインタとして受け取り、全スクリプトを登録する。
+// WHY: DLL 内で ScriptFactory::Register() を直接呼ぶと DLL のレジストリコピーに登録されてしまう。
+//      EXE 側の Register 関数を引数で受け取ることで EXE のレジストリへの登録を保証する。
+SANDBOXSCRIPTS_API void SandboxScripts_Register(
+    void(*registerFn)(const char* typeName, std::function<std::unique_ptr<fbzz::scene::Script>()>))
+{
+    if (!registerFn) return;
+    for (const auto& entry : AllEntries())
+        registerFn(entry.name.c_str(), entry.factory);
+}
+
+} // extern "C"

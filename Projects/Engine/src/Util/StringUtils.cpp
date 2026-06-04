@@ -85,4 +85,9 @@ std::string StringUtils::ToNarrow(const std::wstring& s)
     return out;
 }
 
+std::string StringUtils::PathToUtf8(const std::filesystem::path& path)
+{
+    return ToNarrow(path.wstring());
+}
+
 } // namespace fbzz::util

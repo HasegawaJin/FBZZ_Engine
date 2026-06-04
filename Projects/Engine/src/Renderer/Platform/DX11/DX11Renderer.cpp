@@ -93,7 +93,7 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
     InitSamplers();
 
-    FBZZ_LOG_INFO("DX11Renderer 初期化完了: %ux%u", width, height);
+    FBZZ_LOG_INFO("DX11Renderer initialized: %ux%u", width, height);
     return true;
 }
 
@@ -103,7 +103,7 @@ void DX11Renderer::Shutdown()
     // 解放順序は依存関係の逆順: Context → SwapChain → Device。
     // ComPtr のデストラクタが自動でこの順序を保証するため、明示的な Release() は不要。
     m_context->ClearState();
-    FBZZ_LOG_INFO("DX11Renderer シャットダウン");
+    FBZZ_LOG_INFO("DX11Renderer shutdown");
 }
 
 // =============================================================================
@@ -395,7 +395,7 @@ void DX11Renderer::Resize(uint32_t width, uint32_t height)
     m_depthStencilBuffer.Reset();
 
     HRESULT hr = m_swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("ResizeBuffers 失敗: 0x%08X", (unsigned)hr); return; }
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("ResizeBuffers failed: 0x%08X", (unsigned)hr); return; }
 
     // 新しいサイズで RTV・DSV を再生成して OM に再バインドする
     if (!CreateRenderTargetView()) return;

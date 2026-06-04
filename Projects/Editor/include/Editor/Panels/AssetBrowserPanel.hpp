@@ -25,12 +25,26 @@ private:
         std::string name;
         std::string ext;    // lowercase, e.g. ".hlsl"
         bool        isDir = false;
+        bool        isMount = false;
+    };
+
+    struct AssetMount {
+        std::string name;
+        std::string path;
     };
 
     void OnRenderContent(EditorContext& ctx) override;
     void RefreshDirectory();
     void DrawFolderTree(const std::string& dirPath, EditorContext& ctx);
     void DrawEntry(const Entry& e, EditorContext& ctx);
+    void DrawCreateMenu(EditorContext& ctx);
+    void UpdateMounts(const EditorContext& ctx);
+
+    [[nodiscard]] std::string DisplayPath() const;
+    [[nodiscard]] std::string ParentPath() const;
+    [[nodiscard]] std::string ResolveFallbackAssetDir(const std::string& childDirName) const;
+    [[nodiscard]] bool        IsMountedRoot(const std::string& path) const;
+    [[nodiscard]] bool        IsRootOrMountedPath(const std::string& path) const;
 
     static ImVec4      EntryColor(const Entry& e);
     static const char* EntryLabel(const Entry& e);
@@ -40,6 +54,7 @@ private:
     std::string           m_rootPath;
     std::string           m_currentPath;
     std::string           m_pendingNavigate;
+    std::vector<AssetMount> m_mounts;
     std::vector<Entry>    m_entries;
     std::array<char, 256> m_searchBuf = {};
     float                 m_iconSize  = 64.0f;

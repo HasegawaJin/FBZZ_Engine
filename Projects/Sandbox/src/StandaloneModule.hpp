@@ -3,7 +3,7 @@
 // Sandbox のスタンドアロンゲーム実行 Module
 #pragma once
 
-#include "LaunchProject.hpp"
+#include <Engine/ProjectResolver.hpp>
 
 #include <Engine/Core/IModule.hpp>
 #include <Engine/ProjectSettings.hpp>

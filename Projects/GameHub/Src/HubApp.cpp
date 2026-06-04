@@ -4,6 +4,7 @@
 #include "HubApp.hpp"
 #include "MigrationManager.hpp"
 #include "ProcessLauncher.hpp"
+#include "Util/HubUtil.hpp"
 
 #include <Windows.h>
 #include <Shellapi.h>
@@ -21,6 +22,8 @@
 namespace fbzz::hub {
 
 namespace {
+
+namespace util = fbzz::hub::util;
 
 constexpr float SIDEBAR_WIDTH = 160.0f;
 constexpr float TOOLBAR_HEIGHT = 40.0f;
@@ -44,37 +47,9 @@ int ParseVersionMajor(const std::string& version)
     return value;
 }
 
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) {
-        return std::filesystem::path(text).wstring();
-    }
-
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-std::string WideToUtf8(const std::wstring& text)
-{
-    if (text.empty()) return {};
-
-    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) {
-        return std::filesystem::path(text).string();
-    }
-
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
-}
-
 std::filesystem::path Utf8ToPath(const std::string& text)
 {
-    return std::filesystem::path(Utf8ToWide(text));
+    return std::filesystem::path(util::Utf8ToWide(text));
 }
 
 std::string ToStoredPath(const std::filesystem::path& path)
@@ -82,7 +57,7 @@ std::string ToStoredPath(const std::filesystem::path& path)
     std::error_code ec;
     const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
     const std::filesystem::path normalized = ec ? path : absolute.lexically_normal();
-    return WideToUtf8(normalized.wstring());
+    return util::WideToUtf8(normalized.wstring());
 }
 
 bool SelectFolder(const wchar_t* title, std::string& outPath)
@@ -103,7 +78,7 @@ bool SelectFolder(const wchar_t* title, std::string& outPath)
         return false;
     }
 
-    outPath = WideToUtf8(path);
+    outPath = util::WideToUtf8(path);
     return true;
 }
 
@@ -113,13 +88,6 @@ std::string ToLower(std::string text)
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     }
     return text;
-}
-
-std::filesystem::path GetExecutableDirectory()
-{
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return std::filesystem::path(buffer).parent_path();
 }
 
 bool IsEngineRoot(const std::filesystem::path& path)
@@ -142,7 +110,7 @@ std::string ResolveEngineRootForTemplate(const HubConfig& config)
         return current.generic_string();
     }
 
-    current = GetExecutableDirectory();
+    current = util::GetExecutableDirectory();
     for (int i = 0; i < 8 && !current.empty(); ++i) {
         if (IsEngineRoot(current)) {
             return current.generic_string();
@@ -159,7 +127,7 @@ void ApplyEngineEnvironment(const std::string& engineRoot)
         return;
     }
 
-    const std::wstring rootW = Utf8ToWide(engineRoot);
+    const std::wstring rootW = util::Utf8ToWide(engineRoot);
     SetEnvironmentVariableW(L"FBZZ_ENGINE_ROOT", rootW.c_str());
 
     HKEY key{};
@@ -632,7 +600,7 @@ void HubApp::RemoveProject(const ProjectEntry& project)
 
 void HubApp::RevealProject(const ProjectEntry& project)
 {
-    const std::wstring path = Utf8ToWide(project.path);
+    const std::wstring path = util::Utf8ToWide(project.path);
     ShellExecuteW(nullptr, L"explore", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 

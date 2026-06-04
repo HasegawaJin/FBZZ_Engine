@@ -54,7 +54,7 @@ bool Application::Init(const Window::Config& windowConfig) {
 
     m_sceneManager = std::make_unique<scene::SceneManager>();
 
-    FBZZ_LOG_INFO("Application 起動: %ux%u", m_window->GetWidth(), m_window->GetHeight());
+    FBZZ_LOG_INFO("Application started: %ux%u", m_window->GetWidth(), m_window->GetHeight());
     return true;
 }
 
@@ -63,7 +63,7 @@ void Application::Shutdown() {
     if (m_window)
         m_window->Shutdown();
     m_memorySystem.Shutdown();
-    FBZZ_LOG_INFO("Application 終了 (フレーム数: %llu)", Time::FrameCount());
+    FBZZ_LOG_INFO("Application shutdown (frames: %llu)", Time::FrameCount());
     timeEndPeriod(1);
 }
 

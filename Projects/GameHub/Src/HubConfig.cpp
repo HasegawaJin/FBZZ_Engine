@@ -3,6 +3,8 @@
 // Hub settings TOML persistence
 #include "HubConfig.hpp"
 
+#include "Util/HubUtil.hpp"
+
 #include <Windows.h>
 #include <toml++/toml.hpp>
 #include <algorithm>
@@ -13,6 +15,8 @@
 namespace fbzz::hub {
 
 namespace {
+
+namespace util = fbzz::hub::util;
 
 std::string ReadText(const std::filesystem::path& path)
 {
@@ -33,43 +37,15 @@ bool WriteText(const std::filesystem::path& path, const std::string& text)
     return static_cast<bool>(file);
 }
 
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) {
-        return std::filesystem::path(text).wstring();
-    }
-
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-std::string WideToUtf8(const std::wstring& text)
-{
-    if (text.empty()) return {};
-
-    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) {
-        return std::filesystem::path(text).string();
-    }
-
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
-}
-
 std::string NormalizeProjectPath(const std::string& path)
 {
     if (path.empty()) return {};
 
     std::error_code ec;
-    const std::filesystem::path source(Utf8ToWide(path));
+    const std::filesystem::path source(util::Utf8ToWide(path));
     const std::filesystem::path absolute = std::filesystem::absolute(source, ec);
     const std::filesystem::path normalized = ec ? source : absolute.lexically_normal();
-    return WideToUtf8(normalized.wstring());
+    return util::WideToUtf8(normalized.wstring());
 }
 
 } // namespace
