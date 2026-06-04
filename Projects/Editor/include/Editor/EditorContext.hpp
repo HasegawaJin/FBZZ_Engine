@@ -29,9 +29,10 @@ struct EditorContext {
     std::string       standaloneTargetName = "SandboxStandalone";
 
     // ScriptCodeGen / ScriptDllLoader が使うソースパス (InitScriptDll で設定)
-    std::string       scriptsSourceDir;   // Projects/Sandbox/src/Scripts/ の絶対パス
-    std::string       scriptsDllCppPath;  // SandboxScriptsDll.cpp の絶対パス
-    std::string       hlslSourceDir;      // Assets/shaders/ の絶対パス
+    std::string       scriptsSourceDir;    // Assets/Scripts/ の絶対パス
+    std::string       scriptsDllCppPath;   // SandboxScriptsDll.cpp の絶対パス (DLL 登録)
+    std::string       scriptsStaticCppPath; // SandboxScripts.cpp の絶対パス (EXE 静的登録)
+    std::string       hlslSourceDir;       // Assets/shaders/ の絶対パス
     std::string       currentScenePath;
     bool              sceneDirty = false;
 

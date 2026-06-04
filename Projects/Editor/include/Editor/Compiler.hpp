@@ -38,6 +38,9 @@ public:
     /// 実行中ビルドを強制終了し、Cancelled へ遷移する。
     void Cancel();
 
+    /// Done / Failed / Cancelled の後、次のビルドに備えて Idle へ戻す。
+    void Reset() { if (m_state != State::Building) m_state = State::Idle; }
+
     State              GetState()    const { return m_state; }
     const std::string& GetLog()      const { return m_log; }
     int                GetExitCode() const { return m_exitCode; }

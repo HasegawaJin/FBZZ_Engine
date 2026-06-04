@@ -326,10 +326,12 @@ void EditorApp::InitScriptDll()
         for (char& c : s) if (c == '\\') c = '/';
         return s;
     };
-    m_ctx.scriptsSourceDir  = WideToUtf8Local(m_scriptsSourceDir);
-    m_ctx.scriptsDllCppPath = WideToUtf8Local(
+    m_ctx.scriptsSourceDir    = WideToUtf8Local(m_scriptsSourceDir);
+    m_ctx.scriptsDllCppPath   = WideToUtf8Local(
         engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScriptsDll.cpp");
-    m_ctx.hlslSourceDir     = WideToUtf8Local(m_hlslSourceDir);
+    m_ctx.scriptsStaticCppPath = WideToUtf8Local(
+        engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScripts.cpp");
+    m_ctx.hlslSourceDir       = WideToUtf8Local(m_hlslSourceDir);
 
     // 初回ロード
     if (std::filesystem::exists(m_scriptDllPath))
@@ -445,7 +447,9 @@ void EditorApp::TickScriptCompile()
         config.cmakeExe      = toolchain.cmakeExe;
         config.buildDir      = toolchain.buildDir;
         config.exePath       = m_scriptDllPath;
-        config.target        = "SandboxScripts";
+        // WHY: DLL ファイル名 (例: SandboxScripts.dll) から cmake ターゲット名を導出する。
+        //      ハードコードすると GameHub プロジェクト (MyGameScripts 等) で壊れる。
+        config.target        = m_scriptDllPath.stem().string();
         config.configuration = "Debug";  // WHY: エディタは常に Debug DLL を使う
 
         if (!m_scriptCompiler.Start(config)) {
@@ -470,8 +474,7 @@ void EditorApp::TickScriptCompile()
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: reload failed");
             m_ctx.hotReloadDoneTimer = 5.0f;
         }
-        // Compiler を Idle に戻す (再使用のため)
-        // WHY: Compiler は Done 状態のまま残るため、明示的に次回ビルドに備えてリセットする必要がある
+        m_scriptCompiler.Reset();
         return;
     }
 
@@ -480,6 +483,7 @@ void EditorApp::TickScriptCompile()
                                 std::to_string(m_scriptCompiler.GetExitCode()) + ")";
         SetHotReloadState(EditorContext::HotReloadState::Failed, msg);
         m_ctx.hotReloadDoneTimer = 8.0f;
+        m_scriptCompiler.Reset();
     }
 }
 
@@ -555,6 +559,7 @@ void EditorApp::TickHlslCompile()
             renderer::ResourceManager::Active()->ReloadAllShaders();
         SetHotReloadState(EditorContext::HotReloadState::Done, "HLSL: shader reload complete");
         m_ctx.hotReloadDoneTimer = 3.0f;
+        m_hlslCompiler.Reset();
         return;
     }
 
@@ -563,6 +568,7 @@ void EditorApp::TickHlslCompile()
                           "HLSL: compile error (exit=" +
                           std::to_string(m_hlslCompiler.GetExitCode()) + ")");
         m_ctx.hotReloadDoneTimer = 8.0f;
+        m_hlslCompiler.Reset();
     }
 }
 
