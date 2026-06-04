@@ -50,6 +50,7 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
+            "preLaunchTask": "CMake: Build GameHub (Debug)"
         },
         {
             "name": "Debug (FBZZEditor)",
