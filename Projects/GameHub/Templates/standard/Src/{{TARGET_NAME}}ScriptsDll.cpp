@@ -15,9 +15,6 @@
 //   3. @@FBZZ_SCRIPT_ENTRIES_BEGIN の直後に エントリを追加
 //   → Editor の AssetBrowser から "Create → C++ Script..." でも自動生成できる
 
-// @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// @@FBZZ_SCRIPT_INCLUDES_END
-
 // WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。
 //      スクリプトヘッダは Script.hpp しかインクルードしないため、
 //      DLL エントリポイントで Scene.hpp を明示的にインクルードする。
@@ -27,6 +24,9 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+// @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+// @@FBZZ_SCRIPT_INCLUDES_END
 
 #ifdef GAMESCRIPTS_EXPORTS
 #  define GAMESCRIPTS_API __declspec(dllexport)
@@ -54,19 +54,21 @@ const std::vector<ScriptEntry>& AllEntries()
 
 extern "C" {
 
-GAMESCRIPTS_API int SandboxScripts_Count()
+GAMESCRIPTS_API int FBZZScripts_Count()
 {
     return static_cast<int>(AllEntries().size());
 }
 
-GAMESCRIPTS_API const char* SandboxScripts_TypeName(int i)
+GAMESCRIPTS_API const char* FBZZScripts_TypeName(int i)
 {
     const auto& entries = AllEntries();
     if (i < 0 || i >= static_cast<int>(entries.size())) return "";
     return entries[static_cast<size_t>(i)].name.c_str();
 }
 
-GAMESCRIPTS_API void SandboxScripts_Register(
+// WHY: FBZZScripts_Register はエンジン共通のエントリポイント名。
+//      ScriptDllLoader はこの名前だけを探すため、プロジェクト固有名を使わない。
+GAMESCRIPTS_API void FBZZScripts_Register(
     void(*registerFn)(const char* typeName, std::function<std::unique_ptr<fbzz::scene::Script>()>))
 {
     if (!registerFn) return;
