@@ -124,6 +124,7 @@ struct EditorContext {
     HotReloadState hotReloadState   = HotReloadState::Idle;
     std::string    hotReloadMessage;   // StatusBar に表示するテキスト
     float          hotReloadDoneTimer = 0.0f; // Done / Failed 表示を消すカウントダウン (秒)
+    bool           scriptReloadBusy = false;  // Script DLL のビルド待ち / ロード中は Play 開始を止める
 
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings = false;

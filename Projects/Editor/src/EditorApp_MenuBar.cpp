@@ -114,7 +114,7 @@ bool PlayToolbarButton(
     const ImU32 iconColor = ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
     DrawPlayToolbarIcon(icon, min, max, iconColor);
 
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("%s", tooltip);
 
     if (!enabled)
@@ -286,6 +286,13 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     const bool isEditor = pm && pm->IsInEditor();
     const bool isPlaying = pm && pm->IsPlaying();
     const bool isPaused = pm && pm->IsPaused();
+    const bool scriptReloadBusy =
+        ctx.scriptReloadBusy ||
+        ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
+        ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
+    const char* playTooltip = scriptReloadBusy
+        ? "Scripts are compiling/reloading..."
+        : (isPaused ? "Resume from Play Mode" : "Play");
 
     const ImVec4 playColor  { 0.18f, 0.58f, 0.33f, 1.0f };
     const ImVec4 stopColor  { 0.62f, 0.20f, 0.20f, 1.0f };
@@ -293,9 +300,9 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 
     if (PlayToolbarButton(
         "##PlayModePlay",
-        isPaused ? "Resume from Play Mode" : "Play",
+        playTooltip,
         PlayToolbarIcon::Play,
-        pm && hasScene && isEditor,
+        pm && hasScene && isEditor && !scriptReloadBusy,
         isPlaying,
         playColor,
         BUTTON_SIZE)) {
