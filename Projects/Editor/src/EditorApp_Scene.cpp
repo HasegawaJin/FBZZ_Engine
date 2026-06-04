@@ -424,6 +424,8 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     m_lastScriptWriteTime  = ft;
     m_scriptCompilePending = true;
     m_scriptDebounceTimer  = 0.5f;  // 500ms デバウンス
+    m_ctx.scriptReloadBusy = true;
+    SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: waiting for changes...");
     FBZZ_LOG_DEBUG("ScriptDll: change detected in %s; rebuilding after 500 ms debounce",
                    m_ctx.scriptsSourceDir.c_str());
 }
@@ -432,6 +434,7 @@ void EditorApp::TickScriptCompile()
 {
     // デバウンスタイマーを消費してからビルド開始する
     if (m_scriptCompilePending) {
+        m_ctx.scriptReloadBusy = true;
         m_scriptDebounceTimer -= 0.016f;
         if (m_scriptDebounceTimer > 0.0f) return;
 
@@ -440,6 +443,7 @@ void EditorApp::TickScriptCompile()
         ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
             std::filesystem::path(m_ctx.projectBuildRoot));
         if (!toolchain.found) {
+            m_ctx.scriptReloadBusy = false;
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: toolchain not resolved");
             return;
         }
@@ -454,6 +458,7 @@ void EditorApp::TickScriptCompile()
         config.configuration = "Debug";  // WHY: エディタは常に Debug DLL を使う
 
         if (!m_scriptCompiler.Start(config)) {
+            m_ctx.scriptReloadBusy = false;
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: failed to start compile");
             return;
         }
@@ -462,11 +467,13 @@ void EditorApp::TickScriptCompile()
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Building) {
+        m_ctx.scriptReloadBusy = true;
         m_scriptCompiler.Tick();
         return;
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Done) {
+        m_ctx.scriptReloadBusy = true;
         SetHotReloadState(EditorContext::HotReloadState::Reloading, "Scripts: reloading...");
         if (m_ctx.activeScene && m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)) {
             m_ctx.selectedEntities.clear();
@@ -477,6 +484,7 @@ void EditorApp::TickScriptCompile()
             m_ctx.hotReloadDoneTimer = 5.0f;
         }
         m_scriptCompiler.Reset();
+        m_ctx.scriptReloadBusy = false;
         return;
     }
 
@@ -486,6 +494,7 @@ void EditorApp::TickScriptCompile()
         SetHotReloadState(EditorContext::HotReloadState::Failed, msg);
         m_ctx.hotReloadDoneTimer = 8.0f;
         m_scriptCompiler.Reset();
+        m_ctx.scriptReloadBusy = false;
     }
 }
 
