@@ -10,6 +10,9 @@
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
+#include <filesystem>
+#include <string>
+#include <system_error>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -35,6 +38,26 @@ struct D3DState {
 
 D3DState g_d3d;
 bool g_running = true;
+
+std::string ResolveJapaneseFontPath()
+{
+    // WHY: GameHub も ImGui を直接初期化するため、EditorTheme を通らない。
+    //      Windows 標準日本語フォントを使い、プロジェクト名やログの文字化けを防ぐ。
+    static constexpr const char* CANDIDATES[] = {
+        "C:/Windows/Fonts/YuGothM.ttc",
+        "C:/Windows/Fonts/meiryo.ttc",
+        "C:/Windows/Fonts/msgothic.ttc",
+    };
+
+    std::error_code ec;
+    for (const char* path : CANDIDATES) {
+        if (std::filesystem::is_regular_file(path, ec) && !ec) {
+            return path;
+        }
+        ec.clear();
+    }
+    return {};
+}
 
 HICON LoadApplicationIcon(HINSTANCE instance, int size)
 {
@@ -225,6 +248,17 @@ void InitImGui(HWND hwnd)
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = "editor_config/hub_imgui.ini";
+
+    ImFontConfig fontCfg;
+    fontCfg.OversampleH = 2;
+    fontCfg.OversampleV = 2;
+    fontCfg.PixelSnapH  = false;
+    const std::string japaneseFontPath = ResolveJapaneseFontPath();
+    if (japaneseFontPath.empty() ||
+        !io.Fonts->AddFontFromFileTTF(
+            japaneseFontPath.c_str(), 15.0f, &fontCfg, io.Fonts->GetGlyphRangesJapanese())) {
+        io.Fonts->AddFontDefault();
+    }
 
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_Init(hwnd);
