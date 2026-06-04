@@ -22,8 +22,11 @@ using RegisterFnPtr = void(*)(
     void(*)(const char*, std::function<std::unique_ptr<fbzz::scene::Script>()>)
 );
 
-// DLL エクスポート名
-constexpr const char* kRegisterFnName = "SandboxScripts_Register";
+// DLL エクスポート名 (全プロジェクト共通)
+// WHY: プロジェクト固有名 (SandboxScripts_Register 等) を使うと ScriptDllLoader が
+//      プロジェクトごとに変わる。FBZZScripts_Register をエンジン規約として統一し、
+//      任意のプロジェクトの DLL をロードできるようにする。
+constexpr const char* kRegisterFnName = "FBZZScripts_Register";
 
 // タイムスタンプ文字列を生成する (コピー先ファイル名の一部に使う)
 std::wstring MakeTimestamp()
@@ -109,6 +112,8 @@ bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& n
     // 新しい DLL をロードして ScriptFactory に再登録する
     if (!Load(newDllPath.empty() ? m_dllPath : newDllPath)) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to load the new DLL");
+        if (!SceneSerializer::Deserialize(scene, snapshot))
+            FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to restore scene after DLL load failure");
         return false;
     }
 
@@ -168,11 +173,20 @@ void ScriptDllLoader::RegisterScripts()
 {
     if (!m_hDll) return;
 
-    const auto registerFn = reinterpret_cast<RegisterFnPtr>(
+    auto registerFn = reinterpret_cast<RegisterFnPtr>(
         GetProcAddress(m_hDll, kRegisterFnName));
 
+    // WHY: FBZZScripts_Register への改名前にビルドされた DLL との後方互換。
+    //      旧エクスポート名で見つかった場合は警告してロードを続行し、クラッシュを防ぐ。
     if (!registerFn) {
-        FBZZ_LOG_ERROR("ScriptDllLoader: export %s not found", kRegisterFnName);
+        registerFn = reinterpret_cast<RegisterFnPtr>(
+            GetProcAddress(m_hDll, "SandboxScripts_Register"));
+        if (registerFn)
+            FBZZ_LOG_WARN("ScriptDllLoader: DLL は旧エクスポート名 'SandboxScripts_Register' を使用しています。Scripts DLL を再ビルドしてください。");
+    }
+
+    if (!registerFn) {
+        FBZZ_LOG_ERROR("ScriptDllLoader: export %s not found (DLL を再ビルドしてください)", kRegisterFnName);
         return;
     }
 

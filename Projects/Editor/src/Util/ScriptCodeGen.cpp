@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace fbzz::editor {
 
@@ -46,8 +47,19 @@ bool InsertAfterMarker(const std::string& path,
     if (lines.empty()) return false;
 
     for (size_t i = 0; i < lines.size(); ++i) {
-        if (lines[i].find(marker) != std::string::npos) {
-            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(i + 1), newLine);
+        const size_t first = lines[i].find_first_not_of(" \t");
+        const std::string_view line = (first == std::string::npos)
+            ? std::string_view{}
+            : std::string_view(lines[i]).substr(first);
+        const std::string expectedMarkerLine = "// " + marker;
+        if (line.starts_with(std::string_view(expectedMarkerLine))) {
+            size_t insertIndex = i + 1;
+            if (marker == "@@FBZZ_SCRIPT_ENTRIES_BEGIN" &&
+                insertIndex < lines.size() &&
+                lines[insertIndex].find("static const std::vector<ScriptEntry> entries = {") != std::string::npos) {
+                ++insertIndex;
+            }
+            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insertIndex), newLine);
             return WriteLines(path, lines);
         }
     }

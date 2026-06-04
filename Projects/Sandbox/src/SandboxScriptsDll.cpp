@@ -85,7 +85,9 @@ SANDBOXSCRIPTS_API const char* SandboxScripts_TypeName(int i)
 // EXE 側の ScriptFactory::Register を関数ポインタとして受け取り、全スクリプトを登録する。
 // WHY: DLL 内で ScriptFactory::Register() を直接呼ぶと DLL のレジストリコピーに登録されてしまう。
 //      EXE 側の Register 関数を引数で受け取ることで EXE のレジストリへの登録を保証する。
-SANDBOXSCRIPTS_API void SandboxScripts_Register(
+// WHY (関数名): FBZZScripts_Register はエンジン共通のエントリポイント名。
+//      ScriptDllLoader はこの名前だけを探すため、プロジェクト固有名を使わない。
+SANDBOXSCRIPTS_API void FBZZScripts_Register(
     void(*registerFn)(const char* typeName, std::function<std::unique_ptr<fbzz::scene::Script>()>))
 {
     if (!registerFn) return;
