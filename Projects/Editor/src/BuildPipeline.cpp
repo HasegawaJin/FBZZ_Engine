@@ -11,6 +11,7 @@
 #include <toml++/toml.hpp>
 #include <Windows.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -107,6 +108,11 @@ void BuildPipeline::Tick()
             config.target        = m_targetName;
             config.configuration = m_settings.developmentBuild ? "Debug" : "Release";
 
+            FBZZ_LOG_DEBUG("BuildPipeline: cmake=%s build=%s target=%s cfg=%s",
+                WideToUtf8(config.cmakeExe.wstring()).c_str(),
+                WideToUtf8(config.buildDir.wstring()).c_str(),
+                config.target.c_str(),
+                config.configuration.c_str());
             if (!m_compiler.Start(config)) {
                 SetFailed("Failed to start RuntimeBuild compiler.");
                 return;
@@ -124,6 +130,7 @@ void BuildPipeline::Tick()
 
         if (m_compiler.GetState() == Compiler::State::Done) {
             m_exeSrcPath = m_compiler.GetOutputExePath();
+            FBZZ_LOG_DEBUG("BuildPipeline: compile done → %s", WideToUtf8(m_exeSrcPath.wstring()).c_str());
             m_step = Step::PrepareTempDir;
         } else if (m_compiler.GetState() == Compiler::State::Failed) {
             SetFailed("RuntimeBuild compile failed. Exit code: " + std::to_string(m_compiler.GetExitCode()));
@@ -151,6 +158,14 @@ void BuildPipeline::Tick()
     // ステップを進める
     m_step = static_cast<Step>(static_cast<int>(m_step) + 1);
 
+    static constexpr const char* kStepNames[] = {
+        "Compile", "PrepareTempDir", "CopyExecutable", "CopyDlls",
+        "EnumerateAssets", "CopyAssets", "CopyProjectFiles", "WriteManifest", "CommitOutput", "Done"
+    };
+    const int stepIdx = static_cast<int>(m_step);
+    if (stepIdx >= 0 && stepIdx < static_cast<int>(std::size(kStepNames)))
+        FBZZ_LOG_DEBUG("BuildPipeline: step → %s", kStepNames[stepIdx]);
+
     // EnumerateAssets 完了後 → CopyAssets のカーソルを初期化する
     if (m_step == Step::CopyAssets) {
         BeginEnumerateAssets();
@@ -161,7 +176,7 @@ void BuildPipeline::Tick()
         m_state    = State::Done;
         m_progress = 1.0f;
         m_status   = "Build complete";
-        FBZZ_LOG_INFO("BuildPipeline: Done");
+        FBZZ_LOG_INFO("BuildPipeline: Done → %s", WideToUtf8(m_outputDir.wstring()).c_str());
     }
 }
 

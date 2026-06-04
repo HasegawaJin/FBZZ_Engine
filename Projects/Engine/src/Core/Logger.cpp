@@ -13,6 +13,7 @@
 
 namespace fbzz::core {
 
+// デフォルトは INFO。DEBUG は ConsolePanel の DEBUG チェックボックスで有効化する。
 LogLevel Logger::s_minLevel = LogLevel::INFO;
 std::vector<ILogSink*> Logger::s_sinks;
 
@@ -36,8 +37,9 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 
     const char* prefix = nullptr;
     switch (level) {
+    case LogLevel::DEBUG:     prefix = "[DEBUG] "; break;
     case LogLevel::INFO:      prefix = "[INFO]  "; break;
-    case LogLevel::WARNING:   prefix = "[WARNING]  "; break;
+    case LogLevel::WARNING:   prefix = "[WARN]  "; break;
     case LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
     }
 
@@ -68,6 +70,14 @@ void Logger::RemoveSink(ILogSink* sink)
     if (it != s_sinks.end()) s_sinks.erase(it);
 }
 
+void Logger::Debug(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::DEBUG, fmt, args);
+    va_end(args);
+}
+
 void Logger::Info(const char* fmt, ...)
 {
     va_list args;
@@ -89,6 +99,17 @@ void Logger::Error(const char* fmt, ...)
     va_list args;
     va_start(args, fmt);
     Log(LogLevel::LOG_ERROR, fmt, args);
+    va_end(args);
+}
+
+void Logger::DebugAt(const char* file, int line, const char* fmt, ...)
+{
+    char locatedFmt[1200] = {};
+    BuildLocatedFormat(locatedFmt, sizeof(locatedFmt), file, line, fmt);
+
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::DEBUG, locatedFmt, args);
     va_end(args);
 }
 

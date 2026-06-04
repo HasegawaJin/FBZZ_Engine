@@ -24,6 +24,12 @@ void ConsolePanel::OnShutdown()
 void ConsolePanel::OnRenderContent(EditorContext& /*ctx*/)
 {
     // ツールバー
+    ImGui::Checkbox("DEBUG", &m_showDebug); ImGui::SameLine();
+    if (m_showDebug)
+        core::Logger::SetMinLevel(core::LogLevel::DEBUG);
+    else
+        core::Logger::SetMinLevel(core::LogLevel::INFO);
+
     ImGui::Checkbox("INFO",  &m_showInfo);  ImGui::SameLine();
     ImGui::Checkbox("WARN",  &m_showWarn);  ImGui::SameLine();
     ImGui::Checkbox("ERROR", &m_showError); ImGui::SameLine();
@@ -37,16 +43,18 @@ void ConsolePanel::OnRenderContent(EditorContext& /*ctx*/)
     // エントリ一覧
     ImGui::BeginChild("##log", {0, 0}, false, ImGuiWindowFlags_HorizontalScrollbar);
     for (const auto& entry : m_sink.GetEntries()) {
-        if (entry.level == core::LogLevel::INFO    && !m_showInfo)  continue;
-        if (entry.level == core::LogLevel::WARNING && !m_showWarn)  continue;
+        if (entry.level == core::LogLevel::DEBUG    && !m_showDebug) continue;
+        if (entry.level == core::LogLevel::INFO     && !m_showInfo)  continue;
+        if (entry.level == core::LogLevel::WARNING  && !m_showWarn)  continue;
         if (entry.level == core::LogLevel::LOG_ERROR && !m_showError) continue;
 
         std::string filter(m_filterBuf.data());
         if (!filter.empty() && entry.message.find(filter) == std::string::npos) continue;
 
         ImVec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-        if (entry.level == core::LogLevel::WARNING)   color = { 1.0f, 0.8f, 0.2f, 1.0f };
-        if (entry.level == core::LogLevel::LOG_ERROR) color = { 1.0f, 0.3f, 0.3f, 1.0f };
+        if (entry.level == core::LogLevel::DEBUG)     color = { 0.6f, 0.6f, 0.6f, 1.0f }; // グレー
+        if (entry.level == core::LogLevel::WARNING)   color = { 1.0f, 0.8f, 0.2f, 1.0f }; // 黄
+        if (entry.level == core::LogLevel::LOG_ERROR) color = { 1.0f, 0.3f, 0.3f, 1.0f }; // 赤
 
         ImGui::TextColored(color, "%s", entry.message.c_str());
     }
