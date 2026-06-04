@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <string>
 
 namespace fbzz::core {
 
@@ -22,6 +23,30 @@ namespace {
 void BuildLocatedFormat(char* out, size_t outSize, const char* file, int line, const char* fmt)
 {
     snprintf(out, outSize, "[%s:%d] %s", file ? file : "unknown", line, fmt ? fmt : "");
+}
+
+std::string FormatLogMessage(const char* fmt, va_list args)
+{
+    if (!fmt) return {};
+
+    // WHY: MSVC の vsnprintf_s(..., _TRUNCATE, ...) は切り詰め時も -1 を返す。
+    //      cmake の長いビルドログをエラー扱いにすると肝心の診断情報が失われるため、
+    //      必要サイズを先に計算して完全なログ本文を確保する。
+    va_list countArgs;
+    va_copy(countArgs, args);
+    const int required = _vscprintf(fmt, countArgs);
+    va_end(countArgs);
+
+    if (required < 0)
+        return "[Logger format error]";
+
+    std::string message(static_cast<size_t>(required) + 1, '\0');
+    va_list writeArgs;
+    va_copy(writeArgs, args);
+    vsnprintf_s(message.data(), message.size(), _TRUNCATE, fmt, writeArgs);
+    va_end(writeArgs);
+    message.resize(static_cast<size_t>(required));
+    return message;
 }
 
 } // namespace
@@ -43,16 +68,14 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
     case LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
     }
 
-    char body[1024] = {};
-    const int written = vsnprintf_s(body, sizeof(body), _TRUNCATE, fmt, args);
-    if (written < 0)
-        snprintf(body, sizeof(body), "[Logger format error]");
+    const std::string body = FormatLogMessage(fmt, args);
 
-    char line[1200] = {};
-    snprintf(line, sizeof(line), "%s%s\n", prefix, body);
+    std::string line = prefix;
+    line += body;
+    line += '\n';
 
-    OutputDebugStringA(line);
-    printf("%s", line);
+    OutputDebugStringA(line.c_str());
+    printf("%s", line.c_str());
 
     LogEntry entry{ level, body };
     for (ILogSink* sink : s_sinks)
