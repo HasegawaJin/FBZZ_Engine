@@ -21,6 +21,7 @@
 #include <Engine/Input/Input.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -225,6 +226,8 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             break;
         }
 
+        profiler::Profiler::BeginFrame();
+
         const float dt = core::Time::DeltaTime();
         editorApp.BeginFrame();
 
@@ -403,6 +406,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         editorApp.EndFrame(renderer);
 
         renderer.EndFrame();
+        profiler::Profiler::EndFrame();
     }
 
     editorApp.Shutdown();
