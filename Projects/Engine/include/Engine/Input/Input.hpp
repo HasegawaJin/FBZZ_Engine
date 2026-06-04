@@ -17,6 +17,9 @@ public:
     // Window 生成後に一度呼ぶ
     static void Init();
 
+    // Play セッション切り替え時に入力状態を全てクリアする
+    static void Reset();
+
     // ゲームループ先頭で呼ぶ。前フレームの状態を保存する
     static void Update();
 
