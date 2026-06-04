@@ -14,19 +14,19 @@ public:
     static void Tick();
 
     // TimeScale を考慮した DeltaTime
-    static float    DeltaTime()         { return s_deltaTime; }
+    static float    DeltaTime();
     // TimeScale の影響を受けない DeltaTime (UI・エフェクト等)
-    static float    UnscaledDeltaTime() { return s_rawDeltaTime; }
+    static float    UnscaledDeltaTime();
     // 起動からの累計秒 (TimeScale 適用済み)
-    static float    TotalTime()         { return s_totalTime; }
+    static float    TotalTime();
     // 起動からの総フレーム数
-    static uint64_t FrameCount()        { return s_frameCount; }
+    static uint64_t FrameCount();
 
-    static float TimeScale()            { return s_timeScale; }
+    static float TimeScale();
     // 0.0f で停止, 0.5f でスローモーション, 1.0f が通常
     static void  SetTimeScale(float scale);
 
-    static int  TargetFps()            { return s_targetFps; }
+    static int  TargetFps();
     // 0 = 無制限, 正値 = フレームレート上限 (最低 30 FPS にクランプ)
     static void SetTargetFps(int fps);
 
