@@ -26,12 +26,15 @@ struct EditorContext {
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
+    std::string       engineRoot;          // .fbzz_proj の [engine] root (cmake configure で FBZZ_ENGINE_ROOT に使う)
     std::string       standaloneTargetName = "SandboxStandalone";
+    std::string       projectTargetName;   // .fbzz_proj の target_name (GameHub プロジェクトの識別に使う)
 
     // ScriptCodeGen / ScriptDllLoader が使うソースパス (InitScriptDll で設定)
-    std::string       scriptsSourceDir;    // Assets/Scripts/ の絶対パス
-    std::string       scriptsDllCppPath;   // SandboxScriptsDll.cpp の絶対パス (DLL 登録)
+    std::string       scriptsSourceDir;     // Assets/Scripts/ の絶対パス
+    std::string       scriptsDllCppPath;    // SandboxScriptsDll.cpp の絶対パス (DLL 登録)
     std::string       scriptsStaticCppPath; // SandboxScripts.cpp の絶対パス (EXE 静的登録)
+    std::string       scriptsDllPath;       // コンパイル済み DLL の絶対パス (BuildPipeline が配布物へコピー)
     std::string       hlslSourceDir;       // Assets/shaders/ の絶対パス
     std::string       currentScenePath;
     bool              sceneDirty = false;
