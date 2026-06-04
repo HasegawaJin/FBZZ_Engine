@@ -335,8 +335,6 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
     util::FileSystem::EnsureDirectory(SETTINGS_DIR);
     m_settings.Load(SETTINGS_PATH, m_ctx.projectRoot);
-    m_ctx.projectSettings.Load(m_projectSettingsPath);
-    core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
 
     // --- EditorSettings → EditorContext への全フィールド適用 ---------------
     // WHY: EditorSettings は TOML から読んだ raw 値を保持し、
