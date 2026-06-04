@@ -102,7 +102,7 @@ private:
     EditorSettings     m_settings;
     SceneDirtyTracker  m_dirtyTracker;
     std::string        m_projectRoot;
-    std::string        m_projectSettingsPath = "editor_config/project_settings.toml";
+    std::string        m_projectSettingsPath;
     float              m_dirtyPollTimer = 0.0f;
     bool               m_titleInitialized = false;
     bool               m_lastTitleDirty = false;
