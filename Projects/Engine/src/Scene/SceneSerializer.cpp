@@ -1987,6 +1987,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 ScriptComponent sc{};
                 sc.script = std::move(script);
                 go.AddComponent<ScriptComponent>(std::move(sc));
+            } else {
+                FBZZ_LOG_WARN("SceneSerializer: ScriptFactory could not create script type '%s'", type.c_str());
             }
         }
     }
