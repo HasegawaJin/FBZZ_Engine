@@ -4,7 +4,10 @@ file(GLOB_RECURSE ENGINE_SOURCES
     include/*.hpp
 )
 
-add_library(fbzz_engine STATIC ${ENGINE_SOURCES})
+add_library(fbzz_engine SHARED ${ENGINE_SOURCES})
+set_target_properties(fbzz_engine PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+)
 
 set(DIRECTXTEX_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/include")
 set(DIRECTXTEX_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/lib/x64/Debug/DirectXTex.lib")
