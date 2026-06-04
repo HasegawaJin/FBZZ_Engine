@@ -32,6 +32,16 @@ target_link_libraries(SandboxScripts PRIVATE fbzz_engine fbzz_physics)
 set_target_properties(SandboxScripts PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>"
 )
+if(MSVC)
+    # WHY: ホットリロード時はエディタを起動したまま SandboxScripts だけを短い間隔で再リンクする。
+    #      Visual Studio / mspdbsrv / デバッガが直前の SandboxScripts.pdb を参照していると、
+    #      LINK が同じ PDB を上書きできず LNK1201 で失敗する。
+    #      スクリプト DLL は _hot コピーをロードして差し替える運用が主目的なので、
+    #      Debug 構成ではリンク PDB を生成せず、DLL 本体の再リンク成功を優先する。
+    target_link_options(SandboxScripts PRIVATE
+        "$<$<CONFIG:Debug>:/DEBUG:NONE>"
+    )
+endif()
 
 add_executable(sandbox ${SANDBOX_SOURCES})
 add_dependencies(sandbox SandboxScripts)
