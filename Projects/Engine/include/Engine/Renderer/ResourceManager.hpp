@@ -35,6 +35,17 @@ public:
     static ResourceManager* Active();
 
     ResourceHandle<ShaderTag> LoadShader(std::string_view path);
+
+    // HLSL ホットリロード: 既にロード済みのシェーダーを CSO ファイルから再読み込みする。
+    // WHY: シェーダーを参照するすべての Material / PipelineState を更新せずに済むよう、
+    //      ResourcePool::Replace で同じハンドルのスロット内容だけを差し替える。
+    //      未ロードのパスは LoadShader() にフォールスルーする。
+    ResourceHandle<ShaderTag> ReloadShader(std::string_view path);
+
+    // HLSL ホットリロード: キャッシュ済みシェーダーをすべて再読み込みする。
+    // WHY: HLSL ファイル変更時に compile_shaders.bat が全シェーダーを再コンパイルするため、
+    //      個別パスではなく一括で呼ぶ方が効率的。
+    void ReloadAllShaders();
     ResourceHandle<TextureTag> LoadTexture(std::string_view path);
     ResourceHandle<TextureTag> CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height);
 

@@ -116,15 +116,47 @@ void StatusBar::OnRenderContent(EditorContext& ctx)
         selName = go->name.c_str();
     ImGui::Text("Sel: %s", selName);
 
-    // ── メッセージ (右端) ─────────────────────────────────────────────
-    if (!m_message.empty()) {
-        const float msgW = ImGui::CalcTextSize(m_message.c_str()).x + 8.0f;
-        const float rightX = ImGui::GetWindowWidth() - msgW;
-        if (rightX > ImGui::GetCursorPosX())
-            ImGui::SetCursorPosX(rightX);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.85f, 1.0f, 1.0f));
-        ImGui::TextUnformatted(m_message.c_str());
-        ImGui::PopStyleColor();
+    // ── ホットリロード状態 (右端) ─────────────────────────────────────
+    {
+        const char* reloadText = nullptr;
+        ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+        switch (ctx.hotReloadState) {
+        case EditorContext::HotReloadState::Compiling:
+            reloadText  = ctx.hotReloadMessage.empty() ? "Compiling..." : ctx.hotReloadMessage.c_str();
+            reloadColor = { 1.0f, 0.85f, 0.2f, 1.0f };  // 黄
+            break;
+        case EditorContext::HotReloadState::Reloading:
+            reloadText  = ctx.hotReloadMessage.empty() ? "Reloading..." : ctx.hotReloadMessage.c_str();
+            reloadColor = { 0.5f, 0.8f, 1.0f, 1.0f };   // 水色
+            break;
+        case EditorContext::HotReloadState::Done:
+            reloadText  = ctx.hotReloadMessage.empty() ? "Reload OK" : ctx.hotReloadMessage.c_str();
+            reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };  // 緑
+            break;
+        case EditorContext::HotReloadState::Failed:
+            reloadText  = ctx.hotReloadMessage.empty() ? "Reload Failed" : ctx.hotReloadMessage.c_str();
+            reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };  // 赤
+            break;
+        default: break;
+        }
+
+        if (reloadText) {
+            const float msgW   = ImGui::CalcTextSize(reloadText).x + 8.0f;
+            const float rightX = ImGui::GetWindowWidth() - msgW;
+            if (rightX > ImGui::GetCursorPosX())
+                ImGui::SetCursorPosX(rightX);
+            ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
+            ImGui::TextUnformatted(reloadText);
+            ImGui::PopStyleColor();
+        } else if (!m_message.empty()) {
+            const float msgW   = ImGui::CalcTextSize(m_message.c_str()).x + 8.0f;
+            const float rightX = ImGui::GetWindowWidth() - msgW;
+            if (rightX > ImGui::GetCursorPosX())
+                ImGui::SetCursorPosX(rightX);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.85f, 1.0f, 1.0f));
+            ImGui::TextUnformatted(m_message.c_str());
+            ImGui::PopStyleColor();
+        }
     }
 }
 

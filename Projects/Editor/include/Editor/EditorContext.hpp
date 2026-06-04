@@ -25,6 +25,13 @@ struct EditorContext {
     renderer::ResourceManager* resources = nullptr;
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
+    std::string       projectBuildRoot;
+    std::string       standaloneTargetName = "SandboxStandalone";
+
+    // ScriptCodeGen / ScriptDllLoader が使うソースパス (InitScriptDll で設定)
+    std::string       scriptsSourceDir;   // Projects/Sandbox/src/Scripts/ の絶対パス
+    std::string       scriptsDllCppPath;  // SandboxScriptsDll.cpp の絶対パス
+    std::string       hlslSourceDir;      // Assets/shaders/ の絶対パス
     std::string       currentScenePath;
     bool              sceneDirty = false;
 
@@ -110,6 +117,12 @@ struct EditorContext {
     bool showTerrainTool = true;  // Terrain Tool ウィンドウを表示する
     bool showWaterTool   = true;  // Water Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
+
+    // スクリプト DLL / HLSL ホットリロード状態 (StatusBar が表示する)
+    enum class HotReloadState { Idle, Compiling, Reloading, Done, Failed };
+    HotReloadState hotReloadState   = HotReloadState::Idle;
+    std::string    hotReloadMessage;   // StatusBar に表示するテキスト
+    float          hotReloadDoneTimer = 0.0f; // Done / Failed 表示を消すカウントダウン (秒)
 
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings = false;

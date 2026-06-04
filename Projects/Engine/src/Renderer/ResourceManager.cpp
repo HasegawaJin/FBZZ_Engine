@@ -59,6 +59,37 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
     return handle;
 }
 
+ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
+{
+    const std::string key(path);
+    auto it = m_shaderCache.find(key);
+    if (it == m_shaderCache.end())
+        return LoadShader(path);
+
+    auto newShader = m_renderer.CreateNativeShader(key);
+    if (!newShader) {
+        FBZZ_LOG_ERROR("ReloadShader failed: %s", key.c_str());
+        return it->second;
+    }
+    m_shaders.Replace(it->second, std::move(newShader));
+    return it->second;
+}
+
+void ResourceManager::ReloadAllShaders()
+{
+    size_t count = 0;
+    for (auto& [path, handle] : m_shaderCache) {
+        auto newShader = m_renderer.CreateNativeShader(path);
+        if (newShader) {
+            m_shaders.Replace(handle, std::move(newShader));
+            ++count;
+        } else {
+            FBZZ_LOG_WARN("ReloadAllShaders: failed to reload %s", path.c_str());
+        }
+    }
+    FBZZ_LOG_INFO("ResourceManager: %zu shader(s) hot-reloaded", count);
+}
+
 ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
 {
     const std::string key(path);

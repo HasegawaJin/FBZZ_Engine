@@ -33,11 +33,13 @@
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
+#ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#endif
 #include <Physics/World.hpp>
 
 #include <Windows.h>
@@ -337,7 +339,7 @@ public:
     {
         m_scene = std::make_unique<fbzz::scene::Scene>();
         const std::string scenePathUtf8 = PathToUtf8(m_project.sceneFile);
-        if (!fbzz::editor::SceneSerializer::Load(*m_scene, scenePathUtf8)) {
+        if (!fbzz::scene::SceneSerializer::LoadInPlace(*m_scene, scenePathUtf8, m_resources)) {
             FBZZ_LOG_ERROR("{{TARGET_NAME}} Standalone: シーンのロードに失敗しました: %s", scenePathUtf8.c_str());
             return false;
         }
@@ -419,6 +421,7 @@ private:
 
 /// Application の共通ループから Editor UI・PlayMode・Scene / Game ビューポート描画を駆動する Module。
 /// WHY: Editor 固有状態を Run() から切り離し、配布用 StandaloneModule と依存関係を分離しやすくする。
+#ifndef FBZZ_STANDALONE_TARGET
 class EditorModule final : public fbzz::core::IModule {
 public:
     EditorModule(fbzz::renderer::IRenderer& renderer,
@@ -703,6 +706,7 @@ private:
     float                               m_frameDt            = 0.0f;
     bool                                m_stepFrame          = false;
 };
+#endif
 
 // ============================================================
 // 起動関数
@@ -732,6 +736,11 @@ private:
 /// EditorModule を起動する。
 [[nodiscard]] int RunEditor(fbzz::core::Application& app, const LaunchProject& project)
 {
+#ifdef FBZZ_STANDALONE_TARGET
+    (void)app;
+    (void)project;
+    return 1;
+#else
     if (!app.Init()) return 1;
 
     auto& renderer = app.GetRenderer();
@@ -741,6 +750,7 @@ private:
     EditorModule module(renderer, resources, project);
     app.Run(module);
     return 0;
+#endif
 }
 
 } // namespace
@@ -771,7 +781,12 @@ int Run()
     RegisterScripts();
 
     auto& app = fbzz::core::Application::Get();
+#ifdef FBZZ_STANDALONE_TARGET
+    // WHY: 配布用 exe は Editor をリンクしないため、起動引数に関係なく Standalone として実行する。
+    const int result = RunStandalone(app, project);
+#else
     const int result = args.standalone ? RunStandalone(app, project) : RunEditor(app, project);
+#endif
 
     fbzz::asset::AssetManager::UnloadAll();
     app.Shutdown();

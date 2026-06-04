@@ -198,8 +198,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             const bool surfaceMisassigned =
                 material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
             if (surfaceMisassigned)
-                FBZZ_LOG_WARN("SkinnedMeshRenderer に Surface シェーダーが設定されています: %s"
-                              " → SkinnedPBR にフォールバック。Skinned/ 以下のシェーダーを使用してください。",
+                FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s"
+                              " -> falling back to SkinnedPBR. Use shaders under Skinned/.",
                               material->shaderPath.c_str());
             const auto skinnedShader = (!surfaceMisassigned && material->shader.IsValid())
                 ? material->shader : h.skinnedPbrShader;
@@ -326,8 +326,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const bool surfaceMisassigned =
             material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
         if (surfaceMisassigned) {
-            FBZZ_LOG_WARN("SkinnedMeshRenderer に Surface シェーダーが設定されています: %s"
-                          " → SkinnedPBR にフォールバック。Skinned/ 以下のシェーダーを使用してください。",
+            FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s"
+                          " -> falling back to SkinnedPBR. Use shaders under Skinned/.",
                           material->shaderPath.c_str());
         }
         const auto skinnedShader = (!surfaceMisassigned && material->shader.IsValid())

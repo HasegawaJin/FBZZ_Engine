@@ -6,6 +6,7 @@
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/ScriptCodeGen.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -71,7 +72,25 @@ std::string NormalizePathSeparators(std::string path)
     for (char& c : path) {
         if (c == '\\') c = '/';
     }
+    while (path.size() > 1 && path.back() == '/')
+        path.pop_back();
     return path;
+}
+
+bool SamePathText(const std::string& a, const std::string& b)
+{
+    return util::StringUtils::ToLower(NormalizePathSeparators(a))
+        == util::StringUtils::ToLower(NormalizePathSeparators(b));
+}
+
+bool IsChildPathText(const std::string& path, const std::string& root)
+{
+    const std::string normalizedPath = util::StringUtils::ToLower(NormalizePathSeparators(path));
+    std::string normalizedRoot = util::StringUtils::ToLower(NormalizePathSeparators(root));
+    if (normalizedRoot.empty()) return false;
+    if (normalizedPath == normalizedRoot) return true;
+    normalizedRoot += "/";
+    return normalizedPath.rfind(normalizedRoot, 0) == 0;
 }
 
 std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx)
@@ -103,16 +122,66 @@ std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx
 // ─────────────────────────────────────────────────────────────────────────────
 
 AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
-    : m_rootPath(rootPath), m_currentPath(rootPath) {}
+    : m_rootPath(NormalizePathSeparators(rootPath)),
+      m_currentPath(NormalizePathSeparators(rootPath)) {}
 
 void AssetBrowserPanel::OnInit(EditorContext&) { RefreshDirectory(); }
 
 void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
 {
     if (rootPath.empty() || rootPath == m_rootPath) return;
-    m_rootPath = rootPath;
-    m_currentPath = rootPath;
+    m_rootPath = NormalizePathSeparators(rootPath);
+    m_currentPath = m_rootPath;
     m_pendingNavigate.clear();
+    m_mounts.clear();
+    RefreshDirectory();
+}
+
+void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
+{
+    std::vector<AssetMount> next;
+
+    auto addMount = [&](const std::string& name, const std::string& path) {
+        if (name.empty() || path.empty() || !util::FileSystem::IsDirectory(path)) return;
+
+        const std::string normalizedPath = NormalizePathSeparators(path);
+        const std::string rootChild = NormalizePathSeparators(m_rootPath + "/" + name);
+
+        // WHY: プロジェクト Assets 側に実フォルダがある場合はそれを正とする。
+        //      ただし空フォルダだけがあるケースでは、実体側 Scripts/HLSL が見えなくなるためマウントを許可する。
+        if (util::FileSystem::IsDirectory(rootChild) &&
+            !util::FileSystem::ListAll(rootChild).empty()) {
+            return;
+        }
+        if (SamePathText(normalizedPath, m_rootPath) || IsChildPathText(m_rootPath, normalizedPath)) return;
+        for (const AssetMount& mount : next) {
+            if (SamePathText(mount.path, normalizedPath) || mount.name == name) return;
+        }
+        next.push_back({ name, normalizedPath });
+    };
+
+    // WHY: Scripts / shaders はプロジェクトテンプレート、エンジン内蔵 Assets、
+    //      外部プロジェクト Assets のどこに置かれても編集対象として見える必要がある。
+    const std::string scriptsDir = ctx.scriptsSourceDir.empty()
+        ? ResolveFallbackAssetDir("Scripts")
+        : ctx.scriptsSourceDir;
+    const std::string hlslDir = ctx.hlslSourceDir.empty()
+        ? ResolveFallbackAssetDir("Shaders")
+        : ctx.hlslSourceDir;
+    addMount("Scripts", scriptsDir);
+    addMount("Shaders", hlslDir);
+
+    const bool changed = next.size() != m_mounts.size()
+        || !std::equal(next.begin(), next.end(), m_mounts.begin(),
+            [](const AssetMount& a, const AssetMount& b) {
+                return a.name == b.name && SamePathText(a.path, b.path);
+            });
+    if (!changed) return;
+
+    m_mounts = std::move(next);
+
+    if (!IsRootOrMountedPath(m_currentPath))
+        m_currentPath = m_rootPath;
     RefreshDirectory();
 }
 
@@ -120,18 +189,109 @@ void AssetBrowserPanel::RefreshDirectory()
 {
     m_resetScroll = true;
     m_entries.clear();
-    for (const auto& p : util::FileSystem::ListAll(m_currentPath)) {
+    const std::string currentPath = NormalizePathSeparators(m_currentPath);
+    for (const auto& p : util::FileSystem::ListAll(currentPath)) {
         Entry e;
-        e.path  = p;
+        e.path  = NormalizePathSeparators(p);
         e.name  = util::FileSystem::GetFilename(p);
         e.ext   = util::StringUtils::ToLower(util::FileSystem::GetExtension(p));
         e.isDir = util::FileSystem::IsDirectory(p);
         m_entries.push_back(std::move(e));
     }
+
+    if (SamePathText(currentPath, m_rootPath)) {
+        for (const AssetMount& mount : m_mounts) {
+            Entry e;
+            e.path = mount.path;
+            e.name = mount.name;
+            e.isDir = true;
+            e.isMount = true;
+            m_entries.push_back(std::move(e));
+        }
+    }
+
     std::stable_sort(m_entries.begin(), m_entries.end(), [](const Entry& a, const Entry& b) {
         if (a.isDir != b.isDir) return a.isDir > b.isDir; // dirs first
         return a.name < b.name;
     });
+}
+
+std::string AssetBrowserPanel::DisplayPath() const
+{
+    const std::string currentPath = NormalizePathSeparators(m_currentPath);
+    if (SamePathText(currentPath, m_rootPath)) return "Assets";
+
+    const std::string rootPrefix = NormalizePathSeparators(m_rootPath) + "/";
+    if (currentPath.rfind(rootPrefix, 0) == 0)
+        return "Assets/" + currentPath.substr(rootPrefix.size());
+
+    for (const AssetMount& mount : m_mounts) {
+        if (!IsChildPathText(currentPath, mount.path)) continue;
+        if (SamePathText(currentPath, mount.path)) return "Assets/" + mount.name;
+        return "Assets/" + mount.name + "/" + currentPath.substr(mount.path.size() + 1);
+    }
+
+    return currentPath;
+}
+
+std::string AssetBrowserPanel::ParentPath() const
+{
+    const std::string currentPath = NormalizePathSeparators(m_currentPath);
+    if (SamePathText(currentPath, m_rootPath)) return m_rootPath;
+    if (IsMountedRoot(currentPath)) return m_rootPath;
+
+    const size_t pos = currentPath.find_last_of('/');
+    if (pos == std::string::npos) return m_rootPath;
+    const std::string parent = currentPath.substr(0, pos);
+    for (const AssetMount& mount : m_mounts) {
+        if (IsChildPathText(currentPath, mount.path) && !IsChildPathText(parent, mount.path))
+            return m_rootPath;
+    }
+    return parent;
+}
+
+std::string AssetBrowserPanel::ResolveFallbackAssetDir(const std::string& childDirName) const
+{
+    if (childDirName.empty()) return {};
+
+    std::filesystem::path current(NormalizePathSeparators(m_rootPath));
+    std::error_code ec;
+
+    // WHY: ctx.scriptsSourceDir / ctx.hlslSourceDir は hot reload の ToolchainLocator 成功後にだけ入る。
+    //      AssetBrowser は hot reload なしでも使うため、現在の Assets ルートから親をたどって
+    //      リポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
+    for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
+        const std::filesystem::path candidate = current / "Assets" / childDirName;
+        if (std::filesystem::is_directory(candidate, ec))
+            return NormalizePathSeparators(candidate.string());
+
+        if (current.filename() == "Assets") {
+            const std::filesystem::path sibling = current.parent_path() / "Assets" / childDirName;
+            if (std::filesystem::is_directory(sibling, ec))
+                return NormalizePathSeparators(sibling.string());
+        }
+
+        current = current.parent_path();
+    }
+
+    return {};
+}
+
+bool AssetBrowserPanel::IsMountedRoot(const std::string& path) const
+{
+    for (const AssetMount& mount : m_mounts) {
+        if (SamePathText(path, mount.path)) return true;
+    }
+    return false;
+}
+
+bool AssetBrowserPanel::IsRootOrMountedPath(const std::string& path) const
+{
+    if (IsChildPathText(path, m_rootPath)) return true;
+    for (const AssetMount& mount : m_mounts) {
+        if (IsChildPathText(path, mount.path)) return true;
+    }
+    return false;
 }
 
 // 既知の拡張子グループに対応する固定色テーブル。
@@ -147,6 +307,7 @@ struct ExtGroup {
 
 static constexpr ExtGroup kExtGroups[] = {
     { { ".hlsl", ".hlsli", nullptr },                          { 0.15f, 0.65f, 0.25f, 1.0f }, "HLSL"    },
+    { { ".hpp", ".cpp", ".h", ".c", ".cc", ".cxx" },            { 0.20f, 0.58f, 0.70f, 1.0f }, "CPP"     },
     { { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga" },     { 0.15f, 0.40f, 0.80f, 1.0f }, "TEX"     },
     { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".fbzzprefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
@@ -229,29 +390,50 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
 
 void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext& ctx)
 {
+    std::vector<Entry> dirs;
     for (const auto& p : util::FileSystem::ListAll(dirPath)) {
         if (!util::FileSystem::IsDirectory(p)) continue;
+        Entry e;
+        e.path = NormalizePathSeparators(p);
+        e.name = util::FileSystem::GetFilename(p);
+        e.isDir = true;
+        dirs.push_back(std::move(e));
+    }
+    if (SamePathText(dirPath, m_rootPath)) {
+        for (const AssetMount& mount : m_mounts) {
+            Entry e;
+            e.path = mount.path;
+            e.name = mount.name;
+            e.isDir = true;
+            e.isMount = true;
+            dirs.push_back(std::move(e));
+        }
+    }
+    std::stable_sort(dirs.begin(), dirs.end(), [](const Entry& a, const Entry& b) {
+        return a.name < b.name;
+    });
 
-        std::string name = util::FileSystem::GetFilename(p);
+    for (const Entry& dir : dirs) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth;
-        if (p == m_currentPath) flags |= ImGuiTreeNodeFlags_Selected;
+        if (SamePathText(dir.path, m_currentPath)) flags |= ImGuiTreeNodeFlags_Selected;
 
-        bool open = ImGui::TreeNodeEx(p.c_str(), flags, "%s", name.c_str());
+        // WHY: 表示名は Assets 側の仮想名、ID は実パスにすることで同名マウントでも ImGui ID が衝突しない。
+        bool open = ImGui::TreeNodeEx(dir.path.c_str(), flags, "%s", dir.name.c_str());
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
-            m_currentPath = p;
+            m_currentPath = dir.path;
             RefreshDirectory();
         }
         // ヒエラルキーエンティティをフォルダノードにドロップ → そのフォルダへ Prefab 保存
         if (ImGui::BeginDragDropTarget()) {
             if (SaveHierarchyPayloadAsPrefab(
-                    ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, p)) {
+                    ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, dir.path)) {
                 RefreshDirectory();
             }
             ImGui::EndDragDropTarget();
         }
         if (open) {
-            DrawFolderTree(p, ctx);
+            DrawFolderTree(dir.path, ctx);
             ImGui::TreePop();
         }
     }
@@ -346,16 +528,19 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     }
 
     if (hov && m_renamingPath != e.path) {
-        if (e.ext == ".fnt")
-            ImGui::SetTooltip("%s\n\nFont Atlas メタデータ\nUI Text の Font Path へドラッグ&ドロップで設定できます", e.path.c_str());
+        if (e.isMount)
+            ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", e.path.c_str());
+        else if (e.ext == ".fnt")
+            ImGui::SetTooltip("%s\n\nFont atlas metadata\nDrag and drop onto UI Text Font Path to assign it", e.path.c_str());
         else if (e.ext == ".ttf" || e.ext == ".otf")
-            ImGui::SetTooltip("%s\n\nTTF フォント\ngen_font_atlas.py で PNG + FNT アトラスに変換してから使用します", e.path.c_str());
+            ImGui::SetTooltip("%s\n\nTTF font\nConvert it to a PNG + FNT atlas with gen_font_atlas.py before use", e.path.c_str());
         else
             ImGui::SetTooltip("%s", e.path.c_str());
     }
 
     // 右クリックコンテキストメニュー (リネーム / 削除)
     if (ImGui::BeginPopupContextItem("##entry_ctx")) {
+        ImGui::BeginDisabled(e.isMount);
         if (ImGui::MenuItem("Rename")) {
             m_renamingPath    = e.path;
             const std::string stem = util::FileSystem::GetFilename(e.path);
@@ -382,6 +567,12 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
                         RefreshDirectory();
                     }
                 });
+        }
+        ImGui::EndDisabled();
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Create")) {
+            DrawCreateMenu(ctx);
+            ImGui::EndMenu();
         }
         ImGui::EndPopup();
     }
@@ -467,7 +658,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         ImGui::TextUnformatted(display.c_str());
 
         // F2 でリネーム開始 (ホバー中)
-        if (hov && ImGui::IsKeyPressed(ImGuiKey_F2)) {
+        if (!e.isMount && hov && ImGui::IsKeyPressed(ImGuiKey_F2)) {
             m_renamingPath    = e.path;
             const std::string stem = e.name;
             std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
@@ -611,10 +802,121 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
     }
 }
 
+void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
+{
+    if (ImGui::MenuItem("Folder")) {
+        std::string newDir = m_currentPath + "/New Folder";
+        // 重複回避
+        int suffix = 1;
+        while (util::FileSystem::Exists(newDir))
+            newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
+        util::FileSystem::EnsureDirectory(newDir);
+        RefreshDirectory();
+        // 新規フォルダをリネームモードで開く
+        m_renamingPath = newDir;
+        std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(newDir).c_str(),
+                     sizeof(m_renameBuffer) - 1);
+        m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+        m_renameNeedFocus = true;
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Scene")) {
+        std::string newPath = m_currentPath + "/New Scene.fbzz";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".fbzz";
+        util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
+        RefreshDirectory();
+    }
+
+    // ── C++ スクリプト ────────────────────────────────────────────
+    ImGui::Separator();
+    if (ImGui::MenuItem("C++ Script...")) {
+        const std::string engineScriptsDir = ctx.scriptsSourceDir;
+        const std::string projScriptsDir   = ctx.projectRoot + "/Assets/Scripts";
+        const std::string dllPath          = ctx.scriptsDllCppPath;
+        // パス未解決のときはフォールバック: プロジェクト側の Scripts/ に直接作成する
+        // WHY: ToolchainLocator が失敗した環境 (build.config なし) でも
+        //      DLL 登録なしでヘッダだけを生成できるようにする。
+        const std::string resolvedScriptsDir =
+            engineScriptsDir.empty() ? projScriptsDir : engineScriptsDir;
+        ModalDialog::OpenInput(
+            "New C++ Script",
+            "NewScript",
+            [this, resolvedScriptsDir, projScriptsDir, dllPath]
+            (const std::string& name) {
+                const std::string path =
+                    ScriptCodeGen::CreateScript(name, resolvedScriptsDir, dllPath);
+                if (path.empty()) {
+                    FBZZ_LOG_WARN("C++ Script creation failed: %s", name.c_str());
+                    return;
+                }
+                // プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
+                if (!projScriptsDir.empty() && projScriptsDir != resolvedScriptsDir)
+                    ScriptCodeGen::CreateScript(name, projScriptsDir, "");
+                m_pendingNavigate = projScriptsDir;
+                RefreshDirectory();
+                FBZZ_LOG_INFO("C++ Script generated: %s", path.c_str());
+            },
+            "Destination: " + (resolvedScriptsDir.empty() ? projScriptsDir : resolvedScriptsDir));
+    }
+
+    // ── HLSL シェーダー ───────────────────────────────────────────
+    if (ImGui::BeginMenu("HLSL Shader...")) {
+        const std::string engineHlslDir = ctx.hlslSourceDir;
+        const std::string projHlslDir   = ctx.projectRoot + "/Assets/shaders";
+        // パス未解決のときはプロジェクト側の shaders/ を直接使う
+        const std::string resolvedHlslDir =
+            engineHlslDir.empty() ? projHlslDir : engineHlslDir;
+
+        auto makeHlslCallback = [this, resolvedHlslDir, projHlslDir]
+            (ScriptCodeGen::HlslKind kind) {
+            return [this, resolvedHlslDir, projHlslDir, kind]
+                (const std::string& name) {
+                const std::string path =
+                    ScriptCodeGen::CreateHlsl(name, resolvedHlslDir, kind);
+                if (path.empty()) {
+                    FBZZ_LOG_WARN("HLSL creation failed: %s", name.c_str());
+                    return;
+                }
+                // プロジェクト側にも即コピー
+                if (!projHlslDir.empty() && projHlslDir != resolvedHlslDir)
+                    ScriptCodeGen::CreateHlsl(name, projHlslDir, kind);
+                const std::string destDir =
+                    (kind == ScriptCodeGen::HlslKind::SurfaceVSPS)
+                        ? (projHlslDir + "/Material/Custom")
+                        : (projHlslDir + "/PostProcess/Custom");
+                m_pendingNavigate = destDir;
+                RefreshDirectory();
+                FBZZ_LOG_INFO("HLSL generated: %s", path.c_str());
+            };
+        };
+
+        if (ImGui::MenuItem("Surface Shader (VS+PS)")) {
+            ModalDialog::OpenInput("New Surface Shader", "MyMaterial",
+                makeHlslCallback(ScriptCodeGen::HlslKind::SurfaceVSPS),
+                "Generated under Material/Custom/");
+        }
+        if (ImGui::MenuItem("PostProcess Shader (VS+PS)")) {
+            ModalDialog::OpenInput("New PostProcess Shader", "MyPostEffect",
+                makeHlslCallback(ScriptCodeGen::HlslKind::PostProcessVSPS),
+                "Generated under PostProcess/Custom/");
+        }
+        if (ImGui::MenuItem("Compute Shader (CS)")) {
+            ModalDialog::OpenInput("New Compute Shader", "MyCompute",
+                makeHlslCallback(ScriptCodeGen::HlslKind::ComputeCS),
+                "Generated under PostProcess/Custom/");
+        }
+        ImGui::EndMenu();
+    }
+}
+
 // ─── メインレイアウト ─────────────────────────────────────────────────────────
 
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
+    UpdateMounts(ctx);
+
     if (ctx.requestAssetBrowserRefresh) {
         RefreshDirectory();
         ctx.requestAssetBrowserRefresh = false;
@@ -626,7 +928,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth
                                  | ImGuiTreeNodeFlags_DefaultOpen;
-    if (m_currentPath == m_rootPath) rootFlags |= ImGuiTreeNodeFlags_Selected;
+    if (SamePathText(m_currentPath, m_rootPath)) rootFlags |= ImGuiTreeNodeFlags_Selected;
 
     bool rootOpen = ImGui::TreeNodeEx("##root", rootFlags, "Assets");
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
@@ -666,24 +968,26 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     const ImGuiID contentDropId = ImGui::GetID("##content_drop_target");
 
     // ナビゲーションバー
-    if (m_currentPath != m_rootPath) {
+    if (!SamePathText(m_currentPath, m_rootPath)) {
         if (ImGui::SmallButton(" ^ ")) {
-            size_t pos = m_currentPath.find_last_of("/\\");
-            if (pos != std::string::npos) m_currentPath = m_currentPath.substr(0, pos);
+            m_currentPath = ParentPath();
             RefreshDirectory();
         }
         ImGui::SameLine();
     }
-    std::string rel = m_currentPath.size() > m_rootPath.size()
-        ? m_currentPath.substr(m_rootPath.size() + 1) : "Assets";
+    const std::string rel = DisplayPath();
     ImGui::TextDisabled("%s", rel.c_str());
 
-    // 検索 + アイコンサイズスライダー + 更新
-    ImGui::SetNextItemWidth(-200.0f);
+    // 検索 + アイコンサイズスライダー + 作成 + 更新
+    ImGui::SetNextItemWidth(-260.0f);
     ImGui::InputText("##search", m_searchBuf.data(), m_searchBuf.size());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(90.0f);
     ImGui::SliderFloat("##sz", &m_iconSize, 40.0f, 120.0f, "%.0f");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Create")) {
+        ImGui::OpenPopup("##content_ctx");
+    }
     ImGui::SameLine();
     if (ImGui::SmallButton("Refresh")) RefreshDirectory();
 
@@ -708,40 +1012,22 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     // ループ外でナビゲートを処理
     if (!m_pendingNavigate.empty()) {
-        m_currentPath = std::move(m_pendingNavigate);
+        m_currentPath = NormalizePathSeparators(std::move(m_pendingNavigate));
         m_pendingNavigate.clear();
         RefreshDirectory();
     }
 
-    // 空白右クリック: Create メニュー
-    if (ImGui::BeginPopupContextWindow("##content_ctx",
-            ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+    // 右クリック: Create メニュー
+    // WHY: BeginPopupContextWindow は OpenPopup と混ぜるとボタン起動が安定しない。
+    //      右クリック検出と popup 描画を分け、空白右クリックとツールバー Create を同じ経路にする。
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+        !ImGui::IsAnyItemHovered()) {
+        ImGui::OpenPopup("##content_ctx");
+    }
+    if (ImGui::BeginPopup("##content_ctx")) {
         if (ImGui::BeginMenu("Create")) {
-            if (ImGui::MenuItem("Folder")) {
-                std::string newDir = m_currentPath + "/New Folder";
-                // 重複回避
-                int suffix = 1;
-                while (util::FileSystem::Exists(newDir))
-                    newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
-                util::FileSystem::EnsureDirectory(newDir);
-                RefreshDirectory();
-                // 新規フォルダをリネームモードで開く
-                m_renamingPath = newDir;
-                std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(newDir).c_str(),
-                             sizeof(m_renameBuffer) - 1);
-                m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-                m_renameNeedFocus = true;
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Scene")) {
-                std::string newPath = m_currentPath + "/New Scene.fbzz";
-                int suffix = 1;
-                while (util::FileSystem::Exists(newPath))
-                    newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".fbzz";
-                // 空シーンファイル（最小限の TOML）を書き出す
-                util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
-                RefreshDirectory();
-            }
+            DrawCreateMenu(ctx);
             ImGui::EndMenu();
         }
         ImGui::EndPopup();

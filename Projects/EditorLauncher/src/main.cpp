@@ -9,17 +9,21 @@
 //
 // WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
 //      配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
+//
+// WHY (Util の配置): Utf8ToWide / PathToUtf8 / Exists / ReadText 等の文字列・パス変換は
+//      EditorLauncher と Sandbox の両方で必要なため Engine/Util に集約した。
+//      ここでは Engine の API を直接呼ぶことで実装の重複を排除している。
 #include "StandaloneApp.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
+#include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
@@ -27,23 +31,25 @@
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
+#include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <Editor/EditorApp.hpp>
+#include <Physics/Layer.hpp>
 #include <Physics/World.hpp>
 
 #include <Windows.h>
 #include <shellapi.h>
-#include <toml++/toml.hpp>
-
 #include <filesystem>
-#include <fstream>
 #include <memory>
-#include <sstream>
 #include <string>
 
 namespace fbzz::editor_launcher {
 
 namespace {
+
+using fbzz::util::FileSystem;
+using fbzz::util::StringUtils;
 
 // --project と --standalone フラグを格納する構造体。
 // WHY: 引数解析結果を Run() へ渡すための軽量な値型として分離する。
@@ -51,72 +57,6 @@ struct LaunchArgs {
     std::filesystem::path projectPath;
     bool                  standalone = false;
 };
-
-struct LaunchProject {
-    std::filesystem::path root;
-    std::filesystem::path projectFile;
-    std::filesystem::path settingsFile;
-    std::filesystem::path sceneFile;
-};
-
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-std::string WideToUtf8(const std::wstring& text)
-{
-    if (text.empty()) return {};
-
-    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return {};
-
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
-}
-
-std::string PathToUtf8(const std::filesystem::path& path)
-{
-    return WideToUtf8(path.wstring());
-}
-
-bool Exists(const std::filesystem::path& path)
-{
-    std::error_code ec;
-    return std::filesystem::exists(path, ec);
-}
-
-std::string ReadText(const std::filesystem::path& path)
-{
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return {};
-
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
-}
-
-std::filesystem::path MakeAbsolute(const std::filesystem::path& path)
-{
-    std::error_code ec;
-    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
-    return ec ? path : absolute.lexically_normal();
-}
-
-std::filesystem::path GetExecutableDirectory()
-{
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return std::filesystem::path(buffer).parent_path();
-}
 
 // コマンドライン引数を解析して LaunchArgs を返す。
 // WHY: 引数なし起動 = 配布版。exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする。
@@ -139,128 +79,11 @@ LaunchArgs ParseArgs()
 
     // 引数なし起動 = 配布版: exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする
     if (args.projectPath.empty()) {
-        args.projectPath = GetExecutableDirectory();
+        args.projectPath = FileSystem::GetExecutableDirectory();
         args.standalone  = true;
     }
 
     return args;
-}
-
-std::filesystem::path ReadTomlRelativePath(const toml::table& table, const char* tableName, const char* key)
-{
-    const std::string value = table[tableName][key].value_or(std::string{});
-    return value.empty() ? std::filesystem::path{} : std::filesystem::path(Utf8ToWide(value));
-}
-
-// 絶対パスが root 直下に存在しない場合 (プロジェクト移動後) に
-// パスの末尾からサフィックスを順に試して root 相対でファイルを探す。
-std::filesystem::path ResolvePathUnderRoot(const std::filesystem::path& filePath,
-                                           const std::filesystem::path& root)
-{
-    if (!filePath.is_absolute())
-        return MakeAbsolute(root / filePath);
-
-    if (Exists(filePath))
-        return filePath;
-
-    std::filesystem::path suffix;
-    std::filesystem::path p = filePath;
-    while (p.has_relative_path()) {
-        const auto component = p.filename();
-        suffix = suffix.empty() ? component : (component / suffix);
-        p = p.parent_path();
-        const auto candidate = MakeAbsolute(root / suffix);
-        if (Exists(candidate))
-            return candidate;
-    }
-    return MakeAbsolute(root / filePath);
-}
-
-bool ResolveProject(LaunchProject& project, const std::filesystem::path& projectPath, std::wstring& errorMessage)
-{
-    project.root = MakeAbsolute(projectPath);
-    if (project.root.empty()) {
-        errorMessage = L"Project path was not specified.\n\nFBZZEditor.exe --project <path>";
-        return false;
-    }
-    if (!Exists(project.root)) {
-        errorMessage = L"Project folder was not found.\n\n" + project.root.wstring();
-        return false;
-    }
-
-    project.projectFile = project.root / L".fbzz_proj";
-    const std::string projectText = ReadText(project.projectFile);
-    if (projectText.empty()) {
-        errorMessage = L".fbzz_proj could not be read.\n\n" + project.projectFile.wstring();
-        return false;
-    }
-
-    toml::parse_result projectResult = toml::parse(projectText);
-    if (!projectResult) {
-        errorMessage = L".fbzz_proj could not be parsed.\n\n" + project.projectFile.wstring();
-        return false;
-    }
-
-    const toml::table& projectTable = projectResult.table();
-    std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
-    const std::filesystem::path defaultScene = ReadTomlRelativePath(projectTable, "project", "default_scene");
-    // "{{...}}" 形式のプレースホルダは未解決: Sandbox テンプレートの規約に合わせてフォールバック
-    if (!settingsPath.empty()) {
-        const std::wstring sv = settingsPath.wstring();
-        if (sv.size() >= 2 && sv.rfind(L"{{", 0) == 0)
-            settingsPath = L"ProjectSettings/ProjectSettings.toml";
-    }
-    if (settingsPath.empty()) {
-        errorMessage = L".fbzz_proj does not define project.settings_path.";
-        return false;
-    }
-
-    project.settingsFile = ResolvePathUnderRoot(settingsPath, project.root);
-    if (!Exists(project.settingsFile)) {
-        errorMessage = L"ProjectSettings file was not found.\n\n" + project.settingsFile.wstring();
-        return false;
-    }
-
-    const std::string settingsText = ReadText(project.settingsFile);
-    if (settingsText.empty()) {
-        errorMessage = L"ProjectSettings file could not be read.\n\n" + project.settingsFile.wstring();
-        return false;
-    }
-
-    toml::parse_result settingsResult = toml::parse(settingsText);
-    if (!settingsResult) {
-        errorMessage = L"ProjectSettings file could not be parsed.\n\n" + project.settingsFile.wstring();
-        return false;
-    }
-
-    const toml::table& settingsTable = settingsResult.table();
-    std::filesystem::path scenePath = ReadTomlRelativePath(settingsTable, "runtime", "start_scene");
-    if (scenePath.empty()) {
-        scenePath = defaultScene;
-    }
-    if (scenePath.empty()) {
-        errorMessage = L"Project does not define a start scene.";
-        return false;
-    }
-
-    project.sceneFile = ResolvePathUnderRoot(scenePath, project.root);
-    if (!Exists(project.sceneFile)) {
-        errorMessage = L"Start scene file was not found.\n\n" + project.sceneFile.wstring();
-        return false;
-    }
-
-    return true;
-}
-
-void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings)
-{
-    world.SetGravity(settings.physics.gravity);
-    world.SetSubsteps(settings.physics.substeps);
-}
-
-void ApplyUISettings(const ProjectSettings& settings)
-{
-    scene::UISystemSetDefaultFontPath(settings.ui.defaultFontPath);
 }
 
 void WarmupRenderResources(scene::Scene& scene,
@@ -332,7 +155,7 @@ void WarmupRenderResources(scene::Scene& scene,
 //      将来的なリファクタリングの境界をはっきりさせる。
 void RunEditorLoop(renderer::IRenderer& renderer,
                    renderer::ResourceManager& resources,
-                   const LaunchProject& project)
+                   const fbzz::LaunchProject& project)
 {
     auto& app = core::Application::Get();
 
@@ -344,14 +167,16 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
     auto scene = std::make_unique<scene::Scene>();
     editorApp.GetContext().activeScene = scene.get();
-    if (!editorApp.OpenProject(PathToUtf8(project.root), PathToUtf8(project.settingsFile), PathToUtf8(project.sceneFile))) {
+    if (!editorApp.OpenProject(StringUtils::PathToUtf8(project.root),
+                               StringUtils::PathToUtf8(project.settingsFile),
+                               StringUtils::PathToUtf8(project.sceneFile))) {
         editorApp.Shutdown();
         return;
     }
 
     physics::World physicsWorld;
-    ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
-    ApplyUISettings(editorApp.GetContext().projectSettings);
+    scene::ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
+    scene::ApplyUISettings(editorApp.GetContext().projectSettings);
     float physicsAccumulator = 0.0f;
 
     constexpr float kFocusAnimDuration = 0.30f;
@@ -374,26 +199,13 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             debugCamera.camera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
         }
 
-        renderer::Camera gameCamera = debugCamera.camera;
-        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
         const auto gameRT = editorApp.GetGameViewportRT();
+        float warmupAspect = debugCamera.camera.m_aspect;
         if (auto* rt = resources.Get(gameRT)) {
-            gameCamera.m_aspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+            warmupAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
         }
-
-        for (auto& go : scene->GameObjects()) {
-            auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
-            if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
-                continue;
-
-            gameCamera.m_position = go.transform.position;
-            gameCamera.m_rotation = go.transform.rotation;
-            gameCamera.m_fovY     = cameraComponent->fovY;
-            gameCamera.m_near     = cameraComponent->nearZ;
-            gameCamera.m_far      = cameraComponent->farZ;
-            gameCullingMask       = cameraComponent->cullingMask;
-            break;
-        }
+        renderer::Camera gameCamera = scene::ResolveEditorGameCamera(*scene, debugCamera.camera, warmupAspect);
+        fbzz::LayerMask gameCullingMask = scene::ResolveGameCullingMask(*scene);
 
         WarmupRenderResources(*scene, renderer, resources, editorApp, debugCamera.camera, gameCamera, gameCullingMask);
 
@@ -416,7 +228,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         auto* playMode = editorApp.GetContext().playMode;
         if (playMode->ApplyPendingRestore(*scene)) {
-            ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
+            scene::ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
             physicsAccumulator = 0.0f;
         }
 
@@ -467,7 +279,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         const bool stepFrame = playMode->ConsumeStep();
         if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
-            ApplyPhysicsSettings(physicsWorld, settings);
+            scene::ApplyPhysicsSettings(physicsWorld, settings);
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
@@ -501,23 +313,8 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         if (auto* rt = resources.Get(gameRT)) {
             gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
         }
-        renderer::Camera gameCamera = debugCamera.camera;
-        gameCamera.m_aspect = gameAspect;
-        fbzz::LayerMask gameCullingMask = fbzz::Layer::Everything;
-        for (auto& go : scene->GameObjects()) {
-            auto* cameraComponent = go.GetComponent<scene::CameraComponent>();
-            if (!go.activeSelf() || !cameraComponent || !cameraComponent->enabled || !cameraComponent->isMain)
-                continue;
-
-            gameCamera.m_position = go.transform.position;
-            gameCamera.m_rotation = go.transform.rotation;
-            gameCamera.m_fovY     = cameraComponent->fovY;
-            gameCamera.m_aspect   = gameAspect;
-            gameCamera.m_near     = cameraComponent->nearZ;
-            gameCamera.m_far      = cameraComponent->farZ;
-            gameCullingMask       = cameraComponent->cullingMask;
-            break;
-        }
+        renderer::Camera gameCamera = scene::ResolveEditorGameCamera(*scene, debugCamera.camera, gameAspect);
+        fbzz::LayerMask gameCullingMask = scene::ResolveGameCullingMask(*scene);
 
         renderer.BeginFrame();
 
@@ -605,14 +402,14 @@ int Run()
 {
     const LaunchArgs args = ParseArgs();
 
-    LaunchProject project;
-    std::wstring errorMessage;
-    if (!ResolveProject(project, args.projectPath, errorMessage)) {
-        MessageBoxW(nullptr, errorMessage.c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
+    fbzz::ProjectResolver resolver;
+    if (!resolver.Resolve(args.projectPath)) {
+        MessageBoxW(nullptr, resolver.ErrorMessage().c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
         return 1;
     }
+    const fbzz::LaunchProject& project = resolver.Get();
 
-    SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
+    SetCurrentDirectoryW(FileSystem::GetExecutableDirectory().wstring().c_str());
 
     auto& app = core::Application::Get();
 
@@ -621,22 +418,16 @@ int Run()
         //      Application::Init() の前に ProjectSettings を読み込む必要がある。
         //      Init 後に Resize() するとウィンドウが一瞬デフォルトサイズで表示されてしまう。
         ProjectSettings settings;
-        if (!settings.Load(PathToUtf8(project.settingsFile))) {
+        if (!settings.Load(StringUtils::PathToUtf8(project.settingsFile))) {
             MessageBoxW(nullptr, L"ProjectSettings を読み込めませんでした。", L"FBZZ", MB_OK | MB_ICONERROR);
             return 1;
         }
 
-        core::Window::Config windowConfig;
-        windowConfig.title      = Utf8ToWide(settings.window.title);
-        windowConfig.width      = static_cast<uint32_t>(settings.window.width);
-        windowConfig.height     = static_cast<uint32_t>(settings.window.height);
-        windowConfig.fullscreen = settings.window.fullscreen;
-
-        if (!app.Init(windowConfig)) return 1;
+        if (!app.Init(scene::MakeWindowConfig(settings))) return 1;
 
         auto& renderer = app.GetRenderer();
         renderer::ResourceManager resources(renderer);
-        asset::AssetManager::Init(resources, PathToUtf8(project.root / L"Assets") + "/");
+        asset::AssetManager::Init(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
 
         StandaloneApp standaloneApp;
         if (!standaloneApp.Init(renderer, resources,
@@ -655,7 +446,7 @@ int Run()
         renderer::ResourceManager resources(renderer);
 
         const std::filesystem::path assetRoot = project.root / L"Assets";
-        asset::AssetManager::Init(resources, PathToUtf8(assetRoot) + "/");
+        asset::AssetManager::Init(resources, StringUtils::PathToUtf8(assetRoot) + "/");
 
         RunEditorLoop(renderer, resources, project);
     }
