@@ -59,7 +59,7 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const
 
     if (FAILED(hr))
     {
-        FBZZ_LOG_ERROR("テクスチャ読み込み失敗: %s", path.c_str());
+        FBZZ_LOG_ERROR("Texture load failed: %s", path.c_str());
         return false;
     }
 
@@ -76,7 +76,7 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const
 
     if (FAILED(hr))
     {
-        FBZZ_LOG_ERROR("SRV 生成失敗: %s", path.c_str());
+        FBZZ_LOG_ERROR("SRV creation failed: %s", path.c_str());
         return false;
     }
 
@@ -144,13 +144,13 @@ bool DX11Texture::InitForCompute(ID3D11Device* device, uint32_t width, uint32_t 
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
     HRESULT hr = device->CreateTexture2D(&texDesc, nullptr, tex.GetAddressOf());
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: Texture2D 生成失敗 0x%08X", (unsigned)hr); return false; }
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: Texture2D creation failed 0x%08X", (unsigned)hr); return false; }
 
     hr = device->CreateShaderResourceView(tex.Get(), nullptr, m_srv.GetAddressOf());
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: SRV 生成失敗 0x%08X", (unsigned)hr); return false; }
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: SRV creation failed 0x%08X", (unsigned)hr); return false; }
 
     hr = device->CreateUnorderedAccessView(tex.Get(), nullptr, m_uav.GetAddressOf());
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: UAV 生成失敗 0x%08X", (unsigned)hr); return false; }
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: UAV creation failed 0x%08X", (unsigned)hr); return false; }
 
     return true;
 }

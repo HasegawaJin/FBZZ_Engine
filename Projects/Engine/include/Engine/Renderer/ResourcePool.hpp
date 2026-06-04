@@ -53,6 +53,19 @@ public:
         return m_slots[handle.id].resource.get();
     }
 
+    // HLSL ホットリロード用: 既存スロットのリソースを新しいものに差し替える。
+    // WHY: Remove → Insert すると world generation が上がり既存ハンドルが無効になる。
+    //      Replace は generation を維持したまま中身だけ入れ替えるため、
+    //      シェーダーを参照する Material / PipelineState を更新せずにホットスワップできる。
+    void Replace(ResourceHandle<Tag> handle, std::shared_ptr<T> resource)
+    {
+        if (!IsLive(handle) || !resource) return;
+        Slot& slot = m_slots[handle.id];
+        m_debug.Untrack(slot.resource.get());
+        m_debug.TrackShared(resource, core::MemoryTag::RENDERER, "ShaderReload", __FILE__, __LINE__);
+        slot.resource = std::move(resource);
+    }
+
     void Remove(ResourceHandle<Tag> handle)
     {
         if (!IsLive(handle)) return;

@@ -34,6 +34,7 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
+#include <toml++/toml.hpp>
 #include <Windows.h>
 #include <algorithm>
 #include <cctype>
@@ -111,6 +112,39 @@ bool IsScenePathInsideProject(const std::string& projectRoot, const std::string&
         prefix += '\\';
 
     return sceneText == rootText || sceneText.rfind(prefix, 0) == 0;
+}
+
+void LoadRuntimeBuildMetadata(EditorContext& ctx)
+{
+    ctx.projectBuildRoot.clear();
+    ctx.standaloneTargetName = "SandboxStandalone";
+    if (ctx.projectRoot.empty()) return;
+
+    std::string projectText;
+    if (!util::FileSystem::ReadText(ctx.projectRoot + "/.fbzz_proj", projectText))
+        return;
+
+    toml::parse_result result = toml::parse(projectText);
+    if (!result) return;
+
+    const toml::table& table = result.table();
+    const std::string buildRoot = table["project"]["build_root"].value_or(std::string{});
+    if (!buildRoot.empty() && buildRoot.rfind("{{", 0) != 0) {
+        std::filesystem::path path(Utf8ToWide(buildRoot));
+        if (!path.is_absolute())
+            path = std::filesystem::path(Utf8ToWide(ctx.projectRoot)) / path;
+        ctx.projectBuildRoot = WideToUtf8(path.lexically_normal().wstring());
+    }
+
+    const std::string standaloneTarget = table["project"]["standalone_target_name"].value_or(std::string{});
+    if (!standaloneTarget.empty() && standaloneTarget.rfind("{{", 0) != 0) {
+        ctx.standaloneTargetName = standaloneTarget;
+        return;
+    }
+
+    const std::string targetName = table["project"]["target_name"].value_or(std::string{});
+    if (!targetName.empty() && targetName.rfind("{{", 0) != 0)
+        ctx.standaloneTargetName = targetName + "Standalone";
 }
 
 } // namespace
@@ -301,8 +335,6 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
     util::FileSystem::EnsureDirectory(SETTINGS_DIR);
     m_settings.Load(SETTINGS_PATH, m_ctx.projectRoot);
-    m_ctx.projectSettings.Load(m_projectSettingsPath);
-    core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
 
     // --- EditorSettings → EditorContext への全フィールド適用 ---------------
     // WHY: EditorSettings は TOML から読んだ raw 値を保持し、
@@ -352,6 +384,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
 void EditorApp::Shutdown()
 {
+    // DLL 仮想デストラクタが DLL コードを参照するため、パネル・シーンより先にアンロードする。
+    m_scriptDll.Unload(m_ctx.activeScene);
+
     for (auto& panel : m_panels)
         panel->OnShutdown();
 
@@ -387,6 +422,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     m_projectRoot      = projectRoot;
     m_ctx.projectRoot  = projectRoot;
+    LoadRuntimeBuildMetadata(m_ctx);
     if (m_assetBrowserPanel && !m_projectRoot.empty())
         m_assetBrowserPanel->SetRootPath(m_projectRoot + "/Assets");
 
@@ -417,6 +453,11 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     FBZZ_LOG_INFO("Opened project: %s", m_projectRoot.c_str());
     UpdateWindowTitle();
+
+    // スクリプト DLL のロードとファイル監視を初期化する。
+    // WHY: projectBuildRoot が OpenProject のタイミングで確定するため Init ではなくここで呼ぶ。
+    InitScriptDll();
+
     return true;
 }
 
@@ -488,6 +529,8 @@ void EditorApp::BeginFrame()
     ImGuizmo::BeginFrame();
     m_hotkeys.ProcessInput();
     CheckHotReload();
+    CheckScriptDirtyAndRebuild();
+    CheckHlslDirty();
     RefreshSceneDirtyState(false);
 
     ImGuiViewport* vp = ImGui::GetMainViewport();

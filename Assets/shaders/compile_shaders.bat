@@ -72,6 +72,11 @@ call :CompileVSPS Material\Sky\Skydome.hlsl Material.Sky.Skydome || goto :error
 call :CompileVSPS Material\Decal\Decal.hlsl     Material.Decal.Decal     || goto :error
 call :CompileVSPS Material\Decal\DecalMask.hlsl Material.Decal.DecalMask || goto :error
 
+REM ユーザー作成のカスタムマテリアルシェーダー (ScriptCodeGen で生成)
+if exist "%SRC%Material\Custom\" (
+    for %%S in ("%SRC%Material\Custom\*.hlsl") do call :CompileVSPS Material\Custom\%%~nxS Material.Custom.%%~nS || goto :error
+)
+
 REM =========================================================================
 REM Pipeline
 REM =========================================================================

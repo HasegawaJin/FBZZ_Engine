@@ -3,7 +3,7 @@
 // ゲームパッケージングのステートマシン
 //
 // WHAT: ゲームを配布可能な形にパッケージングするビルドパイプライン。
-//       C++ の再コンパイルは行わず、バイナリ + アセットのコピーのみ実施する。
+//       standalone ターゲットを CMake で再コンパイルし、バイナリ + アセット + プロジェクトファイルを出力する。
 //
 // WHY (シングルスレッド + ステートマシン設計):
 //   AGENTS.md のスレッドモデル制約 (Step 1〜5 はシングルスレッド) に従い、
@@ -15,6 +15,7 @@
 //   コピー途中でエラーが起きても旧ビルドは保持される。
 #pragma once
 #include <Editor/BuildSettings.hpp>
+#include <Editor/Compiler.hpp>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -29,6 +30,8 @@ public:
     // @param runAfterBuild true なら Done 後に呼び出し元が exe を起動する ("Build and Run" 用)
     void Start(const BuildSettings& settings,
                const std::string& projectRoot,
+               const std::string& buildRoot,
+               const std::string& targetName,
                bool runAfterBuild = false);
 
     // 毎フレーム 1 ステップ (CopyAssets は 1 ファイル) 進める。
@@ -38,19 +41,24 @@ public:
     // State をリセットして次のビルドに備える (Build and Run の重複起動防止)
     void Reset();
 
+    // 実行中の RuntimeBuild コンパイルをキャンセルする。
+    void Cancel();
+
     State       GetState()    const { return m_state; }
     float       GetProgress() const { return m_progress; }
     const char* GetStatus()   const { return m_status.c_str(); }
     const char* GetError()    const { return m_error.c_str(); }
     bool        WantsRunAfter() const { return m_runAfterBuild; }
+    const std::string& GetBuildLog() const { return m_compiler.GetLog(); }
 
     // 出力先の <ProductName>.exe フルパスを返す
     std::string GetOutputExePath() const;
 
 private:
     enum class Step {
+        Compile,          // standalone ターゲットを CMake でビルドする
         PrepareTempDir,   // 一時ディレクトリを用意する
-        CopyExecutable,   // 自身の exe を <ProductName>.exe としてコピー
+        CopyExecutable,   // standalone exe を <ProductName>.exe としてコピー
         CopyDlls,         // 必要な DLL をコピー
         EnumerateAssets,  // コピー対象ファイル一覧を収集する
         CopyAssets,       // ファイルを 1 つずつコピー (複数フレーム)
@@ -78,11 +86,15 @@ private:
     bool        m_runAfterBuild = false;
 
     std::string   m_projectRoot;
+    std::string   m_buildRoot;
+    std::string   m_targetName = "SandboxStandalone";
     BuildSettings m_settings;
+    Compiler      m_compiler;
+    bool          m_compileStarted = false;
 
     std::filesystem::path m_outputDir;  // 解決済みの出力先
     std::filesystem::path m_tmpDir;     // 作業用一時ディレクトリ (outputDir + "_tmp")
-    std::filesystem::path m_exeSrcPath; // 自身 (FBZZEditor.exe) のフルパス
+    std::filesystem::path m_exeSrcPath; // standalone exe のフルパス
 
     // CopyAssets ステップ用
     std::vector<std::filesystem::path> m_assetFiles; // コピー対象ファイル一覧

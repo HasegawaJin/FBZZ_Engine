@@ -9,7 +9,7 @@
 #define FBZZ_HR_CHECK(hr)                                               \
     do {                                                                 \
         if (FAILED(hr)) {                                                \
-            FBZZ_LOG_ERROR("HRESULT 失敗: 0x%08X", (unsigned)(hr));     \
+            FBZZ_LOG_ERROR("HRESULT failed: 0x%08X", (unsigned)(hr));   \
             __debugbreak();                                              \
             return false;                                                \
         }                                                                \

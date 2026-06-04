@@ -405,7 +405,7 @@ renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
 
     renderer::FontAtlas& atlas = s_fontAtlasCache[basePath];
     if (!atlas.Load(basePath, resources))
-        FBZZ_LOG_ERROR("UISystem: FontAtlas のロードに失敗しました: %s", basePath.c_str());
+        FBZZ_LOG_ERROR("UISystem: failed to load FontAtlas: %s", basePath.c_str());
 
     return atlas;
 }
@@ -469,7 +469,7 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
 
     const uint32_t vertCount = static_cast<uint32_t>(verts.size());
     if (vertCount > kTextVBVertices) {
-        FBZZ_LOG_ERROR("UISystem: テキストが長すぎます (%u verts > %u capacity)", vertCount, kTextVBVertices);
+        FBZZ_LOG_ERROR("UISystem: text is too long (%u verts > %u capacity)", vertCount, kTextVBVertices);
         return;
     }
     resources.Update(s_textVB, verts.data(), vertCount * sizeof(UIVertex));

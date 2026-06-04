@@ -2087,10 +2087,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SameLine();
             ImGui::TextDisabled("(?)");
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("TTF アトラスのベースパス (拡張子なし)。\n"
-                                  "例: Assets/Fonts/Kenney/Future\n"
-                                  "空欄 = 内蔵 SDF フォント\n"
-                                  ".png / .fnt ファイルをドロップして指定可能");
+                ImGui::SetTooltip("Base path for a generated TTF atlas, without extension.\n"
+                                  "Example: Assets/Fonts/Kenney/Future\n"
+                                  "Empty = built-in SDF font\n"
+                                  "Drop a .png or .fnt file to assign it");
             char fontBuf[512];
             std::snprintf(fontBuf, sizeof(fontBuf), "%s", text.fontPath.c_str());
             ImGui::SetNextItemWidth(-1.0f);
