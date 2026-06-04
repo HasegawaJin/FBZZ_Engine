@@ -11,13 +11,6 @@
 namespace fbzz::editor {
 namespace {
 
-std::filesystem::path GetSelfExePath()
-{
-    wchar_t buf[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    return std::filesystem::path(buf);
-}
-
 std::wstring Utf8ToWide(const std::string& text)
 {
     if (text.empty()) return {};
@@ -44,18 +37,9 @@ std::string TrimLine(const std::string& text)
     return text.substr(begin, end - begin + 1);
 }
 
-std::filesystem::path FindBuildConfig()
-{
-    std::filesystem::path dir = GetSelfExePath().parent_path();
-    for (int i = 0; i < 8 && !dir.empty(); ++i) {
-        const std::filesystem::path candidate = dir / L"build.config";
-        if (std::filesystem::exists(candidate))
-            return candidate;
-        dir = dir.parent_path();
-    }
-    return {};
-}
-
+// buildRoot 直下、または 1 段下のサブディレクトリから build.config を探す。
+// WHY: cmake --preset fbzz-vs は build.config を buildRoot/VS/build.config に生成する。
+//      直下にも置けるよう両方を試す。
 std::filesystem::path FindBuildConfigUnderRoot(const std::filesystem::path& buildRoot)
 {
     if (buildRoot.empty()) return {};
@@ -174,32 +158,37 @@ std::filesystem::path FindVisualStudioCMake()
 ToolchainLocator::Result ToolchainLocator::Locate(const std::filesystem::path& buildRoot)
 {
     Result result;
-    std::filesystem::path configPath;
-    if (!buildRoot.empty()) {
-        configPath = FindBuildConfigUnderRoot(buildRoot);
-    }
-    if (configPath.empty() || !std::filesystem::exists(configPath)) {
-        configPath = FindBuildConfig();
-    }
-    if (!configPath.empty() && ReadBuildConfig(configPath, result)) {
-        if (result.cmakeExe.empty() || !std::filesystem::exists(result.cmakeExe))
-            result.cmakeExe = FindCMakeOnPath();
-        if (result.cmakeExe.empty() || !std::filesystem::exists(result.cmakeExe))
-            result.cmakeExe = FindVisualStudioCMake();
 
-        result.found = !result.cmakeExe.empty()
-                    && std::filesystem::exists(result.cmakeExe)
-                    && std::filesystem::exists(result.buildDir);
-        if (!result.found)
-            result.error = "build.config は見つかりましたが cmake.exe または build_dir を解決できません。";
+    if (buildRoot.empty()) {
+        result.error = "build_root が .fbzz_proj に設定されていません。"
+                       "プロジェクトを GameHub から開き直すか、.fbzz_proj に build_root を追記してください。";
         return result;
     }
 
-    result.cmakeExe = FindCMakeOnPath();
-    if (result.cmakeExe.empty())
+    const std::filesystem::path configPath = FindBuildConfigUnderRoot(buildRoot);
+    if (configPath.empty() || !std::filesystem::exists(configPath)) {
+        result.error = "build.config が " + buildRoot.string()
+                     + " 内に見つかりません。cmake --preset fbzz-vs を実行して Configure してください。";
+        return result;
+    }
+
+    if (!ReadBuildConfig(configPath, result)) {
+        result.error = "build.config の解析に失敗しました (build_dir / exe_debug / exe_release が未設定): "
+                     + configPath.string();
+        return result;
+    }
+
+    if (result.cmakeExe.empty() || !std::filesystem::exists(result.cmakeExe))
+        result.cmakeExe = FindCMakeOnPath();
+    if (result.cmakeExe.empty() || !std::filesystem::exists(result.cmakeExe))
         result.cmakeExe = FindVisualStudioCMake();
-    result.found = false;
-    result.error = "build.config が見つかりません。Visual Studio / VS Code CMake Tools で Configure してください。";
+
+    result.found = !result.cmakeExe.empty()
+                && std::filesystem::exists(result.cmakeExe)
+                && std::filesystem::exists(result.buildDir);
+    if (!result.found)
+        result.error = "build.config は見つかりましたが cmake.exe または build_dir を解決できません。";
+
     return result;
 }
 
