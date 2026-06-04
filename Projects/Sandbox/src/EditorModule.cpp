@@ -69,6 +69,10 @@ void EditorModule::OnUpdate(float dt)
 
     auto* playMode = m_editorApp.GetContext().playMode;
     if (playMode->ApplyPendingRestore(*m_scene)) {
+        // WHY: World は SetBodies() で剛体を差し替えるが m_contactCache / m_prevEvents はクリアしない。
+        //      前 Play セッションの Collider* が残ったまま次 Play が始まると物理が誤動作するため、
+        //      Stop 復元のタイミングで World を丸ごとリセットする。
+        m_physicsWorld = physics::World{};
         scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
         m_physicsAccumulator = 0.0f;
     }

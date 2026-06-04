@@ -230,6 +230,10 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         auto* playMode = editorApp.GetContext().playMode;
         if (playMode->ApplyPendingRestore(*scene)) {
+            // WHY: World は SetBodies() で剛体を差し替えるが m_contactCache / m_prevEvents はクリアしない。
+            //      前 Play セッションの Collider* が残ったまま次 Play が始まると物理が誤動作するため、
+            //      Stop 復元のタイミングで World を丸ごとリセットする。
+            physicsWorld = physics::World{};
             scene::ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
             physicsAccumulator = 0.0f;
         }
