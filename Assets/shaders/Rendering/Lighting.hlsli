@@ -22,7 +22,8 @@ float3 Lighting_Lambert(float3 N, float3 L,
 {
     float NdotL  = saturate(dot(N, L));
     float3 ambient = albedo * ambientColor;
-    float3 diffuse = albedo * lightColor * lightIntensity * NdotL * shadow;
+    // INV_PI: Lambert 正規化。PBR の BRDF_Diffuse と同じエネルギースケールにする。
+    float3 diffuse = albedo * INV_PI * lightColor * lightIntensity * NdotL * shadow;
     return ambient + diffuse;
 }
 
@@ -41,10 +42,11 @@ float3 Lighting_Phong(float3 N, float3 V, float3 L,
     float  RdotV    = saturate(dot(R, V));
 
     float3 ambient  = albedo * ambientColor;
-    float3 diffuse  = albedo * lightColor * lightIntensity * NdotL * shadow;
+    // INV_PI: Lambert 正規化。PBR と同じエネルギースケール。
+    float3 diffuse  = albedo * INV_PI * lightColor * lightIntensity * NdotL * shadow;
     float3 specular = lightColor * lightIntensity
                     * pow(RdotV, shininess)
-                    * (1.0f - roughness) * 0.5f * shadow;
+                    * (1.0f - roughness) * 0.5f * INV_PI * shadow;
     return ambient + diffuse + specular;
 }
 
@@ -64,10 +66,11 @@ float3 Lighting_BlinnPhong(float3 N, float3 V, float3 L,
     float shininess = max(lerp(128.0f, 2.0f, roughness), 2.0f);
 
     float3 ambient  = albedo * ambientColor;
-    float3 diffuse  = albedo * lightColor * lightIntensity * NdotL * shadow;
+    // INV_PI: Lambert 正規化。PBR と同じエネルギースケール。
+    float3 diffuse  = albedo * INV_PI * lightColor * lightIntensity * NdotL * shadow;
     float3 specular = lightColor * lightIntensity
                     * pow(NdotH, shininess)
-                    * (1.0f - roughness) * 0.5f * shadow;
+                    * (1.0f - roughness) * 0.5f * INV_PI * shadow;
     return ambient + diffuse + specular;
 }
 
@@ -131,7 +134,7 @@ float3 Lighting_Lambert_Direct(float3 N, float3 L,
                                 float3 lightColor, float lightIntensity)
 {
     float NdotL = saturate(dot(N, L));
-    return albedo * lightColor * lightIntensity * NdotL;
+    return albedo * INV_PI * lightColor * lightIntensity * NdotL;
 }
 
 float3 Lighting_Phong_Direct(float3 N, float3 V, float3 L,
@@ -142,8 +145,8 @@ float3 Lighting_Phong_Direct(float3 N, float3 V, float3 L,
     float shininess = max(lerp(128.0f, 2.0f, roughness), 2.0f);
     float3 R        = reflect(-L, N);
     float  RdotV    = saturate(dot(R, V));
-    float3 diffuse  = albedo * lightColor * lightIntensity * NdotL;
-    float3 specular = lightColor * lightIntensity * pow(RdotV, shininess) * (1.0f - roughness) * 0.5f;
+    float3 diffuse  = albedo * INV_PI * lightColor * lightIntensity * NdotL;
+    float3 specular = lightColor * lightIntensity * pow(RdotV, shininess) * (1.0f - roughness) * 0.5f * INV_PI;
     return diffuse + specular;
 }
 
@@ -155,8 +158,8 @@ float3 Lighting_BlinnPhong_Direct(float3 N, float3 V, float3 L,
     float  NdotL    = saturate(dot(N, L));
     float  NdotH    = saturate(dot(N, H));
     float  shininess = max(lerp(128.0f, 2.0f, roughness), 2.0f);
-    float3 diffuse  = albedo * lightColor * lightIntensity * NdotL;
-    float3 specular = lightColor * lightIntensity * pow(NdotH, shininess) * (1.0f - roughness) * 0.5f;
+    float3 diffuse  = albedo * INV_PI * lightColor * lightIntensity * NdotL;
+    float3 specular = lightColor * lightIntensity * pow(NdotH, shininess) * (1.0f - roughness) * 0.5f * INV_PI;
     return diffuse + specular;
 }
 

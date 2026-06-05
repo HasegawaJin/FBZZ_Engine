@@ -13,10 +13,13 @@
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
+#include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 namespace fbzz::scene {
@@ -103,7 +106,17 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
 
-    if (!h.gbufferShader.IsValid()) return;
+    if (!h.gbufferShader.IsValid()) { FBZZ_LOG_WARN("GBuffer shader is invalid!"); return; }
+
+    // GBuffer.hlsl はデフォルト 96 バイト MaterialConstants を期待する。
+    // マテリアル独自シェーダーは別レイアウトを持つため、フィールド名で値を抽出して
+    // GBuffer 互換レイアウトに詰め直す共有 cbuffer を使う。
+    // WHY: textureMask のオフセットはシェーダーごとに異なる (PBR=80, Toon=16, RimLight=28 等)。
+    //      そのまま渡すと GBuffer が textureMask/roughness/metallic を誤読してライティングが壊れる。
+    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_gbufMatCB;
+    static constexpr uint32_t kGBufCBSize = 96u;
+    if (!s_gbufMatCB.IsValid())
+        s_gbufMatCB = resources.CreateConstantBuffer(kGBufCBSize);
 
     const auto& frustum = *ctx.cameraFrustum;
 
@@ -120,7 +133,59 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 
         // フラスタムカリング: バウンディング球が視錐台外なら除外
         if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
+
+        // GBuffer に収まらないエフェクト系シェーダー (RimLight / Toon 等) は
+        // DeferredForwardEffects パスで Forward 描画するためここではスキップする。
+        if (IsForwardOnlyShader(mat->shaderPath)) continue;
+
         auto* material = SyncMaterial(*mat, resources);
+
+        // マテリアル CB を GBuffer 互換レイアウト (96 バイト) に変換してバインドする。
+        renderer::ResourceHandle<renderer::ConstantBufferTag> gbufMatCB;
+        if (material) {
+            if (material->paramData.size() == kGBufCBSize) {
+                // デフォルト 96 バイトレイアウト (PBR 等) はそのまま使える。
+                gbufMatCB = material->paramsBuffer;
+            } else {
+                // 独自レイアウト: フィールド名で抽出して 96 バイトバッファに詰め直す。
+                std::array<uint8_t, kGBufCBSize> gbufParams{};
+                // uvTiling がないマテリアル (Lit/Phong 等) 向けデフォルト: (1,1) で UV そのまま
+                // roughness がないマテリアル向けデフォルト: 0.5 (PBR で鏡面にならないよう)
+                // alphaCutoff デフォルト: 0 (カットアウト無効)
+                static constexpr float kDefTiling[2] = { 1.0f, 1.0f };
+                static constexpr float kDefRoughness  = 0.5f;
+                std::memcpy(gbufParams.data() + 20u, &kDefRoughness, 4u);
+                std::memcpy(gbufParams.data() + 48u, kDefTiling,     8u);
+                const renderer::ShaderDescriptor* mDesc = nullptr;
+                if (auto* sh = resources.Get(material->shader))
+                    mDesc = &sh->GetDescriptor();
+
+                if (mDesc) {
+                    auto copyField = [&](std::string_view name, uint32_t dstOff, uint32_t bytes) {
+                        const auto* v = mDesc->FindVar(name);
+                        if (!v || v->offset + bytes > static_cast<uint32_t>(material->paramData.size())) return;
+                        std::memcpy(gbufParams.data() + dstOff,
+                                    material->paramData.data() + v->offset, bytes);
+                    };
+                    copyField("albedo",         0u,  16u); // float4
+                    copyField("metallic",       16u,  4u); // float
+                    copyField("roughness",      20u,  4u); // float
+                    copyField("normalStrength", 24u,  4u); // float
+                    copyField("uvTiling",       48u,  8u); // float2
+                    copyField("uvOffset",       56u,  8u); // float2
+                    copyField("alphaCutoff",    64u,  4u); // float
+                    // textureMask は Material::Upload が計算済みの値を使う
+                    if (mDesc->textureMaskOffset != UINT32_MAX
+                        && mDesc->textureMaskOffset + 4u <= static_cast<uint32_t>(material->paramData.size()))
+                    {
+                        std::memcpy(gbufParams.data() + 80u,
+                                    material->paramData.data() + mDesc->textureMaskOffset, 4u);
+                    }
+                }
+                resources.Update(s_gbufMatCB, gbufParams.data(), kGBufCBSize);
+                gbufMatCB = s_gbufMatCB;
+            }
+        }
 
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
@@ -136,8 +201,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO : h.defaultPSO;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
-        dc.constantBuffers[2] = material ? material->paramsBuffer
-                                         : renderer::ResourceHandle<renderer::ConstantBufferTag>{};
+        dc.constantBuffers[2] = gbufMatCB;
         if (material)
             for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
@@ -155,7 +219,7 @@ void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)
     // hdrRT をクリア (カラー・深度 1.0 にリセット) してから GBuffer 深度を転写する。
     // この深度は Sky (DEPTH_SKY) と DeferredSkinnedForward (DEPTH_ON) が参照する。
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.Clear({ 0.0f, 0.0f, 0.0f, 1.0f });
+    renderer.Clear(kHdrClearColor);
 
     if (!h.depthCopyShader.IsValid() || !h.gbufferRT.IsValid()) return;
 
@@ -418,6 +482,51 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
     }
 
     SortAndSubmitTransparent(transparentQueue, renderer, resources, h.objectCB);
+
+    // ── 不透明エフェクト系 Static Mesh (RimLight / Toon / Subsurface 等) ──────────
+    // GBuffer に収まらない独自ライティングを持つ不透明シェーダーを Forward で描画する。
+    // GBufferPass でスキップされたオブジェクトをここで処理する。
+    // DeferredDepthCopy で転写済みの深度を使って GBuffer ジオメトリとの
+    // 正しいオクルージョンを保ちながら描画する。
+    for (auto& go : ctx.scene.GameObjects()) {
+        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
+        auto* mr  = go.GetComponent<MeshRenderer>();
+        auto* mat = go.GetComponent<MaterialComponent>();
+        if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
+        if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
+        if (mr->mesh->isSkinned) continue;
+        if (mat->blendMode != renderer::BlendMode::OPAQUE_BLEND) continue;  // 不透明のみ
+        if (!IsForwardOnlyShader(mat->shaderPath)) continue;                // エフェクト系のみ
+
+        if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) continue;
+
+        auto* material = SyncMaterial(*mat, resources);
+        if (!material || !material->shader.IsValid()) continue;
+
+        PerObjectCB objData{};
+        objData.world             = go.transform.GetWorldMatrix();
+        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
+        resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
+
+        renderer::DrawCall dc;
+        dc.vertexBuffer       = mr->mesh->vertexBuffer;
+        dc.indexBuffer        = mr->mesh->indexBuffer;
+        dc.indexCount         = mr->mesh->indexCount;
+        dc.vertexCount        = mr->mesh->vertexCount;
+        dc.shader             = material->shader;
+        dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
+                                                 : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+        dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
+        dc.constantBuffers[0] = h.frameCB;
+        dc.constantBuffers[1] = h.objectCB;
+        dc.constantBuffers[2] = material->paramsBuffer;
+        dc.constantBuffers[3] = h.lightCB;
+        dc.constantBuffers[4] = h.shadowCB;
+        for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+            if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
+        dc.textures[8] = shadowDepthTex;
+        renderer.Submit(dc, resources);
+    }
 }
 
 } // namespace fbzz::scene

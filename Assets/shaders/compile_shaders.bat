@@ -57,6 +57,7 @@ call :CompileVSPS Material\Surface\Toon.hlsl Material.Surface.Toon || goto :erro
 call :CompileVSPS Material\Surface\Dissolve.hlsl Material.Surface.Dissolve || goto :error
 call :CompileVSPS Material\Surface\Subsurface.hlsl Material.Surface.Subsurface || goto :error
 call :CompileVSPS Material\Surface\Anisotropic.hlsl Material.Surface.Anisotropic || goto :error
+call :CompileVSPS Material\Surface\RimLight.hlsl Material.Surface.RimLight || goto :error
 call :CompileVSPS Material\Skinned\SkinnedUnlit.hlsl Material.Skinned.SkinnedUnlit || goto :error
 call :CompileVSPS Material\Skinned\SkinnedLit.hlsl Material.Skinned.SkinnedLit || goto :error
 call :CompileVSPS Material\Skinned\SkinnedPhong.hlsl Material.Skinned.SkinnedPhong || goto :error
@@ -66,6 +67,7 @@ call :CompileVSPS Material\Skinned\SkinnedToon.hlsl Material.Skinned.SkinnedToon
 call :CompileVSPS Material\Skinned\SkinnedDissolve.hlsl Material.Skinned.SkinnedDissolve || goto :error
 call :CompileVSPS Material\Skinned\SkinnedSubsurface.hlsl Material.Skinned.SkinnedSubsurface || goto :error
 call :CompileVSPS Material\Skinned\SkinnedAnisotropic.hlsl Material.Skinned.SkinnedAnisotropic || goto :error
+call :CompileVSPS Material\Skinned\SkinnedRimLight.hlsl Material.Skinned.SkinnedRimLight || goto :error
 call :CompileVSPS Material\Effects\Particle.hlsl Material.Effects.Particle || goto :error
 call :CompileVSPS Material\Sky\Skybox.hlsl Material.Sky.Skybox || goto :error
 call :CompileVSPS Material\Sky\Skydome.hlsl Material.Sky.Skydome || goto :error

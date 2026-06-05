@@ -83,7 +83,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     const auto& cam = ctx.camera;
 
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.Clear({ 0.005f, 0.005f, 0.02f, 1.0f });
+    renderer.Clear(kHdrClearColor);
 
     PerFrameCB frameData{};
     frameData.view              = cam.GetViewMatrix();
