@@ -6,6 +6,7 @@
 #pragma once
 #include "Engine/Core/Memory/MemorySystem.hpp"
 #include "Engine/Core/Window.hpp"
+#include "Engine/Renderer/IImGuiRenderer.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Scene/SceneManager.hpp"
 #include <memory>
@@ -31,8 +32,9 @@ public:
 
     bool                    IsRunning()      const { return m_isRunning; }
     Window&                 GetWindow()      const { return *m_window; }
-    renderer::IRenderer&    GetRenderer()    const { return *m_renderer; }
-    scene::SceneManager&    GetSceneManager() const { return *m_sceneManager; }
+    renderer::IRenderer&      GetRenderer()      const { return *m_renderer; }
+    renderer::IImGuiRenderer& GetImGuiRenderer() const { return *m_imguiRenderer; }
+    scene::SceneManager&      GetSceneManager() const { return *m_sceneManager; }
     MemorySystem&           GetMemorySystem() { return m_memorySystem; }
     const MemorySystem&     GetMemorySystem() const { return m_memorySystem; }
 
@@ -40,9 +42,10 @@ private:
     Application() = default;
 
     bool m_isRunning = true;
-    std::unique_ptr<Window>              m_window;
-    std::unique_ptr<renderer::IRenderer> m_renderer;
-    std::unique_ptr<scene::SceneManager> m_sceneManager;
+    std::unique_ptr<Window>                   m_window;
+    std::unique_ptr<renderer::IRenderer>      m_renderer;
+    std::unique_ptr<renderer::IImGuiRenderer> m_imguiRenderer;
+    std::unique_ptr<scene::SceneManager>      m_sceneManager;
     MemorySystem                         m_memorySystem;
 };
 

@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace fbzz::renderer { class Camera; }
-namespace fbzz::renderer { class IRenderer; class ResourceManager; }
+namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; }
 
@@ -22,6 +22,7 @@ struct EditorContext {
     scene::Scene*     activeScene  = nullptr;
     renderer::Camera* editorCamera = nullptr;
     renderer::IRenderer* renderer = nullptr;
+    renderer::IImGuiRenderer* imguiRenderer = nullptr;
     renderer::ResourceManager* resources = nullptr;
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
