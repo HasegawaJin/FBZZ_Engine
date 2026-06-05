@@ -65,9 +65,9 @@ void RenderSystem(Scene& scene,
     // 静的リソースの遅延初期化
     // =========================================================================
     static auto shadowMapRT          = resources.CreateRenderTarget(kShadowMapSize, kShadowMapSize, 0);
-    static auto shadowShader         = resources.LoadShader("assets/shaders/Pipeline/Shadow/ShadowMap.hlsl");
-    static auto skinnedShadowShader  = resources.LoadShader("assets/shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
-    static auto skinnedPbrShader     = resources.LoadShader("assets/shaders/Material/Skinned/SkinnedPBR.hlsl");
+    static auto shadowShader         = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
+    static auto skinnedShadowShader  = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
+    static auto skinnedPbrShader     = resources.LoadShader("Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl");
 
     // スキンドメッシュに AnimatorComponent がない場合のアイデンティティボーンパレット
     static renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
@@ -79,29 +79,29 @@ void RenderSystem(Scene& scene,
         resources.Update(bindPoseSkinningCB, &bp, sizeof(BindPoseData));
     }
 
-    static auto compositeShader         = resources.LoadShader("assets/shaders/PostProcess/Color/Composite.hlsl");
-    static auto copyColorShader         = resources.LoadShader("assets/shaders/PostProcess/Color/CopyColor.hlsl");
-    static auto causticsShader          = resources.LoadShader("assets/shaders/PostProcess/Water/Caustics.hlsl");
-    static auto ssaoShader              = resources.LoadShader("assets/shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
-    static auto ssaoBlurShader          = resources.LoadShader("assets/shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
-    static auto bloomDownShader         = resources.LoadShader("assets/shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
-    static auto bloomUpShader           = resources.LoadShader("assets/shaders/PostProcess/Bloom/BloomUpsample.cs.hlsl");
-    static auto selectionMaskShader     = resources.LoadShader("assets/shaders/Debug/SelectionMask.hlsl");
-    static auto selectionMaskSkinnedShader = resources.LoadShader("assets/shaders/Debug/SelectionMaskSkinnedMesh.hlsl");
-    static auto selectionOutlineShader  = resources.LoadShader("assets/shaders/PostProcess/Outline/SelectionOutline.hlsl");
-    static auto fxaaShader              = resources.LoadShader("assets/shaders/PostProcess/AntiAliasing/FXAA.hlsl");
+    static auto compositeShader         = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
+    static auto copyColorShader         = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    static auto causticsShader          = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
+    static auto ssaoShader              = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
+    static auto ssaoBlurShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
+    static auto bloomDownShader         = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
+    static auto bloomUpShader           = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomUpsample.cs.hlsl");
+    static auto selectionMaskShader     = resources.LoadShader("Assets/Shaders/Debug/SelectionMask.hlsl");
+    static auto selectionMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskSkinnedMesh.hlsl");
+    static auto selectionOutlineShader  = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
+    static auto fxaaShader              = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
 
-    static auto skydomeShader = resources.LoadShader("assets/shaders/Material/Sky/Skydome.hlsl");
+    static auto skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
     static auto skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
 
-    static auto gbufferShader          = resources.LoadShader("assets/shaders/Pipeline/Deferred/GBuffer.hlsl");
-    static auto deferredLightingShader = resources.LoadShader("assets/shaders/Pipeline/Deferred/DeferredLighting.hlsl");
-    static auto depthCopyShader        = resources.LoadShader("assets/shaders/Pipeline/Deferred/DepthCopy.hlsl");
+    static auto gbufferShader          = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+    static auto deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
+    static auto depthCopyShader        = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
 
-    static auto decalShader     = resources.LoadShader("assets/shaders/Material/Decal/Decal.hlsl");
-    static auto decalMaskShader = resources.LoadShader("assets/shaders/Material/Decal/DecalMask.hlsl");
+    static auto decalShader     = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
+    static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
 
-    static auto particleShader = resources.LoadShader("assets/shaders/Material/Effects/Particle.hlsl");
+    static auto particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
 
     static auto frameCB    = resources.CreateConstantBuffer(sizeof(PerFrameCB));
     static auto objectCB   = resources.CreateConstantBuffer(sizeof(PerObjectCB));

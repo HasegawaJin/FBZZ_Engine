@@ -5,6 +5,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Color.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -54,11 +55,13 @@ float4 PSMain(PSInput p) : SV_Target0
     float2 uv = p.uv * uvTiling + uvOffset;
 
     // Albedo + alpha
-    float4 albedoSample = (textureMask & (1u << 0))
+    // sRGB テクスチャを線形空間にデコードしてから tint (線形) を乗算する。
+    // テクスチャなし時は (1,1,1) として albedo.rgb をそのまま使用 (SRGBToLinear(1)=1)。
+    float4 rawAlbedo = (textureMask & (1u << 0))
         ? texAlbedo.Sample(sampDefault, uv)
-        : albedo;
-    float3 col   = albedoSample.rgb * albedo.rgb;
-    float  alpha = albedoSample.a  * albedo.a;
+        : float4(1.0f, 1.0f, 1.0f, 1.0f);
+    float3 col   = SRGBToLinear(rawAlbedo.rgb) * albedo.rgb;
+    float  alpha = rawAlbedo.a * albedo.a;
 
     // alphaCutoff: カットアウト描画。不透明パスでディザリングなし早期棄却。
     clip(alpha - alphaCutoff);
@@ -116,9 +119,9 @@ float4 PSMain(PSInput p) : SV_Target0
                       spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
 
-    // Emissive: テクスチャがあれば乗算、なければ emissiveColor のみ。emissiveScale=0 で非発光。
+    // Emissive: テクスチャがあれば sRGB デコードして乗算。emissiveScale=0 で非発光。
     float3 emissiveTex = (textureMask & (1u << 3))
-        ? texEmissive.Sample(sampDefault, uv).rgb
+        ? SRGBToLinear(texEmissive.Sample(sampDefault, uv).rgb)
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
 
