@@ -9,6 +9,7 @@
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Common/Space.hlsli"
+#include "Common/Color.hlsli"
 #include "Platform/DX11.hlsli"
 
 Texture2D    texAlbedo        : register(TEX_ALBEDO);
@@ -30,17 +31,25 @@ PSInput VSMain(VSInput v)
 
 GBufferOut PSMain(PSInput p)
 {
-    // Albedo
-    float3 col = (textureMask & (1u << 0))
-        ? texAlbedo.Sample(sampDefault, p.uv).rgb
-        : albedo;
+    float2 uv = p.uv * uvTiling + uvOffset;
 
-    // Normal (法線マップがあれば TBN で変換)
+    // Albedo + tint
+    // sRGB テクスチャを線形空間にデコードしてから tint (線形) を乗算する。
+    // テクスチャなし時は (1,1,1) として albedo.rgb をそのまま使用 (SRGBToLinear(1)=1)。
+    float4 rawAlbedo = (textureMask & (1u << 0))
+        ? texAlbedo.Sample(sampDefault, uv)
+        : float4(1.0f, 1.0f, 1.0f, 1.0f);
+    float3 col  = SRGBToLinear(rawAlbedo.rgb) * albedo.rgb;
+    float  alpha = rawAlbedo.a * albedo.a;
+    clip(alpha - alphaCutoff);
+
+    // Normal (法線マップがあれば TBN で変換、normalStrength でブレンド)
     float3 N = normalize(p.normal);
     if (textureMask & (1u << 1))
     {
-        float3 ns = texNormal.Sample(sampDefault, p.uv).rgb;
-        N = ApplyNormalMap(ns, N, normalize(p.tangent));
+        float3 ns = texNormal.Sample(sampDefault, uv).rgb;
+        float3 nm = ApplyNormalMap(ns, N, normalize(p.tangent));
+        N = normalize(lerp(N, nm, normalStrength));
     }
 
     // Metallic / Roughness (glTF 規約: G=roughness, B=metallic)
@@ -48,7 +57,7 @@ GBufferOut PSMain(PSInput p)
     float rough = roughness;
     if (textureMask & (1u << 2))
     {
-        float2 mr = texMetallicRough.Sample(sampDefault, p.uv).gb;
+        float2 mr = texMetallicRough.Sample(sampDefault, uv).gb;
         rough = mr.x;
         met   = mr.y;
     }
