@@ -506,6 +506,43 @@ private:
     const toml::table& m_table;
 };
 
+std::string TomlTableToString(const toml::table& table)
+{
+    std::ostringstream oss;
+    oss << table;
+    return oss.str();
+}
+
+toml::table TomlTableFromString(const std::string& text)
+{
+    if (text.empty()) {
+        return {};
+    }
+
+    auto result = toml::parse(text);
+    if (!result) {
+        FBZZ_LOG_WARN("SceneSerializer: failed to parse preserved Script fields");
+        return {};
+    }
+    return std::move(result.table());
+}
+
+void InsertScriptComponentTable(toml::table& goTbl,
+                                const std::string& type,
+                                bool enabled,
+                                toml::table fieldsTbl)
+{
+    if (type.empty()) {
+        return;
+    }
+
+    toml::table scTbl;
+    scTbl.insert("type", type);
+    scTbl.insert("enabled", enabled);
+    scTbl.insert("fields", std::move(fieldsTbl));
+    goTbl.insert("ScriptComponent", std::move(scTbl));
+}
+
 // "primitive:sphere" → PrimitiveMesh::Sphere
 // "models/foo.fbx"   → AssetManager::Load<Model> mesh[0]
 // "models/foo.fbx:2" → mesh[2]
@@ -832,6 +869,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ccTbl.insert("jumpGroundIgnoreTime",  (double)cc->jumpGroundIgnoreTime);
             ccTbl.insert("groundedVelSnap",       (double)cc->groundedVelSnap);
             ccTbl.insert("intentionalJumpMaxTime",(double)cc->intentionalJumpMaxTime);
+            // WHY: isGrounded はゲームプレイ中に変化するランタイム状態だが、
+            //      スナップショットに含めることでエディタ編集中の初期状態を正確に復元する。
+            //      (デフォルト true のため、シリアライズしなくても起動時は問題ないが
+            //       エディタで false に変更した場合に備えて保存する)
+            ccTbl.insert("isGrounded",            cc->isGrounded);
             goTbl.insert("CharacterControllerComponent", std::move(ccTbl));
         }
 
@@ -1208,15 +1250,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             }
         }
 
-        if (auto* sc = go.GetComponent<ScriptComponent>(); sc && sc->script) {
-            toml::table scTbl;
+        if (auto* sc = go.GetComponent<ScriptComponent>()) {
             toml::table fieldsTbl;
-            scTbl.insert("type", sc->script->GetTypeName());
-            scTbl.insert("enabled", sc->script->enabled);
-            TomlWriteReflector reflector(fieldsTbl);
-            sc->script->Reflect(reflector);
-            scTbl.insert("fields", std::move(fieldsTbl));
-            goTbl.insert("ScriptComponent", std::move(scTbl));
+            if (sc->script) {
+                sc->script->SetContext(&scene, &go);
+                TomlWriteReflector reflector(fieldsTbl);
+                sc->script->Reflect(reflector);
+                const std::string type = sc->script->GetTypeName();
+                const bool enabled = sc->script->enabled;
+                if (!sc->serialized)
+                    sc->serialized = std::make_shared<SerializedScriptData>();
+                sc->serialized->type = type;
+                sc->serialized->enabled = enabled;
+                sc->serialized->fieldsToml = TomlTableToString(fieldsTbl);
+                InsertScriptComponentTable(
+                    goTbl,
+                    type,
+                    enabled,
+                    std::move(fieldsTbl));
+            } else if (sc->serialized && !sc->serialized->type.empty()) {
+                InsertScriptComponentTable(
+                    goTbl,
+                    sc->serialized->type,
+                    sc->serialized->enabled,
+                    TomlTableFromString(sc->serialized->fieldsToml));
+            }
         }
 
         goArr.push_back(std::move(goTbl));
@@ -1589,6 +1647,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.jumpGroundIgnoreTime  = (float)(*ccTbl)["jumpGroundIgnoreTime"].value_or(0.12);
             cc.groundedVelSnap       = (float)(*ccTbl)["groundedVelSnap"].value_or(0.35);
             cc.intentionalJumpMaxTime= (float)(*ccTbl)["intentionalJumpMaxTime"].value_or(1.0);
+            cc.isGrounded            = (*ccTbl)["isGrounded"].value_or(true);
             go.AddComponent<CharacterControllerComponent>(std::move(cc));
         }
 
@@ -1970,17 +2029,35 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // ScriptComponent
         if (auto* scTbl = (*goTbl)["ScriptComponent"].as_table()) {
             std::string type = (*scTbl)["type"].value_or(std::string{});
+            const bool enabled = (*scTbl)["enabled"].value_or(true);
+            std::string preservedFieldsToml;
+            if (auto* fieldsTbl = (*scTbl)["fields"].as_table()) {
+                preservedFieldsToml = TomlTableToString(*fieldsTbl);
+            }
+
             auto script = ScriptFactory::Create(type);
             if (script) {
-                script->enabled = (*scTbl)["enabled"].value_or(true);
+                script->enabled = enabled;
                 if (auto* fieldsTbl = (*scTbl)["fields"].as_table()) {
                     TomlReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
 
                 ScriptComponent sc{};
+                sc.serialized = std::make_shared<SerializedScriptData>();
+                sc.serialized->type = type;
+                sc.serialized->enabled = enabled;
+                sc.serialized->fieldsToml = preservedFieldsToml;
                 sc.script = std::move(script);
                 go.AddComponent<ScriptComponent>(std::move(sc));
+            } else {
+                ScriptComponent sc{};
+                sc.serialized = std::make_shared<SerializedScriptData>();
+                sc.serialized->type = type;
+                sc.serialized->enabled = enabled;
+                sc.serialized->fieldsToml = preservedFieldsToml;
+                go.AddComponent<ScriptComponent>(std::move(sc));
+                FBZZ_LOG_WARN("SceneSerializer: ScriptFactory could not create script type '%s'", type.c_str());
             }
         }
     }

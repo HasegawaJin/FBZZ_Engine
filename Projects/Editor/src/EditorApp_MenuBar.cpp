@@ -11,6 +11,7 @@
 #include <Editor/Util/StandaloneLauncher.hpp>
 #include <imgui.h>
 #include <Windows.h>
+#include <cmath>
 
 namespace fbzz::editor {
 
@@ -20,7 +21,8 @@ enum class PlayToolbarIcon {
     Play,
     Stop,
     Pause,
-    Step
+    Step,
+    Reload
 };
 
 void DrawPlayToolbarIcon(PlayToolbarIcon icon, const ImVec2& min, const ImVec2& max, ImU32 color)
@@ -77,6 +79,26 @@ void DrawPlayToolbarIcon(PlayToolbarIcon icon, const ImVec2& min, const ImVec2& 
             color,
             1.0f);
         break;
+    case PlayToolbarIcon::Reload: {
+        // 円弧 (約 300°) + 先端に矢頭
+        constexpr float kPi        = 3.14159265f;
+        constexpr float r          = 5.5f;
+        constexpr float startAngle = kPi * 0.25f;
+        constexpr float endAngle   = startAngle + kPi * 1.67f;
+        drawList->PathArcTo(center, r, startAngle, endAngle, 16);
+        drawList->PathStroke(color, false, 1.8f);
+
+        const float ax = center.x + r * std::cos(endAngle);
+        const float ay = center.y + r * std::sin(endAngle);
+        const float tx = endAngle + kPi * 0.5f;
+        constexpr float arrowSize = 3.5f;
+        drawList->AddTriangleFilled(
+            { ax, ay },
+            { ax + arrowSize * std::cos(tx - 0.55f), ay + arrowSize * std::sin(tx - 0.55f) },
+            { ax + arrowSize * std::cos(tx + 0.55f), ay + arrowSize * std::sin(tx + 0.55f) },
+            color);
+        break;
+    }
     }
 
     drawList->Flags = oldFlags;
@@ -114,7 +136,7 @@ bool PlayToolbarButton(
     const ImU32 iconColor = ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
     DrawPlayToolbarIcon(icon, min, max, iconColor);
 
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("%s", tooltip);
 
     if (!enabled)
@@ -276,7 +298,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     ImGui::BeginChild("##MainPlayToolbar", { 0.0f, TOOLBAR_HEIGHT }, false,
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-    const float groupWidth = BUTTON_SIZE.x * 4.0f + BUTTON_SPACING * 3.0f;
+    const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;
     const float availableWidth = ImGui::GetContentRegionAvail().x;
     const float centerOffset = (availableWidth > groupWidth) ? (availableWidth - groupWidth) * 0.5f : 0.0f;
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + centerOffset);
@@ -286,6 +308,13 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     const bool isEditor = pm && pm->IsInEditor();
     const bool isPlaying = pm && pm->IsPlaying();
     const bool isPaused = pm && pm->IsPaused();
+    const bool scriptReloadBusy =
+        ctx.scriptReloadBusy ||
+        ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
+        ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
+    const char* playTooltip = scriptReloadBusy
+        ? "Scripts are compiling/reloading..."
+        : (isPaused ? "Resume from Play Mode" : "Play");
 
     const ImVec4 playColor  { 0.18f, 0.58f, 0.33f, 1.0f };
     const ImVec4 stopColor  { 0.62f, 0.20f, 0.20f, 1.0f };
@@ -293,9 +322,9 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 
     if (PlayToolbarButton(
         "##PlayModePlay",
-        isPaused ? "Resume from Play Mode" : "Play",
+        playTooltip,
         PlayToolbarIcon::Play,
-        pm && hasScene && isEditor,
+        pm && hasScene && isEditor && !scriptReloadBusy,
         isPlaying,
         playColor,
         BUTTON_SIZE)) {
@@ -337,20 +366,72 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         BUTTON_SIZE))
         pm->RequestStep();
 
-    // WHY: ボタンの色変化だけでは Play / Pause / Editor の状態が曖昧。
-    //      Unity 同様、ツールバー右端に現在の状態をテキストで表示することで
-    //      視線を動かさず一目で把握できるようにする。
-    if (!isEditor) {
-        const char* label     = isPlaying ? "PLAYING" : "PAUSED";
-        const ImVec4 labelCol = isPlaying
-            ? ImVec4{ 0.28f, 0.88f, 0.53f, 1.0f } // 緑: Play
-            : ImVec4{ 0.92f, 0.72f, 0.28f, 1.0f }; // 黄: Pause
-        const float textWidth = ImGui::CalcTextSize(label).x;
-        const float posX = availableWidth - textWidth - 12.0f;
-        const float posY = (TOOLBAR_HEIGHT - ImGui::GetTextLineHeight()) * 0.5f;
-        if (posX > 0.0f) {
-            ImGui::SetCursorPos({ posX, posY });
-            ImGui::TextColored(labelCol, "%s", label);
+    ImGui::SameLine();
+    {
+        const ImVec4 reloadColor { 0.25f, 0.55f, 0.90f, 1.0f };
+        const char* reloadTooltip = scriptReloadBusy ? "Scripts are compiling..." : "Reload Scripts";
+        if (PlayToolbarButton(
+            "##ScriptReload",
+            reloadTooltip,
+            PlayToolbarIcon::Reload,
+            !scriptReloadBusy,
+            scriptReloadBusy,
+            reloadColor,
+            BUTTON_SIZE))
+            ctx.requestScriptReload = true;
+    }
+
+    // ── 右端: ホットリロードステータス / PLAYING ラベル ────────────────────
+    {
+        // ホットリロードステータステキストを決定する
+        const char* reloadText  = nullptr;
+        ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+        switch (ctx.hotReloadState) {
+        case EditorContext::HotReloadState::Compiling:
+            reloadText  = "Compiling...";
+            reloadColor = { 1.0f, 0.85f, 0.2f,  1.0f };
+            break;
+        case EditorContext::HotReloadState::Reloading:
+            reloadText  = "Reloading...";
+            reloadColor = { 0.5f, 0.8f,  1.0f,  1.0f };
+            break;
+        case EditorContext::HotReloadState::Done:
+            reloadText  = "Reload OK";
+            reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };
+            break;
+        case EditorContext::HotReloadState::Failed:
+            reloadText  = "Compile Error";
+            reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };
+            break;
+        default: break;
+        }
+
+        // PLAYING / PAUSED ラベル
+        const char*  playLabel    = !isEditor ? (isPlaying ? "PLAYING" : "PAUSED") : nullptr;
+        const ImVec4 playLabelCol = isPlaying
+            ? ImVec4{ 0.28f, 0.88f, 0.53f, 1.0f }
+            : ImVec4{ 0.92f, 0.72f, 0.28f, 1.0f };
+
+        // 右端からテキスト幅で逆算して配置する (描画対象がある場合のみ)
+        constexpr float kGap = 6.0f;
+        float totalW = 0.0f;
+        if (reloadText) totalW += ImGui::CalcTextSize(reloadText).x + kGap;
+        if (playLabel)  totalW += ImGui::CalcTextSize(playLabel).x  + kGap;
+
+        if (totalW > 0.0f) {
+            const float posX = availableWidth - totalW - 8.0f;
+            const float posY = (TOOLBAR_HEIGHT - ImGui::GetTextLineHeight()) * 0.5f;
+            if (posX > ImGui::GetCursorPosX())
+                ImGui::SetCursorPos({ posX, posY });
+
+            if (reloadText) {
+                ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
+                ImGui::TextUnformatted(reloadText);
+                ImGui::PopStyleColor();
+                if (playLabel) ImGui::SameLine(0.0f, kGap);
+            }
+            if (playLabel)
+                ImGui::TextColored(playLabelCol, "%s", playLabel);
         }
     }
 

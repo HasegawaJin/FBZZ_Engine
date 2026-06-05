@@ -19,10 +19,18 @@ float                              Input::s_scrollDelta   = 0.0f;
 
 void Input::Init()
 {
+    Reset();
+}
+
+void Input::Reset()
+{
     s_current.fill(false);
     s_previous.fill(false);
     s_mouseCurrent.fill(false);
     s_mousePrevious.fill(false);
+    s_mousePos     = {};
+    s_prevMousePos = {};
+    s_scrollDelta  = 0.0f;
 }
 
 void Input::Update()
@@ -71,7 +79,10 @@ void Input::HandleMouseMove(int x, int y)
     s_mousePos = { static_cast<float>(x), static_cast<float>(y) };
 }
 
-float Input::MouseScrollDelta() { return s_scrollDelta; }
+float Input::MouseScrollDelta()
+{
+    return s_scrollDelta;
+}
 
 void Input::HandleMouseScroll(float delta) { s_scrollDelta += delta; }
 

@@ -26,12 +26,16 @@ struct EditorContext {
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
+    std::string       engineRoot;          // .fbzz_proj の [engine] root (cmake configure で FBZZ_ENGINE_ROOT に使う)
     std::string       standaloneTargetName = "SandboxStandalone";
+    std::string       projectTargetName;   // .fbzz_proj の target_name (GameHub プロジェクトの識別に使う)
 
     // ScriptCodeGen / ScriptDllLoader が使うソースパス (InitScriptDll で設定)
-    std::string       scriptsSourceDir;   // Projects/Sandbox/src/Scripts/ の絶対パス
-    std::string       scriptsDllCppPath;  // SandboxScriptsDll.cpp の絶対パス
-    std::string       hlslSourceDir;      // Assets/shaders/ の絶対パス
+    std::string       scriptsSourceDir;     // Assets/Scripts/ の絶対パス
+    std::string       scriptsDllCppPath;    // SandboxScriptsDll.cpp の絶対パス (DLL 登録)
+    std::string       scriptsStaticCppPath; // SandboxScripts.cpp の絶対パス (EXE 静的登録)
+    std::string       scriptsDllPath;       // コンパイル済み DLL の絶対パス (BuildPipeline が配布物へコピー)
+    std::string       hlslSourceDir;       // Assets/shaders/ の絶対パス
     std::string       currentScenePath;
     bool              sceneDirty = false;
 
@@ -123,11 +127,13 @@ struct EditorContext {
     HotReloadState hotReloadState   = HotReloadState::Idle;
     std::string    hotReloadMessage;   // StatusBar に表示するテキスト
     float          hotReloadDoneTimer = 0.0f; // Done / Failed 表示を消すカウントダウン (秒)
+    bool           scriptReloadBusy = false;  // Script DLL のビルド待ち / ロード中は Play 開始を止める
 
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings = false;
     bool requestOpenBuildSettings   = false;
     bool requestOpenAnalysis        = false;
+    bool requestScriptReload        = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;

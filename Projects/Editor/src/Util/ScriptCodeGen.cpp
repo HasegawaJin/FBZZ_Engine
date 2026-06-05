@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace fbzz::editor {
 
@@ -46,8 +47,19 @@ bool InsertAfterMarker(const std::string& path,
     if (lines.empty()) return false;
 
     for (size_t i = 0; i < lines.size(); ++i) {
-        if (lines[i].find(marker) != std::string::npos) {
-            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(i + 1), newLine);
+        const size_t first = lines[i].find_first_not_of(" \t");
+        const std::string_view line = (first == std::string::npos)
+            ? std::string_view{}
+            : std::string_view(lines[i]).substr(first);
+        const std::string expectedMarkerLine = "// " + marker;
+        if (line.starts_with(std::string_view(expectedMarkerLine))) {
+            size_t insertIndex = i + 1;
+            if (marker == "@@FBZZ_SCRIPT_ENTRIES_BEGIN" &&
+                insertIndex < lines.size() &&
+                lines[insertIndex].find("static const std::vector<ScriptEntry> entries = {") != std::string::npos) {
+                ++insertIndex;
+            }
+            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insertIndex), newLine);
             return WriteLines(path, lines);
         }
     }
@@ -246,7 +258,8 @@ std::string BuildComputeHlslTemplate(const std::string& name)
 
 std::string ScriptCodeGen::CreateScript(const std::string& name,
                                         const std::string& scriptsDir,
-                                        const std::string& dllCppPath)
+                                        const std::string& dllCppPath,
+                                        const std::string& staticCppPath)
 {
     if (name.empty() || scriptsDir.empty()) return {};
 
@@ -270,13 +283,20 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
         return {};
     }
 
-    // SandboxScriptsDll.cpp への自動登録
-    if (!dllCppPath.empty()) {
-        const std::string relInclude = "\"Scripts/" + headerName + "\"";
-        if (!AlreadyRegistered(dllCppPath, className)) {
-            InsertScriptInclude(dllCppPath, relInclude);
-            InsertScriptEntry(dllCppPath, className);
-        }
+    const std::string relInclude = "\"Scripts/" + headerName + "\"";
+
+    // SandboxScriptsDll.cpp への自動登録 (DLL ホットリロード用)
+    if (!dllCppPath.empty() && !AlreadyRegistered(dllCppPath, className)) {
+        InsertScriptInclude(dllCppPath, relInclude);
+        InsertScriptEntry(dllCppPath, className);
+    }
+
+    // SandboxScripts.cpp への自動登録 (RuntimeBuild Standalone exe 用)
+    // WHY: SandboxStandalone は DLL をロードせず EXE 内の静的登録でスクリプトを解決する。
+    //      ここで追記しないと RuntimeBuild 後の exe に新スクリプトが含まれない。
+    if (!staticCppPath.empty() && !AlreadyRegistered(staticCppPath, className)) {
+        InsertScriptInclude(staticCppPath, relInclude);
+        InsertScriptStaticEntry(staticCppPath, className);
     }
 
     FBZZ_LOG_INFO("ScriptCodeGen: script generated -> %s", headerPath.c_str());
@@ -335,10 +355,10 @@ std::string ScriptCodeGen::CreateHlsl(const std::string& name,
 // 内部実装
 // =============================================================================
 
-bool ScriptCodeGen::InsertScriptInclude(const std::string& dllCppPath,
+bool ScriptCodeGen::InsertScriptInclude(const std::string& cppPath,
                                         const std::string& headerRelPath)
 {
-    return InsertAfterMarker(dllCppPath,
+    return InsertAfterMarker(cppPath,
                              "@@FBZZ_SCRIPT_INCLUDES_BEGIN",
                              "#include " + headerRelPath);
 }
@@ -350,6 +370,14 @@ bool ScriptCodeGen::InsertScriptEntry(const std::string& dllCppPath,
         "        { ::sandbox::" + className + "::TYPE_NAME,"
         " []() { return std::make_unique<::sandbox::" + className + ">(); } },";
     return InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", entry);
+}
+
+bool ScriptCodeGen::InsertScriptStaticEntry(const std::string& staticCppPath,
+                                             const std::string& className)
+{
+    return InsertAfterMarker(staticCppPath,
+                             "@@FBZZ_SCRIPT_ENTRIES_BEGIN",
+                             "FBZZ_REGISTER_SCRIPT(::sandbox::" + className + ")");
 }
 
 bool ScriptCodeGen::AlreadyRegistered(const std::string& dllCppPath,

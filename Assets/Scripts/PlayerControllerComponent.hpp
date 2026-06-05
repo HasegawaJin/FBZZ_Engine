@@ -7,6 +7,7 @@
 
 // WHY: Sandbox スクリプトは engine 層からインクルードされない末端ヘッダのため、
 //      using namespace を許可する。詳細は AGENTS.md を参照。
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
@@ -121,7 +122,7 @@ public:
             return;
         }
 
-        const float   speed     = input.GetKey((KeyCode)keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
+        const float speed = input.GetKey((KeyCode)keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
         const Vector3 direction = move.Normalized();
         animator.SetFloat(paramSpeed, speed);
 
