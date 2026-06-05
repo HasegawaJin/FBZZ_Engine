@@ -1,0 +1,241 @@
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = '3e627ea4-40a7-454e-bbae-f4f9f4ab8622'
+layer = 0
+name = 'Plane'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.BoxColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.BoxColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.BoxColliderComponent.shape]
+        halfExtents = [ 0.5, 0.01, 0.5 ]
+        type = 'OBB'
+
+    [gameobjects.MaterialComponent]
+    blendMode = 0
+    doubleSided = false
+    enabled = true
+    renderQueue = 2000
+    shader = 'Assets/Shaders/Material/Surface/Lit.hlsl'
+    textures = [ 'Assets/Textures/test.jpg', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.transform]
+    localPosition = [ -9.1e-05, 0.004957, 0.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 6.1131, 6.1131, 6.1131 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c59b91bf-a4a1-4bea-adff-62c121c721d5'
+layer = 0
+name = 'Cube'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.BoxColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.BoxColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.BoxColliderComponent.shape]
+        halfExtents = [ 0.5, 0.5, 0.5 ]
+        type = 'OBB'
+
+    [gameobjects.MaterialComponent]
+    blendMode = 0
+    doubleSided = false
+    enabled = true
+    renderQueue = 2000
+    shader = 'Assets/Shaders/Material/Surface/Phong.hlsl'
+    textures = [ 'Assets/Textures/test.jpg', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        roughness = 0.65
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.transform]
+    localPosition = [ 0.0, 0.516956, 0.977513 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2032b129-5f6e-4403-9dfa-b618e2f03ac3'
+layer = 0
+name = 'Torus'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.BoxColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.BoxColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.BoxColliderComponent.shape]
+        halfExtents = [ 0.5, 0.5, 0.5 ]
+        type = 'OBB'
+
+    [gameobjects.MaterialComponent]
+    blendMode = 0
+    doubleSided = false
+    enabled = true
+    renderQueue = 2000
+    shader = 'Assets/Shaders/Material/Surface/Phong.hlsl'
+    textures = [ 'Assets/Textures/test.jpg', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        roughness = 0.65
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:torus'
+
+    [gameobjects.transform]
+    localPosition = [ -2.136892, 0.510153, -0.371216 ]
+    localRotation = [ -0.479359, 0.0, 0.0, 0.877619 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '12f363d9-7974-4bdc-84c1-f645533f632e'
+layer = 0
+name = 'Directional Light'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 1.0, 1.0, 1.0 ]
+    enabled = true
+    intensity = 0.0
+    type = 'Directional'
+
+    [gameobjects.transform]
+    localPosition = [ -4.450661, 1.289653, 0.0 ]
+    localRotation = [ 0.21644, 0.0, 0.0, 0.976296 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd179d33c-aaf1-4e23-9798-ed712fcfff81'
+layer = 0
+name = 'Point Light'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 1.0, 0.483871, 0.0 ]
+    enabled = true
+    intensity = 0.45
+    range = 16.700001
+    type = 'Point'
+
+    [gameobjects.transform]
+    localPosition = [ 1.161801, 0.479887, 0.0 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '921c6992-286e-47a6-9a78-23e14c44b0e5'
+layer = 0
+name = 'Spot Light'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 1.0, 0.459677, 0.0 ]
+    enabled = true
+    innerCone = 15.0
+    intensity = 5.0
+    outerCone = 30.0
+    range = 12.0
+    type = 'Spot'
+
+    [gameobjects.transform]
+    localPosition = [ 0.0, 0.085062, -0.048 ]
+    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    localScale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6e3f7dfe-fb42-4be1-aa2b-899d06199544'
+layer = 0
+name = 'Torus'
+parent = ''
+tag = 'Untagged'
+
+    [gameobjects.BoxColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.BoxColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.BoxColliderComponent.shape]
+        halfExtents = [ 0.5, 0.5, 0.5 ]
+        type = 'OBB'
+
+    [gameobjects.MaterialComponent]
+    blendMode = 0
+    doubleSided = false
+    enabled = true
+    renderQueue = 2000
+    shader = 'Assets/Shaders/Material/Surface/RimLight.hlsl'
+    textures = [ 'Assets/Textures/test.jpg', '', '', '', '' ]
+
+        [gameobjects.MaterialComponent.params]
+        albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+        rimColor = [ 1.0, 1.0, 1.0 ]
+        rimIntensity = 0.9
+        rimPower = 3.28
+        roughness = 0.419
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:torus'
+
+    [gameobjects.transform]
+    localPosition = [ -1.133235, 0.485153, -0.154992 ]
+    localRotation = [ -0.51658, 0.0, 0.0, 0.856239 ]
+    localScale = [ 1.0, 1.000001, 1.000001 ]
