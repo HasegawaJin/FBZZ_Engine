@@ -103,6 +103,27 @@ bool IsSurfaceMaterialShader(std::string_view path)
     return lower.find("/material/surface/") != std::string::npos;
 }
 
+bool IsForwardOnlyShader(std::string_view path)
+{
+    std::string lower(path);
+    std::replace(lower.begin(), lower.end(), '\\', '/');
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    // GBuffer に収まらない独自ライティング / エフェクト系シェーダー
+    // BlinnPhong / Phong は独自スペキュラモデル (Blinn-Phong shininess) を持つため
+    // Deferred の PBR ライティング (GGX) を適用するとスペキュラ形状と roughness マッピングが
+    // 変わってしまう。Forward で正しいモデルのまま描画する。
+    return lower.find("blinnphong") != std::string::npos
+        || lower.find("phong")      != std::string::npos
+        || lower.find("lambert")    != std::string::npos
+        || lower.find("rimlight")   != std::string::npos
+        || lower.find("toon")       != std::string::npos
+        || lower.find("subsurface") != std::string::npos
+        || lower.find("anisotropic")!= std::string::npos
+        || lower.find("dissolve")   != std::string::npos
+        || lower.find("unlit")      != std::string::npos;
+}
+
 // ── カリング ヘルパー ────────────────────────────────────────────────────────
 
 WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh)
