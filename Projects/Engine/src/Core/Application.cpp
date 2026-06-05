@@ -13,6 +13,7 @@
 #include "Engine/Input/Input.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
+#include "../Renderer/Platform/DX11/DX11ImGuiRenderer.hpp"
 #include "../Renderer/Platform/DX11/DX11Renderer.hpp"
 
 namespace fbzz::core {
@@ -46,7 +47,13 @@ bool Application::Init(const Window::Config& windowConfig) {
     auto dx11 = std::make_unique<renderer::DX11Renderer>();
     if (!dx11->Init(m_window->GetHandle(), m_window->GetWidth(), m_window->GetHeight()))
         return false;
+
+    auto dx11ImGui = std::make_unique<renderer::DX11ImGuiRenderer>();
+    if (!dx11ImGui->Init(dx11->GetDevice(), dx11->GetDeviceContext()))
+        return false;
+
     m_renderer = std::move(dx11);
+    m_imguiRenderer = std::move(dx11ImGui);
 
     m_window->SetResizeCallback([this](uint32_t w, uint32_t h) {
         m_renderer->Resize(w, h);
@@ -59,6 +66,7 @@ bool Application::Init(const Window::Config& windowConfig) {
 }
 
 void Application::Shutdown() {
+    m_imguiRenderer.reset();
     m_renderer.reset();
     if (m_window)
         m_window->Shutdown();

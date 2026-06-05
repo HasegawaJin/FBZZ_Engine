@@ -10,6 +10,7 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
@@ -26,9 +27,11 @@ namespace fbzz::sandbox {
 using fbzz::util::StringUtils;
 
 EditorModule::EditorModule(renderer::IRenderer& renderer,
+                           renderer::IImGuiRenderer& imguiRenderer,
                            renderer::ResourceManager& resources,
                            const LaunchProject& project)
     : m_renderer(renderer)
+    , m_imguiRenderer(imguiRenderer)
     , m_resources(resources)
     , m_project(project)
 {
@@ -37,7 +40,7 @@ EditorModule::EditorModule(renderer::IRenderer& renderer,
 bool EditorModule::OnInit()
 {
     auto& app = core::Application::Get();
-    if (!m_editorApp.Init(m_renderer, m_resources, app.GetWindow())) {
+    if (!m_editorApp.Init(m_renderer, m_imguiRenderer, m_resources, app.GetWindow())) {
         return false;
     }
 
@@ -297,7 +300,7 @@ void EditorModule::RenderEditorPanels()
     }
     {
         FBZZ_PROFILE_SCOPE("EditorApp::EndFrame");
-        m_editorApp.EndFrame(m_renderer);
+        m_editorApp.EndFrame(m_imguiRenderer);
     }
 }
 

@@ -20,6 +20,7 @@
 #include <wrl/client.h>
 #include <cstdint>
 #include <memory>
+
 #include <Engine/Renderer/IRenderer.hpp>
 #include "DX11Buffer.hpp"
 #include "DX11RenderTarget.hpp"
@@ -71,13 +72,6 @@ public:
     void GpuProfEndPass(const char* name)       override;
     void GpuProfCollect()                       override;
     const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuResults; }
-
-    // ImGui バックエンド (imgui_impl_dx11 / imgui_impl_win32)
-    void  ImGuiInit(void* hwnd)   override;
-    void  ImGuiShutdown()         override;
-    void  ImGuiNewFrame()         override;
-    void  ImGuiRenderDrawData()   override;
-    void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) override;
 
     uint32_t GetWidth()  const override { return m_width;  }
     uint32_t GetHeight() const override { return m_height; }

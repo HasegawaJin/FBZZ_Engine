@@ -13,7 +13,7 @@
 
 namespace fbzz::renderer {
 
-class IRenderer;
+class IImGuiRenderer;
 class ResourceManager;
 
 // パスごとの RT を ImGui ウィンドウにサムネイルタイルで表示するデバッグユーティリティ。
@@ -66,11 +66,11 @@ public:
 
     // ImGui フレーム内・GPU レンダリング完了後に呼ぶ (EditorApp::RenderPanels 等)。
     // UpdateSnapshot で enabled=false が渡されていれば即リターンする。
-    static void DrawIfEnabled(IRenderer& renderer, ResourceManager& resources);
+    static void DrawIfEnabled(IImGuiRenderer& imguiRenderer, ResourceManager& resources);
 
 private:
     // 実際の ImGui 描画ロジック。DrawIfEnabled からのみ呼ぶ。
-    static void Draw(IRenderer& renderer, ResourceManager& resources,
+    static void Draw(IImGuiRenderer& imguiRenderer, ResourceManager& resources,
                      const Snapshot& snapshot);
 };
 
