@@ -191,13 +191,14 @@ void WarmupRenderResources(scene::Scene& scene,
 // WHY: Run() から切り出すことで Standalone 分岐が明確になり、
 //      将来的なリファクタリングの境界をはっきりさせる。
 void RunEditorLoop(renderer::IRenderer& renderer,
+                   renderer::IImGuiRenderer& imguiRenderer,
                    renderer::ResourceManager& resources,
                    const fbzz::LaunchProject& project)
 {
     auto& app = core::Application::Get();
 
     editor::EditorApp editorApp;
-    if (!editorApp.Init(renderer, resources, app.GetWindow())) {
+    if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow())) {
         app.Shutdown();
         return;
     }
@@ -437,7 +438,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
         editorApp.GetContext().activeScene = scene.get();
         editorApp.RenderPanels(editorApp.GetContext());
-        editorApp.EndFrame(renderer);
+        editorApp.EndFrame(imguiRenderer);
 
         renderer.EndFrame();
         profiler::Profiler::EndFrame();
@@ -476,21 +477,23 @@ int Run()
         if (!app.Init(scene::MakeWindowConfig(settings))) return 1;
 
         auto& renderer = app.GetRenderer();
+        auto& imguiRenderer = app.GetImGuiRenderer();
         renderer::ResourceManager resources(renderer);
         asset::AssetManager::Init(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
 
-        StandaloneApp standaloneApp(renderer, resources, project, settings);
+        StandaloneApp standaloneApp(renderer, imguiRenderer, resources, project, settings);
         app.Run(standaloneApp);
     } else {
         if (!app.Init()) return 1;
 
         auto& renderer = app.GetRenderer();
+        auto& imguiRenderer = app.GetImGuiRenderer();
         renderer::ResourceManager resources(renderer);
 
         const std::filesystem::path assetRoot = project.root / L"Assets";
         asset::AssetManager::Init(resources, StringUtils::PathToUtf8(assetRoot) + "/");
 
-        RunEditorLoop(renderer, resources, project);
+        RunEditorLoop(renderer, imguiRenderer, resources, project);
     }
 
     asset::AssetManager::UnloadAll();

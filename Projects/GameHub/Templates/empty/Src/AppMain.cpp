@@ -41,6 +41,7 @@
 #include <Engine/Scene/Systems/UISystem.hpp>
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
 #endif
 #include <Physics/World.hpp>
 
@@ -429,9 +430,11 @@ private:
 class EditorModule final : public fbzz::core::IModule {
 public:
     EditorModule(fbzz::renderer::IRenderer& renderer,
+                 fbzz::renderer::IImGuiRenderer& imguiRenderer,
                  fbzz::renderer::ResourceManager& resources,
                  const LaunchProject& project)
         : m_renderer(renderer)
+        , m_imguiRenderer(imguiRenderer)
         , m_resources(resources)
         , m_project(project)
     {}
@@ -439,7 +442,7 @@ public:
     [[nodiscard]] bool OnInit() override
     {
         auto& app = fbzz::core::Application::Get();
-        if (!m_editorApp.Init(m_renderer, m_resources, app.GetWindow()))
+        if (!m_editorApp.Init(m_renderer, m_imguiRenderer, m_resources, app.GetWindow()))
             return false;
 
         m_scene = std::make_unique<fbzz::scene::Scene>();
@@ -695,10 +698,11 @@ private:
         m_renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
         m_editorApp.GetContext().activeScene = m_scene.get();
         m_editorApp.RenderPanels(m_editorApp.GetContext());
-        m_editorApp.EndFrame(m_renderer);
+        m_editorApp.EndFrame(m_imguiRenderer);
     }
 
     fbzz::renderer::IRenderer&          m_renderer;
+    fbzz::renderer::IImGuiRenderer&     m_imguiRenderer;
     fbzz::renderer::ResourceManager&    m_resources;
     const LaunchProject&                m_project;
     fbzz::editor::EditorApp             m_editorApp;
@@ -748,10 +752,11 @@ private:
     if (!app.Init()) return 1;
 
     auto& renderer = app.GetRenderer();
+    auto& imguiRenderer = app.GetImGuiRenderer();
     fbzz::renderer::ResourceManager resources(renderer);
     fbzz::asset::AssetManager::Init(resources, PathToUtf8(project.root / L"Assets") + "/");
 
-    EditorModule module(renderer, resources, project);
+    EditorModule module(renderer, imguiRenderer, resources, project);
     app.Run(module);
     return 0;
 #endif
