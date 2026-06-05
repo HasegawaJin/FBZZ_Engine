@@ -9,6 +9,7 @@
 #include "Engine/Scene/Transform.hpp"
 #include <Math/Frustum.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
 #include <algorithm>
 #include <cctype>
@@ -22,6 +23,9 @@ struct MaterialComponent;
 
 // シャドウマップ解像度。RenderSystem の初期化と各パスで参照する。
 constexpr uint32_t kShadowMapSize = 8192u;
+
+// HDR レンダーターゲットのクリアカラー。Forward / Deferred 両パスで共有する。
+inline constexpr math::Vector4 kHdrClearColor = { 0.005f, 0.005f, 0.02f, 1.0f };
 
 // パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
 constexpr int kMaxParticleDraw = 1000;
@@ -74,5 +78,11 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh);
 bool IsVisibleInFrustum(const math::Frustum& frustum,
                         const Transform& tf,
                         const renderer::Mesh& mesh);
+
+// Deferred GBuffer に書き込めないエフェクト系シェーダーかどうかを判定する。
+// RimLight / Toon / Subsurface / Anisotropic / Dissolve / Unlit は
+// 標準 GBuffer (albedo / normal / roughness / metallic) に収まらない
+// 独自ライティング計算を持つため、Deferred でも Forward パスで描画する。
+bool IsForwardOnlyShader(std::string_view shaderPath);
 
 } // namespace fbzz::scene
