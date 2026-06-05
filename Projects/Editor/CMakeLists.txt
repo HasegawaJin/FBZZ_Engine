@@ -5,6 +5,9 @@ file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
 )
 
 add_library(fbzz_editor STATIC ${EDITOR_SOURCES})
+set_target_properties(fbzz_editor PROPERTIES
+    OUTPUT_NAME "FBZZEditor"
+)
 
 target_include_directories(fbzz_editor
     PUBLIC  include
