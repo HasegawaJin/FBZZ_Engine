@@ -13,10 +13,13 @@
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
+#include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 namespace fbzz::scene {
@@ -105,6 +108,16 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 
     if (!h.gbufferShader.IsValid()) return;
 
+    // GBuffer.hlsl はデフォルト 96 バイト MaterialConstants を期待する。
+    // マテリアル独自シェーダーは別レイアウトを持つため、フィールド名で値を抽出して
+    // GBuffer 互換レイアウトに詰め直す共有 cbuffer を使う。
+    // WHY: textureMask のオフセットはシェーダーごとに異なる (PBR=80, Toon=16, RimLight=28 等)。
+    //      そのまま渡すと GBuffer が textureMask/roughness/metallic を誤読してライティングが壊れる。
+    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_gbufMatCB;
+    static constexpr uint32_t kGBufCBSize = 96u;
+    if (!s_gbufMatCB.IsValid())
+        s_gbufMatCB = resources.CreateConstantBuffer(kGBufCBSize);
+
     const auto& frustum = *ctx.cameraFrustum;
 
     for (auto& go : ctx.scene.GameObjects()) {
@@ -122,6 +135,43 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
         auto* material = SyncMaterial(*mat, resources);
 
+        // マテリアル CB を GBuffer 互換レイアウト (96 バイト) に変換してバインドする。
+        renderer::ResourceHandle<renderer::ConstantBufferTag> gbufMatCB;
+        if (material) {
+            if (material->paramData.size() == kGBufCBSize) {
+                // デフォルト 96 バイトレイアウト (PBR 等) はそのまま使える。
+                gbufMatCB = material->paramsBuffer;
+            } else {
+                // 独自レイアウト: フィールド名で抽出して 96 バイトバッファに詰め直す。
+                std::array<uint8_t, kGBufCBSize> gbufParams{};
+                const renderer::ShaderDescriptor* mDesc = nullptr;
+                if (auto* sh = resources.Get(material->shader))
+                    mDesc = &sh->GetDescriptor();
+
+                if (mDesc) {
+                    auto copyField = [&](std::string_view name, uint32_t dstOff, uint32_t bytes) {
+                        const auto* v = mDesc->FindVar(name);
+                        if (!v || v->offset + bytes > static_cast<uint32_t>(material->paramData.size())) return;
+                        std::memcpy(gbufParams.data() + dstOff,
+                                    material->paramData.data() + v->offset, bytes);
+                    };
+                    copyField("albedo",         0u,  16u); // float4
+                    copyField("metallic",       16u,  4u); // float
+                    copyField("roughness",      20u,  4u); // float
+                    copyField("normalStrength", 24u,  4u); // float
+                    // textureMask は Material::Upload が計算済みの値を使う
+                    if (mDesc->textureMaskOffset != UINT32_MAX
+                        && mDesc->textureMaskOffset + 4u <= static_cast<uint32_t>(material->paramData.size()))
+                    {
+                        std::memcpy(gbufParams.data() + 80u,
+                                    material->paramData.data() + mDesc->textureMaskOffset, 4u);
+                    }
+                }
+                resources.Update(s_gbufMatCB, gbufParams.data(), kGBufCBSize);
+                gbufMatCB = s_gbufMatCB;
+            }
+        }
+
         PerObjectCB objData{};
         objData.world             = go.transform.GetWorldMatrix();
         objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
@@ -136,8 +186,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO : h.defaultPSO;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
-        dc.constantBuffers[2] = material ? material->paramsBuffer
-                                         : renderer::ResourceHandle<renderer::ConstantBufferTag>{};
+        dc.constantBuffers[2] = gbufMatCB;
         if (material)
             for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
