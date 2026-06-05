@@ -3,9 +3,22 @@
 // 剛体の表面物性 (反発・摩擦・密度) のプリセット定義
 #pragma once
 
+#ifdef _WIN32
+#  ifdef fbzz_physics_EXPORTS
+#    define FBZZ_PHYSICS_API __declspec(dllexport)
+#  else
+#    define FBZZ_PHYSICS_API __declspec(dllimport)
+#  endif
+#else
+#  define FBZZ_PHYSICS_API
+#endif
+
 namespace fbzz::physics
 {
-    struct PhysicsMaterial
+    // 剛体コライダーの表面物性を表す値型。
+    // WHY: shared_runtime では Engine DLL が Physics DLL 側のプリセット値を参照するため、
+    //      MSVC で static const データシンボルも import/export されるようクラス単位で API を付ける。
+    struct FBZZ_PHYSICS_API PhysicsMaterial
     {
         float restitution     = 0.3f;   // 反発係数    (0=完全非弾性, 1=完全弾性)
         float staticFriction  = 0.6f;   // 静止摩擦係数

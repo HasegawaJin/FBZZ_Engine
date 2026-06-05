@@ -5,6 +5,7 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
 #include <array>
+#include <string>
 
 namespace fbzz::editor {
 
@@ -20,11 +21,13 @@ private:
 
     ConsoleSink& m_sink;
 
+    bool m_showDebug  = false;
     bool m_showInfo   = true;
     bool m_showWarn   = true;
     bool m_showError  = true;
     bool m_autoScroll = true;
     std::array<char, 256> m_filterBuf = {};
+    std::string m_visibleLogText;
 };
 
 } // namespace fbzz::editor

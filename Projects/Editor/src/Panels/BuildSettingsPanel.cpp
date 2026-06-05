@@ -234,12 +234,12 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
 
     if (ImGui::Button("Build")) {
         m_settings.Save(ctx.projectRoot);
-        m_pipeline.Start(m_settings, ctx.projectRoot, ctx.projectBuildRoot, ctx.standaloneTargetName, false);
+        m_pipeline.Start(m_settings, ctx.projectRoot, ctx.projectBuildRoot, ctx.standaloneTargetName, ctx.scriptsDllPath, false);
     }
     ImGui::SameLine();
     if (ImGui::Button("Build and Run")) {
         m_settings.Save(ctx.projectRoot);
-        m_pipeline.Start(m_settings, ctx.projectRoot, ctx.projectBuildRoot, ctx.standaloneTargetName, true);
+        m_pipeline.Start(m_settings, ctx.projectRoot, ctx.projectBuildRoot, ctx.standaloneTargetName, ctx.scriptsDllPath, true);
     }
 
     ImGui::EndDisabled();

@@ -3,11 +3,11 @@
 // スクリプト DLL のエントリポイント
 //
 // WHY (コールバック渡し設計):
-//   fbzz_engine は静的ライブラリとして EXE と DLL 双方にリンクされる。
-//   ScriptFactory::Registry() は TU ごとに別インスタンスとなるため、
-//   DLL から直接 ScriptFactory::Register() を呼んでも EXE のレジストリには登録されない。
-//   EXE が SandboxScripts_Register() に ScriptFactory::Register を関数ポインタとして渡し、
-//   DLL はそのポインタ経由で EXE のレジストリに書き込む。
+//   fbzz_engine は shared runtime として EXE / Script DLL から共有される。
+//   ただし Script DLL は任意のユーザーコードを後からロードする拡張境界なので、
+//   登録 API は DLL 側からグローバル状態へ暗黙アクセスするより、EXE が渡す関数ポインタ経由にする。
+//   これにより ScriptFactory の所有者をホスト側へ固定し、将来の外部プラグイン SDK 化でも
+//   境界が明確なまま保てる。
 //
 // スクリプト追加手順:
 //   1. Src/Scripts/ に Xxx.hpp を作成 (Script 継承、TYPE_NAME 定義)
@@ -15,15 +15,15 @@
 //   3. @@FBZZ_SCRIPT_ENTRIES_BEGIN の直後に エントリを追加
 //   → Editor の AssetBrowser から "Create → C++ Script..." でも自動生成できる
 
-// @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// @@FBZZ_SCRIPT_INCLUDES_END
-
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
+// @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+// @@FBZZ_SCRIPT_INCLUDES_END
 
 #ifdef GAMESCRIPTS_EXPORTS
 #  define GAMESCRIPTS_API __declspec(dllexport)
@@ -51,19 +51,21 @@ const std::vector<ScriptEntry>& AllEntries()
 
 extern "C" {
 
-GAMESCRIPTS_API int SandboxScripts_Count()
+GAMESCRIPTS_API int FBZZScripts_Count()
 {
     return static_cast<int>(AllEntries().size());
 }
 
-GAMESCRIPTS_API const char* SandboxScripts_TypeName(int i)
+GAMESCRIPTS_API const char* FBZZScripts_TypeName(int i)
 {
     const auto& entries = AllEntries();
     if (i < 0 || i >= static_cast<int>(entries.size())) return "";
     return entries[static_cast<size_t>(i)].name.c_str();
 }
 
-GAMESCRIPTS_API void SandboxScripts_Register(
+// WHY: FBZZScripts_Register はエンジン共通のエントリポイント名。
+//      ScriptDllLoader はこの名前だけを探すため、プロジェクト固有名を使わない。
+GAMESCRIPTS_API void FBZZScripts_Register(
     void(*registerFn)(const char* typeName, std::function<std::unique_ptr<fbzz::scene::Script>()>))
 {
     if (!registerFn) return;

@@ -47,6 +47,9 @@ bool Compiler::Start(const Config& config)
         L" --target " + Utf8ToWide(config.target) +
         L" --config " + Utf8ToWide(config.configuration);
 
+    if (config.skipDeps)
+        command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false";
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
