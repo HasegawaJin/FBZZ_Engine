@@ -3,12 +3,11 @@
 // スクリプト DLL のエントリポイント
 //
 // WHY (コールバック渡し設計):
-//   fbzz_engine は静的ライブラリとして EXE と DLL 双方にリンクされる。
-//   静的ライブラリの関数スコープ static (ScriptFactory::Registry()) は
-//   リンク先ごとに別インスタンスとなるため、DLL から直接 ScriptFactory::Register() を
-//   呼んでも EXE 側のレジストリには登録されない。
-//   そこで EXE が SandboxScripts_Register() に ScriptFactory::Register を関数ポインタとして渡し、
-//   DLL はそのポインタ経由で EXE のレジストリに書き込む。
+//   fbzz_engine は shared runtime として EXE / Script DLL から共有される。
+//   ただし Script DLL は任意のユーザーコードを後からロードする拡張境界なので、
+//   登録 API は DLL 側からグローバル状態へ暗黙アクセスするより、EXE が渡す関数ポインタ経由にする。
+//   これにより ScriptFactory の所有者をホスト側へ固定し、将来の外部プラグイン SDK 化でも
+//   境界が明確なまま保てる。
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
@@ -86,7 +85,9 @@ SANDBOXSCRIPTS_API const char* SandboxScripts_TypeName(int i)
 // EXE 側の ScriptFactory::Register を関数ポインタとして受け取り、全スクリプトを登録する。
 // WHY: DLL 内で ScriptFactory::Register() を直接呼ぶと DLL のレジストリコピーに登録されてしまう。
 //      EXE 側の Register 関数を引数で受け取ることで EXE のレジストリへの登録を保証する。
-SANDBOXSCRIPTS_API void SandboxScripts_Register(
+// WHY (関数名): FBZZScripts_Register はエンジン共通のエントリポイント名。
+//      ScriptDllLoader はこの名前だけを探すため、プロジェクト固有名を使わない。
+SANDBOXSCRIPTS_API void FBZZScripts_Register(
     void(*registerFn)(const char* typeName, std::function<std::unique_ptr<fbzz::scene::Script>()>))
 {
     if (!registerFn) return;

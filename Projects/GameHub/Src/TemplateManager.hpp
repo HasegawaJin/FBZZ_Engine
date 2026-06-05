@@ -53,6 +53,10 @@ private:
         const std::filesystem::path& engineRoot,
         const std::filesystem::path& projectRoot,
         std::string& errorMessage);
+    static bool SyncCopiedScriptRegistrations(
+        const std::filesystem::path& projectRoot,
+        const ProjectNameInfo& nameInfo,
+        std::string& errorMessage);
 
     std::vector<TemplateInfo> m_templates;
 };

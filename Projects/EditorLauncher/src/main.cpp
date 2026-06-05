@@ -5,7 +5,8 @@
 // WHAT: コマンドライン引数を解析し、エディタモードとスタンドアロンモードを切り替える。
 //   FBZZEditor.exe --project <path>              → エディタ起動 (既存)
 //   FBZZEditor.exe --project <path> --standalone → エディタ UI なし・ゲームのみ起動
-//   FBZZEditor.exe (引数なし)                    → exe 隣の .fbzz_proj を自動検出して Standalone 扱い
+//   FBZZEditor.exe (exe 隣に .fbzz_proj あり)     → 配布版として Standalone 起動
+//   FBZZEditor.exe (引数なし / .fbzz_proj なし)   → 開発用テンプレートを Editor 起動
 //
 // WHY: 新しい実行ファイルを増やさずに同一バイナリで両モードを実現する。
 //      配布時は exe をリネーム (FBZZGame.exe 等) してアセットと並べるだけでよい。
@@ -21,6 +22,7 @@
 #include <Engine/Input/Input.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -28,8 +30,10 @@
 #include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -58,9 +62,37 @@ struct LaunchArgs {
     bool                  standalone = false;
 };
 
+std::filesystem::path FindDefaultEditorProjectPath()
+{
+    // WHY: build/release/Binaries/Release/FBZZEditor.exe を直接起動する開発導線では、
+    //      exe 隣に .fbzz_proj が存在しない。配布物と区別し、標準テンプレートを Editor で開く。
+    std::filesystem::path current = FileSystem::GetExecutableDirectory();
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        const std::filesystem::path candidate =
+            current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
+        if (FileSystem::Exists(candidate / L".fbzz_proj")) {
+            return candidate;
+        }
+        current = current.parent_path();
+    }
+
+    current = FileSystem::MakeAbsolute(std::filesystem::current_path());
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        const std::filesystem::path candidate =
+            current / L"Projects" / L"GameHub" / L"Templates" / L"standard";
+        if (FileSystem::Exists(candidate / L".fbzz_proj")) {
+            return candidate;
+        }
+        current = current.parent_path();
+    }
+    return {};
+}
+
 // コマンドライン引数を解析して LaunchArgs を返す。
-// WHY: 引数なし起動 = 配布版。exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする。
-//      これにより配布ユーザーは FBZZGame.exe をダブルクリックするだけで起動できる。
+// WHY: 引数なし起動は exe 隣に .fbzz_proj があれば配布版 Standalone、
+//      なければ標準テンプレートを Standalone として開く。
+//      テンプレートの build_root は未解決だが StandaloneApp が exe 隣の
+//      SandboxScripts.dll にフォールバックするためスクリプトが動作する。
 LaunchArgs ParseArgs()
 {
     LaunchArgs args;
@@ -77,10 +109,15 @@ LaunchArgs ParseArgs()
     }
     LocalFree(argv);
 
-    // 引数なし起動 = 配布版: exe 隣の .fbzz_proj を自動検出して Standalone 扱いにする
     if (args.projectPath.empty()) {
-        args.projectPath = FileSystem::GetExecutableDirectory();
-        args.standalone  = true;
+        const std::filesystem::path exeDir = FileSystem::GetExecutableDirectory();
+        if (FileSystem::Exists(exeDir / L".fbzz_proj")) {
+            args.projectPath = exeDir;
+            args.standalone  = true;
+        } else {
+            args.projectPath = FindDefaultEditorProjectPath();
+            args.standalone  = true;
+        }
     }
 
     return args;
@@ -223,11 +260,17 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             break;
         }
 
+        profiler::Profiler::BeginFrame();
+
         const float dt = core::Time::DeltaTime();
         editorApp.BeginFrame();
 
         auto* playMode = editorApp.GetContext().playMode;
         if (playMode->ApplyPendingRestore(*scene)) {
+            // WHY: World は SetBodies() で剛体を差し替えるが m_contactCache / m_prevEvents はクリアしない。
+            //      前 Play セッションの Collider* が残ったまま次 Play が始まると物理が誤動作するため、
+            //      Stop 復元のタイミングで World を丸ごとリセットする。
+            physicsWorld = physics::World{};
             scene::ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
             physicsAccumulator = 0.0f;
         }
@@ -277,9 +320,13 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         scene::TransformSystem(*scene);
         const bool stepFrame = playMode->ConsumeStep();
+        const float simulationDt = stepFrame ? (1.0f / 60.0f) : dt;
         if (playMode->IsPlaying() || stepFrame) {
             const auto& settings = editorApp.GetContext().projectSettings;
             scene::ApplyPhysicsSettings(physicsWorld, settings);
+            scene::Script::SetPhysicsWorld(&physicsWorld);
+            scene::ScriptSystem(*scene, simulationDt);
+            scene::TransformSystem(*scene);
 
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
@@ -297,10 +344,12 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                 }
             }
             scene::TransformSystem(*scene);
+            scene::LateScriptSystem(*scene, simulationDt);
         } else {
             physicsAccumulator = 0.0f;
         }
-        scene::AnimatorSystem(*scene, resources, stepFrame ? (1.0f / 60.0f) : dt);
+        scene::AnimatorSystem(*scene, resources, simulationDt);
+        scene::IKSystem(*scene, physicsWorld, resources, simulationDt);
 
         const auto sceneRT = editorApp.GetViewportRT();
         const auto gameRT = editorApp.GetGameViewportRT();
@@ -391,6 +440,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         editorApp.EndFrame(renderer);
 
         renderer.EndFrame();
+        profiler::Profiler::EndFrame();
     }
 
     editorApp.Shutdown();
@@ -429,16 +479,8 @@ int Run()
         renderer::ResourceManager resources(renderer);
         asset::AssetManager::Init(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
 
-        StandaloneApp standaloneApp;
-        if (!standaloneApp.Init(renderer, resources,
-                                project.root / L"Assets",
-                                project.sceneFile,
-                                settings)) {
-            app.Shutdown();
-            return 1;
-        }
-        standaloneApp.RunLoop(renderer, resources);
-        standaloneApp.Shutdown();
+        StandaloneApp standaloneApp(renderer, resources, project, settings);
+        app.Run(standaloneApp);
     } else {
         if (!app.Init()) return 1;
 

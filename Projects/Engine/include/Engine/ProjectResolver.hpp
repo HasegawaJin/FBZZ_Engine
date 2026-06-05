@@ -17,6 +17,7 @@ struct LaunchProject {
     std::filesystem::path projectFile;
     std::filesystem::path settingsFile;
     std::filesystem::path sceneFile;
+    std::filesystem::path scriptsDll;  // スクリプト DLL の絶対パス (省略可: 開発環境フォールバック)
 };
 
 /// .fbzz_proj / ProjectSettings / 開始シーンのパス解決とエラーメッセージ保持を担当する。

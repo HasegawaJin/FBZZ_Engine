@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# WHY: GameHub 生成プロジェクトはエンジン本体とは独立した CMake ルートを持つ。
+#      ここでも MSVC に UTF-8 ソースとして読ませないと、日本語コメントや assert 文字列が
+#      CP932 として解釈され、プリプロセッサや文字列リテラルが壊れる。
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 if(NOT DEFINED FBZZ_ENGINE_ROOT OR FBZZ_ENGINE_ROOT STREQUAL "")
     message(FATAL_ERROR "FBZZ_ENGINE_ROOT is required")
 endif()
@@ -27,13 +34,15 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ
 
 # スクリプト DLL (ホットリロード用)
 file(GLOB_RECURSE {{TARGET_NAME}}_SCRIPT_DLL_SOURCES
+    Assets/Scripts/*.cpp
+    Assets/Scripts/*.hpp
     Src/Scripts/*.cpp
     Src/Scripts/*.hpp
     Src/{{TARGET_NAME}}ScriptsDll.cpp
 )
 add_library({{TARGET_NAME}}Scripts SHARED ${{{TARGET_NAME}}_SCRIPT_DLL_SOURCES})
 target_compile_definitions({{TARGET_NAME}}Scripts PRIVATE GAMESCRIPTS_EXPORTS)
-target_include_directories({{TARGET_NAME}}Scripts PRIVATE Src)
+target_include_directories({{TARGET_NAME}}Scripts PRIVATE Assets Src)
 target_link_libraries({{TARGET_NAME}}Scripts
     PRIVATE
         fbzz_engine
@@ -60,12 +69,14 @@ target_compile_definitions({{TARGET_NAME}}Standalone PRIVATE FBZZ_STANDALONE_TAR
 
 target_include_directories({{TARGET_NAME}}
     PRIVATE
+        Assets
         Include
         Src
 )
 
 target_include_directories({{TARGET_NAME}}Standalone
     PRIVATE
+        Assets
         Include
         Src
 )
@@ -89,4 +100,12 @@ configure_file(
     "${FBZZ_ENGINE_ROOT}/CMake/build.config.in"
     "${CMAKE_BINARY_DIR}/build.config"
     @ONLY
+)
+
+# WHY: fbzz_engine が assimp を動的リンクするため、exe と同じディレクトリに DLL が必要。
+#      {{TARGET_NAME}}Standalone のビルド後に Config に合わせた DLL をコピーする。
+add_custom_command(TARGET {{TARGET_NAME}}Standalone POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<IF:$<CONFIG:Debug>,${FBZZ_ENGINE_ROOT}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${FBZZ_ENGINE_ROOT}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
+        "$<TARGET_FILE_DIR:{{TARGET_NAME}}Standalone>"
 )

@@ -33,7 +33,9 @@
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Core/ILogSink.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
@@ -46,6 +48,8 @@
 #include <shellapi.h>
 #include <toml++/toml.hpp>
 
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -714,6 +718,25 @@ private:
 
 /// ProjectSettings からウィンドウ設定を構築して StandaloneModule を起動する。
 /// WHY: Application::Init() 前にウィンドウサイズを決定し、Renderer 初期化時点で正しいバックバッファを作る。
+// ゲームログを exe 隣の game.log に書き出すシンク。
+// WHY: WIN32 サブシステムはコンソールがなく printf が見えない。
+//      OutputDebugString はデバッガなしでは確認できないため、ファイルに残す。
+struct FileLogSink final : fbzz::core::ILogSink {
+    std::ofstream file;
+    void OnLog(const fbzz::core::LogEntry& entry) override {
+        if (!file.is_open()) return;
+        const char* prefix = "";
+        switch (entry.level) {
+        case fbzz::core::LogLevel::DEBUG:     prefix = "[DEBUG] "; break;
+        case fbzz::core::LogLevel::INFO:      prefix = "[INFO]  "; break;
+        case fbzz::core::LogLevel::WARNING:   prefix = "[WARN]  "; break;
+        case fbzz::core::LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
+        }
+        file << prefix << entry.message << '\n';
+        file.flush();
+    }
+};
+
 [[nodiscard]] int RunStandalone(fbzz::core::Application& app, const LaunchProject& project)
 {
     fbzz::ProjectSettings settings;
@@ -775,10 +798,34 @@ int Run()
 
     SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
 
+    // game.log を exe 隣に生成する (Standalone 時のみ。Editor では ConsolePanel を使う)
+    // WHY: WIN32 サブシステムはコンソールがなく、デバッガなしでは OutputDebugString も見えない。
+    //      INFO/WARN/ERROR は Release でも出力されるため、ファイルに残すことで問題を診断できる。
+    FileLogSink logSink;
+#ifdef FBZZ_STANDALONE_TARGET
+    const bool isStandalone = true;
+#else
+    const bool isStandalone = args.standalone;
+#endif
+    if (isStandalone) {
+        const std::filesystem::path logPath = GetExecutableDirectory() / L"game.log";
+        logSink.file.open(logPath, std::ios::out | std::ios::trunc);
+        if (logSink.file.is_open()) {
+            const auto now = std::chrono::system_clock::now();
+            const std::time_t t = std::chrono::system_clock::to_time_t(now);
+            char timeBuf[64] = {};
+            ctime_s(timeBuf, sizeof(timeBuf), &t);
+            logSink.file << "=== {{PROJECT_NAME}} Log === " << timeBuf;
+            fbzz::core::Logger::AddSink(&logSink);
+        }
+    }
+
     // WHY: RegisterScripts() はエディタ・スタンドアロンどちらでも必要。
     //      SceneSerializer がシーンを復元するときに ScriptFactory を参照するため、
     //      シーンロードより前に呼ぶ必要がある。
     RegisterScripts();
+    FBZZ_LOG_INFO("{{PROJECT_NAME}}: RegisterScripts complete (%d types registered)",
+        static_cast<int>(fbzz::scene::ScriptFactory::RegisteredTypeNames().size()));
 
     auto& app = fbzz::core::Application::Get();
 #ifdef FBZZ_STANDALONE_TARGET
@@ -790,6 +837,7 @@ int Run()
 
     fbzz::asset::AssetManager::UnloadAll();
     app.Shutdown();
+    fbzz::core::Logger::RemoveSink(&logSink);
     return result;
 }
 

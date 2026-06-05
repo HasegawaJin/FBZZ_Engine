@@ -11,6 +11,7 @@
 #include <toml++/toml.hpp>
 #include <Windows.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -64,13 +65,15 @@ void BuildPipeline::Start(const BuildSettings& settings,
                           const std::string& projectRoot,
                           const std::string& buildRoot,
                           const std::string& targetName,
+                          const std::string& scriptsDllPath,
                           bool runAfterBuild)
 {
-    m_settings      = settings;
-    m_projectRoot   = projectRoot;
-    m_buildRoot     = buildRoot;
-    m_targetName    = targetName.empty() ? "SandboxStandalone" : targetName;
-    m_runAfterBuild = runAfterBuild;
+    m_settings          = settings;
+    m_projectRoot       = projectRoot;
+    m_buildRoot         = buildRoot;
+    m_targetName        = targetName.empty() ? "SandboxStandalone" : targetName;
+    m_scriptsDllSrcPath = scriptsDllPath;
+    m_runAfterBuild     = runAfterBuild;
     m_state         = State::Running;
     m_step          = Step::Compile;
     m_progress      = 0.0f;
@@ -107,6 +110,11 @@ void BuildPipeline::Tick()
             config.target        = m_targetName;
             config.configuration = m_settings.developmentBuild ? "Debug" : "Release";
 
+            FBZZ_LOG_DEBUG("BuildPipeline: cmake=%s build=%s target=%s cfg=%s",
+                WideToUtf8(config.cmakeExe.wstring()).c_str(),
+                WideToUtf8(config.buildDir.wstring()).c_str(),
+                config.target.c_str(),
+                config.configuration.c_str());
             if (!m_compiler.Start(config)) {
                 SetFailed("Failed to start RuntimeBuild compiler.");
                 return;
@@ -124,6 +132,7 @@ void BuildPipeline::Tick()
 
         if (m_compiler.GetState() == Compiler::State::Done) {
             m_exeSrcPath = m_compiler.GetOutputExePath();
+            FBZZ_LOG_DEBUG("BuildPipeline: compile done → %s", WideToUtf8(m_exeSrcPath.wstring()).c_str());
             m_step = Step::PrepareTempDir;
         } else if (m_compiler.GetState() == Compiler::State::Failed) {
             SetFailed("RuntimeBuild compile failed. Exit code: " + std::to_string(m_compiler.GetExitCode()));
@@ -151,6 +160,14 @@ void BuildPipeline::Tick()
     // ステップを進める
     m_step = static_cast<Step>(static_cast<int>(m_step) + 1);
 
+    static constexpr const char* kStepNames[] = {
+        "Compile", "PrepareTempDir", "CopyExecutable", "CopyDlls",
+        "EnumerateAssets", "CopyAssets", "CopyProjectFiles", "WriteManifest", "CommitOutput", "Done"
+    };
+    const int stepIdx = static_cast<int>(m_step);
+    if (stepIdx >= 0 && stepIdx < static_cast<int>(std::size(kStepNames)))
+        FBZZ_LOG_DEBUG("BuildPipeline: step → %s", kStepNames[stepIdx]);
+
     // EnumerateAssets 完了後 → CopyAssets のカーソルを初期化する
     if (m_step == Step::CopyAssets) {
         BeginEnumerateAssets();
@@ -161,7 +178,7 @@ void BuildPipeline::Tick()
         m_state    = State::Done;
         m_progress = 1.0f;
         m_status   = "Build complete";
-        FBZZ_LOG_INFO("BuildPipeline: Done");
+        FBZZ_LOG_INFO("BuildPipeline: Done → %s", WideToUtf8(m_outputDir.wstring()).c_str());
     }
 }
 
@@ -223,16 +240,48 @@ bool BuildPipeline::ExecuteStep()
     case Step::CopyDlls: {
         m_status = "Copying DLLs...";
         // WHY: RuntimeBuild の構成はエディタ自身の Debug/Release ではなく BuildSettings で決まる。
-        //      developmentBuild=true なら Debug、false なら Release の Assimp DLL を成果物 exe 隣からコピーする。
+        //      developmentBuild=true なら Debug、false なら Release の成果物 exe 隣から
+        //      実行時に必要な DLL をコピーする。fbzz_* は shared_runtime 化により EXE / Script DLL
+        //      から同じ Engine 状態を参照するため、配布物にも必ず同梱する。
         const std::filesystem::path exeDir = m_exeSrcPath.parent_path();
         const std::wstring assimpDLL = m_settings.developmentBuild
             ? L"assimp-vc145-mtd.dll"
             : L"assimp-vc145-mt.dll";
-        const std::filesystem::path src = exeDir / assimpDLL;
-        if (std::filesystem::exists(src, ec)) {
-            std::filesystem::copy_file(src, m_tmpDir / assimpDLL,
+
+        const std::array<std::wstring, 5> runtimeDlls = {
+            L"imgui.dll",
+            L"fbzz_math.dll",
+            L"fbzz_physics.dll",
+            L"fbzz_engine.dll",
+            assimpDLL,
+        };
+
+        for (const std::wstring& dllName : runtimeDlls) {
+            const std::filesystem::path src = exeDir / dllName;
+            ec.clear();
+            if (!std::filesystem::exists(src, ec)) {
+                continue;
+            }
+
+            ec.clear();
+            std::filesystem::copy_file(src, m_tmpDir / dllName,
                 std::filesystem::copy_options::overwrite_existing, ec);
             if (ec) { SetFailed("Failed to copy DLL: " + WideToUtf8(src.wstring())); return false; }
+        }
+
+        // スクリプト DLL をコピーする。
+        // WHY: DLL 名はプロジェクトごとに異なるため、上の固定リストに含めず
+        //      呼び出し元 (BuildSettingsPanel) が EditorContext.scriptsDllPath から渡す。
+        if (!m_scriptsDllSrcPath.empty()) {
+            const std::filesystem::path scriptsSrc(Utf8ToWide(m_scriptsDllSrcPath));
+            ec.clear();
+            if (std::filesystem::exists(scriptsSrc, ec)) {
+                std::filesystem::copy_file(scriptsSrc, m_tmpDir / scriptsSrc.filename(),
+                    std::filesystem::copy_options::overwrite_existing, ec);
+                if (ec) { SetFailed("Failed to copy scripts DLL: " + m_scriptsDllSrcPath); return false; }
+            } else {
+                FBZZ_LOG_WARN("BuildPipeline: scripts DLL not found, skipping: %s", m_scriptsDllSrcPath.c_str());
+            }
         }
         m_progress = 0.15f;
         return true;
@@ -299,6 +348,12 @@ bool BuildPipeline::ExecuteStep()
             proj << "name          = \"" << m_settings.productName << "\"\n";
             proj << "settings_path = \"" << settingsRelPath << "\"\n";
             proj << "default_scene = \"" << defaultSceneRel << "\"\n";
+            // WHY: StandaloneApp はこのフィールドを読んでスクリプト DLL をロードする。
+            //      DLL 名はプロジェクトごとに異なるためハードコードせず、ここに記録する。
+            if (!m_scriptsDllSrcPath.empty()) {
+                const std::filesystem::path scriptsDll(Utf8ToWide(m_scriptsDllSrcPath));
+                proj << "scripts_dll   = \"" << WideToUtf8(scriptsDll.filename().wstring()) << "\"\n";
+            }
 
             const std::filesystem::path dst = m_tmpDir / ".fbzz_proj";
             std::ofstream ofs(dst, std::ios::binary);

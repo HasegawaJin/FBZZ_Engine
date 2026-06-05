@@ -12,10 +12,12 @@
 #include <Editor/Util/SceneSerializer.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <Windows.h>
 #include <filesystem>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -28,6 +30,119 @@ std::string WithFbzzExtension(const std::string& path)
 {
     if (path.empty() || !util::FileSystem::GetExtension(path).empty()) return path;
     return path + ".fbzz";
+}
+
+// UTF-8 のプロジェクトパスを Windows の filesystem path へ変換する。
+// WHY: EditorContext は UI / TOML と相性の良い UTF-8 文字列でパスを保持する一方、
+//      std::filesystem は Windows 環境で wide path を使う方が日本語パスに強い。
+std::wstring Utf8ToWidePath(const std::string& text)
+{
+    if (text.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
+    return wide;
+}
+
+// FILETIME が未初期化のゼロ値かどうかを判定する。
+bool IsEmptyFileTime(const FILETIME& ft)
+{
+    return ft.dwLowDateTime == 0 && ft.dwHighDateTime == 0;
+}
+
+// 指定パス自身の Windows 更新時刻を取得する。
+// WHY: std::filesystem::file_time_type は実装依存の clock を使うため、既存コードの
+//      CompareFileTime と同じ FILETIME に揃えて扱う。
+bool TryGetWriteTime(const std::filesystem::path& path, FILETIME& out)
+{
+    WIN32_FILE_ATTRIBUTE_DATA info{};
+    if (!GetFileAttributesExW(path.wstring().c_str(), GetFileExInfoStandard, &info))
+        return false;
+
+    out = info.ftLastWriteTime;
+    return true;
+}
+
+// ディレクトリ配下で最も新しい更新時刻を返す。
+// WHY: Windows では既存ファイルの中身を書き換えても親ディレクトリの更新時刻は変わらない。
+//      Scripts/ や shaders/ のディレクトリ時刻だけを監視すると、ホットリロード対象の .hpp / .hlsl
+//      編集を検知できないため、ツリー内の各エントリを確認する。
+FILETIME GetLatestWriteTimeInTree(const std::filesystem::path& root)
+{
+    FILETIME latest{};
+    if (!TryGetWriteTime(root, latest))
+        return latest;
+
+    std::error_code ec;
+    const std::filesystem::recursive_directory_iterator end;
+    std::filesystem::recursive_directory_iterator it(
+        root,
+        std::filesystem::directory_options::skip_permission_denied,
+        ec);
+
+    while (!ec && it != end) {
+        FILETIME ft{};
+        if (TryGetWriteTime(it->path(), ft) && CompareFileTime(&ft, &latest) > 0)
+            latest = ft;
+
+        it.increment(ec);
+    }
+
+    return latest;
+}
+
+// HLSL の再コンパイル結果を現在開いているプロジェクトへ反映する。
+// WHY: compile_shaders.bat はエンジンソース側 Assets/shaders/compiled に CSO を出力する。
+//      しかし実行中の renderer はプロジェクト側 Assets/shaders/compiled を読むため、
+//      ReloadAllShaders() の前に CSO を同期しないと古いバイナリを再ロードしてしまう。
+bool SyncCompiledShadersToProject(const std::filesystem::path& hlslSourceDir,
+                                  const std::string& projectRoot)
+{
+    if (hlslSourceDir.empty() || projectRoot.empty()) return false;
+
+    const std::filesystem::path src = hlslSourceDir / L"compiled";
+    const std::filesystem::path dst = std::filesystem::path(Utf8ToWidePath(projectRoot)) /
+                                      L"Assets" / L"shaders" / L"compiled";
+
+    std::error_code ec;
+    if (!std::filesystem::exists(src, ec)) return false;
+    if (std::filesystem::equivalent(src, dst, ec)) return true;
+    ec.clear();
+    std::filesystem::create_directories(dst, ec);
+    if (ec) return false;
+
+    std::filesystem::copy(src, dst,
+        std::filesystem::copy_options::recursive |
+        std::filesystem::copy_options::overwrite_existing,
+        ec);
+    return !ec;
+}
+
+// HLSL の再コンパイル結果を renderer の実際の読込先へ反映する。
+// WHY: EditorLauncher / sandbox は起動時にカレントディレクトリを exe 隣へ変更する。
+//      DX11Shader は "assets/shaders/compiled/..." を相対パスで開くため、
+//      ReloadAllShaders() の前に exe 隣の Assets にも CSO を同期する必要がある。
+bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceDir)
+{
+    if (hlslSourceDir.empty()) return false;
+
+    const std::filesystem::path src = hlslSourceDir / L"compiled";
+    std::error_code ec;
+    const std::filesystem::path dst = std::filesystem::current_path(ec) /
+                                      L"Assets" / L"shaders" / L"compiled";
+    if (ec) return false;
+    if (!std::filesystem::exists(src, ec)) return false;
+    if (std::filesystem::equivalent(src, dst, ec)) return true;
+    ec.clear();
+    std::filesystem::create_directories(dst, ec);
+    if (ec) return false;
+
+    std::filesystem::copy(src, dst,
+        std::filesystem::copy_options::recursive |
+        std::filesystem::copy_options::overwrite_existing,
+        ec);
+    return !ec;
 }
 
 } // namespace
@@ -112,6 +227,7 @@ void EditorApp::NewScene()
     if (!m_ctx.activeScene) return;
     m_ctx.activeScene->Clear();
     m_ctx.selectedEntities.clear();
+    RebuildEditorUIFromScene();
     m_settings.lastScenePath.clear();
     m_ctx.currentScenePath.clear();
     m_lastSceneWriteTime = {};
@@ -159,6 +275,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
     m_ctx.selectedEntities.clear();
+    RebuildEditorUIFromScene();
     CaptureCleanScene();
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
     return true;
@@ -249,6 +366,7 @@ void EditorApp::CheckHotReload()
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
             m_ctx.selectedEntities.clear();
+            RebuildEditorUIFromScene();
             CaptureCleanScene();
             FBZZ_LOG_INFO("Hot reloaded: %s", m_settings.lastScenePath.c_str());
         }
@@ -274,41 +392,78 @@ void EditorApp::CheckHotReload()
 // スクリプト DLL ホットリロード
 // =============================================================================
 
+namespace {
+
+// WHY: GameHub プロジェクトは初回開封時に cmake configure が済んでいない場合がある。
+//      build.config がないと ToolchainLocator が失敗してスクリプトが動かないため、
+//      CMakePresets.json が存在すれば自動で cmake --preset fbzz-vs を実行する。
+bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engineRoot)
+{
+    wchar_t cmakeBuf[MAX_PATH]{};
+    if (!SearchPathW(nullptr, L"cmake.exe", nullptr, MAX_PATH, cmakeBuf, nullptr)) {
+        FBZZ_LOG_WARN("ScriptDll: cmake.exe が PATH に見つかりません。cmake --preset fbzz-vs を手動実行してください。");
+        return false;
+    }
+
+    if (!engineRoot.empty()) {
+        const int sz = MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, nullptr, 0);
+        if (sz > 0) {
+            std::wstring w(static_cast<size_t>(sz - 1), L'\0');
+            MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, w.data(), sz);
+            SetEnvironmentVariableW(L"FBZZ_ENGINE_ROOT", w.c_str());
+        }
+    }
+
+    const int projSz = MultiByteToWideChar(CP_UTF8, 0, projectRoot.c_str(), -1, nullptr, 0);
+    std::wstring projRootW;
+    if (projSz > 0) {
+        projRootW.resize(static_cast<size_t>(projSz - 1));
+        MultiByteToWideChar(CP_UTF8, 0, projectRoot.c_str(), -1, projRootW.data(), projSz);
+    }
+
+    // WHY: --preset の cacheVariables に "$env{FBZZ_ENGINE_ROOT}" があっても
+    //      既に CMakeCache.txt が存在する場合はキャッシュ値が優先される。
+    //      -D で明示的に上書きすることで既存キャッシュがあっても正しいパスが使われる。
+    const int engSz = MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, nullptr, 0);
+    std::wstring engineRootW;
+    if (engSz > 0) {
+        engineRootW.resize(static_cast<size_t>(engSz - 1));
+        MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, engineRootW.data(), engSz);
+    }
+    std::wstring cmd = std::wstring(L"\"") + cmakeBuf + L"\" --preset fbzz-vs";
+    if (!engineRootW.empty())
+        cmd += L" -DFBZZ_ENGINE_ROOT:PATH=\"" + engineRootW + L"\"";
+    std::vector<wchar_t> mutableCmd(cmd.begin(), cmd.end());
+    mutableCmd.push_back(L'\0');
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    const BOOL ok = CreateProcessW(
+        nullptr, mutableCmd.data(),
+        nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+        nullptr, projRootW.empty() ? nullptr : projRootW.c_str(),
+        &si, &pi);
+
+    if (!ok) {
+        FBZZ_LOG_WARN("ScriptDll: cmake configure の起動に失敗しました。");
+        return false;
+    }
+
+    // WHY: cmake configure はメインスレッドをブロックしない。
+    //      バックグラウンドで実行し、完了後にエディタを再起動するよう促す。
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    FBZZ_LOG_INFO("ScriptDll: cmake --preset fbzz-vs をバックグラウンドで起動しました。完了後にエディタを再起動してください。");
+    return false;
+}
+
+} // namespace
+
 void EditorApp::InitScriptDll()
 {
     if (!m_ctx.hotReloadEnabled) return;
 
-    // ToolchainLocator でビルドディレクトリを特定し、
-    // SandboxScripts.dll のパスとスクリプトソースディレクトリを解決する。
-    ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
-        std::filesystem::path(m_ctx.projectBuildRoot));
-    if (!toolchain.found) {
-        FBZZ_LOG_WARN("ScriptDll: ToolchainLocator failed - script hot reload is disabled");
-        return;
-    }
-
-    // DLL パスは build.config の scripts_dll_debug から解決する。
-    // WHY: DLL 名はプロジェクトごとに異なる (SandboxScripts / MyGameScripts 等) ため
-    //      build.config に記録して Editor が動的に解決できるようにする。
-    //      フォールバック: scripts_dll_debug が空ならば exeDir / SandboxScripts.dll を使う (後方互換)。
-    if (!toolchain.scriptsDllDebug.empty()) {
-        m_scriptDllPath = toolchain.scriptsDllDebug;
-    } else {
-        m_scriptDllPath = toolchain.exeDebug.parent_path() / L"SandboxScripts.dll";
-    }
-
-    // スクリプトソースディレクトリ: build_dir の 2 階層上が engine ソースルート
-    // 例: build/debug → C:/FBZZ_Engine → Assets/Scripts/
-    // WHY: スクリプトを Assets/Scripts/ に移動したことで AssetBrowser から
-    //      Unity 同様に Scripts を確認・作成できるようになった。
-    const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
-    m_scriptsSourceDir = engineRoot / L"Assets" / L"Scripts";
-
-    // HLSL ソース / バッチスクリプトのパスを解決する
-    m_hlslSourceDir        = engineRoot / L"Assets" / L"shaders";
-    m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.bat";
-
-    // EditorContext にパスを共有してパネルから ScriptCodeGen が使えるようにする
     auto Utf8ToWideLocal = [](const std::string& s) -> std::wstring {
         if (s.empty()) return {};
         const int sz = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
@@ -326,17 +481,129 @@ void EditorApp::InitScriptDll()
         for (char& c : s) if (c == '\\') c = '/';
         return s;
     };
-    m_ctx.scriptsSourceDir  = WideToUtf8Local(m_scriptsSourceDir);
-    m_ctx.scriptsDllCppPath = WideToUtf8Local(
-        engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScriptsDll.cpp");
-    m_ctx.hlslSourceDir     = WideToUtf8Local(m_hlslSourceDir);
 
-    // 初回ロード
-    if (std::filesystem::exists(m_scriptDllPath))
+    ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
+        std::filesystem::path(m_ctx.projectBuildRoot));
+
+    // WHY: GameHub プロジェクトは初回開封時に cmake configure が済んでいない場合がある。
+    //      CMakePresets.json が存在するなら自動 configure を実行し再度解決を試みる。
+    if (!toolchain.found && !m_ctx.projectRoot.empty()) {
+        const std::filesystem::path presetsJson = std::filesystem::path(Utf8ToWideLocal(m_ctx.projectRoot)) / L"CMakePresets.json";
+        std::error_code ec;
+        if (std::filesystem::exists(presetsJson, ec)) {
+            if (TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot))
+                toolchain = ToolchainLocator::Locate(std::filesystem::path(m_ctx.projectBuildRoot));
+        }
+    }
+
+    if (toolchain.found) {
+        // WHY: Release Editor が Debug DLL をロードすると CRT ミスマッチ (MSVCRT vs MSVCRTD) が
+        //      発生し、DLL 境界を越えた std::function ファクトリ呼び出しでクラッシュする。
+        //      Editor のビルド構成と DLL の構成を一致させることで ABI を統一する。
+#ifdef NDEBUG
+        if (!toolchain.scriptsDllRelease.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllRelease;
+        } else {
+            m_scriptDllPath = toolchain.exeRelease.parent_path() / L"SandboxScripts.dll";
+        }
+#else
+        if (!toolchain.scriptsDllDebug.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllDebug;
+        } else {
+            m_scriptDllPath = toolchain.exeDebug.parent_path() / L"SandboxScripts.dll";
+        }
+#endif
+
+        const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
+        m_scriptsSourceDir     = engineRoot / L"Assets" / L"Scripts";
+        m_hlslSourceDir        = engineRoot / L"Assets" / L"shaders";
+        m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.bat";
+
+        m_ctx.scriptsSourceDir = WideToUtf8Local(m_scriptsSourceDir);
+        m_ctx.hlslSourceDir    = WideToUtf8Local(m_hlslSourceDir);
+
+        if (!m_ctx.projectTargetName.empty()) {
+            const std::filesystem::path projRoot(Utf8ToWidePath(m_ctx.projectRoot));
+            const std::wstring targetW = Utf8ToWidePath(m_ctx.projectTargetName);
+            m_ctx.scriptsDllCppPath    = WideToUtf8Local(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
+            m_ctx.scriptsStaticCppPath = WideToUtf8Local(projRoot / L"Src" / L"GameMain.cpp");
+        } else {
+            m_ctx.scriptsDllCppPath    = WideToUtf8Local(
+                engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScriptsDll.cpp");
+            m_ctx.scriptsStaticCppPath = WideToUtf8Local(
+                engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScripts.cpp");
+        }
+    } else {
+        // WHY: ToolchainLocator の失敗は cmake/build.config が未生成の場合に起こる。
+        //      hot reload は無効になるが、DLL が既にビルド済みならスクリプトは Play 中に動く。
+        //      build.config が部分的に読めた場合 (cmake なし等) は scriptsDllDebug が設定済み。
+        //      そうでなければ build_root を 2 段まで検索して DLL を探す。
+        FBZZ_LOG_WARN("ScriptDll: ToolchainLocator failed - script hot reload is disabled");
+
+#ifdef NDEBUG
+        if (!toolchain.scriptsDllRelease.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllRelease;
+        }
+#else
+        if (!toolchain.scriptsDllDebug.empty()) {
+            m_scriptDllPath = toolchain.scriptsDllDebug;
+        }
+#endif
+        else if (!m_ctx.projectBuildRoot.empty()) {
+            const std::wstring dllName = Utf8ToWideLocal(
+                m_ctx.projectTargetName.empty()
+                    ? "SandboxScripts.dll"
+                    : (m_ctx.projectTargetName + "Scripts.dll"));
+            const std::filesystem::path buildRoot(Utf8ToWideLocal(m_ctx.projectBuildRoot));
+            std::error_code ec;
+            for (const auto& sub1 : std::filesystem::directory_iterator(buildRoot, ec)) {
+                if (std::filesystem::exists(sub1.path() / dllName, ec)) {
+                    m_scriptDllPath = sub1.path() / dllName;
+                    break;
+                }
+                if (!sub1.is_directory(ec)) continue;
+                for (const auto& sub2 : std::filesystem::directory_iterator(sub1.path(), ec)) {
+                    if (!sub2.is_directory(ec)) continue;
+                    if (std::filesystem::exists(sub2.path() / dllName, ec)) {
+                        m_scriptDllPath = sub2.path() / dllName;
+                        break;
+                    }
+                }
+                if (!m_scriptDllPath.empty()) break;
+            }
+        }
+
+        // GameHub プロジェクトなら toolchain なしでも scriptsDllCppPath を設定できる
+        if (!m_ctx.projectTargetName.empty()) {
+            const std::filesystem::path projRoot(Utf8ToWidePath(m_ctx.projectRoot));
+            const std::wstring targetW = Utf8ToWidePath(m_ctx.projectTargetName);
+            m_ctx.scriptsDllCppPath    = WideToUtf8Local(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
+            m_ctx.scriptsStaticCppPath = WideToUtf8Local(projRoot / L"Src" / L"GameMain.cpp");
+        }
+    }
+
+    // DLL ロード (toolchain の成否に関わらず実行)
+    m_ctx.scriptsDllPath = WideToUtf8Local(m_scriptDllPath);
+    if (!m_scriptDllPath.empty() && std::filesystem::exists(m_scriptDllPath)) {
         (void)m_scriptDll.Load(m_scriptDllPath);
-    else
+        FBZZ_LOG_INFO("ScriptDll: loaded %ls (%d types)",
+            m_scriptDllPath.wstring().c_str(),
+            static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+    } else if (toolchain.found) {
+        // WHY: cmake configure 直後は DLL がまだ存在しない。
+        //      初回ビルドを TickScriptCompile() に委譲することで非同期ビルドを起動する。
+        FBZZ_LOG_INFO("ScriptDll: DLL が未ビルドです。初回ビルドを開始します...");
+        m_scriptCompilePending = true;
+        m_scriptInitialBuild   = true;   // 初回ビルドは依存ターゲットも含めてビルドする
+        m_scriptDebounceTimer  = 0.0f;
+        m_ctx.scriptReloadBusy = true;
+        SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: initial build...");
+    } else {
         FBZZ_LOG_WARN("ScriptDll: %ls not found; generate it with cmake --build",
                       m_scriptDllPath.wstring().c_str());
+    }
+
+    if (!toolchain.found) return;
 
     // ── 起動時 Assets 即時同期 ──────────────────────────────────────────────
     // WHY: cmake --build の post-build は EXE が再ビルドされたときのみ実行される。
@@ -344,6 +611,7 @@ void EditorApp::InitScriptDll()
     //      InitScriptDll() でエンジンソースのパスが分かった時点で Assets/ を即時同期することで、
     //      cmake を実行せずともスクリプト・カスタムシェーダーが AssetBrowser に表示される。
     {
+        const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         const std::filesystem::path projectAssetsDir =
             std::filesystem::path(Utf8ToWideLocal(m_ctx.projectRoot)) / L"Assets";
         const std::filesystem::path engineAssetsDir  = engineRoot / L"Assets";
@@ -388,14 +656,11 @@ void EditorApp::InitScriptDll()
     }
 
     // 最終更新時刻をキャッシュする (初回は変更なしと判定)
-    WIN32_FILE_ATTRIBUTE_DATA info{};
     if (!m_scriptsSourceDir.empty()) {
-        GetFileAttributesExW(m_scriptsSourceDir.wstring().c_str(), GetFileExInfoStandard, &info);
-        m_lastScriptWriteTime = info.ftLastWriteTime;
+        m_lastScriptWriteTime = GetLatestWriteTimeInTree(m_scriptsSourceDir);
     }
     if (!m_hlslSourceDir.empty()) {
-        GetFileAttributesExW(m_hlslSourceDir.wstring().c_str(), GetFileExInfoStandard, &info);
-        m_lastHlslWriteTime = info.ftLastWriteTime;
+        m_lastHlslWriteTime = GetLatestWriteTimeInTree(m_hlslSourceDir);
     }
 }
 
@@ -407,13 +672,12 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     if (m_scriptCompiler.GetState() == Compiler::State::Building) return;
     if (m_scriptCompilePending) return;
 
-    // Scripts ディレクトリの最終変更時刻を確認する
-    WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (!GetFileAttributesExW(m_scriptsSourceDir.wstring().c_str(), GetFileExInfoStandard, &info))
+    // Scripts ツリー全体の最終変更時刻を確認する。
+    const FILETIME ft = GetLatestWriteTimeInTree(m_scriptsSourceDir);
+    if (IsEmptyFileTime(ft))
         return;
 
-    const FILETIME& ft = info.ftLastWriteTime;
-    if (m_lastScriptWriteTime.dwLowDateTime == 0 && m_lastScriptWriteTime.dwHighDateTime == 0) {
+    if (IsEmptyFileTime(m_lastScriptWriteTime)) {
         m_lastScriptWriteTime = ft;
         return;
     }
@@ -422,13 +686,17 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     m_lastScriptWriteTime  = ft;
     m_scriptCompilePending = true;
     m_scriptDebounceTimer  = 0.5f;  // 500ms デバウンス
-    FBZZ_LOG_INFO("ScriptDll: script change detected; rebuilding after 500 ms");
+    m_ctx.scriptReloadBusy = true;
+    SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: waiting for changes...");
+    FBZZ_LOG_DEBUG("ScriptDll: change detected in %s; rebuilding after 500 ms debounce",
+                   m_ctx.scriptsSourceDir.c_str());
 }
 
 void EditorApp::TickScriptCompile()
 {
     // デバウンスタイマーを消費してからビルド開始する
     if (m_scriptCompilePending) {
+        m_ctx.scriptReloadBusy = true;
         m_scriptDebounceTimer -= 0.016f;
         if (m_scriptDebounceTimer > 0.0f) return;
 
@@ -437,6 +705,7 @@ void EditorApp::TickScriptCompile()
         ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
             std::filesystem::path(m_ctx.projectBuildRoot));
         if (!toolchain.found) {
+            m_ctx.scriptReloadBusy = false;
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: toolchain not resolved");
             return;
         }
@@ -445,41 +714,78 @@ void EditorApp::TickScriptCompile()
         config.cmakeExe      = toolchain.cmakeExe;
         config.buildDir      = toolchain.buildDir;
         config.exePath       = m_scriptDllPath;
-        config.target        = "SandboxScripts";
-        config.configuration = "Debug";  // WHY: エディタは常に Debug DLL を使う
+        // WHY: DLL ファイル名 (例: SandboxScripts.dll) から cmake ターゲット名を導出する。
+        //      ハードコードすると GameHub プロジェクト (MyGameScripts 等) で壊れる。
+        config.target        = m_scriptDllPath.stem().string();
+        // WHY: Editor と Scripts DLL の CRT を統一して ABI ミスマッチを防ぐ。
+        //      Release Editor には Release DLL、Debug Editor には Debug DLL を使う。
+#ifdef NDEBUG
+        config.configuration = "Release";
+#else
+        config.configuration = "Debug";
+#endif
+        // WHY: 初回ビルド (DLL 未存在) はエンジン libs がまだないため依存ターゲットも含めてビルドする。
+        //      ホットリロード時はエディタがエンジン DLL をロック中のためスキップする。
+        config.skipDeps      = !m_scriptInitialBuild;
+        m_scriptInitialBuild = false;
 
         if (!m_scriptCompiler.Start(config)) {
+            m_ctx.scriptReloadBusy = false;
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: failed to start compile");
             return;
         }
+        FBZZ_LOG_DEBUG("ScriptDll: starting compile: target=%s cfg=%s",
+            config.target.c_str(), config.configuration.c_str());
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: compiling...");
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Building) {
+        m_ctx.scriptReloadBusy = true;
         m_scriptCompiler.Tick();
         return;
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Done) {
+        m_ctx.scriptReloadBusy = true;
         SetHotReloadState(EditorContext::HotReloadState::Reloading, "Scripts: reloading...");
+
+        // リロード前に選択中エンティティの instanceId を保存する。
+        // WHY: Reload() はシーンを move で置き換えるため EntityID が変わるが、
+        //      instanceId (UUID v4) はシリアライズ経由で保持されるため復元に使える。
+        std::vector<std::string> savedGuids;
+        if (m_ctx.activeScene) {
+            for (auto id : m_ctx.selectedEntities) {
+                if (auto* go = m_ctx.activeScene->GetGameObject(id))
+                    savedGuids.push_back(go->instanceId);
+            }
+        }
+
         if (m_ctx.activeScene && m_scriptDll.Reload(*m_ctx.activeScene, m_scriptDllPath)) {
             m_ctx.selectedEntities.clear();
+            for (const auto& guid : savedGuids) {
+                if (auto* go = scene::GameObject::FindByGuid(guid))
+                    m_ctx.selectedEntities.push_back(go->GetID());
+            }
             SetHotReloadState(EditorContext::HotReloadState::Done, "Scripts: hot reload complete");
             m_ctx.hotReloadDoneTimer = 3.0f;
         } else {
+            m_ctx.selectedEntities.clear();
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: reload failed");
             m_ctx.hotReloadDoneTimer = 5.0f;
         }
-        // Compiler を Idle に戻す (再使用のため)
-        // WHY: Compiler は Done 状態のまま残るため、明示的に次回ビルドに備えてリセットする必要がある
+        m_scriptCompiler.Reset();
+        m_ctx.scriptReloadBusy = false;
         return;
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Failed) {
         const std::string msg = "Scripts: compile error (exit=" +
                                 std::to_string(m_scriptCompiler.GetExitCode()) + ")";
+        FBZZ_LOG_ERROR("ScriptDll: %s\n%s", msg.c_str(), m_scriptCompiler.GetLog().c_str());
         SetHotReloadState(EditorContext::HotReloadState::Failed, msg);
         m_ctx.hotReloadDoneTimer = 8.0f;
+        m_scriptCompiler.Reset();
+        m_ctx.scriptReloadBusy = false;
     }
 }
 
@@ -495,12 +801,11 @@ void EditorApp::CheckHlslDirty()
     if (m_hlslCompiler.GetState() == Compiler::State::Building) return;
     if (m_hlslCompilePending) return;
 
-    WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (!GetFileAttributesExW(m_hlslSourceDir.wstring().c_str(), GetFileExInfoStandard, &info))
+    const FILETIME ft = GetLatestWriteTimeInTree(m_hlslSourceDir);
+    if (IsEmptyFileTime(ft))
         return;
 
-    const FILETIME& ft = info.ftLastWriteTime;
-    if (m_lastHlslWriteTime.dwLowDateTime == 0 && m_lastHlslWriteTime.dwHighDateTime == 0) {
+    if (IsEmptyFileTime(m_lastHlslWriteTime)) {
         m_lastHlslWriteTime = ft;
         return;
     }
@@ -509,7 +814,8 @@ void EditorApp::CheckHlslDirty()
     m_lastHlslWriteTime  = ft;
     m_hlslCompilePending = true;
     m_hlslDebounceTimer  = 0.5f;
-    FBZZ_LOG_INFO("HLSL: shader file change detected; recompiling after 500 ms");
+    FBZZ_LOG_DEBUG("HLSL: change detected in %s; recompiling after 500 ms debounce",
+                   m_ctx.hlslSourceDir.c_str());
 }
 
 void EditorApp::TickHlslCompile()
@@ -551,10 +857,17 @@ void EditorApp::TickHlslCompile()
     }
 
     if (m_hlslCompiler.GetState() == Compiler::State::Done) {
+        if (!SyncCompiledShadersToProject(m_hlslSourceDir, m_ctx.projectRoot)) {
+            FBZZ_LOG_WARN("HLSL: compiled CSO sync failed; renderer may still use stale shader binaries");
+        }
+        if (!SyncCompiledShadersToRuntimeAssets(m_hlslSourceDir)) {
+            FBZZ_LOG_WARN("HLSL: runtime CSO sync failed; renderer may still use stale shader binaries");
+        }
         if (renderer::ResourceManager::Active())
             renderer::ResourceManager::Active()->ReloadAllShaders();
         SetHotReloadState(EditorContext::HotReloadState::Done, "HLSL: shader reload complete");
         m_ctx.hotReloadDoneTimer = 3.0f;
+        m_hlslCompiler.Reset();
         return;
     }
 
@@ -563,6 +876,7 @@ void EditorApp::TickHlslCompile()
                           "HLSL: compile error (exit=" +
                           std::to_string(m_hlslCompiler.GetExitCode()) + ")");
         m_ctx.hotReloadDoneTimer = 8.0f;
+        m_hlslCompiler.Reset();
     }
 }
 

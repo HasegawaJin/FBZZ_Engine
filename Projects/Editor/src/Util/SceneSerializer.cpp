@@ -38,6 +38,7 @@ std::string SceneSerializer::Serialize(const scene::Scene& scene)
 {
     // メモリ上の TOML 文字列を返したいが、Engine 側 API がファイル経由のみ対応しているため
     // 一時ファイル (kSnapshotPath) を介してテキストを読み戻す。
+    (void)util::FileSystem::EnsureDirectory("editor_config");
     if (!Save(scene, kSnapshotPath)) {
         FBZZ_LOG_ERROR("SceneSerializer::Serialize save failed: %s", kSnapshotPath);
         return {};
@@ -61,6 +62,7 @@ bool SceneSerializer::Deserialize(scene::Scene& scene, const std::string& toml)
         FBZZ_LOG_ERROR("SceneSerializer::Deserialize rejected an empty snapshot");
         return false;
     }
+    (void)util::FileSystem::EnsureDirectory("editor_config");
     if (!util::FileSystem::WriteText(kSnapshotPath, toml)) {
         FBZZ_LOG_ERROR("SceneSerializer::Deserialize write failed: %s", kSnapshotPath);
         return false;

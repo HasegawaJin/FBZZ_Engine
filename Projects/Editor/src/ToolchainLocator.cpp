@@ -2,6 +2,7 @@
 // ToolchainLocator.cpp | fbzz::editor
 // RuntimeBuild が使用する CMake とビルド成果物パスの解決
 #include <Editor/ToolchainLocator.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Windows.h>
 #include <filesystem>
 #include <fstream>
@@ -186,8 +187,15 @@ ToolchainLocator::Result ToolchainLocator::Locate(const std::filesystem::path& b
     result.found = !result.cmakeExe.empty()
                 && std::filesystem::exists(result.cmakeExe)
                 && std::filesystem::exists(result.buildDir);
-    if (!result.found)
+    if (!result.found) {
         result.error = "build.config は見つかりましたが cmake.exe または build_dir を解決できません。";
+        FBZZ_LOG_WARN("ToolchainLocator: %s", result.error.c_str());
+    } else {
+        FBZZ_LOG_DEBUG("ToolchainLocator: cmake=%s build=%s exe_debug=%s",
+            configPath.string().c_str(),
+            result.buildDir.string().c_str(),
+            result.exeDebug.string().c_str());
+    }
 
     return result;
 }

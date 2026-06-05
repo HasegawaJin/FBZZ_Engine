@@ -21,6 +21,9 @@ public:
         std::filesystem::path exePath;
         std::string           target;
         std::string           configuration;
+        // WHY: ホットリロード時はエディタプロセスがエンジン DLL をロック中のため、
+        //      依存ターゲットの再ビルドをスキップしないとリンカが失敗する。
+        bool                  skipDeps = false;
     };
 
     Compiler() = default;
@@ -37,6 +40,9 @@ public:
 
     /// 実行中ビルドを強制終了し、Cancelled へ遷移する。
     void Cancel();
+
+    /// Done / Failed / Cancelled の後、次のビルドに備えて Idle へ戻す。
+    void Reset() { if (m_state != State::Building) m_state = State::Idle; }
 
     State              GetState()    const { return m_state; }
     const std::string& GetLog()      const { return m_log; }

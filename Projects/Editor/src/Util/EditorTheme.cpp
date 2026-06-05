@@ -46,6 +46,26 @@ namespace {
     return {};
 }
 
+[[nodiscard]] std::string ResolveJapaneseFontPath()
+{
+    // WHY: ImGui の bundled fonts は日本語グリフを持たない。
+    //      Windows 標準フォントをフォールバックとして merge し、ログや Console の UTF-8 日本語を表示可能にする。
+    static constexpr const char* CANDIDATES[] = {
+        "C:/Windows/Fonts/YuGothM.ttc",
+        "C:/Windows/Fonts/meiryo.ttc",
+        "C:/Windows/Fonts/msgothic.ttc",
+    };
+
+    std::error_code ec;
+    for (const char* path : CANDIDATES) {
+        if (std::filesystem::is_regular_file(path, ec) && !ec) {
+            return path;
+        }
+        ec.clear();
+    }
+    return {};
+}
+
 // 背景系 (暗い順)
 constexpr ImVec4 BG_DARKEST   { 0.102f, 0.102f, 0.102f, 1.0f }; // #1A1A1A
 constexpr ImVec4 BG_DARK      { 0.141f, 0.141f, 0.141f, 1.0f }; // #242424
@@ -91,16 +111,29 @@ void EditorTheme::Apply()
     cfg.OversampleV = 2;
     cfg.PixelSnapH  = false;
 
-    // WHY: 日本語 OS 環境で ImGui が日本語グリフをフォールバックしないよう
-    //      ASCII のみのレンジを明示指定する。
-    static const ImWchar ranges[] = { 0x0020, 0x00FF, 0 };
-    cfg.GlyphRanges = ranges;
-
     // WHY: ファイルが見つからない場合 AddFontFromFileTTF は nullptr を返す。
     //      その状態で Build() するとフォントが空になり ImGui がクラッシュするため、
     //      失敗時はデフォルトのビットマップフォントにフォールバックする。
     const std::string fontPath = ResolveBundledFontPath();
-    if (fontPath.empty() || !io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 15.0f, &cfg))
+    ImFont* baseFont = nullptr;
+    if (!fontPath.empty()) {
+        baseFont = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 15.0f, &cfg);
+    }
+
+    const std::string japaneseFontPath = ResolveJapaneseFontPath();
+    if (!japaneseFontPath.empty()) {
+        ImFontConfig japaneseCfg;
+        japaneseCfg.MergeMode = (baseFont != nullptr);
+        japaneseCfg.OversampleH = 2;
+        japaneseCfg.OversampleV = 2;
+        japaneseCfg.PixelSnapH  = false;
+        if (ImFont* japaneseFont = io.Fonts->AddFontFromFileTTF(
+                japaneseFontPath.c_str(), 15.0f, &japaneseCfg, io.Fonts->GetGlyphRangesJapanese())) {
+            baseFont = japaneseFont;
+        }
+    }
+
+    if (!baseFont)
         io.Fonts->AddFontDefault();
 
     // --- スタイル変数 ---------------------------------------------------
