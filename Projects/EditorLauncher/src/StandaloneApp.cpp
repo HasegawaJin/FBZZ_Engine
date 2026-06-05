@@ -23,6 +23,7 @@
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Physics/World.hpp>
@@ -47,10 +48,12 @@ void StandaloneApp::FileLogSink::OnLog(const core::LogEntry& entry)
 }
 
 StandaloneApp::StandaloneApp(renderer::IRenderer& renderer,
+                             renderer::IImGuiRenderer& imguiRenderer,
                              renderer::ResourceManager& resources,
                              const LaunchProject& project,
                              const ProjectSettings& settings)
     : m_renderer(renderer)
+    , m_imguiRenderer(imguiRenderer)
     , m_resources(resources)
     , m_project(project)
     , m_settings(settings)
@@ -115,7 +118,7 @@ bool StandaloneApp::OnInit()
     m_imguiCtx = ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;  // ini を書かない (スタンドアロンゲームのドキュメントを汚さない)
-    m_renderer.ImGuiInit(core::Application::Get().GetWindow().GetHandle());
+    m_imguiRenderer.ImGuiInit(core::Application::Get().GetWindow().GetHandle());
 
     return true;
 }
@@ -174,7 +177,7 @@ void StandaloneApp::OnRender()
                         fbzz::Layer::Everything, &uiOptions);
 
     // ── プロファイラオーバーレイ (F3 で表示) ────────────────────────────────
-    m_renderer.ImGuiNewFrame();
+    m_imguiRenderer.ImGuiNewFrame();
     ImGui::NewFrame();
 
     if (m_showProfiler) {
@@ -226,7 +229,7 @@ void StandaloneApp::OnRender()
     }
 
     ImGui::Render();
-    m_renderer.ImGuiRenderDrawData();
+    m_imguiRenderer.ImGuiRenderDrawData();
 
     m_renderer.EndFrame();
 }
@@ -240,7 +243,7 @@ void StandaloneApp::OnShutdown()
     m_physicsWorld.reset();
 
     if (m_imguiCtx) {
-        m_renderer.ImGuiShutdown();
+        m_imguiRenderer.ImGuiShutdown();
         ImGui::DestroyContext(m_imguiCtx);
         m_imguiCtx = nullptr;
     }

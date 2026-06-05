@@ -67,12 +67,13 @@ using fbzz::util::FileSystem;
     if (!app.Init()) return 1;
 
     auto& renderer = app.GetRenderer();
+    auto& imguiRenderer = app.GetImGuiRenderer();
     renderer::ResourceManager resources(renderer);
 
     const std::filesystem::path assetRoot = project.root / L"Assets";
     asset::AssetManager::Init(resources, StringUtils::PathToUtf8(assetRoot) + "/");
 
-    EditorModule module(renderer, resources, project);
+    EditorModule module(renderer, imguiRenderer, resources, project);
     app.Run(module);
     return 0;
 #endif

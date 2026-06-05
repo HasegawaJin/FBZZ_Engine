@@ -14,7 +14,8 @@
 //   GPU レンダリング完了後の ImGui フレーム内 (EditorApp::RenderPanels 等) で
 //   DrawIfEnabled() を呼ぶ 2 ステップ構成にしている。
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
-#include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
+
 #include <Engine/Renderer/ResourceManager.hpp>
 
 #include <imgui.h>
@@ -55,10 +56,10 @@ const RenderDebugOverlay::Snapshot& RenderDebugOverlay::GetLastSnapshot()
     return s_state.snap;
 }
 
-void RenderDebugOverlay::DrawIfEnabled(IRenderer& renderer, ResourceManager& resources)
+void RenderDebugOverlay::DrawIfEnabled(IImGuiRenderer& imguiRenderer, ResourceManager& resources)
 {
     if (!s_state.enabled) return;
-    Draw(renderer, resources, s_state.snap);
+    Draw(imguiRenderer, resources, s_state.snap);
 }
 
 namespace {
@@ -83,7 +84,7 @@ ImTextureID ToImTexID(void* ptr)
 
 } // namespace
 
-void RenderDebugOverlay::Draw(IRenderer& renderer, ResourceManager& resources,
+void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& resources,
                               const Snapshot& snapshot)
 {
     // アスペクト比を元に高さを決める。解像度が未設定なら 16:9 をフォールバックとする。
@@ -103,7 +104,7 @@ void RenderDebugOverlay::Draw(IRenderer& renderer, ResourceManager& resources,
 
     auto tryResolve = [&](const char* label, const ResourceHandle<RenderTargetTag>& rt) {
         if (!rt.IsValid()) return;
-        void* rawID = renderer.GetImTextureID(rt, resources, 0);
+        void* rawID = imguiRenderer.GetImTextureID(rt, resources, 0);
         if (!rawID) return;
         resolved[validSlotCount++] = { label, ToImTexID(rawID) };
     };

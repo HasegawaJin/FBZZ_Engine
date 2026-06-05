@@ -20,9 +20,6 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
-#include <imgui.h>
-#include <imgui_impl_win32.h>
-#include <imgui_impl_dx11.h>
 #include <string>
 
 namespace fbzz::renderer
@@ -558,38 +555,7 @@ void DX11Renderer::InitSamplers()
 }
 
 // =============================================================================
-// ImGui バックエンド
 // =============================================================================
-
-void DX11Renderer::ImGuiInit(void* hwnd)
-{
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(m_device.Get(), m_context.Get());
-}
-
-void DX11Renderer::ImGuiShutdown()
-{
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-}
-
-void DX11Renderer::ImGuiNewFrame()
-{
-    ImGui_ImplDX11_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-}
-
-void DX11Renderer::ImGuiRenderDrawData()
-{
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-}
-
-void* DX11Renderer::GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot)
-{
-    auto* target = resources.Get(rt);
-    if (!target) return nullptr;
-    return target->GetNativeSRV(slot);
-}
 
 // =============================================================================
 // GPU Timestamp Query プロファイリング
