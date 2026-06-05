@@ -12,6 +12,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
@@ -1203,8 +1204,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     }
     ImVec2 viewportMax = { viewportMin.x + size.x, viewportMin.y + size.y };
     bool viewportHovered = ImGui::IsMouseHoveringRect(viewportMin, viewportMax);
-    if (hdrRT.IsValid() && renderer && resources) {
-        ImTextureID texID = static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(renderer->GetImTextureID(hdrRT, *resources, 0)));
+    if (hdrRT.IsValid() && ctx.imguiRenderer && resources) {
+        ImTextureID texID = static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(ctx.imguiRenderer->GetImTextureID(hdrRT, *resources, 0)));
         ImGui::GetWindowDrawList()->AddImage(texID, viewportMin, viewportMax);
     } else {
         ImVec2 cursor = ImGui::GetCursorScreenPos();

@@ -68,12 +68,6 @@ public:
         return s_empty;
     }
 
-    virtual void ImGuiInit(void* hwnd) = 0;
-    virtual void ImGuiShutdown() = 0;
-    virtual void ImGuiNewFrame() = 0;
-    virtual void ImGuiRenderDrawData() = 0;
-    virtual void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) = 0;
-
 private:
     friend class ResourceManager;
 

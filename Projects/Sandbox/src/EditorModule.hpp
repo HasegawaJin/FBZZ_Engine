@@ -18,6 +18,8 @@
 
 #include <memory>
 
+namespace fbzz::renderer { class IImGuiRenderer; }
+
 namespace fbzz::sandbox {
 
 /// Application の共通ループから Editor UI、PlayMode、Scene/Game viewport 描画を駆動する Module。
@@ -25,6 +27,7 @@ namespace fbzz::sandbox {
 class EditorModule : public core::IModule {
 public:
     EditorModule(renderer::IRenderer& renderer,
+                 renderer::IImGuiRenderer& imguiRenderer,
                  renderer::ResourceManager& resources,
                  const LaunchProject& project);
 
@@ -52,6 +55,7 @@ private:
     void RenderEditorPanels();
 
     renderer::IRenderer&          m_renderer;
+    renderer::IImGuiRenderer&     m_imguiRenderer;
     renderer::ResourceManager&    m_resources;
     const LaunchProject&          m_project;
     editor::EditorApp             m_editorApp;

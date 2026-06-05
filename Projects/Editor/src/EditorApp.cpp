@@ -24,6 +24,7 @@
 #include "Tools/TerrainTool.hpp"
 #include "Tools/WaterTool.hpp"
 #include <Engine/Core/Application.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -179,11 +180,12 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
 EditorApp::EditorApp()  = default;
 EditorApp::~EditorApp() = default;
 
-bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window)
+bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window)
 {
-    m_hwnd      = window.GetHandle();
-    m_renderer  = &renderer;
-    m_resources = &resources;
+    m_hwnd          = window.GetHandle();
+    m_renderer      = &renderer;
+    m_imguiRenderer = &imguiRenderer;
+    m_resources     = &resources;
 
     window.SetWndProcHook([this](HWND h, UINT msg, WPARAM wp, LPARAM lp) -> bool {
         if (ImGui_ImplWin32_WndProcHandler(h, msg, wp, lp) != 0)
@@ -289,11 +291,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::ResourceManager& r
 
     EditorTheme::Apply();
 
-    renderer.ImGuiInit(m_hwnd);
+    imguiRenderer.ImGuiInit(m_hwnd);
 
     m_ctx.undoStack   = &m_undoStack;
     m_ctx.playMode    = &m_playMode;
     m_ctx.renderer    = &renderer;
+    m_ctx.imguiRenderer = &imguiRenderer;
     m_ctx.resources   = &resources;
     m_ctx.memorySystem = &core::Application::Get().GetMemorySystem();
     m_terrainTool     = std::make_unique<TerrainTool>();
@@ -430,7 +433,7 @@ void EditorApp::Shutdown()
     m_ctx.projectSettings.Save(m_projectSettingsPath);
     m_sceneViewportRT = {};
     m_gameViewportRT  = {};
-    m_renderer->ImGuiShutdown();
+    m_imguiRenderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }
 
@@ -541,7 +544,7 @@ void EditorApp::BeginFrame()
     // シーンをレンダリングでき、リサイズ直後のフレームで古い解像度の画像が表示されるのを防ぐ。
     ResizeViewportRTsIfNeeded();
 
-    m_renderer->ImGuiNewFrame();
+    m_imguiRenderer->ImGuiNewFrame();
     ImGui::NewFrame();
 
     // WHY: Unity 同様、Play 中・Pause 中はエディターとの区別を一目で把握できるようにする。
@@ -617,8 +620,8 @@ void EditorApp::RenderPanels(EditorContext& ctx)
 
     // GPU レンダリング完了後・ImGui フレーム内のここで描画する。
     // RenderSystem は GPU 実行中のため直接 ImGui を呼べず、スナップショットだけ保存している。
-    if (m_renderer && m_resources)
-        renderer::RenderDebugOverlay::DrawIfEnabled(*m_renderer, *m_resources);
+    if (m_imguiRenderer && m_resources)
+        renderer::RenderDebugOverlay::DrawIfEnabled(*m_imguiRenderer, *m_resources);
 
     if (ctx.requestOpenProjectSettings) {
         if (m_projectSettingsPanel) m_projectSettingsPanel->visible = true;
@@ -642,10 +645,10 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     }
 }
 
-void EditorApp::EndFrame(renderer::IRenderer& renderer)
+void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)
 {
     ImGui::Render();
-    renderer.ImGuiRenderDrawData();
+    imguiRenderer.ImGuiRenderDrawData();
 }
 
 // =============================================================================
