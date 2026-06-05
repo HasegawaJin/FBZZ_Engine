@@ -95,6 +95,43 @@ struct MaterialComponent {
         const uint32_t slotCount = desc.textures.empty() ? 0u
             : desc.textures.back().slot + 1u;
         texturePaths.resize((std::max)(slotCount, 5u));
+
+        // WHY: 新しいシェーダーへ切り替えた直後に全パラメータが 0 のままだと、
+        //      albedo/rimColor/rimIntensity まで 0 になり、正しいシェーダーでも真っ黒に見える。
+        //      Descriptor 名で汎用初期値を書き込むことで、Inspector や Script から調整する前でも
+        //      マテリアルの意図が確認できる状態にする。
+        auto setFloat = [&](std::string_view name, float value) {
+            const auto* v = desc.FindVar(name);
+            if (!v || v->varType != renderer::ShaderVarType::Float || v->columns != 1) return;
+            if (v->offset + sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
+            std::memcpy(paramData.data() + v->offset, &value, sizeof(float));
+        };
+        auto setFloat3 = [&](std::string_view name, const float value[3]) {
+            const auto* v = desc.FindVar(name);
+            if (!v || v->varType != renderer::ShaderVarType::Float || v->columns < 3) return;
+            if (v->offset + 3u * sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
+            std::memcpy(paramData.data() + v->offset, value, 3u * sizeof(float));
+        };
+        auto setFloat4 = [&](std::string_view name, const float value[4]) {
+            const auto* v = desc.FindVar(name);
+            if (!v || v->varType != renderer::ShaderVarType::Float || v->columns < 4) return;
+            if (v->offset + 4u * sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
+            std::memcpy(paramData.data() + v->offset, value, 4u * sizeof(float));
+        };
+
+        const float defaultAlbedo[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        const float defaultColor[3]  = { 1.0f, 1.0f, 1.0f };
+        setFloat4("albedo", defaultAlbedo);
+        setFloat("metallic", 0.0f);
+        setFloat("roughness", 0.65f);
+        setFloat("normalStrength", 1.0f);
+        setFloat("occlusionStrength", 1.0f);
+        setFloat3("emissiveColor", defaultColor);
+        setFloat("emissiveScale", 0.0f);
+        setFloat("alphaCutoff", 0.5f);
+        setFloat("rimPower", 3.0f);
+        setFloat("rimIntensity", 1.0f);
+        setFloat3("rimColor", defaultColor);
     }
 
     const char* GetTypeName() const { return "Material"; }
