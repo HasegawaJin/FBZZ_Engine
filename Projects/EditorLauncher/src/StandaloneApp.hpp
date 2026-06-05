@@ -21,13 +21,14 @@
 
 struct ImGuiContext;
 
-namespace fbzz::renderer { class IRenderer; }
+namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; }
 
 namespace fbzz::editor_launcher {
 
 class StandaloneApp final : public core::IModule {
 public:
     StandaloneApp(renderer::IRenderer& renderer,
+                  renderer::IImGuiRenderer& imguiRenderer,
                   renderer::ResourceManager& resources,
                   const LaunchProject& project,
                   const ProjectSettings& settings);
@@ -49,6 +50,7 @@ private:
     };
 
     renderer::IRenderer&             m_renderer;
+    renderer::IImGuiRenderer&        m_imguiRenderer;
     renderer::ResourceManager&       m_resources;
     const LaunchProject&             m_project;
     const ProjectSettings&           m_settings;

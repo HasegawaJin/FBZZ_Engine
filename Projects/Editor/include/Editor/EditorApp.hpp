@@ -24,7 +24,7 @@
 #include <vector>
 #include <Windows.h>
 
-namespace fbzz::renderer { class IRenderer; class ResourceManager; }
+namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class Window; }
 
 namespace fbzz::editor {
@@ -42,13 +42,13 @@ public:
     EditorApp();
     ~EditorApp(); // TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
 
-    bool Init(renderer::IRenderer& renderer, renderer::ResourceManager& resources, core::Window& window);
+    bool Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window);
     void Shutdown();
     bool OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath);
 
     void BeginFrame();
     void RenderPanels(EditorContext& ctx);
-    void EndFrame(renderer::IRenderer& renderer);
+    void EndFrame(renderer::IImGuiRenderer& imguiRenderer);
 
     EditorContext& GetContext() { return m_ctx; }
 
@@ -133,6 +133,7 @@ private:
     FILETIME                                 m_lastSceneWriteTime = {};
     HWND                                     m_hwnd          = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
+    renderer::IImGuiRenderer*                m_imguiRenderer = nullptr;
     renderer::ResourceManager*               m_resources     = nullptr;
     ViewportPanel*                           m_sceneViewportPanel     = nullptr;
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
