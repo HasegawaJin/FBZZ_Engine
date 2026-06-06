@@ -5,7 +5,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -597,7 +597,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         } else if (e.ext == ".fbzz" && ctx.activeScene) {
             if (ctx.requestOpenScene) {
                 ctx.requestOpenScene(e.path);
-            } else if (SceneSerializer::Load(*ctx.activeScene, e.path)) {
+            } else if (SceneIO::Load(*ctx.activeScene, e.path)) {
                 ctx.selectedEntities.clear();
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
                 FBZZ_LOG_INFO("Opened scene: %s", e.path.c_str());

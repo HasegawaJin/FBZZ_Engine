@@ -48,6 +48,7 @@ void ExecuteDeferredSkinnedForwardPass     (RenderPassContext& ctx);
 void ExecuteDeferredForwardTransparentPass (RenderPassContext& ctx);
 void ExecuteSkyPass                        (RenderPassContext& ctx);
 void ExecuteParticlePass                   (RenderPassContext& ctx);
+void ExecuteDecalPass                      (RenderPassContext& ctx);
 
 // ---- ヘルパー宣言 (定義は GeometryPassHelpers.cpp) -------------------------
 renderer::Material* SyncMaterial(

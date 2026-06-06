@@ -1,5 +1,5 @@
 // FBZZ Engine
-// SceneSerializer.hpp | fbzz::editor
+// SceneIO.hpp | fbzz::editor
 // シーンを TOML 形式でシリアライズ/デシリアライズ
 #pragma once
 #include <string>
@@ -8,7 +8,7 @@ namespace fbzz::scene { class Scene; }
 
 namespace fbzz::editor {
 
-class SceneSerializer {
+class SceneIO {
 public:
     static bool Save(const scene::Scene& scene, const std::string& path);
     static bool Load(scene::Scene& scene, const std::string& path);

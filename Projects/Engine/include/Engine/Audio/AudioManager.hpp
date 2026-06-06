@@ -1,5 +1,5 @@
 // FBZZ Engine
-// AudioSystem.hpp | fbzz::audio
+// AudioManager.hpp | fbzz::audio
 // BGM / SE の高レベル管理と WAV キャッシュ
 // IAudioDevice に実再生を委譲し、ゲーム側はパスと音量だけを扱う。
 // 読み込み済みバッファを再利用し、Shutdown で音声リソースを解放する。
@@ -13,11 +13,11 @@
 namespace fbzz::audio
 {
 
-class AudioSystem
+class AudioManager
 {
 public:
     // device の所有権は呼び出し元が保持。Init より前に渡す
-    explicit AudioSystem(IAudioDevice& device);
+    explicit AudioManager(IAudioDevice& device);
 
     bool Init();
     void Shutdown();
