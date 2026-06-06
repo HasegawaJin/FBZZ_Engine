@@ -251,6 +251,13 @@ void EditorModule::RenderSceneViewport(renderer::ResourceHandle<renderer::Render
     if (m_editorApp.GetContext().showSkeleton) {
         scene::AnimatorDebugDrawSystem(*m_scene, m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
     }
+    if (m_editorApp.GetContext().showGrid) {
+        scene::GridDebugDrawSystem(m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
+    }
+    if (m_editorApp.GetContext().showLightRange) {
+        scene::LightRangeDebugDrawSystem(*m_scene, m_renderer, m_resources,
+                                         m_debugCamera.camera.GetViewProjection());
+    }
 }
 
 void EditorModule::RenderGameViewport(renderer::ResourceHandle<renderer::RenderTargetTag> gameRT,

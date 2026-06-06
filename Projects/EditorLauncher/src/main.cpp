@@ -407,6 +407,14 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         if (editorApp.GetContext().showSkeleton) {
             scene::AnimatorDebugDrawSystem(*scene, renderer, resources, debugCamera.camera.GetViewProjection());
         }
+        if (editorApp.GetContext().showGrid) {
+            scene::GridDebugDrawSystem(renderer, resources, debugCamera.camera.GetViewProjection());
+        }
+        if (editorApp.GetContext().showLightRange) {
+            scene::LightRangeDebugDrawSystem(*scene, renderer, resources,
+                                             debugCamera.camera.GetViewProjection());
+        }
+
         if (gameRT.IsValid()) {
             renderer.SetRenderTarget(gameRT, resources);
             renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
