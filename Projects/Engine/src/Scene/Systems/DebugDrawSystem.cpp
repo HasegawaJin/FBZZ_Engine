@@ -1,13 +1,14 @@
 // FBZZ Engine
 // DebugDrawSystem.cpp | fbzz::scene
 // デバッグワイヤー描画 System の実装
-// Collider / アニメーター骨格 / 物理拘束 の可視化をまとめる。
+// Collider / アニメーター骨格 / 物理拘束 / グリッド / ライト範囲 の可視化をまとめる。
 #include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -17,6 +18,7 @@
 #include <Physics/ConstraintDebugGeometry.hpp>
 #include <Physics/World.hpp>
 #include <Math/Vector3.hpp>
+#include <cmath>
 #include <type_traits>
 
 namespace fbzz::scene
@@ -150,6 +152,90 @@ void ConstraintDebugDrawSystem(const physics::World& world,
         for (const physics::DebugLine& line : geometry.lines)
             renderer::DebugDraw::Line(renderer, line.from, line.to, color);
     }
+}
+
+// ---------------------------------------------------------------------------
+// GridDebugDrawSystem
+// ---------------------------------------------------------------------------
+void GridDebugDrawSystem(renderer::IRenderer& renderer,
+                         renderer::ResourceManager& resources,
+                         const math::Matrix4& viewProjection,
+                         float cellSize,
+                         int   halfCount,
+                         const math::Vector4& gridColor,
+                         const math::Vector4& axisColorX,
+                         const math::Vector4& axisColorZ)
+{
+    renderer::DebugDraw::BeginFrame(renderer, resources, viewProjection);
+
+    const float extent = static_cast<float>(halfCount) * cellSize;
+
+    for (int i = -halfCount; i <= halfCount; ++i)
+    {
+        const float offset = static_cast<float>(i) * cellSize;
+
+        // Z 方向の線 (X 軸に平行)
+        {
+            const float x = offset;
+            const math::Vector4& col = (i == 0) ? axisColorX : gridColor;
+            renderer::DebugDraw::Line(renderer,
+                { x, 0.0f, -extent },
+                { x, 0.0f,  extent },
+                col);
+        }
+
+        // X 方向の線 (Z 軸に平行)
+        {
+            const float z = offset;
+            const math::Vector4& col = (i == 0) ? axisColorZ : gridColor;
+            renderer::DebugDraw::Line(renderer,
+                { -extent, 0.0f, z },
+                {  extent, 0.0f, z },
+                col);
+        }
+    }
+
+    renderer::DebugDraw::Flush();
+}
+
+// ---------------------------------------------------------------------------
+// LightRangeDebugDrawSystem
+// ---------------------------------------------------------------------------
+void LightRangeDebugDrawSystem(Scene& scene,
+                                renderer::IRenderer& renderer,
+                                renderer::ResourceManager& resources,
+                                const math::Matrix4& viewProjection,
+                                const math::Vector4& color)
+{
+    renderer::DebugDraw::BeginFrame(renderer, resources, viewProjection);
+
+    constexpr float kDeg2Rad = 3.14159265f / 180.0f;
+
+    for (auto& go : scene.GameObjects())
+    {
+        const auto* light = go.GetComponent<LightComponent>();
+        if (!light || !light->enabled) continue;
+
+        const math::Vector3 pos = go.transform.position;
+
+        if (light->type == LightComponent::Type::Point)
+        {
+            renderer::DebugDraw::Sphere(renderer, pos, light->range, color);
+        }
+        else if (light->type == LightComponent::Type::Spot)
+        {
+            const math::Vector3 dir = go.transform.Forward();
+            const float outerRadius = std::tan(light->outerCone * kDeg2Rad) * light->range;
+            const float innerRadius = std::tan(light->innerCone * kDeg2Rad) * light->range;
+            renderer::DebugDraw::Cone(renderer, pos, dir, light->range, outerRadius, color);
+            // 内側コーンを半透明気味の同色で追加表示
+            const math::Vector4 innerColor = { color.x, color.y, color.z, color.w * 0.5f };
+            renderer::DebugDraw::Cone(renderer, pos, dir, light->range, innerRadius, innerColor);
+        }
+        // Directional は範囲なし — スキップ
+    }
+
+    renderer::DebugDraw::Flush();
 }
 
 } // namespace fbzz::scene
