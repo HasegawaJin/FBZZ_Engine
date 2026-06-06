@@ -17,11 +17,11 @@ tag = 'MainCamera'
     isMain = true
     nearZ = 0.1
 
-    [gameobjects.ScriptComponent]
+    [[gameobjects.ScriptComponents]]
     enabled = true
     type = 'TpsCameraComponent'
 
-        [gameobjects.ScriptComponent.fields]
+        [gameobjects.ScriptComponents.fields]
         Distance = 5.0
         Height = 1.6
         'Max Pitch' = 65.0
@@ -478,11 +478,11 @@ tag = 'Player'
     mass = 1.0
     velocity = [ 0.0, 0.0, 0.0 ]
 
-    [gameobjects.ScriptComponent]
+    [[gameobjects.ScriptComponents]]
     enabled = true
     type = 'PlayerControllerComponent'
 
-        [gameobjects.ScriptComponent.fields]
+        [gameobjects.ScriptComponents.fields]
         'Jump Force' = 5.0
         'Key Backward' = 83
         'Key Forward' = 87

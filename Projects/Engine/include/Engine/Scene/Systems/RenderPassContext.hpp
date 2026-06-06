@@ -223,6 +223,14 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::BufferTag>         particleVB;
     renderer::ResourceHandle<renderer::BufferTag>         particleIB;
 
+    renderer::ResourceHandle<renderer::ShaderTag>         trailShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  trailPSO;
+
+    renderer::ResourceHandle<renderer::ShaderTag>         meshTrailShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         skinnedMeshTrailShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  meshTrailPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  meshTrailDoubleSidedPSO;
+
     renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
     renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
     renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
