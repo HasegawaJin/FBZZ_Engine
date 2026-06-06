@@ -552,6 +552,9 @@ void DX11Renderer::InitSamplers()
         memcpy(desc.BorderColor, ones, sizeof(desc.BorderColor));
         m_device->CreateSamplerState(&desc, m_samplers[7].GetAddressOf());
     }
+    // [8] WRAP_ANISOTROPIC_4X — 地形ディフューズ用。x16 の約 1/3 コストで
+    //   斜め方向の縦縞ノイズを抑えつつ、全画素に 16x を掛ける過剰品質を回避する。
+    make(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP, 4, nullptr, m_samplers[8]);
 }
 
 // =============================================================================
