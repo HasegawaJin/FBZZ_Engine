@@ -21,6 +21,7 @@ std::string AssetManager::s_basePath = "Assets/";
 bool AssetManager::s_initialized = false;
 std::unordered_map<std::string, std::shared_ptr<Model>>    AssetManager::s_models;
 std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>> AssetManager::s_textures;
+static int s_flushGeneration = 0;
 
 std::string AssetManager::Normalize(const std::string& path)
 {
@@ -151,7 +152,10 @@ void AssetManager::FlushFailed()
         if (!it->second.IsValid()) it = s_textures.erase(it);
         else                       ++it;
     }
+    ++s_flushGeneration;
 }
+
+int AssetManager::GetFlushGeneration() { return s_flushGeneration; }
 
 template<>
 void AssetManager::Unload<Model>(const std::string& relativePath)

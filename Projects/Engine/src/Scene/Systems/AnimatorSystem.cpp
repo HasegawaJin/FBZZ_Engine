@@ -380,6 +380,7 @@ void LoadClips(AnimatorComponent& animator)
             animator.clips.push_back(clip);
     }
     animator.clipsLoaded = true;
+    animator.clipsAttemptGeneration = asset::AssetManager::GetFlushGeneration();
 }
 
 // ── ステートマシン用ヘルパー ──────────────────────────────────────────────────
@@ -800,11 +801,13 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
 
-        // clipsLoaded でも clips が空かつ clipSources がある場合は再試行する。
-        // WHY: インポート前に LoadClips が失敗しても clipsLoaded=true になるため、
-        //      FlushFailed() 後のキャッシュクリアに追従できるよう再試行が必要。
-        if (!animator->clipsLoaded ||
-            (animator->clips.empty() && !animator->clipSources.empty()))
+        // FlushFailed() が呼ばれて世代が進んだときだけ再試行する。
+        // WHY: clips.empty() だけを条件にすると毎フレーム WARN スパムが発生する。
+        //      世代番号で「FlushFailed() 以降に未試行」の場合のみ再試行を許可する。
+        const bool needsRetry = !animator->clipsLoaded ||
+            (animator->clips.empty() && !animator->clipSources.empty() &&
+             asset::AssetManager::GetFlushGeneration() > animator->clipsAttemptGeneration);
+        if (needsRetry)
             LoadClips(*animator);
 
         if (!animator->skinningBuffer.IsValid())
