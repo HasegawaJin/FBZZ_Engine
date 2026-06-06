@@ -129,7 +129,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Texture2D>        m_depthStencilBuffer;
 
     // SamplerMode::COUNT 個のプリセットを Init 時に一括生成してキャッシュする
-    Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplers[8];
+    Microsoft::WRL::ComPtr<ID3D11SamplerState>
+        m_samplers[static_cast<int>(SamplerMode::COUNT)];
 
     // 現在バインド中のオフスクリーン RT (nullptr = バックバッファ)
     DX11RenderTarget* m_currentRT = nullptr;
