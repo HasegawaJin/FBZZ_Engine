@@ -15,7 +15,8 @@ main
     ├── feature/debug-draw
     ├── feature/physics
     ├── feature/scene
-    └── feature/dx12
+    ├── feature/dx12
+    └── optimize/terrain
 ```
 
 | ブランチ | 役割 |
@@ -23,6 +24,7 @@ main
 | `main` | **マイルストーン版のみ**。Step 完了時にのみ develop からマージ。タグを打つ |
 | `develop` | **常にビルドが通る統合ブランチ**。feature をここにマージしていく |
 | `feature/<name>` | **機能単位の実装ブランチ**。develop から切り、develop に戻す |
+| `optimize/<name>` | **パフォーマンス改善ブランチ**。機能追加を伴わない最適化専用。develop から切り、develop に戻す |
 
 ---
 
@@ -105,6 +107,7 @@ git push origin main --tags
 |-----|------|
 | `[Feature]` | 機能追加 |
 | `[Fix]` | バグ修正 |
+| `[Optimize]` | パフォーマンス改善（LOD・カリング・描画バッチ等） |
 | `[Design]` | 設計ドキュメント追加・変更 |
 | `[Build]` | CMakeLists、ビルド設定 |
 | `[Refactor]` | 動作を変えないリファクタリング |
