@@ -2,7 +2,7 @@
 // PrefabSerializer.cpp | fbzz::editor
 // TOML-based prefab save and instantiate helpers
 #include <Editor/Util/PrefabSerializer.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -102,7 +102,7 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
             CollectHierarchyNames(*go, includedNames);
     }
 
-    const std::string sceneText = SceneSerializer::Serialize(scene);
+    const std::string sceneText = SceneIO::Serialize(scene);
     if (sceneText.empty()) return false;
 
     toml::parse_result sceneResult = toml::parse(sceneText);
@@ -167,7 +167,7 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
     auto* prefabObjects = prefabDoc["gameobjects"].as_array();
     if (!prefabObjects || prefabObjects->empty()) return false;
 
-    const std::string sceneText = SceneSerializer::Serialize(scene);
+    const std::string sceneText = SceneIO::Serialize(scene);
     if (sceneText.empty()) return false;
 
     toml::parse_result sceneResult = toml::parse(sceneText);
@@ -299,7 +299,7 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
 
     std::ostringstream ss;
     ss << merged;
-    if (!SceneSerializer::Deserialize(scene, ss.str())) return false;
+    if (!SceneIO::Deserialize(scene, ss.str())) return false;
 
     for (const std::string& rootName : rootNames) {
         if (auto* go = scene.Find(rootName))

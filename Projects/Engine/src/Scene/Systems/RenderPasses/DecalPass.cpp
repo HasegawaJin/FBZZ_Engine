@@ -9,7 +9,7 @@
 // receiverLayerMask が Layer::Everything でない場合:
 //   除外レイヤーのオブジェクトを decalMaskRT に白く描画し、
 //   textureMask bit3 を立てて PS 側でそのピクセルを discard させる。
-#include "DecalPass.hpp"
+#include "GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Scene.hpp>

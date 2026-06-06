@@ -8,7 +8,6 @@
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
 #include "Engine/Renderer/DebugDraw.hpp"
-#include "RenderPasses/DecalPass.hpp"
 #include "RenderPasses/DebugPasses.hpp"
 #include "RenderPasses/GeometryPasses.hpp"
 #include "RenderPasses/PostProcessPasses.hpp"

@@ -11,7 +11,7 @@
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/ViewportPanel.hpp>
@@ -453,7 +453,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
     }
 
-    // WHY: SceneSerializer::Load() がシーン内の ScriptComponent を復元する際に
+    // WHY: SceneIO::Load() がシーン内の ScriptComponent を復元する際に
     //      ScriptFactory からファクトリ関数を引く。DLL が未ロードだとスクリプトインスタンスが
     //      生成されず Play 中も OnUpdate() が呼ばれない。
     //      必ずシーンロードより前に DLL をロードして ScriptFactory を準備する。
@@ -468,7 +468,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     }
 
     if (!sceneToOpen.empty()) {
-        if (!SceneSerializer::Load(*m_ctx.activeScene, sceneToOpen)) {
+        if (!SceneIO::Load(*m_ctx.activeScene, sceneToOpen)) {
             FBZZ_LOG_ERROR("Open project scene failed: %s", sceneToOpen.c_str());
             return false;
         }

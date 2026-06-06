@@ -6,7 +6,7 @@
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
