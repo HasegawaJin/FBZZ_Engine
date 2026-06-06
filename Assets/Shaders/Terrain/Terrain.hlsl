@@ -35,8 +35,9 @@
 // 頂点フォーマット (C++ 側 TerrainVertex と同期すること):
 //   POSITION  : float3  offset  0  (12 bytes)
 //   NORMAL    : float3  offset 12  (12 bytes)
-//   TEXCOORD0 : float2  offset 24  ( 8 bytes)
-//   stride = 32 bytes
+//   TANGENT   : float3  offset 24  (12 bytes)
+//   TEXCOORD0 : float2  offset 36  ( 8 bytes)
+//   stride = 44 bytes
 
 #include "Common/Binding.hlsli"
 
@@ -123,23 +124,23 @@ SamplerState g_samplerClamp  : register(s1); // Clamp Linear
 
 // ============================================================================
 // 頂点入力・補間構造体
-// WHY: 標準 VSInput はタンジェントを含むが、地形 Phase 4 は法線マップを使わないため
-//      タンジェントなしで stride を 32 bytes に抑える。
 // ============================================================================
 struct TerrainVSInput
 {
     float3 position : POSITION;
     float3 normal   : NORMAL;
+    float3 tangent  : TANGENT;
     float2 uv       : TEXCOORD0;
 };
 
 struct TerrainPSInput
 {
-    float4 svPosition  : SV_POSITION;
-    float3 worldPos    : TEXCOORD0;
-    float3 worldNormal : TEXCOORD1;
-    float2 uv          : TEXCOORD2;
-    float  localHeight : TEXCOORD3;
+    float4 svPosition   : SV_POSITION;
+    float3 worldPos     : TEXCOORD0;
+    float3 worldNormal  : TEXCOORD1;
+    float2 uv           : TEXCOORD2;
+    float  localHeight  : TEXCOORD3;
+    float3 worldTangent : TEXCOORD4;
 };
 
 // ============================================================================
@@ -148,35 +149,21 @@ struct TerrainPSInput
 TerrainPSInput VSMain(TerrainVSInput v)
 {
     TerrainPSInput o;
-    o.svPosition  = mul(float4(v.position, 1.0f), wvpMatrix);
-    float4 wpos4  = mul(float4(v.position, 1.0f), worldMatrix);
-    o.worldPos    = wpos4.xyz;
-    o.worldNormal = normalize(mul(v.normal, (float3x3)worldMatrix));
-    o.uv          = v.uv;
-    o.localHeight = v.position.y;
+    o.svPosition   = mul(float4(v.position, 1.0f), wvpMatrix);
+    float4 wpos4   = mul(float4(v.position, 1.0f), worldMatrix);
+    o.worldPos     = wpos4.xyz;
+    o.worldNormal  = normalize(mul(v.normal,  (float3x3)worldMatrix));
+    o.worldTangent = normalize(mul(v.tangent, (float3x3)worldMatrix));
+    o.uv           = v.uv;
+    o.localHeight  = v.position.y;
     return o;
 }
 
-float3 BlendTerrainNormal(float3 worldPos, float3 geometricNormal, float2 uv, float4 splat)
+float3 BlendTerrainNormal(float3 worldTangent, float3 geometricNormal, float2 uv, float4 splat)
 {
-    // WHAT: 画面微分から TBN を作り、各レイヤーの tangent-space normal を地形ワールド法線へ変換する。
-    // WHY: TerrainVertex に tangent を持たせると頂点 stride とチャンク生成コストが増えるため、
-    //      地形 UV は連続している前提でピクセルシェーダー側の微分から安定した基底を復元する。
-    float3 dp1 = ddx_fine(worldPos);
-    float3 dp2 = ddy_fine(worldPos);
-    float2 duv1 = ddx_fine(uv);
-    float2 duv2 = ddy_fine(uv);
-
-    float det = duv1.x * duv2.y - duv1.y * duv2.x;
-    float3 rawT = abs(det) > 1e-5f
-        ? (dp1 * duv2.y - dp2 * duv1.y) / det
-        : float3(1.0f, 0.0f, 0.0f);
-    rawT = rawT - geometricNormal * dot(geometricNormal, rawT);
-    float3 T = dot(rawT, rawT) > 1e-5f
-        ? normalize(rawT)
-        : normalize(abs(geometricNormal.y) < 0.9f
-            ? cross(float3(0.0f, 1.0f, 0.0f), geometricNormal)
-            : cross(float3(1.0f, 0.0f, 0.0f), geometricNormal));
+    // TBN を頂点シェーダーから受け取ったタンジェントで構築する。
+    // DDX/DDY による画面空間微分を廃止し、ピクセルシェーダーの計算コストを削減する。
+    float3 T = normalize(worldTangent);
     float3 B = normalize(cross(geometricNormal, T));
 
     float3 blended = float3(0.0f, 0.0f, 0.0f);
@@ -283,7 +270,7 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
         ao            += layerAO * splat[i];
     }
 
-    N = BlendTerrainNormal(p.worldPos, N, p.uv, splat);
+    N = BlendTerrainNormal(p.worldTangent, N, p.uv, splat);
 
     float3 result = Lighting_BlinnPhong(
         N, V, L, albedo, roughness, lightColor, lightIntensity, /*shadow=*/1.0f);
