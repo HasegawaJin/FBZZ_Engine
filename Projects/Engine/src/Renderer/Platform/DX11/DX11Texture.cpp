@@ -12,6 +12,7 @@
 #include <DirectXTex.h>
 #include <Windows.h>
 #include <string>
+#include <vector>
 
 namespace fbzz::renderer
 {
@@ -41,10 +42,43 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const
     HRESULT hr;
 
     // 拡張子でロード関数を分岐:
-    //   DDS → LoadFromDDSFile  (BC 圧縮・キューブマップ・ミップ内包に対応)
-    //   TGA → LoadFromTGAFile  (アルファ付きテクスチャに使われやすい)
-    //   その他 → LoadFromWICFile (PNG / JPG / BMP 等を OS の WIC コーデックで処理)
-    if (path.ends_with(".dds") || path.ends_with(".DDS"))
+    //   DDS / FZTX → LoadFromDDSFile (BC 圧縮・ミップ内包)
+    //   TGA        → LoadFromTGAFile
+    //   その他     → LoadFromWICFile (PNG / JPG / BMP 等)
+    //
+    // .fztex は "FZTX ヘッダー (16B) + DDS" の連結。
+    // WHY: ファイル先頭 16 バイトを読み飛ばして残りを DDS メモリブロブとして渡す。
+    if (path.ends_with(".fztex") || path.ends_with(".FZTX"))
+    {
+        // ファイル全体を読み込み FZTX ヘッダーをスキップする
+        HANDLE hFile = CreateFileW(wpath.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                    nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            FBZZ_LOG_ERROR("Texture load failed (open): %s", path.c_str());
+            return false;
+        }
+        LARGE_INTEGER fileSize{};
+        GetFileSizeEx(hFile, &fileSize);
+        constexpr DWORD kFztxHeaderSize = 16;
+        if (fileSize.QuadPart <= kFztxHeaderSize) {
+            CloseHandle(hFile);
+            FBZZ_LOG_ERROR("Texture load failed (too small): %s", path.c_str());
+            return false;
+        }
+        const DWORD ddsBytes = static_cast<DWORD>(fileSize.QuadPart) - kFztxHeaderSize;
+        std::vector<uint8_t> ddsData(ddsBytes);
+        SetFilePointer(hFile, kFztxHeaderSize, nullptr, FILE_BEGIN);
+        DWORD bytesRead = 0;
+        ReadFile(hFile, ddsData.data(), ddsBytes, &bytesRead, nullptr);
+        CloseHandle(hFile);
+        if (bytesRead != ddsBytes) {
+            FBZZ_LOG_ERROR("Texture load failed (read): %s", path.c_str());
+            return false;
+        }
+        hr = DirectX::LoadFromDDSMemory(ddsData.data(), ddsData.size(),
+                                         DirectX::DDS_FLAGS_NONE, nullptr, image);
+    }
+    else if (path.ends_with(".dds") || path.ends_with(".DDS"))
     {
         hr = DirectX::LoadFromDDSFile(wpath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, image);
     }
