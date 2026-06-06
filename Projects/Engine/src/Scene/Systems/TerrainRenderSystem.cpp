@@ -63,19 +63,26 @@ namespace fbzz::scene {
 // GPU 頂点レイアウト。HLSL の TerrainVSInput と完全に一致させること。
 //   POSITION  : float3  offset  0  (12 bytes)
 //   NORMAL    : float3  offset 12  (12 bytes)
-//   TEXCOORD0 : float2  offset 24  ( 8 bytes)
-//   stride = 32 bytes
+//   TANGENT   : float3  offset 24  (12 bytes)
+//   TEXCOORD0 : float2  offset 36  ( 8 bytes)
+//   stride = 44 bytes
 struct TerrainVertex {
     math::Vector3 position;
     math::Vector3 normal;
+    math::Vector3 tangent;
     math::Vector2 uv;
 };
+
+// チャンク LOD 段階数とステップサイズ
+// LOD 0 = step 1 (full), LOD 1 = step 2 (1/4 poly), LOD 2 = step 4 (1/16 poly)
+static constexpr int kLODCount           = 3;
+static constexpr int kLODSteps[kLODCount] = { 1, 2, 4 };
 
 // チャンク 1 枚の GPU リソースと AABB
 struct TerrainChunk {
     renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
-    renderer::ResourceHandle<renderer::BufferTag> indexBuffer;
-    uint32_t      indexCount = 0;
+    std::array<renderer::ResourceHandle<renderer::BufferTag>, kLODCount> indexBufferLOD;
+    std::array<uint32_t, kLODCount> indexCountLOD = {};
     math::Vector3 aabbMin;
     math::Vector3 aabbMax;
 };
@@ -146,25 +153,29 @@ static_assert(sizeof(TerrainObjectCB) == 416, "TerrainObjectCB size mismatch");
 // チャンクメッシュ生成
 // =============================================================================
 
+// 頂点のみ生成。インデックスは BuildChunkLODIndices で別途生成する。
 static void BuildChunk(
     const TerrainComponent&      terrain,
     int                          cx,
     int                          cz,
     std::vector<TerrainVertex>&  outVerts,
-    std::vector<uint32_t>&       outIndices,
     math::Vector3&               outAabbMin,
-    math::Vector3&               outAabbMax)
+    math::Vector3&               outAabbMax,
+    int&                         outX0,
+    int&                         outZ0,
+    int&                         outX1,
+    int&                         outZ1)
 {
-    const int x0 = cx * terrain.chunkSize;
-    const int z0 = cz * terrain.chunkSize;
-    const int x1 = std::min(x0 + terrain.chunkSize, terrain.columns - 1);
-    const int z1 = std::min(z0 + terrain.chunkSize, terrain.rows    - 1);
+    outX0 = cx * terrain.chunkSize;
+    outZ0 = cz * terrain.chunkSize;
+    outX1 = std::min(outX0 + terrain.chunkSize, terrain.columns - 1);
+    outZ1 = std::min(outZ0 + terrain.chunkSize, terrain.rows    - 1);
 
     outAabbMin = {  1e30f,  1e30f,  1e30f };
     outAabbMax = { -1e30f, -1e30f, -1e30f };
 
-    for (int z = z0; z <= z1; ++z) {
-        for (int x = x0; x <= x1; ++x) {
+    for (int z = outZ0; z <= outZ1; ++z) {
+        for (int x = outX0; x <= outX1; ++x) {
             const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
                              + static_cast<size_t>(x);
             const float h = terrain.heightData[idx] * terrain.maxHeight;
@@ -176,6 +187,19 @@ static void BuildChunk(
                 static_cast<float>(z) * terrain.cellSize
             };
             v.normal = terrain.ComputeNormal(x, z);
+
+            // タンジェントは UV の U 方向 (+X) に沿った地形面の接線。
+            // 隣接 heightData の中心差分から dh/dx を求め、normalize(cellSize, dh, 0) とする。
+            {
+                const int txL = std::max(x - 1, 0);
+                const int txR = std::min(x + 1, terrain.columns - 1);
+                const float hL = terrain.heightData[static_cast<size_t>(z) * terrain.columns + txL] * terrain.maxHeight;
+                const float hR = terrain.heightData[static_cast<size_t>(z) * terrain.columns + txR] * terrain.maxHeight;
+                const float span = static_cast<float>(txR - txL) * terrain.cellSize;
+                const float dhDx = (hR - hL) / span;
+                v.tangent = math::Vector3{ terrain.cellSize, dhDx * terrain.cellSize, 0.0f }.Normalized();
+            }
+
             v.uv     = {
                 static_cast<float>(x) / static_cast<float>(terrain.columns - 1),
                 static_cast<float>(z) / static_cast<float>(terrain.rows    - 1)
@@ -190,15 +214,29 @@ static void BuildChunk(
             outAabbMax.z = std::max(outAabbMax.z, v.position.z);
         }
     }
+}
 
-    // クアッド → 2 三角形（時計回り CW）
+// step グリッド間隔でチャンクのインデックスを生成する。
+// 頂点バッファは全解像度を保持しているため、step > 1 でも頂点を間引かずに
+// インデックスだけをスキップすることでポリゴン数を削減できる。
+// step=1 → LOD 0 (full), step=2 → LOD 1 (1/4 poly), step=4 → LOD 2 (1/16 poly)
+static void BuildChunkLODIndices(
+    int                    x0,
+    int                    z0,
+    int                    x1,
+    int                    z1,
+    int                    step,
+    std::vector<uint32_t>& outIndices)
+{
     const int w = x1 - x0 + 1;
-    for (int z = 0; z < (z1 - z0); ++z) {
-        for (int x = 0; x < (x1 - x0); ++x) {
-            const uint32_t i00 = static_cast<uint32_t>(z * w + x);
-            const uint32_t i10 = i00 + 1;
-            const uint32_t i01 = i00 + static_cast<uint32_t>(w);
-            const uint32_t i11 = i01 + 1;
+    for (int z = 0; z < (z1 - z0); z += step) {
+        for (int x = 0; x < (x1 - x0); x += step) {
+            const int zNext = std::min(z + step, z1 - z0);
+            const int xNext = std::min(x + step, x1 - x0);
+            const uint32_t i00 = static_cast<uint32_t>(z     * w + x);
+            const uint32_t i10 = static_cast<uint32_t>(z     * w + xNext);
+            const uint32_t i01 = static_cast<uint32_t>(zNext * w + x);
+            const uint32_t i11 = static_cast<uint32_t>(zNext * w + xNext);
             outIndices.push_back(i00); outIndices.push_back(i01); outIndices.push_back(i10);
             outIndices.push_back(i10); outIndices.push_back(i01); outIndices.push_back(i11);
         }
@@ -371,10 +409,11 @@ void TerrainRenderSystem(
     // =========================================================================
     // サンプラー設定 (Phase 4)
     // 毎フレーム設定する。他の描画パスが s1 を上書きしても Terrain 描画前に復元される。
-    // WHY: s0 = WRAP_ANISOTROPIC でディフューズをタイリングし、
+    // WHY: s0 = WRAP_ANISOTROPIC_4X で地形ディフューズをタイリングする。
+    //      x16 の約 1/3 コストで斜め視線の縦縞ノイズを抑えられる。
     //      s1 = CLAMP_LINEAR でスプラットマップを UV [0,1] の境界に正確にクランプする。
     // =========================================================================
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
+    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC_4X);
     renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
 
     // =========================================================================
@@ -537,21 +576,26 @@ void TerrainRenderSystem(
                 // 未キャッシュなら構築
                 if (!s_chunkCache.contains(key)) {
                     std::vector<TerrainVertex> verts;
-                    std::vector<uint32_t>      indices;
                     math::Vector3 aabbMin, aabbMax;
-                    BuildChunk(terrain, cx, cz, verts, indices, aabbMin, aabbMax);
+                    int x0, z0, x1, z1;
+                    BuildChunk(terrain, cx, cz, verts, aabbMin, aabbMax, x0, z0, x1, z1);
 
                     TerrainChunk chunk;
-                    chunk.aabbMin    = aabbMin;
-                    chunk.aabbMax    = aabbMax;
-                    chunk.indexCount = static_cast<uint32_t>(indices.size());
+                    chunk.aabbMin      = aabbMin;
+                    chunk.aabbMax      = aabbMax;
                     chunk.vertexBuffer = resources.CreateVertexBuffer(
                         verts.data(),
                         verts.size() * sizeof(TerrainVertex),
                         static_cast<uint32_t>(sizeof(TerrainVertex)));
-                    chunk.indexBuffer = resources.CreateIndexBuffer(
-                        indices.data(),
-                        static_cast<uint32_t>(indices.size()));
+
+                    for (int lod = 0; lod < kLODCount; ++lod) {
+                        std::vector<uint32_t> indices;
+                        BuildChunkLODIndices(x0, z0, x1, z1, kLODSteps[lod], indices);
+                        chunk.indexCountLOD[lod] = static_cast<uint32_t>(indices.size());
+                        chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(
+                            indices.data(),
+                            chunk.indexCountLOD[lod]);
+                    }
                     s_chunkCache[key] = std::move(chunk);
                 }
 
@@ -561,15 +605,37 @@ void TerrainRenderSystem(
                 if (!IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
+                // カメラ距離からLODレベルを決定する
+                // チャンクローカル中心をワールド変換して距離を算出する
+                const math::Vector3 localCenter = {
+                    (chunk.aabbMin.x + chunk.aabbMax.x) * 0.5f,
+                    (chunk.aabbMin.y + chunk.aabbMax.y) * 0.5f,
+                    (chunk.aabbMin.z + chunk.aabbMax.z) * 0.5f
+                };
+                const math::Vector4 wc = world * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
+                const float dx = wc.x - camera.m_position.x;
+                const float dy = wc.y - camera.m_position.y;
+                const float dz = wc.z - camera.m_position.z;
+                const float distSq = dx * dx + dy * dy + dz * dz;
+
+                // LOD 境界距離: chunkWorldSize の 2 倍・6 倍を閾値とする
+                // chunkSize=32, cellSize=1.0 のとき LOD 0 < 64m, LOD 1 < 192m, LOD 2 >= 192m
+                const float chunkWorldSize = static_cast<float>(terrain.chunkSize) * terrain.cellSize;
+                const float d0 = chunkWorldSize * 2.0f;
+                const float d1 = chunkWorldSize * 6.0f;
+                const int lod = (distSq < d0 * d0) ? 0
+                              : (distSq < d1 * d1) ? 1
+                              : 2;
+
                 resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
 
                 // DrawCall を構築して発行
                 renderer::DrawCall call;
                 call.vertexBuffer  = chunk.vertexBuffer;
-                call.indexBuffer   = chunk.indexBuffer;
+                call.indexBuffer   = chunk.indexBufferLOD[lod];
                 call.shader        = terrainShader;
                 call.pipelineState = (settings && settings->IsWireframe()) ? terrainWireframePSO : terrainPSO;
-                call.indexCount    = chunk.indexCount;
+                call.indexCount    = chunk.indexCountLOD[lod];
                 call.layer         = renderer::RenderLayer::OPAQUE_LAYER;
                 call.topology      = renderer::PrimitiveTopology::TRIANGLE_LIST;
 
