@@ -309,7 +309,7 @@ std::shared_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
 {
     std::ifstream f(fzassetPath);
     if (!f) {
-        FBZZ_LOG_ERROR("FzAssetLoader: cannot open [%s]", fzassetPath.c_str());
+        FBZZ_LOG_WARN("FzAssetLoader: cannot open [%s]", fzassetPath.c_str());
         return nullptr;
     }
     std::ostringstream buf;

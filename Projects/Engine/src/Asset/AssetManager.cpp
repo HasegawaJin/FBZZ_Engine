@@ -131,7 +131,7 @@ std::shared_ptr<Model> AssetManager::Load<Model>(const std::string& relativePath
     }
 
     if (!model) {
-        FBZZ_LOG_ERROR("AssetManager: Model load failed [%s]", fullPath.c_str());
+        FBZZ_LOG_WARN("AssetManager: Model load failed [%s]", fullPath.c_str());
         // nullptr をキャッシュして毎フレームのリトライスパムを防ぐ。
         // FlushFailed() 呼び出しでクリアすれば再試行できる。
         s_models[key] = nullptr;
