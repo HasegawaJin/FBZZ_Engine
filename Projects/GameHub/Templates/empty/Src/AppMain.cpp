@@ -27,9 +27,8 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
-#include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Core/ILogSink.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
