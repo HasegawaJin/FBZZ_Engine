@@ -69,6 +69,9 @@ call :CompileVSPS Material\Skinned\SkinnedSubsurface.hlsl Material.Skinned.Skinn
 call :CompileVSPS Material\Skinned\SkinnedAnisotropic.hlsl Material.Skinned.SkinnedAnisotropic || goto :error
 call :CompileVSPS Material\Skinned\SkinnedRimLight.hlsl Material.Skinned.SkinnedRimLight || goto :error
 call :CompileVSPS Material\Effects\Particle.hlsl Material.Effects.Particle || goto :error
+call :CompileVSPS Material\Effects\Trail.hlsl Material.Effects.Trail || goto :error
+call :CompileVSPS Material\Effects\MeshTrail.hlsl Material.Effects.MeshTrail || goto :error
+call :CompileVSPS Material\Effects\SkinnedMeshTrail.hlsl Material.Effects.SkinnedMeshTrail || goto :error
 call :CompileVSPS Material\Sky\Skybox.hlsl Material.Sky.Skybox || goto :error
 call :CompileVSPS Material\Sky\Skydome.hlsl Material.Sky.Skydome || goto :error
 call :CompileVSPS Material\Decal\Decal.hlsl     Material.Decal.Decal     || goto :error

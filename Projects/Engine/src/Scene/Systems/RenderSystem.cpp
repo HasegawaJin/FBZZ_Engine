@@ -101,6 +101,9 @@ void RenderSystem(Scene& scene,
     static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
 
     static auto particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+    static auto trailShader    = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
+    static auto meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
+    static auto skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
 
     static auto frameCB    = resources.CreateConstantBuffer(sizeof(PerFrameCB));
     static auto objectCB   = resources.CreateConstantBuffer(sizeof(PerObjectCB));
@@ -137,6 +140,21 @@ void RenderSystem(Scene& scene,
     static auto particlePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto trailPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto meshTrailPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto meshTrailDoubleSidedPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
     });
     static auto postprocPSO = resources.CreatePipelineState({
@@ -375,6 +393,12 @@ void RenderSystem(Scene& scene,
     passHandles.particlePSO          = particlePSO;
     passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
+    passHandles.trailShader          = trailShader;
+    passHandles.trailPSO             = trailPSO;
+    passHandles.meshTrailShader      = meshTrailShader;
+    passHandles.skinnedMeshTrailShader = skinnedMeshTrailShader;
+    passHandles.meshTrailPSO         = meshTrailPSO;
+    passHandles.meshTrailDoubleSidedPSO = meshTrailDoubleSidedPSO;
     passHandles.gbufferShader        = gbufferShader;
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
@@ -569,9 +593,17 @@ void RenderSystem(Scene& scene,
         }
     });
 
-    // ── Decal + Particle ──────────────────────────────────────────────────────
+    // ── Decal + Trail + Particle ──────────────────────────────────────────────
     graph.AddPass("Decal", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
         ExecuteDecalPass(passCtx);
+    });
+
+    graph.AddPass("MeshTrail", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteMeshTrailPass(passCtx);
+    });
+
+    graph.AddPass("Trail", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteTrailPass(passCtx);
     });
 
     graph.AddPass("Particle", { "HDR" }, { "HDR" }, [&]() {
