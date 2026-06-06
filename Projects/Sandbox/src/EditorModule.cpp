@@ -12,9 +12,8 @@
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
-#include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
@@ -251,6 +250,13 @@ void EditorModule::RenderSceneViewport(renderer::ResourceHandle<renderer::Render
     }
     if (m_editorApp.GetContext().showSkeleton) {
         scene::AnimatorDebugDrawSystem(*m_scene, m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
+    }
+    if (m_editorApp.GetContext().showGrid) {
+        scene::GridDebugDrawSystem(m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
+    }
+    if (m_editorApp.GetContext().showLightRange) {
+        scene::LightRangeDebugDrawSystem(*m_scene, m_renderer, m_resources,
+                                         m_debugCamera.camera.GetViewProjection());
     }
 }
 
