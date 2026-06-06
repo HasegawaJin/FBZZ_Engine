@@ -7,6 +7,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
@@ -94,6 +95,67 @@ void ColliderDebugDrawSystem(Scene& scene,
             DrawCollider(*collider, go, renderer, color);
         if (auto* collider = go.GetComponent<ConvexHullColliderComponent>())
             DrawCollider(*collider, go, renderer, color);
+    }
+
+    // TerrainComponent 専用パス
+    // PhysicsSystem (プレイ中のみ実行) に依存せず heightData から直接描画する。
+    // MeshColliderComponent.collider が構築済み (プレイ中) の場合は上のループで描画済みのためスキップ。
+    for (auto& go : scene.GameObjects())
+    {
+        const auto* terrain = go.GetComponent<TerrainComponent>();
+        if (!terrain || !terrain->enabled || terrain->heightData.empty()) continue;
+
+        // プレイ中は MeshCollider パスで描画済み
+        const auto* meshCol = go.GetComponent<MeshColliderComponent>();
+        if (meshCol && meshCol->collider) continue;
+
+        const int cols = terrain->columns;
+        const int rows = terrain->rows;
+        const math::Vector3& origin = go.transform.position;
+        const math::Quaternion& rot  = go.transform.rotation;
+        const math::Vector3&   scale = go.transform.worldScale;
+
+        auto ToWorld = [&](int x, int z) -> math::Vector3
+        {
+            const float h = terrain->heightData[
+                static_cast<size_t>(z) * static_cast<size_t>(cols) + static_cast<size_t>(x)]
+                * terrain->maxHeight;
+            return origin + rot * math::Vector3{
+                static_cast<float>(x) * terrain->cellSize * scale.x,
+                h * scale.y,
+                static_cast<float>(z) * terrain->cellSize * scale.z
+            };
+        };
+
+        // サブサンプリングステップ: 最大 ~8 本の断面線 + 必ず両端を含む
+        const int sx = std::max(1, (cols - 1) / 8);
+        const int sz = std::max(1, (rows - 1) / 8);
+
+        // Z 方向の断面線 (X 軸方向に延びる線群)
+        for (int z = 0; z < rows; z += sz)
+        {
+            for (int x = 0; x < cols - 1; ++x)
+                renderer::DebugDraw::Line(renderer, ToWorld(x, z), ToWorld(x + 1, z), color);
+        }
+        // 最終行を必ず描く (sz が rows-1 を割り切らない場合)
+        if ((rows - 1) % sz != 0)
+        {
+            for (int x = 0; x < cols - 1; ++x)
+                renderer::DebugDraw::Line(renderer, ToWorld(x, rows - 1), ToWorld(x + 1, rows - 1), color);
+        }
+
+        // X 方向の断面線 (Z 軸方向に延びる線群)
+        for (int x = 0; x < cols; x += sx)
+        {
+            for (int z = 0; z < rows - 1; ++z)
+                renderer::DebugDraw::Line(renderer, ToWorld(x, z), ToWorld(x, z + 1), color);
+        }
+        // 最終列を必ず描く
+        if ((cols - 1) % sx != 0)
+        {
+            for (int z = 0; z < rows - 1; ++z)
+                renderer::DebugDraw::Line(renderer, ToWorld(cols - 1, z), ToWorld(cols - 1, z + 1), color);
+        }
     }
 }
 
