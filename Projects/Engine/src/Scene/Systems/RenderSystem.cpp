@@ -540,10 +540,14 @@ void RenderSystem(Scene& scene,
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !sc->script || !go || !sc->script->enabled)
+        if (!sc || !go)
             continue;
-        sc->script->SetContext(&scene, go);
-        sc->script->OnSetupRenderPasses(graph, passCtx);
+        for (auto& entry : sc->scripts) {
+            if (!entry.script || !entry.script->enabled)
+                continue;
+            entry.script->SetContext(&scene, go);
+            entry.script->OnSetupRenderPasses(graph, passCtx);
+        }
     }
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterOpaque);
@@ -602,11 +606,14 @@ void RenderSystem(Scene& scene,
         for (EntityID id : scene.GetEntities<ScriptComponent>()) {
             auto* sc = scene.GetComponent<ScriptComponent>(id);
             auto* go = scene.GetGameObject(id);
-            if (!sc || !sc->script || !go || !sc->script->enabled) continue;
-            sc->script->SetContext(&scene, go);
-            sc->script->gizmo.renderer = &passCtx.renderer;
-            sc->script->OnDrawGizmos();
-            sc->script->gizmo.renderer = nullptr;
+            if (!sc || !go) continue;
+            for (auto& entry : sc->scripts) {
+                if (!entry.script || !entry.script->enabled) continue;
+                entry.script->SetContext(&scene, go);
+                entry.script->gizmo.renderer = &passCtx.renderer;
+                entry.script->OnDrawGizmos();
+                entry.script->gizmo.renderer = nullptr;
+            }
         }
 
         for (const auto& command : scene.GetScriptDebugDrawCommands()) {
@@ -743,10 +750,14 @@ void RenderSystem(Scene& scene,
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !sc->script || !go || !sc->script->enabled)
+        if (!sc || !go)
             continue;
-        sc->script->SetContext(&scene, go);
-        sc->script->OnPreRender();
+        for (auto& entry : sc->scripts) {
+            if (!entry.script || !entry.script->enabled)
+                continue;
+            entry.script->SetContext(&scene, go);
+            entry.script->OnPreRender();
+        }
     }
 
     // =========================================================================
@@ -778,10 +789,14 @@ void RenderSystem(Scene& scene,
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !sc->script || !go || !sc->script->enabled)
+        if (!sc || !go)
             continue;
-        sc->script->SetContext(&scene, go);
-        sc->script->OnPostRender();
+        for (auto& entry : sc->scripts) {
+            if (!entry.script || !entry.script->enabled)
+                continue;
+            entry.script->SetContext(&scene, go);
+            entry.script->OnPostRender();
+        }
     }
 
     {

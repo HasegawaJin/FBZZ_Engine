@@ -527,20 +527,13 @@ toml::table TomlTableFromString(const std::string& text)
     return std::move(result.table());
 }
 
-void InsertScriptComponentTable(toml::table& goTbl,
-                                const std::string& type,
-                                bool enabled,
-                                toml::table fieldsTbl)
+toml::table MakeScriptEntryTable(const std::string& type, bool enabled, toml::table fieldsTbl)
 {
-    if (type.empty()) {
-        return;
-    }
-
     toml::table scTbl;
     scTbl.insert("type", type);
     scTbl.insert("enabled", enabled);
     scTbl.insert("fields", std::move(fieldsTbl));
-    goTbl.insert("ScriptComponent", std::move(scTbl));
+    return scTbl;
 }
 
 // "primitive:sphere" → PrimitiveMesh::Sphere
@@ -1251,29 +1244,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         }
 
         if (auto* sc = go.GetComponent<ScriptComponent>()) {
-            toml::table fieldsTbl;
-            if (sc->script) {
-                sc->script->SetContext(&scene, &go);
-                TomlWriteReflector reflector(fieldsTbl);
-                sc->script->Reflect(reflector);
-                const std::string type = sc->script->GetTypeName();
-                const bool enabled = sc->script->enabled;
-                if (!sc->serialized)
-                    sc->serialized = std::make_shared<SerializedScriptData>();
-                sc->serialized->type = type;
-                sc->serialized->enabled = enabled;
-                sc->serialized->fieldsToml = TomlTableToString(fieldsTbl);
-                InsertScriptComponentTable(
-                    goTbl,
-                    type,
-                    enabled,
-                    std::move(fieldsTbl));
-            } else if (sc->serialized && !sc->serialized->type.empty()) {
-                InsertScriptComponentTable(
-                    goTbl,
-                    sc->serialized->type,
-                    sc->serialized->enabled,
-                    TomlTableFromString(sc->serialized->fieldsToml));
+            toml::array scriptsArr;
+            for (auto& entry : sc->scripts) {
+                toml::table fieldsTbl;
+                if (entry.script) {
+                    entry.script->SetContext(&scene, &go);
+                    TomlWriteReflector reflector(fieldsTbl);
+                    entry.script->Reflect(reflector);
+                    const std::string type = entry.script->GetTypeName();
+                    const bool enabled = entry.script->enabled;
+                    if (!entry.serialized)
+                        entry.serialized = std::make_shared<SerializedScriptData>();
+                    entry.serialized->type = type;
+                    entry.serialized->enabled = enabled;
+                    entry.serialized->fieldsToml = TomlTableToString(fieldsTbl);
+                    scriptsArr.push_back(MakeScriptEntryTable(type, enabled, std::move(fieldsTbl)));
+                } else if (entry.serialized && !entry.serialized->type.empty()) {
+                    scriptsArr.push_back(MakeScriptEntryTable(
+                        entry.serialized->type,
+                        entry.serialized->enabled,
+                        TomlTableFromString(entry.serialized->fieldsToml)));
+                }
+            }
+
+            if (!scriptsArr.empty()) {
+                goTbl.insert("ScriptComponents", std::move(scriptsArr));
             }
         }
 
@@ -2026,39 +2021,45 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<WaterComponent>(std::move(water));
         }
 
-        // ScriptComponent
-        if (auto* scTbl = (*goTbl)["ScriptComponent"].as_table()) {
-            std::string type = (*scTbl)["type"].value_or(std::string{});
-            const bool enabled = (*scTbl)["enabled"].value_or(true);
+        auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
+            std::string type = scTbl["type"].value_or(std::string{});
+            if (type.empty()) return;
+
+            const bool enabled = scTbl["enabled"].value_or(true);
             std::string preservedFieldsToml;
-            if (auto* fieldsTbl = (*scTbl)["fields"].as_table()) {
+            if (auto* fieldsTbl = scTbl["fields"].as_table()) {
                 preservedFieldsToml = TomlTableToString(*fieldsTbl);
             }
+
+            ScriptEntry& entry = sc.scripts.emplace_back();
+            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized->type = type;
+            entry.serialized->enabled = enabled;
+            entry.serialized->fieldsToml = preservedFieldsToml;
 
             auto script = ScriptFactory::Create(type);
             if (script) {
                 script->enabled = enabled;
-                if (auto* fieldsTbl = (*scTbl)["fields"].as_table()) {
+                if (auto* fieldsTbl = scTbl["fields"].as_table()) {
                     TomlReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
-
-                ScriptComponent sc{};
-                sc.serialized = std::make_shared<SerializedScriptData>();
-                sc.serialized->type = type;
-                sc.serialized->enabled = enabled;
-                sc.serialized->fieldsToml = preservedFieldsToml;
-                sc.script = std::move(script);
-                go.AddComponent<ScriptComponent>(std::move(sc));
+                entry.script = std::move(script);
             } else {
-                ScriptComponent sc{};
-                sc.serialized = std::make_shared<SerializedScriptData>();
-                sc.serialized->type = type;
-                sc.serialized->enabled = enabled;
-                sc.serialized->fieldsToml = preservedFieldsToml;
-                go.AddComponent<ScriptComponent>(std::move(sc));
                 FBZZ_LOG_WARN("SceneSerializer: ScriptFactory could not create script type '%s'", type.c_str());
             }
+        };
+
+        // ScriptComponents は ScriptComponent 内の複数 Script を表す唯一の保存形式。
+        // WHY: まだ 1.0 前のため旧単体形式との互換を持たず、保存形式の分岐を増やさない。
+        if (auto* scriptsArr = (*goTbl)["ScriptComponents"].as_array()) {
+            ScriptComponent sc{};
+            for (auto& item : *scriptsArr) {
+                if (auto* scTbl = item.as_table())
+                    readScriptEntry(*scTbl, sc);
+            }
+            if (!sc.scripts.empty())
+                go.AddComponent<ScriptComponent>(std::move(sc));
         }
     }
 
