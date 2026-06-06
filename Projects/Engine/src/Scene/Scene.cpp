@@ -88,8 +88,9 @@ void Scene::DestroyImmediate(EntityID id) {
 
     // Script の後処理
     if (auto* sc = GetComponent<ScriptComponent>(id))
-        if (sc->script && sc->m_started)
-            sc->script->OnDestroy();
+        for (auto& entry : sc->scripts)
+            if (entry.script && entry.m_started)
+                entry.script->OnDestroy();
 
     // Component 削除
     RemoveAllComponents(id);
@@ -266,8 +267,10 @@ void Scene::Clear()
                                     GetEntities<ScriptComponent>().end());
     for (EntityID id : scriptIds) {
         auto* sc = GetComponent<ScriptComponent>(id);
-        if (sc && sc->script && sc->m_started)
-            sc->script->OnDestroy();
+        if (!sc) continue;
+        for (auto& entry : sc->scripts)
+            if (entry.script && entry.m_started)
+                entry.script->OnDestroy();
     }
 
     m_destroyQueue.clear();
@@ -412,7 +415,8 @@ void Scene::FixupOwnership()
     // Script が保持する Scene* / GameObject* も同様に旧ポインタになっているため更新する。
     for (EntityID id : GetArray<ScriptComponent>().Entities()) {
         auto& sc = GetArray<ScriptComponent>().Get(id);
-        if (sc.script) sc.script->SetContext(this, GetGameObject(id));
+        for (auto& entry : sc.scripts)
+            if (entry.script) entry.script->SetContext(this, GetGameObject(id));
     }
 }
 

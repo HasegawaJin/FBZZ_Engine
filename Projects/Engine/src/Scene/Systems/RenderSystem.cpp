@@ -101,6 +101,9 @@ void RenderSystem(Scene& scene,
     static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
 
     static auto particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+    static auto trailShader    = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
+    static auto meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
+    static auto skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
 
     static auto frameCB    = resources.CreateConstantBuffer(sizeof(PerFrameCB));
     static auto objectCB   = resources.CreateConstantBuffer(sizeof(PerObjectCB));
@@ -137,6 +140,21 @@ void RenderSystem(Scene& scene,
     static auto particlePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto trailPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto meshTrailPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto meshTrailDoubleSidedPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
     });
     static auto postprocPSO = resources.CreatePipelineState({
@@ -375,6 +393,12 @@ void RenderSystem(Scene& scene,
     passHandles.particlePSO          = particlePSO;
     passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
+    passHandles.trailShader          = trailShader;
+    passHandles.trailPSO             = trailPSO;
+    passHandles.meshTrailShader      = meshTrailShader;
+    passHandles.skinnedMeshTrailShader = skinnedMeshTrailShader;
+    passHandles.meshTrailPSO         = meshTrailPSO;
+    passHandles.meshTrailDoubleSidedPSO = meshTrailDoubleSidedPSO;
     passHandles.gbufferShader        = gbufferShader;
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
@@ -540,10 +564,14 @@ void RenderSystem(Scene& scene,
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !sc->script || !go || !sc->script->enabled)
+        if (!sc || !go)
             continue;
-        sc->script->SetContext(&scene, go);
-        sc->script->OnSetupRenderPasses(graph, passCtx);
+        for (auto& entry : sc->scripts) {
+            if (!entry.script || !entry.script->enabled)
+                continue;
+            entry.script->SetContext(&scene, go);
+            entry.script->OnSetupRenderPasses(graph, passCtx);
+        }
     }
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterOpaque);
@@ -565,9 +593,17 @@ void RenderSystem(Scene& scene,
         }
     });
 
-    // ── Decal + Particle ──────────────────────────────────────────────────────
+    // ── Decal + Trail + Particle ──────────────────────────────────────────────
     graph.AddPass("Decal", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
         ExecuteDecalPass(passCtx);
+    });
+
+    graph.AddPass("MeshTrail", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteMeshTrailPass(passCtx);
+    });
+
+    graph.AddPass("Trail", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteTrailPass(passCtx);
     });
 
     graph.AddPass("Particle", { "HDR" }, { "HDR" }, [&]() {
@@ -602,11 +638,14 @@ void RenderSystem(Scene& scene,
         for (EntityID id : scene.GetEntities<ScriptComponent>()) {
             auto* sc = scene.GetComponent<ScriptComponent>(id);
             auto* go = scene.GetGameObject(id);
-            if (!sc || !sc->script || !go || !sc->script->enabled) continue;
-            sc->script->SetContext(&scene, go);
-            sc->script->gizmo.renderer = &passCtx.renderer;
-            sc->script->OnDrawGizmos();
-            sc->script->gizmo.renderer = nullptr;
+            if (!sc || !go) continue;
+            for (auto& entry : sc->scripts) {
+                if (!entry.script || !entry.script->enabled) continue;
+                entry.script->SetContext(&scene, go);
+                entry.script->gizmo.renderer = &passCtx.renderer;
+                entry.script->OnDrawGizmos();
+                entry.script->gizmo.renderer = nullptr;
+            }
         }
 
         for (const auto& command : scene.GetScriptDebugDrawCommands()) {
@@ -743,10 +782,14 @@ void RenderSystem(Scene& scene,
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !sc->script || !go || !sc->script->enabled)
+        if (!sc || !go)
             continue;
-        sc->script->SetContext(&scene, go);
-        sc->script->OnPreRender();
+        for (auto& entry : sc->scripts) {
+            if (!entry.script || !entry.script->enabled)
+                continue;
+            entry.script->SetContext(&scene, go);
+            entry.script->OnPreRender();
+        }
     }
 
     // =========================================================================
@@ -778,10 +821,14 @@ void RenderSystem(Scene& scene,
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
-        if (!sc || !sc->script || !go || !sc->script->enabled)
+        if (!sc || !go)
             continue;
-        sc->script->SetContext(&scene, go);
-        sc->script->OnPostRender();
+        for (auto& entry : sc->scripts) {
+            if (!entry.script || !entry.script->enabled)
+                continue;
+            entry.script->SetContext(&scene, go);
+            entry.script->OnPostRender();
+        }
     }
 
     {

@@ -308,9 +308,8 @@ void DispatchToScript(Scene& scene,
     if (!self.gameObject || !other.gameObject) return;
 
     auto* scriptComponent = self.gameObject->GetComponent<ScriptComponent>();
-    if (!scriptComponent || !scriptComponent->script || !scriptComponent->script->enabled) return;
+    if (!scriptComponent) return;
 
-    scriptComponent->script->SetContext(&scene, self.gameObject);
     CollisionInfo info;
     info.self = self.gameObject;
     info.other = other.gameObject;
@@ -319,7 +318,12 @@ void DispatchToScript(Scene& scene,
     info.contactNormal = contactNormal;
     info.contactPoint = contactPoint;
     info.contactDepth = contactDepth;
-    (scriptComponent->script.get()->*callback)(info);
+
+    for (auto& entry : scriptComponent->scripts) {
+        if (!entry.script || !entry.script->enabled) continue;
+        entry.script->SetContext(&scene, self.gameObject);
+        (entry.script.get()->*callback)(info);
+    }
 }
 
 void DispatchCollisionEvent(Scene& scene,
