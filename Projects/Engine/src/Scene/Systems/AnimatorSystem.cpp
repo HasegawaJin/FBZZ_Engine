@@ -800,7 +800,11 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
 
-        if (!animator->clipsLoaded)
+        // clipsLoaded でも clips が空かつ clipSources がある場合は再試行する。
+        // WHY: インポート前に LoadClips が失敗しても clipsLoaded=true になるため、
+        //      FlushFailed() 後のキャッシュクリアに追従できるよう再試行が必要。
+        if (!animator->clipsLoaded ||
+            (animator->clips.empty() && !animator->clipSources.empty()))
             LoadClips(*animator);
 
         if (!animator->skinningBuffer.IsValid())

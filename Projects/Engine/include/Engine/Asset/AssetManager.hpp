@@ -21,6 +21,10 @@ public:
 
     // UnloadAll → app.Shutdown の順で呼ぶこと
     static void UnloadAll();
+
+    // ロード失敗エントリ (nullptr キャッシュ) を削除して次回 Load で再試行させる。
+    // FBX インポート完了後に呼ぶことでエンジン再起動なしにモデルを読み込み直せる。
+    static void FlushFailed();
     static renderer::ResourceHandle<renderer::TextureTag> LoadTexture(const std::string& relativePath);
 
     // Load<T>: 対応型は Model / ITexture のみ

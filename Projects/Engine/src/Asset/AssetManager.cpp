@@ -4,6 +4,7 @@
 // 相対パスを正規化し、同じアセットを重複ロードしない。
 // Texture は ResourceManager、Model は ModelImporter を通して生成する。
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/FzAssetLoader.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/ModelImporter.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -97,7 +98,9 @@ renderer::ResourceHandle<renderer::TextureTag> AssetManager::LoadTexture(const s
     if (it != s_textures.end()) return it->second;
 
     const std::string fullPath = ResolvePath(key, s_basePath);
-    renderer::ResourceHandle<renderer::TextureTag> texture = s_resources->LoadTexture(fullPath);
+
+    const auto texture = s_resources->LoadTexture(fullPath);
+
     if (!texture.IsValid()) {
         FBZZ_LOG_ERROR("AssetManager: Texture load failed [%s]", fullPath.c_str());
         return {};
@@ -117,14 +120,37 @@ std::shared_ptr<Model> AssetManager::Load<Model>(const std::string& relativePath
     if (it != s_models.end()) return it->second;
 
     const std::string fullPath = ResolvePath(key, s_basePath);
-    auto model = ModelImporter::Import(fullPath, *s_resources);
+
+    std::shared_ptr<Model> model;
+    // .fzasset はネイティブバイナリローダーへ委譲する (Assimp 不要)
+    if (key.ends_with(".fzasset")) {
+        model = FzAssetLoader::Load(fullPath, *s_resources);
+    } else {
+        model = ModelImporter::Import(fullPath, *s_resources);
+    }
+
     if (!model) {
         FBZZ_LOG_ERROR("AssetManager: Model load failed [%s]", fullPath.c_str());
+        // nullptr をキャッシュして毎フレームのリトライスパムを防ぐ。
+        // FlushFailed() 呼び出しでクリアすれば再試行できる。
+        s_models[key] = nullptr;
         return nullptr;
     }
 
     s_models[key] = model;
     return model;
+}
+
+void AssetManager::FlushFailed()
+{
+    for (auto it = s_models.begin(); it != s_models.end(); ) {
+        if (!it->second) it = s_models.erase(it);
+        else             ++it;
+    }
+    for (auto it = s_textures.begin(); it != s_textures.end(); ) {
+        if (!it->second.IsValid()) it = s_textures.erase(it);
+        else                       ++it;
+    }
 }
 
 template<>
