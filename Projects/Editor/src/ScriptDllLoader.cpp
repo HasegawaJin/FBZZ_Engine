@@ -207,10 +207,12 @@ void ScriptDllLoader::DestroyAllScripts(scene::Scene& scene)
 {
     for (auto& go : scene.GameObjects()) {
         auto* sc = go.GetComponent<scene::ScriptComponent>();
-        if (!sc || !sc->script) continue;
-        sc->script.reset();
-        sc->m_awoken  = false;
-        sc->m_started = false;
+        if (!sc) continue;
+        for (auto& entry : sc->scripts) {
+            entry.script.reset();
+            entry.m_awoken = false;
+            entry.m_started = false;
+        }
     }
 }
 
