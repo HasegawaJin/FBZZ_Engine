@@ -8,5 +8,6 @@ namespace fbzz::scene {
 struct RenderPassContext;
 
 void ExecuteSelectionMaskPass(RenderPassContext& ctx);
+void ExecuteSelectionOutlinePass(RenderPassContext& ctx);
 
 } // namespace fbzz::scene

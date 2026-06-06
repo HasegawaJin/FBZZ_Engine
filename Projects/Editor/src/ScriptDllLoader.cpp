@@ -2,7 +2,7 @@
 // ScriptDllLoader.cpp | fbzz::editor
 // スクリプト DLL のロード / アンロード / ホットリロード管理
 #include <Editor/ScriptDllLoader.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
@@ -100,7 +100,7 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
 bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& newDllPath)
 {
     // シーン全体をシリアライズしてスクリプトフィールドを保存する
-    const std::string snapshot = SceneSerializer::Serialize(scene);
+    const std::string snapshot = SceneIO::Serialize(scene);
     if (snapshot.empty()) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to serialize scene");
         return false;
@@ -112,13 +112,13 @@ bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& n
     // 新しい DLL をロードして ScriptFactory に再登録する
     if (!Load(newDllPath.empty() ? m_dllPath : newDllPath)) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to load the new DLL");
-        if (!SceneSerializer::Deserialize(scene, snapshot))
+        if (!SceneIO::Deserialize(scene, snapshot))
             FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to restore scene after DLL load failure");
         return false;
     }
 
     // シーンをスナップショットから復元する (新しいファクトリでスクリプトが再生成される)
-    if (!SceneSerializer::Deserialize(scene, snapshot)) {
+    if (!SceneIO::Deserialize(scene, snapshot)) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Reload: failed to restore scene");
         return false;
     }

@@ -12,7 +12,6 @@ void ExecuteBloomPass(RenderPassContext& ctx);
 void ExecuteSSAOPass(RenderPassContext& ctx);
 void ExecuteCausticsPass(RenderPassContext& ctx);
 void ExecuteCompositePass(RenderPassContext& ctx);
-void ExecuteSelectionOutlinePass(RenderPassContext& ctx);
 void ExecuteFxaaPass(RenderPassContext& ctx);
 void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, uint32_t outputIndex);
 
