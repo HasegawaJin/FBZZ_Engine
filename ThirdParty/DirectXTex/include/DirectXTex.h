@@ -471,7 +471,7 @@ namespace DirectX
 
     // DDS operations
     HRESULT __cdecl LoadFromDDSMemory(
-        _In_reads_bytes_(size) const void* pSource, _In_ size_t size,
+        _In_reads_bytes_(size) const uint8_t* pSource, _In_ size_t size,
         _In_ DDS_FLAGS flags,
         _Out_opt_ TexMetadata* metadata, _Out_ ScratchImage& image) noexcept;
     HRESULT __cdecl LoadFromDDSFile(
@@ -480,7 +480,7 @@ namespace DirectX
         _Out_opt_ TexMetadata* metadata, _Out_ ScratchImage& image) noexcept;
 
     HRESULT __cdecl LoadFromDDSMemoryEx(
-        _In_reads_bytes_(size) const void* pSource, _In_ size_t size,
+        _In_reads_bytes_(size) const uint8_t* pSource, _In_ size_t size,
         _In_ DDS_FLAGS flags,
         _Out_opt_ TexMetadata* metadata,
         _Out_opt_ DDSMetaData* ddPixelFormat,

@@ -8,6 +8,7 @@
 //   EditorApp_MenuBar.cpp - メインメニューバーの構築・ホットキー登録
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/EditorTaskOverlay.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -643,6 +644,10 @@ void EditorApp::RenderPanels(EditorContext& ctx)
             ImGui::SetNextWindowFocus();
         }
     }
+
+    // WHY: すべての通常ウィンドウの後に呼ぶことで、オーバーレイが最前面に描画される。
+    //      IsActive() == false のときは何もしないのでパネルのないフレームでも安全。
+    EditorTaskOverlay::Render();
 }
 
 void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)
