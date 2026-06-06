@@ -98,6 +98,11 @@ private:
     math::Vector3     m_hitPoint;            // レイキャスト結果（ワールド座標）
     scene::GameObject* m_hitTerrain = nullptr; // ヒットした地形 GO（非所有）
 
+    // ── HeightMap Import ──────────────────────────────────────────────────────
+    char        m_heightMapPath[512] = {};       // インポートするファイルパス（InputText 用）
+    bool        m_heightMapUnipolar  = true;     // true: [0,maxH]  false: [-maxH,+maxH]
+    std::string m_heightMapStatus;               // "OK" / "Error: ..." / "" (未実行)
+
     // ── 内部ヘルパー ──────────────────────────────────────────────────────────
 
     // マウス位置からレイを飛ばして地形と交差判定する。
