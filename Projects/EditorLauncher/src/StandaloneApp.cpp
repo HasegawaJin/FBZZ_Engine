@@ -6,7 +6,7 @@
 //      これにより Profiler::BeginFrame/EndFrame・MemorySystem・
 //      Input::Update・PollEvents などフレーム境界処理がエンジン側で統一される。
 #include "StandaloneApp.hpp"
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -106,7 +106,7 @@ bool StandaloneApp::OnInit()
             scriptsDllPath.wstring().c_str());
     }
 
-    if (!editor::SceneSerializer::Load(*m_scene, m_project.sceneFile.string())) {
+    if (!editor::SceneIO::Load(*m_scene, m_project.sceneFile.string())) {
         FBZZ_LOG_ERROR("StandaloneApp: シーンのロードに失敗: %s", m_project.sceneFile.string().c_str());
         return false;
     }

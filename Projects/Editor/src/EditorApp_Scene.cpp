@@ -9,7 +9,7 @@
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
@@ -267,7 +267,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
 {
     if (!m_ctx.activeScene || path.empty()) return false;
 
-    if (!SceneSerializer::Load(*m_ctx.activeScene, path)) {
+    if (!SceneIO::Load(*m_ctx.activeScene, path)) {
         FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
         return false;
     }
@@ -290,7 +290,7 @@ bool EditorApp::SaveScene()
     if (!m_ctx.activeScene) return false;
     if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog();
 
-    if (!SceneSerializer::Save(*m_ctx.activeScene, m_settings.lastScenePath)) {
+    if (!SceneIO::Save(*m_ctx.activeScene, m_settings.lastScenePath)) {
         FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
         return false;
     }
@@ -310,7 +310,7 @@ bool EditorApp::SaveSceneAsDialog()
     if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
     path = WithFbzzExtension(path);
 
-    if (!SceneSerializer::Save(*m_ctx.activeScene, path)) {
+    if (!SceneIO::Save(*m_ctx.activeScene, path)) {
         FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
         return false;
     }
@@ -362,7 +362,7 @@ void EditorApp::CheckHotReload()
 
     if (CompareFileTime(&ft, &m_lastSceneWriteTime) != 0) {
         m_lastSceneWriteTime = ft;
-        if (!SceneSerializer::Load(*m_ctx.activeScene, m_settings.lastScenePath))
+        if (!SceneIO::Load(*m_ctx.activeScene, m_settings.lastScenePath))
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
             m_ctx.selectedEntities.clear();

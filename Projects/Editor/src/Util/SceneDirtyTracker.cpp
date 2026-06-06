@@ -2,7 +2,7 @@
 // SceneDirtyTracker.cpp | fbzz::editor
 // Snapshot-based dirty state detection for editor scenes
 #include <Editor/Util/SceneDirtyTracker.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <functional>
 #include <string>
@@ -13,7 +13,7 @@ namespace {
 
 std::size_t HashScene(const scene::Scene& scene)
 {
-    const std::string text = SceneSerializer::Serialize(scene);
+    const std::string text = SceneIO::Serialize(scene);
     if (text.empty()) return 0;
     return std::hash<std::string>{}(text);
 }
