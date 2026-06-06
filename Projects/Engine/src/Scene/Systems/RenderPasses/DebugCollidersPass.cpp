@@ -4,7 +4,7 @@
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
-#include <Engine/Scene/Systems/ColliderDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 
 namespace fbzz::scene {
 
