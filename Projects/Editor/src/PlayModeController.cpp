@@ -2,7 +2,7 @@
 // PlayModeController.cpp | fbzz::editor
 // Play / Pause / Stop の状態管理とシーンスナップショット
 #include <Editor/PlayModeController.hpp>
-#include <Editor/Util/SceneSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 
@@ -13,7 +13,7 @@ void PlayModeController::Play(scene::Scene& scene)
     if (m_state != PlayState::Editor) return;
     if (m_restorePending) return;
     FBZZ_LOG_DEBUG("PlayMode: taking pre-play snapshot");
-    m_snapshot = SceneSerializer::Serialize(scene);
+    m_snapshot = SceneIO::Serialize(scene);
     if (m_snapshot.empty()) {
         FBZZ_LOG_ERROR("PlayMode: snapshot failed");
         return;
@@ -53,7 +53,7 @@ bool PlayModeController::ApplyPendingRestore(scene::Scene& scene)
     if (!m_restorePending) return false;
 
     FBZZ_LOG_DEBUG("PlayMode: restoring scene from snapshot");
-    if (!SceneSerializer::Deserialize(scene, m_snapshot)) {
+    if (!SceneIO::Deserialize(scene, m_snapshot)) {
         FBZZ_LOG_ERROR("PlayMode: scene restore failed; state remains Playing");
         return false;
     }

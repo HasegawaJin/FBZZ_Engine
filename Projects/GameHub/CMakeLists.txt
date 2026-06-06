@@ -1,6 +1,6 @@
 file(GLOB_RECURSE HUB_SOURCES
-    Src/*.cpp
-    Src/*.hpp
+    src/*.cpp
+    src/*.hpp
 )
 
 set(HUB_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/hub.rc")
@@ -21,7 +21,7 @@ set_target_properties(fbzz_hub PROPERTIES
 
 target_include_directories(fbzz_hub
     PRIVATE
-        Src
+        src
         "${CMAKE_SOURCE_DIR}/ThirdParty/Stb"
 )
 

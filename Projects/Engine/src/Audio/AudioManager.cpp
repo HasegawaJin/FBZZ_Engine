@@ -1,9 +1,9 @@
 // FBZZ Engine
-// AudioSystem.cpp | fbzz::audio
+// AudioManager.cpp | fbzz::audio
 // BGM / SE の高レベル管理
 // WAV をキャッシュし、実再生は IAudioDevice に委譲する。
 // ゲーム側はファイルパス・ループ有無・音量だけを扱う。
-#include "Engine/Audio/AudioSystem.hpp"
+#include "Engine/Audio/AudioManager.hpp"
 #include "Engine/Core/Logger.hpp"
 #include <fstream>
 #include <cstring>
@@ -53,25 +53,25 @@ struct FmtChunk
 
 // -------------------------------------------------------
 
-AudioSystem::AudioSystem(IAudioDevice& device)
+AudioManager::AudioManager(IAudioDevice& device)
     : m_device(device)
 {}
 
-bool AudioSystem::Init()
+bool AudioManager::Init()
 {
     if (!m_device.Init()) return false;
 
     HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
     if (FAILED(hr))
     {
-        FBZZ_LOG_ERROR("AudioSystem: MFStartup failed (hr=0x%08X)", hr);
+        FBZZ_LOG_ERROR("AudioManager: MFStartup failed (hr=0x%08X)", hr);
         return false;
     }
 
     return true;
 }
 
-void AudioSystem::Shutdown()
+void AudioManager::Shutdown()
 {
     StopBGM();
     m_cache.clear();
@@ -79,7 +79,7 @@ void AudioSystem::Shutdown()
     m_device.Shutdown();
 }
 
-void AudioSystem::PlayBGM(const std::string& path, bool loop)
+void AudioManager::PlayBGM(const std::string& path, bool loop)
 {
     if (m_bgmVoiceId != 0) StopBGM();
 
@@ -90,14 +90,14 @@ void AudioSystem::PlayBGM(const std::string& path, bool loop)
     if (m_bgmVoiceId != 0) m_device.SetVolume(m_bgmVoiceId, m_bgmVolume);
 }
 
-void AudioSystem::StopBGM()
+void AudioManager::StopBGM()
 {
     if (m_bgmVoiceId == 0) return;
     m_device.StopBuffer(m_bgmVoiceId);
     m_bgmVoiceId = 0;
 }
 
-void AudioSystem::PlaySE(const std::string& path)
+void AudioManager::PlaySE(const std::string& path)
 {
     const WavBuffer* wav = GetOrLoad(path);
     if (!wav) return;
@@ -106,18 +106,18 @@ void AudioSystem::PlaySE(const std::string& path)
     if (id != 0) m_device.SetVolume(id, m_seVolume);
 }
 
-void AudioSystem::SetBGMVolume(float volume)
+void AudioManager::SetBGMVolume(float volume)
 {
     m_bgmVolume = volume;
     if (m_bgmVoiceId != 0) m_device.SetVolume(m_bgmVoiceId, m_bgmVolume);
 }
 
-void AudioSystem::SetSEVolume(float volume)
+void AudioManager::SetSEVolume(float volume)
 {
     m_seVolume = volume;
 }
 
-const AudioSystem::WavBuffer* AudioSystem::GetOrLoad(const std::string& path)
+const AudioManager::WavBuffer* AudioManager::GetOrLoad(const std::string& path)
 {
     auto it = m_cache.find(path);
     if (it != m_cache.end()) return &it->second;
@@ -132,7 +132,7 @@ const AudioSystem::WavBuffer* AudioSystem::GetOrLoad(const std::string& path)
 
     if (!ok)
     {
-        FBZZ_LOG_ERROR("AudioSystem: load failed: %s", path.c_str());
+        FBZZ_LOG_ERROR("AudioManager: load failed: %s", path.c_str());
         return nullptr;
     }
 
@@ -140,7 +140,7 @@ const AudioSystem::WavBuffer* AudioSystem::GetOrLoad(const std::string& path)
     return &m_cache[path];
 }
 
-bool AudioSystem::LoadWav(const std::string& path, WavBuffer& out)
+bool AudioManager::LoadWav(const std::string& path, WavBuffer& out)
 {
     std::ifstream file(path, std::ios::binary);
     if (!file) return false;
@@ -189,7 +189,7 @@ bool AudioSystem::LoadWav(const std::string& path, WavBuffer& out)
     return hasFmt && hasData;
 }
 
-bool AudioSystem::LoadWithMediaFoundation(const std::string& path, WavBuffer& out)
+bool AudioManager::LoadWithMediaFoundation(const std::string& path, WavBuffer& out)
 {
     // WHY: AudioSource の path は UTF-8 として扱う。日本語フォルダへ移動した配布版でも
     //      Media Foundation が正しい Unicode パスを受け取れるようにする。
@@ -199,7 +199,7 @@ bool AudioSystem::LoadWithMediaFoundation(const std::string& path, WavBuffer& ou
     HRESULT hr = MFCreateSourceReaderFromURL(wpath.c_str(), nullptr, &reader);
     if (FAILED(hr))
     {
-        FBZZ_LOG_ERROR("AudioSystem: MFCreateSourceReaderFromURL failed: %s", path.c_str());
+        FBZZ_LOG_ERROR("AudioManager: MFCreateSourceReaderFromURL failed: %s", path.c_str());
         return false;
     }
 
