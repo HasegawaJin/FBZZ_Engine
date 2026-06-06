@@ -5,6 +5,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
@@ -633,6 +634,61 @@ void TerrainTool::OnEditorGUI(scene::Scene& scene)
         m_brush.falloff = static_cast<FalloffType>(falloffIdx);
 
     if (!m_active) ImGui::EndDisabled();
+
+    // ── HeightMap Import ────────────────────────────────────────────────────
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (ImGui::CollapsingHeader("HeightMap Import")) {
+        ImGui::TextDisabled("File Path (PNG / TGA / DDS)");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##hmpath", m_heightMapPath, sizeof(m_heightMapPath));
+        // Asset Browser からのドラッグ＆ドロップを受け取る
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                const char* dropped = static_cast<const char*>(payload->Data);
+                strncpy_s(m_heightMapPath, sizeof(m_heightMapPath), dropped, _TRUNCATE);
+                m_heightMapStatus.clear();
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::TextDisabled("(Asset Browser からドラッグ＆ドロップも可)");
+
+        ImGui::RadioButton("Unipolar  [0 → maxH]",  &reinterpret_cast<int&>(m_heightMapUnipolar), 1);
+        ImGui::SameLine();
+        ImGui::RadioButton("Bipolar [-maxH → +maxH]", &reinterpret_cast<int&>(m_heightMapUnipolar), 0);
+
+        ImGui::Spacing();
+
+        const bool canImport = m_heightMapPath[0] != '\0';
+        if (!canImport) ImGui::BeginDisabled();
+
+        if (ImGui::Button("Import into Terrain", { -1.0f, 0.0f })) {
+            // シーン内の最初の有効な TerrainComponent に取り込む
+            scene::TerrainComponent* target = nullptr;
+            for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
+                auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
+                if (tc && tc->enabled) { target = tc; break; }
+            }
+            if (!target) {
+                m_heightMapStatus = "Error: No terrain in scene";
+            } else {
+                const bool ok = scene::LoadHeightMapFromFile(
+                    m_heightMapPath, *target, m_heightMapUnipolar);
+                m_heightMapStatus = ok ? "OK" : "Error: Load failed";
+            }
+        }
+
+        if (!canImport) ImGui::EndDisabled();
+
+        if (!m_heightMapStatus.empty()) {
+            const bool isOk = (m_heightMapStatus == "OK");
+            ImGui::TextColored(
+                isOk ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+                "%s", m_heightMapStatus.c_str());
+        }
+    }
 
     ImGui::End();
 }
