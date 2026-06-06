@@ -15,11 +15,13 @@
 #include <Engine/Scene/ScriptProxy/ScriptLightProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptMeshTrailProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPhysicsProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPostProcessProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptSceneProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTransformProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptTrailProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptUIProxy.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
@@ -134,6 +136,8 @@ public:
     ScriptCameraProxy camera{ this };
     ScriptMaterialProxy material{ this };
     ScriptParticleProxy particle{ this };
+    ScriptTrailProxy trail{ this };
+    ScriptMeshTrailProxy meshTrail{ this };
     ScriptUIProxy ui{ this };
     ScriptSceneProxy scene{ this };
     ScriptAnimatorProxy animator{ this };
@@ -232,6 +236,8 @@ private:
     friend struct ScriptCameraProxy;
     friend struct ScriptMaterialProxy;
     friend struct ScriptParticleProxy;
+    friend struct ScriptTrailProxy;
+    friend struct ScriptMeshTrailProxy;
     friend struct ScriptUIProxy;
     friend struct ScriptSceneProxy;
     friend struct ScriptAnimatorProxy;
