@@ -103,7 +103,8 @@ struct AnimatorComponent {
 
     // ランタイム専用。初回更新時に clipSources から再構築する
     std::vector<asset::AnimationClip> clips;
-    bool clipsLoaded = false;
+    bool clipsLoaded          = false;
+    int  clipsAttemptGeneration = -1; // FlushGeneration at last LoadClips attempt
 
     std::vector<math::Matrix4> boneMatrices;
     std::vector<math::Matrix4> nodeGlobalTransforms;
