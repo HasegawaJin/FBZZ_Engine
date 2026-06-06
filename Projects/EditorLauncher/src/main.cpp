@@ -27,9 +27,8 @@
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/AnimatorDebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
-#include <Engine/Scene/Systems/ConstraintDebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
@@ -407,6 +406,13 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         }
         if (editorApp.GetContext().showSkeleton) {
             scene::AnimatorDebugDrawSystem(*scene, renderer, resources, debugCamera.camera.GetViewProjection());
+        }
+        if (editorApp.GetContext().showGrid) {
+            scene::GridDebugDrawSystem(renderer, resources, debugCamera.camera.GetViewProjection());
+        }
+        if (editorApp.GetContext().showLightRange) {
+            scene::LightRangeDebugDrawSystem(*scene, renderer, resources,
+                                             debugCamera.camera.GetViewProjection());
         }
 
         if (gameRT.IsValid()) {
