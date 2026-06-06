@@ -20,9 +20,11 @@
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
@@ -660,6 +662,137 @@ void ScriptParticleProxy::Clear() const
         p->particles.clear();
         p->emitAccum = 0.0f;
     }
+}
+
+void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->enabled = enabled;
+        if (!enabled && clearWhenDisabled)
+            Clear();
+    }
+}
+
+void ScriptTrailProxy::Clear() const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->ringHead = 0;
+        t->ringTail = 0;
+        t->ringCount = 0;
+        t->lastSampleTime = -1.0f;
+    }
+}
+
+void ScriptTrailProxy::SetDuration(float seconds) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->duration = (std::max)(seconds, 0.01f);
+}
+
+void ScriptTrailProxy::SetSampling(float sampleInterval, float minVertexDist) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->sampleInterval = (std::max)(sampleInterval, 0.0f);
+        t->minVertexDist = (std::max)(minVertexDist, 0.0f);
+    }
+}
+
+void ScriptTrailProxy::SetWidth(float start, float end) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->widthStart = (std::max)(start, 0.0f);
+        t->widthEnd = (std::max)(end, 0.0f);
+    }
+}
+
+void ScriptTrailProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->colorStart = start;
+        t->colorEnd = end;
+    }
+}
+
+void ScriptTrailProxy::SetTexture(std::string_view texturePath, float uvTiling, float uvScrollSpeed) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->texturePath = std::string(texturePath);
+        t->uvTiling = (std::max)(uvTiling, 0.001f);
+        t->uvScrollSpeed = uvScrollSpeed;
+        t->texture = {};
+        t->loadedTexturePath.clear();
+    }
+}
+
+void ScriptTrailProxy::SetAlignment(TrailAlignment alignment) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->alignment = alignment;
+}
+
+void ScriptTrailProxy::SetCameraFacing() const
+{
+    SetAlignment(TrailAlignment::CameraFacing);
+}
+
+void ScriptTrailProxy::SetWorldUp() const
+{
+    SetAlignment(TrailAlignment::WorldUp);
+}
+
+void ScriptTrailProxy::SetSmoothSubdivisions(int subdivisions) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->smoothSubdivisions = (std::max)(subdivisions, 0);
+}
+
+void ScriptMeshTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
+        t->enabled = enabled;
+        if (!enabled && clearWhenDisabled)
+            Clear();
+    }
+}
+
+void ScriptMeshTrailProxy::Clear() const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+        t->clearRequested = true;
+}
+
+void ScriptMeshTrailProxy::SetDuration(float seconds) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+        t->duration = (std::max)(seconds, 0.01f);
+}
+
+void ScriptMeshTrailProxy::SetSampling(float sampleInterval, float minVertexDist) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
+        t->sampleInterval = (std::max)(sampleInterval, 0.0f);
+        t->minVertexDist = (std::max)(minVertexDist, 0.0f);
+    }
+}
+
+void ScriptMeshTrailProxy::SetMaxSamples(int maxSamples) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+        t->maxSamples = (std::max)(maxSamples, 1);
+}
+
+void ScriptMeshTrailProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
+        t->colorStart = start;
+        t->colorEnd = end;
+    }
+}
+
+void ScriptMeshTrailProxy::SetDoubleSided(bool doubleSided) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+        t->doubleSided = doubleSided;
 }
 
 void ScriptUIProxy::SetButtonInteractable(bool v) const

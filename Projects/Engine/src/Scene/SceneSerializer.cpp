@@ -14,6 +14,8 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/TrailComponent.hpp>
+#include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
@@ -797,6 +799,40 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("ParticleEmitter", std::move(peTbl));
         }
 
+        // TrailComponent
+        if (auto* trail = go.GetComponent<TrailComponent>()) {
+            toml::table trailTbl;
+            trailTbl.insert("enabled",            trail->enabled);
+            trailTbl.insert("duration",           (double)trail->duration);
+            trailTbl.insert("maxPoints",          (int64_t)trail->maxPoints);
+            trailTbl.insert("sampleInterval",     (double)trail->sampleInterval);
+            trailTbl.insert("minVertexDist",      (double)trail->minVertexDist);
+            trailTbl.insert("widthStart",         (double)trail->widthStart);
+            trailTbl.insert("widthEnd",           (double)trail->widthEnd);
+            trailTbl.insert("colorStart",         Vec4ToArr(trail->colorStart));
+            trailTbl.insert("colorEnd",           Vec4ToArr(trail->colorEnd));
+            trailTbl.insert("alignment",          (int64_t)static_cast<int>(trail->alignment));
+            trailTbl.insert("smoothSubdivisions", (int64_t)trail->smoothSubdivisions);
+            trailTbl.insert("texturePath",        trail->texturePath);
+            trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
+            trailTbl.insert("uvTiling",           (double)trail->uvTiling);
+            goTbl.insert("TrailComponent", std::move(trailTbl));
+        }
+
+        // MeshTrailComponent
+        if (auto* trail = go.GetComponent<MeshTrailComponent>()) {
+            toml::table trailTbl;
+            trailTbl.insert("enabled",        trail->enabled);
+            trailTbl.insert("duration",       (double)trail->duration);
+            trailTbl.insert("sampleInterval", (double)trail->sampleInterval);
+            trailTbl.insert("minVertexDist",  (double)trail->minVertexDist);
+            trailTbl.insert("maxSamples",     (int64_t)trail->maxSamples);
+            trailTbl.insert("colorStart",     Vec4ToArr(trail->colorStart));
+            trailTbl.insert("colorEnd",       Vec4ToArr(trail->colorEnd));
+            trailTbl.insert("doubleSided",    trail->doubleSided);
+            goTbl.insert("MeshTrailComponent", std::move(trailTbl));
+        }
+
         if (auto* col = go.GetComponent<AabbColliderComponent>())
             goTbl.insert("AabbColliderComponent", SerializeCollider(*col));
 
@@ -1558,6 +1594,46 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
             pe.enabled        = (*peTbl)["enabled"].value_or(true);
             go.AddComponent<ParticleEmitter>(pe);
+        }
+
+        // TrailComponent
+        if (auto* trailTbl = (*goTbl)["TrailComponent"].as_table()) {
+            TrailComponent trail{};
+            trail.enabled        = (*trailTbl)["enabled"].value_or(true);
+            trail.duration       = (float)(*trailTbl)["duration"].value_or(1.0);
+            trail.maxPoints      = (int)(*trailTbl)["maxPoints"].value_or((int64_t)64);
+            trail.sampleInterval = (float)(*trailTbl)["sampleInterval"].value_or(1.0 / 30.0);
+            trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
+            trail.widthStart     = (float)(*trailTbl)["widthStart"].value_or(0.20);
+            trail.widthEnd       = (float)(*trailTbl)["widthEnd"].value_or(0.02);
+            trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
+                                             { 1.0f, 1.0f, 1.0f, 1.0f });
+            trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
+                                             { 1.0f, 1.0f, 1.0f, 0.0f });
+            int alignment = (int)(*trailTbl)["alignment"].value_or((int64_t)0);
+            alignment = alignment < 0 ? 0 : (alignment > 1 ? 1 : alignment);
+            trail.alignment      = static_cast<TrailAlignment>(alignment);
+            trail.smoothSubdivisions = (int)(*trailTbl)["smoothSubdivisions"].value_or((int64_t)0);
+            trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
+            trail.uvScrollSpeed  = (float)(*trailTbl)["uvScrollSpeed"].value_or(0.0);
+            trail.uvTiling       = (float)(*trailTbl)["uvTiling"].value_or(1.0);
+            go.AddComponent<TrailComponent>(std::move(trail));
+        }
+
+        // MeshTrailComponent
+        if (auto* trailTbl = (*goTbl)["MeshTrailComponent"].as_table()) {
+            MeshTrailComponent trail{};
+            trail.enabled        = (*trailTbl)["enabled"].value_or(true);
+            trail.duration       = (float)(*trailTbl)["duration"].value_or(0.5);
+            trail.sampleInterval = (float)(*trailTbl)["sampleInterval"].value_or(1.0 / 15.0);
+            trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
+            trail.maxSamples     = (int)(*trailTbl)["maxSamples"].value_or((int64_t)12);
+            trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
+                                             { 0.35f, 0.75f, 1.0f, 0.35f });
+            trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
+                                             { 0.35f, 0.75f, 1.0f, 0.0f });
+            trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
+            go.AddComponent<MeshTrailComponent>(std::move(trail));
         }
 
         if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
