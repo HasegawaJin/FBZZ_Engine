@@ -15,6 +15,8 @@
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/TrailComponent.hpp>
+#include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
@@ -555,6 +557,12 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
         shown |= addItem(category, "Particle Emitter", !go.GetComponent<scene::ParticleEmitter>(), [&]() {
             go.AddComponent<scene::ParticleEmitter>();
         });
+        shown |= addItem(category, "Trail", !go.GetComponent<scene::TrailComponent>(), [&]() {
+            go.AddComponent<scene::TrailComponent>();
+        });
+        shown |= addItem(category, "Mesh Trail", !go.GetComponent<scene::MeshTrailComponent>(), [&]() {
+            go.AddComponent<scene::MeshTrailComponent>();
+        });
         shown |= addItem(category, "Sky Renderer", !go.GetComponent<scene::SkyRenderer>(), [&]() {
             go.AddComponent<scene::SkyRenderer>();
         });
@@ -673,16 +681,18 @@ void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
 
     anyShown |= AddComponentCategory("Scripts", filter, [&](const char* category, const char*) {
         bool shown = false;
-        const bool hasScriptComponent = go.GetComponent<scene::ScriptComponent>() != nullptr;
         const auto scriptTypeNames = scene::ScriptFactory::RegisteredTypeNames();
         for (const std::string& typeName : scriptTypeNames) {
-            shown |= addItem(category, typeName.c_str(), !hasScriptComponent, [&]() {
+            shown |= addItem(category, typeName.c_str(), true, [&]() {
                 auto script = scene::ScriptFactory::Create(typeName);
                 if (!script) return;
 
-                scene::ScriptComponent sc;
-                sc.script = std::move(script);
-                go.AddComponent<scene::ScriptComponent>(std::move(sc));
+                auto* sc = go.GetComponent<scene::ScriptComponent>();
+                if (!sc)
+                    sc = &go.AddComponent<scene::ScriptComponent>();
+
+                scene::ScriptEntry& entry = sc->scripts.emplace_back();
+                entry.script = std::move(script);
             });
         }
         return shown;
@@ -1817,6 +1827,56 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::DragInt("Max Particles", &pe.maxParticles, 1, 1, 10000);
         });
 
+    DrawComponentSection<scene::TrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Trail",
+        [](scene::TrailComponent& trail, EditorContext&) {
+            ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
+            ImGui::DragInt("Max Points", &trail.maxPoints, 1, 2, 512);
+            ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
+            ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
+            ImGui::DragFloat("Width Start", &trail.widthStart, 0.001f, 0.0f, 10.0f);
+            ImGui::DragFloat("Width End", &trail.widthEnd, 0.001f, 0.0f, 10.0f);
+
+            float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
+            if (ImGui::ColorEdit4("Color Start", cs))
+                trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
+            float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
+            if (ImGui::ColorEdit4("Color End", ce))
+                trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
+
+            const char* alignmentItems[] = { "Camera Facing", "World Up" };
+            int alignment = static_cast<int>(trail.alignment);
+            if (ImGui::Combo("Alignment", &alignment, alignmentItems, 2))
+                trail.alignment = static_cast<scene::TrailAlignment>(alignment);
+
+            ImGui::DragInt("Smooth Subdivisions", &trail.smoothSubdivisions, 1, 0, 8);
+            char textureBuf[512];
+            std::snprintf(textureBuf, sizeof(textureBuf), "%s", trail.texturePath.c_str());
+            if (ImGui::InputText("Texture Path", textureBuf, sizeof(textureBuf))) {
+                trail.texturePath = textureBuf;
+                trail.texture = {};
+                trail.loadedTexturePath.clear();
+            }
+            ImGui::DragFloat("UV Scroll Speed", &trail.uvScrollSpeed, 0.001f, -20.0f, 20.0f);
+            ImGui::DragFloat("UV Tiling", &trail.uvTiling, 0.001f, 0.001f, 100.0f);
+        });
+
+    DrawComponentSection<scene::MeshTrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Trail",
+        [](scene::MeshTrailComponent& trail, EditorContext&) {
+            ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
+            ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
+            ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
+            ImGui::DragInt("Max Samples", &trail.maxSamples, 1, 1, 128);
+
+            float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
+            if (ImGui::ColorEdit4("Color Start", cs))
+                trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
+            float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
+            if (ImGui::ColorEdit4("Color End", ce))
+                trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
+
+            ImGui::Checkbox("Double Sided", &trail.doubleSided);
+        });
+
     DrawComponentSection<scene::AudioSourceComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Audio Source",
         [](scene::AudioSourceComponent& asc, EditorContext&) {
             ImGui::Checkbox("Play On Awake", &asc.playOnAwake);
@@ -2523,70 +2583,69 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         });
 
     if (auto* sc = go->GetComponent<scene::ScriptComponent>()) {
-        if (sc->script) {
-            const char* header = sc->script->GetTypeName();
-            ImGui::PushID("ScriptComponent");
+        int removeIndex = -1;
+        for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i) {
+            auto& entry = sc->scripts[static_cast<size_t>(i)];
+            ImGui::PushID(i);
 
-            ImGui::Checkbox("##en", &sc->script->enabled);
-            ImGui::SameLine();
+            if (entry.script) {
+                const char* header = entry.script->GetTypeName();
+                ImGui::Checkbox("##en", &entry.script->enabled);
+                ImGui::SameLine();
 
-            bool open = ImGui::CollapsingHeader(header,
-                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+                const bool open = ImGui::CollapsingHeader(header,
+                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
 
-            const float btnW = ImGui::GetFrameHeight();
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-            if (ImGui::SmallButton("..."))
-                ImGui::OpenPopup("##script_opts");
+                const float btnW = ImGui::GetFrameHeight();
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+                if (ImGui::SmallButton("..."))
+                    ImGui::OpenPopup("##script_opts");
 
-            bool removeScript = false;
-            if (ImGui::BeginPopup("##script_opts")) {
-                if (ImGui::MenuItem("Remove Component"))
-                    removeScript = true;
-                ImGui::EndPopup();
-            }
+                if (ImGui::BeginPopup("##script_opts")) {
+                    if (ImGui::MenuItem("Remove Component"))
+                        removeIndex = i;
+                    ImGui::EndPopup();
+                }
 
-            if (open) {
-                ImGui::Spacing();
-                ImGuiReflector reflector;
-                sc->script->Reflect(reflector);
-                ImGui::Spacing();
-            }
+                if (open) {
+                    ImGui::Spacing();
+                    ImGuiReflector reflector;
+                    entry.script->Reflect(reflector);
+                    ImGui::Spacing();
+                }
+            } else if (entry.serialized && !entry.serialized->type.empty()) {
+                ImGui::Checkbox("##en", &entry.serialized->enabled);
+                ImGui::SameLine();
 
-            ImGui::PopID();
+                const std::string header = "Missing Script: " + entry.serialized->type;
+                const bool open = ImGui::CollapsingHeader(
+                    header.c_str(),
+                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
 
-            if (removeScript)
-                go->RemoveComponent<scene::ScriptComponent>();
-        } else if (sc->serialized && !sc->serialized->type.empty()) {
-            ImGui::PushID("MissingScriptComponent");
-            ImGui::Checkbox("##en", &sc->serialized->enabled);
-            ImGui::SameLine();
+                const float btnW = ImGui::GetFrameHeight();
+                ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+                if (ImGui::SmallButton("..."))
+                    ImGui::OpenPopup("##missing_script_opts");
 
-            const std::string header = "Missing Script: " + sc->serialized->type;
-            const bool open = ImGui::CollapsingHeader(
-                header.c_str(),
-                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+                if (ImGui::BeginPopup("##missing_script_opts")) {
+                    if (ImGui::MenuItem("Remove Component"))
+                        removeIndex = i;
+                    ImGui::EndPopup();
+                }
 
-            const float btnW = ImGui::GetFrameHeight();
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-            if (ImGui::SmallButton("..."))
-                ImGui::OpenPopup("##missing_script_opts");
-
-            bool removeScript = false;
-            if (ImGui::BeginPopup("##missing_script_opts")) {
-                if (ImGui::MenuItem("Remove Component"))
-                    removeScript = true;
-                ImGui::EndPopup();
-            }
-
-            if (open) {
-                ImGui::Spacing();
-                ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
-                ImGui::Spacing();
+                if (open) {
+                    ImGui::Spacing();
+                    ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
+                    ImGui::Spacing();
+                }
             }
 
             ImGui::PopID();
+        }
 
-            if (removeScript)
+        if (removeIndex >= 0) {
+            sc->scripts.erase(sc->scripts.begin() + removeIndex);
+            if (sc->scripts.empty())
                 go->RemoveComponent<scene::ScriptComponent>();
         }
     }

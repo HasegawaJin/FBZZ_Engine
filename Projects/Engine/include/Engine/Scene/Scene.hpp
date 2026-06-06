@@ -432,17 +432,24 @@ void GameObject::RemoveComponent() {
 
 template<typename T, typename... Args>
 T& GameObject::AddScript(Args&&... args) {
-    auto& sc = AddComponent<ScriptComponent>();
-    sc.script = std::make_unique<T>(std::forward<Args>(args)...);
-    return static_cast<T&>(*sc.script);
+    auto* sc = GetComponent<ScriptComponent>();
+    if (!sc)
+        sc = &AddComponent<ScriptComponent>();
+    ScriptEntry& entry = sc->scripts.emplace_back();
+    entry.script = std::make_unique<T>(std::forward<Args>(args)...);
+    return static_cast<T&>(*entry.script);
 }
 
 template<typename T>
 T* GameObject::GetScript() {
     auto* sc = GetComponent<ScriptComponent>();
-    if (!sc || !sc->script) return nullptr;
-    if (std::string_view(sc->script->GetTypeName()) != T::TYPE_NAME) return nullptr;
-    return static_cast<T*>(sc->script.get());
+    if (!sc) return nullptr;
+    for (auto& entry : sc->scripts) {
+        if (!entry.script) continue;
+        if (std::string_view(entry.script->GetTypeName()) == T::TYPE_NAME)
+            return static_cast<T*>(entry.script.get());
+    }
+    return nullptr;
 }
 
 template<typename T>
