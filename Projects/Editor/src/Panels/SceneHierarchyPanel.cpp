@@ -50,27 +50,6 @@ enum class PrimitiveTemplate {
     Capsule
 };
 
-std::shared_ptr<renderer::Material> CreateTemplateMaterial()
-{
-    auto* resources = renderer::ResourceManager::Active();
-    if (!resources) return {};
-
-    auto material = std::make_shared<renderer::Material>();
-    material->shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
-    material->shader = resources->LoadShader(material->shaderPath);
-    static renderer::ShaderDescriptor s_fallback;
-    const renderer::ShaderDescriptor* desc = &s_fallback;
-    if (auto* sh = resources->Get(material->shader))
-        desc = &sh->GetDescriptor();
-    material->Init(*resources, desc->cbufferSize);
-    if (const auto* v = desc->FindVar("roughness"))
-    {
-        float rough = 0.65f;
-        std::memcpy(material->paramData.data() + v->offset, &rough, sizeof(float));
-    }
-    return material;
-}
-
 std::shared_ptr<renderer::Mesh> CreatePrimitiveMesh(PrimitiveTemplate type)
 {
     auto* resources = renderer::ResourceManager::Active();
@@ -160,8 +139,6 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
     go.AddComponent<scene::MeshRenderer>(mr);
 
     scene::MaterialComponent mc;
-    mc.shaderPath = "Assets/shaders/Material/Surface/Phong.hlsl";
-    mc.material = CreateTemplateMaterial();
     go.AddComponent<scene::MaterialComponent>(mc);
 
     AddTemplateCollider(go, type);
@@ -568,6 +545,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         const bool iconAreaClick = visClick || lockClick;
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()
             && !isLocked && !iconAreaClick) {
+            ctx.selectedAssetPath.clear();
             if (!ImGui::GetIO().KeyCtrl)
                 ctx.selectedEntities.clear();
             auto it = std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id);

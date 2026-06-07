@@ -10,6 +10,7 @@
 #include <toml++/toml.hpp>
 #include <filesystem>
 #include <fstream>
+#include <cstdint>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -118,22 +119,26 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
                                   const std::string& outputPath)
 {
     toml::table tbl;
+    tbl.insert("version", int64_t{ 1 });
+    tbl.insert("shader", std::string{});
 
     aiString matName;
     if (material->Get(AI_MATKEY_NAME, matName) == AI_SUCCESS)
         tbl.insert("name", std::string(matName.C_Str()));
 
+    toml::table paramsTbl;
     aiColor4D baseColor;
     if (material->Get(AI_MATKEY_BASE_COLOR,    baseColor) == AI_SUCCESS ||
         material->Get(AI_MATKEY_COLOR_DIFFUSE, baseColor) == AI_SUCCESS)
-        tbl.insert("base_color",
-                   toml::array{ baseColor.r, baseColor.g, baseColor.b, baseColor.a });
+        paramsTbl.insert("base_color",
+                         toml::array{ baseColor.r, baseColor.g, baseColor.b, baseColor.a });
 
     float metallic = 0.0f, roughness = 0.5f;
     material->Get(AI_MATKEY_METALLIC_FACTOR,  metallic);
     material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
-    tbl.insert("metallic_factor",  metallic);
-    tbl.insert("roughness_factor", roughness);
+    paramsTbl.insert("metallic_factor",  metallic);
+    paramsTbl.insert("roughness_factor", roughness);
+    tbl.insert("params", std::move(paramsTbl));
 
     toml::table texTbl;
     for (const auto& slot : kTexSlots) {
