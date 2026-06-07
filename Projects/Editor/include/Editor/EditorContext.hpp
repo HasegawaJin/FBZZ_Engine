@@ -2,12 +2,14 @@
 // EditorContext.hpp | fbzz::editor
 // パネル間で共有するエディター状態
 #pragma once
+#include <Editor/GraphLayout.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::renderer { class Camera; }
@@ -40,6 +42,9 @@ struct EditorContext {
     std::string       currentScenePath;
     std::string       selectedAssetPath; // アセットブラウザーで選択中のファイル絶対パス (空 = なし)
     bool              sceneDirty = false;
+    // Animation Graph Editor のノード配置。Editor 専用のため SceneSerializer には渡さない。
+    // WHY: AnimatorComponent はランタイム構造体なので、キャンバス座標は instanceId keyed の別データとして保持する。
+    std::unordered_map<std::string, GraphLayout> graphLayouts;
 
     // 選択状態 (Multi-select 対応)
     std::vector<scene::EntityID> selectedEntities;
