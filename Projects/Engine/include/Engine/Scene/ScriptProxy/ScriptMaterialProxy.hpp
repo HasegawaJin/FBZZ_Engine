@@ -10,10 +10,6 @@
 #include <cstdint>
 #include <string_view>
 
-namespace fbzz::renderer {
-struct ShaderDescriptor;
-}
-
 namespace fbzz::scene {
 
 struct MaterialComponent;
@@ -30,15 +26,14 @@ struct ScriptMaterialProxy {
     // WHY: カスタムマテリアルは Script から動的に付け替える用途が多いため、呼び出し側の定型処理を減らす。
     MaterialComponent* Ensure() const;
 
-    // SetShader: 任意 HLSL を MaterialComponent に割り当てる。
-    // WHAT: resetParameters=true のとき ShaderDescriptor に合わせて paramData / texturePaths を再初期化する。
-    bool SetShader(std::string_view shaderPath, bool resetParameters = true) const;
+    // SetMaterial: .fzmat を MaterialComponent に割り当てる。
+    bool SetMaterial(std::string_view materialPath) const;
 
-    // EnsureCustomMaterial: MaterialComponent を確保し、指定 shader が未設定なら割り当てる。
-    // WHY: OnStart と OnUpdate のどちらから呼んでも同じカスタムマテリアル状態に収束させる。
-    bool EnsureCustomMaterial(std::string_view shaderPath, bool resetParameters = true) const;
+    // EnsureMaterial: MaterialComponent を確保し、指定 .fzmat が未設定なら割り当てる。
+    // WHY: OnStart と OnUpdate のどちらから呼んでも同じマテリアル参照状態に収束させる。
+    bool EnsureMaterial(std::string_view materialPath) const;
 
-    // HasParam: 現在の shader が指定名の MaterialConstants 変数を持つか確認する。
+    // HasParam: 割り当て済み MaterialAsset が指定名の params を持つか確認する。
     bool HasParam(std::string_view param) const;
 
     void SetFloat(std::string_view param, float v) const;
@@ -60,7 +55,6 @@ struct ScriptMaterialProxy {
     bool SetRenderQueue(int32_t renderQueue) const;
 
     void QueueRenderPass(UserRenderPassDesc desc) const;
-    const renderer::ShaderDescriptor* GetShaderDescriptor(std::string_view path) const;
 };
 
 } // namespace fbzz::scene
