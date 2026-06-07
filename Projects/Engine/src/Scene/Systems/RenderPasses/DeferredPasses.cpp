@@ -124,19 +124,19 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
+        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
         // 半透明・加算マテリアルは GBuffer に書き込まない。フォワードパスで描画する。
         // WHY: GBuffer はアルファブレンドをサポートしない (MRT への書き込みが 1 つの値のため)。
-        if (mat->blendMode != renderer::BlendMode::OPAQUE_BLEND) continue;
+        if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
 
         // フラスタムカリング: バウンディング球が視錐台外なら除外
         if (!IsVisibleInFrustum(frustum, go.transform, *mr->mesh)) continue;
 
         // GBuffer に収まらないエフェクト系シェーダー (RimLight / Toon 等) は
         // DeferredForwardEffects パスで Forward 描画するためここではスキップする。
-        if (IsForwardOnlyShader(mat->shaderPath)) continue;
+        if (IsForwardOnly(*mat)) continue;
 
         auto* material = SyncMaterial(*mat, resources);
 
@@ -203,7 +203,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = gbufMatCB;
         if (material)
-            for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+            for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         renderer.Submit(dc, resources);
     }
@@ -296,16 +296,15 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         auto* mat  = go.GetComponent<MaterialComponent>();
         auto* anim = go.GetComponent<AnimatorComponent>();
         if (!smr || !smr->enabled || !smr->model) continue;
-        if (!mat) continue;
-        if (mat->blendMode != renderer::BlendMode::OPAQUE_BLEND) continue;
+        if (!mat || !mat->EnsureMaterialAsset()) continue;
+        if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
         auto* material = SyncMaterial(*mat, resources);
         if (!material) continue;
 
         // WHY: Surface 版シェーダー (Material/Surface/) はスキニング処理を持たない VS を使用する。
         //      SkinnedMeshRenderer に誤って設定するとメッシュが破綻するため SkinnedPBR へフォールバックし、
         //      開発者がすぐ気づけるよう警告を出す。
-        const bool surfaceMisassigned =
-            material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
+        const bool surfaceMisassigned = material->shader.IsValid() && IsSurfaceMaterial(*mat);
         if (surfaceMisassigned)
         {
             FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s"
@@ -335,7 +334,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
             dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
             dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
@@ -343,7 +342,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[7] = skinCB;
-            for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+            for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
             renderer.Submit(dc, resources);
@@ -357,13 +356,12 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         auto* mat  = go.GetComponent<MaterialComponent>();
         auto* anim = go.GetComponent<AnimatorComponent>();
         if (!smr || !smr->enabled || !smr->model) continue;
-        if (!mat) continue;
-        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) continue;
+        if (!mat || !mat->EnsureMaterialAsset()) continue;
+        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;
         auto* material = SyncMaterial(*mat, resources);
         if (!material) continue;
 
-        const bool surfaceMisassigned =
-            material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
+        const bool surfaceMisassigned = material->shader.IsValid() && IsSurfaceMaterial(*mat);
         if (surfaceMisassigned)
         {
             FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s"
@@ -392,7 +390,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
             dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
             dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
@@ -400,14 +398,14 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[7] = skinCB;
-            for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+            for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
 
             const float dx = objData.world.m[0][3] - cam.m_position.x;
             const float dy = objData.world.m[1][3] - cam.m_position.y;
             const float dz = objData.world.m[2][3] - cam.m_position.z;
-            transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->renderQueue });
+            transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->GetRenderQueue() });
         }
     }
 
@@ -442,10 +440,10 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
+        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
-        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) continue;  // 透明のみ
+        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;  // 透明のみ
 
         // フラスタムカリング: バウンディング球が視錐台外なら除外
         if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) continue;
@@ -464,21 +462,21 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
         dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                 : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
         dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
-        for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+        for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
 
         const float dx = objData.world.m[0][3] - cam.m_position.x;
         const float dy = objData.world.m[1][3] - cam.m_position.y;
         const float dz = objData.world.m[2][3] - cam.m_position.z;
-        transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->renderQueue });
+        transparentQueue.push_back({ dc, objData, dx*dx + dy*dy + dz*dz, mat->GetRenderQueue() });
     }
 
     SortAndSubmitTransparent(transparentQueue, renderer, resources, h.objectCB);
@@ -492,11 +490,11 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
+        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
-        if (mat->blendMode != renderer::BlendMode::OPAQUE_BLEND) continue;  // 不透明のみ
-        if (!IsForwardOnlyShader(mat->shaderPath)) continue;                // エフェクト系のみ
+        if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;  // 不透明のみ
+        if (!IsForwardOnly(*mat)) continue;                                        // エフェクト系のみ
 
         if (!IsVisibleInFrustum(frustumTransp, go.transform, *mr->mesh)) continue;
 
@@ -515,14 +513,14 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
         dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                 : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
         dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
-        for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+        for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
         renderer.Submit(dc, resources);

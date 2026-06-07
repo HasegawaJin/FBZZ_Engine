@@ -2,6 +2,8 @@
 // CompositePass.cpp | fbzz::scene
 // Composite render pass implementation
 #include "PostProcessPasses.hpp"
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -44,16 +46,38 @@ UnderwaterInfo EvaluateUnderwaterInfo(const RenderPassContext& ctx)
         const float depth = surfaceY - ctx.camera.m_position.y;
         if (depth <= 0.0f || depth <= best.depth) continue;
 
-        const float deepDepth = util::Mathf::Max(water.deepDepth, 0.001f);
+        // 視覚パラメータは fzmat から読む。未設定時は WaterComponent のデフォルト値と揃えた定数を使う。
+        const asset::MaterialAsset* mat = nullptr;
+        if (!water.materialPath.empty()) {
+            const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
+            mat = asset::AssetManager::GetMaterial(handle);
+        }
+        auto getF = [mat](const char* name, float def) -> float {
+            if (!mat) return def;
+            auto it = mat->params.find(name);
+            if (it != mat->params.end() && !it->second.empty()) return it->second[0];
+            return def;
+        };
+        auto getF3 = [mat](const char* name, math::Vector3 def) -> math::Vector3 {
+            if (!mat) return def;
+            auto it = mat->params.find(name);
+            if (it != mat->params.end() && it->second.size() >= 3)
+                return { it->second[0], it->second[1], it->second[2] };
+            return def;
+        };
+
+        const float deepDepth = util::Mathf::Max(getF("deepDepth", 5.0f), 0.001f);
         const float t = util::Mathf::Clamp01(depth / deepDepth);
+        const auto shallowColor = getF3("shallowColor", { 0.20f, 0.60f, 0.70f });
+        const auto deepColor    = getF3("deepColor",    { 0.00f, 0.10f, 0.30f });
         best.enabled = true;
         best.depth = depth;
         best.strength = util::Mathf::Clamp01(depth / 2.0f);
         best.fogDensity = util::Mathf::Lerp(0.04f, 0.35f, t);
         best.color = {
-            util::Mathf::Lerp(water.shallowColor.x, water.deepColor.x, t),
-            util::Mathf::Lerp(water.shallowColor.y, water.deepColor.y, t),
-            util::Mathf::Lerp(water.shallowColor.z, water.deepColor.z, t)
+            util::Mathf::Lerp(shallowColor.x, deepColor.x, t),
+            util::Mathf::Lerp(shallowColor.y, deepColor.y, t),
+            util::Mathf::Lerp(shallowColor.z, deepColor.z, t)
         };
     }
 

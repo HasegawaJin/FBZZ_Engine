@@ -2,15 +2,12 @@
 // WaterTool.cpp | fbzz::editor
 // WaterTool の実装: ビューポート可視化・アセット管理・波エディタ UI
 #include "WaterTool.hpp"
-#include <Engine/Scene/WaterAssetSerializer.hpp>
-#include <Engine/Util/FileSystem.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <filesystem>
 #include <imgui.h>
 
 namespace fbzz::editor {
@@ -38,26 +35,10 @@ bool IsOnScreen(const ImVec2& p, const ImVec2& vpMin, const ImVec2& vpSize)
         && p.y > vpMin.y - 1.0f && p.y < vpMin.y + vpSize.y + 1.0f;
 }
 
-// WHAT: .fbzzwater ファイルのデフォルト保存パスを生成する。
-//       "Assets/Water/<gameobject名>.fbzzwater" の形式。
-std::string MakeDefaultWaterAssetPath(const std::string& goName)
+std::string NormalizeAssetPath(std::string path)
 {
-    std::string safe = goName;
-    for (char& c : safe) {
-        if (c == ' ' || c == '/' || c == '\\') c = '_';
-    }
-    return "Assets/Water/" + safe + ".fbzzwater";
-}
-
-// WHAT: プロジェクトルートからの相対パスをディスク上の絶対パスに変換する。
-std::string ResolveToProject(const std::string& projectRoot, const std::string& assetPath)
-{
-    if (assetPath.empty()) return {};
-    std::filesystem::path root(projectRoot);
-    // Assets/ で始まる場合はプロジェクトルート配下を仮定する
-    std::string normalized = assetPath;
-    for (char& c : normalized) if (c == '\\') c = '/';
-    return (root / normalized).string();
+    for (char& c : path) if (c == '\\') c = '/';
+    return path;
 }
 
 } // namespace
@@ -290,155 +271,85 @@ void WaterTool::OnEditorGUI(
 }
 
 // =============================================================================
-// アセット管理セクション
+// Material (.fzmat) 参照セクション
 // =============================================================================
 
 void WaterTool::DrawAssetSection(
     scene::WaterComponent&       water,
     const std::string&           /*scenePath*/,
-    const std::string&           projectRoot,
+    const std::string&           /*projectRoot*/,
     const std::function<void()>& markDirty)
 {
-    ImGui::SeparatorText("Asset (.fbzzwater)");
+    ImGui::SeparatorText("Material (.fzmat)");
 
-    // パス入力
     char buf[256];
-    std::snprintf(buf, sizeof(buf), "%s", water.waterAssetPath.c_str());
+    std::snprintf(buf, sizeof(buf), "%s", water.materialPath.c_str());
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputText("##asset_path", buf, sizeof(buf))) {
-        water.waterAssetPath = buf;
+    if (ImGui::InputText("##water_mat", buf, sizeof(buf))) {
+        water.materialPath = NormalizeAssetPath(buf);
+        markDirty();
     }
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            std::string dropped = static_cast<const char*>(p->Data);
-            // .fbzzwater だけ受け付ける
-            if (dropped.size() > 10 &&
-                dropped.substr(dropped.size() - 10) == ".fbzzwater")
-            {
-                water.waterAssetPath = dropped;
+            std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
+            if (dropped.size() > 6 && dropped.substr(dropped.size() - 6) == ".fzmat") {
+                water.materialPath = dropped;
+                markDirty();
             }
         }
         ImGui::EndDragDropTarget();
     }
-
-    // Create ボタン: デフォルト名で新規 .fbzzwater を作成する
-    if (ImGui::Button("Create")) {
-        if (water.waterAssetPath.empty())
-            water.waterAssetPath = MakeDefaultWaterAssetPath("Water");
-        const std::string diskPath = ResolveToProject(projectRoot, water.waterAssetPath);
-        if (scene::WaterAssetSerializer::Save(water, diskPath))
-            markDirty();
-    }
-    ImGui::SameLine();
-
-    // Save ボタン: 現在のパラメータを外部ファイルに書き出す
-    const bool canSave = !water.waterAssetPath.empty();
-    if (!canSave) ImGui::BeginDisabled();
-    if (ImGui::Button("Save")) {
-        const std::string diskPath = ResolveToProject(projectRoot, water.waterAssetPath);
-        if (scene::WaterAssetSerializer::Save(water, diskPath))
-            markDirty();
-    }
-    if (!canSave) ImGui::EndDisabled();
-    ImGui::SameLine();
-
-    // Load ボタン: 外部ファイルから再読み込みする
-    if (!canSave) ImGui::BeginDisabled();
-    if (ImGui::Button("Load")) {
-        const std::string diskPath = ResolveToProject(projectRoot, water.waterAssetPath);
-        if (scene::WaterAssetSerializer::Load(diskPath, water))
-            markDirty();
-    }
-    if (!canSave) ImGui::EndDisabled();
-    ImGui::SameLine();
-
-    // Unlink ボタン: パスを削除してインライン保存モードに戻す
-    if (!canSave) ImGui::BeginDisabled();
-    if (ImGui::Button("Unlink")) {
-        water.waterAssetPath.clear();
-        markDirty();
-    }
-    if (!canSave) ImGui::EndDisabled();
-
-    if (water.waterAssetPath.empty())
-        ImGui::TextDisabled("(inline mode — scene file stores all params)");
+    if (water.materialPath.empty())
+        ImGui::TextDisabled("(no material — visual params missing)");
 }
 
 // =============================================================================
-// 波プリセットセクション
+// 波プリセットセクション（ジオメトリ/波パラメータのみ設定。視覚パラメータは fzmat で管理）
 // =============================================================================
 
 void WaterTool::DrawPresets(
     scene::WaterComponent&       water,
     const std::function<void()>& markDirty) const
 {
-    ImGui::SeparatorText("Presets");
-    ImGui::TextDisabled("Apply preset:");
+    ImGui::SeparatorText("Wave Presets");
+    ImGui::TextDisabled("Wave parameters only (visual params are in .fzmat):");
 
-    // Ocean プリセット: 大きなうねり、深い青
     if (ImGui::Button("Ocean")) {
-        water.shallowColor  = { 0.10f, 0.45f, 0.65f };
-        water.deepColor     = { 0.00f, 0.05f, 0.20f };
-        water.shallowDepth  = 0.8f;  water.deepDepth  = 12.0f;
-        water.opacity       = 0.90f; water.reflectivity = 0.65f;
-        water.fresnelPower  = 5.0f;
-        water.normalStrength = 1.2f;
         water.enableGerstnerWaves = true;
         water.waves[0] = { {  1.00f, 0.20f }, 0.35f, 14.0f, 0.40f };
         water.waves[1] = { { -0.30f, 0.95f }, 0.20f, 22.0f, 0.30f };
         water.waves[2] = { {  0.70f,-0.70f }, 0.15f,  9.0f, 0.25f };
         water.waves[3] = { { -0.90f, 0.40f }, 0.10f, 18.0f, 0.20f };
-        water.foamThreshold = 0.2f; water.foamStrength = 1.2f;
-        water.meshDirty = true; water.foamDirty = true;
+        water.meshDirty = true;
         markDirty();
     }
     ImGui::SameLine();
 
-    // Lake プリセット: 穏やかな波、透明度高め
     if (ImGui::Button("Lake")) {
-        water.shallowColor  = { 0.25f, 0.65f, 0.70f };
-        water.deepColor     = { 0.00f, 0.15f, 0.35f };
-        water.shallowDepth  = 0.4f;  water.deepDepth  = 4.0f;
-        water.opacity       = 0.78f; water.reflectivity = 0.45f;
-        water.fresnelPower  = 4.5f;
-        water.normalStrength = 0.7f;
         water.enableGerstnerWaves = true;
         water.waves[0] = { {  1.00f, 0.10f }, 0.08f,  6.0f, 0.25f };
         water.waves[1] = { { -0.20f, 1.00f }, 0.06f,  9.0f, 0.20f };
         water.waves[2] = { {  0.50f,-0.50f }, 0.04f,  4.0f, 0.15f };
         water.waves[3] = { { -0.80f, 0.30f }, 0.03f,  7.0f, 0.10f };
-        water.foamThreshold = 0.35f; water.foamStrength = 0.7f;
-        water.meshDirty = true; water.foamDirty = true;
+        water.meshDirty = true;
         markDirty();
     }
     ImGui::SameLine();
 
-    // River プリセット: フローマップ想定、中程度の流れ感
     if (ImGui::Button("River")) {
-        water.shallowColor  = { 0.30f, 0.70f, 0.60f };
-        water.deepColor     = { 0.05f, 0.20f, 0.30f };
-        water.shallowDepth  = 0.3f;  water.deepDepth  = 3.0f;
-        water.opacity       = 0.82f; water.reflectivity = 0.35f;
-        water.fresnelPower  = 4.0f;
-        water.normalStrength = 1.0f;
         water.enableGerstnerWaves = true;
-        water.waves[0] = { {  0.00f, 1.00f }, 0.10f,  5.0f, 0.30f }; // 流れ方向
+        water.waves[0] = { {  0.00f, 1.00f }, 0.10f,  5.0f, 0.30f };
         water.waves[1] = { {  0.10f, 0.99f }, 0.07f,  3.0f, 0.25f };
         water.waves[2] = { { -0.10f, 1.00f }, 0.05f,  7.0f, 0.20f };
         water.waves[3] = { {  0.05f, 0.99f }, 0.03f,  2.5f, 0.15f };
-        water.foamThreshold = 0.25f; water.foamStrength = 1.0f;
-        water.normalMap1Scroll = {  0.01f, 0.05f }; // 流れ方向スクロール
-        water.normalMap2Scroll = { -0.01f, 0.04f };
-        water.meshDirty = true; water.foamDirty = true; water.texDirty = true;
+        water.meshDirty = true;
         markDirty();
     }
     ImGui::SameLine();
 
-    // Flat プリセット: 静水（波なし）
     if (ImGui::Button("Flat")) {
         water.enableGerstnerWaves = false;
         for (auto& w : water.waves) w.amplitude = 0.0f;
-        water.opacity = 0.95f; water.reflectivity = 0.75f;
         water.meshDirty = true;
         markDirty();
     }

@@ -1,0 +1,78 @@
+version = 1
+shader = "Assets/Shaders/Terrain/Terrain.hlsl"
+blend_mode = "Opaque"
+double_sided = false
+render_queue = 2000
+render_path = "deferred"
+mesh_type = "surface"
+
+[textures]
+layer0_diffuse      = ""
+layer0_normal       = ""
+layer0_ao_roughness = ""
+layer1_diffuse      = ""
+layer1_normal       = ""
+layer1_ao_roughness = ""
+layer2_diffuse      = ""
+layer2_normal       = ""
+layer2_ao_roughness = ""
+layer3_diffuse      = ""
+layer3_normal       = ""
+layer3_ao_roughness = ""
+
+[params]
+layer0_tilingX           = [8.0]
+layer0_tilingZ           = [8.0]
+layer0_normalStrength    = [1.0]
+layer0_roughness         = [0.8]
+layer0_ambientOcclusion  = [1.0]
+layer0_autoBlendEnabled  = [0.0]
+layer0_autoBlendStrength = [1.0]
+layer0_autoMinHeight     = [-10000.0]
+layer0_autoMaxHeight     = [10000.0]
+layer0_autoHeightFade    = [1.0]
+layer0_autoMinSlope      = [0.0]
+layer0_autoMaxSlope      = [1.0]
+layer0_autoSlopeFade     = [0.1]
+
+layer1_tilingX           = [8.0]
+layer1_tilingZ           = [8.0]
+layer1_normalStrength    = [1.0]
+layer1_roughness         = [0.8]
+layer1_ambientOcclusion  = [1.0]
+layer1_autoBlendEnabled  = [0.0]
+layer1_autoBlendStrength = [1.0]
+layer1_autoMinHeight     = [-10000.0]
+layer1_autoMaxHeight     = [10000.0]
+layer1_autoHeightFade    = [1.0]
+layer1_autoMinSlope      = [0.0]
+layer1_autoMaxSlope      = [1.0]
+layer1_autoSlopeFade     = [0.1]
+
+layer2_tilingX           = [8.0]
+layer2_tilingZ           = [8.0]
+layer2_normalStrength    = [1.0]
+layer2_roughness         = [0.8]
+layer2_ambientOcclusion  = [1.0]
+layer2_autoBlendEnabled  = [0.0]
+layer2_autoBlendStrength = [1.0]
+layer2_autoMinHeight     = [-10000.0]
+layer2_autoMaxHeight     = [10000.0]
+layer2_autoHeightFade    = [1.0]
+layer2_autoMinSlope      = [0.0]
+layer2_autoMaxSlope      = [1.0]
+layer2_autoSlopeFade     = [0.1]
+
+layer3_tilingX           = [8.0]
+layer3_tilingZ           = [8.0]
+layer3_normalStrength    = [1.0]
+layer3_roughness         = [0.8]
+layer3_ambientOcclusion  = [1.0]
+layer3_autoBlendEnabled  = [0.0]
+layer3_autoBlendStrength = [1.0]
+layer3_autoMinHeight     = [-10000.0]
+layer3_autoMaxHeight     = [10000.0]
+layer3_autoHeightFade    = [1.0]
+layer3_autoMinSlope      = [0.0]
+layer3_autoMaxSlope      = [1.0]
+layer3_autoSlopeFade     = [0.1]

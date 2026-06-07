@@ -16,7 +16,7 @@ namespace fbzz::renderer {
         OVERLAY_LAYER     = 2,  // デバッグ描画・UI  (デプステストなし、最後に描画)
     };
 
-    // RenderQueue — MaterialComponent::renderQueue に入れる Unity 風の描画順プリセット。
+    // RenderQueue — MaterialAsset::renderQueue に入れる Unity 風の描画順プリセット。
     // WHY: 値を enum class に閉じると Custom VFX や水面の微調整で 3000 + 10 のような
     //      差し込みができない。あえて int32_t 定数にし、標準帯とユーザー定義帯だけを共有する。
     struct RenderQueue {

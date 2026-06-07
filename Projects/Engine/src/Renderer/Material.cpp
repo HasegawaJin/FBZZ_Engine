@@ -31,7 +31,7 @@ void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc)
         && desc.textureMaskOffset + 4 <= static_cast<uint32_t>(paramData.size()))
     {
         uint32_t mask = 0;
-        for (size_t i = 0; i < textures.size() && i < 5; ++i)
+        for (size_t i = 0; i < textures.size() && i < 8; ++i)
             if (textures[i].IsValid()) mask |= (1u << i);
         std::memcpy(paramData.data() + desc.textureMaskOffset, &mask, sizeof(uint32_t));
     }

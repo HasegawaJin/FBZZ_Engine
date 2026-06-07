@@ -7,9 +7,11 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <Engine/Renderer/ResourceHandle.hpp>
 
 namespace fbzz::renderer { class ResourceManager; }
+namespace fbzz::asset    { struct MaterialAsset; }
 namespace fbzz::asset    { struct Model; }
 
 namespace fbzz::asset {
@@ -29,14 +31,22 @@ public:
     // FlushFailed() を呼ぶたびにインクリメントされる世代番号。
     // AnimatorSystem はこれを見てインポート後の再試行タイミングを判断する。
     static int GetFlushGeneration();
+
     static renderer::ResourceHandle<renderer::TextureTag> LoadTexture(const std::string& relativePath);
 
-    // Load<T>: 対応型は Model / ITexture のみ
+    // MaterialAsset: CPU 側アセットをスロットプールで管理し ResourceHandle を返す。
+    // WHY: shared_ptr ではキャッシュキーが絶対/相対パスで分岐して別インスタンスが生まれる。
+    //      ハンドル化することで AssetManager が唯一の所有者となり参照が一本化される。
+    static renderer::ResourceHandle<renderer::MaterialAssetTag> LoadMaterial(const std::string& relativePath);
+    static MaterialAsset* GetMaterial(renderer::ResourceHandle<renderer::MaterialAssetTag> h);
+    static void UnloadMaterial(const std::string& relativePath);
+
+    // Load<T>: Model のみ対応。MaterialAsset は LoadMaterial() を使うこと。
     // 未対応型はヘッダー内の static_assert によりコンパイルエラーになる
     template<typename T>
     static std::shared_ptr<T> Load(const std::string& relativePath) {
         static_assert(sizeof(T) == 0,
-            "AssetManager::Load<T>: unsupported type. Use Model or ITexture.");
+            "AssetManager::Load<T>: unsupported type. Use Model or LoadMaterial for MaterialAsset.");
         return nullptr;
     }
 
@@ -54,10 +64,26 @@ private:
     static std::unordered_map<std::string, std::shared_ptr<Model>>    s_models;
     static std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>> s_textures;
 
+    // MaterialAsset スロットプール
+    // WHY: ResourcePool (renderer 側) は GPU リソース向けのため MemoryDebug が必要。
+    //      CPU アセットには軽量な独立プールを持ち、ResourceHandle<MaterialAssetTag> を発行する。
+    struct MatSlot {
+        std::unique_ptr<MaterialAsset> asset;
+        uint32_t gen     = 1; // 0 は ResourceHandle デフォルト値なので 1 から始める
+        bool     occupied = false;
+    };
+    static std::vector<MatSlot>   s_materialSlots;
+    static std::vector<uint32_t>  s_materialFreeList;
+    static std::unordered_map<std::string, renderer::ResourceHandle<renderer::MaterialAssetTag>> s_materials;
+
     static std::string Normalize(const std::string& path);
+
+    // スロット操作ヘルパー
+    static renderer::ResourceHandle<renderer::MaterialAssetTag> AllocMaterialSlot(std::unique_ptr<MaterialAsset> asset);
+    static bool IsMaterialLive(renderer::ResourceHandle<renderer::MaterialAssetTag> h);
 };
 
-template<> std::shared_ptr<Model>    AssetManager::Load<Model>   (const std::string&);
-template<> void AssetManager::Unload<Model>   (const std::string&);
+template<> std::shared_ptr<Model> AssetManager::Load<Model>(const std::string&);
+template<> void AssetManager::Unload<Model>(const std::string&);
 
 } // namespace fbzz::asset

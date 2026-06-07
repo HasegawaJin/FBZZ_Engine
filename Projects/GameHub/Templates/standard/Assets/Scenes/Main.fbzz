@@ -2126,44 +2126,14 @@ tag = 'Untagged'
     type = 'Buoyancy'
 
     [gameobjects.WaterComponent]
-    causticsIntensity = 0.4
     chunkCount = 4
-    causticsSpeed = 0.15
-    causticsTexPath = ''
-    causticsTiling = 0.5
-    deepColor = [ 0.0, 0.12, 0.42 ]
-    deepDepth = 5.0
-    enableCaustics = true
-    enableFlowMap = false
     enableGerstnerWaves = true
     enabled = true
-    envCubemapPath = ''
     extentX = 120.0
     extentZ = 120.0
-    flowMapPath = ''
-    flowSpeed = 0.3
-    flowTiling = 1.0
-    foamFade = 0.5
-    foamStrength = 1.0
-    foamTexPath = 'Assets/Textures/Water/Water_Color.png'
-    foamThreshold = 0.3
-    foamTiling = 8.0
-    fresnelBias = 0.02
-    fresnelPower = 5.0
-    normalMap1Path = 'Assets/Textures/Water/Water_Normal.png'
-    normalMap1Scroll = [ 0.02, 0.01 ]
-    normalMap1Tiling = 4.0
-    normalMap2Path = 'Assets/Textures/Water/Water_Normal.png'
-    normalMap2Scroll = [ -0.01, 0.02 ]
-    normalMap2Tiling = 6.0
-    normalStrength = 1.0
-    opacity = 0.85
-    reflectivity = 0.2
-    refractionStrength = 0.03
+    materialPath = 'Assets/Materials/Water/Water.fzmat'
     resolutionX = 64
     resolutionZ = 64
-    shallowColor = [ 0.05, 0.68, 0.82 ]
-    shallowDepth = 1.5
     waves = [
         { amplitude = 0.15, direction = [ 1.0, 0.15 ], steepness = 0.35, wavelength = 8.0 },
         { amplitude = 0.1, direction = [ -0.3, 1.0 ], steepness = 0.25, wavelength = 12.0 },

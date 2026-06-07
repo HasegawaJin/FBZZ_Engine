@@ -397,13 +397,8 @@ void TerrainTool::ApplyPaint(
     const int cz = static_cast<int>(hitLocal.z / terrain.cellSize);
     const int ri = static_cast<int>(m_brush.radius / terrain.cellSize) + 1;
 
-    // レイヤーがなければ何もしない
-    if (terrain.layers.empty()) return;
-
-    // 選択レイヤーのインデックスを安全にクランプする
-    // WHY: layers.size() < 4 のとき m_paintLayer が範囲外になりうる
-    const int layerIdx = static_cast<int>(
-        std::min(m_paintLayer, static_cast<uint32_t>(terrain.layers.size()) - 1u));
+    // 選択レイヤーを 0-3 の範囲にクランプする（fzmat で固定 4 層）
+    const int layerIdx = static_cast<int>(std::min(m_paintLayer, 3u));
 
     for (int z = cz - ri; z <= cz + ri; ++z) {
         if (z < 0 || z >= terrain.rows) continue;
@@ -590,32 +585,14 @@ void TerrainTool::OnEditorGUI(scene::Scene& scene)
         // ── Paint: レイヤー選択 ─────────────────────────────────────────────
         ImGui::TextDisabled("Layer");
 
-        // シーンの最初の TerrainComponent からレイヤー名を取得
-        scene::TerrainComponent* tc = nullptr;
-        for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
-            tc = scene.GetComponent<scene::TerrainComponent>(eid);
-            if (tc) break;
-        }
-
-        const int layerCount = tc ? static_cast<int>(tc->layers.size()) : 0;
-        if (layerCount == 0) {
-            ImGui::TextColored({ 1.0f, 0.6f, 0.3f, 1.0f }, "(No layers)");
-        } else {
-            for (int i = 0; i < layerCount; ++i) {
-                const bool active = static_cast<int>(m_paintLayer) == i;
-                // ラベルはパスのファイル名を表示（長いフルパスより見やすい）
-                std::string label = "Layer " + std::to_string(i);
-                if (!tc->layers[i].diffusePath.empty()) {
-                    const auto& path = tc->layers[i].diffusePath;
-                    const size_t slash = path.find_last_of("/\\");
-                    label = (slash != std::string::npos) ? path.substr(slash + 1) : path;
-                    if (label.size() > 16) label = label.substr(0, 14) + "..";
-                }
-                if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
-                if (ImGui::Button(label.c_str(), { -1.0f, 0.0f }))
-                    m_paintLayer = static_cast<uint32_t>(i);
-                if (active) ImGui::PopStyleColor();
-            }
+        // fzmat 移行後は常に 4 層固定。テクスチャ名は fzmat を参照するため、ここではインデックスのみ表示。
+        for (int i = 0; i < 4; ++i) {
+            const bool active = static_cast<int>(m_paintLayer) == i;
+            const std::string label = "Layer " + std::to_string(i);
+            if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
+            if (ImGui::Button(label.c_str(), { -1.0f, 0.0f }))
+                m_paintLayer = static_cast<uint32_t>(i);
+            if (active) ImGui::PopStyleColor();
         }
     }
 
