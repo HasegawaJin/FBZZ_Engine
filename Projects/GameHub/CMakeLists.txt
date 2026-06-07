@@ -34,6 +34,7 @@ target_compile_definitions(fbzz_hub
 
 target_link_libraries(fbzz_hub
     PRIVATE
+        fbzz_engine
         imgui
         tomlplusplus
         d3d11

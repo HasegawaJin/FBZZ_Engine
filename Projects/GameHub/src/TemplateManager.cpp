@@ -2,45 +2,31 @@
 // TemplateManager.cpp | fbzz::hub
 // Project template discovery and instantiation
 #include "TemplateManager.hpp"
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
-#include "Util/HubUtil.hpp"
-
-#include <Windows.h>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cctype>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string_view>
 
 namespace fbzz::hub {
 
 namespace {
 
-namespace util = fbzz::hub::util;
+namespace engine_util = fbzz::util;
 
 std::string ReadText(const std::filesystem::path& path)
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return {};
-
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
+    std::string text;
+    engine_util::FileSystem::ReadText(path, text);
+    return text;
 }
 
 bool WriteText(const std::filesystem::path& path, const std::string& text)
 {
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    if (ec) return false;
-
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) return false;
-
-    file << text;
-    return static_cast<bool>(file);
+    return engine_util::FileSystem::WriteText(path, text);
 }
 
 std::string ReplaceAll(std::string text, const std::string& from, const std::string& to)
@@ -55,7 +41,7 @@ std::string ReplaceAll(std::string text, const std::string& from, const std::str
 
 bool IsTextTemplate(const std::filesystem::path& path)
 {
-    const std::string extension = path.extension().string();
+    const std::string extension = engine_util::FileSystem::PathToUtf8(path.extension());
     return extension == ".tmpl"
         || extension == ".fbzz_proj"
         || extension == ".txt"
@@ -72,8 +58,7 @@ bool IsTextTemplate(const std::filesystem::path& path)
 
 bool Exists(const std::filesystem::path& path)
 {
-    std::error_code ec;
-    return std::filesystem::exists(path, ec);
+    return engine_util::FileSystem::Exists(path);
 }
 
 bool InsertAfterMarker(const std::filesystem::path& path, const std::string& marker, const std::string& insertion)
@@ -123,7 +108,7 @@ void TemplateManager::Refresh()
     m_templates.clear();
 
     CollectTemplatesFromRoot(ResolveSourceTemplatesRoot(), m_templates);
-    CollectTemplatesFromRoot(util::GetExecutableDirectory() / "Templates", m_templates);
+    CollectTemplatesFromRoot(engine_util::FileSystem::GetExecutableDirectory() / "Templates", m_templates);
 
     std::sort(m_templates.begin(), m_templates.end(), [](const TemplateInfo& a, const TemplateInfo& b) {
         return a.displayName < b.displayName;
@@ -145,13 +130,12 @@ bool TemplateManager::Instantiate(
 
     const std::filesystem::path projectRoot = destinationRoot / nameInfo.targetName;
     std::error_code ec;
-    if (std::filesystem::exists(projectRoot, ec)) {
+    if (engine_util::FileSystem::Exists(projectRoot)) {
         errorMessage = "Destination project folder already exists.";
         return false;
     }
 
-    std::filesystem::create_directories(projectRoot, ec);
-    if (ec) {
+    if (!engine_util::FileSystem::EnsureDirectory(projectRoot)) {
         errorMessage = "Failed to create destination project folder.";
         return false;
     }
@@ -174,14 +158,13 @@ bool TemplateManager::Instantiate(
 
         std::filesystem::path outputRelative;
         for (const auto& part : relativePath) {
-            outputRelative /= ApplyPlaceholders(part.string(), nameInfo, createdAt, engineRoot);
+            outputRelative /= ApplyPlaceholders(engine_util::FileSystem::PathToUtf8(part), nameInfo, createdAt, engineRoot);
         }
 
         std::filesystem::path outputPath = projectRoot / outputRelative;
         std::error_code entryEc;
         if (entry.is_directory(entryEc)) {
-            std::filesystem::create_directories(outputPath, ec);
-            if (ec) {
+            if (!engine_util::FileSystem::EnsureDirectory(outputPath)) {
                 errorMessage = "Failed to create a project directory.";
                 return false;
             }
@@ -193,8 +176,8 @@ bool TemplateManager::Instantiate(
             continue;
         }
 
-        std::string outputFileName = outputPath.filename().string();
-        if (outputFileName.size() > 5 && outputFileName.substr(outputFileName.size() - 5) == ".tmpl") {
+        std::string outputFileName = engine_util::FileSystem::PathToUtf8(outputPath.filename());
+        if (engine_util::StringUtils::EndsWith(outputFileName, ".tmpl")) {
             outputFileName.resize(outputFileName.size() - 5);
             outputPath = outputPath.parent_path() / outputFileName;
         }
@@ -206,9 +189,7 @@ bool TemplateManager::Instantiate(
                 return false;
             }
         } else {
-            std::filesystem::create_directories(outputPath.parent_path(), ec);
-            std::filesystem::copy_file(entry.path(), outputPath, std::filesystem::copy_options::none, ec);
-            if (ec) {
+            if (!engine_util::FileSystem::CopyFile(entry.path(), outputPath, false)) {
                 errorMessage = "Failed to copy a project asset.";
                 return false;
             }
@@ -235,7 +216,7 @@ bool TemplateManager::CopyEngineAssets(
 {
     const std::filesystem::path src = engineRoot / "Assets";
     std::error_code ec;
-    if (!std::filesystem::exists(src, ec)) {
+    if (!engine_util::FileSystem::Exists(src)) {
         return true;
     }
 
@@ -259,7 +240,7 @@ bool TemplateManager::CopyEngineAssets(
         const std::filesystem::path dest = projectRoot / "Assets" / relative;
 
         if (entry.is_directory(entryEc)) {
-            std::filesystem::create_directories(dest, ec);
+            engine_util::FileSystem::EnsureDirectory(dest);
             continue;
         }
 
@@ -267,8 +248,9 @@ bool TemplateManager::CopyEngineAssets(
             continue;
         }
 
-        std::filesystem::create_directories(dest.parent_path(), ec);
-        std::filesystem::copy_file(entry.path(), dest, std::filesystem::copy_options::skip_existing, ec);
+        if (!engine_util::FileSystem::Exists(dest)) {
+            engine_util::FileSystem::CopyFile(entry.path(), dest, false);
+        }
     }
 
     return true;
@@ -281,7 +263,7 @@ bool TemplateManager::SyncCopiedScriptRegistrations(
 {
     const std::filesystem::path scriptsDir = projectRoot / "Assets" / "Scripts";
     std::error_code ec;
-    if (!std::filesystem::exists(scriptsDir, ec)) {
+    if (!engine_util::FileSystem::Exists(scriptsDir)) {
         return true;
     }
 
@@ -289,7 +271,7 @@ bool TemplateManager::SyncCopiedScriptRegistrations(
         projectRoot / "Src" / (nameInfo.targetName + "ScriptsDll.cpp");
     const std::filesystem::path staticCppPath = projectRoot / "Src" / "GameMain.cpp";
 
-    if (!std::filesystem::exists(dllCppPath, ec) || !std::filesystem::exists(staticCppPath, ec)) {
+    if (!engine_util::FileSystem::Exists(dllCppPath) || !engine_util::FileSystem::Exists(staticCppPath)) {
         errorMessage = "Failed to find generated script registration files.";
         return false;
     }
@@ -311,7 +293,7 @@ bool TemplateManager::SyncCopiedScriptRegistrations(
         }
 
         const std::string className = match[1].str();
-        const std::string includeLine = "#include \"Scripts/" + entry.path().filename().string() + "\"";
+        const std::string includeLine = "#include \"Scripts/" + engine_util::FileSystem::PathToUtf8(entry.path().filename()) + "\"";
         const std::string dllEntry =
             "        { ::sandbox::" + className + "::TYPE_NAME,"
             " []() { return std::make_unique<::sandbox::" + className + ">(); } },";
@@ -385,21 +367,19 @@ bool TemplateManager::IsValidProjectNameInfo(const ProjectNameInfo& nameInfo)
 
 std::filesystem::path TemplateManager::ResolveTemplatesRoot()
 {
-    std::error_code ec;
-    const std::filesystem::path runtimeRoot = util::GetExecutableDirectory() / "Templates";
-    if (std::filesystem::exists(runtimeRoot, ec)) {
+    const std::filesystem::path runtimeRoot = engine_util::FileSystem::GetExecutableDirectory() / "Templates";
+    if (engine_util::FileSystem::Exists(runtimeRoot)) {
         return runtimeRoot;
     }
 
-    return std::filesystem::current_path() / "Projects" / "GameHub" / "Templates";
+    return engine_util::FileSystem::GetCurrentDirectory() / "Projects" / "GameHub" / "Templates";
 }
 
 std::filesystem::path TemplateManager::ResolveSourceTemplatesRoot()
 {
-    std::error_code ec;
     std::vector<std::filesystem::path> starts;
-    starts.push_back(std::filesystem::current_path(ec));
-    starts.push_back(util::GetExecutableDirectory());
+    starts.push_back(engine_util::FileSystem::GetCurrentDirectory());
+    starts.push_back(engine_util::FileSystem::GetExecutableDirectory());
 
     for (std::filesystem::path current : starts) {
         for (int i = 0; i < 8 && !current.empty(); ++i) {
@@ -463,7 +443,7 @@ bool TemplateManager::ReadTemplateInfo(const std::filesystem::path& rootPath, Te
     }
 
     auto& table = result.table();
-    outInfo.id = table["template"]["id"].value_or(rootPath.filename().string());
+    outInfo.id = table["template"]["id"].value_or(engine_util::FileSystem::PathToUtf8(rootPath.filename()));
     outInfo.displayName = table["template"]["display_name"].value_or(outInfo.id);
     outInfo.description = table["template"]["description"].value_or(std::string{});
     outInfo.rootPath = rootPath;
