@@ -17,10 +17,27 @@ namespace fbzz::physics
                         const math::Vector3& axis);
 
         void SolvePosition(float dt) override;
+        void ApplyForce(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::HINGE; }
+
+        void SetLimits(float minAngleRad, float maxAngleRad);
+        void ClearLimits();
+        void SetMotor(float targetAngularSpeed, float maxTorque);
+        void ClearMotor();
 
         math::Vector3 m_localAnchorA;
         math::Vector3 m_localAnchorB;
         math::Vector3 m_axis;
+        bool  m_limitEnabled = false;
+        float m_minAngle = 0.0f;
+        float m_maxAngle = 0.0f;
+        bool  m_motorEnabled = false;
+        float m_motorTargetSpeed = 0.0f;
+        float m_motorMaxTorque = 0.0f;
+
+    private:
+        math::Vector3 m_referenceA;
+        math::Vector3 m_referenceB;
+        float CurrentAngle() const;
     };
 } // namespace fbzz::physics
