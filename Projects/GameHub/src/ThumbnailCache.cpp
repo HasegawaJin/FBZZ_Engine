@@ -2,34 +2,19 @@
 // ThumbnailCache.cpp | fbzz::hub
 // Thumbnail image cache for Hub project cards
 #include "ThumbnailCache.hpp"
+#include <Engine/Util/FileSystem.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#include <filesystem>
-#include <fstream>
+#include <cstdint>
 #include <vector>
 
 namespace fbzz::hub {
 
 namespace {
 
-std::vector<unsigned char> ReadBinary(const std::filesystem::path& path)
-{
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) return {};
-
-    const std::streamsize size = file.tellg();
-    if (size <= 0) return {};
-
-    std::vector<char> buffer(static_cast<size_t>(size));
-    file.seekg(0, std::ios::beg);
-    if (!file.read(buffer.data(), size)) {
-        return {};
-    }
-
-    return std::vector<unsigned char>(buffer.begin(), buffer.end());
-}
+namespace engine_util = fbzz::util;
 
 } // namespace
 
@@ -67,7 +52,8 @@ const ThumbnailTexture* ThumbnailCache::GetOrLoad(const std::string& path)
 
 bool ThumbnailCache::LoadTexture(const std::string& path, ThumbnailTexture& texture) const
 {
-    const std::vector<unsigned char> bytes = ReadBinary(std::filesystem::path(path));
+    std::vector<uint8_t> bytes;
+    engine_util::FileSystem::ReadBinary(engine_util::FileSystem::PathFromUtf8(path), bytes);
     if (bytes.empty()) {
         return false;
     }
@@ -76,7 +62,7 @@ bool ThumbnailCache::LoadTexture(const std::string& path, ThumbnailTexture& text
     int height = 0;
     int channels = 0;
     stbi_uc* pixels = stbi_load_from_memory(
-        bytes.data(),
+        reinterpret_cast<const stbi_uc*>(bytes.data()),
         static_cast<int>(bytes.size()),
         &width,
         &height,

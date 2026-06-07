@@ -23,6 +23,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <cstring>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/SphereCollider.hpp>
@@ -374,8 +375,7 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred)
         bool anyFound = false;
         for (const auto& path : util::FileSystem::ListAll(prefabDir)) {
             // 拡張子を小文字で比較して .fbzzprefab だけを列挙する
-            std::string ext = util::FileSystem::GetExtension(path);
-            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
             if (ext != ".fbzzprefab") continue;
 
             anyFound = true;
@@ -702,13 +702,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         std::function<void()> deferred;
 
         // 大文字小文字を無視した部分一致
-        auto toLower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
         auto contains = [&](const std::string& name) {
-            std::string nameLow  = name;
-            std::string filtLow  = m_searchFilter;
-            for (char& c : nameLow)  c = toLower(c);
-            for (char& c : filtLow)  c = toLower(c);
-            return nameLow.find(filtLow) != std::string::npos;
+            return util::StringUtils::ContainsCI(name, m_searchFilter);
         };
 
         for (auto& go : ctx.activeScene->GameObjects()) {

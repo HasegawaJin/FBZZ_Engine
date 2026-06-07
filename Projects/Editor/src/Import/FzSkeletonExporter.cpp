@@ -4,9 +4,9 @@
 #include <Editor/Import/FzSkeletonExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <assimp/scene.h>
 #include <cstring>
-#include <fstream>
 #include <unordered_map>
 #include <vector>
 
@@ -146,7 +146,7 @@ bool FzSkeletonExporter::Export(const aiScene* scene,
     }
 
     // ── バイナリ書き出し ─────────────────────────────────────────────────
-    std::ofstream out(outputPath, std::ios::binary);
+    auto out = util::FileSystem::OpenBinaryWriter(util::FileSystem::PathFromUtf8(outputPath));
     if (!out) {
         FBZZ_LOG_ERROR("FzSkeletonExporter: cannot open [%s]", outputPath.c_str());
         return false;

@@ -51,12 +51,11 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         lastScenePath = *v;
         // 相対パスで保存されていた場合は projectRoot と組み合わせて絶対パスに戻す
         if (!projectRoot.empty() && !lastScenePath.empty()) {
-            std::error_code ec;
-            std::filesystem::path p(lastScenePath);
+            std::filesystem::path p = util::FileSystem::PathFromUtf8(lastScenePath);
             if (p.is_relative()) {
-                const auto abs = std::filesystem::absolute(
-                    std::filesystem::path(projectRoot) / p, ec);
-                if (!ec) lastScenePath = abs.string();
+                const auto abs = util::FileSystem::MakeAbsolute(
+                    util::FileSystem::PathFromUtf8(projectRoot) / p);
+                lastScenePath = util::FileSystem::PathToUtf8(abs);
             }
         }
     }
@@ -95,10 +94,10 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後にシーンが見つからなくなる
     std::string scenePathToSave = lastScenePath;
     if (!projectRoot.empty() && !lastScenePath.empty()) {
-        std::error_code ec;
-        const std::filesystem::path rel = std::filesystem::relative(
-            std::filesystem::path(lastScenePath), std::filesystem::path(projectRoot), ec);
-        if (!ec && !rel.empty())
+        const std::filesystem::path rel = util::FileSystem::RelativePath(
+            util::FileSystem::PathFromUtf8(lastScenePath),
+            util::FileSystem::PathFromUtf8(projectRoot));
+        if (!rel.empty())
             scenePathToSave = rel.generic_string();
     }
 
