@@ -144,7 +144,11 @@ ShaderDescriptor DX11Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
                 D3D11_SHADER_TYPE_DESC     tDesc{};
                 if (FAILED(var->GetDesc(&vDesc))) continue;
                 if (FAILED(var->GetType()->GetDesc(&tDesc))) continue;
+                if (!vDesc.Name) continue;
 
+                // WHY: D3D Reflection は最適化済みシェーダーや匿名パディング相当の変数で
+                //      Name が null になる可能性がある。std::string_view(nullptr) は MSVC STL の
+                //      strlen 経路でクラッシュするため、null は編集対象外として捨てる。
                 std::string_view n = vDesc.Name;
                 // パディング変数はスキップ
                 if (n.starts_with("_")) continue;
@@ -181,6 +185,8 @@ ShaderDescriptor DX11Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
         refl->GetResourceBindingDesc(i, &bDesc);
         if (bDesc.Type == D3D_SIT_TEXTURE && bDesc.BindPoint < 5)
         {
+            if (!bDesc.Name) continue;
+
             ShaderTexBindDesc t;
             t.name = bDesc.Name;
             t.slot = bDesc.BindPoint;
