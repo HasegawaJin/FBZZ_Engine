@@ -5,6 +5,8 @@
 // 失敗は bool や空配列で返し、例外は使わない。
 #include <Engine/Util/FileSystem.hpp>
 #include <Windows.h>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -75,6 +77,43 @@ std::string FileSystem::GetDirectory(const std::string& path)
     size_t slash = path.find_last_of("/\\");
     if (slash == std::string::npos) return "";
     return path.substr(0, slash + 1);
+}
+
+std::string FileSystem::NormalizePathSeparators(std::string path, bool trimTrailingSlash)
+{
+    for (char& c : path) {
+        if (c == '\\') c = '/';
+    }
+    if (trimTrailingSlash) {
+        while (path.size() > 1 && path.back() == '/')
+            path.pop_back();
+    }
+    return path;
+}
+
+bool FileSystem::SamePathText(const std::string& a, const std::string& b)
+{
+    std::string lhs = NormalizePathSeparators(a);
+    std::string rhs = NormalizePathSeparators(b);
+    std::transform(lhs.begin(), lhs.end(), lhs.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(rhs.begin(), rhs.end(), rhs.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return lhs == rhs;
+}
+
+bool FileSystem::IsChildPathText(const std::string& path, const std::string& root)
+{
+    std::string normalizedPath = NormalizePathSeparators(path);
+    std::string normalizedRoot = NormalizePathSeparators(root);
+    std::transform(normalizedPath.begin(), normalizedPath.end(), normalizedPath.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(normalizedRoot.begin(), normalizedRoot.end(), normalizedRoot.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (normalizedRoot.empty()) return false;
+    if (normalizedPath == normalizedRoot) return true;
+    normalizedRoot += "/";
+    return normalizedPath.rfind(normalizedRoot, 0) == 0;
 }
 
 std::vector<std::string> FileSystem::ListFiles(const std::string& dir, const std::string& ext)
