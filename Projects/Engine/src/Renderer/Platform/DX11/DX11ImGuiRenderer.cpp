@@ -7,6 +7,7 @@
 
 #include <Engine/Renderer/IRenderTarget.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include "DX11Texture.hpp"
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
@@ -54,6 +55,17 @@ void* DX11ImGuiRenderer::GetImTextureID(ResourceHandle<RenderTargetTag> rt, Reso
         return nullptr;
     }
     return target->GetNativeSRV(slot);
+}
+
+void* DX11ImGuiRenderer::GetImTextureID(ResourceHandle<TextureTag> texture, ResourceManager& resources)
+{
+    auto* tex = resources.Get(texture);
+    if (!tex) {
+        return nullptr;
+    }
+
+    auto* dxTexture = static_cast<DX11Texture*>(tex);
+    return dxTexture->GetSRV();
 }
 
 } // namespace fbzz::renderer
