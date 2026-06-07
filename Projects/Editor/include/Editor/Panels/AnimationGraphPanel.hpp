@@ -1,0 +1,67 @@
+// FBZZ Engine
+// AnimationGraphPanel.hpp | fbzz::editor
+// AnimatorComponent のステートマシンをノードグラフとして編集するパネル
+// WHY: Inspector の縦リストでは遷移関係が追いづらいため、状態と遷移を同じ画面で直接編集できる UI を提供する。
+#pragma once
+#include <Editor/Panels/IPanel.hpp>
+#include <string>
+
+struct ImNodesContext;
+struct ImNodesEditorContext;
+
+namespace fbzz::scene {
+struct AnimatorComponent;
+struct AnimationTransition;
+} // namespace fbzz::scene
+
+namespace fbzz::editor {
+
+class AnimationGraphPanel final : public IPanel {
+public:
+    const char* GetWindowName() const override { return "Animation Graph"; }
+    void OnInit(EditorContext& ctx) override;
+    void OnShutdown() override;
+
+protected:
+    void OnRenderContent(EditorContext& ctx) override;
+
+private:
+    struct LinkRef {
+        int fromStateIndex = -1;
+        int transitionIndex = -1;
+    };
+
+    static int NodeId(int stateIndex);
+    static int InputPinId(int stateIndex);
+    static int OutputPinId(int stateIndex);
+    static int LinkId(int fromStateIndex, int transitionIndex);
+
+    void DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator);
+    void DrawZoomControls();
+    void DrawParameterSidebar(EditorContext& ctx, scene::AnimatorComponent& animator);
+    void DrawNodeCanvas(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
+    void DrawDetailsPane(EditorContext& ctx, scene::AnimatorComponent& animator);
+    void DrawTransitionEditor(EditorContext& ctx,
+                              scene::AnimatorComponent& animator,
+                              scene::AnimationTransition& transition);
+    void AddState(EditorContext& ctx, scene::AnimatorComponent& animator, const char* baseName);
+    void AddTransition(EditorContext& ctx, scene::AnimatorComponent& animator, int fromStateIndex, int toStateIndex);
+    void AutoLayoutStates(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
+    void DeleteState(EditorContext& ctx, scene::AnimatorComponent& animator, int stateIndex, const std::string& instanceId);
+    void RenameState(EditorContext& ctx,
+                     scene::AnimatorComponent& animator,
+                     int stateIndex,
+                     const std::string& oldName,
+                     const std::string& newName,
+                     const std::string& instanceId);
+    void ClearInvalidSelection(const scene::AnimatorComponent& animator);
+    LinkRef ResolveLink(int linkId, const scene::AnimatorComponent& animator) const;
+
+    ImNodesContext*       m_nodesContext = nullptr;
+    ImNodesEditorContext* m_editorContext = nullptr;
+    LinkRef               m_selectedLink;
+    int                   m_selectedNode = -1;
+    float                 m_canvasZoom = 1.0f;
+};
+
+} // namespace fbzz::editor
