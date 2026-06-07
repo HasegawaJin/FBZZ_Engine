@@ -124,7 +124,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat) continue;
+        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
 
@@ -141,7 +141,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const float dz = go.transform.position.z - cam.m_position.z;
         const float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) {
+        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
             opaqueStaticQueue.push_back({ &go, mr, mat, distSq });
         } else {
             // 半透明は即収集 (オクルージョンカリング対象外)
@@ -159,17 +159,17 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.vertexCount        = mr->mesh->vertexCount;
             dc.shader             = material->shader;
             dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
             dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[2] = material->paramsBuffer;
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
-            for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+            for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
-            transparentQueue.push_back({ dc, objData, distSq, mat->renderQueue });
+            transparentQueue.push_back({ dc, objData, distSq, mat->GetRenderQueue() });
         }
     }
 
@@ -179,7 +179,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
         auto* mat  = go.GetComponent<MaterialComponent>();
         auto* anim = go.GetComponent<AnimatorComponent>();
-        if (!smr || !smr->enabled || !smr->model || !mat) continue;
+        if (!smr || !smr->enabled || !smr->model || !mat || !mat->EnsureMaterialAsset()) continue;
 
         // WHY: スキンドメッシュには共通の bounds が設定されていないため
         //      Transform の位置でフラスタムの簡易チェックを行う。
@@ -190,7 +190,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const float dz = go.transform.position.z - cam.m_position.z;
         const float distSq = dx*dx + dy*dy + dz*dz;
 
-        if (mat->blendMode == renderer::BlendMode::OPAQUE_BLEND) {
+        if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
             opaqueSkinnedQueue.push_back({ &go, smr, mat, anim, distSq });
         } else {
             auto* material = SyncMaterial(*mat, resources);
@@ -222,7 +222,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 dc.vertexCount        = meshPtr->vertexCount;
                 dc.shader             = skinnedShader;
                 dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                         : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                         : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
                 dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
                 dc.constantBuffers[0] = h.frameCB;
                 dc.constantBuffers[1] = h.objectCB;
@@ -230,10 +230,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 dc.constantBuffers[3] = h.lightCB;
                 dc.constantBuffers[4] = h.shadowCB;
                 dc.constantBuffers[7] = skinCB;
-                for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+                for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                     if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
                 dc.textures[8] = shadowDepthTex;
-                transparentQueue.push_back({ dc, objData, distSq, mat->renderQueue });
+                transparentQueue.push_back({ dc, objData, distSq, mat->GetRenderQueue() });
             }
         }
     }
@@ -249,14 +249,14 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 
     std::sort(opaqueStaticQueue.begin(), opaqueStaticQueue.end(),
         [](const OpaqueStaticEntry& a, const OpaqueStaticEntry& b) {
-            if (a.mat->renderQueue != b.mat->renderQueue)
-                return a.mat->renderQueue < b.mat->renderQueue;
+            if (a.mat->GetRenderQueue() != b.mat->GetRenderQueue())
+                return a.mat->GetRenderQueue() < b.mat->GetRenderQueue();
             return a.distSq < b.distSq;
         });
     std::sort(opaqueSkinnedQueue.begin(), opaqueSkinnedQueue.end(),
         [](const OpaqueSkinnedEntry& a, const OpaqueSkinnedEntry& b) {
-            if (a.mat->renderQueue != b.mat->renderQueue)
-                return a.mat->renderQueue < b.mat->renderQueue;
+            if (a.mat->GetRenderQueue() != b.mat->GetRenderQueue())
+                return a.mat->GetRenderQueue() < b.mat->GetRenderQueue();
             return a.distSq < b.distSq;
         });
 
@@ -294,14 +294,14 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         dc.vertexCount        = mr->mesh->vertexCount;
         dc.shader             = material->shader;
         dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                 : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                 : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
         dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = material->paramsBuffer;
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[4] = h.shadowCB;
-        for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+        for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
             if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         dc.textures[8] = shadowDepthTex;
         renderer.Submit(dc, resources);
@@ -353,7 +353,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.vertexCount        = meshPtr->vertexCount;
             dc.shader             = skinnedShader;
             dc.pipelineState      = rs.IsWireframe() ? h.wireframePSO
-                                                     : GetOrCreateMaterialPSO(resources, mat->blendMode, mat->doubleSided);
+                                                     : GetOrCreateMaterialPSO(resources, mat->GetBlendMode(), mat->IsDoubleSided());
             dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
@@ -361,7 +361,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[7] = skinCB;
-            for (size_t ti = 0; ti < material->textures.size() && ti < 5; ++ti)
+            for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
             dc.textures[8] = shadowDepthTex;
             renderer.Submit(dc, resources);

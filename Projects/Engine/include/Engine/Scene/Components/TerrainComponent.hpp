@@ -8,8 +8,9 @@
 //      TerrainRenderSystem がチャンク分割と GPU 転送を行う構造にすることで
 //      「データ所有」と「描画戦略」を分離する。
 //
-// TerrainLayer : テクスチャ 1 レイヤーの定義（拡散光テクスチャ・法線マップ・タイリング）
-// TerrainComponent : 地形の全データ（ハイトマップ・スプラットマップ・レイヤー・描画パラメータ）
+// テクスチャレイヤーパラメータ (tilingX, roughness, etc.) および
+// レイヤーテクスチャパスは materialPath が指す .fzmat で管理する。
+// WHY: レイヤーパラメータをコンポーネントに持つと再利用・バリエーション管理が難しい。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -22,64 +23,6 @@
 #include <vector>
 
 namespace fbzz::scene {
-
-// =============================================================================
-// TerrainLayer — テクスチャ 1 レイヤーの定義
-// TerrainComponent.layers に最大 4 つまで格納できる。
-// スプラットマップの各チャンネル (R/G/B/A) がそれぞれ 1 レイヤーに対応する。
-// =============================================================================
-struct TerrainLayer {
-    // AssetManager がロードするファイルパス。空文字 = 未設定（白テクスチャで代替）
-    std::string diffusePath; // 例: "assets/terrain/grass_d.png"
-    std::string normalPath;  // 例: "assets/terrain/grass_n.png"  空文字 = フラット法線
-    std::string aoRoughnessPath; // R=AO, G=Roughness。空文字なら下の数値を使う。
-
-    // UV タイリング係数。地形全体 UV に掛け算する倍率。
-    // WHY: 地形は広大なので UV を [0,1] のままにするとテクスチャが間延びする。
-    //      tilingX / tilingZ で独立に設定して非正方形地形に対応する。
-    float tilingX        = 8.0f;
-    float tilingZ        = 8.0f;
-    float normalStrength = 1.0f; // 法線マップの強度スケール [0, ∞)
-
-    // ライティング用の表面パラメータ。スプラットウェイトでレイヤー間を補間する。
-    // WHY: Terrain は MaterialComponent を持たず専用シェーダーで描くため、
-    //      粗さと AO を TerrainLayer に集約してペイント結果と一緒に管理する。
-    float roughness        = 0.8f; // 0=鏡面に近い、1=拡散に近い
-    float ambientOcclusion = 1.0f; // 0=強く遮蔽、1=遮蔽なし
-
-    // 高さ・傾斜による自動ブレンド設定。
-    // WHAT: height は Terrain ローカル高さ [m]、slope は 0=水平、1=垂直に近い面として評価する。
-    // WHY: 草・岩・雪のような自然地形は手塗りだけだと制作コストが高いため、
-    //      大まかなルールをレイヤーに持たせて、手塗り splat と合成できるようにする。
-    bool  autoBlendEnabled  = false;
-    float autoBlendStrength = 1.0f;
-    float autoMinHeight     = -10000.0f;
-    float autoMaxHeight     =  10000.0f;
-    float autoHeightFade    =  1.0f;
-    float autoMinSlope      =  0.0f;
-    float autoMaxSlope      =  1.0f;
-    float autoSlopeFade     =  0.1f;
-
-    void Reflect(IReflector& r)
-    {
-        r.Field("diffusePath",    diffusePath);
-        r.Field("normalPath",     normalPath);
-        r.Field("aoRoughnessPath", aoRoughnessPath);
-        r.Field("tilingX",        tilingX);
-        r.Field("tilingZ",        tilingZ);
-        r.Field("normalStrength", normalStrength);
-        r.Field("roughness",      roughness);
-        r.Field("ambientOcclusion", ambientOcclusion);
-        r.Field("autoBlendEnabled", autoBlendEnabled);
-        r.Field("autoBlendStrength", autoBlendStrength);
-        r.Field("autoMinHeight", autoMinHeight);
-        r.Field("autoMaxHeight", autoMaxHeight);
-        r.Field("autoHeightFade", autoHeightFade);
-        r.Field("autoMinSlope", autoMinSlope);
-        r.Field("autoMaxSlope", autoMaxSlope);
-        r.Field("autoSlopeFade", autoSlopeFade);
-    }
-};
 
 // =============================================================================
 // TerrainComponent — 地形の全データ
@@ -110,8 +53,10 @@ struct TerrainComponent {
     //      Prefab や Scene には参照だけを残し、重い編集データは専用アセットへ分離する。
     std::string terrainAssetPath;
 
-    // ── テクスチャレイヤー (最大 4) ────────────────────────────────────────────
-    std::vector<TerrainLayer> layers; // .size() <= 4
+    // ── マテリアルアセット参照 ──────────────────────────────────────────────────
+    // テクスチャレイヤー・タイリング・roughness 等の視覚パラメータは .fzmat で管理する。
+    // fzmat keys: "layer0_diffuse", "layer0_normal", "layer0_ao_roughness", "layer0_tilingX", ...
+    std::string materialPath;
 
     // ── チャンク設定 ────────────────────────────────────────────────────────────
     // 地形を chunkSize × chunkSize マスのブロックに分割して描画。
@@ -136,7 +81,8 @@ struct TerrainComponent {
         r.Field("maxHeight",  maxHeight);
         r.Field("chunkSize",  chunkSize);
         r.Field("terrainAssetPath", terrainAssetPath);
-        // layers / heightData / splatData は IReflector の対応型（float/int/bool/string）に
+        r.Field("materialPath",     materialPath);
+        // heightData / splatData は IReflector の対応型（float/int/bool/string）に
         // 収まらないため、SceneSerializer が TerrainComponent を直接扱う専用コードで読み書きする。
     }
 

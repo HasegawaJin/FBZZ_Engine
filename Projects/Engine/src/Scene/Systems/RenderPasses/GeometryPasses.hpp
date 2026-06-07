@@ -82,10 +82,22 @@ bool IsVisibleInFrustum(const math::Frustum& frustum,
                         const Transform& tf,
                         const renderer::Mesh& mesh);
 
-// Deferred GBuffer に書き込めないエフェクト系シェーダーかどうかを判定する。
-// RimLight / Toon / Subsurface / Anisotropic / Dissolve / Unlit は
-// 標準 GBuffer (albedo / normal / roughness / metallic) に収まらない
-// 独自ライティング計算を持つため、Deferred でも Forward パスで描画する。
+// Deferred GBuffer に書き込めないエフェクト系シェーダーかどうかをシェーダーパス名で判定する。
+// 後方互換のため残す。新規呼び出しは IsForwardOnly(MaterialComponent) を使うこと。
 bool IsForwardOnlyShader(std::string_view shaderPath);
+
+// fzmat の render_path フィールドを優先し、"auto" の場合は名前チェックにフォールバックする。
+// WHY: カスタムシェーダーはエンジンコードを触らず render_path = "forward"/"deferred" で
+//      自分のレンダーパスを制御できるようにするため。
+bool IsForwardOnly(const MaterialComponent& mc);
+
+// static mesh 専用シェーダー (Surface) かどうかをシェーダーパス名で判定する。
+// 後方互換のため残す。新規呼び出しは IsSurfaceMaterial(MaterialComponent) を使うこと。
+bool IsSurfaceMaterialShader(std::string_view shaderPath);
+
+// fzmat の mesh_type フィールドを優先し、"any" の場合はパス名チェックにフォールバックする。
+// WHY: カスタムシェーダーはエンジンコードを触らず mesh_type = "surface"/"skinned"/"any" で
+//      対応するメッシュタイプを宣言できるようにするため。
+bool IsSurfaceMaterial(const MaterialComponent& mc);
 
 } // namespace fbzz::scene
