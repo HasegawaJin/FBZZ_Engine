@@ -5,6 +5,18 @@
 // 失敗は bool や空配列で返し、例外は使わない。
 #include <Engine/Util/FileSystem.hpp>
 #include <Windows.h>
+
+// WHY: Windows.h は CopyFile / GetCurrentDirectory を A / W サフィックス付き関数へ置換する。
+//      FileSystem のメンバー関数名まで置換されると、ヘッダ宣言と実装名がずれて
+//      MSVC が FileSystem::CopyFileA などを探してしまうため、Win32 API を直接呼ばない本ファイルでは解除する。
+#ifdef CopyFile
+#undef CopyFile
+#endif
+
+#ifdef GetCurrentDirectory
+#undef GetCurrentDirectory
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -136,6 +148,47 @@ std::vector<std::string> FileSystem::ListFiles(const std::string& dir, const std
     return result;
 }
 
+std::vector<std::filesystem::path> FileSystem::ListFiles(const std::filesystem::path& dir)
+{
+    std::vector<std::filesystem::path> result;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (entry.is_regular_file(ec))
+            result.push_back(entry.path());
+    }
+    return result;
+}
+
+std::vector<std::filesystem::path> FileSystem::ListFilesRecursive(const std::filesystem::path& dir)
+{
+    std::vector<std::filesystem::path> result;
+    std::error_code ec;
+    std::filesystem::recursive_directory_iterator it(
+        dir,
+        std::filesystem::directory_options::skip_permission_denied,
+        ec);
+    const std::filesystem::recursive_directory_iterator end;
+
+    while (!ec && it != end) {
+        if (it->is_regular_file(ec))
+            result.push_back(it->path());
+        it.increment(ec);
+    }
+
+    return result;
+}
+
+std::vector<std::filesystem::path> FileSystem::ListDirectories(const std::filesystem::path& dir)
+{
+    std::vector<std::filesystem::path> result;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (entry.is_directory(ec))
+            result.push_back(entry.path());
+    }
+    return result;
+}
+
 std::vector<std::string> FileSystem::ListAll(const std::string& dir)
 {
     std::vector<std::string> result;
@@ -162,6 +215,70 @@ bool FileSystem::EnsureDirectory(const std::string& path)
     return ok || GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
+bool FileSystem::EnsureDirectory(const std::filesystem::path& path)
+{
+    if (path.empty()) return true;
+    std::error_code ec;
+    if (std::filesystem::is_directory(path, ec)) return true;
+    ec.clear();
+    return std::filesystem::create_directories(path, ec) || !ec;
+}
+
+bool FileSystem::EnsureParentDirectory(const std::filesystem::path& path)
+{
+    const std::filesystem::path parent = path.parent_path();
+    return parent.empty() || EnsureDirectory(parent);
+}
+
+bool FileSystem::CopyFile(const std::filesystem::path& src, const std::filesystem::path& dst, bool overwrite)
+{
+    if (!EnsureParentDirectory(dst)) return false;
+    std::error_code ec;
+    const auto options = overwrite
+        ? std::filesystem::copy_options::overwrite_existing
+        : std::filesystem::copy_options::none;
+    std::filesystem::copy_file(src, dst, options, ec);
+    return !ec;
+}
+
+bool FileSystem::CopyFileA(const std::filesystem::path& src, const std::filesystem::path& dst, bool overwrite)
+{
+    return CopyFile(src, dst, overwrite);
+}
+
+bool FileSystem::CopyFileW(const std::filesystem::path& src, const std::filesystem::path& dst, bool overwrite)
+{
+    return CopyFile(src, dst, overwrite);
+}
+
+bool FileSystem::CopyDirectoryRecursive(const std::filesystem::path& src, const std::filesystem::path& dst, bool overwrite)
+{
+    if (!EnsureDirectory(dst)) return false;
+    std::error_code ec;
+    const auto options = std::filesystem::copy_options::recursive |
+        (overwrite ? std::filesystem::copy_options::overwrite_existing
+                   : std::filesystem::copy_options::none);
+    std::filesystem::copy(src, dst, options, ec);
+    return !ec;
+}
+
+bool FileSystem::RemoveAll(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) return true;
+    ec.clear();
+    std::filesystem::remove_all(path, ec);
+    return !ec;
+}
+
+bool FileSystem::Rename(const std::filesystem::path& src, const std::filesystem::path& dst)
+{
+    if (!EnsureParentDirectory(dst)) return false;
+    std::error_code ec;
+    std::filesystem::rename(src, dst, ec);
+    return !ec;
+}
+
 bool FileSystem::ReadText(const std::string& path, std::string& out)
 {
     const std::wstring widePath = Utf8ToWide(path);
@@ -186,6 +303,44 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
     return true;
 }
 
+std::ofstream FileSystem::OpenBinaryWriter(const std::filesystem::path& path)
+{
+    if (!EnsureParentDirectory(path)) return {};
+    return std::ofstream(path, std::ios::binary);
+}
+
+bool FileSystem::ReadBinary(const std::filesystem::path& path, std::vector<uint8_t>& out)
+{
+    out.clear();
+
+    // WHY: バイナリアセットの読み込み経路を FileSystem に集約し、Hub / Editor / Engine で
+    //      Windows の wchar_t パス対応と失敗時 bool 戻り値の方針を揃える。
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    if (!f.is_open()) return false;
+
+    const std::streamsize size = f.tellg();
+    if (size <= 0) return false;
+
+    out.resize(static_cast<size_t>(size));
+    f.seekg(0, std::ios::beg);
+    f.read(reinterpret_cast<char*>(out.data()), size);
+    if (!f.good()) {
+        out.clear();
+        return false;
+    }
+
+    return true;
+}
+
+bool FileSystem::WriteBinary(const std::filesystem::path& path, const void* data, size_t size)
+{
+    if (!data && size > 0) return false;
+    std::ofstream f = OpenBinaryWriter(path);
+    if (!f.is_open()) return false;
+    f.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
+    return f.good();
+}
+
 // --- std::filesystem::path オーバーロード ---
 
 bool FileSystem::Exists(const std::filesystem::path& path)
@@ -208,12 +363,67 @@ bool FileSystem::ReadText(const std::filesystem::path& path, std::string& out)
     return true;
 }
 
+bool FileSystem::WriteText(const std::filesystem::path& path, const std::string& text)
+{
+    if (!EnsureParentDirectory(path)) return false;
+    std::ofstream f(path, std::ios::binary);
+    if (!f.is_open()) return false;
+    f << text;
+    return true;
+}
+
+std::filesystem::path FileSystem::PathFromUtf8(const std::string& path)
+{
+    return std::filesystem::path(Utf8ToWide(path));
+}
+
+std::string FileSystem::PathToUtf8(const std::filesystem::path& path)
+{
+    return NormalizePathSeparators(WideToUtf8(path.wstring()), false);
+}
+
+std::filesystem::path FileSystem::RelativePath(const std::filesystem::path& path, const std::filesystem::path& root)
+{
+    std::error_code ec;
+    const std::filesystem::path rel = std::filesystem::relative(path, root, ec);
+    return ec ? std::filesystem::path{} : rel;
+}
+
 std::filesystem::path FileSystem::MakeAbsolute(const std::filesystem::path& path)
 {
     // WHY: 失敗時は入力をそのまま返し、呼び出し元にフォールバック処理を課さない。
     std::error_code ec;
     const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
     return ec ? path : absolute.lexically_normal();
+}
+
+bool FileSystem::SamePath(const std::filesystem::path& a, const std::filesystem::path& b)
+{
+    std::error_code ec;
+    if (std::filesystem::exists(a, ec) && std::filesystem::exists(b, ec)) {
+        ec.clear();
+        const bool equivalent = std::filesystem::equivalent(a, b, ec);
+        if (!ec) return equivalent;
+    }
+
+    return SamePathText(PathToUtf8(a.lexically_normal()), PathToUtf8(b.lexically_normal()));
+}
+
+std::filesystem::path FileSystem::GetCurrentDirectory()
+{
+    std::error_code ec;
+    const std::filesystem::path current = std::filesystem::current_path(ec);
+    return ec ? std::filesystem::path{} : current;
+}
+
+std::filesystem::path FileSystem::GetCurrentDirectoryA()
+{
+    return GetCurrentDirectory();
+}
+
+std::filesystem::path FileSystem::GetCurrentDirectoryW()
+{
+    return GetCurrentDirectory();
 }
 
 std::filesystem::path FileSystem::GetExecutableDirectory()
