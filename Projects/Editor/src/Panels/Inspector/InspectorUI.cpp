@@ -115,10 +115,12 @@ void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_com
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
                     // .png / .fnt どちらをドロップしても拡張子を取り除く
-                    const std::string ext4 = dropped.size() >= 4
-                        ? dropped.substr(dropped.size() - 4) : "";
-                    if (ext4 == ".png" || ext4 == ".fnt")
-                        dropped = dropped.substr(0, dropped.size() - 4);
+                    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(dropped));
+                    if (ext == ".png" || ext == ".fnt") {
+                        std::filesystem::path fontPath = util::FileSystem::PathFromUtf8(dropped);
+                        fontPath.replace_extension();
+                        dropped = util::FileSystem::PathToUtf8(fontPath);
+                    }
                     text.fontPath = dropped;
                 }
                 ImGui::EndDragDropTarget();

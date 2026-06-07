@@ -5,6 +5,7 @@
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/MathUtils.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -194,8 +195,8 @@ void WaterTool::OnEditorGUI(
     }
     if (!hasWater) return;
 
-    // WHY: 初回のみ右下に配置し、以降はドラッグで任意の位置に移動できる。
-    //      TerrainTool と同じ配置方針。
+    // WHY: 初回のみ右下に配置し、以降はドラッグや Docking で任意の場所に置けるようにする。
+    //      Docking 時は ImGui 側が DockNode の配置を優先するため、この初期位置は未配置時だけ使われる。
     const ImGuiViewport* mainVP = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(
         { mainVP->WorkPos.x + mainVP->WorkSize.x - 270.0f,
@@ -206,11 +207,10 @@ void WaterTool::OnEditorGUI(
 
     constexpr ImGuiWindowFlags kFlags =
         ImGuiWindowFlags_NoNav              |
-        ImGuiWindowFlags_NoSavedSettings    |
-        ImGuiWindowFlags_NoDocking          |
         ImGuiWindowFlags_NoFocusOnAppearing;
 
-    const char* title = m_active ? "Water Tool" : "Water Tool [OFF]";
+    // WHY: 表示名に [OFF] を付けても Docking ID が変わらないよう、### 以降を固定 ID にする。
+    const char* title = m_active ? "Water Tool###WaterTool" : "Water Tool [OFF]###WaterTool";
     if (!ImGui::Begin(title, nullptr, kFlags)) { ImGui::End(); return; }
 
     // ── ON/OFF トグル ──────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ void WaterTool::DrawAssetSection(
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
             std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-            if (dropped.size() > 6 && dropped.substr(dropped.size() - 6) == ".fzmat") {
+            if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
                 water.materialPath = dropped;
                 markDirty();
             }

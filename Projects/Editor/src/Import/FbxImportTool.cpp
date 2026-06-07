@@ -8,6 +8,7 @@
 #include <Editor/Import/FzMeshExporter.hpp>
 #include <Editor/Import/FzSkeletonExporter.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <assimp/config.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -96,20 +97,20 @@ bool FbxImportTool::Import(const std::string& fbxPath,
                        fbxPath.c_str());
     }
 
-    const std::string fbxDir   = fs::path(fbxPath).parent_path().string();
-    const std::string baseName = fs::path(fbxPath).stem().string();
+    const fs::path fbxFsPath = util::FileSystem::PathFromUtf8(fbxPath);
+    const std::string fbxDir   = util::FileSystem::PathToUtf8(fbxFsPath.parent_path());
+    const std::string baseName = util::FileSystem::PathToUtf8(fbxFsPath.stem());
     const float       unitScale = ReadUnitScale(scene);
     const bool        hasSkin   = HasSkinning(scene);
 
     // ── 出力ディレクトリを作成 ────────────────────────────────────────────
-    std::error_code ec;
-    const fs::path meshDir  = fs::path(outputDir) / "meshes";
-    const fs::path matDir   = fs::path(outputDir) / "materials";
-    const fs::path texDir   = fs::path(outputDir) / "textures";
-    fs::create_directories(meshDir, ec);
-    fs::create_directories(matDir,  ec);
-    fs::create_directories(texDir,  ec);
-    if (ec) {
+    const fs::path outDirPath = util::FileSystem::PathFromUtf8(outputDir);
+    const fs::path meshDir  = outDirPath / "meshes";
+    const fs::path matDir   = outDirPath / "materials";
+    const fs::path texDir   = outDirPath / "textures";
+    if (!util::FileSystem::EnsureDirectory(meshDir) ||
+        !util::FileSystem::EnsureDirectory(matDir) ||
+        !util::FileSystem::EnsureDirectory(texDir)) {
         FBZZ_LOG_ERROR("FbxImportTool: cannot create output dirs [%s]", outputDir.c_str());
         return false;
     }
@@ -118,8 +119,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     bool success = false;
     auto cleanup = [&] {
         if (!success) {
-            std::error_code e2;
-            fs::remove_all(outputDir, e2);
+            util::FileSystem::RemoveAll(outDirPath);
         }
     };
     struct Guard { std::function<void()> fn; ~Guard() { fn(); } } guard{ cleanup };
@@ -130,14 +130,12 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     manifest.unitScale  = unitScale;
     manifest.sourceHint = sourceHint.empty() ? fbxPath : sourceHint;
 
-    const fs::path outDirPath(outputDir);
-
     // ── メッシュ ──────────────────────────────────────────────────────────
     for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
         const aiMesh* mesh     = scene->mMeshes[mi];
         const bool    skinned  = mesh->HasBones();
         const std::string meshPath =
-            (meshDir / ("mesh_" + std::to_string(mi) + ".fzmesh")).string();
+            util::FileSystem::PathToUtf8(meshDir / ("mesh_" + std::to_string(mi) + ".fzmesh"));
 
         if (!FzMeshExporter::Export(mesh, scene, unitScale, skinned, meshPath)) {
             FBZZ_LOG_ERROR("FbxImportTool: mesh export failed [%u]", mi);
@@ -145,20 +143,22 @@ bool FbxImportTool::Import(const std::string& fbxPath,
         }
 
         // .fzasset からの相対パス (manifest と同じ outputDir を起点にする)
-        const std::string relMesh = fs::relative(meshPath, outDirPath).string();
+        const std::string relMesh = util::FileSystem::PathToUtf8(
+            util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(meshPath), outDirPath));
         manifest.meshPaths.push_back(relMesh);
 
         // 対応マテリアル
         const uint32_t matIdx = mesh->mMaterialIndex;
         if (matIdx < scene->mNumMaterials && matCache.paths[matIdx].empty()) {
             const std::string matPath =
-                (matDir / ("mat_" + std::to_string(matIdx) + ".fzmat")).string();
+                util::FileSystem::PathToUtf8(matDir / ("mat_" + std::to_string(matIdx) + ".fzmat"));
             if (!FzMaterialExporter::Export(scene->mMaterials[matIdx], scene,
-                                             fbxDir, texDir.string(), matPath)) {
+                                             fbxDir, util::FileSystem::PathToUtf8(texDir), matPath)) {
                 FBZZ_LOG_ERROR("FbxImportTool: material export failed [%u]", matIdx);
                 return false;
             }
-            matCache.paths[matIdx] = fs::relative(matPath, outDirPath).string();
+            matCache.paths[matIdx] = util::FileSystem::PathToUtf8(
+                util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(matPath), outDirPath));
         }
         manifest.materialPaths.push_back(
             matIdx < scene->mNumMaterials ? matCache.paths[matIdx] : std::string{});
@@ -166,32 +166,34 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
     // ── スケルトン ────────────────────────────────────────────────────────
     if (hasSkin) {
-        const std::string skelPath = (fs::path(outputDir) / (baseName + ".fzskel")).string();
+        const std::string skelPath = util::FileSystem::PathToUtf8(outDirPath / (baseName + ".fzskel"));
         if (!FzSkeletonExporter::Export(scene, unitScale, skelPath)) {
             FBZZ_LOG_ERROR("FbxImportTool: skeleton export failed");
             return false;
         }
-        manifest.skeletonPath = fs::relative(skelPath, outDirPath).string();
+        manifest.skeletonPath = util::FileSystem::PathToUtf8(
+            util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(skelPath), outDirPath));
     }
 
     // ── アニメーション ────────────────────────────────────────────────────
-    const fs::path animDir = fs::path(outputDir) / "anims";
+    const fs::path animDir = outDirPath / "anims";
     if (scene->mNumAnimations > 0) {
-        fs::create_directories(animDir, ec);
+        util::FileSystem::EnsureDirectory(animDir);
         for (uint32_t ai = 0; ai < scene->mNumAnimations; ++ai) {
             const std::string animPath =
-                (animDir / ("clip_" + std::to_string(ai) + ".fzanim")).string();
+                util::FileSystem::PathToUtf8(animDir / ("clip_" + std::to_string(ai) + ".fzanim"));
             if (!FzAnimationExporter::Export(scene->mAnimations[ai], animPath, unitScale)) {
                 FBZZ_LOG_ERROR("FbxImportTool: animation export failed [%u]", ai);
                 return false;
             }
-            manifest.animPaths.push_back(fs::relative(animPath, outDirPath).string());
+            manifest.animPaths.push_back(util::FileSystem::PathToUtf8(
+                util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(animPath), outDirPath)));
         }
     }
 
     // ── マニフェスト ──────────────────────────────────────────────────────
     const std::string manifestPath =
-        (fs::path(outputDir) / (baseName + ".fzasset")).string();
+        util::FileSystem::PathToUtf8(outDirPath / (baseName + ".fzasset"));
     if (!FzAssetWriter::Write(manifest, manifestPath)) {
         FBZZ_LOG_ERROR("FbxImportTool: manifest write failed");
         return false;

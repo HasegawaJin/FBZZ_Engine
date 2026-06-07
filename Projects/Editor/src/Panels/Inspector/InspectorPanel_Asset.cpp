@@ -77,7 +77,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     const std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    if (dropped.ends_with(".hlsl")) {
+                    if (util::StringUtils::EndsWith(dropped, ".hlsl")) {
                         mat.shaderPath = dropped;
                         materialDirty = true;
                     }

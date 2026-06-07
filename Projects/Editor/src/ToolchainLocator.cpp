@@ -3,39 +3,22 @@
 // RuntimeBuild が使用する CMake とビルド成果物パスの解決
 #include <Editor/ToolchainLocator.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
 #include <filesystem>
-#include <fstream>
 #include <sstream>
 #include <string>
 
 namespace fbzz::editor {
 namespace {
 
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int len = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    std::wstring out(static_cast<size_t>(len), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), len);
-    return out;
-}
-
 std::filesystem::path NormalizeConfigPath(const std::filesystem::path& configPath, const std::string& value)
 {
-    std::filesystem::path path(Utf8ToWide(value));
+    std::filesystem::path path = util::FileSystem::PathFromUtf8(value);
     if (!path.is_absolute())
         path = configPath.parent_path() / path;
     return path.lexically_normal();
-}
-
-std::string TrimLine(const std::string& text)
-{
-    const auto begin = text.find_first_not_of(" \t\r\n");
-    if (begin == std::string::npos) return {};
-
-    const auto end = text.find_last_not_of(" \t\r\n");
-    return text.substr(begin, end - begin + 1);
 }
 
 // buildRoot 直下、または 1 段下のサブディレクトリから build.config を探す。
@@ -46,14 +29,12 @@ std::filesystem::path FindBuildConfigUnderRoot(const std::filesystem::path& buil
     if (buildRoot.empty()) return {};
 
     const std::filesystem::path direct = buildRoot / L"build.config";
-    if (std::filesystem::exists(direct))
+    if (util::FileSystem::Exists(direct))
         return direct;
 
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(buildRoot, ec)) {
-        if (!entry.is_directory(ec)) continue;
-        const std::filesystem::path candidate = entry.path() / L"build.config";
-        if (std::filesystem::exists(candidate))
+    for (const auto& dir : util::FileSystem::ListDirectories(buildRoot)) {
+        const std::filesystem::path candidate = dir / L"build.config";
+        if (util::FileSystem::Exists(candidate))
             return candidate;
     }
     return {};
@@ -61,16 +42,17 @@ std::filesystem::path FindBuildConfigUnderRoot(const std::filesystem::path& buil
 
 bool ReadBuildConfig(const std::filesystem::path& path, ToolchainLocator::Result& out)
 {
-    std::ifstream ifs(path, std::ios::binary);
-    if (!ifs) return false;
+    std::string text;
+    if (!util::FileSystem::ReadText(path, text)) return false;
 
     std::string line;
-    while (std::getline(ifs, line)) {
+    std::istringstream lines(text);
+    while (std::getline(lines, line)) {
         const size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
 
-        const std::string key = TrimLine(line.substr(0, eq));
-        const std::string value = TrimLine(line.substr(eq + 1));
+        const std::string key = util::StringUtils::Trim(line.substr(0, eq));
+        const std::string value = util::StringUtils::Trim(line.substr(eq + 1));
         if (key == "cmake_exe") {
             out.cmakeExe = NormalizeConfigPath(path, value);
         } else if (key == "build_dir") {
@@ -103,7 +85,7 @@ std::filesystem::path FindVisualStudioCMake()
 
     const std::filesystem::path vswhere =
         std::filesystem::path(programFilesX86) / L"Microsoft Visual Studio" / L"Installer" / L"vswhere.exe";
-    if (!std::filesystem::exists(vswhere)) return {};
+    if (!util::FileSystem::Exists(vswhere)) return {};
 
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE readPipe = INVALID_HANDLE_VALUE;
@@ -149,9 +131,9 @@ std::filesystem::path FindVisualStudioCMake()
     if (output.empty()) return {};
 
     const std::filesystem::path cmake =
-        std::filesystem::path(Utf8ToWide(output)) /
+        util::FileSystem::PathFromUtf8(output) /
         L"Common7" / L"IDE" / L"CommonExtensions" / L"Microsoft" / L"CMake" / L"CMake" / L"bin" / L"cmake.exe";
-    return std::filesystem::exists(cmake) ? cmake : std::filesystem::path{};
+    return util::FileSystem::Exists(cmake) ? cmake : std::filesystem::path{};
 }
 
 } // namespace
@@ -167,34 +149,34 @@ ToolchainLocator::Result ToolchainLocator::Locate(const std::filesystem::path& b
     }
 
     const std::filesystem::path configPath = FindBuildConfigUnderRoot(buildRoot);
-    if (configPath.empty() || !std::filesystem::exists(configPath)) {
-        result.error = "build.config が " + buildRoot.string()
+    if (configPath.empty() || !util::FileSystem::Exists(configPath)) {
+        result.error = "build.config が " + util::FileSystem::PathToUtf8(buildRoot)
                      + " 内に見つかりません。cmake --preset fbzz-vs を実行して Configure してください。";
         return result;
     }
 
     if (!ReadBuildConfig(configPath, result)) {
         result.error = "build.config の解析に失敗しました (build_dir / exe_debug / exe_release が未設定): "
-                     + configPath.string();
+                     + util::FileSystem::PathToUtf8(configPath);
         return result;
     }
 
-    if (result.cmakeExe.empty() || !std::filesystem::exists(result.cmakeExe))
+    if (result.cmakeExe.empty() || !util::FileSystem::Exists(result.cmakeExe))
         result.cmakeExe = FindCMakeOnPath();
-    if (result.cmakeExe.empty() || !std::filesystem::exists(result.cmakeExe))
+    if (result.cmakeExe.empty() || !util::FileSystem::Exists(result.cmakeExe))
         result.cmakeExe = FindVisualStudioCMake();
 
     result.found = !result.cmakeExe.empty()
-                && std::filesystem::exists(result.cmakeExe)
-                && std::filesystem::exists(result.buildDir);
+                && util::FileSystem::Exists(result.cmakeExe)
+                && util::FileSystem::Exists(result.buildDir);
     if (!result.found) {
         result.error = "build.config は見つかりましたが cmake.exe または build_dir を解決できません。";
         FBZZ_LOG_WARN("ToolchainLocator: %s", result.error.c_str());
     } else {
         FBZZ_LOG_DEBUG("ToolchainLocator: cmake=%s build=%s exe_debug=%s",
-            configPath.string().c_str(),
-            result.buildDir.string().c_str(),
-            result.exeDebug.string().c_str());
+            util::FileSystem::PathToUtf8(configPath).c_str(),
+            util::FileSystem::PathToUtf8(result.buildDir).c_str(),
+            util::FileSystem::PathToUtf8(result.exeDebug).c_str());
     }
 
     return result;
