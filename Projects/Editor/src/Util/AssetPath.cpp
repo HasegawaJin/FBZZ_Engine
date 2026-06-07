@@ -3,13 +3,15 @@
 // Editor 内で共有する Assets 起点パスの正規化ユーティリティ
 #include <Editor/Util/AssetPath.hpp>
 
-#include <algorithm>
+#include <Engine/Util/FileSystem.hpp>
+
+#include <utility>
 
 namespace fbzz::editor {
 
 std::string NormalizeAssetPath(std::string path)
 {
-    std::replace(path.begin(), path.end(), '\\', '/');
+    path = util::FileSystem::NormalizePathSeparators(std::move(path));
 
     if (path.rfind("Assets/", 0) == 0)
         return path;

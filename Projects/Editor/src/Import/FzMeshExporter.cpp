@@ -4,11 +4,11 @@
 #include <Editor/Import/FzMeshExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <assimp/mesh.h>
 #include <assimp/scene.h>
 #include <array>
 #include <cstring>
-#include <fstream>
 #include <unordered_map>
 #include <vector>
 
@@ -156,7 +156,7 @@ bool FzMeshExporter::Export(const aiMesh* mesh,
 {
     using namespace asset;
 
-    std::ofstream out(outputPath, std::ios::binary);
+    auto out = util::FileSystem::OpenBinaryWriter(util::FileSystem::PathFromUtf8(outputPath));
     if (!out) {
         FBZZ_LOG_ERROR("FzMeshExporter: cannot open [%s]", outputPath.c_str());
         return false;

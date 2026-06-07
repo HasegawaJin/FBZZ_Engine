@@ -7,6 +7,7 @@
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -51,8 +52,7 @@ bool ScriptDllLoader::Load(const std::filesystem::path& dllPath)
 
     m_dllPath = dllPath;
 
-    std::error_code ec;
-    if (!std::filesystem::exists(dllPath, ec)) {
+    if (!util::FileSystem::Exists(dllPath)) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Load: DLL not found: %ls",
                        dllPath.wstring().c_str());
         return false;
@@ -134,10 +134,9 @@ bool ScriptDllLoader::Reload(scene::Scene& scene, const std::filesystem::path& n
 std::filesystem::path ScriptDllLoader::CopyToHot(const std::filesystem::path& src) const
 {
     const std::filesystem::path hotDir = src.parent_path() / L"_hot";
-    std::error_code ec;
-    std::filesystem::create_directories(hotDir, ec);
-    if (ec) {
-        FBZZ_LOG_ERROR("ScriptDllLoader: failed to create _hot directory: %s", ec.message().c_str());
+    if (!util::FileSystem::EnsureDirectory(hotDir)) {
+        FBZZ_LOG_ERROR("ScriptDllLoader: failed to create _hot directory: %s",
+                       util::FileSystem::PathToUtf8(hotDir).c_str());
         return {};
     }
 
@@ -145,10 +144,9 @@ std::filesystem::path ScriptDllLoader::CopyToHot(const std::filesystem::path& sr
     const std::wstring stem = src.stem().wstring();
     const std::filesystem::path dst = hotDir / (stem + L"_" + MakeTimestamp() + src.extension().wstring());
 
-    std::filesystem::copy_file(src, dst,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) {
-        FBZZ_LOG_ERROR("ScriptDllLoader: failed to copy DLL: %s", ec.message().c_str());
+    if (!util::FileSystem::CopyFile(src, dst)) {
+        FBZZ_LOG_ERROR("ScriptDllLoader: failed to copy DLL: %s",
+                       util::FileSystem::PathToUtf8(src).c_str());
         return {};
     }
     return dst;
@@ -159,13 +157,12 @@ void ScriptDllLoader::CleanHotDir() const
     if (m_dllPath.empty()) return;
     const std::filesystem::path hotDir = m_dllPath.parent_path() / L"_hot";
 
-    std::error_code ec;
-    if (!std::filesystem::exists(hotDir, ec)) return;
+    if (!util::FileSystem::Exists(hotDir)) return;
 
-    for (const auto& entry : std::filesystem::directory_iterator(hotDir, ec)) {
+    for (const auto& path : util::FileSystem::ListFiles(hotDir)) {
         // 現在ロード中のコピーは削除しない
-        if (entry.path() == m_hotCopy) continue;
-        std::filesystem::remove(entry.path(), ec);
+        if (path == m_hotCopy) continue;
+        util::FileSystem::RemoveAll(path);
     }
 }
 

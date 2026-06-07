@@ -8,39 +8,19 @@
 #include <Editor/BuildPipeline.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <toml++/toml.hpp>
-#include <Windows.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <sstream>
 #include <string>
 
 namespace fbzz::editor {
 
 namespace {
-
-std::string WideToUtf8(const std::wstring& text)
-{
-    if (text.empty()) return {};
-    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return {};
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
-}
-
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
 
 // 今日の日付を YYYY-MM-DD 形式で返す
 std::string TodayStr()
@@ -85,9 +65,10 @@ void BuildPipeline::Start(const BuildSettings& settings,
 
     m_exeSrcPath.clear();
     m_outputDir  = settings.ResolveOutputPath(projectRoot);
-    m_tmpDir     = std::filesystem::path(m_outputDir.wstring() + L"_tmp");
+    m_tmpDir     = m_outputDir;
+    m_tmpDir    += L"_tmp";
 
-    FBZZ_LOG_INFO("BuildPipeline: Start → %s", WideToUtf8(m_outputDir.wstring()).c_str());
+    FBZZ_LOG_INFO("BuildPipeline: Start → %s", util::FileSystem::PathToUtf8(m_outputDir).c_str());
 }
 
 void BuildPipeline::Tick()
@@ -97,7 +78,7 @@ void BuildPipeline::Tick()
     // Compile は CMake 子プロセスが複数フレーム継続するため、専用処理で状態を監視する。
     if (m_step == Step::Compile) {
         if (!m_compileStarted) {
-            ToolchainLocator::Result toolchain = ToolchainLocator::Locate(std::filesystem::path(Utf8ToWide(m_buildRoot)));
+            ToolchainLocator::Result toolchain = ToolchainLocator::Locate(util::FileSystem::PathFromUtf8(m_buildRoot));
             if (!toolchain.found) {
                 SetFailed("RuntimeBuild toolchain not found: " + toolchain.error);
                 return;
@@ -111,8 +92,8 @@ void BuildPipeline::Tick()
             config.configuration = m_settings.developmentBuild ? "Debug" : "Release";
 
             FBZZ_LOG_DEBUG("BuildPipeline: cmake=%s build=%s target=%s cfg=%s",
-                WideToUtf8(config.cmakeExe.wstring()).c_str(),
-                WideToUtf8(config.buildDir.wstring()).c_str(),
+                util::FileSystem::PathToUtf8(config.cmakeExe).c_str(),
+                util::FileSystem::PathToUtf8(config.buildDir).c_str(),
                 config.target.c_str(),
                 config.configuration.c_str());
             if (!m_compiler.Start(config)) {
@@ -132,7 +113,7 @@ void BuildPipeline::Tick()
 
         if (m_compiler.GetState() == Compiler::State::Done) {
             m_exeSrcPath = m_compiler.GetOutputExePath();
-            FBZZ_LOG_DEBUG("BuildPipeline: compile done → %s", WideToUtf8(m_exeSrcPath.wstring()).c_str());
+            FBZZ_LOG_DEBUG("BuildPipeline: compile done → %s", util::FileSystem::PathToUtf8(m_exeSrcPath).c_str());
             m_step = Step::PrepareTempDir;
         } else if (m_compiler.GetState() == Compiler::State::Failed) {
             SetFailed("RuntimeBuild compile failed. Exit code: " + std::to_string(m_compiler.GetExitCode()));
@@ -178,7 +159,7 @@ void BuildPipeline::Tick()
         m_state    = State::Done;
         m_progress = 1.0f;
         m_status   = "Build complete";
-        FBZZ_LOG_INFO("BuildPipeline: Done → %s", WideToUtf8(m_outputDir.wstring()).c_str());
+        FBZZ_LOG_INFO("BuildPipeline: Done → %s", util::FileSystem::PathToUtf8(m_outputDir).c_str());
     }
 }
 
@@ -202,7 +183,7 @@ void BuildPipeline::Cancel()
 std::string BuildPipeline::GetOutputExePath() const
 {
     const std::filesystem::path exePath = m_outputDir / (m_settings.productName + ".exe");
-    return WideToUtf8(exePath.wstring());
+    return util::FileSystem::PathToUtf8(exePath);
 }
 
 // =============================================================================
@@ -211,17 +192,17 @@ std::string BuildPipeline::GetOutputExePath() const
 
 bool BuildPipeline::ExecuteStep()
 {
-    std::error_code ec;
     switch (m_step) {
 
     // ------------------------------------------------------------------
     case Step::PrepareTempDir:
         m_status = "Preparing temp directory...";
         // 前回の _tmp が残っていれば削除する
-        if (std::filesystem::exists(m_tmpDir, ec))
-            std::filesystem::remove_all(m_tmpDir, ec);
-        std::filesystem::create_directories(m_tmpDir, ec);
-        if (ec) { SetFailed("Failed to create temp directory: " + m_tmpDir.string()); return false; }
+        if (!util::FileSystem::RemoveAll(m_tmpDir) ||
+            !util::FileSystem::EnsureDirectory(m_tmpDir)) {
+            SetFailed("Failed to create temp directory: " + util::FileSystem::PathToUtf8(m_tmpDir));
+            return false;
+        }
         m_progress = 0.05f;
         return true;
 
@@ -229,9 +210,10 @@ bool BuildPipeline::ExecuteStep()
     case Step::CopyExecutable: {
         m_status = "Copying executable...";
         const std::filesystem::path dst = m_tmpDir / (m_settings.productName + ".exe");
-        std::filesystem::copy_file(m_exeSrcPath, dst,
-            std::filesystem::copy_options::overwrite_existing, ec);
-        if (ec) { SetFailed("Failed to copy exe: " + m_exeSrcPath.string()); return false; }
+        if (!util::FileSystem::CopyFile(m_exeSrcPath, dst)) {
+            SetFailed("Failed to copy exe: " + util::FileSystem::PathToUtf8(m_exeSrcPath));
+            return false;
+        }
         m_progress = 0.10f;
         return true;
     }
@@ -258,27 +240,26 @@ bool BuildPipeline::ExecuteStep()
 
         for (const std::wstring& dllName : runtimeDlls) {
             const std::filesystem::path src = exeDir / dllName;
-            ec.clear();
-            if (!std::filesystem::exists(src, ec)) {
+            if (!util::FileSystem::Exists(src)) {
                 continue;
             }
 
-            ec.clear();
-            std::filesystem::copy_file(src, m_tmpDir / dllName,
-                std::filesystem::copy_options::overwrite_existing, ec);
-            if (ec) { SetFailed("Failed to copy DLL: " + WideToUtf8(src.wstring())); return false; }
+            if (!util::FileSystem::CopyFile(src, m_tmpDir / dllName)) {
+                SetFailed("Failed to copy DLL: " + util::FileSystem::PathToUtf8(src));
+                return false;
+            }
         }
 
         // スクリプト DLL をコピーする。
         // WHY: DLL 名はプロジェクトごとに異なるため、上の固定リストに含めず
         //      呼び出し元 (BuildSettingsPanel) が EditorContext.scriptsDllPath から渡す。
         if (!m_scriptsDllSrcPath.empty()) {
-            const std::filesystem::path scriptsSrc(Utf8ToWide(m_scriptsDllSrcPath));
-            ec.clear();
-            if (std::filesystem::exists(scriptsSrc, ec)) {
-                std::filesystem::copy_file(scriptsSrc, m_tmpDir / scriptsSrc.filename(),
-                    std::filesystem::copy_options::overwrite_existing, ec);
-                if (ec) { SetFailed("Failed to copy scripts DLL: " + m_scriptsDllSrcPath); return false; }
+            const std::filesystem::path scriptsSrc = util::FileSystem::PathFromUtf8(m_scriptsDllSrcPath);
+            if (util::FileSystem::Exists(scriptsSrc)) {
+                if (!util::FileSystem::CopyFile(scriptsSrc, m_tmpDir / scriptsSrc.filename())) {
+                    SetFailed("Failed to copy scripts DLL: " + m_scriptsDllSrcPath);
+                    return false;
+                }
             } else {
                 FBZZ_LOG_WARN("BuildPipeline: scripts DLL not found, skipping: %s", m_scriptsDllSrcPath.c_str());
             }
@@ -298,17 +279,16 @@ bool BuildPipeline::ExecuteStep()
     // ------------------------------------------------------------------
     case Step::CopyProjectFiles: {
         m_status = "Copying project files...";
-        const std::filesystem::path root(m_projectRoot);
+        const std::filesystem::path root = util::FileSystem::PathFromUtf8(m_projectRoot);
 
         // 絶対パスをプロジェクトルートからの相対パス (/ 区切り) に変換するヘルパー。
         // すでに相対パスならそのまま返す。
         auto MakeRel = [&](const std::string& rawPath) -> std::string {
             if (rawPath.empty()) return rawPath;
-            std::filesystem::path p(Utf8ToWide(rawPath));
+            std::filesystem::path p = util::FileSystem::PathFromUtf8(rawPath);
             if (!p.is_absolute()) return p.generic_string();
-            std::error_code relEc;
-            const auto rel = std::filesystem::relative(p, root, relEc);
-            return (!relEc && !rel.empty()) ? rel.generic_string() : rawPath;
+            const auto rel = util::FileSystem::RelativePath(p, root);
+            return !rel.empty() ? rel.generic_string() : rawPath;
         };
 
         // --- .fbzz_proj を読んで settings_path / default_scene を取得し相対パスに変換 ---
@@ -321,11 +301,9 @@ bool BuildPipeline::ExecuteStep()
         std::string startSceneRel;   // ProjectSettings の runtime.start_scene (自動コピー用)
         {
             const std::filesystem::path projFile = root / ".fbzz_proj";
-            std::ifstream projIfs(projFile, std::ios::binary);
-            if (projIfs) {
-                std::ostringstream ss;
-                ss << projIfs.rdbuf();
-                auto parsed = toml::parse(ss.str());
+            std::string projectText;
+            if (util::FileSystem::ReadText(projFile, projectText)) {
+                auto parsed = toml::parse(projectText);
                 if (parsed) {
                     const auto sp = parsed.table()["project"]["settings_path"].value<std::string>();
                     if (sp && sp->size() >= 2 && sp->rfind("{{", 0) != 0)
@@ -351,14 +329,15 @@ bool BuildPipeline::ExecuteStep()
             // WHY: StandaloneApp はこのフィールドを読んでスクリプト DLL をロードする。
             //      DLL 名はプロジェクトごとに異なるためハードコードせず、ここに記録する。
             if (!m_scriptsDllSrcPath.empty()) {
-                const std::filesystem::path scriptsDll(Utf8ToWide(m_scriptsDllSrcPath));
-                proj << "scripts_dll   = \"" << WideToUtf8(scriptsDll.filename().wstring()) << "\"\n";
+                const std::filesystem::path scriptsDll = util::FileSystem::PathFromUtf8(m_scriptsDllSrcPath);
+                proj << "scripts_dll   = \"" << util::FileSystem::PathToUtf8(scriptsDll.filename()) << "\"\n";
             }
 
             const std::filesystem::path dst = m_tmpDir / ".fbzz_proj";
-            std::ofstream ofs(dst, std::ios::binary);
-            if (!ofs) { SetFailed("Failed to write .fbzz_proj"); return false; }
-            ofs << proj.str();
+            if (!util::FileSystem::WriteText(dst, proj.str())) {
+                SetFailed("Failed to write .fbzz_proj");
+                return false;
+            }
         }
 
         // --- ProjectSettings を相対パスに修正してコピー ---
@@ -368,15 +347,9 @@ bool BuildPipeline::ExecuteStep()
         {
             const std::filesystem::path src = root / settingsRelPath;
             const std::filesystem::path dst = m_tmpDir / settingsRelPath;
-            std::filesystem::create_directories(dst.parent_path(), ec);
-            if (std::filesystem::exists(src, ec)) {
-                std::ifstream settingsIfs(src, std::ios::binary);
+            if (util::FileSystem::Exists(src)) {
                 std::string settingsText;
-                if (settingsIfs) {
-                    std::ostringstream ss;
-                    ss << settingsIfs.rdbuf();
-                    settingsText = ss.str();
-                }
+                util::FileSystem::ReadText(src, settingsText);
 
                 auto settingsParsed = toml::parse(settingsText);
                 bool modified = false;
@@ -402,19 +375,22 @@ bool BuildPipeline::ExecuteStep()
                     if (modified) {
                         std::ostringstream ss;
                         ss << settingsTbl;
-                        std::ofstream ofs(dst, std::ios::binary);
-                        if (!ofs) { SetFailed("Failed to write patched ProjectSettings: " + src.string()); return false; }
-                        ofs << ss.str();
+                        if (!util::FileSystem::WriteText(dst, ss.str())) {
+                            SetFailed("Failed to write patched ProjectSettings: " + util::FileSystem::PathToUtf8(src));
+                            return false;
+                        }
                     } else {
-                        std::filesystem::copy_file(src, dst,
-                            std::filesystem::copy_options::overwrite_existing, ec);
-                        if (ec) { SetFailed("Failed to copy settings file: " + src.string()); return false; }
+                        if (!util::FileSystem::CopyFile(src, dst)) {
+                            SetFailed("Failed to copy settings file: " + util::FileSystem::PathToUtf8(src));
+                            return false;
+                        }
                     }
                 } else {
                     // パース失敗の場合はそのままコピーする
-                    std::filesystem::copy_file(src, dst,
-                        std::filesystem::copy_options::overwrite_existing, ec);
-                    if (ec) { SetFailed("Failed to copy settings file: " + src.string()); return false; }
+                    if (!util::FileSystem::CopyFile(src, dst)) {
+                        SetFailed("Failed to copy settings file: " + util::FileSystem::PathToUtf8(src));
+                        return false;
+                    }
                 }
             }
         }
@@ -440,14 +416,14 @@ bool BuildPipeline::ExecuteStep()
             for (const auto& scenePath : scenesToCopy) {
                 const std::filesystem::path src = root / scenePath;
                 const std::filesystem::path dst = m_tmpDir / scenePath;
-                std::filesystem::create_directories(dst.parent_path(), ec);
-                if (std::filesystem::exists(src, ec)) {
-                    std::filesystem::copy_file(src, dst,
-                        std::filesystem::copy_options::overwrite_existing, ec);
-                    if (ec) { SetFailed("Failed to copy scene: " + src.string()); return false; }
+                if (util::FileSystem::Exists(src)) {
+                    if (!util::FileSystem::CopyFile(src, dst)) {
+                        SetFailed("Failed to copy scene: " + util::FileSystem::PathToUtf8(src));
+                        return false;
+                    }
                 } else {
                     // シーンが見つからなくてもビルドは続行する (警告のみ)
-                    FBZZ_LOG_WARN("BuildPipeline: scene not found, skipping: %s", src.string().c_str());
+                    FBZZ_LOG_WARN("BuildPipeline: scene not found, skipping: %s", util::FileSystem::PathToUtf8(src).c_str());
                 }
             }
         }
@@ -470,9 +446,10 @@ bool BuildPipeline::ExecuteStep()
         ss << "development    = " << (m_settings.developmentBuild ? "true" : "false") << "\n";
 
         const std::filesystem::path dst = m_tmpDir / "game.manifest.toml";
-        std::ofstream ofs(dst, std::ios::binary);
-        if (!ofs) { SetFailed("Failed to write game.manifest.toml"); return false; }
-        ofs << ss.str();
+        if (!util::FileSystem::WriteText(dst, ss.str())) {
+            SetFailed("Failed to write game.manifest.toml");
+            return false;
+        }
         m_progress = 0.93f;
         return true;
     }
@@ -482,10 +459,11 @@ bool BuildPipeline::ExecuteStep()
         m_status = "Committing output...";
         // WHY: アトミックな rename で旧ビルドを保持する。
         //      rename の前に旧出力先を削除する必要がある。
-        if (std::filesystem::exists(m_outputDir, ec))
-            std::filesystem::remove_all(m_outputDir, ec);
-        std::filesystem::rename(m_tmpDir, m_outputDir, ec);
-        if (ec) { SetFailed("Failed to rename output: " + ec.message()); return false; }
+        if (!util::FileSystem::RemoveAll(m_outputDir) ||
+            !util::FileSystem::Rename(m_tmpDir, m_outputDir)) {
+            SetFailed("Failed to rename output: " + util::FileSystem::PathToUtf8(m_outputDir));
+            return false;
+        }
         m_progress = 0.98f;
         return true;
     }
@@ -498,12 +476,8 @@ bool BuildPipeline::ExecuteStep()
 void BuildPipeline::BeginEnumerateAssets()
 {
     m_assetFiles.clear();
-    const std::filesystem::path projectAssetsDir = std::filesystem::path(m_projectRoot) / "Assets";
-    std::error_code ec;
-    for (auto& entry : std::filesystem::recursive_directory_iterator(projectAssetsDir, ec)) {
-        if (entry.is_regular_file(ec))
-            m_assetFiles.push_back(entry.path());
-    }
+    const std::filesystem::path projectAssetsDir = util::FileSystem::PathFromUtf8(m_projectRoot) / "Assets";
+    m_assetFiles = util::FileSystem::ListFilesRecursive(projectAssetsDir);
     m_status = "Copying assets... (0/" +
                std::to_string(m_assetFiles.size()) + ")";
 }
@@ -513,17 +487,12 @@ bool BuildPipeline::TickCopyOneFile()
     if (m_assetIdx >= m_assetFiles.size()) return false;
 
     const auto& src = m_assetFiles[m_assetIdx];
-    const std::filesystem::path projectAssetsDir = std::filesystem::path(m_projectRoot) / "Assets";
-    const std::filesystem::path rel = std::filesystem::relative(src, projectAssetsDir);
+    const std::filesystem::path projectAssetsDir = util::FileSystem::PathFromUtf8(m_projectRoot) / "Assets";
+    const std::filesystem::path rel = util::FileSystem::RelativePath(src, projectAssetsDir);
     const std::filesystem::path dst = m_tmpDir / "Assets" / rel;
 
-    std::error_code ec;
-    std::filesystem::create_directories(dst.parent_path(), ec);
-    std::filesystem::copy_file(src, dst,
-        std::filesystem::copy_options::overwrite_existing, ec);
-
-    if (ec) {
-        SetFailed("Failed to copy asset: " + WideToUtf8(src.wstring()));
+    if (rel.empty() || !util::FileSystem::CopyFile(src, dst)) {
+        SetFailed("Failed to copy asset: " + util::FileSystem::PathToUtf8(src));
         return false;
     }
 
@@ -546,9 +515,7 @@ void BuildPipeline::SetFailed(const std::string& reason)
     m_status = "Error";
 
     // 失敗した _tmp は後始末する
-    std::error_code ec;
-    if (std::filesystem::exists(m_tmpDir, ec))
-        std::filesystem::remove_all(m_tmpDir, ec);
+    util::FileSystem::RemoveAll(m_tmpDir);
 
     FBZZ_LOG_ERROR("BuildPipeline: %s", reason.c_str());
 }

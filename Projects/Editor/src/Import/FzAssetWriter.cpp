@@ -3,8 +3,9 @@
 // .fzasset マニフェスト (TOML) 書き出し
 #include <Editor/Import/FzAssetWriter.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
-#include <fstream>
+#include <sstream>
 
 namespace fbzz::editor {
 
@@ -35,13 +36,13 @@ bool FzAssetWriter::Write(const FzAssetManifest& manifest,
         tbl.insert("animations", std::move(animArr));
     }
 
-    std::ofstream out(outputPath);
-    if (!out) {
+    std::ostringstream out;
+    out << tbl << '\n';
+    if (!util::FileSystem::WriteText(util::FileSystem::PathFromUtf8(outputPath), out.str())) {
         FBZZ_LOG_ERROR("FzAssetWriter: cannot open [%s]", outputPath.c_str());
         return false;
     }
-    out << tbl << '\n';
-    return out.good();
+    return true;
 }
 
 } // namespace fbzz::editor

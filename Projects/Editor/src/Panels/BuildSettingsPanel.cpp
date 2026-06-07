@@ -6,6 +6,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/StandaloneLauncher.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <Windows.h>
 #include <shlobj.h>
@@ -127,12 +128,11 @@ void BuildSettingsPanel::DrawScenesInBuild(EditorContext& ctx)
         // currentScenePath (絶対パス) を projectRoot からの相対パスに変換して追加する。
         // WHY: BuildSettings では相対パスで保持することで、プロジェクトを別 PC に移動しても動く。
         namespace fs = std::filesystem;
-        std::error_code ec;
-        const fs::path scene = fs::path(ctx.currentScenePath);
-        const fs::path root  = fs::path(ctx.projectRoot);
+        const fs::path scene = util::FileSystem::PathFromUtf8(ctx.currentScenePath);
+        const fs::path root  = util::FileSystem::PathFromUtf8(ctx.projectRoot);
         // generic_string() で / 区切りに統一 (Windows の \ がシーンパスと混在しないよう)
-        const fs::path rel   = fs::relative(scene, root, ec);
-        const std::string relStr = ec ? ctx.currentScenePath : rel.generic_string();
+        const fs::path rel   = util::FileSystem::RelativePath(scene, root);
+        const std::string relStr = rel.empty() ? ctx.currentScenePath : rel.generic_string();
 
         // 重複チェック (同じパスは追加しない)
         const bool alreadyExists = std::any_of(

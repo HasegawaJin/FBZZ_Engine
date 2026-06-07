@@ -2,57 +2,48 @@
 // ProjectManager.cpp | fbzz::hub
 // .fbzz_proj validation for Hub project cards
 #include "ProjectManager.hpp"
+#include <Engine/Util/FileSystem.hpp>
 
 #include <toml++/toml.hpp>
 #include <algorithm>
-#include <fstream>
-#include <sstream>
+#include <filesystem>
 
 namespace fbzz::hub {
 
 namespace {
 
-std::string ReadText(const std::filesystem::path& path)
-{
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return {};
-
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
-}
+namespace engine_util = fbzz::util;
 
 bool ExistsRelative(const std::filesystem::path& root, const std::string& relativePath)
 {
     if (relativePath.empty()) return false;
-    return std::filesystem::exists(root / std::filesystem::path(relativePath));
+    return engine_util::FileSystem::Exists(root / engine_util::FileSystem::PathFromUtf8(relativePath));
 }
 
 bool HasStandardLayout(const std::filesystem::path& root)
 {
-    return std::filesystem::exists(root / "Assets")
-        && std::filesystem::exists(root / "Src")
-        && std::filesystem::exists(root / "Include");
+    return engine_util::FileSystem::Exists(root / "Assets")
+        && engine_util::FileSystem::Exists(root / "Src")
+        && engine_util::FileSystem::Exists(root / "Include");
 }
 
 bool HasGeneratedRoots(const std::filesystem::path& root)
 {
-    return std::filesystem::exists(root / "Lib")
-        && std::filesystem::exists(root / "Binaries")
-        && std::filesystem::exists(root / "Build");
+    return engine_util::FileSystem::Exists(root / "Lib")
+        && engine_util::FileSystem::Exists(root / "Binaries")
+        && engine_util::FileSystem::Exists(root / "Build");
 }
 
 std::string FindThumbnailPath(const std::filesystem::path& root)
 {
     const std::filesystem::path thumbnail = root / "thumbnail.png";
-    std::error_code ec;
-    if (std::filesystem::exists(thumbnail, ec)) {
-        return thumbnail.string();
+    if (engine_util::FileSystem::Exists(thumbnail)) {
+        return engine_util::FileSystem::PathToUtf8(thumbnail);
     }
 
     const std::filesystem::path assetThumbnail = root / "Assets" / "thumbnail.png";
-    if (std::filesystem::exists(assetThumbnail, ec)) {
-        return assetThumbnail.string();
+    if (engine_util::FileSystem::Exists(assetThumbnail)) {
+        return engine_util::FileSystem::PathToUtf8(assetThumbnail);
     }
 
     return {};
@@ -140,15 +131,16 @@ ProjectEntry ProjectManager::BuildEntry(const ConfigProject& configProject)
     entry.path = configProject.path;
     entry.lastOpened = configProject.lastOpened;
 
-    const std::filesystem::path root(configProject.path);
-    entry.pathExists = std::filesystem::exists(root);
+    const std::filesystem::path root = engine_util::FileSystem::PathFromUtf8(configProject.path);
+    entry.pathExists = engine_util::FileSystem::Exists(root);
     if (!entry.pathExists) {
         entry.name = "(Unknown)";
         return entry;
     }
 
     const std::filesystem::path projectFile = root / ".fbzz_proj";
-    const std::string text = ReadText(projectFile);
+    std::string text;
+    engine_util::FileSystem::ReadText(projectFile, text);
     if (text.empty()) {
         entry.name = "(Unknown)";
         return entry;
@@ -171,7 +163,7 @@ ProjectEntry ProjectManager::BuildEntry(const ConfigProject& configProject)
     entry.projFileValid = HasRequiredProjectFields(table);
     entry.settingsExists = ExistsRelative(root, settingsPath);
     entry.apiHeaderExists = ExistsRelative(root, apiHeader);
-    entry.cmakeExists = std::filesystem::exists(root / "CMakeLists.txt");
+    entry.cmakeExists = engine_util::FileSystem::Exists(root / "CMakeLists.txt");
     entry.layoutValid = HasStandardLayout(root);
     entry.generatedRootsExist = HasGeneratedRoots(root);
     entry.thumbnailPath = FindThumbnailPath(root);

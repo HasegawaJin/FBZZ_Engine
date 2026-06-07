@@ -14,6 +14,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 #include <Windows.h>
 #include <filesystem>
@@ -32,19 +33,6 @@ std::string WithFbzzExtension(const std::string& path)
     return path + ".fbzz";
 }
 
-// UTF-8 のプロジェクトパスを Windows の filesystem path へ変換する。
-// WHY: EditorContext は UI / TOML と相性の良い UTF-8 文字列でパスを保持する一方、
-//      std::filesystem は Windows 環境で wide path を使う方が日本語パスに強い。
-std::wstring Utf8ToWidePath(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
 // FILETIME が未初期化のゼロ値かどうかを判定する。
 bool IsEmptyFileTime(const FILETIME& ft)
 {
@@ -57,7 +45,7 @@ bool IsEmptyFileTime(const FILETIME& ft)
 bool TryGetWriteTime(const std::filesystem::path& path, FILETIME& out)
 {
     WIN32_FILE_ATTRIBUTE_DATA info{};
-    if (!GetFileAttributesExW(path.wstring().c_str(), GetFileExInfoStandard, &info))
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info))
         return false;
 
     out = info.ftLastWriteTime;
@@ -74,19 +62,10 @@ FILETIME GetLatestWriteTimeInTree(const std::filesystem::path& root)
     if (!TryGetWriteTime(root, latest))
         return latest;
 
-    std::error_code ec;
-    const std::filesystem::recursive_directory_iterator end;
-    std::filesystem::recursive_directory_iterator it(
-        root,
-        std::filesystem::directory_options::skip_permission_denied,
-        ec);
-
-    while (!ec && it != end) {
+    for (const std::filesystem::path& path : util::FileSystem::ListFilesRecursive(root)) {
         FILETIME ft{};
-        if (TryGetWriteTime(it->path(), ft) && CompareFileTime(&ft, &latest) > 0)
+        if (TryGetWriteTime(path, ft) && CompareFileTime(&ft, &latest) > 0)
             latest = ft;
-
-        it.increment(ec);
     }
 
     return latest;
@@ -102,21 +81,12 @@ bool SyncCompiledShadersToProject(const std::filesystem::path& hlslSourceDir,
     if (hlslSourceDir.empty() || projectRoot.empty()) return false;
 
     const std::filesystem::path src = hlslSourceDir / L"compiled";
-    const std::filesystem::path dst = std::filesystem::path(Utf8ToWidePath(projectRoot)) /
+    const std::filesystem::path dst = util::FileSystem::PathFromUtf8(projectRoot) /
                                       L"Assets" / L"shaders" / L"compiled";
 
-    std::error_code ec;
-    if (!std::filesystem::exists(src, ec)) return false;
-    if (std::filesystem::equivalent(src, dst, ec)) return true;
-    ec.clear();
-    std::filesystem::create_directories(dst, ec);
-    if (ec) return false;
-
-    std::filesystem::copy(src, dst,
-        std::filesystem::copy_options::recursive |
-        std::filesystem::copy_options::overwrite_existing,
-        ec);
-    return !ec;
+    if (!util::FileSystem::Exists(src)) return false;
+    if (util::FileSystem::SamePath(src, dst)) return true;
+    return util::FileSystem::CopyDirectoryRecursive(src, dst);
 }
 
 // HLSL の再コンパイル結果を renderer の実際の読込先へ反映する。
@@ -128,21 +98,12 @@ bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceD
     if (hlslSourceDir.empty()) return false;
 
     const std::filesystem::path src = hlslSourceDir / L"compiled";
-    std::error_code ec;
-    const std::filesystem::path dst = std::filesystem::current_path(ec) /
+    const std::filesystem::path dst = util::FileSystem::GetCurrentDirectory() /
                                       L"Assets" / L"shaders" / L"compiled";
-    if (ec) return false;
-    if (!std::filesystem::exists(src, ec)) return false;
-    if (std::filesystem::equivalent(src, dst, ec)) return true;
-    ec.clear();
-    std::filesystem::create_directories(dst, ec);
-    if (ec) return false;
-
-    std::filesystem::copy(src, dst,
-        std::filesystem::copy_options::recursive |
-        std::filesystem::copy_options::overwrite_existing,
-        ec);
-    return !ec;
+    if (dst.empty()) return false;
+    if (!util::FileSystem::Exists(src)) return false;
+    if (util::FileSystem::SamePath(src, dst)) return true;
+    return util::FileSystem::CopyDirectoryRecursive(src, dst);
 }
 
 } // namespace
@@ -464,35 +425,16 @@ void EditorApp::InitScriptDll()
 {
     if (!m_ctx.hotReloadEnabled) return;
 
-    auto Utf8ToWideLocal = [](const std::string& s) -> std::wstring {
-        if (s.empty()) return {};
-        const int sz = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-        if (sz <= 0) return {};
-        std::wstring w(static_cast<size_t>(sz - 1), L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), sz);
-        return w;
-    };
-    auto WideToUtf8Local = [](const std::filesystem::path& p) -> std::string {
-        const std::wstring& w = p.wstring();
-        const int sz = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
-        if (sz <= 0) return {};
-        std::string s(static_cast<size_t>(sz - 1), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), sz, nullptr, nullptr);
-        for (char& c : s) if (c == '\\') c = '/';
-        return s;
-    };
-
     ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
-        std::filesystem::path(m_ctx.projectBuildRoot));
+        util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
 
     // WHY: GameHub プロジェクトは初回開封時に cmake configure が済んでいない場合がある。
     //      CMakePresets.json が存在するなら自動 configure を実行し再度解決を試みる。
     if (!toolchain.found && !m_ctx.projectRoot.empty()) {
-        const std::filesystem::path presetsJson = std::filesystem::path(Utf8ToWideLocal(m_ctx.projectRoot)) / L"CMakePresets.json";
-        std::error_code ec;
-        if (std::filesystem::exists(presetsJson, ec)) {
+        const std::filesystem::path presetsJson = util::FileSystem::PathFromUtf8(m_ctx.projectRoot) / L"CMakePresets.json";
+        if (util::FileSystem::Exists(presetsJson)) {
             if (TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot))
-                toolchain = ToolchainLocator::Locate(std::filesystem::path(m_ctx.projectBuildRoot));
+                toolchain = ToolchainLocator::Locate(util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
         }
     }
 
@@ -519,18 +461,18 @@ void EditorApp::InitScriptDll()
         m_hlslSourceDir        = engineRoot / L"Assets" / L"shaders";
         m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.bat";
 
-        m_ctx.scriptsSourceDir = WideToUtf8Local(m_scriptsSourceDir);
-        m_ctx.hlslSourceDir    = WideToUtf8Local(m_hlslSourceDir);
+        m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
+        m_ctx.hlslSourceDir    = util::FileSystem::PathToUtf8(m_hlslSourceDir);
 
         if (!m_ctx.projectTargetName.empty()) {
-            const std::filesystem::path projRoot(Utf8ToWidePath(m_ctx.projectRoot));
-            const std::wstring targetW = Utf8ToWidePath(m_ctx.projectTargetName);
-            m_ctx.scriptsDllCppPath    = WideToUtf8Local(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
-            m_ctx.scriptsStaticCppPath = WideToUtf8Local(projRoot / L"Src" / L"GameMain.cpp");
+            const std::filesystem::path projRoot = util::FileSystem::PathFromUtf8(m_ctx.projectRoot);
+            const std::wstring targetW = util::StringUtils::ToWide(m_ctx.projectTargetName);
+            m_ctx.scriptsDllCppPath    = util::FileSystem::PathToUtf8(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
+            m_ctx.scriptsStaticCppPath = util::FileSystem::PathToUtf8(projRoot / L"Src" / L"GameMain.cpp");
         } else {
-            m_ctx.scriptsDllCppPath    = WideToUtf8Local(
+            m_ctx.scriptsDllCppPath    = util::FileSystem::PathToUtf8(
                 engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScriptsDll.cpp");
-            m_ctx.scriptsStaticCppPath = WideToUtf8Local(
+            m_ctx.scriptsStaticCppPath = util::FileSystem::PathToUtf8(
                 engineRoot / L"Projects" / L"Sandbox" / L"src" / L"SandboxScripts.cpp");
         }
     } else {
@@ -550,22 +492,19 @@ void EditorApp::InitScriptDll()
         }
 #endif
         else if (!m_ctx.projectBuildRoot.empty()) {
-            const std::wstring dllName = Utf8ToWideLocal(
+            const std::wstring dllName = util::StringUtils::ToWide(
                 m_ctx.projectTargetName.empty()
                     ? "SandboxScripts.dll"
                     : (m_ctx.projectTargetName + "Scripts.dll"));
-            const std::filesystem::path buildRoot(Utf8ToWideLocal(m_ctx.projectBuildRoot));
-            std::error_code ec;
-            for (const auto& sub1 : std::filesystem::directory_iterator(buildRoot, ec)) {
-                if (std::filesystem::exists(sub1.path() / dllName, ec)) {
-                    m_scriptDllPath = sub1.path() / dllName;
+            const std::filesystem::path buildRoot = util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot);
+            for (const auto& sub1 : util::FileSystem::ListDirectories(buildRoot)) {
+                if (util::FileSystem::Exists(sub1 / dllName)) {
+                    m_scriptDllPath = sub1 / dllName;
                     break;
                 }
-                if (!sub1.is_directory(ec)) continue;
-                for (const auto& sub2 : std::filesystem::directory_iterator(sub1.path(), ec)) {
-                    if (!sub2.is_directory(ec)) continue;
-                    if (std::filesystem::exists(sub2.path() / dllName, ec)) {
-                        m_scriptDllPath = sub2.path() / dllName;
+                for (const auto& sub2 : util::FileSystem::ListDirectories(sub1)) {
+                    if (util::FileSystem::Exists(sub2 / dllName)) {
+                        m_scriptDllPath = sub2 / dllName;
                         break;
                     }
                 }
@@ -575,16 +514,16 @@ void EditorApp::InitScriptDll()
 
         // GameHub プロジェクトなら toolchain なしでも scriptsDllCppPath を設定できる
         if (!m_ctx.projectTargetName.empty()) {
-            const std::filesystem::path projRoot(Utf8ToWidePath(m_ctx.projectRoot));
-            const std::wstring targetW = Utf8ToWidePath(m_ctx.projectTargetName);
-            m_ctx.scriptsDllCppPath    = WideToUtf8Local(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
-            m_ctx.scriptsStaticCppPath = WideToUtf8Local(projRoot / L"Src" / L"GameMain.cpp");
+            const std::filesystem::path projRoot = util::FileSystem::PathFromUtf8(m_ctx.projectRoot);
+            const std::wstring targetW = util::StringUtils::ToWide(m_ctx.projectTargetName);
+            m_ctx.scriptsDllCppPath    = util::FileSystem::PathToUtf8(projRoot / L"Src" / (targetW + L"ScriptsDll.cpp"));
+            m_ctx.scriptsStaticCppPath = util::FileSystem::PathToUtf8(projRoot / L"Src" / L"GameMain.cpp");
         }
     }
 
     // DLL ロード (toolchain の成否に関わらず実行)
-    m_ctx.scriptsDllPath = WideToUtf8Local(m_scriptDllPath);
-    if (!m_scriptDllPath.empty() && std::filesystem::exists(m_scriptDllPath)) {
+    m_ctx.scriptsDllPath = util::FileSystem::PathToUtf8(m_scriptDllPath);
+    if (!m_scriptDllPath.empty() && util::FileSystem::Exists(m_scriptDllPath)) {
         (void)m_scriptDll.Load(m_scriptDllPath);
         FBZZ_LOG_INFO("ScriptDll: loaded %ls (%d types)",
             m_scriptDllPath.wstring().c_str(),
@@ -613,41 +552,31 @@ void EditorApp::InitScriptDll()
     {
         const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         const std::filesystem::path projectAssetsDir =
-            std::filesystem::path(Utf8ToWideLocal(m_ctx.projectRoot)) / L"Assets";
+            util::FileSystem::PathFromUtf8(m_ctx.projectRoot) / L"Assets";
         const std::filesystem::path engineAssetsDir  = engineRoot / L"Assets";
 
         // プロジェクト側が別ディレクトリの場合のみ同期する (同一なら不要)
-        std::error_code ec;
         if (!m_ctx.projectRoot.empty() &&
-            std::filesystem::exists(engineAssetsDir, ec) &&
-            std::filesystem::canonical(engineAssetsDir, ec) !=
-            std::filesystem::canonical(projectAssetsDir, ec))
+            util::FileSystem::Exists(engineAssetsDir) &&
+            !util::FileSystem::SamePath(engineAssetsDir, projectAssetsDir))
         {
             // Scripts/ を同期
             const std::filesystem::path srcScripts = engineAssetsDir / L"Scripts";
             const std::filesystem::path dstScripts = projectAssetsDir / L"Scripts";
-            if (std::filesystem::exists(srcScripts, ec)) {
-                std::filesystem::create_directories(dstScripts, ec);
-                for (const auto& entry : std::filesystem::directory_iterator(srcScripts, ec)) {
-                    if (!entry.is_regular_file(ec)) continue;
-                    std::filesystem::copy_file(
-                        entry.path(),
-                        dstScripts / entry.path().filename(),
-                        std::filesystem::copy_options::overwrite_existing, ec);
+            if (util::FileSystem::Exists(srcScripts)) {
+                util::FileSystem::EnsureDirectory(dstScripts);
+                for (const auto& path : util::FileSystem::ListFiles(srcScripts)) {
+                    util::FileSystem::CopyFile(path, dstScripts / path.filename());
                 }
             }
 
             // shaders/Material/Custom/ を同期
             const std::filesystem::path srcCustom = engineAssetsDir / L"shaders" / L"Material" / L"Custom";
             const std::filesystem::path dstCustom = projectAssetsDir / L"shaders" / L"Material" / L"Custom";
-            if (std::filesystem::exists(srcCustom, ec)) {
-                std::filesystem::create_directories(dstCustom, ec);
-                for (const auto& entry : std::filesystem::directory_iterator(srcCustom, ec)) {
-                    if (!entry.is_regular_file(ec)) continue;
-                    std::filesystem::copy_file(
-                        entry.path(),
-                        dstCustom / entry.path().filename(),
-                        std::filesystem::copy_options::overwrite_existing, ec);
+            if (util::FileSystem::Exists(srcCustom)) {
+                util::FileSystem::EnsureDirectory(dstCustom);
+                for (const auto& path : util::FileSystem::ListFiles(srcCustom)) {
+                    util::FileSystem::CopyFile(path, dstCustom / path.filename());
                 }
             }
 
@@ -703,7 +632,7 @@ void EditorApp::TickScriptCompile()
         m_scriptCompilePending = false;
 
         ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
-            std::filesystem::path(m_ctx.projectBuildRoot));
+            util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
         if (!toolchain.found) {
             m_ctx.scriptReloadBusy = false;
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: toolchain not resolved");
@@ -716,7 +645,7 @@ void EditorApp::TickScriptCompile()
         config.exePath       = m_scriptDllPath;
         // WHY: DLL ファイル名 (例: SandboxScripts.dll) から cmake ターゲット名を導出する。
         //      ハードコードすると GameHub プロジェクト (MyGameScripts 等) で壊れる。
-        config.target        = m_scriptDllPath.stem().string();
+        config.target        = util::FileSystem::PathToUtf8(m_scriptDllPath.stem());
         // WHY: Editor と Scripts DLL の CRT を統一して ABI ミスマッチを防ぐ。
         //      Release Editor には Release DLL、Debug Editor には Debug DLL を使う。
 #ifdef NDEBUG
@@ -831,7 +760,7 @@ void EditorApp::TickHlslCompile()
         //      target に bat 実行コマンドを渡す方法は複雑なため、
         //      cmake --build で compile_shaders ターゲットを指定して間接実行する。
         ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
-            std::filesystem::path(m_ctx.projectBuildRoot));
+            util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
         if (!toolchain.found) {
             SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: toolchain not resolved");
             return;

@@ -3,11 +3,11 @@
 // Godot 4 ライクなエディター配色・フォント・レイアウトの適用
 
 #include <Editor/Util/EditorTheme.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 
 #include <filesystem>
 #include <string>
-#include <system_error>
 
 namespace fbzz::editor {
 
@@ -23,18 +23,16 @@ namespace {
     // WHAT: 現在ディレクトリから親方向へたどり、FBZZ_Engine 直下の ThirdParty を探索する。
     constexpr const char* RELATIVE_FONT_PATH = "ThirdParty/ImGui/misc/fonts/Roboto-Medium.ttf";
 
-    std::error_code ec;
-    std::filesystem::path current = std::filesystem::current_path(ec);
-    if (ec) {
+    std::filesystem::path current = util::FileSystem::GetCurrentDirectory();
+    if (current.empty()) {
         return {};
     }
 
     while (!current.empty()) {
         const std::filesystem::path candidate = current / RELATIVE_FONT_PATH;
-        if (std::filesystem::is_regular_file(candidate, ec) && !ec) {
-            return candidate.generic_string();
+        if (util::FileSystem::Exists(candidate)) {
+            return util::FileSystem::PathToUtf8(candidate);
         }
-        ec.clear();
 
         const std::filesystem::path parent = current.parent_path();
         if (parent == current) {
@@ -56,12 +54,10 @@ namespace {
         "C:/Windows/Fonts/msgothic.ttc",
     };
 
-    std::error_code ec;
     for (const char* path : CANDIDATES) {
-        if (std::filesystem::is_regular_file(path, ec) && !ec) {
+        if (util::FileSystem::Exists(path)) {
             return path;
         }
-        ec.clear();
     }
     return {};
 }
