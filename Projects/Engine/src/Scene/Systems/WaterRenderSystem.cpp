@@ -6,6 +6,8 @@
 //      Component に GPU リソースを持たせず System 側の static cache に閉じることで、
 //      Scene データは保存しやすい純粋なパラメータのまま保つ。
 #include "Engine/Scene/Systems/WaterRenderSystem.hpp"
+#include "Engine/Asset/AssetManager.hpp"
+#include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
@@ -251,6 +253,8 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
     Scene& scene,
     const WaterComponent& water,
     const Transform& waterTransform,
+    float foamThreshold,
+    float foamFade,
     renderer::ResourceManager& resources)
 {
     const uint32_t width = water.resolutionX + 1;
@@ -282,7 +286,7 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
             const float localZ = worldZ - terrainTransform->position.z;
             const float terrainY = terrain->GetHeightAt(localX, localZ) + terrainTransform->position.y;
             const float heightDiff = waterTransform.position.y - terrainY;
-            const float foam = ComputeFoamWeight(heightDiff, water.foamThreshold, water.foamFade);
+            const float foam = ComputeFoamWeight(heightDiff, foamThreshold, foamFade);
 
             const size_t p = (static_cast<size_t>(iz) * width + ix) * 4u;
             pixels[p + 0] = static_cast<uint8_t>(math::Clamp01(foam) * 255.0f);
@@ -295,25 +299,67 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
     return resources.CreateTexture(pixels.data(), width, height);
 }
 
+// fzmat params へのアクセスヘルパー。mat が nullptr のときはデフォルト値を返す。
+inline float WGetF(const asset::MaterialAsset* m, const char* name, float def)
+{
+    if (!m) return def;
+    auto it = m->params.find(name);
+    if (it != m->params.end() && !it->second.empty()) return it->second[0];
+    return def;
+}
+inline math::Vector2 WGetF2(const asset::MaterialAsset* m, const char* name, math::Vector2 def)
+{
+    if (!m) return def;
+    auto it = m->params.find(name);
+    if (it != m->params.end() && it->second.size() >= 2)
+        return { it->second[0], it->second[1] };
+    return def;
+}
+inline math::Vector3 WGetF3(const asset::MaterialAsset* m, const char* name, math::Vector3 def)
+{
+    if (!m) return def;
+    auto it = m->params.find(name);
+    if (it != m->params.end() && it->second.size() >= 3)
+        return { it->second[0], it->second[1], it->second[2] };
+    return def;
+}
+inline std::string WGetTex(const asset::MaterialAsset* m, const char* name)
+{
+    if (!m) return {};
+    auto it = m->textures.find(name);
+    if (it != m->textures.end()) return it->second;
+    return {};
+}
+
 WaterTextures BuildTextureSet(
+    const asset::MaterialAsset* mat,
     const WaterComponent& water,
     const Transform& waterTransform,
     Scene& scene,
     renderer::ResourceManager& resources,
+    float foamThreshold,
+    float foamFade,
     renderer::ResourceHandle<renderer::TextureTag> flatNormal,
     renderer::ResourceHandle<renderer::TextureTag> white,
     renderer::ResourceHandle<renderer::TextureTag> black,
     renderer::ResourceHandle<renderer::TextureTag> neutralFlow)
 {
+    const std::string normalMap1Path = WGetTex(mat, "normalMap1");
+    const std::string normalMap2Path = WGetTex(mat, "normalMap2");
+    const std::string foamTexPath    = WGetTex(mat, "foamTex");
+    const std::string envCubemapPath = WGetTex(mat, "envCubemap");
+    const std::string flowMapPath    = WGetTex(mat, "flowMap");
+    const bool enableFlow = WGetF(mat, "enableFlowMap", 0.0f) > 0.5f;
+
     WaterTextures textures;
-    textures.normalMap1 = water.normalMap1Path.empty() ? flatNormal : resources.LoadTexture(water.normalMap1Path);
-    textures.normalMap2 = water.normalMap2Path.empty() ? flatNormal : resources.LoadTexture(water.normalMap2Path);
-    textures.foamTex = water.foamTexPath.empty() ? white : resources.LoadTexture(water.foamTexPath);
-    textures.foamMask = BuildFoamMask(scene, water, waterTransform, resources);
-    textures.envTex = water.envCubemapPath.empty() ? black : resources.LoadTexture(water.envCubemapPath);
-    textures.flowMap = (!water.enableFlowMap || water.flowMapPath.empty())
+    textures.normalMap1 = normalMap1Path.empty() ? flatNormal : resources.LoadTexture(normalMap1Path);
+    textures.normalMap2 = normalMap2Path.empty() ? flatNormal : resources.LoadTexture(normalMap2Path);
+    textures.foamTex    = foamTexPath.empty()    ? white      : resources.LoadTexture(foamTexPath);
+    textures.foamMask   = BuildFoamMask(scene, water, waterTransform, foamThreshold, foamFade, resources);
+    textures.envTex     = envCubemapPath.empty() ? black      : resources.LoadTexture(envCubemapPath);
+    textures.flowMap    = (!enableFlow || flowMapPath.empty())
         ? neutralFlow
-        : resources.LoadTexture(water.flowMapPath);
+        : resources.LoadTexture(flowMapPath);
     return textures;
 }
 
@@ -375,24 +421,41 @@ void UpdateRippleState(
     state.dirty = false;
 }
 
-WaterCB BuildWaterCB(const WaterComponent& water, const Transform& transform, const renderer::Camera& camera, float time)
+WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* mat,
+                     const Transform& transform, const renderer::Camera& camera, float time)
 {
     WaterCB cb{};
     const math::Matrix4 world = transform.GetWorldMatrix();
     cb.worldMatrix = world;
     cb.wvpMatrix = camera.GetViewProjection() * world;
-    cb.shallowColorDepth = { water.shallowColor.x, water.shallowColor.y, water.shallowColor.z, water.shallowDepth };
-    cb.deepColorDepth = { water.deepColor.x, water.deepColor.y, water.deepColor.z, water.deepDepth };
-    cb.surfaceParams = { water.opacity, water.reflectivity, water.fresnelBias, water.fresnelPower };
-    cb.normalMap1Params = {
-        water.normalMap1Scroll.x, water.normalMap1Scroll.y, water.normalMap1Tiling, water.normalStrength
+
+    const auto shallowColor = WGetF3(mat, "shallowColor", { 0.20f, 0.60f, 0.70f });
+    const auto deepColor    = WGetF3(mat, "deepColor",    { 0.00f, 0.10f, 0.30f });
+    cb.shallowColorDepth = { shallowColor.x, shallowColor.y, shallowColor.z,
+                              WGetF(mat, "shallowDepth", 0.5f) };
+    cb.deepColorDepth    = { deepColor.x, deepColor.y, deepColor.z,
+                              WGetF(mat, "deepDepth", 5.0f) };
+    cb.surfaceParams = {
+        WGetF(mat, "opacity",       0.85f),
+        WGetF(mat, "reflectivity",  0.5f),
+        WGetF(mat, "fresnelBias",   0.02f),
+        WGetF(mat, "fresnelPower",  5.0f)
     };
-    cb.normalMap2Params = {
-        water.normalMap2Scroll.x, water.normalMap2Scroll.y, water.normalMap2Tiling, time
+    const auto scroll1 = WGetF2(mat, "normalMap1Scroll", { 0.02f,  0.01f });
+    const auto scroll2 = WGetF2(mat, "normalMap2Scroll", { -0.01f, 0.02f });
+    cb.normalMap1Params = { scroll1.x, scroll1.y, WGetF(mat, "normalMap1Tiling", 4.0f), WGetF(mat, "normalStrength", 1.0f) };
+    cb.normalMap2Params = { scroll2.x, scroll2.y, WGetF(mat, "normalMap2Tiling", 6.0f), time };
+    cb.foamParams = {
+        WGetF(mat, "foamThreshold",     0.3f),
+        WGetF(mat, "foamFade",          0.5f),
+        WGetF(mat, "foamStrength",      1.0f),
+        WGetF(mat, "foamTiling",        8.0f)
     };
-    cb.foamParams = { water.foamThreshold, water.foamFade, water.foamStrength, water.foamTiling };
     cb.refractionFlowParams = {
-        water.refractionStrength, water.flowSpeed, water.flowTiling, water.enableFlowMap ? 1.0f : 0.0f
+        WGetF(mat, "refractionStrength", 0.03f),
+        WGetF(mat, "flowSpeed",          0.3f),
+        WGetF(mat, "flowTiling",         1.0f),
+        WGetF(mat, "enableFlowMap",      0.0f)
     };
 
     for (int i = 0; i < 4; ++i) {
@@ -644,6 +707,16 @@ void WaterRenderSystem(
         EntityID eid = FindEntityForWater(scene, water);
         if (!scene.IsValid(eid)) continue;
 
+        // fzmat を解決する。毎フレーム GetMaterial を呼ぶが AssetManager 側でキャッシュされる。
+        const asset::MaterialAsset* mat = nullptr;
+        if (!water.materialPath.empty()) {
+            const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
+            mat = asset::AssetManager::GetMaterial(handle);
+        }
+
+        const float foamThreshold = WGetF(mat, "foamThreshold", 0.3f);
+        const float foamFade      = WGetF(mat, "foamFade",      0.5f);
+
         if (water.meshDirty || !s_meshCache.contains(eid.index)) {
             // BuildWaterMesh 内で既存チャンクの GPU リソースを解放してから再構築する
             BuildWaterMesh(water, s_meshCache[eid.index], resources);
@@ -653,7 +726,9 @@ void WaterRenderSystem(
 
         if (water.texDirty || water.foamDirty || !s_texCache.contains(eid.index)) {
             s_texCache[eid.index] = BuildTextureSet(
-                water, transform, scene, resources, flatNormalTex, whiteTex, blackTex, neutralFlowTex);
+                mat, water, transform, scene, resources,
+                foamThreshold, foamFade,
+                flatNormalTex, whiteTex, blackTex, neutralFlowTex);
             water.texDirty = false;
             water.foamDirty = false;
         }
@@ -667,32 +742,13 @@ void WaterRenderSystem(
         if (!AabbVisible(frustum, transform.position, mesh.aabbMin, mesh.aabbMax))
             continue;
 
-        const WaterCB cb = BuildWaterCB(water, transform, camera, elapsedTime);
+        const WaterCB cb = BuildWaterCB(water, mat, transform, camera, elapsedTime);
         resources.Update(waterCBH, &cb, sizeof(cb));
 
         // ── ユーザー定義エフェクトパラメータ (b2 = MaterialConstants) ────────────
-        // MaterialComponent がなければ WaterEffectParams のデフォルト値 CB を使う。
+        // WaterEffectParams のデフォルト値 CB を使う。
+        // WHY: MaterialComponent は .fzmat 参照専用になり、任意 HLSL の CB 差し替え経路は削除した。
         auto effectCBH = defaultEffectCBH;
-        if (auto* go = scene.GetGameObject(eid)) {
-            if (auto* mc = go->GetComponent<MaterialComponent>();
-                mc && mc->enabled && !mc->shaderPath.empty())
-            {
-                if (!mc->material)
-                    mc->material = std::make_shared<renderer::Material>();
-                auto& mat = *mc->material;
-                mat.shader = resources.LoadShader(mc->shaderPath);
-                if (const auto* sh = resources.Get(mat.shader)) {
-                    const auto& desc = sh->GetDescriptor();
-                    if (mc->paramData.size() != desc.cbufferSize)
-                        mc->InitFromDescriptor(desc);
-                    if (!mat.paramsBuffer.IsValid())
-                        mat.Init(resources, desc.cbufferSize);
-                    mat.paramData = mc->paramData;
-                    mat.Upload(resources, desc);
-                    effectCBH = mat.paramsBuffer;
-                }
-            }
-        }
 
         const WaterTextures& textures = s_texCache.at(eid.index);
         // WHY: outputRT を RTV/DSV としてバインドしたまま、その depth を SRV(t5) として読むことは DX11 で禁止。
@@ -706,6 +762,11 @@ void WaterRenderSystem(
 
         // チャンク単位でフラスタムカリング → DrawCall 発行
         // WHY: 全体 AABB で弾けなかった場合でも、視野外のチャンクは個別に除外できる。
+        // fzmat のシェーダーパスを優先し、未設定時は静的フォールバックを使う。
+        const auto activeShader = (mat && !mat->shaderPath.empty())
+            ? resources.LoadShader(mat->shaderPath)
+            : waterShader;
+
         for (const WaterChunk& chunk : mesh.chunks) {
             if (!AabbVisible(frustum, transform.position, chunk.aabbMin, chunk.aabbMax))
                 continue;
@@ -713,7 +774,7 @@ void WaterRenderSystem(
             renderer::DrawCall call;
             call.vertexBuffer = chunk.vertexBuffer;
             call.indexBuffer  = chunk.indexBuffer;
-            call.shader       = waterShader;
+            call.shader       = activeShader;
             call.pipelineState = (settings && settings->IsWireframe()) ? waterWireframePSO : waterPSO;
             call.indexCount   = chunk.indexCount;
             call.layer        = renderer::RenderLayer::TRANSPARENT_LAYER;
