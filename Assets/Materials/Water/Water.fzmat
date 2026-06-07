@@ -1,0 +1,42 @@
+version = 1
+shader = "Assets/Shaders/Water/Water.hlsl"
+blend_mode = "AlphaBlend"
+double_sided = false
+render_queue = 3000
+render_path = "forward"
+mesh_type = "surface"
+
+[textures]
+normalMap1  = "Assets/Textures/Water/Water_Normal.png"
+normalMap2  = "Assets/Textures/Water/Water_Normal.png"
+foamTex     = "Assets/Textures/Water/Water_Color.png"
+flowMap     = ""
+envCubemap  = ""
+causticsTex = ""
+
+[params]
+shallowColor       = [0.03151, 0.0, 0.229839]
+deepColor          = [0.0, 0.190092, 0.665323]
+shallowDepth       = [5.61]
+deepDepth          = [5.0]
+opacity            = [0.31]
+reflectivity       = [0.2]
+fresnelBias        = [0.02]
+fresnelPower       = [5.0]
+refractionStrength = [0.03]
+normalMap1Tiling   = [4.0]
+normalMap2Tiling   = [6.0]
+normalStrength     = [1.0]
+normalMap1Scroll   = [0.02, 0.01]
+normalMap2Scroll   = [-0.01, 0.02]
+foamThreshold      = [0.3]
+foamFade           = [0.5]
+foamStrength       = [1.0]
+foamTiling         = [8.0]
+enableFlowMap      = [0.0]
+flowSpeed          = [0.3]
+flowTiling         = [1.0]
+enableCaustics     = [1.0]
+causticsIntensity  = [0.4]
+causticsTiling     = [0.5]
+causticsSpeed      = [0.15]
