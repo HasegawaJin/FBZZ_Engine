@@ -9,6 +9,23 @@
 
 namespace fbzz::editor {
 
+namespace {
+
+// ログレベルごとの表示色を返す。
+// WHY: Console では重大度を視線だけで判別できることが重要なため、本文全体をレベル色で描画する。
+ImVec4 LogLevelColor(core::LogLevel level)
+{
+    switch (level) {
+    case core::LogLevel::DEBUG:     return { 0.72f, 0.45f, 1.00f, 1.0f }; // 紫
+    case core::LogLevel::INFO:      return { 0.92f, 0.92f, 0.92f, 1.0f }; // 白
+    case core::LogLevel::WARNING:   return { 1.00f, 0.82f, 0.20f, 1.0f }; // 黄色
+    case core::LogLevel::LOG_ERROR: return { 1.00f, 0.30f, 0.25f, 1.0f }; // 赤
+    default:                        return ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    }
+}
+
+} // namespace
+
 ConsolePanel::ConsolePanel(ConsoleSink& sink) : m_sink(sink) {}
 
 void ConsolePanel::OnInit(EditorContext& /*ctx*/)
@@ -42,19 +59,19 @@ void ConsolePanel::OnRenderContent(EditorContext& /*ctx*/)
     ImGui::Checkbox("Auto Scroll", &m_autoScroll);
     ImGui::Separator();
 
-    // WHAT: ImGui::TextColored は表示専用で、ユーザーがログ本文を範囲選択できない。
-    //       read-only の InputTextMultiline に集約することで、Ctrl+C / 右クリックコピー / 範囲選択を
-    //       OS のテキスト操作に近い感覚で扱えるようにする。
     m_visibleLogText.clear();
     const std::string filter(m_filterBuf.data());
+    auto isVisible = [&](const core::LogEntry& entry) {
+        if (entry.level == core::LogLevel::DEBUG     && !m_showDebug) return false;
+        if (entry.level == core::LogLevel::INFO      && !m_showInfo)  return false;
+        if (entry.level == core::LogLevel::WARNING   && !m_showWarn)  return false;
+        if (entry.level == core::LogLevel::LOG_ERROR && !m_showError) return false;
+        if (!filter.empty() && entry.message.find(filter) == std::string::npos) return false;
+        return true;
+    };
+
     for (const auto& entry : m_sink.GetEntries()) {
-        if (entry.level == core::LogLevel::DEBUG    && !m_showDebug) continue;
-        if (entry.level == core::LogLevel::INFO     && !m_showInfo)  continue;
-        if (entry.level == core::LogLevel::WARNING  && !m_showWarn)  continue;
-        if (entry.level == core::LogLevel::LOG_ERROR && !m_showError) continue;
-
-        if (!filter.empty() && entry.message.find(filter) == std::string::npos) continue;
-
+        if (!isVisible(entry)) continue;
         m_visibleLogText += entry.message;
         m_visibleLogText += '\n';
     }
@@ -62,15 +79,25 @@ void ConsolePanel::OnRenderContent(EditorContext& /*ctx*/)
     if (copyVisibleRequested)
         ImGui::SetClipboardText(m_visibleLogText.c_str());
 
-    ImGui::InputTextMultiline(
-        "##log",
-        m_visibleLogText.data(),
-        m_visibleLogText.size() + 1,
-        ImVec2(0.0f, 0.0f),
-        ImGuiInputTextFlags_ReadOnly);
+    // WHY: ImVec2(0, 0) は InputTextMultiline の既定サイズになり、Console ウィンドウを広げても
+    //      実際のログ表示欄が小さいまま残る。
+    // WHAT: ツールバー描画後の残り領域をそのまま使い、Dock / リサイズ時も表示欄を追従させる。
+    ImVec2 logRegion = ImGui::GetContentRegionAvail();
+    if (logRegion.x < 1.0f) logRegion.x = 1.0f;
+    if (logRegion.y < 1.0f) logRegion.y = 1.0f;
 
-    if (m_autoScroll && !m_visibleLogText.empty() && !ImGui::IsItemActive())
+    ImGui::BeginChild("##log", logRegion, true, ImGuiWindowFlags_HorizontalScrollbar);
+    for (const auto& entry : m_sink.GetEntries()) {
+        if (!isVisible(entry)) continue;
+
+        ImGui::PushStyleColor(ImGuiCol_Text, LogLevelColor(entry.level));
+        ImGui::TextUnformatted(entry.message.c_str());
+        ImGui::PopStyleColor();
+    }
+
+    if (m_autoScroll && !m_visibleLogText.empty())
         ImGui::SetScrollHereY(1.0f);
+    ImGui::EndChild();
 }
 
 } // namespace fbzz::editor
