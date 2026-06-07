@@ -515,9 +515,8 @@ void TerrainTool::OnEditorGUI(scene::Scene& scene)
     }
     if (!hasTerrain) return;
 
-    // 初回のみ右下に配置する。以降はユーザーが自由に移動できる。
-    // WHY: FirstUseEver で初期位置だけ指定し、NoMove を外すことで
-    //      ドラッグで任意の位置に移動できる。
+    // 初回のみ右下に配置する。以降はユーザーが自由に移動 / Docking できる。
+    // WHY: FirstUseEver で初期位置だけ指定し、Docking 時は ImGui の DockNode 配置を優先する。
     const ImGuiViewport* mainVP = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(
         { mainVP->WorkPos.x + mainVP->WorkSize.x - 230.0f,
@@ -528,12 +527,11 @@ void TerrainTool::OnEditorGUI(scene::Scene& scene)
 
     constexpr ImGuiWindowFlags kFlags =
         ImGuiWindowFlags_NoNav              |
-        ImGuiWindowFlags_NoSavedSettings    |
-        ImGuiWindowFlags_NoDocking          |
         ImGuiWindowFlags_NoFocusOnAppearing;
 
-    // タイトルバーにアクティブ状態を反映する
-    const char* windowTitle = m_active ? "Terrain Tool" : "Terrain Tool [OFF]";
+    // タイトルバーにアクティブ状態を反映する。
+    // WHY: 表示名が変わっても Docking ID は固定し、ドッキング先やサイズを維持する。
+    const char* windowTitle = m_active ? "Terrain Tool###TerrainTool" : "Terrain Tool [OFF]###TerrainTool";
     if (!ImGui::Begin(windowTitle, nullptr, kFlags)) {
         ImGui::End();
         return;

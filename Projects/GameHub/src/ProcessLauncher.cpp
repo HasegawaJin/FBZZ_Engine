@@ -2,8 +2,8 @@
 // ProcessLauncher.cpp | fbzz::hub
 // Launch Editor process
 #include "ProcessLauncher.hpp"
-
-#include "Util/HubUtil.hpp"
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 #include <Windows.h>
 #include <array>
@@ -14,12 +14,11 @@ namespace fbzz::hub {
 
 namespace {
 
-namespace util = fbzz::hub::util;
+namespace engine_util = fbzz::util;
 
 bool Exists(const std::filesystem::path& path)
 {
-    std::error_code ec;
-    return std::filesystem::exists(path, ec);
+    return engine_util::FileSystem::Exists(path);
 }
 
 std::wstring Quote(const std::wstring& text)
@@ -37,7 +36,7 @@ bool ProcessLauncher::OpenInEditor(const HubConfig& config, const std::string& p
         return false;
     }
 
-    const std::wstring projectWide = util::Utf8ToWide(projectPath);
+    const std::wstring projectWide = engine_util::StringUtils::ToWide(projectPath);
     std::wstring commandLine = Quote(editorPath) + L" --project " + Quote(projectWide);
     std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
     mutableCommand.push_back(L'\0');
@@ -71,15 +70,13 @@ bool ProcessLauncher::OpenInEditor(const HubConfig& config, const std::string& p
 std::wstring ProcessLauncher::ResolveEditorPath(const HubConfig& config)
 {
     if (!config.GetEditorExe().empty()) {
-        return util::Utf8ToWide(config.GetEditorExe());
+        return engine_util::StringUtils::ToWide(config.GetEditorExe());
     }
 
-    const std::filesystem::path exeDir = util::GetExecutableDirectory();
-    std::error_code ec;
-    const std::filesystem::path cwd = std::filesystem::current_path(ec);
-    const std::string exeDirText = exeDir.generic_string();
-    const bool isDebugHub = exeDirText.find("/debug/") != std::string::npos
-        || exeDirText.find("\\debug\\") != std::string::npos;
+    const std::filesystem::path exeDir = engine_util::FileSystem::GetExecutableDirectory();
+    const std::filesystem::path cwd = engine_util::FileSystem::GetCurrentDirectory();
+    const std::string exeDirText = engine_util::FileSystem::PathToUtf8(exeDir);
+    const bool isDebugHub = engine_util::StringUtils::ContainsCI(exeDirText, "/debug");
     const std::filesystem::path matchingBuildEditor = isDebugHub
         ? cwd / L"build" / L"debug" / L"Projects" / L"EditorLauncher" / L"Debug" / L"FBZZEditor.exe"
         : cwd / L"build" / L"release" / L"Projects" / L"EditorLauncher" / L"Release" / L"FBZZEditor.exe";

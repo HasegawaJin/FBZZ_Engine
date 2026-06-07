@@ -3,45 +3,18 @@
 // ReadDirectoryChangesW を使った非同期ポーリング型ファイル監視
 #include <Editor/AssetFileWatcher.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
-#include <codecvt>
-#include <locale>
 
 namespace fbzz::editor {
-
-namespace {
-
-// wchar_t パスを UTF-8 std::string に変換する
-std::string WideToUtf8(const wchar_t* src, DWORD charCount)
-{
-    if (charCount == 0) return {};
-    const int len = WideCharToMultiByte(
-        CP_UTF8, 0, src, static_cast<int>(charCount), nullptr, 0, nullptr, nullptr);
-    if (len <= 0) return {};
-    std::string result(static_cast<size_t>(len), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, src, static_cast<int>(charCount),
-                        result.data(), len, nullptr, nullptr);
-    return result;
-}
-
-// バックスラッシュを '/' に正規化する
-std::string Normalize(std::string path)
-{
-    for (char& c : path)
-        if (c == '\\') c = '/';
-    return path;
-}
-
-} // namespace
 
 bool AssetFileWatcher::Start(const std::string& rootPath)
 {
     Stop();
 
     // UTF-8 → wchar_t 変換
-    const int wlen = MultiByteToWideChar(CP_UTF8, 0, rootPath.c_str(), -1, nullptr, 0);
-    std::wstring wpath(static_cast<size_t>(wlen), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, rootPath.c_str(), -1, wpath.data(), wlen);
+    const std::wstring wpath = util::StringUtils::ToWide(rootPath);
 
     m_handle = CreateFileW(
         wpath.c_str(),
@@ -70,7 +43,7 @@ bool AssetFileWatcher::Start(const std::string& rootPath)
         return false;
     }
 
-    m_rootPath = Normalize(rootPath);
+    m_rootPath = util::FileSystem::NormalizePathSeparators(rootPath);
     if (!m_rootPath.empty() && m_rootPath.back() != '/')
         m_rootPath += '/';
 
@@ -172,8 +145,8 @@ void AssetFileWatcher::ParseBuffer(DWORD bytesTransferred)
         const auto* info = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(ptr);
 
         // wchar_t パス → UTF-8 相対パス
-        const std::string relPath = Normalize(
-            WideToUtf8(info->FileName, info->FileNameLength / sizeof(wchar_t)));
+        const std::string relPath = util::FileSystem::NormalizePathSeparators(
+            util::StringUtils::ToNarrow(info->FileName, static_cast<int>(info->FileNameLength / sizeof(wchar_t))));
 
         FileEvent ev;
 

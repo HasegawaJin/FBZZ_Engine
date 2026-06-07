@@ -2,50 +2,24 @@
 // HubConfig.cpp | fbzz::hub
 // Hub settings TOML persistence
 #include "HubConfig.hpp"
+#include <Engine/Util/FileSystem.hpp>
 
-#include "Util/HubUtil.hpp"
-
-#include <Windows.h>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cstdlib>
-#include <fstream>
 #include <sstream>
 
 namespace fbzz::hub {
 
 namespace {
 
-namespace util = fbzz::hub::util;
-
-std::string ReadText(const std::filesystem::path& path)
-{
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return {};
-
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
-}
-
-bool WriteText(const std::filesystem::path& path, const std::string& text)
-{
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) return false;
-
-    file << text;
-    return static_cast<bool>(file);
-}
+namespace engine_util = fbzz::util;
 
 std::string NormalizeProjectPath(const std::string& path)
 {
     if (path.empty()) return {};
-
-    std::error_code ec;
-    const std::filesystem::path source(util::Utf8ToWide(path));
-    const std::filesystem::path absolute = std::filesystem::absolute(source, ec);
-    const std::filesystem::path normalized = ec ? source : absolute.lexically_normal();
-    return util::WideToUtf8(normalized.wstring());
+    return engine_util::FileSystem::PathToUtf8(
+        engine_util::FileSystem::MakeAbsolute(engine_util::FileSystem::PathFromUtf8(path)));
 }
 
 } // namespace
@@ -60,7 +34,7 @@ std::filesystem::path HubConfig::ResolveConfigPath()
     if (appData && length > 0) {
         base = appData;
     } else {
-        base = std::filesystem::current_path();
+        base = engine_util::FileSystem::GetCurrentDirectory();
     }
 
     free(appData);
@@ -70,9 +44,10 @@ std::filesystem::path HubConfig::ResolveConfigPath()
 bool HubConfig::Load()
 {
     m_configPath = ResolveConfigPath();
-    std::filesystem::create_directories(m_configPath.parent_path());
+    engine_util::FileSystem::EnsureDirectory(m_configPath.parent_path());
 
-    const std::string text = ReadText(m_configPath);
+    std::string text;
+    engine_util::FileSystem::ReadText(m_configPath, text);
     if (text.empty()) {
         return Save();
     }
@@ -107,7 +82,6 @@ bool HubConfig::Load()
 
 bool HubConfig::Save() const
 {
-    std::filesystem::create_directories(m_configPath.empty() ? ResolveConfigPath().parent_path() : m_configPath.parent_path());
     const std::filesystem::path path = m_configPath.empty() ? ResolveConfigPath() : m_configPath;
 
     toml::table hub;
@@ -129,7 +103,7 @@ bool HubConfig::Save() const
 
     std::ostringstream ss;
     ss << root;
-    return WriteText(path, ss.str());
+    return engine_util::FileSystem::WriteText(path, ss.str());
 }
 
 void HubConfig::SetProjects(std::vector<ConfigProject> projects)

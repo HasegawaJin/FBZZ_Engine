@@ -99,9 +99,9 @@ std::filesystem::path BuildSettings::ResolveOutputPath(const std::string& projec
 {
     // WHY: 絶対パスと相対パスの両方を受け付けるが、保存時は相対パスを優先する。
     //      プロジェクトを別 PC に持っていっても動くように。
-    std::filesystem::path out(outputDirectory);
+    std::filesystem::path out = util::FileSystem::PathFromUtf8(outputDirectory);
     if (out.is_absolute()) return out;
-    return std::filesystem::path(projectRoot) / out;
+    return util::FileSystem::PathFromUtf8(projectRoot) / out;
 }
 
 } // namespace fbzz::editor

@@ -3,11 +3,12 @@
 // .fzmat マテリアルアセットの TOML シリアライズ / デシリアライズ
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <array>
 #include <filesystem>
-#include <fstream>
+#include <sstream>
 
 namespace fbzz::asset {
 
@@ -154,9 +155,19 @@ toml::array FloatArrayToToml(const std::vector<float>& values)
 
 bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 {
-    toml::parse_result parsed = toml::parse_file(path);
+    const std::string pathString(path);
+    std::string text;
+    if (!util::FileSystem::ReadText(pathString, text)) {
+        FBZZ_LOG_WARN("MaterialAsset: cannot open [%s]", pathString.c_str());
+        return false;
+    }
+
+    // WHY: toml::parse_file(std::string_view) に Editor 側の一時パス表現を直接渡すと、
+    //      Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れる。
+    //      Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
+    toml::parse_result parsed = toml::parse(text, pathString);
     if (!parsed) {
-        FBZZ_LOG_WARN("MaterialAsset: parse failed [%s]", std::string(path).c_str());
+        FBZZ_LOG_WARN("MaterialAsset: parse failed [%s]", pathString.c_str());
         return false;
     }
 
@@ -201,6 +212,7 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 
 bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
 {
+    const std::string pathString(path);
     toml::table table;
     table.insert("version", int64_t{ 1 });
     table.insert("shader", asset.shaderPath);
@@ -230,13 +242,13 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
     }
     table.insert("params", std::move(params));
 
-    std::ofstream out{ std::string(path) };
-    if (!out) {
-        FBZZ_LOG_ERROR("MaterialAsset: cannot open [%s]", std::string(path).c_str());
+    std::ostringstream out;
+    out << table << '\n';
+    if (!util::FileSystem::WriteText(pathString, out.str())) {
+        FBZZ_LOG_ERROR("MaterialAsset: cannot open [%s]", pathString.c_str());
         return false;
     }
-    out << table << '\n';
-    return out.good();
+    return true;
 }
 
 } // namespace fbzz::asset
