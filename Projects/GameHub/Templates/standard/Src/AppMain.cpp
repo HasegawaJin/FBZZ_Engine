@@ -38,6 +38,8 @@
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -78,56 +80,39 @@ struct LaunchArgs {
 
 std::wstring Utf8ToWide(const std::string& text)
 {
-    if (text.empty()) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
+    return fbzz::util::StringUtils::ToWide(text);
 }
 
 std::string WideToUtf8(const std::wstring& text)
 {
-    if (text.empty()) return {};
-    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return {};
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
+    return fbzz::util::StringUtils::ToNarrow(text);
 }
 
 std::string PathToUtf8(const std::filesystem::path& path)
 {
-    return WideToUtf8(path.wstring());
+    return fbzz::util::FileSystem::PathToUtf8(path);
 }
 
 bool Exists(const std::filesystem::path& path)
 {
-    std::error_code ec;
-    return std::filesystem::exists(path, ec);
+    return fbzz::util::FileSystem::Exists(path);
 }
 
 std::string ReadText(const std::filesystem::path& path)
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return {};
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
+    std::string text;
+    fbzz::util::FileSystem::ReadText(path, text);
+    return text;
 }
 
 std::filesystem::path MakeAbsolute(const std::filesystem::path& path)
 {
-    std::error_code ec;
-    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
-    return ec ? path : absolute.lexically_normal();
+    return fbzz::util::FileSystem::MakeAbsolute(path);
 }
 
 std::filesystem::path GetExecutableDirectory()
 {
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return std::filesystem::path(buffer).parent_path();
+    return fbzz::util::FileSystem::GetExecutableDirectory();
 }
 
 // WHY: 引数なし起動の挙動を 2 段階で決める。
@@ -176,7 +161,7 @@ LaunchArgs ParseArgs()
 std::filesystem::path ReadTomlRelativePath(const toml::table& table, const char* tableName, const char* key)
 {
     const std::string value = table[tableName][key].value_or(std::string{});
-    return value.empty() ? std::filesystem::path{} : std::filesystem::path(Utf8ToWide(value));
+    return value.empty() ? std::filesystem::path{} : fbzz::util::FileSystem::PathFromUtf8(value);
 }
 
 bool IsTemplatePlaceholder(const std::filesystem::path& path)
@@ -813,7 +798,7 @@ int Run()
 #endif
     if (isStandalone) {
         const std::filesystem::path logPath = GetExecutableDirectory() / L"game.log";
-        logSink.file.open(logPath, std::ios::out | std::ios::trunc);
+        logSink.file = fbzz::util::FileSystem::OpenBinaryWriter(logPath);
         if (logSink.file.is_open()) {
             const auto now = std::chrono::system_clock::now();
             const std::time_t t = std::chrono::system_clock::to_time_t(now);
