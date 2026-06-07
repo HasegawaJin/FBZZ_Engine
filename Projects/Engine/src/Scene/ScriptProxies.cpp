@@ -4,6 +4,8 @@
 // Script 本体を肥大化させず、Component / System ごとの便利 API をここで具体化する。
 #include <Engine/Scene/Script.hpp>
 
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
@@ -500,108 +502,81 @@ MaterialComponent* ScriptMaterialProxy::Ensure() const
     return &script->m_gameObject->AddComponent<MaterialComponent>();
 }
 
-bool ScriptMaterialProxy::SetShader(std::string_view shaderPath, bool resetParameters) const
+bool ScriptMaterialProxy::SetMaterial(std::string_view materialPath) const
 {
     auto* material = Ensure();
     if (!material) return false;
 
-    material->shaderPath = std::string(shaderPath);
-    if (!resetParameters) return true;
-
-    if (const auto* desc = script->GetShaderDescriptor(shaderPath)) {
-        material->InitFromDescriptor(*desc);
-        return true;
-    }
-
-    // WHY: shader がまだロードできない場合でも、Script から t0〜t4 を先に設定できる余地を残す。
-    if (material->texturePaths.empty())
-        material->texturePaths.resize(5);
-    material->paramData.clear();
-    return false;
+    material->materialPath = std::string(materialPath);
+    material->materialAsset = material->materialPath.empty()
+        ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
+        : asset::AssetManager::LoadMaterial(material->materialPath);
+    return material->materialAsset.IsValid() || material->materialPath.empty();
 }
 
-bool ScriptMaterialProxy::EnsureCustomMaterial(std::string_view shaderPath, bool resetParameters) const
+bool ScriptMaterialProxy::EnsureMaterial(std::string_view materialPath) const
 {
     auto* material = Ensure();
     if (!material) return false;
-
-    const bool shaderChanged = material->shaderPath != shaderPath;
-    const bool needsLayout = resetParameters && material->paramData.empty();
-    if (shaderChanged || needsLayout)
-        return SetShader(shaderPath, resetParameters);
-
-    if (resetParameters) {
-        if (const auto* desc = script->GetShaderDescriptor(shaderPath)) {
-            if (material->paramData.size() != desc->cbufferSize)
-                material->InitFromDescriptor(*desc);
-        }
-    }
-
-    return true;
+    if (material->materialPath != materialPath)
+        return SetMaterial(materialPath);
+    return material->EnsureMaterialAsset();
 }
 
 bool ScriptMaterialProxy::HasParam(std::string_view param) const
 {
-    const auto* material = Get();
-    if (!material || !script) return false;
-
-    const auto* desc = script->GetShaderDescriptor(material->shaderPath);
-    return desc && desc->FindVar(param) != nullptr;
+    auto* material = Get();
+    if (!material || !material->EnsureMaterialAsset()) return false;
+    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
+    if (!a) return false;
+    return a->params.find(std::string(param)) != a->params.end();
 }
 
 void ScriptMaterialProxy::SetFloat(std::string_view param, float v) const
 {
-    if (auto* m = SelfComponent<MaterialComponent>(script)) {
-        if (const auto* desc = script->GetShaderDescriptor(m->shaderPath))
-            m->SetParam(param, v, *desc);
-    }
+    auto* m = SelfComponent<MaterialComponent>(script);
+    if (!m || !m->EnsureMaterialAsset()) return;
+    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
+    if (!a) return;
+    a->params[std::string(param)] = { v };
 }
 
 void ScriptMaterialProxy::SetInt(std::string_view param, int v) const
 {
-    if (auto* m = SelfComponent<MaterialComponent>(script)) {
-        if (const auto* desc = script->GetShaderDescriptor(m->shaderPath))
-            m->SetParam(param, v, *desc);
-    }
+    SetFloat(param, static_cast<float>(v));
 }
 
 void ScriptMaterialProxy::SetVector3(std::string_view param, const math::Vector3& v) const
 {
-    if (auto* m = SelfComponent<MaterialComponent>(script)) {
-        if (const auto* desc = script->GetShaderDescriptor(m->shaderPath))
-            m->SetParam(param, v, *desc);
-    }
+    auto* m = SelfComponent<MaterialComponent>(script);
+    if (!m || !m->EnsureMaterialAsset()) return;
+    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
+    if (!a) return;
+    a->params[std::string(param)] = { v.x, v.y, v.z };
 }
 
 void ScriptMaterialProxy::SetVector4(std::string_view param, const math::Vector4& v) const
 {
-    if (auto* m = SelfComponent<MaterialComponent>(script)) {
-        if (const auto* desc = script->GetShaderDescriptor(m->shaderPath))
-            m->SetParam(param, v, *desc);
-    }
+    auto* m = SelfComponent<MaterialComponent>(script);
+    if (!m || !m->EnsureMaterialAsset()) return;
+    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
+    if (!a) return;
+    a->params[std::string(param)] = { v.x, v.y, v.z, v.w };
 }
 
 void ScriptMaterialProxy::SetTexture(std::string_view slot, std::string_view texPath) const
 {
     auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m) return;
+    if (!m || !m->EnsureMaterialAsset()) return;
+    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
+    if (!a) return;
 
-    uint32_t targetSlot = UINT32_MAX;
-    if (const auto* desc = script->GetShaderDescriptor(m->shaderPath)) {
-        for (const auto& tex : desc->textures) {
-            if (tex.name == slot) {
-                targetSlot = tex.slot;
-                break;
-            }
-        }
-    }
-    if (targetSlot == UINT32_MAX)
-        targetSlot = ParseTextureSlot(slot);
-    if (targetSlot == UINT32_MAX) return;
-
-    if (m->texturePaths.size() <= targetSlot)
-        m->texturePaths.resize(targetSlot + 1u);
-    m->texturePaths[targetSlot] = std::string(texPath);
+    static constexpr const char* kSlots[] = { "albedo", "normal", "metallic", "emissive", "ao" };
+    std::string key(slot);
+    const uint32_t targetSlot = ParseTextureSlot(slot);
+    if (targetSlot != UINT32_MAX && targetSlot < 5u)
+        key = kSlots[targetSlot];
+    a->textures[key] = std::string(texPath);
 }
 
 bool ScriptMaterialProxy::SetEnabled(bool enabled) const
@@ -615,35 +590,36 @@ bool ScriptMaterialProxy::SetEnabled(bool enabled) const
 bool ScriptMaterialProxy::SetBlendMode(renderer::BlendMode blendMode) const
 {
     auto* material = Get();
-    if (!material) return false;
-    material->blendMode = blendMode;
+    if (!material || !material->EnsureMaterialAsset()) return false;
+    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
+    if (!a) return false;
+    a->blendMode = blendMode;
     return true;
 }
 
 bool ScriptMaterialProxy::SetDoubleSided(bool doubleSided) const
 {
     auto* material = Get();
-    if (!material) return false;
-    material->doubleSided = doubleSided;
+    if (!material || !material->EnsureMaterialAsset()) return false;
+    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
+    if (!a) return false;
+    a->doubleSided = doubleSided;
     return true;
 }
 
 bool ScriptMaterialProxy::SetRenderQueue(int32_t renderQueue) const
 {
     auto* material = Get();
-    if (!material) return false;
-    material->renderQueue = renderQueue;
+    if (!material || !material->EnsureMaterialAsset()) return false;
+    auto* a = asset::AssetManager::GetMaterial(material->materialAsset);
+    if (!a) return false;
+    a->renderQueue = renderQueue;
     return true;
 }
 
 void ScriptMaterialProxy::QueueRenderPass(UserRenderPassDesc desc) const
 {
     if (script) script->QueueRenderPass(std::move(desc));
-}
-
-const renderer::ShaderDescriptor* ScriptMaterialProxy::GetShaderDescriptor(std::string_view path) const
-{
-    return script ? script->GetShaderDescriptor(path) : nullptr;
 }
 
 void ScriptParticleProxy::SetEmitRate(float rate) const

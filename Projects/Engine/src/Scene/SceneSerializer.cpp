@@ -35,7 +35,6 @@
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
-#include <Engine/Scene/WaterAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -300,124 +299,6 @@ void ReadConvexHullCollider(const toml::table& colTbl, ConvexHullColliderCompone
     col.useTransformScale = colTbl["useTransformScale"].value_or(true);
 }
 
-toml::table SerializeWater(const WaterComponent& water)
-{
-    // WHY: WaterComponent は std::array<GerstnerWave,4> を持つため、IReflector だけでは
-    //      波配列まで表現できない。基本値は明示的に保存し、配列は TOML array に展開する。
-    toml::table tbl;
-    tbl.insert("enabled", water.enabled);
-    tbl.insert("resolutionX", static_cast<int64_t>(water.resolutionX));
-    tbl.insert("resolutionZ", static_cast<int64_t>(water.resolutionZ));
-    tbl.insert("chunkCount",  static_cast<int64_t>(water.chunkCount));
-    tbl.insert("extentX", static_cast<double>(water.extentX));
-    tbl.insert("extentZ", static_cast<double>(water.extentZ));
-    tbl.insert("shallowColor", Vec3ToArr(water.shallowColor));
-    tbl.insert("deepColor", Vec3ToArr(water.deepColor));
-    tbl.insert("shallowDepth", static_cast<double>(water.shallowDepth));
-    tbl.insert("deepDepth", static_cast<double>(water.deepDepth));
-    tbl.insert("opacity", static_cast<double>(water.opacity));
-    tbl.insert("reflectivity", static_cast<double>(water.reflectivity));
-    tbl.insert("fresnelBias", static_cast<double>(water.fresnelBias));
-    tbl.insert("fresnelPower", static_cast<double>(water.fresnelPower));
-    tbl.insert("normalMap1Path", water.normalMap1Path);
-    tbl.insert("normalMap2Path", water.normalMap2Path);
-    tbl.insert("normalMap1Tiling", static_cast<double>(water.normalMap1Tiling));
-    tbl.insert("normalMap2Tiling", static_cast<double>(water.normalMap2Tiling));
-    tbl.insert("normalStrength", static_cast<double>(water.normalStrength));
-    tbl.insert("normalMap1Scroll", Vec2ToArr(water.normalMap1Scroll));
-    tbl.insert("normalMap2Scroll", Vec2ToArr(water.normalMap2Scroll));
-    tbl.insert("enableGerstnerWaves", water.enableGerstnerWaves);
-    tbl.insert("foamThreshold", static_cast<double>(water.foamThreshold));
-    tbl.insert("foamFade", static_cast<double>(water.foamFade));
-    tbl.insert("foamStrength", static_cast<double>(water.foamStrength));
-    tbl.insert("foamTexPath", water.foamTexPath);
-    tbl.insert("foamTiling", static_cast<double>(water.foamTiling));
-    tbl.insert("refractionStrength", static_cast<double>(water.refractionStrength));
-    tbl.insert("enableFlowMap", water.enableFlowMap);
-    tbl.insert("flowMapPath", water.flowMapPath);
-    tbl.insert("flowSpeed", static_cast<double>(water.flowSpeed));
-    tbl.insert("flowTiling", static_cast<double>(water.flowTiling));
-    tbl.insert("enableCaustics", water.enableCaustics);
-    tbl.insert("causticsIntensity", static_cast<double>(water.causticsIntensity));
-    tbl.insert("causticsTiling", static_cast<double>(water.causticsTiling));
-    tbl.insert("causticsSpeed", static_cast<double>(water.causticsSpeed));
-    tbl.insert("causticsTexPath", water.causticsTexPath);
-    tbl.insert("envCubemapPath", water.envCubemapPath);
-
-    toml::array waves;
-    for (const GerstnerWave& wave : water.waves) {
-        toml::table waveTbl;
-        waveTbl.insert("direction", Vec2ToArr(wave.direction));
-        waveTbl.insert("amplitude", static_cast<double>(wave.amplitude));
-        waveTbl.insert("wavelength", static_cast<double>(wave.wavelength));
-        waveTbl.insert("steepness", static_cast<double>(wave.steepness));
-        waves.push_back(std::move(waveTbl));
-    }
-    tbl.insert("waves", std::move(waves));
-    return tbl;
-}
-
-WaterComponent ReadWater(const toml::table& tbl)
-{
-    WaterComponent water{};
-    water.enabled = tbl["enabled"].value_or(true);
-    water.resolutionX = static_cast<uint32_t>(std::max<int64_t>(1, tbl["resolutionX"].value_or(int64_t{64})));
-    water.resolutionZ = static_cast<uint32_t>(std::max<int64_t>(1, tbl["resolutionZ"].value_or(int64_t{64})));
-    water.chunkCount  = static_cast<uint32_t>(std::max<int64_t>(1, tbl["chunkCount"].value_or(int64_t{4})));
-    water.extentX = static_cast<float>(tbl["extentX"].value_or(100.0));
-    water.extentZ = static_cast<float>(tbl["extentZ"].value_or(100.0));
-    water.shallowColor = ArrToVec3(tbl["shallowColor"].as_array(), water.shallowColor);
-    water.deepColor = ArrToVec3(tbl["deepColor"].as_array(), water.deepColor);
-    water.shallowDepth = static_cast<float>(tbl["shallowDepth"].value_or(0.5));
-    water.deepDepth = static_cast<float>(tbl["deepDepth"].value_or(5.0));
-    water.opacity = static_cast<float>(tbl["opacity"].value_or(0.85));
-    water.reflectivity = static_cast<float>(tbl["reflectivity"].value_or(0.5));
-    water.fresnelBias = static_cast<float>(tbl["fresnelBias"].value_or(0.02));
-    water.fresnelPower = static_cast<float>(tbl["fresnelPower"].value_or(5.0));
-    water.normalMap1Path = tbl["normalMap1Path"].value_or(std::string{});
-    water.normalMap2Path = tbl["normalMap2Path"].value_or(std::string{});
-    water.normalMap1Tiling = static_cast<float>(tbl["normalMap1Tiling"].value_or(4.0));
-    water.normalMap2Tiling = static_cast<float>(tbl["normalMap2Tiling"].value_or(6.0));
-    water.normalStrength = static_cast<float>(tbl["normalStrength"].value_or(1.0));
-    water.normalMap1Scroll = ArrToVec2(tbl["normalMap1Scroll"].as_array(), water.normalMap1Scroll);
-    water.normalMap2Scroll = ArrToVec2(tbl["normalMap2Scroll"].as_array(), water.normalMap2Scroll);
-    water.enableGerstnerWaves = tbl["enableGerstnerWaves"].value_or(true);
-    water.foamThreshold = static_cast<float>(tbl["foamThreshold"].value_or(0.3));
-    water.foamFade = static_cast<float>(tbl["foamFade"].value_or(0.5));
-    water.foamStrength = static_cast<float>(tbl["foamStrength"].value_or(1.0));
-    water.foamTexPath = tbl["foamTexPath"].value_or(std::string{});
-    water.foamTiling = static_cast<float>(tbl["foamTiling"].value_or(8.0));
-    water.refractionStrength = static_cast<float>(tbl["refractionStrength"].value_or(0.03));
-    water.enableFlowMap = tbl["enableFlowMap"].value_or(false);
-    water.flowMapPath = tbl["flowMapPath"].value_or(std::string{});
-    water.flowSpeed = static_cast<float>(tbl["flowSpeed"].value_or(0.3));
-    water.flowTiling = static_cast<float>(tbl["flowTiling"].value_or(1.0));
-    water.enableCaustics = tbl["enableCaustics"].value_or(true);
-    water.causticsIntensity = static_cast<float>(tbl["causticsIntensity"].value_or(0.4));
-    water.causticsTiling = static_cast<float>(tbl["causticsTiling"].value_or(0.5));
-    water.causticsSpeed = static_cast<float>(tbl["causticsSpeed"].value_or(0.15));
-    water.causticsTexPath = tbl["causticsTexPath"].value_or(std::string{});
-    water.envCubemapPath = tbl["envCubemapPath"].value_or(std::string{});
-
-    if (const auto* waves = tbl["waves"].as_array()) {
-        size_t index = 0;
-        for (const auto& node : *waves) {
-            const auto* waveTbl = node.as_table();
-            if (!waveTbl || index >= water.waves.size()) continue;
-            GerstnerWave wave{};
-            wave.direction = ArrToVec2((*waveTbl)["direction"].as_array(), wave.direction);
-            wave.amplitude = static_cast<float>((*waveTbl)["amplitude"].value_or(0.0));
-            wave.wavelength = static_cast<float>((*waveTbl)["wavelength"].value_or(10.0));
-            wave.steepness = static_cast<float>((*waveTbl)["steepness"].value_or(0.5));
-            water.waves[index++] = wave;
-        }
-    }
-
-    water.meshDirty = true;
-    water.foamDirty = true;
-    water.texDirty = true;
-    return water;
-}
 
 const char* VolumeTypeToString(physics::VolumeType type)
 {
@@ -666,50 +547,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
         // MaterialComponent
         if (auto* mc = go.GetComponent<MaterialComponent>(); mc) {
-            if (mc->material && mc->shaderPath.empty())
-                FBZZ_LOG_WARN("SceneSerializer: MaterialComponent '%s' has material but no shaderPath; it cannot be rendered after restore", go.name.c_str());
             toml::table matTbl;
-            matTbl.insert("shader",      mc->shaderPath);
-            matTbl.insert("enabled",     mc->enabled);
-            matTbl.insert("blendMode",   static_cast<int64_t>(mc->blendMode));
-            matTbl.insert("doubleSided", mc->doubleSided);
-            matTbl.insert("renderQueue", static_cast<int64_t>(mc->renderQueue));
-
-            // テクスチャパス (スロット順に配列で保存)
-            toml::array texArr;
-            for (const auto& p : mc->texturePaths)
-                texArr.push_back(p);
-            matTbl.insert("textures", std::move(texArr));
-
-            // cbuffer パラメータ (Descriptor 変数名をキーに保存)
-            const renderer::ShaderDescriptor* desc = nullptr;
-            if (mc->material && mc->material->shader.IsValid())
-                if (auto* res = renderer::ResourceManager::Active())
-                    if (auto* sh = res->Get(mc->material->shader))
-                        desc = &sh->GetDescriptor();
-
-            if (desc && !desc->vars.empty() && mc->paramData.size() == desc->cbufferSize)
-            {
-                toml::table paramTbl;
-                for (const auto& v : desc->vars)
-                {
-                    if (v.varType != renderer::ShaderVarType::Float) continue;
-                    if (v.offset + v.size > static_cast<uint32_t>(mc->paramData.size())) continue;
-                    const float* ptr = reinterpret_cast<const float*>(mc->paramData.data() + v.offset);
-                    if (v.columns == 1)
-                    {
-                        paramTbl.insert(v.name, static_cast<double>(*ptr));
-                    }
-                    else
-                    {
-                        toml::array arr;
-                        for (uint8_t ci = 0; ci < v.columns; ++ci)
-                            arr.push_back(static_cast<double>(ptr[ci]));
-                        paramTbl.insert(v.name, std::move(arr));
-                    }
-                }
-                matTbl.insert("params", std::move(paramTbl));
-            }
+            matTbl.insert("material", mc->materialPath);
+            matTbl.insert("enabled",  mc->enabled);
             goTbl.insert("MaterialComponent", std::move(matTbl));
         }
 
@@ -1202,6 +1042,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 savedToTerrainAsset = TerrainAssetSerializer::Save(*tc, terrainDiskPath);
             }
 
+            terrainTbl.insert("materialPath", tc->materialPath);
+
             if (tc->terrainAssetPath.empty() || !savedToTerrainAsset) {
                 // ハイトマップ（float 配列）
                 // WHY: assetPath 未設定の既存 Terrain は従来どおり自己完結させ、
@@ -1219,64 +1061,33 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                         splatArr.push_back(static_cast<int64_t>(s));
                     terrainTbl.insert("splatData", std::move(splatArr));
                 }
-
-                // テクスチャレイヤー（配列テーブル）
-                toml::array layersArr;
-                for (const auto& layer : tc->layers) {
-                    toml::table layerTbl;
-                    layerTbl.insert("diffusePath",    layer.diffusePath);
-                    layerTbl.insert("normalPath",     layer.normalPath);
-                    layerTbl.insert("aoRoughnessPath", layer.aoRoughnessPath);
-                    layerTbl.insert("tilingX",        static_cast<double>(layer.tilingX));
-                    layerTbl.insert("tilingZ",        static_cast<double>(layer.tilingZ));
-                    layerTbl.insert("normalStrength", static_cast<double>(layer.normalStrength));
-                    layerTbl.insert("roughness",      static_cast<double>(layer.roughness));
-                    layerTbl.insert("ambientOcclusion", static_cast<double>(layer.ambientOcclusion));
-                    layerTbl.insert("autoBlendEnabled", layer.autoBlendEnabled);
-                    layerTbl.insert("autoBlendStrength", static_cast<double>(layer.autoBlendStrength));
-                    layerTbl.insert("autoMinHeight", static_cast<double>(layer.autoMinHeight));
-                    layerTbl.insert("autoMaxHeight", static_cast<double>(layer.autoMaxHeight));
-                    layerTbl.insert("autoHeightFade", static_cast<double>(layer.autoHeightFade));
-                    layerTbl.insert("autoMinSlope", static_cast<double>(layer.autoMinSlope));
-                    layerTbl.insert("autoMaxSlope", static_cast<double>(layer.autoMaxSlope));
-                    layerTbl.insert("autoSlopeFade", static_cast<double>(layer.autoSlopeFade));
-                    layersArr.push_back(std::move(layerTbl));
-                }
-                terrainTbl.insert("layers", std::move(layersArr));
             }
 
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
         }
 
-        // WaterComponent
-        // WHY: waterAssetPath が設定されていれば TerrainComponent と同様に外部 .fbzzwater に
-        //      視覚パラメータを分離保存する。Scene 側には enabled とジオメトリ情報のみ残す。
-        //      assetPath 未設定または保存失敗時は従来どおりインライン保存してデータ喪失を防ぐ。
+        // WaterComponent — ジオメトリ・波・materialPath のみ保存。視覚パラメータは fzmat に委譲。
         if (auto* water = go.GetComponent<WaterComponent>()) {
-            bool savedToAsset = false;
-            if (!water->waterAssetPath.empty()) {
-                const std::string diskPath =
-                    ResolveAssetDiskPathForScene(path, water->waterAssetPath);
-                savedToAsset = WaterAssetSerializer::Save(*water, diskPath);
+            toml::table waterTbl;
+            waterTbl.insert("enabled",             water->enabled);
+            waterTbl.insert("materialPath",        water->materialPath);
+            waterTbl.insert("extentX",             static_cast<double>(water->extentX));
+            waterTbl.insert("extentZ",             static_cast<double>(water->extentZ));
+            waterTbl.insert("resolutionX",         static_cast<int64_t>(water->resolutionX));
+            waterTbl.insert("resolutionZ",         static_cast<int64_t>(water->resolutionZ));
+            waterTbl.insert("chunkCount",          static_cast<int64_t>(water->chunkCount));
+            waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
+            toml::array wavesArr;
+            for (const auto& w : water->waves) {
+                toml::table waveTbl;
+                waveTbl.insert("direction",  Vec2ToArr(w.direction));
+                waveTbl.insert("amplitude",  static_cast<double>(w.amplitude));
+                waveTbl.insert("wavelength", static_cast<double>(w.wavelength));
+                waveTbl.insert("steepness",  static_cast<double>(w.steepness));
+                wavesArr.push_back(std::move(waveTbl));
             }
-
-            if (!water->waterAssetPath.empty() && savedToAsset) {
-                // 外部アセット参照モード: Scene にはジオメトリ情報のみ保存する
-                toml::table waterTbl;
-                waterTbl.insert("enabled",        water->enabled);
-                waterTbl.insert("waterAssetPath", water->waterAssetPath);
-                waterTbl.insert("extentX",        (double)water->extentX);
-                waterTbl.insert("extentZ",        (double)water->extentZ);
-                waterTbl.insert("resolutionX",    (int64_t)water->resolutionX);
-                waterTbl.insert("resolutionZ",    (int64_t)water->resolutionZ);
-                waterTbl.insert("chunkCount",     (int64_t)water->chunkCount);
-                goTbl.insert("WaterComponent", std::move(waterTbl));
-            } else {
-                // インラインモード: 全パラメータを Scene に保存（旧形式 / フォールバック）
-                toml::table waterTbl = SerializeWater(*water);
-                waterTbl.insert_or_assign("waterAssetPath", water->waterAssetPath);
-                goTbl.insert("WaterComponent", std::move(waterTbl));
-            }
+            waterTbl.insert("waves", std::move(wavesArr));
+            goTbl.insert("WaterComponent", std::move(waterTbl));
         }
 
         if (auto* sc = go.GetComponent<ScriptComponent>()) {
@@ -1395,110 +1206,11 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // MaterialComponent
         if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
             MaterialComponent mc{};
-            mc.shaderPath   = (*matTbl)["shader"].value_or(std::string{});
             mc.enabled      = (*matTbl)["enabled"].value_or(true);
-            mc.blendMode    = static_cast<renderer::BlendMode>((*matTbl)["blendMode"].value_or(int64_t{0}));
-            mc.doubleSided  = (*matTbl)["doubleSided"].value_or(false);
-            mc.renderQueue  = static_cast<int32_t>((*matTbl)["renderQueue"].value_or(
-                static_cast<int64_t>(renderer::RenderQueue::GEOMETRY)));
+            mc.materialPath = (*matTbl)["material"].value_or(std::string{});
 
-            auto mat        = std::make_shared<renderer::Material>();
-            mat->shaderPath = mc.shaderPath;
-            if (!mc.shaderPath.empty())
-                mat->shader = resources.LoadShader(mc.shaderPath);
-            if (!mat->shader.IsValid())
-                FBZZ_LOG_WARN("SceneSerializer: failed to resolve shader '%s'", mc.shaderPath.c_str());
-
-            // Descriptor を取得して paramData を初期化する
-            const renderer::ShaderDescriptor* desc = nullptr;
-            if (auto* sh = resources.Get(mat->shader))
-                desc = &sh->GetDescriptor();
-            if (desc)
-                mc.InitFromDescriptor(*desc);
-            else
-                mc.texturePaths.resize(5);
-
-            // 新フォーマット: "textures" 配列
-            if (auto* texArr = (*matTbl)["textures"].as_array())
-            {
-                for (size_t i = 0; i < texArr->size() && i < mc.texturePaths.size(); ++i)
-                    mc.texturePaths[i] = texArr->get(i)->value_or(std::string{});
-            }
-            else
-            {
-                // 旧フォーマット互換: "albedoTex" / "normalTex" を slot 0/1 にマップ
-                if (mc.texturePaths.size() > 0)
-                    mc.texturePaths[0] = (*matTbl)["albedoTex"].value_or(std::string{});
-                if (mc.texturePaths.size() > 1)
-                    mc.texturePaths[1] = (*matTbl)["normalTex"].value_or(std::string{});
-            }
-
-            // テクスチャをロード
-            mat->textures.resize(mc.texturePaths.size());
-            for (size_t i = 0; i < mc.texturePaths.size(); ++i)
-                if (!mc.texturePaths[i].empty())
-                    mat->textures[i] = asset::AssetManager::LoadTexture(mc.texturePaths[i]);
-
-            // 新フォーマット: "params" テーブル
-            if (desc && (*matTbl)["params"].as_table())
-            {
-                auto& paramTbl = *(*matTbl)["params"].as_table();
-                for (const auto& v : desc->vars)
-                {
-                    if (v.varType != renderer::ShaderVarType::Float) continue;
-                    if (v.offset + v.size > static_cast<uint32_t>(mc.paramData.size())) continue;
-                    float* ptr = reinterpret_cast<float*>(mc.paramData.data() + v.offset);
-                    if (v.columns == 1)
-                    {
-                        *ptr = static_cast<float>(paramTbl[v.name].value_or(static_cast<double>(*ptr)));
-                    }
-                    else if (auto* arr = paramTbl[v.name].as_array())
-                    {
-                        for (uint8_t ci = 0; ci < v.columns && ci < arr->size(); ++ci)
-                            ptr[ci] = static_cast<float>(arr->get(ci)->value_or(static_cast<double>(ptr[ci])));
-                    }
-                }
-            }
-            else if (desc)
-            {
-                // 旧フォーマット互換: 個別フィールド (albedo/metallic/roughness/emissiveScale) を
-                // Descriptor の変数名で照合して paramData に書き込む。
-                // WHY: シリアライズ形式が "params" テーブルに統一される前のシーンを無破損で移行できる。
-                auto writeScalar = [&](const char* key, const char* varName, float defaultVal) {
-                    if (const auto* v = desc->FindVar(varName)) {
-                        if (v->columns == 1 && v->varType == renderer::ShaderVarType::Float &&
-                            v->offset + sizeof(float) <= static_cast<uint32_t>(mc.paramData.size()))
-                        {
-                            float f = static_cast<float>((*matTbl)[key].value_or(static_cast<double>(defaultVal)));
-                            std::memcpy(mc.paramData.data() + v->offset, &f, sizeof(float));
-                        }
-                    }
-                };
-                auto writeVec4 = [&](const char* key, const char* varName, float r, float g, float b, float a) {
-                    if (const auto* v = desc->FindVar(varName)) {
-                        if (v->varType == renderer::ShaderVarType::Float &&
-                            v->offset + v->size <= static_cast<uint32_t>(mc.paramData.size()))
-                        {
-                            float def[4] = { r, g, b, a };
-                            if (auto* arr = (*matTbl)[key].as_array()) {
-                                for (uint8_t ci = 0; ci < v->columns && ci < arr->size(); ++ci)
-                                    def[ci] = static_cast<float>(arr->get(ci)->value_or(static_cast<double>(def[ci])));
-                            }
-                            std::memcpy(mc.paramData.data() + v->offset, def, v->columns * sizeof(float));
-                        }
-                    }
-                };
-                writeVec4("albedo",       "albedo",       1.0f, 1.0f, 1.0f, 1.0f);
-                writeScalar("metallic",      "metallic",      0.0f);
-                writeScalar("roughness",     "roughness",     0.8f);
-                writeScalar("emissiveScale", "emissiveScale", 0.0f);
-            }
-
-            mat->paramData = mc.paramData;
-            static renderer::ShaderDescriptor s_fallback;
-            mat->Init(resources, desc ? desc->cbufferSize : 0u);
-            mat->Upload(resources, desc ? *desc : s_fallback);
-            mc.material = std::move(mat);
+            if (!mc.materialPath.empty())
+                mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
             go.AddComponent<MaterialComponent>(std::move(mc));
         }
 
@@ -1980,7 +1692,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // TerrainComponent
         if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
             TerrainComponent tc{};
-            tc.enabled   = (*terrainTbl)["enabled"].value_or(true);
+            tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
+            tc.materialPath     = (*terrainTbl)["materialPath"].value_or(std::string{});
             tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
             tc.columns   = static_cast<int>((*terrainTbl)["columns"].value_or(int64_t{129}));
             tc.rows      = static_cast<int>((*terrainTbl)["rows"].value_or(int64_t{129}));
@@ -1990,8 +1703,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
             bool loadedFromAsset = false;
             if (!tc.terrainAssetPath.empty()) {
-                // WHY: Prefab / Scene には参照だけを保存し、重い height/splat/layer は
-                //      .fbzzterrain から復元する。失敗時は下のインライン形式にフォールバックする。
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(path, tc.terrainAssetPath);
                 loadedFromAsset = TerrainAssetSerializer::Load(terrainDiskPath, tc);
@@ -2000,95 +1711,52 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             }
 
             if (!loadedFromAsset) {
-            // ハイトマップ
-            if (auto* heightArr = (*terrainTbl)["heightData"].as_array()) {
-                tc.heightData.reserve(heightArr->size());
-                for (auto& v : *heightArr)
-                    tc.heightData.push_back(static_cast<float>(v.value_or(0.0)));
-            } else {
-                // heightData がなければ平坦に初期化する
-                tc.InitFlat(0.0f);
-            }
-
-            // スプラットマップ（省略時は空のまま → TerrainRenderSystem が layer0=100% として扱う）
-            if (auto* splatArr = (*terrainTbl)["splatData"].as_array()) {
-                tc.splatData.reserve(splatArr->size());
-                for (auto& v : *splatArr)
-                    tc.splatData.push_back(static_cast<uint8_t>(v.value_or(int64_t{0})));
-            }
-
-            // テクスチャレイヤー
-            if (auto* layersArr = (*terrainTbl)["layers"].as_array()) {
-                for (auto& layerNode : *layersArr) {
-                    if (auto* layerTbl = layerNode.as_table()) {
-                        TerrainLayer layer{};
-                        layer.diffusePath    = (*layerTbl)["diffusePath"].value_or(std::string{});
-                        layer.normalPath     = (*layerTbl)["normalPath"].value_or(std::string{});
-                        layer.aoRoughnessPath = (*layerTbl)["aoRoughnessPath"].value_or(std::string{});
-                        layer.tilingX        = static_cast<float>((*layerTbl)["tilingX"].value_or(8.0));
-                        layer.tilingZ        = static_cast<float>((*layerTbl)["tilingZ"].value_or(8.0));
-                        layer.normalStrength = static_cast<float>((*layerTbl)["normalStrength"].value_or(1.0));
-                        layer.roughness      = static_cast<float>((*layerTbl)["roughness"].value_or(0.8));
-                        layer.ambientOcclusion =
-                            static_cast<float>((*layerTbl)["ambientOcclusion"].value_or(1.0));
-                        layer.autoBlendEnabled = (*layerTbl)["autoBlendEnabled"].value_or(false);
-                        layer.autoBlendStrength =
-                            static_cast<float>((*layerTbl)["autoBlendStrength"].value_or(1.0));
-                        layer.autoMinHeight =
-                            static_cast<float>((*layerTbl)["autoMinHeight"].value_or(-10000.0));
-                        layer.autoMaxHeight =
-                            static_cast<float>((*layerTbl)["autoMaxHeight"].value_or(10000.0));
-                        layer.autoHeightFade =
-                            static_cast<float>((*layerTbl)["autoHeightFade"].value_or(1.0));
-                        layer.autoMinSlope =
-                            static_cast<float>((*layerTbl)["autoMinSlope"].value_or(0.0));
-                        layer.autoMaxSlope =
-                            static_cast<float>((*layerTbl)["autoMaxSlope"].value_or(1.0));
-                        layer.autoSlopeFade =
-                            static_cast<float>((*layerTbl)["autoSlopeFade"].value_or(0.1));
-                        if (tc.layers.size() < 4) tc.layers.push_back(std::move(layer));
-                    }
+                if (auto* heightArr = (*terrainTbl)["heightData"].as_array()) {
+                    tc.heightData.reserve(heightArr->size());
+                    for (auto& v : *heightArr)
+                        tc.heightData.push_back(static_cast<float>(v.value_or(0.0)));
+                } else {
+                    tc.InitFlat(0.0f);
+                }
+                if (auto* splatArr = (*terrainTbl)["splatData"].as_array()) {
+                    tc.splatData.reserve(splatArr->size());
+                    for (auto& v : *splatArr)
+                        tc.splatData.push_back(static_cast<uint8_t>(v.value_or(int64_t{0})));
                 }
             }
-            }
 
-            // 読み込み直後は GPU バッファ・コライダーを両方再構築する
             tc.heightDirty   = true;
             tc.colliderDirty = true;
             go.AddComponent<TerrainComponent>(std::move(tc));
         }
 
-        // WaterComponent
-        // WHY: waterAssetPath が設定されていれば外部 .fbzzwater から視覚パラメータを復元し、
-        //      ジオメトリ（extentX/Z, resolutionX/Z）と enabled はシーン側の値で上書きする。
-        //      ロード失敗時はインラインデータにフォールバックしてデータ喪失を防ぐ。
+        // WaterComponent — ジオメトリ・波・materialPath のみロード。視覚パラメータは fzmat から。
         if (auto* waterTbl = (*goTbl)["WaterComponent"].as_table()) {
-            const std::string waterAssetPath = (*waterTbl)["waterAssetPath"].value_or(std::string{});
-
-            bool loadedFromAsset = false;
             WaterComponent water{};
+            water.enabled             = (*waterTbl)["enabled"].value_or(true);
+            water.materialPath        = (*waterTbl)["materialPath"].value_or(std::string{});
+            water.extentX             = static_cast<float>((*waterTbl)["extentX"].value_or(100.0));
+            water.extentZ             = static_cast<float>((*waterTbl)["extentZ"].value_or(100.0));
+            water.resolutionX         = static_cast<uint32_t>(
+                std::max<int64_t>(1, (*waterTbl)["resolutionX"].value_or(int64_t{64})));
+            water.resolutionZ         = static_cast<uint32_t>(
+                std::max<int64_t>(1, (*waterTbl)["resolutionZ"].value_or(int64_t{64})));
+            water.chunkCount          = static_cast<uint32_t>(
+                std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
+            water.enableGerstnerWaves = (*waterTbl)["enableGerstnerWaves"].value_or(true);
 
-            if (!waterAssetPath.empty()) {
-                const std::string diskPath =
-                    ResolveAssetDiskPathForScene(path, waterAssetPath);
-                loadedFromAsset = WaterAssetSerializer::Load(diskPath, water);
-                // enabled と geometry はシーン側の値を優先する
-                water.waterAssetPath = waterAssetPath;
-                water.enabled     = (*waterTbl)["enabled"].value_or(true);
-                water.extentX     = (float)(*waterTbl)["extentX"].value_or(100.0);
-                water.extentZ     = (float)(*waterTbl)["extentZ"].value_or(100.0);
-                water.resolutionX = static_cast<uint32_t>(
-                    std::max<int64_t>(1, (*waterTbl)["resolutionX"].value_or(int64_t{64})));
-                water.resolutionZ = static_cast<uint32_t>(
-                    std::max<int64_t>(1, (*waterTbl)["resolutionZ"].value_or(int64_t{64})));
-                water.chunkCount = static_cast<uint32_t>(
-                    std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
-            }
-
-            if (!loadedFromAsset) {
-                // インラインフォールバック（旧形式 / 外部ロード失敗時）
-                water = ReadWater(*waterTbl);
-                water.waterAssetPath = waterAssetPath;
+            if (auto* wavesArr = (*waterTbl)["waves"].as_array()) {
+                size_t wi = 0;
+                for (auto& waveNode : *wavesArr) {
+                    if (wi >= water.waves.size()) break;
+                    if (auto* waveTbl = waveNode.as_table()) {
+                        auto& w      = water.waves[wi++];
+                        w.direction  = ArrToVec2((*waveTbl)["direction"].as_array(), { 1.0f, 0.0f });
+                        w.amplitude  = static_cast<float>((*waveTbl)["amplitude"].value_or(0.5));
+                        w.wavelength = static_cast<float>((*waveTbl)["wavelength"].value_or(10.0));
+                        w.steepness  = static_cast<float>((*waveTbl)["steepness"].value_or(0.5));
+                    }
+                }
             }
 
             water.meshDirty = true;

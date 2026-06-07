@@ -2,6 +2,8 @@
 // RenderPasses/CausticsPass.cpp | fbzz::scene
 // 水中コースティクスを HDR バッファへ加算合成するポストプロセスパス
 #include "PostProcessPasses.hpp"
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -33,18 +35,42 @@ CausticsSource FindCausticsSource(RenderPassContext& ctx)
 {
     CausticsSource result{};
     for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
-        if (!water.enabled || !water.enableCaustics || water.causticsIntensity <= 0.0f) continue;
+        if (!water.enabled) continue;
 
-        // WHY: このパスは全画面 1 回で HDR に足すため、複数水面は最も強い設定を代表値として扱う。
-        //      個別水面ごとの正確な投影は後続で水域マスクを持つ専用 RT を追加した時に拡張する。
-        if (result.enabled && water.causticsIntensity <= result.intensity) continue;
+        const asset::MaterialAsset* mat = nullptr;
+        if (!water.materialPath.empty()) {
+            const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
+            mat = asset::AssetManager::GetMaterial(handle);
+        }
 
-        result.enabled = true;
-        result.intensity = water.causticsIntensity;
-        result.tiling = water.causticsTiling;
-        result.surfaceY = transform.position.y;
-        result.timeOffset = core::Time::TotalTime() * water.causticsSpeed;
-        result.texturePath = water.causticsTexPath;
+        auto getF = [mat](const char* name, float def) -> float {
+            if (!mat) return def;
+            const auto it = mat->params.find(name);
+            if (it != mat->params.end() && !it->second.empty()) return it->second[0];
+            return def;
+        };
+        auto getTex = [mat](const char* name) -> std::string {
+            if (!mat) return {};
+            const auto it = mat->textures.find(name);
+            if (it != mat->textures.end()) return it->second;
+            return {};
+        };
+
+        const float enableCaustics  = getF("enableCaustics", 0.0f);
+        if (enableCaustics < 0.5f) continue;
+
+        const float intensity = getF("causticsIntensity", 1.0f);
+        if (intensity <= 0.0f) continue;
+
+        // 複数水面は最も強い設定を代表値として扱う
+        if (result.enabled && intensity <= result.intensity) continue;
+
+        result.enabled     = true;
+        result.intensity   = intensity;
+        result.tiling      = getF("causticsTiling", 4.0f);
+        result.surfaceY    = transform.position.y;
+        result.timeOffset  = core::Time::TotalTime() * getF("causticsSpeed", 0.5f);
+        result.texturePath = getTex("causticsTex");
     }
     return result;
 }

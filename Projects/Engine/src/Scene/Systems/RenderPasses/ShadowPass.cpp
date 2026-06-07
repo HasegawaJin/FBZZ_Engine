@@ -39,7 +39,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->enabled) continue;
+        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->enabled || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
 
@@ -70,7 +70,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         auto* mat  = go.GetComponent<MaterialComponent>();
         auto* anim = go.GetComponent<AnimatorComponent>();
         if (!smr || !smr->enabled || !smr->model) continue;
-        if (!mat || !mat->enabled) continue;
+        if (!mat || !mat->enabled || !mat->EnsureMaterialAsset()) continue;
 
         PerObjectCB objData{};
         objData.world = go.transform.GetWorldMatrix();

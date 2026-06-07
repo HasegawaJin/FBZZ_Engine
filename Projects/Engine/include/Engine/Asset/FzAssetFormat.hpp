@@ -110,18 +110,4 @@ struct FzQuaternionKey {
 };
 static_assert(sizeof(FzQuaternionKey) == 24, "FzQuaternionKey size mismatch");
 
-// ── .fztex ───────────────────────────────────────────────────────────────
-// ヘッダー | DDS データ本体 (ddsSize バイト)
-
-constexpr uint32_t FZTEX_VERSION   = 1;
-constexpr uint32_t FZTEX_FLAG_SRGB = 1u << 0;
-
-struct FzTexHeader {
-    char     magic[4];   // "FZTX"
-    uint32_t version;
-    uint32_t flags;      // FZTEX_FLAG_SRGB など
-    uint32_t ddsSize;    // 直後に続く DDS データのバイト数
-};
-static_assert(sizeof(FzTexHeader) == 16, "FzTexHeader size mismatch");
-
 } // namespace fbzz::asset
