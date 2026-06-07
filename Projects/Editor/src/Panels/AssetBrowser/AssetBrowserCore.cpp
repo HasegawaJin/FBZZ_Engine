@@ -1,0 +1,246 @@
+﻿// FBZZ Engine
+// AssetBrowserCore.cpp | fbzz::editor
+// AssetBrowser のルート、マウント、ディレクトリ走査
+#include "AssetBrowserCommon.hpp"
+
+namespace fbzz::editor {
+
+std::string SanitizeEntityName(const std::string& name)
+{
+    std::string result = name.empty() ? "Prefab" : name;
+    for (char& c : result) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok) c = '_';
+    }
+    return result;
+}
+
+std::string UniquePrefabPathInDir(const std::string& dir, const std::string& objectName)
+{
+    util::FileSystem::EnsureDirectory(dir);
+    const std::string base = dir + "/" + SanitizeEntityName(objectName);
+    std::string path = base + ".fbzzprefab";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".fbzzprefab";
+    return path;
+}
+
+bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
+                                  EditorContext& ctx,
+                                  const std::string& targetDir)
+{
+    if (!payload || payload->DataSize != sizeof(scene::EntityID) || !ctx.activeScene)
+        return false;
+
+    scene::EntityID droppedId;
+    std::memcpy(&droppedId, payload->Data, sizeof(droppedId));
+
+    auto* go = ctx.activeScene->GetGameObject(droppedId);
+    if (!go) return false;
+
+    const std::string path = UniquePrefabPathInDir(targetDir, go->name);
+    return PrefabSerializer::SaveSelection(*ctx.activeScene, { droppedId }, path);
+}
+
+ImVec4 Lighten(ImVec4 c) {
+    return { std::min(c.x + 0.15f, 1.0f), std::min(c.y + 0.15f, 1.0f),
+             std::min(c.z + 0.15f, 1.0f), c.w };
+}
+
+std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx)
+{
+    // WHY: Asset Browser の内部パスは実ファイル操作のため絶対パスを保持するが、
+    //      Scene / Prefab に保存する payload は配布後も壊れない Assets 起点の相対パスにする。
+    (void)ctx;
+    return NormalizeAssetPath(path);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
+    : m_rootPath(util::FileSystem::NormalizePathSeparators(rootPath)),
+      m_currentPath(util::FileSystem::NormalizePathSeparators(rootPath)) {}
+
+void AssetBrowserPanel::OnInit(EditorContext&)
+{
+    RefreshDirectory();
+    if (!m_rootPath.empty()) {
+        m_watcher.Start(m_rootPath);
+        ScanAndQueueUnimported(m_rootPath);
+    }
+}
+
+void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
+{
+    if (rootPath.empty() || rootPath == m_rootPath) return;
+    m_rootPath = util::FileSystem::NormalizePathSeparators(rootPath);
+    m_currentPath = m_rootPath;
+    m_pendingNavigate.clear();
+    m_mounts.clear();
+    m_pendingImports.clear();
+    m_watcher.Start(m_rootPath);
+    RefreshDirectory();
+    ScanAndQueueUnimported(m_rootPath);
+}
+
+void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
+{
+    std::vector<AssetMount> next;
+
+    auto addMount = [&](const std::string& name, const std::string& path) {
+        if (name.empty() || path.empty() || !util::FileSystem::IsDirectory(path)) return;
+
+        const std::string normalizedPath = util::FileSystem::NormalizePathSeparators(path);
+        const std::string rootChild = util::FileSystem::NormalizePathSeparators(m_rootPath + "/" + name);
+
+        // WHY: プロジェクト Assets 側に実フォルダがある場合はそれを正とする。
+        //      ただし空フォルダだけがあるケースでは、実体側 Scripts/HLSL が見えなくなるためマウントを許可する。
+        if (util::FileSystem::IsDirectory(rootChild) &&
+            !util::FileSystem::ListAll(rootChild).empty()) {
+            return;
+        }
+        if (util::FileSystem::SamePathText(normalizedPath, m_rootPath) ||
+            util::FileSystem::IsChildPathText(m_rootPath, normalizedPath)) return;
+        for (const AssetMount& mount : next) {
+            if (util::FileSystem::SamePathText(mount.path, normalizedPath) || mount.name == name) return;
+        }
+        next.push_back({ name, normalizedPath });
+    };
+
+    // WHY: Scripts / shaders はプロジェクトテンプレート、エンジン内蔵 Assets、
+    //      外部プロジェクト Assets のどこに置かれても編集対象として見える必要がある。
+    const std::string scriptsDir = ctx.scriptsSourceDir.empty()
+        ? ResolveFallbackAssetDir("Scripts")
+        : ctx.scriptsSourceDir;
+    const std::string hlslDir = ctx.hlslSourceDir.empty()
+        ? ResolveFallbackAssetDir("Shaders")
+        : ctx.hlslSourceDir;
+    addMount("Scripts", scriptsDir);
+    addMount("Shaders", hlslDir);
+
+    const bool changed = next.size() != m_mounts.size()
+        || !std::equal(next.begin(), next.end(), m_mounts.begin(),
+            [](const AssetMount& a, const AssetMount& b) {
+                return a.name == b.name && util::FileSystem::SamePathText(a.path, b.path);
+            });
+    if (!changed) return;
+
+    m_mounts = std::move(next);
+
+    if (!IsRootOrMountedPath(m_currentPath))
+        m_currentPath = m_rootPath;
+    RefreshDirectory();
+}
+
+void AssetBrowserPanel::RefreshDirectory()
+{
+    m_resetScroll = true;
+    m_entries.clear();
+    const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
+    for (const auto& p : util::FileSystem::ListAll(currentPath)) {
+        Entry e;
+        e.path  = util::FileSystem::NormalizePathSeparators(p);
+        e.name  = util::FileSystem::GetFilename(p);
+        e.ext   = util::StringUtils::ToLower(util::FileSystem::GetExtension(p));
+        e.isDir = util::FileSystem::IsDirectory(p);
+        m_entries.push_back(std::move(e));
+    }
+
+    if (util::FileSystem::SamePathText(currentPath, m_rootPath)) {
+        for (const AssetMount& mount : m_mounts) {
+            Entry e;
+            e.path = mount.path;
+            e.name = mount.name;
+            e.isDir = true;
+            e.isMount = true;
+            m_entries.push_back(std::move(e));
+        }
+    }
+
+    std::stable_sort(m_entries.begin(), m_entries.end(), [](const Entry& a, const Entry& b) {
+        if (a.isDir != b.isDir) return a.isDir > b.isDir; // dirs first
+        return a.name < b.name;
+    });
+}
+
+std::string AssetBrowserPanel::DisplayPath() const
+{
+    const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
+    if (util::FileSystem::SamePathText(currentPath, m_rootPath)) return "Assets";
+
+    const std::string rootPrefix = util::FileSystem::NormalizePathSeparators(m_rootPath) + "/";
+    if (currentPath.rfind(rootPrefix, 0) == 0)
+        return "Assets/" + currentPath.substr(rootPrefix.size());
+
+    for (const AssetMount& mount : m_mounts) {
+        if (!util::FileSystem::IsChildPathText(currentPath, mount.path)) continue;
+        if (util::FileSystem::SamePathText(currentPath, mount.path)) return "Assets/" + mount.name;
+        return "Assets/" + mount.name + "/" + currentPath.substr(mount.path.size() + 1);
+    }
+
+    return currentPath;
+}
+
+std::string AssetBrowserPanel::ParentPath() const
+{
+    const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
+    if (util::FileSystem::SamePathText(currentPath, m_rootPath)) return m_rootPath;
+    if (IsMountedRoot(currentPath)) return m_rootPath;
+
+    const size_t pos = currentPath.find_last_of('/');
+    if (pos == std::string::npos) return m_rootPath;
+    const std::string parent = currentPath.substr(0, pos);
+    for (const AssetMount& mount : m_mounts) {
+        if (util::FileSystem::IsChildPathText(currentPath, mount.path) &&
+            !util::FileSystem::IsChildPathText(parent, mount.path))
+            return m_rootPath;
+    }
+    return parent;
+}
+
+std::string AssetBrowserPanel::ResolveFallbackAssetDir(const std::string& childDirName) const
+{
+    if (childDirName.empty()) return {};
+
+    std::filesystem::path current(util::FileSystem::NormalizePathSeparators(m_rootPath));
+    std::error_code ec;
+
+    // WHY: ctx.scriptsSourceDir / ctx.hlslSourceDir は hot reload の ToolchainLocator 成功後にだけ入る。
+    //      AssetBrowser は hot reload なしでも使うため、現在の Assets ルートから親をたどって
+    //      リポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
+    for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
+        const std::filesystem::path candidate = current / "Assets" / childDirName;
+        if (std::filesystem::is_directory(candidate, ec))
+            return util::FileSystem::NormalizePathSeparators(candidate.string());
+
+        if (current.filename() == "Assets") {
+            const std::filesystem::path sibling = current.parent_path() / "Assets" / childDirName;
+            if (std::filesystem::is_directory(sibling, ec))
+                return util::FileSystem::NormalizePathSeparators(sibling.string());
+        }
+
+        current = current.parent_path();
+    }
+
+    return {};
+}
+
+bool AssetBrowserPanel::IsMountedRoot(const std::string& path) const
+{
+    for (const AssetMount& mount : m_mounts) {
+        if (util::FileSystem::SamePathText(path, mount.path)) return true;
+    }
+    return false;
+}
+
+bool AssetBrowserPanel::IsRootOrMountedPath(const std::string& path) const
+{
+    if (util::FileSystem::IsChildPathText(path, m_rootPath)) return true;
+    for (const AssetMount& mount : m_mounts) {
+        if (util::FileSystem::IsChildPathText(path, mount.path)) return true;
+    }
+    return false;
+}
+
+} // namespace fbzz::editor
