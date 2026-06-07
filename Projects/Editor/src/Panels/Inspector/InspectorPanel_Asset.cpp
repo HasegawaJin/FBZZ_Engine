@@ -36,7 +36,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
     if (ext == ".fzmat") {
         const std::string relPath = NormalizeAssetPath(absPath);
-        if (m_inspectedAssetPath != absPath) {
+        if (m_inspectedAssetPath != absPath || !m_inspectedMat.IsValid()) {
             m_inspectedAssetPath = absPath;
             m_inspectedMat = asset::AssetManager::LoadMaterial(relPath);
         }
