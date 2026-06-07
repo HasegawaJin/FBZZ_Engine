@@ -5,7 +5,6 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <filesystem>
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -17,11 +16,12 @@ namespace {
 // ファイルを全行読み込む
 std::vector<std::string> ReadLines(const std::string& path)
 {
-    std::ifstream ifs(path);
-    if (!ifs) return {};
+    std::string text;
+    if (!util::FileSystem::ReadText(path, text)) return {};
     std::vector<std::string> lines;
     std::string line;
-    while (std::getline(ifs, line))
+    std::istringstream input(text);
+    while (std::getline(input, line))
         lines.push_back(line);
     return lines;
 }
@@ -29,12 +29,11 @@ std::vector<std::string> ReadLines(const std::string& path)
 // 行リストをファイルに書き出す
 bool WriteLines(const std::string& path, const std::vector<std::string>& lines)
 {
-    std::ofstream ofs(path, std::ios::binary);
-    if (!ofs) return false;
+    std::ostringstream output;
     for (const auto& l : lines) {
-        ofs << l << '\n';
+        output << l << '\n';
     }
-    return true;
+    return util::FileSystem::WriteText(path, output.str());
 }
 
 // 既存ファイル内のマーカー行の次に新しい行を挿入する
@@ -72,15 +71,7 @@ bool EnsureDirectoriesRecursive(const std::string& path)
 {
     if (path.empty()) return false;
 
-    std::error_code ec;
-    const std::filesystem::path dir(path);
-    if (std::filesystem::exists(dir, ec))
-        return std::filesystem::is_directory(dir, ec);
-
-    // WHY: util::FileSystem::EnsureDirectory は Win32 CreateDirectoryW 直呼びで1階層だけを作る。
-    //      Shader 生成先は Assets/Shaders/Material/Custom のような多段構造なので、
-    //      コード生成ユーティリティ側では recursive 作成を使う。
-    return std::filesystem::create_directories(dir, ec) && !ec;
+    return util::FileSystem::EnsureDirectory(util::FileSystem::PathFromUtf8(path));
 }
 
 // C++ スクリプトのテンプレートを生成する
@@ -383,10 +374,11 @@ bool ScriptCodeGen::InsertScriptStaticEntry(const std::string& staticCppPath,
 bool ScriptCodeGen::AlreadyRegistered(const std::string& dllCppPath,
                                       const std::string& className)
 {
-    std::ifstream ifs(dllCppPath);
-    if (!ifs) return false;
+    std::string text;
+    if (!util::FileSystem::ReadText(dllCppPath, text)) return false;
     std::string line;
-    while (std::getline(ifs, line)) {
+    std::istringstream input(text);
+    while (std::getline(input, line)) {
         if (line.find(className) != std::string::npos)
             return true;
     }

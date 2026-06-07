@@ -29,7 +29,7 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         const std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (dropped.ends_with(".fzmat")) {
+                        if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
                             mc.materialPath = dropped;
                             loadMaterialAsset();
                         }
@@ -69,7 +69,7 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         const std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (dropped.ends_with(".hlsl")) {
+                        if (util::StringUtils::EndsWith(dropped, ".hlsl")) {
                             mat.shaderPath = dropped;
                             mc.material.reset();
                             materialDirty = true;

@@ -3,14 +3,16 @@
 // aiMaterial → .fzmat (TOML) + テクスチャをそのまま texturesDir にコピー
 #include <Editor/Import/FzMaterialExporter.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
 #include <wincodec.h>
 #include <assimp/material.h>
 #include <assimp/scene.h>
 #include <toml++/toml.hpp>
 #include <filesystem>
-#include <fstream>
 #include <cstdint>
+#include <sstream>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -38,18 +40,17 @@ std::string DumpEmbedded(const aiScene* scene, int idx, const std::string& textu
 {
     const aiTexture* tex = scene->mTextures[static_cast<uint32_t>(idx)];
 
-    std::string filename = fs::path(tex->mFilename.C_Str()).filename().string();
+    std::string filename = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(tex->mFilename.C_Str()).filename());
     if (filename.empty()) {
         std::string fmt(tex->achFormatHint, strnlen(tex->achFormatHint, 4));
         filename = "embedded_" + std::to_string(idx) + (fmt.empty() ? ".png" : ("." + fmt));
     }
 
-    const std::string outPath = (fs::path(texturesDir) / filename).string();
-    std::ofstream out(outPath, std::ios::binary);
-    if (!out) return {};
-    out.write(reinterpret_cast<const char*>(tex->pcData),
-              static_cast<std::streamsize>(tex->mWidth));
-    return out.good() ? filename : std::string{};
+    const std::filesystem::path outPath = util::FileSystem::PathFromUtf8(texturesDir) / filename;
+    return util::FileSystem::WriteBinary(outPath, tex->pcData, static_cast<size_t>(tex->mWidth))
+        ? filename
+        : std::string{};
 }
 
 // 非圧縮 BGRA8888 埋め込みテクスチャを DirectXTex WIC で PNG として保存する。
@@ -57,7 +58,7 @@ std::string DumpEmbeddedRaw(const aiScene* scene, int idx, const std::string& te
 {
     const aiTexture* tex = scene->mTextures[static_cast<uint32_t>(idx)];
     const std::string filename = "embedded_" + std::to_string(idx) + ".png";
-    const std::string outPath  = (fs::path(texturesDir) / filename).string();
+    const std::filesystem::path outPath = util::FileSystem::PathFromUtf8(texturesDir) / filename;
 
     DirectX::ScratchImage img;
     if (FAILED(img.Initialize2D(DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -66,9 +67,8 @@ std::string DumpEmbeddedRaw(const aiScene* scene, int idx, const std::string& te
     std::memcpy(img.GetPixels(), tex->pcData,
                 static_cast<size_t>(tex->mWidth) * tex->mHeight * 4);
 
-    const std::wstring wpath(outPath.begin(), outPath.end());
     if (FAILED(DirectX::SaveToWICFile(*img.GetImages(), DirectX::WIC_FLAGS_NONE,
-                                       GUID_ContainerFormatPng, wpath.c_str())))
+                                       GUID_ContainerFormatPng, outPath.c_str())))
         return {};
     return filename;
 }
@@ -79,8 +79,7 @@ std::string ResolveTexture(const aiScene* scene,
                             const std::string& fbxDir,
                             const std::string& texturesDir)
 {
-    std::error_code ec;
-    fs::create_directories(texturesDir, ec);
+    util::FileSystem::EnsureDirectory(util::FileSystem::PathFromUtf8(texturesDir));
 
     if (!rawPath.empty() && rawPath[0] == '*') {
         const int idx = std::stoi(rawPath.substr(1));
@@ -92,22 +91,22 @@ std::string ResolveTexture(const aiScene* scene,
     }
 
     // 外部ファイル → texturesDir にコピー
-    fs::path srcPath(rawPath);
-    if (srcPath.is_relative()) srcPath = fs::path(fbxDir) / srcPath;
-    if (!fs::exists(srcPath)) {
-        const fs::path fallback = fs::path(fbxDir) / srcPath.filename();
-        if (fs::exists(fallback)) srcPath = fallback;
+    fs::path srcPath = util::FileSystem::PathFromUtf8(rawPath);
+    if (srcPath.is_relative()) srcPath = util::FileSystem::PathFromUtf8(fbxDir) / srcPath;
+    if (!util::FileSystem::Exists(srcPath)) {
+        const fs::path fallback = util::FileSystem::PathFromUtf8(fbxDir) / srcPath.filename();
+        if (util::FileSystem::Exists(fallback)) srcPath = fallback;
         else {
             FBZZ_LOG_WARN("FzMaterialExporter: texture not found [%s]", rawPath.c_str());
             return {};
         }
     }
 
-    const std::string filename = srcPath.filename().string();
-    const fs::path dest = fs::path(texturesDir) / srcPath.filename();
-    if (!fs::exists(dest))
-        fs::copy_file(srcPath, dest, ec);
-    return ec ? std::string{} : filename;
+    const std::string filename = util::FileSystem::PathToUtf8(srcPath.filename());
+    const fs::path dest = util::FileSystem::PathFromUtf8(texturesDir) / srcPath.filename();
+    if (util::FileSystem::Exists(dest))
+        return filename;
+    return util::FileSystem::CopyFile(srcPath, dest) ? filename : std::string{};
 }
 
 } // namespace
@@ -153,13 +152,13 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
     if (!texTbl.empty())
         tbl.insert("textures", std::move(texTbl));
 
-    std::ofstream out(outputPath);
-    if (!out) {
+    std::ostringstream out;
+    out << tbl << '\n';
+    if (!util::FileSystem::WriteText(util::FileSystem::PathFromUtf8(outputPath), out.str())) {
         FBZZ_LOG_ERROR("FzMaterialExporter: cannot open [%s]", outputPath.c_str());
         return false;
     }
-    out << tbl << '\n';
-    return out.good();
+    return true;
 }
 
 } // namespace fbzz::editor
