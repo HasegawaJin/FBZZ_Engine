@@ -1,15 +1,20 @@
 // FBZZ Engine
 // AssetBrowserPanel.hpp | fbzz::editor
-// Unity スタイルの2ペインアセットブラウザ
+// Unity スタイルのアセットブラウザ
 #pragma once
 #include <Editor/AssetFileWatcher.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Renderer/ResourceHandle.hpp>
 #include <atomic>
+#include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 #include <array>
 #include <imgui.h>
@@ -55,6 +60,9 @@ private:
 
     static ImVec4      EntryColor(const Entry& e);
     static const char* EntryLabel(const Entry& e);
+    static void        DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false);
+    void               DrawAssetPreviewIconAt(ImVec2 origin, float sz, const Entry& e, EditorContext& ctx, bool hovered);
+    void               ResetAssetPreviewCache(const std::string& path);
 
     void DrawFbxContents(EditorContext& ctx);
     void DrawPendingImportBar(EditorContext& ctx);
@@ -72,12 +80,51 @@ private:
     std::vector<AssetMount> m_mounts;
     std::vector<Entry>    m_entries;
     std::array<char, 256> m_searchBuf = {};
-    float                 m_iconSize  = 64.0f;
+    float                 m_iconSize  = 84.0f;
     bool                  m_resetScroll = false; // ディレクトリ移動後に右ペインをトップへ戻す
 
     // FBX inspection
     std::string                   m_selectedFbxPath;
     std::shared_ptr<asset::Model> m_selectedModel;
+
+    struct TexturePreview {
+        renderer::ResourceHandle<renderer::TextureTag> handle;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        bool failed = false;
+    };
+    struct MaterialPreview {
+        asset::MaterialAsset asset;
+        std::filesystem::file_time_type lastWriteTime{};
+        renderer::ResourceHandle<renderer::TextureTag> previewTexture;
+        std::string previewTexturePath;
+        uint32_t previewTextureWidth = 0;
+        uint32_t previewTextureHeight = 0;
+        std::string shaderPath;
+        renderer::ResourceHandle<renderer::ShaderTag> shader;
+        renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
+        std::vector<renderer::ResourceHandle<renderer::TextureTag>> textures;
+        std::vector<uint8_t> paramData;
+        renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
+        bool thumbnailRendered = false;
+        bool loaded = false;
+        bool failed = false;
+    };
+    struct MeshPreview {
+        renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
+        std::shared_ptr<asset::Model> model;
+        std::filesystem::file_time_type lastWriteTime{};
+        bool thumbnailRendered = false;
+        bool failed = false;
+    };
+    // .fzmat の shaderPath / ShaderDescriptor に合わせて、サムネイル描画用の Material CB と Texture を更新する。
+    // WHY: AssetBrowser の Material サムネイルも実際のマテリアルと同じ HLSL を使い、Lit 固定による見た目のズレを避ける。
+    bool RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx);
+    // AssetBrowser のファイルアイコン内 Preview 状態。
+    // WHY: 専用 Preview ペインを持たず、グリッドの視線移動だけで Texture / Material を確認できるようにする。
+    std::unordered_map<std::string, TexturePreview>  m_texturePreviews;
+    std::unordered_map<std::string, MaterialPreview> m_materialPreviews;
+    std::unordered_map<std::string, MeshPreview>     m_meshPreviews;
 
     // Rename state
     std::string m_renamingPath;

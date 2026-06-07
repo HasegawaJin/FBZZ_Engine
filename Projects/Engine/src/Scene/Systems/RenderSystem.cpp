@@ -66,7 +66,6 @@ void RenderSystem(Scene& scene,
     static auto shadowMapRT          = resources.CreateRenderTarget(kShadowMapSize, kShadowMapSize, 0);
     static auto shadowShader         = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
     static auto skinnedShadowShader  = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
-    static auto skinnedPbrShader     = resources.LoadShader("Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl");
 
     // スキンドメッシュに AnimatorComponent がない場合のアイデンティティボーンパレット
     static renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
@@ -402,7 +401,6 @@ void RenderSystem(Scene& scene,
     passHandles.gbufferShader        = gbufferShader;
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
-    passHandles.skinnedPbrShader     = skinnedPbrShader;
 
     // カメラ視錐台とライト視錐台を事前に抽出する。
     // WHY: Gribb-Hartmann 法は VP 行列の各行の和・差から 6 平面を直接導出するため

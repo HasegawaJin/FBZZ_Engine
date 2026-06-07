@@ -1,6 +1,6 @@
 // FBZZ Engine
 // AssetBrowserPanel.cpp | fbzz::editor
-// AssetBrowserPanel の2ペインレイアウトとメイン描画
+// AssetBrowserPanel のフォルダツリーとアセットグリッド描画
 #include "AssetBrowser/AssetBrowserCommon.hpp"
 
 namespace fbzz::editor {
@@ -101,7 +101,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     ImGui::InputText("##search", m_searchBuf.data(), m_searchBuf.size());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(90.0f);
-    ImGui::SliderFloat("##sz", &m_iconSize, 40.0f, 120.0f, "%.0f");
+    ImGui::SliderFloat("##sz", &m_iconSize, 56.0f, 132.0f, "%.0f");
     ImGui::SameLine();
     if (ImGui::SmallButton("Create")) {
         ImGui::OpenPopup("##content_ctx");
@@ -113,7 +113,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     // グリッド表示
     std::string filter(m_searchBuf.data());
-    const float padding  = 8.0f;
+    const float padding  = 12.0f;
     const float avail    = ImGui::GetContentRegionAvail().x;
     const int   cols     = std::max(1, (int)(avail / (m_iconSize + padding)));
 

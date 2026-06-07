@@ -31,6 +31,9 @@ public:
     // DX11RenderTarget が保持する SRV を ImGui 用の TextureID として返す。
     void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) override;
 
+    // DX11Texture が保持する SRV を ImGui 用の TextureID として返す。
+    void* GetImTextureID(ResourceHandle<TextureTag> texture, ResourceManager& resources) override;
+
 private:
     ID3D11Device*        m_device  = nullptr;
     ID3D11DeviceContext* m_context = nullptr;

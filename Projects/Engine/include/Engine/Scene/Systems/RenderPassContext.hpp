@@ -234,7 +234,6 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
     renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
     renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
-    renderer::ResourceHandle<renderer::ShaderTag>         skinnedPbrShader;
 };
 
 struct RenderPassContext {

@@ -49,7 +49,7 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             const renderer::ShaderDescriptor* desc = nullptr;
             if (auto* resources = renderer::ResourceManager::Active()) {
                 const std::string shaderPath = mat.shaderPath.empty()
-                    ? "Assets/Shaders/Material/Surface/PBR.hlsl"
+                    ? "Assets/Shaders/Material/Surface/Fallback.hlsl"
                     : mat.shaderPath;
                 if (auto shader = resources->LoadShader(shaderPath); shader.IsValid()) {
                     if (auto* loadedShader = resources->Get(shader))
