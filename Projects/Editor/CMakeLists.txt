@@ -18,6 +18,7 @@ set(EDITOR_ASSIMP_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assi
 set(EDITOR_ASSIMP_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Release/assimp-vc145-mt.lib")
 
 set(EDITOR_STB_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Stb")
+set(EDITOR_IMNODES_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/ImNodes")
 
 target_compile_definitions(fbzz_editor
     PRIVATE
@@ -30,6 +31,7 @@ target_include_directories(fbzz_editor
     PRIVATE ${EDITOR_DIRECTXTEX_INCLUDE}
     PRIVATE ${EDITOR_ASSIMP_INCLUDE}
     PRIVATE ${EDITOR_STB_INCLUDE}
+    PRIVATE ${EDITOR_IMNODES_INCLUDE}
 )
 
 target_link_libraries(fbzz_editor

@@ -9,6 +9,7 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/EditorTaskOverlay.hpp>
+#include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -22,6 +23,7 @@
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/Panels/BuildSettingsPanel.hpp>
 #include <Editor/Panels/AnalysisPanel.hpp>
+#include <Editor/Panels/AnimationGraphPanel.hpp>
 #include "Tools/TerrainTool.hpp"
 #include "Tools/WaterTool.hpp"
 #include <Engine/Core/Application.hpp>
@@ -269,6 +271,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
     {
+        auto graph = std::make_unique<AnimationGraphPanel>();
+        graph->visible = false;
+        m_panels.push_back(std::move(graph));
+    }
+    {
         auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::Scene);
         m_sceneViewportPanel = vp.get();
         m_panels.push_back(std::move(vp));
@@ -434,6 +441,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         }
         m_settings.lastScenePath = sceneToOpen;
         m_ctx.currentScenePath   = sceneToOpen;
+        GraphLayoutSerializer::Load(m_ctx.graphLayouts, sceneToOpen);
         m_ctx.selectedEntities.clear();
         RebuildEditorUIFromScene();
         CaptureCleanScene();
