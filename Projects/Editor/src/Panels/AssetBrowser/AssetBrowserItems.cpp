@@ -90,11 +90,9 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
     //      ImGui はフレーム内で文字列を参照するため static thread_local を使う。
     static thread_local char buf[8];
     const char* src = e.ext.size() > 1 ? e.ext.c_str() + 1 : e.ext.c_str(); // skip '.'
-    std::size_t len = 0;
-    while (src[len] && len < 6) {
-        buf[len] = static_cast<char>(std::toupper(static_cast<unsigned char>(src[len])));
-        ++len;
-    }
+    const std::string upper = util::StringUtils::ToUpper(src);
+    const std::size_t len = std::min<std::size_t>(upper.size(), 6);
+    std::memcpy(buf, upper.data(), len);
     buf[len] = '\0';
     return len > 0 ? buf : "FILE";
 }
@@ -291,10 +289,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
             ModalDialog::OpenConfirm("Delete",
                 "Delete \"" + util::FileSystem::GetFilename(path) + "\"?",
                 [this, path]() {
-                    std::error_code ec;
-                    std::filesystem::remove_all(
-                        std::filesystem::path(path.begin(), path.end()), ec);
-                    if (ec) {
+                    if (!util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path))) {
                         FBZZ_LOG_ERROR("Delete failed: %s", path.c_str());
                     } else {
                         if (m_selectedFbxPath == path) {
@@ -380,11 +375,8 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
                 const std::string dir     = util::FileSystem::GetDirectory(e.path);
                 const std::string newPath = dir + m_renameBuffer;
                 if (newPath != e.path) {
-                    std::error_code ec;
-                    std::filesystem::rename(
-                        std::filesystem::path(e.path.begin(), e.path.end()),
-                        std::filesystem::path(newPath.begin(), newPath.end()), ec);
-                    if (ec) {
+                    if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(e.path),
+                                                  util::FileSystem::PathFromUtf8(newPath))) {
                         FBZZ_LOG_ERROR("Rename failed: %s -> %s", e.path.c_str(), newPath.c_str());
                     } else {
                         if (m_selectedFbxPath == e.path) m_selectedFbxPath = newPath;

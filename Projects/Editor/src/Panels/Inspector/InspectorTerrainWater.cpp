@@ -79,7 +79,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (dropped.size() > 6 && dropped.substr(dropped.size() - 6) == ".fzmat") {
+                        if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
                             tc.materialPath = dropped;
                             tc.splatDirty = true;
                         }
@@ -126,7 +126,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    if (dropped.size() > 6 && dropped.substr(dropped.size() - 6) == ".fzmat") {
+                    if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
                         water.materialPath = dropped;
                         water.texDirty = true;
                         water.foamDirty = true;

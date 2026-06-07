@@ -2,21 +2,10 @@
 // Compiler.cpp | fbzz::editor
 // RuntimeBuild 用の CMake 子プロセス管理
 #include <Editor/Compiler.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
 
 namespace fbzz::editor {
-namespace {
-
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int len = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    std::wstring out(static_cast<size_t>(len), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), len);
-    return out;
-}
-
-} // namespace
 
 Compiler::~Compiler()
 {
@@ -44,8 +33,8 @@ bool Compiler::Start(const Config& config)
     std::wstring command =
         L"\"" + config.cmakeExe.wstring() + L"\""
         L" --build \"" + config.buildDir.wstring() + L"\""
-        L" --target " + Utf8ToWide(config.target) +
-        L" --config " + Utf8ToWide(config.configuration);
+        L" --target " + util::StringUtils::ToWide(config.target) +
+        L" --config " + util::StringUtils::ToWide(config.configuration);
 
     if (config.skipDeps)
         command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false";

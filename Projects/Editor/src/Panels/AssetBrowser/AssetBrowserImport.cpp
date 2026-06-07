@@ -13,11 +13,10 @@ bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 bool AssetBrowserPanel::IsAlreadyImported(const std::string& absPath)
 {
     namespace fs = std::filesystem;
-    const fs::path p(absPath.begin(), absPath.end());
-    const std::string stem = p.stem().string();
+    const fs::path p = util::FileSystem::PathFromUtf8(absPath);
+    const std::string stem = util::FileSystem::PathToUtf8(p.stem());
     const fs::path check = p.parent_path() / stem / (stem + ".fzasset");
-    std::error_code ec;
-    return fs::exists(check, ec);
+    return util::FileSystem::Exists(check);
 }
 
 void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
@@ -28,8 +27,8 @@ void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
 
     // パス結合 (m_rootPath が trailing slash を持つかどうかに依らず正しく結合)
     namespace fs = std::filesystem;
-    const std::string absPath = (fs::path(m_rootPath.begin(), m_rootPath.end())
-                                 / fs::path(relPath.begin(), relPath.end())).string();
+    const std::string absPath = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(m_rootPath) / util::FileSystem::PathFromUtf8(relPath));
 
     // 重複チェック
     for (const auto& p : m_pendingImports)
@@ -45,15 +44,9 @@ void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
 {
     FBZZ_LOG_INFO("AssetBrowserPanel: scanning for unimported assets in [%s]",
                   dirAbsPath.c_str());
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    for (const auto& entry : fs::recursive_directory_iterator(
-             fs::path(dirAbsPath.begin(), dirAbsPath.end()),
-             fs::directory_options::skip_permission_denied, ec))
+    for (const auto& path : util::FileSystem::ListFilesRecursive(util::FileSystem::PathFromUtf8(dirAbsPath)))
     {
-        if (!entry.is_regular_file(ec)) continue;
-
-        const std::string absPath = entry.path().string();
+        const std::string absPath = util::FileSystem::PathToUtf8(path);
         const std::string ext = util::StringUtils::ToLower(
             util::FileSystem::GetExtension(absPath));
         if (!IsImportableRaw(ext)) continue;
@@ -211,9 +204,9 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
                 }
 
                 namespace fs = std::filesystem;
-                const fs::path srcPath(imp.path.begin(), imp.path.end());
+                const fs::path srcPath = util::FileSystem::PathFromUtf8(imp.path);
                 const std::string outDir =
-                    (srcPath.parent_path() / srcPath.stem()).string();
+                    util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
                 FBZZ_LOG_INFO("AssetBrowserPanel: FBX outDir = [%s]", outDir.c_str());
                 const bool ok = FbxImportTool::Import(imp.path, outDir, imp.path);
 

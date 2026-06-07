@@ -4,9 +4,9 @@
 #include <Editor/Import/FzAnimationExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <assimp/anim.h>
 #include <cstring>
-#include <fstream>
 
 namespace fbzz::editor {
 
@@ -16,7 +16,7 @@ bool FzAnimationExporter::Export(const aiAnimation* anim,
 {
     using namespace asset;
 
-    std::ofstream out(outputPath, std::ios::binary);
+    auto out = util::FileSystem::OpenBinaryWriter(util::FileSystem::PathFromUtf8(outputPath));
     if (!out) {
         FBZZ_LOG_ERROR("FzAnimationExporter: cannot open [%s]", outputPath.c_str());
         return false;

@@ -385,17 +385,7 @@ inline scene::RigidBodyComponent CreateDefaultRigidBody()
 inline bool ComponentMatchesFilter(const char* label, const char* filter)
 {
     if (filter[0] == '\0') return true;
-    const char* p = label;
-    const char* f = filter;
-    while (*p) {
-        const char* pi = p;
-        const char* fi = f;
-        while (*pi && *fi && (std::tolower((unsigned char)*pi) == std::tolower((unsigned char)*fi)))
-            { ++pi; ++fi; }
-        if (*fi == '\0') return true;
-        ++p;
-    }
-    return false;
+    return util::StringUtils::ContainsCI(label, filter);
 }
 
 template<typename DrawItems>

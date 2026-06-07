@@ -203,21 +203,21 @@ std::string AssetBrowserPanel::ResolveFallbackAssetDir(const std::string& childD
 {
     if (childDirName.empty()) return {};
 
-    std::filesystem::path current(util::FileSystem::NormalizePathSeparators(m_rootPath));
-    std::error_code ec;
+    std::filesystem::path current = util::FileSystem::PathFromUtf8(
+        util::FileSystem::NormalizePathSeparators(m_rootPath));
 
     // WHY: ctx.scriptsSourceDir / ctx.hlslSourceDir は hot reload の ToolchainLocator 成功後にだけ入る。
     //      AssetBrowser は hot reload なしでも使うため、現在の Assets ルートから親をたどって
     //      リポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
     for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
         const std::filesystem::path candidate = current / "Assets" / childDirName;
-        if (std::filesystem::is_directory(candidate, ec))
-            return util::FileSystem::NormalizePathSeparators(candidate.string());
+        if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(candidate)))
+            return util::FileSystem::PathToUtf8(candidate);
 
         if (current.filename() == "Assets") {
             const std::filesystem::path sibling = current.parent_path() / "Assets" / childDirName;
-            if (std::filesystem::is_directory(sibling, ec))
-                return util::FileSystem::NormalizePathSeparators(sibling.string());
+            if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(sibling)))
+                return util::FileSystem::PathToUtf8(sibling);
         }
 
         current = current.parent_path();

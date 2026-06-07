@@ -34,13 +34,12 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
 #include <toml++/toml.hpp>
 #include <Windows.h>
-#include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <utility>
 
@@ -54,26 +53,6 @@ static constexpr const char* SETTINGS_PATH = "editor_config/editor_settings.toml
 
 namespace {
 
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-std::string WideToUtf8(const std::wstring& text)
-{
-    if (text.empty()) return {};
-    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return {};
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
-}
-
 bool IsEditorUICanvas(const scene::UICanvas& canvas)
 {
     return canvas.enabled
@@ -81,47 +60,27 @@ bool IsEditorUICanvas(const scene::UICanvas& canvas)
             || canvas.renderMode == scene::UIRenderMode::ScreenSpaceCamera);
 }
 
-std::filesystem::path MakeAbsolutePath(const std::filesystem::path& path)
-{
-    std::error_code ec;
-    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
-    return ec ? path.lexically_normal() : absolute.lexically_normal();
-}
-
-std::string ToLowerAscii(std::string text)
-{
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return text;
-}
-
 std::string ResolveScenePathForProject(const std::string& projectRoot, const std::string& scenePath)
 {
     if (scenePath.empty()) return {};
-    const std::filesystem::path rootPath = std::filesystem::path(Utf8ToWide(projectRoot));
-    std::filesystem::path candidate = std::filesystem::path(Utf8ToWide(scenePath));
+    const std::filesystem::path rootPath = util::FileSystem::PathFromUtf8(projectRoot);
+    std::filesystem::path candidate = util::FileSystem::PathFromUtf8(scenePath);
     if (!candidate.is_absolute())
         candidate = rootPath / candidate;
-    return WideToUtf8(MakeAbsolutePath(candidate).wstring());
+    return util::FileSystem::PathToUtf8(util::FileSystem::MakeAbsolute(candidate));
 }
 
 bool IsScenePathInsideProject(const std::string& projectRoot, const std::string& scenePath)
 {
     if (projectRoot.empty() || scenePath.empty()) return false;
-    if (ToLowerAscii(util::FileSystem::GetExtension(scenePath)) != ".fbzz") return false;
+    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(scenePath)) != ".fbzz") return false;
     if (!util::FileSystem::Exists(scenePath)) return false;
 
-    const std::filesystem::path rootPath  = MakeAbsolutePath(std::filesystem::path(Utf8ToWide(projectRoot)));
-    const std::filesystem::path sceneFs   = MakeAbsolutePath(std::filesystem::path(Utf8ToWide(scenePath)));
-
-    const std::string rootText  = ToLowerAscii(WideToUtf8(rootPath.wstring()));
-    const std::string sceneText = ToLowerAscii(WideToUtf8(sceneFs.wstring()));
-    std::string prefix = rootText;
-    if (!prefix.empty() && prefix.back() != '\\' && prefix.back() != '/')
-        prefix += '\\';
-
-    return sceneText == rootText || sceneText.rfind(prefix, 0) == 0;
+    const std::filesystem::path rootPath = util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(projectRoot));
+    const std::filesystem::path sceneFs  = util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(scenePath));
+    return util::FileSystem::IsChildPathText(
+        util::FileSystem::PathToUtf8(sceneFs),
+        util::FileSystem::PathToUtf8(rootPath));
 }
 
 void LoadRuntimeBuildMetadata(EditorContext& ctx)
@@ -140,10 +99,10 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
     const toml::table& table = result.table();
     const std::string buildRoot = table["project"]["build_root"].value_or(std::string{});
     if (!buildRoot.empty() && buildRoot.rfind("{{", 0) != 0) {
-        std::filesystem::path path(Utf8ToWide(buildRoot));
+        std::filesystem::path path = util::FileSystem::PathFromUtf8(buildRoot);
         if (!path.is_absolute())
-            path = std::filesystem::path(Utf8ToWide(ctx.projectRoot)) / path;
-        ctx.projectBuildRoot = WideToUtf8(path.lexically_normal().wstring());
+            path = util::FileSystem::PathFromUtf8(ctx.projectRoot) / path;
+        ctx.projectBuildRoot = util::FileSystem::PathToUtf8(path.lexically_normal());
     }
 
     const std::string standaloneTarget = table["project"]["standalone_target_name"].value_or(std::string{});
@@ -160,10 +119,10 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
 
     const std::string engineRoot = table["engine"]["root"].value_or(std::string{});
     if (!engineRoot.empty() && engineRoot.rfind("{{", 0) != 0) {
-        std::filesystem::path path(Utf8ToWide(engineRoot));
+        std::filesystem::path path = util::FileSystem::PathFromUtf8(engineRoot);
         if (!path.is_absolute())
-            path = std::filesystem::path(Utf8ToWide(ctx.projectRoot)) / path;
-        ctx.engineRoot = WideToUtf8(path.lexically_normal().wstring());
+            path = util::FileSystem::PathFromUtf8(ctx.projectRoot) / path;
+        ctx.engineRoot = util::FileSystem::PathToUtf8(path.lexically_normal());
     }
 }
 
@@ -531,7 +490,7 @@ void EditorApp::UpdateWindowTitle()
 
     std::string title = "FBZZ Editor - " + sceneName;
     if (m_ctx.sceneDirty) title += "*";
-    SetWindowTextW(m_hwnd, Utf8ToWide(title).c_str());
+    SetWindowTextW(m_hwnd, util::StringUtils::ToWide(title).c_str());
 }
 
 // =============================================================================
