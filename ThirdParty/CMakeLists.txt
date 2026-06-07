@@ -23,6 +23,21 @@ target_compile_definitions(imgui
         FBZZ_IMGUI_IMPORTS
 )
 
+# imnodes
+# WHY: AnimationGraphPanel は AnimatorComponent をノードグラフ編集するため、
+#      Dear ImGui と同じ ThirdParty レイヤーでノードエディタ実装をビルドする。
+add_library(imnodes STATIC
+    ImNodes/imnodes.cpp
+)
+target_include_directories(imnodes
+    PUBLIC
+        ImNodes
+)
+target_link_libraries(imnodes
+    PUBLIC
+        imgui
+)
+
 # toml++ (header-only, exception-free モードで使用)
 add_library(tomlplusplus INTERFACE)
 target_include_directories(tomlplusplus INTERFACE TomlPlusPlus/include)
