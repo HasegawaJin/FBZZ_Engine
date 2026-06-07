@@ -15,6 +15,7 @@ namespace fbzz::editor {
 class InspectorPanel : public IPanel {
 public:
     const char* GetWindowName() const override { return "Inspector"; }
+    void OnShutdown() override;
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
@@ -30,7 +31,10 @@ private:
     bool            m_locked         = false;
     scene::EntityID m_lockedEntityId = {};
 
-    // アセットインスペクター状態
+    // アセットインスペクター状態。
+    // WHY: InspectorPanel は EditorApp.cpp の make_unique で確保されるため、頻繁にメンバを増やすと
+    //      増分ビルドで古い sizeof(InspectorPanel) が残った際に破損しやすい。
+    //      Asset ロックは m_locked && !m_lockedEntityId.IsValid() と、この path の組み合わせで表現する。
     std::string                                          m_inspectedAssetPath;
     renderer::ResourceHandle<renderer::MaterialAssetTag> m_inspectedMat;
 

@@ -17,18 +17,36 @@
 
 namespace fbzz::editor {
 
+void InspectorPanel::OnShutdown()
+{
+    // WHY: Inspector はロック中の EntityID / AssetPath と、表示中 Material のハンドルを
+    //      フレームをまたいで保持する。終了時は Scene / AssetManager / ImGui の破棄順が
+    //      通常フレームと異なるため、古い参照状態を残すと終了中の描画・破棄で無効な
+    //      アセット情報へ触れる可能性がある。
+    // WHAT: Panel 自身が所有する一時状態をすべて null 状態へ戻し、後続のグローバル
+    //       リソース破棄に依存しない状態にする。
+    m_componentClipboard.reset();
+    m_componentClipboardType = nullptr;
+    m_locked = false;
+    m_lockedEntityId = {};
+    m_inspectedAssetPath.clear();
+    m_inspectedMat = {};
+}
+
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     // ------------------------------------------------------------------
     // ロック解決
-    // ロック中は m_lockedEntityId のオブジェクトを表示する。
-    // ロック先が破棄されていた場合は自動解除する。
+    // Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
+    // ロック先が破棄 / 削除されていた場合は自動解除する。
     // ------------------------------------------------------------------
     scene::GameObject* selectedGo = ctx.GetSelectedGO();
     scene::GameObject* go = nullptr;
     const bool hasSelectedAsset = !ctx.selectedAssetPath.empty();
+    std::string assetPathToInspect = ctx.selectedAssetPath;
+    const bool assetLocked = m_locked && !m_lockedEntityId.IsValid() && !m_inspectedAssetPath.empty();
 
-    if (m_locked) {
+    if (m_locked && m_lockedEntityId.IsValid()) {
         if (ctx.activeScene)
             go = ctx.activeScene->GetGameObject(m_lockedEntityId);
         if (!go) {
@@ -36,6 +54,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             m_locked = false;
             m_lockedEntityId = {};
         }
+    } else if (assetLocked) {
+        assetPathToInspect = m_inspectedAssetPath;
     } else {
         go = selectedGo;
     }
@@ -57,13 +77,26 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (wasLocked)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.55f, 0.85f, 1.0f));
 
-        const bool canLock = wasLocked || (!hasSelectedAsset && go);
+        const bool canLock = wasLocked || hasSelectedAsset || go;
         if (!canLock)
             ImGui::BeginDisabled();
         if (ImGui::Button(label)) {
             if (wasLocked) {
                 m_locked         = false;
                 m_lockedEntityId = {};
+                if (assetLocked) {
+                    m_inspectedAssetPath.clear();
+                    m_inspectedMat = {};
+                }
+            } else if (hasSelectedAsset) {
+                m_locked          = false;
+                m_lockedEntityId  = {};
+                // Asset ロックは EntityID を INVALID にした m_locked と、既存の inspected path で表す。
+                // WHY: InspectorPanel のデータメンバを増やすと、増分ビルドで古い確保サイズが残った時に
+                //      std::string メンバ破損を起こしやすいため、既存メンバだけで状態を持つ。
+                m_locked = true;
+                m_inspectedAssetPath = ctx.selectedAssetPath;
+                m_inspectedMat = {};
             } else if (go) {
                 m_locked         = true;
                 m_lockedEntityId = go->GetID();
@@ -83,14 +116,18 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (wasLocked && go) {
             ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
             ImGui::TextDisabled("Locked: %s", go->name.c_str());
+        } else if (wasLocked && assetLocked) {
+            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
+            const std::string lockedAssetName = util::FileSystem::GetFilename(m_inspectedAssetPath);
+            ImGui::TextDisabled("Locked: %s", lockedAssetName.c_str());
         }
     }
 
     ImGui::Spacing();
 
-    // アセット選択中かつロックなし → アセットインスペクターへ
-    if (!m_locked && hasSelectedAsset) {
-        DrawAssetInspector(ctx, ctx.selectedAssetPath);
+    // アセット選択中、または Asset Inspector ロック中 → アセットインスペクターへ
+    if ((!m_locked || assetLocked) && !assetPathToInspect.empty()) {
+        DrawAssetInspector(ctx, assetPathToInspect);
         return;
     }
 
