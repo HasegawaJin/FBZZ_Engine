@@ -24,6 +24,9 @@ public:
     // Win32 API 用ワイド文字列変換
     static std::wstring ToWide(const std::string& s);
     static std::string  ToNarrow(const std::wstring& s);
+    // 終端 NUL を持たない Win32 API の wchar_t バッファを UTF-8 化する。
+    // WHY: ReadDirectoryChangesW などは文字数つきで名前を返すため、Editor 側に変換処理を重複させない。
+    static std::string  ToNarrow(const wchar_t* s, int charCount);
 
     /// filesystem::path を UTF-8 文字列へ変換する。
     /// WHY: Windows の filesystem::path は wchar_t ベースなので wstring() 経由が最も安全。

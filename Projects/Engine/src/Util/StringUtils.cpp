@@ -70,18 +70,36 @@ std::string StringUtils::Trim(const std::string& s)
 std::wstring StringUtils::ToWide(const std::string& s)
 {
     if (s.empty()) return {};
-    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-    std::wstring out(len - 1, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), len);
+    const int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    if (len <= 0) return {};
+    std::wstring out(static_cast<size_t>(len), L'\0');
+    const int written = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), len);
+    if (written <= 0) return {};
+    out.resize(static_cast<size_t>(written - 1));
     return out;
 }
 
 std::string StringUtils::ToNarrow(const std::wstring& s)
 {
     if (s.empty()) return {};
-    int len = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    std::string out(len - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, out.data(), len, nullptr, nullptr);
+    const int len = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return {};
+    std::string out(static_cast<size_t>(len), '\0');
+    const int written = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, out.data(), len, nullptr, nullptr);
+    if (written <= 0) return {};
+    out.resize(static_cast<size_t>(written - 1));
+    return out;
+}
+
+std::string StringUtils::ToNarrow(const wchar_t* s, int charCount)
+{
+    if (!s || charCount <= 0) return {};
+    const int len = WideCharToMultiByte(CP_UTF8, 0, s, charCount, nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return {};
+    std::string out(static_cast<size_t>(len), '\0');
+    const int written = WideCharToMultiByte(CP_UTF8, 0, s, charCount, out.data(), len, nullptr, nullptr);
+    if (written <= 0) return {};
+    out.resize(static_cast<size_t>(written));
     return out;
 }
 
