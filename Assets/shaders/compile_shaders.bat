@@ -49,6 +49,7 @@ REM Material
 REM =========================================================================
 
 call :CompileVSPS Material\Surface\Unlit.hlsl Material.Surface.Unlit || goto :error
+call :CompileVSPS Material\Surface\Fallback.hlsl Material.Surface.Fallback || goto :error
 call :CompileVSPS Material\Surface\Lit.hlsl Material.Surface.Lit || goto :error
 call :CompileVSPS Material\Surface\Phong.hlsl Material.Surface.Phong || goto :error
 call :CompileVSPS Material\Surface\BlinnPhong.hlsl Material.Surface.BlinnPhong || goto :error
@@ -59,6 +60,7 @@ call :CompileVSPS Material\Surface\Subsurface.hlsl Material.Surface.Subsurface |
 call :CompileVSPS Material\Surface\Anisotropic.hlsl Material.Surface.Anisotropic || goto :error
 call :CompileVSPS Material\Surface\RimLight.hlsl Material.Surface.RimLight || goto :error
 call :CompileVSPS Material\Skinned\SkinnedUnlit.hlsl Material.Skinned.SkinnedUnlit || goto :error
+call :CompileVSPS Material\Skinned\FallbackSkinned.hlsl Material.Skinned.FallbackSkinned || goto :error
 call :CompileVSPS Material\Skinned\SkinnedLit.hlsl Material.Skinned.SkinnedLit || goto :error
 call :CompileVSPS Material\Skinned\SkinnedPhong.hlsl Material.Skinned.SkinnedPhong || goto :error
 call :CompileVSPS Material\Skinned\SkinnedBlinnPhong.hlsl Material.Skinned.SkinnedBlinnPhong || goto :error
