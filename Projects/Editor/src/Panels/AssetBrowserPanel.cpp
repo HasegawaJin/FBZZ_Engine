@@ -6,6 +6,7 @@
 #include <Editor/EditorTaskOverlay.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/ModalDialog.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
@@ -99,24 +100,8 @@ std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx
 {
     // WHY: Asset Browser の内部パスは実ファイル操作のため絶対パスを保持するが、
     //      Scene / Prefab に保存する payload は配布後も壊れない Assets 起点の相対パスにする。
-    std::string normalizedPath = NormalizePathSeparators(path);
-    if (normalizedPath.rfind("Assets/", 0) == 0) return normalizedPath;
-
-    std::string normalizedRoot = NormalizePathSeparators(ctx.projectRoot);
-    while (!normalizedRoot.empty() && normalizedRoot.back() == '/')
-        normalizedRoot.pop_back();
-
-    if (!normalizedRoot.empty() &&
-        normalizedPath.rfind(normalizedRoot + "/Assets/", 0) == 0) {
-        return normalizedPath.substr(normalizedRoot.size() + 1);
-    }
-
-    const std::string marker = "/Assets/";
-    const size_t assetsPos = normalizedPath.find(marker);
-    if (assetsPos != std::string::npos)
-        return normalizedPath.substr(assetsPos + 1);
-
-    return normalizedPath;
+    (void)ctx;
+    return NormalizeAssetPath(path);
 }
 
 } // namespace
@@ -330,7 +315,6 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".fzmat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
     { { ".fzskel", nullptr },                                  { 0.70f, 0.30f, 0.60f, 1.0f }, "SKEL"    },
     { { ".fzanim", nullptr },                                  { 0.20f, 0.75f, 0.35f, 1.0f }, "ANIM"    },
-    { { ".fztex", nullptr },                                   { 0.15f, 0.45f, 0.85f, 1.0f }, "TEX"     },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
     { { ".ttf", ".otf", nullptr },                             { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
@@ -440,6 +424,7 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
         bool open = ImGui::TreeNodeEx(dir.path.c_str(), flags, "%s", dir.name.c_str());
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
             m_currentPath = dir.path;
+            ctx.selectedAssetPath.clear();
             RefreshDirectory();
         }
         // ヒエラルキーエンティティをフォルダノードにドロップ → そのフォルダへ Prefab 保存
@@ -520,9 +505,9 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
                     IM_COL32(255, 255, 255, 220), lbl);
     }
 
-    // 選択ハイライト (FBX のみ)
-    const bool isFbxSelected = (e.path == m_selectedFbxPath);
-    if (isFbxSelected) {
+    // 選択ハイライト
+    const bool isSelected = !e.isDir && (e.path == ctx.selectedAssetPath);
+    if (isSelected) {
         ImGui::GetWindowDrawList()->AddRect(
             origin, { origin.x + sz, origin.y + sz * 0.85f },
             IM_COL32(255, 200, 80, 220), 3.0f, 0, 2.0f);
@@ -620,6 +605,9 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     }
 
     if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (!e.isDir) {
+            ctx.selectedAssetPath = e.path;
+        }
         const bool isMesh = (e.ext == ".fbx" || e.ext == ".obj" ||
                              e.ext == ".gltf" || e.ext == ".glb");
         if (!e.isDir && isMesh) {
@@ -636,6 +624,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     if (hov && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         if (e.isDir) {
             m_pendingNavigate = e.path;
+            ctx.selectedAssetPath.clear();
         } else if (e.ext == ".fbzz" && ctx.activeScene) {
             if (ctx.requestOpenScene) {
                 ctx.requestOpenScene(e.path);
@@ -868,6 +857,36 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".fbzz";
         util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
+        RefreshDirectory();
+    }
+    if (ImGui::MenuItem("Material")) {
+        std::string newPath = m_currentPath + "/New Material.fzmat";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Material " + std::to_string(suffix++) + ".fzmat";
+        const char* materialTemplate =
+            "version = 1\n"
+            "shader = \"\"\n"
+            "blend_mode = \"Opaque\"\n"
+            "double_sided = false\n"
+            "render_queue = 2000\n"
+            "\n"
+            "[textures]\n"
+            "albedo = \"\"\n"
+            "normal = \"\"\n"
+            "metallic = \"\"\n"
+            "roughness = \"\"\n"
+            "ao = \"\"\n"
+            "emissive = \"\"\n"
+            "\n"
+            "[params]\n"
+            "base_color = [1.0, 1.0, 1.0, 1.0]\n"
+            "metallic_factor = 0.0\n"
+            "roughness_factor = 0.65\n"
+            "normal_strength = 1.0\n"
+            "emissive_color = [1.0, 1.0, 1.0]\n"
+            "emissive_scale = 0.0\n";
+        util::FileSystem::WriteText(newPath, materialTemplate);
         RefreshDirectory();
     }
 
@@ -1191,6 +1210,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     bool rootOpen = ImGui::TreeNodeEx("##root", rootFlags, "Assets");
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
         m_currentPath = m_rootPath;
+        ctx.selectedAssetPath.clear();
         RefreshDirectory();
     }
     // Assets ルートへのドロップ
