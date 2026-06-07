@@ -4,7 +4,8 @@
 #include "HubApp.hpp"
 #include "MigrationManager.hpp"
 #include "ProcessLauncher.hpp"
-#include "Util/HubUtil.hpp"
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 #include <Windows.h>
 #include <Shellapi.h>
@@ -12,7 +13,6 @@
 #include <imgui.h>
 #include <algorithm>
 #include <chrono>
-#include <cctype>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -23,7 +23,7 @@ namespace fbzz::hub {
 
 namespace {
 
-namespace util = fbzz::hub::util;
+namespace engine_util = fbzz::util;
 
 constexpr float SIDEBAR_WIDTH = 160.0f;
 constexpr float TOOLBAR_HEIGHT = 40.0f;
@@ -49,15 +49,12 @@ int ParseVersionMajor(const std::string& version)
 
 std::filesystem::path Utf8ToPath(const std::string& text)
 {
-    return std::filesystem::path(util::Utf8ToWide(text));
+    return engine_util::FileSystem::PathFromUtf8(text);
 }
 
 std::string ToStoredPath(const std::filesystem::path& path)
 {
-    std::error_code ec;
-    const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
-    const std::filesystem::path normalized = ec ? path : absolute.lexically_normal();
-    return util::WideToUtf8(normalized.wstring());
+    return engine_util::FileSystem::PathToUtf8(engine_util::FileSystem::MakeAbsolute(path));
 }
 
 bool SelectFolder(const wchar_t* title, std::string& outPath)
@@ -78,42 +75,32 @@ bool SelectFolder(const wchar_t* title, std::string& outPath)
         return false;
     }
 
-    outPath = util::WideToUtf8(path);
+    outPath = engine_util::StringUtils::ToNarrow(path);
     return true;
-}
-
-std::string ToLower(std::string text)
-{
-    for (char& ch : text) {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    return text;
 }
 
 bool IsEngineRoot(const std::filesystem::path& path)
 {
-    std::error_code ec;
-    return std::filesystem::exists(path / "CMakeLists.txt", ec)
-        && std::filesystem::exists(path / "Projects" / "Engine", ec)
-        && std::filesystem::exists(path / "Projects" / "Math", ec);
+    return engine_util::FileSystem::Exists(path / "CMakeLists.txt")
+        && engine_util::FileSystem::Exists(path / "Projects" / "Engine")
+        && engine_util::FileSystem::Exists(path / "Projects" / "Math");
 }
 
 std::string ResolveEngineRootForTemplate(const HubConfig& config)
 {
     if (!config.GetEngineRoot().empty()) {
-        return std::filesystem::path(config.GetEngineRoot()).generic_string();
+        return engine_util::FileSystem::PathToUtf8(engine_util::FileSystem::PathFromUtf8(config.GetEngineRoot()));
     }
 
-    std::error_code ec;
-    std::filesystem::path current = std::filesystem::current_path(ec);
-    if (!ec && IsEngineRoot(current)) {
-        return current.generic_string();
+    std::filesystem::path current = engine_util::FileSystem::GetCurrentDirectory();
+    if (IsEngineRoot(current)) {
+        return engine_util::FileSystem::PathToUtf8(current);
     }
 
-    current = util::GetExecutableDirectory();
+    current = engine_util::FileSystem::GetExecutableDirectory();
     for (int i = 0; i < 8 && !current.empty(); ++i) {
         if (IsEngineRoot(current)) {
-            return current.generic_string();
+            return engine_util::FileSystem::PathToUtf8(current);
         }
         current = current.parent_path();
     }
@@ -127,7 +114,7 @@ void ApplyEngineEnvironment(const std::string& engineRoot)
         return;
     }
 
-    const std::wstring rootW = util::Utf8ToWide(engineRoot);
+    const std::wstring rootW = engine_util::StringUtils::ToWide(engineRoot);
     SetEnvironmentVariableW(L"FBZZ_ENGINE_ROOT", rootW.c_str());
 
     HKEY key{};
@@ -548,7 +535,7 @@ void HubApp::RenderSettingsPanel()
 {
     ImGui::TextUnformatted("Settings");
     ImGui::Separator();
-    ImGui::Text("Config: %s", m_config.GetConfigPath().string().c_str());
+    ImGui::Text("Config: %s", engine_util::FileSystem::PathToUtf8(m_config.GetConfigPath()).c_str());
     ImGui::Text("Editor: %s", m_config.GetEditorExe().empty() ? "(same directory)" : m_config.GetEditorExe().c_str());
     ImGui::Text("Engine: %s", m_config.GetEngineRoot().empty() ? "(auto)" : m_config.GetEngineRoot().c_str());
 }
@@ -561,7 +548,7 @@ void HubApp::AddExistingProject()
     }
 
     const std::filesystem::path root = Utf8ToPath(selectedPath);
-    if (!std::filesystem::exists(root / ".fbzz_proj")) {
+    if (!engine_util::FileSystem::Exists(root / ".fbzz_proj")) {
         m_errorMessage = "The selected folder does not contain .fbzz_proj.";
         return;
     }
@@ -600,7 +587,7 @@ void HubApp::RemoveProject(const ProjectEntry& project)
 
 void HubApp::RevealProject(const ProjectEntry& project)
 {
-    const std::wstring path = util::Utf8ToWide(project.path);
+    const std::wstring path = engine_util::StringUtils::ToWide(project.path);
     ShellExecuteW(nullptr, L"explore", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
@@ -614,13 +601,13 @@ void HubApp::RequestMigration(const ProjectEntry& project)
 
 bool HubApp::MatchesSearch(const ProjectEntry& project) const
 {
-    const std::string query = ToLower(m_searchBuffer.data());
+    const std::string query = m_searchBuffer.data();
     if (query.empty()) {
         return true;
     }
 
-    return ToLower(project.name).find(query) != std::string::npos
-        || ToLower(project.path).find(query) != std::string::npos;
+    return engine_util::StringUtils::ContainsCI(project.name, query)
+        || engine_util::StringUtils::ContainsCI(project.path, query);
 }
 
 void HubApp::RenderErrorModal()

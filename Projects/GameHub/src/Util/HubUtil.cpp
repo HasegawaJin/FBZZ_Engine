@@ -2,47 +2,27 @@
 // HubUtil.cpp | fbzz::hub::util
 // GameHub 内で共有する Win32 / UTF-8 / filesystem 変換ユーティリティ
 #include "HubUtil.hpp"
-
-#include <Windows.h>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 namespace fbzz::hub::util {
 
 std::wstring Utf8ToWide(const std::string& text)
 {
-    if (text.empty()) return {};
-
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) {
-        // WHY: 変換失敗時は filesystem 経由のフォールバックで ASCII 文字列だけでも通す。
-        return std::filesystem::path(text).wstring();
-    }
-
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
+    // WHY: 文字コード変換は Engine/Util/StringUtils に集約し、Hub 独自実装との挙動差をなくす。
+    return fbzz::util::StringUtils::ToWide(text);
 }
 
 std::string WideToUtf8(const std::wstring& text)
 {
-    if (text.empty()) return {};
-
-    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) {
-        return std::filesystem::path(text).string();
-    }
-
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
+    // WHY: Windows API 境界の narrow 化も Engine 側の UTF-8 変換へ寄せる。
+    return fbzz::util::StringUtils::ToNarrow(text);
 }
 
 std::filesystem::path GetExecutableDirectory()
 {
-    // WHY: GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。
-    //      parent_path() でディレクトリを取り出し、アセット・設定ファイルの基点として使う。
-    wchar_t buffer[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return std::filesystem::path(buffer).parent_path();
+    // WHY: 実行ファイル基準の探索は Editor / Engine と同じ FileSystem 実装を使う。
+    return fbzz::util::FileSystem::GetExecutableDirectory();
 }
 
 } // namespace fbzz::hub::util
