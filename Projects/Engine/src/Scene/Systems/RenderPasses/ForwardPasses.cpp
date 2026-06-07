@@ -193,16 +193,17 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) {
             opaqueSkinnedQueue.push_back({ &go, smr, mat, anim, distSq });
         } else {
-            auto* material = SyncMaterial(*mat, resources);
+            auto* material = SyncMaterial(*mat, resources, true);
             if (!material) continue;
             const bool surfaceMisassigned =
                 material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
             if (surfaceMisassigned)
-                FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s"
-                              " -> falling back to SkinnedPBR. Use shaders under Skinned/.",
-                              material->shaderPath.c_str());
-            const auto skinnedShader = (!surfaceMisassigned && material->shader.IsValid())
-                ? material->shader : h.skinnedPbrShader;
+                LogSkinnedSurfaceFallbackWarningOnce(material->shaderPath);
+            renderer::Material* drawMaterial = surfaceMisassigned
+                ? GetFallbackMaterial(resources, true)
+                : material;
+            if (!drawMaterial) continue;
+            const auto skinnedShader = drawMaterial->shader;
             if (!skinnedShader.IsValid()) continue;
 
             PerObjectCB objData{};
@@ -226,12 +227,12 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 dc.layer              = renderer::RenderLayer::TRANSPARENT_LAYER;
                 dc.constantBuffers[0] = h.frameCB;
                 dc.constantBuffers[1] = h.objectCB;
-                dc.constantBuffers[2] = material->paramsBuffer;
+                dc.constantBuffers[2] = drawMaterial->paramsBuffer;
                 dc.constantBuffers[3] = h.lightCB;
                 dc.constantBuffers[4] = h.shadowCB;
                 dc.constantBuffers[7] = skinCB;
-                for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
-                    if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
+                for (size_t ti = 0; ti < drawMaterial->textures.size() && ti < 8; ++ti)
+                    if (drawMaterial->textures[ti].IsValid()) dc.textures[ti] = drawMaterial->textures[ti];
                 dc.textures[8] = shadowDepthTex;
                 transparentQueue.push_back({ dc, objData, distSq, mat->GetRenderQueue() });
             }
@@ -320,18 +321,18 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* mat  = entry.mat;
         auto* anim = entry.anim;
 
-        auto* material = SyncMaterial(*mat, resources);
+        auto* material = SyncMaterial(*mat, resources, true);
         if (!material) continue;
 
         const bool surfaceMisassigned =
             material->shader.IsValid() && IsSurfaceMaterialShader(material->shaderPath);
-        if (surfaceMisassigned) {
-            FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s"
-                          " -> falling back to SkinnedPBR. Use shaders under Skinned/.",
-                          material->shaderPath.c_str());
-        }
-        const auto skinnedShader = (!surfaceMisassigned && material->shader.IsValid())
-            ? material->shader : h.skinnedPbrShader;
+        if (surfaceMisassigned)
+            LogSkinnedSurfaceFallbackWarningOnce(material->shaderPath);
+        renderer::Material* drawMaterial = surfaceMisassigned
+            ? GetFallbackMaterial(resources, true)
+            : material;
+        if (!drawMaterial) continue;
+        const auto skinnedShader = drawMaterial->shader;
         if (!skinnedShader.IsValid()) continue;
 
         PerObjectCB objData{};

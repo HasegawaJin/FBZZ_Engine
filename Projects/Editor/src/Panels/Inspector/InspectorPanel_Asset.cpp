@@ -57,9 +57,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         const renderer::ShaderDescriptor* desc = nullptr;
         if (auto* resources = renderer::ResourceManager::Active()) {
-            const std::string shaderPath = mat.shaderPath.empty()
-                ? "Assets/Shaders/Material/Surface/PBR.hlsl"
-                : mat.shaderPath;
+                const std::string shaderPath = mat.shaderPath.empty()
+                    ? "Assets/Shaders/Material/Surface/Fallback.hlsl"
+                    : mat.shaderPath;
             if (auto shader = resources->LoadShader(shaderPath); shader.IsValid()) {
                 if (auto* loadedShader = resources->Get(shader))
                     desc = &loadedShader->GetDescriptor();

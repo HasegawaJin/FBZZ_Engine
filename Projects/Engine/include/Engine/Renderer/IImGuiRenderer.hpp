@@ -29,6 +29,11 @@ public:
     // RenderTarget を ImGui::Image が受け取れるテクスチャ ID へ変換する。
     // WHY: ImGui 表示用の ID 解決は UI バックエンド固有の処理なので IRenderer から分離する。
     virtual void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) = 0;
+
+    // Texture を ImGui::Image が受け取れるテクスチャ ID へ変換する。
+    // WHY: AssetBrowser など通常のレンダーターゲットではない GPU テクスチャも UI 上で確認したい。
+    //      SRV の具体型は DX11 固有なので、Editor は ResourceHandle のまま抽象境界を越えない。
+    virtual void* GetImTextureID(ResourceHandle<TextureTag> texture, ResourceManager& resources) = 0;
 };
 
 } // namespace fbzz::renderer
