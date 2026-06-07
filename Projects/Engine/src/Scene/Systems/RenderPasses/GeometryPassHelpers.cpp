@@ -4,6 +4,7 @@
 #include "GeometryPasses.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
+#include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Renderer/Material.hpp"
@@ -19,6 +20,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 namespace fbzz::scene {
 
@@ -120,7 +122,34 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vect
 
 } // namespace
 
-renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources)
+const char* GetFallbackMaterialPath(bool skinned)
+{
+    return skinned ? "Assets/Materials/FallbackSkinned.fzmat"
+                   : "Assets/Materials/Fallback.fzmat";
+}
+
+void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath)
+{
+    static std::unordered_set<std::string> s_warnedSurfaceOnSkinned;
+    std::string path(shaderPath);
+    if (path.empty()) path = "<empty>";
+    if (!s_warnedSurfaceOnSkinned.insert(path).second) return;
+    FBZZ_LOG_WARN("SkinnedMeshRenderer has a Surface shader assigned: %s -> using %s. Use shaders under Skinned/.",
+                  path.c_str(),
+                  GetFallbackMaterialPath(true));
+}
+
+renderer::Material* GetFallbackMaterial(renderer::ResourceManager& resources, bool skinned)
+{
+    static MaterialComponent s_surfaceFallback;
+    static MaterialComponent s_skinnedFallback;
+    MaterialComponent& fallback = skinned ? s_skinnedFallback : s_surfaceFallback;
+    fallback.materialPath = GetFallbackMaterialPath(skinned);
+    if (!fallback.EnsureMaterialAsset()) return nullptr;
+    return SyncMaterial(fallback, resources, skinned);
+}
+
+renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback)
 {
     if (!mc.enabled) return nullptr;
 
@@ -136,10 +165,23 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
 
     auto& material = *mc.material;
     const std::string& shaderPath = mc.GetShaderPath();
-    const auto* matAsset = asset::AssetManager::GetMaterial(mc.materialAsset);
-    const std::string effectiveShaderPath = (matAsset && shaderPath.empty())
-        ? "Assets/Shaders/Material/Surface/PBR.hlsl"
-        : shaderPath;
+    auto activeAsset = mc.materialAsset;
+    const auto* matAsset = asset::AssetManager::GetMaterial(activeAsset);
+    if (matAsset && shaderPath.empty()) {
+        const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
+        // WHY: shader 未設定の .fzmat を PBR 推定で描くと、未設定と意図した PBR の区別が付かない。
+        //      原色紫の Unlit フォールバック材質へ明示的に差し替え、問題箇所を見つけやすくする。
+        static std::unordered_set<std::string> s_warnedEmptyShaderMaterials;
+        const std::string warnKey = mc.materialPath.empty() ? std::string("<unnamed>") : mc.materialPath;
+        if (s_warnedEmptyShaderMaterials.insert(warnKey + "|" + fallbackPath).second) {
+            FBZZ_LOG_WARN("Material '%s' has an empty shader path -> using %s.",
+                          warnKey.c_str(), fallbackPath);
+        }
+        activeAsset = asset::AssetManager::LoadMaterial(fallbackPath);
+        matAsset = asset::AssetManager::GetMaterial(activeAsset);
+        if (!matAsset) return nullptr;
+    }
+    const std::string effectiveShaderPath = matAsset ? matAsset->shaderPath : std::string{};
     material.shaderPath = effectiveShaderPath;
     material.shader = effectiveShaderPath.empty()
         ? renderer::ResourceHandle<renderer::ShaderTag>{}
@@ -253,6 +295,7 @@ bool IsForwardOnly(const MaterialComponent& mc)
     if (a) {
         if (a->renderPath == asset::RenderPath::Forward)  return true;
         if (a->renderPath == asset::RenderPath::Deferred) return false;
+        if (a->shaderPath.empty()) return true;
     }
     return IsForwardOnlyShader(mc.GetShaderPath());
 }
@@ -263,6 +306,7 @@ bool IsSurfaceMaterial(const MaterialComponent& mc)
     if (a) {
         if (a->meshType == asset::MeshType::Surface) return true;
         if (a->meshType == asset::MeshType::Skinned) return false;
+        if (a->shaderPath.empty()) return false;
     }
     return IsSurfaceMaterialShader(mc.GetShaderPath());
 }
