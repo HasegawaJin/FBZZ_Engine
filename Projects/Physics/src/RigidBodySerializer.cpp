@@ -81,6 +81,21 @@ std::string RigidBodySerializer::Serialize(const RigidBody& body)
     tbl.insert("is_static", body.IsStatic());
 
     // 拡張プロパティ (デフォルト値なら省略)
+    if (!body.m_useGravity)
+        tbl.insert("use_gravity", false);
+    if (body.m_gravityScale != 1.0f)
+        tbl.insert("gravity_scale", (double)body.m_gravityScale);
+    if (body.m_linearDrag != 0.0f)
+        tbl.insert("linear_drag", (double)body.m_linearDrag);
+    if (body.m_angularDrag != 0.0f)
+        tbl.insert("angular_drag", (double)body.m_angularDrag);
+    if (!body.m_allowSleeping)
+        tbl.insert("allow_sleeping", false);
+    if (body.m_useCCD)
+    {
+        tbl.insert("use_ccd", true);
+        tbl.insert("ccd_radius", (double)body.m_ccdRadius);
+    }
     if (body.m_charge != 0.0f)
         tbl.insert("charge", (double)body.m_charge);
     if (body.m_isGravitationalSource)
@@ -126,6 +141,13 @@ bool RigidBodySerializer::Deserialize(RigidBody& body, std::string_view tomlText
     });
 
     // 拡張プロパティ
+    body.m_useGravity            = tbl["use_gravity"].value_or(true);
+    body.m_gravityScale          = (float)tbl["gravity_scale"].value_or(1.0);
+    body.m_linearDrag            = (float)tbl["linear_drag"].value_or(0.0);
+    body.m_angularDrag           = (float)tbl["angular_drag"].value_or(0.0);
+    body.m_allowSleeping         = tbl["allow_sleeping"].value_or(true);
+    body.m_useCCD                = tbl["use_ccd"].value_or(false);
+    body.m_ccdRadius             = (float)tbl["ccd_radius"].value_or(0.5);
     body.m_charge                = (float)tbl["charge"].value_or(0.0);
     body.m_isGravitationalSource = tbl["is_gravitational_source"].value_or(false);
     body.m_gravitationalMass     = (float)tbl["gravitational_mass"].value_or(1.0);
