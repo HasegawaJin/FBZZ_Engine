@@ -2,6 +2,8 @@
 // RenderPasses/GeometryPassHelpers.cpp | fbzz::scene
 // ジオメトリパス共有ヘルパー関数
 #include "GeometryPasses.hpp"
+#include "Engine/Asset/AssetManager.hpp"
+#include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Renderer/Material.hpp"
@@ -10,43 +12,164 @@
 #include "Engine/Renderer/RenderState.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
 
 namespace fbzz::scene {
 
+namespace {
+
+// t0-t4: 標準 PBR スロット。t5-t7: カスタムシェーダー用汎用スロット。
+// t8 = TEX_SHADOW はエンジン側で予約済みのため除外する。
+constexpr std::array<const char*, 8> kTextureSlotNames = {
+    "albedo",
+    "normal",
+    "metallic",
+    "emissive",
+    "ao",
+    "tex5",
+    "tex6",
+    "tex7",
+};
+
+const std::vector<float>* FindMaterialParam(const asset::MaterialAsset& asset, std::string_view shaderVarName)
+{
+    auto it = asset.params.find(std::string(shaderVarName));
+    if (it != asset.params.end()) return &it->second;
+
+    // WHY: .fzmat はレビューしやすい PBR 名、HLSL は既存の短い変数名を使っている。
+    //      ここで吸収してアセット名を ShaderDescriptor の内部名に依存させない。
+    if (shaderVarName == "albedo")              it = asset.params.find("base_color");
+    else if (shaderVarName == "metallic")       it = asset.params.find("metallic_factor");
+    else if (shaderVarName == "roughness")      it = asset.params.find("roughness_factor");
+    else if (shaderVarName == "normalStrength") it = asset.params.find("normal_strength");
+    else if (shaderVarName == "emissiveColor")  it = asset.params.find("emissive_color");
+    else if (shaderVarName == "emissiveScale")  it = asset.params.find("emissive_scale");
+
+    return it != asset.params.end() ? &it->second : nullptr;
+}
+
+void ApplyMaterialAssetParams(const asset::MaterialAsset& asset,
+                              const renderer::ShaderDescriptor& desc,
+                              std::vector<uint8_t>& paramData)
+{
+    for (const auto& v : desc.vars) {
+        if (v.varType != renderer::ShaderVarType::Float) continue;
+        if (v.offset + v.size > static_cast<uint32_t>(paramData.size())) continue;
+
+        const auto* values = FindMaterialParam(asset, v.name);
+        if (!values || values->empty()) continue;
+
+        const size_t count = (std::min<size_t>)(v.columns, values->size());
+        std::memcpy(paramData.data() + v.offset, values->data(), count * sizeof(float));
+    }
+}
+
+void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vector<uint8_t>& paramData)
+{
+    // Step 1: シェーダーの全 float 変数を 1.0f で初期化する。
+    // WHY: 未知のカスタムパラメータが 0 のままだと乗算スケール系変数が非表示になる。
+    //      1.0f は乗算の単位元であり、加算オフセット (uvOffset 等) は次ステップで 0 に上書きされる。
+    const float one = 1.0f;
+    for (const auto& v : desc.vars) {
+        if (v.varType != renderer::ShaderVarType::Float) continue;
+        for (uint32_t col = 0; col < v.columns; ++col) {
+            const uint32_t byteOff = v.offset + col * sizeof(float);
+            if (byteOff + sizeof(float) <= static_cast<uint32_t>(paramData.size()))
+                std::memcpy(paramData.data() + byteOff, &one, sizeof(float));
+        }
+    }
+
+    // Step 2: 標準 PBR パラメータを正しいデフォルト値で上書きする。
+    auto setFloat = [&](std::string_view name, float value) {
+        const auto* v = desc.FindVar(name);
+        if (!v || v->varType != renderer::ShaderVarType::Float || v->columns != 1) return;
+        if (v->offset + sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
+        std::memcpy(paramData.data() + v->offset, &value, sizeof(float));
+    };
+    auto setFloat2 = [&](std::string_view name, const float value[2]) {
+        const auto* v = desc.FindVar(name);
+        if (!v || v->varType != renderer::ShaderVarType::Float || v->columns < 2) return;
+        if (v->offset + 2u * sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
+        std::memcpy(paramData.data() + v->offset, value, 2u * sizeof(float));
+    };
+    auto setFloat3 = [&](std::string_view name, const float value[3]) {
+        const auto* v = desc.FindVar(name);
+        if (!v || v->varType != renderer::ShaderVarType::Float || v->columns < 3) return;
+        if (v->offset + 3u * sizeof(float) > static_cast<uint32_t>(paramData.size())) return;
+        std::memcpy(paramData.data() + v->offset, value, 3u * sizeof(float));
+    };
+
+    const float uvTiling[2] = { 1.0f, 1.0f };
+    const float uvOffset[2] = { 0.0f, 0.0f };
+
+    const float white3[3] = { 1.0f, 1.0f, 1.0f };
+    setFloat("metallic",       0.0f);
+    setFloat("roughness",      0.65f);
+    setFloat("emissiveScale",  0.0f);
+    setFloat2("uvTiling",      uvTiling);
+    setFloat2("uvOffset",      uvOffset);
+    setFloat("alphaCutoff",    0.5f);
+    setFloat3("emissiveColor", white3);
+}
+
+} // namespace
+
 renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources)
 {
     if (!mc.enabled) return nullptr;
+
+    if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
+        mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
+    if (!mc.materialAsset.IsValid() && !mc.materialPath.empty())
+        return nullptr;
+    if (!mc.materialAsset.IsValid() && mc.materialPath.empty())
+        return nullptr;
 
     if (!mc.material)
         mc.material = std::make_shared<renderer::Material>();
 
     auto& material = *mc.material;
-    material.shaderPath = mc.shaderPath;
-    material.shader = mc.shaderPath.empty()
+    const std::string& shaderPath = mc.GetShaderPath();
+    const auto* matAsset = asset::AssetManager::GetMaterial(mc.materialAsset);
+    const std::string effectiveShaderPath = (matAsset && shaderPath.empty())
+        ? "Assets/Shaders/Material/Surface/PBR.hlsl"
+        : shaderPath;
+    material.shaderPath = effectiveShaderPath;
+    material.shader = effectiveShaderPath.empty()
         ? renderer::ResourceHandle<renderer::ShaderTag>{}
-        : resources.LoadShader(mc.shaderPath);
+        : resources.LoadShader(effectiveShaderPath);
 
     const renderer::ShaderDescriptor* desc = nullptr;
     if (auto* shader = resources.Get(material.shader))
         desc = &shader->GetDescriptor();
 
-    if (desc && mc.paramData.size() != desc->cbufferSize)
-        mc.InitFromDescriptor(*desc);
+    material.paramData.assign(desc ? desc->cbufferSize : 0u, 0u);
+    if (desc)
+        InitDefaultMaterialParams(*desc, material.paramData);
+    if (desc && matAsset)
+        ApplyMaterialAssetParams(*matAsset, *desc, material.paramData);
 
-    material.paramData = mc.paramData;
+    std::array<std::string, kTextureSlotNames.size()> texturePaths{};
+    if (matAsset) {
+        for (size_t i = 0; i < kTextureSlotNames.size(); ++i) {
+            const auto it = matAsset->textures.find(kTextureSlotNames[i]);
+            texturePaths[i] = it != matAsset->textures.end() ? it->second : std::string{};
+        }
+    }
 
-    const size_t slotCount = mc.texturePaths.size();
+    const size_t slotCount = texturePaths.size();
     material.textures.resize(slotCount);
     for (size_t i = 0; i < slotCount; ++i)
     {
-        material.textures[i] = mc.texturePaths[i].empty()
+        material.textures[i] = texturePaths[i].empty()
             ? renderer::ResourceHandle<renderer::TextureTag>{}
-            : resources.LoadTexture(mc.texturePaths[i]);
+            : resources.LoadTexture(texturePaths[i]);
     }
 
     static renderer::ShaderDescriptor s_fallback;
@@ -122,6 +245,26 @@ bool IsForwardOnlyShader(std::string_view path)
         || lower.find("anisotropic")!= std::string::npos
         || lower.find("dissolve")   != std::string::npos
         || lower.find("unlit")      != std::string::npos;
+}
+
+bool IsForwardOnly(const MaterialComponent& mc)
+{
+    const auto* a = asset::AssetManager::GetMaterial(mc.materialAsset);
+    if (a) {
+        if (a->renderPath == asset::RenderPath::Forward)  return true;
+        if (a->renderPath == asset::RenderPath::Deferred) return false;
+    }
+    return IsForwardOnlyShader(mc.GetShaderPath());
+}
+
+bool IsSurfaceMaterial(const MaterialComponent& mc)
+{
+    const auto* a = asset::AssetManager::GetMaterial(mc.materialAsset);
+    if (a) {
+        if (a->meshType == asset::MeshType::Surface) return true;
+        if (a->meshType == asset::MeshType::Skinned) return false;
+    }
+    return IsSurfaceMaterialShader(mc.GetShaderPath());
 }
 
 // ── カリング ヘルパー ────────────────────────────────────────────────────────

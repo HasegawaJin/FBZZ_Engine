@@ -67,7 +67,7 @@ public:
         if (std::abs(localX) > m_water.extentX * 0.5f || std::abs(localZ) > m_water.extentZ * 0.5f)
             return false;
         const float surfaceY = SurfaceY(localX, localZ);
-        const float bottomY  = surfaceY - std::max(m_water.deepDepth, 0.001f);
+        const float bottomY  = surfaceY - 10.0f;
         return position.y <= surfaceY && position.y >= bottomY;
     }
 
@@ -80,7 +80,7 @@ public:
         const float localZ = pos.z - m_position.z;
         const float surfaceY = SurfaceY(localX, localZ);
         const float depth = std::max(surfaceY - pos.y, 0.0f);
-        const float submersion = math::Clamp01(depth / std::max(m_water.deepDepth, 0.001f));
+        const float submersion = math::Clamp01(depth / 10.0f);
 
         body.ApplyForce(math::Vector3::UP * (m_settings.buoyancy * body.GetMass() * submersion));
         body.ApplyForce(-body.GetVelocity() * (m_settings.drag * submersion));

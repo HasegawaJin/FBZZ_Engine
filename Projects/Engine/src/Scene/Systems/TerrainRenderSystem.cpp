@@ -28,6 +28,8 @@
 //   - heightDirty: 全チャンクを削除して再構築
 //   - splatDirty : スプラットマップ + レイヤーテクスチャを再ロード
 #include "Engine/Scene/Systems/TerrainRenderSystem.hpp"
+#include "Engine/Asset/AssetManager.hpp"
+#include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
@@ -301,11 +303,28 @@ static renderer::ResourceHandle<renderer::TextureTag> BuildSplatmapTexture(
         static_cast<uint32_t>(terrain.rows));
 }
 
+// fzmat params へのアクセスヘルパー（TerrainRenderSystem ローカル版）
+static float TGetF(const asset::MaterialAsset* m, const std::string& name, float def)
+{
+    if (!m) return def;
+    auto it = m->params.find(name);
+    if (it != m->params.end() && !it->second.empty()) return it->second[0];
+    return def;
+}
+static std::string TGetTex(const asset::MaterialAsset* m, const std::string& name)
+{
+    if (!m) return {};
+    auto it = m->textures.find(name);
+    if (it != m->textures.end()) return it->second;
+    return {};
+}
+
 // エンティティのテクスチャセット（スプラットマップ + 4 レイヤーディフューズ）を構築する。
 // 未設定レイヤーには whiteTex をバインドして HLSL 側の分岐を排除する。
 // WHY: シェーダーは常に 4 レイヤー固定でブレンドする設計（[unroll] ループ効率化）。
 //      未設定レイヤーの splat ウェイトは 0 なので白テクスチャを掛けても寄与は 0 になる。
 static TerrainTextures BuildTextureSet(
+    const asset::MaterialAsset* mat,
     const TerrainComponent&    terrain,
     renderer::ResourceManager& resources,
     renderer::ResourceHandle<renderer::TextureTag> splatFallback,
@@ -317,19 +336,13 @@ static TerrainTextures BuildTextureSet(
     ts.splatmap = BuildSplatmapTexture(terrain, resources, splatFallback);
 
     for (int i = 0; i < 4; ++i) {
-        const bool hasLayer = i < static_cast<int>(terrain.layers.size());
-        const bool hasDiffuse = hasLayer && !terrain.layers[i].diffusePath.empty();
-        const bool hasNormal  = hasLayer && !terrain.layers[i].normalPath.empty();
-        const bool hasAoRoughness = hasLayer && !terrain.layers[i].aoRoughnessPath.empty();
-        ts.diffuse[i] = hasDiffuse
-            ? resources.LoadTexture(terrain.layers[i].diffusePath)
-            : whiteTex;
-        ts.normal[i] = hasNormal
-            ? resources.LoadTexture(terrain.layers[i].normalPath)
-            : flatNormalTex;
-        ts.aoRoughness[i] = hasAoRoughness
-            ? resources.LoadTexture(terrain.layers[i].aoRoughnessPath)
-            : blackTex;
+        char pfx[16]; snprintf(pfx, sizeof(pfx), "layer%d_", i);
+        const std::string diffusePath     = TGetTex(mat, std::string(pfx) + "diffuse");
+        const std::string normalPath      = TGetTex(mat, std::string(pfx) + "normal");
+        const std::string aoRoughnessPath = TGetTex(mat, std::string(pfx) + "ao_roughness");
+        ts.diffuse[i]     = diffusePath.empty()     ? whiteTex      : resources.LoadTexture(diffusePath);
+        ts.normal[i]      = normalPath.empty()       ? flatNormalTex : resources.LoadTexture(normalPath);
+        ts.aoRoughness[i] = aoRoughnessPath.empty()  ? blackTex      : resources.LoadTexture(aoRoughnessPath);
     }
     return ts;
 }
@@ -484,7 +497,6 @@ void TerrainRenderSystem(
 
         assert(terrain.heightData.size() == static_cast<size_t>(terrain.columns)
                                           * static_cast<size_t>(terrain.rows));
-        assert(terrain.layers.size() <= 4);
         assert(terrain.chunkSize > 0);
 
         // EntityID を逆引き
@@ -497,6 +509,13 @@ void TerrainRenderSystem(
         }
         if (!scene.IsValid(eid)) continue;
 
+        // fzmat を解決する。毎フレーム GetMaterial を呼ぶが AssetManager 側でキャッシュされる。
+        const asset::MaterialAsset* mat = nullptr;
+        if (!terrain.materialPath.empty()) {
+            const auto handle = asset::AssetManager::LoadMaterial(terrain.materialPath);
+            mat = asset::AssetManager::GetMaterial(handle);
+        }
+
         // -- heightDirty: 全チャンクを削除して再構築 ----------------------------
         if (terrain.heightDirty) {
             std::erase_if(s_chunkCache, [&eid](const auto& kv) {
@@ -505,10 +524,9 @@ void TerrainRenderSystem(
             terrain.heightDirty = false;
         }
 
-        // -- [Phase 4] splatDirty: スプラットマップ + レイヤーテクスチャを再構築 --
-        // スプラットマップやレイヤーパスが変更されたとき呼び出し側がこのフラグを立てる。
+        // -- splatDirty: スプラットマップ + レイヤーテクスチャを再構築 -----------
         if (terrain.splatDirty || !s_texCache.contains(eid.index)) {
-            s_texCache[eid.index] = BuildTextureSet(terrain, resources,
+            s_texCache[eid.index] = BuildTextureSet(mat, terrain, resources,
                                                     s_splatFallback, s_whiteTex,
                                                     s_flatNormalTex, s_blackTex);
             terrain.splatDirty = false;
@@ -530,30 +548,31 @@ void TerrainRenderSystem(
             float normalStr[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
             float materialTextureFlags[4] = {};
             for (int li = 0; li < 4; ++li) {
-                const bool hasLayer = li < static_cast<int>(terrain.layers.size());
-                const float tx = hasLayer ? terrain.layers[li].tilingX : 8.0f;
-                const float tz = hasLayer ? terrain.layers[li].tilingZ : 8.0f;
-                normalStr[li]  = hasLayer ? terrain.layers[li].normalStrength : 1.0f;
-                materialTextureFlags[li] =
-                    hasLayer && !terrain.layers[li].aoRoughnessPath.empty() ? 1.0f : 0.0f;
+                char pfx[16]; snprintf(pfx, sizeof(pfx), "layer%d_", li);
+                const std::string p = pfx;
+                const float tx = TGetF(mat, p + "tilingX", 8.0f);
+                const float tz = TGetF(mat, p + "tilingZ", 8.0f);
+                normalStr[li]  = TGetF(mat, p + "normalStrength", 1.0f);
+                const std::string aoKey = p + "ao_roughness";
+                materialTextureFlags[li] = (mat && mat->textures.count(aoKey) &&
+                                            !mat->textures.at(aoKey).empty()) ? 1.0f : 0.0f;
                 terrainCBData.layerTiling[li] = { tx, tz, 0.0f, 0.0f };
                 terrainCBData.layerMaterial[li] = {
-                    hasLayer ? terrain.layers[li].roughness : 0.8f,
-                    hasLayer ? terrain.layers[li].ambientOcclusion : 1.0f,
-                    0.0f,
-                    0.0f
+                    TGetF(mat, p + "roughness",        0.8f),
+                    TGetF(mat, p + "ambientOcclusion", 1.0f),
+                    0.0f, 0.0f
                 };
                 terrainCBData.layerAutoHeight[li] = {
-                    hasLayer ? terrain.layers[li].autoMinHeight : -10000.0f,
-                    hasLayer ? terrain.layers[li].autoMaxHeight :  10000.0f,
-                    hasLayer ? terrain.layers[li].autoHeightFade : 1.0f,
-                    hasLayer && terrain.layers[li].autoBlendEnabled ? 1.0f : 0.0f
+                    TGetF(mat, p + "autoMinHeight",    -10000.0f),
+                    TGetF(mat, p + "autoMaxHeight",     10000.0f),
+                    TGetF(mat, p + "autoHeightFade",    1.0f),
+                    TGetF(mat, p + "autoBlendEnabled",  0.0f)
                 };
                 terrainCBData.layerAutoSlope[li] = {
-                    hasLayer ? terrain.layers[li].autoMinSlope : 0.0f,
-                    hasLayer ? terrain.layers[li].autoMaxSlope : 1.0f,
-                    hasLayer ? terrain.layers[li].autoSlopeFade : 0.1f,
-                    hasLayer ? terrain.layers[li].autoBlendStrength : 1.0f
+                    TGetF(mat, p + "autoMinSlope",      0.0f),
+                    TGetF(mat, p + "autoMaxSlope",      1.0f),
+                    TGetF(mat, p + "autoSlopeFade",     0.1f),
+                    TGetF(mat, p + "autoBlendStrength", 1.0f)
                 };
             }
             terrainCBData.layerNormalStrength = {
@@ -629,11 +648,16 @@ void TerrainRenderSystem(
 
                 resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
 
+                // fzmat のシェーダーパスを優先し、未設定時は静的フォールバックを使う。
+                const auto activeShader = (mat && !mat->shaderPath.empty())
+                    ? resources.LoadShader(mat->shaderPath)
+                    : terrainShader;
+
                 // DrawCall を構築して発行
                 renderer::DrawCall call;
                 call.vertexBuffer  = chunk.vertexBuffer;
                 call.indexBuffer   = chunk.indexBufferLOD[lod];
-                call.shader        = terrainShader;
+                call.shader        = activeShader;
                 call.pipelineState = (settings && settings->IsWireframe()) ? terrainWireframePSO : terrainPSO;
                 call.indexCount    = chunk.indexCountLOD[lod];
                 call.layer         = renderer::RenderLayer::OPAQUE_LAYER;
