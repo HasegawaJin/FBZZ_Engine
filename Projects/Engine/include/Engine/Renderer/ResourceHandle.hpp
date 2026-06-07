@@ -28,5 +28,6 @@ struct BufferTag {};
 struct ConstantBufferTag {};
 struct PipelineStateTag {};
 struct RenderTargetTag {};
+struct MaterialAssetTag {}; // CPU 側 MaterialAsset を AssetManager のスロットプールで管理するハンドル
 
 } // namespace fbzz::renderer

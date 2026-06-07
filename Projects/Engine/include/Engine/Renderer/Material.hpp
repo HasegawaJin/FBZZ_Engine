@@ -4,7 +4,7 @@
 //
 // シェーダーリフレクション駆動方式:
 //   paramData  … CB_MATERIAL と同サイズの生バイト列。SyncMaterial() が
-//                MaterialComponent::paramData をそのままコピーし、
+//                MaterialAsset の params から ShaderDescriptor 経由で構築し、
 //                Upload() が textureMask を書き込んで GPU へ転送する。
 //   textures   … スロット番号でインデックス。ShaderDescriptor::textures に合わせる。
 //
