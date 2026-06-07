@@ -54,7 +54,14 @@ void ExecuteDecalPass                      (RenderPassContext& ctx);
 
 // ---- ヘルパー宣言 (定義は GeometryPassHelpers.cpp) -------------------------
 renderer::Material* SyncMaterial(
-    MaterialComponent& mc, renderer::ResourceManager& resources);
+    MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback = false);
+
+renderer::Material* GetFallbackMaterial(
+    renderer::ResourceManager& resources, bool skinned);
+
+const char* GetFallbackMaterialPath(bool skinned);
+
+void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath);
 
 renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
