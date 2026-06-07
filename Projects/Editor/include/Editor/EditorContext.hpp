@@ -38,6 +38,7 @@ struct EditorContext {
     std::string       scriptsDllPath;       // コンパイル済み DLL の絶対パス (BuildPipeline が配布物へコピー)
     std::string       hlslSourceDir;       // Assets/shaders/ の絶対パス
     std::string       currentScenePath;
+    std::string       selectedAssetPath; // アセットブラウザーで選択中のファイル絶対パス (空 = なし)
     bool              sceneDirty = false;
 
     // 選択状態 (Multi-select 対応)
