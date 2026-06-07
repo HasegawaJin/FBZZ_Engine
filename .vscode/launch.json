@@ -1,46 +1,8 @@
 {
     "version": "0.2.0",
     "configurations": [
-        
         {
-            "name": "Release (GameHub)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/release/Binaries/Release/FBZZHub.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/release/Binaries/Release",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-        },
-        {
-            "name": "Release (FBZZEditor)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/release/Binaries/Release/FBZZEditor.exe",
-            "args": ["--project", "${input:fbzzProjectPath}"],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/release/Binaries/Release",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-        },
-        {
-            "name": "Debug (Sandbox)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/debug/Binaries/Debug/sandbox.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/debug/Binaries/Debug",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build Sandbox (Debug)"
-        },
-        {
-            "name": "Debug (GameHub)",
+            "name": "GameHub (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/debug/Binaries/Debug/FBZZHub.exe",
@@ -53,19 +15,46 @@
             "preLaunchTask": "CMake: Build GameHub (Debug)"
         },
         {
-            "name": "Debug (FBZZEditor)",
+            "name": "GameHub (Release)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/debug/Binaries/Debug/FBZZEditor.exe",
-            "args": ["--project", "${input:fbzzProjectPath}"],
+            "program": "${workspaceFolder}/build/release/Binaries/Release/FBZZHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/release/Binaries/Release",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build GameHub (Release)"
+        },
+        {
+            "name": "Sandbox (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Binaries/Debug/sandbox.exe",
+            "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/debug/Binaries/Debug",
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Sandbox (Debug)"
         },
         {
-            "name": "Debug (tests)",
+            "name": "Sandbox (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/release/Binaries/Release/sandbox.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/release/Binaries/Release",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Sandbox (Release)"
+        },
+        {
+            "name": "Test (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/debug/Binaries/Debug/fbzz_tests.exe",
@@ -75,6 +64,52 @@
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Test (Debug)"
+        },
+        {
+            "name": "Test (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/release/Binaries/Release/fbzz_tests.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Test (Release)"
+        },
+        {
+            "name": "FBZZEditor (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Binaries/Debug/FBZZEditor.exe",
+            "args": [
+                "--project",
+                "${input:fbzzProjectPath}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/debug/Binaries/Debug",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build EditorLauncher (Debug)"
+        },
+        {
+            "name": "FBZZEditor (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/release/Binaries/Release/FBZZEditor.exe",
+            "args": [
+                "--project",
+                "${input:fbzzProjectPath}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/release/Binaries/Release",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build EditorLauncher (Release)"
         }
     ],
     "inputs": [
