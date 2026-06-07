@@ -20,6 +20,15 @@ public:
     static std::string GetExtension(const std::string& path);  // 例: ".fbzz"
     static std::string GetFilename(const std::string& path);   // 例: "scene.fbzz"
     static std::string GetDirectory(const std::string& path);  // 例: "Assets/Scenes/"
+    // NormalizePathSeparators — Windows / POSIX の区切り文字を '/' に統一する。
+    // WHY: Editor / AssetBrowser / Serializer が同じ文字列表現で比較できるよう、Engine 側に集約する。
+    static std::string NormalizePathSeparators(std::string path, bool trimTrailingSlash = true);
+    // SamePathText — OS API に問い合わせず、正規化した文字列として同一パスかを比較する。
+    // WHY: 存在しない出力先や仮想 Assets パスも比較対象になるため、filesystem::equivalent は使えない。
+    static bool        SamePathText(const std::string& a, const std::string& b);
+    // IsChildPathText — path が root 自身、または root 配下の文字列パスかを判定する。
+    // WHY: AssetBrowser のマウント判定では未作成パスも扱うため、文字列だけで完結させる。
+    static bool        IsChildPathText(const std::string& path, const std::string& root);
 
     static std::vector<std::string> ListFiles(const std::string& dir,
                                                const std::string& ext = "");
