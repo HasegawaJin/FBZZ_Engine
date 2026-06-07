@@ -12,7 +12,9 @@ namespace fbzz::physics
         SPRING,
         ROPE,
         CHAIN,
-        HINGE
+        HINGE,
+        FIXED,
+        SLIDER
     };
 
     // World が shared_ptr で寿命を管理し、制約対象の RigidBody は非所有ポインタで参照する。
