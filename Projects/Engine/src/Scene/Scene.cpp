@@ -373,34 +373,6 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
         (..., CopyIfHas(arrs, src, dst));
     }, m_arrays);
 
-    auto* srcMaterial = GetComponent<MaterialComponent>(src);
-    auto* dstMaterial = GetComponent<MaterialComponent>(dst);
-    if (!srcMaterial || !dstMaterial || !srcMaterial->material) return;
-
-    // MaterialComponent は shared_ptr<Material> を持つ。単純コピーでは同じ Material を共有し、
-    // 片方のパラメーター変更がもう片方に波及する。GPU 定数バッファも独立させる必要があるため、
-    // Material を深コピーし、定数バッファのハンドルだけリセットして再作成する。
-    auto cloned = std::make_shared<renderer::Material>();
-    cloned->shader      = srcMaterial->material->shader;
-    cloned->textures    = srcMaterial->material->textures;
-    cloned->paramData   = srcMaterial->material->paramData;
-    cloned->shaderPath  = srcMaterial->material->shaderPath;
-
-    if (auto* resources = renderer::ResourceManager::Active())
-    {
-        const uint32_t cbSize = static_cast<uint32_t>(cloned->paramData.size());
-        if (cbSize > 0)
-        {
-            cloned->paramsBuffer = resources->CreateConstantBuffer(cbSize);
-            static renderer::ShaderDescriptor s_fallback;
-            const renderer::ShaderDescriptor* desc = &s_fallback;
-            if (auto* sh = resources->Get(cloned->shader))
-                desc = &sh->GetDescriptor();
-            cloned->Upload(*resources, *desc);
-        }
-    }
-
-    dstMaterial->material = std::move(cloned);
 }
 
 void Scene::FixupOwnership()
