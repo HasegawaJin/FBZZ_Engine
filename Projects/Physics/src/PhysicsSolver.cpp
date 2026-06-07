@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::physics 
@@ -672,6 +673,18 @@ namespace fbzz::physics
                         *static_cast<ConvexHullCollider*>(pair.colliderA.collider.get()),
                         *static_cast<ConvexHullCollider*>(pair.colliderB.collider.get()), cp);
                 }
+                else if ((tA == ColliderType::CONVEX_HULL && tB == ColliderType::TRIANGLE_MESH) ||
+                         (tA == ColliderType::TRIANGLE_MESH && tB == ColliderType::CONVEX_HULL))
+                {
+                    const bool swapped = (tA == ColliderType::TRIANGLE_MESH);
+                    const auto& hull = *static_cast<ConvexHullCollider*>(
+                        (swapped ? pair.colliderB : pair.colliderA).collider.get());
+                    const auto& mesh = *static_cast<TriangleMeshCollider*>(
+                        (swapped ? pair.colliderA : pair.colliderB).collider.get());
+                    hit = TestConvexHullTriangleMesh(hull, mesh, cp);
+                    if (hit && swapped)
+                        cp.normal = -cp.normal;
+                }
                 else
                 {
                     // ConvexHull を常に B 側に正規化する
@@ -723,6 +736,9 @@ namespace fbzz::physics
                     else if (dynType == ColliderType::CAPSULE)
                         hit = TestCapsuleTriangleMesh(
                             *static_cast<CapsuleCollider*>(dynInst.collider.get()), mesh, cp);
+                    else if (dynType == ColliderType::OBB)
+                        hit = TestOBBTriangleMesh(
+                            *static_cast<OBBCollider*>(dynInst.collider.get()), mesh, cp);
 
                     // スワップした場合は法線を反転 (normal は dyn → mesh 方向)
                     if (hit && swapped)
@@ -770,18 +786,60 @@ namespace fbzz::physics
             cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).Normalized();
         }
 
-        for (int i = 0; i < VELOCITY_ITER; ++i)
+        std::vector<std::vector<size_t>> islands;
+        std::unordered_map<RigidBody*, size_t> bodyToIsland;
+
+        for (size_t i = 0; i < contacts.size(); ++i)
         {
-            // PGS は接触を順に解くため、少ない反復でも前回フレームの Warm Start が効く。
-            for (auto& cp : contacts)
+            const ContactPoint& cp = contacts[i];
+            if (cp.isTrigger) continue;
+            RigidBody* a = cp.bodyA && !cp.bodyA->IsStatic() ? cp.bodyA : nullptr;
+            RigidBody* b = cp.bodyB && !cp.bodyB->IsStatic() ? cp.bodyB : nullptr;
+            if (!a && !b) continue;
+
+            const auto itA = a ? bodyToIsland.find(a) : bodyToIsland.end();
+            const auto itB = b ? bodyToIsland.find(b) : bodyToIsland.end();
+            if (itA == bodyToIsland.end() && itB == bodyToIsland.end())
             {
-                ResolveVelocity(cp);
-                ResolveFriction(cp);
+                const size_t island = islands.size();
+                islands.push_back({});
+                if (a) bodyToIsland[a] = island;
+                if (b) bodyToIsland[b] = island;
+                islands[island].push_back(i);
+            }
+            else
+            {
+                size_t island = itA != bodyToIsland.end() ? itA->second : itB->second;
+                if (itA != bodyToIsland.end() && itB != bodyToIsland.end() && itA->second != itB->second)
+                {
+                    const size_t other = itB->second;
+                    islands[island].insert(islands[island].end(), islands[other].begin(), islands[other].end());
+                    for (auto& entry : bodyToIsland)
+                        if (entry.second == other) entry.second = island;
+                    islands[other].clear();
+                }
+                if (a) bodyToIsland[a] = island;
+                if (b) bodyToIsland[b] = island;
+                islands[island].push_back(i);
             }
         }
 
-        for (auto& cp : contacts)
-            ResolvePosition(cp);
+        for (auto& island : islands)
+        {
+            if (island.empty()) continue;
+            for (int i = 0; i < VELOCITY_ITER; ++i)
+            {
+                // PGS は接触を順に解くため、少ない反復でも前回フレームの Warm Start が効く。
+                for (size_t contactIndex : island)
+                {
+                    ResolveVelocity(contacts[contactIndex]);
+                    ResolveFriction(contacts[contactIndex]);
+                }
+            }
+
+            for (size_t contactIndex : island)
+                ResolvePosition(contacts[contactIndex]);
+        }
     }
 
     // ---------------------------------------------------------- ResolveVelocity (PGS)
@@ -1578,6 +1636,16 @@ namespace fbzz::physics
             return best + dir.Normalized() * c->m_radius;
         }
 
+        math::Vector3 SupportTriangle(const void* shape, const math::Vector3& dir)
+        {
+            const auto* tri = static_cast<const Triangle*>(shape);
+            const float d0 = math::Vector3::Dot(tri->v[0], dir);
+            const float d1 = math::Vector3::Dot(tri->v[1], dir);
+            const float d2 = math::Vector3::Dot(tri->v[2], dir);
+            if (d0 >= d1 && d0 >= d2) return tri->v[0];
+            return d1 >= d2 ? tri->v[1] : tri->v[2];
+        }
+
         // GJK (Simplex 付き) + EPA から ContactPoint を構築するヘルパー
         bool GJKEPAToContact(const void* shapeA, SupportFn fnA,
                              const void* shapeB, SupportFn fnB,
@@ -1795,6 +1863,65 @@ namespace fbzz::physics
                 maxDepth = cp.depth;
                 best     = cp;
                 found    = true;
+            }
+        });
+
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestOBBTriangleMesh(const OBBCollider& b,
+                                             const TriangleMeshCollider& mesh,
+                                             ContactPoint& out)
+    {
+        const math::Quaternion invRot = b.GetRotation().Inverse();
+        AABBCollider localBox(b.m_halfExtents);
+        localBox.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+
+        mesh.GetBVH().Query(b.GetAABB(), [&](const Triangle& tri)
+        {
+            Triangle localTri;
+            for (int i = 0; i < 3; ++i)
+                localTri.v[i] = invRot * (tri.v[i] - b.GetCenter());
+            localTri.normal = (invRot * tri.normal).Normalized();
+            localTri.index = tri.index;
+
+            ContactPoint cp;
+            if (TestAABBTriangle(localBox, localTri, cp) && cp.depth > maxDepth)
+            {
+                cp.normal = (b.GetRotation() * cp.normal).Normalized();
+                cp.point = b.GetCenter() + b.GetRotation() * cp.point;
+                maxDepth = cp.depth;
+                best = cp;
+                found = true;
+            }
+        });
+
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestConvexHullTriangleMesh(const ConvexHullCollider& hull,
+                                                    const TriangleMeshCollider& mesh,
+                                                    ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+
+        mesh.GetBVH().Query(hull.GetAABB(), [&](const Triangle& tri)
+        {
+            ContactPoint cp;
+            if (GJKEPAToContact(&hull, ConvexHullCollider::SupportFnImpl,
+                                &tri, SupportTriangle, cp) && cp.depth > maxDepth)
+            {
+                maxDepth = cp.depth;
+                best = cp;
+                found = true;
             }
         });
 

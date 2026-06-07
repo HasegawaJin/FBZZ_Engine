@@ -34,8 +34,12 @@ namespace fbzz::physics
         // 質量管理。負の質量はゲーム的な反重力挙動用として許容する。
         void SetMass(float mass); // 負値可 (反重力挙動)
         float GetMass()    const { return m_mass; }
-        float GetInvMass() const { return m_isStatic ? 0.0f : m_invMass; }
+        float GetInvMass() const { return (m_isStatic || m_isSleeping) ? 0.0f : m_invMass; }
         bool  IsStatic()   const { return m_isStatic; }
+        bool  IsSleeping() const { return m_isSleeping; }
+        void  WakeUp();
+        void  Sleep();
+        void  UpdateSleepState(float dt, float linearThreshold, float angularThreshold, float sleepTime);
 
         // 状態アクセス
         math::Vector3    GetPosition()        const { return m_position;        }
@@ -75,6 +79,15 @@ namespace fbzz::physics
         // SphereCollider を持つ高速・小型オブジェクトのみ有効にする
         bool  m_useCCD    = false;  // true のとき World::CCDPhase で TOI を計算する
         float m_ccdRadius = 0.5f;   // CCD 判定の代表半径 (SphereCollider の半径に合わせる)
+
+        // 重力と減衰のゲーム向け調整値。World の重力ベクトルは共有し、剛体ごとに倍率だけ変える。
+        bool  m_useGravity  = true;
+        float m_gravityScale = 1.0f;
+        float m_linearDrag   = 0.0f;
+        float m_angularDrag  = 0.0f;
+        bool  m_allowSleeping = true;
+        bool  m_isSleeping = false;
+        float m_sleepTimer = 0.0f;
 
     private:
         // 状態
