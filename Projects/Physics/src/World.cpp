@@ -410,6 +410,14 @@ namespace fbzz::physics
     {
         if (!collider.collider) return {};
 
+        if (collider.body)
+        {
+            // ColliderInstance は Physics 単体利用時にも Body と形状の対応を持つ入口になる。
+            // Engine 側の PhysicsSystem だけに慣性設定を任せると、Tests のように World を直接使う経路で
+            // AABB の「軸整合なので回転させない」という制約が抜けるため、同期時に必ず形状から慣性を更新する。
+            collider.body->SetInertiaFromCollider(collider.collider.get());
+        }
+
         if (handle.IsValid()) {
             const size_t index = static_cast<size_t>(handle.slot - 1u);
             if (index < m_colliderPool.size() &&
