@@ -673,17 +673,42 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("MeshTrailComponent", std::move(trailTbl));
         }
 
-        if (auto* col = go.GetComponent<AabbColliderComponent>())
-            goTbl.insert("AabbColliderComponent", SerializeCollider(*col));
+        if (auto* col = go.GetComponent<AabbColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            toml::table shapeTbl;
+            shapeTbl.insert("type", "AABB");
+            shapeTbl.insert("halfExtents", Vec3ToArr(col->size * 0.5f));
+            colTbl.insert_or_assign("shape", std::move(shapeTbl));
+            goTbl.insert("AabbColliderComponent", std::move(colTbl));
+        }
 
-        if (auto* col = go.GetComponent<BoxColliderComponent>())
-            goTbl.insert("BoxColliderComponent", SerializeCollider(*col));
+        if (auto* col = go.GetComponent<BoxColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            toml::table shapeTbl;
+            shapeTbl.insert("type", "OBB");
+            shapeTbl.insert("halfExtents", Vec3ToArr(col->size * 0.5f));
+            colTbl.insert_or_assign("shape", std::move(shapeTbl));
+            goTbl.insert("BoxColliderComponent", std::move(colTbl));
+        }
 
-        if (auto* col = go.GetComponent<SphereColliderComponent>())
-            goTbl.insert("SphereColliderComponent", SerializeCollider(*col));
+        if (auto* col = go.GetComponent<SphereColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            toml::table shapeTbl;
+            shapeTbl.insert("type", "Sphere");
+            shapeTbl.insert("radius", (double)col->radius);
+            colTbl.insert_or_assign("shape", std::move(shapeTbl));
+            goTbl.insert("SphereColliderComponent", std::move(colTbl));
+        }
 
-        if (auto* col = go.GetComponent<CapsuleColliderComponent>())
-            goTbl.insert("CapsuleColliderComponent", SerializeCollider(*col));
+        if (auto* col = go.GetComponent<CapsuleColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            toml::table shapeTbl;
+            shapeTbl.insert("type", "Capsule");
+            shapeTbl.insert("radius", (double)col->radius);
+            shapeTbl.insert("halfHeight", (double)col->halfHeight);
+            colTbl.insert_or_assign("shape", std::move(shapeTbl));
+            goTbl.insert("CapsuleColliderComponent", std::move(colTbl));
+        }
 
         if (auto* col = go.GetComponent<MeshColliderComponent>()) {
             toml::table colTbl = SerializeCollider(*col);
@@ -720,6 +745,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 body.GetFreezeRotation().y ? 1.0f : 0.0f,
                 body.GetFreezeRotation().z ? 1.0f : 0.0f
             }));
+            rbTbl.insert("useGravity",             body.m_useGravity);
+            rbTbl.insert("gravityScale",           (double)body.m_gravityScale);
+            rbTbl.insert("linearDrag",             (double)body.m_linearDrag);
+            rbTbl.insert("angularDrag",            (double)body.m_angularDrag);
+            rbTbl.insert("allowSleeping",          body.m_allowSleeping);
+            rbTbl.insert("useCCD",                 body.m_useCCD);
+            rbTbl.insert("ccdRadius",              (double)body.m_ccdRadius);
             rbTbl.insert("charge",                 (double)body.m_charge);
             rbTbl.insert("isGravitationalSource",  body.m_isGravitationalSource);
             rbTbl.insert("gravitationalMass",      (double)body.m_gravitationalMass);
@@ -1410,6 +1442,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 freezeRotation.y != 0.0f,
                 freezeRotation.z != 0.0f
             });
+            rb.rigidBody->m_useGravity = (*rbTbl)["useGravity"].value_or(true);
+            rb.rigidBody->m_gravityScale = (float)(*rbTbl)["gravityScale"].value_or(1.0);
+            rb.rigidBody->m_linearDrag = (float)(*rbTbl)["linearDrag"].value_or(0.0);
+            rb.rigidBody->m_angularDrag = (float)(*rbTbl)["angularDrag"].value_or(0.0);
+            rb.rigidBody->m_allowSleeping = (*rbTbl)["allowSleeping"].value_or(true);
+            rb.rigidBody->m_useCCD = (*rbTbl)["useCCD"].value_or(false);
+            rb.rigidBody->m_ccdRadius = (float)(*rbTbl)["ccdRadius"].value_or(0.5);
             rb.rigidBody->m_charge = (float)(*rbTbl)["charge"].value_or(0.0);
             rb.rigidBody->m_isGravitationalSource =
                 (*rbTbl)["isGravitationalSource"].value_or(false);

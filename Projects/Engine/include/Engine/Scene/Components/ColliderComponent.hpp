@@ -7,6 +7,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/AABBCollider.hpp>
+#include <Physics/BodyHandle.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/Collider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
@@ -21,6 +22,7 @@ namespace fbzz::scene {
 
 struct ColliderComponent {
     std::shared_ptr<physics::Collider> collider;
+    physics::ColliderHandle colliderHandle;
     physics::PhysicsMaterial material = physics::PhysicsMaterial::Default;
     math::Vector3 center = math::Vector3::ZERO;
     bool isTrigger = false;
@@ -48,6 +50,11 @@ struct AabbColliderComponent : public ColliderComponent {
     }
 
     const char* GetTypeName() const { return "AABB Collider"; }
+    void Reflect(IReflector& r)
+    {
+        ColliderComponent::Reflect(r);
+        r.Field("size", size);
+    }
 };
 
 struct BoxColliderComponent : public ColliderComponent {
@@ -59,6 +66,11 @@ struct BoxColliderComponent : public ColliderComponent {
     }
 
     const char* GetTypeName() const { return "Box Collider"; }
+    void Reflect(IReflector& r)
+    {
+        ColliderComponent::Reflect(r);
+        r.Field("size", size);
+    }
 };
 
 struct SphereColliderComponent : public ColliderComponent {
@@ -70,6 +82,11 @@ struct SphereColliderComponent : public ColliderComponent {
     }
 
     const char* GetTypeName() const { return "Sphere Collider"; }
+    void Reflect(IReflector& r)
+    {
+        ColliderComponent::Reflect(r);
+        r.Field("radius", radius);
+    }
 };
 
 struct CapsuleColliderComponent : public ColliderComponent {
@@ -82,6 +99,12 @@ struct CapsuleColliderComponent : public ColliderComponent {
     }
 
     const char* GetTypeName() const { return "Capsule Collider"; }
+    void Reflect(IReflector& r)
+    {
+        ColliderComponent::Reflect(r);
+        r.Field("radius", radius);
+        r.Field("halfHeight", halfHeight);
+    }
 };
 
 struct MeshColliderComponent : public ColliderComponent {
@@ -90,6 +113,13 @@ struct MeshColliderComponent : public ColliderComponent {
     bool useTransformScale = true;
 
     const char* GetTypeName() const { return "Mesh Collider"; }
+    void Reflect(IReflector& r)
+    {
+        ColliderComponent::Reflect(r);
+        r.Field("meshPath", meshPath);
+        r.Field("meshIndex", meshIndex);
+        r.Field("useTransformScale", useTransformScale);
+    }
 };
 
 struct ConvexHullColliderComponent : public ColliderComponent {
@@ -98,6 +128,13 @@ struct ConvexHullColliderComponent : public ColliderComponent {
     bool useTransformScale = true;
 
     const char* GetTypeName() const { return "Convex Hull Collider"; }
+    void Reflect(IReflector& r)
+    {
+        ColliderComponent::Reflect(r);
+        r.Field("meshPath", meshPath);
+        r.Field("meshIndex", meshIndex);
+        r.Field("useTransformScale", useTransformScale);
+    }
 };
 
 } // namespace fbzz::scene

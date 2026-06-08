@@ -113,6 +113,33 @@ math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent&
     return go.transform.position + go.transform.rotation * ComponentScale(col.center, go.transform.worldScale);
 }
 
+void WriteWorldPoseToTransform(GameObject& go,
+                               const math::Vector3& worldPosition,
+                               const math::Quaternion& worldRotation)
+{
+    auto& tf = go.transform;
+    if (auto* parent = go.GetParent()) {
+        const auto& parentTf = parent->transform;
+        const math::Quaternion invParentRot = parentTf.rotation.Inverse();
+        const math::Vector3 parentSpace = invParentRot * (worldPosition - parentTf.position);
+
+        // WHY: TransformSystem は localPosition に親 worldScale を掛けてから親回転を適用する。
+        //      Physics は world pose を返すため、ここで同じ式を逆変換して local pose に戻す。
+        tf.localPosition = {
+            parentTf.worldScale.x == 0.0f ? 0.0f : parentSpace.x / parentTf.worldScale.x,
+            parentTf.worldScale.y == 0.0f ? 0.0f : parentSpace.y / parentTf.worldScale.y,
+            parentTf.worldScale.z == 0.0f ? 0.0f : parentSpace.z / parentTf.worldScale.z
+        };
+        tf.localRotation = (invParentRot * worldRotation).Normalized();
+    } else {
+        tf.localPosition = worldPosition;
+        tf.localRotation = worldRotation;
+    }
+
+    tf.position = worldPosition;
+    tf.rotation = worldRotation;
+}
+
 void SyncColliderShape(ColliderComponent&) {}
 
 void SyncColliderShape(AabbColliderComponent& col)
@@ -228,9 +255,8 @@ template<typename T>
 void AddColliderInstance(Scene& scene,
                          GameObject& go,
                          T& col,
-                         std::vector<physics::ColliderInstance>& colliders,
+                         physics::World& world,
                          ColliderOwnerMap& colliderOwners,
-                         std::vector<std::shared_ptr<physics::Volume>>& volumes,
                          float dt)
 {
     if (!col.enabled || !col.collider) return;
@@ -266,7 +292,8 @@ void AddColliderInstance(Scene& scene,
         body->SetInertiaFromCollider(col.collider.get());
 
     const math::Vector3 centerOffset = ComponentScale(col.center, go.transform.worldScale);
-    colliders.push_back({ col.collider, body, &col.material, centerOffset, col.isTrigger, go.layer });
+    physics::ColliderInstance instance{ col.collider, body, &col.material, centerOffset, col.isTrigger, go.layer };
+    col.colliderHandle = world.SyncCollider(col.colliderHandle, instance);
     colliderOwners[col.collider.get()] = { &go, &col };
 
     auto* volume = go.GetComponent<VolumeComponent>();
@@ -288,12 +315,16 @@ void AddColliderInstance(Scene& scene,
         settings.duration = volume->duration;
         if (settings.type == physics::VolumeType::Buoyancy) {
             if (auto* water = go.GetComponent<WaterComponent>()) {
-                volumes.push_back(std::make_shared<WaterBuoyancyVolume>(*water, go.transform, settings));
+                volume->volumeHandle = world.SyncVolume(
+                    volume->volumeHandle,
+                    std::make_shared<WaterBuoyancyVolume>(*water, go.transform, settings));
                 return;
             }
         }
 
-        volumes.push_back(std::make_shared<physics::ColliderVolume>(col.collider, settings));
+        volume->volumeHandle = world.SyncVolume(
+            volume->volumeHandle,
+            std::make_shared<physics::ColliderVolume>(col.collider, settings));
     }
 }
 
@@ -374,16 +405,14 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
 
     Script::SetPhysicsWorld(&world);
 
-    std::vector<std::shared_ptr<physics::RigidBody>> bodies;
-    std::vector<physics::ColliderInstance> colliders;
-    std::vector<std::shared_ptr<physics::Volume>> volumes;
     ColliderOwnerMap colliderOwners;
+    world.BeginSceneSync();
 
     for (auto [tf, rb] : scene.View<Transform, RigidBodyComponent>()) {
         if (!rb.enabled || !rb.rigidBody) continue;
         rb.rigidBody->SetPosition(tf.position);
         rb.rigidBody->SetRotation(tf.rotation);
-        bodies.push_back(rb.rigidBody);
+        rb.bodyHandle = world.SyncBody(rb.bodyHandle, rb.rigidBody);
     }
 
     // ── [Phase 7] TerrainComponent + MeshColliderComponent → TriangleMeshCollider 自動構築 ──
@@ -443,28 +472,26 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
 
     for (auto& go : scene.GameObjects()) {
         if (auto* col = go.GetComponent<AabbColliderComponent>())
-            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
         if (auto* col = go.GetComponent<BoxColliderComponent>())
-            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
         if (auto* col = go.GetComponent<SphereColliderComponent>())
-            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
         if (auto* col = go.GetComponent<CapsuleColliderComponent>())
-            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
         if (auto* col = go.GetComponent<MeshColliderComponent>()) {
             EnsureMeshCollider(go, *col);
-            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
         }
         if (auto* col = go.GetComponent<ConvexHullColliderComponent>()) {
             EnsureConvexHullCollider(go, *col);
-            AddColliderInstance(scene, go, *col, colliders, colliderOwners, volumes, dt);
+            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
         }
     }
 
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::SubmitSceneState");
-        world.SetBodies(std::move(bodies));
-        world.SetColliders(std::move(colliders));
-        world.SetVolumes(std::move(volumes));
+        world.EndSceneSync();
     }
     {
         FBZZ_PROFILE_SCOPE("physics::World::Step");
@@ -475,12 +502,10 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         DispatchCollisionEvents(scene, world, colliderOwners);
     }
 
-    for (auto [tf, rb] : scene.View<Transform, RigidBodyComponent>()) {
-        if (!rb.enabled || !rb.rigidBody) continue;
-        tf.localPosition = rb.rigidBody->GetPosition();
-        tf.localRotation = rb.rigidBody->GetRotation();
-        tf.position = tf.localPosition;
-        tf.rotation = tf.localRotation;
+    for (auto& go : scene.GameObjects()) {
+        auto* rb = go.GetComponent<RigidBodyComponent>();
+        if (!rb || !rb->enabled || !rb->rigidBody) continue;
+        WriteWorldPoseToTransform(go, rb->rigidBody->GetPosition(), rb->rigidBody->GetRotation());
     }
 }
 

@@ -207,6 +207,13 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             if (ImGui::Checkbox("Z##FreezeRotation", &freezeRotation.z))
                 body.SetFreezeRotation(freezeRotation);
 
+            ImGui::Checkbox("Use Gravity", &body.m_useGravity);
+            ImGui::DragFloat("Gravity Scale", &body.m_gravityScale, 0.01f, -100.0f, 100.0f);
+            ImGui::DragFloat("Linear Drag", &body.m_linearDrag, 0.01f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Angular Drag", &body.m_angularDrag, 0.01f, 0.0f, 1000.0f);
+            ImGui::Checkbox("Allow Sleeping", &body.m_allowSleeping);
+            ImGui::Checkbox("Use CCD", &body.m_useCCD);
+            ImGui::DragFloat("CCD Radius", &body.m_ccdRadius, 0.01f, 0.001f, 1000.0f);
             ImGui::DragFloat("Charge", &body.m_charge, 0.01f, -1000.0f, 1000.0f);
             ImGui::Checkbox("Gravity Source", &body.m_isGravitationalSource);
             ImGui::DragFloat("Gravity Mass", &body.m_gravitationalMass, 0.05f, 0.0f, 100000.0f);

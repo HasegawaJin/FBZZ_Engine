@@ -6,11 +6,13 @@
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
+#include <Physics/BodyHandle.hpp>
 #include <Physics/ColliderVolume.hpp>
 
 namespace fbzz::scene {
 
 struct VolumeComponent {
+    physics::VolumeHandle volumeHandle;
     physics::VolumeType type = physics::VolumeType::Gravity;
     bool enabled = true;
 
