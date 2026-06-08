@@ -214,9 +214,18 @@ void RigidBody::RecomputeInertia()
         m_invInertiaDiag = math::Vector3::ZERO;
         return;
     }
-    if (!m_inertiaCollider || m_mass == 0.0f)
+    if (m_mass == 0.0f)
     {
         m_invInertiaDiag = math::Vector3::ZERO;
+        return;
+    }
+    if (!m_inertiaCollider)
+    {
+        // Collider 未設定の RigidBody はテストやスクリプト API から単体で使われる。
+        // 形状由来の慣性は推定できないため、質量だけを反映した等方的な単位慣性として扱い、
+        // FreezeRotation がロック軸だけを止め、未ロック軸の角インパルスは反応できるようにする。
+        const float inv = 1.0f / m_mass;
+        m_invInertiaDiag = { inv, inv, inv };
         return;
     }
 
