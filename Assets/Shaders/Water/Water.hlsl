@@ -86,6 +86,16 @@ cbuffer LightConstants : register(CB_LIGHT)
     float2         _lightPad2;
 };
 
+cbuffer ShadowConstants : register(CB_SHADOW)
+{
+    float4x4 lightViewProjection;
+    float2   shadowMapTexelSize;
+    float    shadowBias;
+    float    _shadowPad;
+};
+
+#include "Rendering/Shadow.hlsli"
+
 Texture2D g_normalMap1 : register(t0);
 Texture2D g_normalMap2 : register(t1);
 Texture2D g_foamTex    : register(t2);
@@ -95,10 +105,12 @@ Texture2D g_sceneDepth : register(t5);
 Texture2D g_sceneColor : register(t6);
 Texture2D g_flowMap    : register(t7);
 Texture2D g_rippleTex  : register(t8);
+Texture2D<float> g_shadowMap : register(t9);
 
 SamplerState g_sampler      : register(s0);
 SamplerState g_samplerClamp : register(s1);
 SamplerState g_samplerEnv   : register(s2);
+SamplerComparisonState g_shadowSampler : register(s3);
 
 struct WaterVSInput
 {
@@ -252,9 +264,15 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 color = lerp(waterColor, reflectColor, saturate(fresnel));
 
     float3 L = normalize(-lightDir);
+    // WHAT: Water は半透明なので影を強く乗算せず、直射光と浅い水面の明るさを中心に抑える。
+    // WHY: 完全な黒影にすると水面下の屈折色まで不自然に消えるため、shadow は「太陽光の弱まり」として扱う。
+    float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
+        lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    color *= lerp(0.72f, 1.0f, shadow);
+
     float3 H = normalize(L + V);
     float NdotH = saturate(dot(N, H));
-    float specular = pow(NdotH, max(specularExponent, 1.0f)) * lightIntensity;
+    float specular = pow(NdotH, max(specularExponent, 1.0f)) * lightIntensity * shadow;
     color += lightColor * specular * specularStrength;
 
     float rim = pow(1.0f - NdotV, 3.0f) * rimGlowStrength;
@@ -262,7 +280,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
 
     float foamMaskVal = g_foamMask.Sample(g_samplerClamp, p.uv).r;
     float foamTexVal = g_foamTex.Sample(g_sampler, p.uv * g_foamParams.w + time * 0.03f).r;
-    float foam = foamMaskVal * foamTexVal * g_foamParams.z;
+    float foam = foamMaskVal * foamTexVal * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
     color = lerp(color, float3(1.0f, 1.0f, 1.0f), saturate(foam));
 
     float2 rippleRG = g_rippleTex.Sample(g_samplerClamp, p.uv).rg * 2.0f - 1.0f;

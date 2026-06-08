@@ -1,7 +1,8 @@
 // FBZZ Engine
 // RenderPasses/ShadowPass.cpp | fbzz::scene
-// シャドウマップ描画 (静的メッシュ + スキンドメッシュ)
+// シャドウマップ描画 (静的メッシュ + スキンドメッシュ + Terrain)
 #include "GeometryPasses.hpp"
+#include "Engine/Scene/Systems/TerrainRenderSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Renderer/Mesh.hpp"
@@ -13,27 +14,17 @@
 
 namespace fbzz::scene {
 
-void ExecuteShadowPass(RenderPassContext& ctx)
+namespace {
+
+// SubmitStaticMeshShadowCasters — MeshRenderer の静的メッシュをシャドウマップへ提出する。
+// WHY: ShadowPass は「どのライトのどの影面へ描くか」を管理し、MeshRenderer 固有の
+//      DrawCall 組み立ては caster 提出関数へ分離する。Spot / Point / CSM を追加するときも
+//      ライトループから同じ提出関数を再利用できる。
+void SubmitStaticMeshShadowCasters(RenderPassContext& ctx, const math::Frustum& lightFrustum)
 {
     auto& renderer  = ctx.renderer;
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
-    const auto& rs  = ctx.settings;
-
-    renderer.SetRenderTarget(h.shadowMapRT, resources);
-    renderer.ClearDepth();
-
-    if (!rs.shadowEnabled) return;
-
-    PerFrameCB lightFrameData{};
-    lightFrameData.viewProjection = ctx.lightVP;
-    resources.Update(h.frameCB, &lightFrameData, sizeof(PerFrameCB));
-
-    // 静的メッシュのシャドウ
-    // ライト視錐台カリング: シャドウマップに映らないオブジェクトのシャドウ DrawCall を省く。
-    // WHY: シャドウマップは平行投影のため視錐台が直方体形状になる。
-    //      光源から見えないジオメトリはシャドウを落とさないため除外して安全。
-    const auto& lightFrustum = *ctx.lightFrustum;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
@@ -43,7 +34,6 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
 
-        // ライトフラスタムカリング
         if (!IsVisibleInFrustum(lightFrustum, go.transform, *mr->mesh)) continue;
 
         PerObjectCB objData{};
@@ -60,10 +50,19 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         dc.constantBuffers[1] = h.objectCB;
         renderer.Submit(dc, resources);
     }
+}
 
-    if (!h.shadowSkinnedShader.IsValid()) return;
+// SubmitSkinnedMeshShadowCasters — SkinnedMeshRenderer をスキニング CB 付きで提出する。
+// WHAT: Animator の skinningBuffer が未生成のフレームでは bind pose CB にフォールバックする。
+void SubmitSkinnedMeshShadowCasters(RenderPassContext& ctx, const math::Frustum& lightFrustum)
+{
+    auto& renderer  = ctx.renderer;
+    auto& resources = ctx.resources;
+    auto& h         = ctx.handles;
 
-    // スキンドメッシュのシャドウ
+    if (!h.shadowSkinnedShader.IsValid())
+        return;
+
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
@@ -71,6 +70,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         auto* anim = go.GetComponent<AnimatorComponent>();
         if (!smr || !smr->enabled || !smr->model) continue;
         if (!mat || !mat->enabled || !mat->EnsureMaterialAsset()) continue;
+        if (!IsSkinnedVisibleInFrustum(lightFrustum, go.transform, *smr)) continue;
 
         PerObjectCB objData{};
         objData.world = go.transform.GetWorldMatrix();
@@ -95,6 +95,43 @@ void ExecuteShadowPass(RenderPassContext& ctx)
             renderer.Submit(dc, resources);
         }
     }
+}
+
+// SubmitAllShadowCasters — 現在のライト視錐台に入る caster を種類別に提出する。
+// WHY: ShadowPass 本体から caster 種別の詳細を追い出し、将来のライト別 shadow map 生成を
+//      「ライト面を選ぶ → frameCB を更新 → caster を提出」の形に単純化する。
+void SubmitAllShadowCasters(RenderPassContext& ctx, const math::Frustum& lightFrustum)
+{
+    SubmitStaticMeshShadowCasters(ctx, lightFrustum);
+    SubmitSkinnedMeshShadowCasters(ctx, lightFrustum);
+    SubmitTerrainShadowCasters(ctx.scene, ctx.renderer, ctx.resources, lightFrustum,
+                               ctx.handles.shadowShader, ctx.handles.defaultPSO,
+                               ctx.handles.frameCB, ctx.handles.objectCB);
+}
+
+} // namespace
+
+void ExecuteShadowPass(RenderPassContext& ctx)
+{
+    auto& renderer  = ctx.renderer;
+    auto& resources = ctx.resources;
+    auto& h         = ctx.handles;
+    const auto& rs  = ctx.settings;
+
+    renderer.SetRenderTarget(h.shadowMapRT, resources);
+    renderer.ClearDepth();
+
+    if (!rs.shadowEnabled) return;
+
+    PerFrameCB lightFrameData{};
+    lightFrameData.viewProjection = ctx.lightVP;
+    resources.Update(h.frameCB, &lightFrameData, sizeof(PerFrameCB));
+
+    // ライト視錐台カリング: シャドウマップに映らないオブジェクトのシャドウ DrawCall を省く。
+    // WHY: シャドウマップは平行投影のため視錐台が直方体形状になる。
+    //      光源から見えないジオメトリはシャドウを落とさないため除外して安全。
+    const auto& lightFrustum = *ctx.lightFrustum;
+    SubmitAllShadowCasters(ctx, lightFrustum);
 }
 
 } // namespace fbzz::scene

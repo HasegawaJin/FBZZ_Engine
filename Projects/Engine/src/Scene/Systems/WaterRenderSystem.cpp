@@ -10,7 +10,6 @@
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
-#include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
@@ -20,7 +19,6 @@
 #include "Engine/Renderer/Camera.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
-#include "Engine/Renderer/LightSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
@@ -529,7 +527,10 @@ void WaterRenderSystem(
     renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
     renderer::ResourceHandle<renderer::TextureTag> sceneColor,
     float elapsedTime,
-    const renderer::RenderSettings* settings)
+    const renderer::RenderSettings* settings,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB,
+    renderer::ResourceHandle<renderer::TextureTag> shadowDepthTexture,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB)
 {
     static auto waterShader = resources.LoadShader("assets/shaders/Water/Water.hlsl");
     static auto waterPSO = resources.CreatePipelineState({
@@ -544,7 +545,6 @@ void WaterRenderSystem(
     });
     static auto cameraCBH = resources.CreateConstantBuffer(288);
     static auto waterCBH  = resources.CreateConstantBuffer(sizeof(WaterCB));
-    static auto lightCBH  = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
     // MaterialComponent 未設定時のデフォルトエフェクトパラメータ CB
     static auto defaultEffectCBH = [&] {
         WaterEffectParams defaults{};
@@ -634,6 +634,7 @@ void WaterRenderSystem(
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
     renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
+    renderer.SetSampler(3, renderer::SamplerMode::BORDER_ZERO);
 
     {
         struct CameraCB {
@@ -658,42 +659,6 @@ void WaterRenderSystem(
         camData.nearZ = camera.m_near;
         camData.farZ = camera.m_far;
         resources.Update(cameraCBH, &camData, sizeof(camData));
-    }
-
-    {
-        constexpr float kDegToRad = math::PI / 180.0f;
-        renderer::LightConstantsCB lightData{};
-        lightData.lightDir = { 0.0f, -1.0f, 0.5f };
-        lightData.lightColor = { 1.0f, 1.0f, 1.0f };
-        lightData.lightIntensity = 1.0f;
-
-        for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
-            if (!lc.enabled) continue;
-            if (lc.type == LightComponent::Type::Directional) {
-                lightData.lightDir = tf.Forward().Normalized();
-                lightData.lightColor = lc.color;
-                lightData.lightIntensity = lc.intensity;
-            } else if (lc.type == LightComponent::Type::Point && lightData.pointLightCount < 8) {
-                auto& pl = lightData.pointLights[lightData.pointLightCount++];
-                pl.position = tf.position; pl.range = lc.range;
-                pl.color = lc.color; pl.intensity = lc.intensity;
-            } else if (lc.type == LightComponent::Type::Spot && lightData.spotLightCount < 4) {
-                auto& sl = lightData.spotLights[lightData.spotLightCount++];
-                sl.position = tf.position;
-                sl.direction = tf.Forward().Normalized();
-                sl.range = lc.range;
-                sl.innerCos = std::cos(lc.innerCone * kDegToRad);
-                sl.outerCos = std::cos(lc.outerCone * kDegToRad);
-                sl.color = lc.color;
-                sl.intensity = lc.intensity;
-            }
-        }
-        if (settings && settings->IsUnlit()) {
-            lightData.lightIntensity  = 0.0f;
-            lightData.pointLightCount = 0;
-            lightData.spotLightCount  = 0;
-        }
-        resources.Update(lightCBH, &lightData, sizeof(lightData));
     }
 
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
@@ -782,7 +747,8 @@ void WaterRenderSystem(
             call.constantBuffers[0] = cameraCBH;
             call.constantBuffers[1] = waterCBH;
             call.constantBuffers[2] = effectCBH;   // MaterialConstants (ユーザー定義)
-            call.constantBuffers[3] = lightCBH;
+            call.constantBuffers[3] = lightCB;
+            call.constantBuffers[4] = shadowCB;
             call.textures[0] = textures.normalMap1;
             call.textures[1] = textures.normalMap2;
             call.textures[2] = textures.foamTex;
@@ -792,6 +758,7 @@ void WaterRenderSystem(
             call.textures[6] = colorTex;
             call.textures[7] = textures.flowMap;
             call.textures[8] = rippleTex;
+            call.textures[9] = shadowDepthTexture;
             renderer.Submit(call, resources);
         }
     }
