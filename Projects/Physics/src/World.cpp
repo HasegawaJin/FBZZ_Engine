@@ -364,21 +364,6 @@ namespace fbzz::physics
         }
     }
 
-    void World::SetBodies(std::vector<std::shared_ptr<RigidBody>> bodies)
-    {
-        m_bodies = std::move(bodies);
-    }
-
-    const std::vector<std::shared_ptr<RigidBody>>& World::GetBodies() const
-    {
-        return m_bodies;
-    }
-
-    void World::SetColliders(std::vector<ColliderInstance> colliders)
-    {
-        m_colliders = std::move(colliders);
-    }
-
     void World::BeginSceneSync()
     {
         for (auto& slot : m_bodyPool)
@@ -519,11 +504,6 @@ namespace fbzz::physics
                 slot.generation = NextGeneration(slot.generation);
             }
         }
-    }
-
-    void World::SetVolumes(std::vector<std::shared_ptr<Volume>> volumes)
-    {
-        m_volumes = std::move(volumes);
     }
 
     void World::AddConstraint(std::shared_ptr<Constraint> constraint)
