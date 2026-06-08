@@ -59,7 +59,29 @@ namespace fbzz::physics
                 if (node.IsLeaf())
                 {
                     for (uint32_t ti : node.triIndices)
-                        predicate(triangles[ti]);
+                    {
+                        // WHY: 葉ノードは複数三角形をまとめて持つため、葉 AABB が当たっても
+                        //      個別三角形は queryAABB から大きく外れている場合がある。
+                        //      Terrain のような大規模メッシュでは、この軽い AABB 判定で
+                        //      Capsule/Triangle の最近傍計算まで進む候補数を抑える。
+                        const Triangle& tri = triangles[ti];
+                        AABB triAABB;
+                        triAABB.min = tri.v[0];
+                        triAABB.max = tri.v[0];
+                        for (int k = 1; k < 3; ++k)
+                        {
+                            const math::Vector3& v = tri.v[k];
+                            if (v.x < triAABB.min.x) triAABB.min.x = v.x;
+                            if (v.y < triAABB.min.y) triAABB.min.y = v.y;
+                            if (v.z < triAABB.min.z) triAABB.min.z = v.z;
+                            if (v.x > triAABB.max.x) triAABB.max.x = v.x;
+                            if (v.y > triAABB.max.y) triAABB.max.y = v.y;
+                            if (v.z > triAABB.max.z) triAABB.max.z = v.z;
+                        }
+
+                        if (triAABB.Overlaps(queryAABB))
+                            predicate(tri);
+                    }
                 }
                 else
                 {

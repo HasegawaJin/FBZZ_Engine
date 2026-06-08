@@ -31,8 +31,13 @@ void RigidBody::ApplyForce(const math::Vector3& force)
     m_force += ApplyPositionFreeze(force, math::Vector3::ZERO);
 }
 
+void RigidBody::ApplyForceNoWake(const math::Vector3& force)
+{
+    m_force += ApplyPositionFreeze(force, math::Vector3::ZERO);
+}
+
 void RigidBody::ApplyForceAtPoint(const math::Vector3& force,
-                                   const math::Vector3& worldPoint)
+                                    const math::Vector3& worldPoint)
 {
     if (force.LengthSq() > 1e-12f) WakeUp();
     m_force  += ApplyPositionFreeze(force, math::Vector3::ZERO);

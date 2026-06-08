@@ -14,7 +14,7 @@ namespace fbzz {
 
 struct PhysicsSettings {
     int           hz       = 60;
-    int           substeps = 4;
+    int           substeps = 1;
     math::Vector3 gravity  = { 0.0f, -9.81f, 0.0f };
 };
 
