@@ -133,8 +133,12 @@ static void TestPhase1_StackStability()
 
     World world;
     world.SetGravity({ 0.0f, -9.81f, 0.0f });
-    world.SetBodies(bodies);
-    world.SetColliders(colliders);
+    world.BeginSceneSync();
+    for (const auto& body : bodies)
+        world.SyncBody({}, body);
+    for (const auto& collider : colliders)
+        world.SyncCollider({}, collider);
+    world.EndSceneSync();
 
     // 3 秒分ステップ
     constexpr float dt  = 1.0f / 60.0f;
@@ -213,8 +217,12 @@ static void TestPhase2_TriangleMesh()
 
     World world;
     world.SetGravity({ 0.0f, -9.81f, 0.0f });
-    world.SetBodies(bodies);
-    world.SetColliders(colliders);
+    world.BeginSceneSync();
+    for (const auto& body : bodies)
+        world.SyncBody({}, body);
+    for (const auto& collider : colliders)
+        world.SyncCollider({}, collider);
+    world.EndSceneSync();
 
     constexpr float dt    = 1.0f / 60.0f;
     constexpr int   STEPS = static_cast<int>(2.0f / dt);
@@ -366,8 +374,12 @@ static void TestPhase4_CCD()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f }); // 重力なし
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 1 フレームだけ実行
         world.Step(1.0f / 60.0f);
@@ -416,8 +428,12 @@ static void TestPhase5_StackStress()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < static_cast<int>(6.0f / DT); ++s)
             world.Step(DT);
@@ -470,8 +486,12 @@ static void TestPhase5_StackStress()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < static_cast<int>(3.0f / DT); ++s)
             world.Step(DT);
@@ -523,8 +543,12 @@ static void TestPhase5_StackStress()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < static_cast<int>(5.0f / DT); ++s)
             world.Step(DT);
@@ -565,8 +589,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
         const float cy = capBody->GetPosition().y;
@@ -608,8 +636,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
         const float sy = sphBody->GetPosition().y;
@@ -647,8 +679,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
         const float by = capBodyB->GetPosition().y;
@@ -669,8 +705,10 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies({ body });
-        world.SetColliders({ inst });
+        world.BeginSceneSync();
+        world.SyncBody({}, body);
+        world.SyncCollider({}, inst);
+        world.EndSceneSync();
         world.Step(1.0f / 60.0f);
 
         const float centerX = sphereCol->GetAABB().Center().x;
@@ -697,11 +735,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies({ boxBody, capBody });
-        world.SetColliders({
-            makeInstance(boxCol, boxBody.get()),
-            makeInstance(capCol, capBody.get())
-        });
+        world.BeginSceneSync();
+        world.SyncBody({}, boxBody);
+        world.SyncBody({}, capBody);
+        world.SyncCollider({}, makeInstance(boxCol, boxBody.get()));
+        world.SyncCollider({}, makeInstance(capCol, capBody.get()));
+        world.EndSceneSync();
         world.Step(1.0f / 60.0f);
 
         check(!world.GetEnterEvents().empty(),
@@ -741,8 +780,12 @@ static void TestPhase7_Momentum()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 衝突するまで十分ステップ (1.2 / 5.0 = 0.24s → ~15 frames)
         for (int s = 0; s < 60; ++s) world.Step(1.0f / 60.0f);
@@ -779,8 +822,12 @@ static void TestPhase7_Momentum()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 衝突が起きるまで待機 (距離 3m / v_rel 10 m/s = 0.3s → 18 frames)
         for (int s = 0; s < 30; ++s) world.Step(1.0f / 60.0f);
@@ -832,8 +879,12 @@ static void TestPhase8_Materials()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 2 秒分シミュレート (1 回跳ね返り後)
         float maxY = 0.0f;
@@ -884,8 +935,12 @@ static void TestPhase8_Materials()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
@@ -935,8 +990,12 @@ static void TestPhase9_ConvexHullWorld()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f);
 
         const float cy = cvxBody->GetPosition().y;
@@ -975,8 +1034,12 @@ static void TestPhase9_ConvexHullWorld()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f);
 
         const float sy = sphBody->GetPosition().y;
@@ -1008,8 +1071,12 @@ static void TestPhase9_ConvexHullWorld()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 衝突するまで待機 (3m / 3m/s = 1s)
         for (int s = 0; s < 90; ++s) world.Step(1.0f / 60.0f);
@@ -1052,8 +1119,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         world.Step(1.0f / 60.0f);
 
         check(!world.GetEnterEvents().empty(),
@@ -1083,8 +1154,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         const Vector3 posA_before = bodyA->GetPosition();
         world.Step(1.0f / 60.0f);
@@ -1121,8 +1196,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 落下させて接触させる
         for (int s = 0; s < 30; ++s) world.Step(1.0f / 60.0f);
@@ -1158,8 +1237,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // Step 1: Enter
         world.Step(1.0f / 60.0f);
@@ -1209,8 +1292,12 @@ static void TestPhase11_Constraints()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         // 距離制約: 最大 3.0m
         world.AddConstraint(std::make_shared<DistanceConstraint>(
             bodyA.get(), bodyB.get(), 3.0f));
@@ -1247,8 +1334,12 @@ static void TestPhase11_Constraints()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         // k=50, c=1 の春定数スプリング
         world.AddConstraint(std::make_shared<SpringConstraint>(
             bodyA.get(), bodyB.get(), 1.0f, 50.0f, 1.0f));
@@ -1293,8 +1384,12 @@ static void TestPhase11_Constraints()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         world.AddConstraint(std::make_shared<SpringConstraint>(
             bodyA.get(), bodyB.get(), 1.0f, 50.0f, 1.0f));
 
