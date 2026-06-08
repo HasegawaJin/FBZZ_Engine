@@ -109,7 +109,7 @@ ProjectSettings ProjectSettings::Default()
         "", "", "", "", "", ""
     };
     ps.physics.hz       = 60;
-    ps.physics.substeps = 4;
+    ps.physics.substeps = 1;
     ps.physics.gravity  = { 0.0f, -9.81f, 0.0f };
     return ps;
 }

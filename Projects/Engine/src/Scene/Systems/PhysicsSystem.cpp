@@ -82,8 +82,10 @@ public:
         const float depth = std::max(surfaceY - pos.y, 0.0f);
         const float submersion = math::Clamp01(depth / 10.0f);
 
-        body.ApplyForce(math::Vector3::UP * (m_settings.buoyancy * body.GetMass() * submersion));
-        body.ApplyForce(-body.GetVelocity() * (m_settings.drag * submersion));
+        // WHY: Water の浮力・抵抗は毎 substep 適用される環境力。
+        //      ApplyForce() で WakeUp すると、水面範囲内の静止 body が永久に Sleep できず World::Step が重くなる。
+        body.ApplyForceNoWake(math::Vector3::UP * (m_settings.buoyancy * body.GetMass() * submersion));
+        body.ApplyForceNoWake(-body.GetVelocity() * (m_settings.drag * submersion));
     }
 
     void Tick(float dt) override
@@ -288,9 +290,6 @@ void AddColliderInstance(Scene& scene,
     } else {
         col.collider->Update(worldCenter, go.transform.rotation);
     }
-    if (body)
-        body->SetInertiaFromCollider(col.collider.get());
-
     const math::Vector3 centerOffset = ComponentScale(col.center, go.transform.worldScale);
     physics::ColliderInstance instance{ col.collider, body, &col.material, centerOffset, col.isTrigger, go.layer };
     col.colliderHandle = world.SyncCollider(col.colliderHandle, instance);
@@ -325,6 +324,30 @@ void AddColliderInstance(Scene& scene,
         volume->volumeHandle = world.SyncVolume(
             volume->volumeHandle,
             std::make_shared<physics::ColliderVolume>(col.collider, settings));
+    }
+}
+
+template<typename T>
+void SyncColliderComponents(Scene& scene,
+                            physics::World& world,
+                            ColliderOwnerMap& colliderOwners,
+                            float dt)
+{
+    // WHY: GameObject 全体を毎 fixed step 走査して各 Collider 型を GetComponent すると、
+    //      物理を持たないオブジェクト数に比例して PhysicsSystem 側の固定コストが増える。
+    // WHAT: ComponentArray が保持する Entity span を入口にし、存在する Collider component だけを同期する。
+    for (EntityID id : scene.GetEntities<T>()) {
+        GameObject* go = scene.GetGameObject(id);
+        T* col = scene.GetComponent<T>(id);
+        if (!go || !col) continue;
+
+        if constexpr (std::is_same_v<T, MeshColliderComponent>) {
+            EnsureMeshCollider(*go, *col);
+        } else if constexpr (std::is_same_v<T, ConvexHullColliderComponent>) {
+            EnsureConvexHullCollider(*go, *col);
+        }
+
+        AddColliderInstance(scene, *go, *col, world, colliderOwners, dt);
     }
 }
 
@@ -405,14 +428,31 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
 
     Script::SetPhysicsWorld(&world);
 
-    ColliderOwnerMap colliderOwners;
+    static thread_local ColliderOwnerMap colliderOwners;
+    colliderOwners.clear();
+    colliderOwners.reserve(
+        scene.GetEntities<AabbColliderComponent>().size() +
+        scene.GetEntities<BoxColliderComponent>().size() +
+        scene.GetEntities<SphereColliderComponent>().size() +
+        scene.GetEntities<CapsuleColliderComponent>().size() +
+        scene.GetEntities<MeshColliderComponent>().size() +
+        scene.GetEntities<ConvexHullColliderComponent>().size());
+
     world.BeginSceneSync();
 
-    for (auto [tf, rb] : scene.View<Transform, RigidBodyComponent>()) {
-        if (!rb.enabled || !rb.rigidBody) continue;
-        rb.rigidBody->SetPosition(tf.position);
-        rb.rigidBody->SetRotation(tf.rotation);
-        rb.bodyHandle = world.SyncBody(rb.bodyHandle, rb.rigidBody);
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncRigidBodies");
+        for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
+            GameObject* go = scene.GetGameObject(id);
+            auto* rb = scene.GetComponent<RigidBodyComponent>(id);
+            if (!go || !rb || !rb->enabled || !rb->rigidBody) continue;
+
+            // WHY: BodyHandle は Component 側へ永続化される runtime state。
+            //      SceneView の structured binding に依存せず、Component 実体へ直接書き戻す。
+            rb->rigidBody->SetPosition(go->transform.position);
+            rb->rigidBody->SetRotation(go->transform.rotation);
+            rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody);
+        }
     }
 
     // ── [Phase 7] TerrainComponent + MeshColliderComponent → TriangleMeshCollider 自動構築 ──
@@ -421,72 +461,67 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
     // WHY: TriangleMeshCollider が既存の collision pipeline に乗れるため、
     //      新たな物理コードを追加せずに地形コリジョンを実現できる。
     //      colliderDirty フラグでエディタ彫刻後の再構築をトリガーする。
-    for (auto& go : scene.GameObjects()) {
-        auto* terrain = go.GetComponent<TerrainComponent>();
-        auto* meshCol = go.GetComponent<MeshColliderComponent>();
-        if (!terrain || !meshCol || !terrain->enabled || terrain->heightData.empty()) continue;
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncTerrainColliders");
+        for (EntityID id : scene.GetEntities<TerrainComponent>()) {
+            GameObject* go = scene.GetGameObject(id);
+            auto* terrain = scene.GetComponent<TerrainComponent>(id);
+            auto* meshCol = scene.GetComponent<MeshColliderComponent>(id);
+            if (!go || !terrain || !meshCol || !terrain->enabled || terrain->heightData.empty()) continue;
 
-        // colliderDirty が立っているか未生成の場合のみ再構築する。
-        // EnsureMeshCollider は collider が set 済みなら skip するため、
-        // このブロックで先に set しておくことで自動ビルドが阻害されない。
-        if (terrain->colliderDirty || !meshCol->collider) {
-            const int cols = terrain->columns;
-            const int rows = terrain->rows;
+            // colliderDirty が立っているか未生成の場合のみ再構築する。
+            // EnsureMeshCollider は collider が set 済みなら skip するため、
+            // このブロックで先に set しておくことで自動ビルドが阻害されない。
+            if (terrain->colliderDirty || !meshCol->collider) {
+                const int cols = terrain->columns;
+                const int rows = terrain->rows;
 
-            // ローカル空間の頂点座標を生成する
-            // WHY: TriangleMeshCollider の UpdateWithScale が Transform を適用するため、
-            //      ここではローカル座標のみ渡す。
-            std::vector<math::Vector3> positions;
-            positions.reserve(static_cast<size_t>(cols) * static_cast<size_t>(rows));
-            for (int z = 0; z < rows; ++z) {
-                for (int x = 0; x < cols; ++x) {
-                    const float h = terrain->heightData[
-                        static_cast<size_t>(z) * static_cast<size_t>(cols) + static_cast<size_t>(x)]
-                        * terrain->maxHeight;
-                    positions.push_back({
-                        static_cast<float>(x) * terrain->cellSize,
-                        h,
-                        static_cast<float>(z) * terrain->cellSize
-                    });
+                // ローカル空間の頂点座標を生成する
+                // WHY: TriangleMeshCollider の UpdateWithScale が Transform を適用するため、
+                //      ここではローカル座標のみ渡す。
+                std::vector<math::Vector3> positions;
+                positions.reserve(static_cast<size_t>(cols) * static_cast<size_t>(rows));
+                for (int z = 0; z < rows; ++z) {
+                    for (int x = 0; x < cols; ++x) {
+                        const float h = terrain->heightData[
+                            static_cast<size_t>(z) * static_cast<size_t>(cols) + static_cast<size_t>(x)]
+                            * terrain->maxHeight;
+                        positions.push_back({
+                            static_cast<float>(x) * terrain->cellSize,
+                            h,
+                            static_cast<float>(z) * terrain->cellSize
+                        });
+                    }
                 }
-            }
 
-            // クアッド → 2 三角形（頂点法線と揃えるため CW）
-            std::vector<uint32_t> indices;
-            indices.reserve(static_cast<size_t>(cols - 1) * static_cast<size_t>(rows - 1) * 6u);
-            for (int z = 0; z < rows - 1; ++z) {
-                for (int x = 0; x < cols - 1; ++x) {
-                    const uint32_t i00 = static_cast<uint32_t>(z * cols + x);
-                    const uint32_t i10 = i00 + 1u;
-                    const uint32_t i01 = i00 + static_cast<uint32_t>(cols);
-                    const uint32_t i11 = i01 + 1u;
-                    indices.push_back(i00); indices.push_back(i01); indices.push_back(i10);
-                    indices.push_back(i10); indices.push_back(i01); indices.push_back(i11);
+                // クアッド → 2 三角形（頂点法線と揃えるため CW）
+                std::vector<uint32_t> indices;
+                indices.reserve(static_cast<size_t>(cols - 1) * static_cast<size_t>(rows - 1) * 6u);
+                for (int z = 0; z < rows - 1; ++z) {
+                    for (int x = 0; x < cols - 1; ++x) {
+                        const uint32_t i00 = static_cast<uint32_t>(z * cols + x);
+                        const uint32_t i10 = i00 + 1u;
+                        const uint32_t i01 = i00 + static_cast<uint32_t>(cols);
+                        const uint32_t i11 = i01 + 1u;
+                        indices.push_back(i00); indices.push_back(i01); indices.push_back(i10);
+                        indices.push_back(i10); indices.push_back(i01); indices.push_back(i11);
+                    }
                 }
-            }
 
-            meshCol->collider = std::make_shared<physics::TriangleMeshCollider>(positions, indices);
-            terrain->colliderDirty = false;
+                meshCol->collider = std::make_shared<physics::TriangleMeshCollider>(positions, indices);
+                terrain->colliderDirty = false;
+            }
         }
     }
 
-    for (auto& go : scene.GameObjects()) {
-        if (auto* col = go.GetComponent<AabbColliderComponent>())
-            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
-        if (auto* col = go.GetComponent<BoxColliderComponent>())
-            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
-        if (auto* col = go.GetComponent<SphereColliderComponent>())
-            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
-        if (auto* col = go.GetComponent<CapsuleColliderComponent>())
-            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
-        if (auto* col = go.GetComponent<MeshColliderComponent>()) {
-            EnsureMeshCollider(go, *col);
-            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
-        }
-        if (auto* col = go.GetComponent<ConvexHullColliderComponent>()) {
-            EnsureConvexHullCollider(go, *col);
-            AddColliderInstance(scene, go, *col, world, colliderOwners, dt);
-        }
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncColliders");
+        SyncColliderComponents<AabbColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<BoxColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<SphereColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<CapsuleColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<MeshColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<ConvexHullColliderComponent>(scene, world, colliderOwners, dt);
     }
 
     {
@@ -502,10 +537,14 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         DispatchCollisionEvents(scene, world, colliderOwners);
     }
 
-    for (auto& go : scene.GameObjects()) {
-        auto* rb = go.GetComponent<RigidBodyComponent>();
-        if (!rb || !rb->enabled || !rb->rigidBody) continue;
-        WriteWorldPoseToTransform(go, rb->rigidBody->GetPosition(), rb->rigidBody->GetRotation());
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsSystem::WriteBackTransforms");
+        for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
+            GameObject* go = scene.GetGameObject(id);
+            auto* rb = scene.GetComponent<RigidBodyComponent>(id);
+            if (!go || !rb || !rb->enabled || !rb->rigidBody) continue;
+            WriteWorldPoseToTransform(*go, rb->rigidBody->GetPosition(), rb->rigidBody->GetRotation());
+        }
     }
 }
 

@@ -123,9 +123,10 @@ namespace fbzz::physics
         void UpdateSleepStates(float dt);
         void ClassifyCollisions();
         void CCDPhase(float dt);    // 高速物体のトンネリング防止 (IntegrateBodies の前)
+        bool HasActiveSimulationBodies() const;
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
-        int m_substeps = 4;
+        int m_substeps = 1;
         // BroadPhase 中に使う一時フィルタ。Scene の LayerCollisionMatrix から渡される。
         std::function<bool(int, int)> m_layerFilter;
 
@@ -152,8 +153,11 @@ namespace fbzz::physics
         std::vector<BodySlot> m_bodyPool;
         std::vector<ColliderSlot> m_colliderPool;
         std::vector<VolumeSlot> m_volumePool;
+        bool m_sceneSyncChanged = false; // 追加・削除など接触集合が変わり得る同期変更があったか
         std::vector<CollisionPair>              m_collisionPairs;
         std::vector<ContactPoint>               m_contacts;
+        // Step() 内で毎サブステップ使う有効 dt。ローカル vector にすると物理更新ごとに確保が走るため再利用する。
+        std::vector<float>                      m_effectiveDts;
         PhysicsSolver                           m_solver;
         ContactCache                            m_contactCache;
 
