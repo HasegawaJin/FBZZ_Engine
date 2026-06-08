@@ -22,6 +22,7 @@
 #include <Engine/Input/Input.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
@@ -53,6 +54,20 @@ namespace {
 
 using fbzz::util::FileSystem;
 using fbzz::util::StringUtils;
+
+const char* PhysicsStepCountMarkerName(int steps)
+{
+    // WHY: PhysicsSystem は固定タイムステップの catch-up で 1 描画フレームに複数回呼ばれる。
+    //      Profiler 上で「重複呼び出し」か「意図した catch-up」かを即座に判別できるようにする。
+    if (steps <= 1) return nullptr;
+    if (steps == 2) return "PhysicsFixedSteps=2";
+    if (steps == 3) return "PhysicsFixedSteps=3";
+    if (steps == 4) return "PhysicsFixedSteps=4";
+    if (steps == 5) return "PhysicsFixedSteps=5";
+    if (steps == 6) return "PhysicsFixedSteps=6";
+    if (steps == 7) return "PhysicsFixedSteps=7";
+    return "PhysicsFixedSteps>=8";
+}
 
 // --project と --standalone フラグを格納する構造体。
 // WHY: 引数解析結果を Run() へ渡すための軽量な値型として分離する。
@@ -331,9 +346,13 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
             const float fixedDt = 1.0f / static_cast<float>(physicsHz);
 
+            int physicsStepsThisFrame = 0;
             if (stepFrame) {
+                FBZZ_PROFILE_SCOPE("PhysicsFixedStepLoop");
                 scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
+                physicsStepsThisFrame = 1;
             } else {
+                FBZZ_PROFILE_SCOPE("PhysicsFixedStepLoop");
                 physicsAccumulator += dt;
                 const float maxAccumulatedTime = fixedDt * 8.0f;
                 if (physicsAccumulator > maxAccumulatedTime)
@@ -341,8 +360,11 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                 while (physicsAccumulator >= fixedDt) {
                     scene::PhysicsSystem(*scene, physicsWorld, fixedDt);
                     physicsAccumulator -= fixedDt;
+                    ++physicsStepsThisFrame;
                 }
             }
+            if (const char* marker = PhysicsStepCountMarkerName(physicsStepsThisFrame))
+                FBZZ_PROFILE_MARKER(marker);
             scene::TransformSystem(*scene);
             scene::LateScriptSystem(*scene, simulationDt);
         } else {

@@ -12,6 +12,7 @@
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -26,6 +27,7 @@ namespace fbzz::editor {
 namespace {
 
 const FileFilter SCENE_FILTER{ "FBZZ Scene", "*.fbzz" };
+constexpr float HOT_RELOAD_TREE_POLL_INTERVAL = 0.5f;
 
 // 拡張子がなければ ".fbzz" を付与する
 std::string WithFbzzExtension(const std::string& path)
@@ -607,7 +609,16 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     if (m_scriptCompiler.GetState() == Compiler::State::Building) return;
     if (m_scriptCompilePending) return;
 
+    // WHY: Scripts/ 配下の全ファイル時刻確認はディスク I/O と path 確保を伴うため、
+    //      BeginFrame 毎に走らせるとエディター操作が CPU ボトルネック化する。
+    // WHAT: ホットリロードの体感遅延として許容できる 0.5 秒間隔に制限し、
+    //       ファイル保存後の再ビルドは既存のデバウンスでまとめる。
+    m_scriptDirtyPollTimer += ImGui::GetIO().DeltaTime;
+    if (m_scriptDirtyPollTimer < HOT_RELOAD_TREE_POLL_INTERVAL) return;
+    m_scriptDirtyPollTimer = 0.0f;
+
     // Scripts ツリー全体の最終変更時刻を確認する。
+    FBZZ_PROFILE_SCOPE("HotReload::ScanScripts");
     const FILETIME ft = GetLatestWriteTimeInTree(m_scriptsSourceDir);
     if (IsEmptyFileTime(ft))
         return;
@@ -736,6 +747,13 @@ void EditorApp::CheckHlslDirty()
     if (m_hlslCompiler.GetState() == Compiler::State::Building) return;
     if (m_hlslCompilePending) return;
 
+    // WHY: HLSL 監視も Scripts と同じくツリー全体を列挙する。
+    //      シェーダー保存検知は即時性よりフレーム安定性を優先し、EditorBegin の常時 5ms 負荷を避ける。
+    m_hlslDirtyPollTimer += ImGui::GetIO().DeltaTime;
+    if (m_hlslDirtyPollTimer < HOT_RELOAD_TREE_POLL_INTERVAL) return;
+    m_hlslDirtyPollTimer = 0.0f;
+
+    FBZZ_PROFILE_SCOPE("HotReload::ScanHlsl");
     const FILETIME ft = GetLatestWriteTimeInTree(m_hlslSourceDir);
     if (IsEmptyFileTime(ft))
         return;
