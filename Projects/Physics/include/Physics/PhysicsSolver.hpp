@@ -64,6 +64,8 @@ namespace fbzz::physics
         bool TestSphereTriangleMesh  (const SphereCollider&,  const TriangleMeshCollider&, ContactPoint& out);
         bool TestAABBTriangleMesh    (const AABBCollider&,    const TriangleMeshCollider&, ContactPoint& out);
         bool TestCapsuleTriangleMesh (const CapsuleCollider&, const TriangleMeshCollider&, ContactPoint& out);
+        bool TestOBBTriangleMesh     (const OBBCollider&,      const TriangleMeshCollider&, ContactPoint& out);
+        bool TestConvexHullTriangleMesh(const ConvexHullCollider&, const TriangleMeshCollider&, ContactPoint& out);
 
         // ConvexHull 用テスト関数 (GJK + EPA)。形状差分をサポート関数で抽象化する。
         bool TestConvexConvex  (const ConvexHullCollider&, const ConvexHullCollider&, ContactPoint& out);

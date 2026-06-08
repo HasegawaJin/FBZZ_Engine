@@ -28,9 +28,17 @@ struct ScriptPhysicsProxy {
 
     void AddForce(const math::Vector3& v) const;
     void AddImpulse(const math::Vector3& v) const;
+    void AddForceAtPoint(const math::Vector3& force, const math::Vector3& worldPoint) const;
+    float GetMass() const;
+    void SetMass(float mass) const;
+    void SetStatic(bool isStatic) const;
     void SetVelocity(const math::Vector3& v) const;
     math::Vector3 GetVelocity() const;
+    void SetAngularVelocity(const math::Vector3& v) const;
+    math::Vector3 GetAngularVelocity() const;
     void AddTorque(const math::Vector3& v) const;
+    void SetFreezePosition(bool x, bool y, bool z) const;
+    void SetFreezeRotation(bool x, bool y, bool z) const;
     bool Raycast(const math::Vector3& origin, const math::Vector3& dir, float dist, RaycastHit& hit) const;
     std::vector<RaycastHit> RaycastAll(const math::Vector3& origin, const math::Vector3& dir, float dist) const;
     bool SphereCast(const math::Vector3& center, float radius, const math::Vector3& dir, float dist, RaycastHit& hit) const;

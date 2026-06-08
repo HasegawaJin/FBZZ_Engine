@@ -6,6 +6,7 @@
 #include <Physics/AABBCollider.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <algorithm>
 
 namespace fbzz::physics {
 
@@ -26,12 +27,14 @@ math::Vector3 ApplyAxisLock(const math::Vector3& value,
 
 void RigidBody::ApplyForce(const math::Vector3& force)
 {
+    if (force.LengthSq() > 1e-12f) WakeUp();
     m_force += ApplyPositionFreeze(force, math::Vector3::ZERO);
 }
 
 void RigidBody::ApplyForceAtPoint(const math::Vector3& force,
                                    const math::Vector3& worldPoint)
 {
+    if (force.LengthSq() > 1e-12f) WakeUp();
     m_force  += ApplyPositionFreeze(force, math::Vector3::ZERO);
     m_torque += math::Vector3::Cross(worldPoint - m_position, force);
     m_torque = ApplyRotationFreeze(m_torque);
@@ -39,16 +42,19 @@ void RigidBody::ApplyForceAtPoint(const math::Vector3& force,
 
 void RigidBody::ApplyImpulse(const math::Vector3& impulse)
 {
+    if (impulse.LengthSq() > 1e-12f) WakeUp();
     m_velocity = ApplyPositionFreeze(m_velocity + impulse * m_invMass, math::Vector3::ZERO);
 }
 
 void RigidBody::ApplyAngularImpulse(const math::Vector3& angularImpulse)
 {
+    if (angularImpulse.LengthSq() > 1e-12f) WakeUp();
     m_angularVelocity = ApplyRotationFreeze(m_angularVelocity + ApplyInvInertia(angularImpulse));
 }
 
 void RigidBody::ApplyTorque(const math::Vector3& torque)
 {
+    if (torque.LengthSq() > 1e-12f) WakeUp();
     m_torque += ApplyRotationFreeze(torque);
 }
 
@@ -66,11 +72,13 @@ void RigidBody::SetPosition(const math::Vector3& pos)
 
 void RigidBody::SetVelocity(const math::Vector3& vel)
 {
+    if (vel.LengthSq() > 1e-12f) WakeUp();
     m_velocity = ApplyPositionFreeze(vel, math::Vector3::ZERO);
 }
 
 void RigidBody::SetAngularVelocity(const math::Vector3& v)
 {
+    if (v.LengthSq() > 1e-12f) WakeUp();
     m_angularVelocity = ApplyRotationFreeze(v);
 }
 
@@ -101,11 +109,19 @@ void RigidBody::SetInertiaFromCollider(const Collider* collider)
 
 void RigidBody::Integrate(float dt)
 {
+    if (m_isSleeping)
+    {
+        m_force  = math::Vector3::ZERO;
+        m_torque = math::Vector3::ZERO;
+        return;
+    }
+
     if (!m_isStatic)
     {
         // 線形運動は半陰的オイラーで積分する。速度を先に更新するため単純な陽的オイラーより安定する。
         // m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
         m_velocity += m_force * m_invMass * dt;
+        m_velocity = m_velocity * (1.0f / (1.0f + std::max(m_linearDrag, 0.0f) * dt));
         m_velocity = ApplyPositionFreeze(m_velocity, math::Vector3::ZERO);
         m_position = ApplyPositionFreeze(m_position + m_velocity * dt, m_position);
 
@@ -117,6 +133,7 @@ void RigidBody::Integrate(float dt)
             m_invInertiaDiag.z * tauBody.z
         };
         m_angularVelocity += (m_rotation * alphaBody) * dt;
+        m_angularVelocity = m_angularVelocity * (1.0f / (1.0f + std::max(m_angularDrag, 0.0f) * dt));
         m_angularVelocity = ApplyRotationFreeze(m_angularVelocity);
 
         // q_dot = 0.5 * [0, ω] * q
@@ -136,9 +153,50 @@ void RigidBody::Integrate(float dt)
     m_torque = math::Vector3::ZERO;
 }
 
+void RigidBody::WakeUp()
+{
+    if (m_isStatic) return;
+    m_isSleeping = false;
+    m_sleepTimer = 0.0f;
+}
+
+void RigidBody::Sleep()
+{
+    if (m_isStatic || !m_allowSleeping) return;
+    m_isSleeping = true;
+    m_sleepTimer = 0.0f;
+    m_velocity = math::Vector3::ZERO;
+    m_angularVelocity = math::Vector3::ZERO;
+    m_force = math::Vector3::ZERO;
+    m_torque = math::Vector3::ZERO;
+}
+
+void RigidBody::UpdateSleepState(float dt, float linearThreshold, float angularThreshold, float sleepTime)
+{
+    if (m_isStatic || !m_allowSleeping)
+    {
+        m_isSleeping = false;
+        m_sleepTimer = 0.0f;
+        return;
+    }
+
+    const bool slowLinear = m_velocity.LengthSq() <= linearThreshold * linearThreshold;
+    const bool slowAngular = m_angularVelocity.LengthSq() <= angularThreshold * angularThreshold;
+    if (slowLinear && slowAngular)
+    {
+        m_sleepTimer += dt;
+        if (m_sleepTimer >= sleepTime)
+            Sleep();
+    }
+    else
+    {
+        WakeUp();
+    }
+}
+
 math::Vector3 RigidBody::ApplyInvInertia(const math::Vector3& v) const
 {
-    if (m_isStatic) return math::Vector3::ZERO;
+    if (m_isStatic || m_isSleeping) return math::Vector3::ZERO;
     // I⁻¹ v = R * (invInertiaDiag ⊙ (Rᵀ * v))
     math::Vector3 local = m_rotation.Conjugate() * v;
     math::Vector3 scaled = {
@@ -156,9 +214,18 @@ void RigidBody::RecomputeInertia()
         m_invInertiaDiag = math::Vector3::ZERO;
         return;
     }
-    if (!m_inertiaCollider || m_mass == 0.0f)
+    if (m_mass == 0.0f)
     {
         m_invInertiaDiag = math::Vector3::ZERO;
+        return;
+    }
+    if (!m_inertiaCollider)
+    {
+        // Collider 未設定の RigidBody はテストやスクリプト API から単体で使われる。
+        // 形状由来の慣性は推定できないため、質量だけを反映した等方的な単位慣性として扱い、
+        // FreezeRotation がロック軸だけを止め、未ロック軸の角インパルスは反応できるようにする。
+        const float inv = 1.0f / m_mass;
+        m_invInertiaDiag = { inv, inv, inv };
         return;
     }
 

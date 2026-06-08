@@ -5,6 +5,8 @@
 #include <cmath>
 #include <vector>
 #include <memory>
+#include <string>
+#include <cstdint>
 
 #include <Physics/World.hpp>
 #include <Physics/RigidBody.hpp>
@@ -20,6 +22,16 @@
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/SpringConstraint.hpp>
 #include <Physics/DistanceConstraint.hpp>
+#include <Physics/RopeConstraint.hpp>
+#include <Physics/ChainConstraint.hpp>
+#include <Physics/HingeConstraint.hpp>
+#include <Physics/FixedConstraint.hpp>
+#include <Physics/SliderConstraint.hpp>
+#include <Physics/ColliderVolume.hpp>
+#include <Physics/ColliderDebugGeometry.hpp>
+#include <Physics/ConstraintDebugGeometry.hpp>
+#include <Physics/RigidBodySerializer.hpp>
+#include <Physics/Layer.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/MathUtils.hpp>
@@ -133,8 +145,12 @@ static void TestPhase1_StackStability()
 
     World world;
     world.SetGravity({ 0.0f, -9.81f, 0.0f });
-    world.SetBodies(bodies);
-    world.SetColliders(colliders);
+    world.BeginSceneSync();
+    for (const auto& body : bodies)
+        world.SyncBody({}, body);
+    for (const auto& collider : colliders)
+        world.SyncCollider({}, collider);
+    world.EndSceneSync();
 
     // 3 秒分ステップ
     constexpr float dt  = 1.0f / 60.0f;
@@ -213,8 +229,12 @@ static void TestPhase2_TriangleMesh()
 
     World world;
     world.SetGravity({ 0.0f, -9.81f, 0.0f });
-    world.SetBodies(bodies);
-    world.SetColliders(colliders);
+    world.BeginSceneSync();
+    for (const auto& body : bodies)
+        world.SyncBody({}, body);
+    for (const auto& collider : colliders)
+        world.SyncCollider({}, collider);
+    world.EndSceneSync();
 
     constexpr float dt    = 1.0f / 60.0f;
     constexpr int   STEPS = static_cast<int>(2.0f / dt);
@@ -366,8 +386,12 @@ static void TestPhase4_CCD()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f }); // 重力なし
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 1 フレームだけ実行
         world.Step(1.0f / 60.0f);
@@ -416,8 +440,12 @@ static void TestPhase5_StackStress()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < static_cast<int>(6.0f / DT); ++s)
             world.Step(DT);
@@ -470,8 +498,12 @@ static void TestPhase5_StackStress()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < static_cast<int>(3.0f / DT); ++s)
             world.Step(DT);
@@ -523,8 +555,12 @@ static void TestPhase5_StackStress()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < static_cast<int>(5.0f / DT); ++s)
             world.Step(DT);
@@ -565,8 +601,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
         const float cy = capBody->GetPosition().y;
@@ -608,8 +648,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
         const float sy = sphBody->GetPosition().y;
@@ -647,8 +691,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
         const float by = capBodyB->GetPosition().y;
@@ -669,8 +717,10 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies({ body });
-        world.SetColliders({ inst });
+        world.BeginSceneSync();
+        world.SyncBody({}, body);
+        world.SyncCollider({}, inst);
+        world.EndSceneSync();
         world.Step(1.0f / 60.0f);
 
         const float centerX = sphereCol->GetAABB().Center().x;
@@ -697,11 +747,12 @@ static void TestPhase6_Capsule()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies({ boxBody, capBody });
-        world.SetColliders({
-            makeInstance(boxCol, boxBody.get()),
-            makeInstance(capCol, capBody.get())
-        });
+        world.BeginSceneSync();
+        world.SyncBody({}, boxBody);
+        world.SyncBody({}, capBody);
+        world.SyncCollider({}, makeInstance(boxCol, boxBody.get()));
+        world.SyncCollider({}, makeInstance(capCol, capBody.get()));
+        world.EndSceneSync();
         world.Step(1.0f / 60.0f);
 
         check(!world.GetEnterEvents().empty(),
@@ -741,8 +792,12 @@ static void TestPhase7_Momentum()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 衝突するまで十分ステップ (1.2 / 5.0 = 0.24s → ~15 frames)
         for (int s = 0; s < 60; ++s) world.Step(1.0f / 60.0f);
@@ -779,8 +834,12 @@ static void TestPhase7_Momentum()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 衝突が起きるまで待機 (距離 3m / v_rel 10 m/s = 0.3s → 18 frames)
         for (int s = 0; s < 30; ++s) world.Step(1.0f / 60.0f);
@@ -832,8 +891,12 @@ static void TestPhase8_Materials()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 2 秒分シミュレート (1 回跳ね返り後)
         float maxY = 0.0f;
@@ -884,8 +947,12 @@ static void TestPhase8_Materials()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f); // 3s
 
@@ -935,8 +1002,12 @@ static void TestPhase9_ConvexHullWorld()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f);
 
         const float cy = cvxBody->GetPosition().y;
@@ -975,8 +1046,12 @@ static void TestPhase9_ConvexHullWorld()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         for (int s = 0; s < 180; ++s) world.Step(1.0f / 60.0f);
 
         const float sy = sphBody->GetPosition().y;
@@ -1008,8 +1083,12 @@ static void TestPhase9_ConvexHullWorld()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 衝突するまで待機 (3m / 3m/s = 1s)
         for (int s = 0; s < 90; ++s) world.Step(1.0f / 60.0f);
@@ -1052,8 +1131,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         world.Step(1.0f / 60.0f);
 
         check(!world.GetEnterEvents().empty(),
@@ -1083,8 +1166,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         const Vector3 posA_before = bodyA->GetPosition();
         world.Step(1.0f / 60.0f);
@@ -1121,8 +1208,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // 落下させて接触させる
         for (int s = 0; s < 30; ++s) world.Step(1.0f / 60.0f);
@@ -1158,8 +1249,12 @@ static void TestPhase10_Triggers()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
 
         // Step 1: Enter
         world.Step(1.0f / 60.0f);
@@ -1209,8 +1304,12 @@ static void TestPhase11_Constraints()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         // 距離制約: 最大 3.0m
         world.AddConstraint(std::make_shared<DistanceConstraint>(
             bodyA.get(), bodyB.get(), 3.0f));
@@ -1247,8 +1346,12 @@ static void TestPhase11_Constraints()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         // k=50, c=1 の春定数スプリング
         world.AddConstraint(std::make_shared<SpringConstraint>(
             bodyA.get(), bodyB.get(), 1.0f, 50.0f, 1.0f));
@@ -1293,8 +1396,12 @@ static void TestPhase11_Constraints()
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
-        world.SetBodies(bodies);
-        world.SetColliders(cols);
+        world.BeginSceneSync();
+        for (const auto& body : bodies)
+            world.SyncBody({}, body);
+        for (const auto& collider : cols)
+            world.SyncCollider({}, collider);
+        world.EndSceneSync();
         world.AddConstraint(std::make_shared<SpringConstraint>(
             bodyA.get(), bodyB.get(), 1.0f, 50.0f, 1.0f));
 
@@ -1343,6 +1450,407 @@ static void TestPhase7_RigidBodyFreeze()
     }
 }
 
+static void TestPhase12_PhysicsFeatureCoverage()
+{
+    std::printf("\n=== Phase 12: Physics Feature Coverage ===\n");
+
+    {
+        RigidBody negativeMass;
+        negativeMass.SetMass(-1.0f);
+        negativeMass.ApplyForce({ 0.0f, -10.0f, 0.0f });
+        negativeMass.Integrate(1.0f);
+        check(negativeMass.GetVelocity().y > 0.0f,
+              "RigidBody: negative mass accelerates opposite force");
+
+        RigidBody torqueBody;
+        torqueBody.SetMass(1.0f);
+        torqueBody.ApplyTorque({ 0.0f, 2.0f, 0.0f });
+        torqueBody.Integrate(1.0f);
+        check(torqueBody.GetAngularVelocity().y > 0.0f,
+              "RigidBody: ApplyTorque changes angular velocity");
+
+        RigidBody offCenterBody;
+        offCenterBody.SetMass(1.0f);
+        offCenterBody.ApplyForceAtPoint({ 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f });
+        offCenterBody.Integrate(1.0f);
+        check(offCenterBody.GetAngularVelocity().z > 0.0f,
+              "RigidBody: ApplyForceAtPoint generates torque");
+
+        RigidBody dragBody;
+        dragBody.SetMass(1.0f);
+        dragBody.SetVelocity({ 10.0f, 0.0f, 0.0f });
+        dragBody.m_linearDrag = 1.0f;
+        dragBody.Integrate(1.0f);
+        checkF(dragBody.GetVelocity().x < 10.0f,
+               "RigidBody: linear drag damps velocity",
+               dragBody.GetVelocity().x,
+               "vx < 10");
+
+        RigidBody sleeper;
+        sleeper.SetMass(1.0f);
+        sleeper.UpdateSleepState(1.0f, 0.03f, 0.03f, 0.75f);
+        check(sleeper.IsSleeping(), "RigidBody: low motion body can sleep");
+        sleeper.ApplyForce({ 1.0f, 0.0f, 0.0f });
+        check(!sleeper.IsSleeping(), "RigidBody: external force wakes sleeping body");
+    }
+
+    {
+        auto gravityScaled = std::make_shared<RigidBody>();
+        gravityScaled->SetMass(1.0f);
+        gravityScaled->m_gravityScale = 2.0f;
+
+        World world;
+        world.SetSubsteps(64);
+        check(world.GetSubsteps() == 32,
+              "World: substeps are clamped to supported range");
+        world.SetGravity({ 0.0f, -10.0f, 0.0f });
+        world.BeginSceneSync();
+        world.SyncBody({}, gravityScaled);
+        world.EndSceneSync();
+        world.Step(1.0f);
+        check(gravityScaled->GetVelocity().y < -10.0f,
+              "World: gravityScale multiplies world gravity");
+
+        auto sourceA = std::make_shared<RigidBody>();
+        sourceA->SetMass(1.0f);
+        sourceA->SetPosition({ 0.0f, 0.0f, 0.0f });
+        sourceA->m_isGravitationalSource = true;
+        sourceA->m_gravitationalMass = 1.0e8f;
+        auto sourceB = std::make_shared<RigidBody>();
+        sourceB->SetMass(1.0f);
+        sourceB->SetPosition({ 1.0f, 0.0f, 0.0f });
+        sourceB->m_isGravitationalSource = true;
+        sourceB->m_gravitationalMass = 1.0e8f;
+
+        World nBodyWorld;
+        nBodyWorld.SetGravity(Vector3::ZERO);
+        nBodyWorld.BeginSceneSync();
+        nBodyWorld.SyncBody({}, sourceA);
+        nBodyWorld.SyncBody({}, sourceB);
+        nBodyWorld.EndSceneSync();
+        nBodyWorld.Step(1.0f);
+        check(sourceA->GetVelocity().x > 0.0f && sourceB->GetVelocity().x < 0.0f,
+              "World: gravitational sources attract each other");
+    }
+
+    {
+        World world;
+        auto nearBody = std::make_shared<RigidBody>();
+        nearBody->m_isStatic = true;
+        nearBody->SetPosition({ 2.0f, 0.0f, 0.0f });
+        auto farBody = std::make_shared<RigidBody>();
+        farBody->m_isStatic = true;
+        farBody->SetPosition({ 4.0f, 0.0f, 0.0f });
+
+        auto nearCol = std::make_shared<SphereCollider>(0.5f);
+        nearCol->Update(nearBody->GetPosition(), nearBody->GetRotation());
+        auto farCol = std::make_shared<SphereCollider>(0.5f);
+        farCol->Update(farBody->GetPosition(), farBody->GetRotation());
+
+        world.BeginSceneSync();
+        BodyHandle nearBodyHandle = world.SyncBody({}, nearBody);
+        world.SyncBody({}, farBody);
+        ColliderHandle nearColHandle = world.SyncCollider({}, makeInstance(nearCol, nearBody.get()));
+        world.SyncCollider({}, makeInstance(farCol, farBody.get()));
+        world.EndSceneSync();
+
+        World::RaycastHit hit;
+        check(world.Raycast({ 0.0f, 0.0f, 0.0f }, Vector3::RIGHT, 10.0f, hit) &&
+              hit.body == nearBody.get(),
+              "World API: Raycast returns nearest collider");
+
+        const auto hits = world.RaycastAll({ 0.0f, 0.0f, 0.0f }, Vector3::RIGHT, 10.0f);
+        check(hits.size() == 2 && hits[0].distance <= hits[1].distance,
+              "World API: RaycastAll returns sorted hits");
+
+        World::RaycastHit sphereHit;
+        check(world.SphereCast({ 0.0f, 1.0f, 0.0f }, 0.6f, Vector3::RIGHT, 10.0f, sphereHit),
+              "World API: SphereCast detects inflated hit");
+
+        const auto overlaps = world.OverlapSphere({ 2.0f, 0.0f, 0.0f }, 0.75f);
+        check(overlaps.size() == 1 && overlaps[0]->body == nearBody.get(),
+              "World API: OverlapSphere filters by radius");
+
+        world.BeginSceneSync();
+        world.SyncBody(nearBodyHandle, nearBody);
+        world.SyncCollider(nearColHandle, makeInstance(nearCol, nearBody.get()));
+        world.EndSceneSync();
+        const auto remainingHits = world.RaycastAll({ 0.0f, 0.0f, 0.0f }, Vector3::RIGHT, 10.0f);
+        check(remainingHits.size() == 1,
+              "World sync: untouched body/collider handles are removed");
+    }
+
+    {
+        fbzz::LayerCollisionMatrix matrix;
+        matrix.Set(0, 1, false);
+        check(!matrix.CanCollide(0, 1) && !matrix.CanCollide(1, 0),
+              "LayerCollisionMatrix: Set is symmetric");
+
+        auto bodyA = std::make_shared<RigidBody>();
+        bodyA->SetMass(1.0f);
+        bodyA->SetPosition({ 0.0f, 0.0f, 0.0f });
+        auto bodyB = std::make_shared<RigidBody>();
+        bodyB->SetMass(1.0f);
+        bodyB->SetPosition({ 0.5f, 0.0f, 0.0f });
+        auto colA = std::make_shared<SphereCollider>(0.5f);
+        colA->Update(bodyA->GetPosition(), bodyA->GetRotation());
+        auto colB = std::make_shared<SphereCollider>(0.5f);
+        colB->Update(bodyB->GetPosition(), bodyB->GetRotation());
+        ColliderInstance instA = makeInstance(colA, bodyA.get());
+        ColliderInstance instB = makeInstance(colB, bodyB.get());
+        instA.layer = 0;
+        instB.layer = 1;
+
+        World world;
+        world.SetGravity(Vector3::ZERO);
+        world.BeginSceneSync();
+        world.SyncBody({}, bodyA);
+        world.SyncBody({}, bodyB);
+        world.SyncCollider({}, instA);
+        world.SyncCollider({}, instB);
+        world.EndSceneSync();
+        world.Step(1.0f / 60.0f, [&matrix](int a, int b) { return matrix.CanCollide(a, b); });
+        check(world.GetEnterEvents().empty(),
+              "Layer filter: disabled layer pair suppresses collision");
+    }
+
+    {
+        PhysicsSolver solver;
+        PhysicsMaterial mat;
+
+        auto sphere = std::make_shared<SphereCollider>(0.6f);
+        sphere->Update({ 0.0f, 0.25f, 0.0f }, Quaternion::Identity());
+        auto aabb = std::make_shared<AABBCollider>(Vector3{ 0.6f, 0.6f, 0.6f });
+        aabb->Update({ 0.0f, 0.25f, 0.0f }, Quaternion::Identity());
+        auto obb = std::make_shared<OBBCollider>(Vector3{ 0.6f, 0.6f, 0.6f });
+        obb->Update({ 0.0f, 0.25f, 0.0f }, Quaternion::FromAxisAngle(Vector3::UP, 0.25f));
+        auto capsule = std::make_shared<CapsuleCollider>(0.35f, 0.6f);
+        capsule->Update({ 0.0f, 0.25f, 0.0f }, Quaternion::Identity());
+        auto mesh = std::make_shared<TriangleMeshCollider>(
+            std::vector<Vector3>{
+                { -2.0f, 0.0f, -2.0f },
+                {  2.0f, 0.0f, -2.0f },
+                {  0.0f, 0.0f,  2.0f }
+            },
+            std::vector<uint32_t>{ 0, 1, 2 });
+        mesh->Update({ 0.0f, 0.0f, 0.0f }, Quaternion::Identity());
+        auto hull = std::make_shared<ConvexHullCollider>(
+            std::vector<Vector3>{
+                { -0.5f, -0.5f, -0.5f }, { 0.5f, -0.5f, -0.5f },
+                {  0.5f,  0.5f, -0.5f }, { -0.5f,  0.5f, -0.5f },
+                { -0.5f, -0.5f,  0.5f }, { 0.5f, -0.5f,  0.5f },
+                {  0.5f,  0.5f,  0.5f }, { -0.5f,  0.5f,  0.5f }
+            });
+        hull->Update({ 0.0f, 0.25f, 0.0f }, Quaternion::Identity());
+
+        auto instance = [&mat](std::shared_ptr<Collider> collider) {
+            ColliderInstance inst;
+            inst.collider = std::move(collider);
+            inst.material = &mat;
+            return inst;
+        };
+        auto expectPair = [&solver, &instance](std::shared_ptr<Collider> a,
+                                               std::shared_ptr<Collider> b,
+                                               const char* label) {
+            std::vector<CollisionPair> pairs = { { instance(std::move(a)), instance(std::move(b)) } };
+            std::vector<ContactPoint> contacts;
+            solver.NarrowPhase(pairs, contacts);
+            check(!contacts.empty(), label);
+        };
+
+        expectPair(sphere, aabb, "NarrowPhase: Sphere-AABB contact");
+        expectPair(sphere, obb, "NarrowPhase: Sphere-OBB contact");
+        expectPair(sphere, capsule, "NarrowPhase: Sphere-Capsule contact");
+        expectPair(sphere, mesh, "NarrowPhase: Sphere-TriangleMesh contact");
+        expectPair(sphere, hull, "NarrowPhase: Sphere-ConvexHull contact");
+        expectPair(aabb, obb, "NarrowPhase: AABB-OBB contact");
+        expectPair(aabb, capsule, "NarrowPhase: AABB-Capsule contact");
+        expectPair(aabb, mesh, "NarrowPhase: AABB-TriangleMesh contact");
+        expectPair(aabb, hull, "NarrowPhase: AABB-ConvexHull contact");
+        expectPair(obb, capsule, "NarrowPhase: OBB-Capsule contact");
+        expectPair(obb, mesh, "NarrowPhase: OBB-TriangleMesh contact");
+        expectPair(obb, hull, "NarrowPhase: OBB-ConvexHull contact");
+        expectPair(capsule, mesh, "NarrowPhase: Capsule-TriangleMesh contact");
+        expectPair(capsule, hull, "NarrowPhase: Capsule-ConvexHull contact");
+        expectPair(hull, mesh, "NarrowPhase: ConvexHull-TriangleMesh contact");
+    }
+
+    {
+        auto bodyA = std::make_shared<RigidBody>();
+        bodyA->m_isStatic = true;
+        bodyA->SetPosition({ 0.0f, 0.0f, 0.0f });
+        auto bodyB = std::make_shared<RigidBody>();
+        bodyB->SetMass(1.0f);
+        bodyB->SetPosition({ 5.0f, 2.0f, 0.0f });
+
+        RopeConstraint rope(bodyA.get(), bodyB.get(), 2.0f);
+        rope.SolvePosition(1.0f / 60.0f);
+        check((bodyB->GetPosition() - bodyA->GetPosition()).Length() <= 2.01f,
+              "RopeConstraint: max length is enforced");
+
+        bodyB->SetPosition({ 2.0f, 3.0f, 0.0f });
+        SliderConstraint slider(bodyA.get(), bodyB.get(), Vector3::RIGHT);
+        slider.SetLimits(0.0f, 1.0f);
+        slider.SolvePosition(1.0f / 60.0f);
+        check(std::abs(bodyB->GetPosition().y) < 0.001f &&
+              bodyB->GetPosition().x <= 1.01f,
+              "SliderConstraint: off-axis and limit errors are corrected");
+
+        bodyB->SetPosition({ 3.0f, 0.0f, 0.0f });
+        FixedConstraint fixed(bodyA.get(), bodyB.get());
+        bodyB->SetPosition({ 6.0f, 0.0f, 0.0f });
+        fixed.SolvePosition(1.0f / 60.0f);
+        check(std::abs(bodyB->GetPosition().x - 3.0f) < 0.01f,
+              "FixedConstraint: initial relative offset is restored");
+
+        bodyB->SetPosition({ 2.0f, 0.0f, 0.0f });
+        HingeConstraint hinge(bodyA.get(), bodyB.get(), Vector3::ZERO, Vector3::ZERO, Vector3::UP);
+        hinge.SetMotor(2.0f, 10.0f);
+        hinge.ApplyForce(1.0f / 60.0f);
+        bodyB->Integrate(1.0f / 60.0f);
+        check(bodyB->GetAngularVelocity().y > 0.0f,
+              "HingeConstraint: motor applies angular velocity on hinge axis");
+        hinge.SolvePosition(1.0f / 60.0f);
+        check((bodyB->GetPosition() - bodyA->GetPosition()).Length() < 0.01f,
+              "HingeConstraint: anchors are merged");
+
+        auto chainA = std::make_shared<RigidBody>();
+        chainA->m_isStatic = true;
+        chainA->SetPosition({ 0.0f, 0.0f, 0.0f });
+        auto chainB = std::make_shared<RigidBody>();
+        chainB->SetMass(1.0f);
+        chainB->SetPosition({ 3.0f, 0.0f, 0.0f });
+        auto chainC = std::make_shared<RigidBody>();
+        chainC->SetMass(1.0f);
+        chainC->SetPosition({ 6.0f, 0.0f, 0.0f });
+        ChainConstraint chain({ chainA.get(), chainB.get(), chainC.get() }, 1.0f, 8);
+        chain.SolvePosition(1.0f / 60.0f);
+        check((chainB->GetPosition() - chainA->GetPosition()).Length() < 1.2f &&
+              (chainC->GetPosition() - chainB->GetPosition()).Length() < 1.2f,
+              "ChainConstraint: neighboring segment lengths are corrected");
+    }
+
+    {
+        auto body = std::make_shared<RigidBody>();
+        body->SetMass(1.0f);
+        body->SetPosition({ 0.0f, 0.0f, 0.0f });
+
+        auto volumeShape = std::make_shared<AABBCollider>(Vector3{ 5.0f, 5.0f, 5.0f });
+        volumeShape->Update(Vector3::ZERO, Quaternion::Identity());
+        VolumeSettings gravitySettings;
+        gravitySettings.type = VolumeType::Gravity;
+        gravitySettings.gravity = { 0.0f, 10.0f, 0.0f };
+
+        World world;
+        world.SetGravity({ 0.0f, -10.0f, 0.0f });
+        world.BeginSceneSync();
+        world.SyncBody({}, body);
+        world.SyncVolume({}, std::make_shared<ColliderVolume>(volumeShape, gravitySettings));
+        world.EndSceneSync();
+        world.Step(1.0f / 60.0f);
+        check(body->GetVelocity().y > 0.0f,
+              "Volume: gravity volume overrides world gravity");
+
+        RigidBody magneticBody;
+        magneticBody.SetMass(1.0f);
+        magneticBody.m_charge = 1.0f;
+        magneticBody.SetVelocity(Vector3::RIGHT);
+        VolumeSettings magneticSettings;
+        magneticSettings.type = VolumeType::Magnetic;
+        magneticSettings.magneticField = Vector3::UP;
+        ColliderVolume magneticVolume(volumeShape, magneticSettings);
+        magneticVolume.Apply(magneticBody, 1.0f);
+        magneticBody.Integrate(1.0f);
+        check(magneticBody.GetVelocity().z > 0.0f,
+              "Volume: magnetic field applies Lorentz force");
+
+        RigidBody vortexBody;
+        vortexBody.SetMass(1.0f);
+        vortexBody.SetPosition({ 1.0f, 0.0f, 0.0f });
+        VolumeSettings vortexSettings;
+        vortexSettings.type = VolumeType::Vortex;
+        vortexSettings.swirlStrength = 1.0f;
+        vortexSettings.inwardStrength = 1.0f;
+        vortexSettings.liftStrength = 1.0f;
+        ColliderVolume vortexVolume(volumeShape, vortexSettings);
+        vortexVolume.Apply(vortexBody, 1.0f);
+        vortexBody.Integrate(1.0f);
+        check(vortexBody.GetVelocity().LengthSq() > 0.0f,
+              "Volume: vortex applies swirl/inward/lift force");
+
+        RigidBody buoyancyBody;
+        buoyancyBody.SetMass(1.0f);
+        VolumeSettings buoyancySettings;
+        buoyancySettings.type = VolumeType::Buoyancy;
+        buoyancySettings.buoyancy = 5.0f;
+        buoyancySettings.drag = 0.0f;
+        ColliderVolume buoyancyVolume(volumeShape, buoyancySettings);
+        buoyancyVolume.Apply(buoyancyBody, 1.0f);
+        buoyancyBody.Integrate(1.0f);
+        check(buoyancyBody.GetVelocity().y > 0.0f,
+              "Volume: buoyancy applies upward force");
+
+        RigidBody explosionBody;
+        explosionBody.SetMass(1.0f);
+        explosionBody.SetPosition({ 1.0f, 0.0f, 0.0f });
+        VolumeSettings explosionSettings;
+        explosionSettings.type = VolumeType::Explosion;
+        explosionSettings.explosionImpulse = 2.0f;
+        ColliderVolume explosionVolume(volumeShape, explosionSettings);
+        explosionVolume.Apply(explosionBody, 1.0f);
+        check(explosionBody.GetVelocity().x > 0.0f,
+              "Volume: explosion applies outward impulse");
+
+        VolumeSettings timedSettings;
+        timedSettings.type = VolumeType::TimeDilation;
+        timedSettings.timeScale = 0.25f;
+        timedSettings.duration = 0.1f;
+        ColliderVolume timedVolume(volumeShape, timedSettings);
+        timedVolume.Tick(0.2f);
+        check(std::abs(timedVolume.GetTimeScale() - 0.25f) < 0.001f &&
+              timedVolume.IsExpired(),
+              "Volume: time dilation scale and duration are exposed");
+    }
+
+    {
+        AABBCollider box(Vector3{ 1.0f, 1.0f, 1.0f });
+        box.Update(Vector3::ZERO, Quaternion::Identity());
+        const ColliderDebugGeometry boxDebug = BuildColliderDebugGeometry(box);
+        check(!boxDebug.lines.empty(), "DebugGeometry: collider wire lines are generated");
+
+        RigidBody bodyA;
+        RigidBody bodyB;
+        bodyA.SetPosition(Vector3::ZERO);
+        bodyB.SetPosition(Vector3::RIGHT);
+        DistanceConstraint distance(&bodyA, &bodyB, 1.0f);
+        const ConstraintDebugGeometry constraintDebug = BuildConstraintDebugGeometry(distance);
+        check(!constraintDebug.lines.empty(), "DebugGeometry: constraint lines are generated");
+    }
+
+    {
+        RigidBody source;
+        source.SetMass(2.0f);
+        source.SetPosition({ 1.0f, 2.0f, 3.0f });
+        source.SetVelocity({ 4.0f, 5.0f, 6.0f });
+        source.SetFreezePosition({ true, false, true });
+        source.SetFreezeRotation({ false, true, false });
+        source.m_charge = 3.0f;
+        source.m_isGravitationalSource = true;
+        source.m_gravitationalMass = 4.0f;
+
+        const std::string saved = RigidBodySerializer::Serialize(source);
+        RigidBody loaded;
+        const bool ok = RigidBodySerializer::Deserialize(loaded, saved);
+        check(ok &&
+              std::abs(loaded.GetMass() - 2.0f) < 0.001f &&
+              std::abs(loaded.GetPosition().x - 1.0f) < 0.001f &&
+              loaded.GetFreezePosition().x &&
+              loaded.GetFreezeRotation().y &&
+              loaded.m_isGravitationalSource,
+              "RigidBodySerializer: state and extended settings round-trip");
+    }
+}
+
 int main()
 {
     std::printf("FBZZ Physics Test\n");
@@ -1360,6 +1868,7 @@ int main()
     TestPhase9_ConvexHullWorld();
     TestPhase10_Triggers();
     TestPhase11_Constraints();
+    TestPhase12_PhysicsFeatureCoverage();
 
     std::printf("\n=================\n");
     std::printf("Results: %d passed, %d failed\n", g_passed, g_failed);
