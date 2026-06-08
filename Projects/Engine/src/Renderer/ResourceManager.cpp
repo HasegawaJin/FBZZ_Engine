@@ -90,6 +90,17 @@ void ResourceManager::ReloadAllShaders()
     FBZZ_LOG_INFO("ResourceManager: %zu shader(s) hot-reloaded", count);
 }
 
+void ResourceManager::Reset()
+{
+    // WHAT: 所有リソースを全て手放し、ResourceHandle の gen を進めて旧ハンドルを無効化する。
+    // WHY: デバイスロスト復帰後に旧ネイティブリソースへ触るとクラッシュするため、
+    //      RenderSystem 側は GetResetVersion() の変化を検知して static handle を再作成する。
+    ReleaseOwnedResourcesForShutdown();
+    ++m_resetVersion;
+    FBZZ_LOG_INFO("ResourceManager: reset renderer resources (version=%llu)",
+                  static_cast<unsigned long long>(m_resetVersion));
+}
+
 ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
 {
     const std::string key(path);
