@@ -43,10 +43,6 @@ namespace fbzz::physics
     class World 
     {
     public:
-        void SetBodies(std::vector<std::shared_ptr<RigidBody>> bodies);
-        const std::vector<std::shared_ptr<RigidBody>>& GetBodies() const;
-        void SetColliders(std::vector<ColliderInstance> colliders);
-        void SetVolumes(std::vector<std::shared_ptr<Volume>> volumes);
         void BeginSceneSync();
         BodyHandle SyncBody(BodyHandle handle, std::shared_ptr<RigidBody> body);
         ColliderHandle SyncCollider(ColliderHandle handle, ColliderInstance collider);
