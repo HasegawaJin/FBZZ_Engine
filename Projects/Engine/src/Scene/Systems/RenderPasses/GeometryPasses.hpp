@@ -20,6 +20,7 @@ namespace fbzz::scene {
 
 class  GameObject;
 struct MaterialComponent;
+struct SkinnedMeshRenderer;
 
 // シャドウマップ解像度。RenderSystem の初期化と各パスで参照する。
 constexpr uint32_t kShadowMapSize = 8192u;
@@ -88,6 +89,16 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh);
 bool IsVisibleInFrustum(const math::Frustum& frustum,
                         const Transform& tf,
                         const renderer::Mesh& mesh);
+
+// SkinnedMeshRenderer の全 submesh bounds を 1 つの保守的なワールド球へまとめる。
+// false の場合は CPU bounds 未生成などで安全にカリングできないため、呼び出し側は描画を継続する。
+bool ComputeSkinnedWorldBounds(const Transform& tf,
+                               const SkinnedMeshRenderer& smr,
+                               WorldBounds& outBounds);
+
+bool IsSkinnedVisibleInFrustum(const math::Frustum& frustum,
+                               const Transform& tf,
+                               const SkinnedMeshRenderer& smr);
 
 // Deferred GBuffer に書き込めないエフェクト系シェーダーかどうかをシェーダーパス名で判定する。
 // 後方互換のため残す。新規呼び出しは IsForwardOnly(MaterialComponent) を使うこと。
