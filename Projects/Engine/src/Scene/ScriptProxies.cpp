@@ -330,6 +330,30 @@ void ScriptPhysicsProxy::AddImpulse(const math::Vector3& v) const
     if (auto* rb = SelfRigidBody(script)) rb->ApplyImpulse(v);
 }
 
+void ScriptPhysicsProxy::AddForceAtPoint(const math::Vector3& force, const math::Vector3& worldPoint) const
+{
+    if (auto* rb = SelfRigidBody(script)) rb->ApplyForceAtPoint(force, worldPoint);
+}
+
+float ScriptPhysicsProxy::GetMass() const
+{
+    if (auto* rb = SelfRigidBody(script)) return rb->GetMass();
+    return 0.0f;
+}
+
+void ScriptPhysicsProxy::SetMass(float mass) const
+{
+    if (auto* rb = SelfRigidBody(script)) rb->SetMass(mass);
+}
+
+void ScriptPhysicsProxy::SetStatic(bool isStatic) const
+{
+    if (auto* rb = SelfRigidBody(script)) {
+        rb->m_isStatic = isStatic;
+        rb->SetMass(rb->GetMass());
+    }
+}
+
 void ScriptPhysicsProxy::SetVelocity(const math::Vector3& v) const
 {
     if (auto* rb = SelfRigidBody(script)) rb->SetVelocity(v);
@@ -341,9 +365,30 @@ math::Vector3 ScriptPhysicsProxy::GetVelocity() const
     return math::Vector3::ZERO;
 }
 
+void ScriptPhysicsProxy::SetAngularVelocity(const math::Vector3& v) const
+{
+    if (auto* rb = SelfRigidBody(script)) rb->SetAngularVelocity(v);
+}
+
+math::Vector3 ScriptPhysicsProxy::GetAngularVelocity() const
+{
+    if (auto* rb = SelfRigidBody(script)) return rb->GetAngularVelocity();
+    return math::Vector3::ZERO;
+}
+
 void ScriptPhysicsProxy::AddTorque(const math::Vector3& v) const
 {
     if (auto* rb = SelfRigidBody(script)) rb->ApplyTorque(v);
+}
+
+void ScriptPhysicsProxy::SetFreezePosition(bool x, bool y, bool z) const
+{
+    if (auto* rb = SelfRigidBody(script)) rb->SetFreezePosition({ x, y, z });
+}
+
+void ScriptPhysicsProxy::SetFreezeRotation(bool x, bool y, bool z) const
+{
+    if (auto* rb = SelfRigidBody(script)) rb->SetFreezeRotation({ x, y, z });
 }
 
 bool ScriptPhysicsProxy::Raycast(const math::Vector3& origin, const math::Vector3& dir, float dist, RaycastHit& hit) const

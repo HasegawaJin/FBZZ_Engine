@@ -356,24 +356,162 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
 
 namespace fbzz::physics
 {
-    void World::SetBodies(std::vector<std::shared_ptr<RigidBody>> bodies)
+    namespace
     {
-        m_bodies = std::move(bodies);
+        uint32_t NextGeneration(uint32_t generation)
+        {
+            return generation == 0xFFFFFFFFu ? 1u : generation + 1u;
+        }
     }
 
-    const std::vector<std::shared_ptr<RigidBody>>& World::GetBodies() const
+    void World::BeginSceneSync()
     {
-        return m_bodies;
+        for (auto& slot : m_bodyPool)
+            slot.touched = false;
+        for (auto& slot : m_colliderPool)
+            slot.touched = false;
+        for (auto& slot : m_volumePool)
+            slot.touched = false;
     }
 
-    void World::SetColliders(std::vector<ColliderInstance> colliders)
+    BodyHandle World::SyncBody(BodyHandle handle, std::shared_ptr<RigidBody> body)
     {
-        m_colliders = std::move(colliders);
+        if (!body) return {};
+
+        if (handle.IsValid()) {
+            const size_t index = static_cast<size_t>(handle.slot - 1u);
+            if (index < m_bodyPool.size() &&
+                m_bodyPool[index].generation == handle.generation &&
+                m_bodyPool[index].body &&
+                !m_bodyPool[index].touched)
+            {
+                m_bodyPool[index].body = std::move(body);
+                m_bodyPool[index].touched = true;
+                return handle;
+            }
+        }
+
+        for (size_t i = 0; i < m_bodyPool.size(); ++i) {
+            if (!m_bodyPool[i].body) {
+                m_bodyPool[i].body = std::move(body);
+                m_bodyPool[i].touched = true;
+                return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
+            }
+        }
+
+        BodySlot slot;
+        slot.body = std::move(body);
+        slot.touched = true;
+        m_bodyPool.push_back(std::move(slot));
+        return { static_cast<uint32_t>(m_bodyPool.size()), m_bodyPool.back().generation };
     }
 
-    void World::SetVolumes(std::vector<std::shared_ptr<Volume>> volumes)
+    ColliderHandle World::SyncCollider(ColliderHandle handle, ColliderInstance collider)
     {
-        m_volumes = std::move(volumes);
+        if (!collider.collider) return {};
+
+        if (collider.body)
+        {
+            // ColliderInstance は Physics 単体利用時にも Body と形状の対応を持つ入口になる。
+            // Engine 側の PhysicsSystem だけに慣性設定を任せると、Tests のように World を直接使う経路で
+            // AABB の「軸整合なので回転させない」という制約が抜けるため、同期時に必ず形状から慣性を更新する。
+            collider.body->SetInertiaFromCollider(collider.collider.get());
+        }
+
+        if (handle.IsValid()) {
+            const size_t index = static_cast<size_t>(handle.slot - 1u);
+            if (index < m_colliderPool.size() &&
+                m_colliderPool[index].generation == handle.generation &&
+                m_colliderPool[index].occupied &&
+                !m_colliderPool[index].touched)
+            {
+                m_colliderPool[index].collider = std::move(collider);
+                m_colliderPool[index].touched = true;
+                return handle;
+            }
+        }
+
+        for (size_t i = 0; i < m_colliderPool.size(); ++i) {
+            if (!m_colliderPool[i].occupied) {
+                m_colliderPool[i].collider = std::move(collider);
+                m_colliderPool[i].occupied = true;
+                m_colliderPool[i].touched = true;
+                return { static_cast<uint32_t>(i + 1u), m_colliderPool[i].generation };
+            }
+        }
+
+        ColliderSlot slot;
+        slot.collider = std::move(collider);
+        slot.occupied = true;
+        slot.touched = true;
+        m_colliderPool.push_back(std::move(slot));
+        return { static_cast<uint32_t>(m_colliderPool.size()), m_colliderPool.back().generation };
+    }
+
+    VolumeHandle World::SyncVolume(VolumeHandle handle, std::shared_ptr<Volume> volume)
+    {
+        if (!volume) return {};
+
+        if (handle.IsValid()) {
+            const size_t index = static_cast<size_t>(handle.slot - 1u);
+            if (index < m_volumePool.size() &&
+                m_volumePool[index].generation == handle.generation &&
+                m_volumePool[index].volume &&
+                !m_volumePool[index].touched)
+            {
+                m_volumePool[index].volume = std::move(volume);
+                m_volumePool[index].touched = true;
+                return handle;
+            }
+        }
+
+        for (size_t i = 0; i < m_volumePool.size(); ++i) {
+            if (!m_volumePool[i].volume) {
+                m_volumePool[i].volume = std::move(volume);
+                m_volumePool[i].touched = true;
+                return { static_cast<uint32_t>(i + 1u), m_volumePool[i].generation };
+            }
+        }
+
+        VolumeSlot slot;
+        slot.volume = std::move(volume);
+        slot.touched = true;
+        m_volumePool.push_back(std::move(slot));
+        return { static_cast<uint32_t>(m_volumePool.size()), m_volumePool.back().generation };
+    }
+
+    void World::EndSceneSync()
+    {
+        m_bodies.clear();
+        for (auto& slot : m_bodyPool) {
+            if (slot.touched && slot.body) {
+                m_bodies.push_back(slot.body);
+            } else if (slot.body) {
+                slot.body.reset();
+                slot.generation = NextGeneration(slot.generation);
+            }
+        }
+
+        m_colliders.clear();
+        for (auto& slot : m_colliderPool) {
+            if (slot.touched && slot.occupied && slot.collider.collider) {
+                m_colliders.push_back(slot.collider);
+            } else if (slot.occupied) {
+                slot.collider = {};
+                slot.occupied = false;
+                slot.generation = NextGeneration(slot.generation);
+            }
+        }
+
+        m_volumes.clear();
+        for (auto& slot : m_volumePool) {
+            if (slot.touched && slot.volume) {
+                m_volumes.push_back(slot.volume);
+            } else if (slot.volume) {
+                slot.volume.reset();
+                slot.generation = NextGeneration(slot.generation);
+            }
+        }
     }
 
     void World::AddConstraint(std::shared_ptr<Constraint> constraint)
@@ -417,7 +555,9 @@ namespace fbzz::physics
             UpdateColliders();
             BroadPhase();
             NarrowPhase(s == 0); // WarmStart は最初のサブステップのみ
+            WakeSleepingContacts();
             Resolve();
+            UpdateSleepStates(subDt);
         }
 
         // フレーム末尾に蓄積インパルスを保存し古いキャッシュを削除する
@@ -443,6 +583,7 @@ namespace fbzz::physics
         for (size_t i = 0; i < m_bodies.size(); ++i)
         {
             auto& body = m_bodies[i];
+            if (!body || body->IsSleeping()) continue;
             bool gravityOverridden = false;
 
             for (auto& volume : m_volumes)
@@ -454,8 +595,8 @@ namespace fbzz::physics
                 volume->Apply(*body, effectiveDts[i]);
             }
 
-            if (!body->IsStatic() && !gravityOverridden)
-                body->ApplyForce(m_gravity * body->GetMass());
+            if (!body->IsStatic() && !gravityOverridden && body->m_useGravity)
+                body->ApplyForce(m_gravity * body->GetMass() * body->m_gravityScale);
         }
     }
 
@@ -551,6 +692,35 @@ namespace fbzz::physics
     void World::Resolve()
     {
         m_solver.Resolve(m_contacts);
+    }
+
+    void World::WakeSleepingContacts()
+    {
+        constexpr float WAKE_SPEED_SQ = 0.02f * 0.02f;
+        for (const auto& cp : m_contacts)
+        {
+            if (cp.isTrigger) continue;
+            RigidBody* a = cp.bodyA;
+            RigidBody* b = cp.bodyB;
+            const bool movingA = a && !a->IsSleeping() &&
+                (a->GetVelocity().LengthSq() + a->GetAngularVelocity().LengthSq()) > WAKE_SPEED_SQ;
+            const bool movingB = b && !b->IsSleeping() &&
+                (b->GetVelocity().LengthSq() + b->GetAngularVelocity().LengthSq()) > WAKE_SPEED_SQ;
+            if (movingA && b && b->IsSleeping()) b->WakeUp();
+            if (movingB && a && a->IsSleeping()) a->WakeUp();
+        }
+    }
+
+    void World::UpdateSleepStates(float dt)
+    {
+        constexpr float LINEAR_SLEEP_THRESHOLD = 0.03f;
+        constexpr float ANGULAR_SLEEP_THRESHOLD = 0.03f;
+        constexpr float SLEEP_TIME = 0.75f;
+        for (auto& body : m_bodies)
+        {
+            if (body)
+                body->UpdateSleepState(dt, LINEAR_SLEEP_THRESHOLD, ANGULAR_SLEEP_THRESHOLD, SLEEP_TIME);
+        }
     }
 
     void World::CCDPhase(float dt)
@@ -774,9 +944,9 @@ namespace fbzz::physics
                 aabb.max = aabb.max + expand;
                 float tBox; math::Vector3 nBox;
                 bool hitBox = RayAABB(origin, d, maxDistance, aabb.min, aabb.max, tBox, nBox);
-                if (hitA && tA < t) { t = tA; n = nA; }
-                if (hitB && tB < t) { t = tB; n = nB; }
-                if (hitBox && tBox < t) { t = tBox; n = nBox; }
+                if (hitA && (t < 0.0f || tA < t)) { t = tA; n = nA; }
+                if (hitB && (t < 0.0f || tB < t)) { t = tB; n = nB; }
+                if (hitBox && (t < 0.0f || tBox < t)) { t = tBox; n = nBox; }
                 break;
             }
             default: {

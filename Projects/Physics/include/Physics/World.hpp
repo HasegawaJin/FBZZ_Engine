@@ -3,6 +3,7 @@
 // 物理シミュレーション世界の管理と Step 実行
 #pragma once
 #include <Physics/RigidBody.hpp>
+#include <Physics/BodyHandle.hpp>
 #include <Physics/ContactPoint.hpp>
 #include <Physics/CollisionPair.hpp>
 #include <Physics/PhysicsSolver.hpp>
@@ -15,6 +16,8 @@
 #include <Physics/DistanceConstraint.hpp>
 #include <Physics/ChainConstraint.hpp>
 #include <Physics/HingeConstraint.hpp>
+#include <Physics/FixedConstraint.hpp>
+#include <Physics/SliderConstraint.hpp>
 #include <functional>
 #include <vector>
 #include <map>
@@ -40,10 +43,11 @@ namespace fbzz::physics
     class World 
     {
     public:
-        void SetBodies(std::vector<std::shared_ptr<RigidBody>> bodies);
-        const std::vector<std::shared_ptr<RigidBody>>& GetBodies() const;
-        void SetColliders(std::vector<ColliderInstance> colliders);
-        void SetVolumes(std::vector<std::shared_ptr<Volume>> volumes);
+        void BeginSceneSync();
+        BodyHandle SyncBody(BodyHandle handle, std::shared_ptr<RigidBody> body);
+        ColliderHandle SyncCollider(ColliderHandle handle, ColliderInstance collider);
+        VolumeHandle SyncVolume(VolumeHandle handle, std::shared_ptr<Volume> volume);
+        void EndSceneSync();
         void AddConstraint(std::shared_ptr<Constraint> constraint);
         const std::vector<std::shared_ptr<Constraint>>& GetConstraints() const;
 
@@ -115,6 +119,8 @@ namespace fbzz::physics
         void BroadPhase();
         void NarrowPhase(bool doWarmStart = false);
         void Resolve();
+        void WakeSleepingContacts();
+        void UpdateSleepStates(float dt);
         void ClassifyCollisions();
         void CCDPhase(float dt);    // 高速物体のトンネリング防止 (IntegrateBodies の前)
 
@@ -127,6 +133,25 @@ namespace fbzz::physics
         std::vector<ColliderInstance>           m_colliders;
         std::vector<std::shared_ptr<Volume>>    m_volumes;
         std::vector<std::shared_ptr<Constraint>> m_constraints;
+        struct BodySlot {
+            std::shared_ptr<RigidBody> body;
+            uint32_t generation = 1;
+            bool touched = false;
+        };
+        struct ColliderSlot {
+            ColliderInstance collider;
+            uint32_t generation = 1;
+            bool touched = false;
+            bool occupied = false;
+        };
+        struct VolumeSlot {
+            std::shared_ptr<Volume> volume;
+            uint32_t generation = 1;
+            bool touched = false;
+        };
+        std::vector<BodySlot> m_bodyPool;
+        std::vector<ColliderSlot> m_colliderPool;
+        std::vector<VolumeSlot> m_volumePool;
         std::vector<CollisionPair>              m_collisionPairs;
         std::vector<ContactPoint>               m_contacts;
         PhysicsSolver                           m_solver;
