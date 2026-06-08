@@ -35,6 +35,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
@@ -510,10 +511,16 @@ void EditorApp::BeginFrame()
     // Viewport パネルサイズが前フレームで変わった場合は RT を再生成する。
     // main ループの「シーン描画」より前に呼ぶことで、RT のサイズが確定した状態で
     // シーンをレンダリングでき、リサイズ直後のフレームで古い解像度の画像が表示されるのを防ぐ。
-    ResizeViewportRTsIfNeeded();
+    {
+        FBZZ_PROFILE_SCOPE("EditorBegin::ResizeViewportRTs");
+        ResizeViewportRTsIfNeeded();
+    }
 
-    m_imguiRenderer->ImGuiNewFrame();
-    ImGui::NewFrame();
+    {
+        FBZZ_PROFILE_SCOPE("EditorBegin::ImGuiNewFrame");
+        m_imguiRenderer->ImGuiNewFrame();
+        ImGui::NewFrame();
+    }
 
     // WHY: Unity 同様、Play 中・Pause 中はエディターとの区別を一目で把握できるようにする。
     //      ImGui のスタイルカラーをフレームごとに上書きすることで
@@ -541,11 +548,20 @@ void EditorApp::BeginFrame()
     }
 
     ImGuizmo::BeginFrame();
-    m_hotkeys.ProcessInput();
-    CheckHotReload();
-    CheckScriptDirtyAndRebuild();
-    CheckHlslDirty();
-    RefreshSceneDirtyState(false);
+    {
+        FBZZ_PROFILE_SCOPE("EditorBegin::Hotkeys");
+        m_hotkeys.ProcessInput();
+    }
+    {
+        FBZZ_PROFILE_SCOPE("EditorBegin::HotReload");
+        CheckHotReload();
+        CheckScriptDirtyAndRebuild();
+        CheckHlslDirty();
+    }
+    {
+        FBZZ_PROFILE_SCOPE("EditorBegin::SceneDirty");
+        RefreshSceneDirtyState(false);
+    }
 
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
@@ -562,23 +578,26 @@ void EditorApp::BeginFrame()
         ImGuiWindowFlags_NoNavFocus            |
         ImGuiWindowFlags_MenuBar;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,   0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,    { 0.0f, 0.0f });
-    ImGui::Begin("##DockSpaceHost", nullptr, hostFlags);
-    ImGui::PopStyleVar(3);
+    {
+        FBZZ_PROFILE_SCOPE("EditorBegin::DockSpace");
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,   0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,    { 0.0f, 0.0f });
+        ImGui::Begin("##DockSpaceHost", nullptr, hostFlags);
+        ImGui::PopStyleVar(3);
 
-    BuildMenuBar(m_ctx);
-    BuildPlayToolbar(m_ctx);
+        BuildMenuBar(m_ctx);
+        BuildPlayToolbar(m_ctx);
 
-    ImGuiID dockId = ImGui::GetID("MainDockSpace");
-    ImGui::DockSpace(dockId, { 0, 0 }, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
+        ImGuiID dockId = ImGui::GetID("MainDockSpace");
+        ImGui::DockSpace(dockId, { 0, 0 }, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
 
-    // ModalDialog::OpenPopup は ImGui ウィンドウ (Begin/End) のスコープ内でしか機能しない。
-    // DockSpaceHost ウィンドウの内側に置くことでその制約を満たす。
-    ModalDialog::OnRender();
+        // ModalDialog::OpenPopup は ImGui ウィンドウ (Begin/End) のスコープ内でしか機能しない。
+        // DockSpaceHost ウィンドウの内側に置くことでその制約を満たす。
+        ModalDialog::OnRender();
 
-    ImGui::End();
+        ImGui::End();
+    }
 }
 
 void EditorApp::RenderPanels(EditorContext& ctx)

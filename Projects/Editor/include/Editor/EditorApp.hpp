@@ -121,6 +121,7 @@ private:
     bool                     m_scriptCompilePending  = false; // 変更検知からビルド開始待ち
     bool                     m_scriptInitialBuild    = false; // true のとき初回ビルド (skipDeps=false)
     float                    m_scriptDebounceTimer   = 0.0f;  // デバウンス用タイマー (秒)
+    float                    m_scriptDirtyPollTimer  = 0.0f;  // Scripts/ ツリー監視を毎フレーム走らせないための間隔管理
 
     // HLSL ホットリロード
     std::filesystem::path    m_hlslSourceDir;      // Assets/shaders/ ディレクトリ
@@ -129,6 +130,7 @@ private:
     Compiler                 m_hlslCompiler;
     bool                     m_hlslCompilePending = false;
     float                    m_hlslDebounceTimer  = 0.0f;
+    float                    m_hlslDirtyPollTimer = 0.0f; // HLSL ツリー監視を毎フレーム走らせないための間隔管理
 
     FILETIME                                 m_lastSceneWriteTime = {};
     HWND                                     m_hwnd          = nullptr;
