@@ -23,6 +23,11 @@ struct LightComponent {
     const char* GetTypeName() const { return "Light"; }
     void Reflect(IReflector& r)
     {
+        int typeValue = static_cast<int>(type);
+        r.Field("type", typeValue);
+        if (typeValue < 0) typeValue = 0;
+        if (typeValue > 2) typeValue = 2;
+        type = static_cast<Type>(typeValue);
         r.Field("enabled", enabled);
         r.Field("color", color);
         r.Field("intensity", intensity);

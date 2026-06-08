@@ -9,6 +9,7 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
+#include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/Gizmo.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -56,6 +57,22 @@ physics::RigidBody* SelfRigidBody(const Script* script)
 {
     auto* component = SelfComponent<RigidBodyComponent>(script);
     return component && component->enabled ? component->rigidBody.get() : nullptr;
+}
+
+renderer::Camera BuildCameraFromComponent(const GameObject* gameObject, const CameraComponent* component)
+{
+    renderer::Camera camera;
+    if (!gameObject || !component) {
+        return camera;
+    }
+
+    camera.m_position = gameObject->transform.position;
+    camera.m_rotation = gameObject->transform.rotation;
+    camera.m_fovY     = component->fovY;
+    camera.m_aspect   = component->aspectRatio;
+    camera.m_near     = component->nearZ;
+    camera.m_far      = component->farZ;
+    return camera;
 }
 
 uint32_t ParseTextureSlot(std::string_view slot)
@@ -485,6 +502,14 @@ void ScriptLightProxy::SetColor(const math::Vector3& color) const
     if (auto* l = SelfComponent<LightComponent>(script)) l->color = color;
 }
 
+void ScriptLightProxy::SetType(int type) const
+{
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        const int clamped = std::clamp(type, 0, 2);
+        l->type = static_cast<LightComponent::Type>(clamped);
+    }
+}
+
 void ScriptLightProxy::SetIntensity(float intensity) const
 {
     if (auto* l = SelfComponent<LightComponent>(script)) l->intensity = intensity;
@@ -493,6 +518,16 @@ void ScriptLightProxy::SetIntensity(float intensity) const
 void ScriptLightProxy::SetRange(float range) const
 {
     if (auto* l = SelfComponent<LightComponent>(script)) l->range = range;
+}
+
+void ScriptLightProxy::SetInnerCone(float degrees) const
+{
+    if (auto* l = SelfComponent<LightComponent>(script)) l->innerCone = degrees;
+}
+
+void ScriptLightProxy::SetOuterCone(float degrees) const
+{
+    if (auto* l = SelfComponent<LightComponent>(script)) l->outerCone = degrees;
 }
 
 void ScriptLightProxy::SetEnabled(bool enabled) const
@@ -516,6 +551,11 @@ void ScriptCameraProxy::SetFOV(float fovY) const
     if (auto* cam = SelfComponent<CameraComponent>(script)) cam->fovY = fovY;
 }
 
+void ScriptCameraProxy::SetAspectRatio(float aspectRatio) const
+{
+    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->aspectRatio = (std::max)(aspectRatio, 0.0001f);
+}
+
 void ScriptCameraProxy::SetNearFar(float nearZ, float farZ) const
 {
     if (auto* cam = SelfComponent<CameraComponent>(script)) {
@@ -524,14 +564,55 @@ void ScriptCameraProxy::SetNearFar(float nearZ, float farZ) const
     }
 }
 
+void ScriptCameraProxy::SetCullingMask(fbzz::LayerMask mask) const
+{
+    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->cullingMask = mask;
+}
+
 math::Vector3 ScriptCameraProxy::WorldToScreenPoint(const math::Vector3& worldPos) const
 {
-    return worldPos;
+    const auto* gameObject = script ? script->m_gameObject : nullptr;
+    const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
+    const auto& renderer = core::Application::Get().GetRenderer();
+    const float width = static_cast<float>((std::max)(renderer.GetWidth(), 1u));
+    const float height = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+
+    const math::Vector4 clip = camera.GetViewProjection() * math::Vector4(worldPos, 1.0f);
+    if (std::abs(clip.w) <= 0.000001f) {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+
+    const float invW = 1.0f / clip.w;
+    const float ndcX = clip.x * invW;
+    const float ndcY = clip.y * invW;
+    const float ndcZ = clip.z * invW;
+
+    // WHAT: 左上原点の pixel 座標へ変換する。z は DirectX depth range の 0..1 を返す。
+    return {
+        (ndcX * 0.5f + 0.5f) * width,
+        (0.5f - ndcY * 0.5f) * height,
+        ndcZ
+    };
 }
 
 math::Vector3 ScriptCameraProxy::ScreenToWorldPoint(const math::Vector3& screenPos) const
 {
-    return screenPos;
+    const auto* gameObject = script ? script->m_gameObject : nullptr;
+    const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
+    const auto& renderer = core::Application::Get().GetRenderer();
+    const float width = static_cast<float>((std::max)(renderer.GetWidth(), 1u));
+    const float height = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+
+    const float ndcX = (screenPos.x / width) * 2.0f - 1.0f;
+    const float ndcY = 1.0f - (screenPos.y / height) * 2.0f;
+    const float ndcZ = std::clamp(screenPos.z, 0.0f, 1.0f);
+
+    const math::Matrix4 invVP = math::Matrix4::Inverse(camera.GetViewProjection());
+    const math::Vector4 world = invVP * math::Vector4(ndcX, ndcY, ndcZ, 1.0f);
+    if (std::abs(world.w) <= 0.000001f) {
+        return math::Vector3::ZERO;
+    }
+    return world.XYZ() * (1.0f / world.w);
 }
 
 MaterialComponent* ScriptMaterialProxy::Get() const

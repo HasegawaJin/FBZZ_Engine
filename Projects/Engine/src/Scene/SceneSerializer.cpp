@@ -601,6 +601,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* cc = go.GetComponent<CameraComponent>()) {
             toml::table ccTbl;
             ccTbl.insert("fovY",    (double)cc->fovY);
+            ccTbl.insert("aspectRatio", (double)cc->aspectRatio);
             ccTbl.insert("nearZ",   (double)cc->nearZ);
             ccTbl.insert("farZ",    (double)cc->farZ);
             ccTbl.insert("isMain",  cc->isMain);
@@ -802,6 +803,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             srTbl.insert("rayleighScattering", Vec3ToArr(sr->rayleighScattering));
             srTbl.insert("mieScattering",      (double)sr->mieScattering);
             srTbl.insert("sunIntensity",       (double)sr->sunIntensity);
+            srTbl.insert("planetRadius",       (double)sr->planetRadius);
+            srTbl.insert("atmosphereRadius",   (double)sr->atmosphereRadius);
             srTbl.insert("mieG",               (double)sr->mieG);
             srTbl.insert("enabled",            sr->enabled);
             goTbl.insert("SkyRenderer", std::move(srTbl));
@@ -1301,6 +1304,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* ccTbl = (*goTbl)["CameraComponent"].as_table()) {
             CameraComponent cc{};
             cc.fovY    = (float)(*ccTbl)["fovY"].value_or(60.0);
+            cc.aspectRatio = (float)(*ccTbl)["aspectRatio"].value_or(16.0 / 9.0);
             cc.nearZ   = (float)(*ccTbl)["nearZ"].value_or(0.1);
             cc.farZ    = (float)(*ccTbl)["farZ"].value_or(1000.0);
             cc.isMain  = (*ccTbl)["isMain"].value_or(true);
@@ -1502,6 +1506,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                                               { 5.8e-3f, 13.5e-3f, 33.1e-3f });
             sr.mieScattering = (float)(*srTbl)["mieScattering"].value_or(21.0e-4);
             sr.sunIntensity  = (float)(*srTbl)["sunIntensity"].value_or(20.0);
+            sr.planetRadius  = (float)(*srTbl)["planetRadius"].value_or(6371.0);
+            sr.atmosphereRadius = (float)(*srTbl)["atmosphereRadius"].value_or(6471.0);
             sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
             sr.enabled       = (*srTbl)["enabled"].value_or(true);
             go.AddComponent<SkyRenderer>(sr);

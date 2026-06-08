@@ -288,7 +288,9 @@ fbzz::renderer::Camera ResolveGameCamera(fbzz::scene::Scene& scene, float aspect
         result.m_fovY     = cam->fovY;
         result.m_near     = cam->nearZ;
         result.m_far      = cam->farZ;
-        result.m_aspect   = aspectRatio;
+        // WHY: ScriptCameraProxy が Component から同じ投影値を再構築できるよう、実 viewport aspect を同期する。
+        cam->aspectRatio  = aspectRatio;
+        result.m_aspect   = cam->aspectRatio;
         return result;
     }
     fbzz::renderer::Camera fallback;

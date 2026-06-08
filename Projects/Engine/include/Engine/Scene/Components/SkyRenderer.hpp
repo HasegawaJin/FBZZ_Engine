@@ -15,6 +15,9 @@ struct SkyRenderer {
     math::Vector3 rayleighScattering = { 5.8e-3f, 13.5e-3f, 33.1e-3f };
     float         mieScattering      = 21.0e-4f;
     float         sunIntensity       = 20.0f;
+    // WHAT: シェーダーは km 単位の半径を使う。地球以外のスケールでも空を調整できるよう Scene に保持する。
+    float         planetRadius       = 6371.0f;
+    float         atmosphereRadius   = 6471.0f;
     // Henyey-Greenstein 位相関数の非対称パラメーター (0=等方散乱, 1=完全前方散乱)。
     // 0.76 は大気中のエアロゾルに典型的な値で、太陽周辺のグローを再現する。
     float         mieG               = 0.76f;
@@ -27,6 +30,8 @@ struct SkyRenderer {
         r.Field("rayleighScattering", rayleighScattering);
         r.Field("mieScattering", mieScattering);
         r.Field("sunIntensity", sunIntensity);
+        r.Field("planetRadius", planetRadius);
+        r.Field("atmosphereRadius", atmosphereRadius);
         r.Field("mieG", mieG);
     }
 };
