@@ -102,6 +102,7 @@
 | Sleeping がない | `RigidBody` に Sleep/Wake 状態を追加し、低速継続で Sleep、外力・接触で Wake する |
 | Island 分割なし | `PhysicsSolver::Resolve()` で Contact graph を island 化し、独立接触群ごとに PGS を実行 |
 | Physics 独自ハンドル + 差分管理への移行 | `BodyHandle` / `ColliderHandle` / `VolumeHandle` と `World::BeginSceneSync/SyncBody/SyncCollider/SyncVolume/EndSceneSync` を追加し、`PhysicsSystem` を handle touch 方式へ切り替え |
+| `World::SetBodies/SetColliders/SetVolumes` 互換 API の削除 | 後方互換ラッパーを削除し、テストも `BeginSceneSync/Sync*/EndSceneSync` へ移行 |
 
 ---
 
@@ -109,7 +110,7 @@
 
 | 機能 | 説明 |
 |---|---|
-| **互換 API の整理** | `World::SetBodies/SetColliders` は既存テスト・外部呼び出しのため残している。完全移行後に deprecated 化して削除する |
+| - | 現時点で互換 API の残課題なし |
 
 ---
 
@@ -121,7 +122,7 @@
 │    1. Transform → RigidBody::SetPosition/SetRotation（書き込み）   │
 │    2. ColliderComponent → ColliderInstance 構築                     │
 │    3. VolumeComponent → physics::Volume 構築                        │
-│    4. World::SetBodies / SetColliders / SetVolumes                  │
+│    4. World::BeginSceneSync / SyncBody / SyncCollider / SyncVolume  │
 │    5. World::Step(dt)                                               │
 │    6. RigidBody::GetPosition → Transform 書き戻し                  │
 │    7. CollisionEvent → Script::OnCollision/OnTrigger コールバック   │
@@ -146,7 +147,7 @@
 
 | 優先度 | 項目 | 工数目安 |
 |---|---|---|
-| 1 | `World::SetBodies/SetColliders/SetVolumes` 互換 API の deprecated 化 | 小 |
+| - | 現時点の高優先度タスクなし | - |
 
 ---
 
@@ -247,7 +248,8 @@ Engine モジュール（PhysicsSystem）
 
 ### 残る移行余地
 
-`World::SetBodies/SetColliders/SetVolumes` は既存テストと外部コードの互換 API として残している。
+`World::SetBodies/SetColliders/SetVolumes` は削除済み。
+Scene 同期の公開 API は `BeginSceneSync/SyncBody/SyncCollider/SyncVolume/EndSceneSync` に統一する。
 
 ---
 

@@ -71,7 +71,7 @@ void EditorModule::OnUpdate(float dt)
 
     auto* playMode = m_editorApp.GetContext().playMode;
     if (playMode->ApplyPendingRestore(*m_scene)) {
-        // WHY: World は SetBodies() で剛体を差し替えるが m_contactCache / m_prevEvents はクリアしない。
+        // WHY: World は物理同期とは別に m_contactCache / m_prevEvents を保持する。
         //      前 Play セッションの Collider* が残ったまま次 Play が始まると物理が誤動作するため、
         //      Stop 復元のタイミングで World を丸ごとリセットする。
         m_physicsWorld = physics::World{};
