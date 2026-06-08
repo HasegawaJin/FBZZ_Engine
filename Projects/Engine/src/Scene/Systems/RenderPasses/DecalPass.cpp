@@ -24,6 +24,7 @@
 #include <Physics/Layer.hpp>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -113,6 +114,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         return;
 
     const float dt = core::Time::DeltaTime();
+    std::vector<EntityID> expiredDecals;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeSelf()) continue;
@@ -125,6 +127,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
             dc->age += dt;
             if (dc->age >= dc->lifetime) {
                 dc->enabled = false;
+                expiredDecals.push_back(go.GetID());
                 continue;
             }
         }
@@ -190,6 +193,11 @@ void ExecuteDecalPass(RenderPassContext& ctx)
         if (needsMask && h.decalMaskRT.IsValid())
             drawCall.textures[13] = resources.GetColorTexture(h.decalMaskRT, 0);
         r.Submit(drawCall, resources);
+    }
+
+    // WHY: GameObjects() の走査中に即時削除すると iterator が無効化されるため、pass 後に破棄キューへ積む。
+    for (EntityID id : expiredDecals) {
+        ctx.scene.DestroyGameObject(id);
     }
 }
 
