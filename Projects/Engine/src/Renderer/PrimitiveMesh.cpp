@@ -1,7 +1,7 @@
 // FBZZ Engine
 // PrimitiveMesh.cpp | fbzz::renderer
 // 手続き生成メッシュの実装
-// Cube / Sphere / Plane を CPU 側で生成し、ResourceManager で GPU バッファ化する。
+// Cube / Sphere / Plane / Quad を CPU 側で生成し、ResourceManager で GPU バッファ化する。
 // アセット読み込みなしでデバッグ・既定形状を使えるようにする。
 #include "Engine/Renderer/PrimitiveMesh.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -127,6 +127,27 @@ std::shared_ptr<Mesh> PrimitiveMesh::Plane(ResourceManager& resources)
         { .position={  0.5f, 0.0f,  0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
         { .position={  0.5f, 0.0f, -0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
         { .position={ -0.5f, 0.0f, -0.5f }, .normal={ 0,1,0 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
+    };
+    const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
+
+    auto mesh = std::make_shared<Mesh>();
+    mesh->vertexBuffer = resources.CreateVertexBuffer(verts, sizeof(verts), sizeof(Vertex));
+    mesh->indexBuffer  = resources.CreateIndexBuffer(idx, 6);
+    mesh->vertexCount  = 4;
+    mesh->indexCount   = 6;
+    mesh->cpuVertices.assign(std::begin(verts), std::end(verts));
+    mesh->cpuIndices.assign(std::begin(idx), std::end(idx));
+    mesh->ComputeBounds();
+    return mesh;
+}
+
+std::shared_ptr<Mesh> PrimitiveMesh::Quad(ResourceManager& resources)
+{
+    const Vertex verts[] = {
+        { .position={ -0.5f,  0.5f, 0.0f }, .normal={ 0,0,1 }, .tangent={ 1,0,0 }, .uv={ 0, 0 }},
+        { .position={  0.5f,  0.5f, 0.0f }, .normal={ 0,0,1 }, .tangent={ 1,0,0 }, .uv={ 1, 0 }},
+        { .position={  0.5f, -0.5f, 0.0f }, .normal={ 0,0,1 }, .tangent={ 1,0,0 }, .uv={ 1, 1 }},
+        { .position={ -0.5f, -0.5f, 0.0f }, .normal={ 0,0,1 }, .tangent={ 1,0,0 }, .uv={ 0, 1 }},
     };
     const uint32_t idx[] = { 0, 1, 2,  0, 2, 3 };
 

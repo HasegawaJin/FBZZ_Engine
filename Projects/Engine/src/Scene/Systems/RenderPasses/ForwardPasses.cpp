@@ -181,10 +181,12 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* anim = go.GetComponent<AnimatorComponent>();
         if (!smr || !smr->enabled || !smr->model || !mat || !mat->EnsureMaterialAsset()) continue;
 
-        // WHY: スキンドメッシュには共通の bounds が設定されていないため
-        //      Transform の位置でフラスタムの簡易チェックを行う。
-        //      保守的な球を用意したい場合は SkinnedMeshRenderer に
-        //      aggregateBounds フィールドを追加する拡張が考えられる。
+        ++ctx.statsTotalObjects;
+        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) {
+            ++ctx.statsFrustumCulled;
+            continue;
+        }
+
         const float dx = go.transform.position.x - cam.m_position.x;
         const float dy = go.transform.position.y - cam.m_position.y;
         const float dz = go.transform.position.z - cam.m_position.z;

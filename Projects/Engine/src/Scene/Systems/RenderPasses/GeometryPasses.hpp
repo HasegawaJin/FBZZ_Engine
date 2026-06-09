@@ -20,6 +20,7 @@ namespace fbzz::scene {
 
 class  GameObject;
 struct MaterialComponent;
+struct SkinnedMeshRenderer;
 
 // シャドウマップ解像度。RenderSystem の初期化と各パスで参照する。
 constexpr uint32_t kShadowMapSize = 8192u;
@@ -28,7 +29,7 @@ constexpr uint32_t kShadowMapSize = 8192u;
 inline constexpr math::Vector4 kHdrClearColor = { 0.005f, 0.005f, 0.02f, 1.0f };
 
 // パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
-constexpr int kMaxParticleDraw = 1000;
+constexpr int kMaxParticleDraw = 10000;
 
 // パーティクルビルボード頂点。Particle.hlsl の ParticleVSIn と一致させること。
 struct ParticleVertex {
@@ -36,7 +37,9 @@ struct ParticleVertex {
     float uv[2];      // TEXCOORD0   8 bytes
     float color[4];   // COLOR       16 bytes
     float size;       // TEXCOORD1    4 bytes
-};                    // 40 bytes
+    float rotation;   // TEXCOORD2    4 bytes
+    float uvRect[4];  // TEXCOORD3   16 bytes
+};                    // 60 bytes
 
 // ---- パス宣言 ---------------------------------------------------------------
 void ExecuteShadowPass                     (RenderPassContext& ctx);
@@ -88,6 +91,16 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh);
 bool IsVisibleInFrustum(const math::Frustum& frustum,
                         const Transform& tf,
                         const renderer::Mesh& mesh);
+
+// SkinnedMeshRenderer の全 submesh bounds を 1 つの保守的なワールド球へまとめる。
+// false の場合は CPU bounds 未生成などで安全にカリングできないため、呼び出し側は描画を継続する。
+bool ComputeSkinnedWorldBounds(const Transform& tf,
+                               const SkinnedMeshRenderer& smr,
+                               WorldBounds& outBounds);
+
+bool IsSkinnedVisibleInFrustum(const math::Frustum& frustum,
+                               const Transform& tf,
+                               const SkinnedMeshRenderer& smr);
 
 // Deferred GBuffer に書き込めないエフェクト系シェーダーかどうかをシェーダーパス名で判定する。
 // 後方互換のため残す。新規呼び出しは IsForwardOnly(MaterialComponent) を使うこと。

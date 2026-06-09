@@ -46,6 +46,10 @@ public:
     // WHY: HLSL ファイル変更時に compile_shaders.bat が全シェーダーを再コンパイルするため、
     //      個別パスではなく一括で呼ぶ方が効率的。
     void ReloadAllShaders();
+    // デバイスロスト復帰用に全 GPU リソースを破棄し、次フレームの遅延再生成を促す。
+    // WHY: 旧 D3D デバイスに紐づく COM リソースは新デバイスで再利用できないため。
+    void Reset();
+    [[nodiscard]] uint64_t GetResetVersion() const { return m_resetVersion; }
     ResourceHandle<TextureTag> LoadTexture(std::string_view path);
     ResourceHandle<TextureTag> CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height);
 
@@ -97,6 +101,7 @@ private:
     std::unordered_map<std::string, ResourceHandle<TextureTag>> m_textureCache;
     std::unordered_map<uint64_t, std::vector<ResourceHandle<TextureTag>>> m_renderTargetColors;
     std::unordered_map<uint64_t, ResourceHandle<TextureTag>> m_renderTargetDepths;
+    uint64_t m_resetVersion = 1;
 };
 
 } // namespace fbzz::renderer

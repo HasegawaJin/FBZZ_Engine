@@ -76,19 +76,15 @@
 
 #### 重要度：高
 
-**`colliderDirty` が `Reflect()` に含まれていない**
+**`colliderDirty` が `Reflect()` に含まれていない** ✅ 修正済み
 
-初期値 `true` で自動コライダー構築を意図しているが、シーンロード後に `colliderDirty` が復元されないためコライダー再構築がトリガーされない可能性がある。
-
-**修正方針：** `Reflect()` に追加するか、SceneSerializer でロード後に `colliderDirty = true` を保証する。
+SceneSerializer のロード後に `tc.colliderDirty = true` を明示的にセットして対応。
 
 ---
 
-**チャンクキャッシュの Entity 削除時クリーンアップ未実装**
+**チャンクキャッシュの Entity 削除時クリーンアップ未実装** ✅ 修正済み
 
-`static` な `s_chunkCache` / `s_texCache` はエンティティ削除後も解放されず、シーン遷移やエンティティ破棄時にメモリリークが発生する。
-
-**修正方針：** エンティティ無効時のキャッシュ削除ロジックを `TerrainRenderSystem` に追加する。
+`TerrainRenderSystem` の先頭で有効な TerrainComponent エンティティの index セットを構築し、`std::erase_if` で `g_chunkCache` / `g_texCache` の不要エントリを削除するように変更。GPU バッファは `resources.Release()` で解放。
 
 ---
 
@@ -152,47 +148,37 @@ const renderer::ResourceHandle<renderer::TextureTag> depthTex = {};  // 意図�
 
 ---
 
-**メッシュ・テクスチャ・波紋キャッシュの Entity 削除時クリーンアップ未実装**
+**メッシュ・テクスチャ・波紋キャッシュの Entity 削除時クリーンアップ未実装** ✅ 修正済み
 
-Terrain と同様。static な `s_meshCache / s_texCache / s_rippleStates` がエンティティ破棄後も残りメモリリークになる。
-
-**修正方針：** エンティティ無効時のキャッシュ削除ロジックを `WaterRenderSystem` に追加する。
+`WaterRenderSystem` の先頭で有効な WaterComponent エンティティの index セットを構築し、`s_meshCache / s_texCache / s_rippleStates` の不要エントリを削除。GPU リソースは `resources.Release()` で解放。
 
 ---
 
 #### 重要度：中
 
-**波紋テクスチャを毎フレーム Release → 再生成**
+**波紋テクスチャを毎フレーム Release → 再生成** ✅ 部分対応済み
 
-`UpdateRippleState` が毎フレーム `Release → CreateTexture` を実行し、CPU/GPU 双方でアロケーション・デアロケーションが繰り返される。
-
-**修正方針：** 128×128 の動的更新テクスチャ（`Map/Unmap`）に変更する。
+`ResourceManager` が `UpdateTexture` を持たないため Map/Unmap への完全移行は未対応。代替として、波紋リストが空かつ既存テクスチャが有効な場合は `UpdateRippleState` の CPU 計算・GPU アップロードをスキップするよう変更。アクティブな波紋がない間のアロケーションを排除。Map/Unmap 対応は `ResourceManager` に `UpdateTexture` API を追加後に実施する。
 
 ---
 
-**水しぶきに `std::rand()` を使用**
+**水しぶきに `std::rand()` を使用** ✅ 修正済み
 
-スレッドセーフでなくシードが固定。
-
-**修正方針：** `<random>` による局所的乱数生成器に切り替える（`Util/Random.hpp` が既存）。
+`std::mt19937` + `std::uniform_real_distribution` による局所乱数生成器に置き換え。スレッドセーフかつイベントごとにシードを再生成。
 
 ---
 
-**`steepness > 1.0f` の assert のみで事前クランプがない**
+**`steepness > 1.0f` の assert のみで事前クランプがない** ✅ 修正済み
 
-Gerstner 波の steepness が 1 を超えると波面が自己交差するが、Release ビルドで assert が消えて頂点が反転する。
-
-**修正方針：** `std::min(wave.steepness, 1.0f)` による防御的クランプを計算前に追加する。
+`BuildWaterCB` 内で `std::min(wave.steepness, 1.0f)` による防御的クランプを追加。`assert` は削除。
 
 ---
 
 #### 重要度：低
 
-**`GerstnerWave` パラメーターが `Reflect()` に含まれていない**
+**`GerstnerWave` パラメーターが `Reflect()` に含まれていない** ✅ 修正済み
 
-`waves` 配列が Inspector からもシリアライズからも編集できない。
-
-**修正方針：** SceneSerializer または IReflector 側で `waves` の読み書きを実装する。
+`WaterComponent::Reflect()` に `wave0_〜wave3_` プレフィックス付きで direction/amplitude/wavelength/steepness を追加。Inspector から 4 本の波を編集可能になった。SceneSerializer は既存実装済み。
 
 ---
 
@@ -200,19 +186,15 @@ Gerstner 波の steepness が 1 を超えると波面が自己交差するが、
 
 #### 重要度：高
 
-**`type` フィールドが `Reflect()` に含まれていない**
+**`type` フィールドが `Reflect()` に含まれていない** ✅ 修正済み
 
-Inspector から `VolumeType` が変更できない。ボリューム種別がエディターから設定不可という重大な欠落。
-
-**修正方針：** IReflector に enum 対応を追加するか、int 経由で `type` を `Reflect` に追加する。
+`int typeValue = static_cast<int>(type)` パターン（`LightComponent` と同様）で `Reflect()` に追加。Inspector から VolumeType を選択可能。
 
 ---
 
-**`elapsed` が `Reflect()` に含まれていない**
+**`elapsed` が `Reflect()` に含まれていない** ✅ 修正済み
 
-シーン保存→ロード後にタイマーがリセットされ、Play 中のシーン保存で状態が失われる。
-
-**修正方針：** `elapsed` を `Reflect` に追加するか、ロード後に明示的に `elapsed = 0` を保証する設計方針を文書化する。
+`Reflect()` に `elapsed` を追加し、SceneSerializer の保存・ロード両側でも対応。Play 中のシーン保存で経過時間が正しく復元されるようになった。
 
 ---
 
@@ -239,27 +221,21 @@ Inspector から `VolumeType` が変更できない。ボリューム種別が�
 
 #### 重要度：高
 
-**`AudioSystem` が Stop / Pause / Volume 変更を処理していない**
+**`AudioSystem` が Stop / Pause / Volume 変更を処理していない** ✅ 修正済み
 
-`AudioSystem.cpp` は `PlayOnAwake` の初回発火のみ実装されており、`ScriptAudioProxy::Stop() / Pause() / SetVolume()` に対応するシステム側コードがない。
-
-**修正方針：** `AudioSourceComponent` に `m_isPlaying / m_isPaused / m_pendingStop` フラグを追加し、`AudioSystem` がこれを毎フレーム見て AudioManager に指示を出す。
+`AudioSourceComponent` に `m_isPlaying / m_isPaused / m_pendingPlay / m_pendingStop / m_pendingPause` フラグを追加。`AudioSystem` が毎フレームこれらを見て `audioManager.StopBGM()` / `PlayBGM()` / `PlaySE()` を呼ぶよう実装。`ScriptAudioProxy::Stop/Pause/Play` もフラグ経由に変更。
 
 ---
 
-**`volume` が AudioManager 呼び出し時に渡されていない**
+**`volume` が AudioManager 呼び出し時に渡されていない** ✅ 修正済み
 
-`AudioSystem.cpp` の `PlayBGM / PlaySE` 呼び出しに `asc.volume` が渡されておらず、設定したボリュームが実際の再生に反映されない。
-
-**修正方針：** `AudioManager::PlayBGM / PlaySE` の引数に `volume` を追加し、`AudioSystem` で渡す。
+再生前に `audioManager.SetBGMVolume(asc.volume)` / `SetSEVolume(asc.volume)` を呼ぶことでボリュームを反映。
 
 ---
 
-**再生中フラグが `m_played`（初回フラグ）のみで状態追跡できない**
+**再生中フラグが `m_played`（初回フラグ）のみで状態追跡できない** ✅ 修正済み
 
-Stop / Pause 後の状態が Component で追跡できない。
-
-**修正方針：** `bool m_isPlaying = false` / `bool m_isPaused = false` を追加し、`AudioSystem` が同期する。
+`m_isPlaying` / `m_isPaused` を追加し AudioSystem が同期する。`m_played` は PlayOnAwake の初回フラグとして継続使用。
 
 ---
 
@@ -271,11 +247,9 @@ Stop / Pause 後の状態が Component で追跡できない。
 
 ---
 
-**`AudioSystem` の `dt` 引数が未使用**
+**`AudioSystem` の `dt` 引数が未使用** ✅ 修正済み
 
-将来の Fade-in/out 処理の予約と考えられるが、コンパイル警告の原因になりうる。
-
-**修正方針：** `[[maybe_unused]]` を付けるか、フェード処理を実装して使用する。
+`[[maybe_unused]]` を付与。Fade-in/out 実装時に使用する。
 
 ---
 
@@ -292,11 +266,9 @@ Stop / Pause 後の状態が Component で追跡できない。
 
 #### 重要度：高
 
-**`Jump()` の呼び出しと `ApplyImpulse()` の順序が API で保証されていない**
+**`Jump()` の呼び出しと `ApplyImpulse()` の順序が API で保証されていない** ✅ 修正済み
 
-コメントに「rb->ApplyImpulse は呼び出し元で行う」とあるが、Script 側が順序を誤ると `jumpGroundIgnoreTime` のタイミングがずれてジャンプ直後に着地判定が入る。
-
-**修正方針：** `Jump(RigidBody* rb)` シグネチャでインパルスも内部で適用するか、API ドキュメントで呼び出し順を明示する。
+シグネチャを `Jump(physics::RigidBody* rb, const math::Vector3& impulse)` に変更。内部でステート更新後に `rb->ApplyImpulse(impulse)` を呼ぶことで正しい順序を保証。Script 側は `Jump(rb, impulse)` 1 呼び出しのみで完結する。
 
 ---
 
@@ -330,18 +302,19 @@ Stop / Pause 後の状態が Component で追跡できない。
 
 ## 修正優先順位まとめ
 
-| 優先度 | コンポーネント | 項目 | 工数目安 |
-|---|---|---|---|
-| 1 | VolumeComponent | `type` を `Reflect()` に追加 | 小 |
-| 2 | AudioSourceComponent | Stop/Pause/Volume を AudioSystem で処理 | 中 |
-| 3 | AudioSourceComponent | `volume` を PlayBGM/PlaySE に渡す | 小 |
-| 4 | TerrainComponent | チャンクキャッシュのクリーンアップ | 小〜中 |
-| 5 | WaterComponent | 波紋テクスチャを Map/Unmap に変更 | 小 |
-| 6 | WaterComponent | メッシュ・テクスチャキャッシュのクリーンアップ | 小〜中 |
-| 7 | WaterComponent | Depth Copy パス → 深度テクスチャ対応 | 大 |
-| 8 | CharacterControllerComponent | Jump() API の整理 | 小 |
-| 9 | TerrainComponent | `colliderDirty` のシリアライズ対応 | 小 |
-| 10 | WaterComponent | GerstnerWave を Reflect に追加 | 中 |
+| 優先度 | コンポーネント | 項目 | 工数目安 | 状態 |
+|---|---|---|---|---|
+| 1 | VolumeComponent | `type` / `elapsed` を `Reflect()` に追加 | 小 | ✅ 完了 |
+| 2 | AudioSourceComponent | Stop/Pause/Volume を AudioSystem で処理 | 中 | ✅ 完了 |
+| 3 | AudioSourceComponent | `volume` を PlayBGM/PlaySE に渡す | 小 | ✅ 完了 |
+| 4 | TerrainComponent | チャンクキャッシュのクリーンアップ | 小〜中 | ✅ 完了 |
+| 4 | TerrainComponent | `colliderDirty` のシリアライズ対応 | 小 | ✅ 完了 |
+| 5 | WaterComponent | 波紋テクスチャ最適化（非アクティブ時スキップ） | 小 | ✅ 完了（Map/Unmap は ResourceManager 拡張後） |
+| 6 | WaterComponent | メッシュ・テクスチャ・波紋キャッシュクリーンアップ | 小〜中 | ✅ 完了 |
+| 6 | WaterComponent | steepness クランプ + `std::rand()` 置換 | 小 | ✅ 完了 |
+| 7 | WaterComponent | GerstnerWave を Reflect に追加 | 中 | ✅ 完了 |
+| 8 | CharacterControllerComponent | Jump() API の整理 | 小 | ✅ 完了 |
+| 9 | WaterComponent | Depth Copy パス → 深度テクスチャ対応 | 大 | 未対応（ResourceManager 拡張が前提） |
 
 ---
 

@@ -366,6 +366,7 @@ namespace fbzz::physics
 
     void World::BeginSceneSync()
     {
+        m_sceneSyncChanged = false;
         for (auto& slot : m_bodyPool)
             slot.touched = false;
         for (auto& slot : m_colliderPool)
@@ -392,9 +393,21 @@ namespace fbzz::physics
         }
 
         for (size_t i = 0; i < m_bodyPool.size(); ++i) {
+            if (m_bodyPool[i].body == body && !m_bodyPool[i].touched) {
+                // WHY: Handle は Scene 側 Component に保持されるが、Component のコピー・再生成・
+                //      初期化順によって stale/invalid になる可能性がある。
+                //      その場合でも同じ RigidBody shared_ptr が既に World にあるなら、
+                //      新規 slot を作らず既存 slot を再接続して pool の肥大化を防ぐ。
+                m_bodyPool[i].touched = true;
+                return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
+            }
+        }
+
+        for (size_t i = 0; i < m_bodyPool.size(); ++i) {
             if (!m_bodyPool[i].body) {
                 m_bodyPool[i].body = std::move(body);
                 m_bodyPool[i].touched = true;
+                m_sceneSyncChanged = true;
                 return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
             }
         }
@@ -403,6 +416,7 @@ namespace fbzz::physics
         slot.body = std::move(body);
         slot.touched = true;
         m_bodyPool.push_back(std::move(slot));
+        m_sceneSyncChanged = true;
         return { static_cast<uint32_t>(m_bodyPool.size()), m_bodyPool.back().generation };
     }
 
@@ -432,10 +446,25 @@ namespace fbzz::physics
         }
 
         for (size_t i = 0; i < m_colliderPool.size(); ++i) {
+            if (m_colliderPool[i].occupied &&
+                m_colliderPool[i].collider.collider == collider.collider &&
+                !m_colliderPool[i].touched)
+            {
+                // WHY: ColliderHandle が stale になっても Collider shared_ptr の実体が同じなら
+                //      Scene 上は同じ ColliderComponent である。既存 slot を再接続し、
+                //      handle 不整合が毎フレームの重複登録へ発展するのを防ぐ。
+                m_colliderPool[i].collider = std::move(collider);
+                m_colliderPool[i].touched = true;
+                return { static_cast<uint32_t>(i + 1u), m_colliderPool[i].generation };
+            }
+        }
+
+        for (size_t i = 0; i < m_colliderPool.size(); ++i) {
             if (!m_colliderPool[i].occupied) {
                 m_colliderPool[i].collider = std::move(collider);
                 m_colliderPool[i].occupied = true;
                 m_colliderPool[i].touched = true;
+                m_sceneSyncChanged = true;
                 return { static_cast<uint32_t>(i + 1u), m_colliderPool[i].generation };
             }
         }
@@ -445,6 +474,7 @@ namespace fbzz::physics
         slot.occupied = true;
         slot.touched = true;
         m_colliderPool.push_back(std::move(slot));
+        m_sceneSyncChanged = true;
         return { static_cast<uint32_t>(m_colliderPool.size()), m_colliderPool.back().generation };
     }
 
@@ -469,6 +499,7 @@ namespace fbzz::physics
             if (!m_volumePool[i].volume) {
                 m_volumePool[i].volume = std::move(volume);
                 m_volumePool[i].touched = true;
+                m_sceneSyncChanged = true;
                 return { static_cast<uint32_t>(i + 1u), m_volumePool[i].generation };
             }
         }
@@ -477,6 +508,7 @@ namespace fbzz::physics
         slot.volume = std::move(volume);
         slot.touched = true;
         m_volumePool.push_back(std::move(slot));
+        m_sceneSyncChanged = true;
         return { static_cast<uint32_t>(m_volumePool.size()), m_volumePool.back().generation };
     }
 
@@ -489,6 +521,7 @@ namespace fbzz::physics
             } else if (slot.body) {
                 slot.body.reset();
                 slot.generation = NextGeneration(slot.generation);
+                m_sceneSyncChanged = true;
             }
         }
 
@@ -500,6 +533,7 @@ namespace fbzz::physics
                 slot.collider = {};
                 slot.occupied = false;
                 slot.generation = NextGeneration(slot.generation);
+                m_sceneSyncChanged = true;
             }
         }
 
@@ -510,6 +544,7 @@ namespace fbzz::physics
             } else if (slot.volume) {
                 slot.volume.reset();
                 slot.generation = NextGeneration(slot.generation);
+                m_sceneSyncChanged = true;
             }
         }
     }
@@ -537,20 +572,29 @@ namespace fbzz::physics
     void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
         m_layerFilter = std::move(layerFilter);
+        // WHY: Sleep 済みのシーンでは接触集合が変わらないため、毎 substep の
+        //      UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない。
+        //      Terrain/TriangleMesh がある resting scene ではここが World::Step の主な CPU 負荷になる。
+        // WHAT: Scene 同期で追加・削除がなく、動いている非 Static body もない場合は、
+        //       前回 contacts から Stay/Exit 分類だけを更新して collision pipeline を省略する。
+        if (!m_sceneSyncChanged && !HasActiveSimulationBodies()) {
+            ClassifyCollisions();
+            return;
+        }
+
         const int substeps = std::max(m_substeps, 1);
         const float subDt = dt / static_cast<float>(substeps);
-        std::vector<float> effectiveDts;
 
         for (int s = 0; s < substeps; ++s)
         {
             RemoveExpiredVolumes();
             for (auto& volume : m_volumes)
                 if (volume) volume->Tick(subDt);
-            ApplyForcesAndVolumes(subDt, effectiveDts);
+            ApplyForcesAndVolumes(subDt, m_effectiveDts);
             ApplyConstraintForces(subDt);
             ApplyGravitationalAttraction();
             CCDPhase(subDt);
-            IntegrateBodies(effectiveDts);
+            IntegrateBodies(m_effectiveDts);
             SolveConstraintPositions(subDt);
             UpdateColliders();
             BroadPhase();
@@ -565,6 +609,16 @@ namespace fbzz::physics
         m_contactCache.PurgeStale();
 
         ClassifyCollisions();
+    }
+
+    bool World::HasActiveSimulationBodies() const
+    {
+        for (const auto& body : m_bodies)
+        {
+            if (body && !body->IsStatic() && !body->IsSleeping())
+                return true;
+        }
+        return false;
     }
 
     void World::RemoveExpiredVolumes()
@@ -596,7 +650,7 @@ namespace fbzz::physics
             }
 
             if (!body->IsStatic() && !gravityOverridden && body->m_useGravity)
-                body->ApplyForce(m_gravity * body->GetMass() * body->m_gravityScale);
+                body->ApplyForceNoWake(m_gravity * body->GetMass() * body->m_gravityScale);
         }
     }
 
@@ -629,8 +683,8 @@ namespace fbzz::physics
                 const float forceScale = G * a.m_gravitationalMass * b.m_gravitationalMass / distSq;
                 const math::Vector3 force = dir * forceScale;
 
-                if (!a.IsStatic()) a.ApplyForce(force);
-                if (!b.IsStatic()) b.ApplyForce(-force);
+                if (!a.IsStatic()) a.ApplyForceNoWake(force);
+                if (!b.IsStatic()) b.ApplyForceNoWake(-force);
             }
         }
     }

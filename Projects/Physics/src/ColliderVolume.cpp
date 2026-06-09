@@ -55,7 +55,9 @@ namespace fbzz::physics
         switch (m_settings.type)
         {
         case VolumeType::Gravity:
-            body.ApplyForce(m_settings.gravity * body.GetMass());
+            // 継続的な環境力は sleep timer をリセットしない。
+            // WHY: Volume 内に静止している body が毎 substep WakeUp すると、World::Step の sleep early-out が効かない。
+            body.ApplyForceNoWake(m_settings.gravity * body.GetMass());
             break;
         case VolumeType::Vortex:
         {
@@ -63,14 +65,14 @@ namespace fbzz::physics
             const math::Vector3 flat = { toCenter.x, 0.0f, toCenter.z };
             const math::Vector3 inward = flat.LengthSq() > 1e-6f ? flat.Normalized() : math::Vector3::ZERO;
             const math::Vector3 tangent = { -inward.z, 0.0f, inward.x };
-            body.ApplyForce((tangent * m_settings.swirlStrength +
-                             inward * m_settings.inwardStrength +
-                             math::Vector3::UP * m_settings.liftStrength) * body.GetMass());
+            body.ApplyForceNoWake((tangent * m_settings.swirlStrength +
+                                   inward * m_settings.inwardStrength +
+                                   math::Vector3::UP * m_settings.liftStrength) * body.GetMass());
             break;
         }
         case VolumeType::Buoyancy:
-            body.ApplyForce(math::Vector3::UP * (m_settings.buoyancy * body.GetMass()));
-            body.ApplyForce(-body.GetVelocity() * m_settings.drag);
+            body.ApplyForceNoWake(math::Vector3::UP * (m_settings.buoyancy * body.GetMass()));
+            body.ApplyForceNoWake(-body.GetVelocity() * m_settings.drag);
             break;
         case VolumeType::Explosion:
         {
@@ -85,7 +87,7 @@ namespace fbzz::physics
             // 時間スケールは World 側で effectiveDt に反映済み。
             break;
         case VolumeType::Magnetic:
-            body.ApplyForce(math::Vector3::Cross(body.GetVelocity(), m_settings.magneticField) * body.m_charge);
+            body.ApplyForceNoWake(math::Vector3::Cross(body.GetVelocity(), m_settings.magneticField) * body.m_charge);
             break;
         }
     }

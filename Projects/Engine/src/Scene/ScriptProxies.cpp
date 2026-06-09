@@ -9,6 +9,7 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
+#include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/Gizmo.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -56,6 +57,22 @@ physics::RigidBody* SelfRigidBody(const Script* script)
 {
     auto* component = SelfComponent<RigidBodyComponent>(script);
     return component && component->enabled ? component->rigidBody.get() : nullptr;
+}
+
+renderer::Camera BuildCameraFromComponent(const GameObject* gameObject, const CameraComponent* component)
+{
+    renderer::Camera camera;
+    if (!gameObject || !component) {
+        return camera;
+    }
+
+    camera.m_position = gameObject->transform.position;
+    camera.m_rotation = gameObject->transform.rotation;
+    camera.m_fovY     = component->fovY;
+    camera.m_aspect   = component->aspectRatio;
+    camera.m_near     = component->nearZ;
+    camera.m_far      = component->farZ;
+    return camera;
 }
 
 uint32_t ParseTextureSlot(std::string_view slot)
@@ -447,25 +464,29 @@ std::vector<GameObject*> ScriptPhysicsProxy::OverlapSphere(const math::Vector3& 
 void ScriptAudioProxy::Play(std::string_view clipPath) const
 {
     if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->clipPath = std::string(clipPath);
-        audio->enabled = true;
-        audio->playOnAwake = true;
-        audio->m_played = false;
+        audio->clipPath       = std::string(clipPath);
+        audio->enabled        = true;
+        audio->m_pendingPlay  = true;
+        audio->m_pendingStop  = false;
+        audio->m_pendingPause = false;
     }
 }
 
 void ScriptAudioProxy::Stop() const
 {
     if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->enabled = false;
-        audio->m_played = false;
+        audio->m_pendingStop  = true;
+        audio->m_pendingPlay  = false;
+        audio->m_pendingPause = false;
     }
 }
 
 void ScriptAudioProxy::Pause() const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
-        audio->enabled = false;
+    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
+        audio->m_pendingPause = true;
+        audio->m_pendingPlay  = false;
+    }
 }
 
 void ScriptAudioProxy::SetVolume(float v) const
@@ -485,6 +506,14 @@ void ScriptLightProxy::SetColor(const math::Vector3& color) const
     if (auto* l = SelfComponent<LightComponent>(script)) l->color = color;
 }
 
+void ScriptLightProxy::SetType(int type) const
+{
+    if (auto* l = SelfComponent<LightComponent>(script)) {
+        const int clamped = std::clamp(type, 0, 2);
+        l->type = static_cast<LightComponent::Type>(clamped);
+    }
+}
+
 void ScriptLightProxy::SetIntensity(float intensity) const
 {
     if (auto* l = SelfComponent<LightComponent>(script)) l->intensity = intensity;
@@ -493,6 +522,16 @@ void ScriptLightProxy::SetIntensity(float intensity) const
 void ScriptLightProxy::SetRange(float range) const
 {
     if (auto* l = SelfComponent<LightComponent>(script)) l->range = range;
+}
+
+void ScriptLightProxy::SetInnerCone(float degrees) const
+{
+    if (auto* l = SelfComponent<LightComponent>(script)) l->innerCone = degrees;
+}
+
+void ScriptLightProxy::SetOuterCone(float degrees) const
+{
+    if (auto* l = SelfComponent<LightComponent>(script)) l->outerCone = degrees;
 }
 
 void ScriptLightProxy::SetEnabled(bool enabled) const
@@ -516,6 +555,11 @@ void ScriptCameraProxy::SetFOV(float fovY) const
     if (auto* cam = SelfComponent<CameraComponent>(script)) cam->fovY = fovY;
 }
 
+void ScriptCameraProxy::SetAspectRatio(float aspectRatio) const
+{
+    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->aspectRatio = (std::max)(aspectRatio, 0.0001f);
+}
+
 void ScriptCameraProxy::SetNearFar(float nearZ, float farZ) const
 {
     if (auto* cam = SelfComponent<CameraComponent>(script)) {
@@ -524,14 +568,55 @@ void ScriptCameraProxy::SetNearFar(float nearZ, float farZ) const
     }
 }
 
+void ScriptCameraProxy::SetCullingMask(fbzz::LayerMask mask) const
+{
+    if (auto* cam = SelfComponent<CameraComponent>(script)) cam->cullingMask = mask;
+}
+
 math::Vector3 ScriptCameraProxy::WorldToScreenPoint(const math::Vector3& worldPos) const
 {
-    return worldPos;
+    const auto* gameObject = script ? script->m_gameObject : nullptr;
+    const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
+    const auto& renderer = core::Application::Get().GetRenderer();
+    const float width = static_cast<float>((std::max)(renderer.GetWidth(), 1u));
+    const float height = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+
+    const math::Vector4 clip = camera.GetViewProjection() * math::Vector4(worldPos, 1.0f);
+    if (std::abs(clip.w) <= 0.000001f) {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+
+    const float invW = 1.0f / clip.w;
+    const float ndcX = clip.x * invW;
+    const float ndcY = clip.y * invW;
+    const float ndcZ = clip.z * invW;
+
+    // WHAT: 左上原点の pixel 座標へ変換する。z は DirectX depth range の 0..1 を返す。
+    return {
+        (ndcX * 0.5f + 0.5f) * width,
+        (0.5f - ndcY * 0.5f) * height,
+        ndcZ
+    };
 }
 
 math::Vector3 ScriptCameraProxy::ScreenToWorldPoint(const math::Vector3& screenPos) const
 {
-    return screenPos;
+    const auto* gameObject = script ? script->m_gameObject : nullptr;
+    const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
+    const auto& renderer = core::Application::Get().GetRenderer();
+    const float width = static_cast<float>((std::max)(renderer.GetWidth(), 1u));
+    const float height = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+
+    const float ndcX = (screenPos.x / width) * 2.0f - 1.0f;
+    const float ndcY = 1.0f - (screenPos.y / height) * 2.0f;
+    const float ndcZ = std::clamp(screenPos.z, 0.0f, 1.0f);
+
+    const math::Matrix4 invVP = math::Matrix4::Inverse(camera.GetViewProjection());
+    const math::Vector4 world = invVP * math::Vector4(ndcX, ndcY, ndcZ, 1.0f);
+    if (std::abs(world.w) <= 0.000001f) {
+        return math::Vector3::ZERO;
+    }
+    return world.XYZ() * (1.0f / world.w);
 }
 
 MaterialComponent* ScriptMaterialProxy::Get() const
@@ -677,18 +762,106 @@ void ScriptParticleProxy::SetEnabled(bool enabled) const
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->enabled = enabled;
 }
 
+void ScriptParticleProxy::Play(bool restart) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->playing = true;
+        if (restart) {
+            p->playTime = 0.0f;
+            p->delayTime = 0.0f;
+            p->emitAccum = 0.0f;
+            p->randomState = p->randomSeed;
+        }
+    }
+}
+
+void ScriptParticleProxy::Stop(bool clear) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->playing = false;
+        p->emitAccum = 0.0f;
+        p->burstPending = 0;
+        if (clear)
+            Clear();
+    }
+}
+
+void ScriptParticleProxy::Burst(int count) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        if (count > 0)
+            p->burstPending += count;
+    }
+}
+
 void ScriptParticleProxy::Clear() const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         p->particles.clear();
         p->emitAccum = 0.0f;
+        p->burstPending = 0;
+        p->playTime = 0.0f;
+        p->delayTime = 0.0f;
     }
+}
+
+void ScriptParticleProxy::SetGravity(const math::Vector3& gravity) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->gravity = gravity;
+}
+
+void ScriptParticleProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->colorStart = start;
+        p->colorEnd = end;
+    }
+}
+
+void ScriptParticleProxy::SetSize(float start, float end) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->sizeStart = (std::max)(start, 0.0f);
+        p->sizeEnd = (std::max)(end, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetTexture(std::string_view texturePath, int columns, int rows) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->texturePath = std::string(texturePath);
+        p->spriteColumns = (std::max)(columns, 1);
+        p->spriteRows = (std::max)(rows, 1);
+        p->texture = {};
+        p->loadedTexturePath.clear();
+    }
+}
+
+void ScriptParticleProxy::SetShape(ParticleEmitterShape shape) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->shape = shape;
+}
+
+void ScriptParticleProxy::SetBlendMode(ParticleBlendMode blendMode) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->blendMode = blendMode;
+}
+
+void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->sortMode = sortMode;
+}
+
+void ScriptParticleProxy::SetSimulationMode(ParticleSimulationMode simulationMode) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->simulationMode = simulationMode;
 }
 
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
 {
     if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->enabled = enabled;
+        t->clearOnDisable = clearWhenDisabled;
         if (!enabled && clearWhenDisabled)
             Clear();
     }
@@ -726,6 +899,12 @@ void ScriptTrailProxy::SetWidth(float start, float end) const
     }
 }
 
+void ScriptTrailProxy::SetWidthEasing(TrailWidthEasing easing) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->widthEasing = easing;
+}
+
 void ScriptTrailProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
 {
     if (auto* t = SelfComponent<TrailComponent>(script)) {
@@ -743,6 +922,12 @@ void ScriptTrailProxy::SetTexture(std::string_view texturePath, float uvTiling, 
         t->texture = {};
         t->loadedTexturePath.clear();
     }
+}
+
+void ScriptTrailProxy::SetUVMode(TrailUVMode mode) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->uvMode = mode;
 }
 
 void ScriptTrailProxy::SetAlignment(TrailAlignment alignment) const
@@ -767,10 +952,27 @@ void ScriptTrailProxy::SetSmoothSubdivisions(int subdivisions) const
         t->smoothSubdivisions = (std::max)(subdivisions, 0);
 }
 
+void ScriptTrailProxy::SetAttachBone(std::string_view boneName, const math::Vector3& offset) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->attachBone = std::string(boneName);
+        t->attachOffset = offset;
+    }
+}
+
+void ScriptTrailProxy::ClearAttachBone() const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->attachBone.clear();
+        t->attachOffset = math::Vector3::ZERO;
+    }
+}
+
 void ScriptMeshTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->enabled = enabled;
+        t->clearOnDisable = clearWhenDisabled;
         if (!enabled && clearWhenDisabled)
             Clear();
     }
@@ -814,6 +1016,31 @@ void ScriptMeshTrailProxy::SetDoubleSided(bool doubleSided) const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script))
         t->doubleSided = doubleSided;
+}
+
+void ScriptMeshTrailProxy::SetTexture(std::string_view texturePath) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
+        t->texturePath = std::string(texturePath);
+        t->texture = {};
+        t->loadedTexturePath.clear();
+    }
+}
+
+void ScriptMeshTrailProxy::AddExcludedMeshIndex(int meshIndex) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
+        if (meshIndex < 0)
+            return;
+        if (std::find(t->excludedMeshIndices.begin(), t->excludedMeshIndices.end(), meshIndex) == t->excludedMeshIndices.end())
+            t->excludedMeshIndices.push_back(meshIndex);
+    }
+}
+
+void ScriptMeshTrailProxy::ClearExcludedMeshIndices() const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+        t->excludedMeshIndices.clear();
 }
 
 void ScriptUIProxy::SetButtonInteractable(bool v) const

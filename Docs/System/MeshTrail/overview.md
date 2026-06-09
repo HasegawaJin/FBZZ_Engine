@@ -18,15 +18,20 @@ MeshRenderer / SkinnedMeshRenderer の形状を過去姿勢で半透明再描画
 | `doubleSided` トグル（背面カリング有無） | `meshTrailDoubleSidedPSO` 切り替え |
 | サンプルごとのカラーフェード（colorStart → colorEnd 線形） | `SampleColor()` |
 | `clearRequested` フラグによる安全なサンプル解放 | `ExecuteMeshTrailPass()` |
-| Script API（SetEnabled / Clear / SetDuration / SetSampling / SetMaxSamples / SetColor / SetDoubleSided） | `ScriptMeshTrailProxy.hpp` |
+| `clearOnDisable=false` 時の自然フェードアウト | `ExecuteMeshTrailPass()` |
+| SkinningCB の dirty flag による初回アップロード | `MeshTrailSample::skinningCBDirty` + `EnsureSampleSkinningCB()` |
+| テクスチャオーバーライド | `texturePath` + `DrawCall::textures[0]` + `MeshTrail.hlsl` |
+| submesh 除外 | `excludedMeshIndices` + `IsMeshIndexExcluded()` |
+| サンプルリングバッファ | `sampleHead` / `sampleCount` / `EnsureSampleStorage()` |
+| Script API（SetEnabled / Clear / SetDuration / SetSampling / SetMaxSamples / SetColor / SetDoubleSided / SetTexture / AddExcludedMeshIndex） | `ScriptMeshTrailProxy.hpp` |
 
 ---
 
-## 不足している機能・バグ
+## 実装完了した不足機能・バグ
 
 ### 重要度：高
 
-#### `enabled=false` 時に Proxy と System が乖離するバグ
+#### `enabled=false` 時に Proxy と System が乖離するバグ（完了）
 
 `ScriptMeshTrailProxy::SetEnabled(false, clearWhenDisabled=false)` は
 `clearRequested` を立てない（Proxy 実装は正しい）。
@@ -47,9 +52,11 @@ TrailRenderer と同じ構造の問題。
 **修正方針：** `MeshTrailComponent` に `bool clearOnDisable` フィールドを追加するか、
 `!enabled` 時はサンプリングのみ停止して `ExpireSamples` による自然消滅に任せる。
 
+**実装：** `clearOnDisable=false` の場合はサンプリングだけ停止し、既存サンプルは `ExpireSamples()` で自然消滅する。
+
 ---
 
-#### SkinningCB の毎フレーム再アップロード
+#### SkinningCB の毎フレーム再アップロード（完了）
 
 `EnsureSampleSkinningCB` はサンプル後に変化しない bone matrices を毎フレーム `resources.Update()` している：
 
@@ -70,11 +77,13 @@ maxSamples=12 程度では問題ないが、サンプル数を増やすと CPU�
 **修正方針：** `MeshTrailSample` に `bool skinningCBDirty = true` フラグを追加し、
 `CreateConstantBuffer` 直後の初回のみ `Update` してフラグを落とす。
 
+**実装：** `EnsureSampleSkinningCB()` は dirty のときだけ `resources.Update()` し、以後は同じ CB を再利用する。
+
 ---
 
 ### 重要度：中
 
-#### マテリアル / テクスチャオーバーライド
+#### マテリアル / テクスチャオーバーライド（完了）
 
 `MeshTrailCB.trailColor` による単色ティントのみ。
 カスタムシェーダーや残像テクスチャ（グラデーション・ディゾルブ）が使えない。
@@ -83,9 +92,11 @@ maxSamples=12 程度では問題ないが、サンプル数を増やすと CPU�
 `ResourceHandle<TextureTag>` を追加し、`DrawStaticMeshSample` / `DrawSkinnedMeshSample` で
 `dc.textures[0]` にバインドする。
 
+**実装：** `texturePath` を保存・Inspector・Script API に通し、空パス時は 1x1 白テクスチャを使う。
+
 ---
 
-#### サブメッシュ選択
+#### サブメッシュ選択（完了）
 
 モデル内の全メッシュを無条件に描画する。
 甲冑の残像だけ出して顔メッシュは除外する、といった制御ができない。
@@ -93,11 +104,13 @@ maxSamples=12 程度では問題ないが、サンプル数を増やすと CPU�
 **修正方針：** `MeshTrailComponent` に `std::vector<int> excludedMeshIndices` を追加し、
 `DrawSkinnedMeshSample` のメッシュループで skip 判定を挟む。
 
+**実装：** `IsMeshIndexExcluded()` により SkinnedMesh の mesh loop で指定 index を skip する。
+
 ---
 
 ### 重要度：低
 
-#### `samples.erase(begin())` が O(n)
+#### `samples.erase(begin())` が O(n)（完了）
 
 ```cpp
 trail.samples.erase(trail.samples.begin());  // 全要素を左シフト
@@ -107,6 +120,8 @@ trail.samples.erase(trail.samples.begin());  // 全要素を左シフト
 
 **修正方針：** `samples` をリングバッファ（`head` インデックス管理）に変更する。
 ただし `MeshTrailSample` は `ResourceHandle` を持つため移動セマンティクスに注意が必要。
+
+**実装：** `samples` は固定スロットとして確保し、`sampleHead` / `sampleCount` で論理順を管理する。
 
 ---
 

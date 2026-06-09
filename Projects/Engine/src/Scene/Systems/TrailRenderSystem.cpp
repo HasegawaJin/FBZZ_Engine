@@ -7,10 +7,12 @@
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/RenderState.hpp>
 #include <Engine/Renderer/SamplerMode.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
+#include <Engine/Util/Easing.hpp>
 #include <Math/MathUtils.hpp>
 #include "RenderPasses/GeometryPasses.hpp"
 #include <algorithm>
@@ -42,6 +44,13 @@ struct TrailCB {
     float uvTiling = 1.0f;
     float time = 0.0f;
     float _pad = 0.0f;
+};
+
+// TrailDrawItem — Trail の透明描画をカメラから遠い順へ並べるための一時データ。
+// WHY: 半透明は Submit 順のブレンド結果に依存するため、複数 TrailComponent が重なる場面で破綻を減らす。
+struct TrailDrawItem {
+    renderer::DrawCall drawCall;
+    float distanceSq = 0.0f;
 };
 
 static_assert(sizeof(TrailVertex) == 24, "TrailVertex layout mismatch");
@@ -98,6 +107,16 @@ float DistanceSq(const math::Vector3& a, const math::Vector3& b)
     return (a - b).LengthSq();
 }
 
+float NearestTrailDistanceSq(const TrailComponent& trail, const math::Vector3& cameraPos)
+{
+    float nearest = 0.0f;
+    for (int i = 0; i < trail.ringCount; ++i) {
+        const float d = DistanceSq(RingAt(trail, i).position, cameraPos);
+        nearest = (i == 0) ? d : (std::min)(nearest, d);
+    }
+    return nearest;
+}
+
 math::Vector3 SafeNormalize(const math::Vector3& v, const math::Vector3& fallback)
 {
     return v.LengthSq() > math::EPSILON * math::EPSILON ? v.Normalized() : fallback;
@@ -119,6 +138,22 @@ math::Vector3 ComputeRibbonNormal(
     }
 
     return SafeNormalize(math::Vector3::Cross(segmentDir, up), math::Vector3::RIGHT);
+}
+
+float ApplyWidthEasing(TrailWidthEasing easing, float t)
+{
+    t = math::Clamp01(t);
+    switch (easing) {
+    case TrailWidthEasing::EaseIn:
+        return util::Easing::EaseInQuad(t);
+    case TrailWidthEasing::EaseOut:
+        return util::Easing::EaseOutQuad(t);
+    case TrailWidthEasing::EaseInOut:
+        return util::Easing::EaseInOutQuad(t);
+    case TrailWidthEasing::Linear:
+    default:
+        return t;
+    }
 }
 
 TrailPoint CatmullRom(const TrailPoint& p0, const TrailPoint& p1, const TrailPoint& p2, const TrailPoint& p3, float t)
@@ -208,6 +243,11 @@ void BuildTrailVertices(
     const float duration = (std::max)(trail.duration, math::EPSILON);
     const float birthTime = currentTime - duration;
     const float segmentDenom = static_cast<float>(points.size() - 1u);
+    std::vector<float> cumulativeLengths(points.size(), 0.0f);
+    if (trail.uvMode == TrailUVMode::Tile) {
+        for (size_t i = 1; i < points.size(); ++i)
+            cumulativeLengths[i] = cumulativeLengths[i - 1u] + (points[i].position - points[i - 1u].position).Length();
+    }
     outVertices.reserve((points.size() - 1u) * 6u);
 
     auto ageOf = [&](const TrailPoint& p) {
@@ -219,10 +259,12 @@ void BuildTrailVertices(
         const TrailPoint& p1 = points[i + 1u];
         const float age0 = ageOf(p0);
         const float age1 = ageOf(p1);
-        const float halfWidth0 = math::Lerp(trail.widthEnd, trail.widthStart, age0) * 0.5f;
-        const float halfWidth1 = math::Lerp(trail.widthEnd, trail.widthStart, age1) * 0.5f;
-        const float u0 = static_cast<float>(i) / segmentDenom;
-        const float u1 = static_cast<float>(i + 1u) / segmentDenom;
+        const float widthAge0 = ApplyWidthEasing(trail.widthEasing, age0);
+        const float widthAge1 = ApplyWidthEasing(trail.widthEasing, age1);
+        const float halfWidth0 = math::Lerp(trail.widthEnd, trail.widthStart, widthAge0) * 0.5f;
+        const float halfWidth1 = math::Lerp(trail.widthEnd, trail.widthStart, widthAge1) * 0.5f;
+        const float u0 = trail.uvMode == TrailUVMode::Tile ? cumulativeLengths[i] : static_cast<float>(i) / segmentDenom;
+        const float u1 = trail.uvMode == TrailUVMode::Tile ? cumulativeLengths[i + 1u] : static_cast<float>(i + 1u) / segmentDenom;
 
         const TrailVertex tl{ p0.position + normals[i] * halfWidth0, age0, 0.0f, u0 };
         const TrailVertex bl{ p0.position - normals[i] * halfWidth0, age0, 1.0f, u0 };
@@ -277,7 +319,27 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
     }
 }
 
-void UpdateTrailPoints(TrailComponent& trail, const Transform& transform, float currentTime)
+math::Vector3 ResolveTrailSamplePosition(Scene& scene, GameObject& go, const TrailComponent& trail)
+{
+    if (!trail.attachBone.empty()) {
+        if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
+            if (smr->model && smr->model->skeleton) {
+                const auto it = smr->model->skeleton->nodeMap.find(trail.attachBone);
+                if (it != smr->model->skeleton->nodeMap.end()) {
+                    const int nodeIndex = it->second;
+                    if (nodeIndex >= 0 && nodeIndex < static_cast<int>(smr->nodeEntities.size())) {
+                        if (auto* boneGo = scene.GetGameObject(smr->nodeEntities[static_cast<size_t>(nodeIndex)]))
+                            return boneGo->transform.position + boneGo->transform.rotation * trail.attachOffset;
+                    }
+                }
+            }
+        }
+    }
+
+    return go.transform.position + go.transform.rotation * trail.attachOffset;
+}
+
+void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, float currentTime)
 {
     RingExpireOld(trail, currentTime);
 
@@ -286,7 +348,6 @@ void UpdateTrailPoints(TrailComponent& trail, const Transform& transform, float 
     if (!timeReady)
         return;
 
-    const math::Vector3 currentPos = transform.position;
     const bool distanceReady =
         trail.ringCount == 0 ||
         DistanceSq(currentPos, RingAt(trail, trail.ringCount - 1).position) >= trail.minVertexDist * trail.minVertexDist;
@@ -313,6 +374,7 @@ void ExecuteTrailPass(RenderPassContext& ctx)
 
     const float currentTime = core::Time::TotalTime();
     std::vector<TrailVertex> vertices;
+    std::vector<TrailDrawItem> drawItems;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask))
@@ -322,7 +384,7 @@ void ExecuteTrailPass(RenderPassContext& ctx)
         if (!trail)
             continue;
 
-        if (!trail->enabled) {
+        if (!trail->enabled && trail->clearOnDisable) {
             trail->ringCount = 0;
             trail->ringHead = 0;
             trail->ringTail = 0;
@@ -332,7 +394,12 @@ void ExecuteTrailPass(RenderPassContext& ctx)
 
         EnsureResources(*trail, ctx);
 
-        UpdateTrailPoints(*trail, go.transform, currentTime);
+        if (trail->enabled) {
+            const math::Vector3 samplePos = ResolveTrailSamplePosition(ctx.scene, go, *trail);
+            UpdateTrailPoints(*trail, samplePos, currentTime);
+        }
+        else
+            RingExpireOld(*trail, currentTime);
         if (trail->ringCount < 2)
             continue;
 
@@ -366,11 +433,19 @@ void ExecuteTrailPass(RenderPassContext& ctx)
         dc.vertexCount = static_cast<uint32_t>(uploadBytes / sizeof(TrailVertex));
         dc.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
         dc.topology = renderer::PrimitiveTopology::TRIANGLE_LIST;
-        renderer.Submit(dc, resources);
+        drawItems.push_back({ dc, NearestTrailDistanceSq(*trail, ctx.camera.m_position) });
+    }
+
+    std::sort(drawItems.begin(), drawItems.end(), [](const TrailDrawItem& a, const TrailDrawItem& b) {
+        return a.distanceSq > b.distanceSq;
+    });
+
+    for (const auto& item : drawItems) {
+        renderer.Submit(item.drawCall, resources);
 
         ++ctx.statsDrawCalls;
-        ctx.statsVertexCount += static_cast<int>(dc.vertexCount);
-        ctx.statsTriangleCount += static_cast<int>(dc.vertexCount / 3u);
+        ctx.statsVertexCount += static_cast<int>(item.drawCall.vertexCount);
+        ctx.statsTriangleCount += static_cast<int>(item.drawCall.vertexCount / 3u);
     }
 }
 

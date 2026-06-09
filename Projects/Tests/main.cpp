@@ -1652,7 +1652,9 @@ static void TestPhase12_PhysicsFeatureCoverage()
         auto expectPair = [&solver, &instance](std::shared_ptr<Collider> a,
                                                std::shared_ptr<Collider> b,
                                                const char* label) {
-            std::vector<CollisionPair> pairs = { { instance(std::move(a)), instance(std::move(b)) } };
+            ColliderInstance instA = instance(std::move(a));
+            ColliderInstance instB = instance(std::move(b));
+            std::vector<CollisionPair> pairs = { { &instA, &instB } };
             std::vector<ContactPoint> contacts;
             solver.NarrowPhase(pairs, contacts);
             check(!contacts.empty(), label);

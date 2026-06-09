@@ -44,7 +44,7 @@ names = [
 [physics]
 gravity = [ 0.0, -9.81, 0.0 ]
 hz = 60
-substeps = 4
+substeps = 1
 
 [project]
 default_scene = 'Assets/Scenes/Main.fbzz'
