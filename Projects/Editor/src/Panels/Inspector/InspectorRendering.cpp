@@ -10,13 +10,13 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
     DrawComponentSection<scene::MeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Renderer",
         [](scene::MeshRenderer& mr, EditorContext&) {
             static constexpr const char* kPrimitiveNames[] = {
-                "Custom", "Cube", "Sphere", "Plane", "Cylinder", "Cone", "Torus", "Capsule"
+                "Custom", "Cube", "Sphere", "Plane", "Quad", "Cylinder", "Cone", "Torus", "Capsule"
             };
             static constexpr const char* kPrimitivePaths[] = {
                 "", "primitive:cube", "primitive:sphere", "primitive:plane",
-                "primitive:cylinder", "primitive:cone", "primitive:torus", "primitive:capsule"
+                "primitive:quad", "primitive:cylinder", "primitive:cone", "primitive:torus", "primitive:capsule"
             };
-            constexpr int kPrimitiveCount = 8;
+            constexpr int kPrimitiveCount = 9;
 
             int sel = 0;
             for (int i = 1; i < kPrimitiveCount; ++i)
@@ -30,10 +30,11 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         case 1: mr.mesh = renderer::PrimitiveMesh::Cube(*res);         break;
                         case 2: mr.mesh = renderer::PrimitiveMesh::Sphere(*res);       break;
                         case 3: mr.mesh = renderer::PrimitiveMesh::Plane(*res);        break;
-                        case 4: mr.mesh = renderer::PrimitiveMesh::Cylinder(*res);     break;
-                        case 5: mr.mesh = renderer::PrimitiveMesh::Cone(*res);         break;
-                        case 6: mr.mesh = renderer::PrimitiveMesh::Torus(*res);        break;
-                        case 7: mr.mesh = renderer::PrimitiveMesh::Capsule(*res);      break;
+                        case 4: mr.mesh = renderer::PrimitiveMesh::Quad(*res);         break;
+                        case 5: mr.mesh = renderer::PrimitiveMesh::Cylinder(*res);     break;
+                        case 6: mr.mesh = renderer::PrimitiveMesh::Cone(*res);         break;
+                        case 7: mr.mesh = renderer::PrimitiveMesh::Torus(*res);        break;
+                        case 8: mr.mesh = renderer::PrimitiveMesh::Capsule(*res);      break;
                         default: break;
                         }
                     }

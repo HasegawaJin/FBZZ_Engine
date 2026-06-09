@@ -16,6 +16,7 @@ public:
     static std::shared_ptr<Mesh> Cube    (ResourceManager& resources);
     static std::shared_ptr<Mesh> Sphere  (ResourceManager& resources, int segments = 16);
     static std::shared_ptr<Mesh> Plane   (ResourceManager& resources);
+    static std::shared_ptr<Mesh> Quad    (ResourceManager& resources);
     static std::shared_ptr<Mesh> Cylinder(ResourceManager& resources, int segments = 16);
     static std::shared_ptr<Mesh> Cone    (ResourceManager& resources, int segments = 16);
     static std::shared_ptr<Mesh> Torus   (ResourceManager& resources, int segments = 24);

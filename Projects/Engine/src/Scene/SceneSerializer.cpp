@@ -430,6 +430,7 @@ std::shared_ptr<renderer::Mesh> ResolveMesh(
         if (path == "primitive:cube")     return renderer::PrimitiveMesh::Cube(resources);
         if (path == "primitive:sphere")   return renderer::PrimitiveMesh::Sphere(resources, 32);
         if (path == "primitive:plane")    return renderer::PrimitiveMesh::Plane(resources);
+        if (path == "primitive:quad")     return renderer::PrimitiveMesh::Quad(resources);
         if (path == "primitive:cylinder") return renderer::PrimitiveMesh::Cylinder(resources);
         if (path == "primitive:cone")     return renderer::PrimitiveMesh::Cone(resources);
         if (path == "primitive:torus")    return renderer::PrimitiveMesh::Torus(resources);
