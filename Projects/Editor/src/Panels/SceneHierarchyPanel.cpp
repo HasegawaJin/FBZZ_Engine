@@ -17,6 +17,8 @@
 #include <Engine/Scene/Components/UIButton.hpp>
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
@@ -45,6 +47,7 @@ enum class PrimitiveTemplate {
     Cube,
     Sphere,
     Plane,
+    Quad,
     Cylinder,
     Cone,
     Torus,
@@ -60,6 +63,7 @@ std::shared_ptr<renderer::Mesh> CreatePrimitiveMesh(PrimitiveTemplate type)
     case PrimitiveTemplate::Cube:     return renderer::PrimitiveMesh::Cube(*resources);
     case PrimitiveTemplate::Sphere:   return renderer::PrimitiveMesh::Sphere(*resources);
     case PrimitiveTemplate::Plane:    return renderer::PrimitiveMesh::Plane(*resources);
+    case PrimitiveTemplate::Quad:     return renderer::PrimitiveMesh::Quad(*resources);
     case PrimitiveTemplate::Cylinder: return renderer::PrimitiveMesh::Cylinder(*resources);
     case PrimitiveTemplate::Cone:     return renderer::PrimitiveMesh::Cone(*resources);
     case PrimitiveTemplate::Torus:    return renderer::PrimitiveMesh::Torus(*resources);
@@ -74,6 +78,7 @@ const char* GetPrimitivePath(PrimitiveTemplate type)
     case PrimitiveTemplate::Cube:     return "primitive:cube";
     case PrimitiveTemplate::Sphere:   return "primitive:sphere";
     case PrimitiveTemplate::Plane:    return "primitive:plane";
+    case PrimitiveTemplate::Quad:     return "primitive:quad";
     case PrimitiveTemplate::Cylinder: return "primitive:cylinder";
     case PrimitiveTemplate::Cone:     return "primitive:cone";
     case PrimitiveTemplate::Torus:    return "primitive:torus";
@@ -120,6 +125,10 @@ void AddTemplateCollider(scene::GameObject& go, PrimitiveTemplate type)
         go.AddComponent<scene::BoxColliderComponent>(
             CreateTemplateBoxCollider(math::Vector3{ 0.5f, 0.01f, 0.5f }));
         break;
+    case PrimitiveTemplate::Quad:
+        go.AddComponent<scene::BoxColliderComponent>(
+            CreateTemplateBoxCollider(math::Vector3{ 0.5f, 0.5f, 0.01f }));
+        break;
     case PrimitiveTemplate::Cube:
     case PrimitiveTemplate::Cylinder:
     case PrimitiveTemplate::Cone:
@@ -140,7 +149,19 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
     go.AddComponent<scene::MeshRenderer>(mr);
 
     scene::MaterialComponent mc;
+    mc.materialPath = "Assets/Materials/Surface/Lit.fzmat";
     go.AddComponent<scene::MaterialComponent>(mc);
+
+    if (type == PrimitiveTemplate::Quad) {
+        auto script = scene::ScriptFactory::Create("QuadBillboardComponent");
+        if (script) {
+            scene::ScriptComponent sc;
+            scene::ScriptEntry entry;
+            entry.script = std::move(script);
+            sc.scripts.emplace_back(std::move(entry));
+            go.AddComponent<scene::ScriptComponent>(std::move(sc));
+        }
+    }
 
     AddTemplateCollider(go, type);
 
@@ -292,6 +313,8 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred)
             deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Sphere", PrimitiveTemplate::Sphere); };
         if (ImGui::MenuItem("Plane"))
             deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Plane", PrimitiveTemplate::Plane); };
+        if (ImGui::MenuItem("Quad"))
+            deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Quad", PrimitiveTemplate::Quad); };
         if (ImGui::MenuItem("Cylinder"))
             deferred = [&ctx]() { CreatePrimitiveObject(ctx, "Cylinder", PrimitiveTemplate::Cylinder); };
         if (ImGui::MenuItem("Cone"))

@@ -43,11 +43,12 @@ void NormalizeTomlFloats(toml::node& node)
 toml::table WriteTerrainData(const TerrainComponent& tc)
 {
     toml::table terrainTbl;
-    terrainTbl.insert("columns",   static_cast<int64_t>(tc.columns));
-    terrainTbl.insert("rows",      static_cast<int64_t>(tc.rows));
-    terrainTbl.insert("cellSize",  static_cast<double>(tc.cellSize));
-    terrainTbl.insert("maxHeight", static_cast<double>(tc.maxHeight));
-    terrainTbl.insert("chunkSize", static_cast<int64_t>(tc.chunkSize));
+    terrainTbl.insert("columns",      static_cast<int64_t>(tc.columns));
+    terrainTbl.insert("rows",         static_cast<int64_t>(tc.rows));
+    terrainTbl.insert("cellSize",     static_cast<double>(tc.cellSize));
+    terrainTbl.insert("maxHeight",    static_cast<double>(tc.maxHeight));
+    terrainTbl.insert("chunkSize",    static_cast<int64_t>(tc.chunkSize));
+    terrainTbl.insert("materialPath", tc.materialPath);
 
     // WHAT: heightData は正負の正規化高さ [-1, 1] をそのまま保存する。
     // WHY: maxHeight を変更しても元データの相対形状を保てるため、編集途中の Terrain を再利用しやすい。
@@ -66,11 +67,12 @@ toml::table WriteTerrainData(const TerrainComponent& tc)
 
 bool ReadTerrainData(const toml::table& terrainTbl, TerrainComponent& tc)
 {
-    tc.columns   = static_cast<int>(terrainTbl["columns"].value_or(int64_t{129}));
-    tc.rows      = static_cast<int>(terrainTbl["rows"].value_or(int64_t{129}));
-    tc.cellSize  = static_cast<float>(terrainTbl["cellSize"].value_or(1.0));
-    tc.maxHeight = static_cast<float>(terrainTbl["maxHeight"].value_or(30.0));
-    tc.chunkSize = static_cast<int>(terrainTbl["chunkSize"].value_or(int64_t{32}));
+    tc.columns      = static_cast<int>(terrainTbl["columns"].value_or(int64_t{129}));
+    tc.rows         = static_cast<int>(terrainTbl["rows"].value_or(int64_t{129}));
+    tc.cellSize     = static_cast<float>(terrainTbl["cellSize"].value_or(1.0));
+    tc.maxHeight    = static_cast<float>(terrainTbl["maxHeight"].value_or(30.0));
+    tc.chunkSize    = static_cast<int>(terrainTbl["chunkSize"].value_or(int64_t{32}));
+    tc.materialPath = terrainTbl["materialPath"].value_or(std::string{});
 
     tc.heightData.clear();
     if (auto* heightArr = terrainTbl["heightData"].as_array()) {

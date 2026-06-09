@@ -76,7 +76,7 @@
 | Volume（浮力・磁場・爆発・時間スケール等） | ✅ |
 | Physics Material プリセット（Default/Rubber/Ice/Metal/Wood/Stone） | ✅ |
 | ContactCache + Warm Starting | ✅ |
-| サブステップ（m_substeps=4 デフォルト） | ✅ |
+| サブステップ（標準は 1、高精度が必要なシーンのみ ProjectSettings で増やす） | ✅ |
 
 ---
 

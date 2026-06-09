@@ -22,6 +22,10 @@ namespace fbzz::physics
     public:
         // 力・インパルスの適用。Force は積分時まで蓄積し、Impulse は速度へ即時反映する。
         void ApplyForce(const math::Vector3& force);
+        // World 内部用: 重力などの常時力を sleep timer をリセットせず蓄積する。
+        // WHY: 通常の ApplyForce は Script/API からの外力として扱い WakeUp するが、
+        //      重力まで WakeUp すると接地中の剛体が永久に Sleep できない。
+        void ApplyForceNoWake(const math::Vector3& force);
         void ApplyForceAtPoint(const math::Vector3& force,
                                 const math::Vector3& worldPoint);
         void ApplyImpulse(const math::Vector3& impulse);

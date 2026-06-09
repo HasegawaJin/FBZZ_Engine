@@ -220,6 +220,7 @@ struct RenderPassHandles {
 
     renderer::ResourceHandle<renderer::ShaderTag>         particleShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleAlphaPSO;
     renderer::ResourceHandle<renderer::BufferTag>         particleVB;
     renderer::ResourceHandle<renderer::BufferTag>         particleIB;
 

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Math/Vector4.hpp>
+#include <string_view>
 
 namespace fbzz::scene {
 
@@ -34,6 +35,15 @@ struct ScriptMeshTrailProxy {
 
     // SetDoubleSided — 残像描画の背面カリング有無を切り替える。
     void SetDoubleSided(bool doubleSided) const;
+
+    // SetTexture — MeshTrail 専用の乗算テクスチャを設定する。
+    void SetTexture(std::string_view texturePath) const;
+
+    // AddExcludedMeshIndex — SkinnedModel の指定 submesh を残像描画から除外する。
+    void AddExcludedMeshIndex(int meshIndex) const;
+
+    // ClearExcludedMeshIndices — submesh 除外設定を解除する。
+    void ClearExcludedMeshIndices() const;
 };
 
 } // namespace fbzz::scene

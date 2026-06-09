@@ -32,8 +32,8 @@ void ExecuteSkyPass(RenderPassContext& ctx)
         atmData.rayleighScattering[1] = sky->rayleighScattering.y;
         atmData.rayleighScattering[2] = sky->rayleighScattering.z;
         atmData.mieScattering         = sky->mieScattering;
-        atmData.planetRadius          = 6371.0f;
-        atmData.atmosphereRadius      = 6471.0f;
+        atmData.planetRadius          = sky->planetRadius;
+        atmData.atmosphereRadius      = sky->atmosphereRadius;
         atmData.sunIntensity          = sky->sunIntensity;
         atmData.mieG                  = sky->mieG;
         resources.Update(h.atmosphereCB, &atmData, sizeof(AtmosphereCB));

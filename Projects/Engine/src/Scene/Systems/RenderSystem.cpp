@@ -18,6 +18,9 @@
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
+#include "Engine/Scene/Components/MeshRenderer.hpp"
+#include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
+#include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Renderer/Camera.hpp"
@@ -43,6 +46,100 @@
 
 namespace fbzz::scene {
 
+namespace {
+
+struct SceneShadowBounds {
+    math::Vector3 center = math::Vector3::ZERO;
+    float radius = 0.0f;
+    bool valid = false;
+};
+
+void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
+{
+    if (bounds.radius <= 0.0f) return;
+    if (!aggregate.valid) {
+        aggregate.center = bounds.center;
+        aggregate.radius = bounds.radius;
+        aggregate.valid = true;
+        return;
+    }
+
+    const math::Vector3 delta = bounds.center - aggregate.center;
+    const float distance = delta.Length();
+    if (distance + bounds.radius <= aggregate.radius) return;
+    if (distance + aggregate.radius <= bounds.radius) {
+        aggregate.center = bounds.center;
+        aggregate.radius = bounds.radius;
+        return;
+    }
+
+    const float newRadius = (aggregate.radius + distance + bounds.radius) * 0.5f;
+    if (distance > 0.0001f) {
+        aggregate.center = aggregate.center + delta * ((newRadius - aggregate.radius) / distance);
+    }
+    aggregate.radius = newRadius;
+}
+
+bool ComputeTerrainWorldBounds(const Transform& transform, const TerrainComponent& terrain, WorldBounds& outBounds)
+{
+    if (!terrain.enabled || terrain.heightData.empty() || terrain.columns < 2 || terrain.rows < 2)
+        return false;
+
+    auto [minIt, maxIt] = std::minmax_element(terrain.heightData.begin(), terrain.heightData.end());
+    const float minY = (*minIt) * terrain.maxHeight;
+    const float maxY = (*maxIt) * terrain.maxHeight;
+    const math::Vector3 localCenter = {
+        static_cast<float>(terrain.columns - 1) * terrain.cellSize * 0.5f,
+        (minY + maxY) * 0.5f,
+        static_cast<float>(terrain.rows - 1) * terrain.cellSize * 0.5f
+    };
+    const math::Vector3 localExtents = {
+        static_cast<float>(terrain.columns - 1) * terrain.cellSize * 0.5f,
+        (maxY - minY) * 0.5f,
+        static_cast<float>(terrain.rows - 1) * terrain.cellSize * 0.5f
+    };
+
+    const math::Vector4 worldCenter = transform.GetWorldMatrix()
+        * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
+    const float maxScale = (std::max)(
+        (std::max)(std::abs(transform.worldScale.x), std::abs(transform.worldScale.y)),
+        std::abs(transform.worldScale.z));
+
+    outBounds.center = { worldCenter.x, worldCenter.y, worldCenter.z };
+    outBounds.radius = localExtents.Length() * (std::max)(maxScale, 0.0001f);
+    return outBounds.radius > 0.0f;
+}
+
+SceneShadowBounds ComputeSceneShadowBounds(Scene& scene, fbzz::LayerMask cullingMask)
+{
+    SceneShadowBounds result{};
+    for (auto& go : scene.GameObjects()) {
+        if (!ShouldRenderGameObject(go, cullingMask)) continue;
+
+        if (auto* mr = go.GetComponent<MeshRenderer>()) {
+            if (mr->enabled && mr->mesh && !mr->mesh->isSkinned && mr->mesh->boundsRadius > 0.0f)
+                AccumulateBounds(result, ComputeWorldBounds(go.transform, *mr->mesh));
+        }
+
+        if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
+            if (smr->enabled && smr->model) {
+                WorldBounds bounds{};
+                if (ComputeSkinnedWorldBounds(go.transform, *smr, bounds))
+                    AccumulateBounds(result, bounds);
+            }
+        }
+
+        if (auto* terrain = go.GetComponent<TerrainComponent>()) {
+            WorldBounds bounds{};
+            if (ComputeTerrainWorldBounds(go.transform, *terrain, bounds))
+                AccumulateBounds(result, bounds);
+        }
+    }
+    return result;
+}
+
+} // namespace
+
 void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   renderer::ResourceManager& resources,
@@ -63,6 +160,7 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     // 静的リソースの遅延初期化
     // =========================================================================
+    static uint64_t sResourceResetVersion = resources.GetResetVersion();
     static auto shadowMapRT          = resources.CreateRenderTarget(kShadowMapSize, kShadowMapSize, 0);
     static auto shadowShader         = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
     static auto skinnedShadowShader  = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
@@ -113,9 +211,8 @@ void RenderSystem(Scene& scene,
     static auto atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
     static auto decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
 
-    // FIXME: 以下の static ハンドルはデバイスリセット (フルスクリーン切替・GPU ドライバ更新) 時に
-    //        無効化されない。DX11 DeviceRemoved 対応を実装する際はここを全面的に見直す。
-    //        ResourceManager に Reset() API を追加し、Application ループから呼び出す設計が必要。
+    // WHY: static handle は通常フレームでは再利用し、ResourceManager::Reset() 後だけ世代差分で再生成する。
+    //      これによりデバイスロスト復帰時も旧ネイティブリソースへ触らない。
     static auto defaultPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
@@ -139,6 +236,11 @@ void RenderSystem(Scene& scene,
     static auto particlePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto particleAlphaPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
     });
     static auto trailPSO = resources.CreatePipelineState({
@@ -177,9 +279,76 @@ void RenderSystem(Scene& scene,
         renderer::DepthMode::DEPTH_OFF
     });
 
+    if (sResourceResetVersion != resources.GetResetVersion()) {
+        sResourceResetVersion = resources.GetResetVersion();
+
+        shadowMapRT         = resources.CreateRenderTarget(kShadowMapSize, kShadowMapSize, 0);
+        shadowShader        = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
+        skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
+        compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
+        copyColorShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+        causticsShader      = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
+        ssaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
+        ssaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
+        bloomDownShader     = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
+        bloomUpShader       = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomUpsample.cs.hlsl");
+        selectionMaskShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMask.hlsl");
+        selectionMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskSkinnedMesh.hlsl");
+        selectionOutlineShader = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
+        fxaaShader = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
+        skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
+        skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
+        gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+        deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
+        depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+        decalShader = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
+        decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
+        particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+        trailShader = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
+        meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
+        skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
+
+        bindPoseSkinningCB = {};
+        {
+            struct BindPoseData { math::Matrix4 bones[asset::MAX_SKINNING_BONES]; };
+            BindPoseData bp{};
+            for (auto& m : bp.bones) m = math::Matrix4::Identity();
+            bindPoseSkinningCB = resources.CreateConstantBuffer(sizeof(BindPoseData));
+            resources.Update(bindPoseSkinningCB, &bp, sizeof(BindPoseData));
+        }
+        frameCB    = resources.CreateConstantBuffer(sizeof(PerFrameCB));
+        objectCB   = resources.CreateConstantBuffer(sizeof(PerObjectCB));
+        lightCB    = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
+        shadowCB   = resources.CreateConstantBuffer(sizeof(ShadowConstantsCB));
+        postprocCB = resources.CreateConstantBuffer(sizeof(PostProcCB));
+        outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
+        atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
+        decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
+
+        defaultPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        wireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        selectionMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        skydomePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_SKY });
+        particlePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
+        particleAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        trailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        meshTrailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        meshTrailDoubleSidedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        postprocPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
+        causticsPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_OFF });
+        decalPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
+        decalMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
+    }
+
     // パーティクルバッファ (最大描画数分を事前確保)
     static renderer::ResourceHandle<renderer::BufferTag> particleVB;
     static renderer::ResourceHandle<renderer::BufferTag> particleIB;
+    static uint64_t sParticleResetVersion = 0;
+    if (sParticleResetVersion != resources.GetResetVersion()) {
+        particleVB = {};
+        particleIB = {};
+        sParticleResetVersion = resources.GetResetVersion();
+    }
     constexpr uint32_t kMaxParticleVertices = static_cast<uint32_t>(kMaxParticleDraw) * 4u;
     if (!particleVB.IsValid())
     {
@@ -214,6 +383,26 @@ void RenderSystem(Scene& scene,
     static renderer::ResourceHandle<renderer::TextureTag>      ssaoRaw;
     static renderer::ResourceHandle<renderer::TextureTag>      ssaoBlur;
     static uint32_t sHdrW = 0, sHdrH = 0;
+    static uint64_t sRenderTargetResetVersion = 0;
+    if (sRenderTargetResetVersion != resources.GetResetVersion()) {
+        hdrRT = {};
+        ldrRT = {};
+        selectionMaskRT = {};
+        outlineRT = {};
+        sceneColorRT = {};
+        customPostProcessRT[0] = {};
+        customPostProcessRT[1] = {};
+        gbufferRT = {};
+        decalDepthRT = {};
+        decalMaskRT = {};
+        bloomHalf = {};
+        bloomFull = {};
+        ssaoRaw = {};
+        ssaoBlur = {};
+        sHdrW = 0;
+        sHdrH = 0;
+        sRenderTargetResetVersion = resources.GetResetVersion();
+    }
     {
         const auto* output = resources.Get(outputRT);
         uint32_t curW = output ? output->GetWidth()  : renderer.GetWidth();
@@ -298,14 +487,24 @@ void RenderSystem(Scene& scene,
         lightData.spotLightCount  = 0;
     }
 
-    math::Vector3 lightDir    = lightData.lightDir.Normalized();
-    math::Vector3 sceneCenter = { 0.0f, 1.0f, 4.0f };
-    math::Vector3 lightPos    = sceneCenter - lightDir * 30.0f;
+    math::Vector3 lightDir = lightData.lightDir.Normalized();
+    SceneShadowBounds shadowBounds = ComputeSceneShadowBounds(scene, cullingMask);
+    if (!shadowBounds.valid) {
+        shadowBounds.center = camera.m_position + camera.GetForward() * 20.0f;
+        shadowBounds.radius = 40.0f;
+        shadowBounds.valid = true;
+    }
+
+    const float shadowRadius = (std::max)(shadowBounds.radius, 5.0f);
+    math::Vector3 lightPos = shadowBounds.center - lightDir * (shadowRadius + 20.0f);
     math::Vector3 up = (std::abs(lightDir.y) > 0.99f)
                        ? math::Vector3{ 1.0f, 0.0f, 0.0f }
                        : math::Vector3{ 0.0f, 1.0f, 0.0f };
-    math::Matrix4 lightView = math::Matrix4::LookAt(lightPos, sceneCenter, up);
-    math::Matrix4 lightProj = math::Matrix4::Orthographic(-20.0f, 20.0f, -20.0f, 20.0f, 1.0f, 60.0f);
+    math::Matrix4 lightView = math::Matrix4::LookAt(lightPos, shadowBounds.center, up);
+    math::Matrix4 lightProj = math::Matrix4::Orthographic(-shadowRadius, shadowRadius,
+                                                           -shadowRadius, shadowRadius,
+                                                           1.0f,
+                                                           shadowRadius * 2.0f + 40.0f);
     math::Matrix4 lightVP   = lightProj * lightView;
 
     const bool isDeferred = (rs.pipeline == renderer::RenderingPipeline::Deferred);
@@ -390,6 +589,7 @@ void RenderSystem(Scene& scene,
     passHandles.atmosphereCB         = atmCB;
     passHandles.particleShader       = particleShader;
     passHandles.particlePSO          = particlePSO;
+    passHandles.particleAlphaPSO     = particleAlphaPSO;
     passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
     passHandles.trailShader          = trailShader;
@@ -482,7 +682,8 @@ void RenderSystem(Scene& scene,
         waterPass.injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
         waterPass.accesses = {
             { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite },
-            { "SceneColor", renderer::RenderGraph::ResourceUsage::Read }
+            { "SceneColor", renderer::RenderGraph::ResourceUsage::Read },
+            { "ShadowMap", renderer::RenderGraph::ResourceUsage::Read }
         };
         waterPass.execute = [=](RenderPassContext& ctx) {
             ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
@@ -491,7 +692,10 @@ void RenderSystem(Scene& scene,
                               copyColorShader.IsValid()
                                   ? ctx.resources.GetColorTexture(sceneColorRT, 0)
                                   : renderer::ResourceHandle<renderer::TextureTag>{},
-                              core::Time::TotalTime(), &ctx.settings);
+                              core::Time::TotalTime(), &ctx.settings,
+                              ctx.handles.lightCB,
+                              ctx.resources.GetDepthTexture(ctx.handles.shadowMapRT),
+                              ctx.handles.shadowCB);
         };
         scene.QueueUserRenderPass(std::move(waterPass));
     };
@@ -526,7 +730,9 @@ void RenderSystem(Scene& scene,
     //      RenderSystem 内に統合することでポストプロセス（bloom/SSAO等）も適用される。
     graph.AddPass("TerrainForward", { "ShadowMap", "HDR" }, { "HDR" }, [&]() {
         renderer.SetRenderTarget(passHandles.hdrRT, resources);
-        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT, settings);
+        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT, settings,
+                            resources.GetDepthTexture(passHandles.shadowMapRT), passHandles.shadowCB,
+                            passHandles.lightCB);
     });
 
     // ── Sky ───────────────────────────────────────────────────────────────────

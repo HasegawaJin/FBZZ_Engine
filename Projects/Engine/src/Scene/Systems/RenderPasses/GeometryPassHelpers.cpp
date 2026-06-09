@@ -7,6 +7,7 @@
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -348,6 +349,51 @@ bool IsVisibleInFrustum(const math::Frustum& frustum,
     if (mesh.boundsRadius <= 0.0f) return true;
 
     const auto bounds = ComputeWorldBounds(tf, mesh);
+    return frustum.IntersectsSphere(bounds.center, bounds.radius);
+}
+
+bool ComputeSkinnedWorldBounds(const Transform& tf,
+                               const SkinnedMeshRenderer& smr,
+                               WorldBounds& outBounds)
+{
+    if (!smr.model) return false;
+
+    bool hasBounds = false;
+    math::Vector3 weightedCenter = math::Vector3::ZERO;
+    float totalWeight = 0.0f;
+
+    // WHAT: 各 submesh のワールド球を半径重みで平均し、最後に全 submesh を包む半径へ拡張する。
+    // WHY: 毎フレーム CPU スキニングして厳密 bounds を取ると頂点数に比例して重い。
+    //      バインドポーズ球は保守的だが、視錐台外の遠いキャラクターを安く除外できる。
+    for (const auto& meshPtr : smr.model->meshes) {
+        if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
+        const WorldBounds bounds = ComputeWorldBounds(tf, *meshPtr);
+        const float weight = (std::max)(bounds.radius, 0.001f);
+        weightedCenter = weightedCenter + bounds.center * weight;
+        totalWeight += weight;
+        hasBounds = true;
+    }
+
+    if (!hasBounds || totalWeight <= 0.0f) return false;
+
+    outBounds.center = weightedCenter * (1.0f / totalWeight);
+    outBounds.radius = 0.0f;
+    for (const auto& meshPtr : smr.model->meshes) {
+        if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
+        const WorldBounds bounds = ComputeWorldBounds(tf, *meshPtr);
+        const math::Vector3 delta = bounds.center - outBounds.center;
+        outBounds.radius = (std::max)(outBounds.radius, delta.Length() + bounds.radius);
+    }
+
+    return true;
+}
+
+bool IsSkinnedVisibleInFrustum(const math::Frustum& frustum,
+                               const Transform& tf,
+                               const SkinnedMeshRenderer& smr)
+{
+    WorldBounds bounds{};
+    if (!ComputeSkinnedWorldBounds(tf, smr, bounds)) return true;
     return frustum.IntersectsSphere(bounds.center, bounds.radius);
 }
 

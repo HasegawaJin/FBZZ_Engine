@@ -16,15 +16,26 @@ CPU で粒子の生成・更新・描画を行う汎用パーティクルシス�
 |---|---|---|
 | ポイントエミッター（1 点から放出） | 実装済み | `ParticlePass.cpp` |
 | `emitRate` / `maxParticles` による連続放出 | 実装済み | `ParticleEmitter.hpp` / `ParticlePass.cpp` |
-| `emitAccum` によるサブフレーム放出数の蓄積 | 実装済み・要改善 | `ParticleEmitter::emitAccum` |
+| `emitAccum` によるサブフレーム放出数の蓄積 | 実装済み | `ParticleEmitter::emitAccum` |
 | `colorStart` → `colorEnd` 線形補間 | 実装済み | `LerpVec4()` |
 | `sizeStart` → `sizeEnd` 線形補間 | 実装済み | `ParticlePass.cpp` |
-| 重力 | 実装済み・要改善 | `ParticlePass.cpp` 内の `5.0f` 固定値 |
+| 重力 | 実装済み | `ParticleEmitter::gravity` / `ParticlePass.cpp` |
+| エミッター単位の乱数 seed | 実装済み | `ParticleEmitter::randomSeed` / `ParticlePass.cpp` |
 | CPU 頂点生成 + VS ビルボード展開 | 実装済み | `ParticleVertex` / `Particle.hlsl` |
 | 加算合成 + Depth Read | 実装済み | `Particle.hlsl` コメント / `particlePSO` |
 | Inspector 編集 | 実装済み | `InspectorEffects.cpp` |
 | Scene 保存 / 読み込み | 実装済み | `SceneSerializer.cpp` |
-| Script API | 実装済み・薄い | `ScriptParticleProxy`（`SetEmitRate` / `SetEnabled` / `Clear`） |
+| Script API | 実装済み | `ScriptParticleProxy`（`Play` / `Stop` / `Burst` など） |
+| 再生状態 | 実装済み | `playing` / `duration` / `loop` / `startDelay` |
+| バースト放出 | 実装済み | `burstPending` / `ScriptParticleProxy::Burst()` |
+| テクスチャ | 実装済み | `texturePath` / `Particle.hlsl` |
+| 深度ソート | 実装済み | `ParticleSortMode::BackToFront` |
+| 通常アルファブレンド | 実装済み | `ParticleBlendMode::Alpha` / `particleAlphaPSO` |
+| 回転（スピン） | 実装済み | `rotation` / `angularVelocity` |
+| Sphere / Cone / Box 形状 | 実装済み | `ParticleEmitterShape` |
+| スプライトシート | 実装済み | `spriteColumns` / `spriteRows` |
+| over-lifetime カーブ | 実装済み・簡易 | `sizeCurvePower` / `colorCurvePower` |
+| GPU パーティクル | 設定対応・CPU fallback | `ParticleSimulationMode::Gpu` |
 
 ---
 
@@ -32,14 +43,9 @@ CPU で粒子の生成・更新・描画を行う汎用パーティクルシス�
 
 | 制約 | 影響 |
 |---|---|
-| 放出形状がポイント固定 | 球状爆発、円錐噴射、箱範囲の埃などを作れない |
-| 重力が `5.0f` 固定 | 炎は上昇、火花は落下、煙はゆっくり漂う、という調整ができない |
-| `std::rand()` 使用 | エミッター単位のシード、再現性、分布制御がない |
-| テクスチャ未対応 | `Particle.hlsl` はソフト円形フェードのみで、煙・炎・魔法模様を表現しにくい |
-| 深度ソートなし | 半透明粒子の重なり順がカメラ位置によって破綻しやすい |
-| 回転なし | 粒子が常に同じ向きのため、火花・葉・破片表現が単調になる |
-| 再生状態なし | `duration` / `loop` / `startDelay` / `Play()` / `Stop()` がなく、ワンショット制御ができない |
-| バーストなし | 爆発・ヒット・着水など、瞬間的な N 粒子放出を表現しにくい |
+| GPU モードは CPU fallback | Renderer API に Compute / StructuredBuffer 更新口がまだ無いため、設定を保持して CPU パスで描画する |
+| 形状はローカル軸基準 | Transform の回転を放出形状へ反映する処理は未実装 |
+| over-lifetime カーブは簡易 | 任意キー/ベジェではなく power easing で制御する |
 
 ---
 
@@ -58,8 +64,11 @@ CPU で粒子の生成・更新・描画を行う汎用パーティクルシス�
 │    ・colorStart / colorEnd                                   │
 │    ・sizeStart / sizeEnd                                     │
 │    ・lifetime / emitRate / maxParticles                      │
+│    ・gravity / randomSeed                                    │
+│    ・playing / duration / loop / startDelay                  │
+│    ・shape / texturePath / blendMode / sortMode              │
 │    ・particles: std::vector<Particle>（ランタイム状態）       │
-│    ・emitAccum: float（ランタイム状態）                       │
+│    ・emitAccum / randomState / burstPending（ランタイム状態） │
                ↓ ExecuteParticlePass が Scene をイテレート
 │ System Layer                                                 │
 │  ParticlePass                                                │
@@ -121,6 +130,15 @@ SceneSerializer は次の `ParticleEmitter` フィールドを保存 / 読み込
 | `lifetime` | 粒子 1 個の寿命 |
 | `emitRate` | 1 秒あたりの放出数 |
 | `maxParticles` | エミッター単位の最大粒子数 |
+| `gravity` | 粒子へ毎フレーム加える加速度 |
+| `randomSeed` | エミッター単位の乱数 seed |
+| `playing` / `duration` / `loop` / `startDelay` | 再生制御 |
+| `texturePath` | 粒子テクスチャ |
+| `shape` / `sphereRadius` / `coneAngleDegrees` / `coneRadius` / `boxExtents` | 放出形状 |
+| `blendMode` / `sortMode` / `simulationMode` | 描画・更新モード |
+| `spriteColumns` / `spriteRows` / `spriteStartFrame` / `spriteEndFrame` | スプライトシート |
+| `sizeCurvePower` / `colorCurvePower` / `velocityDamping` | over-lifetime 簡易制御 |
+| `angularVelocityMin` / `angularVelocityMax` | 回転速度範囲 |
 
 保存しないランタイム状態:
 
@@ -128,6 +146,8 @@ SceneSerializer は次の `ParticleEmitter` フィールドを保存 / 読み込
 |---|---|
 | `particles` | 実行時に毎フレーム変化するため、保存すると再生開始状態が不安定になる |
 | `emitAccum` | フレームレート差を吸収する内部蓄積値であり、シーン設定ではない |
+| `randomState` / `playTime` / `delayTime` / `burstPending` | 再生中だけ必要な内部状態 |
+| `texture` / `loadedTexturePath` | Renderer リソースハンドルであり、パスから再解決する |
 
 ---
 
@@ -150,10 +170,10 @@ SceneSerializer は次の `ParticleEmitter` フィールドを保存 / 読み込
 
 ### 重要度：高
 
-#### 重力係数の公開
+#### 重力係数の公開（実装済み）
 
-現在は `ParticlePass.cpp` 内で `it->velocity.y -= 5.0f * dt;` と固定している。
-エフェクトごとに上昇・落下・無重力を選べないため、`ParticleEmitter` に `gravity` または `gravityScale` を追加する。
+以前は `ParticlePass.cpp` 内で `it->velocity.y -= 5.0f * dt;` と固定していた。
+現在は `ParticleEmitter::gravity` を加速度として適用し、炎・煙・火花ごとに上昇・落下・無重力を調整できる。
 
 **修正範囲:**
 
@@ -164,17 +184,17 @@ SceneSerializer は次の `ParticleEmitter` フィールドを保存 / 読み込
 | `InspectorEffects.cpp` | Inspector 操作用 DragFloat 追加 |
 | `SceneSerializer.cpp` | 保存 / 読み込み対応 |
 
-#### `emitAccum` の上限到達時の溢れ対策
+#### `emitAccum` の上限到達時の溢れ対策（実装済み）
 
 `maxParticles` 到達中も `emitAccum` が増え続けると、粒子が寿命で減った瞬間に大量放出される。
 上限到達中は `emitAccum` を一定範囲へ clamp するか、放出できなかった分を破棄する。
 
-#### バースト放出
+#### バースト放出（実装済み）
 
 爆発・ヒット・着水などは `emitRate` だけでは作りにくい。
 `Burst(int count)` を Script API として追加し、内部では既存の粒子生成処理を再利用する。
 
-#### 再生状態の追加
+#### 再生状態の追加（実装済み）
 
 現在は `enabled` が更新・描画・放出の全停止を兼ねている。
 ワンショットエフェクトには `playing` / `duration` / `loop` / `startDelay` を追加し、
@@ -182,36 +202,36 @@ SceneSerializer は次の `ParticleEmitter` フィールドを保存 / 読み込
 
 ### 重要度：中
 
-#### テクスチャ対応
+#### テクスチャ対応（実装済み）
 
 `Particle.hlsl` は UV を受け取るがテクスチャサンプリングはしていない。
 `texturePath` と `ResourceHandle<TextureTag>` を `ParticleEmitter` に追加し、`DrawCall::textures[0]` にバインドする。
 
-#### 深度ソート
+#### 深度ソート（実装済み）
 
 煙や通常アルファブレンドへ拡張する場合は、粒子をカメラ距離で back-to-front に並べる。
 加算合成のみなら優先度は下がるが、テクスチャ対応と同時に検討する。
 
-#### 回転（スピン）
+#### 回転（スピン）（実装済み）
 
 `Particle` に `rotation` / `angularVelocity` を追加し、HLSL 側で corner ベクトルを回転する。
 火花・葉・破片などの見た目を単調にしないための拡張。
 
-#### 乱数の差し替え
+#### 乱数の差し替え（実装済み）
 
-`std::rand()` はグローバル状態で再現性が低い。
-既存のランダムユーティリティがある場合はエミッター単位の seed を持たせ、再生結果を制御できるようにする。
+以前の `std::rand()` はグローバル状態で再現性が低かった。
+現在は `ParticleEmitter::randomSeed` とランタイム `randomState` からエミッター単位の決定的な乱数列を作る。
 
 ### 重要度：低
 
 | 項目 | 概要 |
 |---|---|
-| エミッター形状 | Sphere / Cone / Box など、放出位置と初速方向の分布を増やす |
-| over-lifetime カーブ | 速度・色・サイズを線形補間からカーブ制御へ拡張する |
-| スプライトシート | 炎や煙の連番テクスチャを寿命に沿って切り替える |
+| エミッター形状 | 実装済み。Sphere / Cone / Box など、放出位置と初速方向の分布を増やす |
+| over-lifetime カーブ | 実装済み・簡易。速度 damping、色/サイズ power easing |
+| スプライトシート | 実装済み。炎や煙の連番テクスチャを寿命に沿って切り替える |
 | コリジョン | 地面・コライダーとの反射 / 消滅 |
 | サブエミッター | 粒子の誕生・死亡時に子エミッターを発火する |
-| GPU パーティクル | Compute Shader 更新で大量粒子に対応する |
+| GPU パーティクル | 設定対応・CPU fallback。Compute Shader 更新は Renderer API 拡張後に実装する |
 
 ---
 
@@ -219,14 +239,14 @@ SceneSerializer は次の `ParticleEmitter` フィールドを保存 / 読み込
 
 | Phase | 内容 | 完了条件 |
 |---|---|---|
-| 1 | `gravity` 公開 + `emitAccum` 溢れ修正 + `std::rand()` 差し替え | Inspector / Scene 保存で重力が保持され、上限到達後に瞬間大量放出しない |
-| 2 | `Burst()` / `Play()` / `Stop()` Script API + `playing` / `duration` / `loop` / `startDelay` | スクリプトからワンショット爆発とループエフェクトを制御できる |
-| 3 | テクスチャ対応 + `texturePath` 保存 / 読み込み | 炎・煙・魔法テクスチャを粒子へ貼れる |
-| 4 | 深度ソート + 通常アルファブレンド対応 | 煙などの半透明粒子がカメラ距離順に描画される |
-| 5 | `rotation` / `angularVelocity` | 粒子が寿命中にスピンする |
-| 6 | Sphere / Cone / Box エミッター形状 | 形状を選ぶだけで放出パターンを変更できる |
-| 7 | スプライトシート / over-lifetime カーブ | 表現力を Unity 風のモジュール構成へ近づける |
-| 8 | GPU パーティクル | 1 万粒子以上でも CPU 更新コストを抑えられる |
+| 1 | `gravity` 公開 + `emitAccum` 溢れ修正 + `std::rand()` 差し替え | 完了 |
+| 2 | `Burst()` / `Play()` / `Stop()` Script API + `playing` / `duration` / `loop` / `startDelay` | 完了 |
+| 3 | テクスチャ対応 + `texturePath` 保存 / 読み込み | 完了 |
+| 4 | 深度ソート + 通常アルファブレンド対応 | 完了 |
+| 5 | `rotation` / `angularVelocity` | 完了 |
+| 6 | Sphere / Cone / Box エミッター形状 | 完了 |
+| 7 | スプライトシート / over-lifetime カーブ | 完了・簡易 |
+| 8 | GPU パーティクル | 設定対応・CPU fallback |
 
 ---
 
