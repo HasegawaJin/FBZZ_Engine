@@ -166,8 +166,8 @@ private:
         if (!input.GetKeyDown((KeyCode)keyJump)) return;
 
         // WHY: インパルス = jumpForce * mass とすることで、質量に関わらず同じ跳躍高さを保つ。
-        phy->ApplyImpulse({ 0.0f, jumpForce * phy->GetMass(), 0.0f });
-        cc->Jump();
+        //      Jump() 内部でステート更新 → ApplyImpulse の順序が保証される。
+        cc->Jump(phy, { 0.0f, jumpForce * phy->GetMass(), 0.0f });
         animator.SetBool(paramIsGrounded, false);
         animator.SetFloat(paramVerticalSpeed, jumpForce);
     }

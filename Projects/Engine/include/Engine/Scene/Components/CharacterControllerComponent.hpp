@@ -102,9 +102,11 @@ struct CharacterControllerComponent {
         RemoveVelocityIntoGround(info.contactNormal, info.self);
     }
 
-    // ジャンプを実行し内部状態を更新する。rb->ApplyImpulse は呼び出し元で行う。
-    // WHY: impulse 値は Script 側が決定するが、ジャンプ後のステート遷移はここで一元管理する。
-    void Jump()
+    // ジャンプを実行し、インパルス適用とステート遷移をまとめて行う。
+    // WHY: 旧 Jump() は呼び出し元が rb->ApplyImpulse() と Jump() の順序を保証する必要があり、
+    //      順序を誤ると jumpGroundIgnoreTime タイマーがずれて着地判定が即発動した。
+    //      rb と impulse をここに渡すことで正しい順序をこのメソッドが保証する。
+    void Jump(physics::RigidBody* rb, const math::Vector3& impulse)
     {
         isGrounded           = false;
         m_wasFalling         = false;
@@ -114,6 +116,9 @@ struct CharacterControllerComponent {
         m_ignoreGroundTimer  = jumpGroundIgnoreTime;
         m_isIntentionalJump  = true;
         m_intentionalJumpTimer = 0.0f;
+        // ステート更新後にインパルスを適用する。逆順だと velocity.y が古い値のまま
+        // m_ignoreGroundTimer セット前の Contact 判定に入る余地が生まれる。
+        if (rb) rb->ApplyImpulse(impulse);
     }
 
 private:
