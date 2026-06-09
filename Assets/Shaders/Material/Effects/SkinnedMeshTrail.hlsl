@@ -15,10 +15,13 @@ cbuffer MeshTrailConstants : register(CB_MATERIAL)
 #include "Common/Structs.hlsli"
 #include "Platform/DX11.hlsli"
 
+Texture2D    gMeshTrailTex : register(TEX_ALBEDO);
+SamplerState gSampler      : register(SAMPLER_DEFAULT);
+
 struct MeshTrailPSIn
 {
     float4 svPosition : SV_POSITION;
-    float4 layoutKeep : TEXCOORD0;
+    float2 uv         : TEXCOORD0;
 };
 
 float4x4 BlendSkinMatrix(SkinnedVSInput v)
@@ -38,11 +41,11 @@ MeshTrailPSIn VSMain(SkinnedVSInput v)
     float3 localT = normalize(mul(v.tangent, (float3x3)skin));
     float4 worldPos = mul(localPos, world);
     o.svPosition = mul(worldPos, viewProjection);
-    o.layoutKeep = float4(localN.x + localT.y, v.uv.xy, 0.0f);
+    o.uv = v.uv + (localN.xy + localT.xy) * 1e-8f;
     return o;
 }
 
 float4 PSMain(MeshTrailPSIn input) : SV_Target0
 {
-    return trailColor + input.layoutKeep * 1e-8f;
+    return gMeshTrailTex.Sample(gSampler, input.uv) * trailColor;
 }
