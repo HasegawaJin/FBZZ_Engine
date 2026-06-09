@@ -758,18 +758,106 @@ void ScriptParticleProxy::SetEnabled(bool enabled) const
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->enabled = enabled;
 }
 
+void ScriptParticleProxy::Play(bool restart) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->playing = true;
+        if (restart) {
+            p->playTime = 0.0f;
+            p->delayTime = 0.0f;
+            p->emitAccum = 0.0f;
+            p->randomState = p->randomSeed;
+        }
+    }
+}
+
+void ScriptParticleProxy::Stop(bool clear) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->playing = false;
+        p->emitAccum = 0.0f;
+        p->burstPending = 0;
+        if (clear)
+            Clear();
+    }
+}
+
+void ScriptParticleProxy::Burst(int count) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        if (count > 0)
+            p->burstPending += count;
+    }
+}
+
 void ScriptParticleProxy::Clear() const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
         p->particles.clear();
         p->emitAccum = 0.0f;
+        p->burstPending = 0;
+        p->playTime = 0.0f;
+        p->delayTime = 0.0f;
     }
+}
+
+void ScriptParticleProxy::SetGravity(const math::Vector3& gravity) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->gravity = gravity;
+}
+
+void ScriptParticleProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->colorStart = start;
+        p->colorEnd = end;
+    }
+}
+
+void ScriptParticleProxy::SetSize(float start, float end) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->sizeStart = (std::max)(start, 0.0f);
+        p->sizeEnd = (std::max)(end, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetTexture(std::string_view texturePath, int columns, int rows) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->texturePath = std::string(texturePath);
+        p->spriteColumns = (std::max)(columns, 1);
+        p->spriteRows = (std::max)(rows, 1);
+        p->texture = {};
+        p->loadedTexturePath.clear();
+    }
+}
+
+void ScriptParticleProxy::SetShape(ParticleEmitterShape shape) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->shape = shape;
+}
+
+void ScriptParticleProxy::SetBlendMode(ParticleBlendMode blendMode) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->blendMode = blendMode;
+}
+
+void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->sortMode = sortMode;
+}
+
+void ScriptParticleProxy::SetSimulationMode(ParticleSimulationMode simulationMode) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->simulationMode = simulationMode;
 }
 
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
 {
     if (auto* t = SelfComponent<TrailComponent>(script)) {
         t->enabled = enabled;
+        t->clearOnDisable = clearWhenDisabled;
         if (!enabled && clearWhenDisabled)
             Clear();
     }
@@ -807,6 +895,12 @@ void ScriptTrailProxy::SetWidth(float start, float end) const
     }
 }
 
+void ScriptTrailProxy::SetWidthEasing(TrailWidthEasing easing) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->widthEasing = easing;
+}
+
 void ScriptTrailProxy::SetColor(const math::Vector4& start, const math::Vector4& end) const
 {
     if (auto* t = SelfComponent<TrailComponent>(script)) {
@@ -824,6 +918,12 @@ void ScriptTrailProxy::SetTexture(std::string_view texturePath, float uvTiling, 
         t->texture = {};
         t->loadedTexturePath.clear();
     }
+}
+
+void ScriptTrailProxy::SetUVMode(TrailUVMode mode) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->uvMode = mode;
 }
 
 void ScriptTrailProxy::SetAlignment(TrailAlignment alignment) const
@@ -848,10 +948,27 @@ void ScriptTrailProxy::SetSmoothSubdivisions(int subdivisions) const
         t->smoothSubdivisions = (std::max)(subdivisions, 0);
 }
 
+void ScriptTrailProxy::SetAttachBone(std::string_view boneName, const math::Vector3& offset) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->attachBone = std::string(boneName);
+        t->attachOffset = offset;
+    }
+}
+
+void ScriptTrailProxy::ClearAttachBone() const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->attachBone.clear();
+        t->attachOffset = math::Vector3::ZERO;
+    }
+}
+
 void ScriptMeshTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
         t->enabled = enabled;
+        t->clearOnDisable = clearWhenDisabled;
         if (!enabled && clearWhenDisabled)
             Clear();
     }
@@ -895,6 +1012,31 @@ void ScriptMeshTrailProxy::SetDoubleSided(bool doubleSided) const
 {
     if (auto* t = SelfComponent<MeshTrailComponent>(script))
         t->doubleSided = doubleSided;
+}
+
+void ScriptMeshTrailProxy::SetTexture(std::string_view texturePath) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
+        t->texturePath = std::string(texturePath);
+        t->texture = {};
+        t->loadedTexturePath.clear();
+    }
+}
+
+void ScriptMeshTrailProxy::AddExcludedMeshIndex(int meshIndex) const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script)) {
+        if (meshIndex < 0)
+            return;
+        if (std::find(t->excludedMeshIndices.begin(), t->excludedMeshIndices.end(), meshIndex) == t->excludedMeshIndices.end())
+            t->excludedMeshIndices.push_back(meshIndex);
+    }
+}
+
+void ScriptMeshTrailProxy::ClearExcludedMeshIndices() const
+{
+    if (auto* t = SelfComponent<MeshTrailComponent>(script))
+        t->excludedMeshIndices.clear();
 }
 
 void ScriptUIProxy::SetButtonInteractable(bool v) const
