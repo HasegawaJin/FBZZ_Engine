@@ -22,6 +22,7 @@ namespace fbzz::renderer {
 class IRenderer;
 class Camera;
 class ResourceManager;
+struct ConstantBufferTag;
 struct RenderSettings;
 
 } // namespace fbzz::renderer
@@ -38,7 +39,10 @@ void WaterRenderSystem(
     renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
     renderer::ResourceHandle<renderer::TextureTag> sceneColor,
     float                                         elapsedTime,
-    const renderer::RenderSettings*               settings = nullptr);
+    const renderer::RenderSettings*               settings = nullptr,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB = {},
+    renderer::ResourceHandle<renderer::TextureTag> shadowDepthTexture = {},
+    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB = {});
 
 // AddWaterRipple — 水面ローカル UV [0,1] に動的なリング波紋を追加する。
 // WHAT: スクリプトや物理イベントから水面接触を通知し、描画時に CPU テクスチャへ焼き込む。

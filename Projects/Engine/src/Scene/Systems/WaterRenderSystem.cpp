@@ -10,7 +10,6 @@
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
-#include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
@@ -20,7 +19,6 @@
 #include "Engine/Renderer/Camera.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
-#include "Engine/Renderer/LightSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
@@ -33,7 +31,9 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <random>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene {
@@ -376,6 +376,13 @@ void UpdateRippleState(
         return ripple.amplitude < 0.001f || ripple.radius > 2.8f;
     });
 
+    // WHY: 波紋がなく既存テクスチャも有効な場合は CPU 更新・GPU アップロードをスキップする。
+    //      ResourceManager は UpdateTexture を持たないため Release/Create が唯一の更新手段だが、
+    //      アクティブな波紋がない間は毎フレームのアロケーションを避けることでコストを削減する。
+    if (state.ripples.empty() && state.gpuTex.IsValid() && !state.dirty) {
+        return;
+    }
+
     state.pixels.assign(static_cast<size_t>(state.width) * static_cast<size_t>(state.height) * 4u, 128u);
     for (uint32_t y = 0; y < state.height; ++y) {
         for (uint32_t x = 0; x < state.width; ++x) {
@@ -467,7 +474,9 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         const math::Vector2 dir = wave.direction.Normalized();
         const float k = validWave ? math::TWO_PI / wave.wavelength : 0.0f;
         const float omega = validWave ? std::sqrt(9.8f * k) : 0.0f;
-        cb.waveDir[i] = { dir.x, dir.y, wave.steepness, validWave ? 1.0f : 0.0f };
+        // steepness > 1 で波面が自己交差するため Release ビルドでも防御的にクランプする
+        const float steepness = std::min(wave.steepness, 1.0f);
+        cb.waveDir[i] = { dir.x, dir.y, steepness, validWave ? 1.0f : 0.0f };
         cb.waveParams[i] = { validWave ? wave.amplitude : 0.0f, wave.wavelength, omega, k };
     }
 
@@ -529,7 +538,10 @@ void WaterRenderSystem(
     renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
     renderer::ResourceHandle<renderer::TextureTag> sceneColor,
     float elapsedTime,
-    const renderer::RenderSettings* settings)
+    const renderer::RenderSettings* settings,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB,
+    renderer::ResourceHandle<renderer::TextureTag> shadowDepthTexture,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB)
 {
     static auto waterShader = resources.LoadShader("assets/shaders/Water/Water.hlsl");
     static auto waterPSO = resources.CreatePipelineState({
@@ -544,7 +556,6 @@ void WaterRenderSystem(
     });
     static auto cameraCBH = resources.CreateConstantBuffer(288);
     static auto waterCBH  = resources.CreateConstantBuffer(sizeof(WaterCB));
-    static auto lightCBH  = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
     // MaterialComponent 未設定時のデフォルトエフェクトパラメータ CB
     static auto defaultEffectCBH = [&] {
         WaterEffectParams defaults{};
@@ -577,6 +588,30 @@ void WaterRenderSystem(
     if (outputRT.IsValid())
         renderer.SetRenderTarget(outputRT, resources);
 
+    // 無効になったエンティティのキャッシュを解放する
+    {
+        std::unordered_set<uint32_t> validIndices;
+        for (EntityID eid : scene.GetEntities<WaterComponent>())
+            validIndices.insert(eid.index);
+
+        std::erase_if(s_meshCache, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            for (auto& chunk : kv.second.chunks) {
+                resources.Release(chunk.vertexBuffer);
+                resources.Release(chunk.indexBuffer);
+            }
+            return true;
+        });
+        std::erase_if(s_texCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
+        std::erase_if(s_rippleStates, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            if (kv.second.gpuTex.IsValid()) resources.Release(kv.second.gpuTex);
+            return true;
+        });
+    }
+
     // ── スプラッシュ GO 生成（前フレームのキューを消費） ───────────────────────
     // WHY: PhysicsSystem/IKSystem は Scene 参照を持たないためキュー経由で委譲する。
     //      ParticleEmitter はシーンの既存 ParticlePass がそのまま描画する。
@@ -596,16 +631,17 @@ void WaterRenderSystem(
 
         const int count = static_cast<int>(6.0f + ev.intensity * 14.0f);
         emitter.particles.reserve(static_cast<size_t>(count));
+        // スレッドセーフな局所乱数生成器（std::rand() は global state でスレッド非安全）
+        std::mt19937 rng{ std::random_device{}() };
+        std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
         for (int i = 0; i < count; ++i) {
             Particle p;
             p.position = ev.worldPos;
             const float angle =
                 (static_cast<float>(i) / static_cast<float>(count)) * math::TWO_PI
-                + (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) - 0.5f) * 0.8f;
-            const float hSpeed = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)
-                                 * ev.intensity * 2.0f + 0.2f;
-            const float vSpeed = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)
-                                 * ev.intensity * 5.0f + 1.5f;
+                + (dist01(rng) - 0.5f) * 0.8f;
+            const float hSpeed = dist01(rng) * ev.intensity * 2.0f + 0.2f;
+            const float vSpeed = dist01(rng) * ev.intensity * 5.0f + 1.5f;
             p.velocity = { std::cos(angle) * hSpeed, vSpeed, std::sin(angle) * hSpeed };
             p.color    = emitter.colorStart;
             p.size     = emitter.sizeStart;
@@ -634,6 +670,7 @@ void WaterRenderSystem(
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
     renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
+    renderer.SetSampler(3, renderer::SamplerMode::BORDER_ZERO);
 
     {
         struct CameraCB {
@@ -658,42 +695,6 @@ void WaterRenderSystem(
         camData.nearZ = camera.m_near;
         camData.farZ = camera.m_far;
         resources.Update(cameraCBH, &camData, sizeof(camData));
-    }
-
-    {
-        constexpr float kDegToRad = math::PI / 180.0f;
-        renderer::LightConstantsCB lightData{};
-        lightData.lightDir = { 0.0f, -1.0f, 0.5f };
-        lightData.lightColor = { 1.0f, 1.0f, 1.0f };
-        lightData.lightIntensity = 1.0f;
-
-        for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
-            if (!lc.enabled) continue;
-            if (lc.type == LightComponent::Type::Directional) {
-                lightData.lightDir = tf.Forward().Normalized();
-                lightData.lightColor = lc.color;
-                lightData.lightIntensity = lc.intensity;
-            } else if (lc.type == LightComponent::Type::Point && lightData.pointLightCount < 8) {
-                auto& pl = lightData.pointLights[lightData.pointLightCount++];
-                pl.position = tf.position; pl.range = lc.range;
-                pl.color = lc.color; pl.intensity = lc.intensity;
-            } else if (lc.type == LightComponent::Type::Spot && lightData.spotLightCount < 4) {
-                auto& sl = lightData.spotLights[lightData.spotLightCount++];
-                sl.position = tf.position;
-                sl.direction = tf.Forward().Normalized();
-                sl.range = lc.range;
-                sl.innerCos = std::cos(lc.innerCone * kDegToRad);
-                sl.outerCos = std::cos(lc.outerCone * kDegToRad);
-                sl.color = lc.color;
-                sl.intensity = lc.intensity;
-            }
-        }
-        if (settings && settings->IsUnlit()) {
-            lightData.lightIntensity  = 0.0f;
-            lightData.pointLightCount = 0;
-            lightData.spotLightCount  = 0;
-        }
-        resources.Update(lightCBH, &lightData, sizeof(lightData));
     }
 
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
@@ -782,7 +783,8 @@ void WaterRenderSystem(
             call.constantBuffers[0] = cameraCBH;
             call.constantBuffers[1] = waterCBH;
             call.constantBuffers[2] = effectCBH;   // MaterialConstants (ユーザー定義)
-            call.constantBuffers[3] = lightCBH;
+            call.constantBuffers[3] = lightCB;
+            call.constantBuffers[4] = shadowCB;
             call.textures[0] = textures.normalMap1;
             call.textures[1] = textures.normalMap2;
             call.textures[2] = textures.foamTex;
@@ -792,6 +794,7 @@ void WaterRenderSystem(
             call.textures[6] = colorTex;
             call.textures[7] = textures.flowMap;
             call.textures[8] = rippleTex;
+            call.textures[9] = shadowDepthTexture;
             renderer.Submit(call, resources);
         }
     }

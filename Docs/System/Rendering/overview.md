@@ -13,9 +13,11 @@
 | 機能 | 状態 |
 |---|---|
 | fovY / nearZ / farZ + Reflect | ✅ |
+| aspectRatio + Reflect / 実 Viewport との同期 | ✅ |
 | `isMain` フラグによるメインカメラ識別 | ✅ |
 | `cullingMask`（LayerMask）レイヤー単位カリング | ✅ |
-| ScriptProxy: SetAsMain / SetFOV / SetNearFar | ✅ |
+| ScriptProxy: SetAsMain / SetFOV / SetAspectRatio / SetNearFar / SetCullingMask | ✅ |
+| WorldToScreenPoint / ScreenToWorldPoint | ✅ |
 
 ### LightComponent
 
@@ -25,7 +27,8 @@
 | color / intensity / range / innerCone / outerCone + Reflect | ✅ |
 | Directional 1 灯・Point 最大 8 灯・Spot 最大 4 灯の GPU 送信 | ✅ |
 | Directional シャドウマップ | ✅ |
-| ScriptProxy: SetColor / SetIntensity / SetRange / SetEnabled | ✅ |
+| シーン bounds 由来の Directional shadow lightVP 動的計算 | ✅ |
+| ScriptProxy: SetColor / SetType / SetIntensity / SetRange / SetInnerCone / SetOuterCone / SetEnabled | ✅ |
 
 ### SkyRenderer
 
@@ -34,6 +37,7 @@
 | Rayleigh / Mie 散乱係数・太陽強度・Henyey-Greenstein パラメーター + Reflect | ✅ |
 | 物理ベース大気散乱シェーダー（AtmosphereCB 経由） | ✅ |
 | 球体スカイドームメッシュ描画（SOLID_NOCULL + DEPTH_SKY PSO） | ✅ |
+| enabled / planetRadius / atmosphereRadius + Reflect / Serialize | ✅ |
 
 ### DecalComponent
 
@@ -41,6 +45,7 @@
 |---|---|
 | Albedo / Normal / Emissive 3 チャンネルテクスチャ + Reflect | ✅ |
 | ライフタイム管理・フェードアルファ算出 | ✅ |
+| ライフタイム満了後の GameObject 自動削除 | ✅ |
 | `receiverLayerMask` によるレイヤー単位投影除外 | ✅ |
 | Deferred パス 深度バッファ復元型 OBB 投影 | ✅ |
 | DecalDebugPass（OBB ワイヤーフレーム） | ✅ |
@@ -55,10 +60,17 @@
 | 不透明・半透明の分離 + RenderQueue 奥行きソート | ✅ |
 | DoubleSided / BlendMode ごとの PSO キャッシュ | ✅ |
 | 視錐台カリング（MeshRenderer: バウンディング球） | ✅ |
+| 視錐台カリング（SkinnedMeshRenderer: aggregate バインドポーズ球） | ✅ |
 | ソフトウェアオクルージョンカリング（静的不透明のみ） | ✅ |
 | ScriptMaterialProxy: SetFloat/Int/Vector/Texture/BlendMode 等フル実装 | ✅ |
 | Deferred GBuffer 互換変換（96 byte レイアウト） | ✅ |
 | SkinnedMeshRenderer Surface シェーダー誤適用警告 + フォールバック | ✅ |
+
+### RenderSystem / ResourceManager
+
+| 機能 | 状態 |
+|---|---|
+| `ResourceManager::Reset()` + RenderSystem static resource 世代検知 | ✅ |
 
 ---
 
@@ -67,34 +79,6 @@
 ---
 
 ### CameraComponent
-
-#### 重要度：高
-
-**`WorldToScreenPoint` / `ScreenToWorldPoint` が未実装スタブ**
-
-引数をそのまま返すだけで、スクリプトからの UI 座標計算・クリック判定がすべて誤動作する。
-
-**修正方針：** Camera の VP 行列と RenderSystem が管理している RT サイズを使って座標変換を実装する。
-
----
-
-#### 重要度：中
-
-**アスペクト比フィールドがない**
-
-`CameraComponent` にアスペクト比フィールドがなく、RenderSystem が Renderer 側の Camera から取得するため、CameraComponent と実際の Camera の間で値が乖離するリスクがある。
-
-**修正方針：** `aspectRatio` フィールドを追加して Reflect 対応し、RenderSystem がこの値で `renderer::Camera` を構築する。
-
----
-
-**ScriptProxy に `SetCullingMask()` がない**
-
-スクリプトからカリングマスクを動的変更できない。
-
-**修正方針：** `ScriptCameraProxy` に `SetCullingMask(LayerMask)` を追加する。
-
----
 
 #### 重要度：低
 
@@ -112,32 +96,9 @@
 
 **Point / Spot ライトにシャドウが生成されない**
 
-ShadowPass は DirectionalLight の単一正射影のみ実装されており、Point/Spot のシャドウマップが未実装。
+ShadowPass は 1 枚の `lightViewProjection` と `Texture2D<float>` を使う設計で、Point のキューブマップ Shadow と複数 Spot の shadow atlas が未実装。
 
 **修正方針：** Spot ライトは透視投影シャドウマップ、Point ライトはキューブマップ Shadow で追加対応する。設計方針を先に決定すること。
-
----
-
-**シャドウのライト視錐台が定数ハードコード**
-
-```cpp
-sceneCenter = {0, 1, 4};  // 固定
-// 射影範囲 ±20、far=60 も固定
-```
-
-シーン規模や DirectionalLight の向きに依存せず破綻する。
-
-**修正方針：** カメラ視錐台または シーン AABB から動的に lightVP を計算する（CSM / LiSPSM の基礎）。
-
----
-
-#### 重要度：中
-
-**ScriptProxy に `SetType()` / `SetConeAngle()` がない**
-
-スクリプトからライト種別やスポット角度を動的変更できない。
-
-**修正方針：** `ScriptLightProxy` に `SetType(LightComponent::Type)` / `SetInnerCone(float)` / `SetOuterCone(float)` を追加する。
 
 ---
 
@@ -153,16 +114,6 @@ sceneCenter = {0, 1, 4};  // 固定
 
 ### SkyRenderer
 
-#### 重要度：高
-
-**`bool enabled` が構造体に宣言されていない**
-
-`Reflect()` 内で `r.Field("enabled", enabled)` を呼んでいるが、構造体本体に `bool enabled` の宣言がない。コンパイルエラーの原因になる。
-
-**修正方針：** `SkyRenderer` 構造体に `bool enabled = true;` を追加する。
-
----
-
 #### 重要度：中
 
 **太陽方向（`sunDirection`）フィールドがない**
@@ -173,25 +124,9 @@ SkyPass は LightCB（Directional ライトの向き）から取得するが、D
 
 ---
 
-**大気半径・地球半径がハードコード**
-
-`planetRadius=6371` / `atmosphereRadius=6471` が SkyPass.cpp 内に固定されており、非現実スケールのシーンで調整できない。
-
-**修正方針：** `SkyRenderer` に両フィールドを追加して Reflect 対応する。
-
----
-
 ### DecalComponent
 
 #### 重要度：中
-
-**ライフタイム満了後に GameObject が残り続ける**
-
-`enabled=false` になっても GO が削除されないため、毎フレームのチェック対象になり続ける。
-
-**修正方針：** `DecalComponent` に `pendingDestroy` フラグを設けるか、RenderSystem 側で `enabled=false かつ lifetime >= 0` の GO を自動削除する。
-
----
 
 **`receiverLayerMask` が `int` 経由でシリアライズされる**
 
@@ -204,22 +139,6 @@ SkyPass は LightCB（Directional ライトの向き）から取得するが、D
 ### MaterialComponent / MeshRenderer / SkinnedMeshRenderer
 
 #### 重要度：高
-
-**SkinnedMeshRenderer に視錐台カリングが未実装**
-
-コメントにも「aggregateBounds フィールドを追加する拡張が考えられる」と明記されており、Transform 位置のみで判定しているに過ぎず、全スキンドメッシュが毎フレーム描画される。
-
-**修正方針：** `SkinnedMeshRenderer` に `aggregateBounds`（バインドポーズ全メッシュのワールド球）を追加し、アセットロード時に計算して視錐台テストに使う。
-
----
-
-**静的リソースハンドルのデバイスリセット非対応（FIXME あり）**
-
-フルスクリーン切り替えや GPU ドライバ更新で DX11 デバイスリセットが発生すると、static な RT / PSO / CB 等のハンドルが無効化されたままクラッシュする。
-
-**修正方針：** `ResourceManager::Reset()` API を新設し、Application ループからデバイスロスト検出時に呼び出してハンドルを再生成する。
-
----
 
 #### 重要度：中
 
@@ -252,14 +171,7 @@ SkyPass は LightCB（Directional ライトの向き）から取得するが、D
 
 | 優先度 | コンポーネント | 項目 | 工数目安 |
 |---|---|---|---|
-| 1 | SkyRenderer | `bool enabled` 宣言欠落の修正 | 極小 |
-| 2 | Camera | WorldToScreenPoint / ScreenToWorldPoint 実装 | 中 |
-| 3 | SkinnedMeshRenderer | 視錐台カリング追加 | 中 |
-| 4 | Light | シャドウ視錐台の動的計算 | 大 |
-| 5 | Light | Point / Spot シャドウ | 大 |
-| 6 | DecalComponent | ライフタイム満了後の自動削除 | 小 |
-| 7 | Camera / Light | ScriptProxy API 不足補完 | 小 |
-| 8 | RenderSystem | デバイスリセット対応 | 大 |
+| 1 | Light | Point / Spot シャドウ | 大 |
 
 ---
 

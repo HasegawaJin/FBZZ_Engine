@@ -41,6 +41,8 @@ namespace fbzz::physics
                         cp.tangent[0] * cp.cachedTangentImpulse[0] +
                         cp.tangent[1] * cp.cachedTangentImpulse[1];
                     const math::Vector3 totalImpulse = normalImpulseVec + tangImpulseVec;
+                    if (totalImpulse.LengthSq() <= 1e-12f)
+                        break;
 
                     if (cp.bodyA)
                     {

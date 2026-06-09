@@ -11,6 +11,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -32,6 +33,24 @@
 #include <ctime>
 
 namespace fbzz::editor_launcher {
+
+namespace {
+
+const char* PhysicsStepCountMarkerName(int steps)
+{
+    // WHY: 固定タイムステップが描画フレームに追いつくため、低 FPS 時は PhysicsSystem が複数回呼ばれる。
+    //      Profiler に回数 marker を残し、重さの原因が catch-up かどうかを確認できるようにする。
+    if (steps <= 1) return nullptr;
+    if (steps == 2) return "PhysicsFixedSteps=2";
+    if (steps == 3) return "PhysicsFixedSteps=3";
+    if (steps == 4) return "PhysicsFixedSteps=4";
+    if (steps == 5) return "PhysicsFixedSteps=5";
+    if (steps == 6) return "PhysicsFixedSteps=6";
+    if (steps == 7) return "PhysicsFixedSteps=7";
+    return "PhysicsFixedSteps>=8";
+}
+
+} // namespace
 
 void StandaloneApp::FileLogSink::OnLog(const core::LogEntry& entry)
 {
@@ -136,12 +155,19 @@ void StandaloneApp::OnUpdate(float dt)
     // WHY: 物理シミュレーションはフレームレートに依存しないよう固定タイムステップで動かす。
     const int   physicsHz = m_settings.physics.hz < 1 ? 60 : m_settings.physics.hz;
     const float fixedDt   = 1.0f / static_cast<float>(physicsHz);
-    m_physicsAccumulator += dt;
-    if (m_physicsAccumulator > fixedDt * 8.0f) m_physicsAccumulator = fixedDt * 8.0f;
-    while (m_physicsAccumulator >= fixedDt) {
-        scene::PhysicsSystem(*m_scene, *m_physicsWorld, fixedDt);
-        m_physicsAccumulator -= fixedDt;
+    int physicsStepsThisFrame = 0;
+    {
+        FBZZ_PROFILE_SCOPE("PhysicsFixedStepLoop");
+        m_physicsAccumulator += dt;
+        if (m_physicsAccumulator > fixedDt * 8.0f) m_physicsAccumulator = fixedDt * 8.0f;
+        while (m_physicsAccumulator >= fixedDt) {
+            scene::PhysicsSystem(*m_scene, *m_physicsWorld, fixedDt);
+            m_physicsAccumulator -= fixedDt;
+            ++physicsStepsThisFrame;
+        }
     }
+    if (const char* marker = PhysicsStepCountMarkerName(physicsStepsThisFrame))
+        FBZZ_PROFILE_MARKER(marker);
 
     scene::TransformSystem(*m_scene);
 }
@@ -263,7 +289,9 @@ renderer::Camera StandaloneApp::ResolveGameCamera(float aspectRatio) const
         result.m_fovY     = cam->fovY;
         result.m_near     = cam->nearZ;
         result.m_far      = cam->farZ;
-        result.m_aspect   = aspectRatio;
+        // WHY: ScriptCameraProxy が Component から同じ投影値を再構築できるよう、実 viewport aspect を同期する。
+        cam->aspectRatio  = aspectRatio;
+        result.m_aspect   = cam->aspectRatio;
         return result;
     }
 

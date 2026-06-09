@@ -17,10 +17,12 @@
 //   t10 = layer1 AO/Roughness
 //   t11 = layer2 AO/Roughness
 //   t12 = layer3 AO/Roughness
+//   t13 = shadow depth
 //
 // サンプラースロット (Terrain.hlsl と同期すること):
 //   s0 = WRAP_ANISOTROPIC  ディフューズテクスチャ用
-//   s1 = CLAMP_LINEAR      スプラットマップ用（UV が [0,1] を超えないようクランプ）
+//   s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
+//   s2 = CLAMP_LINEAR      スプラットマップ用（UV が [0,1] を超えないようクランプ）
 //
 // 設計上の注意:
 //   - シングルスレッド前提。static ローカルによる遅延初期化を使う。
@@ -33,7 +35,6 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
-#include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Entity.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Renderer/Camera.hpp"
@@ -42,7 +43,6 @@
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
-#include "Engine/Renderer/LightSystem.hpp"
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector2.hpp>
@@ -54,6 +54,7 @@
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene {
@@ -97,15 +98,6 @@ struct TerrainChunkKey {
     bool operator==(const TerrainChunkKey& o) const = default;
 };
 
-// エンティティ 1 つのテクスチャセット (Phase 4)
-// splatDirty が立つたびに全テクスチャを再ロードする
-struct TerrainTextures {
-    renderer::ResourceHandle<renderer::TextureTag> splatmap;        // t0
-    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> diffuse; // t1-t4
-    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> normal;  // t5-t8
-    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> aoRoughness; // t9-t12
-};
-
 } // namespace fbzz::scene
 
 // TerrainChunkKey の std::hash 特殊化
@@ -122,6 +114,18 @@ struct std::hash<fbzz::scene::TerrainChunkKey> {
 };
 
 namespace fbzz::scene {
+
+// エンティティ 1 つのテクスチャセット (Phase 4)
+// splatDirty が立つたびに全テクスチャを再ロードする
+struct TerrainTextures {
+    renderer::ResourceHandle<renderer::TextureTag> splatmap;        // t0
+    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> diffuse; // t1-t4
+    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> normal;  // t5-t8
+    std::array<renderer::ResourceHandle<renderer::TextureTag>, 4> aoRoughness; // t9-t12
+};
+
+static std::unordered_map<TerrainChunkKey, TerrainChunk> g_chunkCache;
+static std::unordered_map<uint32_t, TerrainTextures> g_texCache;
 
 // =============================================================================
 // 定数バッファ構造体 — HLSL 側と完全に一致させること
@@ -245,6 +249,40 @@ static void BuildChunkLODIndices(
     }
 }
 
+static TerrainChunk& EnsureTerrainChunk(
+    const TerrainComponent& terrain,
+    EntityID eid,
+    int cx,
+    int cz,
+    renderer::ResourceManager& resources)
+{
+    const TerrainChunkKey key{ eid, static_cast<uint32_t>(cx), static_cast<uint32_t>(cz) };
+    if (!g_chunkCache.contains(key)) {
+        std::vector<TerrainVertex> verts;
+        math::Vector3 aabbMin, aabbMax;
+        int x0, z0, x1, z1;
+        BuildChunk(terrain, cx, cz, verts, aabbMin, aabbMax, x0, z0, x1, z1);
+
+        TerrainChunk chunk;
+        chunk.aabbMin = aabbMin;
+        chunk.aabbMax = aabbMax;
+        chunk.vertexBuffer = resources.CreateVertexBuffer(
+            verts.data(),
+            verts.size() * sizeof(TerrainVertex),
+            static_cast<uint32_t>(sizeof(TerrainVertex)));
+
+        for (int lod = 0; lod < kLODCount; ++lod) {
+            std::vector<uint32_t> indices;
+            BuildChunkLODIndices(x0, z0, x1, z1, kLODSteps[lod], indices);
+            chunk.indexCountLOD[lod] = static_cast<uint32_t>(indices.size());
+            chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), chunk.indexCountLOD[lod]);
+        }
+        g_chunkCache[key] = std::move(chunk);
+    }
+
+    return g_chunkCache.at(key);
+}
+
 // =============================================================================
 // フラスタムカリングヘルパー
 // =============================================================================
@@ -357,7 +395,10 @@ void TerrainRenderSystem(
     renderer::ResourceManager&                    resources,
     const renderer::Camera&                       camera,
     renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
-    const renderer::RenderSettings* settings)
+    const renderer::RenderSettings* settings,
+    renderer::ResourceHandle<renderer::TextureTag> shadowDepthTexture,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB)
 {
     // =========================================================================
     // 静的リソースの遅延初期化（初回呼び出し時のみ実行）
@@ -375,7 +416,6 @@ void TerrainRenderSystem(
     });
     static auto cameraCBH  = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
     static auto terrainCBH = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
-    static auto lightCBH   = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
 
     // フォールバック: 1×1 白テクスチャ（未設定レイヤーのディフューズ代替）
     static auto s_whiteTex = [&] {
@@ -402,13 +442,28 @@ void TerrainRenderSystem(
         return resources.CreateTexture(b, 1, 1);
     }();
 
-    // チャンクキャッシュ: テレインエンティティ × チャンクグリッド → GPU バッファ
-    static std::unordered_map<TerrainChunkKey, TerrainChunk> s_chunkCache;
+    // チャンク/テクスチャキャッシュは SubmitTerrainShadowCasters と共有する。
 
-    // テクスチャキャッシュ: entityId.index → TerrainTextures
-    // WHY: エンティティ index を使う理由は、generation が異なっても地形エンティティを
-    //      削除・再作成するケースはまれで、index で十分識別できるため。
-    static std::unordered_map<uint32_t, TerrainTextures> s_texCache;
+    // 無効になったエンティティのキャッシュを解放する。
+    // WHY: エンティティ破棄後も static cache にエントリが残るとメモリリークになる。
+    //      毎フレームの走査コストは低い（Terrain 数は通常 1〜数個）。
+    {
+        // 現在有効な TerrainComponent エンティティの index セットを構築する
+        std::unordered_set<uint32_t> validIndices;
+        for (EntityID eid : scene.GetEntities<TerrainComponent>())
+            validIndices.insert(eid.index);
+
+        std::erase_if(g_chunkCache, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first.entityId.index)) return false;
+            resources.Release(kv.second.vertexBuffer);
+            for (auto& ib : kv.second.indexBufferLOD)
+                resources.Release(ib);
+            return true;
+        });
+        std::erase_if(g_texCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
+    }
 
     // =========================================================================
     // 描画先 RT を設定する
@@ -424,10 +479,12 @@ void TerrainRenderSystem(
     // 毎フレーム設定する。他の描画パスが s1 を上書きしても Terrain 描画前に復元される。
     // WHY: s0 = WRAP_ANISOTROPIC_4X で地形ディフューズをタイリングする。
     //      x16 の約 1/3 コストで斜め視線の縦縞ノイズを抑えられる。
-    //      s1 = CLAMP_LINEAR でスプラットマップを UV [0,1] の境界に正確にクランプする。
+    //      s1 = BORDER_ZERO でシャドウマップの範囲外を非遮蔽として扱う。
+    //      s2 = CLAMP_LINEAR でスプラットマップを UV [0,1] の境界に正確にクランプする。
     // =========================================================================
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC_4X);
-    renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
+    renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     // =========================================================================
     // カメラ定数バッファを更新
@@ -444,47 +501,6 @@ void TerrainRenderSystem(
         camData.nearZ             = camera.m_near;
         camData.farZ              = camera.m_far;
         resources.Update(cameraCBH, &camData, sizeof(camData));
-    }
-
-    // =========================================================================
-    // ライト定数バッファを Scene から収集して更新
-    // =========================================================================
-    {
-        constexpr float kDegToRad = 3.14159265f / 180.0f;
-        renderer::LightConstantsCB lightData{};
-        lightData.lightDir       = { 0.0f, -1.0f, 0.5f };
-        lightData.lightColor     = { 1.0f,  1.0f, 1.0f };
-        lightData.lightIntensity = 1.0f;
-
-        for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
-            if (!lc.enabled) continue;
-            if (lc.type == LightComponent::Type::Directional) {
-                lightData.lightDir       = tf.Forward().Normalized();
-                lightData.lightColor     = lc.color;
-                lightData.lightIntensity = lc.intensity;
-            } else if (lc.type == LightComponent::Type::Point && lightData.pointLightCount < 8) {
-                auto& pl    = lightData.pointLights[lightData.pointLightCount++];
-                pl.position = tf.position;  pl.range    = lc.range;
-                pl.color    = lc.color;     pl.intensity = lc.intensity;
-            } else if (lc.type == LightComponent::Type::Spot && lightData.spotLightCount < 4) {
-                auto& sl      = lightData.spotLights[lightData.spotLightCount++];
-                sl.position   = tf.position;
-                sl.direction  = tf.Forward().Normalized();
-                sl.range      = lc.range;
-                sl.innerCos   = std::cos(lc.innerCone * kDegToRad);
-                sl.outerCos   = std::cos(lc.outerCone * kDegToRad);
-                sl.color      = lc.color;
-                sl.intensity  = lc.intensity;
-            }
-        }
-        lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
-        if (settings && settings->IsUnlit()) {
-            lightData.ambientColor    = { 1.0f, 1.0f, 1.0f };
-            lightData.lightIntensity  = 0.0f;
-            lightData.pointLightCount = 0;
-            lightData.spotLightCount  = 0;
-        }
-        resources.Update(lightCBH, &lightData, sizeof(lightData));
     }
 
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
@@ -518,20 +534,20 @@ void TerrainRenderSystem(
 
         // -- heightDirty: 全チャンクを削除して再構築 ----------------------------
         if (terrain.heightDirty) {
-            std::erase_if(s_chunkCache, [&eid](const auto& kv) {
+            std::erase_if(g_chunkCache, [&eid](const auto& kv) {
                 return kv.first.entityId == eid;
             });
             terrain.heightDirty = false;
         }
 
         // -- splatDirty: スプラットマップ + レイヤーテクスチャを再構築 -----------
-        if (terrain.splatDirty || !s_texCache.contains(eid.index)) {
-            s_texCache[eid.index] = BuildTextureSet(mat, terrain, resources,
+        if (terrain.splatDirty || !g_texCache.contains(eid.index)) {
+            g_texCache[eid.index] = BuildTextureSet(mat, terrain, resources,
                                                     s_splatFallback, s_whiteTex,
                                                     s_flatNormalTex, s_blackTex);
             terrain.splatDirty = false;
         }
-        const TerrainTextures& textures = s_texCache.at(eid.index);
+        const TerrainTextures& textures = g_texCache.at(eid.index);
 
         // -- チャンク数計算 -------------------------------------------------------
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
@@ -589,36 +605,7 @@ void TerrainRenderSystem(
         // -- チャンクごとのメッシュ生成・フラスタムカリング・描画 -----------------
         for (int cz = 0; cz < chunkCountZ; ++cz) {
             for (int cx = 0; cx < chunkCountX; ++cx) {
-                const TerrainChunkKey key{ eid,
-                    static_cast<uint32_t>(cx), static_cast<uint32_t>(cz) };
-
-                // 未キャッシュなら構築
-                if (!s_chunkCache.contains(key)) {
-                    std::vector<TerrainVertex> verts;
-                    math::Vector3 aabbMin, aabbMax;
-                    int x0, z0, x1, z1;
-                    BuildChunk(terrain, cx, cz, verts, aabbMin, aabbMax, x0, z0, x1, z1);
-
-                    TerrainChunk chunk;
-                    chunk.aabbMin      = aabbMin;
-                    chunk.aabbMax      = aabbMax;
-                    chunk.vertexBuffer = resources.CreateVertexBuffer(
-                        verts.data(),
-                        verts.size() * sizeof(TerrainVertex),
-                        static_cast<uint32_t>(sizeof(TerrainVertex)));
-
-                    for (int lod = 0; lod < kLODCount; ++lod) {
-                        std::vector<uint32_t> indices;
-                        BuildChunkLODIndices(x0, z0, x1, z1, kLODSteps[lod], indices);
-                        chunk.indexCountLOD[lod] = static_cast<uint32_t>(indices.size());
-                        chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(
-                            indices.data(),
-                            chunk.indexCountLOD[lod]);
-                    }
-                    s_chunkCache[key] = std::move(chunk);
-                }
-
-                const TerrainChunk& chunk = s_chunkCache.at(key);
+                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, resources);
 
                 // チャンク単位のフラスタムカリング
                 if (!IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax))
@@ -665,14 +652,17 @@ void TerrainRenderSystem(
 
                 // 定数バッファスロット
                 //   [0]=CameraConstants(b0)  [1]=TerrainCB(b1)  [3]=LightConstants(b3)
+                //   [4]=ShadowConstants(b4)
                 call.constantBuffers[0] = cameraCBH;
                 call.constantBuffers[1] = terrainCBH;
-                call.constantBuffers[3] = lightCBH;
+                call.constantBuffers[3] = lightCB;
+                call.constantBuffers[4] = shadowCB;
 
                 // テクスチャスロット
                 //   [0]=splatmap(t0)  [1-4]=layer0-3 diffuse(t1-t4)
                 //   [5-8]=layer0-3 normal(t5-t8)
                 //   [9-12]=layer0-3 AO/Roughness(t9-t12)
+                //   [13]=directional shadow depth(t13)
                 call.textures[0] = textures.splatmap;
                 call.textures[1] = textures.diffuse[0];
                 call.textures[2] = textures.diffuse[1];
@@ -686,8 +676,87 @@ void TerrainRenderSystem(
                 call.textures[10] = textures.aoRoughness[1];
                 call.textures[11] = textures.aoRoughness[2];
                 call.textures[12] = textures.aoRoughness[3];
+                call.textures[13] = shadowDepthTexture;
 
                 renderer.Submit(call, resources);
+            }
+        }
+    }
+}
+
+void SubmitTerrainShadowCasters(
+    Scene&                                        scene,
+    renderer::IRenderer&                          renderer,
+    renderer::ResourceManager&                    resources,
+    const math::Frustum&                          lightFrustum,
+    renderer::ResourceHandle<renderer::ShaderTag> shadowShader,
+    renderer::ResourceHandle<renderer::PipelineStateTag> pipelineState,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB,
+    renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB)
+{
+    // Terrain は MeshRenderer を持たないため、通常の ShadowPass 走査では拾われない。
+    // ここで Terrain のチャンクキャッシュを共有し、ライト視点の深度だけを書き込む。
+    // WHY: ライト種別・shadow atlas・cascade の選択は ShadowPass 側に閉じ込め、
+    //      Terrain 側は「指定されたライト視錐台へ描けるチャンクを提出する」だけにする。
+    if (!shadowShader.IsValid() || !pipelineState.IsValid())
+        return;
+
+    struct ShadowObjectCB {
+        math::Matrix4 world;
+        math::Matrix4 worldInvTranspose;
+    };
+
+    for (auto [terrain, transform] : scene.View<TerrainComponent, Transform>()) {
+        if (!terrain.enabled || terrain.heightData.empty())
+            continue;
+
+        assert(terrain.heightData.size() == static_cast<size_t>(terrain.columns)
+                                          * static_cast<size_t>(terrain.rows));
+        assert(terrain.chunkSize > 0);
+
+        EntityID eid{};
+        for (EntityID candidate : scene.GetEntities<TerrainComponent>()) {
+            if (scene.GetComponent<TerrainComponent>(candidate) == &terrain) {
+                eid = candidate;
+                break;
+            }
+        }
+        if (!scene.IsValid(eid))
+            continue;
+
+        if (terrain.heightDirty) {
+            std::erase_if(g_chunkCache, [&eid](const auto& kv) {
+                return kv.first.entityId == eid;
+            });
+            terrain.heightDirty = false;
+        }
+
+        const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
+        const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
+        const math::Matrix4 world = transform.GetWorldMatrix();
+
+        ShadowObjectCB objData{};
+        objData.world             = world;
+        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        resources.Update(objectCB, &objData, sizeof(objData));
+
+        for (int cz = 0; cz < chunkCountZ; ++cz) {
+            for (int cx = 0; cx < chunkCountX; ++cx) {
+                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, resources);
+                if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
+                    continue;
+
+                renderer::DrawCall dc;
+                dc.vertexBuffer       = chunk.vertexBuffer;
+                dc.indexBuffer        = chunk.indexBufferLOD[0];
+                dc.indexCount         = chunk.indexCountLOD[0];
+                dc.shader             = shadowShader;
+                dc.pipelineState      = pipelineState;
+                dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
+                dc.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
+                dc.constantBuffers[0] = frameCB;
+                dc.constantBuffers[1] = objectCB;
+                renderer.Submit(dc, resources);
             }
         }
     }

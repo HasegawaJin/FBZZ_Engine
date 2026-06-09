@@ -288,6 +288,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
     const auto shadowDepthTex = resources.GetDepthTexture(h.shadowMapRT);
 
     std::vector<TransparentEntry> transparentQueue;
+    const auto& frustum = *ctx.cameraFrustum;
 
     // 不透明 skinned meshes → 即座に Submit
     for (auto& go : ctx.scene.GameObjects()) {
@@ -298,6 +299,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         if (!smr || !smr->enabled || !smr->model) continue;
         if (!mat || !mat->EnsureMaterialAsset()) continue;
         if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
+        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) continue;
         auto* material = SyncMaterial(*mat, resources, true);
         if (!material) continue;
 
@@ -357,6 +359,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         if (!smr || !smr->enabled || !smr->model) continue;
         if (!mat || !mat->EnsureMaterialAsset()) continue;
         if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;
+        if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) continue;
         auto* material = SyncMaterial(*mat, resources, true);
         if (!material) continue;
 

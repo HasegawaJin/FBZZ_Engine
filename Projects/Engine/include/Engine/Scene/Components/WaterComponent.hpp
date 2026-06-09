@@ -90,6 +90,26 @@ struct WaterComponent {
         r.Field("extentZ", extentZ);
         r.Field("enableGerstnerWaves", enableGerstnerWaves);
         r.Field("materialPath", materialPath);
+
+        // GerstnerWave × 4 を Inspector から編集できるよう公開する
+        // IReflector::Field は const char* を要求するため文字列リテラルで渡す
+        static constexpr const char* kWaveFieldNames[4][5] = {
+            { "wave0_dirX", "wave0_dirZ", "wave0_amplitude", "wave0_wavelength", "wave0_steepness" },
+            { "wave1_dirX", "wave1_dirZ", "wave1_amplitude", "wave1_wavelength", "wave1_steepness" },
+            { "wave2_dirX", "wave2_dirZ", "wave2_amplitude", "wave2_wavelength", "wave2_steepness" },
+            { "wave3_dirX", "wave3_dirZ", "wave3_amplitude", "wave3_wavelength", "wave3_steepness" },
+        };
+        for (int i = 0; i < 4; ++i) {
+            GerstnerWave& w = waves[static_cast<size_t>(i)];
+            r.Field(kWaveFieldNames[i][0], w.direction.x);
+            r.Field(kWaveFieldNames[i][1], w.direction.y);
+            r.Field(kWaveFieldNames[i][2], w.amplitude);
+            r.Field(kWaveFieldNames[i][3], w.wavelength);
+            r.Field(kWaveFieldNames[i][4], w.steepness);
+            // steepness は [0,1] にクランプして反映する（括弧で Windows min/max マクロを回避）
+            if (w.steepness < 0.0f) w.steepness = 0.0f;
+            if (w.steepness > 1.0f) w.steepness = 1.0f;
+        }
     }
 };
 

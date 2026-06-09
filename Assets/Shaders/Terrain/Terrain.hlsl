@@ -2,12 +2,6 @@
 // Terrain.hlsl | Terrain
 // ハイトマップ地形の頂点・ピクセルシェーダー
 //
-// フェーズ別実装状態:
-//   Phase 1 (完了): Blinn-Phong 単色ライティング
-//   Phase 2 (完了): layer[0] ディフューズテクスチャ
-//   Phase 3 (完了): チャンク分割対応（シェーダー変更なし）
-//   Phase 4 (完了): スプラットマップ 4 レイヤーブレンド
-//
 // 定数バッファスロット:
 //   b0 = CameraConstants   (per-frame)
 //   b1 = TerrainCB         (per-chunk: world / WVP / layer tiling / normal strength)
@@ -27,10 +21,12 @@
 //   t10 = layer1 AO/Roughness
 //   t11 = layer2 AO/Roughness
 //   t12 = layer3 AO/Roughness
+//   t13 = shadow depth
 //
 // サンプラースロット:
 //   s0 = WRAP_ANISOTROPIC  ディフューズ用（タイリングあり）
-//   s1 = CLAMP_LINEAR      スプラットマップ用（UV を [0,1] にクランプ）
+//   s1 = BORDER_ZERO       shadow PCF 用比較サンプラー
+//   s2 = CLAMP_LINEAR      スプラットマップ用（UV を [0,1] にクランプ）
 //
 // 頂点フォーマット (C++ 側 TerrainVertex と同期すること):
 //   POSITION  : float3  offset  0  (12 bytes)
@@ -95,32 +91,44 @@ cbuffer LightConstants : register(CB_LIGHT)
     float          _ambientPad;
 };
 
+cbuffer ShadowConstants : register(CB_SHADOW)
+{
+    float4x4 lightViewProjection;
+    float2   shadowMapTexelSize;
+    float    shadowBias;
+    float    _shadowPad;
+};
+
 // WHY: LightConstants の ambientColor グローバルを参照するため cbuffer 宣言の後に include する。
 #include "Rendering/Lighting.hlsli"
+#include "Rendering/Shadow.hlsli"
 
 // ============================================================================
 // テクスチャ・サンプラー宣言 (Phase 4)
 //
-// [Phase 4] g_splatmap (t0):
+// g_splatmap (t0):
 //   RGBA8 スプラットマップ。各チャンネルが各レイヤーのブレンドウェイトを表す。
 //   4 チャンネルの合計が 1 になるよう正規化してある（ペイントツールが保証）。
 //   シェーダー側でも安全のため正規化する。
 //
-// [Phase 4] g_diffuse[4] (t1-t4):
+// g_diffuse[4] (t1-t4):
 //   各レイヤーのアルベドテクスチャ。未設定レイヤーは 1×1 白テクスチャで代替。
 //   WHY: シェーダーは常に [unroll] 4 レイヤー固定でブレンドする。
 //        未設定レイヤーの splat ウェイトは 0 なので白テクスチャの寄与は 0 になる。
 //        動的分岐を排除することで GPU パイプラインの効率を上げる。
 //
 // s0 = ディフューズ用 Wrap Anisotropic（タイリング UV で繰り返しサンプリング）
-// s1 = スプラットマップ用 Clamp Linear（UV が [0,1] を超えた場合に端値を維持）
+// s1 = シャドウ用 Comparison Border Zero（ライト錐台外を非遮蔽として扱う）
+// s2 = スプラットマップ用 Clamp Linear（UV が [0,1] を超えた場合に端値を維持）
 // ============================================================================
 Texture2D    g_splatmap      : register(t0);
 Texture2D    g_diffuse[4]    : register(t1); // t1, t2, t3, t4
 Texture2D    g_normal[4]     : register(t5); // t5, t6, t7, t8
 Texture2D    g_aoRoughness[4] : register(t9); // R=AO, G=Roughness
+Texture2D<float> g_shadowMap : register(t13);
 SamplerState g_sampler       : register(s0); // Wrap Anisotropic
-SamplerState g_samplerClamp  : register(s1); // Clamp Linear
+SamplerComparisonState g_shadowSampler : register(s1);
+SamplerState g_samplerClamp  : register(s2); // Clamp Linear
 
 // ============================================================================
 // 頂点入力・補間構造体
@@ -227,7 +235,7 @@ float4 ApplyAutoBlend(float4 paintedSplat, float localHeight, float slope)
 }
 
 // ============================================================================
-// ピクセルシェーダー (Phase 4: スプラットマップ 4 レイヤーブレンド)
+// ピクセルシェーダー (スプラットマップ 4 レイヤーブレンド)
 // ============================================================================
 float4 PSMain(TerrainPSInput p) : SV_Target0
 {
@@ -235,7 +243,7 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     float3 V = normalize(cameraPos - p.worldPos);
     float3 L = normalize(-lightDir);
 
-    // ── [Phase 4] スプラットマップからレイヤーウェイトを取得 ─────────────────
+    // ── スプラットマップからレイヤーウェイトを取得 ─────────────────
     // スプラットマップは Clamp サンプラーでサンプリングする。
     // WHY: UV が地形端に近い頂点でわずかに [0,1] をはみ出すことがあり、
     //      Wrap だと反対端の値を参照してブレンドが壊れる。
@@ -247,7 +255,7 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     float slope = saturate(1.0f - abs(N.y));
     splat = ApplyAutoBlend(splat, p.localHeight, slope);
 
-    // ── [Phase 4] 4 レイヤーのアルベドをウェイトブレンド ───────────────────
+    // ── 4 レイヤーのアルベドをウェイトブレンド ───────────────────
     // [unroll] を使って静的展開する。
     // WHY: ループ変数で Texture2D 配列を動的インデックスすると SM 5.0 では
     //      テクスチャフェッチが最適化されない場合がある。
@@ -272,8 +280,11 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
 
     N = BlendTerrainNormal(p.worldTangent, N, p.uv, splat);
 
+    float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
+        lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+
     float3 result = Lighting_BlinnPhong(
-        N, V, L, albedo, roughness, lightColor, lightIntensity, /*shadow=*/1.0f);
+        N, V, L, albedo, roughness, lightColor, lightIntensity, shadow);
 
     [loop]
     for (int pi = 0; pi < pointLightCount; ++pi)

@@ -44,7 +44,9 @@ renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio)
         result.m_fovY     = cam->fovY;
         result.m_near     = cam->nearZ;
         result.m_far      = cam->farZ;
-        result.m_aspect   = aspectRatio;
+        // WHY: viewport から決まる実効 aspect を Component に戻し、Script の座標変換と描画カメラを一致させる。
+        cam->aspectRatio  = aspectRatio;
+        result.m_aspect   = cam->aspectRatio;
         return result;
     }
 
@@ -70,6 +72,8 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
         camera.m_fovY     = cam->fovY;
         camera.m_near     = cam->nearZ;
         camera.m_far      = cam->farZ;
+        cam->aspectRatio  = aspectRatio;
+        camera.m_aspect   = cam->aspectRatio;
         break;
     }
 

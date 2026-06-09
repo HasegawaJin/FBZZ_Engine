@@ -7,6 +7,7 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
+#include <Engine/Renderer/SamplerMode.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -16,6 +17,7 @@
 #include <Math/MathUtils.hpp>
 #include "RenderPasses/GeometryPasses.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 namespace fbzz::scene {
@@ -48,11 +50,54 @@ void ReleaseSampleResources(MeshTrailSample& sample, renderer::ResourceManager& 
     }
 }
 
+MeshTrailSample& SampleAt(MeshTrailComponent& trail, int logicalIndex)
+{
+    const int physicalIndex = (trail.sampleHead + logicalIndex) % trail.allocatedMaxSamples;
+    return trail.samples[static_cast<size_t>(physicalIndex)];
+}
+
+const MeshTrailSample& SampleAt(const MeshTrailComponent& trail, int logicalIndex)
+{
+    const int physicalIndex = (trail.sampleHead + logicalIndex) % trail.allocatedMaxSamples;
+    return trail.samples[static_cast<size_t>(physicalIndex)];
+}
+
+void EnsureSampleStorage(MeshTrailComponent& trail, renderer::ResourceManager& resources)
+{
+    const int desiredMaxSamples = (std::max)(trail.maxSamples, 1);
+    if (trail.allocatedMaxSamples == desiredMaxSamples &&
+        trail.samples.size() == static_cast<size_t>(desiredMaxSamples))
+        return;
+
+    std::vector<MeshTrailSample> ordered;
+    ordered.reserve(static_cast<size_t>((std::min)(trail.sampleCount, desiredMaxSamples)));
+    if (trail.allocatedMaxSamples > 0 && !trail.samples.empty()) {
+        const int keepCount = (std::min)(trail.sampleCount, desiredMaxSamples);
+        const int discardCount = trail.sampleCount - keepCount;
+        for (int i = 0; i < discardCount; ++i)
+            ReleaseSampleResources(SampleAt(trail, i), resources);
+        for (int i = discardCount; i < trail.sampleCount; ++i)
+            ordered.push_back(std::move(SampleAt(trail, i)));
+    }
+
+    trail.samples.clear();
+    trail.samples.resize(static_cast<size_t>(desiredMaxSamples));
+    for (size_t i = 0; i < ordered.size(); ++i)
+        trail.samples[i] = std::move(ordered[i]);
+    trail.sampleHead = 0;
+    trail.sampleCount = static_cast<int>(ordered.size());
+    trail.allocatedMaxSamples = desiredMaxSamples;
+}
+
 void ClearSamples(MeshTrailComponent& trail, renderer::ResourceManager& resources)
 {
-    for (auto& sample : trail.samples)
+    for (int i = 0; i < trail.sampleCount; ++i) {
+        auto& sample = SampleAt(trail, i);
         ReleaseSampleResources(sample, resources);
-    trail.samples.clear();
+        sample = {};
+    }
+    trail.sampleHead = 0;
+    trail.sampleCount = 0;
     trail.lastSampleTime = -1.0f;
 }
 
@@ -61,15 +106,21 @@ void ExpireSamples(MeshTrailComponent& trail, renderer::ResourceManager& resourc
     const float duration = (std::max)(trail.duration, 0.01f);
     const float oldestAllowed = currentTime - duration;
 
-    while (!trail.samples.empty() && trail.samples.front().timestamp < oldestAllowed) {
-        ReleaseSampleResources(trail.samples.front(), resources);
-        trail.samples.erase(trail.samples.begin());
+    while (trail.sampleCount > 0 && SampleAt(trail, 0).timestamp < oldestAllowed) {
+        auto& oldest = SampleAt(trail, 0);
+        ReleaseSampleResources(oldest, resources);
+        oldest = {};
+        trail.sampleHead = (trail.sampleHead + 1) % trail.allocatedMaxSamples;
+        --trail.sampleCount;
     }
 
     trail.maxSamples = (std::max)(trail.maxSamples, 1);
-    while (static_cast<int>(trail.samples.size()) > trail.maxSamples) {
-        ReleaseSampleResources(trail.samples.front(), resources);
-        trail.samples.erase(trail.samples.begin());
+    while (trail.sampleCount > trail.maxSamples) {
+        auto& oldest = SampleAt(trail, 0);
+        ReleaseSampleResources(oldest, resources);
+        oldest = {};
+        trail.sampleHead = (trail.sampleHead + 1) % trail.allocatedMaxSamples;
+        --trail.sampleCount;
     }
 }
 
@@ -80,14 +131,19 @@ bool ShouldSample(const MeshTrailComponent& trail, const math::Vector3& position
     if (!timeReady)
         return false;
 
-    if (trail.samples.empty())
+    if (trail.sampleCount == 0)
         return true;
 
     const float minDist = (std::max)(trail.minVertexDist, 0.0f);
-    return DistanceSq(position, trail.samples.back().position) >= minDist * minDist;
+    return DistanceSq(position, SampleAt(trail, trail.sampleCount - 1).position) >= minDist * minDist;
 }
 
-void CaptureSample(GameObject& go, MeshTrailComponent& trail, float currentTime)
+bool IsMeshIndexExcluded(const MeshTrailComponent& trail, int meshIndex)
+{
+    return std::find(trail.excludedMeshIndices.begin(), trail.excludedMeshIndices.end(), meshIndex) != trail.excludedMeshIndices.end();
+}
+
+void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::ResourceManager& resources, float currentTime)
 {
     MeshTrailSample sample{};
     sample.timestamp = currentTime;
@@ -100,7 +156,19 @@ void CaptureSample(GameObject& go, MeshTrailComponent& trail, float currentTime)
             sample.boneMatrices.resize(asset::MAX_SKINNING_BONES);
     }
 
-    trail.samples.push_back(std::move(sample));
+    if (trail.allocatedMaxSamples <= 0)
+        return;
+
+    if (trail.sampleCount == trail.allocatedMaxSamples) {
+        MeshTrailSample& writeSlot = trail.samples[static_cast<size_t>(trail.sampleHead)];
+        ReleaseSampleResources(writeSlot, resources);
+        writeSlot = std::move(sample);
+        trail.sampleHead = (trail.sampleHead + 1) % trail.allocatedMaxSamples;
+    } else {
+        const int writeIndex = (trail.sampleHead + trail.sampleCount) % trail.allocatedMaxSamples;
+        trail.samples[static_cast<size_t>(writeIndex)] = std::move(sample);
+        ++trail.sampleCount;
+    }
     trail.lastSampleTime = currentTime;
 }
 
@@ -110,9 +178,20 @@ void EnsureComponentResources(MeshTrailComponent& trail, renderer::ResourceManag
     trail.sampleInterval = (std::max)(trail.sampleInterval, 0.0f);
     trail.minVertexDist = (std::max)(trail.minVertexDist, 0.0f);
     trail.maxSamples = (std::max)(trail.maxSamples, 1);
+    EnsureSampleStorage(trail, resources);
 
     if (!trail.meshTrailCB.IsValid())
         trail.meshTrailCB = resources.CreateConstantBuffer(sizeof(MeshTrailCB));
+
+    if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
+        if (trail.texturePath.empty()) {
+            static const uint8_t white[4] = { 255, 255, 255, 255 };
+            trail.texture = resources.CreateTexture(white, 1, 1);
+        } else {
+            trail.texture = resources.LoadTexture(trail.texturePath);
+        }
+        trail.loadedTexturePath = trail.texturePath;
+    }
 }
 
 renderer::ResourceHandle<renderer::ConstantBufferTag> EnsureSampleSkinningCB(
@@ -126,12 +205,16 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> EnsureSampleSkinningCB(
     if (!sample.skinningCB.IsValid())
         sample.skinningCB = resources.CreateConstantBuffer(sizeof(SkinningCB));
 
+    if (!sample.skinningCBDirty)
+        return sample.skinningCB;
+
     SkinningCB cb{};
     for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
         cb.boneMatrices[i] = math::Matrix4::Identity();
     for (size_t i = 0; i < sample.boneMatrices.size() && i < asset::MAX_SKINNING_BONES; ++i)
         cb.boneMatrices[i] = sample.boneMatrices[i];
     resources.Update(sample.skinningCB, &cb, sizeof(cb));
+    sample.skinningCBDirty = false;
     return sample.skinningCB;
 }
 
@@ -177,6 +260,7 @@ void DrawStaticMeshSample(
     dc.constantBuffers[0] = h.frameCB;
     dc.constantBuffers[1] = h.objectCB;
     dc.constantBuffers[2] = trail.meshTrailCB;
+    dc.textures[0] = trail.texture;
     ctx.renderer.Submit(dc, resources);
 
     ++ctx.statsDrawCalls;
@@ -208,7 +292,10 @@ void DrawSkinnedMeshSample(
 
     const auto skinCB = EnsureSampleSkinningCB(sample, resources, h.bindPoseSkinningCB);
 
-    for (const auto& meshPtr : smr.model->meshes) {
+    for (size_t meshIndex = 0; meshIndex < smr.model->meshes.size(); ++meshIndex) {
+        if (IsMeshIndexExcluded(trail, static_cast<int>(meshIndex)))
+            continue;
+        const auto& meshPtr = smr.model->meshes[meshIndex];
         if (!meshPtr)
             continue;
         if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid())
@@ -226,6 +313,7 @@ void DrawSkinnedMeshSample(
         dc.constantBuffers[1] = h.objectCB;
         dc.constantBuffers[2] = trail.meshTrailCB;
         dc.constantBuffers[7] = skinCB;
+        dc.textures[0] = trail.texture;
         ctx.renderer.Submit(dc, resources);
 
         ++ctx.statsDrawCalls;
@@ -247,6 +335,7 @@ void ExecuteMeshTrailPass(RenderPassContext& ctx)
         return;
 
     ctx.renderer.SetRenderTarget(h.hdrRT, resources);
+    ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
 
     const float currentTime = core::Time::TotalTime();
 
@@ -258,7 +347,7 @@ void ExecuteMeshTrailPass(RenderPassContext& ctx)
         if (!trail)
             continue;
 
-        if (!trail->enabled) {
+        if (!trail->enabled && trail->clearOnDisable) {
             ClearSamples(*trail, resources);
             trail->clearRequested = false;
             continue;
@@ -277,12 +366,13 @@ void ExecuteMeshTrailPass(RenderPassContext& ctx)
         EnsureComponentResources(*trail, resources);
         ExpireSamples(*trail, resources, currentTime);
 
-        if (ShouldSample(*trail, go.transform.position, currentTime))
-            CaptureSample(go, *trail, currentTime);
+        if (trail->enabled && ShouldSample(*trail, go.transform.position, currentTime))
+            CaptureSample(go, *trail, resources, currentTime);
 
         ExpireSamples(*trail, resources, currentTime);
 
-        for (auto& sample : trail->samples) {
+        for (int i = 0; i < trail->sampleCount; ++i) {
+            auto& sample = SampleAt(*trail, i);
             if (auto* mr = go.GetComponent<MeshRenderer>())
                 DrawStaticMeshSample(*trail, sample, *mr, ctx, currentTime);
             if (auto* smr = go.GetComponent<SkinnedMeshRenderer>())

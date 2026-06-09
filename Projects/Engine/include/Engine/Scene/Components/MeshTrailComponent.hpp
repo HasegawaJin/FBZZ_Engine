@@ -9,6 +9,7 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace fbzz::scene {
@@ -23,6 +24,9 @@ struct MeshTrailSample {
 
     // SkinnedMeshRenderer 用の過去ボーンパレット。保存対象ではなく、描画時に必要なら作成する。
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
+    // skinningCBDirty — サンプル時点で固定された boneMatrices を GPU へ初回だけ転送するためのフラグ。
+    // WHY: 残像サンプルのボーン姿勢は生成後に変化しないため、毎フレーム再アップロードする必要がない。
+    bool skinningCBDirty = true;
 };
 
 // MeshTrailComponent — オブジェクト形状そのものを残像として描画する Component。
@@ -39,6 +43,9 @@ struct MeshTrailComponent {
         , colorStart(other.colorStart)
         , colorEnd(other.colorEnd)
         , doubleSided(other.doubleSided)
+        , clearOnDisable(other.clearOnDisable)
+        , texturePath(other.texturePath)
+        , excludedMeshIndices(other.excludedMeshIndices)
     {
     }
 
@@ -54,10 +61,18 @@ struct MeshTrailComponent {
         colorStart = other.colorStart;
         colorEnd = other.colorEnd;
         doubleSided = other.doubleSided;
+        clearOnDisable = other.clearOnDisable;
+        texturePath = other.texturePath;
+        excludedMeshIndices = other.excludedMeshIndices;
         samples.clear();
+        sampleHead = 0;
+        sampleCount = 0;
+        allocatedMaxSamples = 0;
         lastSampleTime = -1.0f;
         clearRequested = false;
         meshTrailCB = {};
+        texture = {};
+        loadedTexturePath.clear();
         return *this;
     }
 
@@ -74,14 +89,28 @@ struct MeshTrailComponent {
     math::Vector4 colorStart = { 0.35f, 0.75f, 1.0f, 0.35f };
     math::Vector4 colorEnd   = { 0.35f, 0.75f, 1.0f, 0.0f };
     bool doubleSided = true;
+    // clearOnDisable — enabled=false にした瞬間に残像を消すか、duration に任せて自然消滅させるか。
+    // WHY: 攻撃終了後だけサンプリングを止め、既存のメッシュ残像をフェードアウトさせる用途を Script API で表現する。
+    bool clearOnDisable = true;
+    // texturePath — MeshTrail 専用の乗算テクスチャ。
+    // WHY: 元 Material を再利用せず、残像演出だけにノイズ・グラデーション・マスクを適用できるようにする。
+    std::string texturePath;
+    // excludedMeshIndices — SkinnedModel 内で残像を描かない submesh index。
+    // WHY: 顔や素体を除外し、武器・甲冑など演出対象だけにメッシュ残像を限定できるようにする。
+    std::vector<int> excludedMeshIndices;
 
-    // samples はリングバッファではなく小さな配列として管理する。
-    // WHY: maxSamples は十数個程度を想定しており、古いサンプル削除と描画順ソートを単純に保つ。
+    // samples — 固定スロットのリングバッファ。論理順は MeshTrailRenderSystem の SampleAt() で扱う。
+    // WHY: 古いサンプル破棄のたびに vector::erase(begin) で全要素を移動すると、SkinnedMesh の boneMatrices も毎回移動する。
     std::vector<MeshTrailSample> samples;
+    int sampleHead = 0;
+    int sampleCount = 0;
+    int allocatedMaxSamples = 0;
     float lastSampleTime = -1.0f;
     bool clearRequested = false;
 
     renderer::ResourceHandle<renderer::ConstantBufferTag> meshTrailCB;
+    renderer::ResourceHandle<renderer::TextureTag> texture;
+    std::string loadedTexturePath;
 
     const char* GetTypeName() const { return "Mesh Trail"; }
 
@@ -96,6 +125,8 @@ struct MeshTrailComponent {
         r.Field("colorStart", colorStart);
         r.Field("colorEnd", colorEnd);
         r.Field("doubleSided", doubleSided);
+        r.Field("clearOnDisable", clearOnDisable);
+        r.Field("texturePath", texturePath);
     }
 };
 
