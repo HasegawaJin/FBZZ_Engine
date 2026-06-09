@@ -95,6 +95,20 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 }
             }
 
+            if (!tc.materialPath.empty()) {
+                auto matHandle = asset::AssetManager::LoadMaterial(tc.materialPath);
+                if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+                    if (DrawTerrainMaterialInspector(*mat))
+                        tc.splatDirty = true;
+                    if (ImGui::Button("Save .fzmat")) {
+                        asset::SaveMaterialAssetToFile(MaterialAssetDiskPath(ctx, tc.materialPath), *mat);
+                        ctx.requestAssetBrowserRefresh = true;
+                    }
+                } else {
+                    ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "Missing: %s", tc.materialPath.c_str());
+                }
+            }
+
             // ── コライダー ─────────────────────────────────────────────────────
             ImGui::SeparatorText("Collider");
             if (ImGui::Button("Rebuild Collider Now")) {
