@@ -31,7 +31,9 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <random>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene {
@@ -374,6 +376,13 @@ void UpdateRippleState(
         return ripple.amplitude < 0.001f || ripple.radius > 2.8f;
     });
 
+    // WHY: 波紋がなく既存テクスチャも有効な場合は CPU 更新・GPU アップロードをスキップする。
+    //      ResourceManager は UpdateTexture を持たないため Release/Create が唯一の更新手段だが、
+    //      アクティブな波紋がない間は毎フレームのアロケーションを避けることでコストを削減する。
+    if (state.ripples.empty() && state.gpuTex.IsValid() && !state.dirty) {
+        return;
+    }
+
     state.pixels.assign(static_cast<size_t>(state.width) * static_cast<size_t>(state.height) * 4u, 128u);
     for (uint32_t y = 0; y < state.height; ++y) {
         for (uint32_t x = 0; x < state.width; ++x) {
@@ -465,7 +474,9 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         const math::Vector2 dir = wave.direction.Normalized();
         const float k = validWave ? math::TWO_PI / wave.wavelength : 0.0f;
         const float omega = validWave ? std::sqrt(9.8f * k) : 0.0f;
-        cb.waveDir[i] = { dir.x, dir.y, wave.steepness, validWave ? 1.0f : 0.0f };
+        // steepness > 1 で波面が自己交差するため Release ビルドでも防御的にクランプする
+        const float steepness = std::min(wave.steepness, 1.0f);
+        cb.waveDir[i] = { dir.x, dir.y, steepness, validWave ? 1.0f : 0.0f };
         cb.waveParams[i] = { validWave ? wave.amplitude : 0.0f, wave.wavelength, omega, k };
     }
 
@@ -577,6 +588,30 @@ void WaterRenderSystem(
     if (outputRT.IsValid())
         renderer.SetRenderTarget(outputRT, resources);
 
+    // 無効になったエンティティのキャッシュを解放する
+    {
+        std::unordered_set<uint32_t> validIndices;
+        for (EntityID eid : scene.GetEntities<WaterComponent>())
+            validIndices.insert(eid.index);
+
+        std::erase_if(s_meshCache, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            for (auto& chunk : kv.second.chunks) {
+                resources.Release(chunk.vertexBuffer);
+                resources.Release(chunk.indexBuffer);
+            }
+            return true;
+        });
+        std::erase_if(s_texCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
+        std::erase_if(s_rippleStates, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            if (kv.second.gpuTex.IsValid()) resources.Release(kv.second.gpuTex);
+            return true;
+        });
+    }
+
     // ── スプラッシュ GO 生成（前フレームのキューを消費） ───────────────────────
     // WHY: PhysicsSystem/IKSystem は Scene 参照を持たないためキュー経由で委譲する。
     //      ParticleEmitter はシーンの既存 ParticlePass がそのまま描画する。
@@ -596,16 +631,17 @@ void WaterRenderSystem(
 
         const int count = static_cast<int>(6.0f + ev.intensity * 14.0f);
         emitter.particles.reserve(static_cast<size_t>(count));
+        // スレッドセーフな局所乱数生成器（std::rand() は global state でスレッド非安全）
+        std::mt19937 rng{ std::random_device{}() };
+        std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
         for (int i = 0; i < count; ++i) {
             Particle p;
             p.position = ev.worldPos;
             const float angle =
                 (static_cast<float>(i) / static_cast<float>(count)) * math::TWO_PI
-                + (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) - 0.5f) * 0.8f;
-            const float hSpeed = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)
-                                 * ev.intensity * 2.0f + 0.2f;
-            const float vSpeed = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)
-                                 * ev.intensity * 5.0f + 1.5f;
+                + (dist01(rng) - 0.5f) * 0.8f;
+            const float hSpeed = dist01(rng) * ev.intensity * 2.0f + 0.2f;
+            const float vSpeed = dist01(rng) * ev.intensity * 5.0f + 1.5f;
             p.velocity = { std::cos(angle) * hSpeed, vSpeed, std::sin(angle) * hSpeed };
             p.color    = emitter.colorStart;
             p.size     = emitter.sizeStart;
