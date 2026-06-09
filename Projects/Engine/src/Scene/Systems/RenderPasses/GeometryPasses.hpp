@@ -29,7 +29,7 @@ constexpr uint32_t kShadowMapSize = 8192u;
 inline constexpr math::Vector4 kHdrClearColor = { 0.005f, 0.005f, 0.02f, 1.0f };
 
 // パーティクル最大描画数。RenderSystem の VB/IB 確保と ParticlePass で共有する。
-constexpr int kMaxParticleDraw = 1000;
+constexpr int kMaxParticleDraw = 10000;
 
 // パーティクルビルボード頂点。Particle.hlsl の ParticleVSIn と一致させること。
 struct ParticleVertex {
@@ -37,7 +37,9 @@ struct ParticleVertex {
     float uv[2];      // TEXCOORD0   8 bytes
     float color[4];   // COLOR       16 bytes
     float size;       // TEXCOORD1    4 bytes
-};                    // 40 bytes
+    float rotation;   // TEXCOORD2    4 bytes
+    float uvRect[4];  // TEXCOORD3   16 bytes
+};                    // 60 bytes
 
 // ---- パス宣言 ---------------------------------------------------------------
 void ExecuteShadowPass                     (RenderPassContext& ctx);

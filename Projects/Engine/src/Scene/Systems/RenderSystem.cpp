@@ -238,6 +238,11 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_READ
     });
+    static auto particleAlphaPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
     static auto trailPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
@@ -325,6 +330,7 @@ void RenderSystem(Scene& scene,
         selectionMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         skydomePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_SKY });
         particlePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
+        particleAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         trailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailDoubleSidedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
@@ -583,6 +589,7 @@ void RenderSystem(Scene& scene,
     passHandles.atmosphereCB         = atmCB;
     passHandles.particleShader       = particleShader;
     passHandles.particlePSO          = particlePSO;
+    passHandles.particleAlphaPSO     = particleAlphaPSO;
     passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
     passHandles.trailShader          = trailShader;
