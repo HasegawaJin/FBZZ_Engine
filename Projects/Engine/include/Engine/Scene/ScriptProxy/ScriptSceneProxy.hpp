@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/PrefabRef.hpp>
 #include <Math/Vector3.hpp>
 #include <string>
 #include <string_view>
@@ -26,8 +27,11 @@ struct ScriptSceneProxy {
     GameObject* GetMainCameraObject() const;
     GameObject& Create(std::string_view name = "GameObject") const;
     void Destroy(GameObject& go, float delay = 0.0f) const;
+    void DestroySelf(float delay = 0.0f) const;
     template<typename T> T* GetScript() const;
     template<typename T> T* GetScript(GameObject& go) const;
+    // EntityID から直接 Script を取得する。Inspector でアサインした参照に使う。
+    template<typename T> T* GetScript(EntityID id) const;
     template<typename T> T* GetComponent() const;
     template<typename T> T& GetOrAddComponent() const;
     template<typename T> T& RequireComponent() const;
@@ -38,6 +42,10 @@ struct ScriptSceneProxy {
     float GetTerrainHeightAt(const math::Vector3& worldPos) const;
     math::Vector3 GetTerrainNormalAt(const math::Vector3& worldPos) const;
     float GetWaterSurfaceHeight(const math::Vector3& worldPos, float time) const;
+
+    // Prefab をインスタンス化して最初のルート GO を返す。失敗時は nullptr。
+    GameObject* Instantiate(const PrefabRef& prefab) const;
+    GameObject* Instantiate(const std::string& prefabPath) const;
 };
 
 } // namespace fbzz::scene

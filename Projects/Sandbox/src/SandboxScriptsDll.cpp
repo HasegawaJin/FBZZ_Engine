@@ -12,6 +12,8 @@
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
 //      Assets/Scripts/Foo.hpp に解決される。
+#include "Scripts/BulletComponent.hpp"
+#include "Scripts/BulletShooterComponent.hpp"
 #include "Scripts/PlayerControllerComponent.hpp"
 #include "Scripts/PlayerWorldSpaceUIComponent.hpp"
 #include "Scripts/TpsCameraComponent.hpp"
@@ -53,6 +55,10 @@ const std::vector<ScriptEntry>& AllEntries()
 {
     // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
     static const std::vector<ScriptEntry> entries = {
+        { ::sandbox::BulletComponent::TYPE_NAME,
+          []() { return std::make_unique<::sandbox::BulletComponent>(); } },
+        { ::sandbox::BulletShooterComponent::TYPE_NAME,
+          []() { return std::make_unique<::sandbox::BulletShooterComponent>(); } },
         { ::sandbox::PlayerControllerComponent::TYPE_NAME,
           []() { return std::make_unique<::sandbox::PlayerControllerComponent>(); } },
         { ::sandbox::PlayerWorldSpaceUIComponent::TYPE_NAME,

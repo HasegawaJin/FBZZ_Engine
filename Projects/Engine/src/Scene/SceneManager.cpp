@@ -10,6 +10,7 @@
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
 #include "Engine/Scene/Systems/IKSystem.hpp"
+#include "Engine/Scene/Systems/LifetimeSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <cassert>
@@ -59,6 +60,7 @@ void SceneManager::Update(float dt, physics::World& world)
         IKSystem(*m_active, world, *resources, dt);
     }
     ScriptSystem(*m_active, dt);
+    LifetimeSystem(*m_active, dt);
     {
         FBZZ_PROFILE_SCOPE("Scene::FlushDestroyQueue");
         m_active->FlushDestroyQueue(dt);
