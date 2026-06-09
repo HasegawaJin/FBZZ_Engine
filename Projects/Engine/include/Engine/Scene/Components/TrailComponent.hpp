@@ -27,6 +27,22 @@ enum class TrailAlignment : uint8_t {
     WorldUp      = 1,
 };
 
+// TrailUVMode — U 座標をトレイル全体へ正規化するか、ワールド長でタイルするかを選ぶ。
+// Stretch は剣閃の一枚絵、Tile は長い軌跡へ繰り返し模様を流す用途に使う。
+enum class TrailUVMode : uint8_t {
+    Stretch = 0,
+    Tile    = 1,
+};
+
+// TrailWidthEasing — 古い点から新しい点へ幅を補間するときの曲線。
+// WHY: 線形だけでは先端だけ鋭く細る軌跡や、根元を長く太く残す演出を作りにくい。
+enum class TrailWidthEasing : uint8_t {
+    Linear    = 0,
+    EaseIn    = 1,
+    EaseOut   = 2,
+    EaseInOut = 3,
+};
+
 // TrailComponent — GameObject に追従するトレイルの設定とランタイム状態。
 // WHAT: System がリングバッファへ制御点を追加し、毎フレーム GPU 頂点バッファへリボンを展開する。
 struct TrailComponent {
@@ -39,13 +55,22 @@ struct TrailComponent {
 
     float widthStart = 0.20f;
     float widthEnd   = 0.02f;
+    TrailWidthEasing widthEasing = TrailWidthEasing::Linear;
     math::Vector4 colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector4 colorEnd   = { 1.0f, 1.0f, 1.0f, 0.0f };
 
     TrailAlignment alignment = TrailAlignment::CameraFacing;
     int smoothSubdivisions = 0;
+    // attachBone / attachOffset — SkinnedMeshRenderer のボーン GameObject にサンプル位置を追従させる。
+    // WHY: 武器の先端や手首など、GameObject 原点以外から Trail を発生させたいケースを Component 単体で扱う。
+    std::string attachBone;
+    math::Vector3 attachOffset = math::Vector3::ZERO;
+    // clearOnDisable — enabled=false 時に点列を即破棄するか、duration による自然消滅を待つか。
+    // WHY: ScriptTrailProxy::SetEnabled(false, false) で「記録だけ止めてフェードアウト」を選べるようにする。
+    bool clearOnDisable = true;
 
     std::string texturePath;
+    TrailUVMode uvMode = TrailUVMode::Stretch;
     float uvScrollSpeed = 0.0f;
     float uvTiling      = 1.0f;
 
@@ -78,6 +103,10 @@ struct TrailComponent {
         r.Field("minVertexDist", minVertexDist);
         r.Field("widthStart", widthStart);
         r.Field("widthEnd", widthEnd);
+        int widthEasingValue = static_cast<int>(widthEasing);
+        r.Field("widthEasing", widthEasingValue);
+        widthEasingValue = widthEasingValue < 0 ? 0 : (widthEasingValue > 3 ? 3 : widthEasingValue);
+        widthEasing = static_cast<TrailWidthEasing>(widthEasingValue);
         r.Field("colorStart", colorStart);
         r.Field("colorEnd", colorEnd);
 
@@ -87,7 +116,14 @@ struct TrailComponent {
         alignment = static_cast<TrailAlignment>(alignmentValue);
 
         r.Field("smoothSubdivisions", smoothSubdivisions);
+        r.Field("attachBone", attachBone);
+        r.Field("attachOffset", attachOffset);
+        r.Field("clearOnDisable", clearOnDisable);
         r.Field("texturePath", texturePath);
+        int uvModeValue = static_cast<int>(uvMode);
+        r.Field("uvMode", uvModeValue);
+        uvModeValue = uvModeValue < 0 ? 0 : (uvModeValue > 1 ? 1 : uvModeValue);
+        uvMode = static_cast<TrailUVMode>(uvModeValue);
         r.Field("uvScrollSpeed", uvScrollSpeed);
         r.Field("uvTiling", uvTiling);
     }
