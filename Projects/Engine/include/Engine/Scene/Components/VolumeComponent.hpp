@@ -32,6 +32,13 @@ struct VolumeComponent {
     const char* GetTypeName() const { return "Volume"; }
     void Reflect(IReflector& r)
     {
+        // VolumeType を int 経由で反映する（LightComponent と同じパターン）
+        int typeValue = static_cast<int>(type);
+        r.Field("type", typeValue);
+        if (typeValue < 0) typeValue = 0;
+        if (typeValue > 5) typeValue = 5; // Gravity=0 Vortex=1 Buoyancy=2 Explosion=3 TimeDilation=4 Magnetic=5
+        type = static_cast<physics::VolumeType>(typeValue);
+
         r.Field("enabled", enabled);
         r.Field("gravity", gravity);
         r.Field("magneticField", magneticField);
@@ -43,6 +50,7 @@ struct VolumeComponent {
         r.Field("explosionImpulse", explosionImpulse);
         r.Field("timeScale", timeScale);
         r.Field("duration", duration);
+        r.Field("elapsed", elapsed);
     }
 };
 
