@@ -1826,6 +1826,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 tc.InitFlat(0.0f);
             }
 
+            // ロード後にコライダー再構築をトリガーする
+            tc.colliderDirty = true;
             go.AddComponent<TerrainComponent>(std::move(tc));
         }
 

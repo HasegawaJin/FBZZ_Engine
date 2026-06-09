@@ -54,6 +54,7 @@
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene {
@@ -442,6 +443,27 @@ void TerrainRenderSystem(
     }();
 
     // チャンク/テクスチャキャッシュは SubmitTerrainShadowCasters と共有する。
+
+    // 無効になったエンティティのキャッシュを解放する。
+    // WHY: エンティティ破棄後も static cache にエントリが残るとメモリリークになる。
+    //      毎フレームの走査コストは低い（Terrain 数は通常 1〜数個）。
+    {
+        // 現在有効な TerrainComponent エンティティの index セットを構築する
+        std::unordered_set<uint32_t> validIndices;
+        for (EntityID eid : scene.GetEntities<TerrainComponent>())
+            validIndices.insert(eid.index);
+
+        std::erase_if(g_chunkCache, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first.entityId.index)) return false;
+            resources.Release(kv.second.vertexBuffer);
+            for (auto& ib : kv.second.indexBufferLOD)
+                resources.Release(ib);
+            return true;
+        });
+        std::erase_if(g_texCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
+    }
 
     // =========================================================================
     // 描画先 RT を設定する

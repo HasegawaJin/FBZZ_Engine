@@ -85,7 +85,7 @@ public:
 
 private:
     // ── 状態 ──────────────────────────────────────────────────────────────────
-    bool        m_active  = true;  // false のとき入力処理・ブラシ描画をスキップする
+    bool        m_active  = false;  // false のとき入力処理・ブラシ描画をスキップする
     Mode        m_mode    = Mode::Sculpt;
     SculptMode  m_sculpt  = SculptMode::Raise;
     BrushSettings m_brush;
