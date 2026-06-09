@@ -831,6 +831,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             volTbl.insert("explosionImpulse", (double)volume->explosionImpulse);
             volTbl.insert("timeScale",        (double)volume->timeScale);
             volTbl.insert("duration",         (double)volume->duration);
+            volTbl.insert("elapsed",          (double)volume->elapsed);
             goTbl.insert("VolumeComponent", std::move(volTbl));
         }
 
@@ -1565,7 +1566,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             volume.explosionImpulse = (float)(*volTbl)["explosionImpulse"].value_or(10.0);
             volume.timeScale        = (float)(*volTbl)["timeScale"].value_or(1.0);
             volume.duration         = (float)(*volTbl)["duration"].value_or(-1.0);
-            volume.elapsed          = 0.0f;
+            volume.elapsed          = (float)(*volTbl)["elapsed"].value_or(0.0);
             go.AddComponent<VolumeComponent>(volume);
         }
 
