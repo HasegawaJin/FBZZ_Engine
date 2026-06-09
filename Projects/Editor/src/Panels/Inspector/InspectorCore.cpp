@@ -90,6 +90,12 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                 if (open) {
                     ImGui::Spacing();
                     ImGuiReflector reflector;
+                    if (ctx.activeScene) {
+                        reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
+                            auto* go = scene->GetGameObject(id);
+                            return go ? go->name : "(Missing)";
+                        };
+                    }
                     entry.script->Reflect(reflector);
                     ImGui::Spacing();
                 }

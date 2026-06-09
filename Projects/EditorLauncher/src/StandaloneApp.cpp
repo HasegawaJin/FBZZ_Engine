@@ -21,6 +21,7 @@
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
+#include <Engine/Scene/Systems/LifetimeSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -175,6 +176,8 @@ void StandaloneApp::OnUpdate(float dt)
 void StandaloneApp::OnLateUpdate(float dt)
 {
     scene::LateScriptSystem(*m_scene, dt);
+    scene::LifetimeSystem(*m_scene, dt);
+    m_scene->FlushDestroyQueue(dt);
     scene::TransformSystem(*m_scene);
     scene::AnimatorSystem(*m_scene, m_resources, dt);
     scene::IKSystem(*m_scene, *m_physicsWorld, m_resources, dt);

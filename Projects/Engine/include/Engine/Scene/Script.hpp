@@ -6,6 +6,7 @@
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/PrefabRef.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptAnimatorProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptCameraProxy.hpp>
@@ -29,6 +30,7 @@
 #include <Math/Vector4.hpp>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -74,6 +76,7 @@ struct CollisionInfo {
 struct IReflector {
     virtual ~IReflector() = default;
 
+    // ── 基本型 (pure virtual — 全実装で必須) ──────────────────────────────
     virtual void Field(const char* name, float& v) = 0;
     virtual void Field(const char* name, int& v) = 0;
     virtual void Field(const char* name, bool& v) = 0;
@@ -82,6 +85,30 @@ struct IReflector {
     virtual void Field(const char* name, math::Vector4& v) = 0;
     virtual void Field(const char* name, std::string& v) = 0;
     virtual void Field(const char* name, math::Quaternion& v) = 0;
+
+    // ── 参照型 (デフォルト実装あり — 非対応 Reflector はフォールバックする) ──
+    // GameObject 参照。Inspector では D&D アサイン、Serializer では EntityID を保存。
+    virtual void Field(const char* name, EntityID& v) {}
+    // Prefab アセット参照。Serializer ではパス文字列として保存。
+    virtual void Field(const char* name, PrefabRef& v) { Field(name, v.path); }
+
+    // ── ヒント付きフィールド (デフォルトは基本型にフォールバック) ──────────
+    // min/max 付きスライダー。Inspector では SliderFloat 表示。
+    virtual void FloatRange(const char* name, float& v, float min, float max) { Field(name, v); }
+    // Enum ドロップダウン。v は labels のインデックス値。Inspector では Combo 表示。
+    virtual void Enum(const char* name, int& v, std::span<const char* const> labels) { Field(name, v); }
+    // セクションヘッダ / 区切り線 (値なし)。Inspector では SeparatorText 表示。
+    virtual void Header(const char* label) {}
+    // KeyCode 選択フィールド。int の Win32 VK コードを保持するが Inspector ではキー名を表示。
+    virtual void KeyCodeField(const char* name, int& v) { Field(name, v); }
+    // Tooltip 付き float フィールド。Inspector ではホバー時に説明文を表示。
+    virtual void FieldWithTooltip(const char* name, float& v, const char* tooltip) { Field(name, v); }
+    // 読み取り専用ラベル。計算値・状態表示に使う (値は変更されない)。
+    virtual void Label(const char* name, const std::string& v) {}
+    virtual void Label(const char* name, float v)              {}
+    virtual void Label(const char* name, int v)                {}
+    // 水平区切り線 (値なし、Header より軽量)。
+    virtual void Separator() {}
 };
 
 class Script {
@@ -218,6 +245,14 @@ public:
     // WHY: ScriptSystem は World を引数に持たないため、物理同期の責務を持つ System から注入する。
     static void SetPhysicsWorld(physics::World* world);
 
+    // Prefab インスタンス化ブリッジ。
+    // WHY: PrefabSerializer は Editor プロジェクトにあり Engine から直接呼べない。
+    //      Editor / GameHub の起動時に SetInstantiateFn でコールバックを注入し、
+    //      ScriptSceneProxy::Instantiate がここを経由して呼ぶことで依存方向を逆転させる。
+    using PrefabInstantiateFn = std::function<bool(Scene&, const std::string&, std::vector<EntityID>&)>;
+    static void SetInstantiateFn(PrefabInstantiateFn fn);
+    static bool InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots);
+
 protected:
     renderer::PostProcessSettings& GetRuntimePostProcessSettings();
     const renderer::PostProcessSettings* TryGetRuntimePostProcessSettings() const;
@@ -280,7 +315,8 @@ private:
     bool m_enableStateInitialized = false;
     bool m_lastEnabled = true;
     bool m_isTickingInvokes = false;
-    static physics::World* s_physicsWorld;
+    static physics::World*    s_physicsWorld;
+    static PrefabInstantiateFn s_instantiateFn;
 };
 
 template<typename T>

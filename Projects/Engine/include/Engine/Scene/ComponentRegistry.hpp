@@ -30,6 +30,7 @@
 #include "Components/WaterComponent.hpp"
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
+#include "Components/LifetimeComponent.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -67,7 +68,8 @@ using ComponentList = std::tuple<
     TerrainComponent,
     WaterComponent,
     TrailComponent,
-    MeshTrailComponent
+    MeshTrailComponent,
+    LifetimeComponent
     // 新型はここに1行追加するだけ
 >;
 

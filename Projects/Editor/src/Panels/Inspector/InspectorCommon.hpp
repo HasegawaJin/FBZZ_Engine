@@ -19,6 +19,7 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -458,6 +459,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "Camera", !go.GetComponent<scene::CameraComponent>(), [&]() {
             go.AddComponent<scene::CameraComponent>();
+        });
+        shown |= addItem(category, "Lifetime", !go.GetComponent<scene::LifetimeComponent>(), [&]() {
+            go.AddComponent<scene::LifetimeComponent>();
         });
         shown |= addItem(category, "Particle Emitter", !go.GetComponent<scene::ParticleEmitter>(), [&]() {
             go.AddComponent<scene::ParticleEmitter>();

@@ -15,7 +15,16 @@
 
 namespace fbzz::scene {
 
-physics::World* Script::s_physicsWorld = nullptr;
+physics::World*    Script::s_physicsWorld  = nullptr;
+Script::PrefabInstantiateFn Script::s_instantiateFn;
+
+void Script::SetInstantiateFn(PrefabInstantiateFn fn) { s_instantiateFn = std::move(fn); }
+
+bool Script::InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
+{
+    if (!s_instantiateFn) return false;
+    return s_instantiateFn(scene, path, roots);
+}
 
 Script::~Script()
 {

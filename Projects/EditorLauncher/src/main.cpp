@@ -34,6 +34,7 @@
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
+#include <Engine/Scene/Systems/LifetimeSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -367,6 +368,11 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                 FBZZ_PROFILE_MARKER(marker);
             scene::TransformSystem(*scene);
             scene::LateScriptSystem(*scene, simulationDt);
+            scene::LifetimeSystem(*scene, simulationDt);
+            {
+                FBZZ_PROFILE_SCOPE("Scene::FlushDestroyQueue");
+                scene->FlushDestroyQueue(simulationDt);
+            }
         } else {
             physicsAccumulator = 0.0f;
         }
