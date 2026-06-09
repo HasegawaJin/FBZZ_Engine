@@ -464,25 +464,29 @@ std::vector<GameObject*> ScriptPhysicsProxy::OverlapSphere(const math::Vector3& 
 void ScriptAudioProxy::Play(std::string_view clipPath) const
 {
     if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->clipPath = std::string(clipPath);
-        audio->enabled = true;
-        audio->playOnAwake = true;
-        audio->m_played = false;
+        audio->clipPath       = std::string(clipPath);
+        audio->enabled        = true;
+        audio->m_pendingPlay  = true;
+        audio->m_pendingStop  = false;
+        audio->m_pendingPause = false;
     }
 }
 
 void ScriptAudioProxy::Stop() const
 {
     if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
-        audio->enabled = false;
-        audio->m_played = false;
+        audio->m_pendingStop  = true;
+        audio->m_pendingPlay  = false;
+        audio->m_pendingPause = false;
     }
 }
 
 void ScriptAudioProxy::Pause() const
 {
-    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
-        audio->enabled = false;
+    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
+        audio->m_pendingPause = true;
+        audio->m_pendingPlay  = false;
+    }
 }
 
 void ScriptAudioProxy::SetVolume(float v) const
