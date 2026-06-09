@@ -167,21 +167,6 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
     auto* prefabObjects = prefabDoc["gameobjects"].as_array();
     if (!prefabObjects || prefabObjects->empty()) return false;
 
-    const std::string sceneText = SceneIO::Serialize(scene);
-    if (sceneText.empty()) return false;
-
-    toml::parse_result sceneResult = toml::parse(sceneText);
-    if (!sceneResult) return false;
-
-    toml::table merged = sceneResult.table();
-    auto* mergedObjects = merged["gameobjects"].as_array();
-    if (!mergedObjects) {
-        toml::array emptyObjects;
-        merged.insert("gameobjects", std::move(emptyObjects));
-        mergedObjects = merged["gameobjects"].as_array();
-        if (!mergedObjects) return false;
-    }
-
     std::unordered_set<std::string> usedNames;
     for (auto& go : scene.GameObjects())
         usedNames.insert(go.name);
@@ -191,7 +176,6 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
     // WHY: インスタンス化のたびに新しい UUID を割り当てることで、
     //      同一プレファブを複数インスタンス化した場合でも GUID が衝突しない。
     std::unordered_map<std::string, std::string> guidMap;
-    std::vector<std::string> rootNames;
 
     for (const auto& item : *prefabObjects) {
         const auto* source = item.as_table();
@@ -205,6 +189,7 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
             guidMap[oldGuid] = util::GenerateUUID();
     }
 
+    toml::array newObjects;
     for (const auto& item : *prefabObjects) {
         const auto* source = item.as_table();
         if (!source) continue;
@@ -222,7 +207,6 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
             copied.insert("parent", nameMap[oldParent]);
         } else {
             copied.insert("parent", std::string{});
-            rootNames.push_back(newName);
         }
 
         // instanceId: インスタンスごとに新規 UUID を割り当てる。
@@ -294,17 +278,15 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
             }
         }
 
-        mergedObjects->push_back(std::move(copied));
+        newObjects.push_back(std::move(copied));
     }
+
+    toml::table doc;
+    doc.insert("gameobjects", std::move(newObjects));
 
     std::ostringstream ss;
-    ss << merged;
-    if (!SceneIO::Deserialize(scene, ss.str())) return false;
-
-    for (const std::string& rootName : rootNames) {
-        if (auto* go = scene.Find(rootName))
-            outRootEntities.push_back(go->GetID());
-    }
+    ss << doc;
+    if (!SceneIO::AppendObjects(scene, ss.str(), outRootEntities)) return false;
 
     FBZZ_LOG_INFO("Instantiated prefab: %s", path.c_str());
     return !outRootEntities.empty();

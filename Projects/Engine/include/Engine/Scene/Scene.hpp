@@ -473,14 +473,25 @@ template<typename T>
 GameObject* ScriptSceneProxy::FindObjectOfType() const
 {
     if (!script || !script->m_scene) return nullptr;
-    auto objects = script->m_scene->FindObjectsOfType<T>();
+    auto objects = FindObjectsOfType<T>();
     return objects.empty() ? nullptr : objects.front();
 }
 
 template<typename T>
 std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
 {
-    return script && script->m_scene ? script->m_scene->FindObjectsOfType<T>() : std::vector<GameObject*>{};
+    if (!script || !script->m_scene) return {};
+    // Script 派生型は ECS に登録されていないため GameObject を全走査して GetScript<T>() で探す。
+    // Component 型は Scene::FindObjectsOfType<T>() (ECS) に委譲する。
+    if constexpr (std::is_base_of_v<Script, T>) {
+        std::vector<GameObject*> result;
+        for (auto& go : script->m_scene->GameObjects())
+            if (go.template GetScript<T>())
+                result.push_back(&go);
+        return result;
+    } else {
+        return script->m_scene->FindObjectsOfType<T>();
+    }
 }
 
 template<typename T>
@@ -493,6 +504,14 @@ template<typename T>
 T* ScriptSceneProxy::GetScript(GameObject& go) const
 {
     return go.GetScript<T>();
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetScript(EntityID id) const
+{
+    if (!script || !script->m_scene) return nullptr;
+    auto* go = script->m_scene->GetGameObject(id);
+    return go ? go->GetScript<T>() : nullptr;
 }
 
 template<typename T>

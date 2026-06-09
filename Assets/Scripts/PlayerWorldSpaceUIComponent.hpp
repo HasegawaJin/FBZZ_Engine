@@ -2,11 +2,12 @@
 // PlayerWorldSpaceUIComponent.hpp | sandbox
 // WorldSpace UI テスト用: 指定した名前の GO 頭上にネームプレートを表示するスクリプト
 //
-// WHY: このスクリプト自体は Player とは別の空 GameObject に追加して使う。
-//      エンジンが 1 GO につき 1 ScriptComponent の設計のため、
-//      Player に直接乗せると PlayerControllerComponent と競合する。
-//      OnStart で Scene::Find(targetName) で追跡対象を探し、
-//      OnLateUpdate で毎フレーム headOffset 分だけ上の位置へ Canvas を追従させる。
+// NOTE: ScriptComponent は std::vector<ScriptEntry> で複数 Script を保持できるため、
+//       PlayerControllerComponent と同一 GO にアタッチすることが可能。
+//       ただしこのスクリプトは OnStart で Canvas GO を scene root に生成するため、
+//       独立した空 GO にアタッチするほうが管理しやすい。
+//       OnStart で Scene::Find(targetName) で追跡対象を探し、
+//       OnLateUpdate で毎フレーム headOffset 分だけ上の位置へ Canvas を追従させる。
 #pragma once
 
 // WHY: Sandbox スクリプトは engine 層からインクルードされない末端ヘッダのため、

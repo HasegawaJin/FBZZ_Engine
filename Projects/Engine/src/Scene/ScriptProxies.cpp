@@ -3,6 +3,7 @@
 // Script Proxy 群の転送処理
 // Script 本体を肥大化させず、Component / System ごとの便利 API をここで具体化する。
 #include <Engine/Scene/Script.hpp>
+#include <limits>
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -1099,9 +1100,34 @@ void ScriptSceneProxy::Destroy(GameObject& go, float delay) const
     Script::Destroy(go, delay);
 }
 
+void ScriptSceneProxy::DestroySelf(float delay) const
+{
+    if (script && script->m_gameObject)
+        Script::Destroy(*script->m_gameObject, delay);
+}
+
 bool ScriptSceneProxy::IsActiveAndEnabled() const
 {
     return script && script->m_gameObject && script->m_gameObject->activeSelf() && script->enabled;
+}
+
+GameObject* ScriptSceneProxy::Instantiate(const PrefabRef& prefab) const
+{
+    return Instantiate(prefab.path);
+}
+
+GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath) const
+{
+    if (!script || !script->m_scene || prefabPath.empty()) return nullptr;
+    // WHY: PrefabSerializer::Instantiate は内部で SceneIO::Deserialize を呼び全 GameObject を
+    //      再構築する。これにより呼び出し元 Script (と m_gameObject) が解放されるため、
+    //      呼び出し後に script->m_scene を参照するとクラッシュする。
+    //      Scene* はデシリアライズ後も同アドレスに存在し続けるため、先に退避しておく。
+    Scene* scene = script->m_scene;
+    std::vector<EntityID> roots;
+    if (!Script::InvokePrefabInstantiate(*scene, prefabPath, roots) || roots.empty())
+        return nullptr;
+    return scene->GetGameObject(roots.front());
 }
 
 void ScriptSceneProxy::LoadScene(std::string_view name) const
@@ -1116,13 +1142,15 @@ std::string ScriptSceneProxy::GetSceneName() const
 
 float ScriptSceneProxy::GetTerrainHeightAt(const math::Vector3& worldPos) const
 {
-    if (!script || !script->m_scene) return worldPos.y;
+    // WHY: 地形なし時は lowest() を返し、呼び出し側の「nextPos.y <= terrainH」が常に
+    //      true になる問題を防ぐ。worldPos.y を返すと高さが一致して誤判定する。
+    if (!script || !script->m_scene) return std::numeric_limits<float>::lowest();
     for (auto& go : script->m_scene->GameObjects()) {
         if (auto* terrain = go.GetComponent<TerrainComponent>())
             return go.transform.position.y + terrain->GetHeightAt(worldPos.x - go.transform.position.x,
                                                                   worldPos.z - go.transform.position.z);
     }
-    return worldPos.y;
+    return std::numeric_limits<float>::lowest();
 }
 
 math::Vector3 ScriptSceneProxy::GetTerrainNormalAt(const math::Vector3& worldPos) const

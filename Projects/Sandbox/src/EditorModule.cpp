@@ -15,6 +15,7 @@
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
+#include <Engine/Scene/Systems/LifetimeSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
@@ -145,6 +146,11 @@ void EditorModule::OnUpdate(float dt)
             scene::TransformSystem(*m_scene);
         }
         scene::LateScriptSystem(*m_scene, simulationDt);
+        scene::LifetimeSystem(*m_scene, simulationDt);
+        {
+            FBZZ_PROFILE_SCOPE("Scene::FlushDestroyQueue");
+            m_scene->FlushDestroyQueue(simulationDt);
+        }
     } else {
         m_physicsAccumulator = 0.0f;
     }
