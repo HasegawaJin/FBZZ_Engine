@@ -43,6 +43,7 @@
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Math/Vector3.hpp>
@@ -636,6 +637,31 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             peTbl.insert("lifetime",       (double)pe->lifetime);
             peTbl.insert("emitRate",       (double)pe->emitRate);
             peTbl.insert("maxParticles",   (int64_t)pe->maxParticles);
+            peTbl.insert("gravity",        Vec3ToArr(pe->gravity));
+            peTbl.insert("randomSeed",     (int64_t)pe->randomSeed);
+            peTbl.insert("playing",        pe->playing);
+            peTbl.insert("loop",           pe->loop);
+            peTbl.insert("duration",       (double)pe->duration);
+            peTbl.insert("startDelay",     (double)pe->startDelay);
+            peTbl.insert("clearOnStop",    pe->clearOnStop);
+            peTbl.insert("shape",          (int64_t)static_cast<int>(pe->shape));
+            peTbl.insert("sphereRadius",   (double)pe->sphereRadius);
+            peTbl.insert("coneAngleDegrees", (double)pe->coneAngleDegrees);
+            peTbl.insert("coneRadius",     (double)pe->coneRadius);
+            peTbl.insert("boxExtents",     Vec3ToArr(pe->boxExtents));
+            peTbl.insert("blendMode",      (int64_t)static_cast<int>(pe->blendMode));
+            peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
+            peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
+            peTbl.insert("texturePath",    pe->texturePath);
+            peTbl.insert("spriteColumns",  (int64_t)pe->spriteColumns);
+            peTbl.insert("spriteRows",     (int64_t)pe->spriteRows);
+            peTbl.insert("spriteStartFrame", (int64_t)pe->spriteStartFrame);
+            peTbl.insert("spriteEndFrame", (int64_t)pe->spriteEndFrame);
+            peTbl.insert("sizeCurvePower", (double)pe->sizeCurvePower);
+            peTbl.insert("colorCurvePower", (double)pe->colorCurvePower);
+            peTbl.insert("velocityDamping", (double)pe->velocityDamping);
+            peTbl.insert("angularVelocityMin", (double)pe->angularVelocityMin);
+            peTbl.insert("angularVelocityMax", (double)pe->angularVelocityMax);
             peTbl.insert("enabled",        pe->enabled);
             goTbl.insert("ParticleEmitter", std::move(peTbl));
         }
@@ -650,11 +676,16 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("minVertexDist",      (double)trail->minVertexDist);
             trailTbl.insert("widthStart",         (double)trail->widthStart);
             trailTbl.insert("widthEnd",           (double)trail->widthEnd);
+            trailTbl.insert("widthEasing",        (int64_t)static_cast<int>(trail->widthEasing));
             trailTbl.insert("colorStart",         Vec4ToArr(trail->colorStart));
             trailTbl.insert("colorEnd",           Vec4ToArr(trail->colorEnd));
             trailTbl.insert("alignment",          (int64_t)static_cast<int>(trail->alignment));
             trailTbl.insert("smoothSubdivisions", (int64_t)trail->smoothSubdivisions);
+            trailTbl.insert("attachBone",         trail->attachBone);
+            trailTbl.insert("attachOffset",       Vec3ToArr(trail->attachOffset));
+            trailTbl.insert("clearOnDisable",     trail->clearOnDisable);
             trailTbl.insert("texturePath",        trail->texturePath);
+            trailTbl.insert("uvMode",             (int64_t)static_cast<int>(trail->uvMode));
             trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
             trailTbl.insert("uvTiling",           (double)trail->uvTiling);
             goTbl.insert("TrailComponent", std::move(trailTbl));
@@ -671,6 +702,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("colorStart",     Vec4ToArr(trail->colorStart));
             trailTbl.insert("colorEnd",       Vec4ToArr(trail->colorEnd));
             trailTbl.insert("doubleSided",    trail->doubleSided);
+            trailTbl.insert("clearOnDisable", trail->clearOnDisable);
+            trailTbl.insert("texturePath",    trail->texturePath);
+            toml::array excludedMeshIndices;
+            for (int meshIndex : trail->excludedMeshIndices)
+                excludedMeshIndices.push_back((int64_t)meshIndex);
+            trailTbl.insert("excludedMeshIndices", std::move(excludedMeshIndices));
             goTbl.insert("MeshTrailComponent", std::move(trailTbl));
         }
 
@@ -1058,43 +1095,23 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         // TerrainComponent
         if (auto* tc = go.GetComponent<TerrainComponent>()) {
             toml::table terrainTbl;
-            terrainTbl.insert("enabled",   tc->enabled);
+            terrainTbl.insert("enabled",          tc->enabled);
             terrainTbl.insert("terrainAssetPath", tc->terrainAssetPath);
-            terrainTbl.insert("columns",   (int64_t)tc->columns);
-            terrainTbl.insert("rows",      (int64_t)tc->rows);
-            terrainTbl.insert("cellSize",  (double)tc->cellSize);
-            terrainTbl.insert("maxHeight", (double)tc->maxHeight);
-            terrainTbl.insert("chunkSize", (int64_t)tc->chunkSize);
 
-            bool savedToTerrainAsset = false;
+            // WHY: シーン終了時の保存では Inspector の「Save Asset」ボタンを押さないため、
+            //      参照だけ保存すると .fbzzterrain / .fzmat の実体が古いまま、または未作成のまま残る。
+            //      Scene 保存と同じタイミングで外部アセットも更新し、再起動後の白地形を防ぐ。
             if (!tc->terrainAssetPath.empty()) {
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
-
-                // WHY: シーン終了時の保存では Inspector の「Save Asset」ボタンを押さないため、
-                //      参照だけ保存すると .fbzzterrain の実体が古いまま、または未作成のまま残る。
-                //      Scene 保存と同じタイミングで外部 Terrain Asset も更新し、再起動後の白地形を防ぐ。
-                savedToTerrainAsset = TerrainAssetSerializer::Save(*tc, terrainDiskPath);
+                TerrainAssetSerializer::Save(*tc, terrainDiskPath);
             }
-
-            terrainTbl.insert("materialPath", tc->materialPath);
-
-            if (tc->terrainAssetPath.empty() || !savedToTerrainAsset) {
-                // ハイトマップ（float 配列）
-                // WHY: assetPath 未設定の既存 Terrain は従来どおり自己完結させ、
-                //      古いシーン / Prefab と同じ扱いで保存できるようにする。
-                //      asset 保存に失敗した場合も、Scene 側へフォールバックを残してデータ喪失を避ける。
-                toml::array heightArr;
-                for (float h : tc->heightData)
-                    heightArr.push_back(static_cast<double>(h));
-                terrainTbl.insert("heightData", std::move(heightArr));
-
-                // スプラットマップ（uint8 → int64 配列。空のときは省略）
-                if (!tc->splatData.empty()) {
-                    toml::array splatArr;
-                    for (uint8_t s : tc->splatData)
-                        splatArr.push_back(static_cast<int64_t>(s));
-                    terrainTbl.insert("splatData", std::move(splatArr));
+            if (!tc->materialPath.empty()) {
+                auto matHandle = asset::AssetManager::LoadMaterial(tc->materialPath);
+                if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+                    const std::string matDiskPath =
+                        ResolveAssetDiskPathForScene(path, tc->materialPath);
+                    asset::SaveMaterialAssetToFile(matDiskPath, *mat);
                 }
             }
 
@@ -1340,6 +1357,41 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             pe.lifetime       = (float)(*peTbl)["lifetime"].value_or(2.0);
             pe.emitRate       = (float)(*peTbl)["emitRate"].value_or(30.0);
             pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
+            pe.gravity        = ArrToVec3((*peTbl)["gravity"].as_array(), { 0.0f, -5.0f, 0.0f });
+            const int64_t randomSeed = (*peTbl)["randomSeed"].value_or((int64_t)1);
+            pe.randomSeed     = static_cast<uint32_t>(randomSeed < 1 ? 1 : randomSeed);
+            pe.randomState    = pe.randomSeed;
+            pe.playing        = (*peTbl)["playing"].value_or(true);
+            pe.loop           = (*peTbl)["loop"].value_or(true);
+            pe.duration       = (float)(*peTbl)["duration"].value_or(5.0);
+            pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
+            pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
+            int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
+            shape = shape < 0 ? 0 : (shape > 3 ? 3 : shape);
+            pe.shape          = static_cast<ParticleEmitterShape>(shape);
+            pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
+            pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
+            pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
+            pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
+            int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
+            blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
+            pe.blendMode      = static_cast<ParticleBlendMode>(blend);
+            int sort = (int)(*peTbl)["sortMode"].value_or((int64_t)0);
+            sort = sort < 0 ? 0 : (sort > 1 ? 1 : sort);
+            pe.sortMode       = static_cast<ParticleSortMode>(sort);
+            int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
+            sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
+            pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
+            pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
+            pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
+            pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
+            pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
+            pe.spriteEndFrame = (int)(*peTbl)["spriteEndFrame"].value_or((int64_t)0);
+            pe.sizeCurvePower = (float)(*peTbl)["sizeCurvePower"].value_or(1.0);
+            pe.colorCurvePower = (float)(*peTbl)["colorCurvePower"].value_or(1.0);
+            pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
+            pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
+            pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
             pe.enabled        = (*peTbl)["enabled"].value_or(true);
             go.AddComponent<ParticleEmitter>(pe);
         }
@@ -1354,15 +1406,24 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.minVertexDist  = (float)(*trailTbl)["minVertexDist"].value_or(0.02);
             trail.widthStart     = (float)(*trailTbl)["widthStart"].value_or(0.20);
             trail.widthEnd       = (float)(*trailTbl)["widthEnd"].value_or(0.02);
+            int widthEasing = (int)(*trailTbl)["widthEasing"].value_or((int64_t)0);
+            widthEasing = widthEasing < 0 ? 0 : (widthEasing > 3 ? 3 : widthEasing);
+            trail.widthEasing = static_cast<TrailWidthEasing>(widthEasing);
             trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
-                                             { 1.0f, 1.0f, 1.0f, 1.0f });
+                                              { 1.0f, 1.0f, 1.0f, 1.0f });
             trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
                                              { 1.0f, 1.0f, 1.0f, 0.0f });
             int alignment = (int)(*trailTbl)["alignment"].value_or((int64_t)0);
             alignment = alignment < 0 ? 0 : (alignment > 1 ? 1 : alignment);
             trail.alignment      = static_cast<TrailAlignment>(alignment);
             trail.smoothSubdivisions = (int)(*trailTbl)["smoothSubdivisions"].value_or((int64_t)0);
+            trail.attachBone     = (*trailTbl)["attachBone"].value_or(std::string{});
+            trail.attachOffset   = ArrToVec3((*trailTbl)["attachOffset"].as_array(), math::Vector3::ZERO);
+            trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
             trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
+            int uvMode = (int)(*trailTbl)["uvMode"].value_or((int64_t)0);
+            uvMode = uvMode < 0 ? 0 : (uvMode > 1 ? 1 : uvMode);
+            trail.uvMode         = static_cast<TrailUVMode>(uvMode);
             trail.uvScrollSpeed  = (float)(*trailTbl)["uvScrollSpeed"].value_or(0.0);
             trail.uvTiling       = (float)(*trailTbl)["uvTiling"].value_or(1.0);
             go.AddComponent<TrailComponent>(std::move(trail));
@@ -1379,8 +1440,17 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.colorStart     = ArrToVec4((*trailTbl)["colorStart"].as_array(),
                                              { 0.35f, 0.75f, 1.0f, 0.35f });
             trail.colorEnd       = ArrToVec4((*trailTbl)["colorEnd"].as_array(),
-                                             { 0.35f, 0.75f, 1.0f, 0.0f });
+                                               { 0.35f, 0.75f, 1.0f, 0.0f });
             trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
+            trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
+            trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
+            if (const auto* excludedArr = (*trailTbl)["excludedMeshIndices"].as_array()) {
+                for (const auto& node : *excludedArr) {
+                    const int meshIndex = (int)node.value_or((int64_t)-1);
+                    if (meshIndex >= 0)
+                        trail.excludedMeshIndices.push_back(meshIndex);
+                }
+            }
             go.AddComponent<MeshTrailComponent>(std::move(trail));
         }
 
@@ -1738,40 +1808,23 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
             TerrainComponent tc{};
             tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
-            tc.materialPath     = (*terrainTbl)["materialPath"].value_or(std::string{});
             tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
-            tc.columns   = static_cast<int>((*terrainTbl)["columns"].value_or(int64_t{129}));
-            tc.rows      = static_cast<int>((*terrainTbl)["rows"].value_or(int64_t{129}));
-            tc.cellSize  = static_cast<float>((*terrainTbl)["cellSize"].value_or(1.0));
-            tc.maxHeight = static_cast<float>((*terrainTbl)["maxHeight"].value_or(30.0));
-            tc.chunkSize = static_cast<int>((*terrainTbl)["chunkSize"].value_or(int64_t{32}));
 
-            bool loadedFromAsset = false;
             if (!tc.terrainAssetPath.empty()) {
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(path, tc.terrainAssetPath);
-                loadedFromAsset = TerrainAssetSerializer::Load(terrainDiskPath, tc);
-                tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
-                tc.enabled = (*terrainTbl)["enabled"].value_or(true);
-            }
-
-            if (!loadedFromAsset) {
-                if (auto* heightArr = (*terrainTbl)["heightData"].as_array()) {
-                    tc.heightData.reserve(heightArr->size());
-                    for (auto& v : *heightArr)
-                        tc.heightData.push_back(static_cast<float>(v.value_or(0.0)));
-                } else {
+                if (!TerrainAssetSerializer::Load(terrainDiskPath, tc)) {
+                    FBZZ_LOG_WARN("SceneSerializer: failed to load terrain asset '%s'",
+                                  terrainDiskPath.c_str());
                     tc.InitFlat(0.0f);
                 }
-                if (auto* splatArr = (*terrainTbl)["splatData"].as_array()) {
-                    tc.splatData.reserve(splatArr->size());
-                    for (auto& v : *splatArr)
-                        tc.splatData.push_back(static_cast<uint8_t>(v.value_or(int64_t{0})));
-                }
+                // アセットロード後も Scene 側の enabled / terrainAssetPath を優先する
+                tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
+                tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
+            } else {
+                tc.InitFlat(0.0f);
             }
 
-            tc.heightDirty   = true;
-            tc.colliderDirty = true;
             go.AddComponent<TerrainComponent>(std::move(tc));
         }
 
