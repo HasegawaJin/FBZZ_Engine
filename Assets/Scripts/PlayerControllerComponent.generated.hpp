@@ -2,29 +2,29 @@
 // Source: PlayerControllerComponent.hpp
 #pragma once
 
-#undef  FBZZ_GENERATED_BODY
-#define FBZZ_GENERATED_BODY() \
-    void Reflect(IReflector& r_) override { \
-        r_.Group("Movement"); \
-        r_.FloatRange("Move Speed", moveSpeed, 0.1f, 20.0f); \
-        r_.FloatRange("Sprint Multiplier", sprintMultiplier, 1.0f, 5.0f); \
-        r_.FloatRange("Jump Force", jumpForce, 0.1f, 30.0f); \
-        r_.FloatRange("Model Yaw Offset", modelYawOffsetDegrees, 0.0f, 360.0f); \
-        r_.Field("Use Camera Forward", useCameraForward); \
-        r_.Field("Rotate To Move Dir", rotateToMoveDirection); \
-        r_.Group("Key Bindings"); \
-        r_.Field("Forward", keyForward); \
-        r_.Field("Backward", keyBackward); \
-        r_.Field("Left", keyLeft); \
-        r_.Field("Right", keyRight); \
-        r_.Field("Jump", keyJump); \
-        r_.Field("Sprint", keySprint); \
-        r_.Group("Animator Params"); \
-        r_.Field("Speed Param", paramSpeed); \
-        r_.Field("Vertical Speed Param", paramVerticalSpeed); \
-        r_.Field("IsGrounded Param", paramIsGrounded); \
-        r_.Group("IK States"); \
-        r_.Field("Jump Up State", stateJumpUp); \
-        r_.Field("Fall State", stateFall); \
-        r_.Field("Landing State", stateLanding); \
-    }
+namespace sandbox {
+inline void PlayerControllerComponent::Reflect(::fbzz::scene::IReflector& r_) {
+    r_.Group("Movement");
+    r_.FloatRange("Move Speed", moveSpeed, 0.1f, 20.0f);
+    r_.FloatRange("Sprint Multiplier", sprintMultiplier, 1.0f, 5.0f);
+    r_.FloatRange("Jump Force", jumpForce, 0.1f, 30.0f);
+    r_.FloatRange("Model Yaw Offset", modelYawOffsetDegrees, 0.0f, 360.0f);
+    r_.Field("Use Camera Forward", useCameraForward);
+    r_.Field("Rotate To Move Dir", rotateToMoveDirection);
+    r_.Group("Key Bindings");
+    r_.Field("Forward", keyForward);
+    r_.Field("Backward", keyBackward);
+    r_.Field("Left", keyLeft);
+    r_.Field("Right", keyRight);
+    r_.Field("Jump", keyJump);
+    r_.Field("Sprint", keySprint);
+    r_.Group("Animator Params");
+    r_.Field("Speed Param", paramSpeed);
+    r_.Field("Vertical Speed Param", paramVerticalSpeed);
+    r_.Field("IsGrounded Param", paramIsGrounded);
+    r_.Group("IK States");
+    r_.Field("Jump Up State", stateJumpUp);
+    r_.Field("Fall State", stateFall);
+    r_.Field("Landing State", stateLanding);
+}
+} // namespace sandbox

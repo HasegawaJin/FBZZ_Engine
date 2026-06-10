@@ -2,12 +2,12 @@
 // Source: BulletComponent.hpp
 #pragma once
 
-#undef  FBZZ_GENERATED_BODY
-#define FBZZ_GENERATED_BODY() \
-    void Reflect(IReflector& r_) override { \
-        r_.Field("Speed", speed); \
-        r_.Field("Lifetime", lifetime); \
-        r_.Field("Effect Lifetime", effectLifetime); \
-        r_.Field("Effect Prefab", effectPrefab); \
-        r_.Field("Ignore Tag", ignoreTag); \
-    }
+namespace sandbox {
+inline void BulletComponent::Reflect(::fbzz::scene::IReflector& r_) {
+    r_.Field("Speed", speed);
+    r_.Field("Lifetime", lifetime);
+    r_.Field("Effect Lifetime", effectLifetime);
+    r_.Field("Effect Prefab", effectPrefab);
+    r_.Field("Ignore Tag", ignoreTag);
+}
+} // namespace sandbox
