@@ -133,6 +133,13 @@ void EditorModule::OnRender()
 
 void EditorModule::OnShutdown()
 {
+    // WHY: Shutdown() 内の FreeLibrary より前に全スクリプトの OnDestroy と destructor を
+    //      DLL コードが有効なうちに実行する必要がある。
+    //      Clear() が ComponentArray をリセットするので、FreeLibrary 後に ~ScriptEntry() が
+    //      DLL 内の vtable を参照するアクセス違反を防ぐ。
+    m_scene->Clear();
+    scene::Script::SetPhysicsWorld(nullptr);
+    m_editorApp.GetContext().activeScene = nullptr;
     m_editorApp.Shutdown();
     m_scene.reset();
 }
