@@ -38,6 +38,7 @@
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Input/KeyCode.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -325,6 +326,86 @@ physics::VolumeType StringToVolumeType(const std::string& value)
     return physics::VolumeType::Gravity;
 }
 
+// KeyCode ↔ 文字列変換。シリアライズは文字列名で保存し可読性を確保する。
+static const char* KeyCodeToString(input::KeyCode k)
+{
+    using KC = input::KeyCode;
+    switch (k) {
+    case KC::A: return "A"; case KC::B: return "B"; case KC::C: return "C";
+    case KC::D: return "D"; case KC::E: return "E"; case KC::F: return "F";
+    case KC::G: return "G"; case KC::H: return "H"; case KC::I: return "I";
+    case KC::J: return "J"; case KC::K: return "K"; case KC::L: return "L";
+    case KC::M: return "M"; case KC::N: return "N"; case KC::O: return "O";
+    case KC::P: return "P"; case KC::Q: return "Q"; case KC::R: return "R";
+    case KC::S: return "S"; case KC::T: return "T"; case KC::U: return "U";
+    case KC::V: return "V"; case KC::W: return "W"; case KC::X: return "X";
+    case KC::Y: return "Y"; case KC::Z: return "Z";
+    case KC::KEY_0: return "0"; case KC::KEY_1: return "1"; case KC::KEY_2: return "2";
+    case KC::KEY_3: return "3"; case KC::KEY_4: return "4"; case KC::KEY_5: return "5";
+    case KC::KEY_6: return "6"; case KC::KEY_7: return "7"; case KC::KEY_8: return "8";
+    case KC::KEY_9: return "9";
+    case KC::ESCAPE:    return "Escape";
+    case KC::SPACE:     return "Space";
+    case KC::ENTER:     return "Enter";
+    case KC::BACKSPACE: return "Backspace";
+    case KC::SHIFT:     return "Shift";
+    case KC::CTRL:      return "Ctrl";
+    case KC::ALT:       return "Alt";
+    case KC::LEFT:      return "Left";
+    case KC::RIGHT:     return "Right";
+    case KC::UP:        return "Up";
+    case KC::DOWN:      return "Down";
+    case KC::F1:  return "F1";  case KC::F2:  return "F2";  case KC::F3:  return "F3";
+    case KC::F4:  return "F4";  case KC::F5:  return "F5";  case KC::F6:  return "F6";
+    case KC::F7:  return "F7";  case KC::F8:  return "F8";  case KC::F9:  return "F9";
+    case KC::F10: return "F10"; case KC::F11: return "F11"; case KC::F12: return "F12";
+    case KC::MouseLeft:   return "MouseLeft";
+    case KC::MouseRight:  return "MouseRight";
+    case KC::MouseMiddle: return "MouseMiddle";
+    default: return "Unknown";
+    }
+}
+
+static input::KeyCode KeyCodeFromString(const std::string& s)
+{
+    using KC = input::KeyCode;
+    if (s == "A") return KC::A; if (s == "B") return KC::B; if (s == "C") return KC::C;
+    if (s == "D") return KC::D; if (s == "E") return KC::E; if (s == "F") return KC::F;
+    if (s == "G") return KC::G; if (s == "H") return KC::H; if (s == "I") return KC::I;
+    if (s == "J") return KC::J; if (s == "K") return KC::K; if (s == "L") return KC::L;
+    if (s == "M") return KC::M; if (s == "N") return KC::N; if (s == "O") return KC::O;
+    if (s == "P") return KC::P; if (s == "Q") return KC::Q; if (s == "R") return KC::R;
+    if (s == "S") return KC::S; if (s == "T") return KC::T; if (s == "U") return KC::U;
+    if (s == "V") return KC::V; if (s == "W") return KC::W; if (s == "X") return KC::X;
+    if (s == "Y") return KC::Y; if (s == "Z") return KC::Z;
+    if (s == "0") return KC::KEY_0; if (s == "1") return KC::KEY_1;
+    if (s == "2") return KC::KEY_2; if (s == "3") return KC::KEY_3;
+    if (s == "4") return KC::KEY_4; if (s == "5") return KC::KEY_5;
+    if (s == "6") return KC::KEY_6; if (s == "7") return KC::KEY_7;
+    if (s == "8") return KC::KEY_8; if (s == "9") return KC::KEY_9;
+    if (s == "Escape")     return KC::ESCAPE;
+    if (s == "Space")      return KC::SPACE;
+    if (s == "Enter")      return KC::ENTER;
+    if (s == "Backspace")  return KC::BACKSPACE;
+    if (s == "Shift")      return KC::SHIFT;
+    if (s == "Ctrl")       return KC::CTRL;
+    if (s == "Alt")        return KC::ALT;
+    if (s == "Left")       return KC::LEFT;
+    if (s == "Right")      return KC::RIGHT;
+    if (s == "Up")         return KC::UP;
+    if (s == "Down")       return KC::DOWN;
+    if (s == "F1")  return KC::F1;  if (s == "F2")  return KC::F2;
+    if (s == "F3")  return KC::F3;  if (s == "F4")  return KC::F4;
+    if (s == "F5")  return KC::F5;  if (s == "F6")  return KC::F6;
+    if (s == "F7")  return KC::F7;  if (s == "F8")  return KC::F8;
+    if (s == "F9")  return KC::F9;  if (s == "F10") return KC::F10;
+    if (s == "F11") return KC::F11; if (s == "F12") return KC::F12;
+    if (s == "MouseLeft")   return KC::MouseLeft;
+    if (s == "MouseRight")  return KC::MouseRight;
+    if (s == "MouseMiddle") return KC::MouseMiddle;
+    return KC::SPACE;
+}
+
 class TomlWriteReflector : public IReflector {
 public:
     explicit TomlWriteReflector(toml::table& table) : m_table(table) {}
@@ -343,6 +424,10 @@ public:
         arr.push_back((int64_t)v.index);
         arr.push_back((int64_t)v.generation);
         m_table.insert(name, std::move(arr));
+    }
+    void Field(const char* name, input::KeyCode& v) override
+    {
+        m_table.insert(name, std::string(KeyCodeToString(v)));
     }
 
 private:
@@ -400,6 +485,12 @@ public:
             v.index      = (uint32_t)arr->at(0).value_or((int64_t)EntityID::INVALID_INDEX);
             v.generation = (uint32_t)arr->at(1).value_or(0LL);
         }
+    }
+
+    void Field(const char* name, input::KeyCode& v) override
+    {
+        const std::string s = m_table[name].value_or(std::string{});
+        if (!s.empty()) v = KeyCodeFromString(s);
     }
 
 private:
@@ -547,9 +638,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         {
             auto& t = go.transform;
             toml::table tfTbl;
-            tfTbl.insert("localPosition", Vec3ToArr(t.localPosition));
-            tfTbl.insert("localRotation", QuatToArr(t.localRotation));
-            tfTbl.insert("localScale",    Vec3ToArr(t.localScale));
+            tfTbl.insert("position", Vec3ToArr(t.position));
+            tfTbl.insert("rotation", QuatToArr(t.rotation));
+            tfTbl.insert("scale",    Vec3ToArr(t.scale));
             goTbl.insert("transform", std::move(tfTbl));
         }
 
@@ -1260,10 +1351,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // Transform
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
             auto& t = go.transform;
-            t.localPosition = ArrToVec3((*tfTbl)["localPosition"].as_array());
-            t.localRotation = ArrToQuat((*tfTbl)["localRotation"].as_array());
-            t.localScale    = ArrToVec3((*tfTbl)["localScale"].as_array(),
-                                        { 1.0f, 1.0f, 1.0f });
+            t.position = ArrToVec3(((*tfTbl)["position"].as_array()
+                              ? (*tfTbl)["position"].as_array()
+                              : (*tfTbl)["localPosition"].as_array()));
+            t.rotation = ArrToQuat(((*tfTbl)["rotation"].as_array()
+                              ? (*tfTbl)["rotation"].as_array()
+                              : (*tfTbl)["localRotation"].as_array()));
+            t.scale     = ArrToVec3(((*tfTbl)["scale"].as_array() ? (*tfTbl)["scale"].as_array() : (*tfTbl)["localScale"].as_array()), { 1.0f, 1.0f, 1.0f });
         }
 
         // MeshRenderer
@@ -1531,8 +1625,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
             rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
             rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
-            rb.rigidBody->SetPosition(go.transform.localPosition);
-            rb.rigidBody->SetRotation(go.transform.localRotation);
+            rb.rigidBody->SetPosition(go.transform.position);
+            rb.rigidBody->SetRotation(go.transform.rotation);
             rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
             rb.rigidBody->SetAngularVelocity(
                 ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
@@ -2072,9 +2166,13 @@ bool SceneSerializer::AppendObjects(
 
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
             auto& t = go.transform;
-            t.localPosition = ArrToVec3((*tfTbl)["localPosition"].as_array());
-            t.localRotation = ArrToQuat((*tfTbl)["localRotation"].as_array());
-            t.localScale    = ArrToVec3((*tfTbl)["localScale"].as_array(), { 1.0f, 1.0f, 1.0f });
+            t.position = ArrToVec3(((*tfTbl)["position"].as_array()
+                              ? (*tfTbl)["position"].as_array()
+                              : (*tfTbl)["localPosition"].as_array()));
+            t.rotation = ArrToQuat(((*tfTbl)["rotation"].as_array()
+                              ? (*tfTbl)["rotation"].as_array()
+                              : (*tfTbl)["localRotation"].as_array()));
+            t.scale     = ArrToVec3(((*tfTbl)["scale"].as_array() ? (*tfTbl)["scale"].as_array() : (*tfTbl)["localScale"].as_array()), { 1.0f, 1.0f, 1.0f });
         }
 
         if (auto* mrTbl = (*goTbl)["MeshRenderer"].as_table()) {
@@ -2207,8 +2305,8 @@ bool SceneSerializer::AppendObjects(
             if (!rb.rigidBody) rb.rigidBody = std::make_shared<physics::RigidBody>();
             rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
             rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
-            rb.rigidBody->SetPosition(go.transform.localPosition);
-            rb.rigidBody->SetRotation(go.transform.localRotation);
+            rb.rigidBody->SetPosition(go.transform.position);
+            rb.rigidBody->SetRotation(go.transform.rotation);
             rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
             rb.rigidBody->SetAngularVelocity(ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
             const math::Vector3 freezePos = ArrToVec3((*rbTbl)["freezePosition"].as_array(), math::Vector3::ZERO);

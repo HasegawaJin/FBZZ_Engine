@@ -155,13 +155,20 @@ struct ImGuiReflector : scene::IReflector {
         }
     }
 
-    void Header(const char* label) override
+    void Header(const char* label)
     {
         ImGui::Spacing();
         ImGui::SeparatorText(label);
     }
 
-    void KeyCodeField(const char* name, int& v) override
+    void Field(const char* name, input::KeyCode& v) override
+    {
+        int raw = static_cast<int>(v);
+        KeyCodeField(name, raw);
+        v = static_cast<input::KeyCode>(raw);
+    }
+
+    void KeyCodeField(const char* name, int& v)
     {
         ImGui::PushID(name);
 
@@ -219,29 +226,29 @@ struct ImGuiReflector : scene::IReflector {
         ImGui::PopID();
     }
 
-    void FieldWithTooltip(const char* name, float& v, const char* tooltip) override
+    void FieldWithTooltip(const char* name, float& v, const char* tooltip)
     {
         ImGui::DragFloat(name, &v, 0.1f);
         if (ImGui::IsItemHovered() && tooltip && tooltip[0])
             ImGui::SetTooltip("%s", tooltip);
     }
 
-    void Label(const char* name, const std::string& v) override
+    void Label(const char* name, const std::string& v)
     {
         ImGui::LabelText(name, "%s", v.c_str());
     }
 
-    void Label(const char* name, float v) override
+    void Label(const char* name, float v)
     {
         ImGui::LabelText(name, "%.3f", v);
     }
 
-    void Label(const char* name, int v) override
+    void Label(const char* name, int v)
     {
         ImGui::LabelText(name, "%d", v);
     }
 
-    void Separator() override
+    void Separator()
     {
         ImGui::Separator();
     }
