@@ -19,10 +19,12 @@
 #include <Engine/Scene/ScriptProxy/ScriptMeshTrailProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPhysicsProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPostProcessProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptSceneProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTransformProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTrailProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptUIProxy.hpp>
 #include <Engine/Input/KeyCode.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
@@ -109,24 +111,22 @@ struct InvokeHandle {
 
 // ── FBZZ マクロ ───────────────────────────────────────────────────────────────
 
-// FBZZ_GENERATED_BODY のフォールバック — .generated.hpp がインクルードされるまで空の Reflect を展開する。
-#ifndef FBZZ_GENERATED_BODY
-#define FBZZ_GENERATED_BODY() void Reflect(IReflector&) override {}
-#endif
-
 // FBZZ_SCRIPT — TYPE_NAME + GetTypeName + Reflect 宣言をまとめる。
-// FHT が .generated.hpp を生成すると FBZZ_GENERATED_BODY() が Reflect 実装に差し替わる。
+// クラス定義の後で .generated.hpp をインクルードすることで Reflect の実装が提供される。
+// WHY: クラス内インライン定義では MSVC のマクロ展開後のメンバー参照に問題が生じるため、
+//      クラス外定義に変更して確実にメンバーを参照できるようにした。
 #define FBZZ_SCRIPT(T)                                                         \
+    public:                                                                    \
     static constexpr const char* TYPE_NAME = #T;                               \
     const char* GetTypeName() const override { return TYPE_NAME; }             \
-    FBZZ_GENERATED_BODY()
+    void Reflect(IReflector& r_) override;
 
 // FHT がパースして .generated.hpp 内の Reflect() を生成するマクロ群。
 // コンパイラには普通のフィールド宣言として見える。
-#define FBZZ_FIELD(Type, Name, Default, DisplayName)              Type Name = Default
-#define FBZZ_FIELD_RANGE(Type, Name, Default, DisplayName, Min, Max) Type Name = Default
-#define FBZZ_FIELD_ENUM(Type, Name, Default, DisplayName, ...)    Type Name = Default
-#define FBZZ_FIELD_READONLY(Type, Name, DisplayName)              Type Name = {}
+#define FBZZ_FIELD(Type, Name, Default, DisplayName)              Type Name = Default;
+#define FBZZ_FIELD_RANGE(Type, Name, Default, DisplayName, Min, Max) Type Name = Default;
+#define FBZZ_FIELD_ENUM(Type, Name, Default, DisplayName, ...)    Type Name = Default;
+#define FBZZ_FIELD_READONLY(Type, Name, DisplayName)              Type Name = {};
 #define FBZZ_GROUP(Label)  // Inspector グループ見出し (FHT が読む)
 
 // ── Script 基底クラス ─────────────────────────────────────────────────────────
@@ -142,6 +142,8 @@ public:
     virtual void OnLateUpdate(float) {}
     virtual void OnDestroy() {}
     virtual void OnDrawGizmos() {}
+    virtual void OnPreRender()  {}
+    virtual void OnPostRender() {}
     virtual void OnSetupRenderPasses(renderer::RenderGraph&, RenderPassContext&) {}
     virtual void OnCollisionEnter(const CollisionInfo&) {}
     virtual void OnCollisionStay(const CollisionInfo&) {}
@@ -182,6 +184,8 @@ public:
     ScriptDebugProxy      debug       { this };
     GizmoProxy            gizmo;
     ScriptPostProcessProxy postprocess{ this };
+    ScriptMemoryProxy     memory      { this };
+    ScriptUIProxy         ui          { this };
 
     template<typename T>
     T* GetComponent() const;
@@ -192,6 +196,7 @@ public:
     void FrameDelay(uint32_t n, std::function<void()> fn);
     void CancelInvoke();
     void CancelInvoke(InvokeHandle handle);
+    void CancelEventSubscriptions();
 
     // QueueRenderPass / GetShaderDescriptor
     void QueueRenderPass(UserRenderPassDesc desc) const;
@@ -272,6 +277,7 @@ private:
     uint32_t m_nextInvokeId = 1;
     std::vector<InvokeEntry>     m_invokes;
     std::vector<FrameDelayEntry> m_frameDelays;
+    std::vector<std::function<void(Script*)>> m_eventUnsubscribers;
     bool m_enableStateInitialized = false;
     bool m_lastEnabled = true;
     bool m_isTickingInvokes = false;
