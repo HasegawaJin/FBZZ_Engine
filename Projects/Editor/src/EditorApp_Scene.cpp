@@ -11,6 +11,7 @@
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/ScriptCodeGen.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -472,6 +473,9 @@ void EditorApp::InitScriptDll()
         m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
         m_ctx.hlslSourceDir    = util::FileSystem::PathToUtf8(m_hlslSourceDir);
 
+        // エディタ起動時: 全スクリプトの .generated.hpp を最新化する
+        ScriptCodeGen::GenerateReflectAll(m_ctx.scriptsSourceDir);
+
         if (!m_ctx.projectTargetName.empty()) {
             const std::filesystem::path projRoot = util::FileSystem::PathFromUtf8(m_ctx.projectRoot);
             const std::wstring targetW = util::StringUtils::ToWide(m_ctx.projectTargetName);
@@ -636,6 +640,8 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: waiting for changes...");
     FBZZ_LOG_DEBUG("ScriptDll: change detected in %s; rebuilding after 500 ms debounce",
                    m_ctx.scriptsSourceDir.c_str());
+    // ビルド前に .generated.hpp を最新化する
+    ScriptCodeGen::GenerateReflectAll(m_ctx.scriptsSourceDir);
 }
 
 void EditorApp::TickScriptCompile()
