@@ -6,6 +6,7 @@
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/PrefabRef.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptAnimatorProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp>
@@ -15,7 +16,6 @@
 #include <Engine/Scene/ScriptProxy/ScriptInputProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptLightProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMeshTrailProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPhysicsProxy.hpp>
@@ -23,7 +23,7 @@
 #include <Engine/Scene/ScriptProxy/ScriptSceneProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTransformProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTrailProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptUIProxy.hpp>
+#include <Engine/Input/KeyCode.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -64,19 +64,18 @@ struct CollisionInfo {
     GameObject* other = nullptr;
     const ColliderComponent* selfCollider = nullptr;
     const ColliderComponent* otherCollider = nullptr;
-    // WHAT: self から見た接触法線。地面判定など、衝突相手がどちら側にあるかを Script で判断するために渡す。
     math::Vector3 contactNormal = math::Vector3::UP;
     math::Vector3 contactPoint = math::Vector3::ZERO;
     float contactDepth = 0.0f;
 };
 
+// ── IReflector ────────────────────────────────────────────────────────────────
 // Script::Reflect() に渡されるビジターインターフェース。
 // Inspector が ImGui を介してフィールドを表示・編集し、
 // SceneSerializer が JSON にシリアライズ/デシリアライズする際にこれを実装する。
 struct IReflector {
     virtual ~IReflector() = default;
 
-    // ── 基本型 (pure virtual — 全実装で必須) ──────────────────────────────
     virtual void Field(const char* name, float& v) = 0;
     virtual void Field(const char* name, int& v) = 0;
     virtual void Field(const char* name, bool& v) = 0;
@@ -86,169 +85,146 @@ struct IReflector {
     virtual void Field(const char* name, std::string& v) = 0;
     virtual void Field(const char* name, math::Quaternion& v) = 0;
 
-    // ── 参照型 (デフォルト実装あり — 非対応 Reflector はフォールバックする) ──
-    // GameObject 参照。Inspector では D&D アサイン、Serializer では EntityID を保存。
+    // 参照型 (デフォルト実装あり — 非対応 Reflector はフォールバックする)
     virtual void Field(const char* name, EntityID& v) {}
-    // Prefab アセット参照。Serializer ではパス文字列として保存。
-    virtual void Field(const char* name, PrefabRef& v) { Field(name, v.path); }
+    virtual void Field(const char* name, EntityRef& v)  { Field(name, v.id); }
+    virtual void Field(const char* name, PrefabRef& v)  { Field(name, v.path); }
+    virtual void Field(const char* name, input::KeyCode& v) {}  // キー名ドロップダウン
 
-    // ── ヒント付きフィールド (デフォルトは基本型にフォールバック) ──────────
-    // min/max 付きスライダー。Inspector では SliderFloat 表示。
-    virtual void FloatRange(const char* name, float& v, float min, float max) { Field(name, v); }
-    // Enum ドロップダウン。v は labels のインデックス値。Inspector では Combo 表示。
+    // 付加情報付き (デフォルトは Field へフォールバック)
+    virtual void FloatRange(const char* name, float& v, float min, float max)  { Field(name, v); }
     virtual void Enum(const char* name, int& v, std::span<const char* const> labels) { Field(name, v); }
-    // セクションヘッダ / 区切り線 (値なし)。Inspector では SeparatorText 表示。
-    virtual void Header(const char* label) {}
-    // KeyCode 選択フィールド。int の Win32 VK コードを保持するが Inspector ではキー名を表示。
-    virtual void KeyCodeField(const char* name, int& v) { Field(name, v); }
-    // Tooltip 付き float フィールド。Inspector ではホバー時に説明文を表示。
-    virtual void FieldWithTooltip(const char* name, float& v, const char* tooltip) { Field(name, v); }
-    // 読み取り専用ラベル。計算値・状態表示に使う (値は変更されない)。
-    virtual void Label(const char* name, const std::string& v) {}
-    virtual void Label(const char* name, float v)              {}
-    virtual void Label(const char* name, int v)                {}
-    // 水平区切り線 (値なし、Header より軽量)。
-    virtual void Separator() {}
+    virtual void Group(const char* label) {}
+    virtual void Readonly(const char* name, const std::string& v) {}
+    virtual void Readonly(const char* name, float v)  {}
+    virtual void Readonly(const char* name, int v)    {}
 };
 
+// ── InvokeHandle ─────────────────────────────────────────────────────────────
+// Invoke / InvokeRepeating が返す軽量値型。CancelInvoke(handle) で個別キャンセル。
+struct InvokeHandle {
+    uint32_t id = 0;
+    bool IsValid() const { return id != 0; }
+};
+
+// ── FBZZ マクロ ───────────────────────────────────────────────────────────────
+
+// FBZZ_GENERATED_BODY のフォールバック — .generated.hpp がインクルードされるまで空の Reflect を展開する。
+#ifndef FBZZ_GENERATED_BODY
+#define FBZZ_GENERATED_BODY() void Reflect(IReflector&) override {}
+#endif
+
+// FBZZ_SCRIPT — TYPE_NAME + GetTypeName + Reflect 宣言をまとめる。
+// FHT が .generated.hpp を生成すると FBZZ_GENERATED_BODY() が Reflect 実装に差し替わる。
+#define FBZZ_SCRIPT(T)                                                         \
+    static constexpr const char* TYPE_NAME = #T;                               \
+    const char* GetTypeName() const override { return TYPE_NAME; }             \
+    FBZZ_GENERATED_BODY()
+
+// FHT がパースして .generated.hpp 内の Reflect() を生成するマクロ群。
+// コンパイラには普通のフィールド宣言として見える。
+#define FBZZ_FIELD(Type, Name, Default, DisplayName)              Type Name = Default
+#define FBZZ_FIELD_RANGE(Type, Name, Default, DisplayName, Min, Max) Type Name = Default
+#define FBZZ_FIELD_ENUM(Type, Name, Default, DisplayName, ...)    Type Name = Default
+#define FBZZ_FIELD_READONLY(Type, Name, DisplayName)              Type Name = {}
+#define FBZZ_GROUP(Label)  // Inspector グループ見出し (FHT が読む)
+
+// ── Script 基底クラス ─────────────────────────────────────────────────────────
 class Script {
 public:
     virtual ~Script();
 
-    virtual void OnAwake() {}                              // AddComponent / シーンロード直後に 1 度だけ呼ばれる
-    virtual void OnStart() {}                              // 初回 Update 直前に 1 度だけ呼ばれる
-    virtual void OnEnable() {}                             // enabled が false → true へ変化した直後に呼ばれる
-    virtual void OnDisable() {}                            // enabled が true → false へ変化した直後に呼ばれる
-    virtual void OnUpdate(float) {}                        // 毎フレーム呼ばれる (PhysicsSystem 前)
-    virtual void OnFixedUpdate(float) {}                   // 固定物理ステップで呼ばれる想定のフック
-    virtual void OnLateUpdate(float) {}                   // 毎フレーム呼ばれる (PhysicsSystem 後)
-    virtual void OnPreRender() {}                          // カメラ描画直前に呼ぶための予約フック
-    virtual void OnPostRender() {}                         // カメラ描画直後に呼ぶための予約フック
-    // OnDrawGizmos — DebugDraw::BeginFrame/Flush 区間内で呼ばれる。
-    // gizmo プロキシ経由で SightCone / WaypointPath / DetectionRange / TargetLine などを描く。
-    // WHY: OnUpdate から DebugDraw を直接呼べないため、RenderSystem が確保した描画区間を Script に開放する。
+    virtual void OnAwake() {}
+    virtual void OnStart() {}
+    virtual void OnEnable() {}
+    virtual void OnDisable() {}
+    virtual void OnUpdate(float) {}
+    virtual void OnLateUpdate(float) {}
+    virtual void OnDestroy() {}
     virtual void OnDrawGizmos() {}
+    virtual void OnSetupRenderPasses(renderer::RenderGraph&, RenderPassContext&) {}
     virtual void OnCollisionEnter(const CollisionInfo&) {}
     virtual void OnCollisionStay(const CollisionInfo&) {}
     virtual void OnCollisionExit(const CollisionInfo&) {}
     virtual void OnTriggerEnter(const CollisionInfo&) {}
     virtual void OnTriggerStay(const CollisionInfo&) {}
     virtual void OnTriggerExit(const CollisionInfo&) {}
-    virtual void OnDestroy() {}                            // GameObject 破棄時に呼ばれる
-    // OnSetupRenderPasses — RenderSystem が RenderGraph 登録中に呼ぶ、Script 側の描画パス注入フック。
-    virtual void OnSetupRenderPasses(renderer::RenderGraph&, RenderPassContext&) {}
-    virtual void Reflect(IReflector&) {}                   // Inspector / Serializer からフィールドを列挙
-    // GetScript<T>() の型判別に使う。派生クラスは TYPE_NAME static constexpr も定義する
+    virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 
     bool enabled = true;
-    // ScriptSystem が毎フレーム注入する直近フレームの delta time。
-    // WHY: OnLateUpdate や Invoke コールバックなど、OnUpdate(float) の引数を直接受け取れない処理でも同じ dt を参照できるようにする。
-    float m_deltaTime = 0.0f;
-    float m_time = 0.0f;
-    uint64_t m_frameCount = 0;
-    float m_unscaledDeltaTime = 0.0f;
 
-    // ── Unity 風ショートハンド ──────────────────────────────────────────────
-    // WHY: MonoBehaviour 相当の利便性を提供し、スクリプト記述量を削減する。
-    //      m_gameObject / m_scene への直接参照は引き続き使用可能。
+    // タイミング情報 (ScriptSystem が毎フレーム注入)
+    float    deltaTime         = 0.0f;
+    float    time              = 0.0f;
+    float    unscaledDeltaTime = 0.0f;
+    uint64_t frameCount        = 0;
 
-    // Proxy はカテゴリごとに責務を分け、Script.hpp の肥大化を避ける。
-    // WHY: 旧 transform ポインタ互換は ScriptTransformProxy::operator-> で維持する。
-    ScriptTransformProxy transform{ this };
-    ScriptInputProxy input{ this };
-    ScriptPhysicsProxy physics{ this };
-    ScriptAudioProxy audio{ this };
-    ScriptLightProxy light{ this };
-    ScriptCameraProxy camera{ this };
-    ScriptMaterialProxy material{ this };
-    ScriptParticleProxy particle{ this };
-    ScriptTrailProxy trail{ this };
-    ScriptMeshTrailProxy meshTrail{ this };
-    ScriptUIProxy ui{ this };
-    ScriptSceneProxy scene{ this };
-    ScriptAnimatorProxy animator{ this };
-    ScriptDebugProxy debug{ this };
-    // GizmoProxy は Script* を保持しない (renderer ポインタのみ)。
-    // OnDrawGizmos() の前後で RenderSystem が renderer を注入/クリアする。
-    GizmoProxy gizmo;
+    // 後方互換 alias — 既存コードがコンパイルを通すための橋渡し
+    [[deprecated("Use deltaTime")]]         float& m_deltaTime         = deltaTime;
+    [[deprecated("Use time")]]              float& m_time              = time;
+    [[deprecated("Use unscaledDeltaTime")]] float& m_unscaledDeltaTime = unscaledDeltaTime;
+    [[deprecated("Use frameCount")]]        uint64_t& m_frameCount     = frameCount;
+
+    // Proxy — カテゴリごとに責務を分け、Script.hpp の肥大化を避ける。
+    ScriptTransformProxy  transform   { this };
+    ScriptInputProxy      input       { this };
+    ScriptPhysicsProxy    physics     { this };
+    ScriptAudioProxy      audio       { this };
+    ScriptLightProxy      light       { this };
+    ScriptCameraProxy     camera      { this };
+    ScriptMaterialProxy   material    { this };
+    ScriptParticleProxy   particle    { this };
+    ScriptTrailProxy      trail       { this };
+    ScriptMeshTrailProxy  meshTrail   { this };
+    ScriptSceneProxy      scene       { this };
+    ScriptAnimatorProxy   animator    { this };
+    ScriptDebugProxy      debug       { this };
+    GizmoProxy            gizmo;
     ScriptPostProcessProxy postprocess{ this };
-    ScriptMemoryProxy memory{ this };
 
-    // Unity: GetComponent<T>()
-    // WHY: template 定義は Scene.hpp 末尾で行う (GameObject が完全型である必要があるため)
     template<typename T>
     T* GetComponent() const;
 
-    // Unity: GameObject.Find / FindWithTag
-    GameObject* Find(const std::string& name)       const;
-    GameObject* FindWithTag(const std::string& tag) const;
-    // EntityID から GameObject を引く (ScriptComponent 間の相互参照に使う)
-    GameObject* GetGameObject(EntityID id)          const;
-
-    // Unity: Instantiate に相当する GO 生成
-    GameObject& CreateGameObject(const std::string& name = "GameObject") const;
-
-    // シーン内のメインカメラ GameObject を返す。見つからなければ nullptr
-    GameObject* GetMainCameraObject() const;
-
-    // Unity: Destroy(gameObject)
-    static void Destroy(GameObject& go, float delay = 0.0f);
-
-    // Invoke — コルーチンを使わずに「delay 秒後に 1 回だけ実行する」処理を予約する。
-    // WHY: Step 1〜5 のシングルスレッド制約を保ちつつ、スクリプト側にタイマー用フラグを量産させないための最小 API。
-    void Invoke(std::function<void()> fn, float delay);
-    // InvokeRepeating — delay 秒後から interval 秒ごとに同じ処理を繰り返す。
-    // interval <= 0 の場合は 1 回だけの Invoke と同じ扱いにして、無限ループを避ける。
-    void InvokeRepeating(std::function<void()> fn, float delay, float interval);
-    // FrameDelay — 秒ではなくフレーム数で遅延させる軽量タイマー。
-    // WHY: コルーチンを導入せず、UI 演出や 1 フレーム待ちの用途を明示的に扱う。
+    // Invoke / タイマー
+    [[nodiscard]] InvokeHandle Invoke(std::function<void()> fn, float delay);
+    [[nodiscard]] InvokeHandle InvokeRepeating(std::function<void()> fn, float delay, float interval);
     void FrameDelay(uint32_t n, std::function<void()> fn);
-    // CancelInvoke — この Script が予約した Invoke / InvokeRepeating をすべて破棄する。
     void CancelInvoke();
+    void CancelInvoke(InvokeHandle handle);
 
-    template<typename T>
-    void Emit(const T& data) const;
-
-    template<typename T>
-    void On(std::function<void(const T&)> callback);
-
-    // ── Animator ショートハンド ──────────────────────────────────────────────
-    // 自 GameObject の AnimatorComponent に転送する。Animator が無ければ何もしない。
-    void SetAnimatorFloat(std::string_view name, float v)   const;
-    void SetAnimatorInt  (std::string_view name, int v)     const;
-    void SetAnimatorBool (std::string_view name, bool v)    const;
-    void SetAnimatorTrigger(std::string_view name)          const;
-    bool IsAnimatorInState(std::string_view name)           const;
-
-    // QueueRenderPass — OnSetupRenderPasses 内から RenderGraph 注入パスを登録する。
-    // WHY: Script が RenderGraph の登録順や RenderSystem.cpp の内部構造を知らなくても、
-    //      VFX / 水面 / カスタム描画を Scene に閉じて拡張できるようにする。
+    // QueueRenderPass / GetShaderDescriptor
     void QueueRenderPass(UserRenderPassDesc desc) const;
-
-    // GetShaderDescriptor — MaterialComponent の名前引き SetParam に渡す ShaderDescriptor を取得する。
-    // WHY: MaterialComponent から ResourceManager::Active() 依存を除去し、リソース解決の責務を Script 側へ移す。
     const renderer::ShaderDescriptor* GetShaderDescriptor(std::string_view shaderPath) const;
 
-    // ScriptSystem が各ライフサイクル呼び出しの前に設定する。
-    // 派生クラスは m_scene / m_gameObject を介して Scene / GameObject にアクセスする。
-    void SetContext(Scene* scene, GameObject* gameObject);
+    // deprecated 委譲メソッド — scene.* を使うこと
+    [[deprecated("Use scene.Find()")]]
+    GameObject* Find(const std::string& name) const;
+    [[deprecated("Use scene.FindWithTag()")]]
+    GameObject* FindWithTag(const std::string& tag) const;
+    [[deprecated("Use scene.GetGameObject()")]]
+    GameObject* GetGameObject(EntityID id) const;
+    [[deprecated("Use scene.Create()")]]
+    GameObject& CreateGameObject(const std::string& name = "GameObject") const;
+    [[deprecated("Use scene.GetMainCameraObject()")]]
+    GameObject* GetMainCameraObject() const;
+    static void Destroy(GameObject& go, float delay = 0.0f);
 
-    // ScriptSystem 専用: enabled の差分を検出して OnEnable / OnDisable を呼ぶ。
-    // WHY: enabled は Inspector や Script から直接書き換えられる public フラグのため、setter ではなく System 側の同期点で検知する。
+    // deprecated animator 委譲メソッド — animator.* を使うこと
+    [[deprecated("Use animator.SetFloat()")]]  void SetAnimatorFloat(std::string_view n, float v) const;
+    [[deprecated("Use animator.SetInt()")]]    void SetAnimatorInt  (std::string_view n, int v)   const;
+    [[deprecated("Use animator.SetBool()")]]   void SetAnimatorBool (std::string_view n, bool v)  const;
+    [[deprecated("Use animator.SetTrigger()")]]void SetAnimatorTrigger(std::string_view n)        const;
+    [[deprecated("Use animator.IsInState()")]] bool IsAnimatorInState(std::string_view n)         const;
+
+    // ScriptSystem 専用
+    void SetContext(Scene* scene, GameObject* gameObject);
     void SyncEnabledState();
-    // ScriptSystem 専用: m_deltaTime を注入し、この Script が持つ Invoke タイマーを進める。
     void SetDeltaTime(float dt);
     void TickInvokes(float dt);
     void TickFrameDelays();
-    // PhysicsSystem 専用: ScriptPhysicsProxy が参照する直近の physics::World を共有する。
-    // WHY: ScriptSystem は World を引数に持たないため、物理同期の責務を持つ System から注入する。
     static void SetPhysicsWorld(physics::World* world);
 
-    // Prefab インスタンス化ブリッジ。
-    // WHY: PrefabSerializer は Editor プロジェクトにあり Engine から直接呼べない。
-    //      Editor / GameHub の起動時に SetInstantiateFn でコールバックを注入し、
-    //      ScriptSceneProxy::Instantiate がここを経由して呼ぶことで依存方向を逆転させる。
     using PrefabInstantiateFn = std::function<bool(Scene&, const std::string&, std::vector<EntityID>&)>;
     static void SetInstantiateFn(PrefabInstantiateFn fn);
     static bool InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots);
@@ -259,8 +235,8 @@ protected:
     void SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings);
     void ClearRuntimePostProcessSettings();
 
-    Scene*      m_scene      = nullptr; // 非所有参照
-    GameObject* m_gameObject = nullptr; // 非所有参照
+    Scene*      m_scene      = nullptr;
+    GameObject* m_gameObject = nullptr;
 
 private:
     friend struct ScriptTransformProxy;
@@ -273,19 +249,18 @@ private:
     friend struct ScriptParticleProxy;
     friend struct ScriptTrailProxy;
     friend struct ScriptMeshTrailProxy;
-    friend struct ScriptUIProxy;
     friend struct ScriptSceneProxy;
     friend struct ScriptAnimatorProxy;
     friend struct ScriptDebugProxy;
     friend struct ScriptPostProcessProxy;
-    friend struct ScriptMemoryProxy;
 
     struct InvokeEntry {
         std::function<void()> fn;
         float remaining = 0.0f;
-        float interval = 0.0f;
-        bool repeating = false;
-        bool canceled = false;
+        float interval  = 0.0f;
+        bool repeating  = false;
+        bool canceled   = false;
+        uint32_t id     = 0;
     };
 
     struct FrameDelayEntry {
@@ -294,56 +269,14 @@ private:
         bool canceled = false;
     };
 
-    template<typename T>
-    struct EventSubscription {
-        Script* owner = nullptr;
-        Scene* scene = nullptr;
-        std::function<void(const T&)> callback;
-    };
-
-    template<typename T>
-    static std::vector<EventSubscription<T>>& EventSubscriptions()
-    {
-        static std::vector<EventSubscription<T>> subscriptions;
-        return subscriptions;
-    }
-
-    void CancelEventSubscriptions();
-    std::vector<InvokeEntry> m_invokes;
+    uint32_t m_nextInvokeId = 1;
+    std::vector<InvokeEntry>     m_invokes;
     std::vector<FrameDelayEntry> m_frameDelays;
-    std::vector<std::function<void(Script*)>> m_eventUnsubscribers;
     bool m_enableStateInitialized = false;
     bool m_lastEnabled = true;
     bool m_isTickingInvokes = false;
-    static physics::World*    s_physicsWorld;
+    static physics::World*     s_physicsWorld;
     static PrefabInstantiateFn s_instantiateFn;
 };
-
-template<typename T>
-void Script::Emit(const T& data) const
-{
-    // WHAT: 型ごとに分離した Scene スコープの購読リストへ同期配信する。
-    // WHY: Step 1〜5 のシングルスレッド前提では、キューイングより即時 dispatch の方が挙動を読みやすい。
-    auto& subscriptions = EventSubscriptions<T>();
-    for (auto& sub : subscriptions) {
-        if (sub.owner && sub.scene == m_scene && sub.callback)
-            sub.callback(data);
-    }
-}
-
-template<typename T>
-void Script::On(std::function<void(const T&)> callback)
-{
-    if (!callback) return;
-    auto& subscriptions = EventSubscriptions<T>();
-    subscriptions.push_back({ this, m_scene, std::move(callback) });
-    m_eventUnsubscribers.push_back([](Script* owner) {
-        auto& entries = EventSubscriptions<T>();
-        for (auto& entry : entries) {
-            if (entry.owner == owner)
-                entry.owner = nullptr;
-        }
-    });
-}
 
 } // namespace fbzz::scene

@@ -34,6 +34,7 @@
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/EntityRef.hpp>
 #include <Physics/RigidBody.hpp>
 #include <Physics/World.hpp>
 #include <algorithm>
@@ -67,8 +68,8 @@ renderer::Camera BuildCameraFromComponent(const GameObject* gameObject, const Ca
         return camera;
     }
 
-    camera.m_position = gameObject->transform.position;
-    camera.m_rotation = gameObject->transform.rotation;
+    camera.m_position = gameObject->transform.worldPosition;
+    camera.m_rotation = gameObject->transform.worldRotation;
     camera.m_fovY     = component->fovY;
     camera.m_aspect   = component->aspectRatio;
     camera.m_near     = component->nearZ;
@@ -267,45 +268,80 @@ Transform* ScriptTransformProxy::operator->() const
     return t;
 }
 
-void ScriptTransformProxy::SetPosition(const math::Vector3& v) const
+// ── ローカル空間 property getter / setter ──────────────────────────────────
+math::Vector3 ScriptTransformProxy::_GetPos() const
 {
-    if (auto* t = Get()) {
-        t->position = v;
-        t->localPosition = v;
-    }
+    auto* t = Get(); return t ? t->position : math::Vector3::ZERO;
+}
+void ScriptTransformProxy::_SetPos(const math::Vector3& v)
+{
+    if (auto* t = Get()) t->position = v;
+}
+math::Quaternion ScriptTransformProxy::_GetRot() const
+{
+    auto* t = Get(); return t ? t->rotation : math::Quaternion::Identity();
+}
+void ScriptTransformProxy::_SetRot(const math::Quaternion& v)
+{
+    if (auto* t = Get()) t->rotation = v;
+}
+math::Vector3 ScriptTransformProxy::_GetScl() const
+{
+    auto* t = Get(); return t ? t->scale : math::Vector3::ONE;
+}
+void ScriptTransformProxy::_SetScl(const math::Vector3& v)
+{
+    if (auto* t = Get()) t->scale = v;
 }
 
+// ── ワールド空間 property getter / setter ──────────────────────────────────
+math::Vector3 ScriptTransformProxy::_GetWPos() const
+{
+    auto* t = Get(); return t ? t->worldPosition : math::Vector3::ZERO;
+}
+void ScriptTransformProxy::_SetWPos(const math::Vector3& v)
+{
+    if (auto* t = Get()) t->worldPosition = v;
+}
+math::Quaternion ScriptTransformProxy::_GetWRot() const
+{
+    auto* t = Get(); return t ? t->worldRotation : math::Quaternion::Identity();
+}
+
+// ── 算出値 ─────────────────────────────────────────────────────────────────
+math::Vector3 ScriptTransformProxy::_GetFwd()   const { auto* t = Get(); return t ? t->Forward() : math::Vector3::FORWARD; }
+math::Vector3 ScriptTransformProxy::_GetUp()    const { auto* t = Get(); return t ? t->Up()      : math::Vector3::UP; }
+math::Vector3 ScriptTransformProxy::_GetRight() const { auto* t = Get(); return t ? t->Right()   : math::Vector3::RIGHT; }
+
+// ── メソッド ───────────────────────────────────────────────────────────────
 void ScriptTransformProxy::Translate(const math::Vector3& v) const
 {
-    if (auto* t = Get())
-        t->Translate(v);
+    if (auto* t = Get()) t->Translate(v);
 }
 
-void ScriptTransformProxy::Rotate(const math::Vector3& axis, float degrees) const
+void ScriptTransformProxy::Rotate(const math::Vector3& axis, float deg) const
 {
     if (auto* t = Get()) {
-        const auto delta = math::Quaternion::FromAxisAngle(axis.Normalized(), degrees * DEG_TO_RAD);
+        const auto delta = math::Quaternion::FromAxisAngle(axis.Normalized(), deg * DEG_TO_RAD);
         t->rotation = (delta * t->rotation).Normalized();
-        t->localRotation = (delta * t->localRotation).Normalized();
     }
 }
 
 void ScriptTransformProxy::LookAt(const math::Vector3& target) const
 {
-    if (auto* t = Get())
-        t->LookAt(target);
+    if (auto* t = Get()) t->LookAt(target);
 }
 
 float ScriptTransformProxy::DistanceTo(const GameObject& other) const
 {
     const auto* t = Get();
-    return t ? (other.transform.position - t->position).Length() : 0.0f;
+    return t ? (other.transform.worldPosition - t->worldPosition).Length() : 0.0f;
 }
 
 math::Vector3 ScriptTransformProxy::DirectionTo(const GameObject& other) const
 {
     const auto* t = Get();
-    return t ? (other.transform.position - t->position).Normalized() : math::Vector3::ZERO;
+    return t ? (other.transform.worldPosition - t->worldPosition).Normalized() : math::Vector3::ZERO;
 }
 
 bool ScriptInputProxy::GetKey(input::KeyCode key) const { return input::Input::KeyHeld(key); }
@@ -1147,8 +1183,8 @@ float ScriptSceneProxy::GetTerrainHeightAt(const math::Vector3& worldPos) const
     if (!script || !script->m_scene) return std::numeric_limits<float>::lowest();
     for (auto& go : script->m_scene->GameObjects()) {
         if (auto* terrain = go.GetComponent<TerrainComponent>())
-            return go.transform.position.y + terrain->GetHeightAt(worldPos.x - go.transform.position.x,
-                                                                  worldPos.z - go.transform.position.z);
+            return go.transform.worldPosition.y + terrain->GetHeightAt(worldPos.x - go.transform.worldPosition.x,
+                                                                  worldPos.z - go.transform.worldPosition.z);
     }
     return std::numeric_limits<float>::lowest();
 }
@@ -1158,8 +1194,8 @@ math::Vector3 ScriptSceneProxy::GetTerrainNormalAt(const math::Vector3& worldPos
     if (!script || !script->m_scene) return math::Vector3::UP;
     for (auto& go : script->m_scene->GameObjects()) {
         if (auto* terrain = go.GetComponent<TerrainComponent>())
-            return terrain->GetNormalAt(worldPos.x - go.transform.position.x,
-                                        worldPos.z - go.transform.position.z);
+            return terrain->GetNormalAt(worldPos.x - go.transform.worldPosition.x,
+                                        worldPos.z - go.transform.worldPosition.z);
     }
     return math::Vector3::UP;
 }
@@ -1169,9 +1205,9 @@ float ScriptSceneProxy::GetWaterSurfaceHeight(const math::Vector3& worldPos, flo
     if (!script || !script->m_scene) return worldPos.y;
     for (auto& go : script->m_scene->GameObjects()) {
         if (auto* water = go.GetComponent<WaterComponent>()) {
-            const float localX = worldPos.x - go.transform.position.x;
-            const float localZ = worldPos.z - go.transform.position.z;
-            return go.transform.position.y + water->GetSurfaceHeightAt(localX, localZ, time);
+            const float localX = worldPos.x - go.transform.worldPosition.x;
+            const float localZ = worldPos.z - go.transform.worldPosition.z;
+            return go.transform.worldPosition.y + water->GetSurfaceHeightAt(localX, localZ, time);
         }
     }
     return worldPos.y;
@@ -1455,5 +1491,16 @@ void GizmoProxy::DrawTargetLine(const math::Vector3& from, const math::Vector3& 
 }
 
 #undef GIZMO_ASSERT
+
+// ── EntityRef 実装 ──────────────────────────────────────────────────────────
+GameObject* EntityRef::Resolve(const ScriptSceneProxy& scene) const
+{
+    return id.IsValid() ? scene.GetGameObject(id) : nullptr;
+}
+
+GameObject* EntityRef::Resolve(Scene& scene) const
+{
+    return id.IsValid() ? scene.GetGameObject(id) : nullptr;
+}
 
 } // namespace fbzz::scene
