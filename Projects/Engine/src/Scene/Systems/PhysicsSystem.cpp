@@ -79,7 +79,7 @@ public:
         const float localX = pos.x - m_position.x;
         const float localZ = pos.z - m_position.z;
         const float surfaceY = SurfaceY(localX, localZ);
-        const float depth = std::max(surfaceY - pos.y, 0.0f);
+        const float depth = (std::max)(surfaceY - pos.y, 0.0f);
         const float submersion = math::Clamp01(depth / 10.0f);
 
         // WHY: Water の浮力・抵抗は毎 substep 適用される環境力。
