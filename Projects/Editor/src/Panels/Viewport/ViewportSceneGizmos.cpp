@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // ViewportSceneGizmos.cpp | fbzz::editor
 // Scene View のカメラ・ライトアイコンと3D Gizmo
 #include "ViewportCommon.hpp"
@@ -300,9 +300,9 @@ void DrawGizmo(EditorContext& ctx,
     if (!math::NearlyZero(sy)) { rotMat.m[0][1] = localRow.m[0][1]/sy; rotMat.m[1][1] = localRow.m[1][1]/sy; rotMat.m[2][1] = localRow.m[2][1]/sy; }
     if (!math::NearlyZero(sz)) { rotMat.m[0][2] = localRow.m[0][2]/sz; rotMat.m[1][2] = localRow.m[1][2]/sz; rotMat.m[2][2] = localRow.m[2][2]/sz; }
 
-    go->transform.localPosition = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
-    go->transform.localScale    = { sx, sy, sz };
-    go->transform.localRotation = math::Quaternion::FromMatrix4(rotMat);
+    go->transform.position = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
+    go->transform.scale    = { sx, sy, sz };
+    go->transform.rotation = math::Quaternion::FromMatrix4(rotMat);
 }
 
 } // namespace fbzz::editor

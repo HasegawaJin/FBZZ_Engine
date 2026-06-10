@@ -12,6 +12,7 @@
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Physics/World.hpp>
@@ -56,11 +57,11 @@ private:
     const ProjectSettings&           m_settings;
     std::unique_ptr<scene::Scene>    m_scene;
     std::unique_ptr<physics::World>  m_physicsWorld;
+    scene::SceneManager              m_sceneManager;
     editor::ScriptDllLoader          m_scriptDll;
     FileLogSink                      m_logSink;
-    ImGuiContext*                    m_imguiCtx          = nullptr;
-    bool                             m_showProfiler      = false;
-    float                            m_physicsAccumulator = 0.0f;
+    ImGuiContext*                    m_imguiCtx     = nullptr;
+    bool                             m_showProfiler = false;
 };
 
 } // namespace fbzz::editor_launcher

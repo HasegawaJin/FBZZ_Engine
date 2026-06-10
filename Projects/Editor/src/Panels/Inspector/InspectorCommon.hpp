@@ -171,12 +171,12 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
 
     if (lc.type != scene::LightComponent::Type::Directional) {
         float pos[3] = {
-            go.transform.localPosition.x,
-            go.transform.localPosition.y,
-            go.transform.localPosition.z
+            go.transform.position.x,
+            go.transform.position.y,
+            go.transform.position.z
         };
         if (ImGui::DragFloat3("Position", pos, 0.1f))
-            go.transform.localPosition = { pos[0], pos[1], pos[2] };
+            go.transform.position = { pos[0], pos[1], pos[2] };
         ImGui::DragFloat("Range", &lc.range, 0.1f, 0.0f, 500.0f);
     }
 
