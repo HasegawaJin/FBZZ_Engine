@@ -3,7 +3,6 @@
 #pragma once
 #include "BulletComponent.hpp"
 #include <Engine/Scene/Script.hpp>
-#include "BulletShooterComponent.generated.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -32,6 +31,8 @@ private:
 };
 
 } // namespace sandbox
+
+#include "BulletShooterComponent.generated.hpp"
 
 // ── 実装 ────────────────────────────────────────────────────────────────────
 #ifndef BULLET_SHOOTER_IMPL

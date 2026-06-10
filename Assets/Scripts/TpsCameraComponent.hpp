@@ -5,7 +5,6 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <string>
-#include "TpsCameraComponent.generated.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -38,6 +37,8 @@ private:
 };
 
 } // namespace sandbox
+
+#include "TpsCameraComponent.generated.hpp"
 
 // ── 実装 ────────────────────────────────────────────────────────────────────
 #ifndef TPS_CAMERA_IMPL

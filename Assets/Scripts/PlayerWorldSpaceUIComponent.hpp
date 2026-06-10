@@ -8,7 +8,6 @@
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <string>
-#include "PlayerWorldSpaceUIComponent.generated.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -35,6 +34,8 @@ private:
 };
 
 } // namespace sandbox
+
+#include "PlayerWorldSpaceUIComponent.generated.hpp"
 
 // ── 実装 ────────────────────────────────────────────────────────────────────
 #ifndef PLAYER_WORLDSPACE_UI_IMPL
