@@ -5,6 +5,9 @@
 // 値は Win32 メッセージからそのまま変換できるように保つ。
 #pragma once
 #include <cstdint>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
 
 namespace fbzz::input {

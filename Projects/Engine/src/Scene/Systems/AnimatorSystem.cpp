@@ -596,7 +596,7 @@ void UpdateStateMachine(AnimatorComponent& animator, float dt)
 {
     // ── ブレンド進行 ───────────────────────────────────────────────────────
     if (!animator.blendToState.empty()) {
-        animator.blendWeight += dt / std::max(animator.blendDuration, 1e-4f);
+        animator.blendWeight += dt / (std::max)(animator.blendDuration, 1e-4f);
 
         // 遷移先ステートの時刻も進める
         const AnimationState* nextSt = FindState(animator, animator.blendToState);
@@ -688,8 +688,8 @@ static void RunLegacyAnimatorPath(AnimatorComponent& animator,
             : std::clamp(animator.time, 0.0f, durationSeconds);
     }
 
-    const size_t boneCount = std::min(skeleton.bones.size(),
-                                      static_cast<size_t>(asset::MAX_SKINNING_BONES));
+    const size_t boneCount = (std::min)(skeleton.bones.size(),
+                                        static_cast<size_t>(asset::MAX_SKINNING_BONES));
     animator.boneMatrices.assign(boneCount, math::Matrix4::Identity());
     animator.nodeGlobalTransforms.assign(skeleton.nodes.size(), math::Matrix4::Identity());
 
@@ -732,8 +732,8 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
         return;
     }
 
-    const size_t boneCount = std::min(skeleton.bones.size(),
-                                      static_cast<size_t>(asset::MAX_SKINNING_BONES));
+    const size_t boneCount = (std::min)(skeleton.bones.size(),
+                                        static_cast<size_t>(asset::MAX_SKINNING_BONES));
     animator.boneMatrices.assign(boneCount, math::Matrix4::Identity());
     animator.nodeGlobalTransforms.assign(skeleton.nodes.size(), math::Matrix4::Identity());
 
