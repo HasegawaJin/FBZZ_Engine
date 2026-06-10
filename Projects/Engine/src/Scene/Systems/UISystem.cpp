@@ -101,17 +101,17 @@ UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Trans
     //      通常の TransformSystem のように親 scale を子 position へ掛けると、
     //      親要素のサイズ変更だけで子が大きく飛んでしまう。
     // WHAT: 親の位置と回転は継承し、サイズは各 UI 要素自身の localScale.xy から読む。
-    const math::Vector2 localPos = { local.localPosition.x, local.localPosition.y };
+    const math::Vector2 localPos = { local.position.x, local.position.y };
     UITransform2D result{};
     result.position = parent.position + Rotate2D(localPos, parent.rotationZ);
-    result.rotationZ = parent.rotationZ + ExtractZRotation(local.localRotation);
+    result.rotationZ = parent.rotationZ + ExtractZRotation(local.rotation);
     return result;
 }
 
 Rect RectFromTransform(const scene::Transform& t, const UITransform2D& resolved)
 {
     return { resolved.position,
-             { t.localScale.x,    t.localScale.y    } };
+             { t.scale.x,    t.scale.y    } };
 }
 
 math::Vector4 Multiply(const math::Vector4& a, const math::Vector4& b)
@@ -536,13 +536,13 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout)
         GameObject* child = go.GetChild(idx);
         auto& t = child->transform;
         if (layout.axis == UILayoutAxis::Horizontal) {
-            t.localPosition.x = cursor;
-            t.localPosition.y = layout.paddingTop;
-            cursor += t.localScale.x + layout.spacing;
+            t.position.x = cursor;
+            t.position.y = layout.paddingTop;
+            cursor += t.scale.x + layout.spacing;
         } else {
-            t.localPosition.x = layout.paddingLeft;
-            t.localPosition.y = cursor;
-            cursor += t.localScale.y + layout.spacing;
+            t.position.x = layout.paddingLeft;
+            t.position.y = cursor;
+            cursor += t.scale.y + layout.spacing;
         }
     }
 }

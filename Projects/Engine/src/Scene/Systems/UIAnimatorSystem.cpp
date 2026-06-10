@@ -81,8 +81,8 @@ void ProcessGO(GameObject& go, float dt)
             float t = (pt.duration > 0.0f) ? std::clamp(pt.elapsed / pt.duration, 0.0f, 1.0f) : 1.0f;
             t = ApplyEasing(t, pt.easing);
             auto posVal = LerpV2(pt.from, pt.to, t);
-            go.transform.localPosition.x = posVal.x;
-            go.transform.localPosition.y = posVal.y;
+            go.transform.position.x = posVal.x;
+            go.transform.position.y = posVal.y;
             if (pt.loop && pt.pingPong && pt.elapsed == 0.0f)
                 std::swap(pt.from, pt.to);
         }
