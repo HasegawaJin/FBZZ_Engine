@@ -102,7 +102,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
 void SpawnParticle(ParticleEmitter& emitter, const Transform& transform)
 {
     Particle p;
-    p.position = transform.localPosition + emitter.emitPosition;
+    p.position = transform.position + emitter.emitPosition;
     math::Vector3 shapeVelocity = math::Vector3::ZERO;
 
     switch (emitter.shape) {
