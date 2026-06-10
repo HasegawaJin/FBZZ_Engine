@@ -128,8 +128,8 @@ void ColliderDebugDrawSystem(Scene& scene,
         };
 
         // サブサンプリングステップ: 最大 ~8 本の断面線 + 必ず両端を含む
-        const int sx = std::max(1, (cols - 1) / 8);
-        const int sz = std::max(1, (rows - 1) / 8);
+        const int sx = (std::max)(1, (cols - 1) / 8);
+        const int sz = (std::max)(1, (rows - 1) / 8);
 
         // Z 方向の断面線 (X 軸方向に延びる線群)
         for (int z = 0; z < rows; z += sz)
