@@ -175,16 +175,16 @@ void UpdateWorldTransform(GameObject& go, const Transform& parentTransform)
 {
     Transform& tf = go.transform;
     math::Vector3 scaledLocal = {
-        tf.localPosition.x * parentTransform.worldScale.x,
-        tf.localPosition.y * parentTransform.worldScale.y,
-        tf.localPosition.z * parentTransform.worldScale.z
+        tf.position.x * parentTransform.worldScale.x,
+        tf.position.y * parentTransform.worldScale.y,
+        tf.position.z * parentTransform.worldScale.z
     };
-    tf.rotation   = (parentTransform.rotation * tf.localRotation).Normalized();
-    tf.position   = parentTransform.position + parentTransform.rotation * scaledLocal;
+    tf.worldRotation   = (parentTransform.worldRotation * tf.rotation).Normalized();
+    tf.worldPosition   = parentTransform.worldPosition + parentTransform.worldRotation * scaledLocal;
     tf.worldScale = {
-        parentTransform.worldScale.x * tf.localScale.x,
-        parentTransform.worldScale.y * tf.localScale.y,
-        parentTransform.worldScale.z * tf.localScale.z
+        parentTransform.worldScale.x * tf.scale.x,
+        parentTransform.worldScale.y * tf.scale.y,
+        parentTransform.worldScale.z * tf.scale.z
     };
 }
 
@@ -241,9 +241,9 @@ GameObject& EnsureBoneObject(Scene& scene,
 
     GameObject& boneObject = scene.CreateGameObject(node.name);
     boneObject.layer = owner.layer;
-    boneObject.transform.localPosition = node.bindTranslation;
-    boneObject.transform.localRotation = node.bindRotation;
-    boneObject.transform.localScale = node.bindScale;
+    boneObject.transform.position = node.bindTranslation;
+    boneObject.transform.rotation = node.bindRotation;
+    boneObject.transform.scale = node.bindScale;
     boneObject.SetParent(parent);
 
     BoneComponent bone{};
@@ -283,9 +283,9 @@ void ApplyAnimatedPoseToBones(Scene& scene,
         if (!boneObject) continue;
 
         const NodeLocalPose pose = SampleNodeLocalPose(skeleton.nodes[i], clip, ticks);
-        boneObject->transform.localPosition = pose.translation;
-        boneObject->transform.localRotation = pose.rotation;
-        boneObject->transform.localScale = pose.scale;
+        boneObject->transform.position = pose.translation;
+        boneObject->transform.rotation = pose.rotation;
+        boneObject->transform.scale = pose.scale;
     }
 }
 
@@ -503,11 +503,11 @@ void ApplyBlendedPoseToBones(Scene& scene,
         const NodeLocalPose poseA = SampleNodeLocalPose(skeleton.nodes[i], clipA, ticksA);
         const NodeLocalPose poseB = SampleNodeLocalPose(skeleton.nodes[i], clipB, ticksB);
 
-        boneObject->transform.localPosition =
+        boneObject->transform.position =
             math::Vector3::Lerp(poseA.translation, poseB.translation, weight);
-        boneObject->transform.localRotation =
+        boneObject->transform.rotation =
             math::Quaternion::Slerp(poseA.rotation, poseB.rotation, weight);
-        boneObject->transform.localScale =
+        boneObject->transform.scale =
             math::Vector3::Lerp(poseA.scale, poseB.scale, weight);
     }
 }

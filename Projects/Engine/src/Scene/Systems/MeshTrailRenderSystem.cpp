@@ -147,7 +147,7 @@ void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::Resource
 {
     MeshTrailSample sample{};
     sample.timestamp = currentTime;
-    sample.position = go.transform.position;
+    sample.position = go.transform.worldPosition;
     sample.world = go.transform.GetWorldMatrix();
 
     if (auto* animator = go.GetComponent<AnimatorComponent>()) {
@@ -366,7 +366,7 @@ void ExecuteMeshTrailPass(RenderPassContext& ctx)
         EnsureComponentResources(*trail, resources);
         ExpireSamples(*trail, resources, currentTime);
 
-        if (trail->enabled && ShouldSample(*trail, go.transform.position, currentTime))
+        if (trail->enabled && ShouldSample(*trail, go.transform.worldPosition, currentTime))
             CaptureSample(go, *trail, resources, currentTime);
 
         ExpireSamples(*trail, resources, currentTime);

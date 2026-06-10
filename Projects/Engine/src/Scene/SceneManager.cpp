@@ -17,6 +17,21 @@
 
 namespace fbzz::scene {
 
+namespace {
+const char* PhysicsStepCountMarkerName(int steps)
+{
+    // WHY: 固定タイムステップの catch-up で PhysicsSystem が 1 フレームに複数回走ることがある。
+    //      Profiler marker として回数を残し、重複呼び出し疑いを確認しやすくする。
+    if (steps == 2) return "PhysicsFixedSteps=2";
+    if (steps == 3) return "PhysicsFixedSteps=3";
+    if (steps == 4) return "PhysicsFixedSteps=4";
+    if (steps == 5) return "PhysicsFixedSteps=5";
+    if (steps == 6) return "PhysicsFixedSteps=6";
+    if (steps == 7) return "PhysicsFixedSteps=7";
+    return "PhysicsFixedSteps>=8";
+}
+} // namespace
+
 void SceneManager::Register(const std::string& name, SceneFactory factory)
 {
     m_factories[name] = std::move(factory);
@@ -36,6 +51,33 @@ void SceneManager::LoadScene(const std::string& name)
     m_pendingLoad = name;
 }
 
+void SceneManager::SetScene(Scene* scene)
+{
+    m_externalScene = scene;
+}
+
+void SceneManager::SetPhysicsHz(int hz)
+{
+    m_physicsHz = hz < 1 ? 1 : hz;
+}
+
+void SceneManager::SetSimulating(bool simulating)
+{
+    m_simulating = simulating;
+    if (!simulating)
+        m_physicsAccumulator = 0.0f;
+}
+
+void SceneManager::SetSingleStep(bool singleStep)
+{
+    m_singleStep = singleStep;
+}
+
+Scene* SceneManager::CurrentScene() const
+{
+    return m_externalScene ? m_externalScene : m_active.get();
+}
+
 void SceneManager::Update(float dt, physics::World& world)
 {
     FBZZ_PROFILE_SCOPE("SceneManager::Update");
@@ -46,24 +88,79 @@ void SceneManager::Update(float dt, physics::World& world)
         m_pendingLoad.clear();
     }
 
-    if (!m_active) return;
+    Scene* scene = CurrentScene();
+    if (!scene) return;
 
-    {
-        FBZZ_PROFILE_SCOPE("TransformSystem");
-        TransformSystem(*m_active);
+    if (!m_simulating) {
+        // ── 停止中: Transform のみ (エディタ上のオブジェクト移動を反映する) ────
+        FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
+        TransformSystem(*scene);
+        return;
     }
-    PhysicsSystem(*m_active, world, dt);
+
+    // ── Phase 1: Script Update ──────────────────────────────────────────────
+    { FBZZ_PROFILE_SCOPE("SceneManager::ScriptSystem");
+      ScriptSystem(*scene, dt); }
+
+    // ── Phase 2: Transform ──────────────────────────────────────────────────
+    { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
+      TransformSystem(*scene); }
+
+    // ── Phase 3: Physics (fixed timestep) ───────────────────────────────────
+    {
+        FBZZ_PROFILE_SCOPE("SceneManager::PhysicsFixedStepLoop");
+        const float fixedDt = 1.0f / static_cast<float>(m_physicsHz);
+        int steps = 0;
+        if (m_singleStep) {
+            PhysicsSystem(*scene, world, fixedDt);
+            steps = 1;
+        } else {
+            m_physicsAccumulator += dt;
+            const float maxAccum = fixedDt * 8.0f;
+            if (m_physicsAccumulator > maxAccum) m_physicsAccumulator = maxAccum;
+            while (m_physicsAccumulator >= fixedDt) {
+                PhysicsSystem(*scene, world, fixedDt);
+                m_physicsAccumulator -= fixedDt;
+                ++steps;
+            }
+        }
+        if (steps >= 2) FBZZ_PROFILE_MARKER(PhysicsStepCountMarkerName(steps));
+    }
+
+    // ── Phase 4: Transform (physics writeback) ──────────────────────────────
+    { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
+      TransformSystem(*scene); }
+
+    // ── Phase 5: Script LateUpdate ──────────────────────────────────────────
+    { FBZZ_PROFILE_SCOPE("SceneManager::LateScriptSystem");
+      LateScriptSystem(*scene, dt); }
+
+    // ── Phase 6: Lifetime & Cleanup ─────────────────────────────────────────
+    { FBZZ_PROFILE_SCOPE("SceneManager::LifetimeSystem");
+      LifetimeSystem(*scene, dt); }
+    { FBZZ_PROFILE_SCOPE("SceneManager::FlushDestroyQueue");
+      scene->FlushDestroyQueue(dt); }
+}
+
+void SceneManager::LateUpdate(float dt, physics::World& world)
+{
+    FBZZ_PROFILE_SCOPE("SceneManager::LateUpdate");
+
+    Scene* scene = CurrentScene();
+    if (!scene) return;
+
+    // ── Phase 7: Transform (FlushDestroyQueue 後のリフレッシュ) ─────────────
+    { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
+      TransformSystem(*scene); }
+
+    // ── Phase 8: Animation ──────────────────────────────────────────────────
+    // AnimatorSystem が FK ポーズとスキニング行列を作った直後に IK を適用する。
+    // WHY: IK はアニメーション結果を補正する後段処理なので、先に呼ぶと AnimatorSystem に上書きされる。
     if (auto* resources = renderer::ResourceManager::Active()) {
-        AnimatorSystem(*m_active, *resources, dt);
-        // AnimatorSystem が FK ポーズとスキニング行列を作った直後に IK を適用する。
-        // WHY: IK はアニメーション結果を補正する後段処理なので、先に呼ぶと AnimatorSystem に上書きされる。
-        IKSystem(*m_active, world, *resources, dt);
-    }
-    ScriptSystem(*m_active, dt);
-    LifetimeSystem(*m_active, dt);
-    {
-        FBZZ_PROFILE_SCOPE("Scene::FlushDestroyQueue");
-        m_active->FlushDestroyQueue(dt);
+        { FBZZ_PROFILE_SCOPE("SceneManager::AnimatorSystem");
+          AnimatorSystem(*scene, *resources, dt); }
+        { FBZZ_PROFILE_SCOPE("SceneManager::IKSystem");
+          IKSystem(*scene, world, *resources, dt); }
     }
 }
 
