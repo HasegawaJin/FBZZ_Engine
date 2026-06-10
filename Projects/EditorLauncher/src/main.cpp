@@ -478,6 +478,12 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         profiler::Profiler::EndFrame();
     }
 
+    // WHY: FreeLibrary より前に全スクリプトの OnDestroy と destructor を
+    //      DLL コードが有効なうちに実行する。Clear() 後は activeScene を nullptr に
+    //      してダングリング参照を防ぎ、Unload(nullptr) で DestroyAllScripts をスキップする。
+    scene->Clear();
+    scene::Script::SetPhysicsWorld(nullptr);
+    editorApp.GetContext().activeScene = nullptr;
     editorApp.Shutdown();
 }
 
