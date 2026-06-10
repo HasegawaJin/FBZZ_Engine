@@ -5,7 +5,6 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/PrefabRef.hpp>
 #include <Engine/Scene/Script.hpp>
-#include "BulletComponent.generated.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -49,6 +48,8 @@ private:
 };
 
 } // namespace sandbox
+
+#include "BulletComponent.generated.hpp"
 
 // ── 実装 ────────────────────────────────────────────────────────────────────
 #ifndef BULLET_COMPONENT_IMPL

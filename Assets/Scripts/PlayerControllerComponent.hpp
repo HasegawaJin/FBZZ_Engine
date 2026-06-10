@@ -9,7 +9,6 @@
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
-#include "PlayerControllerComponent.generated.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -61,6 +60,8 @@ private:
 };
 
 } // namespace sandbox
+
+#include "PlayerControllerComponent.generated.hpp"
 
 // ── 実装 ────────────────────────────────────────────────────────────────────
 #ifndef PLAYER_CONTROLLER_IMPL

@@ -2,10 +2,10 @@
 // Source: PlayerWorldSpaceUIComponent.hpp
 #pragma once
 
-#undef  FBZZ_GENERATED_BODY
-#define FBZZ_GENERATED_BODY() \
-    void Reflect(IReflector& r_) override { \
-        r_.Field("Target Name", targetName); \
-        r_.Field("Display Name", displayName); \
-        r_.Field("Head Offset", headOffset); \
-    }
+namespace sandbox {
+inline void PlayerWorldSpaceUIComponent::Reflect(::fbzz::scene::IReflector& r_) {
+    r_.Field("Target Name", targetName);
+    r_.Field("Display Name", displayName);
+    r_.Field("Head Offset", headOffset);
+}
+} // namespace sandbox
