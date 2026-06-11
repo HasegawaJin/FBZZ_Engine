@@ -331,13 +331,13 @@ const std::vector<UserRenderPassDesc>& Scene::GetUserRenderPasses() const
 void Scene::QueueScriptDebugDraw(ScriptDebugDrawCommand command)
 {
     // WHAT: 発行フレームを記録して、duration=0 の描画も同一フレーム内の複数ビューに表示する。
-    command.frameCreated = core::Time::FrameCount();
+    command.frameCreated = Time::frameCount;
     m_scriptDebugDrawCommands.push_back(command);
 }
 
 void Scene::TickScriptDebugDrawCommands(float dt)
 {
-    const uint64_t currentFrame = core::Time::FrameCount();
+    const uint64_t currentFrame = Time::frameCount;
     if (m_lastScriptDebugDrawTickFrame == currentFrame)
         return;
 
