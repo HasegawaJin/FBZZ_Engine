@@ -94,11 +94,9 @@
 
 #### 重要度：高
 
-**毎フレーム `resources.LoadTexture(texturePath)` を呼び出している**
+~~**毎フレーム `resources.LoadTexture(texturePath)` を呼び出している**~~
 
-変更検知なしに毎フレームパスを渡すため、ホットリロード検知と干渉しうる。
-
-**修正方針：** 前回パスをコンポーネント内にキャッシュして変更時のみ再ロードする（TrailComponent の `loadedTexturePath` と同じパターン）。
+✅ **修正済み** — `loadedTexturePath` フィールドを追加し、`texturePath` が変わったときだけ再ロードするよう変更。
 
 ---
 
@@ -116,29 +114,23 @@
 
 #### 重要度：高
 
-**テキストの幅・高さが計算されない**
+~~**テキストの幅・高さが計算されない**~~
 
-UIButton のヒット判定やレイアウト配置は `localScale.xy` をサイズとして使うが、`UIText` はそれを更新しない。テキストが変わっても当たり判定・レイアウトが追従しない。
-
-**修正方針：** `SubmitText` または UISystem のプリパスでテキストの論理サイズを計算し、`localScale.xy` または専用フィールドへ書き込む。
+✅ **修正済み** — `UITextSizeSystem` プリパスで `ComputeTextLogicalSize()` を呼び、`transform.scale.xy` へ書き込む。UILayout・ヒット判定の前に実行される。
 
 ---
 
-**`UIText` 構造体に `bool enabled` の宣言がない可能性**
+~~**`UIText` 構造体に `bool enabled` の宣言がない可能性**~~
 
-`Reflect()` で `r.Field("enabled", enabled)` を参照しているが、構造体本体に `bool enabled = true;` の宣言が見当たらない（`UIButton` / `UIImage` は明示的に持つ）。
-
-**修正方針：** `UIText` 構造体に `bool enabled = true;` を明示的に追加する。
+✅ **確認済み** — `bool enabled = true;` は宣言されていた。
 
 ---
 
 #### 重要度：中
 
-**テキスト整列（左/中央/右寄せ）が未実装**
+~~**テキスト整列（左/中央/右寄せ）が未実装**~~
 
-ペン位置が常に左上起点で固定されており、`TextAlignment` 相当のフィールドが存在しない。
-
-**修正方針：** `enum class TextAlign { Left, Center, Right }` を追加し、`SubmitTextWithAtlas` で行幅を事前計算して開始位置を調整する。
+✅ **修正済み** — `enum class TextAlign { Left, Center, Right }` を追加。`SubmitTextWithAtlas` で行幅を事前計算し開始位置を調整。`align` フィールドは Reflect 対応済み。
 
 ---
 
@@ -164,11 +156,9 @@ UIButton のヒット判定やレイアウト配置は `localScale.xy` をサイ
 
 #### 重要度：高
 
-**`onClick` 検出ロジックにバグあり**
+~~**`onClick` 検出ロジックにバグあり**~~
 
-現在の実装ではマウスが素早く移動してリリース時に `hit` が偽になるケース（ドラッグアウト）で `onClick` が発火しない。逆に別要素にホバーしながらリリースすると意図しない Click が発火しうる。
-
-**修正方針：** `onClick` はリリース時（前フレーム `mousePressed == true` かつ今フレーム `false`）に `hit` を確認する方式に変更し、押下開始 GameObject（`startPressedGO`）と一致確認を行う。
+✅ **修正済み** — `wasPressedOnThis` + `lastMouseState` をボタン内部に保持し、押下がこのボタン上で開始された場合のみ `onClick` を発火するよう変更。ドラッグアウト後の誤発火と外部からの流入押下を両方防止。
 
 ---
 
@@ -178,11 +168,9 @@ UIButton のヒット判定やレイアウト配置は `localScale.xy` をサイ
 
 #### 重要度：中
 
-**`disabled` 状態の視覚フィードバックが未実装**
+~~**`disabled` 状態の視覚フィードバックが未実装**~~
 
-`disabledColor` フィールドが存在せず、非インタラクタブル時は `normalColor` のまま。
-
-**修正方針：** `disabledColor` フィールドを追加し、`ButtonTint` で `isInteractable == false` の場合にその色を返す。
+✅ **修正済み** — `disabledColor` フィールドを追加。`ButtonTint` で `isInteractable == false` のとき `disabledColor` を返す。Reflect にも追加済み。
 
 ---
 
@@ -200,11 +188,9 @@ UIButton のヒット判定やレイアウト配置は `localScale.xy` をサイ
 
 #### 重要度：高
 
-**`UIImage` を持つ子だけがレイアウト対象になる**
+~~**`UIImage` を持つ子だけがレイアウト対象になる**~~
 
-`UIText` のみ・`UIButton` のみを持つ子はレイアウトから除外される。テキストラベルや非画像ボタンを並べるユースケースで無視される。
-
-**修正方針：** `UIImage` だけでなく `UIText` / `UIButton` を持つ子も対象とするか、`activeSelf`（enabled）のみを条件にする。
+✅ **修正済み** — `activeSelf()` を条件にするよう変更。`UIText` / `UIButton` のみを持つ子も正しくレイアウト対象になる。
 
 ---
 
@@ -230,71 +216,61 @@ UIButton のヒット判定やレイアウト配置は `localScale.xy` をサイ
 
 #### 重要度：高
 
-**pingPong のスワップ検出が `elapsed == 0.0f` の厳密比較に依存**
+~~**pingPong のスワップ検出が `elapsed == 0.0f` の厳密比較に依存**~~
 
-`fmod` の結果が浮動小数点誤差で厳密に `0.0f` にならないケースがあり、往復が発動しないフレームが発生しうる。
-
-**修正方針：** `elapsed == 0.0f` の比較を `bool didWrap` フラグで置き換え、`AdvanceTween` がラップを検出したときに呼び出し元へ通知する。
+✅ **修正済み** — `AdvanceTween` に `bool& didWrap` 出力パラメーターを追加し、`fmod` ラップ検出をフラグで行うよう変更。
 
 ---
 
-**`PositionTween` が `UIImage` の有無に依存して無効化される**
+~~**`PositionTween` が `UIImage` の有無に依存して無効化される**~~
 
-`ProcessGO` の条件が `anim && image && image->enabled` のため、`UIImage` を持たない要素では `PositionTween` も動かない。
-
-**修正方針：** ColorTween の適用は UIImage の存在を条件とし、PositionTween の適用は `image` の有無に依存しないように条件分岐を分離する。
+✅ **修正済み** — ColorTween は `UIImage` / `UIText` の存在確認を行い、PositionTween / ScaleTween は `image` の有無に依存しない独立した条件で動作する。
 
 ---
 
 #### 重要度：中
 
-**`colorTween.easing` / `positionTween.easing` が `Reflect` に含まれていない**
+~~**`colorTween.easing` / `positionTween.easing` が `Reflect` に含まれていない**~~
 
-Inspector やシーンファイルから Easing を設定・保存できない。
-
-**修正方針：** `Reflect` に `colorEasing` / `posEasing` の int キャストフィールドを追加する。
+✅ **修正済み** — `colorEasing` / `posEasing` / `scaleEasing` を int キャストで `Reflect` に追加。
 
 ---
 
-**`elapsed` が `Reflect` に含まれており、ランタイム状態がシリアライズされる**
+~~**`elapsed` が `Reflect` に含まれており、ランタイム状態がシリアライズされる**~~
 
-シーンロード直後から途中再生状態になる。
-
-**修正方針：** `elapsed` を `Reflect` から除外する。
+✅ **確認済み** — `elapsed` は元々 `Reflect` に含まれていなかった。
 
 ---
 
-**`UIScaleTween`（スケールアニメーション）が未実装**
+~~**`UIScaleTween`（スケールアニメーション）が未実装**~~
 
-色と位置のみが対象で、ポップアップアニメーション等に必要なスケール変化に対応できない。
-
-**修正方針：** `UIScaleTween` 構造体を追加し `UIAnimatorSystem` で `localScale.xy` へ書き込む。
+✅ **修正済み** — `UIScaleTween` 構造体を追加。`UIAnimatorSystem` で `transform.scale.xy` へ書き込む。Reflect 対応済み。
 
 ---
 
 #### 重要度：低
 
-| 項目 | 説明 | 修正方針 |
+| 項目 | 説明 | 状態 |
 |---|---|---|
-| **`UIText` の色アニメーション非対応** | `colorTween` は `UIImage::color` のみ書き込む | `ProcessGO` に `UIText::color` への書き込みを追加 |
-| **`UIImage` なし時のサイレントスキップ** | エラー・警告が出ないため気づきにくい | `ProcessGO` で `UIImage` が存在しないとき `FBZZ_LOG_WARN`（初回のみ） |
+| ~~**`UIText` の色アニメーション非対応**~~ | `colorTween` は `UIImage::color` のみ書き込む | ✅ **修正済み** — `UIText::color` への書き込みも追加 |
+| ~~**`UIImage` なし時のサイレントスキップ**~~ | エラー・警告が出ないため気づきにくい | ✅ **修正済み** — `FBZZ_LOG_WARN`（初回のみ）を追加 |
 
 ---
 
 ## 修正優先順位まとめ
 
-| 優先度 | コンポーネント | 項目 | 工数目安 |
+| 優先度 | コンポーネント | 項目 | 状態 |
 |---|---|---|---|
-| 1 | UIText | `enabled` 宣言欠落の確認・修正 | 極小 |
-| 2 | UIText | テキストサイズ計算と `localScale.xy` への反映 | 中 |
-| 3 | UIButton | `onClick` 検出ロジックのバグ修正 | 小 |
-| 4 | UIImage | 毎フレーム `LoadTexture` の変更検知キャッシュ | 小 |
-| 5 | UILayoutGroup | `UIImage` 以外の子もレイアウト対象にする | 小 |
-| 6 | UIAnimator | pingPong のスワップ検出をフラグ方式に変更 | 小 |
-| 7 | UIAnimator | PositionTween と ColorTween の条件分離 | 小 |
-| 8 | UIAnimator | `elapsed` を `Reflect` から除外 | 極小 |
-| 9 | UICanvas | `ScreenSpaceCamera` モードの実装 | 大 |
-| 10 | UICanvas | WorldSpace ヒット判定（レイキャスト） | 大 |
+| 1 | UIText | `enabled` 宣言欠落の確認・修正 | ✅ 確認済み（元から存在） |
+| 2 | UIText | テキストサイズ計算と `localScale.xy` への反映 | ✅ 完了 |
+| 3 | UIButton | `onClick` 検出ロジックのバグ修正 | ✅ 完了 |
+| 4 | UIImage | 毎フレーム `LoadTexture` の変更検知キャッシュ | ✅ 完了 |
+| 5 | UILayoutGroup | `UIImage` 以外の子もレイアウト対象にする | ✅ 完了 |
+| 6 | UIAnimator | pingPong のスワップ検出をフラグ方式に変更 | ✅ 完了 |
+| 7 | UIAnimator | PositionTween と ColorTween の条件分離 | ✅ 完了 |
+| 8 | UIAnimator | `elapsed` を `Reflect` から除外 | ✅ 確認済み（元から除外） |
+| 9 | UICanvas | `ScreenSpaceCamera` モードの実装 | 未着手（大） |
+| 10 | UICanvas | WorldSpace ヒット判定（レイキャスト） | 未着手（大） |
 
 ---
 

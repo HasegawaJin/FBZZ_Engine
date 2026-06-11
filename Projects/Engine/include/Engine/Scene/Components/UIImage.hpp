@@ -19,6 +19,8 @@ struct UIImage {
     math::Vector2 uvMin  = { 0.0f, 0.0f };
     math::Vector2 uvMax  = { 1.0f, 1.0f };
     bool          enabled = true;
+    // ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
+    std::string   loadedTexturePath = {};
 
     const char* GetTypeName() const { return "UIImage"; }
     void Reflect(IReflector& r)
