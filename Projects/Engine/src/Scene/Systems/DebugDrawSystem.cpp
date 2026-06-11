@@ -286,7 +286,7 @@ void LightRangeDebugDrawSystem(Scene& scene,
         }
         else if (light->type == LightComponent::Type::Spot)
         {
-            const math::Vector3 dir = go.transform.Forward();
+            const math::Vector3 dir = go.transform.forward;
             const float outerRadius = std::tan(light->outerCone * kDeg2Rad) * light->range;
             const float innerRadius = std::tan(light->innerCone * kDeg2Rad) * light->range;
             renderer::DebugDraw::Cone(renderer, pos, dir, light->range, outerRadius, color);

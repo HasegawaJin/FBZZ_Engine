@@ -455,7 +455,7 @@ void RenderSystem(Scene& scene,
     for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
         if (!lc.enabled) continue;
         if (lc.type == LightComponent::Type::Directional) {
-            lightData.lightDir       = tf.Forward().Normalized();
+            lightData.lightDir       = tf.forward.Normalized();
             lightData.lightColor     = lc.color;
             lightData.lightIntensity = lc.intensity;
         } else if (lc.type == LightComponent::Type::Point
@@ -469,7 +469,7 @@ void RenderSystem(Scene& scene,
                    && lightData.spotLightCount < 4) {
             auto& sl    = lightData.spotLights[lightData.spotLightCount++];
             sl.position  = tf.position;
-            sl.direction = tf.Forward().Normalized();
+            sl.direction = tf.forward.Normalized();
             sl.range     = lc.range;
             sl.innerCos  = std::cos(lc.innerCone * kDegToRad);
             sl.outerCos  = std::cos(lc.outerCone * kDegToRad);
@@ -692,7 +692,7 @@ void RenderSystem(Scene& scene,
                               copyColorShader.IsValid()
                                   ? ctx.resources.GetColorTexture(sceneColorRT, 0)
                                   : renderer::ResourceHandle<renderer::TextureTag>{},
-                              core::Time::TotalTime(), &ctx.settings,
+                              Time::time, &ctx.settings,
                               ctx.handles.lightCB,
                               ctx.resources.GetDepthTexture(ctx.handles.shadowMapRT),
                               ctx.handles.shadowCB);
@@ -832,7 +832,7 @@ void RenderSystem(Scene& scene,
     });
 
     graph.AddPass("ScriptDebugDraw", { "HDR" }, { "HDR" }, [&]() {
-        scene.TickScriptDebugDrawCommands(core::Time::DeltaTime());
+        scene.TickScriptDebugDrawCommands(Time::deltaTime);
         renderer::DebugDraw::BeginFrame(passCtx.renderer, passCtx.resources, passCtx.camera.GetViewProjection());
 
         // OnDrawGizmos: DebugDraw::BeginFrame/Flush の区間内で Script が gizmo プロキシを使って
