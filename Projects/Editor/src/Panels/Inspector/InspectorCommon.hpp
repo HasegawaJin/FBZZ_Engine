@@ -186,7 +186,7 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
     }
 
     if (lc.type != scene::LightComponent::Type::Point) {
-        auto fwd = go.transform.Forward();
+        auto fwd = go.transform.forward;
         float dir[3] = { fwd.x, fwd.y, fwd.z };
         ImGui::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
     }

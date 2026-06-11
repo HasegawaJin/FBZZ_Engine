@@ -21,10 +21,15 @@ struct Transform {
     math::Quaternion worldRotation = math::Quaternion::Identity(); // ワールド回転 (旧 rotation)
     math::Vector3    worldScale    = math::Vector3::ONE;
 
-    // transform.forward / up / right — worldRotation から算出
+    // worldRotation から算出。大文字メソッドと小文字プロパティの両方を提供する。
+    // __declspec(property) により go.transform.forward で直接アクセスできる。
     math::Vector3 Forward() const;
     math::Vector3 Up()      const;
     math::Vector3 Right()   const;
+
+    __declspec(property(get=Forward)) math::Vector3 forward;
+    __declspec(property(get=Up))      math::Vector3 up;
+    __declspec(property(get=Right))   math::Vector3 right;
 
     // transform.Translate / Rotate / LookAt
     void Translate(const math::Vector3& delta, bool worldSpace = false);
