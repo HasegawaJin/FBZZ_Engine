@@ -58,13 +58,6 @@ void Script::SyncEnabledState()
         OnDisable();
 }
 
-void Script::SetDeltaTime(float dt)
-{
-    deltaTime         = dt;
-    unscaledDeltaTime = dt;
-    time += dt;
-    ++frameCount;
-}
 
 InvokeHandle Script::Invoke(std::function<void()> fn, float delay)
 {
