@@ -3,8 +3,9 @@
 // シーンを TOML 形式でシリアライズ/デシリアライズ
 #pragma once
 #include <string>
+#include <vector>
 
-namespace fbzz::scene { class Scene; }
+namespace fbzz::scene { class Scene; struct EntityID; }
 
 namespace fbzz::editor {
 
@@ -16,6 +17,10 @@ public:
     // PlayMode スナップショット用 (メモリ上の TOML 文字列)
     static std::string Serialize(const scene::Scene& scene);
     static bool        Deserialize(scene::Scene& scene, const std::string& toml);
+
+    // 既存シーンに toml テキストの GameObject を追記する (シーン全体を破棄しない)
+    static bool AppendObjects(scene::Scene& scene, const std::string& toml,
+                              std::vector<scene::EntityID>& outRoots);
 };
 
 } // namespace fbzz::editor

@@ -109,7 +109,7 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
     ImGui::Separator();
 
     if (ImGui::DragInt("Target FPS", &settings.app.targetFps, 1.0f, 0, 360))
-        core::Time::SetTargetFps(settings.app.targetFps);
+        Time::targetFps = settings.app.targetFps;
     ImGui::SameLine();
     ImGui::TextDisabled("(0 = unlimited)");
 

@@ -17,6 +17,13 @@ struct ScriptAnimatorProxy {
     void SetBool(std::string_view name, bool v) const;
     void SetTrigger(std::string_view name) const;
     bool IsInState(std::string_view name) const;
+
+    float       GetFloat(std::string_view name) const;
+    int         GetInt  (std::string_view name) const;
+    bool        GetBool (std::string_view name) const;
+    std::string GetCurrentState() const;
+    void        SetSpeed(float speed) const;
+    void        Play(std::string_view stateName) const;
 };
 
 } // namespace fbzz::scene

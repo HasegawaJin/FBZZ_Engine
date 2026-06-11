@@ -13,6 +13,7 @@
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -37,6 +38,7 @@
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Input/KeyCode.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -324,6 +326,86 @@ physics::VolumeType StringToVolumeType(const std::string& value)
     return physics::VolumeType::Gravity;
 }
 
+// KeyCode ↔ 文字列変換。シリアライズは文字列名で保存し可読性を確保する。
+static const char* KeyCodeToString(input::KeyCode k)
+{
+    using KC = input::KeyCode;
+    switch (k) {
+    case KC::A: return "A"; case KC::B: return "B"; case KC::C: return "C";
+    case KC::D: return "D"; case KC::E: return "E"; case KC::F: return "F";
+    case KC::G: return "G"; case KC::H: return "H"; case KC::I: return "I";
+    case KC::J: return "J"; case KC::K: return "K"; case KC::L: return "L";
+    case KC::M: return "M"; case KC::N: return "N"; case KC::O: return "O";
+    case KC::P: return "P"; case KC::Q: return "Q"; case KC::R: return "R";
+    case KC::S: return "S"; case KC::T: return "T"; case KC::U: return "U";
+    case KC::V: return "V"; case KC::W: return "W"; case KC::X: return "X";
+    case KC::Y: return "Y"; case KC::Z: return "Z";
+    case KC::KEY_0: return "0"; case KC::KEY_1: return "1"; case KC::KEY_2: return "2";
+    case KC::KEY_3: return "3"; case KC::KEY_4: return "4"; case KC::KEY_5: return "5";
+    case KC::KEY_6: return "6"; case KC::KEY_7: return "7"; case KC::KEY_8: return "8";
+    case KC::KEY_9: return "9";
+    case KC::ESCAPE:    return "Escape";
+    case KC::SPACE:     return "Space";
+    case KC::ENTER:     return "Enter";
+    case KC::BACKSPACE: return "Backspace";
+    case KC::SHIFT:     return "Shift";
+    case KC::CTRL:      return "Ctrl";
+    case KC::ALT:       return "Alt";
+    case KC::LEFT:      return "Left";
+    case KC::RIGHT:     return "Right";
+    case KC::UP:        return "Up";
+    case KC::DOWN:      return "Down";
+    case KC::F1:  return "F1";  case KC::F2:  return "F2";  case KC::F3:  return "F3";
+    case KC::F4:  return "F4";  case KC::F5:  return "F5";  case KC::F6:  return "F6";
+    case KC::F7:  return "F7";  case KC::F8:  return "F8";  case KC::F9:  return "F9";
+    case KC::F10: return "F10"; case KC::F11: return "F11"; case KC::F12: return "F12";
+    case KC::MouseLeft:   return "MouseLeft";
+    case KC::MouseRight:  return "MouseRight";
+    case KC::MouseMiddle: return "MouseMiddle";
+    default: return "Unknown";
+    }
+}
+
+static input::KeyCode KeyCodeFromString(const std::string& s)
+{
+    using KC = input::KeyCode;
+    if (s == "A") return KC::A; if (s == "B") return KC::B; if (s == "C") return KC::C;
+    if (s == "D") return KC::D; if (s == "E") return KC::E; if (s == "F") return KC::F;
+    if (s == "G") return KC::G; if (s == "H") return KC::H; if (s == "I") return KC::I;
+    if (s == "J") return KC::J; if (s == "K") return KC::K; if (s == "L") return KC::L;
+    if (s == "M") return KC::M; if (s == "N") return KC::N; if (s == "O") return KC::O;
+    if (s == "P") return KC::P; if (s == "Q") return KC::Q; if (s == "R") return KC::R;
+    if (s == "S") return KC::S; if (s == "T") return KC::T; if (s == "U") return KC::U;
+    if (s == "V") return KC::V; if (s == "W") return KC::W; if (s == "X") return KC::X;
+    if (s == "Y") return KC::Y; if (s == "Z") return KC::Z;
+    if (s == "0") return KC::KEY_0; if (s == "1") return KC::KEY_1;
+    if (s == "2") return KC::KEY_2; if (s == "3") return KC::KEY_3;
+    if (s == "4") return KC::KEY_4; if (s == "5") return KC::KEY_5;
+    if (s == "6") return KC::KEY_6; if (s == "7") return KC::KEY_7;
+    if (s == "8") return KC::KEY_8; if (s == "9") return KC::KEY_9;
+    if (s == "Escape")     return KC::ESCAPE;
+    if (s == "Space")      return KC::SPACE;
+    if (s == "Enter")      return KC::ENTER;
+    if (s == "Backspace")  return KC::BACKSPACE;
+    if (s == "Shift")      return KC::SHIFT;
+    if (s == "Ctrl")       return KC::CTRL;
+    if (s == "Alt")        return KC::ALT;
+    if (s == "Left")       return KC::LEFT;
+    if (s == "Right")      return KC::RIGHT;
+    if (s == "Up")         return KC::UP;
+    if (s == "Down")       return KC::DOWN;
+    if (s == "F1")  return KC::F1;  if (s == "F2")  return KC::F2;
+    if (s == "F3")  return KC::F3;  if (s == "F4")  return KC::F4;
+    if (s == "F5")  return KC::F5;  if (s == "F6")  return KC::F6;
+    if (s == "F7")  return KC::F7;  if (s == "F8")  return KC::F8;
+    if (s == "F9")  return KC::F9;  if (s == "F10") return KC::F10;
+    if (s == "F11") return KC::F11; if (s == "F12") return KC::F12;
+    if (s == "MouseLeft")   return KC::MouseLeft;
+    if (s == "MouseRight")  return KC::MouseRight;
+    if (s == "MouseMiddle") return KC::MouseMiddle;
+    return KC::SPACE;
+}
+
 class TomlWriteReflector : public IReflector {
 public:
     explicit TomlWriteReflector(toml::table& table) : m_table(table) {}
@@ -336,6 +418,17 @@ public:
     void Field(const char* name, math::Vector4& v) override { m_table.insert(name, Vec4ToArr(v)); }
     void Field(const char* name, std::string& v) override { m_table.insert(name, v); }
     void Field(const char* name, math::Quaternion& v) override { m_table.insert(name, QuatToArr(v)); }
+    void Field(const char* name, EntityID& v) override
+    {
+        toml::array arr;
+        arr.push_back((int64_t)v.index);
+        arr.push_back((int64_t)v.generation);
+        m_table.insert(name, std::move(arr));
+    }
+    void Field(const char* name, input::KeyCode& v) override
+    {
+        m_table.insert(name, std::string(KeyCodeToString(v)));
+    }
 
 private:
     toml::table& m_table;
@@ -384,6 +477,20 @@ public:
     {
         if (auto* arr = m_table[name].as_array())
             v = ArrToQuat(arr);
+    }
+
+    void Field(const char* name, EntityID& v) override
+    {
+        if (auto* arr = m_table[name].as_array(); arr && arr->size() == 2) {
+            v.index      = (uint32_t)arr->at(0).value_or((int64_t)EntityID::INVALID_INDEX);
+            v.generation = (uint32_t)arr->at(1).value_or(0LL);
+        }
+    }
+
+    void Field(const char* name, input::KeyCode& v) override
+    {
+        const std::string s = m_table[name].value_or(std::string{});
+        if (!s.empty()) v = KeyCodeFromString(s);
     }
 
 private:
@@ -531,9 +638,9 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         {
             auto& t = go.transform;
             toml::table tfTbl;
-            tfTbl.insert("localPosition", Vec3ToArr(t.localPosition));
-            tfTbl.insert("localRotation", QuatToArr(t.localRotation));
-            tfTbl.insert("localScale",    Vec3ToArr(t.localScale));
+            tfTbl.insert("position", Vec3ToArr(t.position));
+            tfTbl.insert("rotation", QuatToArr(t.rotation));
+            tfTbl.insert("scale",    Vec3ToArr(t.scale));
             goTbl.insert("transform", std::move(tfTbl));
         }
 
@@ -610,6 +717,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ccTbl.insert("enabled", cc->enabled);
             ccTbl.insert("cullingMask", (int64_t)cc->cullingMask);
             goTbl.insert("CameraComponent", std::move(ccTbl));
+        }
+
+        // LifetimeComponent
+        if (auto* lc = go.GetComponent<LifetimeComponent>()) {
+            toml::table lcTbl;
+            lcTbl.insert("remaining", (double)lc->remaining);
+            goTbl.insert("LifetimeComponent", std::move(lcTbl));
         }
 
         // AudioSourceComponent
@@ -1237,10 +1351,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         // Transform
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
             auto& t = go.transform;
-            t.localPosition = ArrToVec3((*tfTbl)["localPosition"].as_array());
-            t.localRotation = ArrToQuat((*tfTbl)["localRotation"].as_array());
-            t.localScale    = ArrToVec3((*tfTbl)["localScale"].as_array(),
-                                        { 1.0f, 1.0f, 1.0f });
+            t.position = ArrToVec3(((*tfTbl)["position"].as_array()
+                              ? (*tfTbl)["position"].as_array()
+                              : (*tfTbl)["localPosition"].as_array()));
+            t.rotation = ArrToQuat(((*tfTbl)["rotation"].as_array()
+                              ? (*tfTbl)["rotation"].as_array()
+                              : (*tfTbl)["localRotation"].as_array()));
+            t.scale     = ArrToVec3(((*tfTbl)["scale"].as_array() ? (*tfTbl)["scale"].as_array() : (*tfTbl)["localScale"].as_array()), { 1.0f, 1.0f, 1.0f });
         }
 
         // MeshRenderer
@@ -1330,6 +1447,13 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             cc.enabled = (*ccTbl)["enabled"].value_or(true);
             cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);
             go.AddComponent<CameraComponent>(cc);
+        }
+
+        // LifetimeComponent
+        if (auto* lcTbl = (*goTbl)["LifetimeComponent"].as_table()) {
+            LifetimeComponent lc{};
+            lc.remaining = (float)(*lcTbl)["remaining"].value_or(5.0);
+            go.AddComponent<LifetimeComponent>(lc);
         }
 
         // AudioSourceComponent
@@ -1501,8 +1625,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
 
             rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
             rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
-            rb.rigidBody->SetPosition(go.transform.localPosition);
-            rb.rigidBody->SetRotation(go.transform.localRotation);
+            rb.rigidBody->SetPosition(go.transform.position);
+            rb.rigidBody->SetRotation(go.transform.rotation);
             rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
             rb.rigidBody->SetAngularVelocity(
                 ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
@@ -1997,6 +2121,311 @@ bool SceneSerializer::LoadInPlace(
     if (!newScene) return false;
     scene = std::move(*newScene);
     return true;
+}
+
+// -----------------------------------------------------------------------
+// AppendObjects
+// WHY: Script::OnUpdate 内の scene.Instantiate() でシーン全体を再構築すると
+//      呼び出し元 Script が解放され use-after-free になる。
+//      AppendObjects はシーンを破棄せず新規 GO の追記のみ行う。
+// -----------------------------------------------------------------------
+bool SceneSerializer::AppendObjects(
+    Scene& scene, const std::string& tomlText,
+    renderer::ResourceManager& resources,
+    std::vector<EntityID>& outRoots)
+{
+    outRoots.clear();
+    if (tomlText.empty()) return false;
+
+    auto result = toml::parse(tomlText);
+    if (!result) return false;
+    auto& doc = result.table();
+
+    auto* goArr = doc["gameobjects"].as_array();
+    if (!goArr || goArr->empty()) return false;
+
+    // ------------------------------------------------------------------
+    // Pass 1: GameObject 生成 + Component アタッチ
+    // ------------------------------------------------------------------
+    for (auto& item : *goArr) {
+        auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+
+        std::string name   = (*goTbl)["name"].value_or(std::string{"GameObject"});
+        std::string tag    = (*goTbl)["tag"].value_or(std::string{"Untagged"});
+        bool        active = (*goTbl)["active"].value_or(true);
+
+        auto& go = scene.CreateGameObject(name);
+        go.tag   = tag;
+        go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
+        go.SetActive(active);
+        {
+            std::string id = (*goTbl)["instanceId"].value_or(std::string{});
+            if (!id.empty()) go.instanceId = std::move(id);
+        }
+
+        if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
+            auto& t = go.transform;
+            t.position = ArrToVec3(((*tfTbl)["position"].as_array()
+                              ? (*tfTbl)["position"].as_array()
+                              : (*tfTbl)["localPosition"].as_array()));
+            t.rotation = ArrToQuat(((*tfTbl)["rotation"].as_array()
+                              ? (*tfTbl)["rotation"].as_array()
+                              : (*tfTbl)["localRotation"].as_array()));
+            t.scale     = ArrToVec3(((*tfTbl)["scale"].as_array() ? (*tfTbl)["scale"].as_array() : (*tfTbl)["localScale"].as_array()), { 1.0f, 1.0f, 1.0f });
+        }
+
+        if (auto* mrTbl = (*goTbl)["MeshRenderer"].as_table()) {
+            MeshRenderer mr{};
+            mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
+            mr.enabled  = (*mrTbl)["enabled"].value_or(true);
+            if (!mr.meshPath.empty()) {
+                mr.mesh = ResolveMesh(mr.meshPath, resources);
+                if (!mr.mesh)
+                    FBZZ_LOG_WARN("AppendObjects: failed to resolve mesh '%s'", mr.meshPath.c_str());
+            }
+            go.AddComponent<MeshRenderer>(std::move(mr));
+        }
+
+        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table()) {
+            MaterialComponent mc{};
+            mc.enabled      = (*matTbl)["enabled"].value_or(true);
+            mc.materialPath = (*matTbl)["material"].value_or(std::string{});
+            if (!mc.materialPath.empty())
+                mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
+            go.AddComponent<MaterialComponent>(std::move(mc));
+        }
+
+        if (auto* lcTbl = (*goTbl)["LightComponent"].as_table()) {
+            LightComponent lc{};
+            std::string typeStr = (*lcTbl)["type"].value_or(std::string{"Directional"});
+            if      (typeStr == "Point") lc.type = LightComponent::Type::Point;
+            else if (typeStr == "Spot")  lc.type = LightComponent::Type::Spot;
+            else                         lc.type = LightComponent::Type::Directional;
+            lc.color     = ArrToVec3((*lcTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f });
+            lc.intensity = (float)(*lcTbl)["intensity"].value_or(1.0);
+            lc.enabled   = (*lcTbl)["enabled"].value_or(true);
+            lc.range     = (float)(*lcTbl)["range"].value_or(10.0);
+            lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
+            lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
+            go.AddComponent<LightComponent>(lc);
+        }
+
+        if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
+            ParticleEmitter pe{};
+            pe.emitPosition   = ArrToVec3((*peTbl)["emitPosition"].as_array());
+            pe.emitVelocity   = ArrToVec3((*peTbl)["emitVelocity"].as_array(), { 0.0f, 4.0f, 0.0f });
+            pe.velocitySpread = (float)(*peTbl)["velocitySpread"].value_or(1.5);
+            pe.colorStart     = ArrToVec4((*peTbl)["colorStart"].as_array(), { 1.0f, 0.7f, 0.2f, 1.0f });
+            pe.colorEnd       = ArrToVec4((*peTbl)["colorEnd"].as_array(),   { 1.0f, 0.1f, 0.0f, 0.0f });
+            pe.sizeStart      = (float)(*peTbl)["sizeStart"].value_or(0.4);
+            pe.sizeEnd        = (float)(*peTbl)["sizeEnd"].value_or(0.05);
+            pe.lifetime       = (float)(*peTbl)["lifetime"].value_or(2.0);
+            pe.emitRate       = (float)(*peTbl)["emitRate"].value_or(30.0);
+            pe.maxParticles   = (int)(*peTbl)["maxParticles"].value_or((int64_t)300);
+            pe.gravity        = ArrToVec3((*peTbl)["gravity"].as_array(), { 0.0f, -5.0f, 0.0f });
+            const int64_t randomSeed = (*peTbl)["randomSeed"].value_or((int64_t)1);
+            pe.randomSeed     = static_cast<uint32_t>(randomSeed < 1 ? 1 : randomSeed);
+            pe.randomState    = pe.randomSeed;
+            pe.playing        = (*peTbl)["playing"].value_or(true);
+            pe.loop           = (*peTbl)["loop"].value_or(true);
+            pe.duration       = (float)(*peTbl)["duration"].value_or(5.0);
+            pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
+            pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
+            int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
+            shape = shape < 0 ? 0 : (shape > 3 ? 3 : shape);
+            pe.shape          = static_cast<ParticleEmitterShape>(shape);
+            pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
+            pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
+            pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
+            pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
+            int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
+            blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
+            pe.blendMode      = static_cast<ParticleBlendMode>(blend);
+            int sort = (int)(*peTbl)["sortMode"].value_or((int64_t)0);
+            sort = sort < 0 ? 0 : (sort > 1 ? 1 : sort);
+            pe.sortMode       = static_cast<ParticleSortMode>(sort);
+            int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
+            sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
+            pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
+            pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
+            pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
+            pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
+            pe.spriteStartFrame = (int)(*peTbl)["spriteStartFrame"].value_or((int64_t)0);
+            pe.spriteEndFrame = (int)(*peTbl)["spriteEndFrame"].value_or((int64_t)0);
+            pe.sizeCurvePower = (float)(*peTbl)["sizeCurvePower"].value_or(1.0);
+            pe.colorCurvePower = (float)(*peTbl)["colorCurvePower"].value_or(1.0);
+            pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
+            pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
+            pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
+            pe.enabled        = (*peTbl)["enabled"].value_or(true);
+            go.AddComponent<ParticleEmitter>(pe);
+        }
+
+        if (auto* lcTbl = (*goTbl)["LifetimeComponent"].as_table()) {
+            LifetimeComponent lc{};
+            lc.remaining = (float)(*lcTbl)["remaining"].value_or(5.0);
+            go.AddComponent<LifetimeComponent>(lc);
+        }
+
+        if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
+            AabbColliderComponent col{};
+            ReadAabbCollider(*colTbl, col);
+            go.AddComponent<AabbColliderComponent>(std::move(col));
+        }
+        if (auto* colTbl = (*goTbl)["BoxColliderComponent"].as_table()) {
+            BoxColliderComponent col{};
+            ReadBoxCollider(*colTbl, col);
+            go.AddComponent<BoxColliderComponent>(std::move(col));
+        }
+        if (auto* colTbl = (*goTbl)["SphereColliderComponent"].as_table()) {
+            SphereColliderComponent col{};
+            ReadSphereCollider(*colTbl, col);
+            go.AddComponent<SphereColliderComponent>(std::move(col));
+        }
+        if (auto* colTbl = (*goTbl)["CapsuleColliderComponent"].as_table()) {
+            CapsuleColliderComponent col{};
+            ReadCapsuleCollider(*colTbl, col);
+            go.AddComponent<CapsuleColliderComponent>(std::move(col));
+        }
+        if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
+            MeshColliderComponent col{};
+            ReadMeshCollider(*colTbl, col);
+            go.AddComponent<MeshColliderComponent>(std::move(col));
+        }
+        if (auto* colTbl = (*goTbl)["ConvexHullColliderComponent"].as_table()) {
+            ConvexHullColliderComponent col{};
+            ReadConvexHullCollider(*colTbl, col);
+            go.AddComponent<ConvexHullColliderComponent>(std::move(col));
+        }
+
+        if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
+            RigidBodyComponent rb{};
+            rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            if (!rb.rigidBody) rb.rigidBody = std::make_shared<physics::RigidBody>();
+            rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
+            rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
+            rb.rigidBody->SetPosition(go.transform.position);
+            rb.rigidBody->SetRotation(go.transform.rotation);
+            rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
+            rb.rigidBody->SetAngularVelocity(ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
+            const math::Vector3 freezePos = ArrToVec3((*rbTbl)["freezePosition"].as_array(), math::Vector3::ZERO);
+            const math::Vector3 freezeRot = ArrToVec3((*rbTbl)["freezeRotation"].as_array(), math::Vector3::ZERO);
+            rb.rigidBody->SetFreezePosition({ freezePos.x != 0.0f, freezePos.y != 0.0f, freezePos.z != 0.0f });
+            rb.rigidBody->SetFreezeRotation({ freezeRot.x != 0.0f, freezeRot.y != 0.0f, freezeRot.z != 0.0f });
+            rb.rigidBody->m_useGravity      = (*rbTbl)["useGravity"].value_or(true);
+            rb.rigidBody->m_gravityScale    = (float)(*rbTbl)["gravityScale"].value_or(1.0);
+            rb.rigidBody->m_linearDrag      = (float)(*rbTbl)["linearDrag"].value_or(0.0);
+            rb.rigidBody->m_angularDrag     = (float)(*rbTbl)["angularDrag"].value_or(0.0);
+            rb.rigidBody->m_allowSleeping   = (*rbTbl)["allowSleeping"].value_or(true);
+            rb.rigidBody->m_useCCD          = (*rbTbl)["useCCD"].value_or(false);
+            rb.rigidBody->m_ccdRadius       = (float)(*rbTbl)["ccdRadius"].value_or(0.5);
+            rb.rigidBody->m_charge          = (float)(*rbTbl)["charge"].value_or(0.0);
+            rb.rigidBody->m_isGravitationalSource = (*rbTbl)["isGravitationalSource"].value_or(false);
+            rb.rigidBody->m_gravitationalMass = (float)(*rbTbl)["gravitationalMass"].value_or(1.0);
+            go.AddComponent<RigidBodyComponent>(std::move(rb));
+        }
+
+        auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
+            std::string type = scTbl["type"].value_or(std::string{});
+            if (type.empty()) return;
+            const bool enabled = scTbl["enabled"].value_or(true);
+            std::string preservedFieldsToml;
+            if (auto* fieldsTbl = scTbl["fields"].as_table())
+                preservedFieldsToml = TomlTableToString(*fieldsTbl);
+            ScriptEntry& entry = sc.scripts.emplace_back();
+            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized->type = type;
+            entry.serialized->enabled = enabled;
+            entry.serialized->fieldsToml = preservedFieldsToml;
+            auto script = ScriptFactory::Create(type);
+            if (script) {
+                script->enabled = enabled;
+                if (auto* fieldsTbl = scTbl["fields"].as_table()) {
+                    TomlReadReflector reflector(*fieldsTbl);
+                    script->Reflect(reflector);
+                }
+                entry.script = std::move(script);
+            } else {
+                FBZZ_LOG_WARN("AppendObjects: ScriptFactory could not create '%s'", type.c_str());
+            }
+        };
+
+        if (auto* scriptsArr = (*goTbl)["ScriptComponents"].as_array()) {
+            ScriptComponent sc{};
+            for (auto& sitem : *scriptsArr) {
+                if (auto* scTbl = sitem.as_table())
+                    readScriptEntry(*scTbl, sc);
+            }
+            if (!sc.scripts.empty())
+                go.AddComponent<ScriptComponent>(std::move(sc));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Pass 2: 親子関係の解決
+    // ------------------------------------------------------------------
+    for (auto& item : *goArr) {
+        auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+        std::string parentName = (*goTbl)["parent"].value_or(std::string{});
+        if (parentName.empty()) continue;
+        std::string childName = (*goTbl)["name"].value_or(std::string{});
+        auto* child  = scene.Find(childName);
+        auto* parent = scene.Find(parentName);
+        if (child && parent) child->SetParent(*parent);
+    }
+
+    // ------------------------------------------------------------------
+    // Pass 3: EntityID 参照の解決
+    // ------------------------------------------------------------------
+    for (auto& go : scene.GameObjects()) {
+        auto* ik = go.GetComponent<IKSolverComponent>();
+        if (!ik) continue;
+        for (auto& chain : ik->chains) {
+            {
+                GameObject* resolved = nullptr;
+                if (!chain.targetGuid.empty()) resolved = scene.FindByGuid(chain.targetGuid);
+                if (!resolved && !chain.targetName.empty()) resolved = scene.Find(chain.targetName);
+                if (resolved) chain.targetEntity = resolved->GetID();
+            }
+            {
+                GameObject* resolved = nullptr;
+                if (!chain.poleGuid.empty()) resolved = scene.FindByGuid(chain.poleGuid);
+                if (!resolved && !chain.poleName.empty()) resolved = scene.Find(chain.poleName);
+                if (resolved) chain.poleEntity = resolved->GetID();
+            }
+        }
+    }
+    for (size_t i = 0; i < goArr->size(); ++i) {
+        auto* goTbl = (*goArr)[i].as_table();
+        if (!goTbl) continue;
+        auto* boneTbl = (*goTbl)["BoneComponent"].as_table();
+        if (!boneTbl) continue;
+        const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
+        const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
+        if (ownerGuid.empty() && ownerName.empty()) continue;
+        const std::string boneName = (*goTbl)["name"].value_or(std::string{});
+        auto* boneGo = scene.Find(boneName);
+        if (!boneGo) continue;
+        auto* bone = boneGo->GetComponent<BoneComponent>();
+        if (!bone) continue;
+        GameObject* owner = nullptr;
+        if (!ownerGuid.empty()) owner = scene.FindByGuid(ownerGuid);
+        if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
+        if (owner) bone->skinnedMeshEntity = owner->GetID();
+    }
+
+    // root 収集
+    for (const auto& item : *goArr) {
+        const auto* tbl = item.as_table();
+        if (!tbl) continue;
+        if (!(*tbl)["parent"].value_or(std::string{}).empty()) continue;
+        const std::string name = (*tbl)["name"].value_or(std::string{});
+        if (auto* go = scene.Find(name))
+            outRoots.push_back(go->GetID());
+    }
+    return !outRoots.empty();
 }
 
 } // namespace fbzz::scene

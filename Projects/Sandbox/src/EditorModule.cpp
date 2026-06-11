@@ -12,36 +12,14 @@
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/DebugDrawSystem.hpp>
-#include <Engine/Scene/Systems/IKSystem.hpp>
-#include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Scene/Systems/ScriptSystem.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Physics/Layer.hpp>
 
 namespace fbzz::sandbox {
 
 using fbzz::util::StringUtils;
 
-namespace {
-
-const char* PhysicsStepCountMarkerName(int steps)
-{
-    // WHY: 固定タイムステップの catch-up で PhysicsSystem が 1 フレームに複数回走ることがある。
-    //      Profiler marker として回数を残し、重複呼び出し疑いを確認しやすくする。
-    if (steps <= 1) return nullptr;
-    if (steps == 2) return "PhysicsFixedSteps=2";
-    if (steps == 3) return "PhysicsFixedSteps=3";
-    if (steps == 4) return "PhysicsFixedSteps=4";
-    if (steps == 5) return "PhysicsFixedSteps=5";
-    if (steps == 6) return "PhysicsFixedSteps=6";
-    if (steps == 7) return "PhysicsFixedSteps=7";
-    return "PhysicsFixedSteps>=8";
-}
-
-} // namespace
 
 EditorModule::EditorModule(renderer::IRenderer& renderer,
                            renderer::IImGuiRenderer& imguiRenderer,
@@ -71,7 +49,8 @@ bool EditorModule::OnInit()
 
     scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
     scene::ApplyUISettings(m_editorApp.GetContext().projectSettings);
-    m_physicsAccumulator = 0.0f;
+    m_sceneManager.SetScene(m_scene.get());
+    m_sceneManager.SetPhysicsHz(m_editorApp.GetContext().projectSettings.physics.hz);
 
     m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
     m_debugCamera.camera.m_aspect = 1920.0f / 1080.0f;
@@ -94,67 +73,30 @@ void EditorModule::OnUpdate(float dt)
         //      Stop 復元のタイミングで World を丸ごとリセットする。
         m_physicsWorld = physics::World{};
         scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-        m_physicsAccumulator = 0.0f;
+        // SetSimulating(false) で accumulator もリセットされる
+        m_sceneManager.SetSimulating(false);
     }
 
-    if (!playMode->IsPlaying()) {
+    if (!playMode->IsPlaying())
         m_debugCamera.Update(dt);
-    }
     UpdateFocusAnimation(dt);
-
-    {
-        FBZZ_PROFILE_SCOPE("TransformSystem");
-        scene::TransformSystem(*m_scene);
-    }
 
     m_stepFrame = playMode->ConsumeStep();
     const float simulationDt = SimulationDeltaTime();
-    if (playMode->IsPlaying() || m_stepFrame) {
-        const auto& settings = m_editorApp.GetContext().projectSettings;
-        scene::ApplyPhysicsSettings(m_physicsWorld, settings);
-        scene::Script::SetPhysicsWorld(&m_physicsWorld);
-        scene::ScriptSystem(*m_scene, simulationDt);
-        {
-            FBZZ_PROFILE_SCOPE("TransformSystem");
-            scene::TransformSystem(*m_scene);
-        }
+    const auto& settings = m_editorApp.GetContext().projectSettings;
 
-        const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
-        const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-        int physicsStepsThisFrame = 0;
-        if (m_stepFrame) {
-            FBZZ_PROFILE_SCOPE("PhysicsFixedStepLoop");
-            scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-            physicsStepsThisFrame = 1;
-        } else {
-            FBZZ_PROFILE_SCOPE("PhysicsFixedStepLoop");
-            m_physicsAccumulator += dt;
-            const float maxAccumulatedTime = fixedDt * 8.0f;
-            if (m_physicsAccumulator > maxAccumulatedTime)
-                m_physicsAccumulator = maxAccumulatedTime;
-            while (m_physicsAccumulator >= fixedDt) {
-                scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-                m_physicsAccumulator -= fixedDt;
-                ++physicsStepsThisFrame;
-            }
-        }
-        if (const char* marker = PhysicsStepCountMarkerName(physicsStepsThisFrame))
-            FBZZ_PROFILE_MARKER(marker);
-        {
-            FBZZ_PROFILE_SCOPE("TransformSystem");
-            scene::TransformSystem(*m_scene);
-        }
-        scene::LateScriptSystem(*m_scene, simulationDt);
-    } else {
-        m_physicsAccumulator = 0.0f;
-    }
+    scene::Script::SetPhysicsWorld(&m_physicsWorld);
+    scene::ApplyPhysicsSettings(m_physicsWorld, settings);
+
+    m_sceneManager.SetSimulating(playMode->IsPlaying() || m_stepFrame);
+    m_sceneManager.SetPhysicsHz(settings.physics.hz);
+    m_sceneManager.SetSingleStep(m_stepFrame);
+    m_sceneManager.Update(simulationDt, m_physicsWorld);
 }
 
 void EditorModule::OnLateUpdate(float)
 {
-    const float simulationDt = SimulationDeltaTime();
-    scene::AnimatorSystem(*m_scene, m_resources, simulationDt);
-    scene::IKSystem(*m_scene, m_physicsWorld, m_resources, simulationDt);
+    m_sceneManager.LateUpdate(SimulationDeltaTime(), m_physicsWorld);
 }
 
 void EditorModule::OnRender()
@@ -191,6 +133,13 @@ void EditorModule::OnRender()
 
 void EditorModule::OnShutdown()
 {
+    // WHY: Shutdown() 内の FreeLibrary より前に全スクリプトの OnDestroy と destructor を
+    //      DLL コードが有効なうちに実行する必要がある。
+    //      Clear() が ComponentArray をリセットするので、FreeLibrary 後に ~ScriptEntry() が
+    //      DLL 内の vtable を参照するアクセス違反を防ぐ。
+    m_scene->Clear();
+    scene::Script::SetPhysicsWorld(nullptr);
+    m_editorApp.GetContext().activeScene = nullptr;
     m_editorApp.Shutdown();
     m_scene.reset();
 }

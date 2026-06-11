@@ -34,6 +34,7 @@
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
+#include <Engine/Scene/Systems/LifetimeSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -263,11 +264,11 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         // WHY: warmup にかかった時間を最初の DeltaTime / FPS 表示へ混ぜない。
         // WHAT: Time をここで初期化し、メインループの次フレームから通常計測を始める。
-        core::Time::Tick();
+        Time::Tick();
     }
 
     while (app.IsRunning()) {
-        core::Time::Tick();
+        Time::Tick();
         input::Input::Update();
         app.GetWindow().PollEvents();
         if (app.GetWindow().ShouldClose()) {
@@ -277,7 +278,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         profiler::Profiler::BeginFrame();
 
-        const float dt = core::Time::DeltaTime();
+        const float dt = Time::deltaTime;
         editorApp.BeginFrame();
 
         auto* playMode = editorApp.GetContext().playMode;
@@ -367,6 +368,11 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                 FBZZ_PROFILE_MARKER(marker);
             scene::TransformSystem(*scene);
             scene::LateScriptSystem(*scene, simulationDt);
+            scene::LifetimeSystem(*scene, simulationDt);
+            {
+                FBZZ_PROFILE_SCOPE("Scene::FlushDestroyQueue");
+                scene->FlushDestroyQueue(simulationDt);
+            }
         } else {
             physicsAccumulator = 0.0f;
         }
@@ -472,6 +478,12 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         profiler::Profiler::EndFrame();
     }
 
+    // WHY: FreeLibrary より前に全スクリプトの OnDestroy と destructor を
+    //      DLL コードが有効なうちに実行する。Clear() 後は activeScene を nullptr に
+    //      してダングリング参照を防ぎ、Unload(nullptr) で DestroyAllScripts をスキップする。
+    scene->Clear();
+    scene::Script::SetPhysicsWorld(nullptr);
+    editorApp.GetContext().activeScene = nullptr;
     editorApp.Shutdown();
 }
 

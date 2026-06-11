@@ -17,6 +17,11 @@ struct ScriptAudioProxy {
     void Pause() const;
     void SetVolume(float v) const;
     void SetLoop(bool loop) const;
+
+    bool  IsPlaying() const;
+    float GetVolume() const;
+    void  SetPitch(float pitch) const;
+    void  PlayOneShot(std::string_view clipPath) const;
 };
 
 } // namespace fbzz::scene

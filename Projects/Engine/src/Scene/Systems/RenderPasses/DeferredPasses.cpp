@@ -52,7 +52,7 @@ void SortAndSubmitTransparent(
 
 bool IsCameraUnderwater(const RenderPassContext& ctx)
 {
-    const float time = core::Time::TotalTime();
+    const float time = Time::time;
     for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
         if (!water.enabled) continue;
 

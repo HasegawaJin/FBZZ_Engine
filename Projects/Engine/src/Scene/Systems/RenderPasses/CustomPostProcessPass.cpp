@@ -36,7 +36,7 @@ void ExecuteCustomPostProcessPass(RenderPassContext& ctx, uint32_t customIndex, 
     postData.texelSize[1] = 1.0f / static_cast<float>(ctx.height);
     postData.screenSize[0] = static_cast<float>(ctx.width);
     postData.screenSize[1] = static_cast<float>(ctx.height);
-    postData.time = core::Time::TotalTime();
+    postData.time = Time::time;
     postData.customIntensity = custom.intensity;
     postData.customBlend = custom.blend;
     postData.customParameters[0] = custom.parameters[0];

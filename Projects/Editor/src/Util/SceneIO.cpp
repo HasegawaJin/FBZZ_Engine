@@ -70,4 +70,13 @@ bool SceneIO::Deserialize(scene::Scene& scene, const std::string& toml)
     return Load(scene, kSnapshotPath);
 }
 
+bool SceneIO::AppendObjects(scene::Scene& scene, const std::string& toml,
+                             std::vector<scene::EntityID>& outRoots)
+{
+    if (toml.empty()) return false;
+    auto* resources = renderer::ResourceManager::Active();
+    assert(resources && "ResourceManager must be initialized");
+    return scene::SceneSerializer::AppendObjects(scene, toml, *resources, outRoots);
+}
+
 } // namespace fbzz::editor

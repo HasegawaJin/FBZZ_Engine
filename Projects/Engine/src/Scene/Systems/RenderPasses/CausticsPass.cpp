@@ -69,7 +69,7 @@ CausticsSource FindCausticsSource(RenderPassContext& ctx)
         result.intensity   = intensity;
         result.tiling      = getF("causticsTiling", 4.0f);
         result.surfaceY    = transform.position.y;
-        result.timeOffset  = core::Time::TotalTime() * getF("causticsSpeed", 0.5f);
+        result.timeOffset  = Time::time * getF("causticsSpeed", 0.5f);
         result.texturePath = getTex("causticsTex");
     }
     return result;

@@ -90,12 +90,12 @@ void Input::HandleMouseButton(UINT msg)
 {
     switch (msg)
     {
-    case WM_LBUTTONDOWN: s_mouseCurrent[0] = true;  break;
-    case WM_LBUTTONUP:   s_mouseCurrent[0] = false; break;
-    case WM_RBUTTONDOWN: s_mouseCurrent[1] = true;  break;
-    case WM_RBUTTONUP:   s_mouseCurrent[1] = false; break;
-    case WM_MBUTTONDOWN: s_mouseCurrent[2] = true;  break;
-    case WM_MBUTTONUP:   s_mouseCurrent[2] = false; break;
+    case WM_LBUTTONDOWN: s_mouseCurrent[0] = true;  s_current[VK_LBUTTON] = true;  break;
+    case WM_LBUTTONUP:   s_mouseCurrent[0] = false; s_current[VK_LBUTTON] = false; break;
+    case WM_RBUTTONDOWN: s_mouseCurrent[1] = true;  s_current[VK_RBUTTON] = true;  break;
+    case WM_RBUTTONUP:   s_mouseCurrent[1] = false; s_current[VK_RBUTTON] = false; break;
+    case WM_MBUTTONDOWN: s_mouseCurrent[2] = true;  s_current[VK_MBUTTON] = true;  break;
+    case WM_MBUTTONUP:   s_mouseCurrent[2] = false; s_current[VK_MBUTTON] = false; break;
     }
 }
 

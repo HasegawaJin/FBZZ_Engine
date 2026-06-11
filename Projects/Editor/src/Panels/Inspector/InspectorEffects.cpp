@@ -150,6 +150,10 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             }
         });
 
+    DrawComponentSection<scene::LifetimeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Lifetime",
+        [](scene::LifetimeComponent& lc, EditorContext&) {
+            ImGui::DragFloat("Remaining (s)", &lc.remaining, 0.1f, 0.0f, 9999.0f, "%.2f s");
+        });
 }
 
 
