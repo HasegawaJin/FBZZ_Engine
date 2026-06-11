@@ -7,12 +7,13 @@
 ## フィールド宣言
 
 ```cpp
-FBZZ_SCRIPT(ClassName)                                    // TYPE_NAME + Reflect 生成トリガー
-FBZZ_GROUP("グループ名")                                   // Inspector の区切り見出し
-FBZZ_FIELD(Type, name, default, "表示名")                  // 標準フィールド
-FBZZ_FIELD_RANGE(Type, name, default, "表示名", min, max)  // スライダー付き
-FBZZ_FIELD_ENUM(Type, name, default, "表示名", "A","B","C")// ドロップダウン
-FBZZ_FIELD_READONLY(Type, name, "表示名")                  // 読み取り専用ラベル
+FBZZ_SCRIPT(ClassName)                                     // TYPE_NAME + Reflect 生成トリガー
+FBZZ_GROUP("グループ名")                                    // Inspector の区切り見出し
+FBZZ_FIELD(Type, name, default, "表示名")                   // 標準フィールド
+FBZZ_FIELD_RANGE(Type, name, default, "表示名", min, max)   // スライダー付き
+FBZZ_FIELD_ENUM(Type, name, default, "表示名", "A","B","C") // ドロップダウン
+FBZZ_FIELD_REF(Type, name, "表示名")                        // 参照型 (PrefabRef/EntityRef 等) デフォルト省略版
+FBZZ_COMPUTED(Type, name, "表示名")                         // Inspector 表示のみ・シリアライズ非対象の計算値
 ```
 
 対応型: `float` `int` `bool` `std::string`  
@@ -45,11 +46,23 @@ void OnTriggerExit   (const CollisionInfo&)
 
 ## タイミング情報
 
+`Time::` はスクリプト内でインクルード不要。どこからでも参照可能。
+
 ```cpp
-float    deltaTime          // 前フレームからの経過秒 (スケール済み)
-float    unscaledDeltaTime  // スケールなし経過秒
-float    time               // シーン開始からの累積秒
-uint64_t frameCount         // シーン開始からのフレーム数
+Time::deltaTime          // フレーム経過秒 (timeScale 適用済み)
+Time::unscaledDeltaTime  // フレーム経過秒 (timeScale 未適用)
+Time::time               // 累積秒 (timeScale 適用済み)
+Time::unscaledTime       // 累積秒 (timeScale 未適用)
+Time::frameCount         // 起動からのフレーム数 (uint64_t)
+
+Time::timeScale          // 時間スケール — 0=停止 / 0.5=スロー / 1=通常
+Time::targetFps          // FPS 上限 — 0=無制限
+```
+
+```cpp
+// 使用例
+transform.position += transform.forward * speed * Time::deltaTime;
+Time::timeScale = 0.5f;  // スローモーション開始
 ```
 
 ---
@@ -109,9 +122,10 @@ transform.LookAt(target.transform.worldPosition);       // 世界座標でター
 bool   input.GetKey     (KeyCode)   // 押し続けている
 bool   input.GetKeyDown (KeyCode)   // 押した瞬間
 bool   input.GetKeyUp   (KeyCode)   // 離した瞬間
-bool   input.MouseButton    (int)   // マウスボタン押し続け (0=左 1=右 2=中)
-bool   input.MouseButtonDown(int)
-bool   input.MouseButtonUp  (int)
+bool   input.MouseButton    (MouseBtn)   // マウスボタン押し続け
+bool   input.MouseButtonDown(MouseBtn)
+bool   input.MouseButtonUp  (MouseBtn)
+// MouseBtn: MouseBtn::Left / MouseBtn::Right / MouseBtn::Middle
 float  input.GetAxis         (name) // 軸入力 (-1〜1)
 Vector2 input.GetMouseDelta  ()
 Vector2 input.GetMousePosition()
@@ -155,6 +169,10 @@ float       hit.distance
 ## scene
 
 ```cpp
+// 自 GO のショートハンド
+string scene.name               // 自 GO の name (読み書き可)
+string scene.tag                // 自 GO の tag (読み書き可)
+
 // 検索
 GameObject* scene.Find          (name)
 GameObject* scene.FindWithTag   (tag)
@@ -200,11 +218,13 @@ bool material.SetMaterial   (path)
 bool material.EnsureMaterial(path)
 bool material.HasParam      (param)
 
-void material.SetFloat   (param, float)
-void material.SetInt     (param, int)
-void material.SetVector3 (param, v3)
-void material.SetVector4 (param, v4)
-void material.SetTexture (slot, texPath)
+void    material.SetFloat   (param, float)
+void    material.SetInt     (param, int)
+void    material.SetVector3 (param, v3)
+void    material.SetVector4 (param, v4)
+void    material.SetTexture (slot, texPath)
+float   material.GetFloat  (param)
+Vector3 material.GetVector3(param)
 
 bool material.SetEnabled    (bool)
 bool material.SetBlendMode  (BlendMode)   // Opaque / AlphaBlend / Additive
@@ -298,11 +318,17 @@ void meshTrail.ClearExcludedMeshIndices()
 ## animator
 
 ```cpp
-void animator.SetFloat  (name, float)
-void animator.SetInt    (name, int)
-void animator.SetBool   (name, bool)
-void animator.SetTrigger(name)
-bool animator.IsInState (name)
+void        animator.SetFloat      (name, float)
+void        animator.SetInt        (name, int)
+void        animator.SetBool       (name, bool)
+void        animator.SetTrigger    (name)
+bool        animator.IsInState     (name)
+float       animator.GetFloat      (name)
+int         animator.GetInt        (name)
+bool        animator.GetBool       (name)
+std::string animator.GetCurrentState()
+void        animator.SetSpeed      (float)           // 再生速度倍率
+void        animator.Play          (stateName)       // 強制遷移 (ブレンドなし即時)
 ```
 
 ---
@@ -317,6 +343,11 @@ void    camera.SetNearFar     (near, far)
 void    camera.SetCullingMask (LayerMask)
 Vector3 camera.WorldToScreenPoint(worldPos)
 Vector3 camera.ScreenToWorldPoint(screenPos)
+float   camera.GetFOV()
+float   camera.GetNearZ()
+float   camera.GetFarZ()
+bool    camera.IsVisible       (worldPos)
+Ray     camera.ScreenPointToRay(screenX, screenY)   // Ray: { origin, direction }
 ```
 
 ---
@@ -325,11 +356,11 @@ Vector3 camera.ScreenToWorldPoint(screenPos)
 
 ```cpp
 void light.SetColor    (v3)
-void light.SetType     (int)       // LightType 定数
+void light.SetType     (LightType)   // LightType::Directional / Point / Spot
 void light.SetIntensity(float)
 void light.SetRange    (float)
-void light.SetInnerCone(degrees)   // スポットライト内角
-void light.SetOuterCone(degrees)   // スポットライト外角
+void light.SetInnerCone(degrees)     // スポットライト内角
+void light.SetOuterCone(degrees)     // スポットライト外角
 void light.SetEnabled  (bool)
 ```
 
@@ -338,11 +369,15 @@ void light.SetEnabled  (bool)
 ## audio
 
 ```cpp
-void audio.Play     (clipPath)
-void audio.Stop     ()
-void audio.Pause    ()
-void audio.SetVolume(float)
-void audio.SetLoop  (bool)
+void  audio.Play       (clipPath)
+void  audio.Stop       ()
+void  audio.Pause      ()
+void  audio.SetVolume  (float)
+void  audio.SetLoop    (bool)
+void  audio.PlayOneShot(clipPath)       // クリップを変えずに一回再生
+void  audio.SetPitch   (float)          // 0.01〜4.0
+bool  audio.IsPlaying  ()
+float audio.GetVolume  ()
 ```
 
 ---

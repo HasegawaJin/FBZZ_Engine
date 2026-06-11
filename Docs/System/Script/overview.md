@@ -170,7 +170,7 @@ struct IReflector {
 ```cpp
 auto* go = scene.Find("Enemy");       // 文字列で GO を探す
 if (go) {
-    auto* enemy = scene.GetScript<EnemyScript>(*go);
+    auto* enemy = scene.GetScript<EnemyScript>(go);
 }
 ```
 
