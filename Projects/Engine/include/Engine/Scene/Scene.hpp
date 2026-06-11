@@ -507,6 +507,12 @@ T* ScriptSceneProxy::GetScript(GameObject& go) const
 }
 
 template<typename T>
+T* ScriptSceneProxy::GetScript(GameObject* go) const
+{
+    return go ? go->GetScript<T>() : nullptr;
+}
+
+template<typename T>
 T* ScriptSceneProxy::GetScript(EntityID id) const
 {
     if (!script || !script->m_scene) return nullptr;
@@ -517,7 +523,8 @@ T* ScriptSceneProxy::GetScript(EntityID id) const
 template<typename T>
 T* ScriptSceneProxy::GetComponent() const
 {
-    return script ? script->GetComponent<T>() : nullptr;
+    return (script && script->m_gameObject)
+        ? script->m_gameObject->GetComponent<T>() : nullptr;
 }
 
 template<typename T>

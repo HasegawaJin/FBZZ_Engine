@@ -15,6 +15,8 @@ namespace fbzz::scene {
 
 class Script;
 
+enum class MouseBtn : int { Left = 0, Right = 1, Middle = 2 };
+
 struct ScriptInputProxy {
     Script* script = nullptr;
 
@@ -25,9 +27,12 @@ struct ScriptInputProxy {
     math::Vector2 GetMouseDelta() const;
     math::Vector2 GetMousePosition() const;
     float GetMouseScrollDelta() const;
-    bool MouseButton(int button) const;
-    bool MouseButtonDown(int button) const;
-    bool MouseButtonUp(int button) const;
+    bool MouseButton(MouseBtn btn) const;
+    bool MouseButtonDown(MouseBtn btn) const;
+    bool MouseButtonUp(MouseBtn btn) const;
+    [[deprecated("Use MouseBtn enum")]] bool MouseButton(int button) const;
+    [[deprecated("Use MouseBtn enum")]] bool MouseButtonDown(int button) const;
+    [[deprecated("Use MouseBtn enum")]] bool MouseButtonUp(int button) const;
 };
 
 } // namespace fbzz::scene
