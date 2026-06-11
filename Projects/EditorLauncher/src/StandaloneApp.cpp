@@ -165,7 +165,7 @@ void StandaloneApp::OnRender()
     ImGui::NewFrame();
 
     if (m_showProfiler) {
-        const float dt = core::Time::DeltaTime();
+        const float dt = Time::deltaTime;
         const float fps = (dt > 0.0f) ? (1.0f / dt) : 0.0f;
 
         ImGui::SetNextWindowPos({ 8.0f, 8.0f }, ImGuiCond_Always);

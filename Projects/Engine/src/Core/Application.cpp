@@ -71,7 +71,7 @@ void Application::Shutdown() {
     if (m_window)
         m_window->Shutdown();
     m_memorySystem.Shutdown();
-    FBZZ_LOG_INFO("Application shutdown (frames: %llu)", Time::FrameCount());
+    FBZZ_LOG_INFO("Application shutdown (frames: %llu)", Time::frameCount);
     timeEndPeriod(1);
 }
 
@@ -146,7 +146,7 @@ void Application::Run(IModule& module) {
             break;
         }
 
-        const float dt = Time::DeltaTime();
+        const float dt = Time::deltaTime;
         module.OnUpdate(dt);
         module.OnLateUpdate(dt);
         module.OnRender();

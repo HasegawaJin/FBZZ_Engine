@@ -171,7 +171,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
 
     if (!h.particleShader.IsValid() || !h.particleVB.IsValid() || !h.particleIB.IsValid()) return;
 
-    const float dt = core::Time::DeltaTime();
+    const float dt = Time::deltaTime;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
