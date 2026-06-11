@@ -297,29 +297,44 @@ void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool 
     button.onExit  = false;
 
     if (!button.enabled || !button.isInteractable) {
-        button.state = UIButtonState::NORMAL;
+        button.state            = UIButtonState::NORMAL;
+        button.wasPressedOnThis = false;
+        button.lastMouseState   = mousePressed;
         return;
     }
 
-    const bool hit = mouse.x >= rect.pos.x && mouse.x <= rect.pos.x + rect.size.x
-                  && mouse.y >= rect.pos.y && mouse.y <= rect.pos.y + rect.size.y;
+    const bool hit               = mouse.x >= rect.pos.x && mouse.x <= rect.pos.x + rect.size.x
+                                && mouse.y >= rect.pos.y && mouse.y <= rect.pos.y + rect.size.y;
+    const bool mouseJustPressed  = mousePressed  && !button.lastMouseState;
+    const bool mouseJustReleased = !mousePressed && button.lastMouseState;
 
-    if (hit && mousePressed) {
-        button.state   = UIButtonState::PRESSED;
-    } else if (hit) {
-        button.state   = UIButtonState::HOVERED;
-        button.onClick = previousState == UIButtonState::PRESSED;
-    } else {
-        button.state   = UIButtonState::NORMAL;
+    // 押下がこのボタン上で始まった場合のみ wasPressedOnThis を立てる。
+    // WHY: ドラッグで流入した押下をクリックとして誤検出しないため。
+    if (mouseJustPressed && hit)
+        button.wasPressedOnThis = true;
+
+    if (mouseJustReleased) {
+        button.onClick          = button.wasPressedOnThis && hit;
+        button.wasPressedOnThis = false;
     }
 
-    button.onEnter = previousState == UIButtonState::NORMAL  && button.state != UIButtonState::NORMAL;
-    button.onExit  = previousState != UIButtonState::NORMAL  && button.state == UIButtonState::NORMAL;
+    button.lastMouseState = mousePressed;
+
+    if (hit && mousePressed && button.wasPressedOnThis) {
+        button.state = UIButtonState::PRESSED;
+    } else if (hit) {
+        button.state = UIButtonState::HOVERED;
+    } else {
+        button.state = UIButtonState::NORMAL;
+    }
+
+    button.onEnter = previousState == UIButtonState::NORMAL && button.state != UIButtonState::NORMAL;
+    button.onExit  = previousState != UIButtonState::NORMAL && button.state == UIButtonState::NORMAL;
 }
 
 math::Vector4 ButtonTint(const UIButton& button)
 {
-    if (!button.enabled || !button.isInteractable) return button.normalColor;
+    if (!button.enabled || !button.isInteractable) return button.disabledColor;
     if (button.state == UIButtonState::PRESSED) return button.pressedColor;
     if (button.state == UIButtonState::HOVERED) return button.hoverColor;
     return button.normalColor;
@@ -410,6 +425,55 @@ renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
     return atlas;
 }
 
+// テキストの論理サイズ（幅×高さ）をフォントアトラスから計算する。
+// WHY: UILayoutGroup やヒット判定は transform.scale.xy をサイズとして使うため、
+//      テキスト内容が変わっても自動でサイズが更新される仕組みが必要。
+math::Vector2 ComputeTextLogicalSize(const UIText& text, renderer::ResourceManager& resources)
+{
+    const std::string& path = text.fontPath.empty() ? s_defaultFontPath : text.fontPath;
+    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(path, resources);
+    if (!atlas.IsValid()) return {};
+
+    const float scale = text.fontSize / atlas.GetLineHeight();
+    const float cellW = atlas.GetCellW() * scale;
+    const float cellH = atlas.GetLineHeight() * scale;
+
+    float maxW = 0.0f, lineW = 0.0f;
+    float totalH = cellH;
+    for (char c : text.text) {
+        if (c == '\n') {
+            maxW  = (std::max)(maxW, lineW);
+            lineW = 0.0f;
+            totalH += cellH;
+            continue;
+        }
+        const renderer::FontGlyph* g = atlas.GetGlyph(c);
+        lineW += g ? (g->advance * scale + text.letterSpacing) : (cellW * 0.5f + text.letterSpacing);
+    }
+    maxW = (std::max)(maxW, lineW);
+    return { maxW, totalH };
+}
+
+void UpdateTextSizesRecursive(GameObject& go, renderer::ResourceManager& resources)
+{
+    if (!go.activeSelf()) return;
+    if (auto* text = go.GetComponent<UIText>(); text && text->enabled && !text->text.empty()) {
+        const math::Vector2 size = ComputeTextLogicalSize(*text, resources);
+        go.transform.scale.x = size.x;
+        go.transform.scale.y = size.y;
+    }
+    for (int i = 0; i < go.GetChildCount(); ++i)
+        if (GameObject* child = go.GetChild(i))
+            UpdateTextSizesRecursive(*child, resources);
+}
+
+void UITextSizeSystem(const std::vector<CanvasEntry>& canvases,
+                      renderer::ResourceManager& resources)
+{
+    for (const CanvasEntry& entry : canvases)
+        UpdateTextSizesRecursive(*entry.go, resources);
+}
+
 // TTF 由来のフォントアトラスを使ってテキストをサブミットする。
 // WHY: 内蔵 SDF は 5x7 ピクセルビットマップが限界だが、Kenney 等の TTF アトラスは
 //      任意フォントサイズで高品質な文字を描画できる。
@@ -428,17 +492,39 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
     if (!atlas.IsValid()) return;
 
     // アトラスのレンダリングサイズから論理ピクセルへのスケール係数
-    const float scale     = text.fontSize / atlas.GetLineHeight();
-    const float cellW     = atlas.GetCellW() * scale;
-    const float cellH     = atlas.GetLineHeight() * scale;
-    math::Vector2 pen     = position;
+    const float scale = text.fontSize / atlas.GetLineHeight();
+    const float cellW = atlas.GetCellW() * scale;
+    const float cellH = atlas.GetLineHeight() * scale;
+
+    // Center / Right 整列のために行ごとの幅を事前計算する
+    std::vector<float> lineWidths;
+    if (text.align != TextAlign::Left) {
+        float lineW = 0.0f;
+        for (char c : text.text) {
+            if (c == '\n') { lineWidths.push_back(lineW); lineW = 0.0f; continue; }
+            const renderer::FontGlyph* g = atlas.GetGlyph(c);
+            lineW += g ? (g->advance * scale + text.letterSpacing) : (cellW * 0.5f + text.letterSpacing);
+        }
+        lineWidths.push_back(lineW);
+    }
+
+    int lineIdx = 0;
+    auto lineStartX = [&]() -> float {
+        if (text.align == TextAlign::Left) return position.x;
+        const float lw = lineIdx < static_cast<int>(lineWidths.size()) ? lineWidths[lineIdx] : 0.0f;
+        if (text.align == TextAlign::Center) return position.x - lw * 0.5f;
+        return position.x - lw; // Right
+    };
+
+    math::Vector2 pen = { lineStartX(), position.y };
 
     std::vector<UIVertex> verts;
     verts.reserve(text.text.size() * 6);
 
     for (char c : text.text) {
         if (c == '\n') {
-            pen.x = position.x;
+            ++lineIdx;
+            pen.x = lineStartX();
             pen.y += cellH;
             continue;
         }
@@ -525,8 +611,7 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout)
     for (int i = 0; i < count; ++i) {
         GameObject* child = go.GetChild(i);
         if (!child || !child->activeSelf()) continue;
-        if (auto* img = child->GetComponent<UIImage>(); img && img->enabled)
-            indices.push_back(i);
+        indices.push_back(i);
     }
     if (layout.reverseOrder)
         std::reverse(indices.begin(), indices.end());
@@ -611,8 +696,10 @@ void RenderCanvasRecursive(GameObject& go,
     auto* text   = go.GetComponent<UIText>();
 
     if (image && image->enabled) {
-        if (!image->texturePath.empty())
-            image->texture = resources.LoadTexture(image->texturePath);
+        if (!image->texturePath.empty() && image->texturePath != image->loadedTexturePath) {
+            image->texture            = resources.LoadTexture(image->texturePath);
+            image->loadedTexturePath  = image->texturePath;
+        }
 
         const Rect    r     = RectFromTransform(go.transform, resolved);
         math::Vector4 color = image->color;
@@ -713,6 +800,7 @@ void UISystem(Scene& scene,
     std::vector<CanvasEntry> canvases;
     CollectCanvases(scene, canvases);
 
+    UITextSizeSystem(canvases, resources); // テキストサイズを transform.scale.xy へ反映してからレイアウトを走らせる
     UILayoutSystem(canvases);
     UIEventSystem(canvases, viewportWidth, viewportHeight, mouseInCanvasSpace,
                   mousePressed, viewProjection, targetView);

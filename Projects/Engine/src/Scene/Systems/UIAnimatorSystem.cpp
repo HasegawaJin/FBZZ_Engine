@@ -8,6 +8,8 @@
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/UIAnimator.hpp"
 #include "Engine/Scene/Components/UIImage.hpp"
+#include "Engine/Scene/Components/UIText.hpp"
+#include "Engine/Core/Logger.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -38,19 +40,21 @@ math::Vector2 LerpV2(const math::Vector2& a, const math::Vector2& b, float t)
     return { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
 }
 
-void AdvanceTween(float& elapsed, float duration, bool loop, bool pingPong, float dt, bool& active)
+// active のまま elapsed をラップしたとき didWrap = true を返す。
+// WHY: fmod の結果が厳密に 0.0f にならない浮動小数点誤差を回避するため、
+//      pingPong の折り返し検出を elapsed の値比較ではなくフラグで行う。
+void AdvanceTween(float& elapsed, float duration, bool loop, float dt, bool& active, bool& didWrap)
 {
+    didWrap = false;
     if (!active) return;
     elapsed += dt;
     if (elapsed >= duration) {
         if (loop) {
             elapsed = std::fmod(elapsed, duration);
-            if (pingPong) {
-                // from / to の入れ替えは呼び出し側で行う
-            }
+            didWrap = true;
         } else {
             elapsed = duration;
-            active = false;
+            active  = false;
         }
     }
 }
@@ -61,30 +65,58 @@ void ProcessGO(GameObject& go, float dt)
 
     auto* anim  = go.GetComponent<UIAnimator>();
     auto* image = go.GetComponent<UIImage>();
+    auto* text  = go.GetComponent<UIText>();
 
-    if (anim && anim->enabled && image && image->enabled) {
-        // 色 Tween
+    if (anim && anim->enabled) {
+        // 色 Tween: UIImage または UIText が必要
         UIColorTween& ct = anim->colorTween;
         if (ct.active) {
-            AdvanceTween(ct.elapsed, ct.duration, ct.loop, ct.pingPong, dt, ct.active);
-            float t = (ct.duration > 0.0f) ? std::clamp(ct.elapsed / ct.duration, 0.0f, 1.0f) : 1.0f;
-            t = ApplyEasing(t, ct.easing);
-            image->color = LerpV4(ct.from, ct.to, t);
-            if (ct.loop && ct.pingPong && ct.elapsed == 0.0f)
-                std::swap(ct.from, ct.to); // 次のループで方向を反転する
+            if (!image && !text) {
+                static bool s_warnedColor = false;
+                if (!s_warnedColor) {
+                    FBZZ_LOG_WARN("UIAnimatorSystem: colorTween is active but no UIImage/UIText found on '%s'",
+                                  go.name.c_str());
+                    s_warnedColor = true;
+                }
+            } else {
+                bool didWrap = false;
+                AdvanceTween(ct.elapsed, ct.duration, ct.loop, dt, ct.active, didWrap);
+                float t = (ct.duration > 0.0f) ? std::clamp(ct.elapsed / ct.duration, 0.0f, 1.0f) : 1.0f;
+                t = ApplyEasing(t, ct.easing);
+                const math::Vector4 col = LerpV4(ct.from, ct.to, t);
+                if (image && image->enabled) image->color = col;
+                if (text  && text->enabled)  text->color  = col;
+                if (ct.loop && ct.pingPong && didWrap)
+                    std::swap(ct.from, ct.to);
+            }
         }
 
-        // 位置 Tween
+        // 位置 Tween: UIImage の有無に依存しない
         UIPositionTween& pt = anim->positionTween;
         if (pt.active) {
-            AdvanceTween(pt.elapsed, pt.duration, pt.loop, pt.pingPong, dt, pt.active);
+            bool didWrap = false;
+            AdvanceTween(pt.elapsed, pt.duration, pt.loop, dt, pt.active, didWrap);
             float t = (pt.duration > 0.0f) ? std::clamp(pt.elapsed / pt.duration, 0.0f, 1.0f) : 1.0f;
             t = ApplyEasing(t, pt.easing);
-            auto posVal = LerpV2(pt.from, pt.to, t);
+            const math::Vector2 posVal = LerpV2(pt.from, pt.to, t);
             go.transform.position.x = posVal.x;
             go.transform.position.y = posVal.y;
-            if (pt.loop && pt.pingPong && pt.elapsed == 0.0f)
+            if (pt.loop && pt.pingPong && didWrap)
                 std::swap(pt.from, pt.to);
+        }
+
+        // スケール Tween
+        UIScaleTween& st = anim->scaleTween;
+        if (st.active) {
+            bool didWrap = false;
+            AdvanceTween(st.elapsed, st.duration, st.loop, dt, st.active, didWrap);
+            float t = (st.duration > 0.0f) ? std::clamp(st.elapsed / st.duration, 0.0f, 1.0f) : 1.0f;
+            t = ApplyEasing(t, st.easing);
+            const math::Vector2 scaleVal = LerpV2(st.from, st.to, t);
+            go.transform.scale.x = scaleVal.x;
+            go.transform.scale.y = scaleVal.y;
+            if (st.loop && st.pingPong && didWrap)
+                std::swap(st.from, st.to);
         }
     }
 
