@@ -56,7 +56,7 @@ public:
         : m_water(water)
         , m_position(transform.worldPosition)
         , m_settings(settings)
-        , m_time(core::Time::TotalTime())
+        , m_time(Time::time)
     {
     }
 

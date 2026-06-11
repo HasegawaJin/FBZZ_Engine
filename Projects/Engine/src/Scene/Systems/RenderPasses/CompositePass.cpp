@@ -29,7 +29,7 @@ struct UnderwaterInfo {
 UnderwaterInfo EvaluateUnderwaterInfo(const RenderPassContext& ctx)
 {
     UnderwaterInfo best{};
-    const float time = core::Time::TotalTime();
+    const float time = Time::time;
 
     for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
         if (!water.enabled) continue;
@@ -112,7 +112,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.screenSize[0] = static_cast<float>(ctx.width);
     postData.screenSize[1] = static_cast<float>(ctx.height);
     postData.exposure = pp.exposure;
-    postData.time = core::Time::TotalTime();
+    postData.time = Time::time;
     postData.bloomIntensity = pp.bloom.enabled ? pp.bloom.intensity : 0.0f;
     postData.fogDensity = pp.fog.enabled ? pp.fog.density : 0.0f;
     postData.fogFar = pp.fog.farDistance;

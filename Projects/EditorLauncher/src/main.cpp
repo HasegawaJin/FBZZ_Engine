@@ -264,11 +264,11 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         // WHY: warmup にかかった時間を最初の DeltaTime / FPS 表示へ混ぜない。
         // WHAT: Time をここで初期化し、メインループの次フレームから通常計測を始める。
-        core::Time::Tick();
+        Time::Tick();
     }
 
     while (app.IsRunning()) {
-        core::Time::Tick();
+        Time::Tick();
         input::Input::Update();
         app.GetWindow().PollEvents();
         if (app.GetWindow().ShouldClose()) {
@@ -278,7 +278,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
         profiler::Profiler::BeginFrame();
 
-        const float dt = core::Time::DeltaTime();
+        const float dt = Time::deltaTime;
         editorApp.BeginFrame();
 
         auto* playMode = editorApp.GetContext().playMode;

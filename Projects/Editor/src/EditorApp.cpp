@@ -421,7 +421,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     if (!projectSettingsPath.empty()) {
         m_projectSettingsPath = projectSettingsPath;
         m_ctx.projectSettings.Load(m_projectSettingsPath);
-        core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
+        Time::targetFps = m_ctx.projectSettings.app.targetFps;
     }
 
     // WHY: SceneIO::Load() がシーン内の ScriptComponent を復元する際に
