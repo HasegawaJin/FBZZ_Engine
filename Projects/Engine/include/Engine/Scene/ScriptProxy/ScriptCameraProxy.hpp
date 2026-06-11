@@ -10,6 +10,11 @@ namespace fbzz::scene {
 
 class Script;
 
+struct Ray {
+    math::Vector3 origin;
+    math::Vector3 direction;
+};
+
 struct ScriptCameraProxy {
     Script* script = nullptr;
 
@@ -20,6 +25,12 @@ struct ScriptCameraProxy {
     void SetCullingMask(fbzz::LayerMask mask) const;
     math::Vector3 WorldToScreenPoint(const math::Vector3& worldPos) const;
     math::Vector3 ScreenToWorldPoint(const math::Vector3& screenPos) const;
+
+    float GetFOV() const;
+    float GetNearZ() const;
+    float GetFarZ() const;
+    bool  IsVisible(const math::Vector3& worldPos) const;
+    Ray   ScreenPointToRay(float screenX, float screenY) const;
 };
 
 } // namespace fbzz::scene

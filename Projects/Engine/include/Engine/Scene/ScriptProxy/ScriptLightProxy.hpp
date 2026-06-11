@@ -9,11 +9,13 @@ namespace fbzz::scene {
 
 class Script;
 
+enum class LightType { Directional, Point, Spot };
+
 struct ScriptLightProxy {
     Script* script = nullptr;
 
     void SetColor(const math::Vector3& color) const;
-    void SetType(int type) const;
+    void SetType(LightType type) const;
     void SetIntensity(float intensity) const;
     void SetRange(float range) const;
     void SetInnerCone(float degrees) const;
