@@ -89,6 +89,7 @@ std::string BuildScriptTemplate(const std::string& name)
     ss << "\n";
     ss << "using namespace fbzz::scene;\n";
     ss << "using namespace fbzz::math;\n";
+    ss << "using namespace fbzz::input;\n";
     ss << "\n";
     ss << "namespace sandbox {\n";
     ss << "\n";
@@ -97,12 +98,24 @@ std::string BuildScriptTemplate(const std::string& name)
     ss << "public:\n";
     ss << "    // FBZZ_FIELD(float, speed, 5.0f, \"Speed\")\n";
     ss << "\n";
-    ss << "    void OnUpdate(float dt) override { (void)dt; }\n";
+    ss << "    void OnUpdate(float dt) override;\n";
     ss << "};\n";
     ss << "\n";
     ss << "} // namespace sandbox\n";
     ss << "\n";
-    ss << "#include \"" << genInclude << "\"  // FHT が生成\n";
+    ss << "#include \"" << genInclude << "\"\n";
+    ss << "\n";
+    ss << "#ifndef " << className << "_IMPL\n";
+    ss << "#define " << className << "_IMPL\n";
+    ss << "namespace sandbox {\n";
+    ss << "\n";
+    ss << "inline void " << className << "::OnUpdate(float dt)\n";
+    ss << "{\n";
+    ss << "    (void)dt;\n";
+    ss << "}\n";
+    ss << "\n";
+    ss << "} // namespace sandbox\n";
+    ss << "#endif\n";
     return ss.str();
 }
 
@@ -530,12 +543,26 @@ std::string ScriptCodeGen::GenerateReflect(const std::string& headerPath)
                     e.enumLabels.push_back(StripQuotes(args[i]));
                 entries.push_back(std::move(e));
             }
-        } else if (line.find("FBZZ_FIELD_READONLY") != std::string::npos) {
-            const std::string inner = ExtractMacroInner(line, "FBZZ_FIELD_READONLY");
+        } else if (line.find("FBZZ_COMPUTED") != std::string::npos ||
+                   line.find("FBZZ_FIELD_READONLY") != std::string::npos) {
+            const bool isComputed = line.find("FBZZ_COMPUTED") != std::string::npos;
+            const std::string macroName = isComputed ? "FBZZ_COMPUTED" : "FBZZ_FIELD_READONLY";
+            const std::string inner = ExtractMacroInner(line, macroName);
             const auto args = SplitArgs(inner);
             if (args.size() >= 3) {
                 FieldEntry e;
                 e.kind        = FieldEntry::Kind::FieldReadonly;
+                e.typeName    = TrimStr(args[0]);
+                e.fieldName   = TrimStr(args[1]);
+                e.displayName = StripQuotes(args[2]);
+                entries.push_back(std::move(e));
+            }
+        } else if (line.find("FBZZ_FIELD_REF") != std::string::npos) {
+            const std::string inner = ExtractMacroInner(line, "FBZZ_FIELD_REF");
+            const auto args = SplitArgs(inner);
+            if (args.size() >= 3) {
+                FieldEntry e;
+                e.kind        = FieldEntry::Kind::Field;
                 e.typeName    = TrimStr(args[0]);
                 e.fieldName   = TrimStr(args[1]);
                 e.displayName = StripQuotes(args[2]);
