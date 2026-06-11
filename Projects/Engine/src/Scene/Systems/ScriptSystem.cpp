@@ -25,7 +25,6 @@ void ScriptSystem(Scene& scene, float dt)
             if (!entry.script) continue;
 
             entry.script->SetContext(&scene, go);
-            entry.script->SetDeltaTime(dt);
             entry.script->SyncEnabledState();
 
             if (!entry.m_awoken) {
@@ -43,7 +42,7 @@ void ScriptSystem(Scene& scene, float dt)
             if (entry.script->enabled) {
                 entry.script->TickFrameDelays();
                 entry.script->TickInvokes(dt);
-                entry.script->OnUpdate(dt);
+                entry.script->OnUpdate();
             }
         }
     }
@@ -64,7 +63,7 @@ void LateScriptSystem(Scene& scene, float dt)
             entry.script->SetContext(&scene, go);
             entry.script->SyncEnabledState();
             if (entry.script->enabled)
-                entry.script->OnLateUpdate(dt);
+                entry.script->OnLateUpdate();
         }
     }
 }

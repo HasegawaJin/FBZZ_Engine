@@ -5,6 +5,7 @@
 // engine 側の Component とは分け、ScriptComponent が所有する。
 #pragma once
 
+#include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/PrefabRef.hpp>
@@ -123,10 +124,15 @@ struct InvokeHandle {
 
 // FHT がパースして .generated.hpp 内の Reflect() を生成するマクロ群。
 // コンパイラには普通のフィールド宣言として見える。
-#define FBZZ_FIELD(Type, Name, Default, DisplayName)              Type Name = Default;
+#define FBZZ_FIELD(Type, Name, Default, DisplayName)                 Type Name = Default;
 #define FBZZ_FIELD_RANGE(Type, Name, Default, DisplayName, Min, Max) Type Name = Default;
-#define FBZZ_FIELD_ENUM(Type, Name, Default, DisplayName, ...)    Type Name = Default;
-#define FBZZ_FIELD_READONLY(Type, Name, DisplayName)              Type Name = {};
+#define FBZZ_FIELD_ENUM(Type, Name, Default, DisplayName, ...)       Type Name = Default;
+// 参照型のデフォルト値省略版 — PrefabRef / EntityRef 等のデフォルトが {} のフィールドに使う。
+#define FBZZ_FIELD_REF(Type, Name, DisplayName)                      Type Name = {};
+// Inspector 表示のみ・Serializer 非保存の計算値ラベル。
+#define FBZZ_COMPUTED(Type, Name, DisplayName)                       Type Name = {};
+// 後方互換 alias — 新規コードでは FBZZ_COMPUTED を使うこと。
+#define FBZZ_FIELD_READONLY(Type, Name, DisplayName)                 FBZZ_COMPUTED(Type, Name, DisplayName)
 #define FBZZ_GROUP(Label)  // Inspector グループ見出し (FHT が読む)
 
 // ── Script 基底クラス ─────────────────────────────────────────────────────────
@@ -138,8 +144,8 @@ public:
     virtual void OnStart() {}
     virtual void OnEnable() {}
     virtual void OnDisable() {}
-    virtual void OnUpdate(float) {}
-    virtual void OnLateUpdate(float) {}
+    virtual void OnUpdate() {}
+    virtual void OnLateUpdate() {}
     virtual void OnDestroy() {}
     virtual void OnDrawGizmos() {}
     virtual void OnPreRender()  {}
@@ -155,18 +161,6 @@ public:
     virtual const char* GetTypeName() const { return "Script"; }
 
     bool enabled = true;
-
-    // タイミング情報 (ScriptSystem が毎フレーム注入)
-    float    deltaTime         = 0.0f;
-    float    time              = 0.0f;
-    float    unscaledDeltaTime = 0.0f;
-    uint64_t frameCount        = 0;
-
-    // 後方互換 alias — 既存コードがコンパイルを通すための橋渡し
-    [[deprecated("Use deltaTime")]]         float& m_deltaTime         = deltaTime;
-    [[deprecated("Use time")]]              float& m_time              = time;
-    [[deprecated("Use unscaledDeltaTime")]] float& m_unscaledDeltaTime = unscaledDeltaTime;
-    [[deprecated("Use frameCount")]]        uint64_t& m_frameCount     = frameCount;
 
     // Proxy — カテゴリごとに責務を分け、Script.hpp の肥大化を避ける。
     ScriptTransformProxy  transform   { this };
@@ -188,6 +182,7 @@ public:
     ScriptUIProxy         ui          { this };
 
     template<typename T>
+    [[deprecated("Use scene.GetComponent<T>()")]]
     T* GetComponent() const;
 
     // Invoke / タイマー
@@ -225,7 +220,6 @@ public:
     // ScriptSystem 専用
     void SetContext(Scene* scene, GameObject* gameObject);
     void SyncEnabledState();
-    void SetDeltaTime(float dt);
     void TickInvokes(float dt);
     void TickFrameDelays();
     static void SetPhysicsWorld(physics::World* world);
