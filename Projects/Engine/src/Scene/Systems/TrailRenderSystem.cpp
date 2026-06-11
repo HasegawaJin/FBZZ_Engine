@@ -372,7 +372,7 @@ void ExecuteTrailPass(RenderPassContext& ctx)
     renderer.SetRenderTarget(h.hdrRT, resources);
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
 
-    const float currentTime = core::Time::TotalTime();
+    const float currentTime = Time::time;
     std::vector<TrailVertex> vertices;
     std::vector<TrailDrawItem> drawItems;
 
