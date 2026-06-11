@@ -1,44 +1,43 @@
 // FBZZ Engine
-// Time.hpp | fbzz::core
+// Time.hpp | fbzz
 // フレーム時間・経過時間・タイムスケール管理
-// ゲームループ先頭で Tick し、以降の System は DeltaTime を参照する。
-// UI や演出用に UnscaledDeltaTime も保持する。
+// Application::Run() 先頭で Time::Tick() を呼ぶ。以降は Time::deltaTime などを直接参照する。
 #pragma once
 #include <cstdint>
 
-namespace fbzz::core {
+#ifdef _WIN32
+#   ifdef fbzz_engine_EXPORTS
+#       define FBZZ_ENGINE_API __declspec(dllexport)
+#   else
+#       define FBZZ_ENGINE_API __declspec(dllimport)
+#   endif
+#else
+#   define FBZZ_ENGINE_API
+#endif
 
-class Time {
-public:
-    // Application::Run() 先頭で毎フレーム呼ぶ。QPC で delta を自己計測する
-    static void Tick();
+namespace fbzz {
 
-    // TimeScale を考慮した DeltaTime
-    static float    DeltaTime();
-    // TimeScale の影響を受けない DeltaTime (UI・エフェクト等)
-    static float    UnscaledDeltaTime();
-    // 起動からの累計秒 (TimeScale 適用済み)
-    static float    TotalTime();
-    // 起動からの総フレーム数
-    static uint64_t FrameCount();
+struct FBZZ_ENGINE_API Time {
+    // ── 読み取り用 (エンジンが毎フレーム更新する) ─────────────────────────
+    static float    deltaTime;          // TimeScale 適用済みフレーム秒
+    static float    unscaledDeltaTime;  // TimeScale 未適用フレーム秒
+    static float    time;               // 累積秒 (TimeScale 適用済み)
+    static float    unscaledTime;       // 累積秒 (TimeScale 未適用)
+    static uint64_t frameCount;         // 起動からのフレーム数
 
-    static float TimeScale();
-    // 0.0f で停止, 0.5f でスローモーション, 1.0f が通常
-    static void  SetTimeScale(float scale);
+    // ── 設定 (読み書き可) ────────────────────────────────────────────────
+    // 0=停止, 0.5=スローモーション, 1=通常, 2=2倍速
+    static float timeScale;
+    // 0=無制限, 正値=FPS 上限 (最低 30 FPS にクランプ)
+    static int   targetFps;
 
-    static int  TargetFps();
-    // 0 = 無制限, 正値 = フレームレート上限 (最低 30 FPS にクランプ)
-    static void SetTargetFps(int fps);
+    // ── エンジン内部用 ───────────────────────────────────────────────────
+    static void Tick();    // Application::Run() 先頭で毎フレーム呼ぶ
+    static void Reset();   // シーンリセット時に time / frameCount を 0 にする
 
 private:
-    static float    s_rawDeltaTime;
-    static float    s_deltaTime;
-    static float    s_totalTime;
-    static float    s_timeScale;
-    static uint64_t s_frameCount;
-    static int64_t  s_lastCount;
-    static int64_t  s_frequency;
-    static int      s_targetFps;
+    static int64_t s_lastCount;
+    static int64_t s_frequency;
 };
 
-} // namespace fbzz::core
+} // namespace fbzz
