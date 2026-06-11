@@ -337,7 +337,7 @@ void ExecuteMeshTrailPass(RenderPassContext& ctx)
     ctx.renderer.SetRenderTarget(h.hdrRT, resources);
     ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
 
-    const float currentTime = core::Time::TotalTime();
+    const float currentTime = Time::time;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask))
