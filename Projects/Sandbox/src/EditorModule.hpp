@@ -12,6 +12,7 @@
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneManager.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/Layer.hpp>
 #include <Physics/World.hpp>
@@ -61,9 +62,9 @@ private:
     editor::EditorApp             m_editorApp;
     std::unique_ptr<scene::Scene> m_scene;
     physics::World                m_physicsWorld;
+    scene::SceneManager           m_sceneManager;
     renderer::DebugCamera         m_debugCamera;
     FocusAnim                     m_focusAnim;
-    float                         m_physicsAccumulator = 0.0f;
     float                         m_frameDt = 0.0f;
     bool                          m_stepFrame = false;
 };

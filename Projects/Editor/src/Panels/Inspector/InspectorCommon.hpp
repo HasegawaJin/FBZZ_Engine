@@ -19,6 +19,7 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -170,12 +171,12 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
 
     if (lc.type != scene::LightComponent::Type::Directional) {
         float pos[3] = {
-            go.transform.localPosition.x,
-            go.transform.localPosition.y,
-            go.transform.localPosition.z
+            go.transform.position.x,
+            go.transform.position.y,
+            go.transform.position.z
         };
         if (ImGui::DragFloat3("Position", pos, 0.1f))
-            go.transform.localPosition = { pos[0], pos[1], pos[2] };
+            go.transform.position = { pos[0], pos[1], pos[2] };
         ImGui::DragFloat("Range", &lc.range, 0.1f, 0.0f, 500.0f);
     }
 
@@ -185,7 +186,7 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
     }
 
     if (lc.type != scene::LightComponent::Type::Point) {
-        auto fwd = go.transform.Forward();
+        auto fwd = go.transform.forward;
         float dir[3] = { fwd.x, fwd.y, fwd.z };
         ImGui::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
     }
@@ -458,6 +459,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "Camera", !go.GetComponent<scene::CameraComponent>(), [&]() {
             go.AddComponent<scene::CameraComponent>();
+        });
+        shown |= addItem(category, "Lifetime", !go.GetComponent<scene::LifetimeComponent>(), [&]() {
+            go.AddComponent<scene::LifetimeComponent>();
         });
         shown |= addItem(category, "Particle Emitter", !go.GetComponent<scene::ParticleEmitter>(), [&]() {
             go.AddComponent<scene::ParticleEmitter>();

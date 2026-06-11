@@ -27,17 +27,14 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Core/ILogSink.hpp>
-#include <Engine/Scene/Systems/IKSystem.hpp>
-#include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
-#include <Engine/Scene/Systems/ScriptSystem.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #ifndef FBZZ_STANDALONE_TARGET
@@ -336,41 +333,26 @@ public:
         }
         ApplyPhysicsSettings(m_physicsWorld, m_settings);
         ApplyUISettings(m_settings);
-        m_physicsAccumulator = 0.0f;
+        m_sceneManager.SetScene(m_scene.get());
+        m_sceneManager.SetPhysicsHz(m_settings.physics.hz);
         return true;
     }
 
     void OnUpdate(float dt) override
     {
         fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
-        fbzz::scene::ScriptSystem(*m_scene, dt);
-        fbzz::scene::TransformSystem(*m_scene);
-
-        // WHAT: ProjectSettings の Hz に従って固定タイムステップ物理を複数回進める。
-        // WHY: 描画 FPS が揺れても物理解の安定性を保つため、蓄積時間を最大 8 step に制限する。
-        const int   physicsHz = m_settings.physics.hz < 1 ? 60 : m_settings.physics.hz;
-        const float fixedDt   = 1.0f / static_cast<float>(physicsHz);
-        m_physicsAccumulator += dt;
-        const float maxAccum  = fixedDt * 8.0f;
-        if (m_physicsAccumulator > maxAccum) m_physicsAccumulator = maxAccum;
-        while (m_physicsAccumulator >= fixedDt) {
-            fbzz::scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-            m_physicsAccumulator -= fixedDt;
-        }
-        fbzz::scene::TransformSystem(*m_scene);
+        m_sceneManager.Update(dt, m_physicsWorld);
     }
 
     void OnLateUpdate(float dt) override
     {
-        fbzz::scene::LateScriptSystem(*m_scene, dt);
-        fbzz::scene::AnimatorSystem(*m_scene, m_resources, dt);
-        fbzz::scene::IKSystem(*m_scene, m_physicsWorld, m_resources, dt);
+        m_sceneManager.LateUpdate(dt, m_physicsWorld);
     }
 
     void OnRender() override
     {
         auto& app = fbzz::core::Application::Get();
-        m_renderer.BeginFrame();
+        { FBZZ_PROFILE_SCOPE("Renderer::BeginFrame"); m_renderer.BeginFrame(); }
         m_renderer.SetRenderTarget(fbzz::renderer::ResourceHandle<fbzz::renderer::RenderTargetTag>{}, m_resources);
         m_renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
 
@@ -388,7 +370,7 @@ public:
         uiOptions.targetView         = fbzz::scene::UIRenderTargetView::GameViewport;
         fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources, gameCamera, {},
                                   &m_settings.render, fbzz::Layer::Everything, &uiOptions);
-        m_renderer.EndFrame();
+        { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
     }
 
     void OnShutdown() override
@@ -403,7 +385,7 @@ private:
     const fbzz::ProjectSettings&        m_settings;
     std::unique_ptr<fbzz::scene::Scene> m_scene;
     fbzz::physics::World                m_physicsWorld;
-    float                               m_physicsAccumulator = 0.0f;
+    fbzz::scene::SceneManager           m_sceneManager;
 };
 
 // ============================================================
@@ -440,7 +422,8 @@ public:
 
         ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
         ApplyUISettings(m_editorApp.GetContext().projectSettings);
-        m_physicsAccumulator = 0.0f;
+        m_sceneManager.SetScene(m_scene.get());
+        m_sceneManager.SetPhysicsHz(m_editorApp.GetContext().projectSettings.physics.hz);
 
         m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
         m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
@@ -455,8 +438,12 @@ public:
 
         auto* playMode = m_editorApp.GetContext().playMode;
         if (playMode->ApplyPendingRestore(*m_scene)) {
+            // WHY: World は物理同期とは別に m_contactCache / m_prevEvents を保持する。
+            //      前 Play セッションの Collider* が残ったまま次 Play が始まると物理が誤動作するため、
+            //      Stop 復元のタイミングで World を丸ごとリセットする。
+            m_physicsWorld = fbzz::physics::World{};
             ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-            m_physicsAccumulator = 0.0f;
+            m_sceneManager.SetSimulating(false);  // accumulator をリセット
         }
 
         if (!playMode->IsPlaying())
@@ -464,41 +451,22 @@ public:
 
         UpdateFocusAnimation(dt);
 
-        fbzz::scene::TransformSystem(*m_scene);
         m_stepFrame = playMode->ConsumeStep();
         const float simulationDt = SimulationDeltaTime();
-        if (playMode->IsPlaying() || m_stepFrame) {
-            const auto& settings = m_editorApp.GetContext().projectSettings;
-            ApplyPhysicsSettings(m_physicsWorld, settings);
-            fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
-            fbzz::scene::ScriptSystem(*m_scene, simulationDt);
-            fbzz::scene::TransformSystem(*m_scene);
+        const auto& settings = m_editorApp.GetContext().projectSettings;
 
-            const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
-            const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-            if (m_stepFrame) {
-                fbzz::scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-            } else {
-                m_physicsAccumulator += dt;
-                const float maxAccum = fixedDt * 8.0f;
-                if (m_physicsAccumulator > maxAccum) m_physicsAccumulator = maxAccum;
-                while (m_physicsAccumulator >= fixedDt) {
-                    fbzz::scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-                    m_physicsAccumulator -= fixedDt;
-                }
-            }
-            fbzz::scene::TransformSystem(*m_scene);
-            fbzz::scene::LateScriptSystem(*m_scene, simulationDt);
-        } else {
-            m_physicsAccumulator = 0.0f;
-        }
+        fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
+        ApplyPhysicsSettings(m_physicsWorld, settings);
+
+        m_sceneManager.SetSimulating(playMode->IsPlaying() || m_stepFrame);
+        m_sceneManager.SetPhysicsHz(settings.physics.hz);
+        m_sceneManager.SetSingleStep(m_stepFrame);
+        m_sceneManager.Update(simulationDt, m_physicsWorld);
     }
 
     void OnLateUpdate(float) override
     {
-        const float simulationDt = SimulationDeltaTime();
-        fbzz::scene::AnimatorSystem(*m_scene, m_resources, simulationDt);
-        fbzz::scene::IKSystem(*m_scene, m_physicsWorld, m_resources, simulationDt);
+        m_sceneManager.LateUpdate(SimulationDeltaTime(), m_physicsWorld);
     }
 
     void OnRender() override
@@ -516,11 +484,11 @@ public:
         const fbzz::renderer::Camera gameCamera = ResolveEditorGameCamera(gameAspect);
         const fbzz::LayerMask cullingMask       = ResolveGameCullingMask();
 
-        m_renderer.BeginFrame();
+        { FBZZ_PROFILE_SCOPE("Renderer::BeginFrame"); m_renderer.BeginFrame(); }
         RenderSceneViewport(sceneRT);
         RenderGameViewport(gameRT, gameCamera, cullingMask);
         RenderEditorPanels();
-        m_renderer.EndFrame();
+        { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
     }
 
     void OnShutdown() override
@@ -694,11 +662,11 @@ private:
     fbzz::editor::EditorApp             m_editorApp;
     std::unique_ptr<fbzz::scene::Scene> m_scene;
     fbzz::physics::World                m_physicsWorld;
+    fbzz::scene::SceneManager           m_sceneManager;
     fbzz::renderer::DebugCamera         m_debugCamera;
     FocusAnim                           m_focusAnim;
-    float                               m_physicsAccumulator = 0.0f;
-    float                               m_frameDt            = 0.0f;
-    bool                                m_stepFrame          = false;
+    float                               m_frameDt   = 0.0f;
+    bool                                m_stepFrame = false;
 };
 #endif
 

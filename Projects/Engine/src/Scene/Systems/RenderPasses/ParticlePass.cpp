@@ -102,7 +102,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
 void SpawnParticle(ParticleEmitter& emitter, const Transform& transform)
 {
     Particle p;
-    p.position = transform.localPosition + emitter.emitPosition;
+    p.position = transform.position + emitter.emitPosition;
     math::Vector3 shapeVelocity = math::Vector3::ZERO;
 
     switch (emitter.shape) {
@@ -171,7 +171,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
 
     if (!h.particleShader.IsValid() || !h.particleVB.IsValid() || !h.particleIB.IsValid()) return;
 
-    const float dt = core::Time::DeltaTime();
+    const float dt = Time::deltaTime;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;

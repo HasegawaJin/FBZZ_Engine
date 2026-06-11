@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // ViewportSceneGizmos.cpp | fbzz::editor
 // Scene View のカメラ・ライトアイコンと3D Gizmo
 #include "ViewportCommon.hpp"
@@ -66,9 +66,9 @@ void DrawCameraFrustum(EditorContext& ctx,
     const float tanHalfFov = std::tanf(math::ToRad(camera.fovY) * 0.5f);
 
     const math::Vector3 origin = transform.position;
-    const math::Vector3 forward = transform.Forward().Normalized();
-    const math::Vector3 right = transform.Right().Normalized();
-    const math::Vector3 up = transform.Up().Normalized();
+    const math::Vector3 forward = transform.forward.Normalized();
+    const math::Vector3 right = transform.right.Normalized();
+    const math::Vector3 up = transform.up.Normalized();
 
     auto corner = [&](float dist, float sx, float sy) {
         const float halfHeight = tanHalfFov * dist;
@@ -145,7 +145,7 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
                 dl->AddLine(a, b, col, 1.5f);
             }
             if (light->enabled && light->type == scene::LightComponent::Type::Directional) {
-                DrawDirectionLine(ctx, dl, go.transform.position, go.transform.Forward(),
+                DrawDirectionLine(ctx, dl, go.transform.position, go.transform.forward,
                                   2.5f, vpMin, vpSize, col);
             }
         } else if (auto* camera = go.GetComponent<scene::CameraComponent>()) {
@@ -168,7 +168,7 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
             };
             dl->AddConvexPolyFilled(lens, 4, col);
             dl->AddPolyline(lens, 4, dark, ImDrawFlags_Closed, 1.0f);
-            DrawDirectionLine(ctx, dl, go.transform.position, go.transform.Forward(),
+            DrawDirectionLine(ctx, dl, go.transform.position, go.transform.forward,
                               2.0f, vpMin, vpSize, col);
             if (camera->enabled)
                 DrawCameraFrustum(ctx, dl, go.transform, *camera, vpMin, vpSize, col);
@@ -300,9 +300,9 @@ void DrawGizmo(EditorContext& ctx,
     if (!math::NearlyZero(sy)) { rotMat.m[0][1] = localRow.m[0][1]/sy; rotMat.m[1][1] = localRow.m[1][1]/sy; rotMat.m[2][1] = localRow.m[2][1]/sy; }
     if (!math::NearlyZero(sz)) { rotMat.m[0][2] = localRow.m[0][2]/sz; rotMat.m[1][2] = localRow.m[1][2]/sz; rotMat.m[2][2] = localRow.m[2][2]/sz; }
 
-    go->transform.localPosition = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
-    go->transform.localScale    = { sx, sy, sz };
-    go->transform.localRotation = math::Quaternion::FromMatrix4(rotMat);
+    go->transform.position = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
+    go->transform.scale    = { sx, sy, sz };
+    go->transform.rotation = math::Quaternion::FromMatrix4(rotMat);
 }
 
 } // namespace fbzz::editor

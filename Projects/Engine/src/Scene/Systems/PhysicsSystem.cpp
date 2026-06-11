@@ -54,9 +54,9 @@ public:
                         const Transform& transform,
                         const physics::VolumeSettings& settings)
         : m_water(water)
-        , m_position(transform.position)
+        , m_position(transform.worldPosition)
         , m_settings(settings)
-        , m_time(core::Time::TotalTime())
+        , m_time(Time::time)
     {
     }
 
@@ -79,7 +79,7 @@ public:
         const float localX = pos.x - m_position.x;
         const float localZ = pos.z - m_position.z;
         const float surfaceY = SurfaceY(localX, localZ);
-        const float depth = std::max(surfaceY - pos.y, 0.0f);
+        const float depth = (std::max)(surfaceY - pos.y, 0.0f);
         const float submersion = math::Clamp01(depth / 10.0f);
 
         // WHY: Water の浮力・抵抗は毎 substep 適用される環境力。
@@ -112,7 +112,7 @@ math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 
 math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent& col)
 {
-    return go.transform.position + go.transform.rotation * ComponentScale(col.center, go.transform.worldScale);
+    return go.transform.worldPosition + go.transform.worldRotation * ComponentScale(col.center, go.transform.worldScale);
 }
 
 void WriteWorldPoseToTransform(GameObject& go,
@@ -122,24 +122,24 @@ void WriteWorldPoseToTransform(GameObject& go,
     auto& tf = go.transform;
     if (auto* parent = go.GetParent()) {
         const auto& parentTf = parent->transform;
-        const math::Quaternion invParentRot = parentTf.rotation.Inverse();
-        const math::Vector3 parentSpace = invParentRot * (worldPosition - parentTf.position);
+        const math::Quaternion invParentRot = parentTf.worldRotation.Inverse();
+        const math::Vector3 parentSpace = invParentRot * (worldPosition - parentTf.worldPosition);
 
         // WHY: TransformSystem は localPosition に親 worldScale を掛けてから親回転を適用する。
         //      Physics は world pose を返すため、ここで同じ式を逆変換して local pose に戻す。
-        tf.localPosition = {
+        tf.position = {
             parentTf.worldScale.x == 0.0f ? 0.0f : parentSpace.x / parentTf.worldScale.x,
             parentTf.worldScale.y == 0.0f ? 0.0f : parentSpace.y / parentTf.worldScale.y,
             parentTf.worldScale.z == 0.0f ? 0.0f : parentSpace.z / parentTf.worldScale.z
         };
-        tf.localRotation = (invParentRot * worldRotation).Normalized();
+        tf.rotation = (invParentRot * worldRotation).Normalized();
     } else {
-        tf.localPosition = worldPosition;
-        tf.localRotation = worldRotation;
+        tf.position = worldPosition;
+        tf.rotation = worldRotation;
     }
 
-    tf.position = worldPosition;
-    tf.rotation = worldRotation;
+    tf.worldPosition = worldPosition;
+    tf.worldRotation = worldRotation;
 }
 
 void SyncColliderShape(ColliderComponent&) {}
@@ -277,7 +277,7 @@ void AddColliderInstance(Scene& scene,
             if (!col.useTransformScale)
                 scale = math::Vector3::ONE;
         }
-        mesh->UpdateWithScale(worldCenter, go.transform.rotation, scale);
+        mesh->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
     } else if (auto* hull = col.collider->GetType() == physics::ColliderType::CONVEX_HULL
             ? static_cast<physics::ConvexHullCollider*>(col.collider.get())
             : nullptr) {
@@ -286,9 +286,9 @@ void AddColliderInstance(Scene& scene,
             if (!col.useTransformScale)
                 scale = math::Vector3::ONE;
         }
-        hull->UpdateWithScale(worldCenter, go.transform.rotation, scale);
+        hull->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
     } else {
-        col.collider->Update(worldCenter, go.transform.rotation);
+        col.collider->Update(worldCenter, go.transform.worldRotation);
     }
     const math::Vector3 centerOffset = ComponentScale(col.center, go.transform.worldScale);
     physics::ColliderInstance instance{ col.collider, body, &col.material, centerOffset, col.isTrigger, go.layer };
@@ -449,8 +449,8 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
 
             // WHY: BodyHandle は Component 側へ永続化される runtime state。
             //      SceneView の structured binding に依存せず、Component 実体へ直接書き戻す。
-            rb->rigidBody->SetPosition(go->transform.position);
-            rb->rigidBody->SetRotation(go->transform.rotation);
+            rb->rigidBody->SetPosition(go->transform.worldPosition);
+            rb->rigidBody->SetRotation(go->transform.worldRotation);
             rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody);
         }
     }

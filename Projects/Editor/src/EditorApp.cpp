@@ -13,6 +13,8 @@
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
+#include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
@@ -32,6 +34,7 @@
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Script.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
@@ -418,7 +421,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     if (!projectSettingsPath.empty()) {
         m_projectSettingsPath = projectSettingsPath;
         m_ctx.projectSettings.Load(m_projectSettingsPath);
-        core::Time::SetTargetFps(m_ctx.projectSettings.app.targetFps);
+        Time::targetFps = m_ctx.projectSettings.app.targetFps;
     }
 
     // WHY: SceneIO::Load() がシーン内の ScriptComponent を復元する際に
@@ -426,6 +429,18 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     //      生成されず Play 中も OnUpdate() が呼ばれない。
     //      必ずシーンロードより前に DLL をロードして ScriptFactory を準備する。
     InitScriptDll();
+
+    // WHY: PrefabSerializer は Editor プロジェクトにあり Engine から直接呼べないため、
+    //      Script::SetInstantiateFn で実装を注入する。ScriptSceneProxy::Instantiate が
+    //      ここを経由して PrefabSerializer::Instantiate を呼ぶ。
+    //      PrefabRef::path は Assets 起点の相対パス ("Assets/Foo.fbzzprefab") で保存されるため、
+    //      ToProjectAssetDiskPath でプロジェクトルートを補完して絶対パスへ変換してから渡す。
+    const std::string capturedRoot = projectRoot;
+    scene::Script::SetInstantiateFn([capturedRoot](scene::Scene& s, const std::string& path,
+                                                   std::vector<scene::EntityID>& roots) {
+        const std::string diskPath = ToProjectAssetDiskPath(capturedRoot, path);
+        return PrefabSerializer::Instantiate(s, diskPath, roots);
+    });
 
     std::string sceneToOpen = scenePath;
     const std::string lastScenePath = ResolveScenePathForProject(projectRoot, m_settings.lastScenePath);

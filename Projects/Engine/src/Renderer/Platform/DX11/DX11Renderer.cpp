@@ -120,7 +120,7 @@ void DX11Renderer::BeginFrame()
 
 void DX11Renderer::EndFrame()
 {
-    // FPS limiting is handled by core::Time::SetTargetFps().
+    // FPS limiting is handled by Time::targetFps.
     m_swapChain->Present(0, 0);
 }
 

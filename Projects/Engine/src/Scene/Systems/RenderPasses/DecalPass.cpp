@@ -113,7 +113,7 @@ void ExecuteDecalPass(RenderPassContext& ctx)
     if (!depthTex.IsValid())
         return;
 
-    const float dt = core::Time::DeltaTime();
+    const float dt = Time::deltaTime;
     std::vector<EntityID> expiredDecals;
 
     for (auto& go : ctx.scene.GameObjects()) {
@@ -174,9 +174,9 @@ void ExecuteDecalPass(RenderPassContext& ctx)
                               | (normalTex.IsValid()          ? 2u : 0u)
                               | (emissiveTex.IsValid()        ? 4u : 0u)
                               | (needsMask                    ? 8u : 0u);
-        data.decalTangent     = go.transform.Right().Normalized();
-        data.decalBitangent   = go.transform.Forward().Normalized();
-        data.decalNormal      = go.transform.Up().Normalized();
+        data.decalTangent     = go.transform.right.Normalized();
+        data.decalBitangent   = go.transform.forward.Normalized();
+        data.decalNormal      = go.transform.up.Normalized();
         resources.Update(h.decalCB, &data, sizeof(DecalCB));
 
         renderer::DrawCall drawCall;

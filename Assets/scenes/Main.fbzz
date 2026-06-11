@@ -19,9 +19,9 @@ tag = 'MainCamera'
     nearZ = 0.1
 
     [gameobjects.transform]
-    localPosition = [ -4.445966, 6.001736, 24.039907 ]
-    localRotation = [ 0.143676, 0.622369, -0.117598, 0.760385 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -4.445966, 6.001736, 24.039907 ]
+    rotation = [ 0.143676, 0.622369, -0.117598, 0.760385 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -54,9 +54,9 @@ tag = 'Untagged'
     type = 'Directional'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 3.0, 0.0 ]
-    localRotation = [ 0.875655, 0.051529, 0.470506, 0.0959 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 3.0, 0.0 ]
+    rotation = [ 0.875655, 0.051529, 0.470506, 0.0959 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -76,9 +76,9 @@ tag = 'Untagged'
     sunIntensity = 20.0
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -489,33 +489,44 @@ tag = 'Player'
     modelPath = 'Assets/Models/DebugCharacter/Player/Player.fzasset'
 
     [gameobjects.transform]
-    localPosition = [ 0.117758, 2.5773, 24.960243 ]
-    localRotation = [ 0.0, 0.995056, 0.0, 0.099319 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.117758, 7.855369, 24.960243 ]
+    rotation = [ 0.0, 0.995056, 0.0, 0.099319 ]
+    scale = [ 1.000001, 1.0, 1.000001 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
     type = 'PlayerControllerComponent'
 
         [gameobjects.ScriptComponents.fields]
+        Backward = 'S'
+        'Fall State' = 'Fall'
+        Forward = 'W'
+        'IsGrounded Param' = 'IsGrounded'
+        Jump = 'Space'
         'Jump Force' = 5.0
-        'Key Backward' = 83
-        'Key Forward' = 87
-        'Key Jump' = 32
-        'Key Left' = 65
-        'Key Right' = 68
-        'Key Sprint' = 16
+        'Jump Up State' = 'JumpUp'
+        'Landing State' = 'Landing'
+        Left = 'A'
         'Model Yaw Offset' = 180.0
         'Move Speed' = 4.0
-        'Param Is Grounded' = 'IsGrounded'
-        'Param Speed' = 'Speed'
-        'Param Vertical Speed' = 'VerticalSpeed'
-        'Rotate To Move Direction' = true
+        Right = 'D'
+        'Rotate To Move Dir' = true
+        'Speed Param' = 'Speed'
+        Sprint = 'Shift'
         'Sprint Multiplier' = 1.8
-        'State Fall' = 'Fall'
-        'State Jump Up' = 'JumpUp'
-        'State Landing' = 'Landing'
         'Use Camera Forward' = true
+        'Vertical Speed Param' = 'VerticalSpeed'
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'BulletShooterComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        'Bullet Prefab' = 'Assets/Prefabs/Bullet.fbzzprefab'
+        'Camera Override' = [ 4294967295, 0 ]
+        'Fire Key' = 'MouseLeft'
+        'Fire Rate' = 5.0
+        Muzzle = [ 4294967295, 0 ]
 
 [[gameobjects]]
 active = false
@@ -534,9 +545,9 @@ tag = 'Untagged'
     mesh = 'primitive:sphere'
 
     [gameobjects.transform]
-    localPosition = [ 0.09721, 0.083974, 0.022092 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.22, 0.22, 0.22 ]
+    position = [ 0.09721, 0.083974, 0.022092 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.22, 0.22, 0.22 ]
 
 [[gameobjects]]
 active = false
@@ -555,9 +566,9 @@ tag = 'Untagged'
     mesh = 'primitive:sphere'
 
     [gameobjects.transform]
-    localPosition = [ -0.175056, 0.04495, 0.000107 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.22, 0.22, 0.22 ]
+    position = [ -0.175056, 0.04495, 0.000107 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.22, 0.22, 0.22 ]
 
 [[gameobjects]]
 active = false
@@ -576,9 +587,9 @@ tag = 'Untagged'
     mesh = 'primitive:cube'
 
     [gameobjects.transform]
-    localPosition = [ 0.124789, 0.59708, -0.524573 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.14, 0.14, 0.139998 ]
+    position = [ 0.124789, 0.59708, -0.524573 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.14, 0.14, 0.139998 ]
 
 [[gameobjects]]
 active = false
@@ -597,9 +608,9 @@ tag = 'Untagged'
     mesh = 'primitive:cube'
 
     [gameobjects.transform]
-    localPosition = [ -0.131624, 0.587773, -0.495733 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.14, 0.14, 0.139996 ]
+    position = [ -0.131624, 0.587773, -0.495733 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.14, 0.14, 0.139996 ]
 
 [[gameobjects]]
 active = true
@@ -618,9 +629,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -639,9 +650,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.001978, 0.979183, 0.00954 ]
-    localRotation = [ 0.010803, 0.027263, -0.009008, 0.999529 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.05531, 0.96825, 0.016022 ]
+    rotation = [ 0.016591, 0.035104, -0.028337, 0.998844 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -660,9 +671,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 9e-06, 0.099235, 0.012273 ]
-    localRotation = [ 0.0539, 0.00072, 0.001483, 0.998545 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 9e-06, 0.099235, 0.012273 ]
+    rotation = [ 0.047992, -0.002396, -0.002228, 0.998842 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -681,9 +692,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.11732, 0.0 ]
-    localRotation = [ -0.00594, 0.017963, 0.000929, 0.999821 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.11732, 0.0 ]
+    rotation = [ -0.017827, 0.017807, -0.006907, 0.999659 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -702,9 +713,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.134588, 0.0 ]
-    localRotation = [ -0.063328, 0.017841, 0.002245, 0.997831 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.134588, 0.0 ]
+    rotation = [ -0.075466, 0.018237, -0.00525, 0.996968 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -723,9 +734,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.150278, -0.008779 ]
-    localRotation = [ 0.024434, -0.012634, -0.009457, 0.999577 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.150278, -0.008779 ]
+    rotation = [ -0.000719, -0.002065, 0.007092, 0.999973 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -744,9 +755,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.103218, -0.031424 ]
-    localRotation = [ -0.023758, 0.003263, 0.028811, 0.999297 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.103218, -0.031424 ]
+    rotation = [ -0.054251, 0.015906, 0.045211, 0.997377 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -765,9 +776,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 2e-06, 0.184747, -0.066364 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 2e-06, 0.184747, -0.066364 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -786,9 +797,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.061058, 0.091063, -0.007571 ]
-    localRotation = [ -0.401912, -0.582916, -0.546612, 0.447091 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.061058, 0.091063, -0.007571 ]
+    rotation = [ 0.433417, 0.560661, 0.561112, -0.427741 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -807,9 +818,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.588401, -0.176204, 0.186836, 0.7667 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.129223, 0.0 ]
+    rotation = [ -0.530632, -0.211184, 0.265204, 0.776851 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -828,9 +839,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.255878, 0.966709 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.274047, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.249911, 0.968269 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -849,9 +860,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.093678, -0.08647, -0.125135, 0.983915 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.276145, 0.0 ]
+    rotation = [ -0.114164, -0.061329, -0.135212, 0.982305 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -870,9 +881,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.172695, 0.173785, 0.136776, 0.959827 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.03003, 0.037888, -0.021671 ]
+    rotation = [ -0.171515, 0.174124, 0.139581, 0.959573 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -891,9 +902,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ 0.021414, -0.021204, -0.134336, 0.990478 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.04745, 0.0 ]
+    rotation = [ 0.021211, -0.023298, -0.136858, 0.99009 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -912,9 +923,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.027545, -0.000279, -0.013068, 0.999535 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.043821, 0.0 ]
+    rotation = [ 0.027209, -0.000114, -0.017017, 0.999485 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -933,9 +944,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034591, 0.0 ]
-    localRotation = [ -0.009147, -0.125637, 0.072072, 0.989413 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034591, 0.0 ]
+    rotation = [ -0.009147, -0.125637, 0.072072, 0.989413 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -954,9 +965,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.185004, 0.002913, -0.006705, 0.982711 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.02822, 0.122666, -0.002318 ]
+    rotation = [ -0.185852, 0.003379, -0.004369, 0.982562 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -975,9 +986,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.254243, -1e-06, -0.030676, 0.966654 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03892, 0.0 ]
+    rotation = [ -0.29579, -2e-06, -0.03569, 0.954586 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -996,9 +1007,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.085466, 0.0, -0.010314, 0.996288 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034152, 0.0 ]
+    rotation = [ -0.143792, 0.0, -0.017353, 0.989456 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1017,9 +1028,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03078, 0.0 ]
-    localRotation = [ -1e-06, -0.004002, 2.3e-05, 0.999992 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03078, 0.0 ]
+    rotation = [ -1e-06, -0.004002, 2.3e-05, 0.999992 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1038,9 +1049,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.240123, 0.002895, -0.017223, 0.970585 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.127755, 0.0 ]
+    rotation = [ -0.240132, 0.003272, -0.015682, 0.970608 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1059,9 +1070,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.156198, 0.0, -0.01885, 0.987546 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03614, 0.0 ]
+    rotation = [ -0.199743, 0.0, -0.024105, 0.979552 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1080,9 +1091,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.128577, 0.0, -0.015517, 0.991578 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034598, 0.0 ]
+    rotation = [ -0.127575, 0.0, -0.015396, 0.99171 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1101,9 +1112,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036802, 0.0 ]
-    localRotation = [ 1e-06, -0.004579, -0.000654, 0.999989 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036802, 0.0 ]
+    rotation = [ 1e-06, -0.004579, -0.000654, 0.999989 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1122,9 +1133,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.292792, 0.006896, -0.012616, 0.956068 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.022166, 0.12147, 1e-04 ]
+    rotation = [ -0.292167, 0.00702, -0.012073, 0.956265 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1143,9 +1154,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.11667, -1e-06, -0.014072, 0.993071 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036012, 0.0 ]
+    rotation = [ -0.145931, -1e-06, -0.017603, 0.989138 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1164,9 +1175,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.0956, 0.0, -0.011537, 0.995353 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.033073, 0.0 ]
+    rotation = [ -0.09512, 0.0, -0.011479, 0.9954 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1185,9 +1196,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036601, 0.0 ]
-    localRotation = [ -8e-06, -0.007396, 0.000771, 0.999972 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036601, 0.0 ]
+    rotation = [ -8e-06, -0.007396, 0.000771, 0.999972 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1206,9 +1217,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.358301, -0.006213, -0.05931, 0.9317 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.047258, 0.109082, -0.002261 ]
+    rotation = [ -0.399298, -0.007079, -0.064324, 0.914534 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1227,9 +1238,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.136803, -0.004757, 0.01908, 0.990403 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.041367, 0.0 ]
+    rotation = [ -0.182387, -0.006396, 0.013317, 0.983116 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1248,9 +1259,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.066673, 0.0, -0.008046, 0.997742 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.025948, 0.0 ]
+    rotation = [ -0.066603, 0.0, -0.008038, 0.997747 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1269,9 +1280,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.029239, 0.0 ]
-    localRotation = [ 1e-06, -0.0041, -0.000575, 0.999991 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.029239, 0.0 ]
+    rotation = [ 1e-06, -0.0041, -0.000575, 0.999991 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1290,9 +1301,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.061057, 0.091064, -0.007571 ]
-    localRotation = [ 0.445757, -0.557497, -0.524984, -0.463562 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.061057, 0.091064, -0.007571 ]
+    rotation = [ -0.514274, 0.512275, 0.504649, 0.46736 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1311,9 +1322,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.551829, 0.197343, -0.272396, 0.763113 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.129223, 0.0 ]
+    rotation = [ -0.530821, 0.181948, -0.259037, 0.786145 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1332,9 +1343,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, -0.238283, 0.971196 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.274047, 0.0 ]
+    rotation = [ 0.0, 0.0, -0.254495, 0.967074 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1353,9 +1364,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.005432, -0.007698, 0.1218, 0.99251 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.276145, 0.0 ]
+    rotation = [ 0.003597, -0.039149, 0.111866, 0.992945 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1374,9 +1385,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.186119, -0.031557, -0.01535, 0.9819 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.03003, 0.037888, -0.021671 ]
+    rotation = [ -0.182245, -0.037359, -0.02091, 0.982321 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1395,9 +1406,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ -0.021028, 0.037191, 0.008189, 0.999053 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.04745, 0.0 ]
+    rotation = [ -0.020756, 0.041529, 0.013698, 0.998828 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1416,9 +1427,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.027812, 0.001453, -0.020225, 0.999408 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.043821, 0.0 ]
+    rotation = [ 0.027885, 0.001321, -0.016734, 0.99947 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1437,9 +1448,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034591, 0.0 ]
-    localRotation = [ -0.009232, 0.12713, -0.072328, 0.989202 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034591, 0.0 ]
+    rotation = [ -0.009232, 0.12713, -0.072328, 0.989202 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1458,9 +1469,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.102819, 0.003217, 0.042583, 0.993783 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.02822, 0.122666, -0.002318 ]
+    rotation = [ -0.090558, 0.002385, 0.036409, 0.995223 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1479,9 +1490,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.298562, 2e-06, 0.036379, 0.953697 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03892, 0.0 ]
+    rotation = [ -0.346807, 2e-06, 0.042259, 0.936984 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1500,9 +1511,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.066455, 0.0, 0.008099, 0.997757 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034152, 0.0 ]
+    rotation = [ -0.07144, 0.0, 0.008706, 0.997407 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1521,9 +1532,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03078, 0.0 ]
-    localRotation = [ 7.3e-05, 0.006709, 0.001375, 0.999977 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03078, 0.0 ]
+    rotation = [ 7.3e-05, 0.006709, 0.001375, 0.999977 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1542,9 +1553,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.18678, 0.007868, 0.063017, 0.980347 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.127755, 0.0 ]
+    rotation = [ -0.194213, 0.007036, 0.058398, 0.979194 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1563,9 +1574,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.198234, 0.0, 0.024158, 0.979857 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03614, 0.0 ]
+    rotation = [ -0.255029, 0.0, 0.03108, 0.966434 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1584,9 +1595,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.036555, -0.018958, 0.005161, 0.999138 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034598, 0.0 ]
+    rotation = [ -0.042715, -0.01736, 0.00596, 0.998919 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1605,9 +1616,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036802, 0.0 ]
-    localRotation = [ 5.2e-05, 0.006695, -0.001708, 0.999976 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036802, 0.0 ]
+    rotation = [ 5.2e-05, 0.006695, -0.001708, 0.999976 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1626,9 +1637,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.250397, 0.003455, 0.043788, 0.967146 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.022166, 0.12147, 1e-04 ]
+    rotation = [ -0.268957, 0.001817, 0.03927, 0.962349 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1647,9 +1658,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.129637, 1e-06, 0.015791, 0.991436 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036012, 0.0 ]
+    rotation = [ -0.188426, 1e-06, 0.022955, 0.981819 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1668,9 +1679,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.066105, -0.02124, 0.009488, 0.997541 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.033073, 0.0 ]
+    rotation = [ -0.06905, -0.019344, 0.009777, 0.997378 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1689,9 +1700,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036601, 0.0 ]
-    localRotation = [ 6.2e-05, 0.007613, -3e-04, 0.999971 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036601, 0.0 ]
+    rotation = [ 6.2e-05, 0.007613, -3e-04, 0.999971 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1710,9 +1721,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.347699, 0.010724, 0.070933, 0.934858 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.047258, 0.109082, -0.002261 ]
+    rotation = [ -0.361493, 0.008148, 0.064882, 0.930079 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1731,9 +1742,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.136392, 0.0, 0.016622, 0.990516 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.041367, 0.0 ]
+    rotation = [ -0.162923, 0.0, 0.019855, 0.986439 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1752,9 +1763,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.053695, 0.0, 0.006544, 0.998536 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.025948, 0.0 ]
+    rotation = [ -0.058514, 0.0, 0.007131, 0.998261 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1773,9 +1784,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.029239, 0.0 ]
-    localRotation = [ 8.2e-05, 0.008499, 0.002206, 0.999961 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.029239, 0.0 ]
+    rotation = [ 8.2e-05, 0.008499, 0.002206, 0.999961 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1794,9 +1805,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.091239, -0.066572, 0.000554 ]
-    localRotation = [ -0.04078, -0.089493, 0.994904, -0.022224 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.091239, -0.066572, 0.000554 ]
+    rotation = [ -0.038747, -0.119728, 0.991937, -0.014992 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1815,9 +1826,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.220784, 0.080967, 0.017037, 0.971807 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.405994, 0.0 ]
+    rotation = [ 0.283844, 0.081143, 0.013683, 0.955333 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1836,9 +1847,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.616103, 0.037441, 0.015303, 0.786626 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.42099, 0.0 ]
+    rotation = [ -0.643423, 0.037685, 0.047401, 0.763112 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1857,9 +1868,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.157216, 0.0 ]
-    localRotation = [ -0.227703, 0.032521, -0.015365, 0.973066 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.157216, 0.0 ]
+    rotation = [ -0.227692, 0.032521, -0.015366, 0.973069 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1878,9 +1889,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.1, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1899,9 +1910,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.09125, -0.066556, 0.000554 ]
-    localRotation = [ 0.127722, -0.096051, 0.985871, 0.050195 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.09125, -0.066556, 0.000554 ]
+    rotation = [ 0.130903, -0.102074, 0.984594, 0.054952 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1920,9 +1931,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.182877, -0.026276, -0.005247, 0.982771 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.405994, 0.0 ]
+    rotation = [ 0.186466, -0.039999, -0.022715, 0.981384 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1941,9 +1952,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.574704, -0.021251, 0.01241, 0.817992 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.42099, 0.0 ]
+    rotation = [ -0.560794, -0.0153, 0.055455, 0.825954 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1962,9 +1973,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.157216, 0.0 ]
-    localRotation = [ -0.227709, -0.03212, 0.015258, 0.97308 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.157216, 0.0 ]
+    rotation = [ -0.227709, -0.03212, 0.015258, 0.97308 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -1983,9 +1994,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.1, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -2004,9 +2015,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -2025,9 +2036,9 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -2056,9 +2067,9 @@ tag = 'Untagged'
     terrainAssetPath = 'Assets/Terrain/Terrain.fbzzterrain'
 
     [gameobjects.transform]
-    localPosition = [ -32.07774, 0.0, -6.031532 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -32.07774, 0.0, -6.031532 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -2087,6 +2098,7 @@ tag = 'Untagged'
     buoyancy = 15.0
     drag = 2.0
     duration = -1.0
+    elapsed = 0.0
     enabled = true
     explosionImpulse = 10.0
     gravity = [ 0.0, -9.81, 0.0 ]
@@ -2132,6 +2144,6 @@ tag = 'Untagged'
         wavelength = 10.0
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.5, 20.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.5, 20.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

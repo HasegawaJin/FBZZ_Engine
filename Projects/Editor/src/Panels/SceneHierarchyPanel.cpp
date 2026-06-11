@@ -187,7 +187,7 @@ void CreateLightObject(EditorContext& ctx, const char* name, scene::LightCompone
 void CreateCameraObject(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Camera");
-    go.transform.localPosition = { 0.0f, 2.0f, -5.0f };
+    go.transform.position = { 0.0f, 2.0f, -5.0f };
     go.AddComponent<scene::CameraComponent>();
     ctx.selectedEntities = { go.GetID() };
 }
@@ -196,7 +196,7 @@ void CreateCameraObject(EditorContext& ctx)
 void CreateDecalObject(EditorContext& ctx, const char* name, float sizeXZ, float depth)
 {
     auto& go = ctx.activeScene->CreateGameObject(name);
-    go.transform.localScale = { sizeXZ, depth, sizeXZ };
+    go.transform.scale = { sizeXZ, depth, sizeXZ };
     go.AddComponent<scene::DecalComponent>();
     ctx.selectedEntities = { go.GetID() };
 }
@@ -217,12 +217,12 @@ void CreateUICanvasObject(EditorContext& ctx)
     ctx.activeUICanvas = go.GetID();
 }
 
-// UIImage のみのシンプルな画像要素。サイズは transform.localScale.xy で制御する。
+// UIImage のみのシンプルな画像要素。サイズは transform.scale.xy で制御する。
 void CreateUIImageObject(EditorContext& ctx, const char* name,
                          const math::Vector4& color, float w, float h)
 {
     auto& go = ctx.activeScene->CreateGameObject(name);
-    go.transform.localScale = { w, h, 1.0f };
+    go.transform.scale = { w, h, 1.0f };
     scene::UIImage img;
     img.color = color;
     go.AddComponent<scene::UIImage>(img);
@@ -246,7 +246,7 @@ void CreateUITextObject(EditorContext& ctx)
 void CreateUIButtonObject(EditorContext& ctx)
 {
     auto& go = ctx.activeScene->CreateGameObject("Button");
-    go.transform.localScale = { 160.0f, 40.0f, 1.0f };
+    go.transform.scale = { 160.0f, 40.0f, 1.0f };
 
     scene::UIImage img;
     img.color = { 0.90f, 0.90f, 0.90f, 1.0f };

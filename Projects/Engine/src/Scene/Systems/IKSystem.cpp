@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // IKSystem.cpp | fbzz::scene
 // AnimatorSystem の FK 結果に解析的 2-Bone IK を後処理として適用する。
 // WHY: IK はアニメーションの後段で骨行列だけを補正し、既存の GameObject 階層と
@@ -91,19 +91,19 @@ float ApplySoftIK(float dist, float dMax, float softness)
 void SetWorldPosition(GameObject& go, const math::Vector3& worldPosition)
 {
     if (auto* parent = go.GetParent()) {
-        const math::Quaternion invParentRot = parent->transform.rotation.Inverse();
-        const math::Vector3 rel = invParentRot * (worldPosition - parent->transform.position);
+        const math::Quaternion invParentRot = parent->transform.worldRotation.Inverse();
+        const math::Vector3 rel = invParentRot * (worldPosition - parent->transform.worldPosition);
         const math::Vector3 parentScale = parent->transform.worldScale;
-        go.transform.localPosition = {
+        go.transform.position = {
             std::abs(parentScale.x) > math::EPSILON ? rel.x / parentScale.x : rel.x,
             std::abs(parentScale.y) > math::EPSILON ? rel.y / parentScale.y : rel.y,
             std::abs(parentScale.z) > math::EPSILON ? rel.z / parentScale.z : rel.z
         };
     } else {
-        go.transform.localPosition = worldPosition;
+        go.transform.position = worldPosition;
     }
     // IK は同じフレーム内で TransformSystem の再実行前に読むため、world 値も同期する。
-    go.transform.position = worldPosition;
+    go.transform.worldPosition = worldPosition;
 }
 
 // E: 脚長ベースの動的レイ高さで地面を問い合わせる。
@@ -273,16 +273,16 @@ void IKSystem(Scene& scene, physics::World& world,
                     const GameObject* bC = scene.GetGameObject(smr->nodeEntities[nC]);
                     if (!bA || !bB || !bC) continue;
 
-                    const float LA_pre = (bB->transform.position - bA->transform.position).Length();
-                    const float LB_pre = (bC->transform.position - bB->transform.position).Length();
+                    const float LA_pre = (bB->transform.worldPosition - bA->transform.worldPosition).Length();
+                    const float LB_pre = (bC->transform.worldPosition - bB->transform.worldPosition).Length();
                     if (LA_pre < math::EPSILON || LB_pre < math::EPSILON) continue;
 
                     const float legLen = LA_pre + LB_pre;
                     GroundHit hit;
-                    if (!QueryGroundHit(world, bC->transform.position, legLen,
+                    if (!QueryGroundHit(world, bC->transform.worldPosition, legLen,
                                         chain.rayUpRatio, chain.rayDownRatio, hit)) continue;
 
-                    offsetSum += hit.point.y - bC->transform.position.y;
+                    offsetSum += hit.point.y - bC->transform.worldPosition.y;
                     legLenSum += legLen;
                     ++legCount;
                 }
@@ -302,12 +302,12 @@ void IKSystem(Scene& scene, physics::World& world,
                         nHip < animator->nodeGlobalTransforms.size()) {
                         const GameObject* bHip = scene.GetGameObject(smr->nodeEntities[nHip]);
                         if (bHip) {
-                            math::Vector3 hipWorldPos = bHip->transform.position;
+                            math::Vector3 hipWorldPos = bHip->transform.worldPosition;
                             hipWorldPos.y += hipOffsetY;
                             animator->nodeGlobalTransforms[nHip] =
                                 ownerInv * math::Matrix4::TRS(
                                     hipWorldPos,
-                                    bHip->transform.rotation,
+                                    bHip->transform.worldRotation,
                                     bHip->transform.worldScale);
                             RecalcBoneMatrix(skeleton,
                                              animator->nodeGlobalTransforms,
@@ -357,9 +357,9 @@ void IKSystem(Scene& scene, physics::World& world,
 
             // FK ポーズの位置。骨長は必ず FK 基準から計算する。
             // WHY: Hip オフセット後の pA で骨長を取ると、モデル固有の長さが姿勢依存で揺れる。
-            const math::Vector3 pA_fk = boneGoA->transform.position;
-            const math::Vector3 pB_fk = boneGoB->transform.position;
-            const math::Vector3 pC_fk = boneGoC->transform.position;
+            const math::Vector3 pA_fk = boneGoA->transform.worldPosition;
+            const math::Vector3 pB_fk = boneGoB->transform.worldPosition;
+            const math::Vector3 pC_fk = boneGoC->transform.worldPosition;
 
             // D: 脚チェーンのみ Hip 補正オフセットを Root 位置に加算する。
             const math::Vector3 pA = pA_fk
@@ -394,16 +394,16 @@ void IKSystem(Scene& scene, physics::World& world,
             //   地面未検出   → ユーザー配置ターゲット + targetOffset
             //   地面はあるが足が上にある → FK 足位置を直接ターゲットにして IK を無効化 (no-op)
             const math::Vector3 pT = hasGroundHit
-                ? targetGO->transform.position
+                ? targetGO->transform.worldPosition
                 : (!groundFound
-                    ? targetGO->transform.position + chain.targetOffset
+                    ? targetGO->transform.worldPosition + chain.targetOffset
                     : pC_fk);
 
             math::Vector3 pP     = math::Vector3::ZERO;
             bool          hasPole = chain.poleEntity.IsValid();
             if (hasPole) {
                 GameObject* poleGO = scene.GetGameObject(chain.poleEntity);
-                if (poleGO) pP = poleGO->transform.position;
+                if (poleGO) pP = poleGO->transform.worldPosition;
                 else        hasPole = false;
             }
 
@@ -454,9 +454,9 @@ void IKSystem(Scene& scene, physics::World& world,
             const math::Vector3 pB_ik =
                 pA + axisAT * (LA * cosA) + bendDir * (LA * sinA);
 
-            const math::Quaternion rotA_fk = boneGoA->transform.rotation;
-            const math::Quaternion rotB_fk = boneGoB->transform.rotation;
-            const math::Quaternion rotC_fk = boneGoC->transform.rotation;
+            const math::Quaternion rotA_fk = boneGoA->transform.worldRotation;
+            const math::Quaternion rotB_fk = boneGoB->transform.worldRotation;
+            const math::Quaternion rotC_fk = boneGoC->transform.worldRotation;
 
             // rotA_ik は FK 骨方向から IK 骨方向へ回す。
             // WHY: 骨長は pA_fk 基準で計算しているため、FromToRotation の from も pA_fk 基準にそろえる。

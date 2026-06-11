@@ -15,7 +15,16 @@
 
 namespace fbzz::scene {
 
-physics::World* Script::s_physicsWorld = nullptr;
+physics::World*    Script::s_physicsWorld  = nullptr;
+Script::PrefabInstantiateFn Script::s_instantiateFn;
+
+void Script::SetInstantiateFn(PrefabInstantiateFn fn) { s_instantiateFn = std::move(fn); }
+
+bool Script::InvokePrefabInstantiate(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
+{
+    if (!s_instantiateFn) return false;
+    return s_instantiateFn(scene, path, roots);
+}
 
 Script::~Script()
 {
@@ -49,59 +58,49 @@ void Script::SyncEnabledState()
         OnDisable();
 }
 
-void Script::SetDeltaTime(float dt)
-{
-    // WHAT: OnUpdate / OnLateUpdate 以外のメソッドからも同じフレーム時間を読めるように保持する。
-    m_deltaTime = dt;
-    m_unscaledDeltaTime = dt;
-    m_time += dt;
-    ++m_frameCount;
 
-    // WHY: ScriptMemoryProxy のフレーム一時領域は Script のフレーム寿命に紐付ける。
-    //      Script 作者が手動 Reset を忘れても、前フレームの一時データを次フレームへ持ち越さない。
-    memory.BeginFrame();
-}
-
-void Script::Invoke(std::function<void()> fn, float delay)
+InvokeHandle Script::Invoke(std::function<void()> fn, float delay)
 {
-    // WHY: 負の delay は「次の ScriptSystem 更新で実行」と同じ扱いにし、呼び出し側の防御コードを減らす。
-    if (!fn) return;
+    if (!fn) return {};
     InvokeEntry entry{};
-    entry.fn = std::move(fn);
+    entry.fn        = std::move(fn);
     entry.remaining = delay > 0.0f ? delay : 0.0f;
+    entry.id        = m_nextInvokeId++;
     m_invokes.push_back(std::move(entry));
+    return { m_invokes.back().id };
 }
 
-void Script::InvokeRepeating(std::function<void()> fn, float delay, float interval)
+InvokeHandle Script::InvokeRepeating(std::function<void()> fn, float delay, float interval)
 {
-    if (!fn) return;
-    if (interval <= 0.0f) {
-        Invoke(std::move(fn), delay);
-        return;
-    }
+    if (!fn) return {};
+    if (interval <= 0.0f) return Invoke(std::move(fn), delay);
 
     InvokeEntry entry{};
-    entry.fn = std::move(fn);
+    entry.fn        = std::move(fn);
     entry.remaining = delay > 0.0f ? delay : 0.0f;
-    entry.interval = interval;
+    entry.interval  = interval;
     entry.repeating = true;
+    entry.id        = m_nextInvokeId++;
     m_invokes.push_back(std::move(entry));
+    return { m_invokes.back().id };
 }
 
 void Script::CancelInvoke()
 {
-    // WHY: Invoke コールバック実行中に vector を即 clear するとイテレーションが不安定になる。
-    //      実行中は canceled フラグだけ立て、TickInvokes の末尾でまとめて除去する。
     if (!m_isTickingInvokes) {
         m_invokes.clear();
         m_frameDelays.clear();
         return;
     }
+    for (auto& e : m_invokes)     e.canceled = true;
+    for (auto& e : m_frameDelays) e.canceled = true;
+}
 
-    for (auto& entry : m_invokes)
-        entry.canceled = true;
-    for (auto& entry : m_frameDelays)
-        entry.canceled = true;
+void Script::CancelInvoke(InvokeHandle handle)
+{
+    if (!handle.IsValid()) return;
+    for (auto& e : m_invokes)
+        if (e.id == handle.id) { e.canceled = true; return; }
 }
 
 void Script::TickInvokes(float dt)

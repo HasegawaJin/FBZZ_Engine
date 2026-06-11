@@ -13,6 +13,8 @@
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
 //      Assets/Scripts/Foo.hpp に解決される。
+#include "Scripts/BulletComponent.hpp"
+#include "Scripts/BulletShooterComponent.hpp"
 #include "Scripts/PlayerControllerComponent.hpp"
 #include "Scripts/PlayerWorldSpaceUIComponent.hpp"
 #include "Scripts/TpsCameraComponent.hpp"
@@ -26,6 +28,8 @@
 #include <Engine/Scene/ScriptFactory.hpp>
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+FBZZ_REGISTER_SCRIPT(::sandbox::BulletComponent)
+FBZZ_REGISTER_SCRIPT(::sandbox::BulletShooterComponent)
 FBZZ_REGISTER_SCRIPT(::sandbox::PlayerControllerComponent)
 FBZZ_REGISTER_SCRIPT(::sandbox::PlayerWorldSpaceUIComponent)
 FBZZ_REGISTER_SCRIPT(::sandbox::TpsCameraComponent)
