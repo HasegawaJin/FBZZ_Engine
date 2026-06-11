@@ -36,9 +36,21 @@ struct UIPositionTween {
     bool          active   = false;
 };
 
+struct UIScaleTween {
+    math::Vector2 from     = { 1, 1 };
+    math::Vector2 to       = { 1.2f, 1.2f };
+    float         duration = 0.3f;
+    float         elapsed  = 0.0f;
+    UIEasingType  easing   = UIEasingType::EaseOut;
+    bool          loop     = false;
+    bool          pingPong = false;
+    bool          active   = false;
+};
+
 struct UIAnimator {
     UIColorTween    colorTween;
     UIPositionTween positionTween;
+    UIScaleTween    scaleTween;
     bool            enabled = true;
 
     const char* GetTypeName() const { return "UIAnimator"; }
@@ -49,15 +61,32 @@ struct UIAnimator {
         r.Field("colorFrom",        colorTween.from);
         r.Field("colorTo",          colorTween.to);
         r.Field("colorDuration",    colorTween.duration);
+        int colorEasing = static_cast<int>(colorTween.easing);
+        r.Field("colorEasing",      colorEasing);
+        colorTween.easing = static_cast<UIEasingType>(colorEasing);
         r.Field("colorLoop",        colorTween.loop);
         r.Field("colorPingPong",    colorTween.pingPong);
         r.Field("colorActive",      colorTween.active);
+
         r.Field("posFrom",          positionTween.from);
         r.Field("posTo",            positionTween.to);
         r.Field("posDuration",      positionTween.duration);
+        int posEasing = static_cast<int>(positionTween.easing);
+        r.Field("posEasing",        posEasing);
+        positionTween.easing = static_cast<UIEasingType>(posEasing);
         r.Field("posLoop",          positionTween.loop);
         r.Field("posPingPong",      positionTween.pingPong);
         r.Field("posActive",        positionTween.active);
+
+        r.Field("scaleFrom",        scaleTween.from);
+        r.Field("scaleTo",          scaleTween.to);
+        r.Field("scaleDuration",    scaleTween.duration);
+        int scaleEasing = static_cast<int>(scaleTween.easing);
+        r.Field("scaleEasing",      scaleEasing);
+        scaleTween.easing = static_cast<UIEasingType>(scaleEasing);
+        r.Field("scaleLoop",        scaleTween.loop);
+        r.Field("scalePingPong",    scaleTween.pingPong);
+        r.Field("scaleActive",      scaleTween.active);
     }
 };
 
