@@ -19,6 +19,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -370,6 +371,9 @@ float ScriptInputProxy::GetAxis(std::string_view name) const
 math::Vector2 ScriptInputProxy::GetMouseDelta() const { return input::Input::MouseDelta(); }
 math::Vector2 ScriptInputProxy::GetMousePosition() const { return input::Input::MousePosition(); }
 float ScriptInputProxy::GetMouseScrollDelta() const { return input::Input::MouseScrollDelta(); }
+bool ScriptInputProxy::MouseButton(MouseBtn btn) const { return input::Input::MouseButton(static_cast<int>(btn)); }
+bool ScriptInputProxy::MouseButtonDown(MouseBtn btn) const { return input::Input::MouseButtonDown(static_cast<int>(btn)); }
+bool ScriptInputProxy::MouseButtonUp(MouseBtn btn) const { return input::Input::MouseButtonUp(static_cast<int>(btn)); }
 bool ScriptInputProxy::MouseButton(int button) const { return input::Input::MouseButton(button); }
 bool ScriptInputProxy::MouseButtonDown(int button) const { return input::Input::MouseButtonDown(button); }
 bool ScriptInputProxy::MouseButtonUp(int button) const { return input::Input::MouseButtonUp(button); }
@@ -538,17 +542,41 @@ void ScriptAudioProxy::SetLoop(bool loop) const
         audio->loop = loop;
 }
 
+bool ScriptAudioProxy::IsPlaying() const
+{
+    const auto* audio = SelfComponent<AudioSourceComponent>(script);
+    return audio && audio->m_isPlaying;
+}
+
+float ScriptAudioProxy::GetVolume() const
+{
+    const auto* audio = SelfComponent<AudioSourceComponent>(script);
+    return audio ? audio->volume : 0.0f;
+}
+
+void ScriptAudioProxy::SetPitch(float pitch) const
+{
+    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
+        audio->pitch = std::clamp(pitch, 0.01f, 4.0f);
+}
+
+void ScriptAudioProxy::PlayOneShot(std::string_view clipPath) const
+{
+    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
+        audio->m_oneShotPath   = std::string(clipPath);
+        audio->m_pendingOneShot = true;
+    }
+}
+
 void ScriptLightProxy::SetColor(const math::Vector3& color) const
 {
     if (auto* l = SelfComponent<LightComponent>(script)) l->color = color;
 }
 
-void ScriptLightProxy::SetType(int type) const
+void ScriptLightProxy::SetType(LightType type) const
 {
-    if (auto* l = SelfComponent<LightComponent>(script)) {
-        const int clamped = std::clamp(type, 0, 2);
-        l->type = static_cast<LightComponent::Type>(clamped);
-    }
+    if (auto* l = SelfComponent<LightComponent>(script))
+        l->type = static_cast<LightComponent::Type>(static_cast<int>(type));
 }
 
 void ScriptLightProxy::SetIntensity(float intensity) const
@@ -656,6 +684,42 @@ math::Vector3 ScriptCameraProxy::ScreenToWorldPoint(const math::Vector3& screenP
     return world.XYZ() * (1.0f / world.w);
 }
 
+float ScriptCameraProxy::GetFOV() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam ? cam->fovY : 60.0f;
+}
+
+float ScriptCameraProxy::GetNearZ() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam ? cam->nearZ : 0.1f;
+}
+
+float ScriptCameraProxy::GetFarZ() const
+{
+    const auto* cam = SelfComponent<CameraComponent>(script);
+    return cam ? cam->farZ : 1000.0f;
+}
+
+bool ScriptCameraProxy::IsVisible(const math::Vector3& worldPos) const
+{
+    const auto screen = WorldToScreenPoint(worldPos);
+    if (screen.z <= 0.0f) return false;
+    const auto& renderer = core::Application::Get().GetRenderer();
+    const float w = static_cast<float>((std::max)(renderer.GetWidth(),  1u));
+    const float h = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+    return screen.x >= 0.0f && screen.x <= w && screen.y >= 0.0f && screen.y <= h;
+}
+
+Ray ScriptCameraProxy::ScreenPointToRay(float screenX, float screenY) const
+{
+    const math::Vector3 nearPt = ScreenToWorldPoint({ screenX, screenY, 0.0f });
+    const math::Vector3 farPt  = ScreenToWorldPoint({ screenX, screenY, 1.0f });
+    const math::Vector3 dir    = (farPt - nearPt).Normalized();
+    return { nearPt, dir };
+}
+
 MaterialComponent* ScriptMaterialProxy::Get() const
 {
     return SelfComponent<MaterialComponent>(script);
@@ -744,6 +808,27 @@ void ScriptMaterialProxy::SetTexture(std::string_view slot, std::string_view tex
     if (targetSlot != UINT32_MAX && targetSlot < 5u)
         key = kSlots[targetSlot];
     a->textures[key] = std::string(texPath);
+}
+
+float ScriptMaterialProxy::GetFloat(std::string_view param) const
+{
+    const auto* m = Get();
+    if (!m) return 0.0f;
+    const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
+    if (!a) return 0.0f;
+    const auto it = a->params.find(std::string(param));
+    return (it != a->params.end() && !it->second.empty()) ? it->second[0] : 0.0f;
+}
+
+math::Vector3 ScriptMaterialProxy::GetVector3(std::string_view param) const
+{
+    const auto* m = Get();
+    if (!m) return {};
+    const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
+    if (!a) return {};
+    const auto it = a->params.find(std::string(param));
+    if (it == a->params.end() || it->second.size() < 3) return {};
+    return { it->second[0], it->second[1], it->second[2] };
 }
 
 bool ScriptMaterialProxy::SetEnabled(bool enabled) const
@@ -1166,6 +1251,22 @@ GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath) const
     return scene->GetGameObject(roots.front());
 }
 
+GameObject* ScriptSceneProxy::Instantiate(const PrefabRef& prefab,
+                                           std::function<void(GameObject&)> init) const
+{
+    auto* go = Instantiate(prefab.path);
+    if (go && init) init(*go);
+    return go;
+}
+
+GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath,
+                                           std::function<void(GameObject&)> init) const
+{
+    auto* go = Instantiate(prefabPath);
+    if (go && init) init(*go);
+    return go;
+}
+
 void ScriptSceneProxy::LoadScene(std::string_view name) const
 {
     core::Application::Get().GetSceneManager().LoadScene(std::string(name));
@@ -1174,6 +1275,26 @@ void ScriptSceneProxy::LoadScene(std::string_view name) const
 std::string ScriptSceneProxy::GetSceneName() const
 {
     return {};
+}
+
+std::string ScriptSceneProxy::GetName() const
+{
+    return (script && script->m_gameObject) ? script->m_gameObject->name : std::string{};
+}
+
+void ScriptSceneProxy::SetName(const std::string& n) const
+{
+    if (script && script->m_gameObject) script->m_gameObject->name = n;
+}
+
+std::string ScriptSceneProxy::GetTag() const
+{
+    return (script && script->m_gameObject) ? script->m_gameObject->tag : std::string{};
+}
+
+void ScriptSceneProxy::SetTag(const std::string& t) const
+{
+    if (script && script->m_gameObject) script->m_gameObject->tag = t;
 }
 
 float ScriptSceneProxy::GetTerrainHeightAt(const math::Vector3& worldPos) const
@@ -1215,27 +1336,67 @@ float ScriptSceneProxy::GetWaterSurfaceHeight(const math::Vector3& worldPos, flo
 
 void ScriptAnimatorProxy::SetFloat(std::string_view name, float v) const
 {
-    if (script) script->SetAnimatorFloat(name, v);
+    if (auto* a = SelfComponent<AnimatorComponent>(script)) a->SetFloat(name, v);
 }
 
 void ScriptAnimatorProxy::SetInt(std::string_view name, int v) const
 {
-    if (script) script->SetAnimatorInt(name, v);
+    if (auto* a = SelfComponent<AnimatorComponent>(script)) a->SetInt(name, v);
 }
 
 void ScriptAnimatorProxy::SetBool(std::string_view name, bool v) const
 {
-    if (script) script->SetAnimatorBool(name, v);
+    if (auto* a = SelfComponent<AnimatorComponent>(script)) a->SetBool(name, v);
 }
 
 void ScriptAnimatorProxy::SetTrigger(std::string_view name) const
 {
-    if (script) script->SetAnimatorTrigger(name);
+    if (auto* a = SelfComponent<AnimatorComponent>(script)) a->SetTrigger(name);
 }
 
 bool ScriptAnimatorProxy::IsInState(std::string_view name) const
 {
-    return script && script->IsAnimatorInState(name);
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a && a->IsInState(name);
+}
+
+float ScriptAnimatorProxy::GetFloat(std::string_view name) const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetFloat(name) : 0.0f;
+}
+
+int ScriptAnimatorProxy::GetInt(std::string_view name) const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetInt(name) : 0;
+}
+
+bool ScriptAnimatorProxy::GetBool(std::string_view name) const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a && a->GetBool(name);
+}
+
+std::string ScriptAnimatorProxy::GetCurrentState() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->currentStateName : std::string{};
+}
+
+void ScriptAnimatorProxy::SetSpeed(float speed) const
+{
+    if (auto* a = SelfComponent<AnimatorComponent>(script)) a->speed = speed;
+}
+
+void ScriptAnimatorProxy::Play(std::string_view stateName) const
+{
+    if (auto* a = SelfComponent<AnimatorComponent>(script)) {
+        a->currentStateName = std::string(stateName);
+        a->stateTime        = 0.0f;
+        a->blendToState.clear();
+        a->blendWeight      = 0.0f;
+    }
 }
 
 void ScriptDebugProxy::Log(std::string_view msg) const

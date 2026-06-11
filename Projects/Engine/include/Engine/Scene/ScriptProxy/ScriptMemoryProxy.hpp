@@ -30,7 +30,7 @@ struct ScriptMemoryProxy {
     [[nodiscard]] bool InitializeFrame(std::size_t capacity) const;
 
     // AllocateFrame: 現在フレームだけ有効な一時メモリを確保する。
-    // WHAT: 未初期化の場合は DEFAULT_FRAME_CAPACITY で遅延初期化し、毎フレーム SetDeltaTime 時に Reset される。
+    // WHAT: 未初期化の場合は DEFAULT_FRAME_CAPACITY で遅延初期化し、毎フレーム ScriptSystem::Update 時に Reset される。
     [[nodiscard]] void* AllocateFrame(std::size_t size,
                                       std::size_t alignment = alignof(std::max_align_t)) const;
 
