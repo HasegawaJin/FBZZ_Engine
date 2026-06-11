@@ -9,6 +9,7 @@
 using namespace fbzz::scene;
 using namespace fbzz::math;
 using namespace fbzz::input;
+using fbzz::Time;
 
 namespace sandbox {
 
@@ -28,7 +29,7 @@ public:
     FBZZ_FIELD_RANGE(float, followSpeed,       10.0f, "Follow Speed",      0.0f, 50.0f)
 
     void OnStart() override;
-    void OnLateUpdate(float dt) override;
+    void OnLateUpdate() override;
 
 private:
     void FindTarget();
@@ -52,7 +53,7 @@ inline void TpsCameraComponent::OnStart()
     m_hasCameraPosition = false;
 }
 
-inline void TpsCameraComponent::OnLateUpdate(float dt)
+inline void TpsCameraComponent::OnLateUpdate()
 {
     if (!transform) return;
     if (!m_target || !m_target->IsValid()) FindTarget();
@@ -71,7 +72,7 @@ inline void TpsCameraComponent::OnLateUpdate(float dt)
     const Vector3    targetCamPos = focus - (rotation * Vector3::FORWARD) * distance;
 
     // WHY: 指数補間で dt に依存した補間率を計算。初回のみスナップして位置ずれを防ぐ。
-    const float safeDt          = Max(dt, 0.0f);
+    const float safeDt          = Max(Time::deltaTime, 0.0f);
     const float safeFollowSpeed = Max(followSpeed, 0.0f);
     const float followT = safeFollowSpeed <= EPSILON
         ? 1.0f

@@ -8,6 +8,7 @@
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
+using fbzz::Time;
 
 namespace sandbox {
 
@@ -25,7 +26,7 @@ public:
 
     void OnCollisionEnter(const CollisionInfo& info) override;
     void OnTriggerEnter(const CollisionInfo& info) override;
-    void OnUpdate(float dt) override;
+    void OnUpdate() override;
 
 private:
     bool    m_alive         = true;
@@ -73,7 +74,7 @@ inline void BulletComponent::OnTriggerEnter(const CollisionInfo& info)
     m_hitPoint = transform ? transform.worldPosition : Vector3{};
 }
 
-inline void BulletComponent::OnUpdate(float dt)
+inline void BulletComponent::OnUpdate()
 {
     if (!transform) return;
 
@@ -85,6 +86,7 @@ inline void BulletComponent::OnUpdate(float dt)
     const Vector3 pos = transform.worldPosition;
     const Vector3 dir = (direction.LengthSq() > 0.0001f) ? direction
                                                           : transform.forward;
+    const float   dt  = Time::deltaTime;
 
     RaycastHit hit;
     if (physics.Raycast(pos, dir, speed * dt, hit)) {
