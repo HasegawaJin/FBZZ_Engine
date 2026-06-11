@@ -23,7 +23,7 @@ public:
     FBZZ_FIELD(float,       headOffset,   2.2f,    "Head Offset")
 
     void OnStart()           override;
-    void OnLateUpdate(float) override;
+    void OnLateUpdate() override;
     void OnDestroy()         override;
 
 private:
@@ -80,7 +80,7 @@ inline void PlayerWorldSpaceUIComponent::OnStart()
     SyncPosition();
 }
 
-inline void PlayerWorldSpaceUIComponent::OnLateUpdate(float) { SyncPosition(); }
+inline void PlayerWorldSpaceUIComponent::OnLateUpdate() { SyncPosition(); }
 
 inline void PlayerWorldSpaceUIComponent::OnDestroy()
 {

@@ -3,8 +3,6 @@
 // RigidBody ベースの汎用プレイヤーコントローラースクリプト
 #pragma once
 
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Input/Input.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
@@ -14,6 +12,7 @@ using namespace fbzz::scene;
 using namespace fbzz::math;
 using namespace fbzz::input;
 using namespace fbzz::physics;
+using fbzz::Time;
 
 namespace sandbox {
 
@@ -48,7 +47,7 @@ public:
     FBZZ_FIELD(std::string, stateLanding, "Landing", "Landing State")
 
     void OnStart() override;
-    void OnUpdate(float dt) override;
+    void OnUpdate() override;
     void OnCollisionEnter(const CollisionInfo& info) override;
     void OnCollisionStay(const CollisionInfo& info) override;
 
@@ -71,13 +70,11 @@ namespace sandbox {
 
 inline void PlayerControllerComponent::OnStart()
 {
-    auto* rb = scene.GetComponent<RigidBodyComponent>();
-    if (!rb || !rb->rigidBody) return;
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
-    rb->rigidBody->SetFreezeRotation({ true, true, true });
+    physics.SetFreezeRotation(true, true, true);
 }
 
-inline void PlayerControllerComponent::OnUpdate(float dt)
+inline void PlayerControllerComponent::OnUpdate()
 {
     if (!transform) return;
     auto* cc  = scene.GetComponent<CharacterControllerComponent>();
@@ -85,7 +82,7 @@ inline void PlayerControllerComponent::OnUpdate(float dt)
     auto* phy = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
 
     if (cc) {
-        cc->Tick(phy, dt);
+        cc->Tick(phy, Time::deltaTime);
         animator.SetFloat(paramVerticalSpeed, cc->verticalSpeed);
         animator.SetBool(paramIsGrounded,     cc->isGrounded);
     }
@@ -121,7 +118,7 @@ inline void PlayerControllerComponent::OnUpdate(float dt)
         vel.z = direction.z * speed;
         phy->SetVelocity(vel);
     } else {
-        transform.position += direction * (speed * dt);
+        transform.position += direction * (speed * Time::deltaTime);
     }
 
     if (rotateToMoveDirection) {
@@ -139,8 +136,7 @@ inline void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& inf
 
 inline void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
 {
-    if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
-        cc->RegisterGroundContact(info);
+    OnCollisionEnter(info);
 }
 
 inline void PlayerControllerComponent::HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
@@ -167,7 +163,7 @@ inline Vector3 PlayerControllerComponent::GetMoveForward() const
     if (!useCameraForward) return Vector3::FORWARD;
     auto* camGO = scene.GetMainCameraObject();
     if (!camGO) return Vector3::FORWARD;
-    Vector3 fwd = camGO->transform.Forward();
+    Vector3 fwd = camGO->transform.forward;
     fwd.y = 0.0f;
     return fwd.LengthSq() > EPSILON ? fwd.Normalized() : Vector3::FORWARD;
 }

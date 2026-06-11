@@ -7,6 +7,7 @@
 using namespace fbzz::scene;
 using namespace fbzz::math;
 using namespace fbzz::input;
+using fbzz::Time;
 
 namespace sandbox {
 
@@ -23,7 +24,7 @@ public:
     FBZZ_FIELD(KeyCode, fireKey,  KeyCode::MouseLeft, "Fire Key")
     FBZZ_FIELD_RANGE(float, fireRate, 5.0f, "Fire Rate", 0.1f, 30.0f)
 
-    void OnUpdate(float dt) override;
+    void OnUpdate() override;
 
 private:
     float m_cooldown = 0.0f;
@@ -40,9 +41,9 @@ private:
 
 namespace sandbox {
 
-inline void BulletShooterComponent::OnUpdate(float dt)
+inline void BulletShooterComponent::OnUpdate()
 {
-    if (m_cooldown > 0.0f) m_cooldown -= dt;
+    if (m_cooldown > 0.0f) m_cooldown -= Time::deltaTime;
     if (!input.GetKeyDown(fireKey)) return;
     if (m_cooldown > 0.0f) return;
     Fire();
@@ -62,7 +63,7 @@ inline void BulletShooterComponent::Fire() const
         GameObject* cam = nullptr;
         if (auto* go = cameraRef.Resolve(scene)) cam = go;
         else cam = scene.GetMainCameraObject();
-        if (cam) fireDir = cam->transform.Forward();
+        if (cam) fireDir = cam->transform.forward;
     }
 
     // マズル位置
@@ -72,7 +73,7 @@ inline void BulletShooterComponent::Fire() const
     auto* go = scene.Instantiate(bulletPrefab);
     if (!go) return;
     go->transform.position = spawnPos;
-    if (auto* bullet = scene.GetScript<BulletComponent>(*go))
+    if (auto* bullet = scene.GetScript<BulletComponent>(go))
         bullet->direction = fireDir.Normalized();
 }
 
