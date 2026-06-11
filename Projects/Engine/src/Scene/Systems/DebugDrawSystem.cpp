@@ -37,8 +37,8 @@ math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 
 math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent& collider)
 {
-    return go.transform.position +
-           go.transform.rotation * ComponentScale(collider.center, go.transform.worldScale);
+    return go.transform.worldPosition +
+           go.transform.worldRotation * ComponentScale(collider.center, go.transform.worldScale);
 }
 
 template<typename T>
@@ -57,7 +57,7 @@ void DrawCollider(T& collider,
             if (!collider.useTransformScale)
                 scale = math::Vector3::ONE;
         }
-        mesh->UpdateWithScale(worldCenter, go.transform.rotation, scale);
+        mesh->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
     } else if (auto* hull = collider.collider->GetType() == physics::ColliderType::CONVEX_HULL
             ? static_cast<physics::ConvexHullCollider*>(collider.collider.get())
             : nullptr) {
@@ -66,9 +66,9 @@ void DrawCollider(T& collider,
             if (!collider.useTransformScale)
                 scale = math::Vector3::ONE;
         }
-        hull->UpdateWithScale(worldCenter, go.transform.rotation, scale);
+        hull->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
     } else {
-        collider.collider->Update(worldCenter, go.transform.rotation);
+        collider.collider->Update(worldCenter, go.transform.worldRotation);
     }
     const physics::ColliderDebugGeometry geometry =
         physics::BuildColliderDebugGeometry(*collider.collider);
@@ -111,8 +111,8 @@ void ColliderDebugDrawSystem(Scene& scene,
 
         const int cols = terrain->columns;
         const int rows = terrain->rows;
-        const math::Vector3& origin = go.transform.position;
-        const math::Quaternion& rot  = go.transform.rotation;
+        const math::Vector3& origin = go.transform.worldPosition;
+        const math::Quaternion& rot  = go.transform.worldRotation;
         const math::Vector3&   scale = go.transform.worldScale;
 
         auto ToWorld = [&](int x, int z) -> math::Vector3
@@ -128,8 +128,8 @@ void ColliderDebugDrawSystem(Scene& scene,
         };
 
         // サブサンプリングステップ: 最大 ~8 本の断面線 + 必ず両端を含む
-        const int sx = std::max(1, (cols - 1) / 8);
-        const int sz = std::max(1, (rows - 1) / 8);
+        const int sx = (std::max)(1, (cols - 1) / 8);
+        const int sz = (std::max)(1, (rows - 1) / 8);
 
         // Z 方向の断面線 (X 軸方向に延びる線群)
         for (int z = 0; z < rows; z += sz)
@@ -278,7 +278,7 @@ void LightRangeDebugDrawSystem(Scene& scene,
         const auto* light = go.GetComponent<LightComponent>();
         if (!light || !light->enabled) continue;
 
-        const math::Vector3 pos = go.transform.position;
+        const math::Vector3 pos = go.transform.worldPosition;
 
         if (light->type == LightComponent::Type::Point)
         {
@@ -286,7 +286,7 @@ void LightRangeDebugDrawSystem(Scene& scene,
         }
         else if (light->type == LightComponent::Type::Spot)
         {
-            const math::Vector3 dir = go.transform.Forward();
+            const math::Vector3 dir = go.transform.forward;
             const float outerRadius = std::tan(light->outerCone * kDeg2Rad) * light->range;
             const float innerRadius = std::tan(light->innerCone * kDeg2Rad) * light->range;
             renderer::DebugDraw::Cone(renderer, pos, dir, light->range, outerRadius, color);

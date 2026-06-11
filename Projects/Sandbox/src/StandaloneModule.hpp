@@ -10,6 +10,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneManager.hpp>
 #include <Physics/World.hpp>
 
 #include <memory>
@@ -38,7 +39,7 @@ private:
     const ProjectSettings&        m_settings;
     std::unique_ptr<scene::Scene> m_scene;
     physics::World                m_physicsWorld;
-    float                         m_physicsAccumulator = 0.0f;
+    scene::SceneManager           m_sceneManager;
 };
 
 } // namespace fbzz::sandbox

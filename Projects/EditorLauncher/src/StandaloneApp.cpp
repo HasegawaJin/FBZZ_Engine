@@ -16,12 +16,7 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
-#include <Engine/Scene/Systems/AnimatorSystem.hpp>
-#include <Engine/Scene/Systems/IKSystem.hpp>
-#include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Scene/Systems/ScriptSystem.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -34,23 +29,6 @@
 
 namespace fbzz::editor_launcher {
 
-namespace {
-
-const char* PhysicsStepCountMarkerName(int steps)
-{
-    // WHY: 固定タイムステップが描画フレームに追いつくため、低 FPS 時は PhysicsSystem が複数回呼ばれる。
-    //      Profiler に回数 marker を残し、重さの原因が catch-up かどうかを確認できるようにする。
-    if (steps <= 1) return nullptr;
-    if (steps == 2) return "PhysicsFixedSteps=2";
-    if (steps == 3) return "PhysicsFixedSteps=3";
-    if (steps == 4) return "PhysicsFixedSteps=4";
-    if (steps == 5) return "PhysicsFixedSteps=5";
-    if (steps == 6) return "PhysicsFixedSteps=6";
-    if (steps == 7) return "PhysicsFixedSteps=7";
-    return "PhysicsFixedSteps>=8";
-}
-
-} // namespace
 
 void StandaloneApp::FileLogSink::OnLog(const core::LogEntry& entry)
 {
@@ -131,6 +109,9 @@ bool StandaloneApp::OnInit()
     }
     FBZZ_LOG_INFO("StandaloneApp: シーンロード完了: %s", m_project.sceneFile.string().c_str());
 
+    m_sceneManager.SetScene(m_scene.get());
+    m_sceneManager.SetPhysicsHz(m_settings.physics.hz);
+
     // プロファイラオーバーレイ用 ImGui を初期化する。
     // WHY: StandaloneApp は EditorApp を使わないため ImGui コンテキストが存在しない。
     //      Release ビルドでもプロファイラデータを確認できるよう独立したコンテキストを作成する。
@@ -149,42 +130,19 @@ void StandaloneApp::OnUpdate(float dt)
         m_showProfiler = !m_showProfiler;
 
     scene::Script::SetPhysicsWorld(m_physicsWorld.get());
-    scene::ScriptSystem(*m_scene, dt);
-    scene::TransformSystem(*m_scene);
-
-    // WHY: 物理シミュレーションはフレームレートに依存しないよう固定タイムステップで動かす。
-    const int   physicsHz = m_settings.physics.hz < 1 ? 60 : m_settings.physics.hz;
-    const float fixedDt   = 1.0f / static_cast<float>(physicsHz);
-    int physicsStepsThisFrame = 0;
-    {
-        FBZZ_PROFILE_SCOPE("PhysicsFixedStepLoop");
-        m_physicsAccumulator += dt;
-        if (m_physicsAccumulator > fixedDt * 8.0f) m_physicsAccumulator = fixedDt * 8.0f;
-        while (m_physicsAccumulator >= fixedDt) {
-            scene::PhysicsSystem(*m_scene, *m_physicsWorld, fixedDt);
-            m_physicsAccumulator -= fixedDt;
-            ++physicsStepsThisFrame;
-        }
-    }
-    if (const char* marker = PhysicsStepCountMarkerName(physicsStepsThisFrame))
-        FBZZ_PROFILE_MARKER(marker);
-
-    scene::TransformSystem(*m_scene);
+    m_sceneManager.Update(dt, *m_physicsWorld);
 }
 
 void StandaloneApp::OnLateUpdate(float dt)
 {
-    scene::LateScriptSystem(*m_scene, dt);
-    scene::TransformSystem(*m_scene);
-    scene::AnimatorSystem(*m_scene, m_resources, dt);
-    scene::IKSystem(*m_scene, *m_physicsWorld, m_resources, dt);
+    m_sceneManager.LateUpdate(dt, *m_physicsWorld);
 }
 
 void StandaloneApp::OnRender()
 {
     auto& app = core::Application::Get();
 
-    m_renderer.BeginFrame();
+    { FBZZ_PROFILE_SCOPE("Renderer::BeginFrame"); m_renderer.BeginFrame(); }
     m_renderer.SetRenderTarget({}, m_resources);
     m_renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
 
@@ -207,7 +165,7 @@ void StandaloneApp::OnRender()
     ImGui::NewFrame();
 
     if (m_showProfiler) {
-        const float dt = core::Time::DeltaTime();
+        const float dt = Time::deltaTime;
         const float fps = (dt > 0.0f) ? (1.0f / dt) : 0.0f;
 
         ImGui::SetNextWindowPos({ 8.0f, 8.0f }, ImGuiCond_Always);
@@ -257,7 +215,7 @@ void StandaloneApp::OnRender()
     ImGui::Render();
     m_imguiRenderer.ImGuiRenderDrawData();
 
-    m_renderer.EndFrame();
+    { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
 }
 
 void StandaloneApp::OnShutdown()

@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // ViewportUI.cpp | fbzz::editor
 // UI Viewport の Canvas ガイド、2Dピッキング、UI Gizmo
 #include "ViewportCommon.hpp"
@@ -42,13 +42,13 @@ math::Vector2 RotateUIVector(const math::Vector2& v, float angle)
 
 UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Transform& local)
 {
-    // WHY: UI の localScale.xy は矩形サイズであり、親サイズを子の移動量へ掛けると
+    // WHY: UI の scale.xy は矩形サイズであり、親サイズを子の移動量へ掛けると
     //      Editor と Play の双方で子要素が親から大きく外れる。
-    // WHAT: 親の位置・回転だけを UI 階層として合成し、サイズは各要素の localScale.xy を使う。
-    const math::Vector2 localPos = { local.localPosition.x, local.localPosition.y };
+    // WHAT: 親の位置・回転だけを UI 階層として合成し、サイズは各要素の scale.xy を使う。
+    const math::Vector2 localPos = { local.position.x, local.position.y };
     UITransform2D result{};
     result.position = parent.position + RotateUIVector(localPos, parent.rotationZ);
-    result.rotationZ = parent.rotationZ + ExtractUIZRotation(local.localRotation);
+    result.rotationZ = parent.rotationZ + ExtractUIZRotation(local.rotation);
     return result;
 }
 
@@ -196,8 +196,8 @@ void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& v
                 if (area < bestArea) { bestArea = area; best = go.GetID(); }
             }
         } else if (img) {
-            const float ow = go.transform.localScale.x;
-            const float oh = go.transform.localScale.y;
+            const float ow = go.transform.scale.x;
+            const float oh = go.transform.scale.y;
             if (cx >= ox && cx <= ox + ow && cy >= oy && cy <= oy + oh) {
                 const float area = ow * oh;
                 if (area < bestArea) { bestArea = area; best = go.GetID(); }
@@ -310,12 +310,12 @@ bool DrawUIGizmo(EditorContext& ctx,
     const UITransform2D parentResolved = ResolveUITransform(*go, false);
     const UITransform2D resolved = ComposeUITransform(parentResolved, t);
     const float px = resolved.position.x, py = resolved.position.y;
-    const float localPx = t.localPosition.x, localPy = t.localPosition.y;
-    const float sw = img ? t.localScale.x : 0.0f;
-    const float sh = img ? t.localScale.y : 0.0f;
+    const float localPx = t.position.x, localPy = t.position.y;
+    const float sw = img ? t.scale.x : 0.0f;
+    const float sh = img ? t.scale.y : 0.0f;
 
     // Extract Z rotation from the quaternion.
-    const math::Quaternion& q = t.localRotation;
+    const math::Quaternion& q = t.rotation;
     const float localZAngle = ExtractUIZRotation(q);
     const float zAngle = resolved.rotationZ;
     const float cosZ = std::cosf(zAngle), sinZ = std::sinf(zAngle);
@@ -412,8 +412,8 @@ bool DrawUIGizmo(EditorContext& ctx,
             newX = startX + localMove.x;
             newY = startY + localMove.y;
             if (ctx.snapEnabled) { newX = std::round(newX); newY = std::round(newY); }
-            t.localPosition.x = newX;
-            t.localPosition.y = newY;
+            t.position.x = newX;
+            t.position.y = newY;
         }
     }
     // ==============================
@@ -452,7 +452,7 @@ bool DrawUIGizmo(EditorContext& ctx,
                 constexpr float k15deg = 3.14159265f / 12.0f;
                 newZ = std::round(newZ / k15deg) * k15deg;
             }
-            t.localRotation = math::Quaternion::FromEuler({ 0.0f, 0.0f, newZ });
+            t.rotation = math::Quaternion::FromEuler({ 0.0f, 0.0f, newZ });
         }
 
         // Angle label.
@@ -504,10 +504,10 @@ bool DrawUIGizmo(EditorContext& ctx,
             if (ctx.snapEnabled) { nw = std::round(nw); nh = std::round(nh); }
 
             // Keep the center fixed while resizing from handles.
-            t.localScale.x = nw;
-            t.localScale.y = nh;
-            t.localPosition.x = (startX + startWidth * 0.5f) - nw * 0.5f;
-            t.localPosition.y = (startY + startHeight * 0.5f) - nh * 0.5f;
+            t.scale.x = nw;
+            t.scale.y = nh;
+            t.position.x = (startX + startWidth * 0.5f) - nw * 0.5f;
+            t.position.y = (startY + startHeight * 0.5f) - nh * 0.5f;
         }
     }
 

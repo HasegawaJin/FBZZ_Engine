@@ -24,7 +24,7 @@ void ExecuteSkyPass(RenderPassContext& ctx)
 
         PostProcCB skyPostData{};
         skyPostData.exposure = 1.0f;
-        skyPostData.time     = core::Time::TotalTime();
+        skyPostData.time     = Time::time;
         resources.Update(h.postprocCB, &skyPostData, sizeof(PostProcCB));
 
         AtmosphereCB atmData{};

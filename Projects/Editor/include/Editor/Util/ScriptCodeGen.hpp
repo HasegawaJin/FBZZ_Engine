@@ -35,6 +35,14 @@ public:
                                     const std::string& dllCppPath,
                                     const std::string& staticCppPath = {});
 
+    // FBZZ Header Tool -- FBZZ_FIELD マクロをパースして .generated.hpp を生成する。
+    // @param headerPath  対象の .hpp ファイルパス
+    // @ret 生成した .generated.hpp のパス (失敗時は空)
+    static std::string GenerateReflect(const std::string& headerPath);
+
+    // scriptsDir 配下の全 .hpp に対して GenerateReflect を一括実行する。
+    static void GenerateReflectAll(const std::string& scriptsDir);
+
     // HLSL シェーダーファイルを生成する。
     // @param name     シェーダー名 ("MyEffect" など)
     // @param hlslDir  Assets/shaders/ のルートパス

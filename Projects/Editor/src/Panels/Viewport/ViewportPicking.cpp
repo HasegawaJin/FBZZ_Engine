@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // ViewportPicking.cpp | fbzz::editor
 // Scene View の Prefab ドロップと3Dピッキング
 #include "ViewportCommon.hpp"
@@ -61,7 +61,7 @@ bool InstantiatePrefabAssetAtViewport(EditorContext& ctx,
     const math::Vector3 position = PrefabDropPosition(ctx, viewportMin);
     for (scene::EntityID id : ctx.selectedEntities) {
         if (auto* go = ctx.activeScene->GetGameObject(id))
-            go->transform.localPosition = position;
+            go->transform.position = position;
     }
     return true;
 }

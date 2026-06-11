@@ -42,6 +42,9 @@ struct ScriptMaterialProxy {
     void SetVector4(std::string_view param, const math::Vector4& v) const;
     void SetTexture(std::string_view slot, std::string_view texPath) const;
 
+    float         GetFloat  (std::string_view param) const;
+    math::Vector3 GetVector3(std::string_view param) const;
+
     // SetEnabled: MaterialComponent の描画有効状態を切り替える。
     bool SetEnabled(bool enabled) const;
 

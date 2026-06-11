@@ -189,7 +189,7 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     for (const auto& w : water.waves) maxAmp += w.amplitude;
     const float yMargin = maxAmp + 0.5f;
 
-    const uint32_t numChunks = std::max(water.chunkCount, 1u);
+    const uint32_t numChunks = (std::max)(water.chunkCount, 1u);
 
     // チャンクごとのセル数（端数は最終チャンクに収める）
     const uint32_t cellsPerChunkX = (water.resolutionX + numChunks - 1) / numChunks;
@@ -199,8 +199,8 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
         for (uint32_t cx = 0; cx < numChunks; ++cx) {
             const uint32_t ixStart = cx * cellsPerChunkX;
             const uint32_t izStart = cz * cellsPerChunkZ;
-            const uint32_t ixEnd = std::min(ixStart + cellsPerChunkX, water.resolutionX);
-            const uint32_t izEnd = std::min(izStart + cellsPerChunkZ, water.resolutionZ);
+            const uint32_t ixEnd = (std::min)(ixStart + cellsPerChunkX, water.resolutionX);
+            const uint32_t izEnd = (std::min)(izStart + cellsPerChunkZ, water.resolutionZ);
 
             const uint32_t vertCols = ixEnd - ixStart + 1;
             const uint32_t vertRows = izEnd - izStart + 1;
@@ -397,7 +397,7 @@ void UpdateRippleState(
                 const float dist = d.Length();
                 if (dist <= math::EPSILON) continue;
 
-                const float w = std::max(ripple.waveWidth, 0.001f);
+                const float w = (std::max)(ripple.waveWidth, 0.001f);
                 const math::Vector2 dir = d.Normalized();
 
                 // WHY: 実際の水面は主リングに続いて複数の同心円が生まれる。
@@ -475,7 +475,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         const float k = validWave ? math::TWO_PI / wave.wavelength : 0.0f;
         const float omega = validWave ? std::sqrt(9.8f * k) : 0.0f;
         // steepness > 1 で波面が自己交差するため Release ビルドでも防御的にクランプする
-        const float steepness = std::min(wave.steepness, 1.0f);
+        const float steepness = (std::min)(wave.steepness, 1.0f);
         cb.waveDir[i] = { dir.x, dir.y, steepness, validWave ? 1.0f : 0.0f };
         cb.waveParams[i] = { validWave ? wave.amplitude : 0.0f, wave.wavelength, omega, k };
     }
@@ -516,9 +516,9 @@ void AddWaterRipple(
         math::Clamp01(positionUV.y)
     };
     ripple.amplitude = math::Clamp01(amplitude);
-    ripple.speed     = std::max(speed, 0.0f);
-    ripple.decayRate = std::max(decayRate, 0.0f);
-    ripple.waveWidth = std::max(waveWidth, 0.005f);
+    ripple.speed     = (std::max)(speed, 0.0f);
+    ripple.decayRate = (std::max)(decayRate, 0.0f);
+    ripple.waveWidth = (std::max)(waveWidth, 0.005f);
 
     WaterRippleState& state = s_rippleStates[waterEntity.index];
     state.ripples.push_back(ripple);
@@ -617,7 +617,7 @@ void WaterRenderSystem(
     //      ParticleEmitter はシーンの既存 ParticlePass がそのまま描画する。
     for (const SplashEvent& ev : s_pendingSplashes) {
         auto& go = scene.CreateGameObject("__WaterSplash");
-        go.transform.localPosition = ev.worldPos;
+        go.transform.position = ev.worldPos;
 
         ParticleEmitter emitter;
         emitter.enabled      = true;

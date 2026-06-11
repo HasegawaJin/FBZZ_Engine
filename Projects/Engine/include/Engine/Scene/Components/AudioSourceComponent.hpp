@@ -14,6 +14,7 @@ struct AudioSourceComponent {
     bool        playOnAwake = false;
     bool        loop        = false;
     float       volume      = 1.0f;
+    float       pitch       = 1.0f;
     bool        enabled     = true;
     bool        m_played       = false; // PlayOnAwake が発火済みかを追跡し、重複再生を防ぐ
     bool        m_isPlaying    = false; // 現在再生中
@@ -21,6 +22,8 @@ struct AudioSourceComponent {
     bool        m_pendingPlay  = false; // 次フレームに再生要求
     bool        m_pendingStop  = false; // 次フレームに停止要求
     bool        m_pendingPause = false; // 次フレームに一時停止要求
+    std::string m_oneShotPath;
+    bool        m_pendingOneShot = false; // 次フレームに one-shot 再生要求
 
     const char* GetTypeName() const { return "Audio Source"; }
     void Reflect(IReflector& r)

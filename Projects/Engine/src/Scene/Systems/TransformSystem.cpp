@@ -14,21 +14,21 @@ static void UpdateWorldTransform(GameObject& go, const Transform* parentTransfor
 
     if (parentTransform) {
         math::Vector3 scaledLocal = {
-            tf.localPosition.x * parentTransform->worldScale.x,
-            tf.localPosition.y * parentTransform->worldScale.y,
-            tf.localPosition.z * parentTransform->worldScale.z
+            tf.position.x * parentTransform->worldScale.x,
+            tf.position.y * parentTransform->worldScale.y,
+            tf.position.z * parentTransform->worldScale.z
         };
-        tf.rotation   = (parentTransform->rotation * tf.localRotation).Normalized();
-        tf.position   = parentTransform->position + parentTransform->rotation * scaledLocal;
+        tf.worldRotation   = (parentTransform->worldRotation * tf.rotation).Normalized();
+        tf.worldPosition   = parentTransform->worldPosition + parentTransform->worldRotation * scaledLocal;
         tf.worldScale = {
-            parentTransform->worldScale.x * tf.localScale.x,
-            parentTransform->worldScale.y * tf.localScale.y,
-            parentTransform->worldScale.z * tf.localScale.z
+            parentTransform->worldScale.x * tf.scale.x,
+            parentTransform->worldScale.y * tf.scale.y,
+            parentTransform->worldScale.z * tf.scale.z
         };
     } else {
-        tf.rotation   = tf.localRotation;
-        tf.position   = tf.localPosition;
-        tf.worldScale = tf.localScale;
+        tf.worldRotation   = tf.rotation;
+        tf.worldPosition   = tf.position;
+        tf.worldScale = tf.scale;
     }
 }
 

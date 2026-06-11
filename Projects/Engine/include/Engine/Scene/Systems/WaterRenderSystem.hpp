@@ -70,8 +70,8 @@ inline math::Vector2 WorldToWaterUV(
     const Transform&      waterTransform)
 {
     return {
-        math::Clamp01((worldPos.x - waterTransform.position.x + water.extentX * 0.5f) / water.extentX),
-        math::Clamp01((worldPos.z - waterTransform.position.z + water.extentZ * 0.5f) / water.extentZ)
+        math::Clamp01((worldPos.x - waterTransform.worldPosition.x + water.extentX * 0.5f) / water.extentX),
+        math::Clamp01((worldPos.z - waterTransform.worldPosition.z + water.extentZ * 0.5f) / water.extentZ)
     };
 }
 
