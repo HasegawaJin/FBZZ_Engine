@@ -157,6 +157,7 @@ void StandaloneApp::OnRender()
     uiOptions.mouseInCanvasSpace = input::Input::MousePosition();
     uiOptions.mousePressed       = input::Input::MouseButton(0);
     uiOptions.targetView         = scene::UIRenderTargetView::GameViewport;
+    uiOptions.context            = &m_uiCtx;
     scene::RenderSystem(*m_scene, m_renderer, m_resources, gameCamera, {}, &m_settings.render,
                         fbzz::Layer::Everything, &uiOptions);
 

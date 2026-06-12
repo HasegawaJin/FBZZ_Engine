@@ -1185,6 +1185,15 @@ void ScriptUIProxy::SetCanvasSortOrder(int order) const
     if (auto* canvas = SelfComponent<UICanvas>(script)) canvas->sortOrder = order;
 }
 
+void ScriptUIProxy::SetImageSpriteRect(float x, float y, float w, float h, float texW, float texH) const
+{
+    if (auto* img = SelfComponent<UIImage>(script)) {
+        const auto [uvMin, uvMax] = UIImage::PixelRectToUV(x, y, w, h, texW, texH);
+        img->uvMin = uvMin;
+        img->uvMax = uvMax;
+    }
+}
+
 GameObject* ScriptSceneProxy::Find(std::string_view name) const
 {
     return script ? script->Find(std::string(name)) : nullptr;

@@ -19,6 +19,16 @@ struct UIImage {
     math::Vector2 uvMin  = { 0.0f, 0.0f };
     math::Vector2 uvMax  = { 1.0f, 1.0f };
     bool          enabled = true;
+    // ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
+    std::string   loadedTexturePath = {};
+
+    // ピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW, texH) で正規化した UV ペアに変換する。
+    // スクリプトからスプライトシートの切り抜き範囲を設定するときに使う。
+    static std::pair<math::Vector2, math::Vector2> PixelRectToUV(
+        float x, float y, float w, float h, float texW, float texH)
+    {
+        return { { x / texW, y / texH }, { (x + w) / texW, (y + h) / texH } };
+    }
 
     const char* GetTypeName() const { return "UIImage"; }
     void Reflect(IReflector& r)
