@@ -2,7 +2,7 @@
 // UISystem.cpp | fbzz::scene
 // ランタイム UI の描画とボタン入力処理
 // UICanvas / UIImage / UIText / UIButton を走査し、DrawCall と hit 状態を作る。
-// ScreenSpace と WorldSpace の両方を扱う。
+// ScreenSpace / ScreenSpaceCamera / WorldSpace の 3 モードを扱う。
 #include "Engine/Scene/Systems/UISystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
@@ -19,13 +19,15 @@
 #include "Engine/Renderer/RenderState.hpp"
 #include "Math/Matrix4.hpp"
 #include "Math/Vector4.hpp"
+#include "Math/Ray.hpp"
+#include "Math/Plane.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
 #include "Engine/Core/Logger.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene {
@@ -55,25 +57,9 @@ struct CanvasRuntimeState {
     renderer::RenderLayer layer = renderer::RenderLayer::OVERLAY_LAYER;
 };
 
-std::string s_defaultFontPath = "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
-
-renderer::ResourceHandle<renderer::ShaderTag>         s_shader;
-renderer::ResourceHandle<renderer::ShaderTag>         s_textShader; // TTF アトラス用 (.r チャンネルを coverage として使う)
-renderer::ResourceHandle<renderer::ConstantBufferTag> s_constants;
-renderer::ResourceHandle<renderer::PipelineStateTag>  s_pso;      // ScreenSpace: 深度テストなし
-renderer::ResourceHandle<renderer::PipelineStateTag>  s_worldPso; // WorldSpace: 深度テストあり (DEPTH_READ)
-renderer::ResourceHandle<renderer::TextureTag>        s_whiteTexture;
-renderer::ResourceHandle<renderer::BufferTag>         s_imageVB;
-renderer::ResourceHandle<renderer::BufferTag>         s_textVB;
-
-// フォントアトラスキャッシュ。
-// WHY: UIText ごとに毎フレームロードすると IO コストが爆発するため、
-//      basePath をキーに初回ロード後はキャッシュから返す。
-std::unordered_map<std::string, renderer::FontAtlas> s_fontAtlasCache;
-
 // Fixed VB capacities
 static constexpr uint32_t kImageVBVertices = 6;
-static constexpr uint32_t kTextVBVertices  = 4096; // up to ~682 glyphs
+static constexpr uint32_t kTextVBVertices  = 4096; // ~682 グリフ分。超過時は複数ドローに分割する
 
 struct Rect { math::Vector2 pos; math::Vector2 size; };
 
@@ -110,8 +96,7 @@ UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Trans
 
 Rect RectFromTransform(const scene::Transform& t, const UITransform2D& resolved)
 {
-    return { resolved.position,
-             { t.scale.x,    t.scale.y    } };
+    return { resolved.position, { t.scale.x, t.scale.y } };
 }
 
 math::Vector4 Multiply(const math::Vector4& a, const math::Vector4& b)
@@ -119,60 +104,77 @@ math::Vector4 Multiply(const math::Vector4& a, const math::Vector4& b)
     return { a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w };
 }
 
-void EnsureInit(renderer::ResourceManager& resources)
+// ── Matrix4 × Vector4 ────────────────────────────────────────────────────────
+// WHY: Matrix4 に operator*(Vector4) がない場合も UISystem 内で使えるよう
+//      インライン実装する（WorldSpace ヒット判定で使用）。
+static math::Vector4 MulMV(const math::Matrix4& m, const math::Vector4& v)
 {
-    if (s_shader.IsValid()) return;
+    return {
+        m.m[0][0]*v.x + m.m[0][1]*v.y + m.m[0][2]*v.z + m.m[0][3]*v.w,
+        m.m[1][0]*v.x + m.m[1][1]*v.y + m.m[1][2]*v.z + m.m[1][3]*v.w,
+        m.m[2][0]*v.x + m.m[2][1]*v.y + m.m[2][2]*v.z + m.m[2][3]*v.w,
+        m.m[3][0]*v.x + m.m[3][1]*v.y + m.m[3][2]*v.z + m.m[3][3]*v.w,
+    };
+}
 
-    s_shader     = resources.LoadShader("Assets/shaders/UI/UISprite.hlsl");
-    s_textShader = resources.LoadShader("Assets/shaders/UI/UIText.hlsl");
-    s_constants  = resources.CreateConstantBuffer(sizeof(UIConstants));
-    s_pso = resources.CreatePipelineState({
+// ── UISystemContext 初期化 ────────────────────────────────────────────────────
+void EnsureInit(UISystemContext& ctx, renderer::ResourceManager& resources)
+{
+    if (ctx.initialized) return;
+    ctx.initialized = true;
+
+    ctx.shader     = resources.LoadShader("Assets/shaders/UI/UISprite.hlsl");
+    ctx.textShader = resources.LoadShader("Assets/shaders/UI/UIText.hlsl");
+    ctx.constants  = resources.CreateConstantBuffer(sizeof(UIConstants));
+    ctx.pso = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
-        renderer::DepthMode::DEPTH_OFF  // ScreenSpace UI は深度を無視して常に最前面
+        renderer::DepthMode::DEPTH_OFF
     });
-    // WorldSpace UI: 深度テストあり (3D オブジェクトで遮蔽される)・深度書き込みなし
-    // (アルファブレンドと両立させるため書き込みは行わない)
-    s_worldPso = resources.CreatePipelineState({
+    // WorldSpace / ScreenSpaceCamera UI: 深度テストあり・深度書き込みなし
+    ctx.worldPso = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
     });
 
     static constexpr uint8_t kWhite[4] = { 255, 255, 255, 255 };
-    s_whiteTexture = resources.CreateTexture(kWhite, 1, 1);
+    ctx.whiteTexture = resources.CreateTexture(kWhite, 1, 1);
 
-    // 頂点バッファは一度だけ確保し、毎フレーム Update で上書きする。
-    s_imageVB = resources.CreateVertexBuffer(nullptr, kImageVBVertices * sizeof(UIVertex), sizeof(UIVertex));
-    s_textVB  = resources.CreateVertexBuffer(nullptr, kTextVBVertices  * sizeof(UIVertex), sizeof(UIVertex));
+    ctx.imageVB = resources.CreateVertexBuffer(nullptr, kImageVBVertices * sizeof(UIVertex), sizeof(UIVertex));
+    ctx.textVB  = resources.CreateVertexBuffer(nullptr, kTextVBVertices  * sizeof(UIVertex), sizeof(UIVertex));
 
-    if (!s_shader.IsValid() || !s_textShader.IsValid() || !s_constants.IsValid() ||
-        !s_pso.IsValid() || !s_worldPso.IsValid() ||
-        !s_whiteTexture.IsValid() || !s_imageVB.IsValid() || !s_textVB.IsValid()) {
+    if (!ctx.shader.IsValid() || !ctx.textShader.IsValid() || !ctx.constants.IsValid() ||
+        !ctx.pso.IsValid() || !ctx.worldPso.IsValid() ||
+        !ctx.whiteTexture.IsValid() || !ctx.imageVB.IsValid() || !ctx.textVB.IsValid()) {
         FBZZ_LOG_ERROR("UISystem init failed: shader=%d textShader=%d cb=%d pso=%d worldPso=%d white=%d imageVB=%d textVB=%d",
-                       static_cast<int>(s_shader.IsValid()),
-                       static_cast<int>(s_textShader.IsValid()),
-                       static_cast<int>(s_constants.IsValid()),
-                       static_cast<int>(s_pso.IsValid()),
-                       static_cast<int>(s_worldPso.IsValid()),
-                       static_cast<int>(s_whiteTexture.IsValid()),
-                       static_cast<int>(s_imageVB.IsValid()),
-                       static_cast<int>(s_textVB.IsValid()));
+                       static_cast<int>(ctx.shader.IsValid()),
+                       static_cast<int>(ctx.textShader.IsValid()),
+                       static_cast<int>(ctx.constants.IsValid()),
+                       static_cast<int>(ctx.pso.IsValid()),
+                       static_cast<int>(ctx.worldPso.IsValid()),
+                       static_cast<int>(ctx.whiteTexture.IsValid()),
+                       static_cast<int>(ctx.imageVB.IsValid()),
+                       static_cast<int>(ctx.textVB.IsValid()));
     }
+}
+
+// ── Canvas 収集 ──────────────────────────────────────────────────────────────
+void CollectCanvasesRecursive(GameObject* go, std::vector<CanvasEntry>& canvases)
+{
+    if (!go || !go->activeSelf()) return;
+    if (auto* canvas = go->GetComponent<UICanvas>(); canvas && canvas->enabled)
+        canvases.push_back({ go, canvas });
+    for (int i = 0; i < go->GetChildCount(); ++i)
+        CollectCanvasesRecursive(go->GetChild(i), canvases);
 }
 
 void CollectCanvases(Scene& scene, std::vector<CanvasEntry>& canvases)
 {
-    const auto& roots = scene.GetRootGameObjects();
-    for (GameObject* root : roots) {
-        if (!root || !root->activeSelf()) continue;
-
-        auto* canvas = root->GetComponent<UICanvas>();
-        if (!canvas || !canvas->enabled) continue;
-
-        canvases.push_back({ root, canvas });
+    for (GameObject* root : scene.GetRootGameObjects()) {
+        if (!root) continue;
+        CollectCanvasesRecursive(root, canvases);
     }
-
     std::sort(canvases.begin(), canvases.end(),
         [](const CanvasEntry& a, const CanvasEntry& b) {
             return a.canvas->sortOrder < b.canvas->sortOrder;
@@ -183,10 +185,7 @@ bool IsScreenSpaceRenderMode(UIRenderMode mode);
 
 bool ShouldRenderCanvas(const UICanvas& canvas, UIRenderTargetView targetView)
 {
-    // WHY: UIViewport は Unity / Unreal の UI Designer に近い Canvas Editor として扱う。
-    //      WorldSpace Canvas は 3D シーン内の UI なので、UI 専用編集ビューへ混ぜると
-    //      HUD / メニュー編集時に奥行きやカメラ依存の情報が混在して役割が曖昧になる。
-    // WHAT: GameViewport は最終出力として全 Canvas、SceneViewport は WorldSpace、
+    // WHY: GameViewport は最終出力として全 Canvas、SceneViewport は WorldSpace、
     //       CanvasEditor は ScreenSpace だけ描く。
     if (targetView == UIRenderTargetView::SceneViewport)
         return canvas.renderMode == UIRenderMode::WorldSpace;
@@ -203,9 +202,8 @@ bool IsScreenSpaceRenderMode(UIRenderMode mode)
 
 float ResolveCanvasScale(const UICanvas& canvas, float viewportWidth, float viewportHeight)
 {
-    // WHY: Unity の Canvas Scaler と同じ考え方で、基準解像度と現在 Viewport の差を
-    //      UI 座標変換に集約する。個々の UIImage / UIText の値を書き換えないため、
-    //      編集データは常に reference 解像度の座標として保てる。
+    // WHY: Unity の Canvas Scaler と同じ考え方。基準解像度と現在 Viewport の差を
+    //      UI 座標変換に集約する。
     if (canvas.scaleMode != UICanvasScaleMode::ScaleWithScreenSize)
         return 1.0f;
 
@@ -223,18 +221,12 @@ void ResolveScreenSpaceCanvasArea(const UICanvas& canvas,
                                   float& visibleCanvasW,
                                   float& visibleCanvasH)
 {
-    // WHY: ScreenSpace UI の編集値は Canvas の論理ピクセル座標として保存する。
-    //      ConstantPixelSize で Viewport 実ピクセルを座標系にしてしまうと、UI Viewport で
-    //      配置した値が Play 時の Game View サイズに依存してずれる。
-    // WHAT: ConstantPixelSize は canvasWidth/canvasHeight をそのまま使い、
-    //       ScaleWithScreenSize は Canvas Scaler 後に見える論理範囲へ変換する。
     if (canvas.scaleMode == UICanvasScaleMode::ScaleWithScreenSize) {
         const float scale = ResolveCanvasScale(canvas, viewportWidth, viewportHeight);
         visibleCanvasW = (std::max)(1.0f, viewportWidth) / scale;
         visibleCanvasH = (std::max)(1.0f, viewportHeight) / scale;
         return;
     }
-
     visibleCanvasW = (std::max)(1.0f, canvas.canvasWidth);
     visibleCanvasH = (std::max)(1.0f, canvas.canvasHeight);
 }
@@ -245,10 +237,15 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
                                            float viewportHeight,
                                            math::Vector2 rawMouseInViewport,
                                            const math::Matrix4& viewProjection,
+                                           math::Vector3 cameraWorldPos,
+                                           math::Quaternion cameraWorldRot,
+                                           const UISystemContext& ctx,
                                            UIRenderTargetView targetView)
 {
     (void)targetView;
     CanvasRuntimeState state{};
+
+    // ── WorldSpace ────────────────────────────────────────────────────────────
     if (canvas.renderMode == UIRenderMode::WorldSpace) {
         const float ws = canvas.worldScale;
 
@@ -258,19 +255,52 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
         pixelToLocal.m[0][3] = -canvas.canvasWidth  * 0.5f * ws;
         pixelToLocal.m[1][3] =  canvas.canvasHeight * 0.5f * ws;
 
+        // WHY: 再帰収集後は Canvas が子 GO に置かれる可能性があるため worldPosition を使う
         const math::Matrix4 worldMatrix = math::Matrix4::TRS(
-            canvasGO.transform.position,
-            canvasGO.transform.rotation,
+            canvasGO.transform.worldPosition,
+            canvasGO.transform.worldRotation,
             math::Vector3::ONE
         );
 
         state.canvasToClip = viewProjection * worldMatrix * pixelToLocal;
-        state.mouseInCanvasSpace = rawMouseInViewport;
-        state.pso = s_worldPso;
+        state.mouseInCanvasSpace = rawMouseInViewport; // WorldSpace はレイキャストで処理
+        state.pso   = ctx.worldPso;
         state.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
         return state;
     }
 
+    // ── ScreenSpaceCamera ─────────────────────────────────────────────────────
+    if (canvas.renderMode == UIRenderMode::ScreenSpaceCamera) {
+        // Canvas をカメラ前方 planeDistance ワールド単位に配置し、カメラ向きで固定する。
+        // WHY: Overlay と同じスクリーン UI に深度テストを加えたい場合に使う。
+        //      マウス座標変換は Overlay と同じスクリーン座標系を維持する。
+        const float ws = canvas.worldScale;
+
+        math::Matrix4 pixelToLocal = math::Matrix4::Identity();
+        pixelToLocal.m[0][0] =  ws;
+        pixelToLocal.m[1][1] = -ws;
+        pixelToLocal.m[0][3] = -canvas.canvasWidth  * 0.5f * ws;
+        pixelToLocal.m[1][3] =  canvas.canvasHeight * 0.5f * ws;
+
+        // カメラ前方ベクトル: worldRot * (0, 0, 1)
+        const math::Vector3 camFwd = cameraWorldRot * math::Vector3{ 0.0f, 0.0f, 1.0f };
+        const math::Vector3 canvasPos = cameraWorldPos + camFwd * canvas.planeDistance;
+        const math::Matrix4 worldMatrix = math::Matrix4::TRS(
+            canvasPos, cameraWorldRot, math::Vector3::ONE);
+
+        state.canvasToClip = viewProjection * worldMatrix * pixelToLocal;
+        // マウス座標: Overlay と同じスクリーン→キャンバス変換
+        float visibleW = 1.0f, visibleH = 1.0f;
+        ResolveScreenSpaceCanvasArea(canvas, viewportWidth, viewportHeight, visibleW, visibleH);
+        const float scaleX = (std::max)(1.0f, viewportWidth) / visibleW;
+        const float scaleY = (std::max)(1.0f, viewportHeight) / visibleH;
+        state.mouseInCanvasSpace = { rawMouseInViewport.x / scaleX, rawMouseInViewport.y / scaleY };
+        state.pso   = ctx.worldPso;  // 深度テストあり (3D オブジェクトに遮蔽可)
+        state.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
+        return state;
+    }
+
+    // ── ScreenSpaceOverlay (デフォルト) ───────────────────────────────────────
     float visibleCanvasW = 1.0f;
     float visibleCanvasH = 1.0f;
     ResolveScreenSpaceCanvasArea(canvas, viewportWidth, viewportHeight,
@@ -284,11 +314,12 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
         visibleCanvasH, 0.0f,
         0.0f, 1.0f);
     state.mouseInCanvasSpace = { rawMouseInViewport.x / scaleX, rawMouseInViewport.y / scaleY };
-    state.pso = s_pso;
+    state.pso   = ctx.pso;
     state.layer = renderer::RenderLayer::OVERLAY_LAYER;
     return state;
 }
 
+// ── UIButton 更新 ─────────────────────────────────────────────────────────────
 void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool mousePressed)
 {
     const UIButtonState previousState = button.state;
@@ -308,7 +339,6 @@ void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool 
     const bool mouseJustPressed  = mousePressed  && !button.lastMouseState;
     const bool mouseJustReleased = !mousePressed && button.lastMouseState;
 
-    // 押下がこのボタン上で始まった場合のみ wasPressedOnThis を立てる。
     // WHY: ドラッグで流入した押下をクリックとして誤検出しないため。
     if (mouseJustPressed && hit)
         button.wasPressedOnThis = true;
@@ -340,11 +370,10 @@ math::Vector4 ButtonTint(const UIButton& button)
     return button.normalColor;
 }
 
-// canvasToClip: キャンバスピクセル座標をクリップ空間へ変換する行列。
-//   ScreenSpace: Matrix4::Orthographic(0, W, H, 0, 0, 1)
-//   WorldSpace:  VP * TRS(worldPos, worldRot, ONE) * pixelToLocal
+// ── 描画サブミット ────────────────────────────────────────────────────────────
 void SubmitImage(renderer::IRenderer& renderer,
                  renderer::ResourceManager& resources,
+                 UISystemContext& ctx,
                  const math::Matrix4& canvasToClip,
                  renderer::ResourceHandle<renderer::PipelineStateTag> pso,
                  renderer::RenderLayer layer,
@@ -368,35 +397,36 @@ void SubmitImage(renderer::IRenderer& renderer,
     };
 
     UIVertex vertices[6] = {
-        { rot(-hW, -hH), { 0.0f, 0.0f } },
-        { rot(-hW,  hH), { 0.0f, 1.0f } },
-        { rot( hW, -hH), { 1.0f, 0.0f } },
-        { rot( hW, -hH), { 1.0f, 0.0f } },
-        { rot(-hW,  hH), { 0.0f, 1.0f } },
-        { rot( hW,  hH), { 1.0f, 1.0f } },
+        { rot(-hW, -hH), { uvMin.x, uvMin.y } },
+        { rot(-hW,  hH), { uvMin.x, uvMax.y } },
+        { rot( hW, -hH), { uvMax.x, uvMin.y } },
+        { rot( hW, -hH), { uvMax.x, uvMin.y } },
+        { rot(-hW,  hH), { uvMin.x, uvMax.y } },
+        { rot( hW,  hH), { uvMax.x, uvMax.y } },
     };
-    resources.Update(s_imageVB, vertices, sizeof(vertices));
+    resources.Update(ctx.imageVB, vertices, sizeof(vertices));
 
     UIConstants constants{};
     constants.ortho  = canvasToClip;
     constants.color  = color;
     constants.uvRect = { uvMin.x, uvMin.y, uvMax.x, uvMax.y };
-    resources.Update(s_constants, &constants, sizeof(constants));
+    resources.Update(ctx.constants, &constants, sizeof(constants));
 
     renderer::DrawCall call;
-    call.vertexBuffer       = s_imageVB;
-    call.shader             = s_shader;
+    call.vertexBuffer       = ctx.imageVB;
+    call.shader             = ctx.shader;
     call.pipelineState      = pso;
-    call.constantBuffers[0] = s_constants;
+    call.constantBuffers[0] = ctx.constants;
     call.vertexCount        = 6;
     call.layer              = layer;
     call.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
-    call.textures[0]        = texture.IsValid() ? texture : s_whiteTexture;
+    call.textures[0]        = texture.IsValid() ? texture : ctx.whiteTexture;
     renderer.Submit(call, resources);
 }
 
 void SubmitRect(renderer::IRenderer& renderer,
                 renderer::ResourceManager& resources,
+                UISystemContext& ctx,
                 const math::Matrix4& canvasToClip,
                 renderer::ResourceHandle<renderer::PipelineStateTag> pso,
                 renderer::RenderLayer layer,
@@ -404,34 +434,33 @@ void SubmitRect(renderer::IRenderer& renderer,
                 math::Vector2 size,
                 const math::Vector4& color)
 {
-    SubmitImage(renderer, resources, canvasToClip, pso, layer,
+    SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
                 position, size, color,
-                { 0.0f, 0.0f }, { 1.0f, 1.0f }, s_whiteTexture);
+                { 0.0f, 0.0f }, { 1.0f, 1.0f }, ctx.whiteTexture);
 }
 
-// TTF アトラスをキャッシュから取得し、未ロードなら初回ロードする。
-// IsValid() == false の場合は内蔵 SDF へフォールバックすること。
+// ── フォントアトラス ──────────────────────────────────────────────────────────
 renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
+                                        UISystemContext& ctx,
                                         renderer::ResourceManager& resources)
 {
-    auto it = s_fontAtlasCache.find(basePath);
-    if (it != s_fontAtlasCache.end())
+    auto it = ctx.fontAtlasCache.find(basePath);
+    if (it != ctx.fontAtlasCache.end())
         return it->second;
 
-    renderer::FontAtlas& atlas = s_fontAtlasCache[basePath];
+    renderer::FontAtlas& atlas = ctx.fontAtlasCache[basePath];
     if (!atlas.Load(basePath, resources))
         FBZZ_LOG_ERROR("UISystem: failed to load FontAtlas: %s", basePath.c_str());
 
     return atlas;
 }
 
-// テキストの論理サイズ（幅×高さ）をフォントアトラスから計算する。
-// WHY: UILayoutGroup やヒット判定は transform.scale.xy をサイズとして使うため、
-//      テキスト内容が変わっても自動でサイズが更新される仕組みが必要。
-math::Vector2 ComputeTextLogicalSize(const UIText& text, renderer::ResourceManager& resources)
+math::Vector2 ComputeTextLogicalSize(const UIText& text,
+                                     UISystemContext& ctx,
+                                     renderer::ResourceManager& resources)
 {
-    const std::string& path = text.fontPath.empty() ? s_defaultFontPath : text.fontPath;
-    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(path, resources);
+    const std::string& path = text.fontPath.empty() ? ctx.defaultFontPath : text.fontPath;
+    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(path, ctx, resources);
     if (!atlas.IsValid()) return {};
 
     const float scale = text.fontSize / atlas.GetLineHeight();
@@ -454,44 +483,42 @@ math::Vector2 ComputeTextLogicalSize(const UIText& text, renderer::ResourceManag
     return { maxW, totalH };
 }
 
-void UpdateTextSizesRecursive(GameObject& go, renderer::ResourceManager& resources)
+void UpdateTextSizesRecursive(GameObject& go,
+                              UISystemContext& ctx,
+                              renderer::ResourceManager& resources)
 {
     if (!go.activeSelf()) return;
     if (auto* text = go.GetComponent<UIText>(); text && text->enabled && !text->text.empty()) {
-        const math::Vector2 size = ComputeTextLogicalSize(*text, resources);
+        const math::Vector2 size = ComputeTextLogicalSize(*text, ctx, resources);
         go.transform.scale.x = size.x;
         go.transform.scale.y = size.y;
     }
     for (int i = 0; i < go.GetChildCount(); ++i)
         if (GameObject* child = go.GetChild(i))
-            UpdateTextSizesRecursive(*child, resources);
+            UpdateTextSizesRecursive(*child, ctx, resources);
 }
 
 void UITextSizeSystem(const std::vector<CanvasEntry>& canvases,
+                      UISystemContext& ctx,
                       renderer::ResourceManager& resources)
 {
     for (const CanvasEntry& entry : canvases)
-        UpdateTextSizesRecursive(*entry.go, resources);
+        UpdateTextSizesRecursive(*entry.go, ctx, resources);
 }
 
-// TTF 由来のフォントアトラスを使ってテキストをサブミットする。
-// WHY: 内蔵 SDF は 5x7 ピクセルビットマップが限界だが、Kenney 等の TTF アトラスは
-//      任意フォントサイズで高品質な文字を描画できる。
-// WHAT:
-//   scale = fontSize / atlas.line_height でアトラスピクセルを論理ピクセルへ変換する。
-//   各グリフのセル UV を使い、advance でペンを進める。透明部分はアルファブレンドで消える。
+// ── テキスト描画（マルチドロー対応）─────────────────────────────────────────
 void SubmitTextWithAtlas(renderer::IRenderer& renderer,
                          renderer::ResourceManager& resources,
+                         UISystemContext& ctx,
                          const math::Matrix4& canvasToClip,
                          renderer::ResourceHandle<renderer::PipelineStateTag> pso,
                          renderer::RenderLayer layer,
                          const UIText& text,
                          math::Vector2 position)
 {
-    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(text.fontPath, resources);
+    renderer::FontAtlas& atlas = GetOrLoadFontAtlas(text.fontPath, ctx, resources);
     if (!atlas.IsValid()) return;
 
-    // アトラスのレンダリングサイズから論理ピクセルへのスケール係数
     const float scale = text.fontSize / atlas.GetLineHeight();
     const float cellW = atlas.GetCellW() * scale;
     const float cellH = atlas.GetLineHeight() * scale;
@@ -531,7 +558,6 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
 
         const renderer::FontGlyph* g = atlas.GetGlyph(c);
         if (!g) {
-            // 未登録文字: スペース幅相当だけ進める
             pen.x += cellW * 0.5f + text.letterSpacing;
             continue;
         }
@@ -553,37 +579,39 @@ void SubmitTextWithAtlas(renderer::IRenderer& renderer,
 
     if (verts.empty()) return;
 
-    const uint32_t vertCount = static_cast<uint32_t>(verts.size());
-    if (vertCount > kTextVBVertices) {
-        FBZZ_LOG_ERROR("UISystem: text is too long (%u verts > %u capacity)", vertCount, kTextVBVertices);
-        return;
-    }
-    resources.Update(s_textVB, verts.data(), vertCount * sizeof(UIVertex));
-
+    // 定数バッファは全チャンク共通なので 1 回だけ更新する。
     UIConstants constants{};
     constants.ortho  = canvasToClip;
     constants.color  = text.color;
     constants.uvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
-    resources.Update(s_constants, &constants, sizeof(constants));
+    resources.Update(ctx.constants, &constants, sizeof(constants));
 
     renderer::DrawCall call;
-    call.vertexBuffer       = s_textVB;
-    // WHY: UISprite.hlsl はテクスチャの alpha チャンネルをそのまま出力するが、
-    //      WIC の PNG ロードが alpha を失うと背景が黒矩形として描画される。
-    //      UIText.hlsl は .r チャンネルを coverage として読み clip() で背景を除去するため、
-    //      alpha チャンネルの保持に依存せず正しく透明を扱える。
-    call.shader             = s_textShader;
+    call.vertexBuffer       = ctx.textVB;
+    // WHY: UIText.hlsl の .r チャンネルを coverage として使い、alpha チャンネル依存を排除する。
+    call.shader             = ctx.textShader;
     call.pipelineState      = pso;
-    call.constantBuffers[0] = s_constants;
-    call.vertexCount        = vertCount;
+    call.constantBuffers[0] = ctx.constants;
     call.layer              = layer;
     call.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
     call.textures[0]        = atlas.GetTexture();
-    renderer.Submit(call, resources);
+
+    // kTextVBVertices を超えるテキストはチャンク分割して複数ドローコールで描く。
+    // WHY: 固定 VB サイズを超えてもエラーで打ち切らず全グリフを描画するため。
+    uint32_t offset = 0;
+    const uint32_t total = static_cast<uint32_t>(verts.size());
+    while (offset < total) {
+        const uint32_t chunk = (std::min)(total - offset, kTextVBVertices);
+        resources.Update(ctx.textVB, verts.data() + offset, chunk * sizeof(UIVertex));
+        call.vertexCount = chunk;
+        renderer.Submit(call, resources);
+        offset += chunk;
+    }
 }
 
 void SubmitText(renderer::IRenderer& renderer,
                 renderer::ResourceManager& resources,
+                UISystemContext& ctx,
                 const math::Matrix4& canvasToClip,
                 renderer::ResourceHandle<renderer::PipelineStateTag> pso,
                 renderer::RenderLayer layer,
@@ -594,16 +622,18 @@ void SubmitText(renderer::IRenderer& renderer,
 
     if (text.fontPath.empty()) {
         UIText defaulted = text;
-        defaulted.fontPath = s_defaultFontPath;
-        SubmitTextWithAtlas(renderer, resources, canvasToClip, pso, layer, defaulted, position);
+        defaulted.fontPath = ctx.defaultFontPath;
+        SubmitTextWithAtlas(renderer, resources, ctx, canvasToClip, pso, layer, defaulted, position);
         return;
     }
-    SubmitTextWithAtlas(renderer, resources, canvasToClip, pso, layer, text, position);
+    SubmitTextWithAtlas(renderer, resources, ctx, canvasToClip, pso, layer, text, position);
 }
 
-// UILayoutGroup が管理する子 GO の transform.localPosition を上書きする
-void ApplyLayout(GameObject& go, const UILayoutGroup& layout)
+// ── UILayoutGroup ─────────────────────────────────────────────────────────────
+void ApplyLayout(GameObject& go, const UILayoutGroup& layout, float canvasScale)
 {
+    static std::unordered_set<const UILayoutGroup*> s_warnedLayouts;
+
     const int count = go.GetChildCount();
 
     std::vector<int> indices;
@@ -630,21 +660,42 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout)
             cursor += t.scale.y + layout.spacing;
         }
     }
+
+    // paddingRight / paddingBottom がコンテナ末端として機能しているか検証する。
+    // WHY: レイアウトはクリッピングを行わないためはみ出しは描画バグとして現れる。
+    if (!indices.empty()) {
+        const float endPos  = cursor - layout.spacing;
+        const float contW   = go.transform.scale.x;
+        const float contH   = go.transform.scale.y;
+        const bool overflow = (layout.axis == UILayoutAxis::Horizontal)
+            ? (endPos > contW - layout.paddingRight)
+            : (endPos > contH - layout.paddingBottom);
+
+        if (overflow && s_warnedLayouts.find(&layout) == s_warnedLayouts.end()) {
+            s_warnedLayouts.insert(&layout);
+            const float excess = (layout.axis == UILayoutAxis::Horizontal)
+                ? (endPos - (contW - layout.paddingRight))
+                : (endPos - (contH - layout.paddingBottom));
+            FBZZ_LOG_WARN("UILayoutGroup: children overflow container by %.1f canvas-px (%.1f viewport-px, canvasScale=%.2f)",
+                          excess, excess * canvasScale, canvasScale);
+        }
+    }
 }
 
-void ApplyUILayoutRecursive(GameObject& go)
+void ApplyUILayoutRecursive(GameObject& go, float canvasScale)
 {
     if (!go.activeSelf()) return;
 
     if (auto* layout = go.GetComponent<UILayoutGroup>(); layout && layout->enabled)
-        ApplyLayout(go, *layout);
+        ApplyLayout(go, *layout, canvasScale);
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            ApplyUILayoutRecursive(*child);
+            ApplyUILayoutRecursive(*child, canvasScale);
     }
 }
 
+// ── UIButton イベント処理 ─────────────────────────────────────────────────────
 void ProcessUIEventsRecursive(GameObject& go,
                               const UITransform2D& parentTransform,
                               math::Vector2 mouseInCanvasSpace,
@@ -656,16 +707,20 @@ void ProcessUIEventsRecursive(GameObject& go,
     const UITransform2D resolved = applySelfTransform
         ? ComposeUITransform(parentTransform, go.transform)
         : parentTransform;
-    auto* image  = go.GetComponent<UIImage>();
+
     auto* button = go.GetComponent<UIButton>();
     if (button) {
-        if (image && image->enabled)
+        // UIImage の有無に関わらず transform.scale.xy が有効ならヒット判定する。
+        // WHY: UIImage なしで UIText / 子要素だけで構成されるボタンにも対応する。
+        if (go.transform.scale.x > 0.0f && go.transform.scale.y > 0.0f)
             UpdateButton(*button, RectFromTransform(go.transform, resolved), mouseInCanvasSpace, mousePressed);
         else {
-            button->onClick = false;
-            button->onEnter = false;
-            button->onExit  = false;
-            button->state   = UIButtonState::NORMAL;
+            button->onClick          = false;
+            button->onEnter          = false;
+            button->onExit           = false;
+            button->state            = UIButtonState::NORMAL;
+            button->wasPressedOnThis = false;
+            button->lastMouseState   = mousePressed;
         }
     }
 
@@ -675,12 +730,12 @@ void ProcessUIEventsRecursive(GameObject& go,
     }
 }
 
-// canvasToClip: SubmitImage / SubmitText へそのまま渡す変換行列。
-// pso / layer:  ScreenSpace と WorldSpace で異なる PSO とレイヤーを切り替える。
+// ── レンダリング ──────────────────────────────────────────────────────────────
 void RenderCanvasRecursive(GameObject& go,
                            const UITransform2D& parentTransform,
                            renderer::IRenderer& renderer,
                            renderer::ResourceManager& resources,
+                           UISystemContext& ctx,
                            const math::Matrix4& canvasToClip,
                            renderer::ResourceHandle<renderer::PipelineStateTag> pso,
                            renderer::RenderLayer layer,
@@ -697,35 +752,38 @@ void RenderCanvasRecursive(GameObject& go,
 
     if (image && image->enabled) {
         if (!image->texturePath.empty() && image->texturePath != image->loadedTexturePath) {
-            image->texture            = resources.LoadTexture(image->texturePath);
-            image->loadedTexturePath  = image->texturePath;
+            image->texture           = resources.LoadTexture(image->texturePath);
+            image->loadedTexturePath = image->texturePath;
         }
 
         const Rect    r     = RectFromTransform(go.transform, resolved);
         math::Vector4 color = image->color;
         if (button)
             color = Multiply(color, ButtonTint(*button));
-        SubmitImage(renderer, resources, canvasToClip, pso, layer,
+        SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
                     r.pos, r.size, color,
                     image->uvMin, image->uvMax,
-                    image->texture.IsValid() ? image->texture : s_whiteTexture,
+                    image->texture.IsValid() ? image->texture : ctx.whiteTexture,
                     resolved.rotationZ);
     }
 
     if (text && text->enabled) {
-        SubmitText(renderer, resources, canvasToClip, pso, layer, *text, resolved.position);
+        SubmitText(renderer, resources, ctx, canvasToClip, pso, layer, *text, resolved.position);
     }
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            RenderCanvasRecursive(*child, resolved, renderer, resources, canvasToClip, pso, layer);
+            RenderCanvasRecursive(*child, resolved, renderer, resources, ctx, canvasToClip, pso, layer);
     }
 }
 
-void UILayoutSystem(const std::vector<CanvasEntry>& canvases)
+// ── サブシステム ──────────────────────────────────────────────────────────────
+void UILayoutSystem(const std::vector<CanvasEntry>& canvases, float viewportWidth, float viewportHeight)
 {
-    for (const CanvasEntry& entry : canvases)
-        ApplyUILayoutRecursive(*entry.go);
+    for (const CanvasEntry& entry : canvases) {
+        const float scale = ResolveCanvasScale(*entry.canvas, viewportWidth, viewportHeight);
+        ApplyUILayoutRecursive(*entry.go, scale);
+    }
 }
 
 void UIEventSystem(const std::vector<CanvasEntry>& canvases,
@@ -734,28 +792,79 @@ void UIEventSystem(const std::vector<CanvasEntry>& canvases,
                    math::Vector2 rawMouseInViewport,
                    bool mousePressed,
                    const math::Matrix4& viewProjection,
+                   math::Vector3 cameraWorldPos,
                    UIRenderTargetView targetView)
 {
     for (const CanvasEntry& entry : canvases) {
         if (!ShouldRenderCanvas(*entry.canvas, targetView))
             continue;
-        if (!IsScreenSpaceRenderMode(entry.canvas->renderMode))
-            continue;
 
-        const CanvasRuntimeState state = BuildCanvasRuntimeState(
-            *entry.canvas, *entry.go, viewportWidth, viewportHeight, rawMouseInViewport,
-            viewProjection, targetView);
+        // ── WorldSpace ヒット判定: スクリーン座標→ワールドレイ→キャンバスピクセル ──
+        if (!IsScreenSpaceRenderMode(entry.canvas->renderMode)) {
+            // 1. NDC マウス座標を計算してワールドレイを構築する
+            const float ndcX =  (rawMouseInViewport.x / (std::max)(1.0f, viewportWidth))  * 2.0f - 1.0f;
+            const float ndcY = -(rawMouseInViewport.y / (std::max)(1.0f, viewportHeight)) * 2.0f + 1.0f;
+            const math::Matrix4 invVP = math::Matrix4::Inverse(viewProjection);
+            const math::Ray worldRay = math::Ray::FromNDC(ndcX, ndcY, cameraWorldPos, invVP);
+
+            // 2. キャンバスのワールド行列と法線平面を構築する
+            const math::Matrix4 worldMat = math::Matrix4::TRS(
+                entry.go->transform.worldPosition,
+                entry.go->transform.worldRotation,
+                math::Vector3::ONE);
+            // Z 列 = キャンバス平面の法線 (ローカル前方がワールド空間でどの方向か)
+            const math::Vector3 normal = {
+                worldMat.m[0][2], worldMat.m[1][2], worldMat.m[2][2]
+            };
+            const math::Plane plane = math::Plane::FromNormalAndPoint(
+                normal, entry.go->transform.worldPosition);
+
+            // 3. レイと平面の交差判定
+            float t;
+            if (!worldRay.IntersectPlane(plane, t) || t < 0.0f) continue;
+            const math::Vector3 hitWorld = worldRay.At(t);
+
+            // 4. ヒット点をキャンバスピクセル座標へ逆変換する
+            // worldMat^-1 を手計算: 純粋な TRS (scale=1) なら  localPos = invWorldMat * hitWorld
+            const math::Matrix4 invWorld = math::Matrix4::Inverse(worldMat);
+            const math::Vector4 hitLocal = MulMV(invWorld,
+                { hitWorld.x, hitWorld.y, hitWorld.z, 1.0f });
+
+            const float ws = entry.canvas->worldScale;
+            const math::Vector2 canvasPx = {
+                 hitLocal.x / ws + entry.canvas->canvasWidth  * 0.5f,
+                -hitLocal.y / ws + entry.canvas->canvasHeight * 0.5f
+            };
+
+            const UITransform2D canvasRoot{};
+            ProcessUIEventsRecursive(*entry.go, canvasRoot, canvasPx, mousePressed, false);
+            continue;
+        }
+
+        // ── ScreenSpace (Overlay / ScreenSpaceCamera) ──────────────────────────
+        // NOTE: BuildCanvasRuntimeState を呼ばず直接計算する (cameraWorldRot 不要)
+        float visibleW = 1.0f, visibleH = 1.0f;
+        ResolveScreenSpaceCanvasArea(*entry.canvas, viewportWidth, viewportHeight, visibleW, visibleH);
+        const float scaleX = (std::max)(1.0f, viewportWidth) / visibleW;
+        const float scaleY = (std::max)(1.0f, viewportHeight) / visibleH;
+        const math::Vector2 mouseInCanvas = {
+            rawMouseInViewport.x / scaleX, rawMouseInViewport.y / scaleY
+        };
+
         const UITransform2D canvasRoot{};
-        ProcessUIEventsRecursive(*entry.go, canvasRoot, state.mouseInCanvasSpace, mousePressed, false);
+        ProcessUIEventsRecursive(*entry.go, canvasRoot, mouseInCanvas, mousePressed, false);
     }
 }
 
 void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
                     renderer::IRenderer& renderer,
                     renderer::ResourceManager& resources,
+                    UISystemContext& ctx,
                     float viewportWidth,
                     float viewportHeight,
                     math::Vector2 rawMouseInViewport,
+                    math::Vector3 cameraWorldPos,
+                    math::Quaternion cameraWorldRot,
                     const math::Matrix4& viewProjection,
                     UIRenderTargetView targetView)
 {
@@ -766,46 +875,60 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
             continue;
 
         const CanvasRuntimeState state = BuildCanvasRuntimeState(
-            *entry.canvas, *entry.go, viewportWidth, viewportHeight, rawMouseInViewport,
-            viewProjection, targetView);
+            *entry.canvas, *entry.go,
+            viewportWidth, viewportHeight,
+            rawMouseInViewport, viewProjection,
+            cameraWorldPos, cameraWorldRot, ctx, targetView);
         const UITransform2D canvasRoot{};
-        RenderCanvasRecursive(*entry.go, canvasRoot, renderer, resources,
+        RenderCanvasRecursive(*entry.go, canvasRoot, renderer, resources, ctx,
                               state.canvasToClip, state.pso, state.layer, false);
     }
 }
 
-} // namespace
+} // namespace (anonymous)
 
-void UISystemSetDefaultFontPath(const std::string& basePath)
+// ── 公開 API ──────────────────────────────────────────────────────────────────
+void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePath)
 {
-    s_defaultFontPath = basePath;
+    ctx.defaultFontPath = basePath;
+}
+
+void UISystemFlushCache(UISystemContext& ctx)
+{
+    // WHY: シーン破棄時・アセットリロード時に呼び出して、古い FontAtlas テクスチャハンドルが
+    //      破棄済み ResourceManager を参照し続けるのを防ぐ。
+    ctx.fontAtlasCache.clear();
 }
 
 void UISystem(Scene& scene,
               renderer::IRenderer& renderer,
               renderer::ResourceManager& resources,
+              UISystemContext& ctx,
               float viewportWidth,
               float viewportHeight,
-              math::Vector2 mouseInCanvasSpace,
+              math::Vector2 mouseInViewport,
               bool mousePressed,
+              math::Vector3    cameraWorldPos,
+              math::Quaternion cameraWorldRot,
               const math::Matrix4& viewProjection,
               UIRenderTargetView targetView)
 {
-    EnsureInit(resources);
-    if (!s_shader.IsValid() || !s_constants.IsValid() ||
-        !s_pso.IsValid() || !s_worldPso.IsValid() ||
-        !s_whiteTexture.IsValid() || !s_imageVB.IsValid() || !s_textVB.IsValid())
+    EnsureInit(ctx, resources);
+    if (!ctx.shader.IsValid() || !ctx.constants.IsValid() ||
+        !ctx.pso.IsValid() || !ctx.worldPso.IsValid() ||
+        !ctx.whiteTexture.IsValid() || !ctx.imageVB.IsValid() || !ctx.textVB.IsValid())
         return;
 
     std::vector<CanvasEntry> canvases;
     CollectCanvases(scene, canvases);
 
-    UITextSizeSystem(canvases, resources); // テキストサイズを transform.scale.xy へ反映してからレイアウトを走らせる
-    UILayoutSystem(canvases);
-    UIEventSystem(canvases, viewportWidth, viewportHeight, mouseInCanvasSpace,
-                  mousePressed, viewProjection, targetView);
-    UIRenderSystem(canvases, renderer, resources, viewportWidth, viewportHeight,
-                   mouseInCanvasSpace, viewProjection, targetView);
+    UITextSizeSystem(canvases, ctx, resources);
+    UILayoutSystem(canvases, viewportWidth, viewportHeight);
+    UIEventSystem(canvases, viewportWidth, viewportHeight, mouseInViewport,
+                  mousePressed, viewProjection, cameraWorldPos, targetView);
+    UIRenderSystem(canvases, renderer, resources, ctx,
+                   viewportWidth, viewportHeight, mouseInViewport,
+                   cameraWorldPos, cameraWorldRot, viewProjection, targetView);
 }
 
 } // namespace fbzz::scene
