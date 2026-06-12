@@ -41,7 +41,7 @@ bool StandaloneModule::OnInit()
     }
 
     scene::ApplyPhysicsSettings(m_physicsWorld, m_settings);
-    scene::ApplyUISettings(m_settings);
+    scene::ApplyUISettings(m_settings, &m_uiCtx);
     m_sceneManager.SetScene(m_scene.get());
     m_sceneManager.SetPhysicsHz(m_settings.physics.hz);
     return true;
@@ -81,6 +81,7 @@ void StandaloneModule::OnRender()
     uiOptions.mouseInCanvasSpace = input::Input::MousePosition();
     uiOptions.mousePressed = input::Input::MouseButton(0);
     uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+    uiOptions.context = &m_uiCtx;
     scene::RenderSystem(*m_scene, m_renderer, m_resources, gameCamera, {}, &m_settings.render,
                         fbzz::Layer::Everything, &uiOptions);
     {

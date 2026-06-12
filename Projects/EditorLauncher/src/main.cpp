@@ -144,7 +144,9 @@ void WarmupRenderResources(scene::Scene& scene,
                            editor::EditorApp& editorApp,
                            const renderer::Camera& sceneCamera,
                            const renderer::Camera& gameCamera,
-                           fbzz::LayerMask gameCullingMask)
+                           fbzz::LayerMask gameCullingMask,
+                           scene::UISystemContext& sceneUICtx,
+                           scene::UISystemContext& gameUICtx)
 {
     // WHY: RenderSystem は初回呼び出しで shader / PSO / shadow map / GBuffer などを lazy initialize する。
     // その負荷を最初の可視フレームに乗せると、Release では起動直後だけ FPS 表示が大きく落ちる。
@@ -166,6 +168,7 @@ void WarmupRenderResources(scene::Scene& scene,
         uiOptions.viewportWidth = w;
         uiOptions.viewportHeight = h;
         uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
+        uiOptions.context = &sceneUICtx;
         scene::RenderSystem(scene, renderer, resources, sceneCamera, sceneRT, &sceneRenderSettings,
                             fbzz::Layer::Everything, &uiOptions);
     }
@@ -184,6 +187,7 @@ void WarmupRenderResources(scene::Scene& scene,
         uiOptions.viewportWidth = w;
         uiOptions.viewportHeight = h;
         uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+        uiOptions.context = &gameUICtx;
         scene::RenderSystem(scene,
                             renderer,
                             resources,
@@ -229,7 +233,10 @@ void RunEditorLoop(renderer::IRenderer& renderer,
 
     physics::World physicsWorld;
     scene::ApplyPhysicsSettings(physicsWorld, editorApp.GetContext().projectSettings);
-    scene::ApplyUISettings(editorApp.GetContext().projectSettings);
+    scene::UISystemContext sceneUICtx;
+    scene::UISystemContext gameUICtx;
+    scene::ApplyUISettings(editorApp.GetContext().projectSettings, &gameUICtx);
+    scene::ApplyUISettings(editorApp.GetContext().projectSettings, &sceneUICtx);
     float physicsAccumulator = 0.0f;
 
     constexpr float kFocusAnimDuration = 0.30f;
@@ -260,7 +267,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         renderer::Camera gameCamera = scene::ResolveEditorGameCamera(*scene, debugCamera.camera, warmupAspect);
         fbzz::LayerMask gameCullingMask = scene::ResolveGameCullingMask(*scene);
 
-        WarmupRenderResources(*scene, renderer, resources, editorApp, debugCamera.camera, gameCamera, gameCullingMask);
+        WarmupRenderResources(*scene, renderer, resources, editorApp, debugCamera.camera, gameCamera, gameCullingMask, sceneUICtx, gameUICtx);
 
         // WHY: warmup にかかった時間を最初の DeltaTime / FPS 表示へ混ぜない。
         // WHAT: Time をここで初期化し、メインループの次フレームから通常計測を始める。
@@ -418,6 +425,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             uiOptions.viewportWidth = w;
             uiOptions.viewportHeight = h;
             uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
+            uiOptions.context = &sceneUICtx;
             scene::RenderSystem(*scene,
                                 renderer,
                                 resources,
@@ -457,6 +465,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                 uiOptions.viewportWidth = w;
                 uiOptions.viewportHeight = h;
                 uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+                uiOptions.context = &gameUICtx;
                 scene::RenderSystem(*scene,
                                     renderer,
                                     resources,
