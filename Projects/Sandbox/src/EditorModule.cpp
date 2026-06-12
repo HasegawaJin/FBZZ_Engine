@@ -48,7 +48,8 @@ bool EditorModule::OnInit()
     }
 
     scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-    scene::ApplyUISettings(m_editorApp.GetContext().projectSettings);
+    scene::ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_gameUICtx);
+    scene::ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_sceneUICtx);
     m_sceneManager.SetScene(m_scene.get());
     m_sceneManager.SetPhysicsHz(m_editorApp.GetContext().projectSettings.physics.hz);
 
@@ -208,6 +209,7 @@ void EditorModule::RenderSceneViewport(renderer::ResourceHandle<renderer::Render
     uiOptions.viewportWidth = w;
     uiOptions.viewportHeight = h;
     uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
+    uiOptions.context = &m_sceneUICtx;
     scene::RenderSystem(*m_scene,
                         m_renderer,
                         m_resources,
@@ -259,6 +261,7 @@ void EditorModule::RenderGameViewport(renderer::ResourceHandle<renderer::RenderT
     uiOptions.viewportWidth = w;
     uiOptions.viewportHeight = h;
     uiOptions.targetView = scene::UIRenderTargetView::GameViewport;
+    uiOptions.context = &m_gameUICtx;
     scene::RenderSystem(*m_scene,
                         m_renderer,
                         m_resources,

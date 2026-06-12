@@ -268,9 +268,10 @@ void ApplyPhysicsSettings(fbzz::physics::World& world, const fbzz::ProjectSettin
     world.SetSubsteps(settings.physics.substeps);
 }
 
-void ApplyUISettings(const fbzz::ProjectSettings& settings)
+void ApplyUISettings(const fbzz::ProjectSettings& settings, fbzz::scene::UISystemContext* ctx = nullptr)
 {
-    fbzz::scene::UISystemSetDefaultFontPath(settings.ui.defaultFontPath);
+    if (ctx && !settings.ui.defaultFontPath.empty())
+        fbzz::scene::UISystemSetDefaultFontPath(*ctx, settings.ui.defaultFontPath);
 }
 
 fbzz::renderer::Camera ResolveGameCamera(fbzz::scene::Scene& scene, float aspectRatio)
@@ -332,7 +333,7 @@ public:
             return false;
         }
         ApplyPhysicsSettings(m_physicsWorld, m_settings);
-        ApplyUISettings(m_settings);
+        ApplyUISettings(m_settings, &m_uiCtx);
         m_sceneManager.SetScene(m_scene.get());
         m_sceneManager.SetPhysicsHz(m_settings.physics.hz);
         return true;
@@ -368,6 +369,7 @@ public:
         uiOptions.mouseInCanvasSpace = fbzz::input::Input::MousePosition();
         uiOptions.mousePressed       = fbzz::input::Input::MouseButton(0);
         uiOptions.targetView         = fbzz::scene::UIRenderTargetView::GameViewport;
+        uiOptions.context            = &m_uiCtx;
         fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources, gameCamera, {},
                                   &m_settings.render, fbzz::Layer::Everything, &uiOptions);
         { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
@@ -386,6 +388,7 @@ private:
     std::unique_ptr<fbzz::scene::Scene> m_scene;
     fbzz::physics::World                m_physicsWorld;
     fbzz::scene::SceneManager           m_sceneManager;
+    fbzz::scene::UISystemContext        m_uiCtx;
 };
 
 // ============================================================
@@ -421,7 +424,8 @@ public:
             return false;
 
         ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-        ApplyUISettings(m_editorApp.GetContext().projectSettings);
+        ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_gameUICtx);
+        ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_sceneUICtx);
         m_sceneManager.SetScene(m_scene.get());
         m_sceneManager.SetPhysicsHz(m_editorApp.GetContext().projectSettings.physics.hz);
 
@@ -599,6 +603,7 @@ private:
         uiOptions.viewportWidth  = w;
         uiOptions.viewportHeight = h;
         uiOptions.targetView     = fbzz::scene::UIRenderTargetView::SceneViewport;
+        uiOptions.context        = &m_sceneUICtx;
         fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources,
                                   m_debugCamera.camera, sceneRT, &sceneRenderSettings,
                                   fbzz::Layer::Everything, &uiOptions);
@@ -640,6 +645,7 @@ private:
         uiOptions.viewportWidth  = w;
         uiOptions.viewportHeight = h;
         uiOptions.targetView     = fbzz::scene::UIRenderTargetView::GameViewport;
+        uiOptions.context        = &m_gameUICtx;
         fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources,
                                   gameCamera, gameRT, &gameRenderSettings,
                                   gameCullingMask, &uiOptions);
@@ -665,6 +671,8 @@ private:
     fbzz::scene::SceneManager           m_sceneManager;
     fbzz::renderer::DebugCamera         m_debugCamera;
     FocusAnim                           m_focusAnim;
+    fbzz::scene::UISystemContext        m_sceneUICtx;
+    fbzz::scene::UISystemContext        m_gameUICtx;
     float                               m_frameDt   = 0.0f;
     bool                                m_stepFrame = false;
 };
