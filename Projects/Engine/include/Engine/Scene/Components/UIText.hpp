@@ -12,12 +12,15 @@
 
 namespace fbzz::scene {
 
+enum class TextAlign { Left, Center, Right };
+
 // 位置は GameObject::transform.localPosition.xy で管理する
 struct UIText {
     std::string   text          = "Text";
     float         fontSize      = 42.0f;
     float         letterSpacing = 4.0f;
     math::Vector4 color         = { 1.0f, 1.0f, 1.0f, 1.0f };
+    TextAlign     align         = TextAlign::Left;
     // フォントアトラスのベースパス (拡張子なし)。
     // 例: "Assets/Fonts/Kenney/Future"
     //   → "Assets/Fonts/Kenney/Future.png" + ".fnt" を UISystem がロードする。
@@ -33,6 +36,9 @@ struct UIText {
         r.Field("fontSize",      fontSize);
         r.Field("letterSpacing", letterSpacing);
         r.Field("color",         color);
+        int alignInt = static_cast<int>(align);
+        r.Field("align",         alignInt);
+        align = static_cast<TextAlign>(alignInt);
         r.Field("fontPath",      fontPath);
     }
 };

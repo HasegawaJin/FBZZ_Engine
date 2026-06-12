@@ -16,9 +16,10 @@ enum class UIButtonState {
 };
 
 struct UIButton {
-    math::Vector4 normalColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    math::Vector4 hoverColor = { 0.85f, 0.85f, 0.85f, 1.0f };
-    math::Vector4 pressedColor = { 0.7f, 0.7f, 0.7f, 1.0f };
+    math::Vector4 normalColor   = { 1.0f, 1.0f, 1.0f, 1.0f };
+    math::Vector4 hoverColor    = { 0.85f, 0.85f, 0.85f, 1.0f };
+    math::Vector4 pressedColor  = { 0.7f, 0.7f, 0.7f, 1.0f };
+    math::Vector4 disabledColor = { 0.5f, 0.5f, 0.5f, 0.5f };
     bool isInteractable = true;
     bool enabled = true;
 
@@ -29,14 +30,21 @@ struct UIButton {
     bool onEnter = false;
     bool onExit  = false;
 
+    // ランタイム専用: シリアライズしない
+    // WHY: 押下がこのボタン上で開始されたかを追跡し、ドラッグアウト後の
+    //      誤 onClick 発火と、他要素から流入した押下の誤検出を防ぐ。
+    bool wasPressedOnThis = false;
+    bool lastMouseState   = false;
+
     const char* GetTypeName() const { return "UIButton"; }
     void Reflect(IReflector& r)
     {
-        r.Field("enabled", enabled);
+        r.Field("enabled",        enabled);
         r.Field("isInteractable", isInteractable);
-        r.Field("normalColor", normalColor);
-        r.Field("hoverColor", hoverColor);
-        r.Field("pressedColor", pressedColor);
+        r.Field("normalColor",    normalColor);
+        r.Field("hoverColor",     hoverColor);
+        r.Field("pressedColor",   pressedColor);
+        r.Field("disabledColor",  disabledColor);
     }
 };
 
