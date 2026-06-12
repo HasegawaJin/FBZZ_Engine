@@ -9,6 +9,7 @@
 #include <Engine/Core/Window.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/Camera.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Physics/Layer.hpp>
 #include <Physics/World.hpp>
 
@@ -22,7 +23,9 @@ namespace fbzz::scene {
 void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings);
 
 /// ProjectSettings の UI 設定を UI システムへ反映する。
-void ApplyUISettings(const ProjectSettings& settings);
+/// ctx を渡すと defaultFontPath をそのコンテキストへ設定する。
+/// 既存呼び出しは nullptr デフォルトのまま変更不要。
+void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx = nullptr);
 
 /// ProjectSettings.window から Window::Config を生成する。
 /// WHY: Sandbox / EditorLauncher の両方が Application::Init() 前に同じ変換を行うため共通化する。

@@ -17,9 +17,10 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
     world.SetSubsteps(settings.physics.substeps);
 }
 
-void ApplyUISettings(const ProjectSettings& settings)
+void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx)
 {
-    UISystemSetDefaultFontPath(settings.ui.defaultFontPath);
+    if (ctx && !settings.ui.defaultFontPath.empty())
+        UISystemSetDefaultFontPath(*ctx, settings.ui.defaultFontPath);
 }
 
 core::Window::Config MakeWindowConfig(const ProjectSettings& settings)

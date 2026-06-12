@@ -11,7 +11,7 @@ namespace fbzz::scene {
 enum class UIRenderMode {
     ScreenSpaceOverlay = 0, // カメラに依存せず、最終画面へ直接重ねる
     WorldSpace         = 1, // 3D 空間に配置し、深度の影響を受ける
-    ScreenSpaceCamera  = 2, // カメラ基準の画面 UI。現状は Overlay と同じ座標系で描く
+    ScreenSpaceCamera  = 2, // カメラ前方 planeDistance に配置し深度テストに参加する画面 UI
 
     // 既存コード・既存シーンとの互換性用エイリアス。
     ScreenSpace = ScreenSpaceOverlay
@@ -32,8 +32,10 @@ struct UICanvas {
     float        referenceHeight = 1080.0f;
     // ScaleWithScreenSize 時の幅/高さの重み。0=幅基準、1=高さ基準、0.5=両方の幾何平均
     float        matchWidthOrHeight = 0.0f;
-    // WorldSpace 時の 1 キャンバスピクセルあたりのワールド単位。小さいほど物理サイズも小さい
-    float        worldScale   = 0.01f;
+    // WorldSpace / ScreenSpaceCamera 時の 1 キャンバスピクセルあたりのワールド単位
+    float        worldScale    = 0.01f;
+    // ScreenSpaceCamera 専用: カメラ前方に Canvas を配置する距離 (ワールド単位)
+    float        planeDistance = 2.0f;
     bool         enabled      = true;
 
     const char* GetTypeName() const { return "UICanvas"; }
@@ -52,7 +54,8 @@ struct UICanvas {
         r.Field("referenceWidth", referenceWidth);
         r.Field("referenceHeight", referenceHeight);
         r.Field("matchWidthOrHeight", matchWidthOrHeight);
-        r.Field("worldScale",   worldScale);
+        r.Field("worldScale",    worldScale);
+        r.Field("planeDistance", planeDistance);
     }
 };
 

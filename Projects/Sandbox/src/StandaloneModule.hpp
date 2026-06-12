@@ -11,6 +11,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Physics/World.hpp>
 
 #include <memory>
@@ -40,6 +41,7 @@ private:
     std::unique_ptr<scene::Scene> m_scene;
     physics::World                m_physicsWorld;
     scene::SceneManager           m_sceneManager;
+    scene::UISystemContext        m_uiCtx;
 };
 
 } // namespace fbzz::sandbox

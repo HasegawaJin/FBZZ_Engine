@@ -13,6 +13,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/Layer.hpp>
 #include <Physics/World.hpp>
@@ -65,6 +66,8 @@ private:
     scene::SceneManager           m_sceneManager;
     renderer::DebugCamera         m_debugCamera;
     FocusAnim                     m_focusAnim;
+    scene::UISystemContext        m_sceneUICtx;
+    scene::UISystemContext        m_gameUICtx;
     float                         m_frameDt = 0.0f;
     bool                          m_stepFrame = false;
 };
