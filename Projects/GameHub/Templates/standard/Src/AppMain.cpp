@@ -271,9 +271,10 @@ void ApplyPhysicsSettings(fbzz::physics::World& world, const fbzz::ProjectSettin
     world.SetSubsteps(settings.physics.substeps);
 }
 
-void ApplyUISettings(const fbzz::ProjectSettings& settings)
+void ApplyUISettings(const fbzz::ProjectSettings& settings, fbzz::scene::UISystemContext* ctx = nullptr)
 {
-    fbzz::scene::UISystemSetDefaultFontPath(settings.ui.defaultFontPath);
+    if (ctx && !settings.ui.defaultFontPath.empty())
+        fbzz::scene::UISystemSetDefaultFontPath(*ctx, settings.ui.defaultFontPath);
 }
 
 fbzz::renderer::Camera ResolveGameCamera(fbzz::scene::Scene& scene, float aspectRatio)
@@ -335,7 +336,7 @@ public:
             return false;
         }
         ApplyPhysicsSettings(m_physicsWorld, m_settings);
-        ApplyUISettings(m_settings);
+        ApplyUISettings(m_settings, &m_uiCtx);
         m_physicsAccumulator = 0.0f;
         return true;
     }
@@ -386,6 +387,7 @@ public:
         uiOptions.mouseInCanvasSpace = fbzz::input::Input::MousePosition();
         uiOptions.mousePressed       = fbzz::input::Input::MouseButton(0);
         uiOptions.targetView         = fbzz::scene::UIRenderTargetView::GameViewport;
+        uiOptions.context            = &m_uiCtx;
         fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources, gameCamera, {},
                                   &m_settings.render, fbzz::Layer::Everything, &uiOptions);
         m_renderer.EndFrame();
@@ -403,6 +405,7 @@ private:
     const fbzz::ProjectSettings&        m_settings;
     std::unique_ptr<fbzz::scene::Scene> m_scene;
     fbzz::physics::World                m_physicsWorld;
+    fbzz::scene::UISystemContext        m_uiCtx;
     float                               m_physicsAccumulator = 0.0f;
 };
 
@@ -439,7 +442,8 @@ public:
             return false;
 
         ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-        ApplyUISettings(m_editorApp.GetContext().projectSettings);
+        ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_gameUICtx);
+        ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_sceneUICtx);
         m_physicsAccumulator = 0.0f;
 
         m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
@@ -631,6 +635,7 @@ private:
         uiOptions.viewportWidth  = w;
         uiOptions.viewportHeight = h;
         uiOptions.targetView     = fbzz::scene::UIRenderTargetView::SceneViewport;
+        uiOptions.context        = &m_sceneUICtx;
         fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources,
                                   m_debugCamera.camera, sceneRT, &sceneRenderSettings,
                                   fbzz::Layer::Everything, &uiOptions);
@@ -672,6 +677,7 @@ private:
         uiOptions.viewportWidth  = w;
         uiOptions.viewportHeight = h;
         uiOptions.targetView     = fbzz::scene::UIRenderTargetView::GameViewport;
+        uiOptions.context        = &m_gameUICtx;
         fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources,
                                   gameCamera, gameRT, &gameRenderSettings,
                                   gameCullingMask, &uiOptions);
@@ -696,6 +702,8 @@ private:
     fbzz::physics::World                m_physicsWorld;
     fbzz::renderer::DebugCamera         m_debugCamera;
     FocusAnim                           m_focusAnim;
+    fbzz::scene::UISystemContext        m_sceneUICtx;
+    fbzz::scene::UISystemContext        m_gameUICtx;
     float                               m_physicsAccumulator = 0.0f;
     float                               m_frameDt            = 0.0f;
     bool                                m_stepFrame          = false;
