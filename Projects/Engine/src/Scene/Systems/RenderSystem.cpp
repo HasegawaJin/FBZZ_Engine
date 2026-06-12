@@ -954,7 +954,7 @@ void RenderSystem(Scene& scene,
         }
     }
 
-    if (uiOptions && uiOptions->enabled) {
+    if (uiOptions && uiOptions->enabled && uiOptions->context) {
         graph.AddPass(
             "UIPass",
             { { "Output", renderer::RenderGraph::ResourceUsage::ReadWrite } },
@@ -974,10 +974,13 @@ void RenderSystem(Scene& scene,
                 UISystem(scene,
                          renderer,
                          resources,
+                         *uiOptions->context,
                          uiWidth,
                          uiHeight,
                          uiOptions->mouseInCanvasSpace,
                          uiOptions->mousePressed,
+                         camera.m_position,
+                         camera.m_rotation,
                          camera.GetViewProjection(),
                          uiOptions->targetView);
             });
