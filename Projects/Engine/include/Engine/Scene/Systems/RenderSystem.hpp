@@ -31,6 +31,10 @@ struct RenderSystemUIOptions {
     math::Vector2 mouseInCanvasSpace = {};
     bool mousePressed = false;
     UIRenderTargetView targetView = UIRenderTargetView::GameViewport;
+    // 呼び出し元 Viewport が所有する GPU リソースコンテキスト。
+    // WHY: 複数 Viewport が同フレームに UISystem を呼ぶとき、インスタンスを分離して
+    //      定数バッファの上書き競合を防ぐ。null の場合 UI は描画されない。
+    UISystemContext* context = nullptr;
 };
 
 void RenderSystem(Scene& scene,

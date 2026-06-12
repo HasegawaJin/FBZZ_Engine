@@ -13,6 +13,7 @@
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <string>
 #include <cassert>
 
 namespace fbzz::scene {
@@ -22,13 +23,9 @@ const char* PhysicsStepCountMarkerName(int steps)
 {
     // WHY: 固定タイムステップの catch-up で PhysicsSystem が 1 フレームに複数回走ることがある。
     //      Profiler marker として回数を残し、重複呼び出し疑いを確認しやすくする。
-    if (steps == 2) return "PhysicsFixedSteps=2";
-    if (steps == 3) return "PhysicsFixedSteps=3";
-    if (steps == 4) return "PhysicsFixedSteps=4";
-    if (steps == 5) return "PhysicsFixedSteps=5";
-    if (steps == 6) return "PhysicsFixedSteps=6";
-    if (steps == 7) return "PhysicsFixedSteps=7";
-    return "PhysicsFixedSteps>=8";
+    std::string buf = "PhysicsFixedSteps=" + std::to_string(steps);
+
+    return buf.c_str();
 }
 } // namespace
 
