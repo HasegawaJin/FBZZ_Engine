@@ -56,37 +56,29 @@
 
 #### 重要度：高
 
-**`ScreenSpaceCamera` が Overlay と完全同一実装**
+~~**`ScreenSpaceCamera` が Overlay と完全同一実装**~~
 
-ヘッダーコメントにも「現状は Overlay と同じ座標系で描く」と記述されており、カメラ基準の座標変換が未実装。カメラのビューポートに追従する UI（ミニマップ・スコープ UI 等）が作れない。
-
-**修正方針：** `ScreenSpaceCamera` を検出してカメラの View/Projection 行列から UI の正射影空間を構築するパスを分岐として追加する。
+✅ **修正済み** — `BuildCanvasRuntimeState` に `ScreenSpaceCamera` ブランチを追加。カメラ前方 `planeDistance` ワールド単位に Canvas を配置し、カメラ姿勢に追従する `VP * TRS * pixelToLocal` 変換を実装。深度テストあり PSO (`worldPso`) を使用するため 3D オブジェクトに遮蔽される。マウス座標変換は Overlay と同じスクリーン座標系を維持。
 
 ---
 
-**WorldSpace Canvas のマウスヒット判定が未実装**
+~~**WorldSpace Canvas のマウスヒット判定が未実装**~~
 
-`UIEventSystem` は `IsScreenSpaceRenderMode` が偽のとき処理全体をスキップするため、WorldSpace に置いた `UIButton` は一切反応しない。
-
-**修正方針：** WorldSpace Canvas に対してスクリーン座標→レイキャストによるヒット判定パスを追加し、`ProcessUIEventsRecursive` を呼ぶように拡張する。
+✅ **修正済み** — `UIEventSystem` に WorldSpace ブランチを追加。`Ray::FromNDC` でワールドレイを構築し、`Plane::FromNormalAndPoint` + `Ray::IntersectPlane` でキャンバス平面との交差を取り、`Matrix4::Inverse` によるローカル座標変換でキャンバスピクセル座標を求めて `ProcessUIEventsRecursive` に渡す。
 
 ---
 
 #### 重要度：中
 
-**Canvas が RootGameObject 直下限定**
+~~**Canvas が RootGameObject 直下限定**~~
 
-`CollectCanvases` は `scene.GetRootGameObjects()` の直下しか走査しないため、Canvas が子 GameObject に置かれると無視される。
-
-**修正方針：** 再帰検索または `Scene` 側にコンポーネント全索引を持たせ、階層位置に依存しない収集に変更する。
+✅ **修正済み** — `CollectCanvasesRecursive` を追加し、任意の深さの子 GameObject に置かれた Canvas も収集する。
 
 ---
 
-**グローバル静的リソースの共有（スレッドセーフでない）**
+~~**グローバル静的リソースの共有（スレッドセーフでない）**~~
 
-`s_shader` / `s_constants` / `s_imageVB` / `s_textVB` / `s_fontAtlasCache` が static 変数で、複数シーン同時実行時に競合が起きる。
-
-**修正方針：** リソースを `UISystemContext` 構造体に収めて呼び出し側が所有するか、排他ロックを追加する。
+✅ **修正済み** — 9 個の `s_*` static 変数を全て削除し `UISystemContext` 構造体に収めた。`RenderSystemUIOptions::context` で呼び出し元 Viewport が所有し、Game / Scene / CanvasEditor Viewport がそれぞれ独立したインスタンスを持つ。`UISystemFlushCache(ctx)` と `UISystemSetDefaultFontPath(ctx, path)` の引数も `ctx` を受け取るよう変更済み。
 
 ---
 
@@ -102,11 +94,9 @@
 
 #### 重要度：中
 
-**スプライトシートのピクセル単位 UV 変換ヘルパーが未実装**
+~~**スプライトシートのピクセル単位 UV 変換ヘルパーが未実装**~~
 
-`uvMin/uvMax` はノーマライズ済み UV で保持するが、テクスチャサイズを取得する手段がないためスクリプトから扱いにくい。
-
-**修正方針：** `ScriptUIProxy` またはユーティリティ関数として「ピクセル矩形 → 正規化 UV 変換」を提供する。
+✅ **修正済み** — `UIImage::PixelRectToUV(x, y, w, h, texW, texH)` static ヘルパーを追加。`ScriptUIProxy::SetImageSpriteRect` でスクリプトから呼び出せる。
 
 ---
 
@@ -134,21 +124,17 @@
 
 ---
 
-**フォントアトラスキャッシュがシーン破棄時にリリースされない**
+~~**フォントアトラスキャッシュがシーン破棄時にリリースされない**~~
 
-`s_fontAtlasCache` はプログラム終了まで保持され続け、マルチシーン環境でテクスチャが残留する。
-
-**修正方針：** `UISystemFlushCache()` 呼び出しでキャッシュをクリアするか、シーン破棄イベントに連動させる。
+✅ **修正済み** — `UISystemFlushCache()` を追加（`UISystem.hpp` 公開 API）。シーン破棄時・アセットリロード時に呼んでキャッシュをクリアする。シーン破棄イベントへの自動連動は呼び出し側で設定する。
 
 ---
 
 #### 重要度：低
 
-**固定 VB サイズ（682 グリフ上限）が実行時に変更できない**
+~~**固定 VB サイズ（682 グリフ上限）が実行時に変更できない**~~
 
-超過時はエラーログだけで描画が打ち切られる。
-
-**修正方針：** VB を動的サイズにするか、超過分を複数ドローコールに分割する。
+✅ **修正済み** — `SubmitTextWithAtlas` を `kTextVBVertices`（4096 頂点）単位のチャンクに分割して複数ドローコールを発行するよう変更。ResourceManager / GPU バッファサイズの変更なしに任意の長さのテキストを描画できる。
 
 ---
 
@@ -176,11 +162,9 @@
 
 #### 重要度：低
 
-**ヒット矩形が AABB のみ（回転非対応）**
+**ヒット矩形が AABB のみ（回転非対応）**【仕様】
 
-`UpdateButton` は回転を考慮せず `rect.pos + rect.size` の AABB で判定するため、回転した UIButton では不正確なヒット領域になる。
-
-**修正方針：** 回転角を受け取って OBB 判定に切り替えるか、回転 UI には対応しない旨を仕様として明記する。
+`UpdateButton` は回転を考慮せず AABB で判定する。回転した UIButton では不正確になるが、UI 回転は稀ユースケースのため **仕様として明記**。OBB 対応が必要になった時点で `UpdateButton` に回転角パラメータを追加する。
 
 ---
 
@@ -196,19 +180,15 @@
 
 #### 重要度：中
 
-**`paddingRight` / `paddingBottom` が実際のレイアウト計算で未使用**
+~~**`paddingRight` / `paddingBottom` が実際のレイアウト計算で未使用**~~
 
-`cursor` 開始値には `paddingLeft/Top` が使われるが、後端余白は機能していない。子が親をはみ出してもクリップされない。
-
-**修正方針：** 親 `localScale.xy` からコンテナサイズを取得し、`paddingRight/Bottom` を越えた場合の折り返しまたは警告を追加する。
+✅ **修正済み** — `ApplyLayout` がコンテナサイズ（`transform.scale.xy`）と `paddingRight/Bottom` を比較し、子がはみ出した場合に初回のみ `FBZZ_LOG_WARN` を出力。警告にはキャンバスピクセルとビューポートピクセルの両方のはみ出し量を含む。描画クリッピングはレンダラー側の別機能。
 
 ---
 
-**Canvas Scaler のスケールを考慮しない**
+~~**Canvas Scaler のスケールを考慮しない**~~
 
-`ApplyLayout` は Canvas のスケール係数を受け取らず、`ScaleWithScreenSize` Canvas 上で表示サイズと配置サイズが乖離する場合がある。
-
-**修正方針：** `ApplyLayout` に Canvas のスケール係数を渡してカーソル計算に適用する。
+✅ **修正済み** — `UILayoutSystem` が Canvas ごとに `ResolveCanvasScale` を呼び、`canvasScale` を `ApplyUILayoutRecursive` → `ApplyLayout` へ渡す。はみ出し警告のビューポートピクセル換算に使われ、`ScaleWithScreenSize` 環境での診断精度が向上する。
 
 ---
 
@@ -269,8 +249,16 @@
 | 6 | UIAnimator | pingPong のスワップ検出をフラグ方式に変更 | ✅ 完了 |
 | 7 | UIAnimator | PositionTween と ColorTween の条件分離 | ✅ 完了 |
 | 8 | UIAnimator | `elapsed` を `Reflect` から除外 | ✅ 確認済み（元から除外） |
-| 9 | UICanvas | `ScreenSpaceCamera` モードの実装 | 未着手（大） |
-| 10 | UICanvas | WorldSpace ヒット判定（レイキャスト） | 未着手（大） |
+| 9 | UICanvas | Canvas が RootGameObject 直下限定 | ✅ 完了 |
+| 10 | UIText | フォントアトラスキャッシュのフラッシュ API | ✅ 完了 |
+| 11 | UIImage | スプライトシート UV 変換ヘルパー | ✅ 完了 |
+| 12 | UILayoutGroup | paddingRight/Bottom 境界チェック + canvasScale 連携 | ✅ 完了 |
+| 13 | UIButton | UIImage なしでもヒット判定する | ✅ 完了 |
+| 14 | UIButton | ヒット矩形が AABB のみ（回転非対応） | 仕様として明記 |
+| 15 | UIText | 固定 VB サイズ（682 グリフ上限） | ✅ 完了（マルチドロー分割） |
+| 16 | UICanvas | `ScreenSpaceCamera` モードの実装 | ✅ 完了 |
+| 17 | UICanvas | WorldSpace ヒット判定（レイキャスト） | ✅ 完了 |
+| 18 | UICanvas | グローバル静的リソースのスレッドセーフ化 | ✅ 完了（UISystemContext） |
 
 ---
 
