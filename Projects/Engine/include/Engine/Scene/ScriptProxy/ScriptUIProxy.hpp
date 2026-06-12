@@ -17,6 +17,9 @@ struct ScriptUIProxy {
     void SetImageColor(const math::Vector4& color) const;
     void SetText(std::string_view text) const;
     void SetCanvasSortOrder(int order) const;
+    // スプライトシートのピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW,texH) で正規化し
+    // UIImage の uvMin / uvMax へ書き込む。
+    void SetImageSpriteRect(float x, float y, float w, float h, float texW, float texH) const;
 };
 
 } // namespace fbzz::scene
