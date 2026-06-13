@@ -344,8 +344,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_ctx.showStats         = m_settings.showStats;
     m_ctx.hotReloadEnabled  = m_settings.hotReloadEnabled;
     m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(m_settings.gameViewportAspect);
-    m_ctx.cameraSpeed       = m_settings.cameraSpeed;
-    m_ctx.cameraSensitivity = m_settings.cameraSensitivity;
+    m_ctx.cameraSpeed            = m_settings.cameraSpeed;
+    m_ctx.cameraSensitivity      = m_settings.cameraSensitivity;
+    m_ctx.assetBrowserIconSize   = m_settings.assetBrowserIconSize;
 
     // 初回 RT をウィンドウサイズで生成する
     m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
@@ -397,8 +398,9 @@ void EditorApp::Shutdown()
     m_settings.showStats          = m_ctx.showStats;
     m_settings.hotReloadEnabled   = m_ctx.hotReloadEnabled;
     m_settings.gameViewportAspect = static_cast<int>(m_ctx.gameViewportAspect);
-    m_settings.cameraSpeed        = m_ctx.cameraSpeed;
-    m_settings.cameraSensitivity  = m_ctx.cameraSensitivity;
+    m_settings.cameraSpeed           = m_ctx.cameraSpeed;
+    m_settings.cameraSensitivity     = m_ctx.cameraSensitivity;
+    m_settings.assetBrowserIconSize  = m_ctx.assetBrowserIconSize;
 
     m_settings.Save(SETTINGS_PATH, m_ctx.projectRoot);
     m_ctx.projectSettings.Save(m_projectSettingsPath);
@@ -643,6 +645,17 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         if (m_analysisPanel) {
             m_analysisPanel->visible = true;
             ImGui::SetNextWindowFocus();
+        }
+    }
+
+    if (ctx.requestOpenAnimationGraph) {
+        ctx.requestOpenAnimationGraph = false;
+        for (auto& panel : m_panels) {
+            if (std::strcmp(panel->GetWindowName(), "Animation Graph") == 0) {
+                panel->visible = true;
+                ImGui::SetNextWindowFocus();
+                break;
+            }
         }
     }
 
