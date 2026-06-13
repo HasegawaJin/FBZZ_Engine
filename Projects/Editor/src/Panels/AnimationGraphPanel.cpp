@@ -10,6 +10,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/GraphLayout.hpp>
 #include <Editor/GraphLayoutSerializer.hpp>
+#include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -58,6 +59,17 @@ void MarkDirty(EditorContext& ctx)
     if (util::StringUtils::EndsWith(
             ctx.selectedAssetPath, ".fbzzanimcontroller")) {
         ctx.animationControllerDirty = true;
+        // Registry に登録し Save All / 終了時確認で一括保存できるようにする
+        const std::string capturedPath = ctx.selectedAssetPath;
+        std::weak_ptr<scene::AnimatorComponent> weakAnimator = ctx.animationControllerEditor;
+        AssetDirtyRegistry::Register(
+            capturedPath, NormalizeAssetPath(capturedPath), "CTRL",
+            [capturedPath, weakAnimator]() {
+                auto animator = weakAnimator.lock();
+                if (!animator) return false;
+                const auto controller = asset::MakeAnimatorControllerAsset(*animator);
+                return asset::SaveAnimatorControllerAsset(capturedPath, controller);
+            });
         return;
     }
     if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -706,6 +718,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             if (asset::SaveAnimatorControllerAsset(
                     ctx.selectedAssetPath, controller)) {
                 ctx.animationControllerDirty = false;
+                AssetDirtyRegistry::MarkClean(ctx.selectedAssetPath);
                 ctx.requestAssetBrowserRefresh = true;
                 std::unordered_map<std::string, GraphLayout> controllerLayouts;
                 controllerLayouts.emplace(
