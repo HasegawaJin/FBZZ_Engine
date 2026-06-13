@@ -10,7 +10,9 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -62,6 +64,7 @@
 #include <Physics/SphereCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <algorithm>
 #include <any>
 #include <array>
@@ -77,6 +80,210 @@
 
 
 namespace fbzz::editor {
+
+template<typename T>
+void PushComponentValueCommand(scene::GameObject& go,
+                               EditorContext& ctx,
+                               const std::string& description,
+                               const T& before,
+                               const T& after)
+{
+    if (!ctx.undoStack || !ctx.activeScene) return;
+
+    scene::Scene* scene = ctx.activeScene;
+    const std::string instanceId = go.instanceId;
+    const auto markDirty = ctx.markSceneDirty;
+    auto apply = [scene, instanceId, markDirty](const T& value) {
+        if (auto* target = scene->FindByGuid(instanceId)) {
+            if (auto* component = target->GetComponent<T>()) {
+                *component = value;
+                if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
+                    component->heightDirty = true;
+                    component->splatDirty = true;
+                    component->colliderDirty = true;
+                } else if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+                    component->meshDirty = true;
+                    component->foamDirty = true;
+                    component->texDirty = true;
+                } else if constexpr (std::is_same_v<T, scene::MaterialComponent>) {
+                    component->material.reset();
+                }
+                if (markDirty) markDirty();
+            }
+        }
+    };
+
+    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+        description,
+        [apply, after]() { apply(after); },
+        [apply, before]() { apply(before); }));
+}
+
+// コンポーネント内部の ImGui 編集を ActiveId の開始から解放まで1操作として記録する。
+// WHY: 各 Drag/Slider を個別対応すると記録漏れが生じるため、共通セクションで
+//      編集前後のコンポーネント全体をスナップショットする。
+template<typename T, typename DrawFn>
+void DrawUndoableComponentBody(scene::GameObject& go,
+                               EditorContext& ctx,
+                               const char* label,
+                               T& component,
+                               DrawFn drawFn)
+{
+    struct ActiveEdit {
+        scene::EntityID id;
+        ImGuiID activeId = 0;
+        T before{};
+        bool active = false;
+    };
+    static ActiveEdit edit;
+
+    const T beforeDraw = component;
+    const ImGuiID activeBefore = ImGui::GetActiveID();
+    drawFn(component, ctx);
+    const ImGuiID activeAfter = ImGui::GetActiveID();
+
+    if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
+        edit.id = go.GetID();
+        edit.activeId = activeAfter;
+        edit.before = beforeDraw;
+        edit.active = true;
+        return;
+    }
+
+    if (edit.active && edit.id != go.GetID()) {
+        if (activeAfter != edit.activeId) edit.active = false;
+        return;
+    }
+    if (!edit.active || activeAfter == edit.activeId) return;
+
+    PushComponentValueCommand(
+        go, ctx, std::string("Change ") + label, edit.before, component);
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    edit.active = false;
+}
+
+// MaterialComponent は参照先コンポーネントと MaterialAsset 本体を同じ UI で編集する。
+// WHY: 汎用スナップショットを使うと Asset 編集時のキャッシュ reset まで別コマンドになり、
+//      MaterialAsset 側の Undo と二重に履歴へ積まれるため、参照パス変更だけを記録する。
+template<typename DrawFn>
+void DrawUndoableComponentBody(scene::GameObject& go,
+                               EditorContext& ctx,
+                               const char* label,
+                               scene::MaterialComponent& component,
+                               DrawFn drawFn)
+{
+    struct ActiveEdit {
+        scene::EntityID id;
+        ImGuiID activeId = 0;
+        scene::MaterialComponent before;
+        bool active = false;
+    };
+    static ActiveEdit edit;
+
+    const scene::MaterialComponent beforeDraw = component;
+    const ImGuiID activeBefore = ImGui::GetActiveID();
+    drawFn(component, ctx);
+    const ImGuiID activeAfter = ImGui::GetActiveID();
+
+    if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
+        edit.id = go.GetID();
+        edit.activeId = activeAfter;
+        edit.before = beforeDraw;
+        edit.active = true;
+        return;
+    }
+    if (edit.active && edit.id != go.GetID()) {
+        if (activeAfter != edit.activeId) edit.active = false;
+        return;
+    }
+    if (!edit.active || activeAfter == edit.activeId) return;
+
+    if (edit.before.materialPath != component.materialPath) {
+        PushComponentValueCommand(
+            go, ctx, std::string("Change ") + label, edit.before, component);
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
+    edit.active = false;
+}
+
+// RigidBodyComponent は shared_ptr の先に編集値を持つため、物理ボディ本体も複製する。
+// WHY: Component の浅いコピーだけでは before/after が同じ RigidBody を参照し、
+//      Mass や Gravity Scale の Undo が実質的に何も戻さないため。
+template<typename DrawFn>
+void DrawUndoableComponentBody(scene::GameObject& go,
+                               EditorContext& ctx,
+                               const char* label,
+                               scene::RigidBodyComponent& component,
+                               DrawFn drawFn)
+{
+    struct Snapshot {
+        scene::RigidBodyComponent component;
+        physics::RigidBody body;
+        bool hasBody = false;
+    };
+    struct ActiveEdit {
+        scene::EntityID id;
+        ImGuiID activeId = 0;
+        Snapshot before;
+        bool active = false;
+    };
+    static ActiveEdit edit;
+
+    auto capture = [](const scene::RigidBodyComponent& value) {
+        Snapshot snapshot;
+        snapshot.component = value;
+        snapshot.hasBody = value.rigidBody != nullptr;
+        if (value.rigidBody) snapshot.body = *value.rigidBody;
+        return snapshot;
+    };
+
+    const Snapshot beforeDraw = capture(component);
+    const ImGuiID activeBefore = ImGui::GetActiveID();
+    drawFn(component, ctx);
+    const ImGuiID activeAfter = ImGui::GetActiveID();
+
+    if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
+        edit.id = go.GetID();
+        edit.activeId = activeAfter;
+        edit.before = beforeDraw;
+        edit.active = true;
+        return;
+    }
+    if (edit.active && edit.id != go.GetID()) {
+        if (activeAfter != edit.activeId) edit.active = false;
+        return;
+    }
+    if (!edit.active || activeAfter == edit.activeId) return;
+
+    const Snapshot after = capture(component);
+    if (ctx.undoStack && ctx.activeScene) {
+        scene::Scene* scene = ctx.activeScene;
+        const std::string instanceId = go.instanceId;
+        const auto markDirty = ctx.markSceneDirty;
+        auto apply = [scene, instanceId, markDirty](const Snapshot& snapshot) {
+            if (auto* target = scene->FindByGuid(instanceId)) {
+                if (auto* rigidBody = target->GetComponent<scene::RigidBodyComponent>()) {
+                    rigidBody->enabled = snapshot.component.enabled;
+                    rigidBody->bodyHandle = snapshot.component.bodyHandle;
+                    if (snapshot.hasBody) {
+                        if (!rigidBody->rigidBody)
+                            rigidBody->rigidBody = std::make_shared<physics::RigidBody>();
+                        *rigidBody->rigidBody = snapshot.body;
+                    } else {
+                        rigidBody->rigidBody.reset();
+                    }
+                    if (markDirty) markDirty();
+                }
+            }
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            std::string("Change ") + label,
+            [apply, after]() { apply(after); },
+            [apply, before = edit.before]() { apply(before); }));
+    }
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    edit.active = false;
+}
 
 
 // Hierarchy パネルからのドラッグ＆ドロップを受け取り、ドロップされた GameObject を返す。
@@ -110,7 +317,12 @@ void DrawComponentSection(scene::GameObject* go,
 
     ImGui::PushID(label);
 
-    ImGui::Checkbox("##en", &comp->enabled);
+    const T beforeEnabled = *comp;
+    if (ImGui::Checkbox("##en", &comp->enabled)) {
+        PushComponentValueCommand(
+            *go, ctx, std::string("Toggle ") + label, beforeEnabled, *comp);
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
     ImGui::SameLine();
 
 
@@ -125,9 +337,13 @@ void DrawComponentSection(scene::GameObject* go,
     bool removeRequested = false;
     if (ImGui::BeginPopup("##comp_opts")) {
         if (ImGui::MenuItem("Reset")) {
+            const T before = *comp;
             const bool wasEnabled = comp->enabled;
             *comp = T{};
             comp->enabled = wasEnabled;
+            PushComponentValueCommand(
+                *go, ctx, std::string("Reset ") + label, before, *comp);
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Copy Component"))
@@ -138,9 +354,13 @@ void DrawComponentSection(scene::GameObject* go,
         const bool canPaste = compClipboardType && *compClipboardType == typeid(T);
         if (ImGui::MenuItem("Paste Component Values", nullptr, false, canPaste))
         {
+            const T before = *comp;
             const bool wasEnabled = comp->enabled;
             *comp = std::any_cast<T>(compClipboard);
             comp->enabled = wasEnabled;
+            PushComponentValueCommand(
+                *go, ctx, std::string("Paste ") + label, before, *comp);
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Remove Component"))
@@ -150,14 +370,38 @@ void DrawComponentSection(scene::GameObject* go,
 
     if (open) {
         ImGui::Spacing();
-        drawFn(*comp, ctx);
+        DrawUndoableComponentBody(*go, ctx, label, *comp, drawFn);
         ImGui::Spacing();
     }
 
     ImGui::PopID();
 
-    if (removeRequested)
+    if (removeRequested) {
+        const T removed = *comp;
+        scene::Scene* scene = ctx.activeScene;
+        const std::string instanceId = go->instanceId;
+        const auto markDirty = ctx.markSceneDirty;
         go->RemoveComponent<T>();
+        if (ctx.undoStack && scene) {
+            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                std::string("Remove ") + label,
+                [scene, instanceId, markDirty]() {
+                    if (auto* target = scene->FindByGuid(instanceId)) {
+                        if (target->GetComponent<T>())
+                            target->RemoveComponent<T>();
+                        if (markDirty) markDirty();
+                    }
+                },
+                [scene, instanceId, removed, markDirty]() {
+                    if (auto* target = scene->FindByGuid(instanceId)) {
+                        if (!target->GetComponent<T>())
+                            target->AddComponent<T>(removed);
+                        if (markDirty) markDirty();
+                    }
+                }));
+        }
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
 }
 inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
 {
@@ -402,7 +646,7 @@ inline bool AddComponentCategory(const char* label, const char* filter, DrawItem
 
     return drawItems(label, filter);
 }
-inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64])
+inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64], EditorContext& ctx)
 {
     if (ImGui::Button("Add Component", { -1.0f, 0.0f }))
         ImGui::OpenPopup("##add_component");
@@ -431,7 +675,29 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             !ComponentMatchesFilter(label, filter))
             return false;
         if (ImGui::MenuItem(filter[0] == '\0' ? label : path, nullptr, false, enabled)) {
+            const std::string before = ctx.activeScene
+                ? SceneIO::Serialize(*ctx.activeScene)
+                : std::string{};
             action();
+            if (ctx.undoStack && ctx.activeScene) {
+                const std::string after = SceneIO::Serialize(*ctx.activeScene);
+                if (before != after) {
+                    scene::Scene* scene = ctx.activeScene;
+                    EditorContext* context = &ctx;
+                    const auto markDirty = ctx.markSceneDirty;
+                    auto restore = [scene, context, markDirty](const std::string& snapshot) {
+                        if (SceneIO::Deserialize(*scene, snapshot)) {
+                            context->selectedEntities.clear();
+                            if (markDirty) markDirty();
+                        }
+                    };
+                    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                        std::string("Add ") + label,
+                        [restore, after]() { restore(after); },
+                        [restore, before]() { restore(before); }));
+                }
+            }
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
             didAdd = true;
             ImGui::CloseCurrentPopup();
         }
