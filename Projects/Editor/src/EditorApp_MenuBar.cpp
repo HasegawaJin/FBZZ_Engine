@@ -8,6 +8,7 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/StandaloneLauncher.hpp>
 #include <imgui.h>
 #include <Windows.h>
@@ -164,6 +165,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             SaveScene();
         if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, ctx.activeScene != nullptr))
             SaveSceneAsDialog();
+        {
+            const bool hasUnsaved = AssetDirtyRegistry::HasAny();
+            if (ImGui::MenuItem("Save All Assets", nullptr, false, hasUnsaved))
+                AssetDirtyRegistry::SaveAll();
+        }
         ImGui::Separator();
         if (ImGui::MenuItem("Exit")) RequestExit();
         ImGui::EndMenu();
