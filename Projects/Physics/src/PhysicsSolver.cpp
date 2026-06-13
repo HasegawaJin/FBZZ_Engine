@@ -513,8 +513,8 @@ namespace fbzz::physics
             {
                 contact.bodyA = pair.colliderA->body;
                 contact.bodyB = pair.colliderB->body;
-                contact.colliderA = pair.colliderA->collider.get();
-                contact.colliderB = pair.colliderB->collider.get();
+                contact.colliderA = pair.colliderA->collider;
+                contact.colliderB = pair.colliderB->collider;
                 contact.materialA = pair.colliderA->material;
                 contact.materialB = pair.colliderB->material;
                 contact.isTrigger = pair.colliderA->isTrigger || pair.colliderB->isTrigger;
@@ -533,19 +533,19 @@ namespace fbzz::physics
             if (tA == ColliderType::SPHERE && tB == ColliderType::SPHERE)
             {
                 hit = TestSphereSphere(
-                    *static_cast<SphereCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<SphereCollider*>(pair.colliderB->collider.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderA->collider),
+                    *static_cast<SphereCollider*>(pair.colliderB->collider), cp);
             }
             else if (tA == ColliderType::AABB && tB == ColliderType::AABB)
             {
                 hit = TestAABBAABB(
-                    *static_cast<AABBCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<AABBCollider*>(pair.colliderB->collider.get()), cp);
+                    *static_cast<AABBCollider*>(pair.colliderA->collider),
+                    *static_cast<AABBCollider*>(pair.colliderB->collider), cp);
                 if (hit)
                 {
                     const ContactManifold manifold = BuildAABBManifold(
-                        static_cast<AABBCollider*>(pair.colliderA->collider.get())->GetAABB(),
-                        static_cast<AABBCollider*>(pair.colliderB->collider.get())->GetAABB(),
+                        static_cast<AABBCollider*>(pair.colliderA->collider)->GetAABB(),
+                        static_cast<AABBCollider*>(pair.colliderB->collider)->GetAABB(),
                         cp);
                     for (int i = 0; i < manifold.count; ++i)
                         PushContact(manifold.points[i]);
@@ -555,13 +555,13 @@ namespace fbzz::physics
             else if (tA == ColliderType::OBB && tB == ColliderType::OBB)
             {
                 hit = TestOBBOBB(
-                    *static_cast<OBBCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<OBBCollider*>(pair.colliderB->collider.get()), cp);
+                    *static_cast<OBBCollider*>(pair.colliderA->collider),
+                    *static_cast<OBBCollider*>(pair.colliderB->collider), cp);
                 if (hit)
                 {
                     const ContactManifold manifold = BuildOBBManifold(
-                        *static_cast<OBBCollider*>(pair.colliderA->collider.get()),
-                        *static_cast<OBBCollider*>(pair.colliderB->collider.get()),
+                        *static_cast<OBBCollider*>(pair.colliderA->collider),
+                        *static_cast<OBBCollider*>(pair.colliderB->collider),
                         cp);
                     for (int i = 0; i < manifold.count; ++i)
                         PushContact(manifold.points[i]);
@@ -571,15 +571,15 @@ namespace fbzz::physics
             else if (tA == ColliderType::SPHERE && tB == ColliderType::AABB)
             {
                 hit = TestSphereAABB(
-                    *static_cast<SphereCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<AABBCollider*> (pair.colliderB->collider.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderA->collider),
+                    *static_cast<AABBCollider*> (pair.colliderB->collider), cp);
             }
             else if (tA == ColliderType::AABB && tB == ColliderType::SPHERE)
             {
                 // 引数順を正規化して呼び、法線を反転する
                 hit = TestSphereAABB(
-                    *static_cast<SphereCollider*>(pair.colliderB->collider.get()),
-                    *static_cast<AABBCollider*> (pair.colliderA->collider.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderB->collider),
+                    *static_cast<AABBCollider*> (pair.colliderA->collider), cp);
                 if (hit)
                 {
                     cp.normal  = -cp.normal;
@@ -588,14 +588,14 @@ namespace fbzz::physics
             else if (tA == ColliderType::SPHERE && tB == ColliderType::OBB)
             {
                 hit = TestSphereOBB(
-                    *static_cast<SphereCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<OBBCollider*> (pair.colliderB->collider.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderA->collider),
+                    *static_cast<OBBCollider*> (pair.colliderB->collider), cp);
             }
             else if (tA == ColliderType::OBB && tB == ColliderType::SPHERE)
             {
                 hit = TestSphereOBB(
-                    *static_cast<SphereCollider*>(pair.colliderB->collider.get()),
-                    *static_cast<OBBCollider*> (pair.colliderA->collider.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderB->collider),
+                    *static_cast<OBBCollider*> (pair.colliderA->collider), cp);
                 if (hit)
                 {
                     cp.normal = -cp.normal;
@@ -604,14 +604,14 @@ namespace fbzz::physics
             else if (tA == ColliderType::AABB && tB == ColliderType::OBB)
             {
                 hit = TestAABBOBB(
-                    *static_cast<AABBCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<OBBCollider*> (pair.colliderB->collider.get()), cp);
+                    *static_cast<AABBCollider*>(pair.colliderA->collider),
+                    *static_cast<OBBCollider*> (pair.colliderB->collider), cp);
             }
             else if (tA == ColliderType::OBB && tB == ColliderType::AABB)
             {
                 hit = TestAABBOBB(
-                    *static_cast<AABBCollider*>(pair.colliderB->collider.get()),
-                    *static_cast<OBBCollider*> (pair.colliderA->collider.get()), cp);
+                    *static_cast<AABBCollider*>(pair.colliderB->collider),
+                    *static_cast<OBBCollider*> (pair.colliderA->collider), cp);
                 if (hit)
                 {
                     cp.normal = -cp.normal;
@@ -620,14 +620,14 @@ namespace fbzz::physics
             else if (tA == ColliderType::SPHERE && tB == ColliderType::CAPSULE)
             {
                 hit = TestSphereCapsule(
-                    *static_cast<SphereCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<CapsuleCollider*>(pair.colliderB->collider.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderA->collider),
+                    *static_cast<CapsuleCollider*>(pair.colliderB->collider), cp);
             }
             else if (tA == ColliderType::CAPSULE && tB == ColliderType::SPHERE)
             {
                 hit = TestSphereCapsule(
-                    *static_cast<SphereCollider*>(pair.colliderB->collider.get()),
-                    *static_cast<CapsuleCollider*>(pair.colliderA->collider.get()), cp);
+                    *static_cast<SphereCollider*>(pair.colliderB->collider),
+                    *static_cast<CapsuleCollider*>(pair.colliderA->collider), cp);
                 if (hit)
                 {
                     cp.normal = -cp.normal;
@@ -636,14 +636,14 @@ namespace fbzz::physics
             else if (tA == ColliderType::AABB && tB == ColliderType::CAPSULE)
             {
                 hit = TestAABBCapsule(
-                    *static_cast<AABBCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<CapsuleCollider*>(pair.colliderB->collider.get()), cp);
+                    *static_cast<AABBCollider*>(pair.colliderA->collider),
+                    *static_cast<CapsuleCollider*>(pair.colliderB->collider), cp);
             }
             else if (tA == ColliderType::CAPSULE && tB == ColliderType::AABB)
             {
                 hit = TestAABBCapsule(
-                    *static_cast<AABBCollider*>(pair.colliderB->collider.get()),
-                    *static_cast<CapsuleCollider*>(pair.colliderA->collider.get()), cp);
+                    *static_cast<AABBCollider*>(pair.colliderB->collider),
+                    *static_cast<CapsuleCollider*>(pair.colliderA->collider), cp);
                 if (hit)
                 {
                     cp.normal = -cp.normal;
@@ -652,14 +652,14 @@ namespace fbzz::physics
             else if (tA == ColliderType::OBB && tB == ColliderType::CAPSULE)
             {
                 hit = TestOBBCapsule(
-                    *static_cast<OBBCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<CapsuleCollider*>(pair.colliderB->collider.get()), cp);
+                    *static_cast<OBBCollider*>(pair.colliderA->collider),
+                    *static_cast<CapsuleCollider*>(pair.colliderB->collider), cp);
             }
             else if (tA == ColliderType::CAPSULE && tB == ColliderType::OBB)
             {
                 hit = TestOBBCapsule(
-                    *static_cast<OBBCollider*>(pair.colliderB->collider.get()),
-                    *static_cast<CapsuleCollider*>(pair.colliderA->collider.get()), cp);
+                    *static_cast<OBBCollider*>(pair.colliderB->collider),
+                    *static_cast<CapsuleCollider*>(pair.colliderA->collider), cp);
                 if (hit)
                 {
                     cp.normal = -cp.normal;
@@ -668,8 +668,8 @@ namespace fbzz::physics
             else if (tA == ColliderType::CAPSULE && tB == ColliderType::CAPSULE)
             {
                 hit = TestCapsuleCapsule(
-                    *static_cast<CapsuleCollider*>(pair.colliderA->collider.get()),
-                    *static_cast<CapsuleCollider*>(pair.colliderB->collider.get()), cp);
+                    *static_cast<CapsuleCollider*>(pair.colliderA->collider),
+                    *static_cast<CapsuleCollider*>(pair.colliderB->collider), cp);
             }
 
             else if (tA == ColliderType::CONVEX_HULL || tB == ColliderType::CONVEX_HULL)
@@ -679,17 +679,17 @@ namespace fbzz::physics
                 if (tA == ColliderType::CONVEX_HULL && tB == ColliderType::CONVEX_HULL)
                 {
                     hit = TestConvexConvex(
-                        *static_cast<ConvexHullCollider*>(pair.colliderA->collider.get()),
-                        *static_cast<ConvexHullCollider*>(pair.colliderB->collider.get()), cp);
+                        *static_cast<ConvexHullCollider*>(pair.colliderA->collider),
+                        *static_cast<ConvexHullCollider*>(pair.colliderB->collider), cp);
                 }
                 else if ((tA == ColliderType::CONVEX_HULL && tB == ColliderType::TRIANGLE_MESH) ||
                          (tA == ColliderType::TRIANGLE_MESH && tB == ColliderType::CONVEX_HULL))
                 {
                     const bool swapped = (tA == ColliderType::TRIANGLE_MESH);
                     const auto& hull = *static_cast<ConvexHullCollider*>(
-                        (swapped ? pair.colliderB : pair.colliderA)->collider.get());
+                        (swapped ? pair.colliderB : pair.colliderA)->collider);
                     const auto& mesh = *static_cast<TriangleMeshCollider*>(
-                        (swapped ? pair.colliderA : pair.colliderB)->collider.get());
+                        (swapped ? pair.colliderA : pair.colliderB)->collider);
                     hit = TestConvexHullTriangleMesh(hull, mesh, cp);
                     if (hit && swapped)
                         cp.normal = -cp.normal;
@@ -701,20 +701,20 @@ namespace fbzz::physics
                     const ColliderInstance& dynInst  = *(swapped ? pair.colliderB : pair.colliderA);
                     const ColliderInstance& convInst = *(swapped ? pair.colliderA : pair.colliderB);
                     const ColliderType dynType = dynInst.collider->GetType();
-                    const auto& hull = *static_cast<ConvexHullCollider*>(convInst.collider.get());
+                    const auto& hull = *static_cast<ConvexHullCollider*>(convInst.collider);
 
                     if (dynType == ColliderType::SPHERE)
                         hit = TestSphereConvex(
-                            *static_cast<SphereCollider*>(dynInst.collider.get()), hull, cp);
+                            *static_cast<SphereCollider*>(dynInst.collider), hull, cp);
                     else if (dynType == ColliderType::AABB)
                         hit = TestAABBConvex(
-                            *static_cast<AABBCollider*>(dynInst.collider.get()), hull, cp);
+                            *static_cast<AABBCollider*>(dynInst.collider), hull, cp);
                     else if (dynType == ColliderType::OBB)
                         hit = TestOBBConvex(
-                            *static_cast<OBBCollider*>(dynInst.collider.get()), hull, cp);
+                            *static_cast<OBBCollider*>(dynInst.collider), hull, cp);
                     else if (dynType == ColliderType::CAPSULE)
                         hit = TestCapsuleConvex(
-                            *static_cast<CapsuleCollider*>(dynInst.collider.get()), hull, cp);
+                            *static_cast<CapsuleCollider*>(dynInst.collider), hull, cp);
 
                     if (hit && swapped)
                         cp.normal = -cp.normal;
@@ -734,20 +734,20 @@ namespace fbzz::physics
                     const ColliderInstance& dynInst  = *(swapped ? pair.colliderB : pair.colliderA);
                     const ColliderInstance& meshInst = *(swapped ? pair.colliderA : pair.colliderB);
                     const ColliderType dynType = dynInst.collider->GetType();
-                    const auto& mesh = *static_cast<TriangleMeshCollider*>(meshInst.collider.get());
+                    const auto& mesh = *static_cast<TriangleMeshCollider*>(meshInst.collider);
 
                     if (dynType == ColliderType::SPHERE)
                         hit = TestSphereTriangleMesh(
-                            *static_cast<SphereCollider*>(dynInst.collider.get()), mesh, cp);
+                            *static_cast<SphereCollider*>(dynInst.collider), mesh, cp);
                     else if (dynType == ColliderType::AABB)
                         hit = TestAABBTriangleMesh(
-                            *static_cast<AABBCollider*>(dynInst.collider.get()), mesh, cp);
+                            *static_cast<AABBCollider*>(dynInst.collider), mesh, cp);
                     else if (dynType == ColliderType::CAPSULE)
                         hit = TestCapsuleTriangleMesh(
-                            *static_cast<CapsuleCollider*>(dynInst.collider.get()), mesh, cp);
+                            *static_cast<CapsuleCollider*>(dynInst.collider), mesh, cp);
                     else if (dynType == ColliderType::OBB)
                         hit = TestOBBTriangleMesh(
-                            *static_cast<OBBCollider*>(dynInst.collider.get()), mesh, cp);
+                            *static_cast<OBBCollider*>(dynInst.collider), mesh, cp);
 
                     // スワップした場合は法線を反転 (normal は dyn → mesh 方向)
                     if (hit && swapped)
@@ -758,8 +758,8 @@ namespace fbzz::physics
             if (hit && !pushedContacts) {
                 cp.bodyA = pair.colliderA->body;
                 cp.bodyB = pair.colliderB->body;
-                cp.colliderA = pair.colliderA->collider.get();
-                cp.colliderB = pair.colliderB->collider.get();
+                cp.colliderA = pair.colliderA->collider;
+                cp.colliderB = pair.colliderB->collider;
                 cp.materialA = pair.colliderA->material;
                 cp.materialB = pair.colliderB->material;
                 cp.isTrigger = pair.colliderA->isTrigger || pair.colliderB->isTrigger;

@@ -10,8 +10,8 @@
 
 namespace fbzz::physics
 {
-    ColliderVolume::ColliderVolume(std::shared_ptr<Collider> collider, const VolumeSettings& settings)
-        : m_collider(std::move(collider)), m_settings(settings)
+    ColliderVolume::ColliderVolume(Collider* collider, const VolumeSettings& settings)
+        : m_collider(collider), m_settings(settings)
     {
     }
 
@@ -21,7 +21,7 @@ namespace fbzz::physics
 
         if (m_collider->GetType() == ColliderType::SPHERE)
         {
-            const auto* sphere = static_cast<const SphereCollider*>(m_collider.get());
+            const auto* sphere = static_cast<const SphereCollider*>(m_collider);
             const math::Vector3 center = sphere->GetAABB().Center();
             return (position - center).LengthSq() <= sphere->m_radius * sphere->m_radius;
         }
@@ -35,7 +35,7 @@ namespace fbzz::physics
         }
 
         // Capsule は線分上の最近傍点との距離で内外を判定する。
-        const auto* capsule = static_cast<const CapsuleCollider*>(m_collider.get());
+        const auto* capsule = static_cast<const CapsuleCollider*>(m_collider);
         const math::Vector3 segment = capsule->GetSegmentEnd() - capsule->GetSegmentStart();
         const float lenSq = segment.LengthSq();
         float t = 0.0f;
