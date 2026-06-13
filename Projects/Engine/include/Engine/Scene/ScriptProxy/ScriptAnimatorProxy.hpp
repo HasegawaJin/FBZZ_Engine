@@ -3,7 +3,10 @@
 // Script から AnimatorComponent を操作するショートハンド
 #pragma once
 
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -21,6 +24,8 @@ struct ScriptAnimatorProxy {
     float       GetFloat(std::string_view name) const;
     int         GetInt  (std::string_view name) const;
     bool        GetBool (std::string_view name) const;
+    float       GetNormalizedTime() const;
+    std::vector<std::pair<std::string, float>> GetCurrentBlendWeights() const;
     std::string GetCurrentState() const;
     void        SetSpeed(float speed) const;
     void        Play(std::string_view stateName) const;

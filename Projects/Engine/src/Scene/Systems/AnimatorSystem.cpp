@@ -8,12 +8,15 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -369,15 +372,32 @@ void UploadBindPose(AnimatorComponent& animator, renderer::ResourceManager& reso
 void LoadClips(AnimatorComponent& animator)
 {
     animator.clips.clear();
-    for (const auto& src : animator.clipSources) {
+    animator.clipSourcePaths.clear();
+
+    // Node が直接参照する Source を収集する。旧データの clipSources は互換用に併合する。
+    std::vector<std::string> sources = animator.clipSources;
+    auto addSource = [&sources](const std::string& sourcePath) {
+        if (sourcePath.empty()) return;
+        if (std::find(sources.begin(), sources.end(), sourcePath) == sources.end())
+            sources.push_back(sourcePath);
+    };
+    for (const auto& state : animator.states) {
+        addSource(state.sourcePath);
+        for (const auto& motion : state.blendTree1D.motions) addSource(motion.sourcePath);
+        for (const auto& motion : state.blendTree2D.motions) addSource(motion.sourcePath);
+    }
+
+    for (const auto& src : sources) {
         if (src.empty()) continue;
         auto model = asset::AssetManager::Load<asset::Model>(src);
         if (!model) {
             FBZZ_LOG_WARN("AnimatorSystem: clip source '%s' failed to load", src.c_str());
             continue;
         }
-        for (const auto& clip : model->clips)
+        for (const auto& clip : model->clips) {
             animator.clips.push_back(clip);
+            animator.clipSourcePaths.push_back(src);
+        }
     }
     animator.clipsLoaded = true;
     animator.clipsAttemptGeneration = asset::AssetManager::GetFlushGeneration();
@@ -412,6 +432,10 @@ const asset::AnimationClip* FindClipByName(const AnimatorComponent& animator,
     return nullptr;
 }
 
+const asset::AnimationClip* FindClipBySource(const AnimatorComponent& animator,
+                                             const std::string& sourcePath,
+                                             const std::string& clipName);
+
 // ステートに対応するクリップを返す。
 // clipName 名前検索 → clipIndex 直接指定 の順でフォールバックする。
 // WHY: Mixamo 等は FBX 内クリップ名を "mixamo.com" にするため名前検索が失敗する。
@@ -419,6 +443,9 @@ const asset::AnimationClip* FindClipByName(const AnimatorComponent& animator,
 const asset::AnimationClip* FindClipForState(const AnimatorComponent& animator,
                                              const AnimationState& state)
 {
+    if (const auto* clip =
+            FindClipBySource(animator, state.sourcePath, state.clipName))
+        return clip;
     if (!state.clipName.empty()) {
         if (const auto* c = FindClipByName(animator, state.clipName)) return c;
     }
@@ -445,70 +472,351 @@ AnimatorParameter* FindParam(AnimatorComponent& animator, const std::string& par
     return nullptr;
 }
 
-// 2クリップをブレンドした NodeLocalPose をノード階層に再帰適用し、
-// boneMatrices と nodeGlobalTransforms を構築する。
-// WHY: Matrix4 を直接 lerp すると回転の精度が落ちるため、
-//      TRS 分解済みの NodeLocalPose レベルで Lerp/Slerp してから Matrix4 に変換する。
-void EvaluateBlendedNodeRecursive(const asset::Skeleton& skeleton,
-                                  const asset::AnimationClip& clipA, double ticksA,
-                                  const asset::AnimationClip& clipB, double ticksB,
-                                  float weight,
-                                  int nodeIndex,
-                                  const math::Matrix4& parentGlobal,
-                                  std::vector<math::Matrix4>& palette,
-                                  std::vector<math::Matrix4>& nodeGlobals)
+// Source Path と Clip Name の組でクリップを解決する。
+// WHY: 異なる FBX が同名クリップを持っていても Node の参照先を一意に保つため。
+const asset::AnimationClip* FindClipBySource(const AnimatorComponent& animator,
+                                             const std::string& sourcePath,
+                                             const std::string& clipName)
+{
+    if (sourcePath.empty()) return nullptr;
+    const asset::AnimationClip* firstFromSource = nullptr;
+    for (size_t i = 0; i < animator.clips.size(); ++i) {
+        if (i >= animator.clipSourcePaths.size() ||
+            animator.clipSourcePaths[i] != sourcePath) continue;
+        if (!firstFromSource) firstFromSource = &animator.clips[i];
+        if (!clipName.empty() && animator.clips[i].name == clipName)
+            return &animator.clips[i];
+    }
+    return firstFromSource;
+}
+
+const asset::AnimationClip* FindClipForMotion(const AnimatorComponent& animator,
+                                              const BlendTreeMotion& motion)
+{
+    if (const auto* clip =
+            FindClipBySource(animator, motion.sourcePath, motion.clipName))
+        return clip;
+    if (!motion.clipName.empty()) {
+        if (const auto* clip = FindClipByName(animator, motion.clipName)) return clip;
+    }
+    if (motion.clipIndex >= 0 &&
+        motion.clipIndex < static_cast<int>(animator.clips.size()))
+        return &animator.clips[static_cast<size_t>(motion.clipIndex)];
+    return nullptr;
+}
+
+struct WeightedMotion {
+    const BlendTreeMotion* motion = nullptr;
+    float                  weight = 0.0f;
+};
+
+struct WeightedClip {
+    const asset::AnimationClip* clip   = nullptr;
+    const BlendTreeMotion*      motion = nullptr;
+    double                      ticks  = 0.0;
+    float                       weight = 0.0f;
+    float                       ikWeight = 1.0f;
+};
+
+std::vector<WeightedMotion> Compute1DWeights(const AnimatorComponent& animator,
+                                             const BlendTree1D& tree)
+{
+    std::vector<WeightedMotion> result;
+    if (tree.motions.empty()) return result;
+
+    std::vector<const BlendTreeMotion*> sorted;
+    sorted.reserve(tree.motions.size());
+    for (const auto& motion : tree.motions) sorted.push_back(&motion);
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto* a, const auto* b) { return a->threshold < b->threshold; });
+
+    const float value = animator.GetFloat(tree.paramName);
+    if (sorted.size() == 1 || value <= sorted.front()->threshold)
+        return { { sorted.front(), 1.0f } };
+    if (value >= sorted.back()->threshold)
+        return { { sorted.back(), 1.0f } };
+
+    for (size_t i = 0; i + 1 < sorted.size(); ++i) {
+        const float a = sorted[i]->threshold;
+        const float b = sorted[i + 1]->threshold;
+        if (value < a || value > b) continue;
+        const float span = b - a;
+        const float t = span > math::EPSILON ? (value - a) / span : 0.0f;
+        return { { sorted[i], 1.0f - t }, { sorted[i + 1], t } };
+    }
+    return { { sorted.back(), 1.0f } };
+}
+
+std::vector<float> ComputeGradientBandWeights(
+    const std::vector<const BlendTreeMotion*>& motions,
+    float px,
+    float py)
+{
+    std::vector<float> weights(motions.size(), 0.0f);
+    if (motions.empty()) return weights;
+    if (motions.size() == 1) {
+        weights[0] = 1.0f;
+        return weights;
+    }
+
+    for (size_t i = 0; i < motions.size(); ++i) {
+        float score = 1.0f;
+        bool compared = false;
+        for (size_t j = 0; j < motions.size(); ++j) {
+            if (i == j) continue;
+            const float dx = motions[i]->posX - motions[j]->posX;
+            const float dy = motions[i]->posY - motions[j]->posY;
+            const float denominator = dx * dx + dy * dy;
+            if (denominator <= math::EPSILON) continue;
+            const float band =
+                ((px - motions[j]->posX) * dx + (py - motions[j]->posY) * dy)
+                / denominator;
+            score = (std::min)(score, band);
+            compared = true;
+        }
+        weights[i] = compared ? (std::max)(0.0f, score) : 1.0f;
+    }
+
+    const float sum = std::accumulate(weights.begin(), weights.end(), 0.0f);
+    if (sum > math::EPSILON) {
+        for (float& weight : weights) weight /= sum;
+    } else {
+        size_t nearest = 0;
+        float nearestDistance = std::numeric_limits<float>::max();
+        for (size_t i = 0; i < motions.size(); ++i) {
+            const float dx = px - motions[i]->posX;
+            const float dy = py - motions[i]->posY;
+            const float distance = dx * dx + dy * dy;
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = i;
+            }
+        }
+        weights[nearest] = 1.0f;
+    }
+    return weights;
+}
+
+std::vector<WeightedMotion> Compute2DWeights(const AnimatorComponent& animator,
+                                             const BlendTree2D& tree)
+{
+    std::vector<WeightedMotion> result;
+    if (tree.motions.empty()) return result;
+
+    float px = animator.GetFloat(tree.paramX);
+    float py = animator.GetFloat(tree.paramY);
+    std::vector<const BlendTreeMotion*> motions;
+    motions.reserve(tree.motions.size());
+    for (const auto& motion : tree.motions) motions.push_back(&motion);
+
+    std::vector<float> weights;
+    if (tree.type == BlendTree2DType::SimpleDirectional) {
+        size_t origin = motions.size();
+        float originDistance = std::numeric_limits<float>::max();
+        for (size_t i = 0; i < motions.size(); ++i) {
+            const float distance =
+                motions[i]->posX * motions[i]->posX + motions[i]->posY * motions[i]->posY;
+            if (distance < originDistance) {
+                originDistance = distance;
+                origin = i;
+            }
+        }
+
+        const float magnitude = std::sqrt(px * px + py * py);
+        if (magnitude <= math::EPSILON) {
+            weights.assign(motions.size(), 0.0f);
+            weights[origin] = 1.0f;
+        } else {
+            std::vector<const BlendTreeMotion*> directional;
+            std::vector<BlendTreeMotion> normalizedDirectional;
+            std::vector<size_t> directionalIndices;
+            normalizedDirectional.reserve(motions.size());
+            for (size_t i = 0; i < motions.size(); ++i) {
+                if (i == origin && originDistance <= math::EPSILON) continue;
+                const float motionMagnitude = std::sqrt(
+                    motions[i]->posX * motions[i]->posX +
+                    motions[i]->posY * motions[i]->posY);
+                if (motionMagnitude <= math::EPSILON) continue;
+                normalizedDirectional.push_back(*motions[i]);
+                normalizedDirectional.back().posX /= motionMagnitude;
+                normalizedDirectional.back().posY /= motionMagnitude;
+                directionalIndices.push_back(i);
+            }
+            directional.reserve(normalizedDirectional.size());
+            for (const auto& motion : normalizedDirectional)
+                directional.push_back(&motion);
+
+            weights.assign(motions.size(), 0.0f);
+            const float directionAmount = std::clamp(magnitude, 0.0f, 1.0f);
+            if (directional.empty()) {
+                weights[origin] = 1.0f;
+            } else {
+                const auto directionalWeights =
+                    ComputeGradientBandWeights(
+                        directional, px / magnitude, py / magnitude);
+                if (originDistance <= math::EPSILON)
+                    weights[origin] = 1.0f - directionAmount;
+                for (size_t i = 0; i < directionalWeights.size(); ++i)
+                    weights[directionalIndices[i]] =
+                        directionalWeights[i] * directionAmount;
+            }
+        }
+    } else {
+        weights = ComputeGradientBandWeights(motions, px, py);
+    }
+
+    for (size_t i = 0; i < motions.size(); ++i)
+        if (weights[i] > math::EPSILON)
+            result.push_back({ motions[i], weights[i] });
+    return result;
+}
+
+std::vector<WeightedMotion> ComputeStateWeights(const AnimatorComponent& animator,
+                                                const AnimationState& state)
+{
+    if (state.mode == AnimationStateMode::BlendTree1D)
+        return Compute1DWeights(animator, state.blendTree1D);
+    if (state.mode == AnimationStateMode::BlendTree2D)
+        return Compute2DWeights(animator, state.blendTree2D);
+    return {};
+}
+
+std::vector<WeightedClip> BuildStateClips(const AnimatorComponent& animator,
+                                          const AnimationState& state,
+                                          float stateTime)
+{
+    std::vector<WeightedClip> result;
+    if (state.mode == AnimationStateMode::Clip) {
+        if (const auto* clip = FindClipForState(animator, state)) {
+            const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
+            result.push_back({
+                clip, nullptr, static_cast<double>(stateTime) * tps, 1.0f, state.ikWeight
+            });
+        }
+        return result;
+    }
+
+    for (const auto& weighted : ComputeStateWeights(animator, state)) {
+        const auto* clip = FindClipForMotion(animator, *weighted.motion);
+        if (!clip) continue;
+        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
+        const float duration = static_cast<float>(clip->durationTicks / tps);
+        float motionTime = stateTime * weighted.motion->speed;
+        motionTime = state.loop
+            ? WrapTime(motionTime, duration)
+            : std::clamp(motionTime, 0.0f, duration);
+        result.push_back({
+            clip,
+            weighted.motion,
+            static_cast<double>(motionTime) * tps,
+            weighted.weight,
+            // State を全体係数、Motion をクリップ固有係数として扱う。
+            // WHY: BlendTree 全体を一括調整しつつ、Run だけ足IKを弱められるようにする。
+            state.ikWeight * weighted.motion->ikWeight
+        });
+    }
+
+    const float sum = std::accumulate(
+        result.begin(), result.end(), 0.0f,
+        [](float total, const WeightedClip& clip) { return total + clip.weight; });
+    if (sum > math::EPSILON)
+        for (auto& clip : result) clip.weight /= sum;
+    return result;
+}
+
+float GetStateDuration(const AnimatorComponent& animator, const AnimationState& state)
+{
+    if (state.mode == AnimationStateMode::Clip) {
+        const auto* clip = FindClipForState(animator, state);
+        if (!clip) return 0.0f;
+        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
+        return static_cast<float>(clip->durationTicks / tps);
+    }
+
+    float duration = 0.0f;
+    float validWeight = 0.0f;
+    for (const auto& weighted : ComputeStateWeights(animator, state)) {
+        const auto* clip = FindClipForMotion(animator, *weighted.motion);
+        if (!clip) continue;
+        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
+        const float speed = (std::max)(std::abs(weighted.motion->speed), 1e-4f);
+        duration += static_cast<float>(clip->durationTicks / tps) / speed * weighted.weight;
+        validWeight += weighted.weight;
+    }
+    return validWeight > math::EPSILON ? duration / validWeight : 0.0f;
+}
+
+NodeLocalPose BlendNodePose(const asset::SkeletonNode& node,
+                            const std::vector<WeightedClip>& clips)
+{
+    NodeLocalPose blended{};
+    blended.translation = math::Vector3::ZERO;
+    blended.scale = math::Vector3::ZERO;
+    bool hasRotation = false;
+    float accumulatedRotationWeight = 0.0f;
+
+    for (const auto& weighted : clips) {
+        if (!weighted.clip || weighted.weight <= math::EPSILON) continue;
+        const NodeLocalPose pose = SampleNodeLocalPose(node, *weighted.clip, weighted.ticks);
+        blended.translation += pose.translation * weighted.weight;
+        blended.scale += pose.scale * weighted.weight;
+        if (!hasRotation) {
+            blended.rotation = pose.rotation;
+            accumulatedRotationWeight = weighted.weight;
+            hasRotation = true;
+        } else {
+            const float total = accumulatedRotationWeight + weighted.weight;
+            const float t = total > math::EPSILON ? weighted.weight / total : 0.0f;
+            blended.rotation =
+                math::Quaternion::Slerp(blended.rotation, pose.rotation, t).Normalized();
+            accumulatedRotationWeight = total;
+        }
+    }
+    if (!hasRotation) {
+        blended.translation = node.bindTranslation;
+        blended.rotation = node.bindRotation;
+        blended.scale = node.bindScale;
+    }
+    return blended;
+}
+
+void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
+                                   const std::vector<WeightedClip>& clips,
+                                   int nodeIndex,
+                                   const math::Matrix4& parentGlobal,
+                                   std::vector<math::Matrix4>& palette,
+                                   std::vector<math::Matrix4>& nodeGlobals)
 {
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
-
-    const NodeLocalPose poseA = SampleNodeLocalPose(node, clipA, ticksA);
-    const NodeLocalPose poseB = SampleNodeLocalPose(node, clipB, ticksB);
-
-    NodeLocalPose blended;
-    blended.translation = math::Vector3::Lerp(poseA.translation, poseB.translation, weight);
-    blended.rotation    = math::Quaternion::Slerp(poseA.rotation, poseB.rotation, weight);
-    blended.scale       = math::Vector3::Lerp(poseA.scale, poseB.scale, weight);
-
-    const math::Matrix4 local  = math::Matrix4::TRS(blended.translation,
-                                                     blended.rotation,
-                                                     blended.scale);
-    const math::Matrix4 global = parentGlobal * local;
+    const NodeLocalPose blended = BlendNodePose(node, clips);
+    const math::Matrix4 global =
+        parentGlobal * math::Matrix4::TRS(
+            blended.translation, blended.rotation, blended.scale);
 
     if (nodeIndex < static_cast<int>(nodeGlobals.size()))
         nodeGlobals[static_cast<size_t>(nodeIndex)] = global;
-
     if (node.boneIndex >= 0 && node.boneIndex < static_cast<int>(palette.size())) {
         const auto& bone = skeleton.bones[static_cast<size_t>(node.boneIndex)];
         palette[static_cast<size_t>(node.boneIndex)] =
             skeleton.rootInverseTransform * global * bone.offsetMatrix;
     }
-
     for (int child : node.children)
-        EvaluateBlendedNodeRecursive(skeleton, clipA, ticksA, clipB, ticksB, weight,
-                                     child, global, palette, nodeGlobals);
+        EvaluateNBlendedNodeRecursive(
+            skeleton, clips, child, global, palette, nodeGlobals);
 }
 
-// ApplyAnimatedPoseToBones のブレンド版。
-// 各 BoneComponent GameObject のローカル TRS に2クリップのブレンドポーズを書き込む。
-void ApplyBlendedPoseToBones(Scene& scene,
-                             const asset::Skeleton& skeleton,
-                             const asset::AnimationClip& clipA, double ticksA,
-                             const asset::AnimationClip& clipB, double ticksB,
-                             float weight,
-                             SkinnedMeshRenderer& smr)
+void ApplyNBlendedPoseToBones(Scene& scene,
+                              const asset::Skeleton& skeleton,
+                              const std::vector<WeightedClip>& clips,
+                              SkinnedMeshRenderer& smr)
 {
     for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
         GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[i]);
         if (!boneObject) continue;
-
-        const NodeLocalPose poseA = SampleNodeLocalPose(skeleton.nodes[i], clipA, ticksA);
-        const NodeLocalPose poseB = SampleNodeLocalPose(skeleton.nodes[i], clipB, ticksB);
-
-        boneObject->transform.position =
-            math::Vector3::Lerp(poseA.translation, poseB.translation, weight);
-        boneObject->transform.rotation =
-            math::Quaternion::Slerp(poseA.rotation, poseB.rotation, weight);
-        boneObject->transform.scale =
-            math::Vector3::Lerp(poseA.scale, poseB.scale, weight);
+        const NodeLocalPose pose = BlendNodePose(skeleton.nodes[i], clips);
+        boneObject->transform.position = pose.translation;
+        boneObject->transform.rotation = pose.rotation;
+        boneObject->transform.scale = pose.scale;
     }
 }
 
@@ -590,21 +898,56 @@ void InitStateMachine(AnimatorComponent& animator)
     animator.blendWeight = 0.0f;
 }
 
+bool TryStartTransition(AnimatorComponent& animator,
+                        const std::vector<AnimationTransition>& transitions,
+                        float normalizedTime)
+{
+    for (const auto& tr : transitions) {
+        if (tr.toStateName.empty()) continue;
+        // 現在ステート自身へ戻る遷移は開始しない。
+        // WHY: Fall 条件のような継続条件で毎フレーム自己遷移すると、再生時刻が0へ戻り続けるため。
+        if (tr.toStateName == animator.currentStateName) continue;
+        if (!FindState(animator, tr.toStateName)) continue;
+        if (!EvaluateTransition(tr, animator, normalizedTime)) continue;
+
+        animator.blendToState  = tr.toStateName;
+        animator.blendToTime   = 0.0f;
+        animator.blendWeight   = 0.0f;
+        animator.blendDuration = tr.transitionDuration;
+        ConsumeTriggers(animator, tr);
+        return true;
+    }
+    return false;
+}
+
 // ステートマシンを1フレーム分更新する。
 // 遷移中のブレンド進行 → stateTime 進行 → 遷移条件チェックの順で処理する。
 void UpdateStateMachine(AnimatorComponent& animator, float dt)
 {
     // ── ブレンド進行 ───────────────────────────────────────────────────────
     if (!animator.blendToState.empty()) {
+        if (!animator.playing) return;
+
         animator.blendWeight += dt / (std::max)(animator.blendDuration, 1e-4f);
+
+        // クロスフェード中も遷移元のポーズを進め、静止ポーズへのフェードを防ぐ。
+        const AnimationState* currentSt =
+            FindState(animator, animator.currentStateName);
+        if (currentSt) {
+            const float dur = GetStateDuration(animator, *currentSt);
+            if (dur > 0.0f) {
+                animator.stateTime += dt * currentSt->speed * animator.speed;
+                animator.stateTime = currentSt->loop
+                    ? WrapTime(animator.stateTime, dur)
+                    : std::clamp(animator.stateTime, 0.0f, dur);
+            }
+        }
 
         // 遷移先ステートの時刻も進める
         const AnimationState* nextSt = FindState(animator, animator.blendToState);
         if (nextSt) {
-            const auto* nextClip = FindClipForState(animator, *nextSt);
-            if (nextClip) {
-                const double tps = nextClip->ticksPerSecond > 0.0 ? nextClip->ticksPerSecond : 30.0;
-                const float dur  = static_cast<float>(nextClip->durationTicks / tps);
+            const float dur = GetStateDuration(animator, *nextSt);
+            if (dur > 0.0f) {
                 animator.blendToTime += dt * nextSt->speed * animator.speed;
                 if (nextSt->loop)
                     animator.blendToTime = WrapTime(animator.blendToTime, dur);
@@ -628,11 +971,8 @@ void UpdateStateMachine(AnimatorComponent& animator, float dt)
     const AnimationState* curSt = FindState(animator, animator.currentStateName);
     if (!curSt) return;
 
-    const auto* curClip = FindClipForState(animator, *curSt);
-    float duration = 0.0f;
-    if (curClip) {
-        const double tps = curClip->ticksPerSecond > 0.0 ? curClip->ticksPerSecond : 30.0;
-        duration = static_cast<float>(curClip->durationTicks / tps);
+    const float duration = GetStateDuration(animator, *curSt);
+    if (duration > 0.0f) {
         if (animator.playing) {
             animator.stateTime += dt * curSt->speed * animator.speed;
             if (curSt->loop)
@@ -647,19 +987,9 @@ void UpdateStateMachine(AnimatorComponent& animator, float dt)
         ? std::clamp(animator.stateTime / duration, 0.0f, 1.0f)
         : 0.0f;
 
-    for (const auto& tr : curSt->transitions) {
-        if (tr.toStateName.empty()) continue;
-        if (!FindState(animator, tr.toStateName)) continue;
-        if (!EvaluateTransition(tr, animator, normalizedTime)) continue;
-
-        // 遷移開始
-        animator.blendToState    = tr.toStateName;
-        animator.blendToTime     = 0.0f;
-        animator.blendWeight     = 0.0f;
-        animator.blendDuration   = tr.transitionDuration;
-        ConsumeTriggers(animator, tr);
-        break;
-    }
+    // 通常遷移を優先し、成立しなかった場合だけ AnyState を評価する。
+    if (!TryStartTransition(animator, curSt->transitions, normalizedTime))
+        TryStartTransition(animator, animator.anyStateTransitions, normalizedTime);
 }
 
 } // namespace
@@ -673,6 +1003,9 @@ static void RunLegacyAnimatorPath(AnimatorComponent& animator,
                                   renderer::ResourceManager& resources,
                                   float dt)
 {
+    animator.currentBlendWeights.clear();
+    animator.currentBlendDuration = 0.0f;
+
     const auto* clip = ResolveClip(animator);
     if (!clip) {
         UploadBindPose(animator, resources);
@@ -721,16 +1054,21 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     UpdateStateMachine(animator, dt);
 
     const AnimationState* curSt = FindState(animator, animator.currentStateName);
+    animator.currentBlendWeights.clear();
+    animator.currentBlendDuration = 0.0f;
     if (!curSt) {
         UploadBindPose(animator, resources);
         return;
     }
 
-    const auto* curClip = FindClipForState(animator, *curSt);
-    if (!curClip) {
+    auto currentClips = BuildStateClips(animator, *curSt, animator.stateTime);
+    if (currentClips.empty()) {
         UploadBindPose(animator, resources);
         return;
     }
+
+    animator.currentBlendDuration = GetStateDuration(animator, *curSt);
+    bool exposeBlendWeights = curSt->mode != AnimationStateMode::Clip;
 
     const size_t boneCount = (std::min)(skeleton.bones.size(),
                                         static_cast<size_t>(asset::MAX_SKINNING_BONES));
@@ -741,46 +1079,63 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
 
     EnsureBoneHierarchy(scene, go, smr, skeleton);
 
-    const double tpsA = curClip->ticksPerSecond > 0.0 ? curClip->ticksPerSecond : 30.0;
-    const double ticksA = static_cast<double>(animator.stateTime) * tpsA;
+    // Clip / BlendTree を共通の加重クリップ集合として評価する。
 
     if (!animator.blendToState.empty()) {
         // ── クロスフェードモード ─────────────────────────────────────────
         const AnimationState* nextSt = FindState(animator, animator.blendToState);
-        const auto* nextClip = nextSt ? FindClipForState(animator, *nextSt) : nullptr;
+        exposeBlendWeights =
+            exposeBlendWeights ||
+            (nextSt && nextSt->mode != AnimationStateMode::Clip);
+        auto nextClips = nextSt
+            ? BuildStateClips(animator, *nextSt, animator.blendToTime)
+            : std::vector<WeightedClip>{};
 
-        if (nextClip) {
-            const double tpsB  = nextClip->ticksPerSecond > 0.0 ? nextClip->ticksPerSecond : 30.0;
-            const double ticksB = static_cast<double>(animator.blendToTime) * tpsB;
+        if (!nextClips.empty()) {
             const float w = std::clamp(animator.blendWeight, 0.0f, 1.0f);
-
-            EvaluateBlendedNodeRecursive(skeleton,
-                                         *curClip,  ticksA,
-                                         *nextClip, ticksB,
-                                         w,
-                                         skeleton.rootNodeIndex,
-                                         math::Matrix4::Identity(),
-                                         animator.boneMatrices,
-                                         animator.nodeGlobalTransforms);
-
-            ApplyBlendedPoseToBones(scene, skeleton,
-                                    *curClip, ticksA,
-                                    *nextClip, ticksB,
-                                    w, smr);
+            for (auto& clip : currentClips) clip.weight *= 1.0f - w;
+            for (auto& clip : nextClips) clip.weight *= w;
+            currentClips.insert(currentClips.end(), nextClips.begin(), nextClips.end());
         } else {
             // 遷移先クリップが見つからなければ現クリップ単独で続ける
-            EvaluateNode(skeleton, *curClip, skeleton.rootNodeIndex,
-                         math::Matrix4::Identity(), ticksA,
-                         animator.boneMatrices, animator.nodeGlobalTransforms);
-            ApplyAnimatedPoseToBones(scene, skeleton, *curClip, ticksA, smr);
+            animator.blendToState.clear();
+            animator.blendWeight = 0.0f;
         }
     } else {
         // ── 単一クリップモード ───────────────────────────────────────────
-        EvaluateNode(skeleton, *curClip, skeleton.rootNodeIndex,
-                     math::Matrix4::Identity(), ticksA,
-                     animator.boneMatrices, animator.nodeGlobalTransforms);
-        ApplyAnimatedPoseToBones(scene, skeleton, *curClip, ticksA, smr);
+        // 遷移していない場合は currentClips をそのまま評価する。
     }
+
+    // デバッグ API には、クロスフェードを含む最終姿勢への実寄与率を公開する。
+    // WHY: 遷移元・遷移先で同じクリップを使う場合は、別項目ではなく合算値が必要になる。
+    if (exposeBlendWeights) {
+        for (const auto& weighted : currentClips) {
+            if (!weighted.clip || weighted.weight <= math::EPSILON) continue;
+            const std::string& name =
+                weighted.motion && !weighted.motion->clipName.empty()
+                ? weighted.motion->clipName
+                : weighted.clip->name;
+            const auto existing = std::find_if(
+                animator.currentBlendWeights.begin(),
+                animator.currentBlendWeights.end(),
+                [&name](const auto& entry) { return entry.first == name; });
+            if (existing != animator.currentBlendWeights.end())
+                existing->second += weighted.weight;
+            else
+                animator.currentBlendWeights.emplace_back(name, weighted.weight);
+        }
+    }
+
+    animator.currentIKWeight = 0.0f;
+    for (const auto& weighted : currentClips)
+        animator.currentIKWeight += weighted.ikWeight * weighted.weight;
+    animator.currentIKWeight = std::clamp(animator.currentIKWeight, 0.0f, 1.0f);
+
+    EvaluateNBlendedNodeRecursive(
+        skeleton, currentClips, skeleton.rootNodeIndex,
+        math::Matrix4::Identity(),
+        animator.boneMatrices, animator.nodeGlobalTransforms);
+    ApplyNBlendedPoseToBones(scene, skeleton, currentClips, smr);
 
     PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootNodeIndex, go.transform);
     RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
@@ -801,11 +1156,21 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         auto* animator = go.GetComponent<AnimatorComponent>();
         if (!animator || !animator->enabled) continue;
 
+        if (!animator->controllerPath.empty() &&
+            animator->loadedControllerPath != animator->controllerPath) {
+            asset::AnimatorControllerAsset controller;
+            if (asset::LoadAnimatorControllerAsset(animator->controllerPath, controller)) {
+                asset::ApplyAnimatorControllerAsset(controller, *animator);
+            }
+            animator->loadedControllerPath = animator->controllerPath;
+        }
+
         // FlushFailed() が呼ばれて世代が進んだときだけ再試行する。
         // WHY: clips.empty() だけを条件にすると毎フレーム WARN スパムが発生する。
         //      世代番号で「FlushFailed() 以降に未試行」の場合のみ再試行を許可する。
         const bool needsRetry = !animator->clipsLoaded ||
-            (animator->clips.empty() && !animator->clipSources.empty() &&
+            (animator->clips.empty() &&
+             (!animator->clipSources.empty() || !animator->states.empty()) &&
              asset::AssetManager::GetFlushGeneration() > animator->clipsAttemptGeneration);
         if (needsRetry)
             LoadClips(*animator);

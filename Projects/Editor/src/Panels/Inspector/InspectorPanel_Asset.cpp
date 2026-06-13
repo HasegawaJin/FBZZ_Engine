@@ -2,6 +2,7 @@
 // Inspector/InspectorPanel_Asset.cpp | fbzz::editor
 // Asset Browser から選択したファイル用 Inspector
 #include <Editor/Panels/InspectorPanel.hpp>
+#include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
@@ -240,6 +241,18 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (materialDirty) {
             ImGui::SameLine();
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
+        }
+    } else if (ext == ".fbzzanimcontroller") {
+        if (!DrawAnimationGraphAssetInspector(ctx)) {
+            ImGui::TextDisabled("Select a State or Transition in Animation Graph.");
+            ImGui::Spacing();
+            ImGui::TextDisabled("The controller can be edited without selecting a Hierarchy object.");
+        }
+        if (ctx.animationControllerDirty) {
+            ImGui::Spacing();
+            ImGui::TextColored(
+                {1.0f, 0.8f, 0.2f, 1.0f},
+                "Modified - use Save Controller in Animation Graph.");
         }
     } else {
         ImGui::TextDisabled("Type: %s", ext.c_str());

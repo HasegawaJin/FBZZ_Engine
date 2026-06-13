@@ -2,6 +2,7 @@
 // AssetBrowserCreate.cpp | fbzz::editor
 // AssetBrowser の FBX 内容表示と Create メニュー
 #include "AssetBrowserCommon.hpp"
+#include <Engine/Asset/AnimatorControllerAsset.hpp>
 
 namespace fbzz::editor {
 
@@ -190,6 +191,20 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             "emissive_scale = 0.0\n";
         util::FileSystem::WriteText(newPath, materialTemplate);
         RefreshDirectory();
+    }
+    if (ImGui::MenuItem("Animator Controller")) {
+        std::string newPath = m_currentPath + "/New Animator Controller.fbzzanimcontroller";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Animator Controller " +
+                std::to_string(suffix++) + ".fbzzanimcontroller";
+        asset::AnimatorControllerAsset controller;
+        if (!asset::SaveAnimatorControllerAsset(newPath, controller)) {
+            FBZZ_LOG_ERROR("Animator Controller creation failed: %s", newPath.c_str());
+            return;
+        }
+        RefreshDirectory();
+        ctx.selectedAssetPath = newPath;
     }
 
     // ── C++ スクリプト ────────────────────────────────────────────
