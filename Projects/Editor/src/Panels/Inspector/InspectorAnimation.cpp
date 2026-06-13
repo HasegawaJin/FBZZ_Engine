@@ -2,13 +2,75 @@
 // InspectorAnimation.cpp | fbzz::editor
 // Animation / IK 系 Component の Inspector 描画
 #include "InspectorAnimation.hpp"
+#include <Engine/Asset/AnimatorControllerAsset.hpp>
 
 namespace fbzz::editor {
 
 void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
-        [](scene::AnimatorComponent& anim, EditorContext&) {
+        [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
+            ImGui::SeparatorText("Controller");
+            char controllerBuffer[512]{};
+            std::snprintf(
+                controllerBuffer, sizeof(controllerBuffer), "%s", anim.controllerPath.c_str());
+            if (ImGui::InputText(
+                    "Animator Controller", controllerBuffer, sizeof(controllerBuffer))) {
+                anim.controllerPath = NormalizeAssetPath(controllerBuffer);
+                anim.loadedControllerPath.clear();
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit() && ctx.markSceneDirty)
+                ctx.markSceneDirty();
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    const std::string dropped =
+                        NormalizeAssetPath(static_cast<const char*>(payload->Data));
+                    if (util::StringUtils::EndsWith(dropped, ".fbzzanimcontroller")) {
+                        anim.controllerPath = dropped;
+                        anim.loadedControllerPath.clear();
+                        asset::AnimatorControllerAsset controller;
+                        if (asset::LoadAnimatorControllerAsset(dropped, controller))
+                            asset::ApplyAnimatorControllerAsset(controller, anim);
+                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            ImGui::TextDisabled("Drag an Animator Controller asset here.");
+            if (ImGui::Button(
+                    "Create Controller From Current", ImVec2(-1.0f, 0.0f))) {
+                const std::string directory =
+                    ctx.projectRoot + "/Assets/Animation";
+                util::FileSystem::EnsureDirectory(directory);
+                std::string safeName = go->name.empty() ? "Animator" : go->name;
+                for (char& character : safeName) {
+                    const bool valid =
+                        std::isalnum(static_cast<unsigned char>(character)) ||
+                        character == '_' || character == '-';
+                    if (!valid) character = '_';
+                }
+                std::string path =
+                    directory + "/" + safeName + ".fbzzanimcontroller";
+                for (int suffix = 1;
+                     util::FileSystem::Exists(path) && suffix < 10000;
+                     ++suffix) {
+                    path = directory + "/" + safeName + " " +
+                        std::to_string(suffix) + ".fbzzanimcontroller";
+                }
+                const auto controller =
+                    asset::MakeAnimatorControllerAsset(anim);
+                if (asset::SaveAnimatorControllerAsset(path, controller)) {
+                    anim.controllerPath = NormalizeAssetPath(path);
+                    anim.loadedControllerPath = anim.controllerPath;
+                    ctx.selectedAssetPath = path;
+                    ctx.requestAssetBrowserRefresh = true;
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                }
+            }
+            ImGui::Separator();
+
+            const bool usesController = !anim.controllerPath.empty();
+            if (!usesController) {
             // --- Clip Sources list ---
             ImGui::Text("Clip Sources");
 
@@ -20,12 +82,13 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 if (ImGui::InputText("##src", buf, sizeof(buf)))
                     anim.clipSources[i] = NormalizeAssetPath(buf);
                 if (ImGui::IsItemDeactivatedAfterEdit())
-                    { anim.clips.clear(); anim.clipsLoaded = false; }
+                    { anim.clips.clear(); anim.clipSourcePaths.clear(); anim.clipsLoaded = false; }
                 // DragDrop target must be right after InputText, before SameLine
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         anim.clipSources[i] = NormalizeAssetPath(static_cast<const char*>(p->Data));
                         anim.clips.clear(); anim.clipsLoaded = false;
+                        anim.clipSourcePaths.clear();
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -33,6 +96,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 if (ImGui::SmallButton("x")) {
                     anim.clipSources.erase(anim.clipSources.begin() + i);
                     anim.clips.clear(); anim.clipsLoaded = false;
+                    anim.clipSourcePaths.clear();
                     ImGui::PopID(); break;
                 }
                 ImGui::PopID();
@@ -45,6 +109,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     std::string path = NormalizeAssetPath(static_cast<const char*>(p->Data));
                     anim.clipSources.push_back(std::move(path));
                     anim.clips.clear(); anim.clipsLoaded = false;
+                    anim.clipSourcePaths.clear();
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -77,6 +142,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             } else {
                 ImGui::TextDisabled("(clips not loaded yet)");
             }
+            }
 
             ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
             ImGui::Checkbox("Playing", &anim.playing);
@@ -87,7 +153,22 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
 
             // ── ステートマシン UI ────────────────────────────────────────────────
-            if (!anim.states.empty() || true) {
+            if (usesController && !anim.currentStateName.empty()) {
+                ImGui::SeparatorText("Runtime");
+                ImGui::Text("Current: %s", anim.currentStateName.c_str());
+                const float normalizedTime = anim.GetNormalizedTime();
+                ImGui::ProgressBar(normalizedTime, { -1.0f, 0.0f });
+                if (!anim.blendToState.empty()) {
+                    ImGui::TextDisabled(
+                        "-> %s  (blend: %.0f%%)",
+                        anim.blendToState.c_str(),
+                        anim.blendWeight * 100.0f);
+                }
+                ImGui::TextDisabled(
+                    "Edit nodes, sources, parameters and transitions in Animation Graph.");
+            }
+
+            if (!usesController) {
                 ImGui::Separator();
                 ImGui::TextColored({ 0.9f, 0.7f, 0.2f, 1.0f }, "State Machine");
 
@@ -235,17 +316,92 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                 st.name = nameBuf;
                             }
 
-                            // Clip コンボ
-                            int clipSel = 0;
-                            for (int ci = 1; ci < static_cast<int>(clipNames.size()); ++ci)
-                                if (st.clipName == clipNames[static_cast<size_t>(ci)])
-                                    { clipSel = ci; break; }
-                            if (ImGui::Combo("Clip", &clipSel,
-                                             clipNames.data(),
-                                             static_cast<int>(clipNames.size()))) {
-                                st.clipName = (clipSel == 0)
-                                    ? ""
-                                    : clipNames[static_cast<size_t>(clipSel)];
+                            static const char* kStateModes[] = {
+                                "Clip", "Blend Tree 1D", "Blend Tree 2D"
+                            };
+                            int stateMode = static_cast<int>(st.mode);
+                            if (ImGui::Combo("Mode", &stateMode, kStateModes, 3))
+                                st.mode = static_cast<scene::AnimationStateMode>(stateMode);
+
+                            if (st.mode == scene::AnimationStateMode::Clip) {
+                                int clipSel = 0;
+                                for (int ci = 1; ci < static_cast<int>(clipNames.size()); ++ci)
+                                    if (st.clipName == clipNames[static_cast<size_t>(ci)])
+                                        { clipSel = ci; break; }
+                                if (ImGui::Combo("Clip", &clipSel,
+                                                 clipNames.data(),
+                                                 static_cast<int>(clipNames.size()))) {
+                                    st.clipName = (clipSel == 0)
+                                        ? ""
+                                        : clipNames[static_cast<size_t>(clipSel)];
+                                }
+                            } else {
+                                auto drawMotions = [&](std::vector<scene::BlendTreeMotion>& motions,
+                                                       bool is2D) {
+                                    int removeMotion = -1;
+                                    for (int mi = 0; mi < static_cast<int>(motions.size()); ++mi) {
+                                        auto& motion = motions[static_cast<size_t>(mi)];
+                                        ImGui::PushID(mi);
+                                        char motionClip[128]{};
+                                        std::snprintf(motionClip, sizeof(motionClip), "%s",
+                                                      motion.clipName.c_str());
+                                        if (ImGui::InputText("Motion Clip", motionClip,
+                                                             sizeof(motionClip)))
+                                            motion.clipName = motionClip;
+                                        if (is2D) {
+                                            ImGui::DragFloat("X", &motion.posX, 0.01f);
+                                            ImGui::SameLine();
+                                            ImGui::DragFloat("Y", &motion.posY, 0.01f);
+                                        } else {
+                                            ImGui::DragFloat(
+                                                "Threshold", &motion.threshold, 0.01f);
+                                        }
+                                        ImGui::DragFloat(
+                                            "Motion Speed", &motion.speed,
+                                            0.01f, -10.0f, 10.0f);
+                                        ImGui::DragFloat(
+                                            "Motion IK", &motion.ikWeight,
+                                            0.01f, 0.0f, 1.0f);
+                                        if (ImGui::SmallButton("Remove Motion"))
+                                            removeMotion = mi;
+                                        ImGui::Separator();
+                                        ImGui::PopID();
+                                    }
+                                    if (removeMotion >= 0)
+                                        motions.erase(motions.begin() + removeMotion);
+                                    if (ImGui::Button("+ Motion"))
+                                        motions.emplace_back();
+                                };
+
+                                if (st.mode == scene::AnimationStateMode::BlendTree1D) {
+                                    char paramName[96]{};
+                                    std::snprintf(paramName, sizeof(paramName), "%s",
+                                                  st.blendTree1D.paramName.c_str());
+                                    if (ImGui::InputText(
+                                            "Blend Parameter", paramName, sizeof(paramName)))
+                                        st.blendTree1D.paramName = paramName;
+                                    drawMotions(st.blendTree1D.motions, false);
+                                } else {
+                                    char paramX[96]{};
+                                    char paramY[96]{};
+                                    std::snprintf(paramX, sizeof(paramX), "%s",
+                                                  st.blendTree2D.paramX.c_str());
+                                    std::snprintf(paramY, sizeof(paramY), "%s",
+                                                  st.blendTree2D.paramY.c_str());
+                                    if (ImGui::InputText("Parameter X", paramX, sizeof(paramX)))
+                                        st.blendTree2D.paramX = paramX;
+                                    if (ImGui::InputText("Parameter Y", paramY, sizeof(paramY)))
+                                        st.blendTree2D.paramY = paramY;
+                                    static const char* kBlend2DTypes[] = {
+                                        "Simple Directional", "Freeform Cartesian"
+                                    };
+                                    int blendType = static_cast<int>(st.blendTree2D.type);
+                                    if (ImGui::Combo(
+                                            "2D Type", &blendType, kBlend2DTypes, 2))
+                                        st.blendTree2D.type =
+                                            static_cast<scene::BlendTree2DType>(blendType);
+                                    drawMotions(st.blendTree2D.motions, true);
+                                }
                             }
                             ImGui::DragFloat("Speed##st", &st.speed, 0.01f, -10.0f, 10.0f);
                             ImGui::Checkbox("Loop##st", &st.loop);
@@ -387,6 +543,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     ik.hipBoneName.clear();
                 if (!ik.hipBoneName.empty())
                     ImGui::TextDisabled("  Hip height correction enabled");
+
+                ImGui::DragFloat("Hip Max Offset Ratio",
+                                 &ik.hipMaxOffsetRatio,
+                                 0.01f, 0.0f, 1.0f, "%.2f");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Maximum hip movement as a ratio of average leg length");
             }
 
             ImGui::Separator();
