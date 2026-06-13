@@ -29,6 +29,8 @@ namespace fbzz::renderer { class IRenderer; }
 
 namespace fbzz::editor {
 
+class UndoStack;
+
 class TerrainTool {
 public:
     // ── ブラシモード ──────────────────────────────────────────────────────────
@@ -77,11 +79,12 @@ public:
                 bool                      viewportHovered,
                 const ImVec2&             viewportMin,
                 const ImVec2&             viewportSize,
-                const std::function<void()>& markDirty);
+                const std::function<void()>& markDirty,
+                UndoStack*                 undoStack);
 
     // ImGui でブラシ設定 UI を描画する。
     // ViewportPanel の内側（ImGui::Begin スコープ内）から呼ぶこと。
-    void OnEditorGUI(scene::Scene& scene);
+    void OnEditorGUI(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
 
 private:
     // ── 状態 ──────────────────────────────────────────────────────────────────
@@ -93,6 +96,10 @@ private:
     uint32_t m_paintLayer    = 0;      // Paint モード: 塗るレイヤーインデックス [0, 3]
     float    m_flattenTarget = 0.0f;   // Flatten モード: 基準高さ（ワールド単位）
     bool     m_flattenLocked = false;  // Flatten モード: 最初のクリックで固定したか
+    scene::EntityID         m_strokeEntity;
+    std::string             m_strokeInstanceId;
+    scene::TerrainComponent m_strokeBefore;
+    bool                    m_strokeActive = false;
 
     bool              m_isHovering = false;  // 地形にマウスが乗っているか
     math::Vector3     m_hitPoint;            // レイキャスト結果（ワールド座標）
