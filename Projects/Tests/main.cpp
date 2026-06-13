@@ -78,26 +78,26 @@ static void checkV(bool cond, const char* label,
 }
 
 // ColliderInstance を手軽に作るヘルパー
-static ColliderInstance makeInstance(std::shared_ptr<Collider> col,
+static ColliderInstance makeInstance(Collider* col,
                                      RigidBody* body,
                                      bool isTrigger = false)
 {
     static PhysicsMaterial mat;
     ColliderInstance ci;
-    ci.collider  = std::move(col);
+    ci.collider = col;
     ci.body      = body;
     ci.material  = &mat;
     ci.isTrigger = isTrigger;
     return ci;
 }
 
-static ColliderInstance makeInstanceMat(std::shared_ptr<Collider> col,
+static ColliderInstance makeInstanceMat(Collider* col,
                                         RigidBody* body,
                                         const PhysicsMaterial* mat,
                                         bool isTrigger = false)
 {
     ColliderInstance ci;
-    ci.collider  = std::move(col);
+    ci.collider = col;
     ci.body      = body;
     ci.material  = mat;
     ci.isTrigger = isTrigger;
@@ -124,7 +124,7 @@ static void TestPhase1_StackStability()
     auto floorCol  = std::make_shared<AABBCollider>(Vector3{ 10.0f, 0.5f, 10.0f });
     floorCol->Update(floorBody->GetPosition(), floorBody->GetRotation());
     bodies.push_back(floorBody);
-    colliders.push_back(makeInstance(floorCol, floorBody.get()));
+    colliders.push_back(makeInstance(floorCol.get(), floorBody.get()));
 
     std::vector<RigidBody*> dynamicBodies;
 
@@ -139,7 +139,7 @@ static void TestPhase1_StackStability()
         col->Update(body->GetPosition(), body->GetRotation());
 
         dynamicBodies.push_back(body.get());
-        colliders.push_back(makeInstance(col, body.get()));
+        colliders.push_back(makeInstance(col.get(), body.get()));
         bodies.push_back(std::move(body));
     }
 
@@ -147,7 +147,7 @@ static void TestPhase1_StackStability()
     world.SetGravity({ 0.0f, -9.81f, 0.0f });
     world.BeginSceneSync();
     for (const auto& body : bodies)
-        world.SyncBody({}, body);
+        world.SyncBody({}, body.get());
     for (const auto& collider : colliders)
         world.SyncCollider({}, collider);
     world.EndSceneSync();
@@ -223,15 +223,15 @@ static void TestPhase2_TriangleMesh()
 
     std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, sphereBody };
     std::vector<ColliderInstance> colliders = {
-        makeInstance(meshCol,   floorBody.get()),
-        makeInstance(sphereCol, sphereBody.get()),
+        makeInstance(meshCol.get(),   floorBody.get()),
+        makeInstance(sphereCol.get(), sphereBody.get()),
     };
 
     World world;
     world.SetGravity({ 0.0f, -9.81f, 0.0f });
     world.BeginSceneSync();
     for (const auto& body : bodies)
-        world.SyncBody({}, body);
+        world.SyncBody({}, body.get());
     for (const auto& collider : colliders)
         world.SyncCollider({}, collider);
     world.EndSceneSync();
@@ -380,15 +380,15 @@ static void TestPhase4_CCD()
 
         std::vector<std::shared_ptr<RigidBody>> bodies   = { wallBody, bulletBody };
         std::vector<ColliderInstance>           cols = {
-            makeInstance(wallCol,   wallBody.get()),
-            makeInstance(bulletCol, bulletBody.get()),
+            makeInstance(wallCol.get(),   wallBody.get()),
+            makeInstance(bulletCol.get(), bulletBody.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f }); // 重力なし
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -423,7 +423,7 @@ static void TestPhase5_StackStress()
         auto floorCol = std::make_shared<AABBCollider>(Vector3{ 10.0f, 0.5f, 10.0f });
         floorCol->Update(floorBody->GetPosition(), floorBody->GetRotation());
         bodies.push_back(floorBody);
-        cols.push_back(makeInstance(floorCol, floorBody.get()));
+        cols.push_back(makeInstance(floorCol.get(), floorBody.get()));
 
         std::vector<RigidBody*> dynBodies;
         for (int i = 0; i < N; ++i)
@@ -434,7 +434,7 @@ static void TestPhase5_StackStress()
             auto col = std::make_shared<SphereCollider>(R);
             col->Update(body->GetPosition(), body->GetRotation());
             dynBodies.push_back(body.get());
-            cols.push_back(makeInstance(col, body.get()));
+            cols.push_back(makeInstance(col.get(), body.get()));
             bodies.push_back(std::move(body));
         }
 
@@ -442,7 +442,7 @@ static void TestPhase5_StackStress()
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -481,7 +481,7 @@ static void TestPhase5_StackStress()
         auto floorCol = std::make_shared<AABBCollider>(Vector3{ 10.0f, 0.25f, 10.0f });
         floorCol->Update(floorBody->GetPosition(), floorBody->GetRotation());
         bodies.push_back(floorBody);
-        cols.push_back(makeInstance(floorCol, floorBody.get()));
+        cols.push_back(makeInstance(floorCol.get(), floorBody.get()));
 
         std::vector<RigidBody*> dynBodies;
         for (int i = 0; i < N; ++i)
@@ -492,7 +492,7 @@ static void TestPhase5_StackStress()
             auto col = std::make_shared<AABBCollider>(HE);
             col->Update(body->GetPosition(), body->GetRotation());
             dynBodies.push_back(body.get());
-            cols.push_back(makeInstance(col, body.get()));
+            cols.push_back(makeInstance(col.get(), body.get()));
             bodies.push_back(std::move(body));
         }
 
@@ -500,7 +500,7 @@ static void TestPhase5_StackStress()
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -549,15 +549,15 @@ static void TestPhase5_StackStress()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, ballBody };
         std::vector<ColliderInstance> cols = {
-            makeInstance(floorCol, floorBody.get()),
-            makeInstance(ballCol,  ballBody.get()),
+            makeInstance(floorCol.get(), floorBody.get()),
+            makeInstance(ballCol.get(),  ballBody.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -595,15 +595,15 @@ static void TestPhase6_Capsule()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, capBody };
         std::vector<ColliderInstance> cols = {
-            makeInstance(floorCol, floorBody.get()),
-            makeInstance(capCol,   capBody.get()),
+            makeInstance(floorCol.get(), floorBody.get()),
+            makeInstance(capCol.get(),   capBody.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -641,16 +641,16 @@ static void TestPhase6_Capsule()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, capBody, sphBody };
         std::vector<ColliderInstance> cols = {
-            makeInstance(floorCol, floorBody.get()),
-            makeInstance(capCol,   capBody.get()),
-            makeInstance(sphCol,   sphBody.get()),
+            makeInstance(floorCol.get(), floorBody.get()),
+            makeInstance(capCol.get(),   capBody.get()),
+            makeInstance(sphCol.get(),   sphBody.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -684,16 +684,16 @@ static void TestPhase6_Capsule()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, capBodyA, capBodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(floorCol, floorBody.get()),
-            makeInstance(capColA,  capBodyA.get()),
-            makeInstance(capColB,  capBodyB.get()),
+            makeInstance(floorCol.get(), floorBody.get()),
+            makeInstance(capColA.get(),  capBodyA.get()),
+            makeInstance(capColB.get(),  capBodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -712,13 +712,13 @@ static void TestPhase6_Capsule()
         auto sphereCol = std::make_shared<SphereCollider>(0.5f);
         sphereCol->Update({ 1.0f, 0.0f, 0.0f }, body->GetRotation());
 
-        ColliderInstance inst = makeInstance(sphereCol, body.get());
+        ColliderInstance inst = makeInstance(sphereCol.get(), body.get());
         inst.centerOffset = { 1.0f, 0.0f, 0.0f };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
-        world.SyncBody({}, body);
+        world.SyncBody({}, body.get());
         world.SyncCollider({}, inst);
         world.EndSceneSync();
         world.Step(1.0f / 60.0f);
@@ -748,10 +748,10 @@ static void TestPhase6_Capsule()
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
-        world.SyncBody({}, boxBody);
-        world.SyncBody({}, capBody);
-        world.SyncCollider({}, makeInstance(boxCol, boxBody.get()));
-        world.SyncCollider({}, makeInstance(capCol, capBody.get()));
+        world.SyncBody({}, boxBody.get());
+        world.SyncBody({}, capBody.get());
+        world.SyncCollider({}, makeInstance(boxCol.get(), boxBody.get()));
+        world.SyncCollider({}, makeInstance(capCol.get(), capBody.get()));
         world.EndSceneSync();
         world.Step(1.0f / 60.0f);
 
@@ -786,15 +786,15 @@ static void TestPhase7_Momentum()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get()),
-            makeInstance(colB, bodyB.get()),
+            makeInstance(colA.get(), bodyA.get()),
+            makeInstance(colB.get(), bodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -828,15 +828,15 @@ static void TestPhase7_Momentum()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get()),
-            makeInstance(colB, bodyB.get()),
+            makeInstance(colA.get(), bodyA.get()),
+            makeInstance(colB.get(), bodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -885,15 +885,15 @@ static void TestPhase8_Materials()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, ballBody };
         std::vector<ColliderInstance> cols = {
-            makeInstanceMat(floorCol, floorBody.get(), mat),
-            makeInstanceMat(ballCol,  ballBody.get(),  mat),
+            makeInstanceMat(floorCol.get(), floorBody.get(), mat),
+            makeInstanceMat(ballCol.get(),  ballBody.get(),  mat),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -941,15 +941,15 @@ static void TestPhase8_Materials()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, boxBody };
         std::vector<ColliderInstance> cols = {
-            makeInstanceMat(floorCol, floorBody.get(), &PhysicsMaterial::Stone),
-            makeInstanceMat(boxCol,   boxBody.get(),   slideMat),
+            makeInstanceMat(floorCol.get(), floorBody.get(), &PhysicsMaterial::Stone),
+            makeInstanceMat(boxCol.get(),   boxBody.get(),   slideMat),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -996,15 +996,15 @@ static void TestPhase9_ConvexHullWorld()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, cvxBody };
         std::vector<ColliderInstance> cols = {
-            makeInstance(floorCol, floorBody.get()),
-            makeInstance(cvxCol,   cvxBody.get()),
+            makeInstance(floorCol.get(), floorBody.get()),
+            makeInstance(cvxCol.get(),   cvxBody.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -1039,16 +1039,16 @@ static void TestPhase9_ConvexHullWorld()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { floorBody, cvxBody, sphBody };
         std::vector<ColliderInstance> cols = {
-            makeInstance(floorCol, floorBody.get()),
-            makeInstance(cvxCol,   cvxBody.get()),
-            makeInstance(sphCol,   sphBody.get()),
+            makeInstance(floorCol.get(), floorBody.get()),
+            makeInstance(cvxCol.get(),   cvxBody.get()),
+            makeInstance(sphCol.get(),   sphBody.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -1077,15 +1077,15 @@ static void TestPhase9_ConvexHullWorld()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get()),
-            makeInstance(colB, bodyB.get()),
+            makeInstance(colA.get(), bodyA.get()),
+            makeInstance(colB.get(), bodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -1125,15 +1125,15 @@ static void TestPhase10_Triggers()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get(), /*isTrigger=*/true),
-            makeInstance(colB, bodyB.get(), /*isTrigger=*/true),
+            makeInstance(colA.get(), bodyA.get(), /*isTrigger=*/true),
+            makeInstance(colB.get(), bodyB.get(), /*isTrigger=*/true),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -1160,15 +1160,15 @@ static void TestPhase10_Triggers()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get(), /*isTrigger=*/true),
-            makeInstance(colB, bodyB.get(), /*isTrigger=*/false),
+            makeInstance(colA.get(), bodyA.get(), /*isTrigger=*/true),
+            makeInstance(colB.get(), bodyB.get(), /*isTrigger=*/false),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -1202,15 +1202,15 @@ static void TestPhase10_Triggers()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get()),
-            makeInstance(colB, bodyB.get()),
+            makeInstance(colA.get(), bodyA.get()),
+            makeInstance(colB.get(), bodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, -9.81f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -1243,15 +1243,15 @@ static void TestPhase10_Triggers()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get(), true),
-            makeInstance(colB, bodyB.get(), true),
+            makeInstance(colA.get(), bodyA.get(), true),
+            makeInstance(colB.get(), bodyB.get(), true),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
@@ -1298,20 +1298,20 @@ static void TestPhase11_Constraints()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get()),
-            makeInstance(colB, bodyB.get()),
+            makeInstance(colA.get(), bodyA.get()),
+            makeInstance(colB.get(), bodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
         // 距離制約: 最大 3.0m
-        world.AddConstraint(std::make_shared<DistanceConstraint>(
+        world.AddConstraint(std::make_unique<DistanceConstraint>(
             bodyA.get(), bodyB.get(), 3.0f));
 
         for (int s = 0; s < 120; ++s) world.Step(1.0f / 60.0f);
@@ -1340,20 +1340,20 @@ static void TestPhase11_Constraints()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get()),
-            makeInstance(colB, bodyB.get()),
+            makeInstance(colA.get(), bodyA.get()),
+            makeInstance(colB.get(), bodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
         // k=50, c=1 の春定数スプリング
-        world.AddConstraint(std::make_shared<SpringConstraint>(
+        world.AddConstraint(std::make_unique<SpringConstraint>(
             bodyA.get(), bodyB.get(), 1.0f, 50.0f, 1.0f));
 
         // 0.5 秒後: bodyB は B が A 方向に引き寄せられているはず (x < 3.0)
@@ -1390,19 +1390,19 @@ static void TestPhase11_Constraints()
 
         std::vector<std::shared_ptr<RigidBody>> bodies = { bodyA, bodyB };
         std::vector<ColliderInstance> cols = {
-            makeInstance(colA, bodyA.get()),
-            makeInstance(colB, bodyB.get()),
+            makeInstance(colA.get(), bodyA.get()),
+            makeInstance(colB.get(), bodyB.get()),
         };
 
         World world;
         world.SetGravity({ 0.0f, 0.0f, 0.0f });
         world.BeginSceneSync();
         for (const auto& body : bodies)
-            world.SyncBody({}, body);
+            world.SyncBody({}, body.get());
         for (const auto& collider : cols)
             world.SyncCollider({}, collider);
         world.EndSceneSync();
-        world.AddConstraint(std::make_shared<SpringConstraint>(
+        world.AddConstraint(std::make_unique<SpringConstraint>(
             bodyA.get(), bodyB.get(), 1.0f, 50.0f, 1.0f));
 
         // 0.25 秒後: 押し戻されて x > 0.5 になっているはず
@@ -1505,7 +1505,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
               "World: substeps are clamped to supported range");
         world.SetGravity({ 0.0f, -10.0f, 0.0f });
         world.BeginSceneSync();
-        world.SyncBody({}, gravityScaled);
+        world.SyncBody({}, gravityScaled.get());
         world.EndSceneSync();
         world.Step(1.0f);
         check(gravityScaled->GetVelocity().y < -10.0f,
@@ -1525,8 +1525,8 @@ static void TestPhase12_PhysicsFeatureCoverage()
         World nBodyWorld;
         nBodyWorld.SetGravity(Vector3::ZERO);
         nBodyWorld.BeginSceneSync();
-        nBodyWorld.SyncBody({}, sourceA);
-        nBodyWorld.SyncBody({}, sourceB);
+        nBodyworld.SyncBody({}, sourceA.get());
+        nBodyworld.SyncBody({}, sourceB.get());
         nBodyWorld.EndSceneSync();
         nBodyWorld.Step(1.0f);
         check(sourceA->GetVelocity().x > 0.0f && sourceB->GetVelocity().x < 0.0f,
@@ -1548,10 +1548,10 @@ static void TestPhase12_PhysicsFeatureCoverage()
         farCol->Update(farBody->GetPosition(), farBody->GetRotation());
 
         world.BeginSceneSync();
-        BodyHandle nearBodyHandle = world.SyncBody({}, nearBody);
-        world.SyncBody({}, farBody);
-        ColliderHandle nearColHandle = world.SyncCollider({}, makeInstance(nearCol, nearBody.get()));
-        world.SyncCollider({}, makeInstance(farCol, farBody.get()));
+        BodyHandle nearBodyHandle = world.SyncBody({}, nearBody.get());
+        world.SyncBody({}, farBody.get());
+        ColliderHandle nearColHandle = world.SyncCollider({}, makeInstance(nearCol.get(), nearBody.get()));
+        world.SyncCollider({}, makeInstance(farCol.get(), farBody.get()));
         world.EndSceneSync();
 
         World::RaycastHit hit;
@@ -1572,8 +1572,8 @@ static void TestPhase12_PhysicsFeatureCoverage()
               "World API: OverlapSphere filters by radius");
 
         world.BeginSceneSync();
-        world.SyncBody(nearBodyHandle, nearBody);
-        world.SyncCollider(nearColHandle, makeInstance(nearCol, nearBody.get()));
+        world.SyncBody(nearBodyHandle, nearBody.get());
+        world.SyncCollider(nearColHandle, makeInstance(nearCol.get(), nearBody.get()));
         world.EndSceneSync();
         const auto remainingHits = world.RaycastAll({ 0.0f, 0.0f, 0.0f }, Vector3::RIGHT, 10.0f);
         check(remainingHits.size() == 1,
@@ -1596,16 +1596,16 @@ static void TestPhase12_PhysicsFeatureCoverage()
         colA->Update(bodyA->GetPosition(), bodyA->GetRotation());
         auto colB = std::make_shared<SphereCollider>(0.5f);
         colB->Update(bodyB->GetPosition(), bodyB->GetRotation());
-        ColliderInstance instA = makeInstance(colA, bodyA.get());
-        ColliderInstance instB = makeInstance(colB, bodyB.get());
+        ColliderInstance instA = makeInstance(colA.get(), bodyA.get());
+        ColliderInstance instB = makeInstance(colB.get(), bodyB.get());
         instA.layer = 0;
         instB.layer = 1;
 
         World world;
         world.SetGravity(Vector3::ZERO);
         world.BeginSceneSync();
-        world.SyncBody({}, bodyA);
-        world.SyncBody({}, bodyB);
+        world.SyncBody({}, bodyA.get());
+        world.SyncBody({}, bodyB.get());
         world.SyncCollider({}, instA);
         world.SyncCollider({}, instB);
         world.EndSceneSync();
@@ -1643,38 +1643,38 @@ static void TestPhase12_PhysicsFeatureCoverage()
             });
         hull->Update({ 0.0f, 0.25f, 0.0f }, Quaternion::Identity());
 
-        auto instance = [&mat](std::shared_ptr<Collider> collider) {
+        auto instance = [&mat](Collider* collider) {
             ColliderInstance inst;
-            inst.collider = std::move(collider);
+            inst.collider = collider;
             inst.material = &mat;
             return inst;
         };
-        auto expectPair = [&solver, &instance](std::shared_ptr<Collider> a,
-                                               std::shared_ptr<Collider> b,
+        auto expectPair = [&solver, &instance](Collider* a,
+                                               Collider* b,
                                                const char* label) {
-            ColliderInstance instA = instance(std::move(a));
-            ColliderInstance instB = instance(std::move(b));
+            ColliderInstance instA = instance(a);
+            ColliderInstance instB = instance(b);
             std::vector<CollisionPair> pairs = { { &instA, &instB } };
             std::vector<ContactPoint> contacts;
             solver.NarrowPhase(pairs, contacts);
             check(!contacts.empty(), label);
         };
 
-        expectPair(sphere, aabb, "NarrowPhase: Sphere-AABB contact");
-        expectPair(sphere, obb, "NarrowPhase: Sphere-OBB contact");
-        expectPair(sphere, capsule, "NarrowPhase: Sphere-Capsule contact");
-        expectPair(sphere, mesh, "NarrowPhase: Sphere-TriangleMesh contact");
-        expectPair(sphere, hull, "NarrowPhase: Sphere-ConvexHull contact");
-        expectPair(aabb, obb, "NarrowPhase: AABB-OBB contact");
-        expectPair(aabb, capsule, "NarrowPhase: AABB-Capsule contact");
-        expectPair(aabb, mesh, "NarrowPhase: AABB-TriangleMesh contact");
-        expectPair(aabb, hull, "NarrowPhase: AABB-ConvexHull contact");
-        expectPair(obb, capsule, "NarrowPhase: OBB-Capsule contact");
-        expectPair(obb, mesh, "NarrowPhase: OBB-TriangleMesh contact");
-        expectPair(obb, hull, "NarrowPhase: OBB-ConvexHull contact");
-        expectPair(capsule, mesh, "NarrowPhase: Capsule-TriangleMesh contact");
-        expectPair(capsule, hull, "NarrowPhase: Capsule-ConvexHull contact");
-        expectPair(hull, mesh, "NarrowPhase: ConvexHull-TriangleMesh contact");
+        expectPair(sphere.get(), aabb.get(), "NarrowPhase: Sphere-AABB contact");
+        expectPair(sphere.get(), obb.get(), "NarrowPhase: Sphere-OBB contact");
+        expectPair(sphere.get(), capsule.get(), "NarrowPhase: Sphere-Capsule contact");
+        expectPair(sphere.get(), mesh.get(), "NarrowPhase: Sphere-TriangleMesh contact");
+        expectPair(sphere.get(), hull.get(), "NarrowPhase: Sphere-ConvexHull contact");
+        expectPair(aabb.get(), obb.get(), "NarrowPhase: AABB-OBB contact");
+        expectPair(aabb.get(), capsule.get(), "NarrowPhase: AABB-Capsule contact");
+        expectPair(aabb.get(), mesh.get(), "NarrowPhase: AABB-TriangleMesh contact");
+        expectPair(aabb.get(), hull.get(), "NarrowPhase: AABB-ConvexHull contact");
+        expectPair(obb.get(), capsule.get(), "NarrowPhase: OBB-Capsule contact");
+        expectPair(obb.get(), mesh.get(), "NarrowPhase: OBB-TriangleMesh contact");
+        expectPair(obb.get(), hull.get(), "NarrowPhase: OBB-ConvexHull contact");
+        expectPair(capsule.get(), mesh.get(), "NarrowPhase: Capsule-TriangleMesh contact");
+        expectPair(capsule.get(), hull.get(), "NarrowPhase: Capsule-ConvexHull contact");
+        expectPair(hull.get(), mesh.get(), "NarrowPhase: ConvexHull-TriangleMesh contact");
     }
 
     {
@@ -1746,7 +1746,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
         World world;
         world.SetGravity({ 0.0f, -10.0f, 0.0f });
         world.BeginSceneSync();
-        world.SyncBody({}, body);
+        world.SyncBody({}, body.get());
         world.SyncVolume({}, std::make_shared<ColliderVolume>(volumeShape, gravitySettings));
         world.EndSceneSync();
         world.Step(1.0f / 60.0f);
