@@ -43,6 +43,9 @@ struct EditorSettings {
     bool        hotReloadEnabled = true;
     std::string lastScenePath;
 
+    // --- Asset Browser ----------------------------------------------------
+    float assetBrowserIconSize = 84.0f;
+
     // projectRoot を渡すと lastScenePath を相対パスで保存し、ロード時に絶対パスに戻す。
     // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後に無効になる。
     bool Load(const std::string& path, const std::string& projectRoot = "");

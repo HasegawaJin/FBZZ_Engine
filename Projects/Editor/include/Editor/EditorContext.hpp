@@ -171,10 +171,11 @@ struct EditorContext {
     bool           scriptReloadBusy = false;  // Script DLL のビルド待ち / ロード中は Play 開始を止める
 
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
-    bool requestOpenProjectSettings = false;
-    bool requestOpenBuildSettings   = false;
-    bool requestOpenAnalysis        = false;
-    bool requestScriptReload        = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
+    bool requestOpenProjectSettings  = false;
+    bool requestOpenBuildSettings    = false;
+    bool requestOpenAnalysis         = false;
+    bool requestOpenAnimationGraph   = false; // .fbzzanimcontroller ダブルクリック → AnimationGraphPanel を開く
+    bool requestScriptReload         = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
@@ -199,6 +200,7 @@ struct EditorContext {
     std::function<void()>                   markSceneDirty;
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
+    float                                   assetBrowserIconSize       = 84.0f;
 };
 
 } // namespace fbzz::editor
