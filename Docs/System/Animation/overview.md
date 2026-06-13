@@ -14,7 +14,7 @@
 |---|---|
 | レガシー単クリップ再生（clipIndex / clipName / time） | `AnimatorSystem.cpp::RunLegacyAnimatorPath` |
 | ステートマシン再生（states / parameters / transitions） | `AnimatorSystem.cpp::RunStateMachineAnimatorPath` |
-| クロスフェード遷移（TRS レベル Lerp/Slerp） | `AnimatorSystem.cpp::EvaluateBlendedNodeRecursive` |
+| クロスフェード遷移（TRS レベル加重合成） | `AnimatorSystem.cpp::EvaluateNBlendedNodeRecursive` |
 | パラメーター型（Float / Int / Bool / Trigger） | `AnimatorComponent.hpp`、`CheckCondition` |
 | 遷移条件評価（Greater/Less/Equal/NotEqual/True/False + AND 結合） | `AnimatorSystem.cpp::EvaluateTransition` |
 | hasExitTime / exitTime | `AnimationTransition::hasExitTime` |
@@ -22,7 +22,7 @@
 | ステート別再生速度 | `AnimationState::speed` |
 | ステート別 IK Weight | `AnimationState::ikWeight` |
 | GetNormalizedTime() / IsInState() | `AnimatorComponent.hpp` |
-| Script API（SetFloat/SetInt/SetBool/SetTrigger/IsInState） | `ScriptAnimatorProxy.hpp` |
+| Script API（Set/Get パラメーター、GetNormalizedTime、IsInState） | `ScriptAnimatorProxy.hpp` |
 | クリップ名 Fuzzy 解決（完全一致→大文字小文字無視部分一致） | `AnimatorSystem.cpp::FindClipByName` |
 | FBX ノード名正規化（namespace / $AssimpFbx$ / パス区切り除去） | `AnimatorSystem.cpp::FindTrack` |
 | ボーン階層の自動生成・再利用 | `EnsureBoneObject`, `EnsureBoneHierarchy` |
@@ -42,27 +42,29 @@
 | 地面スナップ レイキャスト（脚長比率ベースの動的レイ高さ） | `IKSystem.cpp::QueryGroundHit` |
 | スイング相判定（FK 足が地面より高ければスナップ無効） | `IKSystem.cpp`（hasGroundHit 条件） |
 | 足首傾き補正（地面法線 FromToRotation） | `IKSystem.cpp`（rotC_final の groundAlign） |
-| 骨盤高さ補正 pre-pass（両脚の平均オフセット → hip 先行適用） | `IKSystem.cpp`（Hip pre-pass ブロック） |
+| 骨盤高さ補正 pre-pass（両脚の平均オフセット → hip 先行適用） | `IKSystem.cpp`（`hipMaxOffsetRatio` で上限調整） |
 | GUID + 名前フォールバックによるターゲット解決設計 | `IKSolverComponent.hpp`（targetGuid/targetName フィールド） |
 
 ---
 
-## 不足機能・バグ
+## 修正済みの不具合
+
+以下は修正前の症状と対応内容を、回帰確認のために記録したもの。
 
 ### 重要度：高
 
-#### 1. `AnimatorComponent::loop` の宣言が存在しないバグ
+#### 1. 【修正済み】`AnimatorComponent::loop` の宣言不足
 
-`Reflect()` 内で `r.Field("loop", loop)` を呼んでいるが、構造体本体に `bool loop` の宣言がない。
-コンパイルエラーまたは未定義動作につながる。
+**修正前：** `Reflect()` 内で `r.Field("loop", loop)` を呼んでいたが、
+構造体本体に `bool loop` の宣言がなく、コンパイルエラーの原因になっていた。
 
-**修正方針：** `AnimatorComponent` 構造体に `bool loop = true;` を追加する。
+**対応：** `AnimatorComponent` に `bool loop = true;` を追加済み。
 
 ---
 
-#### 2. `EvaluateBlendedNodeRecursive` の呼び出しに `weight` 引数が渡されていないバグ
+#### 2. 【修正済み】旧`EvaluateBlendedNodeRecursive` の `weight` 引数不足
 
-`RunStateMachineAnimatorPath` からの呼び出しで `w`（blendWeight）が渡されておらず、
+**修正前：** `RunStateMachineAnimatorPath` からの呼び出しで `w`（blendWeight）が渡されておらず、
 `skeleton.rootNodeIndex`（整数）が float の weight 位置にキャストされる。
 結果として weight ≈ 0 で常に現ステートのポーズが使われ、**クロスフェードが機能しない**。
 
@@ -76,24 +78,25 @@ EvaluateBlendedNodeRecursive(skeleton,
     ...);
 ```
 
-**修正方針：** 呼び出しに `w,` を第 6 引数として挿入し以降をシフトする。
+**対応：** 呼び出しの第 6 引数に `w` を渡すよう修正済み。
 
 ---
 
-#### 3. IK ターゲット / Pole の GUID→EntityID 解決が未実装
+#### 3. 【修正済み】IK ターゲット / Pole の GUID→EntityID 解決
 
-`IKSolverComponent.hpp` に `targetGuid`, `targetName`, `poleGuid`, `poleName` が設計されているが、
+**修正前：** `IKSolverComponent.hpp` に `targetGuid`, `targetName`, `poleGuid`, `poleName` が設計されていたが、
 `IKSystem.cpp` では `chain.targetEntity`（EntityID）を直接参照するだけで GUID / 名前からの解決コードがない。
 **シーン再ロード後に EntityID が変わるため、ターゲットが常に INVALID になる**。
 
-**修正方針：** IKSystem の冒頭またはシーンロード後フックで GUID → 名前 → EntityID の解決パスを実装する。
+**対応：** SceneSerializer のロード後 Pass で GUID → 名前 → EntityID の順に解決するよう修正済み。
 
 ---
 
 ### 重要度：中
 
-#### 4. `IKSolverComponent::Reflect()` が `chains` を反映していない
+#### 4. 【修正済み】`IKSolverComponent::chains` のシリアライズ確認
 
+**修正前の確認対象：**
 ```cpp
 void Reflect(IReflector& r) {
     r.Field("enabled", enabled);
@@ -102,39 +105,42 @@ void Reflect(IReflector& r) {
 }
 ```
 
-IK チェーン設定がシーンファイルに保存されない。
-Inspector 側でカスタム描画する設計だが、シリアライズ側が未実装の可能性がある。
+`chains` は Reflection の対象外であるため、シリアライズ側が未実装の場合は
+IK チェーン設定がシーンファイルに保存されない状態だった。
 
-**修正方針：** SceneSerializer で `chains` の読み書きが実装されているか確認し、未実装なら追加する。
-
----
-
-#### 5. `AnimationState` に `bool loop` フィールドがない
-
-ステートマシンパスで `curSt->loop` を参照しているが、`AnimationState` 構造体に `bool loop` が宣言されていない。
-ステートごとのループ ON/OFF を制御できない。
-
-**修正方針：** `AnimationState` に `bool loop = true;` を追加する。
+**対応：** `chains` は SceneSerializer で明示的に読み書きする。Inspector のカスタム描画設計は維持する。
 
 ---
 
-#### 6. `ScriptAnimatorProxy` に Get 系 API がない
+#### 5. 【修正済み】`AnimationState::loop` の宣言不足
 
-`SetFloat` / `SetInt` / `SetBool` / `SetTrigger` はあるが、`GetFloat` / `GetInt` / `GetBool` / `GetNormalizedTime` がなく、スクリプトからパラメーターを読み出せない。
+**修正前：** ステートマシンパスで `curSt->loop` を参照していたが、
+`AnimationState` にフィールドがなく、ステートごとのループを制御できなかった。
 
-**修正方針：** `ScriptAnimatorProxy` に Get 系メソッドを追加する。
+**対応：** `AnimationState` に `bool loop = true;` を追加済み。
 
 ---
 
-#### 7. 骨盤高さ補正の上限が `0.4f` にハードコードされている
+#### 6. 【修正済み】`ScriptAnimatorProxy` の Get 系 API
 
+**修正前：** Set 系 API のみで、スクリプトからパラメーターや正規化再生時間を読み出せなかった。
+
+**対応：** `GetFloat` / `GetInt` / `GetBool` / `GetNormalizedTime` / `GetCurrentState` を追加済み。
+
+---
+
+#### 7. 【修正済み】骨盤高さ補正上限のパラメーター化
+
+**修正前：**
 ```cpp
 const float maxHipMove = avgLegLen * 0.4f;  // 定数
 ```
 
 モデルやゲームプレイごとに調整できない。
 
-**修正方針：** `IKSolverComponent` に `float hipMaxOffsetRatio = 0.4f;` を追加してパラメーター化する。
+**対応：** `IKSolverComponent::hipMaxOffsetRatio` を追加し、シリアライズと Inspector 編集に対応済み。
+
+## 改善候補
 
 ---
 
@@ -171,5 +177,6 @@ Docs/System/Animation/
 
 ## 隣接ドキュメント
 
+- [blend_tree.md](blend_tree.md) — BlendTree (1D / 2D) と AnyState 遷移の設計
 - [../Physics/overview.md](../Physics/overview.md) — IK の地面スナップが依存する Raycast
 - [../MeshTrail/overview.md](../MeshTrail/overview.md) — AnimatorComponent の boneMatrices を参照する残像システム
