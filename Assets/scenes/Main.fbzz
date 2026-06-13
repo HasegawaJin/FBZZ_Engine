@@ -91,6 +91,7 @@ tag = 'Player'
     [gameobjects.AnimatorComponent]
     clipIndex = 0
     clipName = ''
+    controllerPath = 'Assets/Animation/Player.fbzzanimcontroller'
     clipSources = [
         'Assets/Models/DebugCharacter/Idle/Idle.fzasset',
         'Assets/Models/DebugCharacter/Walking/Walking.fzasset',
@@ -499,13 +500,12 @@ tag = 'Player'
 
         [gameobjects.ScriptComponents.fields]
         Backward = 'S'
-        'Fall State' = 'Fall'
         Forward = 'W'
         'IsGrounded Param' = 'IsGrounded'
         Jump = 'Space'
         'Jump Force' = 5.0
-        'Jump Up State' = 'JumpUp'
-        'Landing State' = 'Landing'
+        'Jump Trigger Param' = 'Jump'
+        'Land Trigger Param' = 'Land'
         Left = 'A'
         'Model Yaw Offset' = 180.0
         'Move Speed' = 4.0

@@ -82,12 +82,16 @@ struct IKSolverComponent {
     // WHY: 複数の脚チェーンの接地オフセット平均から骨盤を垂直移動させ、
     //      両脚が IK 可動域内に収まるよう先行補正する。
     std::string hipBoneName;
+    // 平均脚長に対する骨盤移動量の上限比率。
+    // WHY: リグごとに許容できる移動量が異なるため、固定値ではなく調整可能にする。
+    float hipMaxOffsetRatio = 0.4f;
 
     const char* GetTypeName() const { return "IK Solver"; }
     // WHY: IKChain は可変長配列なので、InspectorPanel 側で直接描画する。
     void Reflect(IReflector& r) {
         r.Field("enabled", enabled);
         r.Field("hipBoneName", hipBoneName);
+        r.Field("hipMaxOffsetRatio", hipMaxOffsetRatio);
     }
 };
 

@@ -10,8 +10,8 @@ struct ImNodesContext;
 struct ImNodesEditorContext;
 
 namespace fbzz::scene {
+class GameObject;
 struct AnimatorComponent;
-struct AnimationTransition;
 } // namespace fbzz::scene
 
 namespace fbzz::editor {
@@ -35,15 +35,18 @@ private:
     static int InputPinId(int stateIndex);
     static int OutputPinId(int stateIndex);
     static int LinkId(int fromStateIndex, int transitionIndex);
+    static int AnyStateNodeId();
+    static int AnyStateOutputPinId();
+    static int AnyStateLinkId(int transitionIndex);
+    static int EntryNodeId();
+    static int EntryOutputPinId();
+    static int EntryLinkId();
 
     void DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawZoomControls();
     void DrawParameterSidebar(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawNodeCanvas(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
-    void DrawDetailsPane(EditorContext& ctx, scene::AnimatorComponent& animator);
-    void DrawTransitionEditor(EditorContext& ctx,
-                              scene::AnimatorComponent& animator,
-                              scene::AnimationTransition& transition);
+    void PublishSelection(EditorContext& ctx, const scene::GameObject& gameObject) const;
     void AddState(EditorContext& ctx, scene::AnimatorComponent& animator, const char* baseName);
     void AddTransition(EditorContext& ctx, scene::AnimatorComponent& animator, int fromStateIndex, int toStateIndex);
     void AutoLayoutStates(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
@@ -61,7 +64,11 @@ private:
     ImNodesEditorContext* m_editorContext = nullptr;
     LinkRef               m_selectedLink;
     int                   m_selectedNode = -1;
+    bool                  m_selectedAnyState = false;
     float                 m_canvasZoom = 1.0f;
+    std::string           m_selectionOwnerInstanceId;
+    int                   m_renamingNode = -1;
+    char                  m_renameBuffer[128] = {};
 };
 
 } // namespace fbzz::editor

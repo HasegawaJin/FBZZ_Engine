@@ -27,6 +27,14 @@ bool GraphLayoutSerializer::Save(const std::unordered_map<std::string, GraphLayo
 
     toml::array nodes;
     for (const auto& [instanceId, layout] : layouts) {
+        toml::table specialNodes;
+        specialNodes.insert("instanceId", instanceId);
+        specialNodes.insert("entryX", static_cast<double>(layout.entryPosition.x));
+        specialNodes.insert("entryY", static_cast<double>(layout.entryPosition.y));
+        specialNodes.insert("anyStateX", static_cast<double>(layout.anyStatePosition.x));
+        specialNodes.insert("anyStateY", static_cast<double>(layout.anyStatePosition.y));
+        nodes.push_back(std::move(specialNodes));
+
         for (const auto& [stateName, pos] : layout.nodePositions) {
             toml::table node;
             node.insert("instanceId", instanceId);
@@ -38,7 +46,7 @@ bool GraphLayoutSerializer::Save(const std::unordered_map<std::string, GraphLayo
     }
 
     toml::table root;
-    root.insert("version", 1);
+    root.insert("version", 2);
     root.insert("nodes", std::move(nodes));
 
     std::ostringstream oss;
@@ -65,7 +73,17 @@ bool GraphLayoutSerializer::Load(std::unordered_map<std::string, GraphLayout>& l
     nodes->for_each([&](const toml::table& node) {
         const std::string instanceId = node["instanceId"].value_or(std::string{});
         const std::string stateName  = node["stateName"].value_or(std::string{});
-        if (instanceId.empty() || stateName.empty()) return;
+        if (instanceId.empty()) return;
+        if (stateName.empty()) {
+            GraphLayout& layout = layouts[instanceId];
+            layout.entryPosition = ImVec2(
+                static_cast<float>(node["entryX"].value_or(-220.0)),
+                static_cast<float>(node["entryY"].value_or(80.0)));
+            layout.anyStatePosition = ImVec2(
+                static_cast<float>(node["anyStateX"].value_or(-220.0)),
+                static_cast<float>(node["anyStateY"].value_or(260.0)));
+            return;
+        }
 
         const float x = static_cast<float>(node["x"].value_or(0.0));
         const float y = static_cast<float>(node["y"].value_or(0.0));
