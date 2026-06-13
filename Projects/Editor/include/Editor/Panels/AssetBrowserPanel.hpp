@@ -81,7 +81,7 @@ private:
     // DrawEntry の責務分割
     void DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz, const Entry& e);
     void DrawEntryContextMenu(const Entry& e, EditorContext& ctx);
-    void DrawEntryRenameLabel(const Entry& e);
+    void DrawEntryRenameLabel(const Entry& e, EditorContext& ctx);
     void HandleEntryClick(const Entry& e, EditorContext& ctx, bool hov);
     void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
