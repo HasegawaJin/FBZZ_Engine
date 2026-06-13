@@ -28,6 +28,19 @@
             "preLaunchTask": "CMake: Build GameHub (Release)"
         },
         {
+            "name": "GameHub (Development)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/development/Binaries/Development/FBZZHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/development/Binaries/Development",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build GameHub (Development)"
+        },
+        {
             "name": "Sandbox (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -52,6 +65,19 @@
             "console": "integratedTerminal",
             "requireExactSource": false,
             "preLaunchTask": "CMake: Build Sandbox (Release)"
+        },
+        {
+            "name": "Sandbox (Development)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/development/Binaries/Development/sandbox.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/development/Binaries/Development",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Sandbox (Development)"
         },
         {
             "name": "Test (Debug)",
@@ -110,6 +136,22 @@
             "console": "integratedTerminal",
             "requireExactSource": false,
             "preLaunchTask": "CMake: Build EditorLauncher (Release)"
+        },
+        {
+            "name": "FBZZEditor (Development)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/development/Binaries/Development/FBZZEditor.exe",
+            "args": [
+                "--project",
+                "${input:fbzzProjectPath}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/development/Binaries/Development",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build EditorLauncher (Development)"
         }
     ],
     "inputs": [

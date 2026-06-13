@@ -24,6 +24,17 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
             }
+        },
+        {
+            "name": "development",
+            "displayName": "Development",
+            "generator": "Visual Studio 18 2026",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build/development",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Development",
+                "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
+            }
         }
     ],
     "buildPresets": [
@@ -36,6 +47,11 @@
             "name": "release",
             "configurePreset": "release",
             "configuration": "Release"
+        },
+        {
+            "name": "development",
+            "configurePreset": "development",
+            "configuration": "Development"
         }
     ]
 }
