@@ -39,16 +39,16 @@ bool  HasSkinning(const aiScene* scene);
 // 静的・スキンメッシュ両パスで使用する頂点 / インデックス / マテリアル変換。
 renderer::Vertex              ImportVertex(const aiMesh* mesh, uint32_t i, float unitScale);
 std::vector<uint32_t>         ImportIndices(const aiMesh* mesh);
-std::shared_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
+std::unique_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
                                                     const aiMesh* mesh,
                                                     renderer::ResourceManager& resources);
 
 // ── サブインポーター ───────────────────────────────────────────
 // ModelImporter::Import() から呼び出す。各 .cpp ファイルで定義する。
-std::shared_ptr<Model> ImportStaticModel(const aiScene* scene,
+std::unique_ptr<Model> ImportStaticModel(const aiScene* scene,
                                          float unitScale,
                                          renderer::ResourceManager& resources);
-std::shared_ptr<Model> ImportSkinnedModel(const aiScene* scene,
+std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
                                           float unitScale,
                                           renderer::ResourceManager& resources);
 

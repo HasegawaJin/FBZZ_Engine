@@ -71,7 +71,7 @@ math::Matrix4 FromFloatArray(const float src[16])
 }
 
 // ── .fzmesh → renderer::Mesh ─────────────────────────────────────────────
-std::shared_ptr<renderer::Mesh> LoadFzMesh(const std::string& path,
+std::unique_ptr<renderer::Mesh> LoadFzMesh(const std::string& path,
                                             renderer::ResourceManager& resources)
 {
     using namespace asset;
@@ -90,7 +90,7 @@ std::shared_ptr<renderer::Mesh> LoadFzMesh(const std::string& path,
     }
 
     const bool skinned = (hdr.flags & FZMESH_FLAG_SKINNED) != 0;
-    auto mesh = std::make_shared<renderer::Mesh>();
+    auto mesh = std::make_unique<renderer::Mesh>();
     mesh->isSkinned    = skinned;
     mesh->vertexCount  = hdr.vertexCount;
     mesh->indexCount   = hdr.indexCount;
@@ -134,7 +134,7 @@ std::shared_ptr<renderer::Mesh> LoadFzMesh(const std::string& path,
 }
 
 // ── .fzskel → Skeleton ───────────────────────────────────────────────────
-std::shared_ptr<Skeleton> LoadFzSkel(const std::string& path)
+std::unique_ptr<Skeleton> LoadFzSkel(const std::string& path)
 {
     using namespace asset;
     BinaryReader r;
@@ -151,7 +151,7 @@ std::shared_ptr<Skeleton> LoadFzSkel(const std::string& path)
         return nullptr;
     }
 
-    auto skel = std::make_shared<Skeleton>();
+    auto skel = std::make_unique<Skeleton>();
     skel->rootNodeIndex       = hdr.rootNodeIndex;
     skel->rootInverseTransform = FromFloatArray(hdr.rootInverse);
     skel->nodes.resize(hdr.nodeCount);
@@ -244,24 +244,24 @@ AnimationClip LoadFzAnim(const std::string& path)
 }
 
 // ── .fzmat → renderer::Material ──────────────────────────────────────────
-std::shared_ptr<renderer::Material> LoadFzMat(const std::string& matPath,
+std::unique_ptr<renderer::Material> LoadFzMat(const std::string& matPath,
                                                const std::string& texDir,
                                                renderer::ResourceManager& resources)
 {
     std::ifstream f(matPath);
     if (!f) {
         FBZZ_LOG_ERROR("FzAssetLoader: cannot open material [%s]", matPath.c_str());
-        return std::make_shared<renderer::Material>();
+        return std::make_unique<renderer::Material>();
     }
     std::ostringstream buf;
     buf << f.rdbuf();
     toml::parse_result parsed = toml::parse(buf.str());
     if (!parsed) {
         FBZZ_LOG_ERROR("FzAssetLoader: material TOML parse failed [%s]", matPath.c_str());
-        return std::make_shared<renderer::Material>();
+        return std::make_unique<renderer::Material>();
     }
 
-    auto mat = std::make_shared<renderer::Material>();
+    auto mat = std::make_unique<renderer::Material>();
     const toml::table& tbl = parsed.table();
 
     // textures テーブル → スロット 0 にアルベドをセット
@@ -304,7 +304,7 @@ std::vector<std::string> TomlArrayToStrings(const toml::array* arr)
 } // namespace
 
 // ── FzAssetLoader::Load ───────────────────────────────────────────────────
-std::shared_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
+std::unique_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
                                             renderer::ResourceManager& resources)
 {
     std::ifstream f(fzassetPath);
@@ -333,7 +333,7 @@ std::shared_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
     const auto skelPath  = tbl["skeleton"].value_or(std::string{});
 
     // meshes が空でも animations だけのマニフェスト (アニメーション専用 FBX 由来) は valid
-    auto model = std::make_shared<Model>();
+    auto model = std::make_unique<Model>();
 
     // ── メッシュ + マテリアル ─────────────────────────────────────────────
     for (size_t i = 0; i < meshPaths.size(); ++i) {
@@ -342,12 +342,12 @@ std::shared_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
         if (!mesh) return nullptr;
         model->meshes.push_back(std::move(mesh));
 
-        std::shared_ptr<renderer::Material> mat;
+        std::unique_ptr<renderer::Material> mat;
         if (i < matPaths.size() && !matPaths[i].empty()) {
             const std::string fullMat = (assetDir / matPaths[i]).string();
             mat = LoadFzMat(fullMat, texDir, resources);
         } else {
-            mat = std::make_shared<renderer::Material>();
+            mat = std::make_unique<renderer::Material>();
         }
         model->materials.push_back(std::move(mat));
     }
