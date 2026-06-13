@@ -2,6 +2,8 @@
 // WaterTool.cpp | fbzz::editor
 // WaterTool の実装: ビューポート可視化・アセット管理・波エディタ UI
 #include "WaterTool.hpp"
+#include <Editor/Util/UndoStack.hpp>
+#include <imgui_internal.h>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/MathUtils.hpp>
@@ -184,7 +186,8 @@ void WaterTool::DrawWaveArrows(
 void WaterTool::OnEditorGUI(
     scene::Scene&                scene,
     const std::string&           projectRoot,
-    const std::function<void()>& markDirty)
+    const std::function<void()>& markDirty,
+    UndoStack*                   undoStack)
 {
     // WaterComponent を持つ GO がひとつもなければ表示しない
     bool hasWater = false;
@@ -256,12 +259,67 @@ void WaterTool::OnEditorGUI(
             // 選択中の WaterComponent を取得して編集 UI を表示する
             scene::EntityID selEid = waterList[m_selectedWaterIndex].first;
             if (auto* water = scene.GetComponent<scene::WaterComponent>(selEid)) {
+                struct UndoTracker {
+                    ImGuiID activeId = 0;
+                    std::string instanceId;
+                    scene::WaterComponent before;
+                    bool active = false;
+                    bool changed = false;
+                };
+                static UndoTracker undo;
+                const scene::WaterComponent beforeDraw = *water;
+                const ImGuiID activeBefore = ImGui::GetActiveID();
+                bool changed = false;
+                const auto trackDirty = [&]() {
+                    changed = true;
+                    if (markDirty) markDirty();
+                };
                 ImGui::Spacing();
-                DrawAssetSection(*water, /*scenePath=*/"", projectRoot, markDirty);
+                DrawAssetSection(*water, /*scenePath=*/"", projectRoot, trackDirty);
                 ImGui::Spacing();
-                DrawPresets(*water, markDirty);
+                DrawPresets(*water, trackDirty);
                 ImGui::Spacing();
-                DrawWaveEditor(*water, markDirty);
+                DrawWaveEditor(*water, trackDirty);
+
+                const ImGuiID activeAfter = ImGui::GetActiveID();
+                auto pushCommand = [&](const std::string& instanceId,
+                                       const scene::WaterComponent& before,
+                                       const scene::WaterComponent& after) {
+                    if (!undoStack) return;
+                    scene::Scene* scenePtr = &scene;
+                    auto apply = [scenePtr, instanceId, markDirty](const scene::WaterComponent& value) {
+                        if (auto* target = scenePtr->FindByGuid(instanceId)) {
+                            if (auto* component = target->GetComponent<scene::WaterComponent>()) {
+                                *component = value;
+                                component->meshDirty = true;
+                                component->foamDirty = true;
+                                component->texDirty = true;
+                                if (markDirty) markDirty();
+                            }
+                        }
+                    };
+                    undoStack->Push(std::make_unique<LambdaCommand>(
+                        "Edit Water",
+                        [apply, after]() { apply(after); },
+                        [apply, before]() { apply(before); }));
+                };
+
+                const std::string instanceId = scene.GetGameObject(selEid)->instanceId;
+                if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+                    undo.activeId = activeAfter;
+                    undo.instanceId = instanceId;
+                    undo.before = beforeDraw;
+                    undo.active = true;
+                    undo.changed = changed;
+                } else if (undo.active && activeAfter == undo.activeId) {
+                    undo.changed |= changed;
+                } else if (undo.active && activeAfter != undo.activeId) {
+                    if (undo.changed) pushCommand(undo.instanceId, undo.before, *water);
+                    undo.active = false;
+                    undo.changed = false;
+                } else if (!undo.active && changed && activeAfter == 0) {
+                    pushCommand(instanceId, beforeDraw, *water);
+                }
             }
         }
     }

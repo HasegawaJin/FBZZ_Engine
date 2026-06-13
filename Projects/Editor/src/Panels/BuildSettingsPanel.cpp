@@ -2,6 +2,8 @@
 // BuildSettingsPanel.cpp | fbzz::editor
 // Build Settings パネルの ImGui UI 実装
 #include <Editor/Panels/BuildSettingsPanel.hpp>
+#include <Editor/Util/UndoStack.hpp>
+#include <imgui_internal.h>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/StandaloneLauncher.hpp>
@@ -15,6 +17,28 @@
 #include <string>
 
 namespace fbzz::editor {
+
+namespace {
+
+bool BuildSettingsEqual(const BuildSettings& lhs, const BuildSettings& rhs)
+{
+    if (lhs.outputDirectory != rhs.outputDirectory ||
+        lhs.productName != rhs.productName ||
+        lhs.version != rhs.version ||
+        lhs.developmentBuild != rhs.developmentBuild ||
+        lhs.scenes.size() != rhs.scenes.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < lhs.scenes.size(); ++i) {
+        if (lhs.scenes[i].path != rhs.scenes[i].path ||
+            lhs.scenes[i].enabled != rhs.scenes[i].enabled) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
 
 namespace {
 
@@ -76,11 +100,47 @@ void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
         m_settingsLoaded = true;
     }
 
+    struct UndoTracker {
+        ImGuiID activeId = 0;
+        BuildSettings before;
+        bool active = false;
+    };
+    static UndoTracker undo;
+    const BuildSettings beforeDraw = m_settings;
+    const ImGuiID activeBefore = ImGui::GetActiveID();
+
     DrawScenesInBuild(ctx);
     ImGui::Separator();
     DrawOutputSettings(ctx);
     ImGui::Separator();
     DrawProgressAndActions(ctx);
+
+    const ImGuiID activeAfter = ImGui::GetActiveID();
+    auto pushCommand = [&](const BuildSettings& before, const BuildSettings& after) {
+        if (!ctx.undoStack || BuildSettingsEqual(before, after)) return;
+        BuildSettingsPanel* panel = this;
+        const std::string projectRoot = ctx.projectRoot;
+        auto apply = [panel, projectRoot](const BuildSettings& value) {
+            panel->m_settings = value;
+            if (!projectRoot.empty()) panel->m_settings.Save(projectRoot);
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Edit Build Settings",
+            [apply, after]() { apply(after); },
+            [apply, before]() { apply(before); }));
+    };
+
+    if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+        undo.activeId = activeAfter;
+        undo.before = beforeDraw;
+        undo.active = true;
+    } else if (undo.active && activeAfter != undo.activeId) {
+        pushCommand(undo.before, m_settings);
+        undo.active = false;
+    } else if (!undo.active && activeAfter == 0 && activeBefore == 0 &&
+               !BuildSettingsEqual(m_settings, beforeDraw)) {
+        pushCommand(beforeDraw, m_settings);
+    }
 }
 
 // =============================================================================

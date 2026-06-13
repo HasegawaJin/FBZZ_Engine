@@ -2,6 +2,7 @@
 // AssetBrowserCore.cpp | fbzz::editor
 // AssetBrowser のルート、マウント、ディレクトリ走査
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Util/UndoStack.hpp>
 
 namespace fbzz::editor {
 
@@ -39,7 +40,27 @@ bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
     if (!go) return false;
 
     const std::string path = UniquePrefabPathInDir(targetDir, go->name);
-    return PrefabSerializer::SaveSelection(*ctx.activeScene, { droppedId }, path);
+    if (!PrefabSerializer::SaveSelection(*ctx.activeScene, { droppedId }, path))
+        return false;
+
+    if (ctx.undoStack) {
+        std::string content;
+        if (util::FileSystem::ReadText(path, content)) {
+            EditorContext* context = &ctx;
+            auto refresh = [context]() { context->requestAssetBrowserRefresh = true; };
+            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                "Create Prefab",
+                [path, content, refresh]() {
+                    util::FileSystem::WriteText(path, content);
+                    refresh();
+                },
+                [path, refresh]() {
+                    util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+                    refresh();
+                }));
+        }
+    }
+    return true;
 }
 
 ImVec4 Lighten(ImVec4 c) {

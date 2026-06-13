@@ -206,6 +206,7 @@ void EditorApp::NewScene()
 {
     if (!m_ctx.activeScene) return;
     m_ctx.activeScene->Clear();
+    m_undoStack.Clear();
     m_ctx.selectedEntities.clear();
     m_ctx.graphLayouts.clear();
     RebuildEditorUIFromScene();
@@ -253,6 +254,9 @@ bool EditorApp::OpenScenePath(const std::string& path)
         return false;
     }
 
+    // Undo コマンドは読込前シーンの EntityID と状態を保持するため、
+    // 別シーンへ持ち越さず読込成功時点で破棄する。
+    m_undoStack.Clear();
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
     GraphLayoutSerializer::Load(m_ctx.graphLayouts, path);
