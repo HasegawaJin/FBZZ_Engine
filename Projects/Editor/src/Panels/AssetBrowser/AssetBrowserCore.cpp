@@ -62,8 +62,9 @@ AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
     : m_rootPath(util::FileSystem::NormalizePathSeparators(rootPath)),
       m_currentPath(util::FileSystem::NormalizePathSeparators(rootPath)) {}
 
-void AssetBrowserPanel::OnInit(EditorContext&)
+void AssetBrowserPanel::OnInit(EditorContext& ctx)
 {
+    m_iconSize = ctx.assetBrowserIconSize;
     RefreshDirectory();
     if (!m_rootPath.empty()) {
         m_watcher.Start(m_rootPath);
@@ -131,12 +132,40 @@ void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
     if (!IsRootOrMountedPath(m_currentPath))
         m_currentPath = m_rootPath;
     RefreshDirectory();
+    // WHY: マウントパスは OnInit 時点ではまだ未確定なため ScanAndQueueUnimported の対象外だった。
+    //      マウントが追加・変更されたタイミングで改めてスキャンする (2-5 / 3-3)。
+    for (const AssetMount& mount : m_mounts)
+        ScanAndQueueUnimported(mount.path);
 }
 
 void AssetBrowserPanel::RefreshDirectory()
 {
     m_resetScroll = true;
     m_entries.clear();
+    m_treeCache.erase(util::FileSystem::NormalizePathSeparators(m_currentPath));
+    m_selectedFbxPath.clear();
+    m_selectedModel.reset();
+    m_selectedPaths.clear();
+    m_lastClickedPath.clear();
+
+    // カレントフォルダにないプレビューキャッシュを破棄して GPU リソースを解放する。
+    // WHY: フォルダ移動を繰り返すとキャッシュが無制限に増加するため、
+    //      ディレクトリ更新のタイミングで不要エントリを削除する。
+    auto evictStaleEntries = [&](auto& map) {
+        std::vector<std::string> toRemove;
+        toRemove.reserve(map.size());
+        for (const auto& [k, _] : map) {
+            const bool inCurrent = util::FileSystem::IsChildPathText(
+                util::FileSystem::NormalizePathSeparators(k),
+                util::FileSystem::NormalizePathSeparators(m_currentPath));
+            if (!inCurrent) toRemove.push_back(k);
+        }
+        for (const auto& k : toRemove) map.erase(k);
+    };
+    evictStaleEntries(m_texturePreviews);
+    evictStaleEntries(m_materialPreviews);
+    evictStaleEntries(m_meshPreviews);
+    m_texLoadQueue.clear();
     const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
     for (const auto& p : util::FileSystem::ListAll(currentPath)) {
         Entry e;
@@ -158,10 +187,30 @@ void AssetBrowserPanel::RefreshDirectory()
         }
     }
 
-    std::stable_sort(m_entries.begin(), m_entries.end(), [](const Entry& a, const Entry& b) {
+    std::stable_sort(m_entries.begin(), m_entries.end(), [this](const Entry& a, const Entry& b) {
         if (a.isDir != b.isDir) return a.isDir > b.isDir; // dirs first
-        return a.name < b.name;
+        switch (m_sortMode) {
+        case SortMode::NameDesc:    return a.name > b.name;
+        case SortMode::Type:        return a.ext < b.ext;
+        case SortMode::Modified:    return a.name < b.name; // fallback: name (file_time requires filesystem call)
+        default:                    return a.name < b.name;
+        }
     });
+}
+
+void AssetBrowserPanel::InvalidateTreeCache(const std::string& dirPath)
+{
+    const std::string norm = util::FileSystem::NormalizePathSeparators(dirPath);
+    m_treeCache.erase(norm);
+    // also invalidate ancestors so the tree reflects the change
+    std::string cur = norm;
+    while (true) {
+        const size_t pos = cur.find_last_of('/');
+        if (pos == std::string::npos) break;
+        cur = cur.substr(0, pos);
+        m_treeCache.erase(cur);
+        if (util::FileSystem::SamePathText(cur, m_rootPath)) break;
+    }
 }
 
 std::string AssetBrowserPanel::DisplayPath() const
