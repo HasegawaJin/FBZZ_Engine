@@ -165,7 +165,7 @@ void AssetBrowserPanel::RefreshDirectory()
     m_entries.clear();
     m_treeCache.erase(util::FileSystem::NormalizePathSeparators(m_currentPath));
     m_selectedFbxPath.clear();
-    m_selectedModel.reset();
+    m_selectedModel = nullptr;
     m_selectedPaths.clear();
     m_lastClickedPath.clear();
 
