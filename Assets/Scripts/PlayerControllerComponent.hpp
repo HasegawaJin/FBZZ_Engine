@@ -40,11 +40,8 @@ public:
     FBZZ_FIELD(std::string, paramSpeed,         "Speed",        "Speed Param")
     FBZZ_FIELD(std::string, paramVerticalSpeed, "VerticalSpeed","Vertical Speed Param")
     FBZZ_FIELD(std::string, paramIsGrounded,    "IsGrounded",   "IsGrounded Param")
-
-    FBZZ_GROUP("IK States")
-    FBZZ_FIELD(std::string, stateJumpUp,  "JumpUp",  "Jump Up State")
-    FBZZ_FIELD(std::string, stateFall,    "Fall",    "Fall State")
-    FBZZ_FIELD(std::string, stateLanding, "Landing", "Landing State")
+    FBZZ_FIELD(std::string, paramJumpTrigger,   "Jump",         "Jump Trigger Param")
+    FBZZ_FIELD(std::string, paramLandTrigger,   "Land",         "Land Trigger Param")
 
     void OnStart() override;
     void OnUpdate() override;
@@ -56,6 +53,7 @@ private:
     void UpdateIK();
     Vector3 GetMoveForward() const;
     Vector3 GetMoveRight(const Vector3& forward) const;
+    bool m_wasGrounded = true;
 };
 
 } // namespace sandbox
@@ -72,6 +70,8 @@ inline void PlayerControllerComponent::OnStart()
 {
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
+    if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
+        m_wasGrounded = cc->isGrounded;
 }
 
 inline void PlayerControllerComponent::OnUpdate()
@@ -85,6 +85,9 @@ inline void PlayerControllerComponent::OnUpdate()
         cc->Tick(phy, Time::deltaTime);
         animator.SetFloat(paramVerticalSpeed, cc->verticalSpeed);
         animator.SetBool(paramIsGrounded,     cc->isGrounded);
+        if (!m_wasGrounded && cc->isGrounded)
+            animator.SetTrigger(paramLandTrigger);
+        m_wasGrounded = cc->isGrounded;
     }
     UpdateIK();
     HandleJump(cc, phy);
@@ -146,16 +149,15 @@ inline void PlayerControllerComponent::HandleJump(CharacterControllerComponent* 
     cc->Jump(phy, { 0.0f, jumpForce * phy->GetMass(), 0.0f });
     animator.SetBool(paramIsGrounded, false);
     animator.SetFloat(paramVerticalSpeed, jumpForce);
+    animator.SetTrigger(paramJumpTrigger);
 }
 
 inline void PlayerControllerComponent::UpdateIK()
 {
-    // WHY: JumpUp / Fall / Landing 中は足 IK のグラウンドスナップが無意味になる。
-    const bool ikOff = animator.IsInState(stateJumpUp)  ||
-                       animator.IsInState(stateFall)    ||
-                       animator.IsInState(stateLanding);
+    // AnimatorSystem が State / BlendTree Motion の IK Weight を連続補間する。
+    // WHY: Component を状態ごとに強制 ON/OFF すると Run 境界で足が急に吸着するため。
     if (auto* ik = scene.GetComponent<IKSolverComponent>())
-        ik->enabled = !ikOff;
+        ik->enabled = true;
 }
 
 inline Vector3 PlayerControllerComponent::GetMoveForward() const
