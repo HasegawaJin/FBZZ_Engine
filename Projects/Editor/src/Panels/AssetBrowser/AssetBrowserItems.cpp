@@ -39,12 +39,11 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".fbzzprefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
     { { ".fbzzterrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
+    { { ".fbzzwater", nullptr },                               { 0.15f, 0.55f, 0.85f, 1.0f }, "WATER"   },
     { { ".fbzz", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
+    { { ".animgraph", nullptr },                               { 0.75f, 0.40f, 0.85f, 1.0f }, "GRAPH"   },
     { { ".fzasset", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "ASSET"   },
-    { { ".fzmesh", nullptr },                                  { 0.80f, 0.50f, 0.20f, 1.0f }, "MESH"    },
     { { ".fzmat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
-    { { ".fzskel", nullptr },                                  { 0.70f, 0.30f, 0.60f, 1.0f }, "SKEL"    },
-    { { ".fzanim", nullptr },                                  { 0.20f, 0.75f, 0.35f, 1.0f }, "ANIM"    },
     { { ".fbzzanimcontroller", nullptr },                       { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
@@ -52,7 +51,6 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".fnt", nullptr },                                     { 0.50f, 0.20f, 0.75f, 1.0f }, "FNT"     },
     { { ".txt", ".md", ".rst", nullptr },                      { 0.55f, 0.55f, 0.55f, 1.0f }, "TEXT"    },
     { { ".py", ".lua", ".cs", nullptr },                       { 0.20f, 0.70f, 0.55f, 1.0f }, "SCRIPT"  },
-    { { ".lib", ".dll", ".a", nullptr },                       { 0.45f, 0.45f, 0.45f, 1.0f }, "LIB"     },
 };
 
 // 未知拡張子をハッシュで色付けする。
@@ -101,7 +99,7 @@ static bool IsTextureExt(const std::string& ext)
 static bool IsMeshExt(const std::string& ext)
 {
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" ||
-           ext == ".glb" || ext == ".fzmesh";
+           ext == ".glb";
 }
 
 static std::filesystem::file_time_type ReadLastWriteTime(const std::string& path)
@@ -999,6 +997,7 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             e.path = util::FileSystem::NormalizePathSeparators(p);
             e.name = util::FileSystem::GetFilename(p);
             e.isDir = true;
+            if (!ShouldDisplayEntry(e.path, e.name, true)) continue;
             newDirs.push_back(std::move(e));
         }
         if (util::FileSystem::SamePathText(normDir, m_rootPath)) {
@@ -1318,7 +1317,7 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
     if (!e.isDir && e.path == m_lastClickedPath && m_selectedPaths.empty()) {
         // primary は DrawEntry から渡された ctx に依存するため外側で描画済み
     }
-    // ! バッジ: 未変換ファイル (FBX / PNG 等) に赤丸で警告表示
+    // ! バッジ: 未変換モデルファイルに赤丸で警告表示
     if (!e.isDir && IsImportableRaw(e.ext)) {
         const float r  = sz * 0.15f;
         const float cx = origin.x + sz - r;
@@ -1464,9 +1463,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             for (const auto& p : m_pendingImports)
                 if (p.path == e.path) { found = true; break; }
             if (!found) {
-                const bool isTex = e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg";
-                m_pendingImports.push_back({ e.path,
-                    isTex ? PendingImport::Kind::Texture : PendingImport::Kind::Fbx });
+                m_pendingImports.push_back({ e.path });
             }
             m_importAllRequested = true;
         }
