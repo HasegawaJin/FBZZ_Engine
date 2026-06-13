@@ -533,9 +533,9 @@ struct ThumbnailRenderer {
     renderer::ResourceHandle<renderer::TextureTag>        whiteTexture;
     renderer::ResourceHandle<renderer::TextureTag>        blackTexture;
     renderer::ResourceHandle<renderer::TextureTag>        flatNormalTexture;
-    std::shared_ptr<renderer::Mesh>                       materialSphere;
-    std::shared_ptr<renderer::Mesh>                       skinnedMaterialSphere;
-    std::shared_ptr<renderer::Mesh>                       waterMaterialSphere;
+    renderer::Mesh*                                        materialSphere = nullptr;
+    renderer::Mesh*                                        skinnedMaterialSphere = nullptr;
+    renderer::Mesh*                                        waterMaterialSphere = nullptr;
 };
 static ThumbnailRenderer s_tr;
 
@@ -605,10 +605,13 @@ struct ThumbnailWaterVertex {
     math::Vector2 uv;
 };
 
-static std::shared_ptr<renderer::Mesh> CreateSkinnedPreviewSphere(renderer::ResourceManager& resources, int segments)
+static renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& resources, int segments)
 {
-    auto surface = renderer::PrimitiveMesh::Sphere(resources, segments);
-    if (!surface) return {};
+    static std::unordered_map<int, std::shared_ptr<renderer::Mesh>> s_cache;
+    if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
+
+    auto* surface = renderer::PrimitiveMesh::Sphere(resources, segments);
+    if (!surface) return nullptr;
 
     std::vector<renderer::SkinnedVertex> verts;
     verts.reserve(surface->cpuVertices.size());
@@ -632,13 +635,17 @@ static std::shared_ptr<renderer::Mesh> CreateSkinnedPreviewSphere(renderer::Reso
     mesh->cpuSkinnedVertices = std::move(verts);
     mesh->cpuIndices = surface->cpuIndices;
     mesh->ComputeBounds();
-    return mesh;
+    s_cache[segments] = mesh;
+    return mesh.get();
 }
 
-static std::shared_ptr<renderer::Mesh> CreateWaterPreviewSphere(renderer::ResourceManager& resources, int segments)
+static renderer::Mesh* CreateWaterPreviewSphere(renderer::ResourceManager& resources, int segments)
 {
-    auto surface = renderer::PrimitiveMesh::Sphere(resources, segments);
-    if (!surface) return {};
+    static std::unordered_map<int, std::shared_ptr<renderer::Mesh>> s_cache;
+    if (auto it = s_cache.find(segments); it != s_cache.end()) return it->second.get();
+
+    auto* surface = renderer::PrimitiveMesh::Sphere(resources, segments);
+    if (!surface) return nullptr;
 
     std::vector<ThumbnailWaterVertex> verts;
     verts.reserve(surface->cpuVertices.size());
@@ -653,7 +660,8 @@ static std::shared_ptr<renderer::Mesh> CreateWaterPreviewSphere(renderer::Resour
     mesh->cpuVertices = surface->cpuVertices;
     mesh->cpuIndices = surface->cpuIndices;
     mesh->ComputeBounds();
-    return mesh;
+    s_cache[segments] = mesh;
+    return mesh.get();
 }
 
 static math::Vector3 MeshBoundsCenter(const renderer::Mesh& mesh)
@@ -1247,7 +1255,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 if (!s_tr.waterMaterialSphere)
                     s_tr.waterMaterialSphere = CreateWaterPreviewSphere(*ctx.resources, 64);
                 const ThumbnailShaderFlavor flavor = DetectThumbnailShaderFlavor(preview.asset.shaderPath);
-                const std::shared_ptr<renderer::Mesh>& previewMesh = (flavor == ThumbnailShaderFlavor::Skinned)
+                renderer::Mesh* previewMesh = (flavor == ThumbnailShaderFlavor::Skinned)
                     ? s_tr.skinnedMaterialSphere
                     : (flavor == ThumbnailShaderFlavor::Water ? s_tr.waterMaterialSphere : s_tr.materialSphere);
                 if (previewMesh && RebuildMaterialThumbnailGpuData(preview, ctx)) {
@@ -1277,7 +1285,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         const auto currentWriteTime = ReadLastWriteTime(e.path);
         if (currentWriteTime != preview.lastWriteTime) {
             preview.lastWriteTime = currentWriteTime;
-            preview.model.reset();
+            preview.model = nullptr;
             preview.thumbnailRendered = false;
             preview.failed = false;
         }
@@ -1660,7 +1668,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             [this, path, context]() {
                 if (context->undoStack)
                     context->undoStack->Execute(CreateAssetDeleteCommand({ path }, *context));
-                if (m_selectedFbxPath == path) { m_selectedFbxPath.clear(); m_selectedModel.reset(); }
+                if (m_selectedFbxPath == path) { m_selectedFbxPath.clear(); m_selectedModel = nullptr; }
                 m_selectedPaths.erase(path);
                 ResetAssetPreviewCache(path);
                 RefreshDirectory();
@@ -1836,7 +1844,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     // ホバー中は FBX 内容を即座に更新する
     if (hov && !e.isDir && IsMeshExt(e.ext) && m_selectedFbxPath != e.path) {
         m_selectedFbxPath = e.path;
-        m_selectedModel.reset();
+        m_selectedModel = nullptr;
         if (renderer::ResourceManager::Active())
             m_selectedModel = asset::AssetManager::Load<asset::Model>(e.path);
     }
