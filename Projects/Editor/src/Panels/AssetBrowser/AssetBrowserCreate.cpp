@@ -59,30 +59,12 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         const bool   hov  = ImGui::IsItemHovered();
         const ImU32  fill = hov ? cHov : cFill;
 
-        ImDrawList* dl    = ImGui::GetWindowDrawList();
-        const float bodyH = sz * 0.85f;
-        const float dog   = sz * 0.22f;
-
-        ImVec2 pts[5] = {
-            { origin.x,        origin.y       },
-            { origin.x+sz-dog, origin.y       },
-            { origin.x+sz,     origin.y+dog   },
-            { origin.x+sz,     origin.y+bodyH },
-            { origin.x,        origin.y+bodyH },
-        };
-        dl->AddConvexPolyFilled(pts, 5, fill);
-        dl->AddPolyline(pts, 5, cDark, ImDrawFlags_Closed, 1.0f);
-
-        ImVec2 tri[3] = {
-            { origin.x+sz-dog, origin.y     },
-            { origin.x+sz,     origin.y+dog },
-            { origin.x+sz-dog, origin.y+dog },
-        };
-        dl->AddConvexPolyFilled(tri, 3, cDark);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        DrawFileIconPolygon(dl, origin, sz, fill, cDark);
 
         const ImVec2 tsz = ImGui::CalcTextSize(label);
         dl->AddText({ origin.x + (sz - tsz.x) * 0.5f,
-                      origin.y + bodyH * 0.52f - tsz.y * 0.5f },
+                      origin.y + sz * 0.85f * 0.52f - tsz.y * 0.5f },
                     IM_COL32(255, 255, 255, 220), label);
 
         if (ImGui::BeginDragDropSource()) {
