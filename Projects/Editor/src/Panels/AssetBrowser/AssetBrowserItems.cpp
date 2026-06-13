@@ -2,6 +2,7 @@
 // AssetBrowserItems.cpp | fbzz::editor
 // AssetBrowser のフォルダツリーとファイルアイコン描画
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Util/UndoStack.hpp>
 #include <Windows.h>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -10,6 +11,7 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
 #include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Util/Uuid.hpp>
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -23,6 +25,82 @@
 
 namespace fbzz::editor {
 namespace {
+
+class AssetDeleteCommand final : public ICommand {
+public:
+    struct Entry {
+        std::string original;
+        std::string backup;
+    };
+
+    AssetDeleteCommand(std::vector<Entry> entries, EditorContext* context)
+        : m_entries(std::move(entries))
+        , m_context(context)
+    {
+    }
+
+    ~AssetDeleteCommand() override
+    {
+        // Undo されないまま履歴から消えた削除データだけを最終破棄する。
+        if (!m_deleted) return;
+        for (const Entry& entry : m_entries)
+            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(entry.backup));
+    }
+
+    void Execute() override
+    {
+        bool movedAny = false;
+        for (const Entry& entry : m_entries) {
+            if (!util::FileSystem::Exists(entry.original)) continue;
+            util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(entry.backup));
+            movedAny |= util::FileSystem::Rename(
+                util::FileSystem::PathFromUtf8(entry.original),
+                util::FileSystem::PathFromUtf8(entry.backup));
+        }
+        m_deleted = movedAny || m_deleted;
+        RequestRefresh();
+    }
+
+    void Undo() override
+    {
+        for (const Entry& entry : m_entries) {
+            if (!util::FileSystem::Exists(entry.backup)) continue;
+            util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(entry.original));
+            util::FileSystem::Rename(
+                util::FileSystem::PathFromUtf8(entry.backup),
+                util::FileSystem::PathFromUtf8(entry.original));
+        }
+        m_deleted = false;
+        RequestRefresh();
+    }
+
+    std::string GetDescription() const override { return "Delete Asset"; }
+
+private:
+    void RequestRefresh()
+    {
+        if (m_context) m_context->requestAssetBrowserRefresh = true;
+    }
+
+    std::vector<Entry> m_entries;
+    EditorContext*     m_context = nullptr;
+    bool               m_deleted = false;
+};
+
+std::unique_ptr<ICommand> CreateAssetDeleteCommand(const std::vector<std::string>& paths,
+                                                   EditorContext& ctx)
+{
+    const std::string undoRoot = ctx.projectRoot + "/.fbzz/Undo/" + util::GenerateUUID() + "/";
+    std::vector<AssetDeleteCommand::Entry> entries;
+    entries.reserve(paths.size());
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        entries.push_back({
+            paths[i],
+            undoRoot + std::to_string(i) + "_" + util::FileSystem::GetFilename(paths[i])
+        });
+    }
+    return std::make_unique<AssetDeleteCommand>(std::move(entries), &ctx);
+}
 
 //      未知の拡張子は拡張子文字列のハッシュから色を生成し、
 //      追加のコード変更なしにどんなファイルでも識別色が付く。
@@ -1383,15 +1461,33 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             ctx.requestOpenScene(path);
         } else if (SceneIO::Load(*ctx.activeScene, path)) {
             ctx.selectedEntities.clear();
+            if (ctx.undoStack) ctx.undoStack->Clear();
             if (ctx.markSceneDirty) ctx.markSceneDirty();
             FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
         } else {
             FBZZ_LOG_ERROR("Failed to open scene: %s", path.c_str());
         }
     } else if (ext == ".fbzzprefab" && ctx.activeScene) {
+        const std::string before = SceneIO::Serialize(*ctx.activeScene);
         std::vector<scene::EntityID> roots;
         if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots)) {
             ctx.selectedEntities = roots;
+            const std::string after = SceneIO::Serialize(*ctx.activeScene);
+            if (ctx.undoStack && before != after) {
+                scene::Scene* scene = ctx.activeScene;
+                EditorContext* context = &ctx;
+                const auto markDirty = ctx.markSceneDirty;
+                auto restore = [scene, context, markDirty](const std::string& snapshot) {
+                    if (SceneIO::Deserialize(*scene, snapshot)) {
+                        context->selectedEntities.clear();
+                        if (markDirty) markDirty();
+                    }
+                };
+                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                    "Instantiate Prefab",
+                    [restore, after]() { restore(after); },
+                    [restore, before]() { restore(before); }));
+            }
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
     } else if (ext == ".fbzzanimcontroller") {
@@ -1412,6 +1508,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         std::snprintf(label, sizeof(label), "Duplicate %d items", n);
         if (ImGui::MenuItem(label)) {
             std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
+            auto command = std::make_unique<CompositeCommand>("Duplicate Assets");
             for (const auto& srcPath : paths) {
                 if (util::FileSystem::IsDirectory(srcPath)) continue;
                 const std::string dir  = util::FileSystem::GetDirectory(srcPath);
@@ -1424,28 +1521,38 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                         dir + stem + "(" + std::to_string(k) + ")" + ext);
                     if (!util::FileSystem::Exists(dstPath)) break;
                 }
-                if (!dstPath.empty())
-                    util::FileSystem::CopyFile(
+                if (!dstPath.empty() && util::FileSystem::CopyFile(
                         util::FileSystem::PathFromUtf8(srcPath),
-                        util::FileSystem::PathFromUtf8(dstPath));
+                        util::FileSystem::PathFromUtf8(dstPath))) {
+                    EditorContext* context = &ctx;
+                    command->Add(std::make_unique<LambdaCommand>(
+                        "Duplicate Asset",
+                        [srcPath, dstPath, context]() {
+                            util::FileSystem::CopyFile(
+                                util::FileSystem::PathFromUtf8(srcPath),
+                                util::FileSystem::PathFromUtf8(dstPath));
+                            context->requestAssetBrowserRefresh = true;
+                        },
+                        [dstPath, context]() {
+                            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
+                            context->requestAssetBrowserRefresh = true;
+                        }));
+                }
             }
+            if (ctx.undoStack && !command->Empty())
+                ctx.undoStack->Push(std::move(command));
             RefreshDirectory();
         }
 
         std::snprintf(label, sizeof(label), "Delete %d items", n);
         if (ImGui::MenuItem(label)) {
             std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
+            EditorContext* context = &ctx;
             ModalDialog::OpenConfirm("Delete",
                 "Delete " + std::to_string(n) + " selected items?",
-                [this, paths]() {
-                    for (const auto& p : paths) {
-                        if (util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(p))) {
-                            if (m_selectedFbxPath == p) { m_selectedFbxPath.clear(); m_selectedModel.reset(); }
-                            ResetAssetPreviewCache(p);
-                        } else {
-                            FBZZ_LOG_ERROR("Delete failed: %s", p.c_str());
-                        }
-                    }
+                [this, paths, context]() {
+                    if (context->undoStack)
+                        context->undoStack->Execute(CreateAssetDeleteCommand(paths, *context));
                     m_selectedPaths.clear();
                     RefreshDirectory();
                 });
@@ -1484,6 +1591,22 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             if (util::FileSystem::CopyFile(
                     util::FileSystem::PathFromUtf8(e.path),
                     util::FileSystem::PathFromUtf8(dstPath))) {
+                if (ctx.undoStack) {
+                    const std::string srcPath = e.path;
+                    EditorContext* context = &ctx;
+                    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                        "Duplicate Asset",
+                        [srcPath, dstPath, context]() {
+                            util::FileSystem::CopyFile(
+                                util::FileSystem::PathFromUtf8(srcPath),
+                                util::FileSystem::PathFromUtf8(dstPath));
+                            context->requestAssetBrowserRefresh = true;
+                        },
+                        [dstPath, context]() {
+                            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
+                            context->requestAssetBrowserRefresh = true;
+                        }));
+                }
                 RefreshDirectory();
             } else {
                 FBZZ_LOG_ERROR("Duplicate failed: %s", e.path.c_str());
@@ -1531,17 +1654,16 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     ImGui::Separator();
     if (ImGui::MenuItem("Delete")) {
         const std::string path = e.path;
+        EditorContext* context = &ctx;
         ModalDialog::OpenConfirm("Delete",
             "Delete \"" + util::FileSystem::GetFilename(path) + "\"?",
-            [this, path]() {
-                if (!util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path))) {
-                    FBZZ_LOG_ERROR("Delete failed: %s", path.c_str());
-                } else {
-                    if (m_selectedFbxPath == path) { m_selectedFbxPath.clear(); m_selectedModel.reset(); }
-                    m_selectedPaths.erase(path);
-                    ResetAssetPreviewCache(path);
-                    RefreshDirectory();
-                }
+            [this, path, context]() {
+                if (context->undoStack)
+                    context->undoStack->Execute(CreateAssetDeleteCommand({ path }, *context));
+                if (m_selectedFbxPath == path) { m_selectedFbxPath.clear(); m_selectedModel.reset(); }
+                m_selectedPaths.erase(path);
+                ResetAssetPreviewCache(path);
+                RefreshDirectory();
             });
     }
     ImGui::EndDisabled();
@@ -1553,7 +1675,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     ImGui::EndPopup();
 }
 
-void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e)
+void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
 {
     if (m_renamingPath == e.path) {
         ImGui::SetNextItemWidth(m_iconSize);
@@ -1567,11 +1689,32 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e)
                 const std::string dir     = util::FileSystem::GetDirectory(e.path);
                 const std::string newPath = dir + m_renameBuffer;
                 if (newPath != e.path) {
-                    auto doRename = [this, oldPath = e.path, newPath]() {
+                    auto doRename = [this, oldPath = e.path, newPath, context = &ctx]() {
                         if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(oldPath),
                                                       util::FileSystem::PathFromUtf8(newPath))) {
                             FBZZ_LOG_ERROR("Rename failed: %s -> %s", oldPath.c_str(), newPath.c_str());
                         } else {
+                            if (context->undoStack) {
+                                const auto refresh = [context]() {
+                                    context->requestAssetBrowserRefresh = true;
+                                };
+                                context->undoStack->Push(std::make_unique<LambdaCommand>(
+                                    "Rename Asset",
+                                    [oldPath, newPath, refresh]() {
+                                        if (util::FileSystem::Exists(oldPath))
+                                            util::FileSystem::Rename(
+                                                util::FileSystem::PathFromUtf8(oldPath),
+                                                util::FileSystem::PathFromUtf8(newPath));
+                                        refresh();
+                                    },
+                                    [oldPath, newPath, refresh]() {
+                                        if (util::FileSystem::Exists(newPath))
+                                            util::FileSystem::Rename(
+                                                util::FileSystem::PathFromUtf8(newPath),
+                                                util::FileSystem::PathFromUtf8(oldPath));
+                                        refresh();
+                                    }));
+                            }
                             if (m_selectedFbxPath == oldPath) m_selectedFbxPath = newPath;
                             ResetAssetPreviewCache(oldPath);
                             RefreshDirectory();
@@ -1651,6 +1794,20 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
             if (srcAbs != dstAbs && !util::FileSystem::Exists(dstAbs)) {
                 if (util::FileSystem::Rename(util::FileSystem::PathFromUtf8(srcAbs),
                                              util::FileSystem::PathFromUtf8(dstAbs))) {
+                    if (ctx.undoStack) {
+                        EditorContext* context = &ctx;
+                        auto applyMove = [context](const std::string& from, const std::string& to) {
+                            if (util::FileSystem::Exists(from) && !util::FileSystem::Exists(to))
+                                util::FileSystem::Rename(
+                                    util::FileSystem::PathFromUtf8(from),
+                                    util::FileSystem::PathFromUtf8(to));
+                            context->requestAssetBrowserRefresh = true;
+                        };
+                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                            "Move Asset",
+                            [applyMove, srcAbs, dstAbs]() { applyMove(srcAbs, dstAbs); },
+                            [applyMove, srcAbs, dstAbs]() { applyMove(dstAbs, srcAbs); }));
+                    }
                     if (ctx.selectedAssetPath == srcAbs) ctx.selectedAssetPath.clear();
                     ResetAssetPreviewCache(srcAbs);
                     InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
@@ -1686,7 +1843,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     HandleEntryClick(e, ctx, hov);
     HandleEntryDoubleClick(e, ctx, hov);
-    DrawEntryRenameLabel(e);
+    DrawEntryRenameLabel(e, ctx);
 
     // FindRefs ポップアップは1つのエントリが最初にレンダリングされた後に開く
     if (m_findRefs.open) {
