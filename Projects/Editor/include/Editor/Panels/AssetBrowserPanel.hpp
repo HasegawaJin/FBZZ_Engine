@@ -59,6 +59,10 @@ private:
     [[nodiscard]] std::string ResolveFallbackAssetDir(const std::string& childDirName) const;
     [[nodiscard]] bool        IsMountedRoot(const std::string& path) const;
     [[nodiscard]] bool        IsRootOrMountedPath(const std::string& path) const;
+    // Asset Browser にはユーザーが直接編集・選択するアセットだけを表示する。
+    // WHY: コード生成物やインポート中間データを隠し、誤編集と一覧のノイズを防ぐ。
+    [[nodiscard]] static bool ShouldDisplayEntry(
+        const std::string& path, const std::string& name, bool isDir);
 
     static ImVec4      EntryColor(const Entry& e);
     static const char* EntryLabel(const Entry& e);
@@ -82,7 +86,8 @@ private:
     void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
 
-    // 未変換ファイル(FBX/PNG等)を検出してインポートキューに積む (relPath は m_rootPath 相対)
+    // 未変換モデルファイルを検出してインポートキューに積む (relPath は m_rootPath 相対)。
+    // WHY: PNG / JPG 等のテクスチャは ResourceManager が原本を直接読むため変換しない。
     void TryQueuePendingImport(const std::string& relPath);
     // dirAbsPath 以下を再帰スキャンして未変換ファイルをキューに積む
     void ScanAndQueueUnimported(const std::string& dirAbsPath);
@@ -182,7 +187,6 @@ private:
     // インポート待ちキュー
     struct PendingImport {
         std::string path;
-        enum class Kind { Fbx, Texture } kind;
     };
     std::vector<PendingImport> m_pendingImports;
 

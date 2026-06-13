@@ -173,6 +173,7 @@ void AssetBrowserPanel::RefreshDirectory()
         e.name  = util::FileSystem::GetFilename(p);
         e.ext   = util::StringUtils::ToLower(util::FileSystem::GetExtension(p));
         e.isDir = util::FileSystem::IsDirectory(p);
+        if (!ShouldDisplayEntry(e.path, e.name, e.isDir)) continue;
         m_entries.push_back(std::move(e));
     }
 
@@ -196,6 +197,56 @@ void AssetBrowserPanel::RefreshDirectory()
         default:                    return a.name < b.name;
         }
     });
+}
+
+bool AssetBrowserPanel::ShouldDisplayEntry(
+    const std::string& path, const std::string& name, bool isDir)
+{
+    const std::string lowerName = util::StringUtils::ToLower(name);
+    const std::string lowerPath = util::StringUtils::ToLower(
+        util::FileSystem::NormalizePathSeparators(path));
+
+    // WHAT: OS・VCS の管理ファイルはアセットではないため、ドット始まりを共通で隠す。
+    if (!lowerName.empty() && lowerName.front() == '.') return false;
+
+    // WHY: compiled は HLSL から再生成できる実行時バイナリ置き場であり、
+    //      ユーザーが Asset Browser から開いたり移動したりする対象ではない。
+    if (isDir) {
+        return !util::StringUtils::EndsWith(lowerPath, "/shaders/compiled");
+    }
+
+    // WHAT: Header Tool、FBX importer、Shader compiler が生成する派生ファイルを隠し、
+    //       原本の .hpp / .fbx / .hlsl だけを操作対象にする。
+    static constexpr const char* kGeneratedSuffixes[] = {
+        ".generated.hpp",
+        ".fztex",
+        ".fzmesh",
+        ".fzskel",
+        ".fzanim",
+        ".cso",
+        ".dll",
+        ".lib",
+        ".pdb",
+        ".exp",
+        ".ilk",
+        ".tmp",
+        ".bak",
+    };
+    for (const char* suffix : kGeneratedSuffixes) {
+        if (util::StringUtils::EndsWith(lowerName, suffix)) return false;
+    }
+
+    // シェーダー配布物を作る補助スクリプトとログはエディタ内部の保守用ファイル。
+    static constexpr const char* kShaderToolFiles[] = {
+        "compile_shaders.bat",
+        "compile_ui_shaders.bat",
+        "compile_log.txt",
+        "compile_ui_log.txt",
+    };
+    for (const char* toolFile : kShaderToolFiles) {
+        if (lowerName == toolFile) return false;
+    }
+    return true;
 }
 
 void AssetBrowserPanel::InvalidateTreeCache(const std::string& dirPath)
