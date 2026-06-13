@@ -2,6 +2,7 @@
 // AssetBrowserItems.cpp | fbzz::editor
 // AssetBrowser のフォルダツリーとファイルアイコン描画
 #include "AssetBrowserCommon.hpp"
+#include <Windows.h>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -186,9 +187,11 @@ static ThumbnailShaderFlavor DetectThumbnailShaderFlavor(std::string_view shader
     return ThumbnailShaderFlavor::Surface;
 }
 
-// t0-t4 は標準 Material スロット。t5-t7 はカスタムシェーダー用の汎用名。
-// WHY: サムネイルでも Scene 描画と同じ .fzmat のテクスチャ割り当てを再現する。
-constexpr std::array<const char*, 8> kMaterialTextureSlotNames = {
+// t0-t15 は標準 Material スロット。Terrain/Water は専用名で解決されるが、
+// それ以外の汎用スロットはここで名前フォールバックが効く。
+// WHY: preview.textures.assign(16,{}) と同サイズにすることで、
+//      bind.slot が 8-15 の汎用スロットでも FindMaterialTexturePath が機能する。
+constexpr std::array<const char*, 16> kMaterialTextureSlotNames = {
     "albedo",
     "normal",
     "metallic",
@@ -197,6 +200,14 @@ constexpr std::array<const char*, 8> kMaterialTextureSlotNames = {
     "tex5",
     "tex6",
     "tex7",
+    "tex8",
+    "tex9",
+    "tex10",
+    "tex11",
+    "tex12",
+    "tex13",
+    "tex14",
+    "tex15",
 };
 
 static const std::vector<float>* FindMaterialParam(const asset::MaterialAsset& asset, std::string_view shaderVarName)
@@ -428,6 +439,29 @@ bool AssetBrowserPanel::RebuildMaterialThumbnailGpuData(MaterialPreview& preview
 }
 
 namespace {
+
+// サムネイルレンダリング用の共有 GPU リソースをまとめて保持する構造体。
+// WHY: 以前は RenderMeshThumbnail / DrawAssetPreviewIconAt の function-local static
+//      として暗黙的に共有されていた。構造体に昇格させて意図を明示する。
+struct ThumbnailRenderer {
+    renderer::ResourceHandle<renderer::ShaderTag>         shader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> terrainObjectCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> waterObjectCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB;
+    renderer::ResourceHandle<renderer::TextureTag>        whiteTexture;
+    renderer::ResourceHandle<renderer::TextureTag>        blackTexture;
+    renderer::ResourceHandle<renderer::TextureTag>        flatNormalTexture;
+    std::shared_ptr<renderer::Mesh>                       materialSphere;
+    std::shared_ptr<renderer::Mesh>                       skinnedMaterialSphere;
+    std::shared_ptr<renderer::Mesh>                       waterMaterialSphere;
+};
+static ThumbnailRenderer s_tr;
 
 static void DrawThumbnailFrame(ImVec2 origin, float sz, bool hovered)
 {
@@ -708,41 +742,34 @@ static ThumbnailWaterCB BuildThumbnailWaterCB(
     return cb;
 }
 
-static bool EnsureThumbnailGpuResources(
-    renderer::ResourceManager& resources,
-    renderer::ResourceHandle<renderer::ShaderTag>& shader,
-    renderer::ResourceHandle<renderer::PipelineStateTag>& pso,
-    renderer::ResourceHandle<renderer::ConstantBufferTag>& frameCB,
-    renderer::ResourceHandle<renderer::ConstantBufferTag>& objectCB,
-    renderer::ResourceHandle<renderer::ConstantBufferTag>& materialCB,
-    renderer::ResourceHandle<renderer::ConstantBufferTag>& lightCB,
-    renderer::ResourceHandle<renderer::ConstantBufferTag>& shadowCB,
-    bool requireFallbackMaterial)
+static bool EnsureThumbnailGpuResources(renderer::ResourceManager& resources,
+                                         ThumbnailRenderer& tr,
+                                         bool requireFallbackMaterial)
 {
-    if (requireFallbackMaterial && !shader.IsValid())
-        shader = resources.LoadShader("Assets/Shaders/Material/Surface/Lit.hlsl");
-    if (requireFallbackMaterial && !shader.IsValid()) return false;
+    if (requireFallbackMaterial && !tr.shader.IsValid())
+        tr.shader = resources.LoadShader("Assets/Shaders/Material/Surface/Lit.hlsl");
+    if (requireFallbackMaterial && !tr.shader.IsValid()) return false;
 
-    if (!pso.IsValid()) {
-        pso = resources.CreatePipelineState({
+    if (!tr.pso.IsValid()) {
+        tr.pso = resources.CreatePipelineState({
             renderer::RasterizerMode::SOLID_NOCULL,
             renderer::BlendMode::OPAQUE_BLEND,
             renderer::DepthMode::DEPTH_ON
         });
     }
-    if (!frameCB.IsValid())
-        frameCB = resources.CreateConstantBuffer(sizeof(scene::PerFrameCB));
-    if (!objectCB.IsValid())
-        objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
-    if (requireFallbackMaterial && !materialCB.IsValid())
-        materialCB = resources.CreateConstantBuffer(sizeof(ThumbnailMaterialCB));
-    if (!lightCB.IsValid())
-        lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
-    if (!shadowCB.IsValid())
-        shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
+    if (!tr.frameCB.IsValid())
+        tr.frameCB = resources.CreateConstantBuffer(sizeof(scene::PerFrameCB));
+    if (!tr.objectCB.IsValid())
+        tr.objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
+    if (requireFallbackMaterial && !tr.materialCB.IsValid())
+        tr.materialCB = resources.CreateConstantBuffer(sizeof(ThumbnailMaterialCB));
+    if (!tr.lightCB.IsValid())
+        tr.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
+    if (!tr.shadowCB.IsValid())
+        tr.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
 
-    return pso.IsValid() && frameCB.IsValid() && objectCB.IsValid() &&
-           (!requireFallbackMaterial || materialCB.IsValid()) && lightCB.IsValid() && shadowCB.IsValid();
+    return tr.pso.IsValid() && tr.frameCB.IsValid() && tr.objectCB.IsValid() &&
+           (!requireFallbackMaterial || tr.materialCB.IsValid()) && tr.lightCB.IsValid() && tr.shadowCB.IsValid();
 }
 
 static bool RenderMeshThumbnail(
@@ -758,33 +785,10 @@ static bool RenderMeshThumbnail(
     ThumbnailShaderFlavor flavor = ThumbnailShaderFlavor::Surface,
     const asset::MaterialAsset* materialAsset = nullptr)
 {
-    static renderer::ResourceHandle<renderer::ShaderTag> s_shader;
-    static renderer::ResourceHandle<renderer::PipelineStateTag> s_pso;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_frameCB;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_objectCB;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_materialCB;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_lightCB;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_shadowCB;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_terrainObjectCB;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_waterObjectCB;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> s_skinningCB;
-    static renderer::ResourceHandle<renderer::TextureTag> s_whiteTexture;
-    static renderer::ResourceHandle<renderer::TextureTag> s_blackTexture;
-    static renderer::ResourceHandle<renderer::TextureTag> s_flatNormalTexture;
-
     if (!rt.IsValid() || !mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid())
         return false;
     const bool useMaterialOverride = materialShader.IsValid();
-    if (!EnsureThumbnailGpuResources(
-            resources,
-            s_shader,
-            s_pso,
-            s_frameCB,
-            s_objectCB,
-            s_materialCB,
-            s_lightCB,
-            s_shadowCB,
-            !useMaterialOverride))
+    if (!EnsureThumbnailGpuResources(resources, s_tr, !useMaterialOverride))
         return false;
 
     const math::Vector3 center = MeshBoundsCenter(mesh);
@@ -813,38 +817,38 @@ static bool RenderMeshThumbnail(
     frameData.cameraPos = camera.m_position;
     frameData.nearZ = camera.m_near;
     frameData.farZ = camera.m_far;
-    resources.Update(s_frameCB, &frameData, sizeof(frameData));
+    resources.Update(s_tr.frameCB, &frameData, sizeof(frameData));
 
     scene::PerObjectCB objectData{};
     objectData.world = math::Matrix4::Identity();
     objectData.worldInvTranspose = math::Matrix4::Identity();
-    renderer::ResourceHandle<renderer::ConstantBufferTag> objectCBForDraw = s_objectCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> objectCBForDraw = s_tr.objectCB;
     if (flavor == ThumbnailShaderFlavor::Terrain) {
-        if (!s_terrainObjectCB.IsValid())
-            s_terrainObjectCB = resources.CreateConstantBuffer(sizeof(ThumbnailTerrainCB));
-        if (!s_terrainObjectCB.IsValid()) return false;
+        if (!s_tr.terrainObjectCB.IsValid())
+            s_tr.terrainObjectCB = resources.CreateConstantBuffer(sizeof(ThumbnailTerrainCB));
+        if (!s_tr.terrainObjectCB.IsValid()) return false;
         const ThumbnailTerrainCB terrainData = BuildThumbnailTerrainCB(materialAsset, frameData.viewProjection);
-        resources.Update(s_terrainObjectCB, &terrainData, sizeof(terrainData));
-        objectCBForDraw = s_terrainObjectCB;
+        resources.Update(s_tr.terrainObjectCB, &terrainData, sizeof(terrainData));
+        objectCBForDraw = s_tr.terrainObjectCB;
     } else if (flavor == ThumbnailShaderFlavor::Water) {
-        if (!s_waterObjectCB.IsValid())
-            s_waterObjectCB = resources.CreateConstantBuffer(sizeof(ThumbnailWaterCB));
-        if (!s_waterObjectCB.IsValid()) return false;
+        if (!s_tr.waterObjectCB.IsValid())
+            s_tr.waterObjectCB = resources.CreateConstantBuffer(sizeof(ThumbnailWaterCB));
+        if (!s_tr.waterObjectCB.IsValid()) return false;
         const ThumbnailWaterCB waterData = BuildThumbnailWaterCB(materialAsset, frameData.viewProjection);
-        resources.Update(s_waterObjectCB, &waterData, sizeof(waterData));
-        objectCBForDraw = s_waterObjectCB;
+        resources.Update(s_tr.waterObjectCB, &waterData, sizeof(waterData));
+        objectCBForDraw = s_tr.waterObjectCB;
     } else {
-        resources.Update(s_objectCB, &objectData, sizeof(objectData));
+        resources.Update(s_tr.objectCB, &objectData, sizeof(objectData));
     }
 
     if (flavor == ThumbnailShaderFlavor::Skinned) {
-        if (!s_skinningCB.IsValid())
-            s_skinningCB = resources.CreateConstantBuffer(sizeof(ThumbnailSkinningCB));
-        if (!s_skinningCB.IsValid()) return false;
+        if (!s_tr.skinningCB.IsValid())
+            s_tr.skinningCB = resources.CreateConstantBuffer(sizeof(ThumbnailSkinningCB));
+        if (!s_tr.skinningCB.IsValid()) return false;
         ThumbnailSkinningCB skinningData{};
         for (auto& bone : skinningData.boneMatrices)
             bone = math::Matrix4::Identity();
-        resources.Update(s_skinningCB, &skinningData, sizeof(skinningData));
+        resources.Update(s_tr.skinningCB, &skinningData, sizeof(skinningData));
     }
 
     if (!useMaterialOverride) {
@@ -856,7 +860,7 @@ static bool RenderMeshThumbnail(
             std::clamp(albedoColor.w, 0.0f, 1.0f)
         };
         materialData.textureMask = albedoTexture.IsValid() ? 1u : 0u;
-        resources.Update(s_materialCB, &materialData, sizeof(materialData));
+        resources.Update(s_tr.materialCB, &materialData, sizeof(materialData));
     }
 
     renderer::LightConstantsCB lightData{};
@@ -865,14 +869,14 @@ static bool RenderMeshThumbnail(
     lightData.lightColor = { 1.0f, 0.97f, 0.92f };
     lightData.lightIntensity = 1.65f;
     lightData.ambientColor = { 0.24f, 0.27f, 0.31f };
-    resources.Update(s_lightCB, &lightData, sizeof(lightData));
+    resources.Update(s_tr.lightCB, &lightData, sizeof(lightData));
 
     scene::ShadowConstantsCB shadowData{};
     shadowData.lightViewProjection = math::Matrix4::Translate({ 16.0f, 16.0f, 0.0f });
     shadowData.shadowMapTexelSize[0] = 0.0f;
     shadowData.shadowMapTexelSize[1] = 0.0f;
     shadowData.shadowBias = 1.0f;
-    resources.Update(s_shadowCB, &shadowData, sizeof(shadowData));
+    resources.Update(s_tr.shadowCB, &shadowData, sizeof(shadowData));
 
     renderer.SetRenderTarget(rt, resources);
     renderer.Clear({ 0.030f, 0.032f, 0.038f, 1.0f });
@@ -886,24 +890,24 @@ static bool RenderMeshThumbnail(
     dc.indexBuffer = mesh.indexBuffer;
     dc.indexCount = mesh.indexCount;
     dc.vertexCount = mesh.vertexCount;
-    dc.shader = useMaterialOverride ? materialShader : s_shader;
-    dc.pipelineState = s_pso;
-    dc.constantBuffers[0] = s_frameCB;
+    dc.shader = useMaterialOverride ? materialShader : s_tr.shader;
+    dc.pipelineState = s_tr.pso;
+    dc.constantBuffers[0] = s_tr.frameCB;
     dc.constantBuffers[1] = objectCBForDraw;
-    dc.constantBuffers[2] = (useMaterialOverride && materialCB.IsValid()) ? materialCB : s_materialCB;
-    dc.constantBuffers[3] = s_lightCB;
-    dc.constantBuffers[4] = s_shadowCB;
+    dc.constantBuffers[2] = (useMaterialOverride && materialCB.IsValid()) ? materialCB : s_tr.materialCB;
+    dc.constantBuffers[3] = s_tr.lightCB;
+    dc.constantBuffers[4] = s_tr.shadowCB;
     if (flavor == ThumbnailShaderFlavor::Skinned)
-        dc.constantBuffers[7] = s_skinningCB;
+        dc.constantBuffers[7] = s_tr.skinningCB;
     if (useMaterialOverride && materialTextures) {
         const size_t count = std::min(dc.textures.size(), materialTextures->size());
         for (size_t i = 0; i < count; ++i)
             dc.textures[i] = (*materialTextures)[i];
         if ((flavor == ThumbnailShaderFlavor::Terrain || flavor == ThumbnailShaderFlavor::Water) &&
-            EnsureThumbnailDefaultTextures(resources, s_whiteTexture, s_blackTexture, s_flatNormalTexture)) {
+            EnsureThumbnailDefaultTextures(resources, s_tr.whiteTexture, s_tr.blackTexture, s_tr.flatNormalTexture)) {
             for (uint32_t i = 0; i < static_cast<uint32_t>(dc.textures.size()); ++i) {
                 if (dc.textures[i].IsValid()) continue;
-                dc.textures[i] = DefaultThumbnailTextureForSlot(flavor, i, s_whiteTexture, s_blackTexture, s_flatNormalTexture);
+                dc.textures[i] = DefaultThumbnailTextureForSlot(flavor, i, s_tr.whiteTexture, s_tr.blackTexture, s_tr.flatNormalTexture);
             }
         }
     } else {
@@ -914,6 +918,15 @@ static bool RenderMeshThumbnail(
     // WHY: AssetBrowser の ImGui 描画中に一時 RT へ切り替えるため、生成後は必ずバックバッファへ戻す。
     renderer.SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>{}, resources);
     return true;
+}
+
+static void DrawThumbnailLabel(ImDrawList* dl, ImVec2 origin, float sz, const char* badge)
+{
+    const ImVec2 tsz     = ImGui::CalcTextSize(badge);
+    const ImVec2 bMin    = { origin.x + sz - tsz.x - 12.0f, origin.y + sz - tsz.y - 7.0f };
+    const ImVec2 bMax    = { origin.x + sz - 4.0f,           origin.y + sz - 3.0f         };
+    dl->AddRectFilled(bMin, bMax, IM_COL32(20, 22, 26, 205), 3.0f);
+    dl->AddText({ bMin.x + 4.0f, bMin.y + 2.0f }, IM_COL32(235, 240, 245, 230), badge);
 }
 
 static void DrawRenderTargetThumbnail(
@@ -976,28 +989,34 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
 
 void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext& ctx)
 {
-    std::vector<Entry> dirs;
-    for (const auto& p : util::FileSystem::ListAll(dirPath)) {
-        if (!util::FileSystem::IsDirectory(p)) continue;
-        Entry e;
-        e.path = util::FileSystem::NormalizePathSeparators(p);
-        e.name = util::FileSystem::GetFilename(p);
-        e.isDir = true;
-        dirs.push_back(std::move(e));
-    }
-    if (util::FileSystem::SamePathText(dirPath, m_rootPath)) {
-        for (const AssetMount& mount : m_mounts) {
+    const std::string normDir = util::FileSystem::NormalizePathSeparators(dirPath);
+    auto it = m_treeCache.find(normDir);
+    if (it == m_treeCache.end()) {
+        std::vector<Entry> newDirs;
+        for (const auto& p : util::FileSystem::ListAll(normDir)) {
+            if (!util::FileSystem::IsDirectory(p)) continue;
             Entry e;
-            e.path = mount.path;
-            e.name = mount.name;
+            e.path = util::FileSystem::NormalizePathSeparators(p);
+            e.name = util::FileSystem::GetFilename(p);
             e.isDir = true;
-            e.isMount = true;
-            dirs.push_back(std::move(e));
+            newDirs.push_back(std::move(e));
         }
+        if (util::FileSystem::SamePathText(normDir, m_rootPath)) {
+            for (const AssetMount& mount : m_mounts) {
+                Entry e;
+                e.path = mount.path;
+                e.name = mount.name;
+                e.isDir = true;
+                e.isMount = true;
+                newDirs.push_back(std::move(e));
+            }
+        }
+        std::stable_sort(newDirs.begin(), newDirs.end(), [](const Entry& a, const Entry& b) {
+            return a.name < b.name;
+        });
+        it = m_treeCache.emplace(normDir, std::move(newDirs)).first;
     }
-    std::stable_sort(dirs.begin(), dirs.end(), [](const Entry& a, const Entry& b) {
-        return a.name < b.name;
-    });
+    const std::vector<Entry>& dirs = it->second;
 
     for (const Entry& dir : dirs) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
@@ -1045,30 +1064,13 @@ void AssetBrowserPanel::DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, 
         dl->AddRectFilled({ origin.x, bodyY },    { origin.x + sz,   origin.y + bodyH }, cFill, r);
         dl->AddRect(      { origin.x, bodyY },    { origin.x + sz,   origin.y + bodyH }, cDark, r, 0, 1.0f);
     } else {
-        const float bodyH = sz * 0.85f;
-        const float dog   = sz * 0.22f;
-        ImVec2 pts[5] = {
-            { origin.x,        origin.y       },
-            { origin.x+sz-dog, origin.y       },
-            { origin.x+sz,     origin.y+dog   },
-            { origin.x+sz,     origin.y+bodyH },
-            { origin.x,        origin.y+bodyH },
-        };
-        dl->AddConvexPolyFilled(pts, 5, cFill);
-        dl->AddPolyline(pts, 5, cDark, ImDrawFlags_Closed, 1.0f);
-        ImVec2 tri[3] = {
-            { origin.x+sz-dog, origin.y     },
-            { origin.x+sz,     origin.y+dog },
-            { origin.x+sz-dog, origin.y+dog },
-        };
-        dl->AddConvexPolyFilled(tri, 3, cDark);
-
+        DrawFileIconPolygon(dl, origin, sz, cFill, cDark);
         const char* lbl = EntryLabel(e);
         ImFont* font = ImGui::GetFont();
         const float labelSz = ImGui::GetFontSize() * std::max(1.0f, sz / 64.0f);
         const ImVec2 tsz = font->CalcTextSizeA(labelSz, FLT_MAX, 0.0f, lbl);
         dl->AddText(font, labelSz,
-                    { origin.x + (sz - tsz.x) * 0.5f, origin.y + bodyH * 0.52f - tsz.y * 0.5f },
+                    { origin.x + (sz - tsz.x) * 0.5f, origin.y + sz * 0.85f * 0.52f - tsz.y * 0.5f },
                     IM_COL32(255, 255, 255, 220), lbl);
     }
 }
@@ -1084,16 +1086,9 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
 
     if (IsTextureExt(e.ext) && ctx.resources && ctx.imguiRenderer) {
         TexturePreview& preview = m_texturePreviews[e.path];
-        if (!preview.handle.IsValid() && !preview.failed) {
-            preview.handle = ctx.resources->LoadTexture(ToTextureLoadPath(e.path, ctx));
-            if (preview.handle.IsValid()) {
-                if (auto* texture = ctx.resources->Get(preview.handle)) {
-                    preview.width = texture->GetWidth();
-                    preview.height = texture->GetHeight();
-                }
-            } else {
-                preview.failed = true;
-            }
+        if (!preview.handle.IsValid() && !preview.failed && !preview.queued) {
+            preview.queued = true;
+            m_texLoadQueue.push_back(e.path);
         }
 
         if (!preview.failed) {
@@ -1125,6 +1120,24 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.thumbnailRendered = false;
         }
 
+        // シェーダーファイルが変更された場合もサムネイルをリセットする
+        if (preview.loaded && !preview.failed && !preview.asset.shaderPath.empty()) {
+            const std::string resolvedShader = preview.asset.shaderPath.empty()
+                ? "Assets/Shaders/Material/Surface/Fallback.hlsl"
+                : preview.asset.shaderPath;
+            const auto shaderWriteTime = ReadLastWriteTime(
+                util::FileSystem::NormalizePathSeparators(ctx.projectRoot + "/" + resolvedShader));
+            if (shaderWriteTime != preview.shaderLastWriteTime && shaderWriteTime != std::filesystem::file_time_type{}) {
+                preview.shaderLastWriteTime = shaderWriteTime;
+                preview.shaderPath.clear();
+                preview.shader = {};
+                preview.materialCB = {};
+                preview.textures.clear();
+                preview.paramData.clear();
+                preview.thumbnailRendered = false;
+            }
+        }
+
         if (!preview.failed && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
             const std::string previewTexturePath = SelectMaterialPreviewTexture(preview.asset);
             if (previewTexturePath != preview.previewTexturePath) {
@@ -1150,19 +1163,16 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 preview.thumbnailRendered = false;
             }
             if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
-                static std::shared_ptr<renderer::Mesh> s_materialSphere;
-                static std::shared_ptr<renderer::Mesh> s_skinnedMaterialSphere;
-                static std::shared_ptr<renderer::Mesh> s_waterMaterialSphere;
-                if (!s_materialSphere)
-                    s_materialSphere = renderer::PrimitiveMesh::Sphere(*ctx.resources, 64);
-                if (!s_skinnedMaterialSphere)
-                    s_skinnedMaterialSphere = CreateSkinnedPreviewSphere(*ctx.resources, 64);
-                if (!s_waterMaterialSphere)
-                    s_waterMaterialSphere = CreateWaterPreviewSphere(*ctx.resources, 64);
+                if (!s_tr.materialSphere)
+                    s_tr.materialSphere = renderer::PrimitiveMesh::Sphere(*ctx.resources, 64);
+                if (!s_tr.skinnedMaterialSphere)
+                    s_tr.skinnedMaterialSphere = CreateSkinnedPreviewSphere(*ctx.resources, 64);
+                if (!s_tr.waterMaterialSphere)
+                    s_tr.waterMaterialSphere = CreateWaterPreviewSphere(*ctx.resources, 64);
                 const ThumbnailShaderFlavor flavor = DetectThumbnailShaderFlavor(preview.asset.shaderPath);
                 const std::shared_ptr<renderer::Mesh>& previewMesh = (flavor == ThumbnailShaderFlavor::Skinned)
-                    ? s_skinnedMaterialSphere
-                    : (flavor == ThumbnailShaderFlavor::Water ? s_waterMaterialSphere : s_materialSphere);
+                    ? s_tr.skinnedMaterialSphere
+                    : (flavor == ThumbnailShaderFlavor::Water ? s_tr.waterMaterialSphere : s_tr.materialSphere);
                 if (previewMesh && RebuildMaterialThumbnailGpuData(preview, ctx)) {
                     preview.thumbnailRendered = RenderMeshThumbnail(
                         *ctx.renderer,
@@ -1217,7 +1227,80 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
+    // .fbzzanimcontroller: ステートマシン風アイコン (3ノード + 矢印)
+    if (e.ext == ".fbzzanimcontroller") {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImU32 bg   = IM_COL32( 50,  90,  65, 255);
+        const ImU32 node = IM_COL32( 80, 200, 120, 255);
+        const ImU32 edge = IM_COL32(200, 255, 200, 180);
+        const ImU32 brd  = IM_COL32(160, 220, 160, 255);
+        dl->AddRectFilled({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, bg, sz * 0.08f);
+        dl->AddRect      ({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, brd, sz * 0.08f, 0, 1.0f);
+        // node positions: left-mid, top-right, bottom-right
+        const float r = sz * 0.10f;
+        const ImVec2 n0 = { origin.x + sz * 0.22f, origin.y + sz * 0.50f };
+        const ImVec2 n1 = { origin.x + sz * 0.65f, origin.y + sz * 0.28f };
+        const ImVec2 n2 = { origin.x + sz * 0.65f, origin.y + sz * 0.72f };
+        dl->AddLine(n0, n1, edge, 1.0f);
+        dl->AddLine(n0, n2, edge, 1.0f);
+        dl->AddLine(n1, n2, edge, 1.0f);
+        dl->AddCircleFilled(n0, r * 1.2f, node);
+        dl->AddCircleFilled(n1, r,        node);
+        dl->AddCircleFilled(n2, r,        node);
+        DrawThumbnailLabel(dl, origin, sz, "CTRL");
+        return;
+    }
+
+    // .fbzzterrain: 地形シルエットアイコン (波形ヒル)
+    if (e.ext == ".fbzzterrain") {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImU32 sky  = IM_COL32( 60, 100,  60, 255);
+        const ImU32 land = IM_COL32( 80, 160,  70, 255);
+        const ImU32 brd  = IM_COL32(140, 210, 120, 255);
+        dl->AddRectFilled({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, sky, sz * 0.08f);
+        dl->AddRect      ({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, brd, sz * 0.08f, 0, 1.0f);
+        // terrain silhouette: a set of points forming a hill profile
+        const float base = origin.y + sz * 0.95f;
+        const float h    = sz * 0.40f;
+        ImVec2 terrain[8] = {
+            { origin.x,           base         },
+            { origin.x + sz*0.0f, base         },
+            { origin.x + sz*0.2f, base - h*0.5f},
+            { origin.x + sz*0.4f, base - h     },
+            { origin.x + sz*0.6f, base - h*0.6f},
+            { origin.x + sz*0.8f, base - h*0.8f},
+            { origin.x + sz,      base - h*0.3f},
+            { origin.x + sz,      base         },
+        };
+        dl->AddConvexPolyFilled(terrain, 8, land);
+        DrawThumbnailLabel(dl, origin, sz, "TERRAIN");
+        return;
+    }
+
     DrawFileIconAt(origin, sz, e, hovered);
+}
+
+void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
+{
+    if (!ctx.resources) return;
+    constexpr int kMaxPerFrame = 3;
+    for (int i = 0; i < kMaxPerFrame && !m_texLoadQueue.empty(); ++i) {
+        const std::string path = std::move(m_texLoadQueue.front());
+        m_texLoadQueue.pop_front();
+        auto it = m_texturePreviews.find(path);
+        if (it == m_texturePreviews.end()) continue;
+        TexturePreview& preview = it->second;
+        if (preview.handle.IsValid() || preview.failed) continue;
+        preview.handle = ctx.resources->LoadTexture(ToTextureLoadPath(path, ctx));
+        if (preview.handle.IsValid()) {
+            if (auto* texture = ctx.resources->Get(preview.handle)) {
+                preview.width  = texture->GetWidth();
+                preview.height = texture->GetHeight();
+            }
+        } else {
+            preview.failed = true;
+        }
+    }
 }
 
 void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
@@ -1225,6 +1308,309 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     m_texturePreviews.erase(path);
     m_materialPreviews.erase(path);
     m_meshPreviews.erase(path);
+}
+
+// ── DrawEntry サブメソッド ──────────────────────────────────────────────────────
+
+void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz, const Entry& e)
+{
+    // 選択ハイライト (単一 = 金枠、複数追加 = 薄い青枠)
+    if (!e.isDir && e.path == m_lastClickedPath && m_selectedPaths.empty()) {
+        // primary は DrawEntry から渡された ctx に依存するため外側で描画済み
+    }
+    // ! バッジ: 未変換ファイル (FBX / PNG 等) に赤丸で警告表示
+    if (!e.isDir && IsImportableRaw(e.ext)) {
+        const float r  = sz * 0.15f;
+        const float cx = origin.x + sz - r;
+        const float cy = origin.y + r;
+        dl->AddCircleFilled({ cx, cy }, r, IM_COL32(220, 50, 50, 230));
+        const ImVec2 bsz = ImGui::CalcTextSize("!");
+        dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f }, IM_COL32(255, 255, 255, 255), "!");
+    }
+    // 橙ドット: 未保存変更があるアセット
+    if (!e.isDir && AssetDirtyRegistry::IsDirty(e.path)) {
+        const float r  = sz * 0.10f;
+        const float cx = origin.x + r + 2.0f;
+        const float cy = origin.y + r + 2.0f;
+        dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
+    }
+}
+
+void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, bool hov)
+{
+    if (!hov || !ImGui::IsMouseClicked(ImGuiMouseButton_Left) || e.isDir) return;
+
+    const bool ctrl  = ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
+
+    if (ctrl) {
+        if (m_selectedPaths.count(e.path)) m_selectedPaths.erase(e.path);
+        else                                m_selectedPaths.insert(e.path);
+        ctx.selectedAssetPath = e.path;
+        m_lastClickedPath     = e.path;
+    } else if (shift && !m_lastClickedPath.empty()) {
+        m_selectedPaths.clear();
+        bool inside = false;
+        for (const Entry& entry : m_entries) {
+            if (entry.isDir) continue;
+            if (entry.path == m_lastClickedPath || entry.path == e.path) {
+                inside = !inside;
+                m_selectedPaths.insert(entry.path);
+            } else if (inside) {
+                m_selectedPaths.insert(entry.path);
+            }
+        }
+        ctx.selectedAssetPath = e.path;
+    } else {
+        m_selectedPaths.clear();
+        ctx.selectedAssetPath = e.path;
+        m_lastClickedPath     = e.path;
+    }
+}
+
+void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov)
+{
+    if (!hov || !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) return;
+
+    // WHY: ダブルクリック後に entries が更新される可能性があるため値をコピーする。
+    const bool        isDir = e.isDir;
+    const std::string path  = e.path;
+    const std::string ext   = e.ext;
+
+    if (isDir) { m_pendingNavigate = path; return; }
+
+    if (ext == ".fbzz" && ctx.activeScene) {
+        if (ctx.requestOpenScene) {
+            ctx.requestOpenScene(path);
+        } else if (SceneIO::Load(*ctx.activeScene, path)) {
+            ctx.selectedEntities.clear();
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
+        } else {
+            FBZZ_LOG_ERROR("Failed to open scene: %s", path.c_str());
+        }
+    } else if (ext == ".fbzzprefab" && ctx.activeScene) {
+        std::vector<scene::EntityID> roots;
+        if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots)) {
+            ctx.selectedEntities = roots;
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+    } else if (ext == ".fbzzanimcontroller") {
+        ctx.requestOpenAnimationGraph = true;
+    }
+}
+
+void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
+{
+    if (!ImGui::BeginPopupContextItem("##entry_ctx")) return;
+
+    // 複数選択時の一括操作
+    const bool multiSel = m_selectedPaths.size() > 1 && m_selectedPaths.count(e.path);
+    if (multiSel) {
+        const int n = static_cast<int>(m_selectedPaths.size());
+        char label[64];
+
+        std::snprintf(label, sizeof(label), "Duplicate %d items", n);
+        if (ImGui::MenuItem(label)) {
+            std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
+            for (const auto& srcPath : paths) {
+                if (util::FileSystem::IsDirectory(srcPath)) continue;
+                const std::string dir  = util::FileSystem::GetDirectory(srcPath);
+                const std::string stem = std::filesystem::path(srcPath).stem().string();
+                const std::string ext  = util::StringUtils::ToLower(
+                    util::FileSystem::GetExtension(srcPath));
+                std::string dstPath;
+                for (int k = 2; k <= 999; ++k) {
+                    dstPath = util::FileSystem::NormalizePathSeparators(
+                        dir + stem + "(" + std::to_string(k) + ")" + ext);
+                    if (!util::FileSystem::Exists(dstPath)) break;
+                }
+                if (!dstPath.empty())
+                    util::FileSystem::CopyFile(
+                        util::FileSystem::PathFromUtf8(srcPath),
+                        util::FileSystem::PathFromUtf8(dstPath));
+            }
+            RefreshDirectory();
+        }
+
+        std::snprintf(label, sizeof(label), "Delete %d items", n);
+        if (ImGui::MenuItem(label)) {
+            std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
+            ModalDialog::OpenConfirm("Delete",
+                "Delete " + std::to_string(n) + " selected items?",
+                [this, paths]() {
+                    for (const auto& p : paths) {
+                        if (util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(p))) {
+                            if (m_selectedFbxPath == p) { m_selectedFbxPath.clear(); m_selectedModel.reset(); }
+                            ResetAssetPreviewCache(p);
+                        } else {
+                            FBZZ_LOG_ERROR("Delete failed: %s", p.c_str());
+                        }
+                    }
+                    m_selectedPaths.clear();
+                    RefreshDirectory();
+                });
+        }
+
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Create")) { DrawCreateMenu(ctx); ImGui::EndMenu(); }
+        ImGui::EndPopup();
+        return;
+    }
+
+    if (!e.isDir && IsImportableRaw(e.ext)) {
+        if (ImGui::MenuItem("Import")) {
+            bool found = false;
+            for (const auto& p : m_pendingImports)
+                if (p.path == e.path) { found = true; break; }
+            if (!found) {
+                const bool isTex = e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg";
+                m_pendingImports.push_back({ e.path,
+                    isTex ? PendingImport::Kind::Texture : PendingImport::Kind::Fbx });
+            }
+            m_importAllRequested = true;
+        }
+        ImGui::Separator();
+    }
+    if (!e.isDir && ImGui::MenuItem("Duplicate")) {
+        const std::string dir  = util::FileSystem::GetDirectory(e.path);
+        const std::string name = std::filesystem::path(e.path).stem().string();
+        const std::string ext  = e.ext;
+        std::string dstPath;
+        for (int n = 2; ; ++n) {
+            dstPath = util::FileSystem::NormalizePathSeparators(
+                dir + name + "(" + std::to_string(n) + ")" + ext);
+            if (!util::FileSystem::Exists(dstPath)) break;
+            if (n > 999) { dstPath.clear(); break; }
+        }
+        if (!dstPath.empty()) {
+            if (util::FileSystem::CopyFile(
+                    util::FileSystem::PathFromUtf8(e.path),
+                    util::FileSystem::PathFromUtf8(dstPath))) {
+                RefreshDirectory();
+            } else {
+                FBZZ_LOG_ERROR("Duplicate failed: %s", e.path.c_str());
+            }
+        }
+    }
+    ImGui::Separator();
+    if (!e.isDir && ImGui::MenuItem("Find References...")) {
+        m_findRefs.targetPath = e.path;
+        m_findRefs.results.clear();
+        m_findRefs.open = true;
+
+        // プロジェクトファイルをスキャンして参照を検索
+        const std::string filename = util::FileSystem::GetFilename(e.path);
+        const std::string stem     = std::filesystem::path(e.path).stem().string();
+        for (const auto& p : util::FileSystem::ListFilesRecursive(
+                util::FileSystem::PathFromUtf8(m_rootPath))) {
+            const std::string scanPath = util::FileSystem::PathToUtf8(p);
+            const std::string scanExt  = util::StringUtils::ToLower(
+                util::FileSystem::GetExtension(scanPath));
+            if (scanExt != ".fbzz" && scanExt != ".fzmat" && scanExt != ".fbzzprefab"
+                && scanExt != ".fbzzanimcontroller") continue;
+            std::string content;
+            util::FileSystem::ReadText(scanPath, content);
+            if (content.find(filename) != std::string::npos ||
+                content.find(stem)     != std::string::npos) {
+                m_findRefs.results.push_back(
+                    util::FileSystem::NormalizePathSeparators(scanPath));
+            }
+        }
+    }
+    if (ImGui::MenuItem("Reveal in Explorer")) {
+        const std::wstring wpath = util::FileSystem::PathFromUtf8(e.path).wstring();
+        const std::wstring args  = L"/select," + wpath;
+        ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+    }
+    ImGui::Separator();
+    ImGui::BeginDisabled(e.isMount);
+    if (ImGui::MenuItem("Rename")) {
+        m_renamingPath = e.path;
+        std::strncpy(m_renameBuffer, e.name.c_str(), sizeof(m_renameBuffer) - 1);
+        m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+        m_renameNeedFocus = true;
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Delete")) {
+        const std::string path = e.path;
+        ModalDialog::OpenConfirm("Delete",
+            "Delete \"" + util::FileSystem::GetFilename(path) + "\"?",
+            [this, path]() {
+                if (!util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path))) {
+                    FBZZ_LOG_ERROR("Delete failed: %s", path.c_str());
+                } else {
+                    if (m_selectedFbxPath == path) { m_selectedFbxPath.clear(); m_selectedModel.reset(); }
+                    m_selectedPaths.erase(path);
+                    ResetAssetPreviewCache(path);
+                    RefreshDirectory();
+                }
+            });
+    }
+    ImGui::EndDisabled();
+    ImGui::Separator();
+    if (ImGui::BeginMenu("Create")) {
+        DrawCreateMenu(ctx);
+        ImGui::EndMenu();
+    }
+    ImGui::EndPopup();
+}
+
+void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e)
+{
+    if (m_renamingPath == e.path) {
+        ImGui::SetNextItemWidth(m_iconSize);
+        if (m_renameNeedFocus) { ImGui::SetKeyboardFocusHere(); m_renameNeedFocus = false; }
+        constexpr ImGuiInputTextFlags renameFlags =
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll;
+        const bool enterPressed = ImGui::InputText("##rename", m_renameBuffer,
+                                                   sizeof(m_renameBuffer), renameFlags);
+        if (enterPressed) {
+            if (m_renameBuffer[0] != '\0') {
+                const std::string dir     = util::FileSystem::GetDirectory(e.path);
+                const std::string newPath = dir + m_renameBuffer;
+                if (newPath != e.path) {
+                    auto doRename = [this, oldPath = e.path, newPath]() {
+                        if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(oldPath),
+                                                      util::FileSystem::PathFromUtf8(newPath))) {
+                            FBZZ_LOG_ERROR("Rename failed: %s -> %s", oldPath.c_str(), newPath.c_str());
+                        } else {
+                            if (m_selectedFbxPath == oldPath) m_selectedFbxPath = newPath;
+                            ResetAssetPreviewCache(oldPath);
+                            RefreshDirectory();
+                        }
+                    };
+                    if (util::FileSystem::Exists(newPath)) {
+                        ModalDialog::OpenConfirm("Rename",
+                            "\"" + util::FileSystem::GetFilename(newPath) + "\" already exists. Overwrite?",
+                            std::move(doRename));
+                    } else {
+                        doRename();
+                    }
+                }
+            }
+            m_renamingPath.clear();
+        } else if (ImGui::IsItemDeactivated()) {
+            m_renamingPath.clear();
+        }
+    } else {
+        std::string display = e.name;
+        while (display.size() > 2 &&
+               ImGui::CalcTextSize(display.c_str()).x + ImGui::CalcTextSize("..").x > m_iconSize)
+            display.pop_back();
+        if (display.size() < e.name.size()) display += "..";
+
+        const float indent = (m_iconSize - ImGui::CalcTextSize(display.c_str()).x) * 0.5f;
+        if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
+        ImGui::TextUnformatted(display.c_str());
+
+        if (!e.isMount && ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_F2)) {
+            m_renamingPath = e.path;
+            std::strncpy(m_renameBuffer, e.name.c_str(), sizeof(m_renameBuffer) - 1);
+            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+            m_renameNeedFocus = true;
+        }
+    }
 }
 
 void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
@@ -1239,27 +1625,14 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     DrawAssetPreviewIconAt(origin, sz, e, ctx, hov);
 
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-
     // 選択ハイライト
-    const bool isSelected = !e.isDir && (e.path == ctx.selectedAssetPath);
-    if (isSelected) {
-        ImGui::GetWindowDrawList()->AddRect(
-            origin, { origin.x + sz, origin.y + sz },
-            IM_COL32(255, 200, 80, 220), 3.0f, 0, 2.0f);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (!e.isDir && e.path == ctx.selectedAssetPath) {
+        dl->AddRect(origin, { origin.x + sz, origin.y + sz }, IM_COL32(255, 200, 80, 220), 3.0f, 0, 2.0f);
+    } else if (!e.isDir && m_selectedPaths.count(e.path) > 0) {
+        dl->AddRect(origin, { origin.x + sz, origin.y + sz }, IM_COL32(80, 160, 255, 180), 3.0f, 0, 1.5f);
     }
-
-    // ! バッジ: 未変換ファイル (FBX / PNG 等) に赤丸で警告表示
-    if (!e.isDir && IsImportableRaw(e.ext))
-    {
-        const float r  = sz * 0.15f;
-        const float cx = origin.x + sz - r;
-        const float cy = origin.y + r;
-        dl->AddCircleFilled({ cx, cy }, r, IM_COL32(220, 50, 50, 230));
-        const ImVec2 bsz = ImGui::CalcTextSize("!");
-        dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f },
-                    IM_COL32(255, 255, 255, 255), "!");
-    }
+    DrawEntryBadges(dl, origin, sz, e);
 
     // ドラッグソース (ファイルのみ)
     if (!e.isDir && ImGui::BeginDragDropSource()) {
@@ -1269,11 +1642,26 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         ImGui::EndDragDropSource();
     }
     // ドロップターゲット (ディレクトリのみ)
-    // WHY: コンテンツエリア全体ではなく特定サブフォルダへ直接ドロップして保存先を選べるようにする。
     if (e.isDir && ImGui::BeginDragDropTarget()) {
         if (SaveHierarchyPayloadAsPrefab(
-                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, e.path)) {
+                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, e.path))
             RefreshDirectory();
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            const std::string srcRelPath(static_cast<const char*>(p->Data), p->DataSize - 1);
+            const std::string srcAbs = util::FileSystem::NormalizePathSeparators(ctx.projectRoot + "/" + srcRelPath);
+            const std::string dstAbs = util::FileSystem::NormalizePathSeparators(
+                e.path + "/" + util::FileSystem::GetFilename(srcAbs));
+            if (srcAbs != dstAbs && !util::FileSystem::Exists(dstAbs)) {
+                if (util::FileSystem::Rename(util::FileSystem::PathFromUtf8(srcAbs),
+                                             util::FileSystem::PathFromUtf8(dstAbs))) {
+                    if (ctx.selectedAssetPath == srcAbs) ctx.selectedAssetPath.clear();
+                    ResetAssetPreviewCache(srcAbs);
+                    InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
+                    RefreshDirectory();
+                } else {
+                    FBZZ_LOG_ERROR("Move failed: %s -> %s", srcAbs.c_str(), dstAbs.c_str());
+                }
+            }
         }
         ImGui::EndDragDropTarget();
     }
@@ -1289,156 +1677,63 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
             ImGui::SetTooltip("%s", e.path.c_str());
     }
 
-    // 右クリックコンテキストメニュー (リネーム / 削除)
-    if (ImGui::BeginPopupContextItem("##entry_ctx")) {
-        // 未変換ファイルは "Import" を最上位に表示する
-        if (!e.isDir && IsImportableRaw(e.ext)) {
-            if (ImGui::MenuItem("Import")) {
-                bool found = false;
-                for (const auto& p : m_pendingImports)
-                    if (p.path == e.path) { found = true; break; }
-                if (!found)
-                    m_pendingImports.push_back({ e.path, PendingImport::Kind::Fbx });
-                m_importAllRequested = true;
-            }
-            ImGui::Separator();
-        }
-        ImGui::BeginDisabled(e.isMount);
-        if (ImGui::MenuItem("Rename")) {
-            m_renamingPath    = e.path;
-            const std::string stem = util::FileSystem::GetFilename(e.path);
-            std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
-            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-            m_renameNeedFocus = true;
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Delete")) {
-            const std::string path = e.path;
-            ModalDialog::OpenConfirm("Delete",
-                "Delete \"" + util::FileSystem::GetFilename(path) + "\"?",
-                [this, path]() {
-                    if (!util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path))) {
-                        FBZZ_LOG_ERROR("Delete failed: %s", path.c_str());
-                    } else {
-                        if (m_selectedFbxPath == path) {
-                            m_selectedFbxPath.clear();
-                            m_selectedModel.reset();
-                        }
-                        ResetAssetPreviewCache(path);
-                        RefreshDirectory();
-                    }
-                });
-        }
-        ImGui::EndDisabled();
-        ImGui::Separator();
-        if (ImGui::BeginMenu("Create")) {
-            DrawCreateMenu(ctx);
-            ImGui::EndMenu();
-        }
-        ImGui::EndPopup();
+    DrawEntryContextMenu(e, ctx);
+
+    // ホバー中は FBX 内容を即座に更新する
+    if (hov && !e.isDir && IsMeshExt(e.ext) && m_selectedFbxPath != e.path) {
+        m_selectedFbxPath = e.path;
+        m_selectedModel.reset();
+        if (renderer::ResourceManager::Active())
+            m_selectedModel = asset::AssetManager::Load<asset::Model>(e.path);
     }
 
-    // ホバー中は FBX 内容を即座に更新する。
-    // WHY: 右側 Preview ペインは削除したが、FBX 内部の Mesh / Animation アイコンは
-    //      AssetBrowser 下部の既存領域で確認・ドラッグできる必要がある。
-    if (hov && !e.isDir) {
-        if (IsMeshExt(e.ext) && m_selectedFbxPath != e.path) {
-            m_selectedFbxPath = e.path;
-            m_selectedModel.reset();
-            if (renderer::ResourceManager::Active())
-                m_selectedModel = asset::AssetManager::Load<asset::Model>(e.path);
-        }
+    HandleEntryClick(e, ctx, hov);
+    HandleEntryDoubleClick(e, ctx, hov);
+    DrawEntryRenameLabel(e);
+
+    // FindRefs ポップアップは1つのエントリが最初にレンダリングされた後に開く
+    if (m_findRefs.open) {
+        ImGui::OpenPopup("##find_refs");
+        m_findRefs.open = false;
     }
-
-    if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !e.isDir) {
-        ctx.selectedAssetPath = e.path;
-    }
-
-    if (hov && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        // WHY: ダブルクリック後に Scene open / Prefab instantiate / directory navigation が走ると、
-        //      AssetBrowser の m_entries が更新される可能性がある。
-        //      Entry 参照 e を使い続けると、std::string 比較や string_view 内で無効参照を踏むため、
-        //      分岐に入る前に必要な値をコピーしておく。
-        const bool isDir = e.isDir;
-        const std::string path = e.path;
-        const std::string ext = e.ext;
-
-        if (isDir) {
-            m_pendingNavigate = path;
-        }
-
-        if (!isDir && ext == ".fbzz" && ctx.activeScene) {
-            if (ctx.requestOpenScene) {
-                ctx.requestOpenScene(path);
-            } else if (SceneIO::Load(*ctx.activeScene, path)) {
-                ctx.selectedEntities.clear();
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
-                FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
-            } else {
-                FBZZ_LOG_ERROR("Failed to open scene: %s", path.c_str());
-            }
-        } else if (!isDir && ext == ".fbzzprefab" && ctx.activeScene) {
-            std::vector<scene::EntityID> roots;
-            if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots)) {
-                ctx.selectedEntities = roots;
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
-            }
-        }
-    }
-
-    // ファイル名 (リネーム中は InputText、通常は省略ラベル)
-    if (m_renamingPath == e.path) {
-        ImGui::SetNextItemWidth(m_iconSize);
-        if (m_renameNeedFocus) {
-            ImGui::SetKeyboardFocusHere();
-            m_renameNeedFocus = false;
-        }
-        constexpr ImGuiInputTextFlags renameFlags =
-            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll;
-        const bool enterPressed = ImGui::InputText("##rename", m_renameBuffer,
-                                                   sizeof(m_renameBuffer), renameFlags);
-        if (enterPressed) {
-            if (m_renameBuffer[0] != '\0') {
-                const std::string dir     = util::FileSystem::GetDirectory(e.path);
-                const std::string newPath = dir + m_renameBuffer;
-                if (newPath != e.path) {
-                    if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(e.path),
-                                                  util::FileSystem::PathFromUtf8(newPath))) {
-                        FBZZ_LOG_ERROR("Rename failed: %s -> %s", e.path.c_str(), newPath.c_str());
-                    } else {
-                        if (m_selectedFbxPath == e.path) m_selectedFbxPath = newPath;
-                        ResetAssetPreviewCache(e.path);
-                        RefreshDirectory();
-                    }
-                }
-            }
-            m_renamingPath.clear();
-        } else if (ImGui::IsItemDeactivated()) {
-            // Escape またはフォーカス外れ → キャンセル
-            m_renamingPath.clear();
-        }
-    } else {
-        std::string display = e.name;
-        while (display.size() > 2 &&
-               ImGui::CalcTextSize(display.c_str()).x + ImGui::CalcTextSize("..").x > m_iconSize)
-            display.pop_back();
-        if (display.size() < e.name.size()) display += "..";
-
-        float indent = (m_iconSize - ImGui::CalcTextSize(display.c_str()).x) * 0.5f;
-        if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
-        ImGui::TextUnformatted(display.c_str());
-
-        // F2 でリネーム開始 (ホバー中)
-        if (!e.isMount && hov && ImGui::IsKeyPressed(ImGuiKey_F2)) {
-            m_renamingPath    = e.path;
-            const std::string stem = e.name;
-            std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
-            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-            m_renameNeedFocus = true;
-        }
-    }
+    DrawFindRefsPopup();
 
     ImGui::PopID();
+}
+
+void AssetBrowserPanel::DrawFindRefsPopup()
+{
+    ImGui::SetNextWindowSize({ 480.0f, 300.0f }, ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("##find_refs", nullptr,
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize)) return;
+
+    ImGui::TextUnformatted("Find References");
+    ImGui::SameLine();
+    ImGui::TextDisabled("— %s", util::FileSystem::GetFilename(m_findRefs.targetPath).c_str());
+    ImGui::Separator();
+
+    if (m_findRefs.results.empty()) {
+        ImGui::TextDisabled("(no references found)");
+    } else {
+        ImGui::TextDisabled("%zu file(s) reference this asset:", m_findRefs.results.size());
+        ImGui::Spacing();
+        const float avail = ImGui::GetContentRegionAvail().y - 34.0f;
+        ImGui::BeginChild("##refs_list", { 0.0f, avail }, true);
+        for (const auto& ref : m_findRefs.results) {
+            const std::string label = util::FileSystem::GetFilename(ref);
+            if (ImGui::Selectable(label.c_str())) {
+                // クリックで親フォルダへナビゲート
+                m_pendingNavigate = util::FileSystem::GetDirectory(ref);
+                ImGui::CloseCurrentPopup();
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", ref.c_str());
+        }
+        ImGui::EndChild();
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 // ─── FBX 内容プレビュー (サブアセットアイコン) ────────────────────────────────

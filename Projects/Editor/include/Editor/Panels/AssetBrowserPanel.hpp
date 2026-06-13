@@ -15,6 +15,8 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
+#include <deque>
 #include <vector>
 #include <array>
 #include <imgui.h>
@@ -66,6 +68,19 @@ private:
 
     void DrawFbxContents(EditorContext& ctx);
     void DrawPendingImportBar(EditorContext& ctx);
+    void DrawBreadcrumb(EditorContext& ctx);
+    void DrawSaveModifiedDialog();
+    void InvalidateTreeCache(const std::string& dirPath);
+    void DrawListView(EditorContext& ctx, const std::string& filter);
+    void DrainTexLoadQueue(EditorContext& ctx);
+
+    // DrawEntry の責務分割
+    void DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz, const Entry& e);
+    void DrawEntryContextMenu(const Entry& e, EditorContext& ctx);
+    void DrawEntryRenameLabel(const Entry& e);
+    void HandleEntryClick(const Entry& e, EditorContext& ctx, bool hov);
+    void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
+    [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
 
     // 未変換ファイル(FBX/PNG等)を検出してインポートキューに積む (relPath は m_rootPath 相対)
     void TryQueuePendingImport(const std::string& relPath);
@@ -73,6 +88,22 @@ private:
     void ScanAndQueueUnimported(const std::string& dirAbsPath);
     // 未変換ファイルかどうか判定する
     [[nodiscard]] static bool IsImportableRaw(const std::string& ext);
+
+    // --- Type フィルタ -----------------------------------------------------------
+    enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab };
+    TypeFilter m_typeFilter = TypeFilter::All;
+
+    // --- ソート方法 ------------------------------------------------------------
+    enum class SortMode { NameAsc=0, NameDesc, Type, Modified };
+    SortMode m_sortMode = SortMode::NameAsc;
+
+    // --- 表示モード ------------------------------------------------------------
+    enum class ViewMode { Grid = 0, List };
+    ViewMode m_viewMode = ViewMode::Grid;
+
+    // --- Save Modified ダイアログ状態 ------------------------------------------
+    bool m_showSaveModifiedDialog = false;
+    std::vector<bool> m_saveModifiedSelected; // GetAll() の各エントリに対応
 
     std::string           m_rootPath;
     std::string           m_currentPath;
@@ -83,6 +114,17 @@ private:
     float                 m_iconSize  = 84.0f;
     bool                  m_resetScroll = false; // ディレクトリ移動後に右ペインをトップへ戻す
 
+    // --- 複数選択 ---------------------------------------------------------------
+    // WHY: ctx.selectedAssetPath は Inspector の単一表示用に維持し、
+    //      パネルローカルの m_selectedPaths で複数選択状態を保持する。
+    std::unordered_set<std::string> m_selectedPaths;
+    std::string                     m_lastClickedPath; // Shift 選択の基点
+
+    // --- 左ペインツリーキャッシュ -----------------------------------------------
+    // WHY: DrawFolderTree が毎フレーム FileSystem::ListAll を呼ぶ問題を解消する。
+    //      RefreshDirectory() や AssetFileWatcher イベントで対象ディレクトリを無効化する。
+    std::unordered_map<std::string, std::vector<Entry>> m_treeCache;
+
     // FBX inspection
     std::string                   m_selectedFbxPath;
     std::shared_ptr<asset::Model> m_selectedModel;
@@ -92,10 +134,12 @@ private:
         uint32_t width = 0;
         uint32_t height = 0;
         bool failed = false;
+        bool queued = false;
     };
     struct MaterialPreview {
         asset::MaterialAsset asset;
         std::filesystem::file_time_type lastWriteTime{};
+        std::filesystem::file_time_type shaderLastWriteTime{};
         renderer::ResourceHandle<renderer::TextureTag> previewTexture;
         std::string previewTexturePath;
         uint32_t previewTextureWidth = 0;
@@ -123,6 +167,7 @@ private:
     // AssetBrowser のファイルアイコン内 Preview 状態。
     // WHY: 専用 Preview ペインを持たず、グリッドの視線移動だけで Texture / Material を確認できるようにする。
     std::unordered_map<std::string, TexturePreview>  m_texturePreviews;
+    std::deque<std::string>                          m_texLoadQueue;
     std::unordered_map<std::string, MaterialPreview> m_materialPreviews;
     std::unordered_map<std::string, MeshPreview>     m_meshPreviews;
 
@@ -137,7 +182,7 @@ private:
     // インポート待ちキュー
     struct PendingImport {
         std::string path;
-        enum class Kind { Fbx } kind;
+        enum class Kind { Fbx, Texture } kind;
     };
     std::vector<PendingImport> m_pendingImports;
 
@@ -170,6 +215,15 @@ private:
     bool                      m_showImportResults = false;
 
     void DrawImportResultBar(EditorContext& ctx);
+
+    // 5-2: Find References ポップアップ
+    struct FindRefsState {
+        std::string targetPath;
+        std::vector<std::string> results;
+        bool open = false;
+    };
+    FindRefsState m_findRefs;
+    void DrawFindRefsPopup();
 };
 
 } // namespace fbzz::editor
