@@ -2,6 +2,7 @@
 // TerrainTool.cpp | fbzz::editor
 // TerrainTool の実装: レイキャスト・ブラシアルゴリズム・ImGui UI
 #include "TerrainTool.hpp"
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -42,14 +43,15 @@ void TerrainTool::Update(
     bool                        viewportHovered,
     const ImVec2&               viewportMin,
     const ImVec2&               viewportSize,
-    const std::function<void()>& markDirty)
+    const std::function<void()>& markDirty,
+    UndoStack*                   undoStack)
 {
     // ビューポート外ではレイキャストしない
     // 非アクティブ時はブラシ入力・プレビューをすべてスキップする
     if (!m_active || !viewportHovered) {
         m_isHovering = false;
         m_hitTerrain = nullptr;
-        return;
+        if (!m_strokeActive) return;
     }
 
     // レイキャストで地形ヒット判定
@@ -72,6 +74,12 @@ void TerrainTool::Update(
     if (mouseHeld && m_isHovering && m_hitTerrain) {
         auto* terrainComp = m_hitTerrain->GetComponent<scene::TerrainComponent>();
         assert(terrainComp && "ヒット判定したのに TerrainComponent がない — RaycastSingleTerrain のバグ");
+        if (!m_strokeActive) {
+            m_strokeEntity = m_hitTerrain->GetID();
+            m_strokeInstanceId = m_hitTerrain->instanceId;
+            m_strokeBefore = *terrainComp;
+            m_strokeActive = true;
+        }
 
         // ワールド座標 → テレインローカル座標に変換
         const scene::Transform& tf = m_hitTerrain->transform;
@@ -109,8 +117,35 @@ void TerrainTool::Update(
     }
 
     // マウスボタンを離したら Flatten の固定を解除する
-    if (mouseReleased)
+    if (mouseReleased) {
         m_flattenLocked = false;
+        if (m_strokeActive) {
+            if (auto* go = scene.GetGameObject(m_strokeEntity)) {
+                if (auto* terrain = go->GetComponent<scene::TerrainComponent>(); terrain && undoStack) {
+                    const scene::TerrainComponent before = m_strokeBefore;
+                    const scene::TerrainComponent after = *terrain;
+                    scene::Scene* scenePtr = &scene;
+                    const std::string instanceId = m_strokeInstanceId;
+                    auto apply = [scenePtr, instanceId, markDirty](const scene::TerrainComponent& value) {
+                        if (auto* target = scenePtr->FindByGuid(instanceId)) {
+                            if (auto* component = target->GetComponent<scene::TerrainComponent>()) {
+                                *component = value;
+                                component->heightDirty = true;
+                                component->splatDirty = true;
+                                component->colliderDirty = true;
+                                if (markDirty) markDirty();
+                            }
+                        }
+                    };
+                    undoStack->Push(std::make_unique<LambdaCommand>(
+                        m_mode == Mode::Sculpt ? "Sculpt Terrain" : "Paint Terrain",
+                        [apply, after]() { apply(after); },
+                        [apply, before]() { apply(before); }));
+                }
+            }
+            m_strokeActive = false;
+        }
+    }
 
     // ブラシ円をビューポートに投影描画
     if (m_isHovering)
@@ -504,7 +539,10 @@ void TerrainTool::DrawBrushPreview(
 // ImGui UI
 // =============================================================================
 
-void TerrainTool::OnEditorGUI(scene::Scene& scene)
+void TerrainTool::OnEditorGUI(
+    scene::Scene& scene,
+    UndoStack* undoStack,
+    const std::function<void()>& markDirty)
 {
     // TerrainComponent を持つ GO がシーンにあるときだけ表示する
     bool hasTerrain = false;
@@ -642,16 +680,48 @@ void TerrainTool::OnEditorGUI(scene::Scene& scene)
         if (ImGui::Button("Import into Terrain", { -1.0f, 0.0f })) {
             // シーン内の最初の有効な TerrainComponent に取り込む
             scene::TerrainComponent* target = nullptr;
+            scene::GameObject* targetObject = nullptr;
             for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
                 auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
-                if (tc && tc->enabled) { target = tc; break; }
+                if (tc && tc->enabled) {
+                    target = tc;
+                    targetObject = scene.GetGameObject(eid);
+                    break;
+                }
             }
             if (!target) {
                 m_heightMapStatus = "Error: No terrain in scene";
             } else {
+                const scene::TerrainComponent before = *target;
                 const bool ok = scene::LoadHeightMapFromFile(
                     m_heightMapPath, *target, m_heightMapUnipolar);
                 m_heightMapStatus = ok ? "OK" : "Error: Load failed";
+                if (ok) {
+                    target->heightDirty = true;
+                    target->splatDirty = true;
+                    target->colliderDirty = true;
+                    if (markDirty) markDirty();
+                    if (undoStack && targetObject) {
+                        const scene::TerrainComponent after = *target;
+                        const std::string instanceId = targetObject->instanceId;
+                        scene::Scene* scenePtr = &scene;
+                        auto apply = [scenePtr, instanceId, markDirty](const scene::TerrainComponent& value) {
+                            if (auto* go = scenePtr->FindByGuid(instanceId)) {
+                                if (auto* component = go->GetComponent<scene::TerrainComponent>()) {
+                                    *component = value;
+                                    component->heightDirty = true;
+                                    component->splatDirty = true;
+                                    component->colliderDirty = true;
+                                    if (markDirty) markDirty();
+                                }
+                            }
+                        };
+                        undoStack->Push(std::make_unique<LambdaCommand>(
+                            "Import Terrain Heightmap",
+                            [apply, after]() { apply(after); },
+                            [apply, before]() { apply(before); }));
+                    }
+                }
             }
         }
 
