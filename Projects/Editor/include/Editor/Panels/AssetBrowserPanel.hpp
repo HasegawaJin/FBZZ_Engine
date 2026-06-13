@@ -131,8 +131,8 @@ private:
     std::unordered_map<std::string, std::vector<Entry>> m_treeCache;
 
     // FBX inspection
-    std::string                   m_selectedFbxPath;
-    std::shared_ptr<asset::Model> m_selectedModel;
+    std::string    m_selectedFbxPath;
+    asset::Model*  m_selectedModel = nullptr;
 
     struct TexturePreview {
         renderer::ResourceHandle<renderer::TextureTag> handle;
@@ -161,7 +161,7 @@ private:
     };
     struct MeshPreview {
         renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
-        std::shared_ptr<asset::Model> model;
+        asset::Model* model = nullptr;
         std::filesystem::file_time_type lastWriteTime{};
         bool thumbnailRendered = false;
         bool failed = false;

@@ -136,10 +136,10 @@ enum class PrimitiveTemplate {
     Capsule
 };
 
-std::shared_ptr<renderer::Mesh> CreatePrimitiveMesh(PrimitiveTemplate type)
+renderer::Mesh* CreatePrimitiveMesh(PrimitiveTemplate type)
 {
     auto* resources = renderer::ResourceManager::Active();
-    if (!resources) return {};
+    if (!resources) return nullptr;
 
     switch (type) {
     case PrimitiveTemplate::Cube:     return renderer::PrimitiveMesh::Cube(*resources);
@@ -150,8 +150,8 @@ std::shared_ptr<renderer::Mesh> CreatePrimitiveMesh(PrimitiveTemplate type)
     case PrimitiveTemplate::Cone:     return renderer::PrimitiveMesh::Cone(*resources);
     case PrimitiveTemplate::Torus:    return renderer::PrimitiveMesh::Torus(*resources);
     case PrimitiveTemplate::Capsule:  return renderer::PrimitiveMesh::Capsule(*resources);
+    default:                          return nullptr;
     }
-    return {};
 }
 
 const char* GetPrimitivePath(PrimitiveTemplate type)
@@ -173,7 +173,7 @@ scene::BoxColliderComponent CreateTemplateBoxCollider(const math::Vector3& halfE
 {
     scene::BoxColliderComponent collider;
     collider.size = halfExtents * 2.0f;
-    collider.collider = std::make_shared<physics::OBBCollider>(halfExtents);
+    collider.collider = std::make_unique<physics::OBBCollider>(halfExtents);
     return collider;
 }
 
@@ -181,7 +181,7 @@ scene::SphereColliderComponent CreateTemplateSphereCollider()
 {
     scene::SphereColliderComponent collider;
     collider.radius = 0.5f;
-    collider.collider = std::make_shared<physics::SphereCollider>(0.5f);
+    collider.collider = std::make_unique<physics::SphereCollider>(0.5f);
     return collider;
 }
 
@@ -190,7 +190,7 @@ scene::CapsuleColliderComponent CreateTemplateCapsuleCollider()
     scene::CapsuleColliderComponent collider;
     collider.radius = 0.25f;
     collider.halfHeight = 0.25f;
-    collider.collider = std::make_shared<physics::CapsuleCollider>(0.25f, 0.25f);
+    collider.collider = std::make_unique<physics::CapsuleCollider>(0.25f, 0.25f);
     return collider;
 }
 
@@ -232,7 +232,7 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
 
     scene::MaterialComponent mc;
     mc.materialPath = "Assets/Materials/Surface/Lit.fzmat";
-    go.AddComponent<scene::MaterialComponent>(mc);
+    go.AddComponent<scene::MaterialComponent>(std::move(mc));
 
     if (type == PrimitiveTemplate::Quad) {
         auto script = scene::ScriptFactory::Create("QuadBillboardComponent");
