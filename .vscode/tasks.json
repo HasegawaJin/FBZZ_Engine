@@ -35,6 +35,17 @@
             }
         },
         {
+            "label": "CMake: Configure (Development)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --preset development",
+            "group": "build",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
             "label": "CMake: Build GameHub (Debug)",
             "type": "shell",
             "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_hub",
@@ -55,6 +66,18 @@
                 "isDefault": true
             },
             "dependsOn": "CMake: Configure (Release)",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "CMake: Build GameHub (Development)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_hub",
+            "group": "build",
+            "dependsOn": "CMake: Configure (Development)",
             "problemMatcher": "$msCompile",
             "presentation": {
                 "panel": "shared",
@@ -86,6 +109,18 @@
             }
         },
         {
+            "label": "CMake: Build Sandbox (Development)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target sandbox",
+            "group": "build",
+            "dependsOn": "CMake: Configure (Development)",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
             "label": "CMake: Build EditorLauncher (Debug)",
             "type": "shell",
             "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_editor_launcher",
@@ -103,6 +138,18 @@
             "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target fbzz_editor_launcher",
             "group": "build",
             "dependsOn": "CMake: Configure (Release)",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "CMake: Build EditorLauncher (Development)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_editor_launcher",
+            "group": "build",
+            "dependsOn": "CMake: Configure (Development)",
             "problemMatcher": "$msCompile",
             "presentation": {
                 "panel": "shared",

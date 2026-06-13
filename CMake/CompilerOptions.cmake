@@ -12,8 +12,10 @@ target_compile_options(fbzz_compiler_options INTERFACE
     >
 )
 
-# Debug/Release 設定
+# Debug/Development/Release 設定
+# Development は NDEBUG なし → アサート・デバッグツールが Release と同等の速度で動作する
 target_compile_definitions(fbzz_compiler_options INTERFACE
     $<$<CONFIG:Debug>:FBZZ_DEBUG>
+    $<$<CONFIG:Development>:FBZZ_DEVELOPMENT>
     $<$<CONFIG:Release>:FBZZ_RELEASE NDEBUG>
 )
