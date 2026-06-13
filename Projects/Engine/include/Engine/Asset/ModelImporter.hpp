@@ -14,8 +14,8 @@ namespace fbzz::asset {
 
 class ModelImporter {
 public:
-    // 失敗時は nullptr を返す
-    static std::shared_ptr<Model> Import(
+    // 失敗時は nullptr を返す。所有権は呼び出し元 (AssetManager) へ移譲する。
+    static std::unique_ptr<Model> Import(
         const std::string& path,
         renderer::ResourceManager& resources);
 };

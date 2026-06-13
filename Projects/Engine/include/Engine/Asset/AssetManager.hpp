@@ -44,9 +44,11 @@ public:
     static void UnloadMaterial(const std::string& relativePath);
 
     // Load<T>: Model のみ対応。MaterialAsset は LoadMaterial() を使うこと。
+    // WHY: AssetManager が Model の唯一の所有者 (unique_ptr)。
+    //      呼び出し元は非所有ポインタ (Model*) を受け取る。UnloadAll / Unload で所有が解放される。
     // 未対応型はヘッダー内の static_assert によりコンパイルエラーになる
     template<typename T>
-    static std::shared_ptr<T> Load(const std::string& relativePath) {
+    static T* Load(const std::string& relativePath) {
         static_assert(sizeof(T) == 0,
             "AssetManager::Load<T>: unsupported type. Use Model or LoadMaterial for MaterialAsset.");
         return nullptr;
@@ -63,7 +65,7 @@ private:
     static std::string          s_basePath;
     static bool                 s_initialized;
 
-    static std::unordered_map<std::string, std::shared_ptr<Model>>    s_models;
+    static std::unordered_map<std::string, std::unique_ptr<Model>>    s_models;
     static std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>> s_textures;
 
     // MaterialAsset スロットプール
@@ -85,7 +87,7 @@ private:
     static bool IsMaterialLive(renderer::ResourceHandle<renderer::MaterialAssetTag> h);
 };
 
-template<> std::shared_ptr<Model> AssetManager::Load<Model>(const std::string&);
+template<> Model* AssetManager::Load<Model>(const std::string&);
 template<> void AssetManager::Unload<Model>(const std::string&);
 
 } // namespace fbzz::asset
