@@ -154,77 +154,77 @@ void DX11Renderer::ClearDepth(float depth)
 // リソース生成
 // =============================================================================
 
-std::shared_ptr<IBuffer> DX11Renderer::CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride)
+std::unique_ptr<IBuffer> DX11Renderer::CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride)
 {
-    auto buf = std::make_shared<DX11Buffer>();
+    auto buf = std::make_unique<DX11Buffer>();
     if (!buf->Init(m_device.Get(), m_context.Get(), data, sizeBytes, stride, D3D11_BIND_VERTEX_BUFFER))
         return nullptr;
     return buf;
 }
 
-std::shared_ptr<IBuffer> DX11Renderer::CreateNativeIndexBuffer(const void* data, uint32_t count)
+std::unique_ptr<IBuffer> DX11Renderer::CreateNativeIndexBuffer(const void* data, uint32_t count)
 {
     // インデックスは uint32_t 固定 (DXGI_FORMAT_R32_UINT)。
     // uint16_t (65536 頂点未満) のほうがメモリ効率は良いが、
     // 複雑なメッシュに備えて 32bit を標準とする。
     size_t sizeBytes = count * sizeof(uint32_t);
-    auto buf = std::make_shared<DX11Buffer>();
+    auto buf = std::make_unique<DX11Buffer>();
     if (!buf->Init(m_device.Get(), m_context.Get(), data, sizeBytes, 0, D3D11_BIND_INDEX_BUFFER))
         return nullptr;
     return buf;
 }
 
-std::shared_ptr<IConstantBuffer> DX11Renderer::CreateNativeConstantBuffer(size_t sizeBytes)
+std::unique_ptr<IConstantBuffer> DX11Renderer::CreateNativeConstantBuffer(size_t sizeBytes)
 {
-    auto cb = std::make_shared<DX11ConstantBuffer>();
+    auto cb = std::make_unique<DX11ConstantBuffer>();
     if (!cb->Init(m_device.Get(), m_context.Get(), sizeBytes))
         return nullptr;
     return cb;
 }
 
-std::shared_ptr<IShader> DX11Renderer::CreateNativeShader(const std::string& path)
+std::unique_ptr<IShader> DX11Renderer::CreateNativeShader(const std::string& path)
 {
-    auto shader = std::make_shared<DX11Shader>();
+    auto shader = std::make_unique<DX11Shader>();
     if (!shader->Init(m_device.Get(), path))
         return nullptr;
     return shader;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateNativeTexture(const std::string& path)
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTexture(const std::string& path)
 {
-    auto tex = std::make_shared<DX11Texture>();
+    auto tex = std::make_unique<DX11Texture>();
     if (!tex->Init(m_device.Get(), m_context.Get(), path))
         return nullptr;
     return tex;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height)
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height)
 {
-    auto tex = std::make_shared<DX11Texture>();
+    auto tex = std::make_unique<DX11Texture>();
     if (!tex->InitFromData(m_device.Get(), rgba, width, height))
         return nullptr;
     return tex;
 }
 
-std::shared_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const PipelineStateDesc& desc)
+std::unique_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const PipelineStateDesc& desc)
 {
-    auto pso = std::make_shared<DX11PipelineState>();
+    auto pso = std::make_unique<DX11PipelineState>();
     if (!pso->Init(m_device.Get(), desc))
         return nullptr;
     return pso;
 }
 
-std::shared_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
+std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
 {
-    auto rt = std::make_shared<DX11RenderTarget>();
+    auto rt = std::make_unique<DX11RenderTarget>();
     if (!rt->Init(m_device.Get(), width, height, colorCount))
         return nullptr;
     return rt;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t width, uint32_t height)
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t width, uint32_t height)
 {
-    auto tex = std::make_shared<DX11Texture>();
+    auto tex = std::make_unique<DX11Texture>();
     if (!tex->InitForCompute(m_device.Get(), width, height))
         return nullptr;
     return tex;
