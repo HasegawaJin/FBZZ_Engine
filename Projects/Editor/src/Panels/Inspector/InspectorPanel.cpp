@@ -2,6 +2,7 @@
 // Inspector/InspectorPanel.cpp | fbzz::editor
 // 選択 Entity / Asset の Inspector ルーティング
 #include <Editor/Panels/InspectorPanel.hpp>
+#include <Editor/Panels/AnimationGraphInspector.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorAudio.hpp"
 #include "InspectorCommon.hpp"
@@ -135,6 +136,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextDisabled("Nothing selected");
         return;
     }
+
+    // Animation Graph の要素選択中は、GameObject 全体ではなく選択要素の詳細を表示する。
+    // WHY: Graph は遷移関係の操作に専念し、State / Transition の設定は Inspector に集約する。
+    if (DrawAnimationGraphInspector(ctx, *go))
+        return;
 
     // ── Save as Prefab ───────────────────────────────────────────────────────
     // WHY: Hierarchy のコンテキストメニューを使わずに Inspector から直接 Prefab 化できる動線。
