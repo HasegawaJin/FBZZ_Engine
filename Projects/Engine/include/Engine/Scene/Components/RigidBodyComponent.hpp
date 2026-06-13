@@ -2,7 +2,7 @@
 // RigidBodyComponent.hpp | fbzz::scene
 // physics::RigidBody を Scene に紐付けるコンポーネント
 // Scene の Transform と physics::World の剛体状態を同期するための橋渡し。
-// RigidBody の共有所有は World と Component の間で行う。
+// RigidBodyComponent が RigidBody の唯一の所有者。World には RigidBody* を渡す。
 #pragma once
 #include <Engine/Scene/Script.hpp>
 #include <Physics/BodyHandle.hpp>
@@ -12,9 +12,28 @@
 namespace fbzz::scene {
 
 struct RigidBodyComponent {
-    std::shared_ptr<physics::RigidBody> rigidBody;
+    std::unique_ptr<physics::RigidBody> rigidBody;
     physics::BodyHandle bodyHandle;
     bool enabled = true;
+
+    RigidBodyComponent() = default;
+    ~RigidBodyComponent() = default;
+    RigidBodyComponent(const RigidBodyComponent& o)
+        : rigidBody(o.rigidBody ? std::make_unique<physics::RigidBody>(*o.rigidBody) : nullptr)
+        , bodyHandle{}
+        , enabled(o.enabled)
+    {}
+    RigidBodyComponent& operator=(const RigidBodyComponent& o)
+    {
+        if (this != &o) {
+            rigidBody  = o.rigidBody ? std::make_unique<physics::RigidBody>(*o.rigidBody) : nullptr;
+            bodyHandle = {};
+            enabled    = o.enabled;
+        }
+        return *this;
+    }
+    RigidBodyComponent(RigidBodyComponent&&)            = default;
+    RigidBodyComponent& operator=(RigidBodyComponent&&) = default;
 
     const char* GetTypeName() const { return "Rigid Body"; }
     void Reflect(IReflector& r)

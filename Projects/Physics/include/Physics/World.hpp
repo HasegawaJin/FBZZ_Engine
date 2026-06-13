@@ -44,12 +44,18 @@ namespace fbzz::physics
     {
     public:
         void BeginSceneSync();
-        BodyHandle SyncBody(BodyHandle handle, std::shared_ptr<RigidBody> body);
+        // WHY: RigidBody の所有権は RigidBodyComponent (unique_ptr) が持つ。
+        //      World はフレーム中の参照を非所有ポインタとして受け取るだけ。
+        BodyHandle SyncBody(BodyHandle handle, RigidBody* body);
         ColliderHandle SyncCollider(ColliderHandle handle, ColliderInstance collider);
-        VolumeHandle SyncVolume(VolumeHandle handle, std::shared_ptr<Volume> volume);
+        // WHY: Volume は PhysicsSystem が毎フレーム生成する使い捨てオブジェクト。
+        //      World が unique_ptr で所有し、EndSceneSync で未参照のものを自動破棄する。
+        VolumeHandle SyncVolume(VolumeHandle handle, std::unique_ptr<Volume> volume);
         void EndSceneSync();
-        void AddConstraint(std::shared_ptr<Constraint> constraint);
-        const std::vector<std::shared_ptr<Constraint>>& GetConstraints() const;
+        // WHY: Constraint は AddConstraint 呼び出し側が生成して World へ移譲する。
+        //      World が唯一の所有者となり、World 破棄時に一括解放される。
+        void AddConstraint(std::unique_ptr<Constraint> constraint);
+        const std::vector<std::unique_ptr<Constraint>>& GetConstraints() const;
 
         // サブステップ、Volume、制約、衝突検出、衝突解決、イベント分類をこの順で実行する。
         void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
@@ -130,12 +136,15 @@ namespace fbzz::physics
         // BroadPhase 中に使う一時フィルタ。Scene の LayerCollisionMatrix から渡される。
         std::function<bool(int, int)> m_layerFilter;
 
-        std::vector<std::shared_ptr<RigidBody>> m_bodies;
+        // 現フレームの Step() に渡す非所有ビュー (EndSceneSync で再構築)
+        std::vector<RigidBody*>                 m_bodies;
         std::vector<ColliderInstance>           m_colliders;
-        std::vector<std::shared_ptr<Volume>>    m_volumes;
-        std::vector<std::shared_ptr<Constraint>> m_constraints;
+        std::vector<Volume*>                    m_volumes;
+        // Constraint は World が唯一の所有者
+        std::vector<std::unique_ptr<Constraint>> m_constraints;
         struct BodySlot {
-            std::shared_ptr<RigidBody> body;
+            // WHY: 所有権は RigidBodyComponent が持つ。World は非所有参照のみ保持する。
+            RigidBody* body = nullptr;
             uint32_t generation = 1;
             bool touched = false;
         };
@@ -146,7 +155,8 @@ namespace fbzz::physics
             bool occupied = false;
         };
         struct VolumeSlot {
-            std::shared_ptr<Volume> volume;
+            // WHY: Volume は PhysicsSystem が毎フレーム生成する使い捨て。World が所有する。
+            std::unique_ptr<Volume> volume;
             uint32_t generation = 1;
             bool touched = false;
         };

@@ -6,7 +6,6 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -17,7 +16,7 @@ struct SkinnedMeshRenderer {
     std::string modelPath;
     int meshIndex = 0;
 
-    std::shared_ptr<asset::Model> model;
+    asset::Model* model = nullptr;
 
     // WHY: Transform is the common base for scene editing, animation and rigging.
     // SkeletonNode remains the asset-side lookup table; these EntityID values are

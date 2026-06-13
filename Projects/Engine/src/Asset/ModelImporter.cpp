@@ -44,7 +44,7 @@ void ConfigureFbxImporter(Assimp::Importer& importer)
 
 } // namespace
 
-std::shared_ptr<Model> ModelImporter::Import(
+std::unique_ptr<Model> ModelImporter::Import(
     const std::string& path,
     renderer::ResourceManager& resources)
 {

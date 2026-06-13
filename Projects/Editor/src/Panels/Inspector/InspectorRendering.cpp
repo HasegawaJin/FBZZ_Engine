@@ -40,7 +40,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     }
                 } else {
                     mr.meshPath.clear();
-                    mr.mesh.reset();
+                    mr.mesh = nullptr;
                 }
             }
 
@@ -52,9 +52,9 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
                 auto loadCustomMesh = [&mr]() {
                     if (mr.meshPath.empty()) return;
-                    if (auto model = asset::AssetManager::Load<asset::Model>(mr.meshPath)) {
+                    if (auto* model = asset::AssetManager::Load<asset::Model>(mr.meshPath)) {
                         if (!model->meshes.empty())
-                            mr.mesh = model->meshes[0];
+                            mr.mesh = model->meshes[0].get();
                     }
                 };
                 if (ImGui::IsItemDeactivatedAfterEdit()) loadCustomMesh();
@@ -72,7 +72,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
     DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
         [](scene::SkinnedMeshRenderer& smr, EditorContext& ctx) {
             auto loadModel = [&smr]() {
-                smr.model.reset();
+                smr.model = nullptr;
                 if (smr.modelPath.empty()) return;
                 smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
             };

@@ -14,8 +14,8 @@ namespace fbzz::asset {
 class FzAssetLoader {
 public:
     // fzassetPath : .fzasset ファイルの絶対パス
-    // 失敗時は nullptr を返す。
-    static std::shared_ptr<Model> Load(
+    // 失敗時は nullptr を返す。所有権は呼び出し元 (AssetManager) へ移譲する。
+    static std::unique_ptr<Model> Load(
         const std::string& fzassetPath,
         renderer::ResourceManager& resources);
 };
