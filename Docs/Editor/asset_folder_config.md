@@ -58,12 +58,22 @@ private:
 | `scene`      | `.fbzz` |
 | `material`   | `.fzmat` |
 | `script`     | `.hpp .cpp .h .c .cc .cxx .py .lua .cs` |
-| `texture`    | `.png .jpg .jpeg .dds .bmp .tga .fnt .ttf .otf` |
+| `texture`    | `.png .jpg .jpeg .dds .bmp .tga .ico .fnt .ttf .otf` |
 | `audio`      | `.wav .mp3 .ogg .flac` |
-| `mesh`       | `.fbx .obj .gltf .glb .fzmesh .fzskel` |
+| `mesh`       | `.fbx .obj .gltf .glb` |
 | `shader`     | `.hlsl .hlsli` |
 | `prefab`     | `.fbzzprefab` |
+| `model`      | `.fzasset` |
 | `animation`  | `.fbzzanimcontroller` |
+| `graph_layout` | `.fbzz.animgraph` |
+| `terrain`    | `.fbzzterrain` |
+| `water`      | `.fbzzwater` |
+| `data`       | `.toml .json .yaml .yml` |
+| `text`       | `.txt .md .rst` |
+
+`.fzmesh` / `.fzskel` / `.fzanim` は `.fbx` から生成される内部バイナリであり、
+ユーザーが直接選択する入口は `.fzasset` とする。そのため型レジストリの公開対象には含めず、
+Asset Browser でも非表示にする。
 
 ---
 
@@ -106,6 +116,25 @@ type_key = ""
 ---
 
 ### C. Asset Browser 統合
+
+#### C-0. 内部ファイルの非表示
+
+未登録拡張子を一律に隠すと、プロジェクト固有拡張子を追加できる本設計の目的と衝突する。
+そのため表示判定は許可リストではなく、生成物・内部ファイルだけを明示的に除外する。
+
+| 非表示対象 | 理由 |
+|-----------|------|
+| `.*` | OS / VCS の管理ファイルであり、アセット操作対象ではない |
+| `*.generated.hpp` | FBZZ Header Tool が `.hpp` から再生成する |
+| `*.fztex` | 廃止済みのテクスチャメタデータ。画像原本を直接使用する |
+| `*.fzmesh` / `*.fzskel` / `*.fzanim` | FBX importer が生成し、`.fzasset` から参照する内部バイナリ |
+| `*.cso` / `Shaders/compiled/` | HLSL から再生成するシェーダーバイナリ |
+| `*.dll` / `*.lib` / `*.pdb` / `*.exp` / `*.ilk` | コンパイラ・リンカーが生成するビルド成果物 |
+| `*.tmp` / `*.bak` | 一時・バックアップファイル |
+| `compile_*.bat` / `compile*_log.txt` | エンジン内蔵シェーダーの保守用スクリプト・ログ |
+
+この判定はアセット一覧とフォルダツリーの両方で共通利用し、
+検索や Type Filter より前に適用する。
 
 #### C-1. `UpdateMounts` の置き換え
 `AssetBrowserCore.cpp` の `UpdateMounts`:
@@ -177,9 +206,10 @@ Asset Browser のツールバーに `[Folders ⚙]` ボタンを追加。
 | `Editor/EditorContext.hpp` | `const EditorSettings*` ポインタを追加、または customFolders を直接持つ |
 | `Editor/EditorApp.cpp` | `AssetTypeRegistry::RegisterDefaults()` 呼び出し |
 | `AssetBrowser/AssetBrowserCore.cpp` | `UpdateMounts` をレジストリ/設定ベースに置き換え |
+| `AssetBrowser/AssetBrowserCore.cpp` | 生成物・内部ファイルの共通非表示判定を追加 |
 | `AssetBrowserPanel.cpp` | `passesTypeFilter` をレジストリ参照に変更、ツールバーに `[Folders ⚙]` ボタン追加 |
 | `AssetBrowserPanel.hpp` | `TypeFilter` を動的対応に変更、`DrawFolderConfigDialog` 宣言追加 |
-| `AssetBrowser/AssetBrowserItems.cpp` | `DrawFolderConfigDialog` 実装 |
+| `AssetBrowser/AssetBrowserItems.cpp` | `DrawFolderConfigDialog` 実装、フォルダツリーにも非表示判定を適用 |
 
 ---
 
@@ -202,3 +232,5 @@ Asset Browser のツールバーに `[Folders ⚙]` ボタンを追加。
 3. Type フィルタ "Material" → `.fzmat` のみ (AssetTypeRegistry 経由で一致)
 4. カスタム拡張子 `.myasset` を Registry に追加 → "Custom" フィルタに表示
 5. typeKey 付きフォルダに入ったとき自動フィルタが切り替わる
+6. `.generated.hpp` / importer・shader 生成物が一覧とツリーに表示されない
+7. `.fbzz.animgraph` が Graph Layout として表示され、選択・移動・名前変更・削除できる
