@@ -4,6 +4,7 @@
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -30,6 +31,21 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
     const std::string absPath = assetPath;
     const std::string filename = util::FileSystem::GetFilename(absPath);
     const std::string ext      = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
+
+    // deselect 自動保存: 前回の .fzmat が dirty のまま別アセットへ移動したとき保存する。
+    // WHY: 「Save ボタンを押し忘れる」問題を解消しつつ、mid-drag 中の大量書き込みを避けるため
+    //      選択が外れたタイミング (= 本関数が別パスで呼ばれた瞬間) に保存する。
+    if (!m_inspectedAssetPath.empty() &&
+        m_inspectedAssetPath != absPath &&
+        util::StringUtils::ToLower(util::FileSystem::GetExtension(m_inspectedAssetPath)) == ".fzmat" &&
+        AssetDirtyRegistry::IsDirty(m_inspectedAssetPath))
+    {
+        auto* prevMat = asset::AssetManager::GetMaterial(m_inspectedMat);
+        if (prevMat && asset::SaveMaterialAssetToFile(m_inspectedAssetPath, *prevMat)) {
+            AssetDirtyRegistry::MarkClean(m_inspectedAssetPath);
+            ctx.requestAssetBrowserRefresh = true;
+        }
+    }
 
     ImGui::TextUnformatted(filename.c_str());
     ImGui::TextDisabled("%s", absPath.c_str());
@@ -233,12 +249,28 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
+        // dirty になったら Registry に登録 (deselect 時 or Save All で一括保存できるようにする)
+        if (materialDirty) {
+            const std::string capturedPath   = absPath;
+            const std::string capturedDisplay = NormalizeAssetPath(absPath);
+            auto capturedHandle = m_inspectedMat;
+            AssetDirtyRegistry::Register(
+                capturedPath, capturedDisplay, "MAT",
+                [capturedPath, capturedHandle]() {
+                    auto* m = asset::AssetManager::GetMaterial(capturedHandle);
+                    return m && asset::SaveMaterialAssetToFile(capturedPath, *m);
+                });
+        }
+
         ImGui::Separator();
         if (ImGui::Button("Save .fzmat")) {
-            if (asset::SaveMaterialAssetToFile(absPath, mat))
+            if (asset::SaveMaterialAssetToFile(absPath, mat)) {
+                AssetDirtyRegistry::MarkClean(absPath);
                 ctx.requestAssetBrowserRefresh = true;
+            }
         }
-        if (materialDirty) {
+        const bool isMaterialDirtyNow = AssetDirtyRegistry::IsDirty(absPath);
+        if (isMaterialDirtyNow) {
             ImGui::SameLine();
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }

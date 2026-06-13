@@ -8,6 +8,7 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/ToolchainLocator.hpp>
+#include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -168,19 +169,33 @@ void EditorApp::MarkSceneDirty()
 
 void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::function<void()> action)
 {
-    if (!m_ctx.sceneDirty) {
+    const bool assetsDirty = AssetDirtyRegistry::HasAny();
+    if (!m_ctx.sceneDirty && !assetsDirty) {
         if (action) action();
         return;
     }
 
-    ModalDialog::OpenUnsavedChanges(actionName,
-        "The current scene has unsaved changes.",
+    std::string msg;
+    if (m_ctx.sceneDirty) msg += "The current scene has unsaved changes.";
+    if (assetsDirty) {
+        if (!msg.empty()) msg += "\n\n";
+        const auto& dirty = AssetDirtyRegistry::GetAll();
+        msg += "Unsaved asset(s): " + std::to_string(static_cast<int>(dirty.size()));
+        for (const auto& a : dirty)
+            msg += "\n  [" + a.typeLabel + "] " + a.displayPath;
+    }
+
+    ModalDialog::OpenUnsavedChanges(actionName, msg,
         [this, action]() {
-            if (!SaveScene()) return false;
+            AssetDirtyRegistry::SaveAll();
+            if (m_ctx.sceneDirty && !SaveScene()) return false;
             if (action) action();
             return true;
         },
-        std::move(action));
+        [action]() {
+            AssetDirtyRegistry::DiscardAll();
+            if (action) action();
+        });
 }
 
 // =============================================================================

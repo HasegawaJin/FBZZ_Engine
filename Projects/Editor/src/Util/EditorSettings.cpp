@@ -46,7 +46,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["game_view"]["aspect"].value<int64_t>()) gameViewportAspect = static_cast<int>(*v);
 
     // その他
-    if (auto v = tbl["misc"]["hot_reload"].value<bool>())     hotReloadEnabled = *v;
+    if (auto v = tbl["misc"]["hot_reload"].value<bool>())          hotReloadEnabled     = *v;
+    if (auto v = tbl["asset_browser"]["icon_size"].value<float>()) assetBrowserIconSize = *v;
     if (auto v = tbl["scene"]["last_path"].value<std::string>()) {
         lastScenePath = *v;
         // 相対パスで保存されていた場合は projectRoot と組み合わせて絶対パスに戻す
@@ -90,6 +91,9 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table miscTbl;
     miscTbl.insert("hot_reload", hotReloadEnabled);
 
+    toml::table assetBrowserTbl;
+    assetBrowserTbl.insert("icon_size", assetBrowserIconSize);
+
     // lastScenePath を projectRoot 相対パスに変換して保存する
     // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後にシーンが見つからなくなる
     std::string scenePathToSave = lastScenePath;
@@ -105,13 +109,14 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     sceneTbl.insert("last_path", scenePathToSave);
 
     toml::table root;
-    root.insert("camera",    std::move(camTbl));
-    root.insert("view",      std::move(viewTbl));
-    root.insert("snap",      std::move(snapTbl));
-    root.insert("gizmo",     std::move(gizmoTbl));
-    root.insert("game_view", std::move(gameViewTbl));
-    root.insert("misc",      std::move(miscTbl));
-    root.insert("scene",     std::move(sceneTbl));
+    root.insert("camera",       std::move(camTbl));
+    root.insert("view",         std::move(viewTbl));
+    root.insert("snap",         std::move(snapTbl));
+    root.insert("gizmo",        std::move(gizmoTbl));
+    root.insert("game_view",    std::move(gameViewTbl));
+    root.insert("misc",         std::move(miscTbl));
+    root.insert("asset_browser", std::move(assetBrowserTbl));
+    root.insert("scene",        std::move(sceneTbl));
 
     std::ostringstream ss;
     ss << root;
