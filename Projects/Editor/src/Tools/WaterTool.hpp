@@ -27,6 +27,8 @@
 
 namespace fbzz::editor {
 
+class UndoStack;
+
 class WaterTool {
 public:
     // ── 公開 API ──────────────────────────────────────────────────────────────
@@ -48,7 +50,8 @@ public:
     // ImGui でツールウィンドウを描画する。
     // ViewportPanel の内側（ImGui::Begin スコープ内）から呼ぶこと。
     void OnEditorGUI(scene::Scene& scene, const std::string& projectRoot,
-                     const std::function<void()>& markDirty);
+                     const std::function<void()>& markDirty,
+                     UndoStack* undoStack);
 
 private:
     // ── 状態 ──────────────────────────────────────────────────────────────────

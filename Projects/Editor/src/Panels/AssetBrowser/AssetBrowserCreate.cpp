@@ -2,9 +2,38 @@
 // AssetBrowserCreate.cpp | fbzz::editor
 // AssetBrowser の FBX 内容表示と Create メニュー
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 
 namespace fbzz::editor {
+
+namespace {
+
+void RegisterCreatedPath(EditorContext& ctx, const std::string& path)
+{
+    if (!ctx.undoStack || path.empty() || !util::FileSystem::Exists(path)) return;
+
+    const bool isDirectory = util::FileSystem::IsDirectory(path);
+    std::string content;
+    if (!isDirectory) util::FileSystem::ReadText(path, content);
+    EditorContext* context = &ctx;
+    auto refresh = [context]() { context->requestAssetBrowserRefresh = true; };
+    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+        "Create Asset",
+        [path, isDirectory, content, refresh]() {
+            if (isDirectory)
+                util::FileSystem::EnsureDirectory(path);
+            else
+                util::FileSystem::WriteText(path, content);
+            refresh();
+        },
+        [path, refresh]() {
+            util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+            refresh();
+        }));
+}
+
+} // namespace
 
 void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
 {
@@ -127,6 +156,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newDir))
             newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
         util::FileSystem::EnsureDirectory(newDir);
+        RegisterCreatedPath(ctx, newDir);
         RefreshDirectory();
         // 新規フォルダをリネームモードで開く
         m_renamingPath = newDir;
@@ -142,6 +172,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".fbzz";
         util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
+        RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
     }
     if (ImGui::MenuItem("Material")) {
@@ -172,6 +203,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             "emissive_color = [1.0, 1.0, 1.0]\n"
             "emissive_scale = 0.0\n";
         util::FileSystem::WriteText(newPath, materialTemplate);
+        RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
     }
     if (ImGui::MenuItem("Animator Controller")) {
@@ -185,6 +217,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             FBZZ_LOG_ERROR("Animator Controller creation failed: %s", newPath.c_str());
             return;
         }
+        RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
         ctx.selectedAssetPath = newPath;
     }
@@ -204,7 +237,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ModalDialog::OpenInput(
             "New C++ Script",
             "NewScript",
-            [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
+            [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath, context = &ctx]
             (const std::string& name) {
                 const std::string path =
                     ScriptCodeGen::CreateScript(name, resolvedScriptsDir, dllPath, staticPath);
@@ -215,6 +248,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 // プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
                 if (!projScriptsDir.empty() && projScriptsDir != resolvedScriptsDir)
                     ScriptCodeGen::CreateScript(name, projScriptsDir, "", "");
+                RegisterCreatedPath(*context, path);
                 m_pendingNavigate = projScriptsDir;
                 RefreshDirectory();
                 FBZZ_LOG_INFO("C++ Script generated: %s", path.c_str());
@@ -230,9 +264,9 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         const std::string resolvedHlslDir =
             engineHlslDir.empty() ? projHlslDir : engineHlslDir;
 
-        auto makeHlslCallback = [this, resolvedHlslDir, projHlslDir]
+        auto makeHlslCallback = [this, resolvedHlslDir, projHlslDir, context = &ctx]
             (ScriptCodeGen::HlslKind kind) {
-            return [this, resolvedHlslDir, projHlslDir, kind]
+            return [this, resolvedHlslDir, projHlslDir, kind, context]
                 (const std::string& name) {
                 const std::string path =
                     ScriptCodeGen::CreateHlsl(name, resolvedHlslDir, kind);
@@ -243,6 +277,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 // プロジェクト側にも即コピー
                 if (!projHlslDir.empty() && projHlslDir != resolvedHlslDir)
                     ScriptCodeGen::CreateHlsl(name, projHlslDir, kind);
+                RegisterCreatedPath(*context, path);
                 const std::string destDir =
                     (kind == ScriptCodeGen::HlslKind::SurfaceVSPS)
                         ? (projHlslDir + "/Material/Custom")

@@ -45,6 +45,15 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 return;
 
             asset::MaterialAsset& mat = *matPtr;
+            struct MaterialUndoTracker {
+                ImGuiID activeId = 0;
+                asset::MaterialAsset before;
+                bool active = false;
+                bool changed = false;
+            };
+            static MaterialUndoTracker undo;
+            const asset::MaterialAsset materialBeforeDraw = mat;
+            const ImGuiID activeBefore = ImGui::GetActiveID();
             bool materialDirty = false;
             const renderer::ShaderDescriptor* desc = nullptr;
             if (auto* resources = renderer::ResourceManager::Active()) {
@@ -232,6 +241,38 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                         }
                     }
                 }
+            }
+
+            const ImGuiID activeAfter = ImGui::GetActiveID();
+            auto pushMaterialCommand = [&](const asset::MaterialAsset& before,
+                                           const asset::MaterialAsset& after) {
+                if (!ctx.undoStack) return;
+                const auto handle = mc.materialAsset;
+                const auto markDirty = ctx.markSceneDirty;
+                auto apply = [handle, markDirty](const asset::MaterialAsset& value) {
+                    if (auto* target = asset::AssetManager::GetMaterial(handle)) {
+                        *target = value;
+                        if (markDirty) markDirty();
+                    }
+                };
+                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                    "Edit Material Asset",
+                    [apply, after]() { apply(after); },
+                    [apply, before]() { apply(before); }));
+            };
+            if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+                undo.activeId = activeAfter;
+                undo.before = materialBeforeDraw;
+                undo.active = true;
+                undo.changed = materialDirty;
+            } else if (undo.active && activeAfter == undo.activeId) {
+                undo.changed |= materialDirty;
+            } else if (undo.active && activeAfter != undo.activeId) {
+                if (undo.changed) pushMaterialCommand(undo.before, mat);
+                undo.active = false;
+                undo.changed = false;
+            } else if (!undo.active && materialDirty && activeAfter == 0) {
+                pushMaterialCommand(materialBeforeDraw, mat);
             }
 
             ImGui::Separator();

@@ -4,6 +4,8 @@
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
+#include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -42,6 +44,86 @@
 namespace fbzz::editor {
 
 namespace {
+
+void ExecuteSceneEditWithUndo(EditorContext& ctx,
+                              const char* description,
+                              const std::function<void()>& edit)
+{
+    if (!ctx.activeScene || !edit) return;
+
+    const std::string before = SceneIO::Serialize(*ctx.activeScene);
+    const std::size_t historyRevisionBefore = ctx.undoStack
+        ? ctx.undoStack->GetRevision()
+        : 0;
+    edit();
+    const std::string after = SceneIO::Serialize(*ctx.activeScene);
+
+    // Reparent 等が専用コマンドを追加済みなら、全シーンコマンドとの二重登録を避ける。
+    if (!ctx.undoStack || before == after ||
+        ctx.undoStack->GetRevision() != historyRevisionBefore) {
+        if (before != after && ctx.markSceneDirty) ctx.markSceneDirty();
+        return;
+    }
+
+    scene::Scene* scene = ctx.activeScene;
+    EditorContext* context = &ctx;
+    const auto markDirty = ctx.markSceneDirty;
+    auto restore = [scene, context, markDirty](const std::string& snapshot) {
+        if (SceneIO::Deserialize(*scene, snapshot)) {
+            context->selectedEntities.clear();
+            context->activeUICanvas = {};
+            if (markDirty) markDirty();
+        }
+    };
+    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+        description,
+        [restore, after]() { restore(after); },
+        [restore, before]() { restore(before); }));
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+}
+
+void SetParentWithUndo(EditorContext& ctx,
+                       scene::EntityID childId,
+                       scene::EntityID newParentId,
+                       const char* description)
+{
+    if (!ctx.activeScene) return;
+
+    scene::GameObject* child = ctx.activeScene->GetGameObject(childId);
+    if (!child) return;
+
+    const scene::GameObject* oldParent = child->GetParent();
+    const std::string childInstanceId = child->instanceId;
+    const std::string oldParentInstanceId = oldParent ? oldParent->instanceId : std::string{};
+    scene::GameObject* newParent = newParentId.IsValid()
+        ? ctx.activeScene->GetGameObject(newParentId)
+        : nullptr;
+    const std::string newParentInstanceId = newParent ? newParent->instanceId : std::string{};
+    const bool changed = newParent ? child->SetParent(newParent) : child->ClearParent();
+    if (!changed) return;
+
+    scene::Scene* scene = ctx.activeScene;
+    const auto markDirty = ctx.markSceneDirty;
+    auto apply = [scene, childInstanceId, markDirty](const std::string& parentInstanceId) {
+        if (auto* target = scene->FindByGuid(childInstanceId)) {
+            if (!parentInstanceId.empty()) {
+                if (auto* parent = scene->FindByGuid(parentInstanceId))
+                    target->SetParent(parent);
+            } else {
+                target->ClearParent();
+            }
+            if (markDirty) markDirty();
+        }
+    };
+
+    if (ctx.undoStack) {
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            description,
+            [apply, newParentInstanceId]() { apply(newParentInstanceId); },
+            [apply, oldParentInstanceId]() { apply(oldParentInstanceId); }));
+    }
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+}
 
 enum class PrimitiveTemplate {
     Cube,
@@ -460,8 +542,24 @@ void SaveSelectedAsPrefab(EditorContext& ctx, const std::string& objectName)
     if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
 
     const std::string path = UniquePrefabPath(ctx, objectName);
-    if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, path))
+    if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, path)) {
+        if (ctx.undoStack) {
+            std::string content;
+            util::FileSystem::ReadText(path, content);
+            EditorContext* context = &ctx;
+            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                "Create Prefab",
+                [path, content, context]() {
+                    util::FileSystem::WriteText(path, content);
+                    context->requestAssetBrowserRefresh = true;
+                },
+                [path, context]() {
+                    util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+                    context->requestAssetBrowserRefresh = true;
+                }));
+        }
         ctx.requestAssetBrowserRefresh = true;
+    }
 }
 
 bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
@@ -597,7 +695,8 @@ void DrawHierarchyNode(EditorContext& ctx,
             deferred = [&ctx, draggedId, id, pendingExpand]() {
                 auto* dragged = ctx.activeScene->GetGameObject(draggedId);
                 auto* target  = ctx.activeScene->GetGameObject(id);
-                if (dragged && target && dragged->SetParent(target)) {
+                if (dragged && target) {
+                    SetParentWithUndo(ctx, draggedId, id, "Reparent GameObject");
                     ctx.selectedEntities = { draggedId };
                     if (pendingExpand) *pendingExpand = id;  // 次フレームで親を open
                 }
@@ -626,7 +725,27 @@ void DrawHierarchyNode(EditorContext& ctx,
 
         if (ImGui::MenuItem(isActive ? "Hide" : "Show"))
             deferred = [&ctx, id]() {
-                if (auto* g = ctx.activeScene->GetGameObject(id)) g->SetActive(!g->activeSelf());
+                if (auto* g = ctx.activeScene->GetGameObject(id)) {
+                    const std::string instanceId = g->instanceId;
+                    const bool before = g->activeSelf();
+                    const bool after = !before;
+                    g->SetActive(after);
+                    scene::Scene* scene = ctx.activeScene;
+                    const auto markDirty = ctx.markSceneDirty;
+                    if (ctx.undoStack) {
+                        auto apply = [scene, instanceId, markDirty](bool active) {
+                            if (auto* target = scene->FindByGuid(instanceId)) {
+                                target->SetActive(active);
+                                if (markDirty) markDirty();
+                            }
+                        };
+                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                            after ? "Show GameObject" : "Hide GameObject",
+                            [apply, after]() { apply(after); },
+                            [apply, before]() { apply(before); }));
+                    }
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                }
             };
         if (ImGui::MenuItem(isLocked ? "Unlock" : "Lock"))
             ctx.ToggleLock(id);
@@ -658,8 +777,7 @@ void DrawHierarchyNode(EditorContext& ctx,
             const bool hasParent = go.GetParent() != nullptr;
             if (ImGui::MenuItem("Set As Root", nullptr, false, hasParent))
                 deferred = [&ctx, id]() {
-                    if (auto* target = ctx.activeScene->GetGameObject(id))
-                        target->ClearParent();
+                    SetParentWithUndo(ctx, id, {}, "Set GameObject As Root");
                 };
             ImGui::EndMenu();
         }
@@ -766,8 +884,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         }
 
         if (deferred) {
-            deferred();
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
         }
         return;
     }
@@ -838,8 +955,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     }
 
     if (deferred) {
-        deferred();
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
     }
 }
 

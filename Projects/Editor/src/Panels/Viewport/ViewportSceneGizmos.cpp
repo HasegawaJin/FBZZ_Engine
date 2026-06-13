@@ -2,8 +2,27 @@
 // ViewportSceneGizmos.cpp | fbzz::editor
 // Scene View のカメラ・ライトアイコンと3D Gizmo
 #include "ViewportCommon.hpp"
+#include <Editor/Util/UndoStack.hpp>
 
 namespace fbzz::editor {
+
+namespace {
+
+bool GizmoTransformEquals(const scene::Transform& lhs, const scene::Transform& rhs)
+{
+    return lhs.position.x == rhs.position.x &&
+           lhs.position.y == rhs.position.y &&
+           lhs.position.z == rhs.position.z &&
+           lhs.rotation.x == rhs.rotation.x &&
+           lhs.rotation.y == rhs.rotation.y &&
+           lhs.rotation.z == rhs.rotation.z &&
+           lhs.rotation.w == rhs.rotation.w &&
+           lhs.scale.x == rhs.scale.x &&
+           lhs.scale.y == rhs.scale.y &&
+           lhs.scale.z == rhs.scale.z;
+}
+
+} // namespace
 
 bool WorldToScreen(const math::Vector3& world,
                    const EditorContext& ctx,
@@ -275,12 +294,61 @@ void DrawGizmo(EditorContext& ctx,
 
     const bool gizmoOver = ImGuizmo::IsOver();
     const bool gizmoUsing = ImGuizmo::IsUsing();
+    const bool wasUsing = prevUsing;
+
+    struct GizmoEdit {
+        scene::EntityID id;
+        std::string instanceId;
+        scene::Transform before;
+        EditorContext::GizmoMode mode = EditorContext::GizmoMode::Translate;
+        bool active = false;
+    };
+    static GizmoEdit edit;
+
+    if (gizmoUsing && !wasUsing) {
+        edit.id = selected;
+        edit.instanceId = go->instanceId;
+        edit.before = go->transform;
+        edit.mode = ctx.gizmoMode;
+        edit.active = true;
+    }
+
     if (gizmoOver != prevOver || gizmoUsing != prevUsing) {
         prevOver = gizmoOver;
         prevUsing = gizmoUsing;
     }
 
-    if (!gizmoUsing) return;
+    if (!gizmoUsing) {
+        if (wasUsing && edit.active) {
+            const scene::Transform before = edit.before;
+            scene::Scene* scene = ctx.activeScene;
+            scene::GameObject* editedObject = scene->FindByGuid(edit.instanceId);
+            const scene::Transform after = editedObject ? editedObject->transform : before;
+            const auto markDirty = ctx.markSceneDirty;
+            const char* description =
+                edit.mode == EditorContext::GizmoMode::Rotate ? "Rotate GameObject" :
+                edit.mode == EditorContext::GizmoMode::Scale ? "Scale GameObject" :
+                                                               "Move GameObject";
+            const std::string editedInstanceId = edit.instanceId;
+
+            if (ctx.undoStack && editedObject && !GizmoTransformEquals(before, after)) {
+                auto apply = [scene, editedInstanceId, markDirty](const scene::Transform& value) {
+                    if (auto* target = scene->FindByGuid(editedInstanceId)) {
+                        target->transform = value;
+                        if (markDirty) markDirty();
+                    }
+                };
+                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                    description,
+                    [apply, after]() { apply(after); },
+                    [apply, before]() { apply(before); }));
+            }
+            if (editedObject && !GizmoTransformEquals(before, after) && ctx.markSceneDirty)
+                ctx.markSceneDirty();
+            edit.active = false;
+        }
+        return;
+    }
 
     math::Matrix4 worldRow = math::Matrix4::Transpose(worldCol);
     math::Matrix4 localRow = worldRow;
