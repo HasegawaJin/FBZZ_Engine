@@ -3,10 +3,12 @@
 // Project settings editor UI
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <cstddef>
 #include <cstdio>
 
@@ -67,12 +69,58 @@ void DrawPostProcessToggles(renderer::PostProcessSettings& p)
 
 void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 {
+    struct UndoTracker {
+        ImGuiID activeId = 0;
+        ProjectSettings before;
+        bool active = false;
+        bool changed = false;
+    };
+    static UndoTracker undo;
+    const ProjectSettings beforeDraw = ctx.projectSettings;
+    const ImGuiID activeBefore = ImGui::GetActiveID();
+    const std::uint64_t editGenerationBefore = m_editGeneration;
+
     DrawSidebar();
     ImGui::SameLine();
 
     ImGui::BeginChild("##ProjectSettingsContent", { 0.0f, 0.0f }, false);
     DrawSection(ctx.projectSettings);
     ImGui::EndChild();
+
+    const ImGuiID activeAfter = ImGui::GetActiveID();
+    const bool editedThisFrame = GImGui && GImGui->ActiveIdHasBeenEditedThisFrame;
+    const bool structuralEdit = m_editGeneration != editGenerationBefore;
+    auto pushCommand = [&](const ProjectSettings& before, const ProjectSettings& after) {
+        if (!ctx.undoStack) return;
+        EditorContext* context = &ctx;
+        auto apply = [context](const ProjectSettings& value) {
+            context->projectSettings = value;
+            Time::targetFps = value.app.targetFps;
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Edit Project Settings",
+            [apply, after]() { apply(after); },
+            [apply, before]() { apply(before); }));
+    };
+
+    if (structuralEdit) {
+        pushCommand(beforeDraw, ctx.projectSettings);
+        undo.active = false;
+        undo.changed = false;
+    } else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+        undo.activeId = activeAfter;
+        undo.before = beforeDraw;
+        undo.active = true;
+        undo.changed = editedThisFrame;
+    } else if (undo.active && activeAfter == undo.activeId) {
+        undo.changed |= editedThisFrame;
+    } else if (undo.active && activeAfter != undo.activeId) {
+        if (undo.changed) pushCommand(undo.before, ctx.projectSettings);
+        undo.active = false;
+        undo.changed = false;
+    } else if (!undo.active && editedThisFrame && activeAfter == 0) {
+        pushCommand(beforeDraw, ctx.projectSettings);
+    }
 }
 
 void ProjectSettingsPanel::DrawSidebar()
@@ -334,11 +382,15 @@ void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
             ImGui::PopID();
         }
 
-        if (removeIndex >= 0)
+        if (removeIndex >= 0) {
             postProcess.customEffects.erase(postProcess.customEffects.begin() + removeIndex);
+            ++m_editGeneration;
+        }
 
-        if (ImGui::SmallButton("Add Custom Pass"))
+        if (ImGui::SmallButton("Add Custom Pass")) {
             postProcess.customEffects.push_back(renderer::CustomPostProcessSettings{});
+            ++m_editGeneration;
+        }
 
         ImGui::PopID();
     }
@@ -387,6 +439,7 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
     if (ImGui::SmallButton("Reset Unity Preset")) {
         settings.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
                           "MainCamera", "Player", "GameController" };
+        ++m_editGeneration;
     }
     ImGui::Spacing();
 
@@ -404,8 +457,10 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
         ImGui::PopID();
     }
 
-    if (removeIdx >= 0)
+    if (removeIdx >= 0) {
         settings.tags.erase(settings.tags.begin() + removeIdx);
+        ++m_editGeneration;
+    }
 
     ImGui::Spacing();
     ImGui::SetNextItemWidth(-80.0f);
@@ -414,6 +469,7 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
     if (ImGui::SmallButton("Add") && m_newTag[0] != '\0') {
         settings.tags.push_back(m_newTag);
         m_newTag[0] = '\0';
+        ++m_editGeneration;
     }
 }
 
@@ -429,6 +485,7 @@ void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
             "", "", "", "", "", "", "", "", "", "",
             "", "", "", "", "", ""
         };
+        ++m_editGeneration;
     }
     ImGui::Spacing();
 
