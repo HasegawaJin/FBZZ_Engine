@@ -2,8 +2,27 @@
 // ViewportUI.cpp | fbzz::editor
 // UI Viewport の Canvas ガイド、2Dピッキング、UI Gizmo
 #include "ViewportCommon.hpp"
+#include <Editor/Util/UndoStack.hpp>
 
 namespace fbzz::editor {
+
+namespace {
+
+bool UITransformEquals(const scene::Transform& lhs, const scene::Transform& rhs)
+{
+    return lhs.position.x == rhs.position.x &&
+           lhs.position.y == rhs.position.y &&
+           lhs.position.z == rhs.position.z &&
+           lhs.rotation.x == rhs.rotation.x &&
+           lhs.rotation.y == rhs.rotation.y &&
+           lhs.rotation.z == rhs.rotation.z &&
+           lhs.rotation.w == rhs.rotation.w &&
+           lhs.scale.x == rhs.scale.x &&
+           lhs.scale.y == rhs.scale.y &&
+           lhs.scale.z == rhs.scale.z;
+}
+
+} // namespace
 
 bool IsCanvasEditorCanvas(const scene::UICanvas& canvas)
 {
@@ -307,6 +326,14 @@ bool DrawUIGizmo(EditorContext& ctx,
     };
 
     auto& t = go->transform;
+    struct UIGizmoUndoTracker {
+        std::string instanceId;
+        scene::Transform before;
+        bool active = false;
+    };
+    static UIGizmoUndoTracker undo;
+    const int dragBefore = drag;
+    const scene::Transform transformBeforeDraw = t;
     const UITransform2D parentResolved = ResolveUITransform(*go, false);
     const UITransform2D resolved = ComposeUITransform(parentResolved, t);
     const float px = resolved.position.x, py = resolved.position.y;
@@ -511,8 +538,37 @@ bool DrawUIGizmo(EditorContext& ctx,
         }
     }
 
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+    if (!undo.active && dragBefore == -1 && drag != -1) {
+        undo.instanceId = go->instanceId;
+        undo.before = transformBeforeDraw;
+        undo.active = true;
+    }
+
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        if (undo.active && ctx.activeScene) {
+            const scene::Transform after = t;
+            const scene::Transform before = undo.before;
+            const std::string instanceId = undo.instanceId;
+            scene::Scene* scene = ctx.activeScene;
+            const std::function<void()> markDirty = ctx.markSceneDirty;
+            auto apply = [scene, instanceId, markDirty](const scene::Transform& value) {
+                if (auto* target = scene->FindByGuid(instanceId)) {
+                    target->transform = value;
+                    if (markDirty) markDirty();
+                }
+            };
+            if (ctx.undoStack && !UITransformEquals(before, after)) {
+                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                    "Edit UI Transform",
+                    [apply, after]() { apply(after); },
+                    [apply, before]() { apply(before); }));
+            } else if (!UITransformEquals(before, after) && markDirty) {
+                markDirty();
+            }
+        }
+        undo.active = false;
         drag = -1;
+    }
 
     return wantsMouse || drag != -1;
 }
