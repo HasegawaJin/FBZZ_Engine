@@ -8,11 +8,11 @@
 
 namespace fbzz::asset {
 
-std::shared_ptr<Model> ImportStaticModel(const aiScene* scene,
+std::unique_ptr<Model> ImportStaticModel(const aiScene* scene,
                                          float unitScale,
                                          renderer::ResourceManager& resources)
 {
-    auto model = std::make_shared<Model>();
+    auto model = std::make_unique<Model>();
     for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
         const aiMesh* src = scene->mMeshes[mi];
 
@@ -22,7 +22,7 @@ std::shared_ptr<Model> ImportStaticModel(const aiScene* scene,
 
         auto indices = ImportIndices(src);
 
-        auto mesh = std::make_shared<renderer::Mesh>();
+        auto mesh = std::make_unique<renderer::Mesh>();
         mesh->vertexBuffer = resources.CreateVertexBuffer(
             vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
         mesh->indexBuffer = resources.CreateIndexBuffer(
@@ -33,7 +33,7 @@ std::shared_ptr<Model> ImportStaticModel(const aiScene* scene,
         mesh->cpuIndices  = indices;
         mesh->ComputeBounds();
 
-        model->meshes.push_back(mesh);
+        model->meshes.push_back(std::move(mesh));
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
     return model;

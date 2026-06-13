@@ -4,15 +4,16 @@
 #pragma once
 #include <Physics/Collider.hpp>
 #include <Physics/PhysicsMaterial.hpp>
-#include <memory>
 
-namespace fbzz::physics 
+namespace fbzz::physics
 {
     class RigidBody;
 
-    // World に登録されるコライダー参照。RigidBody と Material は非所有ポインタで紐づける。
+    // World に登録されるコライダー参照。すべてのフィールドは非所有ポインタ。
+    // WHY: BroadPhase で毎 substep 大量に複製されるため、shared_ptr の atomic refcount を
+    //      排除して衝突検出のコストを最小化する。所有権は ColliderComponent (unique_ptr) が持つ。
     struct ColliderInstance {
-        std::shared_ptr<Collider> collider;
+        Collider* collider = nullptr;
         RigidBody* body = nullptr;
         const PhysicsMaterial* material = nullptr;
         math::Vector3 centerOffset = math::Vector3::ZERO;
@@ -21,9 +22,7 @@ namespace fbzz::physics
     };
 
     // NarrowPhase はこのペアだけを詳細判定する。
-    // WHY: BroadPhase は毎 substep 大量の候補を作るため、ColliderInstance を値コピーすると
-    //      内部の shared_ptr 参照カウント更新が衝突検出以外の CPU 負荷になる。
-    //      m_colliders は NarrowPhase 中に再確保されないため、非所有ポインタで十分。
+    // WHY: m_colliders は NarrowPhase 中に再確保されないため、非所有ポインタで十分。
     struct CollisionPair {
         const ColliderInstance* colliderA = nullptr;
         const ColliderInstance* colliderB = nullptr;

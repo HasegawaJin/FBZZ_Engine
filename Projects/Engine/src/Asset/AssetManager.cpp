@@ -21,7 +21,7 @@ namespace fbzz::asset {
 renderer::ResourceManager* AssetManager::s_resources = nullptr;
 std::string AssetManager::s_basePath = "Assets/";
 bool AssetManager::s_initialized = false;
-std::unordered_map<std::string, std::shared_ptr<Model>>    AssetManager::s_models;
+std::unordered_map<std::string, std::unique_ptr<Model>>    AssetManager::s_models;
 std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>> AssetManager::s_textures;
 static int s_flushGeneration = 0;
 
@@ -132,17 +132,17 @@ renderer::ResourceHandle<renderer::TextureTag> AssetManager::LoadTexture(const s
 }
 
 template<>
-std::shared_ptr<Model> AssetManager::Load<Model>(const std::string& relativePath)
+Model* AssetManager::Load<Model>(const std::string& relativePath)
 {
     assert(s_initialized && "AssetManager::Init() must be called first");
 
     const std::string key = Normalize(relativePath);
     auto it = s_models.find(key);
-    if (it != s_models.end()) return it->second;
+    if (it != s_models.end()) return it->second.get();
 
     const std::string fullPath = ResolvePath(key, s_basePath);
 
-    std::shared_ptr<Model> model;
+    std::unique_ptr<Model> model;
     // .fzasset はネイティブバイナリローダーへ委譲する (Assimp 不要)
     if (key.ends_with(".fzasset")) {
         model = FzAssetLoader::Load(fullPath, *s_resources);
@@ -158,8 +158,9 @@ std::shared_ptr<Model> AssetManager::Load<Model>(const std::string& relativePath
         return nullptr;
     }
 
-    s_models[key] = model;
-    return model;
+    Model* ptr = model.get();
+    s_models[key] = std::move(model);
+    return ptr;
 }
 
 // --- MaterialAsset スロットプール ---
