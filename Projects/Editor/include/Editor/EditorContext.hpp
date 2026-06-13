@@ -8,6 +8,7 @@
 #include <Math/Vector3.hpp>
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -15,11 +16,39 @@
 namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
+namespace fbzz::scene    { struct AnimatorComponent; }
 namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; }
 
 namespace fbzz::editor {
 
 struct EditorContext {
+    // Animation Graph 上で選択中の編集対象をパネル間で共有する。
+    // WHY: ノードキャンバスと詳細編集を別パネルへ分離するため、ポインタではなく EntityID と index を保持する。
+    struct AnimationGraphSelection {
+        enum class Type {
+            None,
+            State,
+            Transition,
+            AnyState,
+            AnyStateTransition
+        };
+
+        Type            type = Type::None;
+        scene::EntityID entityId = scene::EntityID::INVALID;
+        std::string     assetPath;
+        int             stateIndex = -1;
+        int             transitionIndex = -1;
+
+        void Clear()
+        {
+            type = Type::None;
+            entityId = scene::EntityID::INVALID;
+            assetPath.clear();
+            stateIndex = -1;
+            transitionIndex = -1;
+        }
+    };
+
     // エンジンオブジェクト (非所有)
     scene::Scene*     activeScene  = nullptr;
     renderer::Camera* editorCamera = nullptr;
@@ -45,6 +74,11 @@ struct EditorContext {
     // Animation Graph Editor のノード配置。Editor 専用のため SceneSerializer には渡さない。
     // WHY: AnimatorComponent はランタイム構造体なので、キャンバス座標は instanceId keyed の別データとして保持する。
     std::unordered_map<std::string, GraphLayout> graphLayouts;
+    AnimationGraphSelection animationGraphSelection;
+    // Animation Graph と Inspector が共有する Controller アセット編集モデル。
+    std::shared_ptr<scene::AnimatorComponent> animationControllerEditor;
+    std::string animationControllerEditorPath;
+    bool animationControllerDirty = false;
 
     // 選択状態 (Multi-select 対応)
     std::vector<scene::EntityID> selectedEntities;
