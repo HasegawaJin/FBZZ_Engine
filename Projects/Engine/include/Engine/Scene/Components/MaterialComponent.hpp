@@ -16,7 +16,29 @@
 namespace fbzz::scene {
 
 struct MaterialComponent {
-    std::shared_ptr<renderer::Material> material;
+    std::unique_ptr<renderer::Material> material;
+
+    MaterialComponent() = default;
+    ~MaterialComponent() = default;
+
+    MaterialComponent(const MaterialComponent& o)
+        : material(o.material ? std::make_unique<renderer::Material>(*o.material) : nullptr)
+        , materialAsset(o.materialAsset)
+        , enabled(o.enabled)
+        , materialPath(o.materialPath)
+    {}
+    MaterialComponent& operator=(const MaterialComponent& o)
+    {
+        if (this != &o) {
+            material     = o.material ? std::make_unique<renderer::Material>(*o.material) : nullptr;
+            materialAsset = o.materialAsset;
+            enabled      = o.enabled;
+            materialPath = o.materialPath;
+        }
+        return *this;
+    }
+    MaterialComponent(MaterialComponent&&)            = default;
+    MaterialComponent& operator=(MaterialComponent&&) = default;
     renderer::ResourceHandle<renderer::MaterialAssetTag> materialAsset;
     bool enabled = true;
 

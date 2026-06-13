@@ -249,7 +249,7 @@ void ReadAabbCollider(const toml::table& colTbl, AabbColliderComponent& col)
     if (auto* shapeTbl = colTbl["shape"].as_table())
         halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
     col.size = halfExtents * 2.0f;
-    col.collider = std::make_shared<physics::AABBCollider>(halfExtents);
+    col.collider = std::make_unique<physics::AABBCollider>(halfExtents);
 }
 
 void ReadBoxCollider(const toml::table& colTbl, BoxColliderComponent& col)
@@ -259,7 +259,7 @@ void ReadBoxCollider(const toml::table& colTbl, BoxColliderComponent& col)
     if (auto* shapeTbl = colTbl["shape"].as_table())
         halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
     col.size = halfExtents * 2.0f;
-    col.collider = std::make_shared<physics::OBBCollider>(halfExtents);
+    col.collider = std::make_unique<physics::OBBCollider>(halfExtents);
 }
 
 void ReadSphereCollider(const toml::table& colTbl, SphereColliderComponent& col)
@@ -269,7 +269,7 @@ void ReadSphereCollider(const toml::table& colTbl, SphereColliderComponent& col)
     if (auto* shapeTbl = colTbl["shape"].as_table())
         radius = (float)(*shapeTbl)["radius"].value_or(0.5);
     col.radius = radius;
-    col.collider = std::make_shared<physics::SphereCollider>(radius);
+    col.collider = std::make_unique<physics::SphereCollider>(radius);
 }
 
 void ReadCapsuleCollider(const toml::table& colTbl, CapsuleColliderComponent& col)
@@ -283,7 +283,7 @@ void ReadCapsuleCollider(const toml::table& colTbl, CapsuleColliderComponent& co
     }
     col.radius = radius;
     col.halfHeight = halfHeight;
-    col.collider = std::make_shared<physics::CapsuleCollider>(radius, halfHeight);
+    col.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
 }
 
 void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
@@ -530,7 +530,9 @@ toml::table MakeScriptEntryTable(const std::string& type, bool enabled, toml::ta
 // "primitive:sphere" → PrimitiveMesh::Sphere
 // "models/foo.fbx"   → AssetManager::Load<Model> mesh[0]
 // "models/foo.fbx:2" → mesh[2]
-std::shared_ptr<renderer::Mesh> ResolveMesh(
+// WHY: primitive mesh は AssetManager 管轄外のため、static キャッシュで寿命を保持する。
+//      Model mesh は AssetManager が所有するため raw pointer で返す。
+renderer::Mesh* ResolveMesh(
     const std::string& path, renderer::ResourceManager& resources)
 {
     if (path.starts_with("primitive:")) {
@@ -565,10 +567,10 @@ std::shared_ptr<renderer::Mesh> ResolveMesh(
         }
     }
 
-    auto model = asset::AssetManager::Load<asset::Model>(filePath);
+    auto* model = asset::AssetManager::Load<asset::Model>(filePath);
     if (!model) return nullptr;
     if (meshIndex < 0 || meshIndex >= (int)model->meshes.size()) return nullptr;
-    return model->meshes[meshIndex];
+    return model->meshes[meshIndex].get();
 }
 
 // SceneSerializer が扱う Asset パスを、現在保存/読込している Scene の場所から解決する。
@@ -1289,7 +1291,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
                     const std::string matDiskPath =
                         ResolveAssetDiskPathForScene(path, tc->materialPath);
-                    asset::SaveMaterialAssetToFile(matDiskPath, *mat);
+                    (void)asset::SaveMaterialAssetToFile(matDiskPath, *mat);
                 }
             }
 
@@ -1683,7 +1685,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
             if (!rb.rigidBody)
-                rb.rigidBody = std::make_shared<physics::RigidBody>();
+                rb.rigidBody = std::make_unique<physics::RigidBody>();
 
             rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
             rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
@@ -2462,7 +2464,7 @@ bool SceneSerializer::AppendObjects(
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
-            if (!rb.rigidBody) rb.rigidBody = std::make_shared<physics::RigidBody>();
+            if (!rb.rigidBody) rb.rigidBody = std::make_unique<physics::RigidBody>();
             rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
             rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
             rb.rigidBody->SetPosition(go.transform.position);

@@ -495,7 +495,7 @@ std::vector<GameObject*> ScriptPhysicsProxy::OverlapSphere(const math::Vector3& 
     const auto overlaps = Script::s_physicsWorld->OverlapSphere(center, radius);
     result.reserve(overlaps.size());
     for (const auto* inst : overlaps) {
-        auto* go = inst ? FindGameObjectByCollider(script->m_scene, inst->collider.get()) : nullptr;
+        auto* go = inst ? FindGameObjectByCollider(script->m_scene, inst->collider) : nullptr;
         if (go && std::find(result.begin(), result.end(), go) == result.end())
             result.push_back(go);
     }
