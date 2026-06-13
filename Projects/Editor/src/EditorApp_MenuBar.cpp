@@ -179,8 +179,14 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     if (ImGui::BeginMenu("Edit")) {
         const bool canUndo = ctx.undoStack && ctx.undoStack->CanUndo();
         const bool canRedo = ctx.undoStack && ctx.undoStack->CanRedo();
-        if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo)) ctx.undoStack->Undo();
-        if (ImGui::MenuItem("Redo", "Ctrl+Y", false, canRedo)) ctx.undoStack->Redo();
+        const std::string undoLabel = canUndo
+            ? "Undo " + ctx.undoStack->GetUndoDescription()
+            : "Undo";
+        const std::string redoLabel = canRedo
+            ? "Redo " + ctx.undoStack->GetRedoDescription()
+            : "Redo";
+        if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, canUndo)) ctx.undoStack->Undo();
+        if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, canRedo)) ctx.undoStack->Redo();
         ImGui::EndMenu();
     }
 
@@ -334,6 +340,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         isPlaying,
         playColor,
         BUTTON_SIZE)) {
+        m_undoStack.Clear();
         pm->Play(*ctx.activeScene);
         if (pm->IsPlaying())
             ctx.requestGameViewportFocus = true;
@@ -347,8 +354,10 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         pm && hasScene && !isEditor,
         isEditor,
         stopColor,
-        BUTTON_SIZE))
+        BUTTON_SIZE)) {
         pm->Stop(*ctx.activeScene);
+        m_undoStack.Clear();
+    }
 
     ImGui::SameLine();
     if (PlayToolbarButton(
