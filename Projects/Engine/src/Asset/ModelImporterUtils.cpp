@@ -93,11 +93,11 @@ std::vector<uint32_t> ImportIndices(const aiMesh* mesh)
     return indices;
 }
 
-std::shared_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
+std::unique_ptr<renderer::Material> ImportMaterial(const aiScene* scene,
                                                     const aiMesh* mesh,
                                                     renderer::ResourceManager& resources)
 {
-    auto mat = std::make_shared<renderer::Material>();
+    auto mat = std::make_unique<renderer::Material>();
     // paramData はシェーダー確定後に SyncMaterial が初期化するため、ここでは設定しない。
     // assimp の diffuse color は MaterialComponent 経由で設定する必要がある。
     (void)resources;

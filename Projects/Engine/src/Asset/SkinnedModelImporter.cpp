@@ -185,12 +185,12 @@ void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
 
 } // anonymous namespace
 
-std::shared_ptr<Model> ImportSkinnedModel(const aiScene* scene,
+std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
                                           float unitScale,
                                           renderer::ResourceManager& resources)
 {
-    auto model = std::make_shared<Model>();
-    model->skeleton = std::make_shared<Skeleton>();
+    auto model = std::make_unique<Model>();
+    model->skeleton = std::make_unique<Skeleton>();
     ImportNodesRecursive(scene->mRootNode, -1, unitScale, *model->skeleton);
     model->skeleton->rootInverseTransform =
         math::Matrix4::Inverse(ToMatrix4(scene->mRootNode->mTransformation, unitScale));
@@ -230,7 +230,7 @@ std::shared_ptr<Model> ImportSkinnedModel(const aiScene* scene,
 
         auto indices = ImportIndices(src);
 
-        auto mesh = std::make_shared<renderer::Mesh>();
+        auto mesh = std::make_unique<renderer::Mesh>();
         mesh->isSkinned    = true;
         mesh->vertexBuffer = resources.CreateVertexBuffer(
             vertices.data(), vertices.size() * sizeof(renderer::SkinnedVertex), sizeof(renderer::SkinnedVertex));
@@ -243,7 +243,7 @@ std::shared_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         mesh->cpuIndices         = indices;
         mesh->ComputeBounds();
 
-        model->meshes.push_back(mesh);
+        model->meshes.push_back(std::move(mesh));
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
 
