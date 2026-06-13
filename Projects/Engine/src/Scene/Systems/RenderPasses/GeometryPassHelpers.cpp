@@ -162,7 +162,7 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
         return nullptr;
 
     if (!mc.material)
-        mc.material = std::make_shared<renderer::Material>();
+        mc.material = std::make_unique<renderer::Material>();
 
     auto& material = *mc.material;
     const std::string& shaderPath = mc.GetShaderPath();
