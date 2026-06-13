@@ -71,15 +71,15 @@ public:
 private:
     friend class ResourceManager;
 
-    virtual std::shared_ptr<IBuffer> CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
-    virtual std::shared_ptr<IBuffer> CreateNativeIndexBuffer(const void* data, uint32_t count) = 0;
-    virtual std::shared_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
-    virtual std::shared_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
-    virtual std::shared_ptr<ITexture> CreateNativeTexture(const std::string& path) = 0;
-    virtual std::shared_ptr<ITexture> CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
-    virtual std::shared_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
-    virtual std::shared_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
-    virtual std::shared_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
+    virtual std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
+    virtual std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void* data, uint32_t count) = 0;
+    virtual std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
+    virtual std::unique_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeTexture(const std::string& path) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
+    virtual std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
+    virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
 };
 
 } // namespace fbzz::renderer

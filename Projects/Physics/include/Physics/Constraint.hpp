@@ -17,7 +17,7 @@ namespace fbzz::physics
         SLIDER
     };
 
-    // World が shared_ptr で寿命を管理し、制約対象の RigidBody は非所有ポインタで参照する。
+    // World が unique_ptr で寿命を管理し、制約対象の RigidBody は非所有ポインタで参照する。
     class Constraint
     {
     public:

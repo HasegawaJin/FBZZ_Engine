@@ -150,7 +150,7 @@ void SyncColliderShape(AabbColliderComponent& col)
         ? static_cast<physics::AABBCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_shared<physics::AABBCollider>(col.size * 0.5f);
+        col.collider = std::make_unique<physics::AABBCollider>(col.size * 0.5f);
         shape = static_cast<physics::AABBCollider*>(col.collider.get());
     }
     shape->m_halfExtents = col.size * 0.5f;
@@ -162,7 +162,7 @@ void SyncColliderShape(BoxColliderComponent& col)
         ? static_cast<physics::OBBCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_shared<physics::OBBCollider>(col.size * 0.5f);
+        col.collider = std::make_unique<physics::OBBCollider>(col.size * 0.5f);
         shape = static_cast<physics::OBBCollider*>(col.collider.get());
     }
     shape->m_halfExtents = col.size * 0.5f;
@@ -174,7 +174,7 @@ void SyncColliderShape(SphereColliderComponent& col)
         ? static_cast<physics::SphereCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_shared<physics::SphereCollider>(col.radius);
+        col.collider = std::make_unique<physics::SphereCollider>(col.radius);
         shape = static_cast<physics::SphereCollider*>(col.collider.get());
     }
     shape->m_radius = col.radius;
@@ -186,7 +186,7 @@ void SyncColliderShape(CapsuleColliderComponent& col)
         ? static_cast<physics::CapsuleCollider*>(col.collider.get())
         : nullptr;
     if (!shape) {
-        col.collider = std::make_shared<physics::CapsuleCollider>(col.radius, col.halfHeight);
+        col.collider = std::make_unique<physics::CapsuleCollider>(col.radius, col.halfHeight);
         shape = static_cast<physics::CapsuleCollider*>(col.collider.get());
     }
     shape->m_radius = col.radius;
@@ -196,7 +196,7 @@ void SyncColliderShape(CapsuleColliderComponent& col)
 void EnsureMeshCollider(GameObject& go, MeshColliderComponent& col)
 {
     if (col.collider) return;
-    std::shared_ptr<renderer::Mesh> mesh;
+    renderer::Mesh* mesh = nullptr;
     if (auto* meshRenderer = go.GetComponent<MeshRenderer>())
         mesh = meshRenderer->mesh;
     if (!mesh) {
@@ -205,13 +205,13 @@ void EnsureMeshCollider(GameObject& go, MeshColliderComponent& col)
                 skinned->model = asset::AssetManager::Load<asset::Model>(skinned->modelPath);
             if (skinned->model && skinned->meshIndex >= 0 &&
                 skinned->meshIndex < static_cast<int>(skinned->model->meshes.size()))
-                mesh = skinned->model->meshes[static_cast<size_t>(skinned->meshIndex)];
+                mesh = skinned->model->meshes[static_cast<size_t>(skinned->meshIndex)].get();
         }
     }
     if (!mesh && !col.meshPath.empty()) {
-        if (auto model = asset::AssetManager::Load<asset::Model>(col.meshPath)) {
+        if (auto* model = asset::AssetManager::Load<asset::Model>(col.meshPath)) {
             if (col.meshIndex >= 0 && col.meshIndex < static_cast<int>(model->meshes.size()))
-                mesh = model->meshes[static_cast<size_t>(col.meshIndex)];
+                mesh = model->meshes[static_cast<size_t>(col.meshIndex)].get();
         }
     }
     if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) return;
@@ -220,13 +220,13 @@ void EnsureMeshCollider(GameObject& go, MeshColliderComponent& col)
     positions.reserve(mesh->cpuVertices.size());
     for (const auto& vertex : mesh->cpuVertices)
         positions.push_back(vertex.position);
-    col.collider = std::make_shared<physics::TriangleMeshCollider>(positions, mesh->cpuIndices);
+    col.collider = std::make_unique<physics::TriangleMeshCollider>(positions, mesh->cpuIndices);
 }
 
 void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
 {
     if (col.collider) return;
-    std::shared_ptr<renderer::Mesh> mesh;
+    renderer::Mesh* mesh = nullptr;
     if (auto* meshRenderer = go.GetComponent<MeshRenderer>())
         mesh = meshRenderer->mesh;
     if (!mesh) {
@@ -235,13 +235,13 @@ void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
                 skinned->model = asset::AssetManager::Load<asset::Model>(skinned->modelPath);
             if (skinned->model && skinned->meshIndex >= 0 &&
                 skinned->meshIndex < static_cast<int>(skinned->model->meshes.size()))
-                mesh = skinned->model->meshes[static_cast<size_t>(skinned->meshIndex)];
+                mesh = skinned->model->meshes[static_cast<size_t>(skinned->meshIndex)].get();
         }
     }
     if (!mesh && !col.meshPath.empty()) {
-        if (auto model = asset::AssetManager::Load<asset::Model>(col.meshPath)) {
+        if (auto* model = asset::AssetManager::Load<asset::Model>(col.meshPath)) {
             if (col.meshIndex >= 0 && col.meshIndex < static_cast<int>(model->meshes.size()))
-                mesh = model->meshes[static_cast<size_t>(col.meshIndex)];
+                mesh = model->meshes[static_cast<size_t>(col.meshIndex)].get();
         }
     }
     if (!mesh || mesh->cpuVertices.empty()) return;
@@ -250,7 +250,7 @@ void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
     positions.reserve(mesh->cpuVertices.size());
     for (const auto& vertex : mesh->cpuVertices)
         positions.push_back(vertex.position);
-    col.collider = std::make_shared<physics::ConvexHullCollider>(std::move(positions));
+    col.collider = std::make_unique<physics::ConvexHullCollider>(std::move(positions));
 }
 
 template<typename T>
@@ -291,7 +291,7 @@ void AddColliderInstance(Scene& scene,
         col.collider->Update(worldCenter, go.transform.worldRotation);
     }
     const math::Vector3 centerOffset = ComponentScale(col.center, go.transform.worldScale);
-    physics::ColliderInstance instance{ col.collider, body, &col.material, centerOffset, col.isTrigger, go.layer };
+    physics::ColliderInstance instance{ col.collider.get(), body, &col.material, centerOffset, col.isTrigger, go.layer };
     col.colliderHandle = world.SyncCollider(col.colliderHandle, instance);
     colliderOwners[col.collider.get()] = { &go, &col };
 
@@ -316,14 +316,14 @@ void AddColliderInstance(Scene& scene,
             if (auto* water = go.GetComponent<WaterComponent>()) {
                 volume->volumeHandle = world.SyncVolume(
                     volume->volumeHandle,
-                    std::make_shared<WaterBuoyancyVolume>(*water, go.transform, settings));
+                    std::make_unique<WaterBuoyancyVolume>(*water, go.transform, settings));
                 return;
             }
         }
 
         volume->volumeHandle = world.SyncVolume(
             volume->volumeHandle,
-            std::make_shared<physics::ColliderVolume>(col.collider, settings));
+            std::make_unique<physics::ColliderVolume>(col.collider.get(), settings));
     }
 }
 
@@ -451,7 +451,7 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
             //      SceneView の structured binding に依存せず、Component 実体へ直接書き戻す。
             rb->rigidBody->SetPosition(go->transform.worldPosition);
             rb->rigidBody->SetRotation(go->transform.worldRotation);
-            rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody);
+            rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody.get());
         }
     }
 
@@ -508,7 +508,7 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
                     }
                 }
 
-                meshCol->collider = std::make_shared<physics::TriangleMeshCollider>(positions, indices);
+                meshCol->collider = std::make_unique<physics::TriangleMeshCollider>(positions, indices);
                 terrain->colliderDirty = false;
             }
         }

@@ -25,7 +25,7 @@ void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go)
         ? static_cast<physics::AABBCollider*>(col.collider.get())
         : nullptr;
     if (!box) {
-        col.collider = std::make_shared<physics::AABBCollider>(col.size * 0.5f);
+        col.collider = std::make_unique<physics::AABBCollider>(col.size * 0.5f);
         box = static_cast<physics::AABBCollider*>(col.collider.get());
     }
     box->m_halfExtents = col.size * 0.5f;
@@ -40,7 +40,7 @@ void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go)
         ? static_cast<physics::OBBCollider*>(col.collider.get())
         : nullptr;
     if (!box) {
-        col.collider = std::make_shared<physics::OBBCollider>(col.size * 0.5f);
+        col.collider = std::make_unique<physics::OBBCollider>(col.size * 0.5f);
         box = static_cast<physics::OBBCollider*>(col.collider.get());
     }
     box->m_halfExtents = col.size * 0.5f;
@@ -55,7 +55,7 @@ void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& 
         ? static_cast<physics::SphereCollider*>(col.collider.get())
         : nullptr;
     if (!sphere) {
-        col.collider = std::make_shared<physics::SphereCollider>(col.radius);
+        col.collider = std::make_unique<physics::SphereCollider>(col.radius);
         sphere = static_cast<physics::SphereCollider*>(col.collider.get());
     }
     sphere->m_radius = col.radius;
@@ -71,7 +71,7 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
         ? static_cast<physics::CapsuleCollider*>(col.collider.get())
         : nullptr;
     if (!capsule) {
-        col.collider = std::make_shared<physics::CapsuleCollider>(col.radius, col.halfHeight);
+        col.collider = std::make_unique<physics::CapsuleCollider>(col.radius, col.halfHeight);
         capsule = static_cast<physics::CapsuleCollider*>(col.collider.get());
     }
     capsule->m_radius = col.radius;

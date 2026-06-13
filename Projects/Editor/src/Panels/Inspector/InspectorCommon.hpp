@@ -267,7 +267,7 @@ void DrawUndoableComponentBody(scene::GameObject& go,
                     rigidBody->bodyHandle = snapshot.component.bodyHandle;
                     if (snapshot.hasBody) {
                         if (!rigidBody->rigidBody)
-                            rigidBody->rigidBody = std::make_shared<physics::RigidBody>();
+                            rigidBody->rigidBody = std::make_unique<physics::RigidBody>();
                         *rigidBody->rigidBody = snapshot.body;
                     } else {
                         rigidBody->rigidBody.reset();
@@ -453,21 +453,21 @@ inline scene::AabbColliderComponent CreateAabbCollider(const math::Vector3& size
 {
     scene::AabbColliderComponent collider;
     collider.size = size;
-    collider.collider = std::make_shared<physics::AABBCollider>(size * 0.5f);
+    collider.collider = std::make_unique<physics::AABBCollider>(size * 0.5f);
     return collider;
 }
 inline scene::BoxColliderComponent CreateBoxCollider(const math::Vector3& halfExtents = { 0.5f, 0.5f, 0.5f })
 {
     scene::BoxColliderComponent collider;
     collider.size = halfExtents * 2.0f;
-    collider.collider = std::make_shared<physics::OBBCollider>(halfExtents);
+    collider.collider = std::make_unique<physics::OBBCollider>(halfExtents);
     return collider;
 }
 inline scene::SphereColliderComponent CreateSphereCollider(float radius = 0.5f)
 {
     scene::SphereColliderComponent collider;
     collider.radius = radius;
-    collider.collider = std::make_shared<physics::SphereCollider>(radius);
+    collider.collider = std::make_unique<physics::SphereCollider>(radius);
     return collider;
 }
 inline scene::CapsuleColliderComponent CreateCapsuleCollider(float radius = 0.5f, float halfHeight = 1.0f)
@@ -475,7 +475,7 @@ inline scene::CapsuleColliderComponent CreateCapsuleCollider(float radius = 0.5f
     scene::CapsuleColliderComponent collider;
     collider.radius = radius;
     collider.halfHeight = halfHeight;
-    collider.collider = std::make_shared<physics::CapsuleCollider>(radius, halfHeight);
+    collider.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
     return collider;
 }
 inline math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
@@ -549,9 +549,9 @@ inline std::string MaterialAssetDiskPath(const EditorContext& ctx, const std::st
 {
     return ToProjectAssetDiskPath(ctx.projectRoot, assetPath);
 }
-inline std::shared_ptr<renderer::Mesh> MeshFromModelPath(const std::string& path, int meshIndex)
+inline renderer::Mesh* MeshFromModelPath(const std::string& path, int meshIndex)
 {
-    if (path.empty()) return {};
+    if (path.empty()) return nullptr;
     std::string filePath = path;
     int resolvedIndex = meshIndex;
     const size_t slashPos = path.find_last_of('/');
@@ -572,14 +572,14 @@ inline std::shared_ptr<renderer::Mesh> MeshFromModelPath(const std::string& path
         }
     }
 
-    auto model = asset::AssetManager::Load<asset::Model>(filePath);
+    auto* model = asset::AssetManager::Load<asset::Model>(filePath);
     if (!model || resolvedIndex < 0 || resolvedIndex >= static_cast<int>(model->meshes.size()))
-        return {};
-    return model->meshes[static_cast<size_t>(resolvedIndex)];
+        return nullptr;
+    return model->meshes[static_cast<size_t>(resolvedIndex)].get();
 }
-inline std::shared_ptr<renderer::Mesh> SourceMeshFromGameObject(scene::GameObject& go,
-                                                         std::string& outPath,
-                                                         int& outMeshIndex)
+inline renderer::Mesh* SourceMeshFromGameObject(scene::GameObject& go,
+                                                std::string& outPath,
+                                                int& outMeshIndex)
 {
     if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh) {
         outPath = mr->meshPath;
@@ -594,11 +594,11 @@ inline std::shared_ptr<renderer::Mesh> SourceMeshFromGameObject(scene::GameObjec
             smr->meshIndex < static_cast<int>(smr->model->meshes.size())) {
             outPath = smr->modelPath;
             outMeshIndex = smr->meshIndex;
-            return smr->model->meshes[static_cast<size_t>(smr->meshIndex)];
+            return smr->model->meshes[static_cast<size_t>(smr->meshIndex)].get();
         }
     }
 
-    return {};
+    return nullptr;
 }
 inline std::vector<math::Vector3> MeshPositions(const renderer::Mesh& mesh)
 {
@@ -608,22 +608,22 @@ inline std::vector<math::Vector3> MeshPositions(const renderer::Mesh& mesh)
         positions.push_back(vertex.position);
     return positions;
 }
-inline bool BuildMeshCollider(scene::MeshColliderComponent& col, const std::shared_ptr<renderer::Mesh>& mesh)
+inline bool BuildMeshCollider(scene::MeshColliderComponent& col, const renderer::Mesh* mesh)
 {
     if (!mesh || mesh->cpuVertices.empty() || mesh->cpuIndices.empty()) return false;
-    col.collider = std::make_shared<physics::TriangleMeshCollider>(MeshPositions(*mesh), mesh->cpuIndices);
+    col.collider = std::make_unique<physics::TriangleMeshCollider>(MeshPositions(*mesh), mesh->cpuIndices);
     return true;
 }
-inline bool BuildConvexHullCollider(scene::ConvexHullColliderComponent& col, const std::shared_ptr<renderer::Mesh>& mesh)
+inline bool BuildConvexHullCollider(scene::ConvexHullColliderComponent& col, const renderer::Mesh* mesh)
 {
     if (!mesh || mesh->cpuVertices.empty()) return false;
-    col.collider = std::make_shared<physics::ConvexHullCollider>(MeshPositions(*mesh));
+    col.collider = std::make_unique<physics::ConvexHullCollider>(MeshPositions(*mesh));
     return true;
 }
 inline scene::RigidBodyComponent CreateDefaultRigidBody()
 {
     scene::RigidBodyComponent rb;
-    rb.rigidBody = std::make_shared<physics::RigidBody>();
+    rb.rigidBody = std::make_unique<physics::RigidBody>();
     rb.rigidBody->SetMass(1.0f);
     return rb;
 }

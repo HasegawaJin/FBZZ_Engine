@@ -4,7 +4,6 @@
 #pragma once
 #include <Physics/Volume.hpp>
 #include <Physics/Collider.hpp>
-#include <memory>
 
 namespace fbzz::physics
 {
@@ -37,7 +36,9 @@ namespace fbzz::physics
     class ColliderVolume : public Volume
     {
     public:
-        ColliderVolume(std::shared_ptr<Collider> collider, const VolumeSettings& settings);
+        // WHY: Collider の所有権は ColliderComponent (unique_ptr) が持つ。
+        //      Volume は ColliderComponent より短命なため、非所有ポインタで参照する。
+        ColliderVolume(Collider* collider, const VolumeSettings& settings);
 
         bool Contains(const math::Vector3& position) const override;
         void Apply(RigidBody& body, float dt) override;
@@ -48,7 +49,7 @@ namespace fbzz::physics
         void Tick(float dt) override;
 
     private:
-        std::shared_ptr<Collider> m_collider;
+        Collider* m_collider = nullptr;
         VolumeSettings m_settings;
         float m_elapsed = 0.0f;
     };
