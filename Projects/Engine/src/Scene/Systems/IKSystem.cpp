@@ -290,9 +290,10 @@ void IKSystem(Scene& scene, physics::World& world,
                 if (legCount > 0) {
                     hipOffsetY = offsetSum / static_cast<float>(legCount);
 
-                    // 平均脚長の 40% を上限にして、補正による骨格破綻を防ぐ。
+                    // 平均脚長に対する設定比率を上限にして、補正による骨格破綻を防ぐ。
                     const float avgLegLen  = legLenSum / static_cast<float>(legCount);
-                    const float maxHipMove = avgLegLen * 0.4f;
+                    const float maxHipMove =
+                        avgLegLen * math::Clamp(ik->hipMaxOffsetRatio, 0.0f, 1.0f);
                     hipOffsetY = math::Clamp(hipOffsetY, -maxHipMove, maxHipMove);
 
                     // Hip ボーンの nodeGlobalTransforms と boneMatrices を先行更新する。
