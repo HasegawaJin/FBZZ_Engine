@@ -273,7 +273,7 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
 
     switch (inst.collider->GetType()) {
     case ColliderType::SPHERE: {
-        const auto* s = static_cast<const SphereCollider*>(inst.collider.get());
+        const auto* s = static_cast<const SphereCollider*>(inst.collider);
         return RaySphere(o, d, maxDist, s->GetAABB().Center(), s->m_radius, tOut, normalOut);
     }
     case ColliderType::AABB: {
@@ -281,19 +281,19 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
         return RayAABB(o, d, maxDist, aabb.min, aabb.max, tOut, normalOut);
     }
     case ColliderType::OBB: {
-        const auto* obb = static_cast<const OBBCollider*>(inst.collider.get());
+        const auto* obb = static_cast<const OBBCollider*>(inst.collider);
         return RayOBB(o, d, maxDist, *obb, tOut, normalOut);
     }
     case ColliderType::CAPSULE: {
-        const auto* cap = static_cast<const CapsuleCollider*>(inst.collider.get());
+        const auto* cap = static_cast<const CapsuleCollider*>(inst.collider);
         return RayCapsule(o, d, maxDist, *cap, tOut, normalOut);
     }
     case ColliderType::TRIANGLE_MESH: {
-        const auto* mesh = static_cast<const TriangleMeshCollider*>(inst.collider.get());
+        const auto* mesh = static_cast<const TriangleMeshCollider*>(inst.collider);
         return RayTriangleMesh(o, d, maxDist, *mesh, tOut, normalOut);
     }
     case ColliderType::CONVEX_HULL: {
-        const auto* hull = static_cast<const ConvexHullCollider*>(inst.collider.get());
+        const auto* hull = static_cast<const ConvexHullCollider*>(inst.collider);
         return RayConvexHull(o, d, maxDist, *hull, tOut, normalOut);
     }
     default:
@@ -312,7 +312,7 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
 
     switch (inst.collider->GetType()) {
     case ColliderType::SPHERE: {
-        const auto* s = static_cast<const SphereCollider*>(inst.collider.get());
+        const auto* s = static_cast<const SphereCollider*>(inst.collider);
         const float dist2 = (center - s->GetAABB().Center()).LengthSq();
         const float r = radius + s->m_radius;
         return dist2 <= r * r;
@@ -335,7 +335,7 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
         return dist2 <= radius * radius;
     }
     case ColliderType::CAPSULE: {
-        const auto* cap = static_cast<const CapsuleCollider*>(inst.collider.get());
+        const auto* cap = static_cast<const CapsuleCollider*>(inst.collider);
         const Vector3 ab = cap->GetSegmentEnd() - cap->GetSegmentStart();
         const Vector3 ac = center - cap->GetSegmentStart();
         const float len2 = Vector3::Dot(ab, ab);
@@ -375,7 +375,7 @@ namespace fbzz::physics
             slot.touched = false;
     }
 
-    BodyHandle World::SyncBody(BodyHandle handle, std::shared_ptr<RigidBody> body)
+    BodyHandle World::SyncBody(BodyHandle handle, RigidBody* body)
     {
         if (!body) return {};
 
@@ -386,7 +386,7 @@ namespace fbzz::physics
                 m_bodyPool[index].body &&
                 !m_bodyPool[index].touched)
             {
-                m_bodyPool[index].body = std::move(body);
+                m_bodyPool[index].body = body;
                 m_bodyPool[index].touched = true;
                 return handle;
             }
@@ -396,7 +396,7 @@ namespace fbzz::physics
             if (m_bodyPool[i].body == body && !m_bodyPool[i].touched) {
                 // WHY: Handle は Scene 側 Component に保持されるが、Component のコピー・再生成・
                 //      初期化順によって stale/invalid になる可能性がある。
-                //      その場合でも同じ RigidBody shared_ptr が既に World にあるなら、
+                //      その場合でも同じ RigidBody* が既に World にあるなら、
                 //      新規 slot を作らず既存 slot を再接続して pool の肥大化を防ぐ。
                 m_bodyPool[i].touched = true;
                 return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
@@ -405,7 +405,7 @@ namespace fbzz::physics
 
         for (size_t i = 0; i < m_bodyPool.size(); ++i) {
             if (!m_bodyPool[i].body) {
-                m_bodyPool[i].body = std::move(body);
+                m_bodyPool[i].body = body;
                 m_bodyPool[i].touched = true;
                 m_sceneSyncChanged = true;
                 return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
@@ -413,7 +413,7 @@ namespace fbzz::physics
         }
 
         BodySlot slot;
-        slot.body = std::move(body);
+        slot.body = body;
         slot.touched = true;
         m_bodyPool.push_back(std::move(slot));
         m_sceneSyncChanged = true;
@@ -429,7 +429,7 @@ namespace fbzz::physics
             // ColliderInstance は Physics 単体利用時にも Body と形状の対応を持つ入口になる。
             // Engine 側の PhysicsSystem だけに慣性設定を任せると、Tests のように World を直接使う経路で
             // AABB の「軸整合なので回転させない」という制約が抜けるため、同期時に必ず形状から慣性を更新する。
-            collider.body->SetInertiaFromCollider(collider.collider.get());
+            collider.body->SetInertiaFromCollider(collider.collider);
         }
 
         if (handle.IsValid()) {
@@ -450,7 +450,7 @@ namespace fbzz::physics
                 m_colliderPool[i].collider.collider == collider.collider &&
                 !m_colliderPool[i].touched)
             {
-                // WHY: ColliderHandle が stale になっても Collider shared_ptr の実体が同じなら
+                // WHY: ColliderHandle が stale になっても Collider* が同じなら
                 //      Scene 上は同じ ColliderComponent である。既存 slot を再接続し、
                 //      handle 不整合が毎フレームの重複登録へ発展するのを防ぐ。
                 m_colliderPool[i].collider = std::move(collider);
@@ -478,7 +478,7 @@ namespace fbzz::physics
         return { static_cast<uint32_t>(m_colliderPool.size()), m_colliderPool.back().generation };
     }
 
-    VolumeHandle World::SyncVolume(VolumeHandle handle, std::shared_ptr<Volume> volume)
+    VolumeHandle World::SyncVolume(VolumeHandle handle, std::unique_ptr<Volume> volume)
     {
         if (!volume) return {};
 
@@ -519,7 +519,9 @@ namespace fbzz::physics
             if (slot.touched && slot.body) {
                 m_bodies.push_back(slot.body);
             } else if (slot.body) {
-                slot.body.reset();
+                // WHY: 所有権は Component 側にあるため World はポインタを null するだけ。
+                //      Component が破棄されれば unique_ptr により自動解放される。
+                slot.body = nullptr;
                 slot.generation = NextGeneration(slot.generation);
                 m_sceneSyncChanged = true;
             }
@@ -540,21 +542,21 @@ namespace fbzz::physics
         m_volumes.clear();
         for (auto& slot : m_volumePool) {
             if (slot.touched && slot.volume) {
-                m_volumes.push_back(slot.volume);
+                m_volumes.push_back(slot.volume.get());
             } else if (slot.volume) {
-                slot.volume.reset();
+                slot.volume.reset(); // World が所有しているので直接破棄する
                 slot.generation = NextGeneration(slot.generation);
                 m_sceneSyncChanged = true;
             }
         }
     }
 
-    void World::AddConstraint(std::shared_ptr<Constraint> constraint)
+    void World::AddConstraint(std::unique_ptr<Constraint> constraint)
     {
         m_constraints.push_back(std::move(constraint));
     }
 
-    const std::vector<std::shared_ptr<Constraint>>& World::GetConstraints() const
+    const std::vector<std::unique_ptr<Constraint>>& World::GetConstraints() const
     {
         return m_constraints;
     }
@@ -624,7 +626,7 @@ namespace fbzz::physics
     void World::RemoveExpiredVolumes()
     {
         m_volumes.erase(std::remove_if(m_volumes.begin(), m_volumes.end(),
-            [](const std::shared_ptr<Volume>& volume) {
+            [](const Volume* volume) {
                 return !volume || volume->IsExpired();
             }),
             m_volumes.end());
@@ -793,11 +795,11 @@ namespace fbzz::physics
             const SphereCollider* sphereA = nullptr;
             for (const auto& inst : m_colliders)
             {
-                if (inst.body == bodyA.get() &&
+                if (inst.body == bodyA &&
                     inst.collider &&
                     inst.collider->GetType() == ColliderType::SPHERE)
                 {
-                    sphereA = static_cast<const SphereCollider*>(inst.collider.get());
+                    sphereA = static_cast<const SphereCollider*>(inst.collider);
                     break;
                 }
             }
@@ -817,11 +819,11 @@ namespace fbzz::physics
                 const SphereCollider* sphereB = nullptr;
                 for (const auto& inst : m_colliders)
                 {
-                    if (inst.body == bodyB.get() &&
+                    if (inst.body == bodyB &&
                         inst.collider &&
                         inst.collider->GetType() == ColliderType::SPHERE)
                     {
-                        sphereB = static_cast<const SphereCollider*>(inst.collider.get());
+                        sphereB = static_cast<const SphereCollider*>(inst.collider);
                         break;
                     }
                 }
@@ -910,7 +912,7 @@ namespace fbzz::physics
                 bestHit.point    = origin + d * t;
                 bestHit.normal   = n;
                 bestHit.distance = t;
-                bestHit.collider = inst.collider.get();
+                bestHit.collider = inst.collider;
                 bestHit.body     = inst.body;
             }
         }
@@ -937,7 +939,7 @@ namespace fbzz::physics
                 h.point    = origin + d * t;
                 h.normal   = n;
                 h.distance = t;
-                h.collider = inst.collider.get();
+                h.collider = inst.collider;
                 h.body     = inst.body;
                 results.push_back(h);
             }
@@ -975,7 +977,7 @@ namespace fbzz::physics
 
             switch (inst.collider->GetType()) {
             case ColliderType::SPHERE: {
-                const auto* s = static_cast<const SphereCollider*>(inst.collider.get());
+                const auto* s = static_cast<const SphereCollider*>(inst.collider);
                 RaySphere(origin, d, maxDistance, s->GetAABB().Center(),
                           s->m_radius + radius, t, n);
                 break;
@@ -983,7 +985,7 @@ namespace fbzz::physics
             case ColliderType::CAPSULE: {
                 // CapsuleCollider の半径を膨張させて再判定
                 // WHAT: 一時オブジェクトを作らずに既存関数の radius 引数を拡張して再利用する
-                const auto* cap = static_cast<const CapsuleCollider*>(inst.collider.get());
+                const auto* cap = static_cast<const CapsuleCollider*>(inst.collider);
                 // 軸両端の球を膨張
                 float tA; math::Vector3 nA;
                 float tB; math::Vector3 nB;
@@ -1019,7 +1021,7 @@ namespace fbzz::physics
                 bestHit.point    = origin + d * t;
                 bestHit.normal   = n;
                 bestHit.distance = t;
-                bestHit.collider = inst.collider.get();
+                bestHit.collider = inst.collider;
                 bestHit.body     = inst.body;
             }
         }
