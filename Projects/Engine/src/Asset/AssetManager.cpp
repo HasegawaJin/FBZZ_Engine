@@ -93,6 +93,11 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
         s_materialSlots.emplace_back();
 }
 
+std::string AssetManager::ResolveAssetPath(const std::string& path)
+{
+    return ResolvePath(Normalize(path), s_basePath);
+}
+
 void AssetManager::UnloadAll()
 {
     s_models.clear();
