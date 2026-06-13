@@ -18,6 +18,38 @@
 
 namespace fbzz::editor {
 
+namespace {
+
+template<typename T, typename Setter>
+void PushGameObjectPropertyCommand(EditorContext& ctx,
+                                   scene::EntityID id,
+                                   const char* description,
+                                   T before,
+                                   T after,
+                                   Setter setter)
+{
+    if (!ctx.undoStack || !ctx.activeScene || before == after) return;
+
+    scene::Scene* scene = ctx.activeScene;
+    scene::GameObject* gameObject = scene->GetGameObject(id);
+    if (!gameObject) return;
+    const std::string instanceId = gameObject->instanceId;
+    const auto markDirty = ctx.markSceneDirty;
+    auto apply = [scene, instanceId, setter, markDirty](const T& value) {
+        if (auto* target = scene->FindByGuid(instanceId)) {
+            setter(*target, value);
+            if (markDirty) markDirty();
+        }
+    };
+    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+        description,
+        [apply, after]() { apply(after); },
+        [apply, before]() { apply(before); }));
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+}
+
+} // namespace
+
 void InspectorPanel::OnShutdown()
 {
     // WHY: Inspector はロック中の EntityID / AssetPath と、表示中 Material のハンドルを
@@ -182,8 +214,22 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     char nameBuf[256];
     std::snprintf(nameBuf, sizeof(nameBuf), "%s", go->name.c_str());
     ImGui::SetNextItemWidth(-1.0f);
+    static scene::EntityID namingEntity;
+    static std::string nameBeforeEdit;
+    const std::string nameAtFrameStart = go->name;
     if (ImGui::InputText("##name", nameBuf, sizeof(nameBuf)))
         go->name = nameBuf;
+    if (ImGui::IsItemActivated()) {
+        namingEntity = go->GetID();
+        nameBeforeEdit = nameAtFrameStart;
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit() && namingEntity == go->GetID()) {
+        PushGameObjectPropertyCommand(
+            ctx, go->GetID(), "Rename GameObject", nameBeforeEdit, go->name,
+            [](scene::GameObject& target, const std::string& value) { target.name = value; });
+        namingEntity = {};
+        nameBeforeEdit.clear();
+    }
 
     auto& ps = ctx.projectSettings;
 
@@ -205,8 +251,13 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::BeginCombo("##tag", tagLabel)) {
             for (int i = 0; i < (int)ps.tags.size(); ++i) {
                 bool selected = (i == tagIdx);
-                if (ImGui::Selectable(ps.tags[i].c_str(), selected))
+                if (ImGui::Selectable(ps.tags[i].c_str(), selected)) {
+                    const std::string before = go->tag;
                     go->tag = ps.tags[i];
+                    PushGameObjectPropertyCommand(
+                        ctx, go->GetID(), "Change Tag", before, go->tag,
+                        [](scene::GameObject& target, const std::string& value) { target.tag = value; });
+                }
                 if (selected) ImGui::SetItemDefaultFocus();
             }
             ImGui::Separator();
@@ -231,8 +282,13 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     ? ("User Layer " + std::to_string(i))
                     : ps.layerNames[i];
                 const bool selected = i == layerIdx;
-                if (ImGui::Selectable(layerLabel.c_str(), selected))
+                if (ImGui::Selectable(layerLabel.c_str(), selected)) {
+                    const int before = go->layer;
                     go->layer = i;
+                    PushGameObjectPropertyCommand(
+                        ctx, go->GetID(), "Change Layer", before, go->layer,
+                        [](scene::GameObject& target, int value) { target.layer = value; });
+                }
                 if (selected) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
@@ -256,7 +312,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     DrawScriptInspectors(go, ctx);
 
     ImGui::Spacing();
-    DrawAddComponentMenu(*go, m_addComponentFilter);
+    DrawAddComponentMenu(*go, m_addComponentFilter, ctx);
 }
 
 } // namespace fbzz::editor

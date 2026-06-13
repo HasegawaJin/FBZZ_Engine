@@ -7,6 +7,7 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -19,6 +20,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <array>
 #include <cstdio>
 #include <string>
@@ -70,6 +72,15 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
 
         asset::MaterialAsset& mat = *matPtr;
+        struct MaterialUndoTracker {
+            ImGuiID activeId = 0;
+            asset::MaterialAsset before;
+            bool active = false;
+            bool changed = false;
+        };
+        static MaterialUndoTracker undo;
+        const asset::MaterialAsset materialBeforeDraw = mat;
+        const ImGuiID activeBefore = ImGui::GetActiveID();
         bool materialDirty = false;
 
         const renderer::ShaderDescriptor* desc = nullptr;
@@ -260,6 +271,63 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     auto* m = asset::AssetManager::GetMaterial(capturedHandle);
                     return m && asset::SaveMaterialAssetToFile(capturedPath, *m);
                 });
+        }
+
+        const ImGuiID activeAfter = ImGui::GetActiveID();
+        auto pushMaterialCommand = [&](const asset::MaterialAsset& before,
+                                       const asset::MaterialAsset& after) {
+            if (!ctx.undoStack) return;
+            EditorContext* context = &ctx;
+            const auto handle = m_inspectedMat;
+            const std::string capturedPath = absPath;
+            const std::string capturedDisplay = relPath;
+            auto apply = [context, handle, capturedPath, capturedDisplay](
+                             const asset::MaterialAsset& value) {
+                auto* target = asset::AssetManager::GetMaterial(handle);
+                if (!target) return;
+                *target = value;
+                AssetDirtyRegistry::Register(
+                    capturedPath, capturedDisplay, "MAT",
+                    [capturedPath, handle]() {
+                        auto* material = asset::AssetManager::GetMaterial(handle);
+                        return material && asset::SaveMaterialAssetToFile(capturedPath, *material);
+                    });
+                if (context->activeScene) {
+                    for (auto [component] : context->activeScene->View<scene::MaterialComponent>()) {
+                        if (NormalizeAssetPath(component.materialPath) == capturedDisplay)
+                            component.material.reset();
+                    }
+                    for (auto [terrain] : context->activeScene->View<scene::TerrainComponent>()) {
+                        if (NormalizeAssetPath(terrain.materialPath) == capturedDisplay)
+                            terrain.splatDirty = true;
+                    }
+                    for (auto [water] : context->activeScene->View<scene::WaterComponent>()) {
+                        if (NormalizeAssetPath(water.materialPath) == capturedDisplay) {
+                            water.texDirty = true;
+                            water.foamDirty = true;
+                        }
+                    }
+                }
+                context->requestAssetBrowserRefresh = true;
+            };
+            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                "Edit Material Asset",
+                [apply, after]() { apply(after); },
+                [apply, before]() { apply(before); }));
+        };
+        if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+            undo.activeId = activeAfter;
+            undo.before = materialBeforeDraw;
+            undo.active = true;
+            undo.changed = materialDirty;
+        } else if (undo.active && activeAfter == undo.activeId) {
+            undo.changed |= materialDirty;
+        } else if (undo.active && activeAfter != undo.activeId) {
+            if (undo.changed) pushMaterialCommand(undo.before, mat);
+            undo.active = false;
+            undo.changed = false;
+        } else if (!undo.active && materialDirty && activeAfter == 0) {
+            pushMaterialCommand(materialBeforeDraw, mat);
         }
 
         ImGui::Separator();
