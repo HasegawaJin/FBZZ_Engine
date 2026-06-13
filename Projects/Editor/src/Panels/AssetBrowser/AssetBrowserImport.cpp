@@ -7,24 +7,16 @@ namespace fbzz::editor {
 
 bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 {
-    return ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb"
-        || ext == ".png" || ext == ".jpg" || ext == ".jpeg";
+    // WHY: 画像は PNG / JPG 等を直接 GPU リソースとして読み込めるため、
+    //      Asset Browser の変換パイプラインはモデル形式だけを対象にする。
+    return ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb";
 }
 
 bool AssetBrowserPanel::IsAlreadyImported(const std::string& absPath)
 {
     namespace fs = std::filesystem;
-    const fs::path p   = util::FileSystem::PathFromUtf8(absPath);
-    const std::string ext = util::StringUtils::ToLower(
-        util::FileSystem::GetExtension(absPath));
-
-    // テクスチャ: .fztex サイドカーが存在すればインポート済み
-    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
-        const fs::path sidecar = p.parent_path() / (util::FileSystem::PathToUtf8(p.stem()) + ".fztex");
-        return util::FileSystem::Exists(sidecar);
-    }
-
     // メッシュ: stem/stem.fzasset が存在すればインポート済み
+    const fs::path p = util::FileSystem::PathFromUtf8(absPath);
     const std::string stem = util::FileSystem::PathToUtf8(p.stem());
     const fs::path check = p.parent_path() / stem / (stem + ".fzasset");
     return util::FileSystem::Exists(check);
@@ -47,8 +39,7 @@ void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
 
     if (IsAlreadyImported(absPath)) return;
 
-    const bool isTex = ext == ".png" || ext == ".jpg" || ext == ".jpeg";
-    m_pendingImports.push_back({ absPath, isTex ? PendingImport::Kind::Texture : PendingImport::Kind::Fbx });
+    m_pendingImports.push_back({ absPath });
     m_importAllRequested = true;
 }
 
@@ -71,8 +62,7 @@ void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
 
         if (IsAlreadyImported(absPath)) continue;
 
-        const bool isTex = ext == ".png" || ext == ".jpg" || ext == ".jpeg";
-    m_pendingImports.push_back({ absPath, isTex ? PendingImport::Kind::Texture : PendingImport::Kind::Fbx });
+        m_pendingImports.push_back({ absPath });
     }
 
     FBZZ_LOG_INFO("AssetBrowserPanel: scan complete — %zu file(s) queued for import",
@@ -218,27 +208,10 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
 
                 namespace fs = std::filesystem;
                 const fs::path srcPath = util::FileSystem::PathFromUtf8(imp.path);
-                bool ok = false;
-
-                if (imp.kind == PendingImport::Kind::Texture) {
-                    // テクスチャ: .fztex サイドカー(メタデータJSON)を生成する
-                    const std::string sidecarPath = util::FileSystem::PathToUtf8(
-                        srcPath.parent_path() / (util::FileSystem::PathToUtf8(srcPath.stem()) + ".fztex"));
-                    const std::string src = util::FileSystem::GetFilename(imp.path);
-                    const std::string content =
-                        "source      = \"" + src + "\"\n"
-                        "generate_mips = true\n"
-                        "format      = \"auto\"\n"
-                        "srgb        = true\n";
-                    ok = util::FileSystem::WriteText(sidecarPath, content);
-                    FBZZ_LOG_INFO("AssetBrowserPanel: texture sidecar %s: [%s]",
-                        ok ? "OK" : "FAILED", sidecarPath.c_str());
-                } else {
-                    const std::string outDir =
-                        util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
-                    FBZZ_LOG_INFO("AssetBrowserPanel: FBX outDir = [%s]", outDir.c_str());
-                    ok = FbxImportTool::Import(imp.path, outDir, imp.path);
-                }
+                const std::string outDir =
+                    util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
+                FBZZ_LOG_INFO("AssetBrowserPanel: model outDir = [%s]", outDir.c_str());
+                const bool ok = FbxImportTool::Import(imp.path, outDir, imp.path);
 
                 if (ok)
                     FBZZ_LOG_INFO("AssetBrowserPanel: import OK [%s]", imp.path.c_str());
