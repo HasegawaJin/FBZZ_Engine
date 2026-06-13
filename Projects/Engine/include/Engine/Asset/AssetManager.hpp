@@ -31,6 +31,8 @@ public:
     // FlushFailed() を呼ぶたびにインクリメントされる世代番号。
     // AnimatorSystem はこれを見てインポート後の再試行タイミングを判断する。
     static int GetFlushGeneration();
+    // Assets 起点パスを実ファイルパスへ解決する。CPU 側独自アセットのローダーで共有する。
+    [[nodiscard]] static std::string ResolveAssetPath(const std::string& path);
 
     static renderer::ResourceHandle<renderer::TextureTag> LoadTexture(const std::string& relativePath);
 

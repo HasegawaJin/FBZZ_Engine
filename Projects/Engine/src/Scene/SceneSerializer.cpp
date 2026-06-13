@@ -1005,6 +1005,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             animTbl.insert("enabled",   anim->enabled);
             animTbl.insert("loop",      anim->loop);
             animTbl.insert("playing",   anim->playing);
+            animTbl.insert("controllerPath", anim->controllerPath);
             toml::array srcArr;
             for (const auto& s : anim->clipSources) srcArr.push_back(s);
             animTbl.insert("clipSources", std::move(srcArr));
@@ -1016,6 +1017,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             for (const auto& st : anim->states) {
                 toml::table stTbl;
                 stTbl.insert("name",      st.name);
+                stTbl.insert("mode",      (int64_t)st.mode);
+                stTbl.insert("sourcePath", st.sourcePath);
                 stTbl.insert("clipName",  st.clipName);
                 stTbl.insert("clipIndex", (int64_t)st.clipIndex);
                 stTbl.insert("speed",     (double)st.speed);
@@ -1040,9 +1043,67 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                     transArr.push_back(std::move(trTbl));
                 }
                 stTbl.insert("transitions", std::move(transArr));
+
+                toml::table blend1DTbl;
+                blend1DTbl.insert("paramName", st.blendTree1D.paramName);
+                toml::array motions1D;
+                for (const auto& motion : st.blendTree1D.motions) {
+                    toml::table motionTbl;
+                    motionTbl.insert("threshold", (double)motion.threshold);
+                    motionTbl.insert("posX",      (double)motion.posX);
+                    motionTbl.insert("posY",      (double)motion.posY);
+                    motionTbl.insert("sourcePath", motion.sourcePath);
+                    motionTbl.insert("clipName",  motion.clipName);
+                    motionTbl.insert("clipIndex", (int64_t)motion.clipIndex);
+                    motionTbl.insert("speed",     (double)motion.speed);
+                    motionTbl.insert("ikWeight",  (double)motion.ikWeight);
+                    motions1D.push_back(std::move(motionTbl));
+                }
+                blend1DTbl.insert("motions", std::move(motions1D));
+                stTbl.insert("blendTree1D", std::move(blend1DTbl));
+
+                toml::table blend2DTbl;
+                blend2DTbl.insert("paramX", st.blendTree2D.paramX);
+                blend2DTbl.insert("paramY", st.blendTree2D.paramY);
+                blend2DTbl.insert("type",   (int64_t)st.blendTree2D.type);
+                toml::array motions2D;
+                for (const auto& motion : st.blendTree2D.motions) {
+                    toml::table motionTbl;
+                    motionTbl.insert("threshold", (double)motion.threshold);
+                    motionTbl.insert("posX",      (double)motion.posX);
+                    motionTbl.insert("posY",      (double)motion.posY);
+                    motionTbl.insert("sourcePath", motion.sourcePath);
+                    motionTbl.insert("clipName",  motion.clipName);
+                    motionTbl.insert("clipIndex", (int64_t)motion.clipIndex);
+                    motionTbl.insert("speed",     (double)motion.speed);
+                    motionTbl.insert("ikWeight",  (double)motion.ikWeight);
+                    motions2D.push_back(std::move(motionTbl));
+                }
+                blend2DTbl.insert("motions", std::move(motions2D));
+                stTbl.insert("blendTree2D", std::move(blend2DTbl));
                 statesArr.push_back(std::move(stTbl));
             }
             animTbl.insert("states", std::move(statesArr));
+
+            toml::array anyStateArr;
+            for (const auto& tr : anim->anyStateTransitions) {
+                toml::table trTbl;
+                trTbl.insert("toStateName",        tr.toStateName);
+                trTbl.insert("hasExitTime",        tr.hasExitTime);
+                trTbl.insert("exitTime",           (double)tr.exitTime);
+                trTbl.insert("transitionDuration", (double)tr.transitionDuration);
+                toml::array condArr;
+                for (const auto& c : tr.conditions) {
+                    toml::table cTbl;
+                    cTbl.insert("paramName", c.paramName);
+                    cTbl.insert("op",        (int64_t)c.op);
+                    cTbl.insert("threshold", (double)c.threshold);
+                    condArr.push_back(std::move(cTbl));
+                }
+                trTbl.insert("conditions", std::move(condArr));
+                anyStateArr.push_back(std::move(trTbl));
+            }
+            animTbl.insert("anyStateTransitions", std::move(anyStateArr));
 
             // ── ステートマシン: parameters ─────────────────────────────────
             toml::array paramsArr;
@@ -1119,6 +1180,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             }
             ikTbl.insert("chains",      std::move(chainsArr));
             ikTbl.insert("hipBoneName", ikSolver->hipBoneName);
+            ikTbl.insert("hipMaxOffsetRatio", (double)ikSolver->hipMaxOffsetRatio);
             goTbl.insert("IKSolverComponent", std::move(ikTbl));
         }
 
@@ -1743,6 +1805,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             anim.enabled   = (*animTbl)["enabled"].value_or(true);
             anim.loop      = (*animTbl)["loop"].value_or(true);
             anim.playing   = (*animTbl)["playing"].value_or(true);
+            anim.controllerPath =
+                (*animTbl)["controllerPath"].value_or(std::string{});
             if (const auto* srcArr = (*animTbl)["clipSources"].as_array()) {
                 for (const auto& elem : *srcArr)
                     if (auto s = elem.value<std::string>())
@@ -1758,6 +1822,12 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     if (!stTbl) continue;
                     AnimationState st{};
                     st.name      = (*stTbl)["name"].value_or(std::string{});
+                    const int64_t stateMode = (*stTbl)["mode"].value_or((int64_t)0);
+                    st.mode = stateMode >= 0 && stateMode <= 2
+                        ? static_cast<AnimationStateMode>(stateMode)
+                        : AnimationStateMode::Clip;
+                    st.sourcePath =
+                        (*stTbl)["sourcePath"].value_or(std::string{});
                     st.clipName  = (*stTbl)["clipName"].value_or(std::string{});
                     st.clipIndex = (int)(*stTbl)["clipIndex"].value_or((int64_t)-1);
                     st.speed     = (float)(*stTbl)["speed"].value_or(1.0);
@@ -1786,7 +1856,95 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                             st.transitions.push_back(std::move(tr));
                         }
                     }
+
+                    auto readMotions = [](const toml::array* motionsArr,
+                                          std::vector<BlendTreeMotion>& motions) {
+                        if (!motionsArr) return;
+                        for (const auto& motionElem : *motionsArr) {
+                            const auto* motionTbl = motionElem.as_table();
+                            if (!motionTbl) continue;
+                            BlendTreeMotion motion{};
+                            motion.threshold = (float)(*motionTbl)["threshold"].value_or(0.0);
+                            motion.posX      = (float)(*motionTbl)["posX"].value_or(0.0);
+                            motion.posY      = (float)(*motionTbl)["posY"].value_or(0.0);
+                            motion.sourcePath =
+                                (*motionTbl)["sourcePath"].value_or(std::string{});
+                            motion.clipName  = (*motionTbl)["clipName"].value_or(std::string{});
+                            motion.clipIndex = (int)(*motionTbl)["clipIndex"].value_or((int64_t)-1);
+                            motion.speed     = (float)(*motionTbl)["speed"].value_or(1.0);
+                            motion.ikWeight  = (float)(*motionTbl)["ikWeight"].value_or(1.0);
+                            motions.push_back(std::move(motion));
+                        }
+                    };
+                    if (const auto* blend1DTbl = (*stTbl)["blendTree1D"].as_table()) {
+                        st.blendTree1D.paramName =
+                            (*blend1DTbl)["paramName"].value_or(std::string{});
+                        readMotions((*blend1DTbl)["motions"].as_array(),
+                                    st.blendTree1D.motions);
+                    }
+                    if (const auto* blend2DTbl = (*stTbl)["blendTree2D"].as_table()) {
+                        st.blendTree2D.paramX =
+                            (*blend2DTbl)["paramX"].value_or(std::string{});
+                        st.blendTree2D.paramY =
+                            (*blend2DTbl)["paramY"].value_or(std::string{});
+                        const int64_t blendType =
+                            (*blend2DTbl)["type"].value_or((int64_t)0);
+                        st.blendTree2D.type = blendType >= 0 && blendType <= 1
+                            ? static_cast<BlendTree2DType>(blendType)
+                            : BlendTree2DType::SimpleDirectional;
+                        readMotions((*blend2DTbl)["motions"].as_array(),
+                                    st.blendTree2D.motions);
+                    }
+                    auto migrateSource = [&anim](std::string& sourcePath, int clipIndex) {
+                        if (!sourcePath.empty() || anim.clipSources.empty()) return;
+                        int remainingIndex = clipIndex;
+                        for (const auto& legacySource : anim.clipSources) {
+                            const auto model =
+                                asset::AssetManager::Load<asset::Model>(legacySource);
+                            if (!model) continue;
+                            const int clipCount =
+                                static_cast<int>(model->clips.size());
+                            if (remainingIndex >= 0 && remainingIndex < clipCount) {
+                                sourcePath = legacySource;
+                                return;
+                            }
+                            remainingIndex -= clipCount;
+                        }
+                    };
+                    migrateSource(st.sourcePath, st.clipIndex);
+                    for (auto& motion : st.blendTree1D.motions)
+                        migrateSource(motion.sourcePath, motion.clipIndex);
+                    for (auto& motion : st.blendTree2D.motions)
+                        migrateSource(motion.sourcePath, motion.clipIndex);
                     anim.states.push_back(std::move(st));
+                }
+            }
+
+            if (const auto* anyStateArr = (*animTbl)["anyStateTransitions"].as_array()) {
+                for (const auto& trElem : *anyStateArr) {
+                    const auto* trTbl = trElem.as_table();
+                    if (!trTbl) continue;
+                    AnimationTransition tr{};
+                    tr.toStateName = (*trTbl)["toStateName"].value_or(std::string{});
+                    tr.hasExitTime = (*trTbl)["hasExitTime"].value_or(false);
+                    tr.exitTime = (float)(*trTbl)["exitTime"].value_or(1.0);
+                    tr.transitionDuration =
+                        (float)(*trTbl)["transitionDuration"].value_or(0.25);
+                    if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
+                        for (const auto& cElem : *condArr) {
+                            const auto* cTbl = cElem.as_table();
+                            if (!cTbl) continue;
+                            AnimatorCondition cond{};
+                            cond.paramName =
+                                (*cTbl)["paramName"].value_or(std::string{});
+                            cond.op =
+                                (ConditionOp)(*cTbl)["op"].value_or((int64_t)4);
+                            cond.threshold =
+                                (float)(*cTbl)["threshold"].value_or(0.0);
+                            tr.conditions.push_back(std::move(cond));
+                        }
+                    }
+                    anim.anyStateTransitions.push_back(std::move(tr));
                 }
             }
 
@@ -1842,6 +2000,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 }
             }
             ikSolver.hipBoneName = (*ikTbl)["hipBoneName"].value_or(std::string{});
+            ikSolver.hipMaxOffsetRatio =
+                (float)(*ikTbl)["hipMaxOffsetRatio"].value_or(0.4);
             go.AddComponent<IKSolverComponent>(std::move(ikSolver));
         }
 

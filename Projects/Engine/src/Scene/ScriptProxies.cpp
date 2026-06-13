@@ -1387,6 +1387,20 @@ bool ScriptAnimatorProxy::GetBool(std::string_view name) const
     return a && a->GetBool(name);
 }
 
+float ScriptAnimatorProxy::GetNormalizedTime() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetNormalizedTime() : 0.0f;
+}
+
+std::vector<std::pair<std::string, float>>
+ScriptAnimatorProxy::GetCurrentBlendWeights() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->currentBlendWeights
+             : std::vector<std::pair<std::string, float>>{};
+}
+
 std::string ScriptAnimatorProxy::GetCurrentState() const
 {
     const auto* a = SelfComponent<AnimatorComponent>(script);
