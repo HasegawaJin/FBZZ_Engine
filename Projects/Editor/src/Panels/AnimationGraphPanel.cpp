@@ -12,16 +12,19 @@
 #include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imnodes.h>
+#include <imgui_internal.h>
 // WHY: fbzz_editor は STATIC lib で、Sandbox / GameHub の最終リンク設定に
 //      imnodes.lib が伝播しない古い VS プロジェクトでも LNK2019 を出さないため、
 //      AnimationGraphPanel.obj に imnodes の実装を同梱する。
 #include <imnodes.cpp>
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -32,6 +35,12 @@
 namespace fbzz::editor {
 
 namespace {
+
+std::uint64_t& AnimationGraphEditGeneration()
+{
+    static std::uint64_t generation = 0;
+    return generation;
+}
 
 constexpr float SIDEBAR_WIDTH = 260.0f;
 constexpr float MIN_CANVAS_ZOOM = 0.50f;
@@ -56,6 +65,7 @@ const char* ConditionOpName(scene::ConditionOp op)
 
 void MarkDirty(EditorContext& ctx)
 {
+    ++AnimationGraphEditGeneration();
     if (util::StringUtils::EndsWith(
             ctx.selectedAssetPath, ".fbzzanimcontroller")) {
         ctx.animationControllerDirty = true;
@@ -73,6 +83,100 @@ void MarkDirty(EditorContext& ctx)
         return;
     }
     if (ctx.markSceneDirty) ctx.markSceneDirty();
+}
+
+struct AnimationGraphUndoTracker {
+    std::string owner;
+    ImGuiID activeId = 0;
+    scene::EntityID entityId;
+    std::shared_ptr<scene::AnimatorComponent> assetAnimator;
+    scene::AnimatorComponent beforeAnimator;
+    GraphLayout beforeLayout;
+    bool active = false;
+};
+
+void PushAnimationGraphCommand(EditorContext& ctx,
+                               const std::string& owner,
+                               scene::EntityID entityId,
+                               const std::shared_ptr<scene::AnimatorComponent>& assetAnimator,
+                               const scene::AnimatorComponent& beforeAnimator,
+                               const scene::AnimatorComponent& afterAnimator,
+                               const GraphLayout& beforeLayout,
+                               const GraphLayout& afterLayout)
+{
+    if (!ctx.undoStack) return;
+
+    scene::Scene* scene = ctx.activeScene;
+    std::string targetInstanceId;
+    if (entityId.IsValid() && scene) {
+        if (auto* go = scene->GetGameObject(entityId))
+            targetInstanceId = go->instanceId;
+    }
+    EditorContext* context = &ctx;
+    const auto markDirty = ctx.markSceneDirty;
+    auto apply = [scene, context, owner, targetInstanceId, assetAnimator, markDirty](
+                     const scene::AnimatorComponent& animator,
+                     const GraphLayout& layout) {
+        if (!targetInstanceId.empty() && scene) {
+            if (auto* go = scene->FindByGuid(targetInstanceId)) {
+                if (auto* target = go->GetComponent<scene::AnimatorComponent>())
+                    *target = animator;
+            }
+            if (markDirty) markDirty();
+        } else if (assetAnimator) {
+            *assetAnimator = animator;
+            context->animationControllerDirty = true;
+        }
+        context->graphLayouts[owner] = layout;
+        context->animationGraphSelection.Clear();
+    };
+
+    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+        "Edit Animation Graph",
+        [apply, afterAnimator, afterLayout]() { apply(afterAnimator, afterLayout); },
+        [apply, beforeAnimator, beforeLayout]() { apply(beforeAnimator, beforeLayout); }));
+}
+
+void TrackAnimationGraphUndo(EditorContext& ctx,
+                             const std::string& owner,
+                             scene::EntityID entityId,
+                             const std::shared_ptr<scene::AnimatorComponent>& assetAnimator,
+                             scene::AnimatorComponent& animator,
+                             const scene::AnimatorComponent& beforeDraw,
+                             const GraphLayout& beforeLayout,
+                             std::uint64_t generationBefore)
+{
+    static AnimationGraphUndoTracker tracker;
+    const ImGuiID activeId = ImGui::GetActiveID();
+    const bool changed = AnimationGraphEditGeneration() != generationBefore;
+
+    if (tracker.active && tracker.owner != owner) {
+        tracker.active = false;
+    } else if (tracker.active && activeId != tracker.activeId) {
+        PushAnimationGraphCommand(
+            ctx, tracker.owner, tracker.entityId, tracker.assetAnimator,
+            tracker.beforeAnimator, animator,
+            tracker.beforeLayout, ctx.graphLayouts[owner]);
+        tracker.active = false;
+    }
+
+    if (!changed) return;
+    if (activeId != 0) {
+        if (!tracker.active) {
+            tracker.owner = owner;
+            tracker.activeId = activeId;
+            tracker.entityId = entityId;
+            tracker.assetAnimator = assetAnimator;
+            tracker.beforeAnimator = beforeDraw;
+            tracker.beforeLayout = beforeLayout;
+            tracker.active = true;
+        }
+        return;
+    }
+
+    PushAnimationGraphCommand(
+        ctx, owner, entityId, assetAnimator,
+        beforeDraw, animator, beforeLayout, ctx.graphLayouts[owner]);
 }
 
 std::string MakeUniqueStateName(const scene::AnimatorComponent& animator, const char* baseName)
@@ -707,6 +811,9 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         }
 
         auto& animator = *ctx.animationControllerEditor;
+        const scene::AnimatorComponent undoBeforeAnimator = animator;
+        const GraphLayout undoBeforeLayout = ctx.graphLayouts[ctx.selectedAssetPath];
+        const std::uint64_t undoGenerationBefore = AnimationGraphEditGeneration();
         ClearInvalidSelection(animator);
         ImGui::TextUnformatted(
             util::FileSystem::GetFilename(ctx.selectedAssetPath).c_str());
@@ -767,6 +874,15 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         } else if (m_selectedAnyState) {
             selection.type = EditorContext::AnimationGraphSelection::Type::AnyState;
         }
+        TrackAnimationGraphUndo(
+            ctx,
+            ctx.selectedAssetPath,
+            {},
+            ctx.animationControllerEditor,
+            animator,
+            undoBeforeAnimator,
+            undoBeforeLayout,
+            undoGenerationBefore);
         return;
     }
 
@@ -791,6 +907,9 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     }
 
     ClearInvalidSelection(*animator);
+    const scene::AnimatorComponent undoBeforeAnimator = *animator;
+    const GraphLayout undoBeforeLayout = ctx.graphLayouts[go->instanceId];
+    const std::uint64_t undoGenerationBefore = AnimationGraphEditGeneration();
     DrawToolbar(ctx, *animator);
     ImGui::Separator();
 
@@ -802,6 +921,15 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndGroup();
     ImGui::EndChild();
     PublishSelection(ctx, *go);
+    TrackAnimationGraphUndo(
+        ctx,
+        go->instanceId,
+        go->GetID(),
+        {},
+        *animator,
+        undoBeforeAnimator,
+        undoBeforeLayout,
+        undoGenerationBefore);
 }
 
 void AnimationGraphPanel::DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator)
