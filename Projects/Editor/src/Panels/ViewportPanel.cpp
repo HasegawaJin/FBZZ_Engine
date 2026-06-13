@@ -268,9 +268,10 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             vpHovered,
             viewportMin,
             size,
-            ctx.markSceneDirty);
+            ctx.markSceneDirty,
+            ctx.undoStack);
         if (ctx.showTerrainTool)
-            ctx.terrainTool->OnEditorGUI(*ctx.activeScene);
+        ctx.terrainTool->OnEditorGUI(*ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
     }
 
     // ── WaterTool: 水面の範囲・波向き可視化とツールウィンドウ ──────────────
@@ -288,7 +289,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             ctx.waterTool->OnEditorGUI(
                 *ctx.activeScene,
                 ctx.projectRoot,
-                ctx.markSceneDirty);
+                ctx.markSceneDirty,
+                ctx.undoStack);
     }
 
     // Show play/pause state with a viewport border.

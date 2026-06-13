@@ -3,6 +3,7 @@
 // タグ・レイヤー名の編集パネル
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
+#include <cstdint>
 
 namespace fbzz { struct ProjectSettings; }
 namespace fbzz::renderer { struct RenderSettings; }
@@ -41,6 +42,7 @@ private:
 
     Section m_currentSection = Section::Render;
     char m_newTag[64] = {};
+    std::uint64_t m_editGeneration = 0;
 };
 
 } // namespace fbzz::editor
