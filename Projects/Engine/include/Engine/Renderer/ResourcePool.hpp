@@ -16,6 +16,15 @@ namespace fbzz::renderer {
 template<typename T, typename Tag>
 class ResourcePool {
 public:
+    // unique_ptr overload — converts to shared_ptr internally so MemoryDebug can track via weak_ptr.
+    ResourceHandle<Tag> Insert(std::unique_ptr<T> resource,
+                               const char* debugName = "ResourcePool",
+                               const char* file = "Unknown",
+                               int line = 0)
+    {
+        return Insert(std::shared_ptr<T>(std::move(resource)), debugName, file, line);
+    }
+
     ResourceHandle<Tag> Insert(std::shared_ptr<T> resource,
                                const char* debugName = "ResourcePool",
                                const char* file = "Unknown",
@@ -57,6 +66,11 @@ public:
     // WHY: Remove → Insert すると world generation が上がり既存ハンドルが無効になる。
     //      Replace は generation を維持したまま中身だけ入れ替えるため、
     //      シェーダーを参照する Material / PipelineState を更新せずにホットスワップできる。
+    void Replace(ResourceHandle<Tag> handle, std::unique_ptr<T> resource)
+    {
+        Replace(handle, std::shared_ptr<T>(std::move(resource)));
+    }
+
     void Replace(ResourceHandle<Tag> handle, std::shared_ptr<T> resource)
     {
         if (!IsLive(handle) || !resource) return;
