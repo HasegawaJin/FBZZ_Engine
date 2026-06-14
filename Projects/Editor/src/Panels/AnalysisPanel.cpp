@@ -18,6 +18,7 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::editor {
@@ -28,8 +29,14 @@ namespace {
 // WHY: Profiler の生データは毎フレーム更新されるため、そのまま描画すると数値が流れて読めない。
 //      表示側だけ更新間隔・一時停止・履歴集計を持ち、計測本体の解像度は落とさない。
 struct ProfilerDisplayState {
+    struct HistoryStats {
+        double averageMs = 0.0;
+        double peakMs = 0.0;
+    };
+
     std::vector<profiler::ProfileRecord> visibleRecords;
     std::vector<std::vector<profiler::ProfileRecord>> history;
+    std::vector<HistoryStats> visibleHistoryStats;
     uint64_t visibleFrameIndex = 0;
     float refreshInterval = 0.25f;
     float elapsedSinceRefresh = 0.0f;
@@ -88,13 +95,18 @@ void DrawStatsRow(const char* label, const fbzz::core::MemoryStats& stats)
     ImGui::Text("%zu / %zu", stats.allocationCount, stats.freeCount);
 }
 
-// 表示用履歴の中から同じサンプルを探す。
-// WHAT: 名前・カテゴリ・depth をキーにし、同じ処理区間の平均/ピークを計算する。
-bool IsSameProfileRecord(const profiler::ProfileRecord& a, const profiler::ProfileRecord& b)
+// 履歴集計用の安定キーを作る。
+// WHAT: 名前・カテゴリ・depth を連結し、同じ計測区間をハッシュ検索できるようにする。
+std::string MakeProfileRecordKey(const profiler::ProfileRecord& record)
 {
-    return a.depth == b.depth
-        && std::strcmp(a.name, b.name) == 0
-        && std::strcmp(a.category, b.category) == 0;
+    std::string key;
+    key.reserve(std::strlen(record.name) + std::strlen(record.category) + 24);
+    key += std::to_string(record.depth);
+    key += '\x1f';
+    key += record.category;
+    key += '\x1f';
+    key += record.name;
+    return key;
 }
 
 // 文字列にキーワードが含まれるか調べる。
@@ -196,6 +208,47 @@ core::MemoryStats BuildMemoryDebugStats(renderer::ResourceManager* resources)
     return stats;
 }
 
+// 履歴から平均値とピーク値を一括計算する。
+// WHY: 各表示行から履歴全体を再走査すると O(表示行数 × 履歴 × 行数) になり、
+//      Profiler 自身が EditorApp::RenderPanels の CPU ボトルネックになるため。
+void RebuildProfileHistoryStats()
+{
+    struct Aggregate {
+        double totalMs = 0.0;
+        double peakMs = 0.0;
+        int count = 0;
+    };
+
+    std::unordered_map<std::string, Aggregate> aggregates;
+    for (const auto& frameRecords : s_profilerDisplay.history) {
+        // 同名 sample が同一フレームに複数あっても、従来どおり最初の 1 件だけを履歴値へ使う。
+        std::unordered_set<std::string> visited;
+        visited.reserve(frameRecords.size());
+        for (const profiler::ProfileRecord& record : frameRecords) {
+            std::string key = MakeProfileRecordKey(record);
+            if (!visited.insert(key).second)
+                continue;
+
+            Aggregate& aggregate = aggregates[key];
+            aggregate.totalMs += record.elapsedMs;
+            aggregate.peakMs = (std::max)(aggregate.peakMs, record.elapsedMs);
+            ++aggregate.count;
+        }
+    }
+
+    s_profilerDisplay.visibleHistoryStats.clear();
+    s_profilerDisplay.visibleHistoryStats.reserve(s_profilerDisplay.visibleRecords.size());
+    for (const profiler::ProfileRecord& record : s_profilerDisplay.visibleRecords) {
+        ProfilerDisplayState::HistoryStats stats{ record.elapsedMs, record.elapsedMs };
+        const auto it = aggregates.find(MakeProfileRecordKey(record));
+        if (it != aggregates.end() && it->second.count > 0) {
+            stats.averageMs = it->second.totalMs / static_cast<double>(it->second.count);
+            stats.peakMs = it->second.peakMs;
+        }
+        s_profilerDisplay.visibleHistoryStats.push_back(stats);
+    }
+}
+
 // Profiler の最新フレームを UI 表示用に取り込む。
 // WHY: pause 中は履歴も動かさず、画面に残った値をそのまま読めるようにする。
 void CaptureProfilerSnapshot()
@@ -208,32 +261,7 @@ void CaptureProfilerSnapshot()
     while (s_profilerDisplay.history.size() > limit) {
         s_profilerDisplay.history.erase(s_profilerDisplay.history.begin());
     }
-}
-
-// 履歴から平均値とピーク値を計算する。
-// WHAT: 現在表示中の行に対応するサンプルだけを集計し、短時間の揺れを読める値へ均す。
-void CalculateProfileHistoryStats(const profiler::ProfileRecord& target,
-                                  double& averageMs,
-                                  double& peakMs)
-{
-    double totalMs = 0.0;
-    double maxMs = 0.0;
-    int count = 0;
-
-    for (const auto& frameRecords : s_profilerDisplay.history) {
-        for (const profiler::ProfileRecord& record : frameRecords) {
-            if (!IsSameProfileRecord(record, target))
-                continue;
-
-            totalMs += record.elapsedMs;
-            maxMs = (std::max)(maxMs, record.elapsedMs);
-            ++count;
-            break;
-        }
-    }
-
-    averageMs = count > 0 ? totalMs / static_cast<double>(count) : target.elapsedMs;
-    peakMs = count > 0 ? maxMs : target.elapsedMs;
+    RebuildProfileHistoryStats();
 }
 
 // カテゴリごとの合計時間を横並びの簡易凡例として描画する。
@@ -368,47 +396,55 @@ void AnalysisPanel::DrawProfiler()
     constexpr float BAR_MAX_WIDTH = 240.0f;
     constexpr float BAR_HEIGHT = 12.0f;
     ImGui::BeginChild("ProfilerSamples##Analysis", { 0.0f, 0.0f }, true);
-    for (const profiler::ProfileRecord& record : records) {
-        const float indent = static_cast<float>(record.depth) * 16.0f;
-        ImGui::Indent(indent);
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(records.size()), ImGui::GetTextLineHeightWithSpacing());
+    while (clipper.Step()) {
+        for (int recordIndex = clipper.DisplayStart; recordIndex < clipper.DisplayEnd; ++recordIndex) {
+            const profiler::ProfileRecord& record = records[static_cast<std::size_t>(recordIndex)];
+            const float indent = static_cast<float>(record.depth) * 16.0f;
+            ImGui::Indent(indent);
 
-        const ImVec2 cursor = ImGui::GetCursorScreenPos();
-        const float barWidth = static_cast<float>(record.elapsedMs / maxMs) * BAR_MAX_WIDTH;
-        const ProfilerCategory category = ClassifyProfileRecord(record);
-        const ImU32 rowColor = category.color;
-        ImGui::GetWindowDrawList()->AddRectFilled(
-            cursor,
-            { cursor.x + barWidth, cursor.y + BAR_HEIGHT },
-            rowColor);
+            const ImVec2 cursor = ImGui::GetCursorScreenPos();
+            const float barWidth = static_cast<float>(record.elapsedMs / maxMs) * BAR_MAX_WIDTH;
+            const ProfilerCategory category = ClassifyProfileRecord(record);
+            const ImU32 rowColor = category.color;
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                cursor,
+                { cursor.x + barWidth, cursor.y + BAR_HEIGHT },
+                rowColor);
 
-        ImGui::Dummy({ BAR_MAX_WIDTH + 8.0f, BAR_HEIGHT });
-        ImGui::SameLine();
-        double averageMs = record.elapsedMs;
-        double peakMs = record.elapsedMs;
-        CalculateProfileHistoryStats(record, averageMs, peakMs);
+            ImGui::Dummy({ BAR_MAX_WIDTH + 8.0f, BAR_HEIGHT });
+            ImGui::SameLine();
+            double averageMs = record.elapsedMs;
+            double peakMs = record.elapsedMs;
+            if (static_cast<std::size_t>(recordIndex) < s_profilerDisplay.visibleHistoryStats.size()) {
+                averageMs = s_profilerDisplay.visibleHistoryStats[static_cast<std::size_t>(recordIndex)].averageMs;
+                peakMs = s_profilerDisplay.visibleHistoryStats[static_cast<std::size_t>(recordIndex)].peakMs;
+            }
 
-        if (s_profilerDisplay.showAverage && s_profilerDisplay.showPeak) {
-            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
-            ImGui::SameLine();
-            ImGui::Text("/ %s  %.3f ms  avg %.3f  peak %.3f",
-                        record.name, record.elapsedMs, averageMs, peakMs);
-        } else if (s_profilerDisplay.showAverage) {
-            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
-            ImGui::SameLine();
-            ImGui::Text("/ %s  %.3f ms  avg %.3f",
-                        record.name, record.elapsedMs, averageMs);
-        } else if (s_profilerDisplay.showPeak) {
-            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
-            ImGui::SameLine();
-            ImGui::Text("/ %s  %.3f ms  peak %.3f",
-                        record.name, record.elapsedMs, peakMs);
-        } else {
-            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
-            ImGui::SameLine();
-            ImGui::Text("/ %s  %.3f ms", record.name, record.elapsedMs);
+            if (s_profilerDisplay.showAverage && s_profilerDisplay.showPeak) {
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
+                ImGui::SameLine();
+                ImGui::Text("/ %s  %.3f ms  avg %.3f  peak %.3f",
+                            record.name, record.elapsedMs, averageMs, peakMs);
+            } else if (s_profilerDisplay.showAverage) {
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
+                ImGui::SameLine();
+                ImGui::Text("/ %s  %.3f ms  avg %.3f",
+                            record.name, record.elapsedMs, averageMs);
+            } else if (s_profilerDisplay.showPeak) {
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
+                ImGui::SameLine();
+                ImGui::Text("/ %s  %.3f ms  peak %.3f",
+                            record.name, record.elapsedMs, peakMs);
+            } else {
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(rowColor), "%s", category.name);
+                ImGui::SameLine();
+                ImGui::Text("/ %s  %.3f ms", record.name, record.elapsedMs);
+            }
+
+            ImGui::Unindent(indent);
         }
-
-        ImGui::Unindent(indent);
     }
     ImGui::EndChild();
 }
