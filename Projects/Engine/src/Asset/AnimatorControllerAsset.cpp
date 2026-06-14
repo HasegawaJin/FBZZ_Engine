@@ -32,6 +32,7 @@ toml::table WriteTransition(const scene::AnimationTransition& transition)
     table.insert("toStateName", transition.toStateName);
     table.insert("hasExitTime", transition.hasExitTime);
     table.insert("exitTime", static_cast<double>(transition.exitTime));
+    table.insert("fixedDuration", transition.fixedDuration);
     table.insert("transitionDuration", static_cast<double>(transition.transitionDuration));
     toml::array conditions;
     for (const auto& condition : transition.conditions) {
@@ -65,6 +66,8 @@ scene::AnimationTransition ReadTransition(const toml::table& table)
     transition.toStateName = table["toStateName"].value_or(std::string{});
     transition.hasExitTime = table["hasExitTime"].value_or(false);
     transition.exitTime = static_cast<float>(table["exitTime"].value_or(1.0));
+    // 旧 Controller の transitionDuration は秒指定なので true を既定値にする。
+    transition.fixedDuration = table["fixedDuration"].value_or(true);
     transition.transitionDuration =
         static_cast<float>(table["transitionDuration"].value_or(0.25));
     if (const auto* conditions = table["conditions"].as_array()) {
@@ -89,7 +92,7 @@ bool SaveAnimatorControllerAsset(const std::string& path,
                                  const AnimatorControllerAsset& asset)
 {
     toml::table root;
-    root.insert("version", int64_t{2});
+    root.insert("version", int64_t{4});
     root.insert("defaultStateName", asset.defaultStateName);
 
     toml::array clipSources;
@@ -115,6 +118,7 @@ bool SaveAnimatorControllerAsset(const std::string& path,
 
         toml::table blendTree1D;
         blendTree1D.insert("paramName", state.blendTree1D.paramName);
+        blendTree1D.insert("dampTime", static_cast<double>(state.blendTree1D.dampTime));
         toml::array motions1D;
         for (const auto& motion : state.blendTree1D.motions)
             motions1D.push_back(WriteMotion(motion));
@@ -198,6 +202,8 @@ bool LoadAnimatorControllerAsset(const std::string& path,
             if (const auto* blend1D = (*stateTable)["blendTree1D"].as_table()) {
                 state.blendTree1D.paramName =
                     (*blend1D)["paramName"].value_or(std::string{});
+                state.blendTree1D.dampTime =
+                    static_cast<float>((*blend1D)["dampTime"].value_or(0.0));
                 if (const auto* motions = (*blend1D)["motions"].as_array())
                     for (const auto& motionElement : *motions)
                         if (const auto* motionTable = motionElement.as_table())
