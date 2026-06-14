@@ -51,7 +51,7 @@ target_link_libraries(fbzz_engine
     PRIVATE
         imgui
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
-        "$<$<CONFIG:Release>:${DIRECTXTEX_LIB_RELEASE}>"
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${DIRECTXTEX_LIB_RELEASE}>"
         "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"
-        "$<$<CONFIG:Release>:${ASSIMP_LIB_RELEASE}>"
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${ASSIMP_LIB_RELEASE}>"
 )
