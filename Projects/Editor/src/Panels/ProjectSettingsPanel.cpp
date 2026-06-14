@@ -76,6 +76,16 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
         bool changed = false;
     };
     static UndoTracker undo;
+    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) {
+        undo.active = false;
+        undo.changed = false;
+        DrawSidebar();
+        ImGui::SameLine();
+        ImGui::BeginChild("##ProjectSettingsContent", { 0.0f, 0.0f }, false);
+        DrawSection(ctx.projectSettings);
+        ImGui::EndChild();
+        return;
+    }
     const ProjectSettings beforeDraw = ctx.projectSettings;
     const ImGuiID activeBefore = ImGui::GetActiveID();
     const std::uint64_t editGenerationBefore = m_editGeneration;
