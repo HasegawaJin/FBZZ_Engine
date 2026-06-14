@@ -5,6 +5,8 @@
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Scene/Systems/TerrainRenderSystem.hpp"
 #include "Engine/Scene/Systems/WaterRenderSystem.hpp"
+#include "Engine/Scene/Systems/DetailRenderSystem.hpp"
+#include "Engine/Scene/Systems/FoliageRenderSystem.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
 #include "Engine/Renderer/DebugDraw.hpp"
@@ -197,10 +199,37 @@ void RenderSystem(Scene& scene,
     static auto decalShader     = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
     static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
 
-    static auto particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+    static auto particleShader      = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+    static auto particleGpuSimCS   = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
+    static auto particleGpuShader  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
     static auto trailShader    = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
     static auto meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
     static auto skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
+    static auto detailMeshShader      = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
+    static auto detailBillboardShader = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl"); // 同一ソース、isBillboard フラグで切り替え
+    static auto detailGrassShader     = resources.LoadShader("Assets/Shaders/Detail/DetailGrass.hlsl");
+    static auto detailGrassCB         = resources.CreateConstantBuffer(sizeof(DetailGrassCB));
+    static auto foliageShader         = resources.LoadShader("Assets/Shaders/Foliage/Foliage.hlsl");
+    static auto detailMeshPSO   = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_ON
+    });
+    static auto detailNoCullPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_ON
+    });
+    static auto foliagePSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_ON
+    });
+    static auto foliageNoCullPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_ON
+    });
 
     static auto frameCB    = resources.CreateConstantBuffer(sizeof(PerFrameCB));
     static auto objectCB   = resources.CreateConstantBuffer(sizeof(PerObjectCB));
@@ -239,6 +268,16 @@ void RenderSystem(Scene& scene,
         renderer::DepthMode::DEPTH_READ
     });
     static auto particleAlphaPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto particleGpuPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto particleGpuAlphaPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
@@ -303,10 +342,21 @@ void RenderSystem(Scene& scene,
         depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
         decalShader = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
         decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
-        particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+        particleShader     = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+        particleGpuSimCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
+        particleGpuShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
         trailShader = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
         meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
         skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
+        detailMeshShader      = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
+        detailBillboardShader = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
+        detailGrassShader     = resources.LoadShader("Assets/Shaders/Detail/DetailGrass.hlsl");
+        detailGrassCB         = resources.CreateConstantBuffer(sizeof(DetailGrassCB));
+        foliageShader         = resources.LoadShader("Assets/Shaders/Foliage/Foliage.hlsl");
+        detailMeshPSO   = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        detailNoCullPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        foliagePSO       = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        foliageNoCullPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
 
         bindPoseSkinningCB = {};
         {
@@ -331,6 +381,8 @@ void RenderSystem(Scene& scene,
         skydomePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_SKY });
         particlePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
         particleAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        particleGpuPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
+        particleGpuAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         trailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailDoubleSidedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
@@ -592,12 +644,26 @@ void RenderSystem(Scene& scene,
     passHandles.particleAlphaPSO     = particleAlphaPSO;
     passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
+    passHandles.particleGpuSimCS     = particleGpuSimCS;
+    passHandles.particleGpuShader    = particleGpuShader;
+    passHandles.particleGpuAlphaShader = particleGpuShader; // 同一シェーダー、PSO で合成モードを切り替える
+    passHandles.particleGpuPSO       = particleGpuPSO;
+    passHandles.particleGpuAlphaPSO  = particleGpuAlphaPSO;
     passHandles.trailShader          = trailShader;
     passHandles.trailPSO             = trailPSO;
     passHandles.meshTrailShader      = meshTrailShader;
     passHandles.skinnedMeshTrailShader = skinnedMeshTrailShader;
     passHandles.meshTrailPSO         = meshTrailPSO;
     passHandles.meshTrailDoubleSidedPSO = meshTrailDoubleSidedPSO;
+    passHandles.detailMeshShader      = detailMeshShader;
+    passHandles.detailBillboardShader = detailBillboardShader;
+    passHandles.detailGrassShader     = detailGrassShader;
+    passHandles.detailGrassCB         = detailGrassCB;
+    passHandles.detailMeshPSO         = detailMeshPSO;
+    passHandles.detailNoCullPSO       = detailNoCullPSO;
+    passHandles.foliageShader          = foliageShader;
+    passHandles.foliagePSO             = foliagePSO;
+    passHandles.foliageNoCullPSO       = foliageNoCullPSO;
     passHandles.gbufferShader        = gbufferShader;
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
@@ -736,6 +802,19 @@ void RenderSystem(Scene& scene,
     });
 
     // ── Sky ───────────────────────────────────────────────────────────────────
+    // DetailPass: Terrain 上の草・岩・花を GPU Instancing で描画する。
+    // WHY: TerrainForward と同じ HDR RT / depth buffer を共有することで
+    //      地形・Detail・Sky が正しく depth test される。
+    graph.AddPass("DetailPass", { "HDR" }, { "HDR" }, [&]() {
+        renderer.SetRenderTarget(passHandles.hdrRT, resources);
+        DetailRenderSystem(passCtx);
+    });
+
+    graph.AddPass("FoliagePass", { "HDR" }, { "HDR" }, [&]() {
+        renderer.SetRenderTarget(passHandles.hdrRT, resources);
+        FoliageRenderSystem(passCtx);
+    });
+
     graph.AddPass("Sky", { "HDR" }, { "HDR" }, [&]() {
         ExecuteSkyPass(passCtx);
     });

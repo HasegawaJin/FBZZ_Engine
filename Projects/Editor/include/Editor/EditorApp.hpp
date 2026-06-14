@@ -34,8 +34,11 @@ class ProjectSettingsPanel;
 class BuildSettingsPanel;
 class AssetBrowserPanel;
 class AnalysisPanel;
+class MapEditorPanel;
 class TerrainTool;
 class WaterTool;
+class DetailTool;
+class FoliageTool;
 
 class EditorApp {
 public:
@@ -62,6 +65,10 @@ public:
 private:
     void BuildMenuBar(EditorContext& ctx);
     void BuildPlayToolbar(EditorContext& ctx);
+    void ProcessMapEditingModeTransition(uint32_t dockId);
+    void EnterMapEditingMode(uint32_t dockId);
+    void ExitMapEditingMode(uint32_t dockId);
+    void BuildMapEditingLayout(uint32_t dockId);
     void RegisterDefaultHotkeys();
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();
@@ -111,6 +118,17 @@ private:
     PlayModeController              m_playMode;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
     std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
+    std::unique_ptr<DetailTool>     m_detailTool;  // DetailTool も同じ pimpl パターン
+    std::unique_ptr<FoliageTool>    m_foliageTool; // FoliageTool も同じ pimpl パターン
+    std::string                     m_normalLayoutIni;
+    const char*                     m_normalIniFilename = nullptr;
+    std::string                     m_imguiIniPath;   // io.IniFilename が指すパス (文字列寿命を保持)
+    std::vector<bool>               m_normalPanelVisibility;
+    bool                            m_terrainToolWasActive = false;
+    int                             m_terrainToolModeBeforeMap = 0;
+    bool                            m_waterToolWasActive = false;
+    bool                            m_detailToolWasActive = false;
+    bool                            m_foliageToolWasActive = false;
 
     // スクリプト DLL ホットリロード
     ScriptDllLoader          m_scriptDll;
@@ -144,6 +162,7 @@ private:
     BuildSettingsPanel*                      m_buildSettingsPanel     = nullptr;
     AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
     AnalysisPanel*                           m_analysisPanel          = nullptr;
+    MapEditorPanel*                          m_mapEditorPanel         = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
 };

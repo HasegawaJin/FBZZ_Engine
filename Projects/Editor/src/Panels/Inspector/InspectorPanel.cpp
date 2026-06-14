@@ -16,6 +16,7 @@
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <imgui_internal.h>
 
 namespace fbzz::editor {
 
@@ -71,6 +72,24 @@ void InspectorPanel::OnShutdown()
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Render");
+
+    if (ctx.mapEditingMode) {
+        ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
+        ImGui::SameLine();
+        ImGui::Checkbox("Map Components Only", &ctx.mapInspectorFilter);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("Show only Transform and Map-related components\nUncheck to see all components in Map Mode");
+        ImGui::Separator();
+    }
+
+    // 起動時に一度だけ、保存済み折り畳み状態を ImGui StateStorage へ復元する
+    if (!m_sectionStateRestored && !ctx.inspectorSectionState.empty()) {
+        if (ImGuiWindow* win = ImGui::FindWindowByName("Inspector")) {
+            for (const auto& [key, open] : ctx.inspectorSectionState)
+                win->StateStorage.SetInt(key, open ? 1 : 0);
+            m_sectionStateRestored = true;
+        }
+    }
 
     // ------------------------------------------------------------------
     // ロック解決
@@ -307,6 +326,22 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     { FBZZ_PROFILE_SCOPE("Inspector::Transform");
       DrawTransformInspector(go, ctx); }
+    if (ctx.mapEditingMode && ctx.mapInspectorFilter) {
+        const bool hasMapComponent =
+            go->GetComponent<scene::TerrainComponent>()
+            || go->GetComponent<scene::WaterComponent>()
+            || go->GetComponent<scene::TerrainDetailComponent>()
+            || go->GetComponent<scene::FoliageComponent>();
+        if (!hasMapComponent) {
+            ImGui::TextDisabled("No Map component on this GameObject.");
+            ImGui::TextDisabled("Disable Map Components Only to inspect everything.");
+            return;
+        }
+        { FBZZ_PROFILE_SCOPE("Inspector::TerrainWater");
+          DrawTerrainWaterInspectors(
+              go, ctx, m_componentClipboard, m_componentClipboardType); }
+        return;
+    }
     { FBZZ_PROFILE_SCOPE("Inspector::Rendering");
       DrawRenderingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Animation");

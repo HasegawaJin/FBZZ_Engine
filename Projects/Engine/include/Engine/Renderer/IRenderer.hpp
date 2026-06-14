@@ -13,6 +13,7 @@
 #include "DrawCall.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
+#include "IStructuredBuffer.hpp"
 #include "IPipelineState.hpp"
 #include "IRenderTarget.hpp"
 #include "IShader.hpp"
@@ -80,6 +81,8 @@ private:
     virtual std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
     virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
+    virtual std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
+    virtual std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
 };
 
 } // namespace fbzz::renderer

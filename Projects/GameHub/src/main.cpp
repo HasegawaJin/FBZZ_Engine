@@ -247,7 +247,7 @@ void InitImGui(HWND hwnd)
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = "editor_config/hub_imgui.ini";
+    io.IniFilename = "hub_imgui.ini";
 
     ImFontConfig fontCfg;
     fontCfg.OversampleH = 2;

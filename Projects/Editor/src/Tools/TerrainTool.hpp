@@ -86,6 +86,26 @@ public:
     // ViewportPanel の内側（ImGui::Begin スコープ内）から呼ぶこと。
     void OnEditorGUI(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
 
+    // NatureTool 向け API — ウィンドウを持たないタブコンテンツ描画
+    void DrawSculptContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
+    void DrawPaintContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
+    void DrawImportSection(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
+    void DrawBrushSettings();
+
+    // NatureTool 向けアクセサ
+    void          SetActive(bool a)       { m_active = a; }
+    bool          IsActive()        const { return m_active; }
+    void          SetMode(Mode m)         { m_mode = m; }
+    Mode          GetMode()         const { return m_mode; }
+    BrushSettings GetBrush()        const { return m_brush; }
+    void          SetBrush(float radius, float strength, FalloffType falloff) {
+        m_brush.radius = radius; m_brush.strength = strength; m_brush.falloff = falloff;
+    }
+    SculptMode    GetSculptMode()   const { return m_sculpt; }
+    void          SetSculptMode(SculptMode s) { m_sculpt = s; }
+    uint32_t      GetPaintLayer()   const { return m_paintLayer; }
+    void          SetPaintLayer(uint32_t layer) { m_paintLayer = layer; }
+
 private:
     // ── 状態 ──────────────────────────────────────────────────────────────────
     bool        m_active  = false;  // false のとき入力処理・ブラシ描画をスキップする

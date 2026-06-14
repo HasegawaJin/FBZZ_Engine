@@ -30,8 +30,8 @@ public:
     // 指定ターゲットへの向きから yaw / pitch とピボットを初期化する
     void LookAt(const math::Vector3& target);
 
-    // ゲームループ毎に呼ぶ
-    void Update(float dt);
+    // ゲームループ毎に呼ぶ。viewportHovered が false のときマウスホイールを無視する。
+    void Update(float dt, bool viewportHovered = true);
 
 private:
     float         m_yaw           = 0.0f;

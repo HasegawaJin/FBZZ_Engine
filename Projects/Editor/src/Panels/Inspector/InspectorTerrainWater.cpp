@@ -2,6 +2,8 @@
 // InspectorTerrainWater.cpp | fbzz::editor
 // Terrain / Water 系 Component の Inspector 描画
 #include "InspectorTerrainWater.hpp"
+#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
+#include <Engine/Scene/Components/FoliageComponent.hpp>
 
 namespace fbzz::editor {
 
@@ -233,7 +235,294 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             }
         });
 
-}
+    // ============================================================
+    // TerrainDetailComponent — Detail レイヤー編集 UI
+    // ============================================================
 
+    DrawComponentSection<scene::TerrainDetailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Detail",
+    [go](scene::TerrainDetailComponent& tdc, EditorContext&) {
+
+        // Bake ボタン: インスタンス配列を再生成する
+        if (ImGui::Button("Bake All Layers")) {
+            tdc.chunks.clear();
+            tdc.needsBake = true;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("%zu chunks cached", tdc.chunks.size());
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Layers");
+
+        // レイヤー追加
+        if (ImGui::Button("+ Add Mesh Layer")) {
+            tdc.layers.push_back(scene::DetailLayer{});
+            tdc.needsBake = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("+ Add Billboard")) {
+            scene::DetailLayer l{};
+            l.type = scene::DetailLayerType::Billboard;
+            tdc.layers.push_back(std::move(l));
+            tdc.needsBake = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("+ Add Grass")) {
+            scene::DetailLayer l{};
+            l.type = scene::DetailLayerType::Grass;
+            tdc.layers.push_back(std::move(l));
+            tdc.needsBake = true;
+        }
+
+        // レイヤーリスト
+        static const char* kTypeNames[] = { "Mesh", "Billboard", "Grass" };
+        int deleteIdx = -1;
+
+        for (int i = 0; i < static_cast<int>(tdc.layers.size()); ++i) {
+            auto& layer = tdc.layers[static_cast<size_t>(i)];
+            ImGui::PushID(i);
+
+            const char* typeName = kTypeNames[static_cast<int>(layer.type)];
+            const bool open = ImGui::TreeNodeEx("##layer", ImGuiTreeNodeFlags_DefaultOpen,
+                "[%d] %s", i, typeName);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X")) deleteIdx = i;
+
+            if (open) {
+                // タイプ
+                int typeInt = static_cast<int>(layer.type);
+                if (ImGui::Combo("Type", &typeInt, kTypeNames, 3)) {
+                    layer.type = static_cast<scene::DetailLayerType>(typeInt);
+                    tdc.needsBake = true;
+                }
+
+                // アセット参照
+                ImGui::SeparatorText("Assets");
+                if (layer.type != scene::DetailLayerType::Billboard) {
+                    char buf[256];
+                    std::snprintf(buf, sizeof(buf), "%s", layer.meshPath.c_str());
+                    if (ImGui::InputText("Mesh Path", buf, sizeof(buf))) {
+                        layer.meshPath = buf;
+                        tdc.needsBake  = true;
+                    }
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                            layer.meshPath = static_cast<const char*>(p->Data);
+                            tdc.needsBake  = true;
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                }
+                {
+                    char buf[256];
+                    std::snprintf(buf, sizeof(buf), "%s", layer.texturePath.c_str());
+                    if (ImGui::InputText("Texture Path", buf, sizeof(buf)))
+                        layer.texturePath = buf;
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH"))
+                            layer.texturePath = static_cast<const char*>(p->Data);
+                        ImGui::EndDragDropTarget();
+                    }
+                }
+                {
+                    char buf[256];
+                    std::snprintf(buf, sizeof(buf), "%s", layer.densityMapPath.c_str());
+                    if (ImGui::InputText("Density Map", buf, sizeof(buf))) {
+                        layer.densityMapPath = buf;
+                        tdc.needsBake        = true;
+                    }
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                            layer.densityMapPath = static_cast<const char*>(p->Data);
+                            tdc.needsBake        = true;
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                }
+
+                // 配置パラメータ
+                ImGui::SeparatorText("Placement");
+                if (ImGui::DragFloat("Density",       &layer.density,      0.05f, 0.0f, 10.0f))
+                    tdc.needsBake = true;
+                if (ImGui::DragFloat("Min Scale",     &layer.minScale,     0.01f, 0.0f,  5.0f))
+                    tdc.needsBake = true;
+                if (ImGui::DragFloat("Max Scale",     &layer.maxScale,     0.01f, 0.0f,  5.0f))
+                    tdc.needsBake = true;
+                if (ImGui::Checkbox("Random Y Rotation", &layer.randomYRotation))
+                    tdc.needsBake = true;
+
+                // 描画距離
+                ImGui::SeparatorText("Draw Distance");
+                ImGui::DragFloat("Draw Distance",  &layer.drawDistance,  1.0f, 0.0f, 500.0f);
+                ImGui::DragFloat("Fade Start",     &layer.fadeStartDist, 1.0f, 0.0f, 500.0f);
+
+                // Grass 専用
+                if (layer.type == scene::DetailLayerType::Grass) {
+                    ImGui::SeparatorText("Grass (Phase 4)");
+                    if (ImGui::DragFloat("Blade Height",   &layer.bladeHeight,   0.01f, 0.0f, 5.0f))
+                        tdc.needsBake = true;
+                    if (ImGui::DragFloat("Blade Width",    &layer.bladeWidth,    0.001f,0.0f, 1.0f))
+                        tdc.needsBake = true;
+                    if (ImGui::DragInt  ("Blade Segments", &layer.bladeSegments, 1.0f,  1,   16))
+                        tdc.needsBake = true;
+                    ImGui::DragFloat("Wind Strength",  &layer.windStrength,  0.01f, 0.0f, 10.0f);
+                    ImGui::DragFloat("Wind Frequency", &layer.windFrequency, 0.01f, 0.0f, 10.0f);
+                }
+
+                // インスタンス数の表示
+                if (!tdc.chunks.empty()) {
+                    size_t total = 0;
+                    for (const auto& chunk : tdc.chunks) {
+                        if (static_cast<size_t>(i) < chunk.instancesPerLayer.size())
+                            total += chunk.instancesPerLayer[static_cast<size_t>(i)].size();
+                    }
+                    ImGui::TextDisabled("Instances: %zu", total);
+                }
+
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+
+        // 削除処理
+        if (deleteIdx >= 0) {
+            tdc.layers.erase(tdc.layers.begin() + deleteIdx);
+            tdc.needsBake = true;
+        }
+    });
+
+    DrawComponentSection<scene::FoliageComponent>(
+        go, ctx, m_componentClipboard, m_componentClipboardType, "Foliage",
+        [](scene::FoliageComponent& foliage, EditorContext&) {
+            if (ImGui::Button("Bake Foliage")) {
+                foliage.caches.clear();
+                foliage.needsBake = true;
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("%zu species", foliage.species.size());
+
+            if (ImGui::Button("+ Add Species")) {
+                foliage.species.emplace_back();
+                foliage.needsBake = true;
+            }
+
+            int deleteSpecies = -1;
+            for (int speciesIndex = 0;
+                 speciesIndex < static_cast<int>(foliage.species.size());
+                 ++speciesIndex) {
+                auto& species = foliage.species[static_cast<size_t>(speciesIndex)];
+                ImGui::PushID(speciesIndex);
+
+                const bool open = ImGui::TreeNodeEx(
+                    "##FoliageSpecies", ImGuiTreeNodeFlags_DefaultOpen,
+                    "[%d] %s", speciesIndex,
+                    species.modelPath.empty() ? "(No Model)" : species.modelPath.c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("X"))
+                    deleteSpecies = speciesIndex;
+
+                if (open) {
+                    char modelPath[512];
+                    std::snprintf(modelPath, sizeof(modelPath), "%s", species.modelPath.c_str());
+                    if (ImGui::InputText("Model Path", modelPath, sizeof(modelPath))) {
+                        species.modelPath = NormalizeAssetPath(modelPath);
+                        foliage.needsBake = true;
+                    }
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* payload =
+                                ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                            species.modelPath = NormalizeAssetPath(
+                                static_cast<const char*>(payload->Data));
+                            foliage.needsBake = true;
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+
+                    int placementMode =
+                        species.placementMode == scene::FoliagePlacementMode::STAMP ? 1 : 0;
+                    if (ImGui::Combo(
+                            "Placement", &placementMode, "Procedural\0Stamp\0")) {
+                        species.placementMode = placementMode == 1
+                            ? scene::FoliagePlacementMode::STAMP
+                            : scene::FoliagePlacementMode::PROCEDURAL;
+                        foliage.needsBake = true;
+                    }
+                    if (species.placementMode == scene::FoliagePlacementMode::STAMP) {
+                        ImGui::TextDisabled("Stamped Instances: %zu", species.stamps.size());
+                        if (ImGui::Button("Clear Stamps") && !species.stamps.empty()) {
+                            species.stamps.clear();
+                            foliage.needsBake = true;
+                        }
+                    }
+
+                    if (ImGui::DragFloat("Density / 100m2",
+                                         &species.densityPer100SquareMeters,
+                                         0.05f, 0.0f, 100.0f)) {
+                        foliage.needsBake = true;
+                    }
+                    if (ImGui::DragFloat("Min Scale", &species.minScale,
+                                         0.01f, 0.01f, 20.0f))
+                        foliage.needsBake = true;
+                    if (ImGui::DragFloat("Max Scale", &species.maxScale,
+                                         0.01f, 0.01f, 20.0f))
+                        foliage.needsBake = true;
+                    ImGui::DragFloat("Draw Distance", &species.drawDistance,
+                                     1.0f, 1.0f, 2000.0f);
+                    int seed = static_cast<int>(species.seed);
+                    if (ImGui::DragInt("Seed", &seed, 1.0f, 0)) {
+                        species.seed = static_cast<uint32_t>(std::max(seed, 0));
+                        foliage.needsBake = true;
+                    }
+                    if (ImGui::Checkbox("Random Y Rotation",
+                                        &species.randomYRotation))
+                        foliage.needsBake = true;
+
+                    ImGui::SeparatorText("SubMesh Materials");
+                    ImGui::TextDisabled("Index must match Model::meshes index.");
+                    if (ImGui::SmallButton("+ Material Slot"))
+                        species.subMeshMaterialPaths.emplace_back();
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("- Material Slot")
+                        && !species.subMeshMaterialPaths.empty())
+                        species.subMeshMaterialPaths.pop_back();
+
+                    for (int materialIndex = 0;
+                         materialIndex < static_cast<int>(
+                             species.subMeshMaterialPaths.size());
+                         ++materialIndex) {
+                        ImGui::PushID(materialIndex);
+                        auto& path =
+                            species.subMeshMaterialPaths[static_cast<size_t>(materialIndex)];
+                        char materialPath[512];
+                        std::snprintf(materialPath, sizeof(materialPath), "%s", path.c_str());
+                        char label[32];
+                        std::snprintf(label, sizeof(label), "Material %d", materialIndex);
+                        if (ImGui::InputText(label, materialPath, sizeof(materialPath)))
+                            path = NormalizeAssetPath(materialPath);
+                        if (ImGui::BeginDragDropTarget()) {
+                            if (const ImGuiPayload* payload =
+                                    ImGui::AcceptDragDropPayload("ASSET_PATH"))
+                                path = NormalizeAssetPath(
+                                    static_cast<const char*>(payload->Data));
+                            ImGui::EndDragDropTarget();
+                        }
+                        ImGui::PopID();
+                    }
+
+                    if (static_cast<size_t>(speciesIndex) < foliage.caches.size())
+                        ImGui::TextDisabled("Instances: %zu",
+                            foliage.caches[static_cast<size_t>(speciesIndex)].instances.size());
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+
+            if (deleteSpecies >= 0) {
+                foliage.species.erase(foliage.species.begin() + deleteSpecies);
+                foliage.caches.clear();
+                foliage.needsBake = true;
+            }
+        });
+
+}
 
 } // namespace fbzz::editor
