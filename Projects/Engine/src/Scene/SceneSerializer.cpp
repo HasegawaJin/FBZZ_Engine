@@ -1032,6 +1032,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                     trTbl.insert("toStateName",        tr.toStateName);
                     trTbl.insert("hasExitTime",        tr.hasExitTime);
                     trTbl.insert("exitTime",           (double)tr.exitTime);
+                    trTbl.insert("fixedDuration",      tr.fixedDuration);
                     trTbl.insert("transitionDuration", (double)tr.transitionDuration);
                     toml::array condArr;
                     for (const auto& c : tr.conditions) {
@@ -1048,6 +1049,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
                 toml::table blend1DTbl;
                 blend1DTbl.insert("paramName", st.blendTree1D.paramName);
+                blend1DTbl.insert("dampTime",  (double)st.blendTree1D.dampTime);
                 toml::array motions1D;
                 for (const auto& motion : st.blendTree1D.motions) {
                     toml::table motionTbl;
@@ -1093,6 +1095,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 trTbl.insert("toStateName",        tr.toStateName);
                 trTbl.insert("hasExitTime",        tr.hasExitTime);
                 trTbl.insert("exitTime",           (double)tr.exitTime);
+                trTbl.insert("fixedDuration",      tr.fixedDuration);
                 trTbl.insert("transitionDuration", (double)tr.transitionDuration);
                 toml::array condArr;
                 for (const auto& c : tr.conditions) {
@@ -1843,6 +1846,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                             tr.toStateName        = (*trTbl)["toStateName"].value_or(std::string{});
                             tr.hasExitTime        = (*trTbl)["hasExitTime"].value_or(false);
                             tr.exitTime           = (float)(*trTbl)["exitTime"].value_or(1.0);
+                            // 旧シーンは秒指定のみなので true として読み込む。
+                            tr.fixedDuration      = (*trTbl)["fixedDuration"].value_or(true);
                             tr.transitionDuration = (float)(*trTbl)["transitionDuration"].value_or(0.25);
                             if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
                                 for (const auto& cElem : *condArr) {
@@ -1881,6 +1886,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     if (const auto* blend1DTbl = (*stTbl)["blendTree1D"].as_table()) {
                         st.blendTree1D.paramName =
                             (*blend1DTbl)["paramName"].value_or(std::string{});
+                        st.blendTree1D.dampTime =
+                            (float)(*blend1DTbl)["dampTime"].value_or(0.0);
                         readMotions((*blend1DTbl)["motions"].as_array(),
                                     st.blendTree1D.motions);
                     }
@@ -1930,6 +1937,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     tr.toStateName = (*trTbl)["toStateName"].value_or(std::string{});
                     tr.hasExitTime = (*trTbl)["hasExitTime"].value_or(false);
                     tr.exitTime = (float)(*trTbl)["exitTime"].value_or(1.0);
+                    tr.fixedDuration = (*trTbl)["fixedDuration"].value_or(true);
                     tr.transitionDuration =
                         (float)(*trTbl)["transitionDuration"].value_or(0.25);
                     if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
