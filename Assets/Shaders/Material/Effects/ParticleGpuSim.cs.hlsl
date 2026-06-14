@@ -1,6 +1,6 @@
 // FBZZ Engine
 // Material/Effects/ParticleGpuSim.cs.hlsl | Compute Shader
-// GPU パーティクルシミュレーション: スポーン + 物理積分 + 色補間
+// GPU パーティクルシミュレーション: スポーン + 物理積分 + 色/サイズ補間
 //
 // dispatch: ceil(maxParticles / 64) × 1 × 1
 // スロット:
@@ -21,7 +21,7 @@ struct GpuParticle
     float4 color;
     float  lifetime;
     float  rotation;
-    float  pad0;
+    float  angularVelocity;
     float  pad1;
     float4 uvRect;
 };
@@ -35,6 +35,10 @@ struct GpuSpawnEntry
     float4 colorStart;
     float4 colorEnd;
     float4 uvRect;
+    float  rotation;
+    float  angularVelocity;
+    float  pad0;
+    float  pad1;
 };
 
 // ---------- リソース -------------------------------------------------------
@@ -47,10 +51,16 @@ cbuffer GpuEmitterCB : register(b0)
     uint     gMaxParticles;
     float4   gColorStart;
     float4   gColorEnd;
-    uint     gSpawnCount;    // 今フレームにスポーンする粒子数
-    uint     gSpawnOffset;   // リングバッファの書き込み開始インデックス
+    uint     gSpawnCount;      // 今フレームにスポーンする粒子数
+    uint     gSpawnOffset;     // リングバッファの書き込み開始インデックス
+    float    gColorCurvePower;
+    float    gVelocityDamping;
+    float    gSizeStart;
+    float    gSizeEnd;
+    float    gSizeCurvePower;
     float    gPad0;
     float    gPad1;
+    float    gPad2;
 };
 
 StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
@@ -73,16 +83,16 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         GpuSpawnEntry s = gSpawnBuffer[relIdx];
         GpuParticle p;
-        p.position = s.position;
-        p.velocity = s.velocity;
-        p.size     = s.size;
-        p.age      = 0.0f;
-        p.lifetime = s.lifetime;
-        p.color    = s.colorStart;
-        p.rotation = 0.0f;
-        p.pad0     = 0.0f;
-        p.pad1     = 0.0f;
-        p.uvRect   = s.uvRect;
+        p.position        = s.position;
+        p.velocity        = s.velocity;
+        p.size            = s.size;
+        p.age             = 0.0f;
+        p.lifetime        = s.lifetime;
+        p.color           = s.colorStart;
+        p.rotation        = s.rotation;
+        p.angularVelocity = s.angularVelocity;
+        p.pad1            = 0.0f;
+        p.uvRect          = s.uvRect;
         gParticles[i] = p;
         return;
     }
@@ -94,12 +104,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // 物理積分 (半陽的オイラー)
     p.velocity += gGravity * gDeltaTime;
+    // 速度減衰: CPU の 1.0 - damping * dt と同じ式
+    float damping = max(0.0f, 1.0f - gVelocityDamping * gDeltaTime);
+    p.velocity *= damping;
     p.position += p.velocity * gDeltaTime;
     p.age      += gDeltaTime;
 
-    // 寿命 t [0, 1] で色を線形補間
+    // 回転更新
+    p.rotation += p.angularVelocity * gDeltaTime;
+
+    // 寿命 t [0, 1] で色・サイズを補間 (CPU の colorCurvePower / sizeCurvePower と一致)
     float t = saturate(p.age / p.lifetime);
-    p.color = lerp(gColorStart, gColorEnd, t);
+    p.color = lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower));
+    float sizeT = pow(t, gSizeCurvePower);
+    p.size = gSizeStart + (gSizeEnd - gSizeStart) * sizeT;
 
     gParticles[i] = p;
 }

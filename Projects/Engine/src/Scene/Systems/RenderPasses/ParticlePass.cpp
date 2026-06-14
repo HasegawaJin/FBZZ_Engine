@@ -216,13 +216,16 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
         for (int i = 0; i < burstCount && static_cast<int>(spawns.size()) < maxP; ++i)
         {
             GpuSpawnEntry s;
-            s.position  = tf.position + emitter.emitPosition;
-            s.velocity  = emitter.emitVelocity;
-            s.lifetime  = (std::max)(emitter.lifetime, 0.001f);
-            s.size      = emitter.sizeStart;
-            s.colorStart = emitter.colorStart;
-            s.colorEnd   = emitter.colorEnd;
-            s.uvRect     = { 0.0f, 0.0f, 1.0f, 1.0f };
+            s.position        = tf.position + emitter.emitPosition;
+            s.velocity        = emitter.emitVelocity;
+            s.lifetime        = (std::max)(emitter.lifetime, 0.001f);
+            s.size            = emitter.sizeStart;
+            s.colorStart      = emitter.colorStart;
+            s.colorEnd        = emitter.colorEnd;
+            s.uvRect          = { 0.0f, 0.0f, 1.0f, 1.0f };
+            s.rotation        = Random01(emitter) * 6.28318530717958647692f;
+            s.angularVelocity = emitter.angularVelocityMin
+                + (emitter.angularVelocityMax - emitter.angularVelocityMin) * Random01(emitter);
             spawns.push_back(s);
         }
         if (canEmit)
@@ -232,13 +235,16 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
             {
                 emitter.emitAccum -= 1.0f;
                 GpuSpawnEntry s;
-                s.position   = tf.position + emitter.emitPosition;
-                s.velocity   = emitter.emitVelocity;
-                s.lifetime   = (std::max)(emitter.lifetime, 0.001f);
-                s.size       = emitter.sizeStart;
-                s.colorStart = emitter.colorStart;
-                s.colorEnd   = emitter.colorEnd;
-                s.uvRect     = { 0.0f, 0.0f, 1.0f, 1.0f };
+                s.position        = tf.position + emitter.emitPosition;
+                s.velocity        = emitter.emitVelocity;
+                s.lifetime        = (std::max)(emitter.lifetime, 0.001f);
+                s.size            = emitter.sizeStart;
+                s.colorStart      = emitter.colorStart;
+                s.colorEnd        = emitter.colorEnd;
+                s.uvRect          = { 0.0f, 0.0f, 1.0f, 1.0f };
+                s.rotation        = Random01(emitter) * 6.28318530717958647692f;
+                s.angularVelocity = emitter.angularVelocityMin
+                    + (emitter.angularVelocityMax - emitter.angularVelocityMin) * Random01(emitter);
                 spawns.push_back(s);
             }
         }
@@ -257,14 +263,19 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
 
     // CS 用定数バッファ更新
     GpuParticleEmitterCB cb{};
-    cb.emitterPos   = tf.position + emitter.emitPosition;
-    cb.deltaTime    = dt;
-    cb.gravity      = emitter.gravity;
-    cb.maxParticles = static_cast<uint32_t>(maxP);
-    cb.colorStart   = emitter.colorStart;
-    cb.colorEnd     = emitter.colorEnd;
-    cb.spawnCount   = emitter.gpuSpawnCount;
-    cb.spawnOffset  = emitter.gpuWriteHead;
+    cb.emitterPos      = tf.position + emitter.emitPosition;
+    cb.deltaTime       = dt;
+    cb.gravity         = emitter.gravity;
+    cb.maxParticles    = static_cast<uint32_t>(maxP);
+    cb.colorStart      = emitter.colorStart;
+    cb.colorEnd        = emitter.colorEnd;
+    cb.spawnCount      = emitter.gpuSpawnCount;
+    cb.spawnOffset     = emitter.gpuWriteHead;
+    cb.colorCurvePower = emitter.colorCurvePower;
+    cb.velocityDamping = emitter.velocityDamping;
+    cb.sizeStart       = emitter.sizeStart;
+    cb.sizeEnd         = emitter.sizeEnd;
+    cb.sizeCurvePower  = emitter.sizeCurvePower;
     resources.Update(emitter.gpuEmitterCB, &cb, sizeof(cb));
 
     // リングバッファヘッドを進める

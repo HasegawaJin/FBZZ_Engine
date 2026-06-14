@@ -26,7 +26,7 @@ struct GpuParticle
     float4 color;
     float  lifetime;
     float  rotation;
-    float  pad0;
+    float  angularVelocity;
     float  pad1;
     float4 uvRect;
 };
