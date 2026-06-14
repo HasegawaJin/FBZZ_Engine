@@ -55,7 +55,7 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             int sort = static_cast<int>(pe.sortMode);
             if (ImGui::Combo("Sort Mode", &sort, sortItems, 2))
                 pe.sortMode = static_cast<scene::ParticleSortMode>(sort);
-            const char* simItems[] = { "CPU", "GPU (CPU Fallback)" };
+            const char* simItems[] = { "CPU", "GPU" };
             int sim = static_cast<int>(pe.simulationMode);
             if (ImGui::Combo("Simulation", &sim, simItems, 2))
                 pe.simulationMode = static_cast<scene::ParticleSimulationMode>(sim);
