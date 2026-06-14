@@ -160,9 +160,11 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::ProgressBar(normalizedTime, { -1.0f, 0.0f });
                 if (!anim.blendToState.empty()) {
                     ImGui::TextDisabled(
-                        "-> %s  (blend: %.0f%%)",
+                        "-> %s  (blend: %.0f%%, %.3f / %.3f s)",
                         anim.blendToState.c_str(),
-                        anim.blendWeight * 100.0f);
+                        anim.blendWeight * 100.0f,
+                        anim.blendWeight * anim.blendDuration,
+                        anim.blendDuration);
                 }
                 ImGui::TextDisabled(
                     "Edit nodes, sources, parameters and transitions in Animation Graph.");
@@ -180,9 +182,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     std::snprintf(overlay, sizeof(overlay), "%.2f", nt);
                     ImGui::ProgressBar(nt, { -1.0f, 0.0f }, overlay);
                     if (!anim.blendToState.empty()) {
-                        ImGui::TextDisabled(" -> %s  (blend: %.0f%%)",
+                        ImGui::TextDisabled(
+                            " -> %s  (blend: %.0f%%, %.3f / %.3f s)",
                             anim.blendToState.c_str(),
-                            anim.blendWeight * 100.0f);
+                            anim.blendWeight * 100.0f,
+                            anim.blendWeight * anim.blendDuration,
+                            anim.blendDuration);
                     }
                     ImGui::Separator();
                 }
@@ -433,7 +438,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                     ImGui::DragFloat("##et", &tr.exitTime, 0.01f, 0.0f, 1.0f);
                                 }
                                 ImGui::SetNextItemWidth(80.0f);
-                                ImGui::DragFloat("Duration", &tr.transitionDuration, 0.01f, 0.0f, 5.0f);
+                                ImGui::Checkbox("Fixed Duration", &tr.fixedDuration);
+                                ImGui::SetNextItemWidth(110.0f);
+                                ImGui::DragFloat(
+                                    tr.fixedDuration ? "Duration (s)" : "Duration (Normalized)",
+                                    &tr.transitionDuration, 0.01f, 0.0f,
+                                    tr.fixedDuration ? 5.0f : 2.0f);
 
                                 // 条件リスト
                                 ImGui::Indent();
