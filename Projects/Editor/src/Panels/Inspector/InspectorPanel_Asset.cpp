@@ -79,7 +79,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             bool changed = false;
         };
         static MaterialUndoTracker undo;
-        const asset::MaterialAsset materialBeforeDraw = mat;
+        const bool canRecordUndo =
+            ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
+        asset::MaterialAsset materialBeforeDraw;
+        if (canRecordUndo)
+            materialBeforeDraw = mat;
+        else
+            undo.active = false;
         const ImGuiID activeBefore = ImGui::GetActiveID();
         bool materialDirty = false;
 
@@ -315,7 +321,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 [apply, after]() { apply(after); },
                 [apply, before]() { apply(before); }));
         };
-        if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+        if (!canRecordUndo) {
+            undo.active = false;
+            undo.changed = false;
+        } else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
             undo.activeId = activeAfter;
             undo.before = materialBeforeDraw;
             undo.active = true;

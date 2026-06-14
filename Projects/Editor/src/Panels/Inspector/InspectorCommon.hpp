@@ -81,6 +81,12 @@
 
 namespace fbzz::editor {
 
+inline bool CanRecordEditorUndo(const EditorContext& ctx)
+{
+    return ctx.undoStack != nullptr &&
+           ctx.undoStack->IsRecordingEnabled();
+}
+
 template<typename T>
 void PushComponentValueCommand(scene::GameObject& go,
                                EditorContext& ctx,
@@ -88,7 +94,7 @@ void PushComponentValueCommand(scene::GameObject& go,
                                const T& before,
                                const T& after)
 {
-    if (!ctx.undoStack || !ctx.activeScene) return;
+    if (!CanRecordEditorUndo(ctx) || !ctx.activeScene) return;
 
     scene::Scene* scene = ctx.activeScene;
     const std::string instanceId = go.instanceId;
@@ -119,27 +125,48 @@ void PushComponentValueCommand(scene::GameObject& go,
         [apply, before]() { apply(before); }));
 }
 
+// コンポーネント編集の開始状態を保持する。
+// WHY: MSVC 14.51 は関数テンプレート内の依存型を持つローカル構造体で ICE するため、
+//      状態型を名前空間スコープへ分離してテンプレートのインスタンス化を単純化する。
+template<typename T>
+struct ComponentActiveEdit {
+    scene::EntityID id;
+    ImGuiID activeId = 0;
+    T before{};
+    bool active = false;
+};
+
+// 型付き描画関数を、Undo 処理が受け取る型消去済みコールバックへ橋渡しする。
+// WHY: MSVC 14.51 の ICE を避けるため、状態保持とスナップショットを行う重い関数から
+//      ラムダ固有型 DrawFn のテンプレート依存を分離する。
+template<typename T, typename DrawFn>
+void InvokeComponentDraw(T& component, EditorContext& ctx, void* drawFn)
+{
+    (*static_cast<DrawFn*>(drawFn))(component, ctx);
+}
+
 // コンポーネント内部の ImGui 編集を ActiveId の開始から解放まで1操作として記録する。
 // WHY: 各 Drag/Slider を個別対応すると記録漏れが生じるため、共通セクションで
 //      編集前後のコンポーネント全体をスナップショットする。
-template<typename T, typename DrawFn>
-void DrawUndoableComponentBody(scene::GameObject& go,
-                               EditorContext& ctx,
-                               const char* label,
-                               T& component,
-                               DrawFn drawFn)
+template<typename T>
+void DrawGenericUndoableComponentBody(scene::GameObject& go,
+                                      EditorContext& ctx,
+                                      const char* label,
+                                      T& component,
+                                      void (*drawFn)(T&, EditorContext&, void*),
+                                      void* drawFnData)
 {
-    struct ActiveEdit {
-        scene::EntityID id;
-        ImGuiID activeId = 0;
-        T before{};
-        bool active = false;
-    };
-    static ActiveEdit edit;
+    static ComponentActiveEdit<T> edit;
+
+    if (!CanRecordEditorUndo(ctx)) {
+        edit.active = false;
+        drawFn(component, ctx, drawFnData);
+        return;
+    }
 
     const T beforeDraw = component;
     const ImGuiID activeBefore = ImGui::GetActiveID();
-    drawFn(component, ctx);
+    drawFn(component, ctx, drawFnData);
     const ImGuiID activeAfter = ImGui::GetActiveID();
 
     if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
@@ -179,6 +206,12 @@ void DrawUndoableComponentBody(scene::GameObject& go,
         bool active = false;
     };
     static ActiveEdit edit;
+
+    if (!CanRecordEditorUndo(ctx)) {
+        edit.active = false;
+        drawFn(component, ctx);
+        return;
+    }
 
     const scene::MaterialComponent beforeDraw = component;
     const ImGuiID activeBefore = ImGui::GetActiveID();
@@ -228,6 +261,12 @@ void DrawUndoableComponentBody(scene::GameObject& go,
         bool active = false;
     };
     static ActiveEdit edit;
+
+    if (!CanRecordEditorUndo(ctx)) {
+        edit.active = false;
+        drawFn(component, ctx);
+        return;
+    }
 
     auto capture = [](const scene::RigidBodyComponent& value) {
         Snapshot snapshot;
@@ -317,7 +356,9 @@ void DrawComponentSection(scene::GameObject* go,
 
     ImGui::PushID(label);
 
-    const T beforeEnabled = *comp;
+    T beforeEnabled{};
+    if (CanRecordEditorUndo(ctx))
+        beforeEnabled = *comp;
     if (ImGui::Checkbox("##en", &comp->enabled)) {
         PushComponentValueCommand(
             *go, ctx, std::string("Toggle ") + label, beforeEnabled, *comp);
@@ -370,7 +411,18 @@ void DrawComponentSection(scene::GameObject* go,
 
     if (open) {
         ImGui::Spacing();
-        DrawUndoableComponentBody(*go, ctx, label, *comp, drawFn);
+        if constexpr (std::is_same_v<T, scene::MaterialComponent>
+                   || std::is_same_v<T, scene::RigidBodyComponent>) {
+            DrawUndoableComponentBody(*go, ctx, label, *comp, drawFn);
+        } else {
+            DrawGenericUndoableComponentBody(
+                *go,
+                ctx,
+                label,
+                *comp,
+                &InvokeComponentDraw<T, DrawFn>,
+                &drawFn);
+        }
         ImGui::Spacing();
     }
 
@@ -382,7 +434,7 @@ void DrawComponentSection(scene::GameObject* go,
         const std::string instanceId = go->instanceId;
         const auto markDirty = ctx.markSceneDirty;
         go->RemoveComponent<T>();
-        if (ctx.undoStack && scene) {
+        if (CanRecordEditorUndo(ctx) && scene) {
             ctx.undoStack->Push(std::make_unique<LambdaCommand>(
                 std::string("Remove ") + label,
                 [scene, instanceId, markDirty]() {
@@ -675,11 +727,13 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             !ComponentMatchesFilter(label, filter))
             return false;
         if (ImGui::MenuItem(filter[0] == '\0' ? label : path, nullptr, false, enabled)) {
-            const std::string before = ctx.activeScene
+            const bool canRecordUndo =
+                CanRecordEditorUndo(ctx) && ctx.activeScene;
+            const std::string before = canRecordUndo
                 ? SceneIO::Serialize(*ctx.activeScene)
                 : std::string{};
             action();
-            if (ctx.undoStack && ctx.activeScene) {
+            if (canRecordUndo) {
                 const std::string after = SceneIO::Serialize(*ctx.activeScene);
                 if (before != after) {
                     scene::Scene* scene = ctx.activeScene;
