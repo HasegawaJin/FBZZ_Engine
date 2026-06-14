@@ -24,6 +24,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include "DX11Buffer.hpp"
 #include "DX11RenderTarget.hpp"
+#include "DX11StructuredBuffer.hpp"
 
 namespace fbzz::renderer
 {
@@ -89,7 +90,9 @@ private:
     std::unique_ptr<ITexture>        CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) override;
     std::unique_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
     std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
-    std::unique_ptr<ITexture>        CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+    std::unique_ptr<IStructuredBuffer>  CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
+    std::unique_ptr<IStructuredBuffer>  CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
 
     void BindRenderTarget(IRenderTarget* rt);
 
