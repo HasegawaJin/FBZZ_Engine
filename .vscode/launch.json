@@ -80,32 +80,6 @@
             "preLaunchTask": "CMake: Build Sandbox (Development)"
         },
         {
-            "name": "Test (Debug)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/debug/Binaries/Debug/fbzz_tests.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build Test (Debug)"
-        },
-        {
-            "name": "Test (Release)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/release/Binaries/Release/fbzz_tests.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build Test (Release)"
-        },
-        {
             "name": "FBZZEditor (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -152,6 +126,45 @@
             "console": "integratedTerminal",
             "requireExactSource": false,
             "preLaunchTask": "CMake: Build EditorLauncher (Development)"
+        },
+        {
+            "name": "Test (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/Binaries/Debug/fbzz_tests.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Test (Debug)"
+        },
+        {
+            "name": "Test (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/release/Binaries/Release/fbzz_tests.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Test (Release)"
+        },
+        {
+            "name": "Test (Development)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/development/Binaries/Development/fbzz_tests.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Test (Development)"
         }
     ],
     "inputs": [

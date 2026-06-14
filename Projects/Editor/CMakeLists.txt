@@ -43,7 +43,7 @@ target_link_libraries(fbzz_editor
         # fbzz_editor は STATIC lib なので直接使う Assimp/DirectXTex シンボルを
         # PUBLIC で伝播させ、fbzz_editor_launcher がリンク時に解決できるようにする
         "$<$<CONFIG:Debug>:${EDITOR_DIRECTXTEX_LIB_DEBUG}>"
-        "$<$<CONFIG:Release>:${EDITOR_DIRECTXTEX_LIB_RELEASE}>"
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${EDITOR_DIRECTXTEX_LIB_RELEASE}>"
         "$<$<CONFIG:Debug>:${EDITOR_ASSIMP_LIB_DEBUG}>"
-        "$<$<CONFIG:Release>:${EDITOR_ASSIMP_LIB_RELEASE}>"
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${EDITOR_ASSIMP_LIB_RELEASE}>"
 )

@@ -1525,8 +1525,8 @@ static void TestPhase12_PhysicsFeatureCoverage()
         World nBodyWorld;
         nBodyWorld.SetGravity(Vector3::ZERO);
         nBodyWorld.BeginSceneSync();
-        nBodyworld.SyncBody({}, sourceA.get());
-        nBodyworld.SyncBody({}, sourceB.get());
+        nBodyWorld.SyncBody({}, sourceA.get());
+        nBodyWorld.SyncBody({}, sourceB.get());
         nBodyWorld.EndSceneSync();
         nBodyWorld.Step(1.0f);
         check(sourceA->GetVelocity().x > 0.0f && sourceB->GetVelocity().x < 0.0f,
@@ -1747,7 +1747,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
         world.SetGravity({ 0.0f, -10.0f, 0.0f });
         world.BeginSceneSync();
         world.SyncBody({}, body.get());
-        world.SyncVolume({}, std::make_shared<ColliderVolume>(volumeShape, gravitySettings));
+        world.SyncVolume({}, std::make_unique<ColliderVolume>(volumeShape.get(), gravitySettings));
         world.EndSceneSync();
         world.Step(1.0f / 60.0f);
         check(body->GetVelocity().y > 0.0f,
@@ -1760,7 +1760,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
         VolumeSettings magneticSettings;
         magneticSettings.type = VolumeType::Magnetic;
         magneticSettings.magneticField = Vector3::UP;
-        ColliderVolume magneticVolume(volumeShape, magneticSettings);
+        ColliderVolume magneticVolume(volumeShape.get(), magneticSettings);
         magneticVolume.Apply(magneticBody, 1.0f);
         magneticBody.Integrate(1.0f);
         check(magneticBody.GetVelocity().z > 0.0f,
@@ -1774,7 +1774,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
         vortexSettings.swirlStrength = 1.0f;
         vortexSettings.inwardStrength = 1.0f;
         vortexSettings.liftStrength = 1.0f;
-        ColliderVolume vortexVolume(volumeShape, vortexSettings);
+        ColliderVolume vortexVolume(volumeShape.get(), vortexSettings);
         vortexVolume.Apply(vortexBody, 1.0f);
         vortexBody.Integrate(1.0f);
         check(vortexBody.GetVelocity().LengthSq() > 0.0f,
@@ -1786,7 +1786,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
         buoyancySettings.type = VolumeType::Buoyancy;
         buoyancySettings.buoyancy = 5.0f;
         buoyancySettings.drag = 0.0f;
-        ColliderVolume buoyancyVolume(volumeShape, buoyancySettings);
+        ColliderVolume buoyancyVolume(volumeShape.get(), buoyancySettings);
         buoyancyVolume.Apply(buoyancyBody, 1.0f);
         buoyancyBody.Integrate(1.0f);
         check(buoyancyBody.GetVelocity().y > 0.0f,
@@ -1798,7 +1798,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
         VolumeSettings explosionSettings;
         explosionSettings.type = VolumeType::Explosion;
         explosionSettings.explosionImpulse = 2.0f;
-        ColliderVolume explosionVolume(volumeShape, explosionSettings);
+        ColliderVolume explosionVolume(volumeShape.get(), explosionSettings);
         explosionVolume.Apply(explosionBody, 1.0f);
         check(explosionBody.GetVelocity().x > 0.0f,
               "Volume: explosion applies outward impulse");
@@ -1807,7 +1807,7 @@ static void TestPhase12_PhysicsFeatureCoverage()
         timedSettings.type = VolumeType::TimeDilation;
         timedSettings.timeScale = 0.25f;
         timedSettings.duration = 0.1f;
-        ColliderVolume timedVolume(volumeShape, timedSettings);
+        ColliderVolume timedVolume(volumeShape.get(), timedSettings);
         timedVolume.Tick(0.2f);
         check(std::abs(timedVolume.GetTimeScale() - 0.25f) < 0.001f &&
               timedVolume.IsExpired(),

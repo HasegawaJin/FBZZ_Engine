@@ -79,7 +79,7 @@ bool StandaloneApp::OnInit()
 
     m_physicsWorld->SetGravity(m_settings.physics.gravity);
     m_physicsWorld->SetSubsteps(m_settings.physics.substeps);
-    scene::UISystemSetDefaultFontPath(m_settings.ui.defaultFontPath);
+    scene::UISystemSetDefaultFontPath(m_uiCtx, m_settings.ui.defaultFontPath);
 
     // WHY: スクリプト DLL はシーンロードより前にロードしなければならない。
     //      SceneSerializer がシーン内の ScriptComponent を復元する際に
