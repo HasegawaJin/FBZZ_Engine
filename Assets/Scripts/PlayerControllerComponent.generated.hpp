@@ -9,6 +9,9 @@ inline void PlayerControllerComponent::Reflect(::fbzz::scene::IReflector& r_) {
     r_.FloatRange("Sprint Multiplier", sprintMultiplier, 1.0f, 5.0f);
     r_.FloatRange("Jump Force", jumpForce, 0.1f, 30.0f);
     r_.FloatRange("Model Yaw Offset", modelYawOffsetDegrees, 0.0f, 360.0f);
+    r_.FloatRange("Ground Accel", groundAccel, 1.0f, 100.0f);
+    r_.FloatRange("Ground Decel", groundDecel, 1.0f, 100.0f);
+    r_.FloatRange("Air Accel", airAccel, 0.0f, 50.0f);
     r_.Field("Use Camera Forward", useCameraForward);
     r_.Field("Rotate To Move Dir", rotateToMoveDirection);
     r_.Group("Key Bindings");

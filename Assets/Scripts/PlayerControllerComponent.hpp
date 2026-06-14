@@ -7,6 +7,8 @@
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <algorithm>
+#include <cmath>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -25,6 +27,9 @@ public:
     FBZZ_FIELD_RANGE(float, sprintMultiplier,       1.8f,  "Sprint Multiplier", 1.0f,  5.0f)
     FBZZ_FIELD_RANGE(float, jumpForce,              5.0f,  "Jump Force",        0.1f, 30.0f)
     FBZZ_FIELD_RANGE(float, modelYawOffsetDegrees, 180.0f, "Model Yaw Offset",  0.0f, 360.0f)
+    FBZZ_FIELD_RANGE(float, groundAccel,            15.0f, "Ground Accel",       1.0f, 100.0f)
+    FBZZ_FIELD_RANGE(float, groundDecel,            20.0f, "Ground Decel",       1.0f, 100.0f)
+    FBZZ_FIELD_RANGE(float, airAccel,                3.0f, "Air Accel",          0.0f,  50.0f)
     FBZZ_FIELD(bool, useCameraForward,      true, "Use Camera Forward")
     FBZZ_FIELD(bool, rotateToMoveDirection, true, "Rotate To Move Dir")
 
@@ -100,34 +105,46 @@ inline void PlayerControllerComponent::OnUpdate()
     if (input.GetKey(keyRight))    move += right;
     if (input.GetKey(keyLeft))     move -= right;
 
-    if (move.LengthSq() <= EPSILON) {
-        if (phy) {
-            Vector3 vel = phy->GetVelocity();
-            vel.x = vel.z = 0.0f;
-            phy->SetVelocity(vel);
-        }
-        animator.SetFloat(paramSpeed, 0.0f);
-        return;
-    }
-
-    const float speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
-    const Vector3 direction = move.Normalized();
-    animator.SetFloat(paramSpeed, speed);
+    const bool hasInput   = move.LengthSq() > EPSILON;
+    const bool isGrounded = cc && cc->isGrounded;
 
     if (phy) {
-        // WHY: 水平速度だけを上書きし Y 速度は重力・接触解決に任せる。
+        // WHY: 水平速度を加速度補間し Y 速度は重力・接触解決に任せる。
+        //      着地直後や方向転換でも即 MaxSpeed にならず人間らしい挙動になる。
         Vector3 vel = phy->GetVelocity();
-        vel.x = direction.x * speed;
-        vel.z = direction.z * speed;
+        if (hasInput) {
+            const float   speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
+            const Vector3 dir   = move.Normalized();
+            const float   accel = isGrounded ? groundAccel : airAccel;
+            const float   t     = std::min(1.0f, accel * Time::deltaTime);
+            vel.x += (dir.x * speed - vel.x) * t;
+            vel.z += (dir.z * speed - vel.z) * t;
+            if (rotateToMoveDirection) {
+                const Quaternion rot = (Quaternion::LookRotation(dir) *
+                    Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
+                transform.rotation = rot;
+            }
+        } else {
+            const float t = std::min(1.0f, groundDecel * Time::deltaTime);
+            vel.x -= vel.x * t;
+            vel.z -= vel.z * t;
+        }
         phy->SetVelocity(vel);
+        animator.SetFloat(paramSpeed, std::sqrtf(vel.x * vel.x + vel.z * vel.z));
     } else {
-        transform.position += direction * (speed * Time::deltaTime);
-    }
-
-    if (rotateToMoveDirection) {
-        const Quaternion rot = (Quaternion::LookRotation(direction) *
-            Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
-        transform.rotation = rot;
+        if (hasInput) {
+            const float   speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
+            const Vector3 dir   = move.Normalized();
+            transform.position += dir * (speed * Time::deltaTime);
+            animator.SetFloat(paramSpeed, speed);
+            if (rotateToMoveDirection) {
+                const Quaternion rot = (Quaternion::LookRotation(dir) *
+                    Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
+                transform.rotation = rot;
+            }
+        } else {
+            animator.SetFloat(paramSpeed, 0.0f);
+        }
     }
 }
 
