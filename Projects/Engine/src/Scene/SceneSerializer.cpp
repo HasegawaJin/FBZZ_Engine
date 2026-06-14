@@ -34,6 +34,8 @@
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
+#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
@@ -1301,6 +1303,78 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
         }
 
+        // TerrainDetailComponent
+        if (auto* tdc = go.GetComponent<TerrainDetailComponent>()) {
+            toml::table tdcTbl;
+            tdcTbl.insert("enabled", tdc->enabled);
+            toml::array layersArr;
+            for (const auto& layer : tdc->layers) {
+                toml::table lt;
+                lt.insert("type",            static_cast<int64_t>(static_cast<uint8_t>(layer.type)));
+                lt.insert("meshPath",        layer.meshPath);
+                lt.insert("densityMapPath",  layer.densityMapPath);
+                lt.insert("texturePath",     layer.texturePath);
+                lt.insert("density",         static_cast<double>(layer.density));
+                lt.insert("minScale",        static_cast<double>(layer.minScale));
+                lt.insert("maxScale",        static_cast<double>(layer.maxScale));
+                lt.insert("alignToNormal",   static_cast<double>(layer.alignToNormal));
+                lt.insert("randomYRotation", layer.randomYRotation);
+                lt.insert("drawDistance",    static_cast<double>(layer.drawDistance));
+                lt.insert("fadeStartDist",   static_cast<double>(layer.fadeStartDist));
+                lt.insert("bladeHeight",     static_cast<double>(layer.bladeHeight));
+                lt.insert("bladeWidth",      static_cast<double>(layer.bladeWidth));
+                lt.insert("bladeSegments",   static_cast<int64_t>(layer.bladeSegments));
+                lt.insert("windStrength",    static_cast<double>(layer.windStrength));
+                lt.insert("windFrequency",   static_cast<double>(layer.windFrequency));
+                layersArr.push_back(std::move(lt));
+            }
+            tdcTbl.insert("layers", std::move(layersArr));
+            goTbl.insert("TerrainDetailComponent", std::move(tdcTbl));
+        }
+
+        // FoliageComponent — Species定義のみ保存し、配置/GPUキャッシュはロード時に再生成する。
+        if (auto* foliage = go.GetComponent<FoliageComponent>()) {
+            toml::table foliageTbl;
+            foliageTbl.insert("enabled", foliage->enabled);
+            toml::array speciesArr;
+            for (const auto& species : foliage->species) {
+                toml::table st;
+                st.insert("modelPath", species.modelPath);
+                st.insert("placementMode",
+                          species.placementMode == FoliagePlacementMode::STAMP
+                              ? "Stamp" : "Procedural");
+                st.insert("densityPer100SquareMeters",
+                          static_cast<double>(species.densityPer100SquareMeters));
+                st.insert("minScale", static_cast<double>(species.minScale));
+                st.insert("maxScale", static_cast<double>(species.maxScale));
+                st.insert("drawDistance", static_cast<double>(species.drawDistance));
+                st.insert("seed", static_cast<int64_t>(species.seed));
+                st.insert("randomYRotation", species.randomYRotation);
+
+                toml::array materials;
+                for (const auto& materialPath : species.subMeshMaterialPaths)
+                    materials.push_back(materialPath);
+                st.insert("subMeshMaterialPaths", std::move(materials));
+
+                toml::array stamps;
+                for (const auto& stamp : species.stamps) {
+                    toml::table stampTbl;
+                    stampTbl.insert("position", toml::array{
+                        static_cast<double>(stamp.localPosition.x),
+                        static_cast<double>(stamp.localPosition.y),
+                        static_cast<double>(stamp.localPosition.z)
+                    });
+                    stampTbl.insert("rotationY", static_cast<double>(stamp.rotationY));
+                    stampTbl.insert("scale", static_cast<double>(stamp.scale));
+                    stamps.push_back(std::move(stampTbl));
+                }
+                st.insert("stamps", std::move(stamps));
+                speciesArr.push_back(std::move(st));
+            }
+            foliageTbl.insert("species", std::move(speciesArr));
+            goTbl.insert("FoliageComponent", std::move(foliageTbl));
+        }
+
         // WaterComponent — ジオメトリ・波・materialPath のみ保存。視覚パラメータは fzmat に委譲。
         if (auto* water = go.GetComponent<WaterComponent>()) {
             toml::table waterTbl;
@@ -2124,6 +2198,100 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             // ロード後にコライダー再構築をトリガーする
             tc.colliderDirty = true;
             go.AddComponent<TerrainComponent>(std::move(tc));
+        }
+
+        // TerrainDetailComponent — layers のみ復元。chunks はランタイムに Bake で再生成。
+        if (auto* tdcTbl = (*goTbl)["TerrainDetailComponent"].as_table()) {
+            TerrainDetailComponent tdc{};
+            tdc.enabled   = (*tdcTbl)["enabled"].value_or(true);
+            tdc.needsBake = true;
+            if (const auto* layersArr = (*tdcTbl)["layers"].as_array()) {
+                for (const auto& layerNode : *layersArr) {
+                    const auto* lt = layerNode.as_table();
+                    if (!lt) continue;
+                    DetailLayer layer{};
+                    layer.type     = static_cast<DetailLayerType>(
+                        static_cast<uint8_t>((*lt)["type"].value_or((int64_t)0)));
+                    layer.meshPath       = (*lt)["meshPath"].value_or(std::string{});
+                    layer.densityMapPath = (*lt)["densityMapPath"].value_or(std::string{});
+                    layer.texturePath    = (*lt)["texturePath"].value_or(std::string{});
+                    layer.density        = (float)(*lt)["density"].value_or(1.0);
+                    layer.minScale       = (float)(*lt)["minScale"].value_or(0.8);
+                    layer.maxScale       = (float)(*lt)["maxScale"].value_or(1.2);
+                    layer.alignToNormal  = (float)(*lt)["alignToNormal"].value_or(0.0);
+                    layer.randomYRotation = (*lt)["randomYRotation"].value_or(true);
+                    layer.drawDistance   = (float)(*lt)["drawDistance"].value_or(50.0);
+                    layer.fadeStartDist  = (float)(*lt)["fadeStartDist"].value_or(40.0);
+                    layer.bladeHeight    = (float)(*lt)["bladeHeight"].value_or(0.4);
+                    layer.bladeWidth     = (float)(*lt)["bladeWidth"].value_or(0.05);
+                    layer.bladeSegments  = (int)(*lt)["bladeSegments"].value_or((int64_t)3);
+                    layer.windStrength   = (float)(*lt)["windStrength"].value_or(1.0);
+                    layer.windFrequency  = (float)(*lt)["windFrequency"].value_or(1.0);
+                    tdc.layers.push_back(std::move(layer));
+                }
+            }
+            go.AddComponent<TerrainDetailComponent>(std::move(tdc));
+        }
+
+        if (auto* foliageTbl = (*goTbl)["FoliageComponent"].as_table()) {
+            FoliageComponent foliage{};
+            foliage.enabled = (*foliageTbl)["enabled"].value_or(true);
+            foliage.needsBake = true;
+            if (const auto* speciesArr = (*foliageTbl)["species"].as_array()) {
+                for (const auto& speciesNode : *speciesArr) {
+                    const auto* st = speciesNode.as_table();
+                    if (!st) continue;
+
+                    FoliageSpecies species{};
+                    species.modelPath = (*st)["modelPath"].value_or(std::string{});
+                    species.placementMode =
+                        (*st)["placementMode"].value_or(std::string{"Procedural"}) == "Stamp"
+                            ? FoliagePlacementMode::STAMP
+                            : FoliagePlacementMode::PROCEDURAL;
+                    species.densityPer100SquareMeters =
+                        static_cast<float>((*st)["densityPer100SquareMeters"].value_or(0.5));
+                    species.minScale =
+                        static_cast<float>((*st)["minScale"].value_or(0.9));
+                    species.maxScale =
+                        static_cast<float>((*st)["maxScale"].value_or(1.1));
+                    species.drawDistance =
+                        static_cast<float>((*st)["drawDistance"].value_or(150.0));
+                    species.seed = static_cast<uint32_t>(
+                        std::max<int64_t>(0, (*st)["seed"].value_or(int64_t{1})));
+                    species.randomYRotation =
+                        (*st)["randomYRotation"].value_or(true);
+
+                    if (const auto* materials =
+                            (*st)["subMeshMaterialPaths"].as_array()) {
+                        for (const auto& materialNode : *materials) {
+                            if (const auto path = materialNode.value<std::string>())
+                                species.subMeshMaterialPaths.push_back(*path);
+                        }
+                    }
+                    if (const auto* stamps = (*st)["stamps"].as_array()) {
+                        for (const auto& stampNode : *stamps) {
+                            const auto* stampTbl = stampNode.as_table();
+                            if (!stampTbl) continue;
+                            FoliageStamp stamp{};
+                            if (const auto* position = (*stampTbl)["position"].as_array();
+                                position && position->size() >= 3) {
+                                stamp.localPosition = {
+                                    static_cast<float>((*position)[0].value_or(0.0)),
+                                    static_cast<float>((*position)[1].value_or(0.0)),
+                                    static_cast<float>((*position)[2].value_or(0.0))
+                                };
+                            }
+                            stamp.rotationY =
+                                static_cast<float>((*stampTbl)["rotationY"].value_or(0.0));
+                            stamp.scale =
+                                static_cast<float>((*stampTbl)["scale"].value_or(1.0));
+                            species.stamps.push_back(stamp);
+                        }
+                    }
+                    foliage.species.push_back(std::move(species));
+                }
+            }
+            go.AddComponent<FoliageComponent>(std::move(foliage));
         }
 
         // WaterComponent — ジオメトリ・波・materialPath のみロード。視覚パラメータは fzmat から。

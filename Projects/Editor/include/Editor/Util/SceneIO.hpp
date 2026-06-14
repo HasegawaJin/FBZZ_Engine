@@ -21,6 +21,9 @@ public:
     // 既存シーンに toml テキストの GameObject を追記する (シーン全体を破棄しない)
     static bool AppendObjects(scene::Scene& scene, const std::string& toml,
                               std::vector<scene::EntityID>& outRoots);
+
+    // スナップショット用作業ディレクトリを設定する (OpenProject で呼ぶ)
+    static void SetProjectRoot(const std::string& projectRoot);
 };
 
 } // namespace fbzz::editor
