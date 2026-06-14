@@ -19,28 +19,32 @@ namespace fbzz::scene {
 // CS/VS 共通の GPU パーティクル 1 粒子レイアウト (80 bytes, 16-byte aligned)
 // StructuredBuffer<GpuParticle> に格納し、CS が lifetime/age を更新、VS が位置を読む。
 struct GpuParticle {
-    math::Vector3 position;   // 12B
-    float         size;       // 4B
-    math::Vector3 velocity;   // 12B
-    float         age;        // 4B
-    math::Vector4 color;      // 16B
-    float         lifetime;   // 4B
-    float         rotation;   // 4B
-    float         pad0;       // 4B
-    float         pad1;       // 4B
-    math::Vector4 uvRect;     // 16B
+    math::Vector3 position;        // 12B
+    float         size;            // 4B
+    math::Vector3 velocity;        // 12B
+    float         age;             // 4B
+    math::Vector4 color;           // 16B
+    float         lifetime;        // 4B
+    float         rotation;        // 4B
+    float         angularVelocity; // 4B
+    float         pad1;            // 4B
+    math::Vector4 uvRect;          // 16B
 };
 
-// CPU → CS へのスポーンリクエスト 1 件 (64 bytes, 16-byte aligned)
+// CPU → CS へのスポーンリクエスト 1 件 (96 bytes, 16-byte aligned)
 // DYNAMIC StructuredBuffer に毎フレーム書き込み、CS がリングバッファで配置する。
 struct GpuSpawnEntry {
-    math::Vector3 position;   // 12B
-    float         lifetime;   // 4B
-    math::Vector3 velocity;   // 12B
-    float         size;       // 4B
-    math::Vector4 colorStart; // 16B
-    math::Vector4 colorEnd;   // 16B
-    math::Vector4 uvRect;     // 16B
+    math::Vector3 position;        // 12B
+    float         lifetime;        // 4B
+    math::Vector3 velocity;        // 12B
+    float         size;            // 4B
+    math::Vector4 colorStart;      // 16B
+    math::Vector4 colorEnd;        // 16B
+    math::Vector4 uvRect;          // 16B
+    float         rotation;        // 4B
+    float         angularVelocity; // 4B
+    float         pad0;            // 4B
+    float         pad1;            // 4B
 };
 
 struct Particle {
