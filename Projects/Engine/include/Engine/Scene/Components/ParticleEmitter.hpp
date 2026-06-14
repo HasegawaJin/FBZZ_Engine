@@ -12,7 +12,36 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 
+namespace fbzz::renderer { class ResourceManager; }
+
 namespace fbzz::scene {
+
+// CS/VS 共通の GPU パーティクル 1 粒子レイアウト (80 bytes, 16-byte aligned)
+// StructuredBuffer<GpuParticle> に格納し、CS が lifetime/age を更新、VS が位置を読む。
+struct GpuParticle {
+    math::Vector3 position;   // 12B
+    float         size;       // 4B
+    math::Vector3 velocity;   // 12B
+    float         age;        // 4B
+    math::Vector4 color;      // 16B
+    float         lifetime;   // 4B
+    float         rotation;   // 4B
+    float         pad0;       // 4B
+    float         pad1;       // 4B
+    math::Vector4 uvRect;     // 16B
+};
+
+// CPU → CS へのスポーンリクエスト 1 件 (64 bytes, 16-byte aligned)
+// DYNAMIC StructuredBuffer に毎フレーム書き込み、CS がリングバッファで配置する。
+struct GpuSpawnEntry {
+    math::Vector3 position;   // 12B
+    float         lifetime;   // 4B
+    math::Vector3 velocity;   // 12B
+    float         size;       // 4B
+    math::Vector4 colorStart; // 16B
+    math::Vector4 colorEnd;   // 16B
+    math::Vector4 uvRect;     // 16B
+};
 
 struct Particle {
     math::Vector3 position;
@@ -81,6 +110,15 @@ struct ParticleEmitter {
     int                   burstPending = 0;
     renderer::ResourceHandle<renderer::TextureTag> texture;
     std::string           loadedTexturePath;
+
+    // GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuParticleBuffer; // RWStructuredBuffer: CS が更新
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;    // DYNAMIC SRV: CPU がスポーンデータを書く
+    renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuEmitterCB;      // CS 用エミッター定数バッファ
+    uint32_t gpuWriteHead    = 0;   // gpuSpawnBuffer の次書き込み位置 (リングバッファインデックス)
+    uint32_t gpuSpawnCount   = 0;   // 今フレームのスポーン数
+    bool     gpuInitialized  = false;
+    uint64_t gpuResetVersion = 0;   // 最後に確認した ResourceManager::GetResetVersion()
 
     const char* GetTypeName() const { return "Particle Emitter"; }
     void Reflect(IReflector& r)
