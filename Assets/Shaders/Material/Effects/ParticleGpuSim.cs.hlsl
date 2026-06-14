@@ -1,6 +1,6 @@
 // FBZZ Engine
 // Material/Effects/ParticleGpuSim.cs.hlsl | Compute Shader
-// GPU パーティクルシミュレーション: スポーン + 物理積分 + 色/サイズ補間
+// GPU パーティクルシミュレーション: スポーン + 物理積分 + 色/サイズ/スプライト補間
 //
 // dispatch: ceil(maxParticles / 64) × 1 × 1
 // スロット:
@@ -51,16 +51,18 @@ cbuffer GpuEmitterCB : register(b0)
     uint     gMaxParticles;
     float4   gColorStart;
     float4   gColorEnd;
-    uint     gSpawnCount;      // 今フレームにスポーンする粒子数
-    uint     gSpawnOffset;     // リングバッファの書き込み開始インデックス
+    uint     gSpawnCount;       // 今フレームにスポーンする粒子数
+    uint     gSpawnOffset;      // リングバッファの書き込み開始インデックス
     float    gColorCurvePower;
     float    gVelocityDamping;
     float    gSizeStart;
     float    gSizeEnd;
     float    gSizeCurvePower;
     float    gPad0;
-    float    gPad1;
-    float    gPad2;
+    uint     gSpriteColumns;
+    uint     gSpriteRows;
+    uint     gSpriteStartFrame;
+    uint     gSpriteEndFrame;
 };
 
 StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
@@ -104,7 +106,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // 物理積分 (半陽的オイラー)
     p.velocity += gGravity * gDeltaTime;
-    // 速度減衰: CPU の 1.0 - damping * dt と同じ式
+    // 速度減衰: CPU の max(0, 1 - damping * dt) と同じ式
     float damping = max(0.0f, 1.0f - gVelocityDamping * gDeltaTime);
     p.velocity *= damping;
     p.position += p.velocity * gDeltaTime;
@@ -113,11 +115,21 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // 回転更新
     p.rotation += p.angularVelocity * gDeltaTime;
 
-    // 寿命 t [0, 1] で色・サイズを補間 (CPU の colorCurvePower / sizeCurvePower と一致)
+    // 寿命 t [0, 1] で色・サイズ補間 (CPU の colorCurvePower / sizeCurvePower と一致)
     float t = saturate(p.age / p.lifetime);
     p.color = lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower));
-    float sizeT = pow(t, gSizeCurvePower);
-    p.size = gSizeStart + (gSizeEnd - gSizeStart) * sizeT;
+    p.size  = gSizeStart + (gSizeEnd - gSizeStart) * pow(t, gSizeCurvePower);
+
+    // スプライトアニメーション (CPU の ComputeSpriteRect と一致)
+    uint spriteSpan = gSpriteEndFrame - gSpriteStartFrame;
+    uint frame      = gSpriteStartFrame + (uint)(t * (float)spriteSpan);
+    uint sx         = frame % gSpriteColumns;
+    uint sy         = frame / gSpriteColumns;
+    float invCols   = 1.0f / (float)gSpriteColumns;
+    float invRows   = 1.0f / (float)gSpriteRows;
+    p.uvRect = float4(
+        (float)sx * invCols,       (float)sy * invRows,
+        (float)(sx + 1) * invCols, (float)(sy + 1) * invRows);
 
     gParticles[i] = p;
 }

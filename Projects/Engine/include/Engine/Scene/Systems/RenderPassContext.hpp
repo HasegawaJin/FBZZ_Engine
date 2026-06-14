@@ -46,7 +46,7 @@ struct UserRenderPassDesc {
     bool allowCulling = true;
 };
 
-// GPU パーティクル CS 用定数バッファ (b0) — 96 bytes, 16-byte aligned
+// GPU パーティクル CS 用定数バッファ (b0) — 112 bytes, 16-byte aligned
 struct GpuParticleEmitterCB {
     math::Vector3 emitterPos;
     float         deltaTime;
@@ -54,16 +54,18 @@ struct GpuParticleEmitterCB {
     uint32_t      maxParticles;
     math::Vector4 colorStart;
     math::Vector4 colorEnd;
-    uint32_t      spawnCount;      // 今フレームのスポーン数
-    uint32_t      spawnOffset;     // リングバッファ書き込み先頭インデックス
-    float         colorCurvePower; // CPU と一致させる: pow(t, colorCurvePower) で補間
+    uint32_t      spawnCount;       // 今フレームのスポーン数
+    uint32_t      spawnOffset;      // リングバッファ書き込み先頭インデックス
+    float         colorCurvePower;  // CPU と一致: pow(t, colorCurvePower)
     float         velocityDamping;
     float         sizeStart;
     float         sizeEnd;
     float         sizeCurvePower;
     float         pad0;
-    float         pad1;
-    float         pad2;
+    uint32_t      spriteColumns;
+    uint32_t      spriteRows;
+    uint32_t      spriteStartFrame;
+    uint32_t      spriteEndFrame;
 };
 
 struct PerFrameCB {

@@ -162,6 +162,58 @@ void ClearEmitterRuntime(ParticleEmitter& emitter)
     emitter.burstPending = 0;
 }
 
+// CPU の SpawnParticle と同じ Shape/Spread ロジックで GpuSpawnEntry を初期化する
+void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transform& tf)
+{
+    s.position = tf.position + emitter.emitPosition;
+    math::Vector3 shapeVelocity = math::Vector3::ZERO;
+
+    switch (emitter.shape) {
+    case ParticleEmitterShape::Sphere: {
+        const math::Vector3 dir = RandomUnitVector(emitter);
+        const float radius = (std::max)(emitter.sphereRadius, 0.0f) * std::cbrt(Random01(emitter));
+        s.position = s.position + dir * radius;
+        shapeVelocity = dir * emitter.velocitySpread;
+        break;
+    }
+    case ParticleEmitterShape::Cone: {
+        constexpr float DEG_TO_RAD = 3.14159265358979323846f / 180.0f;
+        const float angle = (std::max)(emitter.coneAngleDegrees, 0.0f) * DEG_TO_RAD;
+        const float theta = Random01(emitter) * angle;
+        const float phi   = Random01(emitter) * 3.14159265358979323846f * 2.0f;
+        const float radius = (std::max)(emitter.coneRadius, 0.0f) * std::sqrt(Random01(emitter));
+        s.position.x += std::cos(phi) * radius;
+        s.position.z += std::sin(phi) * radius;
+        shapeVelocity = {
+            std::sin(theta) * std::cos(phi) * emitter.velocitySpread,
+            std::cos(theta) * emitter.velocitySpread,
+            std::sin(theta) * std::sin(phi) * emitter.velocitySpread
+        };
+        break;
+    }
+    case ParticleEmitterShape::Box:
+        s.position.x += RandomSigned01(emitter) * emitter.boxExtents.x;
+        s.position.y += RandomSigned01(emitter) * emitter.boxExtents.y;
+        s.position.z += RandomSigned01(emitter) * emitter.boxExtents.z;
+        break;
+    default:
+        break;
+    }
+
+    const float rx = RandomSigned01(emitter) * emitter.velocitySpread;
+    const float rz = RandomSigned01(emitter) * emitter.velocitySpread;
+    s.velocity        = { emitter.emitVelocity.x + rx, emitter.emitVelocity.y, emitter.emitVelocity.z + rz };
+    s.velocity        = s.velocity + shapeVelocity;
+    s.lifetime        = (std::max)(emitter.lifetime, 0.001f);
+    s.size            = emitter.sizeStart;
+    s.colorStart      = emitter.colorStart;
+    s.colorEnd        = emitter.colorEnd;
+    s.uvRect          = ComputeSpriteRect(emitter, 0.0f);
+    s.rotation        = Random01(emitter) * 6.28318530717958647692f;
+    s.angularVelocity = emitter.angularVelocityMin
+        + (emitter.angularVelocityMax - emitter.angularVelocityMin) * Random01(emitter);
+}
+
 // GPU パーティクル: バッファ初期化・スポーン・CS Dispatch・DrawInstanced
 void TickGpuEmitter(ParticleEmitter&        emitter,
                     const Transform&        tf,
@@ -216,16 +268,7 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
         for (int i = 0; i < burstCount && static_cast<int>(spawns.size()) < maxP; ++i)
         {
             GpuSpawnEntry s;
-            s.position        = tf.position + emitter.emitPosition;
-            s.velocity        = emitter.emitVelocity;
-            s.lifetime        = (std::max)(emitter.lifetime, 0.001f);
-            s.size            = emitter.sizeStart;
-            s.colorStart      = emitter.colorStart;
-            s.colorEnd        = emitter.colorEnd;
-            s.uvRect          = { 0.0f, 0.0f, 1.0f, 1.0f };
-            s.rotation        = Random01(emitter) * 6.28318530717958647692f;
-            s.angularVelocity = emitter.angularVelocityMin
-                + (emitter.angularVelocityMax - emitter.angularVelocityMin) * Random01(emitter);
+            InitGpuSpawnEntry(s, emitter, tf);
             spawns.push_back(s);
         }
         if (canEmit)
@@ -235,16 +278,7 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
             {
                 emitter.emitAccum -= 1.0f;
                 GpuSpawnEntry s;
-                s.position        = tf.position + emitter.emitPosition;
-                s.velocity        = emitter.emitVelocity;
-                s.lifetime        = (std::max)(emitter.lifetime, 0.001f);
-                s.size            = emitter.sizeStart;
-                s.colorStart      = emitter.colorStart;
-                s.colorEnd        = emitter.colorEnd;
-                s.uvRect          = { 0.0f, 0.0f, 1.0f, 1.0f };
-                s.rotation        = Random01(emitter) * 6.28318530717958647692f;
-                s.angularVelocity = emitter.angularVelocityMin
-                    + (emitter.angularVelocityMax - emitter.angularVelocityMin) * Random01(emitter);
+                InitGpuSpawnEntry(s, emitter, tf);
                 spawns.push_back(s);
             }
         }
@@ -276,6 +310,19 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
     cb.sizeStart       = emitter.sizeStart;
     cb.sizeEnd         = emitter.sizeEnd;
     cb.sizeCurvePower  = emitter.sizeCurvePower;
+    {
+        const int cols       = (std::max)(emitter.spriteColumns, 1);
+        const int rows       = (std::max)(emitter.spriteRows, 1);
+        const int frameCount = cols * rows;
+        const int startFrame = std::clamp(emitter.spriteStartFrame, 0, frameCount - 1);
+        const int endFrame   = std::clamp(
+            emitter.spriteEndFrame > 0 ? emitter.spriteEndFrame : frameCount - 1,
+            startFrame, frameCount - 1);
+        cb.spriteColumns    = static_cast<uint32_t>(cols);
+        cb.spriteRows       = static_cast<uint32_t>(rows);
+        cb.spriteStartFrame = static_cast<uint32_t>(startFrame);
+        cb.spriteEndFrame   = static_cast<uint32_t>(endFrame);
+    }
     resources.Update(emitter.gpuEmitterCB, &cb, sizeof(cb));
 
     // リングバッファヘッドを進める
