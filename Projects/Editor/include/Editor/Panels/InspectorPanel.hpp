@@ -24,6 +24,7 @@ private:
     std::any              m_componentClipboard;
     const std::type_info* m_componentClipboardType = nullptr;
     char                  m_addComponentFilter[64] = {};
+    bool                  m_sectionStateRestored = false; // 起動時に ImGui StateStorage を一度だけ復元した後 true
 
     // ロック機能: true のとき m_lockedEntityId のオブジェクトを固定表示する。
     // WHY: IK Solver の設定中など、Hierarchy で別オブジェクトをクリックしても

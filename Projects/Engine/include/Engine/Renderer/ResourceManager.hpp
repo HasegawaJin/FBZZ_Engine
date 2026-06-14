@@ -24,6 +24,7 @@ class IPipelineState;
 class IRenderTarget;
 class IRenderer;
 class IShader;
+class IStructuredBuffer;
 class ITexture;
 
 class ResourceManager {
@@ -59,6 +60,10 @@ public:
     ResourceHandle<PipelineStateTag> CreatePipelineState(const PipelineStateDesc& desc);
     ResourceHandle<RenderTargetTag> CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1);
     ResourceHandle<TextureTag> CreateComputeTexture(uint32_t width, uint32_t height);
+    // GPU Instancing 用 StructuredBuffer。elementCount 個・stride バイトの DYNAMIC バッファを作成する。
+    ResourceHandle<StructuredBufferTag> CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride);
+    // CS が RWStructuredBuffer として書き込む DEFAULT バッファ (SRV + UAV)。GPU パーティクルプール等に使う。
+    ResourceHandle<StructuredBufferTag> CreateRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride);
 
     IShader* Get(ResourceHandle<ShaderTag> h);
     ITexture* Get(ResourceHandle<TextureTag> h);
@@ -66,12 +71,14 @@ public:
     IConstantBuffer* Get(ResourceHandle<ConstantBufferTag> h);
     IPipelineState* Get(ResourceHandle<PipelineStateTag> h);
     IRenderTarget* Get(ResourceHandle<RenderTargetTag> h);
+    IStructuredBuffer* Get(ResourceHandle<StructuredBufferTag> h);
 
     ResourceHandle<TextureTag> GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index = 0);
     ResourceHandle<TextureTag> GetDepthTexture(ResourceHandle<RenderTargetTag> rt);
 
     void Update(ResourceHandle<BufferTag> h, const void* data, size_t sizeBytes);
     void Update(ResourceHandle<ConstantBufferTag> h, const void* data, size_t sizeBytes);
+    void Update(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes);
 
     void Release(ResourceHandle<ShaderTag> h);
     void Release(ResourceHandle<TextureTag> h);
@@ -79,6 +86,7 @@ public:
     void Release(ResourceHandle<ConstantBufferTag> h);
     void Release(ResourceHandle<PipelineStateTag> h);
     void Release(ResourceHandle<RenderTargetTag> h);
+    void Release(ResourceHandle<StructuredBufferTag> h);
 
     [[nodiscard]] std::size_t GetLiveDebugResourceCount() const;
     [[nodiscard]] const core::AllocationInfo* GetLiveDebugResource(std::size_t index) const;
@@ -96,6 +104,7 @@ private:
     ResourcePool<IConstantBuffer, ConstantBufferTag> m_constantBuffers;
     ResourcePool<IPipelineState, PipelineStateTag> m_pipelineStates;
     ResourcePool<IRenderTarget, RenderTargetTag> m_renderTargets;
+    ResourcePool<IStructuredBuffer, StructuredBufferTag> m_structuredBuffers;
 
     std::unordered_map<std::string, ResourceHandle<ShaderTag>> m_shaderCache;
     std::unordered_map<std::string, ResourceHandle<TextureTag>> m_textureCache;

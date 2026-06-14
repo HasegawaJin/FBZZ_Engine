@@ -26,8 +26,11 @@
 #include <Editor/Panels/BuildSettingsPanel.hpp>
 #include <Editor/Panels/AnalysisPanel.hpp>
 #include <Editor/Panels/AnimationGraphPanel.hpp>
+#include <Editor/Panels/MapEditorPanel.hpp>
 #include "Tools/TerrainTool.hpp"
 #include "Tools/WaterTool.hpp"
+#include "Tools/DetailTool.hpp"
+#include "Tools/FoliageTool.hpp"
 #include <Engine/Core/Application.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -42,6 +45,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
 #include <toml++/toml.hpp>
@@ -54,8 +58,86 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace fbzz::editor {
 
-static constexpr const char* SETTINGS_DIR  = "editor_config";
-static constexpr const char* SETTINGS_PATH = "editor_config/editor_settings.toml";
+// WHY: デフォルトレイアウトをファイルスコープで定義し、OpenProject() から参照する。
+//      io.IniFilename は projectRoot 確定後にセットするため Init() では設定しない。
+static constexpr const char* DEFAULT_IMGUI_LAYOUT =
+    "[Window][##statusbar]\n"
+    "Pos=0,970\n"
+    "Size=1904,32\n"
+    "Collapsed=0\n"
+    "\n"
+    "[Window][##DockSpaceHost]\n"
+    "Pos=0,0\n"
+    "Size=1904,993\n"
+    "Collapsed=0\n"
+    "\n"
+    "[Window][Debug##Default]\n"
+    "Pos=60,60\n"
+    "Size=400,400\n"
+    "Collapsed=0\n"
+    "\n"
+    "[Window][Scene Hierarchy]\n"
+    "Pos=0,19\n"
+    "Size=209,974\n"
+    "Collapsed=0\n"
+    "DockId=0x00000001,0\n"
+    "\n"
+    "[Window][Inspector]\n"
+    "Pos=1675,19\n"
+    "Size=229,974\n"
+    "Collapsed=0\n"
+    "DockId=0x00000004,0\n"
+    "\n"
+    "[Window][Scene]\n"
+    "Pos=211,19\n"
+    "Size=1462,667\n"
+    "Collapsed=0\n"
+    "DockId=0x00000007,0\n"
+    "\n"
+    "[Window][Game]\n"
+    "Pos=211,19\n"
+    "Size=1462,667\n"
+    "Collapsed=0\n"
+    "DockId=0x00000007,2\n"
+    "\n"
+    "[Window][UI]\n"
+    "Pos=211,19\n"
+    "Size=1462,667\n"
+    "Collapsed=0\n"
+    "DockId=0x00000007,1\n"
+    "\n"
+    "[Window][Console]\n"
+    "Pos=211,688\n"
+    "Size=1462,305\n"
+    "Collapsed=0\n"
+    "DockId=0x00000005,1\n"
+    "\n"
+    "[Window][Asset Browser]\n"
+    "Pos=211,688\n"
+    "Size=1462,305\n"
+    "Collapsed=0\n"
+    "DockId=0x00000005,0\n"
+    "\n"
+    "[Window][Project Settings]\n"
+    "Pos=211,19\n"
+    "Size=1462,594\n"
+    "Collapsed=0\n"
+    "DockId=0x00000007,3\n"
+    "\n"
+    "[Window][New Scene]\n"
+    "Pos=820,459\n"
+    "Size=264,75\n"
+    "Collapsed=0\n"
+    "\n"
+    "[Docking][Data]\n"
+    "DockSpace       ID=0xFF535877 Window=0xE26AC72C Pos=0,19 Size=1904,974 Split=X\n"
+    "  DockNode      ID=0x00000001 Parent=0xFF535877 SizeRef=209,1042 HiddenTabBar=1 Selected=0xB8729153\n"
+    "  DockNode      ID=0x00000006 Parent=0xFF535877 SizeRef=1703,1042 Split=X\n"
+    "    DockNode    ID=0x00000003 Parent=0x00000006 SizeRef=1478,1042 Split=Y\n"
+    "      DockNode  ID=0x00000007 Parent=0x00000003 SizeRef=1464,683 CentralNode=1 Selected=0xD1EB2482\n"
+    "      DockNode  ID=0x00000005 Parent=0x00000003 SizeRef=1464,305 Selected=0x36AF052B\n"
+    "    DockNode    ID=0x00000004 Parent=0x00000006 SizeRef=229,1042 HiddenTabBar=1 Selected=0x36DC96AB\n";
+
 
 namespace {
 
@@ -169,91 +251,10 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = "editor_config/imgui_layout.ini";
-
-    // ini がなければデフォルトレイアウトをメモリから適用する。
-    // LoadIniSettingsFromMemory は SettingsLoaded フラグを立てるため、
-    // その後の NewFrame() でファイルから上書きされることはない。
-    if (!util::FileSystem::Exists("editor_config/imgui_layout.ini")) {
-        static constexpr const char* DEFAULT_IMGUI_LAYOUT =
-            "[Window][##statusbar]\n"
-            "Pos=0,970\n"
-            "Size=1904,32\n"
-            "Collapsed=0\n"
-            "\n"
-            "[Window][##DockSpaceHost]\n"
-            "Pos=0,0\n"
-            "Size=1904,993\n"
-            "Collapsed=0\n"
-            "\n"
-            "[Window][Debug##Default]\n"
-            "Pos=60,60\n"
-            "Size=400,400\n"
-            "Collapsed=0\n"
-            "\n"
-            "[Window][Scene Hierarchy]\n"
-            "Pos=0,19\n"
-            "Size=209,974\n"
-            "Collapsed=0\n"
-            "DockId=0x00000001,0\n"
-            "\n"
-            "[Window][Inspector]\n"
-            "Pos=1675,19\n"
-            "Size=229,974\n"
-            "Collapsed=0\n"
-            "DockId=0x00000004,0\n"
-            "\n"
-            "[Window][Scene]\n"
-            "Pos=211,19\n"
-            "Size=1462,667\n"
-            "Collapsed=0\n"
-            "DockId=0x00000007,0\n"
-            "\n"
-            "[Window][Game]\n"
-            "Pos=211,19\n"
-            "Size=1462,667\n"
-            "Collapsed=0\n"
-            "DockId=0x00000007,2\n"
-            "\n"
-            "[Window][UI]\n"
-            "Pos=211,19\n"
-            "Size=1462,667\n"
-            "Collapsed=0\n"
-            "DockId=0x00000007,1\n"
-            "\n"
-            "[Window][Console]\n"
-            "Pos=211,688\n"
-            "Size=1462,305\n"
-            "Collapsed=0\n"
-            "DockId=0x00000005,1\n"
-            "\n"
-            "[Window][Asset Browser]\n"
-            "Pos=211,688\n"
-            "Size=1462,305\n"
-            "Collapsed=0\n"
-            "DockId=0x00000005,0\n"
-            "\n"
-            "[Window][Project Settings]\n"
-            "Pos=211,19\n"
-            "Size=1462,594\n"
-            "Collapsed=0\n"
-            "DockId=0x00000007,3\n"
-            "\n"
-            "[Window][New Scene]\n"
-            "Pos=820,459\n"
-            "Size=264,75\n"
-            "Collapsed=0\n"
-            "\n"
-            "[Docking][Data]\n"
-            "DockSpace       ID=0xFF535877 Window=0xE26AC72C Pos=0,19 Size=1904,974 Split=X\n"
-            "  DockNode      ID=0x00000001 Parent=0xFF535877 SizeRef=209,1042 HiddenTabBar=1 Selected=0xB8729153\n"
-            "  DockNode      ID=0x00000006 Parent=0xFF535877 SizeRef=1703,1042 Split=X\n"
-            "    DockNode    ID=0x00000003 Parent=0x00000006 SizeRef=1478,1042 Split=Y\n"
-            "      DockNode  ID=0x00000007 Parent=0x00000003 SizeRef=1464,683 CentralNode=1 Selected=0xD1EB2482\n"
-            "      DockNode  ID=0x00000005 Parent=0x00000003 SizeRef=1464,305 Selected=0x36AF052B\n"
-            "    DockNode    ID=0x00000004 Parent=0x00000006 SizeRef=229,1042 HiddenTabBar=1 Selected=0x36DC96AB\n";
-        ImGui::LoadIniSettingsFromMemory(DEFAULT_IMGUI_LAYOUT);
-    }
+    // WHY: IniFilename は OpenProject() で projectRoot が確定してから設定する。
+    //      Init() 時点では projectRoot が空なので nullptr にしておき、
+    //      最初の NewFrame() で自動ロードされないようにする。
+    io.IniFilename = nullptr;
 
     EditorTheme::Apply();
 
@@ -269,6 +270,10 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_ctx.terrainTool = m_terrainTool.get();
     m_waterTool       = std::make_unique<WaterTool>();
     m_ctx.waterTool   = m_waterTool.get();
+    m_detailTool      = std::make_unique<DetailTool>();
+    m_ctx.detailTool  = m_detailTool.get();
+    m_foliageTool     = std::make_unique<FoliageTool>();
+    m_ctx.foliageTool = m_foliageTool.get();
     m_ctx.markSceneDirty  = [this]() { MarkSceneDirty(); };
     m_ctx.requestOpenScene = [this](const std::string& path) { RequestOpenScenePath(path); };
 
@@ -319,34 +324,17 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_analysisPanel = analysis.get();
         m_panels.push_back(std::move(analysis));
     }
+    {
+        auto mapEditor = std::make_unique<MapEditorPanel>();
+        mapEditor->visible = false;
+        m_mapEditorPanel = mapEditor.get();
+        m_panels.push_back(std::move(mapEditor));
+    }
 
     for (auto& panel : m_panels)
         panel->OnInit(m_ctx);
 
     RegisterDefaultHotkeys();
-
-    util::FileSystem::EnsureDirectory(SETTINGS_DIR);
-    m_settings.Load(SETTINGS_PATH, m_ctx.projectRoot);
-
-    // --- EditorSettings → EditorContext への全フィールド適用 ---------------
-    // WHY: EditorSettings は TOML から読んだ raw 値を保持し、
-    //      EditorContext はパネル・メインループが参照するライブ値を保持する。
-    //      Init 時に一括コピーし、Shutdown 時に逆方向で書き戻す設計にすることで
-    //      両者の責務が明確になり、保存漏れを防げる。
-    m_ctx.showGrid          = m_settings.showGrid;
-    m_ctx.gridSize          = m_settings.gridSize;
-    m_ctx.snapEnabled       = m_settings.snapEnabled;
-    m_ctx.snapDistance      = m_settings.snapDistance;
-    m_ctx.gizmoMode         = static_cast<EditorContext::GizmoMode>(m_settings.gizmoMode);
-    m_ctx.gizmoSpace        = static_cast<EditorContext::GizmoSpace>(m_settings.gizmoSpace);
-    m_ctx.showLightRange    = m_settings.showLightRange;
-    m_ctx.showSkeleton      = m_settings.showSkeleton;
-    m_ctx.showStats         = m_settings.showStats;
-    m_ctx.hotReloadEnabled  = m_settings.hotReloadEnabled;
-    m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(m_settings.gameViewportAspect);
-    m_ctx.cameraSpeed            = m_settings.cameraSpeed;
-    m_ctx.cameraSensitivity      = m_settings.cameraSensitivity;
-    m_ctx.assetBrowserIconSize   = m_settings.assetBrowserIconSize;
 
     // 初回 RT をウィンドウサイズで生成する
     m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
@@ -377,6 +365,16 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
 void EditorApp::Shutdown()
 {
+    // WHY: Map Mode の Dock を imgui_layout.ini へ保存すると次回起動も専用配置になる。
+    //      終了経路でも通常 Workspace をメモリから戻してから ImGui を破棄する。
+    if (m_ctx.mapEditingMode && !m_normalLayoutIni.empty()) {
+        ImGui::GetIO().IniFilename = m_normalIniFilename;
+        ImGui::ClearIniSettings();
+        ImGui::LoadIniSettingsFromMemory(
+            m_normalLayoutIni.data(), m_normalLayoutIni.size());
+        m_ctx.mapEditingMode = false;
+    }
+
     // DLL 仮想デストラクタが DLL コードを参照するため、パネル・シーンより先にアンロードする。
     m_scriptDll.Unload(m_ctx.activeScene);
 
@@ -397,12 +395,41 @@ void EditorApp::Shutdown()
     m_settings.showSkeleton       = m_ctx.showSkeleton;
     m_settings.showStats          = m_ctx.showStats;
     m_settings.hotReloadEnabled   = m_ctx.hotReloadEnabled;
+    m_settings.showTerrainTool    = m_ctx.showTerrainTool;
+    m_settings.showWaterTool      = m_ctx.showWaterTool;
+    m_settings.showDetailTool     = m_ctx.showDetailTool;
+    m_settings.showFoliageTool    = m_ctx.showFoliageTool;
     m_settings.gameViewportAspect = static_cast<int>(m_ctx.gameViewportAspect);
     m_settings.cameraSpeed           = m_ctx.cameraSpeed;
     m_settings.cameraSensitivity     = m_ctx.cameraSensitivity;
     m_settings.assetBrowserIconSize  = m_ctx.assetBrowserIconSize;
+    m_settings.mapHierarchyFilter = m_ctx.mapHierarchyFilter;
+    m_settings.mapInspectorFilter = m_ctx.mapInspectorFilter;
+    if (m_terrainTool) {
+        const auto b = m_terrainTool->GetBrush();
+        m_settings.terrainBrushRadius   = b.radius;
+        m_settings.terrainBrushStrength = b.strength;
+        m_settings.terrainBrushFalloff  = static_cast<int>(b.falloff);
+        m_settings.terrainSculptMode    = static_cast<int>(m_terrainTool->GetSculptMode());
+        m_settings.terrainPaintLayer    = m_terrainTool->GetPaintLayer();
+    }
+    if (m_detailTool) {
+        m_settings.detailBrushRadius    = m_detailTool->GetBrushRadius();
+        m_settings.detailBrushStrength  = m_detailTool->GetBrushStrength();
+        m_settings.detailMode           = m_detailTool->GetMode();
+        m_settings.detailLayerIndex     = m_detailTool->GetLayerIndex();
+        m_settings.detailShowChunkBounds = m_detailTool->GetShowChunkBounds();
+        m_settings.detailShowCounts      = m_detailTool->GetShowCounts();
+    }
 
-    m_settings.Save(SETTINGS_PATH, m_ctx.projectRoot);
+    // Inspector 折り畳み状態を ImGui StateStorage から回収して設定に書き戻す
+    if (ImGuiWindow* win = ImGui::FindWindowByName("Inspector")) {
+        m_settings.inspectorSectionState.clear();
+        for (const auto& entry : win->StateStorage.Data)
+            m_settings.inspectorSectionState.emplace_back(entry.key, entry.val_i != 0);
+    }
+
+    m_settings.Save(m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml", m_ctx.projectRoot);
     m_ctx.projectSettings.Save(m_projectSettingsPath);
     m_sceneViewportRT = {};
     m_gameViewportRT  = {};
@@ -416,6 +443,70 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     m_projectRoot      = projectRoot;
     m_ctx.projectRoot  = projectRoot;
+
+    // --- EditorConfig を Assets/EditorConfig/ からロード --------------------
+    // WHY: Init() 時点では projectRoot が未確定なので、ここで遅延ロードする。
+    //      Settings は OpenProject 内で lastScenePath を参照するため、
+    //      他の初期化より前に完了させる必要がある。
+    {
+        const std::string configDir = projectRoot + "/Assets/EditorConfig";
+        util::FileSystem::EnsureDirectory(configDir);
+        m_settings.Load(configDir + "/editor_settings.toml", projectRoot);
+        m_ctx.inspectorSectionState = m_settings.inspectorSectionState;
+
+        // EditorSettings → EditorContext への全フィールド適用
+        // WHY: EditorSettings は TOML の raw 値を保持し、EditorContext がライブ値を保持する。
+        //      OpenProject で一括コピーし、Shutdown で逆方向に書き戻す。
+        m_ctx.showGrid           = m_settings.showGrid;
+        m_ctx.gridSize           = m_settings.gridSize;
+        m_ctx.snapEnabled        = m_settings.snapEnabled;
+        m_ctx.snapDistance       = m_settings.snapDistance;
+        m_ctx.gizmoMode          = static_cast<EditorContext::GizmoMode>(m_settings.gizmoMode);
+        m_ctx.gizmoSpace         = static_cast<EditorContext::GizmoSpace>(m_settings.gizmoSpace);
+        m_ctx.showLightRange     = m_settings.showLightRange;
+        m_ctx.showSkeleton       = m_settings.showSkeleton;
+        m_ctx.showStats          = m_settings.showStats;
+        m_ctx.hotReloadEnabled   = m_settings.hotReloadEnabled;
+        m_ctx.showTerrainTool    = m_settings.showTerrainTool;
+        m_ctx.showWaterTool      = m_settings.showWaterTool;
+        m_ctx.showDetailTool     = m_settings.showDetailTool;
+        m_ctx.showFoliageTool    = m_settings.showFoliageTool;
+        m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(m_settings.gameViewportAspect);
+        m_ctx.cameraSpeed        = m_settings.cameraSpeed;
+        m_ctx.cameraSensitivity  = m_settings.cameraSensitivity;
+        m_ctx.assetBrowserIconSize = m_settings.assetBrowserIconSize;
+        m_ctx.mapHierarchyFilter = m_settings.mapHierarchyFilter;
+        m_ctx.mapInspectorFilter = m_settings.mapInspectorFilter;
+        if (m_terrainTool) {
+            m_terrainTool->SetBrush(
+                m_settings.terrainBrushRadius,
+                m_settings.terrainBrushStrength,
+                static_cast<TerrainTool::FalloffType>(m_settings.terrainBrushFalloff));
+            m_terrainTool->SetSculptMode(
+                static_cast<TerrainTool::SculptMode>(m_settings.terrainSculptMode));
+            m_terrainTool->SetPaintLayer(m_settings.terrainPaintLayer);
+        }
+        if (m_detailTool) {
+            m_detailTool->SetBrush(m_settings.detailBrushRadius, m_settings.detailBrushStrength);
+            m_detailTool->SetMode(m_settings.detailMode);
+            m_detailTool->SetLayerIndex(m_settings.detailLayerIndex);
+            m_detailTool->SetShowChunkBounds(m_settings.detailShowChunkBounds);
+            m_detailTool->SetShowCounts(m_settings.detailShowCounts);
+        }
+
+        // ImGui レイアウトファイルも同ディレクトリに配置する。
+        // WHY: io.IniFilename は const char* を保持するため、メンバ文字列のアドレスを渡して寿命を保証する。
+        m_imguiIniPath = configDir + "/imgui_layout.ini";
+        ImGui::GetIO().IniFilename = m_imguiIniPath.c_str();
+        if (!util::FileSystem::Exists(m_imguiIniPath)) {
+            // LoadIniSettingsFromMemory は SettingsLoaded フラグを立てるため、
+            // その後の NewFrame() でファイルから上書きされることはない。
+            ImGui::LoadIniSettingsFromMemory(DEFAULT_IMGUI_LAYOUT);
+        }
+
+        SceneIO::SetProjectRoot(projectRoot);
+    }
+
     LoadRuntimeBuildMetadata(m_ctx);
     if (m_assetBrowserPanel && !m_projectRoot.empty())
         m_assetBrowserPanel->SetRootPath(m_projectRoot + "/Assets");
@@ -610,6 +701,7 @@ void EditorApp::BeginFrame()
         BuildPlayToolbar(m_ctx);
 
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
+        ProcessMapEditingModeTransition(static_cast<uint32_t>(dockId));
         ImGui::DockSpace(dockId, { 0, 0 }, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
 
         // ModalDialog::OpenPopup は ImGui ウィンドウ (Begin/End) のスコープ内でしか機能しない。
@@ -680,6 +772,121 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         FBZZ_PROFILE_SCOPE("EditorPanel::TaskOverlay");
         EditorTaskOverlay::Render();
     }
+}
+
+void EditorApp::ProcessMapEditingModeTransition(uint32_t dockId)
+{
+    if (m_ctx.mapEditingMode && !m_playMode.IsInEditor()) {
+        ExitMapEditingMode(dockId);
+        m_ctx.requestMapEditingModeToggle = false;
+        return;
+    }
+
+    if (!m_ctx.requestMapEditingModeToggle)
+        return;
+
+    m_ctx.requestMapEditingModeToggle = false;
+    if (m_ctx.mapEditingMode)
+        ExitMapEditingMode(dockId);
+    else if (m_playMode.IsInEditor() && m_ctx.activeScene)
+        EnterMapEditingMode(dockId);
+}
+
+void EditorApp::EnterMapEditingMode(uint32_t dockId)
+{
+    if (m_ctx.mapEditingMode)
+        return;
+
+    size_t iniSize = 0;
+    const char* iniData = ImGui::SaveIniSettingsToMemory(&iniSize);
+    m_normalLayoutIni.assign(iniData, iniSize);
+
+    m_normalPanelVisibility.clear();
+    m_normalPanelVisibility.reserve(m_panels.size());
+    for (const auto& panel : m_panels)
+        m_normalPanelVisibility.push_back(panel->visible);
+
+    m_terrainToolWasActive = m_terrainTool && m_terrainTool->IsActive();
+    if (m_terrainTool)
+        m_terrainToolModeBeforeMap = static_cast<int>(m_terrainTool->GetMode());
+    m_waterToolWasActive = m_waterTool && m_waterTool->IsActive();
+    m_detailToolWasActive = m_detailTool && m_detailTool->IsActive();
+    m_foliageToolWasActive = m_foliageTool && m_foliageTool->IsActive();
+
+    m_ctx.mapEditingMode = true;
+    m_normalIniFilename = ImGui::GetIO().IniFilename;
+    ImGui::GetIO().IniFilename = nullptr;
+    for (auto& panel : m_panels) {
+        const char* windowName = panel->GetWindowName();
+        const bool keepVisible =
+            panel.get() == m_sceneViewportPanel
+            || panel.get() == m_assetBrowserPanel
+            || panel.get() == m_mapEditorPanel
+            || std::strcmp(windowName, "Scene Hierarchy") == 0
+            || std::strcmp(windowName, "Inspector") == 0
+            || std::strcmp(windowName, "##statusbar") == 0;
+        panel->visible = keepVisible;
+    }
+
+    BuildMapEditingLayout(dockId);
+}
+
+void EditorApp::ExitMapEditingMode(uint32_t dockId)
+{
+    if (!m_ctx.mapEditingMode)
+        return;
+
+    m_ctx.mapEditingMode = false;
+    ImGui::GetIO().IniFilename = m_normalIniFilename;
+    if (m_terrainTool) {
+        m_terrainTool->SetActive(m_terrainToolWasActive);
+        m_terrainTool->SetMode(
+            static_cast<TerrainTool::Mode>(m_terrainToolModeBeforeMap));
+    }
+    if (m_waterTool) m_waterTool->SetActive(m_waterToolWasActive);
+    if (m_detailTool) m_detailTool->SetActive(m_detailToolWasActive);
+    if (m_foliageTool) m_foliageTool->SetActive(m_foliageToolWasActive);
+
+    if (m_normalPanelVisibility.size() == m_panels.size()) {
+        for (size_t index = 0; index < m_panels.size(); ++index)
+            m_panels[index]->visible = m_normalPanelVisibility[index];
+    }
+
+    ImGui::DockBuilderRemoveNode(static_cast<ImGuiID>(dockId));
+    if (!m_normalLayoutIni.empty()) {
+        ImGui::ClearIniSettings();
+        ImGui::LoadIniSettingsFromMemory(
+            m_normalLayoutIni.data(), m_normalLayoutIni.size());
+    }
+}
+
+void EditorApp::BuildMapEditingLayout(uint32_t dockId)
+{
+    const ImGuiID root = static_cast<ImGuiID>(dockId);
+    ImGui::DockBuilderRemoveNode(root);
+    ImGui::DockBuilderAddNode(
+        root, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
+    ImGui::DockBuilderSetNodeSize(root, ImGui::GetMainViewport()->WorkSize);
+
+    ImGuiID center = root;
+    ImGuiID hierarchy = 0;
+    ImGuiID inspector = 0;
+    ImGuiID tools = 0;
+    ImGuiID assets = 0;
+    ImGui::DockBuilderSplitNode(
+        center, ImGuiDir_Left, 0.16f, &hierarchy, &center);
+    ImGui::DockBuilderSplitNode(
+        center, ImGuiDir_Right, 0.24f, &inspector, &center);
+    ImGui::DockBuilderSplitNode(
+        center, ImGuiDir_Down, 0.24f, &assets, &center);
+
+    tools = inspector;
+    ImGui::DockBuilderDockWindow("Scene Hierarchy", hierarchy);
+    ImGui::DockBuilderDockWindow("Inspector", inspector);
+    ImGui::DockBuilderDockWindow("Map Tools", tools);
+    ImGui::DockBuilderDockWindow("Asset Browser", assets);
+    ImGui::DockBuilderDockWindow("Scene", center);
+    ImGui::DockBuilderFinish(root);
 }
 
 void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)

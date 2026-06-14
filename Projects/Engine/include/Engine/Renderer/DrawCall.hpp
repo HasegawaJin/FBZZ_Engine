@@ -34,6 +34,17 @@ struct DrawCall {
     uint32_t startIndex  = 0;
     uint32_t baseVertex  = 0;
 
+    // GPU Instancing: instanceBuffer が有効なら instanceCount 1 以上で Instanced Draw を使用する。
+    // instanceBuffer は VS の t0 に StructuredBuffer<T> としてバインドされ、
+    // HLSL 側で SV_InstanceID でインデックスしてインスタンスデータを取得する。
+    uint32_t instanceCount = 1;
+    ResourceHandle<StructuredBufferTag> instanceBuffer;
+
+    // VS-readable StructuredBuffer (t14〜t15): GPU パーティクル等の頂点データをバッファで渡す
+    // WHY: SV_VertexID ベースの描画は頂点バッファを持たず、StructuredBuffer からデータを取り出す。
+    //      t14 を使うのはテクスチャ SRV (t0〜t13) と重複しないため。
+    std::array<ResourceHandle<StructuredBufferTag>, 2> vsBuffers = {}; // t14〜t15
+
     RenderLayer layer = RenderLayer::OPAQUE_LAYER;
     PrimitiveTopology topology = PrimitiveTopology::TRIANGLE_LIST;
 };

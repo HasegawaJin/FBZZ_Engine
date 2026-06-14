@@ -46,8 +46,51 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["game_view"]["aspect"].value<int64_t>()) gameViewportAspect = static_cast<int>(*v);
 
     // その他
-    if (auto v = tbl["misc"]["hot_reload"].value<bool>())          hotReloadEnabled     = *v;
+    if (auto v = tbl["misc"]["hot_reload"].value<bool>()) hotReloadEnabled = *v;
+
+    // ツールウィンドウ
+    if (auto v = tbl["tools"]["show_terrain"].value<bool>()) showTerrainTool = *v;
+    if (auto v = tbl["tools"]["show_water"].value<bool>())   showWaterTool   = *v;
+    if (auto v = tbl["tools"]["show_detail"].value<bool>())  showDetailTool  = *v;
+    if (auto v = tbl["tools"]["show_foliage"].value<bool>()) showFoliageTool = *v;
+
+    // Map Mode フィルター
+    if (auto v = tbl["map_mode"]["hierarchy_filter"].value<bool>()) mapHierarchyFilter = *v;
+    if (auto v = tbl["map_mode"]["inspector_filter"].value<bool>()) mapInspectorFilter = *v;
+
+    // TerrainTool ブラシ設定
+    if (auto v = tbl["terrain_tool"]["brush_radius"].value<float>())    terrainBrushRadius   = *v;
+    if (auto v = tbl["terrain_tool"]["brush_strength"].value<float>())  terrainBrushStrength = *v;
+    if (auto v = tbl["terrain_tool"]["brush_falloff"].value<int64_t>()) terrainBrushFalloff  = static_cast<int>(*v);
+    if (auto v = tbl["terrain_tool"]["sculpt_mode"].value<int64_t>())   terrainSculptMode    = static_cast<int>(*v);
+    if (auto v = tbl["terrain_tool"]["paint_layer"].value<int64_t>())   terrainPaintLayer    = static_cast<uint32_t>(*v);
+
+    // DetailTool ブラシ設定
+    if (auto v = tbl["detail_tool"]["brush_radius"].value<float>())      detailBrushRadius    = *v;
+    if (auto v = tbl["detail_tool"]["brush_strength"].value<float>())    detailBrushStrength  = *v;
+    if (auto v = tbl["detail_tool"]["mode"].value<int64_t>())            detailMode           = static_cast<int>(*v);
+    if (auto v = tbl["detail_tool"]["layer_index"].value<int64_t>())     detailLayerIndex     = static_cast<int>(*v);
+    if (auto v = tbl["detail_tool"]["show_chunk_bounds"].value<bool>())  detailShowChunkBounds = *v;
+    if (auto v = tbl["detail_tool"]["show_counts"].value<bool>())        detailShowCounts      = *v;
+
+    // Asset Browser
     if (auto v = tbl["asset_browser"]["icon_size"].value<float>()) assetBrowserIconSize = *v;
+
+    // Inspector セクション折り畳み状態
+    inspectorSectionState.clear();
+    if (auto* arr = tbl["inspector_sections"]["states"].as_array()) {
+        for (auto& elem : *arr) {
+            if (auto* t = elem.as_table()) {
+                auto k = (*t)["k"].value<int64_t>();
+                auto v = (*t)["v"].value<bool>();
+                if (k && v)
+                    inspectorSectionState.emplace_back(
+                        static_cast<uint32_t>(*k), *v);
+            }
+        }
+    }
+
+    // シーン
     if (auto v = tbl["scene"]["last_path"].value<std::string>()) {
         lastScenePath = *v;
         // 相対パスで保存されていた場合は projectRoot と組み合わせて絶対パスに戻す
@@ -66,36 +109,82 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
 bool EditorSettings::Save(const std::string& path, const std::string& projectRoot) const
 {
+    // カメラ
     toml::table camTbl;
     camTbl.insert("speed",       cameraSpeed);
     camTbl.insert("sensitivity", cameraSensitivity);
 
+    // ビュー
     toml::table viewTbl;
-    viewTbl.insert("show_grid",       showGrid);
-    viewTbl.insert("grid_size",       gridSize);
+    viewTbl.insert("show_grid",        showGrid);
+    viewTbl.insert("grid_size",        gridSize);
     viewTbl.insert("show_light_range", showLightRange);
-    viewTbl.insert("show_skeleton",   showSkeleton);
-    viewTbl.insert("show_stats",      showStats);
+    viewTbl.insert("show_skeleton",    showSkeleton);
+    viewTbl.insert("show_stats",       showStats);
 
+    // スナップ
     toml::table snapTbl;
     snapTbl.insert("enabled",  snapEnabled);
     snapTbl.insert("distance", snapDistance);
 
+    // ギズモ
     toml::table gizmoTbl;
     gizmoTbl.insert("mode",  static_cast<int64_t>(gizmoMode));
     gizmoTbl.insert("space", static_cast<int64_t>(gizmoSpace));
 
+    // ゲームビュー
     toml::table gameViewTbl;
     gameViewTbl.insert("aspect", static_cast<int64_t>(gameViewportAspect));
 
+    // その他
     toml::table miscTbl;
     miscTbl.insert("hot_reload", hotReloadEnabled);
 
+    // ツールウィンドウ
+    toml::table toolsTbl;
+    toolsTbl.insert("show_terrain", showTerrainTool);
+    toolsTbl.insert("show_water",   showWaterTool);
+    toolsTbl.insert("show_detail",  showDetailTool);
+    toolsTbl.insert("show_foliage", showFoliageTool);
+
+    // Map Mode フィルター
+    toml::table mapModeTbl;
+    mapModeTbl.insert("hierarchy_filter", mapHierarchyFilter);
+    mapModeTbl.insert("inspector_filter", mapInspectorFilter);
+
+    // TerrainTool ブラシ設定
+    toml::table terrainToolTbl;
+    terrainToolTbl.insert("brush_radius",   terrainBrushRadius);
+    terrainToolTbl.insert("brush_strength", terrainBrushStrength);
+    terrainToolTbl.insert("brush_falloff",  static_cast<int64_t>(terrainBrushFalloff));
+    terrainToolTbl.insert("sculpt_mode",    static_cast<int64_t>(terrainSculptMode));
+    terrainToolTbl.insert("paint_layer",    static_cast<int64_t>(terrainPaintLayer));
+
+    // DetailTool ブラシ設定
+    toml::table detailToolTbl;
+    detailToolTbl.insert("brush_radius",      detailBrushRadius);
+    detailToolTbl.insert("brush_strength",    detailBrushStrength);
+    detailToolTbl.insert("mode",              static_cast<int64_t>(detailMode));
+    detailToolTbl.insert("layer_index",       static_cast<int64_t>(detailLayerIndex));
+    detailToolTbl.insert("show_chunk_bounds", detailShowChunkBounds);
+    detailToolTbl.insert("show_counts",       detailShowCounts);
+
+    // Asset Browser
     toml::table assetBrowserTbl;
     assetBrowserTbl.insert("icon_size", assetBrowserIconSize);
 
-    // lastScenePath を projectRoot 相対パスに変換して保存する
-    // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後にシーンが見つからなくなる
+    // Inspector セクション折り畳み状態
+    toml::array statesArr;
+    for (auto& [key, open] : inspectorSectionState) {
+        toml::table entry;
+        entry.insert("k", static_cast<int64_t>(key));
+        entry.insert("v", open);
+        statesArr.push_back(std::move(entry));
+    }
+    toml::table inspectorTbl;
+    inspectorTbl.insert("states", std::move(statesArr));
+
+    // シーン
     std::string scenePathToSave = lastScenePath;
     if (!projectRoot.empty() && !lastScenePath.empty()) {
         const std::filesystem::path rel = util::FileSystem::RelativePath(
@@ -115,8 +204,13 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     root.insert("gizmo",        std::move(gizmoTbl));
     root.insert("game_view",    std::move(gameViewTbl));
     root.insert("misc",         std::move(miscTbl));
-    root.insert("asset_browser", std::move(assetBrowserTbl));
-    root.insert("scene",        std::move(sceneTbl));
+    root.insert("tools",        std::move(toolsTbl));
+    root.insert("map_mode",     std::move(mapModeTbl));
+    root.insert("terrain_tool", std::move(terrainToolTbl));
+    root.insert("detail_tool",  std::move(detailToolTbl));
+    root.insert("asset_browser",      std::move(assetBrowserTbl));
+    root.insert("inspector_sections", std::move(inspectorTbl));
+    root.insert("scene",              std::move(sceneTbl));
 
     std::ostringstream ss;
     ss << root;

@@ -36,6 +36,15 @@ REM =========================================================================
 
 call :CompileVSPS Water\Water.hlsl Water.Water || goto :error
 
+REM Terrain Detail
+
+call :CompileVSPS Detail\Detail.hlsl Detail.Detail || goto :error
+call :CompileVSPS Detail\DetailGrass.hlsl Detail.DetailGrass || goto :error
+
+REM Foliage
+
+call :CompileVSPS Foliage\Foliage.hlsl Foliage.Foliage || goto :error
+
 REM =========================================================================
 REM Debug
 REM =========================================================================
@@ -71,6 +80,8 @@ call :CompileVSPS Material\Skinned\SkinnedSubsurface.hlsl Material.Skinned.Skinn
 call :CompileVSPS Material\Skinned\SkinnedAnisotropic.hlsl Material.Skinned.SkinnedAnisotropic || goto :error
 call :CompileVSPS Material\Skinned\SkinnedRimLight.hlsl Material.Skinned.SkinnedRimLight || goto :error
 call :CompileVSPS Material\Effects\Particle.hlsl Material.Effects.Particle || goto :error
+call :CompileVSPS Material\Effects\ParticleGPU.hlsl Material.Effects.ParticleGPU || goto :error
+call :CompileCS Material\Effects\ParticleGpuSim.cs.hlsl Material.Effects.ParticleGpuSim.cs || goto :error
 call :CompileVSPS Material\Effects\Trail.hlsl Material.Effects.Trail || goto :error
 call :CompileVSPS Material\Effects\MeshTrail.hlsl Material.Effects.MeshTrail || goto :error
 call :CompileVSPS Material\Effects\SkinnedMeshTrail.hlsl Material.Effects.SkinnedMeshTrail || goto :error

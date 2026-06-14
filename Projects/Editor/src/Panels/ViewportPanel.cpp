@@ -173,6 +173,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         ctx.viewportWidth = size.x;
         ctx.viewportHeight = size.y;
         ctx.viewportFocused = ImGui::IsWindowFocused();
+        ctx.sceneViewportHovered = ImGui::IsWindowHovered();
     } else if (isGameView) {
         ctx.gameViewportWidth = size.x;
         ctx.gameViewportHeight = size.y;
@@ -255,12 +256,12 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         PickUIEntity(ctx, viewportMin, size);
 
     // ── TerrainTool: Sculpt / Paint 操作 ───────────────────────────────────
-    // プレイ中は編集を無効化する（データが実行時状態と混在しないよう）。
-    // TerrainComponent が 1 つもなければ Update は何もしない。
     if (isSceneView && ctx.terrainTool && ctx.activeScene
         && !(ctx.playMode && !ctx.playMode->IsInEditor()))
     {
-        const bool vpHovered = ImGui::IsWindowHovered();
+        const bool vpHovered = ImGui::IsWindowHovered()
+            && !(ctx.detailTool && ctx.detailTool->IsActive())
+            && !(ctx.foliageTool && ctx.foliageTool->IsActive());
         ctx.terrainTool->Update(
             *ctx.activeScene,
             *ctx.editorCamera,
@@ -270,12 +271,11 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             size,
             ctx.markSceneDirty,
             ctx.undoStack);
-        if (ctx.showTerrainTool)
-        ctx.terrainTool->OnEditorGUI(*ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
+        if (ctx.showTerrainTool && !ctx.mapEditingMode)
+            ctx.terrainTool->OnEditorGUI(*ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
     }
 
     // ── WaterTool: 水面の範囲・波向き可視化とツールウィンドウ ──────────────
-    // プレイ中は編集を無効化する。WaterComponent がなければ Update/OnEditorGUI は何もしない。
     if (isSceneView && ctx.waterTool && ctx.activeScene
         && !(ctx.playMode && !ctx.playMode->IsInEditor()))
     {
@@ -285,12 +285,45 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             viewportMin,
             size,
             ctx.markSceneDirty);
-        if (ctx.showWaterTool)
+        if (ctx.showWaterTool && !ctx.mapEditingMode)
             ctx.waterTool->OnEditorGUI(
                 *ctx.activeScene,
                 ctx.projectRoot,
                 ctx.markSceneDirty,
                 ctx.undoStack);
+    }
+
+    // ── DetailTool: 密度マップペイント + チャンク可視化 ────────────────────
+    if (isSceneView && ctx.detailTool && ctx.activeScene
+        && !(ctx.playMode && !ctx.playMode->IsInEditor()))
+    {
+        const bool vpHovered = ImGui::IsWindowHovered()
+            && !(ctx.foliageTool && ctx.foliageTool->IsActive());
+        ctx.detailTool->Update(
+            *ctx.activeScene,
+            *ctx.editorCamera,
+            vpHovered,
+            viewportMin,
+            size,
+            ctx.markSceneDirty);
+        if (ctx.showDetailTool && !ctx.mapEditingMode)
+            ctx.detailTool->OnEditorGUI(*ctx.activeScene, ctx.markSceneDirty);
+    }
+
+    if (isSceneView && ctx.foliageTool && ctx.activeScene
+        && !(ctx.playMode && !ctx.playMode->IsInEditor()))
+    {
+        const bool vpHovered = ImGui::IsWindowHovered();
+        ctx.foliageTool->Update(
+            *ctx.activeScene,
+            *ctx.editorCamera,
+            vpHovered,
+            viewportMin,
+            size,
+            ctx.markSceneDirty,
+            ctx.undoStack);
+        if (ctx.showFoliageTool && !ctx.mapEditingMode)
+            ctx.foliageTool->OnEditorGUI(*ctx.activeScene, ctx.markSceneDirty);
     }
 
     // Show play/pause state with a viewport border.
