@@ -1,0 +1,31 @@
+// FBZZ Engine
+// IStructuredBuffer.hpp | fbzz::renderer
+// GPU StructuredBuffer（SRV）の抽象インターフェース。
+// DrawInstanced 時のインスタンスデータバッファとして VS の t0 にバインドされる。
+// IBuffer（頂点・インデックス）とは用途が異なるため独立したインターフェースとして定義する。
+//
+// WHY: D3D11 では StructuredBuffer は D3D11_BIND_SHADER_RESOURCE + MISC_BUFFER_STRUCTURED で作成し、
+//      SRV 経由で VS/PS からアクセスする。頂点バッファ（IASetVertexBuffers）とは
+//      バインドステージが異なるため、IBuffer に混在させず専用インターフェースを設ける。
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+namespace fbzz::renderer
+{
+
+class IStructuredBuffer
+{
+public:
+    virtual ~IStructuredBuffer() = default;
+
+    // CPU → GPU へデータを転送する（Map/Unmap、毎フレーム呼び出し可）
+    virtual void Update(const void* data, size_t sizeBytes) = 0;
+
+    virtual uint32_t GetElementCount() const = 0;
+    virtual uint32_t GetStride()       const = 0;
+    virtual size_t   GetSize()         const = 0;
+};
+
+} // namespace fbzz::renderer

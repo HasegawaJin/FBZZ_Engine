@@ -11,6 +11,7 @@
 #include <Engine/Renderer/IRenderTarget.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/IShader.hpp>
+#include <Engine/Renderer/IStructuredBuffer.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <algorithm>
@@ -171,12 +172,33 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width,
     return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height), "ComputeTexture", __FILE__, __LINE__);
 }
 
+ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+{
+    auto sb = m_renderer.CreateNativeStructuredBuffer(data, elementCount, stride);
+    if (!sb) {
+        FBZZ_LOG_ERROR("ResourceManager::CreateStructuredBuffer failed (count=%u stride=%u)", elementCount, stride);
+        return ResourceHandle<StructuredBufferTag>::Null();
+    }
+    return m_structuredBuffers.Insert(std::move(sb), "StructuredBuffer", __FILE__, __LINE__);
+}
+
+ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+{
+    auto sb = m_renderer.CreateNativeRWStructuredBuffer(data, elementCount, stride);
+    if (!sb) {
+        FBZZ_LOG_ERROR("ResourceManager::CreateRWStructuredBuffer failed (count=%u stride=%u)", elementCount, stride);
+        return ResourceHandle<StructuredBufferTag>::Null();
+    }
+    return m_structuredBuffers.Insert(std::move(sb), "RWStructuredBuffer", __FILE__, __LINE__);
+}
+
 IShader* ResourceManager::Get(ResourceHandle<ShaderTag> h) { return m_shaders.Get(h); }
 ITexture* ResourceManager::Get(ResourceHandle<TextureTag> h) { return m_textures.Get(h); }
 IBuffer* ResourceManager::Get(ResourceHandle<BufferTag> h) { return m_buffers.Get(h); }
 IConstantBuffer* ResourceManager::Get(ResourceHandle<ConstantBufferTag> h) { return m_constantBuffers.Get(h); }
 IPipelineState* ResourceManager::Get(ResourceHandle<PipelineStateTag> h) { return m_pipelineStates.Get(h); }
 IRenderTarget* ResourceManager::Get(ResourceHandle<RenderTargetTag> h) { return m_renderTargets.Get(h); }
+IStructuredBuffer* ResourceManager::Get(ResourceHandle<StructuredBufferTag> h) { return m_structuredBuffers.Get(h); }
 
 ResourceHandle<TextureTag> ResourceManager::GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index)
 {
@@ -205,6 +227,12 @@ void ResourceManager::Update(ResourceHandle<ConstantBufferTag> h, const void* da
         cb->Update(data, sizeBytes);
 }
 
+void ResourceManager::Update(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes)
+{
+    if (IStructuredBuffer* sb = Get(h))
+        sb->Update(data, sizeBytes);
+}
+
 void ResourceManager::Release(ResourceHandle<ShaderTag> h) { m_shaders.Remove(h); }
 void ResourceManager::Release(ResourceHandle<TextureTag> h) { m_textures.Remove(h); }
 void ResourceManager::Release(ResourceHandle<BufferTag> h)
@@ -213,6 +241,7 @@ void ResourceManager::Release(ResourceHandle<BufferTag> h)
 }
 void ResourceManager::Release(ResourceHandle<ConstantBufferTag> h) { m_constantBuffers.Remove(h); }
 void ResourceManager::Release(ResourceHandle<PipelineStateTag> h) { m_pipelineStates.Remove(h); }
+void ResourceManager::Release(ResourceHandle<StructuredBufferTag> h) { m_structuredBuffers.Remove(h); }
 void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 {
     const uint64_t key = Key(h);
@@ -247,6 +276,7 @@ void ResourceManager::ReleaseOwnedResourcesForShutdown()
     m_buffers.ReleaseOwnedForShutdown();
     m_constantBuffers.ReleaseOwnedForShutdown();
     m_pipelineStates.ReleaseOwnedForShutdown();
+    m_structuredBuffers.ReleaseOwnedForShutdown();
     m_shaders.ReleaseOwnedForShutdown();
 }
 
@@ -287,7 +317,8 @@ std::size_t ResourceManager::GetLiveDebugResourceCount() const
          + m_buffers.GetLiveDebugCount()
          + m_constantBuffers.GetLiveDebugCount()
          + m_pipelineStates.GetLiveDebugCount()
-         + m_renderTargets.GetLiveDebugCount();
+         + m_renderTargets.GetLiveDebugCount()
+         + m_structuredBuffers.GetLiveDebugCount();
 }
 
 const core::AllocationInfo* ResourceManager::GetLiveDebugResource(std::size_t index) const
@@ -312,7 +343,11 @@ const core::AllocationInfo* ResourceManager::GetLiveDebugResource(std::size_t in
     if (index < pipelineStateCount) return m_pipelineStates.GetLiveDebugInfo(index);
     index -= pipelineStateCount;
 
-    return m_renderTargets.GetLiveDebugInfo(index);
+    const std::size_t renderTargetCount = m_renderTargets.GetLiveDebugCount();
+    if (index < renderTargetCount) return m_renderTargets.GetLiveDebugInfo(index);
+    index -= renderTargetCount;
+
+    return m_structuredBuffers.GetLiveDebugInfo(index);
 }
 
 } // namespace fbzz::renderer
