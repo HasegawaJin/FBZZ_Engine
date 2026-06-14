@@ -197,7 +197,9 @@ void RenderSystem(Scene& scene,
     static auto decalShader     = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
     static auto decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
 
-    static auto particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+    static auto particleShader      = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+    static auto particleGpuSimCS   = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
+    static auto particleGpuShader  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
     static auto trailShader    = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
     static auto meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
     static auto skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
@@ -239,6 +241,16 @@ void RenderSystem(Scene& scene,
         renderer::DepthMode::DEPTH_READ
     });
     static auto particleAlphaPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto particleGpuPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_READ
+    });
+    static auto particleGpuAlphaPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
         renderer::DepthMode::DEPTH_READ
@@ -303,7 +315,9 @@ void RenderSystem(Scene& scene,
         depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
         decalShader = resources.LoadShader("Assets/Shaders/Material/Decal/Decal.hlsl");
         decalMaskShader = resources.LoadShader("Assets/Shaders/Material/Decal/DecalMask.hlsl");
-        particleShader = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+        particleShader     = resources.LoadShader("Assets/Shaders/Material/Effects/Particle.hlsl");
+        particleGpuSimCS  = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGpuSim.cs.hlsl");
+        particleGpuShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleGPU.hlsl");
         trailShader = resources.LoadShader("Assets/Shaders/Material/Effects/Trail.hlsl");
         meshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/MeshTrail.hlsl");
         skinnedMeshTrailShader = resources.LoadShader("Assets/Shaders/Material/Effects/SkinnedMeshTrail.hlsl");
@@ -331,6 +345,8 @@ void RenderSystem(Scene& scene,
         skydomePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_SKY });
         particlePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
         particleAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        particleGpuPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
+        particleGpuAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         trailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         meshTrailDoubleSidedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
@@ -592,6 +608,11 @@ void RenderSystem(Scene& scene,
     passHandles.particleAlphaPSO     = particleAlphaPSO;
     passHandles.particleVB           = particleVB;
     passHandles.particleIB           = particleIB;
+    passHandles.particleGpuSimCS     = particleGpuSimCS;
+    passHandles.particleGpuShader    = particleGpuShader;
+    passHandles.particleGpuAlphaShader = particleGpuShader; // 同一シェーダー、PSO で合成モードを切り替える
+    passHandles.particleGpuPSO       = particleGpuPSO;
+    passHandles.particleGpuAlphaPSO  = particleGpuAlphaPSO;
     passHandles.trailShader          = trailShader;
     passHandles.trailPSO             = trailPSO;
     passHandles.meshTrailShader      = meshTrailShader;
