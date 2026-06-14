@@ -6,6 +6,7 @@
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Core/Time.hpp"
+#include "Engine/Renderer/ComputeCall.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include <Math/Vector4.hpp>
 #include <algorithm>
@@ -161,6 +162,143 @@ void ClearEmitterRuntime(ParticleEmitter& emitter)
     emitter.burstPending = 0;
 }
 
+// GPU パーティクル: バッファ初期化・スポーン・CS Dispatch・DrawInstanced
+void TickGpuEmitter(ParticleEmitter&        emitter,
+                    const Transform&        tf,
+                    float                   dt,
+                    bool                    canEmit,
+                    RenderPassContext&       ctx)
+{
+    auto& resources = ctx.resources;
+    auto& renderer  = ctx.renderer;
+    auto& h         = ctx.handles;
+
+    if (!h.particleGpuSimCS.IsValid() || !h.particleGpuShader.IsValid()) return;
+
+    const int maxP = (std::max)(emitter.maxParticles, 1);
+
+    // デバイスリセット (Play Mode 移行など) 後は古いハンドルが無効になるため再初期化する
+    const uint64_t currentResetVersion = resources.GetResetVersion();
+    if (emitter.gpuInitialized && emitter.gpuResetVersion != currentResetVersion)
+    {
+        emitter.gpuInitialized  = false;
+        emitter.gpuParticleBuffer = {};
+        emitter.gpuSpawnBuffer    = {};
+        emitter.gpuEmitterCB      = {};
+        emitter.gpuWriteHead      = 0;
+        emitter.gpuSpawnCount     = 0;
+    }
+
+    // バッファ未作成なら初期化 (要素ゼロで確保し CS が age>=lifetime で無視する)
+    if (!emitter.gpuInitialized)
+    {
+        std::vector<GpuParticle> init(static_cast<size_t>(maxP));
+        for (auto& p : init) p.age = p.lifetime = 1.0f; // 全粒子を「死亡済み」で初期化
+        emitter.gpuParticleBuffer = resources.CreateRWStructuredBuffer(
+            init.data(), static_cast<uint32_t>(maxP), sizeof(GpuParticle));
+
+        emitter.gpuSpawnBuffer = resources.CreateStructuredBuffer(
+            nullptr, static_cast<uint32_t>(maxP), sizeof(GpuSpawnEntry));
+
+        emitter.gpuEmitterCB = resources.CreateConstantBuffer(sizeof(GpuParticleEmitterCB));
+        emitter.gpuWriteHead     = 0;
+        emitter.gpuSpawnCount    = 0;
+        emitter.gpuResetVersion  = resources.GetResetVersion();
+        emitter.gpuInitialized   = true;
+    }
+
+    // 今フレームのスポーンエントリを構築
+    std::vector<GpuSpawnEntry> spawns;
+    if (canEmit || emitter.burstPending > 0)
+    {
+        const int burstCount = (std::max)(emitter.burstPending, 0);
+        emitter.burstPending = 0;
+        for (int i = 0; i < burstCount && static_cast<int>(spawns.size()) < maxP; ++i)
+        {
+            GpuSpawnEntry s;
+            s.position  = tf.position + emitter.emitPosition;
+            s.velocity  = emitter.emitVelocity;
+            s.lifetime  = (std::max)(emitter.lifetime, 0.001f);
+            s.size      = emitter.sizeStart;
+            s.colorStart = emitter.colorStart;
+            s.colorEnd   = emitter.colorEnd;
+            s.uvRect     = { 0.0f, 0.0f, 1.0f, 1.0f };
+            spawns.push_back(s);
+        }
+        if (canEmit)
+        {
+            emitter.emitAccum += emitter.emitRate * dt;
+            while (emitter.emitAccum >= 1.0f && static_cast<int>(spawns.size()) < maxP)
+            {
+                emitter.emitAccum -= 1.0f;
+                GpuSpawnEntry s;
+                s.position   = tf.position + emitter.emitPosition;
+                s.velocity   = emitter.emitVelocity;
+                s.lifetime   = (std::max)(emitter.lifetime, 0.001f);
+                s.size       = emitter.sizeStart;
+                s.colorStart = emitter.colorStart;
+                s.colorEnd   = emitter.colorEnd;
+                s.uvRect     = { 0.0f, 0.0f, 1.0f, 1.0f };
+                spawns.push_back(s);
+            }
+        }
+    }
+    else
+    {
+        emitter.emitAccum = 0.0f;
+    }
+
+    emitter.gpuSpawnCount = static_cast<uint32_t>(spawns.size());
+
+    // スポーンバッファを CPU → GPU 転送
+    if (emitter.gpuSpawnCount > 0)
+        resources.Update(emitter.gpuSpawnBuffer, spawns.data(),
+                         emitter.gpuSpawnCount * sizeof(GpuSpawnEntry));
+
+    // CS 用定数バッファ更新
+    GpuParticleEmitterCB cb{};
+    cb.emitterPos   = tf.position + emitter.emitPosition;
+    cb.deltaTime    = dt;
+    cb.gravity      = emitter.gravity;
+    cb.maxParticles = static_cast<uint32_t>(maxP);
+    cb.colorStart   = emitter.colorStart;
+    cb.colorEnd     = emitter.colorEnd;
+    cb.spawnCount   = emitter.gpuSpawnCount;
+    cb.spawnOffset  = emitter.gpuWriteHead;
+    resources.Update(emitter.gpuEmitterCB, &cb, sizeof(cb));
+
+    // リングバッファヘッドを進める
+    emitter.gpuWriteHead = (emitter.gpuWriteHead + emitter.gpuSpawnCount)
+                           % static_cast<uint32_t>(maxP);
+
+    // Dispatch CS
+    renderer::ComputeCall cc;
+    cc.shader        = h.particleGpuSimCS;
+    cc.constantBuffers[0] = emitter.gpuEmitterCB;
+    cc.srvBuffers[1] = emitter.gpuSpawnBuffer;   // t15
+    cc.uavBuffers[0] = emitter.gpuParticleBuffer; // u2
+    cc.dispatchX = (static_cast<uint32_t>(maxP) + 63u) / 64u;
+    cc.dispatchY = 1;
+    cc.dispatchZ = 1;
+    renderer.Dispatch(cc, resources);
+    // Dispatch() は OM のレンダーターゲットをアンバインドする。
+    // 後続の Draw が正しい HDR RT へ出力されるよう再バインドする。
+    renderer.SetRenderTarget(h.hdrRT, resources);
+
+    // SV_VertexID ベース描画: 頂点バッファなし、VS が StructuredBuffer<GpuParticle> を t14 で読む
+    renderer::DrawCall dc;
+    dc.shader        = emitter.blendMode == ParticleBlendMode::Alpha
+                         ? h.particleGpuAlphaShader : h.particleGpuShader;
+    dc.pipelineState = emitter.blendMode == ParticleBlendMode::Alpha
+                         ? h.particleGpuAlphaPSO    : h.particleGpuPSO;
+    dc.constantBuffers[0] = h.frameCB;
+    dc.textures[0]        = emitter.texture;
+    dc.vsBuffers[0]       = emitter.gpuParticleBuffer; // t14: StructuredBuffer<GpuParticle>
+    dc.vertexCount        = static_cast<uint32_t>(maxP) * 6u;
+    renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
+    renderer.Submit(dc, resources);
+}
+
 } // anonymous namespace
 
 void ExecuteParticlePass(RenderPassContext& ctx)
@@ -188,10 +326,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         emitter->sizeCurvePower = (std::max)(emitter->sizeCurvePower, 0.001f);
         emitter->colorCurvePower = (std::max)(emitter->colorCurvePower, 0.001f);
         emitter->velocityDamping = (std::max)(emitter->velocityDamping, 0.0f);
-        const bool useCpuFallback = emitter->simulationMode == ParticleSimulationMode::Gpu;
-        (void)useCpuFallback;
-        // WHY: 現時点の Renderer API は Compute/StructuredBuffer 更新を公開していないため、
-        //      GPU モードは設定を保持しつつ CPU 経路で描画する。API 追加時にここを分岐点にする。
+        const bool isGpuMode = emitter->simulationMode == ParticleSimulationMode::Gpu;
 
         bool canEmit = emitter->playing;
         if (canEmit && emitter->delayTime < emitter->startDelay) {
@@ -212,6 +347,12 @@ void ExecuteParticlePass(RenderPassContext& ctx)
                         ClearEmitterRuntime(*emitter);
                 }
             }
+        }
+
+        // GPU モードは CPU スポーン/更新をスキップして GPU パスへ
+        if (isGpuMode) {
+            TickGpuEmitter(*emitter, tf, dt, canEmit, ctx);
+            continue;
         }
 
         // パーティクル生成
