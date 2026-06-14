@@ -392,11 +392,12 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
 
     // ---- 7. Draw (インデックスあり / なしで分岐) -----------------------------------
-    // GPU Instancing: instanceCount > 1 のとき StructuredBuffer を VS の t0 にバインドして
-    // DrawIndexedInstanced / DrawInstanced を使う。
+    // GPU Instancing: instanceBuffer が指定されていれば、1 インスタンスでも
+    // StructuredBuffer を VS の t0 にバインドして Instanced Draw を使う。
     // WHY: StructuredBuffer<T> を SV_InstanceID でインデックスする方式は、
-    //      IA インスタンスストリームより HLSL 側の記述が直感的で stride 制約もない。
-    const bool isInstanced = call.instanceCount > 1 && call.instanceBuffer.IsValid();
+    //      通常 Draw に切り替えると VS が未バインドのインスタンスデータを読み、
+    //      1 個だけ生成された Detail や Particle が描画されなくなるため。
+    const bool isInstanced = call.instanceCount > 0 && call.instanceBuffer.IsValid();
     if (isInstanced)
     {
         if (auto* sb = resources.Get(call.instanceBuffer))

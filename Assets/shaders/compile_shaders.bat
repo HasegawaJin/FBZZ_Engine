@@ -36,6 +36,15 @@ REM =========================================================================
 
 call :CompileVSPS Water\Water.hlsl Water.Water || goto :error
 
+REM Terrain Detail
+
+call :CompileVSPS Detail\Detail.hlsl Detail.Detail || goto :error
+call :CompileVSPS Detail\DetailGrass.hlsl Detail.DetailGrass || goto :error
+
+REM Foliage
+
+call :CompileVSPS Foliage\Foliage.hlsl Foliage.Foliage || goto :error
+
 REM =========================================================================
 REM Debug
 REM =========================================================================

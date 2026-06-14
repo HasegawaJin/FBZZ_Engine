@@ -160,6 +160,22 @@ struct OutlineCB {
     float         _pad[3];
 };
 
+// DetailGrassCB (b2) — DetailGrass.hlsl の DetailGrassCB cbuffer と完全に一致させること。
+// 48 bytes, 16-byte aligned
+struct DetailGrassCB {
+    float    windDir[3];    // 正規化風向き (XZ 平面)
+    float    gTime;         // 累積時間
+    float    windStrength;  // グローバル風速
+    float    windFrequency; // sin 周波数
+    float    bladeHeight;   // ブレード高さ [m]
+    float    bladeWidth;    // ブレード根元幅 [m]
+    int32_t  bladeSegments; // 分割数
+    float    alphaCutoff;   // アルファテスト閾値
+    int32_t  hasAlbedoTex;  // 1 = テクスチャあり
+    float    _pad;
+};
+static_assert(sizeof(DetailGrassCB) == 48, "DetailGrassCB size mismatch");
+
 // DecalConstants (b2) — HLSL の DecalConstants cbuffer と完全に一致させること。
 struct DecalCB {
     math::Matrix4 invDecalWorld;
@@ -264,6 +280,19 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
     renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
     renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
+
+    // Detail System (Terrain Detail — GPU Instancing)
+    renderer::ResourceHandle<renderer::ShaderTag>         detailMeshShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         detailBillboardShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         detailGrassShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  detailMeshPSO;    // SOLID + OPAQUE + DEPTH_ON
+    renderer::ResourceHandle<renderer::PipelineStateTag>  detailNoCullPSO;  // SOLID_NOCULL + OPAQUE + DEPTH_ON
+    renderer::ResourceHandle<renderer::ConstantBufferTag> detailGrassCB;    // b2: DetailGrassCB
+
+    // Foliage System (樹木・大型植生 — SubMesh Material + GPU Instancing)
+    renderer::ResourceHandle<renderer::ShaderTag>         foliageShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  foliagePSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  foliageNoCullPSO;
 };
 
 struct RenderPassContext {

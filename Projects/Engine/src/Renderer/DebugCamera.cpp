@@ -38,7 +38,7 @@ void DebugCamera::ApplyDolly(float dt) {
     m_dollyVelocity  *= std::exp(-scrollDamping * dt);
 }
 
-void DebugCamera::Update(float dt) {
+void DebugCamera::Update(float dt, bool viewportHovered) {
     using namespace fbzz::input;
 
     const math::Vector2 mouseDelta = Input::MouseDelta();
@@ -51,7 +51,8 @@ void DebugCamera::Update(float dt) {
 
     const math::Vector3 worldUp = { 0.0f, 1.0f, 0.0f };
 
-    m_dollyVelocity += scroll * scrollSpeed * m_focusDistance;
+    if (viewportHovered)
+        m_dollyVelocity += scroll * scrollSpeed * m_focusDistance;
 
     // --- 中ドラッグ : オービット回転 / Shift+中 : パン ---
     if (mmb) {

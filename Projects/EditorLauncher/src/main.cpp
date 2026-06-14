@@ -305,7 +305,7 @@ void RunEditorLoop(renderer::IRenderer& renderer,
             const auto& ctx = editorApp.GetContext();
             debugCamera.moveSpeed = ctx.cameraSpeed;
             debugCamera.mouseSens = ctx.cameraSensitivity;
-            debugCamera.Update(dt);
+            debugCamera.Update(dt, ctx.sceneViewportHovered);
         }
 
         {
