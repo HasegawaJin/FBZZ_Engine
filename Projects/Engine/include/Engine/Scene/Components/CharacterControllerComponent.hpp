@@ -25,6 +25,8 @@
 namespace fbzz::scene {
 
 struct CharacterControllerComponent {
+    bool enabled = true;
+
     // ── Inspector / Serializer 公開フィールド ───────────────────────────────
     // WHY: ゲームデザイナーが Inspector から調整できるよう Reflect で公開する。
 

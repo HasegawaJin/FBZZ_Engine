@@ -34,7 +34,7 @@ struct DrawCall {
     uint32_t startIndex  = 0;
     uint32_t baseVertex  = 0;
 
-    // GPU Instancing: instanceCount > 1 のとき DrawIndexedInstanced を使用する。
+    // GPU Instancing: instanceBuffer が有効なら instanceCount 1 以上で Instanced Draw を使用する。
     // instanceBuffer は VS の t0 に StructuredBuffer<T> としてバインドされ、
     // HLSL 側で SV_InstanceID でインデックスしてインスタンスデータを取得する。
     uint32_t instanceCount = 1;
