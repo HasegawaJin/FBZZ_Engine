@@ -46,6 +46,9 @@ private:
     void DrawZoomControls();
     void DrawParameterSidebar(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawNodeCanvas(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
+    void DrawBlendTreeCanvas(EditorContext& ctx,
+                             scene::AnimatorComponent& animator,
+                             const std::string& instanceId);
     void PublishSelection(EditorContext& ctx, const scene::GameObject& gameObject) const;
     void AddState(EditorContext& ctx, scene::AnimatorComponent& animator, const char* baseName);
     void AddTransition(EditorContext& ctx, scene::AnimatorComponent& animator, int fromStateIndex, int toStateIndex);
@@ -64,6 +67,8 @@ private:
     ImNodesEditorContext* m_editorContext = nullptr;
     LinkRef               m_selectedLink;
     int                   m_selectedNode = -1;
+    int                   m_openBlendTreeState = -1;
+    int                   m_selectedMotion = -1;
     bool                  m_selectedAnyState = false;
     float                 m_canvasZoom = 1.0f;
     std::string           m_selectionOwnerInstanceId;
