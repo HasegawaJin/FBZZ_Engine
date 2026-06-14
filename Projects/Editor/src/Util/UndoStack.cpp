@@ -6,6 +6,11 @@
 
 namespace fbzz::editor {
 
+void UndoStack::SetRecordingEnabled(bool enabled)
+{
+    m_recordingEnabled = enabled;
+}
+
 void CompositeCommand::Add(std::unique_ptr<ICommand> command)
 {
     if (command)
@@ -28,7 +33,7 @@ void CompositeCommand::Undo()
 void UndoStack::Push(std::unique_ptr<ICommand> cmd)
 {
     assert(cmd && "UndoStack::Push requires a valid command");
-    if (!cmd || m_isApplyingCommand) return;
+    if (!cmd || m_isApplyingCommand || !m_recordingEnabled) return;
 
     // カーソルより後ろの履歴を破棄 (新しい操作でやり直し履歴は消える — 線形履歴)
     if (m_cursor < m_history.size())
@@ -48,6 +53,14 @@ void UndoStack::Execute(std::unique_ptr<ICommand> cmd)
 {
     assert(cmd && "UndoStack::Execute requires a valid command");
     if (!cmd || m_isApplyingCommand) return;
+
+    // Play/Pause 中もユーザー操作自体は適用するが、ランタイム編集は履歴へ残さない。
+    if (!m_recordingEnabled) {
+        m_isApplyingCommand = true;
+        cmd->Execute();
+        m_isApplyingCommand = false;
+        return;
+    }
 
     m_isApplyingCommand = true;
     cmd->Execute();
@@ -75,8 +88,15 @@ void UndoStack::Redo()
     m_isApplyingCommand = false;
 }
 
-bool UndoStack::CanUndo() const { return m_cursor > 0 && m_cursor <= m_history.size(); }
-bool UndoStack::CanRedo() const { return m_cursor < m_history.size(); }
+bool UndoStack::CanUndo() const
+{
+    return m_recordingEnabled && m_cursor > 0 && m_cursor <= m_history.size();
+}
+
+bool UndoStack::CanRedo() const
+{
+    return m_recordingEnabled && m_cursor < m_history.size();
+}
 
 void UndoStack::Clear()
 {
