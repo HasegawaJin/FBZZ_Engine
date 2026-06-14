@@ -183,23 +183,124 @@ void WaterTool::DrawWaveArrows(
 // OnEditorGUI — ツールウィンドウ
 // =============================================================================
 
+// =============================================================================
+// DrawContent — ウィンドウなしのタブコンテンツ描画 (NatureTool から呼ぶ)
+// =============================================================================
+
+void WaterTool::DrawContent(
+    scene::Scene&                scene,
+    const std::string&           projectRoot,
+    const std::function<void()>& markDirty,
+    UndoStack*                   undoStack)
+{
+    // WaterComponent がなければ何もしない
+    bool hasWater = false;
+    for (scene::EntityID eid : scene.GetEntities<scene::WaterComponent>())
+        if (auto* w = scene.GetComponent<scene::WaterComponent>(eid))
+            if (w->enabled) { hasWater = true; break; }
+    if (!hasWater) { ImGui::TextDisabled("No WaterComponent in scene."); return; }
+
+    // ON/OFF は NatureTool 側で管理するため、ここでは m_active を参照せず常に表示
+    DrawContentBody(scene, projectRoot, markDirty, undoStack);
+}
+
+void WaterTool::DrawContentBody(
+    scene::Scene&                scene,
+    const std::string&           projectRoot,
+    const std::function<void()>& markDirty,
+    UndoStack*                   undoStack)
+{
+    std::vector<std::pair<scene::EntityID, std::string>> waterList;
+    for (scene::EntityID eid : scene.GetEntities<scene::WaterComponent>())
+        if (auto* go = scene.GetGameObject(eid))
+            waterList.emplace_back(eid, go->name);
+
+    if (m_selectedWaterIndex >= static_cast<uint32_t>(waterList.size()))
+        m_selectedWaterIndex = 0;
+
+    if (waterList.empty()) return;
+
+    ImGui::SeparatorText("Target");
+    const std::string& curName = waterList[m_selectedWaterIndex].second;
+    if (ImGui::BeginCombo("##water_select", curName.c_str())) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(waterList.size()); ++i) {
+            const bool sel = (i == m_selectedWaterIndex);
+            if (ImGui::Selectable(waterList[i].second.c_str(), sel)) m_selectedWaterIndex = i;
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    scene::EntityID selEid = waterList[m_selectedWaterIndex].first;
+    if (auto* water = scene.GetComponent<scene::WaterComponent>(selEid)) {
+        struct UndoTracker {
+            ImGuiID activeId = 0; std::string instanceId;
+            scene::WaterComponent before; bool active = false; bool changed = false;
+        };
+        static UndoTracker undo;
+        const bool canRecordUndo = undoStack != nullptr && undoStack->IsRecordingEnabled();
+        scene::WaterComponent beforeDraw;
+        if (canRecordUndo) beforeDraw = *water; else undo.active = false;
+        const ImGuiID activeBefore = ImGui::GetActiveID();
+        bool changed = false;
+        const auto trackDirty = [&]() { changed = true; if (markDirty) markDirty(); };
+
+        ImGui::Spacing();
+        DrawAssetSection(*water, "", projectRoot, trackDirty);
+        ImGui::Spacing();
+        DrawPresets(*water, trackDirty);
+        ImGui::Spacing();
+        DrawWaveEditor(*water, trackDirty);
+
+        const ImGuiID activeAfter = ImGui::GetActiveID();
+        auto pushCommand = [&](const std::string& iid,
+                               const scene::WaterComponent& bef,
+                               const scene::WaterComponent& aft) {
+            if (!undoStack) return;
+            scene::Scene* scenePtr = &scene;
+            auto apply = [scenePtr, iid, markDirty](const scene::WaterComponent& val) {
+                if (auto* target = scenePtr->FindByGuid(iid))
+                    if (auto* comp = target->GetComponent<scene::WaterComponent>()) {
+                        *comp = val; comp->meshDirty = true; comp->foamDirty = true; comp->texDirty = true;
+                        if (markDirty) markDirty();
+                    }
+            };
+            undoStack->Push(std::make_unique<LambdaCommand>("Edit Water",
+                [apply, aft]()  { apply(aft); },
+                [apply, bef]()  { apply(bef); }));
+        };
+
+        const std::string instanceId = scene.GetGameObject(selEid)->instanceId;
+        if (!canRecordUndo) { undo.active = false; undo.changed = false; }
+        else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+            undo = { activeAfter, instanceId, beforeDraw, true, changed };
+        } else if (undo.active && activeAfter == undo.activeId) {
+            undo.changed |= changed;
+        } else if (undo.active && activeAfter != undo.activeId) {
+            if (undo.changed) pushCommand(undo.instanceId, undo.before, *water);
+            undo.active = false; undo.changed = false;
+        } else if (!undo.active && changed && activeAfter == 0) {
+            pushCommand(instanceId, beforeDraw, *water);
+        }
+    }
+}
+
+// =============================================================================
+// OnEditorGUI — スタンドアローン用ウィンドウ (既存互換)
+// =============================================================================
+
 void WaterTool::OnEditorGUI(
     scene::Scene&                scene,
     const std::string&           projectRoot,
     const std::function<void()>& markDirty,
     UndoStack*                   undoStack)
 {
-    // WaterComponent を持つ GO がひとつもなければ表示しない
     bool hasWater = false;
-    for (scene::EntityID eid : scene.GetEntities<scene::WaterComponent>()) {
-        if (auto* w = scene.GetComponent<scene::WaterComponent>(eid)) {
+    for (scene::EntityID eid : scene.GetEntities<scene::WaterComponent>())
+        if (auto* w = scene.GetComponent<scene::WaterComponent>(eid))
             if (w->enabled) { hasWater = true; break; }
-        }
-    }
     if (!hasWater) return;
 
-    // WHY: 初回のみ右下に配置し、以降はドラッグや Docking で任意の場所に置けるようにする。
-    //      Docking 時は ImGui 側が DockNode の配置を優先するため、この初期位置は未配置時だけ使われる。
     const ImGuiViewport* mainVP = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(
         { mainVP->WorkPos.x + mainVP->WorkSize.x - 270.0f,
@@ -207,16 +308,10 @@ void WaterTool::OnEditorGUI(
         ImGuiCond_FirstUseEver, { 1.0f, 1.0f });
     ImGui::SetNextWindowBgAlpha(0.87f);
     ImGui::SetNextWindowSize({ 270.0f, 0.0f }, ImGuiCond_FirstUseEver);
-
-    constexpr ImGuiWindowFlags kFlags =
-        ImGuiWindowFlags_NoNav              |
-        ImGuiWindowFlags_NoFocusOnAppearing;
-
-    // WHY: 表示名に [OFF] を付けても Docking ID が変わらないよう、### 以降を固定 ID にする。
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
     const char* title = m_active ? "Water Tool###WaterTool" : "Water Tool [OFF]###WaterTool";
     if (!ImGui::Begin(title, nullptr, kFlags)) { ImGui::End(); return; }
 
-    // ── ON/OFF トグル ──────────────────────────────────────────────────────
     {
         if (m_active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.5f, 0.8f, 1.0f));
         else          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
@@ -224,115 +319,8 @@ void WaterTool::OnEditorGUI(
             m_active = !m_active;
         ImGui::PopStyleColor();
     }
-
     if (!m_active) ImGui::BeginDisabled();
-
-    // ── 対象水面の選択 ─────────────────────────────────────────────────────
-    {
-        ImGui::Spacing();
-        ImGui::SeparatorText("Target");
-
-        // シーン内の WaterComponent を収集する
-        std::vector<std::pair<scene::EntityID, std::string>> waterList;
-        for (scene::EntityID eid : scene.GetEntities<scene::WaterComponent>()) {
-            if (auto* go = scene.GetGameObject(eid)) {
-                waterList.emplace_back(eid, go->name);
-            }
-        }
-
-        // インデックスが範囲外になっていたら先頭に戻す
-        if (m_selectedWaterIndex >= static_cast<uint32_t>(waterList.size()))
-            m_selectedWaterIndex = 0;
-
-        if (!waterList.empty()) {
-            const std::string& curName = waterList[m_selectedWaterIndex].second;
-            if (ImGui::BeginCombo("##water_select", curName.c_str())) {
-                for (uint32_t i = 0; i < static_cast<uint32_t>(waterList.size()); ++i) {
-                    const bool sel = (i == m_selectedWaterIndex);
-                    if (ImGui::Selectable(waterList[i].second.c_str(), sel))
-                        m_selectedWaterIndex = i;
-                    if (sel) ImGui::SetItemDefaultFocus();
-                }
-                ImGui::EndCombo();
-            }
-
-            // 選択中の WaterComponent を取得して編集 UI を表示する
-            scene::EntityID selEid = waterList[m_selectedWaterIndex].first;
-            if (auto* water = scene.GetComponent<scene::WaterComponent>(selEid)) {
-                struct UndoTracker {
-                    ImGuiID activeId = 0;
-                    std::string instanceId;
-                    scene::WaterComponent before;
-                    bool active = false;
-                    bool changed = false;
-                };
-                static UndoTracker undo;
-                const bool canRecordUndo =
-                    undoStack != nullptr && undoStack->IsRecordingEnabled();
-                scene::WaterComponent beforeDraw;
-                if (canRecordUndo)
-                    beforeDraw = *water;
-                else
-                    undo.active = false;
-                const ImGuiID activeBefore = ImGui::GetActiveID();
-                bool changed = false;
-                const auto trackDirty = [&]() {
-                    changed = true;
-                    if (markDirty) markDirty();
-                };
-                ImGui::Spacing();
-                DrawAssetSection(*water, /*scenePath=*/"", projectRoot, trackDirty);
-                ImGui::Spacing();
-                DrawPresets(*water, trackDirty);
-                ImGui::Spacing();
-                DrawWaveEditor(*water, trackDirty);
-
-                const ImGuiID activeAfter = ImGui::GetActiveID();
-                auto pushCommand = [&](const std::string& instanceId,
-                                       const scene::WaterComponent& before,
-                                       const scene::WaterComponent& after) {
-                    if (!undoStack) return;
-                    scene::Scene* scenePtr = &scene;
-                    auto apply = [scenePtr, instanceId, markDirty](const scene::WaterComponent& value) {
-                        if (auto* target = scenePtr->FindByGuid(instanceId)) {
-                            if (auto* component = target->GetComponent<scene::WaterComponent>()) {
-                                *component = value;
-                                component->meshDirty = true;
-                                component->foamDirty = true;
-                                component->texDirty = true;
-                                if (markDirty) markDirty();
-                            }
-                        }
-                    };
-                    undoStack->Push(std::make_unique<LambdaCommand>(
-                        "Edit Water",
-                        [apply, after]() { apply(after); },
-                        [apply, before]() { apply(before); }));
-                };
-
-                const std::string instanceId = scene.GetGameObject(selEid)->instanceId;
-                if (!canRecordUndo) {
-                    undo.active = false;
-                    undo.changed = false;
-                } else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
-                    undo.activeId = activeAfter;
-                    undo.instanceId = instanceId;
-                    undo.before = beforeDraw;
-                    undo.active = true;
-                    undo.changed = changed;
-                } else if (undo.active && activeAfter == undo.activeId) {
-                    undo.changed |= changed;
-                } else if (undo.active && activeAfter != undo.activeId) {
-                    if (undo.changed) pushCommand(undo.instanceId, undo.before, *water);
-                    undo.active = false;
-                    undo.changed = false;
-                } else if (!undo.active && changed && activeAfter == 0) {
-                    pushCommand(instanceId, beforeDraw, *water);
-                }
-            }
-        }
-    }
-
+    DrawContentBody(scene, projectRoot, markDirty, undoStack);
     if (!m_active) ImGui::EndDisabled();
     ImGui::End();
 }

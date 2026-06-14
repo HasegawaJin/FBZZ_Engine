@@ -7,6 +7,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -17,7 +18,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; }
 
 namespace fbzz::editor {
 
@@ -104,7 +105,8 @@ struct EditorContext {
     float cameraSensitivity   = 0.15f;
 
     // ビューポート
-    bool  viewportFocused = false;
+    bool  viewportFocused  = false;
+    bool  sceneViewportHovered = false; // シーンビューにマウスが乗っているか (ホイール制御に使う)
     float viewportWidth   = 1280.0f;
     float viewportHeight  = 720.0f;
     bool  gameViewportFocused = false;
@@ -113,6 +115,10 @@ struct EditorContext {
     float gameViewportWidth   = 1280.0f;
     float gameViewportHeight  = 720.0f;
     bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
+    bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
+    bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
+    bool  mapHierarchyFilter = true; // Map Mode 中に Terrain/Water/Detail/Foliage オブジェクトだけ表示
+    bool  mapInspectorFilter = true; // Map Mode 中に Map 関連 Component だけ表示
     bool  uiViewportFocused = false;
     float uiViewportOriginX = 0.0f;
     float uiViewportOriginY = 0.0f;
@@ -159,8 +165,10 @@ struct EditorContext {
     bool showColliders   = false;
     bool showSkeleton    = false;
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
-    bool showTerrainTool = true;  // Terrain Tool ウィンドウを表示する
-    bool showWaterTool   = true;  // Water Tool ウィンドウを表示する
+    bool showTerrainTool = false; // Terrain Tool ウィンドウを表示する
+    bool showWaterTool   = false; // Water Tool ウィンドウを表示する
+    bool showDetailTool  = false; // Detail Tool ウィンドウを表示する
+    bool showFoliageTool = false; // Foliage Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
 
     // スクリプト DLL / HLSL ホットリロード状態 (StatusBar が表示する)
@@ -197,6 +205,11 @@ struct EditorContext {
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
     WaterTool*          waterTool   = nullptr; // EditorApp が所有、ViewportPanel が使用
+    DetailTool*         detailTool  = nullptr; // EditorApp が所有、ViewportPanel が使用
+    FoliageTool*        foliageTool = nullptr; // EditorApp が所有、ViewportPanel が使用
+    // Inspector セクション折り畳み状態 (EditorSettings ↔ ImGui StateStorage の中継)
+    std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
+
     std::function<void()>                   markSceneDirty;
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
