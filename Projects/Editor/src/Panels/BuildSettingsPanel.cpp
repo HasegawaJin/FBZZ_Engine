@@ -106,6 +106,15 @@ void BuildSettingsPanel::OnRenderContent(EditorContext& ctx)
         bool active = false;
     };
     static UndoTracker undo;
+    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) {
+        undo.active = false;
+        DrawScenesInBuild(ctx);
+        ImGui::Separator();
+        DrawOutputSettings(ctx);
+        ImGui::Separator();
+        DrawProgressAndActions(ctx);
+        return;
+    }
     const BuildSettings beforeDraw = m_settings;
     const ImGuiID activeBefore = ImGui::GetActiveID();
 

@@ -77,6 +77,10 @@ class UndoStack {
 public:
     static constexpr std::size_t MAX_HISTORY = 128;
 
+    // Play/Pause 中はランタイム状態を履歴へ混入させないため、EditorApp から記録を停止する。
+    void SetRecordingEnabled(bool enabled);
+    [[nodiscard]] bool IsRecordingEnabled() const { return m_recordingEnabled; }
+
     // WHAT: 既に画面へ反映済みのコマンドを履歴へ追加する。
     // WHY: ImGui のドラッグ編集は UI が値を直接更新するため、確定時には再実行しない。
     void Push(std::unique_ptr<ICommand> cmd);
@@ -107,6 +111,7 @@ private:
     // Undo/Redo コールバックから履歴を変更すると実行中コマンドが破棄され得るため、
     // コマンド適用中の Push/Execute を拒否して vector の再入変更を防ぐ。
     bool m_isApplyingCommand = false;
+    bool m_recordingEnabled = true;
 
     // 履歴件数が同じでも Redo 破棄後の Push は別状態なので、変更検知には世代を使う。
     std::size_t m_revision = 0;

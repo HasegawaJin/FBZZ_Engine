@@ -43,10 +43,21 @@ bool GraphLayoutSerializer::Save(const std::unordered_map<std::string, GraphLayo
             node.insert("y", static_cast<double>(pos.y));
             nodes.push_back(std::move(node));
         }
+        for (const auto& [stateName, positions] : layout.blendTreeMotionPositions) {
+            for (size_t motionIndex = 0; motionIndex < positions.size(); ++motionIndex) {
+                toml::table node;
+                node.insert("instanceId", instanceId);
+                node.insert("blendStateName", stateName);
+                node.insert("motionIndex", static_cast<int64_t>(motionIndex));
+                node.insert("x", static_cast<double>(positions[motionIndex].x));
+                node.insert("y", static_cast<double>(positions[motionIndex].y));
+                nodes.push_back(std::move(node));
+            }
+        }
     }
 
     toml::table root;
-    root.insert("version", 2);
+    root.insert("version", 3);
     root.insert("nodes", std::move(nodes));
 
     std::ostringstream oss;
@@ -73,7 +84,22 @@ bool GraphLayoutSerializer::Load(std::unordered_map<std::string, GraphLayout>& l
     nodes->for_each([&](const toml::table& node) {
         const std::string instanceId = node["instanceId"].value_or(std::string{});
         const std::string stateName  = node["stateName"].value_or(std::string{});
+        const std::string blendStateName =
+            node["blendStateName"].value_or(std::string{});
         if (instanceId.empty()) return;
+        if (!blendStateName.empty()) {
+            const int motionIndex =
+                static_cast<int>(node["motionIndex"].value_or(int64_t{-1}));
+            if (motionIndex < 0) return;
+            auto& positions =
+                layouts[instanceId].blendTreeMotionPositions[blendStateName];
+            if (positions.size() <= static_cast<size_t>(motionIndex))
+                positions.resize(static_cast<size_t>(motionIndex) + 1);
+            positions[static_cast<size_t>(motionIndex)] = ImVec2(
+                static_cast<float>(node["x"].value_or(0.0)),
+                static_cast<float>(node["y"].value_or(0.0)));
+            return;
+        }
         if (stateName.empty()) {
             GraphLayout& layout = layouts[instanceId];
             layout.entryPosition = ImVec2(

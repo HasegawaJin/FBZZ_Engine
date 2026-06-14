@@ -240,6 +240,18 @@ BlendTree ステートでも既存の `stateTime`（秒）をそのまま使う�
 `stateTime` 自体を `state.speed * animator.speed` で進め、
 各クリップのティック変換時には `motion.speed` を適用する。
 
+1D BlendTree のパラメーターには `dampTime`（秒）を任意設定できる。
+`0` は即時反映、正の値は指数平滑化の時定数として扱う。
+WHY: Script が速度を停止値と移動値へ離散的に変更しても、
+Idle / Walk / Run の姿勢ウェイトを連続的に変化させるため。
+
+### Editor のサブグラフ
+
+BlendTree State は Animation Graph 上でダブルクリックすると、
+親 State Machine とは別のサブグラフとして開く。
+Parameter ノードをルートとし、各 Motion を独立ノードとして配置・編集する。
+Motion 座標は `.animgraph` サイドカーへ保存し、ランタイムデータには含めない。
+
 ```
 stateTime    += dt * state.speed * animator.speed
 clipTicks[i] = WrapOrClamp(stateTime * motion.speed) * clip.ticksPerSecond
