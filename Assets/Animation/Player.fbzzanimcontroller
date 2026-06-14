@@ -24,6 +24,7 @@ ikWeight = 1.0
 
 [states.blendTree1D]
 paramName = 'Speed'
+dampTime = 0.18
 motions = [
     { sourcePath = 'Assets/Models/DebugCharacter/Idle/Idle.fzasset', clipName = 'Idle', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
     { sourcePath = 'Assets/Models/DebugCharacter/Walking/Walking.fzasset', clipName = 'Walking', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
@@ -76,9 +77,10 @@ ikWeight = 0.5
 
 [[states.transitions]]
 toStateName = 'Locomotion'
-hasExitTime = false
-exitTime = 1.0
-transitionDuration = 0.08
+hasExitTime = true
+exitTime = 0.35
+fixedDuration = true
+transitionDuration = 0.18
 conditions = [{ paramName = 'Speed', op = 0, threshold = 0.1 }]
 
 [[states.transitions]]
