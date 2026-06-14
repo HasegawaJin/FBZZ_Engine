@@ -525,6 +525,9 @@ void EditorApp::UpdateWindowTitle()
 
 void EditorApp::BeginFrame()
 {
+    // WHY: Play/Pause 中のランタイム変化を Editor の Undo 履歴へ混入させない。
+    m_undoStack.SetRecordingEnabled(m_playMode.IsInEditor());
+
     // Viewport パネルサイズが前フレームで変わった場合は RT を再生成する。
     // main ループの「シーン描画」より前に呼ぶことで、RT のサイズが確定した状態で
     // シーンをレンダリングでき、リサイズ直後のフレームで古い解像度の画像が表示されるのを防ぐ。
@@ -619,13 +622,25 @@ void EditorApp::BeginFrame()
 
 void EditorApp::RenderPanels(EditorContext& ctx)
 {
-    for (auto& panel : m_panels)
-        if (panel->visible) panel->OnRender(ctx);
+    // Play ボタンは BeginFrame 内で状態を変えるため、同じフレームの Panel 描画前にも同期する。
+    m_undoStack.SetRecordingEnabled(m_playMode.IsInEditor());
+
+    for (auto& panel : m_panels) {
+        if (!panel->visible) continue;
+
+        // WHY: RenderPanels 全体の計測だけでは、重いパネルを特定できない。
+        //      パネル名は Panel の生存中有効なため、そのまま Profiler marker として利用する。
+        const profiler::ProfileScope panelScope(
+            profiler::ProfilerMarker(panel->GetWindowName(), "Editor Panels"));
+        panel->OnRender(ctx);
+    }
 
     // GPU レンダリング完了後・ImGui フレーム内のここで描画する。
     // RenderSystem は GPU 実行中のため直接 ImGui を呼べず、スナップショットだけ保存している。
-    if (m_imguiRenderer && m_resources)
+    if (m_imguiRenderer && m_resources) {
+        FBZZ_PROFILE_SCOPE("EditorPanel::RenderDebugOverlay");
         renderer::RenderDebugOverlay::DrawIfEnabled(*m_imguiRenderer, *m_resources);
+    }
 
     if (ctx.requestOpenProjectSettings) {
         if (m_projectSettingsPanel) m_projectSettingsPanel->visible = true;
@@ -661,7 +676,10 @@ void EditorApp::RenderPanels(EditorContext& ctx)
 
     // WHY: すべての通常ウィンドウの後に呼ぶことで、オーバーレイが最前面に描画される。
     //      IsActive() == false のときは何もしないのでパネルのないフレームでも安全。
-    EditorTaskOverlay::Render();
+    {
+        FBZZ_PROFILE_SCOPE("EditorPanel::TaskOverlay");
+        EditorTaskOverlay::Render();
+    }
 }
 
 void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)

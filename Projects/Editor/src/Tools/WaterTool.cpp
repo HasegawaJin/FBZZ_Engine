@@ -267,7 +267,13 @@ void WaterTool::OnEditorGUI(
                     bool changed = false;
                 };
                 static UndoTracker undo;
-                const scene::WaterComponent beforeDraw = *water;
+                const bool canRecordUndo =
+                    undoStack != nullptr && undoStack->IsRecordingEnabled();
+                scene::WaterComponent beforeDraw;
+                if (canRecordUndo)
+                    beforeDraw = *water;
+                else
+                    undo.active = false;
                 const ImGuiID activeBefore = ImGui::GetActiveID();
                 bool changed = false;
                 const auto trackDirty = [&]() {
@@ -305,7 +311,10 @@ void WaterTool::OnEditorGUI(
                 };
 
                 const std::string instanceId = scene.GetGameObject(selEid)->instanceId;
-                if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+                if (!canRecordUndo) {
+                    undo.active = false;
+                    undo.changed = false;
+                } else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
                     undo.activeId = activeAfter;
                     undo.instanceId = instanceId;
                     undo.before = beforeDraw;
