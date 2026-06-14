@@ -15,6 +15,7 @@
 #include "InspectorRendering.hpp"
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
+#include <Engine/Profiler/ProfileScope.hpp>
 
 namespace fbzz::editor {
 
@@ -28,7 +29,8 @@ void PushGameObjectPropertyCommand(EditorContext& ctx,
                                    T after,
                                    Setter setter)
 {
-    if (!ctx.undoStack || !ctx.activeScene || before == after) return;
+    if (!ctx.undoStack || !ctx.undoStack->IsRecordingEnabled() ||
+        !ctx.activeScene || before == after) return;
 
     scene::Scene* scene = ctx.activeScene;
     scene::GameObject* gameObject = scene->GetGameObject(id);
@@ -68,6 +70,8 @@ void InspectorPanel::OnShutdown()
 
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
+    FBZZ_PROFILE_SCOPE("Inspector::Render");
+
     // ------------------------------------------------------------------
     // ロック解決
     // Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
@@ -160,6 +164,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     // アセット選択中、または Asset Inspector ロック中 → アセットインスペクターへ
     if ((!m_locked || assetLocked) && !assetPathToInspect.empty()) {
+        FBZZ_PROFILE_SCOPE("Inspector::Asset");
         DrawAssetInspector(ctx, assetPathToInspect);
         return;
     }
@@ -171,8 +176,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     // Animation Graph の要素選択中は、GameObject 全体ではなく選択要素の詳細を表示する。
     // WHY: Graph は遷移関係の操作に専念し、State / Transition の設定は Inspector に集約する。
-    if (DrawAnimationGraphInspector(ctx, *go))
-        return;
+    {
+        FBZZ_PROFILE_SCOPE("Inspector::AnimationGraphSelection");
+        if (DrawAnimationGraphInspector(ctx, *go))
+            return;
+    }
 
     // ── Save as Prefab ───────────────────────────────────────────────────────
     // WHY: Hierarchy のコンテキストメニューを使わずに Inspector から直接 Prefab 化できる動線。
@@ -297,22 +305,33 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::Separator();
 
-    DrawTransformInspector(go, ctx);
-
-    DrawRenderingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawAnimationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawMaterialInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawLightingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawEffectsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawAudioInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawPhysicsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawEnvironmentInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawUIInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
-    DrawTerrainWaterInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
+    { FBZZ_PROFILE_SCOPE("Inspector::Transform");
+      DrawTransformInspector(go, ctx); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Rendering");
+      DrawRenderingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Animation");
+      DrawAnimationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Material");
+      DrawMaterialInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Lighting");
+      DrawLightingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Effects");
+      DrawEffectsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Audio");
+      DrawAudioInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Physics");
+      DrawPhysicsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Environment");
+      DrawEnvironmentInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::UI");
+      DrawUIInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::TerrainWater");
+      DrawTerrainWaterInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     DrawScriptInspectors(go, ctx);
 
     ImGui::Spacing();
-    DrawAddComponentMenu(*go, m_addComponentFilter, ctx);
+    { FBZZ_PROFILE_SCOPE("Inspector::AddComponent");
+      DrawAddComponentMenu(*go, m_addComponentFilter, ctx); }
 }
 
 } // namespace fbzz::editor

@@ -530,7 +530,10 @@ std::vector<WeightedMotion> Compute1DWeights(const AnimatorComponent& animator,
     std::sort(sorted.begin(), sorted.end(),
               [](const auto* a, const auto* b) { return a->threshold < b->threshold; });
 
-    const float value = animator.GetFloat(tree.paramName);
+    const float value = tree.dampTime > math::EPSILON &&
+                        tree.dampedValueInitialized
+        ? tree.dampedValue
+        : animator.GetFloat(tree.paramName);
     if (sorted.size() == 1 || value <= sorted.front()->threshold)
         return { { sorted.front(), 1.0f } };
     if (value >= sorted.back()->threshold)
@@ -733,17 +736,28 @@ float GetStateDuration(const AnimatorComponent& animator, const AnimationState& 
         return static_cast<float>(clip->durationTicks / tps);
     }
 
+    // BlendTree の再生周期は現在 Weight に依存させず、全 Motion の最大実効 Length で固定する。
+    // WHY: Damping 中は Weight が毎フレーム変わる。加重平均 Length を WrapTime に使うと、
+    //      周期が途中で短くなった瞬間に stateTime / blendToTime が巻き戻り、Walk が再生し直されるため。
     float duration = 0.0f;
-    float validWeight = 0.0f;
-    for (const auto& weighted : ComputeStateWeights(animator, state)) {
-        const auto* clip = FindClipForMotion(animator, *weighted.motion);
-        if (!clip) continue;
+    const auto accumulateMotionDuration = [&](const BlendTreeMotion& motion) {
+        const auto* clip = FindClipForMotion(animator, motion);
+        if (!clip) return;
         const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-        const float speed = (std::max)(std::abs(weighted.motion->speed), 1e-4f);
-        duration += static_cast<float>(clip->durationTicks / tps) / speed * weighted.weight;
-        validWeight += weighted.weight;
+        const float speed = (std::max)(std::abs(motion.speed), 1e-4f);
+        duration = (std::max)(
+            duration,
+            static_cast<float>(clip->durationTicks / tps) / speed);
+    };
+
+    if (state.mode == AnimationStateMode::BlendTree1D) {
+        for (const auto& motion : state.blendTree1D.motions)
+            accumulateMotionDuration(motion);
+    } else if (state.mode == AnimationStateMode::BlendTree2D) {
+        for (const auto& motion : state.blendTree2D.motions)
+            accumulateMotionDuration(motion);
     }
-    return validWeight > math::EPSILON ? duration / validWeight : 0.0f;
+    return duration;
 }
 
 NodeLocalPose BlendNodePose(const asset::SkeletonNode& node,
@@ -913,11 +927,48 @@ bool TryStartTransition(AnimatorComponent& animator,
         animator.blendToState  = tr.toStateName;
         animator.blendToTime   = 0.0f;
         animator.blendWeight   = 0.0f;
-        animator.blendDuration = tr.transitionDuration;
+        // 正規化指定は遷移元ステートの Length を基準に実秒へ変換する。
+        // WHY: クリップを差し替えても同じ割合の Motion Blend を維持できる。
+        const AnimationState* currentState =
+            FindState(animator, animator.currentStateName);
+        const float sourceDuration = currentState
+            ? GetStateDuration(animator, *currentState)
+            : 0.0f;
+        animator.blendDuration = tr.fixedDuration
+            ? tr.transitionDuration
+            : tr.transitionDuration * sourceDuration;
+        animator.blendDuration = (std::max)(animator.blendDuration, 0.0f);
         ConsumeTriggers(animator, tr);
         return true;
     }
     return false;
+}
+
+// 1D BlendTree の入力値を時定数ベースで平滑化する。
+// WHY: Script が Speed を 0 / 4 / 7.2 と離散的に設定しても、姿勢 Weight は連続変化させる。
+void UpdateBlendTree1DDamping(AnimatorComponent& animator, float dt)
+{
+    if (!animator.playing) return;
+    for (auto& state : animator.states) {
+        if (state.mode != AnimationStateMode::BlendTree1D) continue;
+        auto& tree = state.blendTree1D;
+        const float target = animator.GetFloat(tree.paramName);
+        if (!tree.dampedValueInitialized || tree.dampTime <= math::EPSILON) {
+            tree.dampedValue = target;
+            tree.dampedValueInitialized = true;
+            continue;
+        }
+        const float alpha =
+            1.0f - std::exp(
+                -(std::max)(dt, 0.0f) / (std::max)(tree.dampTime, 1e-4f));
+        tree.dampedValue += (target - tree.dampedValue) * std::clamp(alpha, 0.0f, 1.0f);
+        // 指数補間は理論上目標へ到達しないため、近傍で確定して不要な2Clip評価を終了する。
+        // WHY: 極小WeightのClipも全ボーンをサンプリングすると、定常時のCPU負荷が倍増する。
+        const float snapEpsilon =
+            (std::max)(0.001f, std::abs(target) * 0.001f);
+        if (std::abs(target - tree.dampedValue) <= snapEpsilon)
+            tree.dampedValue = target;
+    }
 }
 
 // ステートマシンを1フレーム分更新する。
@@ -1051,6 +1102,7 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
                                         float dt)
 {
     InitStateMachine(animator);
+    UpdateBlendTree1DDamping(animator, dt);
     UpdateStateMachine(animator, dt);
 
     const AnimationState* curSt = FindState(animator, animator.currentStateName);
@@ -1084,9 +1136,8 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     if (!animator.blendToState.empty()) {
         // ── クロスフェードモード ─────────────────────────────────────────
         const AnimationState* nextSt = FindState(animator, animator.blendToState);
-        exposeBlendWeights =
-            exposeBlendWeights ||
-            (nextSt && nextSt->mode != AnimationStateMode::Clip);
+        // Clip 同士の遷移も含め、最終姿勢への実寄与率を Editor へ公開する。
+        exposeBlendWeights = true;
         auto nextClips = nextSt
             ? BuildStateClips(animator, *nextSt, animator.blendToTime)
             : std::vector<WeightedClip>{};

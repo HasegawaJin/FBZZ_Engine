@@ -51,15 +51,21 @@ void ExecuteSceneEditWithUndo(EditorContext& ctx,
 {
     if (!ctx.activeScene || !edit) return;
 
+    const bool canRecordUndo =
+        ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
+    if (!canRecordUndo) {
+        edit();
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+        return;
+    }
+
     const std::string before = SceneIO::Serialize(*ctx.activeScene);
-    const std::size_t historyRevisionBefore = ctx.undoStack
-        ? ctx.undoStack->GetRevision()
-        : 0;
+    const std::size_t historyRevisionBefore = ctx.undoStack->GetRevision();
     edit();
     const std::string after = SceneIO::Serialize(*ctx.activeScene);
 
     // Reparent 等が専用コマンドを追加済みなら、全シーンコマンドとの二重登録を避ける。
-    if (!ctx.undoStack || before == after ||
+    if (before == after ||
         ctx.undoStack->GetRevision() != historyRevisionBefore) {
         if (before != after && ctx.markSceneDirty) ctx.markSceneDirty();
         return;
@@ -116,7 +122,7 @@ void SetParentWithUndo(EditorContext& ctx,
         }
     };
 
-    if (ctx.undoStack) {
+    if (ctx.undoStack && ctx.undoStack->IsRecordingEnabled()) {
         ctx.undoStack->Push(std::make_unique<LambdaCommand>(
             description,
             [apply, newParentInstanceId]() { apply(newParentInstanceId); },
