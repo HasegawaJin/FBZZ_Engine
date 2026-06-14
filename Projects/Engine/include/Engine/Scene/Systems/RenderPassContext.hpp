@@ -46,6 +46,20 @@ struct UserRenderPassDesc {
     bool allowCulling = true;
 };
 
+// GPU パーティクル CS 用定数バッファ (b0)
+struct GpuParticleEmitterCB {
+    math::Vector3 emitterPos;
+    float         deltaTime;
+    math::Vector3 gravity;
+    uint32_t      maxParticles;
+    math::Vector4 colorStart;
+    math::Vector4 colorEnd;
+    uint32_t      spawnCount;   // 今フレームのスポーン数
+    uint32_t      spawnOffset;  // リングバッファ書き込み先頭インデックス
+    float         pad0;
+    float         pad1;
+};
+
 struct PerFrameCB {
     math::Matrix4 view;
     math::Matrix4 projection;
@@ -223,6 +237,13 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleAlphaPSO;
     renderer::ResourceHandle<renderer::BufferTag>         particleVB;
     renderer::ResourceHandle<renderer::BufferTag>         particleIB;
+
+    // GPU パーティクル
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSimCS;   // CS: シミュレーション+スポーン
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuShader;  // VS+PS: billboard 描画 (加算合成)
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuAlphaShader; // VS+PS: billboard 描画 (アルファ合成)
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuAlphaPSO;
 
     renderer::ResourceHandle<renderer::ShaderTag>         trailShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  trailPSO;
