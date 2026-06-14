@@ -264,7 +264,14 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     }
 
     if (ImGui::BeginMenu("Tools")) {
+        bool mapMode = ctx.mapEditingMode;
+        if (ImGui::MenuItem("Map Editing Mode", nullptr, &mapMode))
+            ctx.requestMapEditingModeToggle = true;
+        ImGui::Separator();
         ImGui::MenuItem("Terrain Tool", nullptr, &ctx.showTerrainTool);
+        ImGui::MenuItem("Water Tool",   nullptr, &ctx.showWaterTool);
+        ImGui::MenuItem("Detail Tool",  nullptr, &ctx.showDetailTool);
+        ImGui::MenuItem("Foliage Tool", nullptr, &ctx.showFoliageTool);
         ImGui::Separator();
 
         // WHY: Standalone ボタンは Play と独立した位置に置き、
@@ -310,16 +317,37 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     ImGui::BeginChild("##MainPlayToolbar", { 0.0f, TOOLBAR_HEIGHT }, false,
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-    const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;
-    const float availableWidth = ImGui::GetContentRegionAvail().x;
-    const float centerOffset = (availableWidth > groupWidth) ? (availableWidth - groupWidth) * 0.5f : 0.0f;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + centerOffset);
-
     PlayModeController* pm = ctx.playMode;
     const bool hasScene = ctx.activeScene != nullptr;
     const bool isEditor = pm && pm->IsInEditor();
     const bool isPlaying = pm && pm->IsPlaying();
     const bool isPaused = pm && pm->IsPaused();
+
+    const float toolbarButtonY = ImGui::GetCursorPosY();
+    const bool canToggleMapMode = isEditor && hasScene;
+    if (ctx.mapEditingMode)
+        ImGui::PushStyleColor(ImGuiCol_Button, { 0.18f, 0.55f, 0.32f, 1.0f });
+    if (!canToggleMapMode)
+        ImGui::BeginDisabled();
+    if (ImGui::Button(ctx.mapEditingMode ? "EXIT MAP" : "MAP MODE", { 92.0f, 24.0f }))
+        ctx.requestMapEditingModeToggle = true;
+    if (!canToggleMapMode)
+        ImGui::EndDisabled();
+    if (ctx.mapEditingMode)
+        ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+        if (!canToggleMapMode)
+            ImGui::SetTooltip("Open a scene to enable Map Editing Mode");
+        else if (ctx.mapEditingMode)
+            ImGui::SetTooltip("Exit Map Editing Mode — restores normal editor layout");
+        else
+            ImGui::SetTooltip("Enter Map Editing Mode\nTerrain / Water / Detail / Foliage tools in a focused layout");
+    }
+
+    const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;
+    const float availableWidth = ImGui::GetWindowWidth();
+    const float centerOffset = (availableWidth > groupWidth) ? (availableWidth - groupWidth) * 0.5f : 0.0f;
+    ImGui::SetCursorPos({ centerOffset, toolbarButtonY });
     const bool scriptReloadBusy =
         ctx.scriptReloadBusy ||
         ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
