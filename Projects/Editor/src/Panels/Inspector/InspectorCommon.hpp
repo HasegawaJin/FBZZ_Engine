@@ -40,7 +40,10 @@
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
+#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
+#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
@@ -828,6 +831,12 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             water.texDirty = true;
             go.AddComponent<scene::WaterComponent>(std::move(water));
         });
+        shown |= addItem(category, "Terrain Detail", !go.GetComponent<scene::TerrainDetailComponent>(), [&]() {
+            go.AddComponent<scene::TerrainDetailComponent>();
+        });
+        shown |= addItem(category, "Foliage", !go.GetComponent<scene::FoliageComponent>(), [&]() {
+            go.AddComponent<scene::FoliageComponent>();
+        });
         return shown;
     });
 
@@ -862,6 +871,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "Volume", !go.GetComponent<scene::VolumeComponent>(), [&]() {
             go.AddComponent<scene::VolumeComponent>();
+        });
+        shown |= addItem(category, "Character Controller", !go.GetComponent<scene::CharacterControllerComponent>(), [&]() {
+            go.AddComponent<scene::CharacterControllerComponent>();
         });
         return shown;
     });

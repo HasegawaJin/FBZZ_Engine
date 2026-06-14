@@ -53,6 +53,13 @@ public:
                      const std::function<void()>& markDirty,
                      UndoStack* undoStack);
 
+    // NatureTool 向け: ウィンドウなしでタブコンテンツだけ描画する
+    void DrawContent(scene::Scene& scene, const std::string& projectRoot,
+                     const std::function<void()>& markDirty, UndoStack* undoStack);
+
+    void SetActive(bool a) { m_active = a; }
+    bool IsActive()  const { return m_active; }
+
 private:
     // ── 状態 ──────────────────────────────────────────────────────────────────
     bool      m_active = false;          // false のとき可視化・UI をスキップ
@@ -98,6 +105,10 @@ private:
     // ツールウィンドウの波エディタセクション
     void DrawWaveEditor(scene::WaterComponent& water,
                         const std::function<void()>& markDirty) const;
+
+    // DrawContent / OnEditorGUI の共通本体（対象選択 + 波エディタ）
+    void DrawContentBody(scene::Scene& scene, const std::string& projectRoot,
+                         const std::function<void()>& markDirty, UndoStack* undoStack);
 };
 
 } // namespace fbzz::editor
