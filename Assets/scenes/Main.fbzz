@@ -10,7 +10,7 @@ parent = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.776817
+    aspectRatio = 2.529412
     cullingMask = 4294967295
     enabled = true
     farZ = 1000.0
@@ -40,7 +40,7 @@ tag = 'MainCamera'
         Yaw = 78.60009
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
 layer = 0
 name = 'DirectionalLight'
@@ -91,21 +91,43 @@ tag = 'Player'
     [gameobjects.AnimatorComponent]
     clipIndex = 0
     clipName = ''
+    clipSources = []
     controllerPath = 'Assets/Animation/Player.fbzzanimcontroller'
-    clipSources = [
-        'Assets/Models/DebugCharacter/Idle/Idle.fzasset',
-        'Assets/Models/DebugCharacter/Walking/Walking.fzasset',
-        'Assets/Models/DebugCharacter/Running/Running.fzasset',
-        'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.fzasset',
-        'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.fzasset',
-        'Assets/Models/DebugCharacter/Landing/Landing.fzasset'
-    ]
-    defaultStateName = 'Idle'
+    defaultStateName = 'Locomotion'
     enabled = true
     loop = true
     playing = true
     speed = 1.0
     time = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'JumpUp'
+        transitionDuration = 0.04
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Jump'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Fall'
+        transitionDuration = 0.04
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsGrounded'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 1
+            paramName = 'VerticalSpeed'
+            threshold = -1.0
 
         [[gameobjects.AnimatorComponent.parameters]]
         boolValue = false
@@ -128,191 +150,95 @@ tag = 'Player'
         name = 'IsGrounded'
         type = 2
 
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Jump'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Land'
+        type = 3
+
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 0
-        clipName = 'Idle'
+        clipIndex = -1
+        clipName = ''
         ikWeight = 1.0
         loop = true
-        name = 'Idle'
+        mode = 1
+        name = 'Locomotion'
+        sourcePath = ''
         speed = 1.0
+        transitions = []
 
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'JumpUp'
-            transitionDuration = 0.04
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.18
+            paramName = 'Speed'
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Idle'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Idle/Idle.fzasset'
+                speed = 1.0
                 threshold = 0.0
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'VerticalSpeed'
-                threshold = 1.0
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Walking'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Walking/Walking.fzasset'
+                speed = 1.0
+                threshold = 4.0
 
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.04
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'Running'
+                ikWeight = 0.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Running/Running.fzasset'
+                speed = 1.0
+                threshold = 7.2
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'VerticalSpeed'
-                threshold = -1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Walk'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'Speed'
-                threshold = 0.1
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 1
-        clipName = 'Walking'
-        ikWeight = 1.0
-        loop = true
-        name = 'Walk'
-        speed = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'JumpUp'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'VerticalSpeed'
-                threshold = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'VerticalSpeed'
-                threshold = -1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Idle'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'Speed'
-                threshold = 0.1
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Run'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'Speed'
-                threshold = 5.0
-
-        [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 2
-        clipName = 'Running'
-        ikWeight = 0.0
-        loop = true
-        name = 'Run'
-        speed = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'JumpUp'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'VerticalSpeed'
-                threshold = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'VerticalSpeed'
-                threshold = -1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Idle'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'Speed'
-                threshold = 0.1
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Walk'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'Speed'
-                threshold = 5.0
-
-        [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 3
+        clipIndex = -1
         clipName = 'JumpingUp'
         ikWeight = 0.0
         loop = false
+        mode = 0
         name = 'JumpUp'
+        sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.fzasset'
         speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
             exitTime = 1.0
+            fixedDuration = true
             hasExitTime = false
             toStateName = 'Fall'
             transitionDuration = 0.2
@@ -323,59 +249,65 @@ tag = 'Player'
                 threshold = -0.5
 
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 4
+        clipIndex = -1
         clipName = 'FallingIdle'
         ikWeight = 0.0
         loop = true
+        mode = 0
         name = 'Fall'
+        sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.fzasset'
         speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
             exitTime = 1.0
+            fixedDuration = true
             hasExitTime = false
             toStateName = 'Landing'
             transitionDuration = 0.1
 
                 [[gameobjects.AnimatorComponent.states.transitions.conditions]]
                 op = 4
-                paramName = 'IsGrounded'
+                paramName = 'Land'
                 threshold = 0.0
 
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 5
+        clipIndex = -1
         clipName = 'Landing'
         ikWeight = 0.5
         loop = false
+        mode = 0
         name = 'Landing'
+        sourcePath = 'Assets/Models/DebugCharacter/Landing/Landing.fzasset'
         speed = 1.0
 
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.1
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Run'
-            transitionDuration = 0.12
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'Speed'
-                threshold = 5.0
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Walk'
-            transitionDuration = 0.12
+            exitTime = 0.35
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.18
 
                 [[gameobjects.AnimatorComponent.states.transitions.conditions]]
                 op = 0
@@ -384,10 +316,11 @@ tag = 'Player'
 
             [[gameobjects.AnimatorComponent.states.transitions]]
             conditions = []
-            exitTime = 0.9
+            exitTime = 0.75
+            fixedDuration = true
             hasExitTime = true
-            toStateName = 'Idle'
-            transitionDuration = 0.2
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
 
     [gameobjects.CapsuleColliderComponent]
     center = [ 0.0, 0.93, 0.0 ]
@@ -401,8 +334,8 @@ tag = 'Player'
         staticFriction = 0.6
 
         [gameobjects.CapsuleColliderComponent.shape]
-        halfHeight = 0.73
-        radius = 0.19
+        halfHeight = 0.6
+        radius = 0.34
         type = 'Capsule'
 
     [gameobjects.CharacterControllerComponent]
@@ -420,6 +353,7 @@ tag = 'Player'
     [gameobjects.IKSolverComponent]
     enabled = true
     hipBoneName = ''
+    hipMaxOffsetRatio = 0.4
 
         [[gameobjects.IKSolverComponent.chains]]
         enabled = true
@@ -499,8 +433,11 @@ tag = 'Player'
     type = 'PlayerControllerComponent'
 
         [gameobjects.ScriptComponents.fields]
+        'Air Accel' = 3.0
         Backward = 'S'
         Forward = 'W'
+        'Ground Accel' = 15.0
+        'Ground Decel' = 20.0
         'IsGrounded Param' = 'IsGrounded'
         Jump = 'Space'
         'Jump Force' = 5.0
@@ -516,17 +453,6 @@ tag = 'Player'
         'Sprint Multiplier' = 1.8
         'Use Camera Forward' = true
         'Vertical Speed Param' = 'VerticalSpeed'
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'BulletShooterComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        'Bullet Prefab' = 'Assets/Prefabs/Bullet.fbzzprefab'
-        'Camera Override' = [ 4294967295, 0 ]
-        'Fire Key' = 'MouseLeft'
-        'Fire Rate' = 5.0
-        Muzzle = [ 4294967295, 0 ]
 
 [[gameobjects]]
 active = false
@@ -650,8 +576,8 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    position = [ 0.05531, 0.96825, 0.016022 ]
-    rotation = [ 0.016591, 0.035104, -0.028337, 0.998844 ]
+    position = [ 0.011544, 0.964261, -0.007333 ]
+    rotation = [ 0.021773, 0.00093, -0.019321, 0.999576 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -672,7 +598,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 9e-06, 0.099235, 0.012273 ]
-    rotation = [ 0.047992, -0.002396, -0.002228, 0.998842 ]
+    rotation = [ 0.04876, -0.001059, -0.003276, 0.998805 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -693,7 +619,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.11732, 0.0 ]
-    rotation = [ -0.017827, 0.017807, -0.006907, 0.999659 ]
+    rotation = [ -0.015555, 0.018767, -0.00677, 0.99968 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -714,7 +640,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.134588, 0.0 ]
-    rotation = [ -0.075466, 0.018237, -0.00525, 0.996968 ]
+    rotation = [ -0.073222, 0.019155, -0.005048, 0.997119 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -735,7 +661,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.150278, -0.008779 ]
-    rotation = [ -0.000719, -0.002065, 0.007092, 0.999973 ]
+    rotation = [ -0.015883, -0.005292, -0.003106, 0.999855 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -756,7 +682,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.103218, -0.031424 ]
-    rotation = [ -0.054251, 0.015906, 0.045211, 0.997377 ]
+    rotation = [ -0.052404, 0.013725, 0.031612, 0.998031 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -798,7 +724,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.061058, 0.091063, -0.007571 ]
-    rotation = [ 0.433417, 0.560661, 0.561112, -0.427741 ]
+    rotation = [ 0.44931, 0.550115, 0.550553, -0.438618 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -819,7 +745,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.129223, 0.0 ]
-    rotation = [ -0.530632, -0.211184, 0.265204, 0.776851 ]
+    rotation = [ -0.56705, -0.180613, 0.202917, 0.777598 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -840,7 +766,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.274047, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.249911, 0.968269 ]
+    rotation = [ 0.0, 0.0, 0.244751, 0.969586 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -861,7 +787,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.276145, 0.0 ]
-    rotation = [ -0.114164, -0.061329, -0.135212, 0.982305 ]
+    rotation = [ -0.094802, -0.058611, -0.117846, 0.986757 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -882,7 +808,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.03003, 0.037888, -0.021671 ]
-    rotation = [ -0.171515, 0.174124, 0.139581, 0.959573 ]
+    rotation = [ -0.167312, 0.171861, 0.111642, 0.964369 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -903,7 +829,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.04745, 0.0 ]
-    rotation = [ 0.021211, -0.023298, -0.136858, 0.99009 ]
+    rotation = [ 0.012621, 0.023737, -0.085956, 0.995936 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -924,7 +850,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.043821, 0.0 ]
-    rotation = [ 0.027209, -0.000114, -0.017017, 0.999485 ]
+    rotation = [ 0.027892, -0.001045, 0.00904, 0.99957 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -966,7 +892,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.02822, 0.122666, -0.002318 ]
-    rotation = [ -0.185852, 0.003379, -0.004369, 0.982562 ]
+    rotation = [ -0.180214, 0.002395, -0.008573, 0.983587 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -987,7 +913,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03892, 0.0 ]
-    rotation = [ -0.29579, -2e-06, -0.03569, 0.954586 ]
+    rotation = [ -0.305019, -2e-06, -0.036804, 0.951635 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1008,7 +934,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034152, 0.0 ]
-    rotation = [ -0.143792, 0.0, -0.017353, 0.989456 ]
+    rotation = [ -0.151267, 0.0, -0.018255, 0.988324 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1050,7 +976,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.127755, 0.0 ]
-    rotation = [ -0.240132, 0.003272, -0.015682, 0.970608 ]
+    rotation = [ -0.221777, 0.001289, -0.021087, 0.974868 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1071,7 +997,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03614, 0.0 ]
-    rotation = [ -0.199743, 0.0, -0.024105, 0.979552 ]
+    rotation = [ -0.207608, 0.0, -0.025054, 0.977891 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1092,7 +1018,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034598, 0.0 ]
-    rotation = [ -0.127575, 0.0, -0.015396, 0.99171 ]
+    rotation = [ -0.12964, 0.0, -0.015645, 0.991438 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1134,7 +1060,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.022166, 0.12147, 1e-04 ]
-    rotation = [ -0.292167, 0.00702, -0.012073, 0.956265 ]
+    rotation = [ -0.270044, 0.00347, -0.020161, 0.962631 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1155,7 +1081,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.036012, 0.0 ]
-    rotation = [ -0.145931, -1e-06, -0.017603, 0.989138 ]
+    rotation = [ -0.15001, -1e-06, -0.018095, 0.988519 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1176,7 +1102,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.033073, 0.0 ]
-    rotation = [ -0.09512, 0.0, -0.011479, 0.9954 ]
+    rotation = [ -0.096702, 0.0, -0.01167, 0.995245 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1218,7 +1144,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.047258, 0.109082, -0.002261 ]
-    rotation = [ -0.399298, -0.007079, -0.064324, 0.914534 ]
+    rotation = [ -0.358859, -0.011586, -0.073041, 0.930457 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1239,7 +1165,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.041367, 0.0 ]
-    rotation = [ -0.182387, -0.006396, 0.013317, 0.983116 ]
+    rotation = [ -0.18714, -0.006567, 0.012712, 0.982229 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1260,7 +1186,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025948, 0.0 ]
-    rotation = [ -0.066603, 0.0, -0.008038, 0.997747 ]
+    rotation = [ -0.067535, 0.0, -0.00815, 0.997684 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1302,7 +1228,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.061057, 0.091064, -0.007571 ]
-    rotation = [ -0.514274, 0.512275, 0.504649, 0.46736 ]
+    rotation = [ 0.513071, -0.51466, -0.500795, -0.4702 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1323,7 +1249,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.129223, 0.0 ]
-    rotation = [ -0.530821, 0.181948, -0.259037, 0.786145 ]
+    rotation = [ -0.534451, 0.177749, -0.258282, 0.784893 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1344,7 +1270,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.274047, 0.0 ]
-    rotation = [ 0.0, 0.0, -0.254495, 0.967074 ]
+    rotation = [ 0.0, 0.0, -0.258474, 0.966018 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1365,7 +1291,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.276145, 0.0 ]
-    rotation = [ 0.003597, -0.039149, 0.111866, 0.992945 ]
+    rotation = [ -0.008889, -0.042161, 0.120354, 0.991795 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1386,7 +1312,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.03003, 0.037888, -0.021671 ]
-    rotation = [ -0.182245, -0.037359, -0.02091, 0.982321 ]
+    rotation = [ -0.190541, -0.042432, -0.024191, 0.980463 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1407,7 +1333,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.04745, 0.0 ]
-    rotation = [ -0.020756, 0.041529, 0.013698, 0.998828 ]
+    rotation = [ -0.020072, 0.048681, 0.023524, 0.998336 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1428,7 +1354,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.043821, 0.0 ]
-    rotation = [ 0.027885, 0.001321, -0.016734, 0.99947 ]
+    rotation = [ 0.028642, 0.001233, -0.012494, 0.999511 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1470,7 +1396,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.02822, 0.122666, -0.002318 ]
-    rotation = [ -0.090558, 0.002385, 0.036409, 0.995223 ]
+    rotation = [ -0.066375, 0.002457, 0.042815, 0.996873 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1491,7 +1417,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03892, 0.0 ]
-    rotation = [ -0.346807, 2e-06, 0.042259, 0.936984 ]
+    rotation = [ -0.367456, 2e-06, 0.044775, 0.928963 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1512,7 +1438,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034152, 0.0 ]
-    rotation = [ -0.07144, 0.0, 0.008706, 0.997407 ]
+    rotation = [ -0.087237, 0.0, 0.010631, 0.996131 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1554,7 +1480,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.127755, 0.0 ]
-    rotation = [ -0.194213, 0.007036, 0.058398, 0.979194 ]
+    rotation = [ -0.098474, 0.004766, 0.057553, 0.993463 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1575,7 +1501,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03614, 0.0 ]
-    rotation = [ -0.255029, 0.0, 0.03108, 0.966434 ]
+    rotation = [ -0.320361, 0.0, 0.039042, 0.946491 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1596,7 +1522,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034598, 0.0 ]
-    rotation = [ -0.042715, -0.01736, 0.00596, 0.998919 ]
+    rotation = [ -0.076731, -0.005131, 0.009752, 0.996991 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1638,7 +1564,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.022166, 0.12147, 1e-04 ]
-    rotation = [ -0.268957, 0.001817, 0.03927, 0.962349 ]
+    rotation = [ -0.203403, 0.003893, 0.043318, 0.978129 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1659,7 +1585,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.036012, 0.0 ]
-    rotation = [ -0.188426, 1e-06, 0.022955, 0.981819 ]
+    rotation = [ -0.266903, 2e-06, 0.032519, 0.963175 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1680,7 +1606,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.033073, 0.0 ]
-    rotation = [ -0.06905, -0.019344, 0.009777, 0.997378 ]
+    rotation = [ -0.092449, -0.006507, 0.01188, 0.995625 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1722,7 +1648,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.047258, 0.109082, -0.002261 ]
-    rotation = [ -0.361493, 0.008148, 0.064882, 0.930079 ]
+    rotation = [ -0.287277, 0.01058, 0.069695, 0.95525 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1743,7 +1669,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.041367, 0.0 ]
-    rotation = [ -0.162923, 0.0, 0.019855, 0.986439 ]
+    rotation = [ -0.20358, 0.0, 0.02481, 0.978744 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1764,7 +1690,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025948, 0.0 ]
-    rotation = [ -0.058514, 0.0, 0.007131, 0.998261 ]
+    rotation = [ -0.103617, 0.0, 0.012628, 0.994537 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1806,7 +1732,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.091239, -0.066572, 0.000554 ]
-    rotation = [ -0.038747, -0.119728, 0.991937, -0.014992 ]
+    rotation = [ -0.025832, -0.109019, 0.993242, -0.030288 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1827,7 +1753,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.405994, 0.0 ]
-    rotation = [ 0.283844, 0.081143, 0.013683, 0.955333 ]
+    rotation = [ 0.294712, 0.082415, 0.019661, 0.951823 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1848,7 +1774,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.42099, 0.0 ]
-    rotation = [ -0.643423, 0.037685, 0.047401, 0.763112 ]
+    rotation = [ -0.653044, 0.026782, 0.006919, 0.756814 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1869,7 +1795,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.157216, 0.0 ]
-    rotation = [ -0.227692, 0.032521, -0.015366, 0.973069 ]
+    rotation = [ -0.231495, 0.032511, -0.015296, 0.972172 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1911,7 +1837,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.09125, -0.066556, 0.000554 ]
-    rotation = [ 0.130903, -0.102074, 0.984594, 0.054952 ]
+    rotation = [ 0.12759, -0.102806, 0.98531, 0.048133 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1932,7 +1858,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.405994, 0.0 ]
-    rotation = [ 0.186466, -0.039999, -0.022715, 0.981384 ]
+    rotation = [ 0.247872, -0.031845, -0.02019, 0.968059 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1953,7 +1879,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.42099, 0.0 ]
-    rotation = [ -0.560794, -0.0153, 0.055455, 0.825954 ]
+    rotation = [ -0.609113, -0.047455, 0.022909, 0.791331 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2048,6 +1974,21 @@ name = 'Terrain'
 parent = ''
 tag = 'Untagged'
 
+    [gameobjects.FoliageComponent]
+    enabled = true
+
+        [[gameobjects.FoliageComponent.species]]
+        densityPer100SquareMeters = 0.5
+        drawDistance = 150.0
+        maxScale = 1.1
+        minScale = 0.9
+        modelPath = ''
+        placementMode = 'Procedural'
+        randomYRotation = true
+        seed = 1
+        stamps = []
+        subMeshMaterialPaths = []
+
     [gameobjects.MeshColliderComponent]
     center = [ 0.0, 0.0, 0.0 ]
     enabled = true
@@ -2065,6 +2006,27 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     terrainAssetPath = 'Assets/Terrain/Terrain.fbzzterrain'
+
+    [gameobjects.TerrainDetailComponent]
+    enabled = true
+
+        [[gameobjects.TerrainDetailComponent.layers]]
+        alignToNormal = 0.0
+        bladeHeight = 0.4
+        bladeSegments = 3
+        bladeWidth = 0.05
+        density = 1.0
+        densityMapPath = ''
+        drawDistance = 50.0
+        fadeStartDist = 40.0
+        maxScale = 1.2
+        meshPath = 'Assets/Nature/FBX/RockPath_Square_Small_2.fbx'
+        minScale = 0.8
+        randomYRotation = true
+        texturePath = ''
+        type = 0
+        windFrequency = 1.0
+        windStrength = 1.0
 
     [gameobjects.transform]
     position = [ -32.07774, 0.0, -6.031532 ]

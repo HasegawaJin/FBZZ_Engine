@@ -32,9 +32,14 @@
 #define TEX_ENV_EQUIRECT t12 // Skydome 等緯度テクスチャ
 #define TEX_DECAL_MASK   t13 // デカール受信除外マスク (bit3 有効時のみバインド)
 
+// ---- StructuredBuffer (t14〜: テクスチャ SRV と重複しない領域) --------
+#define SB_GPU_PARTICLES    t14  // StructuredBuffer<GpuParticle> (VS 描画用 / CS RW 用)
+#define SB_GPU_SPAWN        t15  // StructuredBuffer<GpuSpawnEntry> (CS スポーン入力)
+
 // ---- UAV (コンピュートシェーダー出力) ---------------------------------
 #define UAV_OUTPUT      u0
 #define UAV_OUTPUT2     u1
+#define UAV_GPU_PARTICLES   u2   // RWStructuredBuffer<GpuParticle> (CS 書き込み)
 
 // ---- Sampler ---------------------------------------------------------
 #define SAMPLER_DEFAULT s0

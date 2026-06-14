@@ -7,6 +7,8 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
@@ -116,46 +118,89 @@ void StatusBar::OnRenderContent(EditorContext& ctx)
         selName = go->name.c_str();
     ImGui::Text("Sel: %s", selName);
 
-    // ── ホットリロード状態 + 手動リロードボタン (右端) ──────────────────
+    // ── ホットリロード状態 + Detail Bake 状態 (右端) ──────────────────
     {
-        const char* reloadText = nullptr;
-        ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-        switch (ctx.hotReloadState) {
-        case EditorContext::HotReloadState::Compiling:
-            reloadText  = ctx.hotReloadMessage.empty() ? "Compiling..." : ctx.hotReloadMessage.c_str();
-            reloadColor = { 1.0f, 0.85f, 0.2f, 1.0f };  // 黄
-            break;
-        case EditorContext::HotReloadState::Reloading:
-            reloadText  = ctx.hotReloadMessage.empty() ? "Reloading..." : ctx.hotReloadMessage.c_str();
-            reloadColor = { 0.5f, 0.8f, 1.0f, 1.0f };   // 水色
-            break;
-        case EditorContext::HotReloadState::Done:
-            reloadText  = ctx.hotReloadMessage.empty() ? "Reload OK" : ctx.hotReloadMessage.c_str();
-            reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };  // 緑
-            break;
-        case EditorContext::HotReloadState::Failed:
-            reloadText  = ctx.hotReloadMessage.empty() ? "Reload Failed" : ctx.hotReloadMessage.c_str();
-            reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };  // 赤
-            break;
-        default: break;
+        const float barH   = ImGui::GetFrameHeight() - 2.0f;
+        const float barW   = 180.0f;
+        const float rightX = ImGui::GetWindowWidth() - barW - 4.0f;
+
+        // アニメーション用フラクション (0→1 を繰り返すマーキー)
+        const float t = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
+
+        const auto& hrs = ctx.hotReloadState;
+        const bool compiling = (hrs == EditorContext::HotReloadState::Compiling);
+        const bool reloading = (hrs == EditorContext::HotReloadState::Reloading);
+
+        // Detail Bake 中かどうか (activeScene があれば確認)
+        bool detailBaking = false;
+        if (!compiling && !reloading && ctx.activeScene) {
+            for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::TerrainDetailComponent>()) {
+                auto* tdc = ctx.activeScene->GetComponent<scene::TerrainDetailComponent>(eid);
+                auto* terrain = ctx.activeScene->GetComponent<scene::TerrainComponent>(eid);
+                if (tdc && terrain
+                    && tdc->enabled
+                    && !tdc->layers.empty()
+                    && terrain->enabled
+                    && !terrain->heightData.empty()
+                    && tdc->needsBake)
+                {
+                    detailBaking = true;
+                    break;
+                }
+            }
         }
 
-        if (reloadText) {
-            const float msgW   = ImGui::CalcTextSize(reloadText).x + 8.0f;
-            const float rightX = ImGui::GetWindowWidth() - msgW;
+        if (compiling || reloading) {
+            // プログレスバー (不定: マーキーアニメーション)
+            const char* label = compiling
+                ? (ctx.hotReloadMessage.empty() ? "Compiling Scripts..." : ctx.hotReloadMessage.c_str())
+                : (ctx.hotReloadMessage.empty() ? "Reloading DLL..."    : ctx.hotReloadMessage.c_str());
+            const ImVec4 barCol = compiling
+                ? ImVec4(0.85f, 0.65f, 0.05f, 1.0f)   // 黄
+                : ImVec4(0.25f, 0.60f, 0.95f, 1.0f);   // 水色
+
             if (rightX > ImGui::GetCursorPosX())
                 ImGui::SetCursorPosX(rightX);
-            ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
-            ImGui::TextUnformatted(reloadText);
-            ImGui::PopStyleColor();
-        } else if (!m_message.empty()) {
-            const float msgW   = ImGui::CalcTextSize(m_message.c_str()).x + 8.0f;
-            const float rightX = ImGui::GetWindowWidth() - msgW;
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+            ImGui::ProgressBar(t, ImVec2(barW, barH), label);
+            ImGui::PopStyleColor(2);
+
+        } else if (detailBaking) {
+            // Detail Bake 中
+            const char* label = "Baking Detail...";
             if (rightX > ImGui::GetCursorPosX())
                 ImGui::SetCursorPosX(rightX);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.85f, 1.0f, 1.0f));
-            ImGui::TextUnformatted(m_message.c_str());
-            ImGui::PopStyleColor();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.30f, 0.75f, 0.40f, 1.0f)); // 緑
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+            ImGui::ProgressBar(t, ImVec2(barW, barH), label);
+            ImGui::PopStyleColor(2);
+
+        } else {
+            // Done / Failed / メッセージ (テキストのみ)
+            const char* reloadText  = nullptr;
+            ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+            if (hrs == EditorContext::HotReloadState::Done) {
+                reloadText  = ctx.hotReloadMessage.empty() ? "Reload OK" : ctx.hotReloadMessage.c_str();
+                reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };
+            } else if (hrs == EditorContext::HotReloadState::Failed) {
+                reloadText  = ctx.hotReloadMessage.empty() ? "Reload Failed" : ctx.hotReloadMessage.c_str();
+                reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };
+            } else if (!m_message.empty()) {
+                reloadText  = m_message.c_str();
+                reloadColor = { 0.6f, 0.85f, 1.0f, 1.0f };
+            }
+            if (reloadText) {
+                const float msgW = ImGui::CalcTextSize(reloadText).x + 8.0f;
+                const float rx   = ImGui::GetWindowWidth() - msgW;
+                if (rx > ImGui::GetCursorPosX())
+                    ImGui::SetCursorPosX(rx);
+                ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
+                ImGui::TextUnformatted(reloadText);
+                ImGui::PopStyleColor();
+            }
         }
     }
 }

@@ -13,9 +13,16 @@ namespace fbzz::editor {
 
 namespace {
 
-constexpr const char* kSnapshotPath = "editor_config/.playmode_snapshot.fbzz";
+std::string s_snapshotDir  = "Assets/EditorConfig";
+std::string s_snapshotPath = "Assets/EditorConfig/.playmode_snapshot.fbzz";
 
 } // namespace
+
+void SceneIO::SetProjectRoot(const std::string& projectRoot)
+{
+    s_snapshotDir  = projectRoot + "/Assets/EditorConfig";
+    s_snapshotPath = s_snapshotDir + "/.playmode_snapshot.fbzz";
+}
 
 bool SceneIO::Save(const scene::Scene& scene, const std::string& path)
 {
@@ -37,16 +44,16 @@ bool SceneIO::Load(scene::Scene& scene, const std::string& path)
 std::string SceneIO::Serialize(const scene::Scene& scene)
 {
     // メモリ上の TOML 文字列を返したいが、Engine 側 API がファイル経由のみ対応しているため
-    // 一時ファイル (kSnapshotPath) を介してテキストを読み戻す。
-    (void)util::FileSystem::EnsureDirectory("editor_config");
-    if (!Save(scene, kSnapshotPath)) {
-        FBZZ_LOG_ERROR("SceneIO::Serialize save failed: %s", kSnapshotPath);
+    // 一時ファイル (s_snapshotPath) を介してテキストを読み戻す。
+    (void)util::FileSystem::EnsureDirectory(s_snapshotDir);
+    if (!Save(scene, s_snapshotPath)) {
+        FBZZ_LOG_ERROR("SceneIO::Serialize save failed: %s", s_snapshotPath.c_str());
         return {};
     }
 
     std::string text;
-    if (!util::FileSystem::ReadText(kSnapshotPath, text)) {
-        FBZZ_LOG_ERROR("SceneIO::Serialize read failed: %s", kSnapshotPath);
+    if (!util::FileSystem::ReadText(s_snapshotPath, text)) {
+        FBZZ_LOG_ERROR("SceneIO::Serialize read failed: %s", s_snapshotPath.c_str());
         return {};
     }
     if (text.empty()) {
@@ -62,12 +69,12 @@ bool SceneIO::Deserialize(scene::Scene& scene, const std::string& toml)
         FBZZ_LOG_ERROR("SceneIO::Deserialize rejected an empty snapshot");
         return false;
     }
-    (void)util::FileSystem::EnsureDirectory("editor_config");
-    if (!util::FileSystem::WriteText(kSnapshotPath, toml)) {
-        FBZZ_LOG_ERROR("SceneIO::Deserialize write failed: %s", kSnapshotPath);
+    (void)util::FileSystem::EnsureDirectory(s_snapshotDir);
+    if (!util::FileSystem::WriteText(s_snapshotPath, toml)) {
+        FBZZ_LOG_ERROR("SceneIO::Deserialize write failed: %s", s_snapshotPath.c_str());
         return false;
     }
-    return Load(scene, kSnapshotPath);
+    return Load(scene, s_snapshotPath);
 }
 
 bool SceneIO::AppendObjects(scene::Scene& scene, const std::string& toml,

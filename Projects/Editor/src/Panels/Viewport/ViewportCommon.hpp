@@ -6,6 +6,8 @@
 #include <Editor/Panels/ViewportPanel.hpp>
 #include "../../Tools/TerrainTool.hpp"
 #include "../../Tools/WaterTool.hpp"
+#include "../../Tools/DetailTool.hpp"
+#include "../../Tools/FoliageTool.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>

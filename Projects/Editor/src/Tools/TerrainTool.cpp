@@ -539,22 +539,136 @@ void TerrainTool::DrawBrushPreview(
 // ImGui UI
 // =============================================================================
 
+// =============================================================================
+// DrawSculptContent / DrawPaintContent / DrawImportSection
+// NatureTool のタブ内から呼ぶためのウィンドウなし描画メソッド
+// =============================================================================
+
+void TerrainTool::DrawSculptContent(
+    scene::Scene& /*scene*/, UndoStack* /*undoStack*/, const std::function<void()>& /*markDirty*/)
+{
+    ImGui::TextDisabled("Brush Mode");
+    const char* sculptLabels[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
+    for (int i = 0; i < 5; ++i) {
+        const bool active = static_cast<int>(m_sculpt) == i;
+        if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.7f, 0.4f, 1.0f));
+        if (ImGui::SmallButton(sculptLabels[i]))
+            m_sculpt = static_cast<SculptMode>(i);
+        if (active) ImGui::PopStyleColor();
+        if (i < 4) ImGui::SameLine();
+    }
+}
+
+void TerrainTool::DrawPaintContent(
+    scene::Scene& /*scene*/, UndoStack* /*undoStack*/, const std::function<void()>& /*markDirty*/)
+{
+    ImGui::TextDisabled("Splat Layer");
+    for (int i = 0; i < 4; ++i) {
+        const bool active = static_cast<int>(m_paintLayer) == i;
+        if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
+        if (ImGui::Button(("Layer " + std::to_string(i)).c_str(), { -1.0f, 0.0f }))
+            m_paintLayer = static_cast<uint32_t>(i);
+        if (active) ImGui::PopStyleColor();
+    }
+}
+
+void TerrainTool::DrawBrushSettings()
+{
+    ImGui::Spacing();
+    ImGui::SeparatorText("Brush Settings");
+    ImGui::SliderFloat("Radius", &m_brush.radius, 0.5f, 50.0f, "%.1f");
+    ImGui::SliderFloat("Strength", &m_brush.strength, 0.001f, 1.0f, "%.3f");
+    const char* falloffNames[] = { "Linear", "Smooth", "Gaussian" };
+    int falloffIndex = static_cast<int>(m_brush.falloff);
+    if (ImGui::Combo("Falloff", &falloffIndex, falloffNames, 3))
+        m_brush.falloff = static_cast<FalloffType>(falloffIndex);
+}
+
+void TerrainTool::DrawImportSection(
+    scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty)
+{
+    if (!ImGui::CollapsingHeader("HeightMap Import")) return;
+
+    ImGui::TextDisabled("File Path (PNG / TGA / DDS)");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##hmpath", m_heightMapPath, sizeof(m_heightMapPath));
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            strncpy_s(m_heightMapPath, sizeof(m_heightMapPath),
+                      static_cast<const char*>(payload->Data), _TRUNCATE);
+            m_heightMapStatus.clear();
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::TextDisabled("(Asset Browser からドラッグ＆ドロップも可)");
+    ImGui::RadioButton("Unipolar  [0 → maxH]",    &reinterpret_cast<int&>(m_heightMapUnipolar), 1);
+    ImGui::SameLine();
+    ImGui::RadioButton("Bipolar [-maxH → +maxH]", &reinterpret_cast<int&>(m_heightMapUnipolar), 0);
+    ImGui::Spacing();
+
+    const bool canImport = m_heightMapPath[0] != '\0';
+    if (!canImport) ImGui::BeginDisabled();
+    if (ImGui::Button("Import into Terrain", { -1.0f, 0.0f })) {
+        scene::TerrainComponent* target = nullptr;
+        scene::GameObject* targetObject = nullptr;
+        for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
+            auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
+            if (tc && tc->enabled) { target = tc; targetObject = scene.GetGameObject(eid); break; }
+        }
+        if (!target) {
+            m_heightMapStatus = "Error: No terrain in scene";
+        } else {
+            const scene::TerrainComponent before = *target;
+            const bool ok = scene::LoadHeightMapFromFile(m_heightMapPath, *target, m_heightMapUnipolar);
+            m_heightMapStatus = ok ? "OK" : "Error: Load failed";
+            if (ok) {
+                target->heightDirty = true; target->splatDirty = true; target->colliderDirty = true;
+                if (markDirty) markDirty();
+                if (undoStack && targetObject) {
+                    const scene::TerrainComponent after = *target;
+                    const std::string instanceId = targetObject->instanceId;
+                    scene::Scene* scenePtr = &scene;
+                    auto apply = [scenePtr, instanceId, markDirty](const scene::TerrainComponent& v) {
+                        if (auto* go = scenePtr->FindByGuid(instanceId))
+                            if (auto* comp = go->GetComponent<scene::TerrainComponent>()) {
+                                *comp = v;
+                                comp->heightDirty = true; comp->splatDirty = true; comp->colliderDirty = true;
+                                if (markDirty) markDirty();
+                            }
+                    };
+                    undoStack->Push(std::make_unique<LambdaCommand>(
+                        "Import Terrain Heightmap",
+                        [apply, after]()  { apply(after); },
+                        [apply, before]() { apply(before); }));
+                }
+            }
+        }
+    }
+    if (!canImport) ImGui::EndDisabled();
+    if (!m_heightMapStatus.empty()) {
+        const bool isOk = (m_heightMapStatus == "OK");
+        ImGui::TextColored(
+            isOk ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+            "%s", m_heightMapStatus.c_str());
+    }
+}
+
+// =============================================================================
+// OnEditorGUI — スタンドアローン用ウィンドウ (既存互換)
+// =============================================================================
+
 void TerrainTool::OnEditorGUI(
     scene::Scene& scene,
     UndoStack* undoStack,
     const std::function<void()>& markDirty)
 {
-    // TerrainComponent を持つ GO がシーンにあるときだけ表示する
     bool hasTerrain = false;
     for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
-        if (auto* tc = scene.GetComponent<scene::TerrainComponent>(eid)) {
+        if (auto* tc = scene.GetComponent<scene::TerrainComponent>(eid))
             if (tc->enabled) { hasTerrain = true; break; }
-        }
     }
     if (!hasTerrain) return;
 
-    // 初回のみ右下に配置する。以降はユーザーが自由に移動 / Docking できる。
-    // WHY: FirstUseEver で初期位置だけ指定し、Docking 時は ImGui の DockNode 配置を優先する。
     const ImGuiViewport* mainVP = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(
         { mainVP->WorkPos.x + mainVP->WorkSize.x - 230.0f,
@@ -562,37 +676,21 @@ void TerrainTool::OnEditorGUI(
         ImGuiCond_FirstUseEver, { 1.0f, 1.0f });
     ImGui::SetNextWindowBgAlpha(0.85f);
     ImGui::SetNextWindowSize({ 260.0f, 0.0f }, ImGuiCond_FirstUseEver);
-
-    constexpr ImGuiWindowFlags kFlags =
-        ImGuiWindowFlags_NoNav              |
-        ImGuiWindowFlags_NoFocusOnAppearing;
-
-    // タイトルバーにアクティブ状態を反映する。
-    // WHY: 表示名が変わっても Docking ID は固定し、ドッキング先やサイズを維持する。
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
     const char* windowTitle = m_active ? "Terrain Tool###TerrainTool" : "Terrain Tool [OFF]###TerrainTool";
-    if (!ImGui::Begin(windowTitle, nullptr, kFlags)) {
-        ImGui::End();
-        return;
-    }
+    if (!ImGui::Begin(windowTitle, nullptr, kFlags)) { ImGui::End(); return; }
 
-    // ── ON/OFF トグル ─────────────────────────────────────────────────────
     {
-        if (m_active)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
-        else
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, m_active
+            ? ImVec4(0.2f, 0.6f, 0.2f, 1.0f) : ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
         if (ImGui::Button(m_active ? "  Active  " : " Inactive ", { -1.0f, 0.0f }))
             m_active = !m_active;
         ImGui::PopStyleColor();
     }
-
-    // 非アクティブ時はその他のコントロールをグレーアウト
     if (!m_active) ImGui::BeginDisabled();
 
-    // ── モード選択 ──────────────────────────────────────────────────────────
     {
-        const bool sculpt = m_mode == Mode::Sculpt;
-        const bool paint  = m_mode == Mode::Paint;
+        const bool sculpt = m_mode == Mode::Sculpt, paint = m_mode == Mode::Paint;
         if (sculpt) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.6f, 0.3f, 1.0f));
         if (ImGui::Button("Sculpt", { 95.0f, 0.0f })) m_mode = Mode::Sculpt;
         if (sculpt) ImGui::PopStyleColor();
@@ -601,140 +699,16 @@ void TerrainTool::OnEditorGUI(
         if (ImGui::Button("Paint",  { 95.0f, 0.0f })) m_mode = Mode::Paint;
         if (paint) ImGui::PopStyleColor();
     }
-
     ImGui::Spacing();
 
-    if (m_mode == Mode::Sculpt) {
-        // ── Sculpt サブモード ────────────────────────────────────────────────
-        ImGui::TextDisabled("Brush");
-        const char* sculptLabels[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
-        for (int i = 0; i < 5; ++i) {
-            const bool active = static_cast<int>(m_sculpt) == i;
-            if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.7f, 0.4f, 1.0f));
-            if (ImGui::SmallButton(sculptLabels[i]))
-                m_sculpt = static_cast<SculptMode>(i);
-            if (active) ImGui::PopStyleColor();
-            if (i < 4) ImGui::SameLine();
-        }
+    if (m_mode == Mode::Sculpt) DrawSculptContent(scene, undoStack, markDirty);
+    else                         DrawPaintContent(scene, undoStack, markDirty);
 
-    } else {
-        // ── Paint: レイヤー選択 ─────────────────────────────────────────────
-        ImGui::TextDisabled("Layer");
-
-        // fzmat 移行後は常に 4 層固定。テクスチャ名は fzmat を参照するため、ここではインデックスのみ表示。
-        for (int i = 0; i < 4; ++i) {
-            const bool active = static_cast<int>(m_paintLayer) == i;
-            const std::string label = "Layer " + std::to_string(i);
-            if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
-            if (ImGui::Button(label.c_str(), { -1.0f, 0.0f }))
-                m_paintLayer = static_cast<uint32_t>(i);
-            if (active) ImGui::PopStyleColor();
-        }
-    }
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    // ── ブラシ共通設定 ──────────────────────────────────────────────────────
-    ImGui::TextDisabled("Brush Settings");
-    ImGui::SliderFloat("Radius",   &m_brush.radius,   0.5f,  50.0f,  "%.1f");
-    ImGui::SliderFloat("Strength", &m_brush.strength, 0.001f, 1.0f,  "%.3f");
-
-    const char* falloffNames[] = { "Linear", "Smooth", "Gaussian" };
-    int falloffIdx = static_cast<int>(m_brush.falloff);
-    if (ImGui::Combo("Falloff", &falloffIdx, falloffNames, 3))
-        m_brush.falloff = static_cast<FalloffType>(falloffIdx);
+    DrawBrushSettings();
 
     if (!m_active) ImGui::EndDisabled();
-
-    // ── HeightMap Import ────────────────────────────────────────────────────
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    if (ImGui::CollapsingHeader("HeightMap Import")) {
-        ImGui::TextDisabled("File Path (PNG / TGA / DDS)");
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputText("##hmpath", m_heightMapPath, sizeof(m_heightMapPath));
-        // Asset Browser からのドラッグ＆ドロップを受け取る
-        if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                const char* dropped = static_cast<const char*>(payload->Data);
-                strncpy_s(m_heightMapPath, sizeof(m_heightMapPath), dropped, _TRUNCATE);
-                m_heightMapStatus.clear();
-            }
-            ImGui::EndDragDropTarget();
-        }
-        ImGui::TextDisabled("(Asset Browser からドラッグ＆ドロップも可)");
-
-        ImGui::RadioButton("Unipolar  [0 → maxH]",  &reinterpret_cast<int&>(m_heightMapUnipolar), 1);
-        ImGui::SameLine();
-        ImGui::RadioButton("Bipolar [-maxH → +maxH]", &reinterpret_cast<int&>(m_heightMapUnipolar), 0);
-
-        ImGui::Spacing();
-
-        const bool canImport = m_heightMapPath[0] != '\0';
-        if (!canImport) ImGui::BeginDisabled();
-
-        if (ImGui::Button("Import into Terrain", { -1.0f, 0.0f })) {
-            // シーン内の最初の有効な TerrainComponent に取り込む
-            scene::TerrainComponent* target = nullptr;
-            scene::GameObject* targetObject = nullptr;
-            for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
-                auto* tc = scene.GetComponent<scene::TerrainComponent>(eid);
-                if (tc && tc->enabled) {
-                    target = tc;
-                    targetObject = scene.GetGameObject(eid);
-                    break;
-                }
-            }
-            if (!target) {
-                m_heightMapStatus = "Error: No terrain in scene";
-            } else {
-                const scene::TerrainComponent before = *target;
-                const bool ok = scene::LoadHeightMapFromFile(
-                    m_heightMapPath, *target, m_heightMapUnipolar);
-                m_heightMapStatus = ok ? "OK" : "Error: Load failed";
-                if (ok) {
-                    target->heightDirty = true;
-                    target->splatDirty = true;
-                    target->colliderDirty = true;
-                    if (markDirty) markDirty();
-                    if (undoStack && targetObject) {
-                        const scene::TerrainComponent after = *target;
-                        const std::string instanceId = targetObject->instanceId;
-                        scene::Scene* scenePtr = &scene;
-                        auto apply = [scenePtr, instanceId, markDirty](const scene::TerrainComponent& value) {
-                            if (auto* go = scenePtr->FindByGuid(instanceId)) {
-                                if (auto* component = go->GetComponent<scene::TerrainComponent>()) {
-                                    *component = value;
-                                    component->heightDirty = true;
-                                    component->splatDirty = true;
-                                    component->colliderDirty = true;
-                                    if (markDirty) markDirty();
-                                }
-                            }
-                        };
-                        undoStack->Push(std::make_unique<LambdaCommand>(
-                            "Import Terrain Heightmap",
-                            [apply, after]() { apply(after); },
-                            [apply, before]() { apply(before); }));
-                    }
-                }
-            }
-        }
-
-        if (!canImport) ImGui::EndDisabled();
-
-        if (!m_heightMapStatus.empty()) {
-            const bool isOk = (m_heightMapStatus == "OK");
-            ImGui::TextColored(
-                isOk ? ImVec4(0.4f, 1.0f, 0.4f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
-                "%s", m_heightMapStatus.c_str());
-        }
-    }
-
+    ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+    DrawImportSection(scene, undoStack, markDirty);
     ImGui::End();
 }
 

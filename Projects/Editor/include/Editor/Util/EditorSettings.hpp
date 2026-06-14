@@ -7,7 +7,9 @@
 //      ProjectSettings はゲームランタイムに影響する設定であり、
 //      EditorSettings はエディター操作の快適性に関するユーザー個人設定のため分離している。
 #pragma once
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -41,10 +43,46 @@ struct EditorSettings {
 
     // --- その他 -----------------------------------------------------------
     bool        hotReloadEnabled = true;
+
+    // --- ツールウィンドウ表示 ---------------------------------------------
+    bool        showTerrainTool  = false;
+    bool        showWaterTool    = false;
+    bool        showDetailTool   = false;
+    bool        showFoliageTool  = false;
+
+    // --- Map Mode フィルター ----------------------------------------------
+    bool        mapHierarchyFilter = true;
+    bool        mapInspectorFilter = true;
+
+    // --- TerrainTool ブラシ設定 ------------------------------------------
+    // WHY: int で保存し TerrainTool::FalloffType / SculptMode へキャストする
+    float    terrainBrushRadius   = 5.0f;
+    float    terrainBrushStrength = 0.05f;
+    int      terrainBrushFalloff  = 1;       // FalloffType::Smooth
+    int      terrainSculptMode    = 0;       // SculptMode::Raise
+    uint32_t terrainPaintLayer    = 0;
+
+    // --- DetailTool ブラシ設定 -------------------------------------------
+    float    detailBrushRadius    = 6.0f;
+    float    detailBrushStrength  = 0.6f;
+    int      detailMode           = 0;       // Mode::Paint
+    int      detailLayerIndex     = 0;
+    bool     detailShowChunkBounds = false;
+    bool     detailShowCounts      = false;
+
+    // --- シーン -----------------------------------------------------------
+    // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後に無効になる。
+    //      Load/Save 時に projectRoot との相対パスへ変換している。
     std::string lastScenePath;
 
     // --- Asset Browser ----------------------------------------------------
     float assetBrowserIconSize = 84.0f;
+
+    // --- Inspector セクション折り畳み状態 -----------------------------------
+    // ImGui の CollapsingHeader が使う ImGuiID (uint32) と open フラグのペアを保存する。
+    // WHY: ImGui の .ini はウィンドウ位置・サイズしか保存しない。
+    //      ここで StateStorage を丸ごとスナップショットして永続化する。
+    std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
 
     // projectRoot を渡すと lastScenePath を相対パスで保存し、ロード時に絶対パスに戻す。
     // WHY: 絶対パスのまま保存するとプロジェクトフォルダを移動した後に無効になる。

@@ -29,15 +29,16 @@ math::Vector3 TerrainComponent::ComputeNormal(int x, int z) const
 }
 
 // -----------------------------------------------------------------------------
-// GetHeightAt — ローカル座標から高さをバイリニア補間で返す
+// GetHeightAt — 描画メッシュ・MeshCollider と同じ2三角形分割で高さを補間する
+// WHY: バイリニア補間は非平面セル内で三角形面と一致せず、Detail や足 IK が地面から浮くため。
 // -----------------------------------------------------------------------------
 // 範囲外座標はクランプして継続する（assert せず、Physics・足 IK から呼ばれるため）。
 float TerrainComponent::GetHeightAt(float localX, float localZ) const
 {
     if (heightData.empty()) return 0.0f;
 
-    float gx = localX / cellSize;
-    float gz = localZ / cellSize;
+    const float gx = std::clamp(localX / cellSize, 0.0f, static_cast<float>(columns - 1));
+    const float gz = std::clamp(localZ / cellSize, 0.0f, static_cast<float>(rows - 1));
 
     int   x0 = std::clamp(static_cast<int>(gx), 0, columns - 2);
     int   z0 = std::clamp(static_cast<int>(gz), 0, rows    - 2);
@@ -54,10 +55,14 @@ float TerrainComponent::GetHeightAt(float localX, float localZ) const
     float h01 = h(x0,     z0 + 1);
     float h11 = h(x0 + 1, z0 + 1);
 
-    return h00 * (1.0f - fx) * (1.0f - fz)
-         + h10 * fx          * (1.0f - fz)
-         + h01 * (1.0f - fx) * fz
-         + h11 * fx          * fz;
+    // TerrainRenderSystem / PhysicsSystem のインデックス分割:
+    //   lower: i00, i01, i10 / upper: i10, i01, i11
+    if (fx + fz <= 1.0f)
+        return h00 + fx * (h10 - h00) + fz * (h01 - h00);
+
+    return h10 * (1.0f - fz)
+         + h01 * (1.0f - fx)
+         + h11 * (fx + fz - 1.0f);
 }
 
 // -----------------------------------------------------------------------------

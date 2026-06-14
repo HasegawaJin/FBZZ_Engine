@@ -15,6 +15,7 @@
 #include "DX11ConstantBuffer.hpp"
 #include "DX11Shader.hpp"
 #include "DX11PipelineState.hpp"
+#include "DX11StructuredBuffer.hpp"
 #include "DX11Texture.hpp"
 #include "DX11RenderTarget.hpp"
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -230,6 +231,22 @@ std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t widt
     return tex;
 }
 
+std::unique_ptr<IStructuredBuffer> DX11Renderer::CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+{
+    auto sb = std::make_unique<DX11StructuredBuffer>();
+    if (!sb->Init(m_device.Get(), m_context.Get(), data, elementCount, stride, /*readWrite=*/false))
+        return nullptr;
+    return sb;
+}
+
+std::unique_ptr<IStructuredBuffer> DX11Renderer::CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+{
+    auto sb = std::make_unique<DX11StructuredBuffer>();
+    if (!sb->Init(m_device.Get(), m_context.Get(), data, elementCount, stride, /*readWrite=*/true))
+        return nullptr;
+    return sb;
+}
+
 // =============================================================================
 // Dispatch — ComputeCall に従って CS を実行する
 // =============================================================================
@@ -272,21 +289,36 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         m_context->CSSetShaderResources(i, 1, &srv);
     }
 
-    // UAV 出力 (CS ステージ)
-    ID3D11UnorderedAccessView* uavs[2] = { nullptr, nullptr };
+    // StructuredBuffer SRV (t14〜t15)
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.srvBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.srvBuffers[i]);
+        if (!sb) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+        m_context->CSSetShaderResources(14 + i, 1, &srv);
+    }
+
+    // UAV 出力: u0〜u1 テクスチャ UAV、u2〜u3 RWStructuredBuffer UAV
+    ID3D11UnorderedAccessView* uavs[4] = { nullptr, nullptr, nullptr, nullptr };
     for (uint32_t i = 0; i < 2; ++i)
     {
         if (auto* texture = resources.Get(call.uavOutputs[i]))
             uavs[i] = static_cast<DX11Texture*>(texture)->GetUAV();
     }
-    m_context->CSSetUnorderedAccessViews(0, 2, uavs, nullptr);
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.uavBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.uavBuffers[i]);
+        if (!sb) continue;
+        uavs[2 + i] = static_cast<DX11StructuredBuffer*>(sb)->GetUAV();
+    }
+    m_context->CSSetUnorderedAccessViews(0, 4, uavs, nullptr);
 
     // Dispatch
     m_context->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
 
     // UAV / SRV / CS をアンバインドする (次パスでの SRV 競合を防ぐ)
-    ID3D11UnorderedAccessView* nullUAVs[2] = { nullptr, nullptr };
-    m_context->CSSetUnorderedAccessViews(0, 2, nullUAVs, nullptr);
+    ID3D11UnorderedAccessView* nullUAVs[4] = {};
+    m_context->CSSetUnorderedAccessViews(0, 4, nullUAVs, nullptr);
     ID3D11ShaderResourceView* nullSRVs[16] = {};
     m_context->CSSetShaderResources(0, 16, nullSRVs);
     m_context->CSSetShader(nullptr, nullptr, 0);
@@ -360,16 +392,61 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
 
     // ---- 7. Draw (インデックスあり / なしで分岐) -----------------------------------
+    // GPU Instancing: instanceBuffer が指定されていれば、1 インスタンスでも
+    // StructuredBuffer を VS の t0 にバインドして Instanced Draw を使う。
+    // WHY: StructuredBuffer<T> を SV_InstanceID でインデックスする方式は、
+    //      通常 Draw に切り替えると VS が未バインドのインスタンスデータを読み、
+    //      1 個だけ生成された Detail や Particle が描画されなくなるため。
+    const bool isInstanced = call.instanceCount > 0 && call.instanceBuffer.IsValid();
+    if (isInstanced)
+    {
+        if (auto* sb = resources.Get(call.instanceBuffer))
+        {
+            ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+            m_context->VSSetShaderResources(0, 1, &srv);
+        }
+    }
+
+    // VS-readable StructuredBuffer (t14〜t15): GPU パーティクル等の頂点データバッファ
+    // WHY: Draw 発行前にバインドしないと VS がデータを読めない
+    bool hasVsBuffers = false;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.vsBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.vsBuffers[i]);
+        if (!sb) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+        m_context->VSSetShaderResources(14 + i, 1, &srv);
+        hasVsBuffers = true;
+    }
+
     if (auto* indexBuffer = resources.Get(call.indexBuffer))
     {
         // DXGI_FORMAT_R32_UINT: インデックスは uint32_t 固定
         ID3D11Buffer* ib = static_cast<DX11Buffer*>(indexBuffer)->GetBuffer();
         m_context->IASetIndexBuffer(ib, DXGI_FORMAT_R32_UINT, 0);
-        m_context->DrawIndexed(call.indexCount, call.startIndex, static_cast<INT>(call.baseVertex));
+        if (isInstanced)
+            m_context->DrawIndexedInstanced(call.indexCount, call.instanceCount, call.startIndex, static_cast<INT>(call.baseVertex), 0);
+        else
+            m_context->DrawIndexed(call.indexCount, call.startIndex, static_cast<INT>(call.baseVertex));
     }
     else
     {
-        m_context->Draw(call.vertexCount, 0);
+        if (isInstanced)
+            m_context->DrawInstanced(call.vertexCount, call.instanceCount, 0, 0);
+        else
+            m_context->Draw(call.vertexCount, 0);
+    }
+
+    // VS SRV を解除して次パスの競合を防ぐ
+    if (isInstanced)
+    {
+        ID3D11ShaderResourceView* nullSRV = nullptr;
+        m_context->VSSetShaderResources(0, 1, &nullSRV);
+    }
+    if (hasVsBuffers)
+    {
+        ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+        m_context->VSSetShaderResources(14, 2, nullSRVs);
     }
 }
 

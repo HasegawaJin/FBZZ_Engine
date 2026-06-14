@@ -13,6 +13,10 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
@@ -840,21 +844,37 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
+    if (ctx.mapEditingMode) {
+        ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
+        ImGui::SameLine();
+        ImGui::Checkbox("Map Objects Only", &ctx.mapHierarchyFilter);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("Show only Terrain, Water, Detail and Foliage objects\nUncheck to browse all objects in Map Mode");
+    }
+
     // --- 検索バー ---
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
 
     // フィルタが有効なときはフラットリストで一致オブジェクトだけ表示する
-    if (m_searchFilter[0] != '\0') {
+    if (m_searchFilter[0] != '\0' || (ctx.mapEditingMode && ctx.mapHierarchyFilter)) {
         std::function<void()> deferred;
 
         // 大文字小文字を無視した部分一致
         auto contains = [&](const std::string& name) {
-            return util::StringUtils::ContainsCI(name, m_searchFilter);
+            return m_searchFilter[0] == '\0'
+                || util::StringUtils::ContainsCI(name, m_searchFilter);
         };
 
         for (auto& go : ctx.activeScene->GameObjects()) {
             if (!contains(go.name)) continue;
+            if (ctx.mapEditingMode && ctx.mapHierarchyFilter
+                && !go.GetComponent<scene::TerrainComponent>()
+                && !go.GetComponent<scene::WaterComponent>()
+                && !go.GetComponent<scene::TerrainDetailComponent>()
+                && !go.GetComponent<scene::FoliageComponent>()) {
+                continue;
+            }
             const scene::EntityID id = go.GetID();
             const bool selected = ContainsEntity(ctx.selectedEntities, id);
             ImGui::PushID(static_cast<int>(id.index));
