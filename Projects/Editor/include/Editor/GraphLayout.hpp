@@ -6,6 +6,7 @@
 #include <imgui.h>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -13,6 +14,9 @@ namespace fbzz::editor {
 // key は AnimationState::name。ステート名変更時はパネル側で追随して更新する。
 struct GraphLayout {
     std::unordered_map<std::string, ImVec2> nodePositions;
+    // BlendTree は State を親レイヤーとして Motion ノード座標を個別に保持する。
+    // WHY: Motion はランタイムデータであり、Editor座標をAnimatorComponentへ混在させない。
+    std::unordered_map<std::string, std::vector<ImVec2>> blendTreeMotionPositions;
     // 特殊ノードは State 名と衝突しない専用フィールドで保持する。
     // WHY: 予約名を map key にすると、ユーザー定義 State と競合するため。
     ImVec2 entryPosition = ImVec2(-220.0f, 80.0f);

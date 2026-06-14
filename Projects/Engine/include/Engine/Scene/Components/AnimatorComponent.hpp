@@ -54,7 +54,10 @@ struct AnimationTransition {
     std::string                    toStateName;
     bool                           hasExitTime        = false;
     float                          exitTime           = 1.0f;   // 0..1 正規化再生位置
-    float                          transitionDuration = 0.25f;  // クロスフェード時間（秒）
+    // true は秒、false は遷移元ステート Length に対する正規化割合として解釈する。
+    // WHY: 既存アセットの秒指定を維持しつつ、Unity と同様にクリップ長基準でも調整可能にする。
+    bool                           fixedDuration      = true;
+    float                          transitionDuration = 0.25f;
     std::vector<AnimatorCondition> conditions;
 };
 
@@ -76,7 +79,13 @@ struct BlendTreeMotion {
 // Float パラメーター1本で複数モーションを補間する。
 struct BlendTree1D {
     std::string                  paramName;
+    // パラメーターの急変を時間補間し、Idle / Walk / Run の姿勢が瞬時に切り替わるのを防ぐ。
+    // 0 は平滑化なし。値は目標へ約63%近づく時定数（秒）として扱う。
+    float                        dampTime = 0.0f;
     std::vector<BlendTreeMotion> motions;
+    // ランタイム専用。Controller / Scene には保存しない。
+    float                        dampedValue = 0.0f;
+    bool                         dampedValueInitialized = false;
 };
 
 // 2D BlendTree の座標解釈方式。

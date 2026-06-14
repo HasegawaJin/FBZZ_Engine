@@ -4,6 +4,7 @@
 #include "InspectorCore.hpp"
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <imgui_internal.h>
 
 namespace fbzz::editor {
@@ -135,92 +136,110 @@ void DrawTransformInspector(scene::GameObject* go, EditorContext& ctx)
 
 void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
 {
+    FBZZ_PROFILE_SCOPE("Inspector::Scripts");
+
+    auto* sc = go->GetComponent<scene::ScriptComponent>();
+    if (!sc)
+        return;
+
     struct ScriptUndoTracker {
         ImGuiID activeId = 0;
         std::string before;
         bool active = false;
     };
     static ScriptUndoTracker undo;
-    const std::string beforeDraw = ctx.activeScene
+    const bool canTrackUndo =
+        ctx.activeScene != nullptr &&
+        ctx.undoStack != nullptr &&
+        ctx.undoStack->IsRecordingEnabled();
+    const ImGuiID activeBefore = ImGui::GetActiveID();
+    // WHY: Scene 全体の Serialize は高コストなので、Inspector を眺めているだけのフレームでは実行しない。
+    //      Mouse/Keyboard による操作開始候補だけを捕捉し、連続編集では tracker の before を再利用する。
+    const bool mayStartEdit =
+        !undo.active &&
+        (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+         ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+         ImGui::IsKeyPressed(ImGuiKey_Space));
+    const std::string beforeDraw = canTrackUndo && mayStartEdit
         ? SceneIO::Serialize(*ctx.activeScene)
         : std::string{};
-    const ImGuiID activeBefore = ImGui::GetActiveID();
 
-    if (auto* sc = go->GetComponent<scene::ScriptComponent>()) {
-        int removeIndex = -1;
-        for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i) {
-            auto& entry = sc->scripts[static_cast<size_t>(i)];
-            ImGui::PushID(i);
+    int removeIndex = -1;
+    for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i) {
+        auto& entry = sc->scripts[static_cast<size_t>(i)];
+        ImGui::PushID(i);
 
-            if (entry.script) {
-                const char* header = entry.script->GetTypeName();
-                ImGui::Checkbox("##en", &entry.script->enabled);
-                ImGui::SameLine();
+        if (entry.script) {
+            const char* header = entry.script->GetTypeName();
+            ImGui::Checkbox("##en", &entry.script->enabled);
+            ImGui::SameLine();
 
-                const bool open = ImGui::CollapsingHeader(header,
-                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+            const bool open = ImGui::CollapsingHeader(header,
+                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
 
-                const float btnW = ImGui::GetFrameHeight();
-                ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-                if (ImGui::SmallButton("..."))
-                    ImGui::OpenPopup("##script_opts");
+            const float btnW = ImGui::GetFrameHeight();
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+            if (ImGui::SmallButton("..."))
+                ImGui::OpenPopup("##script_opts");
 
-                if (ImGui::BeginPopup("##script_opts")) {
-                    if (ImGui::MenuItem("Remove Component"))
-                        removeIndex = i;
-                    ImGui::EndPopup();
-                }
-
-                if (open) {
-                    ImGui::Spacing();
-                    ImGuiReflector reflector;
-                    if (ctx.activeScene) {
-                        reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
-                            auto* go = scene->GetGameObject(id);
-                            return go ? go->name : "(Missing)";
-                        };
-                    }
-                    entry.script->Reflect(reflector);
-                    ImGui::Spacing();
-                }
-            } else if (entry.serialized && !entry.serialized->type.empty()) {
-                ImGui::Checkbox("##en", &entry.serialized->enabled);
-                ImGui::SameLine();
-
-                const std::string header = "Missing Script: " + entry.serialized->type;
-                const bool open = ImGui::CollapsingHeader(
-                    header.c_str(),
-                    ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-
-                const float btnW = ImGui::GetFrameHeight();
-                ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
-                if (ImGui::SmallButton("..."))
-                    ImGui::OpenPopup("##missing_script_opts");
-
-                if (ImGui::BeginPopup("##missing_script_opts")) {
-                    if (ImGui::MenuItem("Remove Component"))
-                        removeIndex = i;
-                    ImGui::EndPopup();
-                }
-
-                if (open) {
-                    ImGui::Spacing();
-                    ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
-                    ImGui::Spacing();
-                }
+            if (ImGui::BeginPopup("##script_opts")) {
+                if (ImGui::MenuItem("Remove Component"))
+                    removeIndex = i;
+                ImGui::EndPopup();
             }
 
-            ImGui::PopID();
+            if (open) {
+                ImGui::Spacing();
+                ImGuiReflector reflector;
+                if (ctx.activeScene) {
+                    reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
+                        auto* target = scene->GetGameObject(id);
+                        return target ? target->name : "(Missing)";
+                    };
+                }
+                entry.script->Reflect(reflector);
+                ImGui::Spacing();
+            }
+        } else if (entry.serialized && !entry.serialized->type.empty()) {
+            ImGui::Checkbox("##en", &entry.serialized->enabled);
+            ImGui::SameLine();
+
+            const std::string header = "Missing Script: " + entry.serialized->type;
+            const bool open = ImGui::CollapsingHeader(
+                header.c_str(),
+                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+
+            const float btnW = ImGui::GetFrameHeight();
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+            if (ImGui::SmallButton("..."))
+                ImGui::OpenPopup("##missing_script_opts");
+
+            if (ImGui::BeginPopup("##missing_script_opts")) {
+                if (ImGui::MenuItem("Remove Component"))
+                    removeIndex = i;
+                ImGui::EndPopup();
+            }
+
+            if (open) {
+                ImGui::Spacing();
+                ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
+                ImGui::Spacing();
+            }
         }
 
-        if (removeIndex >= 0) {
-            sc->scripts.erase(sc->scripts.begin() + removeIndex);
-            if (sc->scripts.empty())
-                go->RemoveComponent<scene::ScriptComponent>();
-        }
+        ImGui::PopID();
     }
 
-    if (!ctx.activeScene || !ctx.undoStack) return;
+    if (removeIndex >= 0) {
+        sc->scripts.erase(sc->scripts.begin() + removeIndex);
+        if (sc->scripts.empty())
+            go->RemoveComponent<scene::ScriptComponent>();
+    }
+
+    if (!canTrackUndo) {
+        undo.active = false;
+        return;
+    }
     const ImGuiID activeAfter = ImGui::GetActiveID();
     auto pushCommand = [&](const std::string& before, const std::string& after) {
         if (before == after) return;

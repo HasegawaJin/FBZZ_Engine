@@ -52,7 +52,12 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 bool changed = false;
             };
             static MaterialUndoTracker undo;
-            const asset::MaterialAsset materialBeforeDraw = mat;
+            const bool canRecordUndo = CanRecordEditorUndo(ctx);
+            asset::MaterialAsset materialBeforeDraw;
+            if (canRecordUndo)
+                materialBeforeDraw = mat;
+            else
+                undo.active = false;
             const ImGuiID activeBefore = ImGui::GetActiveID();
             bool materialDirty = false;
             const renderer::ShaderDescriptor* desc = nullptr;
@@ -260,7 +265,10 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     [apply, after]() { apply(after); },
                     [apply, before]() { apply(before); }));
             };
-            if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
+            if (!canRecordUndo) {
+                undo.active = false;
+                undo.changed = false;
+            } else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
                 undo.activeId = activeAfter;
                 undo.before = materialBeforeDraw;
                 undo.active = true;

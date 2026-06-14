@@ -1476,12 +1476,18 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             FBZZ_LOG_ERROR("Failed to open scene: %s", path.c_str());
         }
     } else if (ext == ".fbzzprefab" && ctx.activeScene) {
-        const std::string before = SceneIO::Serialize(*ctx.activeScene);
+        const bool canRecordUndo =
+            ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
+        const std::string before = canRecordUndo
+            ? SceneIO::Serialize(*ctx.activeScene)
+            : std::string{};
         std::vector<scene::EntityID> roots;
         if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots)) {
             ctx.selectedEntities = roots;
-            const std::string after = SceneIO::Serialize(*ctx.activeScene);
-            if (ctx.undoStack && before != after) {
+            const std::string after = canRecordUndo
+                ? SceneIO::Serialize(*ctx.activeScene)
+                : std::string{};
+            if (canRecordUndo && before != after) {
                 scene::Scene* scene = ctx.activeScene;
                 EditorContext* context = &ctx;
                 const auto markDirty = ctx.markSceneDirty;
