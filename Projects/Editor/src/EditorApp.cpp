@@ -429,6 +429,43 @@ void EditorApp::Shutdown()
             m_settings.inspectorSectionState.emplace_back(entry.key, entry.val_i != 0);
     }
 
+    // Debug メニュー - レンダリングオーバーレイ
+    m_settings.showColliders   = m_ctx.projectSettings.render.showColliders;
+    m_settings.showDecalBounds = m_ctx.projectSettings.render.showDecalBounds;
+    m_settings.viewMode        = static_cast<int>(m_ctx.projectSettings.render.viewMode);
+    m_settings.shadowEnabled   = m_ctx.projectSettings.render.shadowEnabled;
+    // Debug メニュー - Post Process
+    {
+        const auto& pp             = m_ctx.projectSettings.render.postProcess;
+        m_settings.ppFxaaEnabled              = pp.fxaaEnabled;
+        m_settings.ppExposure                 = pp.exposure;
+        m_settings.ppBloomEnabled             = pp.bloom.enabled;
+        m_settings.ppBloomIntensity           = pp.bloom.intensity;
+        m_settings.ppAoEnabled                = pp.ambientOcclusion.enabled;
+        m_settings.ppFogEnabled               = pp.fog.enabled;
+        m_settings.ppFogDensity               = pp.fog.density;
+        m_settings.ppFogFar                   = pp.fog.farDistance;
+        m_settings.ppColorGradingEnabled      = pp.colorGrading.enabled;
+        m_settings.ppContrast                 = pp.colorGrading.contrast;
+        m_settings.ppSaturation               = pp.colorGrading.saturation;
+        m_settings.ppHueShift                 = pp.colorGrading.hueShift;
+        m_settings.ppVignetteEnabled          = pp.vignette.enabled;
+        m_settings.ppFilmGrainEnabled         = pp.filmGrain.enabled;
+        m_settings.ppSharpenEnabled           = pp.sharpen.enabled;
+        m_settings.ppSharpenStrength          = pp.sharpen.strength;
+        m_settings.ppDofEnabled               = pp.depthOfField.enabled;
+        m_settings.ppDofFocus                 = pp.depthOfField.focusDistance;
+        m_settings.ppDofBlur                  = pp.depthOfField.blurRadius;
+        m_settings.ppChromaticAberrationEnabled = pp.lens.chromaticAberrationEnabled;
+        m_settings.ppLensDistortionEnabled    = pp.lens.distortionEnabled;
+        m_settings.ppSepiaEnabled             = pp.stylized.sepiaEnabled;
+        m_settings.ppInvertEnabled            = pp.stylized.invertEnabled;
+        m_settings.ppPosterizeEnabled         = pp.stylized.posterizeEnabled;
+        m_settings.ppPixelateEnabled          = pp.stylized.pixelateEnabled;
+        m_settings.ppPosterizeLevels          = pp.stylized.posterizeLevels;
+        m_settings.ppPixelSize                = pp.stylized.pixelSize;
+    }
+
     m_settings.Save(m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml", m_ctx.projectRoot);
     m_ctx.projectSettings.Save(m_projectSettingsPath);
     m_sceneViewportRT = {};
@@ -515,6 +552,43 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_projectSettingsPath = projectSettingsPath;
         m_ctx.projectSettings.Load(m_projectSettingsPath);
         Time::targetFps = m_ctx.projectSettings.app.targetFps;
+    }
+
+    // WHY: Debug メニューのレンダリング設定はエディター個人設定であり projectSettings より優先する。
+    //      projectSettings.Load() の後に上書きすることでプロジェクト共有値に左右されない。
+    m_ctx.projectSettings.render.showColliders   = m_settings.showColliders;
+    m_ctx.projectSettings.render.showDecalBounds = m_settings.showDecalBounds;
+    m_ctx.projectSettings.render.viewMode        = static_cast<renderer::ViewMode>(m_settings.viewMode);
+    m_ctx.projectSettings.render.shadowEnabled   = m_settings.shadowEnabled;
+    {
+        auto& pp                          = m_ctx.projectSettings.render.postProcess;
+        pp.fxaaEnabled                    = m_settings.ppFxaaEnabled;
+        pp.exposure                       = m_settings.ppExposure;
+        pp.bloom.enabled                  = m_settings.ppBloomEnabled;
+        pp.bloom.intensity                = m_settings.ppBloomIntensity;
+        pp.ambientOcclusion.enabled       = m_settings.ppAoEnabled;
+        pp.fog.enabled                    = m_settings.ppFogEnabled;
+        pp.fog.density                    = m_settings.ppFogDensity;
+        pp.fog.farDistance                = m_settings.ppFogFar;
+        pp.colorGrading.enabled           = m_settings.ppColorGradingEnabled;
+        pp.colorGrading.contrast          = m_settings.ppContrast;
+        pp.colorGrading.saturation        = m_settings.ppSaturation;
+        pp.colorGrading.hueShift          = m_settings.ppHueShift;
+        pp.vignette.enabled               = m_settings.ppVignetteEnabled;
+        pp.filmGrain.enabled              = m_settings.ppFilmGrainEnabled;
+        pp.sharpen.enabled                = m_settings.ppSharpenEnabled;
+        pp.sharpen.strength               = m_settings.ppSharpenStrength;
+        pp.depthOfField.enabled           = m_settings.ppDofEnabled;
+        pp.depthOfField.focusDistance     = m_settings.ppDofFocus;
+        pp.depthOfField.blurRadius        = m_settings.ppDofBlur;
+        pp.lens.chromaticAberrationEnabled = m_settings.ppChromaticAberrationEnabled;
+        pp.lens.distortionEnabled         = m_settings.ppLensDistortionEnabled;
+        pp.stylized.sepiaEnabled          = m_settings.ppSepiaEnabled;
+        pp.stylized.invertEnabled         = m_settings.ppInvertEnabled;
+        pp.stylized.posterizeEnabled      = m_settings.ppPosterizeEnabled;
+        pp.stylized.pixelateEnabled       = m_settings.ppPixelateEnabled;
+        pp.stylized.posterizeLevels       = m_settings.ppPosterizeLevels;
+        pp.stylized.pixelSize             = m_settings.ppPixelSize;
     }
 
     // WHY: SceneIO::Load() がシーン内の ScriptComponent を復元する際に
