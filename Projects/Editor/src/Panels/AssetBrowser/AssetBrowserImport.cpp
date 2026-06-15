@@ -15,10 +15,10 @@ bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 bool AssetBrowserPanel::IsAlreadyImported(const std::string& absPath)
 {
     namespace fs = std::filesystem;
-    // メッシュ: stem/stem.fzasset が存在すればインポート済み
+    // WHY: 新インポート形式では stem.fzasset が FBX と同じディレクトリに置かれる。
     const fs::path p = util::FileSystem::PathFromUtf8(absPath);
     const std::string stem = util::FileSystem::PathToUtf8(p.stem());
-    const fs::path check = p.parent_path() / stem / (stem + ".fzasset");
+    const fs::path check = p.parent_path() / (stem + ".fzasset");
     return util::FileSystem::Exists(check);
 }
 
