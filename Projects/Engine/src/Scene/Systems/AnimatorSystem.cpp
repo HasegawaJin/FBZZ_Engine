@@ -1229,7 +1229,15 @@ void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt
         if (!animator->skinningBuffer.IsValid())
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
 
+        // SMR が自 GO になければ子 GO を探す (sub-mesh 分割ヒエラルキー対応)。
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
+        if (!smr) {
+            for (int ci = 0, cn = go.GetChildCount(); ci < cn; ++ci) {
+                if (auto* child = go.GetChild(ci)) {
+                    if (auto* s = child->GetComponent<SkinnedMeshRenderer>()) { smr = s; break; }
+                }
+            }
+        }
         if (smr && !smr->model && !smr->modelPath.empty())
             smr->model = asset::AssetManager::Load<asset::Model>(smr->modelPath);
 

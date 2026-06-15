@@ -105,6 +105,10 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
     // ── 出力ディレクトリを作成 ────────────────────────────────────────────
     const fs::path outDirPath = util::FileSystem::PathFromUtf8(outputDir);
+    // WHY: マニフェスト (.fzasset) は FBX と同じ階層 (outDirPath の親) に置く。
+    //      AssetBrowser が Unity スタイルでフラット表示できるようにするため。
+    //      メッシュ/マテリアルデータは outDirPath (stem/) サブフォルダに隔離したまま。
+    const fs::path manifestDirPath = outDirPath.parent_path();
     const fs::path meshDir  = outDirPath / "meshes";
     const fs::path matDir   = outDirPath / "materials";
     const fs::path texDir   = outDirPath / "textures";
@@ -115,11 +119,16 @@ bool FbxImportTool::Import(const std::string& fbxPath,
         return false;
     }
 
-    // 失敗時に outputDir 全体をロールバックするためのガード
+    // 失敗時にデータフォルダとマニフェストをロールバックするためのガード
     bool success = false;
+    std::string manifestPath; // cleanup から参照するため早期宣言
     auto cleanup = [&] {
         if (!success) {
             util::FileSystem::RemoveAll(outDirPath);
+            if (!manifestPath.empty()) {
+                std::error_code ec;
+                std::filesystem::remove(util::FileSystem::PathFromUtf8(manifestPath), ec);
+            }
         }
     };
     struct Guard { std::function<void()> fn; ~Guard() { fn(); } } guard{ cleanup };
@@ -142,9 +151,9 @@ bool FbxImportTool::Import(const std::string& fbxPath,
             return false;
         }
 
-        // .fzasset からの相対パス (manifest と同じ outputDir を起点にする)
+        // .fzasset からの相対パス (manifest は manifestDirPath に置くので起点もそこ)
         const std::string relMesh = util::FileSystem::PathToUtf8(
-            util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(meshPath), outDirPath));
+            util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(meshPath), manifestDirPath));
         manifest.meshPaths.push_back(relMesh);
 
         // 対応マテリアル
@@ -153,12 +162,12 @@ bool FbxImportTool::Import(const std::string& fbxPath,
             const std::string matPath =
                 util::FileSystem::PathToUtf8(matDir / ("mat_" + std::to_string(matIdx) + ".fzmat"));
             if (!FzMaterialExporter::Export(scene->mMaterials[matIdx], scene,
-                                             fbxDir, util::FileSystem::PathToUtf8(texDir), matPath)) {
+                                             fbxDir, util::FileSystem::PathToUtf8(texDir), matPath, skinned)) {
                 FBZZ_LOG_ERROR("FbxImportTool: material export failed [%u]", matIdx);
                 return false;
             }
             matCache.paths[matIdx] = util::FileSystem::PathToUtf8(
-                util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(matPath), outDirPath));
+                util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(matPath), manifestDirPath));
         }
         manifest.materialPaths.push_back(
             matIdx < scene->mNumMaterials ? matCache.paths[matIdx] : std::string{});
@@ -172,7 +181,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
             return false;
         }
         manifest.skeletonPath = util::FileSystem::PathToUtf8(
-            util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(skelPath), outDirPath));
+            util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(skelPath), manifestDirPath));
     }
 
     // ── アニメーション ────────────────────────────────────────────────────
@@ -187,13 +196,13 @@ bool FbxImportTool::Import(const std::string& fbxPath,
                 return false;
             }
             manifest.animPaths.push_back(util::FileSystem::PathToUtf8(
-                util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(animPath), outDirPath)));
+                util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(animPath), manifestDirPath)));
         }
     }
 
     // ── マニフェスト ──────────────────────────────────────────────────────
-    const std::string manifestPath =
-        util::FileSystem::PathToUtf8(outDirPath / (baseName + ".fzasset"));
+    // manifestDirPath (= FBX と同じフォルダ) に stem.fzasset を書き出す
+    manifestPath = util::FileSystem::PathToUtf8(manifestDirPath / (baseName + ".fzasset"));
     if (!FzAssetWriter::Write(manifest, manifestPath)) {
         FBZZ_LOG_ERROR("FbxImportTool: manifest write failed");
         return false;
