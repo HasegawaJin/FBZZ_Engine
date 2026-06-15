@@ -1,0 +1,6 @@
+animations = [ 'Running/anims/clip_0.fzanim' ]
+materials = []
+meshes = []
+source_hint = 'C:/Users/jinhs/Downloads/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Models/DebugCharacter/Running.fbx'
+unit_scale = 0.009999999776482582
+version = 1
