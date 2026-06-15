@@ -27,27 +27,32 @@ void ColoredText(const char* text, ImVec4 color);
 // 読み取り専用テキストフィールド
 void ReadOnlyText(const char* label, const char* text);
 
-// Quaternion → オイラー角 (度, XYZ 順)。InspectorPanel と ImGuiReflector で共用
+// Quaternion → オイラー角 (度, YXZ 順)。InspectorPanel と ImGuiReflector で共用
+// YXZ 内因順: X(Pitch) が中間角で ±90° 制約、Y(Yaw) は ±180° 任意範囲。
 inline math::Vector3 QuatToEulerDeg(const math::Quaternion& q)
 {
     constexpr float DEG = 180.0f / 3.14159265f;
     const math::Matrix4 m = math::Matrix4::Rotate(q);
 
-    float y = std::asin((std::max)(-1.0f, (std::min)(1.0f, m.m[0][2])));
-    float x = 0.0f;
+    // R = Ry * Rx * Rz: R[1][2] = -sin(X)
+    float x = std::asin((std::max)(-1.0f, (std::min)(1.0f, -m.m[1][2])));
+    float y = 0.0f;
     float z = 0.0f;
 
-    if (std::abs(std::cos(y)) > 1e-6f) {
-        x = std::atan2(-m.m[1][2], m.m[2][2]);
-        z = std::atan2(-m.m[0][1], m.m[0][0]);
+    if (std::abs(std::cos(x)) > 1e-6f) {
+        // R[0][2] = sin(Y)*cos(X), R[2][2] = cos(Y)*cos(X)
+        y = std::atan2(m.m[0][2], m.m[2][2]);
+        // R[1][0] = cos(X)*sin(Z), R[1][1] = cos(X)*cos(Z)
+        z = std::atan2(m.m[1][0], m.m[1][1]);
     } else {
-        x = std::atan2(m.m[2][1], m.m[1][1]);
+        // ジンバルロック (X ≈ ±90°): Z=0 とし Y を復元
+        y = std::atan2(-m.m[2][0], m.m[0][0]);
     }
 
     return { x * DEG, y * DEG, z * DEG };
 }
 
-// オイラー角 (度, XYZ 順) → Quaternion
+// オイラー角 (度, YXZ 順) → Quaternion
 inline math::Quaternion EulerDegToQuat(const math::Vector3& deg)
 {
     constexpr float RAD = 3.14159265f / 180.0f;

@@ -76,6 +76,41 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     // Asset Browser
     if (auto v = tbl["asset_browser"]["icon_size"].value<float>()) assetBrowserIconSize = *v;
 
+    // Debug メニュー - レンダリングオーバーレイ
+    if (auto v = tbl["debug"]["show_colliders"].value<bool>())    showColliders   = *v;
+    if (auto v = tbl["debug"]["show_decal_bounds"].value<bool>()) showDecalBounds = *v;
+    if (auto v = tbl["debug"]["view_mode"].value<int64_t>())      viewMode        = static_cast<int>(*v);
+    if (auto v = tbl["debug"]["shadow"].value<bool>())            shadowEnabled   = *v;
+
+    // Debug メニュー - Post Process
+    if (auto v = tbl["post_process"]["fxaa"].value<bool>())              ppFxaaEnabled              = *v;
+    if (auto v = tbl["post_process"]["exposure"].value<float>())          ppExposure                 = *v;
+    if (auto v = tbl["post_process"]["bloom"].value<bool>())              ppBloomEnabled             = *v;
+    if (auto v = tbl["post_process"]["bloom_intensity"].value<float>())   ppBloomIntensity           = *v;
+    if (auto v = tbl["post_process"]["ao"].value<bool>())                 ppAoEnabled                = *v;
+    if (auto v = tbl["post_process"]["fog"].value<bool>())                ppFogEnabled               = *v;
+    if (auto v = tbl["post_process"]["fog_density"].value<float>())       ppFogDensity               = *v;
+    if (auto v = tbl["post_process"]["fog_far"].value<float>())           ppFogFar                   = *v;
+    if (auto v = tbl["post_process"]["color_grading"].value<bool>())      ppColorGradingEnabled      = *v;
+    if (auto v = tbl["post_process"]["contrast"].value<float>())          ppContrast                 = *v;
+    if (auto v = tbl["post_process"]["saturation"].value<float>())        ppSaturation               = *v;
+    if (auto v = tbl["post_process"]["hue_shift"].value<float>())         ppHueShift                 = *v;
+    if (auto v = tbl["post_process"]["vignette"].value<bool>())           ppVignetteEnabled          = *v;
+    if (auto v = tbl["post_process"]["film_grain"].value<bool>())         ppFilmGrainEnabled         = *v;
+    if (auto v = tbl["post_process"]["sharpen"].value<bool>())            ppSharpenEnabled           = *v;
+    if (auto v = tbl["post_process"]["sharpen_strength"].value<float>())  ppSharpenStrength          = *v;
+    if (auto v = tbl["post_process"]["dof"].value<bool>())                ppDofEnabled               = *v;
+    if (auto v = tbl["post_process"]["dof_focus"].value<float>())         ppDofFocus                 = *v;
+    if (auto v = tbl["post_process"]["dof_blur"].value<float>())          ppDofBlur                  = *v;
+    if (auto v = tbl["post_process"]["chromatic_aberration"].value<bool>()) ppChromaticAberrationEnabled = *v;
+    if (auto v = tbl["post_process"]["lens_distortion"].value<bool>())    ppLensDistortionEnabled    = *v;
+    if (auto v = tbl["post_process"]["sepia"].value<bool>())              ppSepiaEnabled             = *v;
+    if (auto v = tbl["post_process"]["invert"].value<bool>())             ppInvertEnabled            = *v;
+    if (auto v = tbl["post_process"]["posterize"].value<bool>())          ppPosterizeEnabled         = *v;
+    if (auto v = tbl["post_process"]["pixelate"].value<bool>())           ppPixelateEnabled          = *v;
+    if (auto v = tbl["post_process"]["posterize_levels"].value<float>())  ppPosterizeLevels          = *v;
+    if (auto v = tbl["post_process"]["pixel_size"].value<float>())        ppPixelSize                = *v;
+
     // Inspector セクション折り畳み状態
     inspectorSectionState.clear();
     if (auto* arr = tbl["inspector_sections"]["states"].as_array()) {
@@ -197,6 +232,43 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table sceneTbl;
     sceneTbl.insert("last_path", scenePathToSave);
 
+    // Debug メニュー - レンダリングオーバーレイ
+    toml::table debugTbl;
+    debugTbl.insert("show_colliders",    showColliders);
+    debugTbl.insert("show_decal_bounds", showDecalBounds);
+    debugTbl.insert("view_mode",         static_cast<int64_t>(viewMode));
+    debugTbl.insert("shadow",            shadowEnabled);
+
+    // Debug メニュー - Post Process
+    toml::table ppTbl;
+    ppTbl.insert("fxaa",                ppFxaaEnabled);
+    ppTbl.insert("exposure",            ppExposure);
+    ppTbl.insert("bloom",               ppBloomEnabled);
+    ppTbl.insert("bloom_intensity",     ppBloomIntensity);
+    ppTbl.insert("ao",                  ppAoEnabled);
+    ppTbl.insert("fog",                 ppFogEnabled);
+    ppTbl.insert("fog_density",         ppFogDensity);
+    ppTbl.insert("fog_far",             ppFogFar);
+    ppTbl.insert("color_grading",       ppColorGradingEnabled);
+    ppTbl.insert("contrast",            ppContrast);
+    ppTbl.insert("saturation",          ppSaturation);
+    ppTbl.insert("hue_shift",           ppHueShift);
+    ppTbl.insert("vignette",            ppVignetteEnabled);
+    ppTbl.insert("film_grain",          ppFilmGrainEnabled);
+    ppTbl.insert("sharpen",             ppSharpenEnabled);
+    ppTbl.insert("sharpen_strength",    ppSharpenStrength);
+    ppTbl.insert("dof",                 ppDofEnabled);
+    ppTbl.insert("dof_focus",           ppDofFocus);
+    ppTbl.insert("dof_blur",            ppDofBlur);
+    ppTbl.insert("chromatic_aberration",ppChromaticAberrationEnabled);
+    ppTbl.insert("lens_distortion",     ppLensDistortionEnabled);
+    ppTbl.insert("sepia",               ppSepiaEnabled);
+    ppTbl.insert("invert",              ppInvertEnabled);
+    ppTbl.insert("posterize",           ppPosterizeEnabled);
+    ppTbl.insert("pixelate",            ppPixelateEnabled);
+    ppTbl.insert("posterize_levels",    ppPosterizeLevels);
+    ppTbl.insert("pixel_size",          ppPixelSize);
+
     toml::table root;
     root.insert("camera",       std::move(camTbl));
     root.insert("view",         std::move(viewTbl));
@@ -211,6 +283,8 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     root.insert("asset_browser",      std::move(assetBrowserTbl));
     root.insert("inspector_sections", std::move(inspectorTbl));
     root.insert("scene",              std::move(sceneTbl));
+    root.insert("debug",              std::move(debugTbl));
+    root.insert("post_process",       std::move(ppTbl));
 
     std::ostringstream ss;
     ss << root;

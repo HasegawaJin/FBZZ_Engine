@@ -4,6 +4,7 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Windows.h>
+#include <toml++/toml.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -117,11 +118,11 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".fbzzprefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
     { { ".fbzzterrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
-    { { ".fbzzwater", nullptr },                               { 0.15f, 0.55f, 0.85f, 1.0f }, "WATER"   },
     { { ".fbzz", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
     { { ".animgraph", nullptr },                               { 0.75f, 0.40f, 0.85f, 1.0f }, "GRAPH"   },
     { { ".fzasset", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "ASSET"   },
     { { ".fzmat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
+    { { ".fzmesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".fbzzanimcontroller", nullptr },                       { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
@@ -177,7 +178,7 @@ static bool IsTextureExt(const std::string& ext)
 static bool IsMeshExt(const std::string& ext)
 {
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" ||
-           ext == ".glb";
+           ext == ".glb" || ext == ".fzasset";
 }
 
 static std::filesystem::file_time_type ReadLastWriteTime(const std::string& path)
@@ -1307,7 +1308,129 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.failed = !preview.thumbnailRendered;
         }
         if (preview.thumbnailRendered) {
-            DrawRenderTargetThumbnail(preview.thumbnailRT, origin, sz, ctx, hovered, "MESH");
+            const char* badge = (e.ext == ".fzasset") ? "ASSET" : "MESH";
+            DrawRenderTargetThumbnail(preview.thumbnailRT, origin, sz, ctx, hovered, badge);
+            return;
+        }
+    }
+
+    // .fbzzprefab: TOML を解析してメッシュを持つ場合は 3D サムネイル、なければキューブアイコン
+    if (e.ext == ".fbzzprefab") {
+        if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+            PrefabPreview& preview = m_prefabPreviews[e.path];
+            const auto currentWriteTime = ReadLastWriteTime(e.path);
+            if (currentWriteTime != preview.lastWriteTime) {
+                preview = {};
+                preview.lastWriteTime = currentWriteTime;
+            }
+            if (!preview.parsed) {
+                preview.parsed = true;
+                std::string text;
+                if (util::FileSystem::ReadText(e.path, text)) {
+                    toml::parse_result result = toml::parse(text);
+                    if (result) {
+                        if (auto* gos = result.table()["gameobjects"].as_array()) {
+                            for (const auto& item : *gos) {
+                                const auto* goTbl = item.as_table();
+                                if (!goTbl) continue;
+                                // SkinnedMeshRenderer を優先 (フルモデルパス)
+                                if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
+                                    const std::string mp = (*smrTbl)["modelPath"].value_or(std::string{});
+                                    if (!mp.empty()) {
+                                        preview.meshPath = mp;
+                                        preview.hasMesh = true;
+                                        break;
+                                    }
+                                }
+                                if (auto* mrTbl = (*goTbl)["MeshRenderer"].as_table()) {
+                                    const std::string mp = (*mrTbl)["mesh"].value_or(std::string{});
+                                    if (!mp.empty()) {
+                                        preview.meshPath = mp;
+                                        preview.hasMesh = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (preview.hasMesh && !preview.failed) {
+                if (!preview.thumbnailRT.IsValid()) {
+                    preview.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
+                    preview.thumbnailRendered = false;
+                }
+                if (!preview.model) {
+                    std::string absPath = preview.meshPath;
+                    if (absPath.starts_with("Assets/") && !ctx.projectRoot.empty())
+                        absPath = ctx.projectRoot + "/" + absPath;
+                    preview.model = asset::AssetManager::Load<asset::Model>(absPath);
+                }
+                if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid() &&
+                    preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
+                    preview.thumbnailRendered = RenderMeshThumbnail(
+                        *ctx.renderer, *ctx.resources,
+                        *preview.model->meshes.front(),
+                        preview.thumbnailRT,
+                        renderer::ResourceHandle<renderer::TextureTag>{},
+                        { 0.35f, 0.82f, 0.95f, 1.0f });
+                    preview.failed = !preview.thumbnailRendered;
+                }
+                if (preview.thumbnailRendered) {
+                    DrawRenderTargetThumbnail(preview.thumbnailRT, origin, sz, ctx, hovered, "PREFAB");
+                    return;
+                }
+            }
+        }
+        // フォールバック: アイソメトリックキューブアイコン
+        {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const ImU32 bg    = IM_COL32( 28,  68,  84, 255);
+            const ImU32 front = IM_COL32( 50, 140, 168, 255);
+            const ImU32 top   = IM_COL32( 72, 172, 200, 255);
+            const ImU32 right = IM_COL32( 36, 108, 132, 255);
+            const ImU32 brd   = IM_COL32(110, 215, 235, 255);
+            dl->AddRectFilled({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, bg, sz * 0.08f);
+            dl->AddRect      ({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, brd, sz * 0.08f, 0, 1.0f);
+
+            const float cx = origin.x + sz * 0.48f;
+            const float cy = origin.y + sz * 0.54f;
+            const float hw = sz * 0.22f; // front face half-width
+            const float hh = sz * 0.20f; // front face half-height
+            const float dx = sz * 0.14f; // depth x-offset
+            const float dy = sz * 0.09f; // depth y-offset
+
+            // front face
+            ImVec2 frontFace[4] = {
+                { cx - hw,      cy - hh },
+                { cx + hw,      cy - hh },
+                { cx + hw,      cy + hh },
+                { cx - hw,      cy + hh },
+            };
+            dl->AddConvexPolyFilled(frontFace, 4, front);
+
+            // top face
+            ImVec2 topFace[4] = {
+                { cx - hw,      cy - hh      },
+                { cx + hw,      cy - hh      },
+                { cx + hw + dx, cy - hh - dy },
+                { cx - hw + dx, cy - hh - dy },
+            };
+            dl->AddConvexPolyFilled(topFace, 4, top);
+
+            // right face
+            ImVec2 rightFace[4] = {
+                { cx + hw,      cy - hh      },
+                { cx + hw + dx, cy - hh - dy },
+                { cx + hw + dx, cy + hh - dy },
+                { cx + hw,      cy + hh      },
+            };
+            dl->AddConvexPolyFilled(rightFace, 4, right);
+
+            dl->AddPolyline(frontFace, 4, brd, ImDrawFlags_Closed, 1.0f);
+            dl->AddPolyline(topFace,   4, brd, ImDrawFlags_Closed, 1.0f);
+            dl->AddPolyline(rightFace, 4, brd, ImDrawFlags_Closed, 1.0f);
+            DrawThumbnailLabel(dl, origin, sz, "PREFAB");
             return;
         }
     }
@@ -1336,30 +1459,88 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         return;
     }
 
-    // .fbzzterrain: 地形シルエットアイコン (波形ヒル)
+    // .fbzzterrain: materialPath を読み取って terrain shader でサムネイル、なければ丘アイコン
     if (e.ext == ".fbzzterrain") {
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        const ImU32 sky  = IM_COL32( 60, 100,  60, 255);
-        const ImU32 land = IM_COL32( 80, 160,  70, 255);
-        const ImU32 brd  = IM_COL32(140, 210, 120, 255);
-        dl->AddRectFilled({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, sky, sz * 0.08f);
-        dl->AddRect      ({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, brd, sz * 0.08f, 0, 1.0f);
-        // terrain silhouette: a set of points forming a hill profile
-        const float base = origin.y + sz * 0.95f;
-        const float h    = sz * 0.40f;
-        ImVec2 terrain[8] = {
-            { origin.x,           base         },
-            { origin.x + sz*0.0f, base         },
-            { origin.x + sz*0.2f, base - h*0.5f},
-            { origin.x + sz*0.4f, base - h     },
-            { origin.x + sz*0.6f, base - h*0.6f},
-            { origin.x + sz*0.8f, base - h*0.8f},
-            { origin.x + sz,      base - h*0.3f},
-            { origin.x + sz,      base         },
-        };
-        dl->AddConvexPolyFilled(terrain, 8, land);
-        DrawThumbnailLabel(dl, origin, sz, "TERRAIN");
-        return;
+        if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+            TerrainPreview& preview = m_terrainPreviews[e.path];
+            const auto currentWriteTime = ReadLastWriteTime(e.path);
+            if (currentWriteTime != preview.lastWriteTime) {
+                preview = {};
+                preview.lastWriteTime = currentWriteTime;
+            }
+            if (!preview.parsed) {
+                preview.parsed = true;
+                std::string text;
+                if (util::FileSystem::ReadText(e.path, text)) {
+                    toml::parse_result result = toml::parse(text);
+                    if (result) {
+                        const toml::table* terrainTbl = result.table()["terrain"].as_table();
+                        if (!terrainTbl) terrainTbl = &result.table();
+                        const std::string matPath = (*terrainTbl)["materialPath"].value_or(std::string{});
+                        if (!matPath.empty()) {
+                            std::string absMatPath = matPath;
+                            if (absMatPath.starts_with("Assets/") && !ctx.projectRoot.empty())
+                                absMatPath = ctx.projectRoot + "/" + absMatPath;
+                            preview.hasMaterial = asset::LoadMaterialAssetFromFile(absMatPath, preview.mat.asset);
+                            preview.mat.loaded = true;
+                            preview.mat.lastWriteTime = ReadLastWriteTime(absMatPath);
+                        }
+                    }
+                }
+            }
+            if (preview.hasMaterial && !preview.mat.failed) {
+                if (!preview.mat.thumbnailRT.IsValid()) {
+                    preview.mat.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
+                    preview.mat.thumbnailRendered = false;
+                }
+                if (!preview.mat.thumbnailRendered) {
+                    if (!s_tr.materialSphere)
+                        s_tr.materialSphere = renderer::PrimitiveMesh::Sphere(*ctx.resources, 64);
+                    if (s_tr.materialSphere && RebuildMaterialThumbnailGpuData(preview.mat, ctx)) {
+                        preview.mat.thumbnailRendered = RenderMeshThumbnail(
+                            *ctx.renderer, *ctx.resources,
+                            *s_tr.materialSphere,
+                            preview.mat.thumbnailRT,
+                            preview.mat.previewTexture,
+                            SelectMaterialColor(preview.mat.asset),
+                            preview.mat.shader,
+                            preview.mat.materialCB,
+                            &preview.mat.textures,
+                            ThumbnailShaderFlavor::Terrain,
+                            &preview.mat.asset);
+                        preview.mat.failed = !preview.mat.thumbnailRendered;
+                    }
+                }
+                if (preview.mat.thumbnailRendered) {
+                    DrawRenderTargetThumbnail(preview.mat.thumbnailRT, origin, sz, ctx, hovered, "TERRAIN");
+                    return;
+                }
+            }
+        }
+        // フォールバック: 丘シルエットアイコン
+        {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const ImU32 sky  = IM_COL32( 60, 100,  60, 255);
+            const ImU32 land = IM_COL32( 80, 160,  70, 255);
+            const ImU32 brd  = IM_COL32(140, 210, 120, 255);
+            dl->AddRectFilled({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, sky, sz * 0.08f);
+            dl->AddRect      ({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, brd, sz * 0.08f, 0, 1.0f);
+            const float base = origin.y + sz * 0.95f;
+            const float h    = sz * 0.40f;
+            ImVec2 terrain[8] = {
+                { origin.x,           base          },
+                { origin.x + sz*0.0f, base          },
+                { origin.x + sz*0.2f, base - h*0.5f },
+                { origin.x + sz*0.4f, base - h      },
+                { origin.x + sz*0.6f, base - h*0.6f },
+                { origin.x + sz*0.8f, base - h*0.8f },
+                { origin.x + sz,      base - h*0.3f },
+                { origin.x + sz,      base          },
+            };
+            dl->AddConvexPolyFilled(terrain, 8, land);
+            DrawThumbnailLabel(dl, origin, sz, "TERRAIN");
+            return;
+        }
     }
 
     DrawFileIconAt(origin, sz, e, hovered);
@@ -1393,6 +1574,8 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     m_texturePreviews.erase(path);
     m_materialPreviews.erase(path);
     m_meshPreviews.erase(path);
+    m_prefabPreviews.erase(path);
+    m_terrainPreviews.erase(path);
 }
 
 // ── DrawEntry サブメソッド ──────────────────────────────────────────────────────
@@ -1419,11 +1602,50 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         const float cy = origin.y + r + 2.0f;
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
+    // ▶/▼ 展開トグル: fzasset はサブアセットを持つ
+    if (!e.isDir && e.ext == ".fzasset") {
+        const bool expanded = m_expandedFzAssets.count(e.path) > 0;
+        const float ts  = sz * 0.18f; // 三角サイズ
+        const float bx  = origin.x + 2.0f;
+        const float by  = origin.y + sz - ts - 2.0f;
+        const ImU32 col = IM_COL32(255, 220, 80, 230);
+        if (expanded) {
+            // ▼ (pointing down)
+            dl->AddTriangleFilled(
+                { bx,        by },
+                { bx + ts,   by },
+                { bx + ts * 0.5f, by + ts },
+                col);
+        } else {
+            // ▶ (pointing right)
+            dl->AddTriangleFilled(
+                { bx,        by },
+                { bx,        by + ts },
+                { bx + ts,   by + ts * 0.5f },
+                col);
+        }
+    }
+    // 金の左ボーダー: サブアセットエントリ
+    if (e.isSubAsset) {
+        dl->AddRectFilled(
+            { origin.x,        origin.y },
+            { origin.x + 3.0f, origin.y + sz },
+            IM_COL32(255, 200, 50, 200));
+    }
 }
 
 void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, bool hov)
 {
-    if (!hov || !ImGui::IsMouseClicked(ImGuiMouseButton_Left) || e.isDir) return;
+    // マウス押下フレーム: ドラッグ・ダブルクリックフラグをリセット (選択はまだしない)
+    if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        m_entryDragStarted    = false;
+        m_doubleClickConsumed = false;
+    }
+
+    // 選択確定はマウスリリース時 (Unity スタイル: D&D 開始後はスキップ)
+    if (!hov || !ImGui::IsMouseReleased(ImGuiMouseButton_Left) || e.isDir) return;
+    if (m_entryDragStarted) return;
+    if (m_doubleClickConsumed) { m_doubleClickConsumed = false; return; }
 
     const bool ctrl  = ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
     const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
@@ -1433,6 +1655,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
         else                                m_selectedPaths.insert(e.path);
         ctx.selectedAssetPath = e.path;
         m_lastClickedPath     = e.path;
+        m_pendingRenamePath.clear();
     } else if (shift && !m_lastClickedPath.empty()) {
         m_selectedPaths.clear();
         bool inside = false;
@@ -1446,16 +1669,36 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
             }
         }
         ctx.selectedAssetPath = e.path;
+        m_pendingRenamePath.clear();
     } else {
-        m_selectedPaths.clear();
-        ctx.selectedAssetPath = e.path;
-        m_lastClickedPath     = e.path;
+        // 選択済み & 単体選択状態での再クリック → 遅延リネーム (Unity スタイル)
+        if (!e.isMount && ctx.selectedAssetPath == e.path && m_selectedPaths.empty()) {
+            m_pendingRenamePath  = e.path;
+            m_pendingRenameTimer = static_cast<float>(ImGui::GetTime());
+        } else {
+            m_selectedPaths.clear();
+            ctx.selectedAssetPath = e.path;
+            m_lastClickedPath     = e.path;
+            m_pendingRenamePath.clear();
+            // FBX コンテンツ更新をクリック時に実施 (ホバーから移行)
+            if (IsMeshExt(e.ext)) {
+                m_selectedFbxPath = e.path;
+                m_selectedModel   = nullptr;
+                if (renderer::ResourceManager::Active())
+                    m_selectedModel = asset::AssetManager::Load<asset::Model>(e.path);
+            } else {
+                m_selectedFbxPath.clear();
+                m_selectedModel = nullptr;
+            }
+        }
     }
 }
 
 void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov)
 {
     if (!hov || !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) return;
+    m_pendingRenamePath.clear();   // ダブルクリックは遅延リネームをキャンセル
+    m_doubleClickConsumed = true;  // 2回目リリースで HandleEntryClick をスキップ
 
     // WHY: ダブルクリック後に entries が更新される可能性があるため値をコピーする。
     const bool        isDir = e.isDir;
@@ -1769,6 +2012,20 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
 
 void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 {
+    // 遅延リネームタイマー: ダブルクリック判定後 0.5s 経過でリネーム開始
+    if (!m_pendingRenamePath.empty() && m_pendingRenamePath == e.path) {
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            m_pendingRenamePath.clear();
+        } else if (!e.isMount &&
+                   static_cast<float>(ImGui::GetTime()) - m_pendingRenameTimer > 0.5f) {
+            m_renamingPath = m_pendingRenamePath;
+            std::strncpy(m_renameBuffer, e.name.c_str(), sizeof(m_renameBuffer) - 1);
+            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+            m_renameNeedFocus   = true;
+            m_pendingRenamePath.clear();
+        }
+    }
+
     ImGui::PushID(e.path.c_str());
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -1790,6 +2047,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     // ドラッグソース (ファイルのみ)
     if (!e.isDir && ImGui::BeginDragDropSource()) {
+        m_entryDragStarted = true;  // ドラッグ中はリリース時の選択変更を抑制
         const std::string payloadPath = ToProjectAssetPath(e.path, ctx);
         ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
         ImGui::TextUnformatted(e.name.c_str());
@@ -1847,14 +2105,22 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     DrawEntryContextMenu(e, ctx);
 
-    // ホバー中は FBX 内容を即座に更新する
-    if (hov && !e.isDir && IsMeshExt(e.ext) && m_selectedFbxPath != e.path) {
-        m_selectedFbxPath = e.path;
-        m_selectedModel = nullptr;
-        if (renderer::ResourceManager::Active())
-            m_selectedModel = asset::AssetManager::Load<asset::Model>(e.path);
+    // fzasset の ▶/▼ 三角クリックで展開トグル
+    if (hov && e.ext == ".fzasset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const float ts  = sz * 0.18f;
+        const float bx  = origin.x + 2.0f;
+        const float by  = origin.y + sz - ts - 2.0f;
+        const ImVec2 mp = ImGui::GetIO().MousePos;
+        if (mp.x >= bx && mp.x <= bx + ts && mp.y >= by && mp.y <= by + ts) {
+            if (m_expandedFzAssets.count(e.path))
+                m_expandedFzAssets.erase(e.path);
+            else
+                m_expandedFzAssets.insert(e.path);
+            m_fzExpandDirty = true;
+            ImGui::PopID();
+            return;
+        }
     }
-
     HandleEntryClick(e, ctx, hov);
     HandleEntryDoubleClick(e, ctx, hov);
     DrawEntryRenameLabel(e, ctx);

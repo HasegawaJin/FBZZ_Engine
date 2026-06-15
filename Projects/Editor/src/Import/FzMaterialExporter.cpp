@@ -115,11 +115,14 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
                                   const aiScene* scene,
                                   const std::string& fbxDir,
                                   const std::string& texturesDir,
-                                  const std::string& outputPath)
+                                  const std::string& outputPath,
+                                  bool skinned)
 {
     toml::table tbl;
     tbl.insert("version", int64_t{ 1 });
-    tbl.insert("shader", std::string{});
+    tbl.insert("shader", skinned
+        ? std::string{ "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl" }
+        : std::string{ "Assets/Shaders/Material/Surface/PBR.hlsl" });
 
     aiString matName;
     if (material->Get(AI_MATKEY_NAME, matName) == AI_SUCCESS)
@@ -129,14 +132,14 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
     aiColor4D baseColor;
     if (material->Get(AI_MATKEY_BASE_COLOR,    baseColor) == AI_SUCCESS ||
         material->Get(AI_MATKEY_COLOR_DIFFUSE, baseColor) == AI_SUCCESS)
-        paramsTbl.insert("base_color",
+        paramsTbl.insert("albedo",
                          toml::array{ baseColor.r, baseColor.g, baseColor.b, baseColor.a });
 
     float metallic = 0.0f, roughness = 0.5f;
     material->Get(AI_MATKEY_METALLIC_FACTOR,  metallic);
     material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
-    paramsTbl.insert("metallic_factor",  metallic);
-    paramsTbl.insert("roughness_factor", roughness);
+    paramsTbl.insert("metallic",  metallic);
+    paramsTbl.insert("roughness", roughness);
     tbl.insert("params", std::move(paramsTbl));
 
     toml::table texTbl;

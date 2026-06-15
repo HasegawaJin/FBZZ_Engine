@@ -19,7 +19,8 @@ public:
                        const aiScene* scene,
                        const std::string& fbxDir,
                        const std::string& texturesDir,
-                       const std::string& outputPath);
+                       const std::string& outputPath,
+                       bool skinned = false);
 };
 
 } // namespace fbzz::editor

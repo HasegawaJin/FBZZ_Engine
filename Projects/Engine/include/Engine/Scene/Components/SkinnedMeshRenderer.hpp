@@ -14,7 +14,7 @@ namespace fbzz::scene {
 struct SkinnedMeshRenderer {
     bool enabled = true;
     std::string modelPath;
-    int meshIndex = 0;
+    int meshIndex = -1; // -1 = 全 submesh, >=0 = 子 GO が担当する特定 submesh
 
     asset::Model* model = nullptr;
 
