@@ -198,6 +198,12 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         RefreshDirectory();
     }
 
+    // fzasset 展開トグル後の遅延 Refresh
+    if (m_fzExpandDirty) {
+        m_fzExpandDirty = false;
+        RefreshDirectory();
+    }
+
     // 右クリック: Create メニュー
     // WHY: BeginPopupContextWindow は OpenPopup と混ぜるとボタン起動が安定しない。
     //      右クリック検出と popup 描画を分け、空白右クリックとツールバー Create を同じ経路にする。
@@ -291,6 +297,7 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
 
 bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
 {
+    if (e.isSubAsset) return true; // サブアセットは親が表示されていれば常に表示
     if (m_typeFilter == TypeFilter::All || e.isDir) return true;
     switch (m_typeFilter) {
     case TypeFilter::Scene:    return e.ext == ".fbzz";
@@ -303,8 +310,9 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
                                    || e.ext == ".fnt" || e.ext == ".ttf" || e.ext == ".otf";
     case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
                                    || e.ext == ".flac";
-    case TypeFilter::Mesh:     return e.ext == ".fbx"  || e.ext == ".obj" || e.ext == ".gltf"
-                                   || e.ext == ".glb"  || e.ext == ".fzmesh" || e.ext == ".fzskel";
+    case TypeFilter::Mesh:     return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
+                                   || e.ext == ".glb"    || e.ext == ".fzmesh" || e.ext == ".fzskel"
+                                   || e.ext == ".fzasset";
     case TypeFilter::Shader:   return e.ext == ".hlsl" || e.ext == ".hlsli";
     case TypeFilter::Prefab:   return e.ext == ".fbzzprefab";
     default:                   return true;

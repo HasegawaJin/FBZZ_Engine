@@ -35,8 +35,9 @@ private:
         std::string path;
         std::string name;
         std::string ext;    // lowercase, e.g. ".hlsl"
-        bool        isDir = false;
-        bool        isMount = false;
+        bool        isDir     = false;
+        bool        isMount   = false;
+        bool        isSubAsset = false; // fzasset の展開で挿入された仮想サブエントリ
     };
 
     struct AssetMount {
@@ -86,6 +87,9 @@ private:
     void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
 
+    // fzasset マニフェストを解析してサブエントリ一覧を返す (展開時のグリッド挿入用)
+    std::vector<Entry> GetFzAssetSubEntries(const std::string& fzassetPath);
+
     // 未変換モデルファイルを検出してインポートキューに積む (relPath は m_rootPath 相対)。
     // WHY: PNG / JPG 等のテクスチャは ResourceManager が原本を直接読むため変換しない。
     void TryQueuePendingImport(const std::string& relPath);
@@ -117,7 +121,18 @@ private:
     std::vector<Entry>    m_entries;
     std::array<char, 256> m_searchBuf = {};
     float                 m_iconSize  = 84.0f;
-    bool                  m_resetScroll = false; // ディレクトリ移動後に右ペインをトップへ戻す
+    bool                  m_resetScroll    = false; // ディレクトリ移動後に右ペインをトップへ戻す
+    bool                  m_fzExpandDirty  = false; // fzasset 展開トグル後の遅延 Refresh フラグ
+
+    // --- fzasset 展開状態 -------------------------------------------------------
+    std::unordered_set<std::string> m_expandedFzAssets;
+
+    // fzasset サブエントリキャッシュ (マニフェストの再パースを抑制)
+    struct FzAssetSubItems {
+        std::vector<Entry>                  items;
+        std::filesystem::file_time_type     lastWriteTime{};
+    };
+    std::unordered_map<std::string, FzAssetSubItems> m_fzAssetSubItemsCache;
 
     // --- 複数選択 ---------------------------------------------------------------
     // WHY: ctx.selectedAssetPath は Inspector の単一表示用に維持し、
@@ -166,6 +181,22 @@ private:
         bool thumbnailRendered = false;
         bool failed = false;
     };
+    struct PrefabPreview {
+        renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
+        asset::Model* model = nullptr;
+        std::string   meshPath;
+        std::filesystem::file_time_type lastWriteTime{};
+        bool thumbnailRendered = false;
+        bool failed = false;
+        bool parsed = false;
+        bool hasMesh = false;
+    };
+    struct TerrainPreview {
+        MaterialPreview mat;
+        std::filesystem::file_time_type lastWriteTime{};
+        bool parsed = false;
+        bool hasMaterial = false;
+    };
     // .fzmat の shaderPath / ShaderDescriptor に合わせて、サムネイル描画用の Material CB と Texture を更新する。
     // WHY: AssetBrowser の Material サムネイルも実際のマテリアルと同じ HLSL を使い、Lit 固定による見た目のズレを避ける。
     bool RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx);
@@ -175,11 +206,20 @@ private:
     std::deque<std::string>                          m_texLoadQueue;
     std::unordered_map<std::string, MaterialPreview> m_materialPreviews;
     std::unordered_map<std::string, MeshPreview>     m_meshPreviews;
+    std::unordered_map<std::string, PrefabPreview>   m_prefabPreviews;
+    std::unordered_map<std::string, TerrainPreview>  m_terrainPreviews;
 
     // Rename state
     std::string m_renamingPath;
     char        m_renameBuffer[256] = {};
     bool        m_renameNeedFocus   = false;
+    // Unity 風の遅延リネーム: 選択済みアイテムを再クリック後 0.5s 経過でリネーム開始
+    std::string m_pendingRenamePath;
+    float       m_pendingRenameTimer = 0.0f;
+    // D&D 判定: マウス押下→リリースの間にドラッグが発生したか
+    bool        m_entryDragStarted    = false;
+    // ダブルクリック判定: 2回目のリリースで余分な選択を防ぐ
+    bool        m_doubleClickConsumed = false;
 
     // ファイルシステム監視
     AssetFileWatcher m_watcher;
