@@ -1855,7 +1855,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             SkinnedMeshRenderer smr{};
             smr.enabled   = (*smrTbl)["enabled"].value_or(true);
             smr.modelPath = (*smrTbl)["modelPath"].value_or(std::string{});
-            smr.meshIndex = (int)(*smrTbl)["meshIndex"].value_or((int64_t)0);
+            smr.meshIndex = (int)(*smrTbl)["meshIndex"].value_or((int64_t)-1);
             if (!smr.modelPath.empty()) {
                 smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
                 if (!smr.model)

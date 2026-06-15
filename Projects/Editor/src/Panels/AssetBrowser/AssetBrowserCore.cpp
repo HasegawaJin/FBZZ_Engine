@@ -3,6 +3,10 @@
 // AssetBrowser のルート、マウント、ディレクトリ走査
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
+#include <toml++/toml.hpp>
+#include <fstream>
+#include <sstream>
+#include <unordered_set>
 
 namespace fbzz::editor {
 
@@ -186,6 +190,8 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_texturePreviews);
     evictStaleEntries(m_materialPreviews);
     evictStaleEntries(m_meshPreviews);
+    evictStaleEntries(m_prefabPreviews);
+    evictStaleEntries(m_terrainPreviews);
     m_texLoadQueue.clear();
     const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
     for (const auto& p : util::FileSystem::ListAll(currentPath)) {
@@ -218,6 +224,20 @@ void AssetBrowserPanel::RefreshDirectory()
         default:                    return a.name < b.name;
         }
     });
+
+    // 展開済み fzasset のサブエントリをその直後に挿入する
+    if (!m_expandedFzAssets.empty()) {
+        std::vector<Entry> withSubs;
+        withSubs.reserve(m_entries.size() * 2);
+        for (const Entry& e : m_entries) {
+            withSubs.push_back(e);
+            if (e.ext == ".fzasset" && m_expandedFzAssets.count(e.path)) {
+                for (auto& sub : GetFzAssetSubEntries(e.path))
+                    withSubs.push_back(std::move(sub));
+            }
+        }
+        m_entries = std::move(withSubs);
+    }
 }
 
 bool AssetBrowserPanel::ShouldDisplayEntry(
@@ -233,7 +253,16 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     // WHY: compiled は HLSL から再生成できる実行時バイナリ置き場であり、
     //      ユーザーが Asset Browser から開いたり移動したりする対象ではない。
     if (isDir) {
-        return !util::StringUtils::EndsWith(lowerPath, "/shaders/compiled");
+        if (util::StringUtils::EndsWith(lowerPath, "/shaders/compiled")) return false;
+        // WHY: fzasset インポートで生成されるデータフォルダ (stem/) は
+        //      同じ階層に stem.fzasset が存在する場合は非表示にする。
+        //      AssetBrowser は fzasset をフラット表示し、サブ項目は展開で見せる。
+        const std::string parentDir = util::FileSystem::GetDirectory(path);
+        const std::string fzassetSibling =
+            util::FileSystem::NormalizePathSeparators(parentDir + "/" + name + ".fzasset");
+        if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(fzassetSibling)))
+            return false;
+        return true;
     }
 
     // WHAT: Header Tool、FBX importer、Shader compiler が生成する派生ファイルを隠し、
@@ -362,6 +391,76 @@ bool AssetBrowserPanel::IsRootOrMountedPath(const std::string& path) const
         if (util::FileSystem::IsChildPathText(path, mount.path)) return true;
     }
     return false;
+}
+
+std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetFzAssetSubEntries(
+    const std::string& fzassetPath)
+{
+    FzAssetSubItems& cached = m_fzAssetSubItemsCache[fzassetPath];
+
+    // ファイル更新時刻でキャッシュ有効性を確認
+    std::filesystem::file_time_type currentWriteTime{};
+    {
+        std::error_code ec;
+        currentWriteTime = std::filesystem::last_write_time(
+            util::FileSystem::PathFromUtf8(fzassetPath), ec);
+    }
+    if (!cached.items.empty() && cached.lastWriteTime == currentWriteTime)
+        return cached.items;
+
+    cached.items.clear();
+    cached.lastWriteTime = currentWriteTime;
+
+    std::ifstream f(util::FileSystem::PathFromUtf8(fzassetPath));
+    if (!f) return cached.items;
+    std::ostringstream buf;
+    buf << f.rdbuf();
+
+    const auto parsed = toml::parse(buf.str());
+    if (!parsed) return cached.items;
+
+    const auto& tbl = parsed.table();
+    const std::filesystem::path assetDir =
+        util::FileSystem::PathFromUtf8(fzassetPath).parent_path();
+
+    const auto* meshArr = tbl["meshes"].as_array();
+    const auto* matArr  = tbl["materials"].as_array();
+
+    if (meshArr) {
+        for (const auto& node : *meshArr) {
+            const auto relPath = node.value<std::string>();
+            if (!relPath) continue;
+            Entry e;
+            e.path      = util::FileSystem::NormalizePathSeparators(
+                              util::FileSystem::PathToUtf8(assetDir / *relPath));
+            e.name      = std::filesystem::path(*relPath).stem().string();
+            e.ext       = ".fzmesh";
+            e.isDir     = false;
+            e.isSubAsset = true;
+            cached.items.push_back(std::move(e));
+        }
+    }
+
+    // 重複マテリアルを除いてサブエントリに追加
+    std::unordered_set<std::string> addedMats;
+    if (matArr) {
+        for (const auto& node : *matArr) {
+            const auto relPath = node.value<std::string>();
+            if (!relPath || relPath->empty()) continue;
+            const std::string absPath = util::FileSystem::NormalizePathSeparators(
+                util::FileSystem::PathToUtf8(assetDir / *relPath));
+            if (!addedMats.insert(absPath).second) continue;
+            Entry e;
+            e.path      = absPath;
+            e.name      = std::filesystem::path(*relPath).stem().string();
+            e.ext       = ".fzmat";
+            e.isDir     = false;
+            e.isSubAsset = true;
+            cached.items.push_back(std::move(e));
+        }
+    }
+
+    return cached.items;
 }
 
 } // namespace fbzz::editor

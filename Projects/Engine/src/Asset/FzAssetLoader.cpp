@@ -325,7 +325,6 @@ std::unique_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
 
 
     const fs::path assetDir = fs::path(fzassetPath).parent_path();
-    const std::string texDir = (assetDir / "textures").string();
 
     const auto meshPaths = TomlArrayToStrings(tbl["meshes"].as_array());
     const auto matPaths  = TomlArrayToStrings(tbl["materials"].as_array());
@@ -345,7 +344,12 @@ std::unique_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
         std::unique_ptr<renderer::Material> mat;
         if (i < matPaths.size() && !matPaths[i].empty()) {
             const std::string fullMat = (assetDir / matPaths[i]).string();
-            mat = LoadFzMat(fullMat, texDir, resources);
+            // WHY: マニフェスト位置が変わっても (stem.fzasset が FBX と同階層に移動しても)
+            //      テクスチャは常に mat ファイルの親の親 / textures/ にある。
+            //      マニフェスト位置依存の texDir を使うと新旧構造で壊れるためここで解決する。
+            const std::string matTexDir =
+                (fs::path(fullMat).parent_path().parent_path() / "textures").string();
+            mat = LoadFzMat(fullMat, matTexDir, resources);
         } else {
             mat = std::make_unique<renderer::Material>();
         }

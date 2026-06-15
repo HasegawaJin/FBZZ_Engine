@@ -6,6 +6,7 @@
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/Components/AnimatorComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Renderer/Material.hpp"
@@ -45,12 +46,8 @@ const std::vector<float>* FindMaterialParam(const asset::MaterialAsset& asset, s
     auto it = asset.params.find(std::string(shaderVarName));
     if (it != asset.params.end()) return &it->second;
 
-    // WHY: .fzmat はレビューしやすい PBR 名、HLSL は既存の短い変数名を使っている。
-    //      ここで吸収してアセット名を ShaderDescriptor の内部名に依存させない。
-    if (shaderVarName == "albedo")              it = asset.params.find("base_color");
-    else if (shaderVarName == "metallic")       it = asset.params.find("metallic_factor");
-    else if (shaderVarName == "roughness")      it = asset.params.find("roughness_factor");
-    else if (shaderVarName == "normalStrength") it = asset.params.find("normal_strength");
+    // snake_case 別名 (手書き .fzmat 向け)
+    if (shaderVarName == "normalStrength") it = asset.params.find("normal_strength");
     else if (shaderVarName == "emissiveColor")  it = asset.params.find("emissive_color");
     else if (shaderVarName == "emissiveScale")  it = asset.params.find("emissive_scale");
 
@@ -122,6 +119,13 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vect
 }
 
 } // namespace
+
+AnimatorComponent* FindAnimator(GameObject& go)
+{
+    if (auto* a = go.GetComponent<AnimatorComponent>()) return a;
+    if (auto* parent = go.GetParent()) return parent->GetComponent<AnimatorComponent>();
+    return nullptr;
+}
 
 const char* GetFallbackMaterialPath(bool skinned)
 {

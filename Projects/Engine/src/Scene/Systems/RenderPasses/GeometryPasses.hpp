@@ -19,6 +19,7 @@
 namespace fbzz::scene {
 
 class  GameObject;
+struct AnimatorComponent;
 struct MaterialComponent;
 struct SkinnedMeshRenderer;
 
@@ -65,6 +66,10 @@ renderer::Material* GetFallbackMaterial(
 const char* GetFallbackMaterialPath(bool skinned);
 
 void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath);
+
+// AnimatorComponent を自 GO → 親 GO の順に探す。
+// WHY: 子 GO (submesh ごとの SkinnedMeshRenderer) は AnimatorComponent を持たない。
+AnimatorComponent* FindAnimator(GameObject& go);
 
 renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
