@@ -67,7 +67,7 @@ void SubmitSkinnedMeshShadowCasters(RenderPassContext& ctx, const math::Frustum&
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
         auto* mat  = go.GetComponent<MaterialComponent>();
-        auto* anim = go.GetComponent<AnimatorComponent>();
+        auto* anim = FindAnimator(go);
         if (!smr || !smr->enabled || !smr->model) continue;
         if (!mat || !mat->enabled || !mat->EnsureMaterialAsset()) continue;
         if (!IsSkinnedVisibleInFrustum(lightFrustum, go.transform, *smr)) continue;
@@ -79,7 +79,10 @@ void SubmitSkinnedMeshShadowCasters(RenderPassContext& ctx, const math::Frustum&
         const auto skinCB = (anim && anim->skinningBuffer.IsValid())
             ? anim->skinningBuffer : h.bindPoseSkinningCB;
 
-        for (const auto& meshPtr : smr->model->meshes) {
+        const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
+        const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
+        for (int mi = meshStart; mi < meshEnd; ++mi) {
+            const auto& meshPtr = smr->model->meshes[mi];
             if (!meshPtr) continue;
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
