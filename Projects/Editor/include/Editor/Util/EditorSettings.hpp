@@ -54,6 +54,42 @@ struct EditorSettings {
     bool        mapHierarchyFilter = true;
     bool        mapInspectorFilter = true;
 
+    // --- Debug メニュー - レンダリングオーバーレイ ---------------------------
+    // WHY: int で保存し renderer::ViewMode へキャストする (enum を TOML に直接書くと変換が複雑)
+    bool showColliders   = false;
+    bool showDecalBounds = false;
+    int  viewMode        = 0; // 0=Lit, 1=Unlit, 2=WireframeLit, 3=WireframeUnlit
+
+    // --- Debug メニュー - Post Process ------------------------------------
+    bool  shadowEnabled              = true;
+    bool  ppFxaaEnabled              = true;
+    float ppExposure                 = 1.0f;
+    bool  ppBloomEnabled             = true;
+    float ppBloomIntensity           = 0.8f;
+    bool  ppAoEnabled                = true;
+    bool  ppFogEnabled               = false;
+    float ppFogDensity               = 0.06f;
+    float ppFogFar                   = 10.0f;
+    bool  ppColorGradingEnabled      = true;
+    float ppContrast                 = 0.0f;
+    float ppSaturation               = 1.0f;
+    float ppHueShift                 = 0.0f;
+    bool  ppVignetteEnabled          = false;
+    bool  ppFilmGrainEnabled         = false;
+    bool  ppSharpenEnabled           = false;
+    float ppSharpenStrength          = 0.35f;
+    bool  ppDofEnabled               = false;
+    float ppDofFocus                 = 8.0f;
+    float ppDofBlur                  = 3.0f;
+    bool  ppChromaticAberrationEnabled = false;
+    bool  ppLensDistortionEnabled    = false;
+    bool  ppSepiaEnabled             = false;
+    bool  ppInvertEnabled            = false;
+    bool  ppPosterizeEnabled         = false;
+    bool  ppPixelateEnabled          = false;
+    float ppPosterizeLevels          = 6.0f;
+    float ppPixelSize                = 4.0f;
+
     // --- TerrainTool ブラシ設定 ------------------------------------------
     // WHY: int で保存し TerrainTool::FalloffType / SculptMode へキャストする
     float    terrainBrushRadius   = 5.0f;
