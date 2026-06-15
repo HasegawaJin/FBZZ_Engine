@@ -178,7 +178,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
         auto* mat  = go.GetComponent<MaterialComponent>();
-        auto* anim = go.GetComponent<AnimatorComponent>();
+        auto* anim = FindAnimator(go);
         if (!smr || !smr->enabled || !smr->model || !mat || !mat->EnsureMaterialAsset()) continue;
 
         ++ctx.statsTotalObjects;
@@ -214,7 +214,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             const auto skinCB = (anim && anim->skinningBuffer.IsValid())
                 ? anim->skinningBuffer : h.bindPoseSkinningCB;
 
-            for (const auto& meshPtr : smr->model->meshes) {
+            const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
+            const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
+            for (int mi = meshStart; mi < meshEnd; ++mi) {
+                const auto& meshPtr = smr->model->meshes[mi];
                 if (!meshPtr) continue;
                 if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
@@ -345,7 +348,10 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         const auto skinCB = (anim && anim->skinningBuffer.IsValid())
             ? anim->skinningBuffer : h.bindPoseSkinningCB;
 
-        for (const auto& meshPtr : smr->model->meshes) {
+        const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
+        const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
+        for (int mi = meshStart; mi < meshEnd; ++mi) {
+            const auto& meshPtr = smr->model->meshes[mi];
             if (!meshPtr) continue;
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
@@ -360,7 +366,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             dc.layer              = renderer::RenderLayer::OPAQUE_LAYER;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
-            dc.constantBuffers[2] = material->paramsBuffer;
+            dc.constantBuffers[2] = drawMaterial->paramsBuffer;
             dc.constantBuffers[3] = h.lightCB;
             dc.constantBuffers[4] = h.shadowCB;
             dc.constantBuffers[7] = skinCB;

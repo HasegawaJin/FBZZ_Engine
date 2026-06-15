@@ -31,7 +31,7 @@ struct AmbientOcclusionSettings {
 };
 
 struct FogSettings {
-    bool enabled = true;
+    bool enabled = false;
     float density = 0.06f;
     float farDistance = 10.0f;
     float color[3] = { 0.01f, 0.01f, 0.04f };
@@ -47,7 +47,7 @@ struct ColorGradingSettings {
 };
 
 struct VignetteSettings {
-    bool enabled = true;
+    bool enabled = false;
     float intensity = 0.25f;
     float smoothness = 0.45f;
     float roundness = 1.0f;
