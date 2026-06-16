@@ -119,6 +119,13 @@ void AnimatorDebugDrawSystem(Scene& scene,
         if (!anim || !anim->enabled) continue;
         if (anim->nodeGlobalTransforms.empty()) continue;
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
+        if (!smr) {
+            for (int ci = 0, cn = go.GetChildCount(); ci < cn; ++ci) {
+                if (auto* child = go.GetChild(ci)) {
+                    if (auto* s = child->GetComponent<SkinnedMeshRenderer>()) { smr = s; break; }
+                }
+            }
+        }
         if (!smr || !smr->model || !smr->model->skeleton) continue;
         const auto& skeleton = *smr->model->skeleton;
         const math::Matrix4 worldMatrix = go.transform.GetWorldMatrix();
