@@ -167,7 +167,6 @@ struct EditorContext {
 
     // 表示オプション (エディター固有)
     bool showLightRange  = true;
-    bool showColliders   = false;
     bool showSkeleton    = false;
     bool showStats       = true;  // Game Viewport に Stats オーバーレイを表示する
     bool showTerrainTool = false; // Terrain Tool ウィンドウを表示する
