@@ -3,6 +3,7 @@
 // Unity スタイルのアセットブラウザ
 #pragma once
 #include <Editor/AssetFileWatcher.hpp>
+#include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
@@ -97,9 +98,11 @@ private:
     void ScanAndQueueUnimported(const std::string& dirAbsPath);
     // 未変換ファイルかどうか判定する
     [[nodiscard]] static bool IsImportableRaw(const std::string& ext);
+    [[nodiscard]] static bool IsTextureRaw(const std::string& ext);
 
     // --- Type フィルタ -----------------------------------------------------------
-    enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab };
+    enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab,
+                            Animation, Skeleton, Asset };
     TypeFilter m_typeFilter = TypeFilter::All;
 
     // --- ソート方法 ------------------------------------------------------------
@@ -226,11 +229,41 @@ private:
 
     // インポート待ちキュー
     struct PendingImport {
-        std::string path;
+        std::string      path;
+        FbxImportOptions options;
     };
     std::vector<PendingImport> m_pendingImports;
 
+    // ファイルウォッチャーが検出した未確認ファイルのキュー
+    // WHY: UE 同様、ファイル追加を検知したらインポート設定モーダルを自動表示する。
+    //      直接 m_pendingImports に積まず、ユーザーが設定を確認してから実行する。
+    std::vector<std::string> m_pendingConfirmImports;
+    // モーダルの各ファイルに対するチェック状態（true = インポート対象）
+    std::vector<bool>        m_pendingConfirmIncludes;
+
+    // インポート設定モーダル
+    struct ImportSettingsState {
+        std::string      path;
+        FbxImportOptions options;
+        bool             open         = false;
+        bool             fromWatcher  = false; // true = ウォッチャー自動起動（キュー継続が必要）
+        // テクスチャ設定
+        bool             isTexture    = false;
+        bool             texSRGB      = true;
+        bool             texMipmaps   = true;
+        int              texCompress  = 0;     // 0=None, 1=BC1, 2=BC3, 3=BC5, 4=BC7
+        bool             texFlipGreen = false; // 法線マップ Y 反転
+    };
+    ImportSettingsState m_importSettings;
+    void DrawImportSettingsModal(EditorContext& ctx);
+
     [[nodiscard]] static bool IsAlreadyImported(const std::string& absPath);
+    // .fzasset は存在するが、元ファイルのタイムスタンプがより新しい場合 true
+    [[nodiscard]] static bool IsOutdated(const std::string& absPath);
+
+    // 再インポートが必要な (元ファイルが新しい) パスのセット
+    // WHY: ScanAndQueueUnimported で一度だけ算出し、DrawEntry でバッジ表示に使う。
+    std::unordered_set<std::string> m_outdatedPaths;
 
     // ポップアップ内から Import をトリガーするためのフラグ
     // WHY: BeginPopupContextItem 内で直接インポートを呼ぶと

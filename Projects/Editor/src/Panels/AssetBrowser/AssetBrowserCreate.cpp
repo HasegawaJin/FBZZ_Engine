@@ -167,10 +167,10 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Scene")) {
-        std::string newPath = m_currentPath + "/New Scene.fbzz";
+        std::string newPath = m_currentPath + "/New Scene.scene";
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
-            newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".fbzz";
+            newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".scene";
         util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
