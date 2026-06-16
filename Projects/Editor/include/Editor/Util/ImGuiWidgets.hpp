@@ -8,6 +8,7 @@
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <cmath>
+#include <string>
 
 namespace fbzz::editor::widgets {
 
@@ -26,6 +27,16 @@ void ColoredText(const char* text, ImVec4 color);
 
 // 読み取り専用テキストフィールド
 void ReadOnlyText(const char* label, const char* text);
+
+// アセットパス入力フィールド。"..." ボタンで projectRoot/ 以下を検索できるモーダルを開く。
+// filterExts: カンマ区切り拡張子 ".fzmat,.hlsl" (空 = すべてのファイル)
+// @return true if path was changed (InputText 編集 / drag-drop / picker 選択のいずれか)
+bool AssetPathField(const char* label, std::string& path,
+                    const char* filterExts,
+                    const std::string& projectRoot);
+
+// InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ
+void DrawAssetPickerModal();
 
 // Quaternion → オイラー角 (度, YXZ 順)。InspectorPanel と ImGuiReflector で共用
 // YXZ 内因順: X(Pitch) が中間角で ±90° 制約、Y(Yaw) は ±180° 任意範囲。
