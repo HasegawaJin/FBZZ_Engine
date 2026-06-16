@@ -669,6 +669,11 @@ void EditorApp::CheckScriptDirtyAndRebuild()
                    m_ctx.scriptsSourceDir.c_str());
     // ビルド前に .generated.hpp を最新化する
     ScriptCodeGen::GenerateReflectAll(m_ctx.scriptsSourceDir);
+    // WHY: GenerateReflectAll が .generated.hpp を書き出すと、そのタイムスタンプが
+    //      m_lastScriptWriteTime (= ft) より新しくなり、コンパイル完了後の次回ポーリングで
+    //      "変更あり" と誤検知して再コンパイルが無限ループする。
+    //      生成直後に再サンプルして生成ファイルのタイムスタンプを吸収する。
+    m_lastScriptWriteTime = GetLatestWriteTimeInTree(m_scriptsSourceDir);
 }
 
 void EditorApp::TickScriptCompile()
