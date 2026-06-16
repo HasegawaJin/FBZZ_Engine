@@ -483,8 +483,9 @@ void NavMeshBakeSystem(Scene& scene)
         }
 
         // ── Hertel-Mehlhorn 凸合成 ────────────────────────────────────────
-        // WHY: マージ成功時に「B への参照を A へ書き換える」操作は全ポリゴンの走査が必要になり
-        //      O(N) かかるが、Bake はエディタ操作時のみの一括処理のため許容する。
+        // WHY: マージ成功時の「B への参照を A へ書き換える」操作は、B の(マージ前)隣接リストだけを
+        //      辿れば十分。かつて全ポリゴンを走査していたため 1 マージ毎に O(N)、
+        //      マージ総数も O(N) で全体 O(N^2) となり、広い Terrain で Bake がフリーズしていた。
         std::vector<int> queue;
         queue.reserve(polys.size());
         for (size_t i = 0; i < polys.size(); ++i)
@@ -526,9 +527,12 @@ void NavMeshBakeSystem(Scene& scene)
                     A.verts     = std::move(mergedVerts);
                     A.neighbors = std::move(mergedNeighbors);
                     B.alive     = false;
-                    for (auto& p : polys) {
-                        if (!p.alive) continue;
-                        for (auto& nb : p.neighbors) if (nb == idB) nb = idA;
+                    // B の旧隣接ポリゴンだけを辿って idB→idA の参照を直す（全ポリゴン走査を避ける）。
+                    for (int nbId : B.neighbors) {
+                        if (nbId < 0 || nbId == idA) continue;
+                        WorkPoly& nbPoly = polys[static_cast<size_t>(nbId)];
+                        if (!nbPoly.alive) continue;
+                        for (auto& nb : nbPoly.neighbors) if (nb == idB) nb = idA;
                     }
                     mergedAny = true;
                     break;
