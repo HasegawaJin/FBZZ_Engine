@@ -7,6 +7,8 @@
 //      ProjectSettings はゲームランタイムに影響する設定であり、
 //      EditorSettings はエディター操作の快適性に関するユーザー個人設定のため分離している。
 #pragma once
+#include <Editor/Import/FbxImportTool.hpp>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -29,7 +31,9 @@ struct EditorSettings {
 
     // --- スナップ ---------------------------------------------------------
     bool  snapEnabled         = false;
-    float snapDistance        = 1.0f;
+    float snapPos             = 1.0f;
+    float snapRot             = 15.0f;
+    float snapScale           = 0.25f;
 
     // --- ギズモ -----------------------------------------------------------
     // WHY: int で保存し EditorContext::GizmoMode / GizmoSpace へキャストする。
@@ -112,8 +116,30 @@ struct EditorSettings {
     //      Load/Save 時に projectRoot との相対パスへ変換している。
     std::string lastScenePath;
 
+    // --- Camera Bookmarks (最大 9 件) -------------------------------------
+    struct CameraBookmark {
+        float px = 0.0f, py = 0.0f, pz = 0.0f;   // position
+        float rx = 0.0f, ry = 0.0f, rz = 0.0f, rw = 1.0f; // rotation quaternion
+        bool  valid = false;
+    };
+    std::array<CameraBookmark, 9> cameraBookmarks;
+
+    // --- Import デフォルト設定 ------------------------------------------------
+    FbxImportOptions         defaultImportOptions;
+
+    // --- ホットキーオーバーライド -------------------------------------------
+    struct HotkeyOverride {
+        std::string name;
+        int         key   = 0;   // ImGuiKey 値
+        bool        ctrl  = false;
+        bool        shift = false;
+        bool        alt   = false;
+    };
+    std::vector<HotkeyOverride> hotkeyOverrides;
+
     // --- Asset Browser ----------------------------------------------------
-    float assetBrowserIconSize = 84.0f;
+    float                    assetBrowserIconSize = 84.0f;
+    std::vector<std::string> assetBrowserBookmarks;
 
     // --- Inspector セクション折り畳み状態 -----------------------------------
     // ImGui の CollapsingHeader が使う ImGuiID (uint32) と open フラグのペアを保存する。

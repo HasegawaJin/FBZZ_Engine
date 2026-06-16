@@ -3,10 +3,13 @@
 // パネル間で共有するエディター状態
 #pragma once
 #include <Editor/GraphLayout.hpp>
+#include <Editor/Import/FbxImportTool.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -18,7 +21,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; }
 
 namespace fbzz::editor {
 
@@ -155,7 +158,9 @@ struct EditorContext {
     bool  showGrid     = true;
     float gridSize     = 1.0f;
     bool  snapEnabled  = false;
-    float snapDistance = 1.0f;
+    float snapPos      = 1.0f;    // 位置スナップ (m)
+    float snapRot      = 15.0f;   // 回転スナップ (度)
+    float snapScale    = 0.25f;   // スケールスナップ
 
     // プロジェクト設定
     fbzz::ProjectSettings projectSettings;
@@ -189,6 +194,11 @@ struct EditorContext {
     bool            requestFocusOnSelected = false;
     math::Vector3   focusTargetPosition    = {};
 
+    // カメラブックマーク呼び出し: ViewportPanel がセット → EditorApp が Teleport してクリア
+    bool             requestTeleportCamera  = false;
+    math::Vector3    teleportPosition       = {};
+    math::Quaternion teleportRotation       = {};
+
     // エディター専用: ロック中の EntityID 一覧（シリアライズしない）
     std::vector<scene::EntityID> lockedEntities;
     bool IsLocked(scene::EntityID id) const {
@@ -200,7 +210,13 @@ struct EditorContext {
         else lockedEntities.push_back(id);
     }
 
+    // エディター専用: 非表示 instanceId → 非表示前の activeSelf 値（シリアライズしない）
+    // WHY: runtime の activeSelf フラグと切り離し、参照メッシュ等をエディタ上だけ隠せるようにする。
+    //      value は非表示前の activeSelf: Play/Save 時に一時解除してこの値を復元する。
+    std::unordered_map<std::string, bool> editorHiddenGuids;
+
     // Util (非所有)
+    HotkeyManager*      hotkeyManager = nullptr;
     UndoStack*          undoStack   = nullptr;
     PlayModeController* playMode    = nullptr;
     TerrainTool*        terrainTool = nullptr; // EditorApp が所有、ViewportPanel が使用
@@ -210,10 +226,25 @@ struct EditorContext {
     // Inspector セクション折り畳み状態 (EditorSettings ↔ ImGui StateStorage の中継)
     std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
 
+    // デフォルトインポート設定 (EditorSettings に永続化)
+    FbxImportOptions                        defaultImportOptions;
+
+    // Inspector → AssetBrowser: Reimport モーダルを開くリクエスト（empty = なし）
+    std::string                             requestOpenImportModal;
+
     std::function<void()>                   markSceneDirty;
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
     float                                   assetBrowserIconSize       = 84.0f;
+    std::vector<std::string>                assetBrowserBookmarks;
+
+    // カメラブックマーク (最大 9 件、Shift+1~9 で保存・1~9 で呼び出し)
+    struct CameraBookmark {
+        math::Vector3    position;
+        math::Quaternion rotation;
+        bool             valid = false;
+    };
+    std::array<CameraBookmark, 9>           cameraBookmarks;
 };
 
 } // namespace fbzz::editor
