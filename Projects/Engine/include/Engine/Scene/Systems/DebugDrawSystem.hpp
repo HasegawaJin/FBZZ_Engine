@@ -5,6 +5,7 @@
 // Scene・Physics の状態は変更せず描画専用。
 #pragma once
 #include <Math/Matrix4.hpp>
+#include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 
 namespace fbzz::physics { class World; }
@@ -45,5 +46,18 @@ namespace fbzz::scene
                                    renderer::ResourceManager& resources,
                                    const math::Matrix4& viewProjection,
                                    const math::Vector4& color = { 1.0f, 0.90f, 0.30f, 1.0f });
+
+    // TerrainComponent のコリジョン形状をワイヤーで描画する。BeginFrame / Flush は呼び出し元が管理する。
+    // cameraPosition からの距離で LOD を切り替える:
+    //   遠景 (> nearDistance): チャンク単位の AABB ボックス
+    //   近景 (<= nearDistance): gridStride 頂点おきのダウンサンプリング格子
+    void TerrainCollisionDebugDrawSystem(
+        Scene& scene,
+        renderer::IRenderer& renderer,
+        const math::Vector3& cameraPosition,
+        float nearDistance              = 80.0f,
+        int   gridStride               = 8,
+        const math::Vector4& nearColor = { 0.1f, 1.0f, 0.35f, 1.0f },
+        const math::Vector4& farColor  = { 0.2f, 0.8f, 0.2f, 0.6f });
 
 } // namespace fbzz::scene
