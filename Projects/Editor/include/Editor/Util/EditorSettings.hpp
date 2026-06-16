@@ -63,6 +63,8 @@ struct EditorSettings {
     bool showColliders        = false;
     bool showTerrainCollision = false;
     bool showDecalBounds      = false;
+    bool showNavMesh          = true;
+    bool showNavSensors       = false;
     int  viewMode        = 0; // 0=Lit, 1=Unlit, 2=WireframeLit, 3=WireframeUnlit
 
     // --- Debug メニュー - Post Process ------------------------------------

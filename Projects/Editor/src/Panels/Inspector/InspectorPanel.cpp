@@ -11,6 +11,7 @@
 #include "InspectorEnvironment.hpp"
 #include "InspectorLighting.hpp"
 #include "InspectorMaterial.hpp"
+#include "InspectorNavigation.hpp"
 #include "InspectorPhysics.hpp"
 #include "InspectorRendering.hpp"
 #include "InspectorTerrainWater.hpp"
@@ -534,6 +535,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
       DrawUIInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::TerrainWater");
       DrawTerrainWaterInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Navigation");
+      DrawNavigationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     DrawScriptInspectors(go, ctx);
 
     ImGui::Spacing();
