@@ -122,14 +122,10 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 }
             }
 
-            const bool isTerrainMaterial = mat.shaderPath == "Assets/Shaders/Terrain/Terrain.hlsl"
-                || mc.materialPath.find("/Terrain/") != std::string::npos;
             const bool isWaterMaterial = mat.shaderPath == "Assets/Shaders/Water/Water.hlsl"
                 || mc.materialPath.find("/Water/") != std::string::npos;
 
-            if (isTerrainMaterial) {
-                materialDirty |= DrawTerrainMaterialInspector(mat);
-            } else if (isWaterMaterial) {
+            if (isWaterMaterial) {
                 materialDirty |= DrawWaterMaterialInspector(mat);
             } else {
                 ImGui::SeparatorText("Textures");
@@ -236,8 +232,8 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 if (ctx.activeScene) {
                     const std::string changedPath = NormalizeAssetPath(mc.materialPath);
                     for (auto [terrain] : ctx.activeScene->View<scene::TerrainComponent>()) {
-                        if (NormalizeAssetPath(terrain.materialPath) == changedPath)
-                            terrain.splatDirty = true;
+                        for (const auto& lm : terrain.layerMaterials)
+                            if (NormalizeAssetPath(lm) == changedPath) { terrain.splatDirty = true; break; }
                     }
                     for (auto [water] : ctx.activeScene->View<scene::WaterComponent>()) {
                         if (NormalizeAssetPath(water.materialPath) == changedPath) {

@@ -489,98 +489,68 @@ void DetailTool::DrawContent(
     scene::Scene& scene,
     const std::function<void()>& markDirty)
 {
-    // TerrainDetailComponent がなければガイドメッセージを表示して終了
-    bool hasComponent = false;
-    bool hasLayers    = false;
+    // コンポーネント確認
+    scene::TerrainDetailComponent* detail = nullptr;
     for (scene::EntityID eid : scene.GetEntities<scene::TerrainDetailComponent>()) {
-        if (auto* d = scene.GetComponent<scene::TerrainDetailComponent>(eid)) {
-            if (d->enabled) { hasComponent = true; hasLayers = !d->layers.empty(); break; }
-        }
+        if (auto* d = scene.GetComponent<scene::TerrainDetailComponent>(eid))
+            if (d->enabled) { detail = d; break; }
     }
-    if (!hasComponent) {
+    if (!detail) {
         ImGui::TextDisabled("No TerrainDetailComponent in scene.");
         ImGui::TextDisabled("Add it to a Terrain entity via Inspector.");
         return;
     }
-    if (!hasLayers) {
+    if (detail->layers.empty()) {
         ImGui::TextDisabled("TerrainDetailComponent has no layers.");
         ImGui::TextDisabled("Add layers in Inspector.");
         return;
     }
 
-    // Paint / Erase モード
-    {
-        const bool isPaint = (m_mode == Mode::Paint);
-        if (isPaint) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
-        if (ImGui::Button("Paint", { 95.0f, 0.0f })) m_mode = Mode::Paint;
-        if (isPaint) ImGui::PopStyleColor();
-        ImGui::SameLine();
-        if (!isPaint) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.25f, 0.25f, 1.0f));
-        if (ImGui::Button("Erase", { 95.0f, 0.0f })) m_mode = Mode::Erase;
-        if (!isPaint) ImGui::PopStyleColor();
-    }
-
-    ImGui::Spacing();
-    ImGui::SeparatorText("Brush");
-    ImGui::SliderFloat("Radius",   &m_brush.radius,   0.5f, 30.0f, "%.1f m");
-    ImGui::SliderFloat("Strength", &m_brush.strength, 0.01f, 1.0f, "%.2f");
-
-    ImGui::Spacing();
-    ImGui::SeparatorText("Debug");
-    ImGui::Checkbox("Chunk Bounds", &m_showChunkBounds);
-    ImGui::SameLine();
-    ImGui::Checkbox("Counts", &m_showCounts);
-
-    // ============================================================
-    // Diagnostics
-    // ============================================================
-    ImGui::Spacing();
-    ImGui::SeparatorText("Diagnostics");
-
-    // ヒットエンティティに TerrainDetailComponent があるか確認
-    if (m_isHovering && scene.IsValid(m_hitEntity)) {
-        auto* hitDetail = scene.GetComponent<scene::TerrainDetailComponent>(m_hitEntity);
-        if (!hitDetail) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.2f, 1.0f));
-            ImGui::TextWrapped("! Terrain under cursor has no TerrainDetailComponent. Add it to the same entity as TerrainComponent.");
-            ImGui::PopStyleColor();
-        }
-    } else if (!m_isHovering) {
-        ImGui::TextDisabled("Hover over terrain to paint.");
-    }
-
-    // ============================================================
-    // レイヤー選択 + インスタンス数サマリー
-    // ============================================================
-    ImGui::Spacing();
+    // ─── レイヤー選択 ───
     ImGui::SeparatorText("Layers");
 
-    for (scene::EntityID eid : scene.GetEntities<scene::TerrainDetailComponent>()) {
-        auto* detail = scene.GetComponent<scene::TerrainDetailComponent>(eid);
-        if (!detail || !detail->enabled) continue;
+    const int layerCount = static_cast<int>(detail->layers.size());
+    for (int li = 0; li < layerCount; ++li) {
+        const auto& layer    = detail->layers[static_cast<size_t>(li)];
+        const bool  selected = (m_layerIndex == li);
 
-        const int layerCount = static_cast<int>(detail->layers.size());
+        const char* typeName = "Mesh";
+        if (layer.type == scene::DetailLayerType::Billboard) typeName = "Bill";
+        if (layer.type == scene::DetailLayerType::Grass)     typeName = "Grass";
 
-        for (int li = 0; li < layerCount; ++li) {
-            const auto& layer = detail->layers[static_cast<size_t>(li)];
+        const std::string& assetPath = layer.meshPath.empty() ? layer.texturePath : layer.meshPath;
+        const std::string  shortName = assetPath.empty()
+            ? "(no asset)"
+            : assetPath.substr(assetPath.find_last_of("/\\") + 1);
 
-            bool selected = (m_layerIndex == li);
-            if (ImGui::RadioButton(("##L" + std::to_string(li)).c_str(), selected))
-                m_layerIndex = li;
-            ImGui::SameLine();
+        char btnLabel[128];
+        std::snprintf(btnLabel, sizeof(btnLabel), "[%s]  %s###DL_%d", typeName, shortName.c_str(), li);
 
-            const char* typeName = "Mesh";
-            if (layer.type == scene::DetailLayerType::Billboard) typeName = "Billboard";
-            if (layer.type == scene::DetailLayerType::Grass)     typeName = "Grass";
+        if (selected)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.55f, 0.75f, 1.0f));
+        if (ImGui::Button(btnLabel, { -1.0f, 0.0f }))
+            m_layerIndex = li;
+        if (selected)
+            ImGui::PopStyleColor();
 
-            const std::string labelPath =
-                layer.meshPath.empty() ? layer.texturePath : layer.meshPath;
-            const std::string shortName =
-                labelPath.empty() ? "(no asset)" : labelPath.substr(labelPath.find_last_of("/\\") + 1);
+        // 選択中レイヤーのインライン詳細
+        if (selected) {
+            ImGui::Indent(10.0f);
 
-            char label[128];
-            std::snprintf(label, sizeof(label), "[%s] %s", typeName, shortName.c_str());
-            ImGui::TextUnformatted(label);
+            const bool hasDM = li < static_cast<int>(detail->densityMaps.size())
+                            && detail->densityMaps[static_cast<size_t>(li)].IsValid();
+            if (hasDM) {
+                const auto& dm = detail->densityMaps[static_cast<size_t>(li)];
+                ImGui::TextDisabled("Density: %dx%d", dm.width, dm.height);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Clear")) {
+                    detail->densityMaps[static_cast<size_t>(li)] = {};
+                    detail->needsBake = true;
+                    markDirty();
+                }
+            } else {
+                ImGui::TextDisabled("Density: empty");
+            }
 
             int total = 0;
             for (const auto& chunk : detail->chunks) {
@@ -589,66 +559,81 @@ void DetailTool::DrawContent(
                 if (li < static_cast<int>(chunk.grassInstancesPerLayer.size()))
                     total += static_cast<int>(chunk.grassInstancesPerLayer[static_cast<size_t>(li)].size());
             }
-            ImGui::SameLine();
             if (total > 0)
-                ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "(%d instances)", total);
+                ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "%d instances", total);
             else
-                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "(0 instances)");
+                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "0 instances");
 
-            // Mesh タイプでパスが未設定の場合は警告
-            if (layer.type == scene::DetailLayerType::Mesh && layer.meshPath.empty()) {
-                ImGui::Indent(16.0f);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.2f, 1.0f));
-                ImGui::TextWrapped("! Mesh Path not set. Set it in Inspector > Terrain Detail > Layer.");
-                ImGui::PopStyleColor();
-                ImGui::Unindent(16.0f);
-            } else if (layer.type == scene::DetailLayerType::Mesh
-                       && !util::FileSystem::Exists(
-                           asset::AssetManager::ResolveAssetPath(layer.meshPath))) {
-                ImGui::Indent(16.0f);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.2f, 1.0f));
-                ImGui::TextWrapped("! Mesh asset not found: %s", layer.meshPath.c_str());
-                ImGui::PopStyleColor();
-                ImGui::Unindent(16.0f);
-            }
-
-            if (selected) {
-                const bool hasDM = li < static_cast<int>(detail->densityMaps.size())
-                                && detail->densityMaps[static_cast<size_t>(li)].IsValid();
-                ImGui::Indent(16.0f);
-                if (hasDM) {
-                    const auto& dm = detail->densityMaps[static_cast<size_t>(li)];
-                    ImGui::TextDisabled("Density map: %dx%d", dm.width, dm.height);
-                    if (ImGui::SmallButton("Clear Density Map")) {
-                        detail->densityMaps[static_cast<size_t>(li)] = {};
-                        detail->needsBake = true;
-                        markDirty();
-                    }
-                } else {
-                    ImGui::TextDisabled("Density map: empty (paint to create)");
+            // Mesh パス警告
+            if (layer.type == scene::DetailLayerType::Mesh) {
+                if (layer.meshPath.empty()) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.2f, 1.0f));
+                    ImGui::TextWrapped("! Mesh Path not set.");
+                    ImGui::PopStyleColor();
+                } else if (!util::FileSystem::Exists(
+                               asset::AssetManager::ResolveAssetPath(layer.meshPath))) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.2f, 1.0f));
+                    ImGui::TextWrapped("! Not found: %s", layer.meshPath.c_str());
+                    ImGui::PopStyleColor();
                 }
-                ImGui::Unindent(16.0f);
             }
+
+            ImGui::Unindent(10.0f);
         }
+    }
 
-        ImGui::Spacing();
+    // ─── Paint / Erase ───
+    ImGui::Spacing();
+    ImGui::SeparatorText("Mode");
+    {
+        const float halfW  = (ImGui::GetContentRegionAvail().x - 4.0f) * 0.5f;
+        const bool  isPaint = (m_mode == Mode::Paint);
+        if (isPaint)  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+        if (ImGui::Button("Paint", { halfW, 0.0f })) m_mode = Mode::Paint;
+        if (isPaint)  ImGui::PopStyleColor();
+        ImGui::SameLine(0.0f, 4.0f);
+        if (!isPaint) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.25f, 0.25f, 1.0f));
+        if (ImGui::Button("Erase", { -1.0f, 0.0f })) m_mode = Mode::Erase;
+        if (!isPaint) ImGui::PopStyleColor();
+    }
 
-        if (detail->needsBake) {
-            const float t = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.30f, 0.75f, 0.40f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
-            ImGui::ProgressBar(t, ImVec2(-1.0f, 0.0f), "Baking...");
-            ImGui::PopStyleColor(2);
-        }
+    // ─── ブラシ設定 ───
+    ImGui::Spacing();
+    ImGui::SeparatorText("Brush");
+    ImGui::SliderFloat("Radius",   &m_brush.radius,   0.5f, 30.0f, "%.1f m");
+    ImGui::SliderFloat("Strength", &m_brush.strength, 0.01f, 1.0f, "%.2f");
 
-        if (ImGui::Button("Bake All Layers", { -1.0f, 0.0f })) {
-            detail->needsBake = true;
-            markDirty();
-        }
+    // ─── Bake ───
+    ImGui::Spacing();
+    if (detail->needsBake) {
+        const float t = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.30f, 0.75f, 0.40f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg,       ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+        ImGui::ProgressBar(t, ImVec2(-1.0f, 0.0f), "Baking...");
+        ImGui::PopStyleColor(2);
+    }
+    if (ImGui::Button("Bake All Layers", { -1.0f, 0.0f })) {
+        detail->needsBake = true;
+        markDirty();
+    }
 
-        ImGui::Spacing();
+    // ─── Debug (折りたたみ) ───
+    ImGui::Spacing();
+    if (ImGui::CollapsingHeader("Debug")) {
+        ImGui::Checkbox("Chunk Bounds", &m_showChunkBounds);
+        ImGui::SameLine();
+        ImGui::Checkbox("Counts", &m_showCounts);
         ImGui::TextDisabled("Total chunks: %d", static_cast<int>(detail->chunks.size()));
-        break;
+
+        if (m_isHovering && scene.IsValid(m_hitEntity)) {
+            if (!scene.GetComponent<scene::TerrainDetailComponent>(m_hitEntity)) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.2f, 1.0f));
+                ImGui::TextWrapped("! Terrain under cursor has no TerrainDetailComponent.");
+                ImGui::PopStyleColor();
+            }
+        } else if (!m_isHovering) {
+            ImGui::TextDisabled("Hover over terrain to paint.");
+        }
     }
 }
 

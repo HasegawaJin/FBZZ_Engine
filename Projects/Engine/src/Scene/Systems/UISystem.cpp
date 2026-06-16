@@ -162,7 +162,7 @@ void EnsureInit(UISystemContext& ctx, renderer::ResourceManager& resources)
 // ── Canvas 収集 ──────────────────────────────────────────────────────────────
 void CollectCanvasesRecursive(GameObject* go, std::vector<CanvasEntry>& canvases)
 {
-    if (!go || !go->activeSelf()) return;
+    if (!go || !go->activeInHierarchy()) return;
     if (auto* canvas = go->GetComponent<UICanvas>(); canvas && canvas->enabled)
         canvases.push_back({ go, canvas });
     for (int i = 0; i < go->GetChildCount(); ++i)
@@ -487,7 +487,7 @@ void UpdateTextSizesRecursive(GameObject& go,
                               UISystemContext& ctx,
                               renderer::ResourceManager& resources)
 {
-    if (!go.activeSelf()) return;
+    if (!go.activeInHierarchy()) return;
     if (auto* text = go.GetComponent<UIText>(); text && text->enabled && !text->text.empty()) {
         const math::Vector2 size = ComputeTextLogicalSize(*text, ctx, resources);
         go.transform.scale.x = size.x;
@@ -640,7 +640,7 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout, float canvasScale)
     indices.reserve(count);
     for (int i = 0; i < count; ++i) {
         GameObject* child = go.GetChild(i);
-        if (!child || !child->activeSelf()) continue;
+        if (!child || !child->activeInHierarchy()) continue;
         indices.push_back(i);
     }
     if (layout.reverseOrder)
@@ -684,7 +684,7 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout, float canvasScale)
 
 void ApplyUILayoutRecursive(GameObject& go, float canvasScale)
 {
-    if (!go.activeSelf()) return;
+    if (!go.activeInHierarchy()) return;
 
     if (auto* layout = go.GetComponent<UILayoutGroup>(); layout && layout->enabled)
         ApplyLayout(go, *layout, canvasScale);
@@ -702,7 +702,7 @@ void ProcessUIEventsRecursive(GameObject& go,
                               bool mousePressed,
                               bool applySelfTransform = true)
 {
-    if (!go.activeSelf()) return;
+    if (!go.activeInHierarchy()) return;
 
     const UITransform2D resolved = applySelfTransform
         ? ComposeUITransform(parentTransform, go.transform)
@@ -741,7 +741,7 @@ void RenderCanvasRecursive(GameObject& go,
                            renderer::RenderLayer layer,
                            bool applySelfTransform = true)
 {
-    if (!go.activeSelf()) return;
+    if (!go.activeInHierarchy()) return;
 
     const UITransform2D resolved = applySelfTransform
         ? ComposeUITransform(parentTransform, go.transform)

@@ -415,6 +415,19 @@ static std::string FindMaterialTexturePath(const asset::MaterialAsset& asset,
     if (bind.slot < kMaterialTextureSlotNames.size()) {
         auto byStandardName = asset.textures.find(kMaterialTextureSlotNames[bind.slot]);
         if (byStandardName != asset.textures.end()) return byStandardName->second;
+
+        // Terrain レイヤーの fzmat はプレフィックスなし ("diffuse", "ao_roughness") を使う。
+        // WHY: Fallback/Surface シェーダーが slot 0="albedo", slot 4="ao" を期待するが、
+        //      レイヤー fzmat にはこれらが存在しないため別名でフォールバックする。
+        const std::string_view standard = kMaterialTextureSlotNames[bind.slot];
+        if (standard == "albedo") {
+            auto it = asset.textures.find("diffuse");
+            if (it != asset.textures.end() && !it->second.empty()) return it->second;
+        }
+        if (standard == "ao") {
+            auto it = asset.textures.find("ao_roughness");
+            if (it != asset.textures.end() && !it->second.empty()) return it->second;
+        }
     }
     return {};
 }
@@ -627,7 +640,7 @@ static renderer::Mesh* CreateSkinnedPreviewSphere(renderer::ResourceManager& res
         verts.push_back(sv);
     }
 
-    auto mesh = std::make_shared<renderer::Mesh>();
+    auto mesh = std::shared_ptr<renderer::Mesh>(new renderer::Mesh());
     mesh->vertexBuffer = resources.CreateVertexBuffer(verts.data(), verts.size() * sizeof(renderer::SkinnedVertex), sizeof(renderer::SkinnedVertex));
     mesh->indexBuffer = resources.CreateIndexBuffer(surface->cpuIndices.data(), static_cast<uint32_t>(surface->cpuIndices.size()));
     mesh->vertexCount = static_cast<uint32_t>(verts.size());
@@ -653,7 +666,7 @@ static renderer::Mesh* CreateWaterPreviewSphere(renderer::ResourceManager& resou
     for (const auto& v : surface->cpuVertices)
         verts.push_back({ v.position, v.uv });
 
-    auto mesh = std::make_shared<renderer::Mesh>();
+    auto mesh = std::shared_ptr<renderer::Mesh>(new renderer::Mesh());
     mesh->vertexBuffer = resources.CreateVertexBuffer(verts.data(), verts.size() * sizeof(ThumbnailWaterVertex), sizeof(ThumbnailWaterVertex));
     mesh->indexBuffer = resources.CreateIndexBuffer(surface->cpuIndices.data(), static_cast<uint32_t>(surface->cpuIndices.size()));
     mesh->vertexCount = static_cast<uint32_t>(verts.size());
@@ -1459,7 +1472,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         return;
     }
 
-    // .fbzzterrain: materialPath を読み取って terrain shader でサムネイル、なければ丘アイコン
+    // .fbzzterrain: layerMaterials[0] を読み取って layer0 diffuse でサムネイル、なければ丘アイコン
     if (e.ext == ".fbzzterrain") {
         if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
             TerrainPreview& preview = m_terrainPreviews[e.path];
@@ -1476,7 +1489,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     if (result) {
                         const toml::table* terrainTbl = result.table()["terrain"].as_table();
                         if (!terrainTbl) terrainTbl = &result.table();
-                        const std::string matPath = (*terrainTbl)["materialPath"].value_or(std::string{});
+                        std::string matPath;
+                        if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array();
+                            layerArr && !layerArr->empty())
+                            matPath = (*layerArr)[0].value_or(std::string{});
                         if (!matPath.empty()) {
                             std::string absMatPath = matPath;
                             if (absMatPath.starts_with("Assets/") && !ctx.projectRoot.empty())
