@@ -25,9 +25,14 @@ const char* PhysicsStepCountMarkerName(int steps)
 {
     // WHY: 固定タイムステップの catch-up で PhysicsSystem が 1 フレームに複数回走ることがある。
     //      Profiler marker として回数を残し、重複呼び出し疑いを確認しやすくする。
-    std::string buf = "PhysicsFixedSteps=" + std::to_string(steps);
-
-    return buf.c_str();
+    if (steps <= 1) return nullptr;
+    if (steps == 2) return "PhysicsFixedSteps=2";
+    if (steps == 3) return "PhysicsFixedSteps=3";
+    if (steps == 4) return "PhysicsFixedSteps=4";
+    if (steps == 5) return "PhysicsFixedSteps=5";
+    if (steps == 6) return "PhysicsFixedSteps=6";
+    if (steps == 7) return "PhysicsFixedSteps=7";
+    return "PhysicsFixedSteps>=8";
 }
 } // namespace
 
@@ -99,6 +104,14 @@ void SceneManager::Update(float dt, physics::World& world)
         return;
     }
 
+    // ── Phase 0: Foliage Bake / Cull (Script より前に GO 生成と距離カリングを完了) ──
+    // WHY: スクリプトが stamp 子 GO にアクセスする初回フレームで不整合が生じないよう
+    //      エディタループと同じ順序にする。
+    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageBakeSystem");
+      FoliageBakeSystem(*scene); }
+    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageCullSystem");
+      FoliageCullSystem(*scene); }
+
     // ── Phase 1: Script Update ──────────────────────────────────────────────
     { FBZZ_PROFILE_SCOPE("SceneManager::ScriptSystem");
       ScriptSystem(*scene, dt); }
@@ -106,12 +119,6 @@ void SceneManager::Update(float dt, physics::World& world)
     // ── Phase 2: Transform ──────────────────────────────────────────────────
     { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
       TransformSystem(*scene); }
-
-    // ── Phase 2.5: Foliage Bake / Cull (Physics より前に GO 生成と距離カリングを完了) ─
-    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageBakeSystem");
-      FoliageBakeSystem(*scene); }
-    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageCullSystem");
-      FoliageCullSystem(*scene); }
 
     // ── Phase 3: Physics (fixed timestep) ───────────────────────────────────
     {
@@ -131,7 +138,7 @@ void SceneManager::Update(float dt, physics::World& world)
                 ++steps;
             }
         }
-        if (steps >= 2) FBZZ_PROFILE_MARKER(PhysicsStepCountMarkerName(steps));
+        if (const char* marker = PhysicsStepCountMarkerName(steps)) FBZZ_PROFILE_MARKER(marker);
     }
 
     // ── Phase 4: Transform (physics writeback) ──────────────────────────────
