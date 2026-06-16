@@ -147,21 +147,19 @@ void Script::TickFrameDelays()
 {
     if (m_frameDelays.empty()) return;
 
-    for (auto& entry : m_frameDelays) {
+    // Swap out so fn() callbacks can safely call FrameDelay() without invalidating our iterator.
+    std::vector<FrameDelayEntry> current;
+    current.swap(m_frameDelays);
+
+    for (auto& entry : current) {
         if (entry.canceled) continue;
         if (entry.remainingFrames > 0) {
             --entry.remainingFrames;
+            m_frameDelays.push_back(std::move(entry));
             continue;
         }
-        auto fn = entry.fn;
-        entry.canceled = true;
-        if (fn) fn();
+        if (entry.fn) entry.fn();
     }
-
-    m_frameDelays.erase(
-        std::remove_if(m_frameDelays.begin(), m_frameDelays.end(),
-            [](const FrameDelayEntry& entry) { return entry.canceled; }),
-        m_frameDelays.end());
 }
 
 void Script::CancelEventSubscriptions()

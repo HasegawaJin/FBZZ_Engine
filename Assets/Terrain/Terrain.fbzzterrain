@@ -1093,7 +1093,12 @@ heightData = [
     0.073572,
     0.059435
 ]
-materialPath = 'Assets/Materials/Terrain/Terrain.fzmat'
+layerMaterials = [
+    'Assets/Materials/Terrain/Layer0_Ground.fzmat',
+    'Assets/Materials/Terrain/Layer1_Grass.fzmat',
+    'Assets/Materials/Terrain/Layer2_Sand.fzmat',
+    'Assets/Materials/Terrain/Layer3_Rock.fzmat'
+]
 maxHeight = 10.0
 rows = 33
 splatData = [

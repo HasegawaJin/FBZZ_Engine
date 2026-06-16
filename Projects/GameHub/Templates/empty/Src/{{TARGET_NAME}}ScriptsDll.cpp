@@ -17,6 +17,7 @@
 
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/ScriptDllAbi.hpp>
 #include <functional>
 #include <memory>
 #include <string>
@@ -50,6 +51,12 @@ const std::vector<ScriptEntry>& AllEntries()
 } // namespace
 
 extern "C" {
+
+// ホストと DLL の型レイアウトが一致する場合だけ ScriptFactory 登録を許可する。
+GAMESCRIPTS_API uint64_t FBZZScripts_GetAbiSignature()
+{
+    return fbzz::scene::GetScriptDllAbiSignature();
+}
 
 GAMESCRIPTS_API int FBZZScripts_Count()
 {

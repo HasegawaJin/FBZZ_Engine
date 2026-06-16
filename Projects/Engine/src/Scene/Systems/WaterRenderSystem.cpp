@@ -707,6 +707,10 @@ void WaterRenderSystem(
 
         EntityID eid = FindEntityForWater(scene, water);
         if (!scene.IsValid(eid)) continue;
+        {
+            const auto* go = scene.GetGameObject(eid);
+            if (!go || !go->activeInHierarchy()) continue;
+        }
 
         // fzmat を解決する。毎フレーム GetMaterial を呼ぶが AssetManager 側でキャッシュされる。
         const asset::MaterialAsset* mat = nullptr;

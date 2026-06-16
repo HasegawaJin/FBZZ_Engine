@@ -61,7 +61,7 @@ void AdvanceTween(float& elapsed, float duration, bool loop, float dt, bool& act
 
 void ProcessGO(GameObject& go, float dt)
 {
-    if (!go.activeSelf()) return;
+    if (!go.activeInHierarchy()) return;
 
     auto* anim  = go.GetComponent<UIAnimator>();
     auto* image = go.GetComponent<UIImage>();

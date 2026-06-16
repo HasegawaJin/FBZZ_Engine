@@ -6,6 +6,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Math/Matrix4.hpp>
@@ -99,6 +100,33 @@ void TerrainTool::Update(
             case Mode::Sculpt:
                 ApplySculpt(*terrainComp, hitLocal, dt);
                 terrainComp->heightDirty = true;
+                // グリッド隣接 Terrain にもブラシを伝播する。
+                // WHY: ブラシがエッジをまたいだときに隣の heightData にも同じデルタを書かないと
+                //      スカルプト後の継ぎ目にスパイクが残る。
+                {
+                    auto grids = scene.GetComponents<scene::TerrainGridComponent>();
+                    if (!grids.empty()) {
+                        auto* grid = grids.front();
+                        int gx = 0, gz = 0;
+                        if (grid->TryGetGridPos(m_hitTerrain->GetID(), gx, gz)) {
+                            const int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+                            for (auto& d : dirs) {
+                                const scene::EntityID neid = grid->GetCell(gx + d[0], gz + d[1]);
+                                if (!scene.IsValid(neid)) continue;
+                                auto* ngo      = scene.GetGameObject(neid);
+                                auto* nterrain = scene.GetComponent<scene::TerrainComponent>(neid);
+                                if (!ngo || !nterrain || nterrain->heightData.empty()) continue;
+                                const math::Vector3 hitLocalN = {
+                                    m_hitPoint.x - ngo->transform.position.x,
+                                    m_hitPoint.y - ngo->transform.position.y,
+                                    m_hitPoint.z - ngo->transform.position.z
+                                };
+                                ApplySculpt(*nterrain, hitLocalN, dt);
+                                nterrain->heightDirty = true;
+                            }
+                        }
+                    }
+                }
                 break;
             case Mode::Paint:
                 // splatData が空なら layer0=255 で初期化してから塗る

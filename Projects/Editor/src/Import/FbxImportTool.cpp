@@ -28,7 +28,7 @@ namespace {
 // WHY: MakeLeftHanded + FlipWindingOrder は既存の ModelImporter と同じ設定。
 //      エンジンは DirectX 左手系のため右手系 FBX をここで変換する。
 //      FlipUVs は DirectX の UV 原点 (左上) に合わせるため必要。
-constexpr unsigned int kImportFlags =
+constexpr unsigned int kBaseImportFlags =
     aiProcess_Triangulate            |
     aiProcess_GenSmoothNormals       |
     aiProcess_CalcTangentSpace       |
@@ -38,6 +38,14 @@ constexpr unsigned int kImportFlags =
     aiProcess_MakeLeftHanded         |
     aiProcess_FlipWindingOrder       |
     aiProcess_FlipUVs;
+
+// WHY: 静的メッシュはノード階層のルート回転 (座標系補正) やスケールが
+//      ノード変換に埋め込まれている場合がある。PreTransformVertices で
+//      それらを頂点座標にベイクしないと、ModelImporter (FBX 直接ロード) と
+//      fzasset 経由のロードでポーズが 90° ずれたりスケールが 1/100 になる。
+//      スキンメッシュには適用しない (ボーン割り当てが壊れるため)。
+constexpr unsigned int kStaticImportFlags =
+    kBaseImportFlags | aiProcess_PreTransformVertices;
 
 // FBX メタデータから unitScale (メートル換算係数) を取得する。
 // Assimp が "UnitScaleFactor" を持っていれば採用し、なければ 0.01 (cm→m) をデフォルトとする。
@@ -73,13 +81,13 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 {
     FBZZ_LOG_INFO("FbxImportTool: begin [%s] → [%s]", fbxPath.c_str(), outputDir.c_str());
 
-    // ── Assimp でパース ───────────────────────────────────────────────────
-    Assimp::Importer importer;
+    // ── Assimp でパース (第 1 パス: スキニング検出 + アニメーション用) ─────
     // WHY: false にすることで FBX の Pivot/PreRotation 補助ノード ($AssimpFbx$_xxx) を
     //      通常ノードのローカル変換に畳み込む。ModelImporter と同じ設定にしないと
     //      メッシュ FBX とモーション専用 FBX でノード名・階層がずれてアニメーションが壊れる。
+    Assimp::Importer importer;
     importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
-    const aiScene* scene = importer.ReadFile(fbxPath, kImportFlags);
+    const aiScene* scene = importer.ReadFile(fbxPath, kBaseImportFlags);
     if (!scene || !scene->mRootNode) {
         FBZZ_LOG_ERROR("FbxImportTool: Assimp parse failed [%s]: %s",
                         fbxPath.c_str(), importer.GetErrorString());
@@ -100,8 +108,24 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     const fs::path fbxFsPath = util::FileSystem::PathFromUtf8(fbxPath);
     const std::string fbxDir   = util::FileSystem::PathToUtf8(fbxFsPath.parent_path());
     const std::string baseName = util::FileSystem::PathToUtf8(fbxFsPath.stem());
-    const float       unitScale = ReadUnitScale(scene);
-    const bool        hasSkin   = HasSkinning(scene);
+    const bool        hasSkin  = HasSkinning(scene);
+
+    // ── 静的メッシュ用: 第 2 パス (PreTransformVertices でノード変換をベイク) ─
+    // WHY: スキンメッシュはボーン階層が必要なため PreTransformVertices を使わない。
+    //      静的メッシュのみ再ロードし、ノード回転・スケールを頂点座標に焼き込む。
+    Assimp::Importer staticImporter;
+    const aiScene* meshScene = scene;
+    if (!hasSkin) {
+        staticImporter.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+        meshScene = staticImporter.ReadFile(fbxPath, kStaticImportFlags);
+        if (!meshScene || !meshScene->mRootNode) {
+            FBZZ_LOG_ERROR("FbxImportTool: static reimport failed [%s]: %s",
+                            fbxPath.c_str(), staticImporter.GetErrorString());
+            return false;
+        }
+    }
+
+    const float unitScale = ReadUnitScale(meshScene);
 
     // ── 出力ディレクトリを作成 ────────────────────────────────────────────
     const fs::path outDirPath = util::FileSystem::PathFromUtf8(outputDir);
@@ -134,19 +158,19 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     struct Guard { std::function<void()> fn; ~Guard() { fn(); } } guard{ cleanup };
 
     // ── マテリアル ────────────────────────────────────────────────────────
-    MaterialCache matCache(scene->mNumMaterials);
+    MaterialCache matCache(meshScene->mNumMaterials);
     FzAssetManifest manifest;
     manifest.unitScale  = unitScale;
     manifest.sourceHint = sourceHint.empty() ? fbxPath : sourceHint;
 
     // ── メッシュ ──────────────────────────────────────────────────────────
-    for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
-        const aiMesh* mesh     = scene->mMeshes[mi];
+    for (uint32_t mi = 0; mi < meshScene->mNumMeshes; ++mi) {
+        const aiMesh* mesh     = meshScene->mMeshes[mi];
         const bool    skinned  = mesh->HasBones();
         const std::string meshPath =
             util::FileSystem::PathToUtf8(meshDir / ("mesh_" + std::to_string(mi) + ".fzmesh"));
 
-        if (!FzMeshExporter::Export(mesh, scene, unitScale, skinned, meshPath)) {
+        if (!FzMeshExporter::Export(mesh, meshScene, unitScale, skinned, meshPath)) {
             FBZZ_LOG_ERROR("FbxImportTool: mesh export failed [%u]", mi);
             return false;
         }
@@ -158,10 +182,10 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
         // 対応マテリアル
         const uint32_t matIdx = mesh->mMaterialIndex;
-        if (matIdx < scene->mNumMaterials && matCache.paths[matIdx].empty()) {
+        if (matIdx < meshScene->mNumMaterials && matCache.paths[matIdx].empty()) {
             const std::string matPath =
                 util::FileSystem::PathToUtf8(matDir / ("mat_" + std::to_string(matIdx) + ".fzmat"));
-            if (!FzMaterialExporter::Export(scene->mMaterials[matIdx], scene,
+            if (!FzMaterialExporter::Export(meshScene->mMaterials[matIdx], meshScene,
                                              fbxDir, util::FileSystem::PathToUtf8(texDir), matPath, skinned)) {
                 FBZZ_LOG_ERROR("FbxImportTool: material export failed [%u]", matIdx);
                 return false;
@@ -170,7 +194,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
                 util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(matPath), manifestDirPath));
         }
         manifest.materialPaths.push_back(
-            matIdx < scene->mNumMaterials ? matCache.paths[matIdx] : std::string{});
+            matIdx < meshScene->mNumMaterials ? matCache.paths[matIdx] : std::string{});
     }
 
     // ── スケルトン ────────────────────────────────────────────────────────

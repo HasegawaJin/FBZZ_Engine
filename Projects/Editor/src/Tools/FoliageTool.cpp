@@ -120,7 +120,8 @@ void FoliageTool::ApplySpeciesState(
     if (!foliage || speciesIndex >= foliage->species.size())
         return;
     foliage->species[speciesIndex] = state;
-    foliage->needsBake = true;
+    foliage->needsBake         = true;
+    foliage->needsBakeChildren = true;
     if (markDirty)
         markDirty();
 }
@@ -385,11 +386,44 @@ void FoliageTool::DrawContent(scene::Scene& scene)
             }
             if (selected) {
                 ImGui::Indent();
-                ImGui::TextDisabled("Stamps: %zu", species.stamps.size());
+                ImGui::TextDisabled("Stamps: %zu  |  Child GOs: %zu",
+                    species.stamps.size(), foliage->childEntities.size());
                 if (species.placementMode != scene::FoliagePlacementMode::STAMP)
                     ImGui::TextColored(
                         { 1.0f, 0.75f, 0.25f, 1.0f },
                         "First click switches this Species to Stamp mode.");
+
+                // コライダー設定 (STAMP モード専用)
+                auto* editSpecies = &foliage->species[index];
+                ImGui::Spacing();
+                ImGui::Spacing();
+                ImGui::SeparatorText("Collider (Box / OBB)");
+                if (ImGui::Checkbox("Enabled##col", &editSpecies->colliderEnabled))
+                    foliage->needsBake = foliage->needsBakeChildren = true;
+                if (editSpecies->colliderEnabled) {
+                    if (ImGui::Checkbox("Manual Override##colManual", &editSpecies->colliderManual))
+                        foliage->needsBake = foliage->needsBakeChildren = true;
+                    if (editSpecies->colliderManual) {
+                        ImGui::SetNextItemWidth(120.0f);
+                        if (ImGui::DragFloat("Half Width##colW", &editSpecies->colliderHalfWidth,
+                                             0.01f, 0.01f, 10.0f, "%.2f"))
+                            foliage->needsBake = foliage->needsBakeChildren = true;
+                        ImGui::SetNextItemWidth(120.0f);
+                        if (ImGui::DragFloat("Half Height##colH", &editSpecies->colliderHalfHeight,
+                                             0.05f, 0.01f, 50.0f, "%.2f"))
+                            foliage->needsBake = foliage->needsBakeChildren = true;
+                    } else {
+                        ImGui::TextDisabled("Box size auto-calculated from model AABB");
+                    }
+                    ImGui::Spacing();
+                    ImGui::SetNextItemWidth(120.0f);
+                    if (ImGui::DragFloat("Cull Distance##cullDist",
+                                         &editSpecies->colliderCullDistance,
+                                         1.0f, 0.0f, 500.0f, "%.0f m"))
+                        foliage->needsBake = foliage->needsBakeChildren = true;
+                    if (editSpecies->colliderCullDistance <= 0.0f)
+                        ImGui::TextDisabled("0 = no distance culling");
+                }
                 ImGui::Unindent();
             }
             ImGui::PopID();
