@@ -127,6 +127,18 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 ImGui::Spacing();
             }
 
+            // ── ハイトマップ初期化 ────────────────────────────────────────────────
+            ImGui::SeparatorText("Heightmap");
+            if (tc.heightData.empty()) {
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.1f, 1.0f), "Not initialized");
+                ImGui::SameLine();
+            }
+            if (ImGui::Button("Initialize Flat")) {
+                tc.InitFlat(0.0f);
+                tc.heightDirty  = true;
+                tc.colliderDirty = true;
+            }
+
             // ── コライダー ─────────────────────────────────────────────────────
             ImGui::SeparatorText("Collider");
             if (ImGui::Button("Rebuild Collider Now")) {
