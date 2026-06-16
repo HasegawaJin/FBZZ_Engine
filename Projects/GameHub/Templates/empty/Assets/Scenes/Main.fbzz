@@ -2028,15 +2028,12 @@ name = 'Terrain'
 parent = ''
 tag = 'Untagged'
 
-    [gameobjects.MeshColliderComponent]
+    [gameobjects.TerrainColliderComponent]
     center = [ 0.0, 0.0, 0.0 ]
     enabled = true
     isTrigger = false
-    meshIndex = 0
-    meshPath = ''
-    useTransformScale = true
 
-        [gameobjects.MeshColliderComponent.material]
+        [gameobjects.TerrainColliderComponent.material]
         density = 1.0
         dynamicFriction = 0.4
         restitution = 0.3
