@@ -2464,6 +2464,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         }
 
         // NavMeshSurfaceComponent — 新キー優先、旧 NavMeshVolumeComponent キーは後方互換読み込み。
+        // collectObjects=0 は旧 AllSceneObjects → 新 ThisObject と同じ整数値なので自動移行される。
         // navMesh は Bake で再生成するため needsBake=true で登録し非保存。
         {
             const toml::table* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table();
