@@ -90,12 +90,12 @@ tag = 'Player'
     clipName = ''
     controllerPath = 'Assets/Animation/Player.fbzzanimcontroller'
     clipSources = [
-        'Assets/Models/DebugCharacter/Idle/Idle.fzasset',
-        'Assets/Models/DebugCharacter/Walking/Walking.fzasset',
-        'Assets/Models/DebugCharacter/Running/Running.fzasset',
-        'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.fzasset',
-        'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.fzasset',
-        'Assets/Models/DebugCharacter/Landing/Landing.fzasset'
+        'Assets/Models/DebugCharacter/Idle/Idle.asset',
+        'Assets/Models/DebugCharacter/Walking/Walking.asset',
+        'Assets/Models/DebugCharacter/Running/Running.asset',
+        'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.asset',
+        'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.asset',
+        'Assets/Models/DebugCharacter/Landing/Landing.asset'
     ]
     defaultStateName = 'Idle'
     enabled = true
@@ -477,7 +477,7 @@ tag = 'Player'
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
     meshIndex = 0
-    modelPath = 'Assets/Models/DebugCharacter/Player/Player.fzasset'
+    modelPath = 'Assets/Models/DebugCharacter/Player/Player.asset'
 
     [gameobjects.transform]
     localPosition = [ -2.866464, 1.486121, 7.841068 ]
@@ -2047,7 +2047,7 @@ tag = 'Untagged'
     materialPath = 'Assets/Materials/Terrain/Terrain.fzmat'
     maxHeight = 10.0
     rows = 33
-    terrainAssetPath = 'Assets/Terrain/Terrain.fbzzterrain'
+    terrainAssetPath = 'Assets/Terrain/Terrain.terrain'
 
     [gameobjects.transform]
     localPosition = [ -32.07774, 0.0, -6.031532 ]

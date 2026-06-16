@@ -122,6 +122,23 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         ImGui::SameLine();
     }
 
+    // Overlays ▼ ドロップダウン
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+    if (ImGui::SmallButton("Overlays \xe2\x96\xbc"))
+        ImGui::OpenPopup("##overlays_popup");
+    ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Toggle scene overlay visibility");
+
+    if (ImGui::BeginPopup("##overlays_popup")) {
+        ImGui::Checkbox("Grid",        &ctx.showGrid);
+        ImGui::Checkbox("Light Range", &ctx.showLightRange);
+        ImGui::Checkbox("Colliders",   &ctx.showColliders);
+        ImGui::Checkbox("Skeleton",    &ctx.showSkeleton);
+        ImGui::Checkbox("Stats",       &ctx.showStats);
+        ImGui::EndPopup();
+    }
+
     ImGui::PopStyleVar(2);
 }
 
@@ -240,11 +257,84 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
         DrawOrientationGizmo(ctx, viewportMin, size);
 
+        // ── Snap インジケーター (ツールバー右隣、ON 時のみ) ─────────────────
+        if (ctx.snapEnabled) {
+            char snapBuf[32];
+            if (ctx.gizmoMode == EditorContext::GizmoMode::Rotate)
+                std::snprintf(snapBuf, sizeof(snapBuf), " ROT %.1f\xc2\xb0 ", ctx.snapRot);
+            else if (ctx.gizmoMode == EditorContext::GizmoMode::Scale)
+                std::snprintf(snapBuf, sizeof(snapBuf), " SCL %.2f ", ctx.snapScale);
+            else
+                std::snprintf(snapBuf, sizeof(snapBuf), " POS %.2f ", ctx.snapPos);
+            const ImVec2 tsz = ImGui::CalcTextSize(snapBuf);
+            const ImVec2 p   = { viewportMin.x + 6.0f, viewportMin.y + 6.0f +
+                                  ImGui::GetFrameHeight() + 4.0f };
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled({ p.x - 2, p.y - 1 },
+                              { p.x + tsz.x + 2, p.y + tsz.y + 1 },
+                              IM_COL32(20, 80, 120, 200), 3.0f);
+            dl->AddText(p, IM_COL32(100, 220, 255, 255), snapBuf);
+        }
+
+        // ── カメラブックマーク HUD (オリエンテーションギズモ下) ─────────────
+        {
+            constexpr float kSlotSz  = 18.0f;
+            constexpr float kSlotGap = 2.0f;
+            constexpr float kGizmoBottom = 8.0f + 120.0f + 6.0f; // margin + gizmo + gap
+            const float rowW = 9.0f * (kSlotSz + kSlotGap) - kSlotGap;
+            const ImVec2 rowStart = {
+                viewportMin.x + size.x - rowW - 8.0f,
+                viewportMin.y + kGizmoBottom
+            };
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const bool shiftHeld = ImGui::IsKeyDown(ImGuiKey_LeftShift)
+                                || ImGui::IsKeyDown(ImGuiKey_RightShift);
+            for (int i = 0; i < 9; ++i) {
+                const bool valid = ctx.cameraBookmarks[i].valid;
+                const ImVec2 p = { rowStart.x + i * (kSlotSz + kSlotGap), rowStart.y };
+                const ImU32 bg  = valid
+                    ? (shiftHeld ? IM_COL32(200, 120, 30,  200) : IM_COL32(60, 160, 60, 200))
+                    : (shiftHeld ? IM_COL32(120, 60,  10,  140) : IM_COL32(25, 25,  25, 140));
+                const ImU32 txt = valid ? IM_COL32(220, 255, 220, 255) : IM_COL32(120, 120, 120, 200);
+                dl->AddRectFilled(p, { p.x + kSlotSz, p.y + kSlotSz }, bg, 3.0f);
+                dl->AddRect(p, { p.x + kSlotSz, p.y + kSlotSz },
+                            IM_COL32(80, 80, 80, 160), 3.0f);
+                char label[2] = { static_cast<char>('1' + i), '\0' };
+                const ImVec2 tsz = ImGui::CalcTextSize(label);
+                dl->AddText({ p.x + (kSlotSz - tsz.x) * 0.5f,
+                               p.y + (kSlotSz - tsz.y) * 0.5f }, txt, label);
+            }
+        }
+
         // F: focus the editor camera on the selected object when the Scene viewport has keyboard focus.
         if (ctx.viewportFocused && input::Input::KeyDown(input::KeyCode::F)) {
             if (auto* go = ctx.GetSelectedGO()) {
                 ctx.focusTargetPosition    = go->transform.position;
                 ctx.requestFocusOnSelected = true;
+            }
+        }
+
+        // Camera bookmarks: Shift+1~9 to save, 1~9 to recall.
+        if (ctx.viewportFocused && ctx.editorCamera) {
+            static const ImGuiKey kNumKeys[9] = {
+                ImGuiKey_1, ImGuiKey_2, ImGuiKey_3,
+                ImGuiKey_4, ImGuiKey_5, ImGuiKey_6,
+                ImGuiKey_7, ImGuiKey_8, ImGuiKey_9
+            };
+            const bool shiftHeld = ImGui::IsKeyDown(ImGuiKey_LeftShift)
+                                || ImGui::IsKeyDown(ImGuiKey_RightShift);
+            for (int i = 0; i < 9; ++i) {
+                if (!ImGui::IsKeyPressed(kNumKeys[i])) continue;
+                auto& bm = ctx.cameraBookmarks[i];
+                if (shiftHeld) {
+                    bm.position = ctx.editorCamera->m_position;
+                    bm.rotation = ctx.editorCamera->m_rotation;
+                    bm.valid    = true;
+                } else if (bm.valid) {
+                    ctx.requestTeleportCamera = true;
+                    ctx.teleportPosition      = bm.position;
+                    ctx.teleportRotation      = bm.rotation;
+                }
             }
         }
     }

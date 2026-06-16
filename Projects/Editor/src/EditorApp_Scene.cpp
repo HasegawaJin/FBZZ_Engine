@@ -28,14 +28,14 @@ namespace fbzz::editor {
 
 namespace {
 
-const FileFilter SCENE_FILTER{ "FBZZ Scene", "*.fbzz" };
+const FileFilter SCENE_FILTER{ "Scene", "*.scene" };
 constexpr float HOT_RELOAD_TREE_POLL_INTERVAL = 0.5f;
 
-// 拡張子がなければ ".fbzz" を付与する
+// 拡張子がなければ ".scene" を付与する
 std::string WithFbzzExtension(const std::string& path)
 {
     if (path.empty() || !util::FileSystem::GetExtension(path).empty()) return path;
-    return path + ".fbzz";
+    return path + ".scene";
 }
 
 // FILETIME が未初期化のゼロ値かどうかを判定する。
@@ -209,6 +209,7 @@ void EditorApp::NewScene()
     m_undoStack.Clear();
     m_ctx.selectedEntities.clear();
     m_ctx.graphLayouts.clear();
+    m_ctx.editorHiddenGuids.clear();
     RebuildEditorUIFromScene();
     m_settings.lastScenePath.clear();
     m_ctx.currentScenePath.clear();
@@ -261,6 +262,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_ctx.currentScenePath = path;
     GraphLayoutSerializer::Load(m_ctx.graphLayouts, path);
     m_ctx.selectedEntities.clear();
+    m_ctx.editorHiddenGuids.clear();
     RebuildEditorUIFromScene();
     CaptureCleanScene();
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
@@ -276,7 +278,10 @@ bool EditorApp::SaveScene()
     if (!m_ctx.activeScene) return false;
     if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog();
 
-    if (!SceneIO::Save(*m_ctx.activeScene, m_settings.lastScenePath)) {
+    RemoveEditorHiding();
+    const bool ok = SceneIO::Save(*m_ctx.activeScene, m_settings.lastScenePath);
+    RestoreEditorHiding();
+    if (!ok) {
         FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
         return false;
     }
@@ -297,7 +302,10 @@ bool EditorApp::SaveSceneAsDialog()
     if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
     path = WithFbzzExtension(path);
 
-    if (!SceneIO::Save(*m_ctx.activeScene, path)) {
+    RemoveEditorHiding();
+    const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
+    RestoreEditorHiding();
+    if (!ok) {
         FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
         return false;
     }
@@ -863,6 +871,29 @@ void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std
     m_ctx.hotReloadState   = state;
     m_ctx.hotReloadMessage = msg;
     if (!msg.empty()) FBZZ_LOG_INFO("[HotReload] %s", msg.c_str());
+}
+
+// =============================================================================
+// エディタ専用非表示の一時解除 / 再適用
+// =============================================================================
+
+void EditorApp::RemoveEditorHiding()
+{
+    if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) return;
+    for (const auto& [guid, wasActive] : m_ctx.editorHiddenGuids) {
+        if (auto* go = m_ctx.activeScene->FindByGuid(guid))
+            go->SetActive(wasActive);  // 非表示前の状態を復元
+    }
+}
+
+void EditorApp::RestoreEditorHiding()
+{
+    if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) return;
+    for (const auto& [guid, wasActive] : m_ctx.editorHiddenGuids) {
+        (void)wasActive;
+        if (auto* go = m_ctx.activeScene->FindByGuid(guid))
+            go->SetActive(false);
+    }
 }
 
 } // namespace fbzz::editor
