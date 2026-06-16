@@ -381,18 +381,36 @@ void NavMeshDebugDrawSystem(Scene& scene,
         if (!surface || !go || !surface->enabled) continue;
 
         if (surface->needsBake || !surface->navMesh.IsValid()) {
-            // 未 Bake: オレンジ色の実線ボックスで範囲を目立たせる
+            // 未 Bake: オレンジ色の実線ボックスで範囲を目立たせる。
+            // ThisObject モードは surface->size が無意味なので GO の TerrainComponent 範囲を使う。
             const math::Vector4 pendingColor = { 1.0f, 0.55f, 0.05f, 0.85f };
-            renderer::DebugDraw::Box(renderer, go->transform.worldPosition, surface->size * 0.5f, pendingColor);
+            if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
+                if (auto* tc = scene.GetComponent<TerrainComponent>(eid)) {
+                    const float hw = static_cast<float>(tc->columns - 1) * tc->cellSize * 0.5f;
+                    const float hd = static_cast<float>(tc->rows    - 1) * tc->cellSize * 0.5f;
+                    const math::Vector3 center = go->transform.worldPosition
+                                               + math::Vector3(hw, 0.0f, hd);
+                    renderer::DebugDraw::Box(renderer, center,
+                                             { hw, tc->maxHeight * 0.5f, hd }, pendingColor);
+                } else {
+                    renderer::DebugDraw::Box(renderer, go->transform.worldPosition,
+                                             surface->size * 0.5f, pendingColor);
+                }
+            } else {
+                renderer::DebugDraw::Box(renderer, go->transform.worldPosition,
+                                         surface->size * 0.5f, pendingColor);
+            }
         } else {
-            // Bake 済み: 薄い青の塗りつぶし + アウトライン
-            // AllSceneObjects モードでは volume->size に意味がないためボックス枠は非表示
-            constexpr math::Vector4 kFillColor = { 0.12f, 0.35f, 0.90f, 0.30f };
+            // Bake 済み: 青の塗りつぶし + アウトライン
+            // Volume モードのみバウンドボックスを追加表示する。
+            constexpr math::Vector4 kFillColor = { 0.12f, 0.45f, 0.95f, 0.45f };
             if (surface->collectObjects == NavMeshCollectObjects::Volume) {
                 const math::Vector4 boundsColor = { polygonColor.x, polygonColor.y, polygonColor.z, 0.25f };
-                renderer::DebugDraw::Box(renderer, go->transform.worldPosition, surface->size * 0.5f, boundsColor);
+                renderer::DebugDraw::Box(renderer, go->transform.worldPosition,
+                                         surface->size * 0.5f, boundsColor);
             }
-            constexpr float kLift = 0.02f; // z-fight 回避
+            // WHY: kLift を大きめに取ってテレイン面との z-fight を確実に回避する。
+            constexpr float kLift = 0.08f;
             for (const auto& poly : surface->navMesh.polygons) {
                 const size_t n = poly.vertices.size();
                 std::vector<math::Vector3> lifted(n);
