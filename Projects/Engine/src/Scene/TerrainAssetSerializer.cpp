@@ -48,7 +48,10 @@ toml::table WriteTerrainData(const TerrainComponent& tc)
     terrainTbl.insert("cellSize",     static_cast<double>(tc.cellSize));
     terrainTbl.insert("maxHeight",    static_cast<double>(tc.maxHeight));
     terrainTbl.insert("chunkSize",    static_cast<int64_t>(tc.chunkSize));
-    terrainTbl.insert("materialPath", tc.materialPath);
+    toml::array layerMatArr;
+    for (const auto& p : tc.layerMaterials)
+        layerMatArr.push_back(p);
+    terrainTbl.insert("layerMaterials", std::move(layerMatArr));
 
     // WHAT: heightData は正負の正規化高さ [-1, 1] をそのまま保存する。
     // WHY: maxHeight を変更しても元データの相対形状を保てるため、編集途中の Terrain を再利用しやすい。
@@ -72,7 +75,10 @@ bool ReadTerrainData(const toml::table& terrainTbl, TerrainComponent& tc)
     tc.cellSize     = static_cast<float>(terrainTbl["cellSize"].value_or(1.0));
     tc.maxHeight    = static_cast<float>(terrainTbl["maxHeight"].value_or(30.0));
     tc.chunkSize    = static_cast<int>(terrainTbl["chunkSize"].value_or(int64_t{32}));
-    tc.materialPath = terrainTbl["materialPath"].value_or(std::string{});
+    if (const auto* layerArr = terrainTbl["layerMaterials"].as_array()) {
+        for (int li = 0; li < 4 && li < static_cast<int>(layerArr->size()); ++li)
+            tc.layerMaterials[li] = (*layerArr)[li].value_or(std::string{});
+    }
 
     tc.heightData.clear();
     if (auto* heightArr = terrainTbl["heightData"].as_array()) {

@@ -5,9 +5,9 @@
 
 namespace fbzz::editor {
 
-// TerrainComponent を追加・初期化するときに使う標準 Material パスを返す。
+// Terrain レイヤー [0-3] の既定 Material パスを返す。
 // WHY: InspectorPanel にパス文字列を散らすと、アセット構成変更時に見落としやすいため。
-[[nodiscard]] const char* DefaultTerrainMaterialPath();
+[[nodiscard]] const char* DefaultTerrainLayerMaterialPath(int layerIndex);
 
 // WaterComponent を追加・初期化するときに使う標準 Material パスを返す。
 // WHY: Water.fzmat の場所を UI 実装から分離し、テンプレート/生成処理と共有しやすくするため。

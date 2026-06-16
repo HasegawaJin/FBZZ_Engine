@@ -27,6 +27,7 @@
 #include "Components/IKSolverComponent.hpp"
 #include "Components/CharacterControllerComponent.hpp"
 #include "Components/TerrainComponent.hpp"
+#include "Components/TerrainGridComponent.hpp"
 #include "Components/TerrainDetailComponent.hpp"
 #include "Components/FoliageComponent.hpp"
 #include "Components/WaterComponent.hpp"
@@ -48,6 +49,7 @@ using ComponentList = std::tuple<
     CapsuleColliderComponent,
     MeshColliderComponent,
     ConvexHullColliderComponent,
+    TerrainColliderComponent,
     RigidBodyComponent,
     VolumeComponent,
     LightComponent,
@@ -68,6 +70,7 @@ using ComponentList = std::tuple<
     IKSolverComponent,
     CharacterControllerComponent,
     TerrainComponent,
+    TerrainGridComponent,
     TerrainDetailComponent,
     FoliageComponent,
     WaterComponent,

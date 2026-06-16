@@ -35,6 +35,7 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
+#include "Engine/Scene/Components/TerrainGridComponent.hpp"
 #include "Engine/Scene/Entity.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Renderer/Camera.hpp"
@@ -125,7 +126,16 @@ struct TerrainTextures {
 };
 
 static std::unordered_map<TerrainChunkKey, TerrainChunk> g_chunkCache;
-static std::unordered_map<uint32_t, TerrainTextures> g_texCache;
+static std::unordered_map<uint32_t, TerrainTextures>    g_texCache;
+
+// グリッド隣接 Terrain 参照。BuildChunk がエッジ頂点の高さを合わせるために使う。
+// nullptr = 隣が存在しない or グリッド未登録
+struct TerrainNeighbors {
+    const TerrainComponent* north = nullptr; // gz - 1 (Z 負方向)
+    const TerrainComponent* south = nullptr; // gz + 1 (Z 正方向)
+    const TerrainComponent* west  = nullptr; // gx - 1 (X 負方向)
+    const TerrainComponent* east  = nullptr; // gx + 1 (X 正方向)
+};
 
 // =============================================================================
 // 定数バッファ構造体 — HLSL 側と完全に一致させること
@@ -155,15 +165,21 @@ struct TerrainObjectCB {
 };
 static_assert(sizeof(TerrainObjectCB) == 416, "TerrainObjectCB size mismatch");
 
+// マテリアルパラメータキャッシュ: entity index → TerrainObjectCB の静的部分
+// splatDirty が立ったときに一緒に無効化する（マテリアル変更を検知）。
+static std::unordered_map<uint32_t, TerrainObjectCB> g_cbParamCache;
+
 // =============================================================================
 // チャンクメッシュ生成
 // =============================================================================
 
 // 頂点のみ生成。インデックスは BuildChunkLODIndices で別途生成する。
+// neighbors: グリッド隣接 Terrain。エッジ頂点の高さを隣接 Terrain と平均して継ぎ目を消す。
 static void BuildChunk(
     const TerrainComponent&      terrain,
     int                          cx,
     int                          cz,
+    const TerrainNeighbors&      neighbors,
     std::vector<TerrainVertex>&  outVerts,
     math::Vector3&               outAabbMin,
     math::Vector3&               outAabbMax,
@@ -184,7 +200,33 @@ static void BuildChunk(
         for (int x = outX0; x <= outX1; ++x) {
             const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
                              + static_cast<size_t>(x);
-            const float h = terrain.heightData[idx] * terrain.maxHeight;
+            float h = terrain.heightData[idx] * terrain.maxHeight;
+
+            // エッジ頂点: 隣接 Terrain の対応頂点と平均して継ぎ目を解消する。
+            // WHY: 両側の Terrain が同じ高さになるため GPU 上でギャップが生じない。
+            //      heightData の書き換えは行わず、レンダリング専用の調整とする。
+            if (x == 0 && neighbors.west && z < neighbors.west->rows) {
+                const float nh = neighbors.west->heightData[
+                    static_cast<size_t>(z) * static_cast<size_t>(neighbors.west->columns)
+                    + static_cast<size_t>(neighbors.west->columns - 1)] * neighbors.west->maxHeight;
+                h = (h + nh) * 0.5f;
+            } else if (x == terrain.columns - 1 && neighbors.east && z < neighbors.east->rows) {
+                const float nh = neighbors.east->heightData[
+                    static_cast<size_t>(z) * static_cast<size_t>(neighbors.east->columns)
+                    + 0] * neighbors.east->maxHeight;
+                h = (h + nh) * 0.5f;
+            }
+            if (z == 0 && neighbors.north && x < neighbors.north->columns) {
+                const float nh = neighbors.north->heightData[
+                    static_cast<size_t>(neighbors.north->rows - 1) * static_cast<size_t>(neighbors.north->columns)
+                    + static_cast<size_t>(x)] * neighbors.north->maxHeight;
+                h = (h + nh) * 0.5f;
+            } else if (z == terrain.rows - 1 && neighbors.south && x < neighbors.south->columns) {
+                const float nh = neighbors.south->heightData[
+                    static_cast<size_t>(0) * static_cast<size_t>(neighbors.south->columns)
+                    + static_cast<size_t>(x)] * neighbors.south->maxHeight;
+                h = (h + nh) * 0.5f;
+            }
 
             TerrainVertex v;
             v.position = {
@@ -254,6 +296,7 @@ static TerrainChunk& EnsureTerrainChunk(
     EntityID eid,
     int cx,
     int cz,
+    const TerrainNeighbors& neighbors,
     renderer::ResourceManager& resources)
 {
     const TerrainChunkKey key{ eid, static_cast<uint32_t>(cx), static_cast<uint32_t>(cz) };
@@ -261,7 +304,7 @@ static TerrainChunk& EnsureTerrainChunk(
         std::vector<TerrainVertex> verts;
         math::Vector3 aabbMin, aabbMax;
         int x0, z0, x1, z1;
-        BuildChunk(terrain, cx, cz, verts, aabbMin, aabbMax, x0, z0, x1, z1);
+        BuildChunk(terrain, cx, cz, neighbors, verts, aabbMin, aabbMax, x0, z0, x1, z1);
 
         TerrainChunk chunk;
         chunk.aabbMin = aabbMin;
@@ -357,12 +400,11 @@ static std::string TGetTex(const asset::MaterialAsset* m, const std::string& nam
     return {};
 }
 
-// エンティティのテクスチャセット（スプラットマップ + 4 レイヤーディフューズ）を構築する。
-// 未設定レイヤーには whiteTex をバインドして HLSL 側の分岐を排除する。
-// WHY: シェーダーは常に 4 レイヤー固定でブレンドする設計（[unroll] ループ効率化）。
-//      未設定レイヤーの splat ウェイトは 0 なので白テクスチャを掛けても寄与は 0 になる。
+// エンティティのテクスチャセット（スプラットマップ + 4 レイヤー）を構築する。
+// 各レイヤーは独立した MaterialAsset から diffuse/normal/ao_roughness を取得する。
+// 未設定レイヤーには白/フラット法線/黒テクスチャをバインドして HLSL 側の分岐を排除する。
 static TerrainTextures BuildTextureSet(
-    const asset::MaterialAsset* mat,
+    const std::array<const asset::MaterialAsset*, 4>& layerMats,
     const TerrainComponent&    terrain,
     renderer::ResourceManager& resources,
     renderer::ResourceHandle<renderer::TextureTag> splatFallback,
@@ -374,10 +416,9 @@ static TerrainTextures BuildTextureSet(
     ts.splatmap = BuildSplatmapTexture(terrain, resources, splatFallback);
 
     for (int i = 0; i < 4; ++i) {
-        char pfx[16]; snprintf(pfx, sizeof(pfx), "layer%d_", i);
-        const std::string diffusePath     = TGetTex(mat, std::string(pfx) + "diffuse");
-        const std::string normalPath      = TGetTex(mat, std::string(pfx) + "normal");
-        const std::string aoRoughnessPath = TGetTex(mat, std::string(pfx) + "ao_roughness");
+        const std::string diffusePath     = TGetTex(layerMats[i], "diffuse");
+        const std::string normalPath      = TGetTex(layerMats[i], "normal");
+        const std::string aoRoughnessPath = TGetTex(layerMats[i], "ao_roughness");
         ts.diffuse[i]     = diffusePath.empty()     ? whiteTex      : resources.LoadTexture(diffusePath);
         ts.normal[i]      = normalPath.empty()       ? flatNormalTex : resources.LoadTexture(normalPath);
         ts.aoRoughness[i] = aoRoughnessPath.empty()  ? blackTex      : resources.LoadTexture(aoRoughnessPath);
@@ -463,6 +504,9 @@ void TerrainRenderSystem(
         std::erase_if(g_texCache, [&validIndices](auto& kv) {
             return !validIndices.count(kv.first);
         });
+        std::erase_if(g_cbParamCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
     }
 
     // =========================================================================
@@ -505,6 +549,16 @@ void TerrainRenderSystem(
 
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
 
+    // TerrainGridComponent を取得（シーンに 1 つだけ存在する想定）
+    // WHY: GetComponents は vector を返すため毎フレームのヒープ確保を避けるよう
+    //      GetEntities (span) で先頭エンティティだけを引く。
+    TerrainGridComponent* terrainGrid = nullptr;
+    {
+        const auto gridEntities = scene.GetEntities<TerrainGridComponent>();
+        if (!gridEntities.empty())
+            terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
+    }
+
     // =========================================================================
     // TerrainComponent の走査と描画
     // =========================================================================
@@ -524,12 +578,35 @@ void TerrainRenderSystem(
             }
         }
         if (!scene.IsValid(eid)) continue;
+        {
+            const auto* go = scene.GetGameObject(eid);
+            if (!go || !go->activeInHierarchy()) continue;
+        }
 
-        // fzmat を解決する。毎フレーム GetMaterial を呼ぶが AssetManager 側でキャッシュされる。
-        const asset::MaterialAsset* mat = nullptr;
-        if (!terrain.materialPath.empty()) {
-            const auto handle = asset::AssetManager::LoadMaterial(terrain.materialPath);
-            mat = asset::AssetManager::GetMaterial(handle);
+        // グリッド上の位置を取得し隣接 Terrain を解決する
+        TerrainNeighbors neighbors;
+        if (terrainGrid) {
+            int gx = 0, gz = 0;
+            if (terrainGrid->TryGetGridPos(eid, gx, gz)) {
+                auto resolveNeighbor = [&](int ngx, int ngz) -> const TerrainComponent* {
+                    const EntityID neid = terrainGrid->GetCell(ngx, ngz);
+                    if (!scene.IsValid(neid)) return nullptr;
+                    return scene.GetComponent<TerrainComponent>(neid);
+                };
+                neighbors.north = resolveNeighbor(gx,     gz - 1);
+                neighbors.south = resolveNeighbor(gx,     gz + 1);
+                neighbors.west  = resolveNeighbor(gx - 1, gz);
+                neighbors.east  = resolveNeighbor(gx + 1, gz);
+            }
+        }
+
+        // 4 レイヤーの fzmat を解決する。毎フレーム GetMaterial を呼ぶが AssetManager 側でキャッシュされる。
+        std::array<const asset::MaterialAsset*, 4> layerMats = {};
+        for (int li = 0; li < 4; ++li) {
+            if (!terrain.layerMaterials[li].empty()) {
+                const auto handle = asset::AssetManager::LoadMaterial(terrain.layerMaterials[li]);
+                layerMats[li] = asset::AssetManager::GetMaterial(handle);
+            }
         }
 
         // -- heightDirty: 全チャンクを削除して再構築 ----------------------------
@@ -537,15 +614,63 @@ void TerrainRenderSystem(
             std::erase_if(g_chunkCache, [&eid](const auto& kv) {
                 return kv.first.entityId == eid;
             });
+            // 隣接 Terrain のエッジチャンクも再構築が必要なため、neighbors の heightDirty を立てる。
+            // WHY: エッジ頂点は隣接データを参照して構築されるため、
+            //      自身が変化したときに隣接のキャッシュも無効化しなければ継ぎ目が残る。
+            auto dirtyNeighbor = [&](const TerrainComponent* n) {
+                if (n) const_cast<TerrainComponent*>(n)->heightDirty = true;
+            };
+            dirtyNeighbor(neighbors.north);
+            dirtyNeighbor(neighbors.south);
+            dirtyNeighbor(neighbors.west);
+            dirtyNeighbor(neighbors.east);
             terrain.heightDirty = false;
         }
 
-        // -- splatDirty: スプラットマップ + レイヤーテクスチャを再構築 -----------
-        if (terrain.splatDirty || !g_texCache.contains(eid.index)) {
-            g_texCache[eid.index] = BuildTextureSet(mat, terrain, resources,
+        // CB パラメータ再構築ヘルパー（splatDirty / materialParamDirty 共用）
+        auto RebuildCBParams = [&]() {
+            TerrainObjectCB cb{};
+            float normalStr[4]           = { 1.0f, 1.0f, 1.0f, 1.0f };
+            float materialTextureFlags[4] = {};
+            for (int li = 0; li < 4; ++li) {
+                const asset::MaterialAsset* m = layerMats[li];
+                normalStr[li]            = TGetF(m, "normalStrength", 1.0f);
+                const bool hasAoTex      = m && m->textures.count("ao_roughness") &&
+                                           !m->textures.at("ao_roughness").empty();
+                materialTextureFlags[li] = hasAoTex ? 1.0f : 0.0f;
+                cb.layerTiling[li]      = { TGetF(m, "tilingX", 8.0f),
+                                            TGetF(m, "tilingZ", 8.0f), 0.0f, 0.0f };
+                cb.layerMaterial[li]    = { TGetF(m, "roughness",        0.8f),
+                                            TGetF(m, "ambientOcclusion", 1.0f), 0.0f, 0.0f };
+                cb.layerAutoHeight[li]  = { TGetF(m, "autoMinHeight",    -10000.0f),
+                                            TGetF(m, "autoMaxHeight",     10000.0f),
+                                            TGetF(m, "autoHeightFade",    1.0f),
+                                            TGetF(m, "autoBlendEnabled",  0.0f) };
+                cb.layerAutoSlope[li]   = { TGetF(m, "autoMinSlope",      0.0f),
+                                            TGetF(m, "autoMaxSlope",      1.0f),
+                                            TGetF(m, "autoSlopeFade",     0.1f),
+                                            TGetF(m, "autoBlendStrength", 1.0f) };
+            }
+            cb.layerNormalStrength = { normalStr[0], normalStr[1], normalStr[2], normalStr[3] };
+            cb.layerTextureFlags   = { materialTextureFlags[0], materialTextureFlags[1],
+                                       materialTextureFlags[2], materialTextureFlags[3] };
+            g_cbParamCache[eid.index] = cb;
+        };
+
+        // splatDirty: スプラットマップ + レイヤーテクスチャ + CB を全再構築
+        const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index);
+        if (needTexRebuild) {
+            g_texCache[eid.index] = BuildTextureSet(layerMats, terrain, resources,
                                                     s_splatFallback, s_whiteTex,
                                                     s_flatNormalTex, s_blackTex);
+            RebuildCBParams();
             terrain.splatDirty = false;
+        }
+
+        // materialParamDirty: float パラメータのみ変更 → CB だけ更新、テクスチャ再アップロード不要
+        if (terrain.materialParamDirty) {
+            RebuildCBParams();
+            terrain.materialParamDirty = false;
         }
         const TerrainTextures& textures = g_texCache.at(eid.index);
 
@@ -553,59 +678,23 @@ void TerrainRenderSystem(
         const int chunkCountX = (terrain.columns - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
         const int chunkCountZ = (terrain.rows    - 1 + terrain.chunkSize - 1) / terrain.chunkSize;
 
-        // -- TerrainCB のレイヤーデータをセット（全チャンク共通） -----------------
+        // -- TerrainCB を組み立てる。マテリアル部分はキャッシュ済みをコピーし
+        //    worldMatrix / wvpMatrix だけ毎フレーム更新する --------------------
         const math::Matrix4 world = transform.GetWorldMatrix();
-        const math::Matrix4 wvp   = camera.GetViewProjection() * world;
-
-        TerrainObjectCB terrainCBData{};
+        TerrainObjectCB terrainCBData = g_cbParamCache.count(eid.index)
+                                      ? g_cbParamCache.at(eid.index)
+                                      : TerrainObjectCB{};
         terrainCBData.worldMatrix = world;
-        terrainCBData.wvpMatrix   = wvp;
-        {
-            float normalStr[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-            float materialTextureFlags[4] = {};
-            for (int li = 0; li < 4; ++li) {
-                char pfx[16]; snprintf(pfx, sizeof(pfx), "layer%d_", li);
-                const std::string p = pfx;
-                const float tx = TGetF(mat, p + "tilingX", 8.0f);
-                const float tz = TGetF(mat, p + "tilingZ", 8.0f);
-                normalStr[li]  = TGetF(mat, p + "normalStrength", 1.0f);
-                const std::string aoKey = p + "ao_roughness";
-                materialTextureFlags[li] = (mat && mat->textures.count(aoKey) &&
-                                            !mat->textures.at(aoKey).empty()) ? 1.0f : 0.0f;
-                terrainCBData.layerTiling[li] = { tx, tz, 0.0f, 0.0f };
-                terrainCBData.layerMaterial[li] = {
-                    TGetF(mat, p + "roughness",        0.8f),
-                    TGetF(mat, p + "ambientOcclusion", 1.0f),
-                    0.0f, 0.0f
-                };
-                terrainCBData.layerAutoHeight[li] = {
-                    TGetF(mat, p + "autoMinHeight",    -10000.0f),
-                    TGetF(mat, p + "autoMaxHeight",     10000.0f),
-                    TGetF(mat, p + "autoHeightFade",    1.0f),
-                    TGetF(mat, p + "autoBlendEnabled",  0.0f)
-                };
-                terrainCBData.layerAutoSlope[li] = {
-                    TGetF(mat, p + "autoMinSlope",      0.0f),
-                    TGetF(mat, p + "autoMaxSlope",      1.0f),
-                    TGetF(mat, p + "autoSlopeFade",     0.1f),
-                    TGetF(mat, p + "autoBlendStrength", 1.0f)
-                };
-            }
-            terrainCBData.layerNormalStrength = {
-                normalStr[0], normalStr[1], normalStr[2], normalStr[3]
-            };
-            terrainCBData.layerTextureFlags = {
-                materialTextureFlags[0],
-                materialTextureFlags[1],
-                materialTextureFlags[2],
-                materialTextureFlags[3]
-            };
-        }
+        terrainCBData.wvpMatrix   = camera.GetViewProjection() * world;
+
+        // CB を地形ごとに 1 回だけ GPU へ転送する（チャンクループの外）。
+        // WHY: TerrainObjectCB は全チャンクで同一内容のため、チャンクごとに Update するのは無駄。
+        resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
 
         // -- チャンクごとのメッシュ生成・フラスタムカリング・描画 -----------------
         for (int cz = 0; cz < chunkCountZ; ++cz) {
             for (int cx = 0; cx < chunkCountX; ++cx) {
-                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, resources);
+                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, neighbors, resources);
 
                 // チャンク単位のフラスタムカリング
                 if (!IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax))
@@ -633,12 +722,7 @@ void TerrainRenderSystem(
                               : (distSq < d1 * d1) ? 1
                               : 2;
 
-                resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
-
-                // fzmat のシェーダーパスを優先し、未設定時は静的フォールバックを使う。
-                const auto activeShader = (mat && !mat->shaderPath.empty())
-                    ? resources.LoadShader(mat->shaderPath)
-                    : terrainShader;
+                const auto activeShader = terrainShader;
 
                 // DrawCall を構築して発行
                 renderer::DrawCall call;
@@ -723,6 +807,10 @@ void SubmitTerrainShadowCasters(
         }
         if (!scene.IsValid(eid))
             continue;
+        {
+            const auto* go = scene.GetGameObject(eid);
+            if (!go || !go->activeInHierarchy()) continue;
+        }
 
         if (terrain.heightDirty) {
             std::erase_if(g_chunkCache, [&eid](const auto& kv) {
@@ -742,7 +830,7 @@ void SubmitTerrainShadowCasters(
 
         for (int cz = 0; cz < chunkCountZ; ++cz) {
             for (int cx = 0; cx < chunkCountX; ++cx) {
-                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, resources);
+                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, {}, resources);
                 if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
