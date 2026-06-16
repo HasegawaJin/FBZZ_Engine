@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -47,6 +48,51 @@ struct ProfilerDisplayState {
 };
 
 ProfilerDisplayState s_profilerDisplay;
+
+struct ProfilerFilterState {
+    char        nameFilter[128] = {};
+    int         categoryFilterIndex = 0;
+    float       minMsFilter = 0.0f;
+    int         sortMode = 0; // 0=Original 1=Time v 2=Time ^ 3=Name
+    std::string selectedKey;
+    std::string selectedLabel;
+};
+ProfilerFilterState s_profilerFilter;
+
+static const char* const k_profilerCategoryNames[] = {
+    "All", "Rendering", "Scripts", "Physics", "Animation",
+    "UI", "Editor", "Input", "Memory", "Scene", "Audio", "Others"
+};
+static constexpr int k_profilerCategoryCount = 12;
+
+struct MemoryFilterState {
+    char tagFilter[64] = {};
+};
+MemoryFilterState s_memoryFilter;
+
+struct RenderingFilterState {
+    char passFilter[64] = {};
+    bool sortByMs = true;
+};
+RenderingFilterState s_renderingFilter;
+
+struct MemoryHistoryState {
+    static constexpr std::size_t kMaxFrames = 128;
+    std::unordered_map<std::string, std::deque<float>> tagUsedMB;
+    std::string selectedTag;
+    float sampleInterval = 0.25f;
+    float elapsed = 0.0f;
+};
+MemoryHistoryState s_memHistory;
+
+struct RenderingHistoryState {
+    static constexpr std::size_t kMaxFrames = 128;
+    std::unordered_map<std::string, std::deque<float>> passGpuMs;
+    std::string selectedPass;
+    float sampleInterval = 0.25f;
+    float elapsed = 0.0f;
+};
+RenderingHistoryState s_renderHistory;
 
 // Unity Profiler に近い粒度で処理を読むための表示カテゴリ。
 // WHY: スコープ名ごとのランダム色は細かすぎて、まず Rendering / Scripts / Physics などの大枠を把握しづらい。
@@ -361,6 +407,28 @@ void AnalysisPanel::DrawProfiler()
     ImGui::SameLine();
     ImGui::Checkbox("Peak", &s_profilerDisplay.showPeak);
 
+    ImGui::Separator();
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::InputText("Name##profFilter", s_profilerFilter.nameFilter, sizeof(s_profilerFilter.nameFilter));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::Combo("Category##profFilter", &s_profilerFilter.categoryFilterIndex, k_profilerCategoryNames, k_profilerCategoryCount);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(70.0f);
+    ImGui::InputFloat("Min ms##profFilter", &s_profilerFilter.minMsFilter, 0.0f, 0.0f, "%.2f");
+    s_profilerFilter.minMsFilter = (std::max)(0.0f, s_profilerFilter.minMsFilter);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(95.0f);
+    static const char* const k_sortModeNames[] = { "Original", "Time v", "Time ^", "Name" };
+    ImGui::Combo("Sort##profFilter", &s_profilerFilter.sortMode, k_sortModeNames, 4);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear##profFilter")) {
+        s_profilerFilter.nameFilter[0] = '\0';
+        s_profilerFilter.categoryFilterIndex = 0;
+        s_profilerFilter.minMsFilter = 0.0f;
+        s_profilerFilter.sortMode = 0;
+    }
+
     if (!s_profilerDisplay.paused) {
         s_profilerDisplay.elapsedSinceRefresh += ImGui::GetIO().DeltaTime;
         if (s_profilerDisplay.visibleRecords.empty()
@@ -393,15 +461,53 @@ void AnalysisPanel::DrawProfiler()
         return;
     }
 
+    // Build filtered + sorted index list
+    const bool hasNameFilter     = s_profilerFilter.nameFilter[0] != '\0';
+    const bool hasCategoryFilter = s_profilerFilter.categoryFilterIndex > 0;
+    const bool hasMinMs          = s_profilerFilter.minMsFilter > 0.0f;
+    const bool isFiltered        = hasNameFilter || hasCategoryFilter || hasMinMs || s_profilerFilter.sortMode != 0;
+
+    std::vector<int> displayIndices;
+    displayIndices.reserve(records.size());
+    for (int i = 0; i < static_cast<int>(records.size()); ++i) {
+        const profiler::ProfileRecord& r = records[static_cast<std::size_t>(i)];
+        if (r.elapsedMs <= 0.0) continue;
+        if (hasNameFilter && std::strstr(r.name, s_profilerFilter.nameFilter) == nullptr) continue;
+        if (hasCategoryFilter) {
+            const ProfilerCategory cat = ClassifyProfileRecord(r);
+            if (std::strcmp(cat.name, k_profilerCategoryNames[s_profilerFilter.categoryFilterIndex]) != 0) continue;
+        }
+        if (hasMinMs && r.elapsedMs < static_cast<double>(s_profilerFilter.minMsFilter)) continue;
+        displayIndices.push_back(i);
+    }
+    if (s_profilerFilter.sortMode == 1) {
+        std::sort(displayIndices.begin(), displayIndices.end(), [&](int a, int b) {
+            return records[static_cast<std::size_t>(a)].elapsedMs > records[static_cast<std::size_t>(b)].elapsedMs;
+        });
+    } else if (s_profilerFilter.sortMode == 2) {
+        std::sort(displayIndices.begin(), displayIndices.end(), [&](int a, int b) {
+            return records[static_cast<std::size_t>(a)].elapsedMs < records[static_cast<std::size_t>(b)].elapsedMs;
+        });
+    } else if (s_profilerFilter.sortMode == 3) {
+        std::sort(displayIndices.begin(), displayIndices.end(), [&](int a, int b) {
+            return std::strcmp(records[static_cast<std::size_t>(a)].name,
+                               records[static_cast<std::size_t>(b)].name) < 0;
+        });
+    }
+    if (isFiltered) {
+        ImGui::Text("Showing: %zu / %zu samples", displayIndices.size(), records.size());
+    }
+
     constexpr float BAR_MAX_WIDTH = 240.0f;
     constexpr float BAR_HEIGHT = 12.0f;
     ImGui::BeginChild("ProfilerSamples##Analysis", { 0.0f, 0.0f }, true);
     ImGuiListClipper clipper;
-    clipper.Begin(static_cast<int>(records.size()), ImGui::GetTextLineHeightWithSpacing());
+    clipper.Begin(static_cast<int>(displayIndices.size()), ImGui::GetTextLineHeightWithSpacing());
     while (clipper.Step()) {
-        for (int recordIndex = clipper.DisplayStart; recordIndex < clipper.DisplayEnd; ++recordIndex) {
+        for (int ci = clipper.DisplayStart; ci < clipper.DisplayEnd; ++ci) {
+            const int recordIndex = displayIndices[static_cast<std::size_t>(ci)];
             const profiler::ProfileRecord& record = records[static_cast<std::size_t>(recordIndex)];
-            const float indent = static_cast<float>(record.depth) * 16.0f;
+            const float indent = isFiltered ? 0.0f : static_cast<float>(record.depth) * 16.0f;
             ImGui::Indent(indent);
 
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
@@ -414,6 +520,23 @@ void AnalysisPanel::DrawProfiler()
                 rowColor);
 
             ImGui::Dummy({ BAR_MAX_WIDTH + 8.0f, BAR_HEIGHT });
+            {
+                const std::string rowKey = MakeProfileRecordKey(record);
+                if (ImGui::IsItemClicked()) {
+                    if (s_profilerFilter.selectedKey == rowKey)
+                        s_profilerFilter.selectedKey.clear();
+                    else {
+                        s_profilerFilter.selectedKey  = rowKey;
+                        s_profilerFilter.selectedLabel = record.name;
+                    }
+                }
+                if (s_profilerFilter.selectedKey == rowKey) {
+                    const ImVec2 rMin = ImGui::GetItemRectMin();
+                    const ImVec2 rMax = { rMin.x + ImGui::GetContentRegionAvail().x + BAR_MAX_WIDTH + 8.0f,
+                                          ImGui::GetItemRectMax().y };
+                    ImGui::GetWindowDrawList()->AddRectFilled(rMin, rMax, IM_COL32(255, 255, 100, 30));
+                }
+            }
             ImGui::SameLine();
             double averageMs = record.elapsedMs;
             double peakMs = record.elapsedMs;
@@ -447,6 +570,36 @@ void AnalysisPanel::DrawProfiler()
         }
     }
     ImGui::EndChild();
+
+    if (!s_profilerFilter.selectedKey.empty()) {
+        std::vector<float> graphValues;
+        graphValues.reserve(s_profilerDisplay.history.size());
+        for (const auto& frame : s_profilerDisplay.history) {
+            float val = 0.0f;
+            for (const profiler::ProfileRecord& r : frame) {
+                if (r.elapsedMs > 0.0 && MakeProfileRecordKey(r) == s_profilerFilter.selectedKey) {
+                    val = static_cast<float>(r.elapsedMs);
+                    break;
+                }
+            }
+            graphValues.push_back(val);
+        }
+        float maxVal = 0.0f;
+        for (float v : graphValues) maxVal = (std::max)(maxVal, v);
+
+        ImGui::Separator();
+        ImGui::Text("Graph: %s", s_profilerFilter.selectedLabel.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("x##profGraphClose"))
+            s_profilerFilter.selectedKey.clear();
+
+        char overlay[64];
+        std::snprintf(overlay, sizeof(overlay), "%.3f ms", graphValues.empty() ? 0.0f : graphValues.back());
+        ImGui::PlotLines("##profHistory",
+                         graphValues.data(), static_cast<int>(graphValues.size()),
+                         0, overlay, 0.0f, (std::max)(maxVal * 1.2f, 1.0f),
+                         { -1.0f, 60.0f });
+    }
 }
 
 void AnalysisPanel::DrawMemory(EditorContext& ctx)
@@ -461,21 +614,70 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
     const core::MemoryStats totalStats = tracker.GetTotalStats();
     const core::MemoryStats rendererDebugStats = BuildMemoryDebugStats(ctx.resources);
 
-    if (ImGui::BeginTable("MemoryStats##Analysis", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-        ImGui::TableSetupColumn("Area");
-        ImGui::TableSetupColumn("Used");
-        ImGui::TableSetupColumn("Peak");
-        ImGui::TableSetupColumn("Capacity");
-        ImGui::TableSetupColumn("Active");
-        ImGui::TableSetupColumn("Alloc / Free");
+    // Sample memory history
+    s_memHistory.elapsed += ImGui::GetIO().DeltaTime;
+    if (s_memHistory.elapsed >= s_memHistory.sampleInterval) {
+        s_memHistory.elapsed = 0.0f;
+        for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i) {
+            const auto tag = static_cast<core::MemoryTag>(i);
+            const char* tagName = tracker.GetTagName(tag);
+            auto& buf = s_memHistory.tagUsedMB[tagName];
+            buf.push_back(static_cast<float>(tracker.GetStats(tag).used) / (1024.0f * 1024.0f));
+            if (buf.size() > MemoryHistoryState::kMaxFrames) buf.pop_front();
+        }
+    }
+
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::InputText("Filter tags##memory", s_memoryFilter.tagFilter, sizeof(s_memoryFilter.tagFilter));
+    if (s_memoryFilter.tagFilter[0] != '\0') {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Clear##memFilter"))
+            s_memoryFilter.tagFilter[0] = '\0';
+    }
+
+    struct MemTagRow { const char* label; core::MemoryStats stats; };
+    std::vector<MemTagRow> tagRows;
+    tagRows.reserve(static_cast<std::size_t>(core::MemoryTag::COUNT));
+    for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i) {
+        const auto tag = static_cast<core::MemoryTag>(i);
+        const char* tagName = tracker.GetTagName(tag);
+        if (s_memoryFilter.tagFilter[0] != '\0' &&
+            std::strstr(tagName, s_memoryFilter.tagFilter) == nullptr) continue;
+        tagRows.push_back({ tagName, tracker.GetStats(tag) });
+    }
+
+    constexpr ImGuiTableFlags kMemTableFlags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Sortable;
+    if (ImGui::BeginTable("MemoryStats##Analysis", 6, kMemTableFlags)) {
+        ImGui::TableSetupColumn("Area",         ImGuiTableColumnFlags_NoSort);
+        ImGui::TableSetupColumn("Used",         ImGuiTableColumnFlags_PreferSortDescending);
+        ImGui::TableSetupColumn("Peak",         ImGuiTableColumnFlags_PreferSortDescending);
+        ImGui::TableSetupColumn("Capacity",     ImGuiTableColumnFlags_PreferSortDescending);
+        ImGui::TableSetupColumn("Active",       ImGuiTableColumnFlags_PreferSortDescending);
+        ImGui::TableSetupColumn("Alloc / Free", ImGuiTableColumnFlags_NoSort);
         ImGui::TableHeadersRow();
+
+        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+            if (specs->SpecsDirty && specs->SpecsCount > 0) {
+                const int col = specs->Specs[0].ColumnIndex;
+                const bool desc = specs->Specs[0].SortDirection == ImGuiSortDirection_Descending;
+                std::sort(tagRows.begin(), tagRows.end(), [&](const MemTagRow& a, const MemTagRow& b) {
+                    std::size_t av = 0, bv = 0;
+                    if      (col == 1) { av = a.stats.used;        bv = b.stats.used; }
+                    else if (col == 2) { av = a.stats.peakUsed;    bv = b.stats.peakUsed; }
+                    else if (col == 3) { av = a.stats.capacity;    bv = b.stats.capacity; }
+                    else if (col == 4) { av = a.stats.activeCount; bv = b.stats.activeCount; }
+                    return desc ? av > bv : av < bv;
+                });
+                specs->SpecsDirty = false;
+            }
+        }
 
         DrawStatsRow("FrameAllocator", frameStats);
         DrawStatsRow("Tracked total", totalStats);
         DrawStatsRow("MemoryDebug Renderer", rendererDebugStats);
-        for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i) {
-            const auto tag = static_cast<core::MemoryTag>(i);
-            DrawStatsRow(tracker.GetTagName(tag), tracker.GetStats(tag));
+        for (const MemTagRow& row : tagRows) {
+            DrawStatsRow(row.label, row.stats);
         }
         ImGui::EndTable();
     }
@@ -508,6 +710,39 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
             ImGui::TextDisabled("... %zu more", liveResourceCount - visibleCount);
         }
     }
+
+    if (!s_memHistory.tagUsedMB.empty()) {
+        ImGui::Separator();
+        ImGui::TextUnformatted("Memory history");
+
+        // Build tag name list in stable order
+        std::vector<const char*> tagNames;
+        tagNames.reserve(static_cast<std::size_t>(core::MemoryTag::COUNT));
+        for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i)
+            tagNames.push_back(tracker.GetTagName(static_cast<core::MemoryTag>(i)));
+
+        int selIdx = 0;
+        for (int i = 0; i < static_cast<int>(tagNames.size()); ++i) {
+            if (s_memHistory.selectedTag == tagNames[static_cast<std::size_t>(i)]) { selIdx = i; break; }
+        }
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::Combo("Tag##memGraph", &selIdx, tagNames.data(), static_cast<int>(tagNames.size())))
+            s_memHistory.selectedTag = tagNames[static_cast<std::size_t>(selIdx)];
+        if (s_memHistory.selectedTag.empty() && !tagNames.empty())
+            s_memHistory.selectedTag = tagNames[0];
+
+        const auto it = s_memHistory.tagUsedMB.find(s_memHistory.selectedTag);
+        if (it != s_memHistory.tagUsedMB.end() && !it->second.empty()) {
+            const std::vector<float> vals(it->second.begin(), it->second.end());
+            float maxVal = 0.0f;
+            for (float v : vals) maxVal = (std::max)(maxVal, v);
+            char overlay[64];
+            std::snprintf(overlay, sizeof(overlay), "%.3f MB", vals.back());
+            ImGui::PlotLines("##memHistory", vals.data(), static_cast<int>(vals.size()),
+                             0, overlay, 0.0f, (std::max)(maxVal * 1.2f, 0.001f),
+                             { -1.0f, 60.0f });
+        }
+    }
 }
 
 void AnalysisPanel::DrawRendering()
@@ -515,6 +750,17 @@ void AnalysisPanel::DrawRendering()
     const renderer::RenderDebugOverlay::Snapshot& snap =
         renderer::RenderDebugOverlay::GetLastSnapshot();
     const renderer::RenderDebugOverlay::RenderStats& stats = snap.renderStats;
+
+    // Sample GPU pass history
+    s_renderHistory.elapsed += ImGui::GetIO().DeltaTime;
+    if (!snap.gpuPassTimings.empty() && s_renderHistory.elapsed >= s_renderHistory.sampleInterval) {
+        s_renderHistory.elapsed = 0.0f;
+        for (const auto& [name, ms] : snap.gpuPassTimings) {
+            auto& buf = s_renderHistory.passGpuMs[name];
+            buf.push_back(static_cast<float>(ms));
+            if (buf.size() > RenderingHistoryState::kMaxFrames) buf.pop_front();
+        }
+    }
 
     // ── DrawCall / ポリゴン統計 ─────────────────────────────────────────────
     // WHY: DrawCall 数とポリゴン数はレンダリング負荷の最重要指標。
@@ -561,8 +807,36 @@ void AnalysisPanel::DrawRendering()
         return;
     }
 
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::InputText("Filter passes##rendering", s_renderingFilter.passFilter, sizeof(s_renderingFilter.passFilter));
+    ImGui::SameLine();
+    ImGui::Checkbox("Sort by time##rendering", &s_renderingFilter.sortByMs);
+    if (s_renderingFilter.passFilter[0] != '\0') {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Clear##renderFilter"))
+            s_renderingFilter.passFilter[0] = '\0';
+    }
+
+    // Build filtered + optionally sorted pass list
+    std::vector<std::pair<std::string, double>> displayPasses;
+    double totalGpuMsAll = 0.0;
+    for (const auto& [name, ms] : snap.gpuPassTimings) {
+        totalGpuMsAll += ms;
+        if (s_renderingFilter.passFilter[0] != '\0' &&
+            std::strstr(name.c_str(), s_renderingFilter.passFilter) == nullptr) continue;
+        displayPasses.emplace_back(name, ms);
+    }
+    if (s_renderingFilter.sortByMs) {
+        std::sort(displayPasses.begin(), displayPasses.end(), [](const auto& a, const auto& b) {
+            return a.second > b.second;
+        });
+    }
+    if (s_renderingFilter.passFilter[0] != '\0') {
+        ImGui::Text("Showing: %zu / %zu passes", displayPasses.size(), snap.gpuPassTimings.size());
+    }
+
     double maxGpuMs = 0.0;
-    for (const auto& [name, ms] : snap.gpuPassTimings)
+    for (const auto& [name, ms] : displayPasses)
         maxGpuMs = (std::max)(maxGpuMs, ms);
     if (maxGpuMs <= 0.0) maxGpuMs = 1.0;
 
@@ -576,7 +850,7 @@ void AnalysisPanel::DrawRendering()
 
     ImGui::BeginChild("GpuPassList##Analysis", { 0.0f, 0.0f }, true);
     double totalGpuMs = 0.0;
-    for (const auto& [name, ms] : snap.gpuPassTimings) {
+    for (const auto& [name, ms] : displayPasses) {
         totalGpuMs += ms;
         const float barW = static_cast<float>(ms / maxGpuMs) * GPU_BAR_MAX_W;
         const ImVec2 cursor = ImGui::GetCursorScreenPos();
@@ -585,6 +859,14 @@ void AnalysisPanel::DrawRendering()
             cursor, { cursor.x + barW, cursor.y + GPU_BAR_H },
             IM_COL32(255, 170, 50, 220));
         ImGui::Dummy({ GPU_BAR_MAX_W + 8.0f, GPU_BAR_H });
+        if (ImGui::IsItemClicked())
+            s_renderHistory.selectedPass = name;
+        if (s_renderHistory.selectedPass == name) {
+            const ImVec2 rMin = ImGui::GetItemRectMin();
+            const ImVec2 rMax = { rMin.x + ImGui::GetContentRegionAvail().x + GPU_BAR_MAX_W + 8.0f,
+                                  ImGui::GetItemRectMax().y };
+            ImGui::GetWindowDrawList()->AddRectFilled(rMin, rMax, IM_COL32(255, 255, 100, 30));
+        }
         ImGui::SameLine();
 
         auto cpuIt = cpuMap.find(name);
@@ -596,8 +878,44 @@ void AnalysisPanel::DrawRendering()
         }
     }
     ImGui::Separator();
-    ImGui::Text("GPU total: %.3f ms", totalGpuMs);
+    if (s_renderingFilter.passFilter[0] != '\0') {
+        ImGui::Text("GPU filtered: %.3f ms  |  total: %.3f ms", totalGpuMs, totalGpuMsAll);
+    } else {
+        ImGui::Text("GPU total: %.3f ms", totalGpuMs);
+    }
     ImGui::EndChild();
+
+    if (!s_renderHistory.passGpuMs.empty()) {
+        ImGui::Separator();
+        ImGui::TextUnformatted("GPU pass history");
+
+        std::vector<const char*> passNames;
+        passNames.reserve(s_renderHistory.passGpuMs.size());
+        for (const auto& [name, _] : s_renderHistory.passGpuMs)
+            passNames.push_back(name.c_str());
+
+        int selIdx = 0;
+        for (int i = 0; i < static_cast<int>(passNames.size()); ++i) {
+            if (s_renderHistory.selectedPass == passNames[static_cast<std::size_t>(i)]) { selIdx = i; break; }
+        }
+        ImGui::SetNextItemWidth(220.0f);
+        if (ImGui::Combo("Pass##renderGraph", &selIdx, passNames.data(), static_cast<int>(passNames.size())))
+            s_renderHistory.selectedPass = passNames[static_cast<std::size_t>(selIdx)];
+        if (s_renderHistory.selectedPass.empty() && !passNames.empty())
+            s_renderHistory.selectedPass = passNames[0];
+
+        const auto it = s_renderHistory.passGpuMs.find(s_renderHistory.selectedPass);
+        if (it != s_renderHistory.passGpuMs.end() && !it->second.empty()) {
+            const std::vector<float> vals(it->second.begin(), it->second.end());
+            float maxVal = 0.0f;
+            for (float v : vals) maxVal = (std::max)(maxVal, v);
+            char overlay[64];
+            std::snprintf(overlay, sizeof(overlay), "%.3f ms", vals.back());
+            ImGui::PlotLines("##renderHistory", vals.data(), static_cast<int>(vals.size()),
+                             0, overlay, 0.0f, (std::max)(maxVal * 1.2f, 1.0f),
+                             { -1.0f, 60.0f });
+        }
+    }
 }
 
 } // namespace fbzz::editor
