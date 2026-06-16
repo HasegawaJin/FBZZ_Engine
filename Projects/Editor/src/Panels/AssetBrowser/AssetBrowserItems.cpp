@@ -123,7 +123,7 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".asset", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "ASSET"   },
     { { ".fzmat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
     { { ".fzmesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
-    { { ".fbzzanimcontroller", nullptr },                       { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
+    { { ".animcontroller", nullptr },                       { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
     { { ".ttf", ".otf", nullptr },                             { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
@@ -1457,8 +1457,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    // .fbzzanimcontroller: ステートマシン風アイコン (3ノード + 矢印)
-    if (e.ext == ".fbzzanimcontroller") {
+    // .animcontroller: ステートマシン風アイコン (3ノード + 矢印)
+    if (e.ext == ".animcontroller") {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const ImU32 bg   = IM_COL32( 50,  90,  65, 255);
         const ImU32 node = IM_COL32( 80, 200, 120, 255);
@@ -1782,7 +1782,7 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
             }
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
-    } else if (ext == ".fbzzanimcontroller") {
+    } else if (ext == ".animcontroller") {
         ctx.requestOpenAnimationGraph = true;
     }
 }
@@ -1943,7 +1943,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             const std::string scanExt  = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(scanPath));
             if (scanExt != ".scene" && scanExt != ".fzmat" && scanExt != ".fbzzprefab"
-                && scanExt != ".fbzzanimcontroller") continue;
+                && scanExt != ".animcontroller") continue;
             std::string content;
             util::FileSystem::ReadText(scanPath, content);
             if (content.find(filename) != std::string::npos ||

@@ -88,7 +88,7 @@ tag = 'Player'
     [gameobjects.AnimatorComponent]
     clipIndex = 0
     clipName = ''
-    controllerPath = 'Assets/Animation/Player.fbzzanimcontroller'
+    controllerPath = 'Assets/Animation/Player.animcontroller'
     clipSources = [
         'Assets/Models/DebugCharacter/Idle/Idle.asset',
         'Assets/Models/DebugCharacter/Walking/Walking.asset',
