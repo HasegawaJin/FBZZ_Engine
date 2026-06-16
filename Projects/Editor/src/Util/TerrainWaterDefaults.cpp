@@ -7,14 +7,20 @@ namespace fbzz::editor {
 
 namespace {
 
-constexpr const char* kDefaultTerrainMaterialPath = "Assets/Materials/Terrain/Terrain.fzmat";
-constexpr const char* kDefaultWaterMaterialPath   = "Assets/Materials/Water/Water.fzmat";
+constexpr const char* kDefaultTerrainLayerMaterialPaths[4] = {
+    "Assets/Materials/Terrain/Layer0_Ground.fzmat",
+    "Assets/Materials/Terrain/Layer1_Grass.fzmat",
+    "Assets/Materials/Terrain/Layer2_Sand.fzmat",
+    "Assets/Materials/Terrain/Layer3_Rock.fzmat",
+};
+constexpr const char* kDefaultWaterMaterialPath = "Assets/Materials/Water/Water.fzmat";
 
 } // namespace
 
-const char* DefaultTerrainMaterialPath()
+const char* DefaultTerrainLayerMaterialPath(int layerIndex)
 {
-    return kDefaultTerrainMaterialPath;
+    if (layerIndex < 0 || layerIndex >= 4) return "";
+    return kDefaultTerrainLayerMaterialPaths[layerIndex];
 }
 
 const char* DefaultWaterMaterialPath()

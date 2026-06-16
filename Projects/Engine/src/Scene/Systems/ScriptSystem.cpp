@@ -21,28 +21,34 @@ void ScriptSystem(Scene& scene, float dt)
         auto* go = scene.GetGameObject(id);
         if (!sc || !go) continue;
 
-        for (auto& entry : sc->scripts) {
-            if (!entry.script) continue;
+        // WHY: index loop + raw Script* because AddScript() inside OnAwake/OnStart/OnUpdate
+        //      calls sc->scripts.emplace_back(), potentially reallocating the vector and
+        //      invalidating any range-for reference or iterator into sc->scripts.
+        //      Script* (heap pointer) remains stable across reallocations.
+        const size_t initialCount = sc->scripts.size();
+        for (size_t i = 0; i < initialCount; ++i) {
+            Script* s = sc->scripts[i].script.get();
+            if (!s) continue;
 
-            entry.script->SetContext(&scene, go);
-            entry.script->SyncEnabledState();
+            s->SetContext(&scene, go);
+            s->SyncEnabledState();
 
-            if (!entry.m_awoken) {
-                FBZZ_LOG_DEBUG("ScriptSystem: OnAwake  [%s]", entry.script->GetTypeName());
-                entry.script->OnAwake();
-                entry.m_awoken = true;
+            if (!sc->scripts[i].m_awoken) {
+                FBZZ_LOG_DEBUG("ScriptSystem: OnAwake  [%s]", s->GetTypeName());
+                s->OnAwake();
+                sc->scripts[i].m_awoken = true;
             }
 
-            if (!entry.m_started) {
-                FBZZ_LOG_DEBUG("ScriptSystem: OnStart  [%s]", entry.script->GetTypeName());
-                entry.script->OnStart();
-                entry.m_started = true;
+            if (!sc->scripts[i].m_started) {
+                FBZZ_LOG_DEBUG("ScriptSystem: OnStart  [%s]", s->GetTypeName());
+                s->OnStart();
+                sc->scripts[i].m_started = true;
             }
 
-            if (entry.script->enabled) {
-                entry.script->TickFrameDelays();
-                entry.script->TickInvokes(dt);
-                entry.script->OnUpdate();
+            if (s->enabled) {
+                s->TickFrameDelays();
+                s->TickInvokes(dt);
+                s->OnUpdate();
             }
         }
     }

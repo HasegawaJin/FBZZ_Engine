@@ -44,7 +44,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeSelf()) continue;
+        if (!go.activeInHierarchy()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
         if (!IsSelectedForOutline(go, ctx.settings)) continue;
 

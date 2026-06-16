@@ -14,6 +14,7 @@
 #include <Physics/OBBCollider.hpp>
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/SphereCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <memory>
 #include <string>
@@ -160,6 +161,23 @@ struct ConvexHullColliderComponent : public ColliderComponent {
         r.Field("meshIndex", meshIndex);
         r.Field("useTransformScale", useTransformScale);
     }
+};
+
+// TerrainColliderComponent — TerrainComponent 専用の HeightField コライダー
+// WHY: MeshColliderComponent は meshPath / meshIndex / useTransformScale など地形と無関係な
+//      フィールドを持つ。TerrainColliderComponent は余分なフィールドを持たず、
+//      PhysicsSystem が同一 GO の TerrainComponent から heightData を読んで
+//      HeightFieldCollider を自動構築する。
+struct TerrainColliderComponent : public ColliderComponent {
+    TerrainColliderComponent() = default;
+    TerrainColliderComponent(const TerrainColliderComponent& o) : ColliderComponent(o) {}
+    TerrainColliderComponent& operator=(const TerrainColliderComponent& o)
+        { ColliderComponent::operator=(o); return *this; }
+    TerrainColliderComponent(TerrainColliderComponent&&)            = default;
+    TerrainColliderComponent& operator=(TerrainColliderComponent&&) = default;
+
+    const char* GetTypeName() const { return "Terrain Collider"; }
+    void Reflect(IReflector& r) { ColliderComponent::Reflect(r); }
 };
 
 } // namespace fbzz::scene

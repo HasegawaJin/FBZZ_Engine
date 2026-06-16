@@ -68,47 +68,63 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 tc.heightDirty = true;
             ImGui::DragInt("Chunk Size", &tc.chunkSize, 1.0f, 8, 256);
 
-            // ── Material (.fzmat) ─────────────────────────────────────────────
-            ImGui::SeparatorText("Material (.fzmat)");
-            {
+            // ── Layer Materials (.fzmat × 4) ──────────────────────────────────
+            ImGui::SeparatorText("Layer Materials");
+            static const char* kLayerNames[] = { "Layer 0", "Layer 1", "Layer 2", "Layer 3" };
+            for (int li = 0; li < 4; ++li) {
+                ImGui::PushID(li);
+                ImGui::TextUnformatted(kLayerNames[li]);
                 char buf[256];
-                std::snprintf(buf, sizeof(buf), "%s", tc.materialPath.c_str());
-                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 4.0f);
-                if (ImGui::InputText("##terrain_mat_path", buf, sizeof(buf))) {
-                    tc.materialPath = NormalizeAssetPath(buf);
+                std::snprintf(buf, sizeof(buf), "%s", tc.layerMaterials[li].c_str());
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x
+                    - (tc.layerMaterials[li].empty() ? 0.0f
+                       : ImGui::CalcTextSize("Clear").x
+                         + ImGui::GetStyle().FramePadding.x * 2.0f
+                         + ImGui::GetStyle().ItemInnerSpacing.x));
+                if (ImGui::InputText("##mat", buf, sizeof(buf))) {
+                    tc.layerMaterials[li] = NormalizeAssetPath(buf);
                     tc.splatDirty = true;
                 }
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
                         if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
-                            tc.materialPath = dropped;
+                            tc.layerMaterials[li] = dropped;
                             tc.splatDirty = true;
                         }
                     }
                     ImGui::EndDragDropTarget();
                 }
-                if (tc.materialPath.empty()) {
-                    ImGui::TextDisabled("(no material — layer textures missing)");
-                    if (ImGui::Button("Use Default Terrain Material")) {
-                        tc.materialPath = DefaultTerrainMaterialPath();
+                if (!tc.layerMaterials[li].empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Clear")) {
+                        tc.layerMaterials[li].clear();
                         tc.splatDirty = true;
                     }
-                }
-            }
-
-            if (!tc.materialPath.empty()) {
-                auto matHandle = asset::AssetManager::LoadMaterial(tc.materialPath);
-                if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
-                    if (DrawTerrainMaterialInspector(*mat))
-                        tc.splatDirty = true;
-                    if (ImGui::Button("Save .fzmat")) {
-                        asset::SaveMaterialAssetToFile(MaterialAssetDiskPath(ctx, tc.materialPath), *mat);
-                        ctx.requestAssetBrowserRefresh = true;
+                    auto matHandle = asset::AssetManager::LoadMaterial(tc.layerMaterials[li]);
+                    if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+                        {
+                            const auto f = DrawTerrainLayerMaterialInspector(*mat);
+                            if (f.textureDirty) tc.splatDirty         = true;
+                            if (f.paramDirty)   tc.materialParamDirty = true;
+                        }
+                        if (ImGui::Button("Save .fzmat")) {
+                            asset::SaveMaterialAssetToFile(
+                                MaterialAssetDiskPath(ctx, tc.layerMaterials[li]), *mat);
+                            ctx.requestAssetBrowserRefresh = true;
+                        }
+                    } else {
+                        ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
+                                           "Missing: %s", tc.layerMaterials[li].c_str());
                     }
                 } else {
-                    ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "Missing: %s", tc.materialPath.c_str());
+                    if (ImGui::Button("Use Default")) {
+                        tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
+                        tc.splatDirty = true;
+                    }
                 }
+                ImGui::PopID();
+                ImGui::Spacing();
             }
 
             // ── コライダー ─────────────────────────────────────────────────────
@@ -395,14 +411,14 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
         [](scene::FoliageComponent& foliage, EditorContext&) {
             if (ImGui::Button("Bake Foliage")) {
                 foliage.caches.clear();
-                foliage.needsBake = true;
+                foliage.needsBake = foliage.needsBakeChildren = true;
             }
             ImGui::SameLine();
             ImGui::TextDisabled("%zu species", foliage.species.size());
 
             if (ImGui::Button("+ Add Species")) {
                 foliage.species.emplace_back();
-                foliage.needsBake = true;
+                foliage.needsBake = foliage.needsBakeChildren = true;
             }
 
             int deleteSpecies = -1;
@@ -425,14 +441,14 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                     std::snprintf(modelPath, sizeof(modelPath), "%s", species.modelPath.c_str());
                     if (ImGui::InputText("Model Path", modelPath, sizeof(modelPath))) {
                         species.modelPath = NormalizeAssetPath(modelPath);
-                        foliage.needsBake = true;
+                        foliage.needsBake = foliage.needsBakeChildren = true;
                     }
                     if (ImGui::BeginDragDropTarget()) {
                         if (const ImGuiPayload* payload =
                                 ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                             species.modelPath = NormalizeAssetPath(
                                 static_cast<const char*>(payload->Data));
-                            foliage.needsBake = true;
+                            foliage.needsBake = foliage.needsBakeChildren = true;
                         }
                         ImGui::EndDragDropTarget();
                     }
@@ -444,13 +460,13 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                         species.placementMode = placementMode == 1
                             ? scene::FoliagePlacementMode::STAMP
                             : scene::FoliagePlacementMode::PROCEDURAL;
-                        foliage.needsBake = true;
+                        foliage.needsBake = foliage.needsBakeChildren = true;
                     }
                     if (species.placementMode == scene::FoliagePlacementMode::STAMP) {
                         ImGui::TextDisabled("Stamped Instances: %zu", species.stamps.size());
                         if (ImGui::Button("Clear Stamps") && !species.stamps.empty()) {
                             species.stamps.clear();
-                            foliage.needsBake = true;
+                            foliage.needsBake = foliage.needsBakeChildren = true;
                         }
                     }
 
@@ -461,10 +477,10 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                     }
                     if (ImGui::DragFloat("Min Scale", &species.minScale,
                                          0.01f, 0.01f, 20.0f))
-                        foliage.needsBake = true;
+                        foliage.needsBake = foliage.needsBakeChildren = true;
                     if (ImGui::DragFloat("Max Scale", &species.maxScale,
                                          0.01f, 0.01f, 20.0f))
-                        foliage.needsBake = true;
+                        foliage.needsBake = foliage.needsBakeChildren = true;
                     ImGui::DragFloat("Draw Distance", &species.drawDistance,
                                      1.0f, 1.0f, 2000.0f);
                     int seed = static_cast<int>(species.seed);

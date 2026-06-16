@@ -210,13 +210,19 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ctx.requestOpenAnalysis = true;
         }
         ImGui::Separator();
-        ImGui::MenuItem("Grid",         nullptr, &ctx.showGrid);
-        ImGui::MenuItem("Light Range",  nullptr, &ctx.showLightRange);
-        ImGui::MenuItem("Colliders",    nullptr, &ctx.projectSettings.render.showColliders);
-        ImGui::MenuItem("Decal Bounds", nullptr, &ctx.projectSettings.render.showDecalBounds);
-        ImGui::MenuItem("Skeleton",     nullptr, &ctx.showSkeleton);
-        ImGui::MenuItem("Stats",        nullptr, &ctx.showStats);
-        ImGui::MenuItem("Hot Reload",   nullptr, &ctx.hotReloadEnabled);
+        // --- Scene Overlays ---
+        ImGui::MenuItem("Grid",        nullptr, &ctx.showGrid);
+        ImGui::MenuItem("Light Range", nullptr, &ctx.showLightRange);
+        ImGui::MenuItem("Skeleton",    nullptr, &ctx.showSkeleton);
+        ImGui::MenuItem("Stats",       nullptr, &ctx.showStats);
+        ImGui::Separator();
+        // --- Physics / Rendering ---
+        ImGui::MenuItem("Colliders",          nullptr, &ctx.projectSettings.render.showColliders);
+        ImGui::MenuItem("Terrain Collision",  nullptr, &ctx.projectSettings.render.showTerrainCollision);
+        ImGui::MenuItem("Decal Bounds",       nullptr, &ctx.projectSettings.render.showDecalBounds);
+        ImGui::Separator();
+        // --- Tools ---
+        ImGui::MenuItem("Hot Reload", nullptr, &ctx.hotReloadEnabled);
         ImGui::Separator();
         if (ImGui::BeginMenu("View Mode")) {
             auto& vm = ctx.projectSettings.render.viewMode;

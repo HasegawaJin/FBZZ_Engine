@@ -20,6 +20,7 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Physics/ColliderVolume.hpp>
 #include <Physics/ConvexHullCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/World.hpp>
 #include <Math/MathUtils.hpp>
@@ -278,6 +279,10 @@ void AddColliderInstance(Scene& scene,
                 scale = math::Vector3::ONE;
         }
         mesh->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
+    } else if (auto* hf = col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
+            ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
+            : nullptr) {
+        hf->UpdateWithScale(worldCenter, go.transform.worldRotation, go.transform.worldScale);
     } else if (auto* hull = col.collider->GetType() == physics::ColliderType::CONVEX_HULL
             ? static_cast<physics::ConvexHullCollider*>(col.collider.get())
             : nullptr) {
@@ -327,6 +332,31 @@ void AddColliderInstance(Scene& scene,
     }
 }
 
+void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent& col)
+{
+    auto* terrain = go.GetComponent<TerrainComponent>();
+    if (!terrain || !terrain->enabled || terrain->heightData.empty()) return;
+
+    if (terrain->colliderDirty || !col.collider) {
+        if (auto* hf = col.collider
+                && col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
+                ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
+                : nullptr) {
+            // 既存 HeightFieldCollider に heightData だけ再適用し BVH を再構築する。
+            // WHY: オブジェクト生成コストを省き、WorldHandle を維持したまま再構築できる。
+            hf->Rebuild(terrain->heightData,
+                        terrain->rows, terrain->columns,
+                        terrain->cellSize, terrain->maxHeight);
+        } else {
+            col.collider = std::make_unique<physics::HeightFieldCollider>(
+                terrain->heightData,
+                terrain->rows, terrain->columns,
+                terrain->cellSize, terrain->maxHeight);
+        }
+        terrain->colliderDirty = false;
+    }
+}
+
 template<typename T>
 void SyncColliderComponents(Scene& scene,
                             physics::World& world,
@@ -345,6 +375,8 @@ void SyncColliderComponents(Scene& scene,
             EnsureMeshCollider(*go, *col);
         } else if constexpr (std::is_same_v<T, ConvexHullColliderComponent>) {
             EnsureConvexHullCollider(*go, *col);
+        } else if constexpr (std::is_same_v<T, TerrainColliderComponent>) {
+            SyncTerrainCollider(scene, *go, *col);
         }
 
         AddColliderInstance(scene, *go, *col, world, colliderOwners, dt);
@@ -436,7 +468,8 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         scene.GetEntities<SphereColliderComponent>().size() +
         scene.GetEntities<CapsuleColliderComponent>().size() +
         scene.GetEntities<MeshColliderComponent>().size() +
-        scene.GetEntities<ConvexHullColliderComponent>().size());
+        scene.GetEntities<ConvexHullColliderComponent>().size() +
+        scene.GetEntities<TerrainColliderComponent>().size());
 
     world.BeginSceneSync();
 
@@ -455,65 +488,6 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         }
     }
 
-    // ── [Phase 7] TerrainComponent + MeshColliderComponent → TriangleMeshCollider 自動構築 ──
-    // TerrainComponent と MeshColliderComponent の両方を持つ GO を検出し、
-    // ハイトマップから三角形メッシュを自動的に構築する。
-    // WHY: TriangleMeshCollider が既存の collision pipeline に乗れるため、
-    //      新たな物理コードを追加せずに地形コリジョンを実現できる。
-    //      colliderDirty フラグでエディタ彫刻後の再構築をトリガーする。
-    {
-        FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncTerrainColliders");
-        for (EntityID id : scene.GetEntities<TerrainComponent>()) {
-            GameObject* go = scene.GetGameObject(id);
-            auto* terrain = scene.GetComponent<TerrainComponent>(id);
-            auto* meshCol = scene.GetComponent<MeshColliderComponent>(id);
-            if (!go || !terrain || !meshCol || !terrain->enabled || terrain->heightData.empty()) continue;
-
-            // colliderDirty が立っているか未生成の場合のみ再構築する。
-            // EnsureMeshCollider は collider が set 済みなら skip するため、
-            // このブロックで先に set しておくことで自動ビルドが阻害されない。
-            if (terrain->colliderDirty || !meshCol->collider) {
-                const int cols = terrain->columns;
-                const int rows = terrain->rows;
-
-                // ローカル空間の頂点座標を生成する
-                // WHY: TriangleMeshCollider の UpdateWithScale が Transform を適用するため、
-                //      ここではローカル座標のみ渡す。
-                std::vector<math::Vector3> positions;
-                positions.reserve(static_cast<size_t>(cols) * static_cast<size_t>(rows));
-                for (int z = 0; z < rows; ++z) {
-                    for (int x = 0; x < cols; ++x) {
-                        const float h = terrain->heightData[
-                            static_cast<size_t>(z) * static_cast<size_t>(cols) + static_cast<size_t>(x)]
-                            * terrain->maxHeight;
-                        positions.push_back({
-                            static_cast<float>(x) * terrain->cellSize,
-                            h,
-                            static_cast<float>(z) * terrain->cellSize
-                        });
-                    }
-                }
-
-                // クアッド → 2 三角形（頂点法線と揃えるため CW）
-                std::vector<uint32_t> indices;
-                indices.reserve(static_cast<size_t>(cols - 1) * static_cast<size_t>(rows - 1) * 6u);
-                for (int z = 0; z < rows - 1; ++z) {
-                    for (int x = 0; x < cols - 1; ++x) {
-                        const uint32_t i00 = static_cast<uint32_t>(z * cols + x);
-                        const uint32_t i10 = i00 + 1u;
-                        const uint32_t i01 = i00 + static_cast<uint32_t>(cols);
-                        const uint32_t i11 = i01 + 1u;
-                        indices.push_back(i00); indices.push_back(i01); indices.push_back(i10);
-                        indices.push_back(i10); indices.push_back(i01); indices.push_back(i11);
-                    }
-                }
-
-                meshCol->collider = std::make_unique<physics::TriangleMeshCollider>(positions, indices);
-                terrain->colliderDirty = false;
-            }
-        }
-    }
-
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncColliders");
         SyncColliderComponents<AabbColliderComponent>(scene, world, colliderOwners, dt);
@@ -522,6 +496,7 @@ void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
         SyncColliderComponents<CapsuleColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<MeshColliderComponent>(scene, world, colliderOwners, dt);
         SyncColliderComponents<ConvexHullColliderComponent>(scene, world, colliderOwners, dt);
+        SyncColliderComponents<TerrainColliderComponent>(scene, world, colliderOwners, dt);
     }
 
     {

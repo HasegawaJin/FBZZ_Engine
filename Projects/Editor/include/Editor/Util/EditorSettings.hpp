@@ -56,8 +56,9 @@ struct EditorSettings {
 
     // --- Debug メニュー - レンダリングオーバーレイ ---------------------------
     // WHY: int で保存し renderer::ViewMode へキャストする (enum を TOML に直接書くと変換が複雑)
-    bool showColliders   = false;
-    bool showDecalBounds = false;
+    bool showColliders        = false;
+    bool showTerrainCollision = false;
+    bool showDecalBounds      = false;
     int  viewMode        = 0; // 0=Lit, 1=Unlit, 2=WireframeLit, 3=WireframeUnlit
 
     // --- Debug メニュー - Post Process ------------------------------------

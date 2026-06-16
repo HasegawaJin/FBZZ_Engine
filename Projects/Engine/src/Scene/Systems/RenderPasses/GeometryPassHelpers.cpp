@@ -261,7 +261,7 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
 
 bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask)
 {
-    return go.activeSelf() && fbzz::Layer::Contains(mask, go.layer);
+    return go.activeInHierarchy() && fbzz::Layer::Contains(mask, go.layer);
 }
 
 bool IsSurfaceMaterialShader(std::string_view path)

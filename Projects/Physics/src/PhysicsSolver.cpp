@@ -5,6 +5,7 @@
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/GJK.hpp>
 #include <Physics/EPA.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -750,6 +751,44 @@ namespace fbzz::physics
                             *static_cast<OBBCollider*>(dynInst.collider), mesh, cp);
 
                     // スワップした場合は法線を反転 (normal は dyn → mesh 方向)
+                    if (hit && swapped)
+                        cp.normal = -cp.normal;
+                }
+            }
+            else if (tA == ColliderType::HEIGHT_FIELD || tB == ColliderType::HEIGHT_FIELD)
+            {
+                // HEIGHT_FIELD vs HEIGHT_FIELD は両方 Static なのでスキップ
+                const bool isStaticA = (tA == ColliderType::HEIGHT_FIELD || tA == ColliderType::TRIANGLE_MESH);
+                const bool isStaticB = (tB == ColliderType::HEIGHT_FIELD || tB == ColliderType::TRIANGLE_MESH);
+                if (isStaticA && isStaticB)
+                {
+                    // skip
+                }
+                else
+                {
+                    // HEIGHT_FIELD を常に B 側に正規化する
+                    const bool swapped = (tA == ColliderType::HEIGHT_FIELD);
+                    const ColliderInstance& dynInst   = *(swapped ? pair.colliderB : pair.colliderA);
+                    const ColliderInstance& fieldInst = *(swapped ? pair.colliderA : pair.colliderB);
+                    const ColliderType dynType = dynInst.collider->GetType();
+                    const auto& hf = *static_cast<HeightFieldCollider*>(fieldInst.collider);
+
+                    if (dynType == ColliderType::SPHERE)
+                        hit = TestSphereHeightField(
+                            *static_cast<SphereCollider*>(dynInst.collider), hf, cp);
+                    else if (dynType == ColliderType::AABB)
+                        hit = TestAABBHeightField(
+                            *static_cast<AABBCollider*>(dynInst.collider), hf, cp);
+                    else if (dynType == ColliderType::CAPSULE)
+                        hit = TestCapsuleHeightField(
+                            *static_cast<CapsuleCollider*>(dynInst.collider), hf, cp);
+                    else if (dynType == ColliderType::OBB)
+                        hit = TestOBBHeightField(
+                            *static_cast<OBBCollider*>(dynInst.collider), hf, cp);
+                    else if (dynType == ColliderType::CONVEX_HULL)
+                        hit = TestConvexHullHeightField(
+                            *static_cast<ConvexHullCollider*>(dynInst.collider), hf, cp);
+
                     if (hit && swapped)
                         cp.normal = -cp.normal;
                 }
@@ -1975,6 +2014,113 @@ namespace fbzz::physics
             }
         });
 
+        if (found) out = best;
+        return found;
+    }
+
+    // ─── HeightFieldCollider 用テスト関数 ───────────────────────────────────────
+    // WHY: HeightFieldCollider は内部 BVH を持ち TriangleMeshCollider と同一アルゴリズムで
+    //      衝突判定できる。型が異なるだけで実装は BVH Query に委譲する点で同一。
+
+    bool PhysicsSolver::TestSphereHeightField(const SphereCollider& s,
+                                               const HeightFieldCollider& hf,
+                                               ContactPoint& out)
+    {
+        AABB queryAABB;
+        const math::Vector3 center = s.GetAABB().Center();
+        queryAABB.min = center - math::Vector3{ s.m_radius, s.m_radius, s.m_radius };
+        queryAABB.max = center + math::Vector3{ s.m_radius, s.m_radius, s.m_radius };
+
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+        hf.GetBVH().Query(queryAABB, [&](const Triangle& tri) {
+            ContactPoint cp;
+            if (TestSphereTriangle(s, tri, cp) && cp.depth > maxDepth) {
+                maxDepth = cp.depth; best = cp; found = true;
+            }
+        });
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestAABBHeightField(const AABBCollider& b,
+                                             const HeightFieldCollider& hf,
+                                             ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+        hf.GetBVH().Query(b.GetAABB(), [&](const Triangle& tri) {
+            ContactPoint cp;
+            if (TestAABBTriangle(b, tri, cp) && cp.depth > maxDepth) {
+                maxDepth = cp.depth; best = cp; found = true;
+            }
+        });
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestCapsuleHeightField(const CapsuleCollider& c,
+                                                const HeightFieldCollider& hf,
+                                                ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+        hf.GetBVH().Query(c.GetAABB(), [&](const Triangle& tri) {
+            ContactPoint cp;
+            if (TestCapsuleTriangle(c, tri, cp) && cp.depth > maxDepth) {
+                maxDepth = cp.depth; best = cp; found = true;
+            }
+        });
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestOBBHeightField(const OBBCollider& b,
+                                            const HeightFieldCollider& hf,
+                                            ContactPoint& out)
+    {
+        const math::Quaternion invRot = b.GetRotation().Inverse();
+        AABBCollider localBox(b.m_halfExtents);
+        localBox.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+        hf.GetBVH().Query(b.GetAABB(), [&](const Triangle& tri) {
+            Triangle localTri;
+            for (int i = 0; i < 3; ++i)
+                localTri.v[i] = invRot * (tri.v[i] - b.GetCenter());
+            localTri.normal = (invRot * tri.normal).Normalized();
+            localTri.index = tri.index;
+
+            ContactPoint cp;
+            if (TestAABBTriangle(localBox, localTri, cp) && cp.depth > maxDepth) {
+                cp.normal = (b.GetRotation() * cp.normal).Normalized();
+                cp.point  = b.GetCenter() + b.GetRotation() * cp.point;
+                maxDepth = cp.depth; best = cp; found = true;
+            }
+        });
+        if (found) out = best;
+        return found;
+    }
+
+    bool PhysicsSolver::TestConvexHullHeightField(const ConvexHullCollider& hull,
+                                                   const HeightFieldCollider& hf,
+                                                   ContactPoint& out)
+    {
+        bool found = false;
+        float maxDepth = -1.0f;
+        ContactPoint best;
+        hf.GetBVH().Query(hull.GetAABB(), [&](const Triangle& tri) {
+            ContactPoint cp;
+            if (GJKEPAToContact(&hull, ConvexHullCollider::SupportFnImpl,
+                                &tri, SupportTriangle, cp) && cp.depth > maxDepth) {
+                maxDepth = cp.depth; best = cp; found = true;
+            }
+        });
         if (found) out = best;
         return found;
     }

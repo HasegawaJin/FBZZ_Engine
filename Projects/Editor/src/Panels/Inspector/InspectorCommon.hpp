@@ -65,6 +65,7 @@
 #include <Physics/OBBCollider.hpp>
 #include <Physics/RigidBody.hpp>
 #include <Physics/SphereCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -557,6 +558,10 @@ void SyncColliderPreview(scene::GameObject& go, T& col)
                 scale = math::Vector3::ONE;
         }
         mesh->UpdateWithScale(worldCenter, go.transform.rotation, scale);
+    } else if (auto* hf = col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
+            ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
+            : nullptr) {
+        hf->UpdateWithScale(worldCenter, go.transform.rotation, go.transform.worldScale);
     } else if (auto* hull = col.collider->GetType() == physics::ColliderType::CONVEX_HULL
             ? static_cast<physics::ConvexHullCollider*>(col.collider.get())
             : nullptr) {
@@ -801,7 +806,6 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         shown |= addItem(category, "Decal", !go.GetComponent<scene::DecalComponent>(), [&]() {
             go.AddComponent<scene::DecalComponent>();
         });
-        // Terrain は 1 GO に 1 つ。MeshColliderComponent も同時に追加してすぐ物理が有効になる。
         shown |= addItem(category, "Terrain", !go.GetComponent<scene::TerrainComponent>(), [&]() {
             scene::TerrainComponent tc{};
             tc.columns   = 33;
@@ -809,15 +813,14 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             tc.cellSize  = 2.0f;
             tc.maxHeight = 10.0f;
             tc.chunkSize = 32;
-            tc.materialPath = DefaultTerrainMaterialPath();
+            for (int li = 0; li < 4; ++li)
+                tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
             tc.InitFlat(0.0f);
             tc.heightDirty   = true;
             tc.colliderDirty = true;
             go.AddComponent<scene::TerrainComponent>(std::move(tc));
-            // 物理コライダーのキャリアとして MeshColliderComponent を追加
-            // (meshPath = "" → PhysicsSystem が TerrainComponent から自動構築する)
-            if (!go.GetComponent<scene::MeshColliderComponent>())
-                go.AddComponent<scene::MeshColliderComponent>();
+            if (!go.GetComponent<scene::TerrainColliderComponent>())
+                go.AddComponent<scene::TerrainColliderComponent>();
         });
         shown |= addItem(category, "Water", !go.GetComponent<scene::WaterComponent>(), [&]() {
             scene::WaterComponent water{};
@@ -868,6 +871,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
             BuildConvexHullCollider(col, mesh);
             go.AddComponent<scene::ConvexHullColliderComponent>(std::move(col));
+        });
+        shown |= addItem(category, "Terrain Collider", !go.GetComponent<scene::TerrainColliderComponent>(), [&]() {
+            go.AddComponent<scene::TerrainColliderComponent>();
         });
         shown |= addItem(category, "Volume", !go.GetComponent<scene::VolumeComponent>(), [&]() {
             go.AddComponent<scene::VolumeComponent>();

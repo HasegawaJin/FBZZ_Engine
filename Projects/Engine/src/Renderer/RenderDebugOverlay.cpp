@@ -1,18 +1,12 @@
 // FBZZ Engine
 // RenderDebugOverlay.cpp | fbzz::renderer
-// パスごとの RT サムネイルと CPU タイミングを ImGui で描画するデバッグオーバーレイ実装。
-//
-// 表示レイアウト:
-//   上段 — 有効な RT を横並びにサムネイル表示 (ホバーで拡大ツールチップ表示)
-//   下段 — パス名 + CPU 実行時間のバーチャート
+// 主要 RT サムネイル (HDR/LDR/GBuffer) とパスタイミングを表示するデバッグオーバーレイ。
 //
 // 呼び出しタイミングの分離について:
-//   GetImTextureID は DX11 デバイスコンテキストに副作用を持つ可能性があるため、
-//   GPU レンダリング中 (RenderSystem 内) から直接 ImGui::Image を記録すると
-//   DrawIndexed でクラッシュする。
+//   GetImTextureID は DX11 の SRV バインド状態を変化させる可能性があるため、
+//   GPU レンダリング中 (RenderSystem 内) から直接呼ぶと DrawIndexed でクラッシュする。
 //   そのため RenderSystem では UpdateSnapshot() でハンドルだけ保存し、
-//   GPU レンダリング完了後の ImGui フレーム内 (EditorApp::RenderPanels 等) で
-//   DrawIfEnabled() を呼ぶ 2 ステップ構成にしている。
+//   GPU レンダリング完了後の ImGui フレーム内で DrawIfEnabled() を呼ぶ 2 ステップ構成にしている。
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 
@@ -21,7 +15,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -99,7 +92,7 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
         const char* label;
         ImTextureID texID = 0;
     };
-    ResolvedSlot resolved[5];
+    ResolvedSlot resolved[3];
     int validSlotCount = 0;
 
     auto tryResolve = [&](const char* label, const ResourceHandle<RenderTargetTag>& rt) {
@@ -108,11 +101,9 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
         if (!rawID) return;
         resolved[validSlotCount++] = { label, ToImTexID(rawID) };
     };
-    tryResolve("HDR",          snapshot.hdrRT);
-    tryResolve("LDR",          snapshot.ldrRT);
-    tryResolve("SelectionMask", snapshot.selectionMaskRT);
-    tryResolve("Outline",      snapshot.outlineRT);
-    tryResolve("GBuffer",      snapshot.gbufferRT);
+    tryResolve("HDR",     snapshot.hdrRT);
+    tryResolve("LDR",     snapshot.ldrRT);
+    tryResolve("GBuffer", snapshot.gbufferRT);
 
     const float timingH = snapshot.passTimings.empty()
         ? 0.0f
@@ -186,31 +177,6 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
                 ImGui::Text("%-20s  CPU %.3f ms", name.c_str(), ms);
             }
         }
-    }
-
-    // ─── MemoryDebug: ResourceManager が保持しているスマートポインタ所有リソース ───
-    // WHY: GPU リソースは見た目上動いていても、リサイズやシーン遷移で古いハンドルが残るとメモリが増え続ける。
-    //      ResourcePool の weak_ptr 台帳をここで可視化し、どの生成経路が残っているかを確認できるようにする。
-    ImGui::Separator();
-    const std::size_t liveResourceCount = resources.GetLiveDebugResourceCount();
-    ImGui::Text("Live renderer resources: %zu", liveResourceCount);
-    const std::size_t visibleCount = (std::min)(liveResourceCount, static_cast<std::size_t>(12));
-    for (std::size_t i = 0; i < visibleCount; ++i) {
-        const core::AllocationInfo* info = resources.GetLiveDebugResource(i);
-        if (info == nullptr) {
-            continue;
-        }
-
-        ImGui::BulletText(
-            "#%llu %s %zu bytes (%s:%d)",
-            static_cast<unsigned long long>(info->allocationId),
-            info->allocatorName,
-            info->size,
-            info->file,
-            info->line);
-    }
-    if (liveResourceCount > visibleCount) {
-        ImGui::TextDisabled("... %zu more", liveResourceCount - visibleCount);
     }
 
     ImGui::End();
