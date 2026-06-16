@@ -9,7 +9,7 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
 {
     DrawComponentSection<scene::NavMeshSurfaceComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "NavMesh Surface",
         [](scene::NavMeshSurfaceComponent& surface, EditorContext&) {
-            static constexpr const char* kCollectNames[] = { "All Scene Objects", "Volume" };
+            static constexpr const char* kCollectNames[] = { "This Object", "Volume" };
             int collectIdx = static_cast<int>(surface.collectObjects);
             if (ImGui::Combo("Collect Objects", &collectIdx, kCollectNames, 2))
                 surface.collectObjects = static_cast<scene::NavMeshCollectObjects>(collectIdx);
