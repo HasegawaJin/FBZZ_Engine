@@ -32,12 +32,17 @@
 #include "Tools/DetailTool.hpp"
 #include "Tools/FoliageTool.hpp"
 #include <Engine/Core/Application.hpp>
+#include <Engine/Renderer/DebugCamera.hpp>
+#include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
@@ -357,6 +362,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_uiViewportPanel->renderer  = &renderer;
         m_uiViewportPanel->resources = &resources;
     }
+
+    // シーンはここで生成し activeScene にバインドする。
+    // OpenProject() が activeScene を参照するため Init() で確立しておく必要がある。
+    m_scene = std::make_unique<scene::Scene>();
+    m_ctx.activeScene = m_scene.get();
 
     FBZZ_LOG_INFO("EditorApp init done");
     UpdateWindowTitle();
@@ -1001,6 +1011,286 @@ void EditorApp::ResizeViewportRTsIfNeeded()
     //      リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
     if (m_uiViewportPanel)
         m_uiViewportPanel->hdrRT = m_gameViewportRT;
+}
+
+// =============================================================================
+// IModule — app::Run() から呼ばれるライフサイクル
+// =============================================================================
+
+bool EditorApp::OnInit()
+{
+    // Init() と OpenProject() は app::Run() の前に呼ばれているため、
+    // ここでは Post-project セットアップだけを担う。
+    scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
+    scene::ApplyUISettings(m_ctx.projectSettings, &m_gameUICtx);
+    scene::ApplyUISettings(m_ctx.projectSettings, &m_sceneUICtx);
+
+    m_sceneManager.SetScene(m_scene.get());
+    m_sceneManager.SetPhysicsHz(m_ctx.projectSettings.physics.hz);
+
+    m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
+    m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
+    m_ctx.editorCamera = &m_debugCamera.camera;
+
+    if (auto* rt = m_resources->Get(m_sceneViewportRT))
+        m_debugCamera.camera.m_aspect =
+            static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+
+    WarmupRenderResources();
+    return true;
+}
+
+void EditorApp::OnUpdate(float dt)
+{
+    BeginFrame();
+
+    auto* playMode = m_ctx.playMode;
+    if (playMode->ApplyPendingRestore(*m_scene)) {
+        // WHY: World は m_contactCache / m_prevEvents を保持するため、
+        //      Stop 復元時に丸ごとリセットしないと前 Play セッションの Collider* が残る。
+        m_physicsWorld = physics::World{};
+        scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
+    }
+
+    if (!playMode->IsPlaying()) {
+        m_debugCamera.moveSpeed = m_ctx.cameraSpeed;
+        m_debugCamera.mouseSens = m_ctx.cameraSensitivity;
+        m_debugCamera.Update(dt, m_ctx.sceneViewportHovered);
+        UpdateFocusAnim(dt);
+    }
+
+    const bool stepFrame   = playMode->ConsumeStep();
+    m_simulationDt         = stepFrame ? (1.0f / 60.0f) : dt;
+
+    m_sceneManager.SetSimulating(playMode->IsPlaying() || stepFrame);
+    m_sceneManager.SetSingleStep(stepFrame);
+
+    if (playMode->IsPlaying()) {
+        scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
+        scene::Script::SetPhysicsWorld(&m_physicsWorld);
+    }
+
+    m_sceneManager.Update(m_simulationDt, m_physicsWorld);
+}
+
+void EditorApp::OnLateUpdate(float dt)
+{
+    (void)dt;
+    m_sceneManager.LateUpdate(m_simulationDt, m_physicsWorld);
+}
+
+void EditorApp::OnRender()
+{
+    if (auto* rt = m_resources->Get(m_sceneViewportRT))
+        m_debugCamera.camera.m_aspect =
+            static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+
+    float gameAspect = m_debugCamera.camera.m_aspect;
+    if (auto* rt = m_resources->Get(m_gameViewportRT))
+        gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
+
+    const renderer::Camera  gameCamera       = scene::ResolveEditorGameCamera(*m_scene, m_debugCamera.camera, gameAspect);
+    const fbzz::LayerMask   gameCullingMask  = scene::ResolveGameCullingMask(*m_scene);
+
+    m_renderer->BeginFrame();
+
+    RenderSceneView(gameCamera, gameCullingMask);
+    RenderGameView(gameCamera, gameCullingMask);
+
+    m_renderer->SetRenderTarget({}, *m_resources);
+    m_renderer->Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
+
+    m_ctx.activeScene = m_scene.get();
+    RenderPanels(m_ctx);
+    EndFrame(*m_imguiRenderer);
+
+    m_renderer->EndFrame();
+}
+
+void EditorApp::OnShutdown()
+{
+    // WHY: FreeLibrary より前に全スクリプトの OnDestroy と destructor を
+    //      DLL コードが有効なうちに実行する。
+    if (m_scene)
+        m_scene->Clear();
+    scene::Script::SetPhysicsWorld(nullptr);
+    // Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
+    m_ctx.activeScene = nullptr;
+    Shutdown();
+}
+
+// =============================================================================
+// IModule — プライベートヘルパー
+// =============================================================================
+
+void EditorApp::WarmupRenderResources()
+{
+    // WHY: RenderSystem は初回呼び出しで shader / PSO / shadow map / GBuffer などを lazy initialize する。
+    //      その負荷を最初の可視フレームに乗せると起動直後だけ FPS 表示が大きく落ちるため、
+    //      メインループ開始前に 1 回描画してリソースを先行生成する。
+    m_renderer->BeginFrame();
+
+    const auto sceneRT = m_sceneViewportRT;
+    if (sceneRT.IsValid()) {
+        m_renderer->SetRenderTarget(sceneRT, *m_resources);
+        m_renderer->Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
+
+        float w = 1920.0f, h = 1080.0f;
+        if (auto* rt = m_resources->Get(sceneRT)) {
+            w = static_cast<float>(rt->GetWidth());
+            h = static_cast<float>(rt->GetHeight());
+        }
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled       = true;
+        uiOptions.viewportWidth  = w;
+        uiOptions.viewportHeight = h;
+        uiOptions.targetView    = scene::UIRenderTargetView::SceneViewport;
+        uiOptions.context       = &m_sceneUICtx;
+        scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
+                            m_debugCamera.camera, sceneRT, nullptr,
+                            fbzz::Layer::Everything, &uiOptions);
+    }
+
+    const auto gameRT = m_gameViewportRT;
+    if (gameRT.IsValid()) {
+        m_renderer->SetRenderTarget(gameRT, *m_resources);
+        m_renderer->Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
+
+        float w = 1920.0f, h = 1080.0f;
+        if (auto* rt = m_resources->Get(gameRT)) {
+            w = static_cast<float>(rt->GetWidth());
+            h = static_cast<float>(rt->GetHeight());
+        }
+        const float warmupAspect = (h > 0.0f) ? (w / h) : 1.0f;
+        const renderer::Camera warmupCamera =
+            scene::ResolveEditorGameCamera(*m_scene, m_debugCamera.camera, warmupAspect);
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled       = true;
+        uiOptions.viewportWidth  = w;
+        uiOptions.viewportHeight = h;
+        uiOptions.targetView    = scene::UIRenderTargetView::GameViewport;
+        uiOptions.context       = &m_gameUICtx;
+        scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
+                            warmupCamera, gameRT,
+                            &m_ctx.projectSettings.render,
+                            scene::ResolveGameCullingMask(*m_scene), &uiOptions);
+    }
+
+    m_renderer->SetRenderTarget({}, *m_resources);
+    m_renderer->Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
+    m_renderer->EndFrame();
+}
+
+void EditorApp::UpdateFocusAnim(float dt)
+{
+    constexpr float kFocusAnimDuration = 0.30f;
+    constexpr float kFocusDist         = 5.0f;
+
+    if (m_ctx.requestFocusOnSelected) {
+        m_ctx.requestFocusOnSelected = false;
+        const math::Vector3 target = m_ctx.focusTargetPosition;
+        const math::Vector3 dir    = m_debugCamera.camera.m_position - target;
+        const float         dist   = dir.Length();
+        const math::Vector3 camDir = (dist > 0.01f)
+            ? dir * (1.0f / dist)
+            : math::Vector3{ 0.0f, 0.5f, -1.0f }.Normalized();
+        m_focusAnim.active   = true;
+        m_focusAnim.startPos = m_debugCamera.camera.m_position;
+        m_focusAnim.endPos   = target + camDir * kFocusDist;
+        m_focusAnim.target   = target;
+        m_focusAnim.t        = 0.0f;
+    }
+
+    if (m_focusAnim.active) {
+        m_focusAnim.t += dt / kFocusAnimDuration;
+        if (m_focusAnim.t >= 1.0f) {
+            m_focusAnim.t      = 1.0f;
+            m_focusAnim.active = false;
+        }
+        const float s = m_focusAnim.t * m_focusAnim.t * (3.0f - 2.0f * m_focusAnim.t);
+        m_debugCamera.camera.m_position =
+            m_focusAnim.startPos + (m_focusAnim.endPos - m_focusAnim.startPos) * s;
+        m_debugCamera.LookAt(m_focusAnim.target);
+    }
+}
+
+void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::LayerMask /*gameCullingMask*/)
+{
+    const auto sceneRT = m_sceneViewportRT;
+    m_renderer->SetRenderTarget(sceneRT, *m_resources);
+    m_renderer->Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
+
+    auto sceneRenderSettings = m_ctx.projectSettings.render;
+    sceneRenderSettings.selectedObjects.clear();
+    sceneRenderSettings.selectedObjects.reserve(m_ctx.selectedEntities.size());
+    for (scene::EntityID id : m_ctx.selectedEntities)
+        sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
+
+    {
+        float w = 1920.0f, h = 1080.0f;
+        if (auto* rt = m_resources->Get(sceneRT)) {
+            w = static_cast<float>(rt->GetWidth());
+            h = static_cast<float>(rt->GetHeight());
+        }
+        scene::RenderSystemUIOptions uiOptions{};
+        uiOptions.enabled       = true;
+        uiOptions.viewportWidth  = w;
+        uiOptions.viewportHeight = h;
+        uiOptions.targetView    = scene::UIRenderTargetView::SceneViewport;
+        uiOptions.context       = &m_sceneUICtx;
+        scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
+                            m_debugCamera.camera, sceneRT, &sceneRenderSettings,
+                            fbzz::Layer::Everything, &uiOptions);
+    }
+
+    const auto& render = m_ctx.projectSettings.render;
+    if (render.showColliders || render.showTerrainCollision) {
+        renderer::DebugDraw::BeginFrame(*m_renderer, *m_resources,
+                                        m_debugCamera.camera.GetViewProjection());
+        if (render.showColliders) {
+            scene::ColliderDebugDrawSystem(*m_scene, *m_renderer);
+            scene::ConstraintDebugDrawSystem(m_physicsWorld, *m_renderer);
+        }
+        if (render.showTerrainCollision)
+            scene::TerrainCollisionDebugDrawSystem(*m_scene, *m_renderer,
+                                                    m_debugCamera.camera.m_position);
+        renderer::DebugDraw::Flush();
+    }
+
+    if (m_ctx.showSkeleton)
+        scene::AnimatorDebugDrawSystem(*m_scene, *m_renderer, *m_resources,
+                                        m_debugCamera.camera.GetViewProjection());
+    if (m_ctx.showGrid)
+        scene::GridDebugDrawSystem(*m_renderer, *m_resources,
+                                    m_debugCamera.camera.GetViewProjection());
+    if (m_ctx.showLightRange)
+        scene::LightRangeDebugDrawSystem(*m_scene, *m_renderer, *m_resources,
+                                          m_debugCamera.camera.GetViewProjection());
+}
+
+void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask)
+{
+    const auto gameRT = m_gameViewportRT;
+    if (!gameRT.IsValid()) return;
+
+    m_renderer->SetRenderTarget(gameRT, *m_resources);
+    m_renderer->Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
+
+    float w = 1920.0f, h = 1080.0f;
+    if (auto* rt = m_resources->Get(gameRT)) {
+        w = static_cast<float>(rt->GetWidth());
+        h = static_cast<float>(rt->GetHeight());
+    }
+    scene::RenderSystemUIOptions uiOptions{};
+    uiOptions.enabled       = true;
+    uiOptions.viewportWidth  = w;
+    uiOptions.viewportHeight = h;
+    uiOptions.targetView    = scene::UIRenderTargetView::GameViewport;
+    uiOptions.context       = &m_gameUICtx;
+    scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
+                        gameCamera, gameRT,
+                        &m_ctx.projectSettings.render,
+                        gameCullingMask, &uiOptions);
 }
 
 } // namespace fbzz::editor
