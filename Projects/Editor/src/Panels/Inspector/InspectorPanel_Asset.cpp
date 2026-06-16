@@ -23,6 +23,7 @@
 #include <imgui_internal.h>
 #include <array>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -363,6 +364,37 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextColored(
                 {1.0f, 0.8f, 0.2f, 1.0f},
                 "Modified - use Save Controller in Animation Graph.");
+        }
+    } else if (ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb") {
+        namespace fs = std::filesystem;
+        const fs::path    p         = util::FileSystem::PathFromUtf8(absPath);
+        const std::string stem      = util::FileSystem::PathToUtf8(p.stem());
+        const fs::path    fzasset   = p.parent_path() / (stem + ".asset");
+        const bool        imported  = util::FileSystem::Exists(fzasset);
+
+        ImGui::TextDisabled("Type: 3D Model (%s)", ext.c_str());
+        ImGui::Spacing();
+
+        if (imported) {
+            ImGui::TextColored({ 0.3f, 0.9f, 0.3f, 1.0f }, "Status: Imported");
+            ImGui::Spacing();
+            if (ImGui::Button("Reimport...")) {
+                ctx.requestOpenImportModal = absPath;
+            }
+        } else {
+            ImGui::TextColored({ 1.0f, 0.6f, 0.1f, 1.0f }, "Status: Not Imported");
+            ImGui::Spacing();
+            if (ImGui::Button("Import...")) {
+                ctx.requestOpenImportModal = absPath;
+            }
+        }
+    } else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
+               ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
+               ext == ".hdr" || ext == ".exr") {
+        ImGui::TextDisabled("Type: Texture (%s)", ext.c_str());
+        ImGui::Spacing();
+        if (ImGui::Button("Import Settings...")) {
+            ctx.requestOpenImportModal = absPath;
         }
     } else {
         ImGui::TextDisabled("Type: %s", ext.c_str());
