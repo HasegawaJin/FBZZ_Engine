@@ -207,11 +207,11 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RefreshDirectory();
     }
     if (ImGui::MenuItem("Animator Controller")) {
-        std::string newPath = m_currentPath + "/New Animator Controller.fbzzanimcontroller";
+        std::string newPath = m_currentPath + "/New Animator Controller.animcontroller";
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Animator Controller " +
-                std::to_string(suffix++) + ".fbzzanimcontroller";
+                std::to_string(suffix++) + ".animcontroller";
         asset::AnimatorControllerAsset controller;
         if (!asset::SaveAnimatorControllerAsset(newPath, controller)) {
             FBZZ_LOG_ERROR("Animator Controller creation failed: %s", newPath.c_str());

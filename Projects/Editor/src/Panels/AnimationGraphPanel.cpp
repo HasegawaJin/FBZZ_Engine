@@ -78,7 +78,7 @@ void MarkDirty(EditorContext& ctx)
 
     ++AnimationGraphEditGeneration();
     if (util::StringUtils::EndsWith(
-            ctx.selectedAssetPath, ".fbzzanimcontroller")) {
+            ctx.selectedAssetPath, ".animcontroller")) {
         ctx.animationControllerDirty = true;
         // Registry に登録し Save All / 終了時確認で一括保存できるようにする
         const std::string capturedPath = ctx.selectedAssetPath;
@@ -994,7 +994,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     //      編集用 snapshot と Undo 追跡を続けると、監視表示だけで大きな CPU 負荷になる。
     const bool allowEditing = CanEditAnimationGraph(ctx);
     const bool editingControllerAsset =
-        util::StringUtils::EndsWith(ctx.selectedAssetPath, ".fbzzanimcontroller");
+        util::StringUtils::EndsWith(ctx.selectedAssetPath, ".animcontroller");
     if (editingControllerAsset) {
         if (ctx.animationControllerEditorPath != ctx.selectedAssetPath ||
             !ctx.animationControllerEditor) {
