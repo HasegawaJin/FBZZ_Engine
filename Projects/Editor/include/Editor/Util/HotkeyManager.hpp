@@ -23,6 +23,12 @@ public:
     void ProcessInput();  // 毎フレーム EditorApp から呼ぶ
     void Clear();
 
+    const std::vector<Hotkey>& GetHotkeys() const { return m_hotkeys; }
+
+    // 既存ホットキーのキーバインドだけを変更する (コールバックは保持)。
+    // name が見つからない場合は何もしない。
+    void Rebind(const std::string& name, int imguiKey, bool ctrl, bool shift, bool alt);
+
 private:
     std::vector<Hotkey> m_hotkeys;
 };
