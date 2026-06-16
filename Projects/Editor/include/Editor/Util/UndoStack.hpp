@@ -98,7 +98,15 @@ public:
     [[nodiscard]] std::string GetUndoDescription() const;
     [[nodiscard]] std::string GetRedoDescription() const;
     [[nodiscard]] std::size_t GetHistorySize() const { return m_history.size(); }
-    [[nodiscard]] std::size_t GetRevision() const { return m_revision; }
+    [[nodiscard]] std::size_t GetCursor()      const { return m_cursor; }
+    [[nodiscard]] std::size_t GetRevision()    const { return m_revision; }
+
+    // index 番目のコマンドが適用された直後の状態へジャンプする (index == m_cursor で no-op)
+    void JumpTo(std::size_t index);
+
+    // 履歴エントリ一覧を返す (description, applied)
+    struct HistoryEntry { std::string description; bool applied; };
+    [[nodiscard]] std::vector<HistoryEntry> GetHistory() const;
 
 private:
     std::vector<std::unique_ptr<ICommand>> m_history;
