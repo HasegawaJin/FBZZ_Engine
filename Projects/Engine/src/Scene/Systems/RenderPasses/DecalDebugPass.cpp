@@ -23,7 +23,7 @@ void ExecuteDecalDebugPass(RenderPassContext& ctx)
     constexpr math::Vector4 kArrowColor = { 1.0f, 0.8f, 0.0f, 1.0f }; // 黄
 
     for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeSelf()) continue;
+        if (!go.activeInHierarchy()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
         const auto* dc = go.GetComponent<DecalComponent>();
         if (!dc || !dc->enabled) continue;
