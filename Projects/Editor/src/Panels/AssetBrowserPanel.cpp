@@ -12,27 +12,6 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     // テクスチャ遅延ロードキューを処理 (3件/フレームに分散)
     DrainTexLoadQueue(ctx);
 
-    // ファイルシステムの変化をポーリング
-    // WHY: スレッドなしでウォッチャーを動かすため毎フレーム Poll() を呼ぶ。
-    //      変化があった場合のみ RefreshDirectory() を実行して描画コストを抑える。
-    for (const auto& ev : m_watcher.Poll())
-    {
-        const bool inCurrentDir = util::FileSystem::IsChildPathText(
-            util::FileSystem::NormalizePathSeparators(m_rootPath + ev.path),
-            m_currentPath);
-
-        if (ev.type == AssetFileWatcher::EventType::Added   ||
-            ev.type == AssetFileWatcher::EventType::Removed ||
-            ev.type == AssetFileWatcher::EventType::Renamed)
-        {
-            if (inCurrentDir) RefreshDirectory();
-
-            // 新規追加ファイルが未変換形式なら PendingImport に積む
-            if (ev.type == AssetFileWatcher::EventType::Added)
-                TryQueuePendingImport(ev.path);
-        }
-    }
-
     UpdateMounts(ctx);
 
     if (ctx.requestAssetBrowserRefresh) {

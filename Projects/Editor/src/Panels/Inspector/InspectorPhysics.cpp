@@ -103,6 +103,14 @@ void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go)
     SyncColliderPreview(go, col);
 }
 
+void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject& go)
+{
+    DrawColliderCommon(col);
+    if (!go.GetComponent<scene::TerrainComponent>())
+        ImGui::TextColored({ 1.0f, 0.6f, 0.2f, 1.0f }, "TerrainComponent が同じ GO に必要です");
+    SyncColliderPreview(go, col);
+}
+
 void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go)
 {
     DrawColliderCommon(col);
@@ -509,6 +517,11 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawMeshColliderComponentSection(
         go, ctx, m_componentClipboard, m_componentClipboardType,
         "Convex Hull Collider", CONVEX_HULL_COLLIDER_OPS);
+
+    DrawComponentSection<scene::TerrainColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Collider",
+        [go](scene::TerrainColliderComponent& col, EditorContext&) {
+            DrawTerrainCollider(col, *go);
+        });
 
     DrawComponentSection<scene::RigidBodyComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Rigid Body",
         [](scene::RigidBodyComponent& rb, EditorContext&) {

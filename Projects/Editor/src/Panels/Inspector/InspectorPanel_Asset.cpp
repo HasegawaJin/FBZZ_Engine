@@ -155,7 +155,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             || relPath.find("/Water/") != std::string::npos;
 
         if (isTerrainMaterial) {
-            materialDirty |= DrawTerrainMaterialInspector(mat);
+            const auto tf = DrawTerrainLayerMaterialInspector(mat);
+            materialDirty |= (tf.textureDirty || tf.paramDirty);
         } else if (isWaterMaterial) {
             materialDirty |= DrawWaterMaterialInspector(mat);
         } else {
@@ -255,8 +256,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     mc.material.reset();
             }
             for (auto [terrain] : ctx.activeScene->View<scene::TerrainComponent>()) {
-                if (NormalizeAssetPath(terrain.materialPath) == relPath)
-                    terrain.splatDirty = true;
+                for (const auto& lm : terrain.layerMaterials)
+                    if (NormalizeAssetPath(lm) == relPath) { terrain.splatDirty = true; break; }
             }
             for (auto [water] : ctx.activeScene->View<scene::WaterComponent>()) {
                 if (NormalizeAssetPath(water.materialPath) == relPath) {
@@ -304,8 +305,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                             component.material.reset();
                     }
                     for (auto [terrain] : context->activeScene->View<scene::TerrainComponent>()) {
-                        if (NormalizeAssetPath(terrain.materialPath) == capturedDisplay)
-                            terrain.splatDirty = true;
+                        for (const auto& lm : terrain.layerMaterials)
+                            if (NormalizeAssetPath(lm) == capturedDisplay) { terrain.splatDirty = true; break; }
                     }
                     for (auto [water] : context->activeScene->View<scene::WaterComponent>()) {
                         if (NormalizeAssetPath(water.materialPath) == capturedDisplay) {

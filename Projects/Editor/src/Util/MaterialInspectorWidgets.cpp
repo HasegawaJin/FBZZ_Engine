@@ -103,57 +103,32 @@ bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, cons
     return changed;
 }
 
-bool DrawTerrainMaterialInspector(asset::MaterialAsset& mat)
+TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& mat)
 {
-    bool dirty = false;
-    ImGui::SeparatorText("Terrain Layers");
-    for (int layer = 0; layer < 4; ++layer) {
-        char header[32];
-        std::snprintf(header, sizeof(header), "Layer %d", layer);
-        if (!ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen))
-            continue;
-
-        ImGui::PushID(layer);
-        char key[64];
-        std::snprintf(key, sizeof(key), "layer%d_diffuse", layer);
-        dirty |= DrawMaterialTextureField(mat, "Diffuse", key);
-        std::snprintf(key, sizeof(key), "layer%d_normal", layer);
-        dirty |= DrawMaterialTextureField(mat, "Normal", key);
-        std::snprintf(key, sizeof(key), "layer%d_ao_roughness", layer);
-        dirty |= DrawMaterialTextureField(mat, "AO / Roughness", key);
-
-        ImGui::SeparatorText("Surface");
-        std::snprintf(key, sizeof(key), "layer%d_tilingX", layer);
-        dirty |= DrawMaterialFloat(mat, "Tiling X", key, 8.0f, 0.05f, 0.01f, 512.0f);
-        std::snprintf(key, sizeof(key), "layer%d_tilingZ", layer);
-        dirty |= DrawMaterialFloat(mat, "Tiling Z", key, 8.0f, 0.05f, 0.01f, 512.0f);
-        std::snprintf(key, sizeof(key), "layer%d_normalStrength", layer);
-        dirty |= DrawMaterialFloat(mat, "Normal Strength", key, 1.0f, 0.01f, 0.0f, 8.0f);
-        std::snprintf(key, sizeof(key), "layer%d_roughness", layer);
-        dirty |= DrawMaterialFloat(mat, "Roughness", key, 0.8f, 0.01f, 0.0f, 1.0f);
-        std::snprintf(key, sizeof(key), "layer%d_ambientOcclusion", layer);
-        dirty |= DrawMaterialFloat(mat, "Ambient Occlusion", key, 1.0f, 0.01f, 0.0f, 1.0f);
-
-        ImGui::SeparatorText("Auto Blend");
-        std::snprintf(key, sizeof(key), "layer%d_autoBlendEnabled", layer);
-        dirty |= DrawMaterialBoolFloat(mat, "Enabled", key, false);
-        std::snprintf(key, sizeof(key), "layer%d_autoBlendStrength", layer);
-        dirty |= DrawMaterialFloat(mat, "Strength", key, 1.0f, 0.01f, 0.0f, 1.0f);
-        std::snprintf(key, sizeof(key), "layer%d_autoMinHeight", layer);
-        dirty |= DrawMaterialFloat(mat, "Min Height", key, -10000.0f, 0.1f);
-        std::snprintf(key, sizeof(key), "layer%d_autoMaxHeight", layer);
-        dirty |= DrawMaterialFloat(mat, "Max Height", key, 10000.0f, 0.1f);
-        std::snprintf(key, sizeof(key), "layer%d_autoHeightFade", layer);
-        dirty |= DrawMaterialFloat(mat, "Height Fade", key, 1.0f, 0.01f, 0.0f, 1000.0f);
-        std::snprintf(key, sizeof(key), "layer%d_autoMinSlope", layer);
-        dirty |= DrawMaterialFloat(mat, "Min Slope", key, 0.0f, 0.01f, 0.0f, 1.0f);
-        std::snprintf(key, sizeof(key), "layer%d_autoMaxSlope", layer);
-        dirty |= DrawMaterialFloat(mat, "Max Slope", key, 1.0f, 0.01f, 0.0f, 1.0f);
-        std::snprintf(key, sizeof(key), "layer%d_autoSlopeFade", layer);
-        dirty |= DrawMaterialFloat(mat, "Slope Fade", key, 0.1f, 0.01f, 0.0f, 1.0f);
-        ImGui::PopID();
+    TerrainLayerDirtyFlags flags;
+    if (ImGui::CollapsingHeader("Textures", ImGuiTreeNodeFlags_DefaultOpen)) {
+        flags.textureDirty |= DrawMaterialTextureField(mat, "Diffuse",        "diffuse");
+        flags.textureDirty |= DrawMaterialTextureField(mat, "Normal",         "normal");
+        flags.textureDirty |= DrawMaterialTextureField(mat, "AO / Roughness", "ao_roughness");
     }
-    return dirty;
+    if (ImGui::CollapsingHeader("Surface", ImGuiTreeNodeFlags_DefaultOpen)) {
+        flags.paramDirty |= DrawMaterialFloat(mat, "Tiling X",         "tilingX",         8.0f, 0.05f, 0.01f, 512.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Tiling Z",         "tilingZ",         8.0f, 0.05f, 0.01f, 512.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Normal Strength",  "normalStrength",  1.0f, 0.01f, 0.0f,  8.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Roughness",        "roughness",       0.8f, 0.01f, 0.0f,  1.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Ambient Occlusion","ambientOcclusion",1.0f, 0.01f, 0.0f,  1.0f);
+    }
+    if (ImGui::CollapsingHeader("Auto Blend")) {
+        flags.paramDirty |= DrawMaterialBoolFloat(mat, "Enabled",      "autoBlendEnabled",  false);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Strength",         "autoBlendStrength", 1.0f, 0.01f, 0.0f,    1.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Min Height",       "autoMinHeight",     -10000.0f, 0.1f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Max Height",       "autoMaxHeight",     10000.0f,  0.1f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Height Fade",      "autoHeightFade",    1.0f, 0.01f, 0.0f, 1000.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Min Slope",        "autoMinSlope",      0.0f, 0.01f, 0.0f,    1.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Max Slope",        "autoMaxSlope",      1.0f, 0.01f, 0.0f,    1.0f);
+        flags.paramDirty |= DrawMaterialFloat(mat, "Slope Fade",       "autoSlopeFade",     0.1f, 0.01f, 0.0f,    1.0f);
+    }
+    return flags;
 }
 
 bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)

@@ -1004,7 +1004,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
                 return;
             }
             ctx.animationControllerEditor =
-                std::make_shared<scene::AnimatorComponent>();
+                std::shared_ptr<scene::AnimatorComponent>(new scene::AnimatorComponent());
             asset::ApplyAnimatorControllerAsset(
                 controller, *ctx.animationControllerEditor);
             ctx.animationControllerEditorPath = ctx.selectedAssetPath;

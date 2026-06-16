@@ -40,7 +40,7 @@ bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t heigh
             FBZZ_HR_CHECK(device->CreateRenderTargetView(m_colorBuffer[i].Get(), nullptr, m_rtv[i].GetAddressOf()));
             FBZZ_HR_CHECK(device->CreateShaderResourceView(m_colorBuffer[i].Get(), nullptr, m_srv[i].GetAddressOf()));
 
-            auto tex = std::make_shared<DX11Texture>();
+            auto tex = std::shared_ptr<DX11Texture>(new DX11Texture());
             tex->InitFromSRV(m_srv[i].Get(), width, height);
             m_colorTexture[i] = tex;
         }
@@ -74,7 +74,7 @@ bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t heigh
     srvDesc.Texture2D.MostDetailedMip = 0;
     FBZZ_HR_CHECK(device->CreateShaderResourceView(m_depthBuffer.Get(), &srvDesc, m_depthSRV.GetAddressOf()));
 
-    auto depthTex = std::make_shared<DX11Texture>();
+    auto depthTex = std::shared_ptr<DX11Texture>(new DX11Texture());
     depthTex->InitFromSRV(m_depthSRV.Get(), width, height);
     m_depthTexture = depthTex;
 

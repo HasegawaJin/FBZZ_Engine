@@ -146,10 +146,34 @@ void AssetBrowserPanel::DrawImportResultBar(EditorContext&)
 
 // ─── インポートキュー処理 ─────────────────────────────────────────────────────
 // WHY: OnRenderContent はウィンドウが collapsed のとき呼ばれないため
-//      OnBeforeBegin (毎フレーム確実に呼ばれる) でインポートを処理する。
+//      OnBeforeBegin (毎フレーム確実に呼ばれる) でウォッチャーとインポートを処理する。
 
 void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
 {
+    // ── ファイルシステム監視 ──────────────────────────────────────────────
+    // WHY: Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でも
+    //      イベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
+    for (const auto& ev : m_watcher.Poll())
+    {
+        const std::string absPath = util::FileSystem::NormalizePathSeparators(
+            m_rootPath + ev.path);
+
+        if (ev.type == AssetFileWatcher::EventType::Added   ||
+            ev.type == AssetFileWatcher::EventType::Removed ||
+            ev.type == AssetFileWatcher::EventType::Renamed)
+        {
+            // 変更が起きたディレクトリのツリーキャッシュを無効化
+            InvalidateTreeCache(util::FileSystem::GetDirectory(absPath));
+
+            // カレントディレクトリ以下の変化ならグリッドも再スキャン
+            if (util::FileSystem::IsChildPathText(absPath, m_currentPath))
+                RefreshDirectory();
+        }
+
+        if (ev.type == AssetFileWatcher::EventType::Added)
+            TryQueuePendingImport(ev.path);
+    }
+
     // ── スレッド完了チェック ──────────────────────────────────────────────
     if (m_importThreadDone.load()) {
         m_importThreadDone.store(false);

@@ -10,6 +10,7 @@
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
 #include <Physics/EPA.hpp>
 #include <Physics/RigidBody.hpp>
@@ -66,6 +67,13 @@ namespace fbzz::physics
         bool TestCapsuleTriangleMesh (const CapsuleCollider&, const TriangleMeshCollider&, ContactPoint& out);
         bool TestOBBTriangleMesh     (const OBBCollider&,      const TriangleMeshCollider&, ContactPoint& out);
         bool TestConvexHullTriangleMesh(const ConvexHullCollider&, const TriangleMeshCollider&, ContactPoint& out);
+
+        // HeightField 用テスト関数。内部 BVH に対して TriangleMesh と同一アルゴリズムを適用する。
+        bool TestSphereHeightField    (const SphereCollider&,  const HeightFieldCollider&, ContactPoint& out);
+        bool TestAABBHeightField      (const AABBCollider&,    const HeightFieldCollider&, ContactPoint& out);
+        bool TestCapsuleHeightField   (const CapsuleCollider&, const HeightFieldCollider&, ContactPoint& out);
+        bool TestOBBHeightField       (const OBBCollider&,     const HeightFieldCollider&, ContactPoint& out);
+        bool TestConvexHullHeightField(const ConvexHullCollider&, const HeightFieldCollider&, ContactPoint& out);
 
         // ConvexHull 用テスト関数 (GJK + EPA)。形状差分をサポート関数で抽象化する。
         bool TestConvexConvex  (const ConvexHullCollider&, const ConvexHullCollider&, ContactPoint& out);
