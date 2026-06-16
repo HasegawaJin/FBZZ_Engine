@@ -21,7 +21,10 @@
 #include <Editor/Panels/ViewportPanel.hpp>
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/Panels/AssetBrowserPanel.hpp>
+#include <Editor/Panels/DependencyViewPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
+#include <Editor/Panels/UndoHistoryPanel.hpp>
+#include <Editor/Panels/HotkeyEditorPanel.hpp>
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/Panels/BuildSettingsPanel.hpp>
 #include <Editor/Panels/AnalysisPanel.hpp>
@@ -166,7 +169,7 @@ std::string ResolveScenePathForProject(const std::string& projectRoot, const std
 bool IsScenePathInsideProject(const std::string& projectRoot, const std::string& scenePath)
 {
     if (projectRoot.empty() || scenePath.empty()) return false;
-    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(scenePath)) != ".fbzz") return false;
+    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(scenePath)) != ".scene") return false;
     if (!util::FileSystem::Exists(scenePath)) return false;
 
     const std::filesystem::path rootPath = util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(projectRoot));
@@ -265,6 +268,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     imguiRenderer.ImGuiInit(m_hwnd);
 
+    m_ctx.hotkeyManager = &m_hotkeys;
     m_ctx.undoStack   = &m_undoStack;
     m_ctx.playMode    = &m_playMode;
     m_ctx.renderer    = &renderer;
@@ -310,7 +314,17 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_assetBrowserPanel = assets.get();
         m_panels.push_back(std::move(assets));
     }
-    m_panels.push_back(std::make_unique<StatusBar>());
+    m_statusBar = std::make_unique<StatusBar>();
+    {
+        auto hist = std::make_unique<UndoHistoryPanel>();
+        hist->visible = false;
+        m_panels.push_back(std::move(hist));
+    }
+    {
+        auto hk = std::make_unique<HotkeyEditorPanel>();
+        hk->visible = false;
+        m_panels.push_back(std::move(hk));
+    }
     {
         auto ps = std::make_unique<ProjectSettingsPanel>();
         ps->visible = false;
@@ -335,11 +349,19 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_mapEditorPanel = mapEditor.get();
         m_panels.push_back(std::move(mapEditor));
     }
+    {
+        auto dep = std::make_unique<DependencyViewPanel>();
+        dep->visible = false;
+        m_panels.push_back(std::move(dep));
+    }
 
     for (auto& panel : m_panels)
         panel->OnInit(m_ctx);
 
     RegisterDefaultHotkeys();
+    // 保存済みのオーバーライドを適用する
+    for (const auto& ov : m_settings.hotkeyOverrides)
+        m_hotkeys.Rebind(ov.name, ov.key, ov.ctrl, ov.shift, ov.alt);
 
     // 初回 RT をウィンドウサイズで生成する
     m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
@@ -397,8 +419,10 @@ void EditorApp::Shutdown()
     //      そのまま保存されてしまい、ユーザーの変更が永続化されない。
     m_settings.showGrid           = m_ctx.showGrid;
     m_settings.gridSize           = m_ctx.gridSize;
-    m_settings.snapEnabled        = m_ctx.snapEnabled;
-    m_settings.snapDistance       = m_ctx.snapDistance;
+    m_settings.snapEnabled = m_ctx.snapEnabled;
+    m_settings.snapPos    = m_ctx.snapPos;
+    m_settings.snapRot    = m_ctx.snapRot;
+    m_settings.snapScale  = m_ctx.snapScale;
     m_settings.gizmoMode          = static_cast<int>(m_ctx.gizmoMode);
     m_settings.gizmoSpace         = static_cast<int>(m_ctx.gizmoSpace);
     m_settings.showLightRange     = m_ctx.showLightRange;
@@ -413,6 +437,27 @@ void EditorApp::Shutdown()
     m_settings.cameraSpeed           = m_ctx.cameraSpeed;
     m_settings.cameraSensitivity     = m_ctx.cameraSensitivity;
     m_settings.assetBrowserIconSize  = m_ctx.assetBrowserIconSize;
+    m_settings.assetBrowserBookmarks = m_ctx.assetBrowserBookmarks;
+    m_settings.defaultImportOptions  = m_ctx.defaultImportOptions;
+    // ホットキーバインドをオーバーライドとして保存 (デフォルト値でも全件保存して確実に復元)
+    m_settings.hotkeyOverrides.clear();
+    for (const auto& hk : m_hotkeys.GetHotkeys()) {
+        EditorSettings::HotkeyOverride ov;
+        ov.name  = hk.name;
+        ov.key   = hk.imguiKey;
+        ov.ctrl  = hk.ctrl;
+        ov.shift = hk.shift;
+        ov.alt   = hk.alt;
+        m_settings.hotkeyOverrides.push_back(std::move(ov));
+    }
+    for (std::size_t i = 0; i < 9; ++i) {
+        const auto& s = m_ctx.cameraBookmarks[i];
+        auto& d = m_settings.cameraBookmarks[i];
+        d.valid = s.valid;
+        d.px = s.position.x; d.py = s.position.y; d.pz = s.position.z;
+        d.rx = s.rotation.x; d.ry = s.rotation.y;
+        d.rz = s.rotation.z; d.rw = s.rotation.w;
+    }
     m_settings.mapHierarchyFilter = m_ctx.mapHierarchyFilter;
     m_settings.mapInspectorFilter = m_ctx.mapInspectorFilter;
     if (m_terrainTool) {
@@ -507,8 +552,10 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         //      OpenProject で一括コピーし、Shutdown で逆方向に書き戻す。
         m_ctx.showGrid           = m_settings.showGrid;
         m_ctx.gridSize           = m_settings.gridSize;
-        m_ctx.snapEnabled        = m_settings.snapEnabled;
-        m_ctx.snapDistance       = m_settings.snapDistance;
+        m_ctx.snapEnabled = m_settings.snapEnabled;
+        m_ctx.snapPos     = m_settings.snapPos;
+        m_ctx.snapRot     = m_settings.snapRot;
+        m_ctx.snapScale   = m_settings.snapScale;
         m_ctx.gizmoMode          = static_cast<EditorContext::GizmoMode>(m_settings.gizmoMode);
         m_ctx.gizmoSpace         = static_cast<EditorContext::GizmoSpace>(m_settings.gizmoSpace);
         m_ctx.showLightRange     = m_settings.showLightRange;
@@ -523,6 +570,15 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_ctx.cameraSpeed        = m_settings.cameraSpeed;
         m_ctx.cameraSensitivity  = m_settings.cameraSensitivity;
         m_ctx.assetBrowserIconSize = m_settings.assetBrowserIconSize;
+        m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
+        m_ctx.defaultImportOptions  = m_settings.defaultImportOptions;
+        for (std::size_t i = 0; i < 9; ++i) {
+            const auto& s = m_settings.cameraBookmarks[i];
+            auto& d = m_ctx.cameraBookmarks[i];
+            d.valid      = s.valid;
+            d.position   = { s.px, s.py, s.pz };
+            d.rotation   = { s.rx, s.ry, s.rz, s.rw };
+        }
         m_ctx.mapHierarchyFilter = m_settings.mapHierarchyFilter;
         m_ctx.mapInspectorFilter = m_settings.mapInspectorFilter;
         if (m_terrainTool) {
@@ -785,6 +841,7 @@ void EditorApp::BeginFrame()
 
         BuildMenuBar(m_ctx);
         BuildPlayToolbar(m_ctx);
+        m_statusBar->Draw(m_ctx);
 
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
         ProcessMapEditingModeTransition(static_cast<uint32_t>(dockId));
@@ -1050,6 +1107,7 @@ void EditorApp::OnUpdate(float dt)
         //      Stop 復元時に丸ごとリセットしないと前 Play セッションの Collider* が残る。
         m_physicsWorld = physics::World{};
         scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
+        RestoreEditorHiding();  // Stop 復元後に editor-only 非表示を再適用
     }
 
     if (!playMode->IsPlaying()) {
@@ -1185,6 +1243,12 @@ void EditorApp::UpdateFocusAnim(float dt)
 {
     constexpr float kFocusAnimDuration = 0.30f;
     constexpr float kFocusDist         = 5.0f;
+
+    if (m_ctx.requestTeleportCamera) {
+        m_ctx.requestTeleportCamera = false;
+        m_focusAnim.active = false;
+        m_debugCamera.Teleport(m_ctx.teleportPosition, m_ctx.teleportRotation);
+    }
 
     if (m_ctx.requestFocusOnSelected) {
         m_ctx.requestFocusOnSelected = false;

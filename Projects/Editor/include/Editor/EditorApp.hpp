@@ -5,6 +5,7 @@
 #include <Editor/Compiler.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Panels/StatusBar.hpp>
 #include <Editor/ScriptDllLoader.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
@@ -137,9 +138,12 @@ private:
     bool OpenScenePath(const std::string& path);
     bool SaveScene();
     bool SaveSceneAsDialog();
+    void RemoveEditorHiding();   // Play/Save 前に editor-only 非表示を一時解除
+    void RestoreEditorHiding();  // Play 復元/Save 後に editor-only 非表示を再適用
 
     EditorContext                        m_ctx;
     std::vector<std::unique_ptr<IPanel>> m_panels;
+    std::unique_ptr<StatusBar>           m_statusBar;
 
     UndoStack          m_undoStack;
     HotkeyManager      m_hotkeys;
