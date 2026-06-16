@@ -8,15 +8,15 @@
 //      TerrainRenderSystem がチャンク分割と GPU 転送を行う構造にすることで
 //      「データ所有」と「描画戦略」を分離する。
 //
-// テクスチャレイヤーパラメータ (tilingX, roughness, etc.) および
-// レイヤーテクスチャパスは materialPath が指す .fzmat で管理する。
-// WHY: レイヤーパラメータをコンポーネントに持つと再利用・バリエーション管理が難しい。
+// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .fzmat で管理する。
+// WHY: レイヤーごとに独立した .fzmat にすることで複数地形間でマテリアルを再利用できる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <string>
@@ -53,10 +53,12 @@ struct TerrainComponent {
     //      Prefab や Scene には参照だけを残し、重い編集データは専用アセットへ分離する。
     std::string terrainAssetPath;
 
-    // ── マテリアルアセット参照 ──────────────────────────────────────────────────
-    // テクスチャレイヤー・タイリング・roughness 等の視覚パラメータは .fzmat で管理する。
-    // fzmat keys: "layer0_diffuse", "layer0_normal", "layer0_ao_roughness", "layer0_tilingX", ...
-    std::string materialPath;
+    // ── レイヤーマテリアル参照 (4 レイヤー) ───────────────────────────────────
+    // 各要素が独立した .fzmat を指す。fzmat keys: "diffuse", "normal", "ao_roughness",
+    // "tilingX", "tilingZ", "normalStrength", "roughness", "ambientOcclusion",
+    // "autoBlendEnabled", "autoBlendStrength", "autoMinHeight", "autoMaxHeight",
+    // "autoHeightFade", "autoMinSlope", "autoMaxSlope", "autoSlopeFade"
+    std::array<std::string, 4> layerMaterials;
 
     // ── チャンク設定 ────────────────────────────────────────────────────────────
     // 地形を chunkSize × chunkSize マスのブロックに分割して描画。
@@ -66,8 +68,9 @@ struct TerrainComponent {
     int chunkSize = 32;
 
     bool enabled      = true;
-    bool heightDirty  = false; // true → TerrainRenderSystem がメッシュを再構築する
-    bool splatDirty   = false; // true → TerrainRenderSystem がスプラットマップを再アップロードする
+    bool heightDirty        = false; // true → TerrainRenderSystem がメッシュを再構築する
+    bool splatDirty         = false; // true → スプラットマップテクスチャ + レイヤーテクスチャを再アップロードする
+    bool materialParamDirty = false; // true → マテリアルパラメータ CB のみ再構築（テクスチャ再アップロード不要）
     bool colliderDirty = true; // true → PhysicsSystem がコライダーを再構築する（初期値 true で初回自動構築）
 
     // ── Reflection (Inspector / Serializer 対応) ─────────────────────────────
@@ -81,7 +84,7 @@ struct TerrainComponent {
         r.Field("maxHeight",  maxHeight);
         r.Field("chunkSize",  chunkSize);
         r.Field("terrainAssetPath", terrainAssetPath);
-        r.Field("materialPath",     materialPath);
+        // layerMaterials は string 配列のため SceneSerializer が専用コードで読み書きする。
         // heightData / splatData は IReflector の対応型（float/int/bool/string）に
         // 収まらないため、SceneSerializer が TerrainComponent を直接扱う専用コードで読み書きする。
     }
