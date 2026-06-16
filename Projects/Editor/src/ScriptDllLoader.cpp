@@ -5,6 +5,7 @@
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/ScriptDllAbi.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -28,6 +29,8 @@ using RegisterFnPtr = void(*)(
 //      プロジェクトごとに変わる。FBZZScripts_Register をエンジン規約として統一し、
 //      任意のプロジェクトの DLL をロードできるようにする。
 constexpr const char* kRegisterFnName = "FBZZScripts_Register";
+constexpr const char* kAbiFnName      = "FBZZScripts_GetAbiSignature";
+using AbiFnPtr = uint64_t(*)();
 
 // タイムスタンプ文字列を生成する (コピー先ファイル名の一部に使う)
 std::wstring MakeTimestamp()
@@ -68,6 +71,13 @@ bool ScriptDllLoader::Load(const std::filesystem::path& dllPath)
     if (!m_hDll) {
         FBZZ_LOG_ERROR("ScriptDllLoader::Load: LoadLibrary failed: %ls (GLE=%lu)",
                        m_hotCopy.wstring().c_str(), GetLastError());
+        m_hotCopy.clear();
+        return false;
+    }
+
+    if (!ValidateAbi()) {
+        FreeLibrary(m_hDll);
+        m_hDll = nullptr;
         m_hotCopy.clear();
         return false;
     }
@@ -198,6 +208,33 @@ void ScriptDllLoader::RegisterScripts()
     FBZZ_LOG_DEBUG("ScriptDllLoader: scripts registered via %s (%d types)",
                   kRegisterFnName,
                   static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+}
+
+bool ScriptDllLoader::ValidateAbi() const
+{
+    if (!m_hDll) return false;
+
+    const auto abiFn = reinterpret_cast<AbiFnPtr>(
+        GetProcAddress(m_hDll, kAbiFnName));
+    if (!abiFn) {
+        FBZZ_LOG_ERROR(
+            "ScriptDllLoader: export %s not found. Engine header changed; Scripts DLL を再ビルドしてください。",
+            kAbiFnName);
+        return false;
+    }
+
+    const uint64_t hostSignature = scene::GetScriptDllAbiSignature();
+    const uint64_t dllSignature  = abiFn();
+    if (hostSignature != dllSignature) {
+        FBZZ_LOG_ERROR(
+            "ScriptDllLoader: ABI mismatch (host=%llu, dll=%llu). "
+            "Engine / EditorLauncher / Scripts DLL を同じ構成で再ビルドしてください。",
+            static_cast<unsigned long long>(hostSignature),
+            static_cast<unsigned long long>(dllSignature));
+        return false;
+    }
+
+    return true;
 }
 
 void ScriptDllLoader::DestroyAllScripts(scene::Scene& scene)

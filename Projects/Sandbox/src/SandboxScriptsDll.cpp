@@ -25,6 +25,7 @@
 //      全 GetComponent 特殊化をこの TU でインスタンス化する。
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/ScriptDllAbi.hpp>
 #include <functional>
 #include <memory>
 #include <string>
@@ -73,6 +74,12 @@ const std::vector<ScriptEntry>& AllEntries()
 } // namespace
 
 extern "C" {
+
+// ホストと DLL の型レイアウトが一致する場合だけ ScriptFactory 登録を許可する。
+SANDBOXSCRIPTS_API uint64_t FBZZScripts_GetAbiSignature()
+{
+    return fbzz::scene::GetScriptDllAbiSignature();
+}
 
 // DLL に登録されているスクリプト数を返す
 SANDBOXSCRIPTS_API int SandboxScripts_Count()
