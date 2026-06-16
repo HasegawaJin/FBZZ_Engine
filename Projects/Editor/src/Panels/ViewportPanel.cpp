@@ -133,7 +133,7 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     if (ImGui::BeginPopup("##overlays_popup")) {
         ImGui::Checkbox("Grid",        &ctx.showGrid);
         ImGui::Checkbox("Light Range", &ctx.showLightRange);
-        ImGui::Checkbox("Colliders",   &ctx.showColliders);
+        ImGui::Checkbox("Colliders",   &ctx.projectSettings.render.showColliders);
         ImGui::Checkbox("Skeleton",    &ctx.showSkeleton);
         ImGui::Checkbox("Stats",       &ctx.showStats);
         ImGui::EndPopup();
