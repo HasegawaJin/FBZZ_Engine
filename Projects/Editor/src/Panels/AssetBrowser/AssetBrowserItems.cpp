@@ -117,10 +117,10 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga" },     { 0.15f, 0.40f, 0.80f, 1.0f }, "TEX"     },
     { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".fbzzprefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
-    { { ".fbzzterrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
-    { { ".fbzz", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
+    { { ".terrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
+    { { ".scene", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
     { { ".animgraph", nullptr },                               { 0.75f, 0.40f, 0.85f, 1.0f }, "GRAPH"   },
-    { { ".fzasset", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "ASSET"   },
+    { { ".asset", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "ASSET"   },
     { { ".fzmat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
     { { ".fzmesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".fbzzanimcontroller", nullptr },                       { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
@@ -178,7 +178,7 @@ static bool IsTextureExt(const std::string& ext)
 static bool IsMeshExt(const std::string& ext)
 {
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" ||
-           ext == ".glb" || ext == ".fzasset";
+           ext == ".glb" || ext == ".asset";
 }
 
 static std::filesystem::file_time_type ReadLastWriteTime(const std::string& path)
@@ -1128,6 +1128,15 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             m_currentPath = dir.path;
             RefreshDirectory();
         }
+        if (ImGui::BeginPopupContextItem()) {
+            auto& bks = ctx.assetBrowserBookmarks;
+            const bool already = std::find(bks.begin(), bks.end(), dir.path) != bks.end();
+            if (!already && ImGui::MenuItem("\xe2\x98\x85 Add to Favorites"))
+                bks.push_back(dir.path);
+            if (already && ImGui::MenuItem("Remove from Favorites"))
+                bks.erase(std::remove(bks.begin(), bks.end(), dir.path), bks.end());
+            ImGui::EndPopup();
+        }
         // ヒエラルキーエンティティをフォルダノードにドロップ → そのフォルダへ Prefab 保存
         if (ImGui::BeginDragDropTarget()) {
             if (SaveHierarchyPayloadAsPrefab(
@@ -1321,7 +1330,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.failed = !preview.thumbnailRendered;
         }
         if (preview.thumbnailRendered) {
-            const char* badge = (e.ext == ".fzasset") ? "ASSET" : "MESH";
+            const char* badge = (e.ext == ".asset") ? "ASSET" : "MESH";
             DrawRenderTargetThumbnail(preview.thumbnailRT, origin, sz, ctx, hovered, badge);
             return;
         }
@@ -1473,7 +1482,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
     }
 
     // .fbzzterrain: layerMaterials[0] を読み取って layer0 diffuse でサムネイル、なければ丘アイコン
-    if (e.ext == ".fbzzterrain") {
+    if (e.ext == ".terrain") {
         if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
             TerrainPreview& preview = m_terrainPreviews[e.path];
             const auto currentWriteTime = ReadLastWriteTime(e.path);
@@ -1611,6 +1620,16 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         const ImVec2 bsz = ImGui::CalcTextSize("!");
         dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f }, IM_COL32(255, 255, 255, 255), "!");
     }
+    // ↻ バッジ: .fzasset は存在するが元ファイルが新しい (再インポートが必要)
+    if (!e.isDir && IsImportableRaw(e.ext) && m_outdatedPaths.count(e.path) > 0) {
+        const float r  = sz * 0.15f;
+        const float cx = origin.x + sz - r;
+        const float cy = origin.y + r;
+        dl->AddCircleFilled({ cx, cy }, r, IM_COL32(220, 130, 20, 230));
+        const ImVec2 bsz = ImGui::CalcTextSize("\xe2\x86\xbb");
+        dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f },
+                    IM_COL32(255, 255, 255, 255), "\xe2\x86\xbb");
+    }
     // 橙ドット: 未保存変更があるアセット
     if (!e.isDir && AssetDirtyRegistry::IsDirty(e.path)) {
         const float r  = sz * 0.10f;
@@ -1619,7 +1638,7 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
     // ▶/▼ 展開トグル: fzasset はサブアセットを持つ
-    if (!e.isDir && e.ext == ".fzasset") {
+    if (!e.isDir && e.ext == ".asset") {
         const bool expanded = m_expandedFzAssets.count(e.path) > 0;
         const float ts  = sz * 0.18f; // 三角サイズ
         const float bx  = origin.x + 2.0f;
@@ -1723,7 +1742,7 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
 
     if (isDir) { m_pendingNavigate = path; return; }
 
-    if (ext == ".fbzz" && ctx.activeScene) {
+    if (ext == ".scene" && ctx.activeScene) {
         if (ctx.requestOpenScene) {
             ctx.requestOpenScene(path);
         } else if (SceneIO::Load(*ctx.activeScene, path)) {
@@ -1838,14 +1857,37 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     }
 
     if (!e.isDir && IsImportableRaw(e.ext)) {
-        if (ImGui::MenuItem("Import")) {
-            bool found = false;
-            for (const auto& p : m_pendingImports)
-                if (p.path == e.path) { found = true; break; }
-            if (!found) {
-                m_pendingImports.push_back({ e.path });
+        const bool outdated = m_outdatedPaths.count(e.path) > 0;
+        if (outdated) {
+            if (ImGui::MenuItem("\xe2\x86\xbb Re-import")) {
+                m_pendingImports.push_back({ e.path, {} });
+                m_outdatedPaths.erase(e.path);
+                m_importAllRequested = true;
             }
-            m_importAllRequested = true;
+        } else {
+            if (ImGui::MenuItem("Import")) {
+                bool found = false;
+                for (const auto& p : m_pendingImports)
+                    if (p.path == e.path) { found = true; break; }
+                if (!found)
+                    m_pendingImports.push_back({ e.path, {} });
+                m_importAllRequested = true;
+            }
+        }
+        if (ImGui::MenuItem("Import with Settings...")) {
+            m_importSettings.path      = e.path;
+            m_importSettings.options   = {};
+            m_importSettings.open      = true;
+            m_importSettings.isTexture = false;
+        }
+        ImGui::Separator();
+    }
+    if (!e.isDir && IsTextureRaw(e.ext)) {
+        if (ImGui::MenuItem("Import Settings...")) {
+            m_importSettings.path      = e.path;
+            m_importSettings.options   = {};
+            m_importSettings.open      = true;
+            m_importSettings.isTexture = true;
         }
         ImGui::Separator();
     }
@@ -1900,7 +1942,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             const std::string scanPath = util::FileSystem::PathToUtf8(p);
             const std::string scanExt  = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(scanPath));
-            if (scanExt != ".fbzz" && scanExt != ".fzmat" && scanExt != ".fbzzprefab"
+            if (scanExt != ".scene" && scanExt != ".fzmat" && scanExt != ".fbzzprefab"
                 && scanExt != ".fbzzanimcontroller") continue;
             std::string content;
             util::FileSystem::ReadText(scanPath, content);
@@ -2122,7 +2164,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     DrawEntryContextMenu(e, ctx);
 
     // fzasset の ▶/▼ 三角クリックで展開トグル
-    if (hov && e.ext == ".fzasset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (hov && e.ext == ".asset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const float ts  = sz * 0.18f;
         const float bx  = origin.x + 2.0f;
         const float by  = origin.y + sz - ts - 2.0f;
