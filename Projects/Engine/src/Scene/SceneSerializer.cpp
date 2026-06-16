@@ -34,6 +34,7 @@
 #include <Engine/Scene/Components/UILayoutGroup.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
@@ -629,6 +630,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
     toml::array goArr;
 
     for (auto& go : scene.GameObjects()) {
+        // WHY: "__" プレフィックスはランタイム専用 GO の規約 (FoliageBakeSystem / WaterSplash 等)。
+        //      これらはシステムが needsBake 時に再生成するため、永続化すると
+        //      ロード時にゾンビ GO が蓄積し childEntities と不整合を起こす。
+        if (go.name.size() >= 2 && go.name[0] == '_' && go.name[1] == '_') continue;
+
         toml::table goTbl;
         goTbl.insert("name",       go.name);
         goTbl.insert("instanceId", go.instanceId);
@@ -881,6 +887,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             colTbl.insert("meshIndex", (int64_t)col->meshIndex);
             colTbl.insert("useTransformScale", col->useTransformScale);
             goTbl.insert("ConvexHullColliderComponent", std::move(colTbl));
+        }
+
+        if (auto* col = go.GetComponent<TerrainColliderComponent>()) {
+            toml::table colTbl = SerializeCollider(*col);
+            goTbl.insert("TerrainColliderComponent", std::move(colTbl));
         }
 
         // RigidBodyComponent
@@ -1291,16 +1302,34 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                     ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
                 TerrainAssetSerializer::Save(*tc, terrainDiskPath);
             }
-            if (!tc->materialPath.empty()) {
-                auto matHandle = asset::AssetManager::LoadMaterial(tc->materialPath);
-                if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
-                    const std::string matDiskPath =
-                        ResolveAssetDiskPathForScene(path, tc->materialPath);
-                    (void)asset::SaveMaterialAssetToFile(matDiskPath, *mat);
+            toml::array layerMatArr;
+            for (int li = 0; li < 4; ++li) {
+                layerMatArr.push_back(tc->layerMaterials[li]);
+                if (!tc->layerMaterials[li].empty()) {
+                    auto matHandle = asset::AssetManager::LoadMaterial(tc->layerMaterials[li]);
+                    if (auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+                        const std::string matDiskPath =
+                            ResolveAssetDiskPathForScene(path, tc->layerMaterials[li]);
+                        (void)asset::SaveMaterialAssetToFile(matDiskPath, *mat);
+                    }
                 }
             }
+            terrainTbl.insert("layerMaterials", std::move(layerMatArr));
 
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
+        }
+
+        // TerrainGridComponent
+        if (auto* tgc = go.GetComponent<TerrainGridComponent>()) {
+            tgc->SyncInstanceIds(scene);
+            toml::table tbl;
+            tbl.insert("cellCountX", (int64_t)tgc->cellCountX);
+            tbl.insert("cellCountZ", (int64_t)tgc->cellCountZ);
+            toml::array cellArr;
+            for (const auto& guid : tgc->cellInstanceIds)
+                cellArr.push_back(guid);
+            tbl.insert("cells", std::move(cellArr));
+            goTbl.insert("TerrainGridComponent", std::move(tbl));
         }
 
         // TerrainDetailComponent
@@ -1350,6 +1379,11 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 st.insert("drawDistance", static_cast<double>(species.drawDistance));
                 st.insert("seed", static_cast<int64_t>(species.seed));
                 st.insert("randomYRotation", species.randomYRotation);
+                st.insert("colliderEnabled",      species.colliderEnabled);
+                st.insert("colliderManual",       species.colliderManual);
+                st.insert("colliderHalfWidth",    static_cast<double>(species.colliderHalfWidth));
+                st.insert("colliderHalfHeight",   static_cast<double>(species.colliderHalfHeight));
+                st.insert("colliderCullDistance", static_cast<double>(species.colliderCullDistance));
 
                 toml::array materials;
                 for (const auto& materialPath : species.subMeshMaterialPaths)
@@ -1410,7 +1444,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                     const std::string type = entry.script->GetTypeName();
                     const bool enabled = entry.script->enabled;
                     if (!entry.serialized)
-                        entry.serialized = std::make_shared<SerializedScriptData>();
+                        entry.serialized = std::shared_ptr<SerializedScriptData>(new SerializedScriptData());
                     entry.serialized->type = type;
                     entry.serialized->enabled = enabled;
                     entry.serialized->fieldsToml = TomlTableToString(fieldsTbl);
@@ -1474,6 +1508,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (!goTbl) continue;
 
         std::string name   = (*goTbl)["name"].value_or(std::string{"GameObject"});
+        // WHY: 古いシーンファイルにランタイム専用 GO が保存されていた場合もスキップする。
+        if (name.size() >= 2 && name[0] == '_' && name[1] == '_') continue;
         std::string tag    = (*goTbl)["tag"].value_or(std::string{"Untagged"});
         bool        active = (*goTbl)["active"].value_or(true);
 
@@ -1755,6 +1791,12 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             ConvexHullColliderComponent col{};
             ReadConvexHullCollider(*colTbl, col);
             go.AddComponent<ConvexHullColliderComponent>(std::move(col));
+        }
+
+        if (auto* colTbl = (*goTbl)["TerrainColliderComponent"].as_table()) {
+            TerrainColliderComponent col{};
+            ReadColliderCommon(*colTbl, col);
+            go.AddComponent<TerrainColliderComponent>(std::move(col));
         }
 
         // RigidBodyComponent
@@ -2195,9 +2237,27 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 tc.InitFlat(0.0f);
             }
 
+            if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {
+                for (int li = 0; li < 4 && li < static_cast<int>(layerArr->size()); ++li)
+                    tc.layerMaterials[li] = (*layerArr)[li].value_or(std::string{});
+            }
+
             // ロード後にコライダー再構築をトリガーする
             tc.colliderDirty = true;
             go.AddComponent<TerrainComponent>(std::move(tc));
+        }
+
+        // TerrainGridComponent — cells は全 GO ロード後に ResolveFromScene() で解決する
+        if (auto* tgcTbl = (*goTbl)["TerrainGridComponent"].as_table()) {
+            TerrainGridComponent tgc;
+            tgc.cellCountX = (int)(*tgcTbl)["cellCountX"].value_or((int64_t)4);
+            tgc.cellCountZ = (int)(*tgcTbl)["cellCountZ"].value_or((int64_t)4);
+            if (const auto* cellArr = (*tgcTbl)["cells"].as_array()) {
+                for (const auto& node : *cellArr)
+                    tgc.cellInstanceIds.push_back(node.value_or(std::string{}));
+            }
+            tgc.EnsureSize();
+            go.AddComponent<TerrainGridComponent>(std::move(tgc));
         }
 
         // TerrainDetailComponent — layers のみ復元。chunks はランタイムに Bake で再生成。
@@ -2236,7 +2296,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* foliageTbl = (*goTbl)["FoliageComponent"].as_table()) {
             FoliageComponent foliage{};
             foliage.enabled = (*foliageTbl)["enabled"].value_or(true);
-            foliage.needsBake = true;
+            foliage.needsBake = foliage.needsBakeChildren = true;
             if (const auto* speciesArr = (*foliageTbl)["species"].as_array()) {
                 for (const auto& speciesNode : *speciesArr) {
                     const auto* st = speciesNode.as_table();
@@ -2260,6 +2320,16 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         std::max<int64_t>(0, (*st)["seed"].value_or(int64_t{1})));
                     species.randomYRotation =
                         (*st)["randomYRotation"].value_or(true);
+                    species.colliderEnabled =
+                        (*st)["colliderEnabled"].value_or(true);
+                    species.colliderManual =
+                        (*st)["colliderManual"].value_or(false);
+                    species.colliderHalfWidth =
+                        static_cast<float>((*st)["colliderHalfWidth"].value_or(0.35));
+                    species.colliderHalfHeight =
+                        static_cast<float>((*st)["colliderHalfHeight"].value_or(2.0));
+                    species.colliderCullDistance =
+                        static_cast<float>((*st)["colliderCullDistance"].value_or(0.0));
 
                     if (const auto* materials =
                             (*st)["subMeshMaterialPaths"].as_array()) {
@@ -2340,7 +2410,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             }
 
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized = std::shared_ptr<SerializedScriptData>(new SerializedScriptData());
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
@@ -2444,6 +2514,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (!ownerGuid.empty()) owner = scene->FindByGuid(ownerGuid);
         if (!owner && !ownerName.empty()) owner = scene->Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
+    }
+
+    // TerrainGridComponent の cellInstanceIds → cells を全 GO ロード後に解決する。
+    // WHY: Grid が参照する Terrain GO はシリアライズ順で後に来る可能性があるため、
+    //      全 GO を追加してから GUID → EntityID の変換を行う。
+    for (auto& go : scene->GameObjects()) {
+        if (auto* tgc = go.GetComponent<TerrainGridComponent>())
+            tgc->ResolveFromScene(*scene);
     }
 
     return scene;
@@ -2636,6 +2714,11 @@ bool SceneSerializer::AppendObjects(
             ReadConvexHullCollider(*colTbl, col);
             go.AddComponent<ConvexHullColliderComponent>(std::move(col));
         }
+        if (auto* colTbl = (*goTbl)["TerrainColliderComponent"].as_table()) {
+            TerrainColliderComponent col{};
+            ReadColliderCommon(*colTbl, col);
+            go.AddComponent<TerrainColliderComponent>(std::move(col));
+        }
 
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
@@ -2672,7 +2755,7 @@ bool SceneSerializer::AppendObjects(
             if (auto* fieldsTbl = scTbl["fields"].as_table())
                 preservedFieldsToml = TomlTableToString(*fieldsTbl);
             ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.serialized = std::make_shared<SerializedScriptData>();
+            entry.serialized = std::shared_ptr<SerializedScriptData>(new SerializedScriptData());
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
