@@ -38,6 +38,11 @@
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
@@ -1433,6 +1438,65 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("WaterComponent", std::move(waterTbl));
         }
 
+        // NavMeshSurfaceComponent — Bake 設定のみ保存。navMesh は再 Bake で再生成するため非保存。
+        if (auto* surface = go.GetComponent<NavMeshSurfaceComponent>()) {
+            toml::table volTbl;
+            volTbl.insert("enabled",           surface->enabled);
+            volTbl.insert("collectObjects",    static_cast<int64_t>(static_cast<uint8_t>(surface->collectObjects)));
+            volTbl.insert("size",              Vec3ToArr(surface->size));
+            volTbl.insert("cellSize",          static_cast<double>(surface->cellSize));
+            volTbl.insert("maxSlopeAngleDeg",  static_cast<double>(surface->maxSlopeAngleDeg));
+            volTbl.insert("agentRadius",       static_cast<double>(surface->agentRadius));
+            volTbl.insert("agentHeight",       static_cast<double>(surface->agentHeight));
+            goTbl.insert("NavMeshSurfaceComponent", std::move(volTbl));
+        }
+
+        if (auto* modifier = go.GetComponent<NavMeshModifierComponent>()) {
+            toml::table modTbl;
+            modTbl.insert("enabled", modifier->enabled);
+            modTbl.insert("mode",    static_cast<int64_t>(static_cast<uint8_t>(modifier->mode)));
+            goTbl.insert("NavMeshModifierComponent", std::move(modTbl));
+        }
+
+        // NavMeshAgentComponent — 移動パラメータのみ保存。目的地・パス等はランタイム状態のため非保存。
+        if (auto* agent = go.GetComponent<NavMeshAgentComponent>()) {
+            toml::table agentTbl;
+            agentTbl.insert("enabled",          agent->enabled);
+            agentTbl.insert("radius",           static_cast<double>(agent->radius));
+            agentTbl.insert("maxSpeed",         static_cast<double>(agent->maxSpeed));
+            agentTbl.insert("acceleration",     static_cast<double>(agent->acceleration));
+            agentTbl.insert("angularSpeedDeg",  static_cast<double>(agent->angularSpeedDeg));
+            agentTbl.insert("stoppingDistance", static_cast<double>(agent->stoppingDistance));
+            agentTbl.insert("avoidancePriority", static_cast<int64_t>(agent->avoidancePriority));
+            goTbl.insert("NavMeshAgentComponent", std::move(agentTbl));
+        }
+
+        // NavMeshPatrolComponent — ウェイポイント・巡回設定を保存。進行状態はランタイムのため非保存。
+        if (auto* patrol = go.GetComponent<NavMeshPatrolComponent>()) {
+            toml::table patrolTbl;
+            patrolTbl.insert("enabled",  patrol->enabled);
+            patrolTbl.insert("mode",     patrol->mode == NavMeshPatrolComponent::Mode::PING_PONG ? "PingPong" : "Loop");
+            patrolTbl.insert("waitTime", static_cast<double>(patrol->waitTime));
+            toml::array wpArr;
+            for (const auto& wp : patrol->waypoints)
+                wpArr.push_back(Vec3ToArr(wp));
+            patrolTbl.insert("waypoints", std::move(wpArr));
+            goTbl.insert("NavMeshPatrolComponent", std::move(patrolTbl));
+        }
+
+        // NavMeshSensorComponent — 検知設定のみ保存。検知状態はランタイムのため非保存。
+        if (auto* sensor = go.GetComponent<NavMeshSensorComponent>()) {
+            toml::table sensorTbl;
+            sensorTbl.insert("enabled",            sensor->enabled);
+            sensorTbl.insert("viewDistance",       static_cast<double>(sensor->viewDistance));
+            sensorTbl.insert("viewAngleDeg",       static_cast<double>(sensor->viewAngleDeg));
+            sensorTbl.insert("targetTag",          sensor->targetTag);
+            sensorTbl.insert("useLineOfSight",     sensor->useLineOfSight);
+            sensorTbl.insert("autoChase",          sensor->autoChase);
+            sensorTbl.insert("chaseRepathInterval", static_cast<double>(sensor->chaseRepathInterval));
+            goTbl.insert("NavMeshSensorComponent", std::move(sensorTbl));
+        }
+
         if (auto* sc = go.GetComponent<ScriptComponent>()) {
             toml::array scriptsArr;
             for (auto& entry : sc->scripts) {
@@ -2397,6 +2461,82 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             water.foamDirty = true;
             water.texDirty  = true;
             go.AddComponent<WaterComponent>(std::move(water));
+        }
+
+        // NavMeshSurfaceComponent — 新キー優先、旧 NavMeshVolumeComponent キーは後方互換読み込み。
+        // navMesh は Bake で再生成するため needsBake=true で登録し非保存。
+        {
+            const toml::table* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table();
+            // 旧シーンファイル互換: キーが NavMeshVolumeComponent のまま保存されている場合
+            if (!surfTbl) surfTbl = (*goTbl)["NavMeshVolumeComponent"].as_table();
+            if (surfTbl) {
+                NavMeshSurfaceComponent surface{};
+                surface.enabled          = (*surfTbl)["enabled"].value_or(true);
+                surface.size             = ArrToVec3((*surfTbl)["size"].as_array(), { 50.0f, 10.0f, 50.0f });
+                surface.cellSize         = static_cast<float>((*surfTbl)["cellSize"].value_or(1.0));
+                surface.maxSlopeAngleDeg = static_cast<float>((*surfTbl)["maxSlopeAngleDeg"].value_or(45.0));
+                surface.agentRadius      = static_cast<float>((*surfTbl)["agentRadius"].value_or(0.4));
+                surface.agentHeight      = static_cast<float>((*surfTbl)["agentHeight"].value_or(2.0));
+                surface.collectObjects   = static_cast<NavMeshCollectObjects>(
+                    static_cast<uint8_t>((*surfTbl)["collectObjects"].value_or(int64_t{0})));
+                surface.needsBake        = true;
+                go.AddComponent<NavMeshSurfaceComponent>(std::move(surface));
+            }
+        }
+
+        // NavMeshModifierComponent — 旧 NavMeshObstacleComponent キーは後方互換で NotWalkable として読む。
+        {
+            const toml::table* modTbl = (*goTbl)["NavMeshModifierComponent"].as_table();
+            if (modTbl) {
+                NavMeshModifierComponent modifier{};
+                modifier.enabled = (*modTbl)["enabled"].value_or(true);
+                modifier.mode    = static_cast<NavMeshModifierMode>(
+                    static_cast<uint8_t>((*modTbl)["mode"].value_or(int64_t{0})));
+                go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
+            } else if (auto* obsTbl = (*goTbl)["NavMeshObstacleComponent"].as_table()) {
+                NavMeshModifierComponent modifier{};
+                modifier.enabled = (*obsTbl)["enabled"].value_or(true);
+                modifier.mode    = NavMeshModifierMode::NotWalkable;
+                go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
+            }
+        }
+
+        if (auto* agentTbl = (*goTbl)["NavMeshAgentComponent"].as_table()) {
+            NavMeshAgentComponent agent{};
+            agent.enabled          = (*agentTbl)["enabled"].value_or(true);
+            agent.radius           = static_cast<float>((*agentTbl)["radius"].value_or(0.4));
+            agent.maxSpeed         = static_cast<float>((*agentTbl)["maxSpeed"].value_or(3.5));
+            agent.acceleration     = static_cast<float>((*agentTbl)["acceleration"].value_or(8.0));
+            agent.angularSpeedDeg  = static_cast<float>((*agentTbl)["angularSpeedDeg"].value_or(360.0));
+            agent.stoppingDistance = static_cast<float>((*agentTbl)["stoppingDistance"].value_or(0.1));
+            agent.avoidancePriority = static_cast<int>((*agentTbl)["avoidancePriority"].value_or(int64_t{0}));
+            go.AddComponent<NavMeshAgentComponent>(std::move(agent));
+        }
+
+        if (auto* patrolTbl = (*goTbl)["NavMeshPatrolComponent"].as_table()) {
+            NavMeshPatrolComponent patrol{};
+            patrol.enabled  = (*patrolTbl)["enabled"].value_or(true);
+            const std::string modeStr = (*patrolTbl)["mode"].value_or(std::string{"Loop"});
+            patrol.mode = (modeStr == "PingPong") ? NavMeshPatrolComponent::Mode::PING_PONG
+                                                   : NavMeshPatrolComponent::Mode::LOOP;
+            patrol.waitTime = static_cast<float>((*patrolTbl)["waitTime"].value_or(0.0));
+            if (auto* wpArr = (*patrolTbl)["waypoints"].as_array()) {
+                for (auto& wpNode : *wpArr)
+                    patrol.waypoints.push_back(ArrToVec3(wpNode.as_array(), math::Vector3::ZERO));
+            }
+            go.AddComponent<NavMeshPatrolComponent>(std::move(patrol));
+        }
+
+        if (auto* sensorTbl = (*goTbl)["NavMeshSensorComponent"].as_table()) {
+            NavMeshSensorComponent sensor{};
+            sensor.enabled             = (*sensorTbl)["enabled"].value_or(true);
+            sensor.viewDistance        = static_cast<float>((*sensorTbl)["viewDistance"].value_or(10.0));
+            sensor.viewAngleDeg        = static_cast<float>((*sensorTbl)["viewAngleDeg"].value_or(90.0));
+            sensor.targetTag           = (*sensorTbl)["targetTag"].value_or(std::string{"Player"});
+            sensor.useLineOfSight      = (*sensorTbl)["useLineOfSight"].value_or(true);
+            sensor.autoChase           = (*sensorTbl)["autoChase"].value_or(true);
+            sensor.chaseRepathInterval = static_cast<float>((*sensorTbl)["chaseRepathInterval"].value_or(0.4));
+            go.AddComponent<NavMeshSensorComponent>(std::move(sensor));
         }
 
         auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {

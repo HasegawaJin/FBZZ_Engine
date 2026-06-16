@@ -1,0 +1,118 @@
+// FBZZ Engine
+// NavMeshAgentComponent.hpp | fbzz::scene
+// NavMesh 上を自律移動するエージェントの移動パラメータとパス追従ランタイム状態
+#pragma once
+#include <Engine/Scene/Script.hpp>
+#include <Math/Vector3.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+namespace fbzz::scene {
+
+enum class NavMeshAgentState : uint8_t {
+    IDLE,    // 目的地未設定、または到達済み
+    MOVING,  // パスに沿って移動中
+};
+
+struct NavMeshAgentComponent {
+    float radius           = 0.4f;
+    float maxSpeed         = 3.5f;
+    float acceleration     = 8.0f;
+    float angularSpeedDeg  = 360.0f; // 進行方向への回転速度 [deg/s]
+    float stoppingDistance = 0.1f;   // 最終ウェイポイントからこの距離以内で到達と判定
+
+    // 衝突回避の優先度。値が大きい Agent ほど他の Agent から押し出されにくい
+    // (敵が遮ってもプレイヤー追跡 AI が止まらない、等のケースで使う)。
+    int avoidancePriority = 0;
+
+    bool enabled = true;
+
+    // ── ランタイム状態 (NavigationSystem が管理。非永続化) ──────────────────
+    bool hasDestination = false;
+    math::Vector3 destination = math::Vector3::ZERO;
+    std::vector<math::Vector3> path; // Funnel Algorithm 平滑化済みウェイポイント
+    size_t currentWaypoint = 0;
+    NavMeshAgentState state = NavMeshAgentState::IDLE;
+    float currentSpeed = 0.0f;
+
+    // true の間、NavigationSystem は移動・回転を止めるがパスは保持する
+    // (Unity の NavMeshAgent.isStopped に相当。Resume() で同じパスから再開できる)。
+    bool isStopped = false;
+
+    // 直近の SetDestination() 呼び出しに対して到達済みかどうか。
+    // OnNavMeshDestinationReached コールバックを実装しない Script でもポーリングで判定できる。
+    bool destinationReached = false;
+
+    // 現在位置から最終ウェイポイントまでの残り距離。NavigationSystem が毎フレーム更新する。
+    float remainingDistance = 0.0f;
+
+    // ── 追跡対象 (Target Follow) ────────────────────────────────────────────
+    // WHY: 敵 AI がプレイヤーを追跡するような「動く目的地」は、毎フレーム SetDestination
+    //      し直すと A* + Funnel の再計算コストが大きい。一定間隔・一定移動量ごとにのみ
+    //      再パスすることで負荷を抑える (Unity の NavMeshAgent + 自前 Chase ロジック相当)。
+    EntityID target = EntityID::INVALID;
+    float repathInterval = 0.5f; // target 追跡時の再パス最小間隔 [s]
+    float repathTimer    = 0.0f; // ランタイム: 次回再パスまでの残り時間
+    math::Vector3 lastTargetPos = math::Vector3::ZERO; // ランタイム: 直前に再パスした時点の target 位置
+
+    // ── 停滞検出 (Stuck Detection) ──────────────────────────────────────────
+    // WHY: Avoidance や NavMesh の角で複数 Agent が絡み合うと、パス自体は正しくても
+    //      実際には前進できない状態が起こり得る。一定時間進めていなければ
+    //      NavigationSystem が自動でパスを再計算し、詰みを防ぐ。
+    math::Vector3 lastStuckCheckPos = math::Vector3::ZERO; // ランタイム
+    float stuckTimer = 0.0f;  // ランタイム: 直近の有意な前進からの経過時間 [s]
+    bool  isStuck    = false; // ランタイム: 直前に停滞を検知して強制再計算したかどうか (デバッグ表示用)
+
+    const char* GetTypeName() const { return "NavMesh Agent"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("radius", radius);
+        r.Field("maxSpeed", maxSpeed);
+        r.Field("acceleration", acceleration);
+        r.Field("angularSpeedDeg", angularSpeedDeg);
+        r.Field("stoppingDistance", stoppingDistance);
+        r.Field("avoidancePriority", avoidancePriority);
+    }
+
+    // 目的地を設定する。実際のパス計算は NavigationSystem が次フレームで行う。
+    // target 追跡中であれば解除する (固定目的地と追跡対象は同時に使えない)。
+    void SetDestination(const math::Vector3& worldPos)
+    {
+        destination        = worldPos;
+        hasDestination      = true;
+        destinationReached = false;
+        isStopped           = false;
+        target              = EntityID::INVALID;
+        path.clear();
+        currentWaypoint = 0;
+        state           = NavMeshAgentState::MOVING;
+    }
+
+    // id の現在位置を目的地として追跡し続ける。NavigationSystem が repathInterval ごと、
+    // または target が一定距離動いたタイミングで自動的に再パスする。
+    void SetTarget(EntityID id, float interval = 0.5f)
+    {
+        target         = id;
+        repathInterval = interval > 0.05f ? interval : 0.05f;
+        repathTimer    = 0.0f; // 次フレームで即座に初回パスを計算させる
+    }
+
+    void ClearTarget() { target = EntityID::INVALID; }
+
+    // パスを完全に放棄して停止する (到達済みフラグには触れない)。
+    void Stop()
+    {
+        hasDestination = false;
+        target = EntityID::INVALID;
+        path.clear();
+        currentWaypoint = 0;
+        currentSpeed = 0.0f;
+        remainingDistance = 0.0f;
+        isStopped = false;
+        state = NavMeshAgentState::IDLE;
+    }
+};
+
+} // namespace fbzz::scene
