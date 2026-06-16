@@ -20,6 +20,16 @@ void DebugCamera::LookAt(const math::Vector3& target) {
     ApplyRotation();
 }
 
+void DebugCamera::Teleport(const math::Vector3& pos, const math::Quaternion& rot) {
+    camera.m_position = pos;
+    camera.m_rotation = rot;
+    const math::Vector3 fwd = camera.GetForward();
+    m_pitch         = math::ToDeg(std::asin(math::Clamp(-fwd.y, -1.0f, 1.0f)));
+    m_yaw           = math::ToDeg(std::atan2(fwd.x, fwd.z));
+    m_pivot         = pos + fwd * m_focusDistance;
+    m_dollyVelocity = 0.0f;
+}
+
 void DebugCamera::ApplyRotation() {
     const math::Vector3 worldUp = { 0.0f, 1.0f, 0.0f };
     auto yawQ   = math::Quaternion::FromAxisAngle(worldUp, math::ToRad(m_yaw));
