@@ -18,6 +18,7 @@
 #include <Engine/Scene/ScriptProxy/ScriptLightProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMeshTrailProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptNavigationProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPhysicsProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
@@ -157,6 +158,10 @@ public:
     virtual void OnTriggerEnter(const CollisionInfo&) {}
     virtual void OnTriggerStay(const CollisionInfo&) {}
     virtual void OnTriggerExit(const CollisionInfo&) {}
+    virtual void OnNavMeshDestinationReached() {} // NavMeshAgentComponent が目的地に到達したとき
+    virtual void OnNavMeshPathFailed() {}          // 目的地までのパスが見つからなかったとき
+    virtual void OnNavMeshTargetSpotted() {}       // NavMeshSensorComponent が対象を視界内に検知したとき
+    virtual void OnNavMeshTargetLost() {}          // 検知していた対象を見失ったとき
     virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 
@@ -180,6 +185,7 @@ public:
     ScriptPostProcessProxy postprocess{ this };
     ScriptMemoryProxy     memory      { this };
     ScriptUIProxy         ui          { this };
+    ScriptNavigationProxy navigation  { this };
 
     template<typename T>
     [[deprecated("Use scene.GetComponent<T>()")]]
@@ -252,6 +258,7 @@ private:
     friend struct ScriptAnimatorProxy;
     friend struct ScriptDebugProxy;
     friend struct ScriptPostProcessProxy;
+    friend struct ScriptNavigationProxy;
 
     struct InvokeEntry {
         std::function<void()> fn;
