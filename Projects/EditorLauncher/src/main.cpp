@@ -31,6 +31,8 @@
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
+#include <Engine/Scene/Systems/FoliageBakeSystem.hpp>
+#include <Engine/Scene/Systems/FoliageCullSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
@@ -342,6 +344,8 @@ void RunEditorLoop(renderer::IRenderer& renderer,
         }
 
         scene::TransformSystem(*scene);
+        scene::FoliageBakeSystem(*scene);
+        scene::FoliageCullSystem(*scene);
         const bool stepFrame = playMode->ConsumeStep();
         const float simulationDt = stepFrame ? (1.0f / 60.0f) : dt;
         if (playMode->IsPlaying() || stepFrame) {
@@ -435,10 +439,18 @@ void RunEditorLoop(renderer::IRenderer& renderer,
                                 fbzz::Layer::Everything,
                                 &uiOptions);
         }
-        if (editorApp.GetContext().projectSettings.render.showColliders) {
-            renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
-            scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
-            renderer::DebugDraw::Flush();
+        {
+            const auto& render = editorApp.GetContext().projectSettings.render;
+            if (render.showColliders || render.showTerrainCollision) {
+                renderer::DebugDraw::BeginFrame(renderer, resources, debugCamera.camera.GetViewProjection());
+                if (render.showColliders && scene) {
+                    scene::ColliderDebugDrawSystem(*scene, renderer);
+                    scene::ConstraintDebugDrawSystem(physicsWorld, renderer);
+                }
+                if (render.showTerrainCollision && scene)
+                    scene::TerrainCollisionDebugDrawSystem(*scene, renderer, debugCamera.camera.m_position);
+                renderer::DebugDraw::Flush();
+            }
         }
         if (editorApp.GetContext().showSkeleton) {
             scene::AnimatorDebugDrawSystem(*scene, renderer, resources, debugCamera.camera.GetViewProjection());

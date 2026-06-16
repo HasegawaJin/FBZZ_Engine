@@ -682,7 +682,7 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool hasChildren = go.GetChildCount() > 0;
     const bool selected    = ContainsEntity(ctx.selectedEntities, id);
     const bool isRoot      = go.GetParent() == nullptr;
-    const bool isActive    = go.activeSelf();
+    const bool isActive    = go.activeInHierarchy();
     const bool isLocked    = ctx.IsLocked(id);
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth
@@ -939,31 +939,40 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SameLine();
         ImGui::Checkbox("Map Objects Only", &ctx.mapHierarchyFilter);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Show only Terrain, Water, Detail and Foliage objects\nUncheck to browse all objects in Map Mode");
+            ImGui::SetTooltip("Show only Terrain, Water, Detail, Foliage and their stamp children\nUncheck to browse all objects in Map Mode");
+    }
+
+    // FoliageBakeSystem が新規子 GO を生成したら親ノードを自動展開する
+    for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::FoliageComponent>()) {
+        auto* fc = ctx.activeScene->GetComponent<scene::FoliageComponent>(eid);
+        if (fc && fc->needsHierarchyExpand) {
+            m_pendingExpand = eid;
+            fc->needsHierarchyExpand = false;
+        }
     }
 
     // --- 検索バー ---
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
 
-    // フィルタが有効なときはフラットリストで一致オブジェクトだけ表示する
-    if (m_searchFilter[0] != '\0' || (ctx.mapEditingMode && ctx.mapHierarchyFilter)) {
+    // 検索フィルタが有効なときはフラットリストで一致オブジェクトだけ表示する
+    if (m_searchFilter[0] != '\0') {
         std::function<void()> deferred;
 
-        // 大文字小文字を無視した部分一致
-        auto contains = [&](const std::string& name) {
-            return m_searchFilter[0] == '\0'
-                || util::StringUtils::ContainsCI(name, m_searchFilter);
-        };
-
         for (auto& go : ctx.activeScene->GameObjects()) {
-            if (!contains(go.name)) continue;
-            if (ctx.mapEditingMode && ctx.mapHierarchyFilter
-                && !go.GetComponent<scene::TerrainComponent>()
-                && !go.GetComponent<scene::WaterComponent>()
-                && !go.GetComponent<scene::TerrainDetailComponent>()
-                && !go.GetComponent<scene::FoliageComponent>()) {
-                continue;
+            if (!util::StringUtils::ContainsCI(go.name, m_searchFilter)) continue;
+            if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
+                const bool isMapObject =
+                    go.GetComponent<scene::TerrainComponent>()
+                    || go.GetComponent<scene::WaterComponent>()
+                    || go.GetComponent<scene::TerrainDetailComponent>()
+                    || go.GetComponent<scene::FoliageComponent>();
+                auto* parentGO = go.GetParent();
+                const bool isFoliageChild = parentGO
+                    && (parentGO->GetComponent<scene::FoliageComponent>()
+                        || parentGO->GetComponent<scene::TerrainComponent>());
+                if (!isMapObject && !isFoliageChild)
+                    continue;
             }
             const scene::EntityID id = go.GetID();
             const bool selected = ContainsEntity(ctx.selectedEntities, id);
@@ -977,7 +986,6 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             }
             if (ImGui::BeginPopupContextItem()) {
                 ctx.selectedEntities = { id };
-                // 検索結果でも Prefab 化できるよう、通常モードと同じ操作を提供する
                 if (ImGui::MenuItem("Save As Prefab"))
                     SaveSelectedAsPrefab(ctx, go.name);
                 ImGui::Separator();
@@ -998,10 +1006,38 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             std::vector<scene::EntityID> ids = ctx.selectedEntities;
             deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
         }
-
-        if (deferred) {
+        if (deferred)
             ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
+        return;
+    }
+
+    // Map Mode: Terrain/Water/Detail/Foliage のルート GO のみをツリー表示。
+    // WHY: フラットリストでは stamp 子 GO が親から切り離されて見えるため、
+    //      ツリー表示にして子 GO を Terrain ノード下に自然に見せる。
+    if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
+        std::function<void()> deferred;
+        std::vector<scene::EntityID> visited;
+        visited.reserve(ctx.activeScene->GameObjectCount());
+
+        const auto roots = ctx.activeScene->GetRootGameObjects();
+        const size_t rootCount = roots.size();
+        for (auto* go : roots) {
+            if (!go) continue;
+            if (!go->GetComponent<scene::TerrainComponent>()
+                && !go->GetComponent<scene::WaterComponent>()
+                && !go->GetComponent<scene::TerrainDetailComponent>()
+                && !go->GetComponent<scene::FoliageComponent>())
+                continue;
+            DrawHierarchyNode(ctx, *go, 0, rootCount, visited, deferred, &m_pendingExpand);
         }
+
+        if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            ImGui::IsKeyPressed(ImGuiKey_Delete) && !ctx.selectedEntities.empty()) {
+            std::vector<scene::EntityID> ids = ctx.selectedEntities;
+            deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
+        }
+        if (deferred)
+            ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
         return;
     }
 

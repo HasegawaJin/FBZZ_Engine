@@ -13,6 +13,16 @@ namespace fbzz::scene {
 
 void GameObject::SetActive(bool active) { m_isActive = active; }
 bool GameObject::activeSelf() const { return m_isActive; }
+bool GameObject::activeInHierarchy() const
+{
+    if (!m_isActive) return false;
+    const GameObject* cur = GetParent();
+    while (cur) {
+        if (!cur->m_isActive) return false;
+        cur = cur->GetParent();
+    }
+    return true;
+}
 
 bool GameObject::CompareTag(const std::string& t) const { return tag == t; }
 

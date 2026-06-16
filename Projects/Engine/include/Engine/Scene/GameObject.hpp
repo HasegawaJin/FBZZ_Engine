@@ -26,9 +26,10 @@ public:
     // Unity: gameObject.transform (常に存在。ComponentArray には入れない)
     Transform transform;
 
-    // Unity: SetActive / activeSelf
+    // Unity: SetActive / activeSelf / activeInHierarchy
     void SetActive(bool active);
-    bool activeSelf() const;
+    bool activeSelf()        const;
+    bool activeInHierarchy() const;
 
     // Unity: CompareTag
     bool CompareTag(const std::string& t) const;

@@ -219,10 +219,18 @@ void EditorModule::RenderSceneViewport(renderer::ResourceHandle<renderer::Render
                         fbzz::Layer::Everything,
                         &uiOptions);
 
-    if (m_editorApp.GetContext().projectSettings.render.showColliders) {
-        renderer::DebugDraw::BeginFrame(m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
-        scene::ConstraintDebugDrawSystem(m_physicsWorld, m_renderer);
-        renderer::DebugDraw::Flush();
+    {
+        const auto& render = m_editorApp.GetContext().projectSettings.render;
+        if (render.showColliders || render.showTerrainCollision) {
+            renderer::DebugDraw::BeginFrame(m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
+            if (render.showColliders && m_scene) {
+                scene::ColliderDebugDrawSystem(*m_scene, m_renderer);
+                scene::ConstraintDebugDrawSystem(m_physicsWorld, m_renderer);
+            }
+            if (render.showTerrainCollision && m_scene)
+                scene::TerrainCollisionDebugDrawSystem(*m_scene, m_renderer, m_debugCamera.camera.m_position);
+            renderer::DebugDraw::Flush();
+        }
     }
     if (m_editorApp.GetContext().showSkeleton) {
         scene::AnimatorDebugDrawSystem(*m_scene, m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
