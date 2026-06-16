@@ -7,6 +7,7 @@ namespace fbzz::editor {
 
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
+    DrawImportSettingsModal(ctx);
     DrawImportResultBar(ctx);
 
     // テクスチャ遅延ロードキューを処理 (3件/フレームに分散)
@@ -21,6 +22,40 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     // ── 左ペイン: フォルダツリー ─────────────────────────────────────────
     ImGui::BeginChild("##tree", { 150.0f, 0.0f }, true);
+
+    // Favorites セクション
+    if (!ctx.assetBrowserBookmarks.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.2f, 1.0f));
+        const bool favOpen = ImGui::TreeNodeEx("##favs",
+            ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "\xe2\x98\x85 Favorites");
+        ImGui::PopStyleColor();
+        if (favOpen) {
+            for (const auto& bk : ctx.assetBrowserBookmarks) {
+                const std::string label = util::FileSystem::GetFilename(bk).empty()
+                    ? bk : util::FileSystem::GetFilename(bk);
+                const bool sel = util::FileSystem::SamePathText(m_currentPath, bk);
+                if (ImGui::Selectable(label.c_str(), sel,
+                        ImGuiSelectableFlags_SpanAllColumns)) {
+                    if (util::FileSystem::Exists(bk)) {
+                        m_currentPath = bk;
+                        RefreshDirectory();
+                    }
+                }
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Remove from Favorites")) {
+                        auto& bks = ctx.assetBrowserBookmarks;
+                        bks.erase(std::remove(bks.begin(), bks.end(), bk), bks.end());
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                        break; // iterator invalidated
+                    }
+                    ImGui::EndPopup();
+                }
+            }
+            ImGui::TreePop();
+        }
+        ImGui::Separator();
+    }
 
     ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth
@@ -76,11 +111,12 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SameLine();
 
     static constexpr const char* kTypeLabels[] = {
-        "All", "Scene", "Material", "Script", "Texture", "Audio", "Mesh", "Shader", "Prefab" };
+        "All", "Scene", "Material", "Script", "Texture", "Audio",
+        "Mesh", "Shader", "Prefab", "Animation", "Skeleton", "Asset" };
     ImGui::SetNextItemWidth(80.0f);
     {
         int tf = static_cast<int>(m_typeFilter);
-        if (ImGui::Combo("##type", &tf, kTypeLabels, 9))
+        if (ImGui::Combo("##type", &tf, kTypeLabels, 12))
             m_typeFilter = static_cast<TypeFilter>(tf);
     }
     ImGui::SameLine();
@@ -279,7 +315,7 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
     if (e.isSubAsset) return true; // サブアセットは親が表示されていれば常に表示
     if (m_typeFilter == TypeFilter::All || e.isDir) return true;
     switch (m_typeFilter) {
-    case TypeFilter::Scene:    return e.ext == ".fbzz";
+    case TypeFilter::Scene:    return e.ext == ".scene";
     case TypeFilter::Material: return e.ext == ".fzmat";
     case TypeFilter::Script:   return e.ext == ".hpp" || e.ext == ".cpp" || e.ext == ".h"
                                    || e.ext == ".c"   || e.ext == ".cc"  || e.ext == ".cxx"
@@ -289,12 +325,14 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
                                    || e.ext == ".fnt" || e.ext == ".ttf" || e.ext == ".otf";
     case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
                                    || e.ext == ".flac";
-    case TypeFilter::Mesh:     return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
-                                   || e.ext == ".glb"    || e.ext == ".fzmesh" || e.ext == ".fzskel"
-                                   || e.ext == ".fzasset";
-    case TypeFilter::Shader:   return e.ext == ".hlsl" || e.ext == ".hlsli";
-    case TypeFilter::Prefab:   return e.ext == ".fbzzprefab";
-    default:                   return true;
+    case TypeFilter::Mesh:      return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
+                                    || e.ext == ".glb"    || e.ext == ".fzmesh";
+    case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
+    case TypeFilter::Prefab:    return e.ext == ".fbzzprefab";
+    case TypeFilter::Animation: return e.ext == ".fzanim";
+    case TypeFilter::Skeleton:  return e.ext == ".fzskel";
+    case TypeFilter::Asset:     return e.ext == ".asset";
+    default:                    return true;
     }
 }
 

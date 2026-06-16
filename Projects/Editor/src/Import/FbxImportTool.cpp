@@ -77,7 +77,8 @@ struct MaterialCache {
 
 bool FbxImportTool::Import(const std::string& fbxPath,
                             const std::string& outputDir,
-                            const std::string& sourceHint)
+                            const std::string& sourceHint,
+                            const FbxImportOptions& options)
 {
     FBZZ_LOG_INFO("FbxImportTool: begin [%s] → [%s]", fbxPath.c_str(), outputDir.c_str());
 
@@ -166,6 +167,16 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     // ── メッシュ ──────────────────────────────────────────────────────────
     for (uint32_t mi = 0; mi < meshScene->mNumMeshes; ++mi) {
         const aiMesh* mesh     = meshScene->mMeshes[mi];
+
+        // 選択的インポート: selectedMeshNames が空でなければ一致するものだけ処理
+        if (!options.selectedMeshNames.empty()) {
+            const std::string meshName = mesh->mName.C_Str();
+            bool selected = false;
+            for (const auto& n : options.selectedMeshNames)
+                if (n == meshName) { selected = true; break; }
+            if (!selected) continue;
+        }
+
         const bool    skinned  = mesh->HasBones();
         const std::string meshPath =
             util::FileSystem::PathToUtf8(meshDir / ("mesh_" + std::to_string(mi) + ".fzmesh"));
@@ -186,7 +197,8 @@ bool FbxImportTool::Import(const std::string& fbxPath,
             const std::string matPath =
                 util::FileSystem::PathToUtf8(matDir / ("mat_" + std::to_string(matIdx) + ".fzmat"));
             if (!FzMaterialExporter::Export(meshScene->mMaterials[matIdx], meshScene,
-                                             fbxDir, util::FileSystem::PathToUtf8(texDir), matPath, skinned)) {
+                                             fbxDir, util::FileSystem::PathToUtf8(texDir), matPath, skinned,
+                                             options.flipGreenChannel)) {
                 FBZZ_LOG_ERROR("FbxImportTool: material export failed [%u]", matIdx);
                 return false;
             }
@@ -213,6 +225,15 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     if (scene->mNumAnimations > 0) {
         util::FileSystem::EnsureDirectory(animDir);
         for (uint32_t ai = 0; ai < scene->mNumAnimations; ++ai) {
+            // 選択的インポート: selectedAnimNames が空でなければ一致するものだけ処理
+            if (!options.selectedAnimNames.empty()) {
+                const std::string animName = scene->mAnimations[ai]->mName.C_Str();
+                bool selected = false;
+                for (const auto& n : options.selectedAnimNames)
+                    if (n == animName) { selected = true; break; }
+                if (!selected) continue;
+            }
+
             const std::string animPath =
                 util::FileSystem::PathToUtf8(animDir / ("clip_" + std::to_string(ai) + ".fzanim"));
             if (!FzAnimationExporter::Export(scene->mAnimations[ai], animPath, unitScale)) {
@@ -226,7 +247,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
     // ── マニフェスト ──────────────────────────────────────────────────────
     // manifestDirPath (= FBX と同じフォルダ) に stem.fzasset を書き出す
-    manifestPath = util::FileSystem::PathToUtf8(manifestDirPath / (baseName + ".fzasset"));
+    manifestPath = util::FileSystem::PathToUtf8(manifestDirPath / (baseName + ".asset"));
     if (!FzAssetWriter::Write(manifest, manifestPath)) {
         FBZZ_LOG_ERROR("FbxImportTool: manifest write failed");
         return false;
@@ -235,6 +256,23 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     FBZZ_LOG_INFO("FbxImportTool: done → [%s]", manifestPath.c_str());
     success = true;
     return true;
+}
+
+FbxScanResult FbxImportTool::Scan(const std::string& fbxPath)
+{
+    FbxScanResult result;
+    Assimp::Importer importer;
+    importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+    // aiProcess_Triangulate だけで十分。名前列挙のみなので重い後処理フラグは省く。
+    const aiScene* scene = importer.ReadFile(fbxPath, aiProcess_Triangulate);
+    if (!scene || !scene->mRootNode) return result;
+
+    for (uint32_t i = 0; i < scene->mNumMeshes; ++i)
+        result.meshNames.emplace_back(scene->mMeshes[i]->mName.C_Str());
+    for (uint32_t i = 0; i < scene->mNumAnimations; ++i)
+        result.animNames.emplace_back(scene->mAnimations[i]->mName.C_Str());
+    result.valid = true;
+    return result;
 }
 
 } // namespace fbzz::editor

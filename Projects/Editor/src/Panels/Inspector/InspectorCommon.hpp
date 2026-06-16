@@ -593,9 +593,9 @@ inline std::string UniqueTerrainAssetPath(const EditorContext& ctx, const std::s
     util::FileSystem::EnsureDirectory(terrainDir);
 
     const std::string base = terrainDir + "/" + SanitizeTerrainAssetName(objectName);
-    std::string path = base + ".fbzzterrain";
+    std::string path = base + ".terrain";
     for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
-        path = base + " " + std::to_string(i) + ".fbzzterrain";
+        path = base + " " + std::to_string(i) + ".terrain";
     return NormalizeAssetPath(path);
 }
 inline std::string TerrainAssetDiskPath(const EditorContext& ctx, const std::string& assetPath)

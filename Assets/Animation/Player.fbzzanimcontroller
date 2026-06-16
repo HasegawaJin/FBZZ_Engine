@@ -26,15 +26,15 @@ ikWeight = 1.0
 paramName = 'Speed'
 dampTime = 0.18
 motions = [
-    { sourcePath = 'Assets/Models/DebugCharacter/Idle.fzasset', clipName = 'Idle', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'Assets/Models/DebugCharacter/Walking.fzasset', clipName = 'Walking', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'Assets/Models/DebugCharacter/Running.fzasset', clipName = 'Running', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 }
+    { sourcePath = 'Assets/Models/DebugCharacter/Idle.asset', clipName = 'Idle', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Walking.asset', clipName = 'Walking', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Running.asset', clipName = 'Running', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 }
 ]
 
 [[states]]
 name = 'JumpUp'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/JumpingUp.fzasset'
+sourcePath = 'Assets/Models/DebugCharacter/JumpingUp.asset'
 clipName = 'JumpingUp'
 clipIndex = -1
 speed = 1.0
@@ -51,7 +51,7 @@ conditions = [{ paramName = 'VerticalSpeed', op = 1, threshold = -0.5 }]
 [[states]]
 name = 'Fall'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/FallingIdle.fzasset'
+sourcePath = 'Assets/Models/DebugCharacter/FallingIdle.asset'
 clipName = 'FallingIdle'
 clipIndex = -1
 speed = 1.0
@@ -68,7 +68,7 @@ conditions = [{ paramName = 'Land', op = 4, threshold = 0.0 }]
 [[states]]
 name = 'Landing'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/Landing.fzasset'
+sourcePath = 'Assets/Models/DebugCharacter/Landing.asset'
 clipName = 'Landing'
 clipIndex = -1
 speed = 1.0

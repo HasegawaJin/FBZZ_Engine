@@ -109,6 +109,31 @@ std::string ResolveTexture(const aiScene* scene,
     return util::FileSystem::CopyFile(srcPath, dest) ? filename : std::string{};
 }
 
+// OpenGL 形式の法線マップ (Y 下向き) を DirectX 形式 (Y 上向き) に変換する。
+// WHY: Blender/Maya のデフォルト書き出しが OpenGL 座標系のため、
+//      DirectX エンジンで使用すると法線の Y 成分が反転して凸凹が逆になる。
+bool FlipNormalMapGreen(const fs::path& texPath)
+{
+    DirectX::ScratchImage image;
+    if (FAILED(DirectX::LoadFromWICFile(texPath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, image))) {
+        FBZZ_LOG_WARN("FzMaterialExporter: FlipGreen load failed [%s]",
+                       texPath.string().c_str());
+        return false;
+    }
+    DirectX::ScratchImage rgba;
+    if (FAILED(DirectX::Convert(*image.GetImages(), DXGI_FORMAT_R8G8B8A8_UNORM,
+                                 DirectX::TEX_FILTER_DEFAULT, 0.0f, rgba)))
+        return false;
+
+    uint8_t* pixels = rgba.GetPixels();
+    const size_t pixelCount = rgba.GetPixelsSize() / 4;
+    for (size_t i = 0; i < pixelCount; ++i)
+        pixels[i * 4 + 1] = static_cast<uint8_t>(255u - pixels[i * 4 + 1]);
+
+    return SUCCEEDED(DirectX::SaveToWICFile(*rgba.GetImages(), DirectX::WIC_FLAGS_NONE,
+                                             GUID_ContainerFormatPng, texPath.c_str()));
+}
+
 } // namespace
 
 bool FzMaterialExporter::Export(const aiMaterial* material,
@@ -116,7 +141,8 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
                                   const std::string& fbxDir,
                                   const std::string& texturesDir,
                                   const std::string& outputPath,
-                                  bool skinned)
+                                  bool skinned,
+                                  bool flipGreenChannel)
 {
     toml::table tbl;
     tbl.insert("version", int64_t{ 1 });
@@ -148,8 +174,15 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
         if (material->GetTexture(slot.type, 0, &texPath) == AI_SUCCESS) {
             const std::string filename =
                 ResolveTexture(scene, texPath.C_Str(), fbxDir, texturesDir);
-            if (!filename.empty())
+            if (!filename.empty()) {
+                if (flipGreenChannel && std::string_view(slot.key) == "normal") {
+                    const fs::path fullPath =
+                        util::FileSystem::PathFromUtf8(texturesDir) / filename;
+                    if (!FlipNormalMapGreen(fullPath))
+                        FBZZ_LOG_WARN("FzMaterialExporter: FlipGreen failed [%s]", filename.c_str());
+                }
                 texTbl.insert(slot.key, filename);
+            }
         }
     }
     if (!texTbl.empty())

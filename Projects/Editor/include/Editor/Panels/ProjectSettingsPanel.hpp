@@ -14,6 +14,7 @@ class ProjectSettingsPanel final : public IPanel {
 public:
     enum class Section {
         Application,
+        Import,
         Render,
         PostProcess,
         Physics,
@@ -30,8 +31,9 @@ protected:
 
 private:
     void DrawSidebar();
-    void DrawSection(ProjectSettings& settings);
+    void DrawSection(EditorContext& ctx);
     void DrawApplication(ProjectSettings& settings);
+    void DrawImport(EditorContext& ctx);
     void DrawRender(renderer::RenderSettings& render);
     void DrawPostProcess(renderer::RenderSettings& render);
     void DrawPhysics(ProjectSettings& settings);

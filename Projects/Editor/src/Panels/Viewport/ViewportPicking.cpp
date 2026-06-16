@@ -141,7 +141,7 @@ bool InstantiatePrefabAssetAtViewport(EditorContext& ctx,
     if (!ctx.activeScene) return false;
     const math::Vector3 position = PrefabDropPosition(ctx, viewportMin);
 
-    if (util::FileSystem::GetExtension(assetPath) == ".fzasset") {
+    if (util::FileSystem::GetExtension(assetPath) == ".asset") {
         const scene::EntityID root = SpawnFzAssetHierarchy(*ctx.activeScene, assetPath);
         if (root == scene::EntityID::INVALID) return false;
         if (auto* go = ctx.activeScene->GetGameObject(root))

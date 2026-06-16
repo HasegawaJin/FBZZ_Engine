@@ -21,7 +21,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         std::string path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (util::FileSystem::GetExtension(path) == ".fbzzterrain")
+                        if (util::FileSystem::GetExtension(path) == ".terrain")
                             tc.terrainAssetPath = path;
                     }
                     ImGui::EndDragDropTarget();

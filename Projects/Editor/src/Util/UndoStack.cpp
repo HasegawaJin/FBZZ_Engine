@@ -119,4 +119,20 @@ std::string UndoStack::GetRedoDescription() const
     return m_history[m_cursor]->GetDescription();
 }
 
+void UndoStack::JumpTo(std::size_t index)
+{
+    if (index > m_history.size()) index = m_history.size();
+    while (m_cursor > index) Undo();
+    while (m_cursor < index) Redo();
+}
+
+std::vector<UndoStack::HistoryEntry> UndoStack::GetHistory() const
+{
+    std::vector<HistoryEntry> result;
+    result.reserve(m_history.size());
+    for (std::size_t i = 0; i < m_history.size(); ++i)
+        result.push_back({ m_history[i]->GetDescription(), i < m_cursor });
+    return result;
+}
+
 } // namespace fbzz::editor
