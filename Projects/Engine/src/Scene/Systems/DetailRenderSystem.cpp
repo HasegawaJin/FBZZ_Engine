@@ -165,6 +165,14 @@ static void BakeChunk(
         const DetailLayer& layer = layers[li];
         if (layer.density <= 0.0f) continue;
 
+        // Mesh レイヤーはアセットが存在しない場合インスタンスを積まない。
+        // WHY: ロード失敗のまま instances を積むとカウントが上がり続け、
+        //      存在しないアセットに対して描画も試みられる。
+        if (layer.type == DetailLayerType::Mesh) {
+            if (layer.meshPath.empty()) continue;
+            if (!asset::AssetManager::Load<asset::Model>(layer.meshPath)) continue;
+        }
+
         uint32_t seed = baseSeed + static_cast<uint32_t>(li) * 6271u;
         const float sampleStep = std::max(
             1.0f / (layer.density * kMaxDensityPerMeter2), 0.01f);

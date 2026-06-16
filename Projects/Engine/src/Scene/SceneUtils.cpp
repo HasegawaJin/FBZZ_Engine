@@ -37,7 +37,7 @@ renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio)
 {
     for (auto& go : scene.GameObjects()) {
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
+        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
 
         renderer::Camera result;
         result.m_position = go.transform.worldPosition;
@@ -66,7 +66,7 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
 
     for (auto& go : scene.GameObjects()) {
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
+        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
 
         camera.m_position = go.transform.worldPosition;
         camera.m_rotation = go.transform.worldRotation;
@@ -85,7 +85,7 @@ fbzz::LayerMask ResolveGameCullingMask(Scene& scene)
 {
     for (auto& go : scene.GameObjects()) {
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
+        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
         return cam->cullingMask;
     }
     return fbzz::Layer::Everything;
