@@ -6,6 +6,8 @@
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
+#include "Engine/Scene/Systems/FoliageBakeSystem.hpp"
+#include "Engine/Scene/Systems/FoliageCullSystem.hpp"
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
@@ -92,6 +94,8 @@ void SceneManager::Update(float dt, physics::World& world)
         // ── 停止中: Transform のみ (エディタ上のオブジェクト移動を反映する) ────
         FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
         TransformSystem(*scene);
+        FoliageBakeSystem(*scene);
+        FoliageCullSystem(*scene);
         return;
     }
 
@@ -102,6 +106,12 @@ void SceneManager::Update(float dt, physics::World& world)
     // ── Phase 2: Transform ──────────────────────────────────────────────────
     { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
       TransformSystem(*scene); }
+
+    // ── Phase 2.5: Foliage Bake / Cull (Physics より前に GO 生成と距離カリングを完了) ─
+    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageBakeSystem");
+      FoliageBakeSystem(*scene); }
+    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageCullSystem");
+      FoliageCullSystem(*scene); }
 
     // ── Phase 3: Physics (fixed timestep) ───────────────────────────────────
     {

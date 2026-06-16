@@ -53,9 +53,14 @@ void BakeSpecies(FoliageSpeciesCache& cache,
 {
     cache.instances.clear();
     cache.instanceBuffer = {};
-    if (species.modelPath.empty() || terrain.columns < 2 || terrain.rows < 2) {
+    if (species.modelPath.empty() || terrain.columns < 2 || terrain.rows < 2)
         return;
-    }
+
+    // モデルが存在しない場合はインスタンスを積まない。
+    // WHY: ロード失敗のまま instances を積むと FoliageTool の stamp カウントが増え続け、
+    //      存在しないアセットに対して Physics コライダーも生成されてしまう。
+    if (!asset::AssetManager::Load<asset::Model>(species.modelPath))
+        return;
 
     const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
     const float terrainD = static_cast<float>(terrain.rows - 1) * terrain.cellSize;
@@ -64,6 +69,10 @@ void BakeSpecies(FoliageSpeciesCache& cache,
     uint32_t seed = species.seed;
 
     if (species.placementMode == FoliagePlacementMode::STAMP) {
+        // STAMP は子 GO 階層 (FoliageBakeSystem) でヒエラルキー・物理を管理するが、
+        // レンダリングは引き続き GPU instancing で行う。
+        // WHY: 子 GO の MeshRenderer は MaterialComponent が設定されていないと描画されないため、
+        //      Foliage シェーダー (foliagePSO) が確実な描画経路として機能する。
         cache.instances.reserve(species.stamps.size());
         for (const FoliageStamp& stamp : species.stamps) {
             const math::Vector3 world = TransformPoint(
