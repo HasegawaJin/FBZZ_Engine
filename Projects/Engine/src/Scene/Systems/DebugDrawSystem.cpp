@@ -15,6 +15,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Physics/ColliderDebugGeometry.hpp>
 #include <Physics/ConvexHullCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/ConstraintDebugGeometry.hpp>
 #include <Physics/World.hpp>
@@ -58,6 +59,10 @@ void DrawCollider(T& collider,
                 scale = math::Vector3::ONE;
         }
         mesh->UpdateWithScale(worldCenter, go.transform.worldRotation, scale);
+    } else if (auto* hf = collider.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
+            ? static_cast<physics::HeightFieldCollider*>(collider.collider.get())
+            : nullptr) {
+        hf->UpdateWithScale(worldCenter, go.transform.worldRotation, go.transform.worldScale);
     } else if (auto* hull = collider.collider->GetType() == physics::ColliderType::CONVEX_HULL
             ? static_cast<physics::ConvexHullCollider*>(collider.collider.get())
             : nullptr) {
@@ -95,67 +100,6 @@ void ColliderDebugDrawSystem(Scene& scene,
             DrawCollider(*collider, go, renderer, color);
         if (auto* collider = go.GetComponent<ConvexHullColliderComponent>())
             DrawCollider(*collider, go, renderer, color);
-    }
-
-    // TerrainComponent 専用パス
-    // PhysicsSystem (プレイ中のみ実行) に依存せず heightData から直接描画する。
-    // MeshColliderComponent.collider が構築済み (プレイ中) の場合は上のループで描画済みのためスキップ。
-    for (auto& go : scene.GameObjects())
-    {
-        const auto* terrain = go.GetComponent<TerrainComponent>();
-        if (!terrain || !terrain->enabled || terrain->heightData.empty()) continue;
-
-        // プレイ中は MeshCollider パスで描画済み
-        const auto* meshCol = go.GetComponent<MeshColliderComponent>();
-        if (meshCol && meshCol->collider) continue;
-
-        const int cols = terrain->columns;
-        const int rows = terrain->rows;
-        const math::Vector3& origin = go.transform.worldPosition;
-        const math::Quaternion& rot  = go.transform.worldRotation;
-        const math::Vector3&   scale = go.transform.worldScale;
-
-        auto ToWorld = [&](int x, int z) -> math::Vector3
-        {
-            const float h = terrain->heightData[
-                static_cast<size_t>(z) * static_cast<size_t>(cols) + static_cast<size_t>(x)]
-                * terrain->maxHeight;
-            return origin + rot * math::Vector3{
-                static_cast<float>(x) * terrain->cellSize * scale.x,
-                h * scale.y,
-                static_cast<float>(z) * terrain->cellSize * scale.z
-            };
-        };
-
-        // サブサンプリングステップ: 最大 ~8 本の断面線 + 必ず両端を含む
-        const int sx = (std::max)(1, (cols - 1) / 8);
-        const int sz = (std::max)(1, (rows - 1) / 8);
-
-        // Z 方向の断面線 (X 軸方向に延びる線群)
-        for (int z = 0; z < rows; z += sz)
-        {
-            for (int x = 0; x < cols - 1; ++x)
-                renderer::DebugDraw::Line(renderer, ToWorld(x, z), ToWorld(x + 1, z), color);
-        }
-        // 最終行を必ず描く (sz が rows-1 を割り切らない場合)
-        if ((rows - 1) % sz != 0)
-        {
-            for (int x = 0; x < cols - 1; ++x)
-                renderer::DebugDraw::Line(renderer, ToWorld(x, rows - 1), ToWorld(x + 1, rows - 1), color);
-        }
-
-        // X 方向の断面線 (Z 軸方向に延びる線群)
-        for (int x = 0; x < cols; x += sx)
-        {
-            for (int z = 0; z < rows - 1; ++z)
-                renderer::DebugDraw::Line(renderer, ToWorld(x, z), ToWorld(x, z + 1), color);
-        }
-        // 最終列を必ず描く
-        if ((cols - 1) % sx != 0)
-        {
-            for (int z = 0; z < rows - 1; ++z)
-                renderer::DebugDraw::Line(renderer, ToWorld(cols - 1, z), ToWorld(cols - 1, z + 1), color);
-        }
     }
 }
 
@@ -298,6 +242,115 @@ void LightRangeDebugDrawSystem(Scene& scene,
     }
 
     renderer::DebugDraw::Flush();
+}
+
+// ---------------------------------------------------------------------------
+// TerrainCollisionDebugDrawSystem
+// ---------------------------------------------------------------------------
+void TerrainCollisionDebugDrawSystem(
+    Scene& scene,
+    renderer::IRenderer& renderer,
+    const math::Vector3& cameraPosition,
+    float nearDistance,
+    int   gridStride,
+    const math::Vector4& nearColor,
+    const math::Vector4& farColor)
+{
+    const float nearDistSq = nearDistance * nearDistance;
+
+    for (auto& go : scene.GameObjects()) {
+        if (!go.activeInHierarchy()) continue;
+        const auto* terrain = go.GetComponent<TerrainComponent>();
+        if (!terrain || !terrain->enabled || terrain->heightData.empty()) continue;
+
+        const math::Vector3 origin = go.transform.worldPosition;
+        const int   cols      = terrain->columns;
+        const int   rows      = terrain->rows;
+        const float cell      = terrain->cellSize;
+        const float maxH      = terrain->maxHeight;
+        const int   chunkSize = terrain->chunkSize;
+
+        const int numChunksX = (cols - 1) / chunkSize;
+        const int numChunksZ = (rows - 1) / chunkSize;
+
+        for (int cz = 0; cz < numChunksZ; ++cz) {
+            for (int cx = 0; cx < numChunksX; ++cx) {
+                const int x0 = cx * chunkSize;
+                const int z0 = cz * chunkSize;
+                const int x1 = std::min(x0 + chunkSize, cols - 1);
+                const int z1 = std::min(z0 + chunkSize, rows - 1);
+
+                // Scan chunk heights for AABB
+                float minY = terrain->heightData[z0 * cols + x0] * maxH;
+                float maxY = minY;
+                for (int z = z0; z <= z1; ++z) {
+                    for (int x = x0; x <= x1; ++x) {
+                        const float h = terrain->heightData[static_cast<size_t>(z) * cols + x] * maxH;
+                        if (h < minY) minY = h;
+                        if (h > maxY) maxY = h;
+                    }
+                }
+
+                const math::Vector3 chunkCenter = {
+                    origin.x + (x0 + x1) * 0.5f * cell,
+                    origin.y + (minY + maxY) * 0.5f,
+                    origin.z + (z0 + z1) * 0.5f * cell
+                };
+
+                const math::Vector3 d = chunkCenter - cameraPosition;
+                const float distSq = d.x*d.x + d.y*d.y + d.z*d.z;
+
+                if (distSq > nearDistSq) {
+                    // 遠景: チャンク AABB ボックスのみ
+                    const math::Vector3 half = {
+                        (x1 - x0) * cell * 0.5f,
+                        (maxY - minY) * 0.5f,
+                        (z1 - z0) * cell * 0.5f
+                    };
+                    renderer::DebugDraw::Box(renderer, chunkCenter, half, farColor);
+                } else {
+                    // 近景: gridStride おきのダウンサンプリング格子
+                    const int stride = gridStride > 0 ? gridStride : 1;
+
+                    // X 方向ライン (一定 Z ごとに X 軸に沿って引く)
+                    for (int z = z0; z <= z1; z += stride) {
+                        for (int x = x0; x < x1; x += stride) {
+                            const int xn = std::min(x + stride, x1);
+                            const math::Vector3 p0 = {
+                                origin.x + x  * cell,
+                                origin.y + terrain->heightData[static_cast<size_t>(z) * cols + x ] * maxH,
+                                origin.z + z  * cell
+                            };
+                            const math::Vector3 p1 = {
+                                origin.x + xn * cell,
+                                origin.y + terrain->heightData[static_cast<size_t>(z) * cols + xn] * maxH,
+                                origin.z + z  * cell
+                            };
+                            renderer::DebugDraw::Line(renderer, p0, p1, nearColor);
+                        }
+                    }
+
+                    // Z 方向ライン (一定 X ごとに Z 軸に沿って引く)
+                    for (int x = x0; x <= x1; x += stride) {
+                        for (int z = z0; z < z1; z += stride) {
+                            const int zn = std::min(z + stride, z1);
+                            const math::Vector3 p0 = {
+                                origin.x + x  * cell,
+                                origin.y + terrain->heightData[static_cast<size_t>(z ) * cols + x] * maxH,
+                                origin.z + z  * cell
+                            };
+                            const math::Vector3 p1 = {
+                                origin.x + x  * cell,
+                                origin.y + terrain->heightData[static_cast<size_t>(zn) * cols + x] * maxH,
+                                origin.z + zn * cell
+                            };
+                            renderer::DebugDraw::Line(renderer, p0, p1, nearColor);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 } // namespace fbzz::scene
