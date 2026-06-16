@@ -430,8 +430,9 @@ void EditorApp::Shutdown()
     }
 
     // Debug メニュー - レンダリングオーバーレイ
-    m_settings.showColliders   = m_ctx.projectSettings.render.showColliders;
-    m_settings.showDecalBounds = m_ctx.projectSettings.render.showDecalBounds;
+    m_settings.showColliders        = m_ctx.projectSettings.render.showColliders;
+    m_settings.showTerrainCollision = m_ctx.projectSettings.render.showTerrainCollision;
+    m_settings.showDecalBounds      = m_ctx.projectSettings.render.showDecalBounds;
     m_settings.viewMode        = static_cast<int>(m_ctx.projectSettings.render.viewMode);
     m_settings.shadowEnabled   = m_ctx.projectSettings.render.shadowEnabled;
     // Debug メニュー - Post Process
@@ -556,8 +557,9 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     // WHY: Debug メニューのレンダリング設定はエディター個人設定であり projectSettings より優先する。
     //      projectSettings.Load() の後に上書きすることでプロジェクト共有値に左右されない。
-    m_ctx.projectSettings.render.showColliders   = m_settings.showColliders;
-    m_ctx.projectSettings.render.showDecalBounds = m_settings.showDecalBounds;
+    m_ctx.projectSettings.render.showColliders        = m_settings.showColliders;
+    m_ctx.projectSettings.render.showTerrainCollision = m_settings.showTerrainCollision;
+    m_ctx.projectSettings.render.showDecalBounds      = m_settings.showDecalBounds;
     m_ctx.projectSettings.render.viewMode        = static_cast<renderer::ViewMode>(m_settings.viewMode);
     m_ctx.projectSettings.render.shadowEnabled   = m_settings.shadowEnabled;
     {
