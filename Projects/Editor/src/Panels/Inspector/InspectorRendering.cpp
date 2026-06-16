@@ -8,7 +8,7 @@ namespace fbzz::editor {
 void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     DrawComponentSection<scene::MeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Renderer",
-        [](scene::MeshRenderer& mr, EditorContext&) {
+        [](scene::MeshRenderer& mr, EditorContext& ctx) {
             static constexpr const char* kPrimitiveNames[] = {
                 "Custom", "Cube", "Sphere", "Plane", "Quad", "Cylinder", "Cone", "Torus", "Capsule"
             };
@@ -45,27 +45,15 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
 
             if (sel == 0) {
-                char meshBuf[256];
-                std::snprintf(meshBuf, sizeof(meshBuf), "%s", mr.meshPath.c_str());
-                if (ImGui::InputText("Mesh Path", meshBuf, sizeof(meshBuf)))
-                    mr.meshPath = NormalizeAssetPath(meshBuf);
-
                 auto loadCustomMesh = [&mr]() {
                     if (mr.meshPath.empty()) return;
-                    if (auto* model = asset::AssetManager::Load<asset::Model>(mr.meshPath)) {
+                    if (auto* model = asset::AssetManager::Load<asset::Model>(mr.meshPath))
                         if (!model->meshes.empty())
                             mr.mesh = model->meshes[0].get();
-                    }
                 };
-                if (ImGui::IsItemDeactivatedAfterEdit()) loadCustomMesh();
-
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        mr.meshPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        loadCustomMesh();
-                    }
-                    ImGui::EndDragDropTarget();
-                }
+                if (widgets::AssetPathField("Mesh Path", mr.meshPath,
+                                            ".asset", ctx.projectRoot))
+                    loadCustomMesh();
             }
         });
 
@@ -77,18 +65,9 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
             };
 
-            char pathBuf[256];
-            std::snprintf(pathBuf, sizeof(pathBuf), "%s", smr.modelPath.c_str());
-            if (ImGui::InputText("Model", pathBuf, sizeof(pathBuf)))
-                smr.modelPath = NormalizeAssetPath(pathBuf);
-            if (ImGui::IsItemDeactivatedAfterEdit()) loadModel();
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    smr.modelPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    loadModel();
-                }
-                ImGui::EndDragDropTarget();
-            }
+            if (widgets::AssetPathField("Model", smr.modelPath,
+                                        ".asset", ctx.projectRoot))
+                loadModel();
 
             if (smr.model) {
                 const int meshCount = static_cast<int>(smr.model->meshes.size());

@@ -20,24 +20,12 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             // ── Rendering ───────────────────────────────────────────────────
             ImGui::SeparatorText("Material Asset");
             {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf), "%s", mc.materialPath.c_str());
-                if (ImGui::InputText("Material (.fzmat)", buf, sizeof(buf))) {
-                    mc.materialPath = NormalizeAssetPath(buf);
+                if (widgets::AssetPathField("Material (.fzmat)", mc.materialPath,
+                                            ".fzmat", ctx.projectRoot))
                     loadMaterialAsset();
-                }
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        const std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
-                            mc.materialPath = dropped;
-                            loadMaterialAsset();
-                        }
-                    }
-                    ImGui::EndDragDropTarget();
-                }
                 if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
-                    ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f), "Missing: %s", mc.materialPath.c_str());
+                    ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
+                                       "Missing: %s", mc.materialPath.c_str());
             }
 
             auto* matPtr = asset::AssetManager::GetMaterial(mc.materialAsset);
@@ -73,23 +61,10 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 
             ImGui::SeparatorText("State");
             {
-                char shaderBuf[512];
-                std::snprintf(shaderBuf, sizeof(shaderBuf), "%s", mat.shaderPath.c_str());
-                if (ImGui::InputText("Shader", shaderBuf, sizeof(shaderBuf))) {
-                    mat.shaderPath = NormalizeAssetPath(shaderBuf);
+                if (widgets::AssetPathField("Shader", mat.shaderPath,
+                                            ".hlsl", ctx.projectRoot)) {
                     mc.material.reset();
                     materialDirty = true;
-                }
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        const std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (util::StringUtils::EndsWith(dropped, ".hlsl")) {
-                            mat.shaderPath = dropped;
-                            mc.material.reset();
-                            materialDirty = true;
-                        }
-                    }
-                    ImGui::EndDragDropTarget();
                 }
 
                 static constexpr const char* kBlendNames[] = { "Opaque", "AlphaBlend", "Additive" };
