@@ -375,6 +375,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         playColor,
         BUTTON_SIZE)) {
         m_undoStack.Clear();
+        RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
         pm->Play(*ctx.activeScene);
         if (pm->IsPlaying())
             ctx.requestGameViewportFocus = true;
