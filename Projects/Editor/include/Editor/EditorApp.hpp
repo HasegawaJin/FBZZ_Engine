@@ -15,8 +15,15 @@
 // TerrainTool は src/ 内の内部ヘッダーなので前方宣言で対応する
 // WHY: TerrainTool.hpp は imgui.h に依存しており、EditorApp.hpp に直接インクルードすると
 //      Engine 層のヘッダーが imgui に依存してしまう。std::unique_ptr で所有して隠蔽する。
-#include <memory>
+#include <Engine/Core/IModule.hpp>
+#include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
+#include <Math/Vector3.hpp>
+#include <Physics/Layer.hpp>
+#include <Physics/World.hpp>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -40,7 +47,7 @@ class WaterTool;
 class DetailTool;
 class FoliageTool;
 
-class EditorApp {
+class EditorApp : public core::IModule {
 public:
     EditorApp();
     ~EditorApp(); // TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
@@ -48,6 +55,13 @@ public:
     bool Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window);
     void Shutdown();
     bool OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath);
+
+    // IModule — app::Run() から呼ばれるライフサイクル
+    [[nodiscard]] bool OnInit()               override;
+    void               OnUpdate(float dt)     override;
+    void               OnLateUpdate(float dt) override;
+    void               OnRender()             override;
+    void               OnShutdown()           override;
 
     void BeginFrame();
     void RenderPanels(EditorContext& ctx);
@@ -63,6 +77,29 @@ public:
     renderer::ResourceHandle<renderer::RenderTargetTag> GetUIViewportRT() const { return m_gameViewportRT; }
 
 private:
+    // ── IModule ループが所有するステート ────────────────────────────────────
+    struct FocusAnim {
+        bool          active   = false;
+        math::Vector3 startPos = {};
+        math::Vector3 endPos   = {};
+        math::Vector3 target   = {};
+        float         t        = 0.0f;
+    };
+
+    void WarmupRenderResources();
+    void UpdateFocusAnim(float dt);
+    void RenderSceneView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
+    void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
+
+    std::unique_ptr<scene::Scene>  m_scene;
+    physics::World                 m_physicsWorld;
+    renderer::DebugCamera          m_debugCamera;
+    scene::SceneManager            m_sceneManager;
+    scene::UISystemContext         m_sceneUICtx;
+    scene::UISystemContext         m_gameUICtx;
+    FocusAnim                      m_focusAnim;
+    float                          m_simulationDt = 0.0f;
+
     void BuildMenuBar(EditorContext& ctx);
     void BuildPlayToolbar(EditorContext& ctx);
     void ProcessMapEditingModeTransition(uint32_t dockId);
