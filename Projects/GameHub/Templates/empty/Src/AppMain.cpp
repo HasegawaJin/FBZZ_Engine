@@ -612,6 +612,9 @@ private:
             fbzz::renderer::DebugDraw::BeginFrame(m_renderer, m_resources,
                                                    m_debugCamera.camera.GetViewProjection());
             fbzz::scene::ConstraintDebugDrawSystem(m_physicsWorld, m_renderer);
+            if (m_scene)
+                fbzz::scene::TerrainCollisionDebugDrawSystem(*m_scene, m_renderer,
+                                                              m_debugCamera.camera.m_position);
             fbzz::renderer::DebugDraw::Flush();
         }
         if (m_editorApp.GetContext().showSkeleton) {

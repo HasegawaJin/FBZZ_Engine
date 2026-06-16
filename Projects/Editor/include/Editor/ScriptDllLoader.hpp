@@ -63,6 +63,8 @@ private:
 
     // DLL エクスポート関数を使って ScriptFactory に登録する
     void RegisterScripts();
+    // Scene / Script の型レイアウトがホスト側と一致するか検証する
+    [[nodiscard]] bool ValidateAbi() const;
 
     // シーン内の全 Script インスタンスを破棄する (FreeLibrary 前に呼ぶ)
     static void DestroyAllScripts(scene::Scene& scene);
