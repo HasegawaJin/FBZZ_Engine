@@ -297,7 +297,7 @@ bool BuildPipeline::ExecuteStep()
         // WHY (絶対パス対応): GameHub Creator が settings_path を絶対パスで書き込む場合がある。
         //      ビルド出力では相対パスに変換することで別 PC 移動後も動作させる。
         std::string settingsRelPath = "ProjectSettings/ProjectSettings.toml";
-        std::string defaultSceneRel = "Assets/Scenes/Main.fbzz";
+        std::string defaultSceneRel = "Assets/Scenes/Main.scene";
         std::string startSceneRel;   // ProjectSettings の runtime.start_scene (自動コピー用)
         {
             const std::filesystem::path projFile = root / ".fbzz_proj";

@@ -48,11 +48,11 @@ struct UISettings {
 
 struct ProjectMetadataSettings {
     std::string name;
-    std::string defaultScene = "Assets/Scenes/Main.fbzz";
+    std::string defaultScene = "Assets/Scenes/Main.scene";
 };
 
 struct RuntimeSettings {
-    std::string startScene = "Assets/Scenes/Main.fbzz";
+    std::string startScene = "Assets/Scenes/Main.scene";
 };
 
 struct ProjectSettings {

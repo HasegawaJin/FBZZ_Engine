@@ -35,8 +35,10 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["view"]["show_stats"].value<bool>())     showStats = *v;
 
     // スナップ
-    if (auto v = tbl["snap"]["enabled"].value<bool>())        snapEnabled   = *v;
-    if (auto v = tbl["snap"]["distance"].value<float>())      snapDistance  = *v;
+    if (auto v = tbl["snap"]["enabled"].value<bool>())   snapEnabled = *v;
+    if (auto v = tbl["snap"]["pos"].value<float>())      snapPos     = *v;
+    if (auto v = tbl["snap"]["rot"].value<float>())      snapRot     = *v;
+    if (auto v = tbl["snap"]["scale"].value<float>())    snapScale   = *v;
 
     // ギズモ
     if (auto v = tbl["gizmo"]["mode"].value<int64_t>())       gizmoMode     = static_cast<int>(*v);
@@ -73,8 +75,49 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["detail_tool"]["show_chunk_bounds"].value<bool>())  detailShowChunkBounds = *v;
     if (auto v = tbl["detail_tool"]["show_counts"].value<bool>())        detailShowCounts      = *v;
 
+    // Camera Bookmarks
+    if (auto* arr = tbl["camera_bookmarks"].as_array()) {
+        for (std::size_t i = 0; i < arr->size() && i < cameraBookmarks.size(); ++i) {
+            auto* t = (*arr)[i].as_table();
+            if (!t) continue;
+            auto& bk = cameraBookmarks[i];
+            if (auto v = (*t)["valid"].value<bool>())  bk.valid = *v;
+            if (auto v = (*t)["px"].value<float>())    bk.px = *v;
+            if (auto v = (*t)["py"].value<float>())    bk.py = *v;
+            if (auto v = (*t)["pz"].value<float>())    bk.pz = *v;
+            if (auto v = (*t)["rx"].value<float>())    bk.rx = *v;
+            if (auto v = (*t)["ry"].value<float>())    bk.ry = *v;
+            if (auto v = (*t)["rz"].value<float>())    bk.rz = *v;
+            if (auto v = (*t)["rw"].value<float>())    bk.rw = *v;
+        }
+    }
+
+    // デフォルトインポート設定
+    if (auto v = tbl["import"]["flip_green_channel"].value<bool>()) defaultImportOptions.flipGreenChannel = *v;
+
+    // ホットキーオーバーライド
+    hotkeyOverrides.clear();
+    if (auto* arr = tbl["hotkeys"]["overrides"].as_array()) {
+        for (auto& elem : *arr) {
+            if (auto* t = elem.as_table()) {
+                HotkeyOverride ov;
+                if (auto v = (*t)["name"].value<std::string>()) ov.name  = *v;
+                if (auto v = (*t)["key"].value<int64_t>())       ov.key   = static_cast<int>(*v);
+                if (auto v = (*t)["ctrl"].value<bool>())          ov.ctrl  = *v;
+                if (auto v = (*t)["shift"].value<bool>())         ov.shift = *v;
+                if (auto v = (*t)["alt"].value<bool>())           ov.alt   = *v;
+                if (!ov.name.empty()) hotkeyOverrides.push_back(std::move(ov));
+            }
+        }
+    }
+
     // Asset Browser
     if (auto v = tbl["asset_browser"]["icon_size"].value<float>()) assetBrowserIconSize = *v;
+    assetBrowserBookmarks.clear();
+    if (auto* arr = tbl["asset_browser"]["bookmarks"].as_array()) {
+        for (auto& elem : *arr)
+            if (auto v = elem.value<std::string>()) assetBrowserBookmarks.push_back(*v);
+    }
 
     // Debug メニュー - レンダリングオーバーレイ
     if (auto v = tbl["debug"]["show_colliders"].value<bool>())         showColliders        = *v;
@@ -160,8 +203,10 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     // スナップ
     toml::table snapTbl;
-    snapTbl.insert("enabled",  snapEnabled);
-    snapTbl.insert("distance", snapDistance);
+    snapTbl.insert("enabled", snapEnabled);
+    snapTbl.insert("pos",     snapPos);
+    snapTbl.insert("rot",     snapRot);
+    snapTbl.insert("scale",   snapScale);
 
     // ギズモ
     toml::table gizmoTbl;
@@ -205,9 +250,25 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     detailToolTbl.insert("show_chunk_bounds", detailShowChunkBounds);
     detailToolTbl.insert("show_counts",       detailShowCounts);
 
+    // Camera Bookmarks
+    toml::array camBkArr;
+    for (const auto& bk : cameraBookmarks) {
+        toml::table t;
+        t.insert("valid", bk.valid);
+        t.insert("px", bk.px); t.insert("py", bk.py); t.insert("pz", bk.pz);
+        t.insert("rx", bk.rx); t.insert("ry", bk.ry);
+        t.insert("rz", bk.rz); t.insert("rw", bk.rw);
+        camBkArr.push_back(std::move(t));
+    }
+
     // Asset Browser
     toml::table assetBrowserTbl;
     assetBrowserTbl.insert("icon_size", assetBrowserIconSize);
+    {
+        toml::array bkArr;
+        for (const auto& bk : assetBrowserBookmarks) bkArr.push_back(bk);
+        assetBrowserTbl.insert("bookmarks", std::move(bkArr));
+    }
 
     // Inspector セクション折り畳み状態
     toml::array statesArr;
@@ -271,17 +332,38 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     ppTbl.insert("posterize_levels",    ppPosterizeLevels);
     ppTbl.insert("pixel_size",          ppPixelSize);
 
+    // ホットキーオーバーライド
+    toml::array ovArr;
+    for (const auto& ov : hotkeyOverrides) {
+        toml::table t;
+        t.insert("name",  ov.name);
+        t.insert("key",   static_cast<int64_t>(ov.key));
+        t.insert("ctrl",  ov.ctrl);
+        t.insert("shift", ov.shift);
+        t.insert("alt",   ov.alt);
+        ovArr.push_back(std::move(t));
+    }
+    toml::table hkTbl;
+    hkTbl.insert("overrides", std::move(ovArr));
+
+    // デフォルトインポート設定
+    toml::table importTbl;
+    importTbl.insert("flip_green_channel", defaultImportOptions.flipGreenChannel);
+
     toml::table root;
-    root.insert("camera",       std::move(camTbl));
-    root.insert("view",         std::move(viewTbl));
-    root.insert("snap",         std::move(snapTbl));
-    root.insert("gizmo",        std::move(gizmoTbl));
-    root.insert("game_view",    std::move(gameViewTbl));
-    root.insert("misc",         std::move(miscTbl));
-    root.insert("tools",        std::move(toolsTbl));
-    root.insert("map_mode",     std::move(mapModeTbl));
-    root.insert("terrain_tool", std::move(terrainToolTbl));
-    root.insert("detail_tool",  std::move(detailToolTbl));
+    root.insert("camera",             std::move(camTbl));
+    root.insert("view",               std::move(viewTbl));
+    root.insert("snap",               std::move(snapTbl));
+    root.insert("gizmo",              std::move(gizmoTbl));
+    root.insert("game_view",          std::move(gameViewTbl));
+    root.insert("misc",               std::move(miscTbl));
+    root.insert("tools",              std::move(toolsTbl));
+    root.insert("map_mode",           std::move(mapModeTbl));
+    root.insert("terrain_tool",       std::move(terrainToolTbl));
+    root.insert("detail_tool",        std::move(detailToolTbl));
+    root.insert("camera_bookmarks",   std::move(camBkArr));
+    root.insert("hotkeys",            std::move(hkTbl));
+    root.insert("import",             std::move(importTbl));
     root.insert("asset_browser",      std::move(assetBrowserTbl));
     root.insert("inspector_sections", std::move(inspectorTbl));
     root.insert("scene",              std::move(sceneTbl));

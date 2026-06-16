@@ -465,7 +465,37 @@ void DestroySelected(EditorContext& ctx, const std::vector<scene::EntityID>& ids
     PruneSelection(ctx);
 }
 
-void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred)
+// srcId の GO とその子孫を再帰的に複製する。parentId が有効なら複製先に親付けする。
+scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
+                                             scene::EntityID srcId,
+                                             scene::EntityID parentId,
+                                             bool addCloneSuffix)
+{
+    auto* src = ctx.activeScene->GetGameObject(srcId);
+    if (!src) return scene::EntityID::INVALID;
+
+    auto& dst = ctx.activeScene->CreateGameObject(
+        src->name + (addCloneSuffix ? " (Clone)" : ""));
+    dst.tag       = src->tag;
+    dst.layer     = src->layer;
+    dst.transform = src->transform;
+    ctx.activeScene->DuplicateComponents(srcId, dst.GetID());
+
+    if (parentId.IsValid()) {
+        if (auto* parent = ctx.activeScene->GetGameObject(parentId))
+            dst.SetParent(parent);
+    }
+
+    for (int i = 0; i < src->GetChildCount(); ++i) {
+        if (auto* child = src->GetChild(i))
+            DuplicateHierarchyRecursive(ctx, child->GetID(), dst.GetID(), false);
+    }
+    return dst.GetID();
+}
+
+// parentId が有効な場合は新規 GO を parentId の子として生成する。
+void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
+                          scene::EntityID parentId = {})
 {
     if (ImGui::MenuItem("Empty")) {
         deferred = [&ctx]() {
@@ -679,11 +709,12 @@ void DrawHierarchyNode(EditorContext& ctx,
     if (ContainsEntity(visited, id)) return;
     visited.push_back(id);
 
-    const bool hasChildren = go.GetChildCount() > 0;
-    const bool selected    = ContainsEntity(ctx.selectedEntities, id);
-    const bool isRoot      = go.GetParent() == nullptr;
-    const bool isActive    = go.activeInHierarchy();
-    const bool isLocked    = ctx.IsLocked(id);
+    const bool hasChildren    = go.GetChildCount() > 0;
+    const bool selected       = ContainsEntity(ctx.selectedEntities, id);
+    const bool isRoot         = go.GetParent() == nullptr;
+    const bool isActive       = go.activeInHierarchy();
+    const bool isLocked       = ctx.IsLocked(id);
+    const bool isEditorHidden = ctx.editorHiddenGuids.count(go.instanceId) > 0;
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth
                              | ImGuiTreeNodeFlags_OpenOnArrow
@@ -700,13 +731,14 @@ void DrawHierarchyNode(EditorContext& ctx,
         *pendingExpand = scene::EntityID{};
     }
 
-    // 非アクティブはグレーアウト、ロック中はオレンジ
-    if (!isActive)     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 130, 130, 255));
-    else if (isLocked) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 175, 80, 255));
+    // エディタ専用非表示はシアン（runtime 非アクティブより優先）、非アクティブはグレー、ロック中はオレンジ
+    if (isEditorHidden)  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(80, 180, 200, 255));
+    else if (!isActive)  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 130, 130, 255));
+    else if (isLocked)   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 175, 80, 255));
     const bool opened = ImGui::TreeNodeEx(go.name.c_str(), flags);
-    if (!isActive || isLocked) ImGui::PopStyleColor();
+    if (isEditorHidden || !isActive || isLocked) ImGui::PopStyleColor();
 
-    // --- 右端 visibility/lock アイコン (DrawList で直接描画) ---
+    // --- 右端 visibility/editor-hide/lock アイコン (DrawList で直接描画) ---
     {
         const ImVec2 nodeMin = ImGui::GetItemRectMin();
         const ImVec2 nodeMax = ImGui::GetItemRectMax();
@@ -715,23 +747,56 @@ void DrawHierarchyNode(EditorContext& ctx,
         // SpanAvailWidth のためnodeMax.x = ウィンドウコンテンツ右端
         const float  rx      = nodeMax.x;
 
-        // ヒット判定 (DrawList ボタンは ImGui のアイテム系から独立して判定)
+        // アイコン配置: lock | vis | editorHide (右から)
+        const ImVec2 ehMin   = { rx - btnW * 3.0f, nodeMin.y };
+        const ImVec2 ehMax   = { rx - btnW * 2.0f, nodeMax.y };
         const ImVec2 visMin  = { rx - btnW * 2.0f, nodeMin.y };
         const ImVec2 visMax  = { rx - btnW,         nodeMax.y };
         const ImVec2 lockMin = { rx - btnW,          nodeMin.y };
         const ImVec2 lockMax = { rx,                 nodeMax.y };
 
+        // ヒット判定
+        const bool ehHov   = ImGui::IsMouseHoveringRect(ehMin,   ehMax,   false);
         const bool visHov  = ImGui::IsMouseHoveringRect(visMin,  visMax,  false);
         const bool lockHov = ImGui::IsMouseHoveringRect(lockMin, lockMax, false);
+        const bool ehClick   = ehHov   && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         const bool visClick  = visHov  && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         const bool lockClick = lockHov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
 
+        if (ehClick) deferred = [&ctx, id]() {
+            if (auto* g = ctx.activeScene->GetGameObject(id)) {
+                const std::string guid = g->instanceId;
+                auto it = ctx.editorHiddenGuids.find(guid);
+                if (it != ctx.editorHiddenGuids.end()) {
+                    // 解除: 非表示前の activeSelf を復元
+                    g->SetActive(it->second);
+                    ctx.editorHiddenGuids.erase(it);
+                } else {
+                    // 非表示: 現在の activeSelf を保存してから SetActive(false)
+                    ctx.editorHiddenGuids[guid] = g->activeSelf();
+                    g->SetActive(false);
+                }
+            }
+        };
         if (visClick)  deferred = [&ctx, id]() {
             if (auto* g = ctx.activeScene->GetGameObject(id)) g->SetActive(!g->activeSelf());
         };
         if (lockClick) ctx.ToggleLock(id);
 
         ImDrawList* dl = ImGui::GetWindowDrawList();
+
+        // エディタ専用非表示アイコン (editor-hide: ホバー時/非表示中のみ表示)
+        if (ehHov || isEditorHidden) {
+            if (ehHov) dl->AddRectFilled(ehMin, ehMax, IM_COL32(80, 80, 80, 160), 2.0f);
+            const char* ehChar = isEditorHidden ? "E" : "e";
+            ImVec2 ets = ImGui::CalcTextSize(ehChar);
+            dl->AddText({ ehMin.x + (btnW - ets.x) * 0.5f, ehMin.y + (h - ets.y) * 0.5f },
+                        isEditorHidden ? IM_COL32(80, 200, 220, 240) : IM_COL32(120, 120, 120, 140),
+                        ehChar);
+        }
+        if (ehHov) ImGui::SetTooltip(isEditorHidden
+            ? "Editor-only hidden (click to show)\nEntity is active at runtime & saved as active"
+            : "Click to hide in editor only\nWill be active at runtime & saved as active");
 
         // visibility アイコン
         if (visHov) dl->AddRectFilled(visMin, visMax, IM_COL32(80, 80, 80, 160), 2.0f);
@@ -749,7 +814,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
 
         // ノードのクリック/ダブルクリック判定 (アイコン領域は除外)
-        const bool iconAreaClick = visClick || lockClick;
+        const bool iconAreaClick = ehClick || visClick || lockClick;
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()
             && !isLocked && !iconAreaClick) {
             ctx.selectedAssetPath.clear();
@@ -791,7 +856,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         std::string assetPath;
         if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath)) {
             const std::string ext = util::FileSystem::GetExtension(assetPath);
-            if (ext == ".fzasset") {
+            if (ext == ".asset") {
                 deferred = [&ctx, assetPath, id, pendingExpand]() {
                     const scene::EntityID rootId =
                         SpawnFzAssetHierarchy(*ctx.activeScene, assetPath);
@@ -821,7 +886,16 @@ void DrawHierarchyNode(EditorContext& ctx,
     }
 
     if (ImGui::BeginPopupContextItem()) {
-        ctx.selectedEntities = { id };
+        // 右クリックした GO が既に複数選択中なら選択を維持する。
+        // そうでなければ単一選択に切り替える。
+        {
+            const bool alreadySelected = std::find(
+                ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
+                != ctx.selectedEntities.end();
+            if (!alreadySelected || ctx.selectedEntities.size() == 1)
+                ctx.selectedEntities = { id };
+        }
+        const bool multiSelected = ctx.selectedEntities.size() > 1;
 
         if (ImGui::MenuItem(isActive ? "Hide" : "Show"))
             deferred = [&ctx, id]() {
@@ -855,20 +929,78 @@ void DrawHierarchyNode(EditorContext& ctx,
             DrawCreateObjectMenu(ctx, deferred);
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Create Child")) {
+            std::function<void()> childDeferred;
+            DrawCreateObjectMenu(ctx, childDeferred);
+            if (childDeferred) {
+                // childDeferred が選択セットした GO を parentId の子にする
+                deferred = [&ctx, id, childDeferred = std::move(childDeferred)]() {
+                    childDeferred();
+                    if (!ctx.selectedEntities.empty()) {
+                        if (auto* newGo = ctx.activeScene->GetGameObject(ctx.selectedEntities.back()))
+                            if (auto* parent = ctx.activeScene->GetGameObject(id))
+                                newGo->SetParent(parent);
+                    }
+                };
+            }
+            ImGui::EndMenu();
+        }
         ImGui::Separator();
         if (ImGui::MenuItem("Duplicate")) {
-            std::string      srcName      = go.name;
-            std::string      srcTag       = go.tag;
-            int              srcLayer     = go.layer;
-            scene::Transform srcTransform = go.transform;
-            deferred = [&ctx, id, srcName, srcTag, srcLayer, srcTransform]() {
-                auto& dst     = ctx.activeScene->CreateGameObject(srcName + " (Clone)");
-                dst.tag       = srcTag;
-                dst.layer     = srcLayer;
-                dst.transform = srcTransform;
-                ctx.activeScene->DuplicateComponents(id, dst.GetID());
-                ctx.selectedEntities = { dst.GetID() };
+            const scene::EntityID parentId =
+                go.GetParent() ? go.GetParent()->GetID() : scene::EntityID{};
+            deferred = [&ctx, id, parentId]() {
+                const scene::EntityID newId =
+                    DuplicateHierarchyRecursive(ctx, id, parentId, true);
+                if (newId != scene::EntityID::INVALID)
+                    ctx.selectedEntities = { newId };
             };
+        }
+        if (multiSelected) {
+            if (ImGui::MenuItem("Group Selection")) {
+                const std::vector<scene::EntityID> toGroup = ctx.selectedEntities;
+                deferred = [&ctx, toGroup]() {
+                    if (!ctx.activeScene) return;
+                    // 共通親 (全員同じ親を持つ場合) を探す
+                    scene::EntityID commonParentId{};
+                    bool firstItem = true;
+                    for (auto eid : toGroup) {
+                        if (auto* g = ctx.activeScene->GetGameObject(eid)) {
+                            const scene::EntityID pid = g->GetParent()
+                                ? g->GetParent()->GetID() : scene::EntityID{};
+                            if (firstItem) { commonParentId = pid; firstItem = false; }
+                            else if (commonParentId != pid) { commonParentId = {}; break; }
+                        }
+                    }
+                    auto& group = ctx.activeScene->CreateGameObject("Group");
+                    if (commonParentId.IsValid())
+                        if (auto* cp = ctx.activeScene->GetGameObject(commonParentId))
+                            group.SetParent(cp);
+                    for (auto eid : toGroup)
+                        if (auto* child = ctx.activeScene->GetGameObject(eid))
+                            child->SetParent(&group);
+                    const scene::EntityID groupId = group.GetID();
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    if (ctx.undoStack) {
+                        scene::Scene* scene = ctx.activeScene;
+                        const std::string groupGuid = group.instanceId;
+                        const auto markDirty = ctx.markSceneDirty;
+                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                            "Group Selection",
+                            []() {},   // redo: 再実行には deferred が必要で複雑なため省略
+                            [scene, groupGuid, markDirty]() {
+                                // undo: 子を解除してグループを削除
+                                if (auto* g = scene->FindByGuid(groupGuid)) {
+                                    while (g->GetChildCount() > 0)
+                                        if (auto* c = g->GetChild(0)) c->ClearParent();
+                                    scene->DestroyGameObject(g->GetID());
+                                }
+                                if (markDirty) markDirty();
+                            }));
+                    }
+                    ctx.selectedEntities = { groupId };
+                };
+            }
         }
         if (ImGui::MenuItem("Save As Prefab")) {
             SaveSelectedAsPrefab(ctx, go.name);
@@ -1081,7 +1213,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         std::string assetPath;
         if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath)) {
             const std::string ext = util::FileSystem::GetExtension(assetPath);
-            if (ext == ".fzasset") {
+            if (ext == ".asset") {
                 deferred = [&ctx, assetPath]() {
                     const scene::EntityID rootId =
                         SpawnFzAssetHierarchy(*ctx.activeScene, assetPath);

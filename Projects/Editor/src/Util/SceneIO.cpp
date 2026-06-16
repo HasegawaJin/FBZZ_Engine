@@ -14,14 +14,14 @@ namespace fbzz::editor {
 namespace {
 
 std::string s_snapshotDir  = "Assets/EditorConfig";
-std::string s_snapshotPath = "Assets/EditorConfig/.playmode_snapshot.fbzz";
+std::string s_snapshotPath = "Assets/EditorConfig/.playmode_snapshot.scene";
 
 } // namespace
 
 void SceneIO::SetProjectRoot(const std::string& projectRoot)
 {
     s_snapshotDir  = projectRoot + "/Assets/EditorConfig";
-    s_snapshotPath = s_snapshotDir + "/.playmode_snapshot.fbzz";
+    s_snapshotPath = s_snapshotDir + "/.playmode_snapshot.scene";
 }
 
 bool SceneIO::Save(const scene::Scene& scene, const std::string& path)

@@ -3,14 +3,22 @@
 // Project settings editor UI
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
+#include <toml++/toml.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <cstddef>
 #include <cstdio>
+#include <filesystem>
+#include <sstream>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -82,7 +90,7 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
         DrawSidebar();
         ImGui::SameLine();
         ImGui::BeginChild("##ProjectSettingsContent", { 0.0f, 0.0f }, false);
-        DrawSection(ctx.projectSettings);
+        DrawSection(ctx);
         ImGui::EndChild();
         return;
     }
@@ -94,7 +102,7 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SameLine();
 
     ImGui::BeginChild("##ProjectSettingsContent", { 0.0f, 0.0f }, false);
-    DrawSection(ctx.projectSettings);
+    DrawSection(ctx);
     ImGui::EndChild();
 
     const ImGuiID activeAfter = ImGui::GetActiveID();
@@ -137,20 +145,23 @@ void ProjectSettingsPanel::DrawSidebar()
 {
     ImGui::BeginChild("##ProjectSettingsSidebar", { SIDEBAR_WIDTH, 0.0f }, true);
     SectionButton("Application", Section::Application, m_currentSection);
-    SectionButton("Render", Section::Render, m_currentSection);
-    SectionButton("Post Process", Section::PostProcess, m_currentSection);
-    SectionButton("Physics", Section::Physics, m_currentSection);
-    SectionButton("Audio", Section::Audio, m_currentSection);
-    SectionButton("Screen", Section::Screen, m_currentSection);
-    SectionButton("Tags", Section::Tags, m_currentSection);
-    SectionButton("Layers", Section::Layers, m_currentSection);
+    SectionButton("Import",      Section::Import,      m_currentSection);
+    SectionButton("Render",      Section::Render,      m_currentSection);
+    SectionButton("Post Process",Section::PostProcess, m_currentSection);
+    SectionButton("Physics",     Section::Physics,     m_currentSection);
+    SectionButton("Audio",       Section::Audio,       m_currentSection);
+    SectionButton("Screen",      Section::Screen,      m_currentSection);
+    SectionButton("Tags",        Section::Tags,        m_currentSection);
+    SectionButton("Layers",      Section::Layers,      m_currentSection);
     ImGui::EndChild();
 }
 
-void ProjectSettingsPanel::DrawSection(ProjectSettings& settings)
+void ProjectSettingsPanel::DrawSection(EditorContext& ctx)
 {
+    auto& settings = ctx.projectSettings;
     switch (m_currentSection) {
     case Section::Application: DrawApplication(settings); break;
+    case Section::Import:      DrawImport(ctx); break;
     case Section::Render:      DrawRender(settings.render); break;
     case Section::PostProcess: DrawPostProcess(settings.render); break;
     case Section::Physics:     DrawPhysics(settings); break;
@@ -158,6 +169,173 @@ void ProjectSettingsPanel::DrawSection(ProjectSettings& settings)
     case Section::Screen:      DrawScreen(settings); break;
     case Section::Tags:        DrawTags(settings); break;
     case Section::Layers:      DrawLayers(settings); break;
+    }
+}
+
+namespace {
+
+// プリセットディレクトリのパス
+std::string ImportPresetsDir(const EditorContext& ctx)
+{
+    const std::string root = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
+    return util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(root) / ".import_presets");
+}
+
+struct PresetEntry {
+    std::string      name;
+    std::string      path;
+    FbxImportOptions options;
+};
+
+std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
+{
+    std::vector<PresetEntry> result;
+    namespace fs = std::filesystem;
+    const fs::path dir = util::FileSystem::PathFromUtf8(presetsDir);
+    if (!util::FileSystem::Exists(dir)) return result;
+    try {
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            if (!entry.is_regular_file()) continue;
+            const std::string ext = util::StringUtils::ToLower(
+                util::FileSystem::PathToUtf8(entry.path().extension()));
+            if (ext != ".toml") continue;
+            std::string text;
+            if (!util::FileSystem::ReadText(util::FileSystem::PathToUtf8(entry.path()), text))
+                continue;
+            std::istringstream ss(text);
+            const auto parsed = toml::parse(ss);
+            if (!parsed) continue;
+            PresetEntry p;
+            p.name = entry.path().stem().string();
+            p.path = util::FileSystem::PathToUtf8(entry.path());
+            const auto& tbl = parsed.table();
+            if (auto v = tbl["options"]["flip_green_channel"].value<bool>())
+                p.options.flipGreenChannel = *v;
+            result.push_back(std::move(p));
+        }
+    } catch (...) {}
+    std::sort(result.begin(), result.end(),
+        [](const PresetEntry& a, const PresetEntry& b) { return a.name < b.name; });
+    return result;
+}
+
+} // namespace
+
+void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
+{
+    ImGui::TextUnformatted("Import");
+    ImGui::Separator();
+
+    // ── Default FBX Settings ──────────────────────────────────────────────────
+    ImGui::TextDisabled("Default settings applied to new FBX imports.");
+    ImGui::Spacing();
+
+    auto& opt = ctx.defaultImportOptions;
+
+    if (ImGui::CollapsingHeader("FBX Defaults", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+        ImGui::Checkbox("Flip Green Channel (OpenGL normal maps)", &opt.flipGreenChannel);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Inverts the G channel of normal map textures.\n"
+                "Enable when using assets exported from Blender or Maya\n"
+                "with OpenGL-style normal maps.");
+        ImGui::Unindent();
+    }
+
+    ImGui::Spacing();
+
+    // ── Import Presets ────────────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Import Presets", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+
+        const std::string presetsDir = ImportPresetsDir(ctx);
+        static std::vector<PresetEntry> s_presets;
+        static bool s_presetsLoaded = false;
+        static int  s_deleteIdx     = -1;
+
+        if (!s_presetsLoaded) {
+            s_presets       = LoadImportPresets(presetsDir);
+            s_presetsLoaded = true;
+        }
+
+        if (ImGui::SmallButton("Refresh Presets"))
+            s_presetsLoaded = false;
+
+        ImGui::Spacing();
+
+        if (s_presets.empty()) {
+            ImGui::TextDisabled("No presets found in Assets/.import_presets/");
+            ImGui::TextDisabled("Create presets via the Import Settings dialog\n(right-click FBX \xe2\x86\x92 Import with Settings...).");
+        } else {
+            if (ImGui::BeginTable("##presets_tbl", 3,
+                    ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Name",           ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                ImGui::TableSetupColumn("Settings",       ImGuiTableColumnFlags_WidthStretch, 3.0f);
+                ImGui::TableSetupColumn("",               ImGuiTableColumnFlags_WidthFixed,   130.0f);
+                ImGui::TableHeadersRow();
+
+                for (int i = 0; i < static_cast<int>(s_presets.size()); ++i) {
+                    const auto& p = s_presets[static_cast<size_t>(i)];
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(p.name.c_str());
+
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextDisabled("FlipGreen=%s",
+                        p.options.flipGreenChannel ? "on" : "off");
+
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::PushID(i);
+                    if (ImGui::SmallButton("Use as Default")) {
+                        opt = p.options;
+                        ++m_editGeneration;
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Copy this preset's values into Default FBX Settings above.");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Delete")) {
+                        s_deleteIdx = i;
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndTable();
+
+                if (s_deleteIdx >= 0) {
+                    const std::string delPath =
+                        s_presets[static_cast<size_t>(s_deleteIdx)].path;
+                    try {
+                        std::filesystem::remove(util::FileSystem::PathFromUtf8(delPath));
+                        FBZZ_LOG_INFO("Deleted import preset: %s", delPath.c_str());
+                    } catch (...) {
+                        FBZZ_LOG_ERROR("Failed to delete preset: %s", delPath.c_str());
+                    }
+                    s_presets.erase(s_presets.begin() + s_deleteIdx);
+                    s_deleteIdx = -1;
+                }
+            }
+        }
+
+        ImGui::Unindent();
+    }
+
+    ImGui::Spacing();
+
+    // ── Exclude Patterns ──────────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Exclude Patterns")) {
+        ImGui::Indent();
+        ImGui::TextDisabled("Files whose stem ends with these suffixes are skipped:");
+        ImGui::Spacing();
+        static constexpr const char* kExcluded[] = {
+            "_backup", "_old", "_wip", "_ref", "_tmp", "_test", "_unused", "_bak"
+        };
+        for (const char* s : kExcluded)
+            ImGui::BulletText("%s", s);
+        ImGui::Spacing();
+        ImGui::TextDisabled("(Built-in patterns. Not yet user-configurable.)");
+        ImGui::Unindent();
     }
 }
 

@@ -30,6 +30,9 @@ public:
     // 指定ターゲットへの向きから yaw / pitch とピボットを初期化する
     void LookAt(const math::Vector3& target);
 
+    // 位置と回転を瞬時に移動し、内部の yaw/pitch/pivot も同期する
+    void Teleport(const math::Vector3& pos, const math::Quaternion& rot);
+
     // ゲームループ毎に呼ぶ。viewportHovered が false のときマウスホイールを無視する。
     void Update(float dt, bool viewportHovered = true);
 
