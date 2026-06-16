@@ -263,9 +263,12 @@ void NavMeshBakeSystem(Scene& scene)
         }
 
         // ── Walkable Surface / Obstacle 収集 ─────────────────────────────
-        // NavMeshModifier::Walkable  → walkable surface ソース
-        // NavMeshModifier なし (Box/Aabb) → 暗黙的 walkable surface (従来互換)
-        // NavMeshModifier::NotWalkable   → obstacle
+        // NavMeshModifier::Walkable     → 追加歩行可能面ソース（床プラットフォーム等）
+        // NavMeshModifier::NotWalkable  → 障害物（穴あけ）
+        // WHY: 暗黙的な全 BoxCollider/AabbCollider 収集は廃止。
+        //      Player やプロップのコライダーまでベイクに巻き込まれ、
+        //      シーン規模が増えるほど走査コストが爆発するため。
+        //      歩行可能面を追加したい GO には明示的に NavMeshModifier::Walkable を付ける。
         std::vector<WalkableSurface> walkableSurfs;
         std::vector<Obstacle>        obstacles;
 
@@ -283,23 +286,6 @@ void NavMeshBakeSystem(Scene& scene)
                 if (TryGetWalkableSurface(scene, meid, *modGo, surf))
                     walkableSurfs.push_back(surf);
             }
-        }
-        // NavMeshModifier のない Box/Aabb コライダーを暗黙的 walkable として収集
-        for (EntityID seid : scene.GetEntities<BoxColliderComponent>()) {
-            if (scene.GetComponent<NavMeshModifierComponent>(seid)) continue;
-            auto* sGo = scene.GetGameObject(seid);
-            if (!sGo) continue;
-            WalkableSurface surf{};
-            if (TryGetWalkableSurface(scene, seid, *sGo, surf))
-                walkableSurfs.push_back(surf);
-        }
-        for (EntityID seid : scene.GetEntities<AabbColliderComponent>()) {
-            if (scene.GetComponent<NavMeshModifierComponent>(seid)) continue;
-            auto* sGo = scene.GetGameObject(seid);
-            if (!sGo) continue;
-            WalkableSurface surf{};
-            if (TryGetWalkableSurface(scene, seid, *sGo, surf))
-                walkableSurfs.push_back(surf);
         }
 
         if (terrains.empty() && walkableSurfs.empty()) continue;
