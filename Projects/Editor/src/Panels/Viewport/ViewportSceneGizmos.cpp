@@ -275,7 +275,10 @@ void DrawGizmo(EditorContext& ctx,
         ? ImGuizmo::WORLD
         : ImGuizmo::LOCAL;
 
-    float snap[3] = { ctx.snapDistance, ctx.snapDistance, ctx.snapDistance };
+    const float snapVal = (ctx.gizmoMode == EditorContext::GizmoMode::Rotate) ? ctx.snapRot
+                        : (ctx.gizmoMode == EditorContext::GizmoMode::Scale)  ? ctx.snapScale
+                        :                                                        ctx.snapPos;
+    float snap[3] = { snapVal, snapVal, snapVal };
     const int opInt = static_cast<int>(op);
     const int modeInt = static_cast<int>(mode);
     if (lastOp != opInt || lastMode != modeInt) {
