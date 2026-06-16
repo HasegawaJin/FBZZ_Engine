@@ -20,7 +20,8 @@ public:
                        const std::string& fbxDir,
                        const std::string& texturesDir,
                        const std::string& outputPath,
-                       bool skinned = false);
+                       bool skinned = false,
+                       bool flipGreenChannel = false);
 };
 
 } // namespace fbzz::editor
