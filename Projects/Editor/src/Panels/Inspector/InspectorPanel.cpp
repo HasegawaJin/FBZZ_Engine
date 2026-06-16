@@ -15,12 +15,177 @@
 #include "InspectorRendering.hpp"
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <imgui_internal.h>
 
 namespace fbzz::editor {
 
 namespace {
+
+// 複数選択中の Transform 一括編集
+void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
+{
+    // 有効な GO のみ収集
+    std::vector<scene::GameObject*> gos;
+    gos.reserve(ids.size());
+    for (auto id : ids)
+        if (auto* g = ctx.activeScene->GetGameObject(id))
+            gos.push_back(g);
+    if (gos.empty()) return;
+
+    ImGui::TextColored({ 0.7f, 0.85f, 1.0f, 1.0f },
+        "%zu objects selected", gos.size());
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // ── Transform (一括) ──────────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Spacing();
+
+        // 値が全エンティティで一致するか調べる
+        const auto& refT = gos.front()->transform;
+        bool posAllSame = true, rotAllSame = true, scaleAllSame = true;
+        for (std::size_t i = 1; i < gos.size(); ++i) {
+            const auto& t = gos[i]->transform;
+            if (t.position.x != refT.position.x || t.position.y != refT.position.y || t.position.z != refT.position.z)
+                posAllSame = false;
+            if (t.rotation.x != refT.rotation.x || t.rotation.y != refT.rotation.y ||
+                t.rotation.z != refT.rotation.z || t.rotation.w != refT.rotation.w)
+                rotAllSame = false;
+            if (t.scale.x != refT.scale.x || t.scale.y != refT.scale.y || t.scale.z != refT.scale.z)
+                scaleAllSame = false;
+        }
+
+        // 値が異なる場合は "---" を DisplayFormat に使い、灰色表示する
+        struct MultiTransformEdit {
+            std::vector<std::string> guids;
+            std::vector<scene::Transform> before;
+            bool active = false;
+        };
+        static MultiTransformEdit edit;
+
+        auto trackMultiEdit = [&](bool changed, const char* description) {
+            if (ImGui::IsItemActivated()) {
+                edit.guids.clear();
+                edit.before.clear();
+                for (auto* g : gos) {
+                    edit.guids.push_back(g->instanceId);
+                    edit.before.push_back(g->transform);
+                }
+                edit.active = true;
+            }
+            if (!changed && !ImGui::IsItemDeactivatedAfterEdit()) return;
+            if (!ImGui::IsItemDeactivatedAfterEdit()) {
+                // drag 中の毎フレームコピー: apply value to all others
+                if (changed) {
+                    const auto& primary = gos.front()->transform;
+                    for (std::size_t i = 1; i < gos.size(); ++i)
+                        gos[i]->transform = primary;
+                }
+                return;
+            }
+            // drag 完了: push undo command
+            if (edit.active && ctx.undoStack && ctx.activeScene) {
+                const std::vector<std::string> guids = edit.guids;
+                const std::vector<scene::Transform> before = edit.before;
+                std::vector<scene::Transform> after;
+                after.reserve(gos.size());
+                for (auto* g : gos) after.push_back(g->transform);
+                scene::Scene* scene = ctx.activeScene;
+                const auto markDirty = ctx.markSceneDirty;
+                auto applyAll = [scene, guids, markDirty](const std::vector<scene::Transform>& values) {
+                    for (std::size_t i = 0; i < guids.size(); ++i)
+                        if (auto* target = scene->FindByGuid(guids[i]))
+                            target->transform = values[i];
+                    if (markDirty) markDirty();
+                };
+                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                    description,
+                    [applyAll, after]() { applyAll(after); },
+                    [applyAll, before]() { applyAll(before); }));
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
+            edit.active = false;
+        };
+
+        // Position
+        float pos[3] = { refT.position.x, refT.position.y, refT.position.z };
+        if (!posAllSame)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+        const bool posChanged = ImGui::DragFloat3(
+            posAllSame ? "Position" : "Position (---)", pos, 0.1f);
+        if (!posAllSame) ImGui::PopStyleColor();
+        if (posChanged) {
+            gos.front()->transform.position = { pos[0], pos[1], pos[2] };
+            for (std::size_t i = 1; i < gos.size(); ++i)
+                gos[i]->transform.position = gos.front()->transform.position;
+        }
+        trackMultiEdit(posChanged, "Move (Multi)");
+
+        // Rotation (primary euler)
+        {
+            math::Vector3 euler = widgets::QuatToEulerDeg(refT.rotation);
+            float rot[3] = { euler.x, euler.y, euler.z };
+            if (!rotAllSame)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+            const bool rotChanged = ImGui::DragFloat3(
+                rotAllSame ? "Rotation" : "Rotation (---)", rot, 0.5f);
+            if (!rotAllSame) ImGui::PopStyleColor();
+            if (rotChanged) {
+                const auto newRot = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
+                gos.front()->transform.rotation = newRot;
+                for (std::size_t i = 1; i < gos.size(); ++i)
+                    gos[i]->transform.rotation = newRot;
+            }
+            trackMultiEdit(rotChanged, "Rotate (Multi)");
+        }
+
+        // Scale
+        float scale[3] = { refT.scale.x, refT.scale.y, refT.scale.z };
+        if (!scaleAllSame)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+        const bool scaleChanged = ImGui::DragFloat3(
+            scaleAllSame ? "Scale" : "Scale (---)", scale, 0.01f, 0.001f, 1000.0f);
+        if (!scaleAllSame) ImGui::PopStyleColor();
+        if (scaleChanged) {
+            gos.front()->transform.scale = { scale[0], scale[1], scale[2] };
+            for (std::size_t i = 1; i < gos.size(); ++i)
+                gos[i]->transform.scale = gos.front()->transform.scale;
+        }
+        trackMultiEdit(scaleChanged, "Scale (Multi)");
+
+        ImGui::Spacing();
+    }
+
+    // ── 共通コンポーネント一覧 ───────────────────────────────────────────────
+    ImGui::Spacing();
+    ImGui::TextDisabled("Common Components");
+    ImGui::Separator();
+
+    // 全エンティティが持つコンポーネント名を列挙する
+    // (単純に primary の全コンポーネントを確認し、他にも存在するかチェック)
+    auto checkAll = [&](auto check) {
+        for (auto* g : gos) if (!check(g)) return false;
+        return true;
+    };
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::MeshRenderer>() != nullptr; }))
+        ImGui::BulletText("Mesh Renderer");
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::SkinnedMeshRenderer>() != nullptr; }))
+        ImGui::BulletText("Skinned Mesh Renderer");
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::MaterialComponent>() != nullptr; }))
+        ImGui::BulletText("Material");
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::LightComponent>() != nullptr; }))
+        ImGui::BulletText("Light");
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::RigidBodyComponent>() != nullptr; }))
+        ImGui::BulletText("Rigidbody");
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::AnimatorComponent>() != nullptr; }))
+        ImGui::BulletText("Animator");
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::AudioSourceComponent>() != nullptr; }))
+        ImGui::BulletText("Audio Source");
+    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::ScriptComponent>() != nullptr; }))
+        ImGui::BulletText("Script");
+}
 
 template<typename T, typename Setter>
 void PushGameObjectPropertyCommand(EditorContext& ctx,
@@ -72,6 +237,7 @@ void InspectorPanel::OnShutdown()
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Render");
+    widgets::DrawAssetPickerModal();
 
     if (ctx.mapEditingMode) {
         ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
@@ -185,6 +351,12 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     if ((!m_locked || assetLocked) && !assetPathToInspect.empty()) {
         FBZZ_PROFILE_SCOPE("Inspector::Asset");
         DrawAssetInspector(ctx, assetPathToInspect);
+        return;
+    }
+
+    // 複数選択中 (ロックなし) は Multi-select Inspector を表示
+    if (!m_locked && ctx.selectedEntities.size() > 1 && ctx.activeScene) {
+        DrawMultiSelectInspector(ctx, ctx.selectedEntities);
         return;
     }
 
