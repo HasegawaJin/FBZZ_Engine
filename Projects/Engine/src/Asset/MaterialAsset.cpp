@@ -196,24 +196,8 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
         }
     }
 
-    if (auto* params = table["params"].as_table()) {
+    if (auto* params = table["params"].as_table())
         ReadParamsTable(*params, asset);
-    } else {
-        // 旧 FzMaterialExporter 互換。トップレベルに出ていた値を HLSL 変数名で params へ移す。
-        // WHY: 既存のインポート済み .fzmat を壊さず、保存時に新形式へ自然移行させる。
-        //      キー名は HLSL cbuffer 変数名 (albedo / metallic / roughness) に正規化する。
-        if (const auto* arr = table["base_color"].as_array()) {
-            std::vector<float> vals;
-            vals.reserve(arr->size());
-            for (const auto& n : *arr)
-                if (const auto v = n.value<double>()) vals.push_back(static_cast<float>(*v));
-            if (!vals.empty()) asset.params["albedo"] = std::move(vals);
-        }
-        if (const auto v = table["metallic_factor"].value<double>())
-            asset.params["metallic"]  = { static_cast<float>(*v) };
-        if (const auto v = table["roughness_factor"].value<double>())
-            asset.params["roughness"] = { static_cast<float>(*v) };
-    }
 
     outAsset = std::move(asset);
     return true;
