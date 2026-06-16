@@ -8,6 +8,7 @@
 #include <Physics/ConvexHullCollider.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -269,6 +270,27 @@ namespace
         }
         return out;
     }
+ColliderDebugGeometry BuildHeightFieldGeometry(const HeightFieldCollider& hf)
+{
+    ColliderDebugGeometry out;
+    const auto& triangles = hf.GetBVH().triangles;
+    if (triangles.empty()) return out;
+
+    out.lines.reserve(std::min(MAX_MESH_DEBUG_LINES, triangles.size() * 3));
+    const size_t lineBudget = MAX_MESH_DEBUG_LINES - (MAX_MESH_DEBUG_LINES % 3);
+    if (triangles.size() * 3 <= lineBudget) {
+        for (const Triangle& tri : triangles)
+            AddTriangleEdgesLimited(out, tri.v[0], tri.v[1], tri.v[2], MAX_MESH_DEBUG_LINES);
+        return out;
+    }
+    const size_t triangleBudget = std::max<size_t>(1, lineBudget / 3);
+    for (size_t sample = 0; sample < triangleBudget; ++sample) {
+        const size_t i = sample * triangles.size() / triangleBudget;
+        AddTriangleEdgesLimited(out, triangles[i].v[0], triangles[i].v[1], triangles[i].v[2], MAX_MESH_DEBUG_LINES);
+    }
+    return out;
+}
+
 } // namespace
 
 ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider)
@@ -287,6 +309,8 @@ ColliderDebugGeometry BuildColliderDebugGeometry(const Collider& collider)
         return BuildTriangleMeshGeometry(static_cast<const TriangleMeshCollider&>(collider));
     case ColliderType::CONVEX_HULL:
         return BuildConvexHullGeometry(static_cast<const ConvexHullCollider&>(collider));
+    case ColliderType::HEIGHT_FIELD:
+        return BuildHeightFieldGeometry(static_cast<const HeightFieldCollider&>(collider));
     }
 
     return BuildAABBGeometry(collider);
