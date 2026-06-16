@@ -50,13 +50,13 @@ struct NavMesh {
 
 // ベイク対象の収集方法
 enum class NavMeshCollectObjects : uint8_t {
-    AllSceneObjects,  // シーン全体の Terrain + 修飾コライダーを自動収集・自動バウンド
-    Volume,           // この GO 中心の size ボックス内のみ (旧 NavMeshVolume 互換)
+    ThisObject,  // NavMeshSurface が付いている GO 自身の Terrain をベイクソースにする (推奨)
+    Volume,      // この GO 中心の size ボックス内の全 Terrain を対象にする
 };
 
 struct NavMeshSurfaceComponent {
     // ── 収集設定 ──────────────────────────────────────────────────────────
-    NavMeshCollectObjects collectObjects = NavMeshCollectObjects::AllSceneObjects;
+    NavMeshCollectObjects collectObjects = NavMeshCollectObjects::ThisObject;
 
     // Volume モード専用: GO worldPosition を中心とした全体サイズ
     math::Vector3 size = { 50.0f, 10.0f, 50.0f };

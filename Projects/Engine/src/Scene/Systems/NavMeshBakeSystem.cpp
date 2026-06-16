@@ -2,9 +2,9 @@
 // NavMeshBakeSystem.cpp | fbzz::scene
 // NavMeshSurfaceComponent の needsBake フラグが true のときに NavMesh を再構築するシステム。
 //
-// collectObjects == AllSceneObjects:
-//   シーン内の全 TerrainComponent を自動収集しバウンドを計算する。
-//   複数テレインの高さを合成して 1 本の統合 NavMesh を生成する。
+// collectObjects == ThisObject:
+//   NavMeshSurface が付いている GO 自身の TerrainComponent だけをベイクソースにする。
+//   複数 Terrain を分けて管理したい場合は各 Terrain GO に NavMeshSurface を付ける。
 //
 // collectObjects == Volume:
 //   NavMeshSurface GO の worldPosition を中心とする size ボックス内だけを対象にする。
@@ -254,12 +254,20 @@ void NavMeshBakeSystem(Scene& scene)
         surface->needsBake = false;
         surface->navMesh.polygons.clear();
 
-        // ── Terrain 収集 (シーン全体) ─────────────────────────────────────
+        // ── Terrain 収集 ───────────────────────────────────────────────────
+        // ThisObject: NavMeshSurface を持つ GO 自身の TerrainComponent のみ収集。
+        //   WHY: シーン全体を走査すると他の Terrain や Player コライダーまで巻き込まれるため。
+        // Volume: ボックス内で高さをサンプリングするため全 Terrain を収集する。
         std::vector<TerrainInfo> terrains;
-        for (EntityID teid : scene.GetEntities<TerrainComponent>()) {
-            auto* t  = scene.GetComponent<TerrainComponent>(teid);
-            auto* tg = scene.GetGameObject(teid);
-            if (t && tg) terrains.push_back({ t, tg->transform.worldPosition });
+        if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
+            if (auto* t = scene.GetComponent<TerrainComponent>(eid))
+                terrains.push_back({ t, go->transform.worldPosition });
+        } else {
+            for (EntityID teid : scene.GetEntities<TerrainComponent>()) {
+                auto* t  = scene.GetComponent<TerrainComponent>(teid);
+                auto* tg = scene.GetGameObject(teid);
+                if (t && tg) terrains.push_back({ t, tg->transform.worldPosition });
+            }
         }
 
         // ── Walkable Surface / Obstacle 収集 ─────────────────────────────
@@ -294,8 +302,8 @@ void NavMeshBakeSystem(Scene& scene)
         const float cellSize = std::max(0.1f, surface->cellSize);
         math::Vector3 boundsMin, boundsMax;
 
-        if (surface->collectObjects == NavMeshCollectObjects::AllSceneObjects) {
-            // 全 Terrain + Walkable Surface から AABB を自動計算
+        if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
+            // この GO の Terrain + Walkable Modifier から AABB を自動計算
             AutoBounds ab;
             for (const auto& ti : terrains) {
                 const float w = static_cast<float>(ti.terrain->columns - 1) * ti.terrain->cellSize;
