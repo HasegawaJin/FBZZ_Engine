@@ -123,6 +123,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["debug"]["show_colliders"].value<bool>())         showColliders        = *v;
     if (auto v = tbl["debug"]["show_terrain_collision"].value<bool>()) showTerrainCollision = *v;
     if (auto v = tbl["debug"]["show_decal_bounds"].value<bool>())      showDecalBounds      = *v;
+    if (auto v = tbl["debug"]["show_navmesh"].value<bool>())           showNavMesh          = *v;
+    if (auto v = tbl["debug"]["show_nav_sensors"].value<bool>())       showNavSensors       = *v;
     if (auto v = tbl["debug"]["view_mode"].value<int64_t>())      viewMode        = static_cast<int>(*v);
     if (auto v = tbl["debug"]["shadow"].value<bool>())            shadowEnabled   = *v;
 
@@ -299,6 +301,8 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     debugTbl.insert("show_colliders",         showColliders);
     debugTbl.insert("show_terrain_collision", showTerrainCollision);
     debugTbl.insert("show_decal_bounds",      showDecalBounds);
+    debugTbl.insert("show_navmesh",           showNavMesh);
+    debugTbl.insert("show_nav_sensors",       showNavSensors);
     debugTbl.insert("view_mode",         static_cast<int64_t>(viewMode));
     debugTbl.insert("shadow",            shadowEnabled);
 

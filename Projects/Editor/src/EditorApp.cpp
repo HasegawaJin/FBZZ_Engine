@@ -488,6 +488,8 @@ void EditorApp::Shutdown()
     m_settings.showColliders        = m_ctx.projectSettings.render.showColliders;
     m_settings.showTerrainCollision = m_ctx.projectSettings.render.showTerrainCollision;
     m_settings.showDecalBounds      = m_ctx.projectSettings.render.showDecalBounds;
+    m_settings.showNavMesh          = m_ctx.projectSettings.render.showNavMesh;
+    m_settings.showNavSensors       = m_ctx.projectSettings.render.showNavSensors;
     m_settings.viewMode        = static_cast<int>(m_ctx.projectSettings.render.viewMode);
     m_settings.shadowEnabled   = m_ctx.projectSettings.render.shadowEnabled;
     // Debug メニュー - Post Process
@@ -626,6 +628,8 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     m_ctx.projectSettings.render.showColliders        = m_settings.showColliders;
     m_ctx.projectSettings.render.showTerrainCollision = m_settings.showTerrainCollision;
     m_ctx.projectSettings.render.showDecalBounds      = m_settings.showDecalBounds;
+    m_ctx.projectSettings.render.showNavMesh          = m_settings.showNavMesh;
+    m_ctx.projectSettings.render.showNavSensors       = m_settings.showNavSensors;
     m_ctx.projectSettings.render.viewMode        = static_cast<renderer::ViewMode>(m_settings.viewMode);
     m_ctx.projectSettings.render.shadowEnabled   = m_settings.shadowEnabled;
     {
@@ -1308,7 +1312,7 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
     }
 
     const auto& render = m_ctx.projectSettings.render;
-    if (render.showColliders || render.showTerrainCollision) {
+    if (render.showColliders || render.showTerrainCollision || render.showNavMesh || render.showNavSensors) {
         renderer::DebugDraw::BeginFrame(*m_renderer, *m_resources,
                                         m_debugCamera.camera.GetViewProjection());
         if (render.showColliders) {
@@ -1318,6 +1322,10 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         if (render.showTerrainCollision)
             scene::TerrainCollisionDebugDrawSystem(*m_scene, *m_renderer,
                                                     m_debugCamera.camera.m_position);
+        if (render.showNavMesh)
+            scene::NavMeshDebugDrawSystem(*m_scene, *m_renderer);
+        if (render.showNavSensors)
+            scene::NavMeshSensorDebugDrawSystem(*m_scene, *m_renderer);
         renderer::DebugDraw::Flush();
     }
 
