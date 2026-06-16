@@ -68,7 +68,9 @@ struct NavMeshSurfaceComponent {
     float agentHeight      = 2.0f;   // エージェント高さ
 
     bool enabled   = true;
-    bool needsBake = true;  // Editor "Bake" ボタンで true にする。Bake 後 false に戻る。
+    // WHY: AddComponent 直後に自動ベイクが走ってエディタが固まるのを防ぐため false 初期値にする。
+    //      シーンロード時は SceneSerializer が明示的に true を立てて自動ベイクする。
+    bool needsBake = false;
 
     // ── Bake 結果 ──────────────────────────────────────────────────────────
     // Terrain/Collider から再構築できるランタイムキャッシュのため非永続化。
