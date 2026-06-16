@@ -231,7 +231,7 @@ void AssetBrowserPanel::RefreshDirectory()
         withSubs.reserve(m_entries.size() * 2);
         for (const Entry& e : m_entries) {
             withSubs.push_back(e);
-            if (e.ext == ".fzasset" && m_expandedFzAssets.count(e.path)) {
+            if (e.ext == ".asset" && m_expandedFzAssets.count(e.path)) {
                 for (auto& sub : GetFzAssetSubEntries(e.path))
                     withSubs.push_back(std::move(sub));
             }
@@ -259,7 +259,7 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
         //      AssetBrowser は fzasset をフラット表示し、サブ項目は展開で見せる。
         const std::string parentDir = util::FileSystem::GetDirectory(path);
         const std::string fzassetSibling =
-            util::FileSystem::NormalizePathSeparators(parentDir + "/" + name + ".fzasset");
+            util::FileSystem::NormalizePathSeparators(parentDir + "/" + name + ".asset");
         if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(fzassetSibling)))
             return false;
         return true;
