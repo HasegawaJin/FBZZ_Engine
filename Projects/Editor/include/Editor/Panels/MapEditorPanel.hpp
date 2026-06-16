@@ -25,12 +25,16 @@ private:
         TerrainPaint,
         Water,
         Detail,
-        Foliage
+        Foliage,
+        Grid
     };
 
     void ActivateTool(EditorContext& ctx, Tool tool);
+    void DrawGridContent(EditorContext& ctx);
 
     Tool m_activeTool = Tool::TerrainSculpt;
+    int  m_gridSelectedX = -1;
+    int  m_gridSelectedZ = -1;
 };
 
 } // namespace fbzz::editor
