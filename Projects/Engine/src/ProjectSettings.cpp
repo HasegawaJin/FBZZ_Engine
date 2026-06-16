@@ -98,8 +98,8 @@ void ReadFloat3(const toml::table& table, const char* key, float out[3])
 ProjectSettings ProjectSettings::Default()
 {
     ProjectSettings ps;
-    ps.project.defaultScene = "Assets/Scenes/Main.fbzz";
-    ps.runtime.startScene   = "Assets/Scenes/Main.fbzz";
+    ps.project.defaultScene = "Assets/Scenes/Main.scene";
+    ps.runtime.startScene   = "Assets/Scenes/Main.scene";
     ps.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
                 "MainCamera", "Player", "GameController" };
     ps.layerNames = {

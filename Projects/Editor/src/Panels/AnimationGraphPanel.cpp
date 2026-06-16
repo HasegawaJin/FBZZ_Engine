@@ -413,7 +413,7 @@ bool DrawAnimationSource(EditorContext& ctx,
         animator.clipsLoaded = false;
         MarkDirty(ctx);
     }
-    ImGui::TextDisabled("Drop an animation .fzasset source here.");
+    ImGui::TextDisabled("Drop an animation .asset source here.");
     return changed;
 }
 

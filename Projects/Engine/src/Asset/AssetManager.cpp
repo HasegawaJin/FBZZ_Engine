@@ -144,7 +144,7 @@ Model* AssetManager::Load<Model>(const std::string& relativePath)
 
     std::unique_ptr<Model> model;
     // .fzasset はネイティブバイナリローダーへ委譲する (Assimp 不要)
-    if (key.ends_with(".fzasset")) {
+    if (key.ends_with(".asset")) {
         model = FzAssetLoader::Load(fullPath, *s_resources);
     } else {
         model = ModelImporter::Import(fullPath, *s_resources);

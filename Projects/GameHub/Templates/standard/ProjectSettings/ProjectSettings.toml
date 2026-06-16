@@ -47,7 +47,7 @@ hz = 60
 substeps = 1
 
 [project]
-default_scene = 'Assets/Scenes/Main.fbzz'
+default_scene = 'Assets/Scenes/Main.scene'
 name = '{{PROJECT_NAME}}'
 
 [render]
@@ -124,7 +124,7 @@ wireframe = false
     shader = 'assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl'
 
 [runtime]
-start_scene = 'Assets/Scenes/Main.fbzz'
+start_scene = 'Assets/Scenes/Main.scene'
 
 [screen]
 height = 1080
