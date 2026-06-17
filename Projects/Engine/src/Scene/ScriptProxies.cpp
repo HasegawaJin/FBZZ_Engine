@@ -26,6 +26,9 @@
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -1675,6 +1678,157 @@ void GizmoProxy::DrawTargetLine(const math::Vector3& from, const math::Vector3& 
 }
 
 #undef GIZMO_ASSERT
+
+// ── ScriptNavigationProxy 実装 ───────────────────────────────────────────────
+// WHY: フリー関数は Script::m_gameObject (protected) へアクセスできない
+//      (friend 指定は ScriptNavigationProxy のメンバー関数にのみ及ぶ)。
+//      既存の SelfComponent<T>() (public な Script::GetComponent<T>() 経由) を再利用する。
+namespace {
+NavMeshAgentComponent* SelfNavAgent(const Script* script)
+{
+    return SelfComponent<NavMeshAgentComponent>(script);
+}
+} // namespace
+
+void ScriptNavigationProxy::SetDestination(const math::Vector3& worldPos) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->SetDestination(worldPos);
+}
+
+void ScriptNavigationProxy::CancelPath() const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->Stop();
+}
+
+void ScriptNavigationProxy::Pause() const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->isStopped = true;
+}
+
+void ScriptNavigationProxy::Resume() const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->isStopped = false;
+}
+
+void ScriptNavigationProxy::Warp(const math::Vector3& worldPos) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* agent = SelfNavAgent(script)) agent->Stop();
+    script->m_gameObject->transform.position      = worldPos;
+    script->m_gameObject->transform.worldPosition = worldPos;
+}
+
+void ScriptNavigationProxy::SetTarget(EntityID target, float repathInterval) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->SetTarget(target, repathInterval);
+}
+
+void ScriptNavigationProxy::SetTarget(const GameObject& target, float repathInterval) const
+{
+    SetTarget(target.GetID(), repathInterval);
+}
+
+void ScriptNavigationProxy::ClearTarget() const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->ClearTarget();
+}
+
+bool ScriptNavigationProxy::IsFollowingTarget() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent && agent->target.IsValid();
+}
+
+void ScriptNavigationProxy::BakeNavMesh() const
+{
+    if (!script || !script->m_scene) return;
+    auto* agent = SelfNavAgent(script);
+    const int typeId = agent ? agent->agentTypeId : 0;
+    for (EntityID eid : script->m_scene->GetEntities<NavMeshSurfaceComponent>()) {
+        auto* surf = script->m_scene->GetComponent<NavMeshSurfaceComponent>(eid);
+        if (surf && surf->agentTypeId == typeId) surf->needsBake = true;
+    }
+}
+
+bool ScriptNavigationProxy::IsPaused() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent && agent->isStopped;
+}
+
+bool ScriptNavigationProxy::IsMoving() const
+{
+    auto* agent = SelfNavAgent(script);
+    if (!agent || agent->isStopped) return false;
+    return agent->state == NavMeshAgentState::MOVING
+        || agent->state == NavMeshAgentState::TRAVERSING_LINK;
+}
+
+bool ScriptNavigationProxy::HasPath() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent && agent->HasPath();
+}
+
+bool ScriptNavigationProxy::HasArrived() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent && agent->destinationReached;
+}
+
+float ScriptNavigationProxy::GetRemainingDistance() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent ? agent->remainingDistance : 0.0f;
+}
+
+bool ScriptNavigationProxy::IsStuck() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent && agent->isStuck;
+}
+
+math::Vector3 ScriptNavigationProxy::GetVelocity() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent ? agent->velocity : math::Vector3::ZERO;
+}
+
+void ScriptNavigationProxy::SetSpeed(float speed) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->maxSpeed = speed > 0.0f ? speed : 0.0f;
+}
+
+void ScriptNavigationProxy::SetAngularSpeed(float degPerSec) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->angularSpeedDeg = degPerSec >= 0.0f ? degPerSec : 0.0f;
+}
+
+int ScriptNavigationProxy::GetAreaMask() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent ? agent->areaMask : -1;
+}
+
+void ScriptNavigationProxy::SetAreaMask(int mask) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->areaMask = mask;
+}
+
+bool ScriptNavigationProxy::CanSeeTarget() const
+{
+    if (!script || !script->m_gameObject) return false;
+    auto* sensor = script->m_gameObject->GetComponent<NavMeshSensorComponent>();
+    return sensor && sensor->targetVisible;
+}
+
+GameObject* ScriptNavigationProxy::GetDetectedTarget() const
+{
+    if (!script || !script->m_gameObject) return nullptr;
+    auto* sensor = script->m_gameObject->GetComponent<NavMeshSensorComponent>();
+    if (!sensor || !sensor->targetVisible) return nullptr;
+    return script->m_scene ? script->m_scene->GetGameObject(sensor->detectedTarget) : nullptr;
+}
 
 // ── EntityRef 実装 ──────────────────────────────────────────────────────────
 GameObject* EntityRef::Resolve(const ScriptSceneProxy& scene) const

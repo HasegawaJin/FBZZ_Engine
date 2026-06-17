@@ -219,6 +219,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         // --- Physics / Rendering ---
         ImGui::MenuItem("Colliders",          nullptr, &ctx.projectSettings.render.showColliders);
         ImGui::MenuItem("Terrain Collision",  nullptr, &ctx.projectSettings.render.showTerrainCollision);
+        ImGui::MenuItem("NavMesh",            nullptr, &ctx.projectSettings.render.showNavMesh);
+        ImGui::MenuItem("AI Sensors",         nullptr, &ctx.projectSettings.render.showNavSensors);
         ImGui::MenuItem("Decal Bounds",       nullptr, &ctx.projectSettings.render.showDecalBounds);
         ImGui::Separator();
         // --- Tools ---
@@ -376,6 +378,15 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         BUTTON_SIZE)) {
         m_undoStack.Clear();
         RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
+        // navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
+        // Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
+        m_navMeshPlayCache.clear();
+        for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+            auto* surf = ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+            auto* go   = ctx.activeScene->GetGameObject(eid);
+            if (surf && go && surf->navMesh.IsValid())
+                m_navMeshPlayCache[go->instanceId] = surf->navMesh;
+        }
         pm->Play(*ctx.activeScene);
         if (pm->IsPlaying())
             ctx.requestGameViewportFocus = true;

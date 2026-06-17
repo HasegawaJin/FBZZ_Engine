@@ -44,11 +44,13 @@
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
+#include <Physics/Layer.hpp>
 #include <array>
 #include <algorithm>
 #include <cassert>
@@ -846,6 +848,59 @@ void SubmitTerrainShadowCasters(
                 dc.constantBuffers[1] = objectCB;
                 renderer.Submit(dc, resources);
             }
+        }
+    }
+}
+
+void TerrainSelectionMaskSystem(RenderPassContext& ctx)
+{
+    if (!ctx.selectionOutlineEnabled) return;
+    auto& h = ctx.handles;
+    if (!h.selectionMaskShader.IsValid() || !h.selectionMaskPSO.IsValid()) return;
+
+    for (auto [terrain, transform] : ctx.scene.View<TerrainComponent, Transform>()) {
+        if (terrain.heightData.empty()) continue;
+
+        EntityID eid{};
+        for (EntityID candidate : ctx.scene.GetEntities<TerrainComponent>()) {
+            if (ctx.scene.GetComponent<TerrainComponent>(candidate) == &terrain) {
+                eid = candidate;
+                break;
+            }
+        }
+        if (!ctx.scene.IsValid(eid)) continue;
+
+        const auto* go = ctx.scene.GetGameObject(eid);
+        if (!go || !go->activeInHierarchy()) continue;
+        if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
+
+        bool selected = false;
+        for (const auto& sel : ctx.settings.selectedObjects) {
+            if (sel.index == eid.index && sel.generation == eid.generation) {
+                selected = true;
+                break;
+            }
+        }
+        if (!selected) continue;
+
+        const math::Matrix4 world = transform.GetWorldMatrix();
+        PerObjectCB objData{};
+        objData.world             = world;
+        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
+
+        for (auto& [key, chunk] : g_chunkCache) {
+            if (key.entityId != eid) continue;
+
+            renderer::DrawCall dc;
+            dc.vertexBuffer       = chunk.vertexBuffer;
+            dc.indexBuffer        = chunk.indexBufferLOD[0];
+            dc.indexCount         = chunk.indexCountLOD[0];
+            dc.shader             = h.selectionMaskShader;
+            dc.pipelineState      = h.selectionMaskPSO;
+            dc.constantBuffers[0] = h.frameCB;
+            dc.constantBuffers[1] = h.objectCB;
+            ctx.renderer.Submit(dc, ctx.resources);
         }
     }
 }

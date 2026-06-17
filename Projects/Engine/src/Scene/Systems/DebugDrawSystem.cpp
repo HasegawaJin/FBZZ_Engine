@@ -11,6 +11,10 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Physics/ColliderDebugGeometry.hpp>
@@ -20,8 +24,10 @@
 #include <Physics/ConstraintDebugGeometry.hpp>
 #include <Physics/World.hpp>
 #include <Math/Vector3.hpp>
+#include <algorithm>
 #include <cmath>
 #include <type_traits>
+#include <vector>
 
 namespace fbzz::scene
 {
@@ -356,6 +362,162 @@ void TerrainCollisionDebugDrawSystem(
                     }
                 }
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NavMeshDebugDrawSystem
+// ---------------------------------------------------------------------------
+void NavMeshDebugDrawSystem(Scene& scene,
+                            renderer::IRenderer& renderer,
+                            const math::Vector4& polygonColor,
+                            const math::Vector4& pathColor)
+{
+    // ── NavMesh ポリゴンのワイヤーフレーム + Bake 範囲ボックス ──────────────
+    for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
+        auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
+        auto* go      = scene.GetGameObject(eid);
+        if (!surface || !go) continue;
+
+        if (surface->needsBake || !surface->navMesh.IsValid()) {
+            // 未 Bake: オレンジ色の実線ボックスで範囲を目立たせる。
+            // ThisObject モードは surface->size が無意味なので GO の TerrainComponent 範囲を使う。
+            const math::Vector4 pendingColor = { 1.0f, 0.55f, 0.05f, 0.85f };
+            if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
+                if (auto* tc = scene.GetComponent<TerrainComponent>(eid)) {
+                    const float hw = static_cast<float>(tc->columns - 1) * tc->cellSize * 0.5f;
+                    const float hd = static_cast<float>(tc->rows    - 1) * tc->cellSize * 0.5f;
+                    const math::Vector3 center = go->transform.worldPosition
+                                               + math::Vector3(hw, 0.0f, hd);
+                    renderer::DebugDraw::Box(renderer, center,
+                                             { hw, tc->maxHeight * 0.5f, hd }, pendingColor);
+                } else {
+                    renderer::DebugDraw::Box(renderer, go->transform.worldPosition,
+                                             surface->size * 0.5f, pendingColor);
+                }
+            } else {
+                renderer::DebugDraw::Box(renderer, go->transform.worldPosition,
+                                         surface->size * 0.5f, pendingColor);
+            }
+        } else {
+            // Bake 済み: 青の塗りつぶし + アウトライン
+            // Volume モードのみバウンドボックスを追加表示する。
+            constexpr math::Vector4 kFillColor = { 0.12f, 0.45f, 0.95f, 0.20f };
+            if (surface->collectObjects == NavMeshCollectObjects::Volume) {
+                const math::Vector4 boundsColor = { polygonColor.x, polygonColor.y, polygonColor.z, 0.25f };
+                renderer::DebugDraw::Box(renderer, go->transform.worldPosition,
+                                         surface->size * 0.5f, boundsColor);
+            }
+            // WHY: kLift を大きめに取ってテレイン面との z-fight を確実に回避する。
+            constexpr float kLift = 0.08f;
+            for (const auto& poly : surface->navMesh.polygons) {
+                const size_t n = poly.vertices.size();
+                std::vector<math::Vector3> lifted(n);
+                for (size_t j = 0; j < n; ++j)
+                    lifted[j] = poly.vertices[j] + math::Vector3(0.f, kLift, 0.f);
+                renderer::DebugDraw::FilledPolygon(renderer, lifted.data(), n, kFillColor);
+                for (size_t i = 0; i < n; ++i)
+                    renderer::DebugDraw::Line(renderer, lifted[i], lifted[(i + 1) % n], polygonColor);
+            }
+        }
+    }
+
+    // ── 選択中に限らず全 Agent の現在パス・停滞状態を描画 ───────────────────
+    constexpr math::Vector4 kStuckColor = { 1.0f, 0.15f, 0.1f, 1.0f };
+    for (EntityID eid : scene.GetEntities<NavMeshAgentComponent>()) {
+        auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid);
+        auto* go    = scene.GetGameObject(eid);
+        if (!agent || !go) continue;
+
+        if (agent->isStuck)
+            renderer::DebugDraw::Sphere(renderer, go->transform.worldPosition + math::Vector3::UP * 1.5f, 0.15f, kStuckColor);
+
+        if (agent->path.empty()) continue;
+        math::Vector3 prev = go->transform.worldPosition;
+        for (size_t i = agent->currentWaypoint; i < agent->path.size(); ++i) {
+            const math::Vector3& next = agent->path[i];
+            renderer::DebugDraw::Line(renderer, prev, next, pathColor);
+            prev = next;
+        }
+    }
+
+    // ── 巡回ルートのワイヤーフレーム (Mode に応じて閉路 / 一本道) ────────────
+    const math::Vector4 patrolColor = { pathColor.x, pathColor.y, pathColor.z, 0.5f };
+    for (EntityID eid : scene.GetEntities<NavMeshPatrolComponent>()) {
+        auto* patrol = scene.GetComponent<NavMeshPatrolComponent>(eid);
+        if (!patrol || patrol->waypoints.size() < 2) continue;
+
+        const size_t count = patrol->mode == NavMeshPatrolComponent::Mode::LOOP
+            ? patrol->waypoints.size() : patrol->waypoints.size() - 1;
+        for (size_t i = 0; i < count; ++i) {
+            const math::Vector3& from = patrol->waypoints[i];
+            const math::Vector3& to   = patrol->waypoints[(i + 1) % patrol->waypoints.size()];
+            renderer::DebugDraw::Line(renderer, from, to, patrolColor);
+            renderer::DebugDraw::Sphere(renderer, from, 0.2f, patrolColor);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NavMeshSensorDebugDrawSystem
+// ---------------------------------------------------------------------------
+namespace {
+
+// origin を頂点として forward 方向中心に angleDeg の扇形ワイヤーを distance まで描く。
+// WHY: 視野範囲を直感的に把握できる「扇形」は 3D 円錐 (DebugDraw::Cone) ではなく
+//      XZ 平面上の扁平な扇のほうが分かりやすいため、Line の組み合わせで自作する。
+void DrawVisionFan(renderer::IRenderer& renderer, const math::Vector3& origin,
+                   const math::Vector3& forward, float angleDeg, float distance,
+                   const math::Vector4& color, int segments = 20)
+{
+    math::Vector3 fwd = forward;
+    fwd.y = 0.0f;
+    if (fwd.LengthSq() < 0.0001f) fwd = math::Vector3::FORWARD;
+    fwd = fwd.Normalized();
+
+    const float halfAngleRad = std::clamp(angleDeg, 1.0f, 360.0f) * 0.5f * (3.14159265f / 180.0f);
+
+    // Y 軸回りの回転 (左手系: +Z が前方)。
+    auto rotateY = [](const math::Vector3& v, float rad) {
+        const float c = std::cos(rad), s = std::sin(rad);
+        return math::Vector3{ v.x * c + v.z * s, v.y, -v.x * s + v.z * c };
+    };
+
+    const math::Vector3 leftEdge  = origin + rotateY(fwd,  halfAngleRad) * distance;
+    const math::Vector3 rightEdge = origin + rotateY(fwd, -halfAngleRad) * distance;
+    renderer::DebugDraw::Line(renderer, origin, leftEdge,  color);
+    renderer::DebugDraw::Line(renderer, origin, rightEdge, color);
+
+    math::Vector3 prev = leftEdge;
+    for (int i = 1; i <= segments; ++i) {
+        const float t = halfAngleRad - (2.0f * halfAngleRad) * (static_cast<float>(i) / segments);
+        const math::Vector3 p = origin + rotateY(fwd, t) * distance;
+        renderer::DebugDraw::Line(renderer, prev, p, color);
+        prev = p;
+    }
+}
+
+} // namespace
+
+void NavMeshSensorDebugDrawSystem(Scene& scene,
+                                  renderer::IRenderer& renderer,
+                                  const math::Vector4& safeColor,
+                                  const math::Vector4& dangerColor)
+{
+    for (EntityID eid : scene.GetEntities<NavMeshSensorComponent>()) {
+        auto* sensor = scene.GetComponent<NavMeshSensorComponent>(eid);
+        auto* go     = scene.GetGameObject(eid);
+        if (!sensor || !go || !sensor->enabled) continue;
+
+        const math::Vector4& color = sensor->targetVisible ? dangerColor : safeColor;
+        DrawVisionFan(renderer, go->transform.worldPosition, go->transform.forward,
+                     sensor->viewAngleDeg, sensor->viewDistance, color);
+
+        if (sensor->targetVisible) {
+            if (auto* targetGo = scene.GetGameObject(sensor->detectedTarget))
+                renderer::DebugDraw::Line(renderer, go->transform.worldPosition,
+                                          targetGo->transform.worldPosition, dangerColor);
         }
     }
 }

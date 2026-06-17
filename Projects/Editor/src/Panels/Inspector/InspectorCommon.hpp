@@ -45,6 +45,12 @@
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
@@ -884,6 +890,31 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         return shown;
     });
 
+    anyShown |= AddComponentCategory("Navigation", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "NavMesh Surface", !go.GetComponent<scene::NavMeshSurfaceComponent>(), [&]() {
+            go.AddComponent<scene::NavMeshSurfaceComponent>();
+        });
+        shown |= addItem(category, "NavMesh Modifier", !go.GetComponent<scene::NavMeshModifierComponent>(), [&]() {
+            go.AddComponent<scene::NavMeshModifierComponent>();
+        });
+        shown |= addItem(category, "Off-Mesh Link", !go.GetComponent<scene::NavMeshOffMeshLinkComponent>(), [&]() {
+            go.AddComponent<scene::NavMeshOffMeshLinkComponent>();
+        });
+        shown |= addItem(category, "NavMesh Agent", !go.GetComponent<scene::NavMeshAgentComponent>(), [&]() {
+            go.AddComponent<scene::NavMeshAgentComponent>();
+        });
+        shown |= addItem(category, "NavMesh Patrol", !go.GetComponent<scene::NavMeshPatrolComponent>(), [&]() {
+            go.AddComponent<scene::NavMeshPatrolComponent>();
+            if (!go.GetComponent<scene::NavMeshAgentComponent>())
+                go.AddComponent<scene::NavMeshAgentComponent>();
+        });
+        shown |= addItem(category, "NavMesh Sensor", !go.GetComponent<scene::NavMeshSensorComponent>(), [&]() {
+            go.AddComponent<scene::NavMeshSensorComponent>();
+        });
+        return shown;
+    });
+
     anyShown |= AddComponentCategory("Animation", filter, [&](const char* category, const char*) {
         bool shown = false;
         shown |= addItem(category, "Animator", !go.GetComponent<scene::AnimatorComponent>(), [&]() {
@@ -976,6 +1007,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
+void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx);
 
 } // namespace fbzz::editor

@@ -353,7 +353,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::SameLine();
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
-    } else if (ext == ".fbzzanimcontroller") {
+    } else if (ext == ".animcontroller") {
         if (!DrawAnimationGraphAssetInspector(ctx)) {
             ImGui::TextDisabled("Select a State or Transition in Animation Graph.");
             ImGui::Spacing();
