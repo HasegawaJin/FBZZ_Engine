@@ -378,7 +378,7 @@ void NavMeshDebugDrawSystem(Scene& scene,
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         auto* go      = scene.GetGameObject(eid);
-        if (!surface || !go || !surface->enabled) continue;
+        if (!surface || !go) continue;
 
         if (surface->needsBake || !surface->navMesh.IsValid()) {
             // 未 Bake: オレンジ色の実線ボックスで範囲を目立たせる。
@@ -403,7 +403,7 @@ void NavMeshDebugDrawSystem(Scene& scene,
         } else {
             // Bake 済み: 青の塗りつぶし + アウトライン
             // Volume モードのみバウンドボックスを追加表示する。
-            constexpr math::Vector4 kFillColor = { 0.12f, 0.45f, 0.95f, 0.45f };
+            constexpr math::Vector4 kFillColor = { 0.12f, 0.45f, 0.95f, 0.20f };
             if (surface->collectObjects == NavMeshCollectObjects::Volume) {
                 const math::Vector4 boundsColor = { polygonColor.x, polygonColor.y, polygonColor.z, 0.25f };
                 renderer::DebugDraw::Box(renderer, go->transform.worldPosition,

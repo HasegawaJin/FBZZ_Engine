@@ -33,11 +33,25 @@ struct ScriptNavigationProxy {
     void ClearTarget() const;
     bool IsFollowingTarget() const;
 
+    // agentTypeId が一致する NavMeshSurfaceComponent の再ベイクをリクエストする。
+    void BakeNavMesh() const;
+
     bool IsPaused() const;
     bool IsMoving() const;
+    bool HasPath() const;
     bool HasArrived() const;
     bool IsStuck() const;
     float GetRemainingDistance() const;
+    math::Vector3 GetVelocity() const;
+
+    // 最大移動速度を動的に変更する。
+    void SetSpeed(float speed) const;
+    // 旋回速度 [deg/s] を動的に変更する。
+    void SetAngularSpeed(float degPerSec) const;
+
+    // 通過可能なエリアタイプのビットマスク (-1 = すべて)。
+    int  GetAreaMask() const;
+    void SetAreaMask(int mask) const;
 
     // NavMeshSensorComponent (付いていれば) の検知結果を参照するショートハンド。
     bool CanSeeTarget() const;

@@ -24,12 +24,22 @@ struct NavMeshSensorComponent {
     bool autoChase = true;
     float chaseRepathInterval = 0.4f; // autoChase 時に NavMeshAgentComponent::SetTarget へ渡す再パス間隔
 
+    // 見失った後もこの秒数だけ targetVisible=true を維持する（0 = 即座にクリア）。
+    float memoryTime = 0.0f;
+    // 検知チェックの頻度 [s]。0 = 毎フレーム。パフォーマンス調整に使う。
+    float scanInterval = 0.0f;
+    // 検知対象との Y 座標差がこの値を超えると検知しない [m]。0 = 無制限。
+    float heightThreshold = 0.0f;
+
     bool enabled = true;
 
     // ── ランタイム状態 (NavMeshSensorSystem が管理。非永続化) ────────────────
     bool targetVisible = false;
     EntityID detectedTarget = EntityID::INVALID;
-    math::Vector3 lastKnownTargetPos = math::Vector3::ZERO; // 直前に検知していた位置 (見失った直後の捜索に使う)
+    math::Vector3 lastKnownTargetPos = math::Vector3::ZERO;
+    // ── ランタイム (NavMeshSensorSystem が管理) ───────────────────────────────
+    float memoryTimer = 0.0f; // 見失い後の残り記憶時間 [s]
+    float scanTimer   = 0.0f; // 次のスキャンまでの残り時間 [s]
 
     const char* GetTypeName() const { return "NavMesh Sensor"; }
     void Reflect(IReflector& r)
@@ -39,8 +49,11 @@ struct NavMeshSensorComponent {
         r.Field("viewAngleDeg", viewAngleDeg);
         r.Field("targetTag", targetTag);
         r.Field("useLineOfSight", useLineOfSight);
-        r.Field("autoChase", autoChase);
+        r.Field("autoChase",           autoChase);
         r.Field("chaseRepathInterval", chaseRepathInterval);
+        r.Field("memoryTime",          memoryTime);
+        r.Field("scanInterval",        scanInterval);
+        r.Field("heightThreshold",     heightThreshold);
     }
 };
 

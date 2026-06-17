@@ -21,6 +21,12 @@ struct NavMeshPatrolComponent {
     };
 
     std::vector<math::Vector3> waypoints; // ワールド座標
+    // ウェイポイントごとの個別待機時間 [s]。waypoints と同サイズのとき waypoints[i] 到達後に使う。
+    // サイズが異なる/空のときは共通の waitTime を使う。
+    std::vector<float> waypointWaitTimes;
+    // ウェイポイントごとの移動速度オーバーライド [m/s]。0 以下 = Agent のデフォルト速度を使う。
+    std::vector<float> waypointSpeeds;
+
     Mode  mode     = Mode::LOOP;
     float waitTime = 0.0f; // 各ウェイポイント到達後の待機時間 [s]
 

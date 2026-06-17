@@ -2,10 +2,10 @@
 // NavigationSystem.cpp | fbzz::scene
 // NavMeshAgentComponent の毎フレーム更新: パス計算 (A* + Funnel Algorithm) と移動 (Steering)。
 //
-// WHY: 複数 NavMeshSurface の合成 (オーバーラップ領域の統合) は実装が複雑なため、
-//      シーン内で最初に見つかった有効な NavMeshSurfaceComponent のみを使用する単一運用とする。
-//      Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ
-//      逆変換して書き戻す (WriteWorldPoseToTransform)。
+// 複数 NavMeshSurface: agentTypeId が一致する Surface を各 Agent が個別に選択する。
+// オフメッシュリンク: NavMesh::offMeshLinks を A* のエッジとして扱い、TRAVERSING_LINK 状態で補間移動。
+// NavMesh スナップ: snapToNavMesh=true のとき移動後に NavMesh 面の Y へ補正する。
+// Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ逆変換して書き戻す。
 #include "Engine/Scene/Systems/NavigationSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
@@ -61,7 +61,11 @@ int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
 // decrease-key を行わない代わりに、より良い g が見つかるたびに新しいエントリを push し、
 // pop 時に closed 済み (=確定済みより悪い古いエントリ) を読み捨てる lazy deletion 方式を使う。
 // これにより大きな NavMesh でも O((V+E) log V) で探索できる。
-bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::vector<int>& outPath)
+// areaMask: ビット i が立っているとき areaType==i のポリゴンを通過可 (-1 = 全通過)
+// areaCosts: nullptr のとき全コスト 1.0f。areaCosts[areaType] がエッジ重みに掛かる。
+// agentTypeId: オフメッシュリンクの agentTypeMask フィルタリングに使う。
+bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::vector<int>& outPath,
+                     int areaMask, const float* areaCosts, int agentTypeId)
 {
     if (startPoly == goalPoly) { outPath = { startPoly }; return true; }
 
@@ -75,6 +79,18 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
         return (navMesh.polygons[static_cast<size_t>(a)].Center()
               - navMesh.polygons[static_cast<size_t>(b)].Center()).Length();
     };
+    // エリアタイプのコストを取得する。areaCosts が nullptr のとき 1.0f を返す。
+    auto areaCost = [&](int areaType) -> float {
+        if (!areaCosts) return 1.0f;
+        const float c = areaCosts[areaType < 0 ? 0 : (areaType > 31 ? 31 : areaType)];
+        return c > 0.0f ? c : 1.0f;
+    };
+    // areaMask でポリゴンが通過可能かチェックする。
+    auto canTraverse = [&](int polyIdx) -> bool {
+        if (areaMask == -1) return true;
+        const int at = navMesh.polygons[static_cast<size_t>(polyIdx)].areaType;
+        return (areaMask & (1 << (at & 31))) != 0;
+    };
 
     using OpenEntry = std::pair<float, int>; // (fScore, polygon index)
     std::priority_queue<OpenEntry, std::vector<OpenEntry>, std::greater<OpenEntry>> open;
@@ -83,7 +99,7 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
     while (!open.empty()) {
         const int current = open.top().second;
         open.pop();
-        if (closed[static_cast<size_t>(current)]) continue; // 古い (悪化済み) エントリは読み捨てる
+        if (closed[static_cast<size_t>(current)]) continue;
 
         if (current == goalPoly) {
             outPath.clear();
@@ -95,13 +111,34 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
 
         closed[static_cast<size_t>(current)] = 1;
         for (const auto& portal : navMesh.polygons[static_cast<size_t>(current)].portals) {
-            if (closed[static_cast<size_t>(portal.neighbor)]) continue;
-            const float tentativeG = gScore[static_cast<size_t>(current)] + heuristic(current, portal.neighbor);
-            if (tentativeG < gScore[static_cast<size_t>(portal.neighbor)]) {
-                gScore[static_cast<size_t>(portal.neighbor)] = tentativeG;
-                cameFrom[static_cast<size_t>(portal.neighbor)] = current;
-                open.push({ tentativeG + heuristic(portal.neighbor, goalPoly), portal.neighbor });
+            const int nb = portal.neighbor;
+            if (closed[static_cast<size_t>(nb)]) continue;
+            if (!canTraverse(nb)) continue;
+            const float edgeCost = heuristic(current, nb) * areaCost(navMesh.polygons[static_cast<size_t>(nb)].areaType);
+            const float tentativeG = gScore[static_cast<size_t>(current)] + edgeCost;
+            if (tentativeG < gScore[static_cast<size_t>(nb)]) {
+                gScore[static_cast<size_t>(nb)] = tentativeG;
+                cameFrom[static_cast<size_t>(nb)] = current;
+                open.push({ tentativeG + heuristic(nb, goalPoly), nb });
             }
+        }
+        // オフメッシュリンクをグラフエッジとして扱う
+        for (const auto& link : navMesh.offMeshLinks) {
+            // agentTypeMask フィルタ: -1 は全 Agent 通過可
+            if (link.agentTypeMask != -1 && !(link.agentTypeMask & (1 << (agentTypeId & 31)))) continue;
+            auto tryLink = [&](int from, int to, float cost) {
+                if (from != current || closed[static_cast<size_t>(to)]) return;
+                if (!canTraverse(to)) return;
+                const float tentativeG = gScore[static_cast<size_t>(current)] + cost;
+                if (tentativeG < gScore[static_cast<size_t>(to)]) {
+                    gScore[static_cast<size_t>(to)] = tentativeG;
+                    cameFrom[static_cast<size_t>(to)] = current;
+                    open.push({ tentativeG + heuristic(to, goalPoly), to });
+                }
+            };
+            const float cost = (link.posB - link.posA).Length();
+            tryLink(link.polyA, link.polyB, cost);
+            if (link.bidirectional) tryLink(link.polyB, link.polyA, cost);
         }
     }
     return false;
@@ -188,6 +225,107 @@ std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::ve
     return result;
 }
 
+// NavMesh 面上の XZ 座標から Y 高さをバリセントリック補間で返す。
+// 最近傍ポリゴンが見つからない場合は pos.y をそのまま返す。
+float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos)
+{
+    const int polyIdx = FindNearestPolygon(navMesh, pos);
+    if (polyIdx < 0) return -1e7f;
+    const NavMeshPolygon& poly = navMesh.polygons[static_cast<size_t>(polyIdx)];
+    const size_t n = poly.vertices.size();
+    for (size_t i = 1; i + 1 < n; ++i) {
+        const math::Vector3& a = poly.vertices[0];
+        const math::Vector3& b = poly.vertices[i];
+        const math::Vector3& c = poly.vertices[i + 1];
+        const float d1 = (pos.x - b.x) * (a.z - b.z) - (a.x - b.x) * (pos.z - b.z);
+        const float d2 = (pos.x - c.x) * (b.z - c.z) - (b.x - c.x) * (pos.z - c.z);
+        const float d3 = (pos.x - a.x) * (c.z - a.z) - (c.x - a.x) * (pos.z - a.z);
+        if (((d1 < 0) || (d2 < 0) || (d3 < 0)) && ((d1 > 0) || (d2 > 0) || (d3 > 0))) continue;
+        const float denom = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+        if (std::abs(denom) < 1e-6f) continue;
+        const float wa = ((b.z - c.z) * (pos.x - c.x) + (c.x - b.x) * (pos.z - c.z)) / denom;
+        const float wb = ((c.z - a.z) * (pos.x - c.x) + (a.x - c.x) * (pos.z - c.z)) / denom;
+        return a.y * wa + b.y * wb + c.y * (1.0f - wa - wb);
+    }
+    return poly.Center().y;
+}
+
+// オフメッシュリンクを含む経路を Funnel Algorithm + リンク補間で構築する。
+// BuildFunnelPath のセグメントを link で分割し、各セグメントの結果を連結する。
+struct PathWithLinks {
+    std::vector<math::Vector3> waypoints;
+    std::vector<bool>          linkFlags; // waypoints[i] が true → オフメッシュリンク起点
+    std::vector<float>         linkTimes; // リンク起点のみ有効な通過時間
+};
+
+PathWithLinks BuildPathWithLinks(
+    const NavMesh& navMesh,
+    const std::vector<int>& polyPath,
+    const math::Vector3& startPos,
+    const math::Vector3& goalPos)
+{
+    PathWithLinks result;
+    if (polyPath.empty()) {
+        result.waypoints  = { startPos, goalPos };
+        result.linkFlags  = { false, false };
+        result.linkTimes  = { 0.0f,   0.0f   };
+        return result;
+    }
+
+    auto appendFunnel = [&](const std::vector<int>& seg,
+                             const math::Vector3& from,
+                             const math::Vector3& to) {
+        const auto wps = BuildFunnelPath(navMesh, seg, from, to);
+        const bool isFirst = result.waypoints.empty();
+        for (size_t j = isFirst ? 0u : 1u; j < wps.size(); ++j) {
+            result.waypoints.push_back(wps[j]);
+            result.linkFlags.push_back(false);
+            result.linkTimes.push_back(0.0f);
+        }
+    };
+
+    int segStart = 0;
+    math::Vector3 segStartPos = startPos;
+
+    for (int i = 0; i + 1 < static_cast<int>(polyPath.size()); ++i) {
+        const int fromPoly = polyPath[static_cast<size_t>(i)];
+        const int toPoly   = polyPath[static_cast<size_t>(i + 1)];
+
+        bool hasPortal = false;
+        for (const auto& p : navMesh.polygons[static_cast<size_t>(fromPoly)].portals)
+            if (p.neighbor == toPoly) { hasPortal = true; break; }
+        if (hasPortal) continue;
+
+        for (const auto& link : navMesh.offMeshLinks) {
+            const bool fwd = (link.polyA == fromPoly && link.polyB == toPoly);
+            const bool bwd = link.bidirectional && (link.polyB == fromPoly && link.polyA == toPoly);
+            if (!fwd && !bwd) continue;
+
+            const math::Vector3 posA = fwd ? link.posA : link.posB;
+            const math::Vector3 posB = fwd ? link.posB : link.posA;
+
+            appendFunnel(std::vector<int>(polyPath.begin() + segStart,
+                                          polyPath.begin() + i + 1),
+                         segStartPos, posA);
+            if (!result.linkFlags.empty()) {
+                result.linkFlags.back() = true;
+                result.linkTimes.back() = link.traversalTime;
+            }
+            result.waypoints.push_back(posB);
+            result.linkFlags.push_back(false);
+            result.linkTimes.push_back(0.0f);
+
+            segStart    = i + 1;
+            segStartPos = posB;
+            break;
+        }
+    }
+
+    appendFunnel(std::vector<int>(polyPath.begin() + segStart, polyPath.end()),
+                 segStartPos, goalPos);
+    return result;
+}
+
 // パスのみ放棄して停止する (Stop() と異なり target は保持する)。
 // Target Follow 中の「到達」「パス失敗」両方で使う: target が再び動けば repathTimer の
 // タイミングで自動的に追跡を再開できるようにする。
@@ -195,6 +333,9 @@ void HaltKeepingTarget(NavMeshAgentComponent& agent)
 {
     agent.hasDestination = false;
     agent.path.clear();
+    agent.pathLinkFlags.clear();
+    agent.pathLinkTimes.clear();
+    agent.linkTraversal.active = false;
     agent.currentWaypoint = 0;
     agent.currentSpeed = 0.0f;
     agent.remainingDistance = 0.0f;
@@ -266,18 +407,24 @@ BucketKey BucketKeyFor(const math::Vector3& pos, float bucketSize)
 
 void NavigationSystem(Scene& scene, float dt)
 {
-    NavMeshSurfaceComponent* activeVolume = nullptr;
+    // agentTypeId → NavMeshSurface のマップを構築する。
+    // 同じ typeId が複数ある場合は最初に見つかった有効な Surface を使う。
+    std::unordered_map<int, NavMeshSurfaceComponent*> surfaceMap;
+    float minCellSize = 1.0f;
     for (EntityID veid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto* v = scene.GetComponent<NavMeshSurfaceComponent>(veid);
-        if (v && v->enabled && v->navMesh.IsValid()) { activeVolume = v; break; }
+        if (!v || !v->enabled || !v->navMesh.IsValid()) continue;
+        if (!surfaceMap.count(v->agentTypeId)) {
+            surfaceMap[v->agentTypeId] = v;
+            minCellSize = std::min(minCellSize, v->cellSize);
+        }
     }
-    if (!activeVolume) return;
-    const NavMesh& navMesh = activeVolume->navMesh;
+    if (surfaceMap.empty()) return;
 
     const auto agentEntities = scene.GetEntities<NavMeshAgentComponent>();
 
     // 回避用の空間ハッシュをフレーム先頭で 1 回構築する。
-    const float bucketSize = std::max(0.5f, activeVolume->cellSize * 2.0f);
+    const float bucketSize = std::max(0.5f, minCellSize * 2.0f);
     std::unordered_map<BucketKey, std::vector<EntityID>, BucketKeyHash> avoidanceBuckets;
     for (EntityID id : agentEntities) {
         auto* a = scene.GetComponent<NavMeshAgentComponent>(id);
@@ -291,6 +438,14 @@ void NavigationSystem(Scene& scene, float dt)
         auto* go    = scene.GetGameObject(eid);
         if (!agent || !go || !agent->enabled) continue;
 
+        // この Agent が使う NavMeshSurface を agentTypeId で引く。
+        // 対応する Surface がなければスキップ (agentTypeId の Surface をまだ置いていない場合等)。
+        auto surfIt = surfaceMap.find(agent->agentTypeId);
+        if (surfIt == surfaceMap.end()) continue;
+        const NavMeshSurfaceComponent& surf = *surfIt->second;
+        const NavMesh& navMesh = surf.navMesh;
+        const float agentCellSize = surf.cellSize;
+
         // ── Target Follow: 追跡対象が設定されていれば定期的に destination を更新する ──
         if (agent->target.IsValid()) {
             auto* targetGo = scene.GetGameObject(agent->target);
@@ -299,7 +454,7 @@ void NavigationSystem(Scene& scene, float dt)
             } else {
                 agent->repathTimer -= dt;
                 const float movedSq = (targetGo->transform.worldPosition - agent->lastTargetPos).LengthSq();
-                const float repathMoveDist = activeVolume->cellSize;
+                const float repathMoveDist = agentCellSize;
                 if (agent->repathTimer <= 0.0f || movedSq > repathMoveDist * repathMoveDist) {
                     const EntityID savedTarget = agent->target; // SetDestination がクリアするので退避する
                     agent->SetDestination(targetGo->transform.worldPosition);
@@ -316,10 +471,16 @@ void NavigationSystem(Scene& scene, float dt)
             const int goalPoly  = FindNearestPolygon(navMesh, agent->destination);
 
             std::vector<int> polyPath;
-            if (startPoly >= 0 && goalPoly >= 0 && FindPolygonPath(navMesh, startPoly, goalPoly, polyPath)) {
-                auto waypoints = BuildFunnelPath(navMesh, polyPath, go->transform.worldPosition, agent->destination);
-                waypoints.erase(waypoints.begin()); // 出発点は経路から除く (Agent は既にそこにいる)
-                agent->path = std::move(waypoints);
+            if (startPoly >= 0 && goalPoly >= 0 && FindPolygonPath(navMesh, startPoly, goalPoly, polyPath,
+                                                                    agent->areaMask, surf.areaCosts, agent->agentTypeId)) {
+                PathWithLinks pwl = BuildPathWithLinks(navMesh, polyPath,
+                                                       go->transform.worldPosition, agent->destination);
+                pwl.waypoints.erase(pwl.waypoints.begin());
+                pwl.linkFlags.erase(pwl.linkFlags.begin());
+                pwl.linkTimes.erase(pwl.linkTimes.begin());
+                agent->path           = std::move(pwl.waypoints);
+                agent->pathLinkFlags  = std::move(pwl.linkFlags);
+                agent->pathLinkTimes  = std::move(pwl.linkTimes);
                 agent->currentWaypoint = 0;
             } else {
                 if (agent->target.IsValid()) HaltKeepingTarget(*agent);
@@ -329,8 +490,20 @@ void NavigationSystem(Scene& scene, float dt)
             }
         }
 
-        if (agent->path.empty() || agent->currentWaypoint >= agent->path.size())
+        if (agent->path.empty() || agent->currentWaypoint >= agent->path.size()) {
+            // パスがない(Idle)状態でもスナップは毎フレーム適用する。
+            // 例: 初期配置でエージェントが NavMesh より高い位置にいる場合に地面へ落とす。
+            if (agent->snapToNavMesh && agent->updatePosition
+                && agent->state != NavMeshAgentState::TRAVERSING_LINK) {
+                const float snappedY = SampleNavMeshHeight(navMesh, go->transform.worldPosition);
+                if (snappedY > -1e6f) {
+                    math::Vector3 p = go->transform.worldPosition;
+                    p.y = snappedY;
+                    WriteWorldPoseToTransform(*go, p, go->transform.worldRotation);
+                }
+            }
             continue;
+        }
 
         const math::Vector3 pos = go->transform.worldPosition;
 
@@ -342,9 +515,50 @@ void NavigationSystem(Scene& scene, float dt)
             agent->remainingDistance = remaining;
         }
 
+        // ── オフメッシュリンク通過: lerp 補間で startPos → endPos へ移動する ──────────
+        if (agent->state == NavMeshAgentState::TRAVERSING_LINK) {
+            NavMeshLinkTraversal& lt = agent->linkTraversal;
+            lt.elapsed += dt;
+            const float t = std::clamp(lt.elapsed / std::max(0.001f, lt.totalTime), 0.0f, 1.0f);
+            math::Vector3 linkPos;
+            linkPos.x = lt.startPos.x + (lt.endPos.x - lt.startPos.x) * t;
+            linkPos.y = lt.startPos.y + (lt.endPos.y - lt.startPos.y) * t;
+            linkPos.z = lt.startPos.z + (lt.endPos.z - lt.startPos.z) * t;
+
+            const math::Vector3 dir = lt.endPos - lt.startPos;
+            math::Quaternion newRot = go->transform.worldRotation;
+            if (dir.x * dir.x + dir.z * dir.z > 0.0001f) {
+                const math::Vector3 flatDir(dir.x, 0.0f, dir.z);
+                const math::Quaternion targetRot = math::Quaternion::LookRotation(flatDir.Normalized());
+                newRot = math::Quaternion::Slerp(newRot, targetRot,
+                    std::clamp(agent->angularSpeedDeg * dt / 180.0f, 0.0f, 1.0f));
+            }
+            agent->velocity = (dt > 0.0f) ? ((linkPos - go->transform.worldPosition) * (1.0f / dt)) : math::Vector3::ZERO;
+            if (agent->updatePosition || agent->updateRotation)
+                WriteWorldPoseToTransform(*go,
+                    agent->updatePosition ? linkPos : go->transform.worldPosition,
+                    agent->updateRotation ? newRot  : go->transform.worldRotation);
+
+            if (t >= 1.0f) {
+                lt.active = false;
+                agent->state = NavMeshAgentState::MOVING;
+                ++agent->currentWaypoint; // link endPos ウェイポイントへ進める
+            }
+            continue;
+        }
+
         // isStopped 中はパスを保持したまま移動・回転だけ止める (Resume() で再開できる)。
         if (agent->isStopped) {
             agent->currentSpeed = 0.0f;
+            agent->velocity     = math::Vector3::ZERO;
+            if (agent->snapToNavMesh && agent->updatePosition) {
+                const float snappedY = SampleNavMeshHeight(navMesh, go->transform.worldPosition);
+                if (snappedY > -1e6f) {
+                    math::Vector3 p = go->transform.worldPosition;
+                    p.y = snappedY;
+                    WriteWorldPoseToTransform(*go, p, go->transform.worldRotation);
+                }
+            }
             continue;
         }
 
@@ -376,7 +590,7 @@ void NavigationSystem(Scene& scene, float dt)
         float distance = toTarget.Length();
 
         bool isLastWaypoint = (agent->currentWaypoint + 1 == agent->path.size());
-        float arriveThreshold = isLastWaypoint ? agent->stoppingDistance : (activeVolume->cellSize * 0.5f);
+        float arriveThreshold = isLastWaypoint ? agent->stoppingDistance : (agentCellSize * 0.5f);
 
         if (distance <= arriveThreshold) {
             if (isLastWaypoint) {
@@ -386,6 +600,24 @@ void NavigationSystem(Scene& scene, float dt)
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshDestinationReached);
                 continue;
             }
+
+            // オフメッシュリンク起点に到達したらリンク通過を開始する。
+            const size_t wp = agent->currentWaypoint;
+            if (wp < agent->pathLinkFlags.size() && agent->pathLinkFlags[wp]) {
+                const size_t nextWp = wp + 1;
+                if (nextWp < agent->path.size()) {
+                    NavMeshLinkTraversal& lt = agent->linkTraversal;
+                    lt.startPos  = pos;
+                    lt.endPos    = agent->path[nextWp];
+                    lt.totalTime = (wp < agent->pathLinkTimes.size()) ? agent->pathLinkTimes[wp] : 0.3f;
+                    lt.elapsed   = 0.0f;
+                    lt.active    = true;
+                    agent->state = NavMeshAgentState::TRAVERSING_LINK;
+                    // currentWaypoint は TRAVERSING_LINK 完了時に ++する
+                    continue;
+                }
+            }
+
             ++agent->currentWaypoint;
             target = agent->path[agent->currentWaypoint];
             toTarget = target - pos; toTarget.y = 0.0f;
@@ -429,12 +661,28 @@ void NavigationSystem(Scene& scene, float dt)
             moveDir = combined.Normalized();
 
         // ── 速度更新 (加速) と移動 ───────────────────────────────────────
-        agent->currentSpeed = std::min(agent->currentSpeed + agent->acceleration * dt, agent->maxSpeed);
+        // autoBraking: 最終ウェイポイントへの残り距離に応じて maxSpeed を制限する。
+        // ブレーキ開始距離 = v² / (2a) として、その範囲内に入ったら速度を絞る。
+        float effectiveMaxSpeed = agent->maxSpeed;
+        if (agent->autoBraking && isLastWaypoint && agent->acceleration > 0.0f) {
+            const float brakeRadius = (agent->maxSpeed * agent->maxSpeed) / (2.0f * agent->acceleration);
+            if (distance < brakeRadius && brakeRadius > 0.0f)
+                effectiveMaxSpeed = agent->maxSpeed * (distance / brakeRadius);
+            effectiveMaxSpeed = std::max(effectiveMaxSpeed, agent->maxSpeed * 0.1f); // 最低速度を確保
+        }
+        agent->currentSpeed = std::min(agent->currentSpeed + agent->acceleration * dt, effectiveMaxSpeed);
         const float moveDist = std::min(agent->currentSpeed * dt, distance);
 
         math::Vector3 newPos = pos + moveDir * moveDist;
         const float t = (distance > 0.0001f) ? std::min(1.0f, moveDist / distance) : 0.0f;
         newPos.y = pos.y + (target.y - pos.y) * t;
+
+        // NavMesh スナップ: 移動後の Y 座標を NavMesh ポリゴン面に合わせる。
+        // 物理・重力と組み合わせる場合は snapToNavMesh=false にして物理側に Y を任せる。
+        if (agent->snapToNavMesh) {
+            const float snappedY = SampleNavMeshHeight(navMesh, newPos);
+            if (snappedY > -1e6f) newPos.y = snappedY;
+        }
 
         // ── 回転 (進行方向への定角速度補間) ────────────────────────────────
         // 2*acos(|dot(a,b)|) で実際の回転角を求め、angularSpeedDeg [deg/s] に正確に
@@ -451,7 +699,15 @@ void NavigationSystem(Scene& scene, float dt)
             newRot = math::Quaternion::Slerp(newRot, targetRot, rotT);
         }
 
-        WriteWorldPoseToTransform(*go, newPos, newRot);
+        // 速度ベクトル更新 (アニメーター連携などに使う)
+        agent->velocity = (dt > 0.0f) ? ((newPos - pos) * (1.0f / dt)) : math::Vector3::ZERO;
+
+        if (agent->updatePosition && agent->updateRotation)
+            WriteWorldPoseToTransform(*go, newPos, newRot);
+        else if (agent->updatePosition)
+            WriteWorldPoseToTransform(*go, newPos, go->transform.worldRotation);
+        else if (agent->updateRotation)
+            WriteWorldPoseToTransform(*go, go->transform.worldPosition, newRot);
     }
 }
 

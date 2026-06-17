@@ -24,6 +24,9 @@ enum class NavMeshModifierMode : uint8_t {
 
 struct NavMeshModifierComponent {
     NavMeshModifierMode mode    = NavMeshModifierMode::NotWalkable;
+    // Walkable モード専用: このコライダーが生成するポリゴンに割り当てるエリアタイプ ID (0〜31)。
+    // NavMeshSurfaceComponent::areaCosts[areaType] がパスコスト計算に使われる。
+    int areaType = 0;
     bool                enabled = true;
 
     const char* GetTypeName() const { return "NavMesh Modifier"; }
@@ -34,6 +37,7 @@ struct NavMeshModifierComponent {
         r.Field("mode", modeValue);
         modeValue = modeValue < 0 ? 0 : (modeValue > 1 ? 1 : modeValue);
         mode = static_cast<NavMeshModifierMode>(modeValue);
+        r.Field("areaType", areaType);
     }
 };
 
