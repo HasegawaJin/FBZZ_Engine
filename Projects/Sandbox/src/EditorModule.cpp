@@ -12,7 +12,6 @@
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Physics/Layer.hpp>
 
@@ -210,6 +209,10 @@ void EditorModule::RenderSceneViewport(renderer::ResourceHandle<renderer::Render
     uiOptions.viewportHeight = h;
     uiOptions.targetView = scene::UIRenderTargetView::SceneViewport;
     uiOptions.context = &m_sceneUICtx;
+    sceneRenderSettings.showSkeleton    = m_editorApp.GetContext().showSkeleton;
+    sceneRenderSettings.showGrid        = m_editorApp.GetContext().showGrid;
+    sceneRenderSettings.showLightRange  = m_editorApp.GetContext().showLightRange;
+    sceneRenderSettings.showConstraints = sceneRenderSettings.showColliders;
     scene::RenderSystem(*m_scene,
                         m_renderer,
                         m_resources,
@@ -217,31 +220,8 @@ void EditorModule::RenderSceneViewport(renderer::ResourceHandle<renderer::Render
                         sceneRT,
                         &sceneRenderSettings,
                         fbzz::Layer::Everything,
-                        &uiOptions);
-
-    {
-        const auto& render = m_editorApp.GetContext().projectSettings.render;
-        if (render.showColliders || render.showTerrainCollision) {
-            renderer::DebugDraw::BeginFrame(m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
-            if (render.showColliders && m_scene) {
-                scene::ColliderDebugDrawSystem(*m_scene, m_renderer);
-                scene::ConstraintDebugDrawSystem(m_physicsWorld, m_renderer);
-            }
-            if (render.showTerrainCollision && m_scene)
-                scene::TerrainCollisionDebugDrawSystem(*m_scene, m_renderer, m_debugCamera.camera.m_position);
-            renderer::DebugDraw::Flush();
-        }
-    }
-    if (m_editorApp.GetContext().showSkeleton) {
-        scene::AnimatorDebugDrawSystem(*m_scene, m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
-    }
-    if (m_editorApp.GetContext().showGrid) {
-        scene::GridDebugDrawSystem(m_renderer, m_resources, m_debugCamera.camera.GetViewProjection());
-    }
-    if (m_editorApp.GetContext().showLightRange) {
-        scene::LightRangeDebugDrawSystem(*m_scene, m_renderer, m_resources,
-                                         m_debugCamera.camera.GetViewProjection());
-    }
+                        &uiOptions,
+                        &m_physicsWorld);
 }
 
 void EditorModule::RenderGameViewport(renderer::ResourceHandle<renderer::RenderTargetTag> gameRT,

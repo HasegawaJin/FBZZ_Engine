@@ -3,7 +3,7 @@
 ## 目的
 
 `FoliageSystem` は Terrain 上へ樹木・大型岩などを配置し、FBX の複数 SubMesh を
-それぞれ別の `.fzmat` で GPU Instancing 描画する。
+それぞれ別の `.mat` で GPU Instancing 描画する。
 
 草・花など単一マテリアルで大量配置する要素は `DetailSystem`、幹と葉のように
 複数マテリアルを必要とする大型要素は `FoliageSystem` が担当する。

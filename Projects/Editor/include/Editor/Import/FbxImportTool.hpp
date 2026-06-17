@@ -33,17 +33,17 @@ public:
     //
     // 出力構造:
     //   outputDir/
-    //     <name>.fzasset          ← マニフェスト
-    //     meshes/mesh_N.fzmesh
-    //     materials/mat_N.fzmat
+    //     <name>.asset          ← マニフェスト
+    //     meshes/mesh_N.mesh
+    //     materials/mat_N.mat
     //     textures/               ← FBX 埋め込みテクスチャのコピー先
-    //     <name>.fzskel           (スキンメッシュ時のみ)
-    //     anims/clip_N.fzanim     (アニメーション時のみ)
+    //     <name>.skel           (スキンメッシュ時のみ)
+    //     anims/clip_N.anim     (アニメーション時のみ)
     //
     // 失敗時は outputDir ごとロールバック (削除) して false を返す。
     // @param fbxPath   FBX ファイルの絶対パス
     // @param outputDir 出力ディレクトリの絶対パス (存在しなければ作成する)
-    // @param sourceHint .fzasset に記録する原本パスのヒント (参考情報)
+    // @param sourceHint .asset に記録する原本パスのヒント (参考情報)
     static bool         Import(const std::string& fbxPath,
                                const std::string& outputDir,
                                const std::string& sourceHint = {},

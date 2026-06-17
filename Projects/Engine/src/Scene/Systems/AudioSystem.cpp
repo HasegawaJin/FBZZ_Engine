@@ -4,15 +4,31 @@
 // Scene を走査し、audio::AudioManager へ BGM / SE の操作を渡す。
 // オーディオデバイス固有処理は audio モジュール側に閉じ込める。
 #include "Engine/Scene/Systems/AudioSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/AudioSourceComponent.hpp"
 #include "Engine/Audio/AudioManager.hpp"
 
 namespace fbzz::scene {
 
-void AudioSystem(Scene& scene, audio::AudioManager& audioManager, [[maybe_unused]] float dt)
+ComponentAccess AudioSystem::GetAccess() const
 {
-    for (auto [asc] : scene.View<AudioSourceComponent>()) {
+    return ComponentAccess{}
+        .Reads<AudioSourceComponent>()
+        .Writes<AudioSourceComponent>();
+}
+
+OrderingHints AudioSystem::GetOrder() const
+{
+    return OrderingHints{}.After<LateScriptSystem>();
+}
+
+void AudioSystem::Update(SystemContext& ctx)
+{
+    if (!ctx.audioManager) return;
+    audio::AudioManager& audioManager = *ctx.audioManager;
+    for (auto [asc] : ctx.scene.View<AudioSourceComponent>()) {
         if (asc.clipPath.empty()) continue;
 
         // 停止要求を最優先で処理する

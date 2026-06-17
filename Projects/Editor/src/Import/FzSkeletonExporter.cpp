@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzSkeletonExporter.cpp | fbzz::editor
-// aiScene のスケルトン情報 → .fzskel バイナリ書き出し
+// aiScene のスケルトン情報 → .skel バイナリ書き出し
 #include <Editor/Import/FzSkeletonExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>

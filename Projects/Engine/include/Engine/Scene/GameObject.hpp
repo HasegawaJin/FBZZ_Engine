@@ -21,6 +21,11 @@ public:
     // クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
     // UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
     std::string instanceId;
+    // Prefab インスタンスの出所アセットパス (Assets 起点の相対パス)。
+    // WHY: Apply/Revert のために「このインスタンスがどのプレファブから生成されたか」を
+    //      GO 自身に持たせる。空文字列 = Prefab 非インスタンス (通常の GO)。
+    //      SceneSerializer が Save/Load で永続化し、PrefabSerializer::Instantiate が書き込む。
+    std::string prefabAssetPath;
     int layer = 0;
 
     // Unity: gameObject.transform (常に存在。ComponentArray には入れない)

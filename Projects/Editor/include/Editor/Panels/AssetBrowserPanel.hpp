@@ -200,7 +200,7 @@ private:
         bool parsed = false;
         bool hasMaterial = false;
     };
-    // .fzmat の shaderPath / ShaderDescriptor に合わせて、サムネイル描画用の Material CB と Texture を更新する。
+    // .mat の shaderPath / ShaderDescriptor に合わせて、サムネイル描画用の Material CB と Texture を更新する。
     // WHY: AssetBrowser の Material サムネイルも実際のマテリアルと同じ HLSL を使い、Lit 固定による見た目のズレを避ける。
     bool RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx);
     // AssetBrowser のファイルアイコン内 Preview 状態。
@@ -258,7 +258,7 @@ private:
     void DrawImportSettingsModal(EditorContext& ctx);
 
     [[nodiscard]] static bool IsAlreadyImported(const std::string& absPath);
-    // .fzasset は存在するが、元ファイルのタイムスタンプがより新しい場合 true
+    // .asset は存在するが、元ファイルのタイムスタンプがより新しい場合 true
     [[nodiscard]] static bool IsOutdated(const std::string& absPath);
 
     // 再インポートが必要な (元ファイルが新しい) パスのセット

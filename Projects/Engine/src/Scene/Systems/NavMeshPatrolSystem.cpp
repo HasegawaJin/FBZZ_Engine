@@ -3,6 +3,8 @@
 // NavMeshPatrolComponent のウェイポイントを順送りし、同一 GO の NavMeshAgentComponent へ
 // SetDestination する。到達判定そのものは NavigationSystem (destinationReached) に委ねる。
 #include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/NavMeshPatrolComponent.hpp"
 #include "Engine/Scene/Components/NavMeshAgentComponent.hpp"
@@ -55,8 +57,22 @@ void ApplyWaypointSpeed(NavMeshAgentComponent& agent, float speed)
 
 } // namespace
 
-void NavMeshPatrolSystem(Scene& scene, float dt)
+ComponentAccess NavMeshPatrolSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<NavMeshPatrolComponent, NavMeshSensorComponent>()
+        .Writes<NavMeshAgentComponent>();
+}
+
+OrderingHints NavMeshPatrolSystem::GetOrder() const
+{
+    return OrderingHints{}.After<NavMeshSensorSystem>();
+}
+
+void NavMeshPatrolSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
+    const float dt = ctx.dt;
     for (EntityID eid : scene.GetEntities<NavMeshPatrolComponent>()) {
         auto* patrol = scene.GetComponent<NavMeshPatrolComponent>(eid);
         auto* agent  = scene.GetComponent<NavMeshAgentComponent>(eid);

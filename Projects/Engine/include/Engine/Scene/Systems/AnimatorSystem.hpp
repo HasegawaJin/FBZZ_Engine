@@ -2,15 +2,20 @@
 // AnimatorSystem.hpp | fbzz::scene
 // スケルタルアニメーションのサンプリングと GPU 転送
 // AnimationClip を評価し、SkinnedMeshRenderer 用の骨行列を更新する。
-// 描画そのものは RenderSystem に任せる。
+// ctx.resources が nullptr の場合はスキップ（Update() 内で guard）。
 #pragma once
-
-namespace fbzz::renderer { class ResourceManager; }
+#include "Engine/Core/Scheduler/ISystem.hpp"
 
 namespace fbzz::scene {
 
-class Scene;
-
-void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt);
+class AnimatorSystem final : public ISystem {
+public:
+    std::string_view Name()       const override { return "AnimatorSystem"; }
+    Phase            GetPhase()   const override { return Phase::LateUpdate; }
+    RunMode          GetRunMode() const override { return RunMode::Always; }
+    ComponentAccess  GetAccess()  const override;
+    OrderingHints    GetOrder()   const override;
+    void Update(SystemContext& ctx) override;
+};
 
 } // namespace fbzz::scene

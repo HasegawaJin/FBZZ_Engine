@@ -171,13 +171,24 @@ public:
             m_outputs.push_back(std::string(output));
     }
 
+    // RenderPipeline など動的にパスを構築する側から呼ぶ。SetOutputs のクリア不要版。
+    void AddOutput(std::string_view name)
+    {
+        m_outputs.emplace_back(name);
+    }
+
     [[nodiscard]] bool Validate() const
     {
         std::vector<size_t> order;
         return BuildExecutionOrder(nullptr, &order);
     }
 
-    [[nodiscard]] bool Execute()
+    // Plan: パス実行なしで依存解決・カリング・ライフタイム解析だけを行う。
+    // WHY: TransientRTPool が毎フレームの Execute() より前にリソース割り当てを確定するために、
+    //      「何が実行されるか・どのリソースがどのパス間で生きているか」を事前に知る必要がある。
+    //      Plan() → プール再構築 → Execute() の 2 フェーズにすることで
+    //      Execute 時にはすでにトランジェント RT が確保済みになる。
+    [[nodiscard]] bool Plan()
     {
         m_report = {};
 
@@ -186,9 +197,20 @@ public:
             return false;
 
         m_report.executionOrder = order;
-        m_report.lifetimes = AnalyzeLifetimes(order);
+        m_report.lifetimes      = AnalyzeLifetimes(order);
+        return true;
+    }
 
-        for (size_t passIndex : order) {
+    // Execute: Plan() 済みの実行順でパスコールバックを呼ぶ。
+    // Plan() が未呼び出しの場合は内部で Plan() を実行してから進む。
+    [[nodiscard]] bool Execute()
+    {
+        // 前フレームのプランが残っていない (executionOrder 空) 場合は Plan を走らせる。
+        if (m_report.executionOrder.empty()) {
+            if (!Plan()) return false;
+        }
+
+        for (size_t passIndex : m_report.executionOrder) {
             auto& pass = m_passes[passIndex];
             if (pass.execute) {
                 const auto start = std::chrono::steady_clock::now();

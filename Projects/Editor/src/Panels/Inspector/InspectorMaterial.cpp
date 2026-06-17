@@ -20,8 +20,8 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             // ── Rendering ───────────────────────────────────────────────────
             ImGui::SeparatorText("Material Asset");
             {
-                if (widgets::AssetPathField("Material (.fzmat)", mc.materialPath,
-                                            ".fzmat", ctx.projectRoot))
+                if (widgets::AssetPathField("Material (.mat)", mc.materialPath,
+                                            ".mat", ctx.projectRoot))
                     loadMaterialAsset();
                 if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
                     ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
@@ -258,7 +258,7 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             const bool canSave = !mc.materialPath.empty();
             if (!canSave)
                 ImGui::BeginDisabled();
-            if (ImGui::Button("Save .fzmat")) {
+            if (ImGui::Button("Save .mat")) {
                 if (asset::SaveMaterialAssetToFile(MaterialAssetDiskPath(ctx, mc.materialPath), mat))
                     ctx.requestAssetBrowserRefresh = true;
             }

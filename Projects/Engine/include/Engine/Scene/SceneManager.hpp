@@ -5,7 +5,10 @@
 // Scene の所有は manager が持ち、利用側は非所有参照で扱う。
 #pragma once
 #include "Scene.hpp"
+#include "Engine/Core/Scheduler/SystemScheduler.hpp"
 #include <Physics/World.hpp>
+
+namespace fbzz::audio { class AudioManager; }
 #include <functional>
 #include <memory>
 #include <string>
@@ -17,6 +20,8 @@ namespace fbzz::scene {
 
 class SceneManager {
 public:
+    SceneManager();
+
     using SceneFactory = std::function<std::unique_ptr<Scene>()>;
 
     void Register(const std::string& name, SceneFactory factory);
@@ -34,34 +39,40 @@ public:
     // 固定タイムステップの Hz (デフォルト 60)
     void SetPhysicsHz(int hz);
 
-    // false のとき TransformSystem のみ実行する (エディタ停止中)
+    // false のとき EditorOnly System のみ実行する (エディタ停止中)
     void SetSimulating(bool simulating);
+
+    // AudioSystem に渡す AudioManager を設定する（null を渡すと AudioSystem はスキップ）
+    void SetAudioManager(audio::AudioManager* audioManager);
 
     // true のとき accumulator を無視して physics を 1 回だけ実行する (frame step 用)
     void SetSingleStep(bool singleStep);
 
-    // Phase 1-6: Script → Transform → Physics(fixed loop) → Transform → LateScript → Lifetime → Flush
+    // Phase PreScript 〜 Cleanup
     // RenderSystem はゲームループ側から BeginFrame/EndFrame の間に直接呼ぶこと
     void Update(float dt, physics::World& world);
 
-    // Phase 7-8: Transform(post-flush) → Animator → IK
+    // Phase LateUpdate のみ
     void LateUpdate(float dt, physics::World& world);
 
     Scene* GetActive();
 
+    // 型で System インスタンスを取得（エディタ統合用）
+    template<typename T>
+    T* GetSystem() const { return m_scheduler.GetSystem<T>(); }
+
 private:
     Scene* CurrentScene() const;
+    void BuildScheduler();
 
     std::unordered_map<std::string, SceneFactory> m_factories;
     std::unique_ptr<Scene>                        m_active;
-    // LoadScene() が呼ばれた時点では切り替えず、次フレームの Update() 先頭で適用する。
-    // フレーム途中に m_active を差し替えると、走査中の System が dangling 参照を掴む危険がある。
     std::string                                   m_pendingLoad;
-    Scene*                                        m_externalScene      = nullptr;
-    float                                         m_physicsAccumulator = 0.0f;
-    int                                           m_physicsHz          = 60;
-    bool                                          m_simulating         = true;
-    bool                                          m_singleStep         = false;
+    Scene*                                        m_externalScene  = nullptr;
+    bool                                          m_simulating     = true;
+    audio::AudioManager*                          m_audioManager   = nullptr;
+
+    SystemScheduler m_scheduler;
 };
 
 } // namespace fbzz::scene

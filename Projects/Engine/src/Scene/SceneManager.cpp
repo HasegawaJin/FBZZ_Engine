@@ -17,6 +17,8 @@
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
 #include "Engine/Scene/Systems/IKSystem.hpp"
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
+#include "Engine/Scene/Systems/AudioSystem.hpp"
+#include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <string>
@@ -24,21 +26,55 @@
 
 namespace fbzz::scene {
 
-namespace {
-const char* PhysicsStepCountMarkerName(int steps)
+SceneManager::SceneManager()
 {
-    // WHY: 固定タイムステップの catch-up で PhysicsSystem が 1 フレームに複数回走ることがある。
-    //      Profiler marker として回数を残し、重複呼び出し疑いを確認しやすくする。
-    if (steps <= 1) return nullptr;
-    if (steps == 2) return "PhysicsFixedSteps=2";
-    if (steps == 3) return "PhysicsFixedSteps=3";
-    if (steps == 4) return "PhysicsFixedSteps=4";
-    if (steps == 5) return "PhysicsFixedSteps=5";
-    if (steps == 6) return "PhysicsFixedSteps=6";
-    if (steps == 7) return "PhysicsFixedSteps=7";
-    return "PhysicsFixedSteps>=8";
+    BuildScheduler();
 }
-} // namespace
+
+void SceneManager::BuildScheduler()
+{
+    // Physics 固定ステップを設定
+    m_scheduler.ConfigurePhase(Phase::Physics, { .fixedStep = true, .hz = 60, .maxCatchUp = 8.0f });
+
+    // PreScript
+    m_scheduler.AddSystem<TransformEditorPreview>();
+    m_scheduler.AddSystem<FoliageBakeSystem>();
+    m_scheduler.AddSystem<NavMeshBakeSystem>();
+    m_scheduler.AddSystem<FoliageCullSystem>();
+
+    // Script
+    m_scheduler.AddSystem<ScriptSystem>();
+
+    // PrePhysics
+    m_scheduler.AddSystem<TransformPrePhysics>();
+
+    // Physics
+    m_scheduler.AddSystem<PhysicsSystem>();
+
+    // PostPhysics
+    m_scheduler.AddSystem<TransformPostPhysics>();
+
+    // Navigation
+    m_scheduler.AddSystem<NavMeshSensorSystem>();
+    m_scheduler.AddSystem<NavMeshPatrolSystem>();
+    m_scheduler.AddSystem<NavigationSystem>();
+
+    // LateScript
+    m_scheduler.AddSystem<LateScriptSystem>();
+    m_scheduler.AddSystem<AudioSystem>();
+
+    // Cleanup
+    m_scheduler.AddSystem<LifetimeSystem>();
+    m_scheduler.AddSystem<FlushDestroyQueueSystem>();
+
+    // LateUpdate
+    m_scheduler.AddSystem<UIAnimatorSystem>();
+    m_scheduler.AddSystem<TransformLateUpdate>();
+    m_scheduler.AddSystem<AnimatorSystem>();
+    m_scheduler.AddSystem<IKSystem>();
+
+    m_scheduler.Build();
+}
 
 void SceneManager::Register(const std::string& name, SceneFactory factory)
 {
@@ -66,19 +102,25 @@ void SceneManager::SetScene(Scene* scene)
 
 void SceneManager::SetPhysicsHz(int hz)
 {
-    m_physicsHz = hz < 1 ? 1 : hz;
+    hz = hz < 1 ? 1 : hz;
+    m_scheduler.ConfigurePhase(Phase::Physics, { .fixedStep = true, .hz = hz, .maxCatchUp = 8.0f });
 }
 
 void SceneManager::SetSimulating(bool simulating)
 {
     m_simulating = simulating;
     if (!simulating)
-        m_physicsAccumulator = 0.0f;
+        m_scheduler.ResetAccumulator();
+}
+
+void SceneManager::SetAudioManager(audio::AudioManager* audioManager)
+{
+    m_audioManager = audioManager;
 }
 
 void SceneManager::SetSingleStep(bool singleStep)
 {
-    m_singleStep = singleStep;
+    m_scheduler.SetSingleStep(singleStep);
 }
 
 Scene* SceneManager::CurrentScene() const
@@ -99,80 +141,7 @@ void SceneManager::Update(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
-    if (!m_simulating) {
-        // ── 停止中: Transform のみ (エディタ上のオブジェクト移動を反映する) ────
-        FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
-        TransformSystem(*scene);
-        FoliageBakeSystem(*scene);
-        FoliageCullSystem(*scene);
-        NavMeshBakeSystem(*scene);
-        return;
-    }
-
-    // ── Phase 0: Foliage Bake / Cull (Script より前に GO 生成と距離カリングを完了) ──
-    // WHY: スクリプトが stamp 子 GO にアクセスする初回フレームで不整合が生じないよう
-    //      エディタループと同じ順序にする。
-    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageBakeSystem");
-      FoliageBakeSystem(*scene); }
-    { FBZZ_PROFILE_SCOPE("SceneManager::FoliageCullSystem");
-      FoliageCullSystem(*scene); }
-    { FBZZ_PROFILE_SCOPE("SceneManager::NavMeshBakeSystem");
-      NavMeshBakeSystem(*scene); }
-
-    // ── Phase 1: Script Update ──────────────────────────────────────────────
-    { FBZZ_PROFILE_SCOPE("SceneManager::ScriptSystem");
-      ScriptSystem(*scene, dt); }
-
-    // ── Phase 2: Transform ──────────────────────────────────────────────────
-    { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
-      TransformSystem(*scene); }
-
-    // ── Phase 3: Physics (fixed timestep) ───────────────────────────────────
-    {
-        FBZZ_PROFILE_SCOPE("SceneManager::PhysicsFixedStepLoop");
-        const float fixedDt = 1.0f / static_cast<float>(m_physicsHz);
-        int steps = 0;
-        if (m_singleStep) {
-            PhysicsSystem(*scene, world, fixedDt);
-            steps = 1;
-        } else {
-            m_physicsAccumulator += dt;
-            const float maxAccum = fixedDt * 8.0f;
-            if (m_physicsAccumulator > maxAccum) m_physicsAccumulator = maxAccum;
-            while (m_physicsAccumulator >= fixedDt) {
-                PhysicsSystem(*scene, world, fixedDt);
-                m_physicsAccumulator -= fixedDt;
-                ++steps;
-            }
-        }
-        if (const char* marker = PhysicsStepCountMarkerName(steps)) FBZZ_PROFILE_MARKER(marker);
-    }
-
-    // ── Phase 4: Transform (physics writeback) ──────────────────────────────
-    { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
-      TransformSystem(*scene); }
-
-    // ── Phase 4.5: Navigation (Sensor 検知 → 巡回 AI の目的地決定 → パス追従・移動) ──
-    // WHY: Physics の Transform 書き戻し後に Agent を動かすことで、同フレームの
-    //      Collider 位置と Navigation の移動結果が整合する。
-    //      NavMeshSensorSystem → NavMeshPatrolSystem → NavigationSystem の順で呼ぶことで、
-    //      「検知して target が立つ → 巡回はそれを見て中断 → 同フレームでパス計算」が揃う。
-    { FBZZ_PROFILE_SCOPE("SceneManager::NavMeshSensorSystem");
-      NavMeshSensorSystem(*scene, &world, dt); }
-    { FBZZ_PROFILE_SCOPE("SceneManager::NavMeshPatrolSystem");
-      NavMeshPatrolSystem(*scene, dt); }
-    { FBZZ_PROFILE_SCOPE("SceneManager::NavigationSystem");
-      NavigationSystem(*scene, dt); }
-
-    // ── Phase 5: Script LateUpdate ──────────────────────────────────────────
-    { FBZZ_PROFILE_SCOPE("SceneManager::LateScriptSystem");
-      LateScriptSystem(*scene, dt); }
-
-    // ── Phase 6: Lifetime & Cleanup ─────────────────────────────────────────
-    { FBZZ_PROFILE_SCOPE("SceneManager::LifetimeSystem");
-      LifetimeSystem(*scene, dt); }
-    { FBZZ_PROFILE_SCOPE("SceneManager::FlushDestroyQueue");
-      scene->FlushDestroyQueue(dt); }
+    m_scheduler.Update({ *scene, world, nullptr, m_audioManager, dt, 0.0f, m_simulating });
 }
 
 void SceneManager::LateUpdate(float dt, physics::World& world)
@@ -182,19 +151,7 @@ void SceneManager::LateUpdate(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
-    // ── Phase 7: Transform (FlushDestroyQueue 後のリフレッシュ) ─────────────
-    { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
-      TransformSystem(*scene); }
-
-    // ── Phase 8: Animation ──────────────────────────────────────────────────
-    // AnimatorSystem が FK ポーズとスキニング行列を作った直後に IK を適用する。
-    // WHY: IK はアニメーション結果を補正する後段処理なので、先に呼ぶと AnimatorSystem に上書きされる。
-    if (auto* resources = renderer::ResourceManager::Active()) {
-        { FBZZ_PROFILE_SCOPE("SceneManager::AnimatorSystem");
-          AnimatorSystem(*scene, *resources, dt); }
-        { FBZZ_PROFILE_SCOPE("SceneManager::IKSystem");
-          IKSystem(*scene, world, *resources, dt); }
-    }
+    m_scheduler.LateUpdate({ *scene, world, renderer::ResourceManager::Active(), m_audioManager, dt, 0.0f, m_simulating });
 }
 
 Scene* SceneManager::GetActive()

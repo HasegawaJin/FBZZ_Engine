@@ -1,20 +1,23 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // RenderSystem.cpp | fbzz::scene
 // Scene から DrawCall を生成するオーケストレーター
 // 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include "Engine/Scene/Systems/RenderSystem.hpp"
-#include "Engine/Scene/Systems/TerrainRenderSystem.hpp"
-#include "Engine/Scene/Systems/WaterRenderSystem.hpp"
-#include "Engine/Scene/Systems/DetailRenderSystem.hpp"
-#include "Engine/Scene/Systems/FoliageRenderSystem.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/DetailRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/FoliageRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/MeshTrailRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
 #include "Engine/Renderer/DebugDraw.hpp"
-#include "RenderPasses/DebugPasses.hpp"
-#include "RenderPasses/GeometryPasses.hpp"
-#include "RenderPasses/PostProcessPasses.hpp"
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
-#include "RenderPasses/SelectionPasses.hpp"
+#include "RenderPasses/Debug/DebugPasses.hpp"
+#include <Physics/World.hpp>
+#include "RenderPasses/Geometry/GeometryPasses.hpp"
+#include "RenderPasses/PostProcess/PostProcessPasses.hpp"
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include "RenderPasses/Debug/SelectionPasses.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
@@ -29,7 +32,7 @@
 #include "Engine/Renderer/LightSystem.hpp"
 #include "Engine/Renderer/Mesh.hpp"
 #include "Engine/Renderer/PrimitiveMesh.hpp"
-#include "Engine/Renderer/RenderGraph.hpp"
+#include "Engine/Scene/Systems/RenderPasses/RenderPipeline.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -149,7 +152,8 @@ void RenderSystem(Scene& scene,
                   renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
                   const renderer::RenderSettings* settings,
                   fbzz::LayerMask cullingMask,
-                  const RenderSystemUIOptions* uiOptions)
+                  const RenderSystemUIOptions* uiOptions,
+                  const physics::World* physicsWorld)
 {
     FBZZ_PROFILE_SCOPE("RenderSystem");
 
@@ -178,7 +182,6 @@ void RenderSystem(Scene& scene,
     }
 
     static auto compositeShader         = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
-    static auto copyColorShader         = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
     static auto causticsShader          = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
     static auto ssaoShader              = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
     static auto ssaoBlurShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
@@ -325,7 +328,6 @@ void RenderSystem(Scene& scene,
         shadowShader        = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
         skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
         compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
-        copyColorShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         causticsShader      = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
         ssaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
         ssaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
@@ -425,7 +427,6 @@ void RenderSystem(Scene& scene,
     static renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> sceneColorRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
     static renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> decalDepthRT;
@@ -441,7 +442,6 @@ void RenderSystem(Scene& scene,
         ldrRT = {};
         selectionMaskRT = {};
         outlineRT = {};
-        sceneColorRT = {};
         customPostProcessRT[0] = {};
         customPostProcessRT[1] = {};
         gbufferRT = {};
@@ -466,7 +466,6 @@ void RenderSystem(Scene& scene,
             if (ldrRT.IsValid())            resources.Release(ldrRT);
             if (selectionMaskRT.IsValid())  resources.Release(selectionMaskRT);
             if (outlineRT.IsValid())        resources.Release(outlineRT);
-            if (sceneColorRT.IsValid())     resources.Release(sceneColorRT);
             if (customPostProcessRT[0].IsValid()) resources.Release(customPostProcessRT[0]);
             if (customPostProcessRT[1].IsValid()) resources.Release(customPostProcessRT[1]);
             if (gbufferRT.IsValid())        resources.Release(gbufferRT);
@@ -480,7 +479,6 @@ void RenderSystem(Scene& scene,
             ldrRT           = resources.CreateRenderTarget(curW, curH, 1);
             selectionMaskRT = resources.CreateRenderTarget(curW, curH, 1);
             outlineRT       = resources.CreateRenderTarget(curW, curH, 1);
-            sceneColorRT    = resources.CreateRenderTarget(curW, curH, 1);
             customPostProcessRT[0] = resources.CreateRenderTarget(curW, curH, 1);
             customPostProcessRT[1] = resources.CreateRenderTarget(curW, curH, 1);
             gbufferRT       = resources.CreateRenderTarget(curW, curH, 2);
@@ -682,26 +680,27 @@ void RenderSystem(Scene& scene,
         lightData, lightVP, isDeferred, ssaoEnabled,
         &cameraFrustum, &lightFrustum, &occlusionCuller
     };
+    passCtx.physicsWorld = physicsWorld;
 
     // =========================================================================
-    // RenderGraph にパスを登録
+    // RenderPipeline にパスを登録
     // =========================================================================
-    renderer::RenderGraph graph;
-    graph.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true,  false });
-    graph.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, kShadowMapSize, kShadowMapSize, 0, false, false });
-    graph.DeclareResource("HDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.DeclareResource("LDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.DeclareResource("Outline",    { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.DeclareResource("SceneColor", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    RenderPipeline pipeline;
+    pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true,  false });
+    pipeline.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, kShadowMapSize, kShadowMapSize, 0, false, false });
+    pipeline.DeclareResource("HDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.DeclareResource("LDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.DeclareResource("Outline",    { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.DeclareResource("SceneColor", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
     if (isDeferred)
-        graph.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, false });
+        pipeline.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, false });
     if (ssaoEnabled)
-        graph.DeclareResource("SSAO", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
-    graph.SetOutputs({ "Output" });
+        pipeline.DeclareResource("SSAO", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    pipeline.SetOutputs({ "Output" });
 
     scene.ClearUserRenderPasses();
 
@@ -711,139 +710,74 @@ void RenderSystem(Scene& scene,
                 continue;
             assert(!desc.name.empty() && "UserRenderPassDesc.name is required");
             auto execute = desc.execute;
-            graph.AddPass(desc.name, desc.accesses, [&, execute]() {
+            pipeline.AddRawPass(desc.name, desc.accesses, [&, execute]() {
                 if (execute)
                     execute(passCtx);
             }, desc.allowCulling);
         }
     };
 
-    auto queueWaterPasses = [&]() {
-        // WHY: Water も Script と同じ UserRenderPassDesc 経路で登録する。
-        //      これにより組み込み機能とユーザー VFX が同じ RenderGraph 拡張モデルに乗り、
-        //      将来的に Sandbox 側の専用 Script へ移しても RenderSystem の構造を変えずに済む。
-        UserRenderPassDesc copyPass{};
-        copyPass.name = "WaterSceneColorCopy";
-        copyPass.injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
-        copyPass.accesses = {
-            { "HDR", renderer::RenderGraph::ResourceUsage::Read },
-            { "SceneColor", renderer::RenderGraph::ResourceUsage::Write }
-        };
-        copyPass.execute = [=](RenderPassContext& ctx) {
-            ctx.renderer.SetRenderTarget(sceneColorRT, ctx.resources);
-            ctx.renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
-            if (copyColorShader.IsValid()) {
-                renderer::DrawCall dc;
-                dc.shader = copyColorShader;
-                dc.pipelineState = postprocPSO;
-                dc.vertexCount = 3;
-                dc.textures[5] = ctx.resources.GetColorTexture(hdrRT, 0);
-                ctx.renderer.Submit(dc, ctx.resources);
-            }
-        };
-        scene.QueueUserRenderPass(std::move(copyPass));
-
-        UserRenderPassDesc waterPass{};
-        waterPass.name = "WaterForward";
-        waterPass.injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
-        waterPass.accesses = {
-            { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite },
-            { "SceneColor", renderer::RenderGraph::ResourceUsage::Read },
-            { "ShadowMap", renderer::RenderGraph::ResourceUsage::Read }
-        };
-        waterPass.execute = [=](RenderPassContext& ctx) {
-            ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
-            WaterRenderSystem(ctx.scene, ctx.renderer, ctx.resources, ctx.camera,
-                              ctx.handles.hdrRT,
-                              copyColorShader.IsValid()
-                                  ? ctx.resources.GetColorTexture(sceneColorRT, 0)
-                                  : renderer::ResourceHandle<renderer::TextureTag>{},
-                              Time::time, &ctx.settings,
-                              ctx.handles.lightCB,
-                              ctx.resources.GetDepthTexture(ctx.handles.shadowMapRT),
-                              ctx.handles.shadowCB);
-        };
-        scene.QueueUserRenderPass(std::move(waterPass));
-    };
-
     // ── Shadow ────────────────────────────────────────────────────────────────
-    graph.AddPass("Shadow", {}, { "ShadowMap" }, [&]() {
+    pipeline.AddRawPass("Shadow", {}, { "ShadowMap" }, [&]() {
         ExecuteShadowPass(passCtx);
     });
 
     // ── Forward or Deferred ───────────────────────────────────────────────────
     if (!isDeferred) {
-        graph.AddPass("ForwardOpaque", { "ShadowMap" }, { "HDR" }, [&]() {
+        pipeline.AddRawPass("ForwardOpaque", { "ShadowMap" }, { "HDR" }, [&]() {
             ExecuteForwardPasses(passCtx);
         });
     }
 
     if (isDeferred) {
-        graph.AddPass("DeferredGBuffer", { "ShadowMap" }, { "GBuffer" }, [&]() {
+        pipeline.AddRawPass("DeferredGBuffer", { "ShadowMap" }, { "GBuffer" }, [&]() {
             ExecuteGBufferPass(passCtx);
         });
 
-        graph.AddPass("DeferredDepthCopy", { "GBuffer" }, { "HDR" }, [&]() {
+        pipeline.AddRawPass("DeferredDepthCopy", { "GBuffer" }, { "HDR" }, [&]() {
             ExecuteDeferredDepthCopyPass(passCtx);
         });
     }
 
-    // ── Terrain (フォワードオペーク) ───────────────────────────────────────────
+    // ── Terrain / Detail / Foliage ────────────────────────────────────────────
     // ForwardOpaque / GBuffer DepthCopy の後・Sky の前に描画する。
     // WHY: Sky より前に描画することで地形の上に空が被らない。
     //      ForwardOpaque と同じ HDR RT (depth buffer 共有) で描画することで
     //      Player 等の不透明オブジェクトと正しく depth test される。
     //      RenderSystem 内に統合することでポストプロセス（bloom/SSAO等）も適用される。
-    graph.AddPass("TerrainForward", { "ShadowMap", "HDR" }, { "HDR" }, [&]() {
-        renderer.SetRenderTarget(passHandles.hdrRT, resources);
-        TerrainRenderSystem(scene, renderer, resources, camera, passHandles.hdrRT, settings,
-                            resources.GetDepthTexture(passHandles.shadowMapRT), passHandles.shadowCB,
-                            passHandles.lightCB);
-    });
+    pipeline.AddPass<TerrainRenderPass>();
+    pipeline.AddPass<DetailRenderPass>();
+    pipeline.AddPass<FoliageRenderPass>();
 
-    // ── Sky ───────────────────────────────────────────────────────────────────
-    // DetailPass: Terrain 上の草・岩・花を GPU Instancing で描画する。
-    // WHY: TerrainForward と同じ HDR RT / depth buffer を共有することで
-    //      地形・Detail・Sky が正しく depth test される。
-    graph.AddPass("DetailPass", { "HDR" }, { "HDR" }, [&]() {
-        renderer.SetRenderTarget(passHandles.hdrRT, resources);
-        DetailRenderSystem(passCtx);
-    });
-
-    graph.AddPass("FoliagePass", { "HDR" }, { "HDR" }, [&]() {
-        renderer.SetRenderTarget(passHandles.hdrRT, resources);
-        FoliageRenderSystem(passCtx);
-    });
-
-    graph.AddPass("Sky", { "HDR" }, { "HDR" }, [&]() {
+    pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
         ExecuteSkyPass(passCtx);
     });
 
     // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
     if (isDeferred) {
         if (ssaoEnabled) {
-            graph.AddPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
+            pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
                 ExecuteSSAOPass(passCtx);
             });
-            graph.AddPass("DeferredLighting", { "GBuffer", "HDR", "SSAO" }, { "HDR" }, [&]() {
+            pipeline.AddRawPass("DeferredLighting", { "GBuffer", "HDR", "SSAO" }, { "HDR" }, [&]() {
                 ExecuteDeferredLightingPass(passCtx);
             });
         } else {
-            graph.AddPass("DeferredLighting", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+            pipeline.AddRawPass("DeferredLighting", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
                 ExecuteDeferredLightingPass(passCtx);
             });
         }
 
-        graph.AddPass("DeferredSkinnedForward", { "HDR" }, { "HDR" }, [&]() {
+        pipeline.AddRawPass("DeferredSkinnedForward", { "HDR" }, { "HDR" }, [&]() {
             ExecuteDeferredSkinnedForwardPass(passCtx);
         });
 
-        graph.AddPass("DeferredForwardTransparent", { "HDR" }, { "HDR" }, [&]() {
+        pipeline.AddRawPass("DeferredForwardTransparent", { "HDR" }, { "HDR" }, [&]() {
             ExecuteDeferredForwardTransparentPass(passCtx);
         });
     }
 
-    queueWaterPasses();
+    pipeline.AddPass<WaterRenderPass>();
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
@@ -853,15 +787,15 @@ void RenderSystem(Scene& scene,
             if (!entry.script || !entry.script->enabled)
                 continue;
             entry.script->SetContext(&scene, go);
-            entry.script->OnSetupRenderPasses(graph, passCtx);
+            entry.script->OnSetupRenderPasses(pipeline, passCtx);
         }
     }
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterOpaque);
 
     // ── デカール用深度スナップショット ────────────────────────────────────────
-    graph.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    graph.AddPass("DecalDepthCopy", { isDeferred ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
+    pipeline.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
+    pipeline.AddRawPass("DecalDepthCopy", { isDeferred ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
         renderer.SetRenderTarget(decalDepthRT, resources);
         renderer.ClearDepth();
         if (depthCopyShader.IsValid()) {
@@ -877,40 +811,38 @@ void RenderSystem(Scene& scene,
     });
 
     // ── Decal + Trail + Particle ──────────────────────────────────────────────
-    graph.AddPass("Decal", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
+    pipeline.AddRawPass("Decal", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
         ExecuteDecalPass(passCtx);
     });
 
-    graph.AddPass("MeshTrail", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteMeshTrailPass(passCtx);
-    });
+    pipeline.AddPass<MeshTrailRenderPass>();
+    pipeline.AddPass<TrailRenderPass>();
 
-    graph.AddPass("Trail", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteTrailPass(passCtx);
-    });
-
-    graph.AddPass("Particle", { "HDR" }, { "HDR" }, [&]() {
+    pipeline.AddRawPass("Particle", { "HDR" }, { "HDR" }, [&]() {
         ExecuteParticlePass(passCtx);
     });
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
     // ── Selection / Debug ─────────────────────────────────────────────────────
-    graph.AddPass("UnderwaterCaustics", { "HDR" }, { "HDR" }, [&]() {
+    pipeline.AddRawPass("UnderwaterCaustics", { "HDR" }, { "HDR" }, [&]() {
         ExecuteCausticsPass(passCtx);
     });
 
     if (selectionOutlineEnabled) {
-        graph.AddPass("SelectionMask", { "HDR" }, { "SelectionMask" }, [&]() {
+        pipeline.AddRawPass("SelectionMask", { "HDR" }, { "SelectionMask" }, [&]() {
             ExecuteSelectionMaskPass(passCtx);
         });
     }
 
-    graph.AddPass("DebugColliders", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteDebugCollidersPass(passCtx);
-    });
+    pipeline.AddPass<DebugCollidersPass>();
+    pipeline.AddPass<ConstraintDebugPass>();
+    pipeline.AddPass<AnimatorDebugPass>();
+    pipeline.AddPass<GridDebugPass>();
+    pipeline.AddPass<LightRangeDebugPass>();
+    pipeline.AddPass<TerrainCollisionDebugPass>();
 
-    graph.AddPass("ScriptDebugDraw", { "HDR" }, { "HDR" }, [&]() {
+    pipeline.AddRawPass("ScriptDebugDraw", { "HDR" }, { "HDR" }, [&]() {
         scene.TickScriptDebugDrawCommands(Time::deltaTime);
         renderer::DebugDraw::BeginFrame(passCtx.renderer, passCtx.resources, passCtx.camera.GetViewProjection());
 
@@ -960,19 +892,14 @@ void RenderSystem(Scene& scene,
         renderer::DebugDraw::Flush();
     });
 
-    graph.AddPass("NavMeshDebug", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteNavMeshDebugPass(passCtx);
-    });
-
-    graph.AddPass("DebugDecalBounds", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteDecalDebugPass(passCtx);
-    });
+    pipeline.AddPass<NavMeshDebugPass>();
+    pipeline.AddPass<DecalDebugPass>();
 
     appendQueuedUserPasses(UserRenderPassInjectionPoint::BeforePostProcess);
 
     // ── PostProcess チェーン ──────────────────────────────────────────────────
     if (rs.postProcess.bloom.enabled) {
-        graph.AddPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
+        pipeline.AddRawPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
             ExecuteBloomPass(passCtx);
         });
     }
@@ -985,11 +912,11 @@ void RenderSystem(Scene& scene,
         rs.postProcess.fxaaEnabled || selectionOutlineEnabled || customPostProcessEnabled;
 
     if (rs.postProcess.bloom.enabled) {
-        graph.AddPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+        pipeline.AddRawPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
         });
     } else {
-        graph.AddPass("Composite", { "HDR" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+        pipeline.AddRawPass("Composite", { "HDR" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
         });
     }
@@ -1007,7 +934,7 @@ void RenderSystem(Scene& scene,
             const std::string passName    = "CustomPostProcess" + std::to_string(passIndex);
             const uint32_t    customIndex = customPostProcessIndices[passIndex];
 
-            graph.AddPass(
+            pipeline.AddRawPass(
                 std::string_view(passName),
                 { std::string_view(inputResource) },
                 { std::string_view(outputResource) },
@@ -1021,7 +948,7 @@ void RenderSystem(Scene& scene,
     }
 
     if (selectionOutlineEnabled) {
-        graph.AddPass("SelectionOutline",
+        pipeline.AddRawPass("SelectionOutline",
             { std::string_view(postCustomResource), "SelectionMask" },
             { rs.postProcess.fxaaEnabled ? "Outline" : "Output" },
             [&]() { ExecuteSelectionOutlinePass(passCtx); });
@@ -1029,16 +956,16 @@ void RenderSystem(Scene& scene,
 
     if (rs.postProcess.fxaaEnabled) {
         if (selectionOutlineEnabled) {
-            graph.AddPass("FXAA", { "Outline" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
+            pipeline.AddRawPass("FXAA", { "Outline" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
         } else if (customPostProcessEnabled) {
-            graph.AddPass("FXAA", { std::string_view(postCustomResource) }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
+            pipeline.AddRawPass("FXAA", { std::string_view(postCustomResource) }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
         } else {
-            graph.AddPass("FXAA", { "LDR" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
+            pipeline.AddRawPass("FXAA", { "LDR" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
         }
     }
 
     if (uiOptions && uiOptions->enabled && uiOptions->context) {
-        graph.AddPass(
+        pipeline.AddRawPass(
             "UIPass",
             { { "Output", renderer::RenderGraph::ResourceUsage::ReadWrite } },
             [&]() {
@@ -1083,7 +1010,7 @@ void RenderSystem(Scene& scene,
     }
 
     // =========================================================================
-    // RenderGraph 実行 + デバッグスナップショット更新
+    // RenderPipeline 実行 + デバッグスナップショット更新
     // =========================================================================
 
     // GPU Timestamp Query の前フレーム結果を収集してからフレームを開始する。
@@ -1091,18 +1018,14 @@ void RenderSystem(Scene& scene,
     renderer.GpuProfCollect();
     renderer.GpuProfBeginFrame();
 
-    // GPU フックを RenderGraph に設定する。CPU フックとは独立しているため、
+    // GPU フックを RenderPipeline に設定する。CPU フックとは独立しているため、
     // Profiler の CPU スコープ計測と干渉しない。
-    graph.SetGpuProfilerHooks(
+    pipeline.SetGpuProfilerHooks(
         [&](std::string_view name) { renderer.GpuProfBeginPass(name.data()); },
         [&](std::string_view name) { renderer.GpuProfEndPass(name.data()); }
     );
 
-    bool graphExecuted = false;
-    {
-        FBZZ_PROFILE_SCOPE("RenderGraph::Execute");
-        graphExecuted = graph.Execute();
-    }
+    const bool graphExecuted = pipeline.Execute(passCtx);
 
     renderer.GpuProfEndFrame();
     assert(graphExecuted);
@@ -1130,7 +1053,7 @@ void RenderSystem(Scene& scene,
         dbgSnap.gbufferRT       = gbufferRT;
         dbgSnap.width           = sHdrW;
         dbgSnap.height          = sHdrH;
-        for (const auto& profile : graph.GetLastReport().profiles)
+        for (const auto& profile : pipeline.LastReport().profiles)
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
 
         // GPU 計測結果を Snapshot に詰める。QUERY_LATENCY フレーム以内は空になる。

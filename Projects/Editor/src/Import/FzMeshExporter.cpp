@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzMeshExporter.cpp | fbzz::editor
-// aiMesh → .fzmesh バイナリ書き出し
+// aiMesh → .mesh バイナリ書き出し
 #include <Editor/Import/FzMeshExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>

@@ -9,6 +9,7 @@
 //      STAMP は個別配置で数が限られるため GO 化してヒエラルキー・物理を統合する。
 //      レンダリングは引き続き FoliageRenderSystem (GPU instancing) が担う。
 #include "Engine/Scene/Systems/FoliageBakeSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/FoliageComponent.hpp"
@@ -110,8 +111,16 @@ OBBDims ComputeOBBFromModel(const std::string& modelPath)
 
 } // namespace
 
-void FoliageBakeSystem(Scene& scene)
+ComponentAccess FoliageBakeSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<TerrainComponent, FoliageComponent>()
+        .Writes<FoliageComponent>();
+}
+
+void FoliageBakeSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
     for (EntityID eid : scene.GetEntities<FoliageComponent>()) {
         auto* foliage  = scene.GetComponent<FoliageComponent>(eid);
         auto* go       = scene.GetGameObject(eid);

@@ -13,7 +13,7 @@ namespace fbzz::editor {
 
 namespace {
 
-// .fzasset を読んでシーンに GO 階層を構築する共通ヘルパー。
+// .asset を読んでシーンに GO 階層を構築する共通ヘルパー。
 // meshes が複数なら root の下に mesh ごとの子 GO を生成する。
 // AnimatorComponent は後からユーザーが親 GO へ手動追加する想定。
 scene::EntityID SpawnFzAssetHierarchy(scene::Scene& scene, const std::string& assetPath)
@@ -123,7 +123,7 @@ math::Vector3 PrefabDropPosition(const EditorContext& ctx, const ImVec2& viewpor
 
 bool InstantiatePrefabAsset(EditorContext& ctx, const std::string& assetPath)
 {
-    if (!ctx.activeScene || util::FileSystem::GetExtension(assetPath) != ".fbzzprefab")
+    if (!ctx.activeScene || util::FileSystem::GetExtension(assetPath) != ".prefab")
         return false;
 
     std::vector<scene::EntityID> roots;

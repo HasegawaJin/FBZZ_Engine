@@ -45,7 +45,6 @@
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
-#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -673,7 +672,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     // WHY: PrefabSerializer は Editor プロジェクトにあり Engine から直接呼べないため、
     //      Script::SetInstantiateFn で実装を注入する。ScriptSceneProxy::Instantiate が
     //      ここを経由して PrefabSerializer::Instantiate を呼ぶ。
-    //      PrefabRef::path は Assets 起点の相対パス ("Assets/Foo.fbzzprefab") で保存されるため、
+    //      PrefabRef::path は Assets 起点の相対パス ("Assets/Foo.prefab") で保存されるため、
     //      ToProjectAssetDiskPath でプロジェクトルートを補完して絶対パスへ変換してから渡す。
     const std::string capturedRoot = projectRoot;
     scene::Script::SetInstantiateFn([capturedRoot](scene::Scene& s, const std::string& path,
@@ -1325,34 +1324,16 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         uiOptions.viewportHeight = h;
         uiOptions.targetView    = scene::UIRenderTargetView::SceneViewport;
         uiOptions.context       = &m_sceneUICtx;
+        sceneRenderSettings.showSkeleton    = m_ctx.showSkeleton;
+        sceneRenderSettings.showGrid        = m_ctx.showGrid;
+        sceneRenderSettings.showLightRange  = m_ctx.showLightRange;
+        sceneRenderSettings.showConstraints = sceneRenderSettings.showColliders;
+        if (m_playMode.IsPlaying())
+            sceneRenderSettings.showNavMesh = false;
         scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
                             m_debugCamera.camera, sceneRT, &sceneRenderSettings,
-                            fbzz::Layer::Everything, &uiOptions);
+                            fbzz::Layer::Everything, &uiOptions, &m_physicsWorld);
     }
-
-    const auto& render = m_ctx.projectSettings.render;
-    if (render.showColliders || render.showTerrainCollision) {
-        renderer::DebugDraw::BeginFrame(*m_renderer, *m_resources,
-                                        m_debugCamera.camera.GetViewProjection());
-        if (render.showColliders) {
-            scene::ColliderDebugDrawSystem(*m_scene, *m_renderer);
-            scene::ConstraintDebugDrawSystem(m_physicsWorld, *m_renderer);
-        }
-        if (render.showTerrainCollision)
-            scene::TerrainCollisionDebugDrawSystem(*m_scene, *m_renderer,
-                                                    m_debugCamera.camera.m_position);
-        renderer::DebugDraw::Flush();
-    }
-
-    if (m_ctx.showSkeleton)
-        scene::AnimatorDebugDrawSystem(*m_scene, *m_renderer, *m_resources,
-                                        m_debugCamera.camera.GetViewProjection());
-    if (m_ctx.showGrid)
-        scene::GridDebugDrawSystem(*m_renderer, *m_resources,
-                                    m_debugCamera.camera.GetViewProjection());
-    if (m_ctx.showLightRange)
-        scene::LightRangeDebugDrawSystem(*m_scene, *m_renderer, *m_resources,
-                                          m_debugCamera.camera.GetViewProjection());
 }
 
 void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask)

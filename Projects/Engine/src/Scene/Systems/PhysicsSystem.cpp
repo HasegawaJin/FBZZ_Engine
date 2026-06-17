@@ -4,7 +4,9 @@
 // RigidBodyComponent と ColliderComponent を physics に反映し、Step 後に Transform へ戻す。
 // Scene から physics への依存方向を保つ。
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/Components/CharacterControllerComponent.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
@@ -455,7 +457,17 @@ void DispatchCollisionEvents(Scene& scene,
 
 } // namespace
 
-void PhysicsSystem(Scene& scene, physics::World& world, float dt) {
+ComponentAccess PhysicsSystem::GetAccess() const
+{
+    return ComponentAccess{}
+        .Reads<ColliderComponent, RigidBodyComponent, CharacterControllerComponent>()
+        .Writes<RigidBodyComponent, VolumeComponent>();
+}
+
+void PhysicsSystem::Update(SystemContext& ctx) {
+    Scene& scene = ctx.scene;
+    physics::World& world = ctx.world;
+    const float dt = ctx.fixedDt;
     FBZZ_PROFILE_SCOPE("PhysicsSystem");
 
     Script::SetPhysicsWorld(&world);

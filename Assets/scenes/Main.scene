@@ -92,7 +92,7 @@ tag = 'Player'
     clipIndex = 0
     clipName = ''
     clipSources = []
-    controllerPath = 'Assets/Animation/Player.fbzzanimcontroller'
+    controllerPath = 'Assets/Animation/Player.animcontroller'
     defaultStateName = 'Locomotion'
     enabled = true
     loop = true
@@ -455,7 +455,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Models/DebugCharacter/Player/materials/mat_0.fzmat'
+    material = 'Assets/Models/DebugCharacter/Player/materials/mat_0.mat'
 
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
@@ -477,7 +477,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Models/DebugCharacter/Player/materials/mat_1.fzmat'
+    material = 'Assets/Models/DebugCharacter/Player/materials/mat_1.mat'
 
     [gameobjects.SkinnedMeshRenderer]
     enabled = true
@@ -499,7 +499,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -520,7 +520,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -541,7 +541,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -562,7 +562,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -2028,8 +2028,8 @@ tag = 'Untagged'
         seed = 1
         stamps = []
         subMeshMaterialPaths = [
-            'Assets/Nature/Textured Stylized Trees - May 2020/FBX/Birch_1/materials/mat_0.fzmat',
-            'Assets/Nature/Textured Stylized Trees - May 2020/FBX/Birch_1/materials/mat_1.fzmat'
+            'Assets/Nature/Textured Stylized Trees - May 2020/FBX/Birch_1/materials/mat_0.mat',
+            'Assets/Nature/Textured Stylized Trees - May 2020/FBX/Birch_1/materials/mat_1.mat'
         ]
 
     [gameobjects.NavMeshSurfaceComponent]
@@ -2055,10 +2055,10 @@ tag = 'Untagged'
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
-        'Assets/Materials/Terrain/Layer0_Ground.fzmat',
-        'Assets/Materials/Terrain/Layer1_Grass.fzmat',
-        'Assets/Materials/Terrain/Layer2_Sand.fzmat',
-        'Assets/Materials/Terrain/Layer3_Rock.fzmat'
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
     terrainAssetPath = 'Assets/Terrain/Terrain.terrain'
 
@@ -2132,7 +2132,7 @@ tag = 'Untagged'
     enabled = true
     extentX = 120.0
     extentZ = 120.0
-    materialPath = 'Assets/Materials/Water/Water.fzmat'
+    materialPath = 'Assets/Materials/Water/Water.mat'
     resolutionX = 64
     resolutionZ = 64
 
@@ -2191,7 +2191,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Lit.fzmat'
+    material = 'Assets/Materials/Surface/Lit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
