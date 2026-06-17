@@ -317,7 +317,7 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
     go.AddComponent<scene::MeshRenderer>(mr);
 
     scene::MaterialComponent mc;
-    mc.materialPath = "Assets/Materials/Surface/Lit.fzmat";
+    mc.materialPath = "Assets/Materials/Surface/Lit.mat";
     go.AddComponent<scene::MaterialComponent>(std::move(mc));
 
     if (type == PrimitiveTemplate::Quad) {
@@ -586,7 +586,7 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
         ImGui::EndMenu();
     }
 
-    // Assets/Prefabs にある .fbzzprefab ファイルをメニューからインスタンス化できる。
+    // Assets/Prefabs にある .prefab ファイルをメニューからインスタンス化できる。
     // WHY: AssetBrowser からのドラッグ操作なしで Prefab を配置できる動線を用意する。
     //      ListAll は存在しないディレクトリに対して空リストを返すため、事前チェック不要。
     if (ImGui::BeginMenu("Prefab")) {
@@ -595,9 +595,9 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
 
         bool anyFound = false;
         for (const auto& path : util::FileSystem::ListAll(prefabDir)) {
-            // 拡張子を小文字で比較して .fbzzprefab だけを列挙する
+            // 拡張子を小文字で比較して .prefab だけを列挙する
             const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
-            if (ext != ".fbzzprefab") continue;
+            if (ext != ".prefab") continue;
 
             anyFound = true;
             const std::string name = util::FileSystem::GetFilename(path);
@@ -647,9 +647,9 @@ std::string UniquePrefabPath(const EditorContext& ctx, const std::string& object
     util::FileSystem::EnsureDirectory(prefabDir);
 
     const std::string base = prefabDir + "/" + SanitizeAssetName(objectName);
-    std::string path = base + ".fbzzprefab";
+    std::string path = base + ".prefab";
     for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
-        path = base + " " + std::to_string(i) + ".fbzzprefab";
+        path = base + " " + std::to_string(i) + ".prefab";
     return path;
 }
 
@@ -887,7 +887,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                     if (pendingExpand) *pendingExpand = id;
                     if (ctx.markSceneDirty) ctx.markSceneDirty();
                 };
-            } else if (ext == ".fbzzprefab") {
+            } else if (ext == ".prefab") {
                 deferred = [&ctx, assetPath, id, pendingExpand]() {
                     std::vector<scene::EntityID> roots;
                     if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots)) return;
@@ -1344,7 +1344,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                         if (ctx.markSceneDirty) ctx.markSceneDirty();
                     }
                 };
-            } else if (ext == ".fbzzprefab") {
+            } else if (ext == ".prefab") {
                 deferred = [&ctx, assetPath]() {
                     std::vector<scene::EntityID> roots;
                     if (PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))

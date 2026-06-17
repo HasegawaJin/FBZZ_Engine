@@ -30,8 +30,8 @@ public:
     //      オーバーロードが曖昧になる。string 版へ明示的に転送することで解決する。
     static bool        Exists(const char* path) { return Exists(std::string(path)); }
     static bool        IsDirectory(const std::string& path);
-    static std::string GetExtension(const std::string& path);  // 例: ".fbzz"
-    static std::string GetFilename(const std::string& path);   // 例: "scene.fbzz"
+    static std::string GetExtension(const std::string& path);  // 例: ".scene"
+    static std::string GetFilename(const std::string& path);   // 例: "main.scene"
     static std::string GetDirectory(const std::string& path);  // 例: "Assets/Scenes/"
     // NormalizePathSeparators — Windows / POSIX の区切り文字を '/' に統一する。
     // WHY: Editor / AssetBrowser / Serializer が同じ文字列表現で比較できるよう、Engine 側に集約する。

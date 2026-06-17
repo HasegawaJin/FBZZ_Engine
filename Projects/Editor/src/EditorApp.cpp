@@ -672,7 +672,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     // WHY: PrefabSerializer は Editor プロジェクトにあり Engine から直接呼べないため、
     //      Script::SetInstantiateFn で実装を注入する。ScriptSceneProxy::Instantiate が
     //      ここを経由して PrefabSerializer::Instantiate を呼ぶ。
-    //      PrefabRef::path は Assets 起点の相対パス ("Assets/Foo.fbzzprefab") で保存されるため、
+    //      PrefabRef::path は Assets 起点の相対パス ("Assets/Foo.prefab") で保存されるため、
     //      ToProjectAssetDiskPath でプロジェクトルートを補完して絶対パスへ変換してから渡す。
     const std::string capturedRoot = projectRoot;
     scene::Script::SetInstantiateFn([capturedRoot](scene::Scene& s, const std::string& path,

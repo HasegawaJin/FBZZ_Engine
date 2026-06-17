@@ -10,7 +10,7 @@ namespace fbzz::editor {
 [[nodiscard]] const char* DefaultTerrainLayerMaterialPath(int layerIndex);
 
 // WaterComponent を追加・初期化するときに使う標準 Material パスを返す。
-// WHY: Water.fzmat の場所を UI 実装から分離し、テンプレート/生成処理と共有しやすくするため。
+// WHY: Water.mat の場所を UI 実装から分離し、テンプレート/生成処理と共有しやすくするため。
 [[nodiscard]] const char* DefaultWaterMaterialPath();
 
 } // namespace fbzz::editor

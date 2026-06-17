@@ -29,7 +29,7 @@ void ColoredText(const char* text, ImVec4 color);
 void ReadOnlyText(const char* label, const char* text);
 
 // アセットパス入力フィールド。"..." ボタンで projectRoot/ 以下を検索できるモーダルを開く。
-// filterExts: カンマ区切り拡張子 ".fzmat,.hlsl" (空 = すべてのファイル)
+// filterExts: カンマ区切り拡張子 ".mat,.hlsl" (空 = すべてのファイル)
 // @return true if path was changed (InputText 編集 / drag-drop / picker 選択のいずれか)
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,

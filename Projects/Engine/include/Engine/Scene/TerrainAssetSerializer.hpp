@@ -1,6 +1,6 @@
 // FBZZ Engine
 // TerrainAssetSerializer.hpp | fbzz::scene
-// TerrainComponent の重い編集データを .fbzzterrain として保存・復元する
+// TerrainComponent の重い編集データを .terrain として保存・復元する
 #pragma once
 
 #include <string>
@@ -11,7 +11,7 @@ struct TerrainComponent;
 
 // TerrainAssetSerializer — Terrain の height/splat/layer データを外部アセット化する。
 // WHY: Scene / Prefab に巨大な配列を直接持たせると差分確認と読み込みが重くなるため、
-//      地形データだけを Assets/Terrain/*.fbzzterrain に分離して参照保存できるようにする。
+//      地形データだけを Assets/Terrain/*.terrain に分離して参照保存できるようにする。
 class TerrainAssetSerializer {
 public:
     // component の現在の地形編集データを path に保存する。失敗時は false。
