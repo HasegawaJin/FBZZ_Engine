@@ -383,7 +383,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                          + ImGui::GetStyle().FramePadding.x * 2.0f;
         ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - btnW);
         if (ImGui::SmallButton(kSaveLabel) && !ctx.selectedEntities.empty() && ctx.activeScene) {
-            // 保存先: <projectRoot>/Assets/Prefabs/<name>.fbzzprefab (重複時は連番付き)
+            // 保存先: <projectRoot>/Assets/Prefabs/<name>.prefab (重複時は連番付き)
             const std::string assetRoot = ctx.projectRoot.empty()
                 ? "Assets"
                 : ctx.projectRoot + "/Assets";
@@ -400,9 +400,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             if (safeName.empty()) safeName = "Prefab";
 
             const std::string base = prefabDir + "/" + safeName;
-            std::string savePath = base + ".fbzzprefab";
+            std::string savePath = base + ".prefab";
             for (int i = 1; util::FileSystem::Exists(savePath) && i < 10000; ++i)
-                savePath = base + " " + std::to_string(i) + ".fbzzprefab";
+                savePath = base + " " + std::to_string(i) + ".prefab";
 
             if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, savePath))
                 ctx.requestAssetBrowserRefresh = true;

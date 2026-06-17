@@ -35,12 +35,12 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
     const std::string filename = util::FileSystem::GetFilename(absPath);
     const std::string ext      = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
 
-    // deselect 自動保存: 前回の .fzmat が dirty のまま別アセットへ移動したとき保存する。
+    // deselect 自動保存: 前回の .mat が dirty のまま別アセットへ移動したとき保存する。
     // WHY: 「Save ボタンを押し忘れる」問題を解消しつつ、mid-drag 中の大量書き込みを避けるため
     //      選択が外れたタイミング (= 本関数が別パスで呼ばれた瞬間) に保存する。
     if (!m_inspectedAssetPath.empty() &&
         m_inspectedAssetPath != absPath &&
-        util::StringUtils::ToLower(util::FileSystem::GetExtension(m_inspectedAssetPath)) == ".fzmat" &&
+        util::StringUtils::ToLower(util::FileSystem::GetExtension(m_inspectedAssetPath)) == ".mat" &&
         AssetDirtyRegistry::IsDirty(m_inspectedAssetPath))
     {
         auto* prevMat = asset::AssetManager::GetMaterial(m_inspectedMat);
@@ -54,7 +54,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
     ImGui::TextDisabled("%s", absPath.c_str());
     ImGui::Separator();
 
-    if (ext == ".fzmat") {
+    if (ext == ".mat") {
         const std::string relPath = NormalizeAssetPath(absPath);
         if (m_inspectedAssetPath != absPath || !m_inspectedMat.IsValid()) {
             m_inspectedAssetPath = absPath;
@@ -62,13 +62,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
 
         if (!m_inspectedMat.IsValid()) {
-            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .fzmat");
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .mat");
             return;
         }
 
         auto* matPtr = asset::AssetManager::GetMaterial(m_inspectedMat);
         if (!matPtr) {
-            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .fzmat");
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .mat");
             return;
         }
 
@@ -342,7 +342,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
 
         ImGui::Separator();
-        if (ImGui::Button("Save .fzmat")) {
+        if (ImGui::Button("Save .mat")) {
             if (asset::SaveMaterialAssetToFile(absPath, mat)) {
                 AssetDirtyRegistry::MarkClean(absPath);
                 ctx.requestAssetBrowserRefresh = true;

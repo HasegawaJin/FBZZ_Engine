@@ -326,7 +326,7 @@ void WaterTool::OnEditorGUI(
 }
 
 // =============================================================================
-// Material (.fzmat) 参照セクション
+// Material (.mat) 参照セクション
 // =============================================================================
 
 void WaterTool::DrawAssetSection(
@@ -335,7 +335,7 @@ void WaterTool::DrawAssetSection(
     const std::string&           /*projectRoot*/,
     const std::function<void()>& markDirty)
 {
-    ImGui::SeparatorText("Material (.fzmat)");
+    ImGui::SeparatorText("Material (.mat)");
 
     char buf[256];
     std::snprintf(buf, sizeof(buf), "%s", water.materialPath.c_str());
@@ -347,7 +347,7 @@ void WaterTool::DrawAssetSection(
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
             std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-            if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
+            if (util::StringUtils::EndsWith(dropped, ".mat")) {
                 water.materialPath = dropped;
                 markDirty();
             }
@@ -367,7 +367,7 @@ void WaterTool::DrawPresets(
     const std::function<void()>& markDirty) const
 {
     ImGui::SeparatorText("Wave Presets");
-    ImGui::TextDisabled("Wave parameters only (visual params are in .fzmat):");
+    ImGui::TextDisabled("Wave parameters only (visual params are in .mat):");
 
     if (ImGui::Button("Ocean")) {
         water.enableGerstnerWaves = true;

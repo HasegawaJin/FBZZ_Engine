@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzMaterialExporter.cpp | fbzz::editor
-// aiMaterial → .fzmat (TOML) + テクスチャをそのまま texturesDir にコピー
+// aiMaterial → .mat (TOML) + テクスチャをそのまま texturesDir にコピー
 #include <Editor/Import/FzMaterialExporter.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

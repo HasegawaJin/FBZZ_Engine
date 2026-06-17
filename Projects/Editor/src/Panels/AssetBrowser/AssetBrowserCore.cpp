@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // AssetBrowserCore.cpp | fbzz::editor
 // AssetBrowser のルート、マウント、ディレクトリ走査
 #include "AssetBrowserCommon.hpp"
@@ -24,9 +24,9 @@ std::string UniquePrefabPathInDir(const std::string& dir, const std::string& obj
 {
     util::FileSystem::EnsureDirectory(dir);
     const std::string base = dir + "/" + SanitizeEntityName(objectName);
-    std::string path = base + ".fbzzprefab";
+    std::string path = base + ".prefab";
     for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
-        path = base + " " + std::to_string(i) + ".fbzzprefab";
+        path = base + " " + std::to_string(i) + ".prefab";
     return path;
 }
 
@@ -255,7 +255,7 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     if (isDir) {
         if (util::StringUtils::EndsWith(lowerPath, "/shaders/compiled")) return false;
         // WHY: fzasset インポートで生成されるデータフォルダ (stem/) は
-        //      同じ階層に stem.fzasset が存在する場合は非表示にする。
+        //      同じ階層に stem.asset が存在する場合は非表示にする。
         //      AssetBrowser は fzasset をフラット表示し、サブ項目は展開で見せる。
         const std::string parentDir = util::FileSystem::GetDirectory(path);
         const std::string fzassetSibling =
@@ -269,10 +269,10 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     //       原本の .hpp / .fbx / .hlsl だけを操作対象にする。
     static constexpr const char* kGeneratedSuffixes[] = {
         ".generated.hpp",
-        ".fztex",
-        ".fzmesh",
-        ".fzskel",
-        ".fzanim",
+        ".tex",
+        ".mesh",
+        ".skel",
+        ".anim",
         ".cso",
         ".dll",
         ".lib",
@@ -434,7 +434,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetFzAssetSubEntries(
             e.path      = util::FileSystem::NormalizePathSeparators(
                               util::FileSystem::PathToUtf8(assetDir / *relPath));
             e.name      = std::filesystem::path(*relPath).stem().string();
-            e.ext       = ".fzmesh";
+            e.ext       = ".mesh";
             e.isDir     = false;
             e.isSubAsset = true;
             cached.items.push_back(std::move(e));
@@ -453,7 +453,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetFzAssetSubEntries(
             Entry e;
             e.path      = absPath;
             e.name      = std::filesystem::path(*relPath).stem().string();
-            e.ext       = ".fzmat";
+            e.ext       = ".mat";
             e.isDir     = false;
             e.isSubAsset = true;
             cached.items.push_back(std::move(e));

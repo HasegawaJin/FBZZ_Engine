@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzAnimationExporter.cpp | fbzz::editor
-// aiAnimation → .fzanim バイナリ書き出し
+// aiAnimation → .anim バイナリ書き出し
 #include <Editor/Import/FzAnimationExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>

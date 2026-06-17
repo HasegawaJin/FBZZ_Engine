@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzSkeletonExporter.hpp | fbzz::editor
-// aiScene のスケルトン情報を .fzskel バイナリに書き出す
+// aiScene のスケルトン情報を .skel バイナリに書き出す
 #pragma once
 #include <string>
 

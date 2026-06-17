@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // TerrainComponent.hpp | fbzz::scene
 // ハイトマップベースの地形コンポーネント
 //
@@ -8,8 +8,8 @@
 //      TerrainRenderPass がチャンク分割と GPU 転送を行う構造にすることで
 //      「データ所有」と「描画戦略」を分離する。
 //
-// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .fzmat で管理する。
-// WHY: レイヤーごとに独立した .fzmat にすることで複数地形間でマテリアルを再利用できる。
+// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .mat で管理する。
+// WHY: レイヤーごとに独立した .mat にすることで複数地形間でマテリアルを再利用できる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -48,13 +48,13 @@ struct TerrainComponent {
     std::vector<uint8_t> splatData;
 
     // ── 外部 Terrain Asset ─────────────────────────────────────────────────────
-    // Assets/Terrain/*.fbzzterrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
+    // Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
     // WHY: 大きい地形では heightData / splatData がシーンファイルを肥大化させるため、
     //      Prefab や Scene には参照だけを残し、重い編集データは専用アセットへ分離する。
     std::string terrainAssetPath;
 
     // ── レイヤーマテリアル参照 (4 レイヤー) ───────────────────────────────────
-    // 各要素が独立した .fzmat を指す。fzmat keys: "diffuse", "normal", "ao_roughness",
+    // 各要素が独立した .mat を指す。fzmat keys: "diffuse", "normal", "ao_roughness",
     // "tilingX", "tilingZ", "normalStrength", "roughness", "ambientOcclusion",
     // "autoBlendEnabled", "autoBlendStrength", "autoMinHeight", "autoMaxHeight",
     // "autoHeightFade", "autoMinSlope", "autoMaxSlope", "autoSlopeFade"

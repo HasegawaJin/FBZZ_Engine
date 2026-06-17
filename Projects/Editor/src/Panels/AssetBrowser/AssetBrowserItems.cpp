@@ -116,13 +116,13 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".hpp", ".cpp", ".h", ".c", ".cc", ".cxx" },            { 0.20f, 0.58f, 0.70f, 1.0f }, "CPP"     },
     { { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga" },     { 0.15f, 0.40f, 0.80f, 1.0f }, "TEX"     },
     { { ".fbx", ".obj", ".gltf", ".glb", nullptr },            { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
-    { { ".fbzzprefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
+    { { ".prefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
     { { ".terrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
     { { ".scene", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
     { { ".animgraph", nullptr },                               { 0.75f, 0.40f, 0.85f, 1.0f }, "GRAPH"   },
     { { ".asset", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "ASSET"   },
-    { { ".fzmat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
-    { { ".fzmesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
+    { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
+    { { ".mesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".animcontroller", nullptr },                       { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
@@ -193,7 +193,7 @@ static std::string ToTextureLoadPath(const std::string& path, const EditorContex
     const std::string normalized = util::FileSystem::NormalizePathSeparators(path);
     const std::string projectRoot = util::FileSystem::NormalizePathSeparators(ctx.projectRoot);
 
-    // WHY: .fzmat 内のテクスチャ参照は Assets/ 相対で保存されるため、
+    // WHY: .mat 内のテクスチャ参照は Assets/ 相対で保存されるため、
     //      ResourceManager が読める実ファイルパスに変換してからサムネイルを読み込む。
     if (normalized.starts_with("Assets/") && !projectRoot.empty()) {
         return projectRoot + "/" + normalized;
@@ -292,7 +292,7 @@ static const std::vector<float>* FindMaterialParam(const asset::MaterialAsset& a
     auto it = asset.params.find(std::string(shaderVarName));
     if (it != asset.params.end()) return &it->second;
 
-    // WHY: .fzmat は PBR 寄りの名前、HLSL は shader ごとの短い変数名を使う場合がある。
+    // WHY: .mat は PBR 寄りの名前、HLSL は shader ごとの短い変数名を使う場合がある。
     //      サムネイルも本編描画と同じ別名吸収を行い、shaderPath を変えても色や係数を反映する。
     if (shaderVarName == "albedo")              it = asset.params.find("base_color");
     else if (shaderVarName == "metallic")       it = asset.params.find("metallic_factor");
@@ -1208,7 +1208,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    if (e.ext == ".fzmat") {
+    if (e.ext == ".mat") {
         MaterialPreview& preview = m_materialPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
         if (!preview.loaded || currentWriteTime != preview.lastWriteTime) {
@@ -1336,8 +1336,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    // .fbzzprefab: TOML を解析してメッシュを持つ場合は 3D サムネイル、なければキューブアイコン
-    if (e.ext == ".fbzzprefab") {
+    // .prefab: TOML を解析してメッシュを持つ場合は 3D サムネイル、なければキューブアイコン
+    if (e.ext == ".prefab") {
         if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
             PrefabPreview& preview = m_prefabPreviews[e.path];
             const auto currentWriteTime = ReadLastWriteTime(e.path);
@@ -1481,7 +1481,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         return;
     }
 
-    // .fbzzterrain: layerMaterials[0] を読み取って layer0 diffuse でサムネイル、なければ丘アイコン
+    // .terrain: layerMaterials[0] を読み取って layer0 diffuse でサムネイル、なければ丘アイコン
     if (e.ext == ".terrain") {
         if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
             TerrainPreview& preview = m_terrainPreviews[e.path];
@@ -1620,7 +1620,7 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         const ImVec2 bsz = ImGui::CalcTextSize("!");
         dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f }, IM_COL32(255, 255, 255, 255), "!");
     }
-    // ↻ バッジ: .fzasset は存在するが元ファイルが新しい (再インポートが必要)
+    // ↻ バッジ: .asset は存在するが元ファイルが新しい (再インポートが必要)
     if (!e.isDir && IsImportableRaw(e.ext) && m_outdatedPaths.count(e.path) > 0) {
         const float r  = sz * 0.15f;
         const float cx = origin.x + sz - r;
@@ -1753,7 +1753,7 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
         } else {
             FBZZ_LOG_ERROR("Failed to open scene: %s", path.c_str());
         }
-    } else if (ext == ".fbzzprefab" && ctx.activeScene) {
+    } else if (ext == ".prefab" && ctx.activeScene) {
         const bool canRecordUndo =
             ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
         const std::string before = canRecordUndo
@@ -1942,7 +1942,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             const std::string scanPath = util::FileSystem::PathToUtf8(p);
             const std::string scanExt  = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(scanPath));
-            if (scanExt != ".scene" && scanExt != ".fzmat" && scanExt != ".fbzzprefab"
+            if (scanExt != ".scene" && scanExt != ".mat" && scanExt != ".prefab"
                 && scanExt != ".animcontroller") continue;
             std::string content;
             util::FileSystem::ReadText(scanPath, content);

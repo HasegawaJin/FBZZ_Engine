@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // TerrainDetailComponent.hpp | fbzz::scene
 // Terrain 上に草・岩・花・低木などの小オブジェクトを GPU Instancing で大量描画する。
 // Unity の Terrain Detail System / Unreal の Landscape Grass Output に相当する。
@@ -31,7 +31,7 @@ struct DetailLayer {
     DetailLayerType type = DetailLayerType::Mesh;
 
     // アセット参照
-    std::string meshPath;        // Mesh レイヤー: .fzasset モデルパス
+    std::string meshPath;        // Mesh レイヤー: .asset モデルパス
     std::string densityMapPath;  // グレースケール画像: 白=最大密度・黒=なし (空 = 配置なし)
     std::string texturePath;     // Billboard / Grass: アルベドテクスチャ
 

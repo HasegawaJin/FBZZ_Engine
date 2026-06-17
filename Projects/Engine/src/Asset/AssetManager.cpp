@@ -143,7 +143,7 @@ Model* AssetManager::Load<Model>(const std::string& relativePath)
     const std::string fullPath = ResolvePath(key, s_basePath);
 
     std::unique_ptr<Model> model;
-    // .fzasset はネイティブバイナリローダーへ委譲する (Assimp 不要)
+    // .asset はネイティブバイナリローダーへ委譲する (Assimp 不要)
     if (key.ends_with(".asset")) {
         model = FzAssetLoader::Load(fullPath, *s_resources);
     } else {
@@ -201,7 +201,7 @@ renderer::ResourceHandle<renderer::MaterialAssetTag> AssetManager::LoadMaterial(
     auto material = std::make_unique<MaterialAsset>();
     if (!LoadMaterialAssetFromFile(fullPath, *material)) {
         FBZZ_LOG_WARN("AssetManager: MaterialAsset load failed [%s]", fullPath.c_str());
-        // WHY: 欠落 .fzmat はフレームごとに再試行されやすい。null ハンドルキャッシュでログスパムを防ぐ。
+        // WHY: 欠落 .mat はフレームごとに再試行されやすい。null ハンドルキャッシュでログスパムを防ぐ。
         s_materials[key] = renderer::ResourceHandle<renderer::MaterialAssetTag>::Null();
         return {};
     }

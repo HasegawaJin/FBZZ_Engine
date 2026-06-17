@@ -40,9 +40,9 @@ Ctrl+C / Ctrl+V によるファイル複製機能がない。
 | 拡張子 | 現在の挙動 | 期待値 |
 |---|---|---|
 | `.fbzz` | シーンを開く ✓ | — |
-| `.fbzzprefab` | シーン上にインスタンス化 ✓ | — |
-| `.fbzzanimcontroller` | 何もしない | AnimationGraphPanel を開く |
-| `.fzmat` | 何もしない | Inspector にフォーカス (現状 `ctx.selectedAssetPath` は設定される) |
+| `.prefab` | シーン上にインスタンス化 ✓ | — |
+| `.animcontroller` | 何もしない | AnimationGraphPanel を開く |
+| `.mat` | 何もしない | Inspector にフォーカス (現状 `ctx.selectedAssetPath` は設定される) |
 
 → `ctx.requestOpenAnimationGraph` フラグを追加し、ダブルクリック時に set。
 `EditorApp::RenderPanels` でフラグを監視して Animation Graph パネルを `visible = true` にする。
@@ -61,7 +61,7 @@ OS のエクスプローラーで対象ファイル / フォルダを開く操�
 
 ### ✅ 1-7. 検索に拡張子フィルタがない
 現在の検索はファイル名の部分一致 (`ContainsCI`) のみ。
-「`.fzmat` だけ表示」「`ANIM` タイプだけ表示」などのフィルタができない。
+「`.mat` だけ表示」「`ANIM` タイプだけ表示」などのフィルタができない。
 
 → ツールバーに `TypeFilter` ドロップダウン (All / Scene / Material / Script / Texture / Audio / Mesh / Shader / Prefab) を追加。
 グリッドループで `passesTypeFilter()` によりスキップ。
@@ -219,7 +219,7 @@ LRU キャッシュや「カレントフォルダ外エントリを破棄」す�
 PNG / JPG / DDS などは ResourceManager が原本を直接読み込めるため、
 未変換バッジ・インポートキュー・サイドカー生成の対象にしない。
 
-→ `.fztex` 生成は追加の管理ファイルだけを増やし、ランタイムでも参照されていなかったため廃止。
+→ `.tex` 生成は追加の管理ファイルだけを増やし、ランタイムでも参照されていなかったため廃止。
 マテリアルや UI は `.png` / `.jpg` / `.dds` 等の Assets パスを直接保持する。
 
 ### ✅ 5-2. アセット参照（被参照）情報の表示がない
@@ -228,7 +228,7 @@ PNG / JPG / DDS などは ResourceManager が原本を直接読み込めるた�
 のような逆引き（依存関係）を確認する手段がない。
 
 → コンテキストメニューに "Find References..." を追加。クリック時にプロジェクト内の
-`.fbzz` / `.fzmat` / `.fbzzprefab` / `.fbzzanimcontroller` を全スキャンして参照先を収集。
+`.fbzz` / `.mat` / `.prefab` / `.animcontroller` を全スキャンして参照先を収集。
 結果を `DrawFindRefsPopup` モーダルで一覧表示し、クリックでそのフォルダへナビゲート。
 
 ### ✅ 5-3. 複数ファイルの一括操作がない
@@ -238,13 +238,13 @@ PNG / JPG / DDS などは ResourceManager が原本を直接読み込めるた�
 → `DrawEntryContextMenu` で `m_selectedPaths.size() > 1` 時に専用の一括操作メニューを表示。
 "Duplicate N items"（ファイルのみ、連番コピー）と "Delete N items"（確認ダイアログ付き）を実装。
 
-### ✅ 5-4. アセット型ごとのカスタムサムネイル生成が `.fbzzanimcontroller` / `.fbzzterrain` に未実装
+### ✅ 5-4. アセット型ごとのカスタムサムネイル生成が `.animcontroller` / `.terrain` に未実装
 テクスチャ・マテリアル・メッシュはサムネイルレンダリングが実装済みだが、
 Animator Controller (`CTRL`) と Terrain アセット (`TERRAIN`) はカラーアイコンのみで
 内容を可視化するサムネイルがない。
 
-→ `DrawAssetPreviewIconAt` に `.fbzzanimcontroller`（ステートマシン風: 3ノード+エッジ）と
-`.fbzzterrain`（地形シルエット: 波形ヒル）の ImDrawList カスタムサムネイルを追加。`DrawThumbnailLabel` ヘルパーでバッジ描画を統一。
+→ `DrawAssetPreviewIconAt` に `.animcontroller`（ステートマシン風: 3ノード+エッジ）と
+`.terrain`（地形シルエット: 波形ヒル）の ImDrawList カスタムサムネイルを追加。`DrawThumbnailLabel` ヘルパーでバッジ描画を統一。
 
 ---
 
@@ -259,7 +259,7 @@ Animator Controller (`CTRL`) と Terrain アセット (`TERRAIN`) はカラー�
 `Projects/Editor/include/Editor/Util/AssetDirtyRegistry.hpp` / `.cpp`
 
 中央レジストリで「パス・表示名・型ラベル・保存コールバック」を管理。
-現在対応アセット型: `.fzmat` (マテリアル)、`.fbzzanimcontroller` (アニメーションコントローラー)。
+現在対応アセット型: `.mat` (マテリアル)、`.animcontroller` (アニメーションコントローラー)。
 
 - `Register(path, displayPath, typeLabel, saveFunc)` — upsert
 - `MarkClean(path)` / `IsDirty(path)` / `HasAny()`
@@ -300,7 +300,7 @@ File メニューに `Save All Assets` を追加。未保存アセットがな�
 `InspectorPanel_Asset.cpp`
 
 Inspector で別のアセットに切り替えた瞬間、
-前の `.fzmat` が dirty であれば自動的に `SaveMaterialAssetToFile` を呼ぶ。
+前の `.mat` が dirty であれば自動的に `SaveMaterialAssetToFile` を呼ぶ。
 mid-drag 中の大量書き込みを避けつつ Save ボタン押し忘れを防ぐ。
 
 ---
@@ -309,7 +309,7 @@ mid-drag 中の大量書き込みを避けつつ Save ボタン押し忘れを�
 
 | # | 改善項目 | 優先度 | 工数感 | 状態 |
 |---|---|---|---|---|
-| 1-4 | `.fbzzanimcontroller` ダブルクリック対応 | 高 | 小 | ✅ 完了 |
+| 1-4 | `.animcontroller` ダブルクリック対応 | 高 | 小 | ✅ 完了 |
 | 1-6 | ブレッドクラムのクリック可能化 | 中 | 小 | ✅ 完了 |
 | 1-12 | リネーム競合チェック | 中 | 小 | ✅ 完了 |
 | 3-1 | マテリアルサムネイルのシェーダー再ロード連携 | 中 | 小 | ✅ 完了 |
@@ -333,8 +333,8 @@ mid-drag 中の大量書き込みを避けつつ Save ボタン押し忘れを�
 | 1-1 | 複数選択 | 低 | 大 | ✅ 完了 |
 | 1-2 | コピー&ペースト (Duplicate) | 低 | 大 | ✅ 完了 |
 | 1-3 | D&D によるファイル移動 | 低 | 大 | ✅ 完了 |
-| 5-1 | テクスチャ原本の直接使用 (.fztex 廃止) | 低 | 小 | ✅ 完了 |
+| 5-1 | テクスチャ原本の直接使用 (.tex 廃止) | 低 | 小 | ✅ 完了 |
 | 5-2 | アセット依存関係ビュー (Find References) | 低 | 中 | ✅ 完了 |
 | 5-3 | 複数選択での一括削除・複製 | 低 | 小 | ✅ 完了 |
-| 5-4 | .fbzzanimcontroller / .fbzzterrain サムネイル | 低 | 小 | ✅ 完了 |
+| 5-4 | .animcontroller / .terrain サムネイル | 低 | 小 | ✅ 完了 |
 | 6-1〜6-6 | Unreal スタイル未保存アセット追跡 | — | — | ✅ 完了 |
