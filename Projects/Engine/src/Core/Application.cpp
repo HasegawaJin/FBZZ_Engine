@@ -7,6 +7,7 @@
 #include <Windows.h>
 #include <timeapi.h>
 #include "Engine/Core/Application.hpp"
+#include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Core/IModule.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
@@ -38,6 +39,8 @@ bool Application::Init(const Window::Config& windowConfig) {
     if (!m_memorySystem.Initialize(FRAME_ALLOCATOR_CAPACITY))
         return false;
 
+    TaskSystem::Init();
+
     m_window = std::make_unique<Window>();
     if (!m_window->Initialize(windowConfig))
         return false;
@@ -66,6 +69,7 @@ bool Application::Init(const Window::Config& windowConfig) {
 }
 
 void Application::Shutdown() {
+    TaskSystem::Shutdown();
     m_imguiRenderer.reset();
     m_renderer.reset();
     if (m_window)
