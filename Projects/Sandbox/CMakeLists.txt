@@ -28,6 +28,16 @@ target_include_directories(SandboxScripts PRIVATE
     ${CMAKE_SOURCE_DIR}/Assets
 )
 target_link_libraries(SandboxScripts PRIVATE fbzz_engine fbzz_physics)
+# WHY: Script.hpp は全スクリプトが #include する重いヘッダ群を束ねる。
+#      ホットリロードのたびに再パースしないよう PCH に焼き込む。
+target_precompile_headers(SandboxScripts PRIVATE
+    <Engine/Scene/Script.hpp>
+    <Engine/Scene/Scene.hpp>
+    <functional>
+    <memory>
+    <string>
+    <vector>
+)
 # DLL を sandbox.exe と同じディレクトリに出力する
 set_target_properties(SandboxScripts PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>"

@@ -25,11 +25,13 @@
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <future>
 #include <limits>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -316,14 +318,42 @@ struct AutoBounds {
     }
 };
 
+// count を hw スレッドで分割して fn(i) を並列実行する。
+// スレッド起動オーバーヘッドが無駄にならないよう count が小さい場合はシリアル実行。
+template<class Fn>
+static void ParallelFor(int count, Fn fn)
+{
+    const int hw       = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+    const int nThreads = (count >= 64 && hw > 1) ? std::min(count / 8, hw) : 1;
+    if (nThreads <= 1) {
+        for (int i = 0; i < count; ++i) fn(i);
+        return;
+    }
+    const int chunk = (count + nThreads - 1) / nThreads;
+    std::vector<std::thread> threads;
+    threads.reserve(static_cast<size_t>(nThreads));
+    for (int t = 0; t < nThreads; ++t) {
+        const int beg = t * chunk;
+        const int end = std::min(beg + chunk, count);
+        if (beg >= end) break;
+        threads.emplace_back([=, &fn]() { for (int i = beg; i < end; ++i) fn(i); });
+    }
+    for (auto& th : threads) th.join();
+}
+
 } // namespace
 
 // ── バックグラウンド Bake 関数 ───────────────────────────────────────────
 // BakeInput のコピーだけを使い、シーンのいかなるポインタにも触れない純粋な計算関数。
 // std::async で任意のスレッドから呼ばれる。
 
-static NavMesh RunNavMeshBake(BakeInput inp)
+static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = nullptr)
 {
+    const auto setProgress = [&](float v) {
+        if (progress) progress->store(v, std::memory_order_relaxed);
+    };
+    setProgress(0.02f);
+
     const auto& terrains     = inp.terrains;
     const auto& walkableSurfs = inp.walkableSurfs;
     const auto& obstacles    = inp.obstacles;
@@ -360,7 +390,7 @@ static NavMesh RunNavMeshBake(BakeInput inp)
     const int cornerCols = gridW + 1;
 
     std::vector<float> cornerHeight(static_cast<size_t>(cornerCols) * (gridD + 1), kNoSurface);
-    for (int cz = 0; cz <= gridD; ++cz) {
+    ParallelFor(gridD + 1, [&](int cz) {
         for (int cx = 0; cx <= gridW; ++cx) {
             const float wx = boundsMin.x + cx * cellSize;
             const float wz = boundsMin.z + cz * cellSize;
@@ -368,8 +398,9 @@ static NavMesh RunNavMeshBake(BakeInput inp)
             if (h > kNoSurface + 1.0f)
                 cornerHeight[static_cast<size_t>(cz) * cornerCols + cx] = h;
         }
-    }
-    for (int cz = 0; cz <= gridD; ++cz) {
+    });
+    setProgress(0.25f);
+    ParallelFor(gridD + 1, [&](int cz) {
         for (int cx = 0; cx <= gridW; ++cx) {
             const float wx = boundsMin.x + cx * cellSize;
             const float wz = boundsMin.z + cz * cellSize;
@@ -378,7 +409,8 @@ static NavMesh RunNavMeshBake(BakeInput inp)
                 if (surf.ContainsXZ(wx, wz)) { const float topY = surf.TopY(); if (topY > h) h = topY; }
             }
         }
-    }
+    });
+    setProgress(0.35f);
 
     auto CornerH   = [&](int cx, int cz) { return cornerHeight[static_cast<size_t>(cz) * cornerCols + cx]; };
     auto CornerPos = [&](int cx, int cz) {
@@ -388,7 +420,7 @@ static NavMesh RunNavMeshBake(BakeInput inp)
     std::vector<uint8_t> walkable(static_cast<size_t>(gridW) * gridD, 0);
     const float maxSlopeCos = std::cos(inp.maxSlopeAngleDeg * (kPi / 180.0f));
 
-    for (int iz = 0; iz < gridD; ++iz) {
+    ParallelFor(gridD, [&](int iz) {
         for (int ix = 0; ix < gridW; ++ix) {
             if (CornerH(ix,   iz  ) <= kNoSurface + 1.0f &&
                 CornerH(ix+1, iz  ) <= kNoSurface + 1.0f &&
@@ -427,7 +459,8 @@ static NavMesh RunNavMeshBake(BakeInput inp)
 
             walkable[static_cast<size_t>(iz) * gridW + ix] = cellWalkable ? 1 : 0;
         }
-    }
+    });
+    setProgress(0.50f);
 
     for (int iz = 0; iz < gridD; ++iz) {
         for (int ix = 0; ix < gridW; ++ix) {
@@ -445,6 +478,8 @@ static NavMesh RunNavMeshBake(BakeInput inp)
             }
         }
     }
+
+    setProgress(0.55f);
 
     auto CellWalkable = [&](int x, int z) {
         return x >= 0 && x < gridW && z >= 0 && z < gridD
@@ -480,7 +515,10 @@ static NavMesh RunNavMeshBake(BakeInput inp)
         if (polys[i].alive) queue.push_back(static_cast<int>(i));
 
     size_t qi = 0;
+    const size_t queueTotal = queue.size();
     while (qi < queue.size()) {
+        if ((qi & 0xFFFu) == 0 && queueTotal > 0)
+            setProgress(0.60f + 0.30f * (static_cast<float>(qi) / static_cast<float>(queueTotal)));
         const int idA = queue[qi++];
         if (!polys[static_cast<size_t>(idA)].alive) continue;
         bool mergedAny = true;
@@ -540,25 +578,35 @@ static NavMesh RunNavMeshBake(BakeInput inp)
 
     NavMesh result;
     result.polygons = std::move(finalPolys);
+    setProgress(0.98f);
     return result;
 }
 
 // ── NavMeshBakeSystem ─────────────────────────────────────────────────────
-// entity.index → 実行中 future のマップ。メインスレッドでのみアクセスする。
-static std::unordered_map<uint32_t, std::future<NavMesh>> s_bakeFutures;
+// entity.index → 実行中ジョブ。メインスレッドでのみアクセスする。
+struct BakeJob {
+    std::future<NavMesh>                future;
+    std::shared_ptr<std::atomic<float>> progress;
+};
+static std::unordered_map<uint32_t, BakeJob> s_bakeJobs;
 
 void NavMeshBakeSystem(Scene& scene)
 {
     // Phase 1: 完了した Future を適用する
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
-        auto it = s_bakeFutures.find(eid.index);
-        if (it == s_bakeFutures.end()) continue;
-        if (it->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+        auto it = s_bakeJobs.find(eid.index);
+        if (it == s_bakeJobs.end()) continue;
 
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
+        if (surface)
+            surface->bakeProgress = it->second.progress->load(std::memory_order_relaxed);
+
+        if (it->second.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+
         if (surface) {
-            surface->navMesh   = it->second.get();
-            surface->bakeState = NavMeshBakeState::Done;
+            surface->navMesh      = it->second.future.get();
+            surface->bakeState    = NavMeshBakeState::Done;
+            surface->bakeProgress = 1.0f;
 
             // ベイク完了後に NavMeshOffMeshLinkComponent を走査してポリゴンへ接続する。
             // activated==false のリンクは A* から無視されるためスキップする。
@@ -609,9 +657,9 @@ void NavMeshBakeSystem(Scene& scene)
                 }
             }
         } else {
-            it->second.get(); // 破棄
+            it->second.future.get(); // 破棄
         }
-        s_bakeFutures.erase(it);
+        s_bakeJobs.erase(it);
     }
 
     // Phase 2: needsBake が立っているものを非同期ジョブとして投入する
@@ -619,10 +667,11 @@ void NavMeshBakeSystem(Scene& scene)
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         auto* go      = scene.GetGameObject(eid);
         if (!surface || !go || !surface->needsBake) continue;
-        if (s_bakeFutures.count(eid.index)) continue; // 既に実行中
+        if (s_bakeJobs.count(eid.index)) continue; // 既に実行中
 
-        surface->needsBake = false;
-        surface->bakeState = NavMeshBakeState::Baking;
+        surface->needsBake    = false;
+        surface->bakeState    = NavMeshBakeState::Baking;
+        surface->bakeProgress = 0.0f;
         surface->navMesh.polygons.clear();
 
         // シーンデータをコピーして BakeInput を構築する
@@ -674,8 +723,14 @@ void NavMeshBakeSystem(Scene& scene)
             }
         }
 
-        s_bakeFutures[eid.index] = std::async(std::launch::async,
-            [inp = std::move(input)]() mutable { return RunNavMeshBake(std::move(inp)); });
+        auto bakeProgress = std::make_shared<std::atomic<float>>(0.0f);
+        BakeJob job;
+        job.progress = bakeProgress;
+        job.future   = std::async(std::launch::async,
+            [inp = std::move(input), p = bakeProgress]() mutable {
+                return RunNavMeshBake(std::move(inp), p.get());
+            });
+        s_bakeJobs[eid.index] = std::move(job);
     }
 }
 
