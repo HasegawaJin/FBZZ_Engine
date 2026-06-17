@@ -130,7 +130,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
     // ── 出力ディレクトリを作成 ────────────────────────────────────────────
     const fs::path outDirPath = util::FileSystem::PathFromUtf8(outputDir);
-    // WHY: マニフェスト (.fzasset) は FBX と同じ階層 (outDirPath の親) に置く。
+    // WHY: マニフェスト (.asset) は FBX と同じ階層 (outDirPath の親) に置く。
     //      AssetBrowser が Unity スタイルでフラット表示できるようにするため。
     //      メッシュ/マテリアルデータは outDirPath (stem/) サブフォルダに隔離したまま。
     const fs::path manifestDirPath = outDirPath.parent_path();
@@ -179,14 +179,14 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
         const bool    skinned  = mesh->HasBones();
         const std::string meshPath =
-            util::FileSystem::PathToUtf8(meshDir / ("mesh_" + std::to_string(mi) + ".fzmesh"));
+            util::FileSystem::PathToUtf8(meshDir / ("mesh_" + std::to_string(mi) + ".mesh"));
 
         if (!FzMeshExporter::Export(mesh, meshScene, unitScale, skinned, meshPath)) {
             FBZZ_LOG_ERROR("FbxImportTool: mesh export failed [%u]", mi);
             return false;
         }
 
-        // .fzasset からの相対パス (manifest は manifestDirPath に置くので起点もそこ)
+        // .asset からの相対パス (manifest は manifestDirPath に置くので起点もそこ)
         const std::string relMesh = util::FileSystem::PathToUtf8(
             util::FileSystem::RelativePath(util::FileSystem::PathFromUtf8(meshPath), manifestDirPath));
         manifest.meshPaths.push_back(relMesh);
@@ -195,7 +195,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
         const uint32_t matIdx = mesh->mMaterialIndex;
         if (matIdx < meshScene->mNumMaterials && matCache.paths[matIdx].empty()) {
             const std::string matPath =
-                util::FileSystem::PathToUtf8(matDir / ("mat_" + std::to_string(matIdx) + ".fzmat"));
+                util::FileSystem::PathToUtf8(matDir / ("mat_" + std::to_string(matIdx) + ".mat"));
             if (!FzMaterialExporter::Export(meshScene->mMaterials[matIdx], meshScene,
                                              fbxDir, util::FileSystem::PathToUtf8(texDir), matPath, skinned,
                                              options.flipGreenChannel)) {
@@ -211,7 +211,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
     // ── スケルトン ────────────────────────────────────────────────────────
     if (hasSkin) {
-        const std::string skelPath = util::FileSystem::PathToUtf8(outDirPath / (baseName + ".fzskel"));
+        const std::string skelPath = util::FileSystem::PathToUtf8(outDirPath / (baseName + ".skel"));
         if (!FzSkeletonExporter::Export(scene, unitScale, skelPath)) {
             FBZZ_LOG_ERROR("FbxImportTool: skeleton export failed");
             return false;
@@ -235,7 +235,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
             }
 
             const std::string animPath =
-                util::FileSystem::PathToUtf8(animDir / ("clip_" + std::to_string(ai) + ".fzanim"));
+                util::FileSystem::PathToUtf8(animDir / ("clip_" + std::to_string(ai) + ".anim"));
             if (!FzAnimationExporter::Export(scene->mAnimations[ai], animPath, unitScale)) {
                 FBZZ_LOG_ERROR("FbxImportTool: animation export failed [%u]", ai);
                 return false;
@@ -246,7 +246,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     }
 
     // ── マニフェスト ──────────────────────────────────────────────────────
-    // manifestDirPath (= FBX と同じフォルダ) に stem.fzasset を書き出す
+    // manifestDirPath (= FBX と同じフォルダ) に stem.asset を書き出す
     manifestPath = util::FileSystem::PathToUtf8(manifestDirPath / (baseName + ".asset"));
     if (!FzAssetWriter::Write(manifest, manifestPath)) {
         FBZZ_LOG_ERROR("FbxImportTool: manifest write failed");

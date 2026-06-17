@@ -8,12 +8,12 @@ namespace fbzz::editor {
 namespace {
 
 constexpr const char* kDefaultTerrainLayerMaterialPaths[4] = {
-    "Assets/Materials/Terrain/Layer0_Ground.fzmat",
-    "Assets/Materials/Terrain/Layer1_Grass.fzmat",
-    "Assets/Materials/Terrain/Layer2_Sand.fzmat",
-    "Assets/Materials/Terrain/Layer3_Rock.fzmat",
+    "Assets/Materials/Terrain/Layer0_Ground.mat",
+    "Assets/Materials/Terrain/Layer1_Grass.mat",
+    "Assets/Materials/Terrain/Layer2_Sand.mat",
+    "Assets/Materials/Terrain/Layer3_Rock.mat",
 };
-constexpr const char* kDefaultWaterMaterialPath = "Assets/Materials/Water/Water.fzmat";
+constexpr const char* kDefaultWaterMaterialPath = "Assets/Materials/Water/Water.mat";
 
 } // namespace
 

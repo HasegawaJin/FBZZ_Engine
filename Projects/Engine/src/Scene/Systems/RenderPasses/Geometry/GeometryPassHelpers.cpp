@@ -46,7 +46,7 @@ const std::vector<float>* FindMaterialParam(const asset::MaterialAsset& asset, s
     auto it = asset.params.find(std::string(shaderVarName));
     if (it != asset.params.end()) return &it->second;
 
-    // snake_case 別名 (手書き .fzmat 向け)
+    // snake_case 別名 (手書き .mat 向け)
     if (shaderVarName == "normalStrength") it = asset.params.find("normal_strength");
     else if (shaderVarName == "emissiveColor")  it = asset.params.find("emissive_color");
     else if (shaderVarName == "emissiveScale")  it = asset.params.find("emissive_scale");
@@ -129,8 +129,8 @@ AnimatorComponent* FindAnimator(GameObject& go)
 
 const char* GetFallbackMaterialPath(bool skinned)
 {
-    return skinned ? "Assets/Materials/FallbackSkinned.fzmat"
-                   : "Assets/Materials/Fallback.fzmat";
+    return skinned ? "Assets/Materials/FallbackSkinned.mat"
+                   : "Assets/Materials/Fallback.mat";
 }
 
 void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath)
@@ -174,7 +174,7 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
     const auto* matAsset = asset::AssetManager::GetMaterial(activeAsset);
     if (matAsset && shaderPath.empty()) {
         const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
-        // WHY: shader 未設定の .fzmat を PBR 推定で描くと、未設定と意図した PBR の区別が付かない。
+        // WHY: shader 未設定の .mat を PBR 推定で描くと、未設定と意図した PBR の区別が付かない。
         //      原色紫の Unlit フォールバック材質へ明示的に差し替え、問題箇所を見つけやすくする。
         static std::unordered_set<std::string> s_warnedEmptyShaderMaterials;
         const std::string warnKey = mc.materialPath.empty() ? std::string("<unnamed>") : mc.materialPath;

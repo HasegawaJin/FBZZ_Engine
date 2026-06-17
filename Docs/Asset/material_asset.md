@@ -5,16 +5,16 @@
 現在の `MaterialComponent` はシェーダーパス・パラメータ・テクスチャパスを GameObject に直接埋め込んでいる。  
 複数 GameObject が同じマテリアルを使う場合でもデータが重複し、エディタ上での一括編集ができない。
 
-本設計は Unity の `.mat` ファイルに相当する **スタンドアロンの `.fzmat` アセット** を導入し、  
+本設計は Unity の `.mat` ファイルに相当する **スタンドアロンの `.mat` アセット** を導入し、  
 `MaterialComponent` がそのアセットへの参照を持つ形に移行する。
 
 ---
 
 ## 目標
 
-- `.fzmat` ファイルを Editor から作成・保存・ロードできる
+- `.mat` ファイルを Editor から作成・保存・ロードできる
 - `MaterialComponent` は `MaterialAsset` の参照 (パス) のみを保持する
-- 複数の GameObject が同一 `.fzmat` を共有し、片方の変更が全体に反映される
+- 複数の GameObject が同一 `.mat` を共有し、片方の変更が全体に反映される
 - 既存の `FzAssetFormat.hpp` / `AssetManager` の拡張として収まる
 
 ---
@@ -23,12 +23,12 @@
 
 - キーワードベースのシェーダーマルチバリアント管理  
   (スタティック / スキンの 2 分岐は RenderSystem が自動処理するため対応済み)
-- ランタイム (ゲームプレイ中) での `.fzmat` ホットリロード  
+- ランタイム (ゲームプレイ中) での `.mat` ホットリロード  
   (Editor 上での保存 → 即反映は対応済み)
 
 ---
 
-## ファイルフォーマット `.fzmat`
+## ファイルフォーマット `.mat`
 
 テキスト (TOML) 形式を採用する。既存の `FzMaterialExporter` が toml++ を使用しているため統一する。  
 バイナリ (`FzAssetFormat.hpp` の他フォーマット) と異なりテキストにする理由:
@@ -150,7 +150,7 @@ template<> void AssetManager::Unload<MaterialAsset>(const std::string&);
 
 変更後:
   MaterialComponent
-    materialPath  (string)          ← .fzmat の assets/ 相対パス
+    materialPath  (string)          ← .mat の assets/ 相対パス
     materialAsset (shared_ptr<MaterialAsset>)  ← AssetManager 経由でロード済み
     material      (shared_ptr<Material>)       ← GPU リソース (変わらず)
 ```
@@ -171,8 +171,8 @@ GameObject 固有の値を持ちたい場合は `overrides` フィールドを�
 
 | ケース | 発生条件 |
 |---|---|
-| **A: materialPath 未設定** | `MaterialComponent` に `.fzmat` が割り当てられていない |
-| **B: .fzmat ファイルが見つからない** | パスが間違っている、またはファイルが削除された |
+| **A: materialPath 未設定** | `MaterialComponent` に `.mat` が割り当てられていない |
+| **B: .mat ファイルが見つからない** | パスが間違っている、またはファイルが削除された |
 | **C: shader が空** | `shader = ""` → **正常ケース**。RenderSystem がメッシュ種別から自動選択 |
 | **D: シェーダーロード失敗** | `ResourceManager::LoadShader()` が `Null()` を返した (ファイル不在・コンパイルエラー) |
 
@@ -202,7 +202,7 @@ std::shared_ptr<Material>   m_errorMaterial; // Init() 時に構築
   → RenderSystem がスキップ (Draw Call を発行しない)
   → Inspector に "No Material assigned" 警告表示
 
-ケース B (.fzmat 読み込み失敗)
+ケース B (.mat 読み込み失敗)
   → AssetManager::Load<MaterialAsset>() が nullptr を返す
   → FBZZ_LOG_WARN("MaterialAsset not found: %s", path)
   → RenderSystem がエラーマテリアルで描画
@@ -240,7 +240,7 @@ RenderSystem が MaterialComponent を処理するとき:
 | 正常 (明示シェーダー) | 通常の MaterialAsset プロパティ |
 | 正常 (shader = "") | `(auto)` グレーテキストでシェーダーフィールドに自動選択シェーダー名を表示 |
 | ケース A | `[No Material]` グレーテキスト |
-| ケース B | `⚠ Missing: materials/foo.fzmat` 赤テキスト |
+| ケース B | `⚠ Missing: materials/foo.mat` 赤テキスト |
 | ケース D | `⚠ Shader compile error` 赤テキスト、エラーログへのリンク |
 
 ### `ShaderDescriptor` フォールバック
@@ -253,12 +253,12 @@ RenderSystem が MaterialComponent を処理するとき:
 
 ## FBX インポートとの連携
 
-FBX インポート時は `FzMaterialExporter::Export()` が `.fzmat` を自動生成する。  
-マテリアルは「見た目の性質」であり、スキン有無はメッシュ側の性質のため `.fzmat` には含めない。
+FBX インポート時は `FzMaterialExporter::Export()` が `.mat` を自動生成する。  
+マテリアルは「見た目の性質」であり、スキン有無はメッシュ側の性質のため `.mat` には含めない。
 
 ### FzMaterialExporter が出力するフィールド
 
-| `.fzmat` フィールド | Assimp ソース | 備考 |
+| `.mat` フィールド | Assimp ソース | 備考 |
 |---|---|---|
 | `shader = ""` | (なし) | 常に空。RenderSystem が描画時に自動選択 |
 | `[params].base_color` | `AI_MATKEY_BASE_COLOR` / `AI_MATKEY_COLOR_DIFFUSE` | フォールバックあり |
@@ -288,7 +288,7 @@ FBX インポート時は `FzMaterialExporter::Export()` が `.fzmat` を自動�
     → そのパスのシェーダーを使用 (エディタ上書き)
 ```
 
-FBX 由来の `.fzmat` は `shader = ""` なので、同じアセットをスタティックメッシュとスキンメッシュの  
+FBX 由来の `.mat` は `shader = ""` なので、同じアセットをスタティックメッシュとスキンメッシュの  
 両方で共有しても RenderSystem が適切なシェーダーを選択する。
 
 ---
@@ -298,7 +298,7 @@ FBX 由来の `.fzmat` は `shader = ""` なので、同じアセットをスタ
 ### 新規作成
 
 1. Asset Browser のコンテキストメニュー **[Create → Material]** を選択
-2. `assets/materials/New Material.fzmat` を TOML テンプレートで生成
+2. `assets/materials/New Material.mat` を TOML テンプレートで生成
 3. Inspector に `MaterialAsset` の編集 UI を表示
 
 ### 編集・保存
@@ -309,7 +309,7 @@ FBX 由来の `.fzmat` は `shader = ""` なので、同じアセットをスタ
 
 ### GameObject への割り当て
 
-- Inspector の `MaterialComponent::materialPath` フィールドに `.fzmat` をドロップ
+- Inspector の `MaterialComponent::materialPath` フィールドに `.mat` をドロップ
 - または Asset Browser から GameObject へドラッグ＆ドロップ
 
 ---
@@ -354,10 +354,10 @@ shaderPath, blendMode, doubleSided, renderQueue, paramData, texturePaths
 
 | アセット種別 | ファイル | 担当 |
 |---|---|---|
-| Mesh | `.fzmesh` | `FzAssetLoader` + `AssetManager::Load<Model>` |
+| Mesh | `.mesh` | `FzAssetLoader` + `AssetManager::Load<Model>` |
 | Texture | `.png` / `.dds` / `.tga` | `AssetManager::LoadTexture` (`DX11Texture` が拡張子で分岐) |
-| Skeleton / Anim | `.fzskel` / `.fzanim` | `FzAssetLoader` |
-| **Material** | **`.fzmat`** | **本設計** |
+| Skeleton / Anim | `.skel` / `.anim` | `FzAssetLoader` |
+| **Material** | **`.mat`** | **本設計** |
 
-`.fzmat` は他のバイナリアセットと異なり TOML テキストとする (toml++ で読み書き)。  
+`.mat` は他のバイナリアセットと異なり TOML テキストとする (toml++ で読み書き)。  
 ただし `AssetManager` の `basePath` ベースのキャッシュ方式は統一する。

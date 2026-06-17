@@ -1,6 +1,6 @@
 // FBZZ Engine
 // MaterialComponent.hpp | fbzz::scene
-// GameObject が参照する .fzmat マテリアルアセットと GPU Material キャッシュ
+// GameObject が参照する .mat マテリアルアセットと GPU Material キャッシュ
 #pragma once
 
 #include <Engine/Asset/AssetManager.hpp>
@@ -42,7 +42,7 @@ struct MaterialComponent {
     renderer::ResourceHandle<renderer::MaterialAssetTag> materialAsset;
     bool enabled = true;
 
-    // .fzmat の assets/ 相対パス。空文字は「マテリアル未割当」として RenderSystem が描画をスキップする。
+    // .mat の assets/ 相対パス。空文字は「マテリアル未割当」として RenderSystem が描画をスキップする。
     // WHY: MaterialComponent は参照だけを持ち、シェーダー・パラメータ・テクスチャは共有アセット側へ集約する。
     std::string materialPath;
 

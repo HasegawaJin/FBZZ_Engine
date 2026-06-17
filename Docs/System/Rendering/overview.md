@@ -54,7 +54,7 @@
 
 | 機能 | 状態 |
 |---|---|
-| `.fzmat` アセット遅延ロード（EnsureMaterialAsset） | ✅ |
+| `.mat` アセット遅延ロード（EnsureMaterialAsset） | ✅ |
 | BlendMode / DoubleSided / RenderQueue / ShaderPath / MeshType 読み出し | ✅ |
 | Forward / Deferred 両パイプライン対応 | ✅ |
 | 不透明・半透明の分離 + RenderQueue 奥行きソート | ✅ |

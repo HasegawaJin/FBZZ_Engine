@@ -460,7 +460,7 @@ tag = 'Player'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Skinned/SkinnedLit.fzmat'
+    material = 'Assets/Materials/Skinned/SkinnedLit.mat'
 
     [gameobjects.RigidBodyComponent]
     angularVelocity = [ 0.0, 0.0, 0.0 ]
@@ -518,7 +518,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -539,7 +539,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -560,7 +560,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -581,7 +581,7 @@ tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
     enabled = true
-    material = 'Assets/Materials/Surface/Unlit.fzmat'
+    material = 'Assets/Materials/Surface/Unlit.mat'
 
     [gameobjects.MeshRenderer]
     enabled = true
@@ -2044,7 +2044,7 @@ tag = 'Untagged'
     chunkSize = 32
     columns = 33
     enabled = true
-    materialPath = 'Assets/Materials/Terrain/Terrain.fzmat'
+    materialPath = 'Assets/Materials/Terrain/Terrain.mat'
     maxHeight = 10.0
     rows = 33
     terrainAssetPath = 'Assets/Terrain/Terrain.terrain'
@@ -2097,7 +2097,7 @@ tag = 'Untagged'
     enabled = true
     extentX = 120.0
     extentZ = 120.0
-    materialPath = 'Assets/Materials/Water/Water.fzmat'
+    materialPath = 'Assets/Materials/Water/Water.mat'
     resolutionX = 64
     resolutionZ = 64
 

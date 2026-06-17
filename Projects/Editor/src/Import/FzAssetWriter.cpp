@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzAssetWriter.cpp | fbzz::editor
-// .fzasset マニフェスト (TOML) 書き出し
+// .asset マニフェスト (TOML) 書き出し
 #include <Editor/Import/FzAssetWriter.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>

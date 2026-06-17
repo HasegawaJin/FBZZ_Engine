@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzAssetLoader.cpp | fbzz::asset
-// .fzasset マニフェスト → Model ランタイムロード
+// .asset マニフェスト → Model ランタイムロード
 // Assimp 不要。fz* バイナリを直接デシリアライズする。
 #include <Engine/Asset/FzAssetLoader.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
@@ -70,7 +70,7 @@ math::Matrix4 FromFloatArray(const float src[16])
     return m;
 }
 
-// ── .fzmesh → renderer::Mesh ─────────────────────────────────────────────
+// ── .mesh → renderer::Mesh ─────────────────────────────────────────────
 std::unique_ptr<renderer::Mesh> LoadFzMesh(const std::string& path,
                                             renderer::ResourceManager& resources)
 {
@@ -133,7 +133,7 @@ std::unique_ptr<renderer::Mesh> LoadFzMesh(const std::string& path,
     return mesh;
 }
 
-// ── .fzskel → Skeleton ───────────────────────────────────────────────────
+// ── .skel → Skeleton ───────────────────────────────────────────────────
 std::unique_ptr<Skeleton> LoadFzSkel(const std::string& path)
 {
     using namespace asset;
@@ -190,7 +190,7 @@ std::unique_ptr<Skeleton> LoadFzSkel(const std::string& path)
     return skel;
 }
 
-// ── .fzanim → AnimationClip ──────────────────────────────────────────────
+// ── .anim → AnimationClip ──────────────────────────────────────────────
 AnimationClip LoadFzAnim(const std::string& path)
 {
     using namespace asset;
@@ -243,7 +243,7 @@ AnimationClip LoadFzAnim(const std::string& path)
     return clip;
 }
 
-// ── .fzmat → renderer::Material ──────────────────────────────────────────
+// ── .mat → renderer::Material ──────────────────────────────────────────
 std::unique_ptr<renderer::Material> LoadFzMat(const std::string& matPath,
                                                const std::string& texDir,
                                                renderer::ResourceManager& resources)
@@ -344,7 +344,7 @@ std::unique_ptr<Model> FzAssetLoader::Load(const std::string& fzassetPath,
         std::unique_ptr<renderer::Material> mat;
         if (i < matPaths.size() && !matPaths[i].empty()) {
             const std::string fullMat = (assetDir / matPaths[i]).string();
-            // WHY: マニフェスト位置が変わっても (stem.fzasset が FBX と同階層に移動しても)
+            // WHY: マニフェスト位置が変わっても (stem.asset が FBX と同階層に移動しても)
             //      テクスチャは常に mat ファイルの親の親 / textures/ にある。
             //      マニフェスト位置依存の texDir を使うと新旧構造で壊れるためここで解決する。
             const std::string matTexDir =
