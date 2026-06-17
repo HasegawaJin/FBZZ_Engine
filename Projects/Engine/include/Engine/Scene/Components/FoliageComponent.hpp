@@ -1,4 +1,4 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // FoliageComponent.hpp | fbzz::scene
 // Terrain 上へ樹木・大型岩などの複数 SubMesh 植生を配置する定義とランタイムキャッシュ
 #pragma once
@@ -89,9 +89,9 @@ struct FoliageComponent {
 
     bool enabled = true;
     bool needsBake = true;
-    // FoliageBakeSystem 専用フラグ。FoliageRenderSystem の needsBake とは独立して管理する。
+    // FoliageBakeSystem 専用フラグ。FoliageRenderPass の needsBake とは独立して管理する。
     // WHY: FoliageBakeSystem はフレーム先頭（入力処理前）に実行され、
-    //      FoliageRenderSystem はレンダーパス（入力処理後）で needsBake をリセットするため、
+    //      FoliageRenderPass はレンダーパス（入力処理後）で needsBake をリセットするため、
     //      同一フラグを共有すると stamp 追加フレームに子 GO が生成されない。
     bool needsBakeChildren = true;
     // FoliageBakeSystem が子 GO を生成したとき true にセット。

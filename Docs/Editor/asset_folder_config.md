@@ -7,7 +7,7 @@
 | 箇所 | ハードコードされている内容 |
 |------|--------------------------|
 | `AssetBrowserCore.cpp UpdateMounts` | "Scripts" / "Shaders" フォルダのみマウント |
-| `AssetBrowserPanel.cpp passesTypeFilter` | 拡張子リスト (`.fzmat`, `.hlsl` 等) が switch 文に直書き |
+| `AssetBrowserPanel.cpp passesTypeFilter` | 拡張子リスト (`.mat`, `.hlsl` 等) が switch 文に直書き |
 | `AssetBrowserPanel.hpp TypeFilter` | アセット種別 enum が固定 |
 
 ユーザーが独自フォルダ (例: `Assets/VFX`, `Assets/Levels`) を作ったり、
@@ -40,13 +40,13 @@ public:
 
     // 拡張子 (小文字 ".xxx") → 型情報。未登録なら nullptr
     static const AssetTypeInfo* Find(std::string_view ext);
-    // typeKey に属する全拡張子を返す ("material" → [".fzmat"])
+    // typeKey に属する全拡張子を返す ("material" → [".mat"])
     static std::vector<std::string> ExtensionsForKey(std::string_view typeKey);
     // 登録済み型一覧 (UI Combo 用)
     static const std::vector<std::pair<std::string, AssetTypeInfo>>& GetAll();
 
 private:
-    static std::unordered_map<std::string, AssetTypeInfo> s_byExt;   // ".fzmat" → info
+    static std::unordered_map<std::string, AssetTypeInfo> s_byExt;   // ".mat" → info
     static std::vector<std::pair<std::string, AssetTypeInfo>> s_all; // 表示順リスト
 };
 ```
@@ -56,23 +56,23 @@ private:
 | typeKey | 拡張子 |
 |---------|--------|
 | `scene`      | `.fbzz` |
-| `material`   | `.fzmat` |
+| `material`   | `.mat` |
 | `script`     | `.hpp .cpp .h .c .cc .cxx .py .lua .cs` |
 | `texture`    | `.png .jpg .jpeg .dds .bmp .tga .ico .fnt .ttf .otf` |
 | `audio`      | `.wav .mp3 .ogg .flac` |
 | `mesh`       | `.fbx .obj .gltf .glb` |
 | `shader`     | `.hlsl .hlsli` |
-| `prefab`     | `.fbzzprefab` |
-| `model`      | `.fzasset` |
-| `animation`  | `.fbzzanimcontroller` |
+| `prefab`     | `.prefab` |
+| `model`      | `.asset` |
+| `animation`  | `.animcontroller` |
 | `graph_layout` | `.fbzz.animgraph` |
-| `terrain`    | `.fbzzterrain` |
-| `water`      | `.fbzzwater` |
+| `terrain`    | `.terrain` |
+| `water`      | `.water` |
 | `data`       | `.toml .json .yaml .yml` |
 | `text`       | `.txt .md .rst` |
 
-`.fzmesh` / `.fzskel` / `.fzanim` は `.fbx` から生成される内部バイナリであり、
-ユーザーが直接選択する入口は `.fzasset` とする。そのため型レジストリの公開対象には含めず、
+`.mesh` / `.skel` / `.anim` は `.fbx` から生成される内部バイナリであり、
+ユーザーが直接選択する入口は `.asset` とする。そのため型レジストリの公開対象には含めず、
 Asset Browser でも非表示にする。
 
 ---
@@ -126,8 +126,8 @@ type_key = ""
 |-----------|------|
 | `.*` | OS / VCS の管理ファイルであり、アセット操作対象ではない |
 | `*.generated.hpp` | FBZZ Header Tool が `.hpp` から再生成する |
-| `*.fztex` | 廃止済みのテクスチャメタデータ。画像原本を直接使用する |
-| `*.fzmesh` / `*.fzskel` / `*.fzanim` | FBX importer が生成し、`.fzasset` から参照する内部バイナリ |
+| `*.tex` | 廃止済みのテクスチャメタデータ。画像原本を直接使用する |
+| `*.mesh` / `*.skel` / `*.anim` | FBX importer が生成し、`.asset` から参照する内部バイナリ |
 | `*.cso` / `Shaders/compiled/` | HLSL から再生成するシェーダーバイナリ |
 | `*.dll` / `*.lib` / `*.pdb` / `*.exp` / `*.ilk` | コンパイラ・リンカーが生成するビルド成果物 |
 | `*.tmp` / `*.bak` | 一時・バックアップファイル |
@@ -146,7 +146,7 @@ type_key = ""
 `AssetBrowserPanel.cpp`:
 ```cpp
 // Before
-case TypeFilter::Material: return e.ext == ".fzmat";
+case TypeFilter::Material: return e.ext == ".mat";
 
 // After
 case TypeFilter::Material:
@@ -229,7 +229,7 @@ Asset Browser のツールバーに `[Folders ⚙]` ボタンを追加。
 
 1. `customFolders` が空の初回起動 → Scripts / Shaders が自動挿入されてマウント表示される
 2. `[Folders ⚙]` から "VFX" フォルダを追加 → 左ペインに表示、再起動後も保持
-3. Type フィルタ "Material" → `.fzmat` のみ (AssetTypeRegistry 経由で一致)
+3. Type フィルタ "Material" → `.mat` のみ (AssetTypeRegistry 経由で一致)
 4. カスタム拡張子 `.myasset` を Registry に追加 → "Custom" フィルタに表示
 5. typeKey 付きフォルダに入ったとき自動フィルタが切り替わる
 6. `.generated.hpp` / importer・shader 生成物が一覧とツリーに表示されない

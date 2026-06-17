@@ -68,7 +68,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 tc.heightDirty = true;
             ImGui::DragInt("Chunk Size", &tc.chunkSize, 1.0f, 8, 256);
 
-            // ── Layer Materials (.fzmat × 4) ──────────────────────────────────
+            // ── Layer Materials (.mat × 4) ──────────────────────────────────
             ImGui::SeparatorText("Layer Materials");
             static const char* kLayerNames[] = { "Layer 0", "Layer 1", "Layer 2", "Layer 3" };
             for (int li = 0; li < 4; ++li) {
@@ -88,7 +88,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 if (ImGui::BeginDragDropTarget()) {
                     if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                         std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
+                        if (util::StringUtils::EndsWith(dropped, ".mat")) {
                             tc.layerMaterials[li] = dropped;
                             tc.splatDirty = true;
                         }
@@ -108,8 +108,8 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                             if (f.textureDirty) tc.splatDirty         = true;
                             if (f.paramDirty)   tc.materialParamDirty = true;
                         }
-                        if (ImGui::Button("Save .fzmat")) {
-                            asset::SaveMaterialAssetToFile(
+                        if (ImGui::Button("Save .mat")) {
+                            (void)asset::SaveMaterialAssetToFile(
                                 MaterialAssetDiskPath(ctx, tc.layerMaterials[li]), *mat);
                             ctx.requestAssetBrowserRefresh = true;
                         }
@@ -157,8 +157,8 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 
     DrawComponentSection<scene::WaterComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Water",
         [go](scene::WaterComponent& water, EditorContext&) {
-            // ── Material (.fzmat) ─────────────────────────────────────────────
-            ImGui::SeparatorText("Material (.fzmat)");
+            // ── Material (.mat) ─────────────────────────────────────────────
+            ImGui::SeparatorText("Material (.mat)");
             char matBuf[256];
             std::snprintf(matBuf, sizeof(matBuf), "%s", water.materialPath.c_str());
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 4.0f);
@@ -170,7 +170,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    if (util::StringUtils::EndsWith(dropped, ".fzmat")) {
+                    if (util::StringUtils::EndsWith(dropped, ".mat")) {
                         water.materialPath = dropped;
                         water.texDirty = true;
                         water.foamDirty = true;

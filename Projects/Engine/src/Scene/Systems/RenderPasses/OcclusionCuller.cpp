@@ -1,7 +1,7 @@
 // FBZZ Engine
 // OcclusionCuller.cpp | fbzz::scene
 // CPU ソフトウェアオクルージョンカリングの実装
-#include <Engine/Scene/Systems/OcclusionCuller.hpp>
+#include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <algorithm>
 #include <cmath>
 

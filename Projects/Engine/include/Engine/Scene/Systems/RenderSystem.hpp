@@ -9,7 +9,8 @@
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 
-namespace fbzz::scene   { class Scene; }
+namespace fbzz::scene    { class Scene; }
+namespace fbzz::physics  { class World; }
 namespace fbzz::renderer {
     class IRenderer;
     class Camera;
@@ -44,6 +45,7 @@ void RenderSystem(Scene& scene,
                   renderer::ResourceHandle<renderer::RenderTargetTag> outputRT = {},
                   const renderer::RenderSettings* settings = nullptr,
                   fbzz::LayerMask cullingMask = fbzz::Layer::Everything,
-                  const RenderSystemUIOptions* uiOptions = nullptr);
+                  const RenderSystemUIOptions* uiOptions = nullptr,
+                  const physics::World* physicsWorld = nullptr);
 
 } // namespace fbzz::scene

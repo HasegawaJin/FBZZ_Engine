@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzAssetWriter.hpp | fbzz::editor
-// .fzasset マニフェスト (TOML) を書き出す
+// .asset マニフェスト (TOML) を書き出す
 #pragma once
 #include <string>
 #include <vector>

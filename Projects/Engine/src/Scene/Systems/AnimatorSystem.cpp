@@ -2,6 +2,8 @@
 // AnimatorSystem.cpp | fbzz::scene
 // スケルタルアニメーションのサンプリングとスキニングパレットのアップロード
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/TransformSystem.hpp"
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
@@ -1192,8 +1194,24 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
 }
 
-void AnimatorSystem(Scene& scene, renderer::ResourceManager& resources, float dt)
+ComponentAccess AnimatorSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<AnimatorComponent>()
+        .Writes<AnimatorComponent, BoneComponent>();
+}
+
+OrderingHints AnimatorSystem::GetOrder() const
+{
+    return OrderingHints{}.After<TransformLateUpdate>();
+}
+
+void AnimatorSystem::Update(SystemContext& ctx)
+{
+    if (!ctx.resources) return;
+    Scene& scene = ctx.scene;
+    renderer::ResourceManager& resources = *ctx.resources;
+    const float dt = ctx.dt;
     const auto animatorSpan = scene.GetEntities<AnimatorComponent>();
     const auto animatorEntities = std::vector<EntityID>(
         animatorSpan.begin(),

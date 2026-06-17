@@ -31,7 +31,7 @@ struct DetailLayer {
     DetailLayerType type = DetailLayerType::Mesh;
 
     // アセット参照
-    std::string meshPath;        // Mesh レイヤー: .fzasset モデルパス
+    std::string meshPath;        // Mesh レイヤー: .asset モデルパス
     std::string densityMapPath;  // グレースケール画像: 白=最大密度・黒=なし (空 = 配置なし)
     std::string texturePath;     // Billboard / Grass: アルベドテクスチャ
 
@@ -113,7 +113,7 @@ struct TerrainDetailComponent {
     std::vector<DetailLayer> layers;
 
     // ランタイムキャッシュ。非永続化。
-    // DetailRenderSystem が所有・管理する（Bake 後に確定、Scene ロード時に再生成）。
+    // DetailRenderPass が所有・管理する（Bake 後に確定、Scene ロード時に再生成）。
     std::vector<DetailChunk> chunks;
 
     // DetailTool がペイントした密度マップ。layers と同じインデックスで対応。

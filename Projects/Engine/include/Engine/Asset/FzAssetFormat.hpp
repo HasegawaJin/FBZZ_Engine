@@ -10,7 +10,7 @@
 
 namespace fbzz::asset {
 
-// ── .fzmesh ──────────────────────────────────────────────────────────────
+// ── .mesh ──────────────────────────────────────────────────────────────
 // ヘッダー | 頂点配列 | インデックス配列
 // 頂点型は flags で切り替え (静的: Vertex / スキン: SkinnedVertex)
 
@@ -28,7 +28,7 @@ struct FzMeshHeader {
 };
 static_assert(sizeof(FzMeshHeader) == 36, "FzMeshHeader size mismatch");
 
-// ── .fzskel ──────────────────────────────────────────────────────────────
+// ── .skel ──────────────────────────────────────────────────────────────
 // ヘッダー | FzSkeletonNodeData × nodeCount | FzBoneData × boneCount
 // 各 SkeletonNode の children は childCount 個の int32_t が末尾に続く可変長エントリ
 
@@ -68,7 +68,7 @@ struct FzBoneData {
 };
 static_assert(sizeof(FzBoneData) == 136, "FzBoneData size mismatch");
 
-// ── .fzanim ──────────────────────────────────────────────────────────────
+// ── .anim ──────────────────────────────────────────────────────────────
 // ヘッダー | FzAnimTrackHeader × trackCount | 各トラックの keyframe 配列
 
 constexpr uint32_t FZANIM_VERSION = 1;

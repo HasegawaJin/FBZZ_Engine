@@ -1,6 +1,6 @@
 // FBZZ Engine
 // MaterialAsset.cpp | fbzz::asset
-// .fzmat マテリアルアセットの TOML シリアライズ / デシリアライズ
+// .mat マテリアルアセットの TOML シリアライズ / デシリアライズ
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -36,7 +36,7 @@ std::string ResolveTexturePath(std::string_view materialPath, std::string value)
     if (value.find('/') != std::string::npos)
         return value;
 
-    // WHY: FBX インポートは materials/mat_N.fzmat と textures/foo.png を sibling に出す。
+    // WHY: FBX インポートは materials/mat_N.mat と textures/foo.png を sibling に出す。
     //      旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
     const std::filesystem::path materialDir = std::filesystem::path(std::string(materialPath)).parent_path();
     return (materialDir.parent_path() / "textures" / value).string();
@@ -186,7 +186,7 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 
     if (auto* textures = table["textures"].as_table()) {
         // WHY: Terrain / Water などの専用シェーダーは標準 t0-t7 以外の意味名
-        //      (layer0_diffuse, normalMap1 など) を .fzmat に保存する。
+        //      (layer0_diffuse, normalMap1 など) を .mat に保存する。
         //      固定スロットだけを読むと、専用マテリアルを Inspector で保存した時に
         //      テクスチャ参照が消えるため、textures テーブルの全キーを保持する。
         for (const auto& [key, node] : *textures) {
@@ -217,7 +217,7 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
 
     toml::table textures;
     // WHY: ロードと同じく、標準スロットに限定せず MaterialAsset が持つ全キーを保存する。
-    //      これにより Terrain / Water の意味名テクスチャを generic .fzmat と同じ保存 API で扱える。
+    //      これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
     for (const auto& [slot, texturePath] : asset.textures)
         textures.insert(slot, texturePath);
     for (const char* slot : kTextureSlots) {

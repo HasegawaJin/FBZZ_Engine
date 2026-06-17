@@ -26,10 +26,10 @@ struct ScriptMaterialProxy {
     // WHY: カスタムマテリアルは Script から動的に付け替える用途が多いため、呼び出し側の定型処理を減らす。
     MaterialComponent* Ensure() const;
 
-    // SetMaterial: .fzmat を MaterialComponent に割り当てる。
+    // SetMaterial: .mat を MaterialComponent に割り当てる。
     bool SetMaterial(std::string_view materialPath) const;
 
-    // EnsureMaterial: MaterialComponent を確保し、指定 .fzmat が未設定なら割り当てる。
+    // EnsureMaterial: MaterialComponent を確保し、指定 .mat が未設定なら割り当てる。
     // WHY: OnStart と OnUpdate のどちらから呼んでも同じマテリアル参照状態に収束させる。
     bool EnsureMaterial(std::string_view materialPath) const;
 

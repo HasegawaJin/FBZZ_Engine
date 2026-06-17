@@ -16,6 +16,7 @@
 //   4. Polygon Mesh        — 生存ポリゴンを詰めて NavMeshPolygon 配列を構築し Portal を張る
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSurfaceComponent.hpp"
@@ -591,19 +592,28 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
 }
 
 // ── NavMeshBakeSystem ─────────────────────────────────────────────────────
-// entity.index → 実行中ジョブ。メインスレッドでのみアクセスする。
-struct BakeJob {
-    std::future<NavMesh>                future;
-    std::shared_ptr<std::atomic<float>> progress;
-};
-static std::unordered_map<uint32_t, BakeJob> s_bakeJobs;
 
-void NavMeshBakeSystem(Scene& scene)
+ComponentAccess NavMeshBakeSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<TerrainComponent, NavMeshSurfaceComponent, NavMeshModifierComponent>()
+        .Writes<NavMeshSurfaceComponent>();
+}
+
+float NavMeshBakeSystem::BakeProgress(uint32_t surfaceId) const
+{
+    auto it = m_jobs.find(surfaceId);
+    if (it == m_jobs.end()) return 0.0f;
+    return it->second.progress->load(std::memory_order_relaxed);
+}
+
+void NavMeshBakeSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
     // Phase 1: 完了した Future を適用する
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
-        auto it = s_bakeJobs.find(eid.index);
-        if (it == s_bakeJobs.end()) continue;
+        auto it = m_jobs.find(eid.index);
+        if (it == m_jobs.end()) continue;
 
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         if (surface)
@@ -667,7 +677,7 @@ void NavMeshBakeSystem(Scene& scene)
         } else {
             it->second.future.get(); // 破棄
         }
-        s_bakeJobs.erase(it);
+        m_jobs.erase(it);
     }
 
     // Phase 2: needsBake が立っているものを非同期ジョブとして投入する
@@ -675,7 +685,7 @@ void NavMeshBakeSystem(Scene& scene)
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         auto* go      = scene.GetGameObject(eid);
         if (!surface || !go || !surface->needsBake) continue;
-        if (s_bakeJobs.count(eid.index)) continue; // 既に実行中
+        if (m_jobs.count(eid.index)) continue; // 既に実行中
 
         surface->needsBake    = false;
         surface->bakeState    = NavMeshBakeState::Baking;
@@ -737,7 +747,7 @@ void NavMeshBakeSystem(Scene& scene)
         job.future = TaskSystem::Submit([inp = std::move(input), p = bakeProgress]() mutable {
             return RunNavMeshBake(std::move(inp), p.get());
         });
-        s_bakeJobs[eid.index] = std::move(job);
+        m_jobs[eid.index] = std::move(job);
     }
 }
 

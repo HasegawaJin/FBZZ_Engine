@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // AssetBrowserCreate.cpp | fbzz::editor
 // AssetBrowser の FBX 内容表示と Create メニュー
 #include "AssetBrowserCommon.hpp"
@@ -176,10 +176,10 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RefreshDirectory();
     }
     if (ImGui::MenuItem("Material")) {
-        std::string newPath = m_currentPath + "/New Material.fzmat";
+        std::string newPath = m_currentPath + "/New Material.mat";
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
-            newPath = m_currentPath + "/New Material " + std::to_string(suffix++) + ".fzmat";
+            newPath = m_currentPath + "/New Material " + std::to_string(suffix++) + ".mat";
         const char* materialTemplate =
             "version = 1\n"
             "shader = \"\"\n"

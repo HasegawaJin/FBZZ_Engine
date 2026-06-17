@@ -5,6 +5,7 @@
 // autoChase 中は同 GO の NavMeshAgentComponent と連携し、見失った直後は
 // 最後に見えた位置まで一度だけ移動させてから巡回などへ戻れるようにする。
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSensorComponent.hpp"
@@ -33,8 +34,18 @@ void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*ca
 
 } // namespace
 
-void NavMeshSensorSystem(Scene& scene, const physics::World* world, float dt)
+ComponentAccess NavMeshSensorSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<NavMeshSensorComponent>()
+        .Writes<NavMeshSensorComponent, NavMeshAgentComponent>();
+}
+
+void NavMeshSensorSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
+    const physics::World* world = &ctx.world;
+    const float dt = ctx.dt;
     for (EntityID eid : scene.GetEntities<NavMeshSensorComponent>()) {
         auto* sensor = scene.GetComponent<NavMeshSensorComponent>(eid);
         auto* go     = scene.GetGameObject(eid);

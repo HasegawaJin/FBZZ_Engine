@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzAssetLoader.hpp | fbzz::asset
-// .fzasset (type="model") マニフェストから Model を生成するローダー
+// .asset (type="model") マニフェストから Model を生成するローダー
 // fz* バイナリを直接デシリアライズし、Assimp 不要でランタイムロードを完結させる。
 #pragma once
 #include <memory>
@@ -13,7 +13,7 @@ namespace fbzz::asset {
 
 class FzAssetLoader {
 public:
-    // fzassetPath : .fzasset ファイルの絶対パス
+    // fzassetPath : .asset ファイルの絶対パス
     // 失敗時は nullptr を返す。所有権は呼び出し元 (AssetManager) へ移譲する。
     static std::unique_ptr<Model> Load(
         const std::string& fzassetPath,
