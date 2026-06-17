@@ -25,7 +25,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
                     const std::string dropped =
                         NormalizeAssetPath(static_cast<const char*>(payload->Data));
-                    if (util::StringUtils::EndsWith(dropped, ".fbzzanimcontroller")) {
+                    if (util::StringUtils::EndsWith(dropped, ".animcontroller")) {
                         anim.controllerPath = dropped;
                         anim.loadedControllerPath.clear();
                         asset::AnimatorControllerAsset controller;
@@ -50,12 +50,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     if (!valid) character = '_';
                 }
                 std::string path =
-                    directory + "/" + safeName + ".fbzzanimcontroller";
+                    directory + "/" + safeName + ".animcontroller";
                 for (int suffix = 1;
                      util::FileSystem::Exists(path) && suffix < 10000;
                      ++suffix) {
                     path = directory + "/" + safeName + " " +
-                        std::to_string(suffix) + ".fbzzanimcontroller";
+                        std::to_string(suffix) + ".animcontroller";
                 }
                 const auto controller =
                     asset::MakeAnimatorControllerAsset(anim);

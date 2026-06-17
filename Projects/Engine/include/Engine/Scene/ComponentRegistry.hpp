@@ -34,6 +34,12 @@
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
 #include "Components/LifetimeComponent.hpp"
+#include "Components/NavMeshSurfaceComponent.hpp"
+#include "Components/NavMeshModifierComponent.hpp"
+#include "Components/NavMeshAgentComponent.hpp"
+#include "Components/NavMeshOffMeshLinkComponent.hpp"
+#include "Components/NavMeshPatrolComponent.hpp"
+#include "Components/NavMeshSensorComponent.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -76,7 +82,13 @@ using ComponentList = std::tuple<
     WaterComponent,
     TrailComponent,
     MeshTrailComponent,
-    LifetimeComponent
+    LifetimeComponent,
+    NavMeshSurfaceComponent,
+    NavMeshModifierComponent,
+    NavMeshAgentComponent,
+    NavMeshOffMeshLinkComponent,
+    NavMeshPatrolComponent,
+    NavMeshSensorComponent
     // 新型はここに1行追加するだけ
 >;
 

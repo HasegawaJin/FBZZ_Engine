@@ -60,4 +60,7 @@ void SubmitTerrainShadowCasters(
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB
 );
 
+struct RenderPassContext;
+void TerrainSelectionMaskSystem(RenderPassContext& ctx);
+
 } // namespace fbzz::scene

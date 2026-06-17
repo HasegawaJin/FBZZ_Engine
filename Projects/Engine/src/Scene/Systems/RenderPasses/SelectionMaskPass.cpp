@@ -3,6 +3,8 @@
 // Selection mask render pass implementation
 #include "SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/TerrainRenderSystem.hpp>
+#include <Engine/Scene/Systems/WaterRenderSystem.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
@@ -97,6 +99,9 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
             }
         }
     }
+
+    TerrainSelectionMaskSystem(ctx);
+    WaterSelectionMaskSystem(ctx);
 
     r.SetRenderTarget(h.hdrRT, resources);
 }
