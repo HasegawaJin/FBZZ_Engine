@@ -14,6 +14,7 @@
 //   2. Triangulate         — 各歩行可能セルを対角線で 2 個の三角形に分割
 //   3. Hertel-Mehlhorn 凸合成 — 隣接ポリゴンを凸性を保ったまま貪欲にマージ
 //   4. Polygon Mesh        — 生存ポリゴンを詰めて NavMeshPolygon 配列を構築し Portal を張る
+#include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
@@ -330,15 +331,15 @@ static void ParallelFor(int count, Fn fn)
         return;
     }
     const int chunk = (count + nThreads - 1) / nThreads;
-    std::vector<std::thread> threads;
-    threads.reserve(static_cast<size_t>(nThreads));
+    std::vector<std::future<void>> futures;
+    futures.reserve(static_cast<size_t>(nThreads));
     for (int t = 0; t < nThreads; ++t) {
         const int beg = t * chunk;
         const int end = std::min(beg + chunk, count);
         if (beg >= end) break;
-        threads.emplace_back([=, &fn]() { for (int i = beg; i < end; ++i) fn(i); });
+        futures.push_back(TaskSystem::Submit([=, &fn]{ for (int i = beg; i < end; ++i) fn(i); }));
     }
-    for (auto& th : threads) th.join();
+    for (auto& f : futures) f.wait();
 }
 
 } // namespace
@@ -733,10 +734,9 @@ void NavMeshBakeSystem(Scene& scene)
         auto bakeProgress = std::make_shared<std::atomic<float>>(0.0f);
         BakeJob job;
         job.progress = bakeProgress;
-        job.future   = std::async(std::launch::async,
-            [inp = std::move(input), p = bakeProgress]() mutable {
-                return RunNavMeshBake(std::move(inp), p.get());
-            });
+        job.future = TaskSystem::Submit([inp = std::move(input), p = bakeProgress]() mutable {
+            return RunNavMeshBake(std::move(inp), p.get());
+        });
         s_bakeJobs[eid.index] = std::move(job);
     }
 }

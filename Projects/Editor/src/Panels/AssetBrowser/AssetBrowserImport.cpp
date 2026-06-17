@@ -2,6 +2,7 @@
 // AssetBrowserImport.cpp | fbzz::editor
 // AssetBrowser の未変換アセット検出とバックグラウンドインポート
 #include "AssetBrowserCommon.hpp"
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <toml++/toml.hpp>
 #include <sstream>
 #include <string_view>
@@ -337,7 +338,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
     if (m_importThreadDone.load()) {
         m_importThreadDone.store(false);
         m_isImporting.store(false);
-        if (m_importThread.joinable()) m_importThread.join();
+        m_importFuture = {};
         EditorTaskOverlay::End();
         FBZZ_LOG_INFO("AssetBrowserPanel: all imports done, flushing asset cache");
         asset::AssetManager::FlushFailed();
@@ -380,7 +381,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
 
     auto imports = std::move(m_pendingImports);
 
-    m_importThread = std::thread([this, imports = std::move(imports)]() mutable {
+    m_importFuture = fbzz::TaskSystem::Submit([this, imports = std::move(imports)]() mutable {
         try {
             for (const auto& imp : imports) {
                 FBZZ_LOG_INFO("AssetBrowserPanel: importing [%s]", imp.path.c_str());
