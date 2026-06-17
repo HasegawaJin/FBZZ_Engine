@@ -1,8 +1,8 @@
 // FBZZ Engine
-// FoliageRenderSystem.cpp | fbzz::scene
-// 樹木・大型岩向けの複数SubMesh/Material対応GPU Instancing描画
-#include "Engine/Scene/Systems/FoliageRenderSystem.hpp"
-#include "Engine/Scene/Systems/RenderPassContext.hpp"
+// RenderPasses/Geometry/FoliageRenderPass.cpp | fbzz::scene
+// 樹木・大型岩向けの複数SubMesh/Material対応GPU Instancing描画 (IRenderPass 実装)
+#include "Engine/Scene/Systems/RenderPasses/Geometry/FoliageRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/FoliageComponent.hpp"
@@ -56,7 +56,6 @@ void BakeSpecies(FoliageSpeciesCache& cache,
     if (species.modelPath.empty() || terrain.columns < 2 || terrain.rows < 2)
         return;
 
-    // モデルが存在しない場合はインスタンスを積まない。
     // WHY: ロード失敗のまま instances を積むと FoliageTool の stamp カウントが増え続け、
     //      存在しないアセットに対して Physics コライダーも生成されてしまう。
     if (!asset::AssetManager::Load<asset::Model>(species.modelPath))
@@ -118,8 +117,20 @@ void BakeSpecies(FoliageSpeciesCache& cache,
 
 } // namespace
 
-void FoliageRenderSystem(RenderPassContext& ctx)
+// ─── IRenderPass ──────────────────────────────────────────────────────────
+
+std::string_view FoliageRenderPass::Name() const { return "FoliagePass"; }
+
+std::vector<renderer::RenderGraph::ResourceAccess> FoliageRenderPass::DeclareAccesses(
+    const RenderPassContext&) const
 {
+    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+}
+
+void FoliageRenderPass::Execute(RenderPassContext& ctx)
+{
+    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+
     if (!ctx.handles.foliageShader.IsValid())
         return;
 

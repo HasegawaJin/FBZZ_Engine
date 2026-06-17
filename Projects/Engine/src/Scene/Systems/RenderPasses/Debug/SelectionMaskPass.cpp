@@ -1,10 +1,10 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // SelectionMaskPass.cpp | fbzz::scene
 // Selection mask render pass implementation
 #include "SelectionPasses.hpp"
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
-#include <Engine/Scene/Systems/TerrainRenderSystem.hpp>
-#include <Engine/Scene/Systems/WaterRenderSystem.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
+#include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>

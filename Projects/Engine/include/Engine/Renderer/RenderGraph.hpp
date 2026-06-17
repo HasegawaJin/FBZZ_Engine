@@ -171,6 +171,12 @@ public:
             m_outputs.push_back(std::string(output));
     }
 
+    // RenderPipeline など動的にパスを構築する側から呼ぶ。SetOutputs のクリア不要版。
+    void AddOutput(std::string_view name)
+    {
+        m_outputs.emplace_back(name);
+    }
+
     [[nodiscard]] bool Validate() const
     {
         std::vector<size_t> order;

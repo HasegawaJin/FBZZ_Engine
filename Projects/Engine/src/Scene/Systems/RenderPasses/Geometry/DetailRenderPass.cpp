@@ -1,22 +1,16 @@
 // FBZZ Engine
-// DetailRenderSystem.cpp | fbzz::scene
-// TerrainDetailComponent → GPU Instancing 描画の実装
-//
-// 設計:
-//   - インスタンス位置はワールド空間で Bake する (Terrain の Translation を加算)
-//   - Terrain が静的である前提: 移動時は needsBake = true で再 Bake
-//   - チャンクサイズ: 16m × 16m (kDetailChunkSize)
-//   - 密度マップ: DetailTool のランタイムマップを使用し、未作成時は密度 0
+// RenderPasses/Geometry/DetailRenderPass.cpp | fbzz::scene
+// TerrainDetailComponent → GPU Instancing 描画 (IRenderPass 実装)
 //
 // レイヤー別描画パス:
 //   Mesh/Billboard — Detail.hlsl     : VS t0=DetailInstance, PS t0=アルベド, b0=Camera, b2=DetailMaterialCB
 //   Grass          — DetailGrass.hlsl: VS t0=GrassInstance (プロシージャル), b0=Camera, b3=Light, b2=DetailGrassCB
 //
-// テクスチャスロット (各シェーダーと同期):
+// テクスチャスロット:
 //   instanceBuffer (VS t0) = StructuredBuffer<DetailInstance or GrassInstance>
 //   PS t0 = アルベドテクスチャ
-#include "Engine/Scene/Systems/DetailRenderSystem.hpp"
-#include "Engine/Scene/Systems/RenderPassContext.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/DetailRenderPass.hpp"
+#include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Entity.hpp"
@@ -45,35 +39,19 @@
 
 namespace fbzz::scene {
 
-// ============================================================
-// 定数
-// ============================================================
+static constexpr float kDetailChunkSize     = 16.0f;
+static constexpr float kMaxDensityPerMeter2 =  4.0f;
 
-static constexpr float kDetailChunkSize     = 16.0f; // チャンク 1 辺のワールドサイズ [m]
-static constexpr float kMaxDensityPerMeter2 =  4.0f; // density=1 のときの最大個数 [個/m²]
-
-// ============================================================
-// 内部 CB 型 (対応する HLSL cbuffer と完全に一致させること)
-// ============================================================
-
-// Detail.hlsl b2
+// b2 (Detail.hlsl と同期)
 struct DetailMaterialCB {
     float    alphaCutoff;
     uint32_t isBillboard;
-    uint32_t hasAlbedoTex; // 1 if albedo texture is bound; 0 = fallback white
+    uint32_t hasAlbedoTex;
     float    _pad;
 };
 static_assert(sizeof(DetailMaterialCB) == 16, "DetailMaterialCB size mismatch");
 
-// ============================================================
-// エンティティ別 CB キャッシュ
-// ============================================================
-
 static std::unordered_map<uint32_t, renderer::ResourceHandle<renderer::ConstantBufferTag>> g_matCBCache;
-
-// ============================================================
-// Billboard 用ユニットクワッド (一度だけ生成)
-// ============================================================
 
 struct QuadVertex {
     float px, py, pz;
@@ -93,7 +71,6 @@ static void EnsureQuadBuffers(renderer::ResourceManager& resources)
 
     s_quadResetVersion = resources.GetResetVersion();
 
-    // 単位クワッド: X[-0.5,0.5], Y[-0.5,0.5] (Billboard モードでは VS 内でカメラ向きに展開)
     static const QuadVertex verts[4] = {
         { -0.5f,  0.5f, 0.0f,  0.0f, 0.0f, -1.0f,  1.0f, 0.0f, 0.0f,  0.0f, 0.0f },
         {  0.5f,  0.5f, 0.0f,  0.0f, 0.0f, -1.0f,  1.0f, 0.0f, 0.0f,  1.0f, 0.0f },
@@ -106,26 +83,17 @@ static void EnsureQuadBuffers(renderer::ResourceManager& resources)
     s_quadIB = resources.CreateIndexBuffer(indices, 6);
 }
 
-// ============================================================
-// 乱数 (決定論的 LCG)
-// ============================================================
-
 static float LcgRand(uint32_t& seed)
 {
     seed = seed * 1664525u + 1013904223u;
     return static_cast<float>(seed >> 8) / static_cast<float>(1u << 24);
 }
 
-// ============================================================
-// Terrain 描画・MeshCollider と同じ World Matrix でローカル点を変換する。
 static math::Vector3 TransformPoint(const math::Matrix4& matrix, const math::Vector3& point)
 {
     const math::Vector4 transformed = matrix * math::Vector4{ point.x, point.y, point.z, 1.0f };
     return { transformed.x, transformed.y, transformed.z };
 }
-
-// Bake
-// ============================================================
 
 static void BakeChunk(
     DetailChunk&                           chunk,
@@ -165,9 +133,6 @@ static void BakeChunk(
         const DetailLayer& layer = layers[li];
         if (layer.density <= 0.0f) continue;
 
-        // Mesh レイヤーはアセットが存在しない場合インスタンスを積まない。
-        // WHY: ロード失敗のまま instances を積むとカウントが上がり続け、
-        //      存在しないアセットに対して描画も試みられる。
         if (layer.type == DetailLayerType::Mesh) {
             if (layer.meshPath.empty()) continue;
             if (!asset::AssetManager::Load<asset::Model>(layer.meshPath)) continue;
@@ -186,10 +151,8 @@ static void BakeChunk(
                 const float jx = localX + (LcgRand(seed) - 0.5f) * sampleStep;
                 const float jz = localZ + (LcgRand(seed) - 0.5f) * sampleStep;
 
-                // 密度マップサンプリング: DetailTool がペイントした値で間引く
                 (void)layer.densityMapPath;
-                // WHY: 新規 DetailLayer は空の Terrain から Paint を開始する。
-                //      密度マップ未作成を全面密度1と解釈すると、初回 Bake で最大数が配置される。
+                // WHY: 密度マップ未作成を全面密度1と解釈すると初回 Bake で最大数が配置される
                 if (li >= densityMaps.size() || !densityMaps[li].IsValid())
                     continue;
                 const float u = jx / terrainW;
@@ -224,7 +187,6 @@ static void BakeChunk(
             }
         }
 
-        // GPU バッファ生成
         if (isGrass)
         {
             auto& gInst = chunk.grassInstancesPerLayer[li];
@@ -248,21 +210,26 @@ static void BakeChunk(
     chunk.isDirty = false;
 }
 
-// ============================================================
-// メインシステム
-// ============================================================
+// ─── IRenderPass ──────────────────────────────────────────────────────────
 
-void DetailRenderSystem(RenderPassContext& ctx)
+std::string_view DetailRenderPass::Name() const { return "DetailPass"; }
+
+std::vector<renderer::RenderGraph::ResourceAccess> DetailRenderPass::DeclareAccesses(
+    const RenderPassContext&) const
 {
+    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+}
+
+void DetailRenderPass::Execute(RenderPassContext& ctx)
+{
+    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+
     Scene&                     scene     = ctx.scene;
     renderer::IRenderer&       renderer  = ctx.renderer;
     renderer::ResourceManager& resources = ctx.resources;
     const renderer::Camera&    camera    = ctx.camera;
     const auto&                handles   = ctx.handles;
 
-    // Bake は shader の初期化状態に依存しない。
-    // WHY: shader 準備前に return すると needsBake が解除されず、
-    //      Editor 上で Baking Detail 表示が永続化するため。
     const bool shadersReady = handles.detailMeshShader.IsValid();
     if (shadersReady)
         EnsureQuadBuffers(resources);
@@ -286,9 +253,6 @@ void DetailRenderSystem(RenderPassContext& ctx)
             || !(detail.bakedWorldRotation == transform.worldRotation)
             || detail.bakedWorldScale != transform.worldScale;
 
-        // ============================================================
-        // Bake
-        // ============================================================
         if (detail.needsBake || detail.chunks.empty() || transformChanged)
         {
             detail.chunks.clear();
@@ -311,12 +275,9 @@ void DetailRenderSystem(RenderPassContext& ctx)
             detail.hasBakedTransform  = true;
         }
 
-        // ============================================================
         if (!shadersReady)
             continue;
 
-        // EntityID を逆引きして CB キャッシュのキーに使う
-        // ============================================================
         EntityID eid{};
         for (EntityID candidate : scene.GetEntities<TerrainDetailComponent>()) {
             if (scene.GetComponent<TerrainDetailComponent>(candidate) == &detail) {
@@ -330,16 +291,12 @@ void DetailRenderSystem(RenderPassContext& ctx)
         if (!matCBH.IsValid())
             matCBH = resources.CreateConstantBuffer(sizeof(DetailMaterialCB));
 
-        // ============================================================
-        // 描画
-        // ============================================================
         const math::Vector3 camPos = {
             camera.m_position.x, camera.m_position.y, camera.m_position.z
         };
 
         for (auto& chunk : detail.chunks)
         {
-            // チャンク中心距離チェック (全レイヤーの最大 drawDistance を採用)
             const math::Vector3 chunkCenter = TransformPoint(terrainWorld, {
                 (static_cast<float>(chunk.chunkX) + 0.5f) * kDetailChunkSize,
                 0.0f,
@@ -356,7 +313,6 @@ void DetailRenderSystem(RenderPassContext& ctx)
             if (distSq > (maxDraw + kDetailChunkSize) * (maxDraw + kDetailChunkSize))
                 continue;
 
-            // AABB フラスタムカリング
             if (frustum)
             {
                 const float localX0 = static_cast<float>(chunk.chunkX) * kDetailChunkSize;
@@ -384,7 +340,6 @@ void DetailRenderSystem(RenderPassContext& ctx)
                     continue;
             }
 
-            // ---- レイヤー別 DrawCall ----
             for (size_t li = 0; li < detail.layers.size(); ++li)
             {
                 const DetailLayer& layer = detail.layers[li];
@@ -394,7 +349,6 @@ void DetailRenderSystem(RenderPassContext& ctx)
                 const bool isGrass     = (layer.type == DetailLayerType::Grass);
                 const bool isBillboard = (layer.type == DetailLayerType::Billboard);
 
-                // ---- Grass ----
                 if (isGrass)
                 {
                     if (li >= chunk.grassInstanceBuffers.size()) continue;
@@ -404,14 +358,12 @@ void DetailRenderSystem(RenderPassContext& ctx)
 
                     if (!handles.detailGrassShader.IsValid()) continue;
 
-                    // アルベドテクスチャ
                     renderer::ResourceHandle<renderer::TextureTag> albedoTex;
                     if (!layer.texturePath.empty())
                         albedoTex = asset::AssetManager::LoadTexture(layer.texturePath);
 
-                    // DetailGrassCB を更新
                     DetailGrassCB gcb{};
-                    gcb.windDir[0]    = 0.7071f; // デフォルト風向き: X+Z 斜め
+                    gcb.windDir[0]    = 0.7071f;
                     gcb.windDir[1]    = 0.0f;
                     gcb.windDir[2]    = 0.7071f;
                     gcb.gTime         = curTime;
@@ -425,10 +377,9 @@ void DetailRenderSystem(RenderPassContext& ctx)
                     gcb._pad          = 0.0f;
                     resources.Update(handles.detailGrassCB, &gcb, sizeof(gcb));
 
-                    // 頂点バッファなし: vertexCount = bladeSegments * 6
                     renderer::DrawCall dc{};
                     dc.shader         = handles.detailGrassShader;
-                    dc.pipelineState  = handles.detailNoCullPSO; // 両面描画
+                    dc.pipelineState  = handles.detailNoCullPSO;
                     dc.vertexCount    = static_cast<uint32_t>(layer.bladeSegments * 6);
                     dc.instanceCount  = static_cast<uint32_t>(instList.size());
                     dc.instanceBuffer = instBuf;
@@ -439,7 +390,6 @@ void DetailRenderSystem(RenderPassContext& ctx)
 
                     renderer.Submit(dc, resources);
                 }
-                // ---- Mesh / Billboard ----
                 else
                 {
                     if (li >= chunk.instanceBuffers.size()) continue;
@@ -447,12 +397,10 @@ void DetailRenderSystem(RenderPassContext& ctx)
                     const auto& instList = chunk.instancesPerLayer[li];
                     if (!instBuf.IsValid() || instList.empty()) continue;
 
-                    // アルベドテクスチャ
                     renderer::ResourceHandle<renderer::TextureTag> albedoTex;
                     if (!layer.texturePath.empty())
                         albedoTex = asset::AssetManager::LoadTexture(layer.texturePath);
 
-                    // DetailMaterialCB 更新
                     DetailMaterialCB matData{};
                     matData.alphaCutoff  = albedoTex.IsValid() ? 0.5f : 0.0f;
                     matData.isBillboard  = isBillboard ? 1u : 0u;
@@ -467,8 +415,7 @@ void DetailRenderSystem(RenderPassContext& ctx)
                         renderer::DrawCall dc{};
                         dc.shader         = isBillboard ? handles.detailBillboardShader
                                                         : handles.detailMeshShader;
-                        // Detail 用メッシュは外部アセット由来で winding が統一されないため、
-                        // Billboard と同様に両面描画して配置結果が消えることを防ぐ。
+                        // Detail 用メッシュは外部アセット由来で winding が統一されないため両面描画
                         dc.pipelineState  = handles.detailNoCullPSO;
                         dc.vertexBuffer   = vb;
                         dc.indexBuffer    = ib;
@@ -489,7 +436,6 @@ void DetailRenderSystem(RenderPassContext& ctx)
                         const auto* model = asset::AssetManager::Load<asset::Model>(layer.meshPath);
                         if (!model) continue;
 
-                        // FBX はマテリアル単位で複数サブメッシュに分割されるため全て描画する。
                         for (const auto& mesh : model->meshes) {
                             if (!mesh) continue;
                             submitMesh(mesh->vertexBuffer, mesh->indexBuffer, mesh->indexCount);

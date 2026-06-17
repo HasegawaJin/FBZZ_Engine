@@ -10,7 +10,7 @@
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Scene/Systems/OcclusionCuller.hpp>
+#include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
@@ -20,6 +20,8 @@
 #include <functional>
 #include <string>
 #include <vector>
+
+namespace fbzz::physics { class World; }
 
 namespace fbzz::scene {
 
@@ -316,7 +318,8 @@ struct RenderPassContext {
 
     const math::Frustum* cameraFrustum = nullptr;
     const math::Frustum* lightFrustum  = nullptr;
-    OcclusionCuller* occlusionCuller = nullptr;
+    OcclusionCuller*      occlusionCuller = nullptr;
+    const physics::World* physicsWorld   = nullptr;
 
     int statsTotalObjects    = 0;
     int statsFrustumCulled   = 0;
