@@ -34,10 +34,11 @@ bool Compiler::Start(const Config& config)
         L"\"" + config.cmakeExe.wstring() + L"\""
         L" --build \"" + config.buildDir.wstring() + L"\""
         L" --target " + util::StringUtils::ToWide(config.target) +
-        L" --config " + util::StringUtils::ToWide(config.configuration);
+        L" --config " + util::StringUtils::ToWide(config.configuration) +
+        L" --parallel";  // MSBuild: /m — 全 CPU コアで並列コンパイル
 
     if (config.skipDeps)
-        command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false";
+        command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);

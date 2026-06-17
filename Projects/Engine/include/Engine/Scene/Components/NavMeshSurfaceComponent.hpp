@@ -15,6 +15,7 @@
 #include <Math/Vector3.hpp>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 
 namespace fbzz::scene {
@@ -145,7 +146,8 @@ struct NavMeshSurfaceComponent {
     bool needsBake = false;
 
     // ── Bake 状態 (ランタイムのみ・非永続) ────────────────────────────────
-    NavMeshBakeState bakeState = NavMeshBakeState::Idle;
+    NavMeshBakeState bakeState    = NavMeshBakeState::Idle;
+    float            bakeProgress = 0.0f;  // Baking 中のみ有効 [0, 1]
 
     // ── Bake 結果 ──────────────────────────────────────────────────────────
     // Terrain/Collider から再構築できるランタイムキャッシュのため非永続化。
@@ -166,6 +168,12 @@ struct NavMeshSurfaceComponent {
         r.Field("collectObjects", collectObjectsValue);
         collectObjectsValue = collectObjectsValue < 0 ? 0 : (collectObjectsValue > 1 ? 1 : collectObjectsValue);
         collectObjects = static_cast<NavMeshCollectObjects>(collectObjectsValue);
+        for (int i = 0; i < 32; ++i) {
+            char key[16];
+            std::snprintf(key, sizeof(key), "areaCost_%d", i);
+            r.Field(key, areaCosts[i]);
+            if (areaCosts[i] < 1.0f) areaCosts[i] = 1.0f;
+        }
         // navMesh は Bake で再生成できるランタイムキャッシュのため非保存。
     }
 };
