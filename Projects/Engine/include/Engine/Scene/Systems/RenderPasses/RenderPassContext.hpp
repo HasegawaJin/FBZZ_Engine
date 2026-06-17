@@ -327,6 +327,13 @@ struct RenderPassContext {
     int statsDrawCalls       = 0;
     int statsVertexCount     = 0;
     int statsTriangleCount   = 0;
+
+    // トランジェント RT リゾルバ。RenderPipeline::Execute() が設定する。
+    // WHY: パスコールバックが RenderPipeline を直接参照しないよう、
+    //      依存方向を逆転させずにハンドル取得を可能にするためのコールバックとして渡す。
+    //      DeclareResource で transient=true のリソースのみ有効。
+    //      未設定 (nullptr) の場合は空ハンドルを返す。
+    std::function<renderer::ResourceHandle<renderer::RenderTargetTag>(std::string_view)> getTransientRT;
 };
 
 } // namespace fbzz::scene

@@ -4,6 +4,7 @@
 #include "Engine/Scene/Systems/RenderPasses/RenderPipeline.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 
 namespace fbzz::scene {
 
@@ -59,6 +60,8 @@ void RenderPipeline::AddRawPass(
 void RenderPipeline::DeclareResource(std::string_view name,
                                       renderer::RenderGraph::ResourceDesc desc)
 {
+    // transient リソースが追加・変更されたらプールを再構築するフラグを立てる。
+    if (desc.transient) MarkPoolDirty();
     m_resources.emplace_back(std::string(name), desc);
 }
 
@@ -74,6 +77,51 @@ void RenderPipeline::SetGpuProfilerHooks(std::function<void(std::string_view)> b
 {
     m_gpuBegin = std::move(begin);
     m_gpuEnd   = std::move(end);
+}
+
+void RenderPipeline::RebuildTransientPool(
+    const renderer::RenderGraph::ExecutionReport& report,
+    renderer::ResourceManager& resources)
+{
+    // WHAT: ライフタイム解析で同一 aliasGroup に割り当てられたトランジェントリソースは
+    //       1 つの物理 RT を共有できる。グループごとに RT を 1 つ確保し、
+    //       m_nameToAliasGroup でリソース名から高速にハンドルを引けるようにする。
+    m_aliasGroupPool.clear();
+    m_nameToAliasGroup.clear();
+
+    for (const auto& lt : report.lifetimes) {
+        if (lt.desc.external || !lt.desc.transient) continue;
+        if (lt.aliasGroup < 0) continue;
+
+        m_nameToAliasGroup[lt.name] = lt.aliasGroup;
+
+        if (m_aliasGroupPool.contains(lt.aliasGroup)) continue;
+
+        // このグループ用に物理 RT を 1 つ確保する。
+        // WHY: aliasGroup が同じリソースはライフタイムが重ならないため、
+        //      同一の物理 RT バッファを順番に使い回してもアクセス競合が起きない。
+        const auto& desc = lt.desc;
+        const uint32_t w = desc.width  > 0 ? desc.width  : 1;
+        const uint32_t h = desc.height > 0 ? desc.height : 1;
+        PooledRT pr;
+        pr.desc   = desc;
+        pr.handle = resources.CreateRenderTarget(w, h, 1);
+        m_aliasGroupPool.emplace(lt.aliasGroup, std::move(pr));
+    }
+
+    m_poolDirty = false;
+}
+
+renderer::ResourceHandle<renderer::RenderTargetTag>
+RenderPipeline::GetTransientRT(std::string_view name) const
+{
+    auto it = m_nameToAliasGroup.find(std::string(name));
+    if (it == m_nameToAliasGroup.end())
+        return {};
+    auto poolIt = m_aliasGroupPool.find(it->second);
+    if (poolIt == m_aliasGroupPool.end())
+        return {};
+    return poolIt->second.handle;
 }
 
 bool RenderPipeline::Execute(RenderPassContext& ctx)
@@ -104,6 +152,22 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
     }
 
     graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
+
+    // Phase 1: Plan — 依存解決・カリング・ライフタイム解析を先に実行する。
+    // WHY: トランジェント RT プールの再構築にはライフタイム解析の結果が必要なため、
+    //      パスのコールバックを呼ぶ前に Plan() を完了させる。
+    if (!graph.Plan()) return false;
+
+    // Phase 2: プールが古い場合 (パイプライン構成変更後の初回フレーム) に再構築する。
+    if (m_poolDirty)
+        RebuildTransientPool(graph.GetLastReport(), ctx.resources);
+
+    // Phase 3: ctx.getTransientRT をパイプラインのプールに接続してからコールバックを実行する。
+    // WHY: 各パスコールバックが ctx.getTransientRT(name) でハンドルを取得できるように、
+    //      Execute() より前にラムダを設定しておく必要がある。
+    ctx.getTransientRT = [this](std::string_view name) {
+        return GetTransientRT(name);
+    };
 
     const bool ok = graph.Execute();
     m_lastReport = graph.GetLastReport();
