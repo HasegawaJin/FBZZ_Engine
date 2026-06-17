@@ -1,7 +1,7 @@
 // FBZZ Engine
-// TrailRenderSystem.cpp | fbzz::scene
-// TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行
-#include <Engine/Scene/Systems/TrailRenderSystem.hpp>
+// RenderPasses/Geometry/TrailRenderPass.cpp | fbzz::scene
+// TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)
+#include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -14,7 +14,7 @@
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Util/Easing.hpp>
 #include <Math/MathUtils.hpp>
-#include "RenderPasses/GeometryPasses.hpp"
+#include "GeometryPasses.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -27,7 +27,6 @@ namespace fbzz::scene {
 namespace {
 
 // TrailVertex — Assets/Shaders/Material/Effects/Trail.hlsl の VS 入力と一致する CPU 頂点。
-// WHAT: position はワールド空間へ展開済み。age/color 補間と UV スクロールは GPU 側で行う。
 struct TrailVertex {
     math::Vector3 position;
     float         age;
@@ -36,7 +35,6 @@ struct TrailVertex {
 };
 
 // TrailCB — TrailConstants(cbuffer b2) の C++ ミラー。
-// WHY: HLSL cbuffer は 16 byte 境界でパックされるため、合計 48 bytes に固定して転送する。
 struct TrailCB {
     math::Vector4 colorStart;
     math::Vector4 colorEnd;
@@ -47,7 +45,6 @@ struct TrailCB {
 };
 
 // TrailDrawItem — Trail の透明描画をカメラから遠い順へ並べるための一時データ。
-// WHY: 半透明は Submit 順のブレンド結果に依存するため、複数 TrailComponent が重なる場面で破綻を減らす。
 struct TrailDrawItem {
     renderer::DrawCall drawCall;
     float distanceSq = 0.0f;
@@ -360,7 +357,17 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, f
 
 } // namespace
 
-void ExecuteTrailPass(RenderPassContext& ctx)
+// ─── IRenderPass ──────────────────────────────────────────────────────────────
+
+std::string_view TrailRenderPass::Name() const { return "Trail"; }
+
+std::vector<renderer::RenderGraph::ResourceAccess> TrailRenderPass::DeclareAccesses(
+    const RenderPassContext&) const
+{
+    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+}
+
+void TrailRenderPass::Execute(RenderPassContext& ctx)
 {
     auto& renderer = ctx.renderer;
     auto& resources = ctx.resources;

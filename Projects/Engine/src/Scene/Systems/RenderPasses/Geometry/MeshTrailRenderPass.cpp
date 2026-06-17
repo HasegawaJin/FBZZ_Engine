@@ -1,7 +1,7 @@
 // FBZZ Engine
-// MeshTrailRenderSystem.cpp | fbzz::scene
-// MeshTrailComponent の過去姿勢サンプリング、Skinned bone palette 保存、半透明 DrawCall 発行
-#include <Engine/Scene/Systems/MeshTrailRenderSystem.hpp>
+// RenderPasses/Geometry/MeshTrailRenderPass.cpp | fbzz::scene
+// MeshTrailComponent の過去姿勢サンプリング、Skinned bone palette 保存、半透明 DrawCall 発行 (IRenderPass 実装)
+#include "Engine/Scene/Systems/RenderPasses/Geometry/MeshTrailRenderPass.hpp"
 
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Core/Time.hpp>
@@ -15,7 +15,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/MathUtils.hpp>
-#include "RenderPasses/GeometryPasses.hpp"
+#include "GeometryPasses.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -30,7 +30,6 @@ struct MeshTrailCB {
 };
 
 // SkinningCB — Common/Constants.hlsli の SkinningConstants と同じレイアウト。
-// WHAT: AnimatorComponent の現在 boneMatrices をサンプル時点で固定し、過去姿勢の SkinnedMesh を再描画する。
 struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
 };
@@ -140,7 +139,8 @@ bool ShouldSample(const MeshTrailComponent& trail, const math::Vector3& position
 
 bool IsMeshIndexExcluded(const MeshTrailComponent& trail, int meshIndex)
 {
-    return std::find(trail.excludedMeshIndices.begin(), trail.excludedMeshIndices.end(), meshIndex) != trail.excludedMeshIndices.end();
+    return std::find(trail.excludedMeshIndices.begin(), trail.excludedMeshIndices.end(), meshIndex)
+        != trail.excludedMeshIndices.end();
 }
 
 void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::ResourceManager& resources, float currentTime)
@@ -324,7 +324,17 @@ void DrawSkinnedMeshSample(
 
 } // namespace
 
-void ExecuteMeshTrailPass(RenderPassContext& ctx)
+// ─── IRenderPass ──────────────────────────────────────────────────────────────
+
+std::string_view MeshTrailRenderPass::Name() const { return "MeshTrail"; }
+
+std::vector<renderer::RenderGraph::ResourceAccess> MeshTrailRenderPass::DeclareAccesses(
+    const RenderPassContext&) const
+{
+    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+}
+
+void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
 {
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
