@@ -11,6 +11,7 @@
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSurfaceComponent.hpp"
 #include "Engine/Scene/Components/NavMeshAgentComponent.hpp"
+#include "Engine/Scene/Components/ColliderComponent.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
@@ -342,6 +343,19 @@ void HaltKeepingTarget(NavMeshAgentComponent& agent)
     agent.state = NavMeshAgentState::IDLE;
 }
 
+// GO に付いているコライダーの底面から GO 原点までの Y オフセットを返す。
+// snapToNavMesh でエージェントの足元を NavMesh 面に合わせるために使う。
+static float ColliderFloorOffset(GameObject& go)
+{
+    if (const auto* cap = go.GetComponent<scene::CapsuleColliderComponent>())
+        return cap->halfHeight + cap->radius - cap->center.y;
+    if (const auto* box = go.GetComponent<scene::BoxColliderComponent>())
+        return box->size.y * 0.5f - box->center.y;
+    if (const auto* sph = go.GetComponent<scene::SphereColliderComponent>())
+        return sph->radius - sph->center.y;
+    return 0.0f;
+}
+
 // World pose を Transform へ書き込む。親 GO があれば PhysicsSystem::WriteWorldPoseToTransform と
 // 同じ式で親ローカル空間へ逆変換する (TransformSystem は次フレームまで動かないため、
 // 同フレームの Collider 位置・Script 参照との整合性を保つために world 側も直接更新する)。
@@ -498,7 +512,7 @@ void NavigationSystem(Scene& scene, float dt)
                 const float snappedY = SampleNavMeshHeight(navMesh, go->transform.worldPosition);
                 if (snappedY > -1e6f) {
                     math::Vector3 p = go->transform.worldPosition;
-                    p.y = snappedY;
+                    p.y = snappedY + ColliderFloorOffset(*go);
                     WriteWorldPoseToTransform(*go, p, go->transform.worldRotation);
                 }
             }
@@ -555,7 +569,7 @@ void NavigationSystem(Scene& scene, float dt)
                 const float snappedY = SampleNavMeshHeight(navMesh, go->transform.worldPosition);
                 if (snappedY > -1e6f) {
                     math::Vector3 p = go->transform.worldPosition;
-                    p.y = snappedY;
+                    p.y = snappedY + ColliderFloorOffset(*go);
                     WriteWorldPoseToTransform(*go, p, go->transform.worldRotation);
                 }
             }
@@ -681,7 +695,7 @@ void NavigationSystem(Scene& scene, float dt)
         // 物理・重力と組み合わせる場合は snapToNavMesh=false にして物理側に Y を任せる。
         if (agent->snapToNavMesh) {
             const float snappedY = SampleNavMeshHeight(navMesh, newPos);
-            if (snappedY > -1e6f) newPos.y = snappedY;
+            if (snappedY > -1e6f) newPos.y = snappedY + ColliderFloorOffset(*go);
         }
 
         // ── 回転 (進行方向への定角速度補間) ────────────────────────────────

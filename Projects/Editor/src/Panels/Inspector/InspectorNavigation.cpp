@@ -49,9 +49,10 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             if (surface.needsBake) {
                 ImGui::TextDisabled("Queued...");
             } else if (isBaking) {
-                // 不定長アニメーションバー (-1 を渡すと ImGui が自動スクロール)
-                const float t = static_cast<float>(ImGui::GetTime());
-                ImGui::ProgressBar(-1.0f * t, ImVec2(-1.0f, 0.0f), "Baking...");
+                char progressLabel[32];
+                std::snprintf(progressLabel, sizeof(progressLabel), "Baking... %d%%",
+                    static_cast<int>(surface.bakeProgress * 100.0f));
+                ImGui::ProgressBar(surface.bakeProgress, ImVec2(-1.0f, 0.0f), progressLabel);
             } else {
                 ImGui::TextDisabled("%zu polygons", surface.navMesh.polygons.size());
             }
@@ -93,8 +94,23 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                             if (surf->agentTypeId != agent.agentTypeId) continue;
                             const float y = surf->navMesh.SampleHeight(go->transform.worldPosition);
                             if (y > -1e6f) {
-                                go->transform.position.y      = y;
-                                go->transform.worldPosition.y = y;
+                                float colliderOffset = 0.0f;
+                                if (const auto* cap = go->GetComponent<scene::CapsuleColliderComponent>())
+                                    colliderOffset = cap->halfHeight + cap->radius - cap->center.y;
+                                else if (const auto* box = go->GetComponent<scene::BoxColliderComponent>())
+                                    colliderOffset = box->size.y * 0.5f - box->center.y;
+                                else if (const auto* sph = go->GetComponent<scene::SphereColliderComponent>())
+                                    colliderOffset = sph->radius - sph->center.y;
+                                const float snapY = y + colliderOffset;
+                                go->transform.worldPosition.y = snapY;
+                                if (auto* parent = go->GetParent()) {
+                                    const auto& pt = parent->transform;
+                                    const math::Quaternion invRot = pt.worldRotation.Inverse();
+                                    const math::Vector3 ls = invRot * (go->transform.worldPosition - pt.worldPosition);
+                                    go->transform.position.y = pt.worldScale.y == 0.0f ? 0.0f : ls.y / pt.worldScale.y;
+                                } else {
+                                    go->transform.position.y = snapY;
+                                }
                                 if (ctx.markSceneDirty) ctx.markSceneDirty();
                             }
                             break;
