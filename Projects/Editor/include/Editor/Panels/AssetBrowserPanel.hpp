@@ -11,10 +11,10 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
@@ -275,7 +275,7 @@ private:
     // WHY: インポートは数秒かかるためメインスレッドをブロックすると
     //      EditorTaskOverlay が一切描画されない。スレッドに移すことで
     //      毎フレーム進捗オーバーレイを更新できる。
-    std::thread             m_importThread;
+    std::future<void>       m_importFuture;
     std::mutex              m_importStatusMtx;
     std::string             m_importStatusStr;
     std::atomic<bool>       m_isImporting     { false };
