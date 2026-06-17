@@ -1,9 +1,9 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // TerrainGridComponent.hpp | fbzz::scene
 // cellCountX × cellCountZ のグリッドで TerrainComponent エンティティを管理する。
 // WHY: 複数 Terrain を手動でリンクするとセル数が増えるほどリンク数が二乗で増える。
 //      Grid 座標から隣接を自動解決することで、ユーザーはセル追加/削除だけに集中できる。
-//      TerrainRenderSystem はこのグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
+//      TerrainRenderPass はこのグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>

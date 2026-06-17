@@ -1,4 +1,4 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // TerrainDetailComponent.hpp | fbzz::scene
 // Terrain 上に草・岩・花・低木などの小オブジェクトを GPU Instancing で大量描画する。
 // Unity の Terrain Detail System / Unreal の Landscape Grass Output に相当する。
@@ -113,7 +113,7 @@ struct TerrainDetailComponent {
     std::vector<DetailLayer> layers;
 
     // ランタイムキャッシュ。非永続化。
-    // DetailRenderSystem が所有・管理する（Bake 後に確定、Scene ロード時に再生成）。
+    // DetailRenderPass が所有・管理する（Bake 後に確定、Scene ロード時に再生成）。
     std::vector<DetailChunk> chunks;
 
     // DetailTool がペイントした密度マップ。layers と同じインデックスで対応。

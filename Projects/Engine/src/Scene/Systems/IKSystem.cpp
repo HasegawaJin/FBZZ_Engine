@@ -4,6 +4,8 @@
 // WHY: IK はアニメーションの後段で骨行列だけを補正し、既存の GameObject 階層と
 //      AnimatorSystem の責務を崩さずに足接地と膝方向制御を実現する。
 #include <Engine/Scene/Systems/IKSystem.hpp>
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/AnimatorSystem.hpp"
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
@@ -211,9 +213,24 @@ void TranslateDescendantsKeepFkRotation(Scene& scene,
 
 } // namespace
 
-void IKSystem(Scene& scene, physics::World& world,
-              renderer::ResourceManager& resources, float /*dt*/)
+ComponentAccess IKSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<IKSolverComponent, BoneComponent>()
+        .Writes<BoneComponent>();
+}
+
+OrderingHints IKSystem::GetOrder() const
+{
+    return OrderingHints{}.After<AnimatorSystem>();
+}
+
+void IKSystem::Update(SystemContext& ctx)
+{
+    if (!ctx.resources) return;
+    Scene& scene = ctx.scene;
+    physics::World& world = ctx.world;
+    renderer::ResourceManager& resources = *ctx.resources;
     const auto span     = scene.GetEntities<IKSolverComponent>();
     const auto entities = std::vector<EntityID>(span.begin(), span.end());
 

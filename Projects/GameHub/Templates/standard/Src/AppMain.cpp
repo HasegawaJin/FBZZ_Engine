@@ -30,13 +30,12 @@
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Scene/Systems/IKSystem.hpp>
-#include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Core/ILogSink.hpp>
+#include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/ScriptSystem.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -337,35 +336,21 @@ public:
         }
         ApplyPhysicsSettings(m_physicsWorld, m_settings);
         ApplyUISettings(m_settings, &m_uiCtx);
-        m_physicsAccumulator = 0.0f;
+        m_sceneManager.SetScene(m_scene.get());
+        m_sceneManager.SetPhysicsHz(m_settings.physics.hz < 1 ? 60 : m_settings.physics.hz);
+        m_sceneManager.SetSimulating(true);
         return true;
     }
 
     void OnUpdate(float dt) override
     {
         fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
-        fbzz::scene::ScriptSystem(*m_scene, dt);
-        fbzz::scene::TransformSystem(*m_scene);
-
-        // WHAT: ProjectSettings の Hz に従って固定タイムステップ物理を複数回進める。
-        // WHY: 描画 FPS が揺れても物理解の安定性を保つため、蓄積時間を最大 8 step に制限する。
-        const int   physicsHz = m_settings.physics.hz < 1 ? 60 : m_settings.physics.hz;
-        const float fixedDt   = 1.0f / static_cast<float>(physicsHz);
-        m_physicsAccumulator += dt;
-        const float maxAccum  = fixedDt * 8.0f;
-        if (m_physicsAccumulator > maxAccum) m_physicsAccumulator = maxAccum;
-        while (m_physicsAccumulator >= fixedDt) {
-            fbzz::scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-            m_physicsAccumulator -= fixedDt;
-        }
-        fbzz::scene::TransformSystem(*m_scene);
+        m_sceneManager.Update(dt, m_physicsWorld);
     }
 
     void OnLateUpdate(float dt) override
     {
-        fbzz::scene::LateScriptSystem(*m_scene, dt);
-        fbzz::scene::AnimatorSystem(*m_scene, m_resources, dt);
-        fbzz::scene::IKSystem(*m_scene, m_physicsWorld, m_resources, dt);
+        m_sceneManager.LateUpdate(dt, m_physicsWorld);
     }
 
     void OnRender() override
@@ -406,7 +391,7 @@ private:
     std::unique_ptr<fbzz::scene::Scene> m_scene;
     fbzz::physics::World                m_physicsWorld;
     fbzz::scene::UISystemContext        m_uiCtx;
-    float                               m_physicsAccumulator = 0.0f;
+    fbzz::scene::SceneManager           m_sceneManager;
 };
 
 // ============================================================
@@ -444,7 +429,7 @@ public:
         ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
         ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_gameUICtx);
         ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_sceneUICtx);
-        m_physicsAccumulator = 0.0f;
+        m_sceneManager.SetScene(m_scene.get());
 
         m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
         m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
@@ -459,8 +444,9 @@ public:
 
         auto* playMode = m_editorApp.GetContext().playMode;
         if (playMode->ApplyPendingRestore(*m_scene)) {
-            ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-            m_physicsAccumulator = 0.0f;
+            const auto& settings = m_editorApp.GetContext().projectSettings;
+            ApplyPhysicsSettings(m_physicsWorld, settings);
+            m_sceneManager.SetPhysicsHz(settings.physics.hz < 1 ? 60 : settings.physics.hz);
         }
 
         if (!playMode->IsPlaying())
@@ -468,41 +454,24 @@ public:
 
         UpdateFocusAnimation(dt);
 
-        fbzz::scene::TransformSystem(*m_scene);
         m_stepFrame = playMode->ConsumeStep();
-        const float simulationDt = SimulationDeltaTime();
-        if (playMode->IsPlaying() || m_stepFrame) {
+        const bool isPlaying = playMode->IsPlaying();
+
+        if (isPlaying || m_stepFrame) {
             const auto& settings = m_editorApp.GetContext().projectSettings;
             ApplyPhysicsSettings(m_physicsWorld, settings);
             fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
-            fbzz::scene::ScriptSystem(*m_scene, simulationDt);
-            fbzz::scene::TransformSystem(*m_scene);
-
-            const int physicsHz = settings.physics.hz < 1 ? 1 : settings.physics.hz;
-            const float fixedDt = 1.0f / static_cast<float>(physicsHz);
-            if (m_stepFrame) {
-                fbzz::scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-            } else {
-                m_physicsAccumulator += dt;
-                const float maxAccum = fixedDt * 8.0f;
-                if (m_physicsAccumulator > maxAccum) m_physicsAccumulator = maxAccum;
-                while (m_physicsAccumulator >= fixedDt) {
-                    fbzz::scene::PhysicsSystem(*m_scene, m_physicsWorld, fixedDt);
-                    m_physicsAccumulator -= fixedDt;
-                }
-            }
-            fbzz::scene::TransformSystem(*m_scene);
-            fbzz::scene::LateScriptSystem(*m_scene, simulationDt);
-        } else {
-            m_physicsAccumulator = 0.0f;
+            m_sceneManager.SetPhysicsHz(settings.physics.hz < 1 ? 60 : settings.physics.hz);
         }
+
+        m_sceneManager.SetSimulating(isPlaying || m_stepFrame);
+        m_sceneManager.SetSingleStep(m_stepFrame);
+        m_sceneManager.Update(SimulationDeltaTime(), m_physicsWorld);
     }
 
     void OnLateUpdate(float) override
     {
-        const float simulationDt = SimulationDeltaTime();
-        fbzz::scene::AnimatorSystem(*m_scene, m_resources, simulationDt);
-        fbzz::scene::IKSystem(*m_scene, m_physicsWorld, m_resources, simulationDt);
+        m_sceneManager.LateUpdate(SimulationDeltaTime(), m_physicsWorld);
     }
 
     void OnRender() override
@@ -707,7 +676,7 @@ private:
     FocusAnim                           m_focusAnim;
     fbzz::scene::UISystemContext        m_sceneUICtx;
     fbzz::scene::UISystemContext        m_gameUICtx;
-    float                               m_physicsAccumulator = 0.0f;
+    fbzz::scene::SceneManager           m_sceneManager;
     float                               m_frameDt            = 0.0f;
     bool                                m_stepFrame          = false;
 };

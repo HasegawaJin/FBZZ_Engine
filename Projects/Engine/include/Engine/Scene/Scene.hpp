@@ -5,7 +5,7 @@
 // Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "Entity.hpp"
 #include "ComponentArray.hpp"
 #include "Transform.hpp"
