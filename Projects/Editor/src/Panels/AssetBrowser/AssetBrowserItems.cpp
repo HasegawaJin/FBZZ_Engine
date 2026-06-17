@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // AssetBrowserItems.cpp | fbzz::editor
 // AssetBrowser のフォルダツリーとファイルアイコン描画
 #include "AssetBrowserCommon.hpp"
@@ -11,7 +11,7 @@
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Util/Uuid.hpp>
 #include <algorithm>
 #include <array>
