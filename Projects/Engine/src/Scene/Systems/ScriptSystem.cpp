@@ -3,7 +3,7 @@
 // ScriptComponent を走査し、複数 Script の Start / Update を適切な順序で呼ぶ。
 // Script の所有は ScriptComponent に残し、System は呼び出しだけを行う。
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
-
+#include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
@@ -12,8 +12,10 @@
 
 namespace fbzz::scene {
 
-void ScriptSystem(Scene& scene, float dt)
+void ScriptSystem::Update(SystemContext& ctx)
 {
+    Scene& scene = ctx.scene;
+    const float dt = ctx.dt;
     FBZZ_PROFILE_SCOPE("ScriptSystem");
 
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
@@ -54,8 +56,9 @@ void ScriptSystem(Scene& scene, float dt)
     }
 }
 
-void LateScriptSystem(Scene& scene, float dt)
+void LateScriptSystem::Update(SystemContext& ctx)
 {
+    Scene& scene = ctx.scene;
     FBZZ_PROFILE_SCOPE("LateScriptSystem");
 
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {

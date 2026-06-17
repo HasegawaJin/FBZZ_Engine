@@ -7,6 +7,8 @@
 // NavMesh スナップ: snapToNavMesh=true のとき移動後に NavMesh 面の Y へ補正する。
 // Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ逆変換して書き戻す。
 #include "Engine/Scene/Systems/NavigationSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSurfaceComponent.hpp"
@@ -419,8 +421,22 @@ BucketKey BucketKeyFor(const math::Vector3& pos, float bucketSize)
 
 } // namespace
 
-void NavigationSystem(Scene& scene, float dt)
+ComponentAccess NavigationSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<NavMeshAgentComponent, NavMeshSurfaceComponent>()
+        .Writes<NavMeshAgentComponent>();
+}
+
+OrderingHints NavigationSystem::GetOrder() const
+{
+    return OrderingHints{}.After<NavMeshPatrolSystem>();
+}
+
+void NavigationSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
+    const float dt = ctx.dt;
     // agentTypeId → NavMeshSurface のマップを構築する。
     // 同じ typeId が複数ある場合は最初に見つかった有効な Surface を使う。
     std::unordered_map<int, NavMeshSurfaceComponent*> surfaceMap;

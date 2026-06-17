@@ -1,9 +1,9 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // TerrainComponent.cpp | fbzz::scene
 // ハイトマップ地形コンポーネントのメソッド実装
 //
 // ここでは純粋なデータ操作（高さクエリ・法線計算）のみを行う。
-// GPU メッシュ生成・描画は TerrainRenderSystem.cpp に委譲する。
+// GPU メッシュ生成・描画は TerrainRenderPass.cpp に委譲する。
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include <Math/Vector3.hpp>
 #include <algorithm>
@@ -55,7 +55,7 @@ float TerrainComponent::GetHeightAt(float localX, float localZ) const
     float h01 = h(x0,     z0 + 1);
     float h11 = h(x0 + 1, z0 + 1);
 
-    // TerrainRenderSystem / PhysicsSystem のインデックス分割:
+    // TerrainRenderPass / PhysicsSystem のインデックス分割:
     //   lower: i00, i01, i10 / upper: i10, i01, i11
     if (fx + fz <= 1.0f)
         return h00 + fx * (h10 - h00) + fz * (h01 - h00);
