@@ -24,7 +24,7 @@ namespace {
 std::string WithPrefabExtension(const std::string& path)
 {
     if (!util::FileSystem::GetExtension(path).empty()) return path;
-    return path + ".fbzzprefab";
+    return path + ".prefab";
 }
 
 bool ContainsEntity(const std::vector<scene::EntityID>& ids, scene::EntityID id)
@@ -289,7 +289,85 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
     if (!SceneIO::AppendObjects(scene, ss.str(), outRootEntities)) return false;
 
     FBZZ_LOG_INFO("Instantiated prefab: %s", path.c_str());
+
+    // WHY: インスタンス追跡のために、プレファブから生成されたルート GO に出所パスを書き込む。
+    //      Assets 起点の相対パスで保存し、Apply/Revert が diskPath ではなくこの値を参照する。
+    //      path は diskPath 形式 (絶対パスまたはプロジェクトルートからのフル)。
+    //      Assets/ 以降の相対パスに正規化して保存する。
+    const std::string::size_type assetsPos = [&] {
+        const std::string marker = "/Assets/";
+        auto pos = path.rfind(marker);
+        return pos != std::string::npos ? pos + 1 : std::string::npos;
+    }();
+    const std::string relPath = (assetsPos != std::string::npos)
+        ? path.substr(assetsPos)
+        : path;
+
+    for (scene::EntityID id : outRootEntities) {
+        if (auto* go = scene.GetGameObject(id))
+            go->prefabAssetPath = relPath;
+    }
+
     return !outRootEntities.empty();
+}
+
+bool PrefabSerializer::Apply(const scene::Scene& scene, scene::EntityID rootEntity)
+{
+    // Apply: インスタンスの現在状態をプレファブアセットに書き戻す。
+    // WHAT: prefabAssetPath からディスク上の絶対パスを解決して SaveSelection を呼ぶ。
+    //       prefabAssetPath は "Assets/..." 形式の相対パスで保存されているため、
+    //       シーンファイルパスと組み合わせて絶対パスに変換する。
+    const scene::GameObject* go = scene.GetGameObject(rootEntity);
+    if (!go || go->prefabAssetPath.empty()) {
+        FBZZ_LOG_WARN("PrefabSerializer::Apply: entity is not a prefab instance");
+        return false;
+    }
+
+    // prefabAssetPath は Assets/ 起点の相対パス。SaveSelection に渡すには
+    // シーン外から diskPath を組み立てる必要があるが、ここでは prefabAssetPath
+    // をそのまま渡す。呼び出し側 (EditorApp 経由) が ToProjectAssetDiskPath で
+    // 補完した diskPath を prefabAssetPath に格納しているため、絶対パスの場合もある。
+    // WHY: ToProjectAssetDiskPath の逆変換ロジックを PrefabSerializer に持たせると
+    //      Editor 層への依存が逆転するため、格納値をそのまま使う設計にする。
+    return SaveSelection(scene, { rootEntity }, go->prefabAssetPath);
+}
+
+bool PrefabSerializer::Revert(scene::Scene& scene,
+                              scene::EntityID rootEntity,
+                              std::vector<scene::EntityID>& outNewRoots)
+{
+    // Revert: インスタンスをプレファブアセットの定義に戻す。
+    // WHAT: 1. 旧インスタンスの Transform / parent / prefabAssetPath を保存する。
+    //       2. 旧インスタンス階層全体を Destroy する。
+    //       3. 保存した prefabAssetPath から再インスタンス化する。
+    //       4. 再生成ルート GO に旧 Transform (位置・回転・スケール) を適用する。
+    // WHY: Revert はインスタンスの「コンポーネント・子構成」をリセットするが、
+    //      ワールド上での配置 (Transform) は保持するのが自然な挙動のため。
+    scene::GameObject* go = scene.GetGameObject(rootEntity);
+    if (!go || go->prefabAssetPath.empty()) {
+        FBZZ_LOG_WARN("PrefabSerializer::Revert: entity is not a prefab instance");
+        return false;
+    }
+
+    const std::string prefabPath  = go->prefabAssetPath;
+    const scene::Transform savedTransform = go->transform;
+    scene::GameObject* savedParent = go->GetParent();
+
+    // 旧階層を破棄 (delay=0 → 次フレーム末尾削除)
+    scene::GameObject::Destroy(*go, 0.0f);
+
+    // 再インスタンス化
+    if (!Instantiate(scene, prefabPath, outNewRoots) || outNewRoots.empty())
+        return false;
+
+    // 先頭ルートに旧 Transform を復元する。
+    // WHY: 複数ルートを持つプレファブは稀で、複数ある場合は先頭のみ位置を合わせる。
+    if (auto* newGo = scene.GetGameObject(outNewRoots.front())) {
+        newGo->transform = savedTransform;
+        if (savedParent) newGo->SetParent(*savedParent);
+    }
+
+    return true;
 }
 
 } // namespace fbzz::editor
