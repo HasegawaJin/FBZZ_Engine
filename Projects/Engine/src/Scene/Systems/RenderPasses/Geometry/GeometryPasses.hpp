@@ -1,8 +1,8 @@
-// FBZZ Engine
-// RenderPasses/GeometryPasses.hpp | fbzz::scene
+﻿// FBZZ Engine
+// RenderPasses/Geometry/GeometryPasses.hpp | fbzz::scene
 // ジオメトリ描画パスの宣言とインラインヘルパー
 #pragma once
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/RenderState.hpp>
@@ -51,8 +51,6 @@ void ExecuteDeferredLightingPass           (RenderPassContext& ctx);
 void ExecuteDeferredSkinnedForwardPass     (RenderPassContext& ctx);
 void ExecuteDeferredForwardTransparentPass (RenderPassContext& ctx);
 void ExecuteSkyPass                        (RenderPassContext& ctx);
-void ExecuteMeshTrailPass                  (RenderPassContext& ctx);
-void ExecuteTrailPass                      (RenderPassContext& ctx);
 void ExecuteParticlePass                   (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
 

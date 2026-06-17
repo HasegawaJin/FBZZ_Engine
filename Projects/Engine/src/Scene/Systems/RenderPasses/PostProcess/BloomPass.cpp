@@ -2,7 +2,7 @@
 // BloomPass.cpp | fbzz::scene
 // Bloom render pass implementation
 #include "PostProcessPasses.hpp"
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
 #include <algorithm>
 

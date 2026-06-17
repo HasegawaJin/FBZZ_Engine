@@ -1,8 +1,8 @@
-// FBZZ Engine
+﻿// FBZZ Engine
 // RenderPasses/ShadowPass.cpp | fbzz::scene
 // シャドウマップ描画 (静的メッシュ + スキンドメッシュ + Terrain)
 #include "GeometryPasses.hpp"
-#include "Engine/Scene/Systems/TerrainRenderSystem.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Renderer/Mesh.hpp"

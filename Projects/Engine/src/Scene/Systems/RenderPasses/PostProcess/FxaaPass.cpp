@@ -2,7 +2,7 @@
 // FxaaPass.cpp | fbzz::scene
 // FXAA render pass implementation
 #include "PostProcessPasses.hpp"
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 
 namespace fbzz::scene {

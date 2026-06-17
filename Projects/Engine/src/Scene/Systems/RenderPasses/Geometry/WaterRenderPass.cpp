@@ -1,11 +1,11 @@
 // FBZZ Engine
-// WaterRenderSystem.cpp | fbzz::scene
-// WaterComponent → GPU 水面メッシュ・泡マスク・波紋テクスチャ生成と描画
+// RenderPasses/Geometry/WaterRenderPass.cpp | fbzz::scene
+// WaterComponent → GPU 水面メッシュ・泡マスク・波紋テクスチャ生成と描画 (IRenderPass 実装)
 //
 // WHY: 水面は透明描画、Terrain 高さ参照、動的 CPU テクスチャ更新をまとめて扱う。
 //      Component に GPU リソースを持たせず System 側の static cache に閉じることで、
 //      Scene データは保存しやすい純粋なパラメータのまま保つ。
-#include "Engine/Scene/Systems/WaterRenderSystem.hpp"
+#include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -23,7 +23,8 @@
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
-#include <Engine/Scene/Systems/RenderPassContext.hpp>
+#include <Engine/Core/Time.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/MathUtils.hpp>
@@ -43,26 +44,23 @@ namespace fbzz::scene {
 namespace {
 
 // WaterVertex — HLSL の WaterVSInput と一致する頂点レイアウト。
-// WHAT: POSITION(float3) + TEXCOORD0(float2) の 20 bytes。法線は GPU 側で解析的に作る。
 struct WaterVertex {
     math::Vector3 position;
     math::Vector2 uv;
 };
 
 // WaterChunk — チャンク 1 個分の GPU リソースと AABB。
-// WHY: 水面全体を 1 DrawCall で描くと広大な水域でカリングできないため、
-//      chunkCount×chunkCount のサブメッシュに分割して個別に視錐台テストする。
 struct WaterChunk {
     renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
     renderer::ResourceHandle<renderer::BufferTag> indexBuffer;
     uint32_t indexCount = 0;
-    math::Vector3 aabbMin; // ローカル空間 AABB（変換前）
+    math::Vector3 aabbMin;
     math::Vector3 aabbMax;
 };
 
 struct WaterMesh {
     std::vector<WaterChunk> chunks;
-    math::Vector3 aabbMin; // 全体 AABB（早期リジェクト用）
+    math::Vector3 aabbMin;
     math::Vector3 aabbMax;
 };
 
@@ -81,7 +79,7 @@ struct WaterRipple {
     float radius = 0.0f;
     float speed = 0.25f;
     float decayRate = 1.5f;
-    float waveWidth = 0.038f;  // 0.025 では 128px に対して細すぎて潰れる
+    float waveWidth = 0.038f;
 };
 
 struct WaterRippleState {
@@ -94,25 +92,21 @@ struct WaterRippleState {
 };
 
 // WaterCB — Assets/Shaders/Water/Water.hlsl の WaterCB と完全に一致させる。
-// WHY: HLSL の cbuffer は 16 byte 境界でパックされるため、C++ 側も Vector4 単位で揃える。
 struct WaterCB {
     math::Matrix4 worldMatrix;
     math::Matrix4 wvpMatrix;
-    math::Vector4 shallowColorDepth;      // xyz=shallowColor, w=shallowDepth
-    math::Vector4 deepColorDepth;         // xyz=deepColor, w=deepDepth
-    math::Vector4 surfaceParams;          // x=opacity, y=reflectivity, z=fresnelBias, w=fresnelPower
-    math::Vector4 normalMap1Params;       // xy=scroll, z=tiling, w=normalStrength
-    math::Vector4 normalMap2Params;       // xy=scroll, z=tiling, w=time
-    math::Vector4 foamParams;             // x=threshold, y=fade, z=strength, w=tiling
-    math::Vector4 refractionFlowParams;   // x=refraction, y=flowSpeed, z=flowTiling, w=enableFlow
-    math::Vector4 waveDir[4];             // xy=direction, z=steepness, w=enable
-    math::Vector4 waveParams[4];          // x=amplitude, y=wavelength, z=omega, w=k
+    math::Vector4 shallowColorDepth;
+    math::Vector4 deepColorDepth;
+    math::Vector4 surfaceParams;
+    math::Vector4 normalMap1Params;
+    math::Vector4 normalMap2Params;
+    math::Vector4 foamParams;
+    math::Vector4 refractionFlowParams;
+    math::Vector4 waveDir[4];
+    math::Vector4 waveParams[4];
 };
 
 // WaterEffectParams — MaterialConstants cbuffer (b2) の C++ ミラー。
-// MaterialComponent が存在しないときのフォールバックデフォルト値もここに保持する。
-// WHY: HLSL の MaterialConstants と同じレイアウト(48 bytes = 3×float4)にし、
-//      Upload でそのまま GPU へコピーできるようにする。
 struct WaterEffectParams {
     float rimGlowStrength    = 0.40f;
     float minShallowAlpha    = 0.65f;
@@ -132,8 +126,6 @@ static std::unordered_map<uint32_t, WaterMesh> s_meshCache;
 static std::unordered_map<uint32_t, WaterTextures> s_texCache;
 static std::unordered_map<uint32_t, WaterRippleState> s_rippleStates;
 
-// ── スプラッシュ ───────────────────────────────────────────────────────────
-// SplashEvent — QueueWaterSplash で積まれ、WaterRenderSystem が消費する。
 struct SplashEvent {
     math::Vector3 worldPos;
     float         intensity;
@@ -153,7 +145,6 @@ float SmoothStep(float edge0, float edge1, float x)
 
 float ComputeFoamWeight(float heightDiff, float threshold, float fade)
 {
-    // WHAT: 地形が水面に近いほど 1、深いほど 0。smoothstep の端を逆にして岸辺を強調する。
     return SmoothStep(threshold + fade, threshold - fade, heightDiff);
 }
 
@@ -166,15 +157,11 @@ EntityID FindEntityForWater(Scene& scene, WaterComponent& water)
     return {};
 }
 
-// WHAT: 水面を chunkCount×chunkCount のサブメッシュに分割して GPU にアップロードする。
-// WHY: サブメッシュごとに AABB を持たせ、視錐台テストで非表示チャンクをスキップする。
-//      全体 AABB は早期リジェクト用に mesh.aabbMin/Max に保存する。
 void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::ResourceManager& resources)
 {
     assert(water.resolutionX > 0);
     assert(water.resolutionZ > 0);
 
-    // 既存チャンクを解放する
     for (auto& chunk : mesh.chunks) {
         if (chunk.vertexBuffer.IsValid()) resources.Release(chunk.vertexBuffer);
         if (chunk.indexBuffer.IsValid()) resources.Release(chunk.indexBuffer);
@@ -186,14 +173,11 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     const float ox = -water.extentX * 0.5f;
     const float oz = -water.extentZ * 0.5f;
 
-    // Gerstner 波の最大変位量（AABB Y 方向のマージンに使う）
     float maxAmp = 0.0f;
     for (const auto& w : water.waves) maxAmp += w.amplitude;
     const float yMargin = maxAmp + 0.5f;
 
     const uint32_t numChunks = (std::max)(water.chunkCount, 1u);
-
-    // チャンクごとのセル数（端数は最終チャンクに収める）
     const uint32_t cellsPerChunkX = (water.resolutionX + numChunks - 1) / numChunks;
     const uint32_t cellsPerChunkZ = (water.resolutionZ + numChunks - 1) / numChunks;
 
@@ -209,7 +193,6 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
 
             std::vector<WaterVertex> verts;
             verts.reserve(static_cast<size_t>(vertCols) * static_cast<size_t>(vertRows));
-
             for (uint32_t iz = izStart; iz <= izEnd; ++iz) {
                 for (uint32_t ix = ixStart; ix <= ixEnd; ++ix) {
                     WaterVertex v;
@@ -240,7 +223,6 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
             chunk.indexBuffer = resources.CreateIndexBuffer(
                 indices.data(), static_cast<uint32_t>(indices.size()));
             chunk.indexCount = static_cast<uint32_t>(indices.size());
-            // ローカル空間 AABB（Y は Gerstner 波の最大変位分をマージンとして加える）
             chunk.aabbMin = { ox + static_cast<float>(ixStart) * dx, -yMargin, oz + static_cast<float>(izStart) * dz };
             chunk.aabbMax = { ox + static_cast<float>(ixEnd)   * dx,  yMargin, oz + static_cast<float>(izEnd)   * dz };
             mesh.chunks.push_back(std::move(chunk));
@@ -301,7 +283,6 @@ renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
     return resources.CreateTexture(pixels.data(), width, height);
 }
 
-// fzmat params へのアクセスヘルパー。mat が nullptr のときはデフォルト値を返す。
 inline float WGetF(const asset::MaterialAsset* m, const char* name, float def)
 {
     if (!m) return def;
@@ -365,10 +346,7 @@ WaterTextures BuildTextureSet(
     return textures;
 }
 
-void UpdateRippleState(
-    WaterRippleState& state,
-    float dt,
-    renderer::ResourceManager& resources)
+void UpdateRippleState(WaterRippleState& state, float dt, renderer::ResourceManager& resources)
 {
     for (WaterRipple& ripple : state.ripples) {
         ripple.radius += ripple.speed * dt;
@@ -379,11 +357,8 @@ void UpdateRippleState(
     });
 
     // WHY: 波紋がなく既存テクスチャも有効な場合は CPU 更新・GPU アップロードをスキップする。
-    //      ResourceManager は UpdateTexture を持たないため Release/Create が唯一の更新手段だが、
-    //      アクティブな波紋がない間は毎フレームのアロケーションを避けることでコストを削減する。
-    if (state.ripples.empty() && state.gpuTex.IsValid() && !state.dirty) {
+    if (state.ripples.empty() && state.gpuTex.IsValid() && !state.dirty)
         return;
-    }
 
     state.pixels.assign(static_cast<size_t>(state.width) * static_cast<size_t>(state.height) * 4u, 128u);
     for (uint32_t y = 0; y < state.height; ++y) {
@@ -402,8 +377,6 @@ void UpdateRippleState(
                 const float w = (std::max)(ripple.waveWidth, 0.001f);
                 const math::Vector2 dir = d.Normalized();
 
-                // WHY: 実際の水面は主リングに続いて複数の同心円が生まれる。
-                //      ガウス包絡 × 正弦でリング形状を作り、副次リングを追加する。
                 auto addRing = [&](float r, float scale) {
                     const float ring = dist - r;
                     const float g    = std::exp(-(ring * ring) / (w * w));
@@ -411,9 +384,9 @@ void UpdateRippleState(
                     offset += dir * (g * ph * ripple.amplitude * scale);
                 };
 
-                addRing(ripple.radius,               1.00f);  // 主リング
-                addRing(ripple.radius - w * 3.0f,    0.42f);  // 第2リング（主より内側）
-                addRing(ripple.radius - w * 6.0f,    0.16f);  // 第3リング（さらに内側）
+                addRing(ripple.radius,               1.00f);
+                addRing(ripple.radius - w * 3.0f,    0.42f);
+                addRing(ripple.radius - w * 6.0f,    0.16f);
             }
 
             const size_t p = (static_cast<size_t>(y) * state.width + x) * 4u;
@@ -476,7 +449,6 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         const math::Vector2 dir = wave.direction.Normalized();
         const float k = validWave ? math::TWO_PI / wave.wavelength : 0.0f;
         const float omega = validWave ? std::sqrt(9.8f * k) : 0.0f;
-        // steepness > 1 で波面が自己交差するため Release ビルドでも防御的にクランプする
         const float steepness = (std::min)(wave.steepness, 1.0f);
         cb.waveDir[i] = { dir.x, dir.y, steepness, validWave ? 1.0f : 0.0f };
         cb.waveParams[i] = { validWave ? wave.amplitude : 0.0f, wave.wavelength, omega, k };
@@ -485,7 +457,6 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     return cb;
 }
 
-// WHAT: ローカル空間 AABB をワールド空間に変換し、視錐台との交差判定をする。
 bool AabbVisible(const math::Frustum& frustum, const math::Vector3& tfPos,
                  const math::Vector3& localMin, const math::Vector3& localMax)
 {
@@ -532,19 +503,77 @@ void QueueWaterSplash(const math::Vector3& worldPos, float intensity)
     s_pendingSplashes.push_back({ worldPos, math::Clamp01(intensity) });
 }
 
-void WaterRenderSystem(
-    Scene& scene,
-    renderer::IRenderer& renderer,
-    renderer::ResourceManager& resources,
-    const renderer::Camera& camera,
-    renderer::ResourceHandle<renderer::RenderTargetTag> outputRT,
-    renderer::ResourceHandle<renderer::TextureTag> sceneColor,
-    float elapsedTime,
-    const renderer::RenderSettings* settings,
-    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB,
-    renderer::ResourceHandle<renderer::TextureTag> shadowDepthTexture,
-    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB)
+void WaterSelectionMaskSystem(RenderPassContext& ctx)
 {
+    if (!ctx.selectionOutlineEnabled) return;
+    auto& h = ctx.handles;
+    if (!h.selectionMaskShader.IsValid() || !h.selectionMaskPSO.IsValid()) return;
+
+    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
+        EntityID eid = FindEntityForWater(ctx.scene, water);
+        if (!ctx.scene.IsValid(eid)) continue;
+
+        const auto* go = ctx.scene.GetGameObject(eid);
+        if (!go || !go->activeInHierarchy()) continue;
+        if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
+
+        bool selected = false;
+        for (const auto& sel : ctx.settings.selectedObjects) {
+            if (sel.index == eid.index && sel.generation == eid.generation) {
+                selected = true;
+                break;
+            }
+        }
+        if (!selected) continue;
+
+        auto it = s_meshCache.find(eid.index);
+        if (it == s_meshCache.end()) continue;
+
+        const math::Matrix4 world = transform.GetWorldMatrix();
+        PerObjectCB objData{};
+        objData.world             = world;
+        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
+
+        for (const WaterChunk& chunk : it->second.chunks) {
+            renderer::DrawCall dc;
+            dc.vertexBuffer       = chunk.vertexBuffer;
+            dc.indexBuffer        = chunk.indexBuffer;
+            dc.indexCount         = chunk.indexCount;
+            dc.shader             = h.selectionMaskShader;
+            dc.pipelineState      = h.selectionMaskPSO;
+            dc.constantBuffers[0] = h.frameCB;
+            dc.constantBuffers[1] = h.objectCB;
+            ctx.renderer.Submit(dc, ctx.resources);
+        }
+    }
+}
+
+// ─── IRenderPass ──────────────────────────────────────────────────────────────
+
+std::string_view WaterRenderPass::Name() const { return "WaterForward"; }
+
+std::vector<renderer::RenderGraph::ResourceAccess> WaterRenderPass::DeclareAccesses(
+    const RenderPassContext&) const
+{
+    return {
+        { "HDR",       renderer::RenderGraph::ResourceUsage::ReadWrite },
+        { "ShadowMap", renderer::RenderGraph::ResourceUsage::Read }
+    };
+}
+
+void WaterRenderPass::Execute(RenderPassContext& ctx)
+{
+    Scene& scene = ctx.scene;
+    renderer::IRenderer& renderer = ctx.renderer;
+    renderer::ResourceManager& resources = ctx.resources;
+    const renderer::Camera& camera = ctx.camera;
+    const renderer::RenderSettings* settings = &ctx.settings;
+    const auto lightCB = ctx.handles.lightCB;
+    const auto shadowDepthTexture = resources.GetDepthTexture(ctx.handles.shadowMapRT);
+    const auto shadowCB = ctx.handles.shadowCB;
+    const float elapsedTime = Time::time;
+
     static auto waterShader = resources.LoadShader("assets/shaders/Water/Water.hlsl");
     static auto waterPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
@@ -558,14 +587,12 @@ void WaterRenderSystem(
     });
     static auto cameraCBH = resources.CreateConstantBuffer(288);
     static auto waterCBH  = resources.CreateConstantBuffer(sizeof(WaterCB));
-    // MaterialComponent 未設定時のデフォルトエフェクトパラメータ CB
     static auto defaultEffectCBH = [&] {
         WaterEffectParams defaults{};
         auto h = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
         resources.Update(h, &defaults, sizeof(WaterEffectParams));
         return h;
     }();
-
     static auto flatNormalTex = [&] {
         const uint8_t n[4] = { 128, 128, 255, 255 };
         return resources.CreateTexture(n, 1, 1);
@@ -587,8 +614,31 @@ void WaterRenderSystem(
         return resources.CreateTexture(r, 1, 1);
     }();
 
-    if (outputRT.IsValid())
-        renderer.SetRenderTarget(outputRT, resources);
+    // Scene color copy for water refraction (formerly a separate WaterSceneColorCopy pass).
+    // WHY: Water shader reads HDR as scene color for refraction; we must copy it before
+    //      binding hdrRT as the output RT, since DX11 prohibits simultaneous read/write.
+    static auto copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    static renderer::ResourceHandle<renderer::RenderTargetTag> s_sceneColorRT;
+    static uint32_t s_sceneColorW = 0, s_sceneColorH = 0;
+    if (ctx.width != s_sceneColorW || ctx.height != s_sceneColorH || !s_sceneColorRT.IsValid()) {
+        if (s_sceneColorRT.IsValid()) resources.Release(s_sceneColorRT);
+        s_sceneColorRT = resources.CreateRenderTarget(ctx.width, ctx.height, 1);
+        s_sceneColorW = ctx.width;
+        s_sceneColorH = ctx.height;
+    }
+    renderer.SetRenderTarget(s_sceneColorRT, resources);
+    renderer.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
+    if (copyColorShader.IsValid()) {
+        renderer::DrawCall copyDC;
+        copyDC.shader = copyColorShader;
+        copyDC.pipelineState = ctx.handles.postprocPSO;
+        copyDC.vertexCount = 3;
+        copyDC.textures[5] = resources.GetColorTexture(ctx.handles.hdrRT, 0);
+        renderer.Submit(copyDC, resources);
+    }
+    const auto sceneColor = resources.GetColorTexture(s_sceneColorRT, 0);
+
+    renderer.SetRenderTarget(ctx.handles.hdrRT, resources);
 
     // 無効になったエンティティのキャッシュを解放する
     {
@@ -614,16 +664,14 @@ void WaterRenderSystem(
         });
     }
 
-    // ── スプラッシュ GO 生成（前フレームのキューを消費） ───────────────────────
-    // WHY: PhysicsSystem/IKSystem は Scene 参照を持たないためキュー経由で委譲する。
-    //      ParticleEmitter はシーンの既存 ParticlePass がそのまま描画する。
+    // スプラッシュ GO 生成（前フレームのキューを消費）
     for (const SplashEvent& ev : s_pendingSplashes) {
         auto& go = scene.CreateGameObject("__WaterSplash");
         go.transform.position = ev.worldPos;
 
         ParticleEmitter emitter;
         emitter.enabled      = true;
-        emitter.emitRate     = 0.0f;   // 連続排出なし（バースト済み粒子のみ）
+        emitter.emitRate     = 0.0f;
         emitter.lifetime     = 1.2f;
         emitter.sizeStart    = 0.10f + ev.intensity * 0.20f;
         emitter.sizeEnd      = 0.0f;
@@ -633,7 +681,6 @@ void WaterRenderSystem(
 
         const int count = static_cast<int>(6.0f + ev.intensity * 14.0f);
         emitter.particles.reserve(static_cast<size_t>(count));
-        // スレッドセーフな局所乱数生成器（std::rand() は global state でスレッド非安全）
         std::mt19937 rng{ std::random_device{}() };
         std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
         for (int i = 0; i < count; ++i) {
@@ -657,7 +704,6 @@ void WaterRenderSystem(
     }
     s_pendingSplashes.clear();
 
-    // 全パーティクルが寿命切れになった splash GO を遅延破棄する
     auto splashIt = s_splashGos.begin();
     while (splashIt != s_splashGos.end()) {
         auto* em = scene.GetComponent<ParticleEmitter>(*splashIt);
@@ -714,7 +760,6 @@ void WaterRenderSystem(
             if (!go || !go->activeInHierarchy()) continue;
         }
 
-        // fzmat を解決する。毎フレーム GetMaterial を呼ぶが AssetManager 側でキャッシュされる。
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {
             const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
@@ -725,7 +770,6 @@ void WaterRenderSystem(
         const float foamFade      = WGetF(mat, "foamFade",      0.5f);
 
         if (water.meshDirty || !s_meshCache.contains(eid.index)) {
-            // BuildWaterMesh 内で既存チャンクの GPU リソースを解放してから再構築する
             BuildWaterMesh(water, s_meshCache[eid.index], resources);
             water.meshDirty = false;
             water.foamDirty = true;
@@ -745,31 +789,22 @@ void WaterRenderSystem(
             UpdateRippleState(rippleState, dt, resources);
 
         const WaterMesh& mesh = s_meshCache.at(eid.index);
-        // 全体 AABB で早期リジェクト: 水面全体が視野外なら全チャンクをスキップ
         if (!AabbVisible(frustum, transform.position, mesh.aabbMin, mesh.aabbMax))
             continue;
 
         const WaterCB cb = BuildWaterCB(water, mat, transform, camera, elapsedTime);
         resources.Update(waterCBH, &cb, sizeof(cb));
 
-        // ── ユーザー定義エフェクトパラメータ (b2 = MaterialConstants) ────────────
-        // WaterEffectParams のデフォルト値 CB を使う。
-        // WHY: MaterialComponent は .fzmat 参照専用になり、任意 HLSL の CB 差し替え経路は削除した。
         auto effectCBH = defaultEffectCBH;
 
         const WaterTextures& textures = s_texCache.at(eid.index);
         // WHY: outputRT を RTV/DSV としてバインドしたまま、その depth を SRV(t5) として読むことは DX11 で禁止。
-        //      以前はデバッグレイヤーが "PSSetShaderResources: still bound on output" を出して NULL 化していた。
-        //      正しい深度参照を復活させる場合は、描画前に depth copy 用 RT/Texture を別途渡す設計にする。
         const renderer::ResourceHandle<renderer::TextureTag> depthTex = {};
         const renderer::ResourceHandle<renderer::TextureTag> colorTex =
             sceneColor.IsValid() ? sceneColor : blackTex;
         const renderer::ResourceHandle<renderer::TextureTag> rippleTex =
             rippleState.gpuTex.IsValid() ? rippleState.gpuTex : neutralRippleTex;
 
-        // チャンク単位でフラスタムカリング → DrawCall 発行
-        // WHY: 全体 AABB で弾けなかった場合でも、視野外のチャンクは個別に除外できる。
-        // fzmat のシェーダーパスを優先し、未設定時は静的フォールバックを使う。
         const auto activeShader = (mat && !mat->shaderPath.empty())
             ? resources.LoadShader(mat->shaderPath)
             : waterShader;
@@ -788,7 +823,7 @@ void WaterRenderSystem(
             call.topology     = renderer::PrimitiveTopology::TRIANGLE_LIST;
             call.constantBuffers[0] = cameraCBH;
             call.constantBuffers[1] = waterCBH;
-            call.constantBuffers[2] = effectCBH;   // MaterialConstants (ユーザー定義)
+            call.constantBuffers[2] = effectCBH;
             call.constantBuffers[3] = lightCB;
             call.constantBuffers[4] = shadowCB;
             call.textures[0] = textures.normalMap1;
@@ -802,52 +837,6 @@ void WaterRenderSystem(
             call.textures[8] = rippleTex;
             call.textures[9] = shadowDepthTexture;
             renderer.Submit(call, resources);
-        }
-    }
-}
-
-void WaterSelectionMaskSystem(RenderPassContext& ctx)
-{
-    if (!ctx.selectionOutlineEnabled) return;
-    auto& h = ctx.handles;
-    if (!h.selectionMaskShader.IsValid() || !h.selectionMaskPSO.IsValid()) return;
-
-    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
-        EntityID eid = FindEntityForWater(ctx.scene, water);
-        if (!ctx.scene.IsValid(eid)) continue;
-
-        const auto* go = ctx.scene.GetGameObject(eid);
-        if (!go || !go->activeInHierarchy()) continue;
-        if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
-
-        bool selected = false;
-        for (const auto& sel : ctx.settings.selectedObjects) {
-            if (sel.index == eid.index && sel.generation == eid.generation) {
-                selected = true;
-                break;
-            }
-        }
-        if (!selected) continue;
-
-        auto it = s_meshCache.find(eid.index);
-        if (it == s_meshCache.end()) continue;
-
-        const math::Matrix4 world = transform.GetWorldMatrix();
-        PerObjectCB objData{};
-        objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
-        ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
-
-        for (const WaterChunk& chunk : it->second.chunks) {
-            renderer::DrawCall dc;
-            dc.vertexBuffer       = chunk.vertexBuffer;
-            dc.indexBuffer        = chunk.indexBuffer;
-            dc.indexCount         = chunk.indexCount;
-            dc.shader             = h.selectionMaskShader;
-            dc.pipelineState      = h.selectionMaskPSO;
-            dc.constantBuffers[0] = h.frameCB;
-            dc.constantBuffers[1] = h.objectCB;
-            ctx.renderer.Submit(dc, ctx.resources);
         }
     }
 }
