@@ -9,7 +9,7 @@
 namespace fbzz::editor {
 
 // NormalizeAssetPath — OS 絶対パス / バックスラッシュ混在パスを Assets 起点の保存用パスへ寄せる。
-// WHY: AssetBrowser は絶対パスを持ち、Scene / Component / .fzmat は Assets 起点パスを保存する。
+// WHY: AssetBrowser は絶対パスを持ち、Scene / Component / .mat は Assets 起点パスを保存する。
 //      ここを各パネルで個別実装すると、ロック・DragDrop・保存時に別形式のパスが混ざりやすい。
 [[nodiscard]] std::string NormalizeAssetPath(std::string path);
 

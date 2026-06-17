@@ -609,7 +609,7 @@ inline std::string TerrainAssetDiskPath(const EditorContext& ctx, const std::str
     return ToProjectAssetDiskPath(ctx.projectRoot, assetPath);
 }
 
-// WHAT: .fzmat の assets/ 相対パスを保存 API に渡せるディスクパスへ変換する。
+// WHAT: .mat の assets/ 相対パスを保存 API に渡せるディスクパスへ変換する。
 // WHY: MaterialComponent はポータブルな Assets 起点パスだけを保持するため、Editor の保存時だけ projectRoot を補完する。
 inline std::string MaterialAssetDiskPath(const EditorContext& ctx, const std::string& assetPath)
 {

@@ -4,6 +4,8 @@
 // 時間経過に応じて UIImage の色と Transform の位置を更新する。
 // UISystem より前に呼ぶことで描画へ反映される。
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/UIAnimator.hpp"
@@ -128,10 +130,22 @@ void ProcessGO(GameObject& go, float dt)
 
 } // namespace
 
-void UIAnimatorSystem(Scene& scene, float deltaTime)
+ComponentAccess UIAnimatorSystem::GetAccess() const
 {
-    for (GameObject* root : scene.GetRootGameObjects()) {
-        if (root) ProcessGO(*root, deltaTime);
+    return ComponentAccess{}
+        .Reads<UIAnimator>()
+        .Writes<UIAnimator, UIImage, UIText>();
+}
+
+OrderingHints UIAnimatorSystem::GetOrder() const
+{
+    return OrderingHints{}.Before<TransformLateUpdate>();
+}
+
+void UIAnimatorSystem::Update(SystemContext& ctx)
+{
+    for (GameObject* root : ctx.scene.GetRootGameObjects()) {
+        if (root) ProcessGO(*root, ctx.dt);
     }
 }
 

@@ -1,4 +1,4 @@
-animations = [ 'Walking/anims/clip_0.fzanim' ]
+animations = [ 'Walking/anims/clip_0.anim' ]
 materials = []
 meshes = []
 source_hint = 'C:/Users/jinhs/Downloads/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Models/DebugCharacter/Walking.fbx'

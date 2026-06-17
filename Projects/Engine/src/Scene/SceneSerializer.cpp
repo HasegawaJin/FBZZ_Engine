@@ -584,7 +584,7 @@ renderer::Mesh* ResolveMesh(
 // SceneSerializer が扱う Asset パスを、現在保存/読込している Scene の場所から解決する。
 // WHY: TerrainComponent は Scene には "Assets/Terrain/..." という移動可能な参照を保存する。
 //      ただし FileSystem はプロジェクトルートを知らないため、そのまま読むと実行時カレント
-//      ディレクトリに依存して .fbzzterrain を見失う。Scene が Assets 配下にある前提から
+//      ディレクトリに依存して .terrain を見失う。Scene が Assets 配下にある前提から
 //      プロジェクトルートを逆算し、ディスクアクセス時だけ絶対寄りのパスへ変換する。
 std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std::string& assetPath)
 {
@@ -641,11 +641,12 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (go.name.size() >= 2 && go.name[0] == '_' && go.name[1] == '_') continue;
 
         toml::table goTbl;
-        goTbl.insert("name",       go.name);
-        goTbl.insert("instanceId", go.instanceId);
-        goTbl.insert("tag",        go.tag);
-        goTbl.insert("layer",      (int64_t)go.layer);
-        goTbl.insert("active",     go.activeSelf());
+        goTbl.insert("name",            go.name);
+        goTbl.insert("instanceId",      go.instanceId);
+        goTbl.insert("tag",             go.tag);
+        goTbl.insert("layer",           (int64_t)go.layer);
+        goTbl.insert("active",          go.activeSelf());
+        goTbl.insert("prefabAssetPath", go.prefabAssetPath);
         goTbl.insert("parent",
             go.GetParent() ? go.GetParent()->name : std::string{});
 
@@ -1300,7 +1301,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             terrainTbl.insert("terrainAssetPath", tc->terrainAssetPath);
 
             // WHY: シーン終了時の保存では Inspector の「Save Asset」ボタンを押さないため、
-            //      参照だけ保存すると .fbzzterrain / .fzmat の実体が古いまま、または未作成のまま残る。
+            //      参照だけ保存すると .terrain / .mat の実体が古いまま、または未作成のまま残る。
             //      Scene 保存と同じタイミングで外部アセットも更新し、再起動後の白地形を防ぐ。
             if (!tc->terrainAssetPath.empty()) {
                 const std::string terrainDiskPath =
@@ -1588,6 +1589,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             std::string id = (*goTbl)["instanceId"].value_or(std::string{});
             if (!id.empty()) go.instanceId = std::move(id);
         }
+        go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
 
         // Transform
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
@@ -2720,6 +2722,7 @@ bool SceneSerializer::AppendObjects(
             std::string id = (*goTbl)["instanceId"].value_or(std::string{});
             if (!id.empty()) go.instanceId = std::move(id);
         }
+        go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
 
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
             auto& t = go.transform;

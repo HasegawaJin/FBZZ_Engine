@@ -54,7 +54,6 @@ class World;
 }
 
 namespace fbzz::renderer {
-class RenderGraph;
 struct ShaderDescriptor;
 struct PostProcessSettings;
 }
@@ -62,6 +61,7 @@ struct PostProcessSettings;
 namespace fbzz::scene {
 struct RenderPassContext;
 struct UserRenderPassDesc;
+class RenderPipeline;
 
 struct CollisionInfo {
     GameObject* self = nullptr;
@@ -151,7 +151,7 @@ public:
     virtual void OnDrawGizmos() {}
     virtual void OnPreRender()  {}
     virtual void OnPostRender() {}
-    virtual void OnSetupRenderPasses(renderer::RenderGraph&, RenderPassContext&) {}
+    virtual void OnSetupRenderPasses(RenderPipeline&, RenderPassContext&) {}
     virtual void OnCollisionEnter(const CollisionInfo&) {}
     virtual void OnCollisionStay(const CollisionInfo&) {}
     virtual void OnCollisionExit(const CollisionInfo&) {}

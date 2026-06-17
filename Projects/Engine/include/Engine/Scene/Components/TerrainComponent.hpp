@@ -5,11 +5,11 @@
 // WHY: 屋外シーンに広い起伏地形を置くには、個別の MeshRenderer では頂点データ管理と
 //      高さクエリ（キャラクター・Physics）が分散してしまう。
 //      TerrainComponent に heightData / splatData を一元管理させ、
-//      TerrainRenderSystem がチャンク分割と GPU 転送を行う構造にすることで
+//      TerrainRenderPass がチャンク分割と GPU 転送を行う構造にすることで
 //      「データ所有」と「描画戦略」を分離する。
 //
-// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .fzmat で管理する。
-// WHY: レイヤーごとに独立した .fzmat にすることで複数地形間でマテリアルを再利用できる。
+// 各レイヤーのテクスチャ・タイリング・roughness 等は layerMaterials[4] が指す .mat で管理する。
+// WHY: レイヤーごとに独立した .mat にすることで複数地形間でマテリアルを再利用できる。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -48,13 +48,13 @@ struct TerrainComponent {
     std::vector<uint8_t> splatData;
 
     // ── 外部 Terrain Asset ─────────────────────────────────────────────────────
-    // Assets/Terrain/*.fbzzterrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
+    // Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
     // WHY: 大きい地形では heightData / splatData がシーンファイルを肥大化させるため、
     //      Prefab や Scene には参照だけを残し、重い編集データは専用アセットへ分離する。
     std::string terrainAssetPath;
 
     // ── レイヤーマテリアル参照 (4 レイヤー) ───────────────────────────────────
-    // 各要素が独立した .fzmat を指す。fzmat keys: "diffuse", "normal", "ao_roughness",
+    // 各要素が独立した .mat を指す。fzmat keys: "diffuse", "normal", "ao_roughness",
     // "tilingX", "tilingZ", "normalStrength", "roughness", "ambientOcclusion",
     // "autoBlendEnabled", "autoBlendStrength", "autoMinHeight", "autoMaxHeight",
     // "autoHeightFade", "autoMinSlope", "autoMaxSlope", "autoSlopeFade"
@@ -68,7 +68,7 @@ struct TerrainComponent {
     int chunkSize = 32;
 
     bool enabled      = true;
-    bool heightDirty        = false; // true → TerrainRenderSystem がメッシュを再構築する
+    bool heightDirty        = false; // true → TerrainRenderPass がメッシュを再構築する
     bool splatDirty         = false; // true → スプラットマップテクスチャ + レイヤーテクスチャを再アップロードする
     bool materialParamDirty = false; // true → マテリアルパラメータ CB のみ再構築（テクスチャ再アップロード不要）
     bool colliderDirty = true; // true → PhysicsSystem がコライダーを再構築する（初期値 true で初回自動構築）
@@ -107,8 +107,8 @@ struct TerrainComponent {
 
     // ── グリッド座標ベースの法線計算 ─────────────────────────────────────────
     // 整数グリッド座標 (x, z) に対して有限差分で法線を計算する。
-    // TerrainRenderSystem の BuildChunk からも呼ばれるため public にする。
-    // WHY: friend 宣言で TerrainRenderSystem に密結合させるより、
+    // TerrainRenderPass の BuildChunk からも呼ばれるため public にする。
+    // WHY: friend 宣言で TerrainRenderPass に密結合させるより、
     //      汎用的な計算関数として公開する方がテスト・拡張しやすい。
     math::Vector3 ComputeNormal(int x, int z) const;
 

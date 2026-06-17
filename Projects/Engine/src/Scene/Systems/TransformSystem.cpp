@@ -4,6 +4,7 @@
 // ルートから BFS で辿り、ローカル値からワールドの position / rotation を再計算する。
 // 循環しない親子関係を前提にする。
 #include "Engine/Scene/Systems/TransformSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include <queue>
 
@@ -32,7 +33,14 @@ static void UpdateWorldTransform(GameObject& go, const Transform* parentTransfor
     }
 }
 
-void TransformSystem(Scene& scene) {
+ComponentAccess TransformSystem::GetAccess() const
+{
+    return ComponentAccess{}.Unrestricted();
+}
+
+void TransformSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
     // ルート (親なし) から BFS で子孫を更新する
     std::queue<GameObject*> queue;
 

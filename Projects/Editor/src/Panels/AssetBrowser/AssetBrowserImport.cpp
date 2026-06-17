@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // AssetBrowserImport.cpp | fbzz::editor
 // AssetBrowser の未変換アセット検出とバックグラウンドインポート
 #include "AssetBrowserCommon.hpp"
@@ -165,7 +165,7 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
 bool AssetBrowserPanel::IsAlreadyImported(const std::string& absPath)
 {
     namespace fs = std::filesystem;
-    // WHY: 新インポート形式では stem.fzasset が FBX と同じディレクトリに置かれる。
+    // WHY: 新インポート形式では stem.asset が FBX と同じディレクトリに置かれる。
     const fs::path p = util::FileSystem::PathFromUtf8(absPath);
     const std::string stem = util::FileSystem::PathToUtf8(p.stem());
     const fs::path check = p.parent_path() / (stem + ".asset");

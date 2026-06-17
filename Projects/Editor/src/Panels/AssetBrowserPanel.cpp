@@ -316,7 +316,7 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
     if (m_typeFilter == TypeFilter::All || e.isDir) return true;
     switch (m_typeFilter) {
     case TypeFilter::Scene:    return e.ext == ".scene";
-    case TypeFilter::Material: return e.ext == ".fzmat";
+    case TypeFilter::Material: return e.ext == ".mat";
     case TypeFilter::Script:   return e.ext == ".hpp" || e.ext == ".cpp" || e.ext == ".h"
                                    || e.ext == ".c"   || e.ext == ".cc"  || e.ext == ".cxx"
                                    || e.ext == ".py"  || e.ext == ".lua" || e.ext == ".cs";
@@ -326,11 +326,11 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
     case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
                                    || e.ext == ".flac";
     case TypeFilter::Mesh:      return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
-                                    || e.ext == ".glb"    || e.ext == ".fzmesh";
+                                    || e.ext == ".glb"    || e.ext == ".mesh";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
-    case TypeFilter::Prefab:    return e.ext == ".fbzzprefab";
-    case TypeFilter::Animation: return e.ext == ".fzanim";
-    case TypeFilter::Skeleton:  return e.ext == ".fzskel";
+    case TypeFilter::Prefab:    return e.ext == ".prefab";
+    case TypeFilter::Animation: return e.ext == ".anim";
+    case TypeFilter::Skeleton:  return e.ext == ".skel";
     case TypeFilter::Asset:     return e.ext == ".asset";
     default:                    return true;
     }

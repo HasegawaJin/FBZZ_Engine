@@ -1,6 +1,6 @@
 // FBZZ Engine
 // MaterialAsset.hpp | fbzz::asset
-// .fzmat マテリアルアセットのランタイム表現と TOML 入出力 API
+// .mat マテリアルアセットのランタイム表現と TOML 入出力 API
 #pragma once
 #include <Engine/Renderer/RenderLayer.hpp>
 #include <Engine/Renderer/RenderState.hpp>
@@ -27,7 +27,7 @@ enum class RenderPath { Auto, Deferred, Forward };
 //      "any"     → 両方可 (カスタムシェーダーのデフォルト)。
 enum class MeshType { Any, Surface, Skinned };
 
-// .fzmat の内容を保持する共有マテリアルデータ。
+// .mat の内容を保持する共有マテリアルデータ。
 // WHY: GameObject ごとの MaterialComponent に見た目の値を複製せず、同一ファイルを参照する全オブジェクトへ
 //      編集結果を即時反映できるようにする。
 struct MaterialAsset {
@@ -46,10 +46,10 @@ struct MaterialAsset {
     std::unordered_map<std::string, std::vector<float>> params;
 };
 
-// TOML から .fzmat を読み込む。破損・未存在時は false を返し、例外は使わない。
+// TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。
 [[nodiscard]] bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset);
 
-// .fzmat を TOML へ保存する。Editor からの Save とテンプレート生成で共有する。
+// .mat を TOML へ保存する。Editor からの Save とテンプレート生成で共有する。
 [[nodiscard]] bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset);
 
 } // namespace fbzz::asset

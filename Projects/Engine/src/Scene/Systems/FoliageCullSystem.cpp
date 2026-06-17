@@ -7,6 +7,8 @@
 //      broadphase ペア数を増やす。動的に enabled を落とすことでペアを削減できる。
 //      GO の破棄/再生成は行わないため FoliageBakeSystem の needsBakeChildren は発火しない。
 #include "Engine/Scene/Systems/FoliageCullSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/FoliageBakeSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/CameraComponent.hpp"
@@ -16,8 +18,21 @@
 
 namespace fbzz::scene {
 
-void FoliageCullSystem(Scene& scene)
+ComponentAccess FoliageCullSystem::GetAccess() const
 {
+    return ComponentAccess{}
+        .Reads<FoliageComponent, CameraComponent>()
+        .Writes<BoxColliderComponent>();
+}
+
+OrderingHints FoliageCullSystem::GetOrder() const
+{
+    return OrderingHints{}.After<FoliageBakeSystem>();
+}
+
+void FoliageCullSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
     // メインカメラの world 位置を基準点とする。
     // WHY: TransformSystem 実行後に呼ぶため worldPosition は最新値になっている。
     math::Vector3 refPos = {};
