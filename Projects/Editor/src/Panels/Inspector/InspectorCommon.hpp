@@ -48,6 +48,7 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
@@ -896,6 +897,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "NavMesh Modifier", !go.GetComponent<scene::NavMeshModifierComponent>(), [&]() {
             go.AddComponent<scene::NavMeshModifierComponent>();
+        });
+        shown |= addItem(category, "Off-Mesh Link", !go.GetComponent<scene::NavMeshOffMeshLinkComponent>(), [&]() {
+            go.AddComponent<scene::NavMeshOffMeshLinkComponent>();
         });
         shown |= addItem(category, "NavMesh Agent", !go.GetComponent<scene::NavMeshAgentComponent>(), [&]() {
             go.AddComponent<scene::NavMeshAgentComponent>();

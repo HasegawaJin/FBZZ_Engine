@@ -8,6 +8,7 @@ namespace fbzz::scene {
 struct RenderPassContext;
 
 void ExecuteDebugCollidersPass(RenderPassContext& ctx);
+void ExecuteNavMeshDebugPass(RenderPassContext& ctx);
 void ExecuteDecalDebugPass(RenderPassContext& ctx);
 
 } // namespace fbzz::scene
