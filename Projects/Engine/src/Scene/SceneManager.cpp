@@ -8,6 +8,10 @@
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Systems/FoliageBakeSystem.hpp"
 #include "Engine/Scene/Systems/FoliageCullSystem.hpp"
+#include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
+#include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
+#include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
+#include "Engine/Scene/Systems/NavigationSystem.hpp"
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
@@ -101,6 +105,7 @@ void SceneManager::Update(float dt, physics::World& world)
         TransformSystem(*scene);
         FoliageBakeSystem(*scene);
         FoliageCullSystem(*scene);
+        NavMeshBakeSystem(*scene);
         return;
     }
 
@@ -111,6 +116,8 @@ void SceneManager::Update(float dt, physics::World& world)
       FoliageBakeSystem(*scene); }
     { FBZZ_PROFILE_SCOPE("SceneManager::FoliageCullSystem");
       FoliageCullSystem(*scene); }
+    { FBZZ_PROFILE_SCOPE("SceneManager::NavMeshBakeSystem");
+      NavMeshBakeSystem(*scene); }
 
     // ── Phase 1: Script Update ──────────────────────────────────────────────
     { FBZZ_PROFILE_SCOPE("SceneManager::ScriptSystem");
@@ -144,6 +151,18 @@ void SceneManager::Update(float dt, physics::World& world)
     // ── Phase 4: Transform (physics writeback) ──────────────────────────────
     { FBZZ_PROFILE_SCOPE("SceneManager::TransformSystem");
       TransformSystem(*scene); }
+
+    // ── Phase 4.5: Navigation (Sensor 検知 → 巡回 AI の目的地決定 → パス追従・移動) ──
+    // WHY: Physics の Transform 書き戻し後に Agent を動かすことで、同フレームの
+    //      Collider 位置と Navigation の移動結果が整合する。
+    //      NavMeshSensorSystem → NavMeshPatrolSystem → NavigationSystem の順で呼ぶことで、
+    //      「検知して target が立つ → 巡回はそれを見て中断 → 同フレームでパス計算」が揃う。
+    { FBZZ_PROFILE_SCOPE("SceneManager::NavMeshSensorSystem");
+      NavMeshSensorSystem(*scene, &world, dt); }
+    { FBZZ_PROFILE_SCOPE("SceneManager::NavMeshPatrolSystem");
+      NavMeshPatrolSystem(*scene, dt); }
+    { FBZZ_PROFILE_SCOPE("SceneManager::NavigationSystem");
+      NavigationSystem(*scene, dt); }
 
     // ── Phase 5: Script LateUpdate ──────────────────────────────────────────
     { FBZZ_PROFILE_SCOPE("SceneManager::LateScriptSystem");

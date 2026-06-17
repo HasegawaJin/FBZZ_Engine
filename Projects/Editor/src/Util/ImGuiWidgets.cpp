@@ -39,7 +39,7 @@ ImVec4 ExtBadgeColor(const std::string& ext)
     if (ext == ".asset")                                        return { 0.3f,  0.85f, 0.9f,  1.0f }; // cyan
     if (ext == ".scene")                                           return { 0.45f, 0.65f, 1.0f,  1.0f }; // blue
     if (ext == ".hlsl")                                           return { 1.0f,  0.9f,  0.3f,  1.0f }; // yellow
-    if (ext == ".fbzzanimcontroller" || ext == ".fzanim")         return { 1.0f,  0.6f,  0.2f,  1.0f }; // orange
+    if (ext == ".animcontroller" || ext == ".fzanim")         return { 1.0f,  0.6f,  0.2f,  1.0f }; // orange
     if (ext == ".fzskel")                                         return { 1.0f,  0.7f,  0.7f,  1.0f }; // pink
     if (ext == ".png"  || ext == ".jpg" || ext == ".jpeg" ||
         ext == ".tga"  || ext == ".dds" || ext == ".bmp"  ||

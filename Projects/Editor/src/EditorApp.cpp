@@ -41,6 +41,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
@@ -488,6 +489,8 @@ void EditorApp::Shutdown()
     m_settings.showColliders        = m_ctx.projectSettings.render.showColliders;
     m_settings.showTerrainCollision = m_ctx.projectSettings.render.showTerrainCollision;
     m_settings.showDecalBounds      = m_ctx.projectSettings.render.showDecalBounds;
+    m_settings.showNavMesh          = m_ctx.projectSettings.render.showNavMesh;
+    m_settings.showNavSensors       = m_ctx.projectSettings.render.showNavSensors;
     m_settings.viewMode        = static_cast<int>(m_ctx.projectSettings.render.viewMode);
     m_settings.shadowEnabled   = m_ctx.projectSettings.render.shadowEnabled;
     // Debug メニュー - Post Process
@@ -626,6 +629,8 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     m_ctx.projectSettings.render.showColliders        = m_settings.showColliders;
     m_ctx.projectSettings.render.showTerrainCollision = m_settings.showTerrainCollision;
     m_ctx.projectSettings.render.showDecalBounds      = m_settings.showDecalBounds;
+    m_ctx.projectSettings.render.showNavMesh          = m_settings.showNavMesh;
+    m_ctx.projectSettings.render.showNavSensors       = m_settings.showNavSensors;
     m_ctx.projectSettings.render.viewMode        = static_cast<renderer::ViewMode>(m_settings.viewMode);
     m_ctx.projectSettings.render.shadowEnabled   = m_settings.shadowEnabled;
     {
@@ -1108,6 +1113,24 @@ void EditorApp::OnUpdate(float dt)
         m_physicsWorld = physics::World{};
         scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
         RestoreEditorHiding();  // Stop 復元後に editor-only 非表示を再適用
+
+        // Serializer が設定する needsBake=true を上書きしてベイク済み NavMesh を復元する。
+        // WHY: navMesh はランタイムキャッシュのため TOML 非保存。Play→Stop のたびに再ベイクが
+        //      走らないよう、Play 開始前に保存したキャッシュを差し戻す。
+        if (!m_navMeshPlayCache.empty()) {
+            for (scene::EntityID eid : m_scene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+                auto* surf = m_scene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+                auto* go   = m_scene->GetGameObject(eid);
+                if (!surf || !go) continue;
+                auto it = m_navMeshPlayCache.find(go->instanceId);
+                if (it != m_navMeshPlayCache.end()) {
+                    surf->navMesh   = std::move(it->second);
+                    surf->bakeState = scene::NavMeshBakeState::Done;
+                    surf->needsBake = false;
+                }
+            }
+            m_navMeshPlayCache.clear();
+        }
     }
 
     if (!playMode->IsPlaying()) {

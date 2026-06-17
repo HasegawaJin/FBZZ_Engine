@@ -75,4 +75,7 @@ inline math::Vector2 WorldToWaterUV(
     };
 }
 
+struct RenderPassContext;
+void WaterSelectionMaskSystem(RenderPassContext& ctx);
+
 } // namespace fbzz::scene

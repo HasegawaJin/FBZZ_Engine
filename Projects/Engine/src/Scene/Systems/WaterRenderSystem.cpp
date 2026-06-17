@@ -23,10 +23,12 @@
 #include "Engine/Renderer/RenderSettings.hpp"
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/SamplerMode.hpp"
+#include <Engine/Scene/Systems/RenderPassContext.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector4.hpp>
+#include <Physics/Layer.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -800,6 +802,52 @@ void WaterRenderSystem(
             call.textures[8] = rippleTex;
             call.textures[9] = shadowDepthTexture;
             renderer.Submit(call, resources);
+        }
+    }
+}
+
+void WaterSelectionMaskSystem(RenderPassContext& ctx)
+{
+    if (!ctx.selectionOutlineEnabled) return;
+    auto& h = ctx.handles;
+    if (!h.selectionMaskShader.IsValid() || !h.selectionMaskPSO.IsValid()) return;
+
+    for (auto [water, transform] : ctx.scene.View<WaterComponent, Transform>()) {
+        EntityID eid = FindEntityForWater(ctx.scene, water);
+        if (!ctx.scene.IsValid(eid)) continue;
+
+        const auto* go = ctx.scene.GetGameObject(eid);
+        if (!go || !go->activeInHierarchy()) continue;
+        if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
+
+        bool selected = false;
+        for (const auto& sel : ctx.settings.selectedObjects) {
+            if (sel.index == eid.index && sel.generation == eid.generation) {
+                selected = true;
+                break;
+            }
+        }
+        if (!selected) continue;
+
+        auto it = s_meshCache.find(eid.index);
+        if (it == s_meshCache.end()) continue;
+
+        const math::Matrix4 world = transform.GetWorldMatrix();
+        PerObjectCB objData{};
+        objData.world             = world;
+        objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
+        ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
+
+        for (const WaterChunk& chunk : it->second.chunks) {
+            renderer::DrawCall dc;
+            dc.vertexBuffer       = chunk.vertexBuffer;
+            dc.indexBuffer        = chunk.indexBuffer;
+            dc.indexCount         = chunk.indexCount;
+            dc.shader             = h.selectionMaskShader;
+            dc.pipelineState      = h.selectionMaskPSO;
+            dc.constantBuffers[0] = h.frameCB;
+            dc.constantBuffers[1] = h.objectCB;
+            ctx.renderer.Submit(dc, ctx.resources);
         }
     }
 }

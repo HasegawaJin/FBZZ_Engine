@@ -134,6 +134,8 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         ImGui::Checkbox("Grid",        &ctx.showGrid);
         ImGui::Checkbox("Light Range", &ctx.showLightRange);
         ImGui::Checkbox("Colliders",   &ctx.projectSettings.render.showColliders);
+        ImGui::Checkbox("NavMesh",     &ctx.projectSettings.render.showNavMesh);
+        ImGui::Checkbox("AI Sensors",  &ctx.projectSettings.render.showNavSensors);
         ImGui::Checkbox("Skeleton",    &ctx.showSkeleton);
         ImGui::Checkbox("Stats",       &ctx.showStats);
         ImGui::EndPopup();

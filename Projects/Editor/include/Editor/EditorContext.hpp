@@ -186,7 +186,7 @@ struct EditorContext {
     bool requestOpenProjectSettings  = false;
     bool requestOpenBuildSettings    = false;
     bool requestOpenAnalysis         = false;
-    bool requestOpenAnimationGraph   = false; // .fbzzanimcontroller ダブルクリック → AnimationGraphPanel を開く
+    bool requestOpenAnimationGraph   = false; // .animcontroller ダブルクリック → AnimationGraphPanel を開く
     bool requestScriptReload         = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア

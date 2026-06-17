@@ -10,6 +10,7 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Matrix4.hpp>
+#include <cstddef>
 
 namespace fbzz::renderer {
 
@@ -53,6 +54,10 @@ public:
                      const math::Vector3& apex, const math::Vector3& direction,
                      float height, float baseRadius,
                      const math::Vector4& color = {1,1,0,1});
+
+    // 凸ポリゴンを半透明塗りつぶしで描く (fan 三角分割、TRIANGLE_LIST + ALPHA_BLEND)
+    static void FilledPolygon(IRenderer& r, const math::Vector3* vertices, size_t count,
+                              const math::Vector4& color = {0.12f, 0.35f, 0.90f, 0.30f});
 };
 
 } // namespace fbzz::renderer

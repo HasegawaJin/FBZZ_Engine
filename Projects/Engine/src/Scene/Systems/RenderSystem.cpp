@@ -960,6 +960,10 @@ void RenderSystem(Scene& scene,
         renderer::DebugDraw::Flush();
     });
 
+    graph.AddPass("NavMeshDebug", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteNavMeshDebugPass(passCtx);
+    });
+
     graph.AddPass("DebugDecalBounds", { "HDR" }, { "HDR" }, [&]() {
         ExecuteDecalDebugPass(passCtx);
     });

@@ -60,4 +60,21 @@ namespace fbzz::scene
         const math::Vector4& nearColor = { 0.1f, 1.0f, 0.35f, 1.0f },
         const math::Vector4& farColor  = { 0.2f, 0.8f, 0.2f, 0.6f });
 
+    // NavMeshVolumeComponent の Bake 結果ポリゴンと NavMeshAgentComponent の現在パスを描画する。
+    // BeginFrame / Flush は呼び出し元が管理する。
+    void NavMeshDebugDrawSystem(
+        Scene& scene,
+        renderer::IRenderer& renderer,
+        const math::Vector4& polygonColor = { 0.2f, 0.6f, 1.0f, 1.0f },
+        const math::Vector4& pathColor    = { 1.0f, 0.85f, 0.1f, 1.0f });
+
+    // NavMeshSensorComponent の視野角・視認距離を扇形ワイヤーで描画する。
+    // 対象を検知中は dangerColor、未検知は safeColor を使う。
+    // BeginFrame / Flush は呼び出し元が管理する。
+    void NavMeshSensorDebugDrawSystem(
+        Scene& scene,
+        renderer::IRenderer& renderer,
+        const math::Vector4& safeColor   = { 0.2f, 1.0f, 0.3f, 0.7f },
+        const math::Vector4& dangerColor = { 1.0f, 0.2f, 0.2f, 0.85f });
+
 } // namespace fbzz::scene
