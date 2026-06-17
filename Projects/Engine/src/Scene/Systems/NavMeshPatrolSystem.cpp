@@ -11,7 +11,6 @@ namespace fbzz::scene {
 
 namespace {
 
-// 現在のウェイポイントを Mode に応じて次へ進める。
 void AdvanceWaypoint(NavMeshPatrolComponent& patrol)
 {
     const size_t count = patrol.waypoints.size();
@@ -26,6 +25,32 @@ void AdvanceWaypoint(NavMeshPatrolComponent& patrol)
     if (patrol.currentIndex == 0) patrol.direction = 1;
     else if (patrol.currentIndex == count - 1) patrol.direction = -1;
     patrol.currentIndex = static_cast<size_t>(static_cast<int>(patrol.currentIndex) + patrol.direction);
+}
+
+// ウェイポイント i の待機時間を返す。waypointWaitTimes が使えなければ共通 waitTime を返す。
+float GetWaitTime(const NavMeshPatrolComponent& patrol, size_t i)
+{
+    if (i < patrol.waypointWaitTimes.size())
+        return patrol.waypointWaitTimes[i];
+    return patrol.waitTime;
+}
+
+// ウェイポイント i の移動速度を返す (0 以下 = Agent のデフォルト速度を使う)。
+float GetWaypointSpeed(const NavMeshPatrolComponent& patrol, size_t i)
+{
+    if (i < patrol.waypointSpeeds.size())
+        return patrol.waypointSpeeds[i];
+    return 0.0f;
+}
+
+// Agent の移動速度を一時的に上書きする。speed <= 0 なら元の maxSpeed を維持する。
+// WHY: patrolDefaultSpeed を保存して次のウェイポイントで復元する方式は
+//      複数フレームをまたぐ状態管理が複雑になるため、
+//      Patrol が毎フレーム maxSpeed を必要な値にクランプする方式を使う。
+void ApplyWaypointSpeed(NavMeshAgentComponent& agent, float speed)
+{
+    if (speed > 0.0f)
+        agent.maxSpeed = speed;
 }
 
 } // namespace
@@ -48,23 +73,27 @@ void NavMeshPatrolSystem(Scene& scene, float dt)
             patrol->waiting = false;
             AdvanceWaypoint(*patrol);
             agent->SetDestination(patrol->waypoints[patrol->currentIndex]);
+            ApplyWaypointSpeed(*agent, GetWaypointSpeed(*patrol, patrol->currentIndex));
             continue;
         }
 
         if (!patrol->started) {
             patrol->started = true;
             agent->SetDestination(patrol->waypoints[patrol->currentIndex]);
+            ApplyWaypointSpeed(*agent, GetWaypointSpeed(*patrol, patrol->currentIndex));
             continue;
         }
 
         // NavigationSystem が到達済みと判定したら、待機 or 次のウェイポイントへ進む。
         if (agent->destinationReached && !agent->hasDestination) {
-            if (patrol->waitTime > 0.0f) {
+            const float wt = GetWaitTime(*patrol, patrol->currentIndex);
+            if (wt > 0.0f) {
                 patrol->waiting   = true;
-                patrol->waitTimer = patrol->waitTime;
+                patrol->waitTimer = wt;
             } else {
                 AdvanceWaypoint(*patrol);
                 agent->SetDestination(patrol->waypoints[patrol->currentIndex]);
+                ApplyWaypointSpeed(*agent, GetWaypointSpeed(*patrol, patrol->currentIndex));
             }
         }
     }

@@ -41,6 +41,7 @@
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
@@ -1112,6 +1113,24 @@ void EditorApp::OnUpdate(float dt)
         m_physicsWorld = physics::World{};
         scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
         RestoreEditorHiding();  // Stop 復元後に editor-only 非表示を再適用
+
+        // Serializer が設定する needsBake=true を上書きしてベイク済み NavMesh を復元する。
+        // WHY: navMesh はランタイムキャッシュのため TOML 非保存。Play→Stop のたびに再ベイクが
+        //      走らないよう、Play 開始前に保存したキャッシュを差し戻す。
+        if (!m_navMeshPlayCache.empty()) {
+            for (scene::EntityID eid : m_scene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+                auto* surf = m_scene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+                auto* go   = m_scene->GetGameObject(eid);
+                if (!surf || !go) continue;
+                auto it = m_navMeshPlayCache.find(go->instanceId);
+                if (it != m_navMeshPlayCache.end()) {
+                    surf->navMesh   = std::move(it->second);
+                    surf->bakeState = scene::NavMeshBakeState::Done;
+                    surf->needsBake = false;
+                }
+            }
+            m_navMeshPlayCache.clear();
+        }
     }
 
     if (!playMode->IsPlaying()) {
@@ -1312,7 +1331,7 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
     }
 
     const auto& render = m_ctx.projectSettings.render;
-    if (render.showColliders || render.showTerrainCollision || render.showNavMesh || render.showNavSensors) {
+    if (render.showColliders || render.showTerrainCollision) {
         renderer::DebugDraw::BeginFrame(*m_renderer, *m_resources,
                                         m_debugCamera.camera.GetViewProjection());
         if (render.showColliders) {
@@ -1322,10 +1341,6 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         if (render.showTerrainCollision)
             scene::TerrainCollisionDebugDrawSystem(*m_scene, *m_renderer,
                                                     m_debugCamera.camera.m_position);
-        if (render.showNavMesh)
-            scene::NavMeshDebugDrawSystem(*m_scene, *m_renderer);
-        if (render.showNavSensors)
-            scene::NavMeshSensorDebugDrawSystem(*m_scene, *m_renderer);
         renderer::DebugDraw::Flush();
     }
 

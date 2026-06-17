@@ -71,7 +71,7 @@ static void EnsureInit(ResourceManager& resources)
                                          DepthMode::DEPTH_OFF });
     s_triPso   = resources.CreatePipelineState({ RasterizerMode::SOLID_NOCULL,
                                          BlendMode::ALPHA_BLEND,
-                                         DepthMode::DEPTH_OFF });
+                                         DepthMode::DEPTH_READ });
 
     assert(s_vb.IsValid() && s_triVb.IsValid() && s_shader.IsValid() &&
            s_cameraCB.IsValid() && s_pso.IsValid() && s_triPso.IsValid() &&

@@ -10,9 +10,19 @@
 
 namespace fbzz::scene {
 
+// オフメッシュリンク通過中の補間状態（NavigationSystem が書き込む）
+struct NavMeshLinkTraversal {
+    math::Vector3 startPos  = math::Vector3::ZERO;
+    math::Vector3 endPos    = math::Vector3::ZERO;
+    float         totalTime = 0.3f;
+    float         elapsed   = 0.0f;
+    bool          active    = false;
+};
+
 enum class NavMeshAgentState : uint8_t {
-    IDLE,    // 目的地未設定、または到達済み
-    MOVING,  // パスに沿って移動中
+    IDLE,             // 目的地未設定、または到達済み
+    MOVING,           // パスに沿って移動中
+    TRAVERSING_LINK,  // オフメッシュリンクを通過中（lerp 補間移動）
 };
 
 struct NavMeshAgentComponent {
@@ -26,15 +36,40 @@ struct NavMeshAgentComponent {
     // (敵が遮ってもプレイヤー追跡 AI が止まらない、等のケースで使う)。
     int avoidancePriority = 0;
 
+    // NavMeshSurfaceComponent::agentTypeId と一致する Surface を使う（0 = デフォルト）。
+    int agentTypeId = 0;
+
+    // true のとき移動後に NavMesh 面の Y 座標へスナップする。
+    // 物理・重力と組み合わせる場合は false にして物理側に Y を任せる。
+    bool snapToNavMesh = false;
+
+    // false にすると NavigationSystem が GO の位置を書き込まない (アニメーション Root Motion と併用する場合等)。
+    bool updatePosition = true;
+    // false にすると NavigationSystem が GO の回転を書き込まない。
+    bool updateRotation = true;
+    // true のとき最終ウェイポイントへ近づくにつれて自動的に速度を落とす（ブレーキング）。
+    bool autoBraking = true;
+
+    // 通過できるエリアタイプのビットマスク。-1 = すべて通過可。
+    // bit i が立っているとき areaType==i のポリゴンを通過できる。
+    int areaMask = -1;
+
     bool enabled = true;
 
     // ── ランタイム状態 (NavigationSystem が管理。非永続化) ──────────────────
     bool hasDestination = false;
+    // NavigationSystem が毎フレーム更新する現在の速度ベクトル [m/s]。アニメーター連携に使う。
+    math::Vector3 velocity = math::Vector3::ZERO;
     math::Vector3 destination = math::Vector3::ZERO;
-    std::vector<math::Vector3> path; // Funnel Algorithm 平滑化済みウェイポイント
+    std::vector<math::Vector3> path;      // Funnel Algorithm 平滑化済みウェイポイント
+    std::vector<bool>          pathLinkFlags; // path[i]==true → オフメッシュリンク起点
+    std::vector<float>         pathLinkTimes; // リンク通過時間（link 起点インデックスのみ有効）
     size_t currentWaypoint = 0;
     NavMeshAgentState state = NavMeshAgentState::IDLE;
     float currentSpeed = 0.0f;
+
+    // ── オフメッシュリンク通過状態 ─────────────────────────────────────────
+    NavMeshLinkTraversal linkTraversal;
 
     // true の間、NavigationSystem は移動・回転を止めるがパスは保持する
     // (Unity の NavMeshAgent.isStopped に相当。Resume() で同じパスから再開できる)。
@@ -64,16 +99,25 @@ struct NavMeshAgentComponent {
     float stuckTimer = 0.0f;  // ランタイム: 直近の有意な前進からの経過時間 [s]
     bool  isStuck    = false; // ランタイム: 直前に停滞を検知して強制再計算したかどうか (デバッグ表示用)
 
+    // パスが計算済みかどうか。Script からパス存在確認に使う。
+    bool HasPath() const { return !path.empty(); }
+
     const char* GetTypeName() const { return "NavMesh Agent"; }
     void Reflect(IReflector& r)
     {
-        r.Field("enabled", enabled);
-        r.Field("radius", radius);
-        r.Field("maxSpeed", maxSpeed);
-        r.Field("acceleration", acceleration);
-        r.Field("angularSpeedDeg", angularSpeedDeg);
+        r.Field("enabled",          enabled);
+        r.Field("radius",           radius);
+        r.Field("maxSpeed",         maxSpeed);
+        r.Field("acceleration",     acceleration);
+        r.Field("angularSpeedDeg",  angularSpeedDeg);
         r.Field("stoppingDistance", stoppingDistance);
-        r.Field("avoidancePriority", avoidancePriority);
+        r.Field("avoidancePriority",avoidancePriority);
+        r.Field("agentTypeId",      agentTypeId);
+        r.Field("snapToNavMesh",    snapToNavMesh);
+        r.Field("updatePosition",   updatePosition);
+        r.Field("updateRotation",   updateRotation);
+        r.Field("autoBraking",      autoBraking);
+        r.Field("areaMask",         areaMask);
     }
 
     // 目的地を設定する。実際のパス計算は NavigationSystem が次フレームで行う。
@@ -86,6 +130,9 @@ struct NavMeshAgentComponent {
         isStopped           = false;
         target              = EntityID::INVALID;
         path.clear();
+        pathLinkFlags.clear();
+        pathLinkTimes.clear();
+        linkTraversal.active = false;
         currentWaypoint = 0;
         state           = NavMeshAgentState::MOVING;
     }
@@ -107,6 +154,9 @@ struct NavMeshAgentComponent {
         hasDestination = false;
         target = EntityID::INVALID;
         path.clear();
+        pathLinkFlags.clear();
+        pathLinkTimes.clear();
+        linkTraversal.active = false;
         currentWaypoint = 0;
         currentSpeed = 0.0f;
         remainingDistance = 0.0f;

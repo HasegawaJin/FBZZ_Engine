@@ -19,6 +19,7 @@
 #include <Engine/Core/IModule.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
@@ -29,6 +30,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <Windows.h>
 
@@ -157,6 +159,9 @@ private:
     bool               m_lastTitleDirty = false;
     std::string        m_lastTitleScenePath;
     PlayModeController              m_playMode;
+    // Play→Stop 時の再ベイクを避けるため、Play 開始前にベイク済み NavMesh をキャッシュする。
+    // key = GameObject::instanceId
+    std::unordered_map<std::string, scene::NavMesh> m_navMeshPlayCache;
     std::unique_ptr<TerrainTool>    m_terrainTool; // pimpl: EditorApp.hpp が imgui に依存しないよう unique_ptr で隠蔽
     std::unique_ptr<WaterTool>      m_waterTool;   // WaterTool も同じ pimpl パターンで隠蔽する
     std::unique_ptr<DetailTool>     m_detailTool;  // DetailTool も同じ pimpl パターン

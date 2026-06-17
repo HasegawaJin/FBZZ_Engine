@@ -19,13 +19,18 @@
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSurfaceComponent.hpp"
 #include "Engine/Scene/Components/NavMeshModifierComponent.hpp"
+#include "Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <future>
+#include <limits>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::scene {
@@ -34,6 +39,21 @@ namespace {
 
 constexpr float kPi        = 3.14159265358979323846f;
 constexpr float kNoSurface = -1.0e30f;
+
+// NavigationSystem.cpp の同名関数と同一ロジック。
+// BakeSystem は別 TU のためローカルコピーを持つ。
+int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
+{
+    int best = -1;
+    float bestDistSq = std::numeric_limits<float>::max();
+    for (size_t i = 0; i < navMesh.polygons.size(); ++i) {
+        const auto& poly = navMesh.polygons[i];
+        if (poly.ContainsXZ(pos.x, pos.z)) return static_cast<int>(i);
+        const float d = poly.DistanceSqXZ(pos.x, pos.z);
+        if (d < bestDistSq) { bestDistSq = d; best = static_cast<int>(i); }
+    }
+    return best;
+}
 
 math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 {
@@ -141,33 +161,90 @@ bool TryGetWalkableSurface(Scene& scene, EntityID eid, const GameObject& go, Wal
 
 // ── Terrain 高さサンプリング ────────────────────────────────────────────────
 
-struct TerrainInfo {
-    TerrainComponent* terrain;
-    math::Vector3     origin;  // Terrain GO の worldPosition
+// バックグラウンドスレッドに渡すための自己完結 Terrain データ。
+// TerrainComponent の heightData をコピーして保持し、ポインタ参照を持たない。
+struct TerrainBakeData {
+    std::vector<float> heightData;
+    int           columns  = 0;
+    int           rows     = 0;
+    float         cellSize = 1.0f;
+    float         maxHeight = 1.0f;
+    math::Vector3 origin{};
+
+    float SampleH(int x, int z) const {
+        x = std::clamp(x, 0, columns - 1);
+        z = std::clamp(z, 0, rows    - 1);
+        return heightData[static_cast<size_t>(z) * static_cast<size_t>(columns) + x] * maxHeight;
+    }
+    math::Vector3 ComputeNormal(int x, int z) const {
+        const float dhdx = (SampleH(x+1,z) - SampleH(x-1,z)) / (2.0f * cellSize);
+        const float dhdz = (SampleH(x,z+1) - SampleH(x,z-1)) / (2.0f * cellSize);
+        return math::Vector3{-dhdx, 1.0f, -dhdz}.Normalized();
+    }
+    float GetHeightAt(float lx, float lz) const {
+        if (heightData.empty()) return 0.0f;
+        const float gx = std::clamp(lx / cellSize, 0.0f, float(columns - 1));
+        const float gz = std::clamp(lz / cellSize, 0.0f, float(rows    - 1));
+        const int   x0 = std::clamp(int(gx), 0, columns - 2);
+        const int   z0 = std::clamp(int(gz), 0, rows    - 2);
+        const float fx = gx - x0, fz = gz - z0;
+        if (fx + fz <= 1.0f)
+            return SampleH(x0,z0) + fx*(SampleH(x0+1,z0)-SampleH(x0,z0)) + fz*(SampleH(x0,z0+1)-SampleH(x0,z0));
+        return SampleH(x0+1,z0)*(1.0f-fz) + SampleH(x0,z0+1)*(1.0f-fx) + SampleH(x0+1,z0+1)*(fx+fz-1.0f);
+    }
+    math::Vector3 GetNormalAt(float lx, float lz) const {
+        if (heightData.empty()) return {0.0f, 1.0f, 0.0f};
+        const int   x0 = std::clamp(int(lx / cellSize), 0, columns - 2);
+        const int   z0 = std::clamp(int(lz / cellSize), 0, rows    - 2);
+        const float fx = lx / cellSize - x0, fz = lz / cellSize - z0;
+        const auto  n00 = ComputeNormal(x0,   z0);
+        const auto  n10 = ComputeNormal(x0+1, z0);
+        const auto  n01 = ComputeNormal(x0,   z0+1);
+        const auto  n11 = ComputeNormal(x0+1, z0+1);
+        return math::Vector3{
+            n00.x*(1-fx)*(1-fz)+n10.x*fx*(1-fz)+n01.x*(1-fx)*fz+n11.x*fx*fz,
+            n00.y*(1-fx)*(1-fz)+n10.y*fx*(1-fz)+n01.y*(1-fx)*fz+n11.y*fx*fz,
+            n00.z*(1-fx)*(1-fz)+n10.z*fx*(1-fz)+n01.z*(1-fx)*fz+n11.z*fx*fz,
+        }.Normalized();
+    }
 };
 
 // Terrain の局所 XZ 範囲内かを確認してから高さを返す。範囲外は kNoSurface。
-float SampleTerrainHeight(const TerrainInfo& ti, float wx, float wz)
+float SampleTerrainHeight(const TerrainBakeData& td, float wx, float wz)
 {
-    const float localX = wx - ti.origin.x;
-    const float localZ = wz - ti.origin.z;
-    const float maxX   = static_cast<float>(ti.terrain->columns - 1) * ti.terrain->cellSize;
-    const float maxZ   = static_cast<float>(ti.terrain->rows    - 1) * ti.terrain->cellSize;
+    const float localX = wx - td.origin.x;
+    const float localZ = wz - td.origin.z;
+    const float maxX   = static_cast<float>(td.columns - 1) * td.cellSize;
+    const float maxZ   = static_cast<float>(td.rows    - 1) * td.cellSize;
     if (localX < 0.0f || localX > maxX || localZ < 0.0f || localZ > maxZ)
         return kNoSurface;
-    return ti.terrain->GetHeightAt(localX, localZ) + ti.origin.y;
+    return td.GetHeightAt(localX, localZ) + td.origin.y;
 }
 
 // 複数 Terrain の最大高さを返す（上側の面を優先）。
-float SampleAllTerrainsHeight(const std::vector<TerrainInfo>& terrains, float wx, float wz)
+float SampleAllTerrainsHeight(const std::vector<TerrainBakeData>& terrains, float wx, float wz)
 {
     float best = kNoSurface;
-    for (const auto& ti : terrains) {
-        const float h = SampleTerrainHeight(ti, wx, wz);
+    for (const auto& td : terrains) {
+        const float h = SampleTerrainHeight(td, wx, wz);
         if (h > best) best = h;
     }
     return best;
 }
+
+// ── Bake 入力データ（スレッドに移管するためにコピーして使う）────────────────
+
+struct BakeInput {
+    NavMeshCollectObjects       collectObjects = NavMeshCollectObjects::ThisObject;
+    math::Vector3               volumeCenter{};
+    math::Vector3               volumeSize{};
+    float                       cellSize         = 1.0f;
+    float                       maxSlopeAngleDeg = 45.0f;
+    float                       agentHeight      = 2.0f;
+    std::vector<TerrainBakeData> terrains;
+    std::vector<WalkableSurface> walkableSurfs;
+    std::vector<Obstacle>        obstacles;
+};
 
 // ── Hertel-Mehlhorn 用作業ポリゴン ────────────────────────────────────────
 
@@ -241,321 +318,364 @@ struct AutoBounds {
 
 } // namespace
 
+// ── バックグラウンド Bake 関数 ───────────────────────────────────────────
+// BakeInput のコピーだけを使い、シーンのいかなるポインタにも触れない純粋な計算関数。
+// std::async で任意のスレッドから呼ばれる。
+
+static NavMesh RunNavMeshBake(BakeInput inp)
+{
+    const auto& terrains     = inp.terrains;
+    const auto& walkableSurfs = inp.walkableSurfs;
+    const auto& obstacles    = inp.obstacles;
+
+    if (terrains.empty() && walkableSurfs.empty())
+        return {};
+
+    const float cellSize = std::max(0.1f, inp.cellSize);
+    math::Vector3 boundsMin, boundsMax;
+
+    if (inp.collectObjects == NavMeshCollectObjects::ThisObject) {
+        AutoBounds ab;
+        for (const auto& td : terrains) {
+            const float w = static_cast<float>(td.columns - 1) * td.cellSize;
+            const float d = static_cast<float>(td.rows    - 1) * td.cellSize;
+            ab.Expand({ td.origin.x,     td.origin.y,              td.origin.z });
+            ab.Expand({ td.origin.x + w, td.origin.y + td.maxHeight, td.origin.z + d });
+        }
+        for (const auto& surf : walkableSurfs) {
+            ab.Expand(surf.center - surf.halfExtents);
+            ab.Expand(surf.center + surf.halfExtents);
+        }
+        if (!ab.valid) return {};
+        constexpr float kXZMargin = 0.5f;
+        boundsMin = { ab.mn.x - kXZMargin, ab.mn.y - 1.0f,                       ab.mn.z - kXZMargin };
+        boundsMax = { ab.mx.x + kXZMargin, ab.mx.y + inp.agentHeight + 1.0f, ab.mx.z + kXZMargin };
+    } else {
+        boundsMin = inp.volumeCenter - inp.volumeSize * 0.5f;
+        boundsMax = inp.volumeCenter + inp.volumeSize * 0.5f;
+    }
+
+    const int gridW      = std::max(1, static_cast<int>((boundsMax.x - boundsMin.x) / cellSize));
+    const int gridD      = std::max(1, static_cast<int>((boundsMax.z - boundsMin.z) / cellSize));
+    const int cornerCols = gridW + 1;
+
+    std::vector<float> cornerHeight(static_cast<size_t>(cornerCols) * (gridD + 1), kNoSurface);
+    for (int cz = 0; cz <= gridD; ++cz) {
+        for (int cx = 0; cx <= gridW; ++cx) {
+            const float wx = boundsMin.x + cx * cellSize;
+            const float wz = boundsMin.z + cz * cellSize;
+            const float h  = SampleAllTerrainsHeight(terrains, wx, wz);
+            if (h > kNoSurface + 1.0f)
+                cornerHeight[static_cast<size_t>(cz) * cornerCols + cx] = h;
+        }
+    }
+    for (int cz = 0; cz <= gridD; ++cz) {
+        for (int cx = 0; cx <= gridW; ++cx) {
+            const float wx = boundsMin.x + cx * cellSize;
+            const float wz = boundsMin.z + cz * cellSize;
+            float& h = cornerHeight[static_cast<size_t>(cz) * cornerCols + cx];
+            for (const auto& surf : walkableSurfs) {
+                if (surf.ContainsXZ(wx, wz)) { const float topY = surf.TopY(); if (topY > h) h = topY; }
+            }
+        }
+    }
+
+    auto CornerH   = [&](int cx, int cz) { return cornerHeight[static_cast<size_t>(cz) * cornerCols + cx]; };
+    auto CornerPos = [&](int cx, int cz) {
+        return math::Vector3{ boundsMin.x + cx * cellSize, CornerH(cx, cz), boundsMin.z + cz * cellSize };
+    };
+
+    std::vector<uint8_t> walkable(static_cast<size_t>(gridW) * gridD, 0);
+    const float maxSlopeCos = std::cos(inp.maxSlopeAngleDeg * (kPi / 180.0f));
+
+    for (int iz = 0; iz < gridD; ++iz) {
+        for (int ix = 0; ix < gridW; ++ix) {
+            if (CornerH(ix,   iz  ) <= kNoSurface + 1.0f &&
+                CornerH(ix+1, iz  ) <= kNoSurface + 1.0f &&
+                CornerH(ix+1, iz+1) <= kNoSurface + 1.0f &&
+                CornerH(ix,   iz+1) <= kNoSurface + 1.0f)
+                continue;
+
+            const float worldX = boundsMin.x + (ix + 0.5f) * cellSize;
+            const float worldZ = boundsMin.z + (iz + 0.5f) * cellSize;
+
+            bool cellFlat = false;
+            for (const auto& surf : walkableSurfs) {
+                if (surf.ContainsXZ(worldX, worldZ)) { cellFlat = true; break; }
+            }
+
+            bool cellWalkable;
+            if (cellFlat) {
+                cellWalkable = true;
+            } else {
+                cellWalkable = false;
+                for (const auto& td : terrains) {
+                    if (SampleTerrainHeight(td, worldX, worldZ) <= kNoSurface + 1.0f) continue;
+                    const math::Vector3 n = td.GetNormalAt(worldX - td.origin.x, worldZ - td.origin.z);
+                    cellWalkable = (math::Vector3::Dot(n, math::Vector3::UP) >= maxSlopeCos);
+                    break;
+                }
+            }
+
+            if (cellWalkable && !obstacles.empty()) {
+                const float cH = (CornerH(ix,iz)+CornerH(ix+1,iz)+CornerH(ix+1,iz+1)+CornerH(ix,iz+1))*0.25f;
+                const math::Vector3 wp = { worldX, cH, worldZ };
+                for (const auto& obs : obstacles) {
+                    if (PointInObstacle(wp, obs)) { cellWalkable = false; break; }
+                }
+            }
+
+            walkable[static_cast<size_t>(iz) * gridW + ix] = cellWalkable ? 1 : 0;
+        }
+    }
+
+    for (int iz = 0; iz < gridD; ++iz) {
+        for (int ix = 0; ix < gridW; ++ix) {
+            if (!walkable[static_cast<size_t>(iz) * gridW + ix]) continue;
+            float sum = 0.0f; int cnt = 0;
+            for (int dz = 0; dz <= 1; ++dz) for (int dx = 0; dx <= 1; ++dx) {
+                const float h = CornerH(ix + dx, iz + dz);
+                if (h > kNoSurface + 1.0f) { sum += h; ++cnt; }
+            }
+            if (cnt == 0 || cnt == 4) continue;
+            const float avg = sum / static_cast<float>(cnt);
+            for (int dz = 0; dz <= 1; ++dz) for (int dx = 0; dx <= 1; ++dx) {
+                float& h = cornerHeight[static_cast<size_t>(iz + dz) * cornerCols + (ix + dx)];
+                if (h <= kNoSurface + 1.0f) h = avg;
+            }
+        }
+    }
+
+    auto CellWalkable = [&](int x, int z) {
+        return x >= 0 && x < gridW && z >= 0 && z < gridD
+            && walkable[static_cast<size_t>(z) * gridW + x] != 0;
+    };
+
+    std::vector<WorkPoly> polys(static_cast<size_t>(gridW) * gridD * 2);
+    for (int iz = 0; iz < gridD; ++iz) {
+        for (int ix = 0; ix < gridW; ++ix) {
+            if (!CellWalkable(ix, iz)) continue;
+            const math::Vector3 bl = CornerPos(ix,   iz);
+            const math::Vector3 br = CornerPos(ix+1, iz);
+            const math::Vector3 tr = CornerPos(ix+1, iz+1);
+            const math::Vector3 tl = CornerPos(ix,   iz+1);
+            const size_t cellIdx = static_cast<size_t>(iz) * gridW + ix;
+            const size_t lowId   = cellIdx * 2;
+            const size_t highId  = cellIdx * 2 + 1;
+            WorkPoly& low  = polys[lowId];
+            WorkPoly& high = polys[highId];
+            low.verts  = { bl, br, tr }; low.alive  = true; low.neighbors  = { -1, -1, static_cast<int>(highId) };
+            high.verts = { bl, tr, tl }; high.alive = true; high.neighbors = { static_cast<int>(lowId), -1, -1 };
+            if (CellWalkable(ix,   iz-1)) low.neighbors[0]  = static_cast<int>((static_cast<size_t>(iz-1)*gridW+ix)*2+1);
+            if (CellWalkable(ix+1, iz  )) low.neighbors[1]  = static_cast<int>((static_cast<size_t>(iz  )*gridW+ix+1)*2+1);
+            if (CellWalkable(ix,   iz+1)) high.neighbors[1] = static_cast<int>((static_cast<size_t>(iz+1)*gridW+ix)*2+0);
+            if (CellWalkable(ix-1, iz  )) high.neighbors[2] = static_cast<int>((static_cast<size_t>(iz  )*gridW+ix-1)*2+0);
+        }
+    }
+
+    // WHY: マージ成功時は B の旧隣接だけを辿って参照を書き換える。全ポリゴン走査の O(N^2) を避ける。
+    std::vector<int> queue;
+    queue.reserve(polys.size());
+    for (size_t i = 0; i < polys.size(); ++i)
+        if (polys[i].alive) queue.push_back(static_cast<int>(i));
+
+    size_t qi = 0;
+    while (qi < queue.size()) {
+        const int idA = queue[qi++];
+        if (!polys[static_cast<size_t>(idA)].alive) continue;
+        bool mergedAny = true;
+        while (mergedAny) {
+            mergedAny = false;
+            WorkPoly& A = polys[static_cast<size_t>(idA)];
+            for (size_t ei = 0; ei < A.neighbors.size(); ++ei) {
+                const int idB = A.neighbors[ei];
+                if (idB < 0 || idB == idA) continue;
+                WorkPoly& B = polys[static_cast<size_t>(idB)];
+                if (!B.alive) continue;
+                int ej = -1;
+                const math::Vector3 wantA1 = A.verts[(ei + 1) % A.verts.size()];
+                const math::Vector3 wantA0 = A.verts[ei];
+                for (size_t k = 0; k < B.neighbors.size(); ++k) {
+                    if (B.neighbors[k] != idA) continue;
+                    if (NearlyEqualXZ(B.verts[k], wantA1) && NearlyEqualXZ(B.verts[(k+1)%B.verts.size()], wantA0)) {
+                        ej = static_cast<int>(k); break;
+                    }
+                }
+                if (ej < 0) continue;
+                std::vector<math::Vector3> mergedVerts;
+                std::vector<int>           mergedNeighbors;
+                if (!TryMergeConvex(A, static_cast<int>(ei), B, ej, mergedVerts, mergedNeighbors)) continue;
+                A.verts = std::move(mergedVerts); A.neighbors = std::move(mergedNeighbors);
+                B.alive = false;
+                for (int nbId : B.neighbors) {
+                    if (nbId < 0 || nbId == idA) continue;
+                    WorkPoly& nbPoly = polys[static_cast<size_t>(nbId)];
+                    if (!nbPoly.alive) continue;
+                    for (auto& nb : nbPoly.neighbors) if (nb == idB) nb = idA;
+                }
+                mergedAny = true; break;
+            }
+        }
+    }
+
+    std::vector<int>            remap(polys.size(), -1);
+    std::vector<NavMeshPolygon> finalPolys;
+    for (size_t i = 0; i < polys.size(); ++i) {
+        if (!polys[i].alive) continue;
+        remap[i] = static_cast<int>(finalPolys.size());
+        finalPolys.emplace_back();
+    }
+    for (size_t i = 0; i < polys.size(); ++i) {
+        if (!polys[i].alive) continue;
+        NavMeshPolygon& outPoly = finalPolys[static_cast<size_t>(remap[i])];
+        outPoly.vertices = polys[i].verts;
+        const size_t n   = polys[i].verts.size();
+        for (size_t e = 0; e < n; ++e) {
+            const int nb = polys[i].neighbors[e];
+            if (nb < 0) continue;
+            outPoly.portals.push_back({ remap[static_cast<size_t>(nb)],
+                                        polys[i].verts[e], polys[i].verts[(e + 1) % n] });
+        }
+    }
+
+    NavMesh result;
+    result.polygons = std::move(finalPolys);
+    return result;
+}
+
 // ── NavMeshBakeSystem ─────────────────────────────────────────────────────
+// entity.index → 実行中 future のマップ。メインスレッドでのみアクセスする。
+static std::unordered_map<uint32_t, std::future<NavMesh>> s_bakeFutures;
 
 void NavMeshBakeSystem(Scene& scene)
 {
+    // Phase 1: 完了した Future を適用する
+    for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
+        auto it = s_bakeFutures.find(eid.index);
+        if (it == s_bakeFutures.end()) continue;
+        if (it->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+
+        auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
+        if (surface) {
+            surface->navMesh   = it->second.get();
+            surface->bakeState = NavMeshBakeState::Done;
+
+            // ベイク完了後に NavMeshOffMeshLinkComponent を走査してポリゴンへ接続する。
+            // activated==false のリンクは A* から無視されるためスキップする。
+            NavMesh& nm = surface->navMesh;
+            nm.offMeshLinks.clear();
+            for (EntityID leid : scene.GetEntities<NavMeshOffMeshLinkComponent>()) {
+                auto* link = scene.GetComponent<NavMeshOffMeshLinkComponent>(leid);
+                if (!link || !link->activated) continue;
+
+                const int polyA = FindNearestPolygon(nm, link->startPoint);
+                const int polyB = FindNearestPolygon(nm, link->endPoint);
+                if (polyA < 0 || polyB < 0 || polyA == polyB) continue;
+
+                OffMeshConnection conn;
+                conn.polyA         = polyA;
+                conn.polyB         = polyB;
+                conn.posA          = link->startPoint;
+                conn.posB          = link->endPoint;
+                conn.bidirectional = link->bidirectional;
+                conn.traversalTime = link->traversalTime;
+                conn.agentTypeMask = link->agentTypeMask;
+                nm.offMeshLinks.push_back(conn);
+            }
+
+            // Walkable modifier の areaType をポリゴンへ後処理で割り当てる。
+            // ポリゴン Center の XZ 座標がモディファイアの AABB 内にあれば areaType を上書きする。
+            // areaType 0 以外の modifier が優先される (数値が大きいほど後勝ち)。
+            for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
+                auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
+                auto* modGo = scene.GetGameObject(meid);
+                if (!mod || !modGo || !mod->enabled) continue;
+                if (mod->mode != NavMeshModifierMode::Walkable) continue;
+                if (mod->areaType == 0) continue; // デフォルトは書き換え不要
+
+                // モディファイアの AABB をワールド空間で簡易取得する。
+                // Collider がなければ position ± (scale/2) を使う。
+                const math::Vector3& wp = modGo->transform.worldPosition;
+                const math::Vector3& ws = modGo->transform.worldScale;
+                const float hx = std::abs(ws.x) * 0.5f + 0.05f;
+                const float hz = std::abs(ws.z) * 0.5f + 0.05f;
+
+                for (auto& poly : nm.polygons) {
+                    const math::Vector3 c = poly.Center();
+                    if (c.x >= wp.x - hx && c.x <= wp.x + hx &&
+                        c.z >= wp.z - hz && c.z <= wp.z + hz) {
+                        poly.areaType = mod->areaType & 31;
+                    }
+                }
+            }
+        } else {
+            it->second.get(); // 破棄
+        }
+        s_bakeFutures.erase(it);
+    }
+
+    // Phase 2: needsBake が立っているものを非同期ジョブとして投入する
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         auto* go      = scene.GetGameObject(eid);
-        if (!surface || !go || !surface->enabled || !surface->needsBake)
-            continue;
+        if (!surface || !go || !surface->needsBake) continue;
+        if (s_bakeFutures.count(eid.index)) continue; // 既に実行中
 
         surface->needsBake = false;
+        surface->bakeState = NavMeshBakeState::Baking;
         surface->navMesh.polygons.clear();
 
-        // ── Terrain 収集 ───────────────────────────────────────────────────
-        // ThisObject: NavMeshSurface を持つ GO 自身の TerrainComponent のみ収集。
-        //   WHY: シーン全体を走査すると他の Terrain や Player コライダーまで巻き込まれるため。
-        // Volume: ボックス内で高さをサンプリングするため全 Terrain を収集する。
-        std::vector<TerrainInfo> terrains;
+        // シーンデータをコピーして BakeInput を構築する
+        BakeInput input;
+        input.collectObjects   = surface->collectObjects;
+        input.volumeCenter     = go->transform.worldPosition;
+        input.volumeSize       = surface->size;
+        input.cellSize         = surface->cellSize;
+        input.maxSlopeAngleDeg = surface->maxSlopeAngleDeg;
+        input.agentHeight      = surface->agentHeight;
+
         if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
-            if (auto* t = scene.GetComponent<TerrainComponent>(eid))
-                terrains.push_back({ t, go->transform.worldPosition });
+            if (auto* t = scene.GetComponent<TerrainComponent>(eid)) {
+                TerrainBakeData tbd;
+                tbd.heightData = t->heightData;
+                tbd.columns    = t->columns;
+                tbd.rows       = t->rows;
+                tbd.cellSize   = t->cellSize;
+                tbd.maxHeight  = t->maxHeight;
+                tbd.origin     = go->transform.worldPosition;
+                input.terrains.push_back(std::move(tbd));
+            }
         } else {
             for (EntityID teid : scene.GetEntities<TerrainComponent>()) {
                 auto* t  = scene.GetComponent<TerrainComponent>(teid);
                 auto* tg = scene.GetGameObject(teid);
-                if (t && tg) terrains.push_back({ t, tg->transform.worldPosition });
+                if (!t || !tg) continue;
+                TerrainBakeData tbd;
+                tbd.heightData = t->heightData;
+                tbd.columns    = t->columns;
+                tbd.rows       = t->rows;
+                tbd.cellSize   = t->cellSize;
+                tbd.maxHeight  = t->maxHeight;
+                tbd.origin     = tg->transform.worldPosition;
+                input.terrains.push_back(std::move(tbd));
             }
         }
-
-        // ── Walkable Surface / Obstacle 収集 ─────────────────────────────
-        // NavMeshModifier::Walkable     → 追加歩行可能面ソース（床プラットフォーム等）
-        // NavMeshModifier::NotWalkable  → 障害物（穴あけ）
-        // WHY: 暗黙的な全 BoxCollider/AabbCollider 収集は廃止。
-        //      Player やプロップのコライダーまでベイクに巻き込まれ、
-        //      シーン規模が増えるほど走査コストが爆発するため。
-        //      歩行可能面を追加したい GO には明示的に NavMeshModifier::Walkable を付ける。
-        std::vector<WalkableSurface> walkableSurfs;
-        std::vector<Obstacle>        obstacles;
 
         for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
             auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
             auto* modGo = scene.GetGameObject(meid);
             if (!mod || !modGo || !mod->enabled) continue;
-
             if (mod->mode == NavMeshModifierMode::NotWalkable) {
                 Obstacle obs{};
-                if (TryGetObstacle(scene, meid, *modGo, obs))
-                    obstacles.push_back(obs);
-            } else { // Walkable
+                if (TryGetObstacle(scene, meid, *modGo, obs)) input.obstacles.push_back(obs);
+            } else {
                 WalkableSurface surf{};
-                if (TryGetWalkableSurface(scene, meid, *modGo, surf))
-                    walkableSurfs.push_back(surf);
+                if (TryGetWalkableSurface(scene, meid, *modGo, surf)) input.walkableSurfs.push_back(surf);
             }
         }
 
-        if (terrains.empty() && walkableSurfs.empty()) continue;
-
-        // ── バウンド計算 ─────────────────────────────────────────────────
-        const float cellSize = std::max(0.1f, surface->cellSize);
-        math::Vector3 boundsMin, boundsMax;
-
-        if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
-            // この GO の Terrain + Walkable Modifier から AABB を自動計算
-            AutoBounds ab;
-            for (const auto& ti : terrains) {
-                const float w = static_cast<float>(ti.terrain->columns - 1) * ti.terrain->cellSize;
-                const float d = static_cast<float>(ti.terrain->rows    - 1) * ti.terrain->cellSize;
-                ab.Expand({ ti.origin.x,     ti.origin.y,                         ti.origin.z });
-                ab.Expand({ ti.origin.x + w, ti.origin.y + ti.terrain->maxHeight, ti.origin.z + d });
-            }
-            for (const auto& surf : walkableSurfs) {
-                ab.Expand(surf.center - surf.halfExtents);
-                ab.Expand(surf.center + surf.halfExtents);
-            }
-            if (!ab.valid) continue;
-
-            constexpr float kXZMargin = 0.5f;
-            boundsMin = { ab.mn.x - kXZMargin,
-                          ab.mn.y - 1.0f,
-                          ab.mn.z - kXZMargin };
-            boundsMax = { ab.mx.x + kXZMargin,
-                          ab.mx.y + surface->agentHeight + 1.0f,
-                          ab.mx.z + kXZMargin };
-        } else {
-            // Volume モード: Surface GO の worldPosition を中心
-            boundsMin = go->transform.worldPosition - surface->size * 0.5f;
-            boundsMax = go->transform.worldPosition + surface->size * 0.5f;
-        }
-
-        const int gridW      = std::max(1, static_cast<int>((boundsMax.x - boundsMin.x) / cellSize));
-        const int gridD      = std::max(1, static_cast<int>((boundsMax.z - boundsMin.z) / cellSize));
-        const int cornerCols = gridW + 1;
-
-        // ── コーナー高さ初期化 ────────────────────────────────────────────
-        // Terrain と WalkableSurface の両方から高さを取り、より高い面を採用する。
-        // WHY: 2 階床や段差では上側の面を優先することで正しい歩行高さを得る。
-        std::vector<float> cornerHeight(static_cast<size_t>(cornerCols) * (gridD + 1), kNoSurface);
-
-        for (int cz = 0; cz <= gridD; ++cz) {
-            for (int cx = 0; cx <= gridW; ++cx) {
-                const float wx = boundsMin.x + cx * cellSize;
-                const float wz = boundsMin.z + cz * cellSize;
-                const float h  = SampleAllTerrainsHeight(terrains, wx, wz);
-                if (h > kNoSurface + 1.0f)
-                    cornerHeight[static_cast<size_t>(cz) * cornerCols + cx] = h;
-            }
-        }
-        for (int cz = 0; cz <= gridD; ++cz) {
-            for (int cx = 0; cx <= gridW; ++cx) {
-                const float wx = boundsMin.x + cx * cellSize;
-                const float wz = boundsMin.z + cz * cellSize;
-                float& h = cornerHeight[static_cast<size_t>(cz) * cornerCols + cx];
-                for (const auto& surf : walkableSurfs) {
-                    if (surf.ContainsXZ(wx, wz)) {
-                        const float topY = surf.TopY();
-                        if (topY > h) h = topY;
-                    }
-                }
-            }
-        }
-
-        auto CornerH   = [&](int cx, int cz) { return cornerHeight[static_cast<size_t>(cz) * cornerCols + cx]; };
-        auto CornerPos = [&](int cx, int cz) {
-            return math::Vector3{ boundsMin.x + cx * cellSize, CornerH(cx, cz), boundsMin.z + cz * cellSize };
-        };
-
-        // ── 傾斜判定 ─────────────────────────────────────────────────────
-        std::vector<uint8_t> walkable(static_cast<size_t>(gridW) * gridD, 0);
-        const float maxSlopeCos = std::cos(surface->maxSlopeAngleDeg * (kPi / 180.0f));
-
-        for (int iz = 0; iz < gridD; ++iz) {
-            for (int ix = 0; ix < gridW; ++ix) {
-                // 4 コーナーすべてが無効な高さ → 宙に浮いた仮想セル → スキップ
-                if (CornerH(ix,   iz  ) <= kNoSurface + 1.0f &&
-                    CornerH(ix+1, iz  ) <= kNoSurface + 1.0f &&
-                    CornerH(ix+1, iz+1) <= kNoSurface + 1.0f &&
-                    CornerH(ix,   iz+1) <= kNoSurface + 1.0f)
-                    continue;
-
-                const float worldX = boundsMin.x + (ix + 0.5f) * cellSize;
-                const float worldZ = boundsMin.z + (iz + 0.5f) * cellSize;
-
-                // WalkableSurface のフットプリント内のセルは平坦として常に歩行可能
-                bool cellFlat = false;
-                for (const auto& surf : walkableSurfs) {
-                    if (surf.ContainsXZ(worldX, worldZ)) { cellFlat = true; break; }
-                }
-
-                bool cellWalkable;
-                if (cellFlat) {
-                    cellWalkable = true;
-                } else {
-                    // 最初にヒットした Terrain の法線で傾斜判定
-                    cellWalkable = false;
-                    for (const auto& ti : terrains) {
-                        if (SampleTerrainHeight(ti, worldX, worldZ) <= kNoSurface + 1.0f) continue;
-                        const math::Vector3 n = ti.terrain->GetNormalAt(
-                            worldX - ti.origin.x, worldZ - ti.origin.z);
-                        cellWalkable = (math::Vector3::Dot(n, math::Vector3::UP) >= maxSlopeCos);
-                        break;
-                    }
-                }
-
-                // 障害物チェック
-                if (cellWalkable && !obstacles.empty()) {
-                    const float cH = (CornerH(ix,   iz  ) + CornerH(ix+1, iz  )
-                                    + CornerH(ix+1, iz+1) + CornerH(ix,   iz+1)) * 0.25f;
-                    const math::Vector3 wp = { worldX, cH, worldZ };
-                    for (const auto& obs : obstacles) {
-                        if (PointInObstacle(wp, obs)) { cellWalkable = false; break; }
-                    }
-                }
-
-                walkable[static_cast<size_t>(iz) * gridW + ix] = cellWalkable ? 1 : 0;
-            }
-        }
-
-        // ── コーナーパッチ: 歩行可能セルの欠損コーナー高さを補完 ───────────
-        for (int iz = 0; iz < gridD; ++iz) {
-            for (int ix = 0; ix < gridW; ++ix) {
-                if (!walkable[static_cast<size_t>(iz) * gridW + ix]) continue;
-                float sum = 0.0f; int cnt = 0;
-                for (int dz = 0; dz <= 1; ++dz) for (int dx = 0; dx <= 1; ++dx) {
-                    const float h = CornerH(ix + dx, iz + dz);
-                    if (h > kNoSurface + 1.0f) { sum += h; ++cnt; }
-                }
-                if (cnt == 0 || cnt == 4) continue;
-                const float avg = sum / static_cast<float>(cnt);
-                for (int dz = 0; dz <= 1; ++dz) for (int dx = 0; dx <= 1; ++dx) {
-                    float& h = cornerHeight[static_cast<size_t>(iz + dz) * cornerCols + (ix + dx)];
-                    if (h <= kNoSurface + 1.0f) h = avg;
-                }
-            }
-        }
-
-        auto CellWalkable = [&](int x, int z) {
-            return x >= 0 && x < gridW && z >= 0 && z < gridD
-                && walkable[static_cast<size_t>(z) * gridW + x] != 0;
-        };
-
-        // ── Triangulate ───────────────────────────────────────────────────
-        std::vector<WorkPoly> polys(static_cast<size_t>(gridW) * gridD * 2);
-        for (int iz = 0; iz < gridD; ++iz) {
-            for (int ix = 0; ix < gridW; ++ix) {
-                if (!CellWalkable(ix, iz)) continue;
-
-                const math::Vector3 bl = CornerPos(ix,     iz);
-                const math::Vector3 br = CornerPos(ix + 1, iz);
-                const math::Vector3 tr = CornerPos(ix + 1, iz + 1);
-                const math::Vector3 tl = CornerPos(ix,     iz + 1);
-
-                const size_t cellIdx = static_cast<size_t>(iz) * gridW + ix;
-                const size_t lowId   = cellIdx * 2;
-                const size_t highId  = cellIdx * 2 + 1;
-
-                WorkPoly& low  = polys[lowId];
-                WorkPoly& high = polys[highId];
-                low.verts  = { bl, br, tr };
-                high.verts = { bl, tr, tl };
-                low.alive  = true;
-                high.alive = true;
-                low.neighbors  = { -1, -1, static_cast<int>(highId) };
-                high.neighbors = { static_cast<int>(lowId), -1, -1 };
-
-                if (CellWalkable(ix, iz - 1))
-                    low.neighbors[0]  = static_cast<int>((static_cast<size_t>(iz - 1) * gridW + ix) * 2 + 1);
-                if (CellWalkable(ix + 1, iz))
-                    low.neighbors[1]  = static_cast<int>((static_cast<size_t>(iz) * gridW + ix + 1) * 2 + 1);
-                if (CellWalkable(ix, iz + 1))
-                    high.neighbors[1] = static_cast<int>((static_cast<size_t>(iz + 1) * gridW + ix) * 2 + 0);
-                if (CellWalkable(ix - 1, iz))
-                    high.neighbors[2] = static_cast<int>((static_cast<size_t>(iz) * gridW + ix - 1) * 2 + 0);
-            }
-        }
-
-        // ── Hertel-Mehlhorn 凸合成 ────────────────────────────────────────
-        // WHY: マージ成功時の「B への参照を A へ書き換える」操作は、B の(マージ前)隣接リストだけを
-        //      辿れば十分。かつて全ポリゴンを走査していたため 1 マージ毎に O(N)、
-        //      マージ総数も O(N) で全体 O(N^2) となり、広い Terrain で Bake がフリーズしていた。
-        std::vector<int> queue;
-        queue.reserve(polys.size());
-        for (size_t i = 0; i < polys.size(); ++i)
-            if (polys[i].alive) queue.push_back(static_cast<int>(i));
-
-        size_t qi = 0;
-        while (qi < queue.size()) {
-            const int idA = queue[qi++];
-            if (!polys[static_cast<size_t>(idA)].alive) continue;
-
-            bool mergedAny = true;
-            while (mergedAny) {
-                mergedAny = false;
-                WorkPoly& A = polys[static_cast<size_t>(idA)];
-                for (size_t ei = 0; ei < A.neighbors.size(); ++ei) {
-                    const int idB = A.neighbors[ei];
-                    if (idB < 0 || idB == idA) continue;
-                    WorkPoly& B = polys[static_cast<size_t>(idB)];
-                    if (!B.alive) continue;
-
-                    int ej = -1;
-                    const math::Vector3 wantA1 = A.verts[(ei + 1) % A.verts.size()];
-                    const math::Vector3 wantA0 = A.verts[ei];
-                    for (size_t k = 0; k < B.neighbors.size(); ++k) {
-                        if (B.neighbors[k] != idA) continue;
-                        if (NearlyEqualXZ(B.verts[k], wantA1) &&
-                            NearlyEqualXZ(B.verts[(k + 1) % B.verts.size()], wantA0)) {
-                            ej = static_cast<int>(k);
-                            break;
-                        }
-                    }
-                    if (ej < 0) continue;
-
-                    std::vector<math::Vector3> mergedVerts;
-                    std::vector<int>           mergedNeighbors;
-                    if (!TryMergeConvex(A, static_cast<int>(ei), B, ej, mergedVerts, mergedNeighbors))
-                        continue;
-
-                    A.verts     = std::move(mergedVerts);
-                    A.neighbors = std::move(mergedNeighbors);
-                    B.alive     = false;
-                    // B の旧隣接ポリゴンだけを辿って idB→idA の参照を直す（全ポリゴン走査を避ける）。
-                    for (int nbId : B.neighbors) {
-                        if (nbId < 0 || nbId == idA) continue;
-                        WorkPoly& nbPoly = polys[static_cast<size_t>(nbId)];
-                        if (!nbPoly.alive) continue;
-                        for (auto& nb : nbPoly.neighbors) if (nb == idB) nb = idA;
-                    }
-                    mergedAny = true;
-                    break;
-                }
-            }
-        }
-
-        // ── Polygon Mesh 構築 ─────────────────────────────────────────────
-        std::vector<int>            remap(polys.size(), -1);
-        std::vector<NavMeshPolygon> finalPolys;
-        for (size_t i = 0; i < polys.size(); ++i) {
-            if (!polys[i].alive) continue;
-            remap[i] = static_cast<int>(finalPolys.size());
-            finalPolys.emplace_back();
-        }
-        for (size_t i = 0; i < polys.size(); ++i) {
-            if (!polys[i].alive) continue;
-            NavMeshPolygon& outPoly = finalPolys[static_cast<size_t>(remap[i])];
-            outPoly.vertices = polys[i].verts;
-            const size_t n   = polys[i].verts.size();
-            for (size_t e = 0; e < n; ++e) {
-                const int nb = polys[i].neighbors[e];
-                if (nb < 0) continue;
-                outPoly.portals.push_back({ remap[static_cast<size_t>(nb)],
-                                            polys[i].verts[e], polys[i].verts[(e + 1) % n] });
-            }
-        }
-
-        surface->navMesh.polygons = std::move(finalPolys);
+        s_bakeFutures[eid.index] = std::async(std::launch::async,
+            [inp = std::move(input)]() mutable { return RunNavMeshBake(std::move(inp)); });
     }
 }
 

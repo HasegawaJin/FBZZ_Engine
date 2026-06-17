@@ -37,6 +37,7 @@
 #include "Components/NavMeshSurfaceComponent.hpp"
 #include "Components/NavMeshModifierComponent.hpp"
 #include "Components/NavMeshAgentComponent.hpp"
+#include "Components/NavMeshOffMeshLinkComponent.hpp"
 #include "Components/NavMeshPatrolComponent.hpp"
 #include "Components/NavMeshSensorComponent.hpp"
 #include "ScriptComponent.hpp"
@@ -85,6 +86,7 @@ using ComponentList = std::tuple<
     NavMeshSurfaceComponent,
     NavMeshModifierComponent,
     NavMeshAgentComponent,
+    NavMeshOffMeshLinkComponent,
     NavMeshPatrolComponent,
     NavMeshSensorComponent
     // 新型はここに1行追加するだけ

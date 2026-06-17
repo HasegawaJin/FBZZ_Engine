@@ -27,6 +27,7 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
@@ -1738,6 +1739,17 @@ bool ScriptNavigationProxy::IsFollowingTarget() const
     return agent && agent->target.IsValid();
 }
 
+void ScriptNavigationProxy::BakeNavMesh() const
+{
+    if (!script || !script->m_scene) return;
+    auto* agent = SelfNavAgent(script);
+    const int typeId = agent ? agent->agentTypeId : 0;
+    for (EntityID eid : script->m_scene->GetEntities<NavMeshSurfaceComponent>()) {
+        auto* surf = script->m_scene->GetComponent<NavMeshSurfaceComponent>(eid);
+        if (surf && surf->agentTypeId == typeId) surf->needsBake = true;
+    }
+}
+
 bool ScriptNavigationProxy::IsPaused() const
 {
     auto* agent = SelfNavAgent(script);
@@ -1747,7 +1759,15 @@ bool ScriptNavigationProxy::IsPaused() const
 bool ScriptNavigationProxy::IsMoving() const
 {
     auto* agent = SelfNavAgent(script);
-    return agent && agent->state == NavMeshAgentState::MOVING && !agent->isStopped;
+    if (!agent || agent->isStopped) return false;
+    return agent->state == NavMeshAgentState::MOVING
+        || agent->state == NavMeshAgentState::TRAVERSING_LINK;
+}
+
+bool ScriptNavigationProxy::HasPath() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent && agent->HasPath();
 }
 
 bool ScriptNavigationProxy::HasArrived() const
@@ -1766,6 +1786,33 @@ bool ScriptNavigationProxy::IsStuck() const
 {
     auto* agent = SelfNavAgent(script);
     return agent && agent->isStuck;
+}
+
+math::Vector3 ScriptNavigationProxy::GetVelocity() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent ? agent->velocity : math::Vector3::ZERO;
+}
+
+void ScriptNavigationProxy::SetSpeed(float speed) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->maxSpeed = speed > 0.0f ? speed : 0.0f;
+}
+
+void ScriptNavigationProxy::SetAngularSpeed(float degPerSec) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->angularSpeedDeg = degPerSec >= 0.0f ? degPerSec : 0.0f;
+}
+
+int ScriptNavigationProxy::GetAreaMask() const
+{
+    auto* agent = SelfNavAgent(script);
+    return agent ? agent->areaMask : -1;
+}
+
+void ScriptNavigationProxy::SetAreaMask(int mask) const
+{
+    if (auto* agent = SelfNavAgent(script)) agent->areaMask = mask;
 }
 
 bool ScriptNavigationProxy::CanSeeTarget() const
