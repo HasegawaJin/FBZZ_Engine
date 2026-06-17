@@ -109,7 +109,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                             if (f.paramDirty)   tc.materialParamDirty = true;
                         }
                         if (ImGui::Button("Save .fzmat")) {
-                            asset::SaveMaterialAssetToFile(
+                            (void)asset::SaveMaterialAssetToFile(
                                 MaterialAssetDiskPath(ctx, tc.layerMaterials[li]), *mat);
                             ctx.requestAssetBrowserRefresh = true;
                         }
