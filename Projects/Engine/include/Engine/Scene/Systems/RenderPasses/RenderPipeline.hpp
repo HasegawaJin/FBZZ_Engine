@@ -4,15 +4,25 @@
 // AddPass<T>() で型付きパスを、AddRawPass() でラムダ式パスをフレームごとに登録し、
 // Execute(ctx) が呼ばれた時点ですべてのパスを RenderGraph に組み込んで実行する。
 // 追加順が RenderGraph 上の優先度になる (依存関係が同一の場合のタイブレーク)。
+//
+// [TransientRTPool]
+// DeclareResource() で transient=true のリソースを宣言すると、Execute() 内で
+// Plan() → RebuildTransientPool() が走り、同一 aliasGroup のリソースが同一の
+// 物理 RT ハンドルを共有する。パスのコールバックからは ctx.getTransientRT(name) で
+// 確保済みハンドルを取得できる。
 #pragma once
 #include "IRenderPass.hpp"
 #include <Engine/Renderer/RenderGraph.hpp>
+#include <Engine/Renderer/ResourceHandle.hpp>
 #include <functional>
 #include <initializer_list>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
+
+namespace fbzz::renderer { class ResourceManager; }
 
 namespace fbzz::scene {
 
@@ -59,6 +69,11 @@ public:
 
     const renderer::RenderGraph::ExecutionReport& LastReport() const { return m_lastReport; }
 
+    // トランジェントリソース名からプールされた RT ハンドルを返す。
+    // WHY: パスのコールバック内で ctx.getTransientRT(name) を通じて呼ばれる。
+    //      DeclareResource で transient=true と宣言されたリソースのみ有効。
+    renderer::ResourceHandle<renderer::RenderTargetTag> GetTransientRT(std::string_view name) const;
+
 private:
     struct Entry {
         std::unique_ptr<IRenderPass> pass;  // 型付きパス (null = raw pass)
@@ -68,6 +83,29 @@ private:
         renderer::RenderGraph::ExecuteFn fn;
         bool allowCulling = true;
     };
+
+    // TransientRTPool: aliasGroup ごとに物理 RT を 1 つ確保し、同グループのリソースで共有する。
+    // WHY: RenderGraph の AnalyzeLifetimes() が算出したエイリアスグループを実際の RT 割り当てに
+    //      反映することで、ライフタイムが重ならない中間 RT のメモリを節約できる。
+    //      例: bloomHalf と ssaoRaw がエイリアスグループ 0 なら 1 つの RT バッファを使い回す。
+    struct PooledRT {
+        renderer::ResourceHandle<renderer::RenderTargetTag> handle;
+        renderer::RenderGraph::ResourceDesc                 desc;
+    };
+    // aliasGroup (-1 = 非エイリアス) → 物理 RT
+    std::unordered_map<int, PooledRT>        m_aliasGroupPool;
+    // リソース名 → aliasGroup (GetTransientRT の高速引き当て用)
+    std::unordered_map<std::string, int>     m_nameToAliasGroup;
+    bool                                     m_poolDirty = true;
+
+    // パイプライン構成変更時にプールを破棄して次フレームの再構築を促す。
+    void MarkPoolDirty() { m_poolDirty = true; }
+
+    // 直前の Plan() 結果を使ってトランジェント RT プールを再構築する。
+    // WHY: 毎フレーム呼ぶとアロケーションが走るため、m_poolDirty フラグで
+    //      パイプライン構成変更時のみ再構築するように制御する。
+    void RebuildTransientPool(const renderer::RenderGraph::ExecutionReport& report,
+                              renderer::ResourceManager& resources);
 
     std::vector<Entry> m_entries;
     std::vector<std::pair<std::string, renderer::RenderGraph::ResourceDesc>> m_resources;
