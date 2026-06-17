@@ -499,14 +499,21 @@ static NavMesh RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = null
             const size_t highId  = cellIdx * 2 + 1;
             WorkPoly& low  = polys[lowId];
             WorkPoly& high = polys[highId];
-            low.verts  = { bl, br, tr }; low.alive  = true; low.neighbors  = { -1, -1, static_cast<int>(highId) };
-            high.verts = { bl, tr, tl }; high.alive = true; high.neighbors = { static_cast<int>(lowId), -1, -1 };
+            // WHY: TerrainRenderSystem と同じ対角線 (br→tl) で分割することで、
+            //      NavMesh 面の補間高さが Terrain 描画面と一致する。
+            //      旧実装 (bl→tr 対角) は TerrainRenderer の分割 (br→tl) と異なるため、
+            //      「谷型」地形で NavMesh 面が Terrain 面より大幅に低くなり、
+            //      エージェントが地面の裏にスナップされるバグがあった。
+            low.verts  = { bl, br, tl }; low.alive  = true; low.neighbors  = { -1, static_cast<int>(highId), -1 };
+            high.verts = { br, tr, tl }; high.alive = true; high.neighbors = { -1, -1, static_cast<int>(lowId) };
             if (CellWalkable(ix,   iz-1)) low.neighbors[0]  = static_cast<int>((static_cast<size_t>(iz-1)*gridW+ix)*2+1);
-            if (CellWalkable(ix+1, iz  )) low.neighbors[1]  = static_cast<int>((static_cast<size_t>(iz  )*gridW+ix+1)*2+1);
+            if (CellWalkable(ix-1, iz  )) low.neighbors[2]  = static_cast<int>((static_cast<size_t>(iz  )*gridW+ix-1)*2+1);
+            if (CellWalkable(ix+1, iz  )) high.neighbors[0] = static_cast<int>((static_cast<size_t>(iz  )*gridW+ix+1)*2+0);
             if (CellWalkable(ix,   iz+1)) high.neighbors[1] = static_cast<int>((static_cast<size_t>(iz+1)*gridW+ix)*2+0);
-            if (CellWalkable(ix-1, iz  )) high.neighbors[2] = static_cast<int>((static_cast<size_t>(iz  )*gridW+ix-1)*2+0);
         }
     }
+
+    setProgress(0.60f);
 
     // WHY: マージ成功時は B の旧隣接だけを辿って参照を書き換える。全ポリゴン走査の O(N^2) を避ける。
     std::vector<int> queue;
