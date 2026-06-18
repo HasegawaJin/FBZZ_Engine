@@ -315,6 +315,11 @@ struct RenderPassContext {
     math::Matrix4               lightVP;
     bool                        isDeferred  = false;
     bool                        ssaoEnabled = false;
+    // ライト正射影の深度範囲で正規化済みの NDC バイアス。
+    // WHY: near=1, far=shadowRadius*2+40 のため固定 NDC 値はシーンスケール依存になる。
+    //      RenderSystem 側で 0.005 / depthRange として渡すことで
+    //      ワールド空間で約 5mm 相当の一定バイアスを保つ。
+    float                       shadowBiasNDC = 0.0f;
 
     const math::Frustum* cameraFrustum = nullptr;
     const math::Frustum* lightFrustum  = nullptr;

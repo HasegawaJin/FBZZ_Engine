@@ -677,10 +677,14 @@ void RenderSystem(Scene& scene,
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles,
         sHdrW, sHdrH, selectionOutlineEnabled,
-        lightData, lightVP, isDeferred, ssaoEnabled,
+        lightData, lightVP, isDeferred, ssaoEnabled, 0.0f,
         &cameraFrustum, &lightFrustum, &occlusionCuller
     };
-    passCtx.physicsWorld = physicsWorld;
+    passCtx.physicsWorld  = physicsWorld;
+    // near=1.0, far=shadowRadius*2+40 の深度範囲でスケール正規化したバイアス。
+    // 固定 NDC 値はシーンが広がるほど Peter Panning が悪化するため、
+    // ワールド空間で約 5mm 相当の一定バイアスになるよう depthRange で除算する。
+    passCtx.shadowBiasNDC = 0.005f / (shadowRadius * 2.0f + 39.0f);
 
     // =========================================================================
     // RenderPipeline にパスを登録
