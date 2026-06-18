@@ -1,5 +1,5 @@
 // FBZZ Engine
-// FzMaterialExporter.hpp | fbzz::editor
+// MaterialExporter.hpp | fbzz::editor
 // aiMaterial を .mat (TOML) に書き出し、テクスチャを outputDir/textures/ にコピーする
 #pragma once
 #include <string>
@@ -9,7 +9,7 @@ struct aiScene;
 
 namespace fbzz::editor {
 
-class FzMaterialExporter {
+class MaterialExporter {
 public:
     // aiMaterial を .mat TOML として outputPath に書き出す。
     // テクスチャファイルを texturesDir にコピーし、.mat 内のパスを相対化する。

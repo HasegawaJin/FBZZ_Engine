@@ -1,4 +1,4 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // ViewportCommon.hpp | fbzz::editor
 // ViewportPanel の分割ファイルで共有する描画・ピッキングヘルパー
 #pragma once
@@ -50,7 +50,7 @@ namespace fbzz::editor {
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor);
 math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin);
 bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath);
-bool InstantiatePrefabAssetAtViewport(EditorContext& ctx, const std::string& assetPath, const ImVec2& viewportMin);
+bool InstantiateAssetAtViewport(EditorContext& ctx, const std::string& assetPath, const ImVec2& viewportMin);
 void HandleGizmoShortcuts(EditorContext& ctx);
 bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin);
 void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);

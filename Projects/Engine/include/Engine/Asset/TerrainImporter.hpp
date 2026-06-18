@@ -1,5 +1,5 @@
 // FBZZ Engine
-// FzTerrainImporter.hpp | fbzz::asset
+// TerrainImporter.hpp | fbzz::asset
 // .terrain バイナリ → TerrainAsset ローダー
 #pragma once
 #include <Engine/Asset/IAssetImporter.hpp>
@@ -7,7 +7,7 @@
 
 namespace fbzz::asset {
 
-class FzTerrainImporter final : public IAssetImporter<TerrainAsset> {
+class TerrainImporter final : public IAssetImporter<TerrainAsset> {
 public:
     [[nodiscard]] std::unique_ptr<TerrainAsset> Import(
         const std::string&         absPath,

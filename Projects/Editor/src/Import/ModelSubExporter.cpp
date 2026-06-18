@@ -1,10 +1,9 @@
 // FBZZ Engine
-// FzModelSubExporter.cpp | fbzz::editor
-// FBX → .model (FZMD) バイナリ + スケルトン埋め込み
-// メッシュ・スケルトンを 1 つの .model ファイルに統合する。
-// 旧パイプライン: FzMeshExporter (.mesh) + FzSkeletonExporter (.skel) → .asset マニフェスト
-// 新パイプライン: このクラスが .model 1 ファイルに完結させる。
-#include <Editor/Import/FzModelSubExporter.hpp>
+// ModelSubExporter.cpp | fbzz::editor
+// FBX → .fzasset (FZMD) + 代表 .mesh バイナリを生成する。
+// .fzasset はパッケージ展開用、.mesh は Detail / Foliage / MeshRenderer から直接参照する代表メッシュ。
+#include <Editor/Import/ModelSubExporter.hpp>
+#include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/mesh.h>
@@ -126,6 +125,22 @@ struct BoneEntry {
     float       offsetMatrix[16]{};
 };
 
+std::unordered_map<std::string, uint32_t> CollectGlobalBoneIndices(const aiScene* scene)
+{
+    std::unordered_map<std::string, uint32_t> boneMap;
+    if (!scene) return boneMap;
+
+    for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
+        const aiMesh* mesh = scene->mMeshes[mi];
+        for (uint32_t bi = 0; bi < mesh->mNumBones; ++bi) {
+            const std::string name = mesh->mBones[bi]->mName.C_Str();
+            if (boneMap.find(name) == boneMap.end())
+                boneMap[name] = static_cast<uint32_t>(boneMap.size());
+        }
+    }
+    return boneMap;
+}
+
 void CopyMatrix(const aiMatrix4x4& src, float dst[16], float us = 1.0f)
 {
     dst[ 0]=src.a1; dst[ 1]=src.a2; dst[ 2]=src.a3; dst[ 3]=src.a4*us;
@@ -236,9 +251,94 @@ bool WriteSkeleton(std::ofstream& out, const aiScene* scene, float us)
     return out.good();
 }
 
+bool WriteMergedMesh(
+    const std::string& outputPath,
+    const aiScene* scene,
+    float unitScale,
+    const std::vector<std::string>& selectedMeshNames)
+{
+    using namespace asset;
+
+    auto isMeshSelected = [&](const aiMesh* mesh) -> bool {
+        if (selectedMeshNames.empty()) return true;
+        const std::string name = mesh->mName.C_Str();
+        for (const auto& selected : selectedMeshNames) {
+            if (selected == name) return true;
+        }
+        return false;
+    };
+
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    vertices.reserve(4096);
+    indices.reserve(8192);
+
+    for (uint32_t mi = 0; mi < scene->mNumMeshes; ++mi) {
+        const aiMesh* mesh = scene->mMeshes[mi];
+        if (!isMeshSelected(mesh) || mesh->mNumVertices == 0) continue;
+
+        const uint32_t baseVertex = static_cast<uint32_t>(vertices.size());
+        for (uint32_t vi = 0; vi < mesh->mNumVertices; ++vi)
+            vertices.push_back(ConvertVertex(mesh, vi, unitScale));
+
+        for (uint32_t fi = 0; fi < mesh->mNumFaces; ++fi) {
+            const aiFace& face = mesh->mFaces[fi];
+            if (face.mNumIndices != 3) continue;
+            indices.push_back(baseVertex + face.mIndices[0]);
+            indices.push_back(baseVertex + face.mIndices[1]);
+            indices.push_back(baseVertex + face.mIndices[2]);
+        }
+    }
+
+    if (vertices.empty() || indices.empty()) return true;
+
+    const std::string tempOutputPath = outputPath + ".tmp";
+    struct TempFileGuard {
+        std::string path;
+        bool committed = false;
+        ~TempFileGuard() {
+            if (!committed && !path.empty())
+                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+        }
+    } tempGuard{ tempOutputPath };
+
+    std::ofstream out(tempOutputPath, std::ios::binary);
+    if (!out) return false;
+
+    FzMeshHeader hdr{};
+    hdr.magic[0] = 'F';
+    hdr.magic[1] = 'Z';
+    hdr.magic[2] = 'M';
+    hdr.magic[3] = 'H';
+    hdr.version = FZMESH_VERSION;
+    hdr.flags = 0u;
+    hdr.vertexCount = static_cast<uint32_t>(vertices.size());
+    hdr.indexCount = static_cast<uint32_t>(indices.size());
+    ComputeBoundsV(vertices[0].position, vertices.size(), sizeof(Vertex) / sizeof(float),
+                   hdr.boundsCenter, hdr.boundsRadius);
+
+    out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+    out.write(reinterpret_cast<const char*>(vertices.data()),
+              static_cast<std::streamsize>(vertices.size() * sizeof(Vertex)));
+    out.write(reinterpret_cast<const char*>(indices.data()),
+              static_cast<std::streamsize>(indices.size() * sizeof(uint32_t)));
+    if (!out.good()) return false;
+    out.close();
+
+    util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(outputPath));
+    if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(tempOutputPath),
+                                  util::FileSystem::PathFromUtf8(outputPath))) {
+        util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(tempOutputPath));
+        return false;
+    }
+
+    tempGuard.committed = true;
+    return true;
+}
+
 } // namespace
 
-bool FzModelSubExporter::Export(FbxImportContext& ctx)
+bool ModelSubExporter::Export(FbxImportContext& ctx)
 {
     using namespace asset;
 
@@ -246,27 +346,43 @@ bool FzModelSubExporter::Export(FbxImportContext& ctx)
     if (!ms) return false;
 
     const bool skinned = ctx.hasSkin;
+    const auto globalBoneIndices = skinned ? CollectGlobalBoneIndices(ctx.scene) :
+                                             std::unordered_map<std::string, uint32_t>{};
 
     // ── マテリアルスロット名 (材質インデックスの文字列化) ──────────────────
-    std::vector<std::string> slotNames;
+    std::vector<std::string> slotNames(ms->mNumMaterials);
+    for (uint32_t matIdx = 0; matIdx < ms->mNumMaterials; ++matIdx) {
+        slotNames[matIdx] = "Material_" + std::to_string(matIdx);
+        aiString aiName;
+        ms->mMaterials[matIdx]->Get(AI_MATKEY_NAME, aiName);
+        if (aiName.length > 0) slotNames[matIdx] = aiName.C_Str();
+    }
+
     for (uint32_t mi=0; mi<ms->mNumMeshes; ++mi) {
         const uint32_t matIdx = ms->mMeshes[mi]->mMaterialIndex;
-        while (slotNames.size() <= matIdx) slotNames.push_back("slot_" + std::to_string(slotNames.size()));
-        // マテリアル名で上書き
-        if (matIdx < ms->mNumMaterials) {
-            aiString aiName;
-            ms->mMaterials[matIdx]->Get(AI_MATKEY_NAME, aiName);
-            if (aiName.length > 0) slotNames[matIdx] = aiName.C_Str();
-        }
+        while (slotNames.size() <= matIdx) slotNames.push_back("Material_" + std::to_string(slotNames.size()));
     }
 
     // ── 出力パス ────────────────────────────────────────────────────────
     namespace fs = std::filesystem;
+    // .fzasset も materials/anims/textures と同じ import 生成物フォルダ内へ置く。
+    // WHY: Foo/Foo.fzasset 構造に統一すると、移動・削除・再 import の単位が Foo/ だけで完結する。
     const std::string outputPath = util::FileSystem::PathToUtf8(
-        util::FileSystem::PathFromUtf8(ctx.manifestDir) / (ctx.baseName + ".model"));
+        util::FileSystem::PathFromUtf8(ctx.manifestDir) / (ctx.baseName + ".fzasset"));
+    const std::string mergedMeshPath = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(ctx.manifestDir) / (ctx.baseName + ".mesh"));
     ctx.outputModelPath = outputPath;
+    const std::string tempOutputPath = outputPath + ".tmp";
+    struct TempFileGuard {
+        std::string path;
+        bool committed = false;
+        ~TempFileGuard() {
+            if (!committed && !path.empty())
+                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+        }
+    } tempGuard{ tempOutputPath };
 
-    std::ofstream out(outputPath, std::ios::binary);
+    std::ofstream out(tempOutputPath, std::ios::binary);
     if (!out) return false;
 
     // ── FzModelHeader ────────────────────────────────────────────────────
@@ -298,7 +414,7 @@ bool FzModelSubExporter::Export(FbxImportContext& ctx)
 
     uint32_t submeshCount = 0;
     for (uint32_t mi=0; mi<ms->mNumMeshes; ++mi)
-        if (isMeshSelected(ms->mMeshes[mi])) ++submeshCount;
+        if (isMeshSelected(ms->mMeshes[mi]) && ms->mMeshes[mi]->mNumVertices > 0) ++submeshCount;
 
     FzLodHeader lodHdr{ 0.0f, submeshCount };
     out.write(reinterpret_cast<const char*>(&lodHdr), sizeof(lodHdr));
@@ -306,6 +422,7 @@ bool FzModelSubExporter::Export(FbxImportContext& ctx)
     for (uint32_t mi=0; mi<ms->mNumMeshes; ++mi) {
         const aiMesh* mesh = ms->mMeshes[mi];
         if (!isMeshSelected(mesh)) continue;
+        if (mesh->mNumVertices == 0) continue;
 
         // インデックス
         std::vector<uint32_t> indices;
@@ -339,8 +456,10 @@ bool FzModelSubExporter::Export(FbxImportContext& ctx)
             std::vector<Influence> infl(mesh->mNumVertices);
             for (uint32_t bi=0; bi<mesh->mNumBones; ++bi) {
                 const aiBone* bone = mesh->mBones[bi];
+                const auto boneIt = globalBoneIndices.find(bone->mName.C_Str());
+                if (boneIt == globalBoneIndices.end()) continue;
                 for (uint32_t wi=0; wi<bone->mNumWeights; ++wi)
-                    infl[bone->mWeights[wi].mVertexId].Add(bi, bone->mWeights[wi].mWeight);
+                    infl[bone->mWeights[wi].mVertexId].Add(boneIt->second, bone->mWeights[wi].mWeight);
             }
             for (auto& inf : infl) inf.Normalize();
 
@@ -370,7 +489,17 @@ bool FzModelSubExporter::Export(FbxImportContext& ctx)
     }
 
     if (!out.good()) return false;
-    return true;
+    out.close();
+
+    util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(outputPath));
+    if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(tempOutputPath),
+                                  util::FileSystem::PathFromUtf8(outputPath))) {
+        util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(tempOutputPath));
+        return false;
+    }
+    tempGuard.committed = true;
+
+    return WriteMergedMesh(mergedMeshPath, ms, ctx.unitScale, ctx.selectedMeshNames);
 }
 
 } // namespace fbzz::editor

@@ -42,7 +42,7 @@ struct AnimEvent {
 
 struct AnimationClip {
     std::string name;
-    // durationTicks / ticksPerSecond: .fbx/.asset 経由ロード時の旧フィールド（後方互換）
+    // durationTicks / ticksPerSecond: Assimp 直ロードと旧 .anim v1 用フィールド（後方互換）
     double durationTicks  = 0.0;
     double ticksPerSecond = 30.0;
     // durationSeconds: .anim バイナリローダーが直接設定する（優先）

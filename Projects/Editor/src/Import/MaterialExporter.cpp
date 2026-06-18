@@ -1,7 +1,7 @@
 // FBZZ Engine
-// FzMaterialExporter.cpp | fbzz::editor
+// MaterialExporter.cpp | fbzz::editor
 // aiMaterial → .mat (TOML) + テクスチャをそのまま texturesDir にコピー
-#include <Editor/Import/FzMaterialExporter.hpp>
+#include <Editor/Import/MaterialExporter.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
@@ -129,7 +129,7 @@ bool FlipNormalMapGreen(const fs::path& texPath)
 
 } // namespace
 
-bool FzMaterialExporter::Export(const aiMaterial* material,
+bool MaterialExporter::Export(const aiMaterial* material,
                                   const aiScene* scene,
                                   const std::string& fbxDir,
                                   const std::string& texturesDir,
@@ -142,6 +142,8 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
     tbl.insert("shader", skinned
         ? std::string{ "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl" }
         : std::string{ "Assets/Shaders/Material/Surface/PBR.hlsl" });
+    tbl.insert("render_path", std::string{ "deferred" });
+    tbl.insert("mesh_type", skinned ? std::string{ "skinned" } : std::string{ "surface" });
 
     aiString matName;
     if (material->Get(AI_MATKEY_NAME, matName) == AI_SUCCESS)

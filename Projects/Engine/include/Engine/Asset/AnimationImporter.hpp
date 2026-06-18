@@ -1,5 +1,5 @@
 // FBZZ Engine
-// FzAnimImporter.hpp | fbzz::asset
+// AnimationImporter.hpp | fbzz::asset
 // .anim バイナリ → AnimationClip ローダー
 #pragma once
 #include <Engine/Asset/AnimationClip.hpp>
@@ -7,7 +7,7 @@
 
 namespace fbzz::asset {
 
-class FzAnimImporter final : public IAssetImporter<AnimationClip> {
+class AnimationImporter final : public IAssetImporter<AnimationClip> {
 public:
     [[nodiscard]] std::unique_ptr<AnimationClip> Import(
         const std::string&         absPath,

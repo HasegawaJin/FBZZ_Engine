@@ -3,9 +3,9 @@
 // FBX ファイルをエンジンネイティブ形式に変換するインポートツール
 //
 // 新パイプライン出力構造:
-//   outputDir/../<name>.model    ← 統合モデルバイナリ (FZMD)
-//   outputDir/anims/clip_N.anim  ← アニメーションクリップ v2
-//   outputDir/materials/mat_N.mat← マテリアル TOML
+//   outputDir/<name>.fzasset     ← 統合モデルバイナリ (FZMD)
+//   outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v2
+//   outputDir/materials/<MaterialName>.mat ← マテリアル TOML
 //   outputDir/textures/*.png     ← テクスチャコピー + *.tex 自動生成
 //
 // BuildPipeline() で IFbxSubExporter のリストを構築する。

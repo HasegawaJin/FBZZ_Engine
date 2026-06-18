@@ -32,6 +32,12 @@ namespace fbzz::renderer { class ResourceManager; }
 
 namespace fbzz::asset {
 
+struct AnimationClip;
+struct AnimatorControllerAsset;
+struct ModelAsset;
+struct TerrainAsset;
+struct TextureAsset;
+
 // ── 型ごとスロットプール (Meyers シングルトン) ─────────────────────────────
 // ヘッダーに置いて Load<T> を完全インライン化。type_index マップを使わない。
 template<typename T>
@@ -156,7 +162,7 @@ public:
 
     // ── 旧 API (後方互換) ──────────────────────────────────────────────
 
-    // .fbx / .asset / .model → Model* (呼び出し元は LoadModel に移行すること)
+    // .fbx / .fzasset → Model* (呼び出し元は LoadModel に移行すること)
     static Model* LoadModel(const std::string& relativePath);
 
     static renderer::ResourceHandle<renderer::TextureTag>
@@ -191,9 +197,54 @@ private:
     static bool                        S_init() noexcept;
     static const std::string&          S_base() noexcept;
     static renderer::ResourceManager*  S_res()  noexcept;
+    template<typename T>
+    static AssetHandle<T> LoadFromStore(const std::string& relativePath);
+    template<typename T>
+    static T* GetFromStore(AssetHandle<T> h);
+    template<typename T>
+    static void UnloadFromStore(const std::string& relativePath);
     static renderer::ResourceHandle<renderer::MaterialAssetTag>
         AllocMaterialSlot(std::unique_ptr<MaterialAsset>);
     static bool IsMaterialLive(renderer::ResourceHandle<renderer::MaterialAssetTag>);
 };
+
+template<>
+AssetHandle<ModelAsset> AssetManager::Load<ModelAsset>(const std::string& relativePath);
+template<>
+AssetHandle<AnimationClip> AssetManager::Load<AnimationClip>(const std::string& relativePath);
+template<>
+AssetHandle<MaterialAsset> AssetManager::Load<MaterialAsset>(const std::string& relativePath);
+template<>
+AssetHandle<AnimatorControllerAsset> AssetManager::Load<AnimatorControllerAsset>(const std::string& relativePath);
+template<>
+AssetHandle<TerrainAsset> AssetManager::Load<TerrainAsset>(const std::string& relativePath);
+template<>
+AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& relativePath);
+
+template<>
+ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h);
+template<>
+AnimationClip* AssetManager::Get<AnimationClip>(AssetHandle<AnimationClip> h);
+template<>
+MaterialAsset* AssetManager::Get<MaterialAsset>(AssetHandle<MaterialAsset> h);
+template<>
+AnimatorControllerAsset* AssetManager::Get<AnimatorControllerAsset>(AssetHandle<AnimatorControllerAsset> h);
+template<>
+TerrainAsset* AssetManager::Get<TerrainAsset>(AssetHandle<TerrainAsset> h);
+template<>
+TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h);
+
+template<>
+void AssetManager::Unload<ModelAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<AnimationClip>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<MaterialAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<AnimatorControllerAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<TerrainAsset>(const std::string& relativePath);
+template<>
+void AssetManager::Unload<TextureAsset>(const std::string& relativePath);
 
 } // namespace fbzz::asset

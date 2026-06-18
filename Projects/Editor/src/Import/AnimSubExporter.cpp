@@ -1,8 +1,8 @@
 // FBZZ Engine
-// FzAnimSubExporter.cpp | fbzz::editor
+// AnimSubExporter.cpp | fbzz::editor
 // FBX → .anim バイナリ v2
-// FzAnimImporter.cpp の FzAnimV2Extension / FzAnimTrackHeaderV2 と対応する。
-#include <Editor/Import/FzAnimSubExporter.hpp>
+// AnimationImporter.cpp の FzAnimV2Extension / FzAnimTrackHeaderV2 と対応する。
+#include <Editor/Import/AnimSubExporter.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/anim.h>
@@ -11,12 +11,14 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <string>
+#include <unordered_map>
 
 namespace fbzz::editor {
 
 namespace {
 
-// FzAnimImporter で定義した同一レイアウト (対称性確保)
+// AnimationImporter で定義した同一レイアウト (対称性確保)
 struct FzAnimV2Extension {
     double   durationSeconds;
     float    frameRate;
@@ -38,9 +40,22 @@ struct FzAnimTrackHeaderV2 {
 };
 static_assert(sizeof(FzAnimTrackHeaderV2) == 144);
 
+std::string SanitizeClipName(const std::string& name, uint32_t index)
+{
+    std::string out = name.empty() ? ("Take_" + std::to_string(index)) : name;
+    for (char& c : out) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (uc < 0x20 || c == '<' || c == '>' || c == ':' || c == '"' ||
+            c == '/' || c == '\\' || c == '|' || c == '?' || c == '*') {
+            c = '_';
+        }
+    }
+    return out;
+}
+
 } // namespace
 
-bool FzAnimSubExporter::Export(FbxImportContext& ctx)
+bool AnimSubExporter::Export(FbxImportContext& ctx)
 {
     using namespace asset;
     const aiScene* scene = ctx.scene;
@@ -50,6 +65,7 @@ bool FzAnimSubExporter::Export(FbxImportContext& ctx)
     const fs::path animDir = util::FileSystem::PathFromUtf8(ctx.outputDir) / "anims";
     util::FileSystem::EnsureDirectory(animDir);
 
+    std::unordered_map<std::string, uint32_t> usedClipStems;
     for (uint32_t ai = 0; ai < scene->mNumAnimations; ++ai) {
         const aiAnimation* anim = scene->mAnimations[ai];
         const std::string animName = anim->mName.C_Str();
@@ -62,8 +78,15 @@ bool FzAnimSubExporter::Export(FbxImportContext& ctx)
             if (!found) continue;
         }
 
+        const std::string clipName = SanitizeClipName(animName, ai);
+        std::string clipStem = ctx.baseName + "@" + clipName;
+        uint32_t& sameNameCount = usedClipStems[clipStem];
+        if (sameNameCount > 0)
+            clipStem += "_" + std::to_string(sameNameCount);
+        ++sameNameCount;
+
         const std::string animPath = util::FileSystem::PathToUtf8(
-            animDir / ("clip_" + std::to_string(ai) + ".anim"));
+            animDir / (clipStem + ".anim"));
 
         std::ofstream out(animPath, std::ios::binary);
         if (!out) return false;

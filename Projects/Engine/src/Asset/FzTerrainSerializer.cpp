@@ -58,7 +58,7 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
 
 bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsset) const
 {
-    // FzTerrainImporter と同じロジック — FzTerrainImporter に委譲する
+    // TerrainImporter と同じロジック。Serializer 単体でも使えるようここに読み取り処理を持つ。
     std::ifstream f(absPath, std::ios::binary | std::ios::ate);
     if (!f) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: cannot open [%s]", absPath.c_str());
