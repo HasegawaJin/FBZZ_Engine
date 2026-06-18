@@ -264,7 +264,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         break;
     case Tool::Foliage:
         if (ctx.foliageTool)
-            ctx.foliageTool->DrawContent(*ctx.activeScene);
+            ctx.foliageTool->DrawContent(*ctx.activeScene, ctx.markSceneDirty);
         break;
     case Tool::Grid:
         DrawGridContent(ctx);
