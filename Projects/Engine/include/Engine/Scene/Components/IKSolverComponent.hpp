@@ -72,6 +72,18 @@ struct IKChain {
     float rayUpRatio        = 0.4f;
     float rayDownRatio      = 1.3f;
     float footSurfaceOffset = 0.06f;
+
+    // F: Auto Pole — Pole GameObject を配置せずに IKSystem が FK 曲げ方向から
+    //    ポール位置を毎フレーム自動計算する。
+    // WHY: 膝・肘チェーンの初期設定コストを下げるために追加。
+    //      Pole GO を手動配置しなくても FK の曲げ方向 (≒ bind-pose の膝向き) を
+    //      そのまま IK に引き継げる。poleEntity が有効なら poleEntity が優先される。
+    bool autoPole = false;
+    // Auto Pole の優先曲げ方向を Owner ローカル空間で指定する。
+    // WHY: Player のように見た目を 180 度回転して使うキャラクターでは、FK 曲げ方向だけを見ると
+    //      膝が背面へ折れることがある。Owner 回転込みの方向を指定して、キャラクター向きに追従させる。
+    //      ゼロベクトルなら従来通り FK 曲げ方向を使う。
+    math::Vector3 autoPoleLocalDirection = math::Vector3::ZERO;
 };
 
 struct IKSolverComponent {
