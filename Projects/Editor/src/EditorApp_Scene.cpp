@@ -563,10 +563,13 @@ void EditorApp::InitScriptDll()
     // DLL ロード (toolchain の成否に関わらず実行)
     m_ctx.scriptsDllPath = util::FileSystem::PathToUtf8(m_scriptDllPath);
     if (!m_scriptDllPath.empty() && util::FileSystem::Exists(m_scriptDllPath)) {
-        (void)m_scriptDll.Load(m_scriptDllPath);
-        FBZZ_LOG_INFO("ScriptDll: loaded %ls (%d types)",
-            m_scriptDllPath.wstring().c_str(),
-            static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+        if (m_scriptDll.Load(m_scriptDllPath)) {
+            FBZZ_LOG_INFO("ScriptDll: loaded %ls (%d types)",
+                m_scriptDllPath.wstring().c_str(),
+                static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
+        } else {
+            FBZZ_LOG_WARN("ScriptDll: load failed; scripts are kept as serialized data until DLL rebuild succeeds");
+        }
     } else if (toolchain.found) {
         // WHY: cmake configure 直後は DLL がまだ存在しない。
         //      初回ビルドを TickScriptCompile() に委譲することで非同期ビルドを起動する。
