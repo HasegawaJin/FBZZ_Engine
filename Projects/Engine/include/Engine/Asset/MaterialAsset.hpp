@@ -27,23 +27,31 @@ enum class RenderPath { Auto, Deferred, Forward };
 //      "any"     → 両方可 (カスタムシェーダーのデフォルト)。
 enum class MeshType { Any, Surface, Skinned };
 
+// 深度テスト比較関数
+enum class DepthTest { Always, Never, Less, LessEqual, Equal, Greater, GreaterEqual, NotEqual };
+
 // .mat の内容を保持する共有マテリアルデータ。
 // WHY: GameObject ごとの MaterialComponent に見た目の値を複製せず、同一ファイルを参照する全オブジェクトへ
 //      編集結果を即時反映できるようにする。
 struct MaterialAsset {
     std::string shaderPath;
     renderer::BlendMode blendMode = renderer::BlendMode::OPAQUE_BLEND;
-    bool doubleSided = false;
+    bool doubleSided  = false;
+    bool depthWrite   = true;
+    DepthTest depthTest = DepthTest::LessEqual;
     int32_t renderQueue = renderer::RenderQueue::GEOMETRY;
     RenderPath renderPath = RenderPath::Auto;
     MeshType   meshType   = MeshType::Any;
 
-    // slot 名 → assets/ 相対パス。空文字は未使用を表す。
+    // slot 名 → assets/ 相対パス（.tex descriptor または .png/.dds 直参照、どちらも可）
     std::unordered_map<std::string, std::string> textures;
 
     // シェーダー変数名 → float 要素列。float / float2 / float3 / float4 を同じ形式で保存する。
     // WHY: 保存時に ShaderDescriptor のバイトオフセットへ依存させず、ロード後に現在のシェーダーへ名前で束縛する。
     std::unordered_map<std::string, std::vector<float>> params;
+
+    // シェーダーコンパイル時 define 一覧（例: "USE_NORMAL_MAP", "USE_AO"）
+    std::vector<std::string> keywords;
 };
 
 // TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。
