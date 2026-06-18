@@ -58,7 +58,7 @@ void BakeSpecies(FoliageSpeciesCache& cache,
 
     // WHY: ロード失敗のまま instances を積むと FoliageTool の stamp カウントが増え続け、
     //      存在しないアセットに対して Physics コライダーも生成されてしまう。
-    if (!asset::AssetManager::Load<asset::Model>(species.modelPath))
+    if (!asset::AssetManager::LoadModel(species.modelPath))
         return;
 
     const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
@@ -186,7 +186,7 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
             if (cameraDistance > std::max(0.0f, species.drawDistance) + terrainRadius)
                 continue;
 
-            const auto* model = asset::AssetManager::Load<asset::Model>(species.modelPath);
+            const auto* model = asset::AssetManager::LoadModel(species.modelPath);
             if (!model) continue;
             cache.materialConstantBuffers.resize(model->meshes.size());
 

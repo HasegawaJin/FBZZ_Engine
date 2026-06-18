@@ -8,7 +8,6 @@ namespace fbzz::editor {
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
     DrawImportSettingsModal(ctx);
-    DrawImportResultBar(ctx);
 
     // テクスチャ遅延ロードキューを処理 (3件/フレームに分散)
     DrainTexLoadQueue(ctx);
@@ -214,8 +213,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     }
 
     // fzasset 展開トグル後の遅延 Refresh
-    if (m_fzExpandDirty) {
-        m_fzExpandDirty = false;
+    if (m_assetExpandDirty) {
+        m_assetExpandDirty = false;
         RefreshDirectory();
     }
 
@@ -326,12 +325,12 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
     case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
                                    || e.ext == ".flac";
     case TypeFilter::Mesh:      return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
-                                    || e.ext == ".glb"    || e.ext == ".mesh";
+                                    || e.ext == ".glb"    || e.ext == ".mesh"   || e.ext == ".fzasset";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
     case TypeFilter::Prefab:    return e.ext == ".prefab";
     case TypeFilter::Animation: return e.ext == ".anim";
     case TypeFilter::Skeleton:  return e.ext == ".skel";
-    case TypeFilter::Asset:     return e.ext == ".asset";
+    case TypeFilter::Asset:     return e.ext == ".asset" || e.ext == ".fzasset";
     default:                    return true;
     }
 }

@@ -8,8 +8,14 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/TerrainAsset.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/ShaderDescriptor.hpp>
@@ -369,32 +375,438 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         namespace fs = std::filesystem;
         const fs::path    p         = util::FileSystem::PathFromUtf8(absPath);
         const std::string stem      = util::FileSystem::PathToUtf8(p.stem());
-        const fs::path    fzasset   = p.parent_path() / (stem + ".asset");
-        const bool        imported  = util::FileSystem::Exists(fzasset);
+        const bool imported = util::FileSystem::Exists(p.parent_path() / p.stem() / (stem + ".fzasset"));
 
-        ImGui::TextDisabled("Type: 3D Model (%s)", ext.c_str());
+        ImGui::TextDisabled("Type: 3D Model Source (%s)", ext.c_str());
         ImGui::Spacing();
 
         if (imported) {
             ImGui::TextColored({ 0.3f, 0.9f, 0.3f, 1.0f }, "Status: Imported");
             ImGui::Spacing();
-            if (ImGui::Button("Reimport...")) {
+            if (ImGui::Button("Reimport..."))
                 ctx.requestOpenImportModal = absPath;
-            }
         } else {
             ImGui::TextColored({ 1.0f, 0.6f, 0.1f, 1.0f }, "Status: Not Imported");
             ImGui::Spacing();
-            if (ImGui::Button("Import...")) {
+            if (ImGui::Button("Import..."))
                 ctx.requestOpenImportModal = absPath;
+        }
+    } else if (ext == ".fzasset") {
+        // ── .model バイナリ ──────────────────────────────────────────────
+        ImGui::TextDisabled("Type: FBZZ Model Asset");
+        ImGui::Spacing();
+
+        const auto handle = asset::AssetManager::Load<asset::ModelAsset>(absPath);
+        if (!handle.IsValid()) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Load failed");
+        } else if (const auto* m = asset::AssetManager::Get(handle)) {
+            ImGui::SeparatorText("Info");
+            ImGui::LabelText("LODs",      "%u",  m->LodCount());
+            ImGui::LabelText("Skinned",   "%s",  m->IsSkinned() ? "Yes" : "No");
+            ImGui::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
+
+            // ── スケルトン情報 ─────────────────────────────────────────
+            if (m->IsSkinned() && m->skeleton) {
+                ImGui::SeparatorText("Skeleton");
+                ImGui::LabelText("Nodes", "%zu", m->skeleton->nodes.size());
             }
+
+            // ── LOD / サブメッシュ一覧 ─────────────────────────────────
+            ImGui::SeparatorText("Meshes");
+            for (uint32_t lodIdx = 0; lodIdx < m->LodCount(); ++lodIdx) {
+                const auto& lod = m->lods[lodIdx];
+                const std::string lodLabel =
+                    lodIdx == 0
+                    ? std::string("LOD 0  (primary)")
+                    : std::string("LOD ") + std::to_string(lodIdx)
+                      + "  (screen < " + std::to_string(lod.screenSizeThreshold).substr(0, 4) + ")";
+                if (ImGui::TreeNodeEx(lodLabel.c_str(),
+                        lodIdx == 0 ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
+                    for (int si = 0; si < (int)lod.submeshes.size(); ++si) {
+                        const auto& sm = lod.submeshes[si];
+                        const char* slotName =
+                            sm.materialSlotIndex < m->materialSlotNames.size()
+                            ? m->materialSlotNames[sm.materialSlotIndex].c_str()
+                            : "?";
+                        const uint32_t verts = sm.mesh ? sm.mesh->vertexCount : 0;
+                        const uint32_t tris  = sm.mesh ? sm.mesh->indexCount / 3 : 0;
+                        ImGui::TextDisabled("[%d]", si);
+                        ImGui::SameLine();
+                        ImGui::Text("%s", slotName);
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("%u verts  %u tris", verts, tris);
+                    }
+                    ImGui::TreePop();
+                }
+            }
+
+            // ── マテリアルスロット ─────────────────────────────────────
+            if (!m->materialSlotNames.empty()) {
+                ImGui::SeparatorText("Material Slots");
+                for (const auto& slotName : m->materialSlotNames)
+                    ImGui::TextDisabled("  %s  ->  (unbound)", slotName.c_str());
+            }
+        }
+
+        // ── Reimport ───────────────────────────────────────────────────
+        ImGui::Spacing();
+        ImGui::Separator();
+        {
+            namespace fs = std::filesystem;
+            const fs::path modelPath = util::FileSystem::PathFromUtf8(absPath);
+            const std::string stem   = util::FileSystem::PathToUtf8(modelPath.stem());
+            const fs::path parentDir = modelPath.parent_path();
+            std::string fbxCandidate;
+            for (const auto* fbxExt : {".fbx", ".FBX", ".obj", ".OBJ", ".gltf", ".GLTF", ".glb", ".GLB"}) {
+                const fs::path c = parentDir / (stem + fbxExt);
+                if (util::FileSystem::Exists(c)) { fbxCandidate = util::FileSystem::PathToUtf8(c); break; }
+                const fs::path cp = parentDir.parent_path() / (stem + fbxExt);
+                if (util::FileSystem::Exists(cp)) { fbxCandidate = util::FileSystem::PathToUtf8(cp); break; }
+            }
+            if (fbxCandidate.empty()) {
+                ImGui::TextDisabled("Source: (not found)");
+            } else {
+                const std::string label =
+                    "Reimport from " + util::FileSystem::GetFilename(fbxCandidate);
+                if (ImGui::Button(label.c_str()))
+                    ctx.requestOpenImportModal = fbxCandidate;
+            }
+        }
+    } else if (ext == ".anim") {
+        // ── .anim バイナリ ───────────────────────────────────────────────
+        ImGui::TextDisabled("Type: Animation Clip");
+        ImGui::Spacing();
+
+        const auto handle = asset::AssetManager::Load<asset::AnimationClip>(absPath);
+        if (!handle.IsValid()) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Load failed");
+        } else if (const auto* clip = asset::AssetManager::Get(handle)) {
+            ImGui::SeparatorText("Info");
+            ImGui::LabelText("Name",         "%s",    clip->name.c_str());
+            ImGui::LabelText("Duration",     "%.3f s", clip->GetDurationSeconds());
+            ImGui::LabelText("FPS",          "%.1f",  clip->frameRate);
+            ImGui::LabelText("Tracks",       "%zu",   clip->tracks.size());
+            ImGui::LabelText("Loop",         "%s",    clip->loop ? "Yes" : "No");
+            ImGui::LabelText("Root Motion",  "%s",    clip->hasRootMotion ? "Yes" : "No");
+
+            // ── Events テーブル ────────────────────────────────────────
+            if (!clip->events.empty()) {
+                ImGui::SeparatorText("Events");
+                if (ImGui::BeginTable("##anim_events", 4,
+                        ImGuiTableFlags_BordersOuter |
+                        ImGuiTableFlags_BordersInnerV |
+                        ImGuiTableFlags_RowBg |
+                        ImGuiTableFlags_SizingStretchProp)) {
+                    ImGui::TableSetupColumn("Time",  ImGuiTableColumnFlags_WidthFixed,  52.0f);
+                    ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Int",   ImGuiTableColumnFlags_WidthFixed,  36.0f);
+                    ImGui::TableSetupColumn("Float", ImGuiTableColumnFlags_WidthFixed,  52.0f);
+                    ImGui::TableHeadersRow();
+                    for (const auto& ev : clip->events) {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        ImGui::Text("%.3f", ev.time);
+                        ImGui::TableNextColumn();
+                        ImGui::TextUnformatted(ev.name.c_str());
+                        ImGui::TableNextColumn();
+                        ImGui::Text("%d", ev.intParam);
+                        ImGui::TableNextColumn();
+                        ImGui::Text("%.2f", ev.floatParam);
+                    }
+                    ImGui::EndTable();
+                }
+            } else {
+                ImGui::TextDisabled("(no events)");
+            }
+        }
+
+        // ── Reimport ───────────────────────────────────────────────────
+        ImGui::Spacing();
+        ImGui::Separator();
+        {
+            namespace fs = std::filesystem;
+            const fs::path animPath  = util::FileSystem::PathFromUtf8(absPath);
+            const fs::path parentDir = animPath.parent_path();
+            // "Model@Clip.anim" → "Model" が FBX stem
+            const std::string stem = util::FileSystem::PathToUtf8(animPath.stem());
+            const std::string baseStem = stem.find('@') != std::string::npos
+                ? stem.substr(0, stem.find('@')) : stem;
+            std::string fbxCandidate;
+            for (const auto* fbxExt : {".fbx", ".FBX", ".obj", ".OBJ", ".gltf", ".GLTF", ".glb", ".GLB"}) {
+                const fs::path c = parentDir / (baseStem + fbxExt);
+                if (util::FileSystem::Exists(c)) { fbxCandidate = util::FileSystem::PathToUtf8(c); break; }
+                const fs::path cp = parentDir.parent_path() / (baseStem + fbxExt);
+                if (util::FileSystem::Exists(cp)) { fbxCandidate = util::FileSystem::PathToUtf8(cp); break; }
+            }
+            if (fbxCandidate.empty()) {
+                ImGui::TextDisabled("Source: (not found)");
+            } else {
+                const std::string label =
+                    "Reimport from " + util::FileSystem::GetFilename(fbxCandidate);
+                if (ImGui::Button(label.c_str()))
+                    ctx.requestOpenImportModal = fbxCandidate;
+            }
+        }
+    } else if (ext == ".tex") {
+        // ── .tex descriptor ──────────────────────────────────────────────
+        ImGui::TextDisabled("Type: Texture Descriptor");
+        ImGui::Spacing();
+
+        // TexDescSerializer で読み込んで設定を表示・編集できるようにする
+        static asset::TextureAsset s_texAsset;
+        static std::string         s_texPath;
+        if (s_texPath != absPath) {
+            s_texPath = absPath;
+            asset::TexDescSerializer ser;
+            ser.Load(absPath, s_texAsset);
+        }
+        bool dirty = false;
+
+        ImGui::SeparatorText("Source");
+        ImGui::TextUnformatted(s_texAsset.sourcePath.c_str());
+
+        ImGui::SeparatorText("Import Settings");
+        auto& s = s_texAsset.settings;
+
+        static constexpr const char* kTypeNames[] = { "Color", "Normal", "Data", "HDR", "UI" };
+        int typeIdx = static_cast<int>(s.type);
+        if (ImGui::Combo("Type", &typeIdx, kTypeNames, 5)) {
+            s.type = static_cast<asset::TextureType>(typeIdx);
+            s = asset::DefaultSettingsForType(s.type); // デフォルトを再適用
+            dirty = true;
+        }
+        // ── Type / sRGB ───────────────────────────────────────────────
+        dirty |= ImGui::Checkbox("sRGB",             &s.srgb);
+
+        // ── Compression ───────────────────────────────────────────────
+        ImGui::SeparatorText("Compression");
+        static constexpr const char* kCompNames[] = {
+            "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
+        };
+        int compIdx = static_cast<int>(s.compression);
+        if (ImGui::Combo("Format", &compIdx, kCompNames, 8)) {
+            s.compression = static_cast<asset::TextureCompression>(compIdx);
+            dirty = true;
+        }
+        {
+            static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
+            int qualIdx = static_cast<int>(s.compressionQuality);
+            if (ImGui::Combo("Quality", &qualIdx, kQualNames, 3)) {
+                s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
+                dirty = true;
+            }
+        }
+
+        // ── Mipmaps ───────────────────────────────────────────────────
+        ImGui::SeparatorText("Mipmaps");
+        dirty |= ImGui::Checkbox("Mipmaps",           &s.mipmaps);
+        if (s.mipmaps) {
+            static constexpr const char* kMipFilterNames[] = { "Box", "Kaiser", "Lanczos" };
+            int mipFIdx = static_cast<int>(s.mipFilter);
+            if (ImGui::Combo("Mip Filter", &mipFIdx, kMipFilterNames, 3)) {
+                s.mipFilter = static_cast<asset::MipFilter>(mipFIdx);
+                dirty = true;
+            }
+            dirty |= ImGui::DragFloat("Mip Sharpen", &s.mipSharpen, 0.01f, 0.0f, 4.0f);
+            dirty |= ImGui::DragFloat("Mip Bias",    &s.mipBias,    0.01f, -4.0f, 4.0f);
+            dirty |= ImGui::Checkbox("Normalize Mipmaps", &s.normalizeMipmaps);
+        }
+
+        // ── Normal Map ────────────────────────────────────────────────
+        if (s.type == asset::TextureType::Normal) {
+            ImGui::SeparatorText("Normal Map");
+            dirty |= ImGui::Checkbox("Flip Green (OpenGL)", &s.flipGreen);
+        }
+
+        // ── Sampling ─────────────────────────────────────────────────
+        ImGui::SeparatorText("Sampling");
+        static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
+        int wrapU = static_cast<int>(s.wrapU);
+        int wrapV = static_cast<int>(s.wrapV);
+        if (ImGui::Combo("Wrap U", &wrapU, kWrapNames, 4)) { s.wrapU = static_cast<asset::TextureWrap>(wrapU); dirty = true; }
+        if (ImGui::Combo("Wrap V", &wrapV, kWrapNames, 4)) { s.wrapV = static_cast<asset::TextureWrap>(wrapV); dirty = true; }
+        int anisoLv = static_cast<int>(s.anisoLevel);
+        if (ImGui::SliderInt("Aniso Level", &anisoLv, 1, 16)) {
+            s.anisoLevel = static_cast<uint32_t>(anisoLv);
+            dirty = true;
+        }
+
+        // ── Resolution ────────────────────────────────────────────────
+        ImGui::SeparatorText("Resolution");
+        int maxSize = static_cast<int>(s.maxSize);
+        if (ImGui::InputInt("Max Size", &maxSize)) {
+            s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
+            dirty = true;
+        }
+
+        // ── Alpha ─────────────────────────────────────────────────────
+        ImGui::SeparatorText("Alpha");
+        {
+            static constexpr const char* kAlphaNames[] = { "Straight", "Premultiplied", "None" };
+            int alphaIdx = static_cast<int>(s.alphaMode);
+            if (ImGui::Combo("Alpha Mode", &alphaIdx, kAlphaNames, 3)) {
+                s.alphaMode = static_cast<asset::AlphaMode>(alphaIdx);
+                dirty = true;
+            }
+        }
+        dirty |= ImGui::Checkbox("Alpha Dither", &s.alphaDither);
+
+        ImGui::Spacing();
+        const bool isTxDirty = AssetDirtyRegistry::IsDirty(absPath) || dirty;
+        if (dirty) {
+            AssetDirtyRegistry::Register(
+                absPath,
+                util::FileSystem::GetFilename(absPath),
+                "TEX",
+                [path = absPath]() {
+                    asset::TexDescSerializer ser;
+                    return ser.Save(s_texAsset, path);
+                });
+        }
+
+        if (ImGui::Button("Apply & Save") || (isTxDirty && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))) {
+            asset::TexDescSerializer ser;
+            if (ser.Save(s_texAsset, absPath))
+                AssetDirtyRegistry::MarkClean(absPath);
+        }
+        if (isTxDirty) {
+            ImGui::SameLine();
+            ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
     } else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
                ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
                ext == ".hdr" || ext == ".exr") {
         ImGui::TextDisabled("Type: Texture (%s)", ext.c_str());
         ImGui::Spacing();
-        if (ImGui::Button("Import Settings...")) {
-            ctx.requestOpenImportModal = absPath;
+
+        // .tex が存在するか確認
+        const std::filesystem::path imgPath = util::FileSystem::PathFromUtf8(absPath);
+        const std::string texDescPath = util::FileSystem::PathToUtf8(
+            imgPath.parent_path() /
+            (util::FileSystem::PathToUtf8(imgPath.stem()) + ".tex"));
+        const bool hasTexDesc = util::FileSystem::Exists(
+            util::FileSystem::PathFromUtf8(texDescPath));
+
+        if (hasTexDesc) {
+            ImGui::TextColored({0.3f, 0.9f, 0.3f, 1.0f}, ".tex descriptor: found");
+            ImGui::TextDisabled("%s", util::FileSystem::GetFilename(texDescPath).c_str());
+            ImGui::Spacing();
+            if (ImGui::Button("Open .tex Inspector"))
+                ctx.selectedAssetPath = texDescPath;
+        } else {
+            ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f},
+                "No .tex descriptor for this image.");
+            ImGui::Spacing();
+            ImGui::TextWrapped(
+                "Creating a .tex lets you control sRGB, compression, "
+                "mipmaps and other import settings.");
+            ImGui::Spacing();
+            if (ImGui::Button("Create .tex...")) {
+                // GuessTextureType でデフォルト設定を生成して .tex を書き出す
+                const asset::TextureType guessedType =
+                    asset::GuessTextureType(util::FileSystem::GetFilename(absPath));
+                asset::TextureAsset newAsset;
+                newAsset.sourcePath = util::FileSystem::GetFilename(absPath);
+                newAsset.settings   = asset::DefaultSettingsForType(guessedType);
+                asset::TexDescSerializer ser;
+                if (ser.Save(newAsset, texDescPath)) {
+                    ctx.selectedAssetPath     = texDescPath;
+                    ctx.requestAssetBrowserRefresh = true;
+                }
+            }
+            ImGui::Spacing();
+            ImGui::TextDisabled(
+                "Or drag directly to a material slot to use with default settings.");
+        }
+    } else if (ext == ".terrain") {
+        // ── .terrain バイナリ ─────────────────────────────────────────────
+        ImGui::TextDisabled("Type: Terrain Asset");
+        ImGui::Spacing();
+
+        static asset::TerrainAsset s_terrainAsset;
+        static std::string         s_terrainPath;
+        static bool                s_terrainLoaded = false;
+        bool terrainDirty = false;
+
+        if (s_terrainPath != absPath) {
+            s_terrainPath   = absPath;
+            s_terrainLoaded = false;
+            asset::FzTerrainSerializer ser;
+            s_terrainLoaded = ser.Load(absPath, s_terrainAsset);
+        }
+
+        if (!s_terrainLoaded) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Load failed");
+        } else {
+            auto& ta = s_terrainAsset;
+
+            ImGui::SeparatorText("Geometry");
+            ImGui::LabelText("Columns",    "%u", ta.columns);
+            ImGui::LabelText("Rows",       "%u", ta.rows);
+            ImGui::LabelText("Cell Size",  "%.2f m", ta.cellSize);
+            ImGui::LabelText("Max Height", "%.2f m", ta.maxHeight);
+            ImGui::LabelText("Chunk Size", "%u", ta.chunkSize);
+            const float worldW = static_cast<float>(ta.columns - 1) * ta.cellSize;
+            const float worldH = static_cast<float>(ta.rows    - 1) * ta.cellSize;
+            ImGui::LabelText("World Size", "%.0f m × %.0f m", worldW, worldH);
+
+            if (!ta.heightData.empty()) {
+                ImGui::SeparatorText("Height Data");
+                float hMin =  1e9f, hMax = -1e9f;
+                for (float v : ta.heightData) {
+                    if (v < hMin) hMin = v;
+                    if (v > hMax) hMax = v;
+                }
+                const float hRange = ta.maxHeight;
+                ImGui::LabelText("Points", "%zu", ta.heightData.size());
+                ImGui::LabelText("Min",    "%.2f m", hMin * hRange);
+                ImGui::LabelText("Max",    "%.2f m", hMax * hRange);
+            }
+
+            ImGui::SeparatorText("Layer Materials");
+            for (int li = 0; li < static_cast<int>(ta.layerMaterialPaths.size()); ++li) {
+                ImGui::PushID(li);
+                char matBuf[512];
+                std::snprintf(matBuf, sizeof(matBuf), "%s", ta.layerMaterialPaths[li].c_str());
+                ImGui::SetNextItemWidth(-1.0f);
+                if (ImGui::InputText(("##layer" + std::to_string(li)).c_str(),
+                                     matBuf, sizeof(matBuf))) {
+                    ta.layerMaterialPaths[li] = matBuf;
+                    terrainDirty = true;
+                }
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                        ta.layerMaterialPaths[li] = static_cast<const char*>(p->Data);
+                        terrainDirty = true;
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                ImGui::PopID();
+            }
+
+            if (terrainDirty) {
+                AssetDirtyRegistry::Register(
+                    absPath,
+                    util::FileSystem::GetFilename(absPath),
+                    "TERRAIN",
+                    [path = absPath]() {
+                        asset::FzTerrainSerializer ser;
+                        return ser.Save(s_terrainAsset, path);
+                    });
+            }
+
+            ImGui::Spacing();
+            const bool isTerrainDirty = AssetDirtyRegistry::IsDirty(absPath) || terrainDirty;
+            if (ImGui::Button("Save .terrain") ||
+                (isTerrainDirty && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))) {
+                asset::FzTerrainSerializer ser;
+                if (ser.Save(ta, absPath))
+                    AssetDirtyRegistry::MarkClean(absPath);
+            }
+            if (isTerrainDirty) {
+                ImGui::SameLine();
+                ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
+            }
         }
     } else {
         ImGui::TextDisabled("Type: %s", ext.c_str());

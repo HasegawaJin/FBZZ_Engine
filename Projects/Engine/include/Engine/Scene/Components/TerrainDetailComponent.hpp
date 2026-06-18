@@ -31,7 +31,7 @@ struct DetailLayer {
     DetailLayerType type = DetailLayerType::Mesh;
 
     // アセット参照
-    std::string meshPath;        // Mesh レイヤー: .asset モデルパス
+    std::string meshPath;        // Mesh レイヤー: .fzasset モデルパス
     std::string densityMapPath;  // グレースケール画像: 白=最大密度・黒=なし (空 = 配置なし)
     std::string texturePath;     // Billboard / Grass: アルベドテクスチャ
 

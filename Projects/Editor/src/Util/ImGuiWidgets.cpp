@@ -36,7 +36,7 @@ AssetPickerState s_picker;
 ImVec4 ExtBadgeColor(const std::string& ext)
 {
     if (ext == ".mat")                                          return { 0.75f, 0.4f,  0.9f,  1.0f }; // purple
-    if (ext == ".asset")                                        return { 0.3f,  0.85f, 0.9f,  1.0f }; // cyan
+    if (ext == ".asset" || ext == ".fzasset")                   return { 0.3f,  0.85f, 0.9f,  1.0f }; // cyan
     if (ext == ".scene")                                           return { 0.45f, 0.65f, 1.0f,  1.0f }; // blue
     if (ext == ".hlsl")                                           return { 1.0f,  0.9f,  0.3f,  1.0f }; // yellow
     if (ext == ".animcontroller" || ext == ".anim")         return { 1.0f,  0.6f,  0.2f,  1.0f }; // orange

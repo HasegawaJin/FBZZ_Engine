@@ -2,8 +2,11 @@
 // AssetBrowserImport.cpp | fbzz::editor
 // AssetBrowser の未変換アセット検出とバックグラウンドインポート
 #include "AssetBrowserCommon.hpp"
+#include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <toml++/toml.hpp>
+#include <chrono>
 #include <sstream>
 #include <string_view>
 
@@ -11,8 +14,8 @@ namespace fbzz::editor {
 
 bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 {
-    // WHY: 画像は PNG / JPG 等を直接 GPU リソースとして読み込めるため、
-    //      Asset Browser の変換パイプラインはモデル形式だけを対象にする。
+    // WHY: この関数は .fzasset 生成が必要な raw モデル形式だけを扱う。
+    //      テクスチャ形式は .tex descriptor 生成なので IsTextureRaw() と併用する。
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb";
 }
 
@@ -58,8 +61,12 @@ std::vector<ImportPreset> LoadPresetsFromDir(const std::string& presetsDir)
             ImportPreset p;
             p.name = entry.path().stem().string();
             const auto& tbl = parsed.table();
-            if (auto v = tbl["options"]["flip_green_channel"].value<bool>())
-                p.options.flipGreenChannel = *v;
+            if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
+                p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
+            if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
+                p.options.generateTexDescriptors = *v;
+            if (auto v = tbl["options"]["default_compression"].value<int64_t>())
+                p.options.defaultCompression = static_cast<asset::TextureCompression>(*v);
             result.push_back(std::move(p));
         }
     } catch (...) {}
@@ -72,7 +79,9 @@ bool SavePreset(const std::string& presetsDir, const std::string& name, const Fb
 {
     util::FileSystem::EnsureDirectory(presetsDir);
     toml::table optTbl;
-    optTbl.insert("flip_green_channel", opts.flipGreenChannel);
+    optTbl.insert("normal_map_convention",    static_cast<int64_t>(opts.normalMapConvention));
+    optTbl.insert("generate_tex_descriptors", opts.generateTexDescriptors);
+    optTbl.insert("default_compression",      static_cast<int64_t>(opts.defaultCompression));
     toml::table root;
     root.insert("options", std::move(optTbl));
     std::ostringstream ss;
@@ -82,53 +91,70 @@ bool SavePreset(const std::string& presetsDir, const std::string& name, const Fb
     return util::FileSystem::WriteText(path, ss.str());
 }
 
-// ── テクスチャメタデータ (stem.asset) ─────────────────────────────────────────
-// WHY: モデルインポートも stem.asset を生成するため、テクスチャ設定も同じ拡張子に統合する。
-//      [texture] セクションの有無でモデル asset と区別する。
+// ── テクスチャメタデータ (.tex descriptor) ─────────────────────────────────
+// 旧 stem.asset [texture] セクション形式から TexDescSerializer (.tex TOML) に移行。
 
-static constexpr const char* kCompressNames[] = { "None (Raw)", "BC1 (RGB)", "BC3 (RGBA)", "BC5 (RG)", "BC7 (High Quality)" };
-static constexpr int kCompressCount = 5;
-
-std::string GetTexAssetPath(const std::string& texAbsPath)
+// テクスチャの隣に置く .tex descriptor のパスを返す
+std::string GetTexDescPath(const std::string& texAbsPath)
 {
     const std::filesystem::path p = util::FileSystem::PathFromUtf8(texAbsPath);
-    const std::string stem = util::FileSystem::PathToUtf8(p.stem());
-    return util::FileSystem::PathToUtf8(p.parent_path() / (stem + ".asset"));
+    return util::FileSystem::PathToUtf8(p.parent_path() / (util::FileSystem::PathToUtf8(p.stem()) + ".tex"));
 }
 
-bool LoadTexMeta(const std::string& texAbsPath, bool& srgb, bool& mipmaps, int& compress, bool& flipGreen)
+std::filesystem::path GetExistingImportedModelPath(const std::filesystem::path& sourcePath)
 {
-    const std::string assetPath = GetTexAssetPath(texAbsPath);
-    std::string text;
-    if (!util::FileSystem::ReadText(assetPath, text)) return false;
-    std::istringstream iss(text);
-    const auto parsed = toml::parse(iss);
-    if (!parsed) return false;
-    const auto& tbl = parsed.table();
-    if (!tbl["texture"]) return false; // モデル .asset と区別
-    if (auto v = tbl["texture"]["srgb"].value<bool>())              srgb      = *v;
-    if (auto v = tbl["texture"]["generate_mipmaps"].value<bool>())  mipmaps   = *v;
-    if (auto v = tbl["texture"]["flip_green_channel"].value<bool>()) flipGreen = *v;
-    if (auto v = tbl["texture"]["compression"].value<std::string>()) {
-        for (int i = 0; i < kCompressCount; ++i)
-            if (*v == kCompressNames[i]) { compress = i; break; }
+    const std::string stem = util::FileSystem::PathToUtf8(sourcePath.stem());
+
+    // 正規形式: Foo/Foo.fzasset
+    // WHY: import 生成物を Foo/ に閉じ込めることで、移動・削除・再 import の単位を明確にする。
+    const std::filesystem::path bundledModel =
+        sourcePath.parent_path() / sourcePath.stem() / (stem + ".fzasset");
+    if (util::FileSystem::Exists(bundledModel))
+        return bundledModel;
+
+    return {};
+}
+
+// .tex を読み込んで TextureImportSettings に展開する。なければ GuessTextureType でデフォルト生成。
+bool LoadTexMeta(const std::string& texAbsPath, asset::TextureImportSettings& settings)
+{
+    asset::TextureAsset texAsset;
+    asset::TexDescSerializer ser;
+    if (ser.Load(GetTexDescPath(texAbsPath), texAsset)) {
+        settings = texAsset.settings;
+        return true;
     }
+    // fallback: 旧 stem.asset [texture] セクション形式
+    const std::filesystem::path p = util::FileSystem::PathFromUtf8(texAbsPath);
+    const std::string oldPath = util::FileSystem::PathToUtf8(
+        p.parent_path() / (util::FileSystem::PathToUtf8(p.stem()) + ".asset"));
+    std::string text;
+    if (util::FileSystem::ReadText(oldPath, text)) {
+        std::istringstream iss(text);
+        const auto parsed = toml::parse(iss);
+        if (parsed && parsed.table()["texture"]) {
+            const auto& tbl = parsed.table();
+            settings = asset::DefaultSettingsForType(asset::GuessTextureType(
+                util::FileSystem::GetFilename(texAbsPath)));
+            if (auto v = tbl["texture"]["srgb"].value<bool>())              settings.srgb      = *v;
+            if (auto v = tbl["texture"]["generate_mipmaps"].value<bool>())  settings.mipmaps   = *v;
+            if (auto v = tbl["texture"]["flip_green_channel"].value<bool>()) settings.flipGreen = *v;
+            return true;
+        }
+    }
+    // .tex も .asset もない: ファイル名からデフォルトを生成
+    settings = asset::DefaultSettingsForType(asset::GuessTextureType(
+        util::FileSystem::GetFilename(texAbsPath)));
     return true;
 }
 
-void SaveTexMeta(const std::string& texAbsPath, bool srgb, bool mipmaps, int compress, bool flipGreen)
+void SaveTexMeta(const std::string& texAbsPath, const asset::TextureImportSettings& settings)
 {
-    toml::table texTbl;
-    texTbl.insert("srgb",               srgb);
-    texTbl.insert("generate_mipmaps",   mipmaps);
-    texTbl.insert("flip_green_channel", flipGreen);
-    texTbl.insert("compression",        std::string(kCompressNames[compress]));
-    toml::table root;
-    root.insert("type",    std::string("texture_meta"));
-    root.insert("texture", std::move(texTbl));
-    std::ostringstream ss;
-    ss << root;
-    util::FileSystem::WriteText(GetTexAssetPath(texAbsPath), ss.str());
+    asset::TextureAsset texAsset;
+    texAsset.sourcePath = util::FileSystem::GetFilename(texAbsPath);
+    texAsset.settings   = settings;
+    asset::TexDescSerializer ser;
+    ser.Save(texAsset, GetTexDescPath(texAbsPath));
 }
 
 // ── 除外パターンヘルパー ──────────────────────────────────────────────────────
@@ -153,30 +179,43 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
 {
     namespace fs = std::filesystem;
     const fs::path p = util::FileSystem::PathFromUtf8(absPath);
-    const std::string stem = util::FileSystem::PathToUtf8(p.stem());
-    const fs::path fzasset = p.parent_path() / (stem + ".asset");
-    if (!util::FileSystem::Exists(fzasset)) return false;
+    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
+
+    if (IsTextureRaw(ext)) {
+        const fs::path texFile = util::FileSystem::PathFromUtf8(GetTexDescPath(absPath));
+        if (!util::FileSystem::Exists(texFile)) return false;
+        std::error_code ec;
+        const auto srcTime = fs::last_write_time(p,       ec); if (ec) return false;
+        const auto texTime = fs::last_write_time(texFile, ec); if (ec) return false;
+        return srcTime > texTime;
+    }
+
+    const fs::path modelFile = GetExistingImportedModelPath(p);
+    if (modelFile.empty()) return false;
     std::error_code ec;
-    const auto srcTime    = fs::last_write_time(p,       ec); if (ec) return false;
-    const auto assetTime  = fs::last_write_time(fzasset, ec); if (ec) return false;
+    const auto srcTime   = fs::last_write_time(p,         ec); if (ec) return false;
+    const auto assetTime = fs::last_write_time(modelFile,  ec); if (ec) return false;
     return srcTime > assetTime;
 }
 
 bool AssetBrowserPanel::IsAlreadyImported(const std::string& absPath)
 {
     namespace fs = std::filesystem;
-    // WHY: 新インポート形式では stem.asset が FBX と同じディレクトリに置かれる。
     const fs::path p = util::FileSystem::PathFromUtf8(absPath);
-    const std::string stem = util::FileSystem::PathToUtf8(p.stem());
-    const fs::path check = p.parent_path() / (stem + ".asset");
-    return util::FileSystem::Exists(check);
+    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
+    if (IsTextureRaw(ext))
+        return util::FileSystem::Exists(util::FileSystem::PathFromUtf8(GetTexDescPath(absPath)));
+
+    return !GetExistingImportedModelPath(p).empty();
 }
 
 void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
 {
     const std::string ext = util::StringUtils::ToLower(
         util::FileSystem::GetExtension(relPath));
-    if (!IsImportableRaw(ext)) return;
+    const bool isModelRaw = IsImportableRaw(ext);
+    const bool isTextureRaw = IsTextureRaw(ext);
+    if (!isModelRaw && !isTextureRaw) return;
 
     namespace fs = std::filesystem;
     const std::string absPath = util::FileSystem::PathToUtf8(
@@ -190,28 +229,26 @@ void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
         if (p.path == absPath) return;
     for (const auto& p : m_pendingConfirmImports)
         if (p == absPath) return;
+    for (const auto& p : m_pendingTextureConfirmImports)
+        if (p == absPath) return;
 
-    // ウォッチャー経由の新規ファイルはインポート設定確認キューへ積む（UE 同様の動線）
-    m_pendingConfirmImports.push_back(absPath);
+    // ウォッチャー経由の新規ファイルは種類別の確認キューへ積む。
+    // WHY: FBX は変換ジョブ、テクスチャは .tex descriptor 保存で責務が違う。
+    if (isTextureRaw)
+        m_pendingTextureConfirmImports.push_back(absPath);
+    else
+        m_pendingConfirmImports.push_back(absPath);
 }
 
 void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
 {
-    FBZZ_LOG_INFO("AssetBrowserPanel: scanning for unimported assets in [%s]",
-                  dirAbsPath.c_str());
     m_outdatedPaths.clear();
     for (const auto& path : util::FileSystem::ListFilesRecursive(util::FileSystem::PathFromUtf8(dirAbsPath)))
     {
         const std::string absPath = util::FileSystem::PathToUtf8(path);
         const std::string ext = util::StringUtils::ToLower(
             util::FileSystem::GetExtension(absPath));
-        if (!IsImportableRaw(ext)) continue;
-
-        // 重複チェック
-        bool found = false;
-        for (const auto& p : m_pendingImports)
-            if (p.path == absPath) { found = true; break; }
-        if (found) continue;
+        if (!IsImportableRaw(ext) && !IsTextureRaw(ext)) continue;
 
         if (IsExcludedByPattern(absPath)) continue;
 
@@ -221,20 +258,26 @@ void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
             continue;
         }
 
-        m_pendingImports.push_back({ absPath });
-    }
+        // 重複チェック
+        bool found = false;
+        for (const auto& p : m_pendingImports)       if (p.path == absPath) { found = true; break; }
+        for (const auto& p : m_pendingConfirmImports) if (p == absPath)      { found = true; break; }
+        for (const auto& p : m_pendingTextureConfirmImports) if (p == absPath) { found = true; break; }
+        if (found) continue;
 
-    FBZZ_LOG_INFO("AssetBrowserPanel: scan complete — %zu file(s) queued for import",
-                  m_pendingImports.size());
-    if (!m_pendingImports.empty())
-        m_importAllRequested = true;
+        // ウォッチャー経由と同じ経路へ積む → 必ず種類別 Import Settings を経由してインポート
+        if (IsTextureRaw(ext))
+            m_pendingTextureConfirmImports.push_back(absPath);
+        else
+            m_pendingConfirmImports.push_back(absPath);
+    }
 }
 
 // ─── インポートバッジバー ─────────────────────────────────────────────────────
 
 void AssetBrowserPanel::DrawPendingImportBar(EditorContext&)
 {
-    // 初回スキャンで積まれた m_pendingImports のみ表示（ウォッチャー経由はモーダル経由）
+    // 初回スキャンで積まれた m_pendingImports のみ表示（ウォッチャー経由は Import Settings 経由）
     if (m_pendingImports.empty()) return;
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.30f, 0.18f, 0.05f, 1.0f));
@@ -256,51 +299,6 @@ void AssetBrowserPanel::DrawPendingImportBar(EditorContext&)
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
-    ImGui::Separator();
-}
-
-// ─── インポート結果バー ───────────────────────────────────────────────────────
-
-void AssetBrowserPanel::DrawImportResultBar(EditorContext&)
-{
-    if (!m_showImportResults || m_importResults.empty()) return;
-
-    size_t failed = 0;
-    for (const auto& r : m_importResults) if (!r.ok) ++failed;
-    const size_t succeeded = m_importResults.size() - failed;
-
-    // 背景色付きの矩形を描いてからテキストを重ねる
-    const ImVec4 bgColor = (failed > 0)
-        ? ImVec4(0.45f, 0.10f, 0.10f, 0.85f)
-        : ImVec4(0.10f, 0.35f, 0.10f, 0.85f);
-    const float lineH  = ImGui::GetTextLineHeightWithSpacing();
-    const float rows   = static_cast<float>(1 + failed); // サマリー1行 + 失敗行
-    const float height = rows * lineH + ImGui::GetStyle().FramePadding.y * 2.0f;
-    const ImVec2 p0 = ImGui::GetCursorScreenPos();
-    const ImVec2 p1 = { p0.x + ImGui::GetContentRegionAvail().x, p0.y + height };
-    ImGui::GetWindowDrawList()->AddRectFilled(p0, p1, ImGui::ColorConvertFloat4ToU32(bgColor), 3.0f);
-
-    ImGui::SetCursorScreenPos({ p0.x + 6.0f, p0.y + ImGui::GetStyle().FramePadding.y });
-
-    if (failed > 0)
-        ImGui::TextColored({ 1.0f, 0.5f, 0.5f, 1.0f },
-            "[!] Import: %zu OK  %zu FAILED", succeeded, failed);
-    else
-        ImGui::TextColored({ 0.5f, 1.0f, 0.5f, 1.0f },
-            "[v] Import: %zu file(s) OK", succeeded);
-
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 60.0f);
-    if (ImGui::SmallButton("Dismiss"))
-        m_showImportResults = false;
-
-    for (const auto& r : m_importResults) {
-        if (!r.ok) {
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6.0f);
-            ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f }, "  x  %s", r.filename.c_str());
-        }
-    }
-
-    ImGui::Dummy({ 0.0f, 2.0f });
     ImGui::Separator();
 }
 
@@ -340,9 +338,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
         m_isImporting.store(false);
         m_importFuture = {};
         EditorTaskOverlay::End();
-        FBZZ_LOG_INFO("AssetBrowserPanel: all imports done, flushing asset cache");
         asset::AssetManager::FlushFailed();
-        m_showImportResults = true;
         RefreshDirectory();
         return;
     }
@@ -373,46 +369,24 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
     m_importDone.store(0);
     m_isImporting.store(true);
     m_importThreadDone.store(false);
-    m_showImportResults = false;
-    m_importResults.clear();
-    FBZZ_LOG_INFO("AssetBrowserPanel: starting import of %zu file(s)", total);
     EditorTaskOverlay::Begin("Importing Assets");
     EditorTaskOverlay::SetProgress(0.0f);
 
     auto imports = std::move(m_pendingImports);
 
     m_importFuture = fbzz::TaskSystem::Submit([this, imports = std::move(imports)]() mutable {
-        try {
-            for (const auto& imp : imports) {
-                FBZZ_LOG_INFO("AssetBrowserPanel: importing [%s]", imp.path.c_str());
-                {
-                    std::lock_guard<std::mutex> lock(m_importStatusMtx);
-                    m_importStatusStr = util::FileSystem::GetFilename(imp.path);
-                }
-
-                namespace fs = std::filesystem;
-                const fs::path srcPath = util::FileSystem::PathFromUtf8(imp.path);
-                const std::string outDir =
-                    util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
-                FBZZ_LOG_INFO("AssetBrowserPanel: model outDir = [%s]", outDir.c_str());
-                const bool ok = FbxImportTool::Import(imp.path, outDir, imp.path, imp.options);
-
-                if (ok)
-                    FBZZ_LOG_INFO("AssetBrowserPanel: import OK [%s]", imp.path.c_str());
-                else
-                    FBZZ_LOG_ERROR("AssetBrowserPanel: import FAILED [%s]", imp.path.c_str());
-
-                {
-                    std::lock_guard<std::mutex> lk(m_importStatusMtx);
-                    m_importResults.push_back({
-                        util::FileSystem::GetFilename(imp.path), ok });
-                }
-                m_importDone.fetch_add(1);
+        for (const auto& imp : imports) {
+            {
+                std::lock_guard<std::mutex> lock(m_importStatusMtx);
+                m_importStatusStr = util::FileSystem::GetFilename(imp.path);
             }
-        } catch (const std::exception& e) {
-            FBZZ_LOG_ERROR("AssetBrowserPanel: import thread exception: %s", e.what());
-        } catch (...) {
-            FBZZ_LOG_ERROR("AssetBrowserPanel: import thread unknown exception");
+
+            namespace fs = std::filesystem;
+            const fs::path srcPath = util::FileSystem::PathFromUtf8(imp.path);
+            const std::string outDir =
+                util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
+            FbxImportTool::Import(imp.path, outDir, imp.path, imp.options);
+            m_importDone.fetch_add(1);
         }
         m_importThreadDone.store(true);
     });
@@ -421,79 +395,363 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
 void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
 {
     // Inspector からの Reimport リクエスト（優先度高）
-    if (!ctx.requestOpenImportModal.empty() && !ImGui::IsPopupOpen("Import Settings")) {
+    if (!ctx.requestOpenImportModal.empty()
+        && !m_importSettings.visible
+        && !m_textureImportSettings.visible) {
         const std::string reqExt = util::StringUtils::ToLower(
             util::FileSystem::GetExtension(ctx.requestOpenImportModal));
-        m_importSettings.path        = ctx.requestOpenImportModal;
-        m_importSettings.options     = ctx.defaultImportOptions;
-        m_importSettings.open        = true;
-        m_importSettings.fromWatcher = false;
-        m_importSettings.isTexture   = IsTextureRaw(reqExt);
+        if (IsTextureRaw(reqExt)) {
+            m_textureImportSettings.path        = ctx.requestOpenImportModal;
+            m_textureImportSettings.open        = true;
+            m_textureImportSettings.visible     = true;
+            m_textureImportSettings.needsInit   = true;
+            m_textureImportSettings.fromWatcher = false;
+        } else {
+            m_importSettings.path        = ctx.requestOpenImportModal;
+            m_importSettings.options     = ctx.defaultImportOptions;
+            m_importSettings.open        = true;
+            m_importSettings.visible     = true;
+            m_importSettings.needsInit   = true;
+            m_importSettings.fromWatcher = false;
+            m_importSettings.isTexture   = false;
+        }
         ctx.requestOpenImportModal.clear();
     }
 
-    // ウォッチャー確認キューが溜まっていて、モーダルが閉じているなら自動オープン
+    // ウォッチャー確認キューが溜まっていて、Model Import Settings が閉じているなら自動オープン
     if (!m_pendingConfirmImports.empty()
         && !m_importSettings.open
-        && !ImGui::IsPopupOpen("Import Settings")) {
+        && !m_importSettings.visible) {
+        const std::string ext = util::StringUtils::ToLower(
+            util::FileSystem::GetExtension(m_pendingConfirmImports.front()));
         m_importSettings.path        = m_pendingConfirmImports.front();
         m_importSettings.options     = ctx.defaultImportOptions;
         m_importSettings.open        = true;
+        m_importSettings.visible     = true;
+        m_importSettings.needsInit   = true;
         m_importSettings.fromWatcher = true;
+        m_importSettings.isTexture   = false;
     }
 
+    // テクスチャ確認キューはモデルインポートと別ウィンドウでまとめて扱う。
+    if (!m_pendingTextureConfirmImports.empty()
+        && !m_textureImportSettings.open
+        && !m_textureImportSettings.visible) {
+        m_textureImportSettings.path        = m_pendingTextureConfirmImports.front();
+        m_textureImportSettings.open        = true;
+        m_textureImportSettings.visible     = true;
+        m_textureImportSettings.needsInit   = true;
+        m_textureImportSettings.fromWatcher = true;
+    }
+
+    if (m_textureImportSettings.visible) {
+        if (m_textureImportSettings.open) {
+            ImGui::SetNextWindowFocus();
+            m_textureImportSettings.open = false;
+        }
+
+        const bool isTextureMulti = m_textureImportSettings.fromWatcher
+            && m_pendingTextureConfirmImports.size() > 1;
+        const float textureWindowW = isTextureMulti ? 520.0f : 420.0f;
+        const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos({ center.x + 36.0f, center.y + 36.0f },
+                                ImGuiCond_Appearing, { 0.5f, 0.5f });
+        ImGui::SetNextWindowSize({ textureWindowW, 0.0f }, ImGuiCond_Appearing);
+
+        bool textureWindowOpen = true;
+        if (ImGui::Begin("Texture Import Settings", &textureWindowOpen,
+                         ImGuiWindowFlags_AlwaysAutoResize)) {
+            const bool initTexturePanel =
+                ImGui::IsWindowAppearing() || m_textureImportSettings.needsInit;
+            m_textureImportSettings.needsInit = false;
+            if (initTexturePanel) {
+                LoadTexMeta(m_textureImportSettings.path, m_textureImportSettings.settings);
+                m_pendingTextureConfirmIncludes.assign(
+                    m_pendingTextureConfirmImports.size(), true);
+            }
+
+            if (isTextureMulti) {
+                const int total = static_cast<int>(m_pendingTextureConfirmImports.size());
+                int checkedCount = 0;
+                for (bool b : m_pendingTextureConfirmIncludes) if (b) ++checkedCount;
+                ImGui::TextColored({ 0.95f, 0.75f, 0.25f, 1.0f },
+                                   "%d texture(s) detected", total);
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%d selected)", checkedCount);
+
+                const float btnW = 38.0f;
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - btnW * 2.0f - ImGui::GetStyle().ItemSpacing.x);
+                if (ImGui::SmallButton("All##tex_chk"))
+                    std::fill(m_pendingTextureConfirmIncludes.begin(),
+                              m_pendingTextureConfirmIncludes.end(), true);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("None##tex_chk"))
+                    std::fill(m_pendingTextureConfirmIncludes.begin(),
+                              m_pendingTextureConfirmIncludes.end(), false);
+
+                const float listH = std::min(
+                    static_cast<float>(total) * ImGui::GetTextLineHeightWithSpacing() + 8.0f,
+                    180.0f);
+                ImGui::BeginChild("##texture_confirm_list", { 0.0f, listH }, true);
+                for (int i = 0; i < total; ++i) {
+                    if (i >= static_cast<int>(m_pendingTextureConfirmIncludes.size()))
+                        m_pendingTextureConfirmIncludes.push_back(true);
+                    bool inc = m_pendingTextureConfirmIncludes[i];
+                    ImGui::PushID(i);
+                    if (ImGui::Checkbox("##tex_inc", &inc))
+                        m_pendingTextureConfirmIncludes[i] = inc;
+                    ImGui::SameLine();
+                    ImGui::TextUnformatted(
+                        util::FileSystem::GetFilename(m_pendingTextureConfirmImports[i]).c_str());
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", m_pendingTextureConfirmImports[i].c_str());
+                    ImGui::PopID();
+                }
+                ImGui::EndChild();
+                ImGui::TextDisabled("Settings below apply to all checked textures.");
+            } else {
+                const std::string displayPath = m_textureImportSettings.fromWatcher
+                    ? m_pendingTextureConfirmImports.front()
+                    : m_textureImportSettings.path;
+                ImGui::TextUnformatted(util::FileSystem::GetFilename(displayPath).c_str());
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", displayPath.c_str());
+            }
+
+            ImGui::Separator();
+            auto& s = m_textureImportSettings.settings;
+            ImGui::SeparatorText("Type");
+            static constexpr const char* kTypeNames[] = { "Color", "Normal", "Data", "HDR", "UI" };
+            int typeIdx = static_cast<int>(s.type);
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::Combo("Type##tex_batch", &typeIdx, kTypeNames, 5)) {
+                s.type = static_cast<asset::TextureType>(typeIdx);
+                s = asset::DefaultSettingsForType(s.type);
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Reset Defaults##tex_batch"))
+                s = asset::DefaultSettingsForType(s.type);
+
+            ImGui::SeparatorText("Encoding");
+            ImGui::Checkbox("sRGB##tex_batch", &s.srgb);
+            ImGui::SameLine(140.0f);
+            ImGui::Checkbox("Mipmaps##tex_batch", &s.mipmaps);
+            ImGui::Checkbox("Flip Green Channel##tex_batch", &s.flipGreen);
+            ImGui::SameLine(140.0f);
+            ImGui::Checkbox("Normalize Mipmaps##tex_batch", &s.normalizeMipmaps);
+
+            ImGui::SeparatorText("Compression");
+            static constexpr const char* kCompNames[] = {
+                "Auto", "BC1 (RGB)", "BC3 (RGBA)", "BC4 (R)", "BC5 (RG)", "BC6H (HDR)", "BC7 (High)", "None"
+            };
+            int compIdx = static_cast<int>(s.compression);
+            ImGui::SetNextItemWidth(200.0f);
+            if (ImGui::Combo("Format##tex_batch_comp", &compIdx, kCompNames, 8))
+                s.compression = static_cast<asset::TextureCompression>(compIdx);
+            static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
+            int qualIdx = static_cast<int>(s.compressionQuality);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80.0f);
+            if (ImGui::Combo("##tex_batch_compq", &qualIdx, kQualNames, 3))
+                s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
+
+            ImGui::SeparatorText("Sampling");
+            int maxSize = static_cast<int>(s.maxSize);
+            ImGui::SetNextItemWidth(100.0f);
+            if (ImGui::InputInt("Max Size##tex_batch", &maxSize))
+                s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
+            static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
+            int wrapU = static_cast<int>(s.wrapU);
+            int wrapV = static_cast<int>(s.wrapV);
+            ImGui::SetNextItemWidth(100.0f);
+            if (ImGui::Combo("Wrap U##tex_batch", &wrapU, kWrapNames, 4)) s.wrapU = static_cast<asset::TextureWrap>(wrapU);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(100.0f);
+            if (ImGui::Combo("Wrap V##tex_batch", &wrapV, kWrapNames, 4)) s.wrapV = static_cast<asset::TextureWrap>(wrapV);
+            int anisoLv = static_cast<int>(s.anisoLevel);
+            if (ImGui::SliderInt("Aniso Level##tex_batch", &anisoLv, 1, 16))
+                s.anisoLevel = static_cast<uint32_t>(anisoLv);
+
+            ImGui::Separator();
+            auto closeTextureWindow = [&]() {
+                m_pendingTextureConfirmImports.clear();
+                m_pendingTextureConfirmIncludes.clear();
+                m_textureImportSettings.visible = false;
+                m_textureImportSettings.open = false;
+                m_textureImportSettings.fromWatcher = false;
+                m_textureImportSettings.needsInit = false;
+            };
+            auto applyTextureSettings = [&]() {
+                if (m_textureImportSettings.fromWatcher) {
+                    for (int i = 0; i < static_cast<int>(m_pendingTextureConfirmImports.size()); ++i) {
+                        const bool inc = i < static_cast<int>(m_pendingTextureConfirmIncludes.size())
+                            && m_pendingTextureConfirmIncludes[i];
+                        if (inc)
+                            SaveTexMeta(m_pendingTextureConfirmImports[i], m_textureImportSettings.settings);
+                    }
+                } else {
+                    SaveTexMeta(m_textureImportSettings.path, m_textureImportSettings.settings);
+                }
+                closeTextureWindow();
+                RefreshDirectory();
+            };
+
+            int checkedCount = 1;
+            if (m_textureImportSettings.fromWatcher) {
+                checkedCount = 0;
+                for (bool b : m_pendingTextureConfirmIncludes) if (b) ++checkedCount;
+            }
+            char applyLabel[48];
+            std::snprintf(applyLabel, sizeof(applyLabel), "Apply (%d)", checkedCount);
+            if (checkedCount == 0) ImGui::BeginDisabled();
+            if (ImGui::Button(applyLabel, { 100.0f, 0.0f }))
+                applyTextureSettings();
+            if (checkedCount == 0) ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", { 90.0f, 0.0f }))
+                closeTextureWindow();
+        }
+        ImGui::End();
+
+        if (!textureWindowOpen) {
+            m_pendingTextureConfirmImports.clear();
+            m_pendingTextureConfirmIncludes.clear();
+            m_textureImportSettings.visible = false;
+            m_textureImportSettings.open = false;
+            m_textureImportSettings.fromWatcher = false;
+        }
+    }
+
+    if (!m_importSettings.visible)
+        return;
+
+    auto advanceConfirmQueue = [&]() {
+        if (!m_pendingConfirmImports.empty()
+            && m_pendingConfirmImports.front() == m_importSettings.path) {
+            m_pendingConfirmImports.erase(m_pendingConfirmImports.begin());
+        }
+
+        if (!m_pendingConfirmImports.empty()) {
+            const std::string ext = util::StringUtils::ToLower(
+                util::FileSystem::GetExtension(m_pendingConfirmImports.front()));
+            m_importSettings.path        = m_pendingConfirmImports.front();
+            m_importSettings.options     = ctx.defaultImportOptions;
+            m_importSettings.open        = true;
+            m_importSettings.visible     = true;
+            m_importSettings.needsInit   = true;
+            m_importSettings.fromWatcher = true;
+            m_importSettings.isTexture   = false;
+        } else {
+            m_importSettings.open        = false;
+            m_importSettings.visible     = false;
+            m_importSettings.needsInit   = false;
+            m_importSettings.fromWatcher = false;
+        }
+    };
+
     if (m_importSettings.open) {
-        ImGui::OpenPopup("Import Settings");
+        ImGui::SetNextWindowFocus();
         m_importSettings.open = false;
     }
 
-    // 複数ファイルモード: watcher 経由で 2 件以上
-    const bool isMulti = m_importSettings.fromWatcher && m_pendingConfirmImports.size() > 1;
+    const bool isMulti = m_importSettings.fromWatcher
+        && m_pendingConfirmImports.size() > 1;
     const float modalW = isMulti ? 480.0f : 380.0f;
     const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, { 0.5f, 0.5f });
     ImGui::SetNextWindowSize({ modalW, 0.0f }, ImGuiCond_Appearing);
 
-    if (!ImGui::BeginPopupModal("Import Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    bool windowOpen = true;
+    if (!ImGui::Begin("Model Import Settings", &windowOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::End();
+        if (!windowOpen) advanceConfirmQueue();
         return;
+    }
+    if (!windowOpen) {
+        ImGui::End();
+        advanceConfirmQueue();
+        return;
+    }
 
     // ── テクスチャ専用 UI ─────────────────────────────────────────────────────
-    if (m_importSettings.isTexture) {
+    const bool initPanel = ImGui::IsWindowAppearing() || m_importSettings.needsInit;
+    m_importSettings.needsInit = false;
+    m_importSettings.isTexture = false;
+
+    if (false) {
         ImGui::TextUnformatted(util::FileSystem::GetFilename(m_importSettings.path).c_str());
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", m_importSettings.path.c_str());
         ImGui::Separator();
         ImGui::Spacing();
 
-        if (ImGui::IsWindowAppearing())
-            LoadTexMeta(m_importSettings.path,
-                        m_importSettings.texSRGB,
-                        m_importSettings.texMipmaps,
-                        m_importSettings.texCompress,
-                        m_importSettings.texFlipGreen);
+        if (initPanel)
+            LoadTexMeta(m_importSettings.path, m_importSettings.texSettings);
 
-        ImGui::SeparatorText("Texture Options");
-        ImGui::Checkbox("sRGB (Color Texture)", &m_importSettings.texSRGB);
+        auto& s = m_importSettings.texSettings;
+
+        // ── Type ─────────────────────────────────────────────────────────────
+        ImGui::SeparatorText("Type");
+        static constexpr const char* kTypeNames[] = { "Color", "Normal", "Data", "HDR", "UI" };
+        int typeIdx = static_cast<int>(s.type);
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::Combo("Type##tex", &typeIdx, kTypeNames, 5)) {
+            s.type = static_cast<asset::TextureType>(typeIdx);
+            s = asset::DefaultSettingsForType(s.type); // デフォルトを再適用
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset Defaults"))
+            s = asset::DefaultSettingsForType(s.type);
+
+        // ── Encoding ─────────────────────────────────────────────────────────
+        ImGui::SeparatorText("Encoding");
+        ImGui::Checkbox("sRGB", &s.srgb);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("カラーテクスチャ（Albedo 等）は ON。\n法線マップ・ラフネス等リニアデータは OFF。");
-        ImGui::Checkbox("Generate Mipmaps", &m_importSettings.texMipmaps);
-        ImGui::Checkbox("Flip Green Channel (OpenGL Normal Map)", &m_importSettings.texFlipGreen);
+        ImGui::SameLine(140.0f);
+        ImGui::Checkbox("Mipmaps", &s.mipmaps);
+        ImGui::Checkbox("Flip Green Channel", &s.flipGreen);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("法線マップの Y 成分を反転します。\nBlender / Maya がデフォルト出力する OpenGL 形式の場合にチェック。");
-        ImGui::Spacing();
-        ImGui::TextDisabled("Compression");
-        ImGui::SameLine();
+        ImGui::SameLine(140.0f);
+        ImGui::Checkbox("Normalize Mipmaps", &s.normalizeMipmaps);
+
+        // ── Compression ───────────────────────────────────────────────────────
+        ImGui::SeparatorText("Compression");
+        static constexpr const char* kCompNames[] = {
+            "Auto", "BC1 (RGB)", "BC3 (RGBA)", "BC4 (R)", "BC5 (RG)", "BC6H (HDR)", "BC7 (High)", "None"
+        };
+        int compIdx = static_cast<int>(s.compression);
         ImGui::SetNextItemWidth(200.0f);
-        if (ImGui::BeginCombo("##texcomp", kCompressNames[m_importSettings.texCompress])) {
-            for (int i = 0; i < kCompressCount; ++i) {
-                const bool sel = (m_importSettings.texCompress == i);
-                if (ImGui::Selectable(kCompressNames[i], sel))
-                    m_importSettings.texCompress = i;
-                if (sel) ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
+        if (ImGui::Combo("Format##comp", &compIdx, kCompNames, 8))
+            s.compression = static_cast<asset::TextureCompression>(compIdx);
+        static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
+        int qualIdx = static_cast<int>(s.compressionQuality);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80.0f);
+        if (ImGui::Combo("##compq", &qualIdx, kQualNames, 3))
+            s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
+
+        // ── Sampling ──────────────────────────────────────────────────────────
+        ImGui::SeparatorText("Sampling");
+        int maxSize = static_cast<int>(s.maxSize);
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::InputInt("Max Size", &maxSize))
+            s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
+
+        static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
+        int wrapU = static_cast<int>(s.wrapU);
+        int wrapV = static_cast<int>(s.wrapV);
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::Combo("Wrap U", &wrapU, kWrapNames, 4)) s.wrapU = static_cast<asset::TextureWrap>(wrapU);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::Combo("Wrap V##w", &wrapV, kWrapNames, 4)) s.wrapV = static_cast<asset::TextureWrap>(wrapV);
+
+        int anisoLv = static_cast<int>(s.anisoLevel);
+        if (ImGui::SliderInt("Aniso Level", &anisoLv, 1, 16))
+            s.anisoLevel = static_cast<uint32_t>(anisoLv);
+
         ImGui::Spacing();
-        ImGui::TextDisabled("Settings saved as  %s.asset",
+        ImGui::TextDisabled("Settings saved as  %s.tex",
             util::FileSystem::PathToUtf8(
                 util::FileSystem::PathFromUtf8(m_importSettings.path).stem()).c_str());
         ImGui::Spacing();
@@ -501,18 +759,14 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ImGui::Spacing();
 
         if (ImGui::Button("Apply", { 90.0f, 0.0f })) {
-            SaveTexMeta(m_importSettings.path,
-                        m_importSettings.texSRGB,
-                        m_importSettings.texMipmaps,
-                        m_importSettings.texCompress,
-                        m_importSettings.texFlipGreen);
-            ImGui::CloseCurrentPopup();
+            SaveTexMeta(m_importSettings.path, m_importSettings.texSettings);
+            advanceConfirmQueue();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", { 90.0f, 0.0f }))
-            ImGui::CloseCurrentPopup();
+            advanceConfirmQueue();
 
-        ImGui::EndPopup();
+        ImGui::End();
         return;
     }
 
@@ -520,21 +774,35 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
     const std::string presetsDir = GetPresetsDir(m_rootPath);
     static std::vector<ImportPreset> s_presets;
     static std::size_t               s_loadRevision = static_cast<std::size_t>(-1);
-    static FbxScanResult             s_scan;
     static int                       s_presetSel = -1;
     static char                      s_presetNameBuf[64] = {};
-    if (ImGui::IsWindowAppearing()) {
+    if (initPanel) {
         s_presets      = LoadPresetsFromDir(presetsDir);
         s_loadRevision = 0;
         s_presetSel    = -1;
         s_presetNameBuf[0] = '\0';
+        m_scanResult  = {};
         if (!isMulti) {
-            s_scan = FbxImportTool::Scan(m_importSettings.path);
-            m_importSettings.options.selectedMeshNames = s_scan.meshNames;
-            m_importSettings.options.selectedAnimNames = s_scan.animNames;
+            // Assimp パースはレンダースレッドをブロックすると D3D11 TDR が起きるため非同期で実行
+            m_scanPending = true;
+            const std::string scanPath = m_importSettings.path;
+            m_scanFuture = fbzz::TaskSystem::Submit([scanPath]() {
+                return FbxImportTool::Scan(scanPath);
+            });
+        } else {
+            m_scanPending = false;
         }
         // 複数ファイル: チェック状態を初期化（全選択）
         m_pendingConfirmIncludes.assign(m_pendingConfirmImports.size(), true);
+    }
+
+    // スキャン完了チェック（ポーリング: 非ブロッキング）
+    if (m_scanPending && m_scanFuture.valid() &&
+        m_scanFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        m_scanResult  = m_scanFuture.get();
+        m_scanPending = false;
+        m_importSettings.options.selectedMeshNames = m_scanResult.meshNames;
+        m_importSettings.options.selectedAnimNames = m_scanResult.animNames;
     }
 
     // ── ヘッダー ──────────────────────────────────────────────────────────
@@ -633,54 +901,91 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ImGui::Spacing();
     }
 
-    // ── オプション ────────────────────────────────────────────────────────
-    ImGui::SeparatorText("Options");
-    ImGui::Checkbox("Flip Green Channel (OpenGL Normal Map)",
-                    &m_importSettings.options.flipGreenChannel);
+    // ── テクスチャ生成オプション ──────────────────────────────────────────
+    ImGui::SeparatorText("Texture Generation");
+    ImGui::Checkbox("Auto-generate .tex descriptors",
+                    &m_importSettings.options.generateTexDescriptors);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip(
-            "法線マップの Y 成分を反転します。\n"
-            "Blender / Maya がデフォルト出力する OpenGL 形式の場合にチェック。");
+            "インポート時にテクスチャごとの .tex descriptor を自動生成します。\n"
+            "sRGB / 圧縮 / Mipmap 等の設定は .tex から Editor で編集できます。");
+
+    {
+        static constexpr const char* kConvNames[] = {
+            "DirectX (keep G)",
+            "OpenGL (flip G)",
+        };
+        int convIdx = static_cast<int>(m_importSettings.options.normalMapConvention);
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::Combo("Normal Map Convention", &convIdx, kConvNames, 2))
+            m_importSettings.options.normalMapConvention =
+                static_cast<NormalMapConvention>(convIdx);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip(
+                "DirectX: G をそのまま保持（UE / Unity デフォルト）\n"
+                "OpenGL:  G を反転（Blender / Maya デフォルト）");
+    }
+
+    {
+        static constexpr const char* kCompNames[] = {
+            "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
+        };
+        int compIdx = static_cast<int>(m_importSettings.options.defaultCompression);
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::Combo("Default Compression", &compIdx, kCompNames, 8))
+            m_importSettings.options.defaultCompression =
+                static_cast<asset::TextureCompression>(compIdx);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip(
+                "生成する .tex のデフォルト圧縮形式。\n"
+                "Auto = テクスチャタイプから自動選択。");
+    }
 
     // ── 選択的インポート（単一ファイルのみ） ──────────────────────────────
-    if (!isMulti && s_scan.valid && (!s_scan.meshNames.empty() || !s_scan.animNames.empty())) {
-        ImGui::Spacing();
-        ImGui::SeparatorText("Contents");
-
-        auto drawSelectList = [](const char* label,
-                                 const std::vector<std::string>& all,
-                                 std::vector<std::string>& selected)
-        {
-            if (all.empty()) return;
-            ImGui::TextDisabled("%s", label);
-            ImGui::SameLine();
-            if (ImGui::SmallButton("All##sel_all")) selected = all;
-            ImGui::SameLine();
-            if (ImGui::SmallButton("None##sel_none")) selected.clear();
+    if (!isMulti) {
+        if (m_scanPending) {
             ImGui::Spacing();
-            for (const auto& name : all) {
-                bool checked = false;
-                for (const auto& s : selected) if (s == name) { checked = true; break; }
-                if (ImGui::Checkbox(name.c_str(), &checked)) {
-                    if (checked) {
-                        selected.push_back(name);
-                    } else {
-                        selected.erase(
-                            std::remove(selected.begin(), selected.end(), name),
-                            selected.end());
+            ImGui::SeparatorText("Contents");
+            ImGui::TextDisabled("Scanning...");
+        } else if (m_scanResult.valid &&
+                   (!m_scanResult.meshNames.empty() || !m_scanResult.animNames.empty())) {
+            ImGui::Spacing();
+            ImGui::SeparatorText("Contents");
+
+            auto drawSelectList = [](const char* label,
+                                     const std::vector<std::string>& all,
+                                     std::vector<std::string>& selected)
+            {
+                if (all.empty()) return;
+                ImGui::TextDisabled("%s", label);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("All##sel_all")) selected = all;
+                ImGui::SameLine();
+                if (ImGui::SmallButton("None##sel_none")) selected.clear();
+                ImGui::Spacing();
+                for (const auto& name : all) {
+                    bool checked = false;
+                    for (const auto& s : selected) if (s == name) { checked = true; break; }
+                    if (ImGui::Checkbox(name.c_str(), &checked)) {
+                        if (checked) {
+                            selected.push_back(name);
+                        } else {
+                            selected.erase(
+                                std::remove(selected.begin(), selected.end(), name),
+                                selected.end());
+                        }
                     }
                 }
+            };
+            drawSelectList("Meshes", m_scanResult.meshNames,
+                           m_importSettings.options.selectedMeshNames);
+            if (!m_scanResult.animNames.empty()) {
+                ImGui::Spacing();
+                drawSelectList("Animations", m_scanResult.animNames,
+                               m_importSettings.options.selectedAnimNames);
             }
-        };
-        drawSelectList("Meshes", s_scan.meshNames,
-                       m_importSettings.options.selectedMeshNames);
-        if (!s_scan.animNames.empty()) {
-            ImGui::Spacing();
-            drawSelectList("Animations", s_scan.animNames,
-                           m_importSettings.options.selectedAnimNames);
         }
-    }
-    if (isMulti) {
+    } else {
         ImGui::Spacing();
         ImGui::TextDisabled("(Contents selection is available in single-file import)");
     }
@@ -724,7 +1029,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             m_pendingConfirmImports.clear();
             m_importSettings.fromWatcher = false;
             m_importAllRequested = true;
-            ImGui::CloseCurrentPopup();
+            m_importSettings.visible = false;
         }
         if (checkedCount == 0) ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -737,7 +1042,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             m_pendingConfirmImports.clear();
             m_importSettings.fromWatcher = false;
             m_importAllRequested = true;
-            ImGui::CloseCurrentPopup();
+            m_importSettings.visible = false;
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("全 %zu 件をインポート", m_pendingConfirmImports.size());
 
@@ -745,7 +1050,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         if (ImGui::Button("Cancel", { 75.0f, 0.0f })) {
             m_pendingConfirmImports.clear();
             m_importSettings.fromWatcher = false;
-            ImGui::CloseCurrentPopup();
+            m_importSettings.visible = false;
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("全件スキップ");
     } else {
@@ -762,38 +1067,21 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             if (!found)
                 m_pendingImports.push_back({ m_importSettings.path, m_importSettings.options });
         };
-        auto advanceConfirmQueue = [&]() {
-            if (!m_pendingConfirmImports.empty()
-                && m_pendingConfirmImports.front() == m_importSettings.path) {
-                m_pendingConfirmImports.erase(m_pendingConfirmImports.begin());
-            }
-            if (!m_pendingConfirmImports.empty()) {
-                m_importSettings.path        = m_pendingConfirmImports.front();
-                m_importSettings.options     = ctx.defaultImportOptions;
-                m_importSettings.open        = true;
-                m_importSettings.fromWatcher = true;
-            } else {
-                m_importSettings.fromWatcher = false;
-            }
-        };
-
         if (ImGui::Button("Import", { 90.0f, 0.0f })) {
             enqueueCurrentFile();
             m_importAllRequested = true;
-            ImGui::CloseCurrentPopup();
             advanceConfirmQueue();
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("インポートして次へ");
 
         ImGui::SameLine();
         if (ImGui::Button("Cancel", { 90.0f, 0.0f })) {
-            ImGui::CloseCurrentPopup();
             advanceConfirmQueue();
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("スキップ");
     }
 
-    ImGui::EndPopup();
+    ImGui::End();
 }
 
 } // namespace fbzz::editor
