@@ -470,8 +470,9 @@ static renderer::ResourceHandle<renderer::TextureTag> BuildSplatmapTexture(
     renderer::ResourceHandle<renderer::TextureTag> fallback)
 {
     if (terrain.splatData.empty()) return fallback;
-    assert(terrain.splatData.size() ==
-           static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows) * 4u);
+    if (terrain.splatData.size() !=
+        static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows) * 4u)
+        return fallback;
     return resources.CreateTexture(
         terrain.splatData.data(),
         static_cast<uint32_t>(terrain.columns),

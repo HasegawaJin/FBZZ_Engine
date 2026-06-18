@@ -61,8 +61,21 @@ toml::table WriteTerrainData(const TerrainComponent& tc)
     terrainTbl.insert("heightData", std::move(heightArr));
 
     toml::array splatArr;
-    for (uint8_t s : tc.splatData)
-        splatArr.push_back(static_cast<int64_t>(s));
+    const size_t expectedSplatSize = static_cast<size_t>(tc.columns) * static_cast<size_t>(tc.rows) * 4u;
+    if (tc.splatData.size() == expectedSplatSize) {
+        for (uint8_t s : tc.splatData)
+            splatArr.push_back(static_cast<int64_t>(s));
+    } else {
+        // WHY: splatData が空の Terrain をそのまま保存すると、次回ロード時に PaintTool が
+        //      レイヤー重みの前提を失うため、保存データ上も layer0=100% に正規化する。
+        const size_t vertexCount = static_cast<size_t>(tc.columns) * static_cast<size_t>(tc.rows);
+        for (size_t i = 0; i < vertexCount; ++i) {
+            splatArr.push_back(int64_t{255});
+            splatArr.push_back(int64_t{0});
+            splatArr.push_back(int64_t{0});
+            splatArr.push_back(int64_t{0});
+        }
+    }
     terrainTbl.insert("splatData", std::move(splatArr));
 
     return terrainTbl;
@@ -95,6 +108,9 @@ bool ReadTerrainData(const toml::table& terrainTbl, TerrainComponent& tc)
         for (auto& v : *splatArr)
             tc.splatData.push_back(static_cast<uint8_t>(v.value_or(int64_t{0})));
     }
+    const size_t expectedSplatSize = static_cast<size_t>(tc.columns) * static_cast<size_t>(tc.rows) * 4u;
+    if (tc.splatData.size() != expectedSplatSize)
+        tc.InitDefaultSplat();
 
     tc.heightDirty = true;
     tc.splatDirty = true;

@@ -43,15 +43,31 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
         f.write(pathBuf, FZTERRAIN_PATH_LEN);
     }
 
-    // 高さデータ
     const size_t heightCount = static_cast<size_t>(asset.columns) * asset.rows;
-    f.write(reinterpret_cast<const char*>(asset.heightData.data()),
-            static_cast<std::streamsize>(heightCount * sizeof(float)));
+    if (asset.heightData.size() >= heightCount) {
+        f.write(reinterpret_cast<const char*>(asset.heightData.data()),
+                static_cast<std::streamsize>(heightCount * sizeof(float)));
+    } else {
+        // WHY: 不完全な TerrainAsset を保存してもロード不能な .terrain にしないため、
+        //      欠けた高さはフラット地形として 0 で埋める。
+        const std::vector<float> defaultHeights(heightCount, 0.0f);
+        f.write(reinterpret_cast<const char*>(defaultHeights.data()),
+                static_cast<std::streamsize>(heightCount * sizeof(float)));
+    }
 
-    // スプラットデータ
     const size_t splatCount = heightCount * layerCount;
-    f.write(reinterpret_cast<const char*>(asset.splatData.data()),
-            static_cast<std::streamsize>(std::min(splatCount, asset.splatData.size())));
+    if (asset.splatData.size() >= splatCount) {
+        f.write(reinterpret_cast<const char*>(asset.splatData.data()),
+                static_cast<std::streamsize>(splatCount));
+    } else {
+        // WHY: PaintTool は各頂点に RGBA の重みが必ず存在する前提で編集するため、
+        //      未初期化データは layer0=100% の正規化済み splat として保存する。
+        std::vector<uint8_t> defaultSplat(splatCount, 0u);
+        for (size_t i = 0; i < heightCount; ++i)
+            defaultSplat[i * layerCount] = 255u;
+        f.write(reinterpret_cast<const char*>(defaultSplat.data()),
+                static_cast<std::streamsize>(splatCount));
+    }
 
     return f.good();
 }

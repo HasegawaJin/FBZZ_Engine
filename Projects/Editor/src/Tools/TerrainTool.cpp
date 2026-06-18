@@ -37,12 +37,24 @@ void EnsureSplatData(scene::TerrainComponent& terrain)
 {
     const size_t expectedSize = static_cast<size_t>(terrain.columns)
                               * static_cast<size_t>(terrain.rows) * 4u;
-    if (terrain.splatData.size() == expectedSize)
+    if (terrain.splatData.size() != expectedSize) {
+        terrain.InitDefaultSplat();
         return;
+    }
 
-    terrain.splatData.assign(expectedSize, 0u);
-    for (int i = 0; i < terrain.columns * terrain.rows; ++i)
-        terrain.splatData[static_cast<size_t>(i) * 4 + 0] = 255u;
+    for (int i = 0; i < terrain.columns * terrain.rows; ++i) {
+        const size_t base = static_cast<size_t>(i) * 4u;
+        const uint32_t sum = static_cast<uint32_t>(terrain.splatData[base + 0])
+                           + static_cast<uint32_t>(terrain.splatData[base + 1])
+                           + static_cast<uint32_t>(terrain.splatData[base + 2])
+                           + static_cast<uint32_t>(terrain.splatData[base + 3]);
+        if (sum == 0u) {
+            terrain.splatData[base + 0] = 255u;
+            terrain.splatData[base + 1] = 0u;
+            terrain.splatData[base + 2] = 0u;
+            terrain.splatData[base + 3] = 0u;
+        }
+    }
 }
 
 int ResolvePaintLayerForTerrain(
