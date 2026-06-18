@@ -1,7 +1,0 @@
-animations = [ 'Player/anims/clip_0.anim' ]
-materials = [ 'Player/materials/mat_0.mat', 'Player/materials/mat_1.mat' ]
-meshes = [ 'Player/meshes/mesh_0.mesh', 'Player/meshes/mesh_1.mesh' ]
-skeleton = 'Player/Player.skel'
-source_hint = 'C:/Users/jinhs/Downloads/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Models/DebugCharacter/Player.fbx'
-unit_scale = 0.009999999776482582
-version = 1

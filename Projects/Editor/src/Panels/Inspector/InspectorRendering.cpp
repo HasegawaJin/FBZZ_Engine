@@ -47,12 +47,12 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             if (sel == 0) {
                 auto loadCustomMesh = [&mr]() {
                     if (mr.meshPath.empty()) return;
-                    if (auto* model = asset::AssetManager::Load<asset::Model>(mr.meshPath))
+                    if (auto* model = asset::AssetManager::LoadModel(mr.meshPath))
                         if (!model->meshes.empty())
                             mr.mesh = model->meshes[0].get();
                 };
                 if (widgets::AssetPathField("Mesh Path", mr.meshPath,
-                                            ".asset", ctx.projectRoot))
+                                            ".fzasset", ctx.projectRoot))
                     loadCustomMesh();
             }
         });
@@ -62,11 +62,11 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             auto loadModel = [&smr]() {
                 smr.model = nullptr;
                 if (smr.modelPath.empty()) return;
-                smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
+                smr.model = asset::AssetManager::LoadModel(smr.modelPath);
             };
 
             if (widgets::AssetPathField("Model", smr.modelPath,
-                                        ".asset", ctx.projectRoot))
+                                        ".fzasset", ctx.projectRoot))
                 loadModel();
 
             if (smr.model) {

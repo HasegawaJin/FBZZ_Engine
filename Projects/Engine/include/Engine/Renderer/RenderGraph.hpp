@@ -201,6 +201,14 @@ public:
         return true;
     }
 
+    // 外部で計算済みの ExecutionReport を注入して次回 Execute() の Plan() をスキップさせる。
+    // profiles は Execute() が毎回書き直すためここでクリアする。
+    void InjectPlan(ExecutionReport rep)
+    {
+        rep.profiles.clear();
+        m_report = std::move(rep);
+    }
+
     // Execute: Plan() 済みの実行順でパスコールバックを呼ぶ。
     // Plan() が未呼び出しの場合は内部で Plan() を実行してから進む。
     [[nodiscard]] bool Execute()

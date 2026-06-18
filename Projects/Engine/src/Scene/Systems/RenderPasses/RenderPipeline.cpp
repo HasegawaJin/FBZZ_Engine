@@ -86,6 +86,8 @@ void RenderPipeline::RebuildTransientPool(
     // WHAT: ライフタイム解析で同一 aliasGroup に割り当てられたトランジェントリソースは
     //       1 つの物理 RT を共有できる。グループごとに RT を 1 つ確保し、
     //       m_nameToAliasGroup でリソース名から高速にハンドルを引けるようにする。
+    for (auto& [group, pr] : m_aliasGroupPool)
+        resources.Release(pr.handle);
     m_aliasGroupPool.clear();
     m_nameToAliasGroup.clear();
 
@@ -128,6 +130,16 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("RenderPipeline::Execute");
 
+    // 有効パスのインデックス列を先に確定し、前フレームと比較してトポロジ変化を検出する。
+    std::vector<size_t> enabledNow;
+    enabledNow.reserve(m_entries.size());
+    for (size_t i = 0; i < m_entries.size(); ++i) {
+        const auto& e = m_entries[i];
+        if (e.pass ? e.pass->IsEnabled(ctx) : bool(e.fn))
+            enabledNow.push_back(i);
+    }
+    const bool topologyChanged = !m_planValid || (enabledNow != m_lastEnabledEntryIndices);
+
     renderer::RenderGraph graph;
 
     for (auto& [name, desc] : m_resources)
@@ -136,27 +148,32 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
     for (const auto& o : m_outputs)
         graph.AddOutput(o);
 
-    for (auto& e : m_entries) {
+    for (size_t i : enabledNow) {
+        auto& e = m_entries[i];
         if (e.pass) {
-            if (!e.pass->IsEnabled(ctx))
-                continue;
             IRenderPass* p = e.pass.get();
             graph.AddPass(
                 p->Name(),
                 p->DeclareAccesses(ctx),
                 [p, &ctx] { p->Execute(ctx); },
                 p->AllowCulling());
-        } else if (e.fn) {
+        } else {
             graph.AddPass(std::string_view(e.name), e.accesses, e.fn, e.allowCulling);
         }
     }
 
     graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
 
-    // Phase 1: Plan — 依存解決・カリング・ライフタイム解析を先に実行する。
-    // WHY: トランジェント RT プールの再構築にはライフタイム解析の結果が必要なため、
-    //      パスのコールバックを呼ぶ前に Plan() を完了させる。
-    if (!graph.Plan()) return false;
+    // Phase 1: Plan — トポロジが変わった場合のみ依存解決・カリング・ライフタイム解析を実行する。
+    // トポロジ不変フレームでは前フレームの結果を注入して Plan() をスキップする。
+    if (topologyChanged) {
+        if (!graph.Plan()) return false;
+        m_lastEnabledEntryIndices = std::move(enabledNow);
+        m_planValid = true;
+        m_poolDirty = true; // トポロジ変化時はプールも必ず再構築する
+    } else {
+        graph.InjectPlan(m_lastReport);
+    }
 
     // Phase 2: プールが古い場合 (パイプライン構成変更後の初回フレーム) に再構築する。
     if (m_poolDirty)
@@ -171,6 +188,16 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
 
     const bool ok = graph.Execute();
     m_lastReport = graph.GetLastReport();
+
+    // トランジェント RT を解放する。
+    // WHY: RenderPipeline はフレームごとにスタック上で生成・破棄される。
+    //      ResourceHandle は整数 ID に過ぎず、デストラクタは ResourceManager に
+    //      通知しないため、Execute 完了後に明示的に解放しないと D3D11 リソースが漏れる。
+    for (auto& [group, pr] : m_aliasGroupPool)
+        ctx.resources.Release(pr.handle);
+    m_aliasGroupPool.clear();
+    m_nameToAliasGroup.clear();
+
     return ok;
 }
 

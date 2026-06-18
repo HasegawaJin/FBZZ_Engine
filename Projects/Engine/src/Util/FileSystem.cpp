@@ -426,6 +426,13 @@ std::filesystem::path FileSystem::GetCurrentDirectoryW()
     return GetCurrentDirectory();
 }
 
+std::filesystem::file_time_type FileSystem::LastWriteTime(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    const auto t = std::filesystem::last_write_time(path, ec);
+    return ec ? std::filesystem::file_time_type{} : t;
+}
+
 std::filesystem::path FileSystem::GetExecutableDirectory()
 {
     // WHY: GetModuleFileNameW(nullptr) は現在の exe のフルパスを返す。

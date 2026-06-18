@@ -157,24 +157,43 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
             maxMs = std::max(maxMs, ms);
         if (maxMs <= 0.0) maxMs = 1.0;
 
+        // 同名パスが複数あれば警告色で強調する (Editor が Scene/Game 両方から同一パスを呼ぶ等)。
+        std::unordered_map<std::string, int> nameCount;
+        for (const auto& [name, ms] : snapshot.passTimings)
+            ++nameCount[name];
+
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         for (const auto& [name, ms] : snapshot.passTimings) {
+            const bool isDup = nameCount[name] > 1;
+
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-            // CPU バー (青)
+            // CPU バー (重複=赤、通常=青)
             const float cpuW = static_cast<float>(ms / maxMs) * BAR_MAX_W;
             drawList->AddRectFilled(cursor,
                                     { cursor.x + cpuW, cursor.y + BAR_H },
-                                    IM_COL32(80, 160, 255, 200));
+                                    isDup ? IM_COL32(255, 80, 80, 200)
+                                          : IM_COL32(80, 160, 255, 200));
             ImGui::Dummy({ BAR_MAX_W + 8.0f, BAR_H });
             ImGui::SameLine();
 
             auto gpuIt = gpuMap.find(name);
-            if (gpuIt != gpuMap.end()) {
-                ImGui::Text("%-20s  CPU %.3f ms  GPU %.3f ms",
-                            name.c_str(), ms, gpuIt->second);
+            if (isDup) {
+                const ImVec4 red{ 1.0f, 0.35f, 0.35f, 1.0f };
+                if (gpuIt != gpuMap.end()) {
+                    ImGui::TextColored(red, "%-20s  CPU %.3f ms  GPU %.3f ms  [DUP]",
+                                       name.c_str(), ms, gpuIt->second);
+                } else {
+                    ImGui::TextColored(red, "%-20s  CPU %.3f ms  [DUP]",
+                                       name.c_str(), ms);
+                }
             } else {
-                ImGui::Text("%-20s  CPU %.3f ms", name.c_str(), ms);
+                if (gpuIt != gpuMap.end()) {
+                    ImGui::Text("%-20s  CPU %.3f ms  GPU %.3f ms",
+                                name.c_str(), ms, gpuIt->second);
+                } else {
+                    ImGui::Text("%-20s  CPU %.3f ms", name.c_str(), ms);
+                }
             }
         }
     }
