@@ -210,8 +210,12 @@ std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
             p.name = entry.path().stem().string();
             p.path = util::FileSystem::PathToUtf8(entry.path());
             const auto& tbl = parsed.table();
-            if (auto v = tbl["options"]["flip_green_channel"].value<bool>())
-                p.options.flipGreenChannel = *v;
+            if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
+                p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
+            if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
+                p.options.generateTexDescriptors = *v;
+            if (auto v = tbl["options"]["default_compression"].value<int64_t>())
+                p.options.defaultCompression = static_cast<asset::TextureCompression>(*v);
             result.push_back(std::move(p));
         }
     } catch (...) {}
@@ -235,12 +239,23 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
 
     if (ImGui::CollapsingHeader("FBX Defaults", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Indent();
-        ImGui::Checkbox("Flip Green Channel (OpenGL normal maps)", &opt.flipGreenChannel);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "Inverts the G channel of normal map textures.\n"
-                "Enable when using assets exported from Blender or Maya\n"
-                "with OpenGL-style normal maps.");
+        {
+            static constexpr const char* kConvNames[] = { "DirectX (keep G)", "OpenGL (flip G)" };
+            int convIdx = static_cast<int>(opt.normalMapConvention);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo("Normal Map Convention", &convIdx, kConvNames, 2))
+                opt.normalMapConvention = static_cast<NormalMapConvention>(convIdx);
+        }
+        ImGui::Checkbox("Auto-generate .tex descriptors", &opt.generateTexDescriptors);
+        {
+            static constexpr const char* kCompNames[] = {
+                "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
+            };
+            int compIdx = static_cast<int>(opt.defaultCompression);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo("Default Compression", &compIdx, kCompNames, 8))
+                opt.defaultCompression = static_cast<asset::TextureCompression>(compIdx);
+        }
         ImGui::Unindent();
     }
 
@@ -284,8 +299,9 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
                     ImGui::TextUnformatted(p.name.c_str());
 
                     ImGui::TableSetColumnIndex(1);
-                    ImGui::TextDisabled("FlipGreen=%s",
-                        p.options.flipGreenChannel ? "on" : "off");
+                    ImGui::TextDisabled("Conv=%s  GenTex=%s",
+                        p.options.normalMapConvention == NormalMapConvention::OpenGL ? "OpenGL" : "DirectX",
+                        p.options.generateTexDescriptors ? "on" : "off");
 
                     ImGui::TableSetColumnIndex(2);
                     ImGui::PushID(i);

@@ -205,14 +205,14 @@ void EnsureMeshCollider(GameObject& go, MeshColliderComponent& col)
     if (!mesh) {
         if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
             if (!skinned->model && !skinned->modelPath.empty())
-                skinned->model = asset::AssetManager::Load<asset::Model>(skinned->modelPath);
+                skinned->model = asset::AssetManager::LoadModel(skinned->modelPath);
             if (skinned->model && skinned->meshIndex >= 0 &&
                 skinned->meshIndex < static_cast<int>(skinned->model->meshes.size()))
                 mesh = skinned->model->meshes[static_cast<size_t>(skinned->meshIndex)].get();
         }
     }
     if (!mesh && !col.meshPath.empty()) {
-        if (auto* model = asset::AssetManager::Load<asset::Model>(col.meshPath)) {
+        if (auto* model = asset::AssetManager::LoadModel(col.meshPath)) {
             if (col.meshIndex >= 0 && col.meshIndex < static_cast<int>(model->meshes.size()))
                 mesh = model->meshes[static_cast<size_t>(col.meshIndex)].get();
         }
@@ -235,14 +235,14 @@ void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
     if (!mesh) {
         if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
             if (!skinned->model && !skinned->modelPath.empty())
-                skinned->model = asset::AssetManager::Load<asset::Model>(skinned->modelPath);
+                skinned->model = asset::AssetManager::LoadModel(skinned->modelPath);
             if (skinned->model && skinned->meshIndex >= 0 &&
                 skinned->meshIndex < static_cast<int>(skinned->model->meshes.size()))
                 mesh = skinned->model->meshes[static_cast<size_t>(skinned->meshIndex)].get();
         }
     }
     if (!mesh && !col.meshPath.empty()) {
-        if (auto* model = asset::AssetManager::Load<asset::Model>(col.meshPath)) {
+        if (auto* model = asset::AssetManager::LoadModel(col.meshPath)) {
             if (col.meshIndex >= 0 && col.meshIndex < static_cast<int>(model->meshes.size()))
                 mesh = model->meshes[static_cast<size_t>(col.meshIndex)].get();
         }

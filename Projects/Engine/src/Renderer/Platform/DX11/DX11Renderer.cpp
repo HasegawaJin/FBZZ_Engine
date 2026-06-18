@@ -663,9 +663,17 @@ void DX11Renderer::GpuProfBeginFrame()
     if (!frame.disjoint)
         InitGpuQueryFrame(frame);
 
-    frame.count = 0;
-    frame.begun = true;
-    frame.ended = false;
+    // 前回の結果がまだ GetData で読み出されていない場合は Begin を呼ばない。
+    // 呼ぶと D3D11 QUERY_BEGIN_ABANDONING_PREVIOUS_RESULTS 警告が発生する。
+    if (!frame.collected) {
+        frame.begun = false;
+        return;
+    }
+
+    frame.count     = 0;
+    frame.begun     = true;
+    frame.ended     = false;
+    frame.collected = false;
 
     // TIMESTAMP_DISJOINT クエリで GPU クロック周波数の一貫性を保証する。
     // Begin 〜 End の間に発行した TIMESTAMP クエリが有効かどうかも disjoint 結果で判断する。
@@ -748,6 +756,7 @@ void DX11Renderer::GpuProfCollect()
         m_gpuResults.push_back({ frame.names[i], gpuMs });
     }
 
+    frame.collected = true;
     m_gpuCollectIdx = (m_gpuCollectIdx + 1) % GPU_QUERY_LATENCY;
 }
 

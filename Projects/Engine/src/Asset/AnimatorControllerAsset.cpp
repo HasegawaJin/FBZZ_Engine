@@ -226,7 +226,7 @@ bool LoadAnimatorControllerAsset(const std::string& path,
                 if (!sourcePath.empty() || loaded.clipSources.empty()) return;
                 int remainingIndex = clipIndex;
                 for (const auto& legacySource : loaded.clipSources) {
-                    const auto model = AssetManager::Load<Model>(legacySource);
+                    const auto model = AssetManager::LoadModel(legacySource);
                     if (!model) continue;
                     const int clipCount = static_cast<int>(model->clips.size());
                     if (remainingIndex >= 0 && remainingIndex < clipCount) {
@@ -296,7 +296,7 @@ AnimatorControllerAsset MakeAnimatorControllerAsset(
         if (!sourcePath.empty()) return;
         int remainingIndex = clipIndex;
         for (const auto& legacySource : animator.clipSources) {
-            const auto model = AssetManager::Load<Model>(legacySource);
+            const auto model = AssetManager::LoadModel(legacySource);
             if (!model) continue;
             const int clipCount = static_cast<int>(model->clips.size());
             if (remainingIndex >= 0 && remainingIndex < clipCount) {

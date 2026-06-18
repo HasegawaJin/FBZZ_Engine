@@ -536,7 +536,7 @@ toml::table MakeScriptEntryTable(const std::string& type, bool enabled, toml::ta
 }
 
 // "primitive:sphere" → PrimitiveMesh::Sphere
-// "models/foo.fbx"   → AssetManager::Load<Model> mesh[0]
+// "models/foo.fbx"   → AssetManager::LoadModel mesh[0]
 // "models/foo.fbx:2" → mesh[2]
 // WHY: primitive mesh は AssetManager 管轄外のため、static キャッシュで寿命を保持する。
 //      Model mesh は AssetManager が所有するため raw pointer で返す。
@@ -575,7 +575,7 @@ renderer::Mesh* ResolveMesh(
         }
     }
 
-    auto* model = asset::AssetManager::Load<asset::Model>(filePath);
+    auto* model = asset::AssetManager::LoadModel(filePath);
     if (!model) return nullptr;
     if (meshIndex < 0 || meshIndex >= (int)model->meshes.size()) return nullptr;
     return model->meshes[meshIndex].get();
@@ -1965,7 +1965,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             smr.modelPath = (*smrTbl)["modelPath"].value_or(std::string{});
             smr.meshIndex = (int)(*smrTbl)["meshIndex"].value_or((int64_t)-1);
             if (!smr.modelPath.empty()) {
-                smr.model = asset::AssetManager::Load<asset::Model>(smr.modelPath);
+                smr.model = asset::AssetManager::LoadModel(smr.modelPath);
                 if (!smr.model)
                     FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
             }
@@ -2091,7 +2091,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                         int remainingIndex = clipIndex;
                         for (const auto& legacySource : anim.clipSources) {
                             const auto model =
-                                asset::AssetManager::Load<asset::Model>(legacySource);
+                                asset::AssetManager::LoadModel(legacySource);
                             if (!model) continue;
                             const int clipCount =
                                 static_cast<int>(model->clips.size());

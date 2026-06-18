@@ -106,13 +106,16 @@ public:
 
     void ReleaseOwnedForShutdown()
     {
-        // WHY: ResourceManager 破棄時は ResourcePool 自身が持つ shared_ptr は正常な所有であり、
-        //      そのまま MemoryDebug を見ると全リソースがリークに見える。
-        //      先に所有を手放し、weak_ptr がまだ生きているものだけを外部保持の疑いとして残す。
+        // WHY: Remove() と同様に Untrack → reset の順で処理する。
+        //      reset() で shared_ptr が解放されても weak_ptr が期限切れになるのは
+        //      use_count が 0 になった瞬間であり、それは reset() の呼び出し完了後。
+        //      Untrack を先に呼ぶことで「プールが意図的に解放したスロット」は
+        //      LogLiveDebugResources に現れなくなり、true な外部保持のみを検出できる。
         m_freeList.clear();
         for (uint32_t id = 0; id < static_cast<uint32_t>(m_slots.size()); ++id) {
             Slot& slot = m_slots[id];
             if (slot.occupied) {
+                m_debug.Untrack(slot.resource.get());
                 slot.resource.reset();
                 slot.occupied = false;
                 slot.gen = (slot.gen == (std::numeric_limits<uint32_t>::max)()) ? 1u : slot.gen + 1u;

@@ -106,6 +106,9 @@ public:
     /// 実行ファイルが存在するディレクトリを返す。
     /// WHY: アセット・設定ファイルの基点として複数の起動モジュールが使うため Engine に集約する。
     static std::filesystem::path  GetExecutableDirectory();
+
+    // ファイルまたはディレクトリの最終更新時刻を返す。存在しない場合はデフォルト値 ({}) を返す。
+    static std::filesystem::file_time_type LastWriteTime(const std::filesystem::path& path);
 };
 
 } // namespace fbzz::util
