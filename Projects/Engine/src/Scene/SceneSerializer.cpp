@@ -27,6 +27,7 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/FootIKComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -1168,6 +1169,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 chainTbl.insert("isLeg",           chain.isLeg);
                 chainTbl.insert("footNormalAxis",  Vec3ToArr(chain.footNormalAxis));
                 chainTbl.insert("targetOffset",    Vec3ToArr(chain.targetOffset));
+                chainTbl.insert("autoPoleLocalDirection", Vec3ToArr(chain.autoPoleLocalDirection));
                 // EntityID が有効なら実 GameObject 名を優先取得し、
                 // 無効 (未 Resolve / ロード直後など) の場合は文字列フィールドをフォールバックに使う。
                 // WHY: Inspector でテキスト直打ちしたまま Resolve せずに保存すると
@@ -1200,12 +1202,29 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 if (savedPoleGuid.empty()) savedPoleGuid = chain.poleGuid;
                 chainTbl.insert("poleName", savedPoleName);
                 chainTbl.insert("poleGuid", savedPoleGuid);
+                chainTbl.insert("autoPole", chain.autoPole);
                 chainsArr.push_back(std::move(chainTbl));
             }
             ikTbl.insert("chains",      std::move(chainsArr));
             ikTbl.insert("hipBoneName", ikSolver->hipBoneName);
             ikTbl.insert("hipMaxOffsetRatio", (double)ikSolver->hipMaxOffsetRatio);
             goTbl.insert("IKSolverComponent", std::move(ikTbl));
+        }
+
+        // FootIKComponent
+        // WHY: Humanoid の歩行クリップは FK の足運びを保ち、接地だけ専用パスで補正する。
+        if (auto* footIK = go.GetComponent<FootIKComponent>()) {
+            toml::table footTbl;
+            footTbl.insert("enabled", footIK->enabled);
+            footTbl.insert("useAnimatorIKWeight", footIK->useAnimatorIKWeight);
+            footTbl.insert("weight", (double)footIK->weight);
+            footTbl.insert("rayUpRatio", (double)footIK->rayUpRatio);
+            footTbl.insert("rayDownRatio", (double)footIK->rayDownRatio);
+            footTbl.insert("footSurfaceOffset", (double)footIK->footSurfaceOffset);
+            footTbl.insert("correctionDeadZone", (double)footIK->correctionDeadZone);
+            footTbl.insert("maxCorrection", (double)footIK->maxCorrection);
+            footTbl.insert("footNormalAxis", Vec3ToArr(footIK->footNormalAxis));
+            goTbl.insert("FootIKComponent", std::move(footTbl));
         }
 
         // UICanvas
@@ -2182,12 +2201,16 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     chain.footNormalAxis  = ArrToVec3((*chainTbl)["footNormalAxis"].as_array(),
                                                       math::Vector3::ZERO);
                     chain.targetOffset    = ArrToVec3((*chainTbl)["targetOffset"].as_array(),
-                                                      math::Vector3::ZERO);
+                                                       math::Vector3::ZERO);
+                    chain.autoPoleLocalDirection =
+                        ArrToVec3((*chainTbl)["autoPoleLocalDirection"].as_array(),
+                                  math::Vector3::ZERO);
                     // targetEntity / poleEntity は Pass 3 で解決するため識別子だけ保持
                     chain.targetName = (*chainTbl)["targetName"].value_or(std::string{});
                     chain.targetGuid = (*chainTbl)["targetGuid"].value_or(std::string{});
                     chain.poleName   = (*chainTbl)["poleName"].value_or(std::string{});
                     chain.poleGuid   = (*chainTbl)["poleGuid"].value_or(std::string{});
+                    chain.autoPole   = (*chainTbl)["autoPole"].value_or(false);
                     ikSolver.chains.push_back(std::move(chain));
                 }
             }
@@ -2195,6 +2218,22 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             ikSolver.hipMaxOffsetRatio =
                 (float)(*ikTbl)["hipMaxOffsetRatio"].value_or(0.4);
             go.AddComponent<IKSolverComponent>(std::move(ikSolver));
+        }
+
+        // FootIKComponent
+        if (auto* footTbl = (*goTbl)["FootIKComponent"].as_table()) {
+            FootIKComponent footIK{};
+            footIK.enabled = (*footTbl)["enabled"].value_or(true);
+            footIK.useAnimatorIKWeight = (*footTbl)["useAnimatorIKWeight"].value_or(true);
+            footIK.weight = (float)(*footTbl)["weight"].value_or(1.0);
+            footIK.rayUpRatio = (float)(*footTbl)["rayUpRatio"].value_or(0.5);
+            footIK.rayDownRatio = (float)(*footTbl)["rayDownRatio"].value_or(1.2);
+            footIK.footSurfaceOffset = (float)(*footTbl)["footSurfaceOffset"].value_or(0.05);
+            footIK.correctionDeadZone = (float)(*footTbl)["correctionDeadZone"].value_or(0.025);
+            footIK.maxCorrection = (float)(*footTbl)["maxCorrection"].value_or(0.12);
+            footIK.footNormalAxis = ArrToVec3((*footTbl)["footNormalAxis"].as_array(),
+                                              math::Vector3::ZERO);
+            go.AddComponent<FootIKComponent>(std::move(footIK));
         }
 
         // UICanvas

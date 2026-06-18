@@ -25,6 +25,7 @@
 #include "Components/UIAnimator.hpp"
 #include "Components/DecalComponent.hpp"
 #include "Components/IKSolverComponent.hpp"
+#include "Components/FootIKComponent.hpp"
 #include "Components/CharacterControllerComponent.hpp"
 #include "Components/TerrainComponent.hpp"
 #include "Components/TerrainGridComponent.hpp"
@@ -74,6 +75,7 @@ using ComponentList = std::tuple<
     ScriptComponent,
     DecalComponent,
     IKSolverComponent,
+    FootIKComponent,
     CharacterControllerComponent,
     TerrainComponent,
     TerrainGridComponent,
