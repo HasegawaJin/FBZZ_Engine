@@ -129,8 +129,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     anim.time = 0.0f;
                 }
                 const auto& cur = anim.clips[static_cast<size_t>(sel)];
-                const double tps = cur.ticksPerSecond > 0.0 ? cur.ticksPerSecond : 30.0;
-                const float dur  = static_cast<float>(cur.durationTicks / tps);
+                const float dur  = static_cast<float>(cur.GetDurationSeconds());
                 const float t    = (dur > 0.0f) ? std::clamp(anim.time / dur, 0.0f, 1.0f) : 0.0f;
                 char overlay[32];
                 std::snprintf(overlay, sizeof(overlay), "%.2f / %.2fs", anim.time, dur);
@@ -679,9 +678,30 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Target");
 
+                        // Auto Pole: ON のとき Pole フィールドを非活性化し、IKSystem が自動計算する。
+                        ImGui::Checkbox("Auto Pole##ap", &chain.autoPole);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip(
+                                "Automatically compute pole direction from owner rotation or FK bend angle.\n"
+                                "No Pole GameObject needed. Pole field is ignored when enabled.");
+                        if (chain.autoPole) {
+                            widgets::DragVec3("Auto Pole Local Dir",
+                                              chain.autoPoleLocalDirection,
+                                              0.01f,
+                                              -1.0f,
+                                              1.0f);
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip(
+                                    "Owner-local knee direction. Zero uses FK bend direction.\n"
+                                    "Example: Player with 180 yaw offset can use +Z or -Z depending on rig forward.");
+                        }
+                        if (chain.autoPole)
+                            ImGui::BeginDisabled();
                         DrawObjectField("Resolve##p", "##pole", chain.poleName,   chain.poleGuid,   chain.poleEntity);
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Pole");
+                        if (chain.autoPole)
+                            ImGui::EndDisabled();
                     }
 
                     // ── Settings ──────────────────────────────────────────────
