@@ -5,8 +5,10 @@
 #include <Editor/AssetFileWatcher.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <atomic>
@@ -42,6 +44,7 @@ private:
         bool        isDir     = false;
         bool        isMount   = false;
         bool        isSubAsset = false; // fzasset の展開で挿入された仮想サブエントリ
+        bool        isPackageAsset = false; // Foo/Foo.fzasset を親階層で Foo.fzasset として見せる仮想エントリ
     };
 
     struct AssetMount {
@@ -91,8 +94,8 @@ private:
     void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
 
-    // fzasset マニフェストを解析してサブエントリ一覧を返す (展開時のグリッド挿入用)
-    std::vector<Entry> GetFzAssetSubEntries(const std::string& fzassetPath);
+    // fzasset パッケージ配下の従属アセットを列挙して、展開時のグリッドに挿入する。
+    std::vector<Entry> GetAssetSubEntries(const std::string& fzassetPath);
 
     // 未変換モデルファイルを検出してインポートキューに積む (relPath は m_rootPath 相対)。
     // WHY: PNG / JPG 等のテクスチャは ResourceManager が原本を直接読むため変換しない。
@@ -128,17 +131,22 @@ private:
     std::array<char, 256> m_searchBuf = {};
     float                 m_iconSize  = 84.0f;
     bool                  m_resetScroll    = false; // ディレクトリ移動後に右ペインをトップへ戻す
-    bool                  m_fzExpandDirty  = false; // fzasset 展開トグル後の遅延 Refresh フラグ
+    bool                  m_assetExpandDirty  = false; // fzasset 展開トグル後の遅延 Refresh フラグ
 
     // --- fzasset 展開状態 -------------------------------------------------------
-    std::unordered_set<std::string> m_expandedFzAssets;
+    std::unordered_set<std::string> m_expandedAssets;
+    std::unordered_set<std::string> m_packageAssetPaths;
 
-    // fzasset サブエントリキャッシュ (マニフェストの再パースを抑制)
-    struct FzAssetSubItems {
+    // fzasset サブエントリキャッシュ (従属フォルダの再走査を抑制)
+    struct AssetSubItems {
         std::vector<Entry>                  items;
         std::filesystem::file_time_type     lastWriteTime{};
+        std::filesystem::file_time_type     animDirTime{};  // .fzasset 用: anims/ の mtime
+        std::filesystem::file_time_type     materialDirTime{}; // .fzasset 用: materials/ の mtime
+        std::filesystem::file_time_type     textureDirTime{};  // .fzasset 用: textures/ の mtime
+        std::filesystem::file_time_type     mergedMeshTime{};  // .fzasset 用: Foo.mesh の mtime
     };
-    std::unordered_map<std::string, FzAssetSubItems> m_fzAssetSubItemsCache;
+    std::unordered_map<std::string, AssetSubItems> m_assetSubItemsCache;
 
     // --- 複数選択 ---------------------------------------------------------------
     // WHY: ctx.selectedAssetPath は Inspector の単一表示用に維持し、
@@ -199,17 +207,32 @@ private:
         bool parsed = false;
         bool hasMaterial = false;
     };
+    struct ModelAssetPreview : ThumbnailBase {
+        asset::AssetHandle<asset::ModelAsset> handle;
+        std::filesystem::file_time_type lastWriteTime{};
+        std::vector<MaterialPreview> slotMaterials; // materialSlotIndex → per-slot material GPU data
+        bool materialsLoaded = false;
+    };
+    struct TexDescPreview {
+        asset::AssetHandle<asset::TextureAsset> handle;
+        uint32_t width  = 0;
+        uint32_t height = 0;
+        std::filesystem::file_time_type lastWriteTime{};
+        bool failed = false;
+    };
     // .mat の shaderPath / ShaderDescriptor に合わせて、サムネイル描画用の Material CB と Texture を更新する。
     // WHY: AssetBrowser の Material サムネイルも実際のマテリアルと同じ HLSL を使い、Lit 固定による見た目のズレを避ける。
     bool RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx);
     // AssetBrowser のファイルアイコン内 Preview 状態。
     // WHY: 専用 Preview ペインを持たず、グリッドの視線移動だけで Texture / Material を確認できるようにする。
-    std::unordered_map<std::string, TexturePreview>  m_texturePreviews;
-    std::deque<std::string>                          m_texLoadQueue;
-    std::unordered_map<std::string, MaterialPreview> m_materialPreviews;
-    std::unordered_map<std::string, MeshPreview>     m_meshPreviews;
-    std::unordered_map<std::string, PrefabPreview>   m_prefabPreviews;
-    std::unordered_map<std::string, TerrainPreview>  m_terrainPreviews;
+    std::unordered_map<std::string, TexturePreview>       m_texturePreviews;
+    std::deque<std::string>                               m_texLoadQueue;
+    std::unordered_map<std::string, MaterialPreview>      m_materialPreviews;
+    std::unordered_map<std::string, MeshPreview>          m_meshPreviews;
+    std::unordered_map<std::string, PrefabPreview>        m_prefabPreviews;
+    std::unordered_map<std::string, TerrainPreview>       m_terrainPreviews;
+    std::unordered_map<std::string, ModelAssetPreview>    m_modelAssetPreviews;
+    std::unordered_map<std::string, TexDescPreview>       m_texDescPreviews;
 
     // Rename state
     std::string m_renamingPath;
@@ -233,24 +256,41 @@ private:
     };
     std::vector<PendingImport> m_pendingImports;
 
-    // ファイルウォッチャーが検出した未確認ファイルのキュー
-    // WHY: UE 同様、ファイル追加を検知したらインポート設定モーダルを自動表示する。
+    // ファイルウォッチャーが検出した未確認モデルファイルのキュー
+    // WHY: UE 同様、ファイル追加を検知したらインポート設定ウィンドウを自動表示する。
     //      直接 m_pendingImports に積まず、ユーザーが設定を確認してから実行する。
     std::vector<std::string> m_pendingConfirmImports;
-    // モーダルの各ファイルに対するチェック状態（true = インポート対象）
+    // モデルインポートウィンドウの各ファイルに対するチェック状態（true = インポート対象）
     std::vector<bool>        m_pendingConfirmIncludes;
 
-    // インポート設定モーダル
+    // ファイルウォッチャーが検出した未確認テクスチャファイルのキュー
+    // WHY: .tex descriptor 生成は FBX 変換とは別処理なので、モデル用キューと混在させない。
+    std::vector<std::string> m_pendingTextureConfirmImports;
+    std::vector<bool>        m_pendingTextureConfirmIncludes;
+
+    // インポート設定ウィンドウ
     struct ImportSettingsState {
         std::string      path;
         FbxImportOptions options;
         bool             open         = false;
+        bool             visible      = false;
+        bool             needsInit    = false;
         bool             fromWatcher  = false; // true = ウォッチャー自動起動（キュー継続が必要）
         // テクスチャ設定
         bool                         isTexture   = false;
         asset::TextureImportSettings texSettings;  // 全フィールド (新設計)
     };
     ImportSettingsState m_importSettings;
+
+    struct TextureImportSettingsState {
+        std::string                  path;
+        bool                         open         = false;
+        bool                         visible      = false;
+        bool                         needsInit    = false;
+        bool                         fromWatcher  = false;
+        asset::TextureImportSettings settings;
+    };
+    TextureImportSettingsState m_textureImportSettings;
     void DrawImportSettingsModal(EditorContext& ctx);
 
     [[nodiscard]] static bool IsAlreadyImported(const std::string& absPath);

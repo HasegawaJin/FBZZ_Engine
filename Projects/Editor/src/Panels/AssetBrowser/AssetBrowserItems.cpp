@@ -5,6 +5,7 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <Windows.h>
 #include <toml++/toml.hpp>
+#include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -120,7 +121,7 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".terrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
     { { ".scene", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
     { { ".animgraph", nullptr },                               { 0.75f, 0.40f, 0.85f, 1.0f }, "GRAPH"   },
-    { { ".model", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "MODEL"   },
+{ { ".fzasset", nullptr },                               { 0.90f, 0.60f, 0.10f, 1.0f }, "FZASSET" },
     { { ".asset", nullptr },                                 { 0.85f, 0.55f, 0.08f, 1.0f }, "ASSET"   },
     { { ".anim", nullptr },                                  { 0.95f, 0.75f, 0.20f, 1.0f }, "ANIM"    },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
@@ -181,7 +182,7 @@ static bool IsTextureExt(const std::string& ext)
 static bool IsMeshExt(const std::string& ext)
 {
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" ||
-           ext == ".glb" || ext == ".model" || ext == ".asset";
+           ext == ".glb" || ext == ".mesh" || ext == ".fzasset";
 }
 
 static std::filesystem::file_time_type ReadLastWriteTime(const std::string& path)
@@ -887,7 +888,10 @@ static bool RenderMeshThumbnail(
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB = {},
     const std::vector<renderer::ResourceHandle<renderer::TextureTag>>* materialTextures = nullptr,
     ThumbnailShaderFlavor flavor = ThumbnailShaderFlavor::Surface,
-    const asset::MaterialAsset* materialAsset = nullptr)
+    const asset::MaterialAsset* materialAsset = nullptr,
+    bool clearRT = true,
+    math::Vector3 overrideCenter = {},
+    float overrideRadius = -1.0f)  // <0 = use mesh bounds
 {
     if (!rt.IsValid() || !mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid())
         return false;
@@ -895,8 +899,8 @@ static bool RenderMeshThumbnail(
     if (!EnsureThumbnailGpuResources(resources, s_tr, !useMaterialOverride))
         return false;
 
-    const math::Vector3 center = MeshBoundsCenter(mesh);
-    const float radius = std::max(0.0001f, MeshBoundsRadius(mesh, center));
+    const math::Vector3 center = (overrideRadius >= 0.0f) ? overrideCenter : MeshBoundsCenter(mesh);
+    const float radius = std::max(0.0001f, (overrideRadius >= 0.0f) ? overrideRadius : MeshBoundsRadius(mesh, center));
     const float cameraDistance = radius * 4.0f;
 
     renderer::Camera camera;
@@ -983,8 +987,10 @@ static bool RenderMeshThumbnail(
     resources.Update(s_tr.shadowCB, &shadowData, sizeof(shadowData));
 
     renderer.SetRenderTarget(rt, resources);
-    renderer.Clear({ 0.030f, 0.032f, 0.038f, 1.0f });
-    renderer.ClearDepth();
+    if (clearRT) {
+        renderer.Clear({ 0.030f, 0.032f, 0.038f, 1.0f });
+        renderer.ClearDepth();
+    }
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::CLAMP_LINEAR);
     renderer.SetSampler(2, renderer::SamplerMode::CLAMP_ANISOTROPIC);
@@ -1231,6 +1237,40 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
+    // .tex descriptor: ImageImporter 経由でロードして GPU テクスチャを表示
+    if (e.ext == ".tex" && ctx.resources && ctx.imguiRenderer) {
+        TexDescPreview& preview = m_texDescPreviews[e.path];
+        const auto currentWriteTime = ReadLastWriteTime(e.path);
+        if (currentWriteTime != preview.lastWriteTime) {
+            preview.lastWriteTime = currentWriteTime;
+            preview.handle = {};
+            preview.width = preview.height = 0;
+            preview.failed = false;
+        }
+        if (!preview.handle.IsValid() && !preview.failed) {
+            preview.handle = asset::AssetManager::Load<asset::TextureAsset>(e.path);
+            if (preview.handle.IsValid()) {
+                if (const auto* ta = asset::AssetManager::Get(preview.handle)) {
+                    if (const auto* tex = ctx.resources->Get(ta->gpuHandle)) {
+                        preview.width  = tex->GetWidth();
+                        preview.height = tex->GetHeight();
+                    }
+                }
+            } else {
+                preview.failed = true;
+            }
+        }
+        if (!preview.failed && preview.handle.IsValid()) {
+            if (const auto* ta = asset::AssetManager::Get(preview.handle)) {
+                void* rawID = ctx.imguiRenderer->GetImTextureID(ta->gpuHandle, *ctx.resources);
+                if (rawID) {
+                    DrawTextureThumbnail(rawID, preview.width, preview.height, origin, sz, hovered);
+                    return;
+                }
+            }
+        }
+    }
+
     if (e.ext == ".mat") {
         MaterialPreview& preview = m_materialPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
@@ -1326,7 +1366,174 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    if (IsMeshExt(e.ext) && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+    // .fzasset: ModelAssetImporter (新 API) 経由でロードして LOD0 サブメッシュを 3D プレビュー
+    if (e.ext == ".fzasset" && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+        ModelAssetPreview& preview = m_modelAssetPreviews[e.path];
+        const auto currentWriteTime = ReadLastWriteTime(e.path);
+        if (currentWriteTime != preview.lastWriteTime) {
+            if (m_resources)
+                for (auto& mp : preview.slotMaterials)
+                    if (mp.materialCB.IsValid())
+                        m_resources->Release(mp.materialCB);
+            preview.slotMaterials.clear();
+            preview.materialsLoaded = false;
+            preview.lastWriteTime = currentWriteTime;
+            preview.handle = {};
+            preview.thumbnailRendered = false;
+            preview.failed = false;
+        }
+        EnsureThumbnailRT(preview, ctx);
+        if (!preview.handle.IsValid() && !preview.failed) {
+            FBZZ_LOG_INFO("AssetBrowserItems: Load<ModelAsset> [%s]", e.path.c_str());
+            // WHY: インポート直後やファイル監視直後は、生成前に一度 Load して Null が
+            //      AssetManager にキャッシュされることがある。サムネイル再試行時は失敗 cache を掃除する。
+            asset::AssetManager::FlushFailed();
+            preview.handle = asset::AssetManager::Load<asset::ModelAsset>(e.path);
+            if (!preview.handle.IsValid()) {
+                FBZZ_LOG_ERROR("AssetBrowserItems: ModelAsset load failed [%s]", e.path.c_str());
+                preview.failed = true;
+            }
+        }
+        // マテリアルスロットを初回ロード (materials/slotName.mat -> per-slot MaterialPreview)
+        if (preview.handle.IsValid() && !preview.materialsLoaded) {
+            preview.materialsLoaded = true;
+            const std::filesystem::path pkgDir =
+                util::FileSystem::PathFromUtf8(e.path).parent_path();
+            const std::string matDir = util::FileSystem::NormalizePathSeparators(
+                util::FileSystem::PathToUtf8(pkgDir / "materials"));
+            if (const asset::ModelAsset* m0 = asset::AssetManager::Get(preview.handle)) {
+                preview.slotMaterials.resize(m0->materialSlotNames.size());
+                for (size_t si = 0; si < m0->materialSlotNames.size(); ++si) {
+                    MaterialPreview& mp = preview.slotMaterials[si];
+                    const std::string matPath = matDir + "/" + m0->materialSlotNames[si] + ".mat";
+                    mp.failed = !asset::LoadMaterialAssetFromFile(matPath, mp.asset);
+                    mp.loaded = true;
+                }
+            }
+        }
+        if (!preview.thumbnailRendered && !preview.failed && preview.thumbnailRT.IsValid()) {
+            const asset::ModelAsset* m = asset::AssetManager::Get(preview.handle);
+            if (m && !m->lods.empty() && !m->lods[0].submeshes.empty()) {
+                // 全サブメッシュの AABB から共通カメラを計算 (Unity 同様すべてのメッシュが写る)
+                constexpr float kInf = std::numeric_limits<float>::max();
+                math::Vector3 bMin = { kInf,  kInf,  kInf  };
+                math::Vector3 bMax = { -kInf, -kInf, -kInf };
+                for (const auto& sub : m->lods[0].submeshes) {
+                    if (!sub.mesh) continue;
+                    const math::Vector3 c = sub.mesh->boundsCenter;
+                    const float r = sub.mesh->boundsRadius;
+                    bMin.x = std::min(bMin.x, c.x - r);  bMax.x = std::max(bMax.x, c.x + r);
+                    bMin.y = std::min(bMin.y, c.y - r);  bMax.y = std::max(bMax.y, c.y + r);
+                    bMin.z = std::min(bMin.z, c.z - r);  bMax.z = std::max(bMax.z, c.z + r);
+                }
+                const math::Vector3 combinedCenter = {
+                    (bMin.x + bMax.x) * 0.5f, (bMin.y + bMax.y) * 0.5f, (bMin.z + bMax.z) * 0.5f };
+                const float combinedRadius = std::max({ bMax.x - bMin.x,
+                                                        bMax.y - bMin.y,
+                                                        bMax.z - bMin.z }) * 0.5f;
+
+                bool firstDraw = true;
+                for (const auto& sub : m->lods[0].submeshes) {
+                    if (!sub.mesh) continue;
+                    auto* mesh = sub.mesh.get();
+                    // WHY: resources 未初期化時にロードされた場合 GPU バッファが未作成。CPU データから lazily 作成。
+                    if (!mesh->vertexBuffer.IsValid()) {
+                        if (!mesh->cpuVertices.empty())
+                            mesh->vertexBuffer = ctx.resources->CreateVertexBuffer(
+                                mesh->cpuVertices.data(),
+                                mesh->cpuVertices.size() * sizeof(renderer::Vertex),
+                                sizeof(renderer::Vertex));
+                        else if (!mesh->cpuSkinnedVertices.empty())
+                            mesh->vertexBuffer = ctx.resources->CreateVertexBuffer(
+                                mesh->cpuSkinnedVertices.data(),
+                                mesh->cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex),
+                                sizeof(renderer::SkinnedVertex));
+                    }
+                    if (!mesh->indexBuffer.IsValid() && !mesh->cpuIndices.empty())
+                        mesh->indexBuffer = ctx.resources->CreateIndexBuffer(
+                            mesh->cpuIndices.data(), static_cast<uint32_t>(mesh->cpuIndices.size()));
+
+                    MaterialPreview* matPrev = nullptr;
+                    if (sub.materialSlotIndex < preview.slotMaterials.size() &&
+                        !preview.slotMaterials[sub.materialSlotIndex].failed) {
+                        matPrev = &preview.slotMaterials[sub.materialSlotIndex];
+                        if (!RebuildMaterialThumbnailGpuData(*matPrev, ctx))
+                            matPrev = nullptr;
+                    }
+                    const bool ok = RenderMeshThumbnail(
+                        *ctx.renderer, *ctx.resources,
+                        *mesh, preview.thumbnailRT,
+                        renderer::ResourceHandle<renderer::TextureTag>{},
+                        matPrev ? SelectMaterialColor(matPrev->asset) : ImVec4{ 0.74f, 0.78f, 0.84f, 1.0f },
+                        matPrev ? matPrev->shader : renderer::ResourceHandle<renderer::ShaderTag>{},
+                        matPrev ? matPrev->materialCB : renderer::ResourceHandle<renderer::ConstantBufferTag>{},
+                        matPrev ? &matPrev->textures : nullptr,
+                        matPrev ? DetectThumbnailShaderFlavor(matPrev->shaderPath) : ThumbnailShaderFlavor::Surface,
+                        matPrev ? &matPrev->asset : nullptr,
+                        firstDraw, combinedCenter, combinedRadius);
+                    if (ok) { preview.thumbnailRendered = true; firstDraw = false; }
+                }
+            }
+            if (!preview.thumbnailRendered) preview.failed = true;
+        }
+        if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "FZASSET")) return;
+    }
+
+    // 仮想 .mesh サブアセット (::mesh:: 合成パス): .fzasset 内の特定サブメッシュを 3D プレビュー
+    {
+        const auto mark = e.path.find("::mesh::");
+        if (e.ext == ".mesh" && e.isSubAsset && mark != std::string::npos &&
+            ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+            const std::string parentPath = e.path.substr(0, mark);
+            const auto submeshIdx = static_cast<size_t>(std::stoi(e.path.substr(mark + 8)));
+
+            ModelAssetPreview& preview = m_modelAssetPreviews[e.path];
+            const auto parentWriteTime = ReadLastWriteTime(parentPath);
+            if (parentWriteTime != preview.lastWriteTime) {
+                preview.lastWriteTime    = parentWriteTime;
+                preview.handle           = {};
+                preview.thumbnailRendered = false;
+                preview.failed           = false;
+            }
+            EnsureThumbnailRT(preview, ctx);
+            if (!preview.handle.IsValid() && !preview.failed) {
+                asset::AssetManager::FlushFailed();
+                preview.handle = asset::AssetManager::Load<asset::ModelAsset>(parentPath);
+                if (!preview.handle.IsValid()) preview.failed = true;
+            }
+            if (!preview.thumbnailRendered && !preview.failed && preview.thumbnailRT.IsValid()) {
+                const asset::ModelAsset* m = asset::AssetManager::Get(preview.handle);
+                if (m && !m->lods.empty() && submeshIdx < m->lods[0].submeshes.size() &&
+                    m->lods[0].submeshes[submeshIdx].mesh) {
+                    auto* mesh = m->lods[0].submeshes[submeshIdx].mesh.get();
+                    if (!mesh->vertexBuffer.IsValid()) {
+                        if (!mesh->cpuVertices.empty())
+                            mesh->vertexBuffer = ctx.resources->CreateVertexBuffer(
+                                mesh->cpuVertices.data(),
+                                mesh->cpuVertices.size() * sizeof(renderer::Vertex),
+                                sizeof(renderer::Vertex));
+                        else if (!mesh->cpuSkinnedVertices.empty())
+                            mesh->vertexBuffer = ctx.resources->CreateVertexBuffer(
+                                mesh->cpuSkinnedVertices.data(),
+                                mesh->cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex),
+                                sizeof(renderer::SkinnedVertex));
+                    }
+                    if (!mesh->indexBuffer.IsValid() && !mesh->cpuIndices.empty())
+                        mesh->indexBuffer = ctx.resources->CreateIndexBuffer(
+                            mesh->cpuIndices.data(), static_cast<uint32_t>(mesh->cpuIndices.size()));
+                    preview.thumbnailRendered = RenderMeshThumbnail(
+                        *ctx.renderer, *ctx.resources,
+                        *mesh, preview.thumbnailRT,
+                        renderer::ResourceHandle<renderer::TextureTag>{},
+                        { 0.74f, 0.78f, 0.84f, 1.0f });
+                }
+                if (!preview.thumbnailRendered) preview.failed = true;
+            }
+            if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "MESH")) return;
+        }
+    }
+
+    if (IsMeshExt(e.ext) && e.path.find("::mesh::") == std::string::npos && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
         MeshPreview& preview = m_meshPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
         if (currentWriteTime != preview.lastWriteTime) {
@@ -1349,7 +1556,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 { 0.74f, 0.78f, 0.84f, 1.0f });
             preview.failed = !preview.thumbnailRendered;
         }
-        const char* badge = (e.ext == ".model") ? "MODEL" : (e.ext == ".model" || e.ext == ".asset") ? "ASSET" : "MESH";
+        const char* badge = (e.ext == ".asset") ? "ASSET" : "MESH";
         if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, badge)) return;
     }
 
@@ -1626,6 +1833,33 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     releaseAndErase(m_meshPreviews);
     releaseAndErase(m_prefabPreviews);
     releaseAndErase(m_terrainPreviews);
+    {
+        auto it = m_modelAssetPreviews.find(path);
+        if (it != m_modelAssetPreviews.end() && m_resources)
+            for (auto& mp : it->second.slotMaterials)
+                if (mp.materialCB.IsValid())
+                    m_resources->Release(mp.materialCB);
+    }
+    releaseAndErase(m_modelAssetPreviews);
+    // 合成パス (path::mesh::N) で登録されたサブメッシュプレビューもクリア
+    {
+        const std::string synthPrefix = path + "::mesh::";
+        for (auto it = m_modelAssetPreviews.begin(); it != m_modelAssetPreviews.end(); ) {
+            if (it->first.starts_with(synthPrefix)) {
+                if (m_resources) {
+                    if (it->second.thumbnailRT.IsValid())
+                        m_resources->Release(it->second.thumbnailRT);
+                    for (auto& mp : it->second.slotMaterials)
+                        if (mp.materialCB.IsValid())
+                            m_resources->Release(mp.materialCB);
+                }
+                it = m_modelAssetPreviews.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    m_texDescPreviews.erase(path);
 }
 
 // ── DrawEntry サブメソッド ──────────────────────────────────────────────────────
@@ -1663,8 +1897,8 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
     // ▶/▼ 展開トグル: fzasset はサブアセットを持つ
-    if (!e.isDir && e.ext == ".model" || e.ext == ".asset") {
-        const bool expanded = m_expandedFzAssets.count(e.path) > 0;
+    if (!e.isDir && e.ext == ".fzasset") {
+        const bool expanded = m_expandedAssets.count(e.path) > 0;
         const float ts  = sz * 0.18f; // 三角サイズ
         const float bx  = origin.x + 2.0f;
         const float by  = origin.y + sz - ts - 2.0f;
@@ -1732,7 +1966,10 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
         m_pendingRenamePath.clear();
     } else {
         // 選択済み & 単体選択状態での再クリック → 遅延リネーム (Unity スタイル)
-        if (!e.isMount && ctx.selectedAssetPath == e.path && m_selectedPaths.empty()) {
+        // 合成パス (::mesh:: 仮想サブアセット) はリネーム不可
+        const bool canRename = !e.isMount && !e.isPackageAsset &&
+            e.path.find("::mesh::") == std::string::npos;
+        if (canRename && ctx.selectedAssetPath == e.path && m_selectedPaths.empty()) {
             m_pendingRenamePath  = e.path;
             m_pendingRenameTimer = static_cast<float>(ImGui::GetTime());
         } else {
@@ -1821,8 +2058,16 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     if (multiSel) {
         const int n = static_cast<int>(m_selectedPaths.size());
         char label[64];
+        bool includesPackageAsset = false;
+        for (const auto& path : m_selectedPaths) {
+            if (m_packageAssetPaths.count(path) > 0) {
+                includesPackageAsset = true;
+                break;
+            }
+        }
 
         std::snprintf(label, sizeof(label), "Duplicate %d items", n);
+        ImGui::BeginDisabled(includesPackageAsset);
         if (ImGui::MenuItem(label)) {
             std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
             auto command = std::make_unique<CompositeCommand>("Duplicate Assets");
@@ -1860,8 +2105,10 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                 ctx.undoStack->Push(std::move(command));
             RefreshDirectory();
         }
+        ImGui::EndDisabled();
 
         std::snprintf(label, sizeof(label), "Delete %d items", n);
+        ImGui::BeginDisabled(includesPackageAsset);
         if (ImGui::MenuItem(label)) {
             std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
             EditorContext* context = &ctx;
@@ -1874,6 +2121,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                     RefreshDirectory();
                 });
         }
+        ImGui::EndDisabled();
 
         ImGui::Separator();
         if (ImGui::BeginMenu("Create")) { DrawCreateMenu(ctx); ImGui::EndMenu(); }
@@ -1903,20 +2151,23 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             m_importSettings.path      = e.path;
             m_importSettings.options   = {};
             m_importSettings.open      = true;
+            m_importSettings.visible   = true;
+            m_importSettings.needsInit = true;
             m_importSettings.isTexture = false;
         }
         ImGui::Separator();
     }
     if (!e.isDir && IsTextureRaw(e.ext)) {
         if (ImGui::MenuItem("Import Settings...")) {
-            m_importSettings.path      = e.path;
-            m_importSettings.options   = {};
-            m_importSettings.open      = true;
-            m_importSettings.isTexture = true;
+            m_textureImportSettings.path        = e.path;
+            m_textureImportSettings.open        = true;
+            m_textureImportSettings.visible     = true;
+            m_textureImportSettings.needsInit   = true;
+            m_textureImportSettings.fromWatcher = false;
         }
         ImGui::Separator();
     }
-    if (!e.isDir && ImGui::MenuItem("Duplicate")) {
+    if (!e.isDir && !e.isPackageAsset && ImGui::MenuItem("Duplicate")) {
         const std::string dir  = util::FileSystem::GetDirectory(e.path);
         const std::string name = std::filesystem::path(e.path).stem().string();
         const std::string ext  = e.ext;
@@ -1984,7 +2235,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
     }
     ImGui::Separator();
-    ImGui::BeginDisabled(e.isMount);
+    ImGui::BeginDisabled(e.isMount || e.isPackageAsset);
     if (ImGui::MenuItem("Rename")) {
         m_renamingPath = e.path;
         std::strncpy(m_renameBuffer, e.name.c_str(), sizeof(m_renameBuffer) - 1);
@@ -2189,17 +2440,17 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     DrawEntryContextMenu(e, ctx);
 
     // fzasset の ▶/▼ 三角クリックで展開トグル
-    if (hov && e.ext == ".model" || e.ext == ".asset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (hov && e.ext == ".fzasset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const float ts  = sz * 0.18f;
         const float bx  = origin.x + 2.0f;
         const float by  = origin.y + sz - ts - 2.0f;
         const ImVec2 mp = ImGui::GetIO().MousePos;
         if (mp.x >= bx && mp.x <= bx + ts && mp.y >= by && mp.y <= by + ts) {
-            if (m_expandedFzAssets.count(e.path))
-                m_expandedFzAssets.erase(e.path);
+            if (m_expandedAssets.count(e.path))
+                m_expandedAssets.erase(e.path);
             else
-                m_expandedFzAssets.insert(e.path);
-            m_fzExpandDirty = true;
+                m_expandedAssets.insert(e.path);
+            m_assetExpandDirty = true;
             ImGui::PopID();
             return;
         }
