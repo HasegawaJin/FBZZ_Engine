@@ -983,6 +983,8 @@ static bool RenderMeshThumbnail(
     shadowData.lightViewProjection = math::Matrix4::Translate({ 16.0f, 16.0f, 0.0f });
     shadowData.shadowMapTexelSize[0] = 0.0f;
     shadowData.shadowMapTexelSize[1] = 0.0f;
+    // NDC 深度最大値 (1.0) をバイアスにすることで depth - bias <= 0 が常に成立し、
+    // SampleCmpLevelZero が必ず 1.0 (照らされている) を返してサムネイル描画でのシャドウを無効化する。
     shadowData.shadowBias = 1.0f;
     resources.Update(s_tr.shadowCB, &shadowData, sizeof(shadowData));
 
