@@ -90,24 +90,6 @@ float ApplySoftIK(float dist, float dMax, float softness)
     return softZone + softLimit * (1.0f - std::exp(-excess / softLimit));
 }
 
-void SetWorldPosition(GameObject& go, const math::Vector3& worldPosition)
-{
-    if (auto* parent = go.GetParent()) {
-        const math::Quaternion invParentRot = parent->transform.worldRotation.Inverse();
-        const math::Vector3 rel = invParentRot * (worldPosition - parent->transform.worldPosition);
-        const math::Vector3 parentScale = parent->transform.worldScale;
-        go.transform.position = {
-            std::abs(parentScale.x) > math::EPSILON ? rel.x / parentScale.x : rel.x,
-            std::abs(parentScale.y) > math::EPSILON ? rel.y / parentScale.y : rel.y,
-            std::abs(parentScale.z) > math::EPSILON ? rel.z / parentScale.z : rel.z
-        };
-    } else {
-        go.transform.position = worldPosition;
-    }
-    // IK は同じフレーム内で TransformSystem の再実行前に読むため、world 値も同期する。
-    go.transform.worldPosition = worldPosition;
-}
-
 // E: 脚長ベースの動的レイ高さで地面を問い合わせる。
 // WHAT: 脚長から開始高さと最大距離を決め、スケールに依存しない接地判定を行う。
 // WHY: 固定距離だとモデルサイズの違いで空振りや誤検出が起きるため、脚長比率で扱う。
@@ -123,24 +105,6 @@ bool QueryGroundHit(physics::World& world,
     const float rayDistance    = legLength * rayDownRatio;
     const math::Vector3 rayOrigin = footFkPosition + math::Vector3::UP * rayStartHeight;
     return world.Raycast(rayOrigin, -math::Vector3::UP, rayDistance, outHit, kGroundFilter);
-}
-
-// 地面スナップでターゲット位置を接地点へ更新し、ヒット情報を返す。
-// outHit は足首傾き補正 (footNormalAxis が非ゼロのとき) に使用する。
-bool UpdateFootTargetFromGround(physics::World& world,
-                                GameObject& target,
-                                const math::Vector3& footFkPosition,
-                                float legLength,
-                                float rayUpRatio,
-                                float rayDownRatio,
-                                float footSurfaceOffset,
-                                physics::World::RaycastHit& outHit)
-{
-    if (!QueryGroundHit(world, footFkPosition, legLength, rayUpRatio, rayDownRatio, outHit))
-        return false;
-    const math::Vector3 targetPosition = outHit.point + outHit.normal * footSurfaceOffset;
-    SetWorldPosition(target, targetPosition);
-    return true;
 }
 
 void RecalcBoneMatrix(const asset::Skeleton& skeleton,
@@ -199,10 +163,12 @@ void TranslateDescendantsKeepFkRotation(Scene& scene,
             continue;
 
         const auto& tf = childGo->transform;
+        // WHY: この行列は owner 空間へ戻す前の「ワールド姿勢」として組むため、
+        //      local position を使うと ToeBase などの子ボーンが親基準座標をワールド座標として扱われる。
         animator.nodeGlobalTransforms[static_cast<size_t>(childIdx)] =
             ownerInv * math::Matrix4::TRS(
-                tf.position + worldDelta,
-                tf.rotation,
+                tf.worldPosition + worldDelta,
+                tf.worldRotation,
                 tf.worldScale);
         RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, childIdx);
 
@@ -241,6 +207,15 @@ void IKSystem::Update(SystemContext& ctx)
         auto* ik       = go->GetComponent<IKSolverComponent>();
         auto* animator = go->GetComponent<AnimatorComponent>();
         auto* smr      = go->GetComponent<SkinnedMeshRenderer>();
+        // AnimatorComponent は親 GO に、SMR は子 GO に置く構成を許容する。
+        // WHY: AnimatorSystem と同じ子探索パターンで階層分離レイアウトに対応する。
+        if (!smr) {
+            for (int ci = 0, cn = go->GetChildCount(); ci < cn; ++ci) {
+                if (auto* child = go->GetChild(ci)) {
+                    if (auto* s = child->GetComponent<SkinnedMeshRenderer>()) { smr = s; break; }
+                }
+            }
+        }
         if (!ik || !ik->enabled || !animator || !smr) continue;
         if (!smr->model || !smr->model->skeleton) continue;
 
@@ -299,7 +274,13 @@ void IKSystem::Update(SystemContext& ctx)
                     if (!QueryGroundHit(world, bC->transform.worldPosition, legLen,
                                         chain.rayUpRatio, chain.rayDownRatio, hit)) continue;
 
-                    offsetSum += hit.point.y - bC->transform.worldPosition.y;
+                    const float desiredFootY = hit.point.y + chain.footSurfaceOffset;
+                    const float correctionDeadZone =
+                        (std::max)(0.01f, chain.footSurfaceOffset * 0.5f);
+                    const float penetrationY = desiredFootY - bC->transform.worldPosition.y;
+                    if (penetrationY <= correctionDeadZone) continue;
+
+                    offsetSum += penetrationY - correctionDeadZone;
                     legLenSum += legLen;
                     ++legCount;
                 }
@@ -391,34 +372,46 @@ void IKSystem::Update(SystemContext& ctx)
             if (LA < math::EPSILON || LB < math::EPSILON) continue;
             const float totalLength = LA + LB;
 
-            // E: 動的レイ高さで地面スナップを実行してターゲット位置を更新する。
+            // E: 動的レイ高さで地面を検出する。
             GroundHit groundHit;
             const bool groundFound =
                 chain.useGroundSnap &&
-                UpdateFootTargetFromGround(world, *targetGO, pC_fk, totalLength,
-                                           chain.rayUpRatio, chain.rayDownRatio,
-                                           chain.footSurfaceOffset, groundHit);
+                QueryGroundHit(world, pC_fk, totalLength,
+                               chain.rayUpRatio, chain.rayDownRatio, groundHit);
 
             // 根本修正: FK 足位置が地面面より上にあるときはスナップを適用しない。
             // WHY: スイング相 (Run/Walk の足上げ) では FK 足は地面より高い位置にある。
             //      地面が見つかっても無条件にスナップすると、アニメーションで持ち上がった足が
             //      地面に引きずられる現象の直接原因になる。
             //      スナップは「FK 足が地面面を下回りそうなとき」だけ補正するべき。
+            const float correctionDeadZone =
+                (std::max)(0.01f, chain.footSurfaceOffset * 0.5f);
+            const float groundCorrectionY = groundFound
+                ? (groundHit.point.y + chain.footSurfaceOffset - pC_fk.y)
+                : 0.0f;
             const bool hasGroundHit = groundFound &&
-                (pC_fk.y < groundHit.point.y + chain.footSurfaceOffset + math::EPSILON);
+                (groundCorrectionY > correctionDeadZone);
+
+            if (groundFound && !hasGroundHit) {
+                continue;
+            }
 
             // pT の決定:
-            //   スナップあり → 地面ヒット点 (targetOffset は UpdateFootTargetFromGround 内で確定済み)
+            //   スナップあり → FK の XZ を保ち、地面に潜った Y だけ補正する。
             //   地面未検出   → ユーザー配置ターゲット + targetOffset
-            //   地面はあるが足が上にある → FK 足位置を直接ターゲットにして IK を無効化 (no-op)
+            // WHY: Ground Snap は「接地補正」であり、歩行アニメーションの左右・前後の足運びを
+            //      Target GO へ固定する機能ではない。XZ は FK を正とし、Y 方向だけ地面へ逃がす。
             const math::Vector3 pT = hasGroundHit
-                ? targetGO->transform.worldPosition
-                : (!groundFound
-                    ? targetGO->transform.worldPosition + chain.targetOffset
-                    : pC_fk);
+                ? math::Vector3{
+                    pC_fk.x,
+                    pC_fk.y + (groundCorrectionY - correctionDeadZone),
+                    pC_fk.z }
+                : targetGO->transform.worldPosition + chain.targetOffset;
 
             math::Vector3 pP     = math::Vector3::ZERO;
             bool          hasPole = chain.poleEntity.IsValid();
+            math::Vector3 autoPoleDir = math::Vector3::ZERO;
+            bool          hasAutoPoleDir = false;
             if (hasPole) {
                 GameObject* poleGO = scene.GetGameObject(chain.poleEntity);
                 if (poleGO) pP = poleGO->transform.worldPosition;
@@ -444,6 +437,29 @@ void IKSystem::Update(SystemContext& ctx)
             if (vecATLen > math::EPSILON)
                 axisAT = vecAT * (1.0f / vecATLen);
 
+            // Auto Pole: axisAT 確定後、Owner 回転込みの指定方向または FK の曲げ方向から
+            // 膝の曲げ方向を毎フレーム算出する。
+            // WHY: Player のように見た目を 180 度回転して使う場合、FK 曲げ方向だけでは
+            //      キャラクターの前後と一致せず膝が背面へ折れることがある。
+            //      poleEntity が有効な場合は hasPole=true のままなので Auto には入らない。
+            if (!hasPole && chain.autoPole) {
+                math::Vector3 bendRaw = math::Vector3::ZERO;
+                if (chain.autoPoleLocalDirection.LengthSq() > math::EPSILON * math::EPSILON) {
+                    const math::Vector3 ownerDir =
+                        (go->transform.worldRotation *
+                         chain.autoPoleLocalDirection.Normalized()).Normalized();
+                    bendRaw = ownerDir - axisAT * math::Vector3::Dot(ownerDir, axisAT);
+                }
+                if (bendRaw.LengthSq() <= math::EPSILON * math::EPSILON) {
+                    const math::Vector3 bVec = pB_fk - pA;
+                    bendRaw = bVec - axisAT * math::Vector3::Dot(bVec, axisAT);
+                }
+                autoPoleDir = bendRaw.LengthSq() > math::EPSILON * math::EPSILON
+                    ? bendRaw.Normalized()
+                    : ArbitraryPerpendicular(axisAT);
+                hasAutoPoleDir = true;
+            }
+
             const math::Vector3 pTEffective = pA + (axisAT * D);
 
             // コサイン定理で Root ボーンの曲げ角を求める。
@@ -453,7 +469,9 @@ void IKSystem::Update(SystemContext& ctx)
 
             // 曲げ方向。Pole 指定があれば Pole 側、なければ FK の曲げ方向を維持する。
             math::Vector3 bendDir;
-            if (hasPole) {
+            if (hasAutoPoleDir) {
+                bendDir = autoPoleDir;
+            } else if (hasPole) {
                 const math::Vector3 poleVec = pP - pA;
                 const math::Vector3 poleRaw =
                     poleVec - axisAT * math::Vector3::Dot(poleVec, axisAT);
