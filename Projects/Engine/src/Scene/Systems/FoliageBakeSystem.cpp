@@ -68,7 +68,7 @@ struct OBBDims {
 // WHY: 手動設定ではスケールと形状が合わないことが多いため自動導出する。
 OBBDims ComputeOBBFromModel(const std::string& modelPath)
 {
-    const auto* model = asset::AssetManager::Load<asset::Model>(modelPath);
+    const auto* model = asset::AssetManager::LoadModel(modelPath);
     if (!model || model->meshes.empty())
         return {};
 

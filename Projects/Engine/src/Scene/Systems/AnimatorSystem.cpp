@@ -391,7 +391,7 @@ void LoadClips(AnimatorComponent& animator)
 
     for (const auto& src : sources) {
         if (src.empty()) continue;
-        auto model = asset::AssetManager::Load<asset::Model>(src);
+        auto model = asset::AssetManager::LoadModel(src);
         if (!model) {
             FBZZ_LOG_WARN("AnimatorSystem: clip source '%s' failed to load", src.c_str());
             continue;
@@ -1257,7 +1257,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
             }
         }
         if (smr && !smr->model && !smr->modelPath.empty())
-            smr->model = asset::AssetManager::Load<asset::Model>(smr->modelPath);
+            smr->model = asset::AssetManager::LoadModel(smr->modelPath);
 
         const asset::Skeleton* skeleton = nullptr;
         if (smr && smr->model && smr->model->skeleton)
