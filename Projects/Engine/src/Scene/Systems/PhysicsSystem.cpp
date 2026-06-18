@@ -11,6 +11,7 @@
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
+#include "Engine/Scene/Components/TerrainGridComponent.hpp"
 #include "Engine/Scene/Components/VolumeComponent.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Scene/Components/WaterComponent.hpp"
@@ -47,6 +48,17 @@ struct ColliderOwner {
 // Script へのコールバック発火で使う。
 using ColliderOwnerMap = std::unordered_map<const physics::Collider*, ColliderOwner>;
 using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
+
+struct TerrainNeighbors {
+    const TerrainComponent* north = nullptr;
+    const TerrainComponent* south = nullptr;
+    const TerrainComponent* west  = nullptr;
+    const TerrainComponent* east  = nullptr;
+    const TerrainComponent* northWest = nullptr;
+    const TerrainComponent* northEast = nullptr;
+    const TerrainComponent* southWest = nullptr;
+    const TerrainComponent* southEast = nullptr;
+};
 
 // WaterBuoyancyVolume — WaterComponent の Gerstner 波を CPU 側で評価する浮力 Volume。
 // WHY: physics モジュールに WaterComponent 依存を入れると依存方向が逆転するため、
@@ -111,6 +123,136 @@ private:
 math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 {
     return { a.x * b.x, a.y * b.y, a.z * b.z };
+}
+
+bool TryAddTerrainHeightSample(const TerrainComponent* terrain,
+                               int                     x,
+                               int                     z,
+                               float&                  sum,
+                               int&                    count)
+{
+    if (!terrain || terrain->heightData.empty())
+        return false;
+    if (x < 0 || x >= terrain->columns || z < 0 || z >= terrain->rows)
+        return false;
+
+    const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain->columns)
+                     + static_cast<size_t>(x);
+    sum += terrain->heightData[idx] * terrain->maxHeight;
+    ++count;
+    return true;
+}
+
+float SampleStitchedTerrainHeight(const TerrainComponent& terrain,
+                                  const TerrainNeighbors& neighbors,
+                                  int                     x,
+                                  int                     z)
+{
+    // WHY: 描画メッシュだけ境界平均を行うと、見た目は繋がっていても HeightFieldCollider は
+    //      元 heightData の段差を保持する。Physics へ渡す一時データも同じ平均を使い、
+    //      保存データを破壊せずに接触形状を見た目へ合わせる。
+    float sum = 0.0f;
+    int count = 0;
+
+    TryAddTerrainHeightSample(&terrain, x, z, sum, count);
+
+    if (x <= 0)
+        TryAddTerrainHeightSample(neighbors.west, neighbors.west ? neighbors.west->columns - 1 + x : x, z, sum, count);
+    if (x >= terrain.columns - 1)
+        TryAddTerrainHeightSample(neighbors.east, x - (terrain.columns - 1), z, sum, count);
+    if (z <= 0)
+        TryAddTerrainHeightSample(neighbors.north, x, neighbors.north ? neighbors.north->rows - 1 + z : z, sum, count);
+    if (z >= terrain.rows - 1)
+        TryAddTerrainHeightSample(neighbors.south, x, z - (terrain.rows - 1), sum, count);
+
+    if (x <= 0 && z <= 0) {
+        TryAddTerrainHeightSample(neighbors.northWest,
+                                  neighbors.northWest ? neighbors.northWest->columns - 1 + x : x,
+                                  neighbors.northWest ? neighbors.northWest->rows - 1 + z : z,
+                                  sum,
+                                  count);
+    }
+    if (x >= terrain.columns - 1 && z <= 0) {
+        TryAddTerrainHeightSample(neighbors.northEast,
+                                  x - (terrain.columns - 1),
+                                  neighbors.northEast ? neighbors.northEast->rows - 1 + z : z,
+                                  sum,
+                                  count);
+    }
+    if (x <= 0 && z >= terrain.rows - 1) {
+        TryAddTerrainHeightSample(neighbors.southWest,
+                                  neighbors.southWest ? neighbors.southWest->columns - 1 + x : x,
+                                  z - (terrain.rows - 1),
+                                  sum,
+                                  count);
+    }
+    if (x >= terrain.columns - 1 && z >= terrain.rows - 1) {
+        TryAddTerrainHeightSample(neighbors.southEast,
+                                  x - (terrain.columns - 1),
+                                  z - (terrain.rows - 1),
+                                  sum,
+                                  count);
+    }
+
+    if (count > 0)
+        return sum / static_cast<float>(count);
+
+    const int clampedX = std::clamp(x, 0, terrain.columns - 1);
+    const int clampedZ = std::clamp(z, 0, terrain.rows - 1);
+    const size_t idx = static_cast<size_t>(clampedZ) * static_cast<size_t>(terrain.columns)
+                     + static_cast<size_t>(clampedX);
+    return terrain.heightData[idx] * terrain.maxHeight;
+}
+
+TerrainNeighbors ResolveTerrainNeighbors(Scene& scene, EntityID eid)
+{
+    TerrainNeighbors neighbors;
+
+    const auto gridEntities = scene.GetEntities<TerrainGridComponent>();
+    if (gridEntities.empty())
+        return neighbors;
+
+    const TerrainGridComponent* terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
+    if (!terrainGrid)
+        return neighbors;
+
+    int gx = 0;
+    int gz = 0;
+    if (!terrainGrid->TryGetGridPos(eid, gx, gz))
+        return neighbors;
+
+    auto resolveNeighbor = [&](int ngx, int ngz) -> const TerrainComponent* {
+        const EntityID neid = terrainGrid->GetCell(ngx, ngz);
+        if (!scene.IsValid(neid))
+            return nullptr;
+        return scene.GetComponent<TerrainComponent>(neid);
+    };
+
+    neighbors.north     = resolveNeighbor(gx,     gz - 1);
+    neighbors.south     = resolveNeighbor(gx,     gz + 1);
+    neighbors.west      = resolveNeighbor(gx - 1, gz);
+    neighbors.east      = resolveNeighbor(gx + 1, gz);
+    neighbors.northWest = resolveNeighbor(gx - 1, gz - 1);
+    neighbors.northEast = resolveNeighbor(gx + 1, gz - 1);
+    neighbors.southWest = resolveNeighbor(gx - 1, gz + 1);
+    neighbors.southEast = resolveNeighbor(gx + 1, gz + 1);
+    return neighbors;
+}
+
+std::vector<float> BuildColliderHeightData(Scene& scene, GameObject& go, const TerrainComponent& terrain)
+{
+    const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, go.GetID());
+    std::vector<float> heights;
+    heights.resize(static_cast<size_t>(terrain.rows) * static_cast<size_t>(terrain.columns));
+
+    for (int z = 0; z < terrain.rows; ++z) {
+        for (int x = 0; x < terrain.columns; ++x) {
+            const float worldHeight = SampleStitchedTerrainHeight(terrain, neighbors, x, z);
+            heights[static_cast<size_t>(z) * static_cast<size_t>(terrain.columns) + static_cast<size_t>(x)] =
+                terrain.maxHeight != 0.0f ? worldHeight / terrain.maxHeight : 0.0f;
+        }
+    }
+    return heights;
 }
 
 math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent& col)
@@ -340,18 +482,19 @@ void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent&
     if (!terrain || !terrain->enabled || terrain->heightData.empty()) return;
 
     if (terrain->colliderDirty || !col.collider) {
+        const std::vector<float> colliderHeights = BuildColliderHeightData(scene, go, *terrain);
         if (auto* hf = col.collider
                 && col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
                 ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
                 : nullptr) {
-            // 既存 HeightFieldCollider に heightData だけ再適用し BVH を再構築する。
+            // 既存 HeightFieldCollider に補完済み heightData を再適用し BVH を再構築する。
             // WHY: オブジェクト生成コストを省き、WorldHandle を維持したまま再構築できる。
-            hf->Rebuild(terrain->heightData,
+            hf->Rebuild(colliderHeights,
                         terrain->rows, terrain->columns,
                         terrain->cellSize, terrain->maxHeight);
         } else {
             col.collider = std::make_unique<physics::HeightFieldCollider>(
-                terrain->heightData,
+                colliderHeights,
                 terrain->rows, terrain->columns,
                 terrain->cellSize, terrain->maxHeight);
         }
