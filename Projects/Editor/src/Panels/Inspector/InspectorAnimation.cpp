@@ -538,30 +538,6 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
         [go](scene::IKSolverComponent& ik, EditorContext& ctx) {
 
             // ── Hip Height Correction ────────────────────────────────────────
-            // WHY: チェーンより上位にある設定のため最初に表示し、設定忘れを防ぐ。
-            {
-                char hipBuf[256];
-                std::snprintf(hipBuf, sizeof(hipBuf), "%s", ik.hipBoneName.c_str());
-                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Clear").x - 24.0f);
-                if (ImGui::InputText("Hip Bone", hipBuf, sizeof(hipBuf)))
-                    ik.hipBoneName = hipBuf;
-                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
-                    ik.hipBoneName = dropped->name;
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Clear"))
-                    ik.hipBoneName.clear();
-                if (!ik.hipBoneName.empty())
-                    ImGui::TextDisabled("  Hip height correction enabled");
-
-                ImGui::DragFloat("Hip Max Offset Ratio",
-                                 &ik.hipMaxOffsetRatio,
-                                 0.01f, 0.0f, 1.0f, "%.2f");
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Maximum hip movement as a ratio of average leg length");
-            }
-
-            ImGui::Separator();
-
             // ── IK Chains ────────────────────────────────────────────────────
             int removeIdx = -1;
 
@@ -713,39 +689,11 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     ImGui::DragFloat("Softness",      &chain.softness,     0.005f, 0.0f, 0.5f, "%.3f");
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
-                    ImGui::Checkbox("Is Leg", &chain.isLeg);
+                    widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
                     if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Include in Hip height correction (requires Hip Bone set above)");
+                        ImGui::SetTooltip("World-space offset added to the target position");
 
                     // ── Ground Snap ───────────────────────────────────────────
-                    // WHY: Ground Snap は足 IK 専用の機能群なので独立したセクションに集約する。
-                    //      targetOffset は Ground Snap 時は footSurfaceOffset に統合済みのため非表示。
-                    ImGui::SeparatorText("Ground Snap");
-                    ImGui::Checkbox("Enable##gs", &chain.useGroundSnap);
-                    if (chain.useGroundSnap) {
-                        ImGui::DragFloat("Ray Up Ratio",   &chain.rayUpRatio,        0.01f,  0.1f, 2.0f, "%.2f");
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Ray starts this many * leg-length above the FK foot position");
-                        ImGui::DragFloat("Ray Down Ratio", &chain.rayDownRatio,      0.01f,  0.5f, 4.0f, "%.2f");
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Total downward ray length in leg-length multiples");
-                        ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f");
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Distance to lift the ankle above the ground hit point");
-                        // 斜面での足首傾き補正 (Ground Snap と一体で使うため同セクション)
-                        widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Bone-local axis pointing through the foot sole.\n"
-                                              "Mixamo: (0,-1,0)   Blender Z-up: (0,0,-1)\n"
-                                              "Zero = no slope tilt correction");
-                    } else {
-                        // Ground Snap OFF のときのみ targetOffset が IK ゴールに加算される
-                        widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("World-space offset added to the target position\n"
-                                              "(hidden when Ground Snap is ON — use Surface Offset instead)");
-                    }
-
                     if (!chain.enabled)
                         ImGui::PopStyleVar();
 
@@ -765,6 +713,53 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 scene::IKChain chain;
                 chain.enabled = true;
                 ik.chains.push_back(std::move(chain));
+            }
+        });
+
+    DrawComponentSection<scene::FootIKComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Foot IK",
+        [](scene::FootIKComponent& footIK, EditorContext&) {
+            // WHY: FootIK は Animator の IK Weight とレイキャスト補正の掛け合わせで効くため、
+            //      最初に最終ウェイトに関わる項目を集約して、調整時の見落としを防ぐ。
+            ImGui::SeparatorText("Blend");
+            ImGui::Checkbox("Use Animator IK Weight", &footIK.useAnimatorIKWeight);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Multiply by AnimatorController state / motion IK Weight.\n"
+                    "Use this when Walk should snap to ground but Idle or Jump should keep FK.");
+            }
+            ImGui::DragFloat("Weight", &footIK.weight, 0.01f, 0.0f, 1.0f, "%.2f");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Overall Foot IK strength after Animator IK Weight is applied");
+
+            // WHAT: FK 足首位置から上下へレイを伸ばし、地面ヒット位置へ Y 補正する。
+            //      比率指定にしているのは、キャラクターのスケール差を吸収するため。
+            ImGui::SeparatorText("Ground Ray");
+            ImGui::DragFloat("Ray Up Ratio", &footIK.rayUpRatio, 0.01f, 0.0f, 2.0f, "%.2f");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Ray starts this many leg-length ratios above the FK foot position");
+            ImGui::DragFloat("Ray Down Ratio", &footIK.rayDownRatio, 0.01f, 0.0f, 4.0f, "%.2f");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Downward ray length in leg-length ratios used to find the ground");
+            ImGui::DragFloat("Surface Offset", &footIK.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Distance to keep the ankle above the detected ground point");
+
+            // WHY: 小さな地面の凹凸で足が振動しないよう、無視幅と最大補正を同じ場所で調整する。
+            ImGui::SeparatorText("Correction");
+            ImGui::DragFloat("Dead Zone", &footIK.correctionDeadZone, 0.001f, 0.0f, 0.25f, "%.3f");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Ignore tiny height differences below this threshold");
+            ImGui::DragFloat("Max Correction", &footIK.maxCorrection, 0.001f, 0.0f, 1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Maximum vertical foot offset applied by Foot IK");
+
+            // WHY: 足裏軸はリグごとに違うため自動推定しない。ゼロなら FK 回転を維持する。
+            ImGui::SeparatorText("Foot Rotation");
+            widgets::DragVec3("Foot Normal Axis", footIK.footNormalAxis, 0.01f, -1.0f, 1.0f);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Bone-local axis pointing through the foot sole.\n"
+                    "Zero = keep FK ankle rotation and only correct foot height.");
             }
         });
 

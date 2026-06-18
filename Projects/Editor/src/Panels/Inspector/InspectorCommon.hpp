@@ -34,6 +34,7 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/FootIKComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -926,6 +927,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "IK Solver", !go.GetComponent<scene::IKSolverComponent>(), [&]() {
             go.AddComponent<scene::IKSolverComponent>();
+        });
+        shown |= addItem(category, "Foot IK", !go.GetComponent<scene::FootIKComponent>(), [&]() {
+            go.AddComponent<scene::FootIKComponent>();
         });
         return shown;
     });
