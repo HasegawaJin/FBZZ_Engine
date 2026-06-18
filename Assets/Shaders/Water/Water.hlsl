@@ -221,6 +221,13 @@ float LinearizeDepth(float rawDepth)
     return (nearZ * farZ) / max(farZ - rawDepth * (farZ - nearZ), 0.0001f);
 }
 
+float3 SoftWaterTonemap(float3 color)
+{
+    // WHAT: 強い specular / foam を緩やかに圧縮し、白飛びした板のような水面を避ける。
+    // WHY: Water は HDR 上で反射と泡を加算するため、最後に軽い肩を作ると見た目が安定する。
+    return color / (1.0f + color * 0.18f);
+}
+
 float4 PSMain(WaterPSInput p) : SV_Target0
 {
     float time = g_normalMap2Params.w;
@@ -232,36 +239,46 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 V = normalize(cameraPos - p.worldPos);
     float NdotV = saturate(dot(N, V));
 
-    float fresnel = g_surfaceParams.z + (1.0f - g_surfaceParams.z) * pow(1.0f - NdotV, g_surfaceParams.w);
+    float fresnelTerm = pow(saturate(1.0f - NdotV), g_surfaceParams.w);
+    float fresnel = saturate(g_surfaceParams.z + (1.0f - g_surfaceParams.z) * fresnelTerm);
     fresnel *= g_surfaceParams.y;
 
     float rawSceneDepth = g_sceneDepth.Sample(g_samplerClamp, screenUV).r;
+    // WHAT: 深度が far plane に張り付く場所は、Terrain / Mesh が存在しない背景ピクセルとして扱う。
+    // WHY: 背景の skydome 色を屈折色として読むと、水面が空そのものに溶けてしまう。
+    //      Unity の Ocean 的な見え方に寄せるため、背景ピクセルは「底が見えない深い水」として描く。
+    float backgroundMask = step(0.9999f, rawSceneDepth);
     float linearSceneDepth = LinearizeDepth(rawSceneDepth);
     float linearSurfDepth = max(p.screenPos.w, 0.0001f);
-    float waterDepth = max(0.0f, linearSceneDepth - linearSurfDepth);
-    float depthFactor = saturate(waterDepth / max(g_deepColorDepth.w, 0.0001f));
+    float waterDepth = lerp(max(0.0f, linearSceneDepth - linearSurfDepth), g_deepColorDepth.w, backgroundMask);
+    float depthFactor = smoothstep(0.0f, 1.0f, saturate(waterDepth / max(g_deepColorDepth.w, 0.0001f)));
 
+    float shallowFactor = smoothstep(0.0f, 1.0f, saturate(waterDepth / max(g_shallowColorDepth.w, 0.0001f)));
     float3 waterColor = lerp(g_shallowColorDepth.xyz, g_deepColorDepth.xyz, depthFactor);
+    float3 absorptionTint = lerp(float3(1.0f, 1.0f, 1.0f), g_deepColorDepth.xyz, saturate(depthFactor * 0.45f));
 
     // WHAT: Water 直前の HDR スナップショットを、水面法線でずらした screen UV から読む。
     // WHY: 現在描画中の HDR RT を直接読むと DX11 の read/write 競合になるため、コピー済み sceneColor を参照する。
 
     // WHAT: スクリーンスペース屈折は水面法線で HDR カラー参照 UV をずらす。
     // WHY: 水底ジオメトリを再描画せず、透明水面らしい歪みを安価に得る。
-    // 現 Renderer には HDR color copy パスがないため、同一 RT の read/write 競合を避ける。
-    float refractionMask = saturate(waterDepth / max(g_shallowColorDepth.w, 0.0001f));
+    // sceneColor は Water 描画直前にコピーされた HDR で、同一 RT の read/write 競合を避ける。
+    float refractionMask = shallowFactor * (1.0f - backgroundMask);
     float2 refrOffset = tangentNormal.xy * g_refractionFlowParams.x * (1.0f - saturate(fresnel)) * refractionMask;
     float2 refrUV = saturate(screenUV + refrOffset);
     float3 refractColor = g_sceneColor.Sample(g_samplerClamp, refrUV).rgb;
     // sceneColor が未コピーの場合 refractColor ≈ (0,0,0) になるため、
     // シーンの輝度がゼロのときは waterColor を透過色として代用し、
     // 設定した浅瀬/深部カラーが常に視覚に反映されるようにする。
-    float sceneAvail = saturate(dot(refractColor, float3(1.0f, 1.0f, 1.0f)));
-    float3 baseRefract = lerp(waterColor, refractColor, sceneAvail);
-    waterColor = lerp(baseRefract, waterColor, refractionMask);
+    float sceneAvail = saturate(dot(refractColor, float3(1.0f, 1.0f, 1.0f))) * (1.0f - backgroundMask);
+    float3 baseRefract = lerp(waterColor, refractColor * absorptionTint, sceneAvail);
+    waterColor = lerp(baseRefract, waterColor, saturate(depthFactor * 0.65f));
 
-    float3 reflectColor = lerp(skyReflectTint, g_envTex.Sample(g_samplerEnv, screenUV).rgb, envMapBlend);
-    float3 color = lerp(waterColor, reflectColor, saturate(fresnel));
+    float3 envSample = g_envTex.Sample(g_samplerEnv, screenUV + tangentNormal.xy * 0.015f).rgb;
+    float envAvailable = saturate(dot(envSample, float3(1.0f, 1.0f, 1.0f)));
+    float3 reflectColor = lerp(skyReflectTint, envSample, envMapBlend * envAvailable);
+    float reflectionWeight = saturate(fresnel) * lerp(1.0f, 0.45f, backgroundMask);
+    float3 color = lerp(waterColor, reflectColor, reflectionWeight);
 
     float3 L = normalize(-lightDir);
     // WHAT: Water は半透明なので影を強く乗算せず、直射光と浅い水面の明るさを中心に抑える。
@@ -273,21 +290,25 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 H = normalize(L + V);
     float NdotH = saturate(dot(N, H));
     float specular = pow(NdotH, max(specularExponent, 1.0f)) * lightIntensity * shadow;
-    color += lightColor * specular * specularStrength;
+    float sparkle = pow(saturate(dot(reflect(-V, N), L)), max(specularExponent * 0.45f, 1.0f));
+    color += lightColor * (specular * specularStrength + sparkle * specularStrength * 0.18f) * lerp(0.65f, 1.0f, shadow);
 
     float rim = pow(1.0f - NdotV, 3.0f) * rimGlowStrength;
-    color += waterColor * rim;
+    color += lerp(waterColor, skyReflectTint, 0.35f) * rim;
 
     float foamMaskVal = g_foamMask.Sample(g_samplerClamp, p.uv).r;
     float foamTexVal = g_foamTex.Sample(g_sampler, p.uv * g_foamParams.w + time * 0.03f).r;
-    float foam = foamMaskVal * foamTexVal * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
-    color = lerp(color, float3(1.0f, 1.0f, 1.0f), saturate(foam));
+    float foam = smoothstep(0.05f, 1.0f, foamMaskVal * foamTexVal) * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
+    float3 foamColor = lerp(float3(0.72f, 0.88f, 0.92f), float3(1.0f, 1.0f, 1.0f), saturate(foamTexVal));
+    color = lerp(color, foamColor, saturate(foam));
 
     float2 rippleRG = g_rippleTex.Sample(g_samplerClamp, p.uv).rg * 2.0f - 1.0f;
     float rippleRing = saturate(length(rippleRG) * rippleRingStrength);
     color = lerp(color, rippleRingColor, rippleRing);
+    color = SoftWaterTonemap(max(color, 0.0f));
 
     float alpha = g_surfaceParams.x * lerp(minShallowAlpha, 1.0f, depthFactor);
+    alpha = max(alpha, backgroundMask * 0.92f);
     alpha = saturate(max(alpha, max(foam * 0.9f, rippleRing * 0.95f)));
     return float4(color, alpha);
 }
