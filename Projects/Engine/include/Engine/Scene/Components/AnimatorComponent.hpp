@@ -329,8 +329,7 @@ struct AnimatorComponent {
             st->clipIndex < static_cast<int>(clips.size()))
             clip = &clips[static_cast<size_t>(st->clipIndex)];
         if (!clip) return 0.0f;
-        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-        const float dur = static_cast<float>(clip->durationTicks / tps);
+        const float dur = static_cast<float>(clip->GetDurationSeconds());
         return dur > 0.0f ? std::clamp(stateTime / dur, 0.0f, 1.0f) : 0.0f;
     }
 };
