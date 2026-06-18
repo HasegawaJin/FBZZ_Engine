@@ -135,7 +135,7 @@ static void BakeChunk(
 
         if (layer.type == DetailLayerType::Mesh) {
             if (layer.meshPath.empty()) continue;
-            if (!asset::AssetManager::Load<asset::Model>(layer.meshPath)) continue;
+            if (!asset::AssetManager::LoadModel(layer.meshPath)) continue;
         }
 
         uint32_t seed = baseSeed + static_cast<uint32_t>(li) * 6271u;
@@ -433,7 +433,7 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                         submitMesh(s_quadVB, s_quadIB, 6);
                     } else {
                         if (layer.meshPath.empty()) continue;
-                        const auto* model = asset::AssetManager::Load<asset::Model>(layer.meshPath);
+                        const auto* model = asset::AssetManager::LoadModel(layer.meshPath);
                         if (!model) continue;
 
                         for (const auto& mesh : model->meshes) {
