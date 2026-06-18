@@ -2,7 +2,6 @@
 // FzMaterialExporter.cpp | fbzz::editor
 // aiMaterial → .mat (TOML) + テクスチャをそのまま texturesDir にコピー
 #include <Editor/Import/FzMaterialExporter.hpp>
-#include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
@@ -96,10 +95,7 @@ std::string ResolveTexture(const aiScene* scene,
     if (!util::FileSystem::Exists(srcPath)) {
         const fs::path fallback = util::FileSystem::PathFromUtf8(fbxDir) / srcPath.filename();
         if (util::FileSystem::Exists(fallback)) srcPath = fallback;
-        else {
-            FBZZ_LOG_WARN("FzMaterialExporter: texture not found [%s]", rawPath.c_str());
-            return {};
-        }
+        else return {};
     }
 
     const std::string filename = util::FileSystem::PathToUtf8(srcPath.filename());
@@ -115,11 +111,8 @@ std::string ResolveTexture(const aiScene* scene,
 bool FlipNormalMapGreen(const fs::path& texPath)
 {
     DirectX::ScratchImage image;
-    if (FAILED(DirectX::LoadFromWICFile(texPath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, image))) {
-        FBZZ_LOG_WARN("FzMaterialExporter: FlipGreen load failed [%s]",
-                       texPath.string().c_str());
+    if (FAILED(DirectX::LoadFromWICFile(texPath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, image)))
         return false;
-    }
     DirectX::ScratchImage rgba;
     if (FAILED(DirectX::Convert(*image.GetImages(), DXGI_FORMAT_R8G8B8A8_UNORM,
                                  DirectX::TEX_FILTER_DEFAULT, 0.0f, rgba)))
@@ -178,8 +171,7 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
                 if (flipGreenChannel && std::string_view(slot.key) == "normal") {
                     const fs::path fullPath =
                         util::FileSystem::PathFromUtf8(texturesDir) / filename;
-                    if (!FlipNormalMapGreen(fullPath))
-                        FBZZ_LOG_WARN("FzMaterialExporter: FlipGreen failed [%s]", filename.c_str());
+                    FlipNormalMapGreen(fullPath);
                 }
                 texTbl.insert(slot.key, filename);
             }
@@ -190,10 +182,8 @@ bool FzMaterialExporter::Export(const aiMaterial* material,
 
     std::ostringstream out;
     out << tbl << '\n';
-    if (!util::FileSystem::WriteText(util::FileSystem::PathFromUtf8(outputPath), out.str())) {
-        FBZZ_LOG_ERROR("FzMaterialExporter: cannot open [%s]", outputPath.c_str());
+    if (!util::FileSystem::WriteText(util::FileSystem::PathFromUtf8(outputPath), out.str()))
         return false;
-    }
     return true;
 }
 
