@@ -14,6 +14,7 @@ inline void PlayerControllerComponent::Reflect(::fbzz::scene::IReflector& r_) {
     r_.FloatRange("Air Accel", airAccel, 0.0f, 50.0f);
     r_.Field("Use Camera Forward", useCameraForward);
     r_.Field("Rotate To Move Dir", rotateToMoveDirection);
+    r_.Field("Use Foot IK", useFootIK);
     r_.Group("Key Bindings");
     r_.Field("Forward", keyForward);
     r_.Field("Backward", keyBackward);
