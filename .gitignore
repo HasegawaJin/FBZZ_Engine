@@ -67,3 +67,11 @@ Thumbs.db
 # Application icons are source assets and must be tracked.
 !Assets/Icons/
 !Assets/Icons/*.ico
+
+# Large binary asset files (3D models / textures) — Git 管理対象外
+# ポートフォリオリポジトリではテキスト系ファイル (.mat / .tex / .skel) のみ追跡する
+Assets/**/*.fbx
+Assets/**/*.fzasset
+Assets/**/*.mesh
+Assets/**/*.png
+Assets/**/*.jpg
