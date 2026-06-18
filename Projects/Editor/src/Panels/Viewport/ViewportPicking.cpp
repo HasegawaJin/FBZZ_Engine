@@ -37,7 +37,7 @@ scene::EntityID SpawnFzAssetHierarchy(scene::Scene& scene, const std::string& as
     const std::string stemName =
         util::FileSystem::PathFromUtf8(assetPath).stem().string();
 
-    auto* model = asset::AssetManager::Load<asset::Model>(assetPath);
+    auto* model = asset::AssetManager::LoadModel(assetPath);
 
     // fzasset 内の相対マテリアルパス → プロジェクト相対パスへ変換
     std::vector<std::string> matPaths(static_cast<size_t>(meshCount));

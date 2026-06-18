@@ -577,7 +577,7 @@ bool DrawClipCombo(EditorContext& ctx,
             return loadedSource == sourcePath;
         });
     if (!sourcePath.empty() && !sourceAlreadyLoaded) {
-        if (auto model = asset::AssetManager::Load<asset::Model>(sourcePath)) {
+        if (auto model = asset::AssetManager::LoadModel(sourcePath)) {
             for (const auto& clip : model->clips) {
                 animator.clips.push_back(clip);
                 animator.clipSourcePaths.push_back(sourcePath);
