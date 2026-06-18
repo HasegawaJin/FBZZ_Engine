@@ -93,6 +93,7 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
         ImVec4 badgeColor = { 0.5f, 0.5f, 0.5f, 1.0f };
         if (ext == ".scene")               { badge = "SC"; badgeColor = { 0.3f, 0.6f, 1.0f, 1.0f }; }
         else if (ext == ".mat")          { badge = "MT"; badgeColor = { 0.5f, 0.9f, 0.4f, 1.0f }; }
+        else if (ext == ".fzasset")      { badge = "FZ"; badgeColor = { 0.9f, 0.6f, 0.1f, 1.0f }; }
         else if (ext == ".prefab")     { badge = "PF"; badgeColor = { 0.9f, 0.7f, 0.3f, 1.0f }; }
         else if (ext == ".animcontroller") { badge = "AN"; badgeColor = { 0.8f, 0.4f, 0.9f, 1.0f }; }
 

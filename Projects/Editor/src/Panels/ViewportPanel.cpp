@@ -239,7 +239,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         if (ImGui::BeginDragDropTargetCustom(ImRect(viewportMin, viewportMax), viewportDropId)) {
             std::string assetPath;
             if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath) &&
-                InstantiatePrefabAssetAtViewport(ctx, assetPath, viewportMin)) {
+                InstantiateAssetAtViewport(ctx, assetPath, viewportMin)) {
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
             }
             ImGui::EndDragDropTarget();

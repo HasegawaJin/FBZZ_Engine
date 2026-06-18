@@ -1,8 +1,8 @@
 // FBZZ Engine
-// FzTerrainImporter.cpp | fbzz::asset
+// TerrainImporter.cpp | fbzz::asset
 // .terrain バイナリ → TerrainAsset デシリアライザ
-#include <Engine/Asset/FzTerrainImporter.hpp>
 #include <Engine/Asset/FzTerrainFormat.hpp>
+#include <Engine/Asset/TerrainImporter.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <cstring>
 #include <fstream>
@@ -10,13 +10,13 @@
 
 namespace fbzz::asset {
 
-std::unique_ptr<TerrainAsset> FzTerrainImporter::Import(
+std::unique_ptr<TerrainAsset> TerrainImporter::Import(
     const std::string&         absPath,
     renderer::ResourceManager* /*resources*/)
 {
     std::ifstream f(absPath, std::ios::binary | std::ios::ate);
     if (!f) {
-        FBZZ_LOG_ERROR("FzTerrainImporter: cannot open [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("TerrainImporter: cannot open [%s]", absPath.c_str());
         return nullptr;
     }
 
@@ -25,7 +25,7 @@ std::unique_ptr<TerrainAsset> FzTerrainImporter::Import(
     f.seekg(0);
     f.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(fileSize));
     if (!f.good() && !f.eof()) {
-        FBZZ_LOG_ERROR("FzTerrainImporter: read failed [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("TerrainImporter: read failed [%s]", absPath.c_str());
         return nullptr;
     }
 
@@ -41,7 +41,7 @@ std::unique_ptr<TerrainAsset> FzTerrainImporter::Import(
     if (!readBytes(&hdr, sizeof(hdr)) ||
         hdr.magic[0] != 'F' || hdr.magic[1] != 'Z' ||
         hdr.magic[2] != 'T' || hdr.magic[3] != 'N') {
-        FBZZ_LOG_ERROR("FzTerrainImporter: bad magic [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("TerrainImporter: bad magic [%s]", absPath.c_str());
         return nullptr;
     }
 
@@ -69,7 +69,7 @@ std::unique_ptr<TerrainAsset> FzTerrainImporter::Import(
     const size_t heightCount = static_cast<size_t>(hdr.columns) * hdr.rows;
     terrain->heightData.resize(heightCount);
     if (!readBytes(terrain->heightData.data(), heightCount * sizeof(float))) {
-        FBZZ_LOG_ERROR("FzTerrainImporter: truncated height data [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("TerrainImporter: truncated height data [%s]", absPath.c_str());
         return nullptr;
     }
 
@@ -77,7 +77,7 @@ std::unique_ptr<TerrainAsset> FzTerrainImporter::Import(
     const size_t splatCount = heightCount * hdr.layerCount;
     terrain->splatData.resize(splatCount);
     if (!readBytes(terrain->splatData.data(), splatCount)) {
-        FBZZ_LOG_ERROR("FzTerrainImporter: truncated splat data [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("TerrainImporter: truncated splat data [%s]", absPath.c_str());
         return nullptr;
     }
 

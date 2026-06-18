@@ -1,8 +1,9 @@
 // FBZZ Engine
-// FzModelImporter.cpp | fbzz::asset
-// .model バイナリ → ModelAsset デシリアライザ
-#include <Engine/Asset/FzModelImporter.hpp>
+// ModelAssetImporter.cpp | fbzz::asset
+// .fzasset バイナリ → ModelAsset デシリアライザ
+#include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
+#include <Engine/Asset/ModelAssetImporter.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -11,48 +12,11 @@
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 #include <cstring>
-#include <fstream>
 #include <vector>
 
 namespace fbzz::asset {
 
 namespace {
-
-struct BinaryReader {
-    std::vector<uint8_t> data;
-    size_t pos = 0;
-
-    bool Open(const std::string& path) {
-        std::ifstream f(path, std::ios::binary | std::ios::ate);
-        if (!f) return false;
-        const auto size = static_cast<size_t>(f.tellg());
-        data.resize(size);
-        f.seekg(0);
-        f.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
-        return f.good() || f.eof();
-    }
-
-    template<typename T>
-    bool Read(T& out) {
-        if (pos + sizeof(T) > data.size()) return false;
-        std::memcpy(&out, data.data() + pos, sizeof(T));
-        pos += sizeof(T);
-        return true;
-    }
-
-    bool ReadBytes(void* dst, size_t bytes) {
-        if (pos + bytes > data.size()) return false;
-        std::memcpy(dst, data.data() + pos, bytes);
-        pos += bytes;
-        return true;
-    }
-
-    bool Skip(size_t bytes) {
-        if (pos + bytes > data.size()) return false;
-        pos += bytes;
-        return true;
-    }
-};
 
 math::Matrix4 FromFloatArray(const float src[16])
 {
@@ -67,7 +31,7 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
     if (!r.Read(hdr) ||
         hdr.magic[0] != 'F' || hdr.magic[1] != 'Z' ||
         hdr.magic[2] != 'S' || hdr.magic[3] != 'K') {
-        FBZZ_LOG_ERROR("FzModelImporter: bad skeleton magic [%s]", path.c_str());
+        FBZZ_LOG_ERROR("ModelAssetImporter: bad skeleton magic [%s]", path.c_str());
         return false;
     }
 
@@ -79,7 +43,10 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
 
     for (uint32_t ni = 0; ni < hdr.nodeCount; ++ni) {
         FzSkeletonNodeData nd{};
-        if (!r.Read(nd)) return false;
+        if (!r.Read(nd)) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated skeleton node %u [%s]", ni, path.c_str());
+            return false;
+        }
 
         SkeletonNode& node   = skel.nodes[ni];
         node.name            = nd.name;
@@ -92,14 +59,19 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
         skel.nodeMap[node.name] = static_cast<int>(ni);
 
         node.children.resize(nd.childCount);
-        if (!r.ReadBytes(node.children.data(), nd.childCount * sizeof(int32_t)))
+        if (!r.ReadBytes(node.children.data(), nd.childCount * sizeof(int32_t))) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated skeleton children %u [%s]", ni, path.c_str());
             return false;
+        }
     }
 
     skel.bones.resize(hdr.boneCount);
     for (uint32_t bi = 0; bi < hdr.boneCount; ++bi) {
         FzBoneData bd{};
-        if (!r.Read(bd)) return false;
+        if (!r.Read(bd)) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated bone %u [%s]", bi, path.c_str());
+            return false;
+        }
 
         Bone& bone       = skel.bones[bi];
         bone.name        = bd.name;
@@ -112,13 +84,14 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
 
 } // namespace
 
-std::unique_ptr<ModelAsset> FzModelImporter::Import(
+std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
     const std::string&         absPath,
     renderer::ResourceManager* resources)
 {
+    FBZZ_LOG_INFO("ModelAssetImporter: importing [%s]", absPath.c_str());
     BinaryReader r;
     if (!r.Open(absPath)) {
-        FBZZ_LOG_ERROR("FzModelImporter: cannot open [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("ModelAssetImporter: cannot open [%s]", absPath.c_str());
         return nullptr;
     }
 
@@ -126,7 +99,18 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
     if (!r.Read(hdr) ||
         hdr.magic[0] != 'F' || hdr.magic[1] != 'Z' ||
         hdr.magic[2] != 'M' || hdr.magic[3] != 'D') {
-        FBZZ_LOG_ERROR("FzModelImporter: bad magic [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("ModelAssetImporter: bad magic [%s] (%02X %02X %02X %02X)",
+                       absPath.c_str(),
+                       static_cast<unsigned char>(hdr.magic[0]),
+                       static_cast<unsigned char>(hdr.magic[1]),
+                       static_cast<unsigned char>(hdr.magic[2]),
+                       static_cast<unsigned char>(hdr.magic[3]));
+        return nullptr;
+    }
+
+    if (hdr.version != FZMODEL_VERSION || hdr.lodCount == 0) {
+        FBZZ_LOG_ERROR("ModelAssetImporter: unsupported header version=%u lodCount=%u [%s]",
+                       hdr.version, hdr.lodCount, absPath.c_str());
         return nullptr;
     }
 
@@ -137,7 +121,10 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
     model->materialSlotNames.resize(hdr.materialSlotCount);
     for (uint32_t i = 0; i < hdr.materialSlotCount; ++i) {
         char nameBuf[FZMODEL_SLOT_NAME_LEN]{};
-        if (!r.ReadBytes(nameBuf, FZMODEL_SLOT_NAME_LEN)) return nullptr;
+        if (!r.ReadBytes(nameBuf, FZMODEL_SLOT_NAME_LEN)) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated material slot %u [%s]", i, absPath.c_str());
+            return nullptr;
+        }
         model->materialSlotNames[i] = nameBuf;
     }
 
@@ -145,7 +132,10 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
     model->lods.resize(hdr.lodCount);
     for (uint32_t li = 0; li < hdr.lodCount; ++li) {
         FzLodHeader lodHdr{};
-        if (!r.Read(lodHdr)) return nullptr;
+        if (!r.Read(lodHdr)) {
+            FBZZ_LOG_ERROR("ModelAssetImporter: truncated LOD header %u [%s]", li, absPath.c_str());
+            return nullptr;
+        }
 
         LodLevel& lod = model->lods[li];
         lod.screenSizeThreshold = lodHdr.screenSizeThreshold;
@@ -153,7 +143,11 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
 
         for (uint32_t si = 0; si < lodHdr.submeshCount; ++si) {
             FzSubmeshHeader smHdr{};
-            if (!r.Read(smHdr)) return nullptr;
+            if (!r.Read(smHdr)) {
+                FBZZ_LOG_ERROR("ModelAssetImporter: truncated submesh header lod=%u submesh=%u [%s]",
+                               li, si, absPath.c_str());
+                return nullptr;
+            }
 
             SubmeshEntry& entry = lod.submeshes[si];
             entry.materialSlotIndex = smHdr.materialSlotIndex;
@@ -163,13 +157,21 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
             mesh->indexCount   = smHdr.indexCount;
             mesh->boundsCenter = { smHdr.boundsCenter[0], smHdr.boundsCenter[1], smHdr.boundsCenter[2] };
             mesh->boundsRadius = smHdr.boundsRadius;
+            if (smHdr.vertexFormat > 1) {
+                FBZZ_LOG_ERROR("ModelAssetImporter: unknown vertex format %u lod=%u submesh=%u [%s]",
+                               smHdr.vertexFormat, li, si, absPath.c_str());
+                return nullptr;
+            }
             mesh->isSkinned    = (smHdr.vertexFormat == 1);
 
             if (!mesh->isSkinned) {
                 mesh->cpuVertices.resize(smHdr.vertexCount);
                 if (!r.ReadBytes(mesh->cpuVertices.data(),
-                                 smHdr.vertexCount * sizeof(renderer::Vertex)))
+                                 smHdr.vertexCount * sizeof(renderer::Vertex))) {
+                    FBZZ_LOG_ERROR("ModelAssetImporter: truncated static vertices lod=%u submesh=%u count=%u [%s]",
+                                   li, si, smHdr.vertexCount, absPath.c_str());
                     return nullptr;
+                }
                 if (resources)
                     mesh->vertexBuffer = resources->CreateVertexBuffer(
                         mesh->cpuVertices.data(),
@@ -178,8 +180,11 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
             } else {
                 mesh->cpuSkinnedVertices.resize(smHdr.vertexCount);
                 if (!r.ReadBytes(mesh->cpuSkinnedVertices.data(),
-                                 smHdr.vertexCount * sizeof(renderer::SkinnedVertex)))
+                                 smHdr.vertexCount * sizeof(renderer::SkinnedVertex))) {
+                    FBZZ_LOG_ERROR("ModelAssetImporter: truncated skinned vertices lod=%u submesh=%u count=%u [%s]",
+                                   li, si, smHdr.vertexCount, absPath.c_str());
                     return nullptr;
+                }
                 if (resources)
                     mesh->vertexBuffer = resources->CreateVertexBuffer(
                         mesh->cpuSkinnedVertices.data(),
@@ -189,8 +194,11 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
 
             mesh->cpuIndices.resize(smHdr.indexCount);
             if (!r.ReadBytes(mesh->cpuIndices.data(),
-                             smHdr.indexCount * sizeof(uint32_t)))
+                             smHdr.indexCount * sizeof(uint32_t))) {
+                FBZZ_LOG_ERROR("ModelAssetImporter: truncated indices lod=%u submesh=%u count=%u [%s]",
+                               li, si, smHdr.indexCount, absPath.c_str());
                 return nullptr;
+            }
             if (resources)
                 mesh->indexBuffer = resources->CreateIndexBuffer(
                     mesh->cpuIndices.data(), smHdr.indexCount);
@@ -202,7 +210,7 @@ std::unique_ptr<ModelAsset> FzModelImporter::Import(
     // スケルトン
     if (skinned) {
         if (!ReadSkeleton(r, *model, absPath)) {
-            FBZZ_LOG_WARN("FzModelImporter: skeleton read failed [%s]", absPath.c_str());
+            FBZZ_LOG_WARN("ModelAssetImporter: skeleton read failed [%s]", absPath.c_str());
         }
     }
 

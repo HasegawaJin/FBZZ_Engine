@@ -2,18 +2,13 @@
 // FbxImportTool.cpp | fbzz::editor
 // FBX → fz* 変換パイプラインのオーケストレーター (BuildPipeline パターン)
 //
-// 旧パイプライン: FbxImportTool → FzMeshExporter + FzSkeletonExporter + FzAnimationExporter
-//                → FzAssetWriter (.asset マニフェスト)
-// 新パイプライン: FbxImportTool → BuildPipeline() → IFbxSubExporter[]
-//                → FzModelSubExporter (.model)
-//                → FzAnimSubExporter  (.anim v2)
-//                → FzMatSubExporter   (.mat + textures/ コピー)
-//                → FzTexSubExporter   (.tex 自動生成、FzMatSubExporter の textures/ 出力が前提)
+// FbxImportTool → BuildPipeline() → IFbxSubExporter[] の順に変換責務を分割する。
+// 各 SubExporter は .fzasset / .anim / .mat / .tex を同一パッケージ配下に生成する。
 #include <Editor/Import/FbxImportTool.hpp>
-#include <Editor/Import/FzAnimSubExporter.hpp>
-#include <Editor/Import/FzMatSubExporter.hpp>
-#include <Editor/Import/FzModelSubExporter.hpp>
-#include <Editor/Import/FzTexSubExporter.hpp>
+#include <Editor/Import/AnimSubExporter.hpp>
+#include <Editor/Import/MatSubExporter.hpp>
+#include <Editor/Import/ModelSubExporter.hpp>
+#include <Editor/Import/TexSubExporter.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/config.h>
 #include <assimp/Importer.hpp>
@@ -63,10 +58,10 @@ bool HasSkinning(const aiScene* scene)
 std::vector<std::unique_ptr<IFbxSubExporter>> FbxImportTool::BuildPipeline()
 {
     std::vector<std::unique_ptr<IFbxSubExporter>> pipeline;
-    pipeline.push_back(std::make_unique<FzModelSubExporter>());
-    pipeline.push_back(std::make_unique<FzAnimSubExporter>());
-    pipeline.push_back(std::make_unique<FzMatSubExporter>());
-    pipeline.push_back(std::make_unique<FzTexSubExporter>());
+    pipeline.push_back(std::make_unique<ModelSubExporter>());
+    pipeline.push_back(std::make_unique<AnimSubExporter>());
+    pipeline.push_back(std::make_unique<MatSubExporter>());
+    pipeline.push_back(std::make_unique<TexSubExporter>());
     return pipeline;
 }
 
@@ -94,20 +89,23 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
     const fs::path fbxFsPath    = util::FileSystem::PathFromUtf8(fbxPath);
     const fs::path outDirPath   = util::FileSystem::PathFromUtf8(outputDir);
-    const fs::path manifestDir  = outDirPath.parent_path();
+    const fs::path manifestDir  = outDirPath;
 
     // ── 出力ディレクトリを作成 ────────────────────────────────────────────
     if (!util::FileSystem::EnsureDirectory(outDirPath)) return false;
 
-    // ロールバックガード (失敗時に outputDir を削除)
+    FbxImportContext ctx;
+
+    // ロールバックガード (失敗時に import 生成物フォルダを丸ごと削除)
     bool success = false;
     auto cleanup = [&] {
-        if (!success) util::FileSystem::RemoveAll(outDirPath);
+        if (!success) {
+            util::FileSystem::RemoveAll(outDirPath);
+        }
     };
     struct Guard { std::function<void()> fn; ~Guard() { fn(); } } guard{ cleanup };
 
     // ── コンテキスト構築 ─────────────────────────────────────────────────
-    FbxImportContext ctx;
     ctx.scene                   = scene;
     ctx.meshScene               = meshScene;
     ctx.fbxPath                 = fbxPath;

@@ -1,9 +1,9 @@
 // FBZZ Engine
-// FzTexSubExporter.cpp | fbzz::editor
+// TexSubExporter.cpp | fbzz::editor
 // textures/ フォルダ内の生画像に .tex descriptor を自動生成する
-// FzMatSubExporter の後に実行されることを前提とする。
+// MatSubExporter の後に実行されることを前提とする。
 // GuessTextureType で型を推定し、flipGreen (法線マップ) を設定する。
-#include <Editor/Import/FzTexSubExporter.hpp>
+#include <Editor/Import/TexSubExporter.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -35,7 +35,7 @@ std::string LowerExt(const std::string& path)
 
 } // namespace
 
-bool FzTexSubExporter::Export(FbxImportContext& ctx)
+bool TexSubExporter::Export(FbxImportContext& ctx)
 {
     using namespace asset;
     namespace fs = std::filesystem;

@@ -36,7 +36,7 @@ std::string ResolveTexturePath(std::string_view materialPath, std::string value)
     if (value.find('/') != std::string::npos)
         return value;
 
-    // WHY: FBX インポートは materials/mat_N.mat と textures/foo.png を sibling に出す。
+    // WHY: FBX インポートは materials/<MaterialName>.mat と textures/foo.png を sibling に出す。
     //      旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
     const std::filesystem::path materialDir = std::filesystem::path(std::string(materialPath)).parent_path();
     return (materialDir.parent_path() / "textures" / value).string();
