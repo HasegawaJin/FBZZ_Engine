@@ -9,26 +9,26 @@ instanceId = 'C:/Users/jinhs/Desktop/FBZZ_Engine/build/debug/Binaries/Debug/Sand
 
 [[nodes]]
 instanceId = 'C:/Users/jinhs/Desktop/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Animation/Player.animcontroller'
-stateName = 'Landing'
-x = 744.2857666015625
-y = 337.14288330078125
-
-[[nodes]]
-instanceId = 'C:/Users/jinhs/Desktop/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Animation/Player.animcontroller'
 stateName = 'Locomotion'
 x = 39.999961853027344
 y = -5.714264392852783
 
 [[nodes]]
 instanceId = 'C:/Users/jinhs/Desktop/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Animation/Player.animcontroller'
-stateName = 'Fall'
-x = 722.8572387695312
-y = -19.999980926513672
+stateName = 'Landing'
+x = 744.2857666015625
+y = 337.14288330078125
 
 [[nodes]]
 instanceId = 'C:/Users/jinhs/Desktop/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Animation/Player.animcontroller'
 stateName = 'JumpUp'
 x = 338.5714111328125
+y = -19.999980926513672
+
+[[nodes]]
+instanceId = 'C:/Users/jinhs/Desktop/FBZZ_Engine/build/debug/Binaries/Debug/SandboxProject/Assets/Animation/Player.animcontroller'
+stateName = 'Fall'
+x = 722.8572387695312
 y = -19.999980926513672
 
 [[nodes]]
@@ -40,24 +40,24 @@ instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
 [[nodes]]
 instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
-stateName = 'Landing'
-x = 927.77783203125
-y = 70.0
-
-[[nodes]]
-instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 stateName = 'Locomotion'
 x = 262.77777099609375
 y = 397.0
 
 [[nodes]]
 instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
-stateName = 'Fall'
-x = 800.0
-y = -174.44444274902344
+stateName = 'Landing'
+x = 927.77783203125
+y = 70.0
 
 [[nodes]]
 instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 stateName = 'JumpUp'
 x = 337.0
 y = -129.0
+
+[[nodes]]
+instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+stateName = 'Fall'
+x = 800.0
+y = -174.44444274902344
