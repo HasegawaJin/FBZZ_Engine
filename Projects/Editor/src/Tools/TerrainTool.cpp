@@ -19,6 +19,8 @@
 #include <cmath>
 #include <cstdint>
 #include <imgui.h>
+#include <string>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -29,6 +31,48 @@ float TerrainMinWorldHeight(const scene::TerrainComponent& terrain)
     if (terrain.heightData.empty()) return 0.0f;
     const auto minIt = std::min_element(terrain.heightData.begin(), terrain.heightData.end());
     return *minIt * terrain.maxHeight;
+}
+
+void EnsureSplatData(scene::TerrainComponent& terrain)
+{
+    const size_t expectedSize = static_cast<size_t>(terrain.columns)
+                              * static_cast<size_t>(terrain.rows) * 4u;
+    if (terrain.splatData.size() == expectedSize)
+        return;
+
+    terrain.splatData.assign(expectedSize, 0u);
+    for (int i = 0; i < terrain.columns * terrain.rows; ++i)
+        terrain.splatData[static_cast<size_t>(i) * 4 + 0] = 255u;
+}
+
+int ResolvePaintLayerForTerrain(
+    const scene::TerrainComponent& terrain,
+    const std::string&             sourceMaterial,
+    int                            preferredLayer)
+{
+    preferredLayer = std::clamp(preferredLayer, 0, 3);
+
+    // WHY: Terrain ごとに layerMaterials を持つため、Grid 境界をまたいだ Paint で
+    //      「同じ index」を塗ると別マテリアルへ誤って塗る可能性がある。
+    //      material path がある場合は各 Terrain 内で同じ path のレイヤーへ解決する。
+    if (!sourceMaterial.empty()) {
+        for (int li = 0; li < 4; ++li) {
+            if (terrain.layerMaterials[li] == sourceMaterial)
+                return li;
+        }
+        return -1;
+    }
+
+    return terrain.layerMaterials[preferredLayer].empty() ? preferredLayer : -1;
+}
+
+const char* LayerDisplayName(const std::string& path)
+{
+    if (path.empty())
+        return "(empty)";
+
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path.c_str() : path.c_str() + slash + 1;
 }
 
 } // namespace
@@ -79,8 +123,22 @@ void TerrainTool::Update(
             m_strokeEntity = m_hitTerrain->GetID();
             m_strokeInstanceId = m_hitTerrain->instanceId;
             m_strokeBefore = *terrainComp;
+            m_strokeBeforeTerrains.clear();
             m_strokeActive = true;
         }
+        auto captureTerrainBefore = [&](scene::GameObject* go, scene::TerrainComponent* terrain) {
+            if (!go || !terrain)
+                return;
+            const auto found = std::find_if(
+                m_strokeBeforeTerrains.begin(),
+                m_strokeBeforeTerrains.end(),
+                [&](const TerrainStrokeSnapshot& snapshot) {
+                    return snapshot.instanceId == go->instanceId;
+                });
+            if (found == m_strokeBeforeTerrains.end())
+                m_strokeBeforeTerrains.push_back({ go->instanceId, *terrain });
+        };
+        captureTerrainBefore(m_hitTerrain, terrainComp);
 
         // ワールド座標 → テレインローカル座標に変換
         const scene::Transform& tf = m_hitTerrain->transform;
@@ -100,6 +158,7 @@ void TerrainTool::Update(
             case Mode::Sculpt:
                 ApplySculpt(*terrainComp, hitLocal, dt);
                 terrainComp->heightDirty = true;
+                terrainComp->colliderDirty = true;
                 // グリッド隣接 Terrain にもブラシを伝播する。
                 // WHY: ブラシがエッジをまたいだときに隣の heightData にも同じデルタを書かないと
                 //      スカルプト後の継ぎ目にスパイクが残る。
@@ -116,6 +175,7 @@ void TerrainTool::Update(
                                 auto* ngo      = scene.GetGameObject(neid);
                                 auto* nterrain = scene.GetComponent<scene::TerrainComponent>(neid);
                                 if (!ngo || !nterrain || nterrain->heightData.empty()) continue;
+                                captureTerrainBefore(ngo, nterrain);
                                 const math::Vector3 hitLocalN = {
                                     m_hitPoint.x - ngo->transform.position.x,
                                     m_hitPoint.y - ngo->transform.position.y,
@@ -123,22 +183,52 @@ void TerrainTool::Update(
                                 };
                                 ApplySculpt(*nterrain, hitLocalN, dt);
                                 nterrain->heightDirty = true;
+                                nterrain->colliderDirty = true;
                             }
                         }
                     }
                 }
                 break;
             case Mode::Paint:
-                // splatData が空なら layer0=255 で初期化してから塗る
-                if (terrainComp->splatData.empty()) {
-                    terrainComp->splatData.assign(
-                        static_cast<size_t>(terrainComp->columns)
-                      * static_cast<size_t>(terrainComp->rows) * 4u, 0u);
-                    for (int i = 0; i < terrainComp->columns * terrainComp->rows; ++i)
-                        terrainComp->splatData[static_cast<size_t>(i) * 4 + 0] = 255u;
+                {
+                    EnsureSplatData(*terrainComp);
+                    const int paintLayer = static_cast<int>(std::min(m_paintLayer, 3u));
+                    const std::string sourceMaterial = terrainComp->layerMaterials[paintLayer];
+                    ApplyPaint(*terrainComp, hitLocal, dt, paintLayer);
+                    terrainComp->splatDirty = true;
+
+                    // Grid 隣接 Terrain にも Paint を伝播する。
+                    // WHY: Terrain はそれぞれ layerMaterials を持つため、隣には同じ index ではなく
+                    //      同じ material path のレイヤーを探して塗る。見つからない場合は誤塗りを避けてスキップする。
+                    auto grids = scene.GetComponents<scene::TerrainGridComponent>();
+                    if (!grids.empty()) {
+                        auto* grid = grids.front();
+                        int gx = 0, gz = 0;
+                        if (grid->TryGetGridPos(m_hitTerrain->GetID(), gx, gz)) {
+                            const int dirs[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
+                            for (auto& d : dirs) {
+                                const scene::EntityID neid = grid->GetCell(gx + d[0], gz + d[1]);
+                                if (!scene.IsValid(neid)) continue;
+                                auto* ngo      = scene.GetGameObject(neid);
+                                auto* nterrain = scene.GetComponent<scene::TerrainComponent>(neid);
+                                if (!ngo || !nterrain || nterrain->heightData.empty()) continue;
+
+                                const int neighborLayer = ResolvePaintLayerForTerrain(*nterrain, sourceMaterial, paintLayer);
+                                if (neighborLayer < 0) continue;
+
+                                const math::Vector3 hitLocalN = {
+                                    m_hitPoint.x - ngo->transform.position.x,
+                                    m_hitPoint.y - ngo->transform.position.y,
+                                    m_hitPoint.z - ngo->transform.position.z
+                                };
+                                captureTerrainBefore(ngo, nterrain);
+                                EnsureSplatData(*nterrain);
+                                ApplyPaint(*nterrain, hitLocalN, dt, neighborLayer);
+                                nterrain->splatDirty = true;
+                            }
+                        }
+                    }
                 }
-                ApplyPaint(*terrainComp, hitLocal, dt);
-                terrainComp->splatDirty = true;
                 break;
         }
         markDirty();
@@ -148,29 +238,37 @@ void TerrainTool::Update(
     if (mouseReleased) {
         m_flattenLocked = false;
         if (m_strokeActive) {
-            if (auto* go = scene.GetGameObject(m_strokeEntity)) {
-                if (auto* terrain = go->GetComponent<scene::TerrainComponent>(); terrain && undoStack) {
-                    const scene::TerrainComponent before = m_strokeBefore;
-                    const scene::TerrainComponent after = *terrain;
-                    scene::Scene* scenePtr = &scene;
-                    const std::string instanceId = m_strokeInstanceId;
-                    auto apply = [scenePtr, instanceId, markDirty](const scene::TerrainComponent& value) {
-                        if (auto* target = scenePtr->FindByGuid(instanceId)) {
+            if (undoStack && !m_strokeBeforeTerrains.empty()) {
+                std::vector<TerrainStrokeSnapshot> before = m_strokeBeforeTerrains;
+                std::vector<TerrainStrokeSnapshot> after;
+                after.reserve(before.size());
+                for (const TerrainStrokeSnapshot& snapshot : before) {
+                    if (auto* target = scene.FindByGuid(snapshot.instanceId)) {
+                        if (auto* component = target->GetComponent<scene::TerrainComponent>())
+                            after.push_back({ snapshot.instanceId, *component });
+                    }
+                }
+                scene::Scene* scenePtr = &scene;
+                auto apply = [scenePtr, markDirty](const std::vector<TerrainStrokeSnapshot>& values) {
+                    for (const TerrainStrokeSnapshot& snapshot : values) {
+                        if (auto* target = scenePtr->FindByGuid(snapshot.instanceId)) {
                             if (auto* component = target->GetComponent<scene::TerrainComponent>()) {
-                                *component = value;
+                                *component = snapshot.before;
                                 component->heightDirty = true;
                                 component->splatDirty = true;
                                 component->colliderDirty = true;
-                                if (markDirty) markDirty();
                             }
                         }
-                    };
-                    undoStack->Push(std::make_unique<LambdaCommand>(
-                        m_mode == Mode::Sculpt ? "Sculpt Terrain" : "Paint Terrain",
-                        [apply, after]() { apply(after); },
-                        [apply, before]() { apply(before); }));
-                }
+                    }
+                    if (markDirty)
+                        markDirty();
+                };
+                undoStack->Push(std::make_unique<LambdaCommand>(
+                    m_mode == Mode::Sculpt ? "Sculpt Terrain" : "Paint Terrain",
+                    [apply, after]() { apply(after); },
+                    [apply, before]() { apply(before); }));
             }
+            m_strokeBeforeTerrains.clear();
             m_strokeActive = false;
         }
     }
@@ -454,14 +552,15 @@ void TerrainTool::ApplySculpt(
 void TerrainTool::ApplyPaint(
     scene::TerrainComponent& terrain,
     const math::Vector3&     hitLocal,
-    float                    dt) const
+    float                    dt,
+    int                      layerIndex) const
 {
     const int cx = static_cast<int>(hitLocal.x / terrain.cellSize);
     const int cz = static_cast<int>(hitLocal.z / terrain.cellSize);
     const int ri = static_cast<int>(m_brush.radius / terrain.cellSize) + 1;
 
-    // 選択レイヤーを 0-3 の範囲にクランプする（fzmat で固定 4 層）
-    const int layerIdx = static_cast<int>(std::min(m_paintLayer, 3u));
+    // 呼び出し側で Terrain ごとの layerMaterials へ解決した index を受け取る。
+    const int layerIdx = std::clamp(layerIndex, 0, 3);
 
     for (int z = cz - ri; z <= cz + ri; ++z) {
         if (z < 0 || z >= terrain.rows) continue;
@@ -588,13 +687,28 @@ void TerrainTool::DrawSculptContent(
 }
 
 void TerrainTool::DrawPaintContent(
-    scene::Scene& /*scene*/, UndoStack* /*undoStack*/, const std::function<void()>& /*markDirty*/)
+    scene::Scene& scene, UndoStack* /*undoStack*/, const std::function<void()>& /*markDirty*/)
 {
+    const scene::TerrainComponent* referenceTerrain = nullptr;
+    if (m_hitTerrain)
+        referenceTerrain = m_hitTerrain->GetComponent<scene::TerrainComponent>();
+    if (!referenceTerrain) {
+        for (scene::EntityID eid : scene.GetEntities<scene::TerrainComponent>()) {
+            if (auto* terrain = scene.GetComponent<scene::TerrainComponent>(eid); terrain && terrain->enabled) {
+                referenceTerrain = terrain;
+                break;
+            }
+        }
+    }
+
     ImGui::TextDisabled("Splat Layer");
     for (int i = 0; i < 4; ++i) {
         const bool active = static_cast<int>(m_paintLayer) == i;
         if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
-        if (ImGui::Button(("Layer " + std::to_string(i)).c_str(), { -1.0f, 0.0f }))
+        std::string label = "Layer " + std::to_string(i);
+        if (referenceTerrain)
+            label += "  " + std::string(LayerDisplayName(referenceTerrain->layerMaterials[i]));
+        if (ImGui::Button(label.c_str(), { -1.0f, 0.0f }))
             m_paintLayer = static_cast<uint32_t>(i);
         if (active) ImGui::PopStyleColor();
     }
