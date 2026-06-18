@@ -136,6 +136,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (ImGui::Button("Initialize Flat")) {
                 tc.InitFlat(0.0f);
                 tc.heightDirty  = true;
+                tc.splatDirty   = true;
                 tc.colliderDirty = true;
             }
 

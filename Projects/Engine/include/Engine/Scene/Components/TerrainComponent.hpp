@@ -90,10 +90,22 @@ struct TerrainComponent {
     }
 
     // ── ハイトマップ初期化ヘルパー ────────────────────────────────────────────
+    // スプラットマップを layer0=100% の初期状態へ戻す。
+    // WHY: Terrain は splatData が空のまま保存されると .terrain が不完全になり、
+    //      PaintTool や TerrainRenderPass が「4チャンネル正規化済み」という前提を満たせなくなるため。
+    void InitDefaultSplat()
+    {
+        const size_t vertexCount = static_cast<size_t>(columns) * static_cast<size_t>(rows);
+        splatData.assign(vertexCount * 4u, 0u);
+        for (size_t i = 0; i < vertexCount; ++i)
+            splatData[i * 4u] = 255u;
+    }
+
     // 呼び出し後に heightDirty = true を立てること。
     void InitFlat(float height = 0.0f)
     {
         heightData.assign(static_cast<size_t>(columns) * static_cast<size_t>(rows), height / maxHeight);
+        InitDefaultSplat();
     }
 
     // ── 高さクエリ (バイリニア補間) ──────────────────────────────────────────
