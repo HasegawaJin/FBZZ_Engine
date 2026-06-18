@@ -137,8 +137,7 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
 
     // ── ANIM アイコン (クリップ1件につき1個) ──
     for (const auto& clip : model.clips) {
-        const float dur = static_cast<float>(clip.durationTicks /
-            (clip.ticksPerSecond > 0.0 ? clip.ticksPerSecond : 30.0));
+        const float dur = static_cast<float>(clip.GetDurationSeconds());
         char tip[256];
         std::snprintf(tip, sizeof(tip), "%s  (%.2fs)\nDrag → Animator",
             clip.name.c_str(), dur);

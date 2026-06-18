@@ -439,9 +439,7 @@ float GetClipLength(const scene::AnimatorComponent& animator,
         clipIndex < static_cast<int>(animator.clips.size()))
         fallback = &animator.clips[static_cast<size_t>(clipIndex)];
     if (!fallback) return 0.0f;
-    const double ticksPerSecond =
-        fallback->ticksPerSecond > 0.0 ? fallback->ticksPerSecond : 30.0;
-    return static_cast<float>(fallback->durationTicks / ticksPerSecond);
+    return static_cast<float>(fallback->GetDurationSeconds());
 }
 
 // 単一 Clip ステートの Length を返す。BlendTree は実行時 Weight 依存のため 0 を返す。

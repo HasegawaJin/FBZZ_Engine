@@ -391,6 +391,24 @@ void LoadClips(AnimatorComponent& animator)
 
     for (const auto& src : sources) {
         if (src.empty()) continue;
+
+        // .anim ファイルは AnimationClip として直接ロードする。
+        // WHY: FBX インポート時のアニメーションクリップは .anim に分離されており、
+        //      .fzasset (モデルファイル) には clips が含まれないため。
+        if (src.size() > 5 && src.rfind(".anim") == src.size() - 5) {
+            auto h = asset::AssetManager::Load<asset::AnimationClip>(src);
+            if (!h.IsValid()) {
+                FBZZ_LOG_WARN("AnimatorSystem: .anim source '%s' failed to load", src.c_str());
+                continue;
+            }
+            const auto* clip = asset::AssetManager::Get<asset::AnimationClip>(h);
+            if (clip) {
+                animator.clips.push_back(*clip);
+                animator.clipSourcePaths.push_back(src);
+            }
+            continue;
+        }
+
         auto model = asset::AssetManager::LoadModel(src);
         if (!model) {
             FBZZ_LOG_WARN("AnimatorSystem: clip source '%s' failed to load", src.c_str());
@@ -705,7 +723,7 @@ std::vector<WeightedClip> BuildStateClips(const AnimatorComponent& animator,
         const auto* clip = FindClipForMotion(animator, *weighted.motion);
         if (!clip) continue;
         const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-        const float duration = static_cast<float>(clip->durationTicks / tps);
+        const float duration = static_cast<float>(clip->GetDurationSeconds());
         float motionTime = stateTime * weighted.motion->speed;
         motionTime = state.loop
             ? WrapTime(motionTime, duration)
@@ -734,8 +752,7 @@ float GetStateDuration(const AnimatorComponent& animator, const AnimationState& 
     if (state.mode == AnimationStateMode::Clip) {
         const auto* clip = FindClipForState(animator, state);
         if (!clip) return 0.0f;
-        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-        return static_cast<float>(clip->durationTicks / tps);
+        return static_cast<float>(clip->GetDurationSeconds());
     }
 
     // BlendTree の再生周期は現在 Weight に依存させず、全 Motion の最大実効 Length で固定する。
@@ -745,11 +762,10 @@ float GetStateDuration(const AnimatorComponent& animator, const AnimationState& 
     const auto accumulateMotionDuration = [&](const BlendTreeMotion& motion) {
         const auto* clip = FindClipForMotion(animator, motion);
         if (!clip) return;
-        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
         const float speed = (std::max)(std::abs(motion.speed), 1e-4f);
         duration = (std::max)(
             duration,
-            static_cast<float>(clip->durationTicks / tps) / speed);
+            static_cast<float>(clip->GetDurationSeconds()) / speed);
     };
 
     if (state.mode == AnimationStateMode::BlendTree1D) {
@@ -1066,7 +1082,7 @@ static void RunLegacyAnimatorPath(AnimatorComponent& animator,
     }
 
     const double ticksPerSecond = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-    const float durationSeconds = static_cast<float>(clip->durationTicks / ticksPerSecond);
+    const float durationSeconds = static_cast<float>(clip->GetDurationSeconds());
     if (animator.playing) {
         animator.time += dt * animator.speed;
         animator.time = animator.loop
