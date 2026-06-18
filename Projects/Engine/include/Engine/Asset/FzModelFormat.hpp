@@ -1,6 +1,6 @@
 // FBZZ Engine
 // FzModelFormat.hpp | fbzz::asset
-// .model バイナリのオンディスクレイアウト定義
+// .fzasset バイナリのオンディスクレイアウト定義
 // メッシュ複数 + LOD + スケルトンを 1 ファイルに統合する。
 // 旧 FzAssetFormat.hpp の FZMH/FZSK 部分を置き換える。
 //
@@ -17,6 +17,7 @@
 //     FzSkeletonNodeData[] (各ノードの childCount × int32 が直後に続く)
 //     FzBoneData[]
 #pragma once
+#include <Engine/Asset/FzAssetFormat.hpp>
 #include <cstdint>
 
 namespace fbzz::asset {
@@ -54,38 +55,7 @@ struct FzSubmeshHeader {
 };
 static_assert(sizeof(FzSubmeshHeader) == 32, "FzSubmeshHeader size mismatch");
 
-// スケルトンヘッダー (旧 FzSkelHeader と同じレイアウト)
-constexpr uint32_t FZSKEL_VERSION = 1;
-
-struct FzSkelHeader {
-    char     magic[4];           // "FZSK"
-    uint32_t version;
-    int32_t  rootNodeIndex;
-    uint32_t nodeCount;
-    uint32_t boneCount;
-    float    rootInverse[16];    // row-major Matrix4
-};
-static_assert(sizeof(FzSkelHeader) == 84, "FzSkelHeader size mismatch");
-
-struct FzSkeletonNodeData {
-    char     name[64];
-    int32_t  parentIndex;
-    int32_t  boneIndex;
-    float    bindTranslation[3];
-    float    bindRotation[4];    // x,y,z,w
-    float    bindScale[3];
-    float    localBindTransform[16];
-    uint32_t childCount;
-    // 直後: childCount × int32_t
-};
-static_assert(sizeof(FzSkeletonNodeData) == 180, "FzSkeletonNodeData size mismatch");
-
-struct FzBoneData {
-    char     name[64];
-    int32_t  nodeIndex;
-    float    offsetMatrix[16];
-    float    _pad;
-};
-static_assert(sizeof(FzBoneData) == 136, "FzBoneData size mismatch");
+// FzSkelHeader / FzSkeletonNodeData / FzBoneData / FZSKEL_VERSION は
+// FzAssetFormat.hpp で定義済み (上記 include 経由で参照可)
 
 } // namespace fbzz::asset
