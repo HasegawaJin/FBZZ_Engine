@@ -100,7 +100,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     shadowData.lightViewProjection   = ctx.lightVP;
     shadowData.shadowMapTexelSize[0] = 1.0f / static_cast<float>(kShadowMapSize);
     shadowData.shadowMapTexelSize[1] = 1.0f / static_cast<float>(kShadowMapSize);
-    shadowData.shadowBias            = 0.005f;
+    shadowData.shadowBias            = ctx.shadowBiasNDC;
     resources.Update(h.shadowCB, &shadowData, sizeof(ShadowConstantsCB));
 
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
