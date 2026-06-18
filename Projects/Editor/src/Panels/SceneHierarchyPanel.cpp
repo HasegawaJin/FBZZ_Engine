@@ -3,6 +3,7 @@
 // Scene GameObject hierarchy and selection editing
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -11,10 +12,8 @@
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
-#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
@@ -39,91 +38,17 @@
 #include <Physics/SphereCollider.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <toml++/toml.hpp>
 #include <algorithm>
 #include <cctype>
 #include <cstring>
-#include <filesystem>
 #include <functional>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <vector>
 
 namespace fbzz::editor {
 
 namespace {
-
-// ViewportPicking.cpp と同じロジック。
-// fzasset を読んでシーンに GO 階層を構築し、root EntityID を返す。
-scene::EntityID SpawnFzAssetHierarchy(scene::Scene& scene, const std::string& assetPath)
-{
-    namespace fs = std::filesystem;
-
-    std::string text;
-    if (!util::FileSystem::ReadText(assetPath, text)) return scene::EntityID::INVALID;
-    std::istringstream ss(text);
-    const auto parsed = toml::parse(ss);
-    if (!parsed) return scene::EntityID::INVALID;
-
-    const auto& tbl     = parsed.table();
-    const auto* meshArr = tbl["meshes"].as_array();
-    const auto* matArr  = tbl["materials"].as_array();
-    if (!meshArr || meshArr->empty()) return scene::EntityID::INVALID;
-
-    const int  meshCount = static_cast<int>(meshArr->size());
-    const fs::path assetDir =
-        util::FileSystem::PathFromUtf8(assetPath).parent_path();
-    const std::string stemName =
-        util::FileSystem::PathFromUtf8(assetPath).stem().string();
-
-    auto* model = asset::AssetManager::LoadModel(assetPath);
-
-    std::vector<std::string> matPaths(static_cast<size_t>(meshCount));
-    if (matArr) {
-        const int n = std::min(meshCount, static_cast<int>(matArr->size()));
-        for (int i = 0; i < n; ++i) {
-            if (const auto v = (*matArr)[i].value<std::string>())
-                matPaths[i] = util::FileSystem::NormalizePathSeparators(
-                    util::FileSystem::PathToUtf8(assetDir / *v));
-        }
-    }
-
-    auto& root = scene.CreateGameObject(stemName);
-
-    auto addChild = [&](int mi) {
-        auto& child = scene.CreateGameObject(stemName + "_Mesh" + std::to_string(mi));
-        child.SetParent(&root);
-
-        scene::SkinnedMeshRenderer smr;
-        smr.modelPath = assetPath;
-        smr.meshIndex = mi;
-        smr.model     = model;
-        child.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
-
-        scene::MaterialComponent mc;
-        if (mi < static_cast<int>(matPaths.size()))
-            mc.materialPath = matPaths[mi];
-        child.AddComponent<scene::MaterialComponent>(std::move(mc));
-    };
-
-    if (meshCount == 1) {
-        scene::SkinnedMeshRenderer smr;
-        smr.modelPath = assetPath;
-        smr.meshIndex = -1;
-        smr.model     = model;
-        root.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
-
-        scene::MaterialComponent mc;
-        if (!matPaths.empty()) mc.materialPath = matPaths[0];
-        root.AddComponent<scene::MaterialComponent>(std::move(mc));
-    } else {
-        for (int i = 0; i < meshCount; ++i)
-            addChild(i);
-    }
-
-    return root.GetID();
-}
 
 void ExecuteSceneEditWithUndo(EditorContext& ctx,
                               const char* description,
@@ -874,15 +799,11 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
         std::string assetPath;
         if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath)) {
-            const std::string ext = util::FileSystem::GetExtension(assetPath);
-            if (ext == ".asset") {
+            const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath));
+            if (ext == ".fzasset") {
                 deferred = [&ctx, assetPath, id, pendingExpand]() {
-                    const scene::EntityID rootId =
-                        SpawnFzAssetHierarchy(*ctx.activeScene, assetPath);
+                    const scene::EntityID rootId = SpawnModelAssetHierarchy(ctx, assetPath, nullptr, id);
                     if (rootId == scene::EntityID::INVALID) return;
-                    auto* root   = ctx.activeScene->GetGameObject(rootId);
-                    auto* parent = ctx.activeScene->GetGameObject(id);
-                    if (root && parent) root->SetParent(parent);
                     ctx.selectedEntities = { rootId };
                     if (pendingExpand) *pendingExpand = id;
                     if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -1334,11 +1255,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         }
         std::string assetPath;
         if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath)) {
-            const std::string ext = util::FileSystem::GetExtension(assetPath);
-            if (ext == ".asset") {
+            const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath));
+            if (ext == ".fzasset") {
                 deferred = [&ctx, assetPath]() {
-                    const scene::EntityID rootId =
-                        SpawnFzAssetHierarchy(*ctx.activeScene, assetPath);
+                    const scene::EntityID rootId = SpawnModelAssetHierarchy(ctx, assetPath);
                     if (rootId != scene::EntityID::INVALID) {
                         ctx.selectedEntities = { rootId };
                         if (ctx.markSceneDirty) ctx.markSceneDirty();

@@ -22,7 +22,7 @@ struct FbxImportContext {
     std::string    fbxDir;
     std::string    baseName;   // FBX ファイルのステム名
     std::string    outputDir;  // stem/ サブフォルダへの絶対パス
-    std::string    manifestDir;// FBX と同じフォルダ (stem.model をここに置く)
+    std::string    manifestDir;// import 生成物のルートフォルダ (stem/stem.fzasset をここに置く)
     float          unitScale             = 0.01f;
     bool           hasSkin              = false;
     // テクスチャ生成オプション (FbxImportOptions から伝播)
@@ -33,7 +33,7 @@ struct FbxImportContext {
     std::vector<std::string> selectedMeshNames;
     std::vector<std::string> selectedAnimNames;
     // パイプライン内で共有する出力情報
-    std::string outputModelPath; // FzModelSubExporter が書き込む .model パス
+    std::string outputModelPath; // ModelSubExporter が書き込む .fzasset パス
 };
 
 class IFbxSubExporter {

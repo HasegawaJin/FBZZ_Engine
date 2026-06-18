@@ -1,48 +1,18 @@
 // FBZZ Engine
-// FzAnimImporter.cpp | fbzz::asset
+// AnimationImporter.cpp | fbzz::asset
 // .anim バイナリ v2 → AnimationClip デシリアライザ
-// v1 (.asset マニフェスト時代): FzAnimHeader (version=1) → durationTicks/ticksPerSecond
+// v1 (旧アニメ形式): FzAnimHeader (version=1) → durationTicks/ticksPerSecond
 // v2 (新設計):                  FzAnimHeaderV2 (version=2) → durationSeconds, events, interp per track
-#include <Engine/Asset/FzAnimImporter.hpp>
+#include <Engine/Asset/AnimationImporter.hpp>
+#include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <cstring>
-#include <fstream>
 #include <vector>
 
 namespace fbzz::asset {
 
 namespace {
-
-struct BinaryReader {
-    std::vector<uint8_t> data;
-    size_t pos = 0;
-
-    bool Open(const std::string& path) {
-        std::ifstream f(path, std::ios::binary | std::ios::ate);
-        if (!f) return false;
-        const auto size = static_cast<size_t>(f.tellg());
-        data.resize(size);
-        f.seekg(0);
-        f.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
-        return f.good() || f.eof();
-    }
-
-    template<typename T>
-    bool Read(T& out) {
-        if (pos + sizeof(T) > data.size()) return false;
-        std::memcpy(&out, data.data() + pos, sizeof(T));
-        pos += sizeof(T);
-        return true;
-    }
-
-    bool ReadBytes(void* dst, size_t bytes) {
-        if (pos + bytes > data.size()) return false;
-        std::memcpy(dst, data.data() + pos, bytes);
-        pos += bytes;
-        return true;
-    }
-};
 
 // .anim v2 固有の追加ヘッダー (version フィールドで分岐)
 // v1 FzAnimHeader の後ろに直接 FzAnimTrackHeader が続いていた。
@@ -170,13 +140,13 @@ std::unique_ptr<AnimationClip> LoadV2(BinaryReader& r, const FzAnimHeader& hdr)
 
 } // namespace
 
-std::unique_ptr<AnimationClip> FzAnimImporter::Import(
+std::unique_ptr<AnimationClip> AnimationImporter::Import(
     const std::string&         absPath,
     renderer::ResourceManager* /*resources*/)
 {
     BinaryReader r;
     if (!r.Open(absPath)) {
-        FBZZ_LOG_ERROR("FzAnimImporter: cannot open [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("AnimationImporter: cannot open [%s]", absPath.c_str());
         return nullptr;
     }
 
@@ -184,14 +154,14 @@ std::unique_ptr<AnimationClip> FzAnimImporter::Import(
     if (!r.Read(hdr) ||
         hdr.magic[0] != 'F' || hdr.magic[1] != 'Z' ||
         hdr.magic[2] != 'A' || hdr.magic[3] != 'N') {
-        FBZZ_LOG_ERROR("FzAnimImporter: bad magic [%s]", absPath.c_str());
+        FBZZ_LOG_ERROR("AnimationImporter: bad magic [%s]", absPath.c_str());
         return nullptr;
     }
 
     if (hdr.version == 1) return LoadV1(r, hdr);
     if (hdr.version == 2) return LoadV2(r, hdr);
 
-    FBZZ_LOG_ERROR("FzAnimImporter: unknown version %u [%s]", hdr.version, absPath.c_str());
+    FBZZ_LOG_ERROR("AnimationImporter: unknown version %u [%s]", hdr.version, absPath.c_str());
     return nullptr;
 }
 

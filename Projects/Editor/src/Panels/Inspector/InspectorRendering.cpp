@@ -52,7 +52,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             mr.mesh = model->meshes[0].get();
                 };
                 if (widgets::AssetPathField("Mesh Path", mr.meshPath,
-                                            ".asset", ctx.projectRoot))
+                                            ".fzasset", ctx.projectRoot))
                     loadCustomMesh();
             }
         });
@@ -66,7 +66,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             };
 
             if (widgets::AssetPathField("Model", smr.modelPath,
-                                        ".asset", ctx.projectRoot))
+                                        ".fzasset", ctx.projectRoot))
                 loadModel();
 
             if (smr.model) {

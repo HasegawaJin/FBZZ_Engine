@@ -24,7 +24,7 @@ public:
         const std::string&         absPath,
         renderer::ResourceManager* resources) = 0;
 
-    // このインポーターが処理できる拡張子（ドット付き小文字、例: ".model"）
+    // このインポーターが処理できる拡張子（ドット付き小文字、例: ".fzasset"）
     virtual std::span<const std::string_view> SupportedExtensions() const = 0;
 };
 

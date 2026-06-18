@@ -375,8 +375,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         namespace fs = std::filesystem;
         const fs::path    p         = util::FileSystem::PathFromUtf8(absPath);
         const std::string stem      = util::FileSystem::PathToUtf8(p.stem());
-        const bool imported = util::FileSystem::Exists(p.parent_path() / (stem + ".model")) ||
-                              util::FileSystem::Exists(p.parent_path() / (stem + ".asset"));
+        const bool imported = util::FileSystem::Exists(p.parent_path() / p.stem() / (stem + ".fzasset"));
 
         ImGui::TextDisabled("Type: 3D Model Source (%s)", ext.c_str());
         ImGui::Spacing();
@@ -392,9 +391,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             if (ImGui::Button("Import..."))
                 ctx.requestOpenImportModal = absPath;
         }
-    } else if (ext == ".model") {
+    } else if (ext == ".fzasset") {
         // ── .model バイナリ ──────────────────────────────────────────────
-        ImGui::TextDisabled("Type: 3D Model Binary");
+        ImGui::TextDisabled("Type: FBZZ Model Asset");
         ImGui::Spacing();
 
         const auto handle = asset::AssetManager::Load<asset::ModelAsset>(absPath);

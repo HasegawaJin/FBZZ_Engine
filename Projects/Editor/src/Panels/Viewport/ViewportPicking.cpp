@@ -1,92 +1,11 @@
 // FBZZ Engine
 // ViewportPicking.cpp | fbzz::editor
-// Scene View の Prefab ドロップと3Dピッキング
+// Scene View のアセットドロップと3Dピッキング
 #include "ViewportCommon.hpp"
-#include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
-#include <toml++/toml.hpp>
-#include <filesystem>
-#include <sstream>
+#include <Editor/Util/ModelPlacement.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 namespace fbzz::editor {
-
-namespace {
-
-// .asset を読んでシーンに GO 階層を構築する共通ヘルパー。
-// meshes が複数なら root の下に mesh ごとの子 GO を生成する。
-// AnimatorComponent は後からユーザーが親 GO へ手動追加する想定。
-scene::EntityID SpawnFzAssetHierarchy(scene::Scene& scene, const std::string& assetPath)
-{
-    namespace fs = std::filesystem;
-
-    std::string text;
-    if (!util::FileSystem::ReadText(assetPath, text)) return scene::EntityID::INVALID;
-    std::istringstream ss(text);
-    const auto parsed = toml::parse(ss);
-    if (!parsed) return scene::EntityID::INVALID;
-
-    const auto& tbl     = parsed.table();
-    const auto* meshArr = tbl["meshes"].as_array();
-    const auto* matArr  = tbl["materials"].as_array();
-    if (!meshArr || meshArr->empty()) return scene::EntityID::INVALID;
-
-    const int  meshCount = static_cast<int>(meshArr->size());
-    const fs::path assetDir =
-        util::FileSystem::PathFromUtf8(assetPath).parent_path();
-    const std::string stemName =
-        util::FileSystem::PathFromUtf8(assetPath).stem().string();
-
-    auto* model = asset::AssetManager::LoadModel(assetPath);
-
-    // fzasset 内の相対マテリアルパス → プロジェクト相対パスへ変換
-    std::vector<std::string> matPaths(static_cast<size_t>(meshCount));
-    if (matArr) {
-        const int n = std::min(meshCount, static_cast<int>(matArr->size()));
-        for (int i = 0; i < n; ++i) {
-            if (const auto v = (*matArr)[i].value<std::string>())
-                matPaths[i] = util::FileSystem::NormalizePathSeparators(
-                    util::FileSystem::PathToUtf8(assetDir / *v));
-        }
-    }
-
-    auto& root = scene.CreateGameObject(stemName);
-
-    auto addChild = [&](int mi) {
-        auto& child = scene.CreateGameObject(stemName + "_Mesh" + std::to_string(mi));
-        child.SetParent(&root);
-
-        scene::SkinnedMeshRenderer smr;
-        smr.modelPath = assetPath;
-        smr.meshIndex = mi;
-        smr.model     = model;
-        child.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
-
-        scene::MaterialComponent mc;
-        if (mi < static_cast<int>(matPaths.size()))
-            mc.materialPath = matPaths[mi];
-        child.AddComponent<scene::MaterialComponent>(std::move(mc));
-    };
-
-    if (meshCount == 1) {
-        scene::SkinnedMeshRenderer smr;
-        smr.modelPath = assetPath;
-        smr.meshIndex = -1;
-        smr.model     = model;
-        root.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
-
-        scene::MaterialComponent mc;
-        if (!matPaths.empty()) mc.materialPath = matPaths[0];
-        root.AddComponent<scene::MaterialComponent>(std::move(mc));
-    } else {
-        for (int i = 0; i < meshCount; ++i)
-            addChild(i);
-    }
-
-    return root.GetID();
-}
-
-} // namespace
 
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor)
 {
@@ -134,22 +53,22 @@ bool InstantiatePrefabAsset(EditorContext& ctx, const std::string& assetPath)
     return true;
 }
 
-bool InstantiatePrefabAssetAtViewport(EditorContext& ctx,
-                                      const std::string& assetPath,
-                                      const ImVec2& viewportMin)
+bool InstantiateAssetAtViewport(EditorContext& ctx,
+                                const std::string& assetPath,
+                                const ImVec2& viewportMin)
 {
     if (!ctx.activeScene) return false;
     const math::Vector3 position = PrefabDropPosition(ctx, viewportMin);
+    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath));
 
-    if (util::FileSystem::GetExtension(assetPath) == ".asset") {
-        const scene::EntityID root = SpawnFzAssetHierarchy(*ctx.activeScene, assetPath);
+    if (ext == ".fzasset") {
+        const scene::EntityID root = SpawnModelAssetHierarchy(ctx, assetPath, &position);
         if (root == scene::EntityID::INVALID) return false;
-        if (auto* go = ctx.activeScene->GetGameObject(root))
-            go->transform.position = position;
         ctx.selectedEntities = { root };
         return true;
     }
 
+    if (ext != ".prefab") return false;
     if (!InstantiatePrefabAsset(ctx, assetPath)) return false;
     for (scene::EntityID id : ctx.selectedEntities) {
         if (auto* go = ctx.activeScene->GetGameObject(id))
