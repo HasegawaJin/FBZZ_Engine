@@ -32,7 +32,7 @@ public:
     FBZZ_FIELD_RANGE(float, airAccel,                3.0f, "Air Accel",          0.0f,  50.0f)
     FBZZ_FIELD(bool, useCameraForward,      true, "Use Camera Forward")
     FBZZ_FIELD(bool, rotateToMoveDirection, true, "Rotate To Move Dir")
-
+    FBZZ_FIELD(bool, useFootIK,             true, "Use Foot IK")
     FBZZ_GROUP("Key Bindings")
     FBZZ_FIELD(KeyCode, keyForward,  KeyCode::W,     "Forward")
     FBZZ_FIELD(KeyCode, keyBackward, KeyCode::S,     "Backward")
@@ -171,10 +171,10 @@ inline void PlayerControllerComponent::HandleJump(CharacterControllerComponent* 
 
 inline void PlayerControllerComponent::UpdateIK()
 {
-    // AnimatorSystem が State / BlendTree Motion の IK Weight を連続補間する。
-    // WHY: Component を状態ごとに強制 ON/OFF すると Run 境界で足が急に吸着するため。
+    // Humanoid 完成アニメは FK の足運びを正とし、FootIK は Animator の IK Weight だけで制御する。
+    // WHY: Script DLL から新規 Engine Component へ直接依存させると、シーンロード時の ABI 再ビルド依存が増えるため。
     if (auto* ik = scene.GetComponent<IKSolverComponent>())
-        ik->enabled = true;
+        ik->enabled = false;
 }
 
 inline Vector3 PlayerControllerComponent::GetMoveForward() const
