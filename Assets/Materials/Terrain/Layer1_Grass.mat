@@ -8,7 +8,7 @@ version = 1
 
 [params]
 ambientOcclusion = 1.0
-autoBlendEnabled = 0.0
+autoBlendEnabled = 1.0
 autoBlendStrength = 1.0
 autoHeightFade = 1.0
 autoMaxHeight = 10000.0
