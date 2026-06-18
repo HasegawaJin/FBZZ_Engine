@@ -110,9 +110,14 @@ private:
         Microsoft::WRL::ComPtr<ID3D11Query> beginTs[GPU_MAX_PASSES];
         Microsoft::WRL::ComPtr<ID3D11Query> endTs[GPU_MAX_PASSES];
         char                                names[GPU_MAX_PASSES][64];
-        int                                 count  = 0;
-        bool                                begun  = false;
-        bool                                ended  = false;
+        int                                 count     = 0;
+        bool                                begun     = false;
+        bool                                ended     = false;
+        // WHY: GetData が S_FALSE を返して収集をスキップしたまま書き込みインデックスが
+        //      一周してきた場合、Begin() を呼ぶと D3D11 の ABANDONING_PREVIOUS_RESULTS
+        //      警告が発生する。collected フラグで「まだ読んでいない」スロットへの
+        //      上書きを防ぎ、そのフレームの GPU 計測を安全にスキップする。
+        bool                                collected = true;
     };
 
     GpuQueryFrame            m_gpuFrames[GPU_QUERY_LATENCY];
