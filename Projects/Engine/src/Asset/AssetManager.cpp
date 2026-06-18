@@ -17,6 +17,8 @@
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/ModelAssetImporter.hpp>
 #include <Engine/Asset/ModelImporter.hpp>
+#include <Engine/Asset/Skeleton.hpp>
+#include <Engine/Asset/SkeletonImporter.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
 #include <Engine/Asset/TerrainImporter.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
@@ -210,6 +212,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     // ── 新 API: インポーター登録 ─────────────────────────────────────
     RegisterImporter<ModelAsset>              (std::make_unique<ModelAssetImporter>());
     RegisterImporter<AnimationClip>           (std::make_unique<AnimationImporter>());
+    RegisterImporter<Skeleton>                (std::make_unique<SkeletonImporter>());
     RegisterImporter<MaterialAsset>           (std::make_unique<MatAssetImporter>());
     RegisterImporter<AnimatorControllerAsset> (std::make_unique<AnimCtrlImporter>());
     RegisterImporter<TerrainAsset>            (std::make_unique<TerrainImporter>());
