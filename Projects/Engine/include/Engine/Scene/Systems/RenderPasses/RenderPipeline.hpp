@@ -113,6 +113,10 @@ private:
     renderer::RenderGraph::ExecutionReport m_lastReport;
     std::function<void(std::string_view)> m_gpuBegin;
     std::function<void(std::string_view)> m_gpuEnd;
+
+    // Plan キャッシュ: 有効パスのインデックス列が変わらなければ毎フレームの Plan() をスキップする。
+    std::vector<size_t> m_lastEnabledEntryIndices;
+    bool m_planValid = false;
 };
 
 } // namespace fbzz::scene
