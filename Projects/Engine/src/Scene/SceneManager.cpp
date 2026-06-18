@@ -15,6 +15,7 @@
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
+#include "Engine/Scene/Systems/FootIKSystem.hpp"
 #include "Engine/Scene/Systems/IKSystem.hpp"
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
 #include "Engine/Scene/Systems/AudioSystem.hpp"
@@ -71,6 +72,7 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<UIAnimatorSystem>();
     m_scheduler.AddSystem<TransformLateUpdate>();
     m_scheduler.AddSystem<AnimatorSystem>();
+    m_scheduler.AddSystem<FootIKSystem>();
     m_scheduler.AddSystem<IKSystem>();
 
     m_scheduler.Build();
