@@ -8,7 +8,6 @@ namespace fbzz::editor {
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
     DrawImportSettingsModal(ctx);
-    DrawImportResultBar(ctx);
 
     // テクスチャ遅延ロードキューを処理 (3件/フレームに分散)
     DrainTexLoadQueue(ctx);

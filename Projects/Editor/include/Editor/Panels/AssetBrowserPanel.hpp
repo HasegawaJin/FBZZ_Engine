@@ -7,6 +7,7 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <atomic>
 #include <cstdint>
@@ -21,6 +22,8 @@
 #include <vector>
 #include <array>
 #include <imgui.h>
+
+namespace fbzz::renderer { class ResourceManager; }
 
 namespace fbzz::editor {
 
@@ -152,6 +155,11 @@ private:
     std::string    m_selectedFbxPath;
     asset::Model*  m_selectedModel = nullptr;
 
+    struct ThumbnailBase {
+        renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
+        bool thumbnailRendered = false;
+        bool failed = false;
+    };
     struct TexturePreview {
         renderer::ResourceHandle<renderer::TextureTag> handle;
         uint32_t width = 0;
@@ -159,7 +167,7 @@ private:
         bool failed = false;
         bool queued = false;
     };
-    struct MaterialPreview {
+    struct MaterialPreview : ThumbnailBase {
         asset::MaterialAsset asset;
         std::filesystem::file_time_type lastWriteTime{};
         std::filesystem::file_time_type shaderLastWriteTime{};
@@ -172,25 +180,16 @@ private:
         renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
         std::vector<renderer::ResourceHandle<renderer::TextureTag>> textures;
         std::vector<uint8_t> paramData;
-        renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
-        bool thumbnailRendered = false;
         bool loaded = false;
-        bool failed = false;
     };
-    struct MeshPreview {
-        renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
+    struct MeshPreview : ThumbnailBase {
         asset::Model* model = nullptr;
         std::filesystem::file_time_type lastWriteTime{};
-        bool thumbnailRendered = false;
-        bool failed = false;
     };
-    struct PrefabPreview {
-        renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
+    struct PrefabPreview : ThumbnailBase {
         asset::Model* model = nullptr;
         std::string   meshPath;
         std::filesystem::file_time_type lastWriteTime{};
-        bool thumbnailRendered = false;
-        bool failed = false;
         bool parsed = false;
         bool hasMesh = false;
     };
@@ -248,11 +247,8 @@ private:
         bool             open         = false;
         bool             fromWatcher  = false; // true = ウォッチャー自動起動（キュー継続が必要）
         // テクスチャ設定
-        bool             isTexture    = false;
-        bool             texSRGB      = true;
-        bool             texMipmaps   = true;
-        int              texCompress  = 0;     // 0=None, 1=BC1, 2=BC3, 3=BC5, 4=BC7
-        bool             texFlipGreen = false; // 法線マップ Y 反転
+        bool                         isTexture   = false;
+        asset::TextureImportSettings texSettings;  // 全フィールド (新設計)
     };
     ImportSettingsState m_importSettings;
     void DrawImportSettingsModal(EditorContext& ctx);
@@ -275,23 +271,19 @@ private:
     // WHY: インポートは数秒かかるためメインスレッドをブロックすると
     //      EditorTaskOverlay が一切描画されない。スレッドに移すことで
     //      毎フレーム進捗オーバーレイを更新できる。
-    std::future<void>       m_importFuture;
-    std::mutex              m_importStatusMtx;
-    std::string             m_importStatusStr;
-    std::atomic<bool>       m_isImporting     { false };
-    std::atomic<size_t>     m_importDone      { 0 };
-    std::atomic<size_t>     m_importTotal     { 0 };
-    std::atomic<bool>       m_importThreadDone{ false };
+    std::future<void>           m_importFuture;
+    std::mutex                  m_importStatusMtx;
+    std::string                 m_importStatusStr;
+    std::atomic<bool>           m_isImporting     { false };
+    std::atomic<size_t>         m_importDone      { 0 };
+    std::atomic<size_t>         m_importTotal     { 0 };
+    std::atomic<bool>           m_importThreadDone{ false };
 
-    // インポート結果サマリー (完了後に UI に表示)
-    struct ImportResult {
-        std::string filename;
-        bool        ok;
-    };
-    std::vector<ImportResult> m_importResults;
-    bool                      m_showImportResults = false;
-
-    void DrawImportResultBar(EditorContext& ctx);
+    // FBX Scan は Assimp を使うためレンダースレッドをブロックしない
+    // WHY: 同期実行すると D3D11 TDR タイムアウトで RenderTarget エラーが起きる
+    std::future<FbxScanResult>  m_scanFuture;
+    FbxScanResult               m_scanResult;
+    bool                        m_scanPending = false;
 
     // 5-2: Find References ポップアップ
     struct FindRefsState {
@@ -301,6 +293,11 @@ private:
     };
     FindRefsState m_findRefs;
     void DrawFindRefsPopup();
+
+    // ResourceManager ポインタ (OnInit で設定)
+    // WHY: RefreshDirectory や ResetAssetPreviewCache は EditorContext を受け取らないため、
+    //      サムネイル RT を Release するのに直接ポインタを保持する必要がある。
+    renderer::ResourceManager* m_resources = nullptr;
 };
 
 } // namespace fbzz::editor

@@ -89,6 +89,7 @@ AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath)
 
 void AssetBrowserPanel::OnInit(EditorContext& ctx)
 {
+    m_resources = ctx.resources;
     m_iconSize = ctx.assetBrowserIconSize;
     RefreshDirectory();
     if (!m_rootPath.empty()) {
@@ -185,7 +186,26 @@ void AssetBrowserPanel::RefreshDirectory()
                 util::FileSystem::NormalizePathSeparators(m_currentPath));
             if (!inCurrent) toRemove.push_back(k);
         }
-        for (const auto& k : toRemove) map.erase(k);
+        for (const auto& k : toRemove) {
+            auto it = map.find(k);
+            if (it == map.end()) continue;
+            if (m_resources) {
+                if constexpr (requires { it->second.thumbnailRT; }) {
+                    if (it->second.thumbnailRT.IsValid())
+                        m_resources->Release(it->second.thumbnailRT);
+                    if constexpr (requires { it->second.materialCB; }) {
+                        if (it->second.materialCB.IsValid())
+                            m_resources->Release(it->second.materialCB);
+                    }
+                } else if constexpr (requires { it->second.mat.thumbnailRT; }) {
+                    if (it->second.mat.thumbnailRT.IsValid())
+                        m_resources->Release(it->second.mat.thumbnailRT);
+                    if (it->second.mat.materialCB.IsValid())
+                        m_resources->Release(it->second.mat.materialCB);
+                }
+            }
+            map.erase(it);
+        }
     };
     evictStaleEntries(m_texturePreviews);
     evictStaleEntries(m_materialPreviews);
@@ -231,7 +251,7 @@ void AssetBrowserPanel::RefreshDirectory()
         withSubs.reserve(m_entries.size() * 2);
         for (const Entry& e : m_entries) {
             withSubs.push_back(e);
-            if (e.ext == ".asset" && m_expandedFzAssets.count(e.path)) {
+            if ((e.ext == ".model" || e.ext == ".asset") && m_expandedFzAssets.count(e.path)) {
                 for (auto& sub : GetFzAssetSubEntries(e.path))
                     withSubs.push_back(std::move(sub));
             }
@@ -254,13 +274,15 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     //      ユーザーが Asset Browser から開いたり移動したりする対象ではない。
     if (isDir) {
         if (util::StringUtils::EndsWith(lowerPath, "/shaders/compiled")) return false;
-        // WHY: fzasset インポートで生成されるデータフォルダ (stem/) は
-        //      同じ階層に stem.asset が存在する場合は非表示にする。
-        //      AssetBrowser は fzasset をフラット表示し、サブ項目は展開で見せる。
+        // WHY: インポートで生成されるデータフォルダ (stem/) は
+        //      同じ階層に stem.model または stem.asset が存在する場合は非表示にする。
+        //      AssetBrowser はモデルアセットをフラット表示し、サブ項目は展開で見せる。
         const std::string parentDir = util::FileSystem::GetDirectory(path);
-        const std::string fzassetSibling =
-            util::FileSystem::NormalizePathSeparators(parentDir + "/" + name + ".asset");
-        if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(fzassetSibling)))
+        const auto siblingModel = util::FileSystem::PathFromUtf8(
+            util::FileSystem::NormalizePathSeparators(parentDir + "/" + name + ".model"));
+        const auto siblingAsset = util::FileSystem::PathFromUtf8(
+            util::FileSystem::NormalizePathSeparators(parentDir + "/" + name + ".asset"));
+        if (util::FileSystem::Exists(siblingModel) || util::FileSystem::Exists(siblingAsset))
             return false;
         return true;
     }
@@ -269,10 +291,9 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     //       原本の .hpp / .fbx / .hlsl だけを操作対象にする。
     static constexpr const char* kGeneratedSuffixes[] = {
         ".generated.hpp",
-        ".tex",
+        // .tex と .anim は新パイプラインで第一級アセットになったため非表示から除外
         ".mesh",
         ".skel",
-        ".anim",
         ".cso",
         ".dll",
         ".lib",

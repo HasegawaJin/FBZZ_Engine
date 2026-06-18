@@ -120,10 +120,13 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".terrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
     { { ".scene", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
     { { ".animgraph", nullptr },                               { 0.75f, 0.40f, 0.85f, 1.0f }, "GRAPH"   },
-    { { ".asset", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "ASSET"   },
+    { { ".model", nullptr },                                 { 0.90f, 0.60f, 0.10f, 1.0f }, "MODEL"   },
+    { { ".asset", nullptr },                                 { 0.85f, 0.55f, 0.08f, 1.0f }, "ASSET"   },
+    { { ".anim", nullptr },                                  { 0.95f, 0.75f, 0.20f, 1.0f }, "ANIM"    },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
+    { { ".tex", nullptr },                                   { 0.40f, 0.80f, 0.90f, 1.0f }, "TEX"     },
     { { ".mesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
-    { { ".animcontroller", nullptr },                       { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
+    { { ".animcontroller", ".animctrl", nullptr },           { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
     { { ".ttf", ".otf", nullptr },                             { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
@@ -178,7 +181,7 @@ static bool IsTextureExt(const std::string& ext)
 static bool IsMeshExt(const std::string& ext)
 {
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" ||
-           ext == ".glb" || ext == ".asset";
+           ext == ".glb" || ext == ".model" || ext == ".asset";
 }
 
 static std::filesystem::file_time_type ReadLastWriteTime(const std::string& path)
@@ -453,7 +456,10 @@ bool AssetBrowserPanel::RebuildMaterialThumbnailGpuData(MaterialPreview& preview
     if (nextShaderPath != preview.shaderPath) {
         preview.shaderPath = nextShaderPath;
         preview.shader = {};
-        preview.materialCB = {};
+        if (ctx.resources && preview.materialCB.IsValid()) {
+            ctx.resources->Release(preview.materialCB);
+            preview.materialCB = {};
+        }
         preview.textures.clear();
         preview.paramData.clear();
     }
@@ -1056,6 +1062,23 @@ static void DrawRenderTargetThumbnail(
                                         IM_COL32(235, 240, 245, 230), badge);
 }
 
+template<typename T>
+static void EnsureThumbnailRT(T& t, EditorContext& ctx) {
+    if (!t.thumbnailRT.IsValid()) {
+        t.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
+        t.thumbnailRendered = false;
+    }
+}
+
+// Returns true if the thumbnail was drawn; caller should `return` immediately.
+template<typename T>
+static bool DrawThumbnailIfReady(T& t, ImVec2 origin, float sz,
+                                  EditorContext& ctx, bool hovered, const char* badge) {
+    if (!t.thumbnailRendered) return false;
+    DrawRenderTargetThumbnail(t.thumbnailRT, origin, sz, ctx, hovered, badge);
+    return true;
+}
+
 } // namespace
 
 ImVec4 AssetBrowserPanel::EntryColor(const Entry& e)
@@ -1222,7 +1245,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.previewTextureHeight = 0;
             preview.shaderPath.clear();
             preview.shader = {};
-            preview.materialCB = {};
+            if (m_resources && preview.materialCB.IsValid()) {
+                m_resources->Release(preview.materialCB);
+                preview.materialCB = {};
+            }
             preview.textures.clear();
             preview.paramData.clear();
             preview.thumbnailRendered = false;
@@ -1239,7 +1265,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 preview.shaderLastWriteTime = shaderWriteTime;
                 preview.shaderPath.clear();
                 preview.shader = {};
-                preview.materialCB = {};
+                if (m_resources && preview.materialCB.IsValid()) {
+                    m_resources->Release(preview.materialCB);
+                    preview.materialCB = {};
+                }
                 preview.textures.clear();
                 preview.paramData.clear();
                 preview.thumbnailRendered = false;
@@ -1266,10 +1295,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
             }
 
-            if (!preview.thumbnailRT.IsValid()) {
-                preview.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
-                preview.thumbnailRendered = false;
-            }
+            EnsureThumbnailRT(preview, ctx);
             if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
                 if (!s_tr.materialSphere)
                     s_tr.materialSphere = renderer::PrimitiveMesh::Sphere(*ctx.resources, 64);
@@ -1296,10 +1322,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         &preview.asset);
                 }
             }
-            if (preview.thumbnailRendered) {
-                DrawRenderTargetThumbnail(preview.thumbnailRT, origin, sz, ctx, hovered, "MAT");
-                return;
-            }
+            if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "MAT")) return;
         }
     }
 
@@ -1312,12 +1335,9 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.thumbnailRendered = false;
             preview.failed = false;
         }
-        if (!preview.thumbnailRT.IsValid()) {
-            preview.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
-            preview.thumbnailRendered = false;
-        }
+        EnsureThumbnailRT(preview, ctx);
         if (!preview.model && !preview.failed)
-            preview.model = asset::AssetManager::Load<asset::Model>(e.path);
+            preview.model = asset::AssetManager::LoadModel(e.path);
         if (!preview.thumbnailRendered && !preview.failed && preview.thumbnailRT.IsValid() &&
             preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
             preview.thumbnailRendered = RenderMeshThumbnail(
@@ -1329,11 +1349,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 { 0.74f, 0.78f, 0.84f, 1.0f });
             preview.failed = !preview.thumbnailRendered;
         }
-        if (preview.thumbnailRendered) {
-            const char* badge = (e.ext == ".asset") ? "ASSET" : "MESH";
-            DrawRenderTargetThumbnail(preview.thumbnailRT, origin, sz, ctx, hovered, badge);
-            return;
-        }
+        const char* badge = (e.ext == ".model") ? "MODEL" : (e.ext == ".model" || e.ext == ".asset") ? "ASSET" : "MESH";
+        if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, badge)) return;
     }
 
     // .prefab: TOML を解析してメッシュを持つ場合は 3D サムネイル、なければキューブアイコン
@@ -1378,15 +1395,12 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
             }
             if (preview.hasMesh && !preview.failed) {
-                if (!preview.thumbnailRT.IsValid()) {
-                    preview.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
-                    preview.thumbnailRendered = false;
-                }
+                EnsureThumbnailRT(preview, ctx);
                 if (!preview.model) {
                     std::string absPath = preview.meshPath;
                     if (absPath.starts_with("Assets/") && !ctx.projectRoot.empty())
                         absPath = ctx.projectRoot + "/" + absPath;
-                    preview.model = asset::AssetManager::Load<asset::Model>(absPath);
+                    preview.model = asset::AssetManager::LoadModel(absPath);
                 }
                 if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid() &&
                     preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
@@ -1398,10 +1412,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         { 0.35f, 0.82f, 0.95f, 1.0f });
                     preview.failed = !preview.thumbnailRendered;
                 }
-                if (preview.thumbnailRendered) {
-                    DrawRenderTargetThumbnail(preview.thumbnailRT, origin, sz, ctx, hovered, "PREFAB");
-                    return;
-                }
+                if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "PREFAB")) return;
             }
         }
         // フォールバック: アイソメトリックキューブアイコン
@@ -1514,10 +1525,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
             }
             if (preview.hasMaterial && !preview.mat.failed) {
-                if (!preview.mat.thumbnailRT.IsValid()) {
-                    preview.mat.thumbnailRT = ctx.resources->CreateRenderTarget(128, 128);
-                    preview.mat.thumbnailRendered = false;
-                }
+                EnsureThumbnailRT(preview.mat, ctx);
                 if (!preview.mat.thumbnailRendered) {
                     if (!s_tr.materialSphere)
                         s_tr.materialSphere = renderer::PrimitiveMesh::Sphere(*ctx.resources, 64);
@@ -1536,10 +1544,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         preview.mat.failed = !preview.mat.thumbnailRendered;
                     }
                 }
-                if (preview.mat.thumbnailRendered) {
-                    DrawRenderTargetThumbnail(preview.mat.thumbnailRT, origin, sz, ctx, hovered, "TERRAIN");
-                    return;
-                }
+                if (DrawThumbnailIfReady(preview.mat, origin, sz, ctx, hovered, "TERRAIN")) return;
             }
         }
         // フォールバック: 丘シルエットアイコン
@@ -1597,10 +1602,30 @@ void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
 void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
 {
     m_texturePreviews.erase(path);
-    m_materialPreviews.erase(path);
-    m_meshPreviews.erase(path);
-    m_prefabPreviews.erase(path);
-    m_terrainPreviews.erase(path);
+    auto releaseAndErase = [&](auto& map) {
+        auto it = map.find(path);
+        if (it == map.end()) return;
+        if (m_resources) {
+            if constexpr (requires { it->second.thumbnailRT; }) {
+                if (it->second.thumbnailRT.IsValid())
+                    m_resources->Release(it->second.thumbnailRT);
+                if constexpr (requires { it->second.materialCB; }) {
+                    if (it->second.materialCB.IsValid())
+                        m_resources->Release(it->second.materialCB);
+                }
+            } else if constexpr (requires { it->second.mat.thumbnailRT; }) {
+                if (it->second.mat.thumbnailRT.IsValid())
+                    m_resources->Release(it->second.mat.thumbnailRT);
+                if (it->second.mat.materialCB.IsValid())
+                    m_resources->Release(it->second.mat.materialCB);
+            }
+        }
+        map.erase(it);
+    };
+    releaseAndErase(m_materialPreviews);
+    releaseAndErase(m_meshPreviews);
+    releaseAndErase(m_prefabPreviews);
+    releaseAndErase(m_terrainPreviews);
 }
 
 // ── DrawEntry サブメソッド ──────────────────────────────────────────────────────
@@ -1638,7 +1663,7 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
     // ▶/▼ 展開トグル: fzasset はサブアセットを持つ
-    if (!e.isDir && e.ext == ".asset") {
+    if (!e.isDir && e.ext == ".model" || e.ext == ".asset") {
         const bool expanded = m_expandedFzAssets.count(e.path) > 0;
         const float ts  = sz * 0.18f; // 三角サイズ
         const float bx  = origin.x + 2.0f;
@@ -1720,7 +1745,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
                 m_selectedFbxPath = e.path;
                 m_selectedModel   = nullptr;
                 if (renderer::ResourceManager::Active())
-                    m_selectedModel = asset::AssetManager::Load<asset::Model>(e.path);
+                    m_selectedModel = asset::AssetManager::LoadModel(e.path);
             } else {
                 m_selectedFbxPath.clear();
                 m_selectedModel = nullptr;
@@ -2164,7 +2189,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     DrawEntryContextMenu(e, ctx);
 
     // fzasset の ▶/▼ 三角クリックで展開トグル
-    if (hov && e.ext == ".asset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (hov && e.ext == ".model" || e.ext == ".asset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const float ts  = sz * 0.18f;
         const float bx  = origin.x + 2.0f;
         const float by  = origin.y + sz - ts - 2.0f;

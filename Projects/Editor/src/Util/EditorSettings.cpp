@@ -93,7 +93,12 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     }
 
     // デフォルトインポート設定
-    if (auto v = tbl["import"]["flip_green_channel"].value<bool>()) defaultImportOptions.flipGreenChannel = *v;
+    if (auto v = tbl["import"]["normal_map_convention"].value<int64_t>())
+        defaultImportOptions.normalMapConvention = static_cast<fbzz::editor::NormalMapConvention>(*v);
+    if (auto v = tbl["import"]["generate_tex_descriptors"].value<bool>())
+        defaultImportOptions.generateTexDescriptors = *v;
+    if (auto v = tbl["import"]["default_compression"].value<int64_t>())
+        defaultImportOptions.defaultCompression = static_cast<fbzz::asset::TextureCompression>(*v);
 
     // ホットキーオーバーライド
     hotkeyOverrides.clear();
@@ -352,7 +357,9 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     // デフォルトインポート設定
     toml::table importTbl;
-    importTbl.insert("flip_green_channel", defaultImportOptions.flipGreenChannel);
+    importTbl.insert("normal_map_convention",    static_cast<int64_t>(defaultImportOptions.normalMapConvention));
+    importTbl.insert("generate_tex_descriptors", defaultImportOptions.generateTexDescriptors);
+    importTbl.insert("default_compression",      static_cast<int64_t>(defaultImportOptions.defaultCompression));
 
     toml::table root;
     root.insert("camera",             std::move(camTbl));
