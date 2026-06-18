@@ -120,10 +120,17 @@ PsIn VSMain(uint vertId : SV_VertexID, uint instId : SV_InstanceID)
     // セグメント内での正規化高さ [0, 1] (blade 全体)
     float t = (segIdx + isTop) / (float)bladeSegments;
 
-    // ブレード右方向 (Y 軸回転)
-    float sinR = sin(inst.rotY);
-    float cosR = cos(inst.rotY);
-    float3 bladeRight = float3(cosR, 0.0f, -sinR);
+    // カメラ向き Cylindrical Billboard の右方向。
+    // WHY: SceneView は EditorCamera、GameView/PlayMode は CameraComponent で RenderSystem が
+    //      b0 を更新するため、shader 側は cameraPos を参照すればビューごとの正面向きに追従できる。
+    float3 viewDir = cameraPos - inst.pos;
+    viewDir.y = 0.0f;
+    float viewLenSq = dot(viewDir, viewDir);
+    viewDir = (viewLenSq > 1e-6f)
+        ? viewDir * rsqrt(viewLenSq)
+        : float3(0.0f, 0.0f, 1.0f);
+    float3 bladeRight   = normalize(cross(float3(0.0f, 1.0f, 0.0f), viewDir));
+    float3 bladeForward = normalize(cross(bladeRight, float3(0.0f, 1.0f, 0.0f)));
 
     // 根元から先端に向かって幅を細くする (先端は 20% の幅)
     float width = bladeWidth * inst.scale * (1.0f - t * 0.8f);
@@ -140,8 +147,7 @@ PsIn VSMain(uint vertId : SV_VertexID, uint instId : SV_InstanceID)
                     + float3(0.0f, bladeHeight * inst.scale * t, 0.0f)
                     + windOffset;
 
-    // ブレード表面法線: right × up (内積での両面対応は PS 側で abs)
-    float3 bladeForward = float3(-sinR, 0.0f, cosR);
+    // ブレード表面法線: カメラ方向を基準にし、先端ほど少し上向きへ寄せる。
     float3 normal       = normalize(lerp(bladeForward,
                                          float3(0.0f, 1.0f, 0.0f),
                                          t * 0.5f));  // 先端は上向きへ
