@@ -41,23 +41,23 @@ instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 [[nodes]]
 instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 stateName = 'Landing'
-x = 860.0
-y = 80.0
+x = 927.77783203125
+y = 70.0
 
 [[nodes]]
 instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 stateName = 'Locomotion'
-x = 80.0
-y = 80.0
+x = 262.77777099609375
+y = 397.0
 
 [[nodes]]
 instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 stateName = 'Fall'
-x = 600.0
-y = 80.0
+x = 800.0
+y = -174.44444274902344
 
 [[nodes]]
 instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 stateName = 'JumpUp'
-x = 340.0
-y = 80.0
+x = 337.0
+y = -129.0

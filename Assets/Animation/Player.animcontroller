@@ -26,16 +26,16 @@ ikWeight = 1.0
 paramName = 'Speed'
 dampTime = 0.18
 motions = [
-    { sourcePath = 'Assets/Models/DebugCharacter/Idle.asset', clipName = 'Idle', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'Assets/Models/DebugCharacter/Walking.asset', clipName = 'Walking', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'Assets/Models/DebugCharacter/Running.asset', clipName = 'Running', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 }
+    { sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Walking/anims/Walking@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Running/anims/Running@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 }
 ]
 
 [[states]]
 name = 'JumpUp'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/JumpingUp.asset'
-clipName = 'JumpingUp'
+sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/anims/JumpingUp@mixamo.com.anim'
+clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
 loop = false
@@ -51,8 +51,8 @@ conditions = [{ paramName = 'VerticalSpeed', op = 1, threshold = -0.5 }]
 [[states]]
 name = 'Fall'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/FallingIdle.asset'
-clipName = 'FallingIdle'
+sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/anims/FallingIdle@mixamo.com.anim'
+clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
 loop = true
@@ -68,12 +68,12 @@ conditions = [{ paramName = 'Land', op = 4, threshold = 0.0 }]
 [[states]]
 name = 'Landing'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/Landing.asset'
-clipName = 'Landing'
+sourcePath = 'Assets/Models/DebugCharacter/Landing/anims/Landing@mixamo.com.anim'
+clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
 loop = false
-ikWeight = 0.5
+ikWeight = 0.0
 
 [[states.transitions]]
 toStateName = 'Locomotion'

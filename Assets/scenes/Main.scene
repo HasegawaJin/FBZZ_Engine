@@ -7,10 +7,11 @@ instanceId = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
 layer = 0
 name = 'MainCamera'
 parent = ''
+prefabAssetPath = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777778
+    aspectRatio = 2.667883
     cullingMask = 4294967295
     enabled = true
     farZ = 1000.0
@@ -19,9 +20,25 @@ tag = 'MainCamera'
     nearZ = 0.1
 
     [gameobjects.transform]
-    position = [ 0.0, 2.0, -5.0 ]
+    position = [ 0.0, 6.0, -5.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'TpsCameraComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        Distance = 5.0
+        'Follow Speed' = 10.0
+        Height = 1.6
+        'Max Pitch' = 65.0
+        'Min Pitch' = -20.0
+        'Mouse Orbit' = true
+        'Mouse Sensitivity' = 0.2
+        Pitch = 15.0
+        'Target Tag' = 'Player'
+        Yaw = 0.0
 
 [[gameobjects]]
 active = true
@@ -29,6 +46,7 @@ instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
 layer = 0
 name = 'DirectionalLight'
 parent = ''
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
@@ -48,6 +66,7 @@ instanceId = '9dc731b0-a17c-431b-bbe1-a6757b40e84f'
 layer = 0
 name = 'Skydome'
 parent = ''
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.SkyRenderer]
@@ -58,6 +77,2015 @@ tag = 'Untagged'
     planetRadius = 6371.0
     rayleighScattering = [ 0.0058, 0.0135, 0.0331 ]
     sunIntensity = 20.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b2e7f3a1-5c8d-4e9f-a012-3b4c5d6e7f80'
+layer = 0
+name = 'Terrain'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.6
+        restitution = 0.0
+        staticFriction = 0.6
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [ '', '', '', '' ]
+    terrainAssetPath = 'Assets/Terrain/Terrain.terrain'
+
+    [gameobjects.transform]
+    position = [ -32.0, 0.0, -32.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+layer = 0
+name = 'Player'
+parent = ''
+prefabAssetPath = ''
+tag = 'Player'
+
+    [gameobjects.AnimatorComponent]
+    clipIndex = 0
+    clipName = ''
+    clipSources = []
+    controllerPath = 'Assets/Animation/Player.animcontroller'
+    defaultStateName = 'Locomotion'
+    enabled = true
+    loop = true
+    playing = true
+    speed = 1.0
+    time = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'JumpUp'
+        transitionDuration = 0.04
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Jump'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Fall'
+        transitionDuration = 0.04
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsGrounded'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 1
+            paramName = 'VerticalSpeed'
+            threshold = -1.0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Speed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'VerticalSpeed'
+        type = 0
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = true
+        floatValue = 0.0
+        intValue = 0
+        name = 'IsGrounded'
+        type = 2
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Jump'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Land'
+        type = 3
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = ''
+        ikWeight = 1.0
+        loop = true
+        mode = 1
+        name = 'Locomotion'
+        sourcePath = ''
+        speed = 1.0
+        transitions = []
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.18
+            paramName = 'Speed'
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'mixamo.com'
+                ikWeight = 0.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim'
+                speed = 1.0
+                threshold = 0.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'mixamo.com'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Walking/anims/Walking@mixamo.com.anim'
+                speed = 1.0
+                threshold = 4.0
+
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'mixamo.com'
+                ikWeight = 0.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Running/anims/Running@mixamo.com.anim'
+                speed = 1.0
+                threshold = 7.2
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 0.0
+        loop = false
+        mode = 0
+        name = 'JumpUp'
+        sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/anims/JumpingUp@mixamo.com.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Fall'
+            transitionDuration = 0.2
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 1
+                paramName = 'VerticalSpeed'
+                threshold = -0.5
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 0.0
+        loop = true
+        mode = 0
+        name = 'Fall'
+        sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/anims/FallingIdle@mixamo.com.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 1.0
+            fixedDuration = true
+            hasExitTime = false
+            toStateName = 'Landing'
+            transitionDuration = 0.1
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 4
+                paramName = 'Land'
+                threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 0.0
+        loop = false
+        mode = 0
+        name = 'Landing'
+        sourcePath = 'Assets/Models/DebugCharacter/Landing/anims/Landing@mixamo.com.anim'
+        speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            exitTime = 0.35
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.18
+
+                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
+                op = 0
+                paramName = 'Speed'
+                threshold = 0.1
+
+            [[gameobjects.AnimatorComponent.states.transitions]]
+            conditions = []
+            exitTime = 0.75
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
+
+    [gameobjects.CapsuleColliderComponent]
+    center = [ 0.0, 0.93, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.CapsuleColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.CapsuleColliderComponent.shape]
+        halfHeight = 0.73
+        radius = 0.19
+        type = 'Capsule'
+
+    [gameobjects.CharacterControllerComponent]
+    fallVelThreshold = -0.5
+    groundContactGrace = 0.12
+    groundVelThreshold = 0.3
+    groundedVelSnap = 0.35
+    intentionalJumpMaxTime = 1.0
+    isGrounded = true
+    jumpGroundIgnoreTime = 0.12
+    jumpMinAirTime = 0.2
+    ledgeFallThreshold = -1.0
+    minGroundNormalY = 0.5
+
+    [gameobjects.IKSolverComponent]
+    enabled = false
+    hipBoneName = 'mixamorig:Hips'
+    hipMaxOffsetRatio = 0.4
+
+        [[gameobjects.IKSolverComponent.chains]]
+        autoPole = true
+        autoPoleLocalDirection = [ 0.0, 0.0, -1.0 ]
+        enabled = true
+        footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footSurfaceOffset = 0.05
+        isLeg = true
+        maxExtension = 0.98
+        midBone = 'mixamorig:LeftLeg'
+        poleGuid = ''
+        poleName = ''
+        rayDownRatio = 1.2
+        rayUpRatio = 0.5
+        rootBone = 'mixamorig:LeftUpLeg'
+        softness = 0.1
+        targetGuid = '7890a521-fcea-41e6-9850-27b0780a0601'
+        targetName = 'IK_LeftFoot_Target'
+        targetOffset = [ 0.0, 0.07, 0.0 ]
+        tipBone = 'mixamorig:LeftFoot'
+        useGroundSnap = true
+        weight = 1.0
+
+        [[gameobjects.IKSolverComponent.chains]]
+        autoPole = true
+        autoPoleLocalDirection = [ 0.0, 0.0, -1.0 ]
+        enabled = true
+        footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footSurfaceOffset = 0.05
+        isLeg = true
+        maxExtension = 0.98
+        midBone = 'mixamorig:RightLeg'
+        poleGuid = ''
+        poleName = ''
+        rayDownRatio = 1.2
+        rayUpRatio = 0.5
+        rootBone = 'mixamorig:RightUpLeg'
+        softness = 0.1
+        targetGuid = '49ecd804-9f61-493e-aeff-d16410ff3564'
+        targetName = 'IK_RightFoot_Target'
+        targetOffset = [ 0.0, 0.07, 0.0 ]
+        tipBone = 'mixamorig:RightFoot'
+        useGroundSnap = true
+        weight = 1.0
+
+    [gameobjects.FootIKComponent]
+    correctionDeadZone = 0.025
+    enabled = true
+    footNormalAxis = [ 0.0, 0.0, 0.0 ]
+    footSurfaceOffset = 0.05
+    maxCorrection = 0.12
+    rayDownRatio = 1.2
+    rayUpRatio = 0.5
+    useAnimatorIKWeight = true
+    weight = 1.0
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = true
+    angularDrag = 0.0
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.5
+    charge = 0.0
+    enabled = true
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 1.0, 1.0, 1.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 1.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.0
+    mass = 1.0
+    useCCD = false
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 4.448462, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PlayerControllerComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        'Air Accel' = 3.0
+        Backward = 'S'
+        Forward = 'W'
+        'Ground Accel' = 15.0
+        'Ground Decel' = 20.0
+        'IsGrounded Param' = 'IsGrounded'
+        Jump = 'Space'
+        'Jump Force' = 5.0
+        'Jump Trigger Param' = 'Jump'
+        'Land Trigger Param' = 'Land'
+        Left = 'A'
+        'Model Yaw Offset' = 180.0
+        'Move Speed' = 4.0
+        Right = 'D'
+        'Rotate To Move Dir' = true
+        'Speed Param' = 'Speed'
+        Sprint = 'Shift'
+        'Sprint Multiplier' = 1.8
+        'Use Camera Forward' = true
+        'Vertical Speed Param' = 'VerticalSpeed'
+
+[[gameobjects]]
+active = true
+instanceId = '4aeb6b03-cdcc-41ea-9488-85faccbbdfe3'
+layer = 0
+name = 'Player_Mesh0'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Models/DebugCharacter/Player/materials/Alpha_Body_MAT.mat'
+
+    [gameobjects.SkinnedMeshRenderer]
+    enabled = true
+    meshIndex = 0
+    modelPath = 'Assets/Models/DebugCharacter/Player/Player.fzasset'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '49aac031-cfef-46a4-a0e1-5782618f518e'
+layer = 0
+name = 'Player_Mesh1'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Models/DebugCharacter/Player/materials/Alpha_Joints_MAT.mat'
+
+    [gameobjects.SkinnedMeshRenderer]
+    enabled = true
+    meshIndex = 1
+    modelPath = 'Assets/Models/DebugCharacter/Player/Player.fzasset'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = false
+instanceId = '7890a521-fcea-41e6-9850-27b0780a0601'
+layer = 0
+name = 'IK_LeftFoot_Target'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.099985, 0.070043, 0.023966 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.22, 0.22, 0.22 ]
+
+[[gameobjects]]
+active = false
+instanceId = '49ecd804-9f61-493e-aeff-d16410ff3564'
+layer = 0
+name = 'IK_RightFoot_Target'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ -0.168734, 0.070043, 0.003182 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.22, 0.22, 0.22 ]
+
+[[gameobjects]]
+active = false
+instanceId = 'c94e4ab2-e2c4-4acc-8082-3c6425ab3020'
+layer = 0
+name = 'IK_LeftKnee_Pole'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.124789, 0.59708, -0.524573 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.14, 0.14, 0.139998 ]
+
+[[gameobjects]]
+active = false
+instanceId = '72934e16-382f-40a0-80b0-56eeb32867c1'
+layer = 0
+name = 'IK_RightKnee_Pole'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ -0.131624, 0.587773, -0.495733 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.14, 0.14, 0.139996 ]
+
+[[gameobjects]]
+active = true
+instanceId = '01da1d72-541f-47a3-9fc1-91f9c88aed75'
+layer = 0
+name = 'RootNode'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'RootNode'
+    generated = true
+    nodeIndex = 0
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c6298669-0005-418a-adce-eb0e402ecc97'
+layer = 0
+name = 'mixamorig:Hips'
+parent = 'RootNode'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 0
+    boneName = 'mixamorig:Hips'
+    generated = true
+    nodeIndex = 1
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ -0.102339, 0.978871, -0.006015 ]
+    rotation = [ 0.01888, -0.015031, 0.021286, 0.999482 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'aa4ce13e-a985-4278-836f-46c49f0bd1d0'
+layer = 0
+name = 'mixamorig:Spine'
+parent = 'mixamorig:Hips'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 1
+    boneName = 'mixamorig:Spine'
+    generated = true
+    nodeIndex = 2
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 9e-06, 0.099235, 0.012273 ]
+    rotation = [ 0.056467, 0.00465, 0.004601, 0.998383 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f16eec5d-a912-43c6-b164-d2f36154b46f'
+layer = 0
+name = 'mixamorig:Spine1'
+parent = 'mixamorig:Spine'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 2
+    boneName = 'mixamorig:Spine1'
+    generated = true
+    nodeIndex = 3
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.11732, 0.0 ]
+    rotation = [ -0.000937, 0.031423, 0.008129, 0.999473 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '09edc131-6936-4bf0-8b0a-e82acf6f68ab'
+layer = 0
+name = 'mixamorig:Spine2'
+parent = 'mixamorig:Spine1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 3
+    boneName = 'mixamorig:Spine2'
+    generated = true
+    nodeIndex = 4
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.134588, 0.0 ]
+    rotation = [ -0.057909, 0.030724, 0.010008, 0.997799 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '754df632-0d0f-481d-926a-1f7b49b59e15'
+layer = 0
+name = 'mixamorig:Neck'
+parent = 'mixamorig:Spine2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 4
+    boneName = 'mixamorig:Neck'
+    generated = true
+    nodeIndex = 5
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.150278, -0.008779 ]
+    rotation = [ 0.025846, -0.017892, -0.026681, 0.99915 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'bf6eedbc-f337-4202-ac91-2cfa298e8a2e'
+layer = 0
+name = 'mixamorig:Head'
+parent = 'mixamorig:Neck'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 5
+    boneName = 'mixamorig:Head'
+    generated = true
+    nodeIndex = 6
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.103218, -0.031424 ]
+    rotation = [ -0.04519, 0.005853, 0.016961, 0.998817 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2e22eeea-e9b2-4138-aa79-a7072e001da5'
+layer = 0
+name = 'mixamorig:HeadTop_End'
+parent = 'mixamorig:Head'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:HeadTop_End'
+    generated = true
+    nodeIndex = 7
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 2e-06, 0.184747, -0.066364 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '848031b3-be54-4261-9ace-d99fe9df23f3'
+layer = 0
+name = 'mixamorig:LeftShoulder'
+parent = 'mixamorig:Spine2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 6
+    boneName = 'mixamorig:LeftShoulder'
+    generated = true
+    nodeIndex = 8
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.061058, 0.091063, -0.007571 ]
+    rotation = [ 0.422456, 0.564265, 0.589994, -0.393754 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7b8f0a60-9407-4fe0-8d27-b6f5e3efa32b'
+layer = 0
+name = 'mixamorig:LeftArm'
+parent = 'mixamorig:LeftShoulder'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 7
+    boneName = 'mixamorig:LeftArm'
+    generated = true
+    nodeIndex = 9
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.129223, 0.0 ]
+    rotation = [ -0.545106, -0.190261, 0.239342, 0.780625 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '70a0bf62-d7c7-4163-ae08-4efd46346b6f'
+layer = 0
+name = 'mixamorig:LeftForeArm'
+parent = 'mixamorig:LeftArm'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 8
+    boneName = 'mixamorig:LeftForeArm'
+    generated = true
+    nodeIndex = 10
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.274047, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.26303, 0.964788 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e493b07d-7286-4ba9-9c0a-10c7ca10029a'
+layer = 0
+name = 'mixamorig:LeftHand'
+parent = 'mixamorig:LeftForeArm'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 9
+    boneName = 'mixamorig:LeftHand'
+    generated = true
+    nodeIndex = 11
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.276145, 0.0 ]
+    rotation = [ -0.1094, -0.065363, -0.122898, 0.984203 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2b3d9f7f-6463-43ec-a010-faf7a1116367'
+layer = 0
+name = 'mixamorig:LeftHandThumb1'
+parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 10
+    boneName = 'mixamorig:LeftHandThumb1'
+    generated = true
+    nodeIndex = 12
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ -0.03003, 0.037888, -0.021671 ]
+    rotation = [ -0.172649, 0.173565, 0.134529, 0.960192 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6f5ec142-99cb-4cca-be18-578e48024d9a'
+layer = 0
+name = 'mixamorig:LeftHandThumb2'
+parent = 'mixamorig:LeftHandThumb1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 11
+    boneName = 'mixamorig:LeftHandThumb2'
+    generated = true
+    nodeIndex = 13
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.04745, 0.0 ]
+    rotation = [ 0.02135, -0.018132, -0.130826, 0.99101 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cc2b2a83-bc7c-49fb-af5a-fe5a503383ca'
+layer = 0
+name = 'mixamorig:LeftHandThumb3'
+parent = 'mixamorig:LeftHandThumb2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 12
+    boneName = 'mixamorig:LeftHandThumb3'
+    generated = true
+    nodeIndex = 14
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.043821, 0.0 ]
+    rotation = [ 0.027422, -0.000366, -0.009764, 0.999576 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '68cb7eaa-8562-476a-8f04-37bad013eab0'
+layer = 0
+name = 'mixamorig:LeftHandThumb4'
+parent = 'mixamorig:LeftHandThumb3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:LeftHandThumb4'
+    generated = true
+    nodeIndex = 15
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.034591, 0.0 ]
+    rotation = [ -0.009147, -0.125637, 0.072072, 0.989413 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '31d78f43-6ef9-44ce-8238-4f627a0d3279'
+layer = 0
+name = 'mixamorig:LeftHandIndex1'
+parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 13
+    boneName = 'mixamorig:LeftHandIndex1'
+    generated = true
+    nodeIndex = 16
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ -0.02822, 0.122666, -0.002318 ]
+    rotation = [ -0.199716, 0.001705, -0.015706, 0.979726 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '50d3c8fd-afd2-4bb9-b72d-d88de4bccccd'
+layer = 0
+name = 'mixamorig:LeftHandIndex2'
+parent = 'mixamorig:LeftHandIndex1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 14
+    boneName = 'mixamorig:LeftHandIndex2'
+    generated = true
+    nodeIndex = 17
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.03892, 0.0 ]
+    rotation = [ -0.200817, -1e-06, -0.024229, 0.979329 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cda8f327-a29f-4005-a680-89b291388df9'
+layer = 0
+name = 'mixamorig:LeftHandIndex3'
+parent = 'mixamorig:LeftHandIndex2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 15
+    boneName = 'mixamorig:LeftHandIndex3'
+    generated = true
+    nodeIndex = 18
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.034152, 0.0 ]
+    rotation = [ -0.072377, 0.0, -0.008735, 0.997339 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'be0b3b47-47ef-4942-a00f-c0fbe405ea14'
+layer = 0
+name = 'mixamorig:LeftHandIndex4'
+parent = 'mixamorig:LeftHandIndex3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:LeftHandIndex4'
+    generated = true
+    nodeIndex = 19
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.03078, 0.0 ]
+    rotation = [ -1e-06, -0.004002, 2.3e-05, 0.999992 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'da6ee12d-39da-4418-8eb9-eaac5b1b338a'
+layer = 0
+name = 'mixamorig:LeftHandMiddle1'
+parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 16
+    boneName = 'mixamorig:LeftHandMiddle1'
+    generated = true
+    nodeIndex = 20
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.127755, 0.0 ]
+    rotation = [ -0.246956, 0.001169, -0.025216, 0.968698 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3bc694da-12c3-44ad-bbe8-c5344b66ecb9'
+layer = 0
+name = 'mixamorig:LeftHandMiddle2'
+parent = 'mixamorig:LeftHandMiddle1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 17
+    boneName = 'mixamorig:LeftHandMiddle2'
+    generated = true
+    nodeIndex = 21
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.03614, 0.0 ]
+    rotation = [ -0.10481, 0.0, -0.012648, 0.994412 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'effd1ad4-2920-468f-8ce8-d4ae2ea49cdb'
+layer = 0
+name = 'mixamorig:LeftHandMiddle3'
+parent = 'mixamorig:LeftHandMiddle2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 18
+    boneName = 'mixamorig:LeftHandMiddle3'
+    generated = true
+    nodeIndex = 22
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.034598, 0.0 ]
+    rotation = [ -0.124957, 0.0, -0.01508, 0.992048 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f4cc7ac5-fa99-4609-bc83-534138db1814'
+layer = 0
+name = 'mixamorig:LeftHandMiddle4'
+parent = 'mixamorig:LeftHandMiddle3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:LeftHandMiddle4'
+    generated = true
+    nodeIndex = 23
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.036802, 0.0 ]
+    rotation = [ 1e-06, -0.004579, -0.000654, 0.999989 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '83ef48fa-289e-4dfe-bc8b-58bd2ee11898'
+layer = 0
+name = 'mixamorig:LeftHandRing1'
+parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 19
+    boneName = 'mixamorig:LeftHandRing1'
+    generated = true
+    nodeIndex = 24
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.022166, 0.12147, 1e-04 ]
+    rotation = [ -0.29087, 0.004745, -0.019408, 0.956554 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5dace01c-7591-4743-9fb4-f49f48d01fe8'
+layer = 0
+name = 'mixamorig:LeftHandRing2'
+parent = 'mixamorig:LeftHandRing1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 20
+    boneName = 'mixamorig:LeftHandRing2'
+    generated = true
+    nodeIndex = 25
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.036012, 0.0 ]
+    rotation = [ -0.09226, -1e-06, -0.011126, 0.995673 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '2045522f-467e-484d-9240-ea536c3fe0c7'
+layer = 0
+name = 'mixamorig:LeftHandRing3'
+parent = 'mixamorig:LeftHandRing2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 21
+    boneName = 'mixamorig:LeftHandRing3'
+    generated = true
+    nodeIndex = 26
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.033073, 0.0 ]
+    rotation = [ -0.094182, 0.0, -0.011366, 0.99549 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '03788e8d-36f5-47fe-9999-d71702972882'
+layer = 0
+name = 'mixamorig:LeftHandRing4'
+parent = 'mixamorig:LeftHandRing3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:LeftHandRing4'
+    generated = true
+    nodeIndex = 27
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.036601, 0.0 ]
+    rotation = [ -8e-06, -0.007396, 0.000771, 0.999972 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3a35e880-bd74-4b41-a662-503bd4343efe'
+layer = 0
+name = 'mixamorig:LeftHandPinky1'
+parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 22
+    boneName = 'mixamorig:LeftHandPinky1'
+    generated = true
+    nodeIndex = 28
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.047258, 0.109082, -0.002261 ]
+    rotation = [ -0.305678, -0.007511, -0.060024, 0.950211 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6ee3d35f-355c-408a-a72d-29d4e7020b59'
+layer = 0
+name = 'mixamorig:LeftHandPinky2'
+parent = 'mixamorig:LeftHandPinky1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 23
+    boneName = 'mixamorig:LeftHandPinky2'
+    generated = true
+    nodeIndex = 29
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.041367, 0.0 ]
+    rotation = [ -0.091603, -0.003132, 0.024717, 0.995484 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8f384a78-3db4-4906-ba49-4987fb431f08'
+layer = 0
+name = 'mixamorig:LeftHandPinky3'
+parent = 'mixamorig:LeftHandPinky2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 24
+    boneName = 'mixamorig:LeftHandPinky3'
+    generated = true
+    nodeIndex = 30
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.025948, 0.0 ]
+    rotation = [ -0.067077, 0.0, -0.008095, 0.997715 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c43ec6d8-f7fe-493b-ac74-efb449d1794c'
+layer = 0
+name = 'mixamorig:LeftHandPinky4'
+parent = 'mixamorig:LeftHandPinky3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:LeftHandPinky4'
+    generated = true
+    nodeIndex = 31
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.029239, 0.0 ]
+    rotation = [ 1e-06, -0.0041, -0.000575, 0.999991 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd270de51-6354-4a95-b6ce-1bdf5743a8fa'
+layer = 0
+name = 'mixamorig:RightShoulder'
+parent = 'mixamorig:Spine2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 25
+    boneName = 'mixamorig:RightShoulder'
+    generated = true
+    nodeIndex = 32
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ -0.061057, 0.091064, -0.007571 ]
+    rotation = [ 0.429344, -0.568027, -0.523554, -0.467868 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '41e15ff0-fc09-4dd9-b0e9-e36883ad6b05'
+layer = 0
+name = 'mixamorig:RightArm'
+parent = 'mixamorig:RightShoulder'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 26
+    boneName = 'mixamorig:RightArm'
+    generated = true
+    nodeIndex = 33
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.129223, 0.0 ]
+    rotation = [ -0.574919, 0.164789, -0.25622, 0.759384 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '406a8cd4-9bfa-4cd0-88b2-bebc47cf4d23'
+layer = 0
+name = 'mixamorig:RightForeArm'
+parent = 'mixamorig:RightArm'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 27
+    boneName = 'mixamorig:RightForeArm'
+    generated = true
+    nodeIndex = 34
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.274047, 0.0 ]
+    rotation = [ 0.0, 0.0, -0.218611, 0.975812 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c0419f32-422b-4148-89ee-98e8d5592940'
+layer = 0
+name = 'mixamorig:RightHand'
+parent = 'mixamorig:RightForeArm'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 28
+    boneName = 'mixamorig:RightHand'
+    generated = true
+    nodeIndex = 35
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.276145, 0.0 ]
+    rotation = [ -0.005567, 0.001461, 0.132756, 0.991132 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '88abb000-6081-4e51-8b73-d4d77b2dba42'
+layer = 0
+name = 'mixamorig:RightHandThumb1'
+parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 29
+    boneName = 'mixamorig:RightHandThumb1'
+    generated = true
+    nodeIndex = 36
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.03003, 0.037888, -0.021671 ]
+    rotation = [ -0.184727, -0.039372, -0.021956, 0.981755 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1c211056-524d-4fa0-8419-3b45083360af'
+layer = 0
+name = 'mixamorig:RightHandThumb2'
+parent = 'mixamorig:RightHandThumb1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 30
+    boneName = 'mixamorig:RightHandThumb2'
+    generated = true
+    nodeIndex = 37
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.04745, 0.0 ]
+    rotation = [ -0.020281, 0.04431, 0.017397, 0.99866 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7095dda7-f225-46b9-b34c-6668495ad4ae'
+layer = 0
+name = 'mixamorig:RightHandThumb3'
+parent = 'mixamorig:RightHandThumb2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 31
+    boneName = 'mixamorig:RightHandThumb3'
+    generated = true
+    nodeIndex = 38
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.043821, 0.0 ]
+    rotation = [ 0.028092, 0.001288, -0.015318, 0.999487 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f0edd9e5-e3e1-454d-9d74-d793f9a10dad'
+layer = 0
+name = 'mixamorig:RightHandThumb4'
+parent = 'mixamorig:RightHandThumb3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:RightHandThumb4'
+    generated = true
+    nodeIndex = 39
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.034591, 0.0 ]
+    rotation = [ -0.009232, 0.12713, -0.072328, 0.989202 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ac43ec74-63b3-4d19-9ec0-758c5ee0b6b5'
+layer = 0
+name = 'mixamorig:RightHandIndex1'
+parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 32
+    boneName = 'mixamorig:RightHandIndex1'
+    generated = true
+    nodeIndex = 40
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.02822, 0.122666, -0.002318 ]
+    rotation = [ -0.071069, 0.002125, 0.03711, 0.996779 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '530dc467-89c4-492c-9017-427ab4dd73f5'
+layer = 0
+name = 'mixamorig:RightHandIndex2'
+parent = 'mixamorig:RightHandIndex1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 33
+    boneName = 'mixamorig:RightHandIndex2'
+    generated = true
+    nodeIndex = 41
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.03892, 0.0 ]
+    rotation = [ -0.287555, 2e-06, 0.035038, 0.957123 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e8919abf-84ff-45e9-805b-b6287f02f425'
+layer = 0
+name = 'mixamorig:RightHandIndex3'
+parent = 'mixamorig:RightHandIndex2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 34
+    boneName = 'mixamorig:RightHandIndex3'
+    generated = true
+    nodeIndex = 42
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.034152, 0.0 ]
+    rotation = [ -0.084882, 0.0, 0.010344, 0.996337 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '709a0b5a-71f0-454c-896b-38a2174f60f5'
+layer = 0
+name = 'mixamorig:RightHandIndex4'
+parent = 'mixamorig:RightHandIndex3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:RightHandIndex4'
+    generated = true
+    nodeIndex = 43
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.03078, 0.0 ]
+    rotation = [ 7.3e-05, 0.006709, 0.001375, 0.999977 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '765349b9-8074-4f67-9810-373c36f4f125'
+layer = 0
+name = 'mixamorig:RightHandMiddle1'
+parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 35
+    boneName = 'mixamorig:RightHandMiddle1'
+    generated = true
+    nodeIndex = 44
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.127755, 0.0 ]
+    rotation = [ -0.099707, 0.003918, 0.049526, 0.993776 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '770b3aaa-cf01-4e0e-a1ea-7c017e072af4'
+layer = 0
+name = 'mixamorig:RightHandMiddle2'
+parent = 'mixamorig:RightHandMiddle1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 36
+    boneName = 'mixamorig:RightHandMiddle2'
+    generated = true
+    nodeIndex = 45
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.03614, 0.0 ]
+    rotation = [ -0.221694, 0.0, 0.027017, 0.974742 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '8a438ef5-a625-4c88-ad43-59d61e554116'
+layer = 0
+name = 'mixamorig:RightHandMiddle3'
+parent = 'mixamorig:RightHandMiddle2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 37
+    boneName = 'mixamorig:RightHandMiddle3'
+    generated = true
+    nodeIndex = 46
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.034598, 0.0 ]
+    rotation = [ -0.063693, -0.010193, 0.008423, 0.997882 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '40827f67-9e21-404e-99b3-76c3c1daf04c'
+layer = 0
+name = 'mixamorig:RightHandMiddle4'
+parent = 'mixamorig:RightHandMiddle3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:RightHandMiddle4'
+    generated = true
+    nodeIndex = 47
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.036802, 0.0 ]
+    rotation = [ 5.2e-05, 0.006695, -0.001708, 0.999976 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '491c81f7-f05d-4b18-900b-610d1634e568'
+layer = 0
+name = 'mixamorig:RightHandRing1'
+parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 38
+    boneName = 'mixamorig:RightHandRing1'
+    generated = true
+    nodeIndex = 48
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ -0.022166, 0.12147, 1e-04 ]
+    rotation = [ -0.201221, 0.001624, 0.0324, 0.979008 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6ce68406-b882-4e21-a00b-a4671b5f62fb'
+layer = 0
+name = 'mixamorig:RightHandRing2'
+parent = 'mixamorig:RightHandRing1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 39
+    boneName = 'mixamorig:RightHandRing2'
+    generated = true
+    nodeIndex = 49
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.036012, 0.0 ]
+    rotation = [ -0.161507, 1e-06, 0.019675, 0.986676 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cbcf0894-f3eb-4a05-bdec-c480fa179690'
+layer = 0
+name = 'mixamorig:RightHandRing3'
+parent = 'mixamorig:RightHandRing2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 40
+    boneName = 'mixamorig:RightHandRing3'
+    generated = true
+    nodeIndex = 50
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.033073, 0.0 ]
+    rotation = [ -0.081035, -0.012114, 0.010877, 0.996578 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e3161aba-8b32-44e9-b27b-5871767bd5b7'
+layer = 0
+name = 'mixamorig:RightHandRing4'
+parent = 'mixamorig:RightHandRing3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:RightHandRing4'
+    generated = true
+    nodeIndex = 51
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.036601, 0.0 ]
+    rotation = [ 6.2e-05, 0.007613, -3e-04, 0.999971 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd3d619af-7866-410b-bebd-1366dfd313ee'
+layer = 0
+name = 'mixamorig:RightHandPinky1'
+parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 41
+    boneName = 'mixamorig:RightHandPinky1'
+    generated = true
+    nodeIndex = 52
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ -0.047258, 0.109082, -0.002261 ]
+    rotation = [ -0.283678, 0.006556, 0.056498, 0.957232 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'de88d48a-7e30-44f1-8c5c-f872aae79aaf'
+layer = 0
+name = 'mixamorig:RightHandPinky2'
+parent = 'mixamorig:RightHandPinky1'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 42
+    boneName = 'mixamorig:RightHandPinky2'
+    generated = true
+    nodeIndex = 53
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.041367, 0.0 ]
+    rotation = [ -0.155791, 0.0, 0.018986, 0.987608 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'aaaf7523-b0d6-44fe-857b-c516b2b6f975'
+layer = 0
+name = 'mixamorig:RightHandPinky3'
+parent = 'mixamorig:RightHandPinky2'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 43
+    boneName = 'mixamorig:RightHandPinky3'
+    generated = true
+    nodeIndex = 54
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.025948, 0.0 ]
+    rotation = [ -0.079062, 0.0, 0.009635, 0.996823 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '97cb2fd8-5dcd-444e-af27-c543c08679d6'
+layer = 0
+name = 'mixamorig:RightHandPinky4'
+parent = 'mixamorig:RightHandPinky3'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:RightHandPinky4'
+    generated = true
+    nodeIndex = 55
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.029239, 0.0 ]
+    rotation = [ 8.2e-05, 0.008499, 0.002206, 0.999961 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e2bbd1f6-02e8-4797-80dd-7068da6406ff'
+layer = 0
+name = 'mixamorig:LeftUpLeg'
+parent = 'mixamorig:Hips'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 44
+    boneName = 'mixamorig:LeftUpLeg'
+    generated = true
+    nodeIndex = 56
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.091239, -0.066572, 0.000554 ]
+    rotation = [ -0.053451, -0.040301, 0.996529, -0.049486 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '64325ba4-6107-48bb-be67-df86ab155446'
+layer = 0
+name = 'mixamorig:LeftLeg'
+parent = 'mixamorig:LeftUpLeg'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 45
+    boneName = 'mixamorig:LeftLeg'
+    generated = true
+    nodeIndex = 57
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.405994, 0.0 ]
+    rotation = [ 0.141226, 0.086338, 0.01988, 0.986005 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '57ad0c82-eab9-4ef3-b867-ac2ab46a9f07'
+layer = 0
+name = 'mixamorig:LeftFoot'
+parent = 'mixamorig:LeftLeg'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 46
+    boneName = 'mixamorig:LeftFoot'
+    generated = true
+    nodeIndex = 58
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42099, 0.0 ]
+    rotation = [ -0.574706, 0.009062, -0.056267, 0.816373 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1397d6bb-b8d3-4c32-bf97-90c4b85d312b'
+layer = 0
+name = 'mixamorig:LeftToeBase'
+parent = 'mixamorig:LeftFoot'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 47
+    boneName = 'mixamorig:LeftToeBase'
+    generated = true
+    nodeIndex = 59
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.157216, 0.0 ]
+    rotation = [ -0.231417, 0.032511, -0.015298, 0.972191 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c28a01ed-f097-4b51-9b5f-e27a08eba914'
+layer = 0
+name = 'mixamorig:LeftToe_End'
+parent = 'mixamorig:LeftToeBase'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:LeftToe_End'
+    generated = true
+    nodeIndex = 60
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '450c36e2-b566-4031-b593-ad7a29d87371'
+layer = 0
+name = 'mixamorig:RightUpLeg'
+parent = 'mixamorig:Hips'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 48
+    boneName = 'mixamorig:RightUpLeg'
+    generated = true
+    nodeIndex = 61
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ -0.09125, -0.066556, 0.000554 ]
+    rotation = [ 0.079946, -0.09251, 0.992198, 0.024367 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7ed47063-9eb6-47e8-9f71-6bca5efe0ba7'
+layer = 0
+name = 'mixamorig:RightLeg'
+parent = 'mixamorig:RightUpLeg'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 49
+    boneName = 'mixamorig:RightLeg'
+    generated = true
+    nodeIndex = 62
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.405994, 0.0 ]
+    rotation = [ 0.234087, -0.053624, -0.00252, 0.970733 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '380cc71a-c079-4c6c-afe9-15afb981728a'
+layer = 0
+name = 'mixamorig:RightFoot'
+parent = 'mixamorig:RightLeg'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 50
+    boneName = 'mixamorig:RightFoot'
+    generated = true
+    nodeIndex = 63
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.42099, 0.0 ]
+    rotation = [ -0.621075, -0.054911, -0.056701, 0.779767 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e649d135-62eb-44bd-abdc-dd658afa913b'
+layer = 0
+name = 'mixamorig:RightToeBase'
+parent = 'mixamorig:RightFoot'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = 51
+    boneName = 'mixamorig:RightToeBase'
+    generated = true
+    nodeIndex = 64
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.157216, 0.0 ]
+    rotation = [ -0.227709, -0.03212, 0.015258, 0.97308 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9b600db6-571b-4dae-8877-65792dde8735'
+layer = 0
+name = 'mixamorig:RightToe_End'
+parent = 'mixamorig:RightToeBase'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'mixamorig:RightToe_End'
+    generated = true
+    nodeIndex = 65
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '05ab535a-27a1-47ab-ae32-bd6d7a3fc547'
+layer = 0
+name = 'Alpha_Surface'
+parent = 'RootNode'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Alpha_Surface'
+    generated = true
+    nodeIndex = 66
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '338f813f-5b43-48b0-a59d-580456a03625'
+layer = 0
+name = 'Alpha_Joints'
+parent = 'RootNode'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.BoneComponent]
+    boneIndex = -1
+    boneName = 'Alpha_Joints'
+    generated = true
+    nodeIndex = 67
+    skinnedMeshOwner = 'Player'
+    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
