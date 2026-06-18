@@ -88,6 +88,10 @@ private:
     std::unique_ptr<IShader>         CreateNativeShader(const std::string& path) override;
     std::unique_ptr<ITexture>        CreateNativeTexture(const std::string& path) override;
     std::unique_ptr<ITexture>        CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>        CreateNativeTextureFromRenderTarget(
+        IRenderTarget& rt,
+        uint32_t index,
+        RenderTargetTextureKind kind) override;
     std::unique_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
     std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
     std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
