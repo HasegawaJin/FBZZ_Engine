@@ -4,7 +4,6 @@
 // MRT、深度、SRV 取得をまとめ、ポストプロセスやシャドウに使う。
 // RenderTarget の生成と解放を DX11 リソース寿命に合わせる。
 #include "DX11RenderTarget.hpp"
-#include "DX11Texture.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
 #include <cassert>
@@ -40,9 +39,6 @@ bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t heigh
             FBZZ_HR_CHECK(device->CreateRenderTargetView(m_colorBuffer[i].Get(), nullptr, m_rtv[i].GetAddressOf()));
             FBZZ_HR_CHECK(device->CreateShaderResourceView(m_colorBuffer[i].Get(), nullptr, m_srv[i].GetAddressOf()));
 
-            auto tex = std::shared_ptr<DX11Texture>(new DX11Texture());
-            tex->InitFromSRV(m_srv[i].Get(), width, height);
-            m_colorTexture[i] = tex;
         }
     }
 
@@ -74,22 +70,13 @@ bool DX11RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t heigh
     srvDesc.Texture2D.MostDetailedMip = 0;
     FBZZ_HR_CHECK(device->CreateShaderResourceView(m_depthBuffer.Get(), &srvDesc, m_depthSRV.GetAddressOf()));
 
-    auto depthTex = std::shared_ptr<DX11Texture>(new DX11Texture());
-    depthTex->InitFromSRV(m_depthSRV.Get(), width, height);
-    m_depthTexture = depthTex;
-
     return true;
 }
 
-std::shared_ptr<ITexture> DX11RenderTarget::GetColorTexture(uint32_t index) const
+ID3D11ShaderResourceView* DX11RenderTarget::GetColorSRV(uint32_t index) const
 {
     assert(index < m_colorCount);
-    return m_colorTexture[index];
-}
-
-std::shared_ptr<ITexture> DX11RenderTarget::GetDepthTexture() const
-{
-    return m_depthTexture;
+    return m_srv[index].Get();
 }
 
 void DX11RenderTarget::GetRTVs(ID3D11RenderTargetView** out, uint32_t& count) const

@@ -207,6 +207,22 @@ std::unique_ptr<ITexture> DX11Renderer::CreateNativeTextureFromData(const uint8_
     return tex;
 }
 
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTextureFromRenderTarget(
+    IRenderTarget& rt,
+    uint32_t index,
+    RenderTargetTextureKind kind)
+{
+    auto* dxRT = static_cast<DX11RenderTarget*>(&rt);
+    ID3D11ShaderResourceView* srv =
+        (kind == RenderTargetTextureKind::Depth) ? dxRT->GetDepthSRV() : dxRT->GetColorSRV(index);
+    if (!srv)
+        return nullptr;
+
+    auto tex = std::make_unique<DX11Texture>();
+    tex->InitFromSRV(srv, dxRT->GetWidth(), dxRT->GetHeight());
+    return tex;
+}
+
 std::unique_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const PipelineStateDesc& desc)
 {
     auto pso = std::make_unique<DX11PipelineState>();
