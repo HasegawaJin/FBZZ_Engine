@@ -15,6 +15,7 @@
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
@@ -1059,7 +1060,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SameLine();
         ImGui::Checkbox("Map Objects Only", &ctx.mapHierarchyFilter);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Show only Terrain, Water, Detail, Foliage and their stamp children\nUncheck to browse all objects in Map Mode");
+            ImGui::SetTooltip("Show only Terrain Grid, Terrain, Water, Detail, Foliage and their children\nUncheck to browse all objects in Map Mode");
     }
 
     // FoliageBakeSystem が新規子 GO を生成したら親ノードを自動展開する
@@ -1106,7 +1107,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             if (!util::StringUtils::ContainsCI(go.name, m_searchFilter)) continue;
             if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
                 const bool isMapObject =
-                    go.GetComponent<scene::TerrainComponent>()
+                    go.GetComponent<scene::TerrainGridComponent>()
+                    || go.GetComponent<scene::TerrainComponent>()
                     || go.GetComponent<scene::WaterComponent>()
                     || go.GetComponent<scene::TerrainDetailComponent>()
                     || go.GetComponent<scene::FoliageComponent>();
@@ -1166,7 +1168,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    // Map Mode: Terrain/Water/Detail/Foliage のルート GO のみをツリー表示。
+    // Map Mode: TerrainGrid/Terrain/Water/Detail/Foliage のルート GO のみをツリー表示。
     // WHY: フラットリストでは stamp 子 GO が親から切り離されて見えるため、
     //      ツリー表示にして子 GO を Terrain ノード下に自然に見せる。
     if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
@@ -1179,7 +1181,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         std::vector<scene::EntityID> mapVisible;
         for (auto* go : roots) {
             if (!go) continue;
-            if (!go->GetComponent<scene::TerrainComponent>()
+            if (!go->GetComponent<scene::TerrainGridComponent>()
+                && !go->GetComponent<scene::TerrainComponent>()
                 && !go->GetComponent<scene::WaterComponent>()
                 && !go->GetComponent<scene::TerrainDetailComponent>()
                 && !go->GetComponent<scene::FoliageComponent>())

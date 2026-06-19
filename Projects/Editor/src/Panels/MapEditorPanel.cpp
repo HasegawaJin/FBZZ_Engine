@@ -278,9 +278,19 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
 {
     auto& scene = *ctx.activeScene;
 
-    // グリッドコンポーネントを取得または作成する
-    auto grids = scene.GetComponents<scene::TerrainGridComponent>();
-    scene::TerrainGridComponent* grid = grids.empty() ? nullptr : grids.front();
+    // グリッドコンポーネントと、それを所有する親 GameObject を取得する。
+    // WHY: Grid から生成する Terrain を同じ親の子として整理し、Hierarchy 上でも
+    //      TerrainGrid 単位でまとめて扱えるようにする。
+    const auto gridEntities = scene.GetEntities<scene::TerrainGridComponent>();
+    const scene::EntityID gridEntity = gridEntities.empty()
+        ? scene::EntityID::INVALID
+        : gridEntities.front();
+    scene::GameObject* gridObject = scene.IsValid(gridEntity)
+        ? scene.GetGameObject(gridEntity)
+        : nullptr;
+    scene::TerrainGridComponent* grid = scene.IsValid(gridEntity)
+        ? scene.GetComponent<scene::TerrainGridComponent>(gridEntity)
+        : nullptr;
 
     if (!grid) {
         ImGui::TextDisabled("No Terrain Grid in scene.");
@@ -290,6 +300,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             tgc.EnsureSize();
             go.AddComponent<scene::TerrainGridComponent>(tgc);
             ctx.markSceneDirty();
+            gridObject = &go;
             grid = go.GetComponent<scene::TerrainGridComponent>();
         }
         return;
@@ -435,6 +446,8 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             std::snprintf(goName, sizeof(goName), "Terrain_%d_%d", m_gridSelectedX, m_gridSelectedZ);
             auto& newGo = scene.CreateGameObject(goName);
             newGo.transform.position = { wx, 0.0f, wz };
+            if (gridObject)
+                newGo.SetParent(*gridObject);
 
             scene::TerrainComponent tc;
             tc.InitFlat(0.0f);
