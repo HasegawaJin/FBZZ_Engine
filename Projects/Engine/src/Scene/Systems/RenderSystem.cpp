@@ -46,6 +46,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,45 @@ struct SceneShadowBounds {
     float radius = 0.0f;
     bool valid = false;
 };
+
+// Viewport ごとに解像度依存の中間リソースを保持する。
+// WHY: Scene View と Game View は解像度が異なるため、単一の static RT 群を共有すると
+//      1 フレーム内で互いのサイズへリサイズし続け、D3D11 リソース生成待ちが発生する。
+struct ViewRenderTargets {
+    renderer::ResourceHandle<renderer::RenderTargetTag> hdr;
+    renderer::ResourceHandle<renderer::RenderTargetTag> ldr;
+    renderer::ResourceHandle<renderer::RenderTargetTag> selectionMask;
+    renderer::ResourceHandle<renderer::RenderTargetTag> outline;
+    renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcess[2];
+    renderer::ResourceHandle<renderer::RenderTargetTag> gbuffer;
+    renderer::ResourceHandle<renderer::RenderTargetTag> decalDepth;
+    renderer::ResourceHandle<renderer::RenderTargetTag> decalMask;
+    renderer::ResourceHandle<renderer::TextureTag> bloomHalf;
+    renderer::ResourceHandle<renderer::TextureTag> bloomFull;
+    renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
+    renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
+
+// Resize 前のネイティブリソースを ResourceManager から確実に解放する。
+void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceManager& resources)
+{
+    if (targets.hdr.IsValid())                  resources.Release(targets.hdr);
+    if (targets.ldr.IsValid())                  resources.Release(targets.ldr);
+    if (targets.selectionMask.IsValid())        resources.Release(targets.selectionMask);
+    if (targets.outline.IsValid())              resources.Release(targets.outline);
+    if (targets.customPostProcess[0].IsValid()) resources.Release(targets.customPostProcess[0]);
+    if (targets.customPostProcess[1].IsValid()) resources.Release(targets.customPostProcess[1]);
+    if (targets.gbuffer.IsValid())              resources.Release(targets.gbuffer);
+    if (targets.decalDepth.IsValid())           resources.Release(targets.decalDepth);
+    if (targets.decalMask.IsValid())            resources.Release(targets.decalMask);
+    if (targets.bloomHalf.IsValid())            resources.Release(targets.bloomHalf);
+    if (targets.bloomFull.IsValid())            resources.Release(targets.bloomFull);
+    if (targets.ssaoRaw.IsValid())              resources.Release(targets.ssaoRaw);
+    if (targets.ssaoBlur.IsValid())             resources.Release(targets.ssaoBlur);
+    targets = {};
+}
 
 void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
 {
@@ -162,6 +202,10 @@ void RenderSystem(Scene& scene,
     if (const auto* runtimePostProcess = scene.TryGetRuntimePostProcessSettings())
         effectiveSettings.postProcess = *runtimePostProcess;
     const renderer::RenderSettings& rs = effectiveSettings;
+
+    // 静的ハンドルの検証・デバイスリセット復旧・初回バッファ生成をまとめて計測する。
+    profiler::Profiler::BeginSample(
+        profiler::ProfilerMarker("RenderSystem::StaticResourceSetup", "Rendering"));
 
     // =========================================================================
     // 静的リソースの遅延初期化
@@ -422,59 +466,46 @@ void RenderSystem(Scene& scene,
         particleIB = resources.CreateIndexBuffer(idx.data(), static_cast<uint32_t>(idx.size()));
     }
 
-    // レンダーターゲットをウィンドウサイズに合わせてリサイズ
-    static renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
-    static renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> decalDepthRT;
-    static renderer::ResourceHandle<renderer::RenderTargetTag> decalMaskRT;
-    static renderer::ResourceHandle<renderer::TextureTag>      bloomHalf;
-    static renderer::ResourceHandle<renderer::TextureTag>      bloomFull;
-    static renderer::ResourceHandle<renderer::TextureTag>      ssaoRaw;
-    static renderer::ResourceHandle<renderer::TextureTag>      ssaoBlur;
-    static uint32_t sHdrW = 0, sHdrH = 0;
+    profiler::Profiler::EndSample();
+
+    // UI の描画先種別を安定キーにして、Scene / Game の中間リソースを分離する。
+    // uiOptions がない通常ゲーム描画は key=0 の単一コンテキストを使う。
+    const uint32_t viewKey = uiOptions
+        ? static_cast<uint32_t>(uiOptions->targetView) + 1u
+        : 0u;
+    static std::unordered_map<uint32_t, ViewRenderTargets> s_viewTargets;
     static uint64_t sRenderTargetResetVersion = 0;
     if (sRenderTargetResetVersion != resources.GetResetVersion()) {
-        hdrRT = {};
-        ldrRT = {};
-        selectionMaskRT = {};
-        outlineRT = {};
-        customPostProcessRT[0] = {};
-        customPostProcessRT[1] = {};
-        gbufferRT = {};
-        decalDepthRT = {};
-        decalMaskRT = {};
-        bloomHalf = {};
-        bloomFull = {};
-        ssaoRaw = {};
-        ssaoBlur = {};
-        sHdrW = 0;
-        sHdrH = 0;
+        // ResourceManager::Reset() 後は旧ハンドルが無効なので Release せずキャッシュだけ破棄する。
+        s_viewTargets.clear();
         sRenderTargetResetVersion = resources.GetResetVersion();
     }
+
+    ViewRenderTargets& viewTargets = s_viewTargets[viewKey];
+    auto& hdrRT                   = viewTargets.hdr;
+    auto& ldrRT                   = viewTargets.ldr;
+    auto& selectionMaskRT         = viewTargets.selectionMask;
+    auto& outlineRT               = viewTargets.outline;
+    auto& customPostProcessRT     = viewTargets.customPostProcess;
+    auto& gbufferRT               = viewTargets.gbuffer;
+    auto& decalDepthRT            = viewTargets.decalDepth;
+    auto& decalMaskRT             = viewTargets.decalMask;
+    auto& bloomHalf               = viewTargets.bloomHalf;
+    auto& bloomFull               = viewTargets.bloomFull;
+    auto& ssaoRaw                 = viewTargets.ssaoRaw;
+    auto& ssaoBlur                = viewTargets.ssaoBlur;
+    uint32_t& sHdrW               = viewTargets.width;
+    uint32_t& sHdrH               = viewTargets.height;
+
     {
+        FBZZ_PROFILE_SCOPE("RenderSystem::ResizeRenderTargets");
         const auto* output = resources.Get(outputRT);
         uint32_t curW = output ? output->GetWidth()  : renderer.GetWidth();
         uint32_t curH = output ? output->GetHeight() : renderer.GetHeight();
         if (curW == 0 || curH == 0) return;
         if (!hdrRT.IsValid() || sHdrW != curW || sHdrH != curH)
         {
-            if (hdrRT.IsValid())            resources.Release(hdrRT);
-            if (ldrRT.IsValid())            resources.Release(ldrRT);
-            if (selectionMaskRT.IsValid())  resources.Release(selectionMaskRT);
-            if (outlineRT.IsValid())        resources.Release(outlineRT);
-            if (customPostProcessRT[0].IsValid()) resources.Release(customPostProcessRT[0]);
-            if (customPostProcessRT[1].IsValid()) resources.Release(customPostProcessRT[1]);
-            if (gbufferRT.IsValid())        resources.Release(gbufferRT);
-            if (decalDepthRT.IsValid())     resources.Release(decalDepthRT);
-            if (decalMaskRT.IsValid())      resources.Release(decalMaskRT);
-            if (bloomHalf.IsValid())        resources.Release(bloomHalf);
-            if (bloomFull.IsValid())        resources.Release(bloomFull);
-            if (ssaoRaw.IsValid())          resources.Release(ssaoRaw);
-            if (ssaoBlur.IsValid())         resources.Release(ssaoBlur);
+            ReleaseViewRenderTargets(viewTargets, resources);
             hdrRT           = resources.CreateRenderTarget(curW, curH, 1);
             ldrRT           = resources.CreateRenderTarget(curW, curH, 1);
             selectionMaskRT = resources.CreateRenderTarget(curW, curH, 1);
@@ -494,6 +525,10 @@ void RenderSystem(Scene& scene,
     }
 
     // =========================================================================
+    // ライト収集とシャドウ範囲計算はシーン全体を走査するため、独立して計測する。
+    profiler::Profiler::BeginSample(
+        profiler::ProfilerMarker("RenderSystem::LightingSetup", "Rendering"));
+
     // ライト定数バッファを構築
     // =========================================================================
     renderer::LightConstantsCB lightData{};
@@ -538,7 +573,11 @@ void RenderSystem(Scene& scene,
     }
 
     math::Vector3 lightDir = lightData.lightDir.Normalized();
-    SceneShadowBounds shadowBounds = ComputeSceneShadowBounds(scene, cullingMask);
+    SceneShadowBounds shadowBounds;
+    {
+        FBZZ_PROFILE_SCOPE("RenderSystem::ComputeShadowBounds");
+        shadowBounds = ComputeSceneShadowBounds(scene, cullingMask);
+    }
     if (!shadowBounds.valid) {
         shadowBounds.center = camera.m_position + camera.GetForward() * 20.0f;
         shadowBounds.radius = 40.0f;
@@ -570,6 +609,7 @@ void RenderSystem(Scene& scene,
         rs.showSelectionOutline && !rs.selectedObjects.empty() &&
         selectionMaskRT.IsValid() && selectionMaskPso.IsValid() &&
         selectionOutlineShader.IsValid();
+    profiler::Profiler::EndSample();
 
     // =========================================================================
     // RenderPassHandles を組み立て
@@ -690,6 +730,8 @@ void RenderSystem(Scene& scene,
     // RenderPipeline にパスを登録
     // =========================================================================
     RenderPipeline pipeline;
+    profiler::Profiler::BeginSample(
+        profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
     pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true,  false });
     pipeline.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, kShadowMapSize, kShadowMapSize, 0, false, false });
     pipeline.DeclareResource("HDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
@@ -782,6 +824,7 @@ void RenderSystem(Scene& scene,
     }
 
     pipeline.AddPass<WaterRenderPass>();
+
     for (EntityID id : scene.GetEntities<ScriptComponent>()) {
         auto* sc = scene.GetComponent<ScriptComponent>(id);
         auto* go = scene.GetGameObject(id);
@@ -999,17 +1042,21 @@ void RenderSystem(Scene& scene,
                          uiOptions->targetView);
             });
     }
+    profiler::Profiler::EndSample();
 
-    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
-        auto* sc = scene.GetComponent<ScriptComponent>(id);
-        auto* go = scene.GetGameObject(id);
-        if (!sc || !go)
-            continue;
-        for (auto& entry : sc->scripts) {
-            if (!entry.script || !entry.script->enabled)
+    {
+        FBZZ_PROFILE_SCOPE("RenderSystem::ScriptPreRender");
+        for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+            auto* sc = scene.GetComponent<ScriptComponent>(id);
+            auto* go = scene.GetGameObject(id);
+            if (!sc || !go)
                 continue;
-            entry.script->SetContext(&scene, go);
-            entry.script->OnPreRender();
+            for (auto& entry : sc->scripts) {
+                if (!entry.script || !entry.script->enabled)
+                    continue;
+                entry.script->SetContext(&scene, go);
+                entry.script->OnPreRender();
+            }
         }
     }
 
@@ -1019,15 +1066,18 @@ void RenderSystem(Scene& scene,
 
     // GPU Timestamp Query の前フレーム結果を収集してからフレームを開始する。
     // WHY: GpuProfCollect を先に呼ぶことで前フレームの非同期クエリが確定している可能性を最大化する。
-    renderer.GpuProfCollect();
-    renderer.GpuProfBeginFrame();
+    {
+        FBZZ_PROFILE_SCOPE("RenderSystem::GpuProfilerSetup");
+        renderer.GpuProfCollect();
+        renderer.GpuProfBeginFrame();
 
-    // GPU フックを RenderPipeline に設定する。CPU フックとは独立しているため、
-    // Profiler の CPU スコープ計測と干渉しない。
-    pipeline.SetGpuProfilerHooks(
-        [&](std::string_view name) { renderer.GpuProfBeginPass(name.data()); },
-        [&](std::string_view name) { renderer.GpuProfEndPass(name.data()); }
-    );
+        // GPU フックを RenderPipeline に設定する。CPU フックとは独立しているため、
+        // Profiler の CPU スコープ計測と干渉しない。
+        pipeline.SetGpuProfilerHooks(
+            [&](std::string_view name) { renderer.GpuProfBeginPass(name.data()); },
+            [&](std::string_view name) { renderer.GpuProfEndPass(name.data()); }
+        );
+    }
 
     const bool graphExecuted = pipeline.Execute(passCtx);
 
@@ -1035,20 +1085,24 @@ void RenderSystem(Scene& scene,
     assert(graphExecuted);
     (void)graphExecuted;
 
-    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
-        auto* sc = scene.GetComponent<ScriptComponent>(id);
-        auto* go = scene.GetGameObject(id);
-        if (!sc || !go)
-            continue;
-        for (auto& entry : sc->scripts) {
-            if (!entry.script || !entry.script->enabled)
+    {
+        FBZZ_PROFILE_SCOPE("RenderSystem::ScriptPostRender");
+        for (EntityID id : scene.GetEntities<ScriptComponent>()) {
+            auto* sc = scene.GetComponent<ScriptComponent>(id);
+            auto* go = scene.GetGameObject(id);
+            if (!sc || !go)
                 continue;
-            entry.script->SetContext(&scene, go);
-            entry.script->OnPostRender();
+            for (auto& entry : sc->scripts) {
+                if (!entry.script || !entry.script->enabled)
+                    continue;
+                entry.script->SetContext(&scene, go);
+                entry.script->OnPostRender();
+            }
         }
     }
 
     {
+        FBZZ_PROFILE_SCOPE("RenderSystem::DebugSnapshot");
         renderer::RenderDebugOverlay::Snapshot dbgSnap;
         dbgSnap.hdrRT           = hdrRT;
         dbgSnap.ldrRT           = ldrRT;
