@@ -120,7 +120,7 @@ struct EditorContext {
     bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
     bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
     bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
-    bool  mapHierarchyFilter = true; // Map Mode 中に Terrain/Water/Detail/Foliage オブジェクトだけ表示
+    bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water/Detail/Foliage だけ表示
     bool  mapInspectorFilter = true; // Map Mode 中に Map 関連 Component だけ表示
     bool  uiViewportFocused = false;
     float uiViewportOriginX = 0.0f;
