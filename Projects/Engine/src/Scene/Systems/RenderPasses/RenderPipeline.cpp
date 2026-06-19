@@ -5,8 +5,24 @@
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <unordered_set>
 
 namespace fbzz::scene {
+
+namespace {
+
+// 動的な RenderPass 名を ProfilerRecord の寿命より長く保持する。
+// WHY: ProfilerMarker は const char* を保持するため、フレーム末尾で破棄される
+//      RenderGraph 内部文字列を直接渡すと AnalysisPanel がダングリングポインターを読む。
+const char* InternRenderPassProfileName(std::string_view name)
+{
+    static std::unordered_set<std::string> names;
+    const auto [it, inserted] = names.emplace(name);
+    (void)inserted;
+    return it->c_str();
+}
+
+} // namespace
 
 void RenderPipeline::AddRawPass(
     std::string_view name,
@@ -142,42 +158,57 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
 
     renderer::RenderGraph graph;
 
-    for (auto& [name, desc] : m_resources)
-        graph.DeclareResource(name, desc);
+    {
+        FBZZ_PROFILE_SCOPE("RenderPipeline::BuildGraph");
+        for (auto& [name, desc] : m_resources)
+            graph.DeclareResource(name, desc);
 
-    for (const auto& o : m_outputs)
-        graph.AddOutput(o);
+        for (const auto& o : m_outputs)
+            graph.AddOutput(o);
 
-    for (size_t i : enabledNow) {
-        auto& e = m_entries[i];
-        if (e.pass) {
-            IRenderPass* p = e.pass.get();
-            graph.AddPass(
-                p->Name(),
-                p->DeclareAccesses(ctx),
-                [p, &ctx] { p->Execute(ctx); },
-                p->AllowCulling());
-        } else {
-            graph.AddPass(std::string_view(e.name), e.accesses, e.fn, e.allowCulling);
+        for (size_t i : enabledNow) {
+            auto& e = m_entries[i];
+            if (e.pass) {
+                IRenderPass* p = e.pass.get();
+                graph.AddPass(
+                    p->Name(),
+                    p->DeclareAccesses(ctx),
+                    [p, &ctx] { p->Execute(ctx); },
+                    p->AllowCulling());
+            } else {
+                graph.AddPass(std::string_view(e.name), e.accesses, e.fn, e.allowCulling);
+            }
         }
     }
 
+    // 各 RenderGraph パスをCPU Profilerにも流し、ドライバー待機が発生したパスを特定する。
+    graph.SetProfilerHooks(
+        [](std::string_view name) {
+            profiler::Profiler::BeginSample(
+                profiler::ProfilerMarker(InternRenderPassProfileName(name), "Rendering"));
+        },
+        [](std::string_view) { profiler::Profiler::EndSample(); });
     graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
 
     // Phase 1: Plan — トポロジが変わった場合のみ依存解決・カリング・ライフタイム解析を実行する。
     // トポロジ不変フレームでは前フレームの結果を注入して Plan() をスキップする。
-    if (topologyChanged) {
-        if (!graph.Plan()) return false;
-        m_lastEnabledEntryIndices = std::move(enabledNow);
-        m_planValid = true;
-        m_poolDirty = true; // トポロジ変化時はプールも必ず再構築する
-    } else {
-        graph.InjectPlan(m_lastReport);
+    {
+        FBZZ_PROFILE_SCOPE("RenderPipeline::Plan");
+        if (topologyChanged) {
+            if (!graph.Plan()) return false;
+            m_lastEnabledEntryIndices = std::move(enabledNow);
+            m_planValid = true;
+            m_poolDirty = true; // トポロジ変化時はプールも必ず再構築する
+        } else {
+            graph.InjectPlan(m_lastReport);
+        }
     }
 
     // Phase 2: プールが古い場合 (パイプライン構成変更後の初回フレーム) に再構築する。
-    if (m_poolDirty)
+    if (m_poolDirty) {
+        FBZZ_PROFILE_SCOPE("RenderPipeline::RebuildTransientPool");
         RebuildTransientPool(graph.GetLastReport(), ctx.resources);
+    }
 
     // Phase 3: ctx.getTransientRT をパイプラインのプールに接続してからコールバックを実行する。
     // WHY: 各パスコールバックが ctx.getTransientRT(name) でハンドルを取得できるように、
@@ -186,17 +217,24 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
         return GetTransientRT(name);
     };
 
-    const bool ok = graph.Execute();
+    bool ok = false;
+    {
+        FBZZ_PROFILE_SCOPE("RenderPipeline::GraphExecute");
+        ok = graph.Execute();
+    }
     m_lastReport = graph.GetLastReport();
 
     // トランジェント RT を解放する。
     // WHY: RenderPipeline はフレームごとにスタック上で生成・破棄される。
     //      ResourceHandle は整数 ID に過ぎず、デストラクタは ResourceManager に
     //      通知しないため、Execute 完了後に明示的に解放しないと D3D11 リソースが漏れる。
-    for (auto& [group, pr] : m_aliasGroupPool)
-        ctx.resources.Release(pr.handle);
-    m_aliasGroupPool.clear();
-    m_nameToAliasGroup.clear();
+    {
+        FBZZ_PROFILE_SCOPE("RenderPipeline::ReleaseTransientPool");
+        for (auto& [group, pr] : m_aliasGroupPool)
+            ctx.resources.Release(pr.handle);
+        m_aliasGroupPool.clear();
+        m_nameToAliasGroup.clear();
+    }
 
     return ok;
 }
