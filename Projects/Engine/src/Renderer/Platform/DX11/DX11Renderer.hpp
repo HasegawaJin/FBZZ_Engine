@@ -150,6 +150,9 @@ private:
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
 
+    // VSync 無効時に DWM の表示周期待ちを避けられるかを Init() で検出する。
+    bool m_allowTearing = false;
+
     // --- Init 内部ヘルパー ---
     bool CreateRenderTargetView();
     bool CreateDepthStencilView();

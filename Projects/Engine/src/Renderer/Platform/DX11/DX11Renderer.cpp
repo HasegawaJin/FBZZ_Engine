@@ -21,6 +21,8 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
+#include <dxgi1_5.h>
 #include <string>
 
 namespace fbzz::renderer
@@ -41,6 +43,19 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
     //   WHY: flip-model は DWM との合成経路が現代的で、デバッグレイヤーの #294 警告も避けられる。
     //        FLIP_DISCARD は BufferCount >= 2 かつ MSAA 無効が前提なので、バックバッファを 2 枚にする。
     // -------------------------------------------------------------------------
+    // DXGI_PRESENT_ALLOW_TEARING を使える環境では、DWM の表示周期と Present を切り離す。
+    // WHY: SyncInterval=0 だけでは flip-model のキューが満杯になった際に Present が待機し、
+    //      60 Hz 環境で Time::targetFps=144 を指定しても約 60 FPS に制限されるため。
+    Microsoft::WRL::ComPtr<IDXGIFactory5> factory5;
+    BOOL allowTearing = FALSE;
+    if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(factory5.GetAddressOf()))) &&
+        SUCCEEDED(factory5->CheckFeatureSupport(
+            DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+            &allowTearing,
+            sizeof(allowTearing)))) {
+        m_allowTearing = allowTearing == TRUE;
+    }
+
     DXGI_SWAP_CHAIN_DESC scDesc                        = {};
     scDesc.BufferCount                                 = 2;
     scDesc.BufferDesc.Width                            = width;
@@ -53,6 +68,9 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
     scDesc.SampleDesc.Count                            = 1;  // MSAA は無効
     scDesc.Windowed                                    = TRUE;
     scDesc.SwapEffect                                  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    scDesc.Flags                                       = m_allowTearing
+                                                       ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
+                                                       : 0u;
 
     // DEBUG ビルドではデバッグレイヤーを有効化し、DX11 の検証エラーを OutputDebugString に出力する
     UINT flags = 0;
@@ -122,7 +140,9 @@ void DX11Renderer::BeginFrame()
 void DX11Renderer::EndFrame()
 {
     // FPS limiting is handled by Time::targetFps.
-    m_swapChain->Present(0, 0);
+    FBZZ_PROFILE_SCOPE("DX11Renderer::Present");
+    // 対応環境では tearing を許可し、Present 内の DWM 同期待ちを発生させない。
+    m_swapChain->Present(0, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0u);
 }
 
 void DX11Renderer::Clear(const math::Vector4& color)
@@ -484,7 +504,10 @@ void DX11Renderer::Resize(uint32_t width, uint32_t height)
     m_depthStencilView.Reset();
     m_depthStencilBuffer.Reset();
 
-    HRESULT hr = m_swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+    // Init() で付けた ALLOW_TEARING は ResizeBuffers 後も明示的に維持する。
+    const UINT swapChainFlags = m_allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u;
+    HRESULT hr = m_swapChain->ResizeBuffers(
+        0, width, height, DXGI_FORMAT_UNKNOWN, swapChainFlags);
     if (FAILED(hr)) { FBZZ_LOG_ERROR("ResizeBuffers failed: 0x%08X", (unsigned)hr); return; }
 
     // 新しいサイズで RTV・DSV を再生成して OM に再バインドする
