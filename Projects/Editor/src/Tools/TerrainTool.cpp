@@ -87,6 +87,24 @@ const char* LayerDisplayName(const std::string& path)
     return slash == std::string::npos ? path.c_str() : path.c_str() + slash + 1;
 }
 
+// ワールド座標を Terrain の heightData が使うローカル座標へ変換する。
+// WHY: position の減算だけでは親 Transform・回転・スケールを反映できず、
+//      カーソル位置と実際に編集されるハイトマップ座標がずれるため、描画と同じ World Matrix を使う。
+math::Vector3 ToTerrainLocal(const scene::Transform& transform, const math::Vector3& worldPoint)
+{
+    const math::Vector4 local = math::Matrix4::Inverse(transform.GetWorldMatrix())
+                              * math::Vector4{ worldPoint.x, worldPoint.y, worldPoint.z, 1.0f };
+    return { local.x, local.y, local.z };
+}
+
+// Terrain ローカル座標を描画空間のワールド座標へ変換する。
+math::Vector3 ToTerrainWorld(const scene::Transform& transform, const math::Vector3& localPoint)
+{
+    const math::Vector4 world = transform.GetWorldMatrix()
+                              * math::Vector4{ localPoint.x, localPoint.y, localPoint.z, 1.0f };
+    return { world.x, world.y, world.z };
+}
+
 } // namespace
 
 // =============================================================================
@@ -152,13 +170,9 @@ void TerrainTool::Update(
         };
         captureTerrainBefore(m_hitTerrain, terrainComp);
 
-        // ワールド座標 → テレインローカル座標に変換
+        // 描画と同じ World Matrix の逆変換で Terrain ローカル座標へ変換する。
         const scene::Transform& tf = m_hitTerrain->transform;
-        const math::Vector3 hitLocal = {
-            m_hitPoint.x - tf.position.x,
-            m_hitPoint.y - tf.position.y,
-            m_hitPoint.z - tf.position.z
-        };
+        const math::Vector3 hitLocal = ToTerrainLocal(tf, m_hitPoint);
 
         // Flatten モード: 最初のクリックで基準高さを固定する
         if (m_mode == Mode::Sculpt && m_sculpt == SculptMode::Flatten && !m_flattenLocked) {
@@ -188,11 +202,8 @@ void TerrainTool::Update(
                                 auto* nterrain = scene.GetComponent<scene::TerrainComponent>(neid);
                                 if (!ngo || !nterrain || nterrain->heightData.empty()) continue;
                                 captureTerrainBefore(ngo, nterrain);
-                                const math::Vector3 hitLocalN = {
-                                    m_hitPoint.x - ngo->transform.position.x,
-                                    m_hitPoint.y - ngo->transform.position.y,
-                                    m_hitPoint.z - ngo->transform.position.z
-                                };
+                                const math::Vector3 hitLocalN =
+                                    ToTerrainLocal(ngo->transform, m_hitPoint);
                                 ApplySculpt(*nterrain, hitLocalN, dt);
                                 nterrain->heightDirty = true;
                                 nterrain->colliderDirty = true;
@@ -228,11 +239,8 @@ void TerrainTool::Update(
                                 const int neighborLayer = ResolvePaintLayerForTerrain(*nterrain, sourceMaterial, paintLayer);
                                 if (neighborLayer < 0) continue;
 
-                                const math::Vector3 hitLocalN = {
-                                    m_hitPoint.x - ngo->transform.position.x,
-                                    m_hitPoint.y - ngo->transform.position.y,
-                                    m_hitPoint.z - ngo->transform.position.z
-                                };
+                                const math::Vector3 hitLocalN =
+                                    ToTerrainLocal(ngo->transform, m_hitPoint);
                                 captureTerrainBefore(ngo, nterrain);
                                 EnsureSplatData(*nterrain);
                                 ApplyPaint(*nterrain, hitLocalN, dt, neighborLayer);
@@ -326,11 +334,7 @@ bool TerrainTool::RaycastTerrain(
         if (!RaycastSingleTerrain(ray, *tc, go->transform, localHit)) continue;
 
         // ヒット位置のワールド t を求めて最近傍を選ぶ
-        const math::Vector3 hitWorld = {
-            localHit.x + go->transform.position.x,
-            localHit.y + go->transform.position.y,
-            localHit.z + go->transform.position.z
-        };
+        const math::Vector3 hitWorld = ToTerrainWorld(go->transform, localHit);
         const math::Vector3 toHit = {
             hitWorld.x - ray.origin.x,
             hitWorld.y - ray.origin.y,
@@ -346,30 +350,29 @@ bool TerrainTool::RaycastTerrain(
 
     if (!bestGO) return false;
 
-    outHitWorld = {
-        bestLocalHit.x + bestGO->transform.position.x,
-        bestLocalHit.y + bestGO->transform.position.y,
-        bestLocalHit.z + bestGO->transform.position.z
-    };
+    outHitWorld = ToTerrainWorld(bestGO->transform, bestLocalHit);
     outGO = bestGO;
     return true;
 }
 
 // DDA + 二分探法による単一地形へのレイキャスト
-// 地形は Y 軸上向き・回転なし・スケール一様を前提とする。
 bool TerrainTool::RaycastSingleTerrain(
     const math::Ray&               ray,
     const scene::TerrainComponent& terrain,
     const scene::Transform&        tf,
     math::Vector3&                 outLocalHit) const
 {
-    // テレインローカル空間でレイを表現する（回転なし前提なので平行移動のみ）
-    const math::Vector3 rayOriginLocal = {
-        ray.origin.x - tf.position.x,
-        ray.origin.y - tf.position.y,
-        ray.origin.z - tf.position.z
-    };
-    const math::Vector3& rayDir = ray.direction;
+    // Terrain 描画と同じ World Matrix の逆変換でレイをローカル化する。
+    // WHAT: 方向は w=0 で変換し、平行移動の影響を除外する。
+    const math::Matrix4 invWorld = math::Matrix4::Inverse(tf.GetWorldMatrix());
+    const math::Vector4 localOrigin =
+        invWorld * math::Vector4{ ray.origin.x, ray.origin.y, ray.origin.z, 1.0f };
+    const math::Vector4 localDirection =
+        invWorld * math::Vector4{ ray.direction.x, ray.direction.y, ray.direction.z, 0.0f };
+    const math::Vector3 rayOriginLocal = { localOrigin.x, localOrigin.y, localOrigin.z };
+    const math::Vector3 rayDir = math::Vector3{
+        localDirection.x, localDirection.y, localDirection.z
+    }.Normalized();
 
     // テレイン全体の AABB（ローカル空間）
     const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
@@ -590,34 +593,69 @@ void TerrainTool::ApplyPaint(
             const size_t base = (static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
                                + static_cast<size_t>(x)) * 4u;
 
-            // uint8 → float に変換して計算
-            float weights[4];
-            for (int i = 0; i < 4; ++i)
-                weights[i] = terrain.splatData[base + i] / 255.0f;
-
-            // 選択レイヤーのウェイトを増やす
-            const float delta = m_brush.strength * w * dt;
-            weights[layerIdx] = std::min(1.0f, weights[layerIdx] + delta);
-
-            // 合計が 1 を超えないよう他レイヤーを按分して下げる
-            float excess = -1.0f;
-            for (int i = 0; i < 4; ++i) excess += weights[i];
-
-            if (excess > 0.0f) {
-                float otherTotal = 0.0f;
-                for (int i = 0; i < 4; ++i)
-                    if (i != layerIdx) otherTotal += weights[i];
-                if (otherTotal > 1e-4f) {
-                    const float scale = (otherTotal - excess) / otherTotal;
-                    for (int i = 0; i < 4; ++i)
-                        if (i != layerIdx)
-                            weights[i] = std::max(0.0f, weights[i] * scale);
-                }
+            uint32_t weights[4];
+            uint32_t totalWeight = 0u;
+            for (int i = 0; i < 4; ++i) {
+                weights[i] = terrain.splatData[base + i];
+                totalWeight += weights[i];
             }
 
-            // float → uint8 に書き戻す（+0.5f で四捨五入）
+            // WHAT: 8-bit の最小単位である 1/255 以上を進め、押下中の変化を確実に蓄積する。
+            // WHY: strength * dt が 1/255 未満だと、float から uint8 へ戻すたびに 0 へ丸められ、
+            //      長押ししても Paint が一度も進まないため。
+            const float requestedDelta = m_brush.strength * w * dt * 255.0f;
+            if (requestedDelta <= 0.0f)
+                continue;
+            const uint32_t quantizedDelta =
+                std::max(1u, static_cast<uint32_t>(requestedDelta + 0.5f));
+            const uint32_t currentOtherWeight = totalWeight - weights[layerIdx];
+            const uint32_t selectedWeight =
+                currentOtherWeight == 0u
+                    ? 255u
+                    : std::min(255u, weights[layerIdx] + quantizedDelta);
+            if (selectedWeight == weights[layerIdx] && totalWeight == 255u)
+                continue;
+
+            // 選択レイヤーを増やした分だけ他レイヤーを比率維持で縮小する。
+            // WHAT: 端数は余りの大きいレイヤーから配り、4 チャンネルの整数合計を常に 255 に保つ。
+            const uint32_t targetOtherWeight = 255u - selectedWeight;
+            uint32_t distributedWeight = 0u;
+            uint32_t remainders[4] = {};
+
+            for (int i = 0; i < 4; ++i) {
+                if (i == layerIdx)
+                    continue;
+
+                if (currentOtherWeight == 0u) {
+                    weights[i] = 0u;
+                    continue;
+                }
+
+                const uint32_t scaledNumerator = weights[i] * targetOtherWeight;
+                weights[i] = scaledNumerator / currentOtherWeight;
+                remainders[i] = scaledNumerator % currentOtherWeight;
+                distributedWeight += weights[i];
+            }
+
+            uint32_t remainderWeight = targetOtherWeight - distributedWeight;
+            while (remainderWeight > 0u) {
+                int bestLayer = -1;
+                for (int i = 0; i < 4; ++i) {
+                    if (i != layerIdx &&
+                        (bestLayer < 0 || remainders[i] > remainders[bestLayer])) {
+                        bestLayer = i;
+                    }
+                }
+                if (bestLayer < 0)
+                    break;
+                ++weights[bestLayer];
+                remainders[bestLayer] = 0u;
+                --remainderWeight;
+            }
+
+            weights[layerIdx] = selectedWeight;
             for (int i = 0; i < 4; ++i)
-                terrain.splatData[base + i] = static_cast<uint8_t>(weights[i] * 255.0f + 0.5f);
+                terrain.splatData[base + i] = static_cast<uint8_t>(weights[i]);
         }
     }
 }
@@ -644,31 +682,43 @@ void TerrainTool::DrawBrushPreview(
         };
     };
 
-    // ブラシ半径のリング: 地形 XZ 平面上で 32 等分した点を投影して線分で結ぶ
+    // ブラシ半径のリング: Terrain ローカル XZ 平面上で分割し、各点の地表高をサンプリングする。
+    // WHY: 中心の高さだけで水平な円を描くと、斜面や凹凸で実際の編集範囲から浮いて見える。
+    //      ApplySculpt / ApplyPaint と同じローカル座標系を使うことで表示と編集範囲を一致させる。
     // WHY: DebugDraw は GPU コマンドなので ImGui DrawList と混在しづらい。
     //      ImGui DrawList の 2D ラインで代替する方が実装がシンプルで確実。
     // GetForegroundDrawList でウィンドウスタックの最前面に描画する。
     // GetWindowDrawList だとビューポート画像の裏に隠れる可能性がある。
+    if (!m_hitTerrain)
+        return;
+
+    const auto* terrain = m_hitTerrain->GetComponent<scene::TerrainComponent>();
+    if (!terrain || terrain->heightData.empty())
+        return;
+
     ImDrawList* dl      = ImGui::GetForegroundDrawList();
     const float r       = m_brush.radius;
-    const int   segs    = 32;
+    const int   segs    = 64;
     constexpr float kPi = 3.14159265f;
     const ImU32 col     = (m_mode == Mode::Sculpt)
                         ? IM_COL32(255, 220, 50,  220)  // Sculpt: 黄色
                         : IM_COL32(50,  200, 255, 220);  // Paint: 水色
 
-    ImVec2 prev = project({
-        m_hitPoint.x + r,
-        m_hitPoint.y,
-        m_hitPoint.z
-    });
+    const math::Vector3 hitLocal = ToTerrainLocal(m_hitTerrain->transform, m_hitPoint);
+    auto ringPoint = [&](float angle) {
+        math::Vector3 localPoint = {
+            hitLocal.x + std::cos(angle) * r,
+            0.0f,
+            hitLocal.z + std::sin(angle) * r
+        };
+        localPoint.y = terrain->GetHeightAt(localPoint.x, localPoint.z);
+        return ToTerrainWorld(m_hitTerrain->transform, localPoint);
+    };
+
+    ImVec2 prev = project(ringPoint(0.0f));
     for (int i = 1; i <= segs; ++i) {
         const float angle = static_cast<float>(i) / static_cast<float>(segs) * 2.0f * kPi;
-        const ImVec2 cur = project({
-            m_hitPoint.x + std::cos(angle) * r,
-            m_hitPoint.y,
-            m_hitPoint.z + std::sin(angle) * r
-        });
+        const ImVec2 cur = project(ringPoint(angle));
         dl->AddLine(prev, cur, col, 1.5f);
         prev = cur;
     }
