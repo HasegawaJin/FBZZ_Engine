@@ -1062,7 +1062,12 @@ void EditorApp::ResizeViewportRTsIfNeeded()
         auto* currentRT = m_resources->Get(rt);
         if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) return;
 
-        rt         = m_resources->CreateRenderTarget(vpW, vpH);
+        const auto previousRT = rt;
+        rt = m_resources->CreateRenderTarget(vpW, vpH);
+        // WHY: ハンドルの上書きだけでは旧DX11リソースがResourceManagerに残り、
+        //      Dock操作を繰り返すほどVRAM使用量とPresent待機が増える。
+        if (previousRT.IsValid())
+            m_resources->Release(previousRT);
         panel->hdrRT = rt;
     };
 
@@ -1302,6 +1307,7 @@ void EditorApp::UpdateFocusAnim(float dt)
 
 void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::LayerMask /*gameCullingMask*/)
 {
+    FBZZ_PROFILE_SCOPE("EditorApp::RenderSceneView");
     const auto sceneRT = m_sceneViewportRT;
     m_renderer->SetRenderTarget(sceneRT, *m_resources);
     m_renderer->Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
@@ -1338,6 +1344,7 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
 
 void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask)
 {
+    FBZZ_PROFILE_SCOPE("EditorApp::RenderGameView");
     const auto gameRT = m_gameViewportRT;
     if (!gameRT.IsValid()) return;
 
