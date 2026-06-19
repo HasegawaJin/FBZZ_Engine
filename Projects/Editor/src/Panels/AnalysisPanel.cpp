@@ -310,9 +310,32 @@ void CaptureProfilerSnapshot()
     RebuildProfileHistoryStats();
 }
 
-// カテゴリごとの合計時間を横並びの簡易凡例として描画する。
+// 各サンプルの排他時間を算出する。
+// WHY: ProfileRecord::elapsedMs は子スコープを含むため、そのままカテゴリ合計へ足すと
+//      RenderSystem → RenderPipeline → RenderPass の同じ時間を何重にも計上してしまう。
+std::vector<double> BuildExclusiveSampleTimes(const std::vector<profiler::ProfileRecord>& records)
+{
+    std::vector<double> exclusive(records.size(), 0.0);
+    std::vector<double> completedAtDepth(records.size() + 2u, 0.0);
+
+    // Profiler はスコープ終了順、つまり子から親の順で ProfileRecord を追加する。
+    for (std::size_t i = 0; i < records.size(); ++i) {
+        const std::size_t depth = static_cast<std::size_t>(records[i].depth);
+        if (depth + 1u >= completedAtDepth.size())
+            completedAtDepth.resize(depth + 2u, 0.0);
+
+        exclusive[i] = (std::max)(0.0, records[i].elapsedMs - completedAtDepth[depth + 1u]);
+        completedAtDepth[depth + 1u] = 0.0;
+        completedAtDepth[depth] += records[i].elapsedMs;
+    }
+    return exclusive;
+}
+
+// カテゴリごとの排他時間を横並びの簡易凡例として描画する。
 // WHAT: Unity Profiler のカテゴリ色に近い見方で、まず大枠の負荷分布を把握する。
-void DrawProfilerCategorySummary(const std::vector<profiler::ProfileRecord>& records, double totalMs)
+void DrawProfilerCategorySummary(const std::vector<profiler::ProfileRecord>& records,
+                                 const std::vector<double>& exclusiveTimes,
+                                 double totalMs)
 {
     struct CategoryTotal {
         const char* name = nullptr;
@@ -323,7 +346,8 @@ void DrawProfilerCategorySummary(const std::vector<profiler::ProfileRecord>& rec
     CategoryTotal totals[10]{};
     int totalCount = 0;
 
-    for (const profiler::ProfileRecord& record : records) {
+    for (std::size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex) {
+        const profiler::ProfileRecord& record = records[recordIndex];
         const ProfilerCategory category = ClassifyProfileRecord(record);
         CategoryTotal* target = nullptr;
         for (int i = 0; i < totalCount; ++i) {
@@ -341,7 +365,7 @@ void DrawProfilerCategorySummary(const std::vector<profiler::ProfileRecord>& rec
         }
 
         if (target != nullptr) {
-            target->elapsedMs += record.elapsedMs;
+            target->elapsedMs += exclusiveTimes[recordIndex];
         }
     }
 
@@ -439,10 +463,13 @@ void AnalysisPanel::DrawProfiler()
     }
 
     const auto& records = s_profilerDisplay.visibleRecords;
+    const std::vector<double> exclusiveTimes = BuildExclusiveSampleTimes(records);
     double totalMs = 0.0;
     double maxMs = 0.0;
     for (const profiler::ProfileRecord& record : records) {
-        totalMs += record.elapsedMs;
+        // depth 0 は互いに重ならない最上位スコープなので、合計が実フレーム時間を超えない。
+        if (record.depth == 0u)
+            totalMs += record.elapsedMs;
         maxMs = (std::max)(maxMs, record.elapsedMs);
     }
     if (maxMs <= 0.0)
@@ -452,8 +479,8 @@ void AnalysisPanel::DrawProfiler()
                 static_cast<unsigned long long>(s_profilerDisplay.visibleFrameIndex),
                 static_cast<unsigned long long>(profiler::Profiler::GetLastFrameIndex()));
     ImGui::Text("Samples: %zu", records.size());
-    ImGui::Text("Total CPU samples: %.3f ms", totalMs);
-    DrawProfilerCategorySummary(records, totalMs);
+    ImGui::Text("Scoped frame CPU: %.3f ms", totalMs);
+    DrawProfilerCategorySummary(records, exclusiveTimes, totalMs);
     ImGui::Separator();
 
     if (records.empty()) {
