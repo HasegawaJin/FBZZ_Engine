@@ -16,9 +16,13 @@
 #include <Engine/Scene/Scene.hpp>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+#include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+FBZZ_REGISTER_SCRIPT(::sandbox::PlayerControllerComponent)
+FBZZ_REGISTER_SCRIPT(::sandbox::TpsCameraComponent)
 // @@FBZZ_SCRIPT_ENTRIES_END
 
 namespace {{CPP_NAMESPACE}} {
