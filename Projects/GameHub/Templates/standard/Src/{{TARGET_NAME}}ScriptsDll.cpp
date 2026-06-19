@@ -27,6 +27,8 @@
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+#include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 #ifdef GAMESCRIPTS_EXPORTS
@@ -46,6 +48,8 @@ const std::vector<ScriptEntry>& AllEntries()
 {
     // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
     static const std::vector<ScriptEntry> entries = {
+        { ::sandbox::PlayerControllerComponent::TYPE_NAME, []() { return std::make_unique<::sandbox::PlayerControllerComponent>(); } },
+        { ::sandbox::TpsCameraComponent::TYPE_NAME, []() { return std::make_unique<::sandbox::TpsCameraComponent>(); } },
     };
     // @@FBZZ_SCRIPT_ENTRIES_END
     return entries;

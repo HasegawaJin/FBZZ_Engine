@@ -70,16 +70,25 @@ bool ProcessLauncher::OpenInEditor(const HubConfig& config, const std::string& p
 std::wstring ProcessLauncher::ResolveEditorPath(const HubConfig& config)
 {
     if (!config.GetEditorExe().empty()) {
-        return engine_util::StringUtils::ToWide(config.GetEditorExe());
+        const std::filesystem::path configuredPath =
+            engine_util::FileSystem::PathFromUtf8(config.GetEditorExe());
+        if (Exists(configuredPath)) {
+            return configuredPath.wstring();
+        }
+        // WHY: VS/CMake の再構成後は保存済み exe パスが古くなる場合がある。
+        //      無効な設定値だけで探索を打ち切らず、現在のビルド出力へフォールバックする。
     }
 
     const std::filesystem::path exeDir = engine_util::FileSystem::GetExecutableDirectory();
     const std::filesystem::path cwd = engine_util::FileSystem::GetCurrentDirectory();
     const std::string exeDirText = engine_util::FileSystem::PathToUtf8(exeDir);
     const bool isDebugHub = engine_util::StringUtils::ContainsCI(exeDirText, "/debug");
+    const bool isDevelopmentHub = engine_util::StringUtils::ContainsCI(exeDirText, "/development");
     const std::filesystem::path matchingBuildEditor = isDebugHub
-        ? cwd / L"build" / L"debug" / L"Projects" / L"EditorLauncher" / L"Debug" / L"FBZZEditor.exe"
-        : cwd / L"build" / L"release" / L"Projects" / L"EditorLauncher" / L"Release" / L"FBZZEditor.exe";
+        ? cwd / L"build" / L"debug" / L"Binaries" / L"Debug" / L"FBZZEditor.exe"
+        : isDevelopmentHub
+            ? cwd / L"build" / L"development" / L"Binaries" / L"Development" / L"FBZZEditor.exe"
+            : cwd / L"build" / L"release" / L"Binaries" / L"Release" / L"FBZZEditor.exe";
 
     const std::array<std::filesystem::path, 3> candidates = {
         exeDir / L"FBZZEditor.exe",

@@ -1,0 +1,274 @@
+[compile_shaders] 2026/06/19 16:37:28.94 
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Terrain.Terrain.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Terrain.Terrain.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Water.Water.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Water.Water.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Detail.Detail.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Detail.Detail.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Detail.DetailGrass.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Detail.DetailGrass.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Foliage.Foliage.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Foliage.Foliage.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Debug.DebugDraw.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Debug.DebugDraw.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Debug.SelectionMask.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Debug.SelectionMask.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Debug.SelectionMaskSkinnedMesh.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Debug.SelectionMaskSkinnedMesh.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Unlit.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Unlit.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Fallback.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Fallback.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Lit.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Lit.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Phong.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Phong.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.BlinnPhong.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.BlinnPhong.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.PBR.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.PBR.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Toon.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Toon.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Dissolve.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Dissolve.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Subsurface.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Subsurface.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Anisotropic.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.Anisotropic.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.RimLight.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Surface.RimLight.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedUnlit.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedUnlit.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.FallbackSkinned.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.FallbackSkinned.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedLit.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedLit.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedPhong.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedPhong.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedBlinnPhong.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedBlinnPhong.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedPBR.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedPBR.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedToon.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedToon.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedDissolve.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedDissolve.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedSubsurface.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedSubsurface.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedAnisotropic.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedAnisotropic.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedRimLight.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Skinned.SkinnedRimLight.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.Particle.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.Particle.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.ParticleGPU.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.ParticleGPU.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.ParticleGpuSim.cs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.Trail.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.Trail.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.MeshTrail.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.MeshTrail.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.SkinnedMeshTrail.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Effects.SkinnedMeshTrail.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Sky.Skybox.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Sky.Skybox.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Sky.Skydome.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Sky.Skydome.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Decal.Decal.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Decal.Decal.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Decal.DecalMask.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Material.Decal.DecalMask.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Deferred.GBuffer.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Deferred.GBuffer.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Deferred.DeferredLighting.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Deferred.DeferredLighting.ps.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Deferred.DepthCopy.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Deferred.DepthCopy.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Shadow.ShadowMap.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Shadow.ShadowMap.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Shadow.SkinnedShadowMap.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\Pipeline.Shadow.SkinnedShadowMap.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.AmbientOcclusion.SSAO.cs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.AmbientOcclusion.SSAOBlur.cs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Bloom.BloomDownsample.cs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Bloom.BloomUpsample.cs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Color.CopyColor.vs.cso
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Color.CopyColor.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Color.Composite.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Color.Composite.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Water.Caustics.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Water.Caustics.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Custom.CustomPostProcess.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Custom.CustomPostProcess.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.AntiAliasing.FXAA.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.AntiAliasing.FXAA.ps.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Outline.SelectionOutline.vs.cso
+C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\Common\Constants.hlsli(4,9-12): warning X3568: 'once' : unknown pragma ignored
+
+compilation object save succeeded; see C:\Users\jinhs\Desktop\FBZZ_Engine\Assets\Shaders\compiled\PostProcess.Outline.SelectionOutline.ps.cso
