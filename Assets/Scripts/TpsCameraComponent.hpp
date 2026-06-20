@@ -42,18 +42,18 @@ private:
 #include "TpsCameraComponent.generated.hpp"
 
 // ── 実装 ────────────────────────────────────────────────────────────────────
-#ifndef TPS_CAMERA_IMPL
-#define TPS_CAMERA_IMPL
+#ifndef TpsCameraComponent_IMPL
+#define TpsCameraComponent_IMPL
 
 namespace sandbox {
 
-inline void TpsCameraComponent::OnStart()
+void TpsCameraComponent::OnStart()
 {
     FindTarget();
     m_hasCameraPosition = false;
 }
 
-inline void TpsCameraComponent::OnLateUpdate()
+void TpsCameraComponent::OnLateUpdate()
 {
     if (!transform) return;
     if (!m_target || !m_target->IsValid()) FindTarget();
@@ -86,7 +86,7 @@ inline void TpsCameraComponent::OnLateUpdate()
     m_hasCameraPosition     = true;
 }
 
-inline void TpsCameraComponent::FindTarget()
+void TpsCameraComponent::FindTarget()
 {
     m_target = targetTag.empty() ? nullptr : scene.FindWithTag(targetTag);
 }
