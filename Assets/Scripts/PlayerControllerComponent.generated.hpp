@@ -27,6 +27,5 @@ inline void PlayerControllerComponent::Reflect(::fbzz::scene::IReflector& r_) {
     r_.Field("Vertical Speed Param", paramVerticalSpeed);
     r_.Field("IsGrounded Param", paramIsGrounded);
     r_.Field("Jump Trigger Param", paramJumpTrigger);
-    r_.Field("Land Trigger Param", paramLandTrigger);
 }
 } // namespace sandbox
