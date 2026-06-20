@@ -1,8 +1,7 @@
 // FBZZ Engine
 // IKSystem.hpp | fbzz::scene
-// AnimatorSystem が確定した FK ポーズに解析的 2-Bone IK を後処理として適用し、
-// スキニング行列を再アップロードする。
-// 地面スナップレイキャストは ctx.world に委譲する。
+// AnimatorSystem が確定した FK ポーズに順序付き IK Solver を後処理として適用する。
+// TwoBone と FootPlace を同一システムで解き、地面判定は ctx.world に委譲する。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 
