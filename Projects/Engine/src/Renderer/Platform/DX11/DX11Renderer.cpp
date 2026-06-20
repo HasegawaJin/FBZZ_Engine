@@ -24,6 +24,9 @@
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <dxgi1_5.h>
 #include <string>
+#ifdef _DEBUG
+#include <d3d11sdklayers.h>  // ID3D11InfoQueue
+#endif
 
 namespace fbzz::renderer
 {
@@ -95,6 +98,41 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
     if (!CreateRenderTargetView())  return false;
     if (!CreateDepthStencilView())  return false;
+
+#ifdef _DEBUG
+    // D3D11 Debug Layer はデフォルトで検証メッセージを約2秒ごとにフラッシュし、
+    // その際に定期的な FPS スパイクを引き起こす。
+    // InfoQueue でストレージフィルタを空にすることでメッセージ蓄積量を最小化し、
+    // フラッシュコストを抑える。エラーだけはブレークポイントで捕捉する。
+    // WHY: ポートフォリオ動作確認で Release 以外のビルドも一定の FPS 安定性が必要なため。
+    {
+        Microsoft::WRL::ComPtr<ID3D11InfoQueue> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+        {
+            infoQueue->SetMuteDebugOutput(FALSE);
+            infoQueue->SetMessageCountLimit(-1);            // メッセージ上限を解除
+            infoQueue->ClearStoredMessages();
+
+            // ERROR / CORRUPTION だけブレーク、INFO / WARNING は蓄積しない
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR,      TRUE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_WARNING,    FALSE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_INFO,       FALSE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_MESSAGE,    FALSE);
+
+            // WARNING 以下をフィルタアウトして蓄積自体を止める
+            D3D11_MESSAGE_SEVERITY denySeverities[] = {
+                D3D11_MESSAGE_SEVERITY_INFO,
+                D3D11_MESSAGE_SEVERITY_MESSAGE,
+                D3D11_MESSAGE_SEVERITY_WARNING,
+            };
+            D3D11_INFO_QUEUE_FILTER filter = {};
+            filter.DenyList.NumSeverities  = 3u;
+            filter.DenyList.pSeverityList  = denySeverities;
+            infoQueue->AddStorageFilterEntries(&filter);
+        }
+    }
+#endif
 
     // OM ステージに RTV と DSV を一括バインド
     m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), m_depthStencilView.Get());
