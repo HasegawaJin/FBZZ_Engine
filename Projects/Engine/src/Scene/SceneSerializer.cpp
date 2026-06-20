@@ -27,7 +27,6 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
-#include <Engine/Scene/Components/FootIKComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
@@ -1155,15 +1154,34 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::array chainsArr;
             for (const auto& chain : ikSolver->chains) {
                 toml::table chainTbl;
-                chainTbl.insert("rootBone",      chain.rootBoneName);
-                chainTbl.insert("midBone",       chain.midBoneName);
-                chainTbl.insert("tipBone",       chain.tipBoneName);
+                chainTbl.insert("type",          static_cast<int64_t>(chain.type));
+                chainTbl.insert("order",         (int64_t)chain.order);
                 chainTbl.insert("weight",        (double)chain.weight);
                 chainTbl.insert("enabled",       chain.enabled);
-                chainTbl.insert("maxExtension",    (double)chain.maxExtension);
-                chainTbl.insert("softness",          (double)chain.softness);
-                chainTbl.insert("targetOffset",    Vec3ToArr(chain.targetOffset));
+                toml::array boneNames;
+                for (const auto& boneName : chain.boneNames) boneNames.push_back(boneName);
+                chainTbl.insert("boneNames",      std::move(boneNames));
+                chainTbl.insert("maxExtension",   (double)chain.maxExtension);
+                chainTbl.insert("softness",       (double)chain.softness);
+                chainTbl.insert("targetOffset",   Vec3ToArr(chain.targetOffset));
                 chainTbl.insert("autoPoleLocalDirection", Vec3ToArr(chain.autoPoleLocalDirection));
+                chainTbl.insert("useAnimatorIKWeight", chain.useAnimatorIKWeight);
+                chainTbl.insert("rayUpRatio",          (double)chain.rayUpRatio);
+                chainTbl.insert("rayDownRatio",        (double)chain.rayDownRatio);
+                chainTbl.insert("footSurfaceOffset",   (double)chain.footSurfaceOffset);
+                chainTbl.insert("correctionDeadZone",  (double)chain.correctionDeadZone);
+                chainTbl.insert("maxCorrection",       (double)chain.maxCorrection);
+                chainTbl.insert("smoothTime",          (double)chain.smoothTime);
+                chainTbl.insert("footNormalAxis",      Vec3ToArr(chain.footNormalAxis));
+                chainTbl.insert("adjustHip",           chain.adjustHip);
+                chainTbl.insert("hipBoneName",         chain.hipBoneName);
+                chainTbl.insert("spineAutoWeight",      chain.spineAutoWeight);
+                chainTbl.insert("spineFlatWeight",     (double)chain.spineFlatWeight);
+                chainTbl.insert("spineSlopeRampMeters",(double)chain.spineSlopeRampMeters);
+                chainTbl.insert("lookAtAxis",          Vec3ToArr(chain.lookAtAxis));
+                chainTbl.insert("lookAtUpAxis",        Vec3ToArr(chain.lookAtUpAxis));
+                chainTbl.insert("lookAtClampAngle",    (double)chain.lookAtClampAngle);
+                chainTbl.insert("lookAtSpeed",         (double)chain.lookAtSpeed);
                 // EntityID が有効なら実 GameObject 名を優先取得し、
                 // 無効 (未 Resolve / ロード直後など) の場合は文字列フィールドをフォールバックに使う。
                 // WHY: Inspector でテキスト直打ちしたまま Resolve せずに保存すると
@@ -1201,22 +1219,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             }
             ikTbl.insert("chains",      std::move(chainsArr));
             goTbl.insert("IKSolverComponent", std::move(ikTbl));
-        }
-
-        // FootIKComponent
-        // WHY: Humanoid の歩行クリップは FK の足運びを保ち、接地だけ専用パスで補正する。
-        if (auto* footIK = go.GetComponent<FootIKComponent>()) {
-            toml::table footTbl;
-            footTbl.insert("enabled", footIK->enabled);
-            footTbl.insert("useAnimatorIKWeight", footIK->useAnimatorIKWeight);
-            footTbl.insert("weight", (double)footIK->weight);
-            footTbl.insert("rayUpRatio", (double)footIK->rayUpRatio);
-            footTbl.insert("rayDownRatio", (double)footIK->rayDownRatio);
-            footTbl.insert("footSurfaceOffset", (double)footIK->footSurfaceOffset);
-            footTbl.insert("correctionDeadZone", (double)footIK->correctionDeadZone);
-            footTbl.insert("maxCorrection", (double)footIK->maxCorrection);
-            footTbl.insert("footNormalAxis", Vec3ToArr(footIK->footNormalAxis));
-            goTbl.insert("FootIKComponent", std::move(footTbl));
         }
 
         // UICanvas
@@ -2178,13 +2180,23 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     const auto* chainTbl = elem.as_table();
                     if (!chainTbl) continue;
                     IKChain chain{};
-                    chain.rootBoneName = (*chainTbl)["rootBone"].value_or(std::string{});
-                    chain.midBoneName  = (*chainTbl)["midBone"].value_or(std::string{});
-                    chain.tipBoneName  = (*chainTbl)["tipBone"].value_or(std::string{});
+                    const int64_t solverType = (*chainTbl)["type"].value_or(
+                        static_cast<int64_t>(IKSolverType::TwoBone));
+                    chain.type = solverType >= static_cast<int64_t>(IKSolverType::TwoBone) &&
+                                 solverType <= static_cast<int64_t>(IKSolverType::Spine)
+                        ? static_cast<IKSolverType>(solverType)
+                        : IKSolverType::TwoBone;
+                    chain.order          = (int)(*chainTbl)["order"].value_or((int64_t)0);
                     chain.weight        = (float)(*chainTbl)["weight"].value_or(1.0);
                     chain.enabled       = (*chainTbl)["enabled"].value_or(true);
-                    chain.maxExtension    = (float)(*chainTbl)["maxExtension"].value_or(0.98);
-                    chain.softness           = (float)(*chainTbl)["softness"].value_or(0.05);
+                    if (const auto* boneNames = (*chainTbl)["boneNames"].as_array()) {
+                        for (const auto& boneName : *boneNames) {
+                            if (auto value = boneName.value<std::string>())
+                                chain.boneNames.push_back(*value);
+                        }
+                    }
+                    chain.maxExtension = (float)(*chainTbl)["maxExtension"].value_or(0.98);
+                    chain.softness     = (float)(*chainTbl)["softness"].value_or(0.05);
                     chain.targetOffset    = ArrToVec3((*chainTbl)["targetOffset"].as_array(),
                                                        math::Vector3::ZERO);
                     chain.autoPoleLocalDirection =
@@ -2196,26 +2208,27 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     chain.poleName   = (*chainTbl)["poleName"].value_or(std::string{});
                     chain.poleGuid   = (*chainTbl)["poleGuid"].value_or(std::string{});
                     chain.autoPole   = (*chainTbl)["autoPole"].value_or(false);
+                    chain.useAnimatorIKWeight = (*chainTbl)["useAnimatorIKWeight"].value_or(true);
+                    chain.rayUpRatio = (float)(*chainTbl)["rayUpRatio"].value_or(0.5);
+                    chain.rayDownRatio = (float)(*chainTbl)["rayDownRatio"].value_or(1.2);
+                    chain.footSurfaceOffset = (float)(*chainTbl)["footSurfaceOffset"].value_or(0.05);
+                    chain.correctionDeadZone = (float)(*chainTbl)["correctionDeadZone"].value_or(0.025);
+                    chain.maxCorrection = (float)(*chainTbl)["maxCorrection"].value_or(0.12);
+                    chain.smoothTime = (float)(*chainTbl)["smoothTime"].value_or(0.10);
+                    chain.footNormalAxis = ArrToVec3((*chainTbl)["footNormalAxis"].as_array(), math::Vector3::ZERO);
+                    chain.adjustHip = (*chainTbl)["adjustHip"].value_or(true);
+                    chain.hipBoneName = (*chainTbl)["hipBoneName"].value_or(std::string{ "Hips" });
+                    chain.spineAutoWeight = (*chainTbl)["spineAutoWeight"].value_or(false);
+                    chain.spineFlatWeight = (float)(*chainTbl)["spineFlatWeight"].value_or(0.05);
+                    chain.spineSlopeRampMeters = (float)(*chainTbl)["spineSlopeRampMeters"].value_or(0.10);
+                    chain.lookAtAxis = ArrToVec3((*chainTbl)["lookAtAxis"].as_array(), math::Vector3::FORWARD);
+                    chain.lookAtUpAxis = ArrToVec3((*chainTbl)["lookAtUpAxis"].as_array(), math::Vector3::UP);
+                    chain.lookAtClampAngle = (float)(*chainTbl)["lookAtClampAngle"].value_or(90.0);
+                    chain.lookAtSpeed = (float)(*chainTbl)["lookAtSpeed"].value_or(10.0);
                     ikSolver.chains.push_back(std::move(chain));
                 }
             }
             go.AddComponent<IKSolverComponent>(std::move(ikSolver));
-        }
-
-        // FootIKComponent
-        if (auto* footTbl = (*goTbl)["FootIKComponent"].as_table()) {
-            FootIKComponent footIK{};
-            footIK.enabled = (*footTbl)["enabled"].value_or(true);
-            footIK.useAnimatorIKWeight = (*footTbl)["useAnimatorIKWeight"].value_or(true);
-            footIK.weight = (float)(*footTbl)["weight"].value_or(1.0);
-            footIK.rayUpRatio = (float)(*footTbl)["rayUpRatio"].value_or(0.5);
-            footIK.rayDownRatio = (float)(*footTbl)["rayDownRatio"].value_or(1.2);
-            footIK.footSurfaceOffset = (float)(*footTbl)["footSurfaceOffset"].value_or(0.05);
-            footIK.correctionDeadZone = (float)(*footTbl)["correctionDeadZone"].value_or(0.025);
-            footIK.maxCorrection = (float)(*footTbl)["maxCorrection"].value_or(0.12);
-            footIK.footNormalAxis = ArrToVec3((*footTbl)["footNormalAxis"].as_array(),
-                                              math::Vector3::ZERO);
-            go.AddComponent<FootIKComponent>(std::move(footIK));
         }
 
         // UICanvas

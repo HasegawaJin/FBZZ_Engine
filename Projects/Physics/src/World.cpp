@@ -8,6 +8,7 @@
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/ConvexHullCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -295,6 +296,29 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
     case ColliderType::CONVEX_HULL: {
         const auto* hull = static_cast<const ConvexHullCollider*>(inst.collider);
         return RayConvexHull(o, d, maxDist, *hull, tOut, normalOut);
+    }
+    case ColliderType::HEIGHT_FIELD: {
+        // WHY: HeightFieldCollider の BVH は TriangleMeshCollider と同一の BVHTree<Triangle> 構造を持つ。
+        //      RayTriangleMesh は TriangleMeshCollider を受け取るため直接呼べないが、
+        //      GetBVH() で同じクエリを実行できる。
+        const auto* hf = static_cast<const HeightFieldCollider*>(inst.collider);
+        const Vector3 hfEnd = o + d * maxDist;
+        AABB hfQueryBox;
+        hfQueryBox.min = Vector3(std::min(o.x, hfEnd.x), std::min(o.y, hfEnd.y), std::min(o.z, hfEnd.z));
+        hfQueryBox.max = Vector3(std::max(o.x, hfEnd.x), std::max(o.y, hfEnd.y), std::max(o.z, hfEnd.z));
+        float   hfBestT = maxDist + 1.0f;
+        Vector3 hfBestN;
+        hf->GetBVH().Query(hfQueryBox, [&](const Triangle& tri) {
+            const float t = RayTriangle(o, d, tri.v[0], tri.v[1], tri.v[2]);
+            if (t > 0.0f && t < hfBestT) {
+                hfBestT = t;
+                hfBestN = Vector3::Dot(tri.normal, d) < 0.0f ? tri.normal : -tri.normal;
+            }
+        });
+        if (hfBestT > maxDist) return false;
+        tOut = hfBestT;
+        normalOut = hfBestN;
+        return true;
     }
     default:
         return false;
