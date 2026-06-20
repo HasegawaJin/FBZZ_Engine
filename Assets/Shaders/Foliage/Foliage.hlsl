@@ -1,36 +1,20 @@
 // FBZZ Engine
 // Foliage/Foliage.hlsl | VS + PS
 // 複数SubMesh樹木・大型植生向けGPU Instancingシェーダー
-#include "Common/Binding.hlsli"
+//
+// WHY: LightConstants の ambientColor を参照するため Common/Constants.hlsli を使用する。
+//      Unlit モードで RenderSystem が ambientColor={1,1,1}/lightIntensity=0 を設定するため、
+//      ambientColor を乗算するだけで分岐なしに Unlit が自然に機能する。
+#define FBZZ_MATERIAL_CONSTANTS  // FoliageMaterialCB で MaterialConstants を上書きするため
+#include "Common/Constants.hlsli"
 #include "Platform/DX11.hlsli"
 
-cbuffer CameraConstants : register(CB_CAMERA)
-{
-    float4x4 view;
-    float4x4 projection;
-    float4x4 viewProjection;
-    float4x4 invViewProjection;
-    float3 cameraPos;
-    float nearZ;
-    float farZ;
-    float3 _camPad;
-};
-
-#define FBZZ_MATERIAL_CONSTANTS
 cbuffer FoliageMaterialCB : register(CB_MATERIAL)
 {
     float4 baseColor;
     uint hasAlbedo;
     float alphaCutoff;
     float2 _foliagePad;
-};
-
-cbuffer LightConstants : register(CB_LIGHT)
-{
-    float3 lightDir;
-    float _lightPad0;
-    float3 lightColor;
-    float lightIntensity;
 };
 
 struct FoliageInstance
@@ -88,6 +72,8 @@ float4 PSMain(PsIn input) : SV_Target0
         clip(color.a - alphaCutoff);
 
     const float ndotl = saturate(dot(normalize(input.normal), normalize(-lightDir)));
-    color.rgb *= (0.30f + ndotl * lightIntensity * 0.70f) * lightColor;
+    // ambientColor は Lit モードで {0.08,...}、Unlit モードで RenderSystem が {1,1,1} に設定する。
+    // lightIntensity は Unlit モードで 0 になるため、Unlit 時は ambientColor のみが乗算される。
+    color.rgb *= ambientColor + lightColor * (ndotl * lightIntensity);
     return color;
 }

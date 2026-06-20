@@ -379,7 +379,9 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
 
                     renderer::DrawCall dc{};
                     dc.shader         = handles.detailGrassShader;
-                    dc.pipelineState  = handles.detailNoCullPSO;
+                    // ワイヤーフレームモード時は共用 wireframePSO に切り替える。
+                    dc.pipelineState  = ctx.settings.IsWireframe()
+                        ? handles.wireframePSO : handles.detailNoCullPSO;
                     dc.vertexCount    = static_cast<uint32_t>(layer.bladeSegments * 6);
                     dc.instanceCount  = static_cast<uint32_t>(instList.size());
                     dc.instanceBuffer = instBuf;
@@ -415,8 +417,10 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                         renderer::DrawCall dc{};
                         dc.shader         = isBillboard ? handles.detailBillboardShader
                                                         : handles.detailMeshShader;
-                        // Detail 用メッシュは外部アセット由来で winding が統一されないため両面描画
-                        dc.pipelineState  = handles.detailNoCullPSO;
+                        // Detail 用メッシュは外部アセット由来で winding が統一されないため両面描画。
+                        // ワイヤーフレームモード時は共用 wireframePSO に切り替える。
+                        dc.pipelineState  = ctx.settings.IsWireframe()
+                            ? handles.wireframePSO : handles.detailNoCullPSO;
                         dc.vertexBuffer   = vb;
                         dc.indexBuffer    = ib;
                         dc.indexCount     = indexCount;
