@@ -51,6 +51,9 @@ if(MSVC)
     target_link_options(SandboxScripts PRIVATE
         "$<$<CONFIG:Debug>:/DEBUG:NONE>"
     )
+    # WHY: Ninja はプロセスレベルで並列化するが、MSBuild (Visual Studio の手動ビルド) では
+    #      /MP で cl.exe 内部の並列コンパイルを有効化する。Ninja 使用時は /MP 不要だが無害。
+    target_compile_options(SandboxScripts PRIVATE /MP)
 endif()
 
 add_executable(sandbox ${SANDBOX_SOURCES})
