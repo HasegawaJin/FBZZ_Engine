@@ -9,8 +9,7 @@ parameters = [
     { name = 'Speed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
     { name = 'VerticalSpeed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
     { name = 'IsGrounded', type = 2, floatValue = 0.0, intValue = 0, boolValue = true },
-    { name = 'Jump', type = 3, floatValue = 0.0, intValue = 0, boolValue = false },
-    { name = 'Land', type = 3, floatValue = 0.0, intValue = 0, boolValue = false }
+    { name = 'Jump', type = 3, floatValue = 0.0, intValue = 0, boolValue = false }
 ]
 
 [[states]]
@@ -63,7 +62,7 @@ toStateName = 'Landing'
 hasExitTime = false
 exitTime = 1.0
 transitionDuration = 0.1
-conditions = [{ paramName = 'Land', op = 4, threshold = 0.0 }]
+conditions = [{ paramName = 'IsGrounded', op = 4, threshold = 0.0 }]
 
 [[states]]
 name = 'Landing'
