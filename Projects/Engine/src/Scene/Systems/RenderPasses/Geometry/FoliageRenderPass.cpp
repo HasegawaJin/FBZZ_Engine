@@ -241,9 +241,10 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
 
                 renderer::DrawCall draw{};
                 draw.shader = ctx.handles.foliageShader;
-                draw.pipelineState = doubleSided
-                    ? ctx.handles.foliageNoCullPSO
-                    : ctx.handles.foliagePSO;
+                // ビューモードに応じて PSO を切り替える。ワイヤーフレーム時は共用 wireframePSO を使う。
+                draw.pipelineState = ctx.settings.IsWireframe()
+                    ? ctx.handles.wireframePSO
+                    : (doubleSided ? ctx.handles.foliageNoCullPSO : ctx.handles.foliagePSO);
                 draw.vertexBuffer = mesh->vertexBuffer;
                 draw.indexBuffer = mesh->indexBuffer;
                 draw.indexCount = mesh->indexCount;
