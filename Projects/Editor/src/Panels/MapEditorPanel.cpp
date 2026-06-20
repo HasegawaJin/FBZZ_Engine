@@ -428,10 +428,11 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
     } else {
         // 空セル: 新規 Terrain 生成 または 既存 GO から選択
         if (ImGui::Button("Add New Terrain Here")) {
-            // グリッド上の配置位置を計算する
-            // 全セルが同じ cellWorldSize を持つ前提: columns * cellSize
-            // 既存セルから推定するか、デフォルト値を使う
-            float worldSize = 128.0f;
+            // セルのワールド配置位置を計算する。
+            // WHY: TerrainGridComponent に defaultColumns/defaultCellSize が設定されているため
+            //      それを正規データとして使う。既存セルが先に作られている場合はそちらから
+            //      実際のサイズを読み取り一貫性を維持する。
+            float worldSize = static_cast<float>(grid->defaultColumns - 1) * grid->defaultCellSize;
             for (int i = 0; i < grid->cellCountX * grid->cellCountZ; ++i) {
                 if (i < (int)grid->cells.size() && scene.IsValid(grid->cells[i])) {
                     if (const auto* tc = scene.GetComponent<scene::TerrainComponent>(grid->cells[i]))
@@ -450,6 +451,10 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                 newGo.SetParent(*gridObject);
 
             scene::TerrainComponent tc;
+            tc.columns   = grid->defaultColumns;
+            tc.rows      = grid->defaultRows;
+            tc.cellSize  = grid->defaultCellSize;
+            tc.chunkSize = grid->defaultChunkSize;
             tc.InitFlat(0.0f);
             for (int li = 0; li < 4; ++li)
                 tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
