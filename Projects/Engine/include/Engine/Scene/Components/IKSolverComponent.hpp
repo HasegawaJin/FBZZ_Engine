@@ -1,70 +1,107 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // IKSolverComponent.hpp | fbzz::scene
-// スケルタルアニメーション後段に適用する解析的 2-Bone IK チェーン設定
+// 複数種の IK ソルバーを順序付きで実行するチェーン設定
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace fbzz::scene {
 
-struct IKChain {
-    // 2-Bone IK の 3 ノード。例: Upper -> Lower -> Tip。
-    std::string rootBoneName;
-    std::string midBoneName;
-    std::string tipBoneName;
+// IKChain が使用する解法を指定する。
+// WHY: 解法ごとに Component/System を増やさず、同一キャラクター内の依存順を一元管理するため。
+enum class IKSolverType : uint8_t {
+    TwoBone   = 0,
+    FootPlace = 1,
+    LookAt    = 2,
+    Spine     = 3,
+};
 
+// 1 つの IK 解法と、その入力およびランタイム状態を保持する。
+struct IKChain {
+    IKSolverType type    = IKSolverType::TwoBone;
+    bool         enabled = true;
+    float        weight  = 1.0f;
+    int          order   = 0;
+
+    // TwoBone: [Root, Mid, Tip]。Spine: Base から Tip までの可変長チェーン。
+    std::vector<std::string> boneNames;
     EntityID targetEntity = EntityID::INVALID;
     EntityID poleEntity   = EntityID::INVALID;
-
-    // EntityID はロードごとに変わるため、シーンファイルには安定した識別子で保存する。
-    // 解決優先順位: GUID (リネーム耐性あり) → 名前 (後方互換フォールバック)
+    // EntityID はロードごとに変わるため GUID を優先し、名前は編集時の表示にも使用する。
     std::string targetName;
     std::string targetGuid;
     std::string poleName;
     std::string poleGuid;
-
-    // IK のブレンド量。0 は FK 維持、1 は IK 解を完全適用する。
-    float weight  = 1.0f;
-    bool  enabled = true;
-
-    // IK ゴール距離を「骨長合計 * maxExtension」に制限する。
-    // WHY: weight は IK の効きであり、膝ロック回避に使うと IK 全体が弱くなる。
-    //      伸展率を別に持つことで weight=1 のまま膝に少し曲がりを残せる。
-    float maxExtension = 0.98f;
-
-    // ターゲット位置に加算するワールド空間オフセット。
-    // 表示用ターゲットを扱いやすい位置に置いたまま、実際の IK ゴールだけを調整できる。
     math::Vector3 targetOffset = math::Vector3::ZERO;
-
-    // C: Soft IK の減衰量。0 で無効、0.05〜0.15 が実用域。
-    // WHY: maxExtension はゴール距離の硬いクランプであり、閾値超過でポッピングが発生する。
-    //      指数減衰 (Blender 準拠) で連続的に近似することで、伸び切る手前を滑らかに減速させる。
-    float softness = 0.05f;
-
-    // F: Auto Pole — Pole GameObject を配置せずに IKSystem が FK 曲げ方向から
-    //    ポール位置を毎フレーム自動計算する。
-    // WHY: 膝・肘チェーンの初期設定コストを下げるために追加。
-    //      Pole GO を手動配置しなくても FK の曲げ方向 (≒ bind-pose の膝向き) を
-    //      そのまま IK に引き継げる。poleEntity が有効なら poleEntity が優先される。
-    bool autoPole = false;
-    // Auto Pole の優先曲げ方向を Owner ローカル空間で指定する。
-    // WHY: Player のように見た目を 180 度回転して使うキャラクターでは、FK 曲げ方向だけを見ると
-    //      膝が背面へ折れることがある。Owner 回転込みの方向を指定して、キャラクター向きに追従させる。
-    //      ゼロベクトルなら従来通り FK 曲げ方向を使う。
+    float maxExtension = 0.98f;
+    float softness     = 0.05f;
+    bool autoPole      = false;
     math::Vector3 autoPoleLocalDirection = math::Vector3::ZERO;
+
+    // FootPlace は標準 Humanoid 名から左右の脚を解決し、地形へ接地させる。
+    bool  useAnimatorIKWeight = true;
+    float rayUpRatio          = 0.5f;
+    float rayDownRatio        = 1.2f;
+    float footSurfaceOffset   = 0.05f;
+    float correctionDeadZone  = 0.025f;
+    float maxCorrection       = 0.12f;
+    float smoothTime          = 0.10f;
+    math::Vector3 footNormalAxis = math::Vector3::ZERO;
+    bool     adjustHip = true;
+    std::string hipBoneName = "Hips";
+
+    // Spine 自動傾斜ウェイト: FootPlace の足高さ差を地形傾斜メトリクスとして weight を自動変化させる。
+    // WHY: 平地では低 weight でほぼ FK を維持し、坂道では自動で weight を上げて脊椎補正を効かせる。
+    //      手動で weight を切り替えなくても地形に応じた自然な傾きが得られる。
+    bool  spineAutoWeight      = false;
+    float spineFlatWeight      = 0.05f;  // 平地でのウェイト (lowestCorrection ≈ 0 のとき)
+    float spineSlopeRampMeters = 0.10f;  // この足高さ差 (m) で chain.weight に到達する
+
+    // LookAt のローカル軸、角度制限、時間応答を設定する。
+    math::Vector3 lookAtAxis   = math::Vector3::FORWARD;
+    math::Vector3 lookAtUpAxis = math::Vector3::UP;
+    float lookAtClampAngle = 90.0f;
+    float lookAtSpeed      = 10.0f;
+
+    // LookAt の時間平滑化状態。シーンへは保存しない。
+    math::Quaternion lookAtSmoothedRotation = math::Quaternion::Identity();
+    bool lookAtHasState = false;
+
+    // FootPlace の指数平滑化状態。シーンへは保存しない。
+    float smoothedLeft           = 0.0f;
+    float smoothedRight          = 0.0f;
+    float smoothedHip            = 0.0f;
+    // bendReserve を除いた地形起伏のみの Hip 変位。Spine/LookAt がこれを参照する。
+    // WHY: bendReserve は膝を曲げるための人工的なオフセットで平地でも非ゼロになるため、
+    //      smoothedHip をそのまま渡すと Spine IK が平地で意図せず傾いてしまう。
+    float smoothedTerrainOnlyHip = 0.0f;
 };
 
+// キャラクターに属する IK チェーン群を実行順とともに所有する。
 struct IKSolverComponent {
     bool enabled = true;
     std::vector<IKChain> chains;
 
+    // IKSystem の実行経路を Inspector で確認するランタイム診断値。シーンへは保存しない。
+    uint64_t runtimeUpdateCount = 0;
+    int runtimeSolvedChainCount = 0;
+    float runtimeAnimatorWeight = 0.0f;
+    bool runtimeLeftFootGrounded = false;
+    bool runtimeRightFootGrounded = false;
+    float runtimeHipOffset = 0.0f;
+    bool runtimeSkinningUploaded = false;
+
     const char* GetTypeName() const { return "IK Solver"; }
-    // WHY: IKChain は可変長配列なので、InspectorPanel 側で直接描画する。
-    void Reflect(IReflector& r) {
+
+    // WHY: IKChain は可変長配列なので Inspector 側で型別に直接描画する。
+    void Reflect(IReflector& r)
+    {
         r.Field("enabled", enabled);
     }
 };

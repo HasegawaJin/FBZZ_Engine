@@ -55,6 +55,8 @@ struct CharacterControllerComponent {
     // Animator の VerticalSpeed パラメーターへ渡す用途に計算済みの縦速度
     // 接地中・意図的ジャンプでない上昇は 0 に丸められる
     float verticalSpeed     = 0.0f;
+    // 最後に検出した歩行可能面の法線。坂に応じた姿勢制御など、接地方向を必要とする処理で参照する。
+    math::Vector3 groundNormal = math::Vector3::UP;
 
     const char* GetTypeName() const { return "Character Controller"; }
 
@@ -101,6 +103,7 @@ struct CharacterControllerComponent {
         m_jumpTimer          = 0.0f;
         m_isIntentionalJump  = false;
         m_intentionalJumpTimer = 0.0f;
+        groundNormal = info.contactNormal.Normalized();
         RemoveVelocityIntoGround(info.contactNormal, info.self);
     }
 
@@ -118,6 +121,7 @@ struct CharacterControllerComponent {
         m_ignoreGroundTimer  = jumpGroundIgnoreTime;
         m_isIntentionalJump  = true;
         m_intentionalJumpTimer = 0.0f;
+        groundNormal         = math::Vector3::UP;
         // ステート更新後にインパルスを適用する。逆順だと velocity.y が古い値のまま
         // m_ignoreGroundTimer セット前の Contact 判定に入る余地が生まれる。
         if (rb) rb->ApplyImpulse(impulse);
