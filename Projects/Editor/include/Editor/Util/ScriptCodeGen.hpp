@@ -53,9 +53,13 @@ public:
                                   HlslKind kind);
 
 private:
-    // @@FBZZ_SCRIPT_INCLUDES_BEGIN の後に #include 行を挿入する
+    // @@FBZZ_SCRIPT_INCLUDES_BEGIN の後に #include 行を挿入する (Standalone EXE 用)
     static bool InsertScriptInclude(const std::string& cppPath,
                                     const std::string& headerRelPath);
+    // DLL 用: #define {ClassName}_IMPL + #include を挿入して宣言のみ取り込む
+    static bool InsertScriptIncludeDll(const std::string& dllCppPath,
+                                       const std::string& className,
+                                       const std::string& headerRelPath);
     // SandboxScriptsDll.cpp の @@FBZZ_SCRIPT_ENTRIES_BEGIN の後に AllEntries エントリを挿入する
     static bool InsertScriptEntry(const std::string& dllCppPath,
                                   const std::string& className);
