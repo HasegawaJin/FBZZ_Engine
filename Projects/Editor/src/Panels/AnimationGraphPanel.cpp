@@ -1390,20 +1390,14 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
 
     GraphLayout& layout = ctx.graphLayouts[instanceId];
 
+    // デフォルト位置の初期化はここで行い、SetNodeGridSpacePos は BeginNodeEditor の後に移動する。
+    // WHY: BeginNodeEditor の前に SetNodeGridSpacePos を呼ぶと imnodes の内部状態が
+    //      リセットされてドラッグ操作が無効になるため、必ず Begin の後で設定する。
     for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
         const auto& state = animator.states[static_cast<size_t>(i)];
-        if (!layout.nodePositions.contains(state.name)) {
+        if (!layout.nodePositions.contains(state.name))
             layout.nodePositions[state.name] = ImVec2(80.0f + 260.0f * static_cast<float>(i), 80.0f);
-        }
-        const ImVec2 logicalPos = layout.nodePositions[state.name];
-        ImNodes::SetNodeGridSpacePos(NodeId(i), ImVec2(logicalPos.x * m_canvasZoom, logicalPos.y * m_canvasZoom));
     }
-    ImNodes::SetNodeGridSpacePos(
-        EntryNodeId(),
-        ImVec2(layout.entryPosition.x * m_canvasZoom, layout.entryPosition.y * m_canvasZoom));
-    ImNodes::SetNodeGridSpacePos(
-        AnyStateNodeId(),
-        ImVec2(layout.anyStatePosition.x * m_canvasZoom, layout.anyStatePosition.y * m_canvasZoom));
 
     ImNodes::PushStyleVar(ImNodesStyleVar_GridSpacing, 32.0f * m_canvasZoom);
     ImNodes::PushStyleVar(ImNodesStyleVar_NodePadding, ImVec2(12.0f * m_canvasZoom, 8.0f * m_canvasZoom));
@@ -1418,6 +1412,18 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
 
     ImNodes::BeginNodeEditor();
     ImGui::SetWindowFontScale(m_canvasZoom);
+
+    // BeginNodeEditor 後にノード位置を設定する (imnodes の正しい使用パターン)。
+    for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
+        const ImVec2 logicalPos = layout.nodePositions[animator.states[static_cast<size_t>(i)].name];
+        ImNodes::SetNodeGridSpacePos(NodeId(i), ImVec2(logicalPos.x * m_canvasZoom, logicalPos.y * m_canvasZoom));
+    }
+    ImNodes::SetNodeGridSpacePos(
+        EntryNodeId(),
+        ImVec2(layout.entryPosition.x * m_canvasZoom, layout.entryPosition.y * m_canvasZoom));
+    ImNodes::SetNodeGridSpacePos(
+        AnyStateNodeId(),
+        ImVec2(layout.anyStatePosition.x * m_canvasZoom, layout.anyStatePosition.y * m_canvasZoom));
 
     // Entry は Animator の初期化先を表す読み取り専用ノード。
     // WHAT: defaultStateName、未指定時は先頭 State へリンクして開始経路を可視化する。
@@ -2283,15 +2289,6 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     constexpr int MOTION_LINK_BASE = 2030000;
     constexpr int MOTION_STATIC_BASE = 2040000;
 
-    ImNodes::SetNodeGridSpacePos(
-        ROOT_NODE_ID, ImVec2(-220.0f * m_canvasZoom, 100.0f * m_canvasZoom));
-    for (int i = 0; i < static_cast<int>(motions.size()); ++i) {
-        const ImVec2 position = positions[static_cast<size_t>(i)];
-        ImNodes::SetNodeGridSpacePos(
-            MOTION_NODE_BASE + i,
-            ImVec2(position.x * m_canvasZoom, position.y * m_canvasZoom));
-    }
-
     ImNodes::PushStyleVar(ImNodesStyleVar_GridSpacing, 32.0f * m_canvasZoom);
     ImNodes::PushStyleVar(
         ImNodesStyleVar_NodePadding,
@@ -2308,6 +2305,17 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
 
     ImNodes::BeginNodeEditor();
     ImGui::SetWindowFontScale(m_canvasZoom);
+
+    // BeginNodeEditor 後にノード位置を設定する (imnodes の正しい使用パターン)。
+    // WHY: BeginNodeEditor 前に呼ぶとドラッグ操作が無効になる。
+    ImNodes::SetNodeGridSpacePos(
+        ROOT_NODE_ID, ImVec2(-220.0f * m_canvasZoom, 100.0f * m_canvasZoom));
+    for (int i = 0; i < static_cast<int>(motions.size()); ++i) {
+        const ImVec2 position = positions[static_cast<size_t>(i)];
+        ImNodes::SetNodeGridSpacePos(
+            MOTION_NODE_BASE + i,
+            ImVec2(position.x * m_canvasZoom, position.y * m_canvasZoom));
+    }
 
     ImNodes::PushColorStyle(
         ImNodesCol_NodeBackground, IM_COL32(34, 77, 98, 255));
@@ -2536,6 +2544,13 @@ static bool DrawAnimationGraphDetails(EditorContext& ctx,
         auto& state = animator.states[static_cast<size_t>(selection.stateIndex)];
         ImGui::Text("State: %s", state.name.c_str());
         DrawBlendTreeEditor(ctx, animator, state);
+        ImGui::SeparatorText("State Settings");
+        if (ImGui::DragFloat("IK Weight##det", &state.ikWeight, 0.01f, 0.0f, 1.0f))
+            MarkDirty(ctx);
+        if (ImGui::DragFloat("Speed##det", &state.speed, 0.01f, -10.0f, 10.0f))
+            MarkDirty(ctx);
+        if (ImGui::Checkbox("Loop##det", &state.loop))
+            MarkDirty(ctx);
         return true;
     }
 
