@@ -64,7 +64,7 @@ Phase::Update
   └─ PhysicsSystem, NavMeshPatrolSystem, ScriptSystem
 
 Phase::LateUpdate
-  └─ AnimatorSystem, IKSystem, FootIKSystem
+  └─ AnimatorSystem, IKSystem (TwoBone / FootPlace / Spine / LookAt)
 
 Phase::Render
   └─ RenderSystem, UISystem, AudioSystem

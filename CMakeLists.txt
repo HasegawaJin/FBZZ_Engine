@@ -46,7 +46,7 @@ configure_file(
 
 # MSVC source files are UTF-8.
 if(MSVC)
-    add_compile_options(/utf-8)
+    add_compile_options(/utf-8 /MP)
 endif()
 
 # Add subdirectories in dependency order.

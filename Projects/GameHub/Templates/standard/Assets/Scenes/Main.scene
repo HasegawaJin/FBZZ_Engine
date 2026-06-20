@@ -354,16 +354,27 @@ tag = 'Player'
     ledgeFallThreshold = -1.0
     minGroundNormalY = 0.5
 
-    [gameobjects.FootIKComponent]
-    correctionDeadZone = 0.025
+    [gameobjects.IKSolverComponent]
     enabled = true
-    footNormalAxis = [ 0.0, 0.0, 0.0 ]
-    footSurfaceOffset = 0.08
-    maxCorrection = 0.12
-    rayDownRatio = 1.2
-    rayUpRatio = 0.5
-    useAnimatorIKWeight = true
-    weight = 1.0
+
+        [[gameobjects.IKSolverComponent.chains]]
+        type = 1
+        order = 0
+        enabled = true
+        weight = 1.0
+        boneNames = []
+        useAnimatorIKWeight = true
+        rayUpRatio = 0.5
+        rayDownRatio = 1.2
+        footSurfaceOffset = 0.08
+        correctionDeadZone = 0.025
+        maxCorrection = 0.12
+        smoothTime = 0.1
+        footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        adjustHip = true
+        hipBoneName = 'Hips'
+        maxExtension = 0.98
+        softness = 0.05
 
     [gameobjects.RigidBodyComponent]
     allowSleeping = true
