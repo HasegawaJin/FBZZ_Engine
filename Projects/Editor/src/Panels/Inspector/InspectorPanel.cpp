@@ -18,6 +18,7 @@
 #include "InspectorUI.hpp"
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <imgui_internal.h>
 
 namespace fbzz::editor {
@@ -411,6 +412,39 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             ImGui::SetTooltip("Save selected object as prefab to Assets/Prefabs");
     }
 
+    // プレファブインスタンスには出所プレファブ名と Apply / Revert ボタンを表示する。
+    // WHY: Unity の Inspector ヘッダーと同等の UX。選択中の GO が特定の .prefab
+    //      から生成されたインスタンスであることをユーザーに明示し、同期操作へ
+    //      素早くアクセスできるようにする。
+    if (!go->prefabAssetPath.empty() && ctx.activeScene) {
+        const std::string displayName =
+            util::FileSystem::GetFilename(go->prefabAssetPath);
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.7f, 1.0f, 1.0f));
+        ImGui::TextUnformatted(("Prefab: " + displayName).c_str());
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Apply")) {
+            PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot);
+            ctx.requestAssetBrowserRefresh = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Write instance state back to the source .prefab asset");
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Revert")) {
+            std::vector<scene::EntityID> newRoots;
+            if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(), newRoots, ctx.projectRoot)) {
+                if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                return; // 古い GO を描画し続けないよう早期リターン
+            }
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Discard instance changes and restore from the source .prefab asset");
+    }
+
     char nameBuf[256];
     std::snprintf(nameBuf, sizeof(nameBuf), "%s", go->name.c_str());
     ImGui::SetNextItemWidth(-1.0f);
@@ -504,7 +538,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             go->GetComponent<scene::TerrainComponent>()
             || go->GetComponent<scene::WaterComponent>()
             || go->GetComponent<scene::TerrainDetailComponent>()
-            || go->GetComponent<scene::FoliageComponent>();
+            || go->GetComponent<scene::FoliageComponent>()
+            || go->GetComponent<scene::TerrainGridComponent>();
         if (!hasMapComponent) {
             ImGui::TextDisabled("No Map component on this GameObject.");
             ImGui::TextDisabled("Disable Map Components Only to inspect everything.");
