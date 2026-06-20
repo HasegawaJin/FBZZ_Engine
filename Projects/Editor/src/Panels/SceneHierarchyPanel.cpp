@@ -644,7 +644,10 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool isRoot         = go.GetParent() == nullptr;
     const bool isActive       = go.activeInHierarchy();
     const bool isLocked       = ctx.IsLocked(id);
-    const bool isEditorHidden = ctx.editorHiddenGuids.count(go.instanceId) > 0;
+    const bool isEditorHidden  = ctx.editorHiddenGuids.count(go.instanceId) > 0;
+    // WHY: Prefab インスタンスを青色で識別することで、通常 GO とプレファブ出来の GO を
+    //      視覚的に区別できる (Unity の Hierarchy 表示と同等の UX)。
+    const bool isPrefabInstance = !go.prefabAssetPath.empty();
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth
                              | ImGuiTreeNodeFlags_OpenOnArrow
@@ -661,12 +664,14 @@ void DrawHierarchyNode(EditorContext& ctx,
         *pendingExpand = scene::EntityID{};
     }
 
-    // エディタ専用非表示はシアン（runtime 非アクティブより優先）、非アクティブはグレー、ロック中はオレンジ
-    if (isEditorHidden)  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(80, 180, 200, 255));
-    else if (!isActive)  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 130, 130, 255));
-    else if (isLocked)   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 175, 80, 255));
+    // エディタ専用非表示はシアン（runtime 非アクティブより優先）、非アクティブはグレー、
+    // ロック中はオレンジ、プレファブインスタンスは水色
+    if (isEditorHidden)         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(80,  180, 200, 255));
+    else if (!isActive)         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 130, 130, 255));
+    else if (isLocked)          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 175,  80, 255));
+    else if (isPrefabInstance)  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(100, 180, 255, 255));
     const bool opened = ImGui::TreeNodeEx(go.name.c_str(), flags);
-    if (isEditorHidden || !isActive || isLocked) ImGui::PopStyleColor();
+    if (isEditorHidden || !isActive || isLocked || isPrefabInstance) ImGui::PopStyleColor();
 
     // --- 右端 visibility/editor-hide/lock アイコン (DrawList で直接描画) ---
     {
@@ -978,6 +983,34 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
         if (ImGui::MenuItem("Save As Prefab")) {
             SaveSelectedAsPrefab(ctx, go.name);
+        }
+        // プレファブインスタンスには Apply / Revert を提供する。
+        // WHY: Unity 互換の Prefab 操作性。Apply はディスクへの書き戻しのみで
+        //      シーンは変わらないため Undo なし。Revert はシーンを変更するため
+        //      ExecuteSceneEditWithUndo が自動的にスナップショット Undo を生成する。
+        if (!go.prefabAssetPath.empty()) {
+            ImGui::Separator();
+            if (ImGui::MenuItem("Apply to Prefab")) {
+                deferred = [&ctx, id]() {
+                    if (!ctx.activeScene) return;
+                    PrefabSerializer::Apply(*ctx.activeScene, id, ctx.projectRoot);
+                    ctx.requestAssetBrowserRefresh = true;
+                };
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Write instance state back to the source .prefab asset");
+            if (ImGui::MenuItem("Revert from Prefab")) {
+                deferred = [&ctx, id]() {
+                    if (!ctx.activeScene) return;
+                    std::vector<scene::EntityID> newRoots;
+                    if (PrefabSerializer::Revert(*ctx.activeScene, id, newRoots, ctx.projectRoot)) {
+                        if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    }
+                };
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Discard instance changes and restore from the source .prefab asset");
         }
         if (ImGui::BeginMenu("Hierarchy")) {
             const bool hasParent = go.GetParent() != nullptr;
