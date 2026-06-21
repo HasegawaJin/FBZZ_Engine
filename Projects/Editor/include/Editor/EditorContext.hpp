@@ -179,6 +179,9 @@ struct EditorContext {
     enum class HotReloadState { Idle, Compiling, Reloading, Done, Failed };
     HotReloadState hotReloadState   = HotReloadState::Idle;
     std::string    hotReloadMessage;   // StatusBar に表示するテキスト
+    // Script DLL はデバウンス・ビルド・リロードの段階進捗を 0.0〜1.0 で公開する。
+    // WHY: MSBuild は安定した作業総数を返さないため、負値は実進捗を算出できない処理を表す。
+    float          hotReloadProgress = -1.0f;
     float          hotReloadDoneTimer = 0.0f; // Done / Failed 表示を消すカウントダウン (秒)
     bool           scriptReloadBusy = false;  // Script DLL のビルド待ち / ロード中は Play 開始を止める
 

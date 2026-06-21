@@ -21,6 +21,7 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 #include <Windows.h>
+#include <algorithm>
 #include <filesystem>
 #include <vector>
 
@@ -30,6 +31,8 @@ namespace {
 
 const FileFilter SCENE_FILTER{ "Scene", "*.scene" };
 constexpr float HOT_RELOAD_TREE_POLL_INTERVAL = 0.5f;
+constexpr float SCRIPT_PROGRESS_BUILD_BEGIN = 0.05f;
+constexpr float SCRIPT_PROGRESS_BUILD_END   = 0.90f;
 
 // 拡張子がなければ ".scene" を付与する
 std::string WithFbzzExtension(const std::string& path)
@@ -381,6 +384,7 @@ void EditorApp::CheckHotReload()
             m_ctx.hotReloadDoneTimer = 0.0f;
             m_ctx.hotReloadState    = EditorContext::HotReloadState::Idle;
             m_ctx.hotReloadMessage.clear();
+            m_ctx.hotReloadProgress = -1.0f;
         }
     }
 }
@@ -579,6 +583,7 @@ void EditorApp::InitScriptDll()
         m_scriptDebounceTimer  = 0.0f;
         m_ctx.scriptReloadBusy = true;
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: initial build...");
+        m_ctx.hotReloadProgress = 0.0f;
     } else {
         FBZZ_LOG_WARN("ScriptDll: %ls not found; generate it with cmake --build",
                       m_scriptDllPath.wstring().c_str());
@@ -668,6 +673,7 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     m_scriptDebounceTimer  = 0.5f;  // 500ms デバウンス
     m_ctx.scriptReloadBusy = true;
     SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: waiting for changes...");
+    m_ctx.hotReloadProgress = 0.0f;
     FBZZ_LOG_DEBUG("ScriptDll: change detected in %s; rebuilding after 500 ms debounce",
                    m_ctx.scriptsSourceDir.c_str());
     // ビルド前に .generated.hpp を最新化する
@@ -724,17 +730,25 @@ void EditorApp::TickScriptCompile()
         FBZZ_LOG_DEBUG("ScriptDll: starting compile: target=%s cfg=%s",
             config.target.c_str(), config.configuration.c_str());
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: compiling...");
+        m_ctx.hotReloadProgress = SCRIPT_PROGRESS_BUILD_BEGIN;
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Building) {
         m_ctx.scriptReloadBusy = true;
         m_scriptCompiler.Tick();
+        // WHAT: 総コンパイル単位を取得できないため、残り幅に比例して増える段階進捗を使う。
+        // WHY: 90% を上限にすることで、ビルド完了前にリロード段階へ到達したように見せない。
+        const float deltaTime = ImGui::GetIO().DeltaTime;
+        m_ctx.hotReloadProgress +=
+            (SCRIPT_PROGRESS_BUILD_END - m_ctx.hotReloadProgress) * std::min(deltaTime * 0.7f, 1.0f);
+        m_ctx.hotReloadProgress = std::min(m_ctx.hotReloadProgress, SCRIPT_PROGRESS_BUILD_END - 0.01f);
         return;
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Done) {
         m_ctx.scriptReloadBusy = true;
         SetHotReloadState(EditorContext::HotReloadState::Reloading, "Scripts: reloading...");
+        m_ctx.hotReloadProgress = SCRIPT_PROGRESS_BUILD_END;
 
         // リロード前に選択中エンティティの instanceId を保存する。
         // WHY: Reload() はシーンを move で置き換えるため EntityID が変わるが、
@@ -754,6 +768,7 @@ void EditorApp::TickScriptCompile()
                     m_ctx.selectedEntities.push_back(go->GetID());
             }
             SetHotReloadState(EditorContext::HotReloadState::Done, "Scripts: hot reload complete");
+            m_ctx.hotReloadProgress = 1.0f;
             m_ctx.hotReloadDoneTimer = 3.0f;
         } else {
             m_ctx.selectedEntities.clear();
@@ -843,6 +858,7 @@ void EditorApp::TickHlslCompile()
             return;
         }
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "HLSL: compiling shaders...");
+        m_ctx.hotReloadProgress = -1.0f;
     }
 
     if (m_hlslCompiler.GetState() == Compiler::State::Building) {
