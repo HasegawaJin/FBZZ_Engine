@@ -496,6 +496,19 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
         float dir[3] = { fwd.x, fwd.y, fwd.z };
         ImGui::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
     }
+
+    if (lc.type == scene::LightComponent::Type::Directional) {
+        ImGui::Separator();
+        ImGui::TextDisabled("Shadow");
+        ImGui::Checkbox("Cast Shadows", &lc.castShadows);
+        if (lc.castShadows) {
+            ImGui::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
+            ImGui::DragFloat("Shadow Bias",     &lc.shadowBias,     0.05f, 0.1f, 10.0f);
+            // 0 のとき "Auto" 表示。シーン全体の AABB から自動フィット。
+            const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Auto" : "%.1f m";
+            ImGui::DragFloat("Shadow Distance", &lc.shadowDistance, 5.0f, 0.0f, 2000.0f, distFmt);
+        }
+    }
 }
 inline scene::MeshRenderer CreateDefaultMeshRenderer()
 {
