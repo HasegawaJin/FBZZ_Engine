@@ -1069,6 +1069,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 toml::table blend1DTbl;
                 blend1DTbl.insert("paramName", st.blendTree1D.paramName);
                 blend1DTbl.insert("dampTime",  (double)st.blendTree1D.dampTime);
+                blend1DTbl.insert("syncNormalizedTime", st.blendTree1D.syncNormalizedTime);
                 toml::array motions1D;
                 for (const auto& motion : st.blendTree1D.motions) {
                     toml::table motionTbl;
@@ -1163,14 +1164,23 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
                 chainTbl.insert("boneNames",      std::move(boneNames));
                 chainTbl.insert("maxExtension",   (double)chain.maxExtension);
                 chainTbl.insert("softness",       (double)chain.softness);
+                chainTbl.insert("minBendAngleDegrees", (double)chain.minBendAngleDegrees);
+                chainTbl.insert("maxBendAngleDegrees", (double)chain.maxBendAngleDegrees);
                 chainTbl.insert("targetOffset",   Vec3ToArr(chain.targetOffset));
                 chainTbl.insert("autoPoleLocalDirection", Vec3ToArr(chain.autoPoleLocalDirection));
+                chainTbl.insert("handRotationOffset", QuatToArr(chain.handRotationOffset));
+                chainTbl.insert("handRotationWeight", (double)chain.handRotationWeight);
+                chainTbl.insert("fullBodyIterations", (int64_t)chain.fullBodyIterations);
+                chainTbl.insert("fullBodyMaxRotationDegrees",
+                                (double)chain.fullBodyMaxRotationDegrees);
+                chainTbl.insert("fullBodyTolerance", (double)chain.fullBodyTolerance);
                 chainTbl.insert("useAnimatorIKWeight", chain.useAnimatorIKWeight);
                 chainTbl.insert("rayUpRatio",          (double)chain.rayUpRatio);
                 chainTbl.insert("rayDownRatio",        (double)chain.rayDownRatio);
                 chainTbl.insert("footSurfaceOffset",   (double)chain.footSurfaceOffset);
                 chainTbl.insert("correctionDeadZone",  (double)chain.correctionDeadZone);
                 chainTbl.insert("maxCorrection",       (double)chain.maxCorrection);
+                chainTbl.insert("footPlantDistance",   (double)chain.footPlantDistance);
                 chainTbl.insert("smoothTime",          (double)chain.smoothTime);
                 chainTbl.insert("footNormalAxis",      Vec3ToArr(chain.footNormalAxis));
                 chainTbl.insert("adjustHip",           chain.adjustHip);
@@ -2083,6 +2093,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                             (*blend1DTbl)["paramName"].value_or(std::string{});
                         st.blendTree1D.dampTime =
                             (float)(*blend1DTbl)["dampTime"].value_or(0.0);
+                        st.blendTree1D.syncNormalizedTime =
+                            (*blend1DTbl)["syncNormalizedTime"].value_or(false);
                         readMotions((*blend1DTbl)["motions"].as_array(),
                                     st.blendTree1D.motions);
                     }
@@ -2183,7 +2195,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     const int64_t solverType = (*chainTbl)["type"].value_or(
                         static_cast<int64_t>(IKSolverType::TwoBone));
                     chain.type = solverType >= static_cast<int64_t>(IKSolverType::TwoBone) &&
-                                 solverType <= static_cast<int64_t>(IKSolverType::Spine)
+                                 solverType <= static_cast<int64_t>(IKSolverType::FullBodyBiped)
                         ? static_cast<IKSolverType>(solverType)
                         : IKSolverType::TwoBone;
                     chain.order          = (int)(*chainTbl)["order"].value_or((int64_t)0);
@@ -2197,11 +2209,25 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     }
                     chain.maxExtension = (float)(*chainTbl)["maxExtension"].value_or(0.98);
                     chain.softness     = (float)(*chainTbl)["softness"].value_or(0.05);
+                    chain.minBendAngleDegrees =
+                        (float)(*chainTbl)["minBendAngleDegrees"].value_or(0.0);
+                    chain.maxBendAngleDegrees =
+                        (float)(*chainTbl)["maxBendAngleDegrees"].value_or(175.0);
                     chain.targetOffset    = ArrToVec3((*chainTbl)["targetOffset"].as_array(),
                                                        math::Vector3::ZERO);
                     chain.autoPoleLocalDirection =
                         ArrToVec3((*chainTbl)["autoPoleLocalDirection"].as_array(),
                                   math::Vector3::ZERO);
+                    if (const auto* rotation = (*chainTbl)["handRotationOffset"].as_array())
+                        chain.handRotationOffset = ArrToQuat(rotation);
+                    chain.handRotationWeight =
+                        (float)(*chainTbl)["handRotationWeight"].value_or(1.0);
+                    chain.fullBodyIterations =
+                        (int)(*chainTbl)["fullBodyIterations"].value_or((int64_t)4);
+                    chain.fullBodyMaxRotationDegrees =
+                        (float)(*chainTbl)["fullBodyMaxRotationDegrees"].value_or(75.0);
+                    chain.fullBodyTolerance =
+                        (float)(*chainTbl)["fullBodyTolerance"].value_or(0.005);
                     // targetEntity / poleEntity は Pass 3 で解決するため識別子だけ保持
                     chain.targetName = (*chainTbl)["targetName"].value_or(std::string{});
                     chain.targetGuid = (*chainTbl)["targetGuid"].value_or(std::string{});
@@ -2214,6 +2240,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                     chain.footSurfaceOffset = (float)(*chainTbl)["footSurfaceOffset"].value_or(0.05);
                     chain.correctionDeadZone = (float)(*chainTbl)["correctionDeadZone"].value_or(0.025);
                     chain.maxCorrection = (float)(*chainTbl)["maxCorrection"].value_or(0.12);
+                    chain.footPlantDistance =
+                        (float)(*chainTbl)["footPlantDistance"].value_or(0.06);
                     chain.smoothTime = (float)(*chainTbl)["smoothTime"].value_or(0.10);
                     chain.footNormalAxis = ArrToVec3((*chainTbl)["footNormalAxis"].as_array(), math::Vector3::ZERO);
                     chain.adjustHip = (*chainTbl)["adjustHip"].value_or(true);
