@@ -734,6 +734,8 @@ void DrawBlendTreeEditor(EditorContext& ctx,
                 "Damp Time", &state.blendTree1D.dampTime,
                 0.01f, 0.0f, 2.0f, "%.2f s"))
             MarkDirty(ctx);
+        if (ImGui::Checkbox("Sync Normalized Time", &state.blendTree1D.syncNormalizedTime))
+            MarkDirty(ctx);
         ImGui::TextDisabled(
             "Runtime: Raw %.3f  |  Blended %.3f",
             animator.GetFloat(state.blendTree1D.paramName),
@@ -2275,6 +2277,9 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
         if (ImGui::DragFloat(
                 "Damp Time", &state.blendTree1D.dampTime,
                 0.01f, 0.0f, 2.0f, "%.2f s"))
+            MarkDirty(ctx);
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Sync Phase", &state.blendTree1D.syncNormalizedTime))
             MarkDirty(ctx);
     }
     ImGui::Separator();
