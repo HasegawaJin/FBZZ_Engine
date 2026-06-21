@@ -550,9 +550,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 // ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]
                 // WHY: Unity の Constraint コンポーネントと同様に enabled を
                 //      折りたたみ矢印の横に置き、開かずに ON/OFF できるようにする。
-                const char* solverNames[] = { "Two Bone", "Foot Place", "Look At", "Spine" };
+                const char* solverNames[] = {
+                    "Two Bone", "Foot Place", "Aim At", "FABRIK", "Hand Place",
+                    "Full Body Biped"
+                };
                 const int solverIndex = static_cast<int>(chain.type);
-                const char* tipLabel = solverIndex >= 0 && solverIndex < 4
+                const char* tipLabel = solverIndex >= 0 && solverIndex < 6
                     ? solverNames[solverIndex] : "Unknown";
                 char header[64];
                 std::snprintf(header, sizeof(header), "##chain%d", ci);
@@ -581,20 +584,41 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
 
                     int type = static_cast<int>(chain.type);
-                    if (ImGui::Combo("Solver Type", &type, solverNames, 4)) {
+                    if (ImGui::Combo("Solver Type", &type, solverNames, 6)) {
                         chain.type = static_cast<scene::IKSolverType>(type);
                         chain.lookAtHasState = false;
                         if (chain.type == scene::IKSolverType::FootPlace) chain.order = 0;
                         if (chain.type == scene::IKSolverType::TwoBone) chain.order = 10;
-                        if (chain.type == scene::IKSolverType::Spine) chain.order = 10;
-                        if (chain.type == scene::IKSolverType::LookAt) chain.order = 20;
-                        if (chain.type == scene::IKSolverType::TwoBone && chain.boneNames.size() != 3)
+                        if (chain.type == scene::IKSolverType::FABRIK) chain.order = 10;
+                        if (chain.type == scene::IKSolverType::AimAt) chain.order = 20;
+                        if (chain.type == scene::IKSolverType::HandPlace) chain.order = 30;
+                        if (chain.type == scene::IKSolverType::FullBodyBiped) chain.order = -100;
+                        if ((chain.type == scene::IKSolverType::TwoBone ||
+                             chain.type == scene::IKSolverType::HandPlace) &&
+                            chain.boneNames.size() != 3)
                             chain.boneNames.resize(3);
-                        if (chain.type == scene::IKSolverType::LookAt && chain.boneNames.size() != 1)
+                        if (chain.type == scene::IKSolverType::AimAt && chain.boneNames.size() != 1)
                             chain.boneNames.resize(1);
                     }
                     ImGui::DragInt("Order", &chain.order, 1.0f);
                     ImGui::DragFloat("Weight", &chain.weight, 0.01f, 0.0f, 1.0f, "%.2f");
+
+                    if (chain.type == scene::IKSolverType::FullBodyBiped) {
+                        ImGui::SeparatorText("Full Body Biped");
+                        ImGui::DragInt("Iterations", &chain.fullBodyIterations,
+                                       1.0f, 1, 16);
+                        ImGui::DragFloat("Max Joint Correction",
+                                         &chain.fullBodyMaxRotationDegrees,
+                                         1.0f, 1.0f, 180.0f, "%.1f deg");
+                        ImGui::DragFloat("Tolerance", &chain.fullBodyTolerance,
+                                         0.0005f, 0.0001f, 0.1f, "%.4f m");
+                        ImGui::TextDisabled(
+                            "Runs FootPlace -> FABRIK -> AimAt -> HandPlace repeatedly.");
+                        ImGui::Text("Iterations Used: %d", ik.runtimeFullBodyIterations);
+                        ImGui::Text("Effector Error: %.4f m", ik.runtimeFullBodyError);
+                        ImGui::Text("Converged: %s",
+                                    ik.runtimeFullBodyConverged ? "yes" : "no");
+                    }
 
                     if (ci == 0) {
                         ImGui::SeparatorText("Runtime Diagnostics");
@@ -613,11 +637,12 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     }
 
                     // ── Bones ─────────────────────────────────────────────────
-                    if (chain.type == scene::IKSolverType::TwoBone) {
-                    if (chain.boneNames.size() != 3) chain.boneNames.resize(3);
-                    ImGui::SeparatorText("Bones");
-                    ImGui::TextDisabled("Drag from Hierarchy or type name");
-                    {
+                    if (chain.type == scene::IKSolverType::TwoBone ||
+                        chain.type == scene::IKSolverType::HandPlace) {
+                        if (chain.boneNames.size() != 3) chain.boneNames.resize(3);
+                        ImGui::SeparatorText("Bones");
+                        ImGui::TextDisabled("Drag from Hierarchy or type name");
+                        {
                         char buf[256];
                         std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[0].c_str());
                         if (ImGui::InputText("Root", buf, sizeof(buf)))
@@ -720,20 +745,33 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     }
 
                     // ── Settings ──────────────────────────────────────────────
-                    ImGui::SeparatorText("Settings");
-                    ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f, "%.3f");
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Limits how far the chain can stretch (ratio of total bone length)");
-                    ImGui::DragFloat("Softness",      &chain.softness,     0.005f, 0.0f, 0.5f, "%.3f");
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
-                    widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("World-space offset added to the target position");
+                        ImGui::SeparatorText("Settings");
+                        ImGui::DragFloat("Max Extension", &chain.maxExtension,
+                                         0.005f, 0.5f, 1.0f, "%.3f");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Limits how far the chain can stretch (ratio of total bone length)");
+                        ImGui::DragFloat("Softness", &chain.softness,
+                                         0.005f, 0.0f, 0.5f, "%.3f");
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
+                        ImGui::DragFloatRange2("Bend Angle", &chain.minBendAngleDegrees,
+                                               &chain.maxBendAngleDegrees,
+                                               1.0f, 0.0f, 179.0f,
+                                               "Min %.1f deg", "Max %.1f deg");
+                        widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("World-space offset added to the target position");
+                        if (chain.type == scene::IKSolverType::HandPlace) {
+                            ImGui::SeparatorText("Hand Placement");
+                            widgets::DragQuatEuler3(
+                                "Rotation Offset", chain.handRotationOffset, 0.5f);
+                            ImGui::DragFloat("Rotation Weight", &chain.handRotationWeight,
+                                             0.01f, 0.0f, 1.0f, "%.2f");
+                        }
                     }
 
-                    if (chain.type == scene::IKSolverType::LookAt ||
-                        chain.type == scene::IKSolverType::Spine) {
+                    if (chain.type == scene::IKSolverType::AimAt ||
+                        chain.type == scene::IKSolverType::FABRIK) {
                         auto DrawTargetField = [&]() {
                             char targetName[256];
                             std::snprintf(targetName, sizeof(targetName), "%s", chain.targetName.c_str());
@@ -763,8 +801,8 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         };
 
                         ImGui::SeparatorText(
-                            chain.type == scene::IKSolverType::LookAt ? "Look At" : "Spine FABRIK");
-                        if (chain.type == scene::IKSolverType::LookAt) {
+                            chain.type == scene::IKSolverType::AimAt ? "Aim At" : "FABRIK");
+                        if (chain.type == scene::IKSolverType::AimAt) {
                             if (chain.boneNames.size() != 1) chain.boneNames.resize(1);
                             char boneName[256];
                             std::snprintf(boneName, sizeof(boneName), "%s", chain.boneNames[0].c_str());
@@ -798,7 +836,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
                         DrawTargetField();
                         widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
-                        if (chain.type == scene::IKSolverType::Spine) {
+                        if (chain.type == scene::IKSolverType::FABRIK) {
                             ImGui::SeparatorText("Auto Slope Weight");
                             ImGui::Checkbox("Auto Slope Weight", &chain.spineAutoWeight);
                             if (chain.spineAutoWeight) {
@@ -811,7 +849,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                     chain.spineSlopeRampMeters);
                             }
                         }
-                        if (chain.type == scene::IKSolverType::LookAt) {
+                        if (chain.type == scene::IKSolverType::AimAt) {
                             widgets::DragVec3("Look Axis", chain.lookAtAxis, 0.01f, -1.0f, 1.0f);
                             widgets::DragVec3("Up Axis", chain.lookAtUpAxis, 0.01f, -1.0f, 1.0f);
                             ImGui::DragFloat("Clamp Angle", &chain.lookAtClampAngle,
@@ -829,6 +867,8 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f");
                         ImGui::DragFloat("Dead Zone", &chain.correctionDeadZone, 0.001f, 0.0f, 0.25f, "%.3f");
                         ImGui::DragFloat("Max Correction", &chain.maxCorrection, 0.001f, 0.0f, 1.0f, "%.3f");
+                        ImGui::DragFloat("Plant Distance", &chain.footPlantDistance,
+                                         0.001f, 0.0f, 1.0f, "%.3f");
                         ImGui::DragFloat("Smooth Time", &chain.smoothTime, 0.005f, 0.001f, 1.0f, "%.3f s");
                         ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f, "%.3f");
                         ImGui::DragFloat("Softness", &chain.softness, 0.005f, 0.0f, 0.5f, "%.3f");

@@ -276,13 +276,19 @@ OrderingHints IKSystem::GetOrder() const {
 
 ---
 
-## 将来の拡張ロードマップ
+## IK Solver 実装状況
 
 ```
-現在 (この設計)          将来
+Solver                  状態・責務
 ─────────────────────    ─────────────────────────────────────
-TwoBone   ✓ 実装済み     Hand     HandIK 専用オフセット + 回転
-FootPlace ✓ 実装済み     FBIK     IKBodyState 経由で肩・手チェーンまで協調
-LookAt    ✓ 実装済み
-Spine     ✓ 実装済み
+TwoBone       ✓ 実装済み
+FootPlace     ✓ 実装済み
+AimAt         ✓ 実装済み
+FABRIK        ✓ 実装済み
+HandPlace     ✓ 実装済み  手首位置・回転オフセット・指階層追従
+FullBodyBiped ✓ 実装済み  IKBodyState 上で部位別 Solver を反復収束
 ```
+
+FullBodyBiped は位置エフェクターの最大残差を毎反復後に測定し、`fullBodyTolerance` 以下で
+早期終了する。Inspector には使用反復数・最終残差・収束可否を表示し、到達不能なターゲットや
+不完全なリグ設定を実行時に判別できるようにする。
