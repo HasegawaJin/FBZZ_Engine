@@ -90,7 +90,9 @@ struct ShadowConstantsCB {
     math::Matrix4 lightViewProjection;
     float         shadowMapTexelSize[2];
     float         shadowBias;
-    float         _pad;
+    float         shadowStrength;  // 0=影なし, 1=完全な影 (HLSL ShadowConstants と一致)
+    int           shadowPcfRadius; // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    float         _pad[3];         // 16-byte アライメント
 };
 
 struct AtmosphereCB {
@@ -319,7 +321,8 @@ struct RenderPassContext {
     // WHY: near=1, far=shadowRadius*2+40 のため固定 NDC 値はシーンスケール依存になる。
     //      RenderSystem 側で 0.005 / depthRange として渡すことで
     //      ワールド空間で約 5mm 相当の一定バイアスを保つ。
-    float                       shadowBiasNDC = 0.0f;
+    float                       shadowBiasNDC  = 0.0f;
+    float                       shadowStrength = 1.0f;  // LightComponent から流れてくる影の濃さ
 
     const math::Frustum* cameraFrustum = nullptr;
     const math::Frustum* lightFrustum  = nullptr;

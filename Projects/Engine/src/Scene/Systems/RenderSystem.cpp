@@ -211,7 +211,8 @@ void RenderSystem(Scene& scene,
     // 静的リソースの遅延初期化
     // =========================================================================
     static uint64_t sResourceResetVersion = resources.GetResetVersion();
-    static auto shadowMapRT          = resources.CreateRenderTarget(kShadowMapSize, kShadowMapSize, 0);
+    static uint32_t sShadowMapResolution  = 0u;
+    static renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
     static auto shadowShader         = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
     static auto skinnedShadowShader  = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
 
@@ -365,10 +366,12 @@ void RenderSystem(Scene& scene,
         renderer::DepthMode::DEPTH_OFF
     });
 
-    if (sResourceResetVersion != resources.GetResetVersion()) {
+    const uint32_t shadowRes = rs.shadow.mapResolution;
+    if (sResourceResetVersion != resources.GetResetVersion() || sShadowMapResolution != shadowRes || !shadowMapRT.IsValid()) {
         sResourceResetVersion = resources.GetResetVersion();
+        sShadowMapResolution  = shadowRes;
 
-        shadowMapRT         = resources.CreateRenderTarget(kShadowMapSize, kShadowMapSize, 0);
+        shadowMapRT = resources.CreateRenderTarget(shadowRes, shadowRes, 0);
         shadowShader        = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
         skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
         compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
@@ -536,6 +539,12 @@ void RenderSystem(Scene& scene,
     lightData.lightColor     = { 1.0f,  1.0f, 1.0f };
     lightData.lightIntensity = 1.0f;
 
+    // Directional Light のシャドウ設定 (LightComponent から取得)
+    bool  dirCastShadows    = true;
+    float dirShadowBias     = 1.0f;
+    float dirShadowStrength = 1.0f;
+    float dirShadowDistance = 0.0f;
+
     constexpr float kDegToRad = 3.14159265f / 180.0f;
     for (auto [tf, lc] : scene.View<Transform, LightComponent>()) {
         if (!lc.enabled) continue;
@@ -543,6 +552,10 @@ void RenderSystem(Scene& scene,
             lightData.lightDir       = tf.forward.Normalized();
             lightData.lightColor     = lc.color;
             lightData.lightIntensity = lc.intensity;
+            dirCastShadows    = lc.castShadows;
+            dirShadowBias     = lc.shadowBias;
+            dirShadowStrength = lc.shadowStrength;
+            dirShadowDistance = lc.shadowDistance;
         } else if (lc.type == LightComponent::Type::Point
                    && lightData.pointLightCount < 8) {
             auto& pl    = lightData.pointLights[lightData.pointLightCount++];
@@ -584,7 +597,10 @@ void RenderSystem(Scene& scene,
         shadowBounds.valid = true;
     }
 
-    const float shadowRadius = (std::max)(shadowBounds.radius, 5.0f);
+    // dirShadowDistance > 0 のとき手動サイズを優先、0 のときシーンに自動フィット
+    const float shadowRadius = (dirShadowDistance > 0.0f)
+        ? dirShadowDistance
+        : (std::max)(shadowBounds.radius, 5.0f);
     math::Vector3 lightPos = shadowBounds.center - lightDir * (shadowRadius + 20.0f);
     math::Vector3 up = (std::abs(lightDir.y) > 0.99f)
                        ? math::Vector3{ 1.0f, 0.0f, 0.0f }
@@ -717,14 +733,16 @@ void RenderSystem(Scene& scene,
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles,
         sHdrW, sHdrH, selectionOutlineEnabled,
-        lightData, lightVP, isDeferred, ssaoEnabled, 0.0f,
+        lightData, lightVP, isDeferred, ssaoEnabled, 0.0f, 1.0f,
         &cameraFrustum, &lightFrustum, &occlusionCuller
     };
     passCtx.physicsWorld  = physicsWorld;
     // near=1.0, far=shadowRadius*2+40 の深度範囲でスケール正規化したバイアス。
     // 固定 NDC 値はシーンが広がるほど Peter Panning が悪化するため、
     // ワールド空間で約 5mm 相当の一定バイアスになるよう depthRange で除算する。
-    passCtx.shadowBiasNDC = 0.005f / (shadowRadius * 2.0f + 39.0f);
+    // dirShadowBias でスケールし、Inspector から Peter Panning / アクネをチューニング可能にする。
+    passCtx.shadowBiasNDC  = (0.005f * dirShadowBias) / (shadowRadius * 2.0f + 39.0f);
+    passCtx.shadowStrength = dirCastShadows ? dirShadowStrength : 0.0f;
 
     // =========================================================================
     // RenderPipeline にパスを登録
@@ -733,7 +751,7 @@ void RenderSystem(Scene& scene,
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
     pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true,  false });
-    pipeline.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, kShadowMapSize, kShadowMapSize, 0, false, false });
+    pipeline.DeclareResource("ShadowMap",  { renderer::RenderGraph::ResourceKind::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, 0, false, false });
     pipeline.DeclareResource("HDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     pipeline.DeclareResource("LDR",        { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     pipeline.DeclareResource("SelectionMask", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
