@@ -14,6 +14,7 @@
 #include <toml++/toml.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
@@ -392,6 +393,29 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
 
     ImGui::Spacing();
     ImGui::Checkbox("Shadow", &render.shadowEnabled);
+    if (render.shadowEnabled)
+    {
+        ImGui::Indent();
+        static const uint32_t kResValues[] = { 512u, 1024u, 2048u, 4096u, 8192u };
+        static const char*    kResLabels[] = { "512",  "1024",  "2048",  "4096",  "8192" };
+        int resIdx = 3;
+        for (int i = 0; i < 5; ++i)
+            if (kResValues[i] == render.shadow.mapResolution) { resIdx = i; break; }
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::Combo("Resolution##shadow", &resIdx, kResLabels, 5))
+            render.shadow.mapResolution = kResValues[resIdx];
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Shadow Map)");
+
+        static const char* kPcfLabels[] = { "0 – Hard", "1 – 3x3", "2 – 5x5", "3 – 7x7" };
+        int pcfIdx = std::clamp(render.shadow.pcfRadius, 0, 3);
+        ImGui::SetNextItemWidth(100.0f);
+        if (ImGui::Combo("PCF Radius##shadow", &pcfIdx, kPcfLabels, 4))
+            render.shadow.pcfRadius = pcfIdx;
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Blur)");
+        ImGui::Unindent();
+    }
     ImGui::SameLine();
     {
         const char* kViewModeLabels[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
