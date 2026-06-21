@@ -82,10 +82,14 @@ struct BlendTree1D {
     // パラメーターの急変を時間補間し、Idle / Walk / Run の姿勢が瞬時に切り替わるのを防ぐ。
     // 0 は平滑化なし。値は目標へ約63%近づく時定数（秒）として扱う。
     float                        dampTime = 0.0f;
+    // 全Motionを同じ正規化位相で評価し、Weightが再上昇したClipの位相ジャンプを防ぐ。
+    bool                         syncNormalizedTime = false;
     std::vector<BlendTreeMotion> motions;
     // ランタイム専用。Controller / Scene には保存しない。
     float                        dampedValue = 0.0f;
     bool                         dampedValueInitialized = false;
+    float                        normalizedPhase = 0.0f;
+    bool                         normalizedPhaseInitialized = false;
 };
 
 // 2D BlendTree の座標解釈方式。

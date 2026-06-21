@@ -484,6 +484,14 @@ const AnimationState* FindState(const AnimatorComponent& animator,
     return nullptr;
 }
 
+AnimationState* FindMutableState(AnimatorComponent& animator,
+                                 const std::string& stateName)
+{
+    for (auto& state : animator.states)
+        if (state.name == stateName) return &state;
+    return nullptr;
+}
+
 // animator.parameters からパラメーター名で探す。見つからなければ nullptr。
 AnimatorParameter* FindParam(AnimatorComponent& animator, const std::string& paramName)
 {
@@ -725,9 +733,17 @@ std::vector<WeightedClip> BuildStateClips(const AnimatorComponent& animator,
         const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
         const float duration = static_cast<float>(clip->GetDurationSeconds());
         float motionTime = stateTime * weighted.motion->speed;
-        motionTime = state.loop
-            ? WrapTime(motionTime, duration)
-            : std::clamp(motionTime, 0.0f, duration);
+        if (state.mode == AnimationStateMode::BlendTree1D &&
+            state.blendTree1D.syncNormalizedTime &&
+            state.blendTree1D.normalizedPhaseInitialized) {
+            // WHY: Motionごとの秒数で個別Wrapすると、Weight 0から復帰したWalkが別位相で現れる。
+            //      同じ0..1位相を各Clip長へ写像し、Idle/Walk/Runの足運びを連続させる。
+            motionTime = state.blendTree1D.normalizedPhase * duration;
+        } else {
+            motionTime = state.loop
+                ? WrapTime(motionTime, duration)
+                : std::clamp(motionTime, 0.0f, duration);
+        }
         result.push_back({
             clip,
             weighted.motion,
@@ -945,6 +961,10 @@ bool TryStartTransition(AnimatorComponent& animator,
         animator.blendToState  = tr.toStateName;
         animator.blendToTime   = 0.0f;
         animator.blendWeight   = 0.0f;
+        if (auto* targetState = FindMutableState(animator, tr.toStateName)) {
+            targetState->blendTree1D.normalizedPhase = 0.0f;
+            targetState->blendTree1D.normalizedPhaseInitialized = false;
+        }
         // 正規化指定は遷移元ステートの Length を基準に実秒へ変換する。
         // WHY: クリップを差し替えても同じ割合の Motion Blend を維持できる。
         const AnimationState* currentState =
@@ -986,6 +1006,49 @@ void UpdateBlendTree1DDamping(AnimatorComponent& animator, float dt)
             (std::max)(0.001f, std::abs(target) * 0.001f);
         if (std::abs(target - tree.dampedValue) <= snapEpsilon)
             tree.dampedValue = target;
+    }
+}
+
+// 現在のBlend Weightからサイクル周波数を補間し、共通の正規化位相を積分する。
+// WHY: 最長Clipへ全Motionを引き伸ばす位相同期ではWalk本来の再生速度が失われるため、
+//      純粋なMotionでは元速度、ブレンド中は両者の中間テンポになるよう周波数を合成する。
+void AdvanceBlendTreePhase(AnimatorComponent& animator,
+                           AnimationState& state,
+                           float stateTime,
+                           float dt)
+{
+    if (!animator.playing || state.mode != AnimationStateMode::BlendTree1D ||
+        !state.blendTree1D.syncNormalizedTime) return;
+
+    float cycleFrequency = 0.0f;
+    float validWeight = 0.0f;
+    for (const auto& weighted : ComputeStateWeights(animator, state)) {
+        const asset::AnimationClip* clip =
+            FindClipForMotion(animator, *weighted.motion);
+        if (!clip) continue;
+        const float duration = static_cast<float>(clip->GetDurationSeconds());
+        if (duration <= math::EPSILON) continue;
+        cycleFrequency += weighted.weight * weighted.motion->speed / duration;
+        validWeight += weighted.weight;
+    }
+    if (validWeight <= math::EPSILON) return;
+    cycleFrequency /= validWeight;
+
+    auto& tree = state.blendTree1D;
+    if (!tree.normalizedPhaseInitialized) {
+        tree.normalizedPhase = state.loop
+            ? stateTime * cycleFrequency -
+                std::floor(stateTime * cycleFrequency)
+            : math::Clamp01(stateTime * cycleFrequency);
+        tree.normalizedPhaseInitialized = true;
+        return;
+    }
+
+    tree.normalizedPhase += dt * state.speed * animator.speed * cycleFrequency;
+    if (state.loop) {
+        tree.normalizedPhase -= std::floor(tree.normalizedPhase);
+    } else {
+        tree.normalizedPhase = math::Clamp01(tree.normalizedPhase);
     }
 }
 
@@ -1122,6 +1185,12 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     InitStateMachine(animator);
     UpdateBlendTree1DDamping(animator, dt);
     UpdateStateMachine(animator, dt);
+    if (auto* currentState = FindMutableState(animator, animator.currentStateName))
+        AdvanceBlendTreePhase(animator, *currentState, animator.stateTime, dt);
+    if (!animator.blendToState.empty()) {
+        if (auto* nextState = FindMutableState(animator, animator.blendToState))
+            AdvanceBlendTreePhase(animator, *nextState, animator.blendToTime, dt);
+    }
 
     const AnimationState* curSt = FindState(animator, animator.currentStateName);
     animator.currentBlendWeights.clear();
