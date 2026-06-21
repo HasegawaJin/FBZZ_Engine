@@ -30,6 +30,7 @@ public:
     FBZZ_FIELD_RANGE(float, groundAccel,            15.0f, "Ground Accel",       1.0f, 100.0f)
     FBZZ_FIELD_RANGE(float, groundDecel,            20.0f, "Ground Decel",       1.0f, 100.0f)
     FBZZ_FIELD_RANGE(float, airAccel,                3.0f, "Air Accel",          0.0f,  50.0f)
+    FBZZ_FIELD_RANGE(float, turnSpeed,              12.0f, "Turn Speed",         0.1f,  30.0f)
     FBZZ_FIELD(bool, useCameraForward,      true, "Use Camera Forward")
     FBZZ_FIELD(bool, rotateToMoveDirection, true, "Rotate To Move Dir")
     FBZZ_FIELD(bool, useFootIK,             true, "Use Foot IK")
@@ -105,6 +106,19 @@ void PlayerControllerComponent::OnUpdate()
 
     const bool hasInput   = move.LengthSq() > EPSILON;
     const bool isGrounded = cc && cc->isGrounded;
+    const Vector3 moveDirection = hasInput ? move.Normalized() : Vector3::ZERO;
+
+    if (hasInput && rotateToMoveDirection) {
+        const Quaternion targetRotation =
+            (Quaternion::LookRotation(moveDirection) *
+             Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
+        // WHY: 線形な turnSpeed*dt はフレームレートで応答が変わるため、指数応答で
+        //      WASD の急な方向変更を滑らかにしつつ、どの FPS でも同じ旋回感を保つ。
+        const float turnResponse = 1.0f - std::exp(
+            -std::max(turnSpeed, 0.0f) * std::max(Time::deltaTime, 0.0f));
+        transform.rotation = Quaternion::Slerp(
+            transform.rotation, targetRotation, turnResponse).Normalized();
+    }
 
     if (phy) {
         // WHY: 水平速度を加速度補間し Y 速度は重力・接触解決に任せる。
@@ -112,16 +126,10 @@ void PlayerControllerComponent::OnUpdate()
         Vector3 vel = phy->GetVelocity();
         if (hasInput) {
             const float   speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
-            const Vector3 dir   = move.Normalized();
             const float   accel = isGrounded ? groundAccel : airAccel;
             const float   t     = std::min(1.0f, accel * Time::deltaTime);
-            vel.x += (dir.x * speed - vel.x) * t;
-            vel.z += (dir.z * speed - vel.z) * t;
-            if (rotateToMoveDirection) {
-                const Quaternion rot = (Quaternion::LookRotation(dir) *
-                    Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
-                transform.rotation = rot;
-            }
+            vel.x += (moveDirection.x * speed - vel.x) * t;
+            vel.z += (moveDirection.z * speed - vel.z) * t;
         } else {
             const float t = std::min(1.0f, groundDecel * Time::deltaTime);
             vel.x -= vel.x * t;
@@ -132,14 +140,8 @@ void PlayerControllerComponent::OnUpdate()
     } else {
         if (hasInput) {
             const float   speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
-            const Vector3 dir   = move.Normalized();
-            transform.position += dir * (speed * Time::deltaTime);
+            transform.position += moveDirection * (speed * Time::deltaTime);
             animator.SetFloat(paramSpeed, speed);
-            if (rotateToMoveDirection) {
-                const Quaternion rot = (Quaternion::LookRotation(dir) *
-                    Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
-                transform.rotation = rot;
-            }
         } else {
             animator.SetFloat(paramSpeed, 0.0f);
         }
@@ -187,7 +189,7 @@ void PlayerControllerComponent::UpdateSlopeLean(
 {
     IKChain* spine = nullptr;
     for (auto& chain : ik.chains) {
-        if (chain.type == IKSolverType::Spine) {
+        if (chain.type == IKSolverType::FABRIK) {
             spine = &chain;
             break;
         }

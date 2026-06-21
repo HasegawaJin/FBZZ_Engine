@@ -30,6 +30,7 @@ public:
     FBZZ_FIELD_RANGE(float, groundAccel,            15.0f, "Ground Accel",       1.0f, 100.0f)
     FBZZ_FIELD_RANGE(float, groundDecel,            20.0f, "Ground Decel",       1.0f, 100.0f)
     FBZZ_FIELD_RANGE(float, airAccel,                3.0f, "Air Accel",          0.0f,  50.0f)
+    FBZZ_FIELD_RANGE(float, turnSpeed,              12.0f, "Turn Speed",         0.1f,  30.0f)
     FBZZ_FIELD(bool, useCameraForward,      true, "Use Camera Forward")
     FBZZ_FIELD(bool, rotateToMoveDirection, true, "Rotate To Move Dir")
     FBZZ_FIELD(bool, useFootIK,             true, "Use Foot IK")
@@ -46,7 +47,6 @@ public:
     FBZZ_FIELD(std::string, paramVerticalSpeed, "VerticalSpeed","Vertical Speed Param")
     FBZZ_FIELD(std::string, paramIsGrounded,    "IsGrounded",   "IsGrounded Param")
     FBZZ_FIELD(std::string, paramJumpTrigger,   "Jump",         "Jump Trigger Param")
-    FBZZ_FIELD(std::string, paramLandTrigger,   "Land",         "Land Trigger Param")
 
     void OnStart() override;
     void OnUpdate() override;
@@ -56,9 +56,13 @@ public:
 private:
     void HandleJump(CharacterControllerComponent* cc, RigidBody* phy);
     void UpdateIK();
+    void UpdateSlopeLean(IKSolverComponent& ik, CharacterControllerComponent* cc,
+                         RigidBodyComponent* rb);
     Vector3 GetMoveForward() const;
     Vector3 GetMoveRight(const Vector3& forward) const;
-    bool m_wasGrounded = true;
+    bool m_hasSpineTargetBase = false;
+    Vector3 m_spineTargetBase = Vector3::ZERO;
+    Vector3 m_smoothedSpineOffset = Vector3::ZERO;
 };
 
 } // namespace sandbox
@@ -66,20 +70,18 @@ private:
 #include "PlayerControllerComponent.generated.hpp"
 
 // ── 実装 ────────────────────────────────────────────────────────────────────
-#ifndef PLAYER_CONTROLLER_IMPL
-#define PLAYER_CONTROLLER_IMPL
+#ifndef PlayerControllerComponent_IMPL
+#define PlayerControllerComponent_IMPL
 
 namespace sandbox {
 
-inline void PlayerControllerComponent::OnStart()
+void PlayerControllerComponent::OnStart()
 {
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
-    if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
-        m_wasGrounded = cc->isGrounded;
 }
 
-inline void PlayerControllerComponent::OnUpdate()
+void PlayerControllerComponent::OnUpdate()
 {
     if (!transform) return;
     auto* cc  = scene.GetComponent<CharacterControllerComponent>();
@@ -90,9 +92,6 @@ inline void PlayerControllerComponent::OnUpdate()
         cc->Tick(phy, Time::deltaTime);
         animator.SetFloat(paramVerticalSpeed, cc->verticalSpeed);
         animator.SetBool(paramIsGrounded,     cc->isGrounded);
-        if (!m_wasGrounded && cc->isGrounded)
-            animator.SetTrigger(paramLandTrigger);
-        m_wasGrounded = cc->isGrounded;
     }
     UpdateIK();
     HandleJump(cc, phy);
@@ -107,6 +106,19 @@ inline void PlayerControllerComponent::OnUpdate()
 
     const bool hasInput   = move.LengthSq() > EPSILON;
     const bool isGrounded = cc && cc->isGrounded;
+    const Vector3 moveDirection = hasInput ? move.Normalized() : Vector3::ZERO;
+
+    if (hasInput && rotateToMoveDirection) {
+        const Quaternion targetRotation =
+            (Quaternion::LookRotation(moveDirection) *
+             Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
+        // WHY: 線形な turnSpeed*dt はフレームレートで応答が変わるため、指数応答で
+        //      WASD の急な方向変更を滑らかにしつつ、どの FPS でも同じ旋回感を保つ。
+        const float turnResponse = 1.0f - std::exp(
+            -std::max(turnSpeed, 0.0f) * std::max(Time::deltaTime, 0.0f));
+        transform.rotation = Quaternion::Slerp(
+            transform.rotation, targetRotation, turnResponse).Normalized();
+    }
 
     if (phy) {
         // WHY: 水平速度を加速度補間し Y 速度は重力・接触解決に任せる。
@@ -114,16 +126,10 @@ inline void PlayerControllerComponent::OnUpdate()
         Vector3 vel = phy->GetVelocity();
         if (hasInput) {
             const float   speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
-            const Vector3 dir   = move.Normalized();
             const float   accel = isGrounded ? groundAccel : airAccel;
             const float   t     = std::min(1.0f, accel * Time::deltaTime);
-            vel.x += (dir.x * speed - vel.x) * t;
-            vel.z += (dir.z * speed - vel.z) * t;
-            if (rotateToMoveDirection) {
-                const Quaternion rot = (Quaternion::LookRotation(dir) *
-                    Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
-                transform.rotation = rot;
-            }
+            vel.x += (moveDirection.x * speed - vel.x) * t;
+            vel.z += (moveDirection.z * speed - vel.z) * t;
         } else {
             const float t = std::min(1.0f, groundDecel * Time::deltaTime);
             vel.x -= vel.x * t;
@@ -134,50 +140,96 @@ inline void PlayerControllerComponent::OnUpdate()
     } else {
         if (hasInput) {
             const float   speed = input.GetKey(keySprint) ? moveSpeed * sprintMultiplier : moveSpeed;
-            const Vector3 dir   = move.Normalized();
-            transform.position += dir * (speed * Time::deltaTime);
+            transform.position += moveDirection * (speed * Time::deltaTime);
             animator.SetFloat(paramSpeed, speed);
-            if (rotateToMoveDirection) {
-                const Quaternion rot = (Quaternion::LookRotation(dir) *
-                    Quaternion::FromAxisAngle(Vector3::UP, ToRad(modelYawOffsetDegrees))).Normalized();
-                transform.rotation = rot;
-            }
         } else {
             animator.SetFloat(paramSpeed, 0.0f);
         }
     }
 }
 
-inline void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& info)
+void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& info)
 {
     if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
         cc->RegisterGroundContact(info);
 }
 
-inline void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
+void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
 {
     OnCollisionEnter(info);
 }
 
-inline void PlayerControllerComponent::HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
+void PlayerControllerComponent::HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
 {
     if (!cc || !cc->isGrounded || !phy) return;
     if (!input.GetKeyDown(keyJump)) return;
     cc->Jump(phy, { 0.0f, jumpForce * phy->GetMass(), 0.0f });
     animator.SetBool(paramIsGrounded, false);
-    animator.SetFloat(paramVerticalSpeed, jumpForce);
     animator.SetTrigger(paramJumpTrigger);
 }
 
-inline void PlayerControllerComponent::UpdateIK()
+void PlayerControllerComponent::UpdateIK()
 {
-    // Humanoid 完成アニメは FK の足運びを正とし、FootIK は Animator の IK Weight だけで制御する。
-    // WHY: Script DLL から新規 Engine Component へ直接依存させると、シーンロード時の ABI 再ビルド依存が増えるため。
-    if (auto* ik = scene.GetComponent<IKSolverComponent>())
-        ik->enabled = false;
+    auto* ik = scene.GetComponent<IKSolverComponent>();
+    if (!ik) return;
+
+    // Use Foot IK は足チェーンだけを制御する。Solver 全体を切ると Spine と LookAt まで停止してしまう。
+    for (auto& chain : ik->chains) {
+        if (chain.type == IKSolverType::FootPlace)
+            chain.enabled = useFootIK;
+    }
+
+    UpdateSlopeLean(*ik,
+                    scene.GetComponent<CharacterControllerComponent>(),
+                    scene.GetComponent<RigidBodyComponent>());
 }
 
-inline Vector3 PlayerControllerComponent::GetMoveForward() const
+void PlayerControllerComponent::UpdateSlopeLean(
+    IKSolverComponent& ik, CharacterControllerComponent* cc, RigidBodyComponent* rb)
+{
+    IKChain* spine = nullptr;
+    for (auto& chain : ik.chains) {
+        if (chain.type == IKSolverType::FABRIK) {
+            spine = &chain;
+            break;
+        }
+    }
+    if (!spine) return;
+
+    auto* target = scene.GetGameObject(spine->targetEntity);
+    if (!target) return;
+    if (!m_hasSpineTargetBase) {
+        m_spineTargetBase = target->transform.position;
+        m_hasSpineTargetBase = true;
+    }
+
+    Vector3 desiredOffset = Vector3::ZERO;
+    if (cc && cc->isGrounded && rb && rb->enabled && rb->rigidBody) {
+        Vector3 moveDirection = rb->rigidBody->GetVelocity();
+        moveDirection.y = 0.0f;
+        if (moveDirection.LengthSq() > 0.01f && cc->groundNormal.y > 0.1f) {
+            moveDirection = moveDirection.Normalized();
+            const Vector3 normal = cc->groundNormal.Normalized();
+            // 地面法線から移動方向の上り勾配 tan(theta) を求め、上り坂だけ上体を進行方向へ倒す。
+            const float uphillGrade = std::max(
+                0.0f, -Vector3::Dot(normal, moveDirection) / normal.y);
+            constexpr float LEAN_PER_GRADE = 0.35f;
+            constexpr float MAX_LEAN_OFFSET = 0.20f;
+            const float lean = std::min(MAX_LEAN_OFFSET, uphillGrade * LEAN_PER_GRADE);
+            const Vector3 localMoveDirection =
+                (transform.worldRotation.Inverse() * moveDirection).Normalized();
+            desiredOffset = localMoveDirection * lean;
+        }
+    }
+
+    // 接触法線は物理ステップごとに微動するため、指数応答でターゲットの揺れを抑える。
+    constexpr float LEAN_RESPONSE = 8.0f;
+    const float response = 1.0f - std::exp(-LEAN_RESPONSE * std::max(Time::deltaTime, 0.0f));
+    m_smoothedSpineOffset = Vector3::Lerp(m_smoothedSpineOffset, desiredOffset, response);
+    target->transform.position = m_spineTargetBase + m_smoothedSpineOffset;
+}
+
+Vector3 PlayerControllerComponent::GetMoveForward() const
 {
     if (!useCameraForward) return Vector3::FORWARD;
     auto* camGO = scene.GetMainCameraObject();
@@ -187,7 +239,7 @@ inline Vector3 PlayerControllerComponent::GetMoveForward() const
     return fwd.LengthSq() > EPSILON ? fwd.Normalized() : Vector3::FORWARD;
 }
 
-inline Vector3 PlayerControllerComponent::GetMoveRight(const Vector3& forward) const
+Vector3 PlayerControllerComponent::GetMoveRight(const Vector3& forward) const
 {
     Vector3 right = Vector3::Cross(Vector3::UP, forward);
     return right.LengthSq() > EPSILON ? right.Normalized() : Vector3::RIGHT;
