@@ -226,7 +226,7 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
                     }
                     if (const auto texture = material->textures.find("albedo");
                         texture != material->textures.end() && !texture->second.empty()) {
-                        albedo = asset::AssetManager::LoadTexture(texture->second);
+                        albedo = ctx.resources.LoadTexture(texture->second);
                         materialData.hasAlbedo = albedo.IsValid() ? 1u : 0u;
                         if (materialData.alphaCutoff <= 0.0f)
                             materialData.alphaCutoff = 0.5f;
@@ -241,9 +241,10 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
 
                 renderer::DrawCall draw{};
                 draw.shader = ctx.handles.foliageShader;
-                draw.pipelineState = doubleSided
-                    ? ctx.handles.foliageNoCullPSO
-                    : ctx.handles.foliagePSO;
+                // ビューモードに応じて PSO を切り替える。ワイヤーフレーム時は共用 wireframePSO を使う。
+                draw.pipelineState = ctx.settings.IsWireframe()
+                    ? ctx.handles.wireframePSO
+                    : (doubleSided ? ctx.handles.foliageNoCullPSO : ctx.handles.foliagePSO);
                 draw.vertexBuffer = mesh->vertexBuffer;
                 draw.indexBuffer = mesh->indexBuffer;
                 draw.indexCount = mesh->indexCount;

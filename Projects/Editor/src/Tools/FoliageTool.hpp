@@ -33,7 +33,8 @@ public:
 
     void OnEditorGUI(scene::Scene& scene,
                      const std::function<void()>& markDirty);
-    void DrawContent(scene::Scene& scene);
+    void DrawContent(scene::Scene& scene,
+                     const std::function<void()>& markDirty = {});
 
     void SetActive(bool active) { m_active = active; }
     [[nodiscard]] bool IsActive() const { return m_active; }

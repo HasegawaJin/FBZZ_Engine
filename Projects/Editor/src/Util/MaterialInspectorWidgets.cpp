@@ -145,6 +145,16 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
     dirty |= DrawMaterialFloat(mat, "Fresnel Bias",  "fresnelBias",  0.02f, 0.001f, 0.0f, 1.0f);
     dirty |= DrawMaterialFloat(mat, "Fresnel Power", "fresnelPower", 5.0f, 0.05f, 0.1f, 32.0f);
     dirty |= DrawMaterialFloat(mat, "Refraction",    "refractionStrength", 0.03f, 0.001f, 0.0f, 1.0f);
+    dirty |= DrawMaterialFloat(mat, "Min Shallow Alpha", "minShallowAlpha", 0.65f, 0.01f, 0.0f, 1.0f);
+    ImGui::PopID();
+
+    ImGui::SeparatorText("Lighting");
+    ImGui::PushID("WaterLighting");
+    dirty |= DrawMaterialFloat(mat, "Rim Glow",          "rimGlowStrength",  0.40f, 0.01f, 0.0f, 5.0f);
+    dirty |= DrawMaterialFloat(mat, "Specular Strength", "specularStrength", 0.75f, 0.01f, 0.0f, 5.0f);
+    dirty |= DrawMaterialFloat(mat, "Specular Power",    "specularExponent", 80.0f, 1.0f, 1.0f, 512.0f);
+    dirty |= DrawMaterialColor3(mat, "Sky Reflect Tint", "skyReflectTint", { 0.45f, 0.82f, 1.0f });
+    dirty |= DrawMaterialFloat(mat, "Env Map Blend",     "envMapBlend", 0.35f, 0.01f, 0.0f, 1.0f);
     ImGui::PopID();
 
     ImGui::SeparatorText("Normals");

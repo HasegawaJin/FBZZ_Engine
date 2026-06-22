@@ -90,10 +90,64 @@ struct TerrainComponent {
     }
 
     // ── ハイトマップ初期化ヘルパー ────────────────────────────────────────────
+    // スプラットマップを layer0=100% の初期状態へ戻す。
+    // WHY: Terrain は splatData が空のまま保存されると .terrain が不完全になり、
+    //      PaintTool や TerrainRenderPass が「4チャンネル正規化済み」という前提を満たせなくなるため。
+    void InitDefaultSplat()
+    {
+        const size_t vertexCount = static_cast<size_t>(columns) * static_cast<size_t>(rows);
+        splatData.assign(vertexCount * 4u, 0u);
+        for (size_t i = 0; i < vertexCount; ++i)
+            splatData[i * 4u] = 255u;
+    }
+
     // 呼び出し後に heightDirty = true を立てること。
     void InitFlat(float height = 0.0f)
     {
         heightData.assign(static_cast<size_t>(columns) * static_cast<size_t>(rows), height / maxHeight);
+        InitDefaultSplat();
+    }
+
+    // グリッドサイズを変更する。heightData / splatData を 2D コピー（切り捨て／パディング）で引き継ぐ。
+    // WHY: columns/rows を直接書き換えただけでは heightData のサイズが合わなくなり
+    //      TerrainRenderPass の assert が火を吹くため、必ずこの関数で一括変更する。
+    // 呼び出し後に heightDirty / splatDirty / colliderDirty を立てること。
+    void Resize(int newColumns, int newRows)
+    {
+        const int copyCols = (std::min)(columns, newColumns);
+        const int copyRows = (std::min)(rows,    newRows);
+        const size_t newVerts = static_cast<size_t>(newColumns) * static_cast<size_t>(newRows);
+
+        std::vector<float>   newHeight(newVerts, 0.0f);
+        std::vector<uint8_t> newSplat (newVerts * 4u, 0u);
+
+        for (int z = 0; z < copyRows; ++z) {
+            for (int x = 0; x < copyCols; ++x) {
+                const size_t src = static_cast<size_t>(z) * static_cast<size_t>(columns)    + static_cast<size_t>(x);
+                const size_t dst = static_cast<size_t>(z) * static_cast<size_t>(newColumns) + static_cast<size_t>(x);
+                if (!heightData.empty()) newHeight[dst] = heightData[src];
+                if (!splatData.empty()) {
+                    newSplat[dst * 4u + 0] = splatData[src * 4u + 0];
+                    newSplat[dst * 4u + 1] = splatData[src * 4u + 1];
+                    newSplat[dst * 4u + 2] = splatData[src * 4u + 2];
+                    newSplat[dst * 4u + 3] = splatData[src * 4u + 3];
+                }
+            }
+        }
+
+        // コピー範囲外の新規領域を layer0=100% で初期化
+        for (int z = 0; z < newRows; ++z) {
+            for (int x = 0; x < newColumns; ++x) {
+                if (z < copyRows && x < copyCols) continue;
+                newSplat[(static_cast<size_t>(z) * static_cast<size_t>(newColumns)
+                          + static_cast<size_t>(x)) * 4u] = 255u;
+            }
+        }
+
+        columns    = newColumns;
+        rows       = newRows;
+        heightData = std::move(newHeight);
+        splatData  = std::move(newSplat);
     }
 
     // ── 高さクエリ (バイリニア補間) ──────────────────────────────────────────

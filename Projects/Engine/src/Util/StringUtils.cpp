@@ -105,7 +105,12 @@ std::string StringUtils::ToNarrow(const wchar_t* s, int charCount)
 
 std::string StringUtils::PathToUtf8(const std::filesystem::path& path)
 {
-    return ToNarrow(path.wstring());
+    // WHY: FileSystem::PathToUtf8 と挙動を統一する。
+    //      Windows の filesystem::path は '\' 区切りを返すため、
+    //      '/' に正規化してアセット管理などの文字列比較を一致させる。
+    std::string s = ToNarrow(path.wstring());
+    std::replace(s.begin(), s.end(), '\\', '/');
+    return s;
 }
 
 } // namespace fbzz::util

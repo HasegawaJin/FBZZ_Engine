@@ -129,10 +129,135 @@ bool MigrationManager::EnsureGeneratedLayout(const std::filesystem::path& projec
         return false;
     }
 
-    return EnsureTextFile(
+    if (!EnsureTextFile(
         projectRoot / "ProjectSettings/ProjectSettings.toml",
         "[project]\ndefault_scene = \"Assets/Scenes/Main.scene\"\n\n[runtime]\nstart_scene = \"Assets/Scenes/Main.scene\"\n",
-        errorMessage);
+        errorMessage)) {
+        return false;
+    }
+
+    if (!PatchCMakeLists(projectRoot, errorMessage))
+        return false;
+
+    return PatchCMakePresets(projectRoot, errorMessage);
+}
+
+bool MigrationManager::PatchCMakeLists(const std::filesystem::path& projectRoot, std::string& errorMessage)
+{
+    const std::filesystem::path cmakePath = projectRoot / "CMakeLists.txt";
+    if (!engine_util::FileSystem::Exists(cmakePath))
+        return true;
+
+    std::string text;
+    if (!engine_util::FileSystem::ReadText(cmakePath, text)) {
+        errorMessage = "Failed to read CMakeLists.txt.";
+        return false;
+    }
+
+    // すでに設定済みなら何もしない
+    if (text.find("CMAKE_CONFIGURATION_TYPES") != std::string::npos)
+        return true;
+
+    // "set(CMAKE_CXX_EXTENSIONS OFF)" の直後を挿入ポイントにする
+    const std::string marker = "set(CMAKE_CXX_EXTENSIONS OFF)";
+    const size_t markerPos = text.find(marker);
+    if (markerPos == std::string::npos)
+        return true; // マーカーが見つからない場合は警告なしでスキップ
+
+    const size_t lineEnd   = text.find('\n', markerPos);
+    const size_t insertPos = (lineEnd == std::string::npos) ? text.size() : lineEnd + 1;
+
+    // WHY: エンジン側で設定している Development 構成をゲームプロジェクト側でも宣言する。
+    //      これがないと VS プロジェクトに Development が生成されず MSB8013 が発生する。
+    const std::string insertion =
+        "\n"
+        "# WHY: ゲームプロジェクトはエンジン本体と独立した CMake ルートを持つため、\n"
+        "#      エンジン側で設定している Development 構成をここでも明示的に宣言する。\n"
+        "#      これがないと VS プロジェクトに Development が生成されず、\n"
+        "#      エディタが --config Development でビルドしようとしたときに MSB8013 が発生する。\n"
+        "set(CMAKE_CONFIGURATION_TYPES \"Debug;Release;Development\" CACHE STRING \"Build configurations\" FORCE)\n"
+        "set(CMAKE_CXX_FLAGS_DEVELOPMENT           \"/Zi /O2 /Ob1\"                CACHE STRING \"Development CXX flags\"        FORCE)\n"
+        "set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    \"/DEBUG:FULL /INCREMENTAL:NO\" CACHE STRING \"Development EXE linker flags\" FORCE)\n"
+        "set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT \"/DEBUG:FULL /INCREMENTAL:NO\" CACHE STRING \"Development DLL linker flags\" FORCE)\n";
+
+    text.insert(insertPos, insertion);
+
+    if (!engine_util::FileSystem::WriteText(cmakePath, text)) {
+        errorMessage = "Failed to write patched CMakeLists.txt.";
+        return false;
+    }
+
+    // WHY: 古い Build/VS には Development なしで生成された vcxproj が残っているため削除する。
+    //      次回 cmake --preset fbzz-vs 実行時に Development 付きで再生成される。
+    const std::filesystem::path buildVS = projectRoot / "Build" / "VS";
+    if (engine_util::FileSystem::Exists(buildVS))
+        engine_util::FileSystem::RemoveAll(buildVS);
+
+    return true;
+}
+
+bool MigrationManager::PatchCMakePresets(const std::filesystem::path& projectRoot, std::string& errorMessage)
+{
+    const std::filesystem::path presetsPath = projectRoot / "CMakePresets.json";
+    if (!engine_util::FileSystem::Exists(presetsPath))
+        return true;
+
+    std::string text;
+    if (!engine_util::FileSystem::ReadText(presetsPath, text)) {
+        errorMessage = "Failed to read CMakePresets.json.";
+        return false;
+    }
+
+    // WHY: cmake preset の cacheVariables は CMakeLists.txt より先にキャッシュへ書き込まれる。
+    //      ここに Development が含まれていないと VS プロジェクトが Debug;Release のみで生成され、
+    //      エディタが --config Development でビルドしたときに MSB8013 が発生する。
+    const std::string oldTypes = "\"Debug;Release\"";
+    const std::string newTypes = "\"Debug;Release;Development\"";
+    if (text.find("Development") != std::string::npos)
+        return true; // すでにパッチ済み
+
+    const size_t pos = text.find(oldTypes);
+    if (pos == std::string::npos)
+        return true; // 期待するパターンがなければスキップ
+
+    text.replace(pos, oldTypes.size(), newTypes);
+
+    // Development ビルドプリセットを追加する
+    const std::string releaseBuildPreset =
+        "    {\n"
+        "      \"name\": \"fbzz-release\",\n"
+        "      \"configurePreset\": \"fbzz-vs\",\n"
+        "      \"configuration\": \"Release\"\n"
+        "    }\n"
+        "  ]";
+    const std::string releasePlusDevPreset =
+        "    {\n"
+        "      \"name\": \"fbzz-release\",\n"
+        "      \"configurePreset\": \"fbzz-vs\",\n"
+        "      \"configuration\": \"Release\"\n"
+        "    },\n"
+        "    {\n"
+        "      \"name\": \"fbzz-development\",\n"
+        "      \"configurePreset\": \"fbzz-vs\",\n"
+        "      \"configuration\": \"Development\"\n"
+        "    }\n"
+        "  ]";
+
+    const size_t releasePos = text.find(releaseBuildPreset);
+    if (releasePos != std::string::npos)
+        text.replace(releasePos, releaseBuildPreset.size(), releasePlusDevPreset);
+
+    if (!engine_util::FileSystem::WriteText(presetsPath, text)) {
+        errorMessage = "Failed to write patched CMakePresets.json.";
+        return false;
+    }
+
+    // WHY: CMakePresets.json の変更は既存の Build/VS には反映されないため削除して再生成させる。
+    const std::filesystem::path buildVS = projectRoot / "Build" / "VS";
+    if (engine_util::FileSystem::Exists(buildVS))
+        engine_util::FileSystem::RemoveAll(buildVS);
+
+    return true;
 }
 
 bool MigrationManager::UpdateProjectVersion(const std::filesystem::path& projectRoot, std::string& errorMessage)

@@ -82,10 +82,14 @@ struct BlendTree1D {
     // パラメーターの急変を時間補間し、Idle / Walk / Run の姿勢が瞬時に切り替わるのを防ぐ。
     // 0 は平滑化なし。値は目標へ約63%近づく時定数（秒）として扱う。
     float                        dampTime = 0.0f;
+    // 全Motionを同じ正規化位相で評価し、Weightが再上昇したClipの位相ジャンプを防ぐ。
+    bool                         syncNormalizedTime = false;
     std::vector<BlendTreeMotion> motions;
     // ランタイム専用。Controller / Scene には保存しない。
     float                        dampedValue = 0.0f;
     bool                         dampedValueInitialized = false;
+    float                        normalizedPhase = 0.0f;
+    bool                         normalizedPhaseInitialized = false;
 };
 
 // 2D BlendTree の座標解釈方式。
@@ -329,8 +333,7 @@ struct AnimatorComponent {
             st->clipIndex < static_cast<int>(clips.size()))
             clip = &clips[static_cast<size_t>(st->clipIndex)];
         if (!clip) return 0.0f;
-        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-        const float dur = static_cast<float>(clip->durationTicks / tps);
+        const float dur = static_cast<float>(clip->GetDurationSeconds());
         return dur > 0.0f ? std::clamp(stateTime / dur, 0.0f, 1.0f) : 0.0f;
     }
 };

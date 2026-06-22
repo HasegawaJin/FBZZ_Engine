@@ -11,12 +11,9 @@
 #include <Engine/Core/IModule.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
-#include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/SceneManager.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
+#include <Engine/Scene/ProjectRuntime.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Physics/World.hpp>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -43,8 +40,6 @@ public:
     void               OnShutdown()     override;
 
 private:
-    renderer::Camera ResolveGameCamera(float aspectRatio) const;
-
     // game.log へ書き出すシンク
     struct FileLogSink final : core::ILogSink {
         std::ofstream file;
@@ -56,12 +51,9 @@ private:
     renderer::ResourceManager&       m_resources;
     const LaunchProject&             m_project;
     const ProjectSettings&           m_settings;
-    std::unique_ptr<scene::Scene>    m_scene;
-    std::unique_ptr<physics::World>  m_physicsWorld;
-    scene::SceneManager              m_sceneManager;
+    scene::ProjectRuntime            m_runtime;
     editor::ScriptDllLoader          m_scriptDll;
     FileLogSink                      m_logSink;
-    scene::UISystemContext           m_uiCtx;
     ImGuiContext*                    m_imguiCtx     = nullptr;
     bool                             m_showProfiler = false;
 };

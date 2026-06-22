@@ -43,6 +43,10 @@ target_link_libraries(fbzz_hub
         shell32
 )
 
+# WHY: GameHub の Open は FBZZEditor.exe を必須とするため、Hub ターゲットだけを
+#      ビルドした場合にも EditorLauncher を同じ出力ディレクトリへ生成する。
+add_dependencies(fbzz_hub fbzz_editor_launcher)
+
 add_custom_command(TARGET fbzz_hub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/Templates"

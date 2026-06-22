@@ -9,16 +9,14 @@
 //   カラーバッファは D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE の両フラグで
 //   生成し、描画先としても SRV としても使用できる "Read-Back テクスチャ" にする。
 //
-//   GetColorTexture() は ITexture インターフェース越しに SRV を渡すため、
-//   上位レイヤーは DX11 の詳細を知らずに DrawCall::textures[] にセットできる。
+//   ResourceManager は DX11Renderer 経由で SRV を ITexture ラッパー化し、
+//   上位レイヤーへは ResourceHandle<TextureTag> として公開する。
 #pragma once
 
 #include <d3d11.h>
 #include <wrl/client.h>
 #include <cstdint>
-#include <memory>
 #include <Engine/Renderer/IRenderTarget.hpp>
-#include "DX11Texture.hpp"
 
 namespace fbzz::renderer
 {
@@ -34,17 +32,16 @@ public:
     uint32_t GetHeight()     const override { return m_height; }
     uint32_t GetColorCount() const override { return m_colorCount; }
 
-    // index 枚目のカラーバッファを DX11Texture として返す (次パスで DrawCall::textures[] にセット)
-    std::shared_ptr<ITexture> GetColorTexture(uint32_t index = 0) const override;
-
-    // 深度バッファを SRV として返す (シャドウマップ等、次パスで t8 にセット)
-    std::shared_ptr<ITexture> GetDepthTexture() const override;
-
     // DX11Renderer::SetRenderTarget() が OMSetRenderTargets に渡す RTV 配列を取得する
     void GetRTVs(ID3D11RenderTargetView** out, uint32_t& count) const;
 
     // DX11Renderer が OMSetRenderTargets に渡す DSV を取得する (DX11 内部用)
     ID3D11DepthStencilView* GetDSV() const { return m_dsv.Get(); }
+
+    // ResourceManager が TextureTag の実体を作るために SRV を借りる。
+    // WHY: RenderTarget 自身に ITexture の shared_ptr を持たせず、所有を ResourcePool に集約するため。
+    ID3D11ShaderResourceView* GetColorSRV(uint32_t index) const;
+    ID3D11ShaderResourceView* GetDepthSRV() const { return m_depthSRV.Get(); }
 
     // ImGui Viewport 用 SRV ポインタ (IRenderTarget 経由で IRenderer が取得する)
     void* GetNativeSRV(int slot = 0) const override { return m_srv[slot].Get(); }
@@ -56,13 +53,11 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_colorBuffer[MAX_COLOR];
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView>   m_rtv[MAX_COLOR];
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv[MAX_COLOR];
-    std::shared_ptr<ITexture>                        m_colorTexture[MAX_COLOR];
 
     // 深度バッファ (全 RT で生成。colorCount=0 の場合はシャドウマップ専用)
     Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_depthBuffer;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView>   m_dsv;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_depthSRV;
-    std::shared_ptr<ITexture>                        m_depthTexture;
 
     uint32_t m_colorCount = 0;
     uint32_t m_width      = 0;

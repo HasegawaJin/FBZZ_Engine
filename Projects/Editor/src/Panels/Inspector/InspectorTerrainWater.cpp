@@ -4,6 +4,8 @@
 #include "InspectorTerrainWater.hpp"
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 
 namespace fbzz::editor {
 
@@ -58,14 +60,39 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 
             // ── グリッド設定 ──────────────────────────────────────────────────
             ImGui::SeparatorText("Grid");
-            if (ImGui::DragInt("Columns",    &tc.columns,   1.0f, 2, 4097))
-                tc.heightDirty = true;
-            if (ImGui::DragInt("Rows",       &tc.rows,      1.0f, 2, 4097))
-                tc.heightDirty = true;
-            if (ImGui::DragFloat("Cell Size",   &tc.cellSize,  0.01f, 0.01f, 100.0f))
-                tc.heightDirty = true;
-            if (ImGui::DragFloat("Max Height",  &tc.maxHeight, 0.5f, 0.5f, 1000.0f))
-                tc.heightDirty = true;
+            // Columns / Rows はドラッグ中に毎フレーム heightDirty を立てると
+            // チャンク全再構築が連続発生して FPS スパイクになる。
+            // さらに heightData のサイズが columns*rows と一致しなくなり assert が火を吹く。
+            // そのため IsItemDeactivatedAfterEdit でドラッグ終了時のみ Resize() を呼ぶ。
+            static int s_pendingCols = -1;
+            static int s_pendingRows = -1;
+            {
+                int cols = (s_pendingCols >= 2) ? s_pendingCols : tc.columns;
+                ImGui::DragInt("Columns", &cols, 1.0f, 2, 4097);
+                if (ImGui::IsItemActive())                s_pendingCols = cols;
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    if (s_pendingCols >= 2 && s_pendingCols != tc.columns)
+                        tc.Resize(s_pendingCols, tc.rows);
+                    tc.heightDirty = tc.splatDirty = tc.colliderDirty = true;
+                    s_pendingCols = -1;
+                }
+            }
+            {
+                int rows = (s_pendingRows >= 2) ? s_pendingRows : tc.rows;
+                ImGui::DragInt("Rows", &rows, 1.0f, 2, 4097);
+                if (ImGui::IsItemActive())                s_pendingRows = rows;
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    if (s_pendingRows >= 2 && s_pendingRows != tc.rows)
+                        tc.Resize(tc.columns, s_pendingRows);
+                    tc.heightDirty = tc.splatDirty = tc.colliderDirty = true;
+                    s_pendingRows = -1;
+                }
+            }
+            // CellSize / MaxHeight はサイズ変化なし。ドラッグ終了時のみ再構築して FPS スパイクを防ぐ。
+            ImGui::DragFloat("Cell Size",  &tc.cellSize,  0.01f, 0.01f, 100.0f);
+            if (ImGui::IsItemDeactivatedAfterEdit()) tc.heightDirty = true;
+            ImGui::DragFloat("Max Height", &tc.maxHeight, 0.5f,  0.5f,  1000.0f);
+            if (ImGui::IsItemDeactivatedAfterEdit()) tc.heightDirty = true;
             ImGui::DragInt("Chunk Size", &tc.chunkSize, 1.0f, 8, 256);
 
             // ── Layer Materials (.mat × 4) ──────────────────────────────────
@@ -136,6 +163,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             if (ImGui::Button("Initialize Flat")) {
                 tc.InitFlat(0.0f);
                 tc.heightDirty  = true;
+                tc.splatDirty   = true;
                 tc.colliderDirty = true;
             }
 
@@ -549,6 +577,76 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 foliage.caches.clear();
                 foliage.needsBake = true;
             }
+        });
+
+    // TerrainGridComponent — グリッド全体の管理設定
+    DrawComponentSection<scene::TerrainGridComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Grid",
+        [](scene::TerrainGridComponent& tgc, EditorContext& ctx) {
+            // グリッドサイズは MapEditorPanel のグリッドビューで変更する
+            ImGui::SeparatorText("Grid");
+            ImGui::Text("Grid Size: %d cols x %d rows  (%d cells total)",
+                tgc.cellCountX, tgc.cellCountZ, tgc.cellCountX * tgc.cellCountZ);
+            ImGui::TextDisabled("Edit grid dimensions in the Map Editor panel.");
+
+            // 新規セル・一括適用のデフォルト設定
+            // WHY: セル個別に同じ設定を繰り返すのを避け、グリッド単位で一貫した地形サイズを保つ。
+            //      新規セル追加時と "Apply to All Cells" の両方がここを参照する。
+            ImGui::SeparatorText("Default Cell Settings");
+            ImGui::TextDisabled("Applied when adding new cells and for batch operations.");
+
+            // Columns / Rows はドラッグ終了時のみ更新
+            // WHY: ドラッグ中毎フレーム更新すると Apply 時に意図しない中間値が残る可能性がある
+            static int s_pendingCols = -1;
+            static int s_pendingRows = -1;
+            {
+                int cols = (s_pendingCols >= 2) ? s_pendingCols : tgc.defaultColumns;
+                ImGui::DragInt("Default Columns", &cols, 1.0f, 2, 4097);
+                if (ImGui::IsItemActive())               s_pendingCols = cols;
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    tgc.defaultColumns = std::max(2, s_pendingCols);
+                    s_pendingCols = -1;
+                }
+            }
+            {
+                int rows = (s_pendingRows >= 2) ? s_pendingRows : tgc.defaultRows;
+                ImGui::DragInt("Default Rows",    &rows, 1.0f, 2, 4097);
+                if (ImGui::IsItemActive())               s_pendingRows = rows;
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    tgc.defaultRows = std::max(2, s_pendingRows);
+                    s_pendingRows = -1;
+                }
+            }
+            ImGui::DragFloat("Default Cell Size",  &tgc.defaultCellSize,  0.01f, 0.01f, 100.0f);
+            ImGui::DragInt  ("Default Chunk Size", &tgc.defaultChunkSize, 1.0f,  8,     256);
+            ImGui::TextDisabled("World size per cell: %.1f m",
+                static_cast<float>(tgc.defaultColumns - 1) * tgc.defaultCellSize);
+
+            // 既存セルへの一括適用
+            ImGui::Spacing();
+            ImGui::SeparatorText("Batch Operations");
+            if (ImGui::Button("Apply Defaults to All Cells")) {
+                if (ctx.activeScene) {
+                    for (const scene::EntityID id : tgc.cells) {
+                        if (!ctx.activeScene->IsValid(id)) continue;
+                        auto* tc = ctx.activeScene->GetComponent<scene::TerrainComponent>(id);
+                        if (!tc) continue;
+                        if (tc->columns != tgc.defaultColumns || tc->rows != tgc.defaultRows)
+                            tc->Resize(tgc.defaultColumns, tgc.defaultRows);
+                        tc->cellSize   = tgc.defaultCellSize;
+                        tc->chunkSize  = tgc.defaultChunkSize;
+                        tc->heightDirty   = true;
+                        tc->colliderDirty = true;
+                    }
+                    ctx.markSceneDirty();
+                }
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip(
+                    "Resize all existing cells to %d x %d\n"
+                    "CellSize = %.2f, ChunkSize = %d\n"
+                    "WARNING: height data on resized cells will be discarded.",
+                    tgc.defaultColumns, tgc.defaultRows,
+                    tgc.defaultCellSize, tgc.defaultChunkSize);
         });
 
 }

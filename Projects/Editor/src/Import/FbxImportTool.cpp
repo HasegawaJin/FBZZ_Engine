@@ -8,6 +8,7 @@
 #include <Editor/Import/AnimSubExporter.hpp>
 #include <Editor/Import/MatSubExporter.hpp>
 #include <Editor/Import/ModelSubExporter.hpp>
+#include <Editor/Import/SkelSubExporter.hpp>
 #include <Editor/Import/TexSubExporter.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/config.h>
@@ -59,6 +60,7 @@ std::vector<std::unique_ptr<IFbxSubExporter>> FbxImportTool::BuildPipeline()
 {
     std::vector<std::unique_ptr<IFbxSubExporter>> pipeline;
     pipeline.push_back(std::make_unique<ModelSubExporter>());
+    pipeline.push_back(std::make_unique<SkelSubExporter>());
     pipeline.push_back(std::make_unique<AnimSubExporter>());
     pipeline.push_back(std::make_unique<MatSubExporter>());
     pipeline.push_back(std::make_unique<TexSubExporter>());

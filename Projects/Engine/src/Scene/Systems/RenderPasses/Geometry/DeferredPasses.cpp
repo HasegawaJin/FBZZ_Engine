@@ -97,10 +97,13 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
 
     ShadowConstantsCB shadowData{};
+    const float shadowTexelSize      = 1.0f / static_cast<float>(ctx.settings.shadow.mapResolution);
     shadowData.lightViewProjection   = ctx.lightVP;
-    shadowData.shadowMapTexelSize[0] = 1.0f / static_cast<float>(kShadowMapSize);
-    shadowData.shadowMapTexelSize[1] = 1.0f / static_cast<float>(kShadowMapSize);
-    shadowData.shadowBias            = 0.005f;
+    shadowData.shadowMapTexelSize[0] = shadowTexelSize;
+    shadowData.shadowMapTexelSize[1] = shadowTexelSize;
+    shadowData.shadowBias            = ctx.shadowBiasNDC;
+    shadowData.shadowStrength        = ctx.shadowStrength;
+    shadowData.shadowPcfRadius       = ctx.settings.shadow.pcfRadius;
     resources.Update(h.shadowCB, &shadowData, sizeof(ShadowConstantsCB));
 
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);

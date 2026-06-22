@@ -5,6 +5,7 @@
 // ゲーム側はファイルパス・ループ有無・音量だけを扱う。
 #include "Engine/Audio/AudioManager.hpp"
 #include "Engine/Core/Logger.hpp"
+#include <Engine/Util/StringUtils.hpp>
 #include <fstream>
 #include <cstring>
 #include <cassert>
@@ -17,20 +18,6 @@
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
-
-namespace {
-
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-} // namespace
 
 namespace fbzz::audio
 {
@@ -193,7 +180,7 @@ bool AudioManager::LoadWithMediaFoundation(const std::string& path, WavBuffer& o
 {
     // WHY: AudioSource の path は UTF-8 として扱う。日本語フォルダへ移動した配布版でも
     //      Media Foundation が正しい Unicode パスを受け取れるようにする。
-    std::wstring wpath = Utf8ToWide(path);
+    std::wstring wpath = fbzz::util::StringUtils::ToWide(path);
 
     Microsoft::WRL::ComPtr<IMFSourceReader> reader;
     HRESULT hr = MFCreateSourceReaderFromURL(wpath.c_str(), nullptr, &reader);

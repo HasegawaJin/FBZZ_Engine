@@ -144,10 +144,19 @@ enum class ViewMode : uint8_t {
     WireframeUnlit  = 3,
 };
 
+// ShadowSettings — シャドウマップ品質の一元管理。
+// WHY: 解像度と PCF 半径はシャドウの精細度と GPU コストのトレードオフ。
+//      シーン単位で調整できるよう RenderSettings に持たせる。
+struct ShadowSettings {
+    uint32_t mapResolution = 8192u; // シャドウマップ解像度 (512/1024/2048/4096/8192)
+    int      pcfRadius     = 2;     // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+};
+
 struct RenderSettings {
     RenderingPipeline pipeline  = RenderingPipeline::Forward;
     ViewMode          viewMode  = ViewMode::Lit;
     bool shadowEnabled = true;
+    ShadowSettings shadow;
     bool showColliders        = false;
     bool showTerrainCollision = false;
     bool showDecalBounds      = false;

@@ -5,7 +5,7 @@
 // Component 操作の template 本体は Scene.hpp 側に置く。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/SceneManager.hpp"
-#include "Engine/Core/Application.hpp"
+#include "Engine/Scene/ScriptRuntime.hpp"
 #include <algorithm>
 #include <cassert>
 
@@ -104,22 +104,30 @@ GameObject* GameObject::GetChild(int index) const
     return m_scene->GetGameObject(m_children[index]);
 }
 
+namespace {
+    inline Scene* GetActiveScene()
+    {
+        auto* mgr = ScriptRuntime::GetCurrent().sceneManager;
+        return mgr ? mgr->GetActive() : nullptr;
+    }
+}
+
 GameObject* GameObject::Find(const std::string& n)
 {
-    auto* scene = core::Application::Get().GetSceneManager().GetActive();
-    return scene ? scene->Find(n) : nullptr;
+    auto* s = GetActiveScene();
+    return s ? s->Find(n) : nullptr;
 }
 
 GameObject* GameObject::FindByGuid(const std::string& guid)
 {
-    auto* scene = core::Application::Get().GetSceneManager().GetActive();
-    return scene ? scene->FindByGuid(guid) : nullptr;
+    auto* s = GetActiveScene();
+    return s ? s->FindByGuid(guid) : nullptr;
 }
 
 GameObject* GameObject::FindWithTag(const std::string& t)
 {
-    auto* scene = core::Application::Get().GetSceneManager().GetActive();
-    return scene ? scene->FindWithTag(t) : nullptr;
+    auto* s = GetActiveScene();
+    return s ? s->FindWithTag(t) : nullptr;
 }
 
 void GameObject::Destroy(GameObject& go, float delay)
