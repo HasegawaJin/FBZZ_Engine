@@ -47,6 +47,7 @@ void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_com
     DrawComponentSection<scene::UIImage>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Image",
         [](scene::UIImage& image, EditorContext&) {
             // 位置・サイズは Transform で管理 (上の Transform セクションを参照)
+            ImGui::DragInt("Sort Order", &image.sortOrder);
             float color[4] = { image.color.x, image.color.y, image.color.z, image.color.w };
             if (ImGui::ColorEdit4("Color", color))
                 image.color = { color[0], color[1], color[2], color[3] };
@@ -83,6 +84,7 @@ void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_com
     DrawComponentSection<scene::UIText>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Text",
         [](scene::UIText& text, EditorContext&) {
             // 位置は Transform で管理
+            ImGui::DragInt("Sort Order", &text.sortOrder);
             char textBuf[512];
             std::snprintf(textBuf, sizeof(textBuf), "%s", text.text.c_str());
             if (ImGui::InputText("Text", textBuf, sizeof(textBuf)))
