@@ -3,23 +3,30 @@
 // スクリプト静的登録 (RuntimeBuild Standalone exe 用)
 //
 // WHAT: RegisterScripts() は editor / standalone どちらの起動でも呼ばれる。
-//       ScriptCodeGen が新規スクリプト生成時に @@FBZZ_SCRIPT_INCLUDES_BEGIN/END と
-//       @@FBZZ_SCRIPT_ENTRIES_BEGIN/END の間に自動追記する。
-//       エントリポイント (main) は AppMain.cpp にある — ここには書かないこと。
+//       ScriptCodeGen が新規スクリプト生成時に @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間に
+//       #include を自動追記する。エントリポイント (main) は AppMain.cpp にある。
 //
-// WHY (DLL と静的の二重登録):
+// WHY (EXE / DLL エントリ一元管理):
 //   エディタのホットリロードは {{TARGET_NAME}}Scripts.dll をロードして ScriptFactory を更新する。
-//   RuntimeBuild Standalone exe は DLL をロードせず、ここの FBZZ_REGISTER_SCRIPT で解決する。
-//   ScriptCodeGen は両方のファイルを自動更新するため、手動同期は不要。
+//   RuntimeBuild Standalone exe は DLL をロードせず、FBZZ_REGISTER_SCRIPT で解決する。
+//   登録エントリは Assets/Scripts/ScriptList.inl (X-macro ファイル) で一元管理されるため、
+//   ScriptCodeGen は ScriptList.inl のみを更新すればよく、このファイルのエントリは手動編集不要。
 #include "{{TARGET_NAME}}/ProjectAPI.hpp"
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Scene.hpp>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+#include "Scripts/PlayerControllerComponent.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
+#include "Scripts/SceneManagerScript.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
-// @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// @@FBZZ_SCRIPT_ENTRIES_END
+// WHY: エントリは Assets/Scripts/ScriptList.inl で一元管理する。
+//      ScriptCodeGen は ScriptList.inl だけを更新するため、このファイルのエントリを手動編集する必要はない。
+//      FBZZ_SCRIPT_ENTRY(ns, T) → FBZZ_REGISTER_SCRIPT(::ns::T) に展開される。
+#define FBZZ_SCRIPT_ENTRY(ns, T) FBZZ_REGISTER_SCRIPT(::ns::T)
+#include "Scripts/ScriptList.inl"
+#undef FBZZ_SCRIPT_ENTRY
 
 namespace {{CPP_NAMESPACE}} {
 

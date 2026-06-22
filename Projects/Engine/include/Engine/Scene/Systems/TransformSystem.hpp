@@ -50,4 +50,15 @@ public:
     RunMode          GetRunMode() const override { return RunMode::Always; }
 };
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ユーティリティ関数
+// ──────────────────────────────────────────────────────────────────────────────
+
+class Scene;
+
+/// シーン内の全オブジェクトのワールド Transform を即時再計算する。
+/// スケジューラを経由せず直接 BFS を走らせるため、シーンロード直後や Stop 復元後など
+/// System 実行前にワールド値が必要な場合に使う。
+void FlushWorldTransforms(Scene& scene);
+
 } // namespace fbzz::scene

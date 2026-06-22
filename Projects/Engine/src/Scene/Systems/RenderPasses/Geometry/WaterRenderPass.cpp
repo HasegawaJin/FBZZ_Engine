@@ -457,6 +457,30 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     return cb;
 }
 
+WaterEffectParams BuildWaterEffectParams(const asset::MaterialAsset* mat)
+{
+    WaterEffectParams params{};
+    params.rimGlowStrength    = WGetF(mat, "rimGlowStrength",    params.rimGlowStrength);
+    params.minShallowAlpha    = WGetF(mat, "minShallowAlpha",    params.minShallowAlpha);
+    params.specularStrength   = WGetF(mat, "specularStrength",   params.specularStrength);
+    params.specularExponent   = WGetF(mat, "specularExponent",   params.specularExponent);
+    const math::Vector3 skyTint = WGetF3(mat, "skyReflectTint", {
+        params.skyReflectTint[0], params.skyReflectTint[1], params.skyReflectTint[2]
+    });
+    params.skyReflectTint[0] = skyTint.x;
+    params.skyReflectTint[1] = skyTint.y;
+    params.skyReflectTint[2] = skyTint.z;
+    params.envMapBlend = WGetF(mat, "envMapBlend", params.envMapBlend);
+    const math::Vector3 rippleColor = WGetF3(mat, "rippleRingColor", {
+        params.rippleRingColor[0], params.rippleRingColor[1], params.rippleRingColor[2]
+    });
+    params.rippleRingColor[0] = rippleColor.x;
+    params.rippleRingColor[1] = rippleColor.y;
+    params.rippleRingColor[2] = rippleColor.z;
+    params.rippleRingStrength = WGetF(mat, "rippleRingStrength", params.rippleRingStrength);
+    return params;
+}
+
 bool AabbVisible(const math::Frustum& frustum, const math::Vector3& tfPos,
                  const math::Vector3& localMin, const math::Vector3& localMax)
 {
@@ -593,6 +617,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         resources.Update(h, &defaults, sizeof(WaterEffectParams));
         return h;
     }();
+    static auto waterEffectCBH = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
     static auto flatNormalTex = [&] {
         const uint8_t n[4] = { 128, 128, 255, 255 };
         return resources.CreateTexture(n, 1, 1);
@@ -618,11 +643,16 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     // WHY: Water shader reads HDR as scene color for refraction; we must copy it before
     //      binding hdrRT as the output RT, since DX11 prohibits simultaneous read/write.
     static auto copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    static auto depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     static renderer::ResourceHandle<renderer::RenderTargetTag> s_sceneColorRT;
+    static renderer::ResourceHandle<renderer::RenderTargetTag> s_sceneDepthRT;
     static uint32_t s_sceneColorW = 0, s_sceneColorH = 0;
-    if (ctx.width != s_sceneColorW || ctx.height != s_sceneColorH || !s_sceneColorRT.IsValid()) {
+    if (ctx.width != s_sceneColorW || ctx.height != s_sceneColorH
+        || !s_sceneColorRT.IsValid() || !s_sceneDepthRT.IsValid()) {
         if (s_sceneColorRT.IsValid()) resources.Release(s_sceneColorRT);
+        if (s_sceneDepthRT.IsValid()) resources.Release(s_sceneDepthRT);
         s_sceneColorRT = resources.CreateRenderTarget(ctx.width, ctx.height, 1);
+        s_sceneDepthRT = resources.CreateRenderTarget(ctx.width, ctx.height, 0);
         s_sceneColorW = ctx.width;
         s_sceneColorH = ctx.height;
     }
@@ -637,6 +667,21 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         renderer.Submit(copyDC, resources);
     }
     const auto sceneColor = resources.GetColorTexture(s_sceneColorRT, 0);
+
+    // WHAT: HDR の depth を Water 専用の深度 RT へコピーし、PS ではその SRV を読む。
+    // WHY: hdrRT を RTV/DSV として Water 描画に使いながら同じ depth を SRV(t5) で読むと
+    //      DX11 の read/write 競合で SRV が解除され、背景判定・水深・泡が破綻する。
+    renderer.SetRenderTarget(s_sceneDepthRT, resources);
+    renderer.ClearDepth();
+    if (depthCopyShader.IsValid()) {
+        renderer::DrawCall depthDC;
+        depthDC.shader = depthCopyShader;
+        depthDC.pipelineState = ctx.handles.defaultPSO;
+        depthDC.vertexCount = 3;
+        depthDC.textures[7] = resources.GetDepthTexture(ctx.handles.hdrRT);
+        renderer.Submit(depthDC, resources);
+    }
+    const auto sceneDepth = resources.GetDepthTexture(s_sceneDepthRT);
 
     renderer.SetRenderTarget(ctx.handles.hdrRT, resources);
 
@@ -796,10 +841,16 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         resources.Update(waterCBH, &cb, sizeof(cb));
 
         auto effectCBH = defaultEffectCBH;
+        if (waterEffectCBH.IsValid()) {
+            const WaterEffectParams effectParams = BuildWaterEffectParams(mat);
+            resources.Update(waterEffectCBH, &effectParams, sizeof(effectParams));
+            effectCBH = waterEffectCBH;
+        }
 
         const WaterTextures& textures = s_texCache.at(eid.index);
         // WHY: outputRT を RTV/DSV としてバインドしたまま、その depth を SRV(t5) として読むことは DX11 で禁止。
-        const renderer::ResourceHandle<renderer::TextureTag> depthTex = {};
+        //      Water パス開始時にコピーした depth を読むことで、背景・水深判定を安定させる。
+        const renderer::ResourceHandle<renderer::TextureTag> depthTex = sceneDepth;
         const renderer::ResourceHandle<renderer::TextureTag> colorTex =
             sceneColor.IsValid() ? sceneColor : blackTex;
         const renderer::ResourceHandle<renderer::TextureTag> rippleTex =

@@ -6,23 +6,19 @@
 //      これにより Profiler::BeginFrame/EndFrame・MemorySystem・
 //      Input::Update・PollEvents などフレーム境界処理がエンジン側で統一される。
 #include "StandaloneApp.hpp"
-#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Profiler/Profiler.hpp>
-#include <Engine/Scene/Components/CameraComponent.hpp>
-#include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Physics/World.hpp>
 #include <imgui.h>
 #include <chrono>
 #include <ctime>
@@ -74,13 +70,6 @@ bool StandaloneApp::OnInit()
         core::Logger::AddSink(&m_logSink);
     }
 
-    m_scene        = std::make_unique<scene::Scene>();
-    m_physicsWorld = std::make_unique<physics::World>();
-
-    m_physicsWorld->SetGravity(m_settings.physics.gravity);
-    m_physicsWorld->SetSubsteps(m_settings.physics.substeps);
-    scene::UISystemSetDefaultFontPath(m_uiCtx, m_settings.ui.defaultFontPath);
-
     // WHY: スクリプト DLL はシーンロードより前にロードしなければならない。
     //      SceneSerializer がシーン内の ScriptComponent を復元する際に
     //      ScriptFactory からファクトリ関数を引くため、DLL が未ロードだと
@@ -103,14 +92,12 @@ bool StandaloneApp::OnInit()
             scriptsDllPath.wstring().c_str());
     }
 
-    if (!editor::SceneIO::Load(*m_scene, m_project.sceneFile.string())) {
-        FBZZ_LOG_ERROR("StandaloneApp: シーンのロードに失敗: %s", m_project.sceneFile.string().c_str());
-        return false;
-    }
-    FBZZ_LOG_INFO("StandaloneApp: シーンロード完了: %s", m_project.sceneFile.string().c_str());
-
-    m_sceneManager.SetScene(m_scene.get());
-    m_sceneManager.SetPhysicsHz(m_settings.physics.hz);
+    m_runtime.ApplySettings(m_settings);
+    m_runtime.RegisterScenes(m_project.root, m_resources);
+    m_runtime.LoadScene(m_project.sceneFile);
+    auto& app = core::Application::Get();
+    m_runtime.ActivateScriptRuntime(
+        m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
 
     // プロファイラオーバーレイ用 ImGui を初期化する。
     // WHY: StandaloneApp は EditorApp を使わないため ImGui コンテキストが存在しない。
@@ -129,13 +116,12 @@ void StandaloneApp::OnUpdate(float dt)
     if (input::Input::KeyDown(input::KeyCode::F3))
         m_showProfiler = !m_showProfiler;
 
-    scene::Script::SetPhysicsWorld(m_physicsWorld.get());
-    m_sceneManager.Update(dt, *m_physicsWorld);
+    m_runtime.Update(dt, m_settings, true);
 }
 
 void StandaloneApp::OnLateUpdate(float dt)
 {
-    m_sceneManager.LateUpdate(dt, *m_physicsWorld);
+    m_runtime.LateUpdate(dt);
 }
 
 void StandaloneApp::OnRender()
@@ -147,8 +133,17 @@ void StandaloneApp::OnRender()
     m_renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
 
     const auto [w, h] = std::make_pair(app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
+    m_runtime.UpdateScriptViewport(w, h);
     const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
-    const renderer::Camera gameCamera = ResolveGameCamera(aspect);
+
+    // WHY: LoadScene によるシーン遷移後は SceneManager が新しい Scene を所有するため、
+    //      ProjectRuntimeのActive Sceneを参照し、遷移前Sceneを描き続けないようにする。
+    scene::Scene* activeScene = m_runtime.GetActiveScene();
+    if (!activeScene) {
+        { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
+        return;
+    }
+    const renderer::Camera gameCamera = scene::ResolveGameCamera(*activeScene, aspect);
 
     scene::RenderSystemUIOptions uiOptions{};
     uiOptions.enabled            = true;
@@ -157,8 +152,8 @@ void StandaloneApp::OnRender()
     uiOptions.mouseInCanvasSpace = input::Input::MousePosition();
     uiOptions.mousePressed       = input::Input::MouseButton(0);
     uiOptions.targetView         = scene::UIRenderTargetView::GameViewport;
-    uiOptions.context            = &m_uiCtx;
-    scene::RenderSystem(*m_scene, m_renderer, m_resources, gameCamera, {}, &m_settings.render,
+    uiOptions.context            = &m_runtime.GetGameUIContext();
+    scene::RenderSystem(*activeScene, m_renderer, m_resources, gameCamera, {}, &m_settings.render,
                         fbzz::Layer::Everything, &uiOptions);
 
     // ── プロファイラオーバーレイ (F3 で表示) ────────────────────────────────
@@ -223,9 +218,9 @@ void StandaloneApp::OnShutdown()
 {
     // WHY: FreeLibrary より先に Scene を破棄しないと、DLL 内の仮想デストラクタが
     //      解放済みコードを呼んでアクセス違反になる。
-    m_scriptDll.Unload(m_scene.get());
-    m_scene.reset();
-    m_physicsWorld.reset();
+    m_runtime.Shutdown();
+    // ProjectRuntimeがScriptインスタンスを破棄済みなので、DLL Loader側では二重破棄しない。
+    m_scriptDll.Unload(nullptr);
 
     if (m_imguiCtx) {
         m_imguiRenderer.ImGuiShutdown();
@@ -234,29 +229,6 @@ void StandaloneApp::OnShutdown()
     }
 
     core::Logger::RemoveSink(&m_logSink);
-}
-
-renderer::Camera StandaloneApp::ResolveGameCamera(float aspectRatio) const
-{
-    for (auto& go : m_scene->GameObjects()) {
-        auto* cam = go.GetComponent<scene::CameraComponent>();
-        if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
-
-        renderer::Camera result;
-        result.m_position = go.transform.position;
-        result.m_rotation = go.transform.rotation;
-        result.m_fovY     = cam->fovY;
-        result.m_near     = cam->nearZ;
-        result.m_far      = cam->farZ;
-        // WHY: ScriptCameraProxy が Component から同じ投影値を再構築できるよう、実 viewport aspect を同期する。
-        cam->aspectRatio  = aspectRatio;
-        result.m_aspect   = cam->aspectRatio;
-        return result;
-    }
-
-    renderer::Camera fallback;
-    fallback.m_aspect = aspectRatio;
-    return fallback;
 }
 
 } // namespace fbzz::editor_launcher

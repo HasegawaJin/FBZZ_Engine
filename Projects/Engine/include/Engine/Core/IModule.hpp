@@ -17,7 +17,10 @@ public:
     [[nodiscard]] virtual bool OnInit() = 0;
 
     /// 毎フレーム呼ばれる主更新フェーズ。
-    /// スクリプト、入力後のゲームロジック、固定タイムステップ物理などを実行する。
+    /// ホスト固有のフレーム処理を実行する。
+    /// WHY: プロジェクトのScene/Script/Physics更新順はProjectRuntimeへ集約する。
+    ///      ModuleがSceneManagerやWorldを直接駆動するとEditor/Standalone差異が再発するため、
+    ///      ゲームSimulationを持つModuleはProjectRuntime::Update()へ委譲すること。
     virtual void OnUpdate(float dt) = 0;
 
     /// OnUpdate() の後に呼ばれる遅延更新フェーズ。

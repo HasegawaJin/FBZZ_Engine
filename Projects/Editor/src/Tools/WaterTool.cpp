@@ -3,7 +3,11 @@
 // WaterTool の実装: ビューポート可視化・アセット管理・波エディタ UI
 #include "WaterTool.hpp"
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/TerrainWaterDefaults.hpp>
 #include <imgui_internal.h>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/MathUtils.hpp>
@@ -12,6 +16,9 @@
 #include <cassert>
 #include <cmath>
 #include <imgui.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -38,10 +45,126 @@ bool IsOnScreen(const ImVec2& p, const ImVec2& vpMin, const ImVec2& vpSize)
         && p.y > vpMin.y - 1.0f && p.y < vpMin.y + vpSize.y + 1.0f;
 }
 
-std::string NormalizeAssetPath(std::string path)
+std::string NormalizeWaterAssetPath(std::string path)
 {
     for (char& c : path) if (c == '\\') c = '/';
     return path;
+}
+
+std::vector<float>& EnsureParam(asset::MaterialAsset& mat, const char* key, size_t count)
+{
+    auto& values = mat.params[key];
+    if (values.size() != count)
+        values.assign(count, 0.0f);
+    return values;
+}
+
+void SetParam1(asset::MaterialAsset& mat, const char* key, float x)
+{
+    auto& v = EnsureParam(mat, key, 1);
+    v[0] = x;
+}
+
+void SetParam2(asset::MaterialAsset& mat, const char* key, float x, float y)
+{
+    auto& v = EnsureParam(mat, key, 2);
+    v[0] = x;
+    v[1] = y;
+}
+
+void SetParam3(asset::MaterialAsset& mat, const char* key, float x, float y, float z)
+{
+    auto& v = EnsureParam(mat, key, 3);
+    v[0] = x;
+    v[1] = y;
+    v[2] = z;
+}
+
+asset::MaterialAsset* LoadWaterMaterial(scene::WaterComponent& water)
+{
+    if (water.materialPath.empty())
+        return nullptr;
+    const auto handle = asset::AssetManager::LoadMaterial(water.materialPath);
+    return asset::AssetManager::GetMaterial(handle);
+}
+
+bool SaveWaterMaterial(scene::WaterComponent& water, const std::string& projectRoot)
+{
+    asset::MaterialAsset* mat = LoadWaterMaterial(water);
+    if (!mat)
+        return false;
+    return asset::SaveMaterialAssetToFile(ToProjectAssetDiskPath(projectRoot, water.materialPath), *mat);
+}
+
+void MarkWaterVisualDirty(scene::WaterComponent& water)
+{
+    water.texDirty = true;
+    water.foamDirty = true;
+}
+
+void ApplyWaterLookPreset(scene::WaterComponent& water, const std::string& projectRoot, int preset)
+{
+    asset::MaterialAsset* mat = LoadWaterMaterial(water);
+    if (!mat)
+        return;
+
+    if (preset == 0) {
+        SetParam3(*mat, "shallowColor", 0.09f, 0.56f, 0.63f);
+        SetParam3(*mat, "deepColor",    0.00f, 0.14f, 0.32f);
+        SetParam1(*mat, "shallowDepth", 1.20f);
+        SetParam1(*mat, "deepDepth",    8.00f);
+        SetParam1(*mat, "opacity",      0.55f);
+        SetParam1(*mat, "reflectivity", 0.42f);
+        SetParam1(*mat, "fresnelPower", 4.20f);
+        SetParam1(*mat, "refractionStrength", 0.020f);
+        SetParam1(*mat, "normalStrength", 0.75f);
+        SetParam1(*mat, "foamStrength", 0.55f);
+        SetParam1(*mat, "rimGlowStrength", 0.32f);
+        SetParam1(*mat, "minShallowAlpha", 0.48f);
+        SetParam1(*mat, "specularStrength", 0.65f);
+        SetParam1(*mat, "specularExponent", 96.0f);
+        SetParam3(*mat, "skyReflectTint", 0.48f, 0.78f, 0.92f);
+        SetParam1(*mat, "envMapBlend", 0.28f);
+    } else if (preset == 1) {
+        SetParam3(*mat, "shallowColor", 0.16f, 0.48f, 0.58f);
+        SetParam3(*mat, "deepColor",    0.02f, 0.08f, 0.18f);
+        SetParam1(*mat, "shallowDepth", 0.65f);
+        SetParam1(*mat, "deepDepth",    4.50f);
+        SetParam1(*mat, "opacity",      0.68f);
+        SetParam1(*mat, "reflectivity", 0.28f);
+        SetParam1(*mat, "fresnelPower", 5.50f);
+        SetParam1(*mat, "refractionStrength", 0.012f);
+        SetParam1(*mat, "normalStrength", 0.35f);
+        SetParam1(*mat, "foamStrength", 0.18f);
+        SetParam1(*mat, "rimGlowStrength", 0.22f);
+        SetParam1(*mat, "minShallowAlpha", 0.56f);
+        SetParam1(*mat, "specularStrength", 0.38f);
+        SetParam1(*mat, "specularExponent", 128.0f);
+        SetParam3(*mat, "skyReflectTint", 0.42f, 0.70f, 0.82f);
+        SetParam1(*mat, "envMapBlend", 0.20f);
+    } else {
+        SetParam3(*mat, "shallowColor", 0.06f, 0.38f, 0.34f);
+        SetParam3(*mat, "deepColor",    0.01f, 0.10f, 0.09f);
+        SetParam1(*mat, "shallowDepth", 0.40f);
+        SetParam1(*mat, "deepDepth",    2.25f);
+        SetParam1(*mat, "opacity",      0.62f);
+        SetParam1(*mat, "reflectivity", 0.18f);
+        SetParam1(*mat, "fresnelPower", 6.50f);
+        SetParam1(*mat, "refractionStrength", 0.018f);
+        SetParam1(*mat, "normalStrength", 0.50f);
+        SetParam1(*mat, "foamStrength", 0.28f);
+        SetParam2(*mat, "normalMap1Scroll", 0.00f, 0.035f);
+        SetParam2(*mat, "normalMap2Scroll", 0.015f, 0.045f);
+        SetParam1(*mat, "rimGlowStrength", 0.18f);
+        SetParam1(*mat, "minShallowAlpha", 0.52f);
+        SetParam1(*mat, "specularStrength", 0.30f);
+        SetParam1(*mat, "specularExponent", 80.0f);
+        SetParam3(*mat, "skyReflectTint", 0.38f, 0.62f, 0.58f);
+        SetParam1(*mat, "envMapBlend", 0.16f);
+    }
+
+    MarkWaterVisualDirty(water);
+    (void)SaveWaterMaterial(water, projectRoot);
 }
 
 } // namespace
@@ -198,7 +321,26 @@ void WaterTool::DrawContent(
     for (scene::EntityID eid : scene.GetEntities<scene::WaterComponent>())
         if (auto* w = scene.GetComponent<scene::WaterComponent>(eid))
             if (w->enabled) { hasWater = true; break; }
-    if (!hasWater) { ImGui::TextDisabled("No WaterComponent in scene."); return; }
+    if (!hasWater) {
+        ImGui::TextDisabled("No WaterComponent in scene.");
+        if (ImGui::Button("Create Water", { -1.0f, 0.0f })) {
+            auto& go = scene.CreateGameObject("Water");
+            scene::WaterComponent water{};
+            water.resolutionX = 96;
+            water.resolutionZ = 96;
+            water.extentX = 80.0f;
+            water.extentZ = 80.0f;
+            water.chunkCount = 4;
+            water.materialPath = DefaultWaterMaterialPath();
+            water.meshDirty = true;
+            water.foamDirty = true;
+            water.texDirty = true;
+            go.AddComponent<scene::WaterComponent>(std::move(water));
+            if (markDirty)
+                markDirty();
+        }
+        return;
+    }
 
     // ON/OFF は NatureTool 側で管理するため、ここでは m_active を参照せず常に表示
     DrawContentBody(scene, projectRoot, markDirty, undoStack);
@@ -249,6 +391,8 @@ void WaterTool::DrawContentBody(
         DrawAssetSection(*water, "", projectRoot, trackDirty);
         ImGui::Spacing();
         DrawPresets(*water, trackDirty);
+        ImGui::Spacing();
+        DrawLookPresets(*water, projectRoot, trackDirty);
         ImGui::Spacing();
         DrawWaveEditor(*water, trackDirty);
 
@@ -341,14 +485,16 @@ void WaterTool::DrawAssetSection(
     std::snprintf(buf, sizeof(buf), "%s", water.materialPath.c_str());
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputText("##water_mat", buf, sizeof(buf))) {
-        water.materialPath = NormalizeAssetPath(buf);
+        water.materialPath = NormalizeWaterAssetPath(buf);
+        MarkWaterVisualDirty(water);
         markDirty();
     }
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
+            std::string dropped = NormalizeWaterAssetPath(static_cast<const char*>(p->Data));
             if (util::StringUtils::EndsWith(dropped, ".mat")) {
                 water.materialPath = dropped;
+                MarkWaterVisualDirty(water);
                 markDirty();
             }
         }
@@ -413,6 +559,33 @@ void WaterTool::DrawPresets(
 // =============================================================================
 // 波エディタセクション
 // =============================================================================
+
+void WaterTool::DrawLookPresets(
+    scene::WaterComponent&       water,
+    const std::string&           projectRoot,
+    const std::function<void()>& markDirty) const
+{
+    ImGui::SeparatorText("Look Presets");
+    if (water.materialPath.empty()) {
+        ImGui::TextDisabled("Assign a water .mat to edit visual presets.");
+        return;
+    }
+
+    if (ImGui::Button("Clear Coastal", { -1.0f, 0.0f })) {
+        ApplyWaterLookPreset(water, projectRoot, 0);
+        markDirty();
+    }
+    if (ImGui::Button("Calm Lake", { -1.0f, 0.0f })) {
+        ApplyWaterLookPreset(water, projectRoot, 1);
+        markDirty();
+    }
+    if (ImGui::Button("River Green", { -1.0f, 0.0f })) {
+        ApplyWaterLookPreset(water, projectRoot, 2);
+        markDirty();
+    }
+
+    ImGui::TextDisabled("Updates the referenced .mat and refreshes water textures.");
+}
 
 void WaterTool::DrawWaveEditor(
     scene::WaterComponent&       water,

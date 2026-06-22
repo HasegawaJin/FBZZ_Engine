@@ -232,16 +232,22 @@ bool BuildPipeline::ExecuteStep()
 
         const std::array<std::wstring, 5> runtimeDlls = {
             L"imgui.dll",
-            L"fbzz_math.dll",
-            L"fbzz_physics.dll",
-            L"fbzz_engine.dll",
+            // WHY: 各共有ライブラリの CMake OUTPUT_NAME に合わせる。
+            //      名前が異なるとコピー元が見つからず、配布物の起動時に DLL 不足となる。
+            L"FBZZMath.dll",
+            L"FBZZPhysics.dll",
+            L"FBZZEngine.dll",
             assimpDLL,
         };
 
         for (const std::wstring& dllName : runtimeDlls) {
             const std::filesystem::path src = exeDir / dllName;
             if (!util::FileSystem::Exists(src)) {
-                continue;
+                // WHAT: 実行に必須の DLL がないパッケージを成功扱いにしない。
+                // WHY: コピーを黙ってスキップすると、Build complete 表示後の起動時にだけ
+                //      DLL 不足が発覚し、原因となったビルド工程を特定しにくいため。
+                SetFailed("Required runtime DLL not found: " + util::FileSystem::PathToUtf8(src));
+                return false;
             }
 
             if (!util::FileSystem::CopyFile(src, m_tmpDir / dllName)) {

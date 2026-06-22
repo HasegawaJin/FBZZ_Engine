@@ -42,11 +42,12 @@ struct AnimEvent {
 
 struct AnimationClip {
     std::string name;
-    // durationTicks / ticksPerSecond: Assimp 直ロードと旧 .anim v1 用フィールド（後方互換）
+    // durationSeconds: 最新 .anim v2 の正規化済み再生長。AnimatorSystem はこの値だけを遷移時間に使う。
+    double durationSeconds = 0.0;
+    // durationTicks / ticksPerSecond はキー時刻を tick 空間でサンプリングするための補助値。
+    // WHY: v2 でも key.time は exporter 元の tick 単位を保持するため、秒→tick 変換係数が必要になる。
     double durationTicks  = 0.0;
     double ticksPerSecond = 30.0;
-    // durationSeconds: .anim バイナリローダーが直接設定する（優先）
-    double durationSeconds = -1.0; // -1 = 未設定（durationTicks/ticksPerSecond から計算）
     float  frameRate       = 30.0f;
     bool   loop            = false;
     bool   hasRootMotion   = false;
@@ -55,11 +56,9 @@ struct AnimationClip {
     std::vector<NodeAnimationTrack> tracks;
     std::vector<AnimEvent>          events;
 
-    // AnimatorSystem 用: 実際の再生秒数を返す
+    // AnimatorSystem 用: 最新仕様の正規化済み再生秒数を返す。
     double GetDurationSeconds() const {
-        if (durationSeconds >= 0.0) return durationSeconds;
-        const double tps = ticksPerSecond > 0.0 ? ticksPerSecond : 30.0;
-        return durationTicks / tps;
+        return durationSeconds;
     }
 };
 

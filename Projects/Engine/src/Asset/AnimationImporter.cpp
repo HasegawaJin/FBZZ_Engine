@@ -1,22 +1,18 @@
 // FBZZ Engine
 // AnimationImporter.cpp | fbzz::asset
 // .anim バイナリ v2 → AnimationClip デシリアライザ
-// v1 (旧アニメ形式): FzAnimHeader (version=1) → durationTicks/ticksPerSecond
-// v2 (新設計):                  FzAnimHeaderV2 (version=2) → durationSeconds, events, interp per track
+// WHAT: v2 の durationSeconds / events / track interp を正とし、旧 v1 形式は読み込まない。
 #include <Engine/Asset/AnimationImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
-#include <cstring>
-#include <vector>
 
 namespace fbzz::asset {
 
 namespace {
 
-// .anim v2 固有の追加ヘッダー (version フィールドで分岐)
-// v1 FzAnimHeader の後ろに直接 FzAnimTrackHeader が続いていた。
-// v2 は FzAnimHeader の version=2 に続いて FzAnimV2Extension を置く。
+// .anim v2 固有の追加ヘッダー。
+// WHY: 最新形式では再生長を durationSeconds に正規化し、遷移判定が tick rate に依存しないようにする。
 struct FzAnimV2Extension {
     double   durationSeconds;
     float    frameRate;
@@ -47,44 +43,6 @@ struct FzAnimTrackHeaderV2 {
 };
 static_assert(sizeof(FzAnimTrackHeaderV2) == 144, "FzAnimTrackHeaderV2 size mismatch");
 
-std::unique_ptr<AnimationClip> LoadV1(BinaryReader& r, const FzAnimHeader& hdr)
-{
-    auto clip = std::make_unique<AnimationClip>();
-    clip->name           = hdr.name;
-    clip->durationTicks  = hdr.durationTicks;
-    clip->ticksPerSecond = (hdr.ticksPerSecond > 0.0) ? hdr.ticksPerSecond : 30.0;
-    clip->tracks.resize(hdr.trackCount);
-
-    for (uint32_t ti = 0; ti < hdr.trackCount; ++ti) {
-        FzAnimTrackHeader th{};
-        if (!r.Read(th)) return nullptr;
-
-        NodeAnimationTrack& track = clip->tracks[ti];
-        track.nodeName = th.nodeName;
-        track.interp   = AnimInterp::Linear;
-
-        track.positions.resize(th.positionCount);
-        for (uint32_t ki = 0; ki < th.positionCount; ++ki) {
-            FzVectorKey vk{};
-            if (!r.Read(vk)) return nullptr;
-            track.positions[ki] = { vk.time, { vk.x, vk.y, vk.z } };
-        }
-        track.rotations.resize(th.rotationCount);
-        for (uint32_t ki = 0; ki < th.rotationCount; ++ki) {
-            FzQuaternionKey qk{};
-            if (!r.Read(qk)) return nullptr;
-            track.rotations[ki] = { qk.time, { qk.x, qk.y, qk.z, qk.w } };
-        }
-        track.scales.resize(th.scaleCount);
-        for (uint32_t ki = 0; ki < th.scaleCount; ++ki) {
-            FzVectorKey vk{};
-            if (!r.Read(vk)) return nullptr;
-            track.scales[ki] = { vk.time, { vk.x, vk.y, vk.z } };
-        }
-    }
-    return clip;
-}
-
 std::unique_ptr<AnimationClip> LoadV2(BinaryReader& r, const FzAnimHeader& hdr)
 {
     FzAnimV2Extension ext{};
@@ -92,6 +50,9 @@ std::unique_ptr<AnimationClip> LoadV2(BinaryReader& r, const FzAnimHeader& hdr)
 
     auto clip = std::make_unique<AnimationClip>();
     clip->name                 = hdr.name;
+    // v2 の再生長は durationSeconds を正とする。ticksPerSecond はキー時刻を秒から tick へ戻すためだけに保持する。
+    // WHY: exporter は各キーの time を Assimp tick 単位で保存するため、サンプリング時の変換係数は必要になる。
+    clip->ticksPerSecond       = (hdr.ticksPerSecond > 0.0) ? hdr.ticksPerSecond : 30.0;
     clip->durationSeconds      = ext.durationSeconds;
     clip->frameRate            = ext.frameRate;
     clip->loop                 = ext.loop != 0;
@@ -158,10 +119,11 @@ std::unique_ptr<AnimationClip> AnimationImporter::Import(
         return nullptr;
     }
 
-    if (hdr.version == 1) return LoadV1(r, hdr);
     if (hdr.version == 2) return LoadV2(r, hdr);
 
-    FBZZ_LOG_ERROR("AnimationImporter: unknown version %u [%s]", hdr.version, absPath.c_str());
+    FBZZ_LOG_ERROR("AnimationImporter: unsupported .anim version %u (expected v2) [%s]",
+                   hdr.version,
+                   absPath.c_str());
     return nullptr;
 }
 

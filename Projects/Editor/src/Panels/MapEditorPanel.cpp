@@ -9,13 +9,144 @@
 #include "../Tools/FoliageTool.hpp"
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
+#include <Engine/Scene/TerrainAssetSerializer.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 #include <imgui.h>
+#include <cctype>
 #include <cstdio>
+#include <string>
 
 namespace fbzz::editor {
+
+namespace {
+
+std::string SanitizeTerrainAssetName(std::string name)
+{
+    if (name.empty())
+        name = "Terrain";
+
+    for (char& c : name) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok)
+            c = '_';
+    }
+    return name;
+}
+
+std::string UniqueGridTerrainAssetPath(const EditorContext& ctx, const std::string& objectName)
+{
+    // WHY: Grid Terrain はセル単位で独立編集されるため、Scene に埋め込まず
+    //      最初から Assets/Terrain/Grid 配下の外部 .terrain として管理する。
+    const std::string assetRoot = ctx.projectRoot.empty()
+        ? "Assets"
+        : ctx.projectRoot + "/Assets";
+    const std::string terrainDir = assetRoot + "/Terrain/Grid";
+    util::FileSystem::EnsureDirectory(terrainDir);
+
+    const std::string base = terrainDir + "/" + SanitizeTerrainAssetName(objectName);
+    std::string path = base + ".terrain";
+    for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
+        path = base + " " + std::to_string(i) + ".terrain";
+    return NormalizeAssetPath(path);
+}
+
+bool EnsureTerrainAsset(EditorContext& ctx, scene::GameObject& go, scene::TerrainComponent& terrain)
+{
+    if (!terrain.terrainAssetPath.empty())
+        return false;
+
+    const std::string assetPath = UniqueGridTerrainAssetPath(ctx, go.name);
+    if (!scene::TerrainAssetSerializer::Save(terrain, ToProjectAssetDiskPath(ctx.projectRoot, assetPath)))
+        return false;
+
+    terrain.terrainAssetPath = assetPath;
+    ctx.requestAssetBrowserRefresh = true;
+    return true;
+}
+
+bool EnsureTerrainCollider(scene::Scene& scene, scene::EntityID id)
+{
+    if (!scene.IsValid(id))
+        return false;
+
+    auto* go = scene.GetGameObject(id);
+    if (!go || !go->GetComponent<scene::TerrainComponent>())
+        return false;
+
+    // WHY: Grid 作成経路で古い Terrain が TerrainColliderComponent を持たない場合がある。
+    //      PhysicsSystem は TerrainColliderComponent を入口に HeightFieldCollider を構築するため、
+    //      Grid 管理下の Terrain には自動で TerrainCollider を補う。
+    if (!go->GetComponent<scene::TerrainColliderComponent>()) {
+        go->AddComponent<scene::TerrainColliderComponent>();
+        return true;
+    }
+    return false;
+}
+
+bool EnsureTerrainGridColliders(scene::Scene& scene, scene::TerrainGridComponent& grid)
+{
+    bool changed = false;
+    for (const scene::EntityID id : grid.cells) {
+        if (EnsureTerrainCollider(scene, id)) {
+            if (auto* terrain = scene.GetComponent<scene::TerrainComponent>(id))
+                terrain->colliderDirty = true;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+bool EnsureTerrainGridAssets(EditorContext& ctx, scene::TerrainGridComponent& grid)
+{
+    bool changed = false;
+    for (const scene::EntityID id : grid.cells) {
+        if (!ctx.activeScene || !ctx.activeScene->IsValid(id))
+            continue;
+
+        auto* go = ctx.activeScene->GetGameObject(id);
+        auto* terrain = ctx.activeScene->GetComponent<scene::TerrainComponent>(id);
+        if (!go || !terrain)
+            continue;
+
+        if (EnsureTerrainAsset(ctx, *go, *terrain))
+            changed = true;
+    }
+    return changed;
+}
+
+void MarkTerrainGridDirty(scene::Scene& scene, scene::TerrainGridComponent& grid)
+{
+    // WHY: TerrainRenderPass は TerrainGrid の隣接関係を使って境界頂点を補正する。
+    //      グリッド編集後に既存チャンクキャッシュが残ると補正が見えないため、
+    //      セル内 Terrain を再構築対象にする。
+    for (const scene::EntityID id : grid.cells) {
+        if (!scene.IsValid(id))
+            continue;
+        (void)EnsureTerrainCollider(scene, id);
+        if (auto* terrain = scene.GetComponent<scene::TerrainComponent>(id)) {
+            terrain->heightDirty = true;
+            terrain->colliderDirty = true;
+        }
+    }
+}
+
+void MarkTerrainDirty(scene::Scene& scene, scene::EntityID id)
+{
+    if (!scene.IsValid(id))
+        return;
+    (void)EnsureTerrainCollider(scene, id);
+    if (auto* terrain = scene.GetComponent<scene::TerrainComponent>(id)) {
+        terrain->heightDirty = true;
+        terrain->colliderDirty = true;
+    }
+}
+
+} // namespace
 
 void MapEditorPanel::ActivateTool(EditorContext& ctx, Tool tool)
 {
@@ -133,7 +264,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         break;
     case Tool::Foliage:
         if (ctx.foliageTool)
-            ctx.foliageTool->DrawContent(*ctx.activeScene);
+            ctx.foliageTool->DrawContent(*ctx.activeScene, ctx.markSceneDirty);
         break;
     case Tool::Grid:
         DrawGridContent(ctx);
@@ -147,9 +278,19 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
 {
     auto& scene = *ctx.activeScene;
 
-    // グリッドコンポーネントを取得または作成する
-    auto grids = scene.GetComponents<scene::TerrainGridComponent>();
-    scene::TerrainGridComponent* grid = grids.empty() ? nullptr : grids.front();
+    // グリッドコンポーネントと、それを所有する親 GameObject を取得する。
+    // WHY: Grid から生成する Terrain を同じ親の子として整理し、Hierarchy 上でも
+    //      TerrainGrid 単位でまとめて扱えるようにする。
+    const auto gridEntities = scene.GetEntities<scene::TerrainGridComponent>();
+    const scene::EntityID gridEntity = gridEntities.empty()
+        ? scene::EntityID::INVALID
+        : gridEntities.front();
+    scene::GameObject* gridObject = scene.IsValid(gridEntity)
+        ? scene.GetGameObject(gridEntity)
+        : nullptr;
+    scene::TerrainGridComponent* grid = scene.IsValid(gridEntity)
+        ? scene.GetComponent<scene::TerrainGridComponent>(gridEntity)
+        : nullptr;
 
     if (!grid) {
         ImGui::TextDisabled("No Terrain Grid in scene.");
@@ -159,10 +300,15 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             tgc.EnsureSize();
             go.AddComponent<scene::TerrainGridComponent>(tgc);
             ctx.markSceneDirty();
+            gridObject = &go;
             grid = go.GetComponent<scene::TerrainGridComponent>();
         }
         return;
     }
+    if (EnsureTerrainGridColliders(scene, *grid))
+        ctx.markSceneDirty();
+    if (EnsureTerrainGridAssets(ctx, *grid))
+        ctx.markSceneDirty();
 
     // グリッドサイズ設定
     ImGui::TextDisabled("Grid Size");
@@ -173,6 +319,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
         cx = std::max(1, std::min(cx, 16));
         grid->cellCountX = cx;
         grid->EnsureSize();
+        MarkTerrainGridDirty(scene, *grid);
         ctx.markSceneDirty();
     }
     ImGui::SameLine();
@@ -181,6 +328,7 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
         cz = std::max(1, std::min(cz, 16));
         grid->cellCountZ = cz;
         grid->EnsureSize();
+        MarkTerrainGridDirty(scene, *grid);
         ctx.markSceneDirty();
     }
 
@@ -237,7 +385,9 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
 
             // 右クリックでセルをクリア
             if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && hasCell) {
+                MarkTerrainDirty(scene, cellId);
                 grid->ClearCell(gx, gz);
+                MarkTerrainGridDirty(scene, *grid);
                 if (m_gridSelectedX == gx && m_gridSelectedZ == gz) {
                     m_gridSelectedX = m_gridSelectedZ = -1;
                 }
@@ -270,16 +420,19 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             }
         }
         if (ImGui::Button("Remove from Grid")) {
+            MarkTerrainDirty(scene, selId);
             grid->ClearCell(m_gridSelectedX, m_gridSelectedZ);
+            MarkTerrainGridDirty(scene, *grid);
             ctx.markSceneDirty();
         }
     } else {
         // 空セル: 新規 Terrain 生成 または 既存 GO から選択
         if (ImGui::Button("Add New Terrain Here")) {
-            // グリッド上の配置位置を計算する
-            // 全セルが同じ cellWorldSize を持つ前提: columns * cellSize
-            // 既存セルから推定するか、デフォルト値を使う
-            float worldSize = 128.0f;
+            // セルのワールド配置位置を計算する。
+            // WHY: TerrainGridComponent に defaultColumns/defaultCellSize が設定されているため
+            //      それを正規データとして使う。既存セルが先に作られている場合はそちらから
+            //      実際のサイズを読み取り一貫性を維持する。
+            float worldSize = static_cast<float>(grid->defaultColumns - 1) * grid->defaultCellSize;
             for (int i = 0; i < grid->cellCountX * grid->cellCountZ; ++i) {
                 if (i < (int)grid->cells.size() && scene.IsValid(grid->cells[i])) {
                     if (const auto* tc = scene.GetComponent<scene::TerrainComponent>(grid->cells[i]))
@@ -294,15 +447,26 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             std::snprintf(goName, sizeof(goName), "Terrain_%d_%d", m_gridSelectedX, m_gridSelectedZ);
             auto& newGo = scene.CreateGameObject(goName);
             newGo.transform.position = { wx, 0.0f, wz };
+            if (gridObject)
+                newGo.SetParent(*gridObject);
 
             scene::TerrainComponent tc;
+            tc.columns   = grid->defaultColumns;
+            tc.rows      = grid->defaultRows;
+            tc.cellSize  = grid->defaultCellSize;
+            tc.chunkSize = grid->defaultChunkSize;
             tc.InitFlat(0.0f);
             for (int li = 0; li < 4; ++li)
                 tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
+            tc.heightDirty     = true;
             tc.colliderDirty   = true;
             newGo.AddComponent<scene::TerrainComponent>(tc);
+            newGo.AddComponent<scene::TerrainColliderComponent>();
+            if (auto* newTerrain = newGo.GetComponent<scene::TerrainComponent>())
+                (void)EnsureTerrainAsset(ctx, newGo, *newTerrain);
 
             grid->SetCell(m_gridSelectedX, m_gridSelectedZ, newGo.GetID());
+            MarkTerrainGridDirty(scene, *grid);
             ctx.markSceneDirty();
         }
     }

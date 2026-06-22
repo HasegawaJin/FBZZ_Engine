@@ -156,9 +156,20 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
 
     std::vector<ResourceHandle<TextureTag>> colors;
     colors.reserve(colorCount);
-    for (uint32_t i = 0; i < colorCount; ++i)
-        colors.push_back(m_textures.Insert(rt->GetColorTexture(i), "RenderTargetColorTexture", __FILE__, __LINE__));
-    ResourceHandle<TextureTag> depth = m_textures.Insert(rt->GetDepthTexture(), "RenderTargetDepthTexture", __FILE__, __LINE__);
+    for (uint32_t i = 0; i < colorCount; ++i) {
+        auto colorTexture = m_renderer.CreateNativeTextureFromRenderTarget(
+            *rt,
+            i,
+            RenderTargetTextureKind::Color);
+        colors.push_back(m_textures.Insert(std::move(colorTexture), "RenderTargetColorTexture", __FILE__, __LINE__));
+    }
+
+    auto depthTexture = m_renderer.CreateNativeTextureFromRenderTarget(
+        *rt,
+        0,
+        RenderTargetTextureKind::Depth);
+    ResourceHandle<TextureTag> depth =
+        m_textures.Insert(std::move(depthTexture), "RenderTargetDepthTexture", __FILE__, __LINE__);
 
     ResourceHandle<RenderTargetTag> handle = m_renderTargets.Insert(std::move(rt), "RenderTarget", __FILE__, __LINE__);
     const uint64_t key = Key(handle);
@@ -264,8 +275,8 @@ uint64_t ResourceManager::Key(ResourceHandle<RenderTargetTag> h)
 
 void ResourceManager::ReleaseOwnedResourcesForShutdown()
 {
-    // WHY: RenderTarget は内部で color/depth texture の shared_ptr を持つため、
-    //      TexturePool より先に解放しないと、RT 内部所有を外部リークと誤判定してしまう。
+    // WHY: RenderTarget 由来の TextureTag は RT の SRV を参照するラッパーなので、
+    //      マップを先に消して shutdown 時の重複解放経路を断つ。
     m_renderTargetColors.clear();
     m_renderTargetDepths.clear();
     m_shaderCache.clear();

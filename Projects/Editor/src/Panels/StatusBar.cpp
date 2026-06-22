@@ -172,6 +172,7 @@ void StatusBar::Draw(EditorContext& ctx)
         const auto& hrs      = ctx.hotReloadState;
         const bool compiling = (hrs == EditorContext::HotReloadState::Compiling);
         const bool reloading = (hrs == EditorContext::HotReloadState::Reloading);
+        const bool completed = (hrs == EditorContext::HotReloadState::Done && ctx.hotReloadProgress >= 1.0f);
 
         bool detailBaking = false;
         if (!compiling && !reloading && ctx.activeScene) {
@@ -186,18 +187,25 @@ void StatusBar::Draw(EditorContext& ctx)
             }
         }
 
-        if (compiling || reloading) {
+        if (compiling || reloading || completed) {
             const char* label = compiling
                 ? (ctx.hotReloadMessage.empty() ? "Compiling Scripts..." : ctx.hotReloadMessage.c_str())
                 : (ctx.hotReloadMessage.empty() ? "Reloading DLL..."    : ctx.hotReloadMessage.c_str());
-            const ImVec4 barCol = compiling
-                ? ImVec4(0.85f, 0.65f, 0.05f, 1.0f)
-                : ImVec4(0.25f, 0.60f, 0.95f, 1.0f);
+            const ImVec4 barCol = completed
+                ? ImVec4(0.35f, 0.85f, 0.40f, 1.0f)
+                : (compiling ? ImVec4(0.85f, 0.65f, 0.05f, 1.0f)
+                             : ImVec4(0.25f, 0.60f, 0.95f, 1.0f));
             if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);
             ImGui::SetCursorPosY(1.0f);
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
-            ImGui::ProgressBar(t, { pbW, barH - 4.0f }, label);
+            const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
+            const float progress    = hasProgress ? ctx.hotReloadProgress : t;
+            char progressLabel[256];
+            if (hasProgress) {
+                std::snprintf(progressLabel, sizeof(progressLabel), "%s %.0f%%", label, progress * 100.0f);
+            }
+            ImGui::ProgressBar(progress, { pbW, barH - 4.0f }, hasProgress ? progressLabel : label);
             ImGui::PopStyleColor(2);
         } else if (detailBaking) {
             if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);

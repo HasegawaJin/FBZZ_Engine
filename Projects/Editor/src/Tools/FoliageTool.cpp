@@ -337,14 +337,14 @@ void FoliageTool::OnEditorGUI(
 
     if (!m_active)
         ImGui::BeginDisabled();
-    DrawContent(scene);
+    DrawContent(scene, markDirty);
     if (!m_active)
         ImGui::EndDisabled();
-    (void)markDirty;
     ImGui::End();
 }
 
-void FoliageTool::DrawContent(scene::Scene& scene)
+void FoliageTool::DrawContent(scene::Scene& scene,
+                              const std::function<void()>& markDirty)
 {
     ImGui::TextDisabled("Click: place  |  Shift+Click: erase");
     ImGui::SliderFloat("Erase Radius", &m_eraseRadius, 0.5f, 30.0f, "%.1f m");
@@ -393,25 +393,48 @@ void FoliageTool::DrawContent(scene::Scene& scene)
                         { 1.0f, 0.75f, 0.25f, 1.0f },
                         "First click switches this Species to Stamp mode.");
 
-                // コライダー設定 (STAMP モード専用)
                 auto* editSpecies = &foliage->species[index];
+                auto markSpeciesEdited = [&]() {
+                    foliage->needsBake = true;
+                    foliage->needsBakeChildren = true;
+                    if (markDirty)
+                        markDirty();
+                };
+
+                // スタンプ配置設定。
+                // WHY: Inspector を開かずに、FoliageTool だけで次に置く個体の見た目を調整できるようにする。
+                ImGui::Spacing();
+                ImGui::SeparatorText("Stamp Placement");
+                float scaleRange[2] = { editSpecies->minScale, editSpecies->maxScale };
+                ImGui::SetNextItemWidth(180.0f);
+                if (ImGui::DragFloat2("Scale Range", scaleRange, 0.01f, 0.01f, 20.0f, "%.2f")) {
+                    editSpecies->minScale = std::max(0.01f, scaleRange[0]);
+                    editSpecies->maxScale = std::max(0.01f, scaleRange[1]);
+                    if (editSpecies->minScale > editSpecies->maxScale)
+                        std::swap(editSpecies->minScale, editSpecies->maxScale);
+                    markSpeciesEdited();
+                }
+                if (ImGui::Checkbox("Random Y Rotation##stampRot", &editSpecies->randomYRotation))
+                    markSpeciesEdited();
+
+                // コライダー設定 (STAMP モード専用)
                 ImGui::Spacing();
                 ImGui::Spacing();
                 ImGui::SeparatorText("Collider (Box / OBB)");
                 if (ImGui::Checkbox("Enabled##col", &editSpecies->colliderEnabled))
-                    foliage->needsBake = foliage->needsBakeChildren = true;
+                    markSpeciesEdited();
                 if (editSpecies->colliderEnabled) {
                     if (ImGui::Checkbox("Manual Override##colManual", &editSpecies->colliderManual))
-                        foliage->needsBake = foliage->needsBakeChildren = true;
+                        markSpeciesEdited();
                     if (editSpecies->colliderManual) {
                         ImGui::SetNextItemWidth(120.0f);
                         if (ImGui::DragFloat("Half Width##colW", &editSpecies->colliderHalfWidth,
                                              0.01f, 0.01f, 10.0f, "%.2f"))
-                            foliage->needsBake = foliage->needsBakeChildren = true;
+                            markSpeciesEdited();
                         ImGui::SetNextItemWidth(120.0f);
                         if (ImGui::DragFloat("Half Height##colH", &editSpecies->colliderHalfHeight,
                                              0.05f, 0.01f, 50.0f, "%.2f"))
-                            foliage->needsBake = foliage->needsBakeChildren = true;
+                            markSpeciesEdited();
                     } else {
                         ImGui::TextDisabled("Box size auto-calculated from model AABB");
                     }
@@ -420,7 +443,7 @@ void FoliageTool::DrawContent(scene::Scene& scene)
                     if (ImGui::DragFloat("Cull Distance##cullDist",
                                          &editSpecies->colliderCullDistance,
                                          1.0f, 0.0f, 500.0f, "%.0f m"))
-                        foliage->needsBake = foliage->needsBakeChildren = true;
+                        markSpeciesEdited();
                     if (editSpecies->colliderCullDistance <= 0.0f)
                         ImGui::TextDisabled("0 = no distance culling");
                 }

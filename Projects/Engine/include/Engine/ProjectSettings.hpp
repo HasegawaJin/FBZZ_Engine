@@ -55,7 +55,11 @@ struct RuntimeSettings {
     std::string startScene = "Assets/Scenes/Main.scene";
 };
 
-struct ProjectSettings {
+// ゲーム固有の設定をひとまとめにするサブ構造体。
+// WHY: ProjectSettings には「エンジン共通設定」と「ゲーム固有設定」が混在していた。
+//      タグ・レイヤー名・シーンパス等ゲームが書き換えるフィールドを game に集約することで、
+//      エンジン側コードが誤ってゲーム設定を参照する依存を防ぐ。
+struct GameProjectConfig {
     ProjectMetadataSettings      project;
     RuntimeSettings              runtime;
     std::vector<std::string>    tags = {
@@ -68,13 +72,17 @@ struct ProjectSettings {
         "", "", "", "", "", "", "", "", "", "",
         "", "", "", "", "", ""
     };
-    PhysicsSettings             physics;
-    renderer::RenderSettings    render;
-    AudioSettings               audio;
-    UISettings                  ui;
-    ScreenSettings              screen;
-    AppSettings                 app;
-    WindowSettings              window;
+};
+
+struct ProjectSettings {
+    GameProjectConfig            game;     // ゲーム固有設定 (タグ・レイヤー・シーンパス等)
+    PhysicsSettings              physics;  // エンジン設定 (以下同様)
+    renderer::RenderSettings     render;
+    AudioSettings                audio;
+    UISettings                   ui;
+    ScreenSettings               screen;
+    AppSettings                  app;
+    WindowSettings               window;
 
     static ProjectSettings Default();
     bool Load(const std::string& path);

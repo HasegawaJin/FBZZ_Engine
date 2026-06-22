@@ -16,15 +16,19 @@ if(NOT DEFINED FBZZ_ENGINE_ROOT OR FBZZ_ENGINE_ROOT STREQUAL "")
     message(FATAL_ERROR "FBZZ_ENGINE_ROOT is required")
 endif()
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/Binaries/Debug")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/Binaries/Release")
-set(FBZZ_RUNTIME_BUILD_EXE_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/{{TARGET_NAME}}Standalone.exe")
-set(FBZZ_RUNTIME_BUILD_EXE_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/{{TARGET_NAME}}Standalone.exe")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/{{TARGET_NAME}}Scripts.dll")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/{{TARGET_NAME}}Scripts.dll")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY             "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY             "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY             "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_SOURCE_DIR}/Binaries/Debug")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_SOURCE_DIR}/Binaries/Release")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_SOURCE_DIR}/Binaries/Development")
+
+set(FBZZ_RUNTIME_BUILD_EXE_DEBUG         "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/{{TARGET_NAME}}Standalone.exe")
+set(FBZZ_RUNTIME_BUILD_EXE_RELEASE       "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/{{TARGET_NAME}}Standalone.exe")
+set(FBZZ_RUNTIME_BUILD_EXE_DEVELOPMENT   "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/{{TARGET_NAME}}Standalone.exe")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEBUG       "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/Scripts.dll")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_RELEASE     "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/Scripts.dll")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/Scripts.dll")
 
 add_subdirectory("${FBZZ_ENGINE_ROOT}/ThirdParty" "${CMAKE_BINARY_DIR}/FBZZ/ThirdParty")
 add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Math" "${CMAKE_BINARY_DIR}/FBZZ/Math")
@@ -36,23 +40,24 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ
 # WHY: Editor が SandboxScripts.dll と同じ仕組みでスクリプトをホットリロードできるよう、
 #      プロジェクト固有のスクリプトを独立した DLL としてビルドする。
 #      ScriptFactory の dual registry 問題は EXE から関数ポインタを渡す方式で回避する。
-file(GLOB_RECURSE {{TARGET_NAME}}_SCRIPT_DLL_SOURCES
+# WHY (OUTPUT_NAME "Scripts"): プロジェクト名に依存しない固定名にすることで
+#      config.target = m_scriptDllPath.stem() が常に "Scripts" と解決し、
+#      EditorApp がプロジェクト名を知らなくてもビルドターゲットを特定できる。
+file(GLOB_RECURSE SCRIPTS_DLL_SOURCES
     Assets/Scripts/*.cpp
     Assets/Scripts/*.hpp
     Src/Scripts/*.cpp
     Src/Scripts/*.hpp
     Src/{{TARGET_NAME}}ScriptsDll.cpp
 )
-add_library({{TARGET_NAME}}Scripts SHARED ${{{TARGET_NAME}}_SCRIPT_DLL_SOURCES})
-target_compile_definitions({{TARGET_NAME}}Scripts PRIVATE GAMESCRIPTS_EXPORTS)
-target_include_directories({{TARGET_NAME}}Scripts PRIVATE Assets Src)
-target_link_libraries({{TARGET_NAME}}Scripts
+add_library(Scripts SHARED ${SCRIPTS_DLL_SOURCES})
+set_target_properties(Scripts PROPERTIES OUTPUT_NAME "Scripts")
+target_compile_definitions(Scripts PRIVATE GAMESCRIPTS_EXPORTS)
+target_include_directories(Scripts PRIVATE Assets Src)
+target_link_libraries(Scripts
     PRIVATE
         fbzz_engine
         fbzz_physics
-)
-set_target_properties({{TARGET_NAME}}Scripts PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/$<CONFIG>"
 )
 
 add_executable({{TARGET_NAME}}
@@ -60,14 +65,14 @@ add_executable({{TARGET_NAME}}
     Src/GameMain.cpp
     Include/{{TARGET_NAME}}/ProjectAPI.hpp
 )
-add_dependencies({{TARGET_NAME}} {{TARGET_NAME}}Scripts)
+add_dependencies({{TARGET_NAME}} Scripts)
 
 add_executable({{TARGET_NAME}}Standalone
     Src/AppMain.cpp
     Src/GameMain.cpp
     Include/{{TARGET_NAME}}/ProjectAPI.hpp
 )
-add_dependencies({{TARGET_NAME}}Standalone {{TARGET_NAME}}Scripts)
+add_dependencies({{TARGET_NAME}}Standalone Scripts)
 target_compile_definitions({{TARGET_NAME}}Standalone PRIVATE FBZZ_STANDALONE_TARGET)
 
 target_include_directories({{TARGET_NAME}}

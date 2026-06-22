@@ -101,6 +101,11 @@ private:
     void DrawPresets(scene::WaterComponent& water,
                      const std::function<void()>& markDirty) const;
 
+    // .mat の視覚パラメータを Water 向けプリセットとして調整する
+    void DrawLookPresets(scene::WaterComponent& water,
+                         const std::string& projectRoot,
+                         const std::function<void()>& markDirty) const;
+
     // ツールウィンドウの波エディタセクション
     void DrawWaveEditor(scene::WaterComponent& water,
                         const std::function<void()>& markDirty) const;

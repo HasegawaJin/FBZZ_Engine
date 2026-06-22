@@ -3,13 +3,17 @@
 // エディター内からのソースコード生成ユーティリティ
 //
 // WHAT: C++ スクリプトヘッダと HLSL シェーダーのテンプレートを生成し、
-//       SandboxScriptsDll.cpp と SandboxScripts.cpp の登録リストに自動追記する。
+//       スクリプト登録リストに自動追記する。
 //
-// WHY (マーカーコメント方式):
-//   両 .cpp に "@@FBZZ_SCRIPT_INCLUDES_BEGIN/END" と
-//   "@@FBZZ_SCRIPT_ENTRIES_BEGIN/END" を埋め込み、その区間にテキスト挿入する。
-//   DLL 側: AllEntries() ベクタへのエントリ追加 (ホットリロード用)
-//   静的側: FBZZ_REGISTER_SCRIPT マクロ追加 (RuntimeBuild の Standalone exe 用)
+// WHY (エントリ一元管理):
+//   スクリプト登録エントリは Scripts/ScriptList.inl (X-macro ファイル) で一元管理する。
+//   DLL 側 / EXE 側ともに ScriptList.inl を #include して展開するため、
+//   ScriptCodeGen はエントリを 1 ファイルだけ更新すればよい。
+//
+//   include セクション (DLL/EXE で形式が異なるため引き続き個別管理):
+//     DLL: #define Xxx_IMPL + #include — 型定義・ファクトリ用宣言のみ取り込む
+//     EXE: #include のみ — TU ごとの独立コンパイル
+//
 //   コード生成後にファイルが変更されると ScriptDllLoader の監視が反応し
 //   自動リビルド → ホットリロードまで自動実行される。
 #pragma once
@@ -53,13 +57,21 @@ public:
                                   HlslKind kind);
 
 private:
-    // @@FBZZ_SCRIPT_INCLUDES_BEGIN の後に #include 行を挿入する
+    // @@FBZZ_SCRIPT_INCLUDES_BEGIN の後に #include 行を挿入する (Standalone EXE 用)
     static bool InsertScriptInclude(const std::string& cppPath,
                                     const std::string& headerRelPath);
-    // SandboxScriptsDll.cpp の @@FBZZ_SCRIPT_ENTRIES_BEGIN の後に AllEntries エントリを挿入する
+    // DLL 用: #define {ClassName}_IMPL + #include を挿入して宣言のみ取り込む
+    static bool InsertScriptIncludeDll(const std::string& dllCppPath,
+                                       const std::string& className,
+                                       const std::string& headerRelPath);
+    // ScriptList.inl の @@FBZZ_SCRIPT_ENTRIES_BEGIN の後に FBZZ_SCRIPT_ENTRY を挿入する
+    // WHY: DLL/EXE 共通エントリを 1 ファイルで管理するため ScriptList.inl を更新する。
+    static bool InsertScriptListEntry(const std::string& scriptListPath,
+                                      const std::string& className);
+    // 旧形式フォールバック: SandboxScriptsDll.cpp にエントリを直接挿入する (ScriptList.inl 未対応プロジェクト)
     static bool InsertScriptEntry(const std::string& dllCppPath,
                                   const std::string& className);
-    // SandboxScripts.cpp の @@FBZZ_SCRIPT_ENTRIES_BEGIN の後に FBZZ_REGISTER_SCRIPT を挿入する
+    // 旧形式フォールバック: SandboxScripts.cpp に FBZZ_REGISTER_SCRIPT を直接挿入する
     static bool InsertScriptStaticEntry(const std::string& staticCppPath,
                                         const std::string& className);
 

@@ -129,8 +129,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     anim.time = 0.0f;
                 }
                 const auto& cur = anim.clips[static_cast<size_t>(sel)];
-                const double tps = cur.ticksPerSecond > 0.0 ? cur.ticksPerSecond : 30.0;
-                const float dur  = static_cast<float>(cur.durationTicks / tps);
+                const float dur  = static_cast<float>(cur.GetDurationSeconds());
                 const float t    = (dur > 0.0f) ? std::clamp(anim.time / dur, 0.0f, 1.0f) : 0.0f;
                 char overlay[32];
                 std::snprintf(overlay, sizeof(overlay), "%.2f / %.2fs", anim.time, dur);
@@ -340,6 +339,8 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                         ? ""
                                         : clipNames[static_cast<size_t>(clipSel)];
                                 }
+                                ImGui::DragFloat("IK Weight##st", &st.ikWeight,
+                                                 0.01f, 0.0f, 1.0f);
                             } else {
                                 auto drawMotions = [&](std::vector<scene::BlendTreeMotion>& motions,
                                                        bool is2D) {
@@ -539,30 +540,6 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
         [go](scene::IKSolverComponent& ik, EditorContext& ctx) {
 
             // ── Hip Height Correction ────────────────────────────────────────
-            // WHY: チェーンより上位にある設定のため最初に表示し、設定忘れを防ぐ。
-            {
-                char hipBuf[256];
-                std::snprintf(hipBuf, sizeof(hipBuf), "%s", ik.hipBoneName.c_str());
-                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Clear").x - 24.0f);
-                if (ImGui::InputText("Hip Bone", hipBuf, sizeof(hipBuf)))
-                    ik.hipBoneName = hipBuf;
-                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
-                    ik.hipBoneName = dropped->name;
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Clear"))
-                    ik.hipBoneName.clear();
-                if (!ik.hipBoneName.empty())
-                    ImGui::TextDisabled("  Hip height correction enabled");
-
-                ImGui::DragFloat("Hip Max Offset Ratio",
-                                 &ik.hipMaxOffsetRatio,
-                                 0.01f, 0.0f, 1.0f, "%.2f");
-                if (ImGui::IsItemHovered())
-                    ImGui::SetTooltip("Maximum hip movement as a ratio of average leg length");
-            }
-
-            ImGui::Separator();
-
             // ── IK Chains ────────────────────────────────────────────────────
             int removeIdx = -1;
 
@@ -573,7 +550,13 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 // ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]
                 // WHY: Unity の Constraint コンポーネントと同様に enabled を
                 //      折りたたみ矢印の横に置き、開かずに ON/OFF できるようにする。
-                const char* tipLabel = chain.tipBoneName.empty() ? "—" : chain.tipBoneName.c_str();
+                const char* solverNames[] = {
+                    "Two Bone", "Foot Place", "Aim At", "FABRIK", "Hand Place",
+                    "Full Body Biped"
+                };
+                const int solverIndex = static_cast<int>(chain.type);
+                const char* tipLabel = solverIndex >= 0 && solverIndex < 6
+                    ? solverNames[solverIndex] : "Unknown";
                 char header[64];
                 std::snprintf(header, sizeof(header), "##chain%d", ci);
 
@@ -600,28 +583,84 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     if (!chain.enabled)
                         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
 
+                    int type = static_cast<int>(chain.type);
+                    if (ImGui::Combo("Solver Type", &type, solverNames, 6)) {
+                        chain.type = static_cast<scene::IKSolverType>(type);
+                        chain.lookAtHasState = false;
+                        if (chain.type == scene::IKSolverType::FootPlace) chain.order = 0;
+                        if (chain.type == scene::IKSolverType::TwoBone) chain.order = 10;
+                        if (chain.type == scene::IKSolverType::FABRIK) chain.order = 10;
+                        if (chain.type == scene::IKSolverType::AimAt) chain.order = 20;
+                        if (chain.type == scene::IKSolverType::HandPlace) chain.order = 30;
+                        if (chain.type == scene::IKSolverType::FullBodyBiped) chain.order = -100;
+                        if ((chain.type == scene::IKSolverType::TwoBone ||
+                             chain.type == scene::IKSolverType::HandPlace) &&
+                            chain.boneNames.size() != 3)
+                            chain.boneNames.resize(3);
+                        if (chain.type == scene::IKSolverType::AimAt && chain.boneNames.size() != 1)
+                            chain.boneNames.resize(1);
+                    }
+                    ImGui::DragInt("Order", &chain.order, 1.0f);
+                    ImGui::DragFloat("Weight", &chain.weight, 0.01f, 0.0f, 1.0f, "%.2f");
+
+                    if (chain.type == scene::IKSolverType::FullBodyBiped) {
+                        ImGui::SeparatorText("Full Body Biped");
+                        ImGui::DragInt("Iterations", &chain.fullBodyIterations,
+                                       1.0f, 1, 16);
+                        ImGui::DragFloat("Max Joint Correction",
+                                         &chain.fullBodyMaxRotationDegrees,
+                                         1.0f, 1.0f, 180.0f, "%.1f deg");
+                        ImGui::DragFloat("Tolerance", &chain.fullBodyTolerance,
+                                         0.0005f, 0.0001f, 0.1f, "%.4f m");
+                        ImGui::TextDisabled(
+                            "Runs FootPlace -> FABRIK -> AimAt -> HandPlace repeatedly.");
+                        ImGui::Text("Iterations Used: %d", ik.runtimeFullBodyIterations);
+                        ImGui::Text("Effector Error: %.4f m", ik.runtimeFullBodyError);
+                        ImGui::Text("Converged: %s",
+                                    ik.runtimeFullBodyConverged ? "yes" : "no");
+                    }
+
+                    if (ci == 0) {
+                        ImGui::SeparatorText("Runtime Diagnostics");
+                        ImGui::Text("Updates: %llu",
+                                    static_cast<unsigned long long>(ik.runtimeUpdateCount));
+                        ImGui::Text("Animator IK Weight: %.3f", ik.runtimeAnimatorWeight);
+                        ImGui::Text("Solved Chains: %d / %d",
+                                    ik.runtimeSolvedChainCount,
+                                    static_cast<int>(ik.chains.size()));
+                        ImGui::Text("Grounded L/R: %s / %s",
+                                    ik.runtimeLeftFootGrounded ? "yes" : "no",
+                                    ik.runtimeRightFootGrounded ? "yes" : "no");
+                        ImGui::Text("Hip Offset: %.4f", ik.runtimeHipOffset);
+                        ImGui::Text("Skinning Upload: %s",
+                                    ik.runtimeSkinningUploaded ? "yes" : "no");
+                    }
+
                     // ── Bones ─────────────────────────────────────────────────
-                    ImGui::SeparatorText("Bones");
-                    ImGui::TextDisabled("Drag from Hierarchy or type name");
-                    {
+                    if (chain.type == scene::IKSolverType::TwoBone ||
+                        chain.type == scene::IKSolverType::HandPlace) {
+                        if (chain.boneNames.size() != 3) chain.boneNames.resize(3);
+                        ImGui::SeparatorText("Bones");
+                        ImGui::TextDisabled("Drag from Hierarchy or type name");
+                        {
                         char buf[256];
-                        std::snprintf(buf, sizeof(buf), "%s", chain.rootBoneName.c_str());
+                        std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[0].c_str());
                         if (ImGui::InputText("Root", buf, sizeof(buf)))
-                            chain.rootBoneName = buf;
+                            chain.boneNames[0] = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
-                            chain.rootBoneName = dropped->name;
+                            chain.boneNames[0] = dropped->name;
 
-                        std::snprintf(buf, sizeof(buf), "%s", chain.midBoneName.c_str());
+                        std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[1].c_str());
                         if (ImGui::InputText("Mid",  buf, sizeof(buf)))
-                            chain.midBoneName = buf;
+                            chain.boneNames[1] = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
-                            chain.midBoneName = dropped->name;
+                            chain.boneNames[1] = dropped->name;
 
-                        std::snprintf(buf, sizeof(buf), "%s", chain.tipBoneName.c_str());
+                        std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[2].c_str());
                         if (ImGui::InputText("Tip",  buf, sizeof(buf)))
-                            chain.tipBoneName = buf;
+                            chain.boneNames[2] = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
-                            chain.tipBoneName = dropped->name;
+                            chain.boneNames[2] = dropped->name;
                     }
 
                     // ── Targets ───────────────────────────────────────────────
@@ -679,53 +718,171 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Target");
 
+                        // Auto Pole: ON のとき Pole フィールドを非活性化し、IKSystem が自動計算する。
+                        ImGui::Checkbox("Auto Pole##ap", &chain.autoPole);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip(
+                                "Automatically compute pole direction from owner rotation or FK bend angle.\n"
+                                "No Pole GameObject needed. Pole field is ignored when enabled.");
+                        if (chain.autoPole) {
+                            widgets::DragVec3("Auto Pole Local Dir",
+                                              chain.autoPoleLocalDirection,
+                                              0.01f,
+                                              -1.0f,
+                                              1.0f);
+                            if (ImGui::IsItemHovered())
+                                ImGui::SetTooltip(
+                                    "Owner-local knee direction. Zero uses FK bend direction.\n"
+                                    "Example: Player with 180 yaw offset can use +Z or -Z depending on rig forward.");
+                        }
+                        if (chain.autoPole)
+                            ImGui::BeginDisabled();
                         DrawObjectField("Resolve##p", "##pole", chain.poleName,   chain.poleGuid,   chain.poleEntity);
                         ImGui::SameLine();
                         ImGui::TextUnformatted("Pole");
+                        if (chain.autoPole)
+                            ImGui::EndDisabled();
                     }
 
                     // ── Settings ──────────────────────────────────────────────
-                    ImGui::SeparatorText("Settings");
-                    ImGui::DragFloat("Weight",        &chain.weight,       0.01f,  0.0f, 1.0f, "%.2f");
-                    ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f, "%.3f");
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Limits how far the chain can stretch (ratio of total bone length)");
-                    ImGui::DragFloat("Softness",      &chain.softness,     0.005f, 0.0f, 0.5f, "%.3f");
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
-                    ImGui::Checkbox("Is Leg", &chain.isLeg);
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Include in Hip height correction (requires Hip Bone set above)");
-
-                    // ── Ground Snap ───────────────────────────────────────────
-                    // WHY: Ground Snap は足 IK 専用の機能群なので独立したセクションに集約する。
-                    //      targetOffset は Ground Snap 時は footSurfaceOffset に統合済みのため非表示。
-                    ImGui::SeparatorText("Ground Snap");
-                    ImGui::Checkbox("Enable##gs", &chain.useGroundSnap);
-                    if (chain.useGroundSnap) {
-                        ImGui::DragFloat("Ray Up Ratio",   &chain.rayUpRatio,        0.01f,  0.1f, 2.0f, "%.2f");
+                        ImGui::SeparatorText("Settings");
+                        ImGui::DragFloat("Max Extension", &chain.maxExtension,
+                                         0.005f, 0.5f, 1.0f, "%.3f");
                         if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Ray starts this many * leg-length above the FK foot position");
-                        ImGui::DragFloat("Ray Down Ratio", &chain.rayDownRatio,      0.01f,  0.5f, 4.0f, "%.2f");
+                            ImGui::SetTooltip("Limits how far the chain can stretch (ratio of total bone length)");
+                        ImGui::DragFloat("Softness", &chain.softness,
+                                         0.005f, 0.0f, 0.5f, "%.3f");
                         if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Total downward ray length in leg-length multiples");
-                        ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f");
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Distance to lift the ankle above the ground hit point");
-                        // 斜面での足首傾き補正 (Ground Snap と一体で使うため同セクション)
-                        widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
-                        if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("Bone-local axis pointing through the foot sole.\n"
-                                              "Mixamo: (0,-1,0)   Blender Z-up: (0,0,-1)\n"
-                                              "Zero = no slope tilt correction");
-                    } else {
-                        // Ground Snap OFF のときのみ targetOffset が IK ゴールに加算される
+                            ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
+                        ImGui::DragFloatRange2("Bend Angle", &chain.minBendAngleDegrees,
+                                               &chain.maxBendAngleDegrees,
+                                               1.0f, 0.0f, 179.0f,
+                                               "Min %.1f deg", "Max %.1f deg");
                         widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
                         if (ImGui::IsItemHovered())
-                            ImGui::SetTooltip("World-space offset added to the target position\n"
-                                              "(hidden when Ground Snap is ON — use Surface Offset instead)");
+                            ImGui::SetTooltip("World-space offset added to the target position");
+                        if (chain.type == scene::IKSolverType::HandPlace) {
+                            ImGui::SeparatorText("Hand Placement");
+                            widgets::DragQuatEuler3(
+                                "Rotation Offset", chain.handRotationOffset, 0.5f);
+                            ImGui::DragFloat("Rotation Weight", &chain.handRotationWeight,
+                                             0.01f, 0.0f, 1.0f, "%.2f");
+                        }
                     }
 
+                    if (chain.type == scene::IKSolverType::AimAt ||
+                        chain.type == scene::IKSolverType::FABRIK) {
+                        auto DrawTargetField = [&]() {
+                            char targetName[256];
+                            std::snprintf(targetName, sizeof(targetName), "%s", chain.targetName.c_str());
+                            if (ImGui::InputText("Target", targetName, sizeof(targetName))) {
+                                chain.targetName = targetName;
+                                chain.targetGuid.clear();
+                                chain.targetEntity = scene::EntityID::INVALID;
+                            }
+                            if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
+                                chain.targetName = dropped->name;
+                                chain.targetGuid = dropped->instanceId;
+                                chain.targetEntity = dropped->GetID();
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("Resolve##solverTarget") && ctx.activeScene) {
+                                scene::GameObject* found = nullptr;
+                                if (!chain.targetGuid.empty())
+                                    found = ctx.activeScene->FindByGuid(chain.targetGuid);
+                                if (!found && !chain.targetName.empty())
+                                    found = ctx.activeScene->Find(chain.targetName);
+                                chain.targetEntity = found ? found->GetID() : scene::EntityID::INVALID;
+                                if (found) {
+                                    chain.targetName = found->name;
+                                    chain.targetGuid = found->instanceId;
+                                }
+                            }
+                        };
+
+                        ImGui::SeparatorText(
+                            chain.type == scene::IKSolverType::AimAt ? "Aim At" : "FABRIK");
+                        if (chain.type == scene::IKSolverType::AimAt) {
+                            if (chain.boneNames.size() != 1) chain.boneNames.resize(1);
+                            char boneName[256];
+                            std::snprintf(boneName, sizeof(boneName), "%s", chain.boneNames[0].c_str());
+                            if (ImGui::InputText("Bone", boneName, sizeof(boneName)))
+                                chain.boneNames[0] = boneName;
+                            if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                                chain.boneNames[0] = dropped->name;
+                        } else {
+                            int removeBone = -1;
+                            for (int boneIndex = 0;
+                                 boneIndex < static_cast<int>(chain.boneNames.size());
+                                 ++boneIndex) {
+                                ImGui::PushID(boneIndex);
+                                char boneName[256];
+                                std::snprintf(boneName, sizeof(boneName), "%s",
+                                              chain.boneNames[static_cast<size_t>(boneIndex)].c_str());
+                                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 28.0f);
+                                if (ImGui::InputText("##spineBone", boneName, sizeof(boneName)))
+                                    chain.boneNames[static_cast<size_t>(boneIndex)] = boneName;
+                                if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
+                                    chain.boneNames[static_cast<size_t>(boneIndex)] = dropped->name;
+                                ImGui::SameLine();
+                                if (ImGui::SmallButton("x")) removeBone = boneIndex;
+                                ImGui::PopID();
+                            }
+                            if (removeBone >= 0)
+                                chain.boneNames.erase(chain.boneNames.begin() + removeBone);
+                            if (ImGui::Button("+ Spine Bone", { -1.0f, 0.0f }))
+                                chain.boneNames.emplace_back();
+                        }
+
+                        DrawTargetField();
+                        widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
+                        if (chain.type == scene::IKSolverType::FABRIK) {
+                            ImGui::SeparatorText("Auto Slope Weight");
+                            ImGui::Checkbox("Auto Slope Weight", &chain.spineAutoWeight);
+                            if (chain.spineAutoWeight) {
+                                ImGui::DragFloat("Flat Weight", &chain.spineFlatWeight,
+                                                 0.005f, 0.0f, 1.0f, "%.3f");
+                                ImGui::DragFloat("Slope Ramp (m)", &chain.spineSlopeRampMeters,
+                                                 0.005f, 0.001f, 1.0f, "%.3f m");
+                                ImGui::TextDisabled("Flat %.3f -> Slope %.3f at %.3f m",
+                                    chain.spineFlatWeight, chain.weight,
+                                    chain.spineSlopeRampMeters);
+                            }
+                        }
+                        if (chain.type == scene::IKSolverType::AimAt) {
+                            widgets::DragVec3("Look Axis", chain.lookAtAxis, 0.01f, -1.0f, 1.0f);
+                            widgets::DragVec3("Up Axis", chain.lookAtUpAxis, 0.01f, -1.0f, 1.0f);
+                            ImGui::DragFloat("Clamp Angle", &chain.lookAtClampAngle,
+                                             1.0f, 0.0f, 180.0f, "%.1f deg");
+                            ImGui::DragFloat("Response Speed", &chain.lookAtSpeed,
+                                             0.1f, 0.0f, 100.0f, "%.1f");
+                        }
+                    }
+
+                    if (chain.type == scene::IKSolverType::FootPlace) {
+                        ImGui::SeparatorText("Foot Placement");
+                        ImGui::Checkbox("Use Animator IK Weight", &chain.useAnimatorIKWeight);
+                        ImGui::DragFloat("Ray Up Ratio", &chain.rayUpRatio, 0.01f, 0.0f, 2.0f, "%.2f");
+                        ImGui::DragFloat("Ray Down Ratio", &chain.rayDownRatio, 0.01f, 0.0f, 4.0f, "%.2f");
+                        ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f");
+                        ImGui::DragFloat("Dead Zone", &chain.correctionDeadZone, 0.001f, 0.0f, 0.25f, "%.3f");
+                        ImGui::DragFloat("Max Correction", &chain.maxCorrection, 0.001f, 0.0f, 1.0f, "%.3f");
+                        ImGui::DragFloat("Plant Distance", &chain.footPlantDistance,
+                                         0.001f, 0.0f, 1.0f, "%.3f");
+                        ImGui::DragFloat("Smooth Time", &chain.smoothTime, 0.005f, 0.001f, 1.0f, "%.3f s");
+                        ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f, "%.3f");
+                        ImGui::DragFloat("Softness", &chain.softness, 0.005f, 0.0f, 0.5f, "%.3f");
+                        ImGui::Checkbox("Adjust Hip", &chain.adjustHip);
+                        if (chain.adjustHip) {
+                            char hipName[128];
+                            std::snprintf(hipName, sizeof(hipName), "%s", chain.hipBoneName.c_str());
+                            if (ImGui::InputText("Hip Bone", hipName, sizeof(hipName)))
+                                chain.hipBoneName = hipName;
+                        }
+                        widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
+                    }
+
+                    // ── Ground Snap ───────────────────────────────────────────
                     if (!chain.enabled)
                         ImGui::PopStyleVar();
 

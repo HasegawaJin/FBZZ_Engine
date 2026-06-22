@@ -10,6 +10,7 @@
 #pragma comment(lib, "ole32.lib")  // DirectXTex の WIC コーデックに必要
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
 #include <Windows.h>
 #include <algorithm>
@@ -17,26 +18,12 @@
 
 namespace fbzz::scene {
 
-namespace {
-
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-} // namespace
-
 bool LoadHeightMapFromFile(
     const std::string& path,
     TerrainComponent&  terrain,
     bool               unipolar)
 {
-    const std::wstring wpath = Utf8ToWide(path);
+    const std::wstring wpath = util::StringUtils::ToWide(path);
 
     // 1. 拡張子でローダーを選択
     DirectX::ScratchImage image;

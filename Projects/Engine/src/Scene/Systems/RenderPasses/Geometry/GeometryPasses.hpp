@@ -23,9 +23,6 @@ struct AnimatorComponent;
 struct MaterialComponent;
 struct SkinnedMeshRenderer;
 
-// シャドウマップ解像度。RenderSystem の初期化と各パスで参照する。
-constexpr uint32_t kShadowMapSize = 8192u;
-
 // HDR レンダーターゲットのクリアカラー。Forward / Deferred 両パスで共有する。
 inline constexpr math::Vector4 kHdrClearColor = { 0.005f, 0.005f, 0.02f, 1.0f };
 

@@ -9,24 +9,8 @@
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/PrefabRef.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptAnimatorProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptCameraProxy.hpp>
-#include <Engine/Scene/ScriptProxy/GizmoProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptDebugProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptInputProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptLightProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptMeshTrailProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptNavigationProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptPhysicsProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptPostProcessProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptSceneProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptTransformProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptTrailProxy.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptUIProxy.hpp>
+// 全プロキシヘッダーのアンブレラインクルード。新プロキシ追加時はこちらを編集すること。
+#include <Engine/Scene/ScriptProxy/AllScriptProxies.hpp>
 #include <Engine/Input/KeyCode.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
@@ -168,24 +152,12 @@ public:
     bool enabled = true;
 
     // Proxy — カテゴリごとに責務を分け、Script.hpp の肥大化を避ける。
-    ScriptTransformProxy  transform   { this };
-    ScriptInputProxy      input       { this };
-    ScriptPhysicsProxy    physics     { this };
-    ScriptAudioProxy      audio       { this };
-    ScriptLightProxy      light       { this };
-    ScriptCameraProxy     camera      { this };
-    ScriptMaterialProxy   material    { this };
-    ScriptParticleProxy   particle    { this };
-    ScriptTrailProxy      trail       { this };
-    ScriptMeshTrailProxy  meshTrail   { this };
-    ScriptSceneProxy      scene       { this };
-    ScriptAnimatorProxy   animator    { this };
-    ScriptDebugProxy      debug       { this };
-    GizmoProxy            gizmo;
-    ScriptPostProcessProxy postprocess{ this };
-    ScriptMemoryProxy     memory      { this };
-    ScriptUIProxy         ui          { this };
-    ScriptNavigationProxy navigation  { this };
+    // 新プロキシを追加する際は ScriptProxyMembers.inl を編集すること (このファイルは触らなくてよい)。
+#define FBZZ_PROXY_MEMBER(Type, Name)     Type Name { this };
+#define FBZZ_PROXY_STANDALONE(Type, Name) Type Name;
+#include <Engine/Scene/ScriptProxy/ScriptProxyMembers.inl>
+#undef FBZZ_PROXY_MEMBER
+#undef FBZZ_PROXY_STANDALONE
 
     template<typename T>
     [[deprecated("Use scene.GetComponent<T>()")]]

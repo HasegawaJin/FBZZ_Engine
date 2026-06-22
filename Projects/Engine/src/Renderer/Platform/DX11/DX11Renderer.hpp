@@ -88,6 +88,10 @@ private:
     std::unique_ptr<IShader>         CreateNativeShader(const std::string& path) override;
     std::unique_ptr<ITexture>        CreateNativeTexture(const std::string& path) override;
     std::unique_ptr<ITexture>        CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>        CreateNativeTextureFromRenderTarget(
+        IRenderTarget& rt,
+        uint32_t index,
+        RenderTargetTextureKind kind) override;
     std::unique_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
     std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
     std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
@@ -145,6 +149,9 @@ private:
 
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
+
+    // VSync 無効時に DWM の表示周期待ちを避けられるかを Init() で検出する。
+    bool m_allowTearing = false;
 
     // --- Init 内部ヘルパー ---
     bool CreateRenderTargetView();

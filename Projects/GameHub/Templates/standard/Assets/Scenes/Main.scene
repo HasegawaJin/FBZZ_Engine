@@ -7,9 +7,11 @@ instanceId = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
 layer = 0
 name = 'MainCamera'
 parent = ''
+prefabAssetPath = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
+    aspectRatio = 2.667883
     cullingMask = 4294967295
     enabled = true
     farZ = 1000.0
@@ -18,9 +20,9 @@ tag = 'MainCamera'
     nearZ = 0.1
 
     [gameobjects.transform]
-    localPosition = [ -5.081744, 2.770673, 12.188811 ]
-    localRotation = [ 0.025617, 0.966498, -0.106702, 0.232035 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 68.398079, 1.070739, 84.211967 ]
+    rotation = [ 0.005337, -0.994608, -0.067806, -0.078285 ]
+    scale = [ 1.000005, 1.0, 1.000005 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -34,9 +36,9 @@ tag = 'MainCamera'
         'Min Pitch' = -20.0
         'Mouse Orbit' = true
         'Mouse Sensitivity' = 0.2
-        Pitch = 12.599993
+        Pitch = -7.800018
         'Target Tag' = 'Player'
-        Yaw = 153.000061
+        Yaw = -189.000916
 
 [[gameobjects]]
 active = true
@@ -44,18 +46,19 @@ instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
 layer = 0
 name = 'DirectionalLight'
 parent = ''
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
     color = [ 1.0, 0.956863, 0.839216 ]
     enabled = true
-    intensity = 1.25
+    intensity = 1.0
     type = 'Directional'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 3.0, 0.0 ]
-    localRotation = [ 0.51328, -0.318189, -0.212607, 0.768178 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 3.0, 0.0 ]
+    rotation = [ 0.650265, -0.119817, 0.716813, 0.221312 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -63,19 +66,22 @@ instanceId = '9dc731b0-a17c-431b-bbe1-a6757b40e84f'
 layer = 0
 name = 'Skydome'
 parent = ''
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.SkyRenderer]
+    atmosphereRadius = 6471.0
     enabled = true
     mieG = 0.76
     mieScattering = 0.0021
+    planetRadius = 6371.0
     rayleighScattering = [ 0.0058, 0.0135, 0.0331 ]
     sunIntensity = 20.0
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
@@ -83,26 +89,49 @@ instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 layer = 0
 name = 'Player'
 parent = ''
+prefabAssetPath = ''
 tag = 'Player'
 
     [gameobjects.AnimatorComponent]
     clipIndex = 0
     clipName = ''
+    clipSources = []
     controllerPath = 'Assets/Animation/Player.animcontroller'
-    clipSources = [
-        'Assets/Models/DebugCharacter/Idle/Idle.asset',
-        'Assets/Models/DebugCharacter/Walking/Walking.asset',
-        'Assets/Models/DebugCharacter/Running/Running.asset',
-        'Assets/Models/DebugCharacter/JumpingUp/JumpingUp.asset',
-        'Assets/Models/DebugCharacter/FallingIdle/FallingIdle.asset',
-        'Assets/Models/DebugCharacter/Landing/Landing.asset'
-    ]
-    defaultStateName = 'Idle'
+    defaultStateName = 'Locomotion'
     enabled = true
     loop = true
     playing = true
     speed = 1.0
     time = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'JumpUp'
+        transitionDuration = 0.04
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Jump'
+            threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Fall'
+        transitionDuration = 0.04
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 5
+            paramName = 'IsGrounded'
+            threshold = 0.0
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 1
+            paramName = 'VerticalSpeed'
+            threshold = -1.0
 
         [[gameobjects.AnimatorComponent.parameters]]
         boolValue = false
@@ -125,191 +154,90 @@ tag = 'Player'
         name = 'IsGrounded'
         type = 2
 
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Jump'
+        type = 3
+
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 0
-        clipName = 'Idle'
+        clipIndex = -1
+        clipName = ''
         ikWeight = 1.0
         loop = true
-        name = 'Idle'
+        mode = 1
+        name = 'Locomotion'
+        sourcePath = ''
         speed = 1.0
+        transitions = []
 
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'JumpUp'
-            transitionDuration = 0.04
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.18
+            paramName = 'Speed'
+            syncNormalizedTime = true
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'mixamo.com'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim'
+                speed = 1.0
                 threshold = 0.0
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'VerticalSpeed'
-                threshold = 1.0
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'mixamo.com'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Walking/anims/Walking@mixamo.com.anim'
+                speed = 1.0
+                threshold = 4.0
 
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.04
+                [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
+                clipIndex = -1
+                clipName = 'mixamo.com'
+                ikWeight = 1.0
+                posX = 0.0
+                posY = 0.0
+                sourcePath = 'Assets/Models/DebugCharacter/Running/anims/Running@mixamo.com.anim'
+                speed = 1.0
+                threshold = 7.2
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'VerticalSpeed'
-                threshold = -1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Walk'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'Speed'
-                threshold = 0.1
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 1
-        clipName = 'Walking'
-        ikWeight = 1.0
-        loop = true
-        name = 'Walk'
-        speed = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'JumpUp'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'VerticalSpeed'
-                threshold = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'VerticalSpeed'
-                threshold = -1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Idle'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'Speed'
-                threshold = 0.1
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Run'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'Speed'
-                threshold = 5.0
-
-        [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 2
-        clipName = 'Running'
-        ikWeight = 0.0
-        loop = true
-        name = 'Run'
-        speed = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'JumpUp'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'VerticalSpeed'
-                threshold = 1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.04
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'VerticalSpeed'
-                threshold = -1.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Idle'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'Speed'
-                threshold = 0.1
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Walk'
-            transitionDuration = 0.2
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 1
-                paramName = 'Speed'
-                threshold = 5.0
-
-        [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 3
-        clipName = 'JumpingUp'
+        clipIndex = -1
+        clipName = 'mixamo.com'
         ikWeight = 0.0
         loop = false
+        mode = 0
         name = 'JumpUp'
+        sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/anims/JumpingUp@mixamo.com.anim'
         speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
             exitTime = 1.0
+            fixedDuration = true
             hasExitTime = false
             toStateName = 'Fall'
             transitionDuration = 0.2
@@ -320,15 +248,30 @@ tag = 'Player'
                 threshold = -0.5
 
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 4
-        clipName = 'FallingIdle'
+        clipIndex = -1
+        clipName = 'mixamo.com'
         ikWeight = 0.0
         loop = true
+        mode = 0
         name = 'Fall'
+        sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/anims/FallingIdle@mixamo.com.anim'
         speed = 1.0
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
             exitTime = 1.0
+            fixedDuration = true
             hasExitTime = false
             toStateName = 'Landing'
             transitionDuration = 0.1
@@ -339,40 +282,33 @@ tag = 'Player'
                 threshold = 0.0
 
         [[gameobjects.AnimatorComponent.states]]
-        clipIndex = 5
-        clipName = 'Landing'
-        ikWeight = 0.5
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 1.0
         loop = false
+        mode = 0
         name = 'Landing'
+        sourcePath = 'Assets/Models/DebugCharacter/Landing/anims/Landing@mixamo.com.anim'
         speed = 1.0
 
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Fall'
-            transitionDuration = 0.1
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
 
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 5
-                paramName = 'IsGrounded'
-                threshold = 0.0
-
-            [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Run'
-            transitionDuration = 0.12
-
-                [[gameobjects.AnimatorComponent.states.transitions.conditions]]
-                op = 0
-                paramName = 'Speed'
-                threshold = 5.0
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
             [[gameobjects.AnimatorComponent.states.transitions]]
-            exitTime = 1.0
-            hasExitTime = false
-            toStateName = 'Walk'
-            transitionDuration = 0.12
+            exitTime = 0.35
+            fixedDuration = true
+            hasExitTime = true
+            toStateName = 'Locomotion'
+            transitionDuration = 0.18
 
                 [[gameobjects.AnimatorComponent.states.transitions.conditions]]
                 op = 0
@@ -381,13 +317,14 @@ tag = 'Player'
 
             [[gameobjects.AnimatorComponent.states.transitions]]
             conditions = []
-            exitTime = 0.9
+            exitTime = 0.75
+            fixedDuration = true
             hasExitTime = true
-            toStateName = 'Idle'
-            transitionDuration = 0.2
+            toStateName = 'Locomotion'
+            transitionDuration = 0.12
 
     [gameobjects.CapsuleColliderComponent]
-    center = [ 0.0, 0.93, 0.0 ]
+    center = [ 0.0, 0.79, 0.0 ]
     enabled = true
     isTrigger = false
 
@@ -398,8 +335,8 @@ tag = 'Player'
         staticFriction = 0.6
 
         [gameobjects.CapsuleColliderComponent.shape]
-        halfHeight = 0.73
-        radius = 0.19
+        halfHeight = 0.59
+        radius = 0.36
         type = 'Capsule'
 
     [gameobjects.CharacterControllerComponent]
@@ -416,188 +353,303 @@ tag = 'Player'
 
     [gameobjects.IKSolverComponent]
     enabled = true
-    hipBoneName = ''
 
         [[gameobjects.IKSolverComponent.chains]]
+        adjustHip = true
+        autoPole = true
+        autoPoleLocalDirection = [ 0.0, 0.0, -1.0 ]
+        boneNames = []
+        correctionDeadZone = 0.02
         enabled = true
         footNormalAxis = [ 0.0, 0.0, 0.0 ]
-        footSurfaceOffset = 0.05
-        isLeg = true
+        footPlantDistance = 0.06
+        footSurfaceOffset = 0.09
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
+        hipBoneName = 'Hips'
+        lookAtAxis = [ 0.0, 0.0, 1.0 ]
+        lookAtClampAngle = 90.0
+        lookAtSpeed = 10.0
+        lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
+        maxCorrection = 0.52
         maxExtension = 0.98
-        midBone = 'mixamorig:LeftLeg'
-        poleGuid = 'c94e4ab2-e2c4-4acc-8082-3c6425ab3020'
-        poleName = 'IK_LeftKnee_Pole'
+        minBendAngleDegrees = 0.0
+        order = 0
+        poleGuid = ''
+        poleName = ''
         rayDownRatio = 1.2
         rayUpRatio = 0.5
-        rootBone = 'mixamorig:LeftUpLeg'
-        softness = 0.1
-        targetGuid = '7890a521-fcea-41e6-9850-27b0780a0601'
-        targetName = 'IK_LeftFoot_Target'
-        targetOffset = [ 0.0, 0.07, 0.0 ]
-        tipBone = 'mixamorig:LeftFoot'
-        useGroundSnap = true
+        smoothTime = 0.1
+        softness = 0.165
+        spineAutoWeight = false
+        spineFlatWeight = 0.05
+        spineSlopeRampMeters = 0.1
+        targetGuid = ''
+        targetName = ''
+        targetOffset = [ 0.0, 0.0, 0.0 ]
+        type = 1
+        useAnimatorIKWeight = true
         weight = 1.0
 
         [[gameobjects.IKSolverComponent.chains]]
+        adjustHip = true
+        autoPole = false
+        autoPoleLocalDirection = [ 0.0, 0.0, 0.0 ]
+        boneNames = [ 'mixamorig:Spine', 'mixamorig:Spine1', 'mixamorig:Spine2' ]
+        correctionDeadZone = 0.025
         enabled = true
         footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
         footSurfaceOffset = 0.05
-        isLeg = true
-        maxExtension = 0.98
-        midBone = 'mixamorig:RightLeg'
-        poleGuid = '72934e16-382f-40a0-80b0-56eeb32867c1'
-        poleName = 'IK_RightKnee_Pole'
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
+        hipBoneName = 'Hips'
+        lookAtAxis = [ 0.0, 0.0, 1.0 ]
+        lookAtClampAngle = 90.0
+        lookAtSpeed = 10.0
+        lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
+        maxCorrection = 0.12
+        maxExtension = 1.0
+        minBendAngleDegrees = 0.0
+        order = 10
+        poleGuid = ''
+        poleName = ''
         rayDownRatio = 1.2
         rayUpRatio = 0.5
-        rootBone = 'mixamorig:RightUpLeg'
-        softness = 0.1
-        targetGuid = '49ecd804-9f61-493e-aeff-d16410ff3564'
-        targetName = 'IK_RightFoot_Target'
-        targetOffset = [ 0.0, 0.07, 0.0 ]
-        tipBone = 'mixamorig:RightFoot'
-        useGroundSnap = true
-        weight = 1.0
+        smoothTime = 0.1
+        softness = 0.0
+        spineAutoWeight = true
+        spineFlatWeight = 0.0
+        spineSlopeRampMeters = 0.4
+        targetGuid = 'eb76cf69-325e-4ea2-8ad0-48c86329219d'
+        targetName = 'IK_Spine_Target'
+        targetOffset = [ 0.0, 0.0, 0.0 ]
+        type = 3
+        useAnimatorIKWeight = true
+        weight = 0.6
 
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Skinned/SkinnedLit.mat'
+        [[gameobjects.IKSolverComponent.chains]]
+        adjustHip = true
+        autoPole = false
+        autoPoleLocalDirection = [ 0.0, 0.0, 0.0 ]
+        boneNames = [ 'mixamorig:Head' ]
+        correctionDeadZone = 0.025
+        enabled = true
+        footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
+        footSurfaceOffset = 0.05
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
+        hipBoneName = 'Hips'
+        lookAtAxis = [ 0.0, 0.0, -1.0 ]
+        lookAtClampAngle = 60.0
+        lookAtSpeed = 8.0
+        lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
+        maxCorrection = 0.12
+        maxExtension = 0.98
+        minBendAngleDegrees = 0.0
+        order = 20
+        poleGuid = ''
+        poleName = ''
+        rayDownRatio = 1.2
+        rayUpRatio = 0.5
+        smoothTime = 0.1
+        softness = 0.05
+        spineAutoWeight = false
+        spineFlatWeight = 0.05
+        spineSlopeRampMeters = 0.1
+        targetGuid = '6890dc76-2792-4078-96f6-acb43604404a'
+        targetName = 'IK_LookAt_Target'
+        targetOffset = [ 0.0, 0.0, 0.0 ]
+        type = 2
+        useAnimatorIKWeight = true
+        weight = 0.65
+
+        [[gameobjects.IKSolverComponent.chains]]
+        adjustHip = true
+        autoPole = false
+        autoPoleLocalDirection = [ 0.0, 0.0, 0.0 ]
+        boneNames = []
+        correctionDeadZone = 0.025
+        enabled = true
+        footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
+        footSurfaceOffset = 0.05
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
+        hipBoneName = 'Hips'
+        lookAtAxis = [ 0.0, 0.0, 1.0 ]
+        lookAtClampAngle = 90.0
+        lookAtSpeed = 10.0
+        lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
+        maxCorrection = 0.12
+        maxExtension = 0.98
+        minBendAngleDegrees = 0.0
+        order = -100
+        poleGuid = ''
+        poleName = ''
+        rayDownRatio = 1.2
+        rayUpRatio = 0.5
+        smoothTime = 0.1
+        softness = 0.05
+        spineAutoWeight = false
+        spineFlatWeight = 0.05
+        spineSlopeRampMeters = 0.1
+        targetGuid = ''
+        targetName = ''
+        targetOffset = [ 0.0, 0.0, 0.0 ]
+        type = 5
+        useAnimatorIKWeight = true
+        weight = 1.0
 
     [gameobjects.RigidBodyComponent]
+    allowSleeping = true
+    angularDrag = 0.0
     angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.5
     charge = 0.0
     enabled = true
     freezePosition = [ 0.0, 0.0, 0.0 ]
     freezeRotation = [ 1.0, 1.0, 1.0 ]
     gravitationalMass = 1.0
+    gravityScale = 1.0
     isGravitationalSource = false
     isStatic = false
+    linearDrag = 0.0
     mass = 1.0
+    useCCD = false
+    useGravity = true
     velocity = [ 0.0, 0.0, 0.0 ]
 
-    [gameobjects.SkinnedMeshRenderer]
-    enabled = true
-    meshIndex = 0
-    modelPath = 'Assets/Models/DebugCharacter/Player/Player.asset'
-
     [gameobjects.transform]
-    localPosition = [ -2.866464, 1.486121, 7.841068 ]
-    localRotation = [ 0.0, 0.522499, 0.0, 0.85264 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 69.173103, 0.149319, 79.319237 ]
+    rotation = [ 0.0, 0.943932, 0.0, 0.330139 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
     type = 'PlayerControllerComponent'
 
         [gameobjects.ScriptComponents.fields]
+        'Air Accel' = 3.0
+        Backward = 'S'
+        Forward = 'W'
+        'Ground Accel' = 15.0
+        'Ground Decel' = 20.0
+        'IsGrounded Param' = 'IsGrounded'
+        Jump = 'Space'
         'Jump Force' = 5.0
-        'Key Backward' = 83
-        'Key Forward' = 87
-        'Key Jump' = 32
-        'Key Left' = 65
-        'Key Right' = 68
-        'Key Sprint' = 16
+        'Jump Trigger Param' = 'Jump'
+        Left = 'A'
         'Model Yaw Offset' = 180.0
         'Move Speed' = 4.0
-        'Param Is Grounded' = 'IsGrounded'
-        'Param Speed' = 'Speed'
-        'Param Vertical Speed' = 'VerticalSpeed'
-        'Rotate To Move Direction' = true
+        Right = 'D'
+        'Rotate To Move Dir' = true
+        'Speed Param' = 'Speed'
+        Sprint = 'Shift'
         'Sprint Multiplier' = 1.8
-        'State Fall' = 'Fall'
-        'State Jump Up' = 'JumpUp'
-        'State Landing' = 'Landing'
+        'Turn Speed' = 12.0
         'Use Camera Forward' = true
-
-[[gameobjects]]
-active = false
-instanceId = '7890a521-fcea-41e6-9850-27b0780a0601'
-layer = 0
-name = 'IK_LeftFoot_Target'
-parent = 'Player'
-tag = 'Untagged'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Surface/Unlit.mat'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.transform]
-    localPosition = [ 0.099985, 0.070043, 0.023966 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.22, 0.22, 0.22 ]
-
-[[gameobjects]]
-active = false
-instanceId = '49ecd804-9f61-493e-aeff-d16410ff3564'
-layer = 0
-name = 'IK_RightFoot_Target'
-parent = 'Player'
-tag = 'Untagged'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Surface/Unlit.mat'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.transform]
-    localPosition = [ -0.168734, 0.070043, 0.003182 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.22, 0.22, 0.22 ]
-
-[[gameobjects]]
-active = false
-instanceId = 'c94e4ab2-e2c4-4acc-8082-3c6425ab3020'
-layer = 0
-name = 'IK_LeftKnee_Pole'
-parent = 'Player'
-tag = 'Untagged'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Surface/Unlit.mat'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:cube'
-
-    [gameobjects.transform]
-    localPosition = [ 0.124789, 0.59708, -0.524573 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.14, 0.14, 0.139998 ]
-
-[[gameobjects]]
-active = false
-instanceId = '72934e16-382f-40a0-80b0-56eeb32867c1'
-layer = 0
-name = 'IK_RightKnee_Pole'
-parent = 'Player'
-tag = 'Untagged'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Surface/Unlit.mat'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:cube'
-
-    [gameobjects.transform]
-    localPosition = [ -0.131624, 0.587773, -0.495733 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 0.14, 0.14, 0.139996 ]
+        'Use Foot IK' = true
+        'Vertical Speed Param' = 'VerticalSpeed'
 
 [[gameobjects]]
 active = true
-instanceId = '4dedb0c6-520d-4bc5-a263-05dd743e597e'
+instanceId = '4aeb6b03-cdcc-41ea-9488-85faccbbdfe3'
+layer = 0
+name = 'Player_Mesh0'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Models/DebugCharacter/Player/materials/Alpha_Body_MAT.mat'
+
+    [gameobjects.SkinnedMeshRenderer]
+    enabled = true
+    meshIndex = 0
+    modelPath = 'Assets/Models/DebugCharacter/Player/Player.fzasset'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '49aac031-cfef-46a4-a0e1-5782618f518e'
+layer = 0
+name = 'Player_Mesh1'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Models/DebugCharacter/Player/materials/Alpha_Joints_MAT.mat'
+
+    [gameobjects.SkinnedMeshRenderer]
+    enabled = true
+    meshIndex = 1
+    modelPath = 'Assets/Models/DebugCharacter/Player/Player.fzasset'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'eb76cf69-325e-4ea2-8ad0-48c86329219d'
+layer = 0
+name = 'IK_Spine_Target'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.326, -0.1 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6890dc76-2792-4078-96f6-acb43604404a'
+layer = 0
+name = 'IK_LookAt_Target'
+parent = 'Player'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.8, 1.58, -4.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '01da1d72-541f-47a3-9fc1-91f9c88aed75'
 layer = 0
 name = 'RootNode'
 parent = 'Player'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -609,16 +661,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '5fadfe70-733e-40eb-b05d-95faab080efa'
+instanceId = 'c6298669-0005-418a-adce-eb0e402ecc97'
 layer = 0
 name = 'mixamorig:Hips'
 parent = 'RootNode'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -630,16 +683,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.050729, 0.972013, 0.002375 ]
-    localRotation = [ 0.01918, -0.002444, -0.003541, 0.999807 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.014184, 0.966874, -0.007061 ]
+    rotation = [ 0.018506, -0.000315, -0.017675, 0.999672 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ccad4aa0-cb9b-4bde-ab3a-32f8ca1b2174'
+instanceId = 'aa4ce13e-a985-4278-836f-46c49f0bd1d0'
 layer = 0
 name = 'mixamorig:Spine'
 parent = 'mixamorig:Hips'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -651,16 +705,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 9e-06, 0.099235, 0.012273 ]
-    localRotation = [ 0.051973, 0.003422, 0.002584, 0.998639 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 9e-06, 0.099235, 0.012273 ]
+    rotation = [ 0.049504, -0.001185, -0.003193, 0.998768 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '049baf7f-b39b-4d8f-be32-847826a9bb3a'
+instanceId = 'f16eec5d-a912-43c6-b164-d2f36154b46f'
 layer = 0
 name = 'mixamorig:Spine1'
 parent = 'mixamorig:Spine'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -672,16 +727,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.11732, 0.0 ]
-    localRotation = [ -0.007959, 0.028854, 0.002908, 0.999548 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.11732, 0.0 ]
+    rotation = [ -0.01466, 0.018197, -0.006843, 0.999704 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '69f953d7-c0c5-4d58-b4d1-23e24ddcc45b'
+instanceId = '09edc131-6936-4bf0-8b0a-e82acf6f68ab'
 layer = 0
 name = 'mixamorig:Spine2'
 parent = 'mixamorig:Spine1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -693,16 +749,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.134588, 0.0 ]
-    localRotation = [ -0.06515, 0.028531, 0.00497, 0.997455 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.134588, 0.0 ]
+    rotation = [ -0.072321, 0.018597, -0.005194, 0.997195 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b8b15d09-c5ab-4211-acbd-bc418e457df4'
+instanceId = '754df632-0d0f-481d-926a-1f7b49b59e15'
 layer = 0
 name = 'mixamorig:Neck'
 parent = 'mixamorig:Spine2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -714,16 +771,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.150278, -0.008779 ]
-    localRotation = [ 0.015632, -0.012723, -0.015962, 0.999669 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.150278, -0.008779 ]
+    rotation = [ -0.006184, -0.004805, -0.002959, 0.999965 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '59c97eec-3030-49bd-bb8b-05d5a0e1c3f2'
+instanceId = 'bf6eedbc-f337-4202-ac91-2cfa298e8a2e'
 layer = 0
 name = 'mixamorig:Head'
 parent = 'mixamorig:Neck'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -735,16 +793,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.103218, -0.031424 ]
-    localRotation = [ -0.034659, 0.006727, 0.024019, 0.999088 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.103218, -0.031424 ]
+    rotation = [ -0.052545, 0.014379, 0.030246, 0.998057 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '370ff9b2-3b8a-42d4-af3a-b57fb5aec577'
+instanceId = '2e22eeea-e9b2-4138-aa79-a7072e001da5'
 layer = 0
 name = 'mixamorig:HeadTop_End'
 parent = 'mixamorig:Head'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -756,16 +815,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 2e-06, 0.184747, -0.066364 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 2e-06, 0.184747, -0.066364 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '019925e1-dd50-4866-b81f-97c4493266d8'
+instanceId = '848031b3-be54-4261-9ace-d99fe9df23f3'
 layer = 0
 name = 'mixamorig:LeftShoulder'
 parent = 'mixamorig:Spine2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -777,16 +837,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.061058, 0.091063, -0.007571 ]
-    localRotation = [ 0.441958, 0.551536, 0.583841, -0.399514 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.061058, 0.091063, -0.007571 ]
+    rotation = [ -0.437587, -0.558061, -0.555037, 0.434764 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ce1d289d-c9fc-41ce-bb6d-a2432ddc5ddf'
+instanceId = '7b8f0a60-9407-4fe0-8d27-b6f5e3efa32b'
 layer = 0
 name = 'mixamorig:LeftArm'
 parent = 'mixamorig:LeftShoulder'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -798,16 +859,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.527396, -0.209391, 0.250935, 0.784245 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.129223, 0.0 ]
+    rotation = [ -0.563163, -0.190323, 0.212977, 0.775413 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ae41fe4e-aad0-40f0-aff8-58e4ec50efec'
+instanceId = '70a0bf62-d7c7-4163-ae08-4efd46346b6f'
 layer = 0
 name = 'mixamorig:LeftForeArm'
 parent = 'mixamorig:LeftArm'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -819,16 +881,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.258644, 0.965973 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.274047, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.246611, 0.969115 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
+instanceId = 'e493b07d-7286-4ba9-9c0a-10c7ca10029a'
 layer = 0
 name = 'mixamorig:LeftHand'
 parent = 'mixamorig:LeftForeArm'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -840,16 +903,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.121885, -0.057256, -0.134289, 0.98175 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.276145, 0.0 ]
+    rotation = [ -0.098506, -0.057954, -0.122737, 0.985837 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'cb0b3e0d-1ddd-4e99-bcd9-14ad89c8b888'
+instanceId = '2b3d9f7f-6463-43ec-a010-faf7a1116367'
 layer = 0
 name = 'mixamorig:LeftHandThumb1'
 parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -861,16 +925,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.173952, 0.174067, 0.141546, 0.958857 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.03003, 0.037888, -0.021671 ]
+    rotation = [ -0.169529, 0.172776, 0.123686, 0.962346 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '8ef702ce-d352-4543-9290-883d7069429f'
+instanceId = '6f5ec142-99cb-4cca-be18-578e48024d9a'
 layer = 0
 name = 'mixamorig:LeftHandThumb2'
 parent = 'mixamorig:LeftHandThumb1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -882,16 +947,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ 0.021885, -0.029885, -0.144235, 0.98885 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.04745, 0.0 ]
+    rotation = [ 0.017575, 0.004033, -0.10676, 0.994121 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b2ac81b9-a3bd-45c0-a9f5-c1ae01bbc5bd'
+instanceId = 'cc2b2a83-bc7c-49fb-af5a-fe5a503383ca'
 layer = 0
 name = 'mixamorig:LeftHandThumb3'
 parent = 'mixamorig:LeftHandThumb2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -903,16 +969,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.028098, -0.000149, -0.019609, 0.999413 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.043821, 0.0 ]
+    rotation = [ 0.026756, -0.00053, -0.00195, 0.99964 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '23d242ff-b0f3-476c-983d-ddeef5eacb32'
+instanceId = '68cb7eaa-8562-476a-8f04-37bad013eab0'
 layer = 0
 name = 'mixamorig:LeftHandThumb4'
 parent = 'mixamorig:LeftHandThumb3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -924,16 +991,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034591, 0.0 ]
-    localRotation = [ -0.009147, -0.125637, 0.072072, 0.989413 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034591, 0.0 ]
+    rotation = [ -0.009147, -0.125637, 0.072072, 0.989413 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b1cbfd2a-1219-4d2d-9556-956af8576070'
+instanceId = '31d78f43-6ef9-44ce-8238-4f627a0d3279'
 layer = 0
 name = 'mixamorig:LeftHandIndex1'
 parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -945,16 +1013,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.193379, 0.001844, -0.01394, 0.981023 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.02822, 0.122666, -0.002318 ]
+    rotation = [ -0.188643, 0.002129, -0.011617, 0.981975 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0e6e371b-a4dc-46c1-a9b7-c94567be3add'
+instanceId = '50d3c8fd-afd2-4bb9-b72d-d88de4bccccd'
 layer = 0
 name = 'mixamorig:LeftHandIndex2'
 parent = 'mixamorig:LeftHandIndex1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -966,16 +1035,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.239044, -1e-06, -0.028842, 0.97058 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03892, 0.0 ]
+    rotation = [ -0.30026, -2e-06, -0.03623, 0.953169 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '5dde1b8d-314d-42c5-ad26-b8cf248da328'
+instanceId = 'cda8f327-a29f-4005-a680-89b291388df9'
 layer = 0
 name = 'mixamorig:LeftHandIndex3'
 parent = 'mixamorig:LeftHandIndex2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -987,16 +1057,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.100422, 0.0, -0.012119, 0.994871 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034152, 0.0 ]
+    rotation = [ -0.148391, 0.0, -0.017908, 0.988767 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '4591315d-f43f-4a1c-a5ef-de42efe527be'
+instanceId = 'be0b3b47-47ef-4942-a00f-c0fbe405ea14'
 layer = 0
 name = 'mixamorig:LeftHandIndex4'
 parent = 'mixamorig:LeftHandIndex3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1008,16 +1079,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03078, 0.0 ]
-    localRotation = [ -1e-06, -0.004002, 2.3e-05, 0.999992 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03078, 0.0 ]
+    rotation = [ -1e-06, -0.004002, 2.3e-05, 0.999992 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'adb8f539-697c-415a-a8e3-c1064d2f964e'
+instanceId = 'da6ee12d-39da-4418-8eb9-eaac5b1b338a'
 layer = 0
 name = 'mixamorig:LeftHandMiddle1'
 parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1029,16 +1101,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.245279, 0.001594, -0.023291, 0.969172 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.127755, 0.0 ]
+    rotation = [ -0.227923, 0.001004, -0.023217, 0.973402 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'd01549c2-0053-4673-beaa-612ef952e0ff'
+instanceId = '3bc694da-12c3-44ad-bbe8-c5344b66ecb9'
 layer = 0
 name = 'mixamorig:LeftHandMiddle2'
 parent = 'mixamorig:LeftHandMiddle1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1050,16 +1123,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.141814, 0.0, -0.017114, 0.989745 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03614, 0.0 ]
+    rotation = [ -0.204341, 0.0, -0.02466, 0.978589 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0e39d5f3-10b8-43ae-9e21-0dd8a73e20e6'
+instanceId = 'effd1ad4-2920-468f-8ce8-d4ae2ea49cdb'
 layer = 0
 name = 'mixamorig:LeftHandMiddle3'
 parent = 'mixamorig:LeftHandMiddle2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1071,16 +1145,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.126925, 0.0, -0.015317, 0.991794 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034598, 0.0 ]
+    rotation = [ -0.127555, 0.0, -0.015393, 0.991712 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ada66269-585a-4a1c-bd53-56809d3a59e3'
+instanceId = 'f4cc7ac5-fa99-4609-bc83-534138db1814'
 layer = 0
 name = 'mixamorig:LeftHandMiddle4'
 parent = 'mixamorig:LeftHandMiddle3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1092,16 +1167,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036802, 0.0 ]
-    localRotation = [ 1e-06, -0.004579, -0.000654, 0.999989 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036802, 0.0 ]
+    rotation = [ 1e-06, -0.004579, -0.000654, 0.999989 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '12c41e3a-7506-44b0-b2a9-4fe022cd5669'
+instanceId = '83ef48fa-289e-4dfe-bc8b-58bd2ee11898'
 layer = 0
 name = 'mixamorig:LeftHandRing1'
 parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1113,16 +1189,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.293484, 0.005565, -0.017168, 0.955793 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.022166, 0.12147, 1e-04 ]
+    rotation = [ -0.272221, 0.003328, -0.021038, 0.961999 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0bf7f40e-95b4-46e4-9bf8-cb9219ebbbc0'
+instanceId = '5dace01c-7591-4743-9fb4-f49f48d01fe8'
 layer = 0
 name = 'mixamorig:LeftHandRing2'
 parent = 'mixamorig:LeftHandRing1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1134,16 +1211,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.112961, -1e-06, -0.013624, 0.993506 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036012, 0.0 ]
+    rotation = [ -0.148679, -1e-06, -0.017935, 0.988723 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '4f739062-bd49-4a35-bf47-5aca71c63a91'
+instanceId = '2045522f-467e-484d-9240-ea536c3fe0c7'
 layer = 0
 name = 'mixamorig:LeftHandRing3'
 parent = 'mixamorig:LeftHandRing2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1155,16 +1233,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.094865, 0.0, -0.011448, 0.995424 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.033073, 0.0 ]
+    rotation = [ -0.095645, 0.0, -0.011543, 0.995349 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'f169e1dd-fa56-40ec-8123-f135eb0cbab0'
+instanceId = '03788e8d-36f5-47fe-9999-d71702972882'
 layer = 0
 name = 'mixamorig:LeftHandRing4'
 parent = 'mixamorig:LeftHandRing3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1176,16 +1255,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036601, 0.0 ]
-    localRotation = [ -8e-06, -0.007396, 0.000771, 0.999972 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036601, 0.0 ]
+    rotation = [ -8e-06, -0.007396, 0.000771, 0.999972 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '42e229ad-3e39-456f-8b48-65863d1e3e38'
+instanceId = '3a35e880-bd74-4b41-a662-503bd4343efe'
 layer = 0
 name = 'mixamorig:LeftHandPinky1'
 parent = 'mixamorig:LeftHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1197,16 +1277,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.345443, -0.007365, -0.061514, 0.936392 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.047258, 0.109082, -0.002261 ]
+    rotation = [ -0.360194, -0.011641, -0.073218, 0.929927 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'e51df4fe-bd15-483e-96aa-53ab73a72d1b'
+instanceId = '6ee3d35f-355c-408a-a72d-29d4e7020b59'
 layer = 0
 name = 'mixamorig:LeftHandPinky2'
 parent = 'mixamorig:LeftHandPinky1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1218,16 +1299,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.124766, -0.004324, 0.020588, 0.991963 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.041367, 0.0 ]
+    rotation = [ -0.187139, -0.006567, 0.012712, 0.982229 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '6f8bbc6f-88bb-4c59-9492-6eaae095f281'
+instanceId = '8f384a78-3db4-4906-ba49-4987fb431f08'
 layer = 0
 name = 'mixamorig:LeftHandPinky3'
 parent = 'mixamorig:LeftHandPinky2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1239,16 +1321,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.066723, 0.0, -0.008052, 0.997739 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.025948, 0.0 ]
+    rotation = [ -0.067371, 0.0, -0.00813, 0.997695 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '93a92bc0-d8b9-46a6-a26b-04409343bfed'
+instanceId = 'c43ec6d8-f7fe-493b-ac74-efb449d1794c'
 layer = 0
 name = 'mixamorig:LeftHandPinky4'
 parent = 'mixamorig:LeftHandPinky3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1260,16 +1343,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.029239, 0.0 ]
-    localRotation = [ 1e-06, -0.0041, -0.000575, 0.999991 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.029239, 0.0 ]
+    rotation = [ 1e-06, -0.0041, -0.000575, 0.999991 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '033412d2-0ab4-4fc8-a748-53ff01ad7d0e'
+instanceId = 'd270de51-6354-4a95-b6ce-1bdf5743a8fa'
 layer = 0
 name = 'mixamorig:RightShoulder'
 parent = 'mixamorig:Spine2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1281,16 +1365,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.061057, 0.091064, -0.007571 ]
-    localRotation = [ 0.471831, -0.541135, -0.51405, -0.469362 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.061057, 0.091064, -0.007571 ]
+    rotation = [ 0.501854, -0.52187, -0.506223, -0.468544 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '50e7240b-06a8-49e9-bfb4-7cf479cbadd3'
+instanceId = '41e15ff0-fc09-4dd9-b0e9-e36883ad6b05'
 layer = 0
 name = 'mixamorig:RightArm'
 parent = 'mixamorig:RightShoulder'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1302,16 +1387,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.129223, 0.0 ]
-    localRotation = [ -0.547278, 0.188624, -0.271781, 0.768793 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.129223, 0.0 ]
+    rotation = [ -0.537291, 0.184221, -0.260774, 0.780627 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '50aca9e4-7df9-4174-9426-439c579005ed'
+instanceId = '406a8cd4-9bfa-4cd0-88b2-bebc47cf4d23'
 layer = 0
 name = 'mixamorig:RightForeArm'
 parent = 'mixamorig:RightArm'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1323,16 +1409,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.274047, 0.0 ]
-    localRotation = [ 0.0, 0.0, -0.237563, 0.971372 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.274047, 0.0 ]
+    rotation = [ 0.0, 0.0, -0.255433, 0.966827 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
+instanceId = 'c0419f32-422b-4148-89ee-98e8d5592940'
 layer = 0
 name = 'mixamorig:RightHand'
 parent = 'mixamorig:RightForeArm'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1344,16 +1431,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.276145, 0.0 ]
-    localRotation = [ -0.017331, -0.028529, 0.129841, 0.990973 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.276145, 0.0 ]
+    rotation = [ -0.01281, -0.027722, 0.123824, 0.991834 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b13a015c-4b92-4300-97d8-cd09c2cebba3'
+instanceId = '88abb000-6081-4e51-8b73-d4d77b2dba42'
 layer = 0
 name = 'mixamorig:RightHandThumb1'
 parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1365,16 +1453,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.03003, 0.037888, -0.021671 ]
-    localRotation = [ -0.191503, -0.043475, -0.025199, 0.980205 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.03003, 0.037888, -0.021671 ]
+    rotation = [ -0.189206, -0.045192, -0.026779, 0.980531 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '6f0bd885-fcf3-45e1-9737-29c394e9c2e7'
+instanceId = '1c211056-524d-4fa0-8419-3b45083360af'
 layer = 0
 name = 'mixamorig:RightHandThumb2'
 parent = 'mixamorig:RightHandThumb1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1386,16 +1475,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.04745, 0.0 ]
-    localRotation = [ -0.020049, 0.049852, 0.025192, 0.998238 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.04745, 0.0 ]
+    rotation = [ -0.020025, 0.050956, 0.02676, 0.998141 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '07e65d21-c86c-4593-b091-bb6ee40496bd'
+instanceId = '7095dda7-f225-46b9-b34c-6668495ad4ae'
 layer = 0
 name = 'mixamorig:RightHandThumb3'
 parent = 'mixamorig:RightHandThumb2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1407,16 +1497,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.043821, 0.0 ]
-    localRotation = [ 0.028793, 0.001216, -0.011538, 0.999518 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.043821, 0.0 ]
+    rotation = [ 0.028855, 0.001192, -0.010569, 0.999527 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '5eb30863-a1db-4877-b5c3-8163b16fc9e9'
+instanceId = 'f0edd9e5-e3e1-454d-9d74-d793f9a10dad'
 layer = 0
 name = 'mixamorig:RightHandThumb4'
 parent = 'mixamorig:RightHandThumb3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1428,16 +1519,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034591, 0.0 ]
-    localRotation = [ -0.009232, 0.12713, -0.072328, 0.989202 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034591, 0.0 ]
+    rotation = [ -0.009232, 0.12713, -0.072328, 0.989202 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'f56cf4d9-e086-47c0-9fc8-8d90cfae4e11'
+instanceId = 'ac43ec74-63b3-4d19-9ec0-758c5ee0b6b5'
 layer = 0
 name = 'mixamorig:RightHandIndex1'
 parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1449,16 +1541,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.02822, 0.122666, -0.002318 ]
-    localRotation = [ -0.074305, 0.002842, 0.045069, 0.996213 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.02822, 0.122666, -0.002318 ]
+    rotation = [ -0.054312, 0.001919, 0.039498, 0.997741 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'ccfc3bc2-13f3-44b8-94b3-5f6633e63b1a'
+instanceId = '530dc467-89c4-492c-9017-427ab4dd73f5'
 layer = 0
 name = 'mixamorig:RightHandIndex2'
 parent = 'mixamorig:RightHandIndex1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1470,16 +1563,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03892, 0.0 ]
-    localRotation = [ -0.310953, 2e-06, 0.037889, 0.94967 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03892, 0.0 ]
+    rotation = [ -0.369856, 2e-06, 0.045068, 0.927996 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'a1bb834d-730f-40c1-bbc2-cc920922a58b'
+instanceId = 'e8919abf-84ff-45e9-805b-b6287f02f425'
 layer = 0
 name = 'mixamorig:RightHandIndex3'
 parent = 'mixamorig:RightHandIndex2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1491,16 +1585,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034152, 0.0 ]
-    localRotation = [ -0.084525, 0.0, 0.010301, 0.996368 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034152, 0.0 ]
+    rotation = [ -0.095228, 0.0, 0.011605, 0.995388 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '6646d1f1-b732-459d-bad8-2765e118f931'
+instanceId = '709a0b5a-71f0-454c-896b-38a2174f60f5'
 layer = 0
 name = 'mixamorig:RightHandIndex4'
 parent = 'mixamorig:RightHandIndex3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1512,16 +1607,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03078, 0.0 ]
-    localRotation = [ 7.3e-05, 0.006709, 0.001375, 0.999977 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03078, 0.0 ]
+    rotation = [ 7.3e-05, 0.006709, 0.001375, 0.999977 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '7ab8c974-5b90-4b17-a3af-9d3521b7d42e'
+instanceId = '765349b9-8074-4f67-9810-373c36f4f125'
 layer = 0
 name = 'mixamorig:RightHandMiddle1'
 parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1533,16 +1629,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.127755, 0.0 ]
-    localRotation = [ -0.088626, 0.004277, 0.056028, 0.994479 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.127755, 0.0 ]
+    rotation = [ -0.092154, 0.004278, 0.054905, 0.994221 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'a9e7840d-3e84-413a-9c71-29e54f099a5c'
+instanceId = '770b3aaa-cf01-4e0e-a1ea-7c017e072af4'
 layer = 0
 name = 'mixamorig:RightHandMiddle2'
 parent = 'mixamorig:RightHandMiddle1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1554,16 +1651,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.03614, 0.0 ]
-    localRotation = [ -0.262815, 0.0, 0.032029, 0.964315 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.03614, 0.0 ]
+    rotation = [ -0.318542, 0.0, 0.03882, 0.947114 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '581fdc48-143b-4a68-ae21-47cd01eabb96'
+instanceId = '8a438ef5-a625-4c88-ad43-59d61e554116'
 layer = 0
 name = 'mixamorig:RightHandMiddle3'
 parent = 'mixamorig:RightHandMiddle2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1575,16 +1673,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.034598, 0.0 ]
-    localRotation = [ -0.07525, -0.00535, 0.009581, 0.997104 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.034598, 0.0 ]
+    rotation = [ -0.081262, -0.005813, 0.010384, 0.996622 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '7eda2398-e5b4-4c19-8802-145c7b992b23'
+instanceId = '40827f67-9e21-404e-99b3-76c3c1daf04c'
 layer = 0
 name = 'mixamorig:RightHandMiddle4'
 parent = 'mixamorig:RightHandMiddle3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1596,16 +1695,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036802, 0.0 ]
-    localRotation = [ 5.2e-05, 0.006695, -0.001708, 0.999976 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036802, 0.0 ]
+    rotation = [ 5.2e-05, 0.006695, -0.001708, 0.999976 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '796169bc-8fa6-410a-b52d-428d30cb5942'
+instanceId = '491c81f7-f05d-4b18-900b-610d1634e568'
 layer = 0
 name = 'mixamorig:RightHandRing1'
 parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1617,16 +1717,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.022166, 0.12147, 1e-04 ]
-    localRotation = [ -0.190219, 0.00315, 0.039274, 0.980951 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.022166, 0.12147, 1e-04 ]
+    rotation = [ -0.203927, 0.003483, 0.041409, 0.978104 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'aebb89f9-1fdb-414a-81f5-5b0fde31daa9'
+instanceId = '6ce68406-b882-4e21-a00b-a4671b5f62fb'
 layer = 0
 name = 'mixamorig:RightHandRing2'
 parent = 'mixamorig:RightHandRing1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1638,16 +1739,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036012, 0.0 ]
-    localRotation = [ -0.209112, 1e-06, 0.025476, 0.97756 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036012, 0.0 ]
+    rotation = [ -0.260855, 2e-06, 0.031782, 0.964855 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '917a9444-6e94-4e19-b37c-7becd2c6b255'
+instanceId = 'cbcf0894-f3eb-4a05-bdec-c480fa179690'
 layer = 0
 name = 'mixamorig:RightHandRing3'
 parent = 'mixamorig:RightHandRing2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1659,16 +1761,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.033073, 0.0 ]
-    localRotation = [ -0.092632, -0.006882, 0.011939, 0.995605 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.033073, 0.0 ]
+    rotation = [ -0.092569, -0.007274, 0.011968, 0.995608 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'd39c286e-4c3c-4bf9-80a4-c4191b1bbe8c'
+instanceId = 'e3161aba-8b32-44e9-b27b-5871767bd5b7'
 layer = 0
 name = 'mixamorig:RightHandRing4'
 parent = 'mixamorig:RightHandRing3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1680,16 +1783,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.036601, 0.0 ]
-    localRotation = [ 6.2e-05, 0.007613, -3e-04, 0.999971 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.036601, 0.0 ]
+    rotation = [ 6.2e-05, 0.007613, -3e-04, 0.999971 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '05075131-5126-4cfb-b850-9e9b80eb4561'
+instanceId = 'd3d619af-7866-410b-bebd-1366dfd313ee'
 layer = 0
 name = 'mixamorig:RightHandPinky1'
 parent = 'mixamorig:RightHand'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1701,16 +1805,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.047258, 0.109082, -0.002261 ]
-    localRotation = [ -0.272688, 0.008813, 0.063852, 0.959941 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.047258, 0.109082, -0.002261 ]
+    rotation = [ -0.284868, 0.009869, 0.0674, 0.956143 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '279e6b08-0838-4f05-8016-cf2373bf7109'
+instanceId = 'de88d48a-7e30-44f1-8c5c-f872aae79aaf'
 layer = 0
 name = 'mixamorig:RightHandPinky2'
 parent = 'mixamorig:RightHandPinky1'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1722,16 +1827,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.041367, 0.0 ]
-    localRotation = [ -0.182816, 0.0, 0.022279, 0.982895 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.041367, 0.0 ]
+    rotation = [ -0.198074, 0.0, 0.024139, 0.97989 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '2520010e-2a2b-410c-a189-bfa0c3b30529'
+instanceId = 'aaaf7523-b0d6-44fe-857b-c516b2b6f975'
 layer = 0
 name = 'mixamorig:RightHandPinky3'
 parent = 'mixamorig:RightHandPinky2'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1743,16 +1849,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.025948, 0.0 ]
-    localRotation = [ -0.105218, 0.0, 0.012823, 0.994367 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.025948, 0.0 ]
+    rotation = [ -0.101138, 0.0, 0.012325, 0.994796 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '10c32862-b5e1-4597-8b03-3cdb4e44aa80'
+instanceId = '97cb2fd8-5dcd-444e-af27-c543c08679d6'
 layer = 0
 name = 'mixamorig:RightHandPinky4'
 parent = 'mixamorig:RightHandPinky3'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1764,16 +1871,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.029239, 0.0 ]
-    localRotation = [ 8.2e-05, 0.008499, 0.002206, 0.999961 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.029239, 0.0 ]
+    rotation = [ 8.2e-05, 0.008499, 0.002206, 0.999961 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '40782709-5fa6-4005-af0b-6ec16023a160'
+instanceId = 'e2bbd1f6-02e8-4797-80dd-7068da6406ff'
 layer = 0
 name = 'mixamorig:LeftUpLeg'
 parent = 'mixamorig:Hips'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1785,16 +1893,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.091239, -0.066572, 0.000554 ]
-    localRotation = [ -0.03295, -0.090901, 0.994159, -0.047956 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.091239, -0.066572, 0.000554 ]
+    rotation = [ -0.02981, -0.106896, 0.993433, -0.027839 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b1f7e766-d6a2-4a17-b9b5-8d5f74f875aa'
+instanceId = '64325ba4-6107-48bb-be67-df86ab155446'
 layer = 0
 name = 'mixamorig:LeftLeg'
 parent = 'mixamorig:LeftUpLeg'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1806,16 +1915,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.23891, 0.083188, 0.023356, 0.96719 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.405994, 0.0 ]
+    rotation = [ 0.283581, 0.078904, 0.016457, 0.955555 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'aab50f55-8d07-461b-8dda-2548625e04c4'
+instanceId = '57ad0c82-eab9-4ef3-b867-ac2ab46a9f07'
 layer = 0
 name = 'mixamorig:LeftFoot'
 parent = 'mixamorig:LeftLeg'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1827,16 +1937,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.618496, 0.02749, -0.029351, 0.784758 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.42099, 0.0 ]
+    rotation = [ -0.648843, 0.023906, 0.010756, 0.760471 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '15d51758-e8f4-4476-ad28-81cf3e5b7e30'
+instanceId = '1397d6bb-b8d3-4c32-bf97-90c4b85d312b'
 layer = 0
 name = 'mixamorig:LeftToeBase'
 parent = 'mixamorig:LeftFoot'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1848,16 +1959,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.157216, 0.0 ]
-    localRotation = [ -0.229344, 0.032517, -0.015336, 0.972681 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.157216, 0.0 ]
+    rotation = [ -0.231627, 0.03251, -0.015294, 0.972141 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '944dce4d-c85f-475d-8ffb-a32d5e2b46f2'
+instanceId = 'c28a01ed-f097-4b51-9b5f-e27a08eba914'
 layer = 0
 name = 'mixamorig:LeftToe_End'
 parent = 'mixamorig:LeftToeBase'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1869,16 +1981,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.1, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '464d769b-eae5-47de-9ba0-cebdf55536f9'
+instanceId = '450c36e2-b566-4031-b593-ad7a29d87371'
 layer = 0
 name = 'mixamorig:RightUpLeg'
 parent = 'mixamorig:Hips'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1890,16 +2003,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ -0.09125, -0.066556, 0.000554 ]
-    localRotation = [ 0.114502, -0.105759, 0.987302, 0.030641 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ -0.09125, -0.066556, 0.000554 ]
+    rotation = [ 0.124528, -0.100062, 0.985907, 0.049676 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'caad1d91-ad4d-451c-9ebc-ef9cf0004017'
+instanceId = '7ed47063-9eb6-47e8-9f71-6bca5efe0ba7'
 layer = 0
 name = 'mixamorig:RightLeg'
 parent = 'mixamorig:RightUpLeg'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1911,16 +2025,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.405994, 0.0 ]
-    localRotation = [ 0.245788, -0.027116, -0.004652, 0.968933 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.405994, 0.0 ]
+    rotation = [ 0.235296, -0.037165, -0.020748, 0.970991 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'd1497b21-3312-4d44-94f8-bbdfba3f4e67'
+instanceId = '380cc71a-c079-4c6c-afe9-15afb981728a'
 layer = 0
 name = 'mixamorig:RightFoot'
 parent = 'mixamorig:RightLeg'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1932,16 +2047,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.42099, 0.0 ]
-    localRotation = [ -0.614851, -0.047438, -0.026382, 0.786773 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.42099, 0.0 ]
+    rotation = [ -0.603229, -0.047878, 0.024714, 0.795746 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'a3dc6b39-ed9b-44db-a3c2-ef8b9af58698'
+instanceId = 'e649d135-62eb-44bd-abdc-dd658afa913b'
 layer = 0
 name = 'mixamorig:RightToeBase'
 parent = 'mixamorig:RightFoot'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1953,16 +2069,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.157216, 0.0 ]
-    localRotation = [ -0.227709, -0.03212, 0.015257, 0.97308 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.157216, 0.0 ]
+    rotation = [ -0.227709, -0.03212, 0.015258, 0.97308 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '0f29a4d3-6637-49fd-81c3-9107c7536dff'
+instanceId = '9b600db6-571b-4dae-8877-65792dde8735'
 layer = 0
 name = 'mixamorig:RightToe_End'
 parent = 'mixamorig:RightToeBase'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1974,16 +2091,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.1, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '987f7658-e97d-4f64-9fc8-afb1432d6655'
+instanceId = '05ab535a-27a1-47ab-ae32-bd6d7a3fc547'
 layer = 0
 name = 'Alpha_Surface'
 parent = 'RootNode'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1995,16 +2113,17 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'badade77-b138-42e2-8354-6822da2f9be8'
+instanceId = '338f813f-5b43-48b0-a59d-580456a03625'
 layer = 0
 name = 'Alpha_Joints'
 parent = 'RootNode'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -2016,16 +2135,101 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.0, 0.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '30b1b0e3-b278-4df9-9d0f-10614348de7c'
+instanceId = 'e6a0e802-f7f6-4fe9-a2c2-2194152ace3f'
 layer = 0
-name = 'Terrain'
+name = 'TerrainGrid'
 parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainGridComponent]
+    cellCountX = 4
+    cellCountZ = 4
+    cells = [
+        '09b62fcc-2d47-44a7-b066-4eb88674c3d5',
+        '47da0a91-b8be-4d05-8f42-d3a20390e753',
+        '65a01b2b-db16-4d43-8cd6-a62dd00a4d9e',
+        '1f652022-e22d-4189-b0c1-925b9aeeba43',
+        '34e2d479-09a3-4547-a98a-4d751f69def9',
+        '5a43687b-18fa-4100-81b1-8e9093dca670',
+        '69f4ffe7-fa8f-437b-af4d-d46e933d3336',
+        'e22ae83d-c218-4241-8f75-e948148548d7',
+        '3db47044-c9b4-4775-923b-6532c7ae25ee',
+        '972e1b38-82be-44d4-b7b2-0d00206a4642',
+        '0e8d6490-d28d-43bd-89c9-436332191105',
+        '1511abef-bf2c-45e2-994a-8efcb602ff54',
+        'a5ebec92-ab57-4da3-8a88-e35ce78d63a4',
+        '0b96fe58-4374-4555-92f9-23ff59ece4f7',
+        '9d64a5f2-b47d-4025-886c-607da1665f43',
+        '784c5b10-0c97-4bf5-896b-74839efe5e16'
+    ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e6c1634f-4712-4ba6-96ed-c8f9cf9a902f'
+layer = 0
+name = 'Water'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.WaterComponent]
+    chunkCount = 4
+    enableGerstnerWaves = true
+    enabled = true
+    extentX = 1000.0
+    extentZ = 1000.0
+    materialPath = 'Assets/Materials/Water/Water.mat'
+    resolutionX = 64
+    resolutionZ = 64
+
+        [[gameobjects.WaterComponent.waves]]
+        amplitude = 0.35
+        direction = [ 1.0, 0.2 ]
+        steepness = 0.4
+        wavelength = 14.0
+
+        [[gameobjects.WaterComponent.waves]]
+        amplitude = 0.2
+        direction = [ -0.3, 0.95 ]
+        steepness = 0.3
+        wavelength = 22.0
+
+        [[gameobjects.WaterComponent.waves]]
+        amplitude = 0.15
+        direction = [ 0.7, -0.7 ]
+        steepness = 0.25
+        wavelength = 9.0
+
+        [[gameobjects.WaterComponent.waves]]
+        amplitude = 0.1
+        direction = [ -0.9, 0.4 ]
+        steepness = 0.2
+        wavelength = 18.0
+
+    [gameobjects.transform]
+    position = [ 0.0, -73.341934, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '09b62fcc-2d47-44a7-b066-4eb88674c3d5'
+layer = 0
+name = 'Terrain_0_0'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
 tag = 'Untagged'
 
     [gameobjects.TerrainColliderComponent]
@@ -2039,93 +2243,664 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
     [gameobjects.TerrainComponent]
-    cellSize = 2.0
-    chunkSize = 32
-    columns = 33
     enabled = true
-    materialPath = 'Assets/Materials/Terrain/Terrain.mat'
-    maxHeight = 10.0
-    rows = 33
-    terrainAssetPath = 'Assets/Terrain/Terrain.terrain'
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_0 3.terrain'
 
     [gameobjects.transform]
-    localPosition = [ -32.07774, 0.0, -6.031532 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = 'b3c8a1f2-4d5e-6a7b-8c9d-0e1f2a3b4c5d'
+instanceId = '47da0a91-b8be-4d05-8f42-d3a20390e753'
 layer = 0
-name = 'Sea'
-parent = ''
+name = 'Terrain_1_0'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
 tag = 'Untagged'
 
-    [gameobjects.BoxColliderComponent]
-    center = [ 0.0, -2.5, 0.0 ]
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
     enabled = true
-    isTrigger = true
+    isTrigger = false
 
-        [gameobjects.BoxColliderComponent.material]
+        [gameobjects.TerrainColliderComponent.material]
         density = 1.0
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.BoxColliderComponent.shape]
-        halfExtents = [ 60.0, 2.5, 60.0 ]
-        type = 'OBB'
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
 
-    [gameobjects.VolumeComponent]
-    buoyancy = 15.0
-    drag = 2.0
-    duration = -1.0
+    [gameobjects.TerrainComponent]
     enabled = true
-    explosionImpulse = 10.0
-    gravity = [ 0.0, -9.81, 0.0 ]
-    inwardStrength = 0.0
-    liftStrength = 0.0
-    magneticField = [ 0.0, 1.0, 0.0 ]
-    swirlStrength = 1.0
-    timeScale = 1.0
-    type = 'Buoyancy'
-
-    [gameobjects.WaterComponent]
-    chunkCount = 4
-    enableGerstnerWaves = true
-    enabled = true
-    extentX = 120.0
-    extentZ = 120.0
-    materialPath = 'Assets/Materials/Water/Water.mat'
-    resolutionX = 64
-    resolutionZ = 64
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.15
-        direction = [ 1.0, 0.15 ]
-        steepness = 0.35
-        wavelength = 8.0
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.1
-        direction = [ -0.3, 1.0 ]
-        steepness = 0.25
-        wavelength = 12.0
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.08
-        direction = [ 0.7, -0.6 ]
-        steepness = 0.2
-        wavelength = 6.0
-
-        [[gameobjects.WaterComponent.waves]]
-        amplitude = 0.06
-        direction = [ -1.0, 0.2 ]
-        steepness = 0.15
-        wavelength = 10.0
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_0 4.terrain'
 
     [gameobjects.transform]
-    localPosition = [ 0.0, 0.5, 20.0 ]
-    localRotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    localScale = [ 1.0, 1.0, 1.0 ]
+    position = [ 31.5, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '65a01b2b-db16-4d43-8cd6-a62dd00a4d9e'
+layer = 0
+name = 'Terrain_2_0'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_0 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1f652022-e22d-4189-b0c1-925b9aeeba43'
+layer = 0
+name = 'Terrain_3_0'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_0 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '34e2d479-09a3-4547-a98a-4d751f69def9'
+layer = 0
+name = 'Terrain_0_1'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_1 3.terrain'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 31.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '5a43687b-18fa-4100-81b1-8e9093dca670'
+layer = 0
+name = 'Terrain_1_1'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_1 3.terrain'
+
+    [gameobjects.transform]
+    position = [ 31.5, 0.0, 31.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '69f4ffe7-fa8f-437b-af4d-d46e933d3336'
+layer = 0
+name = 'Terrain_2_1'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_1 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 31.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e22ae83d-c218-4241-8f75-e948148548d7'
+layer = 0
+name = 'Terrain_3_1'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_1 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 31.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3db47044-c9b4-4775-923b-6532c7ae25ee'
+layer = 0
+name = 'Terrain_0_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '972e1b38-82be-44d4-b7b2-0d00206a4642'
+layer = 0
+name = 'Terrain_1_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 31.5, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0e8d6490-d28d-43bd-89c9-436332191105'
+layer = 0
+name = 'Terrain_2_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1511abef-bf2c-45e2-994a-8efcb602ff54'
+layer = 0
+name = 'Terrain_3_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a5ebec92-ab57-4da3-8a88-e35ce78d63a4'
+layer = 0
+name = 'Terrain_0_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0b96fe58-4374-4555-92f9-23ff59ece4f7'
+layer = 0
+name = 'Terrain_1_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 31.5, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9d64a5f2-b47d-4025-886c-607da1665f43'
+layer = 0
+name = 'Terrain_2_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '784c5b10-0c97-4bf5-896b-74839efe5e16'
+layer = 0
+name = 'Terrain_3_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000001'
+layer = 0
+name = 'GameCanvas'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    matchWidthOrHeight = 0.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    scaleMode = 1
+    sortOrder = 100
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000002'
+layer = 0
+name = 'ResultButton'
+parent = 'GameCanvas'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    enabled = true
+    hoverColor = [ 0.35, 0.42, 0.55, 1.0 ]
+    isInteractable = true
+    normalColor = [ 0.18, 0.24, 0.35, 1.0 ]
+    pressedColor = [ 0.1, 0.14, 0.22, 1.0 ]
+
+    [gameobjects.UIImage]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    sortOrder = 10
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.UIText]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 32.0
+    letterSpacing = 4.0
+    sortOrder = 10
+    text = 'RESULT'
+
+    [gameobjects.transform]
+    position = [ 1690.0, 60.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 170.0, 56.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'SceneManagerScript'
+
+        [gameobjects.ScriptComponents.fields]
+        'Auto Delay' = 1.5
+        'Auto Transition' = false
+        'Target Scene' = 'Result'
+        'Via Scene' = 'Load'

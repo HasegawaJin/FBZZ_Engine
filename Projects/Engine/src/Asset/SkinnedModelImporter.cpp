@@ -144,6 +144,9 @@ void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
             clip.name = "Clip" + std::to_string(ai);
         clip.durationTicks  = src->mDuration;
         clip.ticksPerSecond = src->mTicksPerSecond > 0.0 ? src->mTicksPerSecond : 30.0;
+        clip.durationSeconds = clip.ticksPerSecond > 0.0
+            ? clip.durationTicks / clip.ticksPerSecond
+            : 0.0;
 
         for (uint32_t ci = 0; ci < src->mNumChannels; ++ci) {
             const aiNodeAnim* channel = src->mChannels[ci];

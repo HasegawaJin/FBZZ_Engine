@@ -28,7 +28,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 ImGui::Separator();
                 for (int i = 0; i < 32; ++i) {
                     bool on = fbzz::Layer::Contains(cc.cullingMask, i);
-                    if (ImGui::Checkbox(c.projectSettings.layerNames[i].c_str(), &on)) {
+                    if (ImGui::Checkbox(c.projectSettings.game.layerNames[i].c_str(), &on)) {
                         if (on) cc.cullingMask |=  fbzz::Layer::Mask(i);
                         else    cc.cullingMask &= ~fbzz::Layer::Mask(i);
                     }
