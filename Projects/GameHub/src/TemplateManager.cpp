@@ -51,6 +51,7 @@ bool IsTextTemplate(const std::filesystem::path& path)
         || extension == ".cpp"
         || extension == ".h"
         || extension == ".c"
+        || extension == ".inl"  // ScriptList.inl 等のテンプレートファイルを対象に含める
         || extension == ".md"
         || extension == ".gitignore"
         || extension.empty();
@@ -294,19 +295,34 @@ bool TemplateManager::SyncCopiedScriptRegistrations(
 
         const std::string className = match[1].str();
         const std::string includeLine = "#include \"Scripts/" + engine_util::FileSystem::PathToUtf8(entry.path().filename()) + "\"";
-        const std::string dllEntry =
-            "        { ::sandbox::" + className + "::TYPE_NAME,"
-            " []() { return std::make_unique<::sandbox::" + className + ">(); } },";
-        const std::string staticEntry = "FBZZ_REGISTER_SCRIPT(::sandbox::" + className + ")";
 
         // WHY: standard テンプレートはエンジン側 Assets/Scripts をコピーするため、
         //      ScriptCodeGen を経由しない既存スクリプトも DLL / Standalone の両方へ登録する必要がある。
-        if (!InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
-            !InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", dllEntry) ||
-            !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
-            !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", staticEntry)) {
-            errorMessage = "Failed to update copied script registrations.";
-            return false;
+        // 新形式: ScriptList.inl があればエントリをそこへ一元書き込みする。
+        // 旧形式: ScriptList.inl がなければ従来通り DLL/EXE の各 .cpp へ直接書き込む。
+        const std::filesystem::path scriptListPath = scriptsDir / "ScriptList.inl";
+        const bool hasScriptList = Exists(scriptListPath);
+
+        if (hasScriptList) {
+            const std::string scriptListEntry = "FBZZ_SCRIPT_ENTRY(sandbox, " + className + ")";
+            if (!InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
+                !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
+                !InsertAfterMarker(scriptListPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", scriptListEntry)) {
+                errorMessage = "Failed to update copied script registrations.";
+                return false;
+            }
+        } else {
+            const std::string dllEntry =
+                "        { ::sandbox::" + className + "::TYPE_NAME,"
+                " []() { return std::make_unique<::sandbox::" + className + ">(); } },";
+            const std::string staticEntry = "FBZZ_REGISTER_SCRIPT(::sandbox::" + className + ")";
+            if (!InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
+                !InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", dllEntry) ||
+                !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
+                !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", staticEntry)) {
+                errorMessage = "Failed to update copied script registrations.";
+                return false;
+            }
         }
     }
 
