@@ -48,6 +48,10 @@ struct ScriptPostProcessProxy {
 
     // SetCustomParameters: customParameters.xyzw をまとめて更新する。
     bool SetCustomParameters(std::string_view name, float x, float y, float z, float w) const;
+
+    // LoadProfile: .fzpp ファイルを読み込み、ランタイム PostProcess 設定を全置換する。
+    // WHY: シーン遷移や演出変化に合わせて複数の設定ファイルをスクリプトから差し替えられるようにする。
+    bool LoadProfile(std::string_view path) const;
 };
 
 } // namespace fbzz::scene
