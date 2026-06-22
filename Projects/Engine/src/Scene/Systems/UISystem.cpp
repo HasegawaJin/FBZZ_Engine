@@ -63,6 +63,31 @@ static constexpr uint32_t kTextVBVertices  = 4096; // ~682 グリフ分。超過
 
 struct Rect { math::Vector2 pos; math::Vector2 size; };
 
+int GetUISortOrder(GameObject& go)
+{
+    // UIImage と UIText を同じ GO に持つ Button は一つの描画単位として扱う。
+    // 両方に値がある場合は手前側を採用し、どちらの Inspector からでも調整できるようにする。
+    int order = 0;
+    if (const auto* image = go.GetComponent<UIImage>()) order = image->sortOrder;
+    if (const auto* text = go.GetComponent<UIText>()) order = (std::max)(order, text->sortOrder);
+    return order;
+}
+
+std::vector<GameObject*> SortedUIChildren(GameObject& go)
+{
+    std::vector<GameObject*> children;
+    children.reserve(static_cast<size_t>(go.GetChildCount()));
+    for (int i = 0; i < go.GetChildCount(); ++i) {
+        if (GameObject* child = go.GetChild(i)) children.push_back(child);
+    }
+    // 同値時は Hierarchy 順を維持し、既存シーンの見た目を変えない。
+    std::stable_sort(children.begin(), children.end(),
+        [](GameObject* a, GameObject* b) {
+            return GetUISortOrder(*a) < GetUISortOrder(*b);
+        });
+    return children;
+}
+
 struct UITransform2D {
     math::Vector2 position = math::Vector2::ZERO;
     float rotationZ = 0.0f;
@@ -97,11 +122,6 @@ UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Trans
 Rect RectFromTransform(const scene::Transform& t, const UITransform2D& resolved)
 {
     return { resolved.position, { t.scale.x, t.scale.y } };
-}
-
-math::Vector4 Multiply(const math::Vector4& a, const math::Vector4& b)
-{
-    return { a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w };
 }
 
 // ── Matrix4 × Vector4 ────────────────────────────────────────────────────────
@@ -320,7 +340,7 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
 }
 
 // ── UIButton 更新 ─────────────────────────────────────────────────────────────
-void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool mousePressed)
+bool UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool mousePressed)
 {
     const UIButtonState previousState = button.state;
     button.onClick = false;
@@ -331,7 +351,7 @@ void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool 
         button.state            = UIButtonState::NORMAL;
         button.wasPressedOnThis = false;
         button.lastMouseState   = mousePressed;
-        return;
+        return false;
     }
 
     const bool hit               = mouse.x >= rect.pos.x && mouse.x <= rect.pos.x + rect.size.x
@@ -360,6 +380,7 @@ void UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool 
 
     button.onEnter = previousState == UIButtonState::NORMAL && button.state != UIButtonState::NORMAL;
     button.onExit  = previousState != UIButtonState::NORMAL && button.state == UIButtonState::NORMAL;
+    return hit;
 }
 
 math::Vector4 ButtonTint(const UIButton& button)
@@ -368,6 +389,25 @@ math::Vector4 ButtonTint(const UIButton& button)
     if (button.state == UIButtonState::PRESSED) return button.pressedColor;
     if (button.state == UIButtonState::HOVERED) return button.hoverColor;
     return button.normalColor;
+}
+
+math::Vector4 ResolveButtonImageColor(const math::Vector4& imageColor, const UIButton& button)
+{
+    const math::Vector4 targetColor = ButtonTint(button);
+    constexpr float MIN_COLOR_CHANNEL = 1.0e-5f;
+    const auto relativeChannel = [=](float image, float normal, float target) {
+        return normal > MIN_COLOR_CHANNEL ? image * (target / normal) : target;
+    };
+
+    // WHY: 単純な乗算ではUIImageとUIButtonの両方が暗色の場合にPressed Colorが黒へ潰れる。
+    //      Normal Colorを基準に相対変換すれば、UIImage.color == normalColorの一般的な設定で
+    //      Inspectorに指定したHover/Pressed Colorがそのまま画面へ反映される。
+    return {
+        relativeChannel(imageColor.x, button.normalColor.x, targetColor.x),
+        relativeChannel(imageColor.y, button.normalColor.y, targetColor.y),
+        relativeChannel(imageColor.z, button.normalColor.z, targetColor.z),
+        relativeChannel(imageColor.w, button.normalColor.w, targetColor.w)
+    };
 }
 
 // ── 描画サブミット ────────────────────────────────────────────────────────────
@@ -696,24 +736,38 @@ void ApplyUILayoutRecursive(GameObject& go, float canvasScale)
 }
 
 // ── UIButton イベント処理 ─────────────────────────────────────────────────────
-void ProcessUIEventsRecursive(GameObject& go,
+bool ProcessUIEventsRecursive(GameObject& go,
                               const UITransform2D& parentTransform,
                               math::Vector2 mouseInCanvasSpace,
                               bool mousePressed,
+                              bool inputAvailable = true,
                               bool applySelfTransform = true)
 {
-    if (!go.activeInHierarchy()) return;
+    if (!go.activeInHierarchy()) return false;
 
     const UITransform2D resolved = applySelfTransform
         ? ComposeUITransform(parentTransform, go.transform)
         : parentTransform;
 
+    // 描画順の逆から入力を解決し、重なった UI では最前面の要素だけがポインターを受け取る。
+    bool consumed = false;
+    auto children = SortedUIChildren(go);
+    for (auto it = children.rbegin(); it != children.rend(); ++it) {
+        consumed |= ProcessUIEventsRecursive(**it, resolved, mouseInCanvasSpace, mousePressed,
+                                             inputAvailable && !consumed);
+    }
+
     auto* button = go.GetComponent<UIButton>();
     if (button) {
         // UIImage の有無に関わらず transform.scale.xy が有効ならヒット判定する。
         // WHY: UIImage なしで UIText / 子要素だけで構成されるボタンにも対応する。
-        if (go.transform.scale.x > 0.0f && go.transform.scale.y > 0.0f)
-            UpdateButton(*button, RectFromTransform(go.transform, resolved), mouseInCanvasSpace, mousePressed);
+        if (go.transform.scale.x > 0.0f && go.transform.scale.y > 0.0f) {
+            const math::Vector2 effectiveMouse = inputAvailable && !consumed
+                ? mouseInCanvasSpace
+                : math::Vector2{ -1.0e30f, -1.0e30f };
+            consumed |= UpdateButton(*button, RectFromTransform(go.transform, resolved),
+                                     effectiveMouse, mousePressed);
+        }
         else {
             button->onClick          = false;
             button->onEnter          = false;
@@ -723,11 +777,7 @@ void ProcessUIEventsRecursive(GameObject& go,
             button->lastMouseState   = mousePressed;
         }
     }
-
-    for (int i = 0; i < go.GetChildCount(); ++i) {
-        if (GameObject* child = go.GetChild(i))
-            ProcessUIEventsRecursive(*child, resolved, mouseInCanvasSpace, mousePressed);
-    }
+    return consumed;
 }
 
 // ── レンダリング ──────────────────────────────────────────────────────────────
@@ -743,12 +793,21 @@ void RenderCanvasRecursive(GameObject& go,
 {
     if (!go.activeInHierarchy()) return;
 
-    const UITransform2D resolved = applySelfTransform
+    UITransform2D resolved = applySelfTransform
         ? ComposeUITransform(parentTransform, go.transform)
         : parentTransform;
     auto* image  = go.GetComponent<UIImage>();
     auto* button = go.GetComponent<UIButton>();
     auto* text   = go.GetComponent<UIText>();
+
+    // WHAT: 押下中はボタン全体を右下へ沈ませ、物理ボタンのような視覚フィードバックを出す。
+    // WHY: pressedColorだけでは暗い背景画像との乗算後に差が小さくなり、入力がUIButtonまで
+    //      届いたのか、Scene遷移スクリプトで止まったのかを画面上で判別できないため。
+    if (button && button->enabled && button->isInteractable
+        && button->state == UIButtonState::PRESSED) {
+        constexpr math::Vector2 PRESSED_VISUAL_OFFSET = { 2.0f, 2.0f };
+        resolved.position += Rotate2D(PRESSED_VISUAL_OFFSET, resolved.rotationZ);
+    }
 
     if (image && image->enabled) {
         if (!image->texturePath.empty() && image->texturePath != image->loadedTexturePath) {
@@ -759,7 +818,7 @@ void RenderCanvasRecursive(GameObject& go,
         const Rect    r     = RectFromTransform(go.transform, resolved);
         math::Vector4 color = image->color;
         if (button)
-            color = Multiply(color, ButtonTint(*button));
+            color = ResolveButtonImageColor(color, *button);
         SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
                     r.pos, r.size, color,
                     image->uvMin, image->uvMax,
@@ -771,10 +830,8 @@ void RenderCanvasRecursive(GameObject& go,
         SubmitText(renderer, resources, ctx, canvasToClip, pso, layer, *text, resolved.position);
     }
 
-    for (int i = 0; i < go.GetChildCount(); ++i) {
-        if (GameObject* child = go.GetChild(i))
-            RenderCanvasRecursive(*child, resolved, renderer, resources, ctx, canvasToClip, pso, layer);
-    }
+    for (GameObject* child : SortedUIChildren(go))
+        RenderCanvasRecursive(*child, resolved, renderer, resources, ctx, canvasToClip, pso, layer);
 }
 
 // ── サブシステム ──────────────────────────────────────────────────────────────
@@ -795,7 +852,10 @@ void UIEventSystem(const std::vector<CanvasEntry>& canvases,
                    math::Vector3 cameraWorldPos,
                    UIRenderTargetView targetView)
 {
-    for (const CanvasEntry& entry : canvases) {
+    // Canvas 間でも描画順の逆から入力を解決し、最前面で消費された入力を背面へ渡さない。
+    bool inputConsumed = false;
+    for (auto canvasIt = canvases.rbegin(); canvasIt != canvases.rend(); ++canvasIt) {
+        const CanvasEntry& entry = *canvasIt;
         if (!ShouldRenderCanvas(*entry.canvas, targetView))
             continue;
 
@@ -837,7 +897,8 @@ void UIEventSystem(const std::vector<CanvasEntry>& canvases,
             };
 
             const UITransform2D canvasRoot{};
-            ProcessUIEventsRecursive(*entry.go, canvasRoot, canvasPx, mousePressed, false);
+            inputConsumed |= ProcessUIEventsRecursive(*entry.go, canvasRoot, canvasPx, mousePressed,
+                                                      !inputConsumed, false);
             continue;
         }
 
@@ -852,7 +913,8 @@ void UIEventSystem(const std::vector<CanvasEntry>& canvases,
         };
 
         const UITransform2D canvasRoot{};
-        ProcessUIEventsRecursive(*entry.go, canvasRoot, mouseInCanvas, mousePressed, false);
+        inputConsumed |= ProcessUIEventsRecursive(*entry.go, canvasRoot, mouseInCanvas, mousePressed,
+                                                  !inputConsumed, false);
     }
 }
 
@@ -924,8 +986,14 @@ void UISystem(Scene& scene,
 
     UITextSizeSystem(canvases, ctx, resources);
     UILayoutSystem(canvases, viewportWidth, viewportHeight);
-    UIEventSystem(canvases, viewportWidth, viewportHeight, mouseInViewport,
-                  mousePressed, viewProjection, cameraWorldPos, targetView);
+    // WHY: Editorは同じSceneをScene / Game / Canvas Editorへ1フレーム中に複数回描画する。
+    //      各ViewportでUIButtonのlastMouseStateやonClickを更新すると、後続の描画パスが
+    //      Game Viewportで生成したクリックイベントを消してしまう。ゲーム入力を受ける
+    //      GameViewportだけが共有Componentのイベント状態を更新する。
+    if (targetView == UIRenderTargetView::GameViewport) {
+        UIEventSystem(canvases, viewportWidth, viewportHeight, mouseInViewport,
+                      mousePressed, viewProjection, cameraWorldPos, targetView);
+    }
     UIRenderSystem(canvases, renderer, resources, ctx,
                    viewportWidth, viewportHeight, mouseInViewport,
                    cameraWorldPos, cameraWorldRot, viewProjection, targetView);
