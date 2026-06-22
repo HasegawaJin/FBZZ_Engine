@@ -29,8 +29,8 @@ using RegisterFnPtr = void(*)(
 //      プロジェクトごとに変わる。FBZZScripts_Register をエンジン規約として統一し、
 //      任意のプロジェクトの DLL をロードできるようにする。
 constexpr const char* kRegisterFnName = "FBZZScripts_Register";
-constexpr const char* kAbiFnName      = "FBZZScripts_GetAbiSignature";
-using AbiFnPtr = uint64_t(*)();
+constexpr const char* kAbiInfoFnName  = "FBZZScripts_GetAbiInfo";
+using AbiInfoFnPtr = scene::ScriptDllAbiInfo(*)();
 
 // タイムスタンプ文字列を生成する (コピー先ファイル名の一部に使う)
 std::wstring MakeTimestamp()
@@ -183,15 +183,6 @@ void ScriptDllLoader::RegisterScripts()
     auto registerFn = reinterpret_cast<RegisterFnPtr>(
         GetProcAddress(m_hDll, kRegisterFnName));
 
-    // WHY: FBZZScripts_Register への改名前にビルドされた DLL との後方互換。
-    //      旧エクスポート名で見つかった場合は警告してロードを続行し、クラッシュを防ぐ。
-    if (!registerFn) {
-        registerFn = reinterpret_cast<RegisterFnPtr>(
-            GetProcAddress(m_hDll, "SandboxScripts_Register"));
-        if (registerFn)
-            FBZZ_LOG_WARN("ScriptDllLoader: DLL は旧エクスポート名 'SandboxScripts_Register' を使用しています。Scripts DLL を再ビルドしてください。");
-    }
-
     if (!registerFn) {
         FBZZ_LOG_ERROR("ScriptDllLoader: export %s not found (DLL を再ビルドしてください)", kRegisterFnName);
         return;
@@ -214,27 +205,47 @@ bool ScriptDllLoader::ValidateAbi() const
 {
     if (!m_hDll) return false;
 
-    const auto abiFn = reinterpret_cast<AbiFnPtr>(
-        GetProcAddress(m_hDll, kAbiFnName));
-    if (!abiFn) {
+    const auto infoFn = reinterpret_cast<AbiInfoFnPtr>(
+        GetProcAddress(m_hDll, kAbiInfoFnName));
+    if (!infoFn) {
         FBZZ_LOG_ERROR(
-            "ScriptDllLoader: export %s not found. Engine header changed; Scripts DLL を再ビルドしてください。",
-            kAbiFnName);
+            "ScriptDllLoader: export %s not found. Scripts DLL を再ビルドしてください。",
+            kAbiInfoFnName);
         return false;
     }
 
-    const uint64_t hostSignature = scene::GetScriptDllAbiSignature();
-    const uint64_t dllSignature  = abiFn();
-    if (hostSignature != dllSignature) {
-        FBZZ_LOG_ERROR(
-            "ScriptDllLoader: ABI mismatch (host=%llu, dll=%llu). "
-            "Engine / EditorLauncher / Scripts DLL を同じ構成で再ビルドしてください。",
-            static_cast<unsigned long long>(hostSignature),
-            static_cast<unsigned long long>(dllSignature));
-        return false;
-    }
+    const scene::ScriptDllAbiInfo host = scene::GetScriptDllAbiInfo();
+    const scene::ScriptDllAbiInfo dll  = infoFn();
 
-    return true;
+    if (host.signature == dll.signature) return true;
+
+    // ミスマッチの詳細を出力して再ビルドすべき原因を特定しやすくする。
+    FBZZ_LOG_ERROR("ScriptDllLoader: ABI mismatch — Engine / Scripts DLL を同じ構成で再ビルドしてください。");
+    if (host.sizeofScript != dll.sizeofScript)
+        FBZZ_LOG_ERROR("  sizeof(Script):          host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.sizeofScript),
+            static_cast<unsigned long long>(dll.sizeofScript));
+    if (host.sizeofScene != dll.sizeofScene)
+        FBZZ_LOG_ERROR("  sizeof(Scene):           host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.sizeofScene),
+            static_cast<unsigned long long>(dll.sizeofScene));
+    if (host.sizeofScriptComponent != dll.sizeofScriptComponent)
+        FBZZ_LOG_ERROR("  sizeof(ScriptComponent): host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.sizeofScriptComponent),
+            static_cast<unsigned long long>(dll.sizeofScriptComponent));
+    if (host.componentCount != dll.componentCount)
+        FBZZ_LOG_ERROR("  ComponentList count:     host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.componentCount),
+            static_cast<unsigned long long>(dll.componentCount));
+    if (host.msvcVersion != dll.msvcVersion)
+        FBZZ_LOG_ERROR("  _MSC_VER:                host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.msvcVersion),
+            static_cast<unsigned long long>(dll.msvcVersion));
+    if (host.iteratorDebugLevel != dll.iteratorDebugLevel)
+        FBZZ_LOG_ERROR("  _ITERATOR_DEBUG_LEVEL:   host=%llu  dll=%llu  (Debug/Release 設定の不一致)",
+            static_cast<unsigned long long>(host.iteratorDebugLevel),
+            static_cast<unsigned long long>(dll.iteratorDebugLevel));
+    return false;
 }
 
 void ScriptDllLoader::DestroyAllScripts(scene::Scene& scene)
