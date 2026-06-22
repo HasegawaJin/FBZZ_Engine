@@ -23,6 +23,9 @@ set(EDITOR_IMNODES_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/ImNodes
 target_compile_definitions(fbzz_editor
     PRIVATE
         NOMINMAX   # Assimp が windows.h を引き込む際に min/max マクロで std::min/max が壊れるのを防ぐ
+        # WHY: #ifdef NDEBUG は Development (NDEBUG なし・最適化 ON) を Debug と誤判定する。
+        #      $<CONFIG> をビルド時に文字列として焼き込み、cmake --config に正確に渡す。
+        FBZZ_CMAKE_CONFIG="$<CONFIG>"
 )
 
 target_include_directories(fbzz_editor

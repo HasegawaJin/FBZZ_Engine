@@ -17,6 +17,7 @@
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
@@ -76,6 +77,23 @@ FILETIME GetLatestWriteTimeInTree(const std::filesystem::path& root)
             latest = ft;
     }
 
+    return latest;
+}
+
+// Scripts DLLの鮮度判定に使う、ユーザー編集ソースの最新更新時刻を返す。
+// WHY: GenerateReflectAllは起動時に.generated.hppを書き直すため、それを含めると内容が
+//      同じでも毎回DLLを古いと誤判定する。生成元の.hpp/.cpp等だけで再ビルド要否を決める。
+FILETIME GetLatestScriptSourceWriteTime(const std::filesystem::path& root)
+{
+    FILETIME latest{};
+    for (const std::filesystem::path& path : util::FileSystem::ListFilesRecursive(root)) {
+        if (path.filename().wstring().ends_with(L".generated.hpp"))
+            continue;
+
+        FILETIME ft{};
+        if (TryGetWriteTime(path, ft) && CompareFileTime(&ft, &latest) > 0)
+            latest = ft;
+    }
     return latest;
 }
 
@@ -257,6 +275,10 @@ bool EditorApp::OpenScenePath(const std::string& path)
         FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
         return false;
     }
+    // WHY: SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。
+    //      次フレームの TransformEditorPreview まで待つと 1 フレーム間オブジェクトが
+    //      原点に表示されるため、ここで即時フラッシュして最初のフレームも正しくする。
+    scene::FlushWorldTransforms(*m_ctx.activeScene);
 
     // Undo コマンドは読込前シーンの EntityID と状態を保持するため、
     // 別シーンへ持ち越さず読込成功時点で破棄する。
@@ -346,6 +368,13 @@ void EditorApp::CacheSceneWriteTime()
 void EditorApp::CheckHotReload()
 {
     if (!m_ctx.hotReloadEnabled) return;
+
+    // WHY: Sceneファイル監視の前提が満たされない場合でも、初回Scripts DLLビルドと
+    //      進行中コンパイルは完了させる。ここで早期returnすると、Standaloneを別途
+    //      ビルドするまでEditor Playにスクリプトが登録されない状態になるため。
+    TickScriptCompile();
+    TickHlslCompile();
+
     if (m_settings.lastScenePath.empty() || !m_ctx.activeScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
@@ -371,10 +400,6 @@ void EditorApp::CheckHotReload()
             FBZZ_LOG_INFO("Hot reloaded: %s", m_settings.lastScenePath.c_str());
         }
     }
-
-    // スクリプト・HLSL ホットリロードの状態を進める
-    TickScriptCompile();
-    TickHlslCompile();
 
     // Done / Failed の表示タイマーを進める
     if (m_ctx.hotReloadDoneTimer > 0.0f) {
@@ -434,6 +459,14 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     std::wstring cmd = std::wstring(L"\"") + cmakeBuf + L"\" --preset fbzz-vs";
     if (!engineRootW.empty())
         cmd += L" -DFBZZ_ENGINE_ROOT:PATH=\"" + engineRootW + L"\"";
+    // WHY: cmake --preset の cacheVariables は -D で上書きできる (cmake docs: "preset variables can be overridden using normal -D options")。
+    //      CMakePresets.json に "Debug;Release" しか書かれていないプロジェクトでも
+    //      エディタが Development 構成で VS プロジェクトを生成させるために明示的に上書きする。
+    //      スペースを含むフラグは引数全体を "" で括ることで CreateProcessW に正しく渡せる。
+    cmd += L" -DCMAKE_CONFIGURATION_TYPES=Debug;Release;Development";
+    cmd += L" \"-DCMAKE_CXX_FLAGS_DEVELOPMENT=/Zi /O2 /Ob1\"";
+    cmd += L" \"-DCMAKE_EXE_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
+    cmd += L" \"-DCMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
     std::vector<wchar_t> mutableCmd(cmd.begin(), cmd.end());
     mutableCmd.push_back(L'\0');
 
@@ -479,22 +512,23 @@ void EditorApp::InitScriptDll()
     }
 
     if (toolchain.found) {
-        // WHY: Release Editor が Debug DLL をロードすると CRT ミスマッチ (MSVCRT vs MSVCRTD) が
-        //      発生し、DLL 境界を越えた std::function ファクトリ呼び出しでクラッシュする。
-        //      Editor のビルド構成と DLL の構成を一致させることで ABI を統一する。
-#ifdef NDEBUG
-        if (!toolchain.scriptsDllRelease.empty()) {
-            m_scriptDllPath = toolchain.scriptsDllRelease;
+        // WHY: ABI を統一するため、Editor と同じビルド構成の Scripts DLL を使う。
+        //      FBZZ_CMAKE_CONFIG は cmake が $<CONFIG> を焼き込んだ文字列 ("Debug"/"Release"/"Development")。
+        //      #ifdef NDEBUG では Development (NDEBUG なし・最適化 ON) を Debug と誤判定するため使わない。
+        static constexpr std::string_view kConfig = FBZZ_CMAKE_CONFIG;
+        if constexpr (kConfig == "Development") {
+            m_scriptDllPath = !toolchain.scriptsDllDevelopment.empty()
+                ? toolchain.scriptsDllDevelopment
+                : toolchain.buildDir.parent_path() / L"Binaries" / L"Development" / L"Scripts.dll";
+        } else if constexpr (kConfig == "Release") {
+            m_scriptDllPath = !toolchain.scriptsDllRelease.empty()
+                ? toolchain.scriptsDllRelease
+                : toolchain.exeRelease.parent_path() / L"SandboxScripts.dll";
         } else {
-            m_scriptDllPath = toolchain.exeRelease.parent_path() / L"SandboxScripts.dll";
+            m_scriptDllPath = !toolchain.scriptsDllDebug.empty()
+                ? toolchain.scriptsDllDebug
+                : toolchain.exeDebug.parent_path() / L"SandboxScripts.dll";
         }
-#else
-        if (!toolchain.scriptsDllDebug.empty()) {
-            m_scriptDllPath = toolchain.scriptsDllDebug;
-        } else {
-            m_scriptDllPath = toolchain.exeDebug.parent_path() / L"SandboxScripts.dll";
-        }
-#endif
 
         const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         m_scriptsSourceDir     = engineRoot / L"Assets" / L"Scripts";
@@ -525,16 +559,15 @@ void EditorApp::InitScriptDll()
         //      そうでなければ build_root を 2 段まで検索して DLL を探す。
         FBZZ_LOG_WARN("ScriptDll: ToolchainLocator failed - script hot reload is disabled");
 
-#ifdef NDEBUG
-        if (!toolchain.scriptsDllRelease.empty()) {
-            m_scriptDllPath = toolchain.scriptsDllRelease;
+        {
+            static constexpr std::string_view kConfig = FBZZ_CMAKE_CONFIG;
+            const std::filesystem::path& preferred =
+                (kConfig == "Development") ? toolchain.scriptsDllDevelopment :
+                (kConfig == "Release")     ? toolchain.scriptsDllRelease :
+                                             toolchain.scriptsDllDebug;
+            if (!preferred.empty()) m_scriptDllPath = preferred;
         }
-#else
-        if (!toolchain.scriptsDllDebug.empty()) {
-            m_scriptDllPath = toolchain.scriptsDllDebug;
-        }
-#endif
-        else if (!m_ctx.projectBuildRoot.empty()) {
+        if (m_scriptDllPath.empty() && !m_ctx.projectBuildRoot.empty()) {
             const std::wstring dllName = util::StringUtils::ToWide(
                 m_ctx.projectTargetName.empty()
                     ? "SandboxScripts.dll"
@@ -634,6 +667,23 @@ void EditorApp::InitScriptDll()
     // 最終更新時刻をキャッシュする (初回は変更なしと判定)
     if (!m_scriptsSourceDir.empty()) {
         m_lastScriptWriteTime = GetLatestWriteTimeInTree(m_scriptsSourceDir);
+
+        // WHY: 既存DLLをロードできても、ソースより古ければSceneManagerScript等の修正が
+        //      Editor Playへ反映されない。Standaloneビルドへ依存せず起動時に自動更新する。
+        FILETIME dllWriteTime{};
+        const FILETIME sourceWriteTime = GetLatestScriptSourceWriteTime(m_scriptsSourceDir);
+        if (!m_scriptCompilePending
+            && !IsEmptyFileTime(sourceWriteTime)
+            && (!TryGetWriteTime(m_scriptDllPath, dllWriteTime)
+                || CompareFileTime(&sourceWriteTime, &dllWriteTime) > 0)) {
+            m_scriptCompilePending = true;
+            m_scriptDebounceTimer = 0.0f;
+            m_ctx.scriptReloadBusy = true;
+            SetHotReloadState(EditorContext::HotReloadState::Compiling,
+                              "Scripts: source is newer than DLL...");
+            m_ctx.hotReloadProgress = 0.0f;
+            FBZZ_LOG_INFO("ScriptDll: source is newer than DLL; scheduling rebuild");
+        }
     }
     if (!m_hlslSourceDir.empty()) {
         m_lastHlslWriteTime = GetLatestWriteTimeInTree(m_hlslSourceDir);
@@ -710,13 +760,10 @@ void EditorApp::TickScriptCompile()
         // WHY: DLL ファイル名 (例: SandboxScripts.dll) から cmake ターゲット名を導出する。
         //      ハードコードすると GameHub プロジェクト (MyGameScripts 等) で壊れる。
         config.target        = util::FileSystem::PathToUtf8(m_scriptDllPath.stem());
-        // WHY: Editor と Scripts DLL の CRT を統一して ABI ミスマッチを防ぐ。
-        //      Release Editor には Release DLL、Debug Editor には Debug DLL を使う。
-#ifdef NDEBUG
-        config.configuration = "Release";
-#else
-        config.configuration = "Debug";
-#endif
+        // WHY: cmake --config に Editor と同じ構成を渡して ABI を統一する。
+        //      FBZZ_CMAKE_CONFIG を使う理由: Development は NDEBUG なし・最適化 ON の第三の構成であり、
+        //      #ifdef NDEBUG では正しく判定できない。
+        config.configuration = FBZZ_CMAKE_CONFIG;
         // WHY: 初回ビルド (DLL 未存在) はエンジン libs がまだないため依存ターゲットも含めてビルドする。
         //      ホットリロード時はエディタがエンジン DLL をロック中のためスキップする。
         config.skipDeps      = !m_scriptInitialBuild;
@@ -851,7 +898,7 @@ void EditorApp::TickHlslCompile()
         config.buildDir      = toolchain.buildDir;
         config.exePath       = std::filesystem::path{};
         config.target        = "compile_shaders";
-        config.configuration = "Debug";
+        config.configuration = FBZZ_CMAKE_CONFIG;
 
         if (!m_hlslCompiler.Start(config)) {
             SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: failed to start compile");

@@ -140,8 +140,6 @@ static int                 s_flushGeneration             = 0;
 
 std::unordered_map<std::string, std::unique_ptr<Model>>
     AssetManager::s_models;
-std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>>
-    AssetManager::s_textures;
 std::vector<AssetManager::MatSlot>
     AssetManager::s_materialSlots;
 std::vector<uint32_t>
@@ -235,8 +233,6 @@ void AssetManager::UnloadAll()
     s_materialSlots.clear();
     s_materialSlots.emplace_back();
     s_materialFreeList.clear();
-    s_textures.clear();
-
     s_resources   = nullptr;
     s_initialized = false;
 }
@@ -418,8 +414,6 @@ void AssetManager::FlushFailed()
         it = it->second ? ++it : s_models.erase(it);
     for (auto it = s_materials.begin(); it != s_materials.end(); )
         it = it->second.IsValid() ? ++it : s_materials.erase(it);
-    for (auto it = s_textures.begin(); it != s_textures.end(); )
-        it = it->second.IsValid() ? ++it : s_textures.erase(it);
     ++s_flushGeneration;
 }
 
@@ -455,22 +449,6 @@ Model* AssetManager::LoadModel(const std::string& relativePath)
     return ptr;
 }
 
-// ── 旧 API: LoadTexture ──────────────────────────────────────────────────
-
-renderer::ResourceHandle<renderer::TextureTag>
-AssetManager::LoadTexture(const std::string& relativePath)
-{
-    assert(s_initialized);
-    const std::string key = Normalize(relativePath);
-    auto it = s_textures.find(key);
-    if (it != s_textures.end()) return it->second;
-
-    const auto h = s_resources->LoadTexture(ResolvePath(key, s_basePath));
-    if (!h.IsValid())
-        FBZZ_LOG_ERROR("AssetManager: Texture load failed [%s]", key.c_str());
-    s_textures[key] = h;
-    return h;
-}
 
 // ── 旧 API: MaterialAsset スロットプール ─────────────────────────────────
 

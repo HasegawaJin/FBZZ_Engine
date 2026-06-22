@@ -20,12 +20,10 @@
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/ProjectRuntime.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/SceneManager.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/Layer.hpp>
-#include <Physics/World.hpp>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -50,7 +48,7 @@ class WaterTool;
 class DetailTool;
 class FoliageTool;
 
-class EditorApp : public core::IModule {
+class EditorApp final : public core::IModule {
 public:
     EditorApp();
     ~EditorApp(); // TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
@@ -71,6 +69,11 @@ public:
     void EndFrame(renderer::IImGuiRenderer& imguiRenderer);
 
     EditorContext& GetContext() { return m_ctx; }
+    // Editor Playの更新・描画・ScriptRuntimeが参照する唯一のSceneManagerを返す。
+    // WHY: Application側のSceneManagerと混在すると、LoadScene要求を受けたManagerが
+    //      Updateされず、Game Viewportだけシーン遷移しないため。
+    scene::SceneManager& GetSceneManager() { return m_runtime.GetSceneManager(); }
+    scene::ProjectRuntime& GetProjectRuntime() { return m_runtime; }
 
     // Viewport に紐づいたオフスクリーン RT (main.cpp はここに描く)
     renderer::ResourceHandle<renderer::RenderTargetTag> GetViewportRT() const { return m_sceneViewportRT; }
@@ -95,11 +98,9 @@ private:
     void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
 
     std::unique_ptr<scene::Scene>  m_scene;
-    physics::World                 m_physicsWorld;
+    scene::ProjectRuntime          m_runtime;
     renderer::DebugCamera          m_debugCamera;
-    scene::SceneManager            m_sceneManager;
     scene::UISystemContext         m_sceneUICtx;
-    scene::UISystemContext         m_gameUICtx;
     FocusAnim                      m_focusAnim;
     float                          m_simulationDt = 0.0f;
 

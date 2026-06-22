@@ -8,6 +8,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/Camera.hpp>
@@ -645,9 +646,9 @@ math::Vector3 ScriptCameraProxy::WorldToScreenPoint(const math::Vector3& worldPo
 {
     const auto* gameObject = script ? script->m_gameObject : nullptr;
     const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
-    const auto& renderer = core::Application::Get().GetRenderer();
-    const float width = static_cast<float>((std::max)(renderer.GetWidth(), 1u));
-    const float height = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+    const auto rt = ScriptRuntime::GetCurrent();
+    const float width  = static_cast<float>((std::max)(rt.viewportWidth,  1u));
+    const float height = static_cast<float>((std::max)(rt.viewportHeight, 1u));
 
     const math::Vector4 clip = camera.GetViewProjection() * math::Vector4(worldPos, 1.0f);
     if (std::abs(clip.w) <= 0.000001f) {
@@ -671,9 +672,9 @@ math::Vector3 ScriptCameraProxy::ScreenToWorldPoint(const math::Vector3& screenP
 {
     const auto* gameObject = script ? script->m_gameObject : nullptr;
     const renderer::Camera camera = BuildCameraFromComponent(gameObject, SelfComponent<CameraComponent>(script));
-    const auto& renderer = core::Application::Get().GetRenderer();
-    const float width = static_cast<float>((std::max)(renderer.GetWidth(), 1u));
-    const float height = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+    const auto rt = ScriptRuntime::GetCurrent();
+    const float width  = static_cast<float>((std::max)(rt.viewportWidth,  1u));
+    const float height = static_cast<float>((std::max)(rt.viewportHeight, 1u));
 
     const float ndcX = (screenPos.x / width) * 2.0f - 1.0f;
     const float ndcY = 1.0f - (screenPos.y / height) * 2.0f;
@@ -709,9 +710,9 @@ bool ScriptCameraProxy::IsVisible(const math::Vector3& worldPos) const
 {
     const auto screen = WorldToScreenPoint(worldPos);
     if (screen.z <= 0.0f) return false;
-    const auto& renderer = core::Application::Get().GetRenderer();
-    const float w = static_cast<float>((std::max)(renderer.GetWidth(),  1u));
-    const float h = static_cast<float>((std::max)(renderer.GetHeight(), 1u));
+    const auto rt = ScriptRuntime::GetCurrent();
+    const float w = static_cast<float>((std::max)(rt.viewportWidth,  1u));
+    const float h = static_cast<float>((std::max)(rt.viewportHeight, 1u));
     return screen.x >= 0.0f && screen.x <= w && screen.y >= 0.0f && screen.y <= h;
 }
 
@@ -1281,7 +1282,8 @@ GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath,
 
 void ScriptSceneProxy::LoadScene(std::string_view name) const
 {
-    core::Application::Get().GetSceneManager().LoadScene(std::string(name));
+    if (auto* mgr = ScriptRuntime::GetCurrent().sceneManager)
+        mgr->LoadScene(std::string(name));
 }
 
 std::string ScriptSceneProxy::GetSceneName() const
