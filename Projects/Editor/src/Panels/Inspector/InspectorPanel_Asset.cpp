@@ -7,12 +7,14 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
+#include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/PostProcessAsset.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
@@ -807,6 +809,56 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ImGui::SameLine();
                 ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
             }
+        }
+    } else if (ext == ".fzpp") {
+        ImGui::TextDisabled("Type: Post Process Profile");
+        ImGui::Spacing();
+
+        static renderer::PostProcessSettings s_ppSettings;
+        static std::string                   s_ppPath;
+        bool ppDirty = false;
+
+        if (s_ppPath != absPath) {
+            s_ppPath     = absPath;
+            s_ppSettings = renderer::PostProcessSettings{};
+            asset::LoadPostProcessAssetFromFile(absPath, s_ppSettings);
+        }
+
+        auto& pp = s_ppSettings;
+        const PostProcessInspectorResult inspectorResult = DrawPostProcessInspector(pp);
+        ppDirty |= inspectorResult.changed;
+
+        // アクティブシーンへの適用
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (ctx.activeScene) {
+            if (ImGui::Button("Apply to Scene"))
+                ctx.activeScene->GetRuntimePostProcessSettings() = pp;
+            ImGui::SameLine();
+            if (ImGui::Button("Clear Scene Override"))
+                ctx.activeScene->ClearRuntimePostProcessSettings();
+        }
+
+        if (ppDirty) {
+            AssetDirtyRegistry::Register(
+                absPath,
+                util::FileSystem::GetFilename(absPath),
+                "FZPP",
+                [path = absPath]() {
+                    return asset::SavePostProcessAssetToFile(path, s_ppSettings);
+                });
+        }
+
+        ImGui::Spacing();
+        const bool isPPDirty = AssetDirtyRegistry::IsDirty(absPath) || ppDirty;
+        if (ImGui::Button("Save .fzpp") ||
+            (isPPDirty && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))) {
+            if (asset::SavePostProcessAssetToFile(absPath, pp))
+                AssetDirtyRegistry::MarkClean(absPath);
+        }
+        if (isPPDirty) {
+            ImGui::SameLine();
+            ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
     } else {
         ImGui::TextDisabled("Type: %s", ext.c_str());
