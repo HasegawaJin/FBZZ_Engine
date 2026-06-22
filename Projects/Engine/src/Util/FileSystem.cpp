@@ -4,6 +4,7 @@
 // 存在確認、列挙、読み書き、ディレクトリ作成をまとめる。
 // 失敗は bool や空配列で返し、例外は使わない。
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
 
 // WHY: Windows.h は CopyFile / GetCurrentDirectory を A / W サフィックス付き関数へ置換する。
@@ -379,7 +380,8 @@ std::filesystem::path FileSystem::PathFromUtf8(const std::string& path)
 
 std::string FileSystem::PathToUtf8(const std::filesystem::path& path)
 {
-    return NormalizePathSeparators(WideToUtf8(path.wstring()), false);
+    // WHY: StringUtils::PathToUtf8 が正規化まで担うため、重複実装を排除して委譲する。
+    return util::StringUtils::PathToUtf8(path);
 }
 
 std::filesystem::path FileSystem::RelativePath(const std::filesystem::path& path, const std::filesystem::path& root)

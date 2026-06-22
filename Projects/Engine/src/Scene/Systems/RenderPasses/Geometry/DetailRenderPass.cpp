@@ -360,7 +360,7 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
 
                     renderer::ResourceHandle<renderer::TextureTag> albedoTex;
                     if (!layer.texturePath.empty())
-                        albedoTex = asset::AssetManager::LoadTexture(layer.texturePath);
+                        albedoTex = resources.LoadTexture(layer.texturePath);
 
                     DetailGrassCB gcb{};
                     gcb.windDir[0]    = 0.7071f;
@@ -401,7 +401,7 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
 
                     renderer::ResourceHandle<renderer::TextureTag> albedoTex;
                     if (!layer.texturePath.empty())
-                        albedoTex = asset::AssetManager::LoadTexture(layer.texturePath);
+                        albedoTex = resources.LoadTexture(layer.texturePath);
 
                     DetailMaterialCB matData{};
                     matData.alphaCutoff  = albedoTex.IsValid() ? 0.5f : 0.0f;

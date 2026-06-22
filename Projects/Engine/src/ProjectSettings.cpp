@@ -98,11 +98,11 @@ void ReadFloat3(const toml::table& table, const char* key, float out[3])
 ProjectSettings ProjectSettings::Default()
 {
     ProjectSettings ps;
-    ps.project.defaultScene = "Assets/Scenes/Main.scene";
-    ps.runtime.startScene   = "Assets/Scenes/Main.scene";
-    ps.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
-                "MainCamera", "Player", "GameController" };
-    ps.layerNames = {
+    ps.game.project.defaultScene = "Assets/Scenes/Main.scene";
+    ps.game.runtime.startScene   = "Assets/Scenes/Main.scene";
+    ps.game.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
+                     "MainCamera", "Player", "GameController" };
+    ps.game.layerNames = {
         "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
         "", "", "", "", "", "", "", "", "", "",
         "", "", "", "", "", "", "", "", "", "",
@@ -132,25 +132,25 @@ bool ProjectSettings::Load(const std::string& path)
     auto& tbl = result.table();
 
     if (auto* projectTbl = tbl["project"].as_table()) {
-        project.name = (*projectTbl)["name"].value_or(project.name);
-        project.defaultScene = (*projectTbl)["default_scene"].value_or(project.defaultScene);
+        game.project.name         = (*projectTbl)["name"].value_or(game.project.name);
+        game.project.defaultScene = (*projectTbl)["default_scene"].value_or(game.project.defaultScene);
     }
 
     if (auto* runtimeTbl = tbl["runtime"].as_table()) {
-        runtime.startScene = (*runtimeTbl)["start_scene"].value_or(runtime.startScene);
+        game.runtime.startScene = (*runtimeTbl)["start_scene"].value_or(game.runtime.startScene);
     }
 
     if (auto* tagArr = tbl["tags"]["list"].as_array()) {
-        tags.clear();
+        game.tags.clear();
         for (auto& elem : *tagArr)
             if (auto v = elem.value<std::string>())
-                tags.push_back(*v);
+                game.tags.push_back(*v);
     }
 
     if (auto* layArr = tbl["layers"]["names"].as_array()) {
         for (int i = 0; i < 32 && i < (int)layArr->size(); ++i)
             if (auto v = (*layArr)[i].value<std::string>())
-                layerNames[i] = *v;
+                game.layerNames[i] = *v;
     }
 
     if (auto* physicsTbl = tbl["physics"].as_table()) {
@@ -325,11 +325,11 @@ bool ProjectSettings::Load(const std::string& path)
 bool ProjectSettings::Save(const std::string& path) const
 {
     toml::array tagArr;
-    for (const auto& t : tags)
+    for (const auto& t : game.tags)
         tagArr.push_back(t);
 
     toml::array layArr;
-    for (const auto& n : layerNames)
+    for (const auto& n : game.layerNames)
         layArr.push_back(n);
 
     toml::table tagTbl;
@@ -468,11 +468,11 @@ bool ProjectSettings::Save(const std::string& path) const
     windowTbl.insert("fullscreen", window.fullscreen);
 
     toml::table projectTbl;
-    projectTbl.insert("name", project.name);
-    projectTbl.insert("default_scene", project.defaultScene);
+    projectTbl.insert("name", game.project.name);
+    projectTbl.insert("default_scene", game.project.defaultScene);
 
     toml::table runtimeTbl;
-    runtimeTbl.insert("start_scene", runtime.startScene);
+    runtimeTbl.insert("start_scene", game.runtime.startScene);
 
     toml::table uiTbl;
     uiTbl.insert("default_font", ui.defaultFontPath);

@@ -23,6 +23,7 @@ public:
         //      build.config に記録して Editor が動的に解決できるようにする。
         std::filesystem::path scriptsDllDebug;
         std::filesystem::path scriptsDllRelease;
+        std::filesystem::path scriptsDllDevelopment;
         bool                  found = false;
         std::string           error;
     };

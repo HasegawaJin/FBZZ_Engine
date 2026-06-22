@@ -9,9 +9,9 @@
 //
 // 旧 API (後方互換 — 移行中のコールサイト向け):
 //   LoadModel(path)   → Model*
-//   LoadTexture(path) → ResourceHandle<TextureTag>
 //   LoadMaterial(path)→ ResourceHandle<MaterialAssetTag>
 //   GetMaterial(h)    → MaterialAsset*
+//   テクスチャは ResourceManager::LoadTexture() を使うこと。
 //
 // 旧 API への Load<Model> シンタックスは LoadModel() に移行すること。
 #pragma once
@@ -165,9 +165,6 @@ public:
     // .fbx / .fzasset → Model* (呼び出し元は LoadModel に移行すること)
     static Model* LoadModel(const std::string& relativePath);
 
-    static renderer::ResourceHandle<renderer::TextureTag>
-        LoadTexture(const std::string& relativePath);
-
     static renderer::ResourceHandle<renderer::MaterialAssetTag>
         LoadMaterial(const std::string& relativePath);
     static MaterialAsset* GetMaterial(renderer::ResourceHandle<renderer::MaterialAssetTag> h);
@@ -179,7 +176,6 @@ private:
     static bool                       s_initialized;
 
     static std::unordered_map<std::string, std::unique_ptr<Model>>    s_models;
-    static std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>> s_textures;
 
     struct MatSlot {
         std::unique_ptr<MaterialAsset> asset;

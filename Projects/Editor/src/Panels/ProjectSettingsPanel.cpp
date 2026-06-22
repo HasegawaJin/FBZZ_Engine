@@ -369,16 +369,16 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
     ImGui::Spacing();
     ImGui::SeparatorText("Scenes");
     char defaultScene[260];
-    std::snprintf(defaultScene, sizeof(defaultScene), "%s", settings.project.defaultScene.c_str());
+    std::snprintf(defaultScene, sizeof(defaultScene), "%s", settings.game.project.defaultScene.c_str());
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputText("Default Scene", defaultScene, sizeof(defaultScene)))
-        settings.project.defaultScene = defaultScene;
+        settings.game.project.defaultScene = defaultScene;
 
     char startScene[260];
-    std::snprintf(startScene, sizeof(startScene), "%s", settings.runtime.startScene.c_str());
+    std::snprintf(startScene, sizeof(startScene), "%s", settings.game.runtime.startScene.c_str());
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputText("Start Scene", startScene, sizeof(startScene)))
-        settings.runtime.startScene = startScene;
+        settings.game.runtime.startScene = startScene;
 }
 
 void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
@@ -665,28 +665,28 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
     ImGui::Separator();
 
     if (ImGui::SmallButton("Reset Unity Preset")) {
-        settings.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
-                          "MainCamera", "Player", "GameController" };
+        settings.game.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
+                               "MainCamera", "Player", "GameController" };
         ++m_editGeneration;
     }
     ImGui::Spacing();
 
     int removeIdx = -1;
-    for (int i = 0; i < static_cast<int>(settings.tags.size()); ++i) {
+    for (int i = 0; i < static_cast<int>(settings.game.tags.size()); ++i) {
         ImGui::PushID(i);
         char buf[64];
-        std::snprintf(buf, sizeof(buf), "%s", settings.tags[i].c_str());
+        std::snprintf(buf, sizeof(buf), "%s", settings.game.tags[i].c_str());
         ImGui::SetNextItemWidth(-80.0f);
         if (ImGui::InputText("##tag", buf, sizeof(buf)))
-            settings.tags[i] = buf;
+            settings.game.tags[i] = buf;
         ImGui::SameLine();
-        if (settings.tags[i] != "Untagged" && ImGui::SmallButton("Remove"))
+        if (settings.game.tags[i] != "Untagged" && ImGui::SmallButton("Remove"))
             removeIdx = i;
         ImGui::PopID();
     }
 
     if (removeIdx >= 0) {
-        settings.tags.erase(settings.tags.begin() + removeIdx);
+        settings.game.tags.erase(settings.game.tags.begin() + removeIdx);
         ++m_editGeneration;
     }
 
@@ -695,7 +695,7 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
     ImGui::InputText("##newtag", m_newTag, sizeof(m_newTag));
     ImGui::SameLine();
     if (ImGui::SmallButton("Add") && m_newTag[0] != '\0') {
-        settings.tags.push_back(m_newTag);
+        settings.game.tags.push_back(m_newTag);
         m_newTag[0] = '\0';
         ++m_editGeneration;
     }
@@ -707,7 +707,7 @@ void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
     ImGui::Separator();
 
     if (ImGui::SmallButton("Reset Unity Preset")) {
-        settings.layerNames = {
+        settings.game.layerNames = {
             "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
             "", "", "", "", "", "", "", "", "", "",
             "", "", "", "", "", "", "", "", "", "",
@@ -722,14 +722,14 @@ void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
         ImGui::Text("%2d", i);
         ImGui::SameLine();
         char buf[64];
-        std::snprintf(buf, sizeof(buf), "%s", settings.layerNames[i].c_str());
-        if (settings.layerNames[i].empty()) {
+        std::snprintf(buf, sizeof(buf), "%s", settings.game.layerNames[i].c_str());
+        if (settings.game.layerNames[i].empty()) {
             ImGui::TextDisabled("User Layer %d", i);
             ImGui::SameLine();
         }
         ImGui::SetNextItemWidth(-1.0f);
         if (ImGui::InputText("##layer", buf, sizeof(buf)))
-            settings.layerNames[i] = buf;
+            settings.game.layerNames[i] = buf;
         ImGui::PopID();
     }
 }

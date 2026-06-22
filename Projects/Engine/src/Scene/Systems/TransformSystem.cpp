@@ -64,4 +64,31 @@ void TransformSystem::Update(SystemContext& ctx)
     }
 }
 
+
+void FlushWorldTransforms(Scene& scene)
+{
+    // スケジューラを経由しないため SystemContext は不要。
+    // BFS でルートから辿り、TransformSystem::Update と同じ計算を実行する。
+    std::queue<GameObject*> queue;
+
+    for (GameObject& go : scene.GameObjects())
+        if (!go.GetParent())
+            queue.push(&go);
+
+    while (!queue.empty()) {
+        GameObject* go = queue.front();
+        queue.pop();
+
+        Transform* parentTf = nullptr;
+        if (auto* parent = go->GetParent())
+            parentTf = &parent->transform;
+
+        UpdateWorldTransform(*go, parentTf);
+
+        for (int i = 0; i < go->GetChildCount(); ++i)
+            if (auto* child = go->GetChild(i))
+                queue.push(child);
+    }
+}
+
 } // namespace fbzz::scene

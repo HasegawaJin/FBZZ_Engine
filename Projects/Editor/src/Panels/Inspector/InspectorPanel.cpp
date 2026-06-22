@@ -478,16 +478,16 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::Text("Tag");
         ImGui::SameLine();
         int tagIdx = 0;
-        for (int i = 0; i < (int)ps.tags.size(); ++i)
-            if (go->tag == ps.tags[i]) { tagIdx = i; break; }
-        const char* tagLabel = ps.tags.empty() ? "(none)" : ps.tags[tagIdx].c_str();
+        for (int i = 0; i < (int)ps.game.tags.size(); ++i)
+            if (go->tag == ps.game.tags[i]) { tagIdx = i; break; }
+        const char* tagLabel = ps.game.tags.empty() ? "(none)" : ps.game.tags[tagIdx].c_str();
         ImGui::SetNextItemWidth(comboW);
         if (ImGui::BeginCombo("##tag", tagLabel)) {
-            for (int i = 0; i < (int)ps.tags.size(); ++i) {
+            for (int i = 0; i < (int)ps.game.tags.size(); ++i) {
                 bool selected = (i == tagIdx);
-                if (ImGui::Selectable(ps.tags[i].c_str(), selected)) {
+                if (ImGui::Selectable(ps.game.tags[i].c_str(), selected)) {
                     const std::string before = go->tag;
-                    go->tag = ps.tags[i];
+                    go->tag = ps.game.tags[i];
                     PushGameObjectPropertyCommand(
                         ctx, go->GetID(), "Change Tag", before, go->tag,
                         [](scene::GameObject& target, const std::string& value) { target.tag = value; });
@@ -507,14 +507,14 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SameLine();
         int layerIdx = go->layer & 31;
         ImGui::SetNextItemWidth(-1.0f);
-        const std::string currentLayerLabel = ps.layerNames[layerIdx].empty()
+        const std::string currentLayerLabel = ps.game.layerNames[layerIdx].empty()
             ? ("User Layer " + std::to_string(layerIdx))
-            : ps.layerNames[layerIdx];
+            : ps.game.layerNames[layerIdx];
         if (ImGui::BeginCombo("##layer", currentLayerLabel.c_str())) {
             for (int i = 0; i < 32; ++i) {
-                const std::string layerLabel = ps.layerNames[i].empty()
+                const std::string layerLabel = ps.game.layerNames[i].empty()
                     ? ("User Layer " + std::to_string(i))
-                    : ps.layerNames[i];
+                    : ps.game.layerNames[i];
                 const bool selected = i == layerIdx;
                 if (ImGui::Selectable(layerLabel.c_str(), selected)) {
                     const int before = go->layer;
