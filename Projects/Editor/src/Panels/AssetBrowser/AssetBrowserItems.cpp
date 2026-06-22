@@ -125,6 +125,7 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".asset", nullptr },                                 { 0.85f, 0.55f, 0.08f, 1.0f }, "ASSET"   },
     { { ".anim", nullptr },                                  { 0.95f, 0.75f, 0.20f, 1.0f }, "ANIM"    },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
+    { { ".fzpp", nullptr },                                  { 0.65f, 0.35f, 0.85f, 1.0f }, "POST FX" },
     { { ".tex", nullptr },                                   { 0.40f, 0.80f, 0.90f, 1.0f }, "TEX"     },
     { { ".mesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".animcontroller", ".animctrl", nullptr },           { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },

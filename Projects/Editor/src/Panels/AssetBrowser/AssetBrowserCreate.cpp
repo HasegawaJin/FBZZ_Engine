@@ -4,6 +4,7 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/PostProcessAsset.hpp>
 
 namespace fbzz::editor {
 
@@ -204,6 +205,23 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         util::FileSystem::WriteText(newPath, materialTemplate);
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
+    }
+    if (ImGui::MenuItem("Post Process Profile")) {
+        std::string newPath = m_currentPath + "/New Post Process Profile.fzpp";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Post Process Profile " +
+                std::to_string(suffix++) + ".fzpp";
+
+        // WHY: Serializer を経由し、Inspector が期待する全セクションを持つ互換プロファイルを生成する。
+        const renderer::PostProcessSettings defaults;
+        if (!asset::SavePostProcessAssetToFile(newPath, defaults)) {
+            FBZZ_LOG_ERROR("Post Process Profile creation failed: %s", newPath.c_str());
+            return;
+        }
+        RegisterCreatedPath(ctx, newPath);
+        RefreshDirectory();
+        ctx.selectedAssetPath = newPath;
     }
     if (ImGui::MenuItem("Animator Controller")) {
         std::string newPath = m_currentPath + "/New Animator Controller.animcontroller";
