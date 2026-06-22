@@ -1255,6 +1255,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             uiTbl.insert("color",             Vec4ToArr(image->color));
             uiTbl.insert("uvMin",             Vec2ToArr(image->uvMin));
             uiTbl.insert("uvMax",             Vec2ToArr(image->uvMax));
+            uiTbl.insert("sortOrder",         (int64_t)image->sortOrder);
             goTbl.insert("UIImage", std::move(uiTbl));
         }
 
@@ -1278,6 +1279,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             uiTbl.insert("letterSpacing", (double)text->letterSpacing);
             uiTbl.insert("color",         Vec4ToArr(text->color));
             uiTbl.insert("fontPath",      text->fontPath);
+            uiTbl.insert("sortOrder",     (int64_t)text->sortOrder);
             goTbl.insert("UIText", std::move(uiTbl));
         }
 
@@ -2283,6 +2285,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             image.color            = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
             image.uvMin            = ArrToVec2((*uiTbl)["uvMin"].as_array(), { 0.0f, 0.0f });
             image.uvMax            = ArrToVec2((*uiTbl)["uvMax"].as_array(), { 1.0f, 1.0f });
+            image.sortOrder        = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
             go.AddComponent<UIImage>(image);
         }
 
@@ -2306,6 +2309,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             text.letterSpacing = (float)(*uiTbl)["letterSpacing"].value_or(4.0);
             text.color         = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
             text.fontPath      = (*uiTbl)["fontPath"].value_or(std::string{});
+            text.sortOrder     = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
             go.AddComponent<UIText>(text);
         }
 

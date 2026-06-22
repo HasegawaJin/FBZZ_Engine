@@ -12,13 +12,13 @@
 //      引数解析、プロジェクト解決、Editor / Standalone のループ本体は専用ファイルへ分割し、
 //      実行モードごとの依存関係と責務を明確にする。
 #ifndef FBZZ_STANDALONE_TARGET
-#include "EditorModule.hpp"
+#include <Editor/EditorApp.hpp>
 #endif
 #include "LaunchArgs.hpp"
-#include "StandaloneModule.hpp"
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Scene/StandaloneProjectModule.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Engine/Core/Application.hpp>
@@ -51,12 +51,13 @@ using fbzz::util::FileSystem;
     renderer::ResourceManager resources(renderer);
     asset::AssetManager::Init(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
 
-    StandaloneModule module(renderer, resources, project, settings);
+    scene::StandaloneProjectModule module(
+        renderer, resources, project.root, project.sceneFile, settings);
     app.Run(module);
     return 0;
 }
 
-/// Engine / Renderer / AssetManager 初期化後に EditorModule を起動する。
+/// 共通EditorAppを直接起動し、Sandbox固有のEditorループを持たない。
 [[nodiscard]] int RunEditor(core::Application& app, const LaunchProject& project)
 {
 #ifdef FBZZ_STANDALONE_TARGET
@@ -73,8 +74,12 @@ using fbzz::util::FileSystem;
     const std::filesystem::path assetRoot = project.root / L"Assets";
     asset::AssetManager::Init(resources, StringUtils::PathToUtf8(assetRoot) + "/");
 
-    EditorModule module(renderer, imguiRenderer, resources, project);
-    app.Run(module);
+    editor::EditorApp editorApp;
+    if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow())) return 1;
+    if (!editorApp.OpenProject(StringUtils::PathToUtf8(project.root),
+                               StringUtils::PathToUtf8(project.settingsFile),
+                               StringUtils::PathToUtf8(project.sceneFile))) return 1;
+    app.Run(editorApp);
     return 0;
 #endif
 }

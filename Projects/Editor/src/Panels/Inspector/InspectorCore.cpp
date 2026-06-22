@@ -204,7 +204,11 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
             ImGui::Checkbox("##en", &entry.serialized->enabled);
             ImGui::SameLine();
 
-            const std::string header = "Missing Script: " + entry.serialized->type;
+            // WHY: DLL ビルド中は "Building..." と表示し、完了後に自動復元されることを示す。
+            //      それ以外 (DLL 未ロード・ビルド失敗) は "Missing Script" のままにして問題を明示する。
+            const bool isBuilding = ctx.scriptReloadBusy;
+            const std::string header = (isBuilding ? "Building... " : "Missing Script: ")
+                                       + entry.serialized->type;
             const bool open = ImGui::CollapsingHeader(
                 header.c_str(),
                 ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
@@ -222,7 +226,10 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
 
             if (open) {
                 ImGui::Spacing();
-                ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
+                if (isBuilding)
+                    ImGui::TextDisabled("Script DLL is building. Fields will be restored on completion.");
+                else
+                    ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
                 ImGui::Spacing();
             }
         }

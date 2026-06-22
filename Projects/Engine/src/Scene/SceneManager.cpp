@@ -134,7 +134,23 @@ void SceneManager::Update(float dt, physics::World& world)
 
     if (!m_pendingLoad.empty()) {
         FBZZ_PROFILE_SCOPE("SceneManager::LoadPendingScene");
-        m_active = m_factories[m_pendingLoad]();
+        // Factory 完了までは現在の Scene を保持し、ロード失敗で実行対象を失わないようにする。
+        auto factoryIt = m_factories.find(m_pendingLoad);
+        assert(factoryIt != m_factories.end() && "Pending scene is not registered");
+        if (factoryIt == m_factories.end()) {
+            m_pendingLoad.clear();
+            return;
+        }
+
+        std::unique_ptr<Scene> nextScene = factoryIt->second();
+        if (!nextScene) {
+            m_pendingLoad.clear();
+            return;
+        }
+
+        m_active = std::move(nextScene);
+        // LoadScene は明示的な遷移要求なので、新しい owned Scene を外部 Scene より優先する。
+        m_externalScene = nullptr;
         m_pendingLoad.clear();
     }
 
@@ -156,7 +172,8 @@ void SceneManager::LateUpdate(float dt, physics::World& world)
 
 Scene* SceneManager::GetActive()
 {
-    return m_active.get();
+    // Editor の外部 Scene と Standalone の owned Scene を同じ取得 API で扱う。
+    return CurrentScene();
 }
 
 } // namespace fbzz::scene
