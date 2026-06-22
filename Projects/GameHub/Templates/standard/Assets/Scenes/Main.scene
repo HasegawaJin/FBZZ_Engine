@@ -20,9 +20,9 @@ tag = 'MainCamera'
     nearZ = 0.1
 
     [gameobjects.transform]
-    position = [ -12.701679, -5.995765, 18.931906 ]
-    rotation = [ 0.050153, 0.935552, 0.148177, -0.316656 ]
-    scale = [ 1.0, 1.0, 1.0 ]
+    position = [ 68.398079, 1.070739, 84.211967 ]
+    rotation = [ 0.005337, -0.994608, -0.067806, -0.078285 ]
+    scale = [ 1.000005, 1.0, 1.000005 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -36,9 +36,9 @@ tag = 'MainCamera'
         'Min Pitch' = -20.0
         'Mouse Orbit' = true
         'Mouse Sensitivity' = 0.2
-        Pitch = -17.999996
+        Pitch = -7.800018
         'Target Tag' = 'Player'
-        Yaw = -502.601227
+        Yaw = -189.000916
 
 [[gameobjects]]
 active = true
@@ -175,6 +175,7 @@ tag = 'Player'
             [gameobjects.AnimatorComponent.states.blendTree1D]
             dampTime = 0.18
             paramName = 'Speed'
+            syncNormalizedTime = true
 
                 [[gameobjects.AnimatorComponent.states.blendTree1D.motions]]
                 clipIndex = -1
@@ -226,6 +227,7 @@ tag = 'Player'
             dampTime = 0.0
             motions = []
             paramName = ''
+            syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
             motions = []
@@ -259,6 +261,7 @@ tag = 'Player'
             dampTime = 0.0
             motions = []
             paramName = ''
+            syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
             motions = []
@@ -281,7 +284,7 @@ tag = 'Player'
         [[gameobjects.AnimatorComponent.states]]
         clipIndex = -1
         clipName = 'mixamo.com'
-        ikWeight = 0.0
+        ikWeight = 1.0
         loop = false
         mode = 0
         name = 'Landing'
@@ -292,6 +295,7 @@ tag = 'Player'
             dampTime = 0.0
             motions = []
             paramName = ''
+            syncNormalizedTime = false
 
             [gameobjects.AnimatorComponent.states.blendTree2D]
             motions = []
@@ -358,15 +362,22 @@ tag = 'Player'
         correctionDeadZone = 0.02
         enabled = true
         footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
         footSurfaceOffset = 0.09
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
         hipBoneName = 'Hips'
         lookAtAxis = [ 0.0, 0.0, 1.0 ]
         lookAtClampAngle = 90.0
         lookAtSpeed = 10.0
         lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
         maxCorrection = 0.52
         maxExtension = 0.98
-        footPlantDistance = 0.1
+        minBendAngleDegrees = 0.0
         order = 0
         poleGuid = ''
         poleName = ''
@@ -392,14 +403,22 @@ tag = 'Player'
         correctionDeadZone = 0.025
         enabled = true
         footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
         footSurfaceOffset = 0.05
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
         hipBoneName = 'Hips'
         lookAtAxis = [ 0.0, 0.0, 1.0 ]
         lookAtClampAngle = 90.0
         lookAtSpeed = 10.0
         lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
         maxCorrection = 0.12
         maxExtension = 1.0
+        minBendAngleDegrees = 0.0
         order = 10
         poleGuid = ''
         poleName = ''
@@ -425,14 +444,22 @@ tag = 'Player'
         correctionDeadZone = 0.025
         enabled = true
         footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
         footSurfaceOffset = 0.05
+        fullBodyIterations = 4
+        fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
         hipBoneName = 'Hips'
         lookAtAxis = [ 0.0, 0.0, -1.0 ]
         lookAtClampAngle = 60.0
         lookAtSpeed = 8.0
         lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
         maxCorrection = 0.12
         maxExtension = 0.98
+        minBendAngleDegrees = 0.0
         order = 20
         poleGuid = ''
         poleName = ''
@@ -451,14 +478,44 @@ tag = 'Player'
         weight = 0.65
 
         [[gameobjects.IKSolverComponent.chains]]
+        adjustHip = true
+        autoPole = false
+        autoPoleLocalDirection = [ 0.0, 0.0, 0.0 ]
         boneNames = []
+        correctionDeadZone = 0.025
         enabled = true
+        footNormalAxis = [ 0.0, 0.0, 0.0 ]
+        footPlantDistance = 0.06
+        footSurfaceOffset = 0.05
         fullBodyIterations = 4
         fullBodyMaxRotationDegrees = 75.0
+        fullBodyTolerance = 0.005
+        handRotationOffset = [ 0.0, 0.0, 0.0, 1.0 ]
+        handRotationWeight = 1.0
+        hipBoneName = 'Hips'
+        lookAtAxis = [ 0.0, 0.0, 1.0 ]
+        lookAtClampAngle = 90.0
+        lookAtSpeed = 10.0
+        lookAtUpAxis = [ 0.0, 1.0, 0.0 ]
+        maxBendAngleDegrees = 175.0
+        maxCorrection = 0.12
+        maxExtension = 0.98
+        minBendAngleDegrees = 0.0
         order = -100
+        poleGuid = ''
+        poleName = ''
+        rayDownRatio = 1.2
+        rayUpRatio = 0.5
+        smoothTime = 0.1
+        softness = 0.05
+        spineAutoWeight = false
+        spineFlatWeight = 0.05
+        spineSlopeRampMeters = 0.1
         targetGuid = ''
         targetName = ''
+        targetOffset = [ 0.0, 0.0, 0.0 ]
         type = 5
+        useAnimatorIKWeight = true
         weight = 1.0
 
     [gameobjects.RigidBodyComponent]
@@ -481,8 +538,8 @@ tag = 'Player'
     velocity = [ 0.0, 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ -15.589844, -6.050681, 15.154181 ]
-    rotation = [ 0.0, 0.896482, 0.0, 0.443081 ]
+    position = [ 69.173103, 0.149319, 79.319237 ]
+    rotation = [ 0.0, 0.943932, 0.0, 0.330139 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
@@ -507,6 +564,7 @@ tag = 'Player'
         'Speed Param' = 'Speed'
         Sprint = 'Shift'
         'Sprint Multiplier' = 1.8
+        'Turn Speed' = 12.0
         'Use Camera Forward' = true
         'Use Foot IK' = true
         'Vertical Speed Param' = 'VerticalSpeed'
@@ -625,8 +683,8 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    position = [ -0.040974, 0.969587, 0.002075 ]
-    rotation = [ 0.019267, -0.002934, -0.00675, 0.999787 ]
+    position = [ 0.014184, 0.966874, -0.007061 ]
+    rotation = [ 0.018506, -0.000315, -0.017675, 0.999672 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -648,7 +706,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 9e-06, 0.099235, 0.012273 ]
-    rotation = [ 0.051905, 0.003013, 0.002365, 0.998645 ]
+    rotation = [ 0.049504, -0.001185, -0.003193, 0.998768 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -670,7 +728,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.11732, 0.0 ]
-    rotation = [ -0.008214, 0.028639, 0.002199, 0.999554 ]
+    rotation = [ -0.01466, 0.018197, -0.006843, 0.999704 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -692,7 +750,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.134588, 0.0 ]
-    rotation = [ -0.06543, 0.028374, 0.004252, 0.997445 ]
+    rotation = [ -0.072321, 0.018597, -0.005194, 0.997195 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -714,7 +772,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.150278, -0.008779 ]
-    rotation = [ 0.009792, -0.0115, -0.015283, 0.999769 ]
+    rotation = [ -0.006184, -0.004805, -0.002959, 0.999965 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -736,7 +794,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.103218, -0.031424 ]
-    rotation = [ -0.038553, 0.008657, 0.025122, 0.998903 ]
+    rotation = [ -0.052545, 0.014379, 0.030246, 0.998057 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -780,7 +838,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.061058, 0.091063, -0.007571 ]
-    rotation = [ 0.443979, 0.550723, 0.579476, -0.404714 ]
+    rotation = [ -0.437587, -0.558061, -0.555037, 0.434764 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -802,7 +860,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.129223, 0.0 ]
-    rotation = [ -0.534085, -0.207651, 0.243819, 0.782423 ]
+    rotation = [ -0.563163, -0.190323, 0.212977, 0.775413 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -824,7 +882,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.274047, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.255857, 0.966715 ]
+    rotation = [ 0.0, 0.0, 0.246611, 0.969115 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -846,7 +904,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.276145, 0.0 ]
-    rotation = [ -0.116679, -0.057157, -0.133164, 0.982541 ]
+    rotation = [ -0.098506, -0.057954, -0.122737, 0.985837 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -868,7 +926,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.03003, 0.037888, -0.021671 ]
-    rotation = [ -0.170091, 0.172826, 0.124395, 0.962147 ]
+    rotation = [ -0.169529, 0.172776, 0.123686, 0.962346 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -890,7 +948,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.04745, 0.0 ]
-    rotation = [ 0.017092, 0.00232, -0.108913, 0.993902 ]
+    rotation = [ 0.017575, 0.004033, -0.10676, 0.994121 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -912,7 +970,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.043821, 0.0 ]
-    rotation = [ 0.02699, -0.000481, -0.004307, 0.999626 ]
+    rotation = [ 0.026756, -0.00053, -0.00195, 0.99964 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -956,7 +1014,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.02822, 0.122666, -0.002318 ]
-    rotation = [ -0.18357, 0.002157, -0.010529, 0.982948 ]
+    rotation = [ -0.188643, 0.002129, -0.011617, 0.981975 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -978,7 +1036,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03892, 0.0 ]
-    rotation = [ -0.262916, -1e-06, -0.031723, 0.964297 ]
+    rotation = [ -0.30026, -2e-06, -0.03623, 0.953169 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1000,7 +1058,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034152, 0.0 ]
-    rotation = [ -0.117839, 0.0, -0.014221, 0.992931 ]
+    rotation = [ -0.148391, 0.0, -0.017908, 0.988767 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1044,7 +1102,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.127755, 0.0 ]
-    rotation = [ -0.236411, 0.001713, -0.021475, 0.971414 ]
+    rotation = [ -0.227923, 0.001004, -0.023217, 0.973402 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1066,7 +1124,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03614, 0.0 ]
-    rotation = [ -0.164155, 0.0, -0.01981, 0.986236 ]
+    rotation = [ -0.204341, 0.0, -0.02466, 0.978589 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1088,7 +1146,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034598, 0.0 ]
-    rotation = [ -0.129473, 0.0, -0.015625, 0.99146 ]
+    rotation = [ -0.127555, 0.0, -0.015393, 0.991712 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1132,7 +1190,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.022166, 0.12147, 1e-04 ]
-    rotation = [ -0.288431, 0.005157, -0.017578, 0.957325 ]
+    rotation = [ -0.272221, 0.003328, -0.021038, 0.961999 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1154,7 +1212,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.036012, 0.0 ]
-    rotation = [ -0.125116, -1e-06, -0.015091, 0.992027 ]
+    rotation = [ -0.148679, -1e-06, -0.017935, 0.988723 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1176,7 +1234,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.033073, 0.0 ]
-    rotation = [ -0.096046, 0.0, -0.011591, 0.99531 ]
+    rotation = [ -0.095645, 0.0, -0.011543, 0.995349 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1220,7 +1278,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.047258, 0.109082, -0.002261 ]
-    rotation = [ -0.35559, -0.008531, -0.06511, 0.932333 ]
+    rotation = [ -0.360194, -0.011641, -0.073218, 0.929927 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1242,7 +1300,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.041367, 0.0 ]
-    rotation = [ -0.142964, -0.004979, 0.018305, 0.989546 ]
+    rotation = [ -0.187139, -0.006567, 0.012712, 0.982229 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1264,7 +1322,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025948, 0.0 ]
-    rotation = [ -0.066692, 0.0, -0.008048, 0.997741 ]
+    rotation = [ -0.067371, 0.0, -0.00813, 0.997695 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1308,7 +1366,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.061057, 0.091064, -0.007571 ]
-    rotation = [ 0.476793, -0.537978, -0.512209, -0.469988 ]
+    rotation = [ 0.501854, -0.52187, -0.506223, -0.468544 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1330,7 +1388,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.129223, 0.0 ]
-    rotation = [ -0.547494, 0.188596, -0.267462, 0.77016 ]
+    rotation = [ -0.537291, 0.184221, -0.260774, 0.780627 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1352,7 +1410,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.274047, 0.0 ]
-    rotation = [ 0.0, 0.0, -0.238713, 0.97109 ]
+    rotation = [ 0.0, 0.0, -0.255433, 0.966827 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1374,7 +1432,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.276145, 0.0 ]
-    rotation = [ -0.01604, -0.027884, 0.129428, 0.991067 ]
+    rotation = [ -0.01281, -0.027722, 0.123824, 0.991834 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1396,7 +1454,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.03003, 0.037888, -0.021671 ]
-    rotation = [ -0.191783, -0.044163, -0.025842, 0.980103 ]
+    rotation = [ -0.189206, -0.045192, -0.026779, 0.980531 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1418,7 +1476,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.04745, 0.0 ]
-    rotation = [ -0.020039, 0.050551, 0.026189, 0.998177 ]
+    rotation = [ -0.020025, 0.050956, 0.02676, 0.998141 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1440,7 +1498,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.043821, 0.0 ]
-    rotation = [ 0.028864, 0.0012, -0.010958, 0.999523 ]
+    rotation = [ 0.028855, 0.001192, -0.010569, 0.999527 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1484,7 +1542,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.02822, 0.122666, -0.002318 ]
-    rotation = [ -0.068932, 0.002624, 0.044127, 0.996642 ]
+    rotation = [ -0.054312, 0.001919, 0.039498, 0.997741 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1506,7 +1564,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03892, 0.0 ]
-    rotation = [ -0.327882, 2e-06, 0.039952, 0.943873 ]
+    rotation = [ -0.369856, 2e-06, 0.045068, 0.927996 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1528,7 +1586,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034152, 0.0 ]
-    rotation = [ -0.087526, 0.0, 0.010667, 0.996105 ]
+    rotation = [ -0.095228, 0.0, 0.011605, 0.995388 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1572,7 +1630,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.127755, 0.0 ]
-    rotation = [ -0.097142, 0.004614, 0.056558, 0.993652 ]
+    rotation = [ -0.092154, 0.004278, 0.054905, 0.994221 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1594,7 +1652,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03614, 0.0 ]
-    rotation = [ -0.273482, 0.0, 0.033329, 0.9613 ]
+    rotation = [ -0.318542, 0.0, 0.03882, 0.947114 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1616,7 +1674,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034598, 0.0 ]
-    rotation = [ -0.072484, -0.007025, 0.009352, 0.997301 ]
+    rotation = [ -0.081262, -0.005813, 0.010384, 0.996622 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1660,7 +1718,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.022166, 0.12147, 1e-04 ]
-    rotation = [ -0.202385, 0.003199, 0.040004, 0.978483 ]
+    rotation = [ -0.203927, 0.003483, 0.041409, 0.978104 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1682,7 +1740,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.036012, 0.0 ]
-    rotation = [ -0.217006, 1e-06, 0.026438, 0.975812 ]
+    rotation = [ -0.260855, 2e-06, 0.031782, 0.964855 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1704,7 +1762,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.033073, 0.0 ]
-    rotation = [ -0.088129, -0.008695, 0.011522, 0.996005 ]
+    rotation = [ -0.092569, -0.007274, 0.011968, 0.995608 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1748,7 +1806,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.047258, 0.109082, -0.002261 ]
-    rotation = [ -0.284853, 0.008936, 0.064353, 0.956367 ]
+    rotation = [ -0.284868, 0.009869, 0.0674, 0.956143 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1770,7 +1828,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.041367, 0.0 ]
-    rotation = [ -0.184657, 0.0, 0.022504, 0.982545 ]
+    rotation = [ -0.198074, 0.0, 0.024139, 0.97989 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1792,7 +1850,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025948, 0.0 ]
-    rotation = [ -0.093892, 0.0, 0.011442, 0.995517 ]
+    rotation = [ -0.101138, 0.0, 0.012325, 0.994796 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1836,7 +1894,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.091239, -0.066572, 0.000554 ]
-    rotation = [ -0.029388, -0.099475, 0.99357, -0.045385 ]
+    rotation = [ -0.02981, -0.106896, 0.993433, -0.027839 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1858,7 +1916,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.405994, 0.0 ]
-    rotation = [ 0.256231, 0.082705, 0.024612, 0.962756 ]
+    rotation = [ 0.283581, 0.078904, 0.016457, 0.955555 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1880,7 +1938,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.42099, 0.0 ]
-    rotation = [ -0.626612, 0.028963, -0.024315, 0.778414 ]
+    rotation = [ -0.648843, 0.023906, 0.010756, 0.760471 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1902,7 +1960,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.157216, 0.0 ]
-    rotation = [ -0.228897, 0.032518, -0.015344, 0.972786 ]
+    rotation = [ -0.231627, 0.03251, -0.015294, 0.972141 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1946,7 +2004,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.09125, -0.066556, 0.000554 ]
-    rotation = [ 0.114378, -0.109243, 0.98682, 0.034212 ]
+    rotation = [ 0.124528, -0.100062, 0.985907, 0.049676 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1968,7 +2026,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.405994, 0.0 ]
-    rotation = [ 0.252725, -0.030603, -0.004835, 0.967042 ]
+    rotation = [ 0.235296, -0.037165, -0.020748, 0.970991 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1990,7 +2048,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.42099, 0.0 ]
-    rotation = [ -0.61635, -0.046999, -0.019176, 0.785835 ]
+    rotation = [ -0.603229, -0.047878, 0.024714, 0.795746 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2012,7 +2070,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.157216, 0.0 ]
-    rotation = [ -0.227709, -0.03212, 0.015257, 0.97308 ]
+    rotation = [ -0.227709, -0.03212, 0.015258, 0.97308 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2094,26 +2152,26 @@ tag = 'Untagged'
     cellCountX = 4
     cellCountZ = 4
     cells = [
-        '61c3fd87-d9ef-457f-8a12-71337420a7b2',
-        '38a3718a-a50a-42ac-b30f-2187a3237d45',
-        '',
-        '',
-        '407c2540-830c-47f5-a853-da78a27f4fb8',
-        '581814ea-019b-43d6-bed1-ef6e63625dab',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        ''
+        '09b62fcc-2d47-44a7-b066-4eb88674c3d5',
+        '47da0a91-b8be-4d05-8f42-d3a20390e753',
+        '65a01b2b-db16-4d43-8cd6-a62dd00a4d9e',
+        '1f652022-e22d-4189-b0c1-925b9aeeba43',
+        '34e2d479-09a3-4547-a98a-4d751f69def9',
+        '5a43687b-18fa-4100-81b1-8e9093dca670',
+        '69f4ffe7-fa8f-437b-af4d-d46e933d3336',
+        'e22ae83d-c218-4241-8f75-e948148548d7',
+        '3db47044-c9b4-4775-923b-6532c7ae25ee',
+        '972e1b38-82be-44d4-b7b2-0d00206a4642',
+        '0e8d6490-d28d-43bd-89c9-436332191105',
+        '1511abef-bf2c-45e2-994a-8efcb602ff54',
+        'a5ebec92-ab57-4da3-8a88-e35ce78d63a4',
+        '0b96fe58-4374-4555-92f9-23ff59ece4f7',
+        '9d64a5f2-b47d-4025-886c-607da1665f43',
+        '784c5b10-0c97-4bf5-896b-74839efe5e16'
     ]
 
     [gameobjects.transform]
-    position = [ -128.0, -6.2, -128.0 ]
+    position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
@@ -2167,7 +2225,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '61c3fd87-d9ef-457f-8a12-71337420a7b2'
+instanceId = '09b62fcc-2d47-44a7-b066-4eb88674c3d5'
 layer = 0
 name = 'Terrain_0_0'
 parent = 'TerrainGrid'
@@ -2185,6 +2243,9 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2193,7 +2254,7 @@ tag = 'Untagged'
         'Assets/Materials/Terrain/Layer2_Sand.mat',
         'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_0.terrain'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_0 3.terrain'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -2202,7 +2263,7 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = '38a3718a-a50a-42ac-b30f-2187a3237d45'
+instanceId = '47da0a91-b8be-4d05-8f42-d3a20390e753'
 layer = 0
 name = 'Terrain_1_0'
 parent = 'TerrainGrid'
@@ -2220,6 +2281,9 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2228,16 +2292,92 @@ tag = 'Untagged'
         'Assets/Materials/Terrain/Layer2_Sand.mat',
         'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_0.terrain'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_0 4.terrain'
 
     [gameobjects.transform]
-    position = [ 508.0, 0.0, 0.0 ]
+    position = [ 31.5, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '407c2540-830c-47f5-a853-da78a27f4fb8'
+instanceId = '65a01b2b-db16-4d43-8cd6-a62dd00a4d9e'
+layer = 0
+name = 'Terrain_2_0'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_0 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1f652022-e22d-4189-b0c1-925b9aeeba43'
+layer = 0
+name = 'Terrain_3_0'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_0 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '34e2d479-09a3-4547-a98a-4d751f69def9'
 layer = 0
 name = 'Terrain_0_1'
 parent = 'TerrainGrid'
@@ -2255,6 +2395,9 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2263,16 +2406,16 @@ tag = 'Untagged'
         'Assets/Materials/Terrain/Layer2_Sand.mat',
         'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_1.terrain'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_1 3.terrain'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.0, 508.0 ]
+    position = [ 0.0, 0.0, 31.5 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
 active = true
-instanceId = '581814ea-019b-43d6-bed1-ef6e63625dab'
+instanceId = '5a43687b-18fa-4100-81b1-8e9093dca670'
 layer = 0
 name = 'Terrain_1_1'
 parent = 'TerrainGrid'
@@ -2290,6 +2433,9 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2298,9 +2444,463 @@ tag = 'Untagged'
         'Assets/Materials/Terrain/Layer2_Sand.mat',
         'Assets/Materials/Terrain/Layer3_Rock.mat'
     ]
-    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_1.terrain'
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_1 3.terrain'
 
     [gameobjects.transform]
-    position = [ 508.0, 0.0, 508.0 ]
+    position = [ 31.5, 0.0, 31.5 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '69f4ffe7-fa8f-437b-af4d-d46e933d3336'
+layer = 0
+name = 'Terrain_2_1'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_1 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 31.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e22ae83d-c218-4241-8f75-e948148548d7'
+layer = 0
+name = 'Terrain_3_1'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_1 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 31.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '3db47044-c9b4-4775-923b-6532c7ae25ee'
+layer = 0
+name = 'Terrain_0_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '972e1b38-82be-44d4-b7b2-0d00206a4642'
+layer = 0
+name = 'Terrain_1_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 31.5, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0e8d6490-d28d-43bd-89c9-436332191105'
+layer = 0
+name = 'Terrain_2_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '1511abef-bf2c-45e2-994a-8efcb602ff54'
+layer = 0
+name = 'Terrain_3_2'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_2 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 63.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a5ebec92-ab57-4da3-8a88-e35ce78d63a4'
+layer = 0
+name = 'Terrain_0_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_0_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0b96fe58-4374-4555-92f9-23ff59ece4f7'
+layer = 0
+name = 'Terrain_1_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_1_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 31.5, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '9d64a5f2-b47d-4025-886c-607da1665f43'
+layer = 0
+name = 'Terrain_2_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_2_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 63.0, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '784c5b10-0c97-4bf5-896b-74839efe5e16'
+layer = 0
+name = 'Terrain_3_3'
+parent = 'TerrainGrid'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        restitution = 0.3
+        staticFriction = 0.6
+
+        [gameobjects.TerrainColliderComponent.shape]
+        type = 'AABB'
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'Assets/Materials/Terrain/Layer0_Ground.mat',
+        'Assets/Materials/Terrain/Layer1_Grass.mat',
+        'Assets/Materials/Terrain/Layer2_Sand.mat',
+        'Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'Assets/Terrain/Grid/Terrain_3_3 1.terrain'
+
+    [gameobjects.transform]
+    position = [ 94.5, 0.0, 94.5 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000001'
+layer = 0
+name = 'GameCanvas'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    matchWidthOrHeight = 0.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    scaleMode = 1
+    sortOrder = 100
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000002'
+layer = 0
+name = 'ResultButton'
+parent = 'GameCanvas'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    enabled = true
+    hoverColor = [ 0.35, 0.42, 0.55, 1.0 ]
+    isInteractable = true
+    normalColor = [ 0.18, 0.24, 0.35, 1.0 ]
+    pressedColor = [ 0.1, 0.14, 0.22, 1.0 ]
+
+    [gameobjects.UIImage]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    sortOrder = 10
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.UIText]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 32.0
+    letterSpacing = 4.0
+    sortOrder = 10
+    text = 'RESULT'
+
+    [gameobjects.transform]
+    position = [ 1690.0, 60.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 170.0, 56.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'SceneManagerScript'
+
+        [gameobjects.ScriptComponents.fields]
+        'Auto Delay' = 1.5
+        'Auto Transition' = false
+        'Target Scene' = 'Result'
+        'Via Scene' = 'Load'

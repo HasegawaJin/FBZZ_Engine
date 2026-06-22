@@ -53,9 +53,10 @@ const std::vector<ScriptEntry>& AllEntries()
 extern "C" {
 
 // ホストと DLL の型レイアウトが一致する場合だけ ScriptFactory 登録を許可する。
-GAMESCRIPTS_API uint64_t FBZZScripts_GetAbiSignature()
+// WHY: 個別フィールドを返すことで ValidateAbi() がミスマッチ箇所をログに出力できる。
+GAMESCRIPTS_API fbzz::scene::ScriptDllAbiInfo FBZZScripts_GetAbiInfo()
 {
-    return fbzz::scene::GetScriptDllAbiSignature();
+    return fbzz::scene::GetScriptDllAbiInfo();
 }
 
 GAMESCRIPTS_API int FBZZScripts_Count()
