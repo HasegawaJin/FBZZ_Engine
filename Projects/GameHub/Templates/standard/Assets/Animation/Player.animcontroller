@@ -9,8 +9,7 @@ parameters = [
     { name = 'Speed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
     { name = 'VerticalSpeed', type = 0, floatValue = 0.0, intValue = 0, boolValue = false },
     { name = 'IsGrounded', type = 2, floatValue = 0.0, intValue = 0, boolValue = true },
-    { name = 'Jump', type = 3, floatValue = 0.0, intValue = 0, boolValue = false },
-    { name = 'Land', type = 3, floatValue = 0.0, intValue = 0, boolValue = false }
+    { name = 'Jump', type = 3, floatValue = 0.0, intValue = 0, boolValue = false }
 ]
 
 [[states]]
@@ -25,8 +24,9 @@ ikWeight = 1.0
 [states.blendTree1D]
 paramName = 'Speed'
 dampTime = 0.18
+syncNormalizedTime = true
 motions = [
-    { sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 0.0 },
+    { sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
     { sourcePath = 'Assets/Models/DebugCharacter/Walking/anims/Walking@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
     { sourcePath = 'Assets/Models/DebugCharacter/Running/anims/Running@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 }
 ]
@@ -63,7 +63,7 @@ toStateName = 'Landing'
 hasExitTime = false
 exitTime = 1.0
 transitionDuration = 0.1
-conditions = [{ paramName = 'Land', op = 4, threshold = 0.0 }]
+conditions = [{ paramName = 'IsGrounded', op = 4, threshold = 0.0 }]
 
 [[states]]
 name = 'Landing'
@@ -73,7 +73,7 @@ clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
 loop = false
-ikWeight = 0.0
+ikWeight = 1.0
 
 [[states.transitions]]
 toStateName = 'Locomotion'
