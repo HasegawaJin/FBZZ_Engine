@@ -147,6 +147,9 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  _qualityPad0;
     float3 colorFilter;
     float  _qualityPad1;
+    // 画面フェード — Composite パスの最終出力に適用する。
+    float3 screenFadeColor;
+    float  screenFadeAlpha;
 };
 
 cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)

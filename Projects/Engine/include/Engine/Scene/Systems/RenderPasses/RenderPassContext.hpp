@@ -156,6 +156,9 @@ struct PostProcCB {
     float _qualityPad0;
     float colorFilter[3];
     float _qualityPad1;
+    // 画面フェード — Composite パスの最終出力に適用する。alpha=0 で通常, 1 で全面フェード色。
+    float screenFadeColor[3];
+    float screenFadeAlpha;
 };
 
 struct OutlineCB {

@@ -153,6 +153,10 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.colorFilter[0] = pp.imageQuality.colorFilter[0];
     postData.colorFilter[1] = pp.imageQuality.colorFilter[1];
     postData.colorFilter[2] = pp.imageQuality.colorFilter[2];
+    postData.screenFadeAlpha    = pp.screenFadeAlpha;
+    postData.screenFadeColor[0] = pp.screenFadeColor[0];
+    postData.screenFadeColor[1] = pp.screenFadeColor[1];
+    postData.screenFadeColor[2] = pp.screenFadeColor[2];
     const UnderwaterInfo underwater = EvaluateUnderwaterInfo(ctx);
     if (underwater.enabled) {
         postData.underwaterStrength = underwater.strength;
