@@ -4,4 +4,4 @@
 //      このファイルが実装を担当することで Ninja が並列コンパイルできる。
 // WHY: ScriptSceneProxy のテンプレート定義をこの TU から参照可能にする。
 #include <Engine/Scene/Scene.hpp>
-#include "Scripts/TpsCameraComponent.hpp"
+#include "Scripts/SceneManagerScript.hpp"
