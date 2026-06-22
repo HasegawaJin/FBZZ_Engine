@@ -124,7 +124,7 @@ wireframe = false
     shader = 'assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl'
 
 [runtime]
-start_scene = 'Assets/Scenes/Main.scene'
+start_scene = 'Assets/Scenes/Title.scene'
 
 [screen]
 height = 1080

@@ -10,9 +10,9 @@
 //   境界が明確なまま保てる。
 //
 // スクリプト追加手順:
-//   1. Src/Scripts/ に Xxx.hpp を作成 (Script 継承、TYPE_NAME 定義)
+//   1. Assets/Scripts/ に Xxx.hpp を作成 (Script 継承、TYPE_NAME 定義)
 //   2. @@FBZZ_SCRIPT_INCLUDES_BEGIN の直後に #include "Scripts/Xxx.hpp" を追加
-//   3. @@FBZZ_SCRIPT_ENTRIES_BEGIN の直後に エントリを追加
+//   3. Assets/Scripts/ScriptList.inl に FBZZ_SCRIPT_ENTRY(ns, Xxx) を追加
 //   → Editor の AssetBrowser から "Create → C++ Script..." でも自動生成できる
 
 // WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。
@@ -27,8 +27,12 @@
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+#define PlayerControllerComponent_IMPL
 #include "Scripts/PlayerControllerComponent.hpp"
+#define TpsCameraComponent_IMPL
 #include "Scripts/TpsCameraComponent.hpp"
+#define SceneManagerScript_IMPL
+#include "Scripts/SceneManagerScript.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 #ifdef GAMESCRIPTS_EXPORTS
@@ -44,14 +48,16 @@ struct ScriptEntry {
     std::function<std::unique_ptr<fbzz::scene::Script>()> factory;
 };
 
+// WHY: エントリは Assets/Scripts/ScriptList.inl で一元管理する。
+//      ScriptCodeGen は ScriptList.inl だけを更新するため、このファイルのエントリを手動編集する必要はない。
 const std::vector<ScriptEntry>& AllEntries()
 {
-    // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
     static const std::vector<ScriptEntry> entries = {
-        { ::sandbox::PlayerControllerComponent::TYPE_NAME, []() { return std::make_unique<::sandbox::PlayerControllerComponent>(); } },
-        { ::sandbox::TpsCameraComponent::TYPE_NAME, []() { return std::make_unique<::sandbox::TpsCameraComponent>(); } },
+#define FBZZ_SCRIPT_ENTRY(ns, T) \
+        { ::ns::T::TYPE_NAME, []() { return std::make_unique<::ns::T>(); } },
+#include "Scripts/ScriptList.inl"
+#undef FBZZ_SCRIPT_ENTRY
     };
-    // @@FBZZ_SCRIPT_ENTRIES_END
     return entries;
 }
 
@@ -60,9 +66,10 @@ const std::vector<ScriptEntry>& AllEntries()
 extern "C" {
 
 // ホストと DLL の型レイアウトが一致する場合だけ ScriptFactory 登録を許可する。
-GAMESCRIPTS_API uint64_t FBZZScripts_GetAbiSignature()
+// WHY: 個別フィールドを返すことで ValidateAbi() がミスマッチ箇所をログに出力できる。
+GAMESCRIPTS_API fbzz::scene::ScriptDllAbiInfo FBZZScripts_GetAbiInfo()
 {
-    return fbzz::scene::GetScriptDllAbiSignature();
+    return fbzz::scene::GetScriptDllAbiInfo();
 }
 
 GAMESCRIPTS_API int FBZZScripts_Count()

@@ -2,6 +2,7 @@
 // TpsCameraComponent.hpp | sandbox
 #pragma once
 #include <Engine/Input/Input.hpp>
+#include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/MathUtils.hpp>
 #include <string>

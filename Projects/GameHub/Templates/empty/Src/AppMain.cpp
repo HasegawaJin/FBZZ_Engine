@@ -25,13 +25,14 @@
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/StandaloneProjectModule.hpp>
 #include <Engine/Scene/Systems/DebugDrawSystem.hpp>
 #include <Engine/Core/ILogSink.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Scene/SceneManager.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -40,6 +41,7 @@
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
+#include <imgui.h>
 #endif
 #include <Physics/World.hpp>
 
@@ -262,134 +264,14 @@ bool ResolveProject(LaunchProject& project, const std::filesystem::path& project
     return true;
 }
 
-void ApplyPhysicsSettings(fbzz::physics::World& world, const fbzz::ProjectSettings& settings)
-{
-    world.SetGravity(settings.physics.gravity);
-    world.SetSubsteps(settings.physics.substeps);
-}
-
-void ApplyUISettings(const fbzz::ProjectSettings& settings, fbzz::scene::UISystemContext* ctx = nullptr)
-{
-    if (ctx && !settings.ui.defaultFontPath.empty())
-        fbzz::scene::UISystemSetDefaultFontPath(*ctx, settings.ui.defaultFontPath);
-}
-
-fbzz::renderer::Camera ResolveGameCamera(fbzz::scene::Scene& scene, float aspectRatio)
-{
-    for (auto& go : scene.GameObjects()) {
-        auto* cam = go.GetComponent<fbzz::scene::CameraComponent>();
-        if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
-
-        fbzz::renderer::Camera result;
-        result.m_position = go.transform.position;
-        result.m_rotation = go.transform.rotation;
-        result.m_fovY     = cam->fovY;
-        result.m_near     = cam->nearZ;
-        result.m_far      = cam->farZ;
-        // WHY: ScriptCameraProxy が Component から同じ投影値を再構築できるよう、実 viewport aspect を同期する。
-        cam->aspectRatio  = aspectRatio;
-        result.m_aspect   = cam->aspectRatio;
-        return result;
-    }
-    fbzz::renderer::Camera fallback;
-    fallback.m_aspect = aspectRatio;
-    return fallback;
-}
-
-fbzz::core::Window::Config BuildWindowConfig(const fbzz::ProjectSettings& settings)
-{
-    fbzz::core::Window::Config windowConfig;
-    windowConfig.title      = Utf8ToWide(settings.window.title);
-    windowConfig.width      = static_cast<uint32_t>(settings.window.width);
-    windowConfig.height     = static_cast<uint32_t>(settings.window.height);
-    windowConfig.fullscreen = settings.window.fullscreen;
-    return windowConfig;
-}
-
 // ============================================================
 // StandaloneModule
 // ============================================================
 
 /// Application の共通ループからゲーム更新・描画を駆動する Module。
 /// WHY: Time / Input / Window / Memory / Profiler は Application に集約し、ゲーム固有処理だけをここに分離する。
-class StandaloneModule final : public fbzz::core::IModule {
-public:
-    StandaloneModule(fbzz::renderer::IRenderer& renderer,
-                     fbzz::renderer::ResourceManager& resources,
-                     const LaunchProject& project,
-                     const fbzz::ProjectSettings& settings)
-        : m_renderer(renderer)
-        , m_resources(resources)
-        , m_project(project)
-        , m_settings(settings)
-    {}
-
-    [[nodiscard]] bool OnInit() override
-    {
-        m_scene = std::make_unique<fbzz::scene::Scene>();
-        const std::string scenePathUtf8 = PathToUtf8(m_project.sceneFile);
-        if (!fbzz::scene::SceneSerializer::LoadInPlace(*m_scene, scenePathUtf8, m_resources)) {
-            FBZZ_LOG_ERROR("{{TARGET_NAME}} Standalone: シーンのロードに失敗しました: %s", scenePathUtf8.c_str());
-            return false;
-        }
-        ApplyPhysicsSettings(m_physicsWorld, m_settings);
-        ApplyUISettings(m_settings, &m_uiCtx);
-        m_sceneManager.SetScene(m_scene.get());
-        m_sceneManager.SetPhysicsHz(m_settings.physics.hz);
-        return true;
-    }
-
-    void OnUpdate(float dt) override
-    {
-        fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
-        m_sceneManager.Update(dt, m_physicsWorld);
-    }
-
-    void OnLateUpdate(float dt) override
-    {
-        m_sceneManager.LateUpdate(dt, m_physicsWorld);
-    }
-
-    void OnRender() override
-    {
-        auto& app = fbzz::core::Application::Get();
-        { FBZZ_PROFILE_SCOPE("Renderer::BeginFrame"); m_renderer.BeginFrame(); }
-        m_renderer.SetRenderTarget(fbzz::renderer::ResourceHandle<fbzz::renderer::RenderTargetTag>{}, m_resources);
-        m_renderer.Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
-
-        const uint32_t w = app.GetWindow().GetWidth();
-        const uint32_t h = app.GetWindow().GetHeight();
-        const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
-        const fbzz::renderer::Camera gameCamera = ResolveGameCamera(*m_scene, aspect);
-
-        fbzz::scene::RenderSystemUIOptions uiOptions{};
-        uiOptions.enabled            = true;
-        uiOptions.viewportWidth      = static_cast<float>(w);
-        uiOptions.viewportHeight     = static_cast<float>(h);
-        uiOptions.mouseInCanvasSpace = fbzz::input::Input::MousePosition();
-        uiOptions.mousePressed       = fbzz::input::Input::MouseButton(0);
-        uiOptions.targetView         = fbzz::scene::UIRenderTargetView::GameViewport;
-        uiOptions.context            = &m_uiCtx;
-        fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources, gameCamera, {},
-                                  &m_settings.render, fbzz::Layer::Everything, &uiOptions);
-        { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
-    }
-
-    void OnShutdown() override
-    {
-        m_scene.reset();
-    }
-
-private:
-    fbzz::renderer::IRenderer&          m_renderer;
-    fbzz::renderer::ResourceManager&    m_resources;
-    const LaunchProject&                m_project;
-    const fbzz::ProjectSettings&        m_settings;
-    std::unique_ptr<fbzz::scene::Scene> m_scene;
-    fbzz::physics::World                m_physicsWorld;
-    fbzz::scene::SceneManager           m_sceneManager;
-    fbzz::scene::UISystemContext        m_uiCtx;
-};
+// StandaloneのゲームループはEngine側のStandaloneProjectModuleを使用する。
+// WHY: Sandboxと生成プロジェクトの実行経路を一致させ、修正漏れを防ぐ。
 
 // ============================================================
 // EditorModule
@@ -423,11 +305,32 @@ public:
                                      PathToUtf8(m_project.sceneFile)))
             return false;
 
-        ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-        ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_gameUICtx);
-        ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_sceneUICtx);
-        m_sceneManager.SetScene(m_scene.get());
-        m_sceneManager.SetPhysicsHz(m_editorApp.GetContext().projectSettings.physics.hz);
+        fbzz::scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
+        fbzz::scene::ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_gameUICtx);
+        fbzz::scene::ApplyUISettings(m_editorApp.GetContext().projectSettings, &m_sceneUICtx);
+        auto& sceneManager = m_editorApp.GetSceneManager();
+        sceneManager.SetScene(m_scene.get());
+        sceneManager.SetPhysicsHz(m_editorApp.GetContext().projectSettings.physics.hz);
+
+        // Play 中の LoadScene が解決できるよう、プロジェクト内の全 Scene を名前で登録する。
+        const std::filesystem::path scenesDir = m_project.root / L"Assets" / L"Scenes";
+        std::error_code fsErr;
+        if (std::filesystem::exists(scenesDir, fsErr)) {
+            std::filesystem::recursive_directory_iterator sceneIt(
+                scenesDir,
+                std::filesystem::directory_options::skip_permission_denied,
+                fsErr);
+            const std::filesystem::recursive_directory_iterator sceneEnd;
+            while (sceneIt != sceneEnd && !fsErr) {
+                if (sceneIt->is_regular_file(fsErr) && sceneIt->path().extension() == L".scene") {
+                    sceneManager.RegisterFromFile(
+                        PathToUtf8(sceneIt->path().stem()),
+                        PathToUtf8(sceneIt->path()),
+                        m_resources);
+                }
+                sceneIt.increment(fsErr);
+            }
+        }
 
         m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
         m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
@@ -441,13 +344,18 @@ public:
         m_editorApp.BeginFrame();
 
         auto* playMode = m_editorApp.GetContext().playMode;
+        auto& sceneManager = m_editorApp.GetSceneManager();
         if (playMode->ApplyPendingRestore(*m_scene)) {
+            // WHY: Play 中にシーン遷移していた場合、SceneManager が別の scene を active にしている。
+            //      Stop 時は必ず編集用 m_scene に戻す。
+            sceneManager.SetScene(m_scene.get());
+            m_editorApp.GetContext().activeScene = m_scene.get();
             // WHY: World は物理同期とは別に m_contactCache / m_prevEvents を保持する。
             //      前 Play セッションの Collider* が残ったまま次 Play が始まると物理が誤動作するため、
             //      Stop 復元のタイミングで World を丸ごとリセットする。
             m_physicsWorld = fbzz::physics::World{};
-            ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
-            m_sceneManager.SetSimulating(false);  // accumulator をリセット
+            fbzz::scene::ApplyPhysicsSettings(m_physicsWorld, m_editorApp.GetContext().projectSettings);
+            sceneManager.SetSimulating(false);
         }
 
         if (!playMode->IsPlaying())
@@ -458,19 +366,18 @@ public:
         m_stepFrame = playMode->ConsumeStep();
         const float simulationDt = SimulationDeltaTime();
         const auto& settings = m_editorApp.GetContext().projectSettings;
-
         fbzz::scene::Script::SetPhysicsWorld(&m_physicsWorld);
-        ApplyPhysicsSettings(m_physicsWorld, settings);
-
-        m_sceneManager.SetSimulating(playMode->IsPlaying() || m_stepFrame);
-        m_sceneManager.SetPhysicsHz(settings.physics.hz);
-        m_sceneManager.SetSingleStep(m_stepFrame);
-        m_sceneManager.Update(simulationDt, m_physicsWorld);
+        fbzz::scene::ApplyPhysicsSettings(m_physicsWorld, settings);
+        sceneManager.SetSimulating(playMode->IsPlaying() || m_stepFrame);
+        sceneManager.SetPhysicsHz(settings.physics.hz);
+        sceneManager.SetSingleStep(m_stepFrame);
+        sceneManager.Update(simulationDt, m_physicsWorld);
+        m_editorApp.GetContext().activeScene = sceneManager.GetActive();
     }
 
     void OnLateUpdate(float) override
     {
-        m_sceneManager.LateUpdate(SimulationDeltaTime(), m_physicsWorld);
+        m_editorApp.GetSceneManager().LateUpdate(SimulationDeltaTime(), m_physicsWorld);
     }
 
     void OnRender() override
@@ -485,8 +392,13 @@ public:
         if (auto* rt = m_resources.Get(gameRT))
             gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
-        const fbzz::renderer::Camera gameCamera = ResolveEditorGameCamera(gameAspect);
-        const fbzz::LayerMask cullingMask       = ResolveGameCullingMask();
+        fbzz::scene::Scene* activeScene = m_editorApp.GetSceneManager().GetActive();
+        const fbzz::renderer::Camera gameCamera = activeScene
+            ? fbzz::scene::ResolveEditorGameCamera(*activeScene, m_debugCamera.camera, gameAspect)
+            : m_debugCamera.camera;
+        const fbzz::LayerMask cullingMask = activeScene
+            ? fbzz::scene::ResolveGameCullingMask(*activeScene)
+            : fbzz::Layer::Everything;
 
         { FBZZ_PROFILE_SCOPE("Renderer::BeginFrame"); m_renderer.BeginFrame(); }
         RenderSceneViewport(sceneRT);
@@ -497,6 +409,16 @@ public:
 
     void OnShutdown() override
     {
+        // WHY: ScriptSystem の OnDestroy / destructor を FreeLibrary より前に実行するため、
+        //      全 Scene を Clear() してから Shutdown() する。順序を守らないと DLL アンロード後に
+        //      vtable を踏んでクラッシュする。
+        auto& sceneManager = m_editorApp.GetSceneManager();
+        if (fbzz::scene::Scene* s = sceneManager.GetActive(); s && s != m_scene.get())
+            s->Clear();
+        m_scene->Clear();
+        sceneManager.SetScene(nullptr);
+        fbzz::scene::Script::SetPhysicsWorld(nullptr);
+        m_editorApp.GetContext().activeScene = nullptr;
         m_editorApp.Shutdown();
         m_scene.reset();
     }
@@ -551,36 +473,6 @@ private:
         m_debugCamera.LookAt(m_focusAnim.target);
     }
 
-    [[nodiscard]] fbzz::renderer::Camera ResolveEditorGameCamera(float gameAspect)
-    {
-        fbzz::renderer::Camera gameCamera = m_debugCamera.camera;
-        gameCamera.m_aspect = gameAspect;
-
-        for (auto& go : m_scene->GameObjects()) {
-            auto* cam = go.GetComponent<fbzz::scene::CameraComponent>();
-            if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
-
-            gameCamera.m_position = go.transform.position;
-            gameCamera.m_rotation = go.transform.rotation;
-            gameCamera.m_fovY     = cam->fovY;
-            gameCamera.m_aspect   = gameAspect;
-            gameCamera.m_near     = cam->nearZ;
-            gameCamera.m_far      = cam->farZ;
-            break;
-        }
-        return gameCamera;
-    }
-
-    [[nodiscard]] fbzz::LayerMask ResolveGameCullingMask()
-    {
-        for (auto& go : m_scene->GameObjects()) {
-            auto* cam = go.GetComponent<fbzz::scene::CameraComponent>();
-            if (!go.activeSelf() || !cam || !cam->enabled || !cam->isMain) continue;
-            return cam->cullingMask;
-        }
-        return fbzz::Layer::Everything;
-    }
-
     void RenderSceneViewport(fbzz::renderer::ResourceHandle<fbzz::renderer::RenderTargetTag> sceneRT)
     {
         m_renderer.SetRenderTarget(sceneRT, m_resources);
@@ -591,6 +483,10 @@ private:
         sceneRenderSettings.selectedObjects.reserve(m_editorApp.GetContext().selectedEntities.size());
         for (fbzz::scene::EntityID id : m_editorApp.GetContext().selectedEntities)
             sceneRenderSettings.selectedObjects.push_back({ id.index, id.generation });
+        sceneRenderSettings.showSkeleton    = m_editorApp.GetContext().showSkeleton;
+        sceneRenderSettings.showGrid        = m_editorApp.GetContext().showGrid;
+        sceneRenderSettings.showLightRange  = m_editorApp.GetContext().showLightRange;
+        sceneRenderSettings.showConstraints = sceneRenderSettings.showColliders;
 
         float w = 1920.0f, h = 1080.0f;
         if (auto* rt = m_resources.Get(sceneRT)) {
@@ -616,10 +512,6 @@ private:
                 fbzz::scene::TerrainCollisionDebugDrawSystem(*m_scene, m_renderer,
                                                               m_debugCamera.camera.m_position);
             fbzz::renderer::DebugDraw::Flush();
-        }
-        if (m_editorApp.GetContext().showSkeleton) {
-            fbzz::scene::AnimatorDebugDrawSystem(*m_scene, m_renderer, m_resources,
-                                                  m_debugCamera.camera.GetViewProjection());
         }
     }
 
@@ -649,7 +541,23 @@ private:
         uiOptions.viewportHeight = h;
         uiOptions.targetView     = fbzz::scene::UIRenderTargetView::GameViewport;
         uiOptions.context        = &m_gameUICtx;
-        fbzz::scene::RenderSystem(*m_scene, m_renderer, m_resources,
+        const auto& editorCtx = m_editorApp.GetContext();
+        // WHY: gameViewportOriginはImGuiのスクリーン座標なので、同じ座標系のMousePosを使う。
+        const ImGuiIO& imguiIO = ImGui::GetIO();
+        uiOptions.mouseInCanvasSpace = {
+            imguiIO.MousePos.x - editorCtx.gameViewportOriginX,
+            imguiIO.MousePos.y - editorCtx.gameViewportOriginY
+        };
+        const bool mouseInGameViewport = uiOptions.mouseInCanvasSpace.x >= 0.0f
+            && uiOptions.mouseInCanvasSpace.y >= 0.0f
+            && uiOptions.mouseInCanvasSpace.x <= editorCtx.gameViewportWidth
+            && uiOptions.mouseInCanvasSpace.y <= editorCtx.gameViewportHeight;
+        // Editor UI のクリックをゲームへ漏らさず、Play 中の Game Viewport だけを操作対象にする。
+        uiOptions.mousePressed = editorCtx.playMode->IsPlaying()
+            && mouseInGameViewport && imguiIO.MouseDown[0];
+        fbzz::scene::Scene* activeScene = m_editorApp.GetSceneManager().GetActive();
+        if (!activeScene) return;
+        fbzz::scene::RenderSystem(*activeScene, m_renderer, m_resources,
                                   gameCamera, gameRT, &gameRenderSettings,
                                   gameCullingMask, &uiOptions);
     }
@@ -659,7 +567,7 @@ private:
         m_renderer.SetRenderTarget(
             fbzz::renderer::ResourceHandle<fbzz::renderer::RenderTargetTag>{}, m_resources);
         m_renderer.Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
-        m_editorApp.GetContext().activeScene = m_scene.get();
+        m_editorApp.GetContext().activeScene = m_editorApp.GetSceneManager().GetActive();
         m_editorApp.RenderPanels(m_editorApp.GetContext());
         m_editorApp.EndFrame(m_imguiRenderer);
     }
@@ -671,7 +579,6 @@ private:
     fbzz::editor::EditorApp             m_editorApp;
     std::unique_ptr<fbzz::scene::Scene> m_scene;
     fbzz::physics::World                m_physicsWorld;
-    fbzz::scene::SceneManager           m_sceneManager;
     fbzz::renderer::DebugCamera         m_debugCamera;
     FocusAnim                           m_focusAnim;
     fbzz::scene::UISystemContext        m_sceneUICtx;
@@ -695,13 +602,14 @@ private:
         return 1;
     }
 
-    if (!app.Init(BuildWindowConfig(settings))) return 1;
+    if (!app.Init(fbzz::scene::MakeWindowConfig(settings))) return 1;
 
     auto& renderer = app.GetRenderer();
     fbzz::renderer::ResourceManager resources(renderer);
     fbzz::asset::AssetManager::Init(resources, PathToUtf8(project.root / L"Assets") + "/");
 
-    StandaloneModule module(renderer, resources, project, settings);
+    fbzz::scene::StandaloneProjectModule module(
+        renderer, resources, project.root, project.sceneFile, settings);
     app.Run(module);
     return 0;
 }
@@ -721,8 +629,12 @@ private:
     fbzz::renderer::ResourceManager resources(renderer);
     fbzz::asset::AssetManager::Init(resources, PathToUtf8(project.root / L"Assets") + "/");
 
-    EditorModule module(renderer, imguiRenderer, resources, project);
-    app.Run(module);
+    fbzz::editor::EditorApp editorApp;
+    if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow())) return 1;
+    if (!editorApp.OpenProject(PathToUtf8(project.root),
+                               PathToUtf8(project.settingsFile),
+                               PathToUtf8(project.sceneFile))) return 1;
+    app.Run(editorApp);
     return 0;
 #endif
 }
