@@ -46,6 +46,7 @@
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
@@ -685,8 +686,8 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     const std::string lastScenePath = ResolveScenePathForProject(projectRoot, m_settings.lastScenePath);
     if (IsScenePathInsideProject(projectRoot, lastScenePath)) {
         sceneToOpen = lastScenePath;
-    } else if (sceneToOpen.empty() && !m_ctx.projectSettings.runtime.startScene.empty()) {
-        sceneToOpen = ResolveScenePathForProject(projectRoot, m_ctx.projectSettings.runtime.startScene);
+    } else if (sceneToOpen.empty() && !m_ctx.projectSettings.game.runtime.startScene.empty()) {
+        sceneToOpen = ResolveScenePathForProject(projectRoot, m_ctx.projectSettings.game.runtime.startScene);
     }
 
     if (!sceneToOpen.empty()) {
@@ -694,6 +695,10 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
             FBZZ_LOG_ERROR("Open project scene failed: %s", sceneToOpen.c_str());
             return false;
         }
+        // WHY: SceneSerializer はローカル position のみ復元し worldPosition はゼロのまま。
+        //      OnInit の WarmupRenderResources がスケジューラより前に描画するため、
+        //      ここで即時フラッシュしてロード直後の最初のフレームも正しい位置で表示する。
+        scene::FlushWorldTransforms(*m_ctx.activeScene);
         m_settings.lastScenePath = sceneToOpen;
         m_ctx.currentScenePath   = sceneToOpen;
         GraphLayoutSerializer::Load(m_ctx.graphLayouts, sceneToOpen);
@@ -1062,7 +1067,12 @@ void EditorApp::ResizeViewportRTsIfNeeded()
         auto* currentRT = m_resources->Get(rt);
         if (currentRT && vpW == currentRT->GetWidth() && vpH == currentRT->GetHeight()) return;
 
-        rt         = m_resources->CreateRenderTarget(vpW, vpH);
+        const auto previousRT = rt;
+        rt = m_resources->CreateRenderTarget(vpW, vpH);
+        // WHY: ハンドルの上書きだけでは旧DX11リソースがResourceManagerに残り、
+        //      Dock操作を繰り返すほどVRAM使用量とPresent待機が増える。
+        if (previousRT.IsValid())
+            m_resources->Release(previousRT);
         panel->hdrRT = rt;
     };
 
@@ -1082,12 +1092,10 @@ bool EditorApp::OnInit()
 {
     // Init() と OpenProject() は app::Run() の前に呼ばれているため、
     // ここでは Post-project セットアップだけを担う。
-    scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
-    scene::ApplyUISettings(m_ctx.projectSettings, &m_gameUICtx);
-    scene::ApplyUISettings(m_ctx.projectSettings, &m_sceneUICtx);
-
-    m_sceneManager.SetScene(m_scene.get());
-    m_sceneManager.SetPhysicsHz(m_ctx.projectSettings.physics.hz);
+    m_runtime.ApplySettings(m_ctx.projectSettings);
+    m_runtime.ApplyAdditionalUIContext(m_ctx.projectSettings, m_sceneUICtx);
+    m_runtime.BindExternalScene(m_scene.get());
+    m_runtime.RegisterScenes(util::FileSystem::PathFromUtf8(m_ctx.projectRoot), *m_resources);
 
     m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
     m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
@@ -1109,9 +1117,19 @@ void EditorApp::OnUpdate(float dt)
     if (playMode->ApplyPendingRestore(*m_scene)) {
         // WHY: World は m_contactCache / m_prevEvents を保持するため、
         //      Stop 復元時に丸ごとリセットしないと前 Play セッションの Collider* が残る。
-        m_physicsWorld = physics::World{};
-        scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
+        m_runtime.ResetPhysics(m_ctx.projectSettings);
         RestoreEditorHiding();  // Stop 復元後に editor-only 非表示を再適用
+
+        // WHY: Play 中に ScriptProxy 経由で LoadScene が呼ばれると SceneManager 内の
+        //      m_externalScene が nullptr にリセットされる (SceneManager.cpp LoadScene 処理)。
+        //      Stop 後もその状態が残ると TransformEditorPreview が m_active (ゲームシーン) に
+        //      対して動作し、m_scene の worldPosition が永遠に 0 のままになる。
+        //      再設定することで CurrentScene() が m_scene を返すよう回復する。
+        m_runtime.BindExternalScene(m_scene.get());
+        // WHY: SceneSerializer はローカル position のみ復元し worldPosition はゼロになる。
+        //      この後の Update で TransformEditorPreview が走るが、同フレーム内の
+        //      OnRender より先に worldPosition を正確にしておくため即時フラッシュする。
+        scene::FlushWorldTransforms(*m_scene);
 
         // Serializer が設定する needsBake=true を上書きしてベイク済み NavMesh を復元する。
         // WHY: navMesh はランタイムキャッシュのため TOML 非保存。Play→Stop のたびに再ベイクが
@@ -1142,21 +1160,22 @@ void EditorApp::OnUpdate(float dt)
     const bool stepFrame   = playMode->ConsumeStep();
     m_simulationDt         = stepFrame ? (1.0f / 60.0f) : dt;
 
-    m_sceneManager.SetSimulating(playMode->IsPlaying() || stepFrame);
-    m_sceneManager.SetSingleStep(stepFrame);
-
     if (playMode->IsPlaying()) {
-        scene::ApplyPhysicsSettings(m_physicsWorld, m_ctx.projectSettings);
-        scene::Script::SetPhysicsWorld(&m_physicsWorld);
+        // WHY: ビューポートリサイズに追従するため毎フレーム更新する。
+        //      ProjectRuntimeが所有するScriptRuntimeを更新すればScriptProxy全体へ反映される。
+        m_runtime.UpdateScriptViewport(
+            static_cast<uint32_t>(m_ctx.gameViewportWidth),
+            static_cast<uint32_t>(m_ctx.gameViewportHeight));
     }
 
-    m_sceneManager.Update(m_simulationDt, m_physicsWorld);
+    m_runtime.Update(m_simulationDt, m_ctx.projectSettings,
+                     playMode->IsPlaying() || stepFrame, stepFrame);
 }
 
 void EditorApp::OnLateUpdate(float dt)
 {
     (void)dt;
-    m_sceneManager.LateUpdate(m_simulationDt, m_physicsWorld);
+    m_runtime.LateUpdate(m_simulationDt);
 }
 
 void EditorApp::OnRender()
@@ -1169,8 +1188,13 @@ void EditorApp::OnRender()
     if (auto* rt = m_resources->Get(m_gameViewportRT))
         gameAspect = static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
-    const renderer::Camera  gameCamera       = scene::ResolveEditorGameCamera(*m_scene, m_debugCamera.camera, gameAspect);
-    const fbzz::LayerMask   gameCullingMask  = scene::ResolveGameCullingMask(*m_scene);
+    // WHY: Play 中に LoadScene が発生すると m_scene は遷移前のシーンのままになる。
+    //      カメラ解決・カリングマスク計算は新シーンのコンポーネントを参照する必要があるため、
+    //      Play 中は SceneManager::GetActive() を優先する。
+    scene::Scene* const resolveScene     = (m_playMode.IsPlaying() && m_runtime.GetActiveScene())
+                                              ? m_runtime.GetActiveScene() : m_scene.get();
+    const renderer::Camera  gameCamera       = scene::ResolveEditorGameCamera(*resolveScene, m_debugCamera.camera, gameAspect);
+    const fbzz::LayerMask   gameCullingMask  = scene::ResolveGameCullingMask(*resolveScene);
 
     m_renderer->BeginFrame();
 
@@ -1180,7 +1204,19 @@ void EditorApp::OnRender()
     m_renderer->SetRenderTarget({}, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
 
-    m_ctx.activeScene = m_scene.get();
+    // WHY: Play 中に LoadScene でシーン遷移が発生すると SceneManager が新シーンを所有し、
+    //      m_scene は遷移前の古いシーンのままになる。
+    //      パネル描画は遷移後シーンを参照する必要があるため GetActive() で解決する。
+    {
+        scene::Scene* const nextActive = m_playMode.IsPlaying()
+            ? m_runtime.GetActiveScene()
+            : m_scene.get();
+        // シーン遷移を検知したら旧シーンの EntityID を持つ selectedEntities をクリアする。
+        // WHY: 遷移後シーンで同じ index を持つ別 Entity が選択状態に見えるのを防ぐ。
+        if (nextActive != m_ctx.activeScene)
+            m_ctx.selectedEntities.clear();
+        m_ctx.activeScene = nextActive;
+    }
     RenderPanels(m_ctx);
     EndFrame(*m_imguiRenderer);
 
@@ -1193,7 +1229,7 @@ void EditorApp::OnShutdown()
     //      DLL コードが有効なうちに実行する。
     if (m_scene)
         m_scene->Clear();
-    scene::Script::SetPhysicsWorld(nullptr);
+    m_runtime.Shutdown();
     // Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
     m_ctx.activeScene = nullptr;
     Shutdown();
@@ -1249,7 +1285,7 @@ void EditorApp::WarmupRenderResources()
         uiOptions.viewportWidth  = w;
         uiOptions.viewportHeight = h;
         uiOptions.targetView    = scene::UIRenderTargetView::GameViewport;
-        uiOptions.context       = &m_gameUICtx;
+        uiOptions.context       = &m_runtime.GetGameUIContext();
         scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
                             warmupCamera, gameRT,
                             &m_ctx.projectSettings.render,
@@ -1302,6 +1338,7 @@ void EditorApp::UpdateFocusAnim(float dt)
 
 void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::LayerMask /*gameCullingMask*/)
 {
+    FBZZ_PROFILE_SCOPE("EditorApp::RenderSceneView");
     const auto sceneRT = m_sceneViewportRT;
     m_renderer->SetRenderTarget(sceneRT, *m_resources);
     m_renderer->Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
@@ -1330,16 +1367,28 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
         sceneRenderSettings.showConstraints = sceneRenderSettings.showColliders;
         if (m_playMode.IsPlaying())
             sceneRenderSettings.showNavMesh = false;
-        scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
+        // WHY: Play 中に LoadScene が発生すると m_scene は遷移前のシーンのまま。
+        //      SceneView も新シーンをエディタカメラで描画する。
+    scene::Scene* const sceneViewScene = (m_playMode.IsPlaying() && m_runtime.GetActiveScene())
+        ? m_runtime.GetActiveScene() : m_scene.get();
+        scene::RenderSystem(*sceneViewScene, *m_renderer, *m_resources,
                             m_debugCamera.camera, sceneRT, &sceneRenderSettings,
-                            fbzz::Layer::Everything, &uiOptions, &m_physicsWorld);
+                        fbzz::Layer::Everything, &uiOptions, &m_runtime.GetPhysicsWorld());
     }
 }
 
 void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask)
 {
+    FBZZ_PROFILE_SCOPE("EditorApp::RenderGameView");
     const auto gameRT = m_gameViewportRT;
     if (!gameRT.IsValid()) return;
+
+    // WHY: Play 中に LoadScene でシーン遷移すると SceneManager が新シーンを所有するため、
+    //      m_scene（遷移前）ではなく GetActive() を参照してゲームビューに正しいシーンを描く。
+    scene::Scene* renderScene = m_playMode.IsPlaying()
+        ? m_runtime.GetActiveScene()
+        : m_scene.get();
+    if (!renderScene) return;
 
     m_renderer->SetRenderTarget(gameRT, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
@@ -1349,13 +1398,22 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
         w = static_cast<float>(rt->GetWidth());
         h = static_cast<float>(rt->GetHeight());
     }
+    // WHY: ゲームビューポート外のクリック (Inspector 等) が UIButton に届かないよう、
+    //      マウスがビューポート矩形内にあるときだけ mousePressed を渡す。
+    const ImVec2 mousePos = ImGui::GetIO().MousePos;
+    const float relX = mousePos.x - m_ctx.gameViewportOriginX;
+    const float relY = mousePos.y - m_ctx.gameViewportOriginY;
+    const bool mouseOverViewport = relX >= 0.0f && relX <= w && relY >= 0.0f && relY <= h;
+
     scene::RenderSystemUIOptions uiOptions{};
-    uiOptions.enabled       = true;
-    uiOptions.viewportWidth  = w;
-    uiOptions.viewportHeight = h;
-    uiOptions.targetView    = scene::UIRenderTargetView::GameViewport;
-    uiOptions.context       = &m_gameUICtx;
-    scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
+    uiOptions.enabled            = true;
+    uiOptions.viewportWidth      = w;
+    uiOptions.viewportHeight     = h;
+    uiOptions.mouseInCanvasSpace = { relX, relY };
+    uiOptions.mousePressed       = mouseOverViewport && ImGui::GetIO().MouseDown[0];
+    uiOptions.targetView         = scene::UIRenderTargetView::GameViewport;
+    uiOptions.context            = &m_runtime.GetGameUIContext();
+    scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
                         gameCamera, gameRT,
                         &m_ctx.projectSettings.render,
                         gameCullingMask, &uiOptions);

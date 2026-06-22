@@ -12,11 +12,15 @@
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
 //      Assets/Scripts/Foo.hpp に解決される。
-#include "Scripts/BulletComponent.hpp"
-#include "Scripts/BulletShooterComponent.hpp"
+// WHY (_IMPL マクロ事前定義): 各スクリプトの inline 実装は同名 .cpp が担当する独立 TU で
+//      コンパイルする。このファイルは型定義・ファクトリ用に宣言だけを取り込む。
+//      Ninja はスクリプト .cpp 群と SandboxScriptsDll.cpp を並列にコンパイルできる。
+#define PlayerControllerComponent_IMPL
 #include "Scripts/PlayerControllerComponent.hpp"
-#include "Scripts/PlayerWorldSpaceUIComponent.hpp"
+#define TpsCameraComponent_IMPL
 #include "Scripts/TpsCameraComponent.hpp"
+#define SceneManagerScript_IMPL
+#include "Scripts/SceneManagerScript.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。
@@ -52,22 +56,16 @@ struct ScriptEntry {
 
 // WHY: DLL 内に登録済みスクリプト一覧を保持することで、
 //      SandboxScripts_Register() を複数回呼んでも正しく再登録できる。
+// WHY: エントリは Scripts/ScriptList.inl で一元管理する。
+//      ScriptCodeGen は ScriptList.inl だけを更新するため、このファイルのエントリを手動編集する必要はない。
 const std::vector<ScriptEntry>& AllEntries()
 {
-    // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
     static const std::vector<ScriptEntry> entries = {
-        { ::sandbox::BulletComponent::TYPE_NAME,
-          []() { return std::make_unique<::sandbox::BulletComponent>(); } },
-        { ::sandbox::BulletShooterComponent::TYPE_NAME,
-          []() { return std::make_unique<::sandbox::BulletShooterComponent>(); } },
-        { ::sandbox::PlayerControllerComponent::TYPE_NAME,
-          []() { return std::make_unique<::sandbox::PlayerControllerComponent>(); } },
-        { ::sandbox::PlayerWorldSpaceUIComponent::TYPE_NAME,
-          []() { return std::make_unique<::sandbox::PlayerWorldSpaceUIComponent>(); } },
-        { ::sandbox::TpsCameraComponent::TYPE_NAME,
-          []() { return std::make_unique<::sandbox::TpsCameraComponent>(); } },
+#define FBZZ_SCRIPT_ENTRY(ns, T) \
+        { ::ns::T::TYPE_NAME, []() { return std::make_unique<::ns::T>(); } },
+#include "Scripts/ScriptList.inl"
+#undef FBZZ_SCRIPT_ENTRY
     };
-    // @@FBZZ_SCRIPT_ENTRIES_END
     return entries;
 }
 
@@ -76,9 +74,10 @@ const std::vector<ScriptEntry>& AllEntries()
 extern "C" {
 
 // ホストと DLL の型レイアウトが一致する場合だけ ScriptFactory 登録を許可する。
-SANDBOXSCRIPTS_API uint64_t FBZZScripts_GetAbiSignature()
+// WHY: 個別フィールドを返すことで ValidateAbi() がミスマッチ箇所をログに出力できる。
+SANDBOXSCRIPTS_API fbzz::scene::ScriptDllAbiInfo FBZZScripts_GetAbiInfo()
 {
-    return fbzz::scene::GetScriptDllAbiSignature();
+    return fbzz::scene::GetScriptDllAbiInfo();
 }
 
 // DLL に登録されているスクリプト数を返す

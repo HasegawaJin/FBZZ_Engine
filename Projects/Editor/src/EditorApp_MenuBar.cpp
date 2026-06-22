@@ -10,6 +10,10 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/StandaloneLauncher.hpp>
+#include <Engine/Core/Application.hpp>
+#include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Scene/ScriptRuntime.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <Windows.h>
 #include <cmath>
@@ -387,6 +391,14 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
             if (surf && go && surf->navMesh.IsValid())
                 m_navMeshPlayCache[go->instanceId] = surf->navMesh;
         }
+        // WHY: ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。
+        //      エディタは共通ProjectRuntimeのSceneManagerをUpdateするため、Play開始時に
+        //      ScriptRuntime をオーバーライドして正しい参照先を指す。
+        m_runtime.ActivateScriptRuntime(
+            core::Application::Get().GetRenderer(),
+            static_cast<uint32_t>(m_ctx.gameViewportWidth),
+            static_cast<uint32_t>(m_ctx.gameViewportHeight)
+        );
         pm->Play(*ctx.activeScene);
         if (pm->IsPlaying())
             ctx.requestGameViewportFocus = true;
@@ -401,6 +413,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         isEditor,
         stopColor,
         BUTTON_SIZE)) {
+        scene::ScriptRuntime::Override(nullptr);
         pm->Stop(*ctx.activeScene);
         m_undoStack.Clear();
     }

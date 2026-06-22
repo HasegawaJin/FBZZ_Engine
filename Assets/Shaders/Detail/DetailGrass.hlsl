@@ -20,36 +20,16 @@
 //   abs(dot(N, L)) を用いた簡易両面ライティング + 環境光
 //   WHY: 草は裏面も同じ明るさで描画する必要がある。
 
-#include "Common/Binding.hlsli"
+// WHY: LightConstants の ambientColor を参照するため Common/Constants.hlsli を使用する。
+//      Unlit モードで RenderSystem が ambientColor={1,1,1}/lightIntensity=0 を設定するため、
+//      ambientColor を乗算するだけで分岐なしに Unlit が自然に機能する。
+#define FBZZ_MATERIAL_CONSTANTS  // DetailGrassCB で MaterialConstants を上書きするため
+#include "Common/Constants.hlsli"
 #include "Platform/DX11.hlsli"
 
 // ============================================================
-// 定数バッファ
-// ============================================================
-
-cbuffer CameraConstants : register(CB_CAMERA)
-{
-    float4x4 view;
-    float4x4 projection;
-    float4x4 viewProjection;
-    float4x4 invViewProjection;
-    float3   cameraPos;
-    float    nearZ;
-    float    farZ;
-    float3   _camPad;
-};
-
-cbuffer LightConstants : register(CB_LIGHT)
-{
-    float3 lightDir;
-    float  _lPad0;
-    float3 lightColor;
-    float  lightIntensity;
-    // 残りフィールドは使わない
-};
-
 // b2 = DetailGrassCB
-#define FBZZ_MATERIAL_CONSTANTS
+// ============================================================
 cbuffer DetailGrassCB : register(CB_MATERIAL)
 {
     float3 windDir;       // 正規化 XZ 風向きベクトル (Y=0)
@@ -120,10 +100,17 @@ PsIn VSMain(uint vertId : SV_VertexID, uint instId : SV_InstanceID)
     // セグメント内での正規化高さ [0, 1] (blade 全体)
     float t = (segIdx + isTop) / (float)bladeSegments;
 
-    // ブレード右方向 (Y 軸回転)
-    float sinR = sin(inst.rotY);
-    float cosR = cos(inst.rotY);
-    float3 bladeRight = float3(cosR, 0.0f, -sinR);
+    // カメラ向き Cylindrical Billboard の右方向。
+    // WHY: SceneView は EditorCamera、GameView/PlayMode は CameraComponent で RenderSystem が
+    //      b0 を更新するため、shader 側は cameraPos を参照すればビューごとの正面向きに追従できる。
+    float3 viewDir = cameraPos - inst.pos;
+    viewDir.y = 0.0f;
+    float viewLenSq = dot(viewDir, viewDir);
+    viewDir = (viewLenSq > 1e-6f)
+        ? viewDir * rsqrt(viewLenSq)
+        : float3(0.0f, 0.0f, 1.0f);
+    float3 bladeRight   = normalize(cross(float3(0.0f, 1.0f, 0.0f), viewDir));
+    float3 bladeForward = normalize(cross(bladeRight, float3(0.0f, 1.0f, 0.0f)));
 
     // 根元から先端に向かって幅を細くする (先端は 20% の幅)
     float width = bladeWidth * inst.scale * (1.0f - t * 0.8f);
@@ -140,8 +127,7 @@ PsIn VSMain(uint vertId : SV_VertexID, uint instId : SV_InstanceID)
                     + float3(0.0f, bladeHeight * inst.scale * t, 0.0f)
                     + windOffset;
 
-    // ブレード表面法線: right × up (内積での両面対応は PS 側で abs)
-    float3 bladeForward = float3(-sinR, 0.0f, cosR);
+    // ブレード表面法線: カメラ方向を基準にし、先端ほど少し上向きへ寄せる。
     float3 normal       = normalize(lerp(bladeForward,
                                          float3(0.0f, 1.0f, 0.0f),
                                          t * 0.5f));  // 先端は上向きへ
@@ -182,11 +168,11 @@ float4 PSMain(PsIn p) : SV_Target0
         clip(col.a - alphaCutoff);
 
     // 簡易両面ライティング: abs(dot(N, L)) + 環境光
-    float3 N = normalize(p.normal);
-    float  NdotL    = abs(dot(N, normalize(-lightDir)));
-    float  ambient  = 0.35f;
-    float  diffuse  = NdotL * lightIntensity * 0.65f;
-    col.rgb *= (ambient + diffuse) * lightColor;
+    // ambientColor は Lit モードで {0.08,...}、Unlit モードで RenderSystem が {1,1,1} に設定する。
+    // lightIntensity は Unlit モードで 0 になるため、Unlit 時は ambientColor のみが乗算される。
+    float3 N    = normalize(p.normal);
+    float  NdotL = abs(dot(N, normalize(-lightDir)));
+    col.rgb *= ambientColor + lightColor * (NdotL * lightIntensity);
 
     return col;
 }

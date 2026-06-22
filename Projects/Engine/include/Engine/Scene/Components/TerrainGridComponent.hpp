@@ -15,8 +15,16 @@ namespace fbzz::scene {
 class Scene;
 
 struct TerrainGridComponent {
+    bool enabled   = true;
     int cellCountX = 4;
     int cellCountZ = 4;
+
+    // 新規セル作成時のデフォルト設定。
+    // MapEditorPanel の "Add New Terrain Here" および Inspector の "Apply to All Cells" が参照する。
+    int   defaultColumns   = 129;
+    int   defaultRows      = 129;
+    float defaultCellSize  = 1.0f;
+    int   defaultChunkSize = 64;
 
     // row-major: cells[gz * cellCountX + gx]
     // ランタイム解決済み EntityID。シリアライズは cellInstanceIds で行う。
@@ -30,8 +38,12 @@ struct TerrainGridComponent {
     const char* GetTypeName() const { return "TerrainGrid"; }
 
     void Reflect(IReflector& r) {
-        r.Field("cellCountX", cellCountX);
-        r.Field("cellCountZ", cellCountZ);
+        r.Field("cellCountX",       cellCountX);
+        r.Field("cellCountZ",       cellCountZ);
+        r.Field("defaultColumns",   defaultColumns);
+        r.Field("defaultRows",      defaultRows);
+        r.Field("defaultCellSize",  defaultCellSize);
+        r.Field("defaultChunkSize", defaultChunkSize);
         // cells / cellInstanceIds は SceneSerializer の専用コードで処理する
     }
 

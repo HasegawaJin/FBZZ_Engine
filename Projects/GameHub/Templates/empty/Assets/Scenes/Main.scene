@@ -416,46 +416,33 @@ tag = 'Player'
 
     [gameobjects.IKSolverComponent]
     enabled = true
-    hipBoneName = ''
 
         [[gameobjects.IKSolverComponent.chains]]
+        type = 0
+        order = 10
         enabled = true
-        footNormalAxis = [ 0.0, 0.0, 0.0 ]
-        footSurfaceOffset = 0.05
-        isLeg = true
         maxExtension = 0.98
-        midBone = 'mixamorig:LeftLeg'
+        boneNames = [ 'mixamorig:LeftUpLeg', 'mixamorig:LeftLeg', 'mixamorig:LeftFoot' ]
         poleGuid = 'c94e4ab2-e2c4-4acc-8082-3c6425ab3020'
         poleName = 'IK_LeftKnee_Pole'
-        rayDownRatio = 1.2
-        rayUpRatio = 0.5
-        rootBone = 'mixamorig:LeftUpLeg'
         softness = 0.1
         targetGuid = '7890a521-fcea-41e6-9850-27b0780a0601'
         targetName = 'IK_LeftFoot_Target'
         targetOffset = [ 0.0, 0.07, 0.0 ]
-        tipBone = 'mixamorig:LeftFoot'
-        useGroundSnap = true
         weight = 1.0
 
         [[gameobjects.IKSolverComponent.chains]]
+        type = 0
+        order = 10
         enabled = true
-        footNormalAxis = [ 0.0, 0.0, 0.0 ]
-        footSurfaceOffset = 0.05
-        isLeg = true
         maxExtension = 0.98
-        midBone = 'mixamorig:RightLeg'
+        boneNames = [ 'mixamorig:RightUpLeg', 'mixamorig:RightLeg', 'mixamorig:RightFoot' ]
         poleGuid = '72934e16-382f-40a0-80b0-56eeb32867c1'
         poleName = 'IK_RightKnee_Pole'
-        rayDownRatio = 1.2
-        rayUpRatio = 0.5
-        rootBone = 'mixamorig:RightUpLeg'
         softness = 0.1
         targetGuid = '49ecd804-9f61-493e-aeff-d16410ff3564'
         targetName = 'IK_RightFoot_Target'
         targetOffset = [ 0.0, 0.07, 0.0 ]
-        tipBone = 'mixamorig:RightFoot'
-        useGroundSnap = true
         weight = 1.0
 
     [gameobjects.MaterialComponent]

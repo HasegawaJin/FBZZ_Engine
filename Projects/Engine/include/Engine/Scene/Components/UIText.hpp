@@ -20,6 +20,8 @@ struct UIText {
     float         fontSize      = 42.0f;
     float         letterSpacing = 4.0f;
     math::Vector4 color         = { 1.0f, 1.0f, 1.0f, 1.0f };
+    // 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
+    int           sortOrder     = 0;
     TextAlign     align         = TextAlign::Left;
     // フォントアトラスのベースパス (拡張子なし)。
     // 例: "Assets/Fonts/Kenney/Future"
@@ -36,6 +38,7 @@ struct UIText {
         r.Field("fontSize",      fontSize);
         r.Field("letterSpacing", letterSpacing);
         r.Field("color",         color);
+        r.Field("sortOrder",     sortOrder);
         int alignInt = static_cast<int>(align);
         r.Field("align",         alignInt);
         align = static_cast<TextAlign>(alignInt);

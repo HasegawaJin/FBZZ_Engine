@@ -114,6 +114,10 @@ struct TerrainNeighbors {
     const TerrainComponent* south = nullptr;
     const TerrainComponent* west  = nullptr;
     const TerrainComponent* east  = nullptr;
+    const TerrainComponent* northWest = nullptr;
+    const TerrainComponent* northEast = nullptr;
+    const TerrainComponent* southWest = nullptr;
+    const TerrainComponent* southEast = nullptr;
 };
 
 // CameraConstants (b0)
@@ -142,6 +146,181 @@ static_assert(sizeof(TerrainObjectCB) == 416, "TerrainObjectCB size mismatch");
 
 static std::unordered_map<uint32_t, TerrainObjectCB> g_cbParamCache;
 
+static bool TryAddTerrainHeightSample(
+    const TerrainComponent* terrain,
+    int                     x,
+    int                     z,
+    float&                  sum,
+    int&                    count)
+{
+    if (!terrain || terrain->heightData.empty())
+        return false;
+    if (x < 0 || x >= terrain->columns || z < 0 || z >= terrain->rows)
+        return false;
+
+    const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain->columns)
+                     + static_cast<size_t>(x);
+    sum += terrain->heightData[idx] * terrain->maxHeight;
+    ++count;
+    return true;
+}
+
+static float SampleStitchedTerrainHeight(
+    const TerrainComponent& terrain,
+    const TerrainNeighbors& neighbors,
+    int                     x,
+    int                     z)
+{
+    // WHY: TerrainGrid の境界では複数 Terrain が同じワールド頂点を持つ。
+    //      描画用メッシュではその共有頂点を平均して、保存データを破壊せずに隙間を隠す。
+    //      角は最大 4 Terrain が交差するため、斜め隣接も平均に含める。
+    float sum = 0.0f;
+    int count = 0;
+
+    TryAddTerrainHeightSample(&terrain, x, z, sum, count);
+
+    if (x <= 0) {
+        TryAddTerrainHeightSample(neighbors.west, neighbors.west ? neighbors.west->columns - 1 + x : x, z, sum, count);
+    }
+    if (x >= terrain.columns - 1) {
+        TryAddTerrainHeightSample(neighbors.east, x - (terrain.columns - 1), z, sum, count);
+    }
+    if (z <= 0) {
+        TryAddTerrainHeightSample(neighbors.north, x, neighbors.north ? neighbors.north->rows - 1 + z : z, sum, count);
+    }
+    if (z >= terrain.rows - 1) {
+        TryAddTerrainHeightSample(neighbors.south, x, z - (terrain.rows - 1), sum, count);
+    }
+
+    if (x <= 0 && z <= 0) {
+        TryAddTerrainHeightSample(
+            neighbors.northWest,
+            neighbors.northWest ? neighbors.northWest->columns - 1 + x : x,
+            neighbors.northWest ? neighbors.northWest->rows - 1 + z : z,
+            sum,
+            count);
+    }
+    if (x >= terrain.columns - 1 && z <= 0) {
+        TryAddTerrainHeightSample(
+            neighbors.northEast,
+            x - (terrain.columns - 1),
+            neighbors.northEast ? neighbors.northEast->rows - 1 + z : z,
+            sum,
+            count);
+    }
+    if (x <= 0 && z >= terrain.rows - 1) {
+        TryAddTerrainHeightSample(
+            neighbors.southWest,
+            neighbors.southWest ? neighbors.southWest->columns - 1 + x : x,
+            z - (terrain.rows - 1),
+            sum,
+            count);
+    }
+    if (x >= terrain.columns - 1 && z >= terrain.rows - 1) {
+        TryAddTerrainHeightSample(
+            neighbors.southEast,
+            x - (terrain.columns - 1),
+            z - (terrain.rows - 1),
+            sum,
+            count);
+    }
+
+    if (count > 0)
+        return sum / static_cast<float>(count);
+
+    const int clampedX = std::clamp(x, 0, terrain.columns - 1);
+    const int clampedZ = std::clamp(z, 0, terrain.rows - 1);
+    const size_t idx = static_cast<size_t>(clampedZ) * static_cast<size_t>(terrain.columns)
+                     + static_cast<size_t>(clampedX);
+    return terrain.heightData[idx] * terrain.maxHeight;
+}
+
+static math::Vector3 ComputeStitchedNormal(
+    const TerrainComponent& terrain,
+    const TerrainNeighbors& neighbors,
+    int                     x,
+    int                     z)
+{
+    // WHAT: 補正済み高さで中心差分を取る。頂点位置だけでなく陰影も隣接 Terrain と連続させる。
+    // WHY: TerrainComponent::ComputeNormal() は単体 Terrain 用に端を clamp するため、
+    //      TerrainGrid では境界法線が隣の傾斜を見ず、継ぎ目が暗線として残る。
+    const float dhdx = (SampleStitchedTerrainHeight(terrain, neighbors, x + 1, z)
+                      - SampleStitchedTerrainHeight(terrain, neighbors, x - 1, z))
+                     / (2.0f * terrain.cellSize);
+    const float dhdz = (SampleStitchedTerrainHeight(terrain, neighbors, x, z + 1)
+                      - SampleStitchedTerrainHeight(terrain, neighbors, x, z - 1))
+                     / (2.0f * terrain.cellSize);
+    return math::Vector3{ -dhdx, 1.0f, -dhdz }.Normalized();
+}
+
+static TerrainNeighbors ResolveTerrainNeighbors(
+    Scene&                       scene,
+    const TerrainGridComponent*  terrainGrid,
+    EntityID                     eid)
+{
+    TerrainNeighbors neighbors;
+    if (!terrainGrid)
+        return neighbors;
+
+    int gx = 0;
+    int gz = 0;
+    if (!terrainGrid->TryGetGridPos(eid, gx, gz))
+        return neighbors;
+
+    auto resolveNeighbor = [&](int ngx, int ngz) -> const TerrainComponent* {
+        const EntityID neid = terrainGrid->GetCell(ngx, ngz);
+        if (!scene.IsValid(neid))
+            return nullptr;
+        return scene.GetComponent<TerrainComponent>(neid);
+    };
+
+    neighbors.north     = resolveNeighbor(gx,     gz - 1);
+    neighbors.south     = resolveNeighbor(gx,     gz + 1);
+    neighbors.west      = resolveNeighbor(gx - 1, gz);
+    neighbors.east      = resolveNeighbor(gx + 1, gz);
+    neighbors.northWest = resolveNeighbor(gx - 1, gz - 1);
+    neighbors.northEast = resolveNeighbor(gx + 1, gz - 1);
+    neighbors.southWest = resolveNeighbor(gx - 1, gz + 1);
+    neighbors.southEast = resolveNeighbor(gx + 1, gz + 1);
+    return neighbors;
+}
+
+static void EraseTerrainChunkCache(EntityID eid)
+{
+    std::erase_if(g_chunkCache, [&eid](const auto& kv) {
+        return kv.first.entityId == eid;
+    });
+}
+
+static void EraseTerrainChunkCacheForComponent(Scene& scene, const TerrainComponent* terrain)
+{
+    if (!terrain)
+        return;
+
+    for (EntityID candidate : scene.GetEntities<TerrainComponent>()) {
+        if (scene.GetComponent<TerrainComponent>(candidate) == terrain) {
+            EraseTerrainChunkCache(candidate);
+            return;
+        }
+    }
+}
+
+static void EraseNeighborTerrainChunkCaches(Scene& scene, const TerrainNeighbors& neighbors)
+{
+    // WHY: 境界頂点は隣接 Terrain の高さを参照して構築されるため、
+    //      自身の高さが変わったときは隣接側の GPU キャッシュも無効化する。
+    //      heightDirty を相互に立てると隣接同士で毎フレーム再 dirty 化されるため、
+    //      ここではキャッシュだけを直接破棄する。
+    EraseTerrainChunkCacheForComponent(scene, neighbors.north);
+    EraseTerrainChunkCacheForComponent(scene, neighbors.south);
+    EraseTerrainChunkCacheForComponent(scene, neighbors.west);
+    EraseTerrainChunkCacheForComponent(scene, neighbors.east);
+    EraseTerrainChunkCacheForComponent(scene, neighbors.northWest);
+    EraseTerrainChunkCacheForComponent(scene, neighbors.northEast);
+    EraseTerrainChunkCacheForComponent(scene, neighbors.southWest);
+    EraseTerrainChunkCacheForComponent(scene, neighbors.southEast);
+}
+
 static void BuildChunk(
     const TerrainComponent&      terrain,
     int                          cx,
@@ -165,35 +344,7 @@ static void BuildChunk(
 
     for (int z = outZ0; z <= outZ1; ++z) {
         for (int x = outX0; x <= outX1; ++x) {
-            const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
-                             + static_cast<size_t>(x);
-            float h = terrain.heightData[idx] * terrain.maxHeight;
-
-            // エッジ頂点: 隣接 Terrain の対応頂点と平均して継ぎ目を解消する。
-            // WHY: 両側の Terrain が同じ高さになるため GPU 上でギャップが生じない。
-            //      heightData の書き換えは行わず、レンダリング専用の調整とする。
-            if (x == 0 && neighbors.west && z < neighbors.west->rows) {
-                const float nh = neighbors.west->heightData[
-                    static_cast<size_t>(z) * static_cast<size_t>(neighbors.west->columns)
-                    + static_cast<size_t>(neighbors.west->columns - 1)] * neighbors.west->maxHeight;
-                h = (h + nh) * 0.5f;
-            } else if (x == terrain.columns - 1 && neighbors.east && z < neighbors.east->rows) {
-                const float nh = neighbors.east->heightData[
-                    static_cast<size_t>(z) * static_cast<size_t>(neighbors.east->columns)
-                    + 0] * neighbors.east->maxHeight;
-                h = (h + nh) * 0.5f;
-            }
-            if (z == 0 && neighbors.north && x < neighbors.north->columns) {
-                const float nh = neighbors.north->heightData[
-                    static_cast<size_t>(neighbors.north->rows - 1) * static_cast<size_t>(neighbors.north->columns)
-                    + static_cast<size_t>(x)] * neighbors.north->maxHeight;
-                h = (h + nh) * 0.5f;
-            } else if (z == terrain.rows - 1 && neighbors.south && x < neighbors.south->columns) {
-                const float nh = neighbors.south->heightData[
-                    static_cast<size_t>(0) * static_cast<size_t>(neighbors.south->columns)
-                    + static_cast<size_t>(x)] * neighbors.south->maxHeight;
-                h = (h + nh) * 0.5f;
-            }
+            const float h = SampleStitchedTerrainHeight(terrain, neighbors, x, z);
 
             TerrainVertex v;
             v.position = {
@@ -201,14 +352,12 @@ static void BuildChunk(
                 h,
                 static_cast<float>(z) * terrain.cellSize
             };
-            v.normal = terrain.ComputeNormal(x, z);
+            v.normal = ComputeStitchedNormal(terrain, neighbors, x, z);
 
             {
-                const int txL = std::max(x - 1, 0);
-                const int txR = std::min(x + 1, terrain.columns - 1);
-                const float hL = terrain.heightData[static_cast<size_t>(z) * terrain.columns + txL] * terrain.maxHeight;
-                const float hR = terrain.heightData[static_cast<size_t>(z) * terrain.columns + txR] * terrain.maxHeight;
-                const float span = static_cast<float>(txR - txL) * terrain.cellSize;
+                const float hL = SampleStitchedTerrainHeight(terrain, neighbors, x - 1, z);
+                const float hR = SampleStitchedTerrainHeight(terrain, neighbors, x + 1, z);
+                const float span = 2.0f * terrain.cellSize;
                 const float dhDx = (hR - hL) / span;
                 v.tangent = math::Vector3{ terrain.cellSize, dhDx * terrain.cellSize, 0.0f }.Normalized();
             }
@@ -321,8 +470,9 @@ static renderer::ResourceHandle<renderer::TextureTag> BuildSplatmapTexture(
     renderer::ResourceHandle<renderer::TextureTag> fallback)
 {
     if (terrain.splatData.empty()) return fallback;
-    assert(terrain.splatData.size() ==
-           static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows) * 4u);
+    if (terrain.splatData.size() !=
+        static_cast<size_t>(terrain.columns) * static_cast<size_t>(terrain.rows) * 4u)
+        return fallback;
     return resources.CreateTexture(
         terrain.splatData.data(),
         static_cast<uint32_t>(terrain.columns),
@@ -490,21 +640,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             if (!go || !go->activeInHierarchy()) continue;
         }
 
-        TerrainNeighbors neighbors;
-        if (terrainGrid) {
-            int gx = 0, gz = 0;
-            if (terrainGrid->TryGetGridPos(eid, gx, gz)) {
-                auto resolveNeighbor = [&](int ngx, int ngz) -> const TerrainComponent* {
-                    const EntityID neid = terrainGrid->GetCell(ngx, ngz);
-                    if (!scene.IsValid(neid)) return nullptr;
-                    return scene.GetComponent<TerrainComponent>(neid);
-                };
-                neighbors.north = resolveNeighbor(gx,     gz - 1);
-                neighbors.south = resolveNeighbor(gx,     gz + 1);
-                neighbors.west  = resolveNeighbor(gx - 1, gz);
-                neighbors.east  = resolveNeighbor(gx + 1, gz);
-            }
-        }
+        const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
 
         std::array<const asset::MaterialAsset*, 4> layerMats = {};
         for (int li = 0; li < 4; ++li) {
@@ -515,18 +651,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         }
 
         if (terrain.heightDirty) {
-            std::erase_if(g_chunkCache, [&eid](const auto& kv) {
-                return kv.first.entityId == eid;
-            });
-            // WHY: エッジ頂点は隣接データを参照して構築されるため、
-            //      自身が変化したときに隣接のキャッシュも無効化しなければ継ぎ目が残る。
-            auto dirtyNeighbor = [&](const TerrainComponent* n) {
-                if (n) const_cast<TerrainComponent*>(n)->heightDirty = true;
-            };
-            dirtyNeighbor(neighbors.north);
-            dirtyNeighbor(neighbors.south);
-            dirtyNeighbor(neighbors.west);
-            dirtyNeighbor(neighbors.east);
+            EraseTerrainChunkCache(eid);
+            EraseNeighborTerrainChunkCaches(scene, neighbors);
             terrain.heightDirty = false;
         }
 
@@ -664,6 +790,13 @@ void SubmitTerrainShadowCasters(
     if (!shadowShader.IsValid() || !pipelineState.IsValid())
         return;
 
+    TerrainGridComponent* terrainGrid = nullptr;
+    {
+        const auto gridEntities = scene.GetEntities<TerrainGridComponent>();
+        if (!gridEntities.empty())
+            terrainGrid = scene.GetComponent<TerrainGridComponent>(gridEntities.front());
+    }
+
     struct ShadowObjectCB {
         math::Matrix4 world;
         math::Matrix4 worldInvTranspose;
@@ -692,9 +825,9 @@ void SubmitTerrainShadowCasters(
         }
 
         if (terrain.heightDirty) {
-            std::erase_if(g_chunkCache, [&eid](const auto& kv) {
-                return kv.first.entityId == eid;
-            });
+            const TerrainNeighbors dirtyNeighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
+            EraseTerrainChunkCache(eid);
+            EraseNeighborTerrainChunkCaches(scene, dirtyNeighbors);
             terrain.heightDirty = false;
         }
 
@@ -707,9 +840,10 @@ void SubmitTerrainShadowCasters(
         objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(world));
         resources.Update(objectCB, &objData, sizeof(objData));
 
+        const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
         for (int cz = 0; cz < chunkCountZ; ++cz) {
             for (int cx = 0; cx < chunkCountX; ++cx) {
-                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, {}, resources);
+                const TerrainChunk& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, neighbors, resources);
                 if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 

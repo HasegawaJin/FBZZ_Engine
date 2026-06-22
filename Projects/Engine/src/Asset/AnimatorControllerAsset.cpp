@@ -119,6 +119,7 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         toml::table blendTree1D;
         blendTree1D.insert("paramName", state.blendTree1D.paramName);
         blendTree1D.insert("dampTime", static_cast<double>(state.blendTree1D.dampTime));
+        blendTree1D.insert("syncNormalizedTime", state.blendTree1D.syncNormalizedTime);
         toml::array motions1D;
         for (const auto& motion : state.blendTree1D.motions)
             motions1D.push_back(WriteMotion(motion));
@@ -204,6 +205,8 @@ bool LoadAnimatorControllerAsset(const std::string& path,
                     (*blend1D)["paramName"].value_or(std::string{});
                 state.blendTree1D.dampTime =
                     static_cast<float>((*blend1D)["dampTime"].value_or(0.0));
+                state.blendTree1D.syncNormalizedTime =
+                    (*blend1D)["syncNormalizedTime"].value_or(false);
                 if (const auto* motions = (*blend1D)["motions"].as_array())
                     for (const auto& motionElement : *motions)
                         if (const auto* motionTable = motionElement.as_table())

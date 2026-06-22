@@ -23,6 +23,7 @@
 #include <Math/Ray.hpp>
 #include <functional>
 #include <string>
+#include <vector>
 #include <imgui.h>
 
 namespace fbzz::renderer { class IRenderer; }
@@ -116,9 +117,14 @@ private:
     uint32_t m_paintLayer    = 0;      // Paint モード: 塗るレイヤーインデックス [0, 3]
     float    m_flattenTarget = 0.0f;   // Flatten モード: 基準高さ（ワールド単位）
     bool     m_flattenLocked = false;  // Flatten モード: 最初のクリックで固定したか
+    struct TerrainStrokeSnapshot {
+        std::string instanceId;
+        scene::TerrainComponent before;
+    };
     scene::EntityID         m_strokeEntity;
     std::string             m_strokeInstanceId;
     scene::TerrainComponent m_strokeBefore;
+    std::vector<TerrainStrokeSnapshot> m_strokeBeforeTerrains;
     bool                    m_strokeActive = false;
 
     bool              m_isHovering = false;  // 地形にマウスが乗っているか
@@ -159,7 +165,8 @@ private:
     // ブラシをスプラットマップに適用する（Paint モード）
     void ApplyPaint(scene::TerrainComponent& terrain,
                     const math::Vector3&     hitLocal,
-                    float                    dt) const;
+                    float                    dt,
+                    int                      layerIndex) const;
 
     // ブラシ中心からの距離 dist に対してフォールオフウェイト [0, 1] を返す
     float ComputeWeight(float dist) const;

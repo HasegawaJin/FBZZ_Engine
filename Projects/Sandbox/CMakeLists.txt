@@ -51,6 +51,9 @@ if(MSVC)
     target_link_options(SandboxScripts PRIVATE
         "$<$<CONFIG:Debug>:/DEBUG:NONE>"
     )
+    # WHY: Ninja はプロセスレベルで並列化するが、MSBuild (Visual Studio の手動ビルド) では
+    #      /MP で cl.exe 内部の並列コンパイルを有効化する。Ninja 使用時は /MP 不要だが無害。
+    target_compile_options(SandboxScripts PRIVATE /MP)
 endif()
 
 add_executable(sandbox ${SANDBOX_SOURCES})
@@ -82,11 +85,8 @@ add_custom_target(sync_sandbox_assets ALL
 add_dependencies(sync_sandbox_assets sandbox)
 
 set(SANDBOX_STANDALONE_SOURCES ${SANDBOX_SOURCES})
-list(REMOVE_ITEM SANDBOX_STANDALONE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/EditorModule.cpp"
-)
 
-# RuntimeBuild 用の配布 exe。EditorModule と fbzz_editor へ依存しないため、
+# RuntimeBuild 用の配布 exe。FBZZ_STANDALONE_TARGET ではEditorAppをコンパイルしないため、
 # Build Settings からゲーム本体だけを再コンパイルできる。
 add_executable(SandboxStandalone ${SANDBOX_STANDALONE_SOURCES})
 target_compile_definitions(SandboxStandalone PRIVATE FBZZ_STANDALONE_TARGET)

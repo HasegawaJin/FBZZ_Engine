@@ -18,6 +18,8 @@ struct UIImage {
     math::Vector4 color  = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector2 uvMin  = { 0.0f, 0.0f };
     math::Vector2 uvMax  = { 1.0f, 1.0f };
+    // 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
+    int           sortOrder = 0;
     bool          enabled = true;
     // ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
     std::string   loadedTexturePath = {};
@@ -38,6 +40,7 @@ struct UIImage {
         r.Field("color",       color);
         r.Field("uvMin",       uvMin);
         r.Field("uvMax",       uvMax);
+        r.Field("sortOrder",   sortOrder);
     }
 };
 
