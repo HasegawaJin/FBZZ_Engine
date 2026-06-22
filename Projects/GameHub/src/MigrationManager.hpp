@@ -15,6 +15,8 @@ public:
 private:
     static bool BackupProjectFiles(const std::filesystem::path& projectRoot, std::string& errorMessage);
     static bool EnsureGeneratedLayout(const std::filesystem::path& projectRoot, std::string& errorMessage);
+    static bool PatchCMakeLists(const std::filesystem::path& projectRoot, std::string& errorMessage);
+    static bool PatchCMakePresets(const std::filesystem::path& projectRoot, std::string& errorMessage);
     static bool UpdateProjectVersion(const std::filesystem::path& projectRoot, std::string& errorMessage);
 };
 
