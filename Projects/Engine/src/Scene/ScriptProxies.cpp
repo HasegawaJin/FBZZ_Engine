@@ -7,6 +7,7 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/PostProcessAsset.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -1589,6 +1590,15 @@ bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x,
     custom->parameters[1] = y;
     custom->parameters[2] = z;
     custom->parameters[3] = w;
+    return true;
+}
+
+bool ScriptPostProcessProxy::LoadProfile(std::string_view path) const
+{
+    renderer::PostProcessSettings loaded;
+    if (!asset::LoadPostProcessAssetFromFile(path, loaded))
+        return false;
+    Set(loaded);
     return true;
 }
 
