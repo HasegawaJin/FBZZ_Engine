@@ -2830,3 +2830,77 @@ tag = 'Untagged'
     position = [ 94.5, 0.0, 94.5 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000001'
+layer = 0
+name = 'GameCanvas'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    matchWidthOrHeight = 0.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    scaleMode = 1
+    sortOrder = 100
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000002'
+layer = 0
+name = 'ResultButton'
+parent = 'GameCanvas'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    enabled = true
+    hoverColor = [ 0.35, 0.42, 0.55, 1.0 ]
+    isInteractable = true
+    normalColor = [ 0.18, 0.24, 0.35, 1.0 ]
+    pressedColor = [ 0.1, 0.14, 0.22, 1.0 ]
+
+    [gameobjects.UIImage]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    sortOrder = 10
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.UIText]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 32.0
+    letterSpacing = 4.0
+    sortOrder = 10
+    text = 'RESULT'
+
+    [gameobjects.transform]
+    position = [ 1690.0, 60.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 170.0, 56.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'SceneManagerScript'
+
+        [gameobjects.ScriptComponents.fields]
+        'Auto Delay' = 1.5
+        'Auto Transition' = false
+        'Target Scene' = 'Result'
+        'Via Scene' = 'Load'
