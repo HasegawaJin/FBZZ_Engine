@@ -9,6 +9,7 @@
 
 #include "DX11Texture.hpp"
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
 #include <Windows.h>
 #include <string>
@@ -17,26 +18,12 @@
 namespace fbzz::renderer
 {
 
-namespace {
-
-std::wstring Utf8ToWide(const std::string& text)
-{
-    if (text.empty()) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring wide(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wide.data(), size);
-    return wide;
-}
-
-} // namespace
-
 bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const std::string& path)
 {
     // DirectXTex の API は wchar_t パスを要求するため、UTF-8 から wide path に変換する。
     // WHY: AssetManager は project root を UTF-8 絶対パスとして渡す。
     //      char をそのまま wchar_t に詰めると、日本語フォルダへ移動した配布版で読み込みに失敗する。
-    std::wstring wpath = Utf8ToWide(path);
+    std::wstring wpath = fbzz::util::StringUtils::ToWide(path);
 
     DirectX::ScratchImage image;
     HRESULT hr;
