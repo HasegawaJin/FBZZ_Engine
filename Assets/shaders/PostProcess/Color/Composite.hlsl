@@ -174,5 +174,10 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     ldr = ApplyVignette(ldr, uv, vignetteIntensity, vignetteSmoothness, vignetteRoundness, vignetteColor);
     ldr = ApplyFilmGrain(ldr, uv, filmGrainIntensity, filmGrainResponse);
 
+    // 画面フェード — 全エフェクト適用後の最終合成として上書きする。
+    // WHY: UI・ポストプロセス含む全レイヤーをひとつの lerp でカバーし、シーン遷移時のフラッシュを防ぐ。
+    if (screenFadeAlpha > 0.0f)
+        ldr = lerp(ldr, screenFadeColor, saturate(screenFadeAlpha));
+
     return float4(ldr, 1.0f);
 }

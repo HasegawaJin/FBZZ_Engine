@@ -135,6 +135,11 @@ struct PostProcessSettings {
     StylizedPostProcessSettings stylized;
     ImageQualitySettings imageQuality;
     std::vector<CustomPostProcessSettings> customEffects;
+
+    // 画面フェード — 全ポストプロセス完了後の最終 lerp として適用する。
+    // alpha 0=透明(通常), 1=完全にフェード色で塗りつぶし。
+    float screenFadeAlpha        = 0.0f;
+    float screenFadeColor[3]     = { 0.0f, 0.0f, 0.0f };  // RGB (デフォルト黒)
 };
 
 enum class ViewMode : uint8_t {
