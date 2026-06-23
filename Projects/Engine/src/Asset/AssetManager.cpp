@@ -10,6 +10,8 @@
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzAssetFormat.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
+#include <Engine/Asset/IblAsset.hpp>
+#include <Engine/Asset/IblImporter.hpp>
 #include <Engine/Asset/ImageImporter.hpp>
 #include <Engine/Asset/MatAssetImporter.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -215,6 +217,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     RegisterImporter<AnimatorControllerAsset> (std::make_unique<AnimCtrlImporter>());
     RegisterImporter<TerrainAsset>            (std::make_unique<TerrainImporter>());
     RegisterImporter<TextureAsset>            (std::make_unique<ImageImporter>());
+    RegisterImporter<IblAsset>               (std::make_unique<IblImporter>());
 }
 
 void AssetManager::UnloadAll()
