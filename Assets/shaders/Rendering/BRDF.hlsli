@@ -90,19 +90,50 @@ BRDFResult EvaluateBRDF(float3 N, float3 V, float3 L,
     // 誘電体の F0 = 0.04, メタルの F0 = albedo (線形補間)
     float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
 
+    float NdotL = saturate(dot(N, L));
+    float NdotV = saturate(dot(N, V));
+
+    BRDFResult result;
+    result.NdotL = NdotL;
+
+    // V と L が逆向き、または面の裏側にある場合は V+L がゼロになり得る。
+    // WHY: normalize(0) の NaN は影係数を乗算しても消えず、白い点として露出するため先に除外する。
+    if (NdotL <= EPSILON || NdotV <= EPSILON)
+    {
+        result.diffuse  = (1.0f - metallic) * BRDF_Diffuse(albedo);
+        result.specular = float3(0.0f, 0.0f, 0.0f);
+        return result;
+    }
+
     float3 H    = normalize(V + L);
     float VdotH = saturate(dot(V, H));
-    float NdotL = saturate(dot(N, L));
 
     float3 F  = F_Schlick(VdotH, F0);
     // メタルは拡散なし (エネルギー保存)
     float3 kD = (1.0f - F) * (1.0f - metallic);
 
-    BRDFResult result;
-    result.NdotL   = NdotL;
     result.diffuse = kD * BRDF_Diffuse(albedo);
     result.specular = BRDF_Specular(N, V, L, F0, roughness);
     return result;
+}
+
+// =========================================================================
+// F_SchlickRoughness — IBL specular 用ラフネス補正フレネル
+//
+// 通常の F_Schlick は roughness=1 でも純粋な F0 に収束しないため、
+// IBL 事前フィルタリングとの整合性を取るために roughness をフレネル上限に織り込む。
+// roughness が高いほど F0 への収束が早まり、鏡面ハイライトが抑制される。
+//   cosTheta : dot(N, V)
+//   F0       : 垂直入射時の反射率 (メタル=albedo, 誘電体=0.04)
+//   roughness: 粗さ [0, 1]
+//
+// 参考: Sebastien Lagarde, "Moving Frostbite to Physically Based Rendering 3.0"
+// =========================================================================
+float3 F_SchlickRoughness(float cosTheta, float3 F0, float roughness)
+{
+    // roughness が高いほど上限が F0 に近づき、フレネル遷移幅が縮まる
+    float3 limit = max(float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness), F0);
+    return F0 + (limit - F0) * Pow5(saturate(1.0f - cosTheta));
 }
 
 #endif // BRDF_HLSLI
