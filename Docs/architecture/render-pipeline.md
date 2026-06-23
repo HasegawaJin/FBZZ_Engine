@@ -140,6 +140,7 @@ HDR RT
   │    + Color Grading (Contrast / Saturation / HueShift / Temperature)
   │    + Vignette / Film Grain / Chromatic Aberration / Lens Distortion
   │    + Fog / Underwater / Sepia / Invert / Posterize
+  │    + Procedural 32^3 Color LUT (RGBA8 Texture3D)
   │    + Bloom 合成 + SSAO 適用
   │
   ├─ FXAA               → LDR RT
@@ -149,6 +150,23 @@ HDR RT
 
 `PostProcCB` (定数バッファ) が全パラメーターを一括管理し、
 `RenderSettings` を通じてスクリプト・エディターから実行時に変更できる。
+
+Color LUTは外部DDSを読み込まず、`LUTColorGradingSettings`からCPUで32×32×32の
+RGBA8 Texture3Dを生成する。x=R、y=G、z=Bの軸順とLDR sRGB入力を固定し、DX11では
+Immutable SRVとして保持する。設定値が変化した場合だけ再生成する。
+
+### パイプライン設定の互換性
+
+| 区分 | パス / 設定 | 規則 |
+|---|---|---|
+| AA スロット | FXAA / TAA | 排他。競合時は安定した FXAA を優先する |
+| AO スロット | SSAO / GTAO | 排他。競合時は安定した SSAO を優先する |
+| Deferred 専用 | SSR / GTAO / Contact Shadows | Forward では実行されない |
+| IBL 必須入力 | Irradiance / Prefiltered Cubemap | 両方指定されるまで IBL 寄与を 0 にする |
+| UAV u3 | SSR / Contact Shadows | 逐次パスで時分割するため同時有効化可能 |
+
+TOML 読み込み時と Inspector 表示時は `RenderSettings::NormalizeExclusivePipelineSlots()` を使い、
+設定経路に関係なく同じ排他規則を適用する。
 
 ---
 
