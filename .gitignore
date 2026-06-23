@@ -43,13 +43,6 @@ CMakeUserPresets.json
 imgui.ini
 editor_config/hub_imgui.ini
 
-# コンパイル済みシェーダー (dxc でビルド時生成)
-Assets/shaders/compiled/
-
-# シェーダーコンパイルログ
-Assets/shaders/compile_log.txt
-Assets/shaders/compile_ui_log.txt
-
 # Claude Code (ローカル設定)
 .claude/
 
@@ -64,17 +57,9 @@ Thumbs.db
 !ThirdParty/
 !ThirdParty/**
 
-# Application icons are source assets and must be tracked.
-!Assets/Icons/
-!Assets/Icons/*.ico
-
-# Large binary asset files (3D models / textures) — Git 管理対象外
-# ポートフォリオリポジトリではテキスト系ファイル (.mat / .tex / .skel) のみ追跡する
-Assets/**/*.fbx
-Assets/**/*.fzasset
-Assets/**/*.mesh
-Assets/**/*.png
-Assets/**/*.jpg
+# Assets — シェーダー/シーン/テクスチャ/マテリアル等すべて Git 管理対象外
+# ローカルのみで管理する。重要ファイルは別途バックアップすること。
+Assets/
 
 # Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
 Projects/GameHub/Templates/standard/Assets/Nature/Tree/**
