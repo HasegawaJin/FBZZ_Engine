@@ -20,8 +20,8 @@ tag = 'MainCamera'
     nearZ = 0.1
 
     [gameobjects.transform]
-    position = [ 68.398079, 1.070739, 84.211967 ]
-    rotation = [ 0.005337, -0.994608, -0.067806, -0.078285 ]
+    position = [ 73.797997, 17.271, 87.211998 ]
+    rotation = [ -0.018626, 0.92604, -0.046101, -0.374135 ]
     scale = [ 1.000005, 1.0, 1.000005 ]
 
     [[gameobjects.ScriptComponents]]
@@ -29,7 +29,7 @@ tag = 'MainCamera'
     type = 'TpsCameraComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Distance = 2.0
+        Distance = 4.242
         'Follow Speed' = 10.0
         Height = 1.6
         'Max Pitch' = 65.0
@@ -538,9 +538,9 @@ tag = 'Player'
     velocity = [ 0.0, 0.0, 0.0 ]
 
     [gameobjects.transform]
-    position = [ 69.173103, 0.149319, 79.319237 ]
+    position = [ 69.173103, 15.202883, 79.319237 ]
     rotation = [ 0.0, 0.943932, 0.0, 0.330139 ]
-    scale = [ 1.0, 1.0, 1.0 ]
+    scale = [ 1.000003, 1.0, 1.000003 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -683,8 +683,8 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    position = [ 0.014184, 0.966874, -0.007061 ]
-    rotation = [ 0.018506, -0.000315, -0.017675, 0.999672 ]
+    position = [ -0.036624, 0.968862, 0.001548 ]
+    rotation = [ 0.019615, -0.003173, -0.007583, 0.999774 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -706,7 +706,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 9e-06, 0.099235, 0.012273 ]
-    rotation = [ 0.049504, -0.001185, -0.003193, 0.998768 ]
+    rotation = [ 0.051965, 0.002628, 0.001945, 0.998644 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -728,7 +728,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.11732, 0.0 ]
-    rotation = [ -0.01466, 0.018197, -0.006843, 0.999704 ]
+    rotation = [ -0.008191, 0.028046, 0.001505, 0.999572 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -750,7 +750,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.134588, 0.0 ]
-    rotation = [ -0.072321, 0.018597, -0.005194, 0.997195 ]
+    rotation = [ -0.065444, 0.027834, 0.003514, 0.997462 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -772,7 +772,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.150278, -0.008779 ]
-    rotation = [ -0.006184, -0.004805, -0.002959, 0.999965 ]
+    rotation = [ 0.005461, -0.010617, -0.014719, 0.99982 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -794,7 +794,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.103218, -0.031424 ]
-    rotation = [ -0.052545, 0.014379, 0.030246, 0.998057 ]
+    rotation = [ -0.041913, 0.011142, 0.026676, 0.998703 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -838,7 +838,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.061058, 0.091063, -0.007571 ]
-    rotation = [ -0.437587, -0.558061, -0.555037, 0.434764 ]
+    rotation = [ 0.445415, 0.549856, 0.578234, -0.406092 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -860,7 +860,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.129223, 0.0 ]
-    rotation = [ -0.563163, -0.190323, 0.212977, 0.775413 ]
+    rotation = [ -0.535467, -0.207245, 0.241308, 0.782365 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -882,7 +882,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.274047, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.246611, 0.969115 ]
+    rotation = [ 0.0, 0.0, 0.254061, 0.967188 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -904,7 +904,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.276145, 0.0 ]
-    rotation = [ -0.098506, -0.057954, -0.122737, 0.985837 ]
+    rotation = [ -0.113598, -0.056329, -0.132188, 0.983081 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -926,7 +926,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.03003, 0.037888, -0.021671 ]
-    rotation = [ -0.169529, 0.172776, 0.123686, 0.962346 ]
+    rotation = [ -0.167918, 0.172084, 0.114464, 0.963892 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -948,7 +948,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.04745, 0.0 ]
-    rotation = [ 0.017575, 0.004033, -0.10676, 0.994121 ]
+    rotation = [ 0.014311, 0.02008, -0.089521, 0.99568 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -970,7 +970,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.043821, 0.0 ]
-    rotation = [ 0.026756, -0.00053, -0.00195, 0.99964 ]
+    rotation = [ 0.026653, -0.000654, 0.002047, 0.999642 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1014,7 +1014,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.02822, 0.122666, -0.002318 ]
-    rotation = [ -0.188643, 0.002129, -0.011617, 0.981975 ]
+    rotation = [ -0.178594, 0.002388, -0.00829, 0.983885 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1036,7 +1036,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03892, 0.0 ]
-    rotation = [ -0.30026, -2e-06, -0.03623, 0.953169 ]
+    rotation = [ -0.273879, -2e-06, -0.033046, 0.961196 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1058,7 +1058,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034152, 0.0 ]
-    rotation = [ -0.148391, 0.0, -0.017908, 0.988767 ]
+    rotation = [ -0.125948, 0.0, -0.0152, 0.99192 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1102,7 +1102,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.127755, 0.0 ]
-    rotation = [ -0.227923, 0.001004, -0.023217, 0.973402 ]
+    rotation = [ -0.232634, 0.002041, -0.019517, 0.972366 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1124,7 +1124,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03614, 0.0 ]
-    rotation = [ -0.204341, 0.0, -0.02466, 0.978589 ]
+    rotation = [ -0.174435, 0.0, -0.021051, 0.984444 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1146,7 +1146,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034598, 0.0 ]
-    rotation = [ -0.127555, 0.0, -0.015393, 0.991712 ]
+    rotation = [ -0.130698, 0.0, -0.015773, 0.991297 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1190,7 +1190,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.022166, 0.12147, 1e-04 ]
-    rotation = [ -0.272221, 0.003328, -0.021038, 0.961999 ]
+    rotation = [ -0.286962, 0.00552, -0.016073, 0.957791 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1212,7 +1212,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.036012, 0.0 ]
-    rotation = [ -0.148679, -1e-06, -0.017935, 0.988723 ]
+    rotation = [ -0.130701, -1e-06, -0.015765, 0.991297 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1234,7 +1234,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.033073, 0.0 ]
-    rotation = [ -0.095645, 0.0, -0.011543, 0.995349 ]
+    rotation = [ -0.096607, 0.0, -0.011659, 0.995254 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1278,7 +1278,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.047258, 0.109082, -0.002261 ]
-    rotation = [ -0.360194, -0.011641, -0.073218, 0.929927 ]
+    rotation = [ -0.362234, -0.008226, -0.064683, 0.929804 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1300,7 +1300,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.041367, 0.0 ]
-    rotation = [ -0.187139, -0.006567, 0.012712, 0.982229 ]
+    rotation = [ -0.151364, -0.005281, 0.017247, 0.988314 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1322,7 +1322,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025948, 0.0 ]
-    rotation = [ -0.067371, 0.0, -0.00813, 0.997695 ]
+    rotation = [ -0.066689, 0.0, -0.008048, 0.997741 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1366,7 +1366,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.061057, 0.091064, -0.007571 ]
-    rotation = [ 0.501854, -0.52187, -0.506223, -0.468544 ]
+    rotation = [ 0.479097, -0.536539, -0.511273, -0.47031 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1388,7 +1388,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.129223, 0.0 ]
-    rotation = [ -0.537291, 0.184221, -0.260774, 0.780627 ]
+    rotation = [ -0.54793, 0.189798, -0.265904, 0.770094 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1410,7 +1410,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.274047, 0.0 ]
-    rotation = [ 0.0, 0.0, -0.255433, 0.966827 ]
+    rotation = [ 0.0, 0.0, -0.239593, 0.970873 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1432,7 +1432,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.276145, 0.0 ]
-    rotation = [ -0.01281, -0.027722, 0.123824, 0.991834 ]
+    rotation = [ -0.016037, -0.027911, 0.129, 0.991122 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1454,7 +1454,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.03003, 0.037888, -0.021671 ]
-    rotation = [ -0.189206, -0.045192, -0.026779, 0.980531 ]
+    rotation = [ -0.192499, -0.04441, -0.026009, 0.979947 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1476,7 +1476,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.04745, 0.0 ]
-    rotation = [ -0.020025, 0.050956, 0.02676, 0.998141 ]
+    rotation = [ -0.020026, 0.050955, 0.02676, 0.998142 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1498,7 +1498,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.043821, 0.0 ]
-    rotation = [ 0.028855, 0.001192, -0.010569, 0.999527 ]
+    rotation = [ 0.028926, 0.001194, -0.010651, 0.999524 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1542,7 +1542,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.02822, 0.122666, -0.002318 ]
-    rotation = [ -0.054312, 0.001919, 0.039498, 0.997741 ]
+    rotation = [ -0.066608, 0.002525, 0.043642, 0.996821 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1564,7 +1564,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03892, 0.0 ]
-    rotation = [ -0.369856, 2e-06, 0.045068, 0.927996 ]
+    rotation = [ -0.335857, 2e-06, 0.040924, 0.941023 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1586,7 +1586,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034152, 0.0 ]
-    rotation = [ -0.095228, 0.0, 0.011605, 0.995388 ]
+    rotation = [ -0.08888, 0.0, 0.010832, 0.995983 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1630,7 +1630,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.127755, 0.0 ]
-    rotation = [ -0.092154, 0.004278, 0.054905, 0.994221 ]
+    rotation = [ -0.098051, 0.004739, 0.057437, 0.993511 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1652,7 +1652,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.03614, 0.0 ]
-    rotation = [ -0.318542, 0.0, 0.03882, 0.947114 ]
+    rotation = [ -0.279996, 0.0, 0.034122, 0.959394 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1674,7 +1674,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.034598, 0.0 ]
-    rotation = [ -0.081262, -0.005813, 0.010384, 0.996622 ]
+    rotation = [ -0.072828, -0.007106, 0.009402, 0.997275 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1718,7 +1718,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.022166, 0.12147, 1e-04 ]
-    rotation = [ -0.203927, 0.003483, 0.041409, 0.978104 ]
+    rotation = [ -0.204368, 0.003657, 0.042243, 0.977975 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1740,7 +1740,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.036012, 0.0 ]
-    rotation = [ -0.260855, 2e-06, 0.031782, 0.964855 ]
+    rotation = [ -0.222772, 2e-06, 0.027141, 0.974493 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1762,7 +1762,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.033073, 0.0 ]
-    rotation = [ -0.092569, -0.007274, 0.011968, 0.995608 ]
+    rotation = [ -0.087726, -0.008746, 0.011473, 0.99604 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1806,7 +1806,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.047258, 0.109082, -0.002261 ]
-    rotation = [ -0.284868, 0.009869, 0.0674, 0.956143 ]
+    rotation = [ -0.287409, 0.009929, 0.067594, 0.955368 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1828,7 +1828,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.041367, 0.0 ]
-    rotation = [ -0.198074, 0.0, 0.024139, 0.97989 ]
+    rotation = [ -0.186858, 0.0, 0.022772, 0.982123 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1850,7 +1850,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025948, 0.0 ]
-    rotation = [ -0.101138, 0.0, 0.012325, 0.994796 ]
+    rotation = [ -0.092495, 0.0, 0.011272, 0.995649 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1894,7 +1894,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.091239, -0.066572, 0.000554 ]
-    rotation = [ -0.02981, -0.106896, 0.993433, -0.027839 ]
+    rotation = [ -0.027212, -0.101303, 0.993531, -0.04351 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1916,7 +1916,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.405994, 0.0 ]
-    rotation = [ 0.283581, 0.078904, 0.016457, 0.955555 ]
+    rotation = [ 0.261335, 0.082644, 0.024783, 0.961384 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1938,7 +1938,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.42099, 0.0 ]
-    rotation = [ -0.648843, 0.023906, 0.010756, 0.760471 ]
+    rotation = [ -0.629404, 0.029956, -0.02159, 0.776201 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1960,7 +1960,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.157216, 0.0 ]
-    rotation = [ -0.231627, 0.03251, -0.015294, 0.972141 ]
+    rotation = [ -0.228827, 0.032518, -0.015345, 0.972803 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2004,7 +2004,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.09125, -0.066556, 0.000554 ]
-    rotation = [ 0.124528, -0.100062, 0.985907, 0.049676 ]
+    rotation = [ 0.115191, -0.10965, 0.986619, 0.035934 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2026,7 +2026,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.405994, 0.0 ]
-    rotation = [ 0.235296, -0.037165, -0.020748, 0.970991 ]
+    rotation = [ 0.2544, -0.030609, -0.005732, 0.966597 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2048,7 +2048,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.42099, 0.0 ]
-    rotation = [ -0.603229, -0.047878, 0.024714, 0.795746 ]
+    rotation = [ -0.616587, -0.047537, -0.015977, 0.785688 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2219,7 +2219,7 @@ tag = 'Untagged'
         wavelength = 18.0
 
     [gameobjects.transform]
-    position = [ 0.0, -73.341934, 0.0 ]
+    position = [ 0.0, -3.116011, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
@@ -2242,9 +2242,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2281,9 +2278,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2318,9 +2312,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2357,9 +2348,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2394,9 +2382,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2433,9 +2418,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2470,9 +2452,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2509,9 +2488,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2546,9 +2522,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2585,9 +2558,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2622,9 +2592,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2661,9 +2628,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2698,9 +2662,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2737,9 +2698,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2775,9 +2733,6 @@ tag = 'Untagged'
         restitution = 0.3
         staticFriction = 0.6
 
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
-
     [gameobjects.TerrainComponent]
     enabled = true
     layerMaterials = [
@@ -2812,9 +2767,6 @@ tag = 'Untagged'
         dynamicFriction = 0.4
         restitution = 0.3
         staticFriction = 0.6
-
-        [gameobjects.TerrainColliderComponent.shape]
-        type = 'AABB'
 
     [gameobjects.TerrainComponent]
     enabled = true
@@ -2893,7 +2845,7 @@ tag = 'Untagged'
     [gameobjects.transform]
     position = [ 1690.0, 60.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 170.0, 56.0, 1.0 ]
+    scale = [ 120.561401, 32.0, 1.0 ]
 
     [[gameobjects.ScriptComponents]]
     enabled = true
@@ -2902,6 +2854,8 @@ tag = 'Untagged'
         [gameobjects.ScriptComponents.fields]
         'Auto Delay' = 1.5
         'Auto Transition' = false
+        'Fade Duration' = 0.5
+        'Fade Enabled' = true
         'Target Scene' = 'Result'
         'Via Scene' = 'Load'
 
@@ -2970,21 +2924,15 @@ tag = 'Untagged'
         screenFadeAlpha = 0.0
         screenFadeColor = [ 0.0, 0.0, 0.0 ]
 
+            [gameobjects.PostProcessVolumeComponent.pp.ao]
+            enabled = true
+            intensity = 0.85
+
             [gameobjects.PostProcessVolumeComponent.pp.bloom]
             enabled = true
             intensity = 0.6
             softKnee = 0.4
             threshold = 0.7
-
-            [gameobjects.PostProcessVolumeComponent.pp.ao]
-            enabled = true
-            intensity = 0.85
-
-            [gameobjects.PostProcessVolumeComponent.pp.fog]
-            color = [ 0.55, 0.65, 0.75 ]
-            density = 0.035
-            enabled = false
-            farDistance = 100.0
 
             [gameobjects.PostProcessVolumeComponent.pp.colorGrading]
             contrast = 0.04
@@ -2994,44 +2942,22 @@ tag = 'Untagged'
             temperature = 0.02
             tint = 0.0
 
-            [gameobjects.PostProcessVolumeComponent.pp.vignette]
-            color = [ 0.0, 0.0, 0.0 ]
-            enabled = false
-            intensity = 0.18
-            roundness = 1.0
-            smoothness = 0.45
-
-            [gameobjects.PostProcessVolumeComponent.pp.filmGrain]
-            enabled = false
-            intensity = 0.03
-            response = 0.8
-
-            [gameobjects.PostProcessVolumeComponent.pp.sharpen]
-            enabled = false
-            radius = 1.0
-            strength = 0.35
-
             [gameobjects.PostProcessVolumeComponent.pp.dof]
             blurRadius = 3.0
             enabled = false
             focusDistance = 8.0
             focusRange = 4.0
 
-            [gameobjects.PostProcessVolumeComponent.pp.lens]
-            chromaticAberration = 0.003
-            chromaticAberrationEnabled = false
-            distortion = 0.0
-            distortionEnabled = false
+            [gameobjects.PostProcessVolumeComponent.pp.filmGrain]
+            enabled = false
+            intensity = 0.03
+            response = 0.8
 
-            [gameobjects.PostProcessVolumeComponent.pp.stylized]
-            invertEnabled = false
-            invertIntensity = 1.0
-            pixelSize = 4.0
-            pixelateEnabled = false
-            posterizeEnabled = false
-            posterizeLevels = 6.0
-            sepiaEnabled = false
-            sepiaIntensity = 0.75
+            [gameobjects.PostProcessVolumeComponent.pp.fog]
+            color = [ 0.55, 0.65, 0.75 ]
+            density = 0.035
+            enabled = false
+            farDistance = 100.0
 
             [gameobjects.PostProcessVolumeComponent.pp.imageQuality]
             clarityEnabled = true
@@ -3044,502 +2970,35 @@ tag = 'Untagged'
             shadowHighlightEnabled = true
             shadowLift = 0.04
 
+            [gameobjects.PostProcessVolumeComponent.pp.lens]
+            chromaticAberration = 0.003
+            chromaticAberrationEnabled = false
+            distortion = 0.0
+            distortionEnabled = false
+
+            [gameobjects.PostProcessVolumeComponent.pp.sharpen]
+            enabled = false
+            radius = 1.0
+            strength = 0.35
+
+            [gameobjects.PostProcessVolumeComponent.pp.stylized]
+            invertEnabled = false
+            invertIntensity = 1.0
+            pixelSize = 4.0
+            pixelateEnabled = false
+            posterizeEnabled = false
+            posterizeLevels = 6.0
+            sepiaEnabled = false
+            sepiaIntensity = 0.75
+
+            [gameobjects.PostProcessVolumeComponent.pp.vignette]
+            color = [ 0.0, 0.0, 0.0 ]
+            enabled = false
+            intensity = 0.18
+            roundness = 1.0
+            smoothness = 0.45
+
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
-
-# -- PBR Test Spheres (IBL/PBR debug grid 3x5) --
-# Row 1: Roughness sweep (metallic=1.0, roughness 0->1)  Z=78
-# Row 2: Metallic sweep (roughness=0.4, metallic 0->1)   Z=81
-# Row 3: Color variants                                   Z=84
-
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000001'
-layer = 0
-name = 'Sphere_Rough_R0'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_rough_r00.mat'
-
-    [gameobjects.transform]
-    position = [ 57.5, 1.5, 78.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000002'
-layer = 0
-name = 'Sphere_Rough_R25'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_rough_r25.mat'
-
-    [gameobjects.transform]
-    position = [ 60.0, 1.5, 78.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000003'
-layer = 0
-name = 'Sphere_Rough_R50'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_rough_r50.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 1.5, 78.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000004'
-layer = 0
-name = 'Sphere_Rough_R75'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_rough_r75.mat'
-
-    [gameobjects.transform]
-    position = [ 65.0, 1.5, 78.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000005'
-layer = 0
-name = 'Sphere_Rough_R100'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_rough_r100.mat'
-
-    [gameobjects.transform]
-    position = [ 67.5, 1.5, 78.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000006'
-layer = 0
-name = 'Sphere_Metal_M0'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_metal_m00.mat'
-
-    [gameobjects.transform]
-    position = [ 57.5, 1.5, 81.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000007'
-layer = 0
-name = 'Sphere_Metal_M25'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_metal_m25.mat'
-
-    [gameobjects.transform]
-    position = [ 60.0, 1.5, 81.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000008'
-layer = 0
-name = 'Sphere_Metal_M50'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_metal_m50.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 1.5, 81.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000009'
-layer = 0
-name = 'Sphere_Metal_M75'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_metal_m75.mat'
-
-    [gameobjects.transform]
-    position = [ 65.0, 1.5, 81.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000010'
-layer = 0
-name = 'Sphere_Metal_M100'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_metal_m100.mat'
-
-    [gameobjects.transform]
-    position = [ 67.5, 1.5, 81.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000011'
-layer = 0
-name = 'Sphere_Color_Red'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_red.mat'
-
-    [gameobjects.transform]
-    position = [ 57.5, 1.5, 84.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000012'
-layer = 0
-name = 'Sphere_Color_Green'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_green.mat'
-
-    [gameobjects.transform]
-    position = [ 60.0, 1.5, 84.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000013'
-layer = 0
-name = 'Sphere_Color_Blue'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_blue.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 1.5, 84.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000014'
-layer = 0
-name = 'Sphere_Color_Gold'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_gold.mat'
-
-    [gameobjects.transform]
-    position = [ 65.0, 1.5, 84.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'pbr-test-0001-0000-0000-000000000015'
-layer = 0
-name = 'Sphere_Color_White'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_white.mat'
-
-    [gameobjects.transform]
-    position = [ 67.5, 1.5, 84.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-# -- SSR Test Objects --
-# 反射面 x2 (鏡面/濡れ床) + 反射ターゲット x4 (背の高いキューブ)
-# 反射面は Z=66 (濡れ床) / Z=72 (鏡面)、上方に反射対象キューブを配置。
-# SSR は roughness が低いほど強い。mirror(R=0.0) vs polished(R=0.08) vs wet(R=0.02)
-
-[[gameobjects]]
-active = true
-instanceId = 'ssr-test-0001-0000-0000-000000000001'
-layer = 0
-name = 'SSR_Mirror_Floor'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:plane'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_ssr_mirror.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 1.45, 72.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 10.0, 1.0, 10.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ssr-test-0001-0000-0000-000000000002'
-layer = 0
-name = 'SSR_Wet_Floor'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:plane'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_ssr_wet.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 1.45, 66.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 10.0, 1.0, 10.0 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ssr-test-0001-0000-0000-000000000003'
-layer = 0
-name = 'SSR_Target_Red'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:cube'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_red.mat'
-
-    [gameobjects.transform]
-    position = [ 57.0, 4.0, 70.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.5, 5.0, 1.5 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ssr-test-0001-0000-0000-000000000004'
-layer = 0
-name = 'SSR_Target_Blue'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:cube'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_blue.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 4.0, 70.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.5, 5.0, 1.5 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ssr-test-0001-0000-0000-000000000005'
-layer = 0
-name = 'SSR_Target_White'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:cube'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_white.mat'
-
-    [gameobjects.transform]
-    position = [ 68.0, 4.0, 70.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.5, 5.0, 1.5 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ssr-test-0001-0000-0000-000000000006'
-layer = 0
-name = 'SSR_Target_Gold'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:cube'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_color_gold.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 4.0, 74.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.5, 5.0, 1.5 ]
-
-[[gameobjects]]
-active = true
-instanceId = 'ssr-test-0001-0000-0000-000000000007'
-layer = 0
-name = 'SSR_Polished_Floor'
-parent = ''
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.MeshRenderer]
-    enabled = true
-    mesh = 'primitive:plane'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'Assets/Materials/Debug/pbr_ssr_polished.mat'
-
-    [gameobjects.transform]
-    position = [ 62.5, 1.45, 60.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 10.0, 1.0, 10.0 ]
