@@ -1,0 +1,28 @@
+version = 1
+shader = "Assets/Shaders/Material/Surface/PBR.hlsl"
+blend_mode = "Opaque"
+double_sided = false
+render_queue = 2000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = ""
+normal = ""
+metallic = ""
+emissive = ""
+ao = ""
+
+# PBR テスト用 - カラーバリアント Row3: ゴールド (metallic, roughness=0.2)
+# 金のF0反射率を albedo で表現: RGB=(1.00, 0.77, 0.10)
+[params]
+albedo = [1.0, 0.77, 0.1, 1.0]
+metallic = [1.0]
+roughness = [0.2]
+normalStrength = [1.0]
+occlusionStrength = [1.0]
+emissiveColor = [0.0, 0.0, 0.0]
+emissiveScale = [0.0]
+uvTiling = [1.0, 1.0]
+uvOffset = [0.0, 0.0]
+alphaCutoff = [0.5]
