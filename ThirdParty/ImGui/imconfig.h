@@ -28,6 +28,18 @@
 //#define IMGUI_API __declspec(dllimport)                   // MSVC Windows: DLL import
 //#define IMGUI_API __attribute__((visibility("default")))  // GCC/Clang: override visibility when set is hidden
 
+// WHY: CMake の compile definitions に `IMGUI_API=__declspec(...)` を直接渡すと
+// CMake が function-style macro と判定して警告を出し、/D のクォート次第では MSVC の
+// プリプロセッサにも壊れた形で届く。CMake からは括弧を含まないフラグだけ渡し、
+// WHAT: ここで Dear ImGui 本体のビルド時は export、利用側のビルド時は import に変換する。
+#if defined(_WIN32) && defined(FBZZ_IMGUI_EXPORTS)
+#define IMGUI_API __declspec(dllexport)
+#define IMGUI_IMPL_API __declspec(dllexport)
+#elif defined(_WIN32) && defined(FBZZ_IMGUI_IMPORTS)
+#define IMGUI_API __declspec(dllimport)
+#define IMGUI_IMPL_API __declspec(dllimport)
+#endif
+
 //---- Don't define obsolete functions/enums/behaviors. Consider enabling from time to time after updating to clean your code of obsolete function/names.
 //#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 

@@ -1,5 +1,5 @@
 # Dear ImGui (docking branch)
-add_library(imgui STATIC
+add_library(imgui SHARED
     ImGui/imgui.cpp
     ImGui/imgui_draw.cpp
     ImGui/imgui_tables.cpp
@@ -17,6 +17,25 @@ target_include_directories(imgui
 target_compile_definitions(imgui
     PUBLIC
         IMGUI_DEFINE_MATH_OPERATORS
+    PRIVATE
+        FBZZ_IMGUI_EXPORTS
+    INTERFACE
+        FBZZ_IMGUI_IMPORTS
+)
+
+# imnodes
+# WHY: AnimationGraphPanel は AnimatorComponent をノードグラフ編集するため、
+#      Dear ImGui と同じ ThirdParty レイヤーでノードエディタ実装をビルドする。
+add_library(imnodes STATIC
+    ImNodes/imnodes.cpp
+)
+target_include_directories(imnodes
+    PUBLIC
+        ImNodes
+)
+target_link_libraries(imnodes
+    PUBLIC
+        imgui
 )
 
 # toml++ (header-only, exception-free モードで使用)

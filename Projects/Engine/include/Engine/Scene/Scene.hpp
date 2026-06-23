@@ -1,12 +1,17 @@
 // FBZZ Engine
 // Scene.hpp | fbzz::scene
-// GameObject の所有・ComponentArray の管理・GameObjectRange / SceneView の提供
+// GameObject 所有と ComponentArray 管理
+// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
+// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
+#include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "Entity.hpp"
 #include "ComponentArray.hpp"
 #include "Transform.hpp"
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
+#include <Math/Vector4.hpp>
 #include <vector>
 #include <memory>
 #include <string>
@@ -14,6 +19,7 @@
 #include <span>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 #include <tuple>
 #include <utility>
@@ -21,6 +27,30 @@
 namespace fbzz::scene {
 
 template<typename... Ts> class SceneView;
+
+// ScriptDebugDrawType — Script から要求されたデバッグ描画の形状種別。
+// WHY: DebugDraw 具体 API を Script 側へ漏らさず、Scene が描画要求だけを保持するための軽量な中間表現。
+enum class ScriptDebugDrawType {
+    Line,
+    Sphere,
+    Box,
+    Ray,
+    Arrow, // from=a, to=b, headLength=radius, headRadius=halfExtents.x
+    Cone   // apex=a, direction=b, height=halfExtents.x, baseRadius=radius
+};
+
+// ScriptDebugDrawCommand — OnUpdate など任意のタイミングで発行されたデバッグ描画要求。
+// WHY: renderer::DebugDraw は RenderSystem の BeginFrame/Flush 区間でしか使えないため、Script はコマンドを積むだけにする。
+struct ScriptDebugDrawCommand {
+    ScriptDebugDrawType type = ScriptDebugDrawType::Line;
+    math::Vector3 a = math::Vector3::ZERO;
+    math::Vector3 b = math::Vector3::ZERO;
+    math::Vector3 halfExtents = math::Vector3::ZERO;
+    math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float radius = 0.0f;
+    float duration = 0.0f;
+    uint64_t frameCreated = 0;
+};
 
 // -----------------------------------------------------------------------
 // detail: ComponentList → tuple<ComponentArray<Ts>...> 変換ヘルパー
@@ -44,7 +74,7 @@ struct IsInList<T, std::tuple<Ts...>>
 } // namespace detail
 
 // -----------------------------------------------------------------------
-// GameObjectRange  —  scene.GameObjects() が返す Unity ライク foreach 用 range
+// GameObjectRange  —  scene.GameObjects() が返す Unity ライクな範囲 for 用 range
 // -----------------------------------------------------------------------
 class GameObjectRange {
     using VecT = std::vector<std::unique_ptr<GameObject>>;
@@ -81,6 +111,7 @@ public:
 
     // Unity: GameObject.Find 系の実体
     GameObject*              Find(const std::string& name)     const;
+    GameObject*              FindByGuid(const std::string& guid) const;
     GameObject*              FindWithTag(const std::string& t)  const;
     GameObject*              FindWithLayer(int layer)            const;
     std::vector<GameObject*> FindAllWithTag(const std::string& t) const;
@@ -91,11 +122,11 @@ public:
     // Unity: scene.GetRootGameObjects()
     std::vector<GameObject*> GetRootGameObjects() const;
 
-    // Unity ライク foreach (ゲームロジック向け)
+    // Unity ライクな範囲 for (ゲームロジック向け)
     GameObjectRange GameObjects();
     size_t GameObjectCount() const { return m_gameObjects.size(); }
 
-    // Editor / serializer support for stable hierarchy operations.
+    // Editor / serializer 用。階層操作を安定した API に集約する。
     bool DestroyGameObject(EntityID id);
     bool MoveGameObject(EntityID id, int offset);
     bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
@@ -112,6 +143,23 @@ public:
 
     // 全 GameObject・Component を削除してシーンを空にする
     void Clear();
+
+    renderer::PostProcessSettings& GetRuntimePostProcessSettings();
+    const renderer::PostProcessSettings* TryGetRuntimePostProcessSettings() const;
+    void SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings);
+    void ClearRuntimePostProcessSettings();
+
+    // QueueUserRenderPass — Script から RenderGraph へ追加するパスを 1 フレーム分キューに積む。
+    // WHY: Script が RenderSystem 内部の登録順に直接依存せず、意図した挿入点だけを宣言できるようにする。
+    void QueueUserRenderPass(UserRenderPassDesc desc);
+    void ClearUserRenderPasses();
+    const std::vector<UserRenderPassDesc>& GetUserRenderPasses() const;
+
+    // QueueScriptDebugDraw — ScriptDebugProxy から来た描画要求を RenderSystem まで保持する。
+    // WHY: DebugDraw は BeginFrame/Flush の間でしか使えないため、OnUpdate から即時描画せずキューに積む。
+    void QueueScriptDebugDraw(ScriptDebugDrawCommand command);
+    void TickScriptDebugDrawCommands(float dt);
+    const std::vector<ScriptDebugDrawCommand>& GetScriptDebugDrawCommands() const;
 
     // --- GameObject / SceneView の template 本体から呼ばれる内部 API ---
 
@@ -151,6 +199,13 @@ private:
     struct DestroyEntry { EntityID id; float delay; };
     std::vector<DestroyEntry> m_destroyQueue;
 
+    // runtime PostProcess は Script から一時的に上書きされる optional な状態。
+    // WHY: 値メンバにすると Clear 時の全体代入で std::vector を破棄/再構築し、レイアウト変更時のクラッシュ地点になりやすい。
+    std::unique_ptr<renderer::PostProcessSettings> m_runtimePostProcessSettings;
+    std::vector<UserRenderPassDesc> m_userRenderPasses;
+    std::vector<ScriptDebugDrawCommand> m_scriptDebugDrawCommands;
+    uint64_t m_lastScriptDebugDrawTickFrame = 0;
+
     EntityID AllocateEntity();
     void     DestroyImmediate(EntityID id);
     void     FixupOwnership();
@@ -174,7 +229,7 @@ private:
         return std::get<ComponentArray<T>>(m_arrays);
     }
 
-    // fold expression から呼ぶ per-array ヘルパー
+    // fold expression から呼ぶ配列ごとのヘルパー
     template<typename T>
     static void RemoveIfHas(ComponentArray<T>& arr, EntityID id) {
         if (arr.Has(id)) arr.Remove(id);
@@ -377,22 +432,116 @@ void GameObject::RemoveComponent() {
 
 template<typename T, typename... Args>
 T& GameObject::AddScript(Args&&... args) {
-    auto& sc = AddComponent<ScriptComponent>();
-    sc.script = std::make_unique<T>(std::forward<Args>(args)...);
-    return static_cast<T&>(*sc.script);
+    auto* sc = GetComponent<ScriptComponent>();
+    if (!sc)
+        sc = &AddComponent<ScriptComponent>();
+    ScriptEntry& entry = sc->scripts.emplace_back();
+    entry.script = std::make_unique<T>(std::forward<Args>(args)...);
+    return static_cast<T&>(*entry.script);
 }
 
 template<typename T>
 T* GameObject::GetScript() {
     auto* sc = GetComponent<ScriptComponent>();
-    if (!sc || !sc->script) return nullptr;
-    if (std::string_view(sc->script->GetTypeName()) != T::TYPE_NAME) return nullptr;
-    return static_cast<T*>(sc->script.get());
+    if (!sc) return nullptr;
+    for (auto& entry : sc->scripts) {
+        if (!entry.script) continue;
+        if (std::string_view(entry.script->GetTypeName()) == T::TYPE_NAME)
+            return static_cast<T*>(entry.script.get());
+    }
+    return nullptr;
 }
 
 template<typename T>
 std::vector<GameObject*> GameObject::FindObjectsOfType() {
     return {};  // Application::Get().GetSceneManager().GetActive() 追加後に実装
+}
+
+// -----------------------------------------------------------------------
+// Script::GetComponent<T> template 本体
+// WHY: Script.hpp は Scene.hpp をインクルードできない (循環依存) ため、
+//      GameObject が完全型になるこのタイミングで定義する。
+//      同様のパターンは GameObject::GetComponent<T>() でも採用している。
+// -----------------------------------------------------------------------
+template<typename T>
+T* Script::GetComponent() const
+{
+    return m_gameObject ? m_gameObject->GetComponent<T>() : nullptr;
+}
+
+template<typename T>
+GameObject* ScriptSceneProxy::FindObjectOfType() const
+{
+    if (!script || !script->m_scene) return nullptr;
+    auto objects = FindObjectsOfType<T>();
+    return objects.empty() ? nullptr : objects.front();
+}
+
+template<typename T>
+std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType() const
+{
+    if (!script || !script->m_scene) return {};
+    // Script 派生型は ECS に登録されていないため GameObject を全走査して GetScript<T>() で探す。
+    // Component 型は Scene::FindObjectsOfType<T>() (ECS) に委譲する。
+    if constexpr (std::is_base_of_v<Script, T>) {
+        std::vector<GameObject*> result;
+        for (auto& go : script->m_scene->GameObjects())
+            if (go.template GetScript<T>())
+                result.push_back(&go);
+        return result;
+    } else {
+        return script->m_scene->FindObjectsOfType<T>();
+    }
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetScript() const
+{
+    return script && script->m_gameObject ? script->m_gameObject->GetScript<T>() : nullptr;
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetScript(GameObject& go) const
+{
+    return go.GetScript<T>();
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetScript(GameObject* go) const
+{
+    return go ? go->GetScript<T>() : nullptr;
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetScript(EntityID id) const
+{
+    if (!script || !script->m_scene) return nullptr;
+    auto* go = script->m_scene->GetGameObject(id);
+    return go ? go->GetScript<T>() : nullptr;
+}
+
+template<typename T>
+T* ScriptSceneProxy::GetComponent() const
+{
+    return (script && script->m_gameObject)
+        ? script->m_gameObject->GetComponent<T>() : nullptr;
+}
+
+template<typename T>
+T& ScriptSceneProxy::GetOrAddComponent() const
+{
+    assert(script && script->m_gameObject && "Script context is not set");
+    if (auto* component = script->m_gameObject->GetComponent<T>())
+        return *component;
+    return script->m_gameObject->AddComponent<T>();
+}
+
+template<typename T>
+T& ScriptSceneProxy::RequireComponent() const
+{
+    auto* component = GetComponent<T>();
+    assert(component && "Required component is missing");
+    return *component;
 }
 
 } // namespace fbzz::scene

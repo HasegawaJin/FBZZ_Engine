@@ -1,0 +1,432 @@
+// FBZZ Engine
+// RenderPassContext.hpp | fbzz::scene
+// RenderGraph 注入パスと各描画パスが共有する実行コンテキスト
+#pragma once
+
+#include <Engine/Renderer/Camera.hpp>
+#include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Renderer/LightSystem.hpp>
+#include <Engine/Renderer/RenderGraph.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
+#include <Math/Frustum.hpp>
+#include <Math/Matrix4.hpp>
+#include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
+#include <Physics/Layer.hpp>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace fbzz::physics { class World; }
+
+namespace fbzz::scene {
+
+class Scene;
+struct RenderPassContext;
+
+// UserRenderPassInjectionPoint — Script が追加するパスを既存パイプラインのどこへ挿入するかを表す。
+// WHY: RenderGraph は依存関係で実行順を決めるが、HDR へ ReadWrite する透明系パスは同じ依存を持ちやすい。
+//      明示的な挿入点を持たせ、Water / VFX / PostProcess 前処理の意図をコードから読めるようにする。
+enum class UserRenderPassInjectionPoint : uint8_t {
+    AfterOpaque,
+    AfterTransparent,
+    BeforePostProcess
+};
+
+// UserRenderPassDesc — Script / Scene が RenderGraph へ追加したい 1 パス分の宣言。
+// WHAT: reads / writes は RenderGraph 上の論理リソース名、execute は実際の描画処理を受け持つ。
+//       execute は RenderSystem が保持する RenderPassContext を渡して呼ぶため、Script 側は renderer/resources/handles を参照できる。
+struct UserRenderPassDesc {
+    std::string name;
+    UserRenderPassInjectionPoint injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
+    std::vector<renderer::RenderGraph::ResourceAccess> accesses;
+    std::function<void(RenderPassContext&)> execute;
+    bool allowCulling = true;
+};
+
+// GPU パーティクル CS 用定数バッファ (b0) — 112 bytes, 16-byte aligned
+struct GpuParticleEmitterCB {
+    math::Vector3 emitterPos;
+    float         deltaTime;
+    math::Vector3 gravity;
+    uint32_t      maxParticles;
+    math::Vector4 colorStart;
+    math::Vector4 colorEnd;
+    uint32_t      spawnCount;       // 今フレームのスポーン数
+    uint32_t      spawnOffset;      // リングバッファ書き込み先頭インデックス
+    float         colorCurvePower;  // CPU と一致: pow(t, colorCurvePower)
+    float         velocityDamping;
+    float         sizeStart;
+    float         sizeEnd;
+    float         sizeCurvePower;
+    float         pad0;
+    uint32_t      spriteColumns;
+    uint32_t      spriteRows;
+    uint32_t      spriteStartFrame;
+    uint32_t      spriteEndFrame;
+};
+
+struct PerFrameCB {
+    math::Matrix4 view;
+    math::Matrix4 projection;
+    math::Matrix4 viewProjection;
+    math::Matrix4 invViewProjection;
+    math::Vector3 cameraPos;
+    float         nearZ;
+    float         farZ;
+    float         _pad[3];
+};
+
+struct PerObjectCB {
+    math::Matrix4 world;
+    math::Matrix4 worldInvTranspose;
+};
+
+struct ShadowConstantsCB {
+    math::Matrix4 lightViewProjection;
+    float         shadowMapTexelSize[2];
+    float         shadowBias;
+    float         shadowStrength;  // 0=影なし, 1=完全な影 (HLSL ShadowConstants と一致)
+    int           shadowPcfRadius; // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    float         _pad[3];         // 16-byte アライメント
+};
+
+struct AtmosphereCB {
+    float rayleighScattering[3];
+    float mieScattering;
+    float planetRadius;
+    float atmosphereRadius;
+    float sunIntensity;
+    float mieG;
+};
+
+// AdvancedGraphicsCB — IBL・SSR・TAA・GTAO・Contact Shadow 等の詳細設定。
+// LAYOUT: Constants.hlsli の AdvancedGraphicsConstants cbuffer と完全に一致させること。
+// WHY: 16-byte アライメント制約のため、各グループを 4 要素単位でまとめる。
+struct AdvancedGraphicsCB {
+    // IBL
+    float iblIntensity;       float iblDiffuseScale;    float iblSpecularScale;   int   iblMaxMipLevel;
+    // SSR
+    float ssrMaxDistance;     float ssrThickness;        int   ssrSteps;           float ssrIntensity;
+    // Volumetric
+    float volLightIntensity;  float volScattering;       int   volSteps;           float volMaxDist;
+    // TAA
+    float taaFeedback;        float taaJitterX;          float taaJitterY;         float _taaPad;
+    // Motion Blur
+    float motionBlurStrength; int   motionBlurSamples;   float _mblurPad0;         float _mblurPad1;
+    // GTAO
+    float gtaoIntensity;      float gtaoRadius;          int   gtaoSlices;         int   gtaoStepsPerSlice;
+    // Contact Shadows
+    float contactShadowStrength; float contactShadowRayLen; int contactShadowSteps; float contactShadowThick;
+    // Lens Flare
+    float lensFlareIntensity; int   lensFlareGhostCount; float lensFlareHaloWidth; float lensFlareDistort;
+    // PCSS
+    float pcssLightRadius;    int   pcssEnabled;         float _pcssPad0;          float _pcssPad1;
+    // LUT
+    float lutBlend;           float _lutPad0;            float _lutPad1;           float _lutPad2;
+    // Reprojection 行列 (TAA / Motion Blur 共用)
+    math::Matrix4 prevViewProjection;
+    math::Matrix4 invPrevViewProjection;
+};
+static_assert(sizeof(AdvancedGraphicsCB) == 288,
+    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in Constants.hlsli (288 bytes)");
+
+struct PostProcCB {
+    float texelSize[2];
+    float screenSize[2];
+    float exposure;
+    float time;
+    float fogDensity;
+    float bloomIntensity;
+    float fogColor[3];
+    float fogFar;
+    float contrast;
+    float saturation;
+    float hueShift;
+    float temperature;
+    float tint;
+    float vignetteIntensity;
+    float vignetteSmoothness;
+    float vignetteRoundness;
+    float vignetteColor[3];
+    float filmGrainIntensity;
+    float filmGrainResponse;
+    float chromaticAberration;
+    float lensDistortion;
+    float ssaoIntensity;
+    float customIntensity;
+    float customBlend;
+    float _customPad[2];
+    float customParameters[4];
+    float underwaterStrength;
+    float underwaterDepth;
+    float _underwaterPad[2];
+    float underwaterColor[3];
+    float underwaterFogDensity;
+    float sharpenStrength;
+    float sharpenRadius;
+    float dofFocusDistance;
+    float dofFocusRange;
+    float dofBlurRadius;
+    float sepiaIntensity;
+    float invertIntensity;
+    float posterizeLevels;
+    float pixelSize;
+    float _stylizedPad[3];
+    float bloomThreshold;
+    float bloomSoftKnee;
+    float clarityStrength;
+    float clarityRadius;
+    float shadowLift;
+    float highlightCompression;
+    float colorFilterIntensity;
+    float _qualityPad0;
+    float colorFilter[3];
+    float _qualityPad1;
+    // 画面フェード — Composite パスの最終出力に適用する。alpha=0 で通常, 1 で全面フェード色。
+    float screenFadeColor[3];
+    float screenFadeAlpha;
+};
+
+struct OutlineCB {
+    math::Vector4 color;
+    float         width;
+    float         _pad[3];
+};
+
+// DetailGrassCB (b2) — DetailGrass.hlsl の DetailGrassCB cbuffer と完全に一致させること。
+// 48 bytes, 16-byte aligned
+struct DetailGrassCB {
+    float    windDir[3];    // 正規化風向き (XZ 平面)
+    float    gTime;         // 累積時間
+    float    windStrength;  // グローバル風速
+    float    windFrequency; // sin 周波数
+    float    bladeHeight;   // ブレード高さ [m]
+    float    bladeWidth;    // ブレード根元幅 [m]
+    int32_t  bladeSegments; // 分割数
+    float    alphaCutoff;   // アルファテスト閾値
+    int32_t  hasAlbedoTex;  // 1 = テクスチャあり
+    float    _pad;
+};
+static_assert(sizeof(DetailGrassCB) == 48, "DetailGrassCB size mismatch");
+
+// DecalConstants (b2) — HLSL の DecalConstants cbuffer と完全に一致させること。
+struct DecalCB {
+    math::Matrix4 invDecalWorld;
+    float         albedo[4];
+    float         emissiveColor[3];
+    float         emissiveScale;
+    float         normalStrength;
+    float         alpha;
+    uint32_t      textureMask;
+    float         _pad;
+    math::Vector3 decalTangent;
+    float         _pad1;
+    math::Vector3 decalBitangent;
+    float         _pad2;
+    math::Vector3 decalNormal;
+    float         _pad3;
+};
+
+struct RenderPassHandles {
+    renderer::ResourceHandle<renderer::RenderTargetTag> shadowMapRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> hdrRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> ldrRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> selectionMaskRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> outlineRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> customPostProcessRT[2];
+    renderer::ResourceHandle<renderer::RenderTargetTag> gbufferRT;
+
+    renderer::ResourceHandle<renderer::TextureTag> bloomHalf;
+    renderer::ResourceHandle<renderer::TextureTag> bloomFull;
+    renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
+    renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
+    renderer::ResourceHandle<renderer::TextureTag> shadowDepthTex;
+    renderer::ResourceHandle<renderer::TextureTag> fxaaInput;
+    renderer::ResourceHandle<renderer::TextureTag> postProcessInput;
+
+    renderer::ResourceHandle<renderer::ShaderTag> bloomDownShader;
+    renderer::ResourceHandle<renderer::ShaderTag> bloomUpShader;
+    renderer::ResourceHandle<renderer::ShaderTag> ssaoShader;
+    renderer::ResourceHandle<renderer::ShaderTag> ssaoBlurShader;
+    renderer::ResourceHandle<renderer::ShaderTag> compositeShader;
+    renderer::ResourceHandle<renderer::ShaderTag> causticsShader;
+    renderer::ResourceHandle<renderer::ShaderTag> selectionMaskShader;
+    renderer::ResourceHandle<renderer::ShaderTag> selectionMaskSkinnedShader;
+    renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
+    renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
+    std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
+
+    renderer::ResourceHandle<renderer::PipelineStateTag> selectionMaskPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag> postprocPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag> causticsPSO;
+
+    renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> postprocCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
+
+    renderer::ResourceHandle<renderer::RenderTargetTag>   decalDepthRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag>   decalMaskRT;
+    renderer::ResourceHandle<renderer::ShaderTag>         decalShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         decalMaskShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  decalPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  decalMaskPSO;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> decalCB;
+
+    renderer::ResourceHandle<renderer::ShaderTag>         shadowShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         shadowSkinnedShader;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
+
+    renderer::ResourceHandle<renderer::PipelineStateTag>  defaultPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  wireframePSO;
+
+    renderer::ResourceHandle<renderer::ShaderTag>         skyShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  skyPSO;
+    renderer::ResourceHandle<renderer::BufferTag>         skyVB;
+    renderer::ResourceHandle<renderer::BufferTag>         skyIB;
+    uint32_t                                              skyIndexCount = 0;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> atmosphereCB;
+
+    renderer::ResourceHandle<renderer::ShaderTag>         particleShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleAlphaPSO;
+    renderer::ResourceHandle<renderer::BufferTag>         particleVB;
+    renderer::ResourceHandle<renderer::BufferTag>         particleIB;
+
+    // GPU パーティクル
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSimCS;   // CS: シミュレーション+スポーン
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuShader;  // VS+PS: billboard 描画 (加算合成)
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuAlphaShader; // VS+PS: billboard 描画 (アルファ合成)
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuAlphaPSO;
+
+    renderer::ResourceHandle<renderer::ShaderTag>         trailShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  trailPSO;
+
+    renderer::ResourceHandle<renderer::ShaderTag>         meshTrailShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         skinnedMeshTrailShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  meshTrailPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  meshTrailDoubleSidedPSO;
+
+    renderer::ResourceHandle<renderer::ShaderTag>         gbufferShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         deferredLightingShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
+
+    // Detail System (Terrain Detail — GPU Instancing)
+    renderer::ResourceHandle<renderer::ShaderTag>         detailMeshShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         detailBillboardShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         detailGrassShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  detailMeshPSO;    // SOLID + OPAQUE + DEPTH_ON
+    renderer::ResourceHandle<renderer::PipelineStateTag>  detailNoCullPSO;  // SOLID_NOCULL + OPAQUE + DEPTH_ON
+    renderer::ResourceHandle<renderer::ConstantBufferTag> detailGrassCB;    // b2: DetailGrassCB
+
+    // Foliage System (樹木・大型植生 — SubMesh Material + GPU Instancing)
+    renderer::ResourceHandle<renderer::ShaderTag>         foliageShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  foliagePSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  foliageNoCullPSO;
+
+    // ---- Advanced Graphics ----
+
+    // AdvancedGraphics 共用定数バッファ (b8)
+    renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
+
+    // IBL (Image-Based Lighting)
+    // WHY: テクスチャハンドルは ResourceManager から取得した静的リソース。
+    //      シーンのスカイドームが変わるまで再ロード不要。
+    renderer::ResourceHandle<renderer::TextureTag>        iblIrradiance;   // Diffuse irradiance cubemap
+    renderer::ResourceHandle<renderer::TextureTag>        iblPrefilter;    // Specular prefiltered cubemap
+    renderer::ResourceHandle<renderer::TextureTag>        iblBrdfLut;      // BRDF 積分 LUT (512x512 R16G16F)
+    renderer::ResourceHandle<renderer::ShaderTag>         iblBrdfBakeShader; // CS: BRDF LUT をスタートアップ時に焼く
+    renderer::ResourceHandle<renderer::RenderTargetTag>   iblBrdfLutRT;    // BRDF LUT bake 用 RT (静的)
+
+    // SSR (Screen Space Reflections)
+    renderer::ResourceHandle<renderer::TextureTag>        ssrResult;       // SSR Compute 出力テクスチャ
+    renderer::ResourceHandle<renderer::ShaderTag>         ssrShader;       // CS
+
+    // Volumetric Lighting
+    renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;
+    renderer::ResourceHandle<renderer::ShaderTag>         volumetricShader;
+
+    // TAA (Temporal Anti-Aliasing)
+    // WHY: taaHistory は前フレームの TAA 出力を保持する永続 RT。
+    //      解像度変更時のみ再生成し、毎フレーム ping-pong で入れ替える。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;     // ping-pong バッファ A
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;     // ping-pong バッファ B
+    renderer::ResourceHandle<renderer::ShaderTag>         taaShader;       // VS+PS
+    renderer::ResourceHandle<renderer::PipelineStateTag>  taaPSO;
+    bool                                                  taaFlip = false; // A→B→A... の ping-pong フラグ
+
+    // Motion Blur
+    renderer::ResourceHandle<renderer::TextureTag>        motionBlurResult;
+    renderer::ResourceHandle<renderer::ShaderTag>         motionBlurShader;
+
+    // GTAO (Ground Truth Ambient Occlusion)
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;
+    renderer::ResourceHandle<renderer::ShaderTag>         gtaoShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         gtaoBlurShader;
+
+    // Contact Shadows
+    renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult;
+    renderer::ResourceHandle<renderer::ShaderTag>         contactShadowShader;
+
+    // Lens Flare
+    renderer::ResourceHandle<renderer::ShaderTag>         lensFlareShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  lensFlarePSO;    // ADDITIVE ブレンド
+    // CPU生成32^3 RGBA8 LUT。外部DDSに依存せずCompositeのTexture3D(t22)へ束縛する。
+    renderer::ResourceHandle<renderer::TextureTag>        proceduralColorLut;
+};
+
+struct RenderPassContext {
+    Scene& scene;
+    renderer::IRenderer& renderer;
+    renderer::ResourceManager& resources;
+    const renderer::Camera& camera;
+    const renderer::RenderSettings& settings;
+    renderer::ResourceHandle<renderer::RenderTargetTag> outputRT;
+    fbzz::LayerMask cullingMask;
+
+    RenderPassHandles& handles;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    bool selectionOutlineEnabled = false;
+
+    renderer::LightConstantsCB lightData;
+    math::Matrix4               lightVP;
+    bool                        isDeferred  = false;
+    bool                        ssaoEnabled = false;
+    // ライト正射影の深度範囲で正規化済みの NDC バイアス。
+    // WHY: near=1, far=shadowRadius*2+40 のため固定 NDC 値はシーンスケール依存になる。
+    //      RenderSystem 側で 0.005 / depthRange として渡すことで
+    //      ワールド空間で約 5mm 相当の一定バイアスを保つ。
+    float                       shadowBiasNDC  = 0.0f;
+    float                       shadowStrength = 1.0f;  // LightComponent から流れてくる影の濃さ
+
+    const math::Frustum* cameraFrustum = nullptr;
+    const math::Frustum* lightFrustum  = nullptr;
+    OcclusionCuller*      occlusionCuller = nullptr;
+    const physics::World* physicsWorld   = nullptr;
+
+    int statsTotalObjects    = 0;
+    int statsFrustumCulled   = 0;
+    int statsOcclusionCulled = 0;
+    int statsDrawCalls       = 0;
+    int statsVertexCount     = 0;
+    int statsTriangleCount   = 0;
+
+    // トランジェント RT リゾルバ。RenderPipeline::Execute() が設定する。
+    // WHY: パスコールバックが RenderPipeline を直接参照しないよう、
+    //      依存方向を逆転させずにハンドル取得を可能にするためのコールバックとして渡す。
+    //      DeclareResource で transient=true のリソースのみ有効。
+    //      未設定 (nullptr) の場合は空ハンドルを返す。
+    std::function<renderer::ResourceHandle<renderer::RenderTargetTag>(std::string_view)> getTransientRT;
+};
+
+} // namespace fbzz::scene

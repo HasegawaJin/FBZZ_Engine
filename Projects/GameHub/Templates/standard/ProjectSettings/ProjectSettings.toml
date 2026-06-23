@@ -1,0 +1,229 @@
+[app]
+targetFps = 144
+
+[audio]
+bgmVolume = 1.0
+seVolume = 1.0
+
+[layers]
+names = [
+    'Default',
+    'TransparentFX',
+    'Ignore Raycast',
+    '',
+    'Water',
+    'UI',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    ''
+]
+
+[physics]
+gravity = [ 0.0, -9.81, 0.0 ]
+hz = 60
+substeps = 1
+
+[project]
+default_scene = 'Assets/Scenes/Main.scene'
+name = '{{PROJECT_NAME}}'
+
+[render]
+pipeline             = 'deferred'
+exposure             = 1.0
+fxaa                 = true
+
+# ── Shadow ────────────────────────────────────────────────────────────────────
+shadow               = true
+shadowResolution     = 8192
+shadowPcfRadius      = 3
+pcssEnabled          = false
+pcssLightRadius      = 3.0
+
+# ── Bloom ─────────────────────────────────────────────────────────────────────
+bloom                = true
+bloomIntensity       = 0.9
+bloomThreshold       = 0.65
+bloomSoftKnee        = 0.4
+
+# ── Ambient Occlusion (legacy SSAO) ──────────────────────────────────────────
+ambientOcclusion          = true
+ambientOcclusionIntensity = 1.0
+
+# ── Color Grading ─────────────────────────────────────────────────────────────
+colorGrading         = true
+contrast             = 0.05
+saturation           = 1.1
+hueShift             = 0.0
+temperature          = 0.02
+tint                 = 0.0
+
+# ── Image Quality ─────────────────────────────────────────────────────────────
+clarity              = true
+clarityStrength      = 0.15
+clarityRadius        = 2.0
+shadowHighlight      = true
+shadowLift           = 0.06
+highlightCompression = 0.1
+colorFilter          = false
+colorFilterColor     = [ 1.0, 1.0, 1.0 ]
+colorFilterIntensity = 0.0
+
+# ── Sharpen ───────────────────────────────────────────────────────────────────
+sharpen              = true
+sharpenStrength      = 0.25
+sharpenRadius        = 1.0
+
+# ── Vignette ──────────────────────────────────────────────────────────────────
+vignette             = true
+vignetteIntensity    = 0.18
+vignetteSmoothness   = 0.45
+vignetteRoundness    = 1.0
+vignetteColor        = [ 0.0, 0.0, 0.0 ]
+
+# ── Fog ───────────────────────────────────────────────────────────────────────
+fog                  = false
+fogDensity           = 0.04
+fogFar               = 80.0
+fogColor             = [ 0.55, 0.65, 0.75 ]
+
+# ── Depth of Field ────────────────────────────────────────────────────────────
+depthOfField         = false
+dofFocusDistance     = 8.0
+dofFocusRange        = 4.0
+dofBlurRadius        = 3.0
+
+# ── Lens ──────────────────────────────────────────────────────────────────────
+chromaticAberrationEnabled = false
+chromaticAberration        = 0.003
+lensDistortionEnabled      = false
+lensDistortion             = 0.0
+
+# ── Stylized ──────────────────────────────────────────────────────────────────
+filmGrain            = false
+filmGrainIntensity   = 0.03
+filmGrainResponse    = 0.8
+sepia                = false
+sepiaIntensity       = 0.75
+invert               = false
+invertIntensity      = 1.0
+posterize            = false
+posterizeLevels      = 6.0
+pixelate             = false
+pixelSize            = 4.0
+
+# ── Debug / Editor ────────────────────────────────────────────────────────────
+showColliders        = false
+showDecalBounds      = false
+showSelectionOutline = true
+passViewerEnabled    = false
+outlineColor         = [ 1.0, 0.82, 0.22, 1.0 ]
+outlineWidth         = 0.045
+
+# ── IBL (Image-Based Lighting) ────────────────────────────────────────────────
+iblEnabled           = false
+iblIntensity         = 1.0
+iblDiffuseScale      = 1.0
+iblSpecularScale     = 1.0
+iblMaxMipLevel       = 6
+iblIrradiancePath    = ''
+iblPrefilterPath     = ''
+
+# ── SSR (Screen Space Reflections) ────────────────────────────────────────────
+ssrEnabled           = true
+ssrIntensity         = 0.8
+ssrMaxDistance       = 50.0
+ssrThickness         = 0.15
+ssrSteps             = 128
+
+# ── GTAO (Ground Truth Ambient Occlusion) ─────────────────────────────────────
+gtaoEnabled          = false
+gtaoIntensity        = 1.0
+gtaoRadius           = 1.5
+gtaoSlices           = 8
+gtaoStepsPerSlice    = 8
+
+# ── Contact Shadows ────────────────────────────────────────────────────────────
+contactShadowEnabled   = false
+contactShadowStrength  = 0.7
+contactShadowRayLength = 1.5
+contactShadowThickness = 0.2
+contactShadowSteps     = 32
+
+# ── TAA (Temporal Anti-Aliasing) ───────────────────────────────────────────────
+taaEnabled           = false
+taaFeedback          = 0.9
+
+# ── Motion Blur ────────────────────────────────────────────────────────────────
+motionBlurEnabled    = false
+motionBlurStrength   = 0.5
+motionBlurSamples    = 16
+
+# ── Volumetric Light ───────────────────────────────────────────────────────────
+volLightEnabled      = false
+volLightIntensity    = 0.8
+volLightScattering   = 0.3
+volLightMaxDist      = 30.0
+volLightSteps        = 128
+
+# ── Lens Flare ─────────────────────────────────────────────────────────────────
+lensFlareEnabled     = false
+lensFlareIntensity   = 0.5
+lensFlareHaloWidth   = 0.4
+lensFlareDistortion  = 1.0
+lensFlareGhostCount  = 4
+
+# ── LUT Color Grading ──────────────────────────────────────────────────────────
+lutEnabled           = false
+lutBlend             = 1.0
+lutContrast          = 0.0
+lutSaturation        = 1.0
+lutHueShift          = 0.0
+lutTemperature       = 0.0
+lutTint              = 0.0
+
+    [[render.customPostProcesses]]
+    blend = 1.0
+    enabled = false
+    intensity = 1.0
+    name = 'Default Custom'
+    parameters = [ 0.0, 0.0, 0.0, 0.0 ]
+    shader = 'assets/shaders/PostProcess/Custom/CustomPostProcess.hlsl'
+
+[runtime]
+start_scene = 'Assets/Scenes/Main.scene'
+
+[screen]
+height = 1080
+width = 1920
+
+[tags]
+list = [ 'Untagged', 'Respawn', 'Finish', 'EditorOnly', 'MainCamera', 'Player', 'GameController' ]
+
+[window]
+fullscreen = false
+height = 1080
+title = 'FBZZ Game'
+width = 1920

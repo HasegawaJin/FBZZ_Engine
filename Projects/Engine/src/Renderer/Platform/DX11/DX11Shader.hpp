@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Shader.hpp | fbzz::renderer
 // DX11 頂点・ピクセルシェーダーと InputLayout の管理
+// IShader を継承し、CSO から作ったネイティブシェーダーを保持する。
+// InputLayout は頂点シェーダーの反射情報から作る。
 //
 // 設計方針:
 //   実行時コンパイル (D3DCompile) ではなく、ビルド済み CSO (Compiled Shader Object) を
@@ -20,6 +22,7 @@
 #include <string>
 #include <vector>
 #include <Engine/Renderer/IShader.hpp>
+#include <Engine/Renderer/ShaderDescriptor.hpp>
 
 namespace fbzz::renderer
 {
@@ -37,7 +40,8 @@ public:
     // Compute Shader を取得する (.cs.hlsl として Init されたシェーダーのみ非 null)
     ID3D11ComputeShader* GetComputeShader() const { return m_computeShader.Get(); }
 
-    const std::string& GetPath() const override { return m_path; }
+    const std::string&      GetPath()       const override { return m_path; }
+    const ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
 
 private:
     // "assets/shaders/Phong.hlsl" → "assets/shaders/compiled/Phong" に変換するヘルパー
@@ -46,11 +50,15 @@ private:
     // CSO ファイルをバイト列として読み込む (CreateVertexShader 等に渡すため)
     static std::vector<uint8_t>  LoadBinary(const std::string& filePath);
 
+    // PS バイトコードから MaterialConstants cbuffer とテクスチャバインドを解析する
+    static ShaderDescriptor      BuildDescriptor(const std::vector<uint8_t>& psBlob);
+
     Microsoft::WRL::ComPtr<ID3D11VertexShader>  m_vertexShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader>   m_pixelShader;
     Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_computeShader;
     Microsoft::WRL::ComPtr<ID3D11InputLayout>   m_inputLayout;
     std::string                                 m_path;
+    ShaderDescriptor                            m_descriptor;
 };
 
 } // namespace fbzz::renderer

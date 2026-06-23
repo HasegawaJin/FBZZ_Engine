@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Renderer.cpp | fbzz::renderer
-// IRenderer の DX11 実装 — デバイス・スワップチェーン・フレーム管理
+// IRenderer の DX11 実装
+// デバイス・スワップチェーン・バックバッファ・フレーム送信を管理する。
+// 上位レイヤーには IRenderer と ResourceManager の境界だけを見せる。
 //
 // d3d11.lib / dxgi.lib はプラグマリンクで解決する。
 // CMakeLists で target_link_libraries に追加してもよいが、
@@ -13,14 +15,18 @@
 #include "DX11ConstantBuffer.hpp"
 #include "DX11Shader.hpp"
 #include "DX11PipelineState.hpp"
+#include "DX11StructuredBuffer.hpp"
 #include "DX11Texture.hpp"
 #include "DX11RenderTarget.hpp"
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
-#include <imgui.h>
-#include <imgui_impl_win32.h>
-#include <imgui_impl_dx11.h>
+#include <Engine/Profiler/ProfileScope.hpp>
+#include <dxgi1_5.h>
+#include <string>
+#ifdef _DEBUG
+#include <d3d11sdklayers.h>  // ID3D11InfoQueue
+#endif
 
 namespace fbzz::renderer
 {
@@ -36,22 +42,38 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
     // -------------------------------------------------------------------------
     // スワップチェーン設定
-    //   BufferCount=1 は DX11 の FLIP_DISCARD 非対応環境向けの古典的な単バッファ構成。
-    //   DXGI_SWAP_EFFECT_DISCARD との組み合わせが必須。
-    //   DX12 移行時は BufferCount=2 + FLIP_DISCARD に切り替える。
+    //   DXGI の blt-model(DISCARD/SEQUENTIAL) は現在ではレガシー扱い。
+    //   WHY: flip-model は DWM との合成経路が現代的で、デバッグレイヤーの #294 警告も避けられる。
+    //        FLIP_DISCARD は BufferCount >= 2 かつ MSAA 無効が前提なので、バックバッファを 2 枚にする。
     // -------------------------------------------------------------------------
+    // DXGI_PRESENT_ALLOW_TEARING を使える環境では、DWM の表示周期と Present を切り離す。
+    // WHY: SyncInterval=0 だけでは flip-model のキューが満杯になった際に Present が待機し、
+    //      60 Hz 環境で Time::targetFps=144 を指定しても約 60 FPS に制限されるため。
+    Microsoft::WRL::ComPtr<IDXGIFactory5> factory5;
+    BOOL allowTearing = FALSE;
+    if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(factory5.GetAddressOf()))) &&
+        SUCCEEDED(factory5->CheckFeatureSupport(
+            DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+            &allowTearing,
+            sizeof(allowTearing)))) {
+        m_allowTearing = allowTearing == TRUE;
+    }
+
     DXGI_SWAP_CHAIN_DESC scDesc                        = {};
-    scDesc.BufferCount                                 = 1;
+    scDesc.BufferCount                                 = 2;
     scDesc.BufferDesc.Width                            = width;
     scDesc.BufferDesc.Height                           = height;
     scDesc.BufferDesc.Format                           = DXGI_FORMAT_R8G8B8A8_UNORM;
-    scDesc.BufferDesc.RefreshRate.Numerator            = 60;
+    scDesc.BufferDesc.RefreshRate.Numerator            = 0;
     scDesc.BufferDesc.RefreshRate.Denominator          = 1;
     scDesc.BufferUsage                                 = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scDesc.OutputWindow                                = hwnd;
     scDesc.SampleDesc.Count                            = 1;  // MSAA は無効
     scDesc.Windowed                                    = TRUE;
-    scDesc.SwapEffect                                  = DXGI_SWAP_EFFECT_DISCARD;
+    scDesc.SwapEffect                                  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    scDesc.Flags                                       = m_allowTearing
+                                                       ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
+                                                       : 0u;
 
     // DEBUG ビルドではデバッグレイヤーを有効化し、DX11 の検証エラーを OutputDebugString に出力する
     UINT flags = 0;
@@ -77,6 +99,41 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
     if (!CreateRenderTargetView())  return false;
     if (!CreateDepthStencilView())  return false;
 
+#ifdef _DEBUG
+    // D3D11 Debug Layer はデフォルトで検証メッセージを約2秒ごとにフラッシュし、
+    // その際に定期的な FPS スパイクを引き起こす。
+    // InfoQueue でストレージフィルタを空にすることでメッセージ蓄積量を最小化し、
+    // フラッシュコストを抑える。エラーだけはブレークポイントで捕捉する。
+    // WHY: ポートフォリオ動作確認で Release 以外のビルドも一定の FPS 安定性が必要なため。
+    {
+        Microsoft::WRL::ComPtr<ID3D11InfoQueue> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue)))
+        {
+            infoQueue->SetMuteDebugOutput(FALSE);
+            infoQueue->SetMessageCountLimit(-1);            // メッセージ上限を解除
+            infoQueue->ClearStoredMessages();
+
+            // ERROR / CORRUPTION だけブレーク、INFO / WARNING は蓄積しない
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR,      TRUE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_WARNING,    FALSE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_INFO,       FALSE);
+            infoQueue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_MESSAGE,    FALSE);
+
+            // WARNING 以下をフィルタアウトして蓄積自体を止める
+            D3D11_MESSAGE_SEVERITY denySeverities[] = {
+                D3D11_MESSAGE_SEVERITY_INFO,
+                D3D11_MESSAGE_SEVERITY_MESSAGE,
+                D3D11_MESSAGE_SEVERITY_WARNING,
+            };
+            D3D11_INFO_QUEUE_FILTER filter = {};
+            filter.DenyList.NumSeverities  = 3u;
+            filter.DenyList.pSeverityList  = denySeverities;
+            infoQueue->AddStorageFilterEntries(&filter);
+        }
+    }
+#endif
+
     // OM ステージに RTV と DSV を一括バインド
     m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), m_depthStencilView.Get());
 
@@ -90,17 +147,47 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
     InitSamplers();
 
-    FBZZ_LOG_INFO("DX11Renderer 初期化完了: %ux%u", width, height);
+    FBZZ_LOG_INFO("DX11Renderer initialized: %ux%u", width, height);
     return true;
 }
 
 void DX11Renderer::Shutdown()
 {
-    // ClearState() でパイプラインの全バインドを解除してから ComPtr に解放させる。
-    // 解放順序は依存関係の逆順: Context → SwapChain → Device。
-    // ComPtr のデストラクタが自動でこの順序を保証するため、明示的な Release() は不要。
-    m_context->ClearState();
-    FBZZ_LOG_INFO("DX11Renderer シャットダウン");
+    // WHAT: パイプライン参照を解除した後、デバイス子オブジェクトから依存順に明示解放する。
+    // WHY: GPU Query 配列など一部のメンバーは C++ の逆順破棄だけでは Device より後に解放される。
+    //      Flush() と明示 Reset() により Shader を含む全 DX11 Live Object の終了時残留を防ぐ。
+    if (m_context)
+    {
+        m_context->ClearState();
+        m_context->Flush();
+    }
+
+    for (GpuQueryFrame& frame : m_gpuFrames)
+    {
+        frame.disjoint.Reset();
+        for (int i = 0; i < GPU_MAX_PASSES; ++i)
+        {
+            frame.beginTs[i].Reset();
+            frame.endTs[i].Reset();
+        }
+        frame.count = 0;
+        frame.begun = false;
+        frame.ended = false;
+        frame.collected = true;
+    }
+    m_gpuResults.clear();
+
+    for (auto& sampler : m_samplers)
+        sampler.Reset();
+    m_depthStencilBuffer.Reset();
+    m_depthStencilView.Reset();
+    m_renderTargetView.Reset();
+    m_swapChain.Reset();
+    m_context.Reset();
+    m_device.Reset();
+    m_currentRT = nullptr;
+
+    FBZZ_LOG_INFO("DX11Renderer shutdown");
 }
 
 // =============================================================================
@@ -120,8 +207,10 @@ void DX11Renderer::BeginFrame()
 
 void DX11Renderer::EndFrame()
 {
-    // interval=1: リフレッシュレートに同期して Present する (VSync ON)
-    m_swapChain->Present(1, 0);
+    // FPS limiting is handled by Time::targetFps.
+    FBZZ_PROFILE_SCOPE("DX11Renderer::Present");
+    // 対応環境では tearing を許可し、Present 内の DWM 同期待ちを発生させない。
+    m_swapChain->Present(0, m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0u);
 }
 
 void DX11Renderer::Clear(const math::Vector4& color)
@@ -154,80 +243,121 @@ void DX11Renderer::ClearDepth(float depth)
 // リソース生成
 // =============================================================================
 
-std::shared_ptr<IBuffer> DX11Renderer::CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride)
+std::unique_ptr<IBuffer> DX11Renderer::CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride)
 {
-    auto buf = std::make_shared<DX11Buffer>();
+    auto buf = std::make_unique<DX11Buffer>();
     if (!buf->Init(m_device.Get(), m_context.Get(), data, sizeBytes, stride, D3D11_BIND_VERTEX_BUFFER))
         return nullptr;
     return buf;
 }
 
-std::shared_ptr<IBuffer> DX11Renderer::CreateNativeIndexBuffer(const void* data, uint32_t count)
+std::unique_ptr<IBuffer> DX11Renderer::CreateNativeIndexBuffer(const void* data, uint32_t count)
 {
     // インデックスは uint32_t 固定 (DXGI_FORMAT_R32_UINT)。
     // uint16_t (65536 頂点未満) のほうがメモリ効率は良いが、
     // 複雑なメッシュに備えて 32bit を標準とする。
     size_t sizeBytes = count * sizeof(uint32_t);
-    auto buf = std::make_shared<DX11Buffer>();
+    auto buf = std::make_unique<DX11Buffer>();
     if (!buf->Init(m_device.Get(), m_context.Get(), data, sizeBytes, 0, D3D11_BIND_INDEX_BUFFER))
         return nullptr;
     return buf;
 }
 
-std::shared_ptr<IConstantBuffer> DX11Renderer::CreateNativeConstantBuffer(size_t sizeBytes)
+std::unique_ptr<IConstantBuffer> DX11Renderer::CreateNativeConstantBuffer(size_t sizeBytes)
 {
-    auto cb = std::make_shared<DX11ConstantBuffer>();
+    auto cb = std::make_unique<DX11ConstantBuffer>();
     if (!cb->Init(m_device.Get(), m_context.Get(), sizeBytes))
         return nullptr;
     return cb;
 }
 
-std::shared_ptr<IShader> DX11Renderer::CreateNativeShader(const std::string& path)
+std::unique_ptr<IShader> DX11Renderer::CreateNativeShader(const std::string& path)
 {
-    auto shader = std::make_shared<DX11Shader>();
+    auto shader = std::make_unique<DX11Shader>();
     if (!shader->Init(m_device.Get(), path))
         return nullptr;
     return shader;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateNativeTexture(const std::string& path)
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTexture(const std::string& path)
 {
-    auto tex = std::make_shared<DX11Texture>();
+    auto tex = std::make_unique<DX11Texture>();
     if (!tex->Init(m_device.Get(), m_context.Get(), path))
         return nullptr;
     return tex;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height)
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height)
 {
-    auto tex = std::make_shared<DX11Texture>();
+    auto tex = std::make_unique<DX11Texture>();
     if (!tex->InitFromData(m_device.Get(), rgba, width, height))
         return nullptr;
     return tex;
 }
 
-std::shared_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const PipelineStateDesc& desc)
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTexture3DFromData(
+    const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth)
 {
-    auto pso = std::make_shared<DX11PipelineState>();
+    auto tex = std::make_unique<DX11Texture>();
+    if (!tex->Init3DFromData(m_device.Get(), rgba, width, height, depth))
+        return nullptr;
+    return tex;
+}
+
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTextureFromRenderTarget(
+    IRenderTarget& rt,
+    uint32_t index,
+    RenderTargetTextureKind kind)
+{
+    auto* dxRT = static_cast<DX11RenderTarget*>(&rt);
+    ID3D11ShaderResourceView* srv =
+        (kind == RenderTargetTextureKind::Depth) ? dxRT->GetDepthSRV() : dxRT->GetColorSRV(index);
+    if (!srv)
+        return nullptr;
+
+    auto tex = std::make_unique<DX11Texture>();
+    tex->InitFromSRV(srv, dxRT->GetWidth(), dxRT->GetHeight());
+    return tex;
+}
+
+std::unique_ptr<IPipelineState> DX11Renderer::CreateNativePipelineState(const PipelineStateDesc& desc)
+{
+    auto pso = std::make_unique<DX11PipelineState>();
     if (!pso->Init(m_device.Get(), desc))
         return nullptr;
     return pso;
 }
 
-std::shared_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
+std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount)
 {
-    auto rt = std::make_shared<DX11RenderTarget>();
+    auto rt = std::make_unique<DX11RenderTarget>();
     if (!rt->Init(m_device.Get(), width, height, colorCount))
         return nullptr;
     return rt;
 }
 
-std::shared_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t width, uint32_t height)
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t width, uint32_t height)
 {
-    auto tex = std::make_shared<DX11Texture>();
+    auto tex = std::make_unique<DX11Texture>();
     if (!tex->InitForCompute(m_device.Get(), width, height))
         return nullptr;
     return tex;
+}
+
+std::unique_ptr<IStructuredBuffer> DX11Renderer::CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+{
+    auto sb = std::make_unique<DX11StructuredBuffer>();
+    if (!sb->Init(m_device.Get(), m_context.Get(), data, elementCount, stride, /*readWrite=*/false))
+        return nullptr;
+    return sb;
+}
+
+std::unique_ptr<IStructuredBuffer> DX11Renderer::CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)
+{
+    auto sb = std::make_unique<DX11StructuredBuffer>();
+    if (!sb->Init(m_device.Get(), m_context.Get(), data, elementCount, stride, /*readWrite=*/true))
+        return nullptr;
+    return sb;
 }
 
 // =============================================================================
@@ -248,6 +378,12 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     auto* cs = static_cast<DX11Shader*>(shader);
     m_context->CSSetShader(cs->GetComputeShader(), nullptr, 0);
 
+    // WHY: HLSL 側の Compute Shader は SAMPLER_DEFAULT(s0) を使うパスがある。
+    //      DX11 は NULL Sampler でも既定動作にフォールバックするが、デバッグレイヤー警告を避けるため
+    //      ポストプロセスで最も一般的な clamp + linear を Dispatch ごとに明示する。
+    ID3D11SamplerState* defaultSampler = m_samplers[static_cast<uint32_t>(SamplerMode::CLAMP_LINEAR)].Get();
+    m_context->CSSetSamplers(0, 1, &defaultSampler);
+
     // 定数バッファ (CS ステージ)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.constantBuffers.size()); ++i)
     {
@@ -266,23 +402,43 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         m_context->CSSetShaderResources(i, 1, &srv);
     }
 
-    // UAV 出力 (CS ステージ)
-    ID3D11UnorderedAccessView* uavs[2] = { nullptr, nullptr };
-    for (uint32_t i = 0; i < 2; ++i)
+    // StructuredBuffer SRV (t14〜t15)
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.srvBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.srvBuffers[i]);
+        if (!sb) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+        m_context->CSSetShaderResources(14 + i, 1, &srv);
+    }
+
+    // WHY: DX11 SM5.0 の CS UAV スロットは u0〜u7 の 8 本。
+    //      テクスチャ UAV (uavOutputs) は登録インデックス = スロット番号 で直接バインドする。
+    //      RWStructuredBuffer (uavBuffers) は u2〜 に固定配置 (Binding.hlsli の UAV_GPU_PARTICLES 等)。
+    //      以前は u0/u1 しか処理しておらず、SSR/MotionBlur/GTAO 等のテクスチャ UAV が
+    //      全て無視されていた。u0〜u7 を一括バインドするよう修正する。
+    ID3D11UnorderedAccessView* uavs[8] = {};
+    for (uint32_t i = 0; i < 8 && i < static_cast<uint32_t>(call.uavOutputs.size()); ++i)
     {
         if (auto* texture = resources.Get(call.uavOutputs[i]))
             uavs[i] = static_cast<DX11Texture*>(texture)->GetUAV();
     }
-    m_context->CSSetUnorderedAccessViews(0, 2, uavs, nullptr);
+    // RWStructuredBuffer は u2 から順に配置 (UAV_GPU_PARTICLES = u2)
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.uavBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.uavBuffers[i]);
+        if (!sb) continue;
+        uavs[2 + i] = static_cast<DX11StructuredBuffer*>(sb)->GetUAV();
+    }
+    m_context->CSSetUnorderedAccessViews(0, 8, uavs, nullptr);
 
     // Dispatch
     m_context->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
 
     // UAV / SRV / CS をアンバインドする (次パスでの SRV 競合を防ぐ)
-    ID3D11UnorderedAccessView* nullUAVs[2] = { nullptr, nullptr };
-    m_context->CSSetUnorderedAccessViews(0, 2, nullUAVs, nullptr);
-    ID3D11ShaderResourceView* nullSRVs[16] = {};
-    m_context->CSSetShaderResources(0, 16, nullSRVs);
+    ID3D11UnorderedAccessView* nullUAVs[8] = {};
+    m_context->CSSetUnorderedAccessViews(0, 8, nullUAVs, nullptr);
+    ID3D11ShaderResourceView* nullSRVs[32] = {};
+    m_context->CSSetShaderResources(0, 32, nullSRVs);
     m_context->CSSetShader(nullptr, nullptr, 0);
 }
 
@@ -299,8 +455,17 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         static_cast<DX11PipelineState*>(pipelineState)->Apply(m_context.Get());
 
     // ---- 2. Shader + InputLayout (VS / PS / IA) --------------------------------
-    if (auto* shader = resources.Get(call.shader))
-        static_cast<DX11Shader*>(shader)->Bind(m_context.Get());
+    auto* boundShader = resources.Get(call.shader);
+    if (boundShader)
+        static_cast<DX11Shader*>(boundShader)->Bind(m_context.Get());
+
+    // WHY: ShadowMap は VS が出した SV_POSITION の深度だけを書き込むパスで、PS は空実装。
+    //      PS を残したまま colorCount=0 の RT に Draw すると RTV 未設定警告が出るため、
+    //      DepthCopy のように PS 側で SV_Depth を生成するパスは除外し、ShadowMap だけ PS を外す。
+    const bool isShadowMapShader = boundShader &&
+        static_cast<DX11Shader*>(boundShader)->GetPath().find("ShadowMap") != std::string::npos;
+    if (m_currentRT && m_currentRT->GetColorCount() == 0 && isShadowMapShader)
+        m_context->PSSetShader(nullptr, nullptr, 0);
 
     // ---- 3. Constant Buffers (VS・PS 両方の同スロットへバインド) ----------------
     // 同じ定数バッファを VS と PS の両方にバインドすることで、
@@ -315,6 +480,11 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
 
     // ---- 4. Textures (SRV → PS ステージ) ----------------------------------------
+    // WHY: DrawCall ごとに未使用スロットを NULL に戻す。
+    //      前の DrawCall の SRV が残ると、次のパスで同じリソースを RTV/DSV として使った際に
+    //      DX11 デバッグレイヤーの HAZARD 警告や意図しないサンプリングが起きる。
+    static ID3D11ShaderResourceView* const kNullSRVs[32] = {};
+    m_context->PSSetShaderResources(0, 32, kNullSRVs);
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
     {
         auto* texture = resources.Get(call.textures[i]);
@@ -340,16 +510,61 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
 
     // ---- 7. Draw (インデックスあり / なしで分岐) -----------------------------------
+    // GPU Instancing: instanceBuffer が指定されていれば、1 インスタンスでも
+    // StructuredBuffer を VS の t0 にバインドして Instanced Draw を使う。
+    // WHY: StructuredBuffer<T> を SV_InstanceID でインデックスする方式は、
+    //      通常 Draw に切り替えると VS が未バインドのインスタンスデータを読み、
+    //      1 個だけ生成された Detail や Particle が描画されなくなるため。
+    const bool isInstanced = call.instanceCount > 0 && call.instanceBuffer.IsValid();
+    if (isInstanced)
+    {
+        if (auto* sb = resources.Get(call.instanceBuffer))
+        {
+            ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+            m_context->VSSetShaderResources(0, 1, &srv);
+        }
+    }
+
+    // VS-readable StructuredBuffer (t14〜t15): GPU パーティクル等の頂点データバッファ
+    // WHY: Draw 発行前にバインドしないと VS がデータを読めない
+    bool hasVsBuffers = false;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(call.vsBuffers.size()); ++i)
+    {
+        auto* sb = resources.Get(call.vsBuffers[i]);
+        if (!sb) continue;
+        ID3D11ShaderResourceView* srv = static_cast<DX11StructuredBuffer*>(sb)->GetSRV();
+        m_context->VSSetShaderResources(14 + i, 1, &srv);
+        hasVsBuffers = true;
+    }
+
     if (auto* indexBuffer = resources.Get(call.indexBuffer))
     {
         // DXGI_FORMAT_R32_UINT: インデックスは uint32_t 固定
         ID3D11Buffer* ib = static_cast<DX11Buffer*>(indexBuffer)->GetBuffer();
         m_context->IASetIndexBuffer(ib, DXGI_FORMAT_R32_UINT, 0);
-        m_context->DrawIndexed(call.indexCount, call.startIndex, static_cast<INT>(call.baseVertex));
+        if (isInstanced)
+            m_context->DrawIndexedInstanced(call.indexCount, call.instanceCount, call.startIndex, static_cast<INT>(call.baseVertex), 0);
+        else
+            m_context->DrawIndexed(call.indexCount, call.startIndex, static_cast<INT>(call.baseVertex));
     }
     else
     {
-        m_context->Draw(call.vertexCount, 0);
+        if (isInstanced)
+            m_context->DrawInstanced(call.vertexCount, call.instanceCount, 0, 0);
+        else
+            m_context->Draw(call.vertexCount, 0);
+    }
+
+    // VS SRV を解除して次パスの競合を防ぐ
+    if (isInstanced)
+    {
+        ID3D11ShaderResourceView* nullSRV = nullptr;
+        m_context->VSSetShaderResources(0, 1, &nullSRV);
+    }
+    if (hasVsBuffers)
+    {
+        ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+        m_context->VSSetShaderResources(14, 2, nullSRVs);
     }
 }
 
@@ -371,8 +586,11 @@ void DX11Renderer::Resize(uint32_t width, uint32_t height)
     m_depthStencilView.Reset();
     m_depthStencilBuffer.Reset();
 
-    HRESULT hr = m_swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("ResizeBuffers 失敗: 0x%08X", (unsigned)hr); return; }
+    // Init() で付けた ALLOW_TEARING は ResizeBuffers 後も明示的に維持する。
+    const UINT swapChainFlags = m_allowTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u;
+    HRESULT hr = m_swapChain->ResizeBuffers(
+        0, width, height, DXGI_FORMAT_UNKNOWN, swapChainFlags);
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("ResizeBuffers failed: 0x%08X", (unsigned)hr); return; }
 
     // 新しいサイズで RTV・DSV を再生成して OM に再バインドする
     if (!CreateRenderTargetView()) return;
@@ -437,7 +655,9 @@ void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)
 {
     // m_samplers のインデックスは SamplerMode の列挙値と一致させている (InitSamplers 参照)
     uint32_t idx = static_cast<uint32_t>(mode);
-    m_context->PSSetSamplers(slot, 1, m_samplers[idx].GetAddressOf());
+    ID3D11SamplerState* sampler = m_samplers[idx].Get();
+    m_context->PSSetSamplers(slot, 1, &sampler);
+    m_context->CSSetSamplers(slot, 1, &sampler);
 }
 
 // =============================================================================
@@ -517,9 +737,12 @@ void DX11Renderer::InitSamplers()
     make(D3D11_FILTER_MIN_MAG_MIP_LINEAR,   D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[5]);
     // [6] CLAMP_POINT
     make(D3D11_FILTER_MIN_MAG_MIP_POINT,    D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[6]);
-    // [7] BORDER_ZERO → PCF 比較サンプラー (SamplerComparisonState / SAMPLER_SHADOW s1)
-    //   LESS_EQUAL: depth <= stored → 1.0 (照らされている)
-    //   境界色 1.0: ライト錐台外は常に照らされている (影なし) にする
+    // [7] BORDER_ONE → PCF 比較サンプラー (SamplerComparisonState / SAMPLER_SHADOW s1)
+    //   LESS_EQUAL: stored(ブロッカー深度) <= receiver_depth → 1.0 (照らされている)
+    //   WHY: DirectX の shadow map は depth test LESS で書かれるため、より遠い(大きい)値が
+    //        ブロッカー = 手前ではなく奥側。depth - bias で自己影を防ぎつつ LESS_EQUAL で判定。
+    //   境界色 1.0: ライト錐台外サンプルは stored=1.0 → 常に 1.0(lit) を返させる意図だが、
+    //               PCF カーネルが境界をまたぐと白四角アーティファクトの原因になる (別途対処)。
     {
         const FLOAT ones[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
         D3D11_SAMPLER_DESC desc  = {};
@@ -530,40 +753,135 @@ void DX11Renderer::InitSamplers()
         memcpy(desc.BorderColor, ones, sizeof(desc.BorderColor));
         m_device->CreateSamplerState(&desc, m_samplers[7].GetAddressOf());
     }
+    // [8] WRAP_ANISOTROPIC_4X — 地形ディフューズ用。x16 の約 1/3 コストで
+    //   斜め方向の縦縞ノイズを抑えつつ、全画素に 16x を掛ける過剰品質を回避する。
+    make(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP, 4, nullptr, m_samplers[8]);
 }
 
 // =============================================================================
-// ImGui バックエンド
 // =============================================================================
 
-void DX11Renderer::ImGuiInit(void* hwnd)
+// =============================================================================
+// GPU Timestamp Query プロファイリング
+// =============================================================================
+
+void DX11Renderer::InitGpuQueryFrame(GpuQueryFrame& frame)
 {
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(m_device.Get(), m_context.Get());
+    // WHY: クエリオブジェクトは生成コストがあるため、フレームごとではなく初回のみ生成する。
+    //      GPU_QUERY_LATENCY フレーム分を事前に生成し、リングバッファで循環させる。
+    D3D11_QUERY_DESC disjDesc = {};
+    disjDesc.Query            = D3D11_QUERY_TIMESTAMP_DISJOINT;
+    m_device->CreateQuery(&disjDesc, frame.disjoint.GetAddressOf());
+
+    D3D11_QUERY_DESC tsDesc = {};
+    tsDesc.Query            = D3D11_QUERY_TIMESTAMP;
+    for (int i = 0; i < GPU_MAX_PASSES; ++i) {
+        m_device->CreateQuery(&tsDesc, frame.beginTs[i].GetAddressOf());
+        m_device->CreateQuery(&tsDesc, frame.endTs[i].GetAddressOf());
+    }
 }
 
-void DX11Renderer::ImGuiShutdown()
+void DX11Renderer::GpuProfBeginFrame()
 {
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.disjoint)
+        InitGpuQueryFrame(frame);
+
+    // 前回の結果がまだ GetData で読み出されていない場合は Begin を呼ばない。
+    // 呼ぶと D3D11 QUERY_BEGIN_ABANDONING_PREVIOUS_RESULTS 警告が発生する。
+    if (!frame.collected) {
+        frame.begun = false;
+        return;
+    }
+
+    frame.count     = 0;
+    frame.begun     = true;
+    frame.ended     = false;
+    frame.collected = false;
+
+    // TIMESTAMP_DISJOINT クエリで GPU クロック周波数の一貫性を保証する。
+    // Begin 〜 End の間に発行した TIMESTAMP クエリが有効かどうかも disjoint 結果で判断する。
+    m_context->Begin(frame.disjoint.Get());
 }
 
-void DX11Renderer::ImGuiNewFrame()
+void DX11Renderer::GpuProfEndFrame()
 {
-    ImGui_ImplDX11_NewFrame();
-    ImGui_ImplWin32_NewFrame();
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.begun) return;
+
+    m_context->End(frame.disjoint.Get());
+    frame.ended = true;
+
+    // 書き込みインデックスを次のフレームへ進める
+    m_gpuWriteIdx = (m_gpuWriteIdx + 1) % GPU_QUERY_LATENCY;
+    if (m_gpuFilled < GPU_QUERY_LATENCY)
+        ++m_gpuFilled;
 }
 
-void DX11Renderer::ImGuiRenderDrawData()
+void DX11Renderer::GpuProfBeginPass(const char* name)
 {
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.begun || frame.count >= GPU_MAX_PASSES) return;
+
+    const int idx = frame.count;
+    // strncpy_s: バッファオーバーランを防ぐ。名前が長い場合は末尾を切り捨てる。
+    strncpy_s(frame.names[idx], sizeof(frame.names[idx]),
+              name ? name : "Unknown", _TRUNCATE);
+
+    // パス開始直前のタイムスタンプを GPU コマンドキューに積む。
+    // WHY: End() を Begin() のように使うのが D3D11 Timestamp クエリの慣例。
+    m_context->End(frame.beginTs[idx].Get());
 }
 
-void* DX11Renderer::GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot)
+void DX11Renderer::GpuProfEndPass(const char* /*name*/)
 {
-    auto* target = resources.Get(rt);
-    if (!target) return nullptr;
-    return target->GetNativeSRV(slot);
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuWriteIdx];
+    if (!frame.begun || frame.count >= GPU_MAX_PASSES) return;
+
+    m_context->End(frame.endTs[frame.count].Get());
+    ++frame.count;
+}
+
+void DX11Renderer::GpuProfCollect()
+{
+    m_gpuResults.clear();
+
+    // QUERY_LATENCY フレーム分溜まるまで収集しない。
+    // WHY: GPU が処理しきれていないフレームの結果を読もうとすると GetData がビジー待ちになりパフォーマンス劣化する。
+    if (m_gpuFilled < GPU_QUERY_LATENCY) return;
+
+    GpuQueryFrame& frame = m_gpuFrames[m_gpuCollectIdx];
+    if (!frame.ended) return;
+
+    // D3D11_ASYNC_GETDATA_DONOTFLUSH: フラッシュを避けてノンブロッキングで読む。
+    // まだ GPU が終わっていない場合は S_FALSE が返り、その周のフレームをスキップする。
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjData = {};
+    HRESULT hr = m_context->GetData(frame.disjoint.Get(), &disjData,
+                                    sizeof(disjData), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    if (hr != S_OK || disjData.Disjoint) {
+        // GPU クロックが不安定 (リモートデスクトップ切替等) な場合は Disjoint = true になる。
+        // スキップしてインデックスは進めない (次フレームで再試行)。
+        return;
+    }
+
+    const double freqMs = static_cast<double>(disjData.Frequency) / 1000.0;
+
+    for (int i = 0; i < frame.count; ++i) {
+        UINT64 tsBegin = 0, tsEnd = 0;
+        hr = m_context->GetData(frame.beginTs[i].Get(), &tsBegin,
+                                sizeof(UINT64), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (hr != S_OK) continue;
+
+        hr = m_context->GetData(frame.endTs[i].Get(), &tsEnd,
+                                sizeof(UINT64), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (hr != S_OK) continue;
+
+        const double gpuMs = static_cast<double>(tsEnd - tsBegin) / freqMs;
+        m_gpuResults.push_back({ frame.names[i], gpuMs });
+    }
+
+    frame.collected = true;
+    m_gpuCollectIdx = (m_gpuCollectIdx + 1) % GPU_QUERY_LATENCY;
 }
 
 } // namespace fbzz::renderer

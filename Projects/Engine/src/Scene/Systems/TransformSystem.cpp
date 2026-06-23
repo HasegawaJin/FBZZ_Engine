@@ -1,7 +1,10 @@
 // FBZZ Engine
 // TransformSystem.cpp | fbzz::scene
-// 親子階層を BFS で走査し、world 空間の position / rotation を計算する
+// 親子階層のワールド Transform 更新
+// ルートから BFS で辿り、ローカル値からワールドの position / rotation を再計算する。
+// 循環しない親子関係を前提にする。
 #include "Engine/Scene/Systems/TransformSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include <queue>
 
@@ -12,26 +15,60 @@ static void UpdateWorldTransform(GameObject& go, const Transform* parentTransfor
 
     if (parentTransform) {
         math::Vector3 scaledLocal = {
-            tf.localPosition.x * parentTransform->worldScale.x,
-            tf.localPosition.y * parentTransform->worldScale.y,
-            tf.localPosition.z * parentTransform->worldScale.z
+            tf.position.x * parentTransform->worldScale.x,
+            tf.position.y * parentTransform->worldScale.y,
+            tf.position.z * parentTransform->worldScale.z
         };
-        tf.rotation   = (parentTransform->rotation * tf.localRotation).Normalized();
-        tf.position   = parentTransform->position + parentTransform->rotation * scaledLocal;
+        tf.worldRotation   = (parentTransform->worldRotation * tf.rotation).Normalized();
+        tf.worldPosition   = parentTransform->worldPosition + parentTransform->worldRotation * scaledLocal;
         tf.worldScale = {
-            parentTransform->worldScale.x * tf.localScale.x,
-            parentTransform->worldScale.y * tf.localScale.y,
-            parentTransform->worldScale.z * tf.localScale.z
+            parentTransform->worldScale.x * tf.scale.x,
+            parentTransform->worldScale.y * tf.scale.y,
+            parentTransform->worldScale.z * tf.scale.z
         };
     } else {
-        tf.rotation   = tf.localRotation;
-        tf.position   = tf.localPosition;
-        tf.worldScale = tf.localScale;
+        tf.worldRotation   = tf.rotation;
+        tf.worldPosition   = tf.position;
+        tf.worldScale = tf.scale;
     }
 }
 
-void TransformSystem(Scene& scene) {
+ComponentAccess TransformSystem::GetAccess() const
+{
+    return ComponentAccess{}.Unrestricted();
+}
+
+void TransformSystem::Update(SystemContext& ctx)
+{
+    Scene& scene = ctx.scene;
     // ルート (親なし) から BFS で子孫を更新する
+    std::queue<GameObject*> queue;
+
+    for (GameObject& go : scene.GameObjects())
+        if (!go.GetParent())
+            queue.push(&go);
+
+    while (!queue.empty()) {
+        GameObject* go = queue.front();
+        queue.pop();
+
+        Transform* parentTf = nullptr;
+        if (auto* parent = go->GetParent())
+            parentTf = &parent->transform;
+
+        UpdateWorldTransform(*go, parentTf);
+
+        for (int i = 0; i < go->GetChildCount(); ++i)
+            if (auto* child = go->GetChild(i))
+                queue.push(child);
+    }
+}
+
+
+void FlushWorldTransforms(Scene& scene)
+{
+    // スケジューラを経由しないため SystemContext は不要。
+    // BFS でルートから辿り、TransformSystem::Update と同じ計算を実行する。
     std::queue<GameObject*> queue;
 
     for (GameObject& go : scene.GameObjects())

@@ -20,15 +20,16 @@ Quaternion Quaternion::FromAxisAngle(const Vector3& axis, float angleRad) {
 }
 
 Quaternion Quaternion::FromEuler(const Vector3& eulerRad) {
-    // 乗算順 X*Y*Z → 列ベクトルへの適用順は Z(Roll) → Y(Yaw) → X(Pitch)
+    // YXZ 内因順 (Qy * Qx * Qz): Y(Yaw) → X(Pitch) → Z(Roll)
+    // X が中間角になるため Pitch が ±90° に制約され、Yaw は任意範囲を扱える。
     float cx = std::cos(eulerRad.x * 0.5f), sx = std::sin(eulerRad.x * 0.5f);
     float cy = std::cos(eulerRad.y * 0.5f), sy = std::sin(eulerRad.y * 0.5f);
     float cz = std::cos(eulerRad.z * 0.5f), sz = std::sin(eulerRad.z * 0.5f);
     return {
-        sx * cy * cz + cx * sy * sz,
-        cx * sy * cz - sx * cy * sz,
-        cx * cy * sz + sx * sy * cz,
-        cx * cy * cz - sx * sy * sz
+         cy * sx * cz + sy * cx * sz,
+        -cy * sx * sz + sy * cx * cz,
+         cy * cx * sz - sy * sx * cz,
+         cy * cx * cz + sy * sx * sz
     };
 }
 
@@ -100,6 +101,7 @@ Quaternion Quaternion::operator*(const Quaternion& rhs) const {
     };
 }
 
+// q*v*q^-1 の展開形: v + 2w(q×v) + 2(q×(q×v)) — フル四元数乗算より乗算回数が少ない
 Vector3 Quaternion::operator*(const Vector3& v) const {
     Vector3 qv  = {x, y, z};
     Vector3 t   = Vector3::Cross(qv, v) * 2.0f;

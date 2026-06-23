@@ -16,6 +16,10 @@ namespace fbzz::physics
         return std::sqrt(a.dynamicFriction * b.dynamicFriction);
     }
 
+    float PhysicsMaterial::CombineStaticFriction(const PhysicsMaterial& a, const PhysicsMaterial& b) {
+        return std::sqrt(a.staticFriction * b.staticFriction);
+    }
+
     const PhysicsMaterial PhysicsMaterial::Default = { 0.3f, 0.6f, 0.4f, 1.0f };
     const PhysicsMaterial PhysicsMaterial::Rubber  = { 0.8f, 1.0f, 0.9f, 1.2f };
     const PhysicsMaterial PhysicsMaterial::Ice     = { 0.05f, 0.05f, 0.02f, 0.9f };

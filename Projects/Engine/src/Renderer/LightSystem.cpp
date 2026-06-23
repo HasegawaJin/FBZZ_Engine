@@ -1,6 +1,8 @@
 // FBZZ Engine
 // LightSystem.cpp | fbzz::renderer
-// DirectionalLight / PointLight / SpotLight の管理と定数バッファ転送
+// ライト配列の管理と定数バッファ転送
+// Directional / Point / Spot を HLSL の cbuffer レイアウトへ詰める。
+// 個数上限はシェーダー側の配列サイズと一致させる。
 #include "Engine/Renderer/LightSystem.hpp"
 #include <algorithm>
 #include <cassert>

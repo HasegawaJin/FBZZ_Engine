@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Logger.hpp | fbzz::core
-// Log output with file and line metadata
+// ファイル名と行番号を含むログ出力
+// マクロ経由で呼ぶと呼び出し位置を LogEntry に残せる。
+// ログ出力先は非所有参照として扱い、Logger は所有しない。
 #pragma once
 #include <cstdarg>
 #include <cstring>
@@ -8,16 +10,20 @@
 
 namespace fbzz::core {
 
-enum class LogLevel { INFO = 0, WARNING = 1, LOG_ERROR = 2 };
+// DEBUG < INFO < WARNING < LOG_ERROR の順で重要度が上がる。
+// SetMinLevel(INFO) がデフォルト。DEBUG はエディタの Console で個別に有効化する。
+enum class LogLevel { DEBUG = 0, INFO = 1, WARNING = 2, LOG_ERROR = 3 };
 
 class ILogSink;
 
 class Logger {
 public:
+    static void Debug(const char* fmt, ...);
     static void Info (const char* fmt, ...);
     static void Warn (const char* fmt, ...);
     static void Error(const char* fmt, ...);
 
+    static void DebugAt(const char* file, int line, const char* fmt, ...);
     static void InfoAt (const char* file, int line, const char* fmt, ...);
     static void WarnAt (const char* file, int line, const char* fmt, ...);
     static void ErrorAt(const char* file, int line, const char* fmt, ...);
@@ -37,12 +43,16 @@ private:
 
 #define FBZZ_FILENAME (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
 
+// FBZZ_LOG_DEBUG は Release で無効 (パフォーマンスに敏感な詳細ログ)
+// INFO / WARN / ERROR は Debug・Release 共通で有効
+// WHY: Unity のエディタと同様に、リリースビルドでも重要なイベント・警告・
+//      エラーをログで確認できるようにする。DEBUG だけを開発専用とする。
 #ifdef NDEBUG
-    #define FBZZ_LOG_INFO(...)  ((void)0)
-    #define FBZZ_LOG_WARN(...)  ((void)0)
-    #define FBZZ_LOG_ERROR(...) ((void)0)
+    #define FBZZ_LOG_DEBUG(...) ((void)0)
 #else
-    #define FBZZ_LOG_INFO(...)  ::fbzz::core::Logger::InfoAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
-    #define FBZZ_LOG_WARN(...)  ::fbzz::core::Logger::WarnAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
-    #define FBZZ_LOG_ERROR(...) ::fbzz::core::Logger::ErrorAt(FBZZ_FILENAME, __LINE__, __VA_ARGS__)
+    #define FBZZ_LOG_DEBUG(...) ::fbzz::core::Logger::DebugAt(FBZZ_FILENAME, __LINE__, __VA_ARGS__)
 #endif
+
+#define FBZZ_LOG_INFO(...)  ::fbzz::core::Logger::InfoAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
+#define FBZZ_LOG_WARN(...)  ::fbzz::core::Logger::WarnAt (FBZZ_FILENAME, __LINE__, __VA_ARGS__)
+#define FBZZ_LOG_ERROR(...) ::fbzz::core::Logger::ErrorAt(FBZZ_FILENAME, __LINE__, __VA_ARGS__)

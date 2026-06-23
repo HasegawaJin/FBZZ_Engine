@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Input.cpp | fbzz::input
 // 入力状態の更新と照会
+// Win32 メッセージで現在状態を更新し、Update で前フレーム状態を保存する。
+// KeyDown / MouseButtonDown は現在と前回の差分から判定する。
 #include "Engine/Input/Input.hpp"
 
 #include <windowsx.h>
@@ -17,10 +19,18 @@ float                              Input::s_scrollDelta   = 0.0f;
 
 void Input::Init()
 {
+    Reset();
+}
+
+void Input::Reset()
+{
     s_current.fill(false);
     s_previous.fill(false);
     s_mouseCurrent.fill(false);
     s_mousePrevious.fill(false);
+    s_mousePos     = {};
+    s_prevMousePos = {};
+    s_scrollDelta  = 0.0f;
 }
 
 void Input::Update()
@@ -69,7 +79,10 @@ void Input::HandleMouseMove(int x, int y)
     s_mousePos = { static_cast<float>(x), static_cast<float>(y) };
 }
 
-float Input::MouseScrollDelta() { return s_scrollDelta; }
+float Input::MouseScrollDelta()
+{
+    return s_scrollDelta;
+}
 
 void Input::HandleMouseScroll(float delta) { s_scrollDelta += delta; }
 
@@ -77,12 +90,12 @@ void Input::HandleMouseButton(UINT msg)
 {
     switch (msg)
     {
-    case WM_LBUTTONDOWN: s_mouseCurrent[0] = true;  break;
-    case WM_LBUTTONUP:   s_mouseCurrent[0] = false; break;
-    case WM_RBUTTONDOWN: s_mouseCurrent[1] = true;  break;
-    case WM_RBUTTONUP:   s_mouseCurrent[1] = false; break;
-    case WM_MBUTTONDOWN: s_mouseCurrent[2] = true;  break;
-    case WM_MBUTTONUP:   s_mouseCurrent[2] = false; break;
+    case WM_LBUTTONDOWN: s_mouseCurrent[0] = true;  s_current[VK_LBUTTON] = true;  break;
+    case WM_LBUTTONUP:   s_mouseCurrent[0] = false; s_current[VK_LBUTTON] = false; break;
+    case WM_RBUTTONDOWN: s_mouseCurrent[1] = true;  s_current[VK_RBUTTON] = true;  break;
+    case WM_RBUTTONUP:   s_mouseCurrent[1] = false; s_current[VK_RBUTTON] = false; break;
+    case WM_MBUTTONDOWN: s_mouseCurrent[2] = true;  s_current[VK_MBUTTON] = true;  break;
+    case WM_MBUTTONUP:   s_mouseCurrent[2] = false; s_current[VK_MBUTTON] = false; break;
     }
 }
 

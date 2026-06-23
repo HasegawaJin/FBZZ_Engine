@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11Renderer.hpp | fbzz::renderer
-// IRenderer の DX11 実装 — デバイス・スワップチェーン・フレーム管理
+// IRenderer の DX11 実装
+// DX11 固有のデバイスオブジェクトと各種バインド処理を保持する。
+// Application からは IRenderer として所有される。
 //
 // 設計方針:
 //   上位レイヤー (Application / Sandbox) は IRenderer& のみを参照し、
@@ -18,9 +20,12 @@
 #include <wrl/client.h>
 #include <cstdint>
 #include <memory>
+
 #include <Engine/Renderer/IRenderer.hpp>
 #include "DX11Buffer.hpp"
+#include "DX11IblBaker.hpp"
 #include "DX11RenderTarget.hpp"
+#include "DX11StructuredBuffer.hpp"
 
 namespace fbzz::renderer
 {
@@ -32,12 +37,12 @@ public:
     bool Init(HWND hwnd, std::uint32_t width, std::uint32_t height);
 
     // ClearState() でパイプラインをリセットしてから ComPtr が自動解放する
-    void Shutdown();
+    void Shutdown() override;
 
     // OM に RTV + DSV をバインドし直す (SetRenderTarget() 後のフレーム先頭で呼ぶ)
     void BeginFrame() override;
 
-    // スワップチェーンを Present して画面に反映する (VSyncあり: interval=1)
+    // Present the swap chain. Frame pacing is controlled by Time.
     void EndFrame() override;
 
     // RTV と DSV を指定色でクリアする (現在バインド中の RT に対して動作する)
@@ -61,32 +66,81 @@ public:
     // スロット番号に対応するサンプラープリセットをバインドする
     void SetSampler(uint32_t slot, SamplerMode mode) override;
 
-    // ImGui バックエンド (imgui_impl_dx11 / imgui_impl_win32)
-    void  ImGuiInit(void* hwnd)   override;
-    void  ImGuiShutdown()         override;
-    void  ImGuiNewFrame()         override;
-    void  ImGuiRenderDrawData()   override;
-    void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) override;
+    // GPU プロファイリング (D3D11_QUERY_TIMESTAMP_DISJOINT / D3D11_QUERY_TIMESTAMP)
+    // QUERY_LATENCY フレーム遅延のリングバッファ方式で非同期計測する。
+    void GpuProfBeginFrame()                    override;
+    void GpuProfEndFrame()                      override;
+    void GpuProfBeginPass(const char* name)     override;
+    void GpuProfEndPass(const char* name)       override;
+    void GpuProfCollect()                       override;
+    const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuResults; }
 
     uint32_t GetWidth()  const override { return m_width;  }
     uint32_t GetHeight() const override { return m_height; }
+
+    // IBL ベイク処理のファクトリー (Editor 専用)
+    // DX11IblBaker に device / context を渡して返す
+    std::unique_ptr<IIblBaker> CreateIblBaker() override {
+        return std::make_unique<DX11IblBaker>(m_device.Get(), m_context.Get());
+    }
 
     // DX11Buffer 等の DX11 サブシステムが Init 時にデバイスを必要とする場合に使用
     ID3D11Device*        GetDevice()       const { return m_device.Get(); }
     ID3D11DeviceContext* GetDeviceContext() const { return m_context.Get(); }
 
 private:
-    std::shared_ptr<IBuffer>         CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) override;
-    std::shared_ptr<IBuffer>         CreateNativeIndexBuffer(const void* data, uint32_t count) override;
-    std::shared_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) override;
-    std::shared_ptr<IShader>         CreateNativeShader(const std::string& path) override;
-    std::shared_ptr<ITexture>        CreateNativeTexture(const std::string& path) override;
-    std::shared_ptr<ITexture>        CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) override;
-    std::shared_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
-    std::shared_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
-    std::shared_ptr<ITexture>        CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+    std::unique_ptr<IBuffer>         CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) override;
+    std::unique_ptr<IBuffer>         CreateNativeIndexBuffer(const void* data, uint32_t count) override;
+    std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) override;
+    std::unique_ptr<IShader>         CreateNativeShader(const std::string& path) override;
+    std::unique_ptr<ITexture>        CreateNativeTexture(const std::string& path) override;
+    std::unique_ptr<ITexture>        CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>        CreateNativeTexture3DFromData(
+        const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth) override;
+    std::unique_ptr<ITexture>        CreateNativeTextureFromRenderTarget(
+        IRenderTarget& rt,
+        uint32_t index,
+        RenderTargetTextureKind kind) override;
+    std::unique_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
+    std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
+    std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
+    std::unique_ptr<IStructuredBuffer>  CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
+    std::unique_ptr<IStructuredBuffer>  CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
 
     void BindRenderTarget(IRenderTarget* rt);
+
+    // -------------------------------------------------------------------------
+    // GPU Timestamp Query プール
+    // -------------------------------------------------------------------------
+    // WHY: D3D11 の GPU クエリ結果は発行した数フレーム後にしか CPU から読めない。
+    //      QUERY_LATENCY フレーム分の Query オブジェクトをリングバッファで循環させ、
+    //      毎フレーム GpuProfCollect() で古いフレームの結果を取り出す。
+    static constexpr int GPU_QUERY_LATENCY = 3;
+    static constexpr int GPU_MAX_PASSES    = 32;
+
+    struct GpuQueryFrame {
+        Microsoft::WRL::ComPtr<ID3D11Query> disjoint;
+        Microsoft::WRL::ComPtr<ID3D11Query> beginTs[GPU_MAX_PASSES];
+        Microsoft::WRL::ComPtr<ID3D11Query> endTs[GPU_MAX_PASSES];
+        char                                names[GPU_MAX_PASSES][64];
+        int                                 count     = 0;
+        bool                                begun     = false;
+        bool                                ended     = false;
+        // WHY: GetData が S_FALSE を返して収集をスキップしたまま書き込みインデックスが
+        //      一周してきた場合、Begin() を呼ぶと D3D11 の ABANDONING_PREVIOUS_RESULTS
+        //      警告が発生する。collected フラグで「まだ読んでいない」スロットへの
+        //      上書きを防ぎ、そのフレームの GPU 計測を安全にスキップする。
+        bool                                collected = true;
+    };
+
+    GpuQueryFrame            m_gpuFrames[GPU_QUERY_LATENCY];
+    int                      m_gpuWriteIdx   = 0;  // 現在書き込んでいるフレームのインデックス
+    int                      m_gpuCollectIdx = 0;  // 次に読み出すフレームのインデックス
+    int                      m_gpuFilled     = 0;  // 書き終えたフレーム数 (latency に達するまで収集しない)
+    std::vector<GpuPassProfile> m_gpuResults;
+
+    // GPU Timestamp クエリを初期化する (BeginFrame の遅延初期化から呼ぶ)
+    void InitGpuQueryFrame(GpuQueryFrame& frame);
 
     Microsoft::WRL::ComPtr<ID3D11Device>           m_device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext>    m_context;
@@ -96,13 +150,17 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Texture2D>        m_depthStencilBuffer;
 
     // SamplerMode::COUNT 個のプリセットを Init 時に一括生成してキャッシュする
-    Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplers[8];
+    Microsoft::WRL::ComPtr<ID3D11SamplerState>
+        m_samplers[static_cast<int>(SamplerMode::COUNT)];
 
     // 現在バインド中のオフスクリーン RT (nullptr = バックバッファ)
     DX11RenderTarget* m_currentRT = nullptr;
 
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
+
+    // VSync 無効時に DWM の表示周期待ちを避けられるかを Init() で検出する。
+    bool m_allowTearing = false;
 
     // --- Init 内部ヘルパー ---
     bool CreateRenderTargetView();

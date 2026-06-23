@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11PipelineState.cpp | fbzz::renderer
-// DX11 パイプラインステート (ラスタライザ・ブレンド・深度ステンシル) 管理
+// DX11 パイプラインステート管理
+// Rasterizer / Blend / DepthStencil の各 state を RenderState から生成する。
+// DX11 の分割された state を Engine 側の PipelineState としてまとめる。
 #include "DX11PipelineState.hpp"
 #include <Engine/Core/HResult.hpp>
 
@@ -20,8 +22,12 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
         D3D11_RASTERIZER_DESC rsDesc = {};
         rsDesc.FillMode              = (desc.rasterizer == RasterizerMode::WIREFRAME)
                                        ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID;
-        rsDesc.CullMode              = (desc.rasterizer == RasterizerMode::SOLID_NOCULL)
-                                       ? D3D11_CULL_NONE : D3D11_CULL_BACK;
+        if (desc.rasterizer == RasterizerMode::SOLID_NOCULL)
+            rsDesc.CullMode = D3D11_CULL_NONE;
+        else if (desc.rasterizer == RasterizerMode::SOLID_FRONT_CULL)
+            rsDesc.CullMode = D3D11_CULL_FRONT;
+        else
+            rsDesc.CullMode = D3D11_CULL_BACK;
         rsDesc.FrontCounterClockwise = FALSE;
         rsDesc.DepthClipEnable       = TRUE;  // ビューフラスタム外のジオメトリをクリップ
 
@@ -33,7 +39,7 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
     //   RenderTarget[0] のみ設定。ブレンド方程式:
     //     ALPHA_BLEND : out = src.rgb * src.a + dst.rgb * (1 - src.a)  (標準アルファ合成)
     //     ADDITIVE    : out = src.rgb * src.a + dst.rgb                 (加算。エフェクト向け)
-    //     OPAQUE      : ブレンドなし (最も高速)
+    //     OPAQUE_BLEND : ブレンドなし (最も高速)
     // -------------------------------------------------------------------------
     {
         D3D11_BLEND_DESC bsDesc = {};
@@ -62,7 +68,7 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
             rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
             break;
 
-        default: // OPAQUE
+        default: // OPAQUE_BLEND
             rt.BlendEnable = FALSE;
             break;
         }

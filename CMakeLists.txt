@@ -1,28 +1,69 @@
 cmake_minimum_required(VERSION 3.25)
 project(FBZZ_Engine VERSION 0.1.0 LANGUAGES CXX)
 
-# C++ バージョン指定
+# C++ standard
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON) # 必須にする
-set(CMAKE_CXX_EXTENSIONS OFF) # 拡張機能を無効にする
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # コンパイルコマンドを出力
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# MSVC: ソースを UTF-8 として読む (BOM なし環境でも日本語コメントが壊れない)
+# Development: 最適化ON + デバッグシンボルあり + NDEBUG なし（アサート有効）
+if(CMAKE_GENERATOR MATCHES "Visual Studio")
+    set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
+endif()
+set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1"                CACHE STRING "Development CXX flags"        FORCE)
+set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development EXE linker flags" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development DLL linker flags" FORCE)
+
+# RuntimeBuild は build.config に記録した成果物パスから SandboxStandalone.exe をコピーする。
+# WHY: Visual Studio は Debug / Release で出力先が分かれるため、全ターゲットの exe 出力を明示して
+#      エディタから見た成果物パスを安定させる。
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Binaries/Debug")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Binaries/Release")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Binaries/Debug")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Binaries/Release")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Lib")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/Lib/Debug")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/Lib/Release")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Lib/Development")
+
+set(FBZZ_RUNTIME_BUILD_EXE_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/SandboxStandalone.exe")
+set(FBZZ_RUNTIME_BUILD_EXE_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/SandboxStandalone.exe")
+set(FBZZ_RUNTIME_BUILD_EXE_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/SandboxStandalone.exe")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/SandboxScripts.dll")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/SandboxScripts.dll")
+set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/SandboxScripts.dll")
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/CMake/build.config.in"
+    "${CMAKE_BINARY_DIR}/build.config"
+    @ONLY
+)
+
+# MSVC source files are UTF-8.
 if(MSVC)
-    add_compile_options(/utf-8)
+    add_compile_options(/utf-8 /MP)
 endif()
 
-# サブフォルダを追加 (依存順: math → physics → engine → editor → sandbox)
+# Add subdirectories in dependency order.
 add_subdirectory(ThirdParty)
 add_subdirectory(Projects/Math)
 add_subdirectory(Projects/Physics)
 add_subdirectory(Projects/Engine)
 add_subdirectory(Projects/Editor)
+add_subdirectory(Projects/EditorLauncher)
+add_subdirectory(Projects/GameHub)
 add_subdirectory(Projects/Sandbox)
+
+# VS ソリューションを開いたときのデフォルトスタートアッププロジェクトを sandbox に設定する
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT sandbox)
 
 option(FBZZ_BUILD_TESTS "Build unit tests" ON)
 if(FBZZ_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Projects/Tests)
 endif()
-

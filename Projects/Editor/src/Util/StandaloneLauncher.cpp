@@ -1,0 +1,64 @@
+// FBZZ Engine
+// StandaloneLauncher.cpp | fbzz::editor
+// CreateProcess による子プロセス起動の実装
+#include <Editor/Util/StandaloneLauncher.hpp>
+
+#include <Engine/Util/StringUtils.hpp>
+
+#include <Windows.h>
+#include <string>
+
+namespace fbzz::editor {
+
+namespace {
+
+using fbzz::util::StringUtils;
+
+// CreateProcess を呼び出してプロセスを起動する汎用ヘルパー。
+// WHY: CreateProcess の lpCommandLine は書き込み可能バッファを要求するため、
+//      wstring のコピーを data() で渡す。
+bool SpawnProcess(std::wstring cmdLine, const std::wstring& workingDir)
+{
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+
+    const LPCWSTR workDir = workingDir.empty() ? nullptr : workingDir.c_str();
+
+    const BOOL ok = CreateProcessW(
+        nullptr,
+        cmdLine.data(),   // コピーを渡す (書き込み可能バッファ)
+        nullptr, nullptr,
+        FALSE, 0,
+        nullptr,
+        workDir,
+        &si, &pi);
+
+    if (ok) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+    return ok != FALSE;
+}
+
+} // namespace
+
+bool StandaloneLauncher::Launch(const std::string& exePath, const std::string& projectPath)
+{
+    // コマンドライン: "<exePath>" --project "<projectPath>" --standalone
+    std::wstring cmd =
+        L"\"" + StringUtils::ToWide(exePath) + L"\""
+        L" --project \"" + StringUtils::ToWide(projectPath) + L"\""
+        L" --standalone";
+
+    return SpawnProcess(std::move(cmd), {});
+}
+
+bool StandaloneLauncher::LaunchExe(const std::string& exePath, const std::string& workingDir)
+{
+    // WHY: ビルド済み配布版は引数なしで起動すると .fbzz_proj を自動検出して Standalone モードになる。
+    std::wstring cmd = L"\"" + StringUtils::ToWide(exePath) + L"\"";
+    return SpawnProcess(std::move(cmd), StringUtils::ToWide(workingDir));
+}
+
+} // namespace fbzz::editor

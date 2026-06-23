@@ -11,7 +11,8 @@ namespace fbzz::physics
     class Collider;
     struct PhysicsMaterial;
 
-    // World が bodies を生存管理するため raw pointer で保持する
+    // World が bodies を生存管理するため raw pointer で保持する。
+    // normal は bodyB から bodyA へ押し戻す向きで統一する。
     struct ContactPoint {
         math::Vector3 point;   // 衝突点 (ワールド座標)
         math::Vector3 normal;  // b → a 方向の法線
@@ -29,6 +30,7 @@ namespace fbzz::physics
         math::Vector3 tangent[2];                    // 摩擦平面の 2 軸 (Resolve 冒頭で計算)
         float cachedNormalImpulse       = 0.0f;      // 蓄積法線インパルス (Λn ≥ 0 にクランプ)
         float cachedTangentImpulse[2]   = {0.0f, 0.0f}; // 蓄積摩擦インパルス
+        float positionCorrectionWeight  = 1.0f;
     };
 
 } // namespace fbzz::physics

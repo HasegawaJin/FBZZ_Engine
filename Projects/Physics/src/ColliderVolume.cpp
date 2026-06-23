@@ -1,6 +1,6 @@
 // FBZZ Engine
 // ColliderVolume.cpp | fbzz::physics
-// Trigger collider backed area effects
+// Trigger コライダーを範囲として使う空間効果
 #include <Physics/ColliderVolume.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <Physics/AABBCollider.hpp>
@@ -10,8 +10,8 @@
 
 namespace fbzz::physics
 {
-    ColliderVolume::ColliderVolume(std::shared_ptr<Collider> collider, const VolumeSettings& settings)
-        : m_collider(std::move(collider)), m_settings(settings)
+    ColliderVolume::ColliderVolume(Collider* collider, const VolumeSettings& settings)
+        : m_collider(collider), m_settings(settings)
     {
     }
 
@@ -21,7 +21,7 @@ namespace fbzz::physics
 
         if (m_collider->GetType() == ColliderType::SPHERE)
         {
-            const auto* sphere = static_cast<const SphereCollider*>(m_collider.get());
+            const auto* sphere = static_cast<const SphereCollider*>(m_collider);
             const math::Vector3 center = sphere->GetAABB().Center();
             return (position - center).LengthSq() <= sphere->m_radius * sphere->m_radius;
         }
@@ -34,7 +34,8 @@ namespace fbzz::physics
                    position.z >= aabb.min.z && position.z <= aabb.max.z;
         }
 
-        const auto* capsule = static_cast<const CapsuleCollider*>(m_collider.get());
+        // Capsule は線分上の最近傍点との距離で内外を判定する。
+        const auto* capsule = static_cast<const CapsuleCollider*>(m_collider);
         const math::Vector3 segment = capsule->GetSegmentEnd() - capsule->GetSegmentStart();
         const float lenSq = segment.LengthSq();
         float t = 0.0f;
@@ -54,7 +55,9 @@ namespace fbzz::physics
         switch (m_settings.type)
         {
         case VolumeType::Gravity:
-            body.ApplyForce(m_settings.gravity * body.GetMass());
+            // 継続的な環境力は sleep timer をリセットしない。
+            // WHY: Volume 内に静止している body が毎 substep WakeUp すると、World::Step の sleep early-out が効かない。
+            body.ApplyForceNoWake(m_settings.gravity * body.GetMass());
             break;
         case VolumeType::Vortex:
         {
@@ -62,26 +65,29 @@ namespace fbzz::physics
             const math::Vector3 flat = { toCenter.x, 0.0f, toCenter.z };
             const math::Vector3 inward = flat.LengthSq() > 1e-6f ? flat.Normalized() : math::Vector3::ZERO;
             const math::Vector3 tangent = { -inward.z, 0.0f, inward.x };
-            body.ApplyForce((tangent * m_settings.swirlStrength +
-                             inward * m_settings.inwardStrength +
-                             math::Vector3::UP * m_settings.liftStrength) * body.GetMass());
+            body.ApplyForceNoWake((tangent * m_settings.swirlStrength +
+                                   inward * m_settings.inwardStrength +
+                                   math::Vector3::UP * m_settings.liftStrength) * body.GetMass());
             break;
         }
         case VolumeType::Buoyancy:
-            body.ApplyForce(math::Vector3::UP * (m_settings.buoyancy * body.GetMass()));
-            body.ApplyForce(-body.GetVelocity() * m_settings.drag);
+            body.ApplyForceNoWake(math::Vector3::UP * (m_settings.buoyancy * body.GetMass()));
+            body.ApplyForceNoWake(-body.GetVelocity() * m_settings.drag);
             break;
         case VolumeType::Explosion:
         {
+            // Explosion は継続力ではなく瞬間インパルスとして扱う。
+            // duration が短い Volume と組み合わせて 1 回だけ発火させる想定。
             const math::Vector3 delta = body.GetPosition() - center;
             const math::Vector3 dir = delta.LengthSq() > 1e-6f ? delta.Normalized() : math::Vector3::UP;
             body.ApplyImpulse(dir * m_settings.explosionImpulse);
             break;
         }
         case VolumeType::TimeDilation:
+            // 時間スケールは World 側で effectiveDt に反映済み。
             break;
         case VolumeType::Magnetic:
-            body.ApplyForce(math::Vector3::Cross(body.GetVelocity(), m_settings.magneticField) * body.m_charge);
+            body.ApplyForceNoWake(math::Vector3::Cross(body.GetVelocity(), m_settings.magneticField) * body.m_charge);
             break;
         }
     }

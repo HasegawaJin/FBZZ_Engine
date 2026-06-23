@@ -12,12 +12,18 @@ namespace fbzz::physics
 
     AABB CapsuleCollider::GetAABB() const
     {
-        const math::Vector3 extents = {
-            m_radius,
-            m_halfHeight + m_radius,
-            m_radius
+        const math::Vector3 radiusExtents{ m_radius, m_radius, m_radius };
+        const math::Vector3 minPoint = {
+            m_worldStart.x < m_worldEnd.x ? m_worldStart.x : m_worldEnd.x,
+            m_worldStart.y < m_worldEnd.y ? m_worldStart.y : m_worldEnd.y,
+            m_worldStart.z < m_worldEnd.z ? m_worldStart.z : m_worldEnd.z
         };
-        return { m_worldCenter - extents, m_worldCenter + extents };
+        const math::Vector3 maxPoint = {
+            m_worldStart.x > m_worldEnd.x ? m_worldStart.x : m_worldEnd.x,
+            m_worldStart.y > m_worldEnd.y ? m_worldStart.y : m_worldEnd.y,
+            m_worldStart.z > m_worldEnd.z ? m_worldStart.z : m_worldEnd.z
+        };
+        return { minPoint - radiusExtents, maxPoint + radiusExtents };
     }
 
     void CapsuleCollider::Update(const math::Vector3& worldPos,

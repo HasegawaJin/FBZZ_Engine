@@ -1,9 +1,10 @@
 // FBZZ Engine
 // ConstraintDebugGeometry.cpp | fbzz::physics
-// Constraint debug wire geometry generation
+// 制約可視化用のワイヤージオメトリ生成
 #include <Physics/ConstraintDebugGeometry.hpp>
 #include <Physics/ChainConstraint.hpp>
 #include <Physics/HingeConstraint.hpp>
+#include <Physics/SliderConstraint.hpp>
 
 namespace fbzz::physics
 {
@@ -33,8 +34,8 @@ namespace
         const math::Vector3 center = (anchorA + anchorB) * 0.5f;
         const math::Vector3 axis = hinge.m_axis.Normalized() * 0.35f;
 
-        out.lines.push_back({ anchorA, anchorB });
-        out.lines.push_back({ center - axis, center + axis });
+        out.lines.push_back({ anchorA, anchorB });        // 2 つのアンカーのずれ
+        out.lines.push_back({ center - axis, center + axis }); // ヒンジ軸の向き
     }
 } // namespace
 
@@ -47,12 +48,25 @@ ConstraintDebugGeometry BuildConstraintDebugGeometry(const Constraint& constrain
     case ConstraintType::CHAIN:
         AddChainLines(out, static_cast<const ChainConstraint&>(constraint));
         break;
-    case ConstraintType::HINGE:
-        AddHingeLines(out, static_cast<const HingeConstraint&>(constraint));
-        break;
-    case ConstraintType::DISTANCE:
-    case ConstraintType::SPRING:
-    case ConstraintType::ROPE:
+        case ConstraintType::HINGE:
+            AddHingeLines(out, static_cast<const HingeConstraint&>(constraint));
+            break;
+        case ConstraintType::SLIDER:
+        {
+            const auto& slider = static_cast<const SliderConstraint&>(constraint);
+            if (const RigidBody* bodyA = slider.GetBodyA()) {
+                const math::Vector3 axis = slider.m_axis.Normalized() * 0.5f;
+                out.lines.push_back({ bodyA->GetPosition() - axis, bodyA->GetPosition() + axis });
+            }
+            AddBodyLine(out, constraint.GetBodyA(), constraint.GetBodyB());
+            break;
+        }
+        case ConstraintType::FIXED:
+            AddBodyLine(out, constraint.GetBodyA(), constraint.GetBodyB());
+            break;
+        case ConstraintType::DISTANCE:
+        case ConstraintType::SPRING:
+        case ConstraintType::ROPE:
         AddBodyLine(out, constraint.GetBodyA(), constraint.GetBodyB());
         break;
     }

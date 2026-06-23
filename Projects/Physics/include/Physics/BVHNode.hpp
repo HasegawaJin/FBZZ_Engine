@@ -28,17 +28,17 @@ namespace fbzz::physics
         bool IsLeaf() const { return left == -1; }
     };
 
-    // BVH ツリー本体 (フラット配列で管理)
+    // BVH ツリー本体。再帰ポインタではなくフラット配列で管理し、再構築時の所有を単純にする。
     struct BVHTree
     {
         std::vector<BVHNode> nodes;
         std::vector<Triangle> triangles;
 
-        // ワールド変換済み三角形リストから中点分割で BVH を構築する
-        // maxLeafTris: 葉ノードの最大三角形数
+        // ワールド変換済み三角形リストから中点分割で BVH を構築する。
+        // maxLeafTris は、葉ノードに格納する最大三角形数。
         void Build(std::vector<Triangle>&& tris, int maxLeafTris = 8);
 
-        // AABB と重なる三角形を列挙し predicate を呼ぶ (非再帰 DFS)
+        // AABB と重なる三角形だけを列挙する。非再帰 DFS にして深いメッシュでも C++ の呼び出しスタックを使わない。
         // predicate: void(const Triangle&)
         template<typename Pred>
         void Query(const AABB& queryAABB, Pred&& predicate) const
@@ -59,11 +59,33 @@ namespace fbzz::physics
                 if (node.IsLeaf())
                 {
                     for (uint32_t ti : node.triIndices)
-                        predicate(triangles[ti]);
+                    {
+                        // WHY: 葉ノードは複数三角形をまとめて持つため、葉 AABB が当たっても
+                        //      個別三角形は queryAABB から大きく外れている場合がある。
+                        //      Terrain のような大規模メッシュでは、この軽い AABB 判定で
+                        //      Capsule/Triangle の最近傍計算まで進む候補数を抑える。
+                        const Triangle& tri = triangles[ti];
+                        AABB triAABB;
+                        triAABB.min = tri.v[0];
+                        triAABB.max = tri.v[0];
+                        for (int k = 1; k < 3; ++k)
+                        {
+                            const math::Vector3& v = tri.v[k];
+                            if (v.x < triAABB.min.x) triAABB.min.x = v.x;
+                            if (v.y < triAABB.min.y) triAABB.min.y = v.y;
+                            if (v.z < triAABB.min.z) triAABB.min.z = v.z;
+                            if (v.x > triAABB.max.x) triAABB.max.x = v.x;
+                            if (v.y > triAABB.max.y) triAABB.max.y = v.y;
+                            if (v.z > triAABB.max.z) triAABB.max.z = v.z;
+                        }
+
+                        if (triAABB.Overlaps(queryAABB))
+                            predicate(tri);
+                    }
                 }
                 else
                 {
-                    // スタックオーバーフロー防止 (深さ 64 は maxLeafTris=8 で事実上到達不可)
+                    // 固定長スタックで上限を明示する。maxLeafTris=8 の通常分割では深さ 64 に到達しない想定。
                     if (top + 1 < static_cast<int>(stack.size()))
                     {
                         stack[top++] = node.right;

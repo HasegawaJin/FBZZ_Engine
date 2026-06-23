@@ -1,6 +1,8 @@
 // FBZZ Engine
 // ComponentRegistry.hpp | fbzz::scene
-// 全コンポーネント型を一箇所で登録する。新型を追加するときはここだけ編集する。
+// Scene が扱う全コンポーネント型の登録点
+// 新しい Component 型を追加するときの編集箇所を一箇所に集約する。
+// SceneSerializer や Inspector が同じ型一覧を参照できるようにする。
 #pragma once
 #include "Components/MeshRenderer.hpp"
 #include "Components/MaterialComponent.hpp"
@@ -12,12 +14,36 @@
 #include "Components/CameraComponent.hpp"
 #include "Components/AudioSourceComponent.hpp"
 #include "Components/SkyRenderer.hpp"
+#include "Components/AnimatorComponent.hpp"
+#include "Components/SkinnedMeshRenderer.hpp"
+#include "Components/BoneComponent.hpp"
 #include "Components/UICanvas.hpp"
 #include "Components/UIImage.hpp"
 #include "Components/UIButton.hpp"
 #include "Components/UIText.hpp"
 #include "Components/UILayoutGroup.hpp"
 #include "Components/UIAnimator.hpp"
+#include "Components/DecalComponent.hpp"
+#include "Components/EnvironmentLightComponent.hpp"
+#include "Components/ReflectionProbeComponent.hpp"
+#include "Components/AtmosphericScatteringComponent.hpp"
+#include "Components/PostProcessVolumeComponent.hpp"
+#include "Components/IKSolverComponent.hpp"
+#include "Components/CharacterControllerComponent.hpp"
+#include "Components/TerrainComponent.hpp"
+#include "Components/TerrainGridComponent.hpp"
+#include "Components/TerrainDetailComponent.hpp"
+#include "Components/FoliageComponent.hpp"
+#include "Components/WaterComponent.hpp"
+#include "Components/TrailComponent.hpp"
+#include "Components/MeshTrailComponent.hpp"
+#include "Components/LifetimeComponent.hpp"
+#include "Components/NavMeshSurfaceComponent.hpp"
+#include "Components/NavMeshModifierComponent.hpp"
+#include "Components/NavMeshAgentComponent.hpp"
+#include "Components/NavMeshOffMeshLinkComponent.hpp"
+#include "Components/NavMeshPatrolComponent.hpp"
+#include "Components/NavMeshSensorComponent.hpp"
 #include "ScriptComponent.hpp"
 #include <tuple>
 
@@ -27,20 +53,50 @@ using ComponentList = std::tuple<
     MeshRenderer,
     MaterialComponent,
     ParticleEmitter,
-    ColliderComponent,
+    AabbColliderComponent,
+    BoxColliderComponent,
+    SphereColliderComponent,
+    CapsuleColliderComponent,
+    MeshColliderComponent,
+    ConvexHullColliderComponent,
+    TerrainColliderComponent,
     RigidBodyComponent,
     VolumeComponent,
     LightComponent,
     CameraComponent,
     AudioSourceComponent,
     SkyRenderer,
+    AnimatorComponent,
+    SkinnedMeshRenderer,
+    BoneComponent,
     UICanvas,
     UIImage,
     UIButton,
     UIText,
     UILayoutGroup,
     UIAnimator,
-    ScriptComponent
+    ScriptComponent,
+    DecalComponent,
+    IKSolverComponent,
+    CharacterControllerComponent,
+    TerrainComponent,
+    TerrainGridComponent,
+    TerrainDetailComponent,
+    FoliageComponent,
+    WaterComponent,
+    TrailComponent,
+    MeshTrailComponent,
+    LifetimeComponent,
+    NavMeshSurfaceComponent,
+    NavMeshModifierComponent,
+    NavMeshAgentComponent,
+    NavMeshOffMeshLinkComponent,
+    NavMeshPatrolComponent,
+    NavMeshSensorComponent,
+    EnvironmentLightComponent,
+    ReflectionProbeComponent,
+    AtmosphericScatteringComponent,
+    PostProcessVolumeComponent
     // 新型はここに1行追加するだけ
 >;
 

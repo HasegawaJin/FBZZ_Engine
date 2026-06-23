@@ -1,6 +1,8 @@
 // FBZZ Engine
 // LightSystem.hpp | fbzz::renderer
-// DirectionalLight / PointLight / SpotLight 管理と定数バッファへの転送
+// ライト情報の管理と定数バッファ転送
+// Directional / Point / Spot を HLSL の LightConstants と一致する形に詰める。
+// 配列上限はシェーダー側レイアウトと同期して変更する。
 #pragma once
 #include "IConstantBuffer.hpp"
 #include <Math/Vector3.hpp>
@@ -10,7 +12,7 @@ namespace fbzz::renderer {
 
 struct DirectionalLight {
     math::Vector3 direction = {  0.0f, -1.0f,  0.5f };
-    float         _pad0     = 0.0f;
+    float         _pad0     = 0.0f; // HLSL float3 は 16 バイト境界に整列するため必須
     math::Vector3 color     = {  1.0f,  1.0f,  1.0f };
     float         intensity = 1.0f;
 };
@@ -26,11 +28,12 @@ struct SpotLight {
     math::Vector3 position  = {};
     float         range     = 10.0f;
     math::Vector3 direction = { 0.0f, -1.0f, 0.0f };
+    // 角度ではなくコサイン値で保存する。HLSL 側で毎フレーム cos() を呼ばなくて済む。
     float         innerCos  = 0.966f;   // ~15°
     math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
     float         outerCos  = 0.866f;   // ~30°
     float         intensity = 1.0f;
-    float         _pad[3]   = {};
+    float         _pad[3]   = {}; // 合計 64 バイトに揃えるためのパディング
 };
 
 // Constants.hlsli の LightConstants cbuffer と完全一致 (560 bytes)
@@ -44,6 +47,8 @@ struct LightConstantsCB {
     int           pointLightCount = 0;
     int           spotLightCount  = 0;
     float         _lightPad2[2]   = {};
+    math::Vector3 ambientColor    = { 0.08f, 0.08f, 0.08f };
+    float         _ambientPad     = 0.0f;
 };
 
 class LightSystem {

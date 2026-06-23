@@ -1,8 +1,8 @@
 // FBZZ Engine
 // UIImage.hpp | fbzz::scene
-// UI スプライト。位置・サイズは GameObject::transform で管理する
-//   localPosition.xy = キャンバス座標 (左上原点, Y↓)
-//   localScale.xy    = 幅・高さ (px)
+// UI スプライト描画コンポーネント
+// 位置とサイズは GameObject::transform の local 値から読む。
+// Texture は ResourceHandle で参照し、AssetManager / ResourceManager が所有する。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector4.hpp>
@@ -18,7 +18,19 @@ struct UIImage {
     math::Vector4 color  = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector2 uvMin  = { 0.0f, 0.0f };
     math::Vector2 uvMax  = { 1.0f, 1.0f };
+    // 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
+    int           sortOrder = 0;
     bool          enabled = true;
+    // ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
+    std::string   loadedTexturePath = {};
+
+    // ピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW, texH) で正規化した UV ペアに変換する。
+    // スクリプトからスプライトシートの切り抜き範囲を設定するときに使う。
+    static std::pair<math::Vector2, math::Vector2> PixelRectToUV(
+        float x, float y, float w, float h, float texW, float texH)
+    {
+        return { { x / texW, y / texH }, { (x + w) / texW, (y + h) / texH } };
+    }
 
     const char* GetTypeName() const { return "UIImage"; }
     void Reflect(IReflector& r)
@@ -28,6 +40,7 @@ struct UIImage {
         r.Field("color",       color);
         r.Field("uvMin",       uvMin);
         r.Field("uvMax",       uvMax);
+        r.Field("sortOrder",   sortOrder);
     }
 };
 

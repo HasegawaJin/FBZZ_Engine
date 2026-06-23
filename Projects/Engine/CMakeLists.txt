@@ -1,10 +1,14 @@
-file(GLOB_RECURSE ENGINE_SOURCES
+file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     src/*.hpp
     include/*.hpp
 )
 
-add_library(fbzz_engine STATIC ${ENGINE_SOURCES})
+add_library(fbzz_engine SHARED ${ENGINE_SOURCES})
+set_target_properties(fbzz_engine PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    OUTPUT_NAME "FBZZEngine"
+)
 
 set(DIRECTXTEX_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/include")
 set(DIRECTXTEX_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/lib/x64/Debug/DirectXTex.lib")
@@ -13,6 +17,19 @@ set(DIRECTXTEX_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectX
 set(ASSIMP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/include")
 set(ASSIMP_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Debug/assimp-vc145-mtd.lib")
 set(ASSIMP_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Release/assimp-vc145-mt.lib")
+
+foreach(REQUIRED_PATH
+    "${DIRECTXTEX_INCLUDE}"
+    "${DIRECTXTEX_LIB_DEBUG}"
+    "${DIRECTXTEX_LIB_RELEASE}"
+    "${ASSIMP_INCLUDE}"
+    "${ASSIMP_LIB_DEBUG}"
+    "${ASSIMP_LIB_RELEASE}"
+)
+    if(NOT EXISTS "${REQUIRED_PATH}")
+        message(FATAL_ERROR "Required third-party dependency was not found: ${REQUIRED_PATH}")
+    endif()
+endforeach()
 
 target_include_directories(fbzz_engine
     PUBLIC  include
@@ -30,10 +47,11 @@ target_link_libraries(fbzz_engine
         mfplat
         mfreadwrite
         mfuuid
+        winmm
     PRIVATE
         imgui
         "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
-        "$<$<CONFIG:Release>:${DIRECTXTEX_LIB_RELEASE}>"
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${DIRECTXTEX_LIB_RELEASE}>"
         "$<$<CONFIG:Debug>:${ASSIMP_LIB_DEBUG}>"
-        "$<$<CONFIG:Release>:${ASSIMP_LIB_RELEASE}>"
+        "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${ASSIMP_LIB_RELEASE}>"
 )

@@ -1,31 +1,37 @@
 // FBZZ Engine
 // DX11Texture.cpp | fbzz::renderer
-// DX11 2D テクスチャ (DirectXTex による画像読み込み)
+// DX11 2D テクスチャ実装
+// DirectXTex で画像を読み込み、SRV / UAV を必要に応じて作る。
+// ファイル由来とメモリ由来の両方のテクスチャ生成を扱う。
 //
 // ole32.lib は DirectXTex が内部で CoCreateInstance (WIC) を呼ぶために必要。
 #pragma comment(lib, "ole32.lib")
 
 #include "DX11Texture.hpp"
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
+#include <Windows.h>
 #include <string>
+#include <vector>
 
 namespace fbzz::renderer
 {
 
 bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const std::string& path)
 {
-    // DirectXTex の API は wchar_t パスを要求するため変換する。
-    // ASCII パスのみ対応。日本語パスが必要になった場合は MultiByteToWideChar に切り替える。
-    std::wstring wpath(path.begin(), path.end());
+    // DirectXTex の API は wchar_t パスを要求するため、UTF-8 から wide path に変換する。
+    // WHY: AssetManager は project root を UTF-8 絶対パスとして渡す。
+    //      char をそのまま wchar_t に詰めると、日本語フォルダへ移動した配布版で読み込みに失敗する。
+    std::wstring wpath = fbzz::util::StringUtils::ToWide(path);
 
     DirectX::ScratchImage image;
     HRESULT hr;
 
     // 拡張子でロード関数を分岐:
-    //   DDS → LoadFromDDSFile  (BC 圧縮・キューブマップ・ミップ内包に対応)
-    //   TGA → LoadFromTGAFile  (アルファ付きテクスチャに使われやすい)
-    //   その他 → LoadFromWICFile (PNG / JPG / BMP 等を OS の WIC コーデックで処理)
+    //   DDS → LoadFromDDSFile (BC 圧縮・ミップ内包)
+    //   TGA → LoadFromTGAFile
+    //   その他 → LoadFromWICFile (PNG / JPG / BMP 等)
     if (path.ends_with(".dds") || path.ends_with(".DDS"))
     {
         hr = DirectX::LoadFromDDSFile(wpath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, image);
@@ -41,7 +47,7 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const
 
     if (FAILED(hr))
     {
-        FBZZ_LOG_ERROR("テクスチャ読み込み失敗: %s", path.c_str());
+        FBZZ_LOG_ERROR("Texture load failed: %s", path.c_str());
         return false;
     }
 
@@ -58,7 +64,7 @@ bool DX11Texture::Init(ID3D11Device* device, ID3D11DeviceContext* context, const
 
     if (FAILED(hr))
     {
-        FBZZ_LOG_ERROR("SRV 生成失敗: %s", path.c_str());
+        FBZZ_LOG_ERROR("SRV creation failed: %s", path.c_str());
         return false;
     }
 
@@ -102,6 +108,43 @@ bool DX11Texture::InitFromData(ID3D11Device* device, const uint8_t* rgba, uint32
     return true;
 }
 
+bool DX11Texture::Init3DFromData(ID3D11Device* device, const uint8_t* rgba,
+                                 uint32_t width, uint32_t height, uint32_t depth)
+{
+    if (!device || !rgba || width == 0 || height == 0 || depth == 0)
+        return false;
+
+    D3D11_TEXTURE3D_DESC desc = {};
+    desc.Width          = width;
+    desc.Height         = height;
+    desc.Depth          = depth;
+    desc.MipLevels      = 1;
+    desc.Format         = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Usage          = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags      = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem          = rgba;
+    initData.SysMemPitch      = width * 4u;
+    initData.SysMemSlicePitch = width * height * 4u;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture3D> texture;
+    HRESULT hr = device->CreateTexture3D(&desc, &initData, texture.GetAddressOf());
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("DX11Texture::Init3DFromData: CreateTexture3D failed 0x%08X", (unsigned)hr);
+        return false;
+    }
+    hr = device->CreateShaderResourceView(texture.Get(), nullptr, m_srv.GetAddressOf());
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("DX11Texture::Init3DFromData: CreateSRV failed 0x%08X", (unsigned)hr);
+        return false;
+    }
+
+    m_width  = width;
+    m_height = height;
+    return true;
+}
+
 void DX11Texture::InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height)
 {
     m_srv    = srv;   // ComPtr が AddRef して共同所有する
@@ -126,13 +169,13 @@ bool DX11Texture::InitForCompute(ID3D11Device* device, uint32_t width, uint32_t 
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
     HRESULT hr = device->CreateTexture2D(&texDesc, nullptr, tex.GetAddressOf());
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: Texture2D 生成失敗 0x%08X", (unsigned)hr); return false; }
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: Texture2D creation failed 0x%08X", (unsigned)hr); return false; }
 
     hr = device->CreateShaderResourceView(tex.Get(), nullptr, m_srv.GetAddressOf());
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: SRV 生成失敗 0x%08X", (unsigned)hr); return false; }
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: SRV creation failed 0x%08X", (unsigned)hr); return false; }
 
     hr = device->CreateUnorderedAccessView(tex.Get(), nullptr, m_uav.GetAddressOf());
-    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: UAV 生成失敗 0x%08X", (unsigned)hr); return false; }
+    if (FAILED(hr)) { FBZZ_LOG_ERROR("InitForCompute: UAV creation failed 0x%08X", (unsigned)hr); return false; }
 
     return true;
 }

@@ -1,13 +1,22 @@
 // FBZZ Engine
 // Scene.cpp | fbzz::scene
-// Scene の実装: Entity 管理・GameObject 所有・Destroy キュー処理
+// Scene の Entity 管理と GameObject 所有
+// EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
+// フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Core/Time.hpp"
+#include "Engine/Renderer/Material.hpp"
+#include "Engine/Renderer/IShader.hpp"
+#include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Util/Uuid.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
 #include <iterator>
+#include <memory>
 #include <utility>
 
 namespace fbzz::scene {
@@ -31,6 +40,10 @@ Scene& Scene::operator=(Scene&& other) noexcept
 
     m_arrays       = std::move(other.m_arrays);
     m_destroyQueue = std::move(other.m_destroyQueue);
+    m_runtimePostProcessSettings = std::move(other.m_runtimePostProcessSettings);
+    m_userRenderPasses = std::move(other.m_userRenderPasses);
+    m_scriptDebugDrawCommands = std::move(other.m_scriptDebugDrawCommands);
+    m_lastScriptDebugDrawTickFrame = other.m_lastScriptDebugDrawTickFrame;
 
     FixupOwnership();
     other.Clear();
@@ -75,8 +88,9 @@ void Scene::DestroyImmediate(EntityID id) {
 
     // Script の後処理
     if (auto* sc = GetComponent<ScriptComponent>(id))
-        if (sc->script && sc->m_started)
-            sc->script->OnDestroy();
+        for (auto& entry : sc->scripts)
+            if (entry.script && entry.m_started)
+                entry.script->OnDestroy();
 
     // Component 削除
     RemoveAllComponents(id);
@@ -107,16 +121,24 @@ bool Scene::IsValid(EntityID id) const {
 GameObject& Scene::CreateGameObject(const std::string& name) {
     EntityID id = AllocateEntity();
 
-    auto go        = std::make_unique<GameObject>();
-    go->name       = name;
-    go->m_id       = id;
-    go->m_scene    = this;
+    auto go            = std::make_unique<GameObject>();
+    go->name           = name;
+    go->instanceId     = util::GenerateUUID();
+    go->m_id           = id;
+    go->m_scene        = this;
 
     GameObject* ptr = go.get();
     m_entityToGameObject[id.index] = ptr;
     m_gameObjects.push_back(std::move(go));
 
     return *ptr;
+}
+
+GameObject* Scene::FindByGuid(const std::string& guid) const {
+    if (guid.empty()) return nullptr;
+    for (const auto& go : m_gameObjects)
+        if (go->instanceId == guid) return go.get();
+    return nullptr;
 }
 
 // -----------------------------------------------------------------------
@@ -245,8 +267,10 @@ void Scene::Clear()
                                     GetEntities<ScriptComponent>().end());
     for (EntityID id : scriptIds) {
         auto* sc = GetComponent<ScriptComponent>(id);
-        if (sc && sc->script && sc->m_started)
-            sc->script->OnDestroy();
+        if (!sc) continue;
+        for (auto& entry : sc->scripts)
+            if (entry.script && entry.m_started)
+                entry.script->OnDestroy();
     }
 
     m_destroyQueue.clear();
@@ -258,6 +282,82 @@ void Scene::Clear()
     std::memset(m_entityToGameObject, 0, sizeof(m_entityToGameObject));
     m_nextIndex = 0;
     m_freeIndices.clear();
+    ClearRuntimePostProcessSettings();
+    ClearUserRenderPasses();
+    m_scriptDebugDrawCommands.clear();
+    m_lastScriptDebugDrawTickFrame = 0;
+}
+
+renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()
+{
+    if (!m_runtimePostProcessSettings)
+        m_runtimePostProcessSettings = std::make_unique<renderer::PostProcessSettings>();
+    return *m_runtimePostProcessSettings;
+}
+
+const renderer::PostProcessSettings* Scene::TryGetRuntimePostProcessSettings() const
+{
+    return m_runtimePostProcessSettings.get();
+}
+
+void Scene::SetRuntimePostProcessSettings(const renderer::PostProcessSettings& settings)
+{
+    if (!m_runtimePostProcessSettings)
+        m_runtimePostProcessSettings = std::make_unique<renderer::PostProcessSettings>(settings);
+    else
+        *m_runtimePostProcessSettings = settings;
+}
+
+void Scene::ClearRuntimePostProcessSettings()
+{
+    m_runtimePostProcessSettings.reset();
+}
+
+void Scene::QueueUserRenderPass(UserRenderPassDesc desc)
+{
+    m_userRenderPasses.push_back(std::move(desc));
+}
+
+void Scene::ClearUserRenderPasses()
+{
+    m_userRenderPasses.clear();
+}
+
+const std::vector<UserRenderPassDesc>& Scene::GetUserRenderPasses() const
+{
+    return m_userRenderPasses;
+}
+
+void Scene::QueueScriptDebugDraw(ScriptDebugDrawCommand command)
+{
+    // WHAT: 発行フレームを記録して、duration=0 の描画も同一フレーム内の複数ビューに表示する。
+    command.frameCreated = Time::frameCount;
+    m_scriptDebugDrawCommands.push_back(command);
+}
+
+void Scene::TickScriptDebugDrawCommands(float dt)
+{
+    const uint64_t currentFrame = Time::frameCount;
+    if (m_lastScriptDebugDrawTickFrame == currentFrame)
+        return;
+
+    m_lastScriptDebugDrawTickFrame = currentFrame;
+    for (auto& command : m_scriptDebugDrawCommands) {
+        if (command.frameCreated < currentFrame)
+            command.duration -= dt;
+    }
+
+    m_scriptDebugDrawCommands.erase(
+        std::remove_if(m_scriptDebugDrawCommands.begin(), m_scriptDebugDrawCommands.end(),
+            [currentFrame](const ScriptDebugDrawCommand& command) {
+                return command.frameCreated < currentFrame && command.duration <= 0.0f;
+            }),
+        m_scriptDebugDrawCommands.end());
+}
+
+const std::vector<ScriptDebugDrawCommand>& Scene::GetScriptDebugDrawCommands() const
+{
+    return m_scriptDebugDrawCommands;
 }
 
 void Scene::RemoveAllComponents(EntityID id)
@@ -272,18 +372,23 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
     std::apply([&](auto&... arrs) {
         (..., CopyIfHas(arrs, src, dst));
     }, m_arrays);
+
 }
 
 void Scene::FixupOwnership()
 {
+    // ムーブ後、GameObject が保持する m_scene 生ポインタは旧 Scene を指したままになる。
+    // m_entityToGameObject も新アドレスで再構築が必要。ここで両方を修正する。
     for (auto& go : m_gameObjects) {
         go->m_scene = this;
         m_entityToGameObject[go->m_id.index] = go.get();
     }
 
+    // Script が保持する Scene* / GameObject* も同様に旧ポインタになっているため更新する。
     for (EntityID id : GetArray<ScriptComponent>().Entities()) {
         auto& sc = GetArray<ScriptComponent>().Get(id);
-        if (sc.script) sc.script->SetContext(this, GetGameObject(id));
+        for (auto& entry : sc.scripts)
+            if (entry.script) entry.script->SetContext(this, GetGameObject(id));
     }
 }
 

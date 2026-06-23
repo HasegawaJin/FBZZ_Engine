@@ -41,13 +41,7 @@ CMakeUserPresets.json
 
 # imgui.ini (ImGui の設定ファイル)
 imgui.ini
-
-# コンパイル済みシェーダー (dxc でビルド時生成)
-Assets/shaders/compiled/
-
-# シェーダーコンパイルログ
-Assets/shaders/compile_log.txt
-Assets/shaders/compile_ui_log.txt
+editor_config/hub_imgui.ini
 
 # Claude Code (ローカル設定)
 .claude/
@@ -62,3 +56,31 @@ Thumbs.db
 # ThirdParty dependencies are vendored and should be tracked completely.
 !ThirdParty/
 !ThirdParty/**
+
+# Assets — 大容量バイナリ素材のみ除外 (10MB 超の恐れがあるもの)
+# **/Assets/** とすることで Projects/GameHub/Templates/standard/Assets/ 等にも適用
+# テキスト系 (シェーダー / スクリプト / マテリアル定義 / シーン) は追跡する
+**/Assets/**/*.fbx
+**/Assets/**/*.dds
+**/Assets/**/*.png
+**/Assets/**/*.jpg
+**/Assets/**/*.jpeg
+**/Assets/**/*.bmp
+**/Assets/**/*.tga
+**/Assets/**/*.hdr
+**/Assets/**/*.exr
+**/Assets/**/*.mp3
+**/Assets/**/*.wav
+**/Assets/**/*.ogg
+**/Assets/**/*.tex
+**/Assets/**/*.mesh
+**/Assets/**/*.fzasset
+**/Assets/**/*.skel
+**/Assets/**/*.anim
+**/Assets/**/*.ibl
+**/Assets/**/*.cso
+**/Assets/**/compile_log.txt
+**/Assets/**/compile_ui_log.txt
+
+# Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
+Projects/GameHub/Templates/standard/Assets/Nature/Tree/**

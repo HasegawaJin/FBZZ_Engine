@@ -12,6 +12,7 @@
 namespace fbzz::physics
 {
 
+    // 静的な任意メッシュ用コライダー。動的メッシュは BVH 再構築コストが高いため想定外。
     class TriangleMeshCollider : public Collider
     {
     public:
@@ -24,12 +25,13 @@ namespace fbzz::physics
         AABB         GetAABB() const override { return m_worldAABB; }
         ColliderType GetType() const override { return ColliderType::TRIANGLE_MESH; }
 
-        // Static 前提: 初期化後は位置・回転が変わらないことを想定
+        // Static 前提: 初期化後は位置・回転が変わらないことを想定。
         // 動的オブジェクトへの適用は将来拡張 (UpdateWithScale 等)
         void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
 
-        // スケールを含むワールド変換で再構築する (Static 初期化時に明示的に呼ぶ)
+        // スケールを含むワールド変換で再構築する (Static 初期化時に明示的に呼ぶ)。
+        // Transform が変わっていなければ内部で再構築をスキップする。
         void UpdateWithScale(const math::Vector3&    worldPos,
                              const math::Quaternion& worldRot,
                              const math::Vector3&    worldScale);

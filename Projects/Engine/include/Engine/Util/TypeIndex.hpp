@@ -1,6 +1,8 @@
 // FBZZ Engine
 // TypeIndex.hpp | fbzz::util
-// RTTI に依存しないコンパイル時型ID (ヘッダーオンリー)
+// RTTI に依存しないコンパイル時型 ID
+// ComponentArray や登録表で型ごとの連番 ID が必要な場合に使う。
+// dynamic_cast の代替ではなく、型別ストレージのキーとして使う。
 #pragma once
 #include <cstdint>
 

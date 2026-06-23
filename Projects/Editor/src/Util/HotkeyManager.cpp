@@ -25,4 +25,17 @@ void HotkeyManager::ProcessInput()
 
 void HotkeyManager::Clear() { m_hotkeys.clear(); }
 
+void HotkeyManager::Rebind(const std::string& name, int imguiKey, bool ctrl, bool shift, bool alt)
+{
+    for (auto& hk : m_hotkeys) {
+        if (hk.name == name) {
+            hk.imguiKey = imguiKey;
+            hk.ctrl     = ctrl;
+            hk.shift    = shift;
+            hk.alt      = alt;
+            return;
+        }
+    }
+}
+
 } // namespace fbzz::editor

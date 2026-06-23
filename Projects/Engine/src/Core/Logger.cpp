@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Logger.cpp | fbzz::core
-// Log output implementation
+// Logger の出力処理実装
+// ログレベルでフィルタし、登録済み ILogSink へ LogEntry を配信する。
+// 出力先は非所有ポインタとして扱い、寿命管理は登録側が行う。
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/ILogSink.hpp"
 
@@ -8,9 +10,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <string>
 
 namespace fbzz::core {
 
+// デフォルトは INFO。DEBUG は ConsolePanel の DEBUG チェックボックスで有効化する。
 LogLevel Logger::s_minLevel = LogLevel::INFO;
 std::vector<ILogSink*> Logger::s_sinks;
 
@@ -19,6 +23,30 @@ namespace {
 void BuildLocatedFormat(char* out, size_t outSize, const char* file, int line, const char* fmt)
 {
     snprintf(out, outSize, "[%s:%d] %s", file ? file : "unknown", line, fmt ? fmt : "");
+}
+
+std::string FormatLogMessage(const char* fmt, va_list args)
+{
+    if (!fmt) return {};
+
+    // WHY: MSVC の vsnprintf_s(..., _TRUNCATE, ...) は切り詰め時も -1 を返す。
+    //      cmake の長いビルドログをエラー扱いにすると肝心の診断情報が失われるため、
+    //      必要サイズを先に計算して完全なログ本文を確保する。
+    va_list countArgs;
+    va_copy(countArgs, args);
+    const int required = _vscprintf(fmt, countArgs);
+    va_end(countArgs);
+
+    if (required < 0)
+        return "[Logger format error]";
+
+    std::string message(static_cast<size_t>(required) + 1, '\0');
+    va_list writeArgs;
+    va_copy(writeArgs, args);
+    vsnprintf_s(message.data(), message.size(), _TRUNCATE, fmt, writeArgs);
+    va_end(writeArgs);
+    message.resize(static_cast<size_t>(required));
+    return message;
 }
 
 } // namespace
@@ -34,21 +62,20 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
 
     const char* prefix = nullptr;
     switch (level) {
+    case LogLevel::DEBUG:     prefix = "[DEBUG] "; break;
     case LogLevel::INFO:      prefix = "[INFO]  "; break;
-    case LogLevel::WARNING:   prefix = "[WARNING]  "; break;
+    case LogLevel::WARNING:   prefix = "[WARN]  "; break;
     case LogLevel::LOG_ERROR: prefix = "[ERROR] "; break;
     }
 
-    char body[1024] = {};
-    const int written = vsnprintf_s(body, sizeof(body), _TRUNCATE, fmt, args);
-    if (written < 0)
-        snprintf(body, sizeof(body), "[Logger format error]");
+    const std::string body = FormatLogMessage(fmt, args);
 
-    char line[1200] = {};
-    snprintf(line, sizeof(line), "%s%s\n", prefix, body);
+    std::string line = prefix;
+    line += body;
+    line += '\n';
 
-    OutputDebugStringA(line);
-    printf("%s", line);
+    OutputDebugStringA(line.c_str());
+    printf("%s", line.c_str());
 
     LogEntry entry{ level, body };
     for (ILogSink* sink : s_sinks)
@@ -64,6 +91,14 @@ void Logger::RemoveSink(ILogSink* sink)
 {
     auto it = std::find(s_sinks.begin(), s_sinks.end(), sink);
     if (it != s_sinks.end()) s_sinks.erase(it);
+}
+
+void Logger::Debug(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::DEBUG, fmt, args);
+    va_end(args);
 }
 
 void Logger::Info(const char* fmt, ...)
@@ -87,6 +122,17 @@ void Logger::Error(const char* fmt, ...)
     va_list args;
     va_start(args, fmt);
     Log(LogLevel::LOG_ERROR, fmt, args);
+    va_end(args);
+}
+
+void Logger::DebugAt(const char* file, int line, const char* fmt, ...)
+{
+    char locatedFmt[1200] = {};
+    BuildLocatedFormat(locatedFmt, sizeof(locatedFmt), file, line, fmt);
+
+    va_list args;
+    va_start(args, fmt);
+    Log(LogLevel::DEBUG, locatedFmt, args);
     va_end(args);
 }
 

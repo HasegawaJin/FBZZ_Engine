@@ -1,5 +1,8 @@
 // FBZZ Engine
 // Random.cpp | fbzz::util
+// 擬似乱数ユーティリティ実装
+// mt19937 を使い、数値範囲と単位円・単位球のサンプリングを提供する。
+// SetSeed で再現可能な乱数列にできる。
 #include <Engine/Util/Random.hpp>
 #include <random>
 #include <cmath>

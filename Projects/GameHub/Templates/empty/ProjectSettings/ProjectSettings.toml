@@ -1,0 +1,6 @@
+[project]
+name = "{{PROJECT_NAME}}"
+default_scene = "Assets/Scenes/Main.scene"
+
+[runtime]
+start_scene = "Assets/Scenes/Main.scene"

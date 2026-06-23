@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DebugCamera.cpp | fbzz::renderer
-// Unity Scene View 風デバッグカメラの入力処理
+// Scene View 風デバッグカメラの入力処理
+// マウス・キーボード入力を Camera の回転、パン、ドリーへ変換する。
+// エディタ操作向けの一時視点であり、ゲームカメラとは分ける。
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Math/MathUtils.hpp>
@@ -16,6 +18,16 @@ void DebugCamera::LookAt(const math::Vector3& target) {
     m_pivot         = target;
     m_dollyVelocity = 0.0f;
     ApplyRotation();
+}
+
+void DebugCamera::Teleport(const math::Vector3& pos, const math::Quaternion& rot) {
+    camera.m_position = pos;
+    camera.m_rotation = rot;
+    const math::Vector3 fwd = camera.GetForward();
+    m_pitch         = math::ToDeg(std::asin(math::Clamp(-fwd.y, -1.0f, 1.0f)));
+    m_yaw           = math::ToDeg(std::atan2(fwd.x, fwd.z));
+    m_pivot         = pos + fwd * m_focusDistance;
+    m_dollyVelocity = 0.0f;
 }
 
 void DebugCamera::ApplyRotation() {
@@ -36,7 +48,7 @@ void DebugCamera::ApplyDolly(float dt) {
     m_dollyVelocity  *= std::exp(-scrollDamping * dt);
 }
 
-void DebugCamera::Update(float dt) {
+void DebugCamera::Update(float dt, bool viewportHovered) {
     using namespace fbzz::input;
 
     const math::Vector2 mouseDelta = Input::MouseDelta();
@@ -49,7 +61,8 @@ void DebugCamera::Update(float dt) {
 
     const math::Vector3 worldUp = { 0.0f, 1.0f, 0.0f };
 
-    m_dollyVelocity += scroll * scrollSpeed * m_focusDistance;
+    if (viewportHovered)
+        m_dollyVelocity += scroll * scrollSpeed * m_focusDistance;
 
     // --- 中ドラッグ : オービット回転 / Shift+中 : パン ---
     if (mmb) {

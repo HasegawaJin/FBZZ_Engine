@@ -1,6 +1,6 @@
-# FBZZ Engine - Claude / Codex への指示
+# FBZZ Engine - AI エージェントへの指示
 
-詳細設計は `docs/Design.md` を参照。以下の方針から外れないようにすること。
+以下の方針から外れないようにすること。
 
 ---
 
@@ -10,23 +10,26 @@
 - **物理エンジンは自作** (Bullet / PhysX 不使用)
 - **ヘッダファイルの拡張子は `.hpp`**
 - **C++20** を使用
-- **名前空間は `fbzz::`** (例: `fbzz::physics`, `fbzz::renderer`)
+- **名前空間は `fbzz::`** (例: `fbzz::physics`, `fbzz::renderer`, `fbzz::scene`)
 - **`#pragma once`** をすべてのヘッダファイル先頭に記述
 
 ---
 
 ## アーキテクチャ方針
 
-- レンダラーは `IRenderer` インターフェース経由。DX11 具体実装に直接依存しない
-- シーン管理: Unity 同様の GameObject / Component パターン (OOP)
-- 依存方向: `sandbox → engine → physics → math` (逆転禁止)
+- レンダラーは `IRenderer` インターフェース経由。`DX11Renderer*` へのダウンキャスト禁止
+- シーン管理: Unity 同様の GameObject / Component パターン
+- 依存方向: `Sandbox / Editor / GameHub → Engine → Physics → Math` (逆転禁止)
+- スクリプトは `ScriptProxy` 経由でエンジン機能にアクセス。DLL 境界を超えて Engine 実装に直接依存しない
+- 新しい Engine 機能をスクリプトに公開する場合は `Engine/include/Engine/Scene/ScriptProxy/ScriptXxxProxy.hpp` を追加する
 
 ---
 
 ## サードパーティライブラリ
 
-OK: Assimp / DirectX 11 SDK / DirectX 12 SDK / `Microsoft::WRL::ComPtr`  
-NG: GLM / GLFW / Bullet / PhysX / Box2D
+OK: `Assimp` / `DirectX 11 SDK` / `DirectX 12 SDK` / `Microsoft::WRL::ComPtr` / `ImGui` / `ImGuizmo` / `ImNodes` / `toml++` / `stb_image` / `DirectXTex` / `XAudio2`
+
+NG: `GLM` / `GLFW` / `Bullet` / `PhysX` / `Box2D`
 
 ---
 
@@ -44,7 +47,16 @@ NG: GLM / GLFW / Bullet / PhysX / Box2D
 | ソース・ヘッダファイル | `PascalCase` | `RigidBody.cpp`, `IRenderer.hpp` |
 | ディレクトリ | `PascalCase` | `Renderer/`, `Core/`, `DX11/` |
 
-コメントは WHY が自明でないときのみ書く。WHAT は書かない。
+---
+
+## コメント規約
+
+**このリポジトリはポートフォリオとして公開する。採用担当者・レビュアーが設計意図を理解できるよう、コメントは自明か否かに関わらず積極的に書くこと。**
+
+- **言語**: 日本語で書く
+- **WHY (なぜその設計か)**: 制約・トレードオフ・前提をすべて記述する
+- **WHAT (何をしているか)**: 処理の概要・アルゴリズム・数式を説明する
+- **関数・クラス**: 目的と責務を必ず一行以上書く
 
 ### ファイルヘッダーコメント
 
@@ -58,7 +70,7 @@ NG: GLM / GLFW / Bullet / PhysX / Box2D
 
 ---
 
-## 所有権モデル (詳細: `docs/conventions/ownership.md`)
+## 所有権モデル (詳細: `Docs/conventions/ownership.md`)
 
 | スマートポインタ | 使う場面 |
 |----------------|---------|
@@ -70,7 +82,7 @@ NG: GLM / GLFW / Bullet / PhysX / Box2D
 
 ---
 
-## エラーハンドリング (詳細: `docs/conventions/error_handling.md`)
+## エラーハンドリング (詳細: `Docs/conventions/error_handling.md`)
 
 - 回復不可能エラー: `assert()`
 - 回復可能エラー: `bool` 戻り値
@@ -79,16 +91,122 @@ NG: GLM / GLFW / Bullet / PhysX / Box2D
 
 ---
 
-## スレッドモデル (詳細: `docs/conventions/threading.md`)
+## メモリシステム (`Engine/include/Engine/Core/Memory/`)
 
-Step 1〜5 はシングルスレッド。`std::thread` / `std::mutex` / `std::atomic` を engine / physics / math に持ち込まない。
+4 種のカスタムアロケーターを用途に応じて使い分ける。通常のヒープ確保には `make_unique` / `make_shared` を使い、カスタムアロケーターは高頻度・大量確保の場合にのみ使う。
+
+| アロケーター | 用途 |
+|------------|------|
+| `FrameAllocator` | フレームごとにリセットされる一時バッファ (毎フレームの描画コマンド等) |
+| `LinearAllocator` | 前端から順番に確保。解放は一括のみ |
+| `PoolAllocator` | 同サイズオブジェクトを大量生成する場合 (パーティクル・コライダー等) |
+| `StackAllocator` | マーカーによる部分解放が必要な場合 |
+
+リークは `MemoryTracker` / `MemoryDebug` で検出できる。
 
 ---
 
 ## C++20
 
-OK: `std::span` / Concepts / Designated initializers / `[[nodiscard]]` / `constexpr` / `consteval`  
+OK: `std::span` / Concepts / Designated initializers / `[[nodiscard]]` / `constexpr` / `consteval`
+
 NG: Modules / Coroutines / Ranges
+
+---
+
+## システムスケジューラー (`Engine/include/Engine/Core/Scheduler/`)
+
+新しいシステムを追加する際は `SystemScheduler.cpp` に `Phase` と `ComponentAccess` を登録する。
+
+- **Phase**: システムの実行フェーズ (PrePhysics / Physics / PostPhysics / Render / UI / Script)
+- **ComponentAccess**: 読み書きするコンポーネント型を宣言する (並列実行の安全性確保)
+
+---
+
+## アセット形式 (`Engine/include/Engine/Asset/`)
+
+| 拡張子 | 定義ファイル | 内容 |
+|--------|------------|------|
+| `.fzasset` | `FzAssetFormat.hpp` | 汎用アセットバイナリ (メタデータ + ペイロード) |
+| `.mesh` | `FzModelFormat.hpp` | メッシュサブアセット (FBX からエクスポート) |
+| `.scene` | `SceneSerializer.hpp` | TOML ベースのシーンファイル |
+| `.terrain` | `FzTerrainFormat.hpp` | テレインアセット (ハイトマップ + レイヤー情報) |
+| `.mat` | `MatAssetImporter.hpp` | マテリアルアセット |
+| `.tex` | `TexDescSerializer.hpp` | テクスチャデスクリプター |
+| `.animcontroller` | `AnimatorControllerAsset.hpp` | アニメーションステートマシン |
+
+---
+
+## スクリプティングシステム
+
+### .generated.hpp パターン
+
+`Assets/Scripts/XxxComponent.hpp` にコンポーネント定義を書くと、エディターの `ScriptCodeGen` が `XxxComponent.generated.hpp` を自動生成する。**手動で `.generated.hpp` を編集しない**。
+
+### ScriptProxy の追加手順
+
+スクリプトから新しいエンジン機能を使えるようにする場合:
+
+1. `Engine/include/Engine/Scene/ScriptProxy/ScriptXxxProxy.hpp` を追加
+2. `Engine/src/Scene/ScriptProxies.cpp` に実装を追加
+3. `Engine/include/Engine/Scene/Script.hpp` のプロキシ一覧に追加
+
+DLL 境界を越えるため、プロキシのインターフェースには Engine 内部型を直接露出しないこと。
+
+### 既存の ScriptProxy 一覧 (`Engine/include/Engine/Scene/ScriptProxy/`)
+
+| プロキシ | 提供機能 |
+|---------|---------|
+| `ScriptTransformProxy` | 位置・回転・スケールの取得・設定 |
+| `ScriptPhysicsProxy` | 力の印加・RigidBody 操作 |
+| `ScriptAnimatorProxy` | アニメーターパラメーターの読み書き |
+| `ScriptCameraProxy` | カメラ FOV・ターゲット設定 |
+| `ScriptInputProxy` | キー・マウス入力の取得 |
+| `ScriptSceneProxy` | GameObject 検索・生成・破棄 |
+| `ScriptAudioProxy` | サウンドの再生・停止 |
+| `ScriptLightProxy` | ライトパラメーターの変更 |
+| `ScriptMaterialProxy` | マテリアルプロパティの動的書き換え |
+| `ScriptParticleProxy` | パーティクルの発生制御 |
+| `ScriptNavigationProxy` | NavMesh エージェントの目標設定 |
+| `ScriptTrailProxy` / `ScriptMeshTrailProxy` | トレイルエフェクト制御 |
+| `ScriptUIProxy` | UI テキスト・画像の更新 |
+| `ScriptPostProcessProxy` | ポストプロセスパラメーターの変更 |
+| `ScriptDebugProxy` | デバッグ描画 |
+| `ScriptMemoryProxy` | カスタムアロケーター経由のメモリ確保 |
+| `GizmoProxy` | Gizmo のエディター描画 |
+
+### Script 基底クラスの便利 API (`Engine/include/Engine/Scene/Script.hpp`)
+
+`Script` 基底クラスは Unity の `MonoBehaviour` に相当する便利メソッドを提供する。
+ユーザースクリプトでは `m_gameObject->` / `m_scene->` の代わりにこれらを使う。
+
+| メソッド | 説明 |
+|---|---|
+| `GetComponent<T>()` | `m_gameObject->GetComponent<T>()` の短縮形 |
+| `transform->position` | 自 GO の Transform への直接ポインタ (SetContext で設定) |
+| `Find(name)` / `FindWithTag(tag)` | `m_scene->Find / FindWithTag` の短縮形 |
+| `GetGameObject(id)` | EntityID から GO を取得 |
+| `CreateGameObject(name)` | `m_scene->CreateGameObject` の短縮形 |
+| `GetMainCameraObject()` | シーン内のメインカメラ GO を返す |
+| `Destroy(go, delay)` | `GameObject::Destroy` の短縮形 |
+| `SetAnimatorFloat/Int/Bool/Trigger` | 自 GO の AnimatorComponent に転送 |
+| `IsAnimatorInState(name)` | 現在のアニメーターステートを確認 |
+
+`GetComponent<T>()` の template 定義は循環依存回避のため `Scene.hpp` 末尾に置く。
+
+---
+
+## Sandbox スクリプトの using namespace 規則
+
+`Projects/Sandbox/src/Scripts/` 以下のヘッダファイルに限り、以下の `using` を許可する。
+
+```cpp
+using namespace fbzz::scene;
+using namespace fbzz::math;
+using namespace fbzz::input;
+```
+
+**WHY**: Sandbox スクリプトはエンジン層からインクルードされない末端ヘッダであり、名前空間汚染が生じない。エンジン側の `.hpp` での `using namespace` は引き続き禁止。
 
 ---
 
@@ -103,10 +221,11 @@ NG: Modules / Coroutines / Ranges
 | `throw` / `std::exception` | エンジンコード内では禁止 |
 | `#include` の循環依存 | 前方宣言 (`class Foo;`) で解決 |
 | `DX11Renderer*` へのダウンキャスト | 上位レイヤーは `IRenderer&` のみ参照 |
+| スクリプトから Engine 実装型を直接インクルード | `ScriptProxy` 経由でアクセス |
 
 ---
 
-## Git 運用 (詳細: `docs/conventions/git.md`)
+## Git 運用 (詳細: `Docs/conventions/git.md`)
 
 ```
 main → develop → feature/<name>
@@ -114,76 +233,38 @@ main → develop → feature/<name>
 
 コミット形式: `[Feature] / [Fix] / [Design] / [Build] / [Refactor] / [Chore] / [Release] + 動詞 + 概要`
 
-コミットの Description (本文) は **Markdown で記述する**。
-見出し (`##`) と箇条書き (`-`) を使って構造化すること。
+コミットの Description (本文) は **Markdown で記述する**。見出し (`##`) と箇条書き (`-`) を使って構造化すること。
 
 ---
 
-## Claude / Codex への作業指針
+## ビルド方法
 
-### コードを書く前に必ずやること
-
-0. `TASKS.md` を確認し、現在地と残タスクを把握する
-1. `docs/` 以下の対応する設計ドキュメントを読む
-2. `docs/design.md` のロードマップで現在の Step を確認する。未着手 Step は実装しない
-3. 複数ファイルにまたがる変更は、先にユーザーへ列挙する
-
-### してはいけないこと
-
-- 設計書に記載のないクラス・関数をユーザーの確認なしに追加しない
-- Step を飛び越えて実装しない
-- 設計書とコードが矛盾している場合、自分で判断して直さず報告してから対処する
-- `docs/` 以下の設計ドキュメントをコード実装のついでに書き換えない
-- コメントを文字化けさせたまま放置
-
-### 作業終了後
-
-- 完了したタスクは `TASKS.md` の状態を更新する
-- 新たに判明した残タスクがあれば `TASKS.md` に追記する
-
-### 曖昧な指示を受けたとき
-
-対応する設計ドキュメントが存在すれば従う。なければ実装せずに選択肢を提示する。
-
-### ビルド確認
-
-**ビルドは必ず Visual Studio 2026 から行う。**  
-ターミナル (PowerShell / Bash) から `ninja` や `cmake --build` を実行しない。  
+**ビルドは VSCode / Visual Studio 2022 以降から行う。**
+ターミナル (PowerShell / Bash) から `ninja` や `cmake --build` を実行しない。
 MSVC の環境変数 (vcvarsall.bat) が設定されていないためコンパイルエラーになる。
 
-- ビルド: VS 2026 で `Ctrl+Shift+B` (ソリューション全体のリビルド)
+- ビルド: VS で `Ctrl+Shift+B` (ソリューション全体のリビルド)
 - 実行: VS のデバッガー or 生成された `.exe` を直接起動
-- Claude がビルド結果を確認する必要がある場合は、ユーザーにビルドを依頼してエラー出力を貼ってもらう
+- ビルド結果を確認する必要がある場合は、ユーザーにビルドを依頼してエラー出力を貼ってもらう
 
-#### VS 更新後に CMake Configure が失敗する場合
+### VS 更新後に CMake Configure が失敗する場合
 
-`CMAKE_CXX_COMPILER` のフルパスが cmake キャッシュに残るため、VS (MSVC ツールセット) を更新すると古いパスを参照してエラーになる。  
-対処: `build/debug/` と `build/release/` を削除してから VS Code で再 Configure する。  
+`CMAKE_CXX_COMPILER` のフルパスが cmake キャッシュに残るため、VS (MSVC ツールセット) を更新すると古いパスを参照してエラーになる。
+対処: `build/debug/` と `build/release/` を削除してから VS Code で再 Configure する。
 VS Code CMake Tools の場合は `...` → **Delete Cache and Reconfigure**。
 
-### トークン節約ルール
+---
+
+## 曖昧な指示を受けたとき
+
+設計ドキュメントが `Docs/` に存在すれば従う。なければ実装せずに選択肢を提示する。
+
+---
+
+## トークン節約ルール
 
 - ファイルを読む前に Grep / Glob でファイルを特定する
 - 修正が局所的なら Write より **Edit** を使う (差分のみ送信)
 - 変更していないコードブロックを応答に再掲しない
-- 大きな設計書は `limit` / `offset` で関連セクションのみ読む
+- 大きなファイルは関連セクションのみ読む (`lines:N-M` モード)
 - 独立した調査・ファイル操作は並行ツール呼び出しでまとめる
-
----
-
-## ロードマップ (現在地を把握すること)
-
-残タスクの詳細は `TASKS.md` を参照。
-
-```
-Step 0   ビルド環境・Application ループ                   完了
-Step 1   Win32 ウィンドウ表示 + DX11 初期化               完了
-Step 2   三角形描画 (頂点バッファ, シェーダー)             完了
-Step 3   デバッグ描画 (線, 矩形, 円)                       完了
-Step 4   物理エンジン (重力, 衝突)                         完了
-Step 5   シーン管理 (GameObject / Component)               完了
-Step 5.5 HLSL シェーダーライブラリ (PBR / Shadow / Bloom)  完了
-Step 6   ImGui Editor                         完了 (残: InspectorPanel 拡張 / main.cpp 統合)
-Step 6.5 SceneSerializer (TOML .fbzz)         実装済み (main.cpp 統合・MenuBar UI は未)
-Step 7   DX12 / RenderGraph 移行                           未着手
-```

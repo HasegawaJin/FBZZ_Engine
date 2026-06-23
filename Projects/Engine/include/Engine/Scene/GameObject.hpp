@@ -1,6 +1,8 @@
 // FBZZ Engine
 // GameObject.hpp | fbzz::scene
-// Unity ライクな OOP ラッパー。Scene が unique_ptr で所有する
+// Unity ライクな OOP ラッパー
+// Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
+// 親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
 #include "Entity.hpp"
 #include "Transform.hpp"
@@ -14,16 +16,25 @@ class Scene;
 class GameObject {
 public:
     // Unity: gameObject.name / .tag (直接変数)
-    std::string name = "GameObject";
-    std::string tag  = "Untagged";
+    std::string name       = "GameObject";
+    std::string tag        = "Untagged";
+    // クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
+    // UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
+    std::string instanceId;
+    // Prefab インスタンスの出所アセットパス (Assets 起点の相対パス)。
+    // WHY: Apply/Revert のために「このインスタンスがどのプレファブから生成されたか」を
+    //      GO 自身に持たせる。空文字列 = Prefab 非インスタンス (通常の GO)。
+    //      SceneSerializer が Save/Load で永続化し、PrefabSerializer::Instantiate が書き込む。
+    std::string prefabAssetPath;
     int layer = 0;
 
     // Unity: gameObject.transform (常に存在。ComponentArray には入れない)
     Transform transform;
 
-    // Unity: SetActive / activeSelf
+    // Unity: SetActive / activeSelf / activeInHierarchy
     void SetActive(bool active);
-    bool activeSelf() const;
+    bool activeSelf()        const;
+    bool activeInHierarchy() const;
 
     // Unity: CompareTag
     bool CompareTag(const std::string& t) const;
@@ -47,6 +58,7 @@ public:
 
     // Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
     static GameObject*              Find(const std::string& n);
+    static GameObject*              FindByGuid(const std::string& guid);
     static GameObject*              FindWithTag(const std::string& t);
     template<typename T>
     static std::vector<GameObject*> FindObjectsOfType();

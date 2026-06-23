@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DebugCamera.hpp | fbzz::renderer
-// Unity Scene View 風デバッグカメラ（入力制御付き Camera ラッパー）
+// Scene View 風のデバッグカメラ
+// Input を読んで Camera を動かす操作用ラッパー。
+// 本番カメラデータとは分け、エディタやデバッグ描画の視点制御に使う。
 #pragma once
 
 #include <Engine/Renderer/Camera.hpp>
@@ -20,23 +22,26 @@ public:
 
     float moveSpeed      = 5.0f;
     float fastMultiplier = 3.0f;
-    float mouseSens      = 0.15f;  // degrees per pixel
-    float panSensitivity = 0.003f; // world units per pixel per focus-distance
+    float mouseSens      = 0.15f;  // 1 ピクセルあたりの回転角度
+    float panSensitivity = 0.003f; // focusDistance を基準にした 1 ピクセルあたりの移動量
     float scrollSpeed    = 1.0f;   // 速度加算量 (focus-distance 比)
     float scrollDamping  = 10.0f;  // 速度減衰係数 (大きいほど素早く停止)
 
     // 指定ターゲットへの向きから yaw / pitch とピボットを初期化する
     void LookAt(const math::Vector3& target);
 
-    // ゲームループ毎に呼ぶ
-    void Update(float dt);
+    // 位置と回転を瞬時に移動し、内部の yaw/pitch/pivot も同期する
+    void Teleport(const math::Vector3& pos, const math::Quaternion& rot);
+
+    // ゲームループ毎に呼ぶ。viewportHovered が false のときマウスホイールを無視する。
+    void Update(float dt, bool viewportHovered = true);
 
 private:
     float         m_yaw           = 0.0f;
     float         m_pitch         = 0.0f;
     float         m_focusDistance = 10.0f;
     math::Vector3 m_pivot         = {};
-    float         m_dollyVelocity = 0.0f;  // world units per second
+    float         m_dollyVelocity = 0.0f;  // 秒あたりの移動量
 
     void ApplyRotation();
     void ApplyDolly(float dt);

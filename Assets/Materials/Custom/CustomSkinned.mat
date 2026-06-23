@@ -1,0 +1,14 @@
+mesh_type = 'skinned'
+name = 'CustomSkinned'
+render_path = 'forward'
+shader = 'Assets/Shaders/Material/Custom/CustomSkinned.hlsl'
+version = 1
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+roughness = 0.5
+normalStrength = 1.0
+emissiveScale = 0.0
+alphaCutoff = 0.0
+uvTiling = [ 1.0, 1.0 ]
+uvOffset = [ 0.0, 0.0 ]

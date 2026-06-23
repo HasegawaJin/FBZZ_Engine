@@ -1,13 +1,13 @@
 // FBZZ Engine
 // ColliderVolume.hpp | fbzz::physics
-// Trigger collider backed area effects
+// Trigger コライダーを範囲として使う空間効果
 #pragma once
 #include <Physics/Volume.hpp>
 #include <Physics/Collider.hpp>
-#include <memory>
 
 namespace fbzz::physics
 {
+    // Unity の Volume 的な表現。Scene 側の Trigger Collider + VolumeComponent から生成される。
     enum class VolumeType {
         Gravity,
         Vortex,
@@ -17,6 +17,7 @@ namespace fbzz::physics
         Magnetic
     };
 
+    // Volume の振る舞いを 1 つの設定構造体にまとめ、エディタと Serializer から扱いやすくする。
     struct VolumeSettings {
         VolumeType type = VolumeType::Gravity;
         math::Vector3 gravity = { 0.0f, -9.81f, 0.0f };
@@ -31,10 +32,13 @@ namespace fbzz::physics
         float duration = -1.0f;
     };
 
+    // 形状判定は Collider に委譲し、効果だけを VolumeSettings で切り替える。
     class ColliderVolume : public Volume
     {
     public:
-        ColliderVolume(std::shared_ptr<Collider> collider, const VolumeSettings& settings);
+        // WHY: Collider の所有権は ColliderComponent (unique_ptr) が持つ。
+        //      Volume は ColliderComponent より短命なため、非所有ポインタで参照する。
+        ColliderVolume(Collider* collider, const VolumeSettings& settings);
 
         bool Contains(const math::Vector3& position) const override;
         void Apply(RigidBody& body, float dt) override;
@@ -45,7 +49,7 @@ namespace fbzz::physics
         void Tick(float dt) override;
 
     private:
-        std::shared_ptr<Collider> m_collider;
+        Collider* m_collider = nullptr;
         VolumeSettings m_settings;
         float m_elapsed = 0.0f;
     };

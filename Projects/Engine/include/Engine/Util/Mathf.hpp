@@ -1,7 +1,10 @@
 // FBZZ Engine
 // Mathf.hpp | fbzz::util
-// スカラー数学ユーティリティ (ヘッダーオンリー)
+// スカラー数学ユーティリティ
+// Unity ライクな Clamp / Lerp / SmoothDamp などをまとめる。
+// ベクトルや行列は Math モジュール側を使い、ここでは float 中心に扱う。
 #pragma once
+#include <Math/MathUtils.hpp>
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -9,12 +12,12 @@
 namespace fbzz::util {
 
 struct Mathf {
-    static constexpr float PI      = 3.14159265358979323846f;
-    static constexpr float TWO_PI  = PI * 2.0f;
-    static constexpr float HALF_PI = PI * 0.5f;
-    static constexpr float DEG2RAD = PI / 180.0f;
-    static constexpr float RAD2DEG = 180.0f / PI;
-    static constexpr float EPSILON = 1e-6f;
+    static constexpr float PI      = math::PI;
+    static constexpr float TWO_PI  = math::TWO_PI;
+    static constexpr float HALF_PI = math::HALF_PI;
+    static constexpr float DEG2RAD = math::DEG2RAD;
+    static constexpr float RAD2DEG = math::RAD2DEG;
+    static constexpr float EPSILON = math::EPSILON;
 
     // ── 線形補間 ─────────────────────────────────────────────────────────
     static inline float Lerp(float a, float b, float t)

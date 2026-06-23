@@ -9,11 +9,23 @@ namespace fbzz::physics
 {
     class Collider;
 
+    struct AxisLock
+    {
+        bool x = false;
+        bool y = false;
+        bool z = false;
+    };
+
+    // PhysicsSystem から同期される剛体状態。Scene の Transform は直接所有せず、World::Step 後に外側で反映する。
     class RigidBody
     {
     public:
-        // 力・インパルスの適用
+        // 力・インパルスの適用。Force は積分時まで蓄積し、Impulse は速度へ即時反映する。
         void ApplyForce(const math::Vector3& force);
+        // World 内部用: 重力などの常時力を sleep timer をリセットせず蓄積する。
+        // WHY: 通常の ApplyForce は Script/API からの外力として扱い WakeUp するが、
+        //      重力まで WakeUp すると接地中の剛体が永久に Sleep できない。
+        void ApplyForceNoWake(const math::Vector3& force);
         void ApplyForceAtPoint(const math::Vector3& force,
                                 const math::Vector3& worldPoint);
         void ApplyImpulse(const math::Vector3& impulse);
@@ -23,11 +35,15 @@ namespace fbzz::physics
         // 積分 (半陰的オイラー法、World::Step から呼ばれる)
         void Integrate(float dt);
 
-        // 質量管理
+        // 質量管理。負の質量はゲーム的な反重力挙動用として許容する。
         void SetMass(float mass); // 負値可 (反重力挙動)
         float GetMass()    const { return m_mass; }
-        float GetInvMass() const { return m_isStatic ? 0.0f : m_invMass; }
+        float GetInvMass() const { return (m_isStatic || m_isSleeping) ? 0.0f : m_invMass; }
         bool  IsStatic()   const { return m_isStatic; }
+        bool  IsSleeping() const { return m_isSleeping; }
+        void  WakeUp();
+        void  Sleep();
+        void  UpdateSleepState(float dt, float linearThreshold, float angularThreshold, float sleepTime);
 
         // 状態アクセス
         math::Vector3    GetPosition()        const { return m_position;        }
@@ -39,6 +55,10 @@ namespace fbzz::physics
         void SetVelocity(const math::Vector3& vel);
         void SetAngularVelocity(const math::Vector3& angVel);
         void SetRotation(const math::Quaternion& rot);
+        void SetFreezePosition(const AxisLock& lock);
+        void SetFreezeRotation(const AxisLock& lock);
+        AxisLock GetFreezePosition() const { return m_freezePosition; }
+        AxisLock GetFreezeRotation() const { return m_freezeRotation; }
 
         // 動作制御
         bool  m_isStatic    = false;  // true のとき積分・衝突解決をスキップ
@@ -56,13 +76,22 @@ namespace fbzz::physics
         bool  m_isGravitationalSource = false;
         float m_gravitationalMass     = 1.0f;  // 慣性質量 m_mass と独立して設定可
 
-        // engine 側コンポーネントへのポインタ (衝突コールバック用)
+        // engine 側コンポーネントへのポインタ (衝突コールバック用)。Physics は型を知らない。
         void* m_userData = nullptr;
 
         // CCD (Continuous Collision Detection) 設定
         // SphereCollider を持つ高速・小型オブジェクトのみ有効にする
         bool  m_useCCD    = false;  // true のとき World::CCDPhase で TOI を計算する
         float m_ccdRadius = 0.5f;   // CCD 判定の代表半径 (SphereCollider の半径に合わせる)
+
+        // 重力と減衰のゲーム向け調整値。World の重力ベクトルは共有し、剛体ごとに倍率だけ変える。
+        bool  m_useGravity  = true;
+        float m_gravityScale = 1.0f;
+        float m_linearDrag   = 0.0f;
+        float m_angularDrag  = 0.0f;
+        bool  m_allowSleeping = true;
+        bool  m_isSleeping = false;
+        float m_sleepTimer = 0.0f;
 
     private:
         // 状態
@@ -77,13 +106,19 @@ namespace fbzz::physics
         float m_invMass = 1.0f; // m_isStatic == true のとき 0
                                 // m_mass < 0 のとき負になる (反重力挙動)
             
-        // 対角慣性テンソルの逆数 (ボディ空間)
+        // 対角慣性テンソルの逆数 (ボディ空間)。
+        // 完全な 3x3 テンソルではなく対角近似にして、Step 4-6 の単純なソルバーに合わせる。
         // SetMass() / SetInertiaFromCollider() 呼び出し時に自動再計算される
         // m_isStatic == true のとき {0,0,0}
         math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f };
         const Collider* m_inertiaCollider = nullptr;
+        AxisLock m_freezePosition;
+        AxisLock m_freezeRotation;
 
         void RecomputeInertia();
+        math::Vector3 ApplyPositionFreeze(const math::Vector3& value,
+                                          const math::Vector3& base) const;
+        math::Vector3 ApplyRotationFreeze(const math::Vector3& value) const;
 
     public:
         // ワールド空間で I⁻¹ * v を計算する

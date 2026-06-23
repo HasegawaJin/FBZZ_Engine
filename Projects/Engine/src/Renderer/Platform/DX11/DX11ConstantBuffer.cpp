@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DX11ConstantBuffer.cpp | fbzz::renderer
-// DX11 定数バッファ (cbuffer) 実装
+// DX11 定数バッファ実装
+// IConstantBuffer の Upload を D3D11 の Map / Unmap に対応付ける。
+// HLSL 側 cbuffer の 16 byte アライメントを呼び出し側と合わせる。
 #include "DX11ConstantBuffer.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>

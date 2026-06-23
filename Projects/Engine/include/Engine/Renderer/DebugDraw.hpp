@@ -1,6 +1,8 @@
 // FBZZ Engine
 // DebugDraw.hpp | fbzz::renderer
-// ワイヤーフレームのデバッグ描画ユーティリティ (Line / Box / Sphere / Capsule)
+// ワイヤーフレームのデバッグ描画ユーティリティ
+// Line / Box / Sphere / Capsule をフレーム内バッチとして集めて一括送信する。
+// 描画は BeginFrame から Flush までの間だけ有効。
 #pragma once
 
 #include "IRenderer.hpp"
@@ -8,6 +10,7 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Matrix4.hpp>
+#include <cstddef>
 
 namespace fbzz::renderer {
 
@@ -36,6 +39,25 @@ public:
                         const math::Vector4& color = {0,1,0,1});
     static void Capsule(IRenderer& r, const math::Vector3& center, float radius, float halfHeight,
                         const math::Quaternion& rotation, const math::Vector4& color = {0,1,0,1});
+
+    // from → to の方向を示す矢印 (シャフト + コーン型ヘッド)。
+    // headLength: ヘッド部分のワールド単位の長さ (シャフト全体を超えるとクランプする)
+    // headRadius: ヘッドの底面半径
+    static void Arrow(IRenderer& r,
+                      const math::Vector3& from, const math::Vector3& to,
+                      float headLength = 0.2f, float headRadius = 0.05f,
+                      const math::Vector4& color = {1,1,0,1});
+
+    // ワイヤーフレームのコーン。
+    // apex: 頂点、direction: 底面方向の正規化ベクトル、height: 高さ、baseRadius: 底面半径
+    static void Cone(IRenderer& r,
+                     const math::Vector3& apex, const math::Vector3& direction,
+                     float height, float baseRadius,
+                     const math::Vector4& color = {1,1,0,1});
+
+    // 凸ポリゴンを半透明塗りつぶしで描く (fan 三角分割、TRIANGLE_LIST + ALPHA_BLEND)
+    static void FilledPolygon(IRenderer& r, const math::Vector3* vertices, size_t count,
+                              const math::Vector4& color = {0.12f, 0.35f, 0.90f, 0.30f});
 };
 
 } // namespace fbzz::renderer

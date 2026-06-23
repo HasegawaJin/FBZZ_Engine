@@ -21,7 +21,8 @@ namespace fbzz::physics
     class CCDSolver
     {
     public:
-        // 速度が radius * CCD_THRESHOLD / dt を超える場合に CCD を適用する
+        // 速度が radius * CCD_THRESHOLD / dt を超える場合に CCD を適用する。
+        // 小さい値ほど安全だが、CCDPhase の対象が増えて負荷が上がる。
         static constexpr float CCD_THRESHOLD = 0.5f;
 
         // 移動球 A (中心 centerA, 速度 velA) と静止球 B の線形 TOI を計算する

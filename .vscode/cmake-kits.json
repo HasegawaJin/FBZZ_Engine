@@ -1,0 +1,6 @@
+[
+    {
+        "name": "Visual Studio Community 2026 - x64",
+        "environmentSetupScript": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+]

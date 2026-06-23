@@ -1,15 +1,20 @@
 // FBZZ Engine
 // IRenderer.hpp | fbzz::renderer
-// Renderer backend interface
+// Renderer バックエンドの抽象インターフェース
+// 上位レイヤーは DX11 実装を直接参照せず、このインターフェースだけを使う。
+// リソース生成は ResourceManager に閉じ、描画 API は Submit / Dispatch に集約する。
 #pragma once
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 #include "ComputeCall.hpp"
 #include "DrawCall.hpp"
+#include "IIblBaker.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
+#include "IStructuredBuffer.hpp"
 #include "IPipelineState.hpp"
 #include "IRenderTarget.hpp"
 #include "IShader.hpp"
@@ -23,9 +28,28 @@ namespace fbzz::renderer {
 
 class ResourceManager;
 
+// GPU プロファイリング 1 パス分の結果。
+// WHY: IRenderer を経由することで上位レイヤーが DX11Renderer を知らずに GPU 時間を取得できる。
+struct GpuPassProfile {
+    std::string name;
+    double gpuMs = 0.0;
+};
+
+// RenderTarget 内部 SRV のどちらを TextureTag 化するかを表す。
+// WHY: bool 引数では Color / Depth の意味が呼び出し側から読めず、誤指定に気づきにくいため。
+enum class RenderTargetTextureKind : uint8_t {
+    Color,
+    Depth,
+};
+
 class IRenderer {
 public:
     virtual ~IRenderer() = default;
+
+    // GPU バックエンドが保持するパイプライン参照を解除し、デバイス破棄前の状態を確定する。
+    // WHY: ResourceManager がネイティブリソースを破棄しても、描画コンテキストにバインド中の
+    //      リソースはバックエンド側の参照が残るため、デバイス破棄前に明示的な終了処理が必要。
+    virtual void Shutdown() = 0;
 
     virtual void BeginFrame() = 0;
     virtual void EndFrame() = 0;
@@ -43,24 +67,47 @@ public:
 
     virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
 
-    virtual void ImGuiInit(void* hwnd) = 0;
-    virtual void ImGuiShutdown() = 0;
-    virtual void ImGuiNewFrame() = 0;
-    virtual void ImGuiRenderDrawData() = 0;
-    virtual void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) = 0;
+    // GPU プロファイリング。DX11Renderer のみ実装し、他バックエンドは no-op。
+    // WHY: パスごとの GPU 実行時間を上位レイヤーから取得するために抽象化する。
+    //      D3D11_QUERY_TIMESTAMP_DISJOINT / D3D11_QUERY_TIMESTAMP を使って非同期に計測する。
+    //      GpuProfCollect() を呼んだ時点で QUERY_LATENCY フレーム前の結果が確定する。
+    virtual void GpuProfBeginFrame()                      {}
+    virtual void GpuProfEndFrame()                        {}
+    virtual void GpuProfBeginPass(const char* /*name*/)   {}
+    virtual void GpuProfEndPass(const char* /*name*/)     {}
+    virtual void GpuProfCollect()                         {}
+    virtual const std::vector<GpuPassProfile>& GpuProfGetResults() const
+    {
+        static const std::vector<GpuPassProfile> s_empty;
+        return s_empty;
+    }
+
+    // IBL ベイク処理の実装を返す (Editor 専用)。
+    // DX11Renderer は DX11IblBaker を返す。他のバックエンドは nullptr を返してよい。
+    // WHY: IblBaker は DX11 固有の UAV 操作を必要とするため IRenderer の factory 経由で提供し、
+    //      Editor が DX11Renderer に直接ダウンキャストしなくて済むようにする。
+    virtual std::unique_ptr<IIblBaker> CreateIblBaker() { return nullptr; }
 
 private:
     friend class ResourceManager;
 
-    virtual std::shared_ptr<IBuffer> CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
-    virtual std::shared_ptr<IBuffer> CreateNativeIndexBuffer(const void* data, uint32_t count) = 0;
-    virtual std::shared_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
-    virtual std::shared_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
-    virtual std::shared_ptr<ITexture> CreateNativeTexture(const std::string& path) = 0;
-    virtual std::shared_ptr<ITexture> CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
-    virtual std::shared_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
-    virtual std::shared_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
-    virtual std::shared_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
+    virtual std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
+    virtual std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void* data, uint32_t count) = 0;
+    virtual std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
+    virtual std::unique_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeTexture(const std::string& path) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeTexture3DFromData(
+        const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(
+        IRenderTarget& rt,
+        uint32_t index,
+        RenderTargetTextureKind kind) = 0;
+    virtual std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
+    virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
+    virtual std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
+    virtual std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
 };
 
 } // namespace fbzz::renderer

@@ -1,11 +1,17 @@
 // FBZZ Engine
 // UIAnimatorSystem.cpp | fbzz::scene
-// Evaluates UIAnimator tweens and writes updated values into UIImage.
+// UIAnimator の Tween 評価
+// 時間経過に応じて UIImage の色と Transform の位置を更新する。
+// UISystem より前に呼ぶことで描画へ反映される。
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
+#include "Engine/Core/Scheduler/SystemContext.hpp"
+#include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/UIAnimator.hpp"
 #include "Engine/Scene/Components/UIImage.hpp"
+#include "Engine/Scene/Components/UIText.hpp"
+#include "Engine/Core/Logger.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -19,7 +25,7 @@ float ApplyEasing(float t, UIEasingType easing)
     case UIEasingType::EaseIn:    return t * t;
     case UIEasingType::EaseOut:   return 1.0f - (1.0f - t) * (1.0f - t);
     case UIEasingType::EaseInOut: return t < 0.5f ? 2.0f * t * t : 1.0f - 2.0f * (1.0f - t) * (1.0f - t);
-    default: return t; // Linear
+    default: return t; // 線形
     }
 }
 
@@ -36,53 +42,83 @@ math::Vector2 LerpV2(const math::Vector2& a, const math::Vector2& b, float t)
     return { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
 }
 
-void AdvanceTween(float& elapsed, float duration, bool loop, bool pingPong, float dt, bool& active)
+// active のまま elapsed をラップしたとき didWrap = true を返す。
+// WHY: fmod の結果が厳密に 0.0f にならない浮動小数点誤差を回避するため、
+//      pingPong の折り返し検出を elapsed の値比較ではなくフラグで行う。
+void AdvanceTween(float& elapsed, float duration, bool loop, float dt, bool& active, bool& didWrap)
 {
+    didWrap = false;
     if (!active) return;
     elapsed += dt;
     if (elapsed >= duration) {
         if (loop) {
             elapsed = std::fmod(elapsed, duration);
-            if (pingPong) {
-                // swap from/to handled by caller
-            }
+            didWrap = true;
         } else {
             elapsed = duration;
-            active = false;
+            active  = false;
         }
     }
 }
 
 void ProcessGO(GameObject& go, float dt)
 {
-    if (!go.activeSelf()) return;
+    if (!go.activeInHierarchy()) return;
 
     auto* anim  = go.GetComponent<UIAnimator>();
     auto* image = go.GetComponent<UIImage>();
+    auto* text  = go.GetComponent<UIText>();
 
-    if (anim && anim->enabled && image && image->enabled) {
-        // Color tween
+    if (anim && anim->enabled) {
+        // 色 Tween: UIImage または UIText が必要
         UIColorTween& ct = anim->colorTween;
         if (ct.active) {
-            AdvanceTween(ct.elapsed, ct.duration, ct.loop, ct.pingPong, dt, ct.active);
-            float t = (ct.duration > 0.0f) ? std::clamp(ct.elapsed / ct.duration, 0.0f, 1.0f) : 1.0f;
-            t = ApplyEasing(t, ct.easing);
-            image->color = LerpV4(ct.from, ct.to, t);
-            if (ct.loop && ct.pingPong && ct.elapsed == 0.0f)
-                std::swap(ct.from, ct.to); // flip direction next loop
+            if (!image && !text) {
+                static bool s_warnedColor = false;
+                if (!s_warnedColor) {
+                    FBZZ_LOG_WARN("UIAnimatorSystem: colorTween is active but no UIImage/UIText found on '%s'",
+                                  go.name.c_str());
+                    s_warnedColor = true;
+                }
+            } else {
+                bool didWrap = false;
+                AdvanceTween(ct.elapsed, ct.duration, ct.loop, dt, ct.active, didWrap);
+                float t = (ct.duration > 0.0f) ? std::clamp(ct.elapsed / ct.duration, 0.0f, 1.0f) : 1.0f;
+                t = ApplyEasing(t, ct.easing);
+                const math::Vector4 col = LerpV4(ct.from, ct.to, t);
+                if (image && image->enabled) image->color = col;
+                if (text  && text->enabled)  text->color  = col;
+                if (ct.loop && ct.pingPong && didWrap)
+                    std::swap(ct.from, ct.to);
+            }
         }
 
-        // Position tween
+        // 位置 Tween: UIImage の有無に依存しない
         UIPositionTween& pt = anim->positionTween;
         if (pt.active) {
-            AdvanceTween(pt.elapsed, pt.duration, pt.loop, pt.pingPong, dt, pt.active);
+            bool didWrap = false;
+            AdvanceTween(pt.elapsed, pt.duration, pt.loop, dt, pt.active, didWrap);
             float t = (pt.duration > 0.0f) ? std::clamp(pt.elapsed / pt.duration, 0.0f, 1.0f) : 1.0f;
             t = ApplyEasing(t, pt.easing);
-            auto posVal = LerpV2(pt.from, pt.to, t);
-            go.transform.localPosition.x = posVal.x;
-            go.transform.localPosition.y = posVal.y;
-            if (pt.loop && pt.pingPong && pt.elapsed == 0.0f)
+            const math::Vector2 posVal = LerpV2(pt.from, pt.to, t);
+            go.transform.position.x = posVal.x;
+            go.transform.position.y = posVal.y;
+            if (pt.loop && pt.pingPong && didWrap)
                 std::swap(pt.from, pt.to);
+        }
+
+        // スケール Tween
+        UIScaleTween& st = anim->scaleTween;
+        if (st.active) {
+            bool didWrap = false;
+            AdvanceTween(st.elapsed, st.duration, st.loop, dt, st.active, didWrap);
+            float t = (st.duration > 0.0f) ? std::clamp(st.elapsed / st.duration, 0.0f, 1.0f) : 1.0f;
+            t = ApplyEasing(t, st.easing);
+            const math::Vector2 scaleVal = LerpV2(st.from, st.to, t);
+            go.transform.scale.x = scaleVal.x;
+            go.transform.scale.y = scaleVal.y;
+            if (st.loop && st.pingPong && didWrap)
+                std::swap(st.from, st.to);
         }
     }
 
@@ -94,10 +130,22 @@ void ProcessGO(GameObject& go, float dt)
 
 } // namespace
 
-void UIAnimatorSystem(Scene& scene, float deltaTime)
+ComponentAccess UIAnimatorSystem::GetAccess() const
 {
-    for (GameObject* root : scene.GetRootGameObjects()) {
-        if (root) ProcessGO(*root, deltaTime);
+    return ComponentAccess{}
+        .Reads<UIAnimator>()
+        .Writes<UIAnimator, UIImage, UIText>();
+}
+
+OrderingHints UIAnimatorSystem::GetOrder() const
+{
+    return OrderingHints{}.Before<TransformLateUpdate>();
+}
+
+void UIAnimatorSystem::Update(SystemContext& ctx)
+{
+    for (GameObject* root : ctx.scene.GetRootGameObjects()) {
+        if (root) ProcessGO(*root, ctx.dt);
     }
 }
 

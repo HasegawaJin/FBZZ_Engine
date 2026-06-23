@@ -1,6 +1,8 @@
-﻿// FBZZ Engine
+// FBZZ Engine
 // DebugDraw.cpp | fbzz::renderer
-// ワイヤーフレームのデバッグ描画ユーティリティ
+// ワイヤーフレームのデバッグ描画実装
+// フレーム内に積まれた線分をバッチ化し、LINE_LIST の DrawCall として送る。
+// 物理・Scene の可視化から呼ばれるが、状態は描画フレーム内に閉じる。
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -39,11 +41,14 @@ constexpr float    PI                 = 3.14159265358979f;
 
 static IRenderer* s_renderer = nullptr;
 static ResourceManager* s_resources = nullptr;
-static ResourceHandle<BufferTag> s_vb;
-static ResourceHandle<ShaderTag> s_shader;
+static ResourceHandle<BufferTag>        s_vb;
+static ResourceHandle<BufferTag>        s_triVb;
+static ResourceHandle<ShaderTag>        s_shader;
 static ResourceHandle<ConstantBufferTag> s_cameraCB;
 static ResourceHandle<PipelineStateTag> s_pso;
+static ResourceHandle<PipelineStateTag> s_triPso;
 static std::vector<DebugVertex>         s_batch;
+static std::vector<DebugVertex>         s_triBatch;
 
 // =============================================================================
 // ローカルヘルパー
@@ -56,13 +61,21 @@ static void EnsureInit(ResourceManager& resources)
     s_vb       = resources.CreateVertexBuffer(nullptr,
                                        MAX_DEBUG_VERTICES * sizeof(DebugVertex),
                                        sizeof(DebugVertex));
-    s_shader   = resources.LoadShader("assets/shaders/Debug.hlsl");
+    s_triVb    = resources.CreateVertexBuffer(nullptr,
+                                       MAX_DEBUG_VERTICES * sizeof(DebugVertex),
+                                       sizeof(DebugVertex));
+    s_shader   = resources.LoadShader("Assets/Shaders/Debug/DebugDraw.hlsl");
     s_cameraCB = resources.CreateConstantBuffer(sizeof(DebugCamCB));
     s_pso      = resources.CreatePipelineState({ RasterizerMode::SOLID,
-                                         BlendMode::OPAQUE,
+                                         BlendMode::OPAQUE_BLEND,
                                          DepthMode::DEPTH_OFF });
+    s_triPso   = resources.CreatePipelineState({ RasterizerMode::SOLID_NOCULL,
+                                         BlendMode::ALPHA_BLEND,
+                                         DepthMode::DEPTH_READ });
 
-    assert(s_vb.IsValid() && s_shader.IsValid() && s_cameraCB.IsValid() && s_pso.IsValid() && "DebugDraw initialization failed");
+    assert(s_vb.IsValid() && s_triVb.IsValid() && s_shader.IsValid() &&
+           s_cameraCB.IsValid() && s_pso.IsValid() && s_triPso.IsValid() &&
+           "DebugDraw initialization failed");
 }
 
 static void AddSegment(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color)
@@ -104,6 +117,18 @@ static void AddCircle(const math::Vector3& center,
     AddArc(center, axis1, axis2, radius, color, 0.0f, 2.0f * PI, CIRCLE_SEGMENTS);
 }
 
+static void AddFilledTriangle(const math::Vector3& a, const math::Vector3& b, const math::Vector3& c,
+                               const math::Vector4& color)
+{
+    if (s_triBatch.size() + 3 > MAX_DEBUG_VERTICES) {
+        FBZZ_LOG_WARN("DebugDraw: tri batch reached max capacity (%u)", MAX_DEBUG_VERTICES);
+        return;
+    }
+    s_triBatch.push_back({ a, color });
+    s_triBatch.push_back({ b, color });
+    s_triBatch.push_back({ c, color });
+}
+
 // =============================================================================
 // 公開 API
 // =============================================================================
@@ -118,24 +143,42 @@ void DebugDraw::BeginFrame(IRenderer& r, ResourceManager& resources, const math:
     resources.Update(s_cameraCB, &cb, sizeof(cb));
 
     s_batch.clear();
+    s_triBatch.clear();
 }
 
 void DebugDraw::Flush()
 {
-    if (!s_renderer || s_batch.empty()) { s_batch.clear(); return; }
+    if (!s_renderer) { s_batch.clear(); s_triBatch.clear(); return; }
 
-    s_resources->Update(s_vb, s_batch.data(), s_batch.size() * sizeof(DebugVertex));
+    if (!s_batch.empty()) {
+        s_resources->Update(s_vb, s_batch.data(), s_batch.size() * sizeof(DebugVertex));
 
-    DrawCall call;
-    call.vertexBuffer       = s_vb;
-    call.shader             = s_shader;
-    call.pipelineState      = s_pso;
-    call.constantBuffers[0] = s_cameraCB;
-    call.vertexCount        = static_cast<uint32_t>(s_batch.size());
-    call.topology           = PrimitiveTopology::LINE_LIST;
+        DrawCall call;
+        call.vertexBuffer       = s_vb;
+        call.shader             = s_shader;
+        call.pipelineState      = s_pso;
+        call.constantBuffers[0] = s_cameraCB;
+        call.vertexCount        = static_cast<uint32_t>(s_batch.size());
+        call.topology           = PrimitiveTopology::LINE_LIST;
 
-    s_renderer->Submit(call, *s_resources);
-    s_batch.clear();
+        s_renderer->Submit(call, *s_resources);
+        s_batch.clear();
+    }
+
+    if (!s_triBatch.empty()) {
+        s_resources->Update(s_triVb, s_triBatch.data(), s_triBatch.size() * sizeof(DebugVertex));
+
+        DrawCall triCall;
+        triCall.vertexBuffer       = s_triVb;
+        triCall.shader             = s_shader;
+        triCall.pipelineState      = s_triPso;
+        triCall.constantBuffers[0] = s_cameraCB;
+        triCall.vertexCount        = static_cast<uint32_t>(s_triBatch.size());
+        triCall.topology           = PrimitiveTopology::TRIANGLE_LIST;
+
+        s_renderer->Submit(triCall, *s_resources);
+        s_triBatch.clear();
+    }
 }
 
 void DebugDraw::Line(IRenderer& /*r*/,
@@ -270,6 +313,85 @@ void DebugDraw::Capsule(IRenderer& /*r*/,
     AddSegment(top + X * -radius, bottom + X * -radius, color);
     AddSegment(top + Z *  radius, bottom + Z *  radius, color);
     AddSegment(top + Z * -radius, bottom + Z * -radius, color);
+}
+
+void DebugDraw::Arrow(IRenderer& /*r*/,
+                      const math::Vector3& from, const math::Vector3& to,
+                      float headLength, float headRadius,
+                      const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const math::Vector3 diff = to - from;
+    const float length = diff.Length();
+    if (length < 1e-6f) return;
+
+    const math::Vector3 n = diff.Normalized();
+
+    // ヘッド長が全体を超えないようクランプする
+    const float clampedHead = std::min(headLength, length);
+    const math::Vector3 shaftTip = to - n * clampedHead;
+
+    // シャフト
+    AddSegment(from, shaftTip, color);
+
+    // コーンヘッド部分を Cone ヘルパーで描く
+    // WHY: Arrow の先端コーンは底面が shaftTip、頂点が to なので
+    //      Cone の direction を n (from → to 方向) にして apex = to に合わせる。
+    //      内部で AddCircle / AddSegment を呼ぶ実装と同等にインライン化する。
+
+    // n に直交する 2 軸を求める
+    math::Vector3 right = (std::abs(n.y) < 0.99f)
+        ? math::Vector3::Cross(n, {0,1,0}).Normalized()
+        : math::Vector3::Cross(n, {1,0,0}).Normalized();
+    const math::Vector3 up = math::Vector3::Cross(right, n).Normalized();
+
+    // 底面の円
+    AddCircle(shaftTip, right, up, headRadius, color);
+
+    // 頂点から底面の等間隔 4 点へ線 (90° ごと)
+    AddSegment(to, shaftTip + right *  headRadius, color);
+    AddSegment(to, shaftTip - right *  headRadius, color);
+    AddSegment(to, shaftTip + up    *  headRadius, color);
+    AddSegment(to, shaftTip - up    *  headRadius, color);
+}
+
+void DebugDraw::Cone(IRenderer& /*r*/,
+                     const math::Vector3& apex, const math::Vector3& direction,
+                     float height, float baseRadius,
+                     const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+
+    const float len = direction.Length();
+    if (len < 1e-6f || height < 1e-6f) return;
+
+    const math::Vector3 n = direction * (1.0f / len);
+    const math::Vector3 baseCenter = apex + n * height;
+
+    // 底面の直交基底を求める
+    math::Vector3 right = (std::abs(n.y) < 0.99f)
+        ? math::Vector3::Cross(n, {0,1,0}).Normalized()
+        : math::Vector3::Cross(n, {1,0,0}).Normalized();
+    const math::Vector3 up = math::Vector3::Cross(right, n).Normalized();
+
+    // 底面の円
+    AddCircle(baseCenter, right, up, baseRadius, color);
+
+    // 頂点から底面の等間隔 4 点へ稜線 (90° ごと)
+    AddSegment(apex, baseCenter + right *  baseRadius, color);
+    AddSegment(apex, baseCenter - right *  baseRadius, color);
+    AddSegment(apex, baseCenter + up    *  baseRadius, color);
+    AddSegment(apex, baseCenter - up    *  baseRadius, color);
+}
+
+void DebugDraw::FilledPolygon(IRenderer& /*r*/, const math::Vector3* verts, size_t count,
+                              const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+    if (count < 3) return;
+    for (size_t i = 1; i + 1 < count; ++i)
+        AddFilledTriangle(verts[0], verts[i], verts[i + 1], color);
 }
 
 } // namespace fbzz::renderer

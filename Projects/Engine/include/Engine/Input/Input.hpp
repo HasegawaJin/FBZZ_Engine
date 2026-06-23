@@ -1,6 +1,8 @@
 // FBZZ Engine
 // Input.hpp | fbzz::input
-// キーボード・マウス入力の一元管理
+// キーボード・マウス入力のフレーム状態管理
+// Window の Win32 メッセージから現在状態を更新し、Update で前フレーム状態を保存する。
+// KeyDown / KeyUp は 1 フレームだけ true になる。
 #pragma once
 #include "KeyCode.hpp"
 #include "Math/Vector2.hpp"
@@ -14,6 +16,9 @@ class Input {
 public:
     // Window 生成後に一度呼ぶ
     static void Init();
+
+    // Play セッション切り替え時に入力状態を全てクリアする
+    static void Reset();
 
     // ゲームループ先頭で呼ぶ。前フレームの状態を保存する
     static void Update();
