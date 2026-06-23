@@ -29,7 +29,7 @@ tag = 'MainCamera'
     type = 'TpsCameraComponent'
 
         [gameobjects.ScriptComponents.fields]
-        Distance = 5.0
+        Distance = 2.0
         'Follow Speed' = 10.0
         Height = 1.6
         'Max Pitch' = 65.0
@@ -2904,3 +2904,642 @@ tag = 'Untagged'
         'Auto Transition' = false
         'Target Scene' = 'Result'
         'Via Scene' = 'Load'
+
+[[gameobjects]]
+active = true
+instanceId = 'a1b2c3d4-0001-4000-8000-000000000001'
+layer = 0
+name = 'EnvironmentLight'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.EnvironmentLightComponent]
+    diffuseScale = 1.0
+    enabled = true
+    intensity = 1.0
+    irradiancePath = 'C:/Users/jinhs/Downloads/FBZZ_Engine/Assets/Textures/IBL/sky_irr.dds'
+    maxMipLevel = 4
+    prefilterPath = 'C:/Users/jinhs/Downloads/FBZZ_Engine/Assets/Textures/IBL/sky_prefilter.dds'
+    specularScale = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1b2c3d4-0002-4000-8000-000000000002'
+layer = 0
+name = 'AtmosphericScattering'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.AtmosphericScatteringComponent]
+    enabled = true
+    fogColor = [ 0.55, 0.65, 0.75 ]
+    fogDensity = 0.035
+    fogEnabled = false
+    fogFar = 100.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1b2c3d4-0003-4000-8000-000000000003'
+layer = 0
+name = 'PostProcessVolume'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+
+        [gameobjects.PostProcessVolumeComponent.pp]
+        exposure = 1.0
+        fxaaEnabled = true
+        screenFadeAlpha = 0.0
+        screenFadeColor = [ 0.0, 0.0, 0.0 ]
+
+            [gameobjects.PostProcessVolumeComponent.pp.bloom]
+            enabled = true
+            intensity = 0.6
+            softKnee = 0.4
+            threshold = 0.7
+
+            [gameobjects.PostProcessVolumeComponent.pp.ao]
+            enabled = true
+            intensity = 0.85
+
+            [gameobjects.PostProcessVolumeComponent.pp.fog]
+            color = [ 0.55, 0.65, 0.75 ]
+            density = 0.035
+            enabled = false
+            farDistance = 100.0
+
+            [gameobjects.PostProcessVolumeComponent.pp.colorGrading]
+            contrast = 0.04
+            enabled = true
+            hueShift = 0.0
+            saturation = 1.05
+            temperature = 0.02
+            tint = 0.0
+
+            [gameobjects.PostProcessVolumeComponent.pp.vignette]
+            color = [ 0.0, 0.0, 0.0 ]
+            enabled = false
+            intensity = 0.18
+            roundness = 1.0
+            smoothness = 0.45
+
+            [gameobjects.PostProcessVolumeComponent.pp.filmGrain]
+            enabled = false
+            intensity = 0.03
+            response = 0.8
+
+            [gameobjects.PostProcessVolumeComponent.pp.sharpen]
+            enabled = false
+            radius = 1.0
+            strength = 0.35
+
+            [gameobjects.PostProcessVolumeComponent.pp.dof]
+            blurRadius = 3.0
+            enabled = false
+            focusDistance = 8.0
+            focusRange = 4.0
+
+            [gameobjects.PostProcessVolumeComponent.pp.lens]
+            chromaticAberration = 0.003
+            chromaticAberrationEnabled = false
+            distortion = 0.0
+            distortionEnabled = false
+
+            [gameobjects.PostProcessVolumeComponent.pp.stylized]
+            invertEnabled = false
+            invertIntensity = 1.0
+            pixelSize = 4.0
+            pixelateEnabled = false
+            posterizeEnabled = false
+            posterizeLevels = 6.0
+            sepiaEnabled = false
+            sepiaIntensity = 0.75
+
+            [gameobjects.PostProcessVolumeComponent.pp.imageQuality]
+            clarityEnabled = true
+            clarityRadius = 2.0
+            clarityStrength = 0.15
+            colorFilter = [ 1.0, 1.0, 1.0 ]
+            colorFilterEnabled = false
+            colorFilterIntensity = 0.0
+            highlightCompression = 0.06
+            shadowHighlightEnabled = true
+            shadowLift = 0.04
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+# -- PBR Test Spheres (IBL/PBR debug grid 3x5) --
+# Row 1: Roughness sweep (metallic=1.0, roughness 0->1)  Z=78
+# Row 2: Metallic sweep (roughness=0.4, metallic 0->1)   Z=81
+# Row 3: Color variants                                   Z=84
+
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000001'
+layer = 0
+name = 'Sphere_Rough_R0'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_rough_r00.mat'
+
+    [gameobjects.transform]
+    position = [ 57.5, 1.5, 78.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000002'
+layer = 0
+name = 'Sphere_Rough_R25'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_rough_r25.mat'
+
+    [gameobjects.transform]
+    position = [ 60.0, 1.5, 78.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000003'
+layer = 0
+name = 'Sphere_Rough_R50'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_rough_r50.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 1.5, 78.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000004'
+layer = 0
+name = 'Sphere_Rough_R75'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_rough_r75.mat'
+
+    [gameobjects.transform]
+    position = [ 65.0, 1.5, 78.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000005'
+layer = 0
+name = 'Sphere_Rough_R100'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_rough_r100.mat'
+
+    [gameobjects.transform]
+    position = [ 67.5, 1.5, 78.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000006'
+layer = 0
+name = 'Sphere_Metal_M0'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_metal_m00.mat'
+
+    [gameobjects.transform]
+    position = [ 57.5, 1.5, 81.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000007'
+layer = 0
+name = 'Sphere_Metal_M25'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_metal_m25.mat'
+
+    [gameobjects.transform]
+    position = [ 60.0, 1.5, 81.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000008'
+layer = 0
+name = 'Sphere_Metal_M50'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_metal_m50.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 1.5, 81.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000009'
+layer = 0
+name = 'Sphere_Metal_M75'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_metal_m75.mat'
+
+    [gameobjects.transform]
+    position = [ 65.0, 1.5, 81.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000010'
+layer = 0
+name = 'Sphere_Metal_M100'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_metal_m100.mat'
+
+    [gameobjects.transform]
+    position = [ 67.5, 1.5, 81.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000011'
+layer = 0
+name = 'Sphere_Color_Red'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_red.mat'
+
+    [gameobjects.transform]
+    position = [ 57.5, 1.5, 84.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000012'
+layer = 0
+name = 'Sphere_Color_Green'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_green.mat'
+
+    [gameobjects.transform]
+    position = [ 60.0, 1.5, 84.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000013'
+layer = 0
+name = 'Sphere_Color_Blue'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_blue.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 1.5, 84.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000014'
+layer = 0
+name = 'Sphere_Color_Gold'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_gold.mat'
+
+    [gameobjects.transform]
+    position = [ 65.0, 1.5, 84.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'pbr-test-0001-0000-0000-000000000015'
+layer = 0
+name = 'Sphere_Color_White'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_white.mat'
+
+    [gameobjects.transform]
+    position = [ 67.5, 1.5, 84.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+# -- SSR Test Objects --
+# 反射面 x2 (鏡面/濡れ床) + 反射ターゲット x4 (背の高いキューブ)
+# 反射面は Z=66 (濡れ床) / Z=72 (鏡面)、上方に反射対象キューブを配置。
+# SSR は roughness が低いほど強い。mirror(R=0.0) vs polished(R=0.08) vs wet(R=0.02)
+
+[[gameobjects]]
+active = true
+instanceId = 'ssr-test-0001-0000-0000-000000000001'
+layer = 0
+name = 'SSR_Mirror_Floor'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_ssr_mirror.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 1.45, 72.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 10.0, 1.0, 10.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ssr-test-0001-0000-0000-000000000002'
+layer = 0
+name = 'SSR_Wet_Floor'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_ssr_wet.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 1.45, 66.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 10.0, 1.0, 10.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ssr-test-0001-0000-0000-000000000003'
+layer = 0
+name = 'SSR_Target_Red'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_red.mat'
+
+    [gameobjects.transform]
+    position = [ 57.0, 4.0, 70.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.5, 5.0, 1.5 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ssr-test-0001-0000-0000-000000000004'
+layer = 0
+name = 'SSR_Target_Blue'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_blue.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 4.0, 70.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.5, 5.0, 1.5 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ssr-test-0001-0000-0000-000000000005'
+layer = 0
+name = 'SSR_Target_White'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_white.mat'
+
+    [gameobjects.transform]
+    position = [ 68.0, 4.0, 70.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.5, 5.0, 1.5 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ssr-test-0001-0000-0000-000000000006'
+layer = 0
+name = 'SSR_Target_Gold'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_color_gold.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 4.0, 74.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.5, 5.0, 1.5 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'ssr-test-0001-0000-0000-000000000007'
+layer = 0
+name = 'SSR_Polished_Floor'
+parent = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.MeshRenderer]
+    enabled = true
+    mesh = 'primitive:plane'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'Assets/Materials/Debug/pbr_ssr_polished.mat'
+
+    [gameobjects.transform]
+    position = [ 62.5, 1.45, 60.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 10.0, 1.0, 10.0 ]
