@@ -1,6 +1,6 @@
 # FBZZ Engine
 
-C++20 で自作する 3D ゲームエンジン。数学・物理エンジンをゼロから実装し、DirectX 11 レンダラーを抽象インターフェースで隠蔽する設計。スクリプト DLL のホットリロード、ノードベースのアニメーショングラフ、ナビゲーションメッシュ、地形・水面・フォリッジ編集を備えたフルセット開発環境。
+C++20 で自作する 3D ゲームエンジン。数学・物理エンジンをゼロから実装し、DirectX 11 レンダラーを抽象インターフェースで隠蔽する設計。スクリプト DLL のホットリロード、ノードベースのアニメーショングラフ、ナビゲーションメッシュ、地形・水面・フォリッジ編集を備えたフルセット開発環境。TPS サンプルゲーム (Title / Load / Main / Result の 4 シーン) を同梱。
 
 ---
 
@@ -9,15 +9,20 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 - **数学ライブラリ自作** — Vector2/3/4・Matrix3/4・Quaternion・Ray・Frustum・Plane を GLM に頼らず実装
 - **物理エンジン自作** — GJK + EPA 衝突検出・BVH ブロードフェーズ・インパルスソルバー・CCD・各種コンストレイント。Bullet / PhysX 不使用
 - **抽象レンダラー** — `IRenderer` インターフェースで DX11 実装を隠蔽。DX12 / レイトレーシングへ差し替え可
-- **PBR 遅延レンダリング** — GBuffer → 遅延ライティング → SSAO → Bloom → FXAA → Composite パイプライン
+- **Deferred + Forward ハイブリッドレンダリング** — RenderGraph が依存 DAG を静的解析し、一時リソースをフレーム間でエイリアシング
+- **PBR 遅延レンダリング** — GBuffer → 遅延ライティング → SSAO / GTAO → Bloom → FXAA / TAA → Composite パイプライン
+- **IBL (Image-Based Lighting)** — HDRI からキューブマップをベイク。Irradiance Convolution + Prefiltered Environment Map で PBR に統合
+- **高品質シャドウ** — PCSS (Poisson Disk Blocker Search) によるソフトシャドウ、Contact Shadows
+- **スクリーンスペースエフェクト** — SSR / SSAO / GTAO / Motion Blur / Volumetric Light / Lens Flare
 - **スケルタルアニメーション + アニメーショングラフ** — FBX インポート・GPU スキニング・ノードベースのステートマシン
 - **ナビゲーションメッシュ** — NavMesh ベイク・エージェント・パトロール・センサー・オフメッシュリンクを実装
-- **地形・フォリッジ・水面** — ハイトマップ編集・フォリッジ GPU カリング・リアルタイム水面
+- **地形・フォリッジ・水面** — ハイトマップ編集・フォリッジ GPU カリング・リアルタイム水面 (SSR 対応)
 - **スクリプト DLL ホットリロード** — Play 中にスクリプトを再コンパイルして即時反映
-- **ScriptProxy システム** — 18 種のプロキシ経由でスクリプトからエンジン全機能に型安全アクセス
+- **ScriptProxy システム** — 27 種のプロキシ経由でスクリプトからエンジン全機能に型安全アクセス
 - **カスタムメモリシステム** — Frame / Linear / Pool / Stack アロケーターとリークトラッカー
 - **GameHub** — Unity Hub 相当のプロジェクト管理・起動ランチャー
 - **ImGui フルエディター** — 地形・フォリッジ・水面ツール・アニメーショングラフ・アセット依存関係ビューを搭載
+- **カスタムポストプロセス** — スクリプトからユーザー定義レンダーパスを RenderGraph に挿入可能
 - **Win32 ネイティブ** — GLFW に依存せず Win32 API でウィンドウ・入力を管理
 - **C++20** — `std::span`・Concepts・Designated initializers を活用
 
@@ -94,6 +99,15 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 | `ScriptPostProcessProxy` | ポストプロセスパラメーターの変更 |
 | `ScriptDebugProxy` | デバッグ描画 |
 | `ScriptMemoryProxy` | カスタムアロケーター経由のメモリ確保 |
+| `ScriptCharacterProxy` | CharacterController の移動・ジャンプ操作 |
+| `ScriptMeshProxy` | メッシュの動的差し替え・可視制御 |
+| `ScriptIKProxy` | IK ターゲット位置・重みの設定 |
+| `ScriptWaterProxy` | 水面パラメーター (波高・速度) の変更 |
+| `ScriptEnvironmentProxy` | 環境光・大気パラメーターの変更 |
+| `ScriptDecalProxy` | デカールのサイズ・マテリアル変更 |
+| `ScriptVolumeProxy` | ポストプロセスボリュームのブレンド重み変更 |
+| `ScriptReflectionProbeProxy` | リフレクションプローブの再ベイク要求 |
+| `ScriptLifetimeProxy` | GameObject の残り寿命の取得・設定 |
 | `GizmoProxy` | Gizmo のエディター描画 |
 
 ---
@@ -101,12 +115,15 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 ### コンポーネント
 
 | コンポーネント | 概要 |
-|---------------|------|
+|--------------|------|
 | `MeshRenderer` | スタティックメッシュの描画 |
 | `SkinnedMeshRenderer` | スキンドメッシュ + GPU スキニング描画 |
 | `AnimatorComponent` | `AnimationClip` の再生・ブレンド |
 | `CameraComponent` | カメラ FOV / Near / Far 管理 |
 | `LightComponent` | Directional / Point / Spot ライト |
+| `EnvironmentLightComponent` | IBL 環境光 (HDRI キューブマップ参照) |
+| `ReflectionProbeComponent` | ローカル反射キューブマップのベイクと適用 |
+| `AtmosphericScatteringComponent` | 大気散乱シミュレーション (空・霞) |
 | `ColliderComponent` | AABB / OBB / Sphere / Capsule / ConvexHull / TriangleMesh / HeightField コライダー |
 | `RigidBodyComponent` | 物理剛体アタッチ |
 | `CharacterControllerComponent` | 物理ベースのキャラクター移動 |
@@ -114,7 +131,8 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 | `MaterialComponent` | マテリアル参照 |
 | `ParticleEmitter` | CPU / GPU パーティクルシステム |
 | `SkyRenderer` | スカイボックス / スカイドーム描画 |
-| `VolumeComponent` | ポストプロセスボリューム |
+| `VolumeComponent` | ポストプロセスボリューム (グローバル) |
+| `PostProcessVolumeComponent` | ローカルポストプロセスボリューム (ブレンド範囲指定) |
 | `TerrainComponent` | ハイトマップに基づくテレイン描画 |
 | `TerrainGridComponent` | テレイングリッド管理 |
 | `TerrainDetailComponent` | 草・小物の詳細オブジェクト散布 |
@@ -159,19 +177,32 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 
 ### レンダラー (DX11 実装)
 
+RenderGraph ベースの **Deferred + Forward ハイブリッド**。パス間の依存 DAG を静的解析し、一時 RenderTarget をフレームをまたいでエイリアシングすることでメモリを節約する。
+
 | 機能 | 概要 |
 |------|------|
-| GBuffer パス | Albedo / Normal / Roughness / Metallic / Emissive |
+| GBuffer パス | Albedo+Alpha / Normal (RGBA16F) / Roughness・Metallic・AO・Emissive |
 | 遅延ライティング | Directional / Point / Spot ライトを GBuffer から解決 |
+| IBL | HDRI → Irradiance Convolution + Prefiltered Cubemap (各 CS ベイク) を Deferred Lighting に統合 |
 | シャドウマップ | Directional / Spot ライトの深度マップ |
+| PCSS | Poisson Disk Blocker Search によるソフトシャドウ |
+| Contact Shadows | スクリーンスペースのコンタクトシャドウ (CS) |
 | SSAO | コンピュートシェーダーによるスクリーンスペース AO + ブラー |
+| GTAO | Ground Truth Ambient Occlusion (CS)。SSAO と排他選択 |
+| SSR | Screen Space Reflection (CS)。水面・光沢面の映り込み |
+| Motion Blur | カメラ・オブジェクトのモーションベクターによるブラー (CS) |
+| Volumetric Light | 体積光 (ゴッドレイ) のコンピュートシェーダー実装 |
 | Bloom | Downsample / Upsample コンピュートシェーダー |
 | FXAA | ファストアンチエイリアシング |
+| TAA | Temporal Anti-Aliasing。FXAA と排他選択 |
+| Lens Flare | スクリーンスペースレンズフレア |
 | 選択アウトライン | エディター上の選択オブジェクトをアウトライン強調 |
-| PostProcess | Fog / Color Grading / Vignette / Film Grain / Lens Distortion / Chromatic Aberration / Sharpen / Depth of Field / Sepia / Invert / Posterize / Pixelate など |
-| 水面 / 焦散 | リアルタイム水面シミュレーションと水中コースティクス |
+| PostProcess | Fog / Color Grading / Vignette / Film Grain / Lens Distortion / Chromatic Aberration / Sharpen / Depth of Field / Sepia / Invert / Posterize / Pixelate / LUT (32³ Color LUT) など |
+| カスタム PostProcess | スクリプトから `UserRenderPassDesc` を登録し AfterOpaque / AfterTransparent / BeforePostProcess に挿入 |
+| 水面 / 焦散 | リアルタイム水面シミュレーション + 水中コースティクス + SSR 反射 |
 | DebugDraw | 線・矩形・球・カプセルのワイヤーフレーム即時描画 |
-| `RenderGraph` | 描画パスをグラフ構造として依存関係管理 |
+| `RenderGraph` | 描画パスをグラフ構造として依存関係管理。未使用パスを自動カリング |
+| `OcclusionCuller` | CPU Software Rasterizer によるオクルージョンカリング |
 | `RenderLayer` | 描画レイヤー分離 |
 | `FontAtlas` | フォントアトラス生成 |
 
@@ -181,15 +212,25 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 |---------|------|
 | Surface マテリアル | PBR / Lit / BlinnPhong / Phong / Toon / Unlit / RimLight / Subsurface / Anisotropic / Dissolve |
 | Skinned マテリアル | 上記すべての Skinned バリアント |
+| カスタムマテリアル | CustomSurface / CustomSkinned (ユーザー拡張テンプレート) |
 | Sky | Skybox / Skydome |
 | Decal | Decal / DecalMask |
 | エフェクト | Particle (CPU) / ParticleGPU (GPU) / ParticleGpuSim (CS) / Trail / MeshTrail / SkinnedMeshTrail |
 | パイプライン | GBuffer / DeferredLighting / ShadowMap / SkinnedShadowMap / DepthCopy |
-| PostProcess | SSAO (CS) / SSAOBlur (CS) / BloomDownsample (CS) / BloomUpsample (CS) / FXAA / Composite / SelectionOutline / Caustics |
+| IBL ベイク | EquirectToCubemap (CS) / IrradianceConvolution (CS) / PrefilteredEnvMap (CS) / BRDFIntegration (CS) |
+| PostProcess — AO | SSAO (CS) / SSAOBlur (CS) / GTAO (CS) / GTAOBlur (CS) |
+| PostProcess — AA | FXAA / TAA |
+| PostProcess — 反射 | SSR (CS) |
+| PostProcess — シャドウ | ContactShadows (CS) |
+| PostProcess — ライティング | VolumetricLight (CS) |
+| PostProcess — モーション | MotionBlur (CS) |
+| PostProcess — フレア | LensFlare |
+| PostProcess — カラー | Composite (ToneMap + Color Grading) / CopyColor |
+| PostProcess — カスタム | CustomPostProcess / CustomPostProcessTemplate |
 | 地形 | Terrain / Detail / DetailGrass / Foliage |
-| 水面 | Water |
+| 水面 | Water / Caustics |
 | UI | UISprite / UIText |
-| 共通ライブラリ | Atmosphere / BRDF / Cloud / Fog / Lighting / Shadow / ToneMap |
+| 共通ライブラリ | Atmosphere / BRDF / Cloud / Fog / IBL / Lighting / PostProcess / Shadow / ToneMap |
 
 ---
 
@@ -234,7 +275,7 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 | テレイン | ハイトマップ読み込み・表示・`HeightFieldCollider` で物理コライダー自動生成 |
 | Detail | 草・小物オブジェクトをテレイン面に散布 |
 | フォリッジ | 木などのインスタンスを GPU インスタンシングで大量描画・GPU フラスタムカリング |
-| 水面 | ノーマルアニメーション + 焦散エフェクト |
+| 水面 | ノーマルアニメーション + 焦散エフェクト + SSR 反射 |
 
 ### スクリプティングシステム
 
@@ -253,7 +294,7 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 | `ResourceManager` | GPU リソース (`IBuffer` / `ITexture` / `IShader`) のプール管理 |
 | `AssetHandle` | 型安全なアセット参照 |
 | `AssetFileWatcher` | ファイル変更を監視して自動再インポート |
-| カスタム形式 | `.fzasset` (汎用) / `.mesh` (メッシュサブアセット) / `.scene` (シーン) / `.terrain` / `.mat` / `.tex` |
+| カスタム形式 | `.fzasset` (汎用) / `.mesh` (メッシュサブアセット) / `.scene` (シーン) / `.terrain` / `.mat` / `.tex` / `.fzpp` (PostProcess プロファイル) |
 | `FbxImportTool` | FBX を複数サブアセット (Model / Skeleton / AnimationClip / Material / Texture) に分解するインポートパイプライン |
 
 ---
@@ -279,14 +320,14 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 | PlayModeController | Play / Stop によるシーン状態のスナップショット復元 |
 
 | エディターツール | 概要 |
-|---------------|------|
+|----------------|------|
 | TerrainTool | ハイトマップ・テクスチャ・法線のペイント |
 | FoliageTool | フォリッジインスタンスの散布・消去 |
 | DetailTool | 草・小物の詳細散布 |
 | WaterTool | 水面領域の定義とパラメーター調整 |
 
 | ユーティリティ | 概要 |
-|-------------|------|
+|--------------|------|
 | `UndoStack` | 任意操作のアンドゥ・リドゥ |
 | `HotkeyManager` | カスタマイズ可能なキーバインド管理 |
 | `SceneIO` | シーンの保存・読み込みフロー |
@@ -318,6 +359,21 @@ Unity Hub に相当するプロジェクト管理ランチャー。エディタ�
 
 ---
 
+## サンプルゲーム
+
+TPS (三人称視点) ゲームが同梱されており、エンジンの各機能を実際のゲームロジックとして確認できる。
+
+| シーン | 内容 |
+|--------|------|
+| `Title.scene` | タイトル画面。ボタン入力でゲームシーンへ遷移 |
+| `Load.scene` | ロード画面。アセット読み込み中に表示 |
+| `Main.scene` | ゲームプレイシーン。TPS カメラ + キャラクター操作 + テレイン |
+| `Result.scene` | リザルト画面 |
+
+シーン遷移はフェードイン / アウト付き (`SceneManagerScript`)。キャラクター操作は `PlayerControllerComponent`・カメラは `TpsCameraComponent` で実装。
+
+---
+
 ## モジュール構成
 
 ```
@@ -333,12 +389,12 @@ FBZZ_Engine/
 │   └── Tests/          単体テスト
 ├── Assets/
 │   ├── Shaders/        HLSL シェーダー群 (compiled/ に事前コンパイル済み .cso)
-│   ├── Scenes/         シリアライズ済みシーン (.scene)
+│   ├── Scenes/         シリアライズ済みシーン (.scene / .animgraph)
 │   ├── Materials/      マテリアルアセット (.mat)
 │   ├── Scripts/        スクリプトコンポーネント (+ コード生成済み .generated.hpp)
 │   └── Terrain/        テレインアセット (.terrain)
-├── ThirdParty/         Assimp / DirectXTex / ImGui / ImGuizmo / ImNodes / toml++ / stb
-└── Docs/               規約ドキュメント
+├── ThirdParty/         Assimp / DirectXTex / ImGui / ImGuizmo / ImNodes / toml++ / stb / TinyEXR
+└── Docs/               規約・アーキテクチャドキュメント
 ```
 
 依存方向: `Sandbox / Editor / GameHub → Engine → Physics → Math`
@@ -348,7 +404,7 @@ FBZZ_Engine/
 ```mermaid
 graph LR
     subgraph サードパーティ
-        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / XAudio2 / DirectX11"]
+        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2 / DirectX11"]
     end
 
     subgraph コアライブラリ
@@ -381,25 +437,36 @@ graph LR
 
 ```mermaid
 graph LR
-    Shadow["Shadow Pass\nShadowMap / SkinnedShadowMap"]
+    Shadow["Shadow Pass\nShadowMap (PCSS)"]
     GBuf["GBuffer Pass\nAlbedo / Normal\nRoughness / Metallic / Emissive"]
-    SSAO["SSAO\n(Compute Shader)"]
-    Light["Deferred Lighting\nDirectional / Point / Spot"]
+    AO["AO Pass\nSSAO or GTAO\n(Compute Shader)"]
+    Contact["Contact Shadows\n(Compute Shader)"]
+    Light["Deferred Lighting\nDir / Point / Spot + IBL"]
+    SSR["SSR\n(Compute Shader)"]
+    VL["Volumetric Light\n(Compute Shader)"]
     Bloom["Bloom\nDownsample → Upsample\n(Compute Shader)"]
-    FXAA["FXAA"]
-    PP["PostProcess\nFog / Color Grading / Vignette\nDoF / Film Grain など"]
+    MB["Motion Blur\n(Compute Shader)"]
+    TAA_FXAA["TAA or FXAA"]
+    PP["PostProcess\nFog / Color Grading / Vignette\nDoF / Film Grain / LUT など"]
+    LF["Lens Flare"]
     Comp["Composite\nTone Mapping"]
     BB["バックバッファ"]
 
     Shadow --> Light
-    GBuf --> SSAO
+    GBuf --> AO
+    GBuf --> Contact
     GBuf --> Light
-    SSAO --> Light
-    Light --> Bloom
-    Light --> FXAA
-    Bloom --> PP
-    FXAA --> PP
-    PP --> Comp
+    AO --> Light
+    Contact --> Light
+    Light --> SSR
+    Light --> VL
+    SSR --> Bloom
+    VL --> Bloom
+    Bloom --> MB
+    MB --> TAA_FXAA
+    TAA_FXAA --> PP
+    PP --> LF
+    LF --> Comp
     Comp --> BB
 ```
 
@@ -429,7 +496,7 @@ graph LR
 ### 要件
 
 | ツール | バージョン |
-|-------|----------|
+|--------|----------|
 | OS | Windows 10 / 11 |
 | Visual Studio | 2022 以降 (C++20 対応) |
 | CMake | 3.20 以上 |
@@ -464,6 +531,7 @@ VSCode または Visual Studio でソリューションを開いてビルド。
 | toml++ | シーンシリアライゼーション |
 | stb_image | テクスチャ読み込み |
 | DirectXTex | テクスチャ処理 |
+| TinyEXR | HDR / EXR テクスチャ読み込み (IBL 用 HDRI) |
 
 ## 使用アセット
 
