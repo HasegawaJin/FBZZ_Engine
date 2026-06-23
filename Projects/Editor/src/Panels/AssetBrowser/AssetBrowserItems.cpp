@@ -176,8 +176,9 @@ static const ExtGroup* FindGroup(const std::string& ext)
 
 static bool IsTextureExt(const std::string& ext)
 {
+    // .dds はキューブマップ等の非 2D テクスチャを含むため 2D プレビュー対象から除外する
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
-           ext == ".dds" || ext == ".bmp" || ext == ".tga";
+           ext == ".bmp" || ext == ".tga";
 }
 
 static bool IsMeshExt(const std::string& ext)

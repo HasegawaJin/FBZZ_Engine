@@ -21,8 +21,10 @@ bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 
 bool AssetBrowserPanel::IsTextureRaw(const std::string& ext)
 {
+    // .dds は IBL ベイク済みキューブマップ等の GPU 直接ロード形式のため除外する。
+    // .tex descriptor 経由のインポートパイプラインは通さない。
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
-           ext == ".tga" || ext == ".dds" || ext == ".bmp" ||
+           ext == ".tga" || ext == ".bmp" ||
            ext == ".hdr" || ext == ".exr";
 }
 
