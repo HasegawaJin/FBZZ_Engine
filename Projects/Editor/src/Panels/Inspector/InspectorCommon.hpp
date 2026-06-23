@@ -31,6 +31,11 @@
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
+#include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
+#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
+#include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
+#include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
@@ -988,6 +993,23 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
                 entry.script = std::move(script);
             });
         }
+        return shown;
+    });
+
+    anyShown |= AddComponentCategory("Environment", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "Environment Light", !go.GetComponent<scene::EnvironmentLightComponent>(), [&]() {
+            go.AddComponent<scene::EnvironmentLightComponent>();
+        });
+        shown |= addItem(category, "Reflection Probe", !go.GetComponent<scene::ReflectionProbeComponent>(), [&]() {
+            go.AddComponent<scene::ReflectionProbeComponent>();
+        });
+        shown |= addItem(category, "Atmospheric Scattering", !go.GetComponent<scene::AtmosphericScatteringComponent>(), [&]() {
+            go.AddComponent<scene::AtmosphericScatteringComponent>();
+        });
+        shown |= addItem(category, "Post Process Volume", !go.GetComponent<scene::PostProcessVolumeComponent>(), [&]() {
+            go.AddComponent<scene::PostProcessVolumeComponent>();
+        });
         return shown;
     });
 

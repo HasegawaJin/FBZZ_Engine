@@ -379,6 +379,23 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
             render.shadow.pcfRadius = pcfIdx;
         ImGui::SameLine();
         ImGui::TextDisabled("(Blur)");
+
+        // PCSS — 距離に比例してペナンブラが広がる物理ベースのソフトシャドウ。
+        ImGui::Spacing();
+        ImGui::Checkbox("PCSS##shadow", &render.shadow.pcssEnabled);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Percentage Closer Soft Shadows)");
+        if (render.shadow.pcssEnabled)
+        {
+            ImGui::Indent();
+            ImGui::SetNextItemWidth(100.0f);
+            ImGui::DragFloat("Light Radius##pcss", &render.shadow.pcssLightRadius,
+                             0.1f, 0.0f, 50.0f, "%.2f");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(大きいほどソフト)");
+            ImGui::Unindent();
+        }
+
         ImGui::Unindent();
     }
     ImGui::SameLine();
@@ -413,9 +430,25 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
 
 void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
 {
-    const PostProcessInspectorResult result = DrawPostProcessInspector(render.postProcess);
-    if (result.structureChanged)
-        ++m_editGeneration;
+    // ─── 既存ポストプロセス効果 ───────────────────────────────────────────
+    // Bloom / SSAO / Fog / ColorGrading / Vignette / FilmGrain 等
+    {
+        // WHY: &render を渡すことで DrawPostProcessInspector 内の FXAA/SSAO グレーアウトが
+        //      機能する (TAA/GTAO との排他スロット競合検出)。
+        const PostProcessInspectorResult r = DrawPostProcessInspector(render.postProcess, &render);
+        if (r.structureChanged) ++m_editGeneration;
+    }
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Advanced Graphics");
+
+    // ─── 高度グラフィクス設定 ─────────────────────────────────────────────
+    // IBL / SSR / GTAO / ContactShadows / TAA / MotionBlur /
+    // VolumetricLight / LensFlare / LUT ColorGrading
+    {
+        const PostProcessInspectorResult r = DrawAdvancedGraphicsInspector(render);
+        if (r.structureChanged) ++m_editGeneration;
+    }
 }
 
 void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)
