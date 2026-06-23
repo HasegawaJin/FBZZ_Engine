@@ -142,6 +142,11 @@ int Run()
 
         StandaloneApp standaloneApp(renderer, imguiRenderer, resources, project, settings);
         app.Run(standaloneApp);
+        // WHY: ResourceManager は app よりスコープが長いため ~ResourceManager() が
+        //      app::Shutdown() より先に走る。事前に Reset() しないとデストラクタの
+        //      LogLiveDebugResources が GPU リソースを「外部保持」と誤判定して報告する。
+        asset::AssetManager::UnloadAll();
+        resources.Reset();
     } else {
         if (!app.Init()) return 1;
 
@@ -158,9 +163,11 @@ int Run()
                                    StringUtils::PathToUtf8(project.settingsFile),
                                    StringUtils::PathToUtf8(project.sceneFile))) return 1;
         app.Run(editorApp);
+        // WHY: standalone 側と同様、~ResourceManager() に先んじて GPU リソースを解放する。
+        asset::AssetManager::UnloadAll();
+        resources.Reset();
     }
 
-    asset::AssetManager::UnloadAll();
     app.Shutdown();
     return 0;
 }

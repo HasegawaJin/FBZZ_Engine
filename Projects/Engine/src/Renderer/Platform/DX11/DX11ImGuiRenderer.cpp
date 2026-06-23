@@ -14,6 +14,11 @@
 
 namespace fbzz::renderer {
 
+DX11ImGuiRenderer::~DX11ImGuiRenderer()
+{
+    ImGuiShutdown();
+}
+
 bool DX11ImGuiRenderer::Init(ID3D11Device* device, ID3D11DeviceContext* context)
 {
     if (!device || !context) {
@@ -27,14 +32,32 @@ bool DX11ImGuiRenderer::Init(ID3D11Device* device, ID3D11DeviceContext* context)
 
 void DX11ImGuiRenderer::ImGuiInit(void* hwnd)
 {
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(m_device, m_context);
+    if (m_imguiInitialized) {
+        return;
+    }
+
+    const bool win32Initialized = ImGui_ImplWin32_Init(hwnd);
+    const bool dx11Initialized  = ImGui_ImplDX11_Init(m_device, m_context);
+    m_imguiInitialized = win32Initialized && dx11Initialized;
+
+    // WHY: 片方だけ初期化できた場合も、そのバックエンドが確保したリソースを残さない。
+    if (!m_imguiInitialized) {
+        if (dx11Initialized)
+            ImGui_ImplDX11_Shutdown();
+        if (win32Initialized)
+            ImGui_ImplWin32_Shutdown();
+    }
 }
 
 void DX11ImGuiRenderer::ImGuiShutdown()
 {
+    if (!m_imguiInitialized) {
+        return;
+    }
+
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
+    m_imguiInitialized = false;
 }
 
 void DX11ImGuiRenderer::ImGuiNewFrame()

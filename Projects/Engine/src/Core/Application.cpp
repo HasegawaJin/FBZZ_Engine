@@ -14,6 +14,7 @@
 #include "Engine/Input/Input.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
+#include "Engine/Renderer/ResourceManager.hpp"
 #include "../Renderer/Platform/DX11/DX11ImGuiRenderer.hpp"
 #include "../Renderer/Platform/DX11/DX11Renderer.hpp"
 
@@ -71,6 +72,13 @@ bool Application::Init(const Window::Config& windowConfig) {
 void Application::Shutdown() {
     TaskSystem::Shutdown();
     m_imguiRenderer.reset();
+    // WHAT: デバイスを破棄する前に ResourceManager 所有の全 GPU リソースを解放する。
+    // WHY: ResourceManager は呼び出し側のローカル変数として Application より長く生存するため、
+    //      先に renderer を破棄すると Shader 等が DX11 Live Object として報告される。
+    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+        resources->Reset();
+    if (m_renderer)
+        m_renderer->Shutdown();
     m_renderer.reset();
     if (m_window)
         m_window->Shutdown();

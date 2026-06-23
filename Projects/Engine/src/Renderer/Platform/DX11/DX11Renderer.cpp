@@ -153,10 +153,40 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
 void DX11Renderer::Shutdown()
 {
-    // ClearState() でパイプラインの全バインドを解除してから ComPtr に解放させる。
-    // 解放順序は依存関係の逆順: Context → SwapChain → Device。
-    // ComPtr のデストラクタが自動でこの順序を保証するため、明示的な Release() は不要。
-    m_context->ClearState();
+    // WHAT: パイプライン参照を解除した後、デバイス子オブジェクトから依存順に明示解放する。
+    // WHY: GPU Query 配列など一部のメンバーは C++ の逆順破棄だけでは Device より後に解放される。
+    //      Flush() と明示 Reset() により Shader を含む全 DX11 Live Object の終了時残留を防ぐ。
+    if (m_context)
+    {
+        m_context->ClearState();
+        m_context->Flush();
+    }
+
+    for (GpuQueryFrame& frame : m_gpuFrames)
+    {
+        frame.disjoint.Reset();
+        for (int i = 0; i < GPU_MAX_PASSES; ++i)
+        {
+            frame.beginTs[i].Reset();
+            frame.endTs[i].Reset();
+        }
+        frame.count = 0;
+        frame.begun = false;
+        frame.ended = false;
+        frame.collected = true;
+    }
+    m_gpuResults.clear();
+
+    for (auto& sampler : m_samplers)
+        sampler.Reset();
+    m_depthStencilBuffer.Reset();
+    m_depthStencilView.Reset();
+    m_renderTargetView.Reset();
+    m_swapChain.Reset();
+    m_context.Reset();
+    m_device.Reset();
+    m_currentRT = nullptr;
+
     FBZZ_LOG_INFO("DX11Renderer shutdown");
 }
 
