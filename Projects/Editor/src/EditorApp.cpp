@@ -30,6 +30,7 @@
 #include <Editor/Panels/AnalysisPanel.hpp>
 #include <Editor/Panels/AnimationGraphPanel.hpp>
 #include <Editor/Panels/MapEditorPanel.hpp>
+#include <Editor/Panels/IblBakePanel.hpp>
 #include "Tools/TerrainTool.hpp"
 #include "Tools/WaterTool.hpp"
 #include "Tools/DetailTool.hpp"
@@ -354,6 +355,12 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         auto dep = std::make_unique<DependencyViewPanel>();
         dep->visible = false;
         m_panels.push_back(std::move(dep));
+    }
+    {
+        auto iblBake = std::make_unique<IblBakePanel>();
+        iblBake->visible = false;
+        m_iblBakePanel = iblBake.get();
+        m_panels.push_back(std::move(iblBake));
     }
 
     for (auto& panel : m_panels)
@@ -1226,9 +1233,8 @@ void EditorApp::OnRender()
 void EditorApp::OnShutdown()
 {
     // WHY: FreeLibrary より前に全スクリプトの OnDestroy と destructor を
-    //      DLL コードが有効なうちに実行する。
-    if (m_scene)
-        m_scene->Clear();
+    //      DLL コードが有効なうちに実行する。ProjectRuntime::Shutdown はEditor外部Sceneと
+    //      Play中のシーン遷移で残ったManager所有Sceneの両方を破棄する。
     m_runtime.Shutdown();
     // Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
     m_ctx.activeScene = nullptr;
