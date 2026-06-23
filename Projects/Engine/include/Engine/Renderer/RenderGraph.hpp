@@ -267,6 +267,9 @@ public:
         m_gpuProfilerEnd   = std::move(end);
     }
 
+    // Plan() 失敗時にどのリソース依存が壊れているかを報告するデバッグフック。
+    void SetDebugLogHook(std::function<void(const char*)> fn) { m_debugLog = std::move(fn); }
+
 private:
     struct PassInfo {
         std::vector<std::string> reads;
@@ -332,8 +335,12 @@ private:
                     if (hasWriter)
                         break;
                 }
-                if (!hasWriter)
+                if (!hasWriter) {
+                    // WHY: デバッグ用。どの output resource に writer がいないか特定する。
+                    if (m_debugLog)
+                        m_debugLog(("RenderGraph: no live pass writes required output \"" + output + "\"").c_str());
                     return false;
+                }
             }
         }
 
@@ -356,8 +363,13 @@ private:
             for (const auto& read : infos[passIndex].reads) {
                 auto it = producer.find(read);
                 if (it == producer.end()) {
-                    if (!IsImportedResource(read))
+                    if (!IsImportedResource(read)) {
+                        // WHY: デバッグ用。どのリソースに producer がいないか特定する。
+                        if (m_debugLog)
+                            m_debugLog(("RenderGraph: pass \"" + m_passes[passIndex].name
+                                + "\" reads \"" + read + "\" but no producer found and not imported.").c_str());
                         return false;
+                    }
                     continue;
                 }
                 if (it->second != passIndex)
@@ -484,6 +496,7 @@ private:
     std::function<void(std::string_view)> m_profilerEnd;
     std::function<void(std::string_view)> m_gpuProfilerBegin;
     std::function<void(std::string_view)> m_gpuProfilerEnd;
+    std::function<void(const char*)>      m_debugLog;  // Plan() 失敗診断用
 };
 
 } // namespace fbzz::renderer

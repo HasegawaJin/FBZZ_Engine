@@ -108,6 +108,43 @@ bool DX11Texture::InitFromData(ID3D11Device* device, const uint8_t* rgba, uint32
     return true;
 }
 
+bool DX11Texture::Init3DFromData(ID3D11Device* device, const uint8_t* rgba,
+                                 uint32_t width, uint32_t height, uint32_t depth)
+{
+    if (!device || !rgba || width == 0 || height == 0 || depth == 0)
+        return false;
+
+    D3D11_TEXTURE3D_DESC desc = {};
+    desc.Width          = width;
+    desc.Height         = height;
+    desc.Depth          = depth;
+    desc.MipLevels      = 1;
+    desc.Format         = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Usage          = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags      = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem          = rgba;
+    initData.SysMemPitch      = width * 4u;
+    initData.SysMemSlicePitch = width * height * 4u;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture3D> texture;
+    HRESULT hr = device->CreateTexture3D(&desc, &initData, texture.GetAddressOf());
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("DX11Texture::Init3DFromData: CreateTexture3D failed 0x%08X", (unsigned)hr);
+        return false;
+    }
+    hr = device->CreateShaderResourceView(texture.Get(), nullptr, m_srv.GetAddressOf());
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("DX11Texture::Init3DFromData: CreateSRV failed 0x%08X", (unsigned)hr);
+        return false;
+    }
+
+    m_width  = width;
+    m_height = height;
+    return true;
+}
+
 void DX11Texture::InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height)
 {
     m_srv    = srv;   // ComPtr が AddRef して共同所有する

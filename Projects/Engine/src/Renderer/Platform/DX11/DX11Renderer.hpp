@@ -23,6 +23,7 @@
 
 #include <Engine/Renderer/IRenderer.hpp>
 #include "DX11Buffer.hpp"
+#include "DX11IblBaker.hpp"
 #include "DX11RenderTarget.hpp"
 #include "DX11StructuredBuffer.hpp"
 
@@ -77,6 +78,12 @@ public:
     uint32_t GetWidth()  const override { return m_width;  }
     uint32_t GetHeight() const override { return m_height; }
 
+    // IBL ベイク処理のファクトリー (Editor 専用)
+    // DX11IblBaker に device / context を渡して返す
+    std::unique_ptr<IIblBaker> CreateIblBaker() override {
+        return std::make_unique<DX11IblBaker>(m_device.Get(), m_context.Get());
+    }
+
     // DX11Buffer 等の DX11 サブシステムが Init 時にデバイスを必要とする場合に使用
     ID3D11Device*        GetDevice()       const { return m_device.Get(); }
     ID3D11DeviceContext* GetDeviceContext() const { return m_context.Get(); }
@@ -88,6 +95,8 @@ private:
     std::unique_ptr<IShader>         CreateNativeShader(const std::string& path) override;
     std::unique_ptr<ITexture>        CreateNativeTexture(const std::string& path) override;
     std::unique_ptr<ITexture>        CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) override;
+    std::unique_ptr<ITexture>        CreateNativeTexture3DFromData(
+        const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth) override;
     std::unique_ptr<ITexture>        CreateNativeTextureFromRenderTarget(
         IRenderTarget& rt,
         uint32_t index,

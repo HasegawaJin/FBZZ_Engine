@@ -21,6 +21,14 @@ namespace fbzz::renderer {
 
 namespace {
 ResourceManager* s_activeResourceManager = nullptr;
+
+// Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
+std::string TextureCacheKey(std::string_view path)
+{
+    std::string key(path);
+    std::replace(key.begin(), key.end(), '\\', '/');
+    return key;
+}
 }
 
 ResourceManager::ResourceManager(IRenderer& renderer)
@@ -104,7 +112,7 @@ void ResourceManager::Reset()
 
 ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
 {
-    const std::string key(path);
+    const std::string key = TextureCacheKey(path);
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
@@ -119,6 +127,24 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     return handle;
 }
 
+ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
+{
+    const std::string key = TextureCacheKey(path);
+    auto it = m_textureCache.find(key);
+    if (it == m_textureCache.end())
+        return LoadTexture(path);
+
+    auto newTexture = m_renderer.CreateNativeTexture(key);
+    if (!newTexture) {
+        FBZZ_LOG_ERROR("ReloadTexture failed: %s", key.c_str());
+        return it->second;
+    }
+
+    // ResourcePool のスロットを置換し、RenderSystem や Material が保持するハンドルを有効なまま保つ。
+    m_textures.Replace(it->second, std::move(newTexture));
+    return it->second;
+}
+
 ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height)
 {
     auto texture = m_renderer.CreateNativeTextureFromData(rgba, width, height);
@@ -127,6 +153,17 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture(const uint8_t* rgba, u
         return ResourceHandle<TextureTag>::Null();
     }
     return m_textures.Insert(std::move(texture), "TextureFromData", __FILE__, __LINE__);
+}
+
+ResourceHandle<TextureTag> ResourceManager::CreateTexture3D(
+    const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth)
+{
+    auto texture = m_renderer.CreateNativeTexture3DFromData(rgba, width, height, depth);
+    if (!texture) {
+        FBZZ_LOG_ERROR("ResourceManager::CreateTexture3D failed (%ux%ux%u)", width, height, depth);
+        return ResourceHandle<TextureTag>::Null();
+    }
+    return m_textures.Insert(std::move(texture), "Texture3DFromData", __FILE__, __LINE__);
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride)

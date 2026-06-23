@@ -244,8 +244,13 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
 
     // Sky 色・深度を保持したまま上書きするため SetRenderTarget のみ (Clear しない)。
     renderer.SetRenderTarget(h.hdrRT, resources);
-    renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
+    // s0 は IBL Cubemap 用。画面外Wrapを避け、キューブ面間はハードウェア補間させる。
+    renderer.SetSampler(0, renderer::SamplerMode::CLAMP_ANISOTROPIC);
     renderer.SetSampler(1, renderer::SamplerMode::BORDER_ZERO);
+    // s2: BRDF LUT は UV が [0,1] をはみ出さないよう Linear Clamp でサンプリングする
+    renderer.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
+    // s3: Depth/GBuffer はテクセル中心を厳密に読み、隣接マテリアル値の混入を防ぐ。
+    renderer.SetSampler(3, renderer::SamplerMode::CLAMP_POINT);
 
     PostProcCB lightingPostData{};
     lightingPostData.ssaoIntensity = ctx.ssaoEnabled && !IsCameraUnderwater(ctx)
@@ -262,6 +267,10 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     dc.constantBuffers[0] = h.frameCB;
     dc.constantBuffers[3] = h.lightCB;
     dc.constantBuffers[4] = h.shadowCB;
+    dc.constantBuffers[5] = h.postprocCB;
+    // b8: iblIntensity など IBL パラメータを含む AdvancedGraphicsCB
+    // iblIntensity == 0.0 のとき HLSL は IBL テクスチャをサンプルせず fallback ambient を使う
+    dc.constantBuffers[8] = h.advancedGraphicsCB;
     dc.textures[5]        = resources.GetColorTexture(h.gbufferRT, 0);  // TEX_GBUFFER0
     dc.textures[6]        = resources.GetColorTexture(h.gbufferRT, 1);  // TEX_GBUFFER1
     dc.textures[7]        = resources.GetDepthTexture(h.gbufferRT);     // TEX_DEPTH
@@ -269,7 +278,9 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     dc.textures[9]        = ctx.ssaoEnabled
         ? h.ssaoBlur
         : renderer::ResourceHandle<renderer::TextureTag>{};              // TEX_SSAO
-    dc.constantBuffers[5] = h.postprocCB;
+    dc.textures[16]       = h.iblIrradiance;  // TEX_IBL_IRRADIANCE: 拡散 IBL キューブマップ
+    dc.textures[17]       = h.iblPrefilter;   // TEX_IBL_PREFILTER:  鏡面 IBL キューブマップ
+    dc.textures[18]       = h.iblBrdfLut;     // TEX_IBL_BRDF_LUT:   BRDF 積分テーブル
     renderer.Submit(dc, resources);
 }
 

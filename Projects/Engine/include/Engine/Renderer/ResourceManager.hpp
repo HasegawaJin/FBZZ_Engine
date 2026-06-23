@@ -52,7 +52,13 @@ public:
     void Reset();
     [[nodiscard]] uint64_t GetResetVersion() const { return m_resetVersion; }
     ResourceHandle<TextureTag> LoadTexture(std::string_view path);
+    // 同名ファイルを上書きした際、既存ハンドルを維持したまま GPU テクスチャを差し替える。
+    // WHY: IBL ベイク後もパスキャッシュが古い DDS を返し続けるため、明示的な再ロードが必要。
+    ResourceHandle<TextureTag> ReloadTexture(std::string_view path);
     ResourceHandle<TextureTag> CreateTexture(const uint8_t* rgba, uint32_t width, uint32_t height);
+    // CPU生成したRGBA8ボリュームから3D Textureを作る。Color LUTなどに使用する。
+    ResourceHandle<TextureTag> CreateTexture3D(
+        const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth);
 
     ResourceHandle<BufferTag> CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride);
     ResourceHandle<BufferTag> CreateIndexBuffer(const void* data, uint32_t count);
