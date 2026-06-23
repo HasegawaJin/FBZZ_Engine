@@ -28,6 +28,25 @@ C++20 で自作する 3D ゲームエンジン。数学・物理エンジンを�
 
 ---
 
+## ロードマップ
+
+| バージョン | マイルストーン | 状態 |
+|-----------|--------------|------|
+| v0.8 | Advanced Rendering Pipeline + TPS サンプルゲーム同梱 | ✅ 完了 |
+| v0.9 | Demo Game — エンジン全機能を活かした完成品デモ | 🔧 実装中 |
+| v1.0 | DirectX 12 完全移行 — DX12Renderer による IRenderer 差し替え | 🔲 予定 |
+
+### v0.8 — Advanced Rendering Pipeline
+RenderGraph ベースの Deferred + Forward ハイブリッド。IBL / PCSS / GTAO / SSR / TAA / Volumetric Light / Contact Shadow / Lens Flare を実装。TPS サンプルゲーム (Title / Load / Main / Result) を同梱。
+
+### v0.9 — Demo Game
+エンジンの各システム (物理・NavMesh・アニメーション・スクリプト DLL・ポストプロセス) をフル活用した、公開可能な完成品デモゲームを制作。
+
+### v1.0 — DirectX 12 完全移行
+`IRenderer` インターフェース経由で DX12Renderer を差し替え、DX12 の明示的なリソース管理・マルチキューを活用。レイトレーシング対応も視野に入れる。
+
+---
+
 ## 実装済みシステム
 
 ### コアエンジン
