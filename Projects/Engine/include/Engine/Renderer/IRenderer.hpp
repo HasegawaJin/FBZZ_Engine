@@ -46,6 +46,11 @@ class IRenderer {
 public:
     virtual ~IRenderer() = default;
 
+    // GPU バックエンドが保持するパイプライン参照を解除し、デバイス破棄前の状態を確定する。
+    // WHY: ResourceManager がネイティブリソースを破棄しても、描画コンテキストにバインド中の
+    //      リソースはバックエンド側の参照が残るため、デバイス破棄前に明示的な終了処理が必要。
+    virtual void Shutdown() = 0;
+
     virtual void BeginFrame() = 0;
     virtual void EndFrame() = 0;
     virtual void Clear(const math::Vector4& color) = 0;

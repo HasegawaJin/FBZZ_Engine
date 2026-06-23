@@ -37,7 +37,7 @@ public:
     bool Init(HWND hwnd, std::uint32_t width, std::uint32_t height);
 
     // ClearState() でパイプラインをリセットしてから ComPtr が自動解放する
-    void Shutdown();
+    void Shutdown() override;
 
     // OM に RTV + DSV をバインドし直す (SetRenderTarget() 後のフレーム先頭で呼ぶ)
     void BeginFrame() override;
