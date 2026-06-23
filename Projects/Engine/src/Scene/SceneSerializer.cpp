@@ -18,6 +18,10 @@
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
+#include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
+#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
+#include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
@@ -753,6 +757,84 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             ascTbl.insert("volume",      (double)asc->volume);
             ascTbl.insert("enabled",     asc->enabled);
             goTbl.insert("AudioSourceComponent", std::move(ascTbl));
+        }
+
+        // EnvironmentLightComponent
+        if (auto* elc = go.GetComponent<EnvironmentLightComponent>()) {
+            toml::table elcTbl;
+            elcTbl.insert("enabled",        elc->enabled);
+            elcTbl.insert("irradiancePath", elc->irradiancePath);
+            elcTbl.insert("prefilterPath",  elc->prefilterPath);
+            elcTbl.insert("intensity",      (double)elc->intensity);
+            elcTbl.insert("diffuseScale",   (double)elc->diffuseScale);
+            elcTbl.insert("specularScale",  (double)elc->specularScale);
+            elcTbl.insert("maxMipLevel",    (int64_t)elc->maxMipLevel);
+            goTbl.insert("EnvironmentLightComponent", std::move(elcTbl));
+        }
+
+        // ReflectionProbeComponent
+        if (auto* rpc = go.GetComponent<ReflectionProbeComponent>()) {
+            toml::table rpcTbl;
+            rpcTbl.insert("enabled",         rpc->enabled);
+            rpcTbl.insert("cubemapPath",     rpc->cubemapPath);
+            rpcTbl.insert("influenceRadius", (double)rpc->influenceRadius);
+            rpcTbl.insert("intensity",       (double)rpc->intensity);
+            rpcTbl.insert("boxInfluence",    rpc->boxInfluence);
+            rpcTbl.insert("boxExtents",      Vec3ToArr(rpc->boxExtents));
+            goTbl.insert("ReflectionProbeComponent", std::move(rpcTbl));
+        }
+
+        // AtmosphericScatteringComponent
+        if (auto* asc = go.GetComponent<AtmosphericScatteringComponent>()) {
+            toml::table ascAtmTbl;
+            ascAtmTbl.insert("enabled",    asc->enabled);
+            ascAtmTbl.insert("fogEnabled", asc->fogEnabled);
+            ascAtmTbl.insert("fogDensity", (double)asc->fogDensity);
+            ascAtmTbl.insert("fogFar",     (double)asc->fogFar);
+            ascAtmTbl.insert("fogColor",   Vec3ToArr(asc->fogColor));
+            goTbl.insert("AtmosphericScatteringComponent", std::move(ascAtmTbl));
+        }
+
+        // PostProcessVolumeComponent — pp サブテーブルに PostProcessSettings を直列化する。
+        if (auto* ppvc = go.GetComponent<PostProcessVolumeComponent>()) {
+            toml::table ppvcTbl;
+            ppvcTbl.insert("enabled",         ppvc->enabled);
+            ppvcTbl.insert("isGlobal",        ppvc->isGlobal);
+            ppvcTbl.insert("blendWeight",     (double)ppvc->blendWeight);
+            ppvcTbl.insert("influenceRadius", (double)ppvc->influenceRadius);
+
+            const auto& pp = ppvc->settings;
+            toml::table ppTbl;
+            ppTbl.insert("fxaaEnabled", pp.fxaaEnabled);
+            ppTbl.insert("exposure",    (double)pp.exposure);
+            ppTbl.insert("screenFadeAlpha", (double)pp.screenFadeAlpha);
+            ppTbl.insert("screenFadeColor", Vec3ToArr({pp.screenFadeColor[0], pp.screenFadeColor[1], pp.screenFadeColor[2]}));
+
+            // Bloom
+            { toml::table t; t.insert("enabled", pp.bloom.enabled); t.insert("intensity", (double)pp.bloom.intensity); t.insert("threshold", (double)pp.bloom.threshold); t.insert("softKnee", (double)pp.bloom.softKnee); ppTbl.insert("bloom", std::move(t)); }
+            // AmbientOcclusion
+            { toml::table t; t.insert("enabled", pp.ambientOcclusion.enabled); t.insert("intensity", (double)pp.ambientOcclusion.intensity); ppTbl.insert("ao", std::move(t)); }
+            // Fog
+            { toml::table t; t.insert("enabled", pp.fog.enabled); t.insert("density", (double)pp.fog.density); t.insert("farDistance", (double)pp.fog.farDistance); t.insert("color", Vec3ToArr({pp.fog.color[0], pp.fog.color[1], pp.fog.color[2]})); ppTbl.insert("fog", std::move(t)); }
+            // ColorGrading
+            { toml::table t; t.insert("enabled", pp.colorGrading.enabled); t.insert("contrast", (double)pp.colorGrading.contrast); t.insert("saturation", (double)pp.colorGrading.saturation); t.insert("hueShift", (double)pp.colorGrading.hueShift); t.insert("temperature", (double)pp.colorGrading.temperature); t.insert("tint", (double)pp.colorGrading.tint); ppTbl.insert("colorGrading", std::move(t)); }
+            // Vignette
+            { toml::table t; t.insert("enabled", pp.vignette.enabled); t.insert("intensity", (double)pp.vignette.intensity); t.insert("smoothness", (double)pp.vignette.smoothness); t.insert("roundness", (double)pp.vignette.roundness); t.insert("color", Vec3ToArr({pp.vignette.color[0], pp.vignette.color[1], pp.vignette.color[2]})); ppTbl.insert("vignette", std::move(t)); }
+            // FilmGrain
+            { toml::table t; t.insert("enabled", pp.filmGrain.enabled); t.insert("intensity", (double)pp.filmGrain.intensity); t.insert("response", (double)pp.filmGrain.response); ppTbl.insert("filmGrain", std::move(t)); }
+            // Sharpen
+            { toml::table t; t.insert("enabled", pp.sharpen.enabled); t.insert("strength", (double)pp.sharpen.strength); t.insert("radius", (double)pp.sharpen.radius); ppTbl.insert("sharpen", std::move(t)); }
+            // DepthOfField
+            { toml::table t; t.insert("enabled", pp.depthOfField.enabled); t.insert("focusDistance", (double)pp.depthOfField.focusDistance); t.insert("focusRange", (double)pp.depthOfField.focusRange); t.insert("blurRadius", (double)pp.depthOfField.blurRadius); ppTbl.insert("dof", std::move(t)); }
+            // Lens
+            { toml::table t; t.insert("chromaticAberrationEnabled", pp.lens.chromaticAberrationEnabled); t.insert("distortionEnabled", pp.lens.distortionEnabled); t.insert("chromaticAberration", (double)pp.lens.chromaticAberration); t.insert("distortion", (double)pp.lens.distortion); ppTbl.insert("lens", std::move(t)); }
+            // Stylized
+            { toml::table t; t.insert("sepiaEnabled", pp.stylized.sepiaEnabled); t.insert("invertEnabled", pp.stylized.invertEnabled); t.insert("posterizeEnabled", pp.stylized.posterizeEnabled); t.insert("pixelateEnabled", pp.stylized.pixelateEnabled); t.insert("sepiaIntensity", (double)pp.stylized.sepiaIntensity); t.insert("invertIntensity", (double)pp.stylized.invertIntensity); t.insert("posterizeLevels", (double)pp.stylized.posterizeLevels); t.insert("pixelSize", (double)pp.stylized.pixelSize); ppTbl.insert("stylized", std::move(t)); }
+            // ImageQuality
+            { toml::table t; t.insert("clarityEnabled", pp.imageQuality.clarityEnabled); t.insert("shadowHighlightEnabled", pp.imageQuality.shadowHighlightEnabled); t.insert("colorFilterEnabled", pp.imageQuality.colorFilterEnabled); t.insert("clarityStrength", (double)pp.imageQuality.clarityStrength); t.insert("clarityRadius", (double)pp.imageQuality.clarityRadius); t.insert("shadowLift", (double)pp.imageQuality.shadowLift); t.insert("highlightCompression", (double)pp.imageQuality.highlightCompression); t.insert("colorFilter", Vec3ToArr({pp.imageQuality.colorFilter[0], pp.imageQuality.colorFilter[1], pp.imageQuality.colorFilter[2]})); t.insert("colorFilterIntensity", (double)pp.imageQuality.colorFilterIntensity); ppTbl.insert("imageQuality", std::move(t)); }
+
+            ppvcTbl.insert("pp", std::move(ppTbl));
+            goTbl.insert("PostProcessVolumeComponent", std::move(ppvcTbl));
         }
 
         // ParticleEmitter
@@ -1733,6 +1815,149 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             asc.volume      = (float)(*ascTbl)["volume"].value_or(1.0);
             asc.enabled     = (*ascTbl)["enabled"].value_or(true);
             go.AddComponent<AudioSourceComponent>(asc);
+        }
+
+        // EnvironmentLightComponent
+        if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
+            EnvironmentLightComponent elc{};
+            elc.enabled        = (*elcTbl)["enabled"].value_or(true);
+            elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
+            elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
+            elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
+            elc.diffuseScale   = (float)(*elcTbl)["diffuseScale"].value_or(1.0);
+            elc.specularScale  = (float)(*elcTbl)["specularScale"].value_or(1.0);
+            elc.maxMipLevel    = (int)(*elcTbl)["maxMipLevel"].value_or((int64_t)4);
+            go.AddComponent<EnvironmentLightComponent>(elc);
+        }
+
+        // ReflectionProbeComponent
+        if (auto* rpcTbl = (*goTbl)["ReflectionProbeComponent"].as_table()) {
+            ReflectionProbeComponent rpc{};
+            rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
+            rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
+            rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
+            rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
+            rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
+            rpc.boxExtents      = ArrToVec3((*rpcTbl)["boxExtents"].as_array(), {1.0f, 1.0f, 1.0f});
+            go.AddComponent<ReflectionProbeComponent>(rpc);
+        }
+
+        // AtmosphericScatteringComponent
+        if (auto* ascAtmTbl = (*goTbl)["AtmosphericScatteringComponent"].as_table()) {
+            AtmosphericScatteringComponent atm{};
+            atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
+            atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
+            atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
+            atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
+            atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
+            go.AddComponent<AtmosphericScatteringComponent>(atm);
+        }
+
+        // PostProcessVolumeComponent — pp サブテーブルから PostProcessSettings を復元する。
+        if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
+            PostProcessVolumeComponent ppvc{};
+            ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
+            ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
+            ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
+            ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
+            if (auto* ppTbl = (*ppvcTbl)["pp"].as_table()) {
+                auto& pp = ppvc.settings;
+                pp.fxaaEnabled   = (*ppTbl)["fxaaEnabled"].value_or(pp.fxaaEnabled);
+                pp.exposure      = (float)(*ppTbl)["exposure"].value_or((double)pp.exposure);
+                pp.screenFadeAlpha = (float)(*ppTbl)["screenFadeAlpha"].value_or(0.0);
+                if (auto* sfcArr = (*ppTbl)["screenFadeColor"].as_array(); sfcArr && sfcArr->size() >= 3) {
+                    pp.screenFadeColor[0] = (float)(*sfcArr)[0].value_or(0.0);
+                    pp.screenFadeColor[1] = (float)(*sfcArr)[1].value_or(0.0);
+                    pp.screenFadeColor[2] = (float)(*sfcArr)[2].value_or(0.0);
+                }
+                if (auto* t = (*ppTbl)["bloom"].as_table()) {
+                    pp.bloom.enabled   = (*t)["enabled"].value_or(pp.bloom.enabled);
+                    pp.bloom.intensity = (float)(*t)["intensity"].value_or((double)pp.bloom.intensity);
+                    pp.bloom.threshold = (float)(*t)["threshold"].value_or((double)pp.bloom.threshold);
+                    pp.bloom.softKnee  = (float)(*t)["softKnee"].value_or((double)pp.bloom.softKnee);
+                }
+                if (auto* t = (*ppTbl)["ao"].as_table()) {
+                    pp.ambientOcclusion.enabled   = (*t)["enabled"].value_or(pp.ambientOcclusion.enabled);
+                    pp.ambientOcclusion.intensity = (float)(*t)["intensity"].value_or((double)pp.ambientOcclusion.intensity);
+                }
+                if (auto* t = (*ppTbl)["fog"].as_table()) {
+                    pp.fog.enabled     = (*t)["enabled"].value_or(pp.fog.enabled);
+                    pp.fog.density     = (float)(*t)["density"].value_or((double)pp.fog.density);
+                    pp.fog.farDistance = (float)(*t)["farDistance"].value_or((double)pp.fog.farDistance);
+                    if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) {
+                        pp.fog.color[0] = (float)(*arr)[0].value_or(0.0);
+                        pp.fog.color[1] = (float)(*arr)[1].value_or(0.0);
+                        pp.fog.color[2] = (float)(*arr)[2].value_or(0.0);
+                    }
+                }
+                if (auto* t = (*ppTbl)["colorGrading"].as_table()) {
+                    pp.colorGrading.enabled     = (*t)["enabled"].value_or(pp.colorGrading.enabled);
+                    pp.colorGrading.contrast    = (float)(*t)["contrast"].value_or((double)pp.colorGrading.contrast);
+                    pp.colorGrading.saturation  = (float)(*t)["saturation"].value_or((double)pp.colorGrading.saturation);
+                    pp.colorGrading.hueShift    = (float)(*t)["hueShift"].value_or((double)pp.colorGrading.hueShift);
+                    pp.colorGrading.temperature = (float)(*t)["temperature"].value_or((double)pp.colorGrading.temperature);
+                    pp.colorGrading.tint        = (float)(*t)["tint"].value_or((double)pp.colorGrading.tint);
+                }
+                if (auto* t = (*ppTbl)["vignette"].as_table()) {
+                    pp.vignette.enabled    = (*t)["enabled"].value_or(pp.vignette.enabled);
+                    pp.vignette.intensity  = (float)(*t)["intensity"].value_or((double)pp.vignette.intensity);
+                    pp.vignette.smoothness = (float)(*t)["smoothness"].value_or((double)pp.vignette.smoothness);
+                    pp.vignette.roundness  = (float)(*t)["roundness"].value_or((double)pp.vignette.roundness);
+                    if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) {
+                        pp.vignette.color[0] = (float)(*arr)[0].value_or(0.0);
+                        pp.vignette.color[1] = (float)(*arr)[1].value_or(0.0);
+                        pp.vignette.color[2] = (float)(*arr)[2].value_or(0.0);
+                    }
+                }
+                if (auto* t = (*ppTbl)["filmGrain"].as_table()) {
+                    pp.filmGrain.enabled   = (*t)["enabled"].value_or(pp.filmGrain.enabled);
+                    pp.filmGrain.intensity = (float)(*t)["intensity"].value_or((double)pp.filmGrain.intensity);
+                    pp.filmGrain.response  = (float)(*t)["response"].value_or((double)pp.filmGrain.response);
+                }
+                if (auto* t = (*ppTbl)["sharpen"].as_table()) {
+                    pp.sharpen.enabled  = (*t)["enabled"].value_or(pp.sharpen.enabled);
+                    pp.sharpen.strength = (float)(*t)["strength"].value_or((double)pp.sharpen.strength);
+                    pp.sharpen.radius   = (float)(*t)["radius"].value_or((double)pp.sharpen.radius);
+                }
+                if (auto* t = (*ppTbl)["dof"].as_table()) {
+                    pp.depthOfField.enabled       = (*t)["enabled"].value_or(pp.depthOfField.enabled);
+                    pp.depthOfField.focusDistance = (float)(*t)["focusDistance"].value_or((double)pp.depthOfField.focusDistance);
+                    pp.depthOfField.focusRange    = (float)(*t)["focusRange"].value_or((double)pp.depthOfField.focusRange);
+                    pp.depthOfField.blurRadius    = (float)(*t)["blurRadius"].value_or((double)pp.depthOfField.blurRadius);
+                }
+                if (auto* t = (*ppTbl)["lens"].as_table()) {
+                    pp.lens.chromaticAberrationEnabled = (*t)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled);
+                    pp.lens.distortionEnabled          = (*t)["distortionEnabled"].value_or(pp.lens.distortionEnabled);
+                    pp.lens.chromaticAberration        = (float)(*t)["chromaticAberration"].value_or((double)pp.lens.chromaticAberration);
+                    pp.lens.distortion                 = (float)(*t)["distortion"].value_or((double)pp.lens.distortion);
+                }
+                if (auto* t = (*ppTbl)["stylized"].as_table()) {
+                    pp.stylized.sepiaEnabled     = (*t)["sepiaEnabled"].value_or(pp.stylized.sepiaEnabled);
+                    pp.stylized.invertEnabled    = (*t)["invertEnabled"].value_or(pp.stylized.invertEnabled);
+                    pp.stylized.posterizeEnabled = (*t)["posterizeEnabled"].value_or(pp.stylized.posterizeEnabled);
+                    pp.stylized.pixelateEnabled  = (*t)["pixelateEnabled"].value_or(pp.stylized.pixelateEnabled);
+                    pp.stylized.sepiaIntensity   = (float)(*t)["sepiaIntensity"].value_or((double)pp.stylized.sepiaIntensity);
+                    pp.stylized.invertIntensity  = (float)(*t)["invertIntensity"].value_or((double)pp.stylized.invertIntensity);
+                    pp.stylized.posterizeLevels  = (float)(*t)["posterizeLevels"].value_or((double)pp.stylized.posterizeLevels);
+                    pp.stylized.pixelSize        = (float)(*t)["pixelSize"].value_or((double)pp.stylized.pixelSize);
+                }
+                if (auto* t = (*ppTbl)["imageQuality"].as_table()) {
+                    pp.imageQuality.clarityEnabled         = (*t)["clarityEnabled"].value_or(pp.imageQuality.clarityEnabled);
+                    pp.imageQuality.shadowHighlightEnabled = (*t)["shadowHighlightEnabled"].value_or(pp.imageQuality.shadowHighlightEnabled);
+                    pp.imageQuality.colorFilterEnabled     = (*t)["colorFilterEnabled"].value_or(pp.imageQuality.colorFilterEnabled);
+                    pp.imageQuality.clarityStrength        = (float)(*t)["clarityStrength"].value_or((double)pp.imageQuality.clarityStrength);
+                    pp.imageQuality.clarityRadius          = (float)(*t)["clarityRadius"].value_or((double)pp.imageQuality.clarityRadius);
+                    pp.imageQuality.shadowLift             = (float)(*t)["shadowLift"].value_or((double)pp.imageQuality.shadowLift);
+                    pp.imageQuality.highlightCompression   = (float)(*t)["highlightCompression"].value_or((double)pp.imageQuality.highlightCompression);
+                    if (auto* arr = (*t)["colorFilter"].as_array(); arr && arr->size() >= 3) {
+                        pp.imageQuality.colorFilter[0] = (float)(*arr)[0].value_or(1.0);
+                        pp.imageQuality.colorFilter[1] = (float)(*arr)[1].value_or(1.0);
+                        pp.imageQuality.colorFilter[2] = (float)(*arr)[2].value_or(1.0);
+                    }
+                    pp.imageQuality.colorFilterIntensity = (float)(*t)["colorFilterIntensity"].value_or((double)pp.imageQuality.colorFilterIntensity);
+                }
+            }
+            go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
         }
 
         // ParticleEmitter
@@ -2835,6 +3060,74 @@ bool SceneSerializer::AppendObjects(
             lc.innerCone = (float)(*lcTbl)["innerCone"].value_or(15.0);
             lc.outerCone = (float)(*lcTbl)["outerCone"].value_or(30.0);
             go.AddComponent<LightComponent>(lc);
+        }
+
+        // EnvironmentLightComponent
+        if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
+            EnvironmentLightComponent elc{};
+            elc.enabled        = (*elcTbl)["enabled"].value_or(true);
+            elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
+            elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
+            elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
+            elc.diffuseScale   = (float)(*elcTbl)["diffuseScale"].value_or(1.0);
+            elc.specularScale  = (float)(*elcTbl)["specularScale"].value_or(1.0);
+            elc.maxMipLevel    = (int)(*elcTbl)["maxMipLevel"].value_or((int64_t)4);
+            go.AddComponent<EnvironmentLightComponent>(elc);
+        }
+
+        // ReflectionProbeComponent
+        if (auto* rpcTbl = (*goTbl)["ReflectionProbeComponent"].as_table()) {
+            ReflectionProbeComponent rpc{};
+            rpc.enabled         = (*rpcTbl)["enabled"].value_or(true);
+            rpc.cubemapPath     = (*rpcTbl)["cubemapPath"].value_or(std::string{});
+            rpc.influenceRadius = (float)(*rpcTbl)["influenceRadius"].value_or(5.0);
+            rpc.intensity       = (float)(*rpcTbl)["intensity"].value_or(1.0);
+            rpc.boxInfluence    = (*rpcTbl)["boxInfluence"].value_or(false);
+            rpc.boxExtents      = ArrToVec3((*rpcTbl)["boxExtents"].as_array(), {1.0f, 1.0f, 1.0f});
+            go.AddComponent<ReflectionProbeComponent>(rpc);
+        }
+
+        // AtmosphericScatteringComponent
+        if (auto* ascAtmTbl = (*goTbl)["AtmosphericScatteringComponent"].as_table()) {
+            AtmosphericScatteringComponent atm{};
+            atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
+            atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
+            atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
+            atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
+            atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
+            go.AddComponent<AtmosphericScatteringComponent>(atm);
+        }
+
+        // PostProcessVolumeComponent
+        if (auto* ppvcTbl = (*goTbl)["PostProcessVolumeComponent"].as_table()) {
+            PostProcessVolumeComponent ppvc{};
+            ppvc.enabled         = (*ppvcTbl)["enabled"].value_or(true);
+            ppvc.isGlobal        = (*ppvcTbl)["isGlobal"].value_or(true);
+            ppvc.blendWeight     = (float)(*ppvcTbl)["blendWeight"].value_or(1.0);
+            ppvc.influenceRadius = (float)(*ppvcTbl)["influenceRadius"].value_or(10.0);
+            if (auto* ppTbl = (*ppvcTbl)["pp"].as_table()) {
+                auto& pp = ppvc.settings;
+                pp.fxaaEnabled    = (*ppTbl)["fxaaEnabled"].value_or(pp.fxaaEnabled);
+                pp.exposure       = (float)(*ppTbl)["exposure"].value_or((double)pp.exposure);
+                pp.screenFadeAlpha = (float)(*ppTbl)["screenFadeAlpha"].value_or(0.0);
+                if (auto* sfcArr = (*ppTbl)["screenFadeColor"].as_array(); sfcArr && sfcArr->size() >= 3) {
+                    pp.screenFadeColor[0] = (float)(*sfcArr)[0].value_or(0.0);
+                    pp.screenFadeColor[1] = (float)(*sfcArr)[1].value_or(0.0);
+                    pp.screenFadeColor[2] = (float)(*sfcArr)[2].value_or(0.0);
+                }
+                if (auto* t = (*ppTbl)["bloom"].as_table()) { pp.bloom.enabled = (*t)["enabled"].value_or(pp.bloom.enabled); pp.bloom.intensity = (float)(*t)["intensity"].value_or((double)pp.bloom.intensity); pp.bloom.threshold = (float)(*t)["threshold"].value_or((double)pp.bloom.threshold); pp.bloom.softKnee = (float)(*t)["softKnee"].value_or((double)pp.bloom.softKnee); }
+                if (auto* t = (*ppTbl)["ao"].as_table())    { pp.ambientOcclusion.enabled = (*t)["enabled"].value_or(pp.ambientOcclusion.enabled); pp.ambientOcclusion.intensity = (float)(*t)["intensity"].value_or((double)pp.ambientOcclusion.intensity); }
+                if (auto* t = (*ppTbl)["fog"].as_table())   { pp.fog.enabled = (*t)["enabled"].value_or(pp.fog.enabled); pp.fog.density = (float)(*t)["density"].value_or((double)pp.fog.density); pp.fog.farDistance = (float)(*t)["farDistance"].value_or((double)pp.fog.farDistance); if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) { pp.fog.color[0] = (float)(*arr)[0].value_or(0.0); pp.fog.color[1] = (float)(*arr)[1].value_or(0.0); pp.fog.color[2] = (float)(*arr)[2].value_or(0.0); } }
+                if (auto* t = (*ppTbl)["colorGrading"].as_table()) { pp.colorGrading.enabled = (*t)["enabled"].value_or(pp.colorGrading.enabled); pp.colorGrading.contrast = (float)(*t)["contrast"].value_or((double)pp.colorGrading.contrast); pp.colorGrading.saturation = (float)(*t)["saturation"].value_or((double)pp.colorGrading.saturation); pp.colorGrading.hueShift = (float)(*t)["hueShift"].value_or((double)pp.colorGrading.hueShift); pp.colorGrading.temperature = (float)(*t)["temperature"].value_or((double)pp.colorGrading.temperature); pp.colorGrading.tint = (float)(*t)["tint"].value_or((double)pp.colorGrading.tint); }
+                if (auto* t = (*ppTbl)["vignette"].as_table()) { pp.vignette.enabled = (*t)["enabled"].value_or(pp.vignette.enabled); pp.vignette.intensity = (float)(*t)["intensity"].value_or((double)pp.vignette.intensity); pp.vignette.smoothness = (float)(*t)["smoothness"].value_or((double)pp.vignette.smoothness); pp.vignette.roundness = (float)(*t)["roundness"].value_or((double)pp.vignette.roundness); if (auto* arr = (*t)["color"].as_array(); arr && arr->size() >= 3) { pp.vignette.color[0] = (float)(*arr)[0].value_or(0.0); pp.vignette.color[1] = (float)(*arr)[1].value_or(0.0); pp.vignette.color[2] = (float)(*arr)[2].value_or(0.0); } }
+                if (auto* t = (*ppTbl)["filmGrain"].as_table())  { pp.filmGrain.enabled = (*t)["enabled"].value_or(pp.filmGrain.enabled); pp.filmGrain.intensity = (float)(*t)["intensity"].value_or((double)pp.filmGrain.intensity); pp.filmGrain.response = (float)(*t)["response"].value_or((double)pp.filmGrain.response); }
+                if (auto* t = (*ppTbl)["sharpen"].as_table())    { pp.sharpen.enabled = (*t)["enabled"].value_or(pp.sharpen.enabled); pp.sharpen.strength = (float)(*t)["strength"].value_or((double)pp.sharpen.strength); pp.sharpen.radius = (float)(*t)["radius"].value_or((double)pp.sharpen.radius); }
+                if (auto* t = (*ppTbl)["dof"].as_table())        { pp.depthOfField.enabled = (*t)["enabled"].value_or(pp.depthOfField.enabled); pp.depthOfField.focusDistance = (float)(*t)["focusDistance"].value_or((double)pp.depthOfField.focusDistance); pp.depthOfField.focusRange = (float)(*t)["focusRange"].value_or((double)pp.depthOfField.focusRange); pp.depthOfField.blurRadius = (float)(*t)["blurRadius"].value_or((double)pp.depthOfField.blurRadius); }
+                if (auto* t = (*ppTbl)["lens"].as_table())       { pp.lens.chromaticAberrationEnabled = (*t)["chromaticAberrationEnabled"].value_or(pp.lens.chromaticAberrationEnabled); pp.lens.distortionEnabled = (*t)["distortionEnabled"].value_or(pp.lens.distortionEnabled); pp.lens.chromaticAberration = (float)(*t)["chromaticAberration"].value_or((double)pp.lens.chromaticAberration); pp.lens.distortion = (float)(*t)["distortion"].value_or((double)pp.lens.distortion); }
+                if (auto* t = (*ppTbl)["stylized"].as_table())   { pp.stylized.sepiaEnabled = (*t)["sepiaEnabled"].value_or(pp.stylized.sepiaEnabled); pp.stylized.invertEnabled = (*t)["invertEnabled"].value_or(pp.stylized.invertEnabled); pp.stylized.posterizeEnabled = (*t)["posterizeEnabled"].value_or(pp.stylized.posterizeEnabled); pp.stylized.pixelateEnabled = (*t)["pixelateEnabled"].value_or(pp.stylized.pixelateEnabled); pp.stylized.sepiaIntensity = (float)(*t)["sepiaIntensity"].value_or((double)pp.stylized.sepiaIntensity); pp.stylized.invertIntensity = (float)(*t)["invertIntensity"].value_or((double)pp.stylized.invertIntensity); pp.stylized.posterizeLevels = (float)(*t)["posterizeLevels"].value_or((double)pp.stylized.posterizeLevels); pp.stylized.pixelSize = (float)(*t)["pixelSize"].value_or((double)pp.stylized.pixelSize); }
+                if (auto* t = (*ppTbl)["imageQuality"].as_table()) { pp.imageQuality.clarityEnabled = (*t)["clarityEnabled"].value_or(pp.imageQuality.clarityEnabled); pp.imageQuality.shadowHighlightEnabled = (*t)["shadowHighlightEnabled"].value_or(pp.imageQuality.shadowHighlightEnabled); pp.imageQuality.colorFilterEnabled = (*t)["colorFilterEnabled"].value_or(pp.imageQuality.colorFilterEnabled); pp.imageQuality.clarityStrength = (float)(*t)["clarityStrength"].value_or((double)pp.imageQuality.clarityStrength); pp.imageQuality.clarityRadius = (float)(*t)["clarityRadius"].value_or((double)pp.imageQuality.clarityRadius); pp.imageQuality.shadowLift = (float)(*t)["shadowLift"].value_or((double)pp.imageQuality.shadowLift); pp.imageQuality.highlightCompression = (float)(*t)["highlightCompression"].value_or((double)pp.imageQuality.highlightCompression); if (auto* arr = (*t)["colorFilter"].as_array(); arr && arr->size() >= 3) { pp.imageQuality.colorFilter[0] = (float)(*arr)[0].value_or(1.0); pp.imageQuality.colorFilter[1] = (float)(*arr)[1].value_or(1.0); pp.imageQuality.colorFilter[2] = (float)(*arr)[2].value_or(1.0); } pp.imageQuality.colorFilterIntensity = (float)(*t)["colorFilterIntensity"].value_or((double)pp.imageQuality.colorFilterIntensity); }
+            }
+            go.AddComponent<PostProcessVolumeComponent>(std::move(ppvc));
         }
 
         if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {

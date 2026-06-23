@@ -92,16 +92,14 @@ void ProjectRuntime::UpdateScriptViewport(uint32_t viewportWidth, uint32_t viewp
 
 void ProjectRuntime::Shutdown()
 {
-    // WHY: Script DLLをアンロードする前に、遷移後のowned Sceneを含む現在Sceneの
-    //      Script仮想デストラクターを必ず実行する。
-    if (Scene* activeScene = m_sceneManager.GetActive()) {
-        activeScene->Clear();
-    }
+    // WHY: Play中のLoadScene後にEditor外部Sceneへ戻ると、SceneManagerには外部Sceneと
+    //      遷移時のowned Sceneが同時に存在する。CurrentSceneだけをClearするとowned Sceneの
+    //      DLL由来Scriptが残るため、FreeLibrary前に両方を明示的に破棄する。
+    m_sceneManager.ClearScenes();
     Script::SetPhysicsWorld(nullptr);
     if (ScriptRuntime::GetOverride() == &m_scriptRuntime) {
         ScriptRuntime::Override(nullptr);
     }
-    m_sceneManager.SetScene(nullptr);
     m_sceneManager.SetSimulating(false);
 }
 

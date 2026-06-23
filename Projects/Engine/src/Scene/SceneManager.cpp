@@ -100,6 +100,21 @@ void SceneManager::SetScene(Scene* scene)
     m_externalScene = scene;
 }
 
+void SceneManager::ClearScenes()
+{
+    // 外部Sceneとowned Sceneは通常別実体だが、同じ実体を二重にClearしないよう比較する。
+    Scene* const external = m_externalScene;
+    if (external)
+        external->Clear();
+    if (m_active && m_active.get() != external)
+        m_active->Clear();
+
+    // WHAT: owned Scene自体もDLLロード中に破棄し、仮想デストラクタの呼び残しを防ぐ。
+    m_active.reset();
+    m_externalScene = nullptr;
+    m_pendingLoad.clear();
+}
+
 void SceneManager::SetPhysicsHz(int hz)
 {
     hz = hz < 1 ? 1 : hz;
