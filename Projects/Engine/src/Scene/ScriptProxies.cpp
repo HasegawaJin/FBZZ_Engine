@@ -7,6 +7,7 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/PostProcessAsset.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -39,6 +40,17 @@
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
+#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
+#include <Engine/Scene/Components/DecalComponent.hpp>
+#include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/LifetimeComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Physics/RigidBody.hpp>
 #include <Physics/World.hpp>
@@ -1592,6 +1604,15 @@ bool ScriptPostProcessProxy::SetCustomParameters(std::string_view name, float x,
     return true;
 }
 
+bool ScriptPostProcessProxy::LoadProfile(std::string_view path) const
+{
+    renderer::PostProcessSettings loaded;
+    if (!asset::LoadPostProcessAssetFromFile(path, loaded))
+        return false;
+    Set(loaded);
+    return true;
+}
+
 // =============================================================================
 // GizmoProxy — OnDrawGizmos 区間内で Gizmo:: / DebugDraw:: を直接呼ぶプロキシ
 // =============================================================================
@@ -1841,6 +1862,478 @@ GameObject* EntityRef::Resolve(const ScriptSceneProxy& scene) const
 GameObject* EntityRef::Resolve(Scene& scene) const
 {
     return id.IsValid() ? scene.GetGameObject(id) : nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptCharacterProxy
+// ---------------------------------------------------------------------------
+namespace {
+CharacterControllerComponent* SelfCharacter(const Script* script)
+{
+    return SelfComponent<CharacterControllerComponent>(script);
+}
+} // namespace
+
+void ScriptCharacterProxy::Tick(float dt) const
+{
+    auto* cc = SelfCharacter(script);
+    if (!cc) return;
+    // RigidBody は SelfRigidBody() が script→Component→rigidBody と辿る。
+    cc->Tick(SelfRigidBody(script), dt);
+}
+
+void ScriptCharacterProxy::Jump(const math::Vector3& impulse) const
+{
+    auto* cc = SelfCharacter(script);
+    if (!cc) return;
+    cc->Jump(SelfRigidBody(script), impulse);
+}
+
+void ScriptCharacterProxy::RegisterGroundContact(const CollisionInfo& info) const
+{
+    if (auto* cc = SelfCharacter(script)) cc->RegisterGroundContact(info);
+}
+
+bool ScriptCharacterProxy::IsGrounded() const
+{
+    auto* cc = SelfCharacter(script);
+    return cc && cc->isGrounded;
+}
+
+float ScriptCharacterProxy::GetVerticalSpeed() const
+{
+    auto* cc = SelfCharacter(script);
+    return cc ? cc->verticalSpeed : 0.0f;
+}
+
+math::Vector3 ScriptCharacterProxy::GetGroundNormal() const
+{
+    auto* cc = SelfCharacter(script);
+    return cc ? cc->groundNormal : math::Vector3::UP;
+}
+
+void ScriptCharacterProxy::SetEnabled(bool enabled) const
+{
+    if (auto* cc = SelfCharacter(script)) cc->enabled = enabled;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptMeshProxy
+// ---------------------------------------------------------------------------
+void ScriptMeshProxy::SetEnabled(bool enabled) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+        mr->enabled = enabled;
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+        smr->enabled = enabled;
+}
+
+bool ScriptMeshProxy::IsEnabled() const
+{
+    if (!script || !script->m_gameObject) return false;
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+        if (mr->enabled) return true;
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+        if (smr->enabled) return true;
+    return false;
+}
+
+void ScriptMeshProxy::SetMeshPath(std::string_view path) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* mr = script->m_gameObject->GetComponent<MeshRenderer>())
+        mr->meshPath = std::string(path);
+}
+
+void ScriptMeshProxy::SetModelPath(std::string_view path) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* smr = script->m_gameObject->GetComponent<SkinnedMeshRenderer>())
+        smr->modelPath = std::string(path);
+}
+
+// ---------------------------------------------------------------------------
+// ScriptIKProxy
+// ---------------------------------------------------------------------------
+namespace {
+IKSolverComponent* SelfIK(const Script* script)
+{
+    return SelfComponent<IKSolverComponent>(script);
+}
+
+IKChain* FindChainByTarget(IKSolverComponent* ik, std::string_view targetName)
+{
+    if (!ik) return nullptr;
+    for (IKChain& c : ik->chains)
+        if (c.targetName == targetName) return &c;
+    return nullptr;
+}
+} // namespace
+
+void ScriptIKProxy::SetChainEnabled(std::string_view targetName, bool enabled) const
+{
+    if (auto* c = FindChainByTarget(SelfIK(script), targetName)) c->enabled = enabled;
+}
+
+void ScriptIKProxy::SetAllEnabled(bool enabled) const
+{
+    auto* ik = SelfIK(script);
+    if (!ik) return;
+    for (IKChain& c : ik->chains) c.enabled = enabled;
+}
+
+void ScriptIKProxy::SetChainWeight(std::string_view targetName, float weight) const
+{
+    if (auto* c = FindChainByTarget(SelfIK(script), targetName))
+        c->weight = weight < 0.0f ? 0.0f : (weight > 1.0f ? 1.0f : weight);
+}
+
+float ScriptIKProxy::GetChainWeight(std::string_view targetName) const
+{
+    auto* c = FindChainByTarget(SelfIK(script), targetName);
+    return c ? c->weight : 0.0f;
+}
+
+void ScriptIKProxy::SetChainTarget(std::string_view targetName, EntityID target) const
+{
+    if (auto* c = FindChainByTarget(SelfIK(script), targetName))
+        c->targetEntity = target;
+}
+
+void ScriptIKProxy::SetChainTarget(std::string_view targetName, const GameObject& target) const
+{
+    SetChainTarget(targetName, target.GetID());
+}
+
+void ScriptIKProxy::SetEnabled(bool enabled) const
+{
+    if (auto* ik = SelfIK(script)) ik->enabled = enabled;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptWaterProxy
+// ---------------------------------------------------------------------------
+namespace {
+WaterComponent* SelfWater(const Script* script)
+{
+    return SelfComponent<WaterComponent>(script);
+}
+} // namespace
+
+float ScriptWaterProxy::GetSurfaceHeightWorld(float worldX, float worldZ, float time) const
+{
+    auto* wc = SelfWater(script);
+    if (!wc || !script->m_gameObject) return 0.0f;
+
+    // ワールド座標 → ローカル座標 (回転・スケールを考慮)
+    const auto& t = script->m_gameObject->transform;
+    math::Vector3 delta = { worldX - t.worldPosition.x, 0.0f, worldZ - t.worldPosition.z };
+    const math::Vector3 local = t.worldRotation.Inverse() * delta;
+    const float lx = t.worldScale.x > 0.0f ? local.x / t.worldScale.x : local.x;
+    const float lz = t.worldScale.z > 0.0f ? local.z / t.worldScale.z : local.z;
+
+    return t.worldPosition.y + wc->GetSurfaceHeightAt(lx, lz, time);
+}
+
+float ScriptWaterProxy::GetSurfaceHeightLocal(float localX, float localZ, float time) const
+{
+    auto* wc = SelfWater(script);
+    return wc ? wc->GetSurfaceHeightAt(localX, localZ, time) : 0.0f;
+}
+
+void ScriptWaterProxy::SetWaveAmplitude(int index, float amplitude) const
+{
+    auto* wc = SelfWater(script);
+    if (wc && index >= 0 && index < 4) wc->waves[static_cast<size_t>(index)].amplitude = amplitude;
+}
+
+void ScriptWaterProxy::SetWaveWavelength(int index, float wavelength) const
+{
+    auto* wc = SelfWater(script);
+    if (wc && index >= 0 && index < 4) wc->waves[static_cast<size_t>(index)].wavelength = wavelength;
+}
+
+void ScriptWaterProxy::SetWaveSteepness(int index, float steepness) const
+{
+    auto* wc = SelfWater(script);
+    if (!wc || index < 0 || index >= 4) return;
+    float s = steepness < 0.0f ? 0.0f : (steepness > 1.0f ? 1.0f : steepness);
+    wc->waves[static_cast<size_t>(index)].steepness = s;
+}
+
+void ScriptWaterProxy::SetWaveDirection(int index, math::Vector2 dir) const
+{
+    auto* wc = SelfWater(script);
+    if (wc && index >= 0 && index < 4) wc->waves[static_cast<size_t>(index)].direction = dir;
+}
+
+void ScriptWaterProxy::SetGerstnerEnabled(bool enabled) const
+{
+    if (auto* wc = SelfWater(script)) wc->enableGerstnerWaves = enabled;
+}
+
+void ScriptWaterProxy::SetEnabled(bool enabled) const
+{
+    if (auto* wc = SelfWater(script)) wc->enabled = enabled;
+}
+
+bool ScriptWaterProxy::IsEnabled() const
+{
+    auto* wc = SelfWater(script);
+    return wc && wc->enabled;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptEnvironmentProxy
+// ---------------------------------------------------------------------------
+namespace {
+// シーン全体から最初のコンポーネントを検索する汎用ヘルパー。
+// WHY: EnvironmentLight / AtmosphericScattering / SkyRenderer は通常シーンに 1 つしかなく、
+//      どの Script からでもアクセスできる設計にするためシーン全探索を行う。
+//      enabled チェックを行わないのは、SetEnabled(false) を呼ぶためにコンポーネントを
+//      見つける必要があるため。
+// NOTE: Script* ではなく Scene* を受け取る — Script::m_scene は protected のため
+//       free function から直接アクセスできない。呼び出し側 (friend の proxy メソッド) で
+//       script->m_scene を取り出して渡す。
+template<typename T>
+T* FindFirstInScene(Scene* scene)
+{
+    if (!scene) return nullptr;
+    for (EntityID eid : scene->GetEntities<T>()) {
+        if (auto* c = scene->GetComponent<T>(eid)) return c;
+    }
+    return nullptr;
+}
+} // namespace
+
+void ScriptEnvironmentProxy::SetIBLEnabled(bool enabled) const
+{
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->enabled = enabled;
+}
+void ScriptEnvironmentProxy::SetIBLIntensity(float intensity) const
+{
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->intensity = intensity;
+}
+void ScriptEnvironmentProxy::SetIBLDiffuseScale(float scale) const
+{
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->diffuseScale = scale;
+}
+void ScriptEnvironmentProxy::SetIBLSpecularScale(float scale) const
+{
+    if (auto* c = FindFirstInScene<EnvironmentLightComponent>(script->m_scene)) c->specularScale = scale;
+}
+
+void ScriptEnvironmentProxy::SetFogEnabled(bool enabled) const
+{
+    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogEnabled = enabled;
+}
+void ScriptEnvironmentProxy::SetFogDensity(float density) const
+{
+    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogDensity = density;
+}
+void ScriptEnvironmentProxy::SetFogFar(float fogFar) const
+{
+    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogFar = fogFar;
+}
+void ScriptEnvironmentProxy::SetFogColor(const math::Vector3& rgb) const
+{
+    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogColor = rgb;
+}
+bool ScriptEnvironmentProxy::IsFogEnabled() const
+{
+    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
+    return c && c->fogEnabled;
+}
+float ScriptEnvironmentProxy::GetFogDensity() const
+{
+    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
+    return c ? c->fogDensity : 0.0f;
+}
+
+void ScriptEnvironmentProxy::SetSunIntensity(float intensity) const
+{
+    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->sunIntensity = intensity;
+}
+void ScriptEnvironmentProxy::SetMieScattering(float mie) const
+{
+    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->mieScattering = mie;
+}
+void ScriptEnvironmentProxy::SetMieG(float g) const
+{
+    if (auto* c = FindFirstInScene<SkyRenderer>(script->m_scene)) c->mieG = g;
+}
+float ScriptEnvironmentProxy::GetSunIntensity() const
+{
+    auto* c = FindFirstInScene<SkyRenderer>(script->m_scene);
+    return c ? c->sunIntensity : 0.0f;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptDecalProxy
+// ---------------------------------------------------------------------------
+namespace {
+DecalComponent* SelfDecal(const Script* script)
+{
+    return SelfComponent<DecalComponent>(script);
+}
+} // namespace
+
+void ScriptDecalProxy::SetEnabled(bool enabled) const
+{
+    if (auto* d = SelfDecal(script)) d->enabled = enabled;
+}
+void ScriptDecalProxy::SetLifetime(float seconds) const
+{
+    if (auto* d = SelfDecal(script)) d->lifetime = seconds;
+}
+void ScriptDecalProxy::SetFadeTime(float fadeTime) const
+{
+    if (auto* d = SelfDecal(script)) d->fadeTime = fadeTime;
+}
+void ScriptDecalProxy::ResetAge() const
+{
+    if (auto* d = SelfDecal(script)) d->age = 0.0f;
+}
+void ScriptDecalProxy::SetAlbedoColor(float r, float g, float b, float a) const
+{
+    auto* d = SelfDecal(script);
+    if (!d) return;
+    d->albedoColor[0] = r; d->albedoColor[1] = g;
+    d->albedoColor[2] = b; d->albedoColor[3] = a;
+}
+void ScriptDecalProxy::SetNormalStrength(float strength) const
+{
+    if (auto* d = SelfDecal(script)) d->normalStrength = strength;
+}
+void ScriptDecalProxy::SetEmissiveColor(float r, float g, float b) const
+{
+    auto* d = SelfDecal(script);
+    if (!d) return;
+    d->emissiveColor[0] = r; d->emissiveColor[1] = g; d->emissiveColor[2] = b;
+}
+void ScriptDecalProxy::SetEmissiveScale(float scale) const
+{
+    if (auto* d = SelfDecal(script)) d->emissiveScale = scale;
+}
+void ScriptDecalProxy::SetAlbedoTexture(std::string_view path) const
+{
+    if (auto* d = SelfDecal(script)) d->albedoTexPath = std::string(path);
+}
+void ScriptDecalProxy::SetNormalTexture(std::string_view path) const
+{
+    if (auto* d = SelfDecal(script)) d->normalTexPath = std::string(path);
+}
+void ScriptDecalProxy::SetEmissiveTexture(std::string_view path) const
+{
+    if (auto* d = SelfDecal(script)) d->emissiveTexPath = std::string(path);
+}
+
+// ---------------------------------------------------------------------------
+// ScriptVolumeProxy
+// ---------------------------------------------------------------------------
+namespace {
+VolumeComponent* SelfVolume(const Script* script)
+{
+    return SelfComponent<VolumeComponent>(script);
+}
+} // namespace
+
+void ScriptVolumeProxy::SetEnabled(bool enabled) const
+{
+    if (auto* v = SelfVolume(script)) v->enabled = enabled;
+}
+void ScriptVolumeProxy::SetGravity(const math::Vector3& gravity) const
+{
+    if (auto* v = SelfVolume(script)) v->gravity = gravity;
+}
+void ScriptVolumeProxy::SetSwirlStrength(float strength) const
+{
+    if (auto* v = SelfVolume(script)) v->swirlStrength = strength;
+}
+void ScriptVolumeProxy::SetBuoyancy(float buoyancy) const
+{
+    if (auto* v = SelfVolume(script)) v->buoyancy = buoyancy;
+}
+void ScriptVolumeProxy::SetExplosionImpulse(float impulse) const
+{
+    if (auto* v = SelfVolume(script)) v->explosionImpulse = impulse;
+}
+void ScriptVolumeProxy::SetTimeScale(float scale) const
+{
+    if (auto* v = SelfVolume(script)) v->timeScale = scale;
+}
+void ScriptVolumeProxy::SetDuration(float seconds) const
+{
+    if (auto* v = SelfVolume(script)) v->duration = seconds;
+}
+void ScriptVolumeProxy::ResetElapsed() const
+{
+    if (auto* v = SelfVolume(script)) v->elapsed = 0.0f;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptReflectionProbeProxy
+// ---------------------------------------------------------------------------
+namespace {
+ReflectionProbeComponent* SelfReflectionProbe(const Script* script)
+{
+    return SelfComponent<ReflectionProbeComponent>(script);
+}
+} // namespace
+
+void ScriptReflectionProbeProxy::SetEnabled(bool enabled) const
+{
+    if (auto* rp = SelfReflectionProbe(script)) rp->enabled = enabled;
+}
+void ScriptReflectionProbeProxy::SetIntensity(float intensity) const
+{
+    if (auto* rp = SelfReflectionProbe(script)) rp->intensity = intensity;
+}
+void ScriptReflectionProbeProxy::SetInfluenceRadius(float radius) const
+{
+    if (auto* rp = SelfReflectionProbe(script)) rp->influenceRadius = radius;
+}
+void ScriptReflectionProbeProxy::SetBoxInfluence(bool useBox) const
+{
+    if (auto* rp = SelfReflectionProbe(script)) rp->boxInfluence = useBox;
+}
+void ScriptReflectionProbeProxy::SetBoxExtents(const math::Vector3& halfExtents) const
+{
+    if (auto* rp = SelfReflectionProbe(script)) rp->boxExtents = halfExtents;
+}
+void ScriptReflectionProbeProxy::SetCubemap(std::string_view path) const
+{
+    if (auto* rp = SelfReflectionProbe(script)) rp->cubemapPath = std::string(path);
+}
+
+// ---------------------------------------------------------------------------
+// ScriptLifetimeProxy
+// ---------------------------------------------------------------------------
+namespace {
+LifetimeComponent* SelfLifetime(const Script* script)
+{
+    return SelfComponent<LifetimeComponent>(script);
+}
+} // namespace
+
+void ScriptLifetimeProxy::SetRemaining(float seconds) const
+{
+    if (auto* lc = SelfLifetime(script)) lc->remaining = seconds;
+}
+float ScriptLifetimeProxy::GetRemaining() const
+{
+    auto* lc = SelfLifetime(script);
+    return lc ? lc->remaining : 0.0f;
+}
+void ScriptLifetimeProxy::SetEnabled(bool enabled) const
+{
+    if (auto* lc = SelfLifetime(script)) lc->enabled = enabled;
+}
+void ScriptLifetimeProxy::Kill() const
+{
+    // remaining = 0 にして LifetimeSystem に次フレームで GO を破棄させる。
+    if (auto* lc = SelfLifetime(script)) lc->remaining = 0.0f;
 }
 
 } // namespace fbzz::scene

@@ -24,6 +24,10 @@
 #include "Components/UILayoutGroup.hpp"
 #include "Components/UIAnimator.hpp"
 #include "Components/DecalComponent.hpp"
+#include "Components/EnvironmentLightComponent.hpp"
+#include "Components/ReflectionProbeComponent.hpp"
+#include "Components/AtmosphericScatteringComponent.hpp"
+#include "Components/PostProcessVolumeComponent.hpp"
 #include "Components/IKSolverComponent.hpp"
 #include "Components/CharacterControllerComponent.hpp"
 #include "Components/TerrainComponent.hpp"
@@ -88,7 +92,11 @@ using ComponentList = std::tuple<
     NavMeshAgentComponent,
     NavMeshOffMeshLinkComponent,
     NavMeshPatrolComponent,
-    NavMeshSensorComponent
+    NavMeshSensorComponent,
+    EnvironmentLightComponent,
+    ReflectionProbeComponent,
+    AtmosphericScatteringComponent,
+    PostProcessVolumeComponent
     // 新型はここに1行追加するだけ
 >;
 

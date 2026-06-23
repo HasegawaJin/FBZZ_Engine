@@ -58,7 +58,10 @@ float ComputeShadow(Texture2D<float> shadowMap,
     float slope        = sqrt(1.0f - NdotL * NdotL) / max(NdotL, 1e-4f);
     float adjustedBias = clamp(bias + bias * slope, bias, bias * 6.0f);
 
-    return SampleShadowPCF(shadowMap, shadowSampler, uv, depth - adjustedBias, texelSize, 2);
+    // shadowPcfRadius は ShadowConstants cbuffer から参照。全シェーダー共通で Inspector から制御可能。
+    float factor = SampleShadowPCF(shadowMap, shadowSampler, uv, depth - adjustedBias, texelSize, shadowPcfRadius);
+    // shadowStrength: 1=完全な影, 0=影なし。factor=0(影) の時に (1-strength) を最小値とする。
+    return lerp(1.0f - shadowStrength, 1.0f, factor);
 }
 
 #endif // SHADOW_HLSLI

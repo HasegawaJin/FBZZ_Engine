@@ -104,6 +104,37 @@ struct AtmosphereCB {
     float mieG;
 };
 
+// AdvancedGraphicsCB — IBL・SSR・TAA・GTAO・Contact Shadow 等の詳細設定。
+// LAYOUT: Constants.hlsli の AdvancedGraphicsConstants cbuffer と完全に一致させること。
+// WHY: 16-byte アライメント制約のため、各グループを 4 要素単位でまとめる。
+struct AdvancedGraphicsCB {
+    // IBL
+    float iblIntensity;       float iblDiffuseScale;    float iblSpecularScale;   int   iblMaxMipLevel;
+    // SSR
+    float ssrMaxDistance;     float ssrThickness;        int   ssrSteps;           float ssrIntensity;
+    // Volumetric
+    float volLightIntensity;  float volScattering;       int   volSteps;           float volMaxDist;
+    // TAA
+    float taaFeedback;        float taaJitterX;          float taaJitterY;         float _taaPad;
+    // Motion Blur
+    float motionBlurStrength; int   motionBlurSamples;   float _mblurPad0;         float _mblurPad1;
+    // GTAO
+    float gtaoIntensity;      float gtaoRadius;          int   gtaoSlices;         int   gtaoStepsPerSlice;
+    // Contact Shadows
+    float contactShadowStrength; float contactShadowRayLen; int contactShadowSteps; float contactShadowThick;
+    // Lens Flare
+    float lensFlareIntensity; int   lensFlareGhostCount; float lensFlareHaloWidth; float lensFlareDistort;
+    // PCSS
+    float pcssLightRadius;    int   pcssEnabled;         float _pcssPad0;          float _pcssPad1;
+    // LUT
+    float lutBlend;           float _lutPad0;            float _lutPad1;           float _lutPad2;
+    // Reprojection 行列 (TAA / Motion Blur 共用)
+    math::Matrix4 prevViewProjection;
+    math::Matrix4 invPrevViewProjection;
+};
+static_assert(sizeof(AdvancedGraphicsCB) == 288,
+    "AdvancedGraphicsCB must match AdvancedGraphicsConstants in Constants.hlsli (288 bytes)");
+
 struct PostProcCB {
     float texelSize[2];
     float screenSize[2];
@@ -156,6 +187,9 @@ struct PostProcCB {
     float _qualityPad0;
     float colorFilter[3];
     float _qualityPad1;
+    // 画面フェード — Composite パスの最終出力に適用する。alpha=0 で通常, 1 で全面フェード色。
+    float screenFadeColor[3];
+    float screenFadeAlpha;
 };
 
 struct OutlineCB {
@@ -297,6 +331,57 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         foliageShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  foliagePSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  foliageNoCullPSO;
+
+    // ---- Advanced Graphics ----
+
+    // AdvancedGraphics 共用定数バッファ (b8)
+    renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
+
+    // IBL (Image-Based Lighting)
+    // WHY: テクスチャハンドルは ResourceManager から取得した静的リソース。
+    //      シーンのスカイドームが変わるまで再ロード不要。
+    renderer::ResourceHandle<renderer::TextureTag>        iblIrradiance;   // Diffuse irradiance cubemap
+    renderer::ResourceHandle<renderer::TextureTag>        iblPrefilter;    // Specular prefiltered cubemap
+    renderer::ResourceHandle<renderer::TextureTag>        iblBrdfLut;      // BRDF 積分 LUT (512x512 R16G16F)
+    renderer::ResourceHandle<renderer::ShaderTag>         iblBrdfBakeShader; // CS: BRDF LUT をスタートアップ時に焼く
+    renderer::ResourceHandle<renderer::RenderTargetTag>   iblBrdfLutRT;    // BRDF LUT bake 用 RT (静的)
+
+    // SSR (Screen Space Reflections)
+    renderer::ResourceHandle<renderer::TextureTag>        ssrResult;       // SSR Compute 出力テクスチャ
+    renderer::ResourceHandle<renderer::ShaderTag>         ssrShader;       // CS
+
+    // Volumetric Lighting
+    renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;
+    renderer::ResourceHandle<renderer::ShaderTag>         volumetricShader;
+
+    // TAA (Temporal Anti-Aliasing)
+    // WHY: taaHistory は前フレームの TAA 出力を保持する永続 RT。
+    //      解像度変更時のみ再生成し、毎フレーム ping-pong で入れ替える。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;     // ping-pong バッファ A
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;     // ping-pong バッファ B
+    renderer::ResourceHandle<renderer::ShaderTag>         taaShader;       // VS+PS
+    renderer::ResourceHandle<renderer::PipelineStateTag>  taaPSO;
+    bool                                                  taaFlip = false; // A→B→A... の ping-pong フラグ
+
+    // Motion Blur
+    renderer::ResourceHandle<renderer::TextureTag>        motionBlurResult;
+    renderer::ResourceHandle<renderer::ShaderTag>         motionBlurShader;
+
+    // GTAO (Ground Truth Ambient Occlusion)
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;
+    renderer::ResourceHandle<renderer::ShaderTag>         gtaoShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         gtaoBlurShader;
+
+    // Contact Shadows
+    renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult;
+    renderer::ResourceHandle<renderer::ShaderTag>         contactShadowShader;
+
+    // Lens Flare
+    renderer::ResourceHandle<renderer::ShaderTag>         lensFlareShader;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  lensFlarePSO;    // ADDITIVE ブレンド
+    // CPU生成32^3 RGBA8 LUT。外部DDSに依存せずCompositeのTexture3D(t22)へ束縛する。
+    renderer::ResourceHandle<renderer::TextureTag>        proceduralColorLut;
 };
 
 struct RenderPassContext {

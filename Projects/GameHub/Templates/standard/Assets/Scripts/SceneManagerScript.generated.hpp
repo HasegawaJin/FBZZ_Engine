@@ -8,5 +8,7 @@ inline void SceneManagerScript::Reflect(::fbzz::scene::IReflector& r_) {
     r_.Field("Via Scene", viaScene);
     r_.Field("Auto Transition", autoTransition);
     r_.Field("Auto Delay", autoDelay);
+    r_.Field("Fade Enabled", fadeEnabled);
+    r_.Field("Fade Duration", fadeDuration);
 }
 } // namespace sandbox

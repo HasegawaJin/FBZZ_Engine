@@ -31,6 +31,10 @@ public:
     // CPU メモリ上の RGBA8 ピクセルデータからテクスチャを生成する (白 1×1 等の手続き生成用)
     bool InitFromData(ID3D11Device* device, const uint8_t* rgba, uint32_t width, uint32_t height);
 
+    // CPU生成RGBA8ボリュームをImmutable Texture3Dとして作り、LUT用SRVを公開する。
+    bool Init3DFromData(ID3D11Device* device, const uint8_t* rgba,
+                        uint32_t width, uint32_t height, uint32_t depth);
+
     // 既存 SRV から直接初期化する (ResourceManager が RenderTarget の TextureTag 化に使用)
     void InitFromSRV(ID3D11ShaderResourceView* srv, uint32_t width, uint32_t height);
 

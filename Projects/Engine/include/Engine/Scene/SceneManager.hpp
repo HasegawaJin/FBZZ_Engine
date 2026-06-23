@@ -36,6 +36,10 @@ public:
     // 外部所有シーンをバインドする。null を渡すと LoadScene で作成した m_active を使用する
     void SetScene(Scene* scene);
 
+    // 外部所有SceneとManager所有Sceneを両方破棄し、遷移要求も取り消す。
+    // WHY: Script DLLをFreeLibraryする前に、どちらのSceneに残る派生Scriptも破棄する必要がある。
+    void ClearScenes();
+
     // 固定タイムステップの Hz (デフォルト 60)
     void SetPhysicsHz(int hz);
 

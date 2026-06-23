@@ -163,6 +163,41 @@ ShaderDescriptor DX11Shader::BuildDescriptor(const std::vector<uint8_t>& psBlob)
         }
     }
 
+    // ---- PostProcConstants (b5) から custom* 変数を列挙 ----
+    // WHY: 共通 PostProcess Inspector が実際にシェーダーで使用される入力だけを表示するため。
+    if (auto* postCb = refl->GetConstantBufferByName("PostProcConstants"))
+    {
+        D3D11_SHADER_BUFFER_DESC cbDesc{};
+        if (SUCCEEDED(postCb->GetDesc(&cbDesc)))
+        {
+            for (UINT i = 0; i < cbDesc.Variables; ++i)
+            {
+                auto* var = postCb->GetVariableByIndex(i);
+                D3D11_SHADER_VARIABLE_DESC vDesc{};
+                D3D11_SHADER_TYPE_DESC tDesc{};
+                if (FAILED(var->GetDesc(&vDesc)) || FAILED(var->GetType()->GetDesc(&tDesc)) || !vDesc.Name)
+                    continue;
+                const std::string_view name = vDesc.Name;
+                if (!name.starts_with("custom")) continue;
+
+                ShaderVarDesc value;
+                value.name = vDesc.Name;
+                value.offset = vDesc.StartOffset;
+                value.size = vDesc.Size;
+                value.rows = static_cast<uint8_t>(tDesc.Rows);
+                value.columns = static_cast<uint8_t>(tDesc.Columns);
+                value.varClass = (tDesc.Class == D3D_SVC_SCALAR) ? ShaderVarClass::Scalar
+                               : (tDesc.Class == D3D_SVC_VECTOR) ? ShaderVarClass::Vector
+                               :                                    ShaderVarClass::Matrix;
+                value.varType = (tDesc.Type == D3D_SVT_FLOAT) ? ShaderVarType::Float
+                              : (tDesc.Type == D3D_SVT_INT)   ? ShaderVarType::Int
+                              : (tDesc.Type == D3D_SVT_UINT)  ? ShaderVarType::UInt
+                              :                                  ShaderVarType::Bool;
+                desc.postProcessVars.push_back(std::move(value));
+            }
+        }
+    }
+
     // ---- t0-t4 のテクスチャバインドを列挙 ----
     D3D11_SHADER_DESC shDesc{};
     refl->GetDesc(&shDesc);

@@ -64,6 +64,22 @@ static renderer::ResourceHandle<renderer::BufferTag> s_quadVB;
 static renderer::ResourceHandle<renderer::BufferTag> s_quadIB;
 static uint64_t s_quadResetVersion = 0;
 
+// DetailChunk が所有する GPU インスタンスバッファを再ベイク前に解放する。
+// WHY: vector::clear() は ResourceHandle の値しか破棄せず、ResourceManager の実体は残り続けるため。
+static void ReleaseChunkBuffers(DetailChunk& chunk, renderer::ResourceManager& resources)
+{
+    for (const auto buffer : chunk.instanceBuffers) {
+        if (buffer.IsValid())
+            resources.Release(buffer);
+    }
+    for (const auto buffer : chunk.grassInstanceBuffers) {
+        if (buffer.IsValid())
+            resources.Release(buffer);
+    }
+    chunk.instanceBuffers.clear();
+    chunk.grassInstanceBuffers.clear();
+}
+
 static void EnsureQuadBuffers(renderer::ResourceManager& resources)
 {
     if (s_quadResetVersion == resources.GetResetVersion() && s_quadVB.IsValid())
@@ -255,6 +271,8 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
 
         if (detail.needsBake || detail.chunks.empty() || transformChanged)
         {
+            for (auto& chunk : detail.chunks)
+                ReleaseChunkBuffers(chunk, resources);
             detail.chunks.clear();
 
             const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;

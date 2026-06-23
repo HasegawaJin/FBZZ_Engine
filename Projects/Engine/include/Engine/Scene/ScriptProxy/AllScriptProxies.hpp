@@ -23,3 +23,12 @@
 #include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptUIProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptNavigationProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptCharacterProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptMeshProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptIKProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptWaterProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptEnvironmentProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptDecalProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptVolumeProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptReflectionProbeProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptLifetimeProxy.hpp>

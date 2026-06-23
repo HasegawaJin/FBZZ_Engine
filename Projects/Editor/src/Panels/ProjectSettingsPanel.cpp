@@ -5,6 +5,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/ProjectSettings.hpp>
@@ -37,42 +38,6 @@ bool SectionButton(const char* label, ProjectSettingsPanel::Section value, Proje
     return false;
 }
 
-void DrawPostProcessToggles(renderer::PostProcessSettings& p)
-{
-    // WHY: 下部の CollapsingHeader と同じ表示名を使うため、ImGui ID は ## 以降で明示的に分離する。
-    // WHAT: 画面に見えるラベルは維持しつつ、チェックボックスだけ Enable 用の内部 ID を持たせる。
-    ImGui::Checkbox("Bloom##PostProcessEnableBloom", &p.bloom.enabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Fog##PostProcessEnableFog", &p.fog.enabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("FXAA##PostProcessEnableFXAA", &p.fxaaEnabled);
-
-    ImGui::Checkbox("Color Grading##PostProcessEnableColorGrading", &p.colorGrading.enabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Vignette##PostProcessEnableVignette", &p.vignette.enabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Film Grain##PostProcessEnableFilmGrain", &p.filmGrain.enabled);
-
-    ImGui::Checkbox("Sharpen##PostProcessEnableSharpen", &p.sharpen.enabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Depth of Field##PostProcessEnableDepthOfField", &p.depthOfField.enabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Ambient Occlusion##PostProcessEnableSSAO", &p.ambientOcclusion.enabled);
-
-    ImGui::Checkbox("Chromatic Aberration##PostProcessEnableChromaticAberration", &p.lens.chromaticAberrationEnabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Lens Distortion##PostProcessEnableLensDistortion", &p.lens.distortionEnabled);
-
-    ImGui::Checkbox("Sepia##PostProcessEnableSepia", &p.stylized.sepiaEnabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Invert##PostProcessEnableInvert", &p.stylized.invertEnabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Posterize##PostProcessEnablePosterize", &p.stylized.posterizeEnabled);
-    ImGui::SameLine();
-    ImGui::Checkbox("Pixelate##PostProcessEnablePixelate", &p.stylized.pixelateEnabled);
-
-    ImGui::Text("Custom: %d", static_cast<int>(p.customEffects.size()));
-}
 
 } // namespace
 
@@ -414,6 +379,23 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
             render.shadow.pcfRadius = pcfIdx;
         ImGui::SameLine();
         ImGui::TextDisabled("(Blur)");
+
+        // PCSS — 距離に比例してペナンブラが広がる物理ベースのソフトシャドウ。
+        ImGui::Spacing();
+        ImGui::Checkbox("PCSS##shadow", &render.shadow.pcssEnabled);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Percentage Closer Soft Shadows)");
+        if (render.shadow.pcssEnabled)
+        {
+            ImGui::Indent();
+            ImGui::SetNextItemWidth(100.0f);
+            ImGui::DragFloat("Light Radius##pcss", &render.shadow.pcssLightRadius,
+                             0.1f, 0.0f, 50.0f, "%.2f");
+            ImGui::SameLine();
+            ImGui::TextDisabled("(大きいほどソフト)");
+            ImGui::Unindent();
+        }
+
         ImGui::Unindent();
     }
     ImGui::SameLine();
@@ -448,179 +430,24 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
 
 void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
 {
-    auto& postProcess = render.postProcess;
-
-    ImGui::TextUnformatted("Post Process");
-    ImGui::Separator();
-
-    DrawPostProcessToggles(postProcess);
+    // ─── 既存ポストプロセス効果 ───────────────────────────────────────────
+    // Bloom / SSAO / Fog / ColorGrading / Vignette / FilmGrain 等
+    {
+        // WHY: &render を渡すことで DrawPostProcessInspector 内の FXAA/SSAO グレーアウトが
+        //      機能する (TAA/GTAO との排他スロット競合検出)。
+        const PostProcessInspectorResult r = DrawPostProcessInspector(render.postProcess, &render);
+        if (r.structureChanged) ++m_editGeneration;
+    }
 
     ImGui::Spacing();
-    if (ImGui::CollapsingHeader("Tonemapping", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::PushID("TonemappingSettings");
-        ImGui::SliderFloat("Exposure", &postProcess.exposure, 0.1f, 4.0f);
-        ImGui::PopID();
-    }
+    ImGui::SeparatorText("Advanced Graphics");
 
-    if (ImGui::CollapsingHeader("Ambient Occlusion", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::PushID("AmbientOcclusionSettings");
-        ImGui::BeginDisabled(!postProcess.ambientOcclusion.enabled);
-        ImGui::SliderFloat("Intensity", &postProcess.ambientOcclusion.intensity, 0.0f, 3.0f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::PushID("BloomSettings");
-        ImGui::BeginDisabled(!postProcess.bloom.enabled);
-        ImGui::SliderFloat("Intensity", &postProcess.bloom.intensity, 0.0f, 3.0f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Color Grading", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::PushID("ColorGradingSettings");
-        ImGui::BeginDisabled(!postProcess.colorGrading.enabled);
-        ImGui::SliderFloat("Contrast", &postProcess.colorGrading.contrast, -1.0f, 1.0f);
-        ImGui::SliderFloat("Saturation", &postProcess.colorGrading.saturation, 0.0f, 2.0f);
-        ImGui::SliderFloat("Hue Shift", &postProcess.colorGrading.hueShift, -180.0f, 180.0f);
-        ImGui::SliderFloat("Temperature", &postProcess.colorGrading.temperature, -1.0f, 1.0f);
-        ImGui::SliderFloat("Tint", &postProcess.colorGrading.tint, -1.0f, 1.0f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Fog", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::PushID("FogSettings");
-        ImGui::BeginDisabled(!postProcess.fog.enabled);
-        ImGui::SliderFloat("Density", &postProcess.fog.density, 0.0f, 1.0f);
-        ImGui::SliderFloat("Far", &postProcess.fog.farDistance, 1.0f, 100.0f);
-        ImGui::ColorEdit3("Color", postProcess.fog.color);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Vignette", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::PushID("VignetteSettings");
-        ImGui::BeginDisabled(!postProcess.vignette.enabled);
-        ImGui::SliderFloat("Intensity", &postProcess.vignette.intensity, 0.0f, 1.0f);
-        ImGui::SliderFloat("Smoothness", &postProcess.vignette.smoothness, 0.01f, 1.0f);
-        ImGui::SliderFloat("Roundness", &postProcess.vignette.roundness, 0.0f, 1.0f);
-        ImGui::ColorEdit3("Color", postProcess.vignette.color);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Film Grain")) {
-        ImGui::PushID("FilmGrainSettings");
-        ImGui::BeginDisabled(!postProcess.filmGrain.enabled);
-        ImGui::SliderFloat("Intensity", &postProcess.filmGrain.intensity, 0.0f, 0.25f);
-        ImGui::SliderFloat("Response", &postProcess.filmGrain.response, 0.0f, 1.0f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Sharpen")) {
-        ImGui::PushID("SharpenSettings");
-        ImGui::BeginDisabled(!postProcess.sharpen.enabled);
-        ImGui::SliderFloat("Strength", &postProcess.sharpen.strength, 0.0f, 2.0f);
-        ImGui::SliderFloat("Radius", &postProcess.sharpen.radius, 0.25f, 4.0f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Depth of Field")) {
-        ImGui::PushID("DepthOfFieldSettings");
-        ImGui::BeginDisabled(!postProcess.depthOfField.enabled);
-        ImGui::SliderFloat("Focus Distance", &postProcess.depthOfField.focusDistance, 0.1f, 100.0f);
-        ImGui::SliderFloat("Focus Range", &postProcess.depthOfField.focusRange, 0.1f, 50.0f);
-        ImGui::SliderFloat("Blur Radius", &postProcess.depthOfField.blurRadius, 0.0f, 12.0f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Lens")) {
-        ImGui::PushID("LensSettings");
-        ImGui::BeginDisabled(!postProcess.lens.chromaticAberrationEnabled);
-        ImGui::SliderFloat("Chromatic Aberration", &postProcess.lens.chromaticAberration, 0.0f, 0.03f);
-        ImGui::EndDisabled();
-
-        ImGui::BeginDisabled(!postProcess.lens.distortionEnabled);
-        ImGui::SliderFloat("Distortion", &postProcess.lens.distortion, -0.5f, 0.5f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Stylized")) {
-        ImGui::PushID("StylizedPostProcessSettings");
-        ImGui::BeginDisabled(!postProcess.stylized.sepiaEnabled);
-        ImGui::SliderFloat("Sepia Intensity", &postProcess.stylized.sepiaIntensity, 0.0f, 1.0f);
-        ImGui::EndDisabled();
-
-        ImGui::BeginDisabled(!postProcess.stylized.invertEnabled);
-        ImGui::SliderFloat("Invert Intensity", &postProcess.stylized.invertIntensity, 0.0f, 1.0f);
-        ImGui::EndDisabled();
-
-        ImGui::BeginDisabled(!postProcess.stylized.posterizeEnabled);
-        ImGui::SliderFloat("Posterize Levels", &postProcess.stylized.posterizeLevels, 2.0f, 32.0f);
-        ImGui::EndDisabled();
-
-        ImGui::BeginDisabled(!postProcess.stylized.pixelateEnabled);
-        ImGui::SliderFloat("Pixel Size", &postProcess.stylized.pixelSize, 1.0f, 32.0f);
-        ImGui::EndDisabled();
-        ImGui::PopID();
-    }
-
-    if (ImGui::CollapsingHeader("Custom")) {
-        ImGui::PushID("CustomPostProcessSettings");
-
-        int removeIndex = -1;
-        for (int i = 0; i < static_cast<int>(postProcess.customEffects.size()); ++i) {
-            auto& custom = postProcess.customEffects[static_cast<size_t>(i)];
-            ImGui::PushID(i);
-
-            char header[96];
-            std::snprintf(header, sizeof(header), "%02d  %s", i, custom.name.c_str());
-            if (ImGui::TreeNodeEx("CustomPass", ImGuiTreeNodeFlags_DefaultOpen, "%s", header)) {
-                ImGui::Checkbox("Enabled", &custom.enabled);
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Remove"))
-                    removeIndex = i;
-
-                char name[64];
-                std::snprintf(name, sizeof(name), "%s", custom.name.c_str());
-                ImGui::SetNextItemWidth(-1.0f);
-                if (ImGui::InputText("Name", name, sizeof(name)))
-                    custom.name = name;
-
-                char shaderPath[260];
-                std::snprintf(shaderPath, sizeof(shaderPath), "%s", custom.shaderPath.c_str());
-                ImGui::SetNextItemWidth(-1.0f);
-                if (ImGui::InputText("Shader", shaderPath, sizeof(shaderPath)))
-                    custom.shaderPath = shaderPath;
-
-                ImGui::BeginDisabled(!custom.enabled);
-                ImGui::SliderFloat("Intensity", &custom.intensity, 0.0f, 4.0f);
-                ImGui::SliderFloat("Blend", &custom.blend, 0.0f, 1.0f);
-                ImGui::DragFloat4("Parameters", custom.parameters, 0.01f, -10.0f, 10.0f);
-                ImGui::EndDisabled();
-                ImGui::TreePop();
-            }
-
-            ImGui::PopID();
-        }
-
-        if (removeIndex >= 0) {
-            postProcess.customEffects.erase(postProcess.customEffects.begin() + removeIndex);
-            ++m_editGeneration;
-        }
-
-        if (ImGui::SmallButton("Add Custom Pass")) {
-            postProcess.customEffects.push_back(renderer::CustomPostProcessSettings{});
-            ++m_editGeneration;
-        }
-
-        ImGui::PopID();
+    // ─── 高度グラフィクス設定 ─────────────────────────────────────────────
+    // IBL / SSR / GTAO / ContactShadows / TAA / MotionBlur /
+    // VolumetricLight / LensFlare / LUT ColorGrading
+    {
+        const PostProcessInspectorResult r = DrawAdvancedGraphicsInspector(render);
+        if (r.structureChanged) ++m_editGeneration;
     }
 }
 

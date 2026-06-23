@@ -45,6 +45,21 @@ math::Vector3 TransformPoint(const math::Matrix4& matrix, float x, float y, floa
     return { point.x, point.y, point.z };
 }
 
+// Species キャッシュが所有する GPU バッファを再ベイク前に解放する。
+// WHY: ResourceHandle の上書きや vector::resize() だけでは ResourceManager 内の実体は解放されない。
+void ReleaseSpeciesCache(FoliageSpeciesCache& cache, renderer::ResourceManager& resources)
+{
+    if (cache.instanceBuffer.IsValid())
+        resources.Release(cache.instanceBuffer);
+    cache.instanceBuffer = {};
+
+    for (const auto buffer : cache.materialConstantBuffers) {
+        if (buffer.IsValid())
+            resources.Release(buffer);
+    }
+    cache.materialConstantBuffers.clear();
+}
+
 void BakeSpecies(FoliageSpeciesCache& cache,
                  const FoliageSpecies& species,
                  const TerrainComponent& terrain,
@@ -154,6 +169,9 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
         if (foliage.needsBake
             || foliage.caches.size() != foliage.species.size()
             || transformChanged) {
+            for (auto& cache : foliage.caches)
+                ReleaseSpeciesCache(cache, ctx.resources);
+            foliage.caches.clear();
             foliage.caches.resize(foliage.species.size());
             for (size_t i = 0; i < foliage.species.size(); ++i)
                 BakeSpecies(foliage.caches[i], foliage.species[i],
