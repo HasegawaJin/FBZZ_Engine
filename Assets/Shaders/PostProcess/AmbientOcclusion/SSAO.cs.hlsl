@@ -1,0 +1,95 @@
+// FBZZ Engine
+// PostProcess/AmbientOcclusion/SSAO.cs.hlsl | PostProcess
+// Screen Space Ambient Occlusion — 半球サンプリングで遮蔽率を計算する
+//
+// Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1
+
+#include "Common/Constants.hlsli"
+#include "Common/Math.hlsli"
+#include "Common/Space.hlsli"
+#include "Common/Random.hlsli"
+#include "Platform/DX11.hlsli"
+
+Texture2D    texGBuffer1 : register(TEX_GBUFFER1);  // normal(RGB) + metallic(A)
+Texture2D    texDepth    : register(TEX_DEPTH);
+SamplerState sampDefault : register(SAMPLER_DEFAULT);
+
+RWTexture2D<float4> outputSSAO : register(UAV_OUTPUT);
+
+static const int   SAMPLE_COUNT  = 16;
+static const float SAMPLE_RADIUS = 0.5f;
+static const float BIAS          = 0.025f;
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 dtid : SV_DispatchThreadID)
+{
+    uint2  pixel = dtid.xy;
+    if (pixel.x >= (uint)screenSize.x || pixel.y >= (uint)screenSize.y)
+        return;
+
+    float2 uv    = (float2(pixel) + 0.5f) * texelSize;
+
+    if (uv.x > 1.0f || uv.y > 1.0f)
+    {
+        outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);
+        return;
+    }
+
+    // GBuffer から法線復元
+    float3 N = texGBuffer1.Load(int3(pixel, 0)).rgb * 2.0f - 1.0f;
+    N = normalize(N);
+
+    // 深度から worldPos 復元
+    float  ndcDepth = texDepth.Load(int3(pixel, 0)).r;
+    if (ndcDepth >= 1.0f)
+    {
+        outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);
+        return;
+    }
+    float3 origin   = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
+    float originDepth = LinearizeDepth(ndcDepth, nearZ, farZ);
+
+    // 半球サンプリング
+    float occlusion = 0.0f;
+    for (int i = 0; i < SAMPLE_COUNT; ++i)
+    {
+        // Wang ハッシュで乱数生成
+        uint  seed     = Hash(pixel.x + pixel.y * (uint)screenSize.x + (uint)i * 37u);
+        float r1       = HashToFloat(seed);
+        float r2       = HashToFloat(Hash(seed));
+
+        // コサイン重み付き半球サンプル
+        float phi      = 6.28318f * r1;
+        float cosTheta = sqrt(r2);
+        float sinTheta = sqrt(1.0f - r2);
+        float3 localSample = float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+
+        // 法線方向を軸とした TBN で変換
+        float3 up      = abs(N.z) < 0.999f ? float3(0, 0, 1) : float3(1, 0, 0);
+        float3 T       = normalize(cross(up, N));
+        float3 B       = cross(N, T);
+        float3 sampleW = T * localSample.x + B * localSample.y + N * localSample.z;
+
+        float3 samplePos = origin + sampleW * SAMPLE_RADIUS;
+
+        // サンプル点をスクリーン空間へ投影
+        float4 clip = mul(float4(samplePos, 1.0f), viewProjection);
+        if (abs(clip.w) < EPSILON) continue;
+        clip.xyz /= clip.w;
+        float2 sampleUV = NdcToUv(clip.xy);
+        if (any(sampleUV <= 0.0f) || any(sampleUV >= 1.0f)) continue;
+
+        float sampleDepth = texDepth.SampleLevel(sampDefault, sampleUV, 0).r;
+        if (sampleDepth >= 1.0f) continue;
+
+        // ワールドZではなくカメラからの線形深度で判定し、カメラ回転によるAO反転を防ぐ。
+        float sceneDepth = LinearizeDepth(sampleDepth, nearZ, farZ);
+        float samplePosDepth = -mul(float4(samplePos, 1.0f), view).z;
+        float rangeCheck = smoothstep(0.0f, 1.0f,
+                                      SAMPLE_RADIUS / max(abs(originDepth - sceneDepth), EPSILON));
+        occlusion += (sceneDepth < samplePosDepth - BIAS ? 1.0f : 0.0f) * rangeCheck;
+    }
+
+    const float ao = saturate(1.0f - (occlusion / float(SAMPLE_COUNT)));
+    outputSSAO[pixel] = float4(ao, ao, ao, 1.0f);
+}

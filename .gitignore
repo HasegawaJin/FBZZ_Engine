@@ -57,9 +57,29 @@ Thumbs.db
 !ThirdParty/
 !ThirdParty/**
 
-# Assets — シェーダー/シーン/テクスチャ/マテリアル等すべて Git 管理対象外
-# ローカルのみで管理する。重要ファイルは別途バックアップすること。
-Assets/
+# Assets — 大容量バイナリ素材のみ除外 (10MB 超の恐れがあるもの)
+# テキスト系 (シェーダー / スクリプト / マテリアル定義 / シーン) は追跡する
+Assets/**/*.fbx
+Assets/**/*.dds
+Assets/**/*.png
+Assets/**/*.jpg
+Assets/**/*.jpeg
+Assets/**/*.bmp
+Assets/**/*.tga
+Assets/**/*.hdr
+Assets/**/*.exr
+Assets/**/*.mp3
+Assets/**/*.wav
+Assets/**/*.ogg
+Assets/**/*.tex
+Assets/**/*.mesh
+Assets/**/*.fzasset
+Assets/**/*.skel
+Assets/**/*.anim
+Assets/**/*.ibl
+Assets/**/*.cso
+Assets/**/compile_log.txt
+Assets/**/compile_ui_log.txt
 
 # Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
 Projects/GameHub/Templates/standard/Assets/Nature/Tree/**
