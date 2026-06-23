@@ -64,7 +64,7 @@ static void EnsureInit(ResourceManager& resources)
     s_triVb    = resources.CreateVertexBuffer(nullptr,
                                        MAX_DEBUG_VERTICES * sizeof(DebugVertex),
                                        sizeof(DebugVertex));
-    s_shader   = resources.LoadShader("assets/shaders/Debug/DebugDraw.hlsl");
+    s_shader   = resources.LoadShader("Assets/Shaders/Debug/DebugDraw.hlsl");
     s_cameraCB = resources.CreateConstantBuffer(sizeof(DebugCamCB));
     s_pso      = resources.CreatePipelineState({ RasterizerMode::SOLID,
                                          BlendMode::OPAQUE_BLEND,

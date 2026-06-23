@@ -53,7 +53,10 @@ ResourceManager* ResourceManager::Active()
 
 ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 {
-    const std::string key(path);
+    // WHY: LoadTexture と同様にパス区切りを統一し、大文字小文字の違いによる
+    //      同一シェーダーの二重ロードを防ぐ。DX11Shader 内部も同様に正規化する。
+    std::string key(path);
+    std::replace(key.begin(), key.end(), '\\', '/');
     auto it = m_shaderCache.find(key);
     if (it != m_shaderCache.end()) return it->second;
 
