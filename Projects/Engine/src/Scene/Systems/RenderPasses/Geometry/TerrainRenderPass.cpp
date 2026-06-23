@@ -542,7 +542,10 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     auto shadowCB           = ctx.handles.shadowCB;
     auto lightCB            = ctx.handles.lightCB;
 
-    static auto terrainShader = resources.LoadShader("assets/shaders/Terrain/Terrain.hlsl");
+    // WHY: static ローカルは初回のみ初期化される。ResourceManager::Reset() で世代が変わった
+    //      場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
+    static uint64_t s_resetVersion = resources.GetResetVersion();
+    static auto terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
     static auto terrainPSO    = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
@@ -573,6 +576,19 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         return resources.CreateTexture(b, 1, 1);
     }();
 
+    if (s_resetVersion != resources.GetResetVersion()) {
+        s_resetVersion      = resources.GetResetVersion();
+        terrainShader       = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+        terrainPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,     renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        terrainWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+        cameraCBH           = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
+        terrainCBH          = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
+        s_whiteTex      = [&] { const uint8_t w[4] = { 255, 255, 255, 255 }; return resources.CreateTexture(w, 1, 1); }();
+        s_splatFallback = [&] { const uint8_t s[4] = { 255,   0,   0,   0 }; return resources.CreateTexture(s, 1, 1); }();
+        s_flatNormalTex = [&] { const uint8_t n[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(n, 1, 1); }();
+        s_blackTex      = [&] { const uint8_t b[4] = {   0,   0,   0, 255 }; return resources.CreateTexture(b, 1, 1); }();
+    }
+
     {
         std::unordered_set<uint32_t> validIndices;
         for (EntityID eid : scene.GetEntities<TerrainComponent>())
@@ -585,8 +601,11 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 resources.Release(ib);
             return true;
         });
-        std::erase_if(g_texCache, [&validIndices](auto& kv) {
-            return !validIndices.count(kv.first);
+        std::erase_if(g_texCache, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            if (kv.second.splatmap.IsValid() && kv.second.splatmap != s_splatFallback)
+                resources.Release(kv.second.splatmap);
+            return true;
         });
         std::erase_if(g_cbParamCache, [&validIndices](auto& kv) {
             return !validIndices.count(kv.first);
@@ -687,9 +706,14 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
 
         const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index);
         if (needTexRebuild) {
-            g_texCache[eid.index] = BuildTextureSet(layerMats, terrain, resources,
-                                                    s_splatFallback, s_whiteTex,
-                                                    s_flatNormalTex, s_blackTex);
+            auto& cachedTextures = g_texCache[eid.index];
+            // WHY: ペイント更新のたびに生成 splatmap を上書きすると旧 GPU Texture が残るため、
+            //      パスキャッシュで共有されない所有テクスチャだけを再構築前に解放する。
+            if (cachedTextures.splatmap.IsValid() && cachedTextures.splatmap != s_splatFallback)
+                resources.Release(cachedTextures.splatmap);
+            cachedTextures = BuildTextureSet(layerMats, terrain, resources,
+                                             s_splatFallback, s_whiteTex,
+                                             s_flatNormalTex, s_blackTex);
             RebuildCBParams();
             terrain.splatDirty = false;
         }

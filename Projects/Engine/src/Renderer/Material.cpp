@@ -11,6 +11,12 @@ void Material::Init(ResourceManager& resources, uint32_t cbufferSize)
 {
     // サイズが変わった場合は cbuffer を再作成する。
     if (paramsBuffer.IsValid() && paramData.size() == cbufferSize) return;
+    if (paramsBuffer.IsValid()) {
+        // WHY: ハンドルの上書きだけでは旧 ConstantBuffer が ResourceManager に残るため、
+        //      シェーダー変更でレイアウトが変わる前に明示的に解放する。
+        resources.Release(paramsBuffer);
+        paramsBuffer = {};
+    }
     // WHY: 呼び出し元が事前に paramData を設定している場合 (SyncMaterial / SceneSerializer) は
     //      サイズが一致していれば上書きしない。サイズ不一致のときだけ 0 初期化する。
     if (paramData.size() != cbufferSize)
