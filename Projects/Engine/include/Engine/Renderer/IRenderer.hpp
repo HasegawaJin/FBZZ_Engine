@@ -11,6 +11,7 @@
 #include <vector>
 #include "ComputeCall.hpp"
 #include "DrawCall.hpp"
+#include "IIblBaker.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
 #include "IStructuredBuffer.hpp"
@@ -76,6 +77,12 @@ public:
         return s_empty;
     }
 
+    // IBL ベイク処理の実装を返す (Editor 専用)。
+    // DX11Renderer は DX11IblBaker を返す。他のバックエンドは nullptr を返してよい。
+    // WHY: IblBaker は DX11 固有の UAV 操作を必要とするため IRenderer の factory 経由で提供し、
+    //      Editor が DX11Renderer に直接ダウンキャストしなくて済むようにする。
+    virtual std::unique_ptr<IIblBaker> CreateIblBaker() { return nullptr; }
+
 private:
     friend class ResourceManager;
 
@@ -85,6 +92,8 @@ private:
     virtual std::unique_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTexture(const std::string& path) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t* rgba, uint32_t width, uint32_t height) = 0;
+    virtual std::unique_ptr<ITexture> CreateNativeTexture3DFromData(
+        const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(
         IRenderTarget& rt,
         uint32_t index,

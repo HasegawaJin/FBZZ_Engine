@@ -12,9 +12,9 @@ namespace fbzz::renderer {
 
 struct ComputeCall {
     ResourceHandle<ShaderTag> shader;
-    std::array<ResourceHandle<ConstantBufferTag>, 8>  constantBuffers  = {};
-    std::array<ResourceHandle<TextureTag>, 16>         srvInputs        = {}; // テクスチャ SRV: t0〜t15
-    std::array<ResourceHandle<TextureTag>, 2>          uavOutputs       = {}; // テクスチャ UAV: u0〜u1
+    std::array<ResourceHandle<ConstantBufferTag>, 14> constantBuffers = {}; // b0〜b13
+    std::array<ResourceHandle<TextureTag>, 32>        srvInputs       = {}; // t0〜t31
+    std::array<ResourceHandle<TextureTag>, 8>         uavOutputs      = {}; // u0〜u7 (DX11 CS上限)
     // StructuredBuffer SRV (t14〜t15): CS 入力バッファ。Texture SRV が t0〜t13 を占めるため t14 以降に配置。
     // WHY: GPU パーティクルのスポーンバッファ等、テクスチャとは独立した型付きバッファを CS に渡すために追加。
     std::array<ResourceHandle<StructuredBufferTag>, 2> srvBuffers       = {}; // StructuredBuffer SRV: t14〜t15

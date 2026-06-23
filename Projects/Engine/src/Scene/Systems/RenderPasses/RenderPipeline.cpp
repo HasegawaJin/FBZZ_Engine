@@ -3,6 +3,7 @@
 // IRenderPass / raw pass の収集と RenderGraph への組み込み・実行
 #include "Engine/Scene/Systems/RenderPasses/RenderPipeline.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <unordered_set>
@@ -188,6 +189,7 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
                 profiler::ProfilerMarker(InternRenderPassProfileName(name), "Rendering"));
         },
         [](std::string_view) { profiler::Profiler::EndSample(); });
+    graph.SetDebugLogHook([](const char* msg) { FBZZ_LOG_ERROR("%s", msg); });
     graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
 
     // Phase 1: Plan — トポロジが変わった場合のみ依存解決・カリング・ライフタイム解析を実行する。
@@ -195,7 +197,14 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
     {
         FBZZ_PROFILE_SCOPE("RenderPipeline::Plan");
         if (topologyChanged) {
-            if (!graph.Plan()) return false;
+            if (!graph.Plan()) {
+                // どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
+                FBZZ_LOG_ERROR("RenderGraph::Plan() failed — dependency cycle or missing resource writer.");
+                for (size_t i : enabledNow) {
+                    FBZZ_LOG_ERROR("  enabled pass[%zu]: %s", i, m_entries[i].name.c_str());
+                }
+                return false;
+            }
             m_lastEnabledEntryIndices = std::move(enabledNow);
             m_planValid = true;
             m_poolDirty = true; // トポロジ変化時はプールも必ず再構築する

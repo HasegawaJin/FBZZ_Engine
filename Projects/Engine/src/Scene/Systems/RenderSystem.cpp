@@ -23,6 +23,10 @@
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
+#include "Engine/Scene/Components/EnvironmentLightComponent.hpp"
+#include "Engine/Scene/Components/AtmosphericScatteringComponent.hpp"
+#include "Engine/Scene/Components/PostProcessVolumeComponent.hpp"
+#include "Engine/Scene/Components/ReflectionProbeComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
@@ -42,6 +46,7 @@
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <memory>
@@ -60,6 +65,77 @@ struct SceneShadowBounds {
     bool valid = false;
 };
 
+constexpr uint32_t PROCEDURAL_LUT_SIZE = 32u;
+
+uint64_t HashLutSettings(const renderer::LUTColorGradingSettings& settings)
+{
+    uint64_t hash = 1469598103934665603ull;
+    const auto append = [&](float value) {
+        hash ^= std::bit_cast<uint32_t>(value);
+        hash *= 1099511628211ull;
+    };
+    append(settings.contrast);
+    append(settings.saturation);
+    append(settings.hueShift);
+    append(settings.temperature);
+    append(settings.tint);
+    return hash;
+}
+
+// RendererがサンプルするLDR RGB座標と同じ順序で32^3 RGBA8 LUTを生成する。
+// WHAT: x=R, y=G, z=B、xが最速で並ぶD3D11 Texture3Dのメモリ配置にする。
+std::vector<uint8_t> GenerateProceduralColorLut(const renderer::LUTColorGradingSettings& settings)
+{
+    constexpr float PI = 3.14159265358979323846f;
+    const float angle = settings.hueShift * (PI / 180.0f);
+    const float s = std::sin(angle);
+    const float c = std::cos(angle);
+    const float hue[3][3] = {
+        { 0.299f + 0.701f*c + 0.168f*s, 0.587f - 0.587f*c + 0.330f*s, 0.114f - 0.114f*c - 0.497f*s },
+        { 0.299f - 0.299f*c - 0.328f*s, 0.587f + 0.413f*c + 0.035f*s, 0.114f - 0.114f*c + 0.292f*s },
+        { 0.299f - 0.300f*c + 1.250f*s, 0.587f - 0.588f*c - 1.050f*s, 0.114f + 0.886f*c - 0.203f*s },
+    };
+    const float balance[3] = {
+        (std::max)(1.0f + settings.temperature * 0.08f - settings.tint * 0.03f, 0.0f),
+        (std::max)(1.0f + settings.tint * 0.06f, 0.0f),
+        (std::max)(1.0f - settings.temperature * 0.08f - settings.tint * 0.03f, 0.0f),
+    };
+
+    std::vector<uint8_t> pixels(PROCEDURAL_LUT_SIZE * PROCEDURAL_LUT_SIZE * PROCEDURAL_LUT_SIZE * 4u);
+    const auto toUnorm = [](float value) {
+        return static_cast<uint8_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+    };
+    const float denominator = static_cast<float>(PROCEDURAL_LUT_SIZE - 1u);
+    for (uint32_t b = 0; b < PROCEDURAL_LUT_SIZE; ++b) {
+        for (uint32_t g = 0; g < PROCEDURAL_LUT_SIZE; ++g) {
+            for (uint32_t r = 0; r < PROCEDURAL_LUT_SIZE; ++r) {
+                const float input[3] = { r / denominator, g / denominator, b / denominator };
+                const float balanced[3] = {
+                    input[0] * balance[0], input[1] * balance[1], input[2] * balance[2]
+                };
+                float color[3] = {
+                    hue[0][0]*balanced[0] + hue[0][1]*balanced[1] + hue[0][2]*balanced[2],
+                    hue[1][0]*balanced[0] + hue[1][1]*balanced[1] + hue[1][2]*balanced[2],
+                    hue[2][0]*balanced[0] + hue[2][1]*balanced[1] + hue[2][2]*balanced[2],
+                };
+                for (float& channel : color)
+                    channel = (channel - 0.5f) * (1.0f + settings.contrast) + 0.5f;
+                const float luma = color[0] * 0.2126f + color[1] * 0.7152f + color[2] * 0.0722f;
+                for (float& channel : color)
+                    channel = luma + (channel - luma) * settings.saturation;
+
+                const size_t index = ((static_cast<size_t>(b) * PROCEDURAL_LUT_SIZE + g) *
+                                      PROCEDURAL_LUT_SIZE + r) * 4u;
+                pixels[index + 0] = toUnorm(color[0]);
+                pixels[index + 1] = toUnorm(color[1]);
+                pixels[index + 2] = toUnorm(color[2]);
+                pixels[index + 3] = 255u;
+            }
+        }
+    }
+    return pixels;
+}
+
 // Viewport ごとに解像度依存の中間リソースを保持する。
 // WHY: Scene View と Game View は解像度が異なるため、単一の static RT 群を共有すると
 //      1 フレーム内で互いのサイズへリサイズし続け、D3D11 リソース生成待ちが発生する。
@@ -76,6 +152,17 @@ struct ViewRenderTargets {
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
     renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
+    // ---- Advanced Graphics (解像度依存・ビュー単位) ----
+    // WHY: これらは解像度変更時に再生成が必要なため ViewRenderTargets に含める。
+    //      static なリソース (BRDF LUT 等) は別途 static 変数で管理する。
+    renderer::ResourceHandle<renderer::TextureTag>        ssrResult;           // SSR CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    // Volumetric CS 出力
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;         // TAA ping-pong A
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;         // TAA ping-pong B
+    renderer::ResourceHandle<renderer::TextureTag>        motionBlurResult;    // Motion Blur CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             // GTAO RAW CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            // GTAO Blur CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult; // Contact Shadow CS 出力
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -94,8 +181,16 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     if (targets.decalMask.IsValid())            resources.Release(targets.decalMask);
     if (targets.bloomHalf.IsValid())            resources.Release(targets.bloomHalf);
     if (targets.bloomFull.IsValid())            resources.Release(targets.bloomFull);
-    if (targets.ssaoRaw.IsValid())              resources.Release(targets.ssaoRaw);
-    if (targets.ssaoBlur.IsValid())             resources.Release(targets.ssaoBlur);
+    if (targets.ssaoRaw.IsValid())               resources.Release(targets.ssaoRaw);
+    if (targets.ssaoBlur.IsValid())              resources.Release(targets.ssaoBlur);
+    if (targets.ssrResult.IsValid())             resources.Release(targets.ssrResult);
+    if (targets.volumetricResult.IsValid())      resources.Release(targets.volumetricResult);
+    if (targets.taaHistoryA.IsValid())           resources.Release(targets.taaHistoryA);
+    if (targets.taaHistoryB.IsValid())           resources.Release(targets.taaHistoryB);
+    if (targets.motionBlurResult.IsValid())      resources.Release(targets.motionBlurResult);
+    if (targets.gtaoRaw.IsValid())               resources.Release(targets.gtaoRaw);
+    if (targets.gtaoBlur.IsValid())              resources.Release(targets.gtaoBlur);
+    if (targets.contactShadowResult.IsValid())   resources.Release(targets.contactShadowResult);
     targets = {};
 }
 
@@ -201,6 +296,43 @@ void RenderSystem(Scene& scene,
     renderer::RenderSettings effectiveSettings = settings ? *settings : sDefaultSettings;
     if (const auto* runtimePostProcess = scene.TryGetRuntimePostProcessSettings())
         effectiveSettings.postProcess = *runtimePostProcess;
+
+    // ── コンポーネントによる設定上書き (ProjectSettings < runtimePostProcess < Component) ───
+    // EnvironmentLightComponent — シーン Inspector から IBL を上書きする。
+    // 最初のアクティブなコンポーネントのみ採用する。複数置かれた場合は先着優先。
+    for (auto [tf, elc] : scene.View<Transform, EnvironmentLightComponent>()) {
+        if (!elc.enabled) continue;
+        effectiveSettings.ibl.enabled       = !elc.irradiancePath.empty() && !elc.prefilterPath.empty();
+        effectiveSettings.ibl.irradiancePath = elc.irradiancePath;
+        effectiveSettings.ibl.prefilterPath  = elc.prefilterPath;
+        effectiveSettings.ibl.intensity      = elc.intensity;
+        effectiveSettings.ibl.diffuseScale   = elc.diffuseScale;
+        effectiveSettings.ibl.specularScale  = elc.specularScale;
+        effectiveSettings.ibl.maxMipLevel    = elc.maxMipLevel;
+        break;
+    }
+    // AtmosphericScatteringComponent — シーン Inspector から霧設定を上書きする。
+    for (auto [tf, atm] : scene.View<Transform, AtmosphericScatteringComponent>()) {
+        if (!atm.enabled) continue;
+        auto& fog      = effectiveSettings.postProcess.fog;
+        fog.enabled    = atm.fogEnabled;
+        fog.density    = atm.fogDensity;
+        fog.farDistance = atm.fogFar;
+        fog.color[0]   = atm.fogColor.x;
+        fog.color[1]   = atm.fogColor.y;
+        fog.color[2]   = atm.fogColor.z;
+        break;
+    }
+    // PostProcessVolumeComponent — カメラに付けてポストプロセス設定を Inspector から制御する。
+    // isGlobal=true のとき常時適用する。将来的に blendWeight によるブレンド合成へ拡張予定。
+    for (auto [tf, ppv] : scene.View<Transform, PostProcessVolumeComponent>()) {
+        if (!ppv.enabled || !ppv.isGlobal) continue;
+        effectiveSettings.postProcess = ppv.settings;
+        break;
+    }
+    // NOTE: ReflectionProbeComponent は将来の局所反射ブレンド実装で使用予定。
+    //       現時点は Inspector / Serializer のみ対応し、RenderSystem での適用は未実装。
+
     const renderer::RenderSettings& rs = effectiveSettings;
 
     // 静的ハンドルの検証・デバイスリセット復旧・初回バッファ生成をまとめて計測する。
@@ -236,6 +368,22 @@ void RenderSystem(Scene& scene,
     static auto selectionMaskSkinnedShader = resources.LoadShader("Assets/Shaders/Debug/SelectionMaskSkinnedMesh.hlsl");
     static auto selectionOutlineShader  = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
     static auto fxaaShader              = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
+
+    // ---- Advanced Graphics シェーダー (static で初回ロード、Reset 後に再ロード) ----
+    static auto iblBrdfBakeShader   = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/BRDFIntegration.cs.hlsl");
+    static auto gtaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAO.cs.hlsl");
+    static auto gtaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAOBlur.cs.hlsl");
+    static auto ssrShader           = resources.LoadShader("Assets/Shaders/PostProcess/Reflections/SSR.cs.hlsl");
+    static auto volumetricShader    = resources.LoadShader("Assets/Shaders/PostProcess/Lighting/VolumetricLight.cs.hlsl");
+    static auto contactShadowShader = resources.LoadShader("Assets/Shaders/PostProcess/Shadow/ContactShadows.cs.hlsl");
+    static auto taaShader           = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/TAA.hlsl");
+    static auto motionBlurShader    = resources.LoadShader("Assets/Shaders/PostProcess/Motion/MotionBlur.cs.hlsl");
+    static auto lensFlareShader     = resources.LoadShader("Assets/Shaders/PostProcess/Flare/LensFlare.hlsl");
+    // WHY: BRDF LUT は 512×512 の定数テーブルで、解像度・シーンが変わっても内容は変わらない。
+    //      毎フレーム再生成するコストを避けるため static で一度だけ生成し、IBLBakePass でのみ書き込む。
+    static auto iblBrdfLut          = resources.CreateComputeTexture(512, 512);
+    static renderer::ResourceHandle<renderer::TextureTag> proceduralColorLut;
+    static uint64_t proceduralColorLutHash = 0u;
 
     static auto skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
     static auto skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
@@ -355,6 +503,21 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_OFF
     });
+    // ---- Advanced Graphics PSO / 定数バッファ ----
+    // taaPSO: OPAQUE — TAA は ping-pong バッファへ上書きするため α ブレンドは不要
+    static auto taaPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_OFF
+    });
+    // lensFlarePSO: ADDITIVE — ゴーストはフレアを HDR バッファに加算合成する
+    static auto lensFlarePSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ADDITIVE,
+        renderer::DepthMode::DEPTH_OFF
+    });
+    // advancedGraphicsCB: IBL/SSR/TAA/GTAO 等の詳細パラメータをまとめて b8 に転送する
+    static auto advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
     static auto decalPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::ALPHA_BLEND,
@@ -406,6 +569,23 @@ void RenderSystem(Scene& scene,
         detailNoCullPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         foliagePSO       = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         foliageNoCullPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+
+        // ---- Advanced Graphics: デバイスリセット後に再ロード ----
+        iblBrdfBakeShader   = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/BRDFIntegration.cs.hlsl");
+        gtaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAO.cs.hlsl");
+        gtaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAOBlur.cs.hlsl");
+        ssrShader           = resources.LoadShader("Assets/Shaders/PostProcess/Reflections/SSR.cs.hlsl");
+        volumetricShader    = resources.LoadShader("Assets/Shaders/PostProcess/Lighting/VolumetricLight.cs.hlsl");
+        contactShadowShader = resources.LoadShader("Assets/Shaders/PostProcess/Shadow/ContactShadows.cs.hlsl");
+        taaShader           = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/TAA.hlsl");
+        motionBlurShader    = resources.LoadShader("Assets/Shaders/PostProcess/Motion/MotionBlur.cs.hlsl");
+        lensFlareShader     = resources.LoadShader("Assets/Shaders/PostProcess/Flare/LensFlare.hlsl");
+        taaPSO              = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
+        lensFlarePSO        = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE,      renderer::DepthMode::DEPTH_OFF });
+        advancedGraphicsCB  = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
+        // WHY: デバイスリセット後は iblBrdfLut の内容が失われるため再生成する。
+        //      IBLBakePass は焼き済み対象を世代付きハンドルで追跡し、新ハンドルを次フレームで再生成する。
+        iblBrdfLut          = resources.CreateComputeTexture(512, 512);
 
         bindPoseSkinningCB = {};
         {
@@ -497,6 +677,14 @@ void RenderSystem(Scene& scene,
     auto& bloomFull               = viewTargets.bloomFull;
     auto& ssaoRaw                 = viewTargets.ssaoRaw;
     auto& ssaoBlur                = viewTargets.ssaoBlur;
+    auto& ssrResult               = viewTargets.ssrResult;
+    auto& volumetricResult        = viewTargets.volumetricResult;
+    auto& taaHistoryA             = viewTargets.taaHistoryA;
+    auto& taaHistoryB             = viewTargets.taaHistoryB;
+    auto& motionBlurResult        = viewTargets.motionBlurResult;
+    auto& gtaoRaw                 = viewTargets.gtaoRaw;
+    auto& gtaoBlur                = viewTargets.gtaoBlur;
+    auto& contactShadowResult     = viewTargets.contactShadowResult;
     uint32_t& sHdrW               = viewTargets.width;
     uint32_t& sHdrH               = viewTargets.height;
 
@@ -522,6 +710,15 @@ void RenderSystem(Scene& scene,
             bloomFull       = resources.CreateComputeTexture(curW, curH);
             ssaoRaw         = resources.CreateComputeTexture(curW, curH);
             ssaoBlur        = resources.CreateComputeTexture(curW, curH);
+            // ---- Advanced Graphics per-view テクスチャ ----
+            ssrResult           = resources.CreateComputeTexture(curW, curH);
+            volumetricResult    = resources.CreateComputeTexture(curW, curH);
+            taaHistoryA         = resources.CreateRenderTarget(curW, curH, 1);
+            taaHistoryB         = resources.CreateRenderTarget(curW, curH, 1);
+            motionBlurResult    = resources.CreateComputeTexture(curW, curH);
+            gtaoRaw             = resources.CreateComputeTexture(curW, curH);
+            gtaoBlur            = resources.CreateComputeTexture(curW, curH);
+            contactShadowResult = resources.CreateComputeTexture(curW, curH);
             sHdrW = curW;
             sHdrH = curH;
         }
@@ -722,6 +919,56 @@ void RenderSystem(Scene& scene,
     passHandles.deferredLightingShader = deferredLightingShader;
     passHandles.depthCopyShader      = depthCopyShader;
 
+    // ---- Advanced Graphics ハンドルを passHandles に束縛 ----
+    passHandles.advancedGraphicsCB   = advancedGraphicsCB;
+    if (rs.lutColorGrading.enabled) {
+        const uint64_t lutHash = HashLutSettings(rs.lutColorGrading);
+        const bool lutResourceAlive = resources.Get(proceduralColorLut) != nullptr;
+        if (!lutResourceAlive || proceduralColorLutHash != lutHash) {
+            if (lutResourceAlive)
+                resources.Release(proceduralColorLut);
+            const std::vector<uint8_t> pixels = GenerateProceduralColorLut(rs.lutColorGrading);
+            proceduralColorLut = resources.CreateTexture3D(
+                pixels.data(), PROCEDURAL_LUT_SIZE, PROCEDURAL_LUT_SIZE, PROCEDURAL_LUT_SIZE);
+            proceduralColorLutHash = lutHash;
+        }
+    }
+    passHandles.proceduralColorLut = proceduralColorLut;
+    // IBL BRDF LUT: static ComputeTexture。IBLBakePass が初回フレームで書き込む。
+    passHandles.iblBrdfLut           = iblBrdfLut;
+    passHandles.iblBrdfBakeShader    = iblBrdfBakeShader;
+    // IBL キューブマップ: RenderSettings に指定されたパスを毎フレーム LoadTexture でキャッシュ参照する。
+    // WHY: LoadTexture は内部でキャッシュするため、毎フレーム呼んでも I/O は初回のみ。
+    if (!rs.ibl.irradiancePath.empty())
+        passHandles.iblIrradiance = resources.LoadTexture(rs.ibl.irradiancePath);
+    if (!rs.ibl.prefilterPath.empty())
+        passHandles.iblPrefilter  = resources.LoadTexture(rs.ibl.prefilterPath);
+    // SSR
+    passHandles.ssrResult            = ssrResult;
+    passHandles.ssrShader            = ssrShader;
+    // Volumetric Lighting
+    passHandles.volumetricResult     = volumetricResult;
+    passHandles.volumetricShader     = volumetricShader;
+    // TAA (ping-pong)
+    passHandles.taaHistoryA          = taaHistoryA;
+    passHandles.taaHistoryB          = taaHistoryB;
+    passHandles.taaShader            = taaShader;
+    passHandles.taaPSO               = taaPSO;
+    // Motion Blur
+    passHandles.motionBlurResult     = motionBlurResult;
+    passHandles.motionBlurShader     = motionBlurShader;
+    // GTAO
+    passHandles.gtaoRaw              = gtaoRaw;
+    passHandles.gtaoBlur             = gtaoBlur;
+    passHandles.gtaoShader           = gtaoShader;
+    passHandles.gtaoBlurShader       = gtaoBlurShader;
+    // Contact Shadows
+    passHandles.contactShadowResult  = contactShadowResult;
+    passHandles.contactShadowShader  = contactShadowShader;
+    // Lens Flare
+    passHandles.lensFlareShader      = lensFlareShader;
+    passHandles.lensFlarePSO         = lensFlarePSO;
+
     // カメラ視錐台とライト視錐台を事前に抽出する。
     // WHY: Gribb-Hartmann 法は VP 行列の各行の和・差から 6 平面を直接導出するため
     //      逆行列を使わず高速に抽出できる。全ジオメトリパスで共有する。
@@ -744,6 +991,58 @@ void RenderSystem(Scene& scene,
     passCtx.shadowBiasNDC  = (0.005f * dirShadowBias) / (shadowRadius * 2.0f + 39.0f);
     passCtx.shadowStrength = dirCastShadows ? dirShadowStrength : 0.0f;
 
+    // ---- AdvancedGraphicsCB を毎フレーム更新 ----
+    // WHAT: IBL・SSR・TAA・GTAO・ContactShadow 等の詳細設定を AdvancedGraphicsCB(b8) に転送する。
+    //       各パスはここで書いたデータを読むだけなので、更新はこの 1 か所に集中させる。
+    if (advancedGraphicsCB.IsValid()) {
+        AdvancedGraphicsCB agData{};
+        // WHY: IBL が無効、または必要なキューブマップが欠けている場合は未バインド SRV を
+        //      サンプルさせず、従来の ambient ライティングへ確実にフォールバックする。
+        const bool iblResourcesReady = rs.ibl.enabled && rs.HasValidIblAssets() &&
+            passHandles.iblIrradiance.IsValid() && passHandles.iblPrefilter.IsValid();
+        agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity : 0.0f;
+        agData.iblDiffuseScale       = rs.ibl.diffuseScale;
+        agData.iblSpecularScale      = rs.ibl.specularScale;
+        agData.iblMaxMipLevel        = rs.ibl.maxMipLevel;
+        agData.ssrMaxDistance        = rs.ssr.maxDistance;
+        agData.ssrThickness          = rs.ssr.thickness;
+        agData.ssrSteps              = rs.ssr.steps;
+        agData.ssrIntensity          = rs.ssr.enabled ? rs.ssr.intensity : 0.0f;
+        agData.volLightIntensity     = rs.volumetricLight.enabled ? rs.volumetricLight.intensity : 0.0f;
+        agData.volScattering         = rs.volumetricLight.scattering;
+        agData.volSteps              = rs.volumetricLight.steps;
+        agData.volMaxDist            = rs.volumetricLight.maxDist;
+        agData.taaFeedback           = rs.taa.feedback;
+        agData.motionBlurStrength    = rs.motionBlur.enabled ? rs.motionBlur.strength : 0.0f;
+        agData.motionBlurSamples     = rs.motionBlur.samples;
+        agData.gtaoIntensity         = rs.IsGtaoActive()   ? rs.gtao.intensity : 0.0f;
+        agData.gtaoRadius            = rs.gtao.radius;
+        agData.gtaoSlices            = rs.gtao.slices;
+        agData.gtaoStepsPerSlice     = rs.gtao.stepsPerSlice;
+        agData.contactShadowStrength = rs.contactShadow.enabled ? rs.contactShadow.strength  : 0.0f;
+        agData.contactShadowRayLen   = rs.contactShadow.rayLength;
+        agData.contactShadowSteps    = rs.contactShadow.steps;
+        agData.contactShadowThick    = rs.contactShadow.thickness;
+        agData.lensFlareIntensity    = rs.lensFlare.enabled ? rs.lensFlare.intensity : 0.0f;
+        agData.lensFlareGhostCount   = rs.lensFlare.ghostCount;
+        agData.lensFlareHaloWidth    = rs.lensFlare.haloWidth;
+        agData.lensFlareDistort      = rs.lensFlare.distortion;
+        agData.pcssLightRadius       = rs.shadow.pcssLightRadius;
+        agData.pcssEnabled           = rs.shadow.pcssEnabled ? 1 : 0;
+        agData.lutBlend              = (rs.lutColorGrading.enabled && resources.Get(proceduralColorLut) != nullptr)
+            ? rs.lutColorGrading.blend : 0.0f;
+        // 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使用する。
+        // WHY: static で保持し、フレーム末尾に現フレームの VP で上書きすることで
+        //      「前フレームの VP をパラメータとして受け取る」セマンティクスを実現する。
+        static math::Matrix4 sPrevVP    = math::Matrix4::Identity();
+        static math::Matrix4 sPrevInvVP = math::Matrix4::Identity();
+        agData.prevViewProjection    = sPrevVP;
+        agData.invPrevViewProjection = sPrevInvVP;
+        resources.Update(advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
+        sPrevVP    = camera.GetViewProjection();
+        sPrevInvVP = math::Matrix4::Inverse(camera.GetViewProjection());
+    } // end AdvancedGraphicsCB update
+
     // =========================================================================
     // RenderPipeline にパスを登録
     // =========================================================================
@@ -765,6 +1064,13 @@ void RenderSystem(Scene& scene,
     if (ssaoEnabled)
         pipeline.DeclareResource("SSAO", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
     pipeline.SetOutputs({ "Output" });
+
+    // IBL BRDF LUT 焼き付け — IBLBakePass が対象テクスチャの世代を追跡し、初回のみ実行する。
+    // WHY: 512x512 の積分テーブルはシーン・設定に依存しない定数。毎フレーム実行するのは無駄なため
+    //      内部フラグでガードし、ここは毎フレーム呼ぶが実処理は初回のみ走る。
+    pipeline.AddRawPass("IBLBrdfBake", {}, {}, [&]() {
+        ExecuteIBLBakeBrdfLutPass(passCtx);
+    }, false); // 外部 ComputeTexture への副作用パスなので RenderGraph カリング禁止
 
     scene.ClearUserRenderPasses();
 
@@ -819,6 +1125,22 @@ void RenderSystem(Scene& scene,
 
     // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
     if (isDeferred) {
+        // GTAO — DeferredLighting より前に GBuffer から AO を計算する。
+        // WHY: DeferredLighting は t23 (TEX_GTAO) を SRV として読むため、
+        //      その前に gtaoBlur テクスチャへの書き込みを完了させる必要がある。
+        if (rs.IsGtaoActive()) {
+            pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GBuffer" }, [&]() {
+                ExecuteGTAOPass(passCtx);
+            });
+        }
+        // ContactShadows — DeferredLighting より前に深度から接触影マスクを生成する。
+        // WHY: DeferredLighting は t24 (TEX_CONTACT_SHADOW) を乗算係数として使うため、
+        //      gtaoBlur と同様に事前計算が必要。
+        if (rs.contactShadow.enabled) {
+            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "GBuffer" }, [&]() {
+                ExecuteContactShadowsPass(passCtx);
+            });
+        }
         if (ssaoEnabled) {
             pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
                 ExecuteSSAOPass(passCtx);
@@ -839,6 +1161,15 @@ void RenderSystem(Scene& scene,
         pipeline.AddRawPass("DeferredForwardTransparent", { "HDR" }, { "HDR" }, [&]() {
             ExecuteDeferredForwardTransparentPass(passCtx);
         });
+
+        // SSR — 全透明オブジェクト描画後に GBuffer の法線・深度・金属度を使って反射を計算する。
+        // WHY: Deferred パイプラインでのみ有効 (GBuffer 必須)。
+        //      透明オブジェクト通過後の深度を使うため、DeferredForwardTransparent の後に配置する。
+        if (rs.ssr.enabled) {
+            pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+                ExecuteSSRPass(passCtx);
+            });
+        }
     }
 
     pipeline.AddPass<WaterRenderPass>();
@@ -963,6 +1294,29 @@ void RenderSystem(Scene& scene,
     appendQueuedUserPasses(UserRenderPassInjectionPoint::BeforePostProcess);
 
     // ── PostProcess チェーン ──────────────────────────────────────────────────
+    // MotionBlur CS — HDR 空間でカメラモーションブラーを計算し motionBlurResult に書く。
+    // WHY: Composite パスが motionBlurResult を hdrRT の代わりに読む。
+    //      Bloom の前に走らせることで blur 後の輝度が Bloom に乗る。
+    if (rs.motionBlur.enabled) {
+        pipeline.AddRawPass("MotionBlur", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteMotionBlurPass(passCtx);
+        });
+    }
+    // VolumetricLight CS — ゴッドレイ・光柱を HDR バッファに加算合成する。
+    // WHY: Bloom の前に配置することで体積光が Bloom に乗り、より明るい光の広がりが出る。
+    if (rs.volumetricLight.enabled) {
+        pipeline.AddRawPass("VolumetricLight", { "HDR", "ShadowMap" }, { "HDR" }, [&]() {
+            ExecuteVolumetricLightPass(passCtx);
+        });
+    }
+    // LensFlare PS — bloomHalf を光源ソースとして ADDITIVE に HDR に合成する。
+    // WHY: bloomHalf は既に輝度抽出済みで hdrRT とは別リソースなので SRV/RTV 競合しない。
+    //      Bloom の前に配置することでフレアも Bloom に乗る。
+    if (rs.lensFlare.enabled) {
+        pipeline.AddRawPass("LensFlare", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteLensFlarePass(passCtx);
+        });
+    }
     if (rs.postProcess.bloom.enabled) {
         pipeline.AddRawPass("Bloom", { "HDR" }, { "Bloom" }, [&]() {
             ExecuteBloomPass(passCtx);
@@ -973,8 +1327,10 @@ void RenderSystem(Scene& scene,
         !customPostProcessIndices.empty() &&
         customPostProcessRT[0].IsValid() &&
         customPostProcessRT[1].IsValid();
+    // WHY: TAA は Composite (トーンマップ後) の LDR バッファを入力として使う。
+    //      TAA 有効時は Composite が直接 Output に書かず、ldrRT に書く必要がある。
     const bool needsLdrIntermediate =
-        rs.postProcess.fxaaEnabled || selectionOutlineEnabled || customPostProcessEnabled;
+        rs.postProcess.fxaaEnabled || selectionOutlineEnabled || customPostProcessEnabled || rs.IsTaaActive();
 
     if (rs.postProcess.bloom.enabled) {
         pipeline.AddRawPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
@@ -1019,6 +1375,28 @@ void RenderSystem(Scene& scene,
             [&]() { ExecuteSelectionOutlinePass(passCtx); });
     }
 
+    // TAA — Composite 後の LDR フレームを前フレーム履歴とブレンドしてエイリアスを除去する。
+    // WHY: LDR 空間で TAA を走らせることで SRV/RTV 競合を回避しシンプルに統合できる。
+    //      TAA が有効な場合は fxaaInput を TAA 出力に差し替え、後続 FXAA がそれを読む。
+    if (rs.IsTaaActive()) {
+        pipeline.AddRawPass("TAA", { "LDR" }, { "LDR" }, [&]() {
+            ExecuteTAAPass(passCtx);
+            // ExecuteTAAPass 内で taaFlip が反転済み — 反転後のフラグで「書いた方」を特定する。
+            // flip=true  → B に書いた → getColorTexture(B), flip=false → A に書いた → getColorTexture(A)
+            auto& taaOut = passHandles.taaFlip ? passHandles.taaHistoryB : passHandles.taaHistoryA;
+            passHandles.fxaaInput = resources.GetColorTexture(taaOut, 0);
+        });
+    }
+    // TAA_Blit — TAA 出力 (fxaaInput = taaHistoryA/B) を OutputRT に転送する。
+    // WHY: TAA は ping-pong 履歴バッファにのみ書き OutputRT には書かない。
+    //      後続に FXAA / SelectionOutline / CustomPostProcess がない場合、
+    //      OutputRT に書くパスが存在せずビューポートが黒になる。
+    //      ExecuteTAABlitPass が FXAA シェーダーを blit として流用する。
+    if (rs.IsTaaActive() && !selectionOutlineEnabled && !customPostProcessEnabled) {
+        pipeline.AddRawPass("TAA_Blit", { "LDR" }, { "Output" }, [&]() {
+            ExecuteTAABlitPass(passCtx);
+        });
+    }
     if (rs.postProcess.fxaaEnabled) {
         if (selectionOutlineEnabled) {
             pipeline.AddRawPass("FXAA", { "Outline" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });

@@ -101,9 +101,13 @@ void ExecuteCompositePass(RenderPassContext& ctx)
             break;
         }
     }
+    // WHY: TAA は Composite の出力 (ldrRT) を t5 として読む。
+    //      taa.enabled の場合も ldrRT に書かないと TAA が stale なバッファを読んで黒になる。
+    //      RenderSystem 側の needsLdrIntermediate と必ず一致させること。
     const bool needsLdrIntermediate =
         pp.fxaaEnabled || ctx.selectionOutlineEnabled ||
-        (hasCustomPostProcess && h.customPostProcessRT[0].IsValid());
+        (hasCustomPostProcess && h.customPostProcessRT[0].IsValid()) ||
+        rs.IsTaaActive();
     r.SetRenderTarget(needsLdrIntermediate ? h.ldrRT : ctx.outputRT, resources);
 
     PostProcCB postData{};
@@ -169,6 +173,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
     r.SetSampler(0, renderer::SamplerMode::CLAMP_LINEAR);
+    // Procedural Texture3D LUTはテクセル間を三線形補間し、端ではClampする。
+    r.SetSampler(2, renderer::SamplerMode::CLAMP_LINEAR);
 
     renderer::DrawCall compositeDC;
     compositeDC.shader = h.compositeShader;
@@ -176,9 +182,24 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     compositeDC.vertexCount = 3;
     compositeDC.constantBuffers[0] = h.frameCB;
     compositeDC.constantBuffers[5] = h.postprocCB;
-    compositeDC.textures[5] = resources.GetColorTexture(h.hdrRT, 0);
+    compositeDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: ssrIntensity, volLightIntensity, lutBlend 等
+    // MotionBlur が有効な場合、CS が生成した blurred HDR を hdrRT の代わりに t5 に束縛する。
+    // WHY: MotionBlurPass が motionBlurResult に完全なブラー済み HDR を書いているため、
+    //      Composite はそれを HDR ソースとして読めばよい。Composite.hlsl の変更は不要。
+    compositeDC.textures[5] = (rs.motionBlur.enabled && h.motionBlurResult.IsValid())
+        ? h.motionBlurResult
+        : resources.GetColorTexture(h.hdrRT, 0);
     compositeDC.textures[7] = resources.GetDepthTexture(h.hdrRT);
     compositeDC.textures[10] = pp.bloom.enabled ? h.bloomFull : renderer::ResourceHandle<renderer::TextureTag>{};
+    // SSR 反射結果 (t19) — Composite.hlsl が ssrIntensity に基づいてブレンドする
+    if (rs.ssr.enabled && h.ssrResult.IsValid())
+        compositeDC.textures[19] = h.ssrResult;
+    // Volumetric Light 結果 (t20) — Composite.hlsl が volLightIntensity で加算する
+    if (rs.volumetricLight.enabled && h.volumetricResult.IsValid())
+        compositeDC.textures[20] = h.volumetricResult;
+    // Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。
+    if (rs.lutColorGrading.enabled && h.proceduralColorLut.IsValid())
+        compositeDC.textures[22] = h.proceduralColorLut;
     r.Submit(compositeDC, resources);
 
     h.postProcessInput = resources.GetColorTexture(h.ldrRT, 0);
