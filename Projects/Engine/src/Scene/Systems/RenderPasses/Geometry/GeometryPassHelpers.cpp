@@ -129,8 +129,8 @@ AnimatorComponent* FindAnimator(GameObject& go)
 
 const char* GetFallbackMaterialPath(bool skinned)
 {
-    return skinned ? "Assets/Materials/FallbackSkinned.mat"
-                   : "Assets/Materials/Fallback.mat";
+    return skinned ? "Assets/Materials/Fallback/FallbackSkinned.mat"
+                   : "Assets/Materials/Fallback/Fallback.mat";
 }
 
 void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath)

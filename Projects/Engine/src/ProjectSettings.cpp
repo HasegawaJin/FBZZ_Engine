@@ -284,6 +284,99 @@ bool ProjectSettings::Load(const std::string& path)
             }
             pp.customEffects.push_back(std::move(custom));
         }
+
+        // ── Shadow 品質 ─────────────────────────────────────────────────────
+        render.shadow.mapResolution = static_cast<uint32_t>(
+            (*renderTbl)["shadowResolution"].value_or(static_cast<int64_t>(render.shadow.mapResolution)));
+        render.shadow.pcfRadius = static_cast<int>(
+            (*renderTbl)["shadowPcfRadius"].value_or(static_cast<int64_t>(render.shadow.pcfRadius)));
+        render.shadow.pcssEnabled    = ReadBool(*renderTbl, "pcssEnabled",    render.shadow.pcssEnabled);
+        render.shadow.pcssLightRadius = ReadFloat(*renderTbl, "pcssLightRadius", render.shadow.pcssLightRadius);
+
+        // ── IBL ─────────────────────────────────────────────────────────────
+        render.ibl.enabled       = ReadBool(*renderTbl,  "iblEnabled",      render.ibl.enabled);
+        render.ibl.intensity     = ReadFloat(*renderTbl, "iblIntensity",    render.ibl.intensity);
+        render.ibl.diffuseScale  = ReadFloat(*renderTbl, "iblDiffuseScale", render.ibl.diffuseScale);
+        render.ibl.specularScale = ReadFloat(*renderTbl, "iblSpecularScale",render.ibl.specularScale);
+        render.ibl.maxMipLevel   = static_cast<int>(
+            (*renderTbl)["iblMaxMipLevel"].value_or(static_cast<int64_t>(render.ibl.maxMipLevel)));
+        render.ibl.irradiancePath = (*renderTbl)["iblIrradiancePath"].value_or(render.ibl.irradiancePath);
+        render.ibl.prefilterPath  = (*renderTbl)["iblPrefilterPath"].value_or(render.ibl.prefilterPath);
+
+        // ── SSR ──────────────────────────────────────────────────────────────
+        render.ssr.enabled     = ReadBool(*renderTbl,  "ssrEnabled",     render.ssr.enabled);
+        render.ssr.intensity   = ReadFloat(*renderTbl, "ssrIntensity",   render.ssr.intensity);
+        render.ssr.maxDistance = ReadFloat(*renderTbl, "ssrMaxDistance", render.ssr.maxDistance);
+        render.ssr.thickness   = ReadFloat(*renderTbl, "ssrThickness",   render.ssr.thickness);
+        render.ssr.steps       = static_cast<int>(
+            (*renderTbl)["ssrSteps"].value_or(static_cast<int64_t>(render.ssr.steps)));
+
+        // ── GTAO ─────────────────────────────────────────────────────────────
+        render.gtao.enabled       = ReadBool(*renderTbl,  "gtaoEnabled",       render.gtao.enabled);
+        render.gtao.intensity     = ReadFloat(*renderTbl, "gtaoIntensity",     render.gtao.intensity);
+        render.gtao.radius        = ReadFloat(*renderTbl, "gtaoRadius",        render.gtao.radius);
+        render.gtao.slices        = static_cast<int>(
+            (*renderTbl)["gtaoSlices"].value_or(static_cast<int64_t>(render.gtao.slices)));
+        render.gtao.stepsPerSlice = static_cast<int>(
+            (*renderTbl)["gtaoStepsPerSlice"].value_or(static_cast<int64_t>(render.gtao.stepsPerSlice)));
+
+        // ── Contact Shadows ───────────────────────────────────────────────────
+        render.contactShadow.enabled   = ReadBool(*renderTbl,  "contactShadowEnabled",   render.contactShadow.enabled);
+        render.contactShadow.strength  = ReadFloat(*renderTbl, "contactShadowStrength",  render.contactShadow.strength);
+        render.contactShadow.rayLength = ReadFloat(*renderTbl, "contactShadowRayLength", render.contactShadow.rayLength);
+        render.contactShadow.thickness = ReadFloat(*renderTbl, "contactShadowThickness", render.contactShadow.thickness);
+        render.contactShadow.steps     = static_cast<int>(
+            (*renderTbl)["contactShadowSteps"].value_or(static_cast<int64_t>(render.contactShadow.steps)));
+
+        // ── TAA ───────────────────────────────────────────────────────────────
+        render.taa.enabled  = ReadBool(*renderTbl,  "taaEnabled",  render.taa.enabled);
+        render.taa.feedback = ReadFloat(*renderTbl, "taaFeedback", render.taa.feedback);
+
+        // ── Motion Blur ───────────────────────────────────────────────────────
+        render.motionBlur.enabled  = ReadBool(*renderTbl,  "motionBlurEnabled",  render.motionBlur.enabled);
+        render.motionBlur.strength = ReadFloat(*renderTbl, "motionBlurStrength", render.motionBlur.strength);
+        render.motionBlur.samples  = static_cast<int>(
+            (*renderTbl)["motionBlurSamples"].value_or(static_cast<int64_t>(render.motionBlur.samples)));
+
+        // ── Volumetric Light ──────────────────────────────────────────────────
+        render.volumetricLight.enabled    = ReadBool(*renderTbl,  "volLightEnabled",    render.volumetricLight.enabled);
+        render.volumetricLight.intensity  = ReadFloat(*renderTbl, "volLightIntensity",  render.volumetricLight.intensity);
+        render.volumetricLight.scattering = ReadFloat(*renderTbl, "volLightScattering", render.volumetricLight.scattering);
+        render.volumetricLight.maxDist    = ReadFloat(*renderTbl, "volLightMaxDist",    render.volumetricLight.maxDist);
+        render.volumetricLight.steps      = static_cast<int>(
+            (*renderTbl)["volLightSteps"].value_or(static_cast<int64_t>(render.volumetricLight.steps)));
+
+        // ── Lens Flare ────────────────────────────────────────────────────────
+        render.lensFlare.enabled    = ReadBool(*renderTbl,  "lensFlareEnabled",    render.lensFlare.enabled);
+        render.lensFlare.intensity  = ReadFloat(*renderTbl, "lensFlareIntensity",  render.lensFlare.intensity);
+        render.lensFlare.haloWidth  = ReadFloat(*renderTbl, "lensFlareHaloWidth",  render.lensFlare.haloWidth);
+        render.lensFlare.distortion = ReadFloat(*renderTbl, "lensFlareDistortion", render.lensFlare.distortion);
+        render.lensFlare.ghostCount = static_cast<int>(
+            (*renderTbl)["lensFlareGhostCount"].value_or(static_cast<int64_t>(render.lensFlare.ghostCount)));
+
+        // ── LUT Color Grading ─────────────────────────────────────────────────
+        render.lutColorGrading.enabled     = ReadBool(*renderTbl,  "lutEnabled",     render.lutColorGrading.enabled);
+        render.lutColorGrading.blend       = ReadFloat(*renderTbl, "lutBlend",       render.lutColorGrading.blend);
+        render.lutColorGrading.contrast    = ReadFloat(*renderTbl, "lutContrast",    render.lutColorGrading.contrast);
+        render.lutColorGrading.saturation  = ReadFloat(*renderTbl, "lutSaturation",  render.lutColorGrading.saturation);
+        render.lutColorGrading.hueShift    = ReadFloat(*renderTbl, "lutHueShift",    render.lutColorGrading.hueShift);
+        render.lutColorGrading.temperature = ReadFloat(*renderTbl, "lutTemperature", render.lutColorGrading.temperature);
+        render.lutColorGrading.tint        = ReadFloat(*renderTbl, "lutTint",        render.lutColorGrading.tint);
+
+        // WHY: TOML から直接設定されても Inspector と同じ排他規則を適用する。
+        //      競合時は履歴や Compute 出力を必要としない既存パスを優先する。
+        const uint32_t pipelineConflicts = render.NormalizeExclusivePipelineSlots();
+        if ((pipelineConflicts & renderer::RenderSettings::PIPELINE_CONFLICT_AA_SLOT) != 0)
+            FBZZ_LOG_WARN("ProjectSettings: TAA disabled because FXAA uses the same pipeline slot.");
+        if ((pipelineConflicts & renderer::RenderSettings::PIPELINE_CONFLICT_AO_SLOT) != 0)
+            FBZZ_LOG_WARN("ProjectSettings: GTAO disabled because SSAO uses the same pipeline slot.");
+
+        // WHY: IBL 用キューブマップが未指定のまま有効化されると、未バインド SRV を読み
+        //      環境光が黒になるため、必要な両テクスチャが揃うまで無効として扱う。
+        if (render.ibl.enabled && !render.HasValidIblAssets()) {
+            FBZZ_LOG_WARN("ProjectSettings: IBL disabled because irradiance/prefilter paths are empty.");
+            render.ibl.enabled = false;
+        }
     }
 
     if (auto* audioTbl = tbl["audio"].as_table()) {
@@ -449,6 +542,74 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("customPostProcesses", std::move(customEffectsArr));
     renderTbl.insert("outlineWidth", (double)render.outlineWidth);
     renderTbl.insert("outlineColor", std::move(outlineColorArr));
+
+    // ── Shadow 品質 ─────────────────────────────────────────────────────────
+    renderTbl.insert("shadowResolution",  (int64_t)render.shadow.mapResolution);
+    renderTbl.insert("shadowPcfRadius",   (int64_t)render.shadow.pcfRadius);
+    renderTbl.insert("pcssEnabled",       render.shadow.pcssEnabled);
+    renderTbl.insert("pcssLightRadius",   (double)render.shadow.pcssLightRadius);
+
+    // ── IBL ─────────────────────────────────────────────────────────────────
+    renderTbl.insert("iblEnabled",        render.ibl.enabled);
+    renderTbl.insert("iblIntensity",      (double)render.ibl.intensity);
+    renderTbl.insert("iblDiffuseScale",   (double)render.ibl.diffuseScale);
+    renderTbl.insert("iblSpecularScale",  (double)render.ibl.specularScale);
+    renderTbl.insert("iblMaxMipLevel",    (int64_t)render.ibl.maxMipLevel);
+    renderTbl.insert("iblIrradiancePath", render.ibl.irradiancePath);
+    renderTbl.insert("iblPrefilterPath",  render.ibl.prefilterPath);
+
+    // ── SSR ──────────────────────────────────────────────────────────────────
+    renderTbl.insert("ssrEnabled",        render.ssr.enabled);
+    renderTbl.insert("ssrIntensity",      (double)render.ssr.intensity);
+    renderTbl.insert("ssrMaxDistance",    (double)render.ssr.maxDistance);
+    renderTbl.insert("ssrThickness",      (double)render.ssr.thickness);
+    renderTbl.insert("ssrSteps",          (int64_t)render.ssr.steps);
+
+    // ── GTAO ─────────────────────────────────────────────────────────────────
+    renderTbl.insert("gtaoEnabled",       render.gtao.enabled);
+    renderTbl.insert("gtaoIntensity",     (double)render.gtao.intensity);
+    renderTbl.insert("gtaoRadius",        (double)render.gtao.radius);
+    renderTbl.insert("gtaoSlices",        (int64_t)render.gtao.slices);
+    renderTbl.insert("gtaoStepsPerSlice", (int64_t)render.gtao.stepsPerSlice);
+
+    // ── Contact Shadows ───────────────────────────────────────────────────────
+    renderTbl.insert("contactShadowEnabled",   render.contactShadow.enabled);
+    renderTbl.insert("contactShadowStrength",  (double)render.contactShadow.strength);
+    renderTbl.insert("contactShadowRayLength", (double)render.contactShadow.rayLength);
+    renderTbl.insert("contactShadowThickness", (double)render.contactShadow.thickness);
+    renderTbl.insert("contactShadowSteps",     (int64_t)render.contactShadow.steps);
+
+    // ── TAA ───────────────────────────────────────────────────────────────────
+    renderTbl.insert("taaEnabled",        render.taa.enabled);
+    renderTbl.insert("taaFeedback",       (double)render.taa.feedback);
+
+    // ── Motion Blur ───────────────────────────────────────────────────────────
+    renderTbl.insert("motionBlurEnabled",  render.motionBlur.enabled);
+    renderTbl.insert("motionBlurStrength", (double)render.motionBlur.strength);
+    renderTbl.insert("motionBlurSamples",  (int64_t)render.motionBlur.samples);
+
+    // ── Volumetric Light ──────────────────────────────────────────────────────
+    renderTbl.insert("volLightEnabled",    render.volumetricLight.enabled);
+    renderTbl.insert("volLightIntensity",  (double)render.volumetricLight.intensity);
+    renderTbl.insert("volLightScattering", (double)render.volumetricLight.scattering);
+    renderTbl.insert("volLightMaxDist",    (double)render.volumetricLight.maxDist);
+    renderTbl.insert("volLightSteps",      (int64_t)render.volumetricLight.steps);
+
+    // ── Lens Flare ────────────────────────────────────────────────────────────
+    renderTbl.insert("lensFlareEnabled",    render.lensFlare.enabled);
+    renderTbl.insert("lensFlareIntensity",  (double)render.lensFlare.intensity);
+    renderTbl.insert("lensFlareHaloWidth",  (double)render.lensFlare.haloWidth);
+    renderTbl.insert("lensFlareDistortion", (double)render.lensFlare.distortion);
+    renderTbl.insert("lensFlareGhostCount", (int64_t)render.lensFlare.ghostCount);
+
+    // ── LUT Color Grading ─────────────────────────────────────────────────────
+    renderTbl.insert("lutEnabled",     render.lutColorGrading.enabled);
+    renderTbl.insert("lutBlend",       (double)render.lutColorGrading.blend);
+    renderTbl.insert("lutContrast",    (double)render.lutColorGrading.contrast);
+    renderTbl.insert("lutSaturation",  (double)render.lutColorGrading.saturation);
+    renderTbl.insert("lutHueShift",    (double)render.lutColorGrading.hueShift);
+    renderTbl.insert("lutTemperature", (double)render.lutColorGrading.temperature);
+    renderTbl.insert("lutTint",        (double)render.lutColorGrading.tint);
 
     toml::table audioTbl;
     audioTbl.insert("bgmVolume", (double)audio.bgmVolume);

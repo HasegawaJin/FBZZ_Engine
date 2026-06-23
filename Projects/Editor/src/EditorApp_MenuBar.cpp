@@ -7,6 +7,7 @@
 //      独立ファイルに分離することで、メニュー項目の追加・変更を局所化できる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/StandaloneLauncher.hpp>
@@ -309,6 +310,13 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::Separator();
         if (ImGui::MenuItem("Build Settings...", "Ctrl+Shift+B")) {
             ctx.requestOpenBuildSettings = true;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("IBL Baker...")) {
+            if (m_iblBakePanel) {
+                m_iblBakePanel->visible = true;
+                ImGui::SetNextWindowFocus();
+            }
         }
         ImGui::EndMenu();
     }

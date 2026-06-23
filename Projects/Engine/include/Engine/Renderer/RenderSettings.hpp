@@ -135,6 +135,11 @@ struct PostProcessSettings {
     StylizedPostProcessSettings stylized;
     ImageQualitySettings imageQuality;
     std::vector<CustomPostProcessSettings> customEffects;
+
+    // 画面フェード — 全ポストプロセス完了後の最終 lerp として適用する。
+    // alpha 0=透明(通常), 1=完全にフェード色で塗りつぶし。
+    float screenFadeAlpha        = 0.0f;
+    float screenFadeColor[3]     = { 0.0f, 0.0f, 0.0f };  // RGB (デフォルト黒)
 };
 
 enum class ViewMode : uint8_t {
@@ -150,6 +155,95 @@ enum class ViewMode : uint8_t {
 struct ShadowSettings {
     uint32_t mapResolution = 8192u; // シャドウマップ解像度 (512/1024/2048/4096/8192)
     int      pcfRadius     = 2;     // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    // PCSS (Percentage Closer Soft Shadows) — 距離に応じてペナンブラが変化するソフトシャドウ。
+    bool     pcssEnabled     = false;
+    float    pcssLightRadius = 3.0f; // 仮想ライト半径 (world space): 大きいほどソフト
+};
+
+// IBLSettings — Image-Based Lighting による環境光。PBR の ambient を物理的に正確に置き換える。
+// WHY: 定数 ambient では金属素材がくすんで見える。
+//      事前畳み込みキューブマップで環境光を再現することで金属の映り込みが正しく現れる。
+struct IBLSettings {
+    bool        enabled       = false;  // テクスチャ未ロード時は無効
+    float       intensity     = 1.0f;
+    float       diffuseScale  = 1.0f;
+    float       specularScale = 1.0f;
+    int         maxMipLevel   = 6;      // prefilter キューブマップの最大 mip
+    std::string irradiancePath;         // Diffuse irradiance cubemap (.dds)
+    std::string prefilterPath;          // Specular prefiltered cubemap (.dds)
+};
+
+// SSRSettings — スクリーンスペース反射。金属・濡れた床・水面の映り込みをリアルタイムに表現。
+// WHY: キューブマップでは静的シーンしか反射できないが、SSR は動的オブジェクトも映せる。
+struct SSRSettings {
+    bool  enabled     = false;
+    float maxDistance = 50.0f;  // 最大レイ距離
+    float thickness   = 0.15f;  // 深度交差判定の厚み
+    int   steps       = 32;
+    float intensity   = 0.8f;
+};
+
+// VolumetricLightSettings — レイマーチによる体積光（ゴッドレイ・霧中の光柱）。
+struct VolumetricLightSettings {
+    bool  enabled    = false;
+    int   steps      = 32;
+    float scattering = 0.3f;   // Henyey-Greenstein 散乱係数 g
+    float intensity  = 0.8f;
+    float maxDist    = 30.0f;
+};
+
+// TAASettings — テンポラルアンチエイリアシング。FXAA より大幅に高品質でサブピクセルを安定させる。
+// WHY: 前フレームの情報を蓄積してジャギーを消す。静止シーンはほぼ完璧になる。
+struct TAASettings {
+    bool  enabled  = false;
+    float feedback = 0.9f;  // 前フレームブレンド比 (0=無効, 0.9=標準, 1=完全履歴)
+};
+
+// MotionBlurSettings — カメラモーションブラー。映像的な動きの残像表現。
+struct MotionBlurSettings {
+    bool  enabled  = false;
+    float strength = 0.5f;
+    int   samples  = 8;
+};
+
+// GTAOSettings — Ground Truth AO (Horizon-Based AO)。SSAO より高品質で接触部の影が自然になる。
+struct GTAOSettings {
+    bool  enabled       = false;
+    float intensity     = 1.0f;
+    float radius        = 1.5f;  // サンプリング半径 (world space)
+    int   slices        = 3;
+    int   stepsPerSlice = 4;
+};
+
+// ContactShadowSettings — スクリーンスペースコンタクトシャドウ。
+// シャドウマップが捉えられない小物直下の接触影を高精度に表現する。
+struct ContactShadowSettings {
+    bool  enabled   = false;
+    float strength  = 0.5f;
+    float rayLength = 1.5f;
+    int   steps     = 8;
+    float thickness = 0.2f;
+};
+
+// LensFlareSettings — スクリーンスペースレンズフレア。強いライトソースによる光学現象の表現。
+struct LensFlareSettings {
+    bool  enabled    = false;
+    float intensity  = 0.5f;
+    int   ghostCount = 4;
+    float haloWidth  = 0.4f;
+    float distortion = 1.0f;
+};
+
+// LUTColorGradingSettings — Renderer互換の32^3 LUTをCPU生成するカラーグレーディング設定。
+// WHY: 外部DDSの色空間・RGB軸順・解像度差を排除し、全プロジェクトで同じルックを再現する。
+struct LUTColorGradingSettings {
+    bool        enabled     = false;
+    float       blend       = 1.0f;   // LUT とオリジナルのブレンド比
+    float       contrast    = 0.0f;
+    float       saturation  = 1.0f;
+    float       hueShift    = 0.0f;
+    float       temperature = 0.0f;
+    float       tint        = 0.0f;
 };
 
 struct RenderSettings {
@@ -176,9 +270,60 @@ struct RenderSettings {
 
     PostProcessSettings postProcess;
 
+    // 高度グラフィクス設定 — 追加コストが大きい機能はここでまとめて制御する。
+    IBLSettings              ibl;
+    SSRSettings              ssr;
+    VolumetricLightSettings  volumetricLight;
+    TAASettings              taa;
+    MotionBlurSettings       motionBlur;
+    GTAOSettings             gtao;
+    ContactShadowSettings    contactShadow;
+    LensFlareSettings        lensFlare;
+    LUTColorGradingSettings  lutColorGrading;
+
     float outlineWidth = 0.045f;
     float outlineColor[4] = { 1.0f, 0.82f, 0.22f, 1.0f };
     std::vector<RenderSelectionID> selectedObjects;
+
+    // 排他的な論理スロットを正規化し、修正した競合をビットで返す。
+    // WHY: TOML・Inspector・ランタイムで別々の排他規則を持つと、設定経路によって
+    //      FXAA/TAA や SSAO/GTAO が二重に有効化されるため、判定をここへ集約する。
+    enum PipelineConflict : uint32_t {
+        PIPELINE_CONFLICT_NONE    = 0,
+        PIPELINE_CONFLICT_AA_SLOT = 1u << 0,
+        PIPELINE_CONFLICT_AO_SLOT = 1u << 1,
+    };
+
+    uint32_t NormalizeExclusivePipelineSlots()
+    {
+        uint32_t conflicts = PIPELINE_CONFLICT_NONE;
+        if (taa.enabled && postProcess.fxaaEnabled) {
+            taa.enabled = false;
+            conflicts |= PIPELINE_CONFLICT_AA_SLOT;
+        }
+        if (gtao.enabled && postProcess.ambientOcclusion.enabled) {
+            gtao.enabled = false;
+            conflicts |= PIPELINE_CONFLICT_AO_SLOT;
+        }
+        return conflicts;
+    }
+
+    // 外部コードが未正規化の値を直接渡しても、描画時は安定した既存パスを優先する。
+    [[nodiscard]] bool IsTaaActive() const
+    {
+        return taa.enabled && !postProcess.fxaaEnabled;
+    }
+
+    [[nodiscard]] bool IsGtaoActive() const
+    {
+        return gtao.enabled && !postProcess.ambientOcclusion.enabled;
+    }
+
+    // IBL は irradiance と prefilter の両キューブマップが揃って初めて有効になる。
+    [[nodiscard]] bool HasValidIblAssets() const
+    {
+        return !ibl.irradiancePath.empty() && !ibl.prefilterPath.empty();
+    }
 };
 
 } // namespace fbzz::renderer

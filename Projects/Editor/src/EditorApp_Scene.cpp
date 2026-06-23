@@ -158,14 +158,26 @@ void EditorApp::RefreshSceneDirtyState(bool force)
     if (!m_ctx.activeScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
-    // WHY: SceneDirtyTracker::Evaluate() はシーン全体を serialize して hash 化するため、
-    // 未編集のアイドル状態で 0.5 秒ごとに呼ぶと Release ビルドでは FPS の周期的な落ち込みとして見える。
-    // WHAT: 編集操作は MarkDirty() で dirty に遷移させる設計なので、clean 状態では重い再評価を省略する。
-    if (!force && !m_ctx.sceneDirty && !m_dirtyTracker.IsDirty())
+    // WHY: Evaluate() はシーン全体を serialize して hash 化する重い処理（~80ms）。
+    // MarkDirty() が呼ばれた時点で dirty 確定なので、IsDirty()==true の場合は
+    // Evaluate() を呼ばず fast path で即 return する。
+    // Evaluate() はフォールバック専用：MarkDirty() が漏れた編集を 0.5 秒周期で拾う場合にのみ実行する。
+    if (!force && m_dirtyTracker.IsDirty()) {
+        // IsDirty()==true → dirty 確定。sceneDirty との同期だけ行う。
+        if (!m_ctx.sceneDirty) {
+            m_ctx.sceneDirty = true;
+            UpdateWindowTitle();
+        }
+        return;
+    }
+
+    // 両方 clean → 評価不要
+    if (!force && !m_ctx.sceneDirty)
         return;
 
+    // フォールバック：MarkDirty() が漏れた場合のみ 0.5 秒周期で hash 評価
     m_dirtyPollTimer += ImGui::GetIO().DeltaTime;
-    if (!force && m_dirtyPollTimer < 0.5f && m_ctx.sceneDirty == m_dirtyTracker.IsDirty())
+    if (!force && m_dirtyPollTimer < 0.5f)
         return;
     m_dirtyPollTimer = 0.0f;
 

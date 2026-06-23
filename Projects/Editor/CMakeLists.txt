@@ -4,7 +4,17 @@ file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
     include/*.hpp
 )
 
-add_library(fbzz_editor STATIC ${EDITOR_SOURCES})
+# miniz (TinyEXR の zlib バックエンド) を C ソースとして追加する。
+# WHY: miniz.c は C の tentative definition を使っているため、
+#      C++ 翻訳単位から #include すると MSVC C2086 (再定義) になる。
+#      明示的に C ファイルとしてビルドすることで問題を回避する。
+set(EDITOR_MINIZ_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/TinyExr/miniz.c")
+set_source_files_properties(${EDITOR_MINIZ_SRC} PROPERTIES
+    LANGUAGE C
+    COMPILE_OPTIONS "/W0"  # サードパーティ警告を抑制
+)
+
+add_library(fbzz_editor STATIC ${EDITOR_SOURCES} ${EDITOR_MINIZ_SRC})
 set_target_properties(fbzz_editor PROPERTIES
     OUTPUT_NAME "FBZZEditor"
 )
@@ -17,7 +27,8 @@ set(EDITOR_ASSIMP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/i
 set(EDITOR_ASSIMP_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Debug/assimp-vc145-mtd.lib")
 set(EDITOR_ASSIMP_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/lib/Release/assimp-vc145-mt.lib")
 
-set(EDITOR_STB_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Stb")
+set(EDITOR_STB_INCLUDE     "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Stb")
+set(EDITOR_TINYEXR_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/TinyExr")
 set(EDITOR_IMNODES_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/ImNodes")
 
 target_compile_definitions(fbzz_editor
@@ -34,6 +45,7 @@ target_include_directories(fbzz_editor
     PRIVATE ${EDITOR_DIRECTXTEX_INCLUDE}
     PRIVATE ${EDITOR_ASSIMP_INCLUDE}
     PRIVATE ${EDITOR_STB_INCLUDE}
+    PRIVATE ${EDITOR_TINYEXR_INCLUDE}
     PRIVATE ${EDITOR_IMNODES_INCLUDE}
 )
 

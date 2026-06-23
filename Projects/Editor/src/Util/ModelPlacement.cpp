@@ -44,15 +44,15 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
                                         int meshIndex)
 {
     if (!modelAsset || modelAsset->lods.empty() || meshIndex < 0)
-        return "Assets/Materials/FallbackSkinned.mat";
+        return "Assets/Materials/Fallback/FallbackSkinned.mat";
 
     const auto& submeshes = modelAsset->lods[0].submeshes;
     if (meshIndex >= static_cast<int>(submeshes.size()))
-        return "Assets/Materials/FallbackSkinned.mat";
+        return "Assets/Materials/Fallback/FallbackSkinned.mat";
 
     const uint32_t slotIndex = submeshes[static_cast<size_t>(meshIndex)].materialSlotIndex;
     if (slotIndex >= modelAsset->materialSlotNames.size())
-        return "Assets/Materials/FallbackSkinned.mat";
+        return "Assets/Materials/Fallback/FallbackSkinned.mat";
 
     const std::filesystem::path modelFilePath =
         util::FileSystem::PathFromUtf8(modelPath);
@@ -71,7 +71,7 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
     std::filesystem::path matFsPath =
         modelDir / "materials" / (fileStem + ".mat");
     if (!util::FileSystem::Exists(matFsPath))
-        return "Assets/Materials/FallbackSkinned.mat";
+        return "Assets/Materials/Fallback/FallbackSkinned.mat";
 
     std::string normalized = util::FileSystem::NormalizePathSeparators(
         util::FileSystem::PathToUtf8(matFsPath));

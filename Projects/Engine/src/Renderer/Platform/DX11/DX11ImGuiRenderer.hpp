@@ -11,6 +11,9 @@ namespace fbzz::renderer {
 
 class DX11ImGuiRenderer final : public IImGuiRenderer {
 public:
+    // 呼び出し側の終了経路に依存せず、ImGui が所有する DX11 リソースを必ず解放する。
+    ~DX11ImGuiRenderer() override;
+
     // DX11Renderer が所有する Device / Context を非所有で参照する。
     // WHY: ImGui バックエンドは GPU リソースを作るため DX11 デバイスが必要だが、
     //      デバイスの寿命は通常レンダラーが管理するため、ここでは所有しない。
@@ -37,6 +40,7 @@ public:
 private:
     ID3D11Device*        m_device  = nullptr;
     ID3D11DeviceContext* m_context = nullptr;
+    bool                 m_imguiInitialized = false;
 };
 
 } // namespace fbzz::renderer

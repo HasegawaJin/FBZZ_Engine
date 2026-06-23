@@ -110,4 +110,28 @@ struct FzQuaternionKey {
 };
 static_assert(sizeof(FzQuaternionKey) == 24, "FzQuaternionKey size mismatch");
 
+// ─── IBL アセット descriptor (.ibl バイナリ) ─────────────────────────────────
+//
+// レイアウト: FzIblHeader のみ (参照先 DDS ファイルはすべて外部パス)
+//
+// 設計理由:
+//   DDS は DirectX ネイティブフォーマットで再圧縮不要。バイナリに埋め込まず
+//   外部参照方式を採用することでキャッシュ効率と差し替えのしやすさを両立する。
+//   パスは .ibl ファイルと同一ディレクトリからの相対パスで格納する。
+
+constexpr uint32_t FZIBL_VERSION = 1;
+
+struct FzIblHeader {
+    char     magic[6];               // "FZIBL\0"
+    uint16_t version;                // FZIBL_VERSION
+    uint32_t prefilteredMipCount;    // Prefiltered Cubemap の mip 数
+    uint32_t _pad;
+    char     envCubemapPath[256];    // Environment Cubemap DDS の相対パス
+    char     irradiancePath[256];    // Irradiance Cubemap DDS の相対パス
+    char     prefilteredPath[256];   // Prefiltered Cubemap DDS の相対パス
+    char     brdfLutPath[256];       // BRDF LUT DDS の相対パス
+};
+// 6+2+4+4+256×4 = 1040 bytes
+static_assert(sizeof(FzIblHeader) == 1040, "FzIblHeader size mismatch");
+
 } // namespace fbzz::asset

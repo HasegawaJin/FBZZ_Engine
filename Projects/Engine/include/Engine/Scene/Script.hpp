@@ -231,6 +231,15 @@ private:
     friend struct ScriptDebugProxy;
     friend struct ScriptPostProcessProxy;
     friend struct ScriptNavigationProxy;
+    friend struct ScriptCharacterProxy;
+    friend struct ScriptMeshProxy;
+    friend struct ScriptIKProxy;
+    friend struct ScriptWaterProxy;
+    friend struct ScriptEnvironmentProxy;
+    friend struct ScriptDecalProxy;
+    friend struct ScriptVolumeProxy;
+    friend struct ScriptReflectionProbeProxy;
+    friend struct ScriptLifetimeProxy;
 
     struct InvokeEntry {
         std::function<void()> fn;

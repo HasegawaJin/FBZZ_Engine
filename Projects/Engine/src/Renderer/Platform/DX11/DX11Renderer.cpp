@@ -153,10 +153,40 @@ bool DX11Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 
 void DX11Renderer::Shutdown()
 {
-    // ClearState() でパイプラインの全バインドを解除してから ComPtr に解放させる。
-    // 解放順序は依存関係の逆順: Context → SwapChain → Device。
-    // ComPtr のデストラクタが自動でこの順序を保証するため、明示的な Release() は不要。
-    m_context->ClearState();
+    // WHAT: パイプライン参照を解除した後、デバイス子オブジェクトから依存順に明示解放する。
+    // WHY: GPU Query 配列など一部のメンバーは C++ の逆順破棄だけでは Device より後に解放される。
+    //      Flush() と明示 Reset() により Shader を含む全 DX11 Live Object の終了時残留を防ぐ。
+    if (m_context)
+    {
+        m_context->ClearState();
+        m_context->Flush();
+    }
+
+    for (GpuQueryFrame& frame : m_gpuFrames)
+    {
+        frame.disjoint.Reset();
+        for (int i = 0; i < GPU_MAX_PASSES; ++i)
+        {
+            frame.beginTs[i].Reset();
+            frame.endTs[i].Reset();
+        }
+        frame.count = 0;
+        frame.begun = false;
+        frame.ended = false;
+        frame.collected = true;
+    }
+    m_gpuResults.clear();
+
+    for (auto& sampler : m_samplers)
+        sampler.Reset();
+    m_depthStencilBuffer.Reset();
+    m_depthStencilView.Reset();
+    m_renderTargetView.Reset();
+    m_swapChain.Reset();
+    m_context.Reset();
+    m_device.Reset();
+    m_currentRT = nullptr;
+
     FBZZ_LOG_INFO("DX11Renderer shutdown");
 }
 
@@ -261,6 +291,15 @@ std::unique_ptr<ITexture> DX11Renderer::CreateNativeTextureFromData(const uint8_
 {
     auto tex = std::make_unique<DX11Texture>();
     if (!tex->InitFromData(m_device.Get(), rgba, width, height))
+        return nullptr;
+    return tex;
+}
+
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeTexture3DFromData(
+    const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth)
+{
+    auto tex = std::make_unique<DX11Texture>();
+    if (!tex->Init3DFromData(m_device.Get(), rgba, width, height, depth))
         return nullptr;
     return tex;
 }
@@ -372,29 +411,34 @@ void DX11Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
         m_context->CSSetShaderResources(14 + i, 1, &srv);
     }
 
-    // UAV 出力: u0〜u1 テクスチャ UAV、u2〜u3 RWStructuredBuffer UAV
-    ID3D11UnorderedAccessView* uavs[4] = { nullptr, nullptr, nullptr, nullptr };
-    for (uint32_t i = 0; i < 2; ++i)
+    // WHY: DX11 SM5.0 の CS UAV スロットは u0〜u7 の 8 本。
+    //      テクスチャ UAV (uavOutputs) は登録インデックス = スロット番号 で直接バインドする。
+    //      RWStructuredBuffer (uavBuffers) は u2〜 に固定配置 (Binding.hlsli の UAV_GPU_PARTICLES 等)。
+    //      以前は u0/u1 しか処理しておらず、SSR/MotionBlur/GTAO 等のテクスチャ UAV が
+    //      全て無視されていた。u0〜u7 を一括バインドするよう修正する。
+    ID3D11UnorderedAccessView* uavs[8] = {};
+    for (uint32_t i = 0; i < 8 && i < static_cast<uint32_t>(call.uavOutputs.size()); ++i)
     {
         if (auto* texture = resources.Get(call.uavOutputs[i]))
             uavs[i] = static_cast<DX11Texture*>(texture)->GetUAV();
     }
+    // RWStructuredBuffer は u2 から順に配置 (UAV_GPU_PARTICLES = u2)
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.uavBuffers.size()); ++i)
     {
         auto* sb = resources.Get(call.uavBuffers[i]);
         if (!sb) continue;
         uavs[2 + i] = static_cast<DX11StructuredBuffer*>(sb)->GetUAV();
     }
-    m_context->CSSetUnorderedAccessViews(0, 4, uavs, nullptr);
+    m_context->CSSetUnorderedAccessViews(0, 8, uavs, nullptr);
 
     // Dispatch
     m_context->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
 
     // UAV / SRV / CS をアンバインドする (次パスでの SRV 競合を防ぐ)
-    ID3D11UnorderedAccessView* nullUAVs[4] = {};
-    m_context->CSSetUnorderedAccessViews(0, 4, nullUAVs, nullptr);
-    ID3D11ShaderResourceView* nullSRVs[16] = {};
-    m_context->CSSetShaderResources(0, 16, nullSRVs);
+    ID3D11UnorderedAccessView* nullUAVs[8] = {};
+    m_context->CSSetUnorderedAccessViews(0, 8, nullUAVs, nullptr);
+    ID3D11ShaderResourceView* nullSRVs[32] = {};
+    m_context->CSSetShaderResources(0, 32, nullSRVs);
     m_context->CSSetShader(nullptr, nullptr, 0);
 }
 
@@ -439,8 +483,8 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     // WHY: DrawCall ごとに未使用スロットを NULL に戻す。
     //      前の DrawCall の SRV が残ると、次のパスで同じリソースを RTV/DSV として使った際に
     //      DX11 デバッグレイヤーの HAZARD 警告や意図しないサンプリングが起きる。
-    static ID3D11ShaderResourceView* const kNullSRVs[16] = {};
-    m_context->PSSetShaderResources(0, 16, kNullSRVs);
+    static ID3D11ShaderResourceView* const kNullSRVs[32] = {};
+    m_context->PSSetShaderResources(0, 32, kNullSRVs);
     for (uint32_t i = 0; i < static_cast<uint32_t>(call.textures.size()); ++i)
     {
         auto* texture = resources.Get(call.textures[i]);
@@ -693,9 +737,12 @@ void DX11Renderer::InitSamplers()
     make(D3D11_FILTER_MIN_MAG_MIP_LINEAR,   D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[5]);
     // [6] CLAMP_POINT
     make(D3D11_FILTER_MIN_MAG_MIP_POINT,    D3D11_TEXTURE_ADDRESS_CLAMP,   1, nullptr, m_samplers[6]);
-    // [7] BORDER_ZERO → PCF 比較サンプラー (SamplerComparisonState / SAMPLER_SHADOW s1)
-    //   LESS_EQUAL: depth <= stored → 1.0 (照らされている)
-    //   境界色 1.0: ライト錐台外は常に照らされている (影なし) にする
+    // [7] BORDER_ONE → PCF 比較サンプラー (SamplerComparisonState / SAMPLER_SHADOW s1)
+    //   LESS_EQUAL: stored(ブロッカー深度) <= receiver_depth → 1.0 (照らされている)
+    //   WHY: DirectX の shadow map は depth test LESS で書かれるため、より遠い(大きい)値が
+    //        ブロッカー = 手前ではなく奥側。depth - bias で自己影を防ぎつつ LESS_EQUAL で判定。
+    //   境界色 1.0: ライト錐台外サンプルは stored=1.0 → 常に 1.0(lit) を返させる意図だが、
+    //               PCF カーネルが境界をまたぐと白四角アーティファクトの原因になる (別途対処)。
     {
         const FLOAT ones[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
         D3D11_SAMPLER_DESC desc  = {};

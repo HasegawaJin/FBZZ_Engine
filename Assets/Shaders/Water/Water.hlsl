@@ -38,7 +38,19 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float3   cameraPos;
     float    nearZ;
     float    farZ;
-    float3   _camPad;
+    float    waterSsrEnabled;
+    float2   _camPad;
+};
+
+// Water は半透明 Forward 描画で GBuffer に法線を書かないため、通常の SSR Compute の
+// 反射元にはなれない。共通設定だけを受け取り、水面 PS 内でコピー済み深度を追跡する。
+cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
+{
+    float4 _iblParams;
+    float  ssrMaxDistance;
+    float  ssrThickness;
+    int    ssrSteps;
+    float  ssrIntensity;
 };
 
 // WaterCB は C++ の WaterCB と 16 byte 単位で同期する。
@@ -230,6 +242,52 @@ float3 SoftWaterTonemap(float3 color)
     return color / (1.0f + color * 0.18f);
 }
 
+// 水面専用 SSR。Water 描画直前の sceneDepth / sceneColor を使うため、現在の水面を
+// 読み戻す競合を起こさず、既に描画済みの不透明・半透明オブジェクトを反射できる。
+float4 TraceWaterSSR(float3 worldPos, float3 normal)
+{
+    if (waterSsrEnabled < 0.5f || ssrIntensity <= 0.0f || ssrSteps <= 0)
+        return float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    float3 incident = normalize(worldPos - cameraPos);
+    float3 rayDirVS = normalize(mul(float4(reflect(incident, normal), 0.0f), view).xyz);
+    float3 rayPosVS = mul(float4(worldPos, 1.0f), view).xyz + rayDirVS * max(ssrThickness, 0.02f);
+    float stepLength = ssrMaxDistance / max((float)ssrSteps, 1.0f);
+
+    [loop]
+    for (int step = 0; step < ssrSteps; ++step)
+    {
+        rayPosVS += rayDirVS * stepLength;
+        if (rayPosVS.z <= nearZ || rayPosVS.z >= farZ)
+            break;
+
+        float4 clip = mul(float4(rayPosVS, 1.0f), projection);
+        if (clip.w <= 0.0f)
+            break;
+
+        float2 rayUV = clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f;
+        if (any(rayUV <= 0.0f) || any(rayUV >= 1.0f))
+            break;
+
+        float sceneRawDepth = g_sceneDepth.SampleLevel(g_samplerClamp, rayUV, 0).r;
+        if (sceneRawDepth >= 0.9999f)
+            continue;
+
+        float sceneViewDepth = LinearizeDepth(sceneRawDepth);
+        float depthDelta = rayPosVS.z - sceneViewDepth;
+        float hitThickness = max(ssrThickness, stepLength * abs(rayDirVS.z));
+        if (depthDelta >= 0.0f && depthDelta <= hitThickness)
+        {
+            // 画面端では不安定なヒットを環境反射へ滑らかにフォールバックする。
+            float2 edgeDistance = min(rayUV, 1.0f - rayUV);
+            float confidence = saturate(min(edgeDistance.x, edgeDistance.y) * 12.0f);
+            return float4(g_sceneColor.SampleLevel(g_samplerClamp, rayUV, 0).rgb,
+                          confidence * saturate(ssrIntensity));
+        }
+    }
+    return float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
 float4 PSMain(WaterPSInput p) : SV_Target0
 {
     float time = g_normalMap2Params.w;
@@ -279,6 +337,8 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 envSample = g_envTex.Sample(g_samplerEnv, screenUV + tangentNormal.xy * 0.015f).rgb;
     float envAvailable = saturate(dot(envSample, float3(1.0f, 1.0f, 1.0f)));
     float3 reflectColor = lerp(skyReflectTint, envSample, envMapBlend * envAvailable);
+    float4 ssrReflection = TraceWaterSSR(p.worldPos, N);
+    reflectColor = lerp(reflectColor, ssrReflection.rgb, ssrReflection.a);
     float reflectionWeight = saturate(fresnel) * lerp(1.0f, 0.45f, backgroundMask);
     float3 color = lerp(waterColor, reflectColor, reflectionWeight);
 

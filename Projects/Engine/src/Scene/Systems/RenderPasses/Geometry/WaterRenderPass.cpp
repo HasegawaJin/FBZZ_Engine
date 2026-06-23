@@ -598,7 +598,10 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     const auto shadowCB = ctx.handles.shadowCB;
     const float elapsedTime = Time::time;
 
-    static auto waterShader = resources.LoadShader("assets/shaders/Water/Water.hlsl");
+    // WHY: static ローカルは初回のみ初期化される。ResourceManager::Reset() で世代が変わった
+    //      場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
+    static uint64_t s_resetVersion = resources.GetResetVersion();
+    static auto waterShader = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
     static auto waterPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::ALPHA_BLEND,
@@ -647,6 +650,28 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     static renderer::ResourceHandle<renderer::RenderTargetTag> s_sceneColorRT;
     static renderer::ResourceHandle<renderer::RenderTargetTag> s_sceneDepthRT;
     static uint32_t s_sceneColorW = 0, s_sceneColorH = 0;
+
+    if (s_resetVersion != resources.GetResetVersion()) {
+        s_resetVersion    = resources.GetResetVersion();
+        waterShader       = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
+        waterPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        waterWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME,    renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
+        cameraCBH         = resources.CreateConstantBuffer(288);
+        waterCBH          = resources.CreateConstantBuffer(sizeof(WaterCB));
+        defaultEffectCBH  = [&] { WaterEffectParams d{}; auto h = resources.CreateConstantBuffer(sizeof(WaterEffectParams)); resources.Update(h, &d, sizeof(WaterEffectParams)); return h; }();
+        waterEffectCBH    = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
+        flatNormalTex     = [&] { const uint8_t n[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(n, 1, 1); }();
+        whiteTex          = [&] { const uint8_t w[4] = { 255, 255, 255, 255 }; return resources.CreateTexture(w, 1, 1); }();
+        blackTex          = [&] { const uint8_t b[4] = {   0,   0,   0, 255 }; return resources.CreateTexture(b, 1, 1); }();
+        neutralFlowTex    = [&] { const uint8_t f[4] = { 128, 128,   0, 255 }; return resources.CreateTexture(f, 1, 1); }();
+        neutralRippleTex  = [&] { const uint8_t r[4] = { 128, 128, 255, 255 }; return resources.CreateTexture(r, 1, 1); }();
+        copyColorShader   = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+        depthCopyShader   = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+        // WHY: IsValid() は id != 0 のみ確認し Reset 後の失効を検出しない。
+        //      W/H をゼロにして次の解像度チェックで強制的に RT を再生成させる。
+        s_sceneColorW = 0;
+        s_sceneColorH = 0;
+    }
     if (ctx.width != s_sceneColorW || ctx.height != s_sceneColorH
         || !s_sceneColorRT.IsValid() || !s_sceneDepthRT.IsValid()) {
         if (s_sceneColorRT.IsValid()) resources.Release(s_sceneColorRT);
@@ -774,7 +799,8 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             math::Vector3 cameraPos;
             float nearZ;
             float farZ;
-            float _pad[3];
+            float waterSsrEnabled;
+            float _pad[2];
         };
         static_assert(sizeof(CameraCB) == 288, "CameraCB size mismatch");
 
@@ -787,6 +813,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         camData.cameraPos = camera.m_position;
         camData.nearZ = camera.m_near;
         camData.farZ = camera.m_far;
+        camData.waterSsrEnabled = (ctx.isDeferred && ctx.settings.ssr.enabled) ? 1.0f : 0.0f;
         resources.Update(cameraCBH, &camData, sizeof(camData));
     }
 
@@ -877,6 +904,7 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
             call.constantBuffers[2] = effectCBH;
             call.constantBuffers[3] = lightCB;
             call.constantBuffers[4] = shadowCB;
+            call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
             call.textures[0] = textures.normalMap1;
             call.textures[1] = textures.normalMap2;
             call.textures[2] = textures.foamTex;

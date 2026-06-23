@@ -43,6 +43,7 @@ class BuildSettingsPanel;
 class AssetBrowserPanel;
 class AnalysisPanel;
 class MapEditorPanel;
+class IblBakePanel;
 class TerrainTool;
 class WaterTool;
 class DetailTool;
@@ -210,6 +211,7 @@ private:
     AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
     AnalysisPanel*                           m_analysisPanel          = nullptr;
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
+    IblBakePanel*                            m_iblBakePanel           = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
 };
