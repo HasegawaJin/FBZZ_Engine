@@ -531,7 +531,8 @@ void EditorApp::InitScriptDll()
         if constexpr (kConfig == "Development") {
             m_scriptDllPath = !toolchain.scriptsDllDevelopment.empty()
                 ? toolchain.scriptsDllDevelopment
-                : toolchain.buildDir.parent_path() / L"Binaries" / L"Development" / L"Scripts.dll";
+                // WHY: SandboxScripts.dll は exe 整理後 Binaries/<Config>/Sandbox/ に出力される。
+            : toolchain.buildDir.parent_path() / L"Binaries" / L"Development" / L"Sandbox" / L"SandboxScripts.dll";
         } else if constexpr (kConfig == "Release") {
             m_scriptDllPath = !toolchain.scriptsDllRelease.empty()
                 ? toolchain.scriptsDllRelease
