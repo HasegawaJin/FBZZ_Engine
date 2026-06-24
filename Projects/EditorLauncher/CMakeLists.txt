@@ -17,6 +17,9 @@ add_executable(fbzz_editor_launcher WIN32
 
 set_target_properties(fbzz_editor_launcher PROPERTIES
     OUTPUT_NAME "FBZZEditor"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Editor"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Editor"
+    RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Editor"
 )
 
 target_compile_definitions(fbzz_editor_launcher
@@ -72,6 +75,10 @@ add_custom_target(compile_editor_launcher_shaders DEPENDS ${SHADER_STAMP})
 add_dependencies(fbzz_editor_launcher compile_editor_launcher_shaders)
 
 add_custom_command(TARGET fbzz_editor_launcher POST_BUILD
+    # コア DLL を Editor/ に配置 (Windows は exe と同じディレクトリを最初に検索する)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_math>    "$<TARGET_FILE_DIR:fbzz_editor_launcher>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_physics> "$<TARGET_FILE_DIR:fbzz_editor_launcher>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_engine>  "$<TARGET_FILE_DIR:fbzz_editor_launcher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:fbzz_editor_launcher>"

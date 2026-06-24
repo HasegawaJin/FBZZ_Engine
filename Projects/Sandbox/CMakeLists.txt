@@ -38,9 +38,11 @@ target_precompile_headers(SandboxScripts PRIVATE
     <string>
     <vector>
 )
-# DLL を sandbox.exe と同じディレクトリに出力する
+# sandbox.exe と同じ Sandbox/ に出力 (ホットリロードで exe 隣接の DLL を読む)
 set_target_properties(SandboxScripts PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Sandbox"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Sandbox"
+    RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Sandbox"
 )
 if(MSVC)
     # WHY: ホットリロード時はエディタを起動したまま SandboxScripts だけを短い間隔で再リンクする。
@@ -58,6 +60,12 @@ endif()
 
 add_executable(sandbox ${SANDBOX_SOURCES})
 add_dependencies(sandbox SandboxScripts)
+
+set_target_properties(sandbox PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Sandbox"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Sandbox"
+    RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Sandbox"
+)
 
 # WHY: post-build コマンドや sync_sandbox_assets ターゲットで参照するため、
 #      add_executable(sandbox) の直後に定義する。
@@ -90,6 +98,12 @@ set(SANDBOX_STANDALONE_SOURCES ${SANDBOX_SOURCES})
 # Build Settings からゲーム本体だけを再コンパイルできる。
 add_executable(SandboxStandalone ${SANDBOX_STANDALONE_SOURCES})
 target_compile_definitions(SandboxStandalone PRIVATE FBZZ_STANDALONE_TARGET)
+
+set_target_properties(SandboxStandalone PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Sandbox"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Sandbox"
+    RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Sandbox"
+)
 
 # シェーダーを HLSL ファイルが更新されるたびに自動コンパイルする
 set(SHADER_SCRIPT    "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
@@ -159,6 +173,10 @@ target_link_libraries(SandboxStandalone
 )
 
 add_custom_command(TARGET sandbox POST_BUILD
+    # コア DLL を Sandbox/ に配置
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_math>    "$<TARGET_FILE_DIR:sandbox>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_physics> "$<TARGET_FILE_DIR:sandbox>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_engine>  "$<TARGET_FILE_DIR:sandbox>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:sandbox>"
@@ -191,6 +209,10 @@ add_custom_command(TARGET sandbox POST_BUILD
 )
 
 add_custom_command(TARGET SandboxStandalone POST_BUILD
+    # コア DLL を Sandbox/ に配置 (sandbox.exe と共有ディレクトリなので 1 コピーで済む)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_math>    "$<TARGET_FILE_DIR:SandboxStandalone>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_physics> "$<TARGET_FILE_DIR:SandboxStandalone>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_engine>  "$<TARGET_FILE_DIR:SandboxStandalone>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:SandboxStandalone>"
