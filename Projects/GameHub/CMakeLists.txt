@@ -55,6 +55,12 @@ add_custom_command(TARGET fbzz_hub POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_math>    "$<TARGET_FILE_DIR:fbzz_hub>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_physics> "$<TARGET_FILE_DIR:fbzz_hub>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fbzz_engine>  "$<TARGET_FILE_DIR:fbzz_hub>"
+    # WHY: fbzz_engine は ImGui / Assimp を DLL として参照するため、Hub 単体起動時も
+    #      exe と同じディレクトリに配置して Windows の DLL 検索で見つかるようにする。
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:imgui> "$<TARGET_FILE_DIR:fbzz_hub>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
+        "$<TARGET_FILE_DIR:fbzz_hub>"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/Templates"
         "$<TARGET_FILE_DIR:fbzz_hub>/Templates"
