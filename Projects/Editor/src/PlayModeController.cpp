@@ -3,6 +3,7 @@
 // Play / Pause / Stop の状態管理とシーンスナップショット
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 
@@ -39,6 +40,9 @@ void PlayModeController::Stop(scene::Scene& scene)
 {
     (void)scene;
     if (m_state == PlayState::Editor) return;
+    // WHY: Script が PlayMode 中にカーソルを非表示・拘束したまま Stop されても、
+    //      Editor 操作へ戻れるように PlayMode 終了要求時点で必ず復元する。
+    core::Cursor::ResetForEditor();
     if (m_snapshot.empty()) {
         m_state = PlayState::Editor;
         FBZZ_LOG_WARN("PlayMode: Stop called but snapshot is empty; forced → Editor");
@@ -62,6 +66,7 @@ bool PlayModeController::ApplyPendingRestore(scene::Scene& scene)
     m_state = PlayState::Editor;
     // WHAT: Stop クリックや GameView 操作中のマウス・キー状態を Editor モードへ残さない。
     input::Input::Reset();
+    core::Cursor::ResetForEditor();
     FBZZ_LOG_INFO("PlayMode: → Editor (scene restored)");
     return true;
 }
