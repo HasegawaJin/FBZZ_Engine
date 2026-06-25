@@ -3,6 +3,8 @@
 // TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TrailRenderPass.hpp"
 
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/RenderState.hpp>
@@ -305,7 +307,29 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
     if (!trail.trailCB.IsValid())
         trail.trailCB = resources.CreateConstantBuffer(sizeof(TrailCB));
 
-    if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
+    // materialPath が設定されている場合: .mat の albedo テクスチャを優先する。
+    if (!trail.materialPath.empty()) {
+        const bool matChanged = (trail.loadedMaterialPath != trail.materialPath);
+        if (matChanged) {
+            trail.loadedMaterialPath = trail.materialPath;
+            trail.loadedTexturePath.clear();
+        }
+        const auto matHandle = asset::AssetManager::LoadMaterial(trail.materialPath);
+        if (const auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+            const auto it = mat->textures.find("albedo");
+            const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
+            if (!trail.texture.IsValid() || trail.loadedTexturePath != resolvedTex) {
+                if (resolvedTex.empty()) {
+                    static const uint8_t white[4] = { 255, 255, 255, 255 };
+                    trail.texture = resources.CreateTexture(white, 1, 1);
+                } else {
+                    trail.texture = resources.LoadTexture(resolvedTex);
+                }
+                trail.loadedTexturePath = resolvedTex;
+            }
+        }
+    } else if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
+        // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
         if (trail.texturePath.empty()) {
             static const uint8_t white[4] = { 255, 255, 255, 255 };
             trail.texture = resources.CreateTexture(white, 1, 1);
