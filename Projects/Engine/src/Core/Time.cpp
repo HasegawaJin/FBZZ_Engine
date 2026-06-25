@@ -69,4 +69,24 @@ void Time::Reset()
     frameCount   = 0;
 }
 
+void Time::SetTimeScale(float scale)
+{
+    timeScale = std::max(scale, 0.0f);
+}
+
+float Time::GetTimeScale()
+{
+    return timeScale;
+}
+
+void Time::SetTargetFps(int fps)
+{
+    targetFps = fps <= 0 ? 0 : std::max(fps, 30);
+}
+
+int Time::GetTargetFps()
+{
+    return targetFps;
+}
+
 } // namespace fbzz

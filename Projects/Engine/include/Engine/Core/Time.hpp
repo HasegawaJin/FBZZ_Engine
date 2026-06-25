@@ -35,6 +35,14 @@ struct FBZZ_ENGINE_API Time {
     static void Tick();    // Application::Run() 先頭で毎フレーム呼ぶ
     static void Reset();   // シーンリセット時に time / frameCount を 0 にする
 
+    // Script / UI から直接 static 変数を書き換えずに済むようにする薄い API。
+    // WHY: timeScale / targetFps のクランプ規則を一箇所へ集め、Editor の Inspector と
+    //      ScriptProxy が同じ前提で時間制御できるようにする。
+    static void  SetTimeScale(float scale);
+    static float GetTimeScale();
+    static void  SetTargetFps(int fps);
+    static int   GetTargetFps();
+
 private:
     static int64_t s_lastCount;
     static int64_t s_frequency;

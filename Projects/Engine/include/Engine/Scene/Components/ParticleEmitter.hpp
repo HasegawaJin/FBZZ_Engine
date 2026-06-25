@@ -92,6 +92,11 @@ struct ParticleEmitter {
     ParticleSortMode  sortMode  = ParticleSortMode::None;
     ParticleSimulationMode simulationMode = ParticleSimulationMode::Cpu;
 
+    // .mat アセットへの参照。albedo テクスチャ・blendMode を .mat から解決する。
+    // WHY: シェーダー・テクスチャ・ブレンドを .mat に集約し複数エミッター間で共有できるようにする。
+    //      空文字のとき texturePath へフォールバックするため既存シーンデータは無変更で動く。
+    std::string materialPath;
+    // texturePath — deprecated。materialPath が空のときのフォールバック。
     std::string texturePath;
     int spriteColumns = 1;
     int spriteRows    = 1;
@@ -114,6 +119,7 @@ struct ParticleEmitter {
     int                   burstPending = 0;
     renderer::ResourceHandle<renderer::TextureTag> texture;
     std::string           loadedTexturePath;
+    std::string           loadedMaterialPath; // materialPath の変更検出用。シーン保存対象外。
 
     // GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuParticleBuffer; // RWStructuredBuffer: CS が更新
@@ -152,6 +158,7 @@ struct ParticleEmitter {
             randomSeed = clampedSeed;
             randomState = randomSeed;
         }
+        r.Field("materialPath", materialPath);
         r.Field("texturePath", texturePath);
         int shapeValue = static_cast<int>(shape);
         r.Field("shape", shapeValue);

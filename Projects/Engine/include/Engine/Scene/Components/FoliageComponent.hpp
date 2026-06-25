@@ -7,6 +7,8 @@
 #include <Engine/Scene/Script.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -103,6 +105,56 @@ struct FoliageComponent {
     {
         r.Field("enabled", enabled);
         // species は vector<struct> のため SceneSerializer が直接扱う。
+    }
+
+    // Script / Tool から植生を変更するための安全な入口。
+    // WHY: species / stamps を直接編集すると GPU instance と stamp 子 GO の再生成フラグを
+    //      立て忘れやすいため、変更と Bake 要求を同時に行う。
+    void RequestBake(bool rebuildChildren = true)
+    {
+        needsBake = true;
+        if (rebuildChildren)
+            needsBakeChildren = true;
+    }
+
+    void SetEnabled(bool v)
+    {
+        enabled = v;
+        RequestBake(false);
+    }
+
+    bool SetDensity(size_t speciesIndex, float densityPer100SquareMeters)
+    {
+        if (speciesIndex >= species.size()) return false;
+        species[speciesIndex].densityPer100SquareMeters = (std::max)(densityPer100SquareMeters, 0.0f);
+        RequestBake(false);
+        return true;
+    }
+
+    bool SetDrawDistance(size_t speciesIndex, float distance)
+    {
+        if (speciesIndex >= species.size()) return false;
+        species[speciesIndex].drawDistance = (std::max)(distance, 0.0f);
+        RequestBake(false);
+        return true;
+    }
+
+    bool AddStamp(size_t speciesIndex, const math::Vector3& localPosition, float rotationY, float scale)
+    {
+        if (speciesIndex >= species.size()) return false;
+        FoliageSpecies& targetSpecies = species[speciesIndex];
+        targetSpecies.placementMode = FoliagePlacementMode::STAMP;
+        targetSpecies.stamps.push_back({ localPosition, rotationY, (std::max)(scale, 0.0001f) });
+        RequestBake(true);
+        return true;
+    }
+
+    bool ClearStamps(size_t speciesIndex)
+    {
+        if (speciesIndex >= species.size()) return false;
+        species[speciesIndex].stamps.clear();
+        RequestBake(true);
+        return true;
     }
 };
 
