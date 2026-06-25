@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 #      ここでも MSVC に UTF-8 ソースとして読ませないと、日本語コメントや assert 文字列が
 #      CP932 として解釈され、プリプロセッサや文字列リテラルが壊れる。
 if(MSVC)
-    add_compile_options(/utf-8)
+    add_compile_options(/utf-8 /FS)
 endif()
 
 if(NOT DEFINED FBZZ_ENGINE_ROOT OR FBZZ_ENGINE_ROOT STREQUAL "")

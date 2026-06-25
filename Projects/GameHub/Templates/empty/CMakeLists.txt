@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 #      これがないと VS プロジェクトに Development が生成されず、
 #      エディタが --config Development でスクリプトをビルドしようとしたときに MSB8013 が発生する。
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
-set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1"                CACHE STRING "Development CXX flags"        FORCE)
+set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1 /FS"            CACHE STRING "Development CXX flags"        FORCE)
 set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development EXE linker flags" FORCE)
 set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development DLL linker flags" FORCE)
 
@@ -18,7 +18,7 @@ set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO" CACHE ST
 #      ここでも MSVC に UTF-8 ソースとして読ませないと、日本語コメントや assert 文字列が
 #      CP932 として解釈され、プリプロセッサや文字列リテラルが壊れる。
 if(MSVC)
-    add_compile_options(/utf-8)
+    add_compile_options(/utf-8 /FS)
 endif()
 
 if(NOT DEFINED FBZZ_ENGINE_ROOT OR FBZZ_ENGINE_ROOT STREQUAL "")
