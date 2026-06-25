@@ -16,18 +16,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             // ── 外部 Terrain Asset ─────────────────────────────────────────────
             ImGui::SeparatorText("Asset");
             {
-                char pathBuf[512];
-                std::snprintf(pathBuf, sizeof(pathBuf), "%s", tc.terrainAssetPath.c_str());
-                if (ImGui::InputText("Asset Path", pathBuf, sizeof(pathBuf)))
-                    tc.terrainAssetPath = NormalizeAssetPath(pathBuf);
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        std::string path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (util::FileSystem::GetExtension(path) == ".terrain")
-                            tc.terrainAssetPath = path;
-                    }
-                    ImGui::EndDragDropTarget();
-                }
+                widgets::AssetPathField("Asset Path", tc.terrainAssetPath, ".terrain", ctx.projectRoot);
 
                 if (tc.terrainAssetPath.empty()) {
                     if (ImGui::Button("Create Terrain Asset")) {
@@ -184,27 +173,13 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
         });
 
     DrawComponentSection<scene::WaterComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Water",
-        [go](scene::WaterComponent& water, EditorContext&) {
+        [go](scene::WaterComponent& water, EditorContext& ctx) {
             // ── Material (.mat) ─────────────────────────────────────────────
             ImGui::SeparatorText("Material (.mat)");
-            char matBuf[256];
-            std::snprintf(matBuf, sizeof(matBuf), "%s", water.materialPath.c_str());
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 4.0f);
-            if (ImGui::InputText("##water_mat_path", matBuf, sizeof(matBuf))) {
-                water.materialPath = NormalizeAssetPath(matBuf);
+            // 変更時はテクスチャ・フォームキャッシュを無効化してレンダーパスに再ロードさせる。
+            if (widgets::AssetPathField("Material (.mat)", water.materialPath, ".mat", ctx.projectRoot)) {
                 water.texDirty = true;
                 water.foamDirty = true;
-            }
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    if (util::StringUtils::EndsWith(dropped, ".mat")) {
-                        water.materialPath = dropped;
-                        water.texDirty = true;
-                        water.foamDirty = true;
-                    }
-                }
-                ImGui::EndDragDropTarget();
             }
             if (water.materialPath.empty()) {
                 ImGui::TextDisabled("(no material — visual params missing)");
@@ -296,7 +271,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
     // ============================================================
 
     DrawComponentSection<scene::TerrainDetailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Detail",
-    [go](scene::TerrainDetailComponent& tdc, EditorContext&) {
+    [go](scene::TerrainDetailComponent& tdc, EditorContext& ctx) {
 
         // Bake ボタン: インスタンス配列を再生成する
         if (ImGui::Button("Bake All Layers")) {
@@ -354,46 +329,12 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 // アセット参照
                 ImGui::SeparatorText("Assets");
                 if (layer.type != scene::DetailLayerType::Billboard) {
-                    char buf[256];
-                    std::snprintf(buf, sizeof(buf), "%s", layer.meshPath.c_str());
-                    if (ImGui::InputText("Mesh Path", buf, sizeof(buf))) {
-                        layer.meshPath = buf;
-                        tdc.needsBake  = true;
-                    }
-                    if (ImGui::BeginDragDropTarget()) {
-                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                            layer.meshPath = static_cast<const char*>(p->Data);
-                            tdc.needsBake  = true;
-                        }
-                        ImGui::EndDragDropTarget();
-                    }
+                    if (widgets::AssetPathField("Mesh Path", layer.meshPath, ".fbx,.fzmodel", ctx.projectRoot))
+                        tdc.needsBake = true;
                 }
-                {
-                    char buf[256];
-                    std::snprintf(buf, sizeof(buf), "%s", layer.texturePath.c_str());
-                    if (ImGui::InputText("Texture Path", buf, sizeof(buf)))
-                        layer.texturePath = buf;
-                    if (ImGui::BeginDragDropTarget()) {
-                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH"))
-                            layer.texturePath = static_cast<const char*>(p->Data);
-                        ImGui::EndDragDropTarget();
-                    }
-                }
-                {
-                    char buf[256];
-                    std::snprintf(buf, sizeof(buf), "%s", layer.densityMapPath.c_str());
-                    if (ImGui::InputText("Density Map", buf, sizeof(buf))) {
-                        layer.densityMapPath = buf;
-                        tdc.needsBake        = true;
-                    }
-                    if (ImGui::BeginDragDropTarget()) {
-                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                            layer.densityMapPath = static_cast<const char*>(p->Data);
-                            tdc.needsBake        = true;
-                        }
-                        ImGui::EndDragDropTarget();
-                    }
-                }
+                widgets::AssetPathField("Texture Path", layer.texturePath, ".fztex,.png,.dds", ctx.projectRoot);
+                if (widgets::AssetPathField("Density Map", layer.densityMapPath, ".png,.fztex", ctx.projectRoot))
+                    tdc.needsBake = true;
 
                 // 配置パラメータ
                 ImGui::SeparatorText("Placement");
@@ -448,7 +389,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 
     DrawComponentSection<scene::FoliageComponent>(
         go, ctx, m_componentClipboard, m_componentClipboardType, "Foliage",
-        [](scene::FoliageComponent& foliage, EditorContext&) {
+        [](scene::FoliageComponent& foliage, EditorContext& ctx) {
             if (ImGui::Button("Bake Foliage")) {
                 foliage.caches.clear();
                 foliage.needsBake = foliage.needsBakeChildren = true;
@@ -477,21 +418,8 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                     deleteSpecies = speciesIndex;
 
                 if (open) {
-                    char modelPath[512];
-                    std::snprintf(modelPath, sizeof(modelPath), "%s", species.modelPath.c_str());
-                    if (ImGui::InputText("Model Path", modelPath, sizeof(modelPath))) {
-                        species.modelPath = NormalizeAssetPath(modelPath);
+                    if (widgets::AssetPathField("Model Path", species.modelPath, ".fbx,.fzmodel", ctx.projectRoot))
                         foliage.needsBake = foliage.needsBakeChildren = true;
-                    }
-                    if (ImGui::BeginDragDropTarget()) {
-                        if (const ImGuiPayload* payload =
-                                ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                            species.modelPath = NormalizeAssetPath(
-                                static_cast<const char*>(payload->Data));
-                            foliage.needsBake = foliage.needsBakeChildren = true;
-                        }
-                        ImGui::EndDragDropTarget();
-                    }
 
                     int placementMode =
                         species.placementMode == scene::FoliagePlacementMode::STAMP ? 1 : 0;
@@ -548,19 +476,9 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                         ImGui::PushID(materialIndex);
                         auto& path =
                             species.subMeshMaterialPaths[static_cast<size_t>(materialIndex)];
-                        char materialPath[512];
-                        std::snprintf(materialPath, sizeof(materialPath), "%s", path.c_str());
                         char label[32];
                         std::snprintf(label, sizeof(label), "Material %d", materialIndex);
-                        if (ImGui::InputText(label, materialPath, sizeof(materialPath)))
-                            path = NormalizeAssetPath(materialPath);
-                        if (ImGui::BeginDragDropTarget()) {
-                            if (const ImGuiPayload* payload =
-                                    ImGui::AcceptDragDropPayload("ASSET_PATH"))
-                                path = NormalizeAssetPath(
-                                    static_cast<const char*>(payload->Data));
-                            ImGui::EndDragDropTarget();
-                        }
+                        widgets::AssetPathField(label, path, ".mat", ctx.projectRoot);
                         ImGui::PopID();
                     }
 

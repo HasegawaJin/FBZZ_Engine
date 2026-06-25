@@ -313,10 +313,17 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
     // ── ファイルシステム監視 ──────────────────────────────────────────────
     // WHY: Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でも
     //      イベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
+    bool needsDirectoryRefresh = false;
     for (const auto& ev : m_watcher.Poll())
     {
-        const std::string absPath = util::FileSystem::NormalizePathSeparators(
-            m_rootPath + ev.path);
+        // WHY: 文字列連結では m_rootPath 末尾に '/' がない場合、監視パスが壊れる。
+        const std::filesystem::path watcherRoot = util::FileSystem::PathFromUtf8(m_rootPath);
+        const std::string absPath = util::FileSystem::PathToUtf8(
+            (watcherRoot / util::FileSystem::PathFromUtf8(ev.path)).lexically_normal());
+        const std::string oldAbsPath = ev.oldPath.empty()
+            ? std::string{}
+            : util::FileSystem::PathToUtf8(
+                (watcherRoot / util::FileSystem::PathFromUtf8(ev.oldPath)).lexically_normal());
 
         if (ev.type == AssetFileWatcher::EventType::Added   ||
             ev.type == AssetFileWatcher::EventType::Removed ||
@@ -324,14 +331,27 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
         {
             // 変更が起きたディレクトリのツリーキャッシュを無効化
             InvalidateTreeCache(util::FileSystem::GetDirectory(absPath));
+            if (!oldAbsPath.empty())
+                InvalidateTreeCache(util::FileSystem::GetDirectory(oldAbsPath));
 
-            // カレントディレクトリ以下の変化ならグリッドも再スキャン
-            if (util::FileSystem::IsChildPathText(absPath, m_currentPath))
-                RefreshDirectory();
+            // 移動元・移動先、または表示中フォルダ自体の変化ならグリッドも再スキャンする。
+            if (util::FileSystem::IsChildPathText(absPath, m_currentPath) ||
+                util::FileSystem::IsChildPathText(m_currentPath, absPath) ||
+                (!oldAbsPath.empty() &&
+                 (util::FileSystem::IsChildPathText(oldAbsPath, m_currentPath) ||
+                  util::FileSystem::IsChildPathText(m_currentPath, oldAbsPath))))
+                needsDirectoryRefresh = true;
         }
 
         if (ev.type == AssetFileWatcher::EventType::Added)
             TryQueuePendingImport(ev.path);
+    }
+
+    if (needsDirectoryRefresh) {
+        // 表示中フォルダ自体が移動・削除された場合は Assets ルートへ戻す。
+        if (!util::FileSystem::IsDirectory(m_currentPath))
+            m_currentPath = m_rootPath;
+        RefreshDirectory();
     }
 
     // ── スレッド完了チェック ──────────────────────────────────────────────
