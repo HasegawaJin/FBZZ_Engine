@@ -11,32 +11,11 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
     DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
         [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
             ImGui::SeparatorText("Controller");
-            char controllerBuffer[512]{};
-            std::snprintf(
-                controllerBuffer, sizeof(controllerBuffer), "%s", anim.controllerPath.c_str());
-            if (ImGui::InputText(
-                    "Animator Controller", controllerBuffer, sizeof(controllerBuffer))) {
-                anim.controllerPath = NormalizeAssetPath(controllerBuffer);
+            if (widgets::AssetPathField("Animator Controller", anim.controllerPath,
+                                        ".animcontroller", ctx.projectRoot)) {
                 anim.loadedControllerPath.clear();
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
             }
-            if (ImGui::IsItemDeactivatedAfterEdit() && ctx.markSceneDirty)
-                ctx.markSceneDirty();
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    const std::string dropped =
-                        NormalizeAssetPath(static_cast<const char*>(payload->Data));
-                    if (util::StringUtils::EndsWith(dropped, ".animcontroller")) {
-                        anim.controllerPath = dropped;
-                        anim.loadedControllerPath.clear();
-                        asset::AnimatorControllerAsset controller;
-                        if (asset::LoadAnimatorControllerAsset(dropped, controller))
-                            asset::ApplyAnimatorControllerAsset(controller, anim);
-                        if (ctx.markSceneDirty) ctx.markSceneDirty();
-                    }
-                }
-                ImGui::EndDragDropTarget();
-            }
-            ImGui::TextDisabled("Drag an Animator Controller asset here.");
             if (ImGui::Button(
                     "Create Controller From Current", ImVec2(-1.0f, 0.0f))) {
                 const std::string directory =

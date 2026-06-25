@@ -6,6 +6,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -111,22 +112,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         ImGui::SeparatorText("State");
         {
-            char shaderBuf[512];
-            std::snprintf(shaderBuf, sizeof(shaderBuf), "%s", mat.shaderPath.c_str());
-            if (ImGui::InputText("Shader", shaderBuf, sizeof(shaderBuf))) {
-                mat.shaderPath = NormalizeAssetPath(shaderBuf);
+            if (widgets::AssetPathField("Shader", mat.shaderPath, ".hlsl", ctx.projectRoot))
                 materialDirty = true;
-            }
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    const std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    if (util::StringUtils::EndsWith(dropped, ".hlsl")) {
-                        mat.shaderPath = dropped;
-                        materialDirty = true;
-                    }
-                }
-                ImGui::EndDragDropTarget();
-            }
 
             static constexpr const char* kBlendNames[] = { "Opaque", "AlphaBlend", "Additive" };
             int blendIndex = 0;
@@ -175,19 +162,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             };
             auto drawTexSlot = [&](const char* slot) {
                 std::string& path = mat.textures[slot];
-                char texBuf[512];
-                std::snprintf(texBuf, sizeof(texBuf), "%s", path.c_str());
-                if (ImGui::InputText(slot, texBuf, sizeof(texBuf))) {
-                    path = NormalizeAssetPath(texBuf);
+                if (widgets::AssetPathField(slot, path, ".fztex,.png,.dds", ctx.projectRoot))
                     materialDirty = true;
-                }
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        materialDirty = true;
-                    }
-                    ImGui::EndDragDropTarget();
-                }
             };
             if (desc && !desc->textures.empty()) {
                 for (const auto& tex : desc->textures)
@@ -768,21 +744,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::SeparatorText("Layer Materials");
             for (int li = 0; li < static_cast<int>(ta.layerMaterialPaths.size()); ++li) {
                 ImGui::PushID(li);
-                char matBuf[512];
-                std::snprintf(matBuf, sizeof(matBuf), "%s", ta.layerMaterialPaths[li].c_str());
-                ImGui::SetNextItemWidth(-1.0f);
-                if (ImGui::InputText(("##layer" + std::to_string(li)).c_str(),
-                                     matBuf, sizeof(matBuf))) {
-                    ta.layerMaterialPaths[li] = matBuf;
+                const std::string layerLabel = "Layer " + std::to_string(li);
+                if (widgets::AssetPathField(layerLabel.c_str(), ta.layerMaterialPaths[li], ".mat", ctx.projectRoot))
                     terrainDirty = true;
-                }
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        ta.layerMaterialPaths[li] = static_cast<const char*>(p->Data);
-                        terrainDirty = true;
-                    }
-                    ImGui::EndDragDropTarget();
-                }
                 ImGui::PopID();
             }
 

@@ -16,25 +16,12 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
         });
 
     DrawComponentSection<scene::DecalComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Decal",
-        [](scene::DecalComponent& dc, EditorContext&) {
-
-            auto texField = [](const char* label, std::string& path) {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf), "%s", path.c_str());
-                if (ImGui::InputText(label, buf, sizeof(buf)))
-                    path = NormalizeAssetPath(buf);
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    }
-                    ImGui::EndDragDropTarget();
-                }
-            };
+        [](scene::DecalComponent& dc, EditorContext& ctx) {
 
             ImGui::SeparatorText("Textures");
-            texField("Albedo (t0)",   dc.albedoTexPath);
-            texField("Normal (t1)",   dc.normalTexPath);
-            texField("Emissive (t3)", dc.emissiveTexPath);
+            widgets::AssetPathField("Albedo (t0)",   dc.albedoTexPath,   ".fztex,.png,.dds", ctx.projectRoot);
+            widgets::AssetPathField("Normal (t1)",   dc.normalTexPath,   ".fztex,.png,.dds", ctx.projectRoot);
+            widgets::AssetPathField("Emissive (t3)", dc.emissiveTexPath, ".fztex,.png,.dds", ctx.projectRoot);
 
             ImGui::SeparatorText("Surface");
             ImGui::ColorEdit4("Albedo Color",     dc.albedoColor);
@@ -72,28 +59,15 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     // ── EnvironmentLightComponent ────────────────────────────────────────────────
     DrawComponentSection<scene::EnvironmentLightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Environment Light",
-        [](scene::EnvironmentLightComponent& elc, EditorContext&) {
-
-            // パスフィールド — ドラッグ&ドロップで Asset Browser から直接割り当て可能。
-            auto texField = [](const char* label, std::string& path) {
-                char buf[512];
-                std::snprintf(buf, sizeof(buf), "%s", path.c_str());
-                if (ImGui::InputText(label, buf, sizeof(buf)))
-                    path = NormalizeAssetPath(buf);
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH"))
-                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    ImGui::EndDragDropTarget();
-                }
-            };
+        [](scene::EnvironmentLightComponent& elc, EditorContext& ctx) {
 
             // 有効化トグル — ヘッダーの enabled と連動するが、こちらが本体の操作点。
             ImGui::Checkbox("IBL Enabled", &elc.enabled);
             ImGui::Spacing();
 
             ImGui::SeparatorText("IBL Cubemaps (.dds)");
-            texField("Irradiance##iblIrr",  elc.irradiancePath);
-            texField("Prefiltered##iblPre",  elc.prefilterPath);
+            widgets::AssetPathField("Irradiance##iblIrr", elc.irradiancePath, ".dds,.hdr", ctx.projectRoot);
+            widgets::AssetPathField("Prefiltered##iblPre", elc.prefilterPath, ".dds,.hdr", ctx.projectRoot);
 
             ImGui::SeparatorText("Intensity");
             ImGui::DragFloat("Overall Intensity", &elc.intensity,    0.01f, 0.0f, 10.0f);
@@ -108,18 +82,10 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     // ── ReflectionProbeComponent ─────────────────────────────────────────────────
     DrawComponentSection<scene::ReflectionProbeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Reflection Probe",
-        [](scene::ReflectionProbeComponent& rpc, EditorContext&) {
+        [](scene::ReflectionProbeComponent& rpc, EditorContext& ctx) {
 
             ImGui::SeparatorText("Cubemap (.dds)");
-            char buf[512];
-            std::snprintf(buf, sizeof(buf), "%s", rpc.cubemapPath.c_str());
-            if (ImGui::InputText("Cubemap Path", buf, sizeof(buf)))
-                rpc.cubemapPath = NormalizeAssetPath(buf);
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH"))
-                    rpc.cubemapPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                ImGui::EndDragDropTarget();
-            }
+            widgets::AssetPathField("Cubemap Path", rpc.cubemapPath, ".dds,.hdr", ctx.projectRoot);
 
             ImGui::SeparatorText("Influence");
             ImGui::DragFloat("Intensity",        &rpc.intensity,       0.01f, 0.0f, 8.0f);

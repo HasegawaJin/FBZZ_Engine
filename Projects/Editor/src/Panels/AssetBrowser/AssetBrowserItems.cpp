@@ -251,6 +251,7 @@ enum class ThumbnailShaderFlavor {
     Skinned,
     Terrain,
     Water,
+    Unsupported,
 };
 
 static std::string ToLowerAssetPath(std::string path)
@@ -264,10 +265,29 @@ static std::string ToLowerAssetPath(std::string path)
 static ThumbnailShaderFlavor DetectThumbnailShaderFlavor(std::string_view shaderPath)
 {
     const std::string lower = ToLowerAssetPath(std::string(shaderPath));
+    if (lower.find("/material/effects/") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
+    if (lower.find("/effects/particle") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
+    if (lower.find("/effects/trail") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
+    if (lower.find("/effects/meshtrail") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
     if (lower.find("/water/") != std::string::npos) return ThumbnailShaderFlavor::Water;
     if (lower.find("/terrain/") != std::string::npos) return ThumbnailShaderFlavor::Terrain;
     if (lower.find("/material/skinned/") != std::string::npos) return ThumbnailShaderFlavor::Skinned;
     return ThumbnailShaderFlavor::Surface;
+}
+
+static ThumbnailShaderFlavor DetectMaterialThumbnailFlavor(const asset::MaterialAsset& asset)
+{
+    // WHY: Particle / Trail 用 .mat は MeshRenderer と頂点入力・定数バッファが違うため、
+    //      AssetBrowser の球メッシュ preview に流すと不正な IA レイアウトでクラッシュし得る。
+    //      mesh_type / render_path を .mat の信頼元として扱い、shader path だけの推測を避ける。
+    if (asset.renderPath == asset::RenderPath::Particle ||
+        asset.renderPath == asset::RenderPath::Trail) {
+        return ThumbnailShaderFlavor::Unsupported;
+    }
+    if (asset.meshType == asset::MeshType::Skinned) {
+        return ThumbnailShaderFlavor::Skinned;
+    }
+    return DetectThumbnailShaderFlavor(asset.shaderPath);
 }
 
 // t0-t15 は標準 Material スロット。Terrain/Water は専用名で解決されるが、
@@ -473,7 +493,8 @@ bool AssetBrowserPanel::RebuildMaterialThumbnailGpuData(MaterialPreview& preview
     if (!shader) return false;
 
     const renderer::ShaderDescriptor& desc = shader->GetDescriptor();
-    const ThumbnailShaderFlavor flavor = DetectThumbnailShaderFlavor(preview.shaderPath);
+    const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(*renderAsset);
+    if (flavor == ThumbnailShaderFlavor::Unsupported) return false;
     if (!desc.IsValid() && flavor != ThumbnailShaderFlavor::Terrain) return false;
 
     preview.textures.assign(16, {});
@@ -1148,7 +1169,10 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
         });
         it = m_treeCache.emplace(normDir, std::move(newDirs)).first;
     }
-    const std::vector<Entry>& dirs = it->second;
+    // WHY: 参照ではなくコピーを取る。
+    //      再帰 DrawFolderTree / RefreshDirectory() が m_treeCache に insert/erase すると
+    //      unordered_map のリハッシュや対象エントリ削除で参照が無効化 (UB) されクラッシュする。
+    const std::vector<Entry> dirs = it->second;
 
     for (const Entry& dir : dirs) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
@@ -1347,10 +1371,22 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     s_tr.skinnedMaterialSphere = CreateSkinnedPreviewSphere(*ctx.resources, 64);
                 if (!s_tr.waterMaterialSphere)
                     s_tr.waterMaterialSphere = CreateWaterPreviewSphere(*ctx.resources, 64);
-                const ThumbnailShaderFlavor flavor = DetectThumbnailShaderFlavor(preview.asset.shaderPath);
-                renderer::Mesh* previewMesh = (flavor == ThumbnailShaderFlavor::Skinned)
-                    ? s_tr.skinnedMaterialSphere
-                    : (flavor == ThumbnailShaderFlavor::Water ? s_tr.waterMaterialSphere : s_tr.materialSphere);
+                const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(preview.asset);
+                renderer::Mesh* previewMesh = nullptr;
+                if (flavor == ThumbnailShaderFlavor::Skinned)
+                    previewMesh = s_tr.skinnedMaterialSphere;
+                else if (flavor == ThumbnailShaderFlavor::Water)
+                    previewMesh = s_tr.waterMaterialSphere;
+                else if (flavor == ThumbnailShaderFlavor::Surface || flavor == ThumbnailShaderFlavor::Terrain)
+                    previewMesh = s_tr.materialSphere;
+
+                if (flavor == ThumbnailShaderFlavor::Unsupported && preview.previewTexture.IsValid()) {
+                    if (void* rawID = ctx.imguiRenderer->GetImTextureID(preview.previewTexture, *ctx.resources)) {
+                        DrawTextureThumbnail(rawID, preview.previewTextureWidth, preview.previewTextureHeight, origin, sz, hovered);
+                        return;
+                    }
+                }
+
                 if (previewMesh && RebuildMaterialThumbnailGpuData(preview, ctx)) {
                     preview.thumbnailRendered = RenderMeshThumbnail(
                         *ctx.renderer,
@@ -1461,8 +1497,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     if (sub.materialSlotIndex < preview.slotMaterials.size() &&
                         !preview.slotMaterials[sub.materialSlotIndex].failed) {
                         matPrev = &preview.slotMaterials[sub.materialSlotIndex];
-                        if (!RebuildMaterialThumbnailGpuData(*matPrev, ctx))
+                        if (DetectMaterialThumbnailFlavor(matPrev->asset) == ThumbnailShaderFlavor::Unsupported ||
+                            !RebuildMaterialThumbnailGpuData(*matPrev, ctx)) {
                             matPrev = nullptr;
+                        }
                     }
                     const bool ok = RenderMeshThumbnail(
                         *ctx.renderer, *ctx.resources,
@@ -1472,7 +1510,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         matPrev ? matPrev->shader : renderer::ResourceHandle<renderer::ShaderTag>{},
                         matPrev ? matPrev->materialCB : renderer::ResourceHandle<renderer::ConstantBufferTag>{},
                         matPrev ? &matPrev->textures : nullptr,
-                        matPrev ? DetectThumbnailShaderFlavor(matPrev->shaderPath) : ThumbnailShaderFlavor::Surface,
+                        matPrev ? DetectMaterialThumbnailFlavor(matPrev->asset) : ThumbnailShaderFlavor::Surface,
                         matPrev ? &matPrev->asset : nullptr,
                         firstDraw, combinedCenter, combinedRadius);
                     if (ok) { preview.thumbnailRendered = true; firstDraw = false; }

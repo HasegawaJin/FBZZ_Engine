@@ -79,13 +79,10 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
     SyncColliderPreview(go, col);
 }
 
-void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go)
+void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col);
-    char pathBuf[512];
-    std::snprintf(pathBuf, sizeof(pathBuf), "%s", col.meshPath.c_str());
-    if (ImGui::InputText("Mesh Path", pathBuf, sizeof(pathBuf)))
-        col.meshPath = NormalizeAssetPath(pathBuf);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
     if (ImGui::Button("Rebuild From Renderer")) {
@@ -111,13 +108,10 @@ void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject
     SyncColliderPreview(go, col);
 }
 
-void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go)
+void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col);
-    char pathBuf[512];
-    std::snprintf(pathBuf, sizeof(pathBuf), "%s", col.meshPath.c_str());
-    if (ImGui::InputText("Mesh Path", pathBuf, sizeof(pathBuf)))
-        col.meshPath = NormalizeAssetPath(pathBuf);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
     if (ImGui::Button("Rebuild From Renderer")) {
@@ -156,7 +150,7 @@ struct MeshColliderSectionOps {
     void (*Remove)(scene::GameObject&);
     MeshColliderValue (*Capture)(const scene::ColliderComponent&);
     void (*Apply)(scene::ColliderComponent&, const MeshColliderValue&);
-    void (*Draw)(scene::ColliderComponent&, scene::GameObject&);
+    void (*Draw)(scene::ColliderComponent&, scene::GameObject&, const std::string& projectRoot);
 };
 
 struct MeshColliderActiveEdit {
@@ -234,9 +228,9 @@ void ApplyMeshCollider(scene::ColliderComponent& component, const MeshColliderVa
     if (geometryChanged) collider.collider.reset();
 }
 
-void DrawMeshColliderSectionBody(scene::ColliderComponent& component, scene::GameObject& go)
+void DrawMeshColliderSectionBody(scene::ColliderComponent& component, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawMeshCollider(static_cast<scene::MeshColliderComponent&>(component), go);
+    DrawMeshCollider(static_cast<scene::MeshColliderComponent&>(component), go, projectRoot);
 }
 
 scene::ColliderComponent* GetConvexHullCollider(scene::GameObject& go)
@@ -285,11 +279,13 @@ void ApplyConvexHullCollider(
 
 void DrawConvexHullColliderSectionBody(
     scene::ColliderComponent& component,
-    scene::GameObject& go)
+    scene::GameObject& go,
+    const std::string& projectRoot)
 {
     DrawConvexHullCollider(
         static_cast<scene::ConvexHullColliderComponent&>(component),
-        go);
+        go,
+        projectRoot);
 }
 
 const MeshColliderSectionOps MESH_COLLIDER_OPS {
@@ -431,7 +427,7 @@ void DrawMeshColliderComponentSection(
         if (canRecordUndo)
             before = ops.Capture(*component);
         const ImGuiID activeBefore = ImGui::GetActiveID();
-        ops.Draw(*component, *go);
+        ops.Draw(*component, *go, ctx.projectRoot);
         const ImGuiID activeAfter = ImGui::GetActiveID();
 
         if (!canRecordUndo) {

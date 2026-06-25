@@ -107,9 +107,15 @@ bool AssetPathField(const char* label, std::string& path,
     }
 
     constexpr float kBtnW = 26.0f;
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    // InputText 幅を CalcItemWidth() ベースにすることで、
+    // ラベルが ImGui 標準のラベル列（右側 ~35% 幅）に収まるようにする。
+    // GetContentRegionAvail() を使うとラベルがウィンドウ外に押し出される。
+    const float inputW = std::max(40.0f,
+        ImGui::CalcItemWidth() - kBtnW - style.ItemSpacing.x);
     const float fieldLeft = ImGui::GetCursorScreenPos().x;  // ピッカー位置決め用
-    ImGui::SetNextItemWidth(
-        ImGui::GetContentRegionAvail().x - kBtnW - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::SetNextItemWidth(inputW);
 
     char buf[512];
     std::snprintf(buf, sizeof(buf), "%s", path.c_str());
@@ -127,9 +133,9 @@ bool AssetPathField(const char* label, std::string& path,
         ImGui::EndDragDropTarget();
     }
 
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        { 3.0f, ImGui::GetStyle().FramePadding.y });
+                        { 3.0f, style.FramePadding.y });
     const bool browse = ImGui::Button("...", { kBtnW, 0.0f });
     ImGui::PopStyleVar();
     if (ImGui::IsItemHovered())
@@ -144,7 +150,8 @@ bool AssetPathField(const char* label, std::string& path,
         ScanProjectFiles(projectRoot, s_picker.filterExts, s_picker.files);
     }
 
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    // ラベルを ImGui 標準ラベル列（右側）に配置。ウィンドウ幅でクリップされる。
+    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
     ImGui::TextUnformatted(label);
 
     ImGui::PopID();
