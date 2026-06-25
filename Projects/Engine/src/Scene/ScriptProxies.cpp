@@ -9,7 +9,9 @@
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/PostProcessAsset.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/Camera.hpp>
@@ -25,6 +27,7 @@
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -39,6 +42,7 @@
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
@@ -394,6 +398,62 @@ bool ScriptInputProxy::MouseButton(int button) const { return input::Input::Mous
 bool ScriptInputProxy::MouseButtonDown(int button) const { return input::Input::MouseButtonDown(button); }
 bool ScriptInputProxy::MouseButtonUp(int button) const { return input::Input::MouseButtonUp(button); }
 
+void ScriptCursorProxy::SetVisible(bool visible) const
+{
+    core::Cursor::SetVisible(visible);
+}
+
+bool ScriptCursorProxy::IsVisible() const
+{
+    return core::Cursor::IsVisible();
+}
+
+void ScriptCursorProxy::SetLockMode(CursorLockMode mode) const
+{
+    core::Cursor::SetLockMode(mode);
+}
+
+CursorLockMode ScriptCursorProxy::GetLockMode() const
+{
+    return core::Cursor::GetLockMode();
+}
+
+void ScriptCursorProxy::ResetForEditor() const
+{
+    core::Cursor::ResetForEditor();
+}
+
+void ScriptApplicationProxy::Quit() const
+{
+    core::Application::Get().Quit();
+}
+
+bool ScriptApplicationProxy::IsRunning() const
+{
+    return core::Application::Get().IsRunning();
+}
+
+uint32_t ScriptApplicationProxy::GetWindowWidth() const
+{
+    return core::Application::Get().GetWindowWidth();
+}
+
+uint32_t ScriptApplicationProxy::GetWindowHeight() const
+{
+    return core::Application::Get().GetWindowHeight();
+}
+
+float ScriptTimeProxy::DeltaTime() const { return fbzz::Time::deltaTime; }
+float ScriptTimeProxy::UnscaledDeltaTime() const { return fbzz::Time::unscaledDeltaTime; }
+float ScriptTimeProxy::Time() const { return fbzz::Time::time; }
+float ScriptTimeProxy::UnscaledTime() const { return fbzz::Time::unscaledTime; }
+uint64_t ScriptTimeProxy::FrameCount() const { return fbzz::Time::frameCount; }
+
+void ScriptTimeProxy::SetTimeScale(float scale) const { fbzz::Time::SetTimeScale(scale); }
+float ScriptTimeProxy::GetTimeScale() const { return fbzz::Time::GetTimeScale(); }
+void ScriptTimeProxy::SetTargetFps(int fps) const { fbzz::Time::SetTargetFps(fps); }
+int ScriptTimeProxy::GetTargetFps() const { return fbzz::Time::GetTargetFps(); }
+
 void ScriptPhysicsProxy::AddForce(const math::Vector3& v) const
 {
     if (auto* rb = SelfRigidBody(script)) rb->ApplyForce(v);
@@ -516,6 +576,79 @@ std::vector<GameObject*> ScriptPhysicsProxy::OverlapSphere(const math::Vector3& 
             result.push_back(go);
     }
     return result;
+}
+
+namespace {
+ColliderComponent* SelfAnyCollider(const Script* script)
+{
+    if (!script) return nullptr;
+    if (auto* c = script->GetComponent<BoxColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<AabbColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<SphereColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<CapsuleColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<MeshColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<ConvexHullColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<TerrainColliderComponent>()) return c;
+    return nullptr;
+}
+} // namespace
+
+void ScriptColliderProxy::SetEnabled(bool enabled) const
+{
+    if (auto* c = SelfAnyCollider(script)) c->SetEnabled(enabled);
+}
+
+void ScriptColliderProxy::SetTrigger(bool trigger) const
+{
+    if (auto* c = SelfAnyCollider(script)) c->SetTrigger(trigger);
+}
+
+void ScriptColliderProxy::SetCenter(const math::Vector3& center) const
+{
+    if (auto* c = SelfAnyCollider(script)) c->SetCenter(center);
+}
+
+void ScriptColliderProxy::SetBoxSize(const math::Vector3& size) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<BoxColliderComponent>()) c->SetSize(size);
+    if (auto* c = script->m_gameObject->GetComponent<AabbColliderComponent>()) c->SetSize(size);
+}
+
+void ScriptColliderProxy::SetSphereRadius(float radius) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<SphereColliderComponent>()) c->SetRadius(radius);
+}
+
+void ScriptColliderProxy::SetCapsule(float radius, float halfHeight) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<CapsuleColliderComponent>())
+        c->SetCapsule(radius, halfHeight);
+}
+
+void ScriptColliderProxy::SetMesh(std::string_view meshPath, int meshIndex) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<MeshColliderComponent>())
+        c->SetMesh(std::string(meshPath), meshIndex);
+    if (auto* c = script->m_gameObject->GetComponent<ConvexHullColliderComponent>())
+        c->SetMesh(std::string(meshPath), meshIndex);
+}
+
+void ScriptColliderProxy::SetFriction(float staticFriction, float dynamicFriction) const
+{
+    if (auto* c = SelfAnyCollider(script)) {
+        c->material.staticFriction = staticFriction;
+        c->material.dynamicFriction = dynamicFriction;
+    }
+}
+
+void ScriptColliderProxy::SetRestitution(float restitution) const
+{
+    if (auto* c = SelfAnyCollider(script))
+        c->material.restitution = restitution;
 }
 
 void ScriptAudioProxy::Play(std::string_view clipPath) const
@@ -1208,6 +1341,68 @@ void ScriptUIProxy::SetImageSpriteRect(float x, float y, float w, float h, float
         img->uvMin = uvMin;
         img->uvMax = uvMax;
     }
+}
+
+void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vector4& to, float duration) const
+{
+    PlayColor(from, to, duration, UIEasingType::Linear);
+}
+
+void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vector4& to,
+                                      float duration, UIEasingType easing, bool loop, bool pingPong) const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script))
+        anim->PlayColor(from, to, duration, easing, loop, pingPong);
+}
+
+void ScriptUIAnimatorProxy::PlayPosition(const math::Vector2& from, const math::Vector2& to, float duration) const
+{
+    PlayPosition(from, to, duration, UIEasingType::Linear);
+}
+
+void ScriptUIAnimatorProxy::PlayPosition(const math::Vector2& from, const math::Vector2& to,
+                                         float duration, UIEasingType easing, bool loop, bool pingPong) const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script))
+        anim->PlayPosition(from, to, duration, easing, loop, pingPong);
+}
+
+void ScriptUIAnimatorProxy::PlayScale(const math::Vector2& from, const math::Vector2& to, float duration) const
+{
+    PlayScale(from, to, duration, UIEasingType::Linear);
+}
+
+void ScriptUIAnimatorProxy::PlayScale(const math::Vector2& from, const math::Vector2& to,
+                                      float duration, UIEasingType easing, bool loop, bool pingPong) const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script))
+        anim->PlayScale(from, to, duration, easing, loop, pingPong);
+}
+
+void ScriptUIAnimatorProxy::StopColor() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopColor();
+}
+
+void ScriptUIAnimatorProxy::StopPosition() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopPosition();
+}
+
+void ScriptUIAnimatorProxy::StopScale() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopScale();
+}
+
+void ScriptUIAnimatorProxy::StopAll() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopAll();
+}
+
+bool ScriptUIAnimatorProxy::IsPlaying() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) return anim->IsPlaying();
+    return false;
 }
 
 GameObject* ScriptSceneProxy::Find(std::string_view name) const
@@ -2085,6 +2280,116 @@ bool ScriptWaterProxy::IsEnabled() const
 }
 
 // ---------------------------------------------------------------------------
+namespace {
+TerrainComponent* SelfTerrain(const Script* script)
+{
+    return SelfComponent<TerrainComponent>(script);
+}
+
+math::Vector3 WorldToTerrainLocal(const GameObject* gameObject, const math::Vector3& worldPos)
+{
+    if (!gameObject) return worldPos;
+    const auto& t = gameObject->transform;
+    const math::Vector3 delta = worldPos - t.worldPosition;
+    const math::Vector3 local = t.worldRotation.Inverse() * delta;
+    return {
+        t.worldScale.x > 0.0f ? local.x / t.worldScale.x : local.x,
+        t.worldScale.y > 0.0f ? local.y / t.worldScale.y : local.y,
+        t.worldScale.z > 0.0f ? local.z / t.worldScale.z : local.z
+    };
+}
+} // namespace
+
+float ScriptTerrainProxy::GetHeightLocal(float localX, float localZ) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->GetHeightAt(localX, localZ) : 0.0f;
+}
+
+math::Vector3 ScriptTerrainProxy::GetNormalLocal(float localX, float localZ) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->GetNormalAt(localX, localZ) : math::Vector3::UP;
+}
+
+float ScriptTerrainProxy::GetHeightWorld(const math::Vector3& worldPos) const
+{
+    auto* terrain = SelfTerrain(script);
+    if (!terrain || !script || !script->m_gameObject) return worldPos.y;
+    const math::Vector3 local = WorldToTerrainLocal(script->m_gameObject, worldPos);
+    return script->m_gameObject->transform.worldPosition.y + terrain->GetHeightAt(local.x, local.z);
+}
+
+math::Vector3 ScriptTerrainProxy::GetNormalWorld(const math::Vector3& worldPos) const
+{
+    auto* terrain = SelfTerrain(script);
+    if (!terrain) return math::Vector3::UP;
+    const math::Vector3 local = WorldToTerrainLocal(script ? script->m_gameObject : nullptr, worldPos);
+    return terrain->GetNormalAt(local.x, local.z);
+}
+
+bool ScriptTerrainProxy::SetHeightAtGrid(int x, int z, float worldHeight) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain && terrain->SetHeightAtGrid(x, z, worldHeight);
+}
+
+bool ScriptTerrainProxy::PaintLayerAtGrid(int x, int z, int layer, float weight) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain && terrain->PaintLayerAtGrid(x, z, layer, weight);
+}
+
+bool ScriptTerrainProxy::SetLayerMaterial(int layer, std::string_view materialPath) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain && terrain->SetLayerMaterial(layer, std::string(materialPath));
+}
+
+void ScriptTerrainProxy::RequestRebuild() const
+{
+    if (auto* terrain = SelfTerrain(script)) {
+        terrain->RequestHeightRebuild();
+        terrain->RequestSplatRebuild();
+        terrain->RequestMaterialRebuild();
+    }
+}
+
+void ScriptFoliageProxy::SetEnabled(bool enabled) const
+{
+    if (auto* foliage = SelfComponent<FoliageComponent>(script)) foliage->SetEnabled(enabled);
+}
+
+void ScriptFoliageProxy::RequestBake(bool rebuildChildren) const
+{
+    if (auto* foliage = SelfComponent<FoliageComponent>(script)) foliage->RequestBake(rebuildChildren);
+}
+
+bool ScriptFoliageProxy::AddStamp(size_t speciesIndex, const math::Vector3& localPosition,
+                                  float rotationY, float scale) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->AddStamp(speciesIndex, localPosition, rotationY, scale);
+}
+
+bool ScriptFoliageProxy::ClearStamps(size_t speciesIndex) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->ClearStamps(speciesIndex);
+}
+
+bool ScriptFoliageProxy::SetDensity(size_t speciesIndex, float densityPer100SquareMeters) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->SetDensity(speciesIndex, densityPer100SquareMeters);
+}
+
+bool ScriptFoliageProxy::SetDrawDistance(size_t speciesIndex, float distance) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->SetDrawDistance(speciesIndex, distance);
+}
+
 // ScriptEnvironmentProxy
 // ---------------------------------------------------------------------------
 namespace {
