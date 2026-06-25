@@ -476,7 +476,7 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     //      エディタが Development 構成で VS プロジェクトを生成させるために明示的に上書きする。
     //      スペースを含むフラグは引数全体を "" で括ることで CreateProcessW に正しく渡せる。
     cmd += L" -DCMAKE_CONFIGURATION_TYPES=Debug;Release;Development";
-    cmd += L" \"-DCMAKE_CXX_FLAGS_DEVELOPMENT=/Zi /O2 /Ob1\"";
+    cmd += L" \"-DCMAKE_CXX_FLAGS_DEVELOPMENT=/Zi /O2 /Ob1 /FS\"";
     cmd += L" \"-DCMAKE_EXE_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
     cmd += L" \"-DCMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
     std::vector<wchar_t> mutableCmd(cmd.begin(), cmd.end());

@@ -176,7 +176,7 @@ bool MigrationManager::PatchCMakeLists(const std::filesystem::path& projectRoot,
         "#      これがないと VS プロジェクトに Development が生成されず、\n"
         "#      エディタが --config Development でビルドしようとしたときに MSB8013 が発生する。\n"
         "set(CMAKE_CONFIGURATION_TYPES \"Debug;Release;Development\" CACHE STRING \"Build configurations\" FORCE)\n"
-        "set(CMAKE_CXX_FLAGS_DEVELOPMENT           \"/Zi /O2 /Ob1\"                CACHE STRING \"Development CXX flags\"        FORCE)\n"
+        "set(CMAKE_CXX_FLAGS_DEVELOPMENT           \"/Zi /O2 /Ob1 /FS\"            CACHE STRING \"Development CXX flags\"        FORCE)\n"
         "set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    \"/DEBUG:FULL /INCREMENTAL:NO\" CACHE STRING \"Development EXE linker flags\" FORCE)\n"
         "set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT \"/DEBUG:FULL /INCREMENTAL:NO\" CACHE STRING \"Development DLL linker flags\" FORCE)\n";
 

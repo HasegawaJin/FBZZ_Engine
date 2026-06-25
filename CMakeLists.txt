@@ -11,7 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_GENERATOR MATCHES "Visual Studio")
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
 endif()
-set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1"                CACHE STRING "Development CXX flags"        FORCE)
+set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1 /FS"            CACHE STRING "Development CXX flags"        FORCE)
 set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development EXE linker flags" FORCE)
 set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development DLL linker flags" FORCE)
 
@@ -46,7 +46,7 @@ configure_file(
 
 # MSVC source files are UTF-8.
 if(MSVC)
-    add_compile_options(/utf-8 /MP)
+    add_compile_options(/utf-8 /MP /FS)
 endif()
 
 # Add subdirectories in dependency order.
