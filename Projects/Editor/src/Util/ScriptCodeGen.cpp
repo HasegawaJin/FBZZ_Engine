@@ -335,21 +335,24 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
     const bool hasScriptList = util::FileSystem::Exists(
         util::FileSystem::PathFromUtf8(scriptListPath));
 
-    // WHY: ScriptList.inl へのエントリ挿入は 1 回だけ行う。DLL/EXE の両ブロックが実行されても
-    //      2 重挿入が起きないよう追跡フラグを使う。
-    bool scriptListEntryAdded = false;
+    // WHY: ScriptList.inl の登録と DLL/EXE 側 include は独立して壊れ得る。
+    //      ScriptList に名前があるだけで include 追記をスキップすると、
+    //      ファクトリ展開時に型が見えず Script DLL のビルドが失敗する。
+    bool scriptListHasEntry = hasScriptList && AlreadyRegistered(scriptListPath, className);
 
     // DLL 側 include 挿入 (形式: #define Xxx_IMPL + #include "Scripts/Xxx.hpp")
     if (!dllCppPath.empty()) {
-        const std::string checkPath = hasScriptList ? scriptListPath : dllCppPath;
-        if (!AlreadyRegistered(checkPath, className)) {
+        const bool dllAlreadyRegistered = AlreadyRegistered(dllCppPath, className);
+        if (!dllAlreadyRegistered)
             InsertScriptIncludeDll(dllCppPath, className, relInclude);
-            if (hasScriptList) {
+
+        if (hasScriptList) {
+            if (!scriptListHasEntry) {
                 InsertScriptListEntry(scriptListPath, className);
-                scriptListEntryAdded = true;
-            } else {
-                InsertScriptEntry(dllCppPath, className);  // 旧形式フォールバック
+                scriptListHasEntry = true;
             }
+        } else if (!dllAlreadyRegistered) {
+            InsertScriptEntry(dllCppPath, className);  // 旧形式フォールバック
         }
     }
 
@@ -357,12 +360,17 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
     // WHY: SandboxStandalone は DLL をロードせず EXE 内の静的登録でスクリプトを解決する。
     //      _IMPL なしでフルインクルードするため DLL 側と形式が異なり、include のみ個別管理する。
     //      重複チェックは staticCppPath 自体で行う (ScriptList.inl は DLL ブロックで更新済みのため)。
-    if (!staticCppPath.empty() && !AlreadyRegistered(staticCppPath, className)) {
-        InsertScriptInclude(staticCppPath, relInclude);
+    if (!staticCppPath.empty()) {
+        const bool staticAlreadyRegistered = AlreadyRegistered(staticCppPath, className);
+        if (!staticAlreadyRegistered)
+            InsertScriptInclude(staticCppPath, relInclude);
+
         if (hasScriptList) {
-            if (!scriptListEntryAdded)  // DLL ブロックが実行されなかった場合のみ追加
+            if (!scriptListHasEntry) {
                 InsertScriptListEntry(scriptListPath, className);
-        } else {
+                scriptListHasEntry = true;
+            }
+        } else if (!staticAlreadyRegistered) {
             InsertScriptStaticEntry(staticCppPath, className);  // 旧形式フォールバック
         }
     }
