@@ -1,0 +1,546 @@
+clipSources = []
+defaultStateName = 'Locomotion'
+version = 4
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'JumpUp'
+transitionDuration = 0.03999999910593033
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Jump'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'FallIdle'
+transitionDuration = 0.03999999910593033
+
+    [[anyStateTransitions.conditions]]
+    op = 5
+    paramName = 'IsGrounded'
+    threshold = 0.0
+
+    [[anyStateTransitions.conditions]]
+    op = 1
+    paramName = 'VerticalSpeed'
+    threshold = -1.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Slash_01'
+transitionDuration = 0.1599999964237213
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Attack01'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Slash_02'
+transitionDuration = 0.1599999964237213
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Attack02'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Slash_03'
+transitionDuration = 0.1599999964237213
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Attack03'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Block'
+transitionDuration = 0.10000000149011612
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Block'
+    threshold = 0.0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Speed'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'VerticalSpeed'
+type = 0
+
+[[parameters]]
+boolValue = true
+floatValue = 0.0
+intValue = 0
+name = 'IsGrounded'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Jump'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Attack01'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Attack02'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Attack03'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Crouch'
+type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'CrouchAttack'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Block'
+type = 2
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = true
+mode = 1
+name = 'Locomotion'
+sourcePath = ''
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.18000000715255737
+    paramName = 'Speed'
+    syncNormalizedTime = true
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/PlayerIdle/anims/PlayerIdle@mixamo.com.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/PlayerWalk/anims/PlayerWalk@mixamo.com.anim'
+        speed = 1.0
+        threshold = 2.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/PlayerRun/anims/PlayerRun@mixamo.com.anim'
+        speed = 1.0
+        threshold = 7.199999809265137
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'CrouchIdle'
+    transitionDuration = 0.11999999731779099
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Crouch'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 0.0
+loop = false
+mode = 0
+name = 'JumpUp'
+sourcePath = 'Assets/Models/PlayerJumpUp/anims/PlayerJumpUp@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'FallIdle'
+    transitionDuration = 0.20000000298023224
+
+        [[states.transitions.conditions]]
+        op = 1
+        paramName = 'VerticalSpeed'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 0.0
+loop = true
+mode = 0
+name = 'FallIdle'
+sourcePath = 'Assets/Models/PlayerFallIdle/anims/PlayerFallIdle@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Land'
+    transitionDuration = 0.019999999552965164
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'IsGrounded'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Land'
+sourcePath = 'Assets/Models/PlayerLand/anims/PlayerLand@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.7200000286102295
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.2800000011920929
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'CrouchIdle'
+sourcePath = 'Assets/Models/PlayerCrouchIdle/anims/PlayerCrouchIdle@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'CrouchSlash'
+    transitionDuration = 0.07999999821186066
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'CrouchAttack'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'Crouch'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'CrouchSlash'
+sourcePath = 'Assets/Models/PlayerCrounchSlash/anims/PlayerCrounchSlash@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 0.8999999761581421
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'CrouchIdle'
+    transitionDuration = 0.11999999731779099
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Crouch'
+        threshold = 0.0
+
+    [[states.transitions]]
+    exitTime = 0.8999999761581421
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'Crouch'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Slash_01'
+sourcePath = 'Assets/Models/PlayerSlash_01/anims/PlayerSlash_01@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.8999999761581421
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Slash_02'
+sourcePath = 'Assets/Models/PlayerSlash_02/anims/PlayerSlash_02@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.8999999761581421
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+
+[[states]]
+clipIndex = -1
+clipName = 'mixamo.com'
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Slash_03'
+sourcePath = 'Assets/Models/PlayerSlash_03/anims/PlayerSlash_03@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.8999999761581421
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = true
+mode = 1
+name = 'Block'
+sourcePath = ''
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.11999999731779099
+    paramName = 'Speed'
+    syncNormalizedTime = true
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/PlayerBlockIdle/anims/PlayerBlockIdle@mixamo.com.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'mixamo.com'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/PlayerStrafe/anims/PlayerStrafe@mixamo.com.anim'
+        speed = 1.0
+        threshold = 4.0
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.10000000149011612
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'Block'
+        threshold = 0.0
