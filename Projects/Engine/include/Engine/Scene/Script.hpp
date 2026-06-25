@@ -218,7 +218,11 @@ protected:
 private:
     friend struct ScriptTransformProxy;
     friend struct ScriptInputProxy;
+    friend struct ScriptCursorProxy;
+    friend struct ScriptApplicationProxy;
+    friend struct ScriptTimeProxy;
     friend struct ScriptPhysicsProxy;
+    friend struct ScriptColliderProxy;
     friend struct ScriptAudioProxy;
     friend struct ScriptLightProxy;
     friend struct ScriptCameraProxy;
@@ -230,11 +234,15 @@ private:
     friend struct ScriptAnimatorProxy;
     friend struct ScriptDebugProxy;
     friend struct ScriptPostProcessProxy;
+    friend struct ScriptUIProxy;
+    friend struct ScriptUIAnimatorProxy;
     friend struct ScriptNavigationProxy;
     friend struct ScriptCharacterProxy;
     friend struct ScriptMeshProxy;
     friend struct ScriptIKProxy;
     friend struct ScriptWaterProxy;
+    friend struct ScriptTerrainProxy;
+    friend struct ScriptFoliageProxy;
     friend struct ScriptEnvironmentProxy;
     friend struct ScriptDecalProxy;
     friend struct ScriptVolumeProxy;

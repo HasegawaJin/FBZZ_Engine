@@ -7,7 +7,11 @@
 
 #include <Engine/Scene/ScriptProxy/ScriptTransformProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptInputProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptCursorProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptApplicationProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptTimeProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptPhysicsProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptColliderProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptLightProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptCameraProxy.hpp>
@@ -22,11 +26,14 @@
 #include <Engine/Scene/ScriptProxy/ScriptPostProcessProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMemoryProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptUIProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptUIAnimatorProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptNavigationProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptCharacterProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMeshProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptIKProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptWaterProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptTerrainProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptFoliageProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptEnvironmentProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptDecalProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptVolumeProxy.hpp>
