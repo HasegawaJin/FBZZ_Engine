@@ -12,14 +12,21 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Dev
 # コア DLL を Tests/ へ一括コピーするカスタムターゲット。
 # 各テスト exe が個別にコピーすると多重書き込みになるため、依存ターゲットで 1 回にまとめる。
 add_custom_target(copy_dlls_to_tests ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:fbzz_math>    "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests/"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:fbzz_physics> "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests/"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:fbzz_engine>  "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests/"
-    DEPENDS fbzz_math fbzz_physics fbzz_engine
-    COMMENT "Copying core DLLs to Tests/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:imgui>        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests/"
+    DEPENDS fbzz_math fbzz_physics fbzz_engine imgui
+    COMMENT "Copying runtime DLLs to Tests/"
 )
 
 # ── Physics テスト ──────────────────────────────────────────────────────────────
