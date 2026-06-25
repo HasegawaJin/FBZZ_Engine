@@ -4,6 +4,8 @@
 // IRenderer の非公開生成 API を呼び、ResourceHandle と実体を対応付ける。
 // 上位システムが shared_ptr を直接保持しないための境界。
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 #include <cstdint>
 #include <Engine/Renderer/IBuffer.hpp>
 #include <Engine/Renderer/IConstantBuffer.hpp>
@@ -119,7 +121,16 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
-    auto texture = m_renderer.CreateNativeTexture(key);
+    // .tex descriptor と従来の生画像パスを同じ公開 API で扱う。
+    // WHY: .mat / Scene は Assets/ 起点の相対パスを保存するが、DX11Texture は実ファイルパスを要求する。
+    //      ResourceManager が AssetManager と同じ解決規則を通すことで、呼び出し側ごとの cwd 依存をなくす。
+    std::string sourcePath;
+    const std::string resolvedPath = asset::AssetManager::ResolveAssetPath(key);
+    if (!asset::TexDescSerializer::ResolveSourcePath(resolvedPath, sourcePath)) {
+        FBZZ_LOG_ERROR("Texture path resolution failed: %s", key.c_str());
+        return ResourceHandle<TextureTag>::Null();
+    }
+    auto texture = m_renderer.CreateNativeTexture(sourcePath);
     if (!texture) {
         FBZZ_LOG_ERROR("Texture load failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
@@ -137,7 +148,13 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
     if (it == m_textureCache.end())
         return LoadTexture(path);
 
-    auto newTexture = m_renderer.CreateNativeTexture(key);
+    std::string sourcePath;
+    const std::string resolvedPath = asset::AssetManager::ResolveAssetPath(key);
+    if (!asset::TexDescSerializer::ResolveSourcePath(resolvedPath, sourcePath)) {
+        FBZZ_LOG_ERROR("ReloadTexture path resolution failed: %s", key.c_str());
+        return it->second;
+    }
+    auto newTexture = m_renderer.CreateNativeTexture(sourcePath);
     if (!newTexture) {
         FBZZ_LOG_ERROR("ReloadTexture failed: %s", key.c_str());
         return it->second;

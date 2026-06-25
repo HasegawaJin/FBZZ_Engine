@@ -8,7 +8,8 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
-#include <filesystem>
+#include <cctype>
+#include <utility>
 
 namespace fbzz::asset {
 
@@ -16,7 +17,6 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
     const std::string&         absPath,
     renderer::ResourceManager* resources)
 {
-    namespace fs = std::filesystem;
     const std::string ext = [&] {
         std::string e = util::FileSystem::GetExtension(absPath);
         for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -32,12 +32,10 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
             FBZZ_LOG_WARN("ImageImporter: .tex parse failed [%s]", absPath.c_str());
             return nullptr;
         }
-        // sourcePath を絶対パスに解決 (.tex ファイルからの相対パス)
-        if (!asset->sourcePath.empty()) {
-            const fs::path dir = util::FileSystem::PathFromUtf8(absPath).parent_path();
-            asset->sourcePath = util::FileSystem::PathToUtf8(
-                dir / util::FileSystem::PathFromUtf8(asset->sourcePath));
-        }
+        // sourcePath を .tex ファイル基準で解決する。
+        std::string resolvedSourcePath;
+        if (!TexDescSerializer::ResolveSourcePath(absPath, resolvedSourcePath)) return nullptr;
+        asset->sourcePath = std::move(resolvedSourcePath);
     } else {
         // 生画像: パスからタイプを推定してデフォルト設定を適用
         asset->sourcePath = absPath;
@@ -47,7 +45,9 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
 
     // GPU テクスチャロード
     if (resources && !asset->sourcePath.empty()) {
-        asset->gpuHandle = resources->LoadTexture(asset->sourcePath);
+        // .tex 自身をキャッシュキーにすることで descriptor の明示リロードを可能にする。
+        const std::string& gpuLoadPath = ext == ".tex" ? absPath : asset->sourcePath;
+        asset->gpuHandle = resources->LoadTexture(gpuLoadPath);
         if (!asset->gpuHandle.IsValid())
             FBZZ_LOG_WARN("ImageImporter: GPU load failed [%s]", asset->sourcePath.c_str());
     }

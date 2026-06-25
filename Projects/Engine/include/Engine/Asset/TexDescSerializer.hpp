@@ -11,6 +11,8 @@
 #pragma once
 #include <Engine/Asset/IAssetSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
+#include <string>
+#include <string_view>
 
 namespace fbzz::asset {
 
@@ -19,6 +21,11 @@ public:
     [[nodiscard]] bool Save(const TextureAsset& asset, const std::string& absPath) const override;
     [[nodiscard]] bool Load(const std::string& absPath, TextureAsset& outAsset) const override;
     std::string_view Extension() const override { return ".tex"; }
+
+    // .tex は source を descriptor 基準で解決し、生画像パスは変更せず返す。
+    // WHY: Scene / Material / Terrain の全テクスチャ参照を両形式へ統一対応させる。
+    [[nodiscard]] static bool ResolveSourcePath(
+        std::string_view texturePath, std::string& outSourcePath);
 };
 
 } // namespace fbzz::asset

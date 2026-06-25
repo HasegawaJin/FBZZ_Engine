@@ -75,6 +75,8 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     // ── Assimp 第 1 パス: スキン/アニメーション用 ─────────────────────────
     Assimp::Importer importer;
     importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+    // FBX 内包テクスチャを aiScene::mTextures へ展開し、MaterialExporter で PNG 化する。
+    importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_READ_TEXTURES, true);
     const aiScene* scene = importer.ReadFile(fbxPath, kBaseFlags);
     if (!scene || !scene->mRootNode) return false;
 
@@ -85,6 +87,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     const aiScene* meshScene = scene;
     if (!hasSkin) {
         staticImporter.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+        staticImporter.SetPropertyBool(AI_CONFIG_IMPORT_FBX_READ_TEXTURES, true);
         meshScene = staticImporter.ReadFile(fbxPath, kStaticFlags);
         if (!meshScene || !meshScene->mRootNode) return false;
     }

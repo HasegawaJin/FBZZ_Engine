@@ -8,9 +8,17 @@
 #include <wincodec.h>
 #include <assimp/material.h>
 #include <assimp/scene.h>
+// FBX 埋め込み画像のメモリデコード実装をこの翻訳単位だけに閉じ込める。
+// WHY: STB_IMAGE_STATIC により HdriLoader.cpp の実装とシンボル衝突しない。
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+#include <stb_image.h>
 #include <toml++/toml.hpp>
 #include <filesystem>
+#include <cctype>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -33,40 +41,95 @@ constexpr TexSlot kTexSlots[] = {
     { aiTextureType_EMISSIVE,          "emissive"  },
 };
 
-// 圧縮済み埋め込みテクスチャ (PNG/JPEG バイト列) をそのままファイルに書き出す。
-// 成功時はファイル名 (basename) を返す。
-std::string DumpEmbedded(const aiScene* scene, int idx, const std::string& texturesDir)
+// 圧縮済み埋め込みテクスチャをデコードする。
+// WHY: 同梱 DirectXTex.lib は WIC/TGA/HDR のメモリローダーを含まないため、
+//      DDS 以外は内部リンケージの stb_image 実装を利用する。
+bool DecodeEmbeddedTexture(const aiTexture* texture, DirectX::ScratchImage& decoded)
 {
-    const aiTexture* tex = scene->mTextures[static_cast<uint32_t>(idx)];
+    std::string format(texture->achFormatHint, strnlen(texture->achFormatHint, 4));
+    for (char& c : format)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-    std::string filename = util::FileSystem::PathToUtf8(
-        util::FileSystem::PathFromUtf8(tex->mFilename.C_Str()).filename());
-    if (filename.empty()) {
-        std::string fmt(tex->achFormatHint, strnlen(tex->achFormatHint, 4));
-        filename = "embedded_" + std::to_string(idx) + (fmt.empty() ? ".png" : ("." + fmt));
+    const auto* bytes = static_cast<const uint8_t*>(static_cast<const void*>(texture->pcData));
+    const size_t byteCount = static_cast<size_t>(texture->mWidth);
+    if (format == "dds") {
+        return SUCCEEDED(DirectX::LoadFromDDSMemory(
+            bytes, byteCount, DirectX::DDS_FLAGS_NONE, nullptr, decoded));
     }
 
-    const std::filesystem::path outPath = util::FileSystem::PathFromUtf8(texturesDir) / filename;
-    return util::FileSystem::WriteBinary(outPath, tex->pcData, static_cast<size_t>(tex->mWidth))
-        ? filename
-        : std::string{};
+    if (byteCount > static_cast<size_t>(std::numeric_limits<int>::max())) return false;
+
+    int width = 0;
+    int height = 0;
+    int sourceChannels = 0;
+    stbi_uc* pixels = stbi_load_from_memory(
+        bytes, static_cast<int>(byteCount), &width, &height, &sourceChannels, STBI_rgb_alpha);
+    if (!pixels || width <= 0 || height <= 0) {
+        stbi_image_free(pixels);
+        return false;
+    }
+
+    const HRESULT initResult = decoded.Initialize2D(
+        DXGI_FORMAT_R8G8B8A8_UNORM,
+        static_cast<size_t>(width), static_cast<size_t>(height), 1, 1);
+    if (FAILED(initResult)) {
+        stbi_image_free(pixels);
+        return false;
+    }
+
+    std::memcpy(decoded.GetPixels(), pixels,
+                static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+    stbi_image_free(pixels);
+    return true;
 }
 
-// 非圧縮 BGRA8888 埋め込みテクスチャを DirectXTex WIC で PNG として保存する。
-std::string DumpEmbeddedRaw(const aiScene* scene, int idx, const std::string& texturesDir)
+// FBX 埋め込みテクスチャを必ず PNG として保存する。
+// WHAT: mHeight == 0 は圧縮バイト列、それ以外は aiTexel(BGRA8888) 配列として扱う。
+std::string DumpEmbeddedAsPng(const aiTexture* texture,
+                              int textureIndex,
+                              const std::string& texturesDir)
 {
-    const aiTexture* tex = scene->mTextures[static_cast<uint32_t>(idx)];
-    const std::string filename = "embedded_" + std::to_string(idx) + ".png";
+    // 元名を残すことで normal/roughness 等の型推定を維持し、index で同名衝突を避ける。
+    std::string fileStem = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(texture->mFilename.C_Str()).stem());
+    if (fileStem.empty()) fileStem = "embedded";
+    for (char& c : fileStem) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc) && c != '_' && c != '-') c = '_';
+    }
+    const std::string filename =
+        fileStem + "_" + std::to_string(textureIndex) + ".png";
     const std::filesystem::path outPath = util::FileSystem::PathFromUtf8(texturesDir) / filename;
+    if (util::FileSystem::Exists(outPath)) return filename;
 
-    DirectX::ScratchImage img;
-    if (FAILED(img.Initialize2D(DXGI_FORMAT_B8G8R8A8_UNORM,
-                                 tex->mWidth, tex->mHeight, 1, 1)))
-        return {};
-    std::memcpy(img.GetPixels(), tex->pcData,
-                static_cast<size_t>(tex->mWidth) * tex->mHeight * 4);
+    DirectX::ScratchImage source;
+    if (texture->mHeight == 0) {
+        if (!DecodeEmbeddedTexture(texture, source)) return {};
+    } else {
+        if (FAILED(source.Initialize2D(DXGI_FORMAT_B8G8R8A8_UNORM,
+                                       texture->mWidth, texture->mHeight, 1, 1)))
+            return {};
+        std::memcpy(source.GetPixels(), texture->pcData,
+                    static_cast<size_t>(texture->mWidth) * texture->mHeight * sizeof(aiTexel));
+    }
 
-    if (FAILED(DirectX::SaveToWICFile(*img.GetImages(), DirectX::WIC_FLAGS_NONE,
+    const DirectX::Image* image = source.GetImage(0, 0, 0);
+    if (!image) return {};
+
+    DirectX::ScratchImage rgba;
+    if (DirectX::IsCompressed(image->format)) {
+        if (FAILED(DirectX::Decompress(*image, DXGI_FORMAT_R8G8B8A8_UNORM, rgba)))
+            return {};
+        image = rgba.GetImage(0, 0, 0);
+    } else if (image->format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+               image->format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+        if (FAILED(DirectX::Convert(*image, DXGI_FORMAT_R8G8B8A8_UNORM,
+                                    DirectX::TEX_FILTER_DEFAULT, 0.0f, rgba)))
+            return {};
+        image = rgba.GetImage(0, 0, 0);
+    }
+
+    if (!image || FAILED(DirectX::SaveToWICFile(*image, DirectX::WIC_FLAGS_NONE,
                                        GUID_ContainerFormatPng, outPath.c_str())))
         return {};
     return filename;
@@ -80,14 +143,10 @@ std::string ResolveTexture(const aiScene* scene,
 {
     util::FileSystem::EnsureDirectory(util::FileSystem::PathFromUtf8(texturesDir));
 
-    if (!rawPath.empty() && rawPath[0] == '*') {
-        const int idx = std::stoi(rawPath.substr(1));
-        if (idx < 0 || static_cast<uint32_t>(idx) >= scene->mNumTextures) return {};
-        const aiTexture* tex = scene->mTextures[static_cast<uint32_t>(idx)];
-        return (tex->mHeight == 0)
-            ? DumpEmbedded(scene, idx, texturesDir)
-            : DumpEmbeddedRaw(scene, idx, texturesDir);
-    }
+    // Assimp は埋め込みを "*0" または元ファイル名で返すため、両形式を公式 API で解決する。
+    const auto [embedded, embeddedIndex] = scene->GetEmbeddedTextureAndIndex(rawPath.c_str());
+    if (embedded && embeddedIndex >= 0)
+        return DumpEmbeddedAsPng(embedded, embeddedIndex, texturesDir);
 
     // 外部ファイル → texturesDir にコピー
     fs::path srcPath = util::FileSystem::PathFromUtf8(rawPath);
@@ -135,8 +194,18 @@ bool MaterialExporter::Export(const aiMaterial* material,
                                   const std::string& texturesDir,
                                   const std::string& outputPath,
                                   bool skinned,
-                                  bool flipGreenChannel)
+                                  bool flipGreenChannel,
+                                  bool useTexDescriptors)
 {
+    // マテリアルの既知スロットに現れない画像も含め、FBX 内包テクスチャを全て PNG 化する。
+    // WHY: Assimp が UNKNOWN/HEIGHT 等へ分類した画像も import package から欠落させない。
+    util::FileSystem::EnsureDirectory(util::FileSystem::PathFromUtf8(texturesDir));
+    for (uint32_t textureIndex = 0; textureIndex < scene->mNumTextures; ++textureIndex) {
+        if (DumpEmbeddedAsPng(scene->mTextures[textureIndex],
+                              static_cast<int>(textureIndex), texturesDir).empty())
+            return false;
+    }
+
     toml::table tbl;
     tbl.insert("version", int64_t{ 1 });
     tbl.insert("shader", skinned
@@ -175,7 +244,13 @@ bool MaterialExporter::Export(const aiMaterial* material,
                         util::FileSystem::PathFromUtf8(texturesDir) / filename;
                     FlipNormalMapGreen(fullPath);
                 }
-                texTbl.insert(slot.key, filename);
+                std::string textureReference = filename;
+                if (useTexDescriptors) {
+                    fs::path descriptorPath = util::FileSystem::PathFromUtf8(filename);
+                    descriptorPath.replace_extension(".tex");
+                    textureReference = util::FileSystem::PathToUtf8(descriptorPath);
+                }
+                texTbl.insert(slot.key, textureReference);
             }
         }
     }
