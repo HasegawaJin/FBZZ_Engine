@@ -69,6 +69,11 @@ struct TrailComponent {
     // WHY: ScriptTrailProxy::SetEnabled(false, false) で「記録だけ止めてフェードアウト」を選べるようにする。
     bool clearOnDisable = true;
 
+    // .mat アセットへの参照。albedo テクスチャを .mat から解決する。
+    // WHY: テクスチャを .mat に集約することで複数 Trail 間での共有と Editor ピッカーによるアセット管理を可能にする。
+    //      空文字のとき texturePath へフォールバックするため既存シーンデータは無変更で動く。
+    std::string materialPath;
+    // texturePath — deprecated。materialPath が空のときのフォールバック。
     std::string texturePath;
     TrailUVMode uvMode = TrailUVMode::Stretch;
     float uvScrollSpeed = 0.0f;
@@ -87,6 +92,7 @@ struct TrailComponent {
     renderer::ResourceHandle<renderer::TextureTag> texture;
     renderer::ResourceHandle<renderer::ConstantBufferTag> trailCB;
     std::string loadedTexturePath;
+    std::string loadedMaterialPath; // materialPath の変更検出用。シーン保存対象外。
     int allocatedMaxPoints = 0;
     int allocatedSmoothSubdivisions = 0;
 
@@ -119,6 +125,7 @@ struct TrailComponent {
         r.Field("attachBone", attachBone);
         r.Field("attachOffset", attachOffset);
         r.Field("clearOnDisable", clearOnDisable);
+        r.Field("materialPath", materialPath);
         r.Field("texturePath", texturePath);
         int uvModeValue = static_cast<int>(uvMode);
         r.Field("uvMode", uvModeValue);
