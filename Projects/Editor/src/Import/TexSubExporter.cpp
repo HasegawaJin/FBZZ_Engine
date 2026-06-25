@@ -78,7 +78,7 @@ bool TexSubExporter::Export(FbxImportContext& ctx)
         asset.settings   = settings;
 
         TexDescSerializer ser;
-        ser.Save(asset, texDescPath);
+        if (!ser.Save(asset, texDescPath)) return false;
     }
 
     return true;

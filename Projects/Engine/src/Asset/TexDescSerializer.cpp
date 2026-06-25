@@ -5,6 +5,8 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <sstream>
 
@@ -199,6 +201,51 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     if (auto v = (*tex)["alpha_mode"].value<std::string>())        s.alphaMode         = StrToAlphaMode(*v);
     if (auto v = (*tex)["alpha_dither"].value<bool>())             s.alphaDither       = *v;
 
+    return true;
+}
+
+bool TexDescSerializer::ResolveSourcePath(
+    std::string_view texturePath, std::string& outSourcePath)
+{
+    outSourcePath.clear();
+    if (texturePath.empty()) return false;
+
+    const std::string inputPath(texturePath);
+    std::string extension = util::FileSystem::GetExtension(inputPath);
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    // 生画像は既存パスをそのままロードする。
+    if (extension != ".tex") {
+        outSourcePath = inputPath;
+        return true;
+    }
+
+    TextureAsset descriptor;
+    TexDescSerializer serializer;
+    if (!serializer.Load(inputPath, descriptor) || descriptor.sourcePath.empty()) {
+        FBZZ_LOG_ERROR("TexDescSerializer: source resolution failed [%s]", inputPath.c_str());
+        return false;
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path descriptorPath = util::FileSystem::PathFromUtf8(inputPath);
+    const fs::path sourcePath = util::FileSystem::PathFromUtf8(descriptor.sourcePath);
+    const fs::path resolvedPath = sourcePath.is_absolute()
+        ? sourcePath
+        : descriptorPath.parent_path() / sourcePath;
+    outSourcePath = util::FileSystem::PathToUtf8(resolvedPath.lexically_normal());
+
+    // descriptor の連鎖は循環参照を作れるため、source は必ず生画像に限定する。
+    std::string sourceExtension = util::FileSystem::GetExtension(outSourcePath);
+    std::transform(sourceExtension.begin(), sourceExtension.end(), sourceExtension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (sourceExtension == ".tex") {
+        FBZZ_LOG_ERROR("TexDescSerializer: nested .tex source is not supported [%s]",
+                       inputPath.c_str());
+        outSourcePath.clear();
+        return false;
+    }
     return true;
 }
 
