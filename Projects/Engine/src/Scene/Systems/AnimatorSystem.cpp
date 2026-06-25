@@ -193,6 +193,23 @@ void UpdateWorldTransform(GameObject& go, const Transform& parentTransform)
     };
 }
 
+void PropagateNonBoneChildTransforms(GameObject& parent)
+{
+    // WHY: AnimatorSystem は TransformSystem より後で Bone の local pose / world pose を上書きする。
+    //      そのままだと Bone 配下にユーザーが置いた Particle / Attachment 用 GameObject は
+    //      直前の TransformSystem 結果のままになり、手や武器に追従しない。
+    //      BoneComponent を持つ子は Skeleton 再帰側で処理されるため、ここでは通常子だけ更新する。
+    for (int i = 0; i < parent.GetChildCount(); ++i) {
+        GameObject* child = parent.GetChild(i);
+        if (!child) continue;
+        if (child->GetComponent<BoneComponent>())
+            continue;
+
+        UpdateWorldTransform(*child, parent.transform);
+        PropagateNonBoneChildTransforms(*child);
+    }
+}
+
 GameObject* FindBoneDescendant(GameObject& root, int nodeIndex)
 {
     for (int i = 0; i < root.GetChildCount(); ++i) {
@@ -304,6 +321,7 @@ void PropagateBoneTransforms(Scene& scene,
     if (!boneObject) return;
 
     UpdateWorldTransform(*boneObject, parentTransform);
+    PropagateNonBoneChildTransforms(*boneObject);
 
     for (int child : skeleton.nodes[static_cast<size_t>(nodeIndex)].children)
         PropagateBoneTransforms(scene, skeleton, smr, child, boneObject->transform);

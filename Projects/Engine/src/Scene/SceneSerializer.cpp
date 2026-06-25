@@ -865,6 +865,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             peTbl.insert("blendMode",      (int64_t)static_cast<int>(pe->blendMode));
             peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
             peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
+            peTbl.insert("materialPath",   pe->materialPath);
             peTbl.insert("texturePath",    pe->texturePath);
             peTbl.insert("spriteColumns",  (int64_t)pe->spriteColumns);
             peTbl.insert("spriteRows",     (int64_t)pe->spriteRows);
@@ -897,6 +898,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("attachBone",         trail->attachBone);
             trailTbl.insert("attachOffset",       Vec3ToArr(trail->attachOffset));
             trailTbl.insert("clearOnDisable",     trail->clearOnDisable);
+            trailTbl.insert("materialPath",       trail->materialPath);
             trailTbl.insert("texturePath",        trail->texturePath);
             trailTbl.insert("uvMode",             (int64_t)static_cast<int>(trail->uvMode));
             trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
@@ -916,6 +918,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("colorEnd",       Vec4ToArr(trail->colorEnd));
             trailTbl.insert("doubleSided",    trail->doubleSided);
             trailTbl.insert("clearOnDisable", trail->clearOnDisable);
+            trailTbl.insert("materialPath",   trail->materialPath);
             trailTbl.insert("texturePath",    trail->texturePath);
             toml::array excludedMeshIndices;
             for (int meshIndex : trail->excludedMeshIndices)
@@ -2001,6 +2004,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
+            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
             pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
@@ -2039,6 +2043,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.attachBone     = (*trailTbl)["attachBone"].value_or(std::string{});
             trail.attachOffset   = ArrToVec3((*trailTbl)["attachOffset"].as_array(), math::Vector3::ZERO);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
+            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
             trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             int uvMode = (int)(*trailTbl)["uvMode"].value_or((int64_t)0);
             uvMode = uvMode < 0 ? 0 : (uvMode > 1 ? 1 : uvMode);
@@ -2062,6 +2067,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                                                { 0.35f, 0.75f, 1.0f, 0.0f });
             trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
+            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
             trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             if (const auto* excludedArr = (*trailTbl)["excludedMeshIndices"].as_array()) {
                 for (const auto& node : *excludedArr) {
@@ -3167,6 +3173,7 @@ bool SceneSerializer::AppendObjects(
             int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
+            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
             pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);

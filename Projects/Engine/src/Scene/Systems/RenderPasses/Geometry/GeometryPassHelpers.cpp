@@ -122,8 +122,11 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vect
 
 AnimatorComponent* FindAnimator(GameObject& go)
 {
-    if (auto* a = go.GetComponent<AnimatorComponent>()) return a;
-    if (auto* parent = go.GetParent()) return parent->GetComponent<AnimatorComponent>();
+    // Skinned submesh はモデル構造により複数階層下へ配置されるため、直親だけで打ち切らない。
+    // WHY: Animatorを見失うとbind pose用CBへフォールバックし、Trailの初期位置もずれる。
+    for (GameObject* current = &go; current; current = current->GetParent())
+        if (auto* animator = current->GetComponent<AnimatorComponent>())
+            return animator;
     return nullptr;
 }
 
