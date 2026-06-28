@@ -193,10 +193,12 @@ cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
     float  _taaPad;
 
     // Motion Blur
+    // screenWidth/screenHeight: b5 (PostProcConstants) が CS にバインドされないため
+    //   MotionBlur CS の境界チェック・UV 計算用に CB_ADVANCED_GRAPHICS へ収録する
     float  motionBlurStrength;  // シャッター角度換算の強度
     int    motionBlurSamples;   // サンプル数
-    float  _mblurPad0;
-    float  _mblurPad1;
+    float  screenWidth;         // レンダーターゲット幅 (CS スレッド境界チェック用)
+    float  screenHeight;        // レンダーターゲット高さ (CS スレッド境界チェック用)
 
     // GTAO (Ground Truth Ambient Occlusion — Horizon-Based AO)
     float  gtaoIntensity;       // AO 強度

@@ -14,7 +14,11 @@
 //   t7  = 深度バッファ  (TEX_DEPTH)
 //   u5  = 出力 UAV      (UAV_MOTION_BLUR)
 //   b0  = CameraConstants
-//   b8  = AdvancedGraphicsConstants
+//   b8  = AdvancedGraphicsConstants (screenWidth/screenHeight を含む)
+//
+// WHY b5 (PostProcConstants) を使わない:
+//   MotionBlur パスは CompositePass より前に実行されるため b5 が未更新。
+//   代わりに b8 の screenWidth/screenHeight を参照する。
 //
 // Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1
 
@@ -35,10 +39,12 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     uint2 pixel = id.xy;
 
     // 画面範囲外のスレッドは早期リターン
-    if (pixel.x >= (uint)screenSize.x || pixel.y >= (uint)screenSize.y)
+    // WHY: b8 の screenWidth/screenHeight を使用 (b5 は本パスの実行時点で未バインド)
+    if (pixel.x >= (uint)screenWidth || pixel.y >= (uint)screenHeight)
         return;
 
-    float2 uv = (float2(pixel) + 0.5f) * texelSize;
+    float2 mbTexelSize = float2(1.0f / screenWidth, 1.0f / screenHeight);
+    float2 uv = (float2(pixel) + 0.5f) * mbTexelSize;
 
     // ── 深度からワールド座標を復元 ──────────────────────────────────────────────
     float  ndcZ     = texDepth.SampleLevel(sampDefault, uv, 0).r;
@@ -70,7 +76,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         // 現 UV からブラー方向へ均等に配置したサンプル点
         // t = [-0.5, 0.5] の範囲で現フレームを中心にブラーをかける
-        float  t         = (float(i) / float(samples - 1)) - 0.5f;
+        // WHY: samples == 1 のとき (samples - 1) = 0 で ÷0 になるため max でガード。
+        float  t         = (samples > 1) ? ((float(i) / float(samples - 1)) - 0.5f) : 0.0f;
         float2 sampleUV  = saturate(uv + motionVec * t);
         accumulated += texColor.SampleLevel(sampDefault, sampleUV, 0);
     }

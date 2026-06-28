@@ -9,10 +9,17 @@
 #include "Rendering/Fog.hlsli"
 #include "Rendering/PostProcess.hlsli"
 
-Texture2D          texHDR      : register(TEX_GBUFFER0);  // ライティング結果 HDR バッファ
+Texture2D          texHDR      : register(TEX_GBUFFER0);        // ライティング結果 HDR バッファ
 Texture2D          texBloom    : register(TEX_BLOOM);
-Texture2D<float>   texDepth    : register(TEX_DEPTH);     // 深度 (フォグ計算用)
-SamplerState       sampDefault : register(SAMPLER_DEFAULT);
+Texture2D<float>   texDepth    : register(TEX_DEPTH);           // 深度 (フォグ計算用)
+Texture3D          texLUT      : register(TEX_LUT_COLOR_GRADE); // 3D カラーグレーディング LUT (32x32x32 推奨)
+// ---- Advanced Graphics ----
+// SSR 反射 — ssrIntensity > 0 のとき alpha チャンネルをブレンド係数として HDR に乗せる
+Texture2D<float4>  texSSR        : register(TEX_SSR);
+// Volumetric Light — volLightIntensity > 0 のとき HDR に加算合成する
+Texture2D<float4>  texVolumetric : register(TEX_VOLUMETRIC);
+SamplerState       sampDefault     : register(SAMPLER_DEFAULT);
+SamplerState       sampLinearClamp : register(SAMPLER_LINEAR_CLAMP); // LUT サンプル用（テクセル中心補間に必須）
 
 struct FSTriVSOut
 {
@@ -122,6 +129,23 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     hdr = ApplyDepthOfFieldHDR(hdr, uv);
     hdr = ApplySharpenHDR(hdr, uv);
 
+    // ---- Advanced Graphics: SSR 反射をトーンマップ前 (HDR 空間) でブレンドする ----
+    // WHY: HDR 空間でブレンドすることで金属の映り込みが過露出部分でも正しく飽和する。
+    //      ssrIntensity=0 のときはテクスチャが未束縛でも 0 を返すため分岐不要。
+    if (ssrIntensity > 0.0f)
+    {
+        float4 ssrSample = texSSR.Sample(sampDefault, uv);
+        // alpha は Fresnel・roughness を含む信頼度。強度はここで一度だけ適用する。
+        hdr = lerp(hdr, ssrSample.rgb, saturate(ssrSample.a * ssrIntensity));
+    }
+    // ---- Volumetric Light を HDR に加算合成する ----
+    // WHY: 加算なので暗い領域に光の筋が自然に乗り、tonemapper がクランプする。
+    if (volLightIntensity > 0.0f)
+    {
+        float3 volSample = texVolumetric.Sample(sampDefault, uv).rgb;
+        hdr += volSample * volLightIntensity;
+    }
+
     // 露出 → ACES トーンマップ → sRGB ガンマ補正
     float3 ldr = FinalOutput(hdr, exposure);
     ldr = ApplyClarity(ldr, uv);
@@ -173,6 +197,27 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     ldr = ApplyPosterize(ldr, posterizeLevels);
     ldr = ApplyVignette(ldr, uv, vignetteIntensity, vignetteSmoothness, vignetteRoundness, vignetteColor);
     ldr = ApplyFilmGrain(ldr, uv, filmGrainIntensity, filmGrainResponse);
+
+    // 3D LUT カラーグレーディング — フィルムグレイン・ビネットなど全エフェクト後に適用する。
+    // WHY: LUT はシネマティックな色調整（フィルムエミュレーション等）を 1 テクスチャルックアップで
+    //      表現できるため、個別パラメータの積み重ねより表現力が高い。
+    //      全エフェクト後に適用することで LUT が意図した最終カラーに確実に変換する。
+    if (lutBlend > 0.0f)
+    {
+        // 0.5/lutSize オフセットでテクセル中心をサンプルする
+        // WHY: 3D LUT は離散テクセルなので端に寄せると境界クランプが起きる
+        //      (lutSize - 1) / lutSize でデータ範囲を 0〜1 にマップし、
+        //      0.5 / lutSize でテクセル中心にオフセットする
+        static const float lutSize = 32.0f;
+        float3 lutUV   = saturate(ldr) * ((lutSize - 1.0f) / lutSize) + (0.5f / lutSize);
+        float3 lutColor = texLUT.Sample(sampLinearClamp, lutUV).rgb;
+        ldr = lerp(ldr, lutColor, saturate(lutBlend));
+    }
+
+    // 画面フェード — 全エフェクト適用後の最終合成として上書きする。
+    // WHY: UI・ポストプロセス含む全レイヤーをひとつの lerp でカバーし、シーン遷移時のフラッシュを防ぐ。
+    if (screenFadeAlpha > 0.0f)
+        ldr = lerp(ldr, screenFadeColor, saturate(screenFadeAlpha));
 
     return float4(ldr, 1.0f);
 }
