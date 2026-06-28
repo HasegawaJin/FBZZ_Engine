@@ -18,9 +18,13 @@
 // ScriptCodeGen は @@FBZZ_SCRIPT_ENTRIES_BEGIN/END マーカーを認識して自動追記する。
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+FBZZ_SCRIPT_ENTRY(sandbox, EnemyControllerComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, PlayerIKComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, PlayerControllerComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, TpsCameraComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, SceneManagerScript)
 FBZZ_SCRIPT_ENTRY(sandbox, SwordParticleComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, HitBloodEffectComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, SwordTrailComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, WeaponHitboxComponent)
 // @@FBZZ_SCRIPT_ENTRIES_END
