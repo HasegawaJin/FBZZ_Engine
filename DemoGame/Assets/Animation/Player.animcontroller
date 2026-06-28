@@ -71,6 +71,30 @@ transitionDuration = 0.1599999964237213
 exitTime = 1.0
 fixedDuration = true
 hasExitTime = false
+toStateName = 'PlayerImpact'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Impact'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'PlayerHit'
+transitionDuration = 0.05999999865889549
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Hit'
+    threshold = 0.0
+
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
 toStateName = 'Block'
 transitionDuration = 0.10000000149011612
 
@@ -140,6 +164,20 @@ boolValue = false
 floatValue = 0.0
 intValue = 0
 name = 'CrouchAttack'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Impact'
+type = 3
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Hit'
 type = 3
 
 [[parameters]]
@@ -487,6 +525,66 @@ speed = 1.0
     [[states.transitions]]
     conditions = []
     exitTime = 0.8999999761581421
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'PlayerHit'
+sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.8500000238418579
+    fixedDuration = true
+    hasExitTime = true
+    toStateName = 'Locomotion'
+    transitionDuration = 0.11999999731779099
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'PlayerImpact'
+sourcePath = 'Assets/Models/PlayerImpact/anims/PlayerImpact@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0
+
+    [[states.transitions]]
+    conditions = []
+    exitTime = 0.8500000238418579
     fixedDuration = true
     hasExitTime = true
     toStateName = 'Locomotion'
