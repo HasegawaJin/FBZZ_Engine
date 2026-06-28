@@ -16,11 +16,15 @@
 #include <Engine/Scene/Scene.hpp>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+#include "Scripts/EnemyControllerComponent.hpp"
 #include "Scripts/PlayerControllerComponent.hpp"
 #include "Scripts/PlayerIKComponent.hpp"
 #include "Scripts/TpsCameraComponent.hpp"
 #include "Scripts/SceneManagerScript.hpp"
 #include "Scripts/SwordParticleComponent.hpp"
+#include "Scripts/HitBloodEffectComponent.hpp"
+#include "Scripts/SwordTrailComponent.hpp"
+#include "Scripts/WeaponHitboxComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // WHY: エントリは Assets/Scripts/ScriptList.inl で一元管理する。

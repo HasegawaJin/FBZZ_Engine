@@ -30,6 +30,7 @@
 // WHY: PlayerIKComponent は scene.GetScript<PlayerControllerComponent>() を使うため
 //      PlayerControllerComponent の完全型が必要。先に宣言を取り込んでから
 //      PlayerIKComponent の IMPL ブロックを走らせることで解決する。
+#include "Scripts/EnemyControllerComponent.hpp"
 #define PlayerControllerComponent_IMPL
 #include "Scripts/PlayerControllerComponent.hpp"
 #include "Scripts/PlayerIKComponent.hpp"
@@ -38,6 +39,9 @@
 #define SceneManagerScript_IMPL
 #include "Scripts/SceneManagerScript.hpp"
 #include "Scripts/SwordParticleComponent.hpp"
+#include "Scripts/HitBloodEffectComponent.hpp"
+#include "Scripts/SwordTrailComponent.hpp"
+#include "Scripts/WeaponHitboxComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 #ifdef GAMESCRIPTS_EXPORTS
