@@ -9,8 +9,9 @@ namespace fbzz::editor {
 
 class UndoHistoryPanel : public IPanel {
 public:
-    const char* GetWindowName()   const override { return "Undo History"; }
-    const char* GetViewMenuName() const override { return "Undo History"; }
+    const char* GetWindowName()        const override { return "Undo History"; }
+    const char* GetViewMenuName()      const override { return "Undo History"; }
+    bool        GetDefaultVisibility() const override { return false; }
 
 private:
     void OnRenderContent(EditorContext& ctx) override;

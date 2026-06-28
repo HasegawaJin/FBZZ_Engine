@@ -74,6 +74,55 @@ void DrawGameViewportAspectControl(EditorContext& ctx)
     }
 }
 
+const char* GetPlayFocusModeLabel(EditorContext::PlayFocusMode mode)
+{
+    switch (mode) {
+    case EditorContext::PlayFocusMode::Focused:   return "Play Focused";
+    case EditorContext::PlayFocusMode::Maximized: return "Play Maximized";
+    case EditorContext::PlayFocusMode::Unfocused: return "Play Unfocused";
+    default:                                      return "Play Maximized";
+    }
+}
+
+void DrawGameViewportToolbar(EditorContext& ctx)
+{
+    // WHY: Game View は Play 確認の中心なので、フォーカス操作を Viewport 直上へ置く。
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { 4.0f, 0.0f });
+
+    ImGui::SetNextItemWidth(96.0f);
+    DrawGameViewportAspectControl(ctx);
+
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Focus")) {
+        ctx.requestGameViewportFocus = true;
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("Focus Game View");
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(138.0f);
+    if (ImGui::BeginCombo("##play_focus_mode", GetPlayFocusModeLabel(ctx.playFocusMode))) {
+        constexpr EditorContext::PlayFocusMode kModes[] = {
+            EditorContext::PlayFocusMode::Focused,
+            EditorContext::PlayFocusMode::Maximized,
+            EditorContext::PlayFocusMode::Unfocused
+        };
+        for (EditorContext::PlayFocusMode mode : kModes) {
+            const bool selected = ctx.playFocusMode == mode;
+            if (ImGui::Selectable(GetPlayFocusModeLabel(mode), selected))
+                ctx.playFocusMode = mode;
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("Controls Game View behavior when Play starts");
+
+    ImGui::PopStyleVar(2);
+}
+
 ImVec2 FitSizeToAspect(ImVec2 size, float aspect)
 {
     if (aspect <= 0.0f) return size;
@@ -171,8 +220,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     const bool isGameView = m_kind == Kind::Game;
     const bool isUIView = m_kind == Kind::UI;
     if (isGameView) {
-        ImGui::SetNextItemWidth(96.0f);
-        DrawGameViewportAspectControl(ctx);
+        DrawGameViewportToolbar(ctx);
     }
 
     ImVec2 size = ImGui::GetContentRegionAvail();

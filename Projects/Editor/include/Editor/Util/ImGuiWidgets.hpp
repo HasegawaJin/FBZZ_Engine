@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <cmath>
 #include <string>
@@ -18,6 +19,16 @@ bool DragVec3(const char* label, math::Vector3& v, float speed = 0.1f,
 
 // RGB カラーピッカー (Vector3 を [0,1] で扱う)
 bool ColorEdit3(const char* label, math::Vector3& color);
+
+// RGBA カラーピッカー (Vector4 を [0,1] で扱う)
+inline bool ColorEdit4(const char* label, math::Vector4& color) {
+    float v[4] = { color.x, color.y, color.z, color.w };
+    if (ImGui::ColorEdit4(label, v)) {
+        color = { v[0], v[1], v[2], v[3] };
+        return true;
+    }
+    return false;
+}
 
 // セクションヘッダー (太字テキスト + 区切り線)
 void SectionHeader(const char* label);
@@ -34,6 +45,23 @@ void ReadOnlyText(const char* label, const char* text);
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
                     const std::string& projectRoot);
+
+// AssetPathField + ロードコールバック付き版。
+// WHY: パス変更時に必ずアセット再ロードが必要なパターン (MeshRenderer/SkinnedMesh 等) の
+//      if (AssetPathField(...)) { reload(); } ボイラープレートを排除する。
+// @return true if path was changed (AssetPathField と同じ)
+template<typename Fn>
+inline bool AssetPathFieldWithLoad(const char* label, std::string& path,
+                                   const char* filterExts,
+                                   const std::string& projectRoot,
+                                   Fn&& onLoad)
+{
+    if (AssetPathField(label, path, filterExts, projectRoot)) {
+        std::forward<Fn>(onLoad)();
+        return true;
+    }
+    return false;
+}
 
 // InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ
 void DrawAssetPickerModal();

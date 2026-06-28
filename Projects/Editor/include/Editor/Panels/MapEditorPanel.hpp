@@ -11,9 +11,10 @@ namespace fbzz::editor {
 // WHY: ツールごとの独立ウィンドウを往復せず、Viewport と隣接した固定領域で編集するため。
 class MapEditorPanel final : public IPanel {
 public:
-    const char* GetWindowName() const override { return "Map Tools"; }
-    const char* GetViewMenuName() const override { return "Map Tools"; }
-    bool ShowInViewMenu() const override { return false; }
+    const char* GetWindowName()        const override { return "Map Tools"; }
+    const char* GetViewMenuName()      const override { return "Map Tools"; }
+    bool        ShowInViewMenu()       const override { return false; }
+    bool        GetDefaultVisibility() const override { return false; }
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;

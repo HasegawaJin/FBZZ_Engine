@@ -71,7 +71,7 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
 
 } // namespace
 
-void DrawTransformInspector(scene::GameObject* go, EditorContext& ctx)
+void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
 {
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto& t = go->transform;

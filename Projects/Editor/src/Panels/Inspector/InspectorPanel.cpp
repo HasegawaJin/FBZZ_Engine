@@ -532,7 +532,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::Separator();
 
     { FBZZ_PROFILE_SCOPE("Inspector::Transform");
-      DrawTransformInspector(go, ctx); }
+      DrawTransformInspectors(go, ctx); }
     if (ctx.mapEditingMode && ctx.mapInspectorFilter) {
         const bool hasMapComponent =
             go->GetComponent<scene::TerrainComponent>()
@@ -552,26 +552,26 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
     { FBZZ_PROFILE_SCOPE("Inspector::Rendering");
       DrawRenderingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Animation");
-      DrawAnimationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Material");
       DrawMaterialInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Lighting");
       DrawLightingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Effects");
-      DrawEffectsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Audio");
-      DrawAudioInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Physics");
       DrawPhysicsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Animation");
+      DrawAnimationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Audio");
+      DrawAudioInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Effects");
+      DrawEffectsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Environment");
       DrawEnvironmentInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Navigation");
+      DrawNavigationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::UI");
       DrawUIInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::TerrainWater");
       DrawTerrainWaterInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Navigation");
-      DrawNavigationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     DrawScriptInspectors(go, ctx);
 
     ImGui::Spacing();

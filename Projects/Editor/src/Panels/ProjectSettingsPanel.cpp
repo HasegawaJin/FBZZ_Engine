@@ -110,15 +110,27 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 void ProjectSettingsPanel::DrawSidebar()
 {
     ImGui::BeginChild("##ProjectSettingsSidebar", { SIDEBAR_WIDTH, 0.0f }, true);
-    SectionButton("Application", Section::Application, m_currentSection);
-    SectionButton("Import",      Section::Import,      m_currentSection);
-    SectionButton("Render",      Section::Render,      m_currentSection);
-    SectionButton("Post Process",Section::PostProcess, m_currentSection);
-    SectionButton("Physics",     Section::Physics,     m_currentSection);
-    SectionButton("Audio",       Section::Audio,       m_currentSection);
-    SectionButton("Screen",      Section::Screen,      m_currentSection);
-    SectionButton("Tags",        Section::Tags,        m_currentSection);
-    SectionButton("Layers",      Section::Layers,      m_currentSection);
+
+    // 検索バー — 入力文字列に部分一致するセクションのみ表示する。
+    static char s_filter[64] = {};
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##search", "Search...", s_filter, sizeof(s_filter));
+    ImGui::Separator();
+
+    // 空フィルター時は全表示、入力時は大文字小文字無視の部分一致フィルタリング。
+    auto btn = [&](const char* name, Section sec) {
+        if (s_filter[0] == '\0' || util::StringUtils::ContainsCI(name, s_filter))
+            SectionButton(name, sec, m_currentSection);
+    };
+    btn("Application", Section::Application);
+    btn("Import",      Section::Import);
+    btn("Render",      Section::Render);
+    btn("Post Process",Section::PostProcess);
+    btn("Physics",     Section::Physics);
+    btn("Audio",       Section::Audio);
+    btn("Screen",      Section::Screen);
+    btn("Tags",        Section::Tags);
+    btn("Layers",      Section::Layers);
     ImGui::EndChild();
 }
 
@@ -398,18 +410,26 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
 
         ImGui::Unindent();
     }
-    ImGui::SameLine();
+    ImGui::Spacing();
     {
         const char* kViewModeLabels[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
         int idx = static_cast<int>(render.viewMode);
-        ImGui::SetNextItemWidth(130.0f);
+        ImGui::SetNextItemWidth(160.0f);
         if (ImGui::Combo("View Mode", &idx, kViewModeLabels, 4))
             render.viewMode = static_cast<renderer::ViewMode>(idx);
     }
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Debug Visualization");
+    ImGui::Checkbox("Colliders",         &render.showColliders);
     ImGui::SameLine();
-    ImGui::Checkbox("Colliders",    &render.showColliders);
+    ImGui::Checkbox("Terrain Collision", &render.showTerrainCollision);
     ImGui::SameLine();
-    ImGui::Checkbox("Decal Bounds", &render.showDecalBounds);
+    ImGui::Checkbox("NavMesh",           &render.showNavMesh);
+    ImGui::Checkbox("AI Sensors",        &render.showNavSensors);
+    ImGui::SameLine();
+    ImGui::Checkbox("Decal Bounds",      &render.showDecalBounds);
+    ImGui::SameLine();
     ImGui::Checkbox("Selection Outline", &render.showSelectionOutline);
 
     ImGui::Spacing();

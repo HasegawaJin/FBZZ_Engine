@@ -310,9 +310,7 @@ bool ColorEdit3(const char* label, math::Vector3& color)
 
 void SectionHeader(const char* label)
 {
-    ImGui::Separator();
-    ImGui::TextColored({ 0.9f, 0.7f, 0.3f, 1.0f }, "%s", label);
-    ImGui::Separator();
+    ImGui::SeparatorText(label);
 }
 
 void ColoredText(const char* text, ImVec4 color)

@@ -118,6 +118,12 @@ struct EditorContext {
     float gameViewportWidth   = 1280.0f;
     float gameViewportHeight  = 720.0f;
     bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
+    enum class PlayFocusMode {
+        Focused,
+        Maximized,
+        Unfocused
+    };
+    PlayFocusMode playFocusMode = PlayFocusMode::Maximized; // Unity の Play Focused / Maximized / Unfocused 相当
     bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
     bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
     bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water/Detail/Foliage だけ表示

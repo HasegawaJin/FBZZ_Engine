@@ -89,28 +89,8 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             static const char* kLayerNames[] = { "Layer 0", "Layer 1", "Layer 2", "Layer 3" };
             for (int li = 0; li < 4; ++li) {
                 ImGui::PushID(li);
-                ImGui::TextUnformatted(kLayerNames[li]);
-                char buf[256];
-                std::snprintf(buf, sizeof(buf), "%s", tc.layerMaterials[li].c_str());
-                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x
-                    - (tc.layerMaterials[li].empty() ? 0.0f
-                       : ImGui::CalcTextSize("Clear").x
-                         + ImGui::GetStyle().FramePadding.x * 2.0f
-                         + ImGui::GetStyle().ItemInnerSpacing.x));
-                if (ImGui::InputText("##mat", buf, sizeof(buf))) {
-                    tc.layerMaterials[li] = NormalizeAssetPath(buf);
+                if (widgets::AssetPathField(kLayerNames[li], tc.layerMaterials[li], ".mat", ctx.projectRoot))
                     tc.splatDirty = true;
-                }
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        if (util::StringUtils::EndsWith(dropped, ".mat")) {
-                            tc.layerMaterials[li] = dropped;
-                            tc.splatDirty = true;
-                        }
-                    }
-                    ImGui::EndDragDropTarget();
-                }
                 if (!tc.layerMaterials[li].empty()) {
                     ImGui::SameLine();
                     if (ImGui::SmallButton("Clear")) {
