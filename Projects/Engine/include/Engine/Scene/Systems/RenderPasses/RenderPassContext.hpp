@@ -117,7 +117,8 @@ struct AdvancedGraphicsCB {
     // TAA
     float taaFeedback;        float taaJitterX;          float taaJitterY;         float _taaPad;
     // Motion Blur
-    float motionBlurStrength; int   motionBlurSamples;   float _mblurPad0;         float _mblurPad1;
+    // screenWidth/screenHeight は MotionBlur CS が b5 非バインド下で screenSize の代替として参照する
+    float motionBlurStrength; int   motionBlurSamples;   float screenWidth;         float screenHeight;
     // GTAO
     float gtaoIntensity;      float gtaoRadius;          int   gtaoSlices;         int   gtaoStepsPerSlice;
     // Contact Shadows

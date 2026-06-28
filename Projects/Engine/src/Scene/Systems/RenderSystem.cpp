@@ -163,6 +163,13 @@ struct ViewRenderTargets {
     renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             // GTAO RAW CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            // GTAO Blur CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult; // Contact Shadow CS 出力
+    // ---- ビュー別定数バッファ / 再投影行列 ----
+    // WHY: sPrevVP を static で共有すると複数ビュー (SceneView + GameView) で
+    //      フレームをまたいで互いのカメラ行列を誤って参照し、MotionBlur / TAA が
+    //      常に壊れた再投影を行う。viewKey で分離した ViewRenderTargets に持つことで正しく分離する。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
+    math::Matrix4 prevViewProjection    = math::Matrix4::Identity();
+    math::Matrix4 invPrevViewProjection = math::Matrix4::Identity();
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -191,7 +198,16 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     if (targets.gtaoRaw.IsValid())               resources.Release(targets.gtaoRaw);
     if (targets.gtaoBlur.IsValid())              resources.Release(targets.gtaoBlur);
     if (targets.contactShadowResult.IsValid())   resources.Release(targets.contactShadowResult);
+    // WHY: advancedGraphicsCB / prevViewProjection は解像度非依存。
+    //      リサイズのたびに破棄・再生成するとコストが発生し、prevVP が Identity にリセットされて
+    //      MotionBlur / TAA が 1 フレーム乱れる。保存して復元することで連続性を維持する。
+    auto savedCB         = targets.advancedGraphicsCB;
+    auto savedPrevVP     = targets.prevViewProjection;
+    auto savedPrevInvVP  = targets.invPrevViewProjection;
     targets = {};
+    targets.advancedGraphicsCB  = savedCB;
+    targets.prevViewProjection    = savedPrevVP;
+    targets.invPrevViewProjection = savedPrevInvVP;
 }
 
 void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
@@ -516,8 +532,6 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_OFF
     });
-    // advancedGraphicsCB: IBL/SSR/TAA/GTAO 等の詳細パラメータをまとめて b8 に転送する
-    static auto advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
     static auto decalPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::ALPHA_BLEND,
@@ -582,7 +596,6 @@ void RenderSystem(Scene& scene,
         lensFlareShader     = resources.LoadShader("Assets/Shaders/PostProcess/Flare/LensFlare.hlsl");
         taaPSO              = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
         lensFlarePSO        = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE,      renderer::DepthMode::DEPTH_OFF });
-        advancedGraphicsCB  = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
         // WHY: デバイスリセット後は iblBrdfLut の内容が失われるため再生成する。
         //      IBLBakePass は焼き済み対象を世代付きハンドルで追跡し、新ハンドルを次フレームで再生成する。
         iblBrdfLut          = resources.CreateComputeTexture(512, 512);
@@ -687,6 +700,11 @@ void RenderSystem(Scene& scene,
     auto& contactShadowResult     = viewTargets.contactShadowResult;
     uint32_t& sHdrW               = viewTargets.width;
     uint32_t& sHdrH               = viewTargets.height;
+    // advancedGraphicsCB はビュー別に生成する。
+    // s_viewTargets.clear() によるデバイスリセット後は無効になるため、ここで lazily 再生成する。
+    if (!viewTargets.advancedGraphicsCB.IsValid())
+        viewTargets.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
+    auto& advancedGraphicsCB = viewTargets.advancedGraphicsCB;
 
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::ResizeRenderTargets");
@@ -1015,6 +1033,8 @@ void RenderSystem(Scene& scene,
         agData.taaFeedback           = rs.taa.feedback;
         agData.motionBlurStrength    = rs.motionBlur.enabled ? rs.motionBlur.strength : 0.0f;
         agData.motionBlurSamples     = rs.motionBlur.samples;
+        agData.screenWidth           = static_cast<float>(sHdrW);
+        agData.screenHeight          = static_cast<float>(sHdrH);
         agData.gtaoIntensity         = rs.IsGtaoActive()   ? rs.gtao.intensity : 0.0f;
         agData.gtaoRadius            = rs.gtao.radius;
         agData.gtaoSlices            = rs.gtao.slices;
@@ -1032,15 +1052,13 @@ void RenderSystem(Scene& scene,
         agData.lutBlend              = (rs.lutColorGrading.enabled && resources.Get(proceduralColorLut) != nullptr)
             ? rs.lutColorGrading.blend : 0.0f;
         // 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使用する。
-        // WHY: static で保持し、フレーム末尾に現フレームの VP で上書きすることで
-        //      「前フレームの VP をパラメータとして受け取る」セマンティクスを実現する。
-        static math::Matrix4 sPrevVP    = math::Matrix4::Identity();
-        static math::Matrix4 sPrevInvVP = math::Matrix4::Identity();
-        agData.prevViewProjection    = sPrevVP;
-        agData.invPrevViewProjection = sPrevInvVP;
+        // WHY: viewTargets に持つことでビュー別に分離し、SceneView と GameView が
+        //      互いのカメラ行列を参照して壊れる問題を防ぐ。
+        agData.prevViewProjection    = viewTargets.prevViewProjection;
+        agData.invPrevViewProjection = viewTargets.invPrevViewProjection;
         resources.Update(advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
-        sPrevVP    = camera.GetViewProjection();
-        sPrevInvVP = math::Matrix4::Inverse(camera.GetViewProjection());
+        viewTargets.prevViewProjection    = camera.GetViewProjection();
+        viewTargets.invPrevViewProjection = math::Matrix4::Inverse(camera.GetViewProjection());
     } // end AdvancedGraphicsCB update
 
     // =========================================================================
@@ -1062,7 +1080,14 @@ void RenderSystem(Scene& scene,
     if (isDeferred)
         pipeline.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, false });
     if (ssaoEnabled)
-        pipeline.DeclareResource("SSAO", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+        pipeline.DeclareResource("SSAO",               { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    // GTAO / ContactShadows は GBuffer を読んで独自の UAV テクスチャに書く。
+    // WHY: "GBuffer"→"GBuffer" で宣言すると GBuffer への偽書き込みとみなされ、
+    //      DeferredLighting との依存順が崩れる可能性があるため専用名で宣言する。
+    if (isDeferred && rs.IsGtaoActive())
+        pipeline.DeclareResource("GTAOResult",          { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    if (isDeferred && rs.contactShadow.enabled)
+        pipeline.DeclareResource("ContactShadowResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
     pipeline.SetOutputs({ "Output" });
 
     // IBL BRDF LUT 焼き付け — IBLBakePass が対象テクスチャの世代を追跡し、初回のみ実行する。
@@ -1126,18 +1151,18 @@ void RenderSystem(Scene& scene,
     // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
     if (isDeferred) {
         // GTAO — DeferredLighting より前に GBuffer から AO を計算する。
-        // WHY: DeferredLighting は t23 (TEX_GTAO) を SRV として読むため、
-        //      その前に gtaoBlur テクスチャへの書き込みを完了させる必要がある。
+        // WHY: DeferredLighting は t23 (TEX_GTAO) を SRV として読む。
+        //      "GTAOResult" として宣言することで GBuffer への偽書き込みを除去し、
+        //      DeferredLighting が正確な依存でこの出力を待てるようにする。
         if (rs.IsGtaoActive()) {
-            pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GBuffer" }, [&]() {
+            pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GTAOResult" }, [&]() {
                 ExecuteGTAOPass(passCtx);
             });
         }
         // ContactShadows — DeferredLighting より前に深度から接触影マスクを生成する。
-        // WHY: DeferredLighting は t24 (TEX_CONTACT_SHADOW) を乗算係数として使うため、
-        //      gtaoBlur と同様に事前計算が必要。
+        // WHY: GTAO と同様に ContactShadowResult として宣言し偽依存を除去する。
         if (rs.contactShadow.enabled) {
-            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "GBuffer" }, [&]() {
+            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "ContactShadowResult" }, [&]() {
                 ExecuteContactShadowsPass(passCtx);
             });
         }
@@ -1145,11 +1170,22 @@ void RenderSystem(Scene& scene,
             pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
                 ExecuteSSAOPass(passCtx);
             });
-            pipeline.AddRawPass("DeferredLighting", { "GBuffer", "HDR", "SSAO" }, { "HDR" }, [&]() {
-                ExecuteDeferredLightingPass(passCtx);
-            });
-        } else {
-            pipeline.AddRawPass("DeferredLighting", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+        }
+        // DeferredLighting の reads を動的に構築し、GTAO/ContactShadows/SSAO が有効な
+        // ときだけその出力への依存を宣言する。
+        // WHY: 静的な reads 文字列では有効/無効の組み合わせごとに分岐が必要になり、
+        //      将来の AO 種類追加時にも変更が局所化されない。
+        {
+            using RA = renderer::RenderGraph::ResourceAccess;
+            using RU = renderer::RenderGraph::ResourceUsage;
+            std::vector<RA> deferredAccesses = {
+                { "GBuffer", RU::Read     },
+                { "HDR",     RU::ReadWrite }, // 深度を読み、ライティング結果を書く
+            };
+            if (ssaoEnabled)              deferredAccesses.push_back({ "SSAO",               RU::Read });
+            if (rs.IsGtaoActive())        deferredAccesses.push_back({ "GTAOResult",          RU::Read });
+            if (rs.contactShadow.enabled) deferredAccesses.push_back({ "ContactShadowResult", RU::Read });
+            pipeline.AddRawPass("DeferredLighting", std::move(deferredAccesses), [&]() {
                 ExecuteDeferredLightingPass(passCtx);
             });
         }
@@ -1327,84 +1363,92 @@ void RenderSystem(Scene& scene,
         !customPostProcessIndices.empty() &&
         customPostProcessRT[0].IsValid() &&
         customPostProcessRT[1].IsValid();
-    // WHY: TAA は Composite (トーンマップ後) の LDR バッファを入力として使う。
-    //      TAA 有効時は Composite が直接 Output に書かず、ldrRT に書く必要がある。
-    const bool needsLdrIntermediate =
-        rs.postProcess.fxaaEnabled || selectionOutlineEnabled || customPostProcessEnabled || rs.IsTaaActive();
+    // hasPostCompositeEffects: Composite の出力先が "LDR" か "Output" かを決める。
+    // WHY: このフラグが true なら Composite は ldrRT に書き、後続エフェクトがチェーンを形成する。
+    const bool hasPostCompositeEffects =
+        rs.IsTaaActive() || customPostProcessEnabled || selectionOutlineEnabled || rs.postProcess.fxaaEnabled;
 
     if (rs.postProcess.bloom.enabled) {
-        pipeline.AddRawPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+        pipeline.AddRawPass("Composite", { "HDR", "Bloom" }, { hasPostCompositeEffects ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
         });
     } else {
-        pipeline.AddRawPass("Composite", { "HDR" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+        pipeline.AddRawPass("Composite", { "HDR" }, { hasPostCompositeEffects ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
         });
     }
 
-    std::string postCustomResource = "LDR";
-    if (customPostProcessEnabled) {
-        std::string inputResource = "LDR";
-        for (uint32_t passIndex = 0; passIndex < static_cast<uint32_t>(customPostProcessIndices.size()); ++passIndex) {
-            const bool lastCustomPass = passIndex + 1 == static_cast<uint32_t>(customPostProcessIndices.size());
-            const bool writesOutput   = lastCustomPass && !rs.postProcess.fxaaEnabled && !selectionOutlineEnabled;
-            const uint32_t outputIndex = writesOutput ? 2u : (passIndex % 2u);
-            const std::string outputResource = writesOutput
-                ? std::string("Output")
-                : std::string(outputIndex == 0 ? "CustomPostProcess0" : "CustomPostProcess1");
-            const std::string passName    = "CustomPostProcess" + std::to_string(passIndex);
-            const uint32_t    customIndex = customPostProcessIndices[passIndex];
+    // ---- Post-composite チェーン ----
+    // ppCurrent: 「LDR 空間の最新フレームを持つ RenderGraph リソース名」を追跡する。
+    // WHY: エフェクトごとに条件分岐でリソース名を手動管理する代わりに ppCurrent を
+    //      進めることで、TAA/CustomPP/SelectionOutline/FXAA の組み合わせを
+    //      単一の直列チェーンとして表現できる。
+    std::string ppCurrent  = hasPostCompositeEffects ? "LDR" : "Output";
+    int         ppPingPong = 0; // customPostProcessRT の ping-pong インデックス
 
-            pipeline.AddRawPass(
-                std::string_view(passName),
-                { std::string_view(inputResource) },
-                { std::string_view(outputResource) },
-                [&, customIndex, outputIndex]() {
-                    ExecuteCustomPostProcessPass(passCtx, customIndex, outputIndex);
-                });
-
-            inputResource = outputResource;
-        }
-        postCustomResource = inputResource;
-    }
-
-    if (selectionOutlineEnabled) {
-        pipeline.AddRawPass("SelectionOutline",
-            { std::string_view(postCustomResource), "SelectionMask" },
-            { rs.postProcess.fxaaEnabled ? "Outline" : "Output" },
-            [&]() { ExecuteSelectionOutlinePass(passCtx); });
-    }
-
-    // TAA — Composite 後の LDR フレームを前フレーム履歴とブレンドしてエイリアスを除去する。
-    // WHY: LDR 空間で TAA を走らせることで SRV/RTV 競合を回避しシンプルに統合できる。
-    //      TAA が有効な場合は fxaaInput を TAA 出力に差し替え、後続 FXAA がそれを読む。
+    // TAA — 最初に適用することで後続の CustomPP/SelectionOutline が TAA 済み映像に乗る。
+    // WHY: CustomPP より前に登録することで RenderGraph が TAA → CustomPP の
+    //      依存順を正しく解決する (Kahn's algorithm は登録順をタイブレークに使う)。
     if (rs.IsTaaActive()) {
-        pipeline.AddRawPass("TAA", { "LDR" }, { "LDR" }, [&]() {
+        pipeline.AddRawPass("TAA", { ppCurrent }, { ppCurrent }, [&]() {
             ExecuteTAAPass(passCtx);
-            // ExecuteTAAPass 内で taaFlip が反転済み — 反転後のフラグで「書いた方」を特定する。
-            // flip=true  → B に書いた → getColorTexture(B), flip=false → A に書いた → getColorTexture(A)
+            // taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
             auto& taaOut = passHandles.taaFlip ? passHandles.taaHistoryB : passHandles.taaHistoryA;
             passHandles.fxaaInput = resources.GetColorTexture(taaOut, 0);
+            // WHY: CustomPP / SelectionOutline は postProcessInput を参照する。
+            //      TAA 後は履歴バッファが最新フレームなので postProcessInput も更新する。
+            //      更新しないと後続エフェクトが TAA 適用前の ldrRT を誤読する。
+            passHandles.postProcessInput = passHandles.fxaaInput;
         });
     }
-    // TAA_Blit — TAA 出力 (fxaaInput = taaHistoryA/B) を OutputRT に転送する。
+
+    // Custom PostProcess チェーン
+    for (uint32_t i = 0; i < static_cast<uint32_t>(customPostProcessIndices.size()); ++i) {
+        const uint32_t customIndex  = customPostProcessIndices[i];
+        const bool     isLastEffect = (i + 1 == static_cast<uint32_t>(customPostProcessIndices.size()))
+                                       && !selectionOutlineEnabled
+                                       && !rs.postProcess.fxaaEnabled;
+        // outputIndex == 2 → ExecuteCustomPostProcessPass が ctx.outputRT に直書きする規約
+        const uint32_t    outputIndex = isLastEffect ? 2u : static_cast<uint32_t>(ppPingPong % 2);
+        const std::string outRes      = isLastEffect
+            ? "Output"
+            : ("CustomPostProcess" + std::to_string(outputIndex));
+        pipeline.AddRawPass(
+            "CustomPostProcess" + std::to_string(i),
+            { ppCurrent },
+            { outRes },
+            [&, customIndex, outputIndex]() {
+                ExecuteCustomPostProcessPass(passCtx, customIndex, outputIndex);
+            });
+        ppCurrent = outRes;
+        ++ppPingPong;
+    }
+
+    // SelectionOutline
+    if (selectionOutlineEnabled) {
+        const bool        isLastEffect = !rs.postProcess.fxaaEnabled;
+        const std::string outRes       = isLastEffect ? "Output" : "Outline";
+        pipeline.AddRawPass("SelectionOutline",
+            { ppCurrent, "SelectionMask" },
+            { outRes },
+            [&]() { ExecuteSelectionOutlinePass(passCtx); });
+        ppCurrent = outRes;
+    }
+
+    // FXAA
+    if (rs.postProcess.fxaaEnabled) {
+        pipeline.AddRawPass("FXAA", { ppCurrent }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
+        ppCurrent = "Output";
+    }
+
+    // TAA_Blit — TAA が有効で後続エフェクトが何もない場合のみ OutputRT への転送が必要。
     // WHY: TAA は ping-pong 履歴バッファにのみ書き OutputRT には書かない。
-    //      後続に FXAA / SelectionOutline / CustomPostProcess がない場合、
-    //      OutputRT に書くパスが存在せずビューポートが黒になる。
-    //      ExecuteTAABlitPass が FXAA シェーダーを blit として流用する。
-    if (rs.IsTaaActive() && !selectionOutlineEnabled && !customPostProcessEnabled) {
-        pipeline.AddRawPass("TAA_Blit", { "LDR" }, { "Output" }, [&]() {
+    //      FXAA/SelectionOutline/CustomPP がすべて無効のとき ppCurrent は "LDR" のままなので
+    //      ここで Output に届ける。ppCurrent が "Output" なら既に書かれているためスキップ。
+    if (ppCurrent != "Output") {
+        pipeline.AddRawPass("TAA_Blit", { ppCurrent }, { "Output" }, [&]() {
             ExecuteTAABlitPass(passCtx);
         });
-    }
-    if (rs.postProcess.fxaaEnabled) {
-        if (selectionOutlineEnabled) {
-            pipeline.AddRawPass("FXAA", { "Outline" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
-        } else if (customPostProcessEnabled) {
-            pipeline.AddRawPass("FXAA", { std::string_view(postCustomResource) }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
-        } else {
-            pipeline.AddRawPass("FXAA", { "LDR" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
-        }
     }
 
     if (uiOptions && uiOptions->enabled && uiOptions->context) {

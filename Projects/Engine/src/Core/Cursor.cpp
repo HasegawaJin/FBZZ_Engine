@@ -4,6 +4,7 @@
 #define NOMINMAX
 #include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Input/Input.hpp>
 
 #include <Windows.h>
 
@@ -71,6 +72,13 @@ void Cursor::ApplyLock()
     if (s_lockMode == CursorLockMode::Locked) {
         const int centerX = (clipRect.left + clipRect.right) / 2;
         const int centerY = (clipRect.top + clipRect.bottom) / 2;
+        POINT cursorPos{};
+        if (GetCursorPos(&cursorPos)) {
+            input::Input::OverrideMouseDelta({
+                static_cast<float>(cursorPos.x - centerX),
+                static_cast<float>(cursorPos.y - centerY)
+            });
+        }
         SetCursorPos(centerX, centerY);
     }
 }
