@@ -1,11 +1,8 @@
 // FBZZ Engine
 // PlayerControllerComponent.hpp | sandbox
-// RigidBody ベースの汎用プレイヤーコントローラースクリプト
+// PhysicsProxy ベースの汎用プレイヤーコントローラースクリプト
 #pragma once
 
-#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
-#include <Engine/Scene/Components/MeshTrailComponent.hpp>
-#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
 #include <cmath>
@@ -13,7 +10,6 @@
 using namespace fbzz::scene;
 using namespace fbzz::math;
 using namespace fbzz::input;
-using namespace fbzz::physics;
 using fbzz::Time;
 
 namespace sandbox {
@@ -55,13 +51,12 @@ public:
     void OnCollisionStay(const CollisionInfo& info) override;
 
 private:
-    void HandleJump(CharacterControllerComponent* cc, RigidBody* phy);
-    void HandleCombat(CharacterControllerComponent* cc);
+    void HandleJump(bool isGrounded);
+    void HandleCombat(bool isGrounded);
     [[nodiscard]] bool IsComboAttackState() const;
     void StartComboAttack();
     Vector3 GetMoveForward() const;
     Vector3 GetMoveRight(const Vector3& forward) const;
-    MeshTrailComponent* m_swordTrail = nullptr; // Player_Sword が所有する非所有参照
     int m_nextComboIndex = 0;
     float m_comboWindowRemaining = 0.0f;
     bool m_wasComboAttacking = false;
@@ -84,29 +79,18 @@ void PlayerControllerComponent::OnStart()
 {
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
-    if (auto* sword = scene.Find("Player_Sword")) {
-        m_swordTrail = sword->GetComponent<MeshTrailComponent>();
-        if (m_swordTrail) {
-            m_swordTrail->enabled = false;
-            m_swordTrail->clearRequested = true;
-        }
-    }
 }
 
 void PlayerControllerComponent::OnUpdate()
 {
     if (!transform) return;
-    auto* cc  = scene.GetComponent<CharacterControllerComponent>();
-    auto* rb  = scene.GetComponent<RigidBodyComponent>();
-    auto* phy = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
+    character.Tick(Time::deltaTime);
+    const bool isGrounded = character.IsGrounded();
+    animator.SetFloat(paramVerticalSpeed, character.GetVerticalSpeed());
+    animator.SetBool(paramIsGrounded, isGrounded);
 
-    if (cc) {
-        cc->Tick(phy, Time::deltaTime);
-        animator.SetFloat(paramVerticalSpeed, cc->verticalSpeed);
-        animator.SetBool(paramIsGrounded,     cc->isGrounded);
-    }
-    HandleCombat(cc);
-    HandleJump(cc, phy);
+    HandleCombat(isGrounded);
+    HandleJump(isGrounded);
 
     const Vector3 forward = GetMoveForward();
     const Vector3 right   = GetMoveRight(forward);
@@ -114,7 +98,9 @@ void PlayerControllerComponent::OnUpdate()
     const bool isStrafing = animator.IsInState("Block") || animator.GetBool("Block");
     const bool isMovementLocked =
         IsComboAttackState() || animator.IsInState("CrouchSlash") ||
-        animator.IsInState("Land") || m_comboAttackRequested;
+        animator.IsInState("Land") || animator.IsInState("PlayerImpact") ||
+        animator.IsInState("PlayerHit") ||
+        m_comboAttackRequested;
     // CrouchIdle / CrouchSlash に移動クリップがないため、C 押下中は水平移動を停止する。
     // Slash / Land 中も入力と慣性移動を止め、モーションの足運びと物理位置を一致させる。
     if (!input.GetKey(KeyCode::C) && !isMovementLocked) {
@@ -125,7 +111,6 @@ void PlayerControllerComponent::OnUpdate()
     }
 
     const bool hasInput   = move.LengthSq() > EPSILON;
-    const bool isGrounded = cc && cc->isGrounded;
     const Vector3 moveDirection = hasInput ? move.Normalized() : Vector3::ZERO;
 
     if (rotateToMoveDirection && (hasInput || isStrafing)) {
@@ -143,10 +128,10 @@ void PlayerControllerComponent::OnUpdate()
             transform.rotation, targetRotation, turnResponse).Normalized();
     }
 
-    if (phy) {
+    if (physics.HasRigidBody()) {
         // WHY: 水平速度を加速度補間し Y 速度は重力・接触解決に任せる。
         //      着地直後や方向転換でも即 MaxSpeed にならず人間らしい挙動になる。
-        Vector3 vel = phy->GetVelocity();
+        Vector3 vel = physics.GetVelocity();
         if (isMovementLocked) {
             // WHY: 入力だけ無効にすると直前の速度で滑るため、攻撃・着地中は水平速度も即時停止する。
             vel.x = 0.0f;
@@ -163,7 +148,7 @@ void PlayerControllerComponent::OnUpdate()
             vel.x -= vel.x * t;
             vel.z -= vel.z * t;
         }
-        phy->SetVelocity(vel);
+        physics.SetVelocity(vel);
         animator.SetFloat(paramSpeed, std::sqrtf(vel.x * vel.x + vel.z * vel.z));
     } else {
         if (hasInput) {
@@ -179,8 +164,7 @@ void PlayerControllerComponent::OnUpdate()
 
 void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& info)
 {
-    if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
-        cc->RegisterGroundContact(info);
+    character.RegisterGroundContact(info);
 }
 
 void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
@@ -188,43 +172,34 @@ void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
     OnCollisionEnter(info);
 }
 
-void PlayerControllerComponent::HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
+void PlayerControllerComponent::HandleJump(bool isGrounded)
 {
-    if (!cc || !cc->isGrounded || !phy) return;
+    if (!isGrounded || !physics.HasRigidBody()) return;
     // WHY: しゃがみ姿勢のまま JumpUp へ遷移すると下半身が急伸するため、C 押下中は跳ばない。
     if (input.GetKey(KeyCode::C)) return;
     if (!input.GetKeyDown(keyJump)) return;
-    cc->Jump(phy, { 0.0f, jumpForce * phy->GetMass(), 0.0f });
+    character.Jump({ 0.0f, jumpForce * physics.GetMass(), 0.0f });
     animator.SetBool(paramIsGrounded, false);
     animator.SetTrigger(paramJumpTrigger);
 }
 
-void PlayerControllerComponent::HandleCombat(CharacterControllerComponent* cc)
+void PlayerControllerComponent::HandleCombat(bool isGrounded)
 {
     // 各 Slash クリップの実際の振り区間だけを正規化時間で追跡する。
     // WHY: 固定秒数ではクリップ前半だけで停止し、剣先が振り切った位置まで残像が届かない。
     const bool isComboAttacking = IsComboAttackState();
     const bool isCrouchAttacking = animator.IsInState("CrouchSlash");
+    const bool isImpacting = animator.IsInState("PlayerImpact");
+    const bool isHitReacting = animator.IsInState("PlayerHit");
     const bool isAttacking = isComboAttacking || isCrouchAttacking;
+    const bool isCombatLocked = isAttacking || isImpacting || isHitReacting;
     const float attackTime = isAttacking ? animator.GetNormalizedTime() : 0.0f;
-    const bool isSwingWindow = isAttacking && attackTime >= 0.18f && attackTime <= 0.78f;
-    if (m_swordTrail) {
-        if (isSwingWindow && !m_swordTrail->enabled) {
-            m_swordTrail->clearRequested = true;
-            m_swordTrail->clearOnDisable = false;
-            m_swordTrail->enabled = true;
-        } else if (!isSwingWindow && m_swordTrail->enabled) {
-            // 新規サンプルだけ止め、既存の剣筋はdurationに従って自然消滅させる。
-            m_swordTrail->enabled = false;
-        }
-    }
-
     // 空中で防御姿勢へ急遷移するとJump/Fallを中断するため、地上時だけ戦闘入力を許可する。
-    const bool canUseCombat = !cc || cc->isGrounded;
+    const bool canUseCombat = isGrounded;
     const bool isCrouching = canUseCombat && input.GetKey(KeyCode::C);
     // WHY: Slash 中の Block 遷移は攻撃を途中で切り、コンボと剣筋を不自然に中断するため禁止する。
     const bool isBlocking =
-        canUseCombat && !isCrouching && !isAttacking && input.MouseButton(MouseBtn::Right);
+        canUseCombat && !isCrouching && !isCombatLocked && input.MouseButton(MouseBtn::Right);
     animator.SetBool("Crouch", isCrouching);
     animator.SetBool("Block", isBlocking);
 
@@ -263,11 +238,11 @@ void PlayerControllerComponent::HandleCombat(CharacterControllerComponent* cc)
     }
 
     // しゃがみ攻撃を優先し、通常コンボは再生中に予約されなかった場合だけ終了後の猶予で継続する。
-    if (isCrouching && animator.IsInState("CrouchIdle") && !isAttacking &&
+    if (isCrouching && animator.IsInState("CrouchIdle") && !isCombatLocked &&
         input.MouseButtonDown(MouseBtn::Left)) {
         // WHAT: しゃがみ攻撃は通常3段コンボと独立させ、C解除後のコンボ段数へ影響させない。
         animator.SetTrigger("CrouchAttack");
-    } else if (canUseCombat && !isCrouching && !isBlocking && !isAttacking &&
+    } else if (canUseCombat && !isCrouching && !isBlocking && !isCombatLocked &&
         !m_comboAttackRequested &&
         input.MouseButtonDown(MouseBtn::Left)) {
         if (m_comboWindowRemaining <= 0.0f) m_nextComboIndex = 0;
