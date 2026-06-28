@@ -41,6 +41,9 @@ bool Compiler::Start(const Config& config)
     if (config.skipDeps)
         command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
 
+    // WHY: 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
+    m_log += "> " + util::StringUtils::ToNarrow(command) + "\n";
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;

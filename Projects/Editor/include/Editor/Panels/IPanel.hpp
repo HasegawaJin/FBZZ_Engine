@@ -14,7 +14,13 @@ public:
 
     virtual const char* GetWindowName() const = 0;
     virtual const char* GetViewMenuName() const { return GetWindowName(); }
+    // View > Panels メニューに表示するかどうか。
     virtual bool ShowInViewMenu() const { return true; }
+    // 起動時の初期表示状態。設定・ツールなどの非常時パネルは false を返すことで
+    // EditorApp の individual visible = false 設定を不要にする。
+    virtual bool GetDefaultVisibility() const { return true; }
+    // View > Panels のサブメニュー名。nullptr の場合はルートに並べる。
+    virtual const char* GetMenuCategory() const { return nullptr; }
     virtual void OnInit(EditorContext& ctx) { (void)ctx; }
     virtual void OnShutdown() {}
 

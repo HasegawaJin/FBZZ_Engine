@@ -45,29 +45,24 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
 
             if (sel == 0) {
-                auto loadCustomMesh = [&mr]() {
-                    if (mr.meshPath.empty()) return;
-                    if (auto* model = asset::AssetManager::LoadModel(mr.meshPath))
-                        if (!model->meshes.empty())
-                            mr.mesh = model->meshes[0].get();
-                };
-                if (widgets::AssetPathField("Mesh Path", mr.meshPath,
-                                            ".fzasset", ctx.projectRoot))
-                    loadCustomMesh();
+                widgets::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fzasset", ctx.projectRoot,
+                    [&mr]() {
+                        if (!mr.meshPath.empty())
+                            if (auto* model = asset::AssetManager::LoadModel(mr.meshPath))
+                                if (!model->meshes.empty())
+                                    mr.mesh = model->meshes[0].get();
+                    });
             }
         });
 
     DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
         [](scene::SkinnedMeshRenderer& smr, EditorContext& ctx) {
-            auto loadModel = [&smr]() {
-                smr.model = nullptr;
-                if (smr.modelPath.empty()) return;
-                smr.model = asset::AssetManager::LoadModel(smr.modelPath);
-            };
-
-            if (widgets::AssetPathField("Model", smr.modelPath,
-                                        ".fzasset", ctx.projectRoot))
-                loadModel();
+            widgets::AssetPathFieldWithLoad("Model", smr.modelPath, ".fzasset", ctx.projectRoot,
+                [&smr]() {
+                    smr.model = nullptr;
+                    if (!smr.modelPath.empty())
+                        smr.model = asset::AssetManager::LoadModel(smr.modelPath);
+                });
 
             if (smr.model) {
                 const int meshCount = static_cast<int>(smr.model->meshes.size());

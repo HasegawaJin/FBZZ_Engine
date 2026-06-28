@@ -38,10 +38,11 @@ namespace {
 using fbzz::util::FileSystem;
 using fbzz::util::StringUtils;
 
-// --project と --standalone フラグを格納する構造体。
+// --project / --standalone / --scripts-dll フラグを格納する構造体。
 // WHY: 引数解析結果を Run() へ渡すための軽量な値型として分離する。
 struct LaunchArgs {
     std::filesystem::path projectPath;
+    std::filesystem::path scriptsDll; // --scripts-dll で上書き指定 (省略可)
     bool                  standalone = false;
 };
 
@@ -87,6 +88,8 @@ LaunchArgs ParseArgs()
         const std::wstring arg = argv[i];
         if (arg == L"--project" && i + 1 < argc)
             args.projectPath = argv[++i];
+        else if (arg == L"--scripts-dll" && i + 1 < argc)
+            args.scriptsDll = argv[++i];
         else if (arg == L"--standalone")
             args.standalone = true;
     }
@@ -117,9 +120,21 @@ int Run()
         MessageBoxW(nullptr, resolver.ErrorMessage().c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
         return 1;
     }
-    const fbzz::LaunchProject& project = resolver.Get();
+    fbzz::LaunchProject project = resolver.Get();
+    // WHY: .fbzz_proj に scripts_dll が書かれていないプロジェクト (DemoGame 等) では
+    //      ProjectResolver が scriptsDll を空のままにする。エディタから --scripts-dll で
+    //      解決済みパスが渡された場合はそれを優先して上書きする。
+    if (!args.scriptsDll.empty() && project.scriptsDll.empty())
+        project.scriptsDll = args.scriptsDll;
 
-    SetCurrentDirectoryW(FileSystem::GetExecutableDirectory().wstring().c_str());
+    const std::filesystem::path executableDirectory = FileSystem::GetExecutableDirectory();
+    const std::filesystem::path workingDirectory = FileSystem::Exists(executableDirectory / L".fbzz_proj")
+        ? executableDirectory
+        : project.root;
+    // WHY: 配布物は exe 隣に Assets があるため exeDir を CWD にする。
+    //      Editor から別プロジェクトを --project 指定で Standalone 起動する場合は
+    //      Assets が project.root にあるため、相対 shader path が解決できるよう CWD を切り替える。
+    SetCurrentDirectoryW(workingDirectory.wstring().c_str());
 
     auto& app = core::Application::Get();
 

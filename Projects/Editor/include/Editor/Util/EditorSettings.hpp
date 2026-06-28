@@ -22,6 +22,11 @@ struct EditorSettings {
     float cameraSpeed         = 5.0f;
     float cameraSensitivity   = 0.15f;
 
+    // WHY: シーン起動のたびカメラがデフォルト位置に戻ると操作感が悪い。
+    //      前回セッション終了時の位置・回転を保存して次回起動時に復元する。
+    float cameraLastPx = 0.0f, cameraLastPy = 2.5f, cameraLastPz = -8.0f;
+    float cameraLastRx = 0.0f, cameraLastRy = 0.0f, cameraLastRz = 0.0f, cameraLastRw = 1.0f;
+
     // --- ビュー -----------------------------------------------------------
     bool  showGrid            = true;
     float gridSize            = 1.0f;
@@ -44,6 +49,7 @@ struct EditorSettings {
     // --- ゲームビュー -----------------------------------------------------
     // WHY: EditorContext::GameViewportAspect の整数値として保存する (上記と同理由)
     int   gameViewportAspect  = 0;
+    int   playFocusMode       = 1; // 0=Focused, 1=Maximized, 2=Unfocused
 
     // --- その他 -----------------------------------------------------------
     bool        hotReloadEnabled = true;
@@ -65,37 +71,8 @@ struct EditorSettings {
     bool showDecalBounds      = false;
     bool showNavMesh          = true;
     bool showNavSensors       = false;
-    int  viewMode        = 0; // 0=Lit, 1=Unlit, 2=WireframeLit, 3=WireframeUnlit
+    int  viewMode             = 0; // 0=Lit, 1=Unlit, 2=WireframeLit, 3=WireframeUnlit
 
-    // --- Debug メニュー - Post Process ------------------------------------
-    bool  shadowEnabled              = true;
-    bool  ppFxaaEnabled              = true;
-    float ppExposure                 = 1.0f;
-    bool  ppBloomEnabled             = true;
-    float ppBloomIntensity           = 0.8f;
-    bool  ppAoEnabled                = true;
-    bool  ppFogEnabled               = false;
-    float ppFogDensity               = 0.06f;
-    float ppFogFar                   = 10.0f;
-    bool  ppColorGradingEnabled      = true;
-    float ppContrast                 = 0.0f;
-    float ppSaturation               = 1.0f;
-    float ppHueShift                 = 0.0f;
-    bool  ppVignetteEnabled          = false;
-    bool  ppFilmGrainEnabled         = false;
-    bool  ppSharpenEnabled           = false;
-    float ppSharpenStrength          = 0.35f;
-    bool  ppDofEnabled               = false;
-    float ppDofFocus                 = 8.0f;
-    float ppDofBlur                  = 3.0f;
-    bool  ppChromaticAberrationEnabled = false;
-    bool  ppLensDistortionEnabled    = false;
-    bool  ppSepiaEnabled             = false;
-    bool  ppInvertEnabled            = false;
-    bool  ppPosterizeEnabled         = false;
-    bool  ppPixelateEnabled          = false;
-    float ppPosterizeLevels          = 6.0f;
-    float ppPixelSize                = 4.0f;
 
     // --- TerrainTool ブラシ設定 ------------------------------------------
     // WHY: int で保存し TerrainTool::FalloffType / SculptMode へキャストする

@@ -43,12 +43,13 @@ bool HasSelectedAncestor(const scene::GameObject& go, const std::vector<scene::E
     return false;
 }
 
-void CollectHierarchyNames(scene::GameObject& go, std::unordered_set<std::string>& names)
+void CollectHierarchyIds(scene::GameObject& go, std::unordered_set<std::string>& ids)
 {
-    names.insert(go.name);
+    if (!go.instanceId.empty())
+        ids.insert(go.instanceId);
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (auto* child = go.GetChild(i))
-            CollectHierarchyNames(*child, names);
+            CollectHierarchyIds(*child, ids);
     }
 }
 
@@ -97,10 +98,10 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
     }
     if (rootSelection.empty()) return false;
 
-    std::unordered_set<std::string> includedNames;
+    std::unordered_set<std::string> includedIds;
     for (scene::EntityID id : rootSelection) {
         if (auto* go = scene.GetGameObject(id))
-            CollectHierarchyNames(*go, includedNames);
+            CollectHierarchyIds(*go, includedIds);
     }
 
     const std::string sceneText = SceneIO::Serialize(scene);
@@ -125,14 +126,16 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
             const auto* source = item.as_table();
             if (!source) continue;
 
-            const std::string name = (*source)["name"].value_or(std::string{});
-            if (!includedNames.contains(name)) continue;
+            const std::string instanceId = (*source)["instanceId"].value_or(std::string{});
+            if (instanceId.empty() || !includedIds.contains(instanceId)) continue;
 
             toml::table copied = *source;
-            const std::string parent = copied["parent"].value_or(std::string{});
-            if (!parent.empty() && !includedNames.contains(parent)) {
+            const std::string parentId = copied["parentInstanceId"].value_or(std::string{});
+            if (parentId.empty() || !includedIds.contains(parentId)) {
                 copied.erase("parent");
                 copied.insert("parent", std::string{});
+                copied.erase("parentInstanceId");
+                copied.insert("parentInstanceId", std::string{});
             }
             prefabObjects.push_back(std::move(copied));
         }
@@ -198,6 +201,7 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
         toml::table copied = *source;
         const std::string oldName = copied["name"].value_or(std::string{"GameObject"});
         const std::string oldParent = copied["parent"].value_or(std::string{});
+        const std::string oldParentGuid = copied["parentInstanceId"].value_or(std::string{});
         const std::string newName = nameMap.contains(oldName) ? nameMap[oldName] : oldName;
 
         copied.erase("name");
@@ -208,6 +212,13 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
             copied.insert("parent", nameMap[oldParent]);
         } else {
             copied.insert("parent", std::string{});
+        }
+
+        copied.erase("parentInstanceId");
+        if (!oldParentGuid.empty() && guidMap.contains(oldParentGuid)) {
+            copied.insert("parentInstanceId", guidMap[oldParentGuid]);
+        } else {
+            copied.insert("parentInstanceId", std::string{});
         }
 
         // instanceId: インスタンスごとに新規 UUID を割り当てる。

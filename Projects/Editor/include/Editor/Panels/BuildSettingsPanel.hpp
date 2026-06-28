@@ -14,8 +14,9 @@ namespace fbzz::editor {
 
 class BuildSettingsPanel final : public IPanel {
 public:
-    const char* GetWindowName()  const override { return "Build Settings"; }
-    bool        ShowInViewMenu() const override { return false; }
+    const char* GetWindowName()        const override { return "Build Settings"; }
+    bool        ShowInViewMenu()       const override { return false; }
+    bool        GetDefaultVisibility() const override { return false; }
     bool        CanClose()       const override { return true; }
 
     void OnInit(EditorContext& ctx) override;
