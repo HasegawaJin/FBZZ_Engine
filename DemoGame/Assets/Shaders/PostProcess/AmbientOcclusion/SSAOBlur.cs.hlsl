@@ -25,8 +25,9 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
     for (int y = -2; y <= 1; ++y)
     for (int x = -2; x <= 1; ++x)
     {
-        float2 offset = float2(x, y) * texelSize;
-        result += texSSAO.SampleLevel(sampDefault, uv + offset, 0).r;
+        int2 samplePixel = clamp(int2(pixel) + int2(x, y),
+                                 int2(0, 0), int2(screenSize) - int2(1, 1));
+        result += texSSAO.Load(int3(samplePixel, 0)).r;
     }
 
     const float ao = result / 16.0f;

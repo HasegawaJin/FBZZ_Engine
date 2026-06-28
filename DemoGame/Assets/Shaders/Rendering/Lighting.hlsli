@@ -8,6 +8,7 @@
 #define LIGHTING_HLSLI
 
 #include "Rendering/BRDF.hlsli"
+#include "Rendering/IBL.hlsli"
 
 // 環境光スケール: ambientColor は LightConstants cbuffer から来るグローバル変数。
 // Lit モード: ambientColor = (0.08, 0.08, 0.08)  Unlit モード: ambientColor = (1, 1, 1)
@@ -88,6 +89,66 @@ float3 Lighting_PBR(float3 N, float3 V, float3 L,
     float3 light     = lightColor * lightIntensity * shadow * brdf.NdotL;
     float3 direct    = (brdf.diffuse + brdf.specular) * light;
     float3 ambient   = albedo * ambientColor * ao;
+    return ambient + direct;
+}
+
+// =========================================================================
+// PBR + IBL (Image-Based Lighting) ライティング
+//
+// Lighting_PBR の ambient (定数 albedo * ambientColor * ao) を、
+// EvaluateIBL による物理ベースの環境光に差し替えたバリアント。
+// ダイレクトライティング部分は Lighting_PBR と同じ。
+//
+// 設計:
+//   ambient = EvaluateIBL(...) * iblIntensity
+//   direct  = (diffuse + specular) * lightColor * lightIntensity * shadow * NdotL
+//   合計    = ambient + direct
+//
+//   EvaluateIBL 内で拡散・鏡面を個別にスケールしてから合算する。
+//   WHY: 全体強度だけでは diffuse と specular を切り分けられず、鏡面エイリアシングの
+//        診断やアート調整に iblDiffuseScale / iblSpecularScale を利用できないため。
+//
+// 引数:
+//   N, V, L, albedo, metallic, roughness, lightColor, lightIntensity,
+//   shadow, ao       : Lighting_PBR と同様
+//   irradianceMap    : 拡散 IBL cubemap
+//   prefilterMap     : 鏡面 IBL cubemap (roughness → mip でフィルタ済み)
+//   brdfLUT          : BRDF 積分テーブル (BRDFIntegration.cs.hlsl でベイク)
+//   maxMipLevel      : prefilterMap の最大 mip レベル
+//   iblIntensity     : 環境光全体スケール (AdvancedGraphicsConstants より)
+//   diffuseScale / specularScale : 拡散・鏡面 IBL の独立スケール
+//   samp             : 通常サンプラー (irradiance / prefilter 用)
+//   sampClamp        : Linear Clamp サンプラー (BRDF LUT 用)
+// =========================================================================
+float3 Lighting_PBR_IBL(
+    float3      N, float3 V, float3 L,
+    float3      albedo, float metallic, float roughness,
+    float3      lightColor, float lightIntensity,
+    float       shadow, float ao,
+    TextureCube       irradianceMap,
+    TextureCube       prefilterMap,
+    Texture2D<float4> brdfLUT,
+    int         maxMipLevel,
+    float       iblIntensity,
+    float       diffuseScale,
+    float       specularScale,
+    SamplerState      samp,
+    SamplerState      sampClamp)
+{
+    // ---- ダイレクトライティング (ディレクショナルライト) -----------------
+    BRDFResult brdf = EvaluateBRDF(N, V, L, albedo, metallic, roughness);
+    float3 light    = lightColor * lightIntensity * shadow * brdf.NdotL;
+    float3 direct   = (brdf.diffuse + brdf.specular) * light;
+
+    // ---- IBL アンビエント (物理ベース環境光) ----------------------------
+    // EvaluateIBL は AO 乗算済みの値を返すため、ここで ao を再乗算しない。
+    // iblIntensity で環境光量を制御する (0=IBL なし, 1=フル, >1=過露出演出)
+    float3 ambient = EvaluateIBL(N, V, albedo, metallic, roughness, ao,
+                                  irradianceMap, prefilterMap, brdfLUT,
+                                  maxMipLevel, diffuseScale, specularScale,
+                                  samp, sampClamp)
+                     * iblIntensity;
+
     return ambient + direct;
 }
 

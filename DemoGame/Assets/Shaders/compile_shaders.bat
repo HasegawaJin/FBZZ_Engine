@@ -111,14 +111,39 @@ REM =========================================================================
 
 call :CompileCS PostProcess\AmbientOcclusion\SSAO.cs.hlsl PostProcess.AmbientOcclusion.SSAO.cs || goto :error
 call :CompileCS PostProcess\AmbientOcclusion\SSAOBlur.cs.hlsl PostProcess.AmbientOcclusion.SSAOBlur.cs || goto :error
+REM GTAO (Ground Truth Ambient Occlusion) — Horizon-Based AO
+call :CompileCS PostProcess\AmbientOcclusion\GTAO.cs.hlsl PostProcess.AmbientOcclusion.GTAO.cs || goto :error
+call :CompileCS PostProcess\AmbientOcclusion\GTAOBlur.cs.hlsl PostProcess.AmbientOcclusion.GTAOBlur.cs || goto :error
+REM IBL BRDF LUT — 起動時 1 回だけ実行するプリインテグレーション CS
+call :CompileCS PostProcess\AmbientOcclusion\BRDFIntegration.cs.hlsl PostProcess.AmbientOcclusion.BRDFIntegration.cs || goto :error
 call :CompileCS PostProcess\Bloom\BloomDownsample.cs.hlsl PostProcess.Bloom.BloomDownsample.cs || goto :error
 call :CompileCS PostProcess\Bloom\BloomUpsample.cs.hlsl PostProcess.Bloom.BloomUpsample.cs || goto :error
 call :CompileVSPS PostProcess\Color\CopyColor.hlsl PostProcess.Color.CopyColor || goto :error
 call :CompileVSPS PostProcess\Color\Composite.hlsl PostProcess.Color.Composite || goto :error
 call :CompileVSPS PostProcess\Water\Caustics.hlsl PostProcess.Water.Caustics || goto :error
 for %%S in ("%SRC%PostProcess\Custom\*.hlsl") do call :CompileVSPS PostProcess\Custom\%%~nxS PostProcess.Custom.%%~nS || goto :error
+REM TAA (Temporal Anti-Aliasing) — ping-pong 履歴バッファへの VS/PS パス
+call :CompileVSPS PostProcess\AntiAliasing\TAA.hlsl PostProcess.AntiAliasing.TAA || goto :error
 call :CompileVSPS PostProcess\AntiAliasing\FXAA.hlsl PostProcess.AntiAliasing.FXAA || goto :error
 call :CompileVSPS PostProcess\Outline\SelectionOutline.hlsl PostProcess.Outline.SelectionOutline || goto :error
+REM Screen Space Reflections — Compute Shader
+call :CompileCS PostProcess\Reflections\SSR.cs.hlsl PostProcess.Reflections.SSR.cs || goto :error
+REM Volumetric Lighting — Henyey-Greenstein 散乱 Compute Shader
+call :CompileCS PostProcess\Lighting\VolumetricLight.cs.hlsl PostProcess.Lighting.VolumetricLight.cs || goto :error
+REM Contact Shadows — View Space レイマーチ Compute Shader
+call :CompileCS PostProcess\Shadow\ContactShadows.cs.hlsl PostProcess.Shadow.ContactShadows.cs || goto :error
+REM Motion Blur — 深度再投影カメラブラー Compute Shader
+call :CompileCS PostProcess\Motion\MotionBlur.cs.hlsl PostProcess.Motion.MotionBlur.cs || goto :error
+REM Lens Flare — スクリーンスペースゴースト + ハロー ADDITIVE VS/PS
+call :CompileVSPS PostProcess\Flare\LensFlare.hlsl PostProcess.Flare.LensFlare || goto :error
+
+REM IBL Baking — Editor 側でオフラインベイクに使う Compute Shader 群
+REM   EquirectToCubemap     : Equirectangular HDR -> 6 面 Cubemap
+REM   IrradianceConvolution : Env Cubemap -> Diffuse Irradiance Cubemap
+REM   PrefilteredEnvMap     : Env Cubemap -> Specular Prefiltered Cubemap (roughness per mip)
+call :CompileCS IBL\EquirectToCubemap.cs.hlsl IBL.EquirectToCubemap.cs || goto :error
+call :CompileCS IBL\IrradianceConvolution.cs.hlsl IBL.IrradianceConvolution.cs || goto :error
+call :CompileCS IBL\PrefilteredEnvMap.cs.hlsl IBL.PrefilteredEnvMap.cs || goto :error
 
 echo.
 echo Done. All shaders compiled successfully.
