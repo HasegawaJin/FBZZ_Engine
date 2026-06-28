@@ -17,33 +17,33 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
-#include <Engine/Core/IModule.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Input/Input.hpp>
-#include <Engine/ProjectSettings.hpp>
-#include <Engine/Renderer/Camera.hpp>
-#include <Engine/Renderer/DebugCamera.hpp>
-#include <Engine/Renderer/DebugDraw.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/ProjectLauncher.hpp>
-#include <Engine/Scene/SceneUtils.hpp>
-#include <Engine/Scene/Script.hpp>
-#include <Engine/Scene/StandaloneProjectModule.hpp>
-#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
-#include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Core/ILogSink.hpp>
-#include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Core/Logger.hpp>
+#include <Engine/ProjectSettings.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/SceneUtils.hpp>
+#include <Engine/Scene/StandaloneProjectModule.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
+#include <Engine/Core/IModule.hpp>
+#include <Engine/Input/Input.hpp>
+#include <Engine/Renderer/Camera.hpp>
+#include <Engine/Renderer/DebugCamera.hpp>
+#include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
+#include <Engine/Scene/ProjectLauncher.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneManager.hpp>
+#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Systems/DebugDrawSystem.hpp>
+#include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <imgui.h>
-#endif
 #include <Physics/World.hpp>
+#endif
 
 #include <Windows.h>
 #include <shellapi.h>
@@ -660,7 +660,14 @@ int Run()
         return 1;
     }
 
-    SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
+    const std::filesystem::path executableDirectory = GetExecutableDirectory();
+    const std::filesystem::path workingDirectory = Exists(executableDirectory / L".fbzz_proj")
+        ? executableDirectory
+        : project.root;
+    // WHY: 配布物は exe 隣に Assets があるため exeDir を CWD にする。
+    //      Editor の Tools > Standalone から Binaries/Development の exe を起動する場合は
+    //      Assets が project.root にあるため、相対 shader path が解決できるよう CWD を切り替える。
+    SetCurrentDirectoryW(workingDirectory.wstring().c_str());
 
     // game.log を exe 隣に生成する (Standalone 時のみ。Editor では ConsolePanel を使う)
     // WHY: WIN32 サブシステムはコンソールがなく、デバッガなしでは OutputDebugString も見えない。
