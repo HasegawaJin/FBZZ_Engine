@@ -5,9 +5,7 @@
 // useFootIK フラグを参照し、IK ロジックを PlayerControllerComponent から疎結合にする。
 #pragma once
 
-#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
-#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
 #include <cmath>
@@ -31,8 +29,7 @@ public:
 
 private:
     void UpdateIK(bool useFootIK);
-    void UpdateSlopeLean(IKSolverComponent& ik, CharacterControllerComponent* cc,
-                         RigidBodyComponent* rb);
+    void UpdateSlopeLean(IKSolverComponent& ik);
 
     bool    m_hasSpineTargetBase  = false;
     Vector3 m_spineTargetBase     = Vector3::ZERO;
@@ -75,13 +72,10 @@ void PlayerIKComponent::UpdateIK(bool useFootIK)
     //      PlayerControllerComponent は後から実行されるため直前フレームの Block 値を使用する。
     const bool isStrafing = animator.IsInState("Block") || animator.GetBool("Block");
     if (!isStrafing)
-        UpdateSlopeLean(*ik,
-                        scene.GetComponent<CharacterControllerComponent>(),
-                        scene.GetComponent<RigidBodyComponent>());
+        UpdateSlopeLean(*ik);
 }
 
-void PlayerIKComponent::UpdateSlopeLean(
-    IKSolverComponent& ik, CharacterControllerComponent* cc, RigidBodyComponent* rb)
+void PlayerIKComponent::UpdateSlopeLean(IKSolverComponent& ik)
 {
     IKChain* spine = nullptr;
     for (auto& chain : ik.chains) {
@@ -100,12 +94,13 @@ void PlayerIKComponent::UpdateSlopeLean(
     }
 
     Vector3 desiredOffset = Vector3::ZERO;
-    if (cc && cc->isGrounded && rb && rb->enabled && rb->rigidBody) {
-        Vector3 moveDirection = rb->rigidBody->GetVelocity();
+    if (character.IsGrounded() && physics.HasRigidBody()) {
+        Vector3 moveDirection = physics.GetVelocity();
         moveDirection.y = 0.0f;
-        if (moveDirection.LengthSq() > 0.01f && cc->groundNormal.y > 0.1f) {
+        const Vector3 groundNormal = character.GetGroundNormal();
+        if (moveDirection.LengthSq() > 0.01f && groundNormal.y > 0.1f) {
             moveDirection = moveDirection.Normalized();
-            const Vector3 normal = cc->groundNormal.Normalized();
+            const Vector3 normal = groundNormal.Normalized();
             // 地面法線から移動方向の上り勾配 tan(theta) を求め、上り坂だけ上体を進行方向へ倒す。
             const float uphillGrade = std::max(
                 0.0f, -Vector3::Dot(normal, moveDirection) / normal.y);
