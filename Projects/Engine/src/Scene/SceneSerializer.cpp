@@ -651,8 +651,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         goTbl.insert("layer",           (int64_t)go.layer);
         goTbl.insert("active",          go.activeSelf());
         goTbl.insert("prefabAssetPath", go.prefabAssetPath);
-        goTbl.insert("parent",
-            go.GetParent() ? go.GetParent()->name : std::string{});
+        if (auto* parent = go.GetParent()) {
+            goTbl.insert("parent", parent->name);
+            goTbl.insert("parentInstanceId", parent->instanceId);
+        } else {
+            goTbl.insert("parent", std::string{});
+            goTbl.insert("parentInstanceId", std::string{});
+        }
 
         // Transform
         {
@@ -2888,12 +2893,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         auto* goTbl = item.as_table();
         if (!goTbl) continue;
 
-        std::string parentName = (*goTbl)["parent"].value_or(std::string{});
-        if (parentName.empty()) continue;
+        std::string parentGuid = (*goTbl)["parentInstanceId"].value_or(std::string{});
+        if (parentGuid.empty()) continue;
 
-        std::string childName = (*goTbl)["name"].value_or(std::string{});
-        auto* child  = scene->Find(childName);
-        auto* parent = scene->Find(parentName);
+        std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (childGuid.empty()) continue;
+
+        auto* child = scene->FindByGuid(childGuid);
+        auto* parent = scene->FindByGuid(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 
@@ -3299,11 +3306,14 @@ bool SceneSerializer::AppendObjects(
     for (auto& item : *goArr) {
         auto* goTbl = item.as_table();
         if (!goTbl) continue;
-        std::string parentName = (*goTbl)["parent"].value_or(std::string{});
-        if (parentName.empty()) continue;
-        std::string childName = (*goTbl)["name"].value_or(std::string{});
-        auto* child  = scene.Find(childName);
-        auto* parent = scene.Find(parentName);
+        std::string parentGuid = (*goTbl)["parentInstanceId"].value_or(std::string{});
+        if (parentGuid.empty()) continue;
+
+        std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (childGuid.empty()) continue;
+
+        auto* child = scene.FindByGuid(childGuid);
+        auto* parent = scene.FindByGuid(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 

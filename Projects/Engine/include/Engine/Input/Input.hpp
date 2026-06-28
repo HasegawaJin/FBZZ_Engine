@@ -36,6 +36,9 @@ public:
     // マウス座標 (クライアント座標)
     static math::Vector2 MousePosition();
     static math::Vector2 MouseDelta();
+    // CursorLockMode::Locked 用に OS カーソルを中央へ戻す前の移動量を注入する。
+    // WHY: SetCursorPos によるワープを通常の座標差分へ混ぜると、ゲームカメラのデルタが相殺されるため。
+    static void OverrideMouseDelta(const math::Vector2& delta);
 
     // マウスホイール (1ノッチ = +1.0 / -1.0)
     static float MouseScrollDelta();
@@ -55,7 +58,9 @@ private:
     static std::array<bool, 3>         s_mousePrevious;
     static math::Vector2               s_mousePos;
     static math::Vector2               s_prevMousePos;
+    static math::Vector2               s_overrideMouseDelta;
     static float                       s_scrollDelta;
+    static bool                        s_hasOverrideMouseDelta;
 };
 
 } // namespace fbzz::input

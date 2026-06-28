@@ -11,6 +11,7 @@
 #include "Transform.hpp"
 #include "GameObject.hpp"
 #include "ComponentRegistry.hpp"
+#include "ScriptFactory.hpp"
 #include <Math/Vector4.hpp>
 #include <vector>
 #include <memory>
@@ -237,7 +238,32 @@ private:
 
     template<typename T>
     static void CopyIfHas(ComponentArray<T>& arr, EntityID src, EntityID dst) {
-        if constexpr (std::is_copy_constructible_v<T>) {
+        if constexpr (std::is_same_v<T, ScriptComponent>) {
+            if (!arr.Has(src) || arr.Has(dst)) return;
+
+            const auto& srcComponent = arr.Get(src);
+            ScriptComponent dstComponent{};
+            for (const auto& srcEntry : srcComponent.scripts) {
+                ScriptEntry& dstEntry = dstComponent.scripts.emplace_back();
+                if (srcEntry.serialized) {
+                    dstEntry.serialized = std::make_shared<SerializedScriptData>(*srcEntry.serialized);
+                    dstEntry.script = ScriptFactory::Create(dstEntry.serialized->type);
+                    if (dstEntry.script)
+                        dstEntry.script->enabled = dstEntry.serialized->enabled;
+                } else if (srcEntry.script) {
+                    const std::string type = srcEntry.script->GetTypeName();
+                    dstEntry.serialized = std::make_shared<SerializedScriptData>();
+                    dstEntry.serialized->type = type;
+                    dstEntry.serialized->enabled = srcEntry.script->enabled;
+                    dstEntry.script = ScriptFactory::Create(type);
+                    if (dstEntry.script)
+                        dstEntry.script->enabled = srcEntry.script->enabled;
+                }
+            }
+
+            if (!dstComponent.scripts.empty())
+                arr.Add(dst, std::move(dstComponent));
+        } else if constexpr (std::is_copy_constructible_v<T>) {
             if (arr.Has(src) && !arr.Has(dst)) arr.Add(dst, arr.Get(src));
         }
     }

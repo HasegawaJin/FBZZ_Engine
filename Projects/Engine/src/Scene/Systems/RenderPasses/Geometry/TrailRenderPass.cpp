@@ -350,14 +350,14 @@ math::Vector3 ResolveTrailSamplePosition(Scene& scene, GameObject& go, const Tra
                     const int nodeIndex = it->second;
                     if (nodeIndex >= 0 && nodeIndex < static_cast<int>(smr->nodeEntities.size())) {
                         if (auto* boneGo = scene.GetGameObject(smr->nodeEntities[static_cast<size_t>(nodeIndex)]))
-                            return boneGo->transform.position + boneGo->transform.rotation * trail.attachOffset;
+                            return boneGo->transform.worldPosition + boneGo->transform.worldRotation * trail.attachOffset;
                     }
                 }
             }
         }
     }
 
-    return go.transform.position + go.transform.rotation * trail.attachOffset;
+    return go.transform.worldPosition + go.transform.worldRotation * trail.attachOffset;
 }
 
 void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, float currentTime)
