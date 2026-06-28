@@ -76,9 +76,21 @@ T* SelfComponent(const Script* script)
     return script ? script->GetComponent<T>() : nullptr;
 }
 
+template<typename T>
+T* ObjectComponent(GameObject* go)
+{
+    return go && go->IsValid() ? go->GetComponent<T>() : nullptr;
+}
+
 physics::RigidBody* SelfRigidBody(const Script* script)
 {
     auto* component = SelfComponent<RigidBodyComponent>(script);
+    return component && component->enabled ? component->rigidBody.get() : nullptr;
+}
+
+physics::RigidBody* ObjectRigidBody(GameObject* go)
+{
+    auto* component = ObjectComponent<RigidBodyComponent>(go);
     return component && component->enabled ? component->rigidBody.get() : nullptr;
 }
 
@@ -469,6 +481,16 @@ void ScriptPhysicsProxy::AddForceAtPoint(const math::Vector3& force, const math:
     if (auto* rb = SelfRigidBody(script)) rb->ApplyForceAtPoint(force, worldPoint);
 }
 
+bool ScriptPhysicsProxy::HasRigidBody() const
+{
+    return SelfRigidBody(script) != nullptr;
+}
+
+bool ScriptPhysicsProxy::HasRigidBody(GameObject* go) const
+{
+    return ObjectRigidBody(go) != nullptr;
+}
+
 float ScriptPhysicsProxy::GetMass() const
 {
     if (auto* rb = SelfRigidBody(script)) return rb->GetMass();
@@ -497,6 +519,28 @@ math::Vector3 ScriptPhysicsProxy::GetVelocity() const
 {
     if (auto* rb = SelfRigidBody(script)) return rb->GetVelocity();
     return math::Vector3::ZERO;
+}
+
+void ScriptPhysicsProxy::SetVelocity(GameObject* go, const math::Vector3& v) const
+{
+    if (auto* rb = ObjectRigidBody(go)) rb->SetVelocity(v);
+}
+
+math::Vector3 ScriptPhysicsProxy::GetVelocity(GameObject* go) const
+{
+    if (auto* rb = ObjectRigidBody(go)) return rb->GetVelocity();
+    return math::Vector3::ZERO;
+}
+
+void ScriptPhysicsProxy::AddImpulse(GameObject* go, const math::Vector3& v) const
+{
+    if (auto* rb = ObjectRigidBody(go)) rb->ApplyImpulse(v);
+}
+
+float ScriptPhysicsProxy::GetMass(GameObject* go) const
+{
+    if (auto* rb = ObjectRigidBody(go)) return rb->GetMass();
+    return 0.0f;
 }
 
 void ScriptPhysicsProxy::SetAngularVelocity(const math::Vector3& v) const
@@ -1028,6 +1072,21 @@ void ScriptParticleProxy::SetEmitRate(float rate) const
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitRate = rate;
 }
 
+void ScriptParticleProxy::SetEmitPosition(const math::Vector3& position) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitPosition = position;
+}
+
+void ScriptParticleProxy::SetEmitVelocity(const math::Vector3& velocity) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitVelocity = velocity;
+}
+
+void ScriptParticleProxy::SetVelocitySpread(float spread) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->velocitySpread = (std::max)(spread, 0.0f);
+}
+
 void ScriptParticleProxy::SetEnabled(bool enabled) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->enabled = enabled;
@@ -1097,6 +1156,25 @@ void ScriptParticleProxy::SetSize(float start, float end) const
     }
 }
 
+void ScriptParticleProxy::SetLifetime(float seconds) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->lifetime = (std::max)(seconds, 0.01f);
+}
+
+void ScriptParticleProxy::SetMaxParticles(int maxParticles) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->maxParticles = (std::max)(maxParticles, 1);
+}
+
+void ScriptParticleProxy::SetPlayback(bool loop, float duration, bool clearOnStop) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->loop = loop;
+        p->duration = (std::max)(duration, 0.0f);
+        p->clearOnStop = clearOnStop;
+    }
+}
+
 void ScriptParticleProxy::SetTexture(std::string_view texturePath, int columns, int rows) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
@@ -1113,6 +1191,35 @@ void ScriptParticleProxy::SetShape(ParticleEmitterShape shape) const
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->shape = shape;
 }
 
+void ScriptParticleProxy::SetSphereShape(float radius) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->shape = ParticleEmitterShape::Sphere;
+        p->sphereRadius = (std::max)(radius, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetConeShape(float radius, float angleDegrees) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->shape = ParticleEmitterShape::Cone;
+        p->coneRadius = (std::max)(radius, 0.0f);
+        p->coneAngleDegrees = (std::max)(angleDegrees, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetBoxShape(const math::Vector3& extents) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->shape = ParticleEmitterShape::Box;
+        p->boxExtents = {
+            (std::max)(extents.x, 0.0f),
+            (std::max)(extents.y, 0.0f),
+            (std::max)(extents.z, 0.0f)
+        };
+    }
+}
+
 void ScriptParticleProxy::SetBlendMode(ParticleBlendMode blendMode) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->blendMode = blendMode;
@@ -1126,6 +1233,19 @@ void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
 void ScriptParticleProxy::SetSimulationMode(ParticleSimulationMode simulationMode) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->simulationMode = simulationMode;
+}
+
+void ScriptParticleProxy::SetVelocityDamping(float damping) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->velocityDamping = (std::max)(damping, 0.0f);
+}
+
+void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->angularVelocityMin = minValue;
+        p->angularVelocityMax = maxValue;
+    }
 }
 
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
@@ -1152,6 +1272,12 @@ void ScriptTrailProxy::SetDuration(float seconds) const
 {
     if (auto* t = SelfComponent<TrailComponent>(script))
         t->duration = (std::max)(seconds, 0.01f);
+}
+
+void ScriptTrailProxy::SetMaxPoints(int maxPoints) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->maxPoints = (std::max)(maxPoints, 2);
 }
 
 void ScriptTrailProxy::SetSampling(float sampleInterval, float minVertexDist) const
@@ -1192,6 +1318,15 @@ void ScriptTrailProxy::SetTexture(std::string_view texturePath, float uvTiling, 
         t->uvScrollSpeed = uvScrollSpeed;
         t->texture = {};
         t->loadedTexturePath.clear();
+    }
+}
+
+void ScriptTrailProxy::SetMaterial(std::string_view materialPath) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->materialPath = std::string(materialPath);
+        t->loadedMaterialPath.clear();
+        t->texture = {};
     }
 }
 
@@ -1581,6 +1716,32 @@ bool ScriptAnimatorProxy::IsInState(std::string_view name) const
     return a && a->IsInState(name);
 }
 
+void ScriptAnimatorProxy::SetFloat(GameObject* go, std::string_view name, float v) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetFloat(name, v);
+}
+
+void ScriptAnimatorProxy::SetInt(GameObject* go, std::string_view name, int v) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetInt(name, v);
+}
+
+void ScriptAnimatorProxy::SetBool(GameObject* go, std::string_view name, bool v) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetBool(name, v);
+}
+
+void ScriptAnimatorProxy::SetTrigger(GameObject* go, std::string_view name) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetTrigger(name);
+}
+
+bool ScriptAnimatorProxy::IsInState(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a && a->IsInState(name);
+}
+
 float ScriptAnimatorProxy::GetFloat(std::string_view name) const
 {
     const auto* a = SelfComponent<AnimatorComponent>(script);
@@ -1602,6 +1763,30 @@ bool ScriptAnimatorProxy::GetBool(std::string_view name) const
 float ScriptAnimatorProxy::GetNormalizedTime() const
 {
     const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetNormalizedTime() : 0.0f;
+}
+
+float ScriptAnimatorProxy::GetFloat(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetFloat(name) : 0.0f;
+}
+
+int ScriptAnimatorProxy::GetInt(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetInt(name) : 0;
+}
+
+bool ScriptAnimatorProxy::GetBool(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a && a->GetBool(name);
+}
+
+float ScriptAnimatorProxy::GetNormalizedTime(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
     return a ? a->GetNormalizedTime() : 0.0f;
 }
 
@@ -1627,6 +1812,21 @@ void ScriptAnimatorProxy::SetSpeed(float speed) const
 void ScriptAnimatorProxy::Play(std::string_view stateName) const
 {
     if (auto* a = SelfComponent<AnimatorComponent>(script)) {
+        a->currentStateName = std::string(stateName);
+        a->stateTime        = 0.0f;
+        a->blendToState.clear();
+        a->blendWeight      = 0.0f;
+    }
+}
+
+void ScriptAnimatorProxy::SetSpeed(GameObject* go, float speed) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->speed = speed;
+}
+
+void ScriptAnimatorProxy::Play(GameObject* go, std::string_view stateName) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) {
         a->currentStateName = std::string(stateName);
         a->stateTime        = 0.0f;
         a->blendToState.clear();

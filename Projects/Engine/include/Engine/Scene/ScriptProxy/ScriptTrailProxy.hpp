@@ -28,6 +28,10 @@ struct ScriptTrailProxy {
     // SetDuration — 軌跡が残る秒数を設定する。
     void SetDuration(float seconds) const;
 
+    // SetMaxPoints — Trail が保持する制御点数を設定する。
+    // WHY: 剣閃のように短時間で大きく動く用途では Script 側から密度を調整したい。
+    void SetMaxPoints(int maxPoints) const;
+
     // SetSampling — 制御点の追加頻度と最小移動距離を設定する。
     void SetSampling(float sampleInterval, float minVertexDist) const;
 
@@ -42,6 +46,9 @@ struct ScriptTrailProxy {
 
     // SetTexture — Trail テクスチャと UV スクロールを設定する。
     void SetTexture(std::string_view texturePath, float uvTiling = 1.0f, float uvScrollSpeed = 0.0f) const;
+
+    // SetMaterial — Trail 用 .mat アセットを指定する。空文字で materialPath を解除する。
+    void SetMaterial(std::string_view materialPath) const;
 
     // SetUVMode — U 座標を Stretch / Tile のどちらで生成するかを設定する。
     void SetUVMode(TrailUVMode mode) const;
