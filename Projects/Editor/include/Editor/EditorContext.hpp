@@ -244,6 +244,8 @@ struct EditorContext {
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
     float                                   assetBrowserIconSize       = 84.0f;
+    float                                   assetBrowserTreeWidth      = 180.0f; // 左フォルダツリーの幅 (永続化)
+    float                                   editorUiScale              = 1.0f;   // UI 全体スケール (永続化)
     std::vector<std::string>                assetBrowserBookmarks;
 
     // カメラブックマーク (最大 9 件、Shift+1~9 で保存・1~9 で呼び出し)

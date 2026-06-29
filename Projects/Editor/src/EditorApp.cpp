@@ -438,7 +438,9 @@ void EditorApp::Shutdown()
         m_settings.cameraLastRz = m_ctx.editorCamera->m_rotation.z;
         m_settings.cameraLastRw = m_ctx.editorCamera->m_rotation.w;
     }
+    m_settings.editorUiScale         = m_ctx.editorUiScale;
     m_settings.assetBrowserIconSize  = m_ctx.assetBrowserIconSize;
+    m_settings.assetBrowserTreeWidth = m_ctx.assetBrowserTreeWidth;
     m_settings.assetBrowserBookmarks = m_ctx.assetBrowserBookmarks;
     m_settings.defaultImportOptions  = m_ctx.defaultImportOptions;
     // ホットキーバインドをオーバーライドとして保存 (デフォルト値でも全件保存して確実に復元)
@@ -546,7 +548,10 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
             m_ctx.editorCamera->m_position = { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz };
             m_ctx.editorCamera->m_rotation = { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz, m_settings.cameraLastRw };
         }
+        m_ctx.editorUiScale = m_settings.editorUiScale;
+        EditorTheme::SetUiScale(m_ctx.editorUiScale); // ロードしたスケールを即適用
         m_ctx.assetBrowserIconSize = m_settings.assetBrowserIconSize;
+        m_ctx.assetBrowserTreeWidth = m_settings.assetBrowserTreeWidth;
         m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
         m_ctx.defaultImportOptions  = m_settings.defaultImportOptions;
         for (std::size_t i = 0; i < 9; ++i) {
