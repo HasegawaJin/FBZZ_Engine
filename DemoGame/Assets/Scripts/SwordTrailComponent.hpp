@@ -4,8 +4,7 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
-#include <algorithm>
-#include <string>
+#include "GameVocab.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -17,35 +16,40 @@ class SwordTrailComponent : public Script {
 
 public:
     FBZZ_GROUP("References")
-    FBZZ_FIELD(std::string, ownerName, "Player", "Owner Name")
+    // 旧: FBZZ_FIELD(std::string, ownerName, ...) + 手書き ResolveOwner()。
+    // 新: 型安全参照。Inspector に GameObject をドラッグ&ドロップでアサインできる。
+    //     未アサイン時は親階層から Player/Enemy を自動探索する (ResolveOwner)。
+    FBZZ_REF(GameObject, owner, "Owner")
 
     FBZZ_GROUP("Timing")
-    FBZZ_FIELD_RANGE(float, swingStartTime, 0.18f, "Swing Start Time", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, swingEndTime, 0.78f, "Swing End Time", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, swingStartTime, 0.18f, "", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, swingEndTime,   0.78f, "", 0.0f, 1.0f)
 
     FBZZ_GROUP("Trail")
-    FBZZ_FIELD_RANGE(float, duration, 0.32f, "Duration", 0.02f, 2.0f)
-    FBZZ_FIELD_RANGE(float, sampleInterval, 0.004f, "Sample Interval", 0.001f, 0.1f)
-    FBZZ_FIELD_RANGE(float, minVertexDist, 0.0f, "Min Vertex Dist", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, widthStart, 0.28f, "Width Start", 0.01f, 1.0f)
-    FBZZ_FIELD_RANGE(float, widthEnd, 0.03f, "Width End", 0.0f, 1.0f)
-    FBZZ_FIELD(Vector4, colorStart, Vector4(1.0f, 0.95f, 0.75f, 0.75f), "Color Start")
-    FBZZ_FIELD(Vector4, colorEnd, Vector4(1.0f, 0.25f, 0.05f, 0.0f), "Color End")
-    FBZZ_FIELD(int, maxPoints, 64, "Max Points")
-    FBZZ_FIELD(int, smoothSubdivisions, 2, "Smooth Subdivisions")
-    FBZZ_FIELD(std::string, materialPath, "", "Material Path")
-    FBZZ_FIELD(std::string, texturePath, "", "Texture Path")
+    FBZZ_FIELD_RANGE(float, duration,       0.32f,  "", 0.02f, 2.0f)
+    FBZZ_FIELD_RANGE(float, sampleInterval, 0.004f, "", 0.001f, 0.1f)
+    FBZZ_FIELD_RANGE(float, minVertexDist,  0.0f,   "", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, widthStart,     0.28f,  "", 0.01f, 1.0f)
+    FBZZ_FIELD_RANGE(float, widthEnd,       0.03f,  "", 0.0f, 1.0f)
+    // WHY: 鋼の剣閃は「白い高輝度コア → わずかに寒色へ抜けて透明」が最もリアルに見える。
+    //      Trail.hlsl は tex(既定 1x1 白) * color の ALPHA_BLEND なので、color 側で白を作る。
+    FBZZ_FIELD(Vector4, colorStart, Vector4(1.0f, 1.0f, 1.0f, 0.85f),  "")
+    FBZZ_FIELD(Vector4, colorEnd,   Vector4(0.82f, 0.90f, 1.0f, 0.0f), "")
+    FBZZ_FIELD(int, maxPoints,          64, "")
+    FBZZ_FIELD(int, smoothSubdivisions,  2, "")
+    FBZZ_FIELD(std::string, materialPath, "", "")
+    FBZZ_FIELD(std::string, texturePath,  "", "")
 
     FBZZ_GROUP("Blood Particle")
-    FBZZ_FIELD(Vector3, bloodEmitVelocity, Vector3(0.0f, 0.45f, 0.15f), "Blood Emit Velocity")
-    FBZZ_FIELD(Vector3, bloodGravity, Vector3(0.0f, -2.8f, 0.0f), "Blood Gravity")
-    FBZZ_FIELD(Vector4, bloodColorStart, Vector4(0.75f, 0.0f, 0.0f, 0.9f), "Blood Color Start")
-    FBZZ_FIELD(Vector4, bloodColorEnd, Vector4(0.18f, 0.0f, 0.0f, 0.0f), "Blood Color End")
-    FBZZ_FIELD_RANGE(float, bloodSizeStart, 0.08f, "Blood Size Start", 0.01f, 1.0f)
-    FBZZ_FIELD_RANGE(float, bloodSizeEnd, 0.015f, "Blood Size End", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, bloodLifetime, 0.38f, "Blood Lifetime", 0.05f, 3.0f)
-    FBZZ_FIELD_RANGE(float, bloodVelocitySpread, 2.4f, "Blood Velocity Spread", 0.0f, 8.0f)
-    FBZZ_FIELD(int, bloodBurstCount, 28, "Blood Burst Count")
+    FBZZ_FIELD(Vector3, bloodEmitVelocity, Vector3(0.0f, 0.45f, 0.15f), "")
+    FBZZ_FIELD(Vector3, bloodGravity,      Vector3(0.0f, -2.8f, 0.0f),  "")
+    FBZZ_FIELD(Vector4, bloodColorStart,   Vector4(0.75f, 0.0f, 0.0f, 0.9f), "")
+    FBZZ_FIELD(Vector4, bloodColorEnd,     Vector4(0.18f, 0.0f, 0.0f, 0.0f), "")
+    FBZZ_FIELD_RANGE(float, bloodSizeStart,      0.08f,  "", 0.01f, 1.0f)
+    FBZZ_FIELD_RANGE(float, bloodSizeEnd,        0.015f, "", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, bloodLifetime,       0.38f,  "", 0.05f, 3.0f)
+    FBZZ_FIELD_RANGE(float, bloodVelocitySpread, 2.4f,   "", 0.0f, 8.0f)
+    FBZZ_FIELD(int, bloodBurstCount, 28, "")
 
     void OnStart() override;
     void OnUpdate() override;
@@ -62,16 +66,14 @@ private:
     bool m_wasSwinging = false;
 };
 
-} // namespace sandbox
+// Reflect() をフィールド宣言から自動生成する (旧 .generated.hpp の置き換え)。
+FBZZ_REFLECT(SwordTrailComponent)
 
-#include "SwordTrailComponent.generated.hpp"
-
-#ifndef SwordTrailComponent_IMPL
-#define SwordTrailComponent_IMPL
-
-namespace sandbox {
-
-void SwordTrailComponent::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+// WHY (inline): 1 スクリプト = 1 ファイル化に伴い、専用 .cpp / _IMPL ガードを廃止した。
+//               inline 化することで、このヘッダが複数 TU から include されても
+//               ODR 違反にならない (WeaponHitbox 等が本ヘッダを include するため)。
+inline void SwordTrailComponent::OnStart()
 {
     m_owner = ResolveOwner();
     ConfigureTrail();
@@ -80,7 +82,7 @@ void SwordTrailComponent::OnStart()
     particle.Stop(/*clear=*/true);
 }
 
-void SwordTrailComponent::OnUpdate()
+inline void SwordTrailComponent::OnUpdate()
 {
     if (!m_owner || !m_owner->IsValid())
         m_owner = ResolveOwner();
@@ -95,24 +97,24 @@ void SwordTrailComponent::OnUpdate()
     m_wasSwinging = swinging;
 }
 
-void SwordTrailComponent::PlayBloodSpray()
+inline void SwordTrailComponent::PlayBloodSpray()
 {
     ConfigureBloodEmitter();
     particle.Play(/*restart=*/true);
     particle.Burst(std::max(1, bloodBurstCount));
 }
 
-GameObject* SwordTrailComponent::ResolveOwner()
+inline GameObject* SwordTrailComponent::ResolveOwner()
 {
-    if (!ownerName.empty()) {
-        if (auto* namedOwner = scene.Find(ownerName))
-            return namedOwner;
-    }
+    // 1) Inspector でアサインされた参照を最優先で解決する。
+    if (GameObject* assigned = owner.object())
+        return assigned;
 
+    // 2) 未アサインなら剣先の親階層を上がって Player / Enemy を探す (従来挙動のフォールバック)。
     GameObject* current = m_gameObject;
     while (current) {
-        if (current->CompareTag("Player") || current->CompareTag("Enemy") ||
-            current->name == "Player" || current->name == "Enemy") {
+        if (current->CompareTag(Tags::Player) || current->CompareTag(Tags::Enemy) ||
+            current->name == Tags::Player || current->name == Tags::Enemy) {
             return current;
         }
         current = current->GetParent();
@@ -120,22 +122,13 @@ GameObject* SwordTrailComponent::ResolveOwner()
     return nullptr;
 }
 
-bool SwordTrailComponent::IsSwingWindow() const
+inline bool SwordTrailComponent::IsSwingWindow() const
 {
-    if (!m_owner) return false;
-
-    const bool isAttacking =
-        animator.IsInState(m_owner, "Slash_01") ||
-        animator.IsInState(m_owner, "Slash_02") ||
-        animator.IsInState(m_owner, "Slash_03") ||
-        animator.IsInState(m_owner, "CrouchSlash");
-    if (!isAttacking) return false;
-
-    const float t = animator.GetNormalizedTime(m_owner);
-    return t >= swingStartTime && t <= swingEndTime;
+    // WHY: 剣を振る通常コンボ State の「振り区間」だけで剣筋を出す。共有語彙ヘルパーに集約。
+    return m_owner && IsAttackSwing(animator, m_owner, swingStartTime, swingEndTime);
 }
 
-void SwordTrailComponent::ConfigureTrail()
+inline void SwordTrailComponent::ConfigureTrail()
 {
     // WHY: 剣筋は Particle ではなく剣先の移動点列から生成するため、短い寿命と高頻度サンプルにする。
     trail.SetDuration(duration);
@@ -151,7 +144,7 @@ void SwordTrailComponent::ConfigureTrail()
     trail.SetUVMode(TrailUVMode::Stretch);
 }
 
-void SwordTrailComponent::ConfigureBloodEmitter()
+inline void SwordTrailComponent::ConfigureBloodEmitter()
 {
     // WHY: 命中した瞬間の剣筋から血が飛ぶように、剣先オブジェクトのローカル空間で細長い発生範囲にする。
     particle.SetEnabled(true);
@@ -173,10 +166,9 @@ void SwordTrailComponent::ConfigureBloodEmitter()
     particle.SetAngularVelocity(-5.0f, 5.0f);
 }
 
-void SwordTrailComponent::SetTrailActive(bool active, bool clear)
+inline void SwordTrailComponent::SetTrailActive(bool active, bool clear)
 {
     trail.SetEnabled(active, clear);
 }
 
 } // namespace sandbox
-#endif

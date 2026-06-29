@@ -4,9 +4,8 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
-#include <algorithm>
-#include <cmath>
-#include <string>
+#include "GameVocab.hpp"
+#include "HealthComponent.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -19,6 +18,7 @@ class EnemyControllerComponent : public Script {
 
 public:
     FBZZ_GROUP("Target")
+    // WHY: 追跡対象は実行中に出現/再生成されうるため、固定参照ではなくタグで都度探索する。
     FBZZ_FIELD(std::string, targetTag, "Player", "Target Tag")
 
     FBZZ_GROUP("Movement")
@@ -28,10 +28,10 @@ public:
     FBZZ_FIELD_RANGE(float, modelYawOffsetDegrees, 180.0f, "Model Yaw Offset",  0.0f, 360.0f)
 
     FBZZ_GROUP("Attack")
-    FBZZ_FIELD_RANGE(float, attackRange,    1.35f, "Attack Range",    0.1f,  5.0f)
-    FBZZ_FIELD_RANGE(float, attackCooldown, 1.20f, "Attack Cooldown", 0.1f, 10.0f)
-    FBZZ_FIELD_RANGE(float, attackWindupDelay, 0.85f, "Attack Windup Delay", 0.0f, 3.0f)
-    FBZZ_FIELD_RANGE(float, knockbackSpeed, 2.50f, "Knockback Speed", 0.0f, 12.0f)
+    FBZZ_FIELD_RANGE(float, attackRange,       1.35f, "Attack Range",        0.1f,  5.0f)
+    FBZZ_FIELD_RANGE(float, attackCooldown,    1.20f, "Attack Cooldown",     0.1f, 10.0f)
+    FBZZ_FIELD_RANGE(float, attackWindupDelay, 0.85f, "Attack Windup Delay", 0.0f,  3.0f)
+    FBZZ_FIELD_RANGE(float, knockbackSpeed,    2.50f, "Knockback Speed",     0.0f, 12.0f)
 
     FBZZ_GROUP("Defense")
     FBZZ_FIELD_RANGE(float, blockRange,    0.95f, "Block Range",    0.1f, 5.0f)
@@ -39,9 +39,9 @@ public:
     FBZZ_FIELD_RANGE(float, blockCooldown, 4.00f, "Block Cooldown", 0.1f, 5.0f)
 
     FBZZ_GROUP("Animator Params")
-    FBZZ_FIELD(std::string, paramSpeed,         "Speed",  "Speed Param")
+    FBZZ_FIELD(std::string, paramSpeed,         "Speed",    "Speed Param")
     FBZZ_FIELD(std::string, paramAttackTrigger, "Attack01", "Attack Trigger Param")
-    FBZZ_FIELD(std::string, paramBlock,         "Block", "Block Param")
+    FBZZ_FIELD(std::string, paramBlock,         "Block",    "Block Param")
 
     void OnStart() override;
     void OnUpdate() override;
@@ -64,24 +64,25 @@ private:
     float m_blockCooldownTimer = 0.0f;
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(EnemyControllerComponent)
 
-#include "EnemyControllerComponent.generated.hpp"
-
-#ifndef EnemyControllerComponent_IMPL
-#define EnemyControllerComponent_IMPL
-
-namespace sandbox {
-
-void EnemyControllerComponent::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void EnemyControllerComponent::OnStart()
 {
     // WHY: Player と同じモデルを流用する Enemy でも、接触で転倒すると追跡方向と見た目が崩れるため回転を固定する。
     physics.SetFreezeRotation(true, true, true);
 }
 
-void EnemyControllerComponent::OnUpdate()
+inline void EnemyControllerComponent::OnUpdate()
 {
     if (!transform) return;
+
+    // 死亡後は追跡・攻撃を止め、その場で Death モーションを再生させる。
+    if (auto* health = scene.GetScript<HealthComponent>(); health && health->IsDead()) {
+        StopHorizontalMotion();
+        animator.SetFloat(paramSpeed, 0.0f);
+        return;
+    }
 
     if (m_attackTimer > 0.0f)
         m_attackTimer = std::max(0.0f, m_attackTimer - Time::deltaTime);
@@ -120,7 +121,7 @@ void EnemyControllerComponent::OnUpdate()
     TryAttack(direction, distance);
 }
 
-GameObject* EnemyControllerComponent::FindTarget()
+inline GameObject* EnemyControllerComponent::FindTarget()
 {
     if (m_target && m_target->IsValid() && m_target->activeInHierarchy())
         return m_target;
@@ -129,7 +130,7 @@ GameObject* EnemyControllerComponent::FindTarget()
     return m_target;
 }
 
-void EnemyControllerComponent::FaceTarget(const Vector3& direction)
+inline void EnemyControllerComponent::FaceTarget(const Vector3& direction)
 {
     const Quaternion targetRotation =
         (Quaternion::LookRotation(direction) *
@@ -139,7 +140,7 @@ void EnemyControllerComponent::FaceTarget(const Vector3& direction)
     transform.rotation = Quaternion::Slerp(transform.rotation, targetRotation, turnResponse).Normalized();
 }
 
-void EnemyControllerComponent::MoveTowardTarget(const Vector3& direction, float distance)
+inline void EnemyControllerComponent::MoveTowardTarget(const Vector3& direction, float distance)
 {
     FaceTarget(direction);
 
@@ -163,7 +164,7 @@ void EnemyControllerComponent::MoveTowardTarget(const Vector3& direction, float 
     animator.SetFloat(paramSpeed, moveSpeed);
 }
 
-void EnemyControllerComponent::StopHorizontalMotion()
+inline void EnemyControllerComponent::StopHorizontalMotion()
 {
     if (!physics.HasRigidBody()) return;
 
@@ -173,7 +174,7 @@ void EnemyControllerComponent::StopHorizontalMotion()
     physics.SetVelocity(velocity);
 }
 
-bool EnemyControllerComponent::TryBlock(const Vector3& direction, float distance)
+inline bool EnemyControllerComponent::TryBlock(const Vector3& direction, float distance)
 {
     if (IsAttackState() || m_attackRequestGrace > 0.0f) {
         animator.SetBool(paramBlock, false);
@@ -198,10 +199,10 @@ bool EnemyControllerComponent::TryBlock(const Vector3& direction, float distance
     return true;
 }
 
-void EnemyControllerComponent::TryAttack(const Vector3& direction, float distance)
+inline void EnemyControllerComponent::TryAttack(const Vector3& direction, float distance)
 {
-    if (animator.IsInState("PlayerImpact")) return;
-    if (animator.IsInState("PlayerHit")) return;
+    if (animator.IsInState(AnimState::PlayerImpact)) return;
+    if (animator.IsInState(AnimState::PlayerHit)) return;
     if (distance > attackRange) {
         m_attackRangeTimer = 0.0f;
         return;
@@ -230,31 +231,21 @@ void EnemyControllerComponent::TryAttack(const Vector3& direction, float distanc
     physics.SetVelocity(m_target, velocity);
 }
 
-bool EnemyControllerComponent::IsAttackState() const
+inline bool EnemyControllerComponent::IsAttackState() const
 {
     // WHAT: Enemy は Player と同じ AnimatorController を使うため、通常攻撃 State を攻撃中として扱う。
-    return animator.IsInState("Slash_01") ||
-           animator.IsInState("Slash_02") ||
-           animator.IsInState("Slash_03") ||
-           animator.IsInState("CrouchSlash") ||
-           animator.IsInState("PlayerImpact") ||
-           animator.IsInState("PlayerHit");
+    return animator.IsInState(AnimState::Slash01) ||
+           animator.IsInState(AnimState::Slash02) ||
+           animator.IsInState(AnimState::Slash03) ||
+           animator.IsInState(AnimState::CrouchSlash) ||
+           animator.IsInState(AnimState::PlayerImpact) ||
+           animator.IsInState(AnimState::PlayerHit);
 }
 
-bool EnemyControllerComponent::IsTargetSwinging() const
+inline bool EnemyControllerComponent::IsTargetSwinging() const
 {
-    if (!m_target) return false;
-
-    const bool isAttacking =
-        animator.IsInState(m_target, "Slash_01") ||
-        animator.IsInState(m_target, "Slash_02") ||
-        animator.IsInState(m_target, "Slash_03") ||
-        animator.IsInState(m_target, "CrouchSlash");
-    if (!isAttacking) return false;
-
-    const float t = animator.GetNormalizedTime(m_target);
-    return t >= 0.18f && t <= 0.78f;
+    // ターゲット (Player) が攻撃の振り区間に入っているか。共有語彙ヘルパーに集約。
+    return m_target && IsAttackSwing(animator, m_target, 0.18f, 0.78f);
 }
 
 } // namespace sandbox
-#endif
