@@ -12,14 +12,10 @@
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
 //      Assets/Scripts/Foo.hpp に解決される。
-// WHY (_IMPL マクロ事前定義): 各スクリプトの inline 実装は同名 .cpp が担当する独立 TU で
-//      コンパイルする。このファイルは型定義・ファクトリ用に宣言だけを取り込む。
-//      Ninja はスクリプト .cpp 群と SandboxScriptsDll.cpp を並列にコンパイルできる。
-#define PlayerControllerComponent_IMPL
+// WHY: 新方式のスクリプトは実装を inline 化したため _IMPL ガードや専用 .cpp は不要。
+//      ヘッダを include するだけで実装もこの TU に取り込まれる (複数 TU でも ODR 安全)。
 #include "Scripts/PlayerControllerComponent.hpp"
-#define TpsCameraComponent_IMPL
 #include "Scripts/TpsCameraComponent.hpp"
-#define SceneManagerScript_IMPL
 #include "Scripts/SceneManagerScript.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 

@@ -27,21 +27,18 @@
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// WHY: PlayerIKComponent は scene.GetScript<PlayerControllerComponent>() を使うため
-//      PlayerControllerComponent の完全型が必要。先に宣言を取り込んでから
-//      PlayerIKComponent の IMPL ブロックを走らせることで解決する。
+// WHY: 新方式のスクリプトは実装を inline 化したため、_IMPL ガードや専用 .cpp は不要。
+//      ヘッダを include するだけで実装がこの TU に取り込まれる (複数 TU でも ODR 安全)。
 #include "Scripts/EnemyControllerComponent.hpp"
-#define PlayerControllerComponent_IMPL
 #include "Scripts/PlayerControllerComponent.hpp"
 #include "Scripts/PlayerIKComponent.hpp"
-#define TpsCameraComponent_IMPL
 #include "Scripts/TpsCameraComponent.hpp"
-#define SceneManagerScript_IMPL
 #include "Scripts/SceneManagerScript.hpp"
 #include "Scripts/SwordParticleComponent.hpp"
 #include "Scripts/HitBloodEffectComponent.hpp"
 #include "Scripts/SwordTrailComponent.hpp"
-#include "Scripts/WeaponHitboxComponent.hpp"
+#include "Scripts/AttackHitboxComponent.hpp"
+#include "Scripts/HealthComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 #ifdef GAMESCRIPTS_EXPORTS
