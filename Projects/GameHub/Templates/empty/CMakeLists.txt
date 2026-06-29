@@ -49,7 +49,7 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ
 # WHY (OUTPUT_NAME "Scripts"): プロジェクト名に依存しない固定名にすることで
 #      config.target = m_scriptDllPath.stem() が常に "Scripts" と解決し、
 #      EditorApp がプロジェクト名を知らなくてもビルドターゲットを特定できる。
-file(GLOB_RECURSE SCRIPTS_DLL_SOURCES
+file(GLOB_RECURSE SCRIPTS_DLL_SOURCES CONFIGURE_DEPENDS
     Assets/Scripts/*.cpp
     Assets/Scripts/*.hpp
     Src/Scripts/*.cpp

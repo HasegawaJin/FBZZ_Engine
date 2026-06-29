@@ -14,6 +14,7 @@ namespace fbzz::scene {
 
 struct MaterialComponent;
 class Script;
+class GameObject;
 struct UserRenderPassDesc;
 
 struct ScriptMaterialProxy {
@@ -44,6 +45,13 @@ struct ScriptMaterialProxy {
 
     float         GetFloat  (std::string_view param) const;
     math::Vector3 GetVector3(std::string_view param) const;
+
+    // ── GameObject ターゲット版 ───────────────────────────────────────────────
+    // マテリアルが子メッシュ GO 側にある場合 (スキンドメッシュは複数サブメッシュへ
+    // 分割されるため)、対象 GO を直接指定して操作する。Death 時のディゾルブ等に使う。
+    MaterialComponent* Get(GameObject* go) const;
+    bool SetMaterial(GameObject* go, std::string_view materialPath) const;
+    void SetFloat(GameObject* go, std::string_view param, float v) const;
 
     // SetEnabled: MaterialComponent の描画有効状態を切り替える。
     bool SetEnabled(bool enabled) const;

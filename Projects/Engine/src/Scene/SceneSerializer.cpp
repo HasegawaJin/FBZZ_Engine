@@ -1334,6 +1334,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             uiTbl.insert("referenceHeight", (double)canvas->referenceHeight);
             uiTbl.insert("matchWidthOrHeight", (double)canvas->matchWidthOrHeight);
             uiTbl.insert("worldScale",   (double)canvas->worldScale);
+            uiTbl.insert("planeDistance",(double)canvas->planeDistance);
+            uiTbl.insert("faceCamera",   canvas->faceCamera);
             goTbl.insert("UICanvas", std::move(uiTbl));
         }
 
@@ -1346,6 +1348,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             uiTbl.insert("uvMin",             Vec2ToArr(image->uvMin));
             uiTbl.insert("uvMax",             Vec2ToArr(image->uvMax));
             uiTbl.insert("sortOrder",         (int64_t)image->sortOrder);
+            uiTbl.insert("fillAmount",        (double)image->fillAmount);
+            uiTbl.insert("fillOrigin",        (int64_t)static_cast<int>(image->fillOrigin));
             goTbl.insert("UIImage", std::move(uiTbl));
         }
 
@@ -2510,6 +2514,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             canvas.referenceHeight = (float)(*uiTbl)["referenceHeight"].value_or(1080.0);
             canvas.matchWidthOrHeight = (float)(*uiTbl)["matchWidthOrHeight"].value_or(0.0);
             canvas.worldScale   = (float)(*uiTbl)["worldScale"].value_or(0.01);
+            canvas.planeDistance = (float)(*uiTbl)["planeDistance"].value_or(2.0);
+            canvas.faceCamera   = (*uiTbl)["faceCamera"].value_or(false);
             go.AddComponent<UICanvas>(canvas);
         }
 
@@ -2522,6 +2528,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             image.uvMin            = ArrToVec2((*uiTbl)["uvMin"].as_array(), { 0.0f, 0.0f });
             image.uvMax            = ArrToVec2((*uiTbl)["uvMax"].as_array(), { 1.0f, 1.0f });
             image.sortOrder        = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
+            image.fillAmount       = (float)(*uiTbl)["fillAmount"].value_or(1.0);
+            image.fillOrigin       = static_cast<UIImageFillOrigin>((*uiTbl)["fillOrigin"].value_or((int64_t)0));
             go.AddComponent<UIImage>(image);
         }
 

@@ -65,23 +65,17 @@ private:
     Vector3 m_smoothedSpineOffset = Vector3::ZERO;
 };
 
-} // namespace sandbox
+// Reflect() をフィールド宣言から自動生成する (旧 .generated.hpp は廃止)。
+FBZZ_REFLECT(PlayerControllerComponent)
 
-#include "PlayerControllerComponent.generated.hpp"
-
-// ── 実装 ────────────────────────────────────────────────────────────────────
-#ifndef PlayerControllerComponent_IMPL
-#define PlayerControllerComponent_IMPL
-
-namespace sandbox {
-
-void PlayerControllerComponent::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void PlayerControllerComponent::OnStart()
 {
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
 }
 
-void PlayerControllerComponent::OnUpdate()
+inline void PlayerControllerComponent::OnUpdate()
 {
     if (!transform) return;
     auto* cc  = scene.GetComponent<CharacterControllerComponent>();
@@ -148,18 +142,18 @@ void PlayerControllerComponent::OnUpdate()
     }
 }
 
-void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& info)
+inline void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& info)
 {
     if (auto* cc = scene.GetComponent<CharacterControllerComponent>())
         cc->RegisterGroundContact(info);
 }
 
-void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
+inline void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
 {
     OnCollisionEnter(info);
 }
 
-void PlayerControllerComponent::HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
+inline void PlayerControllerComponent::HandleJump(CharacterControllerComponent* cc, RigidBody* phy)
 {
     if (!cc || !cc->isGrounded || !phy) return;
     if (!input.GetKeyDown(keyJump)) return;
@@ -168,7 +162,7 @@ void PlayerControllerComponent::HandleJump(CharacterControllerComponent* cc, Rig
     animator.SetTrigger(paramJumpTrigger);
 }
 
-void PlayerControllerComponent::UpdateIK()
+inline void PlayerControllerComponent::UpdateIK()
 {
     auto* ik = scene.GetComponent<IKSolverComponent>();
     if (!ik) return;
@@ -184,7 +178,7 @@ void PlayerControllerComponent::UpdateIK()
                     scene.GetComponent<RigidBodyComponent>());
 }
 
-void PlayerControllerComponent::UpdateSlopeLean(
+inline void PlayerControllerComponent::UpdateSlopeLean(
     IKSolverComponent& ik, CharacterControllerComponent* cc, RigidBodyComponent* rb)
 {
     IKChain* spine = nullptr;
@@ -229,7 +223,7 @@ void PlayerControllerComponent::UpdateSlopeLean(
     target->transform.position = m_spineTargetBase + m_smoothedSpineOffset;
 }
 
-Vector3 PlayerControllerComponent::GetMoveForward() const
+inline Vector3 PlayerControllerComponent::GetMoveForward() const
 {
     if (!useCameraForward) return Vector3::FORWARD;
     auto* camGO = scene.GetMainCameraObject();
@@ -239,11 +233,10 @@ Vector3 PlayerControllerComponent::GetMoveForward() const
     return fwd.LengthSq() > EPSILON ? fwd.Normalized() : Vector3::FORWARD;
 }
 
-Vector3 PlayerControllerComponent::GetMoveRight(const Vector3& forward) const
+inline Vector3 PlayerControllerComponent::GetMoveRight(const Vector3& forward) const
 {
     Vector3 right = Vector3::Cross(Vector3::UP, forward);
     return right.LengthSq() > EPSILON ? right.Normalized() : Vector3::RIGHT;
 }
 
 } // namespace sandbox
-#endif

@@ -289,15 +289,32 @@ struct AnimatorComponent {
     // WHY: Script から「アニメーションが何割進んだか」を確認する共通手段として提供する。
     [[nodiscard]] float GetNormalizedTime() const
     {
-        if (currentStateName.empty()) return 0.0f;
-        // currentStateName のステートを探す
+        return NormalizedTimeForState(currentStateName, stateTime);
+    }
+
+    // クロスフェード遷移先 (blendToState) の再生位置を 0..1 で返す。遷移中でなければ 0。
+    // WHY: コンボのクロスフェード中は currentState が前段のままのため、次段の進行度を
+    //      正しく知るには遷移先ステートの blendToTime を別途参照する必要がある。
+    [[nodiscard]] float GetBlendToNormalizedTime() const
+    {
+        return NormalizedTimeForState(blendToState, blendToTime);
+    }
+
+    [[nodiscard]] const std::string& GetBlendToState() const { return blendToState; }
+
+private:
+    // 指定ステート名・再生秒数から正規化時間 0..1 を求める。GetNormalizedTime /
+    // GetBlendToNormalizedTime が現ステートと遷移先ステートそれぞれに対して使う。
+    [[nodiscard]] float NormalizedTimeForState(const std::string& stateName, float time) const
+    {
+        if (stateName.empty()) return 0.0f;
         const AnimationState* st = nullptr;
         for (const auto& s : states)
-            if (s.name == currentStateName) { st = &s; break; }
+            if (s.name == stateName) { st = &s; break; }
         if (!st) return 0.0f;
         if (st->mode != AnimationStateMode::Clip) {
             return currentBlendDuration > 0.0f
-                ? std::clamp(stateTime / currentBlendDuration, 0.0f, 1.0f)
+                ? std::clamp(time / currentBlendDuration, 0.0f, 1.0f)
                 : 0.0f;
         }
         // 再生側と同じく、名前の完全一致 → 大文字小文字無視部分一致 → index で解決する。
@@ -334,7 +351,7 @@ struct AnimatorComponent {
             clip = &clips[static_cast<size_t>(st->clipIndex)];
         if (!clip) return 0.0f;
         const float dur = static_cast<float>(clip->GetDurationSeconds());
-        return dur > 0.0f ? std::clamp(stateTime / dur, 0.0f, 1.0f) : 0.0f;
+        return dur > 0.0f ? std::clamp(time / dur, 0.0f, 1.0f) : 0.0f;
     }
 };
 

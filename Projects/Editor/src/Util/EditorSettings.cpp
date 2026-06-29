@@ -124,8 +124,12 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         }
     }
 
+    // UI
+    if (auto v = tbl["ui"]["scale"].value<float>()) editorUiScale = *v;
+
     // Asset Browser
     if (auto v = tbl["asset_browser"]["icon_size"].value<float>()) assetBrowserIconSize = *v;
+    if (auto v = tbl["asset_browser"]["tree_width"].value<float>()) assetBrowserTreeWidth = *v;
     assetBrowserBookmarks.clear();
     if (auto* arr = tbl["asset_browser"]["bookmarks"].as_array()) {
         for (auto& elem : *arr)
@@ -257,6 +261,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     // Asset Browser
     toml::table assetBrowserTbl;
     assetBrowserTbl.insert("icon_size", assetBrowserIconSize);
+    assetBrowserTbl.insert("tree_width", assetBrowserTreeWidth);
     {
         toml::array bkArr;
         for (const auto& bk : assetBrowserBookmarks) bkArr.push_back(bk);
@@ -316,7 +321,12 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     importTbl.insert("generate_tex_descriptors", defaultImportOptions.generateTexDescriptors);
     importTbl.insert("default_compression",      static_cast<int64_t>(defaultImportOptions.defaultCompression));
 
+    // UI スケール
+    toml::table uiTbl;
+    uiTbl.insert("scale", editorUiScale);
+
     toml::table root;
+    root.insert("ui",                 std::move(uiTbl));
     root.insert("camera",             std::move(camTbl));
     root.insert("view",               std::move(viewTbl));
     root.insert("snap",               std::move(snapTbl));

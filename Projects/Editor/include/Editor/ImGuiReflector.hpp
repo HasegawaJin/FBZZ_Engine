@@ -17,25 +17,33 @@ struct ImGuiReflector : scene::IReflector {
     // GO 名解決コールバック。InspectorCore から activeScene を渡して設定する。
     std::function<std::string(scene::EntityID)> m_goNameResolver;
 
+    // FBZZ_GROUP の折りたたみ状態。Group() が CollapsingHeader の開閉で更新し、
+    // 各 Field はこれが false (閉) の間は描画をスキップする。グループ前の項目は true (既定)。
+    bool m_groupOpen = true;
+
     // ── 基本型 ───────────────────────────────────────────────────────────────
 
     void Field(const char* name, float& v) override
     {
+        if (!m_groupOpen) return;
         ImGui::DragFloat(name, &v, 0.1f);
     }
 
     void Field(const char* name, int& v) override
     {
+        if (!m_groupOpen) return;
         ImGui::DragInt(name, &v);
     }
 
     void Field(const char* name, bool& v) override
     {
+        if (!m_groupOpen) return;
         ImGui::Checkbox(name, &v);
     }
 
     void Field(const char* name, math::Vector2& v) override
     {
+        if (!m_groupOpen) return;
         float arr[2] = { v.x, v.y };
         if (ImGui::DragFloat2(name, arr, 0.1f))
             v = { arr[0], arr[1] };
@@ -43,6 +51,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void Field(const char* name, math::Vector3& v) override
     {
+        if (!m_groupOpen) return;
         float arr[3] = { v.x, v.y, v.z };
         if (ImGui::DragFloat3(name, arr, 0.1f))
             v = { arr[0], arr[1], arr[2] };
@@ -50,6 +59,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void Field(const char* name, math::Vector4& v) override
     {
+        if (!m_groupOpen) return;
         float arr[4] = { v.x, v.y, v.z, v.w };
         if (ImGui::ColorEdit4(name, arr))
             v = { arr[0], arr[1], arr[2], arr[3] };
@@ -57,6 +67,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void Field(const char* name, std::string& v) override
     {
+        if (!m_groupOpen) return;
         std::string buf = v;
         buf.resize(buf.size() + 128);
         if (ImGui::InputText(name, buf.data(), buf.capacity()))
@@ -65,6 +76,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void Field(const char* name, math::Quaternion& v) override
     {
+        if (!m_groupOpen) return;
         widgets::DragQuatEuler3(name, v, 0.5f);
     }
 
@@ -72,6 +84,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void Field(const char* name, scene::EntityID& v) override
     {
+        if (!m_groupOpen) return;
         ImGui::PushID(name);
 
         // GO 名を解決して表示ラベルを作る
@@ -106,6 +119,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void Field(const char* name, scene::PrefabRef& v) override
     {
+        if (!m_groupOpen) return;
         ImGui::PushID(name);
 
         const auto  slash   = v.path.find_last_of("/\\");
@@ -136,12 +150,15 @@ struct ImGuiReflector : scene::IReflector {
 
     void FloatRange(const char* name, float& v, float min, float max) override
     {
-        ImGui::SliderFloat(name, &v, min, max);
+        if (!m_groupOpen) return;
+        // ゲージ (スライダー) + 数値入力ボックスの共通ウィジェット。
+        // WHY: SliderFloat 単体は正確な数値入力がしづらいため、量感と直接入力を両立させる。
+        widgets::RangeField(name, v, min, max);
     }
 
     void Enum(const char* name, int& v, std::span<const char* const> labels) override
     {
-        if (labels.empty()) return;
+        if (!m_groupOpen || labels.empty()) return;
         const char* current = (v >= 0 && v < (int)labels.size()) ? labels[v] : "??";
         if (ImGui::BeginCombo(name, current)) {
             for (int i = 0; i < (int)labels.size(); ++i) {
@@ -155,14 +172,20 @@ struct ImGuiReflector : scene::IReflector {
         }
     }
 
-    void Header(const char* label)
+    // Inspector のグループ見出し。FBZZ_GROUP("Label") から r_.Group() 経由で呼ばれる。
+    // WHY: IReflector::Group の既定実装は no-op のため、ここで override しないと
+    //      FBZZ_GROUP の見出しが Inspector に一切描画されない (旧 Header() は未接続のままだった)。
+    void Group(const char* label) override
     {
         ImGui::Spacing();
-        ImGui::SeparatorText(label);
+        // 折りたたみ可能な見出し。閉じている間は後続フィールドの描画を省く (m_groupOpen)。
+        // 状態は ImGui がラベル ID 単位で保持するため、スクリプト/グループごとに記憶される。
+        m_groupOpen = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen);
     }
 
     void Field(const char* name, input::KeyCode& v) override
     {
+        if (!m_groupOpen) return;
         int raw = static_cast<int>(v);
         KeyCodeField(name, raw);
         v = static_cast<input::KeyCode>(raw);

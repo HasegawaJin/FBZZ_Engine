@@ -26,5 +26,6 @@ FBZZ_SCRIPT_ENTRY(sandbox, SceneManagerScript)
 FBZZ_SCRIPT_ENTRY(sandbox, SwordParticleComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, HitBloodEffectComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, SwordTrailComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, WeaponHitboxComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, AttackHitboxComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, HealthComponent)
 // @@FBZZ_SCRIPT_ENTRIES_END

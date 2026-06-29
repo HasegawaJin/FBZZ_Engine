@@ -93,6 +93,21 @@ void ScanProjectFiles(const std::string& projectRoot,
 
 } // namespace
 
+bool AcceptAssetPathDrop(std::string& outPath)
+{
+    bool dropped = false;
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            outPath = NormalizeAssetPath(
+                std::string(static_cast<const char*>(p->Data),
+                            static_cast<size_t>(p->DataSize) - 1));
+            dropped = true;
+        }
+        ImGui::EndDragDropTarget();
+    }
+    return dropped;
+}
+
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
                     const std::string& projectRoot)
@@ -123,15 +138,8 @@ bool AssetPathField(const char* label, std::string& path,
         path    = NormalizeAssetPath(buf);
         changed = true;
     }
-    if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            path = NormalizeAssetPath(
-                std::string(static_cast<const char*>(p->Data),
-                            static_cast<size_t>(p->DataSize) - 1));
-            changed = true;
-        }
-        ImGui::EndDragDropTarget();
-    }
+    if (AcceptAssetPathDrop(path))
+        changed = true;
 
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
@@ -305,6 +313,35 @@ bool ColorEdit3(const char* label, math::Vector3& color)
     float arr[3] = { color.x, color.y, color.z };
     bool changed = ImGui::ColorEdit3(label, arr);
     if (changed) { color.x = arr[0]; color.y = arr[1]; color.z = arr[2]; }
+    return changed;
+}
+
+bool RangeField(const char* label, float& value, float min, float max, const char* fmt)
+{
+    ImGui::PushID(label);
+    bool changed = false;
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    constexpr float kInputW = 58.0f; // 右側の数値入力ボックス幅
+    const float total   = ImGui::CalcItemWidth();
+    const float sliderW = std::max(40.0f, total - kInputW - style.ItemSpacing.x);
+
+    // ゲージ (バー)。数値は右の入力ボックスで表示するため、バー上の数値は消す ("")。
+    ImGui::SetNextItemWidth(sliderW);
+    if (ImGui::SliderFloat("##slider", &value, min, max, "")) changed = true;
+
+    // 数値入力ボックス: DragFloat を流用し、ダブルクリックで直接タイプ・ドラッグで微調整。
+    // min/max クランプはスライダーと共通なので、範囲外の値が入らない。
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    ImGui::SetNextItemWidth(kInputW);
+    const float dragSpeed = (max > min) ? (max - min) * 0.005f : 0.01f;
+    if (ImGui::DragFloat("##input", &value, dragSpeed, min, max, fmt)) changed = true;
+
+    // ラベルは ImGui 標準ラベル列 (右) に配置する。
+    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+    ImGui::TextUnformatted(label);
+
+    ImGui::PopID();
     return changed;
 }
 

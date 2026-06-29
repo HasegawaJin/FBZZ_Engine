@@ -4,8 +4,8 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
-#include <algorithm>
-#include <cmath>
+#include "GameVocab.hpp"
+#include "HealthComponent.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -65,25 +65,21 @@ private:
     int m_requestedComboIndex = -1;
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(PlayerControllerComponent)
 
-#include "PlayerControllerComponent.generated.hpp"
-
-// ── 実装 ────────────────────────────────────────────────────────────────────
-#ifndef PlayerControllerComponent_IMPL
-#define PlayerControllerComponent_IMPL
-
-namespace sandbox {
-
-void PlayerControllerComponent::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void PlayerControllerComponent::OnStart()
 {
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
 }
 
-void PlayerControllerComponent::OnUpdate()
+inline void PlayerControllerComponent::OnUpdate()
 {
     if (!transform) return;
+    // 死亡後は入力・移動・戦闘を一切受け付けず、Death モーションを最後まで再生させる。
+    if (auto* health = scene.GetScript<HealthComponent>(); health && health->IsDead())
+        return;
     character.Tick(Time::deltaTime);
     const bool isGrounded = character.IsGrounded();
     animator.SetFloat(paramVerticalSpeed, character.GetVerticalSpeed());
@@ -95,11 +91,11 @@ void PlayerControllerComponent::OnUpdate()
     const Vector3 forward = GetMoveForward();
     const Vector3 right   = GetMoveRight(forward);
     Vector3 move = Vector3::ZERO;
-    const bool isStrafing = animator.IsInState("Block") || animator.GetBool("Block");
+    const bool isStrafing = animator.IsInState(AnimState::Block) || animator.GetBool(AnimParam::Block);
     const bool isMovementLocked =
-        IsComboAttackState() || animator.IsInState("CrouchSlash") ||
-        animator.IsInState("Land") || animator.IsInState("PlayerImpact") ||
-        animator.IsInState("PlayerHit") ||
+        IsComboAttackState() || animator.IsInState(AnimState::CrouchSlash) ||
+        animator.IsInState(AnimState::Land) || animator.IsInState(AnimState::PlayerImpact) ||
+        animator.IsInState(AnimState::PlayerHit) ||
         m_comboAttackRequested;
     // CrouchIdle / CrouchSlash に移動クリップがないため、C 押下中は水平移動を停止する。
     // Slash / Land 中も入力と慣性移動を止め、モーションの足運びと物理位置を一致させる。
@@ -162,17 +158,17 @@ void PlayerControllerComponent::OnUpdate()
     }
 }
 
-void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& info)
+inline void PlayerControllerComponent::OnCollisionEnter(const CollisionInfo& info)
 {
     character.RegisterGroundContact(info);
 }
 
-void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
+inline void PlayerControllerComponent::OnCollisionStay(const CollisionInfo& info)
 {
     OnCollisionEnter(info);
 }
 
-void PlayerControllerComponent::HandleJump(bool isGrounded)
+inline void PlayerControllerComponent::HandleJump(bool isGrounded)
 {
     if (!isGrounded || !physics.HasRigidBody()) return;
     // WHY: しゃがみ姿勢のまま JumpUp へ遷移すると下半身が急伸するため、C 押下中は跳ばない。
@@ -183,14 +179,14 @@ void PlayerControllerComponent::HandleJump(bool isGrounded)
     animator.SetTrigger(paramJumpTrigger);
 }
 
-void PlayerControllerComponent::HandleCombat(bool isGrounded)
+inline void PlayerControllerComponent::HandleCombat(bool isGrounded)
 {
     // 各 Slash クリップの実際の振り区間だけを正規化時間で追跡する。
     // WHY: 固定秒数ではクリップ前半だけで停止し、剣先が振り切った位置まで残像が届かない。
     const bool isComboAttacking = IsComboAttackState();
-    const bool isCrouchAttacking = animator.IsInState("CrouchSlash");
-    const bool isImpacting = animator.IsInState("PlayerImpact");
-    const bool isHitReacting = animator.IsInState("PlayerHit");
+    const bool isCrouchAttacking = animator.IsInState(AnimState::CrouchSlash);
+    const bool isImpacting = animator.IsInState(AnimState::PlayerImpact);
+    const bool isHitReacting = animator.IsInState(AnimState::PlayerHit);
     const bool isAttacking = isComboAttacking || isCrouchAttacking;
     const bool isCombatLocked = isAttacking || isImpacting || isHitReacting;
     const float attackTime = isAttacking ? animator.GetNormalizedTime() : 0.0f;
@@ -200,23 +196,23 @@ void PlayerControllerComponent::HandleCombat(bool isGrounded)
     // WHY: Slash 中の Block 遷移は攻撃を途中で切り、コンボと剣筋を不自然に中断するため禁止する。
     const bool isBlocking =
         canUseCombat && !isCrouching && !isCombatLocked && input.MouseButton(MouseBtn::Right);
-    animator.SetBool("Crouch", isCrouching);
-    animator.SetBool("Block", isBlocking);
+    animator.SetBool(AnimParam::Crouch, isCrouching);
+    animator.SetBool(AnimParam::Block, isBlocking);
 
     // AnimatorSystem の状態反映はスクリプト更新より後なので、Trigger 発火から State 進入までを
     // requested で保持し、待機中にコンボ番号が誤ってリセットされることを防ぐ。
     if (isComboAttacking) {
         const bool enteredRequestedState =
-            (m_requestedComboIndex == 0 && animator.IsInState("Slash_01")) ||
-            (m_requestedComboIndex == 1 && animator.IsInState("Slash_02")) ||
-            (m_requestedComboIndex == 2 && animator.IsInState("Slash_03"));
+            (m_requestedComboIndex == 0 && animator.IsInState(AnimState::Slash01)) ||
+            (m_requestedComboIndex == 1 && animator.IsInState(AnimState::Slash02)) ||
+            (m_requestedComboIndex == 2 && animator.IsInState(AnimState::Slash03));
         if (enteredRequestedState) {
             m_comboAttackRequested = false;
             m_requestedComboIndex = -1;
         }
 
         const bool canQueueNextSlash =
-            !m_comboAttackRequested && !animator.IsInState("Slash_03");
+            !m_comboAttackRequested && !animator.IsInState(AnimState::Slash03);
         if (canQueueNextSlash && input.MouseButtonDown(MouseBtn::Left))
             m_comboAttackQueued = true;
 
@@ -238,10 +234,10 @@ void PlayerControllerComponent::HandleCombat(bool isGrounded)
     }
 
     // しゃがみ攻撃を優先し、通常コンボは再生中に予約されなかった場合だけ終了後の猶予で継続する。
-    if (isCrouching && animator.IsInState("CrouchIdle") && !isCombatLocked &&
+    if (isCrouching && animator.IsInState(AnimState::CrouchIdle) && !isCombatLocked &&
         input.MouseButtonDown(MouseBtn::Left)) {
         // WHAT: しゃがみ攻撃は通常3段コンボと独立させ、C解除後のコンボ段数へ影響させない。
-        animator.SetTrigger("CrouchAttack");
+        animator.SetTrigger(AnimParam::CrouchAttack);
     } else if (canUseCombat && !isCrouching && !isBlocking && !isCombatLocked &&
         !m_comboAttackRequested &&
         input.MouseButtonDown(MouseBtn::Left)) {
@@ -251,29 +247,29 @@ void PlayerControllerComponent::HandleCombat(bool isGrounded)
     m_wasComboAttacking = isComboAttacking;
 }
 
-bool PlayerControllerComponent::IsComboAttackState() const
+inline bool PlayerControllerComponent::IsComboAttackState() const
 {
     // WHAT: 3種類の Slash State をひとつの攻撃中判定として扱う。
-    return animator.IsInState("Slash_01") ||
-           animator.IsInState("Slash_02") ||
-           animator.IsInState("Slash_03");
+    return animator.IsInState(AnimState::Slash01) ||
+           animator.IsInState(AnimState::Slash02) ||
+           animator.IsInState(AnimState::Slash03);
 }
 
-void PlayerControllerComponent::StartComboAttack()
+inline void PlayerControllerComponent::StartComboAttack()
 {
     // WHAT: 現在のコンボ番号に対応する Trigger を発火し、次の受付段を循環させる。
     m_requestedComboIndex = m_nextComboIndex;
     switch (m_nextComboIndex) {
-    case 1:  animator.SetTrigger("Attack02"); break;
-    case 2:  animator.SetTrigger("Attack03"); break;
-    default: animator.SetTrigger("Attack01"); break;
+    case 1:  animator.SetTrigger(AnimParam::Attack02); break;
+    case 2:  animator.SetTrigger(AnimParam::Attack03); break;
+    default: animator.SetTrigger(AnimParam::Attack01); break;
     }
     m_nextComboIndex = (m_nextComboIndex + 1) % 3;
     m_comboWindowRemaining = 0.0f;
     m_comboAttackRequested = true;
 }
 
-Vector3 PlayerControllerComponent::GetMoveForward() const
+inline Vector3 PlayerControllerComponent::GetMoveForward() const
 {
     if (!useCameraForward) return Vector3::FORWARD;
     auto* camGO = scene.GetMainCameraObject();
@@ -283,11 +279,10 @@ Vector3 PlayerControllerComponent::GetMoveForward() const
     return fwd.LengthSq() > EPSILON ? fwd.Normalized() : Vector3::FORWARD;
 }
 
-Vector3 PlayerControllerComponent::GetMoveRight(const Vector3& forward) const
+inline Vector3 PlayerControllerComponent::GetMoveRight(const Vector3& forward) const
 {
     Vector3 right = Vector3::Cross(Vector3::UP, forward);
     return right.LengthSq() > EPSILON ? right.Normalized() : Vector3::RIGHT;
 }
 
 } // namespace sandbox
-#endif

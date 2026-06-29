@@ -24,7 +24,8 @@
 #include "Scripts/SwordParticleComponent.hpp"
 #include "Scripts/HitBloodEffectComponent.hpp"
 #include "Scripts/SwordTrailComponent.hpp"
-#include "Scripts/WeaponHitboxComponent.hpp"
+#include "Scripts/AttackHitboxComponent.hpp"
+#include "Scripts/HealthComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // WHY: エントリは Assets/Scripts/ScriptList.inl で一元管理する。
