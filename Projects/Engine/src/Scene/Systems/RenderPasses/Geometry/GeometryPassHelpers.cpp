@@ -70,6 +70,23 @@ void ApplyMaterialAssetParams(const asset::MaterialAsset& asset,
     }
 }
 
+// MaterialComponent::paramOverrides を共有アセット適用後の paramData へ「この GO 専用」で重ねる。
+// WHY: 同じ .mat を共有する複数インスタンスでも、ディゾルブ量・色などを個別に動かせるようにする。
+void ApplyMaterialParamOverrides(
+    const std::unordered_map<std::string, std::vector<float>>& overrides,
+    const renderer::ShaderDescriptor& desc,
+    std::vector<uint8_t>& paramData)
+{
+    for (const auto& [name, values] : overrides) {
+        if (values.empty()) continue;
+        const auto* v = desc.FindVar(name);
+        if (!v || v->varType != renderer::ShaderVarType::Float) continue;
+        if (v->offset + v->size > static_cast<uint32_t>(paramData.size())) continue;
+        const size_t count = (std::min<size_t>)(v->columns, values.size());
+        std::memcpy(paramData.data() + v->offset, values.data(), count * sizeof(float));
+    }
+}
+
 void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vector<uint8_t>& paramData)
 {
     // Step 1: シェーダーの全 float 変数を 1.0f で初期化する。
@@ -204,6 +221,9 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
         InitDefaultMaterialParams(*desc, material.paramData);
     if (desc && matAsset)
         ApplyMaterialAssetParams(*matAsset, *desc, material.paramData);
+    // 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
+    if (desc && !mc.paramOverrides.empty())
+        ApplyMaterialParamOverrides(mc.paramOverrides, *desc, material.paramData);
 
     std::array<std::string, kTextureSlotNames.size()> texturePaths{};
     if (matAsset) {

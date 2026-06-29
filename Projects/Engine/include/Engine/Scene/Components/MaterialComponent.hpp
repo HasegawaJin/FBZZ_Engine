@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -26,6 +28,7 @@ struct MaterialComponent {
         , materialAsset(o.materialAsset)
         , enabled(o.enabled)
         , materialPath(o.materialPath)
+        , paramOverrides(o.paramOverrides)
     {}
     MaterialComponent& operator=(const MaterialComponent& o)
     {
@@ -34,6 +37,7 @@ struct MaterialComponent {
             materialAsset = o.materialAsset;
             enabled      = o.enabled;
             materialPath = o.materialPath;
+            paramOverrides = o.paramOverrides;
         }
         return *this;
     }
@@ -45,6 +49,12 @@ struct MaterialComponent {
     // .mat の assets/ 相対パス。空文字は「マテリアル未割当」として RenderSystem が描画をスキップする。
     // WHY: MaterialComponent は参照だけを持ち、シェーダー・パラメータ・テクスチャは共有アセット側へ集約する。
     std::string materialPath;
+
+    // オブジェクトごとのパラメータ上書き (シェーダー変数名 → float 値配列)。
+    // WHY: MaterialAsset はパス単位で共有されるため、そこへ書くと同じ .mat を使う全インスタンスへ
+    //      波及する。ここに積むと SyncMaterial が共有アセット適用後に「この GO 専用」で上書きするので、
+    //      ディゾルブ量や色などをインスタンス単位でアニメーションできる。ランタイム専用 (非シリアライズ)。
+    std::unordered_map<std::string, std::vector<float>> paramOverrides;
 
     const char* GetTypeName() const { return "Material"; }
 
