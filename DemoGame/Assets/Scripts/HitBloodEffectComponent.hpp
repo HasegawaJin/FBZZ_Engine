@@ -4,7 +4,6 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
-#include <algorithm>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -16,16 +15,16 @@ class HitBloodEffectComponent : public Script {
 
 public:
     FBZZ_GROUP("Particle")
-    FBZZ_FIELD(Vector3, localOffset, Vector3(0.0f, 1.05f, 0.15f), "Local Offset")
-    FBZZ_FIELD(Vector3, emitVelocity, Vector3(0.0f, 1.2f, 0.8f), "Emit Velocity")
-    FBZZ_FIELD(Vector3, gravity, Vector3(0.0f, -3.0f, 0.0f), "Gravity")
-    FBZZ_FIELD(Vector4, colorStart, Vector4(0.65f, 0.0f, 0.0f, 0.95f), "Color Start")
-    FBZZ_FIELD(Vector4, colorEnd, Vector4(0.20f, 0.0f, 0.0f, 0.0f), "Color End")
-    FBZZ_FIELD_RANGE(float, sizeStart, 0.12f, "Size Start", 0.01f, 1.0f)
-    FBZZ_FIELD_RANGE(float, sizeEnd, 0.02f, "Size End", 0.0f, 1.0f)
-    FBZZ_FIELD_RANGE(float, lifetime, 0.45f, "Lifetime", 0.05f, 3.0f)
-    FBZZ_FIELD_RANGE(float, velocitySpread, 1.25f, "Velocity Spread", 0.0f, 8.0f)
-    FBZZ_FIELD(int, burstCount, 18, "Burst Count")
+    FBZZ_FIELD(Vector3, localOffset,  Vector3(0.0f, 1.05f, 0.15f), "")
+    FBZZ_FIELD(Vector3, emitVelocity, Vector3(0.0f, 1.2f, 0.8f),   "")
+    FBZZ_FIELD(Vector3, gravity,      Vector3(0.0f, -3.0f, 0.0f),  "")
+    FBZZ_FIELD(Vector4, colorStart,   Vector4(0.65f, 0.0f, 0.0f, 0.95f), "")
+    FBZZ_FIELD(Vector4, colorEnd,     Vector4(0.20f, 0.0f, 0.0f, 0.0f),  "")
+    FBZZ_FIELD_RANGE(float, sizeStart,      0.12f, "", 0.01f, 1.0f)
+    FBZZ_FIELD_RANGE(float, sizeEnd,        0.02f, "", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, lifetime,       0.45f, "", 0.05f, 3.0f)
+    FBZZ_FIELD_RANGE(float, velocitySpread, 1.25f, "", 0.0f, 8.0f)
+    FBZZ_FIELD(int, burstCount, 18, "")
 
     void OnStart() override;
     void PlayBlood();
@@ -34,29 +33,23 @@ private:
     void ConfigureEmitter();
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(HitBloodEffectComponent)
 
-#include "HitBloodEffectComponent.generated.hpp"
-
-#ifndef HitBloodEffectComponent_IMPL
-#define HitBloodEffectComponent_IMPL
-
-namespace sandbox {
-
-void HitBloodEffectComponent::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void HitBloodEffectComponent::OnStart()
 {
     ConfigureEmitter();
     particle.Stop(/*clear=*/true);
 }
 
-void HitBloodEffectComponent::PlayBlood()
+inline void HitBloodEffectComponent::PlayBlood()
 {
     ConfigureEmitter();
     particle.Play(/*restart=*/true);
     particle.Burst(std::max(1, burstCount));
 }
 
-void HitBloodEffectComponent::ConfigureEmitter()
+inline void HitBloodEffectComponent::ConfigureEmitter()
 {
     // WHY: 血は「被弾した結果」なのでループさせず、短いバーストだけを発生させる。
     particle.SetEnabled(true);
@@ -76,4 +69,3 @@ void HitBloodEffectComponent::ConfigureEmitter()
 }
 
 } // namespace sandbox
-#endif
