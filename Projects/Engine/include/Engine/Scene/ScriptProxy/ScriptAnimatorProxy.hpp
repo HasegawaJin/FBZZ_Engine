@@ -37,6 +37,12 @@ struct ScriptAnimatorProxy {
     float       GetNormalizedTime(GameObject* go) const;
     std::vector<std::pair<std::string, float>> GetCurrentBlendWeights() const;
     std::string GetCurrentState() const;
+    // クロスフェード遷移先ステート名 (遷移中でなければ空) とその正規化時間 0..1。
+    // コンボの Slash→Slash 遷移中に次段の振りタイミングを正しく判定するために使う。
+    std::string GetBlendToState() const;
+    std::string GetBlendToState(GameObject* go) const;
+    float       GetBlendToNormalizedTime() const;
+    float       GetBlendToNormalizedTime(GameObject* go) const;
     void        SetSpeed(float speed) const;
     void        Play(std::string_view stateName) const;
     void        SetSpeed(GameObject* go, float speed) const;
