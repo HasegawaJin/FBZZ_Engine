@@ -50,6 +50,7 @@ void ScriptSystem::Update(SystemContext& ctx)
             if (s->enabled) {
                 s->TickFrameDelays();
                 s->TickInvokes(dt);
+                s->TickCoroutines();
                 s->OnUpdate();
             }
         }
