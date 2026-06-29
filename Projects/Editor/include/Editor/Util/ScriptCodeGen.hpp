@@ -10,9 +10,9 @@
 //   DLL 側 / EXE 側ともに ScriptList.inl を #include して展開するため、
 //   ScriptCodeGen はエントリを 1 ファイルだけ更新すればよい。
 //
-//   include セクション (DLL/EXE で形式が異なるため引き続き個別管理):
-//     DLL: #define Xxx_IMPL + #include — 型定義・ファクトリ用宣言のみ取り込む
-//     EXE: #include のみ — TU ごとの独立コンパイル
+//   include セクション (DLL/EXE 共通 #include のみ):
+//     新方式のスクリプトは実装を inline 化したため _IMPL ガードや専用 .cpp は不要。
+//     Reflect() は FBZZ_REFLECT がヘッダ内で生成するため .generated.hpp も生成しない。
 //
 //   コード生成後にファイルが変更されると ScriptDllLoader の監視が反応し
 //   自動リビルド → ホットリロードまで自動実行される。
@@ -39,14 +39,6 @@ public:
                                     const std::string& dllCppPath,
                                     const std::string& staticCppPath = {});
 
-    // FBZZ Header Tool -- FBZZ_FIELD マクロをパースして .generated.hpp を生成する。
-    // @param headerPath  対象の .hpp ファイルパス
-    // @ret 生成した .generated.hpp のパス (失敗時は空)
-    static std::string GenerateReflect(const std::string& headerPath);
-
-    // scriptsDir 配下の全 .hpp に対して GenerateReflect を一括実行する。
-    static void GenerateReflectAll(const std::string& scriptsDir);
-
     // HLSL シェーダーファイルを生成する。
     // @param name     シェーダー名 ("MyEffect" など)
     // @param hlslDir  Assets/shaders/ のルートパス
@@ -60,7 +52,7 @@ private:
     // @@FBZZ_SCRIPT_INCLUDES_BEGIN の後に #include 行を挿入する (Standalone EXE 用)
     static bool InsertScriptInclude(const std::string& cppPath,
                                     const std::string& headerRelPath);
-    // DLL 用: #define {ClassName}_IMPL + #include を挿入して宣言のみ取り込む
+    // DLL 用: #include を挿入する (新方式は inline 実装のため _IMPL 事前定義は不要)
     static bool InsertScriptIncludeDll(const std::string& dllCppPath,
                                        const std::string& className,
                                        const std::string& headerRelPath);

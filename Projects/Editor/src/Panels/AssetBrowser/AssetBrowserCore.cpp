@@ -101,6 +101,7 @@ void AssetBrowserPanel::OnInit(EditorContext& ctx)
 {
     m_resources = ctx.resources;
     m_iconSize = ctx.assetBrowserIconSize;
+    m_treeWidth = ctx.assetBrowserTreeWidth;
     RefreshDirectory();
     if (!m_rootPath.empty()) {
         m_watcher.Start(m_rootPath);

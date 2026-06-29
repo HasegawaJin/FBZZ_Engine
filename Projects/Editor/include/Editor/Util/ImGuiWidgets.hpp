@@ -39,6 +39,14 @@ void ColoredText(const char* text, ImVec4 color);
 // 読み取り専用テキストフィールド
 void ReadOnlyText(const char* label, const char* text);
 
+// レンジ付き数値フィールド: スライダー (ゲージ) + 編集可能な数値入力ボックスを 1 行に並べる。
+// WHY: SliderFloat 単体は正確な値入力がしづらく、DragFloat 単体は範囲内の量感が掴めない。
+//      ゲージで量感とドラッグ操作を、右の入力ボックスで正確なタイプ入力を同時に満たす。
+//      スクリプトの FBZZ_FIELD_RANGE (ImGuiReflector::FloatRange) から共通で使う。
+// @return true if value changed
+bool RangeField(const char* label, float& value, float min, float max,
+                const char* fmt = "%.3f");
+
 // アセットパス入力フィールド。"..." ボタンで projectRoot/ 以下を検索できるモーダルを開く。
 // filterExts: カンマ区切り拡張子 ".mat,.hlsl" (空 = すべてのファイル)
 // @return true if path was changed (InputText 編集 / drag-drop / picker 選択のいずれか)
@@ -65,6 +73,13 @@ inline bool AssetPathFieldWithLoad(const char* label, std::string& path,
 
 // InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ
 void DrawAssetPickerModal();
+
+// 直前のアイテムを ASSET_PATH ドラッグ＆ドロップの受け皿にする共通ヘルパー。
+// WHY: BeginDragDropTarget / AcceptDragDropPayload("ASSET_PATH") / Normalize / End の
+//      定型がパス欄やリスト行に散在していたため集約する。ドロップ後の処理 (拡張子除去・
+//      リロード等の特殊挙動) は呼び出し側に委ねるので、既存挙動を保ったまま重複だけ消せる。
+// @return true if an asset path was dropped (outPath に正規化済みパスを格納)
+bool AcceptAssetPathDrop(std::string& outPath);
 
 // Quaternion → オイラー角 (度, YXZ 順)。InspectorPanel と ImGuiReflector で共用
 // YXZ 内因順: X(Pitch) が中間角で ±90° 制約、Y(Yaw) は ±180° 任意範囲。
