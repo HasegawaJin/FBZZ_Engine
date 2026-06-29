@@ -130,6 +130,7 @@ private:
     std::vector<Entry>    m_entries;
     std::array<char, 256> m_searchBuf = {};
     float                 m_iconSize  = 84.0f;
+    float                 m_treeWidth = 180.0f; // 左フォルダツリーの幅 (スプリッターでドラッグ可変)
     bool                  m_resetScroll    = false; // ディレクトリ移動後に右ペインをトップへ戻す
     bool                  m_assetExpandDirty  = false; // fzasset 展開トグル後の遅延 Refresh フラグ
 

@@ -63,13 +63,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 if (ImGui::IsItemDeactivatedAfterEdit())
                     { anim.clips.clear(); anim.clipSourcePaths.clear(); anim.clipsLoaded = false; }
                 // DragDrop target must be right after InputText, before SameLine
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        anim.clipSources[i] = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                        anim.clips.clear(); anim.clipsLoaded = false;
-                        anim.clipSourcePaths.clear();
-                    }
-                    ImGui::EndDragDropTarget();
+                if (widgets::AcceptAssetPathDrop(anim.clipSources[i])) {
+                    anim.clips.clear(); anim.clipsLoaded = false;
+                    anim.clipSourcePaths.clear();
                 }
                 ImGui::SameLine();
                 if (ImGui::SmallButton("x")) {
@@ -83,14 +79,11 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             // "+ Add Source" also acts as drop zone: drag FBX directly onto it
             if (ImGui::Button("+ Add Source  (or drop FBX)", { -1.0f, 0.0f }))
                 anim.clipSources.emplace_back();
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    std::string path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    anim.clipSources.push_back(std::move(path));
-                    anim.clips.clear(); anim.clipsLoaded = false;
-                    anim.clipSourcePaths.clear();
-                }
-                ImGui::EndDragDropTarget();
+            std::string droppedClip;
+            if (widgets::AcceptAssetPathDrop(droppedClip)) {
+                anim.clipSources.push_back(std::move(droppedClip));
+                anim.clips.clear(); anim.clipsLoaded = false;
+                anim.clipSourcePaths.clear();
             }
 
             ImGui::Separator();

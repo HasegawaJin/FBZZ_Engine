@@ -81,8 +81,8 @@ FILETIME GetLatestWriteTimeInTree(const std::filesystem::path& root)
 }
 
 // Scripts DLLの鮮度判定に使う、ユーザー編集ソースの最新更新時刻を返す。
-// WHY: GenerateReflectAllは起動時に.generated.hppを書き直すため、それを含めると内容が
-//      同じでも毎回DLLを古いと誤判定する。生成元の.hpp/.cpp等だけで再ビルド要否を決める。
+// WHY: 新方式では .generated.hpp は生成しないが、旧プロジェクト互換のため残存ファイルは
+//      鮮度判定から除外する (生成物のタイムスタンプで誤って再ビルド要と判定しないため)。
 FILETIME GetLatestScriptSourceWriteTime(const std::filesystem::path& root)
 {
     FILETIME latest{};
@@ -551,8 +551,8 @@ void EditorApp::InitScriptDll()
         m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
         m_ctx.hlslSourceDir    = util::FileSystem::PathToUtf8(m_hlslSourceDir);
 
-        // エディタ起動時: 全スクリプトの .generated.hpp を最新化する
-        ScriptCodeGen::GenerateReflectAll(m_ctx.scriptsSourceDir);
+        // 新方式: Reflect() はヘッダ内の FBZZ_REFLECT が生成するため、起動時の
+        //         .generated.hpp 一括生成 (旧 FHT) は不要になった。
 
         if (!m_ctx.projectTargetName.empty()) {
             const std::filesystem::path projRoot = util::FileSystem::PathFromUtf8(m_ctx.projectRoot);
@@ -739,13 +739,7 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     m_ctx.hotReloadProgress = 0.0f;
     FBZZ_LOG_DEBUG("ScriptDll: change detected in %s; rebuilding after 500 ms debounce",
                    m_ctx.scriptsSourceDir.c_str());
-    // ビルド前に .generated.hpp を最新化する
-    ScriptCodeGen::GenerateReflectAll(m_ctx.scriptsSourceDir);
-    // WHY: GenerateReflectAll が .generated.hpp を書き出すと、そのタイムスタンプが
-    //      m_lastScriptWriteTime (= ft) より新しくなり、コンパイル完了後の次回ポーリングで
-    //      "変更あり" と誤検知して再コンパイルが無限ループする。
-    //      生成直後に再サンプルして生成ファイルのタイムスタンプを吸収する。
-    m_lastScriptWriteTime = GetLatestWriteTimeInTree(m_scriptsSourceDir);
+    // 新方式: Reflect() はヘッダ内生成のため、ビルド前の .generated.hpp 一括生成は不要。
 }
 
 void EditorApp::TickScriptCompile()

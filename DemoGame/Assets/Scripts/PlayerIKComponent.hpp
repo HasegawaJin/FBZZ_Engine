@@ -7,19 +7,16 @@
 
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Script.hpp>
-#include <algorithm>
-#include <cmath>
+// WHY: 旧来は前方宣言 + .cpp 側の #define PlayerControllerComponent_IMPL という
+//      脆い手作業で完全型を取り込んでいた。inline 実装化により単純な include で済む。
+#include "PlayerControllerComponent.hpp"
+#include "GameVocab.hpp"
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
 using fbzz::Time;
 
 namespace sandbox {
-
-// GetScript<PlayerControllerComponent>() の呼び出しは IMPL ブロック内に置く。
-// 完全型は PlayerIKComponent.cpp が #define PlayerControllerComponent_IMPL して
-// 宣言のみを取り込んだうえでこのヘッダを include することで保証される。
-class PlayerControllerComponent;
 
 class PlayerIKComponent : public Script {
     FBZZ_SCRIPT(PlayerIKComponent)
@@ -36,17 +33,10 @@ private:
     Vector3 m_smoothedSpineOffset = Vector3::ZERO;
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(PlayerIKComponent)
 
-#include "PlayerIKComponent.generated.hpp"
-
-// ── 実装 ────────────────────────────────────────────────────────────────────
-#ifndef PlayerIKComponent_IMPL
-#define PlayerIKComponent_IMPL
-
-namespace sandbox {
-
-void PlayerIKComponent::OnUpdate()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void PlayerIKComponent::OnUpdate()
 {
     // WHY: useFootIK は PlayerControllerComponent 上のフィールド (Inspector で設定済み)。
     //      Script 間参照 GetScript<T>() でフラグだけ借りることで、
@@ -55,7 +45,7 @@ void PlayerIKComponent::OnUpdate()
     UpdateIK(ctrl ? ctrl->useFootIK : true);
 }
 
-void PlayerIKComponent::UpdateIK(bool useFootIK)
+inline void PlayerIKComponent::UpdateIK(bool useFootIK)
 {
     auto* ik = scene.GetComponent<IKSolverComponent>();
     if (!ik) return;
@@ -70,12 +60,12 @@ void PlayerIKComponent::UpdateIK(bool useFootIK)
     //      UpdateSlopeLean が上体を横に傾けて見た目がおかしくなる。
     //      足 IK はそのまま維持し、スロープリーンだけ無効にする。
     //      PlayerControllerComponent は後から実行されるため直前フレームの Block 値を使用する。
-    const bool isStrafing = animator.IsInState("Block") || animator.GetBool("Block");
+    const bool isStrafing = animator.IsInState(AnimState::Block) || animator.GetBool(AnimParam::Block);
     if (!isStrafing)
         UpdateSlopeLean(*ik);
 }
 
-void PlayerIKComponent::UpdateSlopeLean(IKSolverComponent& ik)
+inline void PlayerIKComponent::UpdateSlopeLean(IKSolverComponent& ik)
 {
     IKChain* spine = nullptr;
     for (auto& chain : ik.chains) {
@@ -121,4 +111,3 @@ void PlayerIKComponent::UpdateSlopeLean(IKSolverComponent& ik)
 }
 
 } // namespace sandbox
-#endif

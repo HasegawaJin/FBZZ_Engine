@@ -275,10 +275,14 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
         pixelToLocal.m[0][3] = -canvas.canvasWidth  * 0.5f * ws;
         pixelToLocal.m[1][3] =  canvas.canvasHeight * 0.5f * ws;
 
-        // WHY: 再帰収集後は Canvas が子 GO に置かれる可能性があるため worldPosition を使う
+        // WHY: 再帰収集後は Canvas が子 GO に置かれる可能性があるため worldPosition を使う。
+        //      faceCamera 時は向きをカメラ姿勢で上書きし、常にカメラへ正対させる (ビルボード)。
+        //      位置は worldPosition のままなので、敵の頭上に置けば追従しつつ常に読める。
+        const math::Quaternion canvasRotation =
+            canvas.faceCamera ? cameraWorldRot : canvasGO.transform.worldRotation;
         const math::Matrix4 worldMatrix = math::Matrix4::TRS(
             canvasGO.transform.worldPosition,
-            canvasGO.transform.worldRotation,
+            canvasRotation,
             math::Vector3::ONE
         );
 
@@ -780,6 +784,39 @@ bool ProcessUIEventsRecursive(GameObject& go,
     return consumed;
 }
 
+// 塗り潰し量 (fillAmount) に応じて矩形 (pos/size) と UV を fillOrigin 方向へ削る。
+// pos は左上原点・y 下向き。Left/Right は横方向、Bottom/Top は縦方向に固定辺を残す。
+void ApplyFill(float amount, UIImageFillOrigin origin,
+               math::Vector2& pos, math::Vector2& size,
+               math::Vector2& uvMin, math::Vector2& uvMax)
+{
+    const float f = std::clamp(amount, 0.0f, 1.0f);
+    const float du = uvMax.x - uvMin.x;
+    const float dv = uvMax.y - uvMin.y;
+    switch (origin) {
+    case UIImageFillOrigin::Left:
+        size.x  *= f;
+        uvMax.x  = uvMin.x + du * f;
+        break;
+    case UIImageFillOrigin::Right:
+        pos.x   += size.x * (1.0f - f);
+        size.x  *= f;
+        uvMin.x  = uvMax.x - du * f;
+        break;
+    case UIImageFillOrigin::Bottom:
+        // 下端 (y 大 = uvMax.y) を固定し、上から削る。
+        pos.y   += size.y * (1.0f - f);
+        size.y  *= f;
+        uvMin.y  = uvMax.y - dv * f;
+        break;
+    case UIImageFillOrigin::Top:
+        // 上端 (y 小 = uvMin.y) を固定し、下から削る。
+        size.y  *= f;
+        uvMax.y  = uvMin.y + dv * f;
+        break;
+    }
+}
+
 // ── レンダリング ──────────────────────────────────────────────────────────────
 void RenderCanvasRecursive(GameObject& go,
                            const UITransform2D& parentTransform,
@@ -815,15 +852,25 @@ void RenderCanvasRecursive(GameObject& go,
             image->loadedTexturePath = image->texturePath;
         }
 
-        const Rect    r     = RectFromTransform(go.transform, resolved);
+        Rect          r     = RectFromTransform(go.transform, resolved);
         math::Vector4 color = image->color;
         if (button)
             color = ResolveButtonImageColor(color, *button);
-        SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
-                    r.pos, r.size, color,
-                    image->uvMin, image->uvMax,
-                    image->texture.IsValid() ? image->texture : ctx.whiteTexture,
-                    resolved.rotationZ);
+
+        // 塗り潰し量に応じて矩形と UV を fillOrigin 方向へクリップする (体力ゲージ等)。
+        // transform.scale は変えず描画時だけ削るので、レイアウトや当たり判定には影響しない。
+        math::Vector2 uvMin = image->uvMin;
+        math::Vector2 uvMax = image->uvMax;
+        if (image->fillAmount < 1.0f)
+            ApplyFill(image->fillAmount, image->fillOrigin, r.pos, r.size, uvMin, uvMax);
+
+        if (r.size.x > 0.0f && r.size.y > 0.0f) {
+            SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
+                        r.pos, r.size, color,
+                        uvMin, uvMax,
+                        image->texture.IsValid() ? image->texture : ctx.whiteTexture,
+                        resolved.rotationZ);
+        }
     }
 
     if (text && text->enabled) {

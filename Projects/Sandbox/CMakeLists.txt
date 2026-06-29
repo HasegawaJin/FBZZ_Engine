@@ -16,7 +16,7 @@ list(REMOVE_ITEM SANDBOX_SOURCES
 #      ソース置き場を Projects/Sandbox/src/Scripts/ から Assets/Scripts/ に移動した。
 #      CMake の include_directories に Assets/ を追加することで
 #      #include "Scripts/Foo.hpp" → Assets/Scripts/Foo.hpp と解決する。
-file(GLOB_RECURSE SANDBOX_SCRIPT_DLL_SOURCES
+file(GLOB_RECURSE SANDBOX_SCRIPT_DLL_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_SOURCE_DIR}/Assets/Scripts/*.cpp
     ${CMAKE_SOURCE_DIR}/Assets/Scripts/*.hpp
     src/SandboxScriptsDll.cpp

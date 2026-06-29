@@ -103,6 +103,18 @@ transitionDuration = 0.10000000149011612
     paramName = 'Block'
     threshold = 0.0
 
+[[anyStateTransitions]]
+exitTime = 1.0
+fixedDuration = true
+hasExitTime = false
+toStateName = 'Death'
+transitionDuration = 0.08000000119209290
+
+    [[anyStateTransitions.conditions]]
+    op = 4
+    paramName = 'Death'
+    threshold = 0.0
+
 [[parameters]]
 boolValue = false
 floatValue = 0.0
@@ -186,6 +198,13 @@ floatValue = 0.0
 intValue = 0
 name = 'Block'
 type = 2
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Death'
+type = 3
 
 [[states]]
 clipIndex = -1
@@ -642,3 +661,25 @@ speed = 1.0
         op = 5
         paramName = 'Block'
         threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = false
+mode = 0
+name = 'Death'
+sourcePath = 'Assets/Models/PlayerDeath/anims/PlayerDeath@mixamo.com.anim'
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0

@@ -1154,16 +1154,8 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             if (!ShouldDisplayEntry(e.path, e.name, true)) continue;
             newDirs.push_back(std::move(e));
         }
-        if (util::FileSystem::SamePathText(normDir, m_rootPath)) {
-            for (const AssetMount& mount : m_mounts) {
-                Entry e;
-                e.path = mount.path;
-                e.name = mount.name;
-                e.isDir = true;
-                e.isMount = true;
-                newDirs.push_back(std::move(e));
-            }
-        }
+        // WHY: マウント (外部フォルダ) は Assets ツリーには混ぜず、左ペインの "EXTERNAL"
+        //      セクション (OnRenderContent) で専用に列挙する。ここでは実フォルダのみ扱う。
         std::stable_sort(newDirs.begin(), newDirs.end(), [](const Entry& a, const Entry& b) {
             return a.name < b.name;
         });
@@ -1177,10 +1169,16 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
     for (const Entry& dir : dirs) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth;
-        if (util::FileSystem::SamePathText(dir.path, m_currentPath)) flags |= ImGuiTreeNodeFlags_Selected;
+        const bool isCurrent = util::FileSystem::SamePathText(dir.path, m_currentPath);
+        if (isCurrent) flags |= ImGuiTreeNodeFlags_Selected;
 
         // WHY: 表示名は Assets 側の仮想名、ID は実パスにすることで同名マウントでも ImGui ID が衝突しない。
+        // 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
+        if (isCurrent)
+            ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
         bool open = ImGui::TreeNodeEx(dir.path.c_str(), flags, "%s", dir.name.c_str());
+        if (isCurrent)
+            ImGui::PopStyleColor();
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
             m_currentPath = dir.path;
             RefreshDirectory();

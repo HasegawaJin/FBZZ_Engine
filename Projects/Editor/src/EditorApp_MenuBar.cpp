@@ -7,6 +7,7 @@
 //      独立ファイルに分離することで、メニュー項目の追加・変更を局所化できる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -201,6 +202,20 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
                     ImGui::MenuItem(panel->GetViewMenuName(), nullptr, &panel->visible);
             }
             ImGui::EndMenu();
+        }
+
+        // UI 全体スケール (フォント + 余白)。設定に永続化される。
+        ImGui::Separator();
+        ImGui::TextDisabled("UI Scale");
+        float uiScale = m_ctx.editorUiScale;
+        ImGui::SetNextItemWidth(150.0f);
+        if (ImGui::SliderFloat("##ui_scale", &uiScale, 0.7f, 2.0f, "%.2fx")) {
+            m_ctx.editorUiScale = uiScale;
+            EditorTheme::SetUiScale(uiScale);
+        }
+        if (ImGui::MenuItem("Reset UI Scale", nullptr, false, m_ctx.editorUiScale != 1.0f)) {
+            m_ctx.editorUiScale = 1.0f;
+            EditorTheme::SetUiScale(1.0f);
         }
         ImGui::EndMenu();
     }

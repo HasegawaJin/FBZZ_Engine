@@ -36,6 +36,9 @@ struct UICanvas {
     float        worldScale    = 0.01f;
     // ScreenSpaceCamera 専用: カメラ前方に Canvas を配置する距離 (ワールド単位)
     float        planeDistance = 2.0f;
+    // WorldSpace 専用: true のとき Canvas を常にカメラへ正対させる (ビルボード)。
+    // 敵の頭上に出す体力ゲージなど、3D 空間に置きつつ常に読めるようにする UI に使う。
+    bool         faceCamera   = false;
     bool         enabled      = true;
 
     const char* GetTypeName() const { return "UICanvas"; }
@@ -56,6 +59,7 @@ struct UICanvas {
         r.Field("matchWidthOrHeight", matchWidthOrHeight);
         r.Field("worldScale",    worldScale);
         r.Field("planeDistance", planeDistance);
+        r.Field("faceCamera",    faceCamera);
     }
 };
 

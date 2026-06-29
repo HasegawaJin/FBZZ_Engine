@@ -116,8 +116,12 @@ struct EditorSettings {
     };
     std::vector<HotkeyOverride> hotkeyOverrides;
 
+    // --- UI ---------------------------------------------------------------
+    float                    editorUiScale = 1.0f; // UI 全体スケール (フォント+余白)
+
     // --- Asset Browser ----------------------------------------------------
     float                    assetBrowserIconSize = 84.0f;
+    float                    assetBrowserTreeWidth = 180.0f;
     std::vector<std::string> assetBrowserBookmarks;
 
     // --- Inspector セクション折り畳み状態 -----------------------------------

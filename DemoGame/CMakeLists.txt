@@ -52,7 +52,11 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ
 # WHY (OUTPUT_NAME "Scripts"): プロジェクト名に依存しない固定名にすることで
 #      config.target = m_scriptDllPath.stem() が常に "Scripts" と解決し、
 #      EditorApp がプロジェクト名を知らなくてもビルドターゲットを特定できる。
-file(GLOB_RECURSE SCRIPTS_DLL_SOURCES
+# WHY (CONFIGURE_DEPENDS): スクリプトは Editor から動的に追加/削除される。
+#   新方式では 1 スクリプト = 1 ヘッダ (.generated.hpp / 専用 .cpp を廃止) のため、
+#   ファイルの増減を CMake が自動検知できるよう CONFIGURE_DEPENDS を付ける。
+#   これがないと .cpp 削除後に手動再構成しないと VS プロジェクトが古い参照を残す。
+file(GLOB_RECURSE SCRIPTS_DLL_SOURCES CONFIGURE_DEPENDS
     Assets/Scripts/*.cpp
     Assets/Scripts/*.hpp
     Src/Scripts/*.cpp

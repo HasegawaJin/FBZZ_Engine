@@ -104,19 +104,16 @@ void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_com
             if (ImGui::InputText("##fontPath", fontBuf, sizeof(fontBuf)))
                 text.fontPath = fontBuf;
             // D&D: .png / .fnt をドロップしたとき拡張子を除いてベースパスにセットする。
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    // .png / .fnt どちらをドロップしても拡張子を取り除く
-                    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(dropped));
-                    if (ext == ".png" || ext == ".fnt") {
-                        std::filesystem::path fontPath = util::FileSystem::PathFromUtf8(dropped);
-                        fontPath.replace_extension();
-                        dropped = util::FileSystem::PathToUtf8(fontPath);
-                    }
-                    text.fontPath = dropped;
+            std::string droppedFont;
+            if (widgets::AcceptAssetPathDrop(droppedFont)) {
+                // .png / .fnt どちらをドロップしても拡張子を取り除く
+                const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(droppedFont));
+                if (ext == ".png" || ext == ".fnt") {
+                    std::filesystem::path fontPath = util::FileSystem::PathFromUtf8(droppedFont);
+                    fontPath.replace_extension();
+                    droppedFont = util::FileSystem::PathToUtf8(fontPath);
                 }
-                ImGui::EndDragDropTarget();
+                text.fontPath = droppedFont;
             }
         });
 

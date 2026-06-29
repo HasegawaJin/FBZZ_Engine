@@ -162,6 +162,45 @@ void Script::TickFrameDelays()
     }
 }
 
+void Script::StartCoroutine(Coroutine co)
+{
+    if (co.Done()) return; // 即完了した (co_await を一度もしなかった) コルーチンは保持しない
+    // Tick 中に開始された場合は再配置を避けるため保留バッファへ積む。
+    if (m_isTickingCoroutines)
+        m_pendingCoroutines.push_back(std::move(co));
+    else
+        m_coroutines.push_back(std::move(co));
+}
+
+void Script::StopAllCoroutines()
+{
+    m_coroutines.clear();
+    m_pendingCoroutines.clear();
+}
+
+void Script::TickCoroutines()
+{
+    if (m_coroutines.empty() && m_pendingCoroutines.empty()) return;
+
+    m_isTickingCoroutines = true;
+    // WHY: 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回り、
+    //      m_coroutines は本ループ中に再確保されない。
+    for (size_t i = 0; i < m_coroutines.size(); ++i)
+        m_coroutines[i].Step();
+    m_isTickingCoroutines = false;
+
+    // 完了したコルーチンを除去する。
+    m_coroutines.erase(
+        std::remove_if(m_coroutines.begin(), m_coroutines.end(),
+            [](const Coroutine& c) { return c.Done(); }),
+        m_coroutines.end());
+
+    // ティック中に開始されたコルーチンを取り込む。
+    for (auto& c : m_pendingCoroutines)
+        m_coroutines.push_back(std::move(c));
+    m_pendingCoroutines.clear();
+}
+
 void Script::CancelEventSubscriptions()
 {
     for (auto& unsubscribe : m_eventUnsubscribers) {

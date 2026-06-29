@@ -931,6 +931,9 @@ bool ScriptMaterialProxy::SetMaterial(std::string_view materialPath) const
     auto* material = Ensure();
     if (!material) return false;
 
+    // 別マテリアルへ差し替えるときは、旧シェーダー向けの GO 上書きを破棄する。
+    if (material->materialPath != materialPath)
+        material->paramOverrides.clear();
     material->materialPath = std::string(materialPath);
     material->materialAsset = material->materialPath.empty()
         ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
@@ -956,13 +959,13 @@ bool ScriptMaterialProxy::HasParam(std::string_view param) const
     return a->params.find(std::string(param)) != a->params.end();
 }
 
+// WHY: params を共有 MaterialAsset へ書くと同じ .mat を使う全インスタンスへ波及する。
+//      MaterialComponent::paramOverrides へ積み、SyncMaterial が GO 単位で上書きする
+//      ことで「このオブジェクトだけ」のパラメータ変更 (ディゾルブ・点滅等) を実現する。
 void ScriptMaterialProxy::SetFloat(std::string_view param, float v) const
 {
-    auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m || !m->EnsureMaterialAsset()) return;
-    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return;
-    a->params[std::string(param)] = { v };
+    if (auto* m = SelfComponent<MaterialComponent>(script))
+        m->paramOverrides[std::string(param)] = { v };
 }
 
 void ScriptMaterialProxy::SetInt(std::string_view param, int v) const
@@ -972,20 +975,14 @@ void ScriptMaterialProxy::SetInt(std::string_view param, int v) const
 
 void ScriptMaterialProxy::SetVector3(std::string_view param, const math::Vector3& v) const
 {
-    auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m || !m->EnsureMaterialAsset()) return;
-    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return;
-    a->params[std::string(param)] = { v.x, v.y, v.z };
+    if (auto* m = SelfComponent<MaterialComponent>(script))
+        m->paramOverrides[std::string(param)] = { v.x, v.y, v.z };
 }
 
 void ScriptMaterialProxy::SetVector4(std::string_view param, const math::Vector4& v) const
 {
-    auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m || !m->EnsureMaterialAsset()) return;
-    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return;
-    a->params[std::string(param)] = { v.x, v.y, v.z, v.w };
+    if (auto* m = SelfComponent<MaterialComponent>(script))
+        m->paramOverrides[std::string(param)] = { v.x, v.y, v.z, v.w };
 }
 
 void ScriptMaterialProxy::SetTexture(std::string_view slot, std::string_view texPath) const
@@ -1007,6 +1004,10 @@ float ScriptMaterialProxy::GetFloat(std::string_view param) const
 {
     const auto* m = Get();
     if (!m) return 0.0f;
+    // GO 単位の上書きを優先し、無ければ共有アセットの値を返す。
+    const auto ov = m->paramOverrides.find(std::string(param));
+    if (ov != m->paramOverrides.end() && !ov->second.empty())
+        return ov->second[0];
     const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
     if (!a) return 0.0f;
     const auto it = a->params.find(std::string(param));
@@ -1017,6 +1018,9 @@ math::Vector3 ScriptMaterialProxy::GetVector3(std::string_view param) const
 {
     const auto* m = Get();
     if (!m) return {};
+    const auto ov = m->paramOverrides.find(std::string(param));
+    if (ov != m->paramOverrides.end() && ov->second.size() >= 3)
+        return { ov->second[0], ov->second[1], ov->second[2] };
     const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
     if (!a) return {};
     const auto it = a->params.find(std::string(param));
@@ -1030,6 +1034,33 @@ bool ScriptMaterialProxy::SetEnabled(bool enabled) const
     if (!material) return false;
     material->enabled = enabled;
     return true;
+}
+
+MaterialComponent* ScriptMaterialProxy::Get(GameObject* go) const
+{
+    return ObjectComponent<MaterialComponent>(go);
+}
+
+bool ScriptMaterialProxy::SetMaterial(GameObject* go, std::string_view materialPath) const
+{
+    if (!go || !go->IsValid()) return false;
+    auto* material = go->GetComponent<MaterialComponent>();
+    if (!material)
+        material = &go->AddComponent<MaterialComponent>();
+
+    if (material->materialPath != materialPath)
+        material->paramOverrides.clear();
+    material->materialPath = std::string(materialPath);
+    material->materialAsset = material->materialPath.empty()
+        ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
+        : asset::AssetManager::LoadMaterial(material->materialPath);
+    return material->materialAsset.IsValid() || material->materialPath.empty();
+}
+
+void ScriptMaterialProxy::SetFloat(GameObject* go, std::string_view param, float v) const
+{
+    if (auto* m = ObjectComponent<MaterialComponent>(go))
+        m->paramOverrides[std::string(param)] = { v };
 }
 
 bool ScriptMaterialProxy::SetBlendMode(renderer::BlendMode blendMode) const
@@ -1478,6 +1509,33 @@ void ScriptUIProxy::SetImageSpriteRect(float x, float y, float w, float h, float
     }
 }
 
+void ScriptUIProxy::SetImageFillAmount(float amount) const
+{
+    if (auto* img = SelfComponent<UIImage>(script))
+        img->fillAmount = std::clamp(amount, 0.0f, 1.0f);
+}
+
+void ScriptUIProxy::SetImageColor(GameObject* go, const math::Vector4& color) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go)) image->color = color;
+}
+
+void ScriptUIProxy::SetImageFillAmount(GameObject* go, float amount) const
+{
+    if (auto* img = ObjectComponent<UIImage>(go))
+        img->fillAmount = std::clamp(amount, 0.0f, 1.0f);
+}
+
+void ScriptUIProxy::SetText(GameObject* go, std::string_view text) const
+{
+    if (auto* t = ObjectComponent<UIText>(go)) t->text = std::string(text);
+}
+
+void ScriptUIProxy::SetImageEnabled(GameObject* go, bool enabled) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go)) image->enabled = enabled;
+}
+
 void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vector4& to, float duration) const
 {
     PlayColor(from, to, duration, UIEasingType::Linear);
@@ -1802,6 +1860,30 @@ std::string ScriptAnimatorProxy::GetCurrentState() const
 {
     const auto* a = SelfComponent<AnimatorComponent>(script);
     return a ? a->currentStateName : std::string{};
+}
+
+std::string ScriptAnimatorProxy::GetBlendToState() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetBlendToState() : std::string{};
+}
+
+std::string ScriptAnimatorProxy::GetBlendToState(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetBlendToState() : std::string{};
+}
+
+float ScriptAnimatorProxy::GetBlendToNormalizedTime() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetBlendToNormalizedTime() : 0.0f;
+}
+
+float ScriptAnimatorProxy::GetBlendToNormalizedTime(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetBlendToNormalizedTime() : 0.0f;
 }
 
 void ScriptAnimatorProxy::SetSpeed(float speed) const
