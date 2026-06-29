@@ -12,7 +12,7 @@ prefabAssetPath = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777778
+    aspectRatio = 1.776897
     cullingMask = 4294967295
     enabled = true
     farZ = 1000.0
@@ -38,6 +38,7 @@ tag = 'MainCamera'
         'Mouse Orbit' = true
         'Mouse Sensitivity' = 0.2
         Pitch = 51.000023
+        Target = [ 4294967295, 0 ]
         'Target Tag' = 'Player'
         Yaw = -480.001282
 
@@ -209,6 +210,18 @@ tag = 'Player'
             paramName = 'Block'
             threshold = 0.0
 
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Death'
+        transitionDuration = 0.08
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Death'
+            threshold = 0.0
+
         [[gameobjects.AnimatorComponent.parameters]]
         boolValue = false
         floatValue = 0.0
@@ -292,6 +305,13 @@ tag = 'Player'
         intValue = 0
         name = 'Block'
         type = 2
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Death'
+        type = 3
 
         [[gameobjects.AnimatorComponent.states]]
         clipIndex = -1
@@ -643,7 +663,7 @@ tag = 'Player'
         loop = false
         mode = 0
         name = 'PlayerHit'
-sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
+        sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -748,6 +768,29 @@ sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
                 op = 5
                 paramName = 'Block'
                 threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = ''
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Death'
+        sourcePath = 'Assets/Models/PlayerDeath/anims/PlayerDeath@mixamo.com.anim'
+        speed = 1.0
+        transitions = []
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
     [gameobjects.CapsuleColliderComponent]
     center = [ 0.0, 0.79, 0.0 ]
@@ -1056,6 +1099,43 @@ sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
         'Size End' = 0.02
         'Size Start' = 0.12
         'Velocity Spread' = 1.25
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'HealthComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        'Bar Mode' = 0
+        'Color Background' = [ 0.05, 0.05, 0.07, 0.85 ]
+        'Color Full' = [ 0.2, 0.82, 0.25, 1.0 ]
+        'Color Low' = [ 0.88, 0.16, 0.16, 1.0 ]
+        'Death Trigger Param' = 'Death'
+        'Destroy On Death' = false
+        'Dissolve Delay' = 1.8
+        'Dissolve Duration' = 1.6
+        'Dissolve Material' = 'Assets/Materials/Skinned/SkinnedDissolve_Enemy.mat'
+        'Dissolve Param' = 'alphaCutoff'
+        'HUD Label' = 'PLAYER'
+        'HUD Position' = [ 48.0, 42.0 ]
+        'HUD Size' = [ 460.0, 30.0 ]
+        'Max Health' = 100.0
+        'Remove Collider On Death' = false
+        'World Bar Size' = [ 120.0, 16.0 ]
+        'World Height' = 2.25
+        'World Scale' = 0.01
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'AttackHitboxComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        'Attack Damage' = 18.0
+        'Reach' = 1.1
+        'Radius' = 0.75
+        'Height' = 1.05
+        'Model Yaw Offset' = 180.0
+        'Swing Start Time' = 0.18
+        'Swing End Time' = 0.78
 
 [[gameobjects]]
 active = true
@@ -1859,7 +1939,9 @@ tag = 'Untagged'
     canvasHeight = 1080.0
     canvasWidth = 1920.0
     enabled = true
+    faceCamera = false
     matchWidthOrHeight = 0.0
+    planeDistance = 2.0
     referenceHeight = 1080.0
     referenceWidth = 1920.0
     renderMode = 0
@@ -1892,6 +1974,8 @@ tag = 'Untagged'
     [gameobjects.UIImage]
     color = [ 1.0, 1.0, 1.0, 1.0 ]
     enabled = true
+    fillAmount = 1.0
+    fillOrigin = 0
     sortOrder = 10
     texturePath = ''
     uvMax = [ 1.0, 1.0 ]
@@ -1965,8 +2049,8 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 
     [gameobjects.transform]
-    position = [ 0.043739, 0.805158, -0.047778 ]
-    rotation = [ -0.066848, 0.531813, 0.017779, 0.844032 ]
+    position = [ 0.043058, 0.8145, -0.056467 ]
+    rotation = [ -0.053536, 0.687539, 0.025445, 0.723724 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -1989,7 +2073,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.000173, 0.105748, 0.011172 ]
-    rotation = [ -0.013297, -0.021987, -0.033579, 0.999106 ]
+    rotation = [ -0.001489, 0.012405, -0.026162, 0.99958 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2012,7 +2096,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.12406, 0.0 ]
-    rotation = [ -0.011386, -0.006769, 0.022121, 0.999668 ]
+    rotation = [ -0.009163, 0.002977, 0.024844, 0.999645 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2035,7 +2119,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.141783, 0.0 ]
-    rotation = [ -0.055164, -0.007686, 0.011228, 0.998385 ]
+    rotation = [ -0.053096, 0.001993, 0.014434, 0.998483 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2058,7 +2142,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.000244, 0.158623, 0.016758 ]
-    rotation = [ 0.021777, -0.107622, -0.015053, 0.993839 ]
+    rotation = [ -0.006327, 0.045859, -0.008078, 0.998895 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2081,7 +2165,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.05564, -0.009881 ]
-    rotation = [ 0.063677, -0.266058, -0.056906, 0.960167 ]
+    rotation = [ 0.011582, 0.196558, 0.029212, 0.979989 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2173,7 +2257,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.05935, 0.136702, 0.016626 ]
-    rotation = [ -0.584518, -0.393418, -0.513602, 0.489667 ]
+    rotation = [ -0.587543, -0.390115, -0.507545, 0.494975 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2196,7 +2280,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
-    rotation = [ -0.341956, -0.061526, 0.132758, 0.928254 ]
+    rotation = [ -0.30673, -0.028779, 0.050285, 0.950031 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2219,7 +2303,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
-    rotation = [ -0.159013, 0.191994, 0.719838, 0.647833 ]
+    rotation = [ -0.180924, 0.215784, 0.716418, 0.638317 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2242,7 +2326,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.216034, 0.0 ]
-    rotation = [ -0.04348, 0.000784, -0.007711, 0.999024 ]
+    rotation = [ -0.04764, 0.000291, -0.005679, 0.998848 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2707,178 +2791,6 @@ tag = 'Untagged'
 
 [[gameobjects]]
 active = true
-instanceId = 'c9a1f8c6-72d4-4e8f-b475-192b8b944211'
-layer = 0
-name = 'Player_Sword_Hitbox'
-parent = 'mixamorig:RightHand'
-parentInstanceId = '479d9ad9-3c20-4bb5-b326-093312161956'
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.BoxColliderComponent]
-    center = [ 0.69, 0.11, 0.0 ]
-    enabled = true
-    isTrigger = true
-
-        [gameobjects.BoxColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.4
-        restitution = 0.3
-        staticFriction = 0.6
-
-        [gameobjects.BoxColliderComponent.shape]
-        halfExtents = [ 0.6, 0.06, 0.0755 ]
-        type = 'OBB'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'WeaponHitboxComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        'Collider Center' = [ 0.55, 0.0, 0.0 ]
-        'Collider Size' = [ 1.2, 0.18, 0.18 ]
-        'Hit Trigger Param' = 'Hit'
-        'Hitbox Type' = 'Sword'
-        'Impact Cooldown' = 0.35
-        'Impact Trigger Param' = 'Impact'
-        'Owner Name' = 'Player'
-
-[[gameobjects]]
-active = true
-instanceId = '4c7b8ed2-41e2-48dd-9d8e-430de76967a7'
-layer = 0
-name = 'Player_Shield_Hitbox'
-parent = 'mixamorig:Shield_joint'
-parentInstanceId = '77a7f1f0-b4c8-4047-9f93-5cbcad22c744'
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.BoxColliderComponent]
-    center = [ 0.0, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = true
-
-        [gameobjects.BoxColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.4
-        restitution = 0.3
-        staticFriction = 0.6
-
-        [gameobjects.BoxColliderComponent.shape]
-        halfExtents = [ 0.2, 0.06, 0.28 ]
-        type = 'OBB'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'WeaponHitboxComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        'Collider Center' = [ 0.0, 0.0, 0.0 ]
-        'Collider Size' = [ 0.76, 0.16, 0.84 ]
-        'Hit Trigger Param' = 'Hit'
-        'Hitbox Type' = 'Shield'
-        'Impact Cooldown' = 0.35
-        'Impact Trigger Param' = 'Impact'
-        'Owner Name' = 'Player'
-
-[[gameobjects]]
-active = true
-instanceId = '55eebcb9-6ee9-4d1f-8b2f-2f84fc600f0e'
-layer = 0
-name = 'Enemy_Sword_Hitbox'
-parent = 'mixamorig:RightHand'
-parentInstanceId = '7dd89c0c-628b-4a4a-8fd2-49c51d587d60'
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.BoxColliderComponent]
-    center = [ 0.55, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = true
-
-        [gameobjects.BoxColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.4
-        restitution = 0.3
-        staticFriction = 0.6
-
-        [gameobjects.BoxColliderComponent.shape]
-        halfExtents = [ 0.6, 0.09, 0.09 ]
-        type = 'OBB'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'WeaponHitboxComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        'Collider Center' = [ 0.55, 0.0, 0.0 ]
-        'Collider Size' = [ 1.2, 0.18, 0.18 ]
-        'Hit Trigger Param' = 'Hit'
-        'Hitbox Type' = 'Sword'
-        'Impact Cooldown' = 0.35
-        'Impact Trigger Param' = 'Impact'
-        'Owner Name' = 'Enemy'
-
-[[gameobjects]]
-active = true
-instanceId = '8b057b2b-8d85-4f9d-b97f-b58a4cef7f40'
-layer = 0
-name = 'Enemy_Shield_Hitbox'
-parent = 'mixamorig:Shield_joint'
-parentInstanceId = 'cb14e56f-963a-402d-beba-3ff3ad9954ae'
-prefabAssetPath = ''
-tag = 'Untagged'
-
-    [gameobjects.BoxColliderComponent]
-    center = [ 0.0, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = true
-
-        [gameobjects.BoxColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.4
-        restitution = 0.3
-        staticFriction = 0.6
-
-        [gameobjects.BoxColliderComponent.shape]
-        halfExtents = [ 0.2, 0.06, 0.28 ]
-        type = 'OBB'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'WeaponHitboxComponent'
-
-        [gameobjects.ScriptComponents.fields]
-        'Collider Center' = [ 0.0, 0.0, 0.0 ]
-        'Collider Size' = [ 0.76, 0.16, 0.84 ]
-        'Hit Trigger Param' = 'Hit'
-        'Hitbox Type' = 'Shield'
-        'Impact Cooldown' = 0.35
-        'Impact Trigger Param' = 'Impact'
-        'Owner Name' = 'Enemy'
-
-[[gameobjects]]
-active = true
 instanceId = '77a7f1f0-b4c8-4047-9f93-5cbcad22c744'
 layer = 0
 name = 'mixamorig:Shield_joint'
@@ -2920,7 +2832,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.059792, 0.136702, 0.016626 ]
-    rotation = [ -0.411173, 0.486841, 0.661698, 0.395069 ]
+    rotation = [ -0.395429, 0.497572, 0.665527, 0.391321 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2943,7 +2855,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
-    rotation = [ -0.383071, 0.098094, 0.077925, 0.915184 ]
+    rotation = [ -0.391033, 0.122044, 0.0255, 0.911893 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2966,7 +2878,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
-    rotation = [ -0.149571, -0.216563, -0.498053, 0.82624 ]
+    rotation = [ -0.094906, -0.065098, -0.498651, 0.859129 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -2989,7 +2901,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.216035, 0.0 ]
-    rotation = [ -0.016223, 0.007702, -0.119, 0.992732 ]
+    rotation = [ 0.024248, 0.005031, -0.137095, 0.990248 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -3038,7 +2950,7 @@ tag = 'Untagged'
     spriteStartFrame = 0
     startDelay = 0.0
     texturePath = ''
-    velocityDamping = 0.10
+    velocityDamping = 0.1
     velocitySpread = 2.4
 
     [gameobjects.TrailComponent]
@@ -3046,8 +2958,8 @@ tag = 'Untagged'
     attachBone = ''
     attachOffset = [ 0.0, 0.0, 0.0 ]
     clearOnDisable = false
-    colorEnd = [ 1.0, 0.25, 0.05, 0.0 ]
-    colorStart = [ 1.0, 0.95, 0.75, 0.75 ]
+    colorEnd = [ 0.82, 0.9, 1.0, 0.0 ]
+    colorStart = [ 1.0, 1.0, 1.0, 0.85 ]
     duration = 0.32
     enabled = false
     materialPath = ''
@@ -3073,13 +2985,22 @@ tag = 'Untagged'
     type = 'SwordTrailComponent'
 
         [gameobjects.ScriptComponents.fields]
-        'Color End' = [ 1.0, 0.25, 0.05, 0.0 ]
-        'Color Start' = [ 1.0, 0.95, 0.75, 0.75 ]
+        'Blood Burst Count' = 28
+        'Blood Color End' = [ 0.18, 0.0, 0.0, 0.0 ]
+        'Blood Color Start' = [ 0.75, 0.0, 0.0, 0.9 ]
+        'Blood Emit Velocity' = [ 0.0, 0.45, 0.15 ]
+        'Blood Gravity' = [ 0.0, -2.8, 0.0 ]
+        'Blood Lifetime' = 0.38
+        'Blood Size End' = 0.015
+        'Blood Size Start' = 0.08
+        'Blood Velocity Spread' = 2.4
+        'Color End' = [ 0.82, 0.9, 1.0, 0.0 ]
+        'Color Start' = [ 1.0, 1.0, 1.0, 0.85 ]
         Duration = 0.32
         'Material Path' = ''
         'Max Points' = 64
         'Min Vertex Dist' = 0.0
-        'Owner Name' = 'Player'
+        Owner = [ 4294967295, 0 ]
         'Sample Interval' = 0.004
         'Smooth Subdivisions' = 2
         'Swing End Time' = 0.78
@@ -3591,7 +3512,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.097891, -0.058759, 0.005837 ]
-    rotation = [ -0.378352, -0.416521, 0.80085, -0.204936 ]
+    rotation = [ -0.511867, -0.322519, 0.752254, -0.260934 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -3614,7 +3535,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
-    rotation = [ 0.487116, -0.074674, 0.017327, 0.869966 ]
+    rotation = [ 0.480164, -0.050738, 0.030387, 0.875183 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -3637,7 +3558,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
-    rotation = [ -0.490332, 0.012977, -0.104326, 0.865172 ]
+    rotation = [ -0.510459, 0.02796, -0.135727, 0.848662 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -3706,7 +3627,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.098577, -0.058759, 0.005837 ]
-    rotation = [ 0.224127, -0.224053, 0.913282, 0.255897 ]
+    rotation = [ 0.199977, -0.293532, 0.909364, 0.216578 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -3729,7 +3650,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
-    rotation = [ 0.285466, 0.052291, -0.020772, 0.956736 ]
+    rotation = [ 0.199921, 0.187185, 0.011995, 0.961691 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -3752,7 +3673,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
-    rotation = [ -0.448573, -0.092141, 0.270954, 0.846686 ]
+    rotation = [ -0.381255, -0.075311, 0.241656, 0.889143 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -4016,6 +3937,18 @@ tag = 'Enemy'
             paramName = 'Block'
             threshold = 0.0
 
+        [[gameobjects.AnimatorComponent.anyStateTransitions]]
+        exitTime = 1.0
+        fixedDuration = true
+        hasExitTime = false
+        toStateName = 'Death'
+        transitionDuration = 0.08
+
+            [[gameobjects.AnimatorComponent.anyStateTransitions.conditions]]
+            op = 4
+            paramName = 'Death'
+            threshold = 0.0
+
         [[gameobjects.AnimatorComponent.parameters]]
         boolValue = false
         floatValue = 0.0
@@ -4099,6 +4032,13 @@ tag = 'Enemy'
         intValue = 0
         name = 'Block'
         type = 2
+
+        [[gameobjects.AnimatorComponent.parameters]]
+        boolValue = false
+        floatValue = 0.0
+        intValue = 0
+        name = 'Death'
+        type = 3
 
         [[gameobjects.AnimatorComponent.states]]
         clipIndex = -1
@@ -4450,7 +4390,7 @@ tag = 'Enemy'
         loop = false
         mode = 0
         name = 'PlayerHit'
-sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
+        sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
         speed = 1.0
 
             [gameobjects.AnimatorComponent.states.blendTree1D]
@@ -4555,6 +4495,29 @@ sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
                 op = 5
                 paramName = 'Block'
                 threshold = 0.0
+
+        [[gameobjects.AnimatorComponent.states]]
+        clipIndex = -1
+        clipName = ''
+        ikWeight = 1.0
+        loop = false
+        mode = 0
+        name = 'Death'
+        sourcePath = 'Assets/Models/PlayerDeath/anims/PlayerDeath@mixamo.com.anim'
+        speed = 1.0
+        transitions = []
+
+            [gameobjects.AnimatorComponent.states.blendTree1D]
+            dampTime = 0.0
+            motions = []
+            paramName = ''
+            syncNormalizedTime = false
+
+            [gameobjects.AnimatorComponent.states.blendTree2D]
+            motions = []
+            paramX = ''
+            paramY = ''
+            type = 0
 
     [gameobjects.CapsuleColliderComponent]
     center = [ 0.0, 0.79, 0.0 ]
@@ -4825,6 +4788,7 @@ sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
         'Attack Windup Delay' = 0.85
         'Block Cooldown' = 4.0
         'Block Duration' = 0.28
+        'Block Param' = 'Block'
         'Block Range' = 0.95
         'Knockback Speed' = 2.5
         'Model Yaw Offset' = 180.0
@@ -4849,6 +4813,43 @@ sourcePath = 'Assets/Models/PlayerHit_02/anims/PlayerHit_02@mixamo.com.anim'
         'Size End' = 0.02
         'Size Start' = 0.12
         'Velocity Spread' = 1.25
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'HealthComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        'Bar Mode' = 1
+        'Color Background' = [ 0.05, 0.05, 0.07, 0.85 ]
+        'Color Full' = [ 0.2, 0.82, 0.25, 1.0 ]
+        'Color Low' = [ 0.88, 0.16, 0.16, 1.0 ]
+        'Death Trigger Param' = 'Death'
+        'Destroy On Death' = true
+        'Dissolve Delay' = 3.082
+        'Dissolve Duration' = 3.435
+        'Dissolve Material' = 'Assets/Materials/Skinned/SkinnedDissolve_Enemy.mat'
+        'Dissolve Param' = 'alphaCutoff'
+        'HUD Label' = 'PLAYER'
+        'HUD Position' = [ 48.0, 42.0 ]
+        'HUD Size' = [ 460.0, 30.0 ]
+        'Max Health' = 60.0
+        'Remove Collider On Death' = true
+        'World Bar Size' = [ 120.0, 16.0 ]
+        'World Height' = 2.25
+        'World Scale' = 0.01
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'AttackHitboxComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        'Attack Damage' = 18.0
+        'Reach' = 1.1
+        'Radius' = 0.8
+        'Height' = 1.05
+        'Model Yaw Offset' = 180.0
+        'Swing Start Time' = 0.18
+        'Swing End Time' = 0.78
 
 [[gameobjects]]
 active = true
@@ -5018,8 +5019,8 @@ tag = 'Untagged'
     skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
-    position = [ 0.043739, 0.805158, -0.047778 ]
-    rotation = [ -0.066848, 0.531813, 0.017779, 0.844032 ]
+    position = [ 0.043058, 0.8145, -0.056467 ]
+    rotation = [ -0.053536, 0.687539, 0.025445, 0.723724 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5134,7 +5135,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.000173, 0.105748, 0.011172 ]
-    rotation = [ -0.013297, -0.021987, -0.033579, 0.999106 ]
+    rotation = [ -0.001489, 0.012405, -0.026162, 0.99958 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5157,7 +5158,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.097891, -0.058759, 0.005837 ]
-    rotation = [ -0.378352, -0.416521, 0.80085, -0.204936 ]
+    rotation = [ -0.511867, -0.322519, 0.752254, -0.260934 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5180,7 +5181,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.098577, -0.058759, 0.005837 ]
-    rotation = [ 0.224127, -0.224053, 0.913282, 0.255897 ]
+    rotation = [ 0.199977, -0.293532, 0.909364, 0.216578 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5203,7 +5204,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.12406, 0.0 ]
-    rotation = [ -0.011386, -0.006769, 0.022121, 0.999668 ]
+    rotation = [ -0.009163, 0.002977, 0.024844, 0.999645 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5226,7 +5227,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
-    rotation = [ 0.487116, -0.074674, 0.017327, 0.869966 ]
+    rotation = [ 0.480164, -0.050738, 0.030387, 0.875183 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5249,7 +5250,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
-    rotation = [ 0.285466, 0.052291, -0.020772, 0.956736 ]
+    rotation = [ 0.199921, 0.187185, 0.011995, 0.961691 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5272,7 +5273,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.141783, 0.0 ]
-    rotation = [ -0.055164, -0.007686, 0.011228, 0.998385 ]
+    rotation = [ -0.053096, 0.001993, 0.014434, 0.998483 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5295,7 +5296,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
-    rotation = [ -0.490332, 0.012977, -0.104326, 0.865172 ]
+    rotation = [ -0.510459, 0.02796, -0.135727, 0.848662 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5318,7 +5319,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
-    rotation = [ -0.448573, -0.092141, 0.270954, 0.846686 ]
+    rotation = [ -0.381255, -0.075311, 0.241656, 0.889143 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5341,7 +5342,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.000244, 0.158623, 0.016758 ]
-    rotation = [ 0.021777, -0.107622, -0.015053, 0.993839 ]
+    rotation = [ -0.006327, 0.045859, -0.008078, 0.998895 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5364,7 +5365,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.05935, 0.136702, 0.016626 ]
-    rotation = [ -0.584518, -0.393418, -0.513602, 0.489667 ]
+    rotation = [ -0.587543, -0.390115, -0.507545, 0.494975 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5387,7 +5388,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ -0.059792, 0.136702, 0.016626 ]
-    rotation = [ -0.411173, 0.486841, 0.661698, 0.395069 ]
+    rotation = [ -0.395429, 0.497572, 0.665527, 0.391321 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5456,7 +5457,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.05564, -0.009881 ]
-    rotation = [ 0.063677, -0.266058, -0.056906, 0.960167 ]
+    rotation = [ 0.011582, 0.196558, 0.029212, 0.979989 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5479,7 +5480,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
-    rotation = [ -0.341956, -0.061526, 0.132758, 0.928254 ]
+    rotation = [ -0.30673, -0.028779, 0.050285, 0.950031 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5502,7 +5503,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
-    rotation = [ -0.383071, 0.098094, 0.077925, 0.915184 ]
+    rotation = [ -0.391033, 0.122044, 0.0255, 0.911893 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5640,7 +5641,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
-    rotation = [ -0.159013, 0.191994, 0.719838, 0.647833 ]
+    rotation = [ -0.180924, 0.215784, 0.716418, 0.638317 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5663,7 +5664,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
-    rotation = [ -0.149571, -0.216563, -0.498053, 0.82624 ]
+    rotation = [ -0.094906, -0.065098, -0.498651, 0.859129 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5686,7 +5687,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.216034, 0.0 ]
-    rotation = [ -0.04348, 0.000784, -0.007711, 0.999024 ]
+    rotation = [ -0.04764, 0.000291, -0.005679, 0.998848 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -5732,7 +5733,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.0, 0.216035, 0.0 ]
-    rotation = [ -0.016223, 0.007702, -0.119, 0.992732 ]
+    rotation = [ 0.024248, 0.005031, -0.137095, 0.990248 ]
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
@@ -6264,7 +6265,7 @@ tag = 'Untagged'
     spriteStartFrame = 0
     startDelay = 0.0
     texturePath = ''
-    velocityDamping = 0.10
+    velocityDamping = 0.1
     velocitySpread = 2.4
 
     [gameobjects.TrailComponent]
@@ -6272,8 +6273,8 @@ tag = 'Untagged'
     attachBone = ''
     attachOffset = [ 0.0, 0.0, 0.0 ]
     clearOnDisable = false
-    colorEnd = [ 0.05, 0.35, 1.0, 0.0 ]
-    colorStart = [ 0.7, 0.9, 1.0, 0.75 ]
+    colorEnd = [ 0.82, 0.9, 1.0, 0.0 ]
+    colorStart = [ 1.0, 1.0, 1.0, 0.85 ]
     duration = 0.32
     enabled = false
     materialPath = ''
@@ -6299,13 +6300,22 @@ tag = 'Untagged'
     type = 'SwordTrailComponent'
 
         [gameobjects.ScriptComponents.fields]
-        'Color End' = [ 0.05, 0.35, 1.0, 0.0 ]
-        'Color Start' = [ 0.7, 0.9, 1.0, 0.75 ]
+        'Blood Burst Count' = 28
+        'Blood Color End' = [ 0.18, 0.0, 0.0, 0.0 ]
+        'Blood Color Start' = [ 0.75, 0.0, 0.0, 0.9 ]
+        'Blood Emit Velocity' = [ 0.0, 0.45, 0.15 ]
+        'Blood Gravity' = [ 0.0, -2.8, 0.0 ]
+        'Blood Lifetime' = 0.38
+        'Blood Size End' = 0.015
+        'Blood Size Start' = 0.08
+        'Blood Velocity Spread' = 2.4
+        'Color End' = [ 0.82, 0.9, 1.0, 0.0 ]
+        'Color Start' = [ 1.0, 1.0, 1.0, 0.85 ]
         Duration = 0.32
         'Material Path' = ''
         'Max Points' = 64
         'Min Vertex Dist' = 0.0
-        'Owner Name' = 'Enemy'
+        Owner = [ 4294967295, 0 ]
         'Sample Interval' = 0.004
         'Smooth Subdivisions' = 2
         'Swing End Time' = 0.78
