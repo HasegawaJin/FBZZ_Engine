@@ -44,6 +44,15 @@ void FoliageTool::Update(scene::Scene& scene,
         return;
     }
 
+    // 消去半径のホットキー調整（TerrainTool / DetailTool と統一）。[ / ] で Erase Radius を増減。
+    {
+        const float step = std::max(0.5f, m_eraseRadius * 0.1f);
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, /*repeat=*/true))
+            m_eraseRadius = std::clamp(m_eraseRadius - step, 0.5f, 30.0f);
+        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, /*repeat=*/true))
+            m_eraseRadius = std::clamp(m_eraseRadius + step, 0.5f, 30.0f);
+    }
+
     m_isHovering = RaycastTerrain(
         scene, camera, viewportMin, viewportSize,
         m_hitPoint, m_hitLocal, m_hitEntity);
@@ -346,8 +355,9 @@ void FoliageTool::OnEditorGUI(
 void FoliageTool::DrawContent(scene::Scene& scene,
                               const std::function<void()>& markDirty)
 {
-    ImGui::TextDisabled("Click: place  |  Shift+Click: erase");
+    ImGui::TextDisabled("Click: place  |  Shift+Click: erase  |  Alt: suspend");
     ImGui::SliderFloat("Erase Radius", &m_eraseRadius, 0.5f, 30.0f, "%.1f m");
+    ImGui::TextDisabled("[ / ] : Erase Radius");
     ImGui::SeparatorText("Species");
 
     const auto* selectedFoliage = scene.IsValid(m_targetEntity)

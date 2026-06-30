@@ -56,6 +56,8 @@ bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin);
 void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& drag, ImVec2& dragStart, float& startX, float& startY, float& startWidth, float& startHeight, float& startAngle, float& startZ);
+// 矢印キーで選択中 UI 要素を微移動する（1px / Shift で 10px）。allowed=false のときは何もしない。
+void HandleUINudge(EditorContext& ctx, bool allowed);
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& lastOp, int& lastMode, bool& prevOver, bool& prevUsing);

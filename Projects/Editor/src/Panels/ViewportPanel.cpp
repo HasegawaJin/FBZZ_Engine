@@ -395,6 +395,10 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !uiGizmoActive)
         PickUIEntity(ctx, viewportMin, size);
 
+    // 矢印キーで選択 UI 要素を微移動する（ビューポートにキーボードフォーカスがあるときのみ）。
+    if (isUIView && !inPlayOrPause)
+        HandleUINudge(ctx, ImGui::IsWindowFocused());
+
     // ── TerrainTool: Sculpt / Paint 操作 ───────────────────────────────────
     if (isSceneView && ctx.terrainTool && ctx.activeScene
         && !(ctx.playMode && !ctx.playMode->IsInEditor()))

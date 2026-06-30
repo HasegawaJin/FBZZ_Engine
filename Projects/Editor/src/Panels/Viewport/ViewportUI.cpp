@@ -573,5 +573,56 @@ bool DrawUIGizmo(EditorContext& ctx,
     return wantsMouse || drag != -1;
 }
 
+// 矢印キーで選択中 UI 要素を微移動する。
+// WHY: ピクセル単位の位置合わせはマウスドラッグだと細かすぎて合わせづらい。多くの UI エディタ標準の
+//      矢印キー nudge（1px、Shift で 10px）を用意し、Inspector の数値入力を介さず微調整できるようにする。
+void HandleUINudge(EditorContext& ctx, bool allowed)
+{
+    if (!allowed || !ctx.activeScene)
+        return;
+    // テキスト入力中（リネーム・数値入力等）は矢印キーをそちらへ譲る。
+    if (ImGui::GetIO().WantTextInput)
+        return;
+
+    scene::GameObject* go = ctx.GetSelectedGO();
+    if (!go || (!go->GetComponent<scene::UIImage>() && !go->GetComponent<scene::UIText>()))
+        return;
+
+    // 離散押下のみ拾う。WHY: repeat を許可すると押しっぱなしで毎フレーム undo 履歴が積もり、
+    //      数回の微移動で履歴が埋まってしまう。1 タップ = 1 nudge = 1 undo に保つ。
+    float dx = 0.0f, dy = 0.0f;
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow,  /*repeat=*/false)) dx -= 1.0f;
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, /*repeat=*/false)) dx += 1.0f;
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow,    /*repeat=*/false)) dy -= 1.0f;
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow,  /*repeat=*/false)) dy += 1.0f;
+    if (dx == 0.0f && dy == 0.0f)
+        return;
+
+    const float step = ImGui::GetIO().KeyShift ? 10.0f : 1.0f;
+    const scene::Transform before = go->transform;
+    go->transform.position.x += dx * step;
+    go->transform.position.y += dy * step;
+    const scene::Transform after = go->transform;
+
+    const std::string instanceId = go->instanceId;
+    scene::Scene* scene = ctx.activeScene;
+    const std::function<void()> markDirty = ctx.markSceneDirty;
+    auto apply = [scene, instanceId, markDirty](const scene::Transform& value) {
+        if (auto* target = scene->FindByGuid(instanceId)) {
+            target->transform = value;
+            if (markDirty)
+                markDirty();
+        }
+    };
+    if (ctx.undoStack) {
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Nudge UI Element",
+            [apply, after]()  { apply(after); },
+            [apply, before]() { apply(before); }));
+    }
+    if (markDirty)
+        markDirty();
+}
+
 
 } // namespace fbzz::editor

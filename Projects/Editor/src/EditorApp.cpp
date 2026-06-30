@@ -1035,22 +1035,29 @@ void EditorApp::BuildMapEditingLayout(uint32_t dockId)
         root, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
     ImGui::DockBuilderSetNodeSize(root, ImGui::GetMainViewport()->WorkSize);
 
-    ImGuiID center = root;
+    ImGuiID center    = root;
+    ImGuiID leftCol   = 0;
+    ImGuiID tools     = 0;
     ImGuiID hierarchy = 0;
     ImGuiID inspector = 0;
-    ImGuiID tools = 0;
-    ImGuiID assets = 0;
+    ImGuiID assets    = 0;
+
+    // 左カラムを Map Tools(上) と Scene Hierarchy(下) に分割し、ツールパネルへ専用領域を与える。
+    // WHY: 以前は Map Tools を Inspector と同じノードへドックしていたため、オブジェクト選択中は
+    //      Inspector の裏のタブへ隠れ、ツール操作のたびにタブ切替が必要で使いづらかった。
+    //      Map 編集はツールパネルが主役なので常時見える左カラムへ固定し、Viewport を広く保つ。
     ImGui::DockBuilderSplitNode(
-        center, ImGuiDir_Left, 0.16f, &hierarchy, &center);
+        center, ImGuiDir_Left, 0.18f, &leftCol, &center);
     ImGui::DockBuilderSplitNode(
-        center, ImGuiDir_Right, 0.24f, &inspector, &center);
+        leftCol, ImGuiDir_Down, 0.45f, &hierarchy, &tools);
+    ImGui::DockBuilderSplitNode(
+        center, ImGuiDir_Right, 0.22f, &inspector, &center);
     ImGui::DockBuilderSplitNode(
         center, ImGuiDir_Down, 0.24f, &assets, &center);
 
-    tools = inspector;
+    ImGui::DockBuilderDockWindow("Map Tools", tools);
     ImGui::DockBuilderDockWindow("Scene Hierarchy", hierarchy);
     ImGui::DockBuilderDockWindow("Inspector", inspector);
-    ImGui::DockBuilderDockWindow("Map Tools", tools);
     ImGui::DockBuilderDockWindow("Asset Browser", assets);
     ImGui::DockBuilderDockWindow("Scene", center);
     ImGui::DockBuilderFinish(root);
