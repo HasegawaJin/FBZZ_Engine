@@ -26,6 +26,14 @@ struct ScriptDllAbiInfo {
     uint64_t iteratorDebugLevel;  // _ITERATOR_DEBUG_LEVEL (0 = 未定義)
 };
 
+// リフレクション ABI バージョン。
+// WHY: IReflector の仮想関数の並び (Field / RefField / Tooltip / IntRange / FloatRange / Enum 等) は
+//      sizeof では捉えられないが、スクリプト DLL の Reflect() は vtable インデックスで仮想呼び出しする。
+//      並びを変えたのに DLL が再ビルドされていないと、署名が一致したまま vtable がズレてクラッシュする。
+//      IReflector の仮想関数を追加・削除・並べ替えたら必ずこの値をインクリメントすること。
+//      これにより stale な DLL は署名不一致で安全に拒否される (Missing Script 表示、クラッシュしない)。
+constexpr uint64_t kReflectionAbiVersion = 2;
+
 [[nodiscard]] constexpr ScriptDllAbiInfo GetScriptDllAbiInfo()
 {
     constexpr uint64_t FNV_OFFSET = 14695981039346656037ull;
@@ -51,6 +59,7 @@ struct ScriptDllAbiInfo {
     mix(info.componentCount);
     mix(info.msvcVersion);
     mix(info.iteratorDebugLevel);
+    mix(kReflectionAbiVersion);  // IReflector vtable レイアウトの世代を署名へ反映
     info.signature = sig;
 
     return info;

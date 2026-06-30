@@ -26,6 +26,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
@@ -42,6 +43,7 @@
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
@@ -768,6 +770,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* elc = go.GetComponent<EnvironmentLightComponent>()) {
             toml::table elcTbl;
             elcTbl.insert("enabled",        elc->enabled);
+            elcTbl.insert("source",         (int64_t)static_cast<uint8_t>(elc->source));
             elcTbl.insert("irradiancePath", elc->irradiancePath);
             elcTbl.insert("prefilterPath",  elc->prefilterPath);
             elcTbl.insert("intensity",      (double)elc->intensity);
@@ -794,6 +797,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table ascAtmTbl;
             ascAtmTbl.insert("enabled",    asc->enabled);
             ascAtmTbl.insert("fogEnabled", asc->fogEnabled);
+            ascAtmTbl.insert("fogSource",  (int64_t)static_cast<uint8_t>(asc->fogSource));
             ascAtmTbl.insert("fogDensity", (double)asc->fogDensity);
             ascAtmTbl.insert("fogFar",     (double)asc->fogFar);
             ascAtmTbl.insert("fogColor",   Vec3ToArr(asc->fogColor));
@@ -1071,7 +1075,51 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             srTbl.insert("atmosphereRadius",   (double)sr->atmosphereRadius);
             srTbl.insert("mieG",               (double)sr->mieG);
             srTbl.insert("enabled",            sr->enabled);
+            srTbl.insert("dayNightEnabled",    sr->dayNightEnabled);
+            srTbl.insert("dayColor",           Vec3ToArr(sr->dayColor));
+            srTbl.insert("sunsetColor",        Vec3ToArr(sr->sunsetColor));
+            srTbl.insert("nightColor",         Vec3ToArr(sr->nightColor));
+            srTbl.insert("dayIntensity",       (double)sr->dayIntensity);
+            srTbl.insert("nightIntensity",     (double)sr->nightIntensity);
+            srTbl.insert("cloudShadowStrength",(double)sr->cloudShadowStrength);
+            srTbl.insert("cloudShadowCoverage",(double)sr->cloudShadowCoverage);
+            srTbl.insert("cloudShadowScale",   (double)sr->cloudShadowScale);
+            srTbl.insert("cloudShadowSpeed",   (double)sr->cloudShadowSpeed);
             goTbl.insert("SkyRenderer", std::move(srTbl));
+        }
+
+        // SunMoonRenderer
+        if (auto* smr = go.GetComponent<SunMoonRenderer>()) {
+            toml::table smrTbl;
+            smrTbl.insert("enabled",        smr->enabled);
+            smrTbl.insert("sunEnabled",     smr->sunEnabled);
+            smrTbl.insert("sunIntensity",   (double)smr->sunIntensity);
+            smrTbl.insert("moonEnabled",    smr->moonEnabled);
+            smrTbl.insert("moonSize",       (double)smr->moonSize);
+            smrTbl.insert("moonBrightness", (double)smr->moonBrightness);
+            smrTbl.insert("moonColor",      Vec3ToArr(smr->moonColor));
+            goTbl.insert("SunMoonRenderer", std::move(smrTbl));
+        }
+
+        // VolumetricCloudComponent
+        if (auto* cloud = go.GetComponent<VolumetricCloudComponent>()) {
+            toml::table cloudTbl;
+            cloudTbl.insert("enabled",          cloud->enabled);
+            cloudTbl.insert("bottomHeight",     (double)cloud->bottomHeight);
+            cloudTbl.insert("thickness",        (double)cloud->thickness);
+            cloudTbl.insert("coverage",         (double)cloud->coverage);
+            cloudTbl.insert("density",          (double)cloud->density);
+            cloudTbl.insert("noiseScale",       (double)cloud->noiseScale);
+            cloudTbl.insert("detailScale",      (double)cloud->detailScale);
+            cloudTbl.insert("windSpeed",        (double)cloud->windSpeed);
+            cloudTbl.insert("windDirection",    Vec2ToArr(cloud->windDirection));
+            cloudTbl.insert("lightAbsorption",  (double)cloud->lightAbsorption);
+            cloudTbl.insert("ambientStrength",  (double)cloud->ambientStrength);
+            cloudTbl.insert("silverLining",     (double)cloud->silverLining);
+            cloudTbl.insert("albedo",           Vec3ToArr(cloud->albedo));
+            cloudTbl.insert("stepCount",        (int64_t)cloud->stepCount);
+            cloudTbl.insert("maxDistance",      (double)cloud->maxDistance);
+            goTbl.insert("VolumetricCloudComponent", std::move(cloudTbl));
         }
 
         // SkinnedMeshRenderer
@@ -1833,6 +1881,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
             EnvironmentLightComponent elc{};
             elc.enabled        = (*elcTbl)["enabled"].value_or(true);
+            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
             elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
             elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
             elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
@@ -1859,6 +1908,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             AtmosphericScatteringComponent atm{};
             atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
             atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
+            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
             atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
             atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
             atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
@@ -2220,7 +2270,51 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sr.atmosphereRadius = (float)(*srTbl)["atmosphereRadius"].value_or(6471.0);
             sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
             sr.enabled       = (*srTbl)["enabled"].value_or(true);
+            sr.dayNightEnabled = (*srTbl)["dayNightEnabled"].value_or(false);
+            sr.dayColor      = ArrToVec3((*srTbl)["dayColor"].as_array(), { 1.0f, 0.98f, 0.95f });
+            sr.sunsetColor   = ArrToVec3((*srTbl)["sunsetColor"].as_array(), { 1.0f, 0.5f, 0.2f });
+            sr.nightColor    = ArrToVec3((*srTbl)["nightColor"].as_array(), { 0.1f, 0.15f, 0.3f });
+            sr.dayIntensity  = (float)(*srTbl)["dayIntensity"].value_or(1.5);
+            sr.nightIntensity = (float)(*srTbl)["nightIntensity"].value_or(0.1);
+            sr.cloudShadowStrength = (float)(*srTbl)["cloudShadowStrength"].value_or(0.0);
+            sr.cloudShadowCoverage = (float)(*srTbl)["cloudShadowCoverage"].value_or(0.5);
+            sr.cloudShadowScale    = (float)(*srTbl)["cloudShadowScale"].value_or(0.02);
+            sr.cloudShadowSpeed    = (float)(*srTbl)["cloudShadowSpeed"].value_or(1.0);
             go.AddComponent<SkyRenderer>(sr);
+        }
+
+        // SunMoonRenderer
+        if (auto* smrTbl = (*goTbl)["SunMoonRenderer"].as_table()) {
+            SunMoonRenderer smr{};
+            smr.enabled        = (*smrTbl)["enabled"].value_or(true);
+            smr.sunEnabled     = (*smrTbl)["sunEnabled"].value_or(true);
+            smr.sunIntensity   = (float)(*smrTbl)["sunIntensity"].value_or(20.0);
+            smr.moonEnabled    = (*smrTbl)["moonEnabled"].value_or(false);
+            smr.moonSize       = (float)(*smrTbl)["moonSize"].value_or(1.0);
+            smr.moonBrightness = (float)(*smrTbl)["moonBrightness"].value_or(0.6);
+            smr.moonColor      = ArrToVec3((*smrTbl)["moonColor"].as_array(), { 0.85f, 0.9f, 1.0f });
+            go.AddComponent<SunMoonRenderer>(smr);
+        }
+
+        // VolumetricCloudComponent
+        if (auto* cloudTbl = (*goTbl)["VolumetricCloudComponent"].as_table()) {
+            VolumetricCloudComponent cloud{};
+            cloud.enabled         = (*cloudTbl)["enabled"].value_or(true);
+            cloud.bottomHeight    = (float)(*cloudTbl)["bottomHeight"].value_or(650.0);
+            cloud.thickness       = (float)(*cloudTbl)["thickness"].value_or(420.0);
+            cloud.coverage        = (float)(*cloudTbl)["coverage"].value_or(0.48);
+            cloud.density         = (float)(*cloudTbl)["density"].value_or(0.72);
+            cloud.noiseScale      = (float)(*cloudTbl)["noiseScale"].value_or(0.0018);
+            cloud.detailScale     = (float)(*cloudTbl)["detailScale"].value_or(5.0);
+            cloud.windSpeed       = (float)(*cloudTbl)["windSpeed"].value_or(18.0);
+            cloud.windDirection   = ArrToVec2((*cloudTbl)["windDirection"].as_array(), { 1.0f, 0.25f });
+            cloud.lightAbsorption = (float)(*cloudTbl)["lightAbsorption"].value_or(1.35);
+            cloud.ambientStrength = (float)(*cloudTbl)["ambientStrength"].value_or(0.28);
+            cloud.silverLining    = (float)(*cloudTbl)["silverLining"].value_or(0.42);
+            cloud.albedo          = ArrToVec3((*cloudTbl)["albedo"].as_array(), { 1.0f, 0.96f, 0.88f });
+            cloud.stepCount       = (int)(*cloudTbl)["stepCount"].value_or((int64_t)48);
+            cloud.maxDistance     = (float)(*cloudTbl)["maxDistance"].value_or(6000.0);
+            go.AddComponent<VolumetricCloudComponent>(cloud);
         }
 
         // SkinnedMeshRenderer
@@ -3087,6 +3181,7 @@ bool SceneSerializer::AppendObjects(
         if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
             EnvironmentLightComponent elc{};
             elc.enabled        = (*elcTbl)["enabled"].value_or(true);
+            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
             elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
             elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
             elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
@@ -3113,6 +3208,7 @@ bool SceneSerializer::AppendObjects(
             AtmosphericScatteringComponent atm{};
             atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
             atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
+            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
             atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
             atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
             atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
