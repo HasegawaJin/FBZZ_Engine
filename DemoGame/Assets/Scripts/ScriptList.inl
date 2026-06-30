@@ -14,18 +14,19 @@
 //     #include "Scripts/ScriptList.inl"
 //     #undef FBZZ_SCRIPT_ENTRY
 //
-// エントリを追加するには Editor の "Create → C++ Script..." を使うこと。
-// ScriptCodeGen は @@FBZZ_SCRIPT_ENTRIES_BEGIN/END マーカーを認識して自動追記する。
+// ScriptCodeGen は Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンして、この範囲を自動同期する。
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
+FBZZ_SCRIPT_ENTRY(sandbox, AttackHitboxComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, EnemyControllerComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, PlayerIKComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, EnemySpawnPointComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, EnemySpawnerComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, HealthComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, HitBloodEffectComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, PlayerControllerComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, TpsCameraComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, PlayerIKComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, SceneManagerScript)
 FBZZ_SCRIPT_ENTRY(sandbox, SwordParticleComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, HitBloodEffectComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, SwordTrailComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, AttackHitboxComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, HealthComponent)
+FBZZ_SCRIPT_ENTRY(sandbox, TpsCameraComponent)
 // @@FBZZ_SCRIPT_ENTRIES_END

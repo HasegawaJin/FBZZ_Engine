@@ -18,6 +18,8 @@
 #include "HealthComponent.hpp"
 #include "SwordTrailComponent.hpp"
 #include "TpsCameraComponent.hpp"
+#include <algorithm>
+#include <vector>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -42,6 +44,11 @@ public:
     // ここを動かすと「攻撃したいタイミング」を直接制御できる。コンボ 2・3 段目も同じ窓が効く。
     FBZZ_FIELD_RANGE(float, swingStartTime, 0.18f, "Swing Start Time", 0.0f, 1.0f)
     FBZZ_FIELD_RANGE(float, swingEndTime,   0.78f, "Swing End Time",   0.0f, 1.0f)
+    // Slash03 は二連撃モーションとして扱い、1 クリップ内で 2 回だけ独立した命中窓を開く。
+    FBZZ_FIELD_RANGE(float, slash03FirstStartTime,  0.16f, "Slash03 First Start",  0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, slash03FirstEndTime,    0.40f, "Slash03 First End",    0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, slash03SecondStartTime, 0.56f, "Slash03 Second Start", 0.0f, 1.0f)
+    FBZZ_FIELD_RANGE(float, slash03SecondEndTime,   0.84f, "Slash03 Second End",   0.0f, 1.0f)
 
     FBZZ_GROUP("Damage")
     // 命中時に与えるダメージ。ガード成立 (相手が Block 中) のときは無効。
@@ -75,6 +82,7 @@ public:
 
 private:
     [[nodiscard]] bool    IsSwinging() const;
+    [[nodiscard]] int     CurrentSwingWindowId() const;
     [[nodiscard]] Vector3 SphereCenter() const;
     [[nodiscard]] GameObject* ResolveCharacter(GameObject* hitObject) const;
     [[nodiscard]] bool    IsBlocking(GameObject* go) const;
@@ -88,6 +96,7 @@ private:
     [[nodiscard]] bool HasReactedThisSwing(GameObject* target) const;
     void MarkReactedThisSwing(GameObject* target);
 
+    int   m_lastSwingWindowId = 0;
     bool  m_wasSwinging = false;
     float m_lastSwingNormalized = 0.0f;
     bool  m_hitStopActive = false;
@@ -102,15 +111,17 @@ FBZZ_REFLECT(AttackHitboxComponent)
 // ── 実装 (inline) ─────────────────────────────────────────────────────────────
 inline void AttackHitboxComponent::OnUpdate()
 {
-    const bool  swinging = IsSwinging();
+    const int   swingWindowId = CurrentSwingWindowId();
+    const bool  swinging = swingWindowId != 0;
     const float t        = animator.GetNormalizedTime();
 
     // 新しい振りの開始を検出して既反応リストをクリアする。
     //   1) 非振り→振り に立ち上がった (通常の振り開始)、または
     //   2) 正規化時間が巻き戻った = コンボのクロスフェードで次段 Slash へ入った
     // これによりコンボ 2 段目・3 段目も必ず一度ずつ判定される。
-    if (swinging && (!m_wasSwinging || t + 0.05f < m_lastSwingNormalized))
+    if (swinging && (!m_wasSwinging || swingWindowId != m_lastSwingWindowId || t + 0.05f < m_lastSwingNormalized))
         m_reactedThisSwing.clear();
+    m_lastSwingWindowId  = swingWindowId;
     m_wasSwinging         = swinging;
     m_lastSwingNormalized = t;
 
@@ -134,9 +145,31 @@ inline void AttackHitboxComponent::OnUpdate()
 
 inline bool AttackHitboxComponent::IsSwinging() const
 {
+    return CurrentSwingWindowId() != 0;
+}
+
+inline int AttackHitboxComponent::CurrentSwingWindowId() const
+{
+    // Slash03 は 1 クリップ内に 2 つの攻撃窓を持つため、窓 ID を分けて「同じ相手へ二度当たる」ことを許可する。
+    const bool isCurrentSlash03 = animator.IsInState(AnimState::Slash03);
+    const bool isBlendSlash03 = animator.GetBlendToState() == AnimState::Slash03;
+    const float currentTime = animator.GetNormalizedTime();
+    const float blendTime = animator.GetBlendToNormalizedTime();
+
+    if (isCurrentSlash03) {
+        if (currentTime >= slash03FirstStartTime && currentTime <= slash03FirstEndTime) return 31;
+        if (currentTime >= slash03SecondStartTime && currentTime <= slash03SecondEndTime) return 32;
+    }
+    if (isBlendSlash03) {
+        if (blendTime >= slash03FirstStartTime && blendTime <= slash03FirstEndTime) return 31;
+        if (blendTime >= slash03SecondStartTime && blendTime <= slash03SecondEndTime) return 32;
+    }
+    if (isCurrentSlash03 || isBlendSlash03)
+        return 0;
+
     // 通常コンボ Slash 群 + CrouchSlash の「振り区間」に入っているか。共有語彙ヘルパーに集約。
     // クロスフェード中の次段 Slash も考慮されるため、コンボ各段が自分の窓で判定される。
-    return IsAttackSwing(animator, m_gameObject, swingStartTime, swingEndTime);
+    return IsAttackSwing(animator, m_gameObject, swingStartTime, swingEndTime) ? 1 : 0;
 }
 
 inline Vector3 AttackHitboxComponent::SphereCenter() const

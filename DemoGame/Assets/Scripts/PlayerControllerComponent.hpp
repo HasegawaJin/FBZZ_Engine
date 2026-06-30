@@ -6,6 +6,8 @@
 #include <Engine/Scene/Script.hpp>
 #include "GameVocab.hpp"
 #include "HealthComponent.hpp"
+#include <algorithm>
+#include <cmath>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -51,12 +53,21 @@ public:
     void OnCollisionStay(const CollisionInfo& info) override;
 
 private:
+    enum class AttackState {
+        Idle,
+        Combo,
+    };
     void HandleJump(bool isGrounded);
     void HandleCombat(bool isGrounded);
+    void UpdateIdleAttackState(bool canUseCombat, bool isCrouching, bool isCombatLocked);
+    void UpdateComboAttackState(bool isComboAttacking, float attackTime, bool canUseCombat, bool isCrouching);
     [[nodiscard]] bool IsComboAttackState() const;
+    [[nodiscard]] bool IsAttackMovementLocked() const;
     void StartComboAttack();
+    void ChangeAttackState(AttackState nextState);
     Vector3 GetMoveForward() const;
     Vector3 GetMoveRight(const Vector3& forward) const;
+    AttackState m_attackState = AttackState::Idle;
     int m_nextComboIndex = 0;
     float m_comboWindowRemaining = 0.0f;
     bool m_wasComboAttacking = false;
@@ -72,6 +83,7 @@ inline void PlayerControllerComponent::OnStart()
 {
     // WHY: 接触摩擦トルクによるカプセル傾きで水平ジッターが発生するため全軸フリーズ。
     physics.SetFreezeRotation(true, true, true);
+    ChangeAttackState(AttackState::Idle);
 }
 
 inline void PlayerControllerComponent::OnUpdate()
@@ -93,10 +105,9 @@ inline void PlayerControllerComponent::OnUpdate()
     Vector3 move = Vector3::ZERO;
     const bool isStrafing = animator.IsInState(AnimState::Block) || animator.GetBool(AnimParam::Block);
     const bool isMovementLocked =
-        IsComboAttackState() || animator.IsInState(AnimState::CrouchSlash) ||
+        IsAttackMovementLocked() || animator.IsInState(AnimState::CrouchSlash) ||
         animator.IsInState(AnimState::Land) || animator.IsInState(AnimState::PlayerImpact) ||
-        animator.IsInState(AnimState::PlayerHit) ||
-        m_comboAttackRequested;
+        animator.IsInState(AnimState::PlayerHit);
     // CrouchIdle / CrouchSlash に移動クリップがないため、C 押下中は水平移動を停止する。
     // Slash / Land 中も入力と慣性移動を止め、モーションの足運びと物理位置を一致させる。
     if (!input.GetKey(KeyCode::C) && !isMovementLocked) {
@@ -181,8 +192,6 @@ inline void PlayerControllerComponent::HandleJump(bool isGrounded)
 
 inline void PlayerControllerComponent::HandleCombat(bool isGrounded)
 {
-    // 各 Slash クリップの実際の振り区間だけを正規化時間で追跡する。
-    // WHY: 固定秒数ではクリップ前半だけで停止し、剣先が振り切った位置まで残像が届かない。
     const bool isComboAttacking = IsComboAttackState();
     const bool isCrouchAttacking = animator.IsInState(AnimState::CrouchSlash);
     const bool isImpacting = animator.IsInState(AnimState::PlayerImpact);
@@ -193,11 +202,40 @@ inline void PlayerControllerComponent::HandleCombat(bool isGrounded)
     // 空中で防御姿勢へ急遷移するとJump/Fallを中断するため、地上時だけ戦闘入力を許可する。
     const bool canUseCombat = isGrounded;
     const bool isCrouching = canUseCombat && input.GetKey(KeyCode::C);
+    animator.SetBool(AnimParam::Crouch, isCrouching);
+
+    if (m_attackState == AttackState::Combo || isComboAttacking || m_comboAttackRequested)
+        UpdateComboAttackState(isComboAttacking, attackTime, canUseCombat, isCrouching);
+    else
+        UpdateIdleAttackState(canUseCombat, isCrouching, isCombatLocked);
+
+    m_wasComboAttacking = isComboAttacking;
+}
+
+inline void PlayerControllerComponent::UpdateIdleAttackState(bool canUseCombat, bool isCrouching, bool isCombatLocked)
+{
     // WHY: Slash 中の Block 遷移は攻撃を途中で切り、コンボと剣筋を不自然に中断するため禁止する。
     const bool isBlocking =
         canUseCombat && !isCrouching && !isCombatLocked && input.MouseButton(MouseBtn::Right);
-    animator.SetBool(AnimParam::Crouch, isCrouching);
     animator.SetBool(AnimParam::Block, isBlocking);
+
+    if (isCrouching && animator.IsInState(AnimState::CrouchIdle) && !isCombatLocked &&
+        input.MouseButtonDown(MouseBtn::Left)) {
+        // WHAT: しゃがみ攻撃は通常3段コンボと独立させ、C解除後のコンボ段数へ影響させない。
+        animator.SetTrigger(AnimParam::CrouchAttack);
+    } else if (canUseCombat && !isCrouching && !isBlocking && !isCombatLocked &&
+        !m_comboAttackRequested &&
+        input.MouseButtonDown(MouseBtn::Left)) {
+        if (m_comboWindowRemaining <= 0.0f) m_nextComboIndex = 0;
+        StartComboAttack();
+        ChangeAttackState(AttackState::Combo);
+    }
+}
+
+inline void PlayerControllerComponent::UpdateComboAttackState(bool isComboAttacking, float attackTime,
+                                                              bool canUseCombat, bool isCrouching)
+{
+    animator.SetBool(AnimParam::Block, false);
 
     // AnimatorSystem の状態反映はスクリプト更新より後なので、Trigger 発火から State 進入までを
     // requested で保持し、待機中にコンボ番号が誤ってリセットされることを防ぐ。
@@ -216,35 +254,36 @@ inline void PlayerControllerComponent::HandleCombat(bool isGrounded)
         if (canQueueNextSlash && input.MouseButtonDown(MouseBtn::Left))
             m_comboAttackQueued = true;
 
-        // WHAT: 後半までに受けた入力を保持し、終了前から次段へクロスフェードする。
         constexpr float COMBO_BLEND_START_NORMALIZED_TIME = 0.62f;
         if (m_comboAttackQueued && attackTime >= COMBO_BLEND_START_NORMALIZED_TIME) {
             m_comboAttackQueued = false;
             StartComboAttack();
         }
-    } else if (m_wasComboAttacking) {
+        return;
+    }
+
+    if (m_wasComboAttacking) {
         constexpr float COMBO_CONTINUATION_SECONDS = 0.45f;
         m_comboWindowRemaining = COMBO_CONTINUATION_SECONDS;
-    } else if (!m_comboAttackRequested && m_comboWindowRemaining > 0.0f) {
+        return;
+    }
+
+    if (!m_comboAttackRequested && m_comboWindowRemaining > 0.0f) {
         m_comboWindowRemaining = std::max(0.0f, m_comboWindowRemaining - Time::deltaTime);
+        if (canUseCombat && !isCrouching && input.MouseButtonDown(MouseBtn::Left)) {
+            StartComboAttack();
+            return;
+        }
         if (m_comboWindowRemaining <= 0.0f) {
             m_nextComboIndex = 0;
             m_comboAttackQueued = false;
+            ChangeAttackState(AttackState::Idle);
         }
+        return;
     }
 
-    // しゃがみ攻撃を優先し、通常コンボは再生中に予約されなかった場合だけ終了後の猶予で継続する。
-    if (isCrouching && animator.IsInState(AnimState::CrouchIdle) && !isCombatLocked &&
-        input.MouseButtonDown(MouseBtn::Left)) {
-        // WHAT: しゃがみ攻撃は通常3段コンボと独立させ、C解除後のコンボ段数へ影響させない。
-        animator.SetTrigger(AnimParam::CrouchAttack);
-    } else if (canUseCombat && !isCrouching && !isBlocking && !isCombatLocked &&
-        !m_comboAttackRequested &&
-        input.MouseButtonDown(MouseBtn::Left)) {
-        if (m_comboWindowRemaining <= 0.0f) m_nextComboIndex = 0;
-        StartComboAttack();
-    }
-    m_wasComboAttacking = isComboAttacking;
+    if (!m_comboAttackRequested)
+        ChangeAttackState(AttackState::Idle);
 }
 
 inline bool PlayerControllerComponent::IsComboAttackState() const
@@ -253,6 +292,20 @@ inline bool PlayerControllerComponent::IsComboAttackState() const
     return animator.IsInState(AnimState::Slash01) ||
            animator.IsInState(AnimState::Slash02) ||
            animator.IsInState(AnimState::Slash03);
+}
+
+inline bool PlayerControllerComponent::IsAttackMovementLocked() const
+{
+    return m_attackState == AttackState::Combo || IsComboAttackState() || m_comboAttackRequested;
+}
+
+inline void PlayerControllerComponent::ChangeAttackState(AttackState nextState)
+{
+    if (m_attackState == nextState) return;
+    m_attackState = nextState;
+    // WHY: 攻撃 State へ入るときは Block を必ず落とし、Animator の同時遷移を防ぐ。
+    if (m_attackState == AttackState::Combo)
+        animator.SetBool(AnimParam::Block, false);
 }
 
 inline void PlayerControllerComponent::StartComboAttack()
