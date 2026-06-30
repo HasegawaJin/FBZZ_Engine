@@ -74,6 +74,14 @@ inline bool AssetPathFieldWithLoad(const char* label, std::string& path,
 // InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ
 void DrawAssetPickerModal();
 
+// アセット検索ピッカーを任意の文字列ターゲットに対して開く (AssetPathField の "..." と同じ実体)。
+// WHY: 独自描画のアセットスロット (参照ボタン形式) からも「パス検索」を使えるようにするための公開口。
+//      選択時に target へ正規化済み相対パスが書き込まれる。描画は DrawAssetPickerModal() が担う。
+//   filterExts: カンマ区切り拡張子 (".prefab" / ".fzdata" 等、空ですべて)
+//   anchorPos : ポップアップを出す画面座標 (通常は呼び出し元ボタンの直下)
+void OpenAssetPicker(std::string& target, const char* filterExts,
+                     const std::string& projectRoot, ImVec2 anchorPos);
+
 // 直前のアイテムを ASSET_PATH ドラッグ＆ドロップの受け皿にする共通ヘルパー。
 // WHY: BeginDragDropTarget / AcceptDragDropPayload("ASSET_PATH") / Normalize / End の
 //      定型がパス欄やリスト行に散在していたため集約する。ドロップ後の処理 (拡張子除去・

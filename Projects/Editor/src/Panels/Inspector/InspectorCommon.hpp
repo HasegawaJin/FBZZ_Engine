@@ -30,6 +30,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
@@ -50,6 +51,7 @@
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
@@ -989,6 +991,18 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "Sky Renderer", !go.GetComponent<scene::SkyRenderer>(), [&]() {
             go.AddComponent<scene::SkyRenderer>();
+        });
+        shown |= addItem(category, "Sun Moon Renderer", !go.GetComponent<scene::SunMoonRenderer>(), [&]() {
+            go.AddComponent<scene::SunMoonRenderer>();
+        });
+        shown |= addItem(category, "Volumetric Cloud", !go.GetComponent<scene::VolumetricCloudComponent>(), [&]() {
+            go.AddComponent<scene::VolumetricCloudComponent>();
+        });
+        shown |= addItem(category, "Environment Light", !go.GetComponent<scene::EnvironmentLightComponent>(), [&]() {
+            go.AddComponent<scene::EnvironmentLightComponent>();
+        });
+        shown |= addItem(category, "Atmospheric Scattering", !go.GetComponent<scene::AtmosphericScatteringComponent>(), [&]() {
+            go.AddComponent<scene::AtmosphericScatteringComponent>();
         });
         shown |= addItem(category, "Decal", !go.GetComponent<scene::DecalComponent>(), [&]() {
             go.AddComponent<scene::DecalComponent>();

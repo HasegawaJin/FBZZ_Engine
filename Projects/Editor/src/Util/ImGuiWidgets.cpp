@@ -166,6 +166,18 @@ bool AssetPathField(const char* label, std::string& path,
     return changed;
 }
 
+void OpenAssetPicker(std::string& target, const char* filterExts,
+                     const std::string& projectRoot, ImVec2 anchorPos)
+{
+    s_picker.open        = true;
+    s_picker.target      = &target;
+    s_picker.projectRoot = projectRoot;
+    s_picker.filterExts  = SplitFilterExts(filterExts);
+    s_picker.search[0]   = '\0';
+    s_picker.anchorPos   = anchorPos;
+    ScanProjectFiles(projectRoot, s_picker.filterExts, s_picker.files);
+}
+
 void DrawAssetPickerModal()
 {
     if (s_picker.open) {
@@ -337,9 +349,12 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     const float dragSpeed = (max > min) ? (max - min) * 0.005f : 0.01f;
     if (ImGui::DragFloat("##input", &value, dragSpeed, min, max, fmt)) changed = true;
 
-    // ラベルは ImGui 標準ラベル列 (右) に配置する。
-    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
-    ImGui::TextUnformatted(label);
+    // ラベルを右に配置する。ただし "##" 始まりは「ラベル非表示」指定として描画を省く
+    // (呼び出し側が左カラムへ別途ラベルを描くレイアウトで使う)。
+    if (!(label[0] == '#' && label[1] == '#')) {
+        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+        ImGui::TextUnformatted(label);
+    }
 
     ImGui::PopID();
     return changed;

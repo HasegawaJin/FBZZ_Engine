@@ -4,14 +4,41 @@
 #include <Editor/Util/ScriptCodeGen.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fbzz::editor {
 
 namespace {
+
+struct ScriptRegistration {
+    std::string namespaceName;
+    std::string className;
+    std::string headerName;
+};
+
+std::string Trim(std::string_view s)
+{
+    const size_t begin = s.find_first_not_of(" \t\r\n");
+    if (begin == std::string_view::npos) return {};
+    const size_t end = s.find_last_not_of(" \t\r\n");
+    return std::string(s.substr(begin, end - begin + 1));
+}
+
+std::string ParseNamespaceLine(const std::string& line)
+{
+    const std::string trimmed = Trim(line);
+    if (!trimmed.starts_with("namespace ")) return {};
+
+    const size_t begin = std::string_view("namespace ").size();
+    size_t end = trimmed.find_first_of(" {", begin);
+    if (end == std::string::npos) end = trimmed.size();
+    return trimmed.substr(begin, end - begin);
+}
 
 // ファイルを全行読み込む
 std::vector<std::string> ReadLines(const std::string& path)
@@ -36,35 +63,113 @@ bool WriteLines(const std::string& path, const std::vector<std::string>& lines)
     return util::FileSystem::WriteText(path, output.str());
 }
 
-// 既存ファイル内のマーカー行の次に新しい行を挿入する
-// marker: 検索するマーカー文字列 (BEGIN マーカー)
-bool InsertAfterMarker(const std::string& path,
-                       const std::string& marker,
-                       const std::string& newLine)
+// マーカー間の自動生成ブロックを丸ごと置き換える。
+// WHY: ファイル削除時も古い include / 登録エントリを確実に消すため、追記ではなく同期で扱う。
+bool ReplaceGeneratedBlock(const std::string& path,
+                           const std::string& beginMarker,
+                           const std::string& endMarker,
+                           const std::vector<std::string>& generatedLines)
 {
     auto lines = ReadLines(path);
     if (lines.empty()) return false;
 
+    size_t beginIndex = lines.size();
+    size_t endIndex = lines.size();
+    const std::string beginText = "// " + beginMarker;
+    const std::string endText = "// " + endMarker;
+
     for (size_t i = 0; i < lines.size(); ++i) {
-        const size_t first = lines[i].find_first_not_of(" \t");
-        const std::string_view line = (first == std::string::npos)
-            ? std::string_view{}
-            : std::string_view(lines[i]).substr(first);
-        const std::string expectedMarkerLine = "// " + marker;
-        if (line.starts_with(std::string_view(expectedMarkerLine))) {
-            size_t insertIndex = i + 1;
-            if (marker == "@@FBZZ_SCRIPT_ENTRIES_BEGIN" &&
-                insertIndex < lines.size() &&
-                lines[insertIndex].find("static const std::vector<ScriptEntry> entries = {") != std::string::npos) {
-                ++insertIndex;
-            }
-            lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insertIndex), newLine);
-            return WriteLines(path, lines);
+        const std::string trimmed = Trim(lines[i]);
+        if (beginIndex == lines.size() && trimmed.starts_with(beginText)) {
+            beginIndex = i;
+            continue;
+        }
+        if (beginIndex != lines.size() && trimmed.starts_with(endText)) {
+            endIndex = i;
+            break;
         }
     }
-    FBZZ_LOG_WARN("ScriptCodeGen: marker '%s' not found in %s",
-                  marker.c_str(), path.c_str());
-    return false;
+
+    if (beginIndex == lines.size() || endIndex == lines.size() || beginIndex >= endIndex) {
+        FBZZ_LOG_WARN("ScriptCodeGen: marker block '%s' not found in %s",
+                      beginMarker.c_str(), path.c_str());
+        return false;
+    }
+
+    std::vector<std::string> next;
+    next.reserve(lines.size() + generatedLines.size());
+    next.insert(next.end(), lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(beginIndex + 1));
+    next.insert(next.end(), generatedLines.begin(), generatedLines.end());
+    next.insert(next.end(), lines.begin() + static_cast<std::ptrdiff_t>(endIndex), lines.end());
+
+    if (next == lines) return true;
+    return WriteLines(path, next);
+}
+
+// FBZZ_SCRIPT( / FBZZ_DATA_ASSET( のような「マクロ名(」を走査して登録情報を集める汎用版。
+// WHY: スクリプトとデータアセットは同じヘッダ群に同じ構文で宣言されるため、走査トークンだけ
+//      差し替えれば同じ収集ロジックを使い回せる (DRY)。
+std::vector<ScriptRegistration> CollectRegistrations(const std::string& scriptsDir,
+                                                     const std::string& macroToken)
+{
+    std::vector<ScriptRegistration> registrations;
+    if (scriptsDir.empty()) return registrations;
+
+    const std::filesystem::path scriptsRoot = util::FileSystem::PathFromUtf8(scriptsDir);
+    const std::filesystem::path assetsRoot =
+        scriptsRoot.filename() == L"Scripts" ? scriptsRoot.parent_path() : scriptsRoot;
+    if (!util::FileSystem::Exists(assetsRoot)) return registrations;
+
+    for (const auto& path : util::FileSystem::ListFilesRecursive(assetsRoot)) {
+        if (path.extension() != L".hpp") continue;
+
+        const std::string includePath = util::FileSystem::NormalizePathSeparators(
+            util::FileSystem::PathToUtf8(util::FileSystem::RelativePath(path, assetsRoot)));
+        if (includePath.ends_with(".generated.hpp")) continue;
+
+        std::string text;
+        if (!util::FileSystem::ReadText(path, text)) continue;
+
+        std::string currentNamespace = "sandbox";
+        std::string line;
+        std::istringstream input(text);
+        while (std::getline(input, line)) {
+            if (const std::string ns = ParseNamespaceLine(line); !ns.empty())
+                currentNamespace = ns;
+
+            size_t pos = 0;
+            while ((pos = line.find(macroToken, pos)) != std::string::npos) {
+                const size_t begin = pos + macroToken.size();
+                const size_t end = line.find(')', begin);
+                if (end == std::string::npos) break;
+
+                const std::string className = Trim(std::string_view(line).substr(begin, end - begin));
+                if (!className.empty()) {
+                    registrations.push_back({
+                        currentNamespace.empty() ? "sandbox" : currentNamespace,
+                        className,
+                        includePath
+                    });
+                }
+                pos = end + 1;
+            }
+        }
+    }
+
+    std::sort(registrations.begin(), registrations.end(),
+        [](const ScriptRegistration& a, const ScriptRegistration& b) {
+            if (a.headerName != b.headerName) return a.headerName < b.headerName;
+            if (a.namespaceName != b.namespaceName) return a.namespaceName < b.namespaceName;
+            return a.className < b.className;
+        });
+    registrations.erase(std::unique(registrations.begin(), registrations.end(),
+        [](const ScriptRegistration& a, const ScriptRegistration& b) {
+            return a.namespaceName == b.namespaceName &&
+                   a.className == b.className &&
+                   a.headerName == b.headerName;
+        }), registrations.end());
+
+    return registrations;
 }
 
 bool EnsureDirectoriesRecursive(const std::string& path)
@@ -277,57 +382,90 @@ std::string ScriptCodeGen::CreateScript(const std::string& name,
     //      外部生成ファイルや独立 TU が不要になった (1 スクリプト = 1 ファイル)。
     //      DLL/EXE エントリがヘッダを include するだけで実装も取り込まれる。
 
-    const std::string relInclude = "\"Scripts/" + headerName + "\"";
-
-    // スクリプトエントリの登録先を決定する。
-    // 新形式: scriptsDir/ScriptList.inl が存在すれば一元管理ファイルへ挿入 (EXE/DLL 共通)。
-    // 旧形式: ScriptList.inl がない古いプロジェクトは従来通り DLL/EXE の各 .cpp へ挿入。
-    const std::string scriptListPath = scriptsDir + "/ScriptList.inl";
-    const bool hasScriptList = util::FileSystem::Exists(
-        util::FileSystem::PathFromUtf8(scriptListPath));
-
-    // WHY: ScriptList.inl の登録と DLL/EXE 側 include は独立して壊れ得る。
-    //      ScriptList に名前があるだけで include 追記をスキップすると、
-    //      ファクトリ展開時に型が見えず Script DLL のビルドが失敗する。
-    bool scriptListHasEntry = hasScriptList && AlreadyRegistered(scriptListPath, className);
-
-    // DLL 側 include 挿入 (形式: #define Xxx_IMPL + #include "Scripts/Xxx.hpp")
-    if (!dllCppPath.empty()) {
-        const bool dllAlreadyRegistered = AlreadyRegistered(dllCppPath, className);
-        if (!dllAlreadyRegistered)
-            InsertScriptIncludeDll(dllCppPath, className, relInclude);
-
-        if (hasScriptList) {
-            if (!scriptListHasEntry) {
-                InsertScriptListEntry(scriptListPath, className);
-                scriptListHasEntry = true;
-            }
-        } else if (!dllAlreadyRegistered) {
-            InsertScriptEntry(dllCppPath, className);  // 旧形式フォールバック
-        }
-    }
-
-    // EXE 側 include 挿入 (形式: #include "Scripts/Xxx.hpp")
-    // WHY: SandboxStandalone は DLL をロードせず EXE 内の静的登録でスクリプトを解決する。
-    //      _IMPL なしでフルインクルードするため DLL 側と形式が異なり、include のみ個別管理する。
-    //      重複チェックは staticCppPath 自体で行う (ScriptList.inl は DLL ブロックで更新済みのため)。
-    if (!staticCppPath.empty()) {
-        const bool staticAlreadyRegistered = AlreadyRegistered(staticCppPath, className);
-        if (!staticAlreadyRegistered)
-            InsertScriptInclude(staticCppPath, relInclude);
-
-        if (hasScriptList) {
-            if (!scriptListHasEntry) {
-                InsertScriptListEntry(scriptListPath, className);
-                scriptListHasEntry = true;
-            }
-        } else if (!staticAlreadyRegistered) {
-            InsertScriptStaticEntry(staticCppPath, className);  // 旧形式フォールバック
-        }
-    }
+    // WHY: 生成後は追記ではなく Scripts/ の実ファイル一覧から再同期する。
+    //      これにより、削除済みスクリプトの古い登録も同じ経路で消せる。
+    SyncScriptRegistry(scriptsDir, dllCppPath, staticCppPath);
 
     FBZZ_LOG_INFO("ScriptCodeGen: script generated -> %s", headerPath.c_str());
     return headerPath;
+}
+
+bool ScriptCodeGen::SyncScriptRegistry(const std::string& scriptsDir,
+                                       const std::string& dllCppPath,
+                                       const std::string& staticCppPath)
+{
+    if (scriptsDir.empty()) return false;
+
+    // スクリプトとデータアセットを別々に収集する (同じヘッダ群を別トークンで走査)。
+    const auto scripts    = CollectRegistrations(scriptsDir, "FBZZ_SCRIPT(");
+    const auto dataAssets = CollectRegistrations(scriptsDir, "FBZZ_DATA_ASSET(");
+
+    bool ok = true;
+
+    // include ブロックは「スクリプト or データアセットを宣言する全ヘッダ」の和集合。
+    // WHY: DataAsset 専用ヘッダ (FBZZ_SCRIPT を持たない) も DLL/EXE の TU に取り込む必要があるため、
+    //      両者のヘッダをマージし、重複を排除してから #include 行を作る。
+    std::vector<std::string> headers;
+    headers.reserve(scripts.size() + dataAssets.size());
+    for (const auto& reg : scripts)    headers.push_back(reg.headerName);
+    for (const auto& reg : dataAssets) headers.push_back(reg.headerName);
+    std::sort(headers.begin(), headers.end());
+    headers.erase(std::unique(headers.begin(), headers.end()), headers.end());
+
+    std::vector<std::string> includeLines;
+    includeLines.reserve(headers.size());
+    for (const auto& h : headers)
+        includeLines.push_back("#include \"" + h + "\"");
+
+    if (!dllCppPath.empty() && util::FileSystem::Exists(dllCppPath)) {
+        ok &= ReplaceGeneratedBlock(dllCppPath,
+                                    "@@FBZZ_SCRIPT_INCLUDES_BEGIN",
+                                    "@@FBZZ_SCRIPT_INCLUDES_END",
+                                    includeLines);
+    }
+
+    if (!staticCppPath.empty() && util::FileSystem::Exists(staticCppPath)) {
+        ok &= ReplaceGeneratedBlock(staticCppPath,
+                                    "@@FBZZ_SCRIPT_INCLUDES_BEGIN",
+                                    "@@FBZZ_SCRIPT_INCLUDES_END",
+                                    includeLines);
+    }
+
+    const std::string scriptListPath = scriptsDir + "/ScriptList.inl";
+    if (util::FileSystem::Exists(scriptListPath)) {
+        std::vector<std::string> entryLines;
+        entryLines.reserve(scripts.size());
+        for (const auto& reg : scripts) {
+            entryLines.push_back("FBZZ_SCRIPT_ENTRY(" + reg.namespaceName + ", " + reg.className + ")");
+        }
+
+        ok &= ReplaceGeneratedBlock(scriptListPath,
+                                    "@@FBZZ_SCRIPT_ENTRIES_BEGIN",
+                                    "@@FBZZ_SCRIPT_ENTRIES_END",
+                                    entryLines);
+    }
+
+    // DataAsset 登録リスト。DataAssetList.inl が無いプロジェクトでは何もしない (後方互換)。
+    const std::string dataAssetListPath = scriptsDir + "/DataAssetList.inl";
+    if (util::FileSystem::Exists(dataAssetListPath)) {
+        std::vector<std::string> entryLines;
+        entryLines.reserve(dataAssets.size());
+        for (const auto& reg : dataAssets) {
+            entryLines.push_back("FBZZ_DATA_ASSET_ENTRY(" + reg.namespaceName + ", " + reg.className + ")");
+        }
+
+        ok &= ReplaceGeneratedBlock(dataAssetListPath,
+                                    "@@FBZZ_DATA_ASSET_ENTRIES_BEGIN",
+                                    "@@FBZZ_DATA_ASSET_ENTRIES_END",
+                                    entryLines);
+    }
+
+    if (ok) {
+        FBZZ_LOG_INFO("ScriptCodeGen: synced registry (%d scripts, %d data assets)",
+                      static_cast<int>(scripts.size()),
+                      static_cast<int>(dataAssets.size()));
+    }
+    return ok;
 }
 
 std::string ScriptCodeGen::CreateHlsl(const std::string& name,
@@ -381,65 +519,5 @@ std::string ScriptCodeGen::CreateHlsl(const std::string& name,
 // =============================================================================
 // 内部実装
 // =============================================================================
-
-bool ScriptCodeGen::InsertScriptInclude(const std::string& cppPath,
-                                        const std::string& headerRelPath)
-{
-    return InsertAfterMarker(cppPath,
-                             "@@FBZZ_SCRIPT_INCLUDES_BEGIN",
-                             "#include " + headerRelPath);
-}
-
-// DLL エントリへスクリプトヘッダの include を挿入する。
-// WHY: 新方式は実装を inline 化したため _IMPL 事前定義は不要。ヘッダを include
-//      するだけで実装もこの TU に取り込まれる (複数 TU から include されても ODR 安全)。
-bool ScriptCodeGen::InsertScriptIncludeDll(const std::string& dllCppPath,
-                                           const std::string& className,
-                                           const std::string& headerRelPath)
-{
-    (void)className;  // _IMPL 事前定義を廃止したため未使用
-    return InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN",
-                             "#include " + headerRelPath);
-}
-
-bool ScriptCodeGen::InsertScriptListEntry(const std::string& scriptListPath,
-                                          const std::string& className)
-{
-    // FBZZ_SCRIPT_ENTRY(ns, T) マクロで展開される形式で挿入する。
-    // EXE/DLL どちらのコンシューマーも同じ .inl を異なるマクロ定義で読む。
-    const std::string entry = "FBZZ_SCRIPT_ENTRY(sandbox, " + className + ")";
-    return InsertAfterMarker(scriptListPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", entry);
-}
-
-bool ScriptCodeGen::InsertScriptEntry(const std::string& dllCppPath,
-                                      const std::string& className)
-{
-    const std::string entry =
-        "        { ::sandbox::" + className + "::TYPE_NAME,"
-        " []() { return std::make_unique<::sandbox::" + className + ">(); } },";
-    return InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", entry);
-}
-
-bool ScriptCodeGen::InsertScriptStaticEntry(const std::string& staticCppPath,
-                                             const std::string& className)
-{
-    return InsertAfterMarker(staticCppPath,
-                             "@@FBZZ_SCRIPT_ENTRIES_BEGIN",
-                             "FBZZ_REGISTER_SCRIPT(::sandbox::" + className + ")");
-}
-
-bool ScriptCodeGen::AlreadyRegistered(const std::string& dllCppPath,
-                                      const std::string& className)
-{
-    std::string text;
-    if (!util::FileSystem::ReadText(dllCppPath, text)) return false;
-    std::string line;
-    std::istringstream input(text);
-    while (std::getline(input, line)) {
-        if (line.find(className) != std::string::npos)
-            return true;
-    }
-    return false;
-}
 
 } // namespace fbzz::editor

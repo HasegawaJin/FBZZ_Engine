@@ -10,8 +10,11 @@
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/ImGuiReflector.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/DataAsset.hpp>
+#include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
@@ -824,6 +827,48 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::SameLine();
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
+    } else if (ext == ".fzdata") {
+        // ── DataAsset (純共有 ScriptableObject) ───────────────────────────
+        const std::string relPath = NormalizeAssetPath(absPath);
+        asset::DataAsset* data = asset::DataAssetRegistry::Resolve(relPath);
+        if (!data) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f},
+                "Failed to load .fzdata (型が未登録か、パース失敗)");
+            return;
+        }
+
+        ImGui::TextDisabled("Type: %s", data->GetTypeName());
+        ImGui::Separator();
+
+        // Inspector の共通リフレクタでフィールドを描画する (スクリプトと同じ UI)。
+        // 編集対象は Registry がキャッシュする共有実体そのものなので、変更は全参照へ即反映される。
+        ImGuiReflector reflector;
+        data->Reflect(reflector);
+
+        // 自動保存: 値が編集され、かつ操作 (ドラッグ/入力) が終わった瞬間にディスクへ書き戻す。
+        // WHY: ScriptableObject 的な「いじったら保存されている」体験にする。連続ドラッグ中の
+        //      大量書き込みは避けたいので、アクティブ操作が無くなったフレームでだけ保存する。
+        const bool editedThisFrame = GImGui && GImGui->ActiveIdHasBeenEditedThisFrame;
+        static bool        s_fzdataDirty = false;
+        static std::string s_fzdataDirtyPath;
+        if (editedThisFrame) {
+            s_fzdataDirty     = true;
+            s_fzdataDirtyPath = relPath;
+        }
+        if (s_fzdataDirty && s_fzdataDirtyPath == relPath && !ImGui::IsAnyItemActive()) {
+            if (asset::DataAssetRegistry::Save(relPath))
+                ctx.requestAssetBrowserRefresh = true;
+            s_fzdataDirty = false;
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        // 保険の手動保存 (自動保存があるので通常は不要)。
+        if (ImGui::Button("Save .fzdata"))
+            asset::DataAssetRegistry::Save(relPath);
+        ImGui::SameLine();
+        ImGui::TextDisabled(s_fzdataDirty && s_fzdataDirtyPath == relPath
+                            ? "Saving on release..." : "Auto-saved");
     } else {
         ImGui::TextDisabled("Type: %s", ext.c_str());
         ImGui::Spacing();
