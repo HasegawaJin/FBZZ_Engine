@@ -12,13 +12,13 @@ list(REMOVE_ITEM SANDBOX_SOURCES
 #      スクリプトの変更を反映できる。DLL は EXE のコールバック経由で
 #      ScriptFactory に登録する (dual registry 問題を回避するため)。
 # WHY (スクリプトを Assets/ に配置):
-#      AssetBrowser からスクリプトを Unity 同様に Assets/Scripts/ で確認・作成できるよう、
-#      ソース置き場を Projects/Sandbox/src/Scripts/ から Assets/Scripts/ に移動した。
+#      AssetBrowser からスクリプトを Unity 同様に Assets/ 配下で確認・作成できるよう、
+#      ソース置き場を Projects/Sandbox/src/Scripts/ から Assets/ 配下に移動した。
 #      CMake の include_directories に Assets/ を追加することで
-#      #include "Scripts/Foo.hpp" → Assets/Scripts/Foo.hpp と解決する。
+#      #include "Scripts/Foo.hpp" → Assets/Scripts/Foo.hpp のように Assets 相対で解決する。
 file(GLOB_RECURSE SANDBOX_SCRIPT_DLL_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_SOURCE_DIR}/Assets/Scripts/*.cpp
-    ${CMAKE_SOURCE_DIR}/Assets/Scripts/*.hpp
+    ${CMAKE_SOURCE_DIR}/Assets/*.cpp
+    ${CMAKE_SOURCE_DIR}/Assets/*.hpp
     src/SandboxScriptsDll.cpp
 )
 add_library(SandboxScripts SHARED ${SANDBOX_SCRIPT_DLL_SOURCES})

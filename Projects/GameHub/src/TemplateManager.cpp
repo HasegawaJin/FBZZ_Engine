@@ -9,7 +9,9 @@
 #include <algorithm>
 #include <cctype>
 #include <regex>
+#include <sstream>
 #include <string_view>
+#include <vector>
 
 namespace fbzz::hub {
 
@@ -62,44 +64,49 @@ bool Exists(const std::filesystem::path& path)
     return engine_util::FileSystem::Exists(path);
 }
 
-bool InsertAfterMarker(const std::filesystem::path& path, const std::string& marker, const std::string& insertion)
+bool ReplaceMarkerBlock(const std::filesystem::path& path,
+                        const std::string& beginMarker,
+                        const std::string& endMarker,
+                        const std::vector<std::string>& generatedLines)
 {
     std::string text = ReadText(path);
-    if (text.empty() || text.find(insertion) != std::string::npos)
-        return true;
+    if (text.empty()) return false;
 
-    size_t markerPos = std::string::npos;
-    size_t lineStart = 0;
-    while (lineStart < text.size()) {
-        const size_t lineEnd = text.find('\n', lineStart);
-        const size_t nextLine = (lineEnd == std::string::npos) ? text.size() : lineEnd + 1;
-        const std::string_view line(text.data() + lineStart, nextLine - lineStart);
-        const size_t first = line.find_first_not_of(" \t");
-        if (first != std::string_view::npos) {
-            const std::string_view trimmed = line.substr(first);
-            const std::string expectedMarkerLine = "// " + marker;
-            if (trimmed.starts_with(std::string_view(expectedMarkerLine))) {
-                markerPos = lineStart + first;
-                break;
-            }
-        }
-        if (lineEnd == std::string::npos) break;
-        lineStart = nextLine;
-    }
-    if (markerPos == std::string::npos) return false;
+    const std::string beginText = "// " + beginMarker;
+    const std::string endText = "// " + endMarker;
+    const size_t beginMarkerPos = text.find(beginText);
+    if (beginMarkerPos == std::string::npos) return false;
+    const size_t beginLineEnd = text.find('\n', beginMarkerPos);
+    if (beginLineEnd == std::string::npos) return false;
 
-    const size_t lineEnd = text.find('\n', markerPos);
-    size_t insertPos = (lineEnd == std::string::npos) ? text.size() : lineEnd + 1;
-    if (marker == "@@FBZZ_SCRIPT_ENTRIES_BEGIN") {
-        const size_t nextLineEnd = text.find('\n', insertPos);
-        const std::string_view nextLine(
-            text.data() + insertPos,
-            (nextLineEnd == std::string::npos ? text.size() : nextLineEnd) - insertPos);
-        if (nextLine.find("static const std::vector<ScriptEntry> entries = {") != std::string_view::npos)
-            insertPos = (nextLineEnd == std::string::npos) ? text.size() : nextLineEnd + 1;
+    const size_t generatedBegin = beginLineEnd + 1;
+    const size_t endMarkerPos = text.find(endText, generatedBegin);
+    if (endMarkerPos == std::string::npos) return false;
+
+    std::string generatedText;
+    for (const auto& line : generatedLines)
+        generatedText += line + "\n";
+
+    const std::string next = text.substr(0, generatedBegin) +
+                             generatedText +
+                             text.substr(endMarkerPos);
+    if (next == text) return true;
+    return WriteText(path, next);
+}
+
+std::string ParseNamespaceForScript(const std::string& headerText)
+{
+    std::istringstream input(headerText);
+    std::string line;
+    while (std::getline(input, line)) {
+        const size_t namespacePos = line.find("namespace ");
+        if (namespacePos == std::string::npos) continue;
+        const size_t begin = namespacePos + std::string_view("namespace ").size();
+        size_t end = line.find_first_of(" {", begin);
+        if (end == std::string::npos) end = line.size();
+        if (end > begin) return line.substr(begin, end - begin);
     }
-    text.insert(insertPos, insertion + "\n");
-    return WriteText(path, text);
+    return "sandbox";
 }
 
 } // namespace
@@ -262,7 +269,8 @@ bool TemplateManager::SyncCopiedScriptRegistrations(
     const ProjectNameInfo& nameInfo,
     std::string& errorMessage)
 {
-    const std::filesystem::path scriptsDir = projectRoot / "Assets" / "Scripts";
+    const std::filesystem::path assetsDir = projectRoot / "Assets";
+    const std::filesystem::path scriptsDir = assetsDir / "Scripts";
     std::error_code ec;
     if (!engine_util::FileSystem::Exists(scriptsDir)) {
         return true;
@@ -277,8 +285,15 @@ bool TemplateManager::SyncCopiedScriptRegistrations(
         return false;
     }
 
-    const std::regex classRegex(R"(class\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*public\s+Script)");
-    for (const auto& entry : std::filesystem::directory_iterator(scriptsDir, ec)) {
+    const std::filesystem::path scriptListPath = scriptsDir / "ScriptList.inl";
+    if (!Exists(scriptListPath)) {
+        errorMessage = "Failed to find generated ScriptList.inl.";
+        return false;
+    }
+
+    std::vector<std::pair<std::string, std::string>> scripts;
+    const std::regex scriptRegex(R"(FBZZ_SCRIPT\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\))");
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(assetsDir, ec)) {
         if (ec) {
             errorMessage = "Failed to enumerate copied script headers.";
             return false;
@@ -287,43 +302,42 @@ bool TemplateManager::SyncCopiedScriptRegistrations(
             continue;
         }
 
-        const std::string headerText = ReadText(entry.path());
-        std::smatch match;
-        if (!std::regex_search(headerText, match, classRegex)) {
+        if (entry.path().filename() == "ScriptList.inl" ||
+            engine_util::FileSystem::PathToUtf8(entry.path().filename()).ends_with(".generated.hpp")) {
             continue;
         }
 
-        const std::string className = match[1].str();
-        const std::string includeLine = "#include \"Scripts/" + engine_util::FileSystem::PathToUtf8(entry.path().filename()) + "\"";
-
-        // WHY: standard テンプレートはエンジン側 Assets/Scripts をコピーするため、
-        //      ScriptCodeGen を経由しない既存スクリプトも DLL / Standalone の両方へ登録する必要がある。
-        // 新形式: ScriptList.inl があればエントリをそこへ一元書き込みする。
-        // 旧形式: ScriptList.inl がなければ従来通り DLL/EXE の各 .cpp へ直接書き込む。
-        const std::filesystem::path scriptListPath = scriptsDir / "ScriptList.inl";
-        const bool hasScriptList = Exists(scriptListPath);
-
-        if (hasScriptList) {
-            const std::string scriptListEntry = "FBZZ_SCRIPT_ENTRY(sandbox, " + className + ")";
-            if (!InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
-                !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
-                !InsertAfterMarker(scriptListPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", scriptListEntry)) {
-                errorMessage = "Failed to update copied script registrations.";
-                return false;
-            }
-        } else {
-            const std::string dllEntry =
-                "        { ::sandbox::" + className + "::TYPE_NAME,"
-                " []() { return std::make_unique<::sandbox::" + className + ">(); } },";
-            const std::string staticEntry = "FBZZ_REGISTER_SCRIPT(::sandbox::" + className + ")";
-            if (!InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
-                !InsertAfterMarker(dllCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", dllEntry) ||
-                !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", includeLine) ||
-                !InsertAfterMarker(staticCppPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", staticEntry)) {
-                errorMessage = "Failed to update copied script registrations.";
-                return false;
-            }
+        const std::string headerText = ReadText(entry.path());
+        const std::string namespaceName = ParseNamespaceForScript(headerText);
+        const std::string includePath = engine_util::FileSystem::NormalizePathSeparators(
+            engine_util::FileSystem::PathToUtf8(engine_util::FileSystem::RelativePath(entry.path(), assetsDir)));
+        for (std::sregex_iterator it(headerText.begin(), headerText.end(), scriptRegex), end; it != end; ++it) {
+            scripts.emplace_back(
+                includePath,
+                "FBZZ_SCRIPT_ENTRY(" + namespaceName + ", " + (*it)[1].str() + ")");
         }
+    }
+
+    std::sort(scripts.begin(), scripts.end());
+
+    std::vector<std::string> includeLines;
+    std::vector<std::string> entryLines;
+    std::string lastHeader;
+    for (const auto& [headerName, entryLine] : scripts) {
+        if (headerName != lastHeader) {
+            includeLines.push_back("#include \"" + headerName + "\"");
+            lastHeader = headerName;
+        }
+        entryLines.push_back(entryLine);
+    }
+
+    // WHY: standard/empty テンプレートはエンジン側 Assets をコピーするため、
+    //      ScriptCodeGen を経由しない既存スクリプトも DLL / Standalone の両方へ登録する必要がある。
+    if (!ReplaceMarkerBlock(dllCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", "@@FBZZ_SCRIPT_INCLUDES_END", includeLines) ||
+        !ReplaceMarkerBlock(staticCppPath, "@@FBZZ_SCRIPT_INCLUDES_BEGIN", "@@FBZZ_SCRIPT_INCLUDES_END", includeLines) ||
+        !ReplaceMarkerBlock(scriptListPath, "@@FBZZ_SCRIPT_ENTRIES_BEGIN", "@@FBZZ_SCRIPT_ENTRIES_END", entryLines)) {
+        errorMessage = "Failed to update copied script registrations.";
+        return false;
     }
 
     return true;

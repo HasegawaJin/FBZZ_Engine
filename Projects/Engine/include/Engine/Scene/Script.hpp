@@ -9,6 +9,7 @@
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/PrefabRef.hpp>
+#include <Engine/Scene/DataAssetRef.hpp> // DataAsset (純共有 ScriptableObject) 参照スロット
 #include <Engine/Scene/Reflection.hpp>  // 自己登録リフレクション基盤 (ReflectTag / DisplayOr)
 #include <Engine/Scene/Ref.hpp>          // 型安全オブジェクト参照ハンドル Ref<T>
 // 全プロキシヘッダーのアンブレラインクルード。新プロキシ追加時はこちらを編集すること。
@@ -85,16 +86,37 @@ struct IReflector {
     virtual void Field(const char* name, EntityID& v) {}
     virtual void Field(const char* name, EntityRef& v)  { Field(name, v.id); }
     virtual void Field(const char* name, PrefabRef& v)  { Field(name, v.path); }
+    // DataAsset (純共有 ScriptableObject) 参照。既定は path 文字列をそのまま保存/復元するため、
+    // TOML リフレクタは何も変更不要。Inspector の ImGuiReflector だけがアセットスロット UI を上書きする。
+    virtual void Field(const char* name, DataAssetRef& v) { Field(name, v.path); }
     virtual void Field(const char* name, input::KeyCode& v) {}  // キー名ドロップダウン
 
     // 付加情報付き (デフォルトは Field へフォールバック)
     virtual void FloatRange(const char* name, float& v, float min, float max)  { Field(name, v); }
+    virtual void IntRange(const char* name, int& v, int min, int max)          { Field(name, v); }
     virtual void Enum(const char* name, int& v, std::span<const char* const> labels) { Field(name, v); }
+    // 型付きオブジェクト参照スロット。typeName が非空ならその Script 型を持つ GameObject だけを
+    // 受け付ける (Inspector のドロップ型チェック用)。既定はシリアライズと同じく EntityID を保存する。
+    virtual void RefField(const char* name, EntityRef& v, const char* typeName) { Field(name, v.id); }
+    // 直前に描画したフィールドへ説明ツールチップを付ける (Inspector のみ表示、シリアライズ非対象)。
+    virtual void Tooltip(const char* text) {}
     virtual void Group(const char* label) {}
     virtual void Readonly(const char* name, const std::string& v) {}
     virtual void Readonly(const char* name, float v)  {}
     virtual void Readonly(const char* name, int v)    {}
 };
+
+// FBZZ_REF(T, ...) が RefField へ渡す型名を解決する。
+// GameObject 参照は「任意の GameObject 可」を意味する空文字、Script 派生参照は T::TYPE_NAME を返す。
+// WHY: Inspector はこの型名でドロップを検証し、フィルタ付きピッカーを出す (型不一致アサインを防ぐ)。
+template<typename T>
+constexpr const char* RefTypeNameOf()
+{
+    if constexpr (std::is_same_v<T, GameObject>)
+        return "";
+    else
+        return T::TYPE_NAME;
+}
 
 // ── InvokeHandle ─────────────────────────────────────────────────────────────
 // Invoke / InvokeRepeating が返す軽量値型。CancelInvoke(handle) で個別キャンセル。
@@ -163,6 +185,12 @@ struct InvokeHandle {
     FBZZ_REFLECT_ENTRY_(Name,                                                   \
         r_.FloatRange(FBZZ_DISP_(Display, Name), Name, Min, Max))
 
+// int 用レンジフィールド (スライダー)。FBZZ_FIELD_RANGE の int 版。
+#define FBZZ_FIELD_RANGE_INT(Type, Name, Default, Display, Min, Max)            \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name,                                                   \
+        r_.IntRange(FBZZ_DISP_(Display, Name), Name, Min, Max))
+
 #define FBZZ_FIELD_ENUM(Type, Name, Default, Display, ...)                      \
     Type Name = Default;                                                        \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
@@ -189,7 +217,8 @@ struct InvokeHandle {
 // シリアライズは内包する EntityRef (= EntityID) を対象にする。
 #define FBZZ_REF(Type, Name, Display)                                           \
     ::fbzz::scene::Ref<Type> Name { this };                                     \
-    FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name.ref))
+    FBZZ_REFLECT_ENTRY_(Name, r_.RefField(FBZZ_DISP_(Display, Name), Name.ref,  \
+        ::fbzz::scene::RefTypeNameOf<Type>()))
 
 // Inspector グループ見出し。順序保持のためタグを 1 つ消費する。
 #define FBZZ_GROUP(Label)     FBZZ_GROUP_(Label, __LINE__)
@@ -200,6 +229,20 @@ struct InvokeHandle {
                        ::fbzz::scene::IReflector& r_) {                         \
         _fbzz_reflect(::fbzz::scene::detail::ReflectTag<(_fbzz_grp_##L - 1)>{}, r_); \
         r_.Group(Label);                                                        \
+    }
+
+// 直前のフィールドへ Inspector ツールチップを付ける (設計意図コメントを UI に出す用)。
+// 対象フィールドの「次の行」に置く。順序保持のためタグを 1 つ消費する (FBZZ_GROUP と同方式)。
+//   FBZZ_FIELD_RANGE(float, reach, 1.1f, "Reach", 0, 5)
+//   FBZZ_TOOLTIP("キャラ原点から前方への判定球オフセット")
+#define FBZZ_TOOLTIP(Text)     FBZZ_TOOLTIP_(Text, __LINE__)
+#define FBZZ_TOOLTIP_(Text, L) FBZZ_TOOLTIP__(Text, L)
+#define FBZZ_TOOLTIP__(Text, L)                                                 \
+    enum { _fbzz_tip_##L = __COUNTER__ - _fbzz_base };                          \
+    void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<_fbzz_tip_##L>,        \
+                       ::fbzz::scene::IReflector& r_) {                         \
+        _fbzz_reflect(::fbzz::scene::detail::ReflectTag<(_fbzz_tip_##L - 1)>{}, r_); \
+        r_.Tooltip(Text);                                                       \
     }
 
 // クラス直後 (同 namespace 内) に置き、Reflect() 本体を生成する。
