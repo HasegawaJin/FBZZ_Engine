@@ -40,11 +40,7 @@ DX11IblBaker::DX11IblBaker(ID3D11Device* device, ID3D11DeviceContext* context)
 // メインエントリー
 // ─────────────────────────────────────────────────────────────────────────────
 
-bool DX11IblBaker::Bake(
-    const IblBakeInput& input,
-    const std::string&  outputDir,
-    const std::string&  baseName,
-    IblBakeOutput&      output)
+bool DX11IblBaker::BakeCore(const IblBakeInput& input, BakedCubemaps& out)
 {
     if (!input.pixels || input.equirectW == 0 || input.equirectH == 0) {
         FBZZ_LOG_ERROR("DX11IblBaker: ピクセルデータが空です");
@@ -55,17 +51,13 @@ bool DX11IblBaker::Bake(
         return false;
     }
 
-    // 出力ディレクトリ作成
-    std::error_code ec;
-    fs::create_directories(util::StringUtils::ToWide(outputDir), ec);
-
     // ── Shader 読み込み ───────────────────────────────────────────────────
     const std::string& dir = input.compiledShadersDir;
-    auto LoadCS = [&](const std::string& name, ComPtr<ID3D11ComputeShader>& out) -> bool {
+    auto LoadCS = [&](const std::string& name, ComPtr<ID3D11ComputeShader>& cs) -> bool {
         auto blob = LoadBinary(dir + name);
         if (blob.empty()) return false;
         HRESULT hr = m_device->CreateComputeShader(
-            blob.data(), blob.size(), nullptr, out.GetAddressOf());
+            blob.data(), blob.size(), nullptr, cs.GetAddressOf());
         if (FAILED(hr)) {
             FBZZ_LOG_ERROR("DX11IblBaker: CS 生成失敗 [%s] hr=0x%08X", name.c_str(), (unsigned)hr);
             return false;
@@ -95,48 +87,149 @@ bool DX11IblBaker::Bake(
     m_device->CreateShaderResourceView(equirectTex.Get(), nullptr, equirectSrv.GetAddressOf());
 
     // ── Step 2: Environment Cubemap ───────────────────────────────────────
-    auto envTex = BakeEnvCubemap(equirectSrv.Get(), input.envCubemapSize);
-    if (!envTex) return false;
+    out.env = BakeEnvCubemap(equirectSrv.Get(), input.envCubemapSize);
+    if (!out.env) return false;
 
     D3D11_TEXTURE2D_DESC envDesc{};
-    envTex->GetDesc(&envDesc);
+    out.env->GetDesc(&envDesc);
+    out.envMipCount = envDesc.MipLevels;
 
     // Env Cubemap SRV (TextureCube)
-    D3D11_SHADER_RESOURCE_VIEW_DESC envSrvDesc = {};
-    envSrvDesc.Format                    = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    envSrvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURECUBE;
-    envSrvDesc.TextureCube.MipLevels     = envDesc.MipLevels;
-    envSrvDesc.TextureCube.MostDetailedMip = 0;
-
-    ComPtr<ID3D11ShaderResourceView> envSrv;
-    if (FAILED(m_device->CreateShaderResourceView(envTex.Get(), &envSrvDesc, envSrv.GetAddressOf()))) {
-        FBZZ_LOG_ERROR("DX11IblBaker: Environment Cubemap SRV 生成失敗");
-        return false;
-    }
+    out.envSrv = CreateCubeSRV(out.env.Get(), envDesc.MipLevels);
+    if (!out.envSrv) return false;
 
     // WHAT: mip0 に書き込んだ HDR 環境を全 mip に縮小し、prefilter の PDF ベース LOD に使う。
     // WHY: 高輝度の太陽ピクセルを常に mip0 から確率的に拾うと、粗い鏡面に白い firefly が残る。
-    m_context->GenerateMips(envSrv.Get());
+    m_context->GenerateMips(out.envSrv.Get());
 
     // ── Step 3: Irradiance ────────────────────────────────────────────────
-    auto irrTex = BakeIrradiance(envSrv.Get(), input.irradianceSize);
-    if (!irrTex) return false;
+    out.irradiance = BakeIrradiance(out.envSrv.Get(), input.irradianceSize);
+    if (!out.irradiance) return false;
 
     // ── Step 4: Prefiltered ───────────────────────────────────────────────
-    auto prefilterTex = BakePrefiltered(
-        envSrv.Get(),
+    out.prefiltered = BakePrefiltered(
+        out.envSrv.Get(),
         input.prefilteredSize,
         input.prefilteredMipCount,
         input.sampleCount,
         envDesc.MipLevels);
-
-    if (!prefilterTex) return false;
+    if (!out.prefiltered) return false;
 
     // ── Step 5: BRDF LUT ──────────────────────────────────────────────────
-    auto brdfTex = BakeBrdfLut(input.brdfLutSize);
-    if (!brdfTex) return false;
+    out.brdfLut = BakeBrdfLut(input.brdfLutSize);
+    if (!out.brdfLut) return false;
 
-    // ── Step 6: DDS 保存 ──────────────────────────────────────────────────
+    return true;
+}
+
+ComPtr<ID3D11ShaderResourceView> DX11IblBaker::CreateCubeSRV(
+    ID3D11Texture2D* tex, uint32_t mipLevels)
+{
+    D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
+    desc.Format                        = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    desc.ViewDimension                 = D3D11_SRV_DIMENSION_TEXTURECUBE;
+    desc.TextureCube.MostDetailedMip   = 0;
+    desc.TextureCube.MipLevels         = mipLevels;
+
+    ComPtr<ID3D11ShaderResourceView> srv;
+    if (FAILED(m_device->CreateShaderResourceView(tex, &desc, srv.GetAddressOf()))) {
+        FBZZ_LOG_ERROR("DX11IblBaker: Cubemap SRV 生成失敗 (mipLevels=%u)", mipLevels);
+        return nullptr;
+    }
+    return srv;
+}
+
+IblTextureSet DX11IblBaker::BakeToTextures(const IblBakeInput& input)
+{
+    IblTextureSet result; // 失敗時は IsValid()==false のまま返す
+
+    BakedCubemaps baked;
+    if (!BakeCore(input, baked)) return result;
+
+    result.envCube             = baked.env;
+    result.envCubeSrv          = baked.envSrv; // BakeCore が GenerateMips 済みの TextureCube SRV
+    result.irradiance          = baked.irradiance;
+    result.prefiltered         = baked.prefiltered;
+    result.prefilteredMipCount = input.prefilteredMipCount;
+
+    // irradiance(1 mip) / prefilter(prefilteredMipCount) の TextureCube SRV を付与する。
+    result.irradianceSrv  = CreateCubeSRV(baked.irradiance.Get(), 1);
+    result.prefilteredSrv = CreateCubeSRV(baked.prefiltered.Get(), input.prefilteredMipCount);
+    if (!result.irradianceSrv || !result.prefilteredSrv)
+        return IblTextureSet{}; // SRV 生成失敗 → 空 set
+
+    return result;
+}
+
+bool DX11IblBaker::EnsureConvolutionResources(const std::string& compiledShadersDir)
+{
+    auto LoadCS = [&](const std::string& name, ComPtr<ID3D11ComputeShader>& cs) -> bool {
+        if (cs) return true; // ロード済み
+        auto blob = LoadBinary(compiledShadersDir + name);
+        if (blob.empty()) return false;
+        if (FAILED(m_device->CreateComputeShader(blob.data(), blob.size(), nullptr, cs.GetAddressOf()))) {
+            FBZZ_LOG_ERROR("DX11IblBaker: 畳み込み CS 生成失敗 [%s]", name.c_str());
+            return false;
+        }
+        return true;
+    };
+
+    if (!LoadCS("IBL.IrradianceConvolution.cs.cso", m_csIrradiance)) return false;
+    if (!LoadCS("IBL.PrefilteredEnvMap.cs.cso",     m_csPrefilter))  return false;
+
+    if (!m_samplerLinearWrap) {
+        D3D11_SAMPLER_DESC sd = {};
+        sd.Filter   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+        sd.MaxLOD   = D3D11_FLOAT32_MAX;
+        m_device->CreateSamplerState(&sd, m_samplerLinearWrap.GetAddressOf());
+    }
+    return true;
+}
+
+IblTextureSet DX11IblBaker::ConvolveCubeToTextures(
+    ID3D11ShaderResourceView* envCubeSRV,
+    const std::string&        compiledShadersDir,
+    uint32_t irradianceSize, uint32_t prefilteredSize,
+    uint32_t prefilteredMipCount, uint32_t sampleCount, uint32_t envMipCount)
+{
+    IblTextureSet result; // 失敗時は IsValid()==false
+
+    if (!envCubeSRV) return result;
+    if (!EnsureConvolutionResources(compiledShadersDir)) return result;
+
+    // 既存の実証済み畳み込みステージを、外部から渡された環境キューブ SRV に対して走らせる。
+    auto irrTex = BakeIrradiance(envCubeSRV, irradianceSize);
+    if (!irrTex) return result;
+    auto preTex = BakePrefiltered(envCubeSRV, prefilteredSize, prefilteredMipCount, sampleCount, envMipCount);
+    if (!preTex) return result;
+
+    result.irradiance          = irrTex;
+    result.prefiltered         = preTex;
+    result.prefilteredMipCount = prefilteredMipCount;
+    result.irradianceSrv       = CreateCubeSRV(irrTex.Get(), 1);
+    result.prefilteredSrv      = CreateCubeSRV(preTex.Get(), prefilteredMipCount);
+    if (!result.irradianceSrv || !result.prefilteredSrv)
+        return IblTextureSet{};
+
+    return result;
+}
+
+bool DX11IblBaker::Bake(
+    const IblBakeInput& input,
+    const std::string&  outputDir,
+    const std::string&  baseName,
+    IblBakeOutput&      output)
+{
+    // 出力ディレクトリ作成 (Compute コア実行前に用意する)
+    std::error_code ec;
+    fs::create_directories(util::StringUtils::ToWide(outputDir), ec);
+
+    // ── Compute コア (Bake / BakeToTextures 共通) ─────────────────────────
+    BakedCubemaps baked;
+    if (!BakeCore(input, baked)) return false;
+
+    // ── DDS 保存 ──────────────────────────────────────────────────────────
     auto makePath = [&](const char* suffix) {
         return outputDir + "/" + baseName + suffix + ".dds";
     };
@@ -146,10 +239,10 @@ bool DX11IblBaker::Bake(
     const std::string prefilterPath = makePath("_prefilter");
     const std::string brdfPath     = makePath("_brdf");
 
-    if (!SaveToDDS(envTex.Get(),       envPath))       return false;
-    if (!SaveToDDS(irrTex.Get(),       irrPath))       return false;
-    if (!SaveToDDS(prefilterTex.Get(), prefilterPath)) return false;
-    if (!SaveToDDS(brdfTex.Get(),      brdfPath))      return false;
+    if (!SaveToDDS(baked.env.Get(),         envPath))       return false;
+    if (!SaveToDDS(baked.irradiance.Get(),  irrPath))       return false;
+    if (!SaveToDDS(baked.prefiltered.Get(), prefilterPath)) return false;
+    if (!SaveToDDS(baked.brdfLut.Get(),     brdfPath))      return false;
 
     output.envCubemapPath      = envPath;
     output.irradiancePath      = irrPath;
