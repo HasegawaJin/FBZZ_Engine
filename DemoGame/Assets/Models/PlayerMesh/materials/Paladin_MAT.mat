@@ -14,7 +14,7 @@ emissiveScale = 0.0
 metallic = 1.0
 normalStrength = 1.0
 occlusionStrength = 1.0
-roughness = 0.30000001192092896
+roughness = 0.009999999776482582
 uvOffset = [ 0.0, 0.0 ]
 uvTiling = [ 1.0, 1.0 ]
 

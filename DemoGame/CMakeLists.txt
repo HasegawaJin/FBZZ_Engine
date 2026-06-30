@@ -57,8 +57,8 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ
 #   ファイルの増減を CMake が自動検知できるよう CONFIGURE_DEPENDS を付ける。
 #   これがないと .cpp 削除後に手動再構成しないと VS プロジェクトが古い参照を残す。
 file(GLOB_RECURSE SCRIPTS_DLL_SOURCES CONFIGURE_DEPENDS
-    Assets/Scripts/*.cpp
-    Assets/Scripts/*.hpp
+    Assets/*.cpp
+    Assets/*.hpp
     Src/Scripts/*.cpp
     Src/Scripts/*.hpp
     Src/DemoGameScriptsDll.cpp

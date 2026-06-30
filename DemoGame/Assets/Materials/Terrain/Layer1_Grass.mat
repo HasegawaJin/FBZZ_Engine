@@ -3,11 +3,11 @@ double_sided = false
 mesh_type = 'surface'
 render_path = 'deferred'
 render_queue = 2000
-shader = ''
+shader = 'Assets/Shaders/Terrain/Terrain.hlsl'
 version = 1
 
 [params]
-ambientOcclusion = 1.0
+ambientOcclusion = 0.15000000596046448
 autoBlendEnabled = 0.0
 autoBlendStrength = 1.0
 autoHeightFade = 1.0
@@ -15,9 +15,9 @@ autoMaxHeight = 10000.0
 autoMaxSlope = 1.0
 autoMinHeight = -10000.0
 autoMinSlope = 0.0
-autoSlopeFade = 0.10000000149011612
+autoSlopeFade = 0.07999999821186066
 normalStrength = 1.0
-roughness = 0.800000011920929
+roughness = 1.0
 tilingX = 8.0
 tilingZ = 8.0
 

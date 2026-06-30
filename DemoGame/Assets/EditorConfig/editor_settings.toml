@@ -4,18 +4,18 @@ icon_size = 84.0
 tree_width = 180.0
 
 [camera]
-last_pos_x = 79.29736328125
-last_pos_y = 1.59134840965271
-last_pos_z = 92.3658218383789
-last_rot_w = 1.0
-last_rot_x = 0.0
-last_rot_y = 0.0
-last_rot_z = 0.0
+last_pos_x = 48.03815460205078
+last_pos_y = 7.968812942504883
+last_pos_z = 92.96784210205078
+last_rot_w = 0.5849137902259827
+last_rot_x = 0.13557574152946472
+last_rot_y = 0.7790312170982361
+last_rot_z = -0.18056973814964294
 sensitivity = 0.15000000596046448
 speed = 5.0
 
 [debug]
-show_colliders = true
+show_colliders = false
 show_decal_bounds = false
 show_nav_sensors = false
 show_navmesh = true
@@ -36,7 +36,7 @@ play_focus_mode = 1
 
 [gizmo]
 mode = 0
-space = 0
+space = 1
 
 [[hotkeys.overrides]]
 alt = false
@@ -79,7 +79,19 @@ generate_tex_descriptors = true
 normal_map_convention = 0
 
 [[inspector_sections.states]]
+k = 33703422
+v = true
+
+[[inspector_sections.states]]
+k = 46885339
+v = false
+
+[[inspector_sections.states]]
 k = 207841467
+v = true
+
+[[inspector_sections.states]]
+k = 216352573
 v = false
 
 [[inspector_sections.states]]
@@ -91,8 +103,20 @@ k = 470314236
 v = false
 
 [[inspector_sections.states]]
+k = 578199146
+v = false
+
+[[inspector_sections.states]]
 k = 594446317
 v = false
+
+[[inspector_sections.states]]
+k = 698235481
+v = false
+
+[[inspector_sections.states]]
+k = 993821142
+v = true
 
 [[inspector_sections.states]]
 k = 1027229573
@@ -100,6 +124,10 @@ v = false
 
 [[inspector_sections.states]]
 k = 1117180271
+v = false
+
+[[inspector_sections.states]]
+k = 1153320595
 v = false
 
 [[inspector_sections.states]]
@@ -115,8 +143,24 @@ k = 1273647749
 v = false
 
 [[inspector_sections.states]]
+k = 1350322057
+v = false
+
+[[inspector_sections.states]]
+k = 1402486072
+v = true
+
+[[inspector_sections.states]]
+k = 1516391339
+v = true
+
+[[inspector_sections.states]]
 k = 1834163253
 v = true
+
+[[inspector_sections.states]]
+k = 1895422460
+v = false
 
 [[inspector_sections.states]]
 k = 1912496907
@@ -124,7 +168,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 1990074492
-v = false
+v = true
 
 [[inspector_sections.states]]
 k = 1994292428
@@ -139,8 +183,28 @@ k = 2100315847
 v = true
 
 [[inspector_sections.states]]
+k = 2146798221
+v = false
+
+[[inspector_sections.states]]
+k = 2154227322
+v = false
+
+[[inspector_sections.states]]
+k = 2284866431
+v = false
+
+[[inspector_sections.states]]
 k = 2298668059
+v = false
+
+[[inspector_sections.states]]
+k = 2414361687
 v = true
+
+[[inspector_sections.states]]
+k = 2440799859
+v = false
 
 [[inspector_sections.states]]
 k = 2473509195
@@ -195,7 +259,27 @@ k = 3240964109
 v = false
 
 [[inspector_sections.states]]
+k = 3444014841
+v = false
+
+[[inspector_sections.states]]
+k = 3502298310
+v = true
+
+[[inspector_sections.states]]
 k = 3599113775
+v = true
+
+[[inspector_sections.states]]
+k = 3862730471
+v = false
+
+[[inspector_sections.states]]
+k = 4037560716
+v = true
+
+[[inspector_sections.states]]
+k = 4067221799
 v = true
 
 [[inspector_sections.states]]
@@ -220,10 +304,10 @@ scale = 0.25
 
 [terrain_tool]
 brush_falloff = 1
-brush_radius = 50.0
-brush_strength = 1.0
-paint_layer = 0
-sculpt_mode = 1
+brush_radius = 9.0
+brush_strength = 0.9430000185966492
+paint_layer = 2
+sculpt_mode = 0
 
 [tools]
 show_detail = false
@@ -236,7 +320,7 @@ scale = 1.0
 
 [view]
 grid_size = 1.0
-show_grid = true
+show_grid = false
 show_light_range = true
 show_skeleton = false
 show_stats = true

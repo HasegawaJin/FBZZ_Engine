@@ -1,5 +1,5 @@
 [app]
-targetFps = 144
+targetFps = 60
 
 [audio]
 bgmVolume = 1.0
@@ -51,7 +51,7 @@ default_scene = 'Assets/Scenes/Main.scene'
 name = 'DemoGame'
 
 [render]
-ambientOcclusion = true
+ambientOcclusion = false
 ambientOcclusionIntensity = 1.0
 bloom = true
 bloomIntensity = 0.8
@@ -85,7 +85,7 @@ fogColor = [ 0.55, 0.65, 0.75 ]
 fogDensity = 0.06
 fogFar = 10.0
 fxaa = true
-gtaoEnabled = false
+gtaoEnabled = true
 gtaoIntensity = 1.0
 gtaoRadius = 1.5
 gtaoSlices = 8
@@ -139,7 +139,7 @@ shadowResolution = 8192
 sharpen = true
 sharpenRadius = 1.0
 sharpenStrength = 0.35
-showColliders = true
+showColliders = false
 showDecalBounds = false
 showSelectionOutline = true
 ssrEnabled = true
