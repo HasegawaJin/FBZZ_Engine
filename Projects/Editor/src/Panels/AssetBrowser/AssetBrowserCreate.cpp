@@ -4,6 +4,7 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/PostProcessAsset.hpp>
 
 namespace fbzz::editor {
@@ -237,6 +238,31 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
         ctx.selectedAssetPath = newPath;
+    }
+
+    // ── Data Asset (純共有 ScriptableObject) ──────────────────────
+    // 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。
+    // WHY: ファイル内容は "type = ..." の 1 行だけにしておき、フィールドの既定値は
+    //      Inspector の初回 Resolve 時に型のフィールド初期化子から補完する。これにより
+    //      Create 側でデフォルト値を二重管理せずに済む。
+    if (ImGui::BeginMenu("Data Asset")) {
+        const auto types = asset::DataAssetFactory::RegisteredTypeNames();
+        if (types.empty())
+            ImGui::TextDisabled("(no DataAsset types registered)");
+        for (const auto& typeName : types) {
+            if (ImGui::MenuItem(typeName.c_str())) {
+                std::string newPath = m_currentPath + "/New " + typeName + ".fzdata";
+                int suffix = 1;
+                while (util::FileSystem::Exists(newPath))
+                    newPath = m_currentPath + "/New " + typeName + " " +
+                        std::to_string(suffix++) + ".fzdata";
+                util::FileSystem::WriteText(newPath, "type = \"" + typeName + "\"\n");
+                RegisterCreatedPath(ctx, newPath);
+                RefreshDirectory();
+                ctx.selectedAssetPath = newPath;
+            }
+        }
+        ImGui::EndMenu();
     }
 
     // ── C++ スクリプト ────────────────────────────────────────────

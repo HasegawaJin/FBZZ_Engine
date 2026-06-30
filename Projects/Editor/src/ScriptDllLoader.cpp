@@ -8,6 +8,8 @@
 #include <Engine/Scene/ScriptDllAbi.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Asset/DataAssetFactory.hpp>
+#include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <chrono>
 #include <filesystem>
@@ -100,6 +102,12 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
 
     scene::ScriptFactory::UnregisterAll();
     FBZZ_LOG_DEBUG("ScriptDllLoader: ScriptFactory unregistered all");
+
+    // DataAsset も DLL コード内に仮想デストラクタ/ファクトリを持つため、FreeLibrary 前に
+    // 共有キャッシュを破棄し型登録をクリアする。次回 Resolve でディスクから遅延再ロードされる。
+    asset::DataAssetRegistry::ClearCache();
+    asset::DataAssetFactory::UnregisterAll();
+    FBZZ_LOG_DEBUG("ScriptDllLoader: DataAsset cache cleared & factory unregistered");
 
     FreeLibrary(m_hDll);
     m_hDll = nullptr;
