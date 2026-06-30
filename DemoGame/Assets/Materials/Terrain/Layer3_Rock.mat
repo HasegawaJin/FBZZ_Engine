@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'surface'
 render_path = 'deferred'
 render_queue = 2000
-shader = ''
+shader = 'Assets/Shaders/Terrain/Terrain.hlsl'
 version = 1
 
 [params]
