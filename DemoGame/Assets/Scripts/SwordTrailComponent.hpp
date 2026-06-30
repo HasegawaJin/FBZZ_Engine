@@ -3,7 +3,9 @@
 // 剣の攻撃区間だけ通常 TrailComponent を有効化して剣筋を描画するスクリプト
 #pragma once
 
+#include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Components/TrailComponent.hpp>
 #include "GameVocab.hpp"
 
 using namespace fbzz::scene;

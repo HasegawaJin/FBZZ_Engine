@@ -6,6 +6,9 @@
 #include <Engine/Scene/Script.hpp>
 #include "GameVocab.hpp"
 #include "HealthComponent.hpp"
+#include "EnemyStats.hpp"
+#include <algorithm>
+#include <cmath>
 
 using namespace fbzz::scene;
 using namespace fbzz::math;
@@ -17,6 +20,11 @@ class EnemyControllerComponent : public Script {
     FBZZ_SCRIPT(EnemyControllerComponent)
 
 public:
+    FBZZ_GROUP("Data")
+    // 共有ステータスアセット。割り当てると OnStart で下記 Movement/Attack 値を上書きする。
+    // 同じ .fzdata を複数の敵が参照すれば、1 か所の編集で全個体のバランスが揃う (ScriptableObject 的運用)。
+    FBZZ_ASSET(EnemyStats, stats, "Stats")
+
     FBZZ_GROUP("Target")
     // WHY: 追跡対象は実行中に出現/再生成されうるため、固定参照ではなくタグで都度探索する。
     FBZZ_FIELD(std::string, targetTag, "Player", "Target Tag")
@@ -47,16 +55,24 @@ public:
     void OnUpdate() override;
 
 private:
+    enum class CombatState {
+        Approach,
+        Block,
+        Attack,
+    };
     GameObject* FindTarget();
     void FaceTarget(const Vector3& direction);
     void MoveTowardTarget(const Vector3& direction, float distance);
     void StopHorizontalMotion();
-    [[nodiscard]] bool TryBlock(const Vector3& direction, float distance);
-    void TryAttack(const Vector3& direction, float distance);
+    void UpdateApproachState(const Vector3& direction, float distance);
+    void UpdateBlockState(const Vector3& direction);
+    void UpdateAttackState(const Vector3& direction, float distance);
+    void ChangeCombatState(CombatState nextState);
     [[nodiscard]] bool IsAttackState() const;
     [[nodiscard]] bool IsTargetSwinging() const;
 
     GameObject* m_target = nullptr;
+    CombatState m_combatState = CombatState::Approach;
     float m_attackTimer = 0.0f;
     float m_attackRequestGrace = 0.0f;
     float m_attackRangeTimer = 0.0f;
@@ -71,6 +87,19 @@ inline void EnemyControllerComponent::OnStart()
 {
     // WHY: Player と同じモデルを流用する Enemy でも、接触で転倒すると追跡方向と見た目が崩れるため回転を固定する。
     physics.SetFreezeRotation(true, true, true);
+
+    // Stats アセットが割り当てられていれば、共有データで個体パラメータを初期化する。
+    // 純共有なので同一 .fzdata を参照する全個体が同じ値になる。未割り当てなら従来の既定値のまま。
+    if (stats) {
+        moveSpeed      = stats->moveSpeed;
+        stopDistance   = stats->stopDistance;
+        attackRange    = stats->attackRange;
+        attackCooldown = stats->attackCooldown;
+        knockbackSpeed = stats->knockbackSpeed;
+        // HP は HealthComponent が保持するため、そちらへ最大 HP を適用して満タン初期化する。
+        if (auto* health = scene.GetScript<HealthComponent>())
+            health->InitHealth(stats->maxHp);
+    }
 }
 
 inline void EnemyControllerComponent::OnUpdate()
@@ -113,12 +142,18 @@ inline void EnemyControllerComponent::OnUpdate()
 
     const float distance = std::sqrtf(distanceSq);
     const Vector3 direction = toTarget / distance;
-    if (TryBlock(direction, distance))
-        return;
-
-    animator.SetBool(paramBlock, false);
-    MoveTowardTarget(direction, distance);
-    TryAttack(direction, distance);
+    switch (m_combatState) {
+    case CombatState::Block:
+        UpdateBlockState(direction);
+        break;
+    case CombatState::Attack:
+        UpdateAttackState(direction, distance);
+        break;
+    case CombatState::Approach:
+    default:
+        UpdateApproachState(direction, distance);
+        break;
+    }
 }
 
 inline GameObject* EnemyControllerComponent::FindTarget()
@@ -174,33 +209,25 @@ inline void EnemyControllerComponent::StopHorizontalMotion()
     physics.SetVelocity(velocity);
 }
 
-inline bool EnemyControllerComponent::TryBlock(const Vector3& direction, float distance)
+inline void EnemyControllerComponent::UpdateApproachState(const Vector3& direction, float distance)
 {
     if (IsAttackState() || m_attackRequestGrace > 0.0f) {
         animator.SetBool(paramBlock, false);
-        return false;
+        ChangeCombatState(CombatState::Attack);
+        return;
     }
 
     if (m_blockTimer <= 0.0f && m_blockCooldownTimer <= 0.0f &&
         distance <= blockRange && IsTargetSwinging()) {
         m_blockTimer = std::max(blockDuration, 0.01f);
         m_blockCooldownTimer = std::max(blockCooldown, m_blockTimer);
+        ChangeCombatState(CombatState::Block);
+        return;
     }
 
-    if (m_blockTimer <= 0.0f) {
-        animator.SetBool(paramBlock, false);
-        return false;
-    }
+    animator.SetBool(paramBlock, false);
+    MoveTowardTarget(direction, distance);
 
-    FaceTarget(direction);
-    StopHorizontalMotion();
-    animator.SetFloat(paramSpeed, 0.0f);
-    animator.SetBool(paramBlock, true);
-    return true;
-}
-
-inline void EnemyControllerComponent::TryAttack(const Vector3& direction, float distance)
-{
     if (animator.IsInState(AnimState::PlayerImpact)) return;
     if (animator.IsInState(AnimState::PlayerHit)) return;
     if (distance > attackRange) {
@@ -215,6 +242,38 @@ inline void EnemyControllerComponent::TryAttack(const Vector3& direction, float 
     m_attackRangeTimer += Time::deltaTime;
     if (m_attackTimer > 0.0f || m_attackRangeTimer < attackWindupDelay) return;
 
+    ChangeCombatState(CombatState::Attack);
+}
+
+inline void EnemyControllerComponent::UpdateBlockState(const Vector3& direction)
+{
+    if (m_blockTimer <= 0.0f) {
+        animator.SetBool(paramBlock, false);
+        ChangeCombatState(CombatState::Approach);
+        return;
+    }
+
+    FaceTarget(direction);
+    StopHorizontalMotion();
+    animator.SetFloat(paramSpeed, 0.0f);
+    animator.SetBool(paramBlock, true);
+}
+
+inline void EnemyControllerComponent::UpdateAttackState(const Vector3& direction, float distance)
+{
+    animator.SetBool(paramBlock, false);
+    StopHorizontalMotion();
+
+    if (IsAttackState() || m_attackRequestGrace > 0.0f) {
+        FaceTarget(direction);
+        return;
+    }
+
+    if (distance > attackRange || m_attackTimer > 0.0f) {
+        ChangeCombatState(CombatState::Approach);
+        return;
+    }
+
     m_attackTimer = std::max(attackCooldown, 0.01f);
     m_attackRangeTimer = 0.0f;
     // WHY: Trigger 発火から AnimatorSystem が Slash_01 へ遷移するまで 1 フレーム遅れるため、その間も移動を止める。
@@ -222,13 +281,30 @@ inline void EnemyControllerComponent::TryAttack(const Vector3& direction, float 
     animator.SetTrigger(paramAttackTrigger);
 
     // WHAT: HealthComponent がまだ無いため、攻撃成立時の物理的な反応として Player を少し押し返す。
-    if (!m_target || knockbackSpeed <= 0.0f) return;
-    if (!physics.HasRigidBody(m_target)) return;
+    if (!m_target || knockbackSpeed <= 0.0f) {
+        ChangeCombatState(CombatState::Approach);
+        return;
+    }
+    if (!physics.HasRigidBody(m_target)) {
+        ChangeCombatState(CombatState::Approach);
+        return;
+    }
 
     Vector3 velocity = physics.GetVelocity(m_target);
     velocity.x += direction.x * knockbackSpeed;
     velocity.z += direction.z * knockbackSpeed;
     physics.SetVelocity(m_target, velocity);
+    ChangeCombatState(CombatState::Approach);
+}
+
+inline void EnemyControllerComponent::ChangeCombatState(CombatState nextState)
+{
+    if (m_combatState == nextState) return;
+    m_combatState = nextState;
+
+    // WHY: State 遷移時に Animator Bool を明示的に落とし、Block と Attack の同時成立を避ける。
+    if (m_combatState != CombatState::Block)
+        animator.SetBool(paramBlock, false);
 }
 
 inline bool EnemyControllerComponent::IsAttackState() const

@@ -81,6 +81,15 @@ public:
     // ── ランタイム API (他スクリプトから呼ぶ) ────────────────────────────────
     void TakeDamage(float amount);
     void Heal(float amount);
+    // 最大 HP を設定し満タンで初期化する (共有ステータスアセット等からの初期化に使う)。
+    // WHY: maxHealth(public) を書き換えるだけだと、HealthComponent::OnStart の方が後に走った場合は
+    //      m_current = maxHealth で上書きされて整合するが、先に走った場合は現在値が旧 max のまま残る。
+    //      ここで maxHealth と m_current を両方更新することで OnStart の実行順に依存せず正しく反映する。
+    void InitHealth(float newMaxHealth) {
+        maxHealth = std::max(1.0f, newMaxHealth);
+        m_current = maxHealth;
+        RefreshBar(); // UI 未生成 (m_fill==nullptr) の間は内部でスキップされる
+    }
     [[nodiscard]] bool  IsDead() const { return m_dead; }
     [[nodiscard]] float HealthRatio() const {
         return maxHealth > 0.0f ? std::clamp(m_current / maxHealth, 0.0f, 1.0f) : 0.0f;

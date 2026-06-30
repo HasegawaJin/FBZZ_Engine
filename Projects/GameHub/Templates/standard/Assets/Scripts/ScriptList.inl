@@ -14,8 +14,7 @@
 //     #include "Scripts/ScriptList.inl"
 //     #undef FBZZ_SCRIPT_ENTRY
 //
-// エントリを追加するには Editor の "Create → C++ Script..." を使うこと。
-// ScriptCodeGen は @@FBZZ_SCRIPT_ENTRIES_BEGIN/END マーカーを認識して自動追記する。
+// ScriptCodeGen は Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンして、この範囲を自動同期する。
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 FBZZ_SCRIPT_ENTRY(sandbox, PlayerControllerComponent)

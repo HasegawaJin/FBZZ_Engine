@@ -11,8 +11,8 @@
 //
 // スクリプト追加手順:
 //   1. Assets/Scripts/ に Xxx.hpp を作成 (Script 継承、TYPE_NAME 定義)
-//   2. @@FBZZ_SCRIPT_INCLUDES_BEGIN の直後に #include "Scripts/Xxx.hpp" を追加
-//   3. Assets/Scripts/ScriptList.inl に FBZZ_SCRIPT_ENTRY(ns, Xxx) を追加
+//   2. @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の include を同期
+//   3. Assets/Scripts/ScriptList.inl の FBZZ_SCRIPT_ENTRY(ns, Xxx) を同期
 //   → Editor の AssetBrowser から "Create → C++ Script..." でも自動生成できる
 
 // WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。
@@ -21,25 +21,35 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptDllAbi.hpp>
+#include <Engine/Asset/DataAssetFactory.hpp>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// WHY: 新方式のスクリプトは実装を inline 化したため、_IMPL ガードや専用 .cpp は不要。
-//      ヘッダを include するだけで実装がこの TU に取り込まれる (複数 TU でも ODR 安全)。
+#include "Scripts/AttackHitboxComponent.hpp"
 #include "Scripts/EnemyControllerComponent.hpp"
+#include "Scripts/EnemySpawnerComponent.hpp"
+#include "Scripts/EnemyStats.hpp"
+#include "Scripts/HealthComponent.hpp"
+#include "Scripts/HitBloodEffectComponent.hpp"
 #include "Scripts/PlayerControllerComponent.hpp"
 #include "Scripts/PlayerIKComponent.hpp"
-#include "Scripts/TpsCameraComponent.hpp"
 #include "Scripts/SceneManagerScript.hpp"
 #include "Scripts/SwordParticleComponent.hpp"
-#include "Scripts/HitBloodEffectComponent.hpp"
 #include "Scripts/SwordTrailComponent.hpp"
-#include "Scripts/AttackHitboxComponent.hpp"
-#include "Scripts/HealthComponent.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
+
+// DataAsset 型を DataAssetFactory へ直接自己登録する。
+// WHY: DataAssetFactory は shared runtime (fbzz_engine) 側の静的レジストリ。Script のファクトリが
+//      ホストへ callback 渡しなのと異なり、DataAsset はエディタ専用のデータ定義であり「任意の実行時
+//      振る舞い」を持ち込まないため、DLL の静的初期化から直接登録してよい (境界がデータに限定される)。
+//      ホットリロード時は ClearCache/UnregisterAll 後、再ロードでこの初期化子が再登録する。
+#define FBZZ_DATA_ASSET_ENTRY(ns, T) FBZZ_REGISTER_DATA_ASSET(::ns::T)
+#include "Scripts/DataAssetList.inl"
+#undef FBZZ_DATA_ASSET_ENTRY
 
 #ifdef GAMESCRIPTS_EXPORTS
 #  define GAMESCRIPTS_API __declspec(dllexport)
