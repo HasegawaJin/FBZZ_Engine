@@ -63,6 +63,10 @@ public:
     // オフスクリーン RT に切り替える (nullptr でバックバッファに戻す)
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
 
+    // キューブマップ RT の 1 面 (+mip) を描画先にバインドする (SkyCapture 用)
+    void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
+                             uint32_t mip, ResourceManager& resources) override;
+
     // スロット番号に対応するサンプラープリセットをバインドする
     void SetSampler(uint32_t slot, SamplerMode mode) override;
 
@@ -84,6 +88,13 @@ public:
         return std::make_unique<DX11IblBaker>(m_device.Get(), m_context.Get());
     }
 
+    // 空連動 IBL: キャプチャ済みキューブを irradiance / prefilter へ畳み込む runtime 経路
+    bool BakeSkyLight(ResourceHandle<RenderTargetTag> envCubeRT, ResourceManager& resources,
+                      uint32_t irradianceSize, uint32_t prefilterSize,
+                      uint32_t prefilterMips, uint32_t sampleCount,
+                      std::unique_ptr<ITexture>& outIrradiance,
+                      std::unique_ptr<ITexture>& outPrefilter) override;
+
     // DX11Buffer 等の DX11 サブシステムが Init 時にデバイスを必要とする場合に使用
     ID3D11Device*        GetDevice()       const { return m_device.Get(); }
     ID3D11DeviceContext* GetDeviceContext() const { return m_context.Get(); }
@@ -103,6 +114,8 @@ private:
         RenderTargetTextureKind kind) override;
     std::unique_ptr<IPipelineState>  CreateNativePipelineState(const PipelineStateDesc& desc) override;
     std::unique_ptr<IRenderTarget>   CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) override;
+    std::unique_ptr<IRenderTarget>   CreateNativeCubemapRenderTarget(uint32_t size, uint32_t mipCount) override;
+    std::unique_ptr<ITexture>        CreateNativeCubeTextureFromRenderTarget(IRenderTarget& rt) override;
     std::unique_ptr<ITexture>           CreateNativeComputeTexture(uint32_t width, uint32_t height) override;
     std::unique_ptr<IStructuredBuffer>  CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
     std::unique_ptr<IStructuredBuffer>  CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) override;
@@ -155,6 +168,9 @@ private:
 
     // 現在バインド中のオフスクリーン RT (nullptr = バックバッファ)
     DX11RenderTarget* m_currentRT = nullptr;
+
+    // 空連動 IBL の runtime 畳み込み用ベイカー (初回 BakeSkyLight で遅延生成)。
+    std::unique_ptr<DX11IblBaker> m_runtimeIblBaker;
 
     uint32_t m_width  = 0;
     uint32_t m_height = 0;

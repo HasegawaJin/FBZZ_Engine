@@ -25,6 +25,80 @@ namespace fbzz::renderer
 
 namespace {
 
+bool FileExistsWide(const std::wstring& path)
+{
+    const DWORD attrs = GetFileAttributesW(path.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+std::wstring JoinWidePath(const std::wstring& lhs, const std::wstring& rhs)
+{
+    if (lhs.empty()) return rhs;
+    const wchar_t tail = lhs.back();
+    if (tail == L'/' || tail == L'\\') return lhs + rhs;
+    return lhs + L"/" + rhs;
+}
+
+// 相対アセットパスをカレントディレクトリから上方向に探索して実ファイルへ解決する。
+// WHY: Editor / Standalone の起動場所が build/development/... の場合でも、
+//      "Assets/Shaders/..." のようなリポジトリルート相対パスを D3DCompileFromFile が開けるようにする。
+std::wstring ResolveReadablePath(const std::string& path)
+{
+    std::wstring requested = util::StringUtils::ToWide(path);
+    if (FileExistsWide(requested))
+        return requested;
+
+    if (requested.size() > 1 && requested[1] == L':')
+        return requested;
+
+    wchar_t cwdBuffer[MAX_PATH]{};
+    const DWORD len = GetCurrentDirectoryW(MAX_PATH, cwdBuffer);
+    if (len == 0 || len >= MAX_PATH)
+        return requested;
+
+    std::wstring current(cwdBuffer);
+    for (;;) {
+        const std::wstring candidate = JoinWidePath(current, requested);
+        if (FileExistsWide(candidate))
+            return candidate;
+
+        const size_t slash = current.find_last_of(L"/\\");
+        if (slash == std::wstring::npos)
+            break;
+        current = current.substr(0, slash);
+    }
+
+    return requested;
+}
+
+std::string NarrowSlashes(std::wstring path)
+{
+    std::string out = util::StringUtils::ToNarrow(path);
+    for (char& c : out) if (c == '\\') c = '/';
+    return out;
+}
+
+std::wstring ResolveWritableCsoPath(const std::string& csoSavePath, const std::string& resolvedHlslPath)
+{
+    std::string normalizedCso = csoSavePath;
+    for (char& c : normalizedCso) if (c == '\\') c = '/';
+    if (normalizedCso.size() > 1 && normalizedCso[1] == ':')
+        return util::StringUtils::ToWide(normalizedCso);
+
+    std::string normalizedHlsl = resolvedHlslPath;
+    for (char& c : normalizedHlsl) if (c == '\\') c = '/';
+    std::string lowerHlsl = normalizedHlsl;
+    std::transform(lowerHlsl.begin(), lowerHlsl.end(), lowerHlsl.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    const std::string anchor = "assets/shaders/";
+    const size_t a = lowerHlsl.find(anchor);
+    if (a != std::string::npos)
+        return util::StringUtils::ToWide(normalizedHlsl.substr(0, a) + normalizedCso);
+
+    return util::StringUtils::ToWide(normalizedCso);
+}
+
 // HLSL の #include を解決する include ハンドラ。
 // WHY: D3D_COMPILE_STANDARD_FILE_INCLUDE はファイル相対でしか探さないため、
 //      "PostProcess/Motion/" にあるシェーダーが "Common/Constants.hlsli" を
@@ -109,7 +183,8 @@ std::vector<uint8_t> CompileHlslToBlob(
     const std::string& csoSavePath)
 {
     // hlslPath から shaders/ アンカーより前を shaders ルートとする
-    std::string norm = hlslPath;
+    const std::wstring resolvedHlslWide = ResolveReadablePath(hlslPath);
+    std::string norm = NarrowSlashes(resolvedHlslWide);
     for (char& c : norm) if (c == '\\') c = '/';
     std::string lower = norm;
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return (char)std::tolower(c); });
@@ -135,7 +210,7 @@ std::vector<uint8_t> CompileHlslToBlob(
 #endif
 
     const HRESULT hr = D3DCompileFromFile(
-        util::StringUtils::ToWide(hlslPath).c_str(),
+        resolvedHlslWide.c_str(),
         nullptr,
         &includeHandler,
         entryPoint.c_str(),
@@ -160,7 +235,7 @@ std::vector<uint8_t> CompileHlslToBlob(
     if (!csoSavePath.empty())
     {
         // 保存先ディレクトリを作成 (失敗しても続行)
-        const std::wstring wCso = util::StringUtils::ToWide(csoSavePath);
+        const std::wstring wCso = ResolveWritableCsoPath(csoSavePath, norm);
         const size_t slash = wCso.find_last_of(L"/\\");
         if (slash != std::wstring::npos)
             CreateDirectoryW(wCso.substr(0, slash).c_str(), nullptr);

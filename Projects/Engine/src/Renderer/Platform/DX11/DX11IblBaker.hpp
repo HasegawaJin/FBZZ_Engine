@@ -18,6 +18,23 @@
 
 namespace fbzz::renderer {
 
+// IblTextureSet — BakeToTextures() の結果。GPU 常駐の IBL キューブマップ群 (DDS を経由しない)。
+// WHY: 空連動 IBL では数フレームごとにベイクし直すため、DDS への書き出し/再ロードを避け、
+//      GPU テクスチャと TextureCube SRV をそのまま保持して各 Lit パスへ供給する。
+// 注意: 本構造体は ID3D11* を含むため DX11 プラットフォーム層に閉じている。上位の抽象 SkyLightBake
+//       パスへ渡す際は別途 ResourceManager 登録経路を設ける (環境システム設計 §6 Phase A 続き)。
+struct IblTextureSet {
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>          envCube;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> envCubeSrv;       // TextureCube SRV (全 mip)
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>          irradiance;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> irradianceSrv;    // TextureCube SRV
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>          prefiltered;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> prefilteredSrv;   // TextureCube SRV (全 mip)
+    uint32_t                                         prefilteredMipCount = 0;
+
+    bool IsValid() const { return irradianceSrv && prefilteredSrv; }
+};
+
 class DX11IblBaker final : public IIblBaker {
 public:
     DX11IblBaker(ID3D11Device* device, ID3D11DeviceContext* context);
@@ -28,7 +45,48 @@ public:
         const std::string&  baseName,
         IblBakeOutput&      output) override;
 
+    // BakeToTextures — Bake() と同一の Compute コアで IBL を焼き、DDS を書かず
+    // GPU 常駐テクスチャ (+TextureCube SRV) として返す実行時ベイク経路。
+    // WHY: 空連動 IBL のように毎フレーム/数フレームごとに焼き直す用途で、ファイル I/O を避ける。
+    //      Bake() と BakeToTextures() は BakeCore() を共有し、出力先 (DDS / GPU テクスチャ) だけが異なる。
+    // 失敗時は IsValid()==false の空 set を返す。
+    [[nodiscard]] IblTextureSet BakeToTextures(const IblBakeInput& input);
+
+    // ConvolveCubeToTextures — 既存の環境キューブ SRV (例: 実行時にキャプチャした空) を直接
+    // irradiance / prefilter キューブへ畳み込む。Equirect アップロード/環境生成を経由しない runtime 経路。
+    // compiledShadersDir: 畳み込み CSO のあるディレクトリ (末尾 "/")。畳み込み CS は初回に遅延ロードする。
+    // envMipCount: 入力キューブの mip 数 (prefilter の env LOD 参照用。mip0 のみなら 1)。
+    // 失敗時は IsValid()==false の空 set を返す。
+    [[nodiscard]] IblTextureSet ConvolveCubeToTextures(
+        ID3D11ShaderResourceView* envCubeSRV,
+        const std::string&        compiledShadersDir,
+        uint32_t irradianceSize, uint32_t prefilteredSize,
+        uint32_t prefilteredMipCount, uint32_t sampleCount, uint32_t envMipCount);
+
 private:
+    // 畳み込み CS (irradiance / prefilter) とサンプラーを遅延ロードする (runtime 経路用)。
+    bool EnsureConvolutionResources(const std::string& compiledShadersDir);
+
+    // BakedCubemaps — BakeCore() が生成する中間 GPU テクスチャ群。
+    // Bake() はこれを DDS 保存し、BakeToTextures() は SRV を付けて返す。
+    struct BakedCubemaps {
+        Microsoft::WRL::ComPtr<ID3D11Texture2D>          env;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> envSrv;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D>          irradiance;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D>          prefiltered;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D>          brdfLut;
+        uint32_t                                         envMipCount = 0;
+    };
+
+    // BakeCore — 入力検証 → Equirect アップロード → Env / Irradiance / Prefilter / BRDF の
+    // 全 Compute ステージを実行する共通コア。DDS 保存と GPU 直書きの両経路が共有する。
+    [[nodiscard]] bool BakeCore(const IblBakeInput& input, BakedCubemaps& out);
+
+    // 焼いたキューブマップ Texture2DArray に対する TextureCube SRV を作成する。
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> CreateCubeSRV(
+        ID3D11Texture2D* tex, uint32_t mipLevels);
+
+
     // ── CB レイアウト (HLSL 側と厳密に一致させる) ──────────────────────────
 
     // EquirectToCubemap / IrradianceConvolution 共通

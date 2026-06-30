@@ -65,6 +65,13 @@ public:
     virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
     virtual void ClearDepth(float depth = 1.0f) = 0;
 
+    // SetRenderTargetFace — キューブマップ RT の 1 面 (+mip) を描画先にバインドする。
+    // WHY: 空連動 IBL の SkyCapture が、空ドームを 6 面それぞれの向きで描き込むために使う。
+    //      DX11 以外のバックエンドは未対応 (no-op)。CreateCubemapRenderTarget で作った RT 以外を
+    //      渡した場合の挙動は実装依存 (DX11 は何もしない)。
+    virtual void SetRenderTargetFace(ResourceHandle<RenderTargetTag> /*rt*/, uint32_t /*face*/,
+                                     uint32_t /*mip*/, ResourceManager& /*resources*/) {}
+
     virtual void SetSampler(uint32_t slot, SamplerMode mode) = 0;
 
     // GPU プロファイリング。DX11Renderer のみ実装し、他バックエンドは no-op。
@@ -81,6 +88,17 @@ public:
         static const std::vector<GpuPassProfile> s_empty;
         return s_empty;
     }
+
+    // BakeSkyLight — キャプチャ済み空キューブマップ (envCubeRT) を irradiance / prefilter キューブへ
+    // 畳み込み、それぞれを ITexture (TextureCube SRV) として返す。空連動 IBL の runtime 畳み込み経路。
+    // WHY: 畳み込み Compute は DX11 固有 (面ごとの Texture2DArray UAV) のため、抽象 IRenderer の入口だけ
+    //      提供し実装は DX11 に閉じる。返した ITexture は呼び出し側が ResourceManager::RegisterTexture で所有する。
+    //      DX11 以外のバックエンドは未対応 (false)。
+    virtual bool BakeSkyLight(ResourceHandle<RenderTargetTag> /*envCubeRT*/, ResourceManager& /*resources*/,
+                              uint32_t /*irradianceSize*/, uint32_t /*prefilterSize*/,
+                              uint32_t /*prefilterMips*/, uint32_t /*sampleCount*/,
+                              std::unique_ptr<ITexture>& /*outIrradiance*/,
+                              std::unique_ptr<ITexture>& /*outPrefilter*/) { return false; }
 
     // IBL ベイク処理の実装を返す (Editor 専用)。
     // DX11Renderer は DX11IblBaker を返す。他のバックエンドは nullptr を返してよい。
@@ -105,6 +123,10 @@ private:
         RenderTargetTextureKind kind) = 0;
     virtual std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc& desc) = 0;
     virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount) = 0;
+    // 6 面キューブマップ描画先。未対応バックエンドは nullptr を返してよい (DX11 のみ実装)。
+    virtual std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t /*size*/, uint32_t /*mipCount*/) { return nullptr; }
+    // キューブマップ RT の TextureCube SRV を ITexture 化する (TextureTag として束縛可能にする)。
+    virtual std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget& /*rt*/) { return nullptr; }
     virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
