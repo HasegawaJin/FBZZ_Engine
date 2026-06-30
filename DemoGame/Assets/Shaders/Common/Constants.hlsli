@@ -160,6 +160,13 @@ cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)
     float  atmosphereRadius;
     float  sunIntensity;
     float  mieG;
+    // 月 (Phase B) — C++ AtmosphereCB と一致。
+    float  moonEnabled;     // 0/1
+    float  moonSize;
+    float  moonBrightness;
+    float  _moonPad0;
+    float3 moonColor;
+    float  _moonPad1;
 };
 
 // AdvancedGraphicsConstants — IBL・SSR・TAA・GTAO・Contact Shadow 等の詳細グラフィクス設定。

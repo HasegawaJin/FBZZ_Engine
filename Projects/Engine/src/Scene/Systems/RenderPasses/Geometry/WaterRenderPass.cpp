@@ -314,6 +314,36 @@ inline std::string WGetTex(const asset::MaterialAsset* m, const char* name)
     return {};
 }
 
+renderer::ResourceHandle<renderer::TextureTag> GetProceduralRiverFlowMap(renderer::ResourceManager& resources)
+{
+    // WHAT: 外部 flowMap が未設定でも River プリセットが動くよう、川方向の簡易 FlowMap を生成する。
+    // WHY: アーティスト製フローマップが揃う前の段階でも Phase D の水流シェーダー挙動を確認できる。
+    static renderer::ResourceHandle<renderer::TextureTag> s_flowMap;
+    static uint64_t s_resetVersion = 0;
+    if (s_flowMap.IsValid() && s_resetVersion == resources.GetResetVersion())
+        return s_flowMap;
+
+    constexpr uint32_t size = 128;
+    std::vector<uint8_t> pixels(static_cast<size_t>(size) * static_cast<size_t>(size) * 4u, 255u);
+    for (uint32_t y = 0; y < size; ++y) {
+        for (uint32_t x = 0; x < size; ++x) {
+            const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(size);
+            const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(size);
+            const float meander = std::sin(v * math::TWO_PI * 3.0f + std::sin(u * math::TWO_PI * 2.0f) * 0.7f);
+            const math::Vector2 flow = math::Vector2(0.92f, meander * 0.26f).Normalized();
+            const size_t p = (static_cast<size_t>(y) * size + x) * 4u;
+            pixels[p + 0] = static_cast<uint8_t>(math::Clamp01(flow.x * 0.5f + 0.5f) * 255.0f);
+            pixels[p + 1] = static_cast<uint8_t>(math::Clamp01(flow.y * 0.5f + 0.5f) * 255.0f);
+            pixels[p + 2] = 0u;
+            pixels[p + 3] = 255u;
+        }
+    }
+
+    s_flowMap = resources.CreateTexture(pixels.data(), size, size);
+    s_resetVersion = resources.GetResetVersion();
+    return s_flowMap;
+}
+
 WaterTextures BuildTextureSet(
     const asset::MaterialAsset* mat,
     const WaterComponent& water,
@@ -340,9 +370,9 @@ WaterTextures BuildTextureSet(
     textures.foamTex    = foamTexPath.empty()    ? white      : resources.LoadTexture(foamTexPath);
     textures.foamMask   = BuildFoamMask(scene, water, waterTransform, foamThreshold, foamFade, resources);
     textures.envTex     = envCubemapPath.empty() ? black      : resources.LoadTexture(envCubemapPath);
-    textures.flowMap    = (!enableFlow || flowMapPath.empty())
+    textures.flowMap    = !enableFlow
         ? neutralFlow
-        : resources.LoadTexture(flowMapPath);
+        : (flowMapPath.empty() ? GetProceduralRiverFlowMap(resources) : resources.LoadTexture(flowMapPath));
     return textures;
 }
 

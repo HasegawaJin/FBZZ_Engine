@@ -98,8 +98,15 @@ cbuffer ShadowConstants : register(CB_SHADOW)
     float    shadowBias;
     float    shadowStrength;   // 0=影なし, 1=完全な影
     int      shadowPcfRadius;  // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
-    float    _shadowPcfPad[3];
+    float    cloudShadowStrength;
+    float    cloudShadowCoverage;
+    float    cloudShadowScale;
+    float    cloudShadowSpeed;
+    float    cloudShadowTime;
+    float    cloudShadowWindX;
+    float    cloudShadowWindZ;
 };
+#define HAVE_CLOUD_SHADOW 1
 
 // WHY: LightConstants の ambientColor グローバルを参照するため cbuffer 宣言の後に include する。
 #include "Rendering/Lighting.hlsli"
@@ -173,8 +180,11 @@ float3 BlendTerrainNormal(float3 worldTangent, float3 geometricNormal, float2 uv
 {
     // TBN を頂点シェーダーから受け取ったタンジェントで構築する。
     // DDX/DDY による画面空間微分を廃止し、ピクセルシェーダーの計算コストを削減する。
-    float3 T = normalize(worldTangent);
-    float3 B = normalize(cross(geometricNormal, T));
+    // Gram-Schmidt 直交化: 補間後の worldTangent は法線と厳密には直交しないため、
+    // 法線成分を除去してから TBN を組む。これを怠ると法線マップが斜めに歪む。
+    float3 Ng = normalize(geometricNormal);
+    float3 T  = normalize(worldTangent - Ng * dot(Ng, worldTangent));
+    float3 B  = normalize(cross(Ng, T));
 
     float3 blended = float3(0.0f, 0.0f, 0.0f);
     [unroll]
@@ -184,7 +194,7 @@ float3 BlendTerrainNormal(float3 worldTangent, float3 geometricNormal, float2 uv
         float3 tn = g_normal[i].Sample(g_sampler, tiledUV).xyz * 2.0f - 1.0f;
         tn.xy *= layerNormalStrength[i];
         tn = normalize(tn);
-        blended += normalize(T * tn.x + B * tn.y + geometricNormal * tn.z) * splat[i];
+        blended += normalize(T * tn.x + B * tn.y + Ng * tn.z) * splat[i];
     }
     return normalize(blended);
 }
@@ -285,8 +295,13 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
         lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
 
-    float3 result = Lighting_BlinnPhong(
-        N, V, L, albedo, roughness, lightColor, lightIntensity, shadow);
+    // AO は間接光（環境光）成分のみを遮蔽する物理的に正しい扱いにする。
+    // WHY: 以前は最終結果全体に AO を乗算しており、直射日光やポイントライトまで
+    //      谷地形で不自然に暗くなっていた。ambient を分離し AO はそこだけに掛ける。
+    float3 ambient = albedo * ambientColor * ao;
+    float3 direct  = Lighting_BlinnPhong_Direct(
+        N, V, L, albedo, roughness, lightColor, lightIntensity) * shadow;
+    float3 result  = ambient + direct;
 
     [loop]
     for (int pi = 0; pi < pointLightCount; ++pi)
@@ -312,9 +327,6 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
             N, V, Ls, albedo, roughness,
             spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
-
-    // AO は直接光を完全に消さず、地形の谷・泥・岩陰の環境光成分を中心に抑える。
-    result *= lerp(0.35f + ao * 0.65f, 1.0f, saturate(dot(N, L)));
 
     return float4(result, 1.0f);
 }

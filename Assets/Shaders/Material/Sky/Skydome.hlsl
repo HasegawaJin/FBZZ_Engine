@@ -1,11 +1,10 @@
 // FBZZ Engine
 // Skydome.hlsl | Material/Sky
-// Rayleigh + Mie 大気散乱 + FBM 手続き型雲
+// Rayleigh + Mie 大気散乱によるスカイドーム
 
 #include "Common/Constants.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Atmosphere.hlsli"
-#include "Rendering/Cloud.hlsli"
 #include "Rendering/ToneMap.hlsli"
 
 struct SkyVSInput
@@ -43,18 +42,14 @@ float4 PSMain(SkyPSInput p) : SV_Target0
         ray, sunDir,
         rayleighScattering, mieScattering, mieG,
         scaled);
-    sky += SunDisk(ray, sunDir, scaled);
 
     // lightColor で空全体をティント (月光なら青白く、夕焼けなら橙色になる)
     sky *= lightColor;
 
-    // 雲レイヤー (地平線より上のみサンプル)
-    if (ray.y > 0.0f)
-    {
-        float4 cloud = ComputeCloud(ray, sunDir, sky, time, scaled);
-        sky = lerp(sky, cloud.rgb, cloud.a);
-    }
-
-    sky = ToneMap_ACES(sky * exposure);
-    return float4(sky, 1.0f);
+    // スカイは HDR シーンバッファ (TEX_GBUFFER0) へ描画され、露出 → ACES → sRGB の最終変換は
+    // Composite パスの FinalOutput が一括で行う。ここで重ねて ToneMap_ACES / exposure を掛けると
+    // 二重トーンマップになり、(1) 太陽ディスクが [0,1] に早期クランプされてブルームが乗らない、
+    // (2) Water が g_sceneColor から読む HDR 反射・屈折色が圧縮済みになって不正、という不具合が起きる。
+    // よってここではリニア HDR のまま出力し、トーンマップは Composite に一任する。
+    return float4(max(sky, 0.0f), 1.0f);
 }

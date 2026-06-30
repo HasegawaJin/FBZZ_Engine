@@ -5,6 +5,27 @@
 #define SHADOW_HLSLI
 
 #include "Common/Space.hlsli"
+#include "Rendering/CloudShadow.hlsli"
+
+// 雲シャドウ (Phase C) フィールドを宣言しないシェーダー (Terrain/Water 等インライン ShadowConstants) 向け
+// フォールバック。Constants.hlsli が HAVE_CLOUD_SHADOW を立てたシェーダーは本ブロックを飛ばし CB から読む。
+#ifndef HAVE_CLOUD_SHADOW
+static const float cloudShadowStrength = 0.0f; // 無効
+static const float cloudShadowCoverage = 0.5f;
+static const float cloudShadowScale    = 0.02f;
+static const float cloudShadowSpeed    = 1.0f;
+static const float cloudShadowTime     = 0.0f;
+static const float cloudShadowWindX    = 1.0f;
+static const float cloudShadowWindZ    = 0.3f;
+#endif
+
+// 現在のフラグメントに乗せる雲影透過率 (worldPos.xz から)。strength=0 のとき 1.0。
+float SampleCloudShadow(float3 worldPos)
+{
+    return CloudShadowFactor(worldPos.xz, cloudShadowStrength, cloudShadowCoverage,
+                             cloudShadowScale, float2(cloudShadowWindX, cloudShadowWindZ),
+                             cloudShadowSpeed, cloudShadowTime);
+}
 
 // AdvancedGraphicsConstants(b8) を宣言していないシェーダー向けフォールバック。
 // WHY: HLSL コンパイラはエントリポイントから到達できない関数でも全ボディを検証するため、
@@ -60,13 +81,16 @@ float ComputeShadow(Texture2D<float> shadowMap,
                     float2 texelSize, float bias,
                     float3 N, float3 L)
 {
+    // 雲影は頭上の雲によるもので、シャドウマップ (直接遮蔽) とは独立。錐台外でも乗せる。
+    float cloud = SampleCloudShadow(worldPos);
+
     float2 uv;
     float  depth;
     WorldToShadowUV(worldPos, lightVP, uv, depth);
 
-    // ライト錐台の外は影なし
+    // ライト錐台の外は直接影なし (ただし雲影は乗せる)
     if (any(uv < 0.0f) || any(uv > 1.0f))
-        return 1.0f;
+        return cloud;
 
     // スロープスケールバイアス: 斜め面で tan(theta) に比例してバイアスを増やす
     float NdotL        = saturate(dot(N, L));
@@ -76,7 +100,7 @@ float ComputeShadow(Texture2D<float> shadowMap,
     // shadowPcfRadius は ShadowConstants cbuffer から参照。全シェーダー共通で Inspector から制御可能。
     float factor = SampleShadowPCF(shadowMap, shadowSampler, uv, depth - adjustedBias, texelSize, shadowPcfRadius);
     // shadowStrength: 1=完全な影, 0=影なし。factor=0(影) の時に (1-strength) を最小値とする。
-    return lerp(1.0f - shadowStrength, 1.0f, factor);
+    return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
 }
 
 
@@ -179,20 +203,23 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
                         float3                 N,
                         float3                 L)
 {
-    // pcssEnabled == 0 なら通常 PCF にフォールバック (パフォーマンス優先モード)
+    // pcssEnabled == 0 なら通常 PCF にフォールバック (ComputeShadow 側で雲影も適用される)
     if (pcssEnabled == 0)
     {
         return ComputeShadow(shadowMap, shadowSampler, worldPos, lightVP, texelSize, bias, N, L);
     }
+
+    // 雲影 (頭上の雲・直接遮蔽とは独立)。全 return 経路に乗せる。
+    float cloud = SampleCloudShadow(worldPos);
 
     // UV / 深度の取得
     float2 uv;
     float  receiverDepth;
     WorldToShadowUV(worldPos, lightVP, uv, receiverDepth);
 
-    // ライト錐台外は照らされている
+    // ライト錐台外は直接影なし (雲影は乗せる)
     if (any(uv < 0.0f) || any(uv > 1.0f))
-        return 1.0f;
+        return cloud;
 
     // スロープスケールバイアスで Self-Shadow アクネを防ぐ
     float NdotL        = saturate(dot(N, L));
@@ -206,9 +233,9 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
     float avgBlocker   = FindBlockerDepth(shadowMap, pointSampler,
                                           uv, receiverDepth, texelSize, searchRadius);
 
-    // ブロッカーなし = 完全照射
+    // ブロッカーなし = 直接照射 (雲影は乗せる)
     if (avgBlocker < 0.0f)
-        return 1.0f;
+        return cloud;
 
     // ---- ステップ 2: 半影幅の推定 ----
     // 受光点の深度とブロッカー深度の差が大きいほど半影が広がる
@@ -222,7 +249,7 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
     // ---- ステップ 3: 可変カーネル PCF ----
     float factor = SampleShadowPCF(shadowMap, shadowSampler, uv, receiverDepth, texelSize, pcfRadius);
 
-    return lerp(1.0f - shadowStrength, 1.0f, factor);
+    return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
 }
 
 #endif // SHADOW_HLSLI

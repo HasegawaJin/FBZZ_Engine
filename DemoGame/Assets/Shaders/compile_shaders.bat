@@ -29,6 +29,7 @@ REM Terrain
 REM =========================================================================
 
 call :CompileVSPS Terrain\Terrain.hlsl Terrain.Terrain || goto :error
+call :CompileVSPS Terrain\TerrainGBuffer.hlsl Terrain.TerrainGBuffer || goto :error
 
 REM =========================================================================
 REM Water
@@ -40,10 +41,13 @@ REM Terrain Detail
 
 call :CompileVSPS Detail\Detail.hlsl Detail.Detail || goto :error
 call :CompileVSPS Detail\DetailGrass.hlsl Detail.DetailGrass || goto :error
+call :CompileVSPS Detail\DetailGBuffer.hlsl Detail.DetailGBuffer || goto :error
+call :CompileVSPS Detail\DetailGrassGBuffer.hlsl Detail.DetailGrassGBuffer || goto :error
 
 REM Foliage
 
 call :CompileVSPS Foliage\Foliage.hlsl Foliage.Foliage || goto :error
+call :CompileVSPS Foliage\FoliageGBuffer.hlsl Foliage.FoliageGBuffer || goto :error
 
 REM =========================================================================
 REM Debug
@@ -87,6 +91,7 @@ call :CompileVSPS Material\Effects\MeshTrail.hlsl Material.Effects.MeshTrail || 
 call :CompileVSPS Material\Effects\SkinnedMeshTrail.hlsl Material.Effects.SkinnedMeshTrail || goto :error
 call :CompileVSPS Material\Sky\Skybox.hlsl Material.Sky.Skybox || goto :error
 call :CompileVSPS Material\Sky\Skydome.hlsl Material.Sky.Skydome || goto :error
+call :CompileVSPS Material\Sky\SunMoon.hlsl Material.Sky.SunMoon || goto :error
 call :CompileVSPS Material\Decal\Decal.hlsl     Material.Decal.Decal     || goto :error
 call :CompileVSPS Material\Decal\DecalMask.hlsl Material.Decal.DecalMask || goto :error
 
@@ -121,6 +126,9 @@ call :CompileCS PostProcess\Bloom\BloomUpsample.cs.hlsl PostProcess.Bloom.BloomU
 call :CompileVSPS PostProcess\Color\CopyColor.hlsl PostProcess.Color.CopyColor || goto :error
 call :CompileVSPS PostProcess\Color\Composite.hlsl PostProcess.Color.Composite || goto :error
 call :CompileVSPS PostProcess\Water\Caustics.hlsl PostProcess.Water.Caustics || goto :error
+REM Volumetric Cloud — レイマーチ雲の VS/PS パス (ハーフ解像度 RT へ) + アップスケール合成
+call :CompileVSPS PostProcess\Cloud\VolumetricCloud.hlsl PostProcess.Cloud.VolumetricCloud || goto :error
+call :CompileVSPS PostProcess\Cloud\CloudUpscale.hlsl PostProcess.Cloud.CloudUpscale || goto :error
 for %%S in ("%SRC%PostProcess\Custom\*.hlsl") do call :CompileVSPS PostProcess\Custom\%%~nxS PostProcess.Custom.%%~nS || goto :error
 REM TAA (Temporal Anti-Aliasing) — ping-pong 履歴バッファへの VS/PS パス
 call :CompileVSPS PostProcess\AntiAliasing\TAA.hlsl PostProcess.AntiAliasing.TAA || goto :error

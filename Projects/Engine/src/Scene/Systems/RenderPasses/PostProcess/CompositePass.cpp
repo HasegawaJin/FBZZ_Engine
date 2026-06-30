@@ -123,6 +123,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.fogColor[0] = pp.fog.color[0];
     postData.fogColor[1] = pp.fog.color[1];
     postData.fogColor[2] = pp.fog.color[2];
+    // フォグ色の出どころ (0=Exponential, 1=Atmosphere)。Atmosphere は b3/b6 から大気散乱を計算する。
+    postData.fogSource = static_cast<float>(pp.fog.source);
     postData.contrast = pp.colorGrading.enabled ? pp.colorGrading.contrast : 0.0f;
     postData.saturation = pp.colorGrading.enabled ? pp.colorGrading.saturation : 1.0f;
     postData.hueShift = pp.colorGrading.enabled ? pp.colorGrading.hueShift : 0.0f;
@@ -181,7 +183,11 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     compositeDC.pipelineState = h.postprocPSO;
     compositeDC.vertexCount = 3;
     compositeDC.constantBuffers[0] = h.frameCB;
+    // b3 (太陽方向/色) と b6 (大気散乱パラメータ) は fogSource=Atmosphere のエアリアルフォグ計算で参照する。
+    // SkyPass が b6 を、ForwardPasses が b3 を Composite より前に更新済み。
+    compositeDC.constantBuffers[3] = h.lightCB;
     compositeDC.constantBuffers[5] = h.postprocCB;
+    compositeDC.constantBuffers[6] = h.atmosphereCB;
     compositeDC.constantBuffers[8] = h.advancedGraphicsCB; // b8: ssrIntensity, volLightIntensity, lutBlend 等
     // MotionBlur が有効な場合、CS が生成した blurred HDR を hdrRT の代わりに t5 に束縛する。
     // WHY: MotionBlurPass が motionBlurResult に完全なブラー済み HDR を書いているため、

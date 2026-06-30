@@ -46,6 +46,7 @@
 #define SAMPLER_SHADOW       s1   // SamplerComparisonState (PCF 用)
 #define SAMPLER_LINEAR_CLAMP s2   // Linear clamp (IBL BRDF LUT / 3D LUT 用)
 #define SAMPLER_POINT_CLAMP  s3   // Point clamp  (TAA 再投影ルックアップ用)
+#define SAMPLER_WRAP_LINEAR  s4   // Linear wrap  (ボリューメトリック雲のタイラブル 3D ノイズ用)
 
 // ---- Advanced Graphics (IBL / SSR / TAA / GTAO 等) ----
 #define CB_ADVANCED_GRAPHICS b8
@@ -61,6 +62,8 @@
 #define TEX_GTAO             t23  // GTAO 結果 (SSAO の代替)
 #define TEX_CONTACT_SHADOW   t24  // コンタクトシャドウマスク
 #define TEX_SCENE_DEPTH      t25  // Forward 不透明物を含む最終シーン深度 (SSR 遮蔽用)
+#define TEX_CLOUD_SHAPE      t26  // ボリューメトリック雲 Shape 3D ノイズ (128³ Perlin-Worley)
+#define TEX_CLOUD_DETAIL     t27  // ボリューメトリック雲 Detail 3D ノイズ (32³ Worley 高周波)
 
 #define UAV_SSR              u3   // SSR Compute 書き込み先
 #define UAV_VOLUMETRIC       u4   // ボリューメトリック Compute 書き込み先

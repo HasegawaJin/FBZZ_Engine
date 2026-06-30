@@ -93,12 +93,30 @@ float3 EvaluateIBL(
     float3 F        = F_SchlickRoughness(NdotV, F0, roughness);
     float3 kD       = (1.0f - F) * (1.0f - metallic);  // エネルギー保存 (メタルは拡散なし)
     float3 irradiance = irradianceMap.Sample(samp, N).rgb;
+
+    // 拡散 IBL の彩度をわずかに下げる。
+    // WHY: 太陽ピークを irradiance から除外しているため (IrradianceConvolution の DIFFUSE_RADIANCE_LIMIT)、
+    //      日陰の環境光は「暖色の太陽成分が無い純粋な青空光」になり青へ寄りやすい。現実の弱い相互反射
+    //      (バウンス) による色の中和を近似するため、irradiance を輝度方向へ少しブレンドして青みだけ
+    //      穏やかにする (明るさは概ね保つ)。地形のように上向き面が広いオブジェクトで効果が出る。
+    const float kIBLDiffuseDesaturation = 0.35f;
+    float irrLum = dot(irradiance, float3(0.2126f, 0.7152f, 0.0722f));
+    irradiance   = lerp(irradiance, irrLum.xxx, kIBLDiffuseDesaturation);
+
     float3 diffuse  = kD * irradiance * albedo * max(diffuseScale, 0.0f);
 
     // ---- 鏡面 IBL (split-sum) -------------------------------------------
     // roughness から prefilter mip を決定 (高 roughness ほど低解像度 mip をサンプル)
     float  mip           = roughness * (float)maxMipLevel;
     float3 prefilteredColor = prefilterMap.SampleLevel(samp, R, mip).rgb;
+
+    // 鏡面 IBL も彩度を下げる（拡散より強め）。
+    // WHY: 鏡面 IBL は AO が効かず、grazing 角(遠景・浅い視線)で青空の反射が地形に「青い縁/部分」として
+    //      残る。これが拡散の彩度ダウン後にも残る青の主因。色を輝度方向へ寄せて青みを抑える(明るさは保つ)。
+    //      地形のような粗い非金属では青い鏡面反射が特に不自然なため、拡散より強めに中和する。
+    const float kIBLSpecularDesaturation = 0.6f;
+    float preLum = dot(prefilteredColor, float3(0.2126f, 0.7152f, 0.0722f));
+    prefilteredColor = lerp(prefilteredColor, preLum.xxx, kIBLSpecularDesaturation);
 
     // BRDF LUT: x=scale(F0 倍率), y=bias (定数加算)
     // UV: (NdotV, roughness) — Linear Clamp でサンプリング
@@ -110,7 +128,12 @@ float3 EvaluateIBL(
     // SSAO は近傍ジオメトリによる拡散遮蔽の近似なので diffuse のみに適用する。
     // WHY: 低サンプルSSAOを鏡面へ直接掛けると、明るいIBL反射との白黒差が点状に強調される。
     //      鏡面遮蔽には bent normal 等が必要で、SSAOの流用はしない。
-    return diffuse * saturate(ao) + specular;
+    //
+    // 接地バウンス相当の中立環境光フロア。
+    // WHY: 彩度を下げても日陰/AO 部が「暗い青」に寄りがちなため、ごく僅かな中立光を AO 非依存で足し、
+    //      クレバスが真っ青/真っ黒に潰れるのを防ぐ。値は小さく保ち AO のコントラストは維持する。
+    const float3 kIBLAmbientFloor = float3(0.025f, 0.025f, 0.025f);
+    return diffuse * saturate(ao) + specular + albedo * kIBLAmbientFloor;
 }
 
 #endif // IBL_HLSLI
