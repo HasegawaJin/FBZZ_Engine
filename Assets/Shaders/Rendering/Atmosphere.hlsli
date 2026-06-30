@@ -52,15 +52,26 @@ float3 ComputeAtmosphericScattering(float3 rayDir, float3 sunDir,
     float phaseR = RayleighPhase(cosTheta);
     float phaseM = MiePhase(cosTheta, mieG);
 
-    // 大気光路長の近似 (仰角が浅いほど長くなる)
-    float altitude = max(rayDir.y, 0.01f);
-    float optical  = 1.0f / altitude;
-    optical = min(optical, 40.0f);  // 地平線付近のクランプ
+    // 大気光路長の近似 (仰角が浅いほど長くなる)。
+    // 1/(y + 0.15) で地平線付近を滑らかに伸ばし、従来の min(1/y, 40) のような硬いクランプ帯を避ける。
+    // 地平線下 (y<0) は y=0 の薄い大気層として扱い、滑らかに地平線色へ収束させる。
+    float altitude = max(rayDir.y, 0.0f);
+    float path     = 6.0f / (altitude + 0.15f);  // 光路長スケール（6.0 はチューニング係数）
 
-    float3 rayleighScatter = rayleigh * phaseR * optical;
-    float3 mieScatter      = float3(mie, mie, mie) * phaseM * optical;
+    // 単一散乱の解析解 (一定密度近似):
+    //   inScatter = (betaR*phaseR + betaM*phaseM) / betaExt * (1 - exp(-betaExt * path))
+    // WHY: 従来は光路長を線形に掛けるだけで、地平線で散乱光が無制限に増えて白飛びしていた。
+    //      消散 (Beer-Lambert) を入れることで光路が長いほど飽和し、地平線がリアルな
+    //      明るい白〜オレンジへ収束する。波長ごとに betaExt が異なるため自然に色が分離する。
+    float3 betaR   = rayleigh;                 // Rayleigh 散乱係数 (波長依存)
+    float3 betaM   = float3(mie, mie, mie);    // Mie 散乱係数 (波長非依存)
+    float3 betaExt = betaR + betaM;            // 消散係数 (吸収は無視し散乱のみで近似)
 
-    return sunIntensity * (rayleighScatter + mieScatter);
+    float3 transmittance = exp(-betaExt * path);
+    float3 inScatter     = (betaR * phaseR + betaM * phaseM)
+                         / max(betaExt, EPSILON) * (1.0f - transmittance);
+
+    return sunIntensity * inScatter;
 }
 
 // =========================================================================
@@ -73,6 +84,25 @@ float3 SunDisk(float3 rayDir, float3 sunDir, float sunIntensity)
     // 0.9994 ≒ cos(2°) : 実際の太陽 (~0.53°) より少し大きめにして視認しやすくする
     float disk     = smoothstep(0.9994f, 0.9999f, cosAngle);
     return float3(1.0f, 0.95f, 0.8f) * sunIntensity * disk;
+}
+
+// =========================================================================
+// 月ディスク
+//   moonDir   : 月の方向 (正規化)。SunMoon では太陽の反対側 (-sunDir) を渡す。
+//   color     : 月色 / brightness : 明るさ / sizeScale : 角サイズ倍率 (1=太陽程度)
+//   月が地平線下 (moonDir.y <= 0) のときは出さず、昇るにつれ滑らかに現れる。
+// =========================================================================
+float3 MoonDisk(float3 rayDir, float3 moonDir, float3 color, float brightness, float sizeScale)
+{
+    float cosAngle = dot(rayDir, moonDir);
+    // sizeScale で角半径を調整。smoothstep は昇順 (edge0 < edge1) で中心ほど 1。
+    float s     = max(sizeScale, 0.05f);
+    float edge0 = 1.0f - 0.0010f * s;
+    float edge1 = 1.0f - 0.0002f * s;
+    float disk  = smoothstep(edge0, edge1, cosAngle);
+    // 地平線付近で滑らかにフェードイン (太陽が出ている昼間は moonDir.y<0 で消える)。
+    float visibility = saturate(moonDir.y * 6.0f);
+    return color * brightness * disk * visibility;
 }
 
 #endif // ATMOSPHERE_HLSLI

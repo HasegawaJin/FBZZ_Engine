@@ -104,6 +104,13 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     shadowData.shadowBias            = ctx.shadowBiasNDC;
     shadowData.shadowStrength        = ctx.shadowStrength;
     shadowData.shadowPcfRadius       = ctx.settings.shadow.pcfRadius;
+    shadowData.cloudShadowStrength   = ctx.cloudShadowStrength;
+    shadowData.cloudShadowCoverage   = ctx.cloudShadowCoverage;
+    shadowData.cloudShadowScale      = ctx.cloudShadowScale;
+    shadowData.cloudShadowSpeed      = ctx.cloudShadowSpeed;
+    shadowData.cloudShadowTime       = ctx.cloudShadowTime;
+    shadowData.cloudShadowWindX      = ctx.cloudShadowWindX;
+    shadowData.cloudShadowWindZ      = ctx.cloudShadowWindZ;
     resources.Update(h.shadowCB, &shadowData, sizeof(ShadowConstantsCB));
 
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);

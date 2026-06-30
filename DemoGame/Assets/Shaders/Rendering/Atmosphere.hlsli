@@ -75,4 +75,19 @@ float3 SunDisk(float3 rayDir, float3 sunDir, float sunIntensity)
     return float3(1.0f, 0.95f, 0.8f) * sunIntensity * disk;
 }
 
+// 月ディスク
+//   moonDir   : 月の方向 (正規化)。SunMoon では太陽の反対側 (-sunDir) を渡す。
+//   color     : 月色 / brightness : 明るさ / sizeScale : 角サイズ倍率 (1=太陽程度)
+//   月が地平線下 (moonDir.y <= 0) のときは出さず、昇るにつれ滑らかに現れる。
+float3 MoonDisk(float3 rayDir, float3 moonDir, float3 color, float brightness, float sizeScale)
+{
+    float cosAngle = dot(rayDir, moonDir);
+    float s     = max(sizeScale, 0.05f);
+    float edge0 = 1.0f - 0.0010f * s;
+    float edge1 = 1.0f - 0.0002f * s;
+    float disk  = smoothstep(edge0, edge1, cosAngle);
+    float visibility = saturate(moonDir.y * 6.0f);
+    return color * brightness * disk * visibility;
+}
+
 #endif // ATMOSPHERE_HLSLI

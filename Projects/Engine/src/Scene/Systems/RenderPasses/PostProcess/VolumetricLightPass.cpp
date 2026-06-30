@@ -30,8 +30,10 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     volDC.constantBuffers[3] = h.lightCB;             // b3: LightConstants (lightDir, lightColor)
     volDC.constantBuffers[4] = h.shadowCB;            // b4: ShadowConstants (lightVP, bias)
     volDC.constantBuffers[8] = h.advancedGraphicsCB;  // b8: volSteps, volScattering, volMaxDist
-    volDC.srvInputs[7]       = resources.GetDepthTexture(
-        ctx.isDeferred ? h.gbufferRT : h.hdrRT);      // t7: Depth
+    // t7: シーン深度。レイ終端に使うため、Terrain/Detail/Foliage を含む完全な不透明深度が要る。
+    // WHY: それらは Deferred でも hdrRT の depth へ描かれる。GBuffer depth には地形が無いため、
+    //      そこを読むとゴッドレイが地形を貫通して手前に漏れる（雲と同じ不具合）。常に hdrRT を読む。
+    volDC.srvInputs[7]       = resources.GetDepthTexture(h.hdrRT);
     volDC.srvInputs[8]       = resources.GetDepthTexture(h.shadowMapRT); // t8: Shadow map
     volDC.uavOutputs[4]      = h.volumetricResult;    // u4: UAV_VOLUMETRIC
     volDC.dispatchX          = (ctx.width  + 7) / 8;

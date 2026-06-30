@@ -16,15 +16,18 @@
 #include <Physics/World.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include "RenderPasses/PostProcess/PostProcessPasses.hpp"
+#include "RenderPasses/PostProcess/CloudNoiseBake.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "RenderPasses/Debug/SelectionPasses.hpp"
 #include "Engine/Core/Time.hpp"
+#include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/EnvironmentLightComponent.hpp"
 #include "Engine/Scene/Components/AtmosphericScatteringComponent.hpp"
+#include "Engine/Scene/Components/SkyRenderer.hpp"
 #include "Engine/Scene/Components/PostProcessVolumeComponent.hpp"
 #include "Engine/Scene/Components/ReflectionProbeComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
@@ -316,9 +319,12 @@ void RenderSystem(Scene& scene,
     // ── コンポーネントによる設定上書き (ProjectSettings < runtimePostProcess < Component) ───
     // EnvironmentLightComponent — シーン Inspector から IBL を上書きする。
     // 最初のアクティブなコンポーネントのみ採用する。複数置かれた場合は先着優先。
+    IblSource activeIblSource = IblSource::StaticDDS; // 空連動 IBL: 採用された EnvironmentLight の source
     for (auto [tf, elc] : scene.View<Transform, EnvironmentLightComponent>()) {
         if (!elc.enabled) continue;
-        effectiveSettings.ibl.enabled       = !elc.irradiancePath.empty() && !elc.prefilterPath.empty();
+        activeIblSource = elc.source;
+        effectiveSettings.ibl.enabled       = elc.source == IblSource::DynamicSky
+            || (!elc.irradiancePath.empty() && !elc.prefilterPath.empty());
         effectiveSettings.ibl.irradiancePath = elc.irradiancePath;
         effectiveSettings.ibl.prefilterPath  = elc.prefilterPath;
         effectiveSettings.ibl.intensity      = elc.intensity;
@@ -332,6 +338,7 @@ void RenderSystem(Scene& scene,
         if (!atm.enabled) continue;
         auto& fog      = effectiveSettings.postProcess.fog;
         fog.enabled    = atm.fogEnabled;
+        fog.source     = static_cast<int>(atm.fogSource);
         fog.density    = atm.fogDensity;
         fog.farDistance = atm.fogFar;
         fog.color[0]   = atm.fogColor.x;
@@ -376,6 +383,8 @@ void RenderSystem(Scene& scene,
 
     static auto compositeShader         = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
     static auto causticsShader          = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
+    static auto volumetricCloudShader   = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/VolumetricCloud.hlsl");
+    static auto cloudUpscaleShader      = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/CloudUpscale.hlsl");
     static auto ssaoShader              = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
     static auto ssaoBlurShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
     static auto bloomDownShader         = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
@@ -402,7 +411,39 @@ void RenderSystem(Scene& scene,
     static uint64_t proceduralColorLutHash = 0u;
 
     static auto skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
+    static auto sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
     static auto skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
+
+    // 空連動 IBL (環境システム Phase A): 空を焼くキューブマップ RT と、面ごとの view/proj 用 CB。
+    // EnvironmentResources はフレームをまたいで保持し、SkyRenderer が変化した時だけ再キャプチャする。
+    static constexpr uint32_t kSkyEnvCubeSize = 128;
+    static EnvironmentResources sEnvironmentResources;
+    static uint64_t sEnvResetVersion = resources.GetResetVersion();
+    static renderer::ResourceHandle<renderer::RenderTargetTag>   skyEnvCubeRT;
+    static renderer::ResourceHandle<renderer::ConstantBufferTag> skyCaptureFrameCB;
+    if (!skyEnvCubeRT.IsValid() || sEnvResetVersion != resources.GetResetVersion()) {
+        sEnvResetVersion  = resources.GetResetVersion();
+        skyEnvCubeRT      = resources.CreateCubemapRenderTarget(kSkyEnvCubeSize, 1);
+        skyCaptureFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
+        // リソース再生成後 (デバイスリセット等) は古い動的 IBL ハンドルが無効。クリアして焼き直す。
+        sEnvironmentResources.skyEnvCube    = {};
+        sEnvironmentResources.skyIrradiance = {};
+        sEnvironmentResources.skyPrefilter  = {};
+        sEnvironmentResources.needsConvolution = false;
+        sEnvironmentResources.MarkDirty();
+    }
+
+    // ボリューメトリック雲の 3D ノイズ (Shape 128³ + Detail 32³) を起動時に 1 回だけ CPU 焼きする。
+    // タイラブルなので WRAP サンプルで無限に並べられる。デバイスリセット後は SRV が無効になるため焼き直す。
+    static renderer::ResourceHandle<renderer::TextureTag> cloudShapeTex;
+    static renderer::ResourceHandle<renderer::TextureTag> cloudDetailTex;
+    if (resources.Get(cloudShapeTex) == nullptr || resources.Get(cloudDetailTex) == nullptr) {
+        const std::vector<uint8_t> shape  = cloudnoise::BakeShape(128);
+        const std::vector<uint8_t> detail = cloudnoise::BakeDetail(32);
+        cloudShapeTex  = resources.CreateTexture3D(shape.data(),  128, 128, 128);
+        cloudDetailTex = resources.CreateTexture3D(detail.data(),  32,  32,  32);
+        FBZZ_LOG_INFO("VolumetricCloud: baked tileable 3D noise (shape 128^3, detail 32^3)");
+    }
 
     static auto gbufferShader          = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
     static auto deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
@@ -420,8 +461,12 @@ void RenderSystem(Scene& scene,
     static auto detailMeshShader      = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
     static auto detailBillboardShader = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl"); // 同一ソース、isBillboard フラグで切り替え
     static auto detailGrassShader     = resources.LoadShader("Assets/Shaders/Detail/DetailGrass.hlsl");
+    // Deferred 用 GBuffer 書き込み変種。
+    static auto detailGBufferShader      = resources.LoadShader("Assets/Shaders/Detail/DetailGBuffer.hlsl");
+    static auto detailGrassGBufferShader = resources.LoadShader("Assets/Shaders/Detail/DetailGrassGBuffer.hlsl");
     static auto detailGrassCB         = resources.CreateConstantBuffer(sizeof(DetailGrassCB));
     static auto foliageShader         = resources.LoadShader("Assets/Shaders/Foliage/Foliage.hlsl");
+    static auto foliageGBufferShader  = resources.LoadShader("Assets/Shaders/Foliage/FoliageGBuffer.hlsl");
     static auto detailMeshPSO   = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
@@ -451,6 +496,7 @@ void RenderSystem(Scene& scene,
     static auto outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
     static auto atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
     static auto decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
+    static auto volumetricCloudCB = resources.CreateConstantBuffer(80);
 
     // WHY: static handle は通常フレームでは再利用し、ResourceManager::Reset() 後だけ世代差分で再生成する。
     //      これによりデバイスロスト復帰時も旧ネイティブリソースへ触らない。
@@ -472,6 +518,11 @@ void RenderSystem(Scene& scene,
     static auto skydomePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_SKY
+    });
+    static auto sunMoonPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_SKY
     });
     static auto particlePSO = resources.CreatePipelineState({
@@ -519,6 +570,11 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_OFF
     });
+    static auto volumetricCloudPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_OFF
+    });
     // ---- Advanced Graphics PSO / 定数バッファ ----
     // taaPSO: OPAQUE — TAA は ping-pong バッファへ上書きするため α ブレンドは不要
     static auto taaPSO = resources.CreatePipelineState({
@@ -553,6 +609,8 @@ void RenderSystem(Scene& scene,
         skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
         compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
         causticsShader      = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
+        volumetricCloudShader = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/VolumetricCloud.hlsl");
+        cloudUpscaleShader    = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/CloudUpscale.hlsl");
         ssaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
         ssaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
         bloomDownShader     = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
@@ -562,6 +620,7 @@ void RenderSystem(Scene& scene,
         selectionOutlineShader = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
         fxaaShader = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
         skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
+        sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
         skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
         gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
         deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
@@ -577,8 +636,11 @@ void RenderSystem(Scene& scene,
         detailMeshShader      = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
         detailBillboardShader = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
         detailGrassShader     = resources.LoadShader("Assets/Shaders/Detail/DetailGrass.hlsl");
+        detailGBufferShader      = resources.LoadShader("Assets/Shaders/Detail/DetailGBuffer.hlsl");
+        detailGrassGBufferShader = resources.LoadShader("Assets/Shaders/Detail/DetailGrassGBuffer.hlsl");
         detailGrassCB         = resources.CreateConstantBuffer(sizeof(DetailGrassCB));
         foliageShader         = resources.LoadShader("Assets/Shaders/Foliage/Foliage.hlsl");
+        foliageGBufferShader  = resources.LoadShader("Assets/Shaders/Foliage/FoliageGBuffer.hlsl");
         detailMeshPSO   = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         detailNoCullPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         foliagePSO       = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
@@ -616,11 +678,13 @@ void RenderSystem(Scene& scene,
         outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
         atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
         decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
+        volumetricCloudCB = resources.CreateConstantBuffer(80);
 
         defaultPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         wireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         selectionMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         skydomePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_SKY });
+        sunMoonPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_SKY });
         particlePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
         particleAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         particleGpuPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
@@ -630,6 +694,7 @@ void RenderSystem(Scene& scene,
         meshTrailDoubleSidedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         postprocPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
         causticsPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_OFF });
+        volumetricCloudPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
         decalPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
         decalMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
     }
@@ -791,6 +856,47 @@ void RenderSystem(Scene& scene,
         }
     }
 
+    // ── 昼夜の色・強度カーブ (Phase B) ─────────────────────────────────────────────
+    // WHY: 太陽の「向き」は DirectionalLight の transform を唯一のソースとする (ここで lightDir は上書きしない)。
+    //      SkyRenderer.dayNightEnabled のときは、その光源の「仰角 (太陽の高さ)」から色・強度の昼夜遷移だけを駆動する。
+    //      → DirectionalLight を回すと 太陽ディスク(SunMoon)・空・月(アンチ太陽)・空連動 IBL・ライティングが一緒に動く。
+    //      時刻アニメをしたい場合はスクリプトでライトの向きを回す。
+    // 雲シャドウ params (Phase C) も SkyRenderer から読む。passCtx へ後で転送する。
+    float skyCloudShadowStrength = 0.0f, skyCloudShadowCoverage = 0.5f,
+          skyCloudShadowScale = 0.02f, skyCloudShadowSpeed = 1.0f;
+    for (auto [tf, sky] : scene.View<Transform, SkyRenderer>()) {
+        (void)tf; // 太陽の向きは DirectionalLight 側で決まるため SkyRenderer の Transform は使わない
+        if (!sky.enabled) continue;
+
+        // 雲シャドウは昼夜サイクルとは独立に常に反映する。
+        skyCloudShadowStrength = sky.cloudShadowStrength;
+        skyCloudShadowCoverage = sky.cloudShadowCoverage;
+        skyCloudShadowScale    = sky.cloudShadowScale;
+        skyCloudShadowSpeed    = sky.cloudShadowSpeed;
+
+        if (sky.dayNightEnabled) {
+        // 太陽方向 (toward sun) = -lightDir。その仰角 elev=y で 夜→昼→薄明(夕焼け) を補間する。
+        math::Vector3 sunToSun =
+            math::Vector3{ -lightData.lightDir.x, -lightData.lightDir.y, -lightData.lightDir.z }.Normalized();
+
+        auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+        auto lerp3   = [](const math::Vector3& a, const math::Vector3& b, float t) {
+            return math::Vector3{ a.x + (b.x - a.x) * t,
+                                  a.y + (b.y - a.y) * t,
+                                  a.z + (b.z - a.z) * t };
+        };
+        const float elev       = sunToSun.y;                                  // -1(真下)..1(真上)
+        const float dayMix     = clamp01((elev + 0.05f) / 0.30f);             // 地平線少し上で昼へ
+        const float horizonMix = clamp01(1.0f - std::fabs(elev) / 0.25f) * dayMix; // 日の出/日没の暖色
+
+        math::Vector3 col = lerp3(sky.nightColor, sky.dayColor, dayMix);
+        col = lerp3(col, sky.sunsetColor, horizonMix);
+        lightData.lightColor     = col;
+        lightData.lightIntensity = sky.nightIntensity + (sky.dayIntensity - sky.nightIntensity) * dayMix;
+        } // if (sky.dayNightEnabled)
+        break;
+    }
+
     // ambientColor: Lit モードでは AMBIENT_SCALE 相当値、Unlit 系では白に上書き
     lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
     if (rs.IsUnlit()) {
@@ -864,6 +970,8 @@ void RenderSystem(Scene& scene,
     passHandles.bloomUpShader     = bloomUpShader;
     passHandles.compositeShader   = compositeShader;
     passHandles.causticsShader    = causticsShader;
+    passHandles.volumetricCloudShader = volumetricCloudShader;
+    passHandles.cloudUpscaleShader    = cloudUpscaleShader;
     passHandles.selectionMaskShader       = selectionMaskShader;
     passHandles.selectionMaskSkinnedShader = selectionMaskSkinnedShader;
     passHandles.selectionOutlineShader    = selectionOutlineShader;
@@ -881,12 +989,16 @@ void RenderSystem(Scene& scene,
     passHandles.selectionMaskPSO  = selectionMaskPso;
     passHandles.postprocPSO       = postprocPSO;
     passHandles.causticsPSO       = causticsPSO;
+    passHandles.volumetricCloudPSO = volumetricCloudPSO;
     passHandles.frameCB           = frameCB;
     passHandles.objectCB          = objectCB;
     passHandles.lightCB           = lightCB;
     passHandles.bindPoseSkinningCB = bindPoseSkinningCB;
     passHandles.postprocCB        = postprocCB;
     passHandles.outlineCB         = outlineCB;
+    passHandles.volumetricCloudCB = volumetricCloudCB;
+    passHandles.cloudShapeTex     = cloudShapeTex;
+    passHandles.cloudDetailTex    = cloudDetailTex;
     passHandles.decalDepthRT      = decalDepthRT;
     passHandles.decalMaskRT       = decalMaskRT;
     passHandles.decalShader       = decalShader;
@@ -901,13 +1013,17 @@ void RenderSystem(Scene& scene,
     passHandles.defaultPSO           = defaultPSO;
     passHandles.wireframePSO         = wireframePSO;
     passHandles.skyShader            = skydomeShader;
+    passHandles.sunMoonShader        = sunMoonShader;
     passHandles.skyPSO               = skydomePSO;
+    passHandles.sunMoonPSO           = sunMoonPSO;
     if (skydomeMesh) {
         passHandles.skyVB         = skydomeMesh->vertexBuffer;
         passHandles.skyIB         = skydomeMesh->indexBuffer;
         passHandles.skyIndexCount = skydomeMesh->indexCount;
     }
     passHandles.atmosphereCB         = atmCB;
+    passHandles.skyEnvCubeRT         = skyEnvCubeRT;
+    passHandles.skyCaptureFrameCB    = skyCaptureFrameCB;
     passHandles.particleShader       = particleShader;
     passHandles.particlePSO          = particlePSO;
     passHandles.particleAlphaPSO     = particleAlphaPSO;
@@ -927,10 +1043,13 @@ void RenderSystem(Scene& scene,
     passHandles.detailMeshShader      = detailMeshShader;
     passHandles.detailBillboardShader = detailBillboardShader;
     passHandles.detailGrassShader     = detailGrassShader;
+    passHandles.detailGBufferShader      = detailGBufferShader;
+    passHandles.detailGrassGBufferShader = detailGrassGBufferShader;
     passHandles.detailGrassCB         = detailGrassCB;
     passHandles.detailMeshPSO         = detailMeshPSO;
     passHandles.detailNoCullPSO       = detailNoCullPSO;
     passHandles.foliageShader          = foliageShader;
+    passHandles.foliageGBufferShader   = foliageGBufferShader;
     passHandles.foliagePSO             = foliagePSO;
     passHandles.foliageNoCullPSO       = foliageNoCullPSO;
     passHandles.gbufferShader        = gbufferShader;
@@ -999,15 +1118,39 @@ void RenderSystem(Scene& scene,
         outputRT, cullingMask, passHandles,
         sHdrW, sHdrH, selectionOutlineEnabled,
         lightData, lightVP, isDeferred, ssaoEnabled, 0.0f, 1.0f,
+        0.0f, 0.5f, 0.02f, 1.0f, 1.0f, 0.3f, 0.0f,
         &cameraFrustum, &lightFrustum, &occlusionCuller
     };
     passCtx.physicsWorld  = physicsWorld;
+    passCtx.environmentResources = &sEnvironmentResources; // 空連動 IBL の永続状態 (フレームをまたぐ)
+    // 雲シャドウ (Phase C): SkyRenderer から読んだ params + 現在時刻を影パスへ渡す。
+    passCtx.cloudShadowStrength = skyCloudShadowStrength;
+    passCtx.cloudShadowCoverage = skyCloudShadowCoverage;
+    passCtx.cloudShadowScale    = skyCloudShadowScale;
+    passCtx.cloudShadowSpeed    = skyCloudShadowSpeed;
+    passCtx.cloudShadowTime     = Time::time;
     // near=1.0, far=shadowRadius*2+40 の深度範囲でスケール正規化したバイアス。
     // 固定 NDC 値はシーンが広がるほど Peter Panning が悪化するため、
     // ワールド空間で約 5mm 相当の一定バイアスになるよう depthRange で除算する。
     // dirShadowBias でスケールし、Inspector から Peter Panning / アクネをチューニング可能にする。
     passCtx.shadowBiasNDC  = (0.005f * dirShadowBias) / (shadowRadius * 2.0f + 39.0f);
     passCtx.shadowStrength = dirCastShadows ? dirShadowStrength : 0.0f;
+
+    // ── 空連動 IBL (環境システム Phase A): source=DynamicSky のとき空→動的 IBL を用意する ──
+    // WHY: AdvancedGraphicsCB / 各 Lit パスより前に焼くことで、同フレームで動的 IBL を消費できる。
+    //      キャプチャ先・畳み込み出力は RenderGraph 管理外のため、グラフ実行前に直接呼ぶ
+    //      (順序が消費パスと厳密化する必要が出た段階で §4-2 のグラフ統合へ移す)。
+    //      SkyCapture/SkyLightBake は dirty を内部判定し、不要フレームは即 return する (キャッシュ)。
+    bool dynamicIblReady = false;
+    if (activeIblSource == IblSource::DynamicSky) {
+        ExecuteSkyCapturePass(passCtx);
+        ExecuteSkyLightBakePass(passCtx);
+        if (sEnvironmentResources.HasBakedTextures()) {
+            passHandles.iblIrradiance = sEnvironmentResources.skyIrradiance;
+            passHandles.iblPrefilter  = sEnvironmentResources.skyPrefilter;
+            dynamicIblReady = true;
+        }
+    }
 
     // ---- AdvancedGraphicsCB を毎フレーム更新 ----
     // WHAT: IBL・SSR・TAA・GTAO・ContactShadow 等の詳細設定を AdvancedGraphicsCB(b8) に転送する。
@@ -1016,12 +1159,18 @@ void RenderSystem(Scene& scene,
         AdvancedGraphicsCB agData{};
         // WHY: IBL が無効、または必要なキューブマップが欠けている場合は未バインド SRV を
         //      サンプルさせず、従来の ambient ライティングへ確実にフォールバックする。
-        const bool iblResourcesReady = rs.ibl.enabled && rs.HasValidIblAssets() &&
+        // 動的 IBL (DynamicSky) は .dds アセット (rs.HasValidIblAssets) を持たないため、
+        // dynamicIblReady を別経路として許可する。どちらもハンドルが揃っていることを必須にする。
+        const bool iblResourcesReady =
+            (dynamicIblReady || (rs.ibl.enabled && rs.HasValidIblAssets())) &&
             passHandles.iblIrradiance.IsValid() && passHandles.iblPrefilter.IsValid();
         agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity : 0.0f;
         agData.iblDiffuseScale       = rs.ibl.diffuseScale;
         agData.iblSpecularScale      = rs.ibl.specularScale;
-        agData.iblMaxMipLevel        = rs.ibl.maxMipLevel;
+        // 動的 IBL は SkyLightBake が焼いた prefilter mip 数に合わせる (maxMip = mip 数 - 1)。
+        agData.iblMaxMipLevel        = dynamicIblReady
+            ? static_cast<int>(sEnvironmentResources.prefilteredMipCount) - 1
+            : rs.ibl.maxMipLevel;
         agData.ssrMaxDistance        = rs.ssr.maxDistance;
         agData.ssrThickness          = rs.ssr.thickness;
         agData.ssrSteps              = rs.ssr.steps;
@@ -1129,24 +1278,48 @@ void RenderSystem(Scene& scene,
             ExecuteGBufferPass(passCtx);
         });
 
+        // Deferred Terrain / Detail / Foliage — すべて GBuffer へ書き込む。DepthCopy / AO / Lighting より
+        // 前に描くことで、GTAO/SSAO/ContactShadows/SSR/DeferredLighting/IBL が地形・草・樹木へも効く。
+        // WHY: forward 描画では GBuffer に入らず、AO/接触影/SSR/PBR ライティングが乗らなかった。
+        //      Detail/Foliage はアルファテスト（clip）の不透明として GBuffer へ描く。
+        pipeline.AddPass<TerrainRenderPass>();
+        pipeline.AddPass<DetailRenderPass>();
+        pipeline.AddPass<FoliageRenderPass>();
+
         pipeline.AddRawPass("DeferredDepthCopy", { "GBuffer" }, { "HDR" }, [&]() {
             ExecuteDeferredDepthCopyPass(passCtx);
         });
     }
 
-    // ── Terrain / Detail / Foliage ────────────────────────────────────────────
-    // ForwardOpaque / GBuffer DepthCopy の後・Sky の前に描画する。
-    // WHY: Sky より前に描画することで地形の上に空が被らない。
-    //      ForwardOpaque と同じ HDR RT (depth buffer 共有) で描画することで
-    //      Player 等の不透明オブジェクトと正しく depth test される。
-    //      RenderSystem 内に統合することでポストプロセス（bloom/SSAO等）も適用される。
-    pipeline.AddPass<TerrainRenderPass>();
-    pipeline.AddPass<DetailRenderPass>();
-    pipeline.AddPass<FoliageRenderPass>();
+    // ── Terrain / Detail / Foliage (Forward パイプライン用) ────────────────────
+    // Forward では ForwardOpaque / Sky の間に HDR RT (depth 共有) へ描く。
+    // WHY: Sky より前に描くことで地形の上に空が被らず、Player 等とも正しく depth test される。
+    //      Deferred では上の GBuffer フェーズで描画済みのためここでは描かない。
+    if (!isDeferred) {
+        pipeline.AddPass<TerrainRenderPass>();
+        pipeline.AddPass<DetailRenderPass>();
+        pipeline.AddPass<FoliageRenderPass>();
+    }
 
-    pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteSkyPass(passCtx);
-    });
+    // Sky / SunMoon — Forward ではここ（不透明描画後・雲前）。
+    // Deferred では DeferredLighting 後に描く（下の Deferred ブロック）。
+    // WHY: Deferred では Terrain/Detail/Foliage が HDR を書かず GBuffer へ描くため、Sky の HDR 書き込みが
+    //      DeferredDepthCopy（HDR をクリアする）との順序保証を失い、グラフが Sky を DepthCopy より前に
+    //      並べるとクリアでスカイが消える。Lighting 後に置くと HDR 依存チェーンで DepthCopy より確実に後になる。
+    if (!isDeferred) {
+        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSkyPass(passCtx);
+        });
+        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSunMoonPass(passCtx);
+        });
+
+        // VolumetricCloud — Forward では Sky 後・透明物前に HDR へ合成する。
+        // WHY: 空を背景にしつつ、後続の水面・透明エフェクトで上書きできる順序にする。
+        pipeline.AddRawPass("VolumetricCloud", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteVolumetricCloudPass(passCtx);
+        });
+    }
 
     // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
     if (isDeferred) {
@@ -1190,6 +1363,23 @@ void RenderSystem(Scene& scene,
             });
         }
 
+        // Sky / SunMoon — Deferred では DeferredLighting 後に HDR へ描く。
+        // WHY: スカイドームは深度==1.0（最遠面）のピクセルにだけ描かれる。Lighting 後に描くことで
+        //      ジオメトリ確定後の背景を埋め、かつ HDR 依存チェーンで DeferredDepthCopy の HDR クリアより
+        //      確実に後段になり、クリアでスカイが消える問題を避ける。
+        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSkyPass(passCtx);
+        });
+        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSunMoonPass(passCtx);
+        });
+
+        // VolumetricCloud — Deferred では Lighting / Sky 後・透明物前に HDR へ合成する。
+        // WHY: Lighting・空に上書きされず、透明物や水面を雲の手前に描ける順序にする。
+        pipeline.AddRawPass("VolumetricCloud", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+            ExecuteVolumetricCloudPass(passCtx);
+        });
+
         pipeline.AddRawPass("DeferredSkinnedForward", { "HDR" }, { "HDR" }, [&]() {
             ExecuteDeferredSkinnedForwardPass(passCtx);
         });
@@ -1207,6 +1397,12 @@ void RenderSystem(Scene& scene,
             });
         }
     }
+
+    // WaterCaustics — 水面下の不透明ジオメトリへコースティクスを投影してから、水面本体を透明描画する。
+    // WHY: Water の後に加算すると水面そのものへ模様が乗りやすいため、深度が不透明物だけを指す段階で実行する。
+    pipeline.AddRawPass("WaterCaustics", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteCausticsPass(passCtx);
+    });
 
     pipeline.AddPass<WaterRenderPass>();
 
@@ -1257,10 +1453,6 @@ void RenderSystem(Scene& scene,
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
     // ── Selection / Debug ─────────────────────────────────────────────────────
-    pipeline.AddRawPass("UnderwaterCaustics", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteCausticsPass(passCtx);
-    });
-
     if (selectionOutlineEnabled) {
         pipeline.AddRawPass("SelectionMask", { "HDR" }, { "SelectionMask" }, [&]() {
             ExecuteSelectionMaskPass(passCtx);
