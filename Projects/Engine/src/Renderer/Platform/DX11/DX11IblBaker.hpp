@@ -90,10 +90,14 @@ private:
     // ── CB レイアウト (HLSL 側と厳密に一致させる) ──────────────────────────
 
     // EquirectToCubemap / IrradianceConvolution 共通
+    // NOTE: EquirectToCubemap は phiSteps/thetaSteps を読まない (0 を渡してよい)。
+    //       IrradianceConvolution は半球積分のサンプル分割数として使う
+    //       (0 ならシェーダー側がデフォルト 200×50 にフォールバックする)。
     struct alignas(16) CbIblFace {
         uint32_t faceIndex;
         uint32_t textureSize;
-        uint32_t _pad[2];
+        uint32_t phiSteps;   // 半球積分の φ 分割数 (IrradianceConvolution 専用)
+        uint32_t thetaSteps; // 半球積分の θ 分割数 (IrradianceConvolution 専用)
     };
 
     // PrefilteredEnvMap 専用
@@ -130,8 +134,12 @@ private:
         ID3D11ShaderResourceView* equirectSrv, uint32_t size);
 
     // Env SRV → Irradiance Cubemap (6 面 Dispatch × 1)
+    // phiSteps/thetaSteps: 半球積分のサンプル分割数。Editor の DDS ベイクは高品質 (200×50=10000)、
+    //   空連動 IBL の実行時ベイクは低品質 (例 64×16=1024) を渡し、畳み込みコストを約 1/10 に抑える。
+    //   32² 拡散 irradiance は低周波かつ分散低減 mip をサンプルするため、少サンプルでも品質を保てる。
     Microsoft::WRL::ComPtr<ID3D11Texture2D> BakeIrradiance(
-        ID3D11ShaderResourceView* envSrv, uint32_t size);
+        ID3D11ShaderResourceView* envSrv, uint32_t size,
+        uint32_t phiSteps = 200, uint32_t thetaSteps = 50);
 
     // Env SRV → Prefiltered Cubemap (6 面 × mipCount 回 Dispatch)
     Microsoft::WRL::ComPtr<ID3D11Texture2D> BakePrefiltered(

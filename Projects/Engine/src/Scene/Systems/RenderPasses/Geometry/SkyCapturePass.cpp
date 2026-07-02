@@ -64,8 +64,8 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
         sig.mieG             = sky->mieG;
         sig.planetRadius     = sky->planetRadius;
         sig.atmosphereRadius = sky->atmosphereRadius;
-        if (!ctx.environmentResources->ConsumeDirty(sig))
-            return; // 変化なし → キャッシュ済みキューブを再利用
+        if (!ctx.environmentResources->ConsumeDirty(sig, Time::time))
+            return; // 変化なし / 間引き中 → キャッシュ済みキューブを再利用
     }
 
     // ライト CB (b3) を更新する。
