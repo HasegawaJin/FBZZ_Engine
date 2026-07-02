@@ -345,9 +345,18 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 envSample = g_envTex.Sample(g_samplerEnv, screenUV + tangentNormal.xy * 0.015f).rgb;
     float envAvailable = saturate(dot(envSample, float3(1.0f, 1.0f, 1.0f)));
     float3 reflectColor = lerp(skyReflectTint, envSample, envMapBlend * envAvailable);
-    float4 ssrReflection = TraceWaterSSR(p.worldPos, N);
-    reflectColor = lerp(reflectColor, ssrReflection.rgb, ssrReflection.a);
+
+    // 反射ウェイト(フレネル)を先に求め、SSR は寄与が実際に見えるピクセルだけトレースする。
+    // WHY: TraceWaterSSR は ssrSteps 回のレイマーチで WaterForward の主コスト。水面を見下ろす
+    //      (NdotV 大 → 低フレネル) ピクセルは反射がほぼ見えないため、レイマーチを丸ごと省いても
+    //      結果はほぼ不変。逆に浅い角度(高フレネル・反射が目立つ)では従来どおりトレースする。
+    //      SSR は SampleLevel(明示 LOD) を使うため分岐内でも勾配の問題は起きない。
     float reflectionWeight = saturate(fresnel) * lerp(1.0f, 0.45f, backgroundMask);
+    if (reflectionWeight > 0.01f)
+    {
+        float4 ssrReflection = TraceWaterSSR(p.worldPos, N);
+        reflectColor = lerp(reflectColor, ssrReflection.rgb, ssrReflection.a);
+    }
     float3 color = lerp(waterColor, reflectColor, reflectionWeight);
 
     float3 L = normalize(-lightDir);
