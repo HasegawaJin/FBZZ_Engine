@@ -2,6 +2,9 @@
 // ThumbnailCache.cpp | fbzz::hub
 // Thumbnail image cache for Hub project cards
 #include "ThumbnailCache.hpp"
+
+#include <Engine/Renderer/IImGuiRenderer.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -18,21 +21,23 @@ namespace engine_util = fbzz::util;
 
 } // namespace
 
-void ThumbnailCache::Init(ID3D11Device* device)
+void ThumbnailCache::Init(fbzz::renderer::ResourceManager& resources, fbzz::renderer::IImGuiRenderer& imgui)
 {
-    m_device = device;
+    m_resources = &resources;
+    m_imgui     = &imgui;
     m_textures.clear();
 }
 
 void ThumbnailCache::Clear()
 {
     m_textures.clear();
-    m_device = nullptr;
+    m_resources = nullptr;
+    m_imgui     = nullptr;
 }
 
 const ThumbnailTexture* ThumbnailCache::GetOrLoad(const std::string& path)
 {
-    if (!m_device || path.empty()) {
+    if (!m_resources || !m_imgui || path.empty()) {
         return nullptr;
     }
 
@@ -75,41 +80,26 @@ bool ThumbnailCache::LoadTexture(const std::string& path, ThumbnailTexture& text
         return false;
     }
 
-    D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = static_cast<UINT>(width);
-    desc.Height = static_cast<UINT>(height);
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
-    D3D11_SUBRESOURCE_DATA initData{};
-    initData.pSysMem = pixels;
-    initData.SysMemPitch = static_cast<UINT>(width * 4);
-
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> d3dTexture;
-    const HRESULT textureResult = m_device->CreateTexture2D(&desc, &initData, d3dTexture.GetAddressOf());
+    // WHY: RGBA8 デコード済みピクセルから GPU テクスチャを作る処理はバックエンド依存なので、
+    //      DX11 具象 API を直接叩かず ResourceManager に委譲する (DX12 でもそのまま動く)。
+    const auto handle = m_resources->CreateTexture(
+        pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
     stbi_image_free(pixels);
-    if (FAILED(textureResult)) {
+    if (!handle.IsValid()) {
         return false;
     }
 
-    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.Format = desc.Format;
-    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-
-    if (FAILED(m_device->CreateShaderResourceView(
-            d3dTexture.Get(),
-            &srvDesc,
-            texture.shaderResourceView.GetAddressOf()))) {
+    // ImGui::Image へ渡す ID は SRV 等のバックエンド固有型なので IImGuiRenderer に解決させる。
+    void* imTextureId = m_imgui->GetImTextureID(handle, *m_resources);
+    if (!imTextureId) {
+        m_resources->Release(handle);
         return false;
     }
 
-    texture.width = width;
-    texture.height = height;
+    texture.handle      = handle;
+    texture.imTextureId = imTextureId;
+    texture.width       = width;
+    texture.height      = height;
     return true;
 }
 

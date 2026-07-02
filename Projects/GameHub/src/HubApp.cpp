@@ -140,9 +140,9 @@ void ApplyEngineEnvironment(const std::string& engineRoot)
 
 } // namespace
 
-bool HubApp::Init(ID3D11Device* device)
+bool HubApp::Init(fbzz::renderer::ResourceManager& resources, fbzz::renderer::IImGuiRenderer& imgui)
 {
-    m_thumbnailCache.Init(device);
+    m_thumbnailCache.Init(resources, imgui);
     m_config.Load();
     ApplyEngineEnvironment(ResolveEngineRootForTemplate(m_config));
     m_templateManager.Refresh();
@@ -342,9 +342,9 @@ void HubApp::RenderProjectThumbnail(const ProjectEntry& project)
         ? m_thumbnailCache.GetOrLoad(project.thumbnailPath)
         : nullptr;
 
-    if (texture && texture->shaderResourceView) {
+    if (texture && texture->imTextureId) {
         ImGui::Image(
-            texture->shaderResourceView.Get(),
+            texture->imTextureId,
             size,
             ImVec2(0.0f, 0.0f),
             ImVec2(1.0f, 1.0f));
