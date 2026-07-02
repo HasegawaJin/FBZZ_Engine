@@ -40,8 +40,9 @@ target_link_libraries(fbzz_hub
         fbzz_engine
         imgui
         tomlplusplus
-        d3d11
-        dxgi
+        # WHY: GPU バックエンドは fbzz_engine 内部に閉じたため、GameHub 自身は d3d11 / dxgi を
+        #      直接リンクしない (DX11 具象への依存を排除)。dwmapi はダークタイトルバー、
+        #      shell32 はプロジェクトフォルダを開くために引き続き必要。
         dwmapi
         shell32
 )
