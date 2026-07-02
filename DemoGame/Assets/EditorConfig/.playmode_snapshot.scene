@@ -2108,8 +2108,8 @@ tag = 'Untagged'
     boneName = 'RootNode'
     generated = true
     nodeIndex = 0
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -2131,8 +2131,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Hips'
     generated = true
     nodeIndex = 1
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.002909, 0.800635, 0.007287 ]
@@ -2154,8 +2154,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Spine'
     generated = true
     nodeIndex = 2
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.000173, 0.105748, 0.011172 ]
@@ -2177,8 +2177,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Spine1'
     generated = true
     nodeIndex = 3
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.12406, 0.0 ]
@@ -2200,8 +2200,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Spine2'
     generated = true
     nodeIndex = 4
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.141783, 0.0 ]
@@ -2223,8 +2223,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Neck'
     generated = true
     nodeIndex = 5
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.000244, 0.158623, 0.016758 ]
@@ -2246,8 +2246,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Head'
     generated = true
     nodeIndex = 6
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.05564, -0.009881 ]
@@ -2269,8 +2269,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:HeadTop_End'
     generated = true
     nodeIndex = 7
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.183119, -0.030869 ]
@@ -2292,8 +2292,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftEye'
     generated = true
     nodeIndex = 8
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.022844, 0.079357, -0.070637 ]
@@ -2315,8 +2315,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightEye'
     generated = true
     nodeIndex = 9
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.023775, 0.079357, -0.070637 ]
@@ -2338,8 +2338,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftShoulder'
     generated = true
     nodeIndex = 10
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.05935, 0.136702, 0.016626 ]
@@ -2361,8 +2361,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftArm'
     generated = true
     nodeIndex = 11
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
@@ -2384,8 +2384,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftForeArm'
     generated = true
     nodeIndex = 12
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
@@ -2407,8 +2407,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHand'
     generated = true
     nodeIndex = 13
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.216034, 0.0 ]
@@ -2430,8 +2430,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb1'
     generated = true
     nodeIndex = 14
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.023704, 0.035456, -0.019082 ]
@@ -2453,8 +2453,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb2'
     generated = true
     nodeIndex = 15
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.028084, 0.0 ]
@@ -2476,8 +2476,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb3'
     generated = true
     nodeIndex = 16
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02379, 0.0 ]
@@ -2499,8 +2499,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb4'
     generated = true
     nodeIndex = 17
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02445, 0.0 ]
@@ -2522,8 +2522,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex1'
     generated = true
     nodeIndex = 18
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.023419, 0.099097, 0.002914 ]
@@ -2545,8 +2545,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex2'
     generated = true
     nodeIndex = 19
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.037767, 0.0 ]
@@ -2568,8 +2568,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex3'
     generated = true
     nodeIndex = 20
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02543, 0.0 ]
@@ -2591,8 +2591,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex4'
     generated = true
     nodeIndex = 21
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025291, 0.0 ]
@@ -2614,8 +2614,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle1'
     generated = true
     nodeIndex = 22
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.097008, 0.0 ]
@@ -2637,8 +2637,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle2'
     generated = true
     nodeIndex = 23
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.040146, 0.0 ]
@@ -2660,8 +2660,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle3'
     generated = true
     nodeIndex = 24
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.029967, 0.0 ]
@@ -2683,8 +2683,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle4'
     generated = true
     nodeIndex = 25
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02825, 0.0 ]
@@ -2706,8 +2706,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing1'
     generated = true
     nodeIndex = 26
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.022417, 0.093084, 0.001435 ]
@@ -2729,8 +2729,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing2'
     generated = true
     nodeIndex = 27
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.040194, 0.0 ]
@@ -2752,8 +2752,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing3'
     generated = true
     nodeIndex = 28
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.027908, 0.0 ]
@@ -2775,8 +2775,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing4'
     generated = true
     nodeIndex = 29
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025407, 0.0 ]
@@ -2798,8 +2798,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky1'
     generated = true
     nodeIndex = 30
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.047127, 0.089855, 0.002216 ]
@@ -2821,8 +2821,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky2'
     generated = true
     nodeIndex = 31
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.035625, 0.0 ]
@@ -2844,8 +2844,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky3'
     generated = true
     nodeIndex = 32
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.023352, 0.0 ]
@@ -2867,8 +2867,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky4'
     generated = true
     nodeIndex = 33
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.020373, 0.0 ]
@@ -2890,8 +2890,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Shield_joint'
     generated = true
     nodeIndex = 34
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.003982, 0.146634, 0.056486 ]
@@ -2913,8 +2913,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightShoulder'
     generated = true
     nodeIndex = 35
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.059792, 0.136702, 0.016626 ]
@@ -2936,8 +2936,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightArm'
     generated = true
     nodeIndex = 36
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
@@ -2959,8 +2959,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightForeArm'
     generated = true
     nodeIndex = 37
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
@@ -2982,8 +2982,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHand'
     generated = true
     nodeIndex = 38
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.216035, 0.0 ]
@@ -3110,8 +3110,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb1'
     generated = true
     nodeIndex = 39
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.023704, 0.035455, -0.019081 ]
@@ -3133,8 +3133,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb2'
     generated = true
     nodeIndex = 40
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.028084, 0.0 ]
@@ -3156,8 +3156,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb3'
     generated = true
     nodeIndex = 41
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02379, 0.0 ]
@@ -3179,8 +3179,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb4'
     generated = true
     nodeIndex = 42
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02445, 0.0 ]
@@ -3202,8 +3202,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex1'
     generated = true
     nodeIndex = 43
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.023419, 0.099096, 0.002914 ]
@@ -3225,8 +3225,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex2'
     generated = true
     nodeIndex = 44
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.037767, 0.0 ]
@@ -3248,8 +3248,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex3'
     generated = true
     nodeIndex = 45
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02543, 0.0 ]
@@ -3271,8 +3271,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex4'
     generated = true
     nodeIndex = 46
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02529, 0.0 ]
@@ -3294,8 +3294,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle1'
     generated = true
     nodeIndex = 47
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.097006, 0.0 ]
@@ -3317,8 +3317,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle2'
     generated = true
     nodeIndex = 48
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.040146, 0.0 ]
@@ -3340,8 +3340,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle3'
     generated = true
     nodeIndex = 49
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.029967, 0.0 ]
@@ -3363,8 +3363,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle4'
     generated = true
     nodeIndex = 50
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.02825, 0.0 ]
@@ -3386,8 +3386,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing1'
     generated = true
     nodeIndex = 51
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.022417, 0.093083, 0.001436 ]
@@ -3409,8 +3409,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing2'
     generated = true
     nodeIndex = 52
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.040194, 0.0 ]
@@ -3432,8 +3432,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing3'
     generated = true
     nodeIndex = 53
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.027908, 0.0 ]
@@ -3455,8 +3455,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing4'
     generated = true
     nodeIndex = 54
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.025407, 0.0 ]
@@ -3478,8 +3478,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky1'
     generated = true
     nodeIndex = 55
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.047128, 0.089853, 0.002217 ]
@@ -3501,8 +3501,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky2'
     generated = true
     nodeIndex = 56
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.035625, 0.0 ]
@@ -3524,8 +3524,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky3'
     generated = true
     nodeIndex = 57
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.023352, 0.0 ]
@@ -3547,8 +3547,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky4'
     generated = true
     nodeIndex = 58
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.020373, 0.0 ]
@@ -3570,8 +3570,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Sword_joint'
     generated = true
     nodeIndex = 59
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.007702, 0.0796, -0.028208 ]
@@ -3593,8 +3593,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftUpLeg'
     generated = true
     nodeIndex = 60
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.097891, -0.058759, 0.005837 ]
@@ -3616,8 +3616,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftLeg'
     generated = true
     nodeIndex = 61
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
@@ -3639,8 +3639,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftFoot'
     generated = true
     nodeIndex = 62
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
@@ -3662,8 +3662,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftToeBase'
     generated = true
     nodeIndex = 63
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.167, 0.0 ]
@@ -3685,8 +3685,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftToe_End'
     generated = true
     nodeIndex = 64
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0712, 0.0 ]
@@ -3708,8 +3708,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightUpLeg'
     generated = true
     nodeIndex = 65
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ -0.098577, -0.058759, 0.005837 ]
@@ -3731,8 +3731,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightLeg'
     generated = true
     nodeIndex = 66
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
@@ -3754,8 +3754,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightFoot'
     generated = true
     nodeIndex = 67
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
@@ -3777,8 +3777,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightToeBase'
     generated = true
     nodeIndex = 68
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.167, 0.0 ]
@@ -3800,8 +3800,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightToe_End'
     generated = true
     nodeIndex = 69
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0712, 0.0 ]
@@ -3823,8 +3823,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom_Shield'
     generated = true
     nodeIndex = 70
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -3846,8 +3846,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom_Sword'
     generated = true
     nodeIndex = 71
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -3869,8 +3869,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom_Helmet'
     generated = true
     nodeIndex = 72
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -3892,8 +3892,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom'
     generated = true
     nodeIndex = 73
-    skinnedMeshOwner = 'Player'
-    skinnedMeshOwnerGuid = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
+    skinnedMeshOwner = 'Enemy'
+    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -5091,8 +5091,8 @@ tag = 'Untagged'
     boneName = 'RootNode'
     generated = true
     nodeIndex = 0
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -5114,8 +5114,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Hips'
     generated = true
     nodeIndex = 1
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.002909, 0.800635, 0.007287 ]
@@ -5137,8 +5137,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom_Shield'
     generated = true
     nodeIndex = 70
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -5160,8 +5160,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom_Sword'
     generated = true
     nodeIndex = 71
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -5183,8 +5183,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom_Helmet'
     generated = true
     nodeIndex = 72
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -5206,8 +5206,8 @@ tag = 'Untagged'
     boneName = 'Paladin_J_Nordstrom'
     generated = true
     nodeIndex = 73
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]
@@ -5229,8 +5229,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Spine'
     generated = true
     nodeIndex = 2
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.000173, 0.105748, 0.011172 ]
@@ -5252,8 +5252,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftUpLeg'
     generated = true
     nodeIndex = 60
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.097891, -0.058759, 0.005837 ]
@@ -5275,8 +5275,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightUpLeg'
     generated = true
     nodeIndex = 65
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.098577, -0.058759, 0.005837 ]
@@ -5298,8 +5298,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Spine1'
     generated = true
     nodeIndex = 3
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.12406, 0.0 ]
@@ -5321,8 +5321,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftLeg'
     generated = true
     nodeIndex = 61
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
@@ -5344,8 +5344,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightLeg'
     generated = true
     nodeIndex = 66
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.41702, 0.0 ]
@@ -5367,8 +5367,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Spine2'
     generated = true
     nodeIndex = 4
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.141783, 0.0 ]
@@ -5390,8 +5390,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftFoot'
     generated = true
     nodeIndex = 62
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
@@ -5413,8 +5413,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightFoot'
     generated = true
     nodeIndex = 67
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.36981, 0.0 ]
@@ -5436,8 +5436,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Neck'
     generated = true
     nodeIndex = 5
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.000244, 0.158623, 0.016758 ]
@@ -5459,8 +5459,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftShoulder'
     generated = true
     nodeIndex = 10
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.05935, 0.136702, 0.016626 ]
@@ -5482,8 +5482,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightShoulder'
     generated = true
     nodeIndex = 35
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.059792, 0.136702, 0.016626 ]
@@ -5505,8 +5505,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftToeBase'
     generated = true
     nodeIndex = 63
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.167, 0.0 ]
@@ -5528,8 +5528,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightToeBase'
     generated = true
     nodeIndex = 68
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.167, 0.0 ]
@@ -5551,8 +5551,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Head'
     generated = true
     nodeIndex = 6
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.05564, -0.009881 ]
@@ -5574,8 +5574,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftArm'
     generated = true
     nodeIndex = 11
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
@@ -5597,8 +5597,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightArm'
     generated = true
     nodeIndex = 36
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.126079, 0.0 ]
@@ -5620,8 +5620,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftToe_End'
     generated = true
     nodeIndex = 64
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0712, 0.0 ]
@@ -5643,8 +5643,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightToe_End'
     generated = true
     nodeIndex = 69
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.0712, 0.0 ]
@@ -5666,8 +5666,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:HeadTop_End'
     generated = true
     nodeIndex = 7
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.183119, -0.030869 ]
@@ -5689,8 +5689,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftEye'
     generated = true
     nodeIndex = 8
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.022844, 0.079357, -0.070637 ]
@@ -5712,8 +5712,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightEye'
     generated = true
     nodeIndex = 9
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.023775, 0.079357, -0.070637 ]
@@ -5735,8 +5735,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftForeArm'
     generated = true
     nodeIndex = 12
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
@@ -5758,8 +5758,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightForeArm'
     generated = true
     nodeIndex = 37
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.255743, 0.0 ]
@@ -5781,8 +5781,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHand'
     generated = true
     nodeIndex = 13
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.216034, 0.0 ]
@@ -5804,8 +5804,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Shield_joint'
     generated = true
     nodeIndex = 34
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.003982, 0.146634, 0.056486 ]
@@ -5827,8 +5827,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHand'
     generated = true
     nodeIndex = 38
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.216035, 0.0 ]
@@ -5850,8 +5850,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb1'
     generated = true
     nodeIndex = 14
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.023704, 0.035456, -0.019082 ]
@@ -5873,8 +5873,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex1'
     generated = true
     nodeIndex = 18
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.023419, 0.099097, 0.002914 ]
@@ -5896,8 +5896,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle1'
     generated = true
     nodeIndex = 22
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.097008, 0.0 ]
@@ -5919,8 +5919,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing1'
     generated = true
     nodeIndex = 26
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.022417, 0.093084, 0.001435 ]
@@ -5942,8 +5942,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky1'
     generated = true
     nodeIndex = 30
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.047127, 0.089855, 0.002216 ]
@@ -5965,8 +5965,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb1'
     generated = true
     nodeIndex = 39
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.023704, 0.035455, -0.019081 ]
@@ -5988,8 +5988,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex1'
     generated = true
     nodeIndex = 43
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.023419, 0.099096, 0.002914 ]
@@ -6011,8 +6011,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle1'
     generated = true
     nodeIndex = 47
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.097006, 0.0 ]
@@ -6034,8 +6034,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing1'
     generated = true
     nodeIndex = 51
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.022417, 0.093083, 0.001436 ]
@@ -6057,8 +6057,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky1'
     generated = true
     nodeIndex = 55
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.047128, 0.089853, 0.002217 ]
@@ -6080,8 +6080,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:Sword_joint'
     generated = true
     nodeIndex = 59
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ -0.007702, 0.0796, -0.028208 ]
@@ -6103,8 +6103,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb2'
     generated = true
     nodeIndex = 15
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.028084, 0.0 ]
@@ -6126,8 +6126,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex2'
     generated = true
     nodeIndex = 19
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.037767, 0.0 ]
@@ -6149,8 +6149,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle2'
     generated = true
     nodeIndex = 23
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.040146, 0.0 ]
@@ -6172,8 +6172,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing2'
     generated = true
     nodeIndex = 27
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.040194, 0.0 ]
@@ -6195,8 +6195,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky2'
     generated = true
     nodeIndex = 31
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.035625, 0.0 ]
@@ -6218,8 +6218,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb2'
     generated = true
     nodeIndex = 40
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.028084, 0.0 ]
@@ -6241,8 +6241,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex2'
     generated = true
     nodeIndex = 44
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.037767, 0.0 ]
@@ -6264,8 +6264,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle2'
     generated = true
     nodeIndex = 48
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.040146, 0.0 ]
@@ -6287,8 +6287,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing2'
     generated = true
     nodeIndex = 52
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.040194, 0.0 ]
@@ -6310,8 +6310,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky2'
     generated = true
     nodeIndex = 56
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.035625, 0.0 ]
@@ -6438,8 +6438,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb3'
     generated = true
     nodeIndex = 16
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02379, 0.0 ]
@@ -6461,8 +6461,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex3'
     generated = true
     nodeIndex = 20
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02543, 0.0 ]
@@ -6484,8 +6484,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle3'
     generated = true
     nodeIndex = 24
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.029967, 0.0 ]
@@ -6507,8 +6507,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing3'
     generated = true
     nodeIndex = 28
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.027908, 0.0 ]
@@ -6530,8 +6530,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky3'
     generated = true
     nodeIndex = 32
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.023352, 0.0 ]
@@ -6553,8 +6553,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb3'
     generated = true
     nodeIndex = 41
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02379, 0.0 ]
@@ -6576,8 +6576,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex3'
     generated = true
     nodeIndex = 45
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02543, 0.0 ]
@@ -6599,8 +6599,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle3'
     generated = true
     nodeIndex = 49
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.029967, 0.0 ]
@@ -6622,8 +6622,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing3'
     generated = true
     nodeIndex = 53
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.027908, 0.0 ]
@@ -6645,8 +6645,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky3'
     generated = true
     nodeIndex = 57
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.023352, 0.0 ]
@@ -6668,8 +6668,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandThumb4'
     generated = true
     nodeIndex = 17
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02445, 0.0 ]
@@ -6691,8 +6691,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandIndex4'
     generated = true
     nodeIndex = 21
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.025291, 0.0 ]
@@ -6714,8 +6714,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandMiddle4'
     generated = true
     nodeIndex = 25
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02825, 0.0 ]
@@ -6737,8 +6737,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandRing4'
     generated = true
     nodeIndex = 29
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.025407, 0.0 ]
@@ -6760,8 +6760,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:LeftHandPinky4'
     generated = true
     nodeIndex = 33
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.020373, 0.0 ]
@@ -6783,8 +6783,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandThumb4'
     generated = true
     nodeIndex = 42
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02445, 0.0 ]
@@ -6806,8 +6806,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandIndex4'
     generated = true
     nodeIndex = 46
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02529, 0.0 ]
@@ -6829,8 +6829,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandMiddle4'
     generated = true
     nodeIndex = 50
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.02825, 0.0 ]
@@ -6852,8 +6852,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandRing4'
     generated = true
     nodeIndex = 54
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.025407, 0.0 ]
@@ -6875,8 +6875,8 @@ tag = 'Untagged'
     boneName = 'mixamorig:RightHandPinky4'
     generated = true
     nodeIndex = 58
-    skinnedMeshOwner = 'Enemy'
-    skinnedMeshOwnerGuid = 'b882d1ef-5cde-4b81-9ee3-90ec83c68cbe'
+    skinnedMeshOwner = ''
+    skinnedMeshOwnerGuid = ''
 
     [gameobjects.transform]
     position = [ 0.0, 0.020373, 0.0 ]

@@ -4,13 +4,13 @@ icon_size = 84.0
 tree_width = 180.0
 
 [camera]
-last_pos_x = 48.03815460205078
-last_pos_y = 7.968812942504883
-last_pos_z = 92.96784210205078
-last_rot_w = 0.5849137902259827
-last_rot_x = 0.13557574152946472
-last_rot_y = 0.7790312170982361
-last_rot_z = -0.18056973814964294
+last_pos_x = 26.24388313293457
+last_pos_y = 10.152448654174805
+last_pos_z = 26.199153900146484
+last_rot_w = -0.9465581774711609
+last_rot_x = -0.12083711475133896
+last_rot_y = -0.2966344952583313
+last_rot_z = 0.0378682017326355
 sensitivity = 0.15000000596046448
 speed = 5.0
 
@@ -228,7 +228,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 3021343250
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 3021343251
@@ -240,7 +240,7 @@ v = false
 
 [[inspector_sections.states]]
 k = 3021343253
-v = true
+v = false
 
 [[inspector_sections.states]]
 k = 3021343254

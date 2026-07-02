@@ -1,5 +1,5 @@
 [app]
-targetFps = 60
+targetFps = 0
 
 [audio]
 bgmVolume = 1.0
@@ -120,7 +120,7 @@ motionBlurSamples = 5
 motionBlurStrength = 0.24
 outlineColor = [ 1.0, 0.82, 0.22, 1.0 ]
 outlineWidth = 0.045
-passViewerEnabled = false
+passViewerEnabled = true
 pcssEnabled = true
 pcssLightRadius = 3.0
 pipeline = 'deferred'
@@ -145,7 +145,7 @@ showSelectionOutline = true
 ssrEnabled = true
 ssrIntensity = 0.8
 ssrMaxDistance = 50.0
-ssrSteps = 128
+ssrSteps = 64
 ssrThickness = 0.15
 taaEnabled = false
 taaFeedback = 0.049
