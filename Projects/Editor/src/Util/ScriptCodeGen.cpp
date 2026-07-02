@@ -236,7 +236,7 @@ std::string BuildSurfaceHlslTemplate(const std::string& name)
     ss << "\n";
     ss << "#include \"Common/Constants.hlsli\"\n";
     ss << "#include \"Common/Structs.hlsli\"\n";
-    ss << "#include \"Platform/DX11.hlsli\"\n";
+    ss << "#include \"Platform/Backend.hlsli\"\n";
     ss << "#include \"Rendering/Lighting.hlsli\"\n";
     ss << "\n";
     ss << "cbuffer MaterialConstants : register(CB_MATERIAL)\n";
@@ -285,7 +285,7 @@ std::string BuildPostProcessHlslTemplate(const std::string& name)
     ss << "\n";
     ss << "#include \"Common/Constants.hlsli\"\n";
     ss << "#include \"Common/Structs.hlsli\"\n";
-    ss << "#include \"Platform/DX11.hlsli\"\n";
+    ss << "#include \"Platform/Backend.hlsli\"\n";
     ss << "\n";
     ss << "Texture2D    texScene    : register(t0);\n";
     ss << "SamplerState sampDefault : register(SAMPLER_DEFAULT);\n";
@@ -321,7 +321,7 @@ std::string BuildComputeHlslTemplate(const std::string& name)
     ss << "#define " << name << "_CS_HLSL\n";
     ss << "\n";
     ss << "#include \"Common/Constants.hlsli\"\n";
-    ss << "#include \"Platform/DX11.hlsli\"\n";
+    ss << "#include \"Platform/Backend.hlsli\"\n";
     ss << "\n";
     ss << "RWTexture2D<float4> outputTex : register(u0);\n";
     ss << "Texture2D           inputTex  : register(t0);\n";
