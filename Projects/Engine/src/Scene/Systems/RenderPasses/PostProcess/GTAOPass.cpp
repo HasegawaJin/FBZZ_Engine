@@ -35,8 +35,8 @@ void ExecuteGTAOPass(RenderPassContext& ctx)
     gtaoDC.srvInputs[6]      = resources.GetColorTexture(h.gbufferRT, 1); // t6: GBuffer1 (normal)
     gtaoDC.srvInputs[7]      = resources.GetDepthTexture(h.gbufferRT);    // t7: Depth
     gtaoDC.uavOutputs[6]     = h.gtaoRaw;             // u6: UAV_GTAO_RAW
-    gtaoDC.dispatchX         = (ctx.width  + 7) / 8;
-    gtaoDC.dispatchY         = (ctx.height + 7) / 8;
+    gtaoDC.dispatchX         = (ctx.width  / 2 + 7) / 8;
+    gtaoDC.dispatchY         = (ctx.height / 2 + 7) / 8;
     gtaoDC.dispatchZ         = 1;
     r.Dispatch(gtaoDC, resources);
 
@@ -47,8 +47,8 @@ void ExecuteGTAOPass(RenderPassContext& ctx)
     blurDC.constantBuffers[5] = h.postprocCB;         // b5: texelSize
     blurDC.srvInputs[23]     = h.gtaoRaw;             // t23: TEX_GTAO (raw)
     blurDC.uavOutputs[7]     = h.gtaoBlur;            // u7: UAV_GTAO_BLUR
-    blurDC.dispatchX         = (ctx.width  + 7) / 8;
-    blurDC.dispatchY         = (ctx.height + 7) / 8;
+    blurDC.dispatchX         = (ctx.width  / 2 + 7) / 8;
+    blurDC.dispatchY         = (ctx.height / 2 + 7) / 8;
     blurDC.dispatchZ         = 1;
     r.Dispatch(blurDC, resources);
 }
