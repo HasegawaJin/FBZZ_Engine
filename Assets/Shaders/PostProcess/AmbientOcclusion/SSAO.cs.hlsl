@@ -24,23 +24,22 @@ static const float BIAS          = 0.025f;
 void CSMain(uint3 dtid : SV_DispatchThreadID)
 {
     uint2  pixel = dtid.xy;
-    if (pixel.x >= (uint)screenSize.x || pixel.y >= (uint)screenSize.y)
+
+    // 出力 SSAO バッファ (半解像度対応) の実サイズを基準にする。
+    float2 outSize;
+    outputSSAO.GetDimensions(outSize.x, outSize.y);
+    if (pixel.x >= (uint)outSize.x || pixel.y >= (uint)outSize.y)
         return;
 
-    float2 uv    = (float2(pixel) + 0.5f) * texelSize;
+    float2 uv    = (float2(pixel) + 0.5f) / outSize;
 
-    if (uv.x > 1.0f || uv.y > 1.0f)
-    {
-        outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);
-        return;
-    }
-
-    // GBuffer から法線復元
-    float3 N = texGBuffer1.Load(int3(pixel, 0)).rgb * 2.0f - 1.0f;
+    // GBuffer / 深度はフル解像度なので、正規化 UV でサンプルして半解像度スレッドから読む。
+    // WHY: Load(pixel) だと半解像度 pixel でフル解像度 GBuffer の左上 1/4 しか読めず破綻する。
+    float3 N = texGBuffer1.SampleLevel(sampDefault, uv, 0).rgb * 2.0f - 1.0f;
     N = normalize(N);
 
     // 深度から worldPos 復元
-    float  ndcDepth = texDepth.Load(int3(pixel, 0)).r;
+    float  ndcDepth = texDepth.SampleLevel(sampDefault, uv, 0).r;
     if (ndcDepth >= 1.0f)
     {
         outputSSAO[pixel] = float4(1.0f, 1.0f, 1.0f, 1.0f);

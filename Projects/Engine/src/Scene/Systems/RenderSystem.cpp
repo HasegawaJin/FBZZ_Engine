@@ -791,17 +791,20 @@ void RenderSystem(Scene& scene,
             decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1);
             bloomHalf       = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             bloomFull       = resources.CreateComputeTexture(curW, curH);
-            ssaoRaw         = resources.CreateComputeTexture(curW, curH);
-            ssaoBlur        = resources.CreateComputeTexture(curW, curH);
+            // AO / 接触影は低周波なので半解像度で焼き、消費側 (DeferredLighting) が正規化 UV の
+            // linear サンプルでアップスケールする。フル解像度比でコスト約 1/4。SSR は鏡面が崩れる
+            // ためフル解像度のまま維持する。
+            ssaoRaw         = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
+            ssaoBlur        = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             // ---- Advanced Graphics per-view テクスチャ ----
             ssrResult           = resources.CreateComputeTexture(curW, curH);
             volumetricResult    = resources.CreateComputeTexture(curW, curH);
             taaHistoryA         = resources.CreateRenderTarget(curW, curH, 1);
             taaHistoryB         = resources.CreateRenderTarget(curW, curH, 1);
             motionBlurResult    = resources.CreateComputeTexture(curW, curH);
-            gtaoRaw             = resources.CreateComputeTexture(curW, curH);
-            gtaoBlur            = resources.CreateComputeTexture(curW, curH);
-            contactShadowResult = resources.CreateComputeTexture(curW, curH);
+            gtaoRaw             = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 AO
+            gtaoBlur            = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 AO
+            contactShadowResult = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 接触影
             sHdrW = curW;
             sHdrH = curH;
         }
