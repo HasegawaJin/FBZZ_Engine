@@ -38,8 +38,10 @@ public:
         float         planetRadius     = 0.0f;
         float         atmosphereRadius = 0.0f;
 
-        // 各成分が eps 以内で一致するか。浮動小数のため厳密一致ではなく許容誤差で比較する。
-        bool ApproxEquals(const SkySignature& o, float eps = 1.0e-4f) const;
+        // 太陽方向を除く各成分が eps 以内で一致するか。浮動小数のため許容誤差で比較する。
+        // WHY: 太陽方向は時間帯アニメで連続的に動くため、ここには含めず ConsumeDirty 側で
+        //      角度閾値により間引く。大気パラメータ等はユーザー編集による離散変化なので eps 比較で十分。
+        bool AtmosphereApproxEquals(const SkySignature& o, float eps = 1.0e-4f) const;
     };
 
     // ── ベイク結果ハンドル (空連動) ──────────────────────────────────────────
@@ -57,10 +59,13 @@ public:
     math::Vector3 skyLightDirection = {0.0f, -1.0f, 0.0f}; // 太陽光の進行方向
     math::Vector3 skyLightColor     = math::Vector3::ONE;  // 太陽光の色 × 強度
 
-    // ConsumeDirty — current が前回と異なる (または強制 dirty) なら true を返し、内部状態を更新する。
-    // WHY: 「dirty を消費する」セマンティクス。true を返したフレームで呼び出し側がベイクを実行し、
-    //      次フレーム以降は同一 signature ならスキップされる (キャッシュ)。
-    bool ConsumeDirty(const SkySignature& current);
+    // ConsumeDirty — 空が意味のある変化をし、かつ最低ベイク間隔を満たしたら true を返す。
+    // WHY: 「dirty を消費する」セマンティクス。true を返したフレームで呼び出し側がベイクを実行する。
+    //      太陽方向は連続的に動くため角度閾値 (約1.5°) で間引き、さらに最低間隔 (約33ms) を設けて
+    //      時間帯アニメ中でも IBL 畳み込みを毎フレーム走らせない。拡散/低roughness IBL は数フレーム
+    //      遅延しても知覚できないため、GPU コスト (テクセル1万サンプルの畳み込み) を大きく削減できる。
+    //      currentTimeSeconds には Time::time (累積秒) を渡す。
+    bool ConsumeDirty(const SkySignature& current, float currentTimeSeconds);
 
     // MarkDirty — 次回の ConsumeDirty を必ず true にする (解像度変更・テクスチャ破棄後の強制再生成用)。
     void MarkDirty() { m_forceDirty = true; }
@@ -70,6 +75,7 @@ public:
 
 private:
     SkySignature m_lastSignature;
+    float        m_lastBakeTime = 0.0f;  // 最後に true を返した (= ベイクした) 時刻(秒)。最低間隔スロットル用
     bool         m_hasSignature = false; // 初回ベイク前は signature 未確定
     bool         m_forceDirty   = true;  // 初回は必ずベイクする
 };

@@ -21,8 +21,8 @@ cbuffer CbIblFace : register(b0)
 {
     uint g_faceIndex;
     uint g_textureSize;
-    uint _pad0;
-    uint _pad1;
+    uint g_phiSteps;    // 半球積分の φ 分割数 (0 ならデフォルト 200)
+    uint g_thetaSteps;  // 半球積分の θ 分割数 (0 ならデフォルト 50)
 };
 
 TextureCube<float4>          g_envMap  : register(t0); // Environment Cubemap SRV
@@ -42,11 +42,12 @@ void CSMain(uint3 dtid : SV_DispatchThreadID)
     float3 right = normalize(cross(up, N));
     float3 fwd   = cross(N, right);
 
-    // 半球上の Riemann sum
-    // phiSteps = 200, thetaSteps = 50 → 10000 サンプル
-    // 低解像度出力 (32^2) の高品質積分に十分
-    static const uint PHI_STEPS   = 200u;
-    static const uint THETA_STEPS = 50u;
+    // 半球上の Riemann sum。サンプル数は CB (g_phiSteps/g_thetaSteps) で制御する。
+    // WHY: Editor の DDS ベイクは高品質 (200×50=10000)、空連動 IBL の実行時ベイクは低品質
+    //      (例 64×16=1024) を渡して畳み込みコストを約 1/10 に抑える。分散低減 mip を併用するため
+    //      少サンプルでも 32^2 拡散 irradiance の品質を保てる。0 の場合は従来デフォルトにフォールバック。
+    const uint PHI_STEPS   = g_phiSteps   > 0u ? g_phiSteps   : 200u;
+    const uint THETA_STEPS = g_thetaSteps > 0u ? g_thetaSteps : 50u;
 
     // 各積分サンプルが覆う立体角に近い入力mipを使い、HDR高輝度テクセルの孤立ヒットを防ぐ。
     // WHY: mip0を直接読むと太陽のような微小光源を一部の出力テクセルだけが拾い、

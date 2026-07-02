@@ -199,7 +199,13 @@ IblTextureSet DX11IblBaker::ConvolveCubeToTextures(
     if (!EnsureConvolutionResources(compiledShadersDir)) return result;
 
     // 既存の実証済み畳み込みステージを、外部から渡された環境キューブ SRV に対して走らせる。
-    auto irrTex = BakeIrradiance(envCubeSRV, irradianceSize);
+    // 実行時 (空連動 IBL) は Editor DDS ベイク (200×50=10000) より大幅に少ないサンプルで畳み込む。
+    // WHY: 32² 拡散 irradiance は低周波かつ分散低減 mip をサンプルするため、64×16=1024 で品質を保ちつつ
+    //      畳み込みコストを約 1/10 に抑えられる (毎数フレームのベイクでも GPU 負荷を最小化する)。
+    constexpr uint32_t kRuntimeIrradiancePhi   = 64;
+    constexpr uint32_t kRuntimeIrradianceTheta = 16;
+    auto irrTex = BakeIrradiance(envCubeSRV, irradianceSize,
+                                 kRuntimeIrradiancePhi, kRuntimeIrradianceTheta);
     if (!irrTex) return result;
     auto preTex = BakePrefiltered(envCubeSRV, prefilteredSize, prefilteredMipCount, sampleCount, envMipCount);
     if (!preTex) return result;
@@ -419,7 +425,8 @@ ComPtr<ID3D11Texture2D> DX11IblBaker::BakeEnvCubemap(
 }
 
 ComPtr<ID3D11Texture2D> DX11IblBaker::BakeIrradiance(
-    ID3D11ShaderResourceView* envSrv, uint32_t size)
+    ID3D11ShaderResourceView* envSrv, uint32_t size,
+    uint32_t phiSteps, uint32_t thetaSteps)
 {
     auto tex = CreateCubemapTexture(size, 1, DXGI_FORMAT_R16G16B16A16_FLOAT, true);
     if (!tex) return nullptr;
@@ -437,7 +444,7 @@ ComPtr<ID3D11Texture2D> DX11IblBaker::BakeIrradiance(
 
     for (uint32_t face = 0; face < 6; ++face)
     {
-        CbIblFace cbData{ face, size, 0, 0 };
+        CbIblFace cbData{ face, size, phiSteps, thetaSteps };
         UpdateCB(cb.Get(), cbData);
 
         auto uav = CreateFaceUAV(tex.Get(), face, 0);
