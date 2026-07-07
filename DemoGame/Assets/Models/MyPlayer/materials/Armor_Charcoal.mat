@@ -1,10 +1,10 @@
 mesh_type = 'skinned'
-name = 'Alpha_Body_MAT'
+name = 'Armor_Charcoal'
 render_path = 'deferred'
 shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
 version = 1
 
 [params]
-albedo = [ 0.07725600898265839, 0.33729586005210876, 0.41760000586509705, 1.0 ]
+albedo = [ 0.07999999821186066, 0.0820000022649765, 0.08500000089406967, 1.0 ]
 metallic = 0.0
-roughness = 0.8082915544509888
+roughness = 0.3799999952316284

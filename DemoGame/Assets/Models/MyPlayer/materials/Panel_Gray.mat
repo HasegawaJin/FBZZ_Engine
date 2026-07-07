@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'Panel_Gray'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.2800000011920929, 0.28999999165534973, 0.30000001192092896, 1.0 ]
+metallic = 0.0
+roughness = 0.3500000238418579
