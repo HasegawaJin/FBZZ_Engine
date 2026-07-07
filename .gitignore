@@ -57,6 +57,9 @@ Thumbs.db
 !ThirdParty/
 !ThirdParty/**
 
+# Library — import 生成物 (baked) のキャッシュ。ソースから再生成できるため追跡しない
+**/Library/
+
 # Assets — 大容量バイナリ素材のみ除外 (10MB 超の恐れがあるもの)
 # **/Assets/** とすることで Projects/GameHub/Templates/standard/Assets/ 等にも適用
 # テキスト系 (シェーダー / スクリプト / マテリアル定義 / シーン) は追跡する
@@ -72,7 +75,8 @@ Thumbs.db
 **/Assets/**/*.mp3
 **/Assets/**/*.wav
 **/Assets/**/*.ogg
-**/Assets/**/*.tex
+# .meta は追跡する: AssetDatabase の GUID を保持するため (Unity と同じ)。
+# クローン先で GUID が再発行されると guid: 参照が全て切れるので必ずコミットする。
 **/Assets/**/*.mesh
 **/Assets/**/*.fzasset
 **/Assets/**/*.skel

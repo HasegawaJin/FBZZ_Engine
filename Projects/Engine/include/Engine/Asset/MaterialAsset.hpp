@@ -45,7 +45,7 @@ struct MaterialAsset {
     RenderPath renderPath = RenderPath::Auto;
     MeshType   meshType   = MeshType::Any;
 
-    // slot 名 → assets/ 相対パス（.tex descriptor または .png/.dds 直参照、どちらも可）
+    // slot 名 → assets/ 相対パス（元画像 .png/.dds 等を直参照。インポート設定は隣の .meta が担う）
     std::unordered_map<std::string, std::string> textures;
 
     // シェーダー変数名 → float 要素列。float / float2 / float3 / float4 を同じ形式で保存する。

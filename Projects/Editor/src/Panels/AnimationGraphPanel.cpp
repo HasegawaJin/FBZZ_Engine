@@ -11,7 +11,6 @@
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/GraphLayout.hpp>
-#include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -71,6 +70,47 @@ const char* ConditionOpName(scene::ConditionOp op)
     return NAMES[std::clamp(static_cast<int>(op), 0, 5)];
 }
 
+GraphLayout ToEditorGraphLayout(const asset::AnimatorGraphLayout& source)
+{
+    GraphLayout layout;
+    layout.entryPosition = ImVec2(source.entryPosition.x, source.entryPosition.y);
+    layout.anyStatePosition = ImVec2(source.anyStatePosition.x, source.anyStatePosition.y);
+    for (const auto& [stateName, pos] : source.nodePositions)
+        layout.nodePositions[stateName] = ImVec2(pos.x, pos.y);
+    for (const auto& [stateName, positions] : source.blendTreeMotionPositions) {
+        auto& dst = layout.blendTreeMotionPositions[stateName];
+        dst.reserve(positions.size());
+        for (const auto& pos : positions)
+            dst.emplace_back(pos.x, pos.y);
+    }
+    return layout;
+}
+
+asset::AnimatorGraphLayout ToAssetGraphLayout(const GraphLayout& source)
+{
+    asset::AnimatorGraphLayout layout;
+    layout.entryPosition = { source.entryPosition.x, source.entryPosition.y };
+    layout.anyStatePosition = { source.anyStatePosition.x, source.anyStatePosition.y };
+    for (const auto& [stateName, pos] : source.nodePositions)
+        layout.nodePositions[stateName] = { pos.x, pos.y };
+    for (const auto& [stateName, positions] : source.blendTreeMotionPositions) {
+        auto& dst = layout.blendTreeMotionPositions[stateName];
+        dst.reserve(positions.size());
+        for (const ImVec2& pos : positions)
+            dst.push_back({ pos.x, pos.y });
+    }
+    return layout;
+}
+
+bool SaveAnimatorControllerWithLayout(EditorContext& ctx,
+                                      const std::string& path,
+                                      const scene::AnimatorComponent& animator)
+{
+    auto controller = asset::MakeAnimatorControllerAsset(animator);
+    controller.editorLayout = ToAssetGraphLayout(ctx.graphLayouts[path]);
+    return asset::SaveAnimatorControllerAsset(path, controller);
+}
+
 void MarkDirty(EditorContext& ctx)
 {
     if (!CanEditAnimationGraph(ctx))
@@ -82,14 +122,14 @@ void MarkDirty(EditorContext& ctx)
         ctx.animationControllerDirty = true;
         // Registry に登録し Save All / 終了時確認で一括保存できるようにする
         const std::string capturedPath = ctx.selectedAssetPath;
+        EditorContext* context = &ctx;
         std::weak_ptr<scene::AnimatorComponent> weakAnimator = ctx.animationControllerEditor;
         AssetDirtyRegistry::Register(
             capturedPath, NormalizeAssetPath(capturedPath), "CTRL",
-            [capturedPath, weakAnimator]() {
+            [capturedPath, context, weakAnimator]() {
                 auto animator = weakAnimator.lock();
-                if (!animator) return false;
-                const auto controller = asset::MakeAnimatorControllerAsset(*animator);
-                return asset::SaveAnimatorControllerAsset(capturedPath, controller);
+                if (!animator || !context) return false;
+                return SaveAnimatorControllerWithLayout(*context, capturedPath, *animator);
             });
         return;
     }
@@ -1009,14 +1049,8 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
                 controller, *ctx.animationControllerEditor);
             ctx.animationControllerEditorPath = ctx.selectedAssetPath;
             ctx.animationControllerDirty = false;
-            std::unordered_map<std::string, GraphLayout> controllerLayouts;
-            if (GraphLayoutSerializer::Load(
-                    controllerLayouts, ctx.selectedAssetPath)) {
-                if (const auto it = controllerLayouts.find(ctx.selectedAssetPath);
-                    it != controllerLayouts.end()) {
-                    ctx.graphLayouts[ctx.selectedAssetPath] = it->second;
-                }
-            }
+            ctx.graphLayouts[ctx.selectedAssetPath] =
+                ToEditorGraphLayout(controller.editorLayout);
             m_selectionOwnerInstanceId.clear();
             m_selectedLink = {};
             m_selectedNode = -1;
@@ -1057,28 +1091,23 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         }
         ImGui::SameLine();
         if (ImGui::Button("Save Controller")) {
-            const auto controller = asset::MakeAnimatorControllerAsset(animator);
-            if (asset::SaveAnimatorControllerAsset(
-                    ctx.selectedAssetPath, controller)) {
+            if (SaveAnimatorControllerWithLayout(ctx, ctx.selectedAssetPath, animator)) {
                 ctx.animationControllerDirty = false;
                 AssetDirtyRegistry::MarkClean(ctx.selectedAssetPath);
                 ctx.requestAssetBrowserRefresh = true;
-                std::unordered_map<std::string, GraphLayout> controllerLayouts;
-                controllerLayouts.emplace(
-                    ctx.selectedAssetPath,
-                    ctx.graphLayouts[ctx.selectedAssetPath]);
-                GraphLayoutSerializer::Save(
-                    controllerLayouts, ctx.selectedAssetPath);
                 if (ctx.activeScene) {
-                    const std::string savedPath =
-                        NormalizeAssetPath(ctx.selectedAssetPath);
-                    for (auto [sceneAnimator] :
-                         ctx.activeScene->View<scene::AnimatorComponent>()) {
-                        if (NormalizeAssetPath(sceneAnimator.controllerPath) == savedPath) {
-                            asset::ApplyAnimatorControllerAsset(
-                                controller, sceneAnimator);
-                            sceneAnimator.loadedControllerPath =
-                                sceneAnimator.controllerPath;
+                    asset::AnimatorControllerAsset controller;
+                    if (asset::LoadAnimatorControllerAsset(ctx.selectedAssetPath, controller)) {
+                        const std::string savedPath =
+                            NormalizeAssetPath(ctx.selectedAssetPath);
+                        for (auto [sceneAnimator] :
+                             ctx.activeScene->View<scene::AnimatorComponent>()) {
+                            if (NormalizeAssetPath(sceneAnimator.controllerPath) == savedPath) {
+                                asset::ApplyAnimatorControllerAsset(
+                                    controller, sceneAnimator);
+                                sceneAnimator.loadedControllerPath =
+                                    sceneAnimator.controllerPath;
+                            }
                         }
                     }
                 }
