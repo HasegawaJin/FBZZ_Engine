@@ -121,7 +121,7 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
-    // .tex descriptor と従来の生画像パスを同じ公開 API で扱う。
+    // ".meta" サイドカー表記と生画像パスを同じ公開 API で扱う (ResolveSourcePath が元画像へ解決)。
     // WHY: .mat / Scene は Assets/ 起点の相対パスを保存するが、DX11Texture は実ファイルパスを要求する。
     //      ResourceManager が AssetManager と同じ解決規則を通すことで、呼び出し側ごとの cwd 依存をなくす。
     std::string sourcePath;

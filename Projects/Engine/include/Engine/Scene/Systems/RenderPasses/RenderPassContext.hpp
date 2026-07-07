@@ -450,6 +450,8 @@ struct RenderPassContext {
 
     renderer::LightConstantsCB lightData;
     math::Matrix4               lightVP;
+    // GBuffer を使う不透明パイプラインが有効かどうか。
+    // WHY: RenderSettings の Forward/Deferred 名ではなく、各パスが GBuffer 入力を読めるかを判定する。
     bool                        isDeferred  = false;
     bool                        ssaoEnabled = false;
     // ライト正射影の深度範囲で正規化済みの NDC バイアス。

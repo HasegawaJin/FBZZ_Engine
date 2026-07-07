@@ -2,7 +2,7 @@
 // SSRPass.cpp | fbzz::scene
 // Screen Space Reflections パス — Compute Shader でレイマーチして映り込みを生成する。
 // WHY: キューブマップ反射は静的シーンしか映せないが、SSR は動的オブジェクトも正確に映す。
-//      Deferred GBuffer の法線・深度・金属度を活用するため、Deferred パイプラインでのみ有効。
+//      GBuffer の法線・深度・金属度を活用するため、GBuffer 経路でのみ有効。
 #include "PostProcessPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
@@ -16,8 +16,9 @@ void ExecuteSSRPass(RenderPassContext& ctx)
     auto& h         = ctx.handles;
     const auto& ssr = ctx.settings.ssr;
 
-    // SSR は Deferred パイプライン専用（GBuffer が必要）
-    if (!ssr.enabled || !ctx.isDeferred ||
+    // SSR はパイプライン名ではなく GBuffer の有無で判定する。
+    // WHY: Forward 選択時も不透明物を GBuffer 経由にするため、反射の見た目を Deferred と揃えられる。
+    if (!ssr.enabled ||
         !h.ssrShader.IsValid() || !h.ssrResult.IsValid() || !h.gbufferRT.IsValid())
         return;
 
