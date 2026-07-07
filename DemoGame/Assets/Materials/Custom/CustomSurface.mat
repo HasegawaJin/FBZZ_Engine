@@ -1,7 +1,7 @@
 mesh_type = 'surface'
 name = 'CustomSurface'
 render_path = 'forward'
-shader = 'Assets/Shaders/Material/Custom/CustomSurface.hlsl'
+shader = 'guid:879d35f8756b46edabcdac63399fe40a'
 version = 1
 
 [params]

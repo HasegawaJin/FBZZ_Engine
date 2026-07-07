@@ -1,7 +1,7 @@
 mesh_type = 'surface'
 name = 'namaqualand_boulder_03'
 render_path = 'deferred'
-shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
+shader = 'guid:60be603ce2e244c1b75b963aa1b87925'
 version = 1
 
 [params]

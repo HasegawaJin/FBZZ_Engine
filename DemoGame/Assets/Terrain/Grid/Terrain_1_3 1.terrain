@@ -4101,10 +4101,10 @@ heightData = [
     0.02001
 ]
 layerMaterials = [
-    'Assets/Materials/Terrain/Layer0_Ground.mat',
-    'Assets/Materials/Terrain/Layer1_Grass.mat',
-    'Assets/Materials/Terrain/Layer2_Sand.mat',
-    'Assets/Materials/Terrain/Layer3_Rock.mat'
+    'guid:f1be9e4a536d4c8ea40dcbd2abdf522a',
+    'guid:9c2470196f76417abf3d985c8ba6a38f',
+    'guid:09e28ee8c0e246988c7d5fb5b1602ba6',
+    'guid:5493ce63bed146c7a2337e735191bd51'
 ]
 maxHeight = 30.0
 rows = 64

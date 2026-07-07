@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Skinned/SkinnedAnisotropic.hlsl"
+shader = "guid:8bf90cef4a304b4ca3d9e19e4125cff3"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

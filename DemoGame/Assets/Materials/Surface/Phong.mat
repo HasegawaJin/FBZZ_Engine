@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/Phong.hlsl"
+shader = "guid:b260ff2a25d6435393aa13b3822844cc"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

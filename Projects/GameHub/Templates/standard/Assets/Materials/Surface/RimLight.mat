@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/RimLight.hlsl"
+shader = "guid:3550fc62cd3b40159f3301ffd3f2c66a"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

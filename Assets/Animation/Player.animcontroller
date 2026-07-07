@@ -26,15 +26,15 @@ paramName = 'Speed'
 dampTime = 0.18
 syncNormalizedTime = true
 motions = [
-    { sourcePath = 'Assets/Models/DebugCharacter/Idle/anims/Idle@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'Assets/Models/DebugCharacter/Walking/anims/Walking@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
-    { sourcePath = 'Assets/Models/DebugCharacter/Running/anims/Running@mixamo.com.anim', clipName = 'mixamo.com', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 }
+    { sourcePath = 'guid:7ba9c24eb5f94aa3ab43a2fa2715a22d', clipName = 'mixamo.com', clipIndex = -1, threshold = 0.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'guid:596c2c6d1a284c68a4ee24f14749bdef', clipName = 'mixamo.com', clipIndex = -1, threshold = 4.0, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 },
+    { sourcePath = 'guid:4401f6100f22478685485bf5664a381b', clipName = 'mixamo.com', clipIndex = -1, threshold = 7.2, posX = 0.0, posY = 0.0, speed = 1.0, ikWeight = 1.0 }
 ]
 
 [[states]]
 name = 'JumpUp'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/JumpingUp/anims/JumpingUp@mixamo.com.anim'
+sourcePath = 'guid:83821a50b77643719c69572677e75c52'
 clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
@@ -51,7 +51,7 @@ conditions = [{ paramName = 'VerticalSpeed', op = 1, threshold = -0.5 }]
 [[states]]
 name = 'Fall'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/FallingIdle/anims/FallingIdle@mixamo.com.anim'
+sourcePath = 'guid:5d51a97fcec946f4a5d23d5264907c09'
 clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
@@ -68,7 +68,7 @@ conditions = [{ paramName = 'IsGrounded', op = 4, threshold = 0.0 }]
 [[states]]
 name = 'Landing'
 mode = 0
-sourcePath = 'Assets/Models/DebugCharacter/Landing/anims/Landing@mixamo.com.anim'
+sourcePath = 'guid:5c6f275ce929402890ebf3765d03dc82'
 clipName = 'mixamo.com'
 clipIndex = -1
 speed = 1.0
@@ -89,3 +89,29 @@ hasExitTime = true
 exitTime = 0.75
 transitionDuration = 0.12
 conditions = []
+
+[editorLayout]
+entryX = -220.0
+entryY = 80.0
+anyStateX = -220.0
+anyStateY = 200.0
+
+[[editorLayout.nodes]]
+stateName = 'Locomotion'
+x = 80.0
+y = 80.0
+
+[[editorLayout.nodes]]
+stateName = 'Landing'
+x = 680.0
+y = 300.0
+
+[[editorLayout.nodes]]
+stateName = 'JumpUp'
+x = 380.0
+y = 80.0
+
+[[editorLayout.nodes]]
+stateName = 'Fall'
+x = 680.0
+y = 80.0

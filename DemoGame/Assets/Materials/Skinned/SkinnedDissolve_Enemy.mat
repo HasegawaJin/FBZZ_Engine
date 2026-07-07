@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'skinned'
 render_path = 'auto'
 render_queue = 2000
-shader = 'Assets/Shaders/Material/Skinned/SkinnedDissolve.hlsl'
+shader = 'guid:c1309a283f6b4b8989174ebe7ef0fb4a'
 version = 1
 
 [params]
@@ -19,11 +19,11 @@ uvOffset = [ 0.0, 0.0 ]
 uvTiling = [ 1.0, 1.0 ]
 
 [textures]
-albedo = 'C:/Users/jinhs/Downloads/FBZZ_Engine/DemoGame/Assets/Models/PlayerMesh/textures/Paladin_diffuse_0.tex'
+albedo = 'guid:f8dcc1df843a4e47b873cba16ccfe456'
 ao = ''
 emissive = ''
 metallic = ''
-normal = 'C:/Users/jinhs/Downloads/FBZZ_Engine/DemoGame/Assets/Models/PlayerMesh/textures/Paladin_normal_1.tex'
+normal = 'guid:2ab8a415e00f4609863139681fe91dab'
 tex5 = ''
 tex6 = ''
 tex7 = ''

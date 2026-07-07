@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'any'
 render_path = 'particle'
 render_queue = 2000
-shader = 'Assets/Shaders/Material/Effects/Particle.hlsl'
+shader = 'guid:b2b649db3d874b1880812d3cdfa3c4f4'
 version = 1
 
 [params]
@@ -16,7 +16,7 @@ normal_strength = 1.0
 roughness_factor = 0.6499999761581421
 
 [textures]
-albedo = 'Assets/Textures/Particles/fire_02.tex'
+albedo = 'guid:fb3344079d4f4f97837ebebaf2ab93a2'
 ao = ''
 emissive = ''
 metallic = ''
