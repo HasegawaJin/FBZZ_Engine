@@ -7,6 +7,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/anim.h>
 #include <assimp/scene.h>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -116,6 +117,14 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         ext.eventCount           = 0;
         out.write(reinterpret_cast<const char*>(&ext), sizeof(ext));
 
+        // DCC 座標系補正 (FbxImportTool が正規化したルートノードと同名のトラックへ適用)。
+        // WHY: Blender はルートノードの +90°X / scale100 をアニメトラックでも毎キー再生する。
+        //      バインド側 (ノード) からは除去済みのため、トラック側にも同じ F = q⁻¹·(1/s) を
+        //      合成しないと骨階層とアニメが 90° / 100 倍ずれてしまう。
+        const aiQuaternion axisInvQ(ctx.axisFixRotation[3], -ctx.axisFixRotation[0],
+                                    -ctx.axisFixRotation[1], -ctx.axisFixRotation[2]);
+        const float axisInvS = 1.0f / ctx.axisFixScale;
+
         // トラック
         for (uint32_t ti = 0; ti < anim->mNumChannels; ++ti) {
             const aiNodeAnim* ch = anim->mChannels[ti];
@@ -130,23 +139,33 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
             th.scaleCount     = ch->mNumScalingKeys;
             out.write(reinterpret_cast<const char*>(&th), sizeof(th));
 
+            const bool applyAxisFix =
+                std::find(ctx.axisFixNodes.begin(), ctx.axisFixNodes.end(), nodeName)
+                != ctx.axisFixNodes.end();
+
             for (uint32_t ki = 0; ki < ch->mNumPositionKeys; ++ki) {
                 const auto& k = ch->mPositionKeys[ki];
+                aiVector3D v = k.mValue;
+                if (applyAxisFix) v = axisInvQ.Rotate(v * axisInvS);
                 FzVectorKey vk{ k.mTime,
-                    k.mValue.x * ctx.unitScale,
-                    k.mValue.y * ctx.unitScale,
-                    k.mValue.z * ctx.unitScale,
+                    v.x * ctx.unitScale,
+                    v.y * ctx.unitScale,
+                    v.z * ctx.unitScale,
                     0.0f };
                 out.write(reinterpret_cast<const char*>(&vk), sizeof(vk));
             }
             for (uint32_t ki = 0; ki < ch->mNumRotationKeys; ++ki) {
                 const auto& k = ch->mRotationKeys[ki];
-                FzQuaternionKey qk{ k.mTime, k.mValue.x, k.mValue.y, k.mValue.z, k.mValue.w };
+                aiQuaternion q = k.mValue;
+                if (applyAxisFix) q = axisInvQ * q; // F の回転を左掛け (バインド側と同じ変換)
+                FzQuaternionKey qk{ k.mTime, q.x, q.y, q.z, q.w };
                 out.write(reinterpret_cast<const char*>(&qk), sizeof(qk));
             }
             for (uint32_t ki = 0; ki < ch->mNumScalingKeys; ++ki) {
                 const auto& k = ch->mScalingKeys[ki];
-                FzVectorKey vk{ k.mTime, k.mValue.x, k.mValue.y, k.mValue.z, 0.0f };
+                aiVector3D v = k.mValue;
+                if (applyAxisFix) v = v * axisInvS; // scale100 キー → 1.0
+                FzVectorKey vk{ k.mTime, v.x, v.y, v.z, 0.0f };
                 out.write(reinterpret_cast<const char*>(&vk), sizeof(vk));
             }
         }

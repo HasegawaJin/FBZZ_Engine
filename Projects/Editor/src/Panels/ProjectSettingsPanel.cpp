@@ -188,6 +188,8 @@ std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
             p.name = entry.path().stem().string();
             p.path = util::FileSystem::PathToUtf8(entry.path());
             const auto& tbl = parsed.table();
+            if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
+                p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
             if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
                 p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
             if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
@@ -218,13 +220,20 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
     if (ImGui::CollapsingHeader("FBX Defaults", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Indent();
         {
+            static constexpr const char* kSourceDccNames[] = { "Auto Detect", "Maya / FBX SDK", "Blender" };
+            int sourceDccIdx = static_cast<int>(opt.sourceDcc);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3))
+                opt.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
+        }
+        {
             static constexpr const char* kConvNames[] = { "DirectX (keep G)", "OpenGL (flip G)" };
             int convIdx = static_cast<int>(opt.normalMapConvention);
             ImGui::SetNextItemWidth(180.0f);
             if (ImGui::Combo("Normal Map Convention", &convIdx, kConvNames, 2))
                 opt.normalMapConvention = static_cast<NormalMapConvention>(convIdx);
         }
-        ImGui::Checkbox("Auto-generate .tex descriptors", &opt.generateTexDescriptors);
+        ImGui::Checkbox("Auto-generate texture .meta sidecars", &opt.generateTexDescriptors);
         {
             static constexpr const char* kCompNames[] = {
                 "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
@@ -277,7 +286,9 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
                     ImGui::TextUnformatted(p.name.c_str());
 
                     ImGui::TableSetColumnIndex(1);
-                    ImGui::TextDisabled("Conv=%s  GenTex=%s",
+                    ImGui::TextDisabled("DCC=%s  Conv=%s  GenTex=%s",
+                        p.options.sourceDcc == FbxSourceDcc::Blender ? "Blender" :
+                        p.options.sourceDcc == FbxSourceDcc::Maya ? "Maya" : "Auto",
                         p.options.normalMapConvention == NormalMapConvention::OpenGL ? "OpenGL" : "DirectX",
                         p.options.generateTexDescriptors ? "on" : "off");
 
