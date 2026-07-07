@@ -21,10 +21,10 @@ struct TerrainGridComponent {
 
     // 新規セル作成時のデフォルト設定。
     // MapEditorPanel の "Add New Terrain Here" および Inspector の "Apply to All Cells" が参照する。
-    int   defaultColumns   = 129;
-    int   defaultRows      = 129;
-    float defaultCellSize  = 1.0f;
-    int   defaultChunkSize = 64;
+    int   defaultColumns   = 65;
+    int   defaultRows      = 65;
+    float defaultCellSize  = 2.0f;
+    int   defaultChunkSize = 32;
 
     // row-major: cells[gz * cellCountX + gx]
     // ランタイム解決済み EntityID。シリアライズは cellInstanceIds で行う。

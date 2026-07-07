@@ -36,10 +36,10 @@ struct TerrainComponent {
     //      maxHeight は正負両方向の最大振幅として扱う。
     std::vector<float> heightData;
 
-    int   columns   = 129;    // X 方向の頂点数（2^n + 1 推奨: チャンク境界整合・LOD 二分割容易）
-    int   rows      = 129;    // Z 方向の頂点数
-    float cellSize  = 1.0f;  // 1 マスのワールド単位幅 [m]
-    float maxHeight = 30.0f; // heightData=1 のときのワールド高さ [m]
+    int   columns   = 65;    // X 方向の頂点数（2^n + 1 推奨: チャンク境界整合・LOD 二分割容易）
+    int   rows      = 65;    // Z 方向の頂点数
+    float cellSize  = 2.0f;  // 1 マスのワールド単位幅 [m]
+    float maxHeight = 20.0f; // heightData=1 のときのワールド高さ [m]
 
     // ── スプラットマップ (CPU, RGBA8 unorm) ────────────────────────────────────
     // index = (z * columns + x) * 4 + channel  (0=R 1=G 2=B 3=A)

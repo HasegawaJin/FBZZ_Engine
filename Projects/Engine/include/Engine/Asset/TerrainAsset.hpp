@@ -11,10 +11,10 @@
 namespace fbzz::asset {
 
 struct TerrainAsset {
-    uint32_t                   columns   = 129;
-    uint32_t                   rows      = 129;
-    float                      cellSize  = 1.0f;
-    float                      maxHeight = 30.0f;
+    uint32_t                   columns   = 65;
+    uint32_t                   rows      = 65;
+    float                      cellSize  = 2.0f;
+    float                      maxHeight = 20.0f;
     uint32_t                   chunkSize = 32;
 
     // 各レイヤーが参照する .mat のパス（assets/ 相対）

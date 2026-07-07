@@ -24,7 +24,7 @@ bool LoadHeightMapFromFile(
     TerrainComponent&  terrain,
     bool               unipolar)
 {
-    // ハイトマップも .tex descriptor / 生画像の両形式を受け付ける。
+    // ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
     std::string sourcePath;
     if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) return false;
     const std::wstring wpath = util::StringUtils::ToWide(sourcePath);
