@@ -56,11 +56,11 @@ inline void PlayerIKComponent::UpdateIK(bool useFootIK)
             chain.enabled = useFootIK;
     }
 
-    // WHY: Block 中は横移動になるため localMoveDirection が横方向を向き、
+    // WHY: 戦闘構え (Combat) 中はストレイフ移動になるため localMoveDirection が横方向を向き、
     //      UpdateSlopeLean が上体を横に傾けて見た目がおかしくなる。
     //      足 IK はそのまま維持し、スロープリーンだけ無効にする。
-    //      PlayerControllerComponent は後から実行されるため直前フレームの Block 値を使用する。
-    const bool isStrafing = animator.IsInState(AnimState::Block) || animator.GetBool(AnimParam::Block);
+    //      PlayerControllerComponent は後から実行されるため直前フレームの Combat 値を使用する。
+    const bool isStrafing = animator.GetBool(AnimParam::Combat);
     if (!isStrafing)
         UpdateSlopeLean(*ik);
 }

@@ -28,17 +28,9 @@
 #include <vector>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-#include "Scripts/AttackHitboxComponent.hpp"
-#include "Scripts/EnemyControllerComponent.hpp"
-#include "Scripts/EnemySpawnerComponent.hpp"
-#include "Scripts/EnemyStats.hpp"
-#include "Scripts/HealthComponent.hpp"
-#include "Scripts/HitBloodEffectComponent.hpp"
 #include "Scripts/PlayerControllerComponent.hpp"
 #include "Scripts/PlayerIKComponent.hpp"
 #include "Scripts/SceneManagerScript.hpp"
-#include "Scripts/SwordParticleComponent.hpp"
-#include "Scripts/SwordTrailComponent.hpp"
 #include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
