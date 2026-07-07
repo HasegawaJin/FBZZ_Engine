@@ -194,8 +194,7 @@ bool MaterialExporter::Export(const aiMaterial* material,
                                   const std::string& texturesDir,
                                   const std::string& outputPath,
                                   bool skinned,
-                                  bool flipGreenChannel,
-                                  bool useTexDescriptors)
+                                  bool flipGreenChannel)
 {
     // マテリアルの既知スロットに現れない画像も含め、FBX 内包テクスチャを全て PNG 化する。
     // WHY: Assimp が UNKNOWN/HEIGHT 等へ分類した画像も import package から欠落させない。
@@ -244,13 +243,9 @@ bool MaterialExporter::Export(const aiMaterial* material,
                         util::FileSystem::PathFromUtf8(texturesDir) / filename;
                     FlipNormalMapGreen(fullPath);
                 }
-                std::string textureReference = filename;
-                if (useTexDescriptors) {
-                    fs::path descriptorPath = util::FileSystem::PathFromUtf8(filename);
-                    descriptorPath.replace_extension(".tex");
-                    textureReference = util::FileSystem::PathToUtf8(descriptorPath);
-                }
-                texTbl.insert(slot.key, textureReference);
+                // マテリアルは元画像を直接参照する。インポート設定は元画像隣の
+                // "<画像>.meta" サイドカーが担うため、.mat 側は source を指すだけでよい。
+                texTbl.insert(slot.key, filename);
             }
         }
     }

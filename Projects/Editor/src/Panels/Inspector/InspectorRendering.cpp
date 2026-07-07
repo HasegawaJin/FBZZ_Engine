@@ -45,7 +45,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
 
             if (sel == 0) {
-                widgets::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fzasset", ctx.projectRoot,
+                widgets::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fbx", ctx.projectRoot,
                     [&mr]() {
                         if (!mr.meshPath.empty())
                             if (auto* model = asset::AssetManager::LoadModel(mr.meshPath))
@@ -57,7 +57,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
     DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
         [](scene::SkinnedMeshRenderer& smr, EditorContext& ctx) {
-            widgets::AssetPathFieldWithLoad("Model", smr.modelPath, ".fzasset", ctx.projectRoot,
+            widgets::AssetPathFieldWithLoad("Model", smr.modelPath, ".fbx", ctx.projectRoot,
                 [&smr]() {
                     smr.model = nullptr;
                     if (!smr.modelPath.empty())

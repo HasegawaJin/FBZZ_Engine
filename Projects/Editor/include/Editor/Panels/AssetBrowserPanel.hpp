@@ -43,8 +43,8 @@ private:
         std::string ext;    // lowercase, e.g. ".hlsl"
         bool        isDir     = false;
         bool        isMount   = false;
-        bool        isSubAsset = false; // fzasset の展開で挿入された仮想サブエントリ
-        bool        isPackageAsset = false; // Foo/Foo.fzasset を親階層で Foo.fzasset として見せる仮想エントリ
+        bool        isSubAsset = false; // FBX の展開で挿入された仮想サブエントリ
+        bool        isPackageAsset = false; // 旧パッケージ仮想エントリ互換用。新規 UI では生成しない
     };
 
     struct AssetMount {
@@ -90,12 +90,14 @@ private:
     void DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz, const Entry& e);
     void DrawEntryContextMenu(const Entry& e, EditorContext& ctx);
     void DrawEntryRenameLabel(const Entry& e, EditorContext& ctx);
+    // 作成直後やショートカット操作から、同じインラインリネーム状態へ入るための共通入口。
+    void BeginRenameForPath(const std::string& path, EditorContext* ctx = nullptr);
     void HandleEntryClick(const Entry& e, EditorContext& ctx, bool hov);
     void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
 
-    // fzasset パッケージ配下の従属アセットを列挙して、展開時のグリッドに挿入する。
-    std::vector<Entry> GetAssetSubEntries(const std::string& fzassetPath);
+    // FBX パッケージ配下の従属アセットを列挙して、展開時のグリッドに挿入する。
+    std::vector<Entry> GetAssetSubEntries(const std::string& modelSourcePath);
 
     // 未変換モデルファイルを検出してインポートキューに積む (relPath は m_rootPath 相対)。
     // WHY: PNG / JPG 等のテクスチャは ResourceManager が原本を直接読むため変換しない。
@@ -132,20 +134,20 @@ private:
     float                 m_iconSize  = 84.0f;
     float                 m_treeWidth = 180.0f; // 左フォルダツリーの幅 (スプリッターでドラッグ可変)
     bool                  m_resetScroll    = false; // ディレクトリ移動後に右ペインをトップへ戻す
-    bool                  m_assetExpandDirty  = false; // fzasset 展開トグル後の遅延 Refresh フラグ
+    bool                  m_assetExpandDirty  = false; // FBX 展開トグル後の遅延 Refresh フラグ
 
     // --- fzasset 展開状態 -------------------------------------------------------
     std::unordered_set<std::string> m_expandedAssets;
     std::unordered_set<std::string> m_packageAssetPaths;
 
-    // fzasset サブエントリキャッシュ (従属フォルダの再走査を抑制)
+    // FBX サブエントリキャッシュ (従属フォルダの再走査を抑制)
     struct AssetSubItems {
         std::vector<Entry>                  items;
         std::filesystem::file_time_type     lastWriteTime{};
-        std::filesystem::file_time_type     animDirTime{};  // .fzasset 用: anims/ の mtime
-        std::filesystem::file_time_type     materialDirTime{}; // .fzasset 用: materials/ の mtime
-        std::filesystem::file_time_type     textureDirTime{};  // .fzasset 用: textures/ の mtime
-        std::filesystem::file_time_type     mergedMeshTime{};  // .fzasset 用: Foo.mesh の mtime
+        std::filesystem::file_time_type     animDirTime{};  // FBX 用: anims/ の mtime
+        std::filesystem::file_time_type     materialDirTime{}; // FBX 用: materials/ の mtime
+        std::filesystem::file_time_type     textureDirTime{};  // FBX 用: textures/ の mtime
+        std::filesystem::file_time_type     mergedMeshTime{};  // FBX 用: Foo.mesh の mtime
     };
     std::unordered_map<std::string, AssetSubItems> m_assetSubItemsCache;
 
@@ -256,6 +258,7 @@ private:
         FbxImportOptions options;
     };
     std::vector<PendingImport> m_pendingImports;
+    std::vector<std::string>   m_completedImportPaths;
 
     // ファイルウォッチャーが検出した未確認モデルファイルのキュー
     // WHY: UE 同様、ファイル追加を検知したらインポート設定ウィンドウを自動表示する。
@@ -265,7 +268,7 @@ private:
     std::vector<bool>        m_pendingConfirmIncludes;
 
     // ファイルウォッチャーが検出した未確認テクスチャファイルのキュー
-    // WHY: .tex descriptor 生成は FBX 変換とは別処理なので、モデル用キューと混在させない。
+    // WHY: .meta サイドカー生成は FBX 変換とは別処理なので、モデル用キューと混在させない。
     std::vector<std::string> m_pendingTextureConfirmImports;
     std::vector<bool>        m_pendingTextureConfirmIncludes;
 

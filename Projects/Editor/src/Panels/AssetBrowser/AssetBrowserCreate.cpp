@@ -37,6 +37,23 @@ void RegisterCreatedPath(EditorContext& ctx, const std::string& path)
 
 } // namespace
 
+void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContext* ctx)
+{
+    if (path.empty()) return;
+
+    m_renamingPath = path;
+    m_pendingRenamePath.clear();
+    m_selectedPaths.clear();
+
+    if (ctx && !util::FileSystem::IsDirectory(path))
+        ctx->selectedAssetPath = path;
+
+    std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(path).c_str(),
+                 sizeof(m_renameBuffer) - 1);
+    m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+    m_renameNeedFocus = true;
+}
+
 void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
 {
     if (m_selectedFbxPath.empty()) return;
@@ -159,12 +176,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         util::FileSystem::EnsureDirectory(newDir);
         RegisterCreatedPath(ctx, newDir);
         RefreshDirectory();
-        // 新規フォルダをリネームモードで開く
-        m_renamingPath = newDir;
-        std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(newDir).c_str(),
-                     sizeof(m_renameBuffer) - 1);
-        m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-        m_renameNeedFocus = true;
+        BeginRenameForPath(newDir, &ctx);
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Scene")) {
@@ -175,6 +187,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
+        BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Material")) {
         std::string newPath = m_currentPath + "/New Material.mat";
@@ -206,6 +219,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         util::FileSystem::WriteText(newPath, materialTemplate);
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
+        BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Post Process Profile")) {
         std::string newPath = m_currentPath + "/New Post Process Profile.fzpp";
@@ -222,7 +236,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         }
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
-        ctx.selectedAssetPath = newPath;
+        BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Animator Controller")) {
         std::string newPath = m_currentPath + "/New Animator Controller.animcontroller";
@@ -237,7 +251,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         }
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
-        ctx.selectedAssetPath = newPath;
+        BeginRenameForPath(newPath, &ctx);
     }
 
     // ── Data Asset (純共有 ScriptableObject) ──────────────────────
@@ -259,7 +273,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 util::FileSystem::WriteText(newPath, "type = \"" + typeName + "\"\n");
                 RegisterCreatedPath(ctx, newPath);
                 RefreshDirectory();
-                ctx.selectedAssetPath = newPath;
+                BeginRenameForPath(newPath, &ctx);
             }
         }
         ImGui::EndMenu();

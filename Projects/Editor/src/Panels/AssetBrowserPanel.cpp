@@ -425,12 +425,12 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
     case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
                                    || e.ext == ".flac";
     case TypeFilter::Mesh:      return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
-                                    || e.ext == ".glb"    || e.ext == ".mesh"   || e.ext == ".fzasset";
+                                     || e.ext == ".glb"    || e.ext == ".mesh";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
     case TypeFilter::Prefab:    return e.ext == ".prefab";
     case TypeFilter::Animation: return e.ext == ".anim";
     case TypeFilter::Skeleton:  return e.ext == ".skel";
-    case TypeFilter::Asset:     return e.ext == ".asset" || e.ext == ".fzasset";
+    case TypeFilter::Asset:     return e.ext == ".asset";
     default:                    return true;
     }
 }
