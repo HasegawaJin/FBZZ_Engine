@@ -131,6 +131,14 @@ public:
     bool DestroyGameObject(EntityID id);
     bool MoveGameObject(EntityID id, int offset);
     bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
+    // ルート GO をルート同士の並び順で newRootIndex 位置へ移動する。
+    // WHY: Hierarchy のドラッグ並べ替え用。ルートの表示順はフラット配列の出現順で
+    //      決まるため、子 GO の SetSiblingIndex とは別に Scene 側で並べ替える。
+    bool SetRootSiblingIndex(EntityID id, int newRootIndex);
+    // 親の m_children 並び替え後に、フラット配列上の兄弟順序を同期させる。
+    // WHY: シリアライザ (保存 / Undo スナップショット / Play 復元) は flat 順で
+    //      SetParent を再生して子リストを再構築するため、flat 順の兄弟順序が正本になる。
+    bool SyncSiblingFlatOrder(EntityID id);
 
     // System 向け高速マルチ Component イテレータ
     template<typename... Ts>
@@ -173,6 +181,10 @@ public:
 
     // src の全 Component を dst にコピーする (Duplicate 用)
     void DuplicateComponents(EntityID src, EntityID dst);
+    // 別 Scene 上の src から dst へ全 Component をコピーする (Prefab / Clipboard 用)
+    // WHY: Prefab は一時 Scene に通常ロードしてから現在の Scene へ追加するため、
+    //      Scene 内複製だけでは全 Component 対応を共有できない。
+    void CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst);
 
     // SceneView が entity span を取得するために使う
     template<typename T>
@@ -265,6 +277,39 @@ private:
                 arr.Add(dst, std::move(dstComponent));
         } else if constexpr (std::is_copy_constructible_v<T>) {
             if (arr.Has(src) && !arr.Has(dst)) arr.Add(dst, arr.Get(src));
+        }
+    }
+
+    template<typename T>
+    static void CopyFromOtherIfHas(const ComponentArray<T>& srcArr, ComponentArray<T>& dstArr,
+                                   EntityID src, EntityID dst) {
+        if constexpr (std::is_same_v<T, ScriptComponent>) {
+            if (!srcArr.Has(src) || dstArr.Has(dst)) return;
+
+            const auto& srcComponent = srcArr.Get(src);
+            ScriptComponent dstComponent{};
+            for (const auto& srcEntry : srcComponent.scripts) {
+                ScriptEntry& dstEntry = dstComponent.scripts.emplace_back();
+                if (srcEntry.serialized) {
+                    dstEntry.serialized = std::make_shared<SerializedScriptData>(*srcEntry.serialized);
+                    dstEntry.script = ScriptFactory::Create(dstEntry.serialized->type);
+                    if (dstEntry.script)
+                        dstEntry.script->enabled = dstEntry.serialized->enabled;
+                } else if (srcEntry.script) {
+                    const std::string type = srcEntry.script->GetTypeName();
+                    dstEntry.serialized = std::make_shared<SerializedScriptData>();
+                    dstEntry.serialized->type = type;
+                    dstEntry.serialized->enabled = srcEntry.script->enabled;
+                    dstEntry.script = ScriptFactory::Create(type);
+                    if (dstEntry.script)
+                        dstEntry.script->enabled = srcEntry.script->enabled;
+                }
+            }
+
+            if (!dstComponent.scripts.empty())
+                dstArr.Add(dst, std::move(dstComponent));
+        } else if constexpr (std::is_copy_constructible_v<T>) {
+            if (srcArr.Has(src) && !dstArr.Has(dst)) dstArr.Add(dst, srcArr.Get(src));
         }
     }
 

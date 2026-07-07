@@ -9,7 +9,6 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/EditorTaskOverlay.hpp>
-#include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -649,7 +648,6 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         scene::FlushWorldTransforms(*m_ctx.activeScene);
         m_settings.lastScenePath = sceneToOpen;
         m_ctx.currentScenePath   = sceneToOpen;
-        GraphLayoutSerializer::Load(m_ctx.graphLayouts, sceneToOpen);
         m_ctx.selectedEntities.clear();
         RebuildEditorUIFromScene();
         CaptureCleanScene();
@@ -1384,9 +1382,13 @@ void EditorApp::UpdateFocusAnim(float dt)
         const math::Vector3 camDir = (dist > 0.01f)
             ? dir * (1.0f / dist)
             : math::Vector3{ 0.0f, 0.5f, -1.0f }.Normalized();
+        // WHY: Unity の Frame Selected と同様、対象バウンズの大きさに応じて
+        //      カメラ距離を変える。半径 0 (バウンズ不明) は従来の固定距離。
+        const float focusDist = (std::max)(kFocusDist, m_ctx.focusTargetRadius * 2.2f);
+        m_ctx.focusTargetRadius = 0.0f;
         m_focusAnim.active   = true;
         m_focusAnim.startPos = m_debugCamera.camera.m_position;
-        m_focusAnim.endPos   = target + camDir * kFocusDist;
+        m_focusAnim.endPos   = target + camDir * focusDist;
         m_focusAnim.target   = target;
         m_focusAnim.t        = 0.0f;
     }

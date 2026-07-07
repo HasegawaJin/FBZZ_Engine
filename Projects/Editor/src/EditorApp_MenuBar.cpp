@@ -359,28 +359,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         isPlaying,
         playColor,
         BUTTON_SIZE)) {
-        m_undoStack.Clear();
-        RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
-        // navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
-        // Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
-        m_navMeshPlayCache.clear();
-        for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
-            auto* surf = ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
-            auto* go   = ctx.activeScene->GetGameObject(eid);
-            if (surf && go && surf->navMesh.IsValid())
-                m_navMeshPlayCache[go->instanceId] = surf->navMesh;
-        }
-        // WHY: ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。
-        //      エディタは共通ProjectRuntimeのSceneManagerをUpdateするため、Play開始時に
-        //      ScriptRuntime をオーバーライドして正しい参照先を指す。
-        m_runtime.ActivateScriptRuntime(
-            core::Application::Get().GetRenderer(),
-            static_cast<uint32_t>(m_ctx.gameViewportWidth),
-            static_cast<uint32_t>(m_ctx.gameViewportHeight)
-        );
-        pm->Play(*ctx.activeScene);
-        if (pm->IsPlaying() && ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
-            ctx.requestGameViewportFocus = true;
+        StartPlayMode();
     }
 
     ImGui::SameLine();
@@ -392,9 +371,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         isEditor,
         stopColor,
         BUTTON_SIZE)) {
-        scene::ScriptRuntime::Override(nullptr);
-        pm->Stop(*ctx.activeScene);
-        m_undoStack.Clear();
+        StopPlayMode();
     }
 
     ImGui::SameLine();
@@ -501,18 +478,81 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 // ホットキー登録
 // =============================================================================
 
+void EditorApp::StartPlayMode()
+{
+    // WHY: Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
+    //      ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
+    const bool scriptReloadBusy =
+        m_ctx.scriptReloadBusy ||
+        m_ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
+        m_ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
+    if (!m_ctx.activeScene || !m_playMode.IsInEditor() || scriptReloadBusy)
+        return;
+
+    m_undoStack.Clear();
+    RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
+    // navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
+    // Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
+    m_navMeshPlayCache.clear();
+    for (scene::EntityID eid : m_ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+        auto* surf = m_ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+        auto* go   = m_ctx.activeScene->GetGameObject(eid);
+        if (surf && go && surf->navMesh.IsValid())
+            m_navMeshPlayCache[go->instanceId] = surf->navMesh;
+    }
+    // WHY: ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。
+    //      エディタは共通ProjectRuntimeのSceneManagerをUpdateするため、Play開始時に
+    //      ScriptRuntime をオーバーライドして正しい参照先を指す。
+    m_runtime.ActivateScriptRuntime(
+        core::Application::Get().GetRenderer(),
+        static_cast<uint32_t>(m_ctx.gameViewportWidth),
+        static_cast<uint32_t>(m_ctx.gameViewportHeight)
+    );
+    m_playMode.Play(*m_ctx.activeScene);
+    if (m_playMode.IsPlaying() && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
+        m_ctx.requestGameViewportFocus = true;
+}
+
+void EditorApp::StopPlayMode()
+{
+    if (!m_ctx.activeScene || m_playMode.IsInEditor())
+        return;
+    scene::ScriptRuntime::Override(nullptr);
+    m_playMode.Stop(*m_ctx.activeScene);
+    m_undoStack.Clear();
+}
+
+void EditorApp::TogglePlayMode()
+{
+    if (m_playMode.IsInEditor())
+        StartPlayMode();
+    else
+        StopPlayMode();
+}
+
 void EditorApp::RegisterDefaultHotkeys()
 {
     m_hotkeys.Register({ "Undo",           ImGuiKey_Z, true,  false, false,
         [this]() { m_undoStack.Undo(); } });
     m_hotkeys.Register({ "Redo",           ImGuiKey_Y, true,  false, false,
         [this]() { m_undoStack.Redo(); } });
+    // WHY: Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させ、
+    //      どちらの操作習慣のユーザーでも迷わないようにする。
+    m_hotkeys.Register({ "Redo (Alt)",     ImGuiKey_Z, true,  true,  false,
+        [this]() { m_undoStack.Redo(); } });
+    m_hotkeys.Register({ "New Scene",      ImGuiKey_N, true,  false, false,
+        [this]() { RequestNewScene(); } });
     m_hotkeys.Register({ "Open Scene",     ImGuiKey_O, true,  false, false,
         [this]() { RequestOpenSceneFromDialog(); } });
     m_hotkeys.Register({ "Save Scene",     ImGuiKey_S, true,  false, false,
         [this]() { SaveScene(); } });
     m_hotkeys.Register({ "Save Scene As",  ImGuiKey_S, true,  true,  false,
         [this]() { SaveSceneAsDialog(); } });
+    // Unity 互換の Play 系ショートカット
+    m_hotkeys.Register({ "Play/Stop",      ImGuiKey_P, true,  false, false,
+        [this]() { TogglePlayMode(); } });
+    m_hotkeys.Register({ "Pause",          ImGuiKey_P, true,  true,  false,
+        [this]() { if (!m_playMode.IsInEditor()) m_playMode.Pause(); } });
 }
 
 } // namespace fbzz::editor

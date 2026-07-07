@@ -101,6 +101,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     }
 
     // デフォルトインポート設定
+    if (auto v = tbl["import"]["source_dcc"].value<int64_t>())
+        defaultImportOptions.sourceDcc = static_cast<fbzz::editor::FbxSourceDcc>(*v);
     if (auto v = tbl["import"]["normal_map_convention"].value<int64_t>())
         defaultImportOptions.normalMapConvention = static_cast<fbzz::editor::NormalMapConvention>(*v);
     if (auto v = tbl["import"]["generate_tex_descriptors"].value<bool>())
@@ -317,6 +319,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     // デフォルトインポート設定
     toml::table importTbl;
+    importTbl.insert("source_dcc",                static_cast<int64_t>(defaultImportOptions.sourceDcc));
     importTbl.insert("normal_map_convention",    static_cast<int64_t>(defaultImportOptions.normalMapConvention));
     importTbl.insert("generate_tex_descriptors", defaultImportOptions.generateTexDescriptors);
     importTbl.insert("default_compression",      static_cast<int64_t>(defaultImportOptions.defaultCompression));

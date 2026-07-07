@@ -76,7 +76,8 @@ struct EditorContext {
     std::string       selectedAssetPath; // アセットブラウザーで選択中のファイル絶対パス (空 = なし)
     bool              sceneDirty = false;
     // Animation Graph Editor のノード配置。Editor 専用のため SceneSerializer には渡さない。
-    // WHY: AnimatorComponent はランタイム構造体なので、キャンバス座標は instanceId keyed の別データとして保持する。
+    // WHY: AnimatorComponent はランタイム構造体なので、キャンバス座標は Scene 内 GO の
+    //      instanceId または Controller アセットパスをキーにした別データとして保持する。
     std::unordered_map<std::string, GraphLayout> graphLayouts;
     AnimationGraphSelection animationGraphSelection;
     // Animation Graph と Inspector が共有する Controller アセット編集モデル。
@@ -201,6 +202,8 @@ struct EditorContext {
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
     math::Vector3   focusTargetPosition    = {};
+    // 選択バウンディング球の半径。0 は「バウンズ不明」で従来の固定距離フォーカスになる。
+    float           focusTargetRadius      = 0.0f;
 
     // カメラブックマーク呼び出し: ViewportPanel がセット → EditorApp が Teleport してクリア
     bool             requestTeleportCamera  = false;
