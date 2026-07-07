@@ -62,6 +62,83 @@ Vertex ConvertVertex(const aiMesh* mesh, uint32_t i, float scale)
     return v;
 }
 
+aiVector3D TransformPoint(const aiMatrix4x4& m, const aiVector3D& v)
+{
+    return {
+        m.a1 * v.x + m.a2 * v.y + m.a3 * v.z + m.a4,
+        m.b1 * v.x + m.b2 * v.y + m.b3 * v.z + m.b4,
+        m.c1 * v.x + m.c2 * v.y + m.c3 * v.z + m.c4
+    };
+}
+
+aiVector3D TransformDirection(const aiMatrix4x4& m, const aiVector3D& v)
+{
+    aiVector3D out{
+        m.a1 * v.x + m.a2 * v.y + m.a3 * v.z,
+        m.b1 * v.x + m.b2 * v.y + m.b3 * v.z,
+        m.c1 * v.x + m.c2 * v.y + m.c3 * v.z
+    };
+    const float len = std::sqrt(out.x * out.x + out.y * out.y + out.z * out.z);
+    if (len > 1e-6f) out *= 1.0f / len;
+    return out;
+}
+
+Vertex ConvertVertexWithNodeTransform(const aiMesh* mesh, uint32_t i, float scale, const aiMatrix4x4& transform)
+{
+    Vertex v = ConvertVertex(mesh, i, 1.0f);
+    const aiVector3D pos = TransformPoint(transform, mesh->mVertices[i]);
+    v.position[0] = pos.x * scale;
+    v.position[1] = pos.y * scale;
+    v.position[2] = pos.z * scale;
+    if (mesh->mNormals) {
+        const aiVector3D n = TransformDirection(transform, mesh->mNormals[i]);
+        v.normal[0] = n.x; v.normal[1] = n.y; v.normal[2] = n.z;
+    }
+    if (mesh->mTangents) {
+        const aiVector3D t = TransformDirection(transform, mesh->mTangents[i]);
+        v.tangent[0] = t.x; v.tangent[1] = t.y; v.tangent[2] = t.z;
+    }
+    return v;
+}
+
+Vertex ConvertVertexWithStaticAxisFix(const aiMesh* mesh,
+                                      uint32_t i,
+                                      float scale,
+                                      const aiMatrix4x4& transform,
+                                      const aiQuaternion& axisInvQ,
+                                      float axisInvS)
+{
+    Vertex v = ConvertVertex(mesh, i, 1.0f);
+    const aiVector3D nodePos = TransformPoint(transform, mesh->mVertices[i]);
+    const aiVector3D pos = axisInvQ.Rotate(nodePos * axisInvS);
+    v.position[0] = pos.x * scale;
+    v.position[1] = pos.y * scale;
+    v.position[2] = pos.z * scale;
+    if (mesh->mNormals) {
+        const aiVector3D nodeN = TransformDirection(transform, mesh->mNormals[i]);
+        const aiVector3D n = axisInvQ.Rotate(nodeN);
+        v.normal[0] = n.x; v.normal[1] = n.y; v.normal[2] = n.z;
+    }
+    if (mesh->mTangents) {
+        const aiVector3D nodeT = TransformDirection(transform, mesh->mTangents[i]);
+        const aiVector3D t = axisInvQ.Rotate(nodeT);
+        v.tangent[0] = t.x; v.tangent[1] = t.y; v.tangent[2] = t.z;
+    }
+    return v;
+}
+
+void CollectMeshNodeTransforms(const aiNode* node,
+                               const aiMatrix4x4& parent,
+                               std::unordered_map<uint32_t, aiMatrix4x4>& outTransforms)
+{
+    if (!node) return;
+    const aiMatrix4x4 global = parent * node->mTransformation;
+    for (uint32_t i = 0; i < node->mNumMeshes; ++i)
+        outTransforms.emplace(node->mMeshes[i], global);
+    for (uint32_t i = 0; i < node->mNumChildren; ++i)
+        CollectMeshNodeTransforms(node->mChildren[i], global, outTransforms);
+}
+
 struct Influence {
     std::array<uint32_t, 4> idx{};
     std::array<float, 4>    wgt{};
@@ -255,7 +332,9 @@ bool WriteMergedMesh(
     const std::string& outputPath,
     const aiScene* scene,
     float unitScale,
-    const std::vector<std::string>& selectedMeshNames)
+    const std::vector<std::string>& selectedMeshNames,
+    const std::unordered_map<uint32_t, aiMatrix4x4>* meshTransforms = nullptr,
+    const FbxImportContext* ctx = nullptr)
 {
     using namespace asset;
 
@@ -278,8 +357,22 @@ bool WriteMergedMesh(
         if (!isMeshSelected(mesh) || mesh->mNumVertices == 0) continue;
 
         const uint32_t baseVertex = static_cast<uint32_t>(vertices.size());
-        for (uint32_t vi = 0; vi < mesh->mNumVertices; ++vi)
-            vertices.push_back(ConvertVertex(mesh, vi, unitScale));
+        const auto transformIt = meshTransforms ? meshTransforms->find(mi) : std::unordered_map<uint32_t, aiMatrix4x4>::const_iterator{};
+        const bool applyNodeTransform = meshTransforms && transformIt != meshTransforms->end();
+        const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
+        const bool applyStaticAxisFix = ctx && ctx->applyStaticNodeTransforms;
+        const aiQuaternion axisInvQ = ctx
+            ? aiQuaternion(ctx->axisFixRotation[3], -ctx->axisFixRotation[0],
+                           -ctx->axisFixRotation[1], -ctx->axisFixRotation[2])
+            : aiQuaternion();
+        const float axisInvS = ctx ? (1.0f / ctx->axisFixScale) : 1.0f;
+        for (uint32_t vi = 0; vi < mesh->mNumVertices; ++vi) {
+            vertices.push_back(applyStaticAxisFix
+                ? ConvertVertexWithStaticAxisFix(mesh, vi, unitScale, transform, axisInvQ, axisInvS)
+                : (applyNodeTransform
+                    ? ConvertVertexWithNodeTransform(mesh, vi, unitScale, transform)
+                    : ConvertVertex(mesh, vi, unitScale)));
+        }
 
         for (uint32_t fi = 0; fi < mesh->mNumFaces; ++fi) {
             const aiFace& face = mesh->mFaces[fi];
@@ -412,6 +505,10 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         return false;
     };
 
+    std::unordered_map<uint32_t, aiMatrix4x4> staticMeshTransforms;
+    if (ctx.applyStaticNodeTransforms && ms && ms->mRootNode)
+        CollectMeshNodeTransforms(ms->mRootNode, aiMatrix4x4(), staticMeshTransforms);
+
     uint32_t submeshCount = 0;
     for (uint32_t mi=0; mi<ms->mNumMeshes; ++mi)
         if (isMeshSelected(ms->mMeshes[mi]) && ms->mMeshes[mi]->mNumVertices > 0) ++submeshCount;
@@ -444,8 +541,19 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         if (!skinned || !mesh->HasBones()) {
             smHdr.vertexFormat = 0;
             std::vector<Vertex> verts(mesh->mNumVertices);
-            for (uint32_t i=0; i<mesh->mNumVertices; ++i)
-                verts[i] = ConvertVertex(mesh, i, ctx.unitScale);
+            const auto transformIt = staticMeshTransforms.find(mi);
+            const bool applyNodeTransform = transformIt != staticMeshTransforms.end();
+            const aiMatrix4x4 transform = applyNodeTransform ? transformIt->second : aiMatrix4x4();
+            const aiQuaternion axisInvQ(ctx.axisFixRotation[3], -ctx.axisFixRotation[0],
+                                        -ctx.axisFixRotation[1], -ctx.axisFixRotation[2]);
+            const float axisInvS = 1.0f / ctx.axisFixScale;
+            for (uint32_t i=0; i<mesh->mNumVertices; ++i) {
+                verts[i] = ctx.applyStaticNodeTransforms
+                    ? ConvertVertexWithStaticAxisFix(mesh, i, ctx.unitScale, transform, axisInvQ, axisInvS)
+                    : (applyNodeTransform
+                        ? ConvertVertexWithNodeTransform(mesh, i, ctx.unitScale, transform)
+                        : ConvertVertex(mesh, i, ctx.unitScale));
+            }
             ComputeBoundsV(verts[0].position, verts.size(), sizeof(Vertex)/sizeof(float),
                            smHdr.boundsCenter, smHdr.boundsRadius);
             out.write(reinterpret_cast<const char*>(&smHdr), sizeof(smHdr));
@@ -499,7 +607,13 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
     }
     tempGuard.committed = true;
 
-    return WriteMergedMesh(mergedMeshPath, ms, ctx.unitScale, ctx.selectedMeshNames);
+    return WriteMergedMesh(
+        mergedMeshPath,
+        ms,
+        ctx.unitScale,
+        ctx.selectedMeshNames,
+        ctx.applyStaticNodeTransforms ? &staticMeshTransforms : nullptr,
+        &ctx);
 }
 
 } // namespace fbzz::editor
