@@ -13,6 +13,7 @@
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -76,20 +77,40 @@ struct WaterComponent {
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
+        const uint32_t oldResolutionX = resolutionX;
+        const uint32_t oldResolutionZ = resolutionZ;
+        const uint32_t oldChunkCount  = chunkCount;
+        const float oldExtentX = extentX;
+        const float oldExtentZ = extentZ;
+        const std::string oldMaterialPath = materialPath;
+
         // IReflector は uint32_t 非対応のため int 経由で編集・保存する。
-        int resX = static_cast<int>(resolutionX);
-        int resZ = static_cast<int>(resolutionZ);
-        int chunks = static_cast<int>(chunkCount);
+        int resX = static_cast<int>((std::clamp)(resolutionX, 1u, 512u));
+        int resZ = static_cast<int>((std::clamp)(resolutionZ, 1u, 512u));
+        int chunks = static_cast<int>((std::clamp)(chunkCount, 1u, 64u));
         r.Field("resolutionX", resX);
         r.Field("resolutionZ", resZ);
         r.Field("chunkCount", chunks);
-        resolutionX = static_cast<uint32_t>(resX < 1 ? 1 : resX);
-        resolutionZ = static_cast<uint32_t>(resZ < 1 ? 1 : resZ);
-        chunkCount  = static_cast<uint32_t>(chunks < 1 ? 1 : chunks);
         r.Field("extentX", extentX);
         r.Field("extentZ", extentZ);
         r.Field("enableGerstnerWaves", enableGerstnerWaves);
         r.Field("materialPath", materialPath);
+
+        resolutionX = static_cast<uint32_t>((std::clamp)(resX, 1, 512));
+        resolutionZ = static_cast<uint32_t>((std::clamp)(resZ, 1, 512));
+        chunkCount  = static_cast<uint32_t>((std::clamp)(chunks, 1, 64));
+        extentX = (std::clamp)(extentX, 0.1f, 10000.0f);
+        extentZ = (std::clamp)(extentZ, 0.1f, 10000.0f);
+        if (resolutionX != oldResolutionX || resolutionZ != oldResolutionZ ||
+            chunkCount  != oldChunkCount  || extentX      != oldExtentX      ||
+            extentZ     != oldExtentZ) {
+            meshDirty = true;
+            foamDirty = true;
+        }
+        if (materialPath != oldMaterialPath) {
+            texDirty = true;
+            foamDirty = true;
+        }
 
         // GerstnerWave × 4 を Inspector から編集できるよう公開する
         // IReflector::Field は const char* を要求するため文字列リテラルで渡す

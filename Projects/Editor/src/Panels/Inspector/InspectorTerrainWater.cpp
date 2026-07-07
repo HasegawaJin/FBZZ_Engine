@@ -6,6 +6,7 @@
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <algorithm>
 
 namespace fbzz::editor {
 
@@ -176,27 +177,32 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             int resX = static_cast<int>(water.resolutionX);
             int resZ = static_cast<int>(water.resolutionZ);
             if (ImGui::DragInt("Resolution X", &resX, 1.0f, 1, 512)) {
+                resX = std::clamp(resX, 1, 512);
                 water.resolutionX = static_cast<uint32_t>(resX);
                 water.meshDirty = true;
                 water.foamDirty = true;
             }
             if (ImGui::DragInt("Resolution Z", &resZ, 1.0f, 1, 512)) {
+                resZ = std::clamp(resZ, 1, 512);
                 water.resolutionZ = static_cast<uint32_t>(resZ);
                 water.meshDirty = true;
                 water.foamDirty = true;
             }
             if (ImGui::DragFloat("Extent X", &water.extentX, 0.5f, 0.1f, 10000.0f)) {
+                water.extentX = std::clamp(water.extentX, 0.1f, 10000.0f);
                 water.meshDirty = true;
                 water.foamDirty = true;
             }
             if (ImGui::DragFloat("Extent Z", &water.extentZ, 0.5f, 0.1f, 10000.0f)) {
+                water.extentZ = std::clamp(water.extentZ, 0.1f, 10000.0f);
                 water.meshDirty = true;
                 water.foamDirty = true;
             }
             {
                 int chunks = static_cast<int>(water.chunkCount);
                 if (ImGui::DragInt("Chunk Count", &chunks, 1.0f, 1, 64)) {
-                    water.chunkCount = static_cast<uint32_t>(chunks < 1 ? 1 : chunks);
+                    chunks = std::clamp(chunks, 1, 64);
+                    water.chunkCount = static_cast<uint32_t>(chunks);
                     water.meshDirty = true;
                 }
                 ImGui::TextDisabled("(%d x %d chunks = %d draw calls)", chunks, chunks, chunks * chunks);
@@ -205,6 +211,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             // ── Physics ───────────────────────────────────────────────────────
             ImGui::SeparatorText("Physics");
             if (ImGui::Button("Setup Buoyancy Volume")) {
+                if (!go) return;
                 auto* box = go->GetComponent<scene::BoxColliderComponent>();
                 if (!box) box = &go->AddComponent<scene::BoxColliderComponent>();
                 box->enabled   = true;
@@ -223,6 +230,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             }
             ImGui::SameLine();
             if (ImGui::Button("Sync Collider Size")) {
+                if (!go) return;
                 if (auto* box = go->GetComponent<scene::BoxColliderComponent>()) {
                     box->isTrigger = true;
                     box->size      = { water.extentX, box->size.y, water.extentZ };
