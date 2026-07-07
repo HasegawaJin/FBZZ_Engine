@@ -1,10 +1,29 @@
+blend_mode = 'Opaque'
+double_sided = false
 mesh_type = 'surface'
-name = 'namaqualand_boulder_03'
 render_path = 'deferred'
-shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
+render_queue = 2000
+shader = 'guid:65f589eb0be745f48716dd39a8bff808'
 version = 1
 
 [params]
 albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+alphaCutoff = 0.5
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.0
 metallic = 0.0
+normalStrength = 1.0
+occlusionStrength = 1.0
 roughness = 1.0
+uvOffset = [ 0.0, 0.0 ]
+uvTiling = [ 1.0, 1.0 ]
+
+[textures]
+albedo = 'guid:c6528c2c5b8643a0a7f53797e557e289'
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'surface'
 render_path = 'deferred'
 render_queue = 2000
-shader = 'Assets/Shaders/Terrain/Terrain.hlsl'
+shader = 'guid:eabf7f6f83ff43fcb2a868f5ef8fe323'
 version = 1
 
 [params]
@@ -24,11 +24,11 @@ tilingZ = 8.0
 [textures]
 albedo = ''
 ao = ''
-ao_roughness = 'Assets/Textures/Terrain/Sand/Sand_AmbientOcclusion.png'
-diffuse = 'Assets/Textures/Terrain/Sand/Sand_Color.png'
+ao_roughness = 'guid:af15c9f8eaf94476956c0982ee338b12'
+diffuse = 'guid:e9381f9318cd499585e1b309bb6553e6'
 emissive = ''
 metallic = ''
-normal = 'Assets/Textures/Terrain/Sand/Sand_Normal.png'
+normal = 'guid:a9ff2b06ca134294af124605f27454bf'
 tex5 = ''
 tex6 = ''
 tex7 = ''

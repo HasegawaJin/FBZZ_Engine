@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Skinned/FallbackSkinned.hlsl"
+shader = "guid:4f388603023348ce9c36986fac853d74"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

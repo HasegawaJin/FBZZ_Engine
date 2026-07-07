@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/Fallback.hlsl"
+shader = "guid:6528e6444513458192f168391ecaf0cd"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

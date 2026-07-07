@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/Subsurface.hlsl"
+shader = "guid:7d8130014b9f476f9fb67fddf665de3d"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

@@ -8,6 +8,8 @@
 
 #define MAX_POINT_LIGHTS 8
 #define MAX_SPOT_LIGHTS 4
+// Water SSR はピクセルシェーダー内で走るため、全画面 Compute SSR より低い上限にして水面の面積負荷を抑える。
+#define WATER_SSR_MAX_STEPS 16
 
 struct PointLightData
 {
@@ -252,10 +254,12 @@ float4 TraceWaterSSR(float3 worldPos, float3 normal)
     float3 incident = normalize(worldPos - cameraPos);
     float3 rayDirVS = normalize(mul(float4(reflect(incident, normal), 0.0f), view).xyz);
     float3 rayPosVS = mul(float4(worldPos, 1.0f), view).xyz + rayDirVS * max(ssrThickness, 0.02f);
-    float stepLength = ssrMaxDistance / max((float)ssrSteps, 1.0f);
+    // WHY: RenderSettings の SSR 品質をそのまま水面 PS に流すと、広い水面で step 数×ピクセル数の負荷が跳ねる。
+    int waterSsrSteps = min(ssrSteps, WATER_SSR_MAX_STEPS);
+    float stepLength = ssrMaxDistance / max((float)waterSsrSteps, 1.0f);
 
     [loop]
-    for (int step = 0; step < ssrSteps; ++step)
+    for (int step = 0; step < waterSsrSteps; ++step)
     {
         rayPosVS += rayDirVS * stepLength;
         if (rayPosVS.z <= nearZ || rayPosVS.z >= farZ)
@@ -347,12 +351,14 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 reflectColor = lerp(skyReflectTint, envSample, envMapBlend * envAvailable);
 
     // 反射ウェイト(フレネル)を先に求め、SSR は寄与が実際に見えるピクセルだけトレースする。
-    // WHY: TraceWaterSSR は ssrSteps 回のレイマーチで WaterForward の主コスト。水面を見下ろす
+    // WHY: TraceWaterSSR は上限付きでも複数回レイマーチする WaterForward の主コスト。水面を見下ろす
     //      (NdotV 大 → 低フレネル) ピクセルは反射がほぼ見えないため、レイマーチを丸ごと省いても
-    //      結果はほぼ不変。逆に浅い角度(高フレネル・反射が目立つ)では従来どおりトレースする。
+    //      結果はほぼ不変。背景ピクセルはヒット候補が薄く長い空走査になりやすいため環境反射へフォールバックする。
+    //      逆に浅い角度(高フレネル・反射が目立つ)では従来どおりトレースする。
     //      SSR は SampleLevel(明示 LOD) を使うため分岐内でも勾配の問題は起きない。
     float reflectionWeight = saturate(fresnel) * lerp(1.0f, 0.45f, backgroundMask);
-    if (reflectionWeight > 0.01f)
+    [branch]
+    if (reflectionWeight > 0.04f && backgroundMask < 0.5f)
     {
         float4 ssrReflection = TraceWaterSSR(p.worldPos, N);
         reflectColor = lerp(reflectColor, ssrReflection.rgb, ssrReflection.a);

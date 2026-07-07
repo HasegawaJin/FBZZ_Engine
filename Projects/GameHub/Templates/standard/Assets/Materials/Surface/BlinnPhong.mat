@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/BlinnPhong.hlsl"
+shader = "guid:809e6b0cdbb146eebb2bc469767dd4dd"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

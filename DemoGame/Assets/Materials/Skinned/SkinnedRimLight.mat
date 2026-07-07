@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Skinned/SkinnedRimLight.hlsl"
+shader = "guid:8e91844306d2449c91e153a11185f187"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

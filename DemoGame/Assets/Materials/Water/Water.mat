@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'surface'
 render_path = 'forward'
 render_queue = 3000
-shader = 'Assets/Shaders/Water/Water.hlsl'
+shader = 'guid:06355c497ed647078adae5ba687c1c2c'
 version = 1
 
 [params]
@@ -48,11 +48,11 @@ causticsTex = ''
 emissive = ''
 envCubemap = ''
 flowMap = ''
-foamTex = 'Assets/Textures/Water/Water_Color.png'
+foamTex = 'guid:942df125c3744d1d92bac6da4394d52d'
 metallic = ''
 normal = ''
-normalMap1 = 'Assets/Textures/Water/Water_Normal.png'
-normalMap2 = 'Assets/Textures/Water/Water_Normal.png'
+normalMap1 = 'guid:0a6b5e50d6304980a555daba0459e1ab'
+normalMap2 = 'guid:0a6b5e50d6304980a555daba0459e1ab'
 tex5 = ''
 tex6 = ''
 tex7 = ''

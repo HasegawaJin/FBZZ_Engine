@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/Anisotropic.hlsl"
+shader = "guid:00644ef0706c4a2382cfb551b29b4a24"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

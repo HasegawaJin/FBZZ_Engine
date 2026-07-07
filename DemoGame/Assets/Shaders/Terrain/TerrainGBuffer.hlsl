@@ -77,13 +77,20 @@ float3 BlendTerrainNormal(float3 worldTangent, float3 geometricNormal, float2 uv
     float3 T  = normalize(worldTangent - Ng * dot(Ng, worldTangent));
     float3 B  = normalize(cross(Ng, T));
 
+    // 法線マップの凹凸を強く見せるためのグローバル増幅係数。
+    // WHY: Deferred の地形はマット面 (高 roughness) で鏡面反射が弱く、法線マップの陰影が
+    //      Forward より地味になりがち。タンジェント法線の XY を増幅すると、鏡面に頼らず
+    //      ディフューズ陰影 (N·L) だけでも凹凸を強く出せる。各レイヤー .mat の Normal Strength に
+    //      比例するため、マテリアル側でさらに強弱を調整できる。
+    const float kTerrainNormalBoost = 3.0f;
+
     float3 blended = float3(0.0f, 0.0f, 0.0f);
     [unroll]
     for (int i = 0; i < 4; ++i)
     {
         float2 tiledUV = uv * layerTiling[i].xy;
         float3 tn = g_normal[i].Sample(g_sampler, tiledUV).xyz * 2.0f - 1.0f;
-        tn.xy *= layerNormalStrength[i];
+        tn.xy *= layerNormalStrength[i] * kTerrainNormalBoost;
         tn = normalize(tn);
         blended += normalize(T * tn.x + B * tn.y + Ng * tn.z) * splat[i];
     }
@@ -160,11 +167,15 @@ GBufferOut PSMain(TerrainPSInput p)
 
     float3 N = BlendTerrainNormal(p.worldTangent, Ng, p.uv, splat);
 
-    // 地形は土・草・岩などのマット面。鏡面 IBL（青空の反射）は不自然な青い艶として残るため、
-    // roughness を高く固定して鏡面反射をほぼ消す。WHY: 地形に「そもそも」空の鏡面反射は要らない。
-    //      grazing 角で出ていた青い縁/部分の主因がこれ。粗くするほど prefilter は最も鈍い mip を
-    //      サンプルし brdf bias も下がるため、鏡面 IBL がほぼ無視できる量まで落ちる。
-    const float kTerrainMinRoughness = 0.97f;
+    // 地形は土・草・岩などのマット面だが、roughness を高く固定しすぎると法線マップを浮き立たせる
+    // スペキュラ（特に太陽光の直接反射）まで消えてしまう。
+    // WHY: 以前は青空 IBL の鏡面艶を消す目的で 0.97 に固定していたが、これは Forward
+    //      (Terrain.hlsl / Blinn-Phong, material roughness 0.8) では出ていた法線由来のスペキュラを
+    //      Deferred で丸ごと潰し、「Deferred だと地形の法線マップが効いていない」原因になっていた。
+    //      そこでレイヤーマテリアルの roughness をそのまま尊重し（Forward と同じ挙動）、鏡のように
+    //      なるのを防ぐ控えめな下限だけを設ける。青空の鏡面反射が気になる場合は各レイヤー .mat の
+    //      Roughness を上げる（= マテリアル側で調整可能）。IBL 全体の鏡面量は iblSpecularScale で別途調整できる。
+    const float kTerrainMinRoughness = 0.6f;
     float terrainRoughness = max(saturate(roughness), kTerrainMinRoughness);
 
     GBufferOut o;

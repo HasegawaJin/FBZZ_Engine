@@ -1,7 +1,7 @@
 mesh_type = 'skinned'
 name = 'CustomSkinned'
 render_path = 'forward'
-shader = 'Assets/Shaders/Material/Custom/CustomSkinned.hlsl'
+shader = 'guid:13b73274037b47a99034f8c07c35b103'
 version = 1
 
 [params]
