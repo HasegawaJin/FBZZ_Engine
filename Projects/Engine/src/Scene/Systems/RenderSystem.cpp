@@ -936,9 +936,18 @@ void RenderSystem(Scene& scene,
                                                            shadowRadius * 2.0f + 40.0f);
     math::Matrix4 lightVP   = lightProj * lightView;
 
-    const bool isDeferred = (rs.pipeline == renderer::RenderingPipeline::Deferred);
+    // Forward / Deferred の切り替えで見た目が変わらないよう、不透明物は可能な限り共通の
+    // GBuffer → AO → DeferredLighting 経路を通す。
+    // WHY: Forward 直描き経路では SSAO/GTAO/ContactShadows/SSR/IBL が Terrain/Detail/Foliage に
+    //      乗らず、Unity のようなレンダリングモード切り替え時の見た目互換性を保てない。
+    //      必須リソースが欠ける場合だけ従来 Forward にフォールバックする。
+    const bool useGBufferOpaquePipeline =
+        gbufferRT.IsValid() &&
+        gbufferShader.IsValid() &&
+        deferredLightingShader.IsValid() &&
+        depthCopyShader.IsValid();
     const bool ssaoEnabled =
-        isDeferred &&
+        useGBufferOpaquePipeline &&
         rs.postProcess.ambientOcclusion.enabled &&
         ssaoShader.IsValid() &&
         ssaoBlurShader.IsValid() &&
@@ -1120,7 +1129,7 @@ void RenderSystem(Scene& scene,
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles,
         sHdrW, sHdrH, selectionOutlineEnabled,
-        lightData, lightVP, isDeferred, ssaoEnabled, 0.0f, 1.0f,
+        lightData, lightVP, useGBufferOpaquePipeline, ssaoEnabled, 0.0f, 1.0f,
         0.0f, 0.5f, 0.02f, 1.0f, 1.0f, 0.3f, 0.0f,
         &cameraFrustum, &lightFrustum, &occlusionCuller
     };
@@ -1229,16 +1238,16 @@ void RenderSystem(Scene& scene,
     pipeline.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     pipeline.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     pipeline.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
-    if (isDeferred)
+    if (useGBufferOpaquePipeline)
         pipeline.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, false });
     if (ssaoEnabled)
         pipeline.DeclareResource("SSAO",               { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
     // GTAO / ContactShadows は GBuffer を読んで独自の UAV テクスチャに書く。
     // WHY: "GBuffer"→"GBuffer" で宣言すると GBuffer への偽書き込みとみなされ、
     //      DeferredLighting との依存順が崩れる可能性があるため専用名で宣言する。
-    if (isDeferred && rs.IsGtaoActive())
+    if (useGBufferOpaquePipeline && rs.IsGtaoActive())
         pipeline.DeclareResource("GTAOResult",          { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
-    if (isDeferred && rs.contactShadow.enabled)
+    if (useGBufferOpaquePipeline && rs.contactShadow.enabled)
         pipeline.DeclareResource("ContactShadowResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
     pipeline.SetOutputs({ "Output" });
 
@@ -1270,13 +1279,13 @@ void RenderSystem(Scene& scene,
     });
 
     // ── Forward or Deferred ───────────────────────────────────────────────────
-    if (!isDeferred) {
+    if (!useGBufferOpaquePipeline) {
         pipeline.AddRawPass("ForwardOpaque", { "ShadowMap" }, { "HDR" }, [&]() {
             ExecuteForwardPasses(passCtx);
         });
     }
 
-    if (isDeferred) {
+    if (useGBufferOpaquePipeline) {
         pipeline.AddRawPass("DeferredGBuffer", { "ShadowMap" }, { "GBuffer" }, [&]() {
             ExecuteGBufferPass(passCtx);
         });
@@ -1295,21 +1304,21 @@ void RenderSystem(Scene& scene,
     }
 
     // ── Terrain / Detail / Foliage (Forward パイプライン用) ────────────────────
-    // Forward では ForwardOpaque / Sky の間に HDR RT (depth 共有) へ描く。
+    // GBuffer 経路が使えないフォールバック Forward では ForwardOpaque / Sky の間に HDR RT (depth 共有) へ描く。
     // WHY: Sky より前に描くことで地形の上に空が被らず、Player 等とも正しく depth test される。
-    //      Deferred では上の GBuffer フェーズで描画済みのためここでは描かない。
-    if (!isDeferred) {
+    //      通常は上の GBuffer フェーズで描画済みのためここでは描かない。
+    if (!useGBufferOpaquePipeline) {
         pipeline.AddPass<TerrainRenderPass>();
         pipeline.AddPass<DetailRenderPass>();
         pipeline.AddPass<FoliageRenderPass>();
     }
 
-    // Sky / SunMoon — Forward ではここ（不透明描画後・雲前）。
-    // Deferred では DeferredLighting 後に描く（下の Deferred ブロック）。
-    // WHY: Deferred では Terrain/Detail/Foliage が HDR を書かず GBuffer へ描くため、Sky の HDR 書き込みが
+    // Sky / SunMoon — GBuffer フォールバックの Forward ではここ（不透明描画後・雲前）。
+    // 通常の GBuffer 経路では DeferredLighting 後に描く（下のブロック）。
+    // WHY: GBuffer 経路では Terrain/Detail/Foliage が HDR を書かず GBuffer へ描くため、Sky の HDR 書き込みが
     //      DeferredDepthCopy（HDR をクリアする）との順序保証を失い、グラフが Sky を DepthCopy より前に
     //      並べるとクリアでスカイが消える。Lighting 後に置くと HDR 依存チェーンで DepthCopy より確実に後になる。
-    if (!isDeferred) {
+    if (!useGBufferOpaquePipeline) {
         pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
             ExecuteSkyPass(passCtx);
         });
@@ -1317,7 +1326,7 @@ void RenderSystem(Scene& scene,
             ExecuteSunMoonPass(passCtx);
         });
 
-        // VolumetricCloud — Forward では Sky 後・透明物前に HDR へ合成する。
+        // VolumetricCloud — GBuffer フォールバックの Forward では Sky 後・透明物前に HDR へ合成する。
         // WHY: 空を背景にしつつ、後続の水面・透明エフェクトで上書きできる順序にする。
         pipeline.AddRawPass("VolumetricCloud", { "HDR" }, { "HDR" }, [&]() {
             ExecuteVolumetricCloudPass(passCtx);
@@ -1325,7 +1334,7 @@ void RenderSystem(Scene& scene,
     }
 
     // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
-    if (isDeferred) {
+    if (useGBufferOpaquePipeline) {
         // GTAO — DeferredLighting より前に GBuffer から AO を計算する。
         // WHY: DeferredLighting は t23 (TEX_GTAO) を SRV として読む。
         //      "GTAOResult" として宣言することで GBuffer への偽書き込みを除去し、
@@ -1366,7 +1375,7 @@ void RenderSystem(Scene& scene,
             });
         }
 
-        // Sky / SunMoon — Deferred では DeferredLighting 後に HDR へ描く。
+        // Sky / SunMoon — GBuffer ライティング後に HDR へ描く。
         // WHY: スカイドームは深度==1.0（最遠面）のピクセルにだけ描かれる。Lighting 後に描くことで
         //      ジオメトリ確定後の背景を埋め、かつ HDR 依存チェーンで DeferredDepthCopy の HDR クリアより
         //      確実に後段になり、クリアでスカイが消える問題を避ける。
@@ -1377,7 +1386,7 @@ void RenderSystem(Scene& scene,
             ExecuteSunMoonPass(passCtx);
         });
 
-        // VolumetricCloud — Deferred では Lighting / Sky 後・透明物前に HDR へ合成する。
+        // VolumetricCloud — GBuffer Lighting / Sky 後・透明物前に HDR へ合成する。
         // WHY: Lighting・空に上書きされず、透明物や水面を雲の手前に描ける順序にする。
         pipeline.AddRawPass("VolumetricCloud", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
             ExecuteVolumetricCloudPass(passCtx);
@@ -1392,7 +1401,7 @@ void RenderSystem(Scene& scene,
         });
 
         // SSR — 全透明オブジェクト描画後に GBuffer の法線・深度・金属度を使って反射を計算する。
-        // WHY: Deferred パイプラインでのみ有効 (GBuffer 必須)。
+        // WHY: 選択中の Forward/Deferred ではなく GBuffer の有無が実行条件。
         //      透明オブジェクト通過後の深度を使うため、DeferredForwardTransparent の後に配置する。
         if (rs.ssr.enabled) {
             pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
@@ -1426,7 +1435,7 @@ void RenderSystem(Scene& scene,
 
     // ── デカール用深度スナップショット ────────────────────────────────────────
     pipeline.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    pipeline.AddRawPass("DecalDepthCopy", { isDeferred ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
+    pipeline.AddRawPass("DecalDepthCopy", { useGBufferOpaquePipeline ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
         renderer.SetRenderTarget(decalDepthRT, resources);
         renderer.ClearDepth();
         if (depthCopyShader.IsValid()) {
@@ -1434,7 +1443,7 @@ void RenderSystem(Scene& scene,
             dc.shader        = depthCopyShader;
             dc.pipelineState = defaultPSO;
             dc.vertexCount   = 3;
-            dc.textures[7]   = isDeferred
+            dc.textures[7]   = useGBufferOpaquePipeline
                 ? resources.GetDepthTexture(gbufferRT)
                 : resources.GetDepthTexture(hdrRT);
             renderer.Submit(dc, resources);

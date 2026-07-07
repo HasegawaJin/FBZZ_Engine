@@ -155,7 +155,6 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
         if (e.pass ? e.pass->IsEnabled(ctx) : bool(e.fn))
             enabledNow.push_back(i);
     }
-    const bool topologyChanged = !m_planValid || (enabledNow != m_lastEnabledEntryIndices);
 
     renderer::RenderGraph graph;
 
@@ -182,6 +181,39 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
         }
     }
 
+    // パス構成の指紋 (パス名 + accesses + allowCulling + outputs) を FNV-1a で計算する。
+    // WHY: 有効パスの index 列だけを比較すると、パス集合は同じまま DeclareAccesses() の返す
+    //      内容だけが変わったフレーム (例: 設定トグルで reads が増減する) を見逃し、
+    //      古い実行順・カリング結果を注入し続けてしまう。accesses まで含めて比較することで、
+    //      依存関係が変わったフレームで確実に Plan() をやり直す。
+    uint64_t fingerprint = 1469598103934665603ull; // FNV-1a offset basis
+    const auto mixBytes = [&fingerprint](const void* data, size_t size) {
+        const auto* bytes = static_cast<const unsigned char*>(data);
+        for (size_t i = 0; i < size; ++i) {
+            fingerprint ^= bytes[i];
+            fingerprint *= 1099511628211ull; // FNV-1a prime
+        }
+    };
+    const auto mixString = [&mixBytes](std::string_view s) {
+        mixBytes(s.data(), s.size());
+        const char separator = '\0'; // "ab"+"c" と "a"+"bc" を区別するための区切り
+        mixBytes(&separator, 1);
+    };
+    for (const auto& output : m_outputs)
+        mixString(output);
+    for (const auto& pass : graph.GetPasses()) {
+        mixString(pass.name);
+        mixBytes(&pass.allowCulling, sizeof(pass.allowCulling));
+        for (const auto& access : pass.accesses) {
+            mixString(access.name);
+            mixBytes(&access.usage, sizeof(access.usage));
+        }
+    }
+
+    const bool topologyChanged = !m_planValid
+        || enabledNow != m_lastEnabledEntryIndices
+        || fingerprint != m_lastGraphFingerprint;
+
     // 各 RenderGraph パスをCPU Profilerにも流し、ドライバー待機が発生したパスを特定する。
     graph.SetProfilerHooks(
         [](std::string_view name) {
@@ -206,6 +238,7 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
                 return false;
             }
             m_lastEnabledEntryIndices = std::move(enabledNow);
+            m_lastGraphFingerprint    = fingerprint;
             m_planValid = true;
             m_poolDirty = true; // トポロジ変化時はプールも必ず再構築する
         } else {
