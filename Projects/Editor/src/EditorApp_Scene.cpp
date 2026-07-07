@@ -6,7 +6,6 @@
 //      これらはいずれも「シーンファイル」という単一の概念を中心とした処理群であり、
 //      ライフサイクル管理 (Init/Shutdown/BeginFrame) や UI (MenuBar) とは関心が異なる。
 #include <Editor/EditorApp.hpp>
-#include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/ModalDialog.hpp>
@@ -307,7 +306,6 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_undoStack.Clear();
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
-    GraphLayoutSerializer::Load(m_ctx.graphLayouts, path);
     m_ctx.selectedEntities.clear();
     m_ctx.editorHiddenGuids.clear();
     RebuildEditorUIFromScene();
@@ -333,7 +331,6 @@ bool EditorApp::SaveScene()
         return false;
     }
     m_ctx.projectSettings.Save(m_projectSettingsPath);
-    GraphLayoutSerializer::Save(m_ctx.graphLayouts, m_settings.lastScenePath);
 
     m_ctx.currentScenePath = m_settings.lastScenePath;
     CaptureCleanScene();
@@ -360,7 +357,6 @@ bool EditorApp::SaveSceneAsDialog()
 
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
-    GraphLayoutSerializer::Save(m_ctx.graphLayouts, path);
     CaptureCleanScene();
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
     return true;
@@ -415,7 +411,6 @@ void EditorApp::CheckHotReload()
         if (!SceneIO::Load(*m_ctx.activeScene, m_settings.lastScenePath))
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
-            GraphLayoutSerializer::Load(m_ctx.graphLayouts, m_settings.lastScenePath);
             m_ctx.selectedEntities.clear();
             RebuildEditorUIFromScene();
             CaptureCleanScene();

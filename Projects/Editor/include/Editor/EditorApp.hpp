@@ -116,6 +116,10 @@ private:
     void ExitPlayViewportLayout(uint32_t dockId);
     void BuildPlayViewportLayout(uint32_t dockId);
     void UpdatePlayFocusModeControls();
+    // Play 開始/停止/トグル。ツールバーのボタンと Ctrl+P ホットキーの共通経路。
+    void StartPlayMode();
+    void StopPlayMode();
+    void TogglePlayMode();
     void RegisterDefaultHotkeys();
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();

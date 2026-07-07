@@ -1,8 +1,10 @@
 // FBZZ Engine
 // ModelPlacement.cpp | fbzz::editor
-// .fzasset アセットから Scene 用 GameObject 階層を構築する
+// .fbx アセットから Scene 用 GameObject 階層を構築する
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Import/FbxImportTool.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
@@ -56,7 +58,10 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
 
     const std::filesystem::path modelFilePath =
         util::FileSystem::PathFromUtf8(modelPath);
-    const std::filesystem::path modelDir = modelFilePath.parent_path();
+    const std::filesystem::path modelDir =
+        util::StringUtils::ToLower(util::FileSystem::GetExtension(modelPath)) == ".fbx"
+        ? modelFilePath.parent_path() / modelFilePath.stem()
+        : modelFilePath.parent_path();
     std::string fileStem = SanitizeMaterialFileName(
         modelAsset->materialSlotNames[slotIndex], slotIndex);
     uint32_t duplicateCount = 0;
@@ -66,8 +71,8 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
     }
     if (duplicateCount > 0)
         fileStem += "_" + std::to_string(duplicateCount);
-    // import パイプラインは Foo/Foo.fzasset と Foo/materials/*.mat を同じ生成物フォルダに置く。
-    // WHY: モデル本体と従属アセットを Foo/ に閉じ込め、移動・削除・再 import の単位を明確にする。
+    // import パイプラインは Foo.fbx の隣に Foo/materials/*.mat を置く。
+    // WHY: Scene 参照は原本 .fbx に固定し、ユーザー編集対象の従属アセットだけを Assets 側に残すため。
     std::filesystem::path matFsPath =
         modelDir / "materials" / (fileStem + ".mat");
     if (!util::FileSystem::Exists(matFsPath))
@@ -221,7 +226,7 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         auto& renderer = target.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
         renderers.push_back(&renderer);
 
-        // .fzasset はジオメトリの実体だけを持つため、配置直後に見える最低限の既定材を割り当てる。
+        // FBX の内部モデルコンテナはジオメトリの実体だけを持つため、配置直後に見える最低限の既定材を割り当てる。
         // WHY: MaterialComponent が空だと GeometryPass が描画をスキップするため、
         //      D&D した結果がユーザーに見えない状態になる。
         scene::MaterialComponent mc;
@@ -244,6 +249,41 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
 
     CreateBoneHierarchyForModel(*ctx.activeScene, root, renderers, *model);
     return root.GetID();
+}
+
+std::string ResolveOrImportFbxModel(const std::string& fbxAssetPath)
+{
+    namespace fs = std::filesystem;
+    const fs::path fbxLogical = util::FileSystem::PathFromUtf8(fbxAssetPath);
+    const std::string stem = util::FileSystem::PathToUtf8(fbxLogical.stem());
+
+    // インポート済みなら FBX 自身を返す。LoadModel / Load<ModelAsset> が Library コンテナへ解決する。
+    if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid())
+        return fbxAssetPath;
+
+    // 未インポート: デフォルト設定でその場インポートする (Unity のドロップと同じ体験)。
+    const std::string fbxAbs = asset::AssetManager::ResolveAssetPath(fbxAssetPath);
+    if (!util::FileSystem::Exists(fbxAbs)) {
+        FBZZ_LOG_WARN("ResolveOrImportFbxModel: fbx not found [%s]", fbxAssetPath.c_str());
+        return {};
+    }
+    const std::string outputDir = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(fbxAbs).parent_path() / stem);
+    FbxImportOptions options{};
+    FbxMetaSerializer::LoadOptions(fbxAbs, options);
+    FbxMetaSerializer::SaveOptions(fbxAbs, options);
+    FBZZ_LOG_INFO("ResolveOrImportFbxModel: auto-importing [%s]", fbxAssetPath.c_str());
+    if (!FbxImportTool::Import(fbxAbs, outputDir, fbxAbs, options)) {
+        FBZZ_LOG_ERROR("ResolveOrImportFbxModel: import failed [%s]", fbxAssetPath.c_str());
+        return {};
+    }
+    FbxMetaSerializer::SaveCacheInfo(fbxAbs, options);
+
+    // 過去のロード失敗が Null キャッシュされていると新規 fzasset が引けないため掃除する。
+    asset::AssetManager::FlushFailed();
+    if (asset::AssetManager::Load<asset::ModelAsset>(fbxAssetPath).IsValid())
+        return fbxAssetPath;
+    return {};
 }
 
 } // namespace fbzz::editor

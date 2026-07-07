@@ -49,10 +49,17 @@ namespace fbzz::editor {
 
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor);
 math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin);
+// ワールド座標をビューポート内スクリーン座標へ投影する。カメラ背面なら false。
+bool WorldToScreen(const math::Vector3& world, const EditorContext& ctx,
+                   const ImVec2& vpMin, const ImVec2& vpSize, ImVec2& out);
 bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath);
 bool InstantiateAssetAtViewport(EditorContext& ctx, const std::string& assetPath, const ImVec2& viewportMin);
 void HandleGizmoShortcuts(EditorContext& ctx);
 bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin);
+// 矩形 (ドラッグ) 選択: 投影位置が矩形内へ入る GameObject を選択へ加える。
+// Ctrl なしは選択の置き換え、Ctrl ありは追加。
+void RectSelectEntities(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize,
+                        const ImVec2& rectA, const ImVec2& rectB);
 void DrawCanvasEditorGuides(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 void PickUIEntity(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 bool DrawUIGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& drag, ImVec2& dragStart, float& startX, float& startY, float& startWidth, float& startHeight, float& startAngle, float& startZ);

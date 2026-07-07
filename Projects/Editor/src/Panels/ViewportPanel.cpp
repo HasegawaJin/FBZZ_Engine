@@ -2,6 +2,7 @@
 // ViewportPanel.cpp | fbzz::editor
 // Scene / Game / UI Viewport のレイアウトと入力ルーティング
 #include "Viewport/ViewportCommon.hpp"
+#include <Editor/Util/SceneEditUtils.hpp>
 
 namespace fbzz::editor {
 
@@ -296,8 +297,56 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver()
                               || ImGuizmo::IsUsingViewManipulate() || ImGuizmo::IsViewManipulateHovered();
-    if (isSceneView && !inPlayOrPause && viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse)
+    const bool anyToolActive =
+        (ctx.terrainTool && ctx.terrainTool->IsActive()) ||
+        (ctx.waterTool   && ctx.waterTool->IsActive())   ||
+        (ctx.detailTool  && ctx.detailTool->IsActive())  ||
+        (ctx.foliageTool && ctx.foliageTool->IsActive());
+    // Alt+左ドラッグはカメラオービットに割り当てられているため、選択操作から除外する
+    const bool altHeld = ImGui::GetIO().KeyAlt;
+    if (isSceneView && !inPlayOrPause && viewportHovered && !altHeld &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse &&
+        !m_prevOverlayHovered)
         PickEntity(ctx, viewportMin);
+
+    // --- 矩形 (ドラッグ) 選択 ---
+    // WHY: 複数オブジェクトをまとめて動かす作業は Unity の箱選択が前提。
+    //      クリック位置からしきい値以上ドラッグしたら矩形選択モードへ移行し、
+    //      離した時点で矩形内の GO を選択する (クリック選択の結果は上書きされる)。
+    if (isSceneView && !inPlayOrPause) {
+        constexpr float kDragThreshold = 5.0f;  // px: クリックと区別するしきい値
+
+        if (viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+            && !gizmoWantsMouse && !anyToolActive && !altHeld && !m_prevOverlayHovered) {
+            m_rectSelecting = true;
+            m_rectStart = ImGui::GetMousePos();
+        }
+
+        if (m_rectSelecting && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            const ImVec2 cur = ImGui::GetMousePos();
+            const float dx = cur.x - m_rectStart.x;
+            const float dy = cur.y - m_rectStart.y;
+            if (dx * dx + dy * dy > kDragThreshold * kDragThreshold) {
+                const ImVec2 rMin = { (std::min)(m_rectStart.x, cur.x), (std::min)(m_rectStart.y, cur.y) };
+                const ImVec2 rMax = { (std::max)(m_rectStart.x, cur.x), (std::max)(m_rectStart.y, cur.y) };
+                ImDrawList* dl = ImGui::GetWindowDrawList();
+                dl->AddRectFilled(rMin, rMax, IM_COL32(100, 180, 255, 30));
+                dl->AddRect(rMin, rMax, IM_COL32(100, 180, 255, 200), 0.0f, 0, 1.5f);
+            }
+        }
+
+        if (m_rectSelecting && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+            const ImVec2 cur = ImGui::GetMousePos();
+            const float dx = cur.x - m_rectStart.x;
+            const float dy = cur.y - m_rectStart.y;
+            if (dx * dx + dy * dy > kDragThreshold * kDragThreshold)
+                RectSelectEntities(ctx, viewportMin, size, m_rectStart, cur);
+            m_rectSelecting = false;
+        }
+
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+            m_rectSelecting = false;
+    }
 
     if (isSceneView && !inPlayOrPause)
         DrawViewModeToolbar(ctx, viewportMin);
@@ -327,6 +376,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         }
 
         // ── カメラブックマーク HUD (オリエンテーションギズモ下) ─────────────
+        bool bookmarkRowHovered = false;
         {
             constexpr float kSlotSz  = 18.0f;
             constexpr float kSlotGap = 2.0f;
@@ -342,13 +392,38 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             for (int i = 0; i < 9; ++i) {
                 const bool valid = ctx.cameraBookmarks[i].valid;
                 const ImVec2 p = { rowStart.x + i * (kSlotSz + kSlotGap), rowStart.y };
+                const ImVec2 pMax = { p.x + kSlotSz, p.y + kSlotSz };
+
+                // WHY: 以前は DrawList の飾りだけでクリックできず、
+                //      「押せそうで押せない」UI になっていた。マウスでも保存/呼び出しできるようにする。
+                const bool hovered = ImGui::IsMouseHoveringRect(p, pMax);
+                bookmarkRowHovered |= hovered;
+                if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                    auto& bm = ctx.cameraBookmarks[i];
+                    if (shiftHeld && ctx.editorCamera) {
+                        bm.position = ctx.editorCamera->m_position;
+                        bm.rotation = ctx.editorCamera->m_rotation;
+                        bm.valid    = true;
+                    } else if (bm.valid) {
+                        ctx.requestTeleportCamera = true;
+                        ctx.teleportPosition      = bm.position;
+                        ctx.teleportRotation      = bm.rotation;
+                    }
+                }
+                if (hovered)
+                    ImGui::SetTooltip(shiftHeld
+                        ? "Save camera bookmark %d (Shift+%d)"
+                        : (valid ? "Go to camera bookmark %d (key %d)"
+                                 : "Empty slot %d \xe2\x80\x94 Shift+click or Shift+%d to save"),
+                        i + 1, i + 1);
+
                 const ImU32 bg  = valid
                     ? (shiftHeld ? IM_COL32(200, 120, 30,  200) : IM_COL32(60, 160, 60, 200))
                     : (shiftHeld ? IM_COL32(120, 60,  10,  140) : IM_COL32(25, 25,  25, 140));
                 const ImU32 txt = valid ? IM_COL32(220, 255, 220, 255) : IM_COL32(120, 120, 120, 200);
-                dl->AddRectFilled(p, { p.x + kSlotSz, p.y + kSlotSz }, bg, 3.0f);
-                dl->AddRect(p, { p.x + kSlotSz, p.y + kSlotSz },
-                            IM_COL32(80, 80, 80, 160), 3.0f);
+                dl->AddRectFilled(p, pMax, bg, 3.0f);
+                dl->AddRect(p, pMax,
+                            hovered ? IM_COL32(200, 200, 200, 220) : IM_COL32(80, 80, 80, 160), 3.0f);
                 char label[2] = { static_cast<char>('1' + i), '\0' };
                 const ImVec2 tsz = ImGui::CalcTextSize(label);
                 dl->AddText({ p.x + (kSlotSz - tsz.x) * 0.5f,
@@ -357,11 +432,45 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         }
 
         // F: focus the editor camera on the selected object when the Scene viewport has keyboard focus.
-        if (ctx.viewportFocused && input::Input::KeyDown(input::KeyCode::F)) {
-            if (auto* go = ctx.GetSelectedGO()) {
-                ctx.focusTargetPosition    = go->transform.position;
+        // WHY: マルチ選択時は全選択を包含するバウンディング球を注視し、
+        //      対象の大きさに応じてカメラ距離が決まる (Unity の Frame Selected 互換)。
+        if (ctx.viewportFocused && !ImGui::GetIO().WantTextInput &&
+            input::Input::KeyDown(input::KeyCode::F)) {
+            math::Vector3 center{};
+            float radius = 0.0f;
+            if (ComputeSelectionBounds(ctx, center, radius)) {
+                ctx.focusTargetPosition    = center;
+                ctx.focusTargetRadius      = radius;
                 ctx.requestFocusOnSelected = true;
             }
+        }
+
+        // WHY: オーバーレイ UI (表示モードボタン等の ImGui アイテム、ブックマークスロット) を
+        //      クリックした瞬間に背後の 3D ピッキングが同時に走ると選択が意図せず変わる。
+        //      このフレームのホバー状態を記録し、次フレームの PickEntity / 矩形選択開始を抑制する。
+        m_prevOverlayHovered = bookmarkRowHovered || ImGui::IsAnyItemHovered();
+
+        // Delete / Ctrl+D: Scene View フォーカス中でも Hierarchy と同じ編集操作を受け付ける。
+        // WHY: Unity では Scene View で選択したまま Delete / Ctrl+D が効く。
+        //      Hierarchy へフォーカスを移さないと消せないのは操作動線として遠回り。
+        if (ctx.viewportFocused && !ImGui::GetIO().WantTextInput &&
+            !ctx.selectedEntities.empty())
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+                DeleteSelectedWithUndo(ctx);
+            else if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D, false))
+                DuplicateSelectedWithUndo(ctx);
+            else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+                ctx.selectedEntities.clear();  // Esc: 選択解除 (Unity 互換)
+        }
+
+        // Ctrl+A: シーン内の全 GO を選択 (ロック中は除外)
+        if (ctx.viewportFocused && !ImGui::GetIO().WantTextInput && ctx.activeScene &&
+            ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+            ctx.selectedEntities.clear();
+            for (auto& go : ctx.activeScene->GameObjects())
+                if (!ctx.IsLocked(go.GetID()))
+                    ctx.selectedEntities.push_back(go.GetID());
         }
 
         // Camera bookmarks: Shift+1~9 to save, 1~9 to recall.

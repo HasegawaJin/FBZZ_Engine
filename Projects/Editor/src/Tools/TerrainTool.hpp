@@ -107,6 +107,16 @@ public:
     uint32_t      GetPaintLayer()   const { return m_paintLayer; }
     void          SetPaintLayer(uint32_t layer) { m_paintLayer = layer; }
 
+    // マウス位置からレイを飛ばして地形と交差判定する。
+    // ヒットしたら outHitWorld（ワールド座標）と outGO を設定して true を返す。
+    // WHY: Scene View のクリックピッキング (PickEntity) からも地形選択に使うため public。
+    bool RaycastTerrain(scene::Scene&           scene,
+                        const renderer::Camera& camera,
+                        const ImVec2&           viewportMin,
+                        const ImVec2&           viewportSize,
+                        math::Vector3&          outHitWorld,
+                        scene::GameObject*&     outGO) const;
+
 private:
     // ── 状態 ──────────────────────────────────────────────────────────────────
     bool        m_active  = false;  // false のとき入力処理・ブラシ描画をスキップする
@@ -137,15 +147,6 @@ private:
     std::string m_heightMapStatus;               // "OK" / "Error: ..." / "" (未実行)
 
     // ── 内部ヘルパー ──────────────────────────────────────────────────────────
-
-    // マウス位置からレイを飛ばして地形と交差判定する。
-    // ヒットしたら outHitWorld（ワールド座標）と outGO を設定して true を返す。
-    bool RaycastTerrain(scene::Scene&           scene,
-                        const renderer::Camera& camera,
-                        const ImVec2&           viewportMin,
-                        const ImVec2&           viewportSize,
-                        math::Vector3&          outHitWorld,
-                        scene::GameObject*&     outGO) const;
 
     // DDA + 二分探法でレイと地形メッシュの交差を求める内部処理。
     // localHit はテレインローカル座標で返す。

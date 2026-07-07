@@ -11,6 +11,8 @@
 #include <cmath>
 #include <string>
 
+namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
+
 namespace fbzz::editor::widgets {
 
 // Vector3 の DragFloat3 (ラベル幅を統一)
@@ -71,8 +73,11 @@ inline bool AssetPathFieldWithLoad(const char* label, std::string& path,
     return false;
 }
 
-// InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ
-void DrawAssetPickerModal();
+// InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ。
+// resources / imgui を渡すとピッカーに Unity 風のサムネイル可視化が有効になる
+// (画像はテクスチャプレビュー、.mat はアルベドのテクスチャ/色スウォッチ)。null でもリスト表示は動く。
+void DrawAssetPickerModal(renderer::ResourceManager* resources = nullptr,
+                          renderer::IImGuiRenderer* imgui = nullptr);
 
 // アセット検索ピッカーを任意の文字列ターゲットに対して開く (AssetPathField の "..." と同じ実体)。
 // WHY: 独自描画のアセットスロット (参照ボタン形式) からも「パス検索」を使えるようにするための公開口。

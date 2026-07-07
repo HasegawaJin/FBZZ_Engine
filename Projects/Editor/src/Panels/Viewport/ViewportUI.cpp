@@ -438,7 +438,8 @@ bool DrawUIGizmo(EditorContext& ctx,
             const math::Vector2 localMove = RotateUIVector(canvasMove, -parentResolved.rotationZ);
             newX = startX + localMove.x;
             newY = startY + localMove.y;
-            if (ctx.snapEnabled) { newX = std::round(newX); newY = std::round(newY); }
+            // Ctrl 押下中はモーメンタリスナップ (Unity 互換)
+            if (ctx.snapEnabled || ImGui::GetIO().KeyCtrl) { newX = std::round(newX); newY = std::round(newY); }
             t.position.x = newX;
             t.position.y = newY;
         }
@@ -475,7 +476,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             const ImVec2 mm = ImGui::GetMousePos();
             const float curAngle = std::atan2f(mm.y - centerScr.y, mm.x - centerScr.x);
             float newZ = startZ + (curAngle - startAngle);
-            if (ctx.snapEnabled) {
+            if (ctx.snapEnabled || ImGui::GetIO().KeyCtrl) {
                 constexpr float k15deg = 3.14159265f / 12.0f;
                 newZ = std::round(newZ / k15deg) * k15deg;
             }
@@ -528,7 +529,7 @@ bool DrawUIGizmo(EditorContext& ctx,
             if (hi == 5 || hi == 6 || hi == 7) nh = startHeight + projY; // bottom
             nw = (std::max)(1.0f, nw);
             nh = (std::max)(1.0f, nh);
-            if (ctx.snapEnabled) { nw = std::round(nw); nh = std::round(nh); }
+            if (ctx.snapEnabled || ImGui::GetIO().KeyCtrl) { nw = std::round(nw); nh = std::round(nh); }
 
             // Keep the center fixed while resizing from handles.
             t.scale.x = nw;
