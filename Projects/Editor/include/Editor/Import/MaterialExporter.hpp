@@ -14,7 +14,7 @@ public:
     // aiMaterial を .mat TOML として outputPath に書き出す。
     // テクスチャファイルを texturesDir にコピーし、.mat 内のパスを相対化する。
     // fbxDir: FBX ファイルが置かれているディレクトリ (テクスチャ解決用)。
-    // useTexDescriptors: true なら生成画像ではなく同名 .tex をマテリアルから参照する。
+    // .mat は元画像を直接参照する。インポート設定は元画像隣の "<画像>.meta" が担う。
     // @ret 成功なら true
     static bool Export(const aiMaterial* material,
                        const aiScene* scene,
@@ -22,8 +22,7 @@ public:
                        const std::string& texturesDir,
                        const std::string& outputPath,
                        bool skinned = false,
-                       bool flipGreenChannel = false,
-                       bool useTexDescriptors = false);
+                       bool flipGreenChannel = false);
 };
 
 } // namespace fbzz::editor

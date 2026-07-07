@@ -75,8 +75,7 @@ bool MatSubExporter::Export(FbxImportContext& ctx)
                 util::FileSystem::PathToUtf8(texDir),
                 matPath,
                 skinned,
-                ctx.normalMapConvention == NormalMapConvention::OpenGL,
-                ctx.generateTexDescriptors))
+                ctx.normalMapConvention == NormalMapConvention::OpenGL))
             return false;
     }
 

@@ -4,6 +4,7 @@
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -16,6 +17,7 @@
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
+#include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/PostProcessAsset.hpp>
@@ -356,7 +358,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         namespace fs = std::filesystem;
         const fs::path    p         = util::FileSystem::PathFromUtf8(absPath);
         const std::string stem      = util::FileSystem::PathToUtf8(p.stem());
-        const bool imported = util::FileSystem::Exists(p.parent_path() / p.stem() / (stem + ".fzasset"));
+        // 物理 .fzasset は Library/Baked に隔離されているため、論理パスの解決を通して確認する。
+        const bool imported = util::FileSystem::Exists(
+            asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(
+                p.parent_path() / p.stem() / (stem + ".fzasset"))));
 
         ImGui::TextDisabled("Type: 3D Model Source (%s)", ext.c_str());
         ImGui::Spacing();
@@ -366,6 +371,16 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::Spacing();
             if (ImGui::Button("Reimport..."))
                 ctx.requestOpenImportModal = absPath;
+
+            const auto handle = asset::AssetManager::Load<asset::ModelAsset>(absPath);
+            if (const auto* m = asset::AssetManager::Get(handle)) {
+                ImGui::SeparatorText("Info");
+                ImGui::LabelText("LODs",      "%u",  m->LodCount());
+                ImGui::LabelText("Skinned",   "%s",  m->IsSkinned() ? "Yes" : "No");
+                ImGui::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
+                if (m->IsSkinned() && m->skeleton)
+                    ImGui::LabelText("Skeleton Nodes", "%zu", m->skeleton->nodes.size());
+            }
         } else {
             ImGui::TextColored({ 1.0f, 0.6f, 0.1f, 1.0f }, "Status: Not Imported");
             ImGui::Spacing();
@@ -528,7 +543,82 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     ctx.requestOpenImportModal = fbxCandidate;
             }
         }
-    } else if (ext == ".tex") {
+    } else if (ext == ".meta") {
+        const std::string sourcePath = absPath.size() > 5 ? absPath.substr(0, absPath.size() - 5) : std::string{};
+        const std::string sourceExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(sourcePath));
+        if (sourceExt == ".fbx") {
+            ImGui::TextDisabled("Type: Model Import Meta");
+            ImGui::Spacing();
+
+            static FbxImportOptions s_modelOptions;
+            static std::string      s_modelMetaPath;
+            if (s_modelMetaPath != absPath) {
+                s_modelMetaPath = absPath;
+                s_modelOptions = {};
+                FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
+            }
+
+            bool dirty = false;
+            ImGui::SeparatorText("Source");
+            ImGui::TextUnformatted(sourcePath.c_str());
+
+            ImGui::SeparatorText("Model Import Settings");
+            static constexpr const char* kSourceDccNames[] = { "Auto Detect", "Maya / FBX SDK", "Blender" };
+            int sourceDccIdx = static_cast<int>(s_modelOptions.sourceDcc);
+            if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3)) {
+                s_modelOptions.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
+                dirty = true;
+            }
+
+            dirty |= ImGui::Checkbox("Auto-generate texture .meta", &s_modelOptions.generateTexDescriptors);
+
+            static constexpr const char* kConventionNames[] = { "DirectX", "OpenGL" };
+            int conventionIdx = static_cast<int>(s_modelOptions.normalMapConvention);
+            if (ImGui::Combo("Normal Map Convention", &conventionIdx, kConventionNames, 2)) {
+                s_modelOptions.normalMapConvention = static_cast<NormalMapConvention>(conventionIdx);
+                dirty = true;
+            }
+
+            static constexpr const char* kCompressionNames[] = {
+                "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
+            };
+            int compressionIdx = static_cast<int>(s_modelOptions.defaultCompression);
+            if (ImGui::Combo("Default Texture Compression", &compressionIdx, kCompressionNames, 8)) {
+                s_modelOptions.defaultCompression = static_cast<asset::TextureCompression>(compressionIdx);
+                dirty = true;
+            }
+
+            ImGui::SeparatorText("Sub Assets");
+            ImGui::LabelText("Selected Meshes", "%zu", s_modelOptions.selectedMeshNames.size());
+            ImGui::LabelText("Selected Animations", "%zu", s_modelOptions.selectedAnimNames.size());
+            ImGui::TextDisabled("Mesh / animation selection is edited from Model Import Settings.");
+
+            if (dirty) {
+                AssetDirtyRegistry::Register(
+                    absPath,
+                    util::FileSystem::GetFilename(absPath),
+                    "MODEL META",
+                    [sourcePath]() {
+                        return FbxMetaSerializer::SaveOptions(sourcePath, s_modelOptions);
+                    });
+            }
+
+            const bool isModelMetaDirty = AssetDirtyRegistry::IsDirty(absPath) || dirty;
+            if (ImGui::Button("Apply & Save") ||
+                (isModelMetaDirty && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))) {
+                if (FbxMetaSerializer::SaveOptions(sourcePath, s_modelOptions))
+                    AssetDirtyRegistry::MarkClean(absPath);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reimport..."))
+                ctx.requestOpenImportModal = sourcePath;
+
+            if (isModelMetaDirty) {
+                ImGui::SameLine();
+                ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
+            }
+            return;
+        }
         // ── .tex descriptor ──────────────────────────────────────────────
         ImGui::TextDisabled("Type: Texture Descriptor");
         ImGui::Spacing();
@@ -660,34 +750,30 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Type: Texture (%s)", ext.c_str());
         ImGui::Spacing();
 
-        // .tex が存在するか確認
-        const std::filesystem::path imgPath = util::FileSystem::PathFromUtf8(absPath);
-        const std::string texDescPath = util::FileSystem::PathToUtf8(
-            imgPath.parent_path() /
-            (util::FileSystem::PathToUtf8(imgPath.stem()) + ".tex"));
+        // 元画像の隣に "<画像>.meta" サイドカーが存在するか確認 (二重拡張子)
+        const std::string texDescPath = absPath + ".meta";
         const bool hasTexDesc = util::FileSystem::Exists(
             util::FileSystem::PathFromUtf8(texDescPath));
 
         if (hasTexDesc) {
-            ImGui::TextColored({0.3f, 0.9f, 0.3f, 1.0f}, ".tex descriptor: found");
+            ImGui::TextColored({0.3f, 0.9f, 0.3f, 1.0f}, ".meta sidecar: found");
             ImGui::TextDisabled("%s", util::FileSystem::GetFilename(texDescPath).c_str());
             ImGui::Spacing();
-            if (ImGui::Button("Open .tex Inspector"))
+            if (ImGui::Button("Open .meta Inspector"))
                 ctx.selectedAssetPath = texDescPath;
         } else {
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f},
-                "No .tex descriptor for this image.");
+                "No .meta sidecar for this image.");
             ImGui::Spacing();
             ImGui::TextWrapped(
-                "Creating a .tex lets you control sRGB, compression, "
+                "Creating a .meta lets you control sRGB, compression, "
                 "mipmaps and other import settings.");
             ImGui::Spacing();
-            if (ImGui::Button("Create .tex...")) {
-                // GuessTextureType でデフォルト設定を生成して .tex を書き出す
+            if (ImGui::Button("Create .meta...")) {
+                // GuessTextureType でデフォルト設定を生成して "<画像>.meta" を書き出す
                 const asset::TextureType guessedType =
                     asset::GuessTextureType(util::FileSystem::GetFilename(absPath));
                 asset::TextureAsset newAsset;
-                newAsset.sourcePath = util::FileSystem::GetFilename(absPath);
                 newAsset.settings   = asset::DefaultSettingsForType(guessedType);
                 asset::TexDescSerializer ser;
                 if (ser.Save(newAsset, texDescPath)) {
@@ -700,33 +786,37 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 "Or drag directly to a material slot to use with default settings.");
         }
     } else if (ext == ".terrain") {
-        // ── .terrain バイナリ ─────────────────────────────────────────────
+        // ── .terrain アセット ─────────────────────────────────────────────
+        // WHY: 実際のオンディスク形式は scene::TerrainAssetSerializer が読み書きする TOML。
+        //      SceneSerializer / ランタイムもこのシリアライザ経由でロードするため、
+        //      Inspector も同じ TerrainAssetSerializer を使って読み書きを一致させる。
+        //      （旧 asset::FzTerrainSerializer はバイナリ "FZTN" 形式で、TOML の .terrain を
+        //        読めず "Load failed"、保存すると TOML ファイルをバイナリに破壊していた。）
         ImGui::TextDisabled("Type: Terrain Asset");
         ImGui::Spacing();
 
-        static asset::TerrainAsset s_terrainAsset;
-        static std::string         s_terrainPath;
-        static bool                s_terrainLoaded = false;
+        static scene::TerrainComponent s_terrain;
+        static std::string             s_terrainPath;
+        static bool                    s_terrainLoaded = false;
         bool terrainDirty = false;
 
         if (s_terrainPath != absPath) {
             s_terrainPath   = absPath;
-            s_terrainLoaded = false;
-            asset::FzTerrainSerializer ser;
-            s_terrainLoaded = ser.Load(absPath, s_terrainAsset);
+            s_terrain       = scene::TerrainComponent{};
+            s_terrainLoaded = scene::TerrainAssetSerializer::Load(absPath, s_terrain);
         }
 
         if (!s_terrainLoaded) {
             ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Load failed");
         } else {
-            auto& ta = s_terrainAsset;
+            auto& ta = s_terrain;
 
             ImGui::SeparatorText("Geometry");
-            ImGui::LabelText("Columns",    "%u", ta.columns);
-            ImGui::LabelText("Rows",       "%u", ta.rows);
+            ImGui::LabelText("Columns",    "%d", ta.columns);
+            ImGui::LabelText("Rows",       "%d", ta.rows);
             ImGui::LabelText("Cell Size",  "%.2f m", ta.cellSize);
             ImGui::LabelText("Max Height", "%.2f m", ta.maxHeight);
-            ImGui::LabelText("Chunk Size", "%u", ta.chunkSize);
+            ImGui::LabelText("Chunk Size", "%d", ta.chunkSize);
             const float worldW = static_cast<float>(ta.columns - 1) * ta.cellSize;
             const float worldH = static_cast<float>(ta.rows    - 1) * ta.cellSize;
             ImGui::LabelText("World Size", "%.0f m × %.0f m", worldW, worldH);
@@ -745,10 +835,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
 
             ImGui::SeparatorText("Layer Materials");
-            for (int li = 0; li < static_cast<int>(ta.layerMaterialPaths.size()); ++li) {
+            for (int li = 0; li < static_cast<int>(ta.layerMaterials.size()); ++li) {
                 ImGui::PushID(li);
                 const std::string layerLabel = "Layer " + std::to_string(li);
-                if (widgets::AssetPathField(layerLabel.c_str(), ta.layerMaterialPaths[li], ".mat", ctx.projectRoot))
+                if (widgets::AssetPathField(layerLabel.c_str(), ta.layerMaterials[li], ".mat", ctx.projectRoot))
                     terrainDirty = true;
                 ImGui::PopID();
             }
@@ -759,8 +849,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     util::FileSystem::GetFilename(absPath),
                     "TERRAIN",
                     [path = absPath]() {
-                        asset::FzTerrainSerializer ser;
-                        return ser.Save(s_terrainAsset, path);
+                        return scene::TerrainAssetSerializer::Save(s_terrain, path);
                     });
             }
 
@@ -768,8 +857,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             const bool isTerrainDirty = AssetDirtyRegistry::IsDirty(absPath) || terrainDirty;
             if (ImGui::Button("Save .terrain") ||
                 (isTerrainDirty && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))) {
-                asset::FzTerrainSerializer ser;
-                if (ser.Save(ta, absPath))
+                if (scene::TerrainAssetSerializer::Save(ta, absPath))
                     AssetDirtyRegistry::MarkClean(absPath);
             }
             if (isTerrainDirty) {

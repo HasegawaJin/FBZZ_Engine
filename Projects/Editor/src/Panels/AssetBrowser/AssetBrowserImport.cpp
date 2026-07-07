@@ -2,6 +2,7 @@
 // AssetBrowserImport.cpp | fbzz::editor
 // AssetBrowser の未変換アセット検出とバックグラウンドインポート
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
@@ -15,14 +16,14 @@ namespace fbzz::editor {
 bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 {
     // WHY: この関数は .fzasset 生成が必要な raw モデル形式だけを扱う。
-    //      テクスチャ形式は .tex descriptor 生成なので IsTextureRaw() と併用する。
+    //      テクスチャ形式は .meta sidecar 生成なので IsTextureRaw() と併用する。
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb";
 }
 
 bool AssetBrowserPanel::IsTextureRaw(const std::string& ext)
 {
     // .dds は IBL ベイク済みキューブマップ等の GPU 直接ロード形式のため除外する。
-    // .tex descriptor 経由のインポートパイプラインは通さない。
+    // .meta サイドカー経由のインポートパイプラインは通さない。
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
            ext == ".tga" || ext == ".bmp" ||
            ext == ".hdr" || ext == ".exr";
@@ -31,6 +32,16 @@ bool AssetBrowserPanel::IsTextureRaw(const std::string& ext)
 namespace {
 
 // ── Import Preset ヘルパー ────────────────────────────────────────────────────
+
+const char* SourceDccLabel(FbxSourceDcc value)
+{
+    switch (value) {
+    case FbxSourceDcc::Auto:    return "Auto";
+    case FbxSourceDcc::Maya:    return "Maya / FBX SDK";
+    case FbxSourceDcc::Blender: return "Blender";
+    }
+    return "Auto";
+}
 
 struct ImportPreset {
     std::string      name;
@@ -63,6 +74,8 @@ std::vector<ImportPreset> LoadPresetsFromDir(const std::string& presetsDir)
             ImportPreset p;
             p.name = entry.path().stem().string();
             const auto& tbl = parsed.table();
+            if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
+                p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
             if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
                 p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
             if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
@@ -81,6 +94,7 @@ bool SavePreset(const std::string& presetsDir, const std::string& name, const Fb
 {
     util::FileSystem::EnsureDirectory(presetsDir);
     toml::table optTbl;
+    optTbl.insert("source_dcc",                static_cast<int64_t>(opts.sourceDcc));
     optTbl.insert("normal_map_convention",    static_cast<int64_t>(opts.normalMapConvention));
     optTbl.insert("generate_tex_descriptors", opts.generateTexDescriptors);
     optTbl.insert("default_compression",      static_cast<int64_t>(opts.defaultCompression));
@@ -94,25 +108,27 @@ bool SavePreset(const std::string& presetsDir, const std::string& name, const Fb
 }
 
 // ── テクスチャメタデータ (.tex descriptor) ─────────────────────────────────
-// 旧 stem.asset [texture] セクション形式から TexDescSerializer (.tex TOML) に移行。
+// 旧 stem.asset [texture] セクション形式から TexDescSerializer (.meta TOML) に移行。
 
-// テクスチャの隣に置く .tex descriptor のパスを返す
+// テクスチャの隣に置く ".meta" サイドカーのパスを返す ("Foo.png" -> "Foo.png.meta")
+// WHY: 二重拡張子で元画像を一意に保持する。replace_extension は末尾拡張子を潰すため使わない。
 std::string GetTexDescPath(const std::string& texAbsPath)
 {
-    const std::filesystem::path p = util::FileSystem::PathFromUtf8(texAbsPath);
-    return util::FileSystem::PathToUtf8(p.parent_path() / (util::FileSystem::PathToUtf8(p.stem()) + ".tex"));
+    return texAbsPath + ".meta";
 }
 
 std::filesystem::path GetExistingImportedModelPath(const std::filesystem::path& sourcePath)
 {
     const std::string stem = util::FileSystem::PathToUtf8(sourcePath.stem());
 
-    // 正規形式: Foo/Foo.fzasset
-    // WHY: import 生成物を Foo/ に閉じ込めることで、移動・削除・再 import の単位を明確にする。
+    // 正規形式: Foo.fbx → Library/Baked/<fbx-guid>/Foo.fzasset (内部コンテナ)
+    // WHY: Browser / Scene の保存パスは原本 .fbx に統一し、再生成可能なバイナリは Library に隔離する。
     const std::filesystem::path bundledModel =
         sourcePath.parent_path() / sourcePath.stem() / (stem + ".fzasset");
-    if (util::FileSystem::Exists(bundledModel))
-        return bundledModel;
+    const std::string resolved = asset::AssetManager::ResolveAssetPath(
+        util::FileSystem::PathToUtf8(bundledModel));
+    if (util::FileSystem::Exists(resolved))
+        return util::FileSystem::PathFromUtf8(resolved);
 
     return {};
 }
@@ -144,7 +160,7 @@ bool LoadTexMeta(const std::string& texAbsPath, asset::TextureImportSettings& se
             return true;
         }
     }
-    // .tex も .asset もない: ファイル名からデフォルトを生成
+    // .meta も .asset もない: ファイル名からデフォルトを生成
     settings = asset::DefaultSettingsForType(asset::GuessTextureType(
         util::FileSystem::GetFilename(texAbsPath)));
     return true;
@@ -197,6 +213,11 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
     std::error_code ec;
     const auto srcTime   = fs::last_write_time(p,         ec); if (ec) return false;
     const auto assetTime = fs::last_write_time(modelFile,  ec); if (ec) return false;
+    const fs::path metaFile = util::FileSystem::PathFromUtf8(FbxMetaSerializer::MetaPathForSource(absPath));
+    if (util::FileSystem::Exists(metaFile)) {
+        const auto metaTime = fs::last_write_time(metaFile, ec);
+        if (!ec && metaTime > assetTime) return true;
+    }
     return srcTime > assetTime;
 }
 
@@ -235,7 +256,7 @@ void AssetBrowserPanel::TryQueuePendingImport(const std::string& relPath)
         if (p == absPath) return;
 
     // ウォッチャー経由の新規ファイルは種類別の確認キューへ積む。
-    // WHY: FBX は変換ジョブ、テクスチャは .tex descriptor 保存で責務が違う。
+    // WHY: FBX は変換ジョブ、テクスチャは .meta サイドカー保存で責務が違う。
     if (isTextureRaw)
         m_pendingTextureConfirmImports.push_back(absPath);
     else
@@ -361,6 +382,15 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
         m_importFuture = {};
         EditorTaskOverlay::End();
         asset::AssetManager::FlushFailed();
+        std::vector<std::string> completedImports;
+        {
+            std::lock_guard<std::mutex> lock(m_importStatusMtx);
+            completedImports.swap(m_completedImportPaths);
+        }
+        for (const std::string& path : completedImports) {
+            asset::AssetManager::Unload<asset::ModelAsset>(path);
+            ResetAssetPreviewCache(path);
+        }
         RefreshDirectory();
         return;
     }
@@ -391,6 +421,10 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
     m_importDone.store(0);
     m_isImporting.store(true);
     m_importThreadDone.store(false);
+    {
+        std::lock_guard<std::mutex> lock(m_importStatusMtx);
+        m_completedImportPaths.clear();
+    }
     EditorTaskOverlay::Begin("Importing Assets");
     EditorTaskOverlay::SetProgress(0.0f);
 
@@ -407,7 +441,12 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
             const fs::path srcPath = util::FileSystem::PathFromUtf8(imp.path);
             const std::string outDir =
                 util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
-            FbxImportTool::Import(imp.path, outDir, imp.path, imp.options);
+            FbxMetaSerializer::SaveOptions(imp.path, imp.options);
+            if (FbxImportTool::Import(imp.path, outDir, imp.path, imp.options)) {
+                FbxMetaSerializer::SaveCacheInfo(imp.path, imp.options);
+                std::lock_guard<std::mutex> lock(m_importStatusMtx);
+                m_completedImportPaths.push_back(imp.path);
+            }
             m_importDone.fetch_add(1);
         }
         m_importThreadDone.store(true);
@@ -773,9 +812,8 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             s.anisoLevel = static_cast<uint32_t>(anisoLv);
 
         ImGui::Spacing();
-        ImGui::TextDisabled("Settings saved as  %s.tex",
-            util::FileSystem::PathToUtf8(
-                util::FileSystem::PathFromUtf8(m_importSettings.path).stem()).c_str());
+        ImGui::TextDisabled("Settings saved as  %s.meta",
+            util::FileSystem::GetFilename(m_importSettings.path).c_str());
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
@@ -805,6 +843,11 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         s_presetNameBuf[0] = '\0';
         m_scanResult  = {};
         if (!isMulti) {
+            FbxImportOptions metaOptions = m_importSettings.options;
+            if (FbxMetaSerializer::LoadOptions(m_importSettings.path, metaOptions))
+                m_importSettings.options = metaOptions;
+        }
+        if (!isMulti) {
             // Assimp パースはレンダースレッドをブロックすると D3D11 TDR が起きるため非同期で実行
             m_scanPending = true;
             const std::string scanPath = m_importSettings.path;
@@ -823,8 +866,10 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         m_scanFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
         m_scanResult  = m_scanFuture.get();
         m_scanPending = false;
-        m_importSettings.options.selectedMeshNames = m_scanResult.meshNames;
-        m_importSettings.options.selectedAnimNames = m_scanResult.animNames;
+        if (m_importSettings.options.selectedMeshNames.empty())
+            m_importSettings.options.selectedMeshNames = m_scanResult.meshNames;
+        if (m_importSettings.options.selectedAnimNames.empty())
+            m_importSettings.options.selectedAnimNames = m_scanResult.animNames;
     }
 
     // ── ヘッダー ──────────────────────────────────────────────────────────
@@ -908,8 +953,8 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         ImGui::SameLine();
         const bool canLoad = (s_presetSel >= 0 && s_presetSel < (int)s_presets.size());
         if (!canLoad) ImGui::BeginDisabled();
-        if (ImGui::SmallButton("Load"))
-            m_importSettings.options = s_presets[s_presetSel].options;
+            if (ImGui::SmallButton("Load"))
+                m_importSettings.options = s_presets[s_presetSel].options;
         if (!canLoad) ImGui::EndDisabled();
         ImGui::SameLine();
         if (canLoad && ImGui::SmallButton("Delete")) {
@@ -924,13 +969,47 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
     }
 
     // ── テクスチャ生成オプション ──────────────────────────────────────────
+    ImGui::SeparatorText("Source");
+    {
+        static constexpr const char* kSourceDccNames[] = {
+            "Auto Detect", "Maya / FBX SDK", "Blender"
+        };
+        int sourceDccIdx = static_cast<int>(m_importSettings.options.sourceDcc);
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3))
+            m_importSettings.options.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip(
+                "Auto Detect: FBX の Creator メタデータから Blender を判定します。\n"
+                "Maya: Blender ルート補正を行いません。\n"
+                "Blender: ルートの +90°X / scale100 補正を強制します。");
+        if (!isMulti) {
+            if (m_scanPending) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Detecting...");
+            } else if (m_scanResult.valid) {
+                const FbxSourceDcc resolvedDcc =
+                    m_importSettings.options.sourceDcc == FbxSourceDcc::Auto
+                        ? m_scanResult.detectedSourceDcc
+                        : m_importSettings.options.sourceDcc;
+                ImGui::SameLine();
+                ImGui::TextDisabled("Detected: %s", SourceDccLabel(m_scanResult.detectedSourceDcc));
+                ImGui::TextDisabled(
+                    "Preview correction: %s",
+                    resolvedDcc == FbxSourceDcc::Blender
+                        ? "Blender axis/scale fix"
+                        : "Maya / FBX SDK transform");
+            }
+        }
+    }
+
     ImGui::SeparatorText("Texture Generation");
-    ImGui::Checkbox("Auto-generate .tex descriptors",
+    ImGui::Checkbox("Auto-generate .meta sidecars",
                     &m_importSettings.options.generateTexDescriptors);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip(
-            "インポート時にテクスチャごとの .tex descriptor を自動生成します。\n"
-            "sRGB / 圧縮 / Mipmap 等の設定は .tex から Editor で編集できます。");
+            "インポート時にテクスチャごとに \"<画像>.meta\" サイドカーを自動生成します。\n"
+            "sRGB / 圧縮 / Mipmap 等の設定は .meta から Editor で編集できます。");
 
     {
         static constexpr const char* kConvNames[] = {
@@ -959,7 +1038,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 static_cast<asset::TextureCompression>(compIdx);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip(
-                "生成する .tex のデフォルト圧縮形式。\n"
+                "生成する .meta のデフォルト圧縮形式。\n"
                 "Auto = テクスチャタイプから自動選択。");
     }
 
@@ -1045,8 +1124,10 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         if (ImGui::Button(importBtnLabel, { 120.0f, 0.0f })) {
             for (int i = 0; i < (int)m_pendingConfirmImports.size(); ++i) {
                 const bool inc = (i < (int)m_pendingConfirmIncludes.size()) && m_pendingConfirmIncludes[i];
-                if (inc)
+                if (inc) {
+                    FbxMetaSerializer::SaveOptions(m_pendingConfirmImports[i], m_importSettings.options);
                     m_pendingImports.push_back({ m_pendingConfirmImports[i], m_importSettings.options });
+                }
             }
             m_pendingConfirmImports.clear();
             m_importSettings.fromWatcher = false;
@@ -1059,8 +1140,10 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
 
         ImGui::SameLine();
         if (ImGui::Button("Import All", { 95.0f, 0.0f })) {
-            for (const auto& p : m_pendingConfirmImports)
+            for (const auto& p : m_pendingConfirmImports) {
+                FbxMetaSerializer::SaveOptions(p, m_importSettings.options);
                 m_pendingImports.push_back({ p, m_importSettings.options });
+            }
             m_pendingConfirmImports.clear();
             m_importSettings.fromWatcher = false;
             m_importAllRequested = true;
@@ -1088,6 +1171,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             }
             if (!found)
                 m_pendingImports.push_back({ m_importSettings.path, m_importSettings.options });
+            FbxMetaSerializer::SaveOptions(m_importSettings.path, m_importSettings.options);
         };
         if (ImGui::Button("Import", { 90.0f, 0.0f })) {
             enqueueCurrentFile();

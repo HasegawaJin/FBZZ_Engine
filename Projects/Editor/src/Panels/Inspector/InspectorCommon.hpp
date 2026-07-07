@@ -8,6 +8,7 @@
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/ColliderFit.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -1009,10 +1010,10 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "Terrain", !go.GetComponent<scene::TerrainComponent>(), [&]() {
             scene::TerrainComponent tc{};
-            tc.columns   = 33;
-            tc.rows      = 33;
+            tc.columns   = 65;
+            tc.rows      = 65;
             tc.cellSize  = 2.0f;
-            tc.maxHeight = 10.0f;
+            tc.maxHeight = 20.0f;
             tc.chunkSize = 32;
             for (int li = 0; li < 4; ++li)
                 tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
@@ -1049,17 +1050,18 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         shown |= addItem(category, "Rigidbody", !go.GetComponent<scene::RigidBodyComponent>(), [&]() {
             go.AddComponent<scene::RigidBodyComponent>(CreateDefaultRigidBody());
         });
+        // Collider はアタッチ時にメッシュ bounds から寸法を自動計算する (Unity と同じ挙動)。
         shown |= addItem(category, "AABB Collider", !go.GetComponent<scene::AabbColliderComponent>(), [&]() {
-            go.AddComponent<scene::AabbColliderComponent>(CreateAabbCollider());
+            go.AddComponent<scene::AabbColliderComponent>(colliderfit::MakeFittedAabbCollider(go));
         });
         shown |= addItem(category, "Box Collider", !go.GetComponent<scene::BoxColliderComponent>(), [&]() {
-            go.AddComponent<scene::BoxColliderComponent>(CreateBoxCollider());
+            go.AddComponent<scene::BoxColliderComponent>(colliderfit::MakeFittedBoxCollider(go));
         });
         shown |= addItem(category, "Sphere Collider", !go.GetComponent<scene::SphereColliderComponent>(), [&]() {
-            go.AddComponent<scene::SphereColliderComponent>(CreateSphereCollider());
+            go.AddComponent<scene::SphereColliderComponent>(colliderfit::MakeFittedSphereCollider(go));
         });
         shown |= addItem(category, "Capsule Collider", !go.GetComponent<scene::CapsuleColliderComponent>(), [&]() {
-            go.AddComponent<scene::CapsuleColliderComponent>(CreateCapsuleCollider());
+            go.AddComponent<scene::CapsuleColliderComponent>(colliderfit::MakeFittedCapsuleCollider(go));
         });
         shown |= addItem(category, "Mesh Collider", !go.GetComponent<scene::MeshColliderComponent>(), [&]() {
             scene::MeshColliderComponent col;
