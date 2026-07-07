@@ -4,6 +4,7 @@
 // GameObject 階層と登録済み Component を .fbzz へ書き出す。
 // ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -47,6 +48,7 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
@@ -1639,6 +1641,21 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("NavMeshAgentComponent", std::move(agentTbl));
         }
 
+        // NavMeshOffMeshLinkComponent — 非連続ポリゴン接続の設計値のみ保存する。
+        // WHY: Bake 後の内部接続は navMesh と同じランタイム生成物なので、Prefab/Scene には
+        //      編集可能な端点・方向・通過条件だけを永続化する。
+        if (auto* link = go.GetComponent<NavMeshOffMeshLinkComponent>()) {
+            toml::table linkTbl;
+            linkTbl.insert("enabled",       link->enabled);
+            linkTbl.insert("startPoint",    Vec3ToArr(link->startPoint));
+            linkTbl.insert("endPoint",      Vec3ToArr(link->endPoint));
+            linkTbl.insert("bidirectional", link->bidirectional);
+            linkTbl.insert("activated",     link->activated);
+            linkTbl.insert("traversalTime", static_cast<double>(link->traversalTime));
+            linkTbl.insert("agentTypeMask", static_cast<int64_t>(link->agentTypeMask));
+            goTbl.insert("NavMeshOffMeshLinkComponent", std::move(linkTbl));
+        }
+
         // NavMeshPatrolComponent — ウェイポイント・巡回設定を保存。進行状態はランタイムのため非保存。
         if (auto* patrol = go.GetComponent<NavMeshPatrolComponent>()) {
             toml::table patrolTbl;
@@ -1701,6 +1718,10 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
     NormalizeTomlFloats(doc);
 
+    // ディスク上のアセット参照は guid: 形式にする (リネーム・移動耐性)。
+    // ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
+    asset::EncodeGuidRefs(doc);
+
     std::ostringstream oss;
     oss << doc;
 
@@ -1726,6 +1747,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         return nullptr;
     }
     auto& doc = result.table();
+
+    // guid: 参照を "Assets/..." パスへ戻す。以降の全コンポーネント読み込みはパス前提で動く。
+    asset::DecodeGuidRefs(doc);
 
     auto scene = std::make_unique<Scene>();
 
@@ -2920,6 +2944,18 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<NavMeshAgentComponent>(std::move(agent));
         }
 
+        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
+            NavMeshOffMeshLinkComponent link{};
+            link.enabled       = (*linkTbl)["enabled"].value_or(true);
+            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
+            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
+            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
+            link.activated     = (*linkTbl)["activated"].value_or(true);
+            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
+            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
+            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
+        }
+
         if (auto* patrolTbl = (*goTbl)["NavMeshPatrolComponent"].as_table()) {
             NavMeshPatrolComponent patrol{};
             patrol.enabled  = (*patrolTbl)["enabled"].value_or(true);
@@ -3105,6 +3141,9 @@ bool SceneSerializer::AppendObjects(
     auto result = toml::parse(tomlText);
     if (!result) return false;
     auto& doc = result.table();
+
+    // Prefab 等の TOML 断片にも guid: 参照が含まれるため Load と同じくデコードする。
+    asset::DecodeGuidRefs(doc);
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr || goArr->empty()) return false;
@@ -3366,6 +3405,18 @@ bool SceneSerializer::AppendObjects(
             rb.rigidBody->m_isGravitationalSource = (*rbTbl)["isGravitationalSource"].value_or(false);
             rb.rigidBody->m_gravitationalMass = (float)(*rbTbl)["gravitationalMass"].value_or(1.0);
             go.AddComponent<RigidBodyComponent>(std::move(rb));
+        }
+
+        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
+            NavMeshOffMeshLinkComponent link{};
+            link.enabled       = (*linkTbl)["enabled"].value_or(true);
+            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
+            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
+            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
+            link.activated     = (*linkTbl)["activated"].value_or(true);
+            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
+            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
+            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
         }
 
         auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
