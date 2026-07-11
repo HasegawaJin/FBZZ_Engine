@@ -52,6 +52,7 @@ void BuildPipeline::Start(const BuildSettings& settings,
     m_projectRoot       = projectRoot;
     m_buildRoot         = buildRoot;
     m_targetName        = targetName.empty() ? "SandboxStandalone" : targetName;
+    m_runtimeConfiguration = "Development";
     m_scriptsDllSrcPath = scriptsDllPath;
     m_runAfterBuild     = runAfterBuild;
     m_state         = State::Running;
@@ -87,9 +88,23 @@ void BuildPipeline::Tick()
             Compiler::Config config;
             config.cmakeExe      = toolchain.cmakeExe;
             config.buildDir      = toolchain.buildDir;
-            config.exePath       = m_settings.developmentBuild ? toolchain.exeDebug : toolchain.exeRelease;
+            // WHY: Build Settings の Development Build は CMake の Development 構成に対応する。
+            //      Debug を使うと Development 用に配置された EXE / DLL とずれてパッケージングに失敗する。
+            config.exePath       = m_settings.developmentBuild
+                ? (!toolchain.exeDevelopment.empty() ? toolchain.exeDevelopment : toolchain.exeDebug)
+                : toolchain.exeRelease;
             config.target        = m_targetName;
-            config.configuration = m_settings.developmentBuild ? "Debug" : "Release";
+            config.configuration = m_settings.developmentBuild
+                ? (!toolchain.exeDevelopment.empty() ? "Development" : "Debug")
+                : "Release";
+            m_runtimeConfiguration = config.configuration;
+            if (m_runtimeConfiguration == "Development" && !toolchain.scriptsDllDevelopment.empty()) {
+                m_scriptsDllSrcPath = util::FileSystem::PathToUtf8(toolchain.scriptsDllDevelopment);
+            } else if (m_runtimeConfiguration == "Release" && !toolchain.scriptsDllRelease.empty()) {
+                m_scriptsDllSrcPath = util::FileSystem::PathToUtf8(toolchain.scriptsDllRelease);
+            } else if (m_runtimeConfiguration == "Debug" && !toolchain.scriptsDllDebug.empty()) {
+                m_scriptsDllSrcPath = util::FileSystem::PathToUtf8(toolchain.scriptsDllDebug);
+            }
 
             FBZZ_LOG_DEBUG("BuildPipeline: cmake=%s build=%s target=%s cfg=%s",
                 util::FileSystem::PathToUtf8(config.cmakeExe).c_str(),
@@ -221,12 +236,12 @@ bool BuildPipeline::ExecuteStep()
     // ------------------------------------------------------------------
     case Step::CopyDlls: {
         m_status = "Copying DLLs...";
-        // WHY: RuntimeBuild の構成はエディタ自身の Debug/Release ではなく BuildSettings で決まる。
-        //      developmentBuild=true なら Debug、false なら Release の成果物 exe 隣から
+        // WHY: RuntimeBuild の構成はエディタ自身の構成ではなく BuildSettings で決まる。
+        //      developmentBuild=true なら Development、false なら Release の成果物 exe 隣から
         //      実行時に必要な DLL をコピーする。fbzz_* は shared_runtime 化により EXE / Script DLL
         //      から同じ Engine 状態を参照するため、配布物にも必ず同梱する。
         const std::filesystem::path exeDir = m_exeSrcPath.parent_path();
-        const std::wstring assimpDLL = m_settings.developmentBuild
+        const std::wstring assimpDLL = m_runtimeConfiguration == "Debug"
             ? L"assimp-vc145-mtd.dll"
             : L"assimp-vc145-mt.dll";
 

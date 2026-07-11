@@ -5,6 +5,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
 #include <Engine/Asset/AnimationImporter.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AnimCtrlImporter.hpp>
 #include <Engine/Asset/BinaryReader.hpp>
@@ -31,7 +32,9 @@
 #include <cassert>
 #include <cctype>
 #include <cstring>
+#include <filesystem>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace fbzz::asset {
@@ -176,17 +179,127 @@ static bool IsAbsPath(const std::string& p)
            p[1] == ':' && p[2] == '/';
 }
 
+static bool EndsWithCI(const std::string& s, const char* suffix)
+{
+    const size_t n = std::strlen(suffix);
+    if (s.size() < n) return false;
+    for (size_t i = 0; i < n; ++i) {
+        if (std::tolower(static_cast<unsigned char>(s[s.size() - n + i])) !=
+            std::tolower(static_cast<unsigned char>(suffix[i]))) return false;
+    }
+    return true;
+}
+
+// import 生成物 (baked) の拡張子か。これらは Assets ではなく Library/Baked に置かれる。
+static bool IsBakedModelExt(const std::string& key)
+{
+    return EndsWithCI(key, ".fzasset") || EndsWithCI(key, ".mesh") || EndsWithCI(key, ".skel");
+}
+
+// 論理パス "<dir>/Foo/Foo.fzasset" → 物理パス "<projectRoot>/Library/Baked/<fbx-guid>/Foo.fzasset"。
+// パッケージ規約 (Foo/ の隣に原本 Foo.fbx) から fbx を特定し、その guid でキャッシュを引く。
+// fbx が存在しない / basePath が "Assets/" で終わらない場合は空を返す (呼び出し側がフォールバック)。
+static std::string LibraryBakedPath(const std::string& absPath, const std::string& basePath)
+{
+    namespace fs = std::filesystem;
+    if (!EndsWithCI(basePath, "assets/")) return {};
+
+    const fs::path p       = util::FileSystem::PathFromUtf8(absPath);
+    const fs::path pkgDir  = p.parent_path();
+    const std::string pkg  = util::FileSystem::PathToUtf8(pkgDir.filename());
+    const fs::path fbxPath = pkgDir.parent_path() / (pkg + ".fbx");
+
+    // GuidFromPath は実在チェック込み。fbx が無ければ空 = Library 対象外。
+    const std::string guid = AssetDatabase::GuidFromPath(
+        util::FileSystem::PathToUtf8(fbxPath));
+    if (guid.empty()) return {};
+
+    const std::string projectRoot = basePath.substr(0, basePath.size() - 7); // "assets/" を除去
+    return projectRoot + "Library/Baked/" + guid + "/" +
+           util::FileSystem::PathToUtf8(p.filename());
+}
+
+// 原本 FBX の恒久 GUID から Library/Baked 内のモデルコンテナを引く。
+// WHY: Scene / Component には Unity と同じく原本 .fbx を保存し、再生成可能な .fzasset は
+//      AssetBrowser や Inspector に露出しない内部キャッシュとして扱うため。
+static std::string LibraryBakedModelPathFromFbx(const std::string& fbxAbsPath, const std::string& basePath)
+{
+    namespace fs = std::filesystem;
+    if (!EndsWithCI(basePath, "assets/")) return {};
+
+    const std::string guid = AssetDatabase::GuidFromPath(fbxAbsPath);
+    if (guid.empty()) return {};
+
+    const fs::path fbxPath = util::FileSystem::PathFromUtf8(fbxAbsPath);
+    const std::string projectRoot = basePath.substr(0, basePath.size() - 7); // "assets/" を除去
+    return projectRoot + "Library/Baked/" + guid + "/" +
+           util::FileSystem::PathToUtf8(fbxPath.stem()) + ".fzasset";
+}
+
+static std::string ResolveModelAssetPath(const std::string& key, const std::string& basePath)
+{
+    namespace fs = std::filesystem;
+    if (!EndsWithCI(key, ".fbx")) return AssetManager::ResolveAssetPath(key);
+
+    std::string fbxFull;
+    if (IsAbsPath(key)) {
+        fbxFull = key;
+    } else {
+        std::string k = key;
+        if (StartsWithCI(k, "Assets/")) k = k.substr(7);
+        fbxFull = basePath;
+        if (!fbxFull.empty() && fbxFull.back() != '/') fbxFull.push_back('/');
+        fbxFull += k;
+    }
+
+    const std::string lib = LibraryBakedModelPathFromFbx(fbxFull, basePath);
+    if (!lib.empty() && util::FileSystem::Exists(lib)) return lib;
+
+    // 旧パッケージ形式 Foo/Foo.fzasset からの移行中プロジェクトを読むための後方互換。
+    const fs::path fbxPath = util::FileSystem::PathFromUtf8(fbxFull);
+    const std::string stem = util::FileSystem::PathToUtf8(fbxPath.stem());
+    const std::string legacyLogical = util::FileSystem::PathToUtf8(
+        fbxPath.parent_path() / stem / (stem + ".fzasset"));
+    const std::string legacyResolved = AssetManager::ResolveAssetPath(legacyLogical);
+    if (util::FileSystem::Exists(legacyResolved)) return legacyResolved;
+
+    return fbxFull;
+}
+
 std::string AssetManager::ResolvePath(const std::string& key, const std::string& basePath)
 {
+    // "guid:<32hex>" 参照は AssetDatabase で実パスへ解決する。
+    // WHY: 全ロードがこの一点を通るため、ここに分岐を置くだけで
+    //      .mat / .scene / コンポーネントの GUID 参照がエンジン全体で有効になる。
+    if (AssetDatabase::IsGuidRef(key)) {
+        std::string p = AssetDatabase::PathFromGuid(
+            key.substr(AssetDatabase::kGuidPrefix.size()));
+        if (p.empty())
+            FBZZ_LOG_ERROR("AssetManager: unresolved guid reference [%s]", key.c_str());
+        return p;
+    }
+
+    // まず論理パスを絶対化する (従来と同じ規則)。
+    std::string full;
+    if (IsAbsPath(key)) {
+        full = key;
+    } else {
+        std::string k = key;
+        if (StartsWithCI(k, "Assets/")) k = k.substr(7);
+        full = basePath;
+        if (!full.empty() && full.back() != '/') full.push_back('/');
+        full += k;
+    }
+
+    // baked (.fzasset/.mesh/.skel) は Library/Baked/<fbx-guid>/ を優先して解決する。
+    // WHY: import 生成物を Assets ツリーから隔離する (P5)。旧配置に実ファイルが残っている間は
+    //      下のフォールバックで従来どおり解決されるため、移行途中でも壊れない。
+    if (IsBakedModelExt(key)) {
+        const std::string lib = LibraryBakedPath(full, basePath);
+        if (!lib.empty() && util::FileSystem::Exists(lib)) return lib;
+    }
+
     if (IsAbsPath(key)) return key;
-
-    std::string k = key;
-    if (StartsWithCI(k, "Assets/")) k = k.substr(7);
-
-    std::string full = basePath;
-    if (!full.empty() && full.back() != '/') full.push_back('/');
-    full += k;
-
     if (util::FileSystem::Exists(full)) return full;
     if (util::FileSystem::Exists(key))  return key;
     return full;
@@ -205,6 +318,10 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     s_resources   = &resources;
     s_basePath    = Normalize(basePath);
     s_initialized = true;
+
+    // GUID ⇄ パス索引を構築する (.meta の自己修復もここで走る)。
+    // ResolvePath の "guid:" 分岐が使う前提なので、importer 登録より先に済ませる。
+    AssetDatabase::Init(s_basePath);
 
     // slot 0 は null 予約
     if (s_materialSlots.empty()) s_materialSlots.emplace_back();
@@ -238,6 +355,9 @@ void AssetManager::UnloadAll()
     s_materialFreeList.clear();
     s_resources   = nullptr;
     s_initialized = false;
+
+    // GUID 索引もアセットと同じライフサイクルで破棄する (再 Init で再構築)。
+    AssetDatabase::Shutdown();
 }
 
 // ── FlushFailed ──────────────────────────────────────────────────────────
@@ -263,10 +383,15 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
     if (it != store.cache.end()) return it->second;
 
     std::unique_ptr<T> asset;
-    if (store.importer)
-        asset = store.importer->Import(
-            ResolvePath(key, S_base()),
-            S_res());
+    if (store.importer) {
+        const std::string importPath = [&] {
+            if constexpr (std::is_same_v<T, ModelAsset>)
+                return ResolveModelAssetPath(key, S_base());
+            else
+                return ResolvePath(key, S_base());
+        }();
+        asset = store.importer->Import(importPath, S_res());
+    }
     else
         FBZZ_LOG_ERROR("AssetManager: importer is not registered [%s]", key.c_str());
 
@@ -433,11 +558,14 @@ Model* AssetManager::LoadModel(const std::string& relativePath)
 
     const std::string fullPath = ResolvePath(key, s_basePath);
     std::unique_ptr<Model> model;
-    if (key.ends_with(".mesh")) {
+    if (EndsWithCI(key, ".mesh")) {
         model = LoadFzMeshModel(fullPath, *s_resources);
-    } else if (key.ends_with(".fzasset")) {
+    } else if (EndsWithCI(key, ".fzasset") || EndsWithCI(key, ".fbx")) {
+        const std::string modelAssetPath = EndsWithCI(key, ".fbx")
+            ? ResolveModelAssetPath(key, s_basePath)
+            : fullPath;
         ModelAssetImporter importer;
-        model = ConvertModelAssetToLegacyModel(importer.Import(fullPath, s_resources));
+        model = ConvertModelAssetToLegacyModel(importer.Import(modelAssetPath, s_resources));
     } else {
         model = ModelImporter::Import(fullPath, *s_resources);
     }

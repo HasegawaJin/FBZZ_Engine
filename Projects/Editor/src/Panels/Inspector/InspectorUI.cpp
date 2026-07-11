@@ -45,7 +45,7 @@ void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_com
         });
 
     DrawComponentSection<scene::UIImage>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Image",
-        [](scene::UIImage& image, EditorContext&) {
+        [](scene::UIImage& image, EditorContext& ctx) {
             // 位置・サイズは Transform で管理 (上の Transform セクションを参照)
             ImGui::DragInt("Sort Order", &image.sortOrder);
             float color[4] = { image.color.x, image.color.y, image.color.z, image.color.w };
@@ -53,16 +53,7 @@ void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_com
                 image.color = { color[0], color[1], color[2], color[3] };
             DragVec2("UV Min", image.uvMin, 0.01f, 0.0f, 1.0f);
             DragVec2("UV Max", image.uvMax, 0.01f, 0.0f, 1.0f);
-            char texBuf[512];
-            std::snprintf(texBuf, sizeof(texBuf), "%s", image.texturePath.c_str());
-            if (ImGui::InputText("Texture Path", texBuf, sizeof(texBuf)))
-                image.texturePath = NormalizeAssetPath(texBuf);
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    image.texturePath = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                }
-                ImGui::EndDragDropTarget();
-            }
+            widgets::AssetPathField("Texture Path", image.texturePath, ".fztex,.png,.dds", ctx.projectRoot);
         });
 
     DrawComponentSection<scene::UIButton>(go, ctx, m_componentClipboard, m_componentClipboardType, "UI Button",
@@ -113,19 +104,16 @@ void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_com
             if (ImGui::InputText("##fontPath", fontBuf, sizeof(fontBuf)))
                 text.fontPath = fontBuf;
             // D&D: .png / .fnt をドロップしたとき拡張子を除いてベースパスにセットする。
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    std::string dropped = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    // .png / .fnt どちらをドロップしても拡張子を取り除く
-                    const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(dropped));
-                    if (ext == ".png" || ext == ".fnt") {
-                        std::filesystem::path fontPath = util::FileSystem::PathFromUtf8(dropped);
-                        fontPath.replace_extension();
-                        dropped = util::FileSystem::PathToUtf8(fontPath);
-                    }
-                    text.fontPath = dropped;
+            std::string droppedFont;
+            if (widgets::AcceptAssetPathDrop(droppedFont)) {
+                // .png / .fnt どちらをドロップしても拡張子を取り除く
+                const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(droppedFont));
+                if (ext == ".png" || ext == ".fnt") {
+                    std::filesystem::path fontPath = util::FileSystem::PathFromUtf8(droppedFont);
+                    fontPath.replace_extension();
+                    droppedFont = util::FileSystem::PathToUtf8(fontPath);
                 }
-                ImGui::EndDragDropTarget();
+                text.fontPath = droppedFont;
             }
         });
 

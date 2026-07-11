@@ -38,23 +38,16 @@ private:
     bool        m_hasCameraPosition = false;
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(TpsCameraComponent)
 
-#include "TpsCameraComponent.generated.hpp"
-
-// ── 実装 ────────────────────────────────────────────────────────────────────
-#ifndef TpsCameraComponent_IMPL
-#define TpsCameraComponent_IMPL
-
-namespace sandbox {
-
-void TpsCameraComponent::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void TpsCameraComponent::OnStart()
 {
     FindTarget();
     m_hasCameraPosition = false;
 }
 
-void TpsCameraComponent::OnLateUpdate()
+inline void TpsCameraComponent::OnLateUpdate()
 {
     if (!transform) return;
     if (!m_target || !m_target->IsValid()) FindTarget();
@@ -87,10 +80,9 @@ void TpsCameraComponent::OnLateUpdate()
     m_hasCameraPosition     = true;
 }
 
-void TpsCameraComponent::FindTarget()
+inline void TpsCameraComponent::FindTarget()
 {
     m_target = targetTag.empty() ? nullptr : scene.FindWithTag(targetTag);
 }
 
 } // namespace sandbox
-#endif

@@ -10,8 +10,9 @@ namespace fbzz::editor {
 
 class DependencyViewPanel final : public IPanel {
 public:
-    const char* GetWindowName()   const override { return "Dependency View"; }
-    const char* GetViewMenuName() const override { return "Dependency View"; }
+    const char* GetWindowName()        const override { return "Dependency View"; }
+    const char* GetViewMenuName()      const override { return "Dependency View"; }
+    bool        GetDefaultVisibility() const override { return false; }
 protected:
     void OnRenderContent(EditorContext& ctx) override;
 private:

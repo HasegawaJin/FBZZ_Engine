@@ -18,6 +18,7 @@
 #include <Physics/TriangleMeshCollider.hpp>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace fbzz::scene {
 
@@ -70,6 +71,14 @@ struct ColliderComponent {
         r.Field("dynamicFriction", material.dynamicFriction);
         r.Field("density", material.density);
     }
+
+    // Script / Editor から共通で使う安全なランタイム更新 API。
+    // WHY: Proxy 側で public フィールドを直接触ると、将来 Collider 再生成や dirty 管理が必要に
+    //      なったときに呼び出し側をすべて修正する必要があるため。
+    void SetEnabled(bool v) { enabled = v; }
+    void SetTrigger(bool v) { isTrigger = v; }
+    void SetCenter(const math::Vector3& v) { center = v; }
+    void SetMaterial(const physics::PhysicsMaterial& v) { material = v; }
 };
 
 struct AabbColliderComponent : public ColliderComponent {
@@ -85,6 +94,7 @@ struct AabbColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "AABB Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("size", size); }
+    void SetSize(const math::Vector3& v) { size = v; collider = std::make_unique<physics::AABBCollider>(size * 0.5f); }
 };
 
 struct BoxColliderComponent : public ColliderComponent {
@@ -100,6 +110,7 @@ struct BoxColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "Box Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("size", size); }
+    void SetSize(const math::Vector3& v) { size = v; collider = std::make_unique<physics::OBBCollider>(size * 0.5f); }
 };
 
 struct SphereColliderComponent : public ColliderComponent {
@@ -115,6 +126,7 @@ struct SphereColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "Sphere Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("radius", radius); }
+    void SetRadius(float v) { radius = v; collider = std::make_unique<physics::SphereCollider>(radius); }
 };
 
 struct CapsuleColliderComponent : public ColliderComponent {
@@ -131,6 +143,12 @@ struct CapsuleColliderComponent : public ColliderComponent {
 
     const char* GetTypeName() const { return "Capsule Collider"; }
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); r.Field("radius", radius); r.Field("halfHeight", halfHeight); }
+    void SetCapsule(float newRadius, float newHalfHeight)
+    {
+        radius = newRadius;
+        halfHeight = newHalfHeight;
+        collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
+    }
 };
 
 struct MeshColliderComponent : public ColliderComponent {
@@ -146,6 +164,12 @@ struct MeshColliderComponent : public ColliderComponent {
         r.Field("meshIndex", meshIndex);
         r.Field("useTransformScale", useTransformScale);
     }
+    void SetMesh(std::string path, int index)
+    {
+        meshPath = std::move(path);
+        meshIndex = index;
+        collider.reset();
+    }
 };
 
 struct ConvexHullColliderComponent : public ColliderComponent {
@@ -160,6 +184,12 @@ struct ConvexHullColliderComponent : public ColliderComponent {
         r.Field("meshPath", meshPath);
         r.Field("meshIndex", meshIndex);
         r.Field("useTransformScale", useTransformScale);
+    }
+    void SetMesh(std::string path, int index)
+    {
+        meshPath = std::move(path);
+        meshIndex = index;
+        collider.reset();
     }
 };
 

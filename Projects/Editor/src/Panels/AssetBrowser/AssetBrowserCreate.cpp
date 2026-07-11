@@ -4,6 +4,7 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/PostProcessAsset.hpp>
 
 namespace fbzz::editor {
@@ -35,6 +36,23 @@ void RegisterCreatedPath(EditorContext& ctx, const std::string& path)
 }
 
 } // namespace
+
+void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContext* ctx)
+{
+    if (path.empty()) return;
+
+    m_renamingPath = path;
+    m_pendingRenamePath.clear();
+    m_selectedPaths.clear();
+
+    if (ctx && !util::FileSystem::IsDirectory(path))
+        ctx->selectedAssetPath = path;
+
+    std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(path).c_str(),
+                 sizeof(m_renameBuffer) - 1);
+    m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+    m_renameNeedFocus = true;
+}
 
 void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
 {
@@ -158,12 +176,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         util::FileSystem::EnsureDirectory(newDir);
         RegisterCreatedPath(ctx, newDir);
         RefreshDirectory();
-        // 新規フォルダをリネームモードで開く
-        m_renamingPath = newDir;
-        std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(newDir).c_str(),
-                     sizeof(m_renameBuffer) - 1);
-        m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-        m_renameNeedFocus = true;
+        BeginRenameForPath(newDir, &ctx);
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Scene")) {
@@ -174,6 +187,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
+        BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Material")) {
         std::string newPath = m_currentPath + "/New Material.mat";
@@ -205,6 +219,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         util::FileSystem::WriteText(newPath, materialTemplate);
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
+        BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Post Process Profile")) {
         std::string newPath = m_currentPath + "/New Post Process Profile.fzpp";
@@ -221,7 +236,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         }
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
-        ctx.selectedAssetPath = newPath;
+        BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Animator Controller")) {
         std::string newPath = m_currentPath + "/New Animator Controller.animcontroller";
@@ -236,7 +251,32 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         }
         RegisterCreatedPath(ctx, newPath);
         RefreshDirectory();
-        ctx.selectedAssetPath = newPath;
+        BeginRenameForPath(newPath, &ctx);
+    }
+
+    // ── Data Asset (純共有 ScriptableObject) ──────────────────────
+    // 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。
+    // WHY: ファイル内容は "type = ..." の 1 行だけにしておき、フィールドの既定値は
+    //      Inspector の初回 Resolve 時に型のフィールド初期化子から補完する。これにより
+    //      Create 側でデフォルト値を二重管理せずに済む。
+    if (ImGui::BeginMenu("Data Asset")) {
+        const auto types = asset::DataAssetFactory::RegisteredTypeNames();
+        if (types.empty())
+            ImGui::TextDisabled("(no DataAsset types registered)");
+        for (const auto& typeName : types) {
+            if (ImGui::MenuItem(typeName.c_str())) {
+                std::string newPath = m_currentPath + "/New " + typeName + ".fzdata";
+                int suffix = 1;
+                while (util::FileSystem::Exists(newPath))
+                    newPath = m_currentPath + "/New " + typeName + " " +
+                        std::to_string(suffix++) + ".fzdata";
+                util::FileSystem::WriteText(newPath, "type = \"" + typeName + "\"\n");
+                RegisterCreatedPath(ctx, newPath);
+                RefreshDirectory();
+                BeginRenameForPath(newPath, &ctx);
+            }
+        }
+        ImGui::EndMenu();
     }
 
     // ── C++ スクリプト ────────────────────────────────────────────

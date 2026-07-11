@@ -1,6 +1,6 @@
 // FBZZ Engine
 // TexSubExporter.hpp | fbzz::editor
-// textures/ フォルダ内の生画像に .tex descriptor を自動生成する
+// textures/ フォルダ内の生画像に .meta sidecar を自動生成する
 // MatSubExporter の後に実行する。flipGreen=true の法線マップに対応する。
 #pragma once
 #include <Editor/Import/IFbxSubExporter.hpp>

@@ -9,32 +9,73 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 {
     DrawComponentSection<scene::SkyRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Sky Renderer",
         [](scene::SkyRenderer& sr, EditorContext&) {
+            ImGui::SeparatorText("Atmosphere");
             widgets::DragVec3("Rayleigh", sr.rayleighScattering, 0.0001f, 0.0f, 1.0f);
             ImGui::DragFloat("Mie Scattering", &sr.mieScattering, 0.0001f, 0.0f, 1.0f);
             ImGui::DragFloat("Sun Intensity", &sr.sunIntensity, 0.1f, 0.0f, 1000.0f);
+            ImGui::DragFloat("Planet Radius", &sr.planetRadius, 1.0f, 1.0f, 100000.0f);
+            ImGui::DragFloat("Atmosphere Radius", &sr.atmosphereRadius, 1.0f, 1.0f, 100000.0f);
             ImGui::SliderFloat("Mie G", &sr.mieG, -0.99f, 0.99f);
+
+            ImGui::SeparatorText("Day Night");
+            ImGui::Checkbox("Day Night Enabled", &sr.dayNightEnabled);
+            if (sr.dayNightEnabled) {
+                widgets::ColorEdit3("Day Color", sr.dayColor);
+                widgets::ColorEdit3("Sunset Color", sr.sunsetColor);
+                widgets::ColorEdit3("Night Color", sr.nightColor);
+                ImGui::DragFloat("Day Intensity", &sr.dayIntensity, 0.01f, 0.0f, 20.0f);
+                ImGui::DragFloat("Night Intensity", &sr.nightIntensity, 0.01f, 0.0f, 5.0f);
+            }
+
+            ImGui::SeparatorText("Cloud Shadow");
+            ImGui::SliderFloat("Cloud Shadow Strength", &sr.cloudShadowStrength, 0.0f, 1.0f);
+            ImGui::SliderFloat("Cloud Shadow Coverage", &sr.cloudShadowCoverage, 0.0f, 1.0f);
+            ImGui::DragFloat("Cloud Shadow Scale", &sr.cloudShadowScale, 0.0001f, 0.0001f, 1.0f, "%.5f");
+            ImGui::DragFloat("Cloud Shadow Speed", &sr.cloudShadowSpeed, 0.01f, 0.0f, 10.0f);
+        });
+
+    DrawComponentSection<scene::SunMoonRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Sun Moon Renderer",
+        [](scene::SunMoonRenderer& smr, EditorContext&) {
+            ImGui::SeparatorText("Sun");
+            ImGui::Checkbox("Sun Enabled", &smr.sunEnabled);
+            if (smr.sunEnabled) {
+                ImGui::DragFloat("Sun Intensity", &smr.sunIntensity, 0.1f, 0.0f, 1000.0f);
+            }
+
+            ImGui::SeparatorText("Moon");
+            ImGui::Checkbox("Moon Enabled", &smr.moonEnabled);
+            if (smr.moonEnabled) {
+                ImGui::DragFloat("Moon Size", &smr.moonSize, 0.01f, 0.0f, 10.0f);
+                ImGui::DragFloat("Moon Brightness", &smr.moonBrightness, 0.01f, 0.0f, 10.0f);
+                widgets::ColorEdit3("Moon Color", smr.moonColor);
+            }
+        });
+
+    DrawComponentSection<scene::VolumetricCloudComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volumetric Cloud",
+        [](scene::VolumetricCloudComponent& cloud, EditorContext&) {
+            ImGui::DragFloat("Bottom Height", &cloud.bottomHeight, 5.0f, -10000.0f, 10000.0f);
+            ImGui::DragFloat("Thickness", &cloud.thickness, 5.0f, 1.0f, 5000.0f);
+            ImGui::SliderFloat("Coverage", &cloud.coverage, 0.0f, 1.0f);
+            ImGui::DragFloat("Density", &cloud.density, 0.01f, 0.0f, 8.0f);
+            ImGui::DragFloat("Noise Scale", &cloud.noiseScale, 0.0001f, 0.00001f, 0.02f, "%.5f");
+            ImGui::DragFloat("Detail Scale", &cloud.detailScale, 0.05f, 1.0f, 16.0f);
+            ImGui::DragFloat("Wind Speed", &cloud.windSpeed, 0.5f, 0.0f, 300.0f);
+            DragVec2("Wind Direction", cloud.windDirection, 0.01f, -1.0f, 1.0f);
+            ImGui::DragFloat("Light Absorption", &cloud.lightAbsorption, 0.01f, 0.0f, 8.0f);
+            ImGui::SliderFloat("Ambient Strength", &cloud.ambientStrength, 0.0f, 1.0f);
+            ImGui::DragFloat("Silver Lining", &cloud.silverLining, 0.01f, 0.0f, 4.0f);
+            widgets::ColorEdit3("Albedo", cloud.albedo);
+            ImGui::SliderInt("Step Count", &cloud.stepCount, 8, 96);
+            ImGui::DragFloat("Max Distance", &cloud.maxDistance, 50.0f, 100.0f, 50000.0f);
         });
 
     DrawComponentSection<scene::DecalComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Decal",
-        [](scene::DecalComponent& dc, EditorContext&) {
-
-            auto texField = [](const char* label, std::string& path) {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf), "%s", path.c_str());
-                if (ImGui::InputText(label, buf, sizeof(buf)))
-                    path = NormalizeAssetPath(buf);
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    }
-                    ImGui::EndDragDropTarget();
-                }
-            };
+        [](scene::DecalComponent& dc, EditorContext& ctx) {
 
             ImGui::SeparatorText("Textures");
-            texField("Albedo (t0)",   dc.albedoTexPath);
-            texField("Normal (t1)",   dc.normalTexPath);
-            texField("Emissive (t3)", dc.emissiveTexPath);
+            widgets::AssetPathField("Albedo (t0)",   dc.albedoTexPath,   ".fztex,.png,.dds", ctx.projectRoot);
+            widgets::AssetPathField("Normal (t1)",   dc.normalTexPath,   ".fztex,.png,.dds", ctx.projectRoot);
+            widgets::AssetPathField("Emissive (t3)", dc.emissiveTexPath, ".fztex,.png,.dds", ctx.projectRoot);
 
             ImGui::SeparatorText("Surface");
             ImGui::ColorEdit4("Albedo Color",     dc.albedoColor);
@@ -72,28 +113,27 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     // ── EnvironmentLightComponent ────────────────────────────────────────────────
     DrawComponentSection<scene::EnvironmentLightComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Environment Light",
-        [](scene::EnvironmentLightComponent& elc, EditorContext&) {
-
-            // パスフィールド — ドラッグ&ドロップで Asset Browser から直接割り当て可能。
-            auto texField = [](const char* label, std::string& path) {
-                char buf[512];
-                std::snprintf(buf, sizeof(buf), "%s", path.c_str());
-                if (ImGui::InputText(label, buf, sizeof(buf)))
-                    path = NormalizeAssetPath(buf);
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH"))
-                        path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                    ImGui::EndDragDropTarget();
-                }
-            };
+        [](scene::EnvironmentLightComponent& elc, EditorContext& ctx) {
 
             // 有効化トグル — ヘッダーの enabled と連動するが、こちらが本体の操作点。
             ImGui::Checkbox("IBL Enabled", &elc.enabled);
             ImGui::Spacing();
 
-            ImGui::SeparatorText("IBL Cubemaps (.dds)");
-            texField("Irradiance##iblIrr",  elc.irradiancePath);
-            texField("Prefiltered##iblPre",  elc.prefilterPath);
+            ImGui::SeparatorText("IBL Source");
+            static constexpr const char* kSourceNames[] = { "Static DDS", "Dynamic Sky" };
+            int source = static_cast<int>(elc.source);
+            if (ImGui::Combo("Source", &source, kSourceNames, 2)) {
+                source = (source < 0 || source > 1) ? 0 : source;
+                elc.source = static_cast<scene::IblSource>(source);
+            }
+
+            if (elc.source == scene::IblSource::StaticDDS) {
+                ImGui::SeparatorText("IBL Cubemaps (.dds)");
+                widgets::AssetPathField("Irradiance##iblIrr", elc.irradiancePath, ".dds,.hdr", ctx.projectRoot);
+                widgets::AssetPathField("Prefiltered##iblPre", elc.prefilterPath, ".dds,.hdr", ctx.projectRoot);
+            } else {
+                ImGui::TextDisabled("SkyRenderer の空を実行時に IBL へ焼き込みます。");
+            }
 
             ImGui::SeparatorText("Intensity");
             ImGui::DragFloat("Overall Intensity", &elc.intensity,    0.01f, 0.0f, 10.0f);
@@ -101,25 +141,18 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::DragFloat("Specular Scale",    &elc.specularScale,0.01f, 0.0f, 4.0f);
             ImGui::SliderInt("Max Mip Level",     &elc.maxMipLevel,  1, 8, "%d (bake mips - 1)");
 
-            if (elc.irradiancePath.empty() || elc.prefilterPath.empty())
+            if (elc.source == scene::IblSource::StaticDDS &&
+                (elc.irradiancePath.empty() || elc.prefilterPath.empty()))
                 ImGui::TextColored({1.0f, 0.7f, 0.2f, 1.0f},
                     "(!) パスが設定されていないと IBL は無効になります");
         });
 
     // ── ReflectionProbeComponent ─────────────────────────────────────────────────
     DrawComponentSection<scene::ReflectionProbeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Reflection Probe",
-        [](scene::ReflectionProbeComponent& rpc, EditorContext&) {
+        [](scene::ReflectionProbeComponent& rpc, EditorContext& ctx) {
 
             ImGui::SeparatorText("Cubemap (.dds)");
-            char buf[512];
-            std::snprintf(buf, sizeof(buf), "%s", rpc.cubemapPath.c_str());
-            if (ImGui::InputText("Cubemap Path", buf, sizeof(buf)))
-                rpc.cubemapPath = NormalizeAssetPath(buf);
-            if (ImGui::BeginDragDropTarget()) {
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH"))
-                    rpc.cubemapPath = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                ImGui::EndDragDropTarget();
-            }
+            widgets::AssetPathField("Cubemap Path", rpc.cubemapPath, ".dds,.hdr", ctx.projectRoot);
 
             ImGui::SeparatorText("Influence");
             ImGui::DragFloat("Intensity",        &rpc.intensity,       0.01f, 0.0f, 8.0f);
@@ -141,14 +174,22 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
     DrawComponentSection<scene::AtmosphericScatteringComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Atmospheric Scattering",
         [](scene::AtmosphericScatteringComponent& atm, EditorContext&) {
 
-            ImGui::SeparatorText("Exponential Fog");
+            ImGui::SeparatorText("Fog");
             ImGui::Checkbox("Fog Enabled", &atm.fogEnabled);
             if (atm.fogEnabled) {
+                static constexpr const char* kFogSourceNames[] = { "Exponential", "Atmosphere" };
+                int fogSource = static_cast<int>(atm.fogSource);
+                if (ImGui::Combo("Fog Source", &fogSource, kFogSourceNames, 2)) {
+                    fogSource = (fogSource < 0 || fogSource > 1) ? 0 : fogSource;
+                    atm.fogSource = static_cast<scene::FogSource>(fogSource);
+                }
                 ImGui::DragFloat("Density",        &atm.fogDensity, 0.001f, 0.0f, 1.0f);
                 ImGui::DragFloat("Far Distance (m)",&atm.fogFar,    1.0f,   0.0f, 10000.0f);
-                float col[3] = { atm.fogColor.x, atm.fogColor.y, atm.fogColor.z };
-                if (ImGui::ColorEdit3("Fog Color", col))
-                    atm.fogColor = { col[0], col[1], col[2] };
+                if (atm.fogSource == scene::FogSource::Exponential) {
+                    widgets::ColorEdit3("Fog Color", atm.fogColor);
+                } else {
+                    ImGui::TextDisabled("Fog color は SkyRenderer の大気散乱から計算されます。");
+                }
             }
         });
 

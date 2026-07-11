@@ -1,0 +1,465 @@
+[asset_browser]
+bookmarks = []
+icon_size = 84.0
+tree_width = 206.0
+
+[camera]
+last_pos_x = -10.09592056274414
+last_pos_y = 1.1380376815795898
+last_pos_z = 7.283246040344238
+last_rot_w = 0.9983969330787659
+last_rot_x = -0.04708324745297432
+last_rot_y = 0.031375907361507416
+last_rot_z = 0.0014796515461057425
+sensitivity = 0.15000000596046448
+speed = 5.0
+
+[debug]
+show_colliders = true
+show_decal_bounds = false
+show_nav_sensors = false
+show_navmesh = true
+show_terrain_collision = false
+view_mode = 0
+
+[detail_tool]
+brush_radius = 6.0
+brush_strength = 1.0
+layer_index = 0
+mode = 0
+show_chunk_bounds = false
+show_counts = false
+
+[game_view]
+aspect = 6
+play_focus_mode = 1
+
+[gizmo]
+mode = 1
+space = 0
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 571
+name = 'Undo'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 570
+name = 'Redo'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 571
+name = 'Redo (Alt)'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 559
+name = 'New Scene'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 560
+name = 'Open Scene'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 564
+name = 'Save Scene'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 564
+name = 'Save Scene As'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 561
+name = 'Play/Stop'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 561
+name = 'Pause'
+shift = true
+
+[import]
+default_compression = 0
+generate_tex_descriptors = true
+normal_map_convention = 0
+source_dcc = 0
+
+[[inspector_sections.states]]
+k = 33703422
+v = true
+
+[[inspector_sections.states]]
+k = 46885339
+v = false
+
+[[inspector_sections.states]]
+k = 207841467
+v = true
+
+[[inspector_sections.states]]
+k = 216352573
+v = false
+
+[[inspector_sections.states]]
+k = 388596335
+v = false
+
+[[inspector_sections.states]]
+k = 470314236
+v = true
+
+[[inspector_sections.states]]
+k = 574563500
+v = true
+
+[[inspector_sections.states]]
+k = 578199146
+v = false
+
+[[inspector_sections.states]]
+k = 594446317
+v = false
+
+[[inspector_sections.states]]
+k = 698235481
+v = false
+
+[[inspector_sections.states]]
+k = 993821142
+v = true
+
+[[inspector_sections.states]]
+k = 1027229573
+v = true
+
+[[inspector_sections.states]]
+k = 1117180271
+v = false
+
+[[inspector_sections.states]]
+k = 1153320595
+v = false
+
+[[inspector_sections.states]]
+k = 1216410918
+v = false
+
+[[inspector_sections.states]]
+k = 1221062088
+v = false
+
+[[inspector_sections.states]]
+k = 1273647749
+v = false
+
+[[inspector_sections.states]]
+k = 1350322057
+v = false
+
+[[inspector_sections.states]]
+k = 1402486072
+v = true
+
+[[inspector_sections.states]]
+k = 1516391339
+v = true
+
+[[inspector_sections.states]]
+k = 1834163253
+v = true
+
+[[inspector_sections.states]]
+k = 1895422460
+v = false
+
+[[inspector_sections.states]]
+k = 1912496907
+v = false
+
+[[inspector_sections.states]]
+k = 1990074492
+v = true
+
+[[inspector_sections.states]]
+k = 1994292428
+v = false
+
+[[inspector_sections.states]]
+k = 1996495546
+v = false
+
+[[inspector_sections.states]]
+k = 2100315847
+v = true
+
+[[inspector_sections.states]]
+k = 2146798221
+v = false
+
+[[inspector_sections.states]]
+k = 2154227322
+v = false
+
+[[inspector_sections.states]]
+k = 2284866431
+v = false
+
+[[inspector_sections.states]]
+k = 2295576352
+v = false
+
+[[inspector_sections.states]]
+k = 2298668059
+v = true
+
+[[inspector_sections.states]]
+k = 2414361687
+v = true
+
+[[inspector_sections.states]]
+k = 2440799859
+v = false
+
+[[inspector_sections.states]]
+k = 2473509195
+v = true
+
+[[inspector_sections.states]]
+k = 2711091508
+v = false
+
+[[inspector_sections.states]]
+k = 2738501084
+v = false
+
+[[inspector_sections.states]]
+k = 2792076385
+v = false
+
+[[inspector_sections.states]]
+k = 2920468104
+v = false
+
+[[inspector_sections.states]]
+k = 3021343248
+v = true
+
+[[inspector_sections.states]]
+k = 3021343249
+v = true
+
+[[inspector_sections.states]]
+k = 3021343250
+v = true
+
+[[inspector_sections.states]]
+k = 3021343251
+v = true
+
+[[inspector_sections.states]]
+k = 3021343252
+v = true
+
+[[inspector_sections.states]]
+k = 3021343253
+v = false
+
+[[inspector_sections.states]]
+k = 3021343254
+v = false
+
+[[inspector_sections.states]]
+k = 3021343255
+v = true
+
+[[inspector_sections.states]]
+k = 3160552252
+v = false
+
+[[inspector_sections.states]]
+k = 3240964109
+v = false
+
+[[inspector_sections.states]]
+k = 3261365082
+v = false
+
+[[inspector_sections.states]]
+k = 3444014841
+v = false
+
+[[inspector_sections.states]]
+k = 3502298310
+v = true
+
+[[inspector_sections.states]]
+k = 3599113775
+v = false
+
+[[inspector_sections.states]]
+k = 3862730471
+v = false
+
+[[inspector_sections.states]]
+k = 4037560716
+v = true
+
+[[inspector_sections.states]]
+k = 4067221799
+v = true
+
+[[inspector_sections.states]]
+k = 4171773943
+v = false
+
+[map_mode]
+hierarchy_filter = true
+inspector_filter = true
+
+[misc]
+hot_reload = true
+
+[scene]
+last_path = 'Assets/Scenes/Main.scene'
+
+[snap]
+enabled = false
+pos = 1.0
+rot = 15.0
+scale = 0.25
+
+[terrain_tool]
+brush_falloff = 1
+brush_radius = 9.0
+brush_strength = 0.9430000185966492
+paint_layer = 2
+sculpt_mode = 0
+
+[tools]
+show_detail = false
+show_foliage = false
+show_terrain = false
+show_water = false
+
+[ui]
+scale = 1.0
+
+[view]
+grid_size = 1.0
+show_grid = false
+show_light_range = true
+show_skeleton = false
+show_stats = true
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false

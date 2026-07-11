@@ -4,9 +4,11 @@
 // フォグ: 深度バッファから線形距離を復元して指数フォグを適用する
 
 #include "Common/Constants.hlsli"
+#include "Common/Space.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/ToneMap.hlsli"
 #include "Rendering/Fog.hlsli"
+#include "Rendering/Atmosphere.hlsli"
 #include "Rendering/PostProcess.hlsli"
 
 Texture2D          texHDR      : register(TEX_GBUFFER0);        // ライティング結果 HDR バッファ
@@ -150,8 +152,9 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float3 ldr = FinalOutput(hdr, exposure);
     ldr = ApplyClarity(ldr, uv);
 
-    // 深度から線形距離を復元して指数フォグを適用する
-    // ndcZ ≥ 0.9999 はスカイドーム（clip.xyww で z=w → NDC z=1.0）なので霧を掛けない
+    // 深度から線形距離を復元してフォグを適用する。
+    // ndcZ ≥ 0.9999 はスカイドーム（clip.xyww で z=w → NDC z=1.0）なので霧を掛けない。
+    // フォグの適用ロジック (ApplyFog) は共通で、色の出どころだけ fogSource で切り替える (§3-3)。
     if (fogDensity > 0.0f)
     {
         float ndcZ = texDepth.Sample(sampDefault, uv).r;
@@ -160,7 +163,22 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
             float linDepth = LinearDepth(uv);
             float dist     = max(linDepth - fogFar, 0.0f);
             float factor   = FogFactor(dist, fogDensity);
-            ldr = ApplyFog(ldr, factor, fogColor);
+
+            float3 col = fogColor; // Exponential: 固定フォグ色
+            if (fogSource > 0.5f)
+            {
+                // Atmosphere (エアリアルパースペクティブ): 視線方向の大気 in-scatter をフォグ色に使う。
+                // 太陽から離れた遠景は青く、太陽方向は暖色に霞む。空ドームの見た目と整合する。
+                float3 worldPos  = ReconstructWorldPos(uv, ndcZ, invViewProjection);
+                float3 rayDir    = normalize(worldPos - cameraPos);
+                float3 sunDir    = normalize(-lightDir);
+                float  scaled    = sunIntensity * lightIntensity;
+                float3 inscatter = ComputeAtmosphericScattering(
+                    rayDir, sunDir, rayleighScattering, mieScattering, mieG, scaled) * lightColor;
+                // フォグは LDR 空間で適用するため、in-scatter (HDR) を露出→トーンマップして合わせる。
+                col = FinalOutput(inscatter, exposure);
+            }
+            ldr = ApplyFog(ldr, factor, col);
         }
     }
 

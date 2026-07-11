@@ -3,18 +3,25 @@
 // FBX → fz* 変換パイプラインのオーケストレーター (BuildPipeline パターン)
 //
 // FbxImportTool → BuildPipeline() → IFbxSubExporter[] の順に変換責務を分割する。
-// 各 SubExporter は .fzasset / .anim / .mat / .tex を同一パッケージ配下に生成する。
+// 各 SubExporter は .fzasset / .anim / .mat / .meta を同一パッケージ配下に生成する。
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Import/AnimSubExporter.hpp>
 #include <Editor/Import/MatSubExporter.hpp>
 #include <Editor/Import/ModelSubExporter.hpp>
 #include <Editor/Import/SkelSubExporter.hpp>
 #include <Editor/Import/TexSubExporter.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
+#include <cctype>
+#include <cmath>
+#include <assimp/commonMetaData.h>
 #include <assimp/config.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 
@@ -54,6 +61,161 @@ bool HasSkinning(const aiScene* scene)
     return false;
 }
 
+bool HasBlenderRootTransformPattern(const aiScene* scene)
+{
+    const aiNode* root = scene ? scene->mRootNode : nullptr;
+    if (!root || root->mNumChildren == 0) return false;
+
+    for (uint32_t i = 0; i < root->mNumChildren; ++i) {
+        aiVector3D scale, pos;
+        aiQuaternion rot;
+        root->mChildren[i]->mTransformation.Decompose(scale, rot, pos);
+        const bool uniformScale =
+            std::abs(scale.y - scale.x) <= std::abs(scale.x) * 1e-3f &&
+            std::abs(scale.z - scale.x) <= std::abs(scale.x) * 1e-3f;
+        const bool blenderScale = uniformScale && std::abs(scale.x) > 10.0f;
+        const bool quarterTurnX =
+            std::abs(std::abs(rot.w) - 0.70710678f) < 0.08f &&
+            std::abs(rot.x) > 0.60f &&
+            std::abs(rot.y) < 0.25f &&
+            std::abs(rot.z) < 0.25f;
+        if (blenderScale || quarterTurnX)
+            return true;
+    }
+    return false;
+}
+
+// FBX を書き出した DCC ツールの判定。
+// Creator メタデータの実例: Blender = "Blender (stable FBX IO)",
+// Maya / Mixamo / 3ds Max = "FBX SDK/FBX Plugins version ..."。
+FbxSourceDcc DetectSourceDcc(const aiScene* scene)
+{
+    aiString generator;
+    if (scene->mMetaData &&
+        scene->mMetaData->Get(AI_METADATA_SOURCE_GENERATOR, generator)) {
+        std::string s = generator.C_Str();
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (s.find("blender") != std::string::npos) return FbxSourceDcc::Blender;
+    }
+    if (HasBlenderRootTransformPattern(scene))
+        return FbxSourceDcc::Blender;
+    return FbxSourceDcc::Maya;
+}
+
+FbxSourceDcc ResolveSourceDcc(FbxSourceDcc option, const aiScene* scene)
+{
+    if (option != FbxSourceDcc::Auto)
+        return option;
+    return DetectSourceDcc(scene);
+}
+
+// Blender 製 FBX のルート焼き込み変換を正規化する ("Apply Transform" 相当)。
+//
+// Blender の FBX エクスポーターは座標系変換 (Z-up→Y-up の +90°X 回転) と単位変換
+// (m→cm のスケール 100) を頂点に適用せず、RootNode 直下のオブジェクトノードへ焼き込む。
+// アニメーションも同ノードのトラックが同じ回転・スケールを毎キー再生して自己整合させている。
+// このままだと骨階層に scale=100 の中間ノードが入り、IK / 物理 / トレイルなど
+// 「Y-up / m / scale1」を前提とするランタイム系が全て破綻する。
+//
+// 正規化 = 全ノードのグローバル変換に F = Rot(q⁻¹)·Scale(1/s) を左掛けすること。
+//   - RootNode 直下ノードのローカルだけが変わり、子孫のローカル変換は数学的に不変
+//   - ボーンの offsetMatrix も (F·Gb)⁻¹·(F·Gm) = Gb⁻¹·Gm で不変
+//   - 除去したスケール s は unitScale へ移すため、正味のモデルサイズも不変
+// よってシーン側はここでの書き換えだけで完結し、AnimSubExporter が同名トラックの
+// キーへ同じ F を合成すれば全データが整合する。
+bool NormalizeBlenderRootTransforms(const aiScene* constScene, FbxImportContext& ctx)
+{
+    // WHY: Assimp::Importer が所有する読み取り専用シーンをエクスポート前に補正する。
+    //      assimp 公式サンプルでも用いられる後編集パターンで、所有権は移動しない。
+    aiScene* scene = const_cast<aiScene*>(constScene);
+    aiNode* root = scene->mRootNode;
+    if (!root || root->mNumChildren == 0) return false;
+
+    // 基準: Blender らしい root 子の回転・スケール成分。先頭に identity ダミーがある FBX も拾う。
+    aiVector3D s0, p0;
+    aiQuaternion q0;
+    bool foundBasis = false;
+    for (uint32_t i = 0; i < root->mNumChildren; ++i) {
+        root->mChildren[i]->mTransformation.Decompose(s0, q0, p0);
+        const bool uniformScale =
+            std::abs(s0.y - s0.x) <= std::abs(s0.x) * 1e-3f &&
+            std::abs(s0.z - s0.x) <= std::abs(s0.x) * 1e-3f;
+        const bool blenderScale = uniformScale && std::abs(s0.x) > 10.0f;
+        const bool quarterTurnX =
+            std::abs(std::abs(q0.w) - 0.70710678f) < 0.08f &&
+            std::abs(q0.x) > 0.60f &&
+            std::abs(q0.y) < 0.25f &&
+            std::abs(q0.z) < 0.25f;
+        if (blenderScale || quarterTurnX) { foundBasis = true; break; }
+    }
+    if (!foundBasis) return false;
+    const float s = s0.x;
+    const bool identityRotation = std::abs(q0.w) > 0.99996f; // ずれ 1° 未満は無視
+    const bool identityScale    = std::abs(s - 1.0f) < 1e-3f;
+    if (identityRotation && identityScale) return false;
+
+    // 非均一スケールは想定外 (Blender は均一 100 を焼く)。安全側に倒して無補正。
+    if (std::abs(s0.y - s) > std::abs(s) * 1e-3f ||
+        std::abs(s0.z - s) > std::abs(s) * 1e-3f) {
+        FBZZ_LOG_WARN("FbxImportTool: non-uniform root scale (%.3f,%.3f,%.3f) — axis fix skipped",
+                      s0.x, s0.y, s0.z);
+        return false;
+    }
+
+    // 全 Root 直下子が同じ焼き込みを持つことを確認する (Blender は全オブジェクトに同一値を書く)。
+    auto matchesBasis = [&](const aiVector3D& scale, const aiQuaternion& rot) {
+        const float dot = q0.x*rot.x + q0.y*rot.y + q0.z*rot.z + q0.w*rot.w;
+        return std::abs(dot) >= 0.9999f &&
+               std::abs(scale.x - s) <= std::abs(s) * 1e-3f &&
+               std::abs(scale.y - s) <= std::abs(s) * 1e-3f &&
+               std::abs(scale.z - s) <= std::abs(s) * 1e-3f;
+    };
+    auto isIdentityTransform = [](const aiVector3D& scale, const aiQuaternion& rot) {
+        return std::abs(rot.w) > 0.99996f &&
+               std::abs(scale.x - 1.0f) < 1e-3f &&
+               std::abs(scale.y - 1.0f) < 1e-3f &&
+               std::abs(scale.z - 1.0f) < 1e-3f;
+    };
+    for (uint32_t i = 0; i < root->mNumChildren; ++i) {
+        aiVector3D si, pi;
+        aiQuaternion qi;
+        root->mChildren[i]->mTransformation.Decompose(si, qi, pi);
+        if (isIdentityTransform(si, qi)) continue;
+        if (!matchesBasis(si, qi)) {
+            FBZZ_LOG_WARN("FbxImportTool: mixed root transforms across children — axis fix skipped");
+            return false;
+        }
+    }
+
+    // F を各 Root 直下子のローカルへ適用: 回転→identity、スケール→1、位置→q⁻¹·(p/s)。
+    const aiQuaternion invQ(q0.w, -q0.x, -q0.y, -q0.z); // 単位クォータニオンの共役 = 逆
+    for (uint32_t i = 0; i < root->mNumChildren; ++i) {
+        aiNode* child = root->mChildren[i];
+        aiVector3D cs, cp;
+        aiQuaternion cq;
+        child->mTransformation.Decompose(cs, cq, cp);
+        if (!matchesBasis(cs, cq)) continue;
+        const aiVector3D newPos   = invQ.Rotate(cp * (1.0f / s));
+        const aiVector3D newScale(cs.x / s, cs.y / s, cs.z / s);
+        const aiQuaternion newRot = invQ * cq; // ≈ identity
+        child->mTransformation = aiMatrix4x4(newScale, newRot, newPos);
+        ctx.axisFixNodes.push_back(child->mName.C_Str());
+    }
+
+    ctx.axisFixRotation[0] = q0.x;
+    ctx.axisFixRotation[1] = q0.y;
+    ctx.axisFixRotation[2] = q0.z;
+    ctx.axisFixRotation[3] = q0.w;
+    ctx.axisFixScale = s;
+    // 除去したスケールは単位系へ移す (頂点・骨 translation・アニメキーに一律で掛かる)。
+    ctx.unitScale *= s;
+
+    FBZZ_LOG_INFO("FbxImportTool: Blender axis fix applied (rot %.1fdeg, scale %.1f) to %zu root node(s)",
+                  2.0 * std::acos(std::min(1.0f, std::abs(q0.w))) * 180.0 / 3.14159265,
+                  s, ctx.axisFixNodes.size());
+    return true;
+}
+
 } // namespace
 
 std::vector<std::unique_ptr<IFbxSubExporter>> FbxImportTool::BuildPipeline()
@@ -75,26 +237,47 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     // ── Assimp 第 1 パス: スキン/アニメーション用 ─────────────────────────
     Assimp::Importer importer;
     importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+    // FBX 内包テクスチャを aiScene::mTextures へ展開し、MaterialExporter で PNG 化する。
+    importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_READ_TEXTURES, true);
     const aiScene* scene = importer.ReadFile(fbxPath, kBaseFlags);
     if (!scene || !scene->mRootNode) return false;
 
     const bool hasSkin = HasSkinning(scene);
+    const FbxSourceDcc sourceDcc = ResolveSourceDcc(options.sourceDcc, scene);
 
     // ── Assimp 第 2 パス: 静的メッシュ用 (PreTransformVertices) ──────────
     Assimp::Importer staticImporter;
     const aiScene* meshScene = scene;
-    if (!hasSkin) {
+    if (!hasSkin && sourceDcc != FbxSourceDcc::Blender) {
         staticImporter.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+        staticImporter.SetPropertyBool(AI_CONFIG_IMPORT_FBX_READ_TEXTURES, true);
         meshScene = staticImporter.ReadFile(fbxPath, kStaticFlags);
         if (!meshScene || !meshScene->mRootNode) return false;
     }
 
     const fs::path fbxFsPath    = util::FileSystem::PathFromUtf8(fbxPath);
     const fs::path outDirPath   = util::FileSystem::PathFromUtf8(outputDir);
-    const fs::path manifestDir  = outDirPath;
+
+    // baked (.fzasset/.mesh/.skel) は Library/Baked/<fbx-guid>/ に隔離する。
+    // WHY: 再生成可能な派生バイナリを Assets から出し、Assets には著作物 (.mat/.anim/.meta) だけを残す。
+    //      guid キーなので fbx をリネームしてもキャッシュが迷子にならない。
+    //      guid が引けない場合 (Assets 外の fbx 等) は従来どおりパッケージ内へ出力する。
+    fs::path manifestDir = outDirPath;
+    {
+        const std::string normOut = util::FileSystem::NormalizePathSeparators(outputDir);
+        const size_t assetsPos = util::StringUtils::ToLower(normOut).rfind("/assets/");
+        const std::string fbxGuid = asset::AssetDatabase::GuidFromPath(
+            util::FileSystem::NormalizePathSeparators(fbxPath));
+        if (assetsPos != std::string::npos && !fbxGuid.empty()) {
+            manifestDir = util::FileSystem::PathFromUtf8(
+                normOut.substr(0, assetsPos) + "/Library/Baked/" + fbxGuid);
+        }
+    }
 
     // ── 出力ディレクトリを作成 ────────────────────────────────────────────
     if (!util::FileSystem::EnsureDirectory(outDirPath)) return false;
+    if (manifestDir != outDirPath &&
+        !util::FileSystem::EnsureDirectory(manifestDir)) return false;
 
     FbxImportContext ctx;
 
@@ -103,6 +286,8 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     auto cleanup = [&] {
         if (!success) {
             util::FileSystem::RemoveAll(outDirPath);
+            if (manifestDir != outDirPath)
+                util::FileSystem::RemoveAll(manifestDir);
         }
     };
     struct Guard { std::function<void()> fn; ~Guard() { fn(); } } guard{ cleanup };
@@ -122,6 +307,14 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     ctx.defaultCompression      = options.defaultCompression;
     ctx.selectedMeshNames       = options.selectedMeshNames;
     ctx.selectedAnimNames       = options.selectedAnimNames;
+    ctx.applyStaticNodeTransforms = !hasSkin && sourceDcc == FbxSourceDcc::Blender;
+
+    // ── DCC 座標系補正 ───────────────────────────────────────────────────
+    // Blender 製 FBX はルートに焼かれた +90°X / scale100 を正規化してから書き出す。
+    // Maya / FBX SDK 製はルートがクリーンなので Source DCC で素通りさせる。
+    // 静的 Blender は PreTransformVertices を使わず、補正後ノード transform を ModelSubExporter で頂点へ焼く。
+    if (sourceDcc == FbxSourceDcc::Blender)
+        NormalizeBlenderRootTransforms(scene, ctx);
 
     // ── パイプライン実行 ─────────────────────────────────────────────────
     auto pipeline = BuildPipeline();
@@ -141,6 +334,7 @@ FbxScanResult FbxImportTool::Scan(const std::string& fbxPath)
     const aiScene* scene = importer.ReadFile(fbxPath, aiProcess_Triangulate);
     if (!scene || !scene->mRootNode) return result;
 
+    result.detectedSourceDcc = DetectSourceDcc(scene);
     for (uint32_t i = 0; i < scene->mNumMeshes; ++i)
         result.meshNames.emplace_back(scene->mMeshes[i]->mName.C_Str());
     for (uint32_t i = 0; i < scene->mNumAnimations; ++i)

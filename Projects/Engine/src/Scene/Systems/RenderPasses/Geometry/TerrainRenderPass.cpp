@@ -108,6 +108,9 @@ struct TerrainTextures {
 
 static std::unordered_map<TerrainChunkKey, TerrainChunk> g_chunkCache;
 static std::unordered_map<uint32_t, TerrainTextures>    g_texCache;
+// レイヤーマテリアルのテクスチャパス署名。Material インスペクタでテクスチャを差し替えたときだけ
+// テクスチャを再構築するための変更検出に使う（毎フレーム GPU 再アップロードを避ける）。
+static std::unordered_map<uint32_t, size_t>             g_texSigCache;
 
 struct TerrainNeighbors {
     const TerrainComponent* north = nullptr;
@@ -285,40 +288,55 @@ static TerrainNeighbors ResolveTerrainNeighbors(
     return neighbors;
 }
 
-static void EraseTerrainChunkCache(EntityID eid)
+// チャンクが保持する GPU 頂点・インデックスバッファを明示解放する。
+// WHY: ResourceHandle は RAII ではなく明示解放が必要（このファイルの texCache 解放や
+//      末尾の GC 経路と同じ規約）。キャッシュからチャンクを破棄する前に必ず呼ばないと、
+//      スカルプト中は heightDirty が毎フレーム立ってチャンクを作り直すため、
+//      編集するほど GPU バッファがリークし続けてフレームが重くなる。
+static void ReleaseChunkBuffers(renderer::ResourceManager& resources, TerrainChunk& chunk)
 {
-    std::erase_if(g_chunkCache, [&eid](const auto& kv) {
-        return kv.first.entityId == eid;
+    resources.Release(chunk.vertexBuffer);
+    for (auto& ib : chunk.indexBufferLOD)
+        resources.Release(ib);
+}
+
+static void EraseTerrainChunkCache(renderer::ResourceManager& resources, EntityID eid)
+{
+    std::erase_if(g_chunkCache, [&](auto& kv) {
+        if (kv.first.entityId != eid)
+            return false;
+        ReleaseChunkBuffers(resources, kv.second);
+        return true;
     });
 }
 
-static void EraseTerrainChunkCacheForComponent(Scene& scene, const TerrainComponent* terrain)
+static void EraseTerrainChunkCacheForComponent(Scene& scene, renderer::ResourceManager& resources, const TerrainComponent* terrain)
 {
     if (!terrain)
         return;
 
     for (EntityID candidate : scene.GetEntities<TerrainComponent>()) {
         if (scene.GetComponent<TerrainComponent>(candidate) == terrain) {
-            EraseTerrainChunkCache(candidate);
+            EraseTerrainChunkCache(resources, candidate);
             return;
         }
     }
 }
 
-static void EraseNeighborTerrainChunkCaches(Scene& scene, const TerrainNeighbors& neighbors)
+static void EraseNeighborTerrainChunkCaches(Scene& scene, renderer::ResourceManager& resources, const TerrainNeighbors& neighbors)
 {
     // WHY: 境界頂点は隣接 Terrain の高さを参照して構築されるため、
     //      自身の高さが変わったときは隣接側の GPU キャッシュも無効化する。
     //      heightDirty を相互に立てると隣接同士で毎フレーム再 dirty 化されるため、
-    //      ここではキャッシュだけを直接破棄する。
-    EraseTerrainChunkCacheForComponent(scene, neighbors.north);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.south);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.west);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.east);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.northWest);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.northEast);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.southWest);
-    EraseTerrainChunkCacheForComponent(scene, neighbors.southEast);
+    //      ここではキャッシュだけを直接破棄する（GPU バッファは解放する）。
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.north);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.south);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.west);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.east);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.northWest);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.northEast);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.southWest);
+    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.southEast);
 }
 
 static void BuildChunk(
@@ -522,15 +540,21 @@ static TerrainTextures BuildTextureSet(
 std::string_view TerrainRenderPass::Name() const { return "TerrainForward"; }
 
 std::vector<renderer::RenderGraph::ResourceAccess> TerrainRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+    const RenderPassContext& ctx) const
 {
     using U = renderer::RenderGraph::ResourceUsage;
+    // Deferred では GBuffer へ書き込み、DeferredLighting/GTAO/SSAO/SSR/ContactShadows に地形を含める。
+    // Forward では従来どおり HDR へ直接ライティング結果を描く。
+    if (ctx.isDeferred)
+        return { { "GBuffer", U::ReadWrite } };
     return { { "ShadowMap", U::Read }, { "HDR", U::ReadWrite } };
 }
 
 void TerrainRenderPass::Execute(RenderPassContext& ctx)
 {
-    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+    // Deferred: GBuffer(MRT) へ書く。Forward: HDR へ直接描く。
+    ctx.renderer.SetRenderTarget(
+        ctx.isDeferred ? ctx.handles.gbufferRT : ctx.handles.hdrRT, ctx.resources);
 
     // エイリアス: TerrainRenderSystem の旧シグネチャ変数名を ctx から引く
     Scene&                     scene               = ctx.scene;
@@ -546,6 +570,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     //      場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
     static uint64_t s_resetVersion = resources.GetResetVersion();
     static auto terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+    // Deferred 用: GBuffer(MRT) へ albedo/roughness/normal/metallic を書き出す地形シェーダ。
+    static auto terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
     static auto terrainPSO    = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
@@ -579,6 +605,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
     if (s_resetVersion != resources.GetResetVersion()) {
         s_resetVersion      = resources.GetResetVersion();
         terrainShader       = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+        terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
         terrainPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,     renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         terrainWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         cameraCBH           = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
@@ -608,6 +635,9 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             return true;
         });
         std::erase_if(g_cbParamCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
+        std::erase_if(g_texSigCache, [&validIndices](auto& kv) {
             return !validIndices.count(kv.first);
         });
     }
@@ -670,8 +700,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
         }
 
         if (terrain.heightDirty) {
-            EraseTerrainChunkCache(eid);
-            EraseNeighborTerrainChunkCaches(scene, neighbors);
+            EraseTerrainChunkCache(resources, eid);
+            EraseNeighborTerrainChunkCaches(scene, resources, neighbors);
             terrain.heightDirty = false;
         }
 
@@ -704,7 +734,36 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             g_cbParamCache[eid.index] = cb;
         };
 
-        const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index);
+        // マテリアルパラメータ CB は毎フレーム再構築する。
+        // WHY: レイヤーマテリアル(.mat)を Material インスペクタで直接編集しても terrain 側の
+        //      materialParamDirty は立たないため、従来は roughness/tiling/normalStrength/autoBlend 等の
+        //      変更が既存地形へ反映されなかった。パラメータ抽出は安価（map 参照のみ）なので毎フレーム
+        //      読み直し、マテリアル編集を即座に地形へ反映する。Deferred 地形は CB 経由でこれらを使う。
+        RebuildCBParams();
+        terrain.materialParamDirty = false;
+
+        // レイヤーマテリアルのテクスチャパス署名を計算し、変化したときだけテクスチャを再構築する。
+        // WHY: GPU 再アップロードは高価なので毎フレームは避けつつ、Material でテクスチャを差し替えたら反映する。
+        size_t texSig = 1469598103934665603ull; // FNV-1a offset basis
+        for (int li = 0; li < 4; ++li) {
+            const asset::MaterialAsset* m = layerMats[li];
+            auto mixPath = [&](const char* key) {
+                if (m) {
+                    const auto it = m->textures.find(key);
+                    if (it != m->textures.end())
+                        for (unsigned char c : it->second) { texSig ^= c; texSig *= 1099511628211ull; }
+                }
+                texSig ^= 0x9Eu; texSig *= 1099511628211ull; // レイヤー/キー境界
+            };
+            mixPath("diffuse");
+            mixPath("normal");
+            mixPath("ao_roughness");
+        }
+        const auto sigIt = g_texSigCache.find(eid.index);
+        const bool texChanged = (sigIt == g_texSigCache.end()) || sigIt->second != texSig;
+        g_texSigCache[eid.index] = texSig;
+
+        const bool needTexRebuild = terrain.splatDirty || !g_texCache.contains(eid.index) || texChanged;
         if (needTexRebuild) {
             auto& cachedTextures = g_texCache[eid.index];
             // WHY: ペイント更新のたびに生成 splatmap を上書きすると旧 GPU Texture が残るため、
@@ -714,13 +773,7 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
             cachedTextures = BuildTextureSet(layerMats, terrain, resources,
                                              s_splatFallback, s_whiteTex,
                                              s_flatNormalTex, s_blackTex);
-            RebuildCBParams();
             terrain.splatDirty = false;
-        }
-
-        if (terrain.materialParamDirty) {
-            RebuildCBParams();
-            terrain.materialParamDirty = false;
         }
         const TerrainTextures& textures = g_texCache.at(eid.index);
 
@@ -765,7 +818,8 @@ void TerrainRenderPass::Execute(RenderPassContext& ctx)
                 renderer::DrawCall call;
                 call.vertexBuffer  = chunk.vertexBuffer;
                 call.indexBuffer   = chunk.indexBufferLOD[lod];
-                call.shader        = terrainShader;
+                // Deferred: GBuffer 書き込みシェーダ。Forward: 自前ライティングシェーダ。
+                call.shader        = ctx.isDeferred ? terrainGBufferShader : terrainShader;
                 call.pipelineState = (settings && settings->IsWireframe()) ? terrainWireframePSO : terrainPSO;
                 call.indexCount    = chunk.indexCountLOD[lod];
                 call.layer         = renderer::RenderLayer::OPAQUE_LAYER;
@@ -850,8 +904,8 @@ void SubmitTerrainShadowCasters(
 
         if (terrain.heightDirty) {
             const TerrainNeighbors dirtyNeighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
-            EraseTerrainChunkCache(eid);
-            EraseNeighborTerrainChunkCaches(scene, dirtyNeighbors);
+            EraseTerrainChunkCache(resources, eid);
+            EraseNeighborTerrainChunkCaches(scene, resources, dirtyNeighbors);
             terrain.heightDirty = false;
         }
 

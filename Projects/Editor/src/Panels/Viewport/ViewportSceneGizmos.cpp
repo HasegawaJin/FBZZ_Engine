@@ -22,6 +22,31 @@ bool GizmoTransformEquals(const scene::Transform& lhs, const scene::Transform& r
            lhs.scale.z == rhs.scale.z;
 }
 
+// worldRow (行優先ワールド行列) をローカル TRS に分解して transform へ書き戻す。
+// ImGuizmo decomposes with Euler angles that do not match the engine quaternion convention.
+// Extract TRS directly from the matrix to avoid handedness and sign mismatches.
+void ApplyWorldRowToTransform(scene::GameObject& go, const math::Matrix4& worldRow)
+{
+    math::Matrix4 localRow = worldRow;
+    if (scene::GameObject* parent = go.GetParent()) {
+        const math::Matrix4 parentInv = math::Matrix4::Inverse(parent->transform.GetWorldMatrix());
+        localRow = parentInv * worldRow;
+    }
+
+    const float sx = std::sqrt(localRow.m[0][0]*localRow.m[0][0] + localRow.m[1][0]*localRow.m[1][0] + localRow.m[2][0]*localRow.m[2][0]);
+    const float sy = std::sqrt(localRow.m[0][1]*localRow.m[0][1] + localRow.m[1][1]*localRow.m[1][1] + localRow.m[2][1]*localRow.m[2][1]);
+    const float sz = std::sqrt(localRow.m[0][2]*localRow.m[0][2] + localRow.m[1][2]*localRow.m[1][2] + localRow.m[2][2]*localRow.m[2][2]);
+
+    math::Matrix4 rotMat = math::Matrix4::Identity();
+    if (!math::NearlyZero(sx)) { rotMat.m[0][0] = localRow.m[0][0]/sx; rotMat.m[1][0] = localRow.m[1][0]/sx; rotMat.m[2][0] = localRow.m[2][0]/sx; }
+    if (!math::NearlyZero(sy)) { rotMat.m[0][1] = localRow.m[0][1]/sy; rotMat.m[1][1] = localRow.m[1][1]/sy; rotMat.m[2][1] = localRow.m[2][1]/sy; }
+    if (!math::NearlyZero(sz)) { rotMat.m[0][2] = localRow.m[0][2]/sz; rotMat.m[1][2] = localRow.m[1][2]/sz; rotMat.m[2][2] = localRow.m[2][2]/sz; }
+
+    go.transform.position = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
+    go.transform.scale    = { sx, sy, sz };
+    go.transform.rotation = math::Quaternion::FromMatrix4(rotMat);
+}
+
 } // namespace
 
 bool WorldToScreen(const math::Vector3& world,
@@ -286,6 +311,9 @@ void DrawGizmo(EditorContext& ctx,
         lastMode = modeInt;
     }
 
+    // WHY: Unity と同じく Ctrl 押下中はモーメンタリスナップ (押している間だけスナップ有効)。
+    //      設定でスナップ ON のときは常時有効。
+    const bool snapActive = ctx.snapEnabled || ImGui::GetIO().KeyCtrl;
     ImGuizmo::Manipulate(
         &viewCol.m[0][0],
         &projCol.m[0][0],
@@ -293,25 +321,60 @@ void DrawGizmo(EditorContext& ctx,
         mode,
         &worldCol.m[0][0],
         nullptr,
-        ctx.snapEnabled ? snap : nullptr);
+        snapActive ? snap : nullptr);
 
     const bool gizmoOver = ImGuizmo::IsOver();
     const bool gizmoUsing = ImGuizmo::IsUsing();
     const bool wasUsing = prevUsing;
 
+    // マルチ選択ドラッグ 1 回分の編集状態。instanceIds[0] は必ずプライマリ。
+    // before / startWorld / applyDelta は instanceIds と同じ並び。
     struct GizmoEdit {
-        scene::EntityID id;
-        std::string instanceId;
-        scene::Transform before;
+        std::vector<std::string> instanceIds;
+        std::vector<scene::Transform> before;
+        std::vector<math::Matrix4> startWorld;
+        std::vector<bool> applyDelta;  // true: プライマリの移動量を相対適用する対象
+        math::Matrix4 primaryStartWorldInv = math::Matrix4::Identity();
         EditorContext::GizmoMode mode = EditorContext::GizmoMode::Translate;
         bool active = false;
     };
     static GizmoEdit edit;
 
     if (gizmoUsing && !wasUsing) {
-        edit.id = selected;
-        edit.instanceId = go->instanceId;
-        edit.before = go->transform;
+        edit.instanceIds.clear();
+        edit.before.clear();
+        edit.startWorld.clear();
+        edit.applyDelta.clear();
+
+        // WHY: 親子が同時に選択されている場合、子は親の移動に追従するため、
+        //      子にも delta を掛けると二重に動く。「選択済みの祖先を持たない」
+        //      top-level オブジェクトにだけ delta を適用する (Unity と同じ規則)。
+        auto hasSelectedAncestor = [&ctx](scene::GameObject* obj) {
+            for (scene::GameObject* p = obj->GetParent(); p; p = p->GetParent()) {
+                if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(),
+                              p->GetID()) != ctx.selectedEntities.end())
+                    return true;
+            }
+            return false;
+        };
+
+        // プライマリを先頭に登録する (ギズモのワールド行列を直接書き込む対象)
+        edit.instanceIds.push_back(go->instanceId);
+        edit.before.push_back(go->transform);
+        edit.startWorld.push_back(go->transform.GetWorldMatrix());
+        edit.applyDelta.push_back(false);
+
+        for (scene::EntityID id : ctx.selectedEntities) {
+            if (id == selected) continue;
+            scene::GameObject* sel = ctx.activeScene->GetGameObject(id);
+            if (!sel || ctx.IsLocked(id)) continue;
+            edit.instanceIds.push_back(sel->instanceId);
+            edit.before.push_back(sel->transform);
+            edit.startWorld.push_back(sel->transform.GetWorldMatrix());
+            edit.applyDelta.push_back(!hasSelectedAncestor(sel));
+        }
+
+        edit.primaryStartWorldInv = math::Matrix4::Inverse(go->transform.GetWorldMatrix());
         edit.mode = ctx.gizmoMode;
         edit.active = true;
     }
@@ -323,57 +386,59 @@ void DrawGizmo(EditorContext& ctx,
 
     if (!gizmoUsing) {
         if (wasUsing && edit.active) {
-            const scene::Transform before = edit.before;
+            // ドラッグ終了: 全対象の before/after を 1 コマンドにまとめて Undo 登録する。
+            // WHY: マルチ選択の移動を対象ごとに分けると Ctrl+Z を選択数だけ叩く羽目になる。
             scene::Scene* scene = ctx.activeScene;
-            scene::GameObject* editedObject = scene->FindByGuid(edit.instanceId);
-            const scene::Transform after = editedObject ? editedObject->transform : before;
+            const std::vector<std::string> ids = edit.instanceIds;
+            const std::vector<scene::Transform> before = edit.before;
+            std::vector<scene::Transform> after;
+            after.reserve(ids.size());
+            bool anyChanged = false;
+            for (std::size_t i = 0; i < ids.size(); ++i) {
+                scene::GameObject* obj = scene->FindByGuid(ids[i]);
+                after.push_back(obj ? obj->transform : before[i]);
+                if (obj && !GizmoTransformEquals(before[i], after[i]))
+                    anyChanged = true;
+            }
             const auto markDirty = ctx.markSceneDirty;
             const char* description =
                 edit.mode == EditorContext::GizmoMode::Rotate ? "Rotate GameObject" :
                 edit.mode == EditorContext::GizmoMode::Scale ? "Scale GameObject" :
                                                                "Move GameObject";
-            const std::string editedInstanceId = edit.instanceId;
-
-            if (ctx.undoStack && editedObject && !GizmoTransformEquals(before, after)) {
-                auto apply = [scene, editedInstanceId, markDirty](const scene::Transform& value) {
-                    if (auto* target = scene->FindByGuid(editedInstanceId)) {
-                        target->transform = value;
-                        if (markDirty) markDirty();
-                    }
+            if (ctx.undoStack && anyChanged) {
+                auto applyAll = [scene, ids, markDirty](const std::vector<scene::Transform>& values) {
+                    for (std::size_t i = 0; i < ids.size(); ++i)
+                        if (auto* target = scene->FindByGuid(ids[i]))
+                            target->transform = values[i];
+                    if (markDirty) markDirty();
                 };
                 ctx.undoStack->Push(std::make_unique<LambdaCommand>(
                     description,
-                    [apply, after]() { apply(after); },
-                    [apply, before]() { apply(before); }));
+                    [applyAll, after]() { applyAll(after); },
+                    [applyAll, before]() { applyAll(before); }));
             }
-            if (editedObject && !GizmoTransformEquals(before, after) && ctx.markSceneDirty)
+            if (anyChanged && ctx.markSceneDirty)
                 ctx.markSceneDirty();
             edit.active = false;
         }
         return;
     }
 
-    math::Matrix4 worldRow = math::Matrix4::Transpose(worldCol);
-    math::Matrix4 localRow = worldRow;
-    if (scene::GameObject* parent = go->GetParent()) {
-        const math::Matrix4 parentInv = math::Matrix4::Inverse(parent->transform.GetWorldMatrix());
-        localRow = parentInv * worldRow;
+    const math::Matrix4 worldRow = math::Matrix4::Transpose(worldCol);
+
+    // マルチ選択: プライマリの移動量 (delta) を他の top-level 選択へ相対適用する。
+    // WHY: プライマリより先に他オブジェクトへ適用する。選択中の「親」が動いた後に
+    //      プライマリのワールド行列を書き込むことで、プライマリは常にギズモ位置へ一致する。
+    if (edit.active && edit.instanceIds.size() > 1) {
+        const math::Matrix4 delta = worldRow * edit.primaryStartWorldInv;
+        for (std::size_t i = 1; i < edit.instanceIds.size(); ++i) {
+            if (!edit.applyDelta[i]) continue;
+            if (auto* other = ctx.activeScene->FindByGuid(edit.instanceIds[i]))
+                ApplyWorldRowToTransform(*other, delta * edit.startWorld[i]);
+        }
     }
 
-    // ImGuizmo decomposes with Euler angles that do not match the engine quaternion convention.
-    // Extract TRS directly from the matrix to avoid handedness and sign mismatches.
-    const float sx = std::sqrt(localRow.m[0][0]*localRow.m[0][0] + localRow.m[1][0]*localRow.m[1][0] + localRow.m[2][0]*localRow.m[2][0]);
-    const float sy = std::sqrt(localRow.m[0][1]*localRow.m[0][1] + localRow.m[1][1]*localRow.m[1][1] + localRow.m[2][1]*localRow.m[2][1]);
-    const float sz = std::sqrt(localRow.m[0][2]*localRow.m[0][2] + localRow.m[1][2]*localRow.m[1][2] + localRow.m[2][2]*localRow.m[2][2]);
-
-    math::Matrix4 rotMat = math::Matrix4::Identity();
-    if (!math::NearlyZero(sx)) { rotMat.m[0][0] = localRow.m[0][0]/sx; rotMat.m[1][0] = localRow.m[1][0]/sx; rotMat.m[2][0] = localRow.m[2][0]/sx; }
-    if (!math::NearlyZero(sy)) { rotMat.m[0][1] = localRow.m[0][1]/sy; rotMat.m[1][1] = localRow.m[1][1]/sy; rotMat.m[2][1] = localRow.m[2][1]/sy; }
-    if (!math::NearlyZero(sz)) { rotMat.m[0][2] = localRow.m[0][2]/sz; rotMat.m[1][2] = localRow.m[1][2]/sz; rotMat.m[2][2] = localRow.m[2][2]/sz; }
-
-    go->transform.position = { localRow.m[0][3], localRow.m[1][3], localRow.m[2][3] };
-    go->transform.scale    = { sx, sy, sz };
-    go->transform.rotation = math::Quaternion::FromMatrix4(rotMat);
+    ApplyWorldRowToTransform(*go, worldRow);
 }
 
 } // namespace fbzz::editor

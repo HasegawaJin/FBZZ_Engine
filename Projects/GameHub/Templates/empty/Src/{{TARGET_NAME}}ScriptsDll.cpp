@@ -10,14 +10,15 @@
 //   境界が明確なまま保てる。
 //
 // スクリプト追加手順:
-//   1. Src/Scripts/ に Xxx.hpp を作成 (Script 継承、TYPE_NAME 定義)
-//   2. @@FBZZ_SCRIPT_INCLUDES_BEGIN の直後に #include "Scripts/Xxx.hpp" を追加
-//   3. @@FBZZ_SCRIPT_ENTRIES_BEGIN の直後に エントリを追加
+//   1. Assets/Scripts/ に Xxx.hpp を作成 (Script 継承、TYPE_NAME 定義)
+//   2. @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の include を同期
+//   3. Assets/Scripts/ScriptList.inl の FBZZ_SCRIPT_ENTRY(ns, Xxx) を同期
 //   → Editor の AssetBrowser から "Create → C++ Script..." でも自動生成できる
 
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptDllAbi.hpp>
+#include <Engine/Asset/DataAssetFactory.hpp>
 #include <functional>
 #include <memory>
 #include <string>
@@ -25,6 +26,11 @@
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // @@FBZZ_SCRIPT_INCLUDES_END
+
+// DataAsset 型を DataAssetFactory へ直接自己登録する (純共有 ScriptableObject)。
+#define FBZZ_DATA_ASSET_ENTRY(ns, T) FBZZ_REGISTER_DATA_ASSET(::ns::T)
+#include "Scripts/DataAssetList.inl"
+#undef FBZZ_DATA_ASSET_ENTRY
 
 #ifdef GAMESCRIPTS_EXPORTS
 #  define GAMESCRIPTS_API __declspec(dllexport)
@@ -39,12 +45,16 @@ struct ScriptEntry {
     std::function<std::unique_ptr<fbzz::scene::Script>()> factory;
 };
 
+// WHY: エントリは Assets/Scripts/ScriptList.inl で一元管理する。
+//      ScriptCodeGen は ScriptList.inl と include ブロックを同期するため、このファイルのエントリは手動編集不要。
 const std::vector<ScriptEntry>& AllEntries()
 {
-    // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
     static const std::vector<ScriptEntry> entries = {
+#define FBZZ_SCRIPT_ENTRY(ns, T) \
+        { ::ns::T::TYPE_NAME, []() { return std::make_unique<::ns::T>(); } },
+#include "Scripts/ScriptList.inl"
+#undef FBZZ_SCRIPT_ENTRY
     };
-    // @@FBZZ_SCRIPT_ENTRIES_END
     return entries;
 }
 

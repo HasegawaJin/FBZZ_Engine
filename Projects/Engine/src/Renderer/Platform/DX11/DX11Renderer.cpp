@@ -336,6 +336,62 @@ std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeRenderTarget(uint32_t w
     return rt;
 }
 
+std::unique_ptr<IRenderTarget> DX11Renderer::CreateNativeCubemapRenderTarget(uint32_t size, uint32_t mipCount)
+{
+    auto rt = std::make_unique<DX11RenderTarget>();
+    if (!rt->InitCubemap(m_device.Get(), size, mipCount))
+        return nullptr;
+    return rt;
+}
+
+std::unique_ptr<ITexture> DX11Renderer::CreateNativeCubeTextureFromRenderTarget(IRenderTarget& rt)
+{
+    auto* dxRT = static_cast<DX11RenderTarget*>(&rt);
+    ID3D11ShaderResourceView* srv = dxRT->GetCubeSRV();
+    if (!srv)
+        return nullptr;
+
+    // TextureCube SRV を ITexture 化し、TextureTag として各 Lit パスへ束縛可能にする。
+    auto tex = std::make_unique<DX11Texture>();
+    tex->InitFromSRV(srv, dxRT->GetWidth(), dxRT->GetHeight());
+    return tex;
+}
+
+bool DX11Renderer::BakeSkyLight(ResourceHandle<RenderTargetTag> envCubeRT, ResourceManager& resources,
+                                uint32_t irradianceSize, uint32_t prefilterSize,
+                                uint32_t prefilterMips, uint32_t sampleCount,
+                                std::unique_ptr<ITexture>& outIrradiance,
+                                std::unique_ptr<ITexture>& outPrefilter)
+{
+    // 入力キューブ RT (SkyCapture の描画先) の TextureCube SRV を取り出す。
+    auto* envRT = static_cast<DX11RenderTarget*>(resources.Get(envCubeRT));
+    if (!envRT || !envRT->IsCubemap()) return false;
+    ID3D11ShaderResourceView* envSRV = envRT->GetCubeSRV();
+    if (!envSRV) return false;
+
+    // 畳み込み Compute を持つベイカーを遅延生成し、実証済みの editor 経路を再利用する。
+    if (!m_runtimeIblBaker)
+        m_runtimeIblBaker = std::make_unique<DX11IblBaker>(m_device.Get(), m_context.Get());
+
+    // 入力キューブは mip0 のみ (SkyCapture)。prefilter の env LOD は mip0 を参照する (envMipCount=1)。
+    // ConvolveCubeToTextures は結果を戻り値で返す (out 引数ではない)。
+    IblTextureSet set = m_runtimeIblBaker->ConvolveCubeToTextures(
+        envSRV, "Assets/Shaders/compiled/",
+        irradianceSize, prefilterSize, prefilterMips, sampleCount, /*envMipCount=*/1);
+    if (!set.IsValid()) return false;
+
+    // SRV は内部の ID3D11Texture2D を参照保持するため、IblTextureSet の Texture2D ComPtr が
+    // スコープアウトしても SRV 経由でリソースは生存する (DX11 のビュー→リソース参照)。
+    auto irr = std::make_unique<DX11Texture>();
+    irr->InitFromSRV(set.irradianceSrv.Get(), irradianceSize, irradianceSize);
+    auto pre = std::make_unique<DX11Texture>();
+    pre->InitFromSRV(set.prefilteredSrv.Get(), prefilterSize, prefilterSize);
+
+    outIrradiance = std::move(irr);
+    outPrefilter  = std::move(pre);
+    return true;
+}
+
 std::unique_ptr<ITexture> DX11Renderer::CreateNativeComputeTexture(uint32_t width, uint32_t height)
 {
     auto tex = std::make_unique<DX11Texture>();
@@ -649,6 +705,34 @@ void DX11Renderer::BindRenderTarget(IRenderTarget* rt)
 void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources)
 {
     BindRenderTarget(resources.Get(rt));
+}
+
+void DX11Renderer::SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
+                                       uint32_t mip, ResourceManager& resources)
+{
+    auto* base = static_cast<DX11RenderTarget*>(resources.Get(rt));
+    if (!base || !base->IsCubemap()) return;
+
+    ID3D11RenderTargetView* faceRTV = base->GetFaceRTV(face, mip);
+    if (!faceRTV) return;
+
+    // RTV を張る前に SRV を解除する (同一サブリソースの SRV/RTV 同時バインド HAZARD を防ぐ)。
+    static ID3D11ShaderResourceView* const kNullSRVs[16] = {};
+    m_context->PSSetShaderResources(0, 16, kNullSRVs);
+    m_context->CSSetShaderResources(0, 16, kNullSRVs);
+
+    // 空ドームは深度不要のため DSV は張らない (null)。
+    m_context->OMSetRenderTargets(1, &faceRTV, nullptr);
+    m_currentRT = nullptr; // 通常 RT 追跡から外す (面 RTV は m_currentRT で管理しない)
+
+    // ビューポートを当該 mip のサイズに合わせる。
+    const uint32_t mipSize = base->GetWidth() >> mip;
+    D3D11_VIEWPORT vp = {};
+    vp.Width    = static_cast<float>(mipSize > 0 ? mipSize : 1);
+    vp.Height   = static_cast<float>(mipSize > 0 ? mipSize : 1);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_context->RSSetViewports(1, &vp);
 }
 
 void DX11Renderer::SetSampler(uint32_t slot, SamplerMode mode)

@@ -24,7 +24,8 @@ public:
         Layers
     };
 
-    const char* GetWindowName() const override { return "Project Settings"; }
+    const char* GetWindowName()        const override { return "Project Settings"; }
+    bool        GetDefaultVisibility() const override { return false; }
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;

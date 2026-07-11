@@ -5,9 +5,12 @@
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
+#include "Engine/Asset/AssetManager.hpp"
+#include "Engine/Asset/MaterialAsset.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/ComputeCall.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
+#include "Engine/Renderer/RenderState.hpp"
 #include <Math/Vector4.hpp>
 #include <algorithm>
 #include <cmath>
@@ -86,32 +89,86 @@ math::Vector4 ComputeSpriteRect(const ParticleEmitter& emitter, float normalized
     };
 }
 
+math::Vector3 TransformEmitterPoint(const Transform& transform, const math::Vector3& localPoint)
+{
+    // WHY: Transform::position は親基準のローカル座標であり、子 GameObject に Emitter を置くと
+    //      親 Player / Bone の移動が反映されない。Particle は描画時点のワールド空間で保持するため、
+    //      worldPosition/worldRotation/worldScale から発生点を解決する。
+    const math::Vector3 scaledLocal = {
+        localPoint.x * transform.worldScale.x,
+        localPoint.y * transform.worldScale.y,
+        localPoint.z * transform.worldScale.z
+    };
+    return transform.worldPosition + transform.worldRotation * scaledLocal;
+}
+
+math::Vector3 TransformEmitterVector(const Transform& transform, const math::Vector3& localVector)
+{
+    // WHAT: 速度は位置ではないため平行移動を含めず、Emitter のワールド回転だけを適用する。
+    return transform.worldRotation * localVector;
+}
+
+renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
+    renderer::ResourceManager& resources,
+    const std::string& texturePath)
+{
+    // WHY: Particle は色カーブだけでも成立する VFX なので、参照先テクスチャの欠落で
+    //      DrawCall 全体を無効化せず、白テクスチャにフォールバックして色だけは表示する。
+    if (!texturePath.empty()) {
+        auto texture = resources.LoadTexture(texturePath);
+        if (texture.IsValid())
+            return texture;
+    }
+
+    static const uint8_t white[4] = { 255, 255, 255, 255 };
+    return resources.CreateTexture(white, 1, 1);
+}
+
 void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& resources)
 {
+    // materialPath が設定されている場合: .mat の albedo テクスチャと blendMode を優先する。
+    // WHY: materialPath が単一の描画設定の信頼元になることで、複数エミッターで同じ .mat を共有できる。
+    if (!emitter.materialPath.empty()) {
+        const bool matChanged = (emitter.loadedMaterialPath != emitter.materialPath);
+        if (matChanged) {
+            emitter.loadedMaterialPath = emitter.materialPath;
+            emitter.loadedTexturePath.clear(); // .mat の変更でテクスチャも再ロードさせる
+        }
+        const auto matHandle = asset::AssetManager::LoadMaterial(emitter.materialPath);
+        if (const auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+            const auto it = mat->textures.find("albedo");
+            const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
+            if (!emitter.texture.IsValid() || emitter.loadedTexturePath != resolvedTex) {
+                emitter.texture = LoadParticleTextureOrWhite(resources, resolvedTex);
+                emitter.loadedTexturePath = resolvedTex;
+            }
+            // blendMode を .mat から上書きする。
+            // WHY: materialPath が描画設定の単一の信頼元であるため、Inspector の blendMode より優先する。
+            emitter.blendMode = (mat->blendMode == renderer::BlendMode::ALPHA_BLEND)
+                                  ? ParticleBlendMode::Alpha : ParticleBlendMode::Additive;
+            return;
+        }
+    }
+
+    // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
     if (emitter.texture.IsValid() && emitter.loadedTexturePath == emitter.texturePath)
         return;
-
-    if (emitter.texturePath.empty()) {
-        static const uint8_t white[4] = { 255, 255, 255, 255 };
-        emitter.texture = resources.CreateTexture(white, 1, 1);
-    } else {
-        emitter.texture = resources.LoadTexture(emitter.texturePath);
-    }
+    emitter.texture = LoadParticleTextureOrWhite(resources, emitter.texturePath);
     emitter.loadedTexturePath = emitter.texturePath;
 }
 
 void SpawnParticle(ParticleEmitter& emitter, const Transform& transform)
 {
     Particle p;
-    p.position = transform.position + emitter.emitPosition;
+    p.position = TransformEmitterPoint(transform, emitter.emitPosition);
     math::Vector3 shapeVelocity = math::Vector3::ZERO;
 
     switch (emitter.shape) {
     case ParticleEmitterShape::Sphere: {
         const math::Vector3 dir = RandomUnitVector(emitter);
         const float radius = (std::max)(emitter.sphereRadius, 0.0f) * std::cbrt(Random01(emitter));
-        p.position = p.position + dir * radius;
-        shapeVelocity = dir * emitter.velocitySpread;
+        p.position = p.position + TransformEmitterVector(transform, dir * radius);
+        shapeVelocity = TransformEmitterVector(transform, dir * emitter.velocitySpread);
         break;
     }
     case ParticleEmitterShape::Cone: {
@@ -120,20 +177,29 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform)
         const float theta = Random01(emitter) * angle;
         const float phi = Random01(emitter) * 3.14159265358979323846f * 2.0f;
         const float radius = (std::max)(emitter.coneRadius, 0.0f) * std::sqrt(Random01(emitter));
-        p.position.x += std::cos(phi) * radius;
-        p.position.z += std::sin(phi) * radius;
-        shapeVelocity = {
+        const math::Vector3 localOffset = {
+            std::cos(phi) * radius,
+            0.0f,
+            std::sin(phi) * radius
+        };
+        p.position = p.position + TransformEmitterVector(transform, localOffset);
+        const math::Vector3 localShapeVelocity = {
             std::sin(theta) * std::cos(phi) * emitter.velocitySpread,
             std::cos(theta) * emitter.velocitySpread,
             std::sin(theta) * std::sin(phi) * emitter.velocitySpread
         };
+        shapeVelocity = TransformEmitterVector(transform, localShapeVelocity);
         break;
     }
-    case ParticleEmitterShape::Box:
-        p.position.x += RandomSigned01(emitter) * emitter.boxExtents.x;
-        p.position.y += RandomSigned01(emitter) * emitter.boxExtents.y;
-        p.position.z += RandomSigned01(emitter) * emitter.boxExtents.z;
+    case ParticleEmitterShape::Box: {
+        const math::Vector3 localOffset = {
+            RandomSigned01(emitter) * emitter.boxExtents.x,
+            RandomSigned01(emitter) * emitter.boxExtents.y,
+            RandomSigned01(emitter) * emitter.boxExtents.z
+        };
+        p.position = p.position + TransformEmitterVector(transform, localOffset);
         break;
+    }
     case ParticleEmitterShape::Point:
     default:
         break;
@@ -141,9 +207,12 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform)
 
     const float rx = RandomSigned01(emitter) * emitter.velocitySpread;
     const float rz = RandomSigned01(emitter) * emitter.velocitySpread;
-    p.velocity = { emitter.emitVelocity.x + rx,
-                   emitter.emitVelocity.y,
-                   emitter.emitVelocity.z + rz };
+    const math::Vector3 localVelocity = {
+        emitter.emitVelocity.x + rx,
+        emitter.emitVelocity.y,
+        emitter.emitVelocity.z + rz
+    };
+    p.velocity = TransformEmitterVector(transform, localVelocity);
     p.velocity = p.velocity + shapeVelocity;
     p.color = emitter.colorStart;
     p.size  = emitter.sizeStart;
@@ -165,15 +234,15 @@ void ClearEmitterRuntime(ParticleEmitter& emitter)
 // CPU の SpawnParticle と同じ Shape/Spread ロジックで GpuSpawnEntry を初期化する
 void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transform& tf)
 {
-    s.position = tf.position + emitter.emitPosition;
+    s.position = TransformEmitterPoint(tf, emitter.emitPosition);
     math::Vector3 shapeVelocity = math::Vector3::ZERO;
 
     switch (emitter.shape) {
     case ParticleEmitterShape::Sphere: {
         const math::Vector3 dir = RandomUnitVector(emitter);
         const float radius = (std::max)(emitter.sphereRadius, 0.0f) * std::cbrt(Random01(emitter));
-        s.position = s.position + dir * radius;
-        shapeVelocity = dir * emitter.velocitySpread;
+        s.position = s.position + TransformEmitterVector(tf, dir * radius);
+        shapeVelocity = TransformEmitterVector(tf, dir * emitter.velocitySpread);
         break;
     }
     case ParticleEmitterShape::Cone: {
@@ -182,27 +251,41 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
         const float theta = Random01(emitter) * angle;
         const float phi   = Random01(emitter) * 3.14159265358979323846f * 2.0f;
         const float radius = (std::max)(emitter.coneRadius, 0.0f) * std::sqrt(Random01(emitter));
-        s.position.x += std::cos(phi) * radius;
-        s.position.z += std::sin(phi) * radius;
-        shapeVelocity = {
+        const math::Vector3 localOffset = {
+            std::cos(phi) * radius,
+            0.0f,
+            std::sin(phi) * radius
+        };
+        s.position = s.position + TransformEmitterVector(tf, localOffset);
+        const math::Vector3 localShapeVelocity = {
             std::sin(theta) * std::cos(phi) * emitter.velocitySpread,
             std::cos(theta) * emitter.velocitySpread,
             std::sin(theta) * std::sin(phi) * emitter.velocitySpread
         };
+        shapeVelocity = TransformEmitterVector(tf, localShapeVelocity);
         break;
     }
-    case ParticleEmitterShape::Box:
-        s.position.x += RandomSigned01(emitter) * emitter.boxExtents.x;
-        s.position.y += RandomSigned01(emitter) * emitter.boxExtents.y;
-        s.position.z += RandomSigned01(emitter) * emitter.boxExtents.z;
+    case ParticleEmitterShape::Box: {
+        const math::Vector3 localOffset = {
+            RandomSigned01(emitter) * emitter.boxExtents.x,
+            RandomSigned01(emitter) * emitter.boxExtents.y,
+            RandomSigned01(emitter) * emitter.boxExtents.z
+        };
+        s.position = s.position + TransformEmitterVector(tf, localOffset);
         break;
+    }
     default:
         break;
     }
 
     const float rx = RandomSigned01(emitter) * emitter.velocitySpread;
     const float rz = RandomSigned01(emitter) * emitter.velocitySpread;
-    s.velocity        = { emitter.emitVelocity.x + rx, emitter.emitVelocity.y, emitter.emitVelocity.z + rz };
+    const math::Vector3 localVelocity = {
+        emitter.emitVelocity.x + rx,
+        emitter.emitVelocity.y,
+        emitter.emitVelocity.z + rz
+    };
+    s.velocity        = TransformEmitterVector(tf, localVelocity);
     s.velocity        = s.velocity + shapeVelocity;
     s.lifetime        = (std::max)(emitter.lifetime, 0.001f);
     s.size            = emitter.sizeStart;
@@ -297,7 +380,7 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
 
     // CS 用定数バッファ更新
     GpuParticleEmitterCB cb{};
-    cb.emitterPos      = tf.position + emitter.emitPosition;
+    cb.emitterPos      = TransformEmitterPoint(tf, emitter.emitPosition);
     cb.deltaTime       = dt;
     cb.gravity         = emitter.gravity;
     cb.maxParticles    = static_cast<uint32_t>(maxP);
@@ -344,11 +427,16 @@ void TickGpuEmitter(ParticleEmitter&        emitter,
     renderer.SetRenderTarget(h.hdrRT, resources);
 
     // SV_VertexID ベース描画: 頂点バッファなし、VS が StructuredBuffer<GpuParticle> を t14 で読む
+    const auto gpuShader = emitter.blendMode == ParticleBlendMode::Alpha
+        ? h.particleGpuAlphaShader : h.particleGpuShader;
+    const auto gpuPSO = emitter.blendMode == ParticleBlendMode::Alpha
+        ? h.particleGpuAlphaPSO : h.particleGpuPSO;
+    if (!gpuShader.IsValid() || !gpuPSO.IsValid() || !emitter.texture.IsValid())
+        return;
+
     renderer::DrawCall dc;
-    dc.shader        = emitter.blendMode == ParticleBlendMode::Alpha
-                         ? h.particleGpuAlphaShader : h.particleGpuShader;
-    dc.pipelineState = emitter.blendMode == ParticleBlendMode::Alpha
-                         ? h.particleGpuAlphaPSO    : h.particleGpuPSO;
+    dc.shader        = gpuShader;
+    dc.pipelineState = gpuPSO;
     dc.constantBuffers[0] = h.frameCB;
     dc.textures[0]        = emitter.texture;
     dc.vsBuffers[0]       = emitter.gpuParticleBuffer; // t14: StructuredBuffer<GpuParticle>
@@ -373,7 +461,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* emitter = go.GetComponent<ParticleEmitter>();
         if (!emitter || !emitter->enabled) continue;
-        auto& tf = go.transform;
+        const Transform& tf = go.transform;
         EnsureParticleTexture(*emitter, resources);
 
         const float clampedLifetime = (std::max)(emitter->lifetime, 0.001f);
@@ -511,14 +599,17 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         resources.Update(h.particleVB, verts.data(),
                          static_cast<uint32_t>(verts.size() * sizeof(ParticleVertex)));
 
+        const auto particlePSO = emitter->blendMode == ParticleBlendMode::Alpha
+            ? h.particleAlphaPSO : h.particlePSO;
+        if (!particlePSO.IsValid() || !emitter->texture.IsValid())
+            continue;
+
         renderer::DrawCall dc;
         dc.vertexBuffer       = h.particleVB;
         dc.indexBuffer        = h.particleIB;
         dc.indexCount         = static_cast<uint32_t>(count * 6);
         dc.shader             = h.particleShader;
-        dc.pipelineState      = emitter->blendMode == ParticleBlendMode::Alpha
-            ? h.particleAlphaPSO
-            : h.particlePSO;
+        dc.pipelineState      = particlePSO;
         dc.constantBuffers[0] = h.frameCB;
         dc.textures[0]        = emitter->texture;
         renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);

@@ -21,6 +21,7 @@ private:
     scene::EntityID m_lastClickedEntity;               // Shift+クリック範囲選択のアンカー
     scene::EntityID m_renamingId;                      // F2 リネーム対象
     char            m_renameBuffer[256] = {};
+    bool            m_renameFocusPending = false;      // インライン入力欄へ初回フォーカスを移す
     std::vector<scene::EntityID> m_visibleOrder;       // 前フレームの描画順 (Shift+クリック用)
 
     char m_searchFilter[128] = {};

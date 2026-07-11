@@ -347,17 +347,48 @@ bool SolveFootLeg(const IKChain& chain,
     const math::Vector3 axis = rootToTarget * (1.0f / rawDistance);
     const math::Vector3 effectiveTarget = root + axis * distance;
 
+    // FK 曲げ方向を常に計算する。autoPole はアニメーションの膝方向を完全に上書きせず、
+    // 逆折れ防止のヒントとしてのみ使用する。
+    // WHY: autoPole を完全上書きにすると、アニメーションに関わらず膝が常に同じ方向を向き
+    //      「固定化」して見える。FK 方向を優先し、逆半球になる場合のみ preferred で補正する。
+    const math::Vector3 fkBendRaw = (midFk + hipDelta) - root;
+    const math::Vector3 fkBend    = fkBendRaw - axis * math::Vector3::Dot(fkBendRaw, axis);
+
     math::Vector3 bendRaw = math::Vector3::ZERO;
     if (chain.autoPole &&
         chain.autoPoleLocalDirection.LengthSq() > math::EPSILON * math::EPSILON) {
         const math::Vector3 preferredDirection =
             (ownerRotation * chain.autoPoleLocalDirection.Normalized()).Normalized();
-        bendRaw = preferredDirection - axis * math::Vector3::Dot(preferredDirection, axis);
+        const math::Vector3 preferredBend =
+            preferredDirection - axis * math::Vector3::Dot(preferredDirection, axis);
+        if (fkBend.LengthSq() > math::EPSILON * math::EPSILON &&
+            preferredBend.LengthSq() > math::EPSILON * math::EPSILON) {
+            // fkBend の信頼度: sin²θ = |fkBend|²/|fkBendRaw|² が小さいほど FK 方向は信頼できない。
+            // WHY: スイング相で膝が axis とほぼ平行になると fkBend がほぼゼロになり、
+            //      正規化後の方向が任意になって膝が足の向きに引っ張られて見える。
+            //      ただし足が横方向を向く場合は fkBend が小さくても方向は正しいため、
+            //      ハードな閾値ではなく信頼度ウェイトで FK と preferred をグラデーションブレンドする。
+            const float fkBendRawSq = fkBendRaw.LengthSq();
+            const float sinSq   = fkBendRawSq > math::EPSILON * math::EPSILON
+                                  ? fkBend.LengthSq() / fkBendRawSq : 0.0f;
+            // sin²θ > 0.04 (≒ θ > 11.5°) で FK を完全に信頼し、それ未満は preferred へ漸近。
+            const float fkWeight = math::Clamp01(sinSq / 0.04f);
+            const float agreement = math::Vector3::Dot(
+                fkBend.Normalized(), preferredBend.Normalized());
+            if (agreement >= 0.0f) {
+                // FK 方向が preferred と同じ半球: 信頼度ウェイトで FK と preferred をブレンド。
+                bendRaw = fkBend * fkWeight + preferredBend * (1.0f - fkWeight);
+            } else {
+                // 逆半球 (後方折れ) → preferred で補正。
+                bendRaw = preferredBend;
+            }
+        } else {
+            bendRaw = preferredBend.LengthSq() > math::EPSILON * math::EPSILON
+                ? preferredBend : fkBend;
+        }
     }
-    if (bendRaw.LengthSq() <= math::EPSILON * math::EPSILON) {
-        bendRaw = (midFk + hipDelta) - root;
-        bendRaw = bendRaw - axis * math::Vector3::Dot(bendRaw, axis);
-    }
+    if (bendRaw.LengthSq() <= math::EPSILON * math::EPSILON)
+        bendRaw = fkBend;
     const math::Vector3 bend = bendRaw.LengthSq() > math::EPSILON * math::EPSILON
         ? bendRaw.Normalized() : ArbitraryPerpendicular(axis);
     const float cosine = math::Clamp(

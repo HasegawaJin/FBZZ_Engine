@@ -3,7 +3,7 @@ double_sided = false
 mesh_type = 'any'
 render_path = 'auto'
 render_queue = 2000
-shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
+shader = 'guid:73d100e5a351425aaf52953c23425438'
 version = 1
 
 [params]
@@ -25,11 +25,11 @@ uvOffset = [ 0.0, 0.0 ]
 uvTiling = [ 1.0, 1.0 ]
 
 [textures]
-albedo = 'Assets/Nature/Tree/textures/TreeDiffuse.png'
+albedo = 'guid:cfc0f0d687f346a0a10e7dfaa8a14289'
 ao = ''
 emissive = ''
 metallic = ''
-normal = 'Assets/Nature/Tree/textures/TreeNormalGL.png'
+normal = 'guid:5f8142b73bc2463293ec4f0b572e9c6a'
 roughness = ''
 tex5 = ''
 tex6 = ''

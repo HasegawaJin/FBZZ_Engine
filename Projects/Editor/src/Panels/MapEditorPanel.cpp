@@ -146,6 +146,59 @@ void MarkTerrainDirty(scene::Scene& scene, scene::EntityID id)
     }
 }
 
+// Grid の指定セルへ新規 Terrain を生成して割り当てる。
+// WHY: "Add New Terrain Here" と "Fill All Empty Cells" で同じ生成手順を共有するため切り出す。
+//      grid / gridObject は EntityID 経由で都度引き直す。CreateGameObject で内部ストレージが
+//      再配置されてポインタが無効化されても安全に扱えるようにするため。
+scene::EntityID CreateTerrainInGridCell(EditorContext& ctx, scene::Scene& scene,
+                                        scene::EntityID gridEntity, int gx, int gz)
+{
+    auto* grid = scene.GetComponent<scene::TerrainGridComponent>(gridEntity);
+    if (!grid)
+        return scene::EntityID::INVALID;
+
+    // セルのワールド配置サイズは既存セルがあればそのサイズ、無ければ grid のデフォルトを使う。
+    float worldSize = static_cast<float>(grid->defaultColumns - 1) * grid->defaultCellSize;
+    for (int i = 0; i < grid->cellCountX * grid->cellCountZ; ++i) {
+        if (i < static_cast<int>(grid->cells.size()) && scene.IsValid(grid->cells[i])) {
+            if (const auto* tc = scene.GetComponent<scene::TerrainComponent>(grid->cells[i]))
+                worldSize = static_cast<float>(tc->columns - 1) * tc->cellSize;
+            break;
+        }
+    }
+    const float wx = static_cast<float>(gx) * worldSize;
+    const float wz = static_cast<float>(gz) * worldSize;
+
+    char goName[64];
+    std::snprintf(goName, sizeof(goName), "Terrain_%d_%d", gx, gz);
+    auto& newGo = scene.CreateGameObject(goName);
+    newGo.transform.position = { wx, 0.0f, wz };
+
+    // CreateGameObject 後はコンポーネント配列が再配置され得るため引き直す。
+    if (auto* gridObject = scene.GetGameObject(gridEntity))
+        newGo.SetParent(*gridObject);
+
+    scene::TerrainComponent tc;
+    tc.columns   = grid->defaultColumns;
+    tc.rows      = grid->defaultRows;
+    tc.cellSize  = grid->defaultCellSize;
+    tc.chunkSize = grid->defaultChunkSize;
+    tc.InitFlat(0.0f);
+    for (int li = 0; li < 4; ++li)
+        tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
+    tc.heightDirty   = true;
+    tc.colliderDirty = true;
+    newGo.AddComponent<scene::TerrainComponent>(tc);
+    newGo.AddComponent<scene::TerrainColliderComponent>();
+    if (auto* newTerrain = newGo.GetComponent<scene::TerrainComponent>())
+        (void)EnsureTerrainAsset(ctx, newGo, *newTerrain);
+
+    grid = scene.GetComponent<scene::TerrainGridComponent>(gridEntity);
+    if (grid)
+        grid->SetCell(gx, gz, newGo.GetID());
+    return newGo.GetID();
+}
+
 } // namespace
 
 void MapEditorPanel::ActivateTool(EditorContext& ctx, Tool tool)
@@ -185,6 +238,36 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Return to normal editor layout");
     ImGui::Separator();
+
+    // 現在アクティブなツールとサブモードを常時表示する。
+    // WHY: ツール自体はボタンのハイライトで分かるが、Sculpt のサブモード(Raise 等)や
+    //      Paint のレイヤー番号は設定欄を見ないと分からない。「今どの操作中か」を1行で示し、
+    //      ビューポートとパネルを視線往復せず把握できるようにする。
+    {
+        const char* toolName = "-";
+        switch (m_activeTool) {
+        case Tool::TerrainSculpt: toolName = "Terrain Sculpt"; break;
+        case Tool::TerrainPaint:  toolName = "Terrain Paint";  break;
+        case Tool::Water:         toolName = "Water";          break;
+        case Tool::Detail:        toolName = "Detail";         break;
+        case Tool::Foliage:       toolName = "Foliage";        break;
+        case Tool::Grid:          toolName = "Grid";           break;
+        }
+        std::string status = toolName;
+        if (ctx.terrainTool) {
+            if (m_activeTool == Tool::TerrainSculpt) {
+                static const char* kSub[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
+                status += "  -  ";
+                status += kSub[static_cast<int>(ctx.terrainTool->GetSculptMode())];
+            } else if (m_activeTool == Tool::TerrainPaint) {
+                status += "  -  Layer " + std::to_string(ctx.terrainTool->GetPaintLayer());
+            }
+        }
+        ImGui::TextDisabled("Active:");
+        ImGui::SameLine();
+        ImGui::TextColored({ 0.95f, 0.85f, 0.4f, 1.0f }, "%s", status.c_str());
+        ImGui::Separator();
+    }
 
     // ── ツール選択 ──────────────────────────────────────────────────────
     struct ToolDef { Tool tool; const char* label; const char* tooltip; };
@@ -278,16 +361,13 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
 {
     auto& scene = *ctx.activeScene;
 
-    // グリッドコンポーネントと、それを所有する親 GameObject を取得する。
-    // WHY: Grid から生成する Terrain を同じ親の子として整理し、Hierarchy 上でも
-    //      TerrainGrid 単位でまとめて扱えるようにする。
+    // グリッドコンポーネントとそれを所有する Entity を取得する。
+    // WHY: Grid から生成する Terrain は CreateTerrainInGridCell 内で gridEntity 経由に
+    //      親へぶら下げる。ここでは安定した EntityID だけ保持し、ポインタは都度引き直す。
     const auto gridEntities = scene.GetEntities<scene::TerrainGridComponent>();
     const scene::EntityID gridEntity = gridEntities.empty()
         ? scene::EntityID::INVALID
         : gridEntities.front();
-    scene::GameObject* gridObject = scene.IsValid(gridEntity)
-        ? scene.GetGameObject(gridEntity)
-        : nullptr;
     scene::TerrainGridComponent* grid = scene.IsValid(gridEntity)
         ? scene.GetComponent<scene::TerrainGridComponent>(gridEntity)
         : nullptr;
@@ -300,7 +380,6 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
             tgc.EnsureSize();
             go.AddComponent<scene::TerrainGridComponent>(tgc);
             ctx.markSceneDirty();
-            gridObject = &go;
             grid = go.GetComponent<scene::TerrainGridComponent>();
         }
         return;
@@ -331,6 +410,24 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
         MarkTerrainGridDirty(scene, *grid);
         ctx.markSceneDirty();
     }
+
+    // 空セルを一括で埋める。WHY: 大きな Grid を1セルずつ "Add New Terrain Here" で
+    //      埋めるのは手数が多く面倒なため、空セルへまとめてフラット Terrain を生成する。
+    if (ImGui::Button("Fill All Empty Cells", { -1.0f, 0.0f })) {
+        int created = 0;
+        for (int z = 0; z < grid->cellCountZ; ++z)
+            for (int x = 0; x < grid->cellCountX; ++x)
+                if (!scene.IsValid(grid->GetCell(x, z))) {
+                    CreateTerrainInGridCell(ctx, scene, gridEntity, x, z);
+                    ++created;
+                }
+        if (created > 0) {
+            MarkTerrainGridDirty(scene, *grid);
+            ctx.markSceneDirty();
+        }
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("Create a flat Terrain in every empty grid cell");
 
     ImGui::Separator();
 
@@ -367,7 +464,6 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                 m_gridSelectedX = gx;
                 m_gridSelectedZ = gz;
             }
-            ImGui::PopID();
             ImGui::PopStyleColor();
 
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -376,23 +472,43 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                 if (hasCell) {
                     if (const auto* go = scene.GetGameObject(cellId))
                         ImGui::Text("GO: %s", go->name.c_str());
-                    ImGui::TextDisabled("Right-click to remove");
+                    ImGui::TextDisabled("Right-click for actions");
                 } else {
                     ImGui::TextDisabled("Click to select, then assign below");
                 }
                 ImGui::EndTooltip();
             }
 
-            // 右クリックでセルをクリア
-            if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && hasCell) {
-                MarkTerrainDirty(scene, cellId);
-                grid->ClearCell(gx, gz);
-                MarkTerrainGridDirty(scene, *grid);
-                if (m_gridSelectedX == gx && m_gridSelectedZ == gz) {
-                    m_gridSelectedX = m_gridSelectedZ = -1;
+            // 右クリックでセル操作メニューを開く。
+            // WHY: 旧実装は右クリックで即セルをクリアしていたが、選択や確認の間もなく
+            //      割り当て済み Terrain を外してしまい誤操作が多かった。メニュー経由にして
+            //      Focus / Select / Remove を明示的に選べるようにする。
+            if (hasCell && ImGui::BeginPopupContextItem("cell_ctx")) {
+                m_gridSelectedX = gx;
+                m_gridSelectedZ = gz;
+                if (const auto* go = scene.GetGameObject(cellId))
+                    ImGui::TextDisabled("%s", go->name.c_str());
+                ImGui::Separator();
+                if (ImGui::MenuItem("Focus Camera")) {
+                    if (const auto* go = scene.GetGameObject(cellId)) {
+                        ctx.focusTargetPosition    = go->transform.worldPosition;
+                        ctx.requestFocusOnSelected = true;
+                    }
                 }
-                ctx.markSceneDirty();
+                if (ImGui::MenuItem("Select in Hierarchy"))
+                    ctx.selectedEntities = { cellId };
+                ImGui::Separator();
+                if (ImGui::MenuItem("Remove from Grid")) {
+                    MarkTerrainDirty(scene, cellId);
+                    grid->ClearCell(gx, gz);
+                    MarkTerrainGridDirty(scene, *grid);
+                    if (m_gridSelectedX == gx && m_gridSelectedZ == gz)
+                        m_gridSelectedX = m_gridSelectedZ = -1;
+                    ctx.markSceneDirty();
+                }
+                ImGui::EndPopup();
             }
+            ImGui::PopID();
         }
     }
 
@@ -418,7 +534,17 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
                 ImGui::Text("Layer 0: %s",
                     tc->layerMaterials[0].empty() ? "(none)" : tc->layerMaterials[0].c_str());
             }
+            const auto& p = go->transform.worldPosition;
+            ImGui::Text("World: %.1f, %.1f, %.1f", p.x, p.y, p.z);
         }
+        // 4 近傍のうち割り当て済みのセル数。継ぎ目処理の対象がどれだけ揃っているかの目安。
+        int neighborCount = 0;
+        const int dirs[4][2] = { {-1,0}, {1,0}, {0,-1}, {0,1} };
+        for (auto& d : dirs)
+            if (scene.IsValid(grid->GetCell(m_gridSelectedX + d[0], m_gridSelectedZ + d[1])))
+                ++neighborCount;
+        ImGui::Text("Assigned neighbors: %d / 4", neighborCount);
+
         if (ImGui::Button("Remove from Grid")) {
             MarkTerrainDirty(scene, selId);
             grid->ClearCell(m_gridSelectedX, m_gridSelectedZ);
@@ -427,45 +553,8 @@ void MapEditorPanel::DrawGridContent(EditorContext& ctx)
         }
     } else {
         // 空セル: 新規 Terrain 生成 または 既存 GO から選択
-        if (ImGui::Button("Add New Terrain Here")) {
-            // セルのワールド配置位置を計算する。
-            // WHY: TerrainGridComponent に defaultColumns/defaultCellSize が設定されているため
-            //      それを正規データとして使う。既存セルが先に作られている場合はそちらから
-            //      実際のサイズを読み取り一貫性を維持する。
-            float worldSize = static_cast<float>(grid->defaultColumns - 1) * grid->defaultCellSize;
-            for (int i = 0; i < grid->cellCountX * grid->cellCountZ; ++i) {
-                if (i < (int)grid->cells.size() && scene.IsValid(grid->cells[i])) {
-                    if (const auto* tc = scene.GetComponent<scene::TerrainComponent>(grid->cells[i]))
-                        worldSize = static_cast<float>(tc->columns - 1) * tc->cellSize;
-                    break;
-                }
-            }
-            const float wx = static_cast<float>(m_gridSelectedX) * worldSize;
-            const float wz = static_cast<float>(m_gridSelectedZ) * worldSize;
-
-            char goName[64];
-            std::snprintf(goName, sizeof(goName), "Terrain_%d_%d", m_gridSelectedX, m_gridSelectedZ);
-            auto& newGo = scene.CreateGameObject(goName);
-            newGo.transform.position = { wx, 0.0f, wz };
-            if (gridObject)
-                newGo.SetParent(*gridObject);
-
-            scene::TerrainComponent tc;
-            tc.columns   = grid->defaultColumns;
-            tc.rows      = grid->defaultRows;
-            tc.cellSize  = grid->defaultCellSize;
-            tc.chunkSize = grid->defaultChunkSize;
-            tc.InitFlat(0.0f);
-            for (int li = 0; li < 4; ++li)
-                tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
-            tc.heightDirty     = true;
-            tc.colliderDirty   = true;
-            newGo.AddComponent<scene::TerrainComponent>(tc);
-            newGo.AddComponent<scene::TerrainColliderComponent>();
-            if (auto* newTerrain = newGo.GetComponent<scene::TerrainComponent>())
-                (void)EnsureTerrainAsset(ctx, newGo, *newTerrain);
-
-            grid->SetCell(m_gridSelectedX, m_gridSelectedZ, newGo.GetID());
+        if (ImGui::Button("Add New Terrain Here", { -1.0f, 0.0f })) {
+            CreateTerrainInGridCell(ctx, scene, gridEntity, m_gridSelectedX, m_gridSelectedZ);
             MarkTerrainGridDirty(scene, *grid);
             ctx.markSceneDirty();
         }

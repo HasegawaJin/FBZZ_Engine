@@ -72,16 +72,10 @@ private:
     bool       m_fired     = false; // ボタン / タイマー二重発火防止
 };
 
-} // namespace sandbox
+FBZZ_REFLECT(SceneManagerScript)
 
-#include "SceneManagerScript.generated.hpp"
-
-#ifndef SceneManagerScript_IMPL
-#define SceneManagerScript_IMPL
-
-namespace sandbox {
-
-void SceneManagerScript::OnStart()
+// ── 実装 (inline) ─────────────────────────────────────────────────────────────
+inline void SceneManagerScript::OnStart()
 {
     // 前シーンがフェードアウトして遷移してきた場合、黒から始めてフェードインする。
     if (s_fadeIn && fadeEnabled) {
@@ -101,7 +95,7 @@ void SceneManagerScript::OnStart()
     }
 }
 
-void SceneManagerScript::OnUpdate()
+inline void SceneManagerScript::OnUpdate()
 {
     // フェードイン: alpha 1→0
     if (m_fadeState == FadeState::FadeIn) {
@@ -147,7 +141,7 @@ void SceneManagerScript::OnUpdate()
     BeginFadeOut();
 }
 
-void SceneManagerScript::ApplyFade()
+inline void SceneManagerScript::ApplyFade()
 {
     // 既存のランタイム PostProcess 設定を引き継ぎ、screenFadeAlpha だけ上書きする。
     // WHY: ブルームや被写界深度など他のエフェクトを消さずにフェードだけを重ねるため。
@@ -160,7 +154,7 @@ void SceneManagerScript::ApplyFade()
     postprocess.Set(pp);
 }
 
-void SceneManagerScript::BeginFadeOut()
+inline void SceneManagerScript::BeginFadeOut()
 {
     if (!fadeEnabled) {
         // フェードなし: 即座に遷移
@@ -172,7 +166,7 @@ void SceneManagerScript::BeginFadeOut()
     m_fadeState = FadeState::FadeOut;
 }
 
-void SceneManagerScript::ExecuteLoad()
+inline void SceneManagerScript::ExecuteLoad()
 {
     if (!viaScene.empty()) {
         // 中継シーンを経由する場合: 目的地を静的変数に保存してから中継シーンへ
@@ -184,4 +178,3 @@ void SceneManagerScript::ExecuteLoad()
 }
 
 } // namespace sandbox
-#endif

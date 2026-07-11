@@ -85,9 +85,13 @@ std::filesystem::path GetPackageModelPath(const std::filesystem::path& dirPath)
 
 bool IsModelPackageDirectory(const std::filesystem::path& dirPath)
 {
-    // WHAT: Foo/Foo.fzasset を import package とみなし、AssetBrowser では親階層に Foo.fzasset として仮想表示する。
-    // WHY: ディスク上は Foo/ に従属アセットを閉じ込めつつ、Browser 上の階層増加を避けるため。
-    return util::FileSystem::Exists(GetPackageModelPath(dirPath));
+    // WHAT: Foo.fbx の従属生成物フォルダ Foo/ は Browser では隠し、FBX ノードの展開で見せる。
+    // WHY: ユーザーの正規アセットは原本 .fbx であり、内部コンテナ .fzasset や従属フォルダを
+    //      第一級アセットとして操作させないため。
+    const std::filesystem::path fbxPath = dirPath.parent_path() / (util::FileSystem::PathToUtf8(dirPath.filename()) + ".fbx");
+    if (!util::FileSystem::Exists(fbxPath)) return false;
+    const std::string logical = util::FileSystem::PathToUtf8(GetPackageModelPath(dirPath));
+    return util::FileSystem::Exists(asset::AssetManager::ResolveAssetPath(logical));
 }
 
 
@@ -101,6 +105,7 @@ void AssetBrowserPanel::OnInit(EditorContext& ctx)
 {
     m_resources = ctx.resources;
     m_iconSize = ctx.assetBrowserIconSize;
+    m_treeWidth = ctx.assetBrowserTreeWidth;
     RefreshDirectory();
     if (!m_rootPath.empty()) {
         m_watcher.Start(m_rootPath);
@@ -227,20 +232,6 @@ void AssetBrowserPanel::RefreshDirectory()
     const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
     for (const auto& p : util::FileSystem::ListAll(currentPath)) {
         const std::filesystem::path fsPath = util::FileSystem::PathFromUtf8(p);
-        if (util::FileSystem::IsDirectory(p) && IsModelPackageDirectory(fsPath)) {
-            const std::string modelPath = util::FileSystem::NormalizePathSeparators(
-                util::FileSystem::PathToUtf8(GetPackageModelPath(fsPath)));
-            Entry e;
-            e.path           = modelPath;
-            e.name           = util::FileSystem::PathToUtf8(fsPath.filename()) + ".fzasset";
-            e.ext            = ".fzasset";
-            e.isDir          = false;
-            e.isPackageAsset = true;
-            m_packageAssetPaths.insert(modelPath);
-            m_entries.push_back(std::move(e));
-            continue;
-        }
-
         Entry e;
         e.path  = util::FileSystem::NormalizePathSeparators(p);
         e.name  = util::FileSystem::GetFilename(p);
@@ -271,13 +262,13 @@ void AssetBrowserPanel::RefreshDirectory()
         }
     });
 
-    // 展開済み fzasset のサブエントリをその直後に挿入する
+    // 展開済み FBX のサブエントリをその直後に挿入する
     if (!m_expandedAssets.empty()) {
         std::vector<Entry> withSubs;
         withSubs.reserve(m_entries.size() * 2);
         for (const Entry& e : m_entries) {
             withSubs.push_back(e);
-            if (e.ext == ".fzasset" && m_expandedAssets.count(e.path)) {
+            if (e.ext == ".fbx" && m_expandedAssets.count(e.path)) {
                 for (auto& sub : GetAssetSubEntries(e.path))
                     withSubs.push_back(std::move(sub));
             }
@@ -308,7 +299,10 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     //       原本の .hpp / .fbx / .hlsl だけを操作対象にする。
     static constexpr const char* kGeneratedSuffixes[] = {
         ".generated.hpp",
-        // .tex と .anim は新パイプラインで第一級アセットになったため非表示から除外
+        // .meta はインポート設定サイドカー。元画像を第一級アセットとして扱うため非表示にする。
+        ".meta",
+        // .anim は新パイプラインで第一級アセットになったため非表示から除外
+        ".fzasset",
         ".mesh",
         ".skel",
         ".cso",
@@ -432,25 +426,39 @@ bool AssetBrowserPanel::IsRootOrMountedPath(const std::string& path) const
 }
 
 std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
-    const std::string& fzassetPath)
+    const std::string& modelSourcePath)
 {
-    AssetSubItems& cached = m_assetSubItemsCache[fzassetPath];
+    AssetSubItems& cached = m_assetSubItemsCache[modelSourcePath];
 
-    // ファイル更新時刻でキャッシュ有効性を確認
-    const std::filesystem::file_time_type currentWriteTime =
-        util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(fzassetPath));
-    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(fzassetPath)) != ".fzasset")
+    const std::string modelExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(modelSourcePath));
+    if (modelExt != ".fbx" && modelExt != ".fzasset")
         return cached.items;
 
-    // .fzasset は新パイプライン形式（バイナリ）。同じ import 生成物フォルダの従属アセットを列挙する。
-    // WHY: ディスク上は Foo/ に閉じ込めつつ、AssetBrowser では Unity の FBX 展開のように
-    //      mesh / material / animation / texture descriptor を親 .fzasset の下へ見せる。
-    const std::filesystem::path modelPath = util::FileSystem::PathFromUtf8(fzassetPath);
-    const std::filesystem::path mergedMeshPath =
-        modelPath.parent_path() / (util::FileSystem::PathToUtf8(modelPath.stem()) + ".mesh");
-    const std::filesystem::path animDir = modelPath.parent_path() / "anims";
-    const std::filesystem::path materialDir = modelPath.parent_path() / "materials";
-    const std::filesystem::path textureDir = modelPath.parent_path() / "textures";
+    // .fbx は Unity のように展開可能なモデルノードとして扱う。
+    // WHY: 内部 .fzasset コンテナは Library の再生成物であり、UI と保存パスは原本 .fbx に一本化する。
+    const std::filesystem::path sourcePath = util::FileSystem::PathFromUtf8(modelSourcePath);
+    const std::filesystem::path packageDir = (modelExt == ".fbx")
+        ? sourcePath.parent_path() / sourcePath.stem()
+        : sourcePath.parent_path();
+    std::string modelWritePath = asset::AssetManager::ResolveAssetPath(modelSourcePath);
+    if (modelExt == ".fbx") {
+        const std::string containerLogical = util::FileSystem::NormalizePathSeparators(
+            util::FileSystem::PathToUtf8(packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".fzasset")));
+        const std::string containerResolved = asset::AssetManager::ResolveAssetPath(containerLogical);
+        if (util::FileSystem::Exists(containerResolved))
+            modelWritePath = containerResolved;
+    }
+    // ファイル更新時刻でキャッシュ有効性を確認する。
+    // WHY: 未インポート時の空展開 cache を、Library コンテナ生成後に必ず更新するため。
+    const std::filesystem::file_time_type currentWriteTime =
+        util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(modelWritePath));
+    // .mesh の物理実体も Library に居る可能性があるため論理パスを解決してから存在確認する。
+    const std::filesystem::path mergedMeshPath = util::FileSystem::PathFromUtf8(
+        asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(
+            packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".mesh"))));
+    const std::filesystem::path animDir = packageDir / "anims";
+    const std::filesystem::path materialDir = packageDir / "materials";
+    const std::filesystem::path textureDir = packageDir / "textures";
     const std::string animDirStr = util::FileSystem::NormalizePathSeparators(
         util::FileSystem::PathToUtf8(animDir));
     const std::string materialDirStr = util::FileSystem::NormalizePathSeparators(
@@ -506,7 +514,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         // WHY: .fzasset 生成前に一度失敗した Null cache が残っていると、
         //      ファイル更新後もサブアセット展開が importer まで到達しない。
         asset::AssetManager::FlushFailed();
-        auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(fzassetPath);
+        auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(modelSourcePath);
         if (const auto* model = asset::AssetManager::Get(modelHandle)) {
             if (!model->lods.empty()) {
                 for (size_t i = 0; i < model->lods[0].submeshes.size(); ++i) {
@@ -516,7 +524,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
                         ? model->materialSlotNames[sub.materialSlotIndex]
                         : ("Mesh " + std::to_string(i));
                     Entry e;
-                    e.path       = fzassetPath + "::mesh::" + std::to_string(i);
+                    e.path       = modelSourcePath + "::mesh::" + std::to_string(i);
                     e.name       = meshName + ".mesh";
                     e.ext        = ".mesh";
                     e.isDir      = false;
@@ -547,14 +555,22 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         cached.items.push_back(std::move(e));
     }
 
-    for (const std::string& absPath : util::FileSystem::ListFiles(textureDirStr, ".tex")) {
-        Entry e;
-        e.path       = util::FileSystem::NormalizePathSeparators(absPath);
-        e.name       = util::FileSystem::GetFilename(absPath);
-        e.ext        = ".tex";
-        e.isDir      = false;
-        e.isSubAsset = true;
-        cached.items.push_back(std::move(e));
+    // textures/ の元画像そのものをサブアセットとして見せる。
+    // WHY: .tex descriptor を廃止し、インポート設定は隣の "<画像>.meta" (非表示) が担うため、
+    //      第一級アセットは元画像に一本化する。
+    static constexpr const char* kTextureExts[] = {
+        ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr", ".exr", ".bmp"
+    };
+    for (const char* imageExt : kTextureExts) {
+        for (const std::string& absPath : util::FileSystem::ListFiles(textureDirStr, imageExt)) {
+            Entry e;
+            e.path       = util::FileSystem::NormalizePathSeparators(absPath);
+            e.name       = util::FileSystem::GetFilename(absPath);
+            e.ext        = imageExt;
+            e.isDir      = false;
+            e.isSubAsset = true;
+            cached.items.push_back(std::move(e));
+        }
     }
     return cached.items;
 }

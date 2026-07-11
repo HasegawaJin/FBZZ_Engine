@@ -42,18 +42,6 @@ bool BuildSettingsEqual(const BuildSettings& lhs, const BuildSettings& rhs)
 
 namespace {
 
-// GetModuleFileNameW で自身の exe パスを UTF-8 で返す
-std::string GetSelfExePathUtf8()
-{
-    wchar_t buf[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    const int size = WideCharToMultiByte(CP_UTF8, 0, buf, -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return {};
-    std::string utf8(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, buf, -1, utf8.data(), size, nullptr, nullptr);
-    return utf8;
-}
-
 // フォルダ選択ダイアログ (Win32 SHBrowseForFolder)
 bool BrowseForFolder(HWND hwnd, std::string& outPath)
 {
@@ -276,7 +264,7 @@ void BuildSettingsPanel::DrawOutputSettings(EditorContext& ctx)
     ImGui::Spacing();
     ImGui::Checkbox("Development Build", &m_settings.developmentBuild);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("If true, writes development = true to game.manifest.toml");
+        ImGui::SetTooltip("Builds the Development configuration and writes development = true to game.manifest.toml");
 }
 
 // =============================================================================
@@ -292,10 +280,10 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
         ImGui::TextColored({ 1.0f, 0.8f, 0.2f, 1.0f }, "Cannot build while playing");
 
 #ifndef NDEBUG
-    // WHY: Debug ビルドで Build すると debug シンボル入り exe と assimp-vc145-mtd.dll が
-    //      パッケージに含まれる。配布には Release ビルドを使うべきである。
+    // WHY: Debug / Development エディタでは配布向けでないランタイムが混ざる可能性があるため、
+    //      公開用パッケージは Release プリセットで作るべきである。
     ImGui::TextColored({ 1.0f, 0.6f, 0.1f, 1.0f },
-        "[DEBUG BUILD] For distribution, switch to the Release preset.");
+        "[DEV/DEBUG EDITOR] For distribution, switch to the Release preset.");
     ImGui::Spacing();
 #endif
 
@@ -313,22 +301,28 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
 
     ImGui::EndDisabled();
 
+    if (m_pipeline.GetState() == BuildPipeline::State::Running)
+        m_pipeline.Tick();
+
+    const bool isStillBuilding = m_pipeline.GetState() == BuildPipeline::State::Running;
+
     // 進捗バーとステータス
-    if (isBuilding) {
+    if (isStillBuilding) {
         ImGui::ProgressBar(m_pipeline.GetProgress(), { -1.0f, 0.0f }, m_pipeline.GetStatus());
-        const std::string& buildLog = m_pipeline.GetBuildLog();
-        if (!buildLog.empty()) {
-            // WHY: CMake / MSBuild の失敗理由は標準出力に出るため、エディタ内で読めるようにする。
-            ImGui::BeginChild("##RuntimeBuildLog", { 0.0f, 180.0f }, true, ImGuiWindowFlags_HorizontalScrollbar);
-            ImGui::TextUnformatted(buildLog.c_str());
-            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
-                ImGui::SetScrollHereY(1.0f);
-            ImGui::EndChild();
-        }
         if (ImGui::Button("Cancel")) {
             m_pipeline.Cancel();
         }
-        m_pipeline.Tick();
+    }
+
+    const std::string& buildLog = m_pipeline.GetBuildLog();
+    if (!buildLog.empty() &&
+        (isStillBuilding || m_pipeline.GetState() == BuildPipeline::State::Failed)) {
+        // WHY: CMake / MSBuild の失敗理由は標準出力に出るため、失敗後もログを残して原因を読めるようにする。
+        ImGui::BeginChild("##RuntimeBuildLog", { 0.0f, 180.0f }, true, ImGuiWindowFlags_HorizontalScrollbar);
+        ImGui::TextUnformatted(buildLog.c_str());
+        if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
+            ImGui::SetScrollHereY(1.0f);
+        ImGui::EndChild();
     }
 
     // Build and Run: ビルド完了後に exe を起動する

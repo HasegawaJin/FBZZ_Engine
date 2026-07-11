@@ -4,6 +4,7 @@
 #include <Editor/Compiler.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
+#include <string>
 
 namespace fbzz::editor {
 
@@ -40,6 +41,9 @@ bool Compiler::Start(const Config& config)
     if (config.skipDeps)
         command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
 
+    // WHY: 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
+    m_log += "> " + util::StringUtils::ToNarrow(command) + "\n";
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
@@ -48,8 +52,32 @@ bool Compiler::Start(const Config& config)
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
 
     PROCESS_INFORMATION pi{};
+    // WHY: 既存の GameHub プロジェクトは CMake 再構成前だと /FS が vcxproj に入っていないことがある。
+    //      MSBuild /m と cl.exe の並列実行が同じ PDB へ書くと C1041 が発生するため、
+    //      子プロセスの CL 環境変数へ /FS を一時的に追加して古い生成物でも安定させる。
+    std::wstring oldCl;
+    const DWORD oldClSize = GetEnvironmentVariableW(L"CL", nullptr, 0);
+    if (oldClSize > 0) {
+        oldCl.resize(static_cast<size_t>(oldClSize));
+        GetEnvironmentVariableW(L"CL", oldCl.data(), oldClSize);
+        if (!oldCl.empty() && oldCl.back() == L'\0')
+            oldCl.pop_back();
+    }
+    std::wstring childCl = oldCl;
+    if (childCl.find(L"/FS") == std::wstring::npos && childCl.find(L"-FS") == std::wstring::npos) {
+        if (!childCl.empty())
+            childCl += L" ";
+        childCl += L"/FS";
+    }
+    SetEnvironmentVariableW(L"CL", childCl.c_str());
+
     const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
                                    CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    if (oldClSize > 0)
+        SetEnvironmentVariableW(L"CL", oldCl.c_str());
+    else
+        SetEnvironmentVariableW(L"CL", nullptr);
+
     CloseHandle(stdoutWrite);
 
     if (!ok) {

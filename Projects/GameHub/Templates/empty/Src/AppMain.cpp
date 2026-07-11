@@ -659,7 +659,14 @@ int Run()
         return 1;
     }
 
-    SetCurrentDirectoryW(GetExecutableDirectory().wstring().c_str());
+    const std::filesystem::path executableDirectory = GetExecutableDirectory();
+    const std::filesystem::path workingDirectory = Exists(executableDirectory / L".fbzz_proj")
+        ? executableDirectory
+        : project.root;
+    // WHY: 配布物は exe 隣に Assets があるため exeDir を CWD にする。
+    //      Editor の Tools > Standalone から Binaries/Development の exe を起動する場合は
+    //      Assets が project.root にあるため、相対 shader path が解決できるよう CWD を切り替える。
+    SetCurrentDirectoryW(workingDirectory.wstring().c_str());
 
     // game.log を exe 隣に生成する (Standalone 時のみ)
     struct FileLogSink final : fbzz::core::ILogSink {

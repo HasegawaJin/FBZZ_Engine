@@ -1,7 +1,7 @@
 mesh_type = 'skinned'
 name = 'Alpha_Joints_MAT'
 render_path = 'deferred'
-shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+shader = 'guid:16968af1c2fd4876b74c6339309ff2c2'
 version = 1
 
 [params]

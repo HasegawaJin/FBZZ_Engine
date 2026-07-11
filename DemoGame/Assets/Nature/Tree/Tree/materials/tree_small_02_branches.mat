@@ -1,0 +1,29 @@
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'surface'
+render_path = 'deferred'
+render_queue = 2000
+shader = 'guid:65f589eb0be745f48716dd39a8bff808'
+version = 1
+
+[params]
+albedo = [ 0.13757966458797455, 0.0723760575056076, 0.0490715391933918, 1.0 ]
+alphaCutoff = 0.5
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.0
+metallic = 0.0
+normalStrength = 1.0
+occlusionStrength = 1.0
+roughness = 0.5
+uvOffset = [ 0.0, 0.0 ]
+uvTiling = [ 1.0, 1.0 ]
+
+[textures]
+albedo = 'guid:21c296ac6afa472b976dcb195ad3a0d2'
+ao = 'guid:dfcadf24882f4da8b3ca649fd0a27641'
+emissive = ''
+metallic = ''
+normal = 'guid:42dce27c52164f43aed2bcaa0fdeb323'
+tex5 = ''
+tex6 = ''
+tex7 = ''

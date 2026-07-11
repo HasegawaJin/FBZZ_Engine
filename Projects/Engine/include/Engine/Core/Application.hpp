@@ -9,6 +9,7 @@
 #include "Engine/Renderer/IImGuiRenderer.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
 #include "Engine/Scene/SceneManager.hpp"
+#include <cstdint>
 #include <memory>
 
 namespace fbzz::core {
@@ -32,6 +33,8 @@ public:
 
     bool                    IsRunning()      const { return m_isRunning; }
     Window&                 GetWindow()      const { return *m_window; }
+    uint32_t                GetWindowWidth() const { return m_window ? m_window->GetWidth() : 0u; }
+    uint32_t                GetWindowHeight() const { return m_window ? m_window->GetHeight() : 0u; }
     renderer::IRenderer&      GetRenderer()      const { return *m_renderer; }
     renderer::IImGuiRenderer& GetImGuiRenderer() const { return *m_imguiRenderer; }
     scene::SceneManager&      GetSceneManager() const { return *m_sceneManager; }

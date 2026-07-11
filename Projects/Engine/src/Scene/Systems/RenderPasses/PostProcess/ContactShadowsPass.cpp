@@ -35,8 +35,8 @@ void ExecuteContactShadowsPass(RenderPassContext& ctx)
     csDC.srvInputs[7]       = resources.GetDepthTexture(
         ctx.isDeferred ? h.gbufferRT : h.hdrRT);    // t7: Depth
     csDC.uavOutputs[3]      = h.contactShadowResult; // u3: UAV_CONTACT_SHADOW (UAV_SSR スロットを時分割で再利用)
-    csDC.dispatchX          = (ctx.width  + 7) / 8;
-    csDC.dispatchY          = (ctx.height + 7) / 8;
+    csDC.dispatchX          = (ctx.width  / 2 + 7) / 8;
+    csDC.dispatchY          = (ctx.height / 2 + 7) / 8;
     csDC.dispatchZ          = 1;
     r.Dispatch(csDC, resources);
 }

@@ -9,7 +9,9 @@
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/PostProcessAsset.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Renderer/Camera.hpp>
@@ -25,6 +27,7 @@
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -39,6 +42,7 @@
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
@@ -72,9 +76,21 @@ T* SelfComponent(const Script* script)
     return script ? script->GetComponent<T>() : nullptr;
 }
 
+template<typename T>
+T* ObjectComponent(GameObject* go)
+{
+    return go && go->IsValid() ? go->GetComponent<T>() : nullptr;
+}
+
 physics::RigidBody* SelfRigidBody(const Script* script)
 {
     auto* component = SelfComponent<RigidBodyComponent>(script);
+    return component && component->enabled ? component->rigidBody.get() : nullptr;
+}
+
+physics::RigidBody* ObjectRigidBody(GameObject* go)
+{
+    auto* component = ObjectComponent<RigidBodyComponent>(go);
     return component && component->enabled ? component->rigidBody.get() : nullptr;
 }
 
@@ -394,6 +410,62 @@ bool ScriptInputProxy::MouseButton(int button) const { return input::Input::Mous
 bool ScriptInputProxy::MouseButtonDown(int button) const { return input::Input::MouseButtonDown(button); }
 bool ScriptInputProxy::MouseButtonUp(int button) const { return input::Input::MouseButtonUp(button); }
 
+void ScriptCursorProxy::SetVisible(bool visible) const
+{
+    core::Cursor::SetVisible(visible);
+}
+
+bool ScriptCursorProxy::IsVisible() const
+{
+    return core::Cursor::IsVisible();
+}
+
+void ScriptCursorProxy::SetLockMode(CursorLockMode mode) const
+{
+    core::Cursor::SetLockMode(mode);
+}
+
+CursorLockMode ScriptCursorProxy::GetLockMode() const
+{
+    return core::Cursor::GetLockMode();
+}
+
+void ScriptCursorProxy::ResetForEditor() const
+{
+    core::Cursor::ResetForEditor();
+}
+
+void ScriptApplicationProxy::Quit() const
+{
+    core::Application::Get().Quit();
+}
+
+bool ScriptApplicationProxy::IsRunning() const
+{
+    return core::Application::Get().IsRunning();
+}
+
+uint32_t ScriptApplicationProxy::GetWindowWidth() const
+{
+    return core::Application::Get().GetWindowWidth();
+}
+
+uint32_t ScriptApplicationProxy::GetWindowHeight() const
+{
+    return core::Application::Get().GetWindowHeight();
+}
+
+float ScriptTimeProxy::DeltaTime() const { return fbzz::Time::deltaTime; }
+float ScriptTimeProxy::UnscaledDeltaTime() const { return fbzz::Time::unscaledDeltaTime; }
+float ScriptTimeProxy::Time() const { return fbzz::Time::time; }
+float ScriptTimeProxy::UnscaledTime() const { return fbzz::Time::unscaledTime; }
+uint64_t ScriptTimeProxy::FrameCount() const { return fbzz::Time::frameCount; }
+
+void ScriptTimeProxy::SetTimeScale(float scale) const { fbzz::Time::SetTimeScale(scale); }
+float ScriptTimeProxy::GetTimeScale() const { return fbzz::Time::GetTimeScale(); }
+void ScriptTimeProxy::SetTargetFps(int fps) const { fbzz::Time::SetTargetFps(fps); }
+int ScriptTimeProxy::GetTargetFps() const { return fbzz::Time::GetTargetFps(); }
+
 void ScriptPhysicsProxy::AddForce(const math::Vector3& v) const
 {
     if (auto* rb = SelfRigidBody(script)) rb->ApplyForce(v);
@@ -407,6 +479,16 @@ void ScriptPhysicsProxy::AddImpulse(const math::Vector3& v) const
 void ScriptPhysicsProxy::AddForceAtPoint(const math::Vector3& force, const math::Vector3& worldPoint) const
 {
     if (auto* rb = SelfRigidBody(script)) rb->ApplyForceAtPoint(force, worldPoint);
+}
+
+bool ScriptPhysicsProxy::HasRigidBody() const
+{
+    return SelfRigidBody(script) != nullptr;
+}
+
+bool ScriptPhysicsProxy::HasRigidBody(GameObject* go) const
+{
+    return ObjectRigidBody(go) != nullptr;
 }
 
 float ScriptPhysicsProxy::GetMass() const
@@ -437,6 +519,28 @@ math::Vector3 ScriptPhysicsProxy::GetVelocity() const
 {
     if (auto* rb = SelfRigidBody(script)) return rb->GetVelocity();
     return math::Vector3::ZERO;
+}
+
+void ScriptPhysicsProxy::SetVelocity(GameObject* go, const math::Vector3& v) const
+{
+    if (auto* rb = ObjectRigidBody(go)) rb->SetVelocity(v);
+}
+
+math::Vector3 ScriptPhysicsProxy::GetVelocity(GameObject* go) const
+{
+    if (auto* rb = ObjectRigidBody(go)) return rb->GetVelocity();
+    return math::Vector3::ZERO;
+}
+
+void ScriptPhysicsProxy::AddImpulse(GameObject* go, const math::Vector3& v) const
+{
+    if (auto* rb = ObjectRigidBody(go)) rb->ApplyImpulse(v);
+}
+
+float ScriptPhysicsProxy::GetMass(GameObject* go) const
+{
+    if (auto* rb = ObjectRigidBody(go)) return rb->GetMass();
+    return 0.0f;
 }
 
 void ScriptPhysicsProxy::SetAngularVelocity(const math::Vector3& v) const
@@ -516,6 +620,79 @@ std::vector<GameObject*> ScriptPhysicsProxy::OverlapSphere(const math::Vector3& 
             result.push_back(go);
     }
     return result;
+}
+
+namespace {
+ColliderComponent* SelfAnyCollider(const Script* script)
+{
+    if (!script) return nullptr;
+    if (auto* c = script->GetComponent<BoxColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<AabbColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<SphereColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<CapsuleColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<MeshColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<ConvexHullColliderComponent>()) return c;
+    if (auto* c = script->GetComponent<TerrainColliderComponent>()) return c;
+    return nullptr;
+}
+} // namespace
+
+void ScriptColliderProxy::SetEnabled(bool enabled) const
+{
+    if (auto* c = SelfAnyCollider(script)) c->SetEnabled(enabled);
+}
+
+void ScriptColliderProxy::SetTrigger(bool trigger) const
+{
+    if (auto* c = SelfAnyCollider(script)) c->SetTrigger(trigger);
+}
+
+void ScriptColliderProxy::SetCenter(const math::Vector3& center) const
+{
+    if (auto* c = SelfAnyCollider(script)) c->SetCenter(center);
+}
+
+void ScriptColliderProxy::SetBoxSize(const math::Vector3& size) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<BoxColliderComponent>()) c->SetSize(size);
+    if (auto* c = script->m_gameObject->GetComponent<AabbColliderComponent>()) c->SetSize(size);
+}
+
+void ScriptColliderProxy::SetSphereRadius(float radius) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<SphereColliderComponent>()) c->SetRadius(radius);
+}
+
+void ScriptColliderProxy::SetCapsule(float radius, float halfHeight) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<CapsuleColliderComponent>())
+        c->SetCapsule(radius, halfHeight);
+}
+
+void ScriptColliderProxy::SetMesh(std::string_view meshPath, int meshIndex) const
+{
+    if (!script || !script->m_gameObject) return;
+    if (auto* c = script->m_gameObject->GetComponent<MeshColliderComponent>())
+        c->SetMesh(std::string(meshPath), meshIndex);
+    if (auto* c = script->m_gameObject->GetComponent<ConvexHullColliderComponent>())
+        c->SetMesh(std::string(meshPath), meshIndex);
+}
+
+void ScriptColliderProxy::SetFriction(float staticFriction, float dynamicFriction) const
+{
+    if (auto* c = SelfAnyCollider(script)) {
+        c->material.staticFriction = staticFriction;
+        c->material.dynamicFriction = dynamicFriction;
+    }
+}
+
+void ScriptColliderProxy::SetRestitution(float restitution) const
+{
+    if (auto* c = SelfAnyCollider(script))
+        c->material.restitution = restitution;
 }
 
 void ScriptAudioProxy::Play(std::string_view clipPath) const
@@ -754,6 +931,9 @@ bool ScriptMaterialProxy::SetMaterial(std::string_view materialPath) const
     auto* material = Ensure();
     if (!material) return false;
 
+    // 別マテリアルへ差し替えるときは、旧シェーダー向けの GO 上書きを破棄する。
+    if (material->materialPath != materialPath)
+        material->paramOverrides.clear();
     material->materialPath = std::string(materialPath);
     material->materialAsset = material->materialPath.empty()
         ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
@@ -779,13 +959,13 @@ bool ScriptMaterialProxy::HasParam(std::string_view param) const
     return a->params.find(std::string(param)) != a->params.end();
 }
 
+// WHY: params を共有 MaterialAsset へ書くと同じ .mat を使う全インスタンスへ波及する。
+//      MaterialComponent::paramOverrides へ積み、SyncMaterial が GO 単位で上書きする
+//      ことで「このオブジェクトだけ」のパラメータ変更 (ディゾルブ・点滅等) を実現する。
 void ScriptMaterialProxy::SetFloat(std::string_view param, float v) const
 {
-    auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m || !m->EnsureMaterialAsset()) return;
-    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return;
-    a->params[std::string(param)] = { v };
+    if (auto* m = SelfComponent<MaterialComponent>(script))
+        m->paramOverrides[std::string(param)] = { v };
 }
 
 void ScriptMaterialProxy::SetInt(std::string_view param, int v) const
@@ -795,20 +975,14 @@ void ScriptMaterialProxy::SetInt(std::string_view param, int v) const
 
 void ScriptMaterialProxy::SetVector3(std::string_view param, const math::Vector3& v) const
 {
-    auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m || !m->EnsureMaterialAsset()) return;
-    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return;
-    a->params[std::string(param)] = { v.x, v.y, v.z };
+    if (auto* m = SelfComponent<MaterialComponent>(script))
+        m->paramOverrides[std::string(param)] = { v.x, v.y, v.z };
 }
 
 void ScriptMaterialProxy::SetVector4(std::string_view param, const math::Vector4& v) const
 {
-    auto* m = SelfComponent<MaterialComponent>(script);
-    if (!m || !m->EnsureMaterialAsset()) return;
-    auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
-    if (!a) return;
-    a->params[std::string(param)] = { v.x, v.y, v.z, v.w };
+    if (auto* m = SelfComponent<MaterialComponent>(script))
+        m->paramOverrides[std::string(param)] = { v.x, v.y, v.z, v.w };
 }
 
 void ScriptMaterialProxy::SetTexture(std::string_view slot, std::string_view texPath) const
@@ -830,6 +1004,10 @@ float ScriptMaterialProxy::GetFloat(std::string_view param) const
 {
     const auto* m = Get();
     if (!m) return 0.0f;
+    // GO 単位の上書きを優先し、無ければ共有アセットの値を返す。
+    const auto ov = m->paramOverrides.find(std::string(param));
+    if (ov != m->paramOverrides.end() && !ov->second.empty())
+        return ov->second[0];
     const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
     if (!a) return 0.0f;
     const auto it = a->params.find(std::string(param));
@@ -840,6 +1018,9 @@ math::Vector3 ScriptMaterialProxy::GetVector3(std::string_view param) const
 {
     const auto* m = Get();
     if (!m) return {};
+    const auto ov = m->paramOverrides.find(std::string(param));
+    if (ov != m->paramOverrides.end() && ov->second.size() >= 3)
+        return { ov->second[0], ov->second[1], ov->second[2] };
     const auto* a = asset::AssetManager::GetMaterial(m->materialAsset);
     if (!a) return {};
     const auto it = a->params.find(std::string(param));
@@ -853,6 +1034,33 @@ bool ScriptMaterialProxy::SetEnabled(bool enabled) const
     if (!material) return false;
     material->enabled = enabled;
     return true;
+}
+
+MaterialComponent* ScriptMaterialProxy::Get(GameObject* go) const
+{
+    return ObjectComponent<MaterialComponent>(go);
+}
+
+bool ScriptMaterialProxy::SetMaterial(GameObject* go, std::string_view materialPath) const
+{
+    if (!go || !go->IsValid()) return false;
+    auto* material = go->GetComponent<MaterialComponent>();
+    if (!material)
+        material = &go->AddComponent<MaterialComponent>();
+
+    if (material->materialPath != materialPath)
+        material->paramOverrides.clear();
+    material->materialPath = std::string(materialPath);
+    material->materialAsset = material->materialPath.empty()
+        ? renderer::ResourceHandle<renderer::MaterialAssetTag>{}
+        : asset::AssetManager::LoadMaterial(material->materialPath);
+    return material->materialAsset.IsValid() || material->materialPath.empty();
+}
+
+void ScriptMaterialProxy::SetFloat(GameObject* go, std::string_view param, float v) const
+{
+    if (auto* m = ObjectComponent<MaterialComponent>(go))
+        m->paramOverrides[std::string(param)] = { v };
 }
 
 bool ScriptMaterialProxy::SetBlendMode(renderer::BlendMode blendMode) const
@@ -893,6 +1101,21 @@ void ScriptMaterialProxy::QueueRenderPass(UserRenderPassDesc desc) const
 void ScriptParticleProxy::SetEmitRate(float rate) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitRate = rate;
+}
+
+void ScriptParticleProxy::SetEmitPosition(const math::Vector3& position) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitPosition = position;
+}
+
+void ScriptParticleProxy::SetEmitVelocity(const math::Vector3& velocity) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->emitVelocity = velocity;
+}
+
+void ScriptParticleProxy::SetVelocitySpread(float spread) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->velocitySpread = (std::max)(spread, 0.0f);
 }
 
 void ScriptParticleProxy::SetEnabled(bool enabled) const
@@ -964,6 +1187,25 @@ void ScriptParticleProxy::SetSize(float start, float end) const
     }
 }
 
+void ScriptParticleProxy::SetLifetime(float seconds) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->lifetime = (std::max)(seconds, 0.01f);
+}
+
+void ScriptParticleProxy::SetMaxParticles(int maxParticles) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->maxParticles = (std::max)(maxParticles, 1);
+}
+
+void ScriptParticleProxy::SetPlayback(bool loop, float duration, bool clearOnStop) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->loop = loop;
+        p->duration = (std::max)(duration, 0.0f);
+        p->clearOnStop = clearOnStop;
+    }
+}
+
 void ScriptParticleProxy::SetTexture(std::string_view texturePath, int columns, int rows) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) {
@@ -980,6 +1222,35 @@ void ScriptParticleProxy::SetShape(ParticleEmitterShape shape) const
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->shape = shape;
 }
 
+void ScriptParticleProxy::SetSphereShape(float radius) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->shape = ParticleEmitterShape::Sphere;
+        p->sphereRadius = (std::max)(radius, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetConeShape(float radius, float angleDegrees) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->shape = ParticleEmitterShape::Cone;
+        p->coneRadius = (std::max)(radius, 0.0f);
+        p->coneAngleDegrees = (std::max)(angleDegrees, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetBoxShape(const math::Vector3& extents) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->shape = ParticleEmitterShape::Box;
+        p->boxExtents = {
+            (std::max)(extents.x, 0.0f),
+            (std::max)(extents.y, 0.0f),
+            (std::max)(extents.z, 0.0f)
+        };
+    }
+}
+
 void ScriptParticleProxy::SetBlendMode(ParticleBlendMode blendMode) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->blendMode = blendMode;
@@ -993,6 +1264,19 @@ void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
 void ScriptParticleProxy::SetSimulationMode(ParticleSimulationMode simulationMode) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->simulationMode = simulationMode;
+}
+
+void ScriptParticleProxy::SetVelocityDamping(float damping) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->velocityDamping = (std::max)(damping, 0.0f);
+}
+
+void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->angularVelocityMin = minValue;
+        p->angularVelocityMax = maxValue;
+    }
 }
 
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
@@ -1019,6 +1303,12 @@ void ScriptTrailProxy::SetDuration(float seconds) const
 {
     if (auto* t = SelfComponent<TrailComponent>(script))
         t->duration = (std::max)(seconds, 0.01f);
+}
+
+void ScriptTrailProxy::SetMaxPoints(int maxPoints) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script))
+        t->maxPoints = (std::max)(maxPoints, 2);
 }
 
 void ScriptTrailProxy::SetSampling(float sampleInterval, float minVertexDist) const
@@ -1059,6 +1349,15 @@ void ScriptTrailProxy::SetTexture(std::string_view texturePath, float uvTiling, 
         t->uvScrollSpeed = uvScrollSpeed;
         t->texture = {};
         t->loadedTexturePath.clear();
+    }
+}
+
+void ScriptTrailProxy::SetMaterial(std::string_view materialPath) const
+{
+    if (auto* t = SelfComponent<TrailComponent>(script)) {
+        t->materialPath = std::string(materialPath);
+        t->loadedMaterialPath.clear();
+        t->texture = {};
     }
 }
 
@@ -1208,6 +1507,95 @@ void ScriptUIProxy::SetImageSpriteRect(float x, float y, float w, float h, float
         img->uvMin = uvMin;
         img->uvMax = uvMax;
     }
+}
+
+void ScriptUIProxy::SetImageFillAmount(float amount) const
+{
+    if (auto* img = SelfComponent<UIImage>(script))
+        img->fillAmount = std::clamp(amount, 0.0f, 1.0f);
+}
+
+void ScriptUIProxy::SetImageColor(GameObject* go, const math::Vector4& color) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go)) image->color = color;
+}
+
+void ScriptUIProxy::SetImageFillAmount(GameObject* go, float amount) const
+{
+    if (auto* img = ObjectComponent<UIImage>(go))
+        img->fillAmount = std::clamp(amount, 0.0f, 1.0f);
+}
+
+void ScriptUIProxy::SetText(GameObject* go, std::string_view text) const
+{
+    if (auto* t = ObjectComponent<UIText>(go)) t->text = std::string(text);
+}
+
+void ScriptUIProxy::SetImageEnabled(GameObject* go, bool enabled) const
+{
+    if (auto* image = ObjectComponent<UIImage>(go)) image->enabled = enabled;
+}
+
+void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vector4& to, float duration) const
+{
+    PlayColor(from, to, duration, UIEasingType::Linear);
+}
+
+void ScriptUIAnimatorProxy::PlayColor(const math::Vector4& from, const math::Vector4& to,
+                                      float duration, UIEasingType easing, bool loop, bool pingPong) const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script))
+        anim->PlayColor(from, to, duration, easing, loop, pingPong);
+}
+
+void ScriptUIAnimatorProxy::PlayPosition(const math::Vector2& from, const math::Vector2& to, float duration) const
+{
+    PlayPosition(from, to, duration, UIEasingType::Linear);
+}
+
+void ScriptUIAnimatorProxy::PlayPosition(const math::Vector2& from, const math::Vector2& to,
+                                         float duration, UIEasingType easing, bool loop, bool pingPong) const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script))
+        anim->PlayPosition(from, to, duration, easing, loop, pingPong);
+}
+
+void ScriptUIAnimatorProxy::PlayScale(const math::Vector2& from, const math::Vector2& to, float duration) const
+{
+    PlayScale(from, to, duration, UIEasingType::Linear);
+}
+
+void ScriptUIAnimatorProxy::PlayScale(const math::Vector2& from, const math::Vector2& to,
+                                      float duration, UIEasingType easing, bool loop, bool pingPong) const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script))
+        anim->PlayScale(from, to, duration, easing, loop, pingPong);
+}
+
+void ScriptUIAnimatorProxy::StopColor() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopColor();
+}
+
+void ScriptUIAnimatorProxy::StopPosition() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopPosition();
+}
+
+void ScriptUIAnimatorProxy::StopScale() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopScale();
+}
+
+void ScriptUIAnimatorProxy::StopAll() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) anim->StopAll();
+}
+
+bool ScriptUIAnimatorProxy::IsPlaying() const
+{
+    if (auto* anim = SelfComponent<UIAnimator>(script)) return anim->IsPlaying();
+    return false;
 }
 
 GameObject* ScriptSceneProxy::Find(std::string_view name) const
@@ -1386,6 +1774,32 @@ bool ScriptAnimatorProxy::IsInState(std::string_view name) const
     return a && a->IsInState(name);
 }
 
+void ScriptAnimatorProxy::SetFloat(GameObject* go, std::string_view name, float v) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetFloat(name, v);
+}
+
+void ScriptAnimatorProxy::SetInt(GameObject* go, std::string_view name, int v) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetInt(name, v);
+}
+
+void ScriptAnimatorProxy::SetBool(GameObject* go, std::string_view name, bool v) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetBool(name, v);
+}
+
+void ScriptAnimatorProxy::SetTrigger(GameObject* go, std::string_view name) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->SetTrigger(name);
+}
+
+bool ScriptAnimatorProxy::IsInState(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a && a->IsInState(name);
+}
+
 float ScriptAnimatorProxy::GetFloat(std::string_view name) const
 {
     const auto* a = SelfComponent<AnimatorComponent>(script);
@@ -1410,6 +1824,30 @@ float ScriptAnimatorProxy::GetNormalizedTime() const
     return a ? a->GetNormalizedTime() : 0.0f;
 }
 
+float ScriptAnimatorProxy::GetFloat(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetFloat(name) : 0.0f;
+}
+
+int ScriptAnimatorProxy::GetInt(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetInt(name) : 0;
+}
+
+bool ScriptAnimatorProxy::GetBool(GameObject* go, std::string_view name) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a && a->GetBool(name);
+}
+
+float ScriptAnimatorProxy::GetNormalizedTime(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetNormalizedTime() : 0.0f;
+}
+
 std::vector<std::pair<std::string, float>>
 ScriptAnimatorProxy::GetCurrentBlendWeights() const
 {
@@ -1424,6 +1862,30 @@ std::string ScriptAnimatorProxy::GetCurrentState() const
     return a ? a->currentStateName : std::string{};
 }
 
+std::string ScriptAnimatorProxy::GetBlendToState() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetBlendToState() : std::string{};
+}
+
+std::string ScriptAnimatorProxy::GetBlendToState(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetBlendToState() : std::string{};
+}
+
+float ScriptAnimatorProxy::GetBlendToNormalizedTime() const
+{
+    const auto* a = SelfComponent<AnimatorComponent>(script);
+    return a ? a->GetBlendToNormalizedTime() : 0.0f;
+}
+
+float ScriptAnimatorProxy::GetBlendToNormalizedTime(GameObject* go) const
+{
+    const auto* a = ObjectComponent<AnimatorComponent>(go);
+    return a ? a->GetBlendToNormalizedTime() : 0.0f;
+}
+
 void ScriptAnimatorProxy::SetSpeed(float speed) const
 {
     if (auto* a = SelfComponent<AnimatorComponent>(script)) a->speed = speed;
@@ -1432,6 +1894,21 @@ void ScriptAnimatorProxy::SetSpeed(float speed) const
 void ScriptAnimatorProxy::Play(std::string_view stateName) const
 {
     if (auto* a = SelfComponent<AnimatorComponent>(script)) {
+        a->currentStateName = std::string(stateName);
+        a->stateTime        = 0.0f;
+        a->blendToState.clear();
+        a->blendWeight      = 0.0f;
+    }
+}
+
+void ScriptAnimatorProxy::SetSpeed(GameObject* go, float speed) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) a->speed = speed;
+}
+
+void ScriptAnimatorProxy::Play(GameObject* go, std::string_view stateName) const
+{
+    if (auto* a = ObjectComponent<AnimatorComponent>(go)) {
         a->currentStateName = std::string(stateName);
         a->stateTime        = 0.0f;
         a->blendToState.clear();
@@ -2085,6 +2562,116 @@ bool ScriptWaterProxy::IsEnabled() const
 }
 
 // ---------------------------------------------------------------------------
+namespace {
+TerrainComponent* SelfTerrain(const Script* script)
+{
+    return SelfComponent<TerrainComponent>(script);
+}
+
+math::Vector3 WorldToTerrainLocal(const GameObject* gameObject, const math::Vector3& worldPos)
+{
+    if (!gameObject) return worldPos;
+    const auto& t = gameObject->transform;
+    const math::Vector3 delta = worldPos - t.worldPosition;
+    const math::Vector3 local = t.worldRotation.Inverse() * delta;
+    return {
+        t.worldScale.x > 0.0f ? local.x / t.worldScale.x : local.x,
+        t.worldScale.y > 0.0f ? local.y / t.worldScale.y : local.y,
+        t.worldScale.z > 0.0f ? local.z / t.worldScale.z : local.z
+    };
+}
+} // namespace
+
+float ScriptTerrainProxy::GetHeightLocal(float localX, float localZ) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->GetHeightAt(localX, localZ) : 0.0f;
+}
+
+math::Vector3 ScriptTerrainProxy::GetNormalLocal(float localX, float localZ) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain ? terrain->GetNormalAt(localX, localZ) : math::Vector3::UP;
+}
+
+float ScriptTerrainProxy::GetHeightWorld(const math::Vector3& worldPos) const
+{
+    auto* terrain = SelfTerrain(script);
+    if (!terrain || !script || !script->m_gameObject) return worldPos.y;
+    const math::Vector3 local = WorldToTerrainLocal(script->m_gameObject, worldPos);
+    return script->m_gameObject->transform.worldPosition.y + terrain->GetHeightAt(local.x, local.z);
+}
+
+math::Vector3 ScriptTerrainProxy::GetNormalWorld(const math::Vector3& worldPos) const
+{
+    auto* terrain = SelfTerrain(script);
+    if (!terrain) return math::Vector3::UP;
+    const math::Vector3 local = WorldToTerrainLocal(script ? script->m_gameObject : nullptr, worldPos);
+    return terrain->GetNormalAt(local.x, local.z);
+}
+
+bool ScriptTerrainProxy::SetHeightAtGrid(int x, int z, float worldHeight) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain && terrain->SetHeightAtGrid(x, z, worldHeight);
+}
+
+bool ScriptTerrainProxy::PaintLayerAtGrid(int x, int z, int layer, float weight) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain && terrain->PaintLayerAtGrid(x, z, layer, weight);
+}
+
+bool ScriptTerrainProxy::SetLayerMaterial(int layer, std::string_view materialPath) const
+{
+    auto* terrain = SelfTerrain(script);
+    return terrain && terrain->SetLayerMaterial(layer, std::string(materialPath));
+}
+
+void ScriptTerrainProxy::RequestRebuild() const
+{
+    if (auto* terrain = SelfTerrain(script)) {
+        terrain->RequestHeightRebuild();
+        terrain->RequestSplatRebuild();
+        terrain->RequestMaterialRebuild();
+    }
+}
+
+void ScriptFoliageProxy::SetEnabled(bool enabled) const
+{
+    if (auto* foliage = SelfComponent<FoliageComponent>(script)) foliage->SetEnabled(enabled);
+}
+
+void ScriptFoliageProxy::RequestBake(bool rebuildChildren) const
+{
+    if (auto* foliage = SelfComponent<FoliageComponent>(script)) foliage->RequestBake(rebuildChildren);
+}
+
+bool ScriptFoliageProxy::AddStamp(size_t speciesIndex, const math::Vector3& localPosition,
+                                  float rotationY, float scale) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->AddStamp(speciesIndex, localPosition, rotationY, scale);
+}
+
+bool ScriptFoliageProxy::ClearStamps(size_t speciesIndex) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->ClearStamps(speciesIndex);
+}
+
+bool ScriptFoliageProxy::SetDensity(size_t speciesIndex, float densityPer100SquareMeters) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->SetDensity(speciesIndex, densityPer100SquareMeters);
+}
+
+bool ScriptFoliageProxy::SetDrawDistance(size_t speciesIndex, float distance) const
+{
+    auto* foliage = SelfComponent<FoliageComponent>(script);
+    return foliage && foliage->SetDrawDistance(speciesIndex, distance);
+}
+
 // ScriptEnvironmentProxy
 // ---------------------------------------------------------------------------
 namespace {

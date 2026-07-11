@@ -9,6 +9,7 @@
 #include <functional>
 #include <initializer_list>
 #include <limits>
+#include <queue>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -352,6 +353,9 @@ private:
         }
 
         std::unordered_map<std::string, size_t> producer;
+        // WAR ハザード検出用: 「最後の書き込み以降」にそのリソースを読んだパスの一覧 (= 現世代の reader)。
+        // 次にそのリソースへ書くパスは、この一覧すべての後に実行されなければならない。
+        std::unordered_map<std::string, std::vector<size_t>> readersSinceLastWrite;
         std::vector<std::vector<size_t>> edges(m_passes.size());
         std::vector<size_t> indegree(m_passes.size(), 0);
 
@@ -360,6 +364,7 @@ private:
                 continue;
 
             std::unordered_set<size_t> passDeps;
+            // RAW: 読むリソースは直前の producer の後に実行する。
             for (const auto& read : infos[passIndex].reads) {
                 auto it = producer.find(read);
                 if (it == producer.end()) {
@@ -376,28 +381,56 @@ private:
                     passDeps.insert(it->second);
             }
 
+            // WAW / WAR: 書くリソースは、前世代の producer とすべての reader の後に実行する。
+            // WHY: RAW エッジだけでは「先にそのリソースを読むパス」を追い越して上書きするパスを
+            //      拘束できず、追加順と Kahn 法の走査順で偶然正しく並ぶことに依存してしまう。
+            //      Forward / Deferred のようにパス構成が変わった途端に順序が入れ替わり、
+            //      構成依存の描画差やフレーム間のちらつきを生む原因になる。
+            for (const auto& write : infos[passIndex].writes) {
+                if (auto it = producer.find(write); it != producer.end() && it->second != passIndex)
+                    passDeps.insert(it->second);                       // WAW
+                if (auto it = readersSinceLastWrite.find(write); it != readersSinceLastWrite.end()) {
+                    for (size_t reader : it->second) {
+                        if (reader != passIndex)
+                            passDeps.insert(reader);                   // WAR
+                    }
+                }
+            }
+
             for (size_t dep : passDeps) {
                 edges[dep].push_back(passIndex);
                 ++indegree[passIndex];
             }
 
-            for (const auto& write : infos[passIndex].writes)
+            // 書き込みで世代が進む: producer を更新し、旧世代の reader リストをリセットする。
+            for (const auto& write : infos[passIndex].writes) {
                 producer[write] = passIndex;
+                readersSinceLastWrite[write].clear();
+            }
+            // このパスを新世代の reader として登録する (後続の writer が WAR で待てるように)。
+            for (const auto& read : infos[passIndex].reads)
+                readersSinceLastWrite[read].push_back(passIndex);
         }
 
-        std::vector<size_t> ready;
+        // トポロジカルソート: 実行可能 (indegree==0) なパスのうち、常に追加順 (パス index) が
+        // 最小のものを選ぶ min-heap 版 Kahn 法。
+        // WHY: FIFO キューだと BFS 順になり、依存が独立したパス同士の相対順序が「グラフの形」に
+        //      依存して変わる。追加順を全体のタイブレークにすることで、Forward / Deferred の
+        //      ようにパス構成が異なっても共通パス間の相対順序が安定し、
+        //      RenderPipeline.hpp が約束する「追加順 = 優先度」が実際に保証される。
+        std::priority_queue<size_t, std::vector<size_t>, std::greater<size_t>> ready;
         for (size_t i = 0; i < m_passes.size(); ++i) {
             if (live[i] && indegree[i] == 0)
-                ready.push_back(i);
+                ready.push(i);
         }
 
-        size_t cursor = 0;
-        while (cursor < ready.size()) {
-            const size_t passIndex = ready[cursor++];
+        while (!ready.empty()) {
+            const size_t passIndex = ready.top();
+            ready.pop();
             outOrder->push_back(passIndex);
             for (size_t next : edges[passIndex]) {
                 if (--indegree[next] == 0)
-                    ready.push_back(next);
+                    ready.push(next);
             }
         }
 

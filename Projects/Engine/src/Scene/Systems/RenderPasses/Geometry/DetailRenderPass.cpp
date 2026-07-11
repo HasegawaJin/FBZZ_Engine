@@ -231,14 +231,20 @@ static void BakeChunk(
 std::string_view DetailRenderPass::Name() const { return "DetailPass"; }
 
 std::vector<renderer::RenderGraph::ResourceAccess> DetailRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+    const RenderPassContext& ctx) const
 {
-    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+    using U = renderer::RenderGraph::ResourceUsage;
+    // Deferred では GBuffer へ書き、GTAO/SSAO/ContactShadows/SSR/DeferredLighting を草・小物にも効かせる。
+    if (ctx.isDeferred)
+        return { { "GBuffer", U::ReadWrite } };
+    return { { "HDR", U::ReadWrite } };
 }
 
 void DetailRenderPass::Execute(RenderPassContext& ctx)
 {
-    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+    // Deferred: GBuffer(MRT) へ書く。Forward: HDR へ直接描く。
+    ctx.renderer.SetRenderTarget(
+        ctx.isDeferred ? ctx.handles.gbufferRT : ctx.handles.hdrRT, ctx.resources);
 
     Scene&                     scene     = ctx.scene;
     renderer::IRenderer&       renderer  = ctx.renderer;
@@ -396,7 +402,8 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                     resources.Update(handles.detailGrassCB, &gcb, sizeof(gcb));
 
                     renderer::DrawCall dc{};
-                    dc.shader         = handles.detailGrassShader;
+                    dc.shader         = ctx.isDeferred ? handles.detailGrassGBufferShader
+                                                       : handles.detailGrassShader;
                     // ワイヤーフレームモード時は共用 wireframePSO に切り替える。
                     dc.pipelineState  = ctx.settings.IsWireframe()
                         ? handles.wireframePSO : handles.detailNoCullPSO;
@@ -433,8 +440,10 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                         if (!vb.IsValid() || !ib.IsValid() || indexCount == 0) return;
 
                         renderer::DrawCall dc{};
-                        dc.shader         = isBillboard ? handles.detailBillboardShader
-                                                        : handles.detailMeshShader;
+                        // Deferred は mesh/billboard 共通の GBuffer 変種（isBillboard は b2 で分岐）。
+                        dc.shader         = ctx.isDeferred
+                            ? handles.detailGBufferShader
+                            : (isBillboard ? handles.detailBillboardShader : handles.detailMeshShader);
                         // Detail 用メッシュは外部アセット由来で winding が統一されないため両面描画。
                         // ワイヤーフレームモード時は共用 wireframePSO に切り替える。
                         dc.pipelineState  = ctx.settings.IsWireframe()

@@ -58,6 +58,22 @@ void DetailTool::Update(
         return;
     }
 
+    // ブラシ半径・強度のホットキー調整（TerrainTool と統一）。
+    // [ / ] で半径、Shift+[ / ] で強度。viewportHovered のときだけ拾うので入力欄では誤爆しない。
+    {
+        const bool  shift        = ImGui::GetIO().KeyShift;
+        const float radiusStep   = std::max(0.5f, m_brush.radius * 0.1f);
+        const float strengthStep = 0.05f;
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, /*repeat=*/true)) {
+            if (shift) m_brush.strength = std::clamp(m_brush.strength - strengthStep, 0.01f, 1.0f);
+            else       m_brush.radius   = std::clamp(m_brush.radius   - radiusStep,   0.5f, 30.0f);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, /*repeat=*/true)) {
+            if (shift) m_brush.strength = std::clamp(m_brush.strength + strengthStep, 0.01f, 1.0f);
+            else       m_brush.radius   = std::clamp(m_brush.radius   + radiusStep,   0.5f, 30.0f);
+        }
+    }
+
     // レイキャスト
     math::Vector3   hitWorld;
     scene::EntityID hitEntity;
@@ -602,6 +618,7 @@ void DetailTool::DrawContent(
     ImGui::SeparatorText("Brush");
     ImGui::SliderFloat("Radius",   &m_brush.radius,   0.5f, 30.0f, "%.1f m");
     ImGui::SliderFloat("Strength", &m_brush.strength, 0.01f, 1.0f, "%.2f");
+    ImGui::TextDisabled("[ / ] : Radius   Shift+[ / ] : Strength");
 
     // ─── Bake ───
     ImGui::Spacing();

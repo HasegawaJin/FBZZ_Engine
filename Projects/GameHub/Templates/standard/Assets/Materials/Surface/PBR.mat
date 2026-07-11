@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/PBR.hlsl"
+shader = "guid:60be603ce2e244c1b75b963aa1b87925"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

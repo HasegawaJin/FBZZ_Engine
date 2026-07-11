@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Skinned/SkinnedBlinnPhong.hlsl"
+shader = "guid:86ca72f337434ce4be76cab688df8a2d"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

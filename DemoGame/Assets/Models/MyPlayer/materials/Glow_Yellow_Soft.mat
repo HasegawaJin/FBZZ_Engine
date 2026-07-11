@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'Glow_Yellow_Soft'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 1.0, 0.75, 0.05000000074505806, 1.0 ]
+metallic = 0.0
+roughness = 0.5

@@ -53,6 +53,69 @@ struct UIAnimator {
     UIScaleTween    scaleTween;
     bool            enabled = true;
 
+    // Tween 再生 API。ScriptProxy / Inspector ボタンの両方から同じ入口を使えるようにする。
+    // WHY: elapsed と active の初期化規則を呼び出し側へ分散させると、途中再生・ループ・
+    //      pingPong の挙動が API ごとにずれるため。
+    void PlayColor(const math::Vector4& from, const math::Vector4& to,
+                   float duration, UIEasingType easing = UIEasingType::Linear,
+                   bool loop = false, bool pingPong = false)
+    {
+        colorTween.from = from;
+        colorTween.to = to;
+        colorTween.duration = duration;
+        colorTween.elapsed = 0.0f;
+        colorTween.easing = easing;
+        colorTween.loop = loop;
+        colorTween.pingPong = pingPong;
+        colorTween.active = true;
+        enabled = true;
+    }
+
+    void PlayPosition(const math::Vector2& from, const math::Vector2& to,
+                      float duration, UIEasingType easing = UIEasingType::Linear,
+                      bool loop = false, bool pingPong = false)
+    {
+        positionTween.from = from;
+        positionTween.to = to;
+        positionTween.duration = duration;
+        positionTween.elapsed = 0.0f;
+        positionTween.easing = easing;
+        positionTween.loop = loop;
+        positionTween.pingPong = pingPong;
+        positionTween.active = true;
+        enabled = true;
+    }
+
+    void PlayScale(const math::Vector2& from, const math::Vector2& to,
+                   float duration, UIEasingType easing = UIEasingType::Linear,
+                   bool loop = false, bool pingPong = false)
+    {
+        scaleTween.from = from;
+        scaleTween.to = to;
+        scaleTween.duration = duration;
+        scaleTween.elapsed = 0.0f;
+        scaleTween.easing = easing;
+        scaleTween.loop = loop;
+        scaleTween.pingPong = pingPong;
+        scaleTween.active = true;
+        enabled = true;
+    }
+
+    void StopColor() { colorTween.active = false; }
+    void StopPosition() { positionTween.active = false; }
+    void StopScale() { scaleTween.active = false; }
+    void StopAll()
+    {
+        StopColor();
+        StopPosition();
+        StopScale();
+    }
+
+    bool IsPlaying() const
+    {
+        return enabled && (colorTween.active || positionTween.active || scaleTween.active);
+    }
+
     const char* GetTypeName() const { return "UIAnimator"; }
     void Reflect(IReflector& r)
     {

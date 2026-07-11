@@ -114,8 +114,12 @@ private:
     std::function<void(std::string_view)> m_gpuBegin;
     std::function<void(std::string_view)> m_gpuEnd;
 
-    // Plan キャッシュ: 有効パスのインデックス列が変わらなければ毎フレームの Plan() をスキップする。
+    // Plan キャッシュ: 有効パスのインデックス列と依存宣言の指紋が変わらなければ
+    // 毎フレームの Plan() をスキップし、前フレームの実行順を注入する。
     std::vector<size_t> m_lastEnabledEntryIndices;
+    // パス名 + accesses + allowCulling + outputs の FNV-1a ハッシュ。
+    // WHY: index 列だけでは DeclareAccesses() の返却内容の変化 (設定トグル等) を検出できない。
+    uint64_t m_lastGraphFingerprint = 0;
     bool m_planValid = false;
 };
 

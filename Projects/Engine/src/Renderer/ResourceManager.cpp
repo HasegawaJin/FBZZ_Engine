@@ -4,6 +4,8 @@
 // IRenderer の非公開生成 API を呼び、ResourceHandle と実体を対応付ける。
 // 上位システムが shared_ptr を直接保持しないための境界。
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 #include <cstdint>
 #include <Engine/Renderer/IBuffer.hpp>
 #include <Engine/Renderer/IConstantBuffer.hpp>
@@ -119,7 +121,16 @@ ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
-    auto texture = m_renderer.CreateNativeTexture(key);
+    // ".meta" サイドカー表記と生画像パスを同じ公開 API で扱う (ResolveSourcePath が元画像へ解決)。
+    // WHY: .mat / Scene は Assets/ 起点の相対パスを保存するが、DX11Texture は実ファイルパスを要求する。
+    //      ResourceManager が AssetManager と同じ解決規則を通すことで、呼び出し側ごとの cwd 依存をなくす。
+    std::string sourcePath;
+    const std::string resolvedPath = asset::AssetManager::ResolveAssetPath(key);
+    if (!asset::TexDescSerializer::ResolveSourcePath(resolvedPath, sourcePath)) {
+        FBZZ_LOG_ERROR("Texture path resolution failed: %s", key.c_str());
+        return ResourceHandle<TextureTag>::Null();
+    }
+    auto texture = m_renderer.CreateNativeTexture(sourcePath);
     if (!texture) {
         FBZZ_LOG_ERROR("Texture load failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
@@ -137,7 +148,13 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
     if (it == m_textureCache.end())
         return LoadTexture(path);
 
-    auto newTexture = m_renderer.CreateNativeTexture(key);
+    std::string sourcePath;
+    const std::string resolvedPath = asset::AssetManager::ResolveAssetPath(key);
+    if (!asset::TexDescSerializer::ResolveSourcePath(resolvedPath, sourcePath)) {
+        FBZZ_LOG_ERROR("ReloadTexture path resolution failed: %s", key.c_str());
+        return it->second;
+    }
+    auto newTexture = m_renderer.CreateNativeTexture(sourcePath);
     if (!newTexture) {
         FBZZ_LOG_ERROR("ReloadTexture failed: %s", key.c_str());
         return it->second;
@@ -218,9 +235,40 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateRenderTarget(uint32_t wid
     return handle;
 }
 
+ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint32_t size, uint32_t mipCount)
+{
+    auto rt = m_renderer.CreateNativeCubemapRenderTarget(size, mipCount);
+    if (!rt) return ResourceHandle<RenderTargetTag>::Null();
+
+    // TextureCube SRV を 1 つの "カラーテクスチャ" として登録する。
+    // WHY: 既存の m_renderTargetColors 経路に乗せることで、Release()/シャットダウン時の
+    //      解放処理を通常 RT と共有できる (キューブ専用のクリーンアップを書かずに済む)。
+    //      深度バッファは持たないため m_renderTargetDepths には登録しない。
+    std::vector<ResourceHandle<TextureTag>> colors;
+    if (auto cubeTex = m_renderer.CreateNativeCubeTextureFromRenderTarget(*rt))
+        colors.push_back(m_textures.Insert(std::move(cubeTex), "CubemapRenderTargetTexture", __FILE__, __LINE__));
+
+    ResourceHandle<RenderTargetTag> handle =
+        m_renderTargets.Insert(std::move(rt), "CubemapRenderTarget", __FILE__, __LINE__);
+    m_renderTargetColors[Key(handle)] = std::move(colors);
+    return handle;
+}
+
+ResourceHandle<TextureTag> ResourceManager::GetCubemapTexture(ResourceHandle<RenderTargetTag> rt)
+{
+    // キューブ SRV は index 0 のカラーテクスチャとして登録してある。
+    return GetColorTexture(rt, 0);
+}
+
 ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture(uint32_t width, uint32_t height)
 {
     return m_textures.Insert(m_renderer.CreateNativeComputeTexture(width, height), "ComputeTexture", __FILE__, __LINE__);
+}
+
+ResourceHandle<TextureTag> ResourceManager::RegisterTexture(std::unique_ptr<ITexture> texture)
+{
+    if (!texture) return ResourceHandle<TextureTag>::Null();
+    return m_textures.Insert(std::move(texture), "AdoptedTexture", __FILE__, __LINE__);
 }
 
 ResourceHandle<StructuredBufferTag> ResourceManager::CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride)

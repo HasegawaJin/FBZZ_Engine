@@ -108,9 +108,18 @@ private:
     void BuildMenuBar(EditorContext& ctx);
     void BuildPlayToolbar(EditorContext& ctx);
     void ProcessMapEditingModeTransition(uint32_t dockId);
+    void ProcessPlayViewportLayoutTransition(uint32_t dockId);
     void EnterMapEditingMode(uint32_t dockId);
     void ExitMapEditingMode(uint32_t dockId);
     void BuildMapEditingLayout(uint32_t dockId);
+    void EnterPlayViewportLayout(uint32_t dockId);
+    void ExitPlayViewportLayout(uint32_t dockId);
+    void BuildPlayViewportLayout(uint32_t dockId);
+    void UpdatePlayFocusModeControls();
+    // Play 開始/停止/トグル。ツールバーのボタンと Ctrl+P ホットキーの共通経路。
+    void StartPlayMode();
+    void StopPlayMode();
+    void TogglePlayMode();
     void RegisterDefaultHotkeys();
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();
@@ -172,6 +181,11 @@ private:
     const char*                     m_normalIniFilename = nullptr;
     std::string                     m_imguiIniPath;   // io.IniFilename が指すパス (文字列寿命を保持)
     std::vector<bool>               m_normalPanelVisibility;
+    std::string                     m_playLayoutIni;
+    const char*                     m_playIniFilename = nullptr;
+    std::vector<bool>               m_playPanelVisibility;
+    bool                            m_playViewportLayoutActive = false;
+    bool                            m_playFocusedCursorHidden = false;
     bool                            m_terrainToolWasActive = false;
     int                             m_terrainToolModeBeforeMap = 0;
     bool                            m_waterToolWasActive = false;

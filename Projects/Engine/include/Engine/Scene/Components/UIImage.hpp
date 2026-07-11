@@ -12,6 +12,15 @@
 
 namespace fbzz::scene {
 
+// UIImage の塗り潰し基点。fillAmount < 1 のとき、どの辺を起点に矩形を削るかを決める。
+// 体力ゲージのように「左から減る」「下から伸びる」といった方向制御に使う。
+enum class UIImageFillOrigin {
+    Left   = 0, // 左端を固定し右側を削る (一般的な体力バー)
+    Right  = 1, // 右端を固定し左側を削る
+    Bottom = 2, // 下端を固定し上側を削る (縦ゲージ)
+    Top    = 3, // 上端を固定し下側を削る
+};
+
 struct UIImage {
     std::string   texturePath = "";
     renderer::ResourceHandle<renderer::TextureTag> texture = {};
@@ -21,6 +30,10 @@ struct UIImage {
     // 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
     int           sortOrder = 0;
     bool          enabled = true;
+    // 塗り潰し量 [0,1]。1 で矩形全体、0 で非表示。体力・スタミナゲージ等の進捗表現に使う。
+    // UISystem が描画時に矩形と UV を fillOrigin 方向へクリップする (transform.scale は変えない)。
+    float             fillAmount = 1.0f;
+    UIImageFillOrigin fillOrigin = UIImageFillOrigin::Left;
     // ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
     std::string   loadedTexturePath = {};
 
@@ -41,6 +54,10 @@ struct UIImage {
         r.Field("uvMin",       uvMin);
         r.Field("uvMax",       uvMax);
         r.Field("sortOrder",   sortOrder);
+        r.Field("fillAmount",  fillAmount);
+        int fill = static_cast<int>(fillOrigin);
+        r.Field("fillOrigin",  fill);
+        fillOrigin = static_cast<UIImageFillOrigin>(fill);
     }
 };
 

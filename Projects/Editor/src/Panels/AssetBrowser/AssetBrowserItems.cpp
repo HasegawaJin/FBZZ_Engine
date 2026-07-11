@@ -3,6 +3,7 @@
 // AssetBrowser のフォルダツリーとファイルアイコン描画
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Windows.h>
 #include <toml++/toml.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
@@ -27,6 +28,27 @@
 
 namespace fbzz::editor {
 namespace {
+
+// アセット本体と "<本体>.meta" サイドカーを一括で移動 / リネームし、GUID 索引を追随させる。
+// WHY: .meta は AssetDatabase の恒久 guid を保持する。サイドカーを置き去りにすると
+//      移動先で guid が再発行され、シーン / マテリアルからの guid: 参照が全て切れる。
+//      ディレクトリ移動時は OnAssetMoved が配下の索引をプレフィックス付け替えで追随させる。
+bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs)
+{
+    if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(fromAbs),
+                                  util::FileSystem::PathFromUtf8(toAbs)))
+        return false;
+
+    const std::string fromMeta = fromAbs + ".meta";
+    if (util::FileSystem::Exists(fromMeta)) {
+        if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(fromMeta),
+                                      util::FileSystem::PathFromUtf8(toAbs + ".meta")))
+            FBZZ_LOG_WARN("AssetBrowser: sidecar move failed [%s]", fromMeta.c_str());
+    }
+
+    asset::AssetDatabase::OnAssetMoved(fromAbs, toAbs);
+    return true;
+}
 
 class AssetDeleteCommand final : public ICommand {
 public:
@@ -94,14 +116,90 @@ std::unique_ptr<ICommand> CreateAssetDeleteCommand(const std::vector<std::string
 {
     const std::string undoRoot = ctx.projectRoot + "/.fbzz/Undo/" + util::GenerateUUID() + "/";
     std::vector<AssetDeleteCommand::Entry> entries;
-    entries.reserve(paths.size());
+    entries.reserve(paths.size() * 2);
     for (std::size_t i = 0; i < paths.size(); ++i) {
-        entries.push_back({
-            paths[i],
-            undoRoot + std::to_string(i) + "_" + util::FileSystem::GetFilename(paths[i])
-        });
+        const std::string backup =
+            undoRoot + std::to_string(i) + "_" + util::FileSystem::GetFilename(paths[i]);
+        entries.push_back({ paths[i], backup });
+
+        // .meta サイドカーも一緒に退避する。
+        // WHY: 本体だけ消すと孤児 .meta が残り、Undo 復元時も guid を維持したいため
+        //      同じバックアップ機構でペア移動させる。
+        const std::string metaPath = paths[i] + ".meta";
+        if (util::FileSystem::Exists(metaPath))
+            entries.push_back({ metaPath, backup + ".meta" });
     }
     return std::make_unique<AssetDeleteCommand>(std::move(entries), &ctx);
+}
+
+std::string UniqueDuplicatePath(const std::string& srcPath, bool isDir)
+{
+    const std::string dir = util::FileSystem::GetDirectory(srcPath);
+    const std::string name = isDir
+        ? util::FileSystem::GetFilename(srcPath)
+        : std::filesystem::path(srcPath).stem().string();
+    const std::string ext = isDir ? std::string{} : util::StringUtils::ToLower(
+        util::FileSystem::GetExtension(srcPath));
+
+    for (int n = 2; n <= 999; ++n) {
+        const std::string dstPath = util::FileSystem::NormalizePathSeparators(
+            dir + name + "(" + std::to_string(n) + ")" + ext);
+        if (!util::FileSystem::Exists(dstPath))
+            return dstPath;
+    }
+    return {};
+}
+
+bool CopyAssetPath(const std::string& srcPath, const std::string& dstPath, bool isDir)
+{
+    if (srcPath.empty() || dstPath.empty()) return false;
+    return isDir
+        ? util::FileSystem::CopyDirectoryRecursive(
+            util::FileSystem::PathFromUtf8(srcPath),
+            util::FileSystem::PathFromUtf8(dstPath))
+        : util::FileSystem::CopyFile(
+            util::FileSystem::PathFromUtf8(srcPath),
+            util::FileSystem::PathFromUtf8(dstPath));
+}
+
+bool MoveProjectAssetToDirectory(const std::string& srcProjectPath,
+                                 const std::string& dstDir,
+                                 EditorContext& ctx,
+                                 std::string& outSrcAbs,
+                                 std::string& outDstAbs)
+{
+    if (srcProjectPath.empty() || dstDir.empty()) return false;
+
+    const std::string srcAbs = util::FileSystem::NormalizePathSeparators(
+        ctx.projectRoot + "/" + srcProjectPath);
+    const std::string dstAbs = util::FileSystem::NormalizePathSeparators(
+        dstDir + "/" + util::FileSystem::GetFilename(srcAbs));
+    if (srcAbs == dstAbs || util::FileSystem::Exists(dstAbs)) return false;
+    if (util::FileSystem::IsDirectory(srcAbs) &&
+        util::FileSystem::IsChildPathText(dstDir, srcAbs))
+        return false;
+
+    if (!MoveAssetWithSidecar(srcAbs, dstAbs)) {
+        FBZZ_LOG_ERROR("Move failed: %s -> %s", srcAbs.c_str(), dstAbs.c_str());
+        return false;
+    }
+
+    if (ctx.undoStack) {
+        EditorContext* context = &ctx;
+        auto applyMove = [context](const std::string& from, const std::string& to) {
+            if (util::FileSystem::Exists(from) && !util::FileSystem::Exists(to))
+                MoveAssetWithSidecar(from, to);
+            context->requestAssetBrowserRefresh = true;
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Move Asset",
+            [applyMove, srcAbs, dstAbs]() { applyMove(srcAbs, dstAbs); },
+            [applyMove, srcAbs, dstAbs]() { applyMove(dstAbs, srcAbs); }));
+    }
+
+    outSrcAbs = srcAbs;
+    outDstAbs = dstAbs;
+    return true;
 }
 
 //      未知の拡張子は拡張子文字列のハッシュから色を生成し、
@@ -120,15 +218,14 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".prefab", nullptr },                              { 0.25f, 0.65f, 0.75f, 1.0f }, "PREFAB"  },
     { { ".terrain", nullptr },                             { 0.35f, 0.70f, 0.30f, 1.0f }, "TERRAIN" },
     { { ".scene", nullptr },                                    { 0.60f, 0.15f, 0.70f, 1.0f }, "SCENE"   },
-    { { ".animgraph", nullptr },                               { 0.75f, 0.40f, 0.85f, 1.0f }, "GRAPH"   },
-{ { ".fzasset", nullptr },                               { 0.90f, 0.60f, 0.10f, 1.0f }, "FZASSET" },
     { { ".asset", nullptr },                                 { 0.85f, 0.55f, 0.08f, 1.0f }, "ASSET"   },
     { { ".anim", nullptr },                                  { 0.95f, 0.75f, 0.20f, 1.0f }, "ANIM"    },
+    { { ".animcontroller", nullptr },                        { 0.75f, 0.40f, 0.85f, 1.0f }, "ANIM CTRL" },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
     { { ".fzpp", nullptr },                                  { 0.65f, 0.35f, 0.85f, 1.0f }, "POST FX" },
     { { ".tex", nullptr },                                   { 0.40f, 0.80f, 0.90f, 1.0f }, "TEX"     },
     { { ".mesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
-    { { ".animcontroller", ".animctrl", nullptr },           { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
+    { { ".animctrl", nullptr },                              { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
     { { ".toml", ".json", ".yaml", ".yml", nullptr },           { 0.65f, 0.65f, 0.10f, 1.0f }, "DATA"    },
     { { ".wav", ".mp3", ".ogg", ".flac", nullptr },             { 0.70f, 0.20f, 0.50f, 1.0f }, "SFX"     },
     { { ".ttf", ".otf", nullptr },                             { 0.60f, 0.30f, 0.85f, 1.0f }, "FONT"    },
@@ -184,7 +281,7 @@ static bool IsTextureExt(const std::string& ext)
 static bool IsMeshExt(const std::string& ext)
 {
     return ext == ".fbx" || ext == ".obj" || ext == ".gltf" ||
-           ext == ".glb" || ext == ".mesh" || ext == ".fzasset";
+           ext == ".glb" || ext == ".mesh";
 }
 
 static std::filesystem::file_time_type ReadLastWriteTime(const std::string& path)
@@ -251,6 +348,7 @@ enum class ThumbnailShaderFlavor {
     Skinned,
     Terrain,
     Water,
+    Unsupported,
 };
 
 static std::string ToLowerAssetPath(std::string path)
@@ -264,10 +362,29 @@ static std::string ToLowerAssetPath(std::string path)
 static ThumbnailShaderFlavor DetectThumbnailShaderFlavor(std::string_view shaderPath)
 {
     const std::string lower = ToLowerAssetPath(std::string(shaderPath));
+    if (lower.find("/material/effects/") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
+    if (lower.find("/effects/particle") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
+    if (lower.find("/effects/trail") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
+    if (lower.find("/effects/meshtrail") != std::string::npos) return ThumbnailShaderFlavor::Unsupported;
     if (lower.find("/water/") != std::string::npos) return ThumbnailShaderFlavor::Water;
     if (lower.find("/terrain/") != std::string::npos) return ThumbnailShaderFlavor::Terrain;
     if (lower.find("/material/skinned/") != std::string::npos) return ThumbnailShaderFlavor::Skinned;
     return ThumbnailShaderFlavor::Surface;
+}
+
+static ThumbnailShaderFlavor DetectMaterialThumbnailFlavor(const asset::MaterialAsset& asset)
+{
+    // WHY: Particle / Trail 用 .mat は MeshRenderer と頂点入力・定数バッファが違うため、
+    //      AssetBrowser の球メッシュ preview に流すと不正な IA レイアウトでクラッシュし得る。
+    //      mesh_type / render_path を .mat の信頼元として扱い、shader path だけの推測を避ける。
+    if (asset.renderPath == asset::RenderPath::Particle ||
+        asset.renderPath == asset::RenderPath::Trail) {
+        return ThumbnailShaderFlavor::Unsupported;
+    }
+    if (asset.meshType == asset::MeshType::Skinned) {
+        return ThumbnailShaderFlavor::Skinned;
+    }
+    return DetectThumbnailShaderFlavor(asset.shaderPath);
 }
 
 // t0-t15 は標準 Material スロット。Terrain/Water は専用名で解決されるが、
@@ -473,7 +590,8 @@ bool AssetBrowserPanel::RebuildMaterialThumbnailGpuData(MaterialPreview& preview
     if (!shader) return false;
 
     const renderer::ShaderDescriptor& desc = shader->GetDescriptor();
-    const ThumbnailShaderFlavor flavor = DetectThumbnailShaderFlavor(preview.shaderPath);
+    const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(*renderAsset);
+    if (flavor == ThumbnailShaderFlavor::Unsupported) return false;
     if (!desc.IsValid() && flavor != ThumbnailShaderFlavor::Terrain) return false;
 
     preview.textures.assign(16, {});
@@ -992,7 +1110,7 @@ static bool RenderMeshThumbnail(
 
     renderer.SetRenderTarget(rt, resources);
     if (clearRT) {
-        renderer.Clear({ 0.030f, 0.032f, 0.038f, 1.0f });
+        renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
         renderer.ClearDepth();
     }
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
@@ -1133,30 +1251,41 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             if (!ShouldDisplayEntry(e.path, e.name, true)) continue;
             newDirs.push_back(std::move(e));
         }
-        if (util::FileSystem::SamePathText(normDir, m_rootPath)) {
-            for (const AssetMount& mount : m_mounts) {
-                Entry e;
-                e.path = mount.path;
-                e.name = mount.name;
-                e.isDir = true;
-                e.isMount = true;
-                newDirs.push_back(std::move(e));
-            }
-        }
+        // WHY: マウント (外部フォルダ) は Assets ツリーには混ぜず、左ペインの "EXTERNAL"
+        //      セクション (OnRenderContent) で専用に列挙する。ここでは実フォルダのみ扱う。
         std::stable_sort(newDirs.begin(), newDirs.end(), [](const Entry& a, const Entry& b) {
             return a.name < b.name;
         });
         it = m_treeCache.emplace(normDir, std::move(newDirs)).first;
     }
-    const std::vector<Entry>& dirs = it->second;
+    // WHY: 参照ではなくコピーを取る。
+    //      再帰 DrawFolderTree / RefreshDirectory() が m_treeCache に insert/erase すると
+    //      unordered_map のリハッシュや対象エントリ削除で参照が無効化 (UB) されクラッシュする。
+    const std::vector<Entry> dirs = it->second;
 
     for (const Entry& dir : dirs) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth;
-        if (util::FileSystem::SamePathText(dir.path, m_currentPath)) flags |= ImGuiTreeNodeFlags_Selected;
+        const bool isCurrent = util::FileSystem::SamePathText(dir.path, m_currentPath);
+        if (isCurrent) flags |= ImGuiTreeNodeFlags_Selected;
 
         // WHY: 表示名は Assets 側の仮想名、ID は実パスにすることで同名マウントでも ImGui ID が衝突しない。
+        // 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
+        if (isCurrent)
+            ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
         bool open = ImGui::TreeNodeEx(dir.path.c_str(), flags, "%s", dir.name.c_str());
+        if (isCurrent)
+            ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+            ImGui::GetDragDropPayload()) {
+            ui::DrawSelectionBackground(ImGui::GetWindowDrawList(),
+                                        ImGui::GetItemRectMin(),
+                                        ImGui::GetItemRectMax(),
+                                        true,
+                                        true,
+                                        false,
+                                        3.0f);
+        }
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
             m_currentPath = dir.path;
             RefreshDirectory();
@@ -1164,10 +1293,92 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
         if (ImGui::BeginPopupContextItem()) {
             auto& bks = ctx.assetBrowserBookmarks;
             const bool already = std::find(bks.begin(), bks.end(), dir.path) != bks.end();
+            if (ImGui::MenuItem("New Folder")) {
+                std::string newDir = dir.path + "/New Folder";
+                for (int n = 1; util::FileSystem::Exists(newDir) && n <= 999; ++n)
+                    newDir = dir.path + "/New Folder " + std::to_string(n);
+                if (!util::FileSystem::Exists(newDir)) {
+                    util::FileSystem::EnsureDirectory(newDir);
+                    if (ctx.undoStack) {
+                        EditorContext* context = &ctx;
+                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                            "Create Folder",
+                            [newDir, context]() {
+                                util::FileSystem::EnsureDirectory(newDir);
+                                context->requestAssetBrowserRefresh = true;
+                            },
+                            [newDir, context]() {
+                                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(newDir));
+                                context->requestAssetBrowserRefresh = true;
+                            }));
+                    }
+                    m_currentPath = dir.path;
+                    InvalidateTreeCache(dir.path);
+                    RefreshDirectory();
+                    BeginRenameForPath(newDir, &ctx);
+                }
+            }
+            if (ImGui::MenuItem("Rename")) {
+                m_currentPath = normDir;
+                RefreshDirectory();
+                BeginRenameForPath(dir.path, &ctx);
+            }
+            if (ImGui::MenuItem("Duplicate")) {
+                const std::string dstPath = UniqueDuplicatePath(dir.path, true);
+                if (!dstPath.empty() && CopyAssetPath(dir.path, dstPath, true)) {
+                    if (ctx.undoStack) {
+                        EditorContext* context = &ctx;
+                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+                            "Duplicate Folder",
+                            [srcPath = dir.path, dstPath, context]() {
+                                CopyAssetPath(srcPath, dstPath, true);
+                                context->requestAssetBrowserRefresh = true;
+                            },
+                            [dstPath, context]() {
+                                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
+                                context->requestAssetBrowserRefresh = true;
+                            }));
+                    }
+                    m_currentPath = normDir;
+                    InvalidateTreeCache(normDir);
+                    RefreshDirectory();
+                    BeginRenameForPath(dstPath, &ctx);
+                }
+            }
+            ImGui::Separator();
             if (!already && ImGui::MenuItem("\xe2\x98\x85 Add to Favorites"))
                 bks.push_back(dir.path);
             if (already && ImGui::MenuItem("Remove from Favorites"))
                 bks.erase(std::remove(bks.begin(), bks.end(), dir.path), bks.end());
+            ImGui::Separator();
+            if (ImGui::MenuItem("Reveal in Explorer")) {
+                const std::wstring wpath = util::FileSystem::PathFromUtf8(dir.path).wstring();
+                const std::wstring args  = L"/select," + wpath;
+                ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+            }
+            if (ImGui::MenuItem("Copy Path"))
+                ImGui::SetClipboardText(dir.path.c_str());
+            if (ImGui::MenuItem("Copy Project Path")) {
+                const std::string projectPath = ToProjectAssetPath(dir.path, ctx);
+                ImGui::SetClipboardText(projectPath.c_str());
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete")) {
+                const std::string path = dir.path;
+                const std::string parent = normDir;
+                EditorContext* context = &ctx;
+                ModalDialog::OpenConfirm("Delete Folder",
+                    "Delete \"" + util::FileSystem::GetFilename(path) + "\" and all contents?",
+                    [this, path, parent, context]() {
+                        if (util::FileSystem::SamePathText(m_currentPath, path) ||
+                            util::FileSystem::IsChildPathText(m_currentPath, path))
+                            m_currentPath = parent;
+                        if (context->undoStack)
+                            context->undoStack->Execute(CreateAssetDeleteCommand({ path }, *context));
+                        InvalidateTreeCache(parent);
+                        RefreshDirectory();
+                    });
+            }
             ImGui::EndPopup();
         }
         // ヒエラルキーエンティティをフォルダノードにドロップ → そのフォルダへ Prefab 保存
@@ -1175,6 +1386,18 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             if (SaveHierarchyPayloadAsPrefab(
                     ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, dir.path)) {
                 RefreshDirectory();
+            }
+            if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                const std::string srcRelPath(static_cast<const char*>(p->Data), p->DataSize - 1);
+                std::string srcAbs;
+                std::string dstAbs;
+                if (MoveProjectAssetToDirectory(srcRelPath, dir.path, ctx, srcAbs, dstAbs)) {
+                    if (ctx.selectedAssetPath == srcAbs) ctx.selectedAssetPath.clear();
+                    ResetAssetPreviewCache(srcAbs);
+                    InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
+                    InvalidateTreeCache(dir.path);
+                    RefreshDirectory();
+                }
             }
             ImGui::EndDragDropTarget();
         }
@@ -1241,7 +1464,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    // .tex descriptor: ImageImporter 経由でロードして GPU テクスチャを表示
+    // 画像 + .meta sidecar: ImageImporter 経由でロードして GPU テクスチャを表示
     if (e.ext == ".tex" && ctx.resources && ctx.imguiRenderer) {
         TexDescPreview& preview = m_texDescPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
@@ -1347,10 +1570,22 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     s_tr.skinnedMaterialSphere = CreateSkinnedPreviewSphere(*ctx.resources, 64);
                 if (!s_tr.waterMaterialSphere)
                     s_tr.waterMaterialSphere = CreateWaterPreviewSphere(*ctx.resources, 64);
-                const ThumbnailShaderFlavor flavor = DetectThumbnailShaderFlavor(preview.asset.shaderPath);
-                renderer::Mesh* previewMesh = (flavor == ThumbnailShaderFlavor::Skinned)
-                    ? s_tr.skinnedMaterialSphere
-                    : (flavor == ThumbnailShaderFlavor::Water ? s_tr.waterMaterialSphere : s_tr.materialSphere);
+                const ThumbnailShaderFlavor flavor = DetectMaterialThumbnailFlavor(preview.asset);
+                renderer::Mesh* previewMesh = nullptr;
+                if (flavor == ThumbnailShaderFlavor::Skinned)
+                    previewMesh = s_tr.skinnedMaterialSphere;
+                else if (flavor == ThumbnailShaderFlavor::Water)
+                    previewMesh = s_tr.waterMaterialSphere;
+                else if (flavor == ThumbnailShaderFlavor::Surface || flavor == ThumbnailShaderFlavor::Terrain)
+                    previewMesh = s_tr.materialSphere;
+
+                if (flavor == ThumbnailShaderFlavor::Unsupported && preview.previewTexture.IsValid()) {
+                    if (void* rawID = ctx.imguiRenderer->GetImTextureID(preview.previewTexture, *ctx.resources)) {
+                        DrawTextureThumbnail(rawID, preview.previewTextureWidth, preview.previewTextureHeight, origin, sz, hovered);
+                        return;
+                    }
+                }
+
                 if (previewMesh && RebuildMaterialThumbnailGpuData(preview, ctx)) {
                     preview.thumbnailRendered = RenderMeshThumbnail(
                         *ctx.renderer,
@@ -1370,10 +1605,32 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    // .fzasset: ModelAssetImporter (新 API) 経由でロードして LOD0 サブメッシュを 3D プレビュー
-    if (e.ext == ".fzasset" && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
-        ModelAssetPreview& preview = m_modelAssetPreviews[e.path];
-        const auto currentWriteTime = ReadLastWriteTime(e.path);
+    // インポート済み .fbx: LOD0 サブメッシュ + パッケージマテリアルを 3D プレビュー
+    // WHY: FBX を第一級アセットとして扱い、内部 .fzasset コンテナを UI へ露出しないため。
+    std::string previewModelPath;
+    if (e.ext == ".fbx") {
+        previewModelPath = e.path;
+    }
+    if (!previewModelPath.empty() && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+        ModelAssetPreview& preview = m_modelAssetPreviews[previewModelPath];
+        std::string previewWritePath = previewModelPath;
+        if (e.ext == ".fbx") {
+            const std::filesystem::path p = util::FileSystem::PathFromUtf8(e.path);
+            const std::string stem = util::FileSystem::PathToUtf8(p.stem());
+            const std::string fbxGuid = asset::AssetDatabase::GuidFromPath(
+                util::FileSystem::NormalizePathSeparators(e.path));
+            if (!fbxGuid.empty()) {
+                const std::filesystem::path bakedPath =
+                    util::FileSystem::PathFromUtf8(ctx.projectRoot)
+                    / "Library" / "Baked" / fbxGuid / (stem + ".fzasset");
+                const std::string resolved = util::FileSystem::NormalizePathSeparators(
+                    util::FileSystem::PathToUtf8(bakedPath));
+                if (util::FileSystem::Exists(resolved))
+                    previewWritePath = resolved;
+            }
+        }
+        // 物理実体は Library/Baked の内部コンテナなので、更新検知は解決後のパスで行う。
+        const auto currentWriteTime = ReadLastWriteTime(previewWritePath);
         if (currentWriteTime != preview.lastWriteTime) {
             if (m_resources)
                 for (auto& mp : preview.slotMaterials)
@@ -1388,21 +1645,23 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
         EnsureThumbnailRT(preview, ctx);
         if (!preview.handle.IsValid() && !preview.failed) {
-            FBZZ_LOG_INFO("AssetBrowserItems: Load<ModelAsset> [%s]", e.path.c_str());
+            FBZZ_LOG_INFO("AssetBrowserItems: Load<ModelAsset> [%s]", previewModelPath.c_str());
             // WHY: インポート直後やファイル監視直後は、生成前に一度 Load して Null が
             //      AssetManager にキャッシュされることがある。サムネイル再試行時は失敗 cache を掃除する。
             asset::AssetManager::FlushFailed();
-            preview.handle = asset::AssetManager::Load<asset::ModelAsset>(e.path);
+            preview.handle = asset::AssetManager::Load<asset::ModelAsset>(previewModelPath);
             if (!preview.handle.IsValid()) {
-                FBZZ_LOG_ERROR("AssetBrowserItems: ModelAsset load failed [%s]", e.path.c_str());
+                FBZZ_LOG_ERROR("AssetBrowserItems: ModelAsset load failed [%s]", previewModelPath.c_str());
                 preview.failed = true;
             }
         }
         // マテリアルスロットを初回ロード (materials/slotName.mat -> per-slot MaterialPreview)
         if (preview.handle.IsValid() && !preview.materialsLoaded) {
             preview.materialsLoaded = true;
+            const std::filesystem::path srcPath =
+                util::FileSystem::PathFromUtf8(previewModelPath);
             const std::filesystem::path pkgDir =
-                util::FileSystem::PathFromUtf8(e.path).parent_path();
+                srcPath.parent_path() / srcPath.stem();
             const std::string matDir = util::FileSystem::NormalizePathSeparators(
                 util::FileSystem::PathToUtf8(pkgDir / "materials"));
             if (const asset::ModelAsset* m0 = asset::AssetManager::Get(preview.handle)) {
@@ -1461,8 +1720,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     if (sub.materialSlotIndex < preview.slotMaterials.size() &&
                         !preview.slotMaterials[sub.materialSlotIndex].failed) {
                         matPrev = &preview.slotMaterials[sub.materialSlotIndex];
-                        if (!RebuildMaterialThumbnailGpuData(*matPrev, ctx))
+                        if (DetectMaterialThumbnailFlavor(matPrev->asset) == ThumbnailShaderFlavor::Unsupported ||
+                            !RebuildMaterialThumbnailGpuData(*matPrev, ctx)) {
                             matPrev = nullptr;
+                        }
                     }
                     const bool ok = RenderMeshThumbnail(
                         *ctx.renderer, *ctx.resources,
@@ -1472,7 +1733,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         matPrev ? matPrev->shader : renderer::ResourceHandle<renderer::ShaderTag>{},
                         matPrev ? matPrev->materialCB : renderer::ResourceHandle<renderer::ConstantBufferTag>{},
                         matPrev ? &matPrev->textures : nullptr,
-                        matPrev ? DetectThumbnailShaderFlavor(matPrev->shaderPath) : ThumbnailShaderFlavor::Surface,
+                        matPrev ? DetectMaterialThumbnailFlavor(matPrev->asset) : ThumbnailShaderFlavor::Surface,
                         matPrev ? &matPrev->asset : nullptr,
                         firstDraw, combinedCenter, combinedRadius);
                     if (ok) { preview.thumbnailRendered = true; firstDraw = false; }
@@ -1480,7 +1741,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             }
             if (!preview.thumbnailRendered) preview.failed = true;
         }
-        if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "FZASSET")) return;
+        if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "FBX")) return;
     }
 
     // 仮想 .mesh サブアセット (::mesh:: 合成パス): .fzasset 内の特定サブメッシュを 3D プレビュー
@@ -1875,7 +2136,8 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         // primary は DrawEntry から渡された ctx に依存するため外側で描画済み
     }
     // ! バッジ: 未変換モデルファイルに赤丸で警告表示
-    if (!e.isDir && IsImportableRaw(e.ext)) {
+    // WHY: FBX は正規モデルアセットとして扱うため、未変換警告は出さない。
+    if (!e.isDir && IsImportableRaw(e.ext) && e.ext != ".fbx") {
         const float r  = sz * 0.15f;
         const float cx = origin.x + sz - r;
         const float cy = origin.y + r;
@@ -1900,8 +2162,8 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         const float cy = origin.y + r + 2.0f;
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
-    // ▶/▼ 展開トグル: fzasset はサブアセットを持つ
-    if (!e.isDir && e.ext == ".fzasset") {
+    // ▶/▼ 展開トグル: FBX はサブアセットを持つ
+    if (!e.isDir && e.ext == ".fbx") {
         const bool expanded = m_expandedAssets.count(e.path) > 0;
         const float ts  = sz * 0.18f; // 三角サイズ
         const float bx  = origin.x + 2.0f;
@@ -2076,27 +2338,15 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
             auto command = std::make_unique<CompositeCommand>("Duplicate Assets");
             for (const auto& srcPath : paths) {
-                if (util::FileSystem::IsDirectory(srcPath)) continue;
-                const std::string dir  = util::FileSystem::GetDirectory(srcPath);
-                const std::string stem = std::filesystem::path(srcPath).stem().string();
-                const std::string ext  = util::StringUtils::ToLower(
-                    util::FileSystem::GetExtension(srcPath));
-                std::string dstPath;
-                for (int k = 2; k <= 999; ++k) {
-                    dstPath = util::FileSystem::NormalizePathSeparators(
-                        dir + stem + "(" + std::to_string(k) + ")" + ext);
-                    if (!util::FileSystem::Exists(dstPath)) break;
-                }
-                if (!dstPath.empty() && util::FileSystem::CopyFile(
-                        util::FileSystem::PathFromUtf8(srcPath),
-                        util::FileSystem::PathFromUtf8(dstPath))) {
+                const bool isDir = util::FileSystem::IsDirectory(srcPath);
+                const std::string dstPath = UniqueDuplicatePath(srcPath, isDir);
+                if (dstPath.empty()) continue;
+                if (CopyAssetPath(srcPath, dstPath, isDir)) {
                     EditorContext* context = &ctx;
                     command->Add(std::make_unique<LambdaCommand>(
                         "Duplicate Asset",
-                        [srcPath, dstPath, context]() {
-                            util::FileSystem::CopyFile(
-                                util::FileSystem::PathFromUtf8(srcPath),
-                                util::FileSystem::PathFromUtf8(dstPath));
+                        [srcPath, dstPath, isDir, context]() {
+                            CopyAssetPath(srcPath, dstPath, isDir);
                             context->requestAssetBrowserRefresh = true;
                         },
                         [dstPath, context]() {
@@ -2171,30 +2421,18 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         }
         ImGui::Separator();
     }
-    if (!e.isDir && !e.isPackageAsset && ImGui::MenuItem("Duplicate")) {
-        const std::string dir  = util::FileSystem::GetDirectory(e.path);
-        const std::string name = std::filesystem::path(e.path).stem().string();
-        const std::string ext  = e.ext;
-        std::string dstPath;
-        for (int n = 2; ; ++n) {
-            dstPath = util::FileSystem::NormalizePathSeparators(
-                dir + name + "(" + std::to_string(n) + ")" + ext);
-            if (!util::FileSystem::Exists(dstPath)) break;
-            if (n > 999) { dstPath.clear(); break; }
-        }
+    if (!e.isMount && !e.isPackageAsset && ImGui::MenuItem("Duplicate")) {
+        const std::string dstPath = UniqueDuplicatePath(e.path, e.isDir);
         if (!dstPath.empty()) {
-            if (util::FileSystem::CopyFile(
-                    util::FileSystem::PathFromUtf8(e.path),
-                    util::FileSystem::PathFromUtf8(dstPath))) {
+            if (CopyAssetPath(e.path, dstPath, e.isDir)) {
                 if (ctx.undoStack) {
                     const std::string srcPath = e.path;
+                    const bool isDir = e.isDir;
                     EditorContext* context = &ctx;
                     ctx.undoStack->Push(std::make_unique<LambdaCommand>(
                         "Duplicate Asset",
-                        [srcPath, dstPath, context]() {
-                            util::FileSystem::CopyFile(
-                                util::FileSystem::PathFromUtf8(srcPath),
-                                util::FileSystem::PathFromUtf8(dstPath));
+                        [srcPath, dstPath, isDir, context]() {
+                            CopyAssetPath(srcPath, dstPath, isDir);
                             context->requestAssetBrowserRefresh = true;
                         },
                         [dstPath, context]() {
@@ -2203,6 +2441,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                         }));
                 }
                 RefreshDirectory();
+                BeginRenameForPath(dstPath, &ctx);
             } else {
                 FBZZ_LOG_ERROR("Duplicate failed: %s", e.path.c_str());
             }
@@ -2238,13 +2477,17 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         const std::wstring args  = L"/select," + wpath;
         ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
     }
+    if (ImGui::MenuItem("Copy Path")) {
+        ImGui::SetClipboardText(e.path.c_str());
+    }
+    if (ImGui::MenuItem("Copy Project Path")) {
+        const std::string projectPath = ToProjectAssetPath(e.path, ctx);
+        ImGui::SetClipboardText(projectPath.c_str());
+    }
     ImGui::Separator();
     ImGui::BeginDisabled(e.isMount || e.isPackageAsset);
     if (ImGui::MenuItem("Rename")) {
-        m_renamingPath = e.path;
-        std::strncpy(m_renameBuffer, e.name.c_str(), sizeof(m_renameBuffer) - 1);
-        m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-        m_renameNeedFocus = true;
+        BeginRenameForPath(e.path, &ctx);
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Delete")) {
@@ -2274,19 +2517,30 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
 {
     if (m_renamingPath == e.path) {
         ImGui::SetNextItemWidth(m_iconSize);
+        const bool applyInitialSelection = m_renameNeedFocus;
         if (m_renameNeedFocus) { ImGui::SetKeyboardFocusHere(); m_renameNeedFocus = false; }
-        constexpr ImGuiInputTextFlags renameFlags =
-            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll;
+        constexpr ImGuiInputTextFlags renameFlags = ImGuiInputTextFlags_EnterReturnsTrue;
         const bool enterPressed = ImGui::InputText("##rename", m_renameBuffer,
                                                    sizeof(m_renameBuffer), renameFlags);
+        if (applyInitialSelection && ImGui::IsItemActive()) {
+            int selectionEnd = static_cast<int>(std::strlen(m_renameBuffer));
+            if (!e.isDir) {
+                const std::string name = m_renameBuffer;
+                const size_t dot = name.rfind('.');
+                if (dot != std::string::npos && dot > 0)
+                    selectionEnd = static_cast<int>(dot);
+            }
+            if (ImGuiInputTextState* state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                state->SetSelection(0, selectionEnd);
+        }
         if (enterPressed) {
             if (m_renameBuffer[0] != '\0') {
                 const std::string dir     = util::FileSystem::GetDirectory(e.path);
                 const std::string newPath = dir + m_renameBuffer;
                 if (newPath != e.path) {
                     auto doRename = [this, oldPath = e.path, newPath, context = &ctx]() {
-                        if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(oldPath),
-                                                      util::FileSystem::PathFromUtf8(newPath))) {
+                        // .meta サイドカーも一緒に動かし、GUID 索引を追随させる。
+                        if (!MoveAssetWithSidecar(oldPath, newPath)) {
                             FBZZ_LOG_ERROR("Rename failed: %s -> %s", oldPath.c_str(), newPath.c_str());
                         } else {
                             if (context->undoStack) {
@@ -2297,16 +2551,12 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
                                     "Rename Asset",
                                     [oldPath, newPath, refresh]() {
                                         if (util::FileSystem::Exists(oldPath))
-                                            util::FileSystem::Rename(
-                                                util::FileSystem::PathFromUtf8(oldPath),
-                                                util::FileSystem::PathFromUtf8(newPath));
+                                            MoveAssetWithSidecar(oldPath, newPath);
                                         refresh();
                                     },
                                     [oldPath, newPath, refresh]() {
                                         if (util::FileSystem::Exists(newPath))
-                                            util::FileSystem::Rename(
-                                                util::FileSystem::PathFromUtf8(newPath),
-                                                util::FileSystem::PathFromUtf8(oldPath));
+                                            MoveAssetWithSidecar(newPath, oldPath);
                                         refresh();
                                     }));
                             }
@@ -2340,10 +2590,7 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
         ImGui::TextUnformatted(display.c_str());
 
         if (!e.isMount && ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_F2)) {
-            m_renamingPath = e.path;
-            std::strncpy(m_renameBuffer, e.name.c_str(), sizeof(m_renameBuffer) - 1);
-            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-            m_renameNeedFocus = true;
+            BeginRenameForPath(e.path, &ctx);
         }
     }
 }
@@ -2356,10 +2603,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
             m_pendingRenamePath.clear();
         } else if (!e.isMount &&
                    static_cast<float>(ImGui::GetTime()) - m_pendingRenameTimer > 0.5f) {
-            m_renamingPath = m_pendingRenamePath;
-            std::strncpy(m_renameBuffer, e.name.c_str(), sizeof(m_renameBuffer) - 1);
-            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-            m_renameNeedFocus   = true;
+            BeginRenameForPath(m_pendingRenamePath, &ctx);
             m_pendingRenamePath.clear();
         }
     }
@@ -2372,19 +2616,29 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     ImGui::InvisibleButton("##icon", { sz, sz });
     const bool hov = ImGui::IsItemHovered();
 
+    const bool primarySelected = !e.isDir && e.path == ctx.selectedAssetPath;
+    const bool selected = primarySelected || m_selectedPaths.count(e.path) > 0;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ui::DrawSelectionBackground(
+        dl,
+        { origin.x - 4.0f, origin.y - 4.0f },
+        { origin.x + sz + 4.0f, origin.y + sz + 22.0f },
+        selected,
+        hov,
+        primarySelected,
+        5.0f);
+
     DrawAssetPreviewIconAt(origin, sz, e, ctx, hov);
 
-    // 選択ハイライト
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    if (!e.isDir && e.path == ctx.selectedAssetPath) {
-        dl->AddRect(origin, { origin.x + sz, origin.y + sz }, IM_COL32(255, 200, 80, 220), 3.0f, 0, 2.0f);
-    } else if (!e.isDir && m_selectedPaths.count(e.path) > 0) {
-        dl->AddRect(origin, { origin.x + sz, origin.y + sz }, IM_COL32(80, 160, 255, 180), 3.0f, 0, 1.5f);
-    }
+    // 選択中の対象はアイコン本体にも細い枠を重ね、サムネイル背景との差を残す。
+    if (selected)
+        dl->AddRect(origin, { origin.x + sz, origin.y + sz },
+                    ui::SelectionBorderColor(primarySelected), 3.0f, 0,
+                    primarySelected ? 2.0f : 1.35f);
     DrawEntryBadges(dl, origin, sz, e);
 
-    // ドラッグソース (ファイルのみ)
-    if (!e.isDir && ImGui::BeginDragDropSource()) {
+    // ドラッグソース。フォルダも移動対象にし、左ペインのフォルダツリーへ直接整理できるようにする。
+    if (!e.isMount && !e.isPackageAsset && ImGui::BeginDragDropSource()) {
         m_entryDragStarted = true;  // ドラッグ中はリリース時の選択変更を抑制
         const std::string payloadPath = ToProjectAssetPath(e.path, ctx);
         ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
@@ -2398,33 +2652,14 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
             RefreshDirectory();
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
             const std::string srcRelPath(static_cast<const char*>(p->Data), p->DataSize - 1);
-            const std::string srcAbs = util::FileSystem::NormalizePathSeparators(ctx.projectRoot + "/" + srcRelPath);
-            const std::string dstAbs = util::FileSystem::NormalizePathSeparators(
-                e.path + "/" + util::FileSystem::GetFilename(srcAbs));
-            if (srcAbs != dstAbs && !util::FileSystem::Exists(dstAbs)) {
-                if (util::FileSystem::Rename(util::FileSystem::PathFromUtf8(srcAbs),
-                                             util::FileSystem::PathFromUtf8(dstAbs))) {
-                    if (ctx.undoStack) {
-                        EditorContext* context = &ctx;
-                        auto applyMove = [context](const std::string& from, const std::string& to) {
-                            if (util::FileSystem::Exists(from) && !util::FileSystem::Exists(to))
-                                util::FileSystem::Rename(
-                                    util::FileSystem::PathFromUtf8(from),
-                                    util::FileSystem::PathFromUtf8(to));
-                            context->requestAssetBrowserRefresh = true;
-                        };
-                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                            "Move Asset",
-                            [applyMove, srcAbs, dstAbs]() { applyMove(srcAbs, dstAbs); },
-                            [applyMove, srcAbs, dstAbs]() { applyMove(dstAbs, srcAbs); }));
-                    }
-                    if (ctx.selectedAssetPath == srcAbs) ctx.selectedAssetPath.clear();
-                    ResetAssetPreviewCache(srcAbs);
-                    InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
-                    RefreshDirectory();
-                } else {
-                    FBZZ_LOG_ERROR("Move failed: %s -> %s", srcAbs.c_str(), dstAbs.c_str());
-                }
+            std::string srcAbs;
+            std::string dstAbs;
+            if (MoveProjectAssetToDirectory(srcRelPath, e.path, ctx, srcAbs, dstAbs)) {
+                if (ctx.selectedAssetPath == srcAbs) ctx.selectedAssetPath.clear();
+                ResetAssetPreviewCache(srcAbs);
+                InvalidateTreeCache(util::FileSystem::GetDirectory(srcAbs));
+                InvalidateTreeCache(e.path);
+                RefreshDirectory();
             }
         }
         ImGui::EndDragDropTarget();
@@ -2443,8 +2678,8 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     DrawEntryContextMenu(e, ctx);
 
-    // fzasset の ▶/▼ 三角クリックで展開トグル
-    if (hov && e.ext == ".fzasset" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    // FBX の ▶/▼ 三角クリックで展開トグル
+    if (hov && e.ext == ".fbx" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         const float ts  = sz * 0.18f;
         const float bx  = origin.x + 2.0f;
         const float by  = origin.y + sz - ts - 2.0f;

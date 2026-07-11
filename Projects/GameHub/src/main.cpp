@@ -1,18 +1,29 @@
 // FBZZ Engine
 // main.cpp | fbzz::hub
-// FBZZ Hub の Win32 / DX11 / ImGui エントリポイント
+// FBZZ Hub の Win32 / ImGui エントリポイント
+//
+// WHY: 以前は本ファイルが D3D11 デバイス・スワップチェーンを直接生成し、ImGui の DX11 バックエンドも
+//      直叩きしていた。DX12 移行に備え、GPU バックエンドの生成と描画を Engine の抽象層
+//      (RendererFactory / IRenderer / IImGuiRenderer) へ寄せ、GameHub からは DX11 具象型を排除する。
+//      ウィンドウ枠 (アイコン・ダークタイトルバー・DPI) は Hub 固有の見た目なので Win32 で維持する。
 #include "HubApp.hpp"
 
+#include <Engine/Renderer/IImGuiRenderer.hpp>
+#include <Engine/Renderer/IRenderer.hpp>
+#include <Engine/Renderer/RendererFactory.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Math/Vector4.hpp>
+
 #include <Windows.h>
-#include <d3d11.h>
 #include <dwmapi.h>
-#include <wrl/client.h>
 #include <imgui.h>
-#include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <thread>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -22,21 +33,15 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace {
 
-using Microsoft::WRL::ComPtr;
-
 constexpr wchar_t WINDOW_CLASS_NAME[] = L"FBZZHubWindowClass";
 constexpr int INITIAL_WIDTH = 960;
 constexpr int INITIAL_HEIGHT = 640;
 constexpr int APP_ICON_ID = 101;
 
-struct D3DState {
-    ComPtr<ID3D11Device> device;
-    ComPtr<ID3D11DeviceContext> context;
-    ComPtr<IDXGISwapChain> swapChain;
-    ComPtr<ID3D11RenderTargetView> renderTargetView;
-};
-
-D3DState g_d3d;
+// WndProc からのリサイズ通知を届けるための非所有ポインタ。
+// WHY: WM_SIZE は自由関数の WndProc に届くため、バックバッファを持つ IRenderer をグローバルで参照する。
+//      デバイス自体の寿命は wWinMain 内の RendererBundle が所有する。
+fbzz::renderer::IRenderer* g_renderer = nullptr;
 bool g_running = true;
 
 std::string ResolveJapaneseFontPath()
@@ -81,92 +86,6 @@ void EnableDpiAwareness()
     SetProcessDPIAware();
 }
 
-bool CreateRenderTarget()
-{
-    ComPtr<ID3D11Texture2D> backBuffer;
-    if (FAILED(g_d3d.swapChain->GetBuffer(0, IID_PPV_ARGS(backBuffer.GetAddressOf()))))
-        return false;
-
-    return SUCCEEDED(g_d3d.device->CreateRenderTargetView(
-        backBuffer.Get(),
-        nullptr,
-        g_d3d.renderTargetView.GetAddressOf()));
-}
-
-void CleanupRenderTarget()
-{
-    if (g_d3d.context) {
-        g_d3d.context->OMSetRenderTargets(0, nullptr, nullptr);
-    }
-    g_d3d.renderTargetView.Reset();
-}
-
-bool InitD3D(HWND hwnd)
-{
-    DXGI_SWAP_CHAIN_DESC desc{};
-    desc.BufferCount = 2;
-    desc.BufferDesc.Width = 0;
-    desc.BufferDesc.Height = 0;
-    desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.BufferDesc.RefreshRate.Numerator = 0;
-    desc.BufferDesc.RefreshRate.Denominator = 1;
-    desc.Flags = 0;
-    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    desc.OutputWindow = hwnd;
-    desc.SampleDesc.Count = 1;
-    desc.SampleDesc.Quality = 0;
-    desc.Windowed = TRUE;
-    desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-
-    UINT flags = 0;
-#ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-    D3D_FEATURE_LEVEL featureLevel{};
-    constexpr D3D_FEATURE_LEVEL featureLevels[] = {
-        D3D_FEATURE_LEVEL_11_0,
-        D3D_FEATURE_LEVEL_10_0
-    };
-
-    const HRESULT hr = D3D11CreateDeviceAndSwapChain(
-        nullptr,
-        D3D_DRIVER_TYPE_HARDWARE,
-        nullptr,
-        flags,
-        featureLevels,
-        2,
-        D3D11_SDK_VERSION,
-        &desc,
-        g_d3d.swapChain.GetAddressOf(),
-        g_d3d.device.GetAddressOf(),
-        &featureLevel,
-        g_d3d.context.GetAddressOf());
-
-    if (FAILED(hr))
-        return false;
-
-    return CreateRenderTarget();
-}
-
-void CleanupD3D()
-{
-    CleanupRenderTarget();
-    g_d3d.swapChain.Reset();
-    g_d3d.context.Reset();
-    g_d3d.device.Reset();
-}
-
-void ResizeD3D(UINT width, UINT height)
-{
-    if (!g_d3d.swapChain || width == 0 || height == 0)
-        return;
-
-    CleanupRenderTarget();
-    g_d3d.swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-    CreateRenderTarget();
-}
-
 RECT CalculateWindowRect()
 {
     RECT rect{ 0, 0, INITIAL_WIDTH, INITIAL_HEIGHT };
@@ -189,8 +108,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     switch (msg) {
     case WM_SIZE:
-        if (wParam != SIZE_MINIMIZED) {
-            ResizeD3D(static_cast<UINT>(LOWORD(lParam)), static_cast<UINT>(HIWORD(lParam)));
+        if (wParam != SIZE_MINIMIZED && g_renderer) {
+            // スワップチェーン・バックバッファの再構築はバックエンドに委譲する。
+            g_renderer->Resize(static_cast<uint32_t>(LOWORD(lParam)),
+                               static_cast<uint32_t>(HIWORD(lParam)));
         }
         return 0;
     case WM_DESTROY:
@@ -240,7 +161,10 @@ HWND CreateHubWindow(HINSTANCE instance)
     return hwnd;
 }
 
-void InitImGui(HWND hwnd)
+// ImGui コンテキスト・フォント・スタイルを構築する (GPU / Win32 バックエンド初期化は含まない)。
+// WHY: バックエンドの初期化は IImGuiRenderer::ImGuiInit に委譲するため、ここでは Hub 固有の
+//      日本語フォントや ini ファイル名など、コンテキスト側の設定だけを行う。
+void SetupImGuiContext()
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -261,15 +185,6 @@ void InitImGui(HWND hwnd)
     }
 
     ImGui::StyleColorsDark();
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(g_d3d.device.Get(), g_d3d.context.Get());
-}
-
-void ShutdownImGui()
-{
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
 }
 
 } // namespace
@@ -282,18 +197,41 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     if (!hwnd)
         return 1;
 
-    if (!InitD3D(hwnd)) {
+    // クライアント領域の実サイズでバックエンドのスワップチェーンを初期化する。
+    RECT clientRect{};
+    GetClientRect(hwnd, &clientRect);
+    const uint32_t clientWidth  = static_cast<uint32_t>(clientRect.right - clientRect.left);
+    const uint32_t clientHeight = static_cast<uint32_t>(clientRect.bottom - clientRect.top);
+
+    // バックエンド具象の選択は RendererFactory に集約する (GameHub は DX11 を直接知らない)。
+    auto bundle = fbzz::renderer::CreateRenderer(
+        fbzz::renderer::RendererBackend::DX11, hwnd, clientWidth, clientHeight);
+    if (!bundle.renderer || !bundle.imguiRenderer) {
         DestroyWindow(hwnd);
         UnregisterClassW(WINDOW_CLASS_NAME, instance);
         return 1;
     }
+    g_renderer = bundle.renderer.get();
 
-    InitImGui(hwnd);
+    // GPU リソース (サムネイルテクスチャ) の所有窓口。
+    fbzz::renderer::ResourceManager resources(*bundle.renderer);
+
+    // ImGui: コンテキスト設定 → バックエンド (Win32 / GPU) 初期化の順で立ち上げる。
+    SetupImGuiContext();
+    bundle.imguiRenderer->ImGuiInit(hwnd);
 
     fbzz::hub::HubApp app;
-    app.Init(g_d3d.device.Get());
+    app.Init(resources, *bundle.imguiRenderer);
+
+    const fbzz::math::Vector4 clearColor(0.08f, 0.09f, 0.10f, 1.0f);
+
+    // WHY: IRenderer::EndFrame は vsync を指定できず SyncInterval=0 で Present するため、
+    //      ランチャーがフレームを無制限に回して CPU/GPU を占有しないよう ~60 FPS に緩く制限する。
+    constexpr auto FRAME_BUDGET = std::chrono::microseconds(16'666);
 
     while (g_running) {
+        const auto frameStart = std::chrono::steady_clock::now();
+
         MSG msg{};
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
@@ -305,24 +243,33 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         if (!g_running)
             break;
 
-        ImGui_ImplDX11_NewFrame();
-        ImGui_ImplWin32_NewFrame();
+        bundle.renderer->BeginFrame();
+
+        bundle.imguiRenderer->ImGuiNewFrame();
         ImGui::NewFrame();
 
         app.Render();
 
         ImGui::Render();
 
-        constexpr float clearColor[4] = { 0.08f, 0.09f, 0.10f, 1.0f };
-        g_d3d.context->OMSetRenderTargets(1, g_d3d.renderTargetView.GetAddressOf(), nullptr);
-        g_d3d.context->ClearRenderTargetView(g_d3d.renderTargetView.Get(), clearColor);
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        g_d3d.swapChain->Present(1, 0);
+        bundle.renderer->Clear(clearColor);
+        bundle.imguiRenderer->ImGuiRenderDrawData();
+        bundle.renderer->EndFrame();
+
+        std::this_thread::sleep_until(frameStart + FRAME_BUDGET);
     }
 
+    // WHY: GPU リソースはデバイス破棄前に解放する。app (サムネイル) → ImGui → ResourceManager の順に
+    //      畳んでから IRenderer を Shutdown し、最後に RendererBundle を破棄する。
     app.Shutdown();
-    ShutdownImGui();
-    CleanupD3D();
+    bundle.imguiRenderer->ImGuiShutdown();
+    ImGui::DestroyContext();
+    resources.Reset();
+    g_renderer = nullptr;
+    bundle.renderer->Shutdown();
+    bundle.imguiRenderer.reset();
+    bundle.renderer.reset();
+
     if (IsWindow(hwnd)) {
         DestroyWindow(hwnd);
     }

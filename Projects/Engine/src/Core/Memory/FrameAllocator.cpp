@@ -19,13 +19,13 @@ void FrameAllocator::Shutdown()
 
 void FrameAllocator::BeginFrame()
 {
-    m_allocator.Reset();
     ++m_frameIndex;
 }
 
 void FrameAllocator::EndFrame()
 {
-    // EndFrame は現時点では統計確認用の境界。実メモリの再利用は次の BeginFrame で行う。
+    // フレーム終端でメモリを一括解放し、次フレームの再利用に備える。
+    m_allocator.Reset();
 }
 
 void* FrameAllocator::Allocate(std::size_t size, std::size_t alignment)

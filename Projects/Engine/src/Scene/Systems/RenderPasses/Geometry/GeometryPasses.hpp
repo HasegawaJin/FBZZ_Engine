@@ -48,6 +48,9 @@ void ExecuteDeferredLightingPass           (RenderPassContext& ctx);
 void ExecuteDeferredSkinnedForwardPass     (RenderPassContext& ctx);
 void ExecuteDeferredForwardTransparentPass (RenderPassContext& ctx);
 void ExecuteSkyPass                        (RenderPassContext& ctx);
+void ExecuteSunMoonPass                    (RenderPassContext& ctx);
+void ExecuteSkyCapturePass                 (RenderPassContext& ctx);
+void ExecuteSkyLightBakePass               (RenderPassContext& ctx);
 void ExecuteParticlePass                   (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
 

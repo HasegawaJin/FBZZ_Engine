@@ -74,11 +74,17 @@ float4 ComputeCloud(float3 rayDir, float3 sunDir,
     float  shadowDensity = CloudDensity(shadowRay, CLOUD_H, time);
     float  shadow        = exp(-shadowDensity * 3.0f);
 
+    // 太陽方向との一致度。前方散乱で太陽側を向いた雲縁が明るく輝く（シルバーライニング）。
+    // WHY: 従来は upness（真上向き）だけで照明しており、太陽がどこにあっても雲は天頂が最も明るく、
+    //      逆光時の縁取りが表現できなかった。sunDir との内積を主光として加え、立体感を出す。
+    float  sunAmount    = saturate(dot(rayDir, sunDir));
+    float  silverLining = pow(sunAmount, 6.0f);
+
     // 照明 : 上面 = 日向 / 下面 = 大気光
     float  upness   = saturate(dot(rayDir, float3(0.0f, 1.0f, 0.0f)));
     float3 sunColor = float3(1.0f, 0.95f, 0.85f) * (sunIntensity * 0.06f);
     float3 ambient  = atmosColor * 0.45f;
-    float3 cloudLit = sunColor * shadow * upness
+    float3 cloudLit = sunColor * shadow * (upness + silverLining * 1.5f)
                     + ambient * (1.0f - upness * 0.5f);
 
     return float4(cloudLit, saturate(density * 0.92f));

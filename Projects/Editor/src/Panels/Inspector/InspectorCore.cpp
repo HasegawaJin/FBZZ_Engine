@@ -71,7 +71,7 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
 
 } // namespace
 
-void DrawTransformInspector(scene::GameObject* go, EditorContext& ctx)
+void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
 {
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto& t = go->transform;
@@ -191,11 +191,34 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
             if (open) {
                 ImGui::Spacing();
                 ImGuiReflector reflector;
+                reflector.m_projectRoot = ctx.projectRoot; // アセットスロットの "..." パス検索用
                 if (ctx.activeScene) {
                     reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
                         auto* target = scene->GetGameObject(id);
                         return target ? target->name : "(Missing)";
                     };
+                    // ◎ピッカー用の候補一覧。シーンの全 GameObject を (ID, 名前) で列挙する。
+                    reflector.m_goListProvider =
+                        [scene = ctx.activeScene]() -> std::vector<std::pair<scene::EntityID, std::string>> {
+                            std::vector<std::pair<scene::EntityID, std::string>> out;
+                            for (auto& go : scene->GameObjects())
+                                out.emplace_back(go.GetID(), go.name);
+                            return out;
+                        };
+                    // 型付き参照 (FBZZ_REF<T>) の型チェック: 対象 GO が typeName の Script を持つか。
+                    // typeName が空 (任意 GameObject) なら常に true。
+                    reflector.m_refTypeValidator =
+                        [scene = ctx.activeScene](scene::EntityID id, const char* typeName) -> bool {
+                            if (!typeName || !typeName[0]) return true;
+                            auto* target = scene->GetGameObject(id);
+                            if (!target) return false;
+                            auto* sc = target->GetComponent<scene::ScriptComponent>();
+                            if (!sc) return false;
+                            for (const auto& entry : sc->scripts)
+                                if (entry.script && std::string(entry.script->GetTypeName()) == typeName)
+                                    return true;
+                            return false;
+                        };
                 }
                 entry.script->Reflect(reflector);
                 ImGui::Spacing();

@@ -8,7 +8,7 @@ namespace fbzz::editor {
 void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     DrawComponentSection<scene::ParticleEmitter>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Emitter",
-        [](scene::ParticleEmitter& pe, EditorContext&) {
+        [](scene::ParticleEmitter& pe, EditorContext& ctx) {
             widgets::DragVec3("Emit Position", pe.emitPosition);
             widgets::DragVec3("Emit Velocity", pe.emitVelocity);
             ImGui::DragFloat("Velocity Spread", &pe.velocitySpread, 0.01f, 0.0f, 20.0f);
@@ -60,10 +60,15 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             if (ImGui::Combo("Simulation", &sim, simItems, 2))
                 pe.simulationMode = static_cast<scene::ParticleSimulationMode>(sim);
 
-            char textureBuf[512];
-            std::snprintf(textureBuf, sizeof(textureBuf), "%s", pe.texturePath.c_str());
-            if (ImGui::InputText("Texture Path", textureBuf, sizeof(textureBuf))) {
-                pe.texturePath = textureBuf;
+            // .mat アセット参照。albedo テクスチャと blendMode を .mat から解決する。
+            // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            if (widgets::AssetPathField("Material (.mat)", pe.materialPath, ".mat", ctx.projectRoot)) {
+                pe.loadedMaterialPath.clear();
+                pe.texture = {};
+                pe.loadedTexturePath.clear();
+            }
+            // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
+            if (widgets::AssetPathField("Texture (fallback)", pe.texturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
                 pe.texture = {};
                 pe.loadedTexturePath.clear();
             }
@@ -79,7 +84,7 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
         });
 
     DrawComponentSection<scene::TrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Trail",
-        [](scene::TrailComponent& trail, EditorContext&) {
+        [](scene::TrailComponent& trail, EditorContext& ctx) {
             ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
             ImGui::DragInt("Max Points", &trail.maxPoints, 1, 2, 512);
             ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
@@ -110,10 +115,15 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 trail.attachBone = boneBuf;
             widgets::DragVec3("Attach Offset", trail.attachOffset, 0.001f);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
-            char textureBuf[512];
-            std::snprintf(textureBuf, sizeof(textureBuf), "%s", trail.texturePath.c_str());
-            if (ImGui::InputText("Texture Path", textureBuf, sizeof(textureBuf))) {
-                trail.texturePath = textureBuf;
+            // .mat アセット参照。albedo テクスチャを .mat から解決する。
+            // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
+                trail.loadedMaterialPath.clear();
+                trail.texture = {};
+                trail.loadedTexturePath.clear();
+            }
+            // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
+            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }
@@ -126,7 +136,7 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
         });
 
     DrawComponentSection<scene::MeshTrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Trail",
-        [](scene::MeshTrailComponent& trail, EditorContext&) {
+        [](scene::MeshTrailComponent& trail, EditorContext& ctx) {
             ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
             ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
             ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
@@ -141,10 +151,15 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
             ImGui::Checkbox("Double Sided", &trail.doubleSided);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
-            char textureBuf[512];
-            std::snprintf(textureBuf, sizeof(textureBuf), "%s", trail.texturePath.c_str());
-            if (ImGui::InputText("Texture Path", textureBuf, sizeof(textureBuf))) {
-                trail.texturePath = textureBuf;
+            // .mat アセット参照。albedo テクスチャと doubleSided を .mat から解決する。
+            // 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
+                trail.loadedMaterialPath.clear();
+                trail.texture = {};
+                trail.loadedTexturePath.clear();
+            }
+            // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
+            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }

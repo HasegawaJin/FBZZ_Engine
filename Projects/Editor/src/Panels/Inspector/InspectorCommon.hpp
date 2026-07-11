@@ -8,6 +8,7 @@
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/ColliderFit.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -30,6 +31,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
@@ -50,6 +52,7 @@
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
@@ -148,6 +151,17 @@ struct ComponentActiveEdit {
     scene::EntityID id;
     ImGuiID activeId = 0;
     T before{};
+    bool active = false;
+};
+
+// DrawComponentSectionCustom 用 — Snapshot 型を T と分離した版。
+// WHY: unique_ptr を持つコンポーネントでは T をそのままスナップショットに使えないため分離する。
+//      (T, Snapshot) ペアごとに static スロットが生成されるため MeshCollider / ConvexHull 分離を保証する。
+template<typename T, typename Snapshot>
+struct ComponentActiveEditCustom {
+    scene::EntityID entityId{};
+    ImGuiID activeId = 0;
+    Snapshot before{};
     bool active = false;
 };
 
@@ -470,6 +484,158 @@ void DrawComponentSection(scene::GameObject* go,
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     }
 }
+// DrawComponentSection の Snapshot カスタマイズ版。
+// WHY: unique_ptr を含むコンポーネント (MeshCollider 等) では、コンポーネント全体のコピーが
+//      physics body を消去してしまう。CaptureFn / ApplyFn を渡すことで
+//      serializable フィールドのみを Undo スナップショットとして保持できる。
+//      T が異なれば ComponentActiveEditCustom<T, Snapshot> の static も別インスタンスになる。
+template<typename T, typename Snapshot, typename DrawFn, typename CaptureFn, typename ApplyFn>
+void DrawComponentSectionCustom(
+    scene::GameObject* go,
+    EditorContext& ctx,
+    std::any& compClipboard,
+    const std::type_info*& compClipboardType,
+    const char* label,
+    DrawFn drawFn,
+    CaptureFn captureFn,
+    ApplyFn applyFn)
+{
+    auto* comp = go->GetComponent<T>();
+    if (!comp) return;
+
+    ImGui::PushID(label);
+    const bool canUndo = CanRecordEditorUndo(ctx);
+
+    // applyFn 経由でコンポーネントへ値を適用し、Undo コマンドを積む共通ヘルパー。
+    auto pushUndoCmd = [&](const std::string& desc, const Snapshot& before, const Snapshot& after) {
+        if (!ctx.undoStack || !ctx.activeScene) return;
+        scene::Scene* sc = ctx.activeScene;
+        const std::string iid = go->instanceId;
+        const auto dirty = ctx.markSceneDirty;
+        auto af = applyFn;
+        auto doApply = [sc, iid, dirty, af](const Snapshot& v) {
+            if (auto* target = sc->FindByGuid(iid))
+                if (auto* c = target->GetComponent<T>()) {
+                    af(*c, v);
+                    if (dirty) dirty();
+                }
+        };
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            desc,
+            [doApply, after]()  { doApply(after); },
+            [doApply, before]() { doApply(before); }));
+    };
+
+    // Enable / Disable チェックボックス
+    const Snapshot beforeEnabled = canUndo ? captureFn(*comp) : Snapshot{};
+    if (ImGui::Checkbox("##en", &comp->enabled)) {
+        if (canUndo) pushUndoCmd(std::string("Toggle ") + label, beforeEnabled, captureFn(*comp));
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    }
+    ImGui::SameLine();
+
+    const bool open = ImGui::CollapsingHeader(label,
+        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+
+    const float btnW = ImGui::GetFrameHeight();
+    ImGui::SameLine(ImGui::GetContentRegionMax().x - btnW);
+    if (ImGui::SmallButton("..."))
+        ImGui::OpenPopup("##comp_opts");
+
+    bool removeRequested = false;
+    if (ImGui::BeginPopup("##comp_opts")) {
+        if (ImGui::MenuItem("Reset")) {
+            const Snapshot before = captureFn(*comp);
+            const bool wasEnabled = comp->enabled;
+            applyFn(*comp, Snapshot{});
+            comp->enabled = wasEnabled;
+            if (canUndo) pushUndoCmd(std::string("Reset ") + label, before, captureFn(*comp));
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Copy Component")) {
+            compClipboard     = captureFn(*comp);
+            compClipboardType = &typeid(T);
+        }
+        const bool canPaste = compClipboardType && *compClipboardType == typeid(T)
+                           && compClipboard.type() == typeid(Snapshot);
+        if (ImGui::MenuItem("Paste Component Values", nullptr, false, canPaste)) {
+            const Snapshot before = captureFn(*comp);
+            const bool wasEnabled = comp->enabled;
+            applyFn(*comp, std::any_cast<Snapshot>(compClipboard));
+            comp->enabled = wasEnabled;
+            if (canUndo) pushUndoCmd(std::string("Paste ") + label, before, captureFn(*comp));
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Remove Component"))
+            removeRequested = true;
+        ImGui::EndPopup();
+    }
+
+    if (open) {
+        static ComponentActiveEditCustom<T, Snapshot> edit{};
+
+        ImGui::Spacing();
+        if (!canUndo) {
+            edit.active = false;
+            drawFn(*comp, ctx);
+        } else {
+            const Snapshot beforeDraw = captureFn(*comp);
+            const ImGuiID activeBefore = ImGui::GetActiveID();
+            drawFn(*comp, ctx);
+            const ImGuiID activeAfter = ImGui::GetActiveID();
+
+            if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
+                edit.entityId = go->GetID();
+                edit.activeId = activeAfter;
+                edit.before   = beforeDraw;
+                edit.active   = true;
+            } else if (edit.active && edit.entityId != go->GetID()) {
+                if (activeAfter != edit.activeId) edit.active = false;
+            } else if (edit.active && activeAfter != edit.activeId) {
+                pushUndoCmd(std::string("Change ") + label, edit.before, captureFn(*comp));
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                edit.active = false;
+            }
+        }
+        ImGui::Spacing();
+    }
+
+    ImGui::PopID();
+
+    if (!removeRequested) return;
+
+    // Remove + Undo/Redo : snapchat を使ってコンポーネントを再構築する。
+    const Snapshot removed = captureFn(*comp);
+    scene::Scene* scene = ctx.activeScene;
+    const std::string instanceId = go->instanceId;
+    const auto markDirty = ctx.markSceneDirty;
+    auto af = applyFn;
+    go->RemoveComponent<T>();
+    if (canUndo && scene) {
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            std::string("Remove ") + label,
+            [scene, instanceId, markDirty]() {
+                if (auto* target = scene->FindByGuid(instanceId)) {
+                    if (target->GetComponent<T>())
+                        target->RemoveComponent<T>();
+                    if (markDirty) markDirty();
+                }
+            },
+            [scene, instanceId, removed, markDirty, af]() {
+                if (auto* target = scene->FindByGuid(instanceId)) {
+                    if (!target->GetComponent<T>()) {
+                        auto& restored = target->AddComponent<T>();
+                        af(restored, removed);
+                    }
+                    if (markDirty) markDirty();
+                }
+            }));
+    }
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+}
+
 inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
 {
     static constexpr const char* kTypeNames[] = { "Directional", "Point", "Spot" };
@@ -504,7 +670,7 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc)
 
     if (lc.type == scene::LightComponent::Type::Directional) {
         ImGui::Separator();
-        ImGui::TextDisabled("Shadow");
+        ImGui::SeparatorText("Shadow");
         ImGui::Checkbox("Cast Shadows", &lc.castShadows);
         if (lc.castShadows) {
             ImGui::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
@@ -827,15 +993,27 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         shown |= addItem(category, "Sky Renderer", !go.GetComponent<scene::SkyRenderer>(), [&]() {
             go.AddComponent<scene::SkyRenderer>();
         });
+        shown |= addItem(category, "Sun Moon Renderer", !go.GetComponent<scene::SunMoonRenderer>(), [&]() {
+            go.AddComponent<scene::SunMoonRenderer>();
+        });
+        shown |= addItem(category, "Volumetric Cloud", !go.GetComponent<scene::VolumetricCloudComponent>(), [&]() {
+            go.AddComponent<scene::VolumetricCloudComponent>();
+        });
+        shown |= addItem(category, "Environment Light", !go.GetComponent<scene::EnvironmentLightComponent>(), [&]() {
+            go.AddComponent<scene::EnvironmentLightComponent>();
+        });
+        shown |= addItem(category, "Atmospheric Scattering", !go.GetComponent<scene::AtmosphericScatteringComponent>(), [&]() {
+            go.AddComponent<scene::AtmosphericScatteringComponent>();
+        });
         shown |= addItem(category, "Decal", !go.GetComponent<scene::DecalComponent>(), [&]() {
             go.AddComponent<scene::DecalComponent>();
         });
         shown |= addItem(category, "Terrain", !go.GetComponent<scene::TerrainComponent>(), [&]() {
             scene::TerrainComponent tc{};
-            tc.columns   = 33;
-            tc.rows      = 33;
+            tc.columns   = 65;
+            tc.rows      = 65;
             tc.cellSize  = 2.0f;
-            tc.maxHeight = 10.0f;
+            tc.maxHeight = 20.0f;
             tc.chunkSize = 32;
             for (int li = 0; li < 4; ++li)
                 tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
@@ -872,17 +1050,18 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         shown |= addItem(category, "Rigidbody", !go.GetComponent<scene::RigidBodyComponent>(), [&]() {
             go.AddComponent<scene::RigidBodyComponent>(CreateDefaultRigidBody());
         });
+        // Collider はアタッチ時にメッシュ bounds から寸法を自動計算する (Unity と同じ挙動)。
         shown |= addItem(category, "AABB Collider", !go.GetComponent<scene::AabbColliderComponent>(), [&]() {
-            go.AddComponent<scene::AabbColliderComponent>(CreateAabbCollider());
+            go.AddComponent<scene::AabbColliderComponent>(colliderfit::MakeFittedAabbCollider(go));
         });
         shown |= addItem(category, "Box Collider", !go.GetComponent<scene::BoxColliderComponent>(), [&]() {
-            go.AddComponent<scene::BoxColliderComponent>(CreateBoxCollider());
+            go.AddComponent<scene::BoxColliderComponent>(colliderfit::MakeFittedBoxCollider(go));
         });
         shown |= addItem(category, "Sphere Collider", !go.GetComponent<scene::SphereColliderComponent>(), [&]() {
-            go.AddComponent<scene::SphereColliderComponent>(CreateSphereCollider());
+            go.AddComponent<scene::SphereColliderComponent>(colliderfit::MakeFittedSphereCollider(go));
         });
         shown |= addItem(category, "Capsule Collider", !go.GetComponent<scene::CapsuleColliderComponent>(), [&]() {
-            go.AddComponent<scene::CapsuleColliderComponent>(CreateCapsuleCollider());
+            go.AddComponent<scene::CapsuleColliderComponent>(colliderfit::MakeFittedCapsuleCollider(go));
         });
         shown |= addItem(category, "Mesh Collider", !go.GetComponent<scene::MeshColliderComponent>(), [&]() {
             scene::MeshColliderComponent col;
@@ -904,6 +1083,44 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         });
         shown |= addItem(category, "Character Controller", !go.GetComponent<scene::CharacterControllerComponent>(), [&]() {
             go.AddComponent<scene::CharacterControllerComponent>();
+        });
+        return shown;
+    });
+
+    anyShown |= AddComponentCategory("Animation", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "Animator", !go.GetComponent<scene::AnimatorComponent>(), [&]() {
+            go.AddComponent<scene::AnimatorComponent>();
+            if (!go.GetComponent<scene::SkinnedMeshRenderer>())
+                go.AddComponent<scene::SkinnedMeshRenderer>();
+            if (!go.GetComponent<scene::MaterialComponent>())
+                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+        });
+        shown |= addItem(category, "IK Solver", !go.GetComponent<scene::IKSolverComponent>(), [&]() {
+            go.AddComponent<scene::IKSolverComponent>();
+        });
+        return shown;
+    });
+
+    anyShown |= AddComponentCategory("Audio", filter, [&](const char* category, const char*) {
+        return addItem(category, "Audio Source", !go.GetComponent<scene::AudioSourceComponent>(), [&]() {
+            go.AddComponent<scene::AudioSourceComponent>();
+        });
+    });
+
+    anyShown |= AddComponentCategory("Environment", filter, [&](const char* category, const char*) {
+        bool shown = false;
+        shown |= addItem(category, "Environment Light", !go.GetComponent<scene::EnvironmentLightComponent>(), [&]() {
+            go.AddComponent<scene::EnvironmentLightComponent>();
+        });
+        shown |= addItem(category, "Reflection Probe", !go.GetComponent<scene::ReflectionProbeComponent>(), [&]() {
+            go.AddComponent<scene::ReflectionProbeComponent>();
+        });
+        shown |= addItem(category, "Atmospheric Scattering", !go.GetComponent<scene::AtmosphericScatteringComponent>(), [&]() {
+            go.AddComponent<scene::AtmosphericScatteringComponent>();
+        });
+        shown |= addItem(category, "Post Process Volume", !go.GetComponent<scene::PostProcessVolumeComponent>(), [&]() {
+            go.AddComponent<scene::PostProcessVolumeComponent>();
         });
         return shown;
     });
@@ -931,27 +1148,6 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             go.AddComponent<scene::NavMeshSensorComponent>();
         });
         return shown;
-    });
-
-    anyShown |= AddComponentCategory("Animation", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "Animator", !go.GetComponent<scene::AnimatorComponent>(), [&]() {
-            go.AddComponent<scene::AnimatorComponent>();
-            if (!go.GetComponent<scene::SkinnedMeshRenderer>())
-                go.AddComponent<scene::SkinnedMeshRenderer>();
-            if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
-        });
-        shown |= addItem(category, "IK Solver", !go.GetComponent<scene::IKSolverComponent>(), [&]() {
-            go.AddComponent<scene::IKSolverComponent>();
-        });
-        return shown;
-    });
-
-    anyShown |= AddComponentCategory("Audio", filter, [&](const char* category, const char*) {
-        return addItem(category, "Audio Source", !go.GetComponent<scene::AudioSourceComponent>(), [&]() {
-            go.AddComponent<scene::AudioSourceComponent>();
-        });
     });
 
     anyShown |= AddComponentCategory("UI", filter, [&](const char* category, const char*) {
@@ -996,23 +1192,6 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         return shown;
     });
 
-    anyShown |= AddComponentCategory("Environment", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "Environment Light", !go.GetComponent<scene::EnvironmentLightComponent>(), [&]() {
-            go.AddComponent<scene::EnvironmentLightComponent>();
-        });
-        shown |= addItem(category, "Reflection Probe", !go.GetComponent<scene::ReflectionProbeComponent>(), [&]() {
-            go.AddComponent<scene::ReflectionProbeComponent>();
-        });
-        shown |= addItem(category, "Atmospheric Scattering", !go.GetComponent<scene::AtmosphericScatteringComponent>(), [&]() {
-            go.AddComponent<scene::AtmosphericScatteringComponent>();
-        });
-        shown |= addItem(category, "Post Process Volume", !go.GetComponent<scene::PostProcessVolumeComponent>(), [&]() {
-            go.AddComponent<scene::PostProcessVolumeComponent>();
-        });
-        return shown;
-    });
-
     if (!anyShown)
         ImGui::TextDisabled("No results");
 
@@ -1031,7 +1210,7 @@ inline bool DragVec2(const char* label, math::Vector2& value, float speed = 0.1f
 
 
 
-void DrawTransformInspector(scene::GameObject* go, EditorContext& ctx);
+void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx);
 void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);

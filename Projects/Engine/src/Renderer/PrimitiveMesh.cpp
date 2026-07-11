@@ -384,8 +384,9 @@ Mesh* PrimitiveMesh::Capsule(ResourceManager& resources, int segments)
     int rings = std::max(2, segments / 2);
     int M = std::max(1, rings / 2); // hemisphere rings
 
-    constexpr float rcap = 0.25f; // radius
-    constexpr float h = 0.25f;    // half cylinder length
+    // 人間大 (全高 2m = 半球 0.5 + 円柱 1.0 + 半球 0.5)。Unity の Capsule と同寸。
+    constexpr float rcap = 0.5f; // radius
+    constexpr float h = 0.5f;    // half cylinder length
 
     // Top hemisphere (from pole to equator)
     uint32_t topHStart = (uint32_t)verts.size();

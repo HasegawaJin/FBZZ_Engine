@@ -1,0 +1,29 @@
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'skinned'
+render_path = 'auto'
+render_queue = 2000
+shader = 'guid:c1309a283f6b4b8989174ebe7ef0fb4a'
+version = 1
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+alphaCutoff = 0.0
+emissiveColor = [ 1.0, 1.0, 1.0 ]
+emissiveScale = 0.10000000149011612
+metallic = 0.0
+normalStrength = 1.0
+occlusionStrength = 1.0
+roughness = 0.4000000059604645
+uvOffset = [ 0.0, 0.0 ]
+uvTiling = [ 1.0, 1.0 ]
+
+[textures]
+albedo = 'guid:f8dcc1df843a4e47b873cba16ccfe456'
+ao = ''
+emissive = ''
+metallic = ''
+normal = 'guid:2ab8a415e00f4609863139681fe91dab'
+tex5 = ''
+tex6 = ''
+tex7 = ''

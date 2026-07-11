@@ -79,13 +79,10 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
     SyncColliderPreview(go, col);
 }
 
-void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go)
+void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col);
-    char pathBuf[512];
-    std::snprintf(pathBuf, sizeof(pathBuf), "%s", col.meshPath.c_str());
-    if (ImGui::InputText("Mesh Path", pathBuf, sizeof(pathBuf)))
-        col.meshPath = NormalizeAssetPath(pathBuf);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
     if (ImGui::Button("Rebuild From Renderer")) {
@@ -111,13 +108,10 @@ void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject
     SyncColliderPreview(go, col);
 }
 
-void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go)
+void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col);
-    char pathBuf[512];
-    std::snprintf(pathBuf, sizeof(pathBuf), "%s", col.meshPath.c_str());
-    if (ImGui::InputText("Mesh Path", pathBuf, sizeof(pathBuf)))
-        col.meshPath = NormalizeAssetPath(pathBuf);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
     if (ImGui::Button("Rebuild From Renderer")) {
@@ -135,9 +129,10 @@ void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::Game
     SyncColliderPreview(go, col);
 }
 
-// メッシュ系 Collider の永続化対象だけを保持する。
-// WHY: runtime 所有物の unique_ptr<Collider> をコピー対象から外し、Undo と Inspector UI を
-//      コンポーネントの複雑なコピーコンストラクタやテンプレート展開に依存させない。
+// メッシュ系 Collider の Undo スナップショット型。
+// WHY: runtime 所有物の unique_ptr<Collider> と ColliderHandle をコピー対象から外し、
+//      Undo 時に physics body を不必要に無効化しない。
+//      geometry (meshPath/meshIndex/useTransformScale) が変わった場合のみ collider をリセットする。
 struct MeshColliderValue {
     physics::PhysicsMaterial material;
     math::Vector3 center;
@@ -148,342 +143,44 @@ struct MeshColliderValue {
     bool enabled = true;
 };
 
-struct MeshColliderSectionOps {
-    const std::type_info& componentType;
-    std::size_t editSlot;
-    scene::ColliderComponent* (*Get)(scene::GameObject&);
-    scene::ColliderComponent& (*Add)(scene::GameObject&);
-    void (*Remove)(scene::GameObject&);
-    MeshColliderValue (*Capture)(const scene::ColliderComponent&);
-    void (*Apply)(scene::ColliderComponent&, const MeshColliderValue&);
-    void (*Draw)(scene::ColliderComponent&, scene::GameObject&);
-};
-
-struct MeshColliderActiveEdit {
-    scene::EntityID entityId;
-    ImGuiID activeId = 0;
-    MeshColliderValue before;
-    bool active = false;
-};
-
-bool IsSameMeshColliderValue(const MeshColliderValue& lhs, const MeshColliderValue& rhs)
+MeshColliderValue CaptureMeshColliderValue(const scene::MeshColliderComponent& c)
 {
-    return lhs.material.restitution == rhs.material.restitution
-        && lhs.material.staticFriction == rhs.material.staticFriction
-        && lhs.material.dynamicFriction == rhs.material.dynamicFriction
-        && lhs.material.density == rhs.material.density
-        && lhs.center.x == rhs.center.x
-        && lhs.center.y == rhs.center.y
-        && lhs.center.z == rhs.center.z
-        && lhs.meshPath == rhs.meshPath
-        && lhs.meshIndex == rhs.meshIndex
-        && lhs.isTrigger == rhs.isTrigger
-        && lhs.useTransformScale == rhs.useTransformScale
-        && lhs.enabled == rhs.enabled;
+    return { c.material, c.center, c.meshPath, c.meshIndex, c.isTrigger, c.useTransformScale, c.enabled };
 }
 
-void ApplyCommonMeshColliderValue(
-    scene::ColliderComponent& component,
-    const MeshColliderValue& value)
+void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderValue& v)
 {
-    component.material = value.material;
-    component.center = value.center;
-    component.isTrigger = value.isTrigger;
-    component.enabled = value.enabled;
+    const bool geomChanged = c.meshPath != v.meshPath
+        || c.meshIndex != v.meshIndex
+        || c.useTransformScale != v.useTransformScale;
+    c.material = v.material;
+    c.center = v.center;
+    c.isTrigger = v.isTrigger;
+    c.enabled = v.enabled;
+    c.meshPath = v.meshPath;
+    c.meshIndex = v.meshIndex;
+    c.useTransformScale = v.useTransformScale;
+    if (geomChanged) c.collider.reset();
 }
 
-scene::ColliderComponent* GetMeshCollider(scene::GameObject& go)
+MeshColliderValue CaptureConvexHullValue(const scene::ConvexHullColliderComponent& c)
 {
-    return go.GetComponent<scene::MeshColliderComponent>();
+    return { c.material, c.center, c.meshPath, c.meshIndex, c.isTrigger, c.useTransformScale, c.enabled };
 }
 
-scene::ColliderComponent& AddMeshCollider(scene::GameObject& go)
+void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColliderValue& v)
 {
-    return go.AddComponent<scene::MeshColliderComponent>();
-}
-
-void RemoveMeshCollider(scene::GameObject& go)
-{
-    go.RemoveComponent<scene::MeshColliderComponent>();
-}
-
-MeshColliderValue CaptureMeshCollider(const scene::ColliderComponent& component)
-{
-    const auto& collider = static_cast<const scene::MeshColliderComponent&>(component);
-    return {
-        collider.material,
-        collider.center,
-        collider.meshPath,
-        collider.meshIndex,
-        collider.isTrigger,
-        collider.useTransformScale,
-        collider.enabled
-    };
-}
-
-void ApplyMeshCollider(scene::ColliderComponent& component, const MeshColliderValue& value)
-{
-    auto& collider = static_cast<scene::MeshColliderComponent&>(component);
-    const bool geometryChanged = collider.meshPath != value.meshPath
-        || collider.meshIndex != value.meshIndex
-        || collider.useTransformScale != value.useTransformScale;
-    ApplyCommonMeshColliderValue(collider, value);
-    collider.meshPath = value.meshPath;
-    collider.meshIndex = value.meshIndex;
-    collider.useTransformScale = value.useTransformScale;
-    if (geometryChanged) collider.collider.reset();
-}
-
-void DrawMeshColliderSectionBody(scene::ColliderComponent& component, scene::GameObject& go)
-{
-    DrawMeshCollider(static_cast<scene::MeshColliderComponent&>(component), go);
-}
-
-scene::ColliderComponent* GetConvexHullCollider(scene::GameObject& go)
-{
-    return go.GetComponent<scene::ConvexHullColliderComponent>();
-}
-
-scene::ColliderComponent& AddConvexHullCollider(scene::GameObject& go)
-{
-    return go.AddComponent<scene::ConvexHullColliderComponent>();
-}
-
-void RemoveConvexHullCollider(scene::GameObject& go)
-{
-    go.RemoveComponent<scene::ConvexHullColliderComponent>();
-}
-
-MeshColliderValue CaptureConvexHullCollider(const scene::ColliderComponent& component)
-{
-    const auto& collider = static_cast<const scene::ConvexHullColliderComponent&>(component);
-    return {
-        collider.material,
-        collider.center,
-        collider.meshPath,
-        collider.meshIndex,
-        collider.isTrigger,
-        collider.useTransformScale,
-        collider.enabled
-    };
-}
-
-void ApplyConvexHullCollider(
-    scene::ColliderComponent& component,
-    const MeshColliderValue& value)
-{
-    auto& collider = static_cast<scene::ConvexHullColliderComponent&>(component);
-    const bool geometryChanged = collider.meshPath != value.meshPath
-        || collider.meshIndex != value.meshIndex
-        || collider.useTransformScale != value.useTransformScale;
-    ApplyCommonMeshColliderValue(collider, value);
-    collider.meshPath = value.meshPath;
-    collider.meshIndex = value.meshIndex;
-    collider.useTransformScale = value.useTransformScale;
-    if (geometryChanged) collider.collider.reset();
-}
-
-void DrawConvexHullColliderSectionBody(
-    scene::ColliderComponent& component,
-    scene::GameObject& go)
-{
-    DrawConvexHullCollider(
-        static_cast<scene::ConvexHullColliderComponent&>(component),
-        go);
-}
-
-const MeshColliderSectionOps MESH_COLLIDER_OPS {
-    typeid(scene::MeshColliderComponent),
-    0,
-    &GetMeshCollider,
-    &AddMeshCollider,
-    &RemoveMeshCollider,
-    &CaptureMeshCollider,
-    &ApplyMeshCollider,
-    &DrawMeshColliderSectionBody
-};
-
-const MeshColliderSectionOps CONVEX_HULL_COLLIDER_OPS {
-    typeid(scene::ConvexHullColliderComponent),
-    1,
-    &GetConvexHullCollider,
-    &AddConvexHullCollider,
-    &RemoveConvexHullCollider,
-    &CaptureConvexHullCollider,
-    &ApplyConvexHullCollider,
-    &DrawConvexHullColliderSectionBody
-};
-
-void PushMeshColliderValueCommand(
-    scene::GameObject& go,
-    EditorContext& ctx,
-    const std::string& description,
-    const MeshColliderValue& before,
-    const MeshColliderValue& after,
-    const MeshColliderSectionOps& ops)
-{
-    if (!CanRecordEditorUndo(ctx) || !ctx.activeScene
-        || IsSameMeshColliderValue(before, after)) {
-        return;
-    }
-
-    scene::Scene* scene = ctx.activeScene;
-    const std::string instanceId = go.instanceId;
-    const auto markDirty = ctx.markSceneDirty;
-    const MeshColliderSectionOps* operation = &ops;
-    auto apply = [scene, instanceId, markDirty, operation](
-        const MeshColliderValue& value) {
-        if (auto* target = scene->FindByGuid(instanceId)) {
-            if (auto* collider = operation->Get(*target)) {
-                operation->Apply(*collider, value);
-                if (markDirty) markDirty();
-            }
-        }
-    };
-    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-        description,
-        [apply, after]() { apply(after); },
-        [apply, before]() { apply(before); }));
-}
-
-// メッシュ系 Collider 専用の非テンプレート Component Section を描画する。
-// WHAT: Enable・Reset・Copy/Paste・Remove・連続編集 Undo を値スナップショットで統一する。
-void DrawMeshColliderComponentSection(
-    scene::GameObject* go,
-    EditorContext& ctx,
-    std::any& componentClipboard,
-    const std::type_info*& componentClipboardType,
-    const char* label,
-    const MeshColliderSectionOps& ops)
-{
-    scene::ColliderComponent* component = ops.Get(*go);
-    if (!component) return;
-
-    ImGui::PushID(label);
-
-    const bool canRecordUndo = CanRecordEditorUndo(ctx);
-    MeshColliderValue before;
-    if (canRecordUndo)
-        before = ops.Capture(*component);
-    if (ImGui::Checkbox("##en", &component->enabled)) {
-        PushMeshColliderValueCommand(
-            *go, ctx, std::string("Toggle ") + label,
-            before, ops.Capture(*component), ops);
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
-    }
-    ImGui::SameLine();
-
-    const bool open = ImGui::CollapsingHeader(
-        label,
-        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-
-    const float buttonWidth = ImGui::GetFrameHeight();
-    ImGui::SameLine(ImGui::GetContentRegionMax().x - buttonWidth);
-    if (ImGui::SmallButton("..."))
-        ImGui::OpenPopup("##comp_opts");
-
-    bool removeRequested = false;
-    if (ImGui::BeginPopup("##comp_opts")) {
-        if (ImGui::MenuItem("Reset")) {
-            before = ops.Capture(*component);
-            MeshColliderValue resetValue;
-            resetValue.material = physics::PhysicsMaterial::Default;
-            resetValue.enabled = component->enabled;
-            ops.Apply(*component, resetValue);
-            PushMeshColliderValueCommand(
-                *go, ctx, std::string("Reset ") + label,
-                before, resetValue, ops);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Copy Component")) {
-            componentClipboard = ops.Capture(*component);
-            componentClipboardType = &ops.componentType;
-        }
-        const bool canPaste = componentClipboardType
-            && *componentClipboardType == ops.componentType
-            && componentClipboard.type() == typeid(MeshColliderValue);
-        if (ImGui::MenuItem(
-                "Paste Component Values", nullptr, false, canPaste)) {
-            before = ops.Capture(*component);
-            MeshColliderValue pasted =
-                std::any_cast<MeshColliderValue>(componentClipboard);
-            pasted.enabled = component->enabled;
-            ops.Apply(*component, pasted);
-            PushMeshColliderValueCommand(
-                *go, ctx, std::string("Paste ") + label,
-                before, pasted, ops);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Remove Component"))
-            removeRequested = true;
-        ImGui::EndPopup();
-    }
-
-    if (open) {
-        static MeshColliderActiveEdit edits[2];
-        MeshColliderActiveEdit& edit = edits[ops.editSlot];
-        if (!canRecordUndo)
-            edit.active = false;
-        ImGui::Spacing();
-
-        if (canRecordUndo)
-            before = ops.Capture(*component);
-        const ImGuiID activeBefore = ImGui::GetActiveID();
-        ops.Draw(*component, *go);
-        const ImGuiID activeAfter = ImGui::GetActiveID();
-
-        if (!canRecordUndo) {
-            edit.active = false;
-        } else if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
-            edit.entityId = go->GetID();
-            edit.activeId = activeAfter;
-            edit.before = before;
-            edit.active = true;
-        } else if (edit.active && edit.entityId != go->GetID()) {
-            if (activeAfter != edit.activeId) edit.active = false;
-        } else if (edit.active && activeAfter != edit.activeId) {
-            PushMeshColliderValueCommand(
-                *go, ctx, std::string("Change ") + label,
-                edit.before, ops.Capture(*component), ops);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
-            edit.active = false;
-        }
-        ImGui::Spacing();
-    }
-
-    ImGui::PopID();
-
-    if (!removeRequested) return;
-
-    const MeshColliderValue removed = ops.Capture(*component);
-    scene::Scene* scene = ctx.activeScene;
-    const std::string instanceId = go->instanceId;
-    const auto markDirty = ctx.markSceneDirty;
-    const MeshColliderSectionOps* operation = &ops;
-    ops.Remove(*go);
-    if (canRecordUndo && scene) {
-        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-            std::string("Remove ") + label,
-            [scene, instanceId, markDirty, operation]() {
-                if (auto* target = scene->FindByGuid(instanceId)) {
-                    if (operation->Get(*target))
-                        operation->Remove(*target);
-                    if (markDirty) markDirty();
-                }
-            },
-            [scene, instanceId, removed, markDirty, operation]() {
-                if (auto* target = scene->FindByGuid(instanceId)) {
-                    if (!operation->Get(*target)) {
-                        auto& restored = operation->Add(*target);
-                        operation->Apply(restored, removed);
-                    }
-                    if (markDirty) markDirty();
-                }
-            }));
-    }
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    const bool geomChanged = c.meshPath != v.meshPath
+        || c.meshIndex != v.meshIndex
+        || c.useTransformScale != v.useTransformScale;
+    c.material = v.material;
+    c.center = v.center;
+    c.isTrigger = v.isTrigger;
+    c.enabled = v.enabled;
+    c.meshPath = v.meshPath;
+    c.meshIndex = v.meshIndex;
+    c.useTransformScale = v.useTransformScale;
+    if (geomChanged) c.collider.reset();
 }
 
 } // namespace
@@ -510,13 +207,21 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             DrawCapsuleCollider(col, *go);
         });
 
-    DrawMeshColliderComponentSection(
-        go, ctx, m_componentClipboard, m_componentClipboardType,
-        "Mesh Collider", MESH_COLLIDER_OPS);
+    DrawComponentSectionCustom<scene::MeshColliderComponent, MeshColliderValue>(
+        go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Collider",
+        [go](scene::MeshColliderComponent& col, EditorContext& ctx2) {
+            DrawMeshCollider(col, *go, ctx2.projectRoot);
+        },
+        [](const scene::MeshColliderComponent& c) { return CaptureMeshColliderValue(c); },
+        [](scene::MeshColliderComponent& c, const MeshColliderValue& v) { ApplyMeshColliderValue(c, v); });
 
-    DrawMeshColliderComponentSection(
-        go, ctx, m_componentClipboard, m_componentClipboardType,
-        "Convex Hull Collider", CONVEX_HULL_COLLIDER_OPS);
+    DrawComponentSectionCustom<scene::ConvexHullColliderComponent, MeshColliderValue>(
+        go, ctx, m_componentClipboard, m_componentClipboardType, "Convex Hull Collider",
+        [go](scene::ConvexHullColliderComponent& col, EditorContext& ctx2) {
+            DrawConvexHullCollider(col, *go, ctx2.projectRoot);
+        },
+        [](const scene::ConvexHullColliderComponent& c) { return CaptureConvexHullValue(c); },
+        [](scene::ConvexHullColliderComponent& c, const MeshColliderValue& v) { ApplyConvexHullValue(c, v); });
 
     DrawComponentSection<scene::TerrainColliderComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Terrain Collider",
         [go](scene::TerrainColliderComponent& col, EditorContext&) {

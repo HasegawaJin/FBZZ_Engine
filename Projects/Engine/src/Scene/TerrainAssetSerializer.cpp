@@ -2,6 +2,7 @@
 // TerrainAssetSerializer.cpp | fbzz::scene
 // TerrainComponent の外部アセット保存・復元
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -132,6 +133,9 @@ bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::
 
     NormalizeTomlFloats(doc);
 
+    // レイヤー .mat / ハイトマップ等の参照を guid: 形式で保存する (リネーム・移動耐性)。
+    asset::EncodeGuidRefs(doc);
+
     std::ostringstream ss;
     ss << doc;
 
@@ -164,6 +168,8 @@ bool TerrainAssetSerializer::Load(const std::string& path, TerrainComponent& com
     }
 
     toml::table doc = result.table();
+    // guid: 参照を "Assets/..." パスへ戻してから読む。
+    asset::DecodeGuidRefs(doc);
     const toml::table* terrainTbl = doc["terrain"].as_table();
     if (!terrainTbl)
         terrainTbl = &doc;

@@ -97,6 +97,50 @@ int GameObject::GetChildCount() const
     return static_cast<int>(m_children.size());
 }
 
+int GameObject::GetSiblingIndex() const
+{
+    if (!m_scene) return 0;
+    if (m_parent.IsValid()) {
+        if (auto* parent = m_scene->GetGameObject(m_parent)) {
+            const auto& siblings = parent->m_children;
+            const auto it = std::find(siblings.begin(), siblings.end(), m_id);
+            if (it != siblings.end())
+                return static_cast<int>(std::distance(siblings.begin(), it));
+        }
+        return 0;
+    }
+    // ルート: Scene のルート一覧における出現順
+    int index = 0;
+    for (auto* root : m_scene->GetRootGameObjects()) {
+        if (root == this) return index;
+        ++index;
+    }
+    return 0;
+}
+
+bool GameObject::SetSiblingIndex(int index)
+{
+    if (!m_scene) return false;
+    if (m_parent.IsValid()) {
+        auto* parent = m_scene->GetGameObject(m_parent);
+        if (!parent) return false;
+        auto& siblings = parent->m_children;
+        const auto it = std::find(siblings.begin(), siblings.end(), m_id);
+        if (it == siblings.end()) return false;
+        const int current = static_cast<int>(std::distance(siblings.begin(), it));
+        const int clamped = std::clamp(index, 0, static_cast<int>(siblings.size()) - 1);
+        if (clamped == current) return false;
+        siblings.erase(it);
+        siblings.insert(siblings.begin() + clamped, m_id);
+        // WHY: シリアライザは flat 順で親子を再構築するため、m_children の並び替えだけでは
+        //      保存 / Undo スナップショット / Play 復元で順序が元に戻ってしまう。
+        m_scene->SyncSiblingFlatOrder(m_id);
+        return true;
+    }
+    // ルート: フラット配列上のルート順序を Scene 側で並べ替える
+    return m_scene->SetRootSiblingIndex(m_id, index);
+}
+
 GameObject* GameObject::GetChild(int index) const
 {
     if (!m_scene || index < 0 || index >= static_cast<int>(m_children.size()))

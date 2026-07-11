@@ -7,6 +7,8 @@ instanceId = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
 layer = 0
 name = 'MainCamera'
 parent = ''
+
+parentInstanceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
@@ -44,6 +46,8 @@ instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
 layer = 0
 name = 'DirectionalLight'
 parent = ''
+
+parentInstanceId = ''
 tag = 'Untagged'
 
     [gameobjects.LightComponent]
@@ -63,6 +67,8 @@ instanceId = '9dc731b0-a17c-431b-bbe1-a6757b40e84f'
 layer = 0
 name = 'Skydome'
 parent = ''
+
+parentInstanceId = ''
 tag = 'Untagged'
 
     [gameobjects.SkyRenderer]
@@ -83,12 +89,14 @@ instanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 layer = 0
 name = 'Player'
 parent = ''
+
+parentInstanceId = ''
 tag = 'Player'
 
     [gameobjects.AnimatorComponent]
     clipIndex = 0
     clipName = ''
-    controllerPath = 'Assets/Animation/Player.animcontroller'
+    controllerPath = 'guid:ce5dded8d74d40b1bcbc95b2e310cccc'
     clipSources = [
         'Assets/Models/DebugCharacter/Idle/Idle.asset',
         'Assets/Models/DebugCharacter/Walking/Walking.asset',
@@ -501,6 +509,8 @@ instanceId = '7890a521-fcea-41e6-9850-27b0780a0601'
 layer = 0
 name = 'IK_LeftFoot_Target'
 parent = 'Player'
+
+parentInstanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
@@ -522,6 +532,8 @@ instanceId = '49ecd804-9f61-493e-aeff-d16410ff3564'
 layer = 0
 name = 'IK_RightFoot_Target'
 parent = 'Player'
+
+parentInstanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
@@ -543,6 +555,8 @@ instanceId = 'c94e4ab2-e2c4-4acc-8082-3c6425ab3020'
 layer = 0
 name = 'IK_LeftKnee_Pole'
 parent = 'Player'
+
+parentInstanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
@@ -564,6 +578,8 @@ instanceId = '72934e16-382f-40a0-80b0-56eeb32867c1'
 layer = 0
 name = 'IK_RightKnee_Pole'
 parent = 'Player'
+
+parentInstanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 tag = 'Untagged'
 
     [gameobjects.MaterialComponent]
@@ -585,6 +601,8 @@ instanceId = '4dedb0c6-520d-4bc5-a263-05dd743e597e'
 layer = 0
 name = 'RootNode'
 parent = 'Player'
+
+parentInstanceId = '3fe93a68-9060-4f7f-913d-8f1e853b7bee'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -606,6 +624,8 @@ instanceId = '5fadfe70-733e-40eb-b05d-95faab080efa'
 layer = 0
 name = 'mixamorig:Hips'
 parent = 'RootNode'
+
+parentInstanceId = '4dedb0c6-520d-4bc5-a263-05dd743e597e'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -627,6 +647,8 @@ instanceId = 'ccad4aa0-cb9b-4bde-ab3a-32f8ca1b2174'
 layer = 0
 name = 'mixamorig:Spine'
 parent = 'mixamorig:Hips'
+
+parentInstanceId = '5fadfe70-733e-40eb-b05d-95faab080efa'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -648,6 +670,8 @@ instanceId = '049baf7f-b39b-4d8f-be32-847826a9bb3a'
 layer = 0
 name = 'mixamorig:Spine1'
 parent = 'mixamorig:Spine'
+
+parentInstanceId = 'ccad4aa0-cb9b-4bde-ab3a-32f8ca1b2174'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -669,6 +693,8 @@ instanceId = '69f953d7-c0c5-4d58-b4d1-23e24ddcc45b'
 layer = 0
 name = 'mixamorig:Spine2'
 parent = 'mixamorig:Spine1'
+
+parentInstanceId = '049baf7f-b39b-4d8f-be32-847826a9bb3a'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -690,6 +716,8 @@ instanceId = 'b8b15d09-c5ab-4211-acbd-bc418e457df4'
 layer = 0
 name = 'mixamorig:Neck'
 parent = 'mixamorig:Spine2'
+
+parentInstanceId = '69f953d7-c0c5-4d58-b4d1-23e24ddcc45b'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -711,6 +739,8 @@ instanceId = '59c97eec-3030-49bd-bb8b-05d5a0e1c3f2'
 layer = 0
 name = 'mixamorig:Head'
 parent = 'mixamorig:Neck'
+
+parentInstanceId = 'b8b15d09-c5ab-4211-acbd-bc418e457df4'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -732,6 +762,8 @@ instanceId = '370ff9b2-3b8a-42d4-af3a-b57fb5aec577'
 layer = 0
 name = 'mixamorig:HeadTop_End'
 parent = 'mixamorig:Head'
+
+parentInstanceId = '59c97eec-3030-49bd-bb8b-05d5a0e1c3f2'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -753,6 +785,8 @@ instanceId = '019925e1-dd50-4866-b81f-97c4493266d8'
 layer = 0
 name = 'mixamorig:LeftShoulder'
 parent = 'mixamorig:Spine2'
+
+parentInstanceId = '69f953d7-c0c5-4d58-b4d1-23e24ddcc45b'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -774,6 +808,8 @@ instanceId = 'ce1d289d-c9fc-41ce-bb6d-a2432ddc5ddf'
 layer = 0
 name = 'mixamorig:LeftArm'
 parent = 'mixamorig:LeftShoulder'
+
+parentInstanceId = '019925e1-dd50-4866-b81f-97c4493266d8'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -795,6 +831,8 @@ instanceId = 'ae41fe4e-aad0-40f0-aff8-58e4ec50efec'
 layer = 0
 name = 'mixamorig:LeftForeArm'
 parent = 'mixamorig:LeftArm'
+
+parentInstanceId = 'ce1d289d-c9fc-41ce-bb6d-a2432ddc5ddf'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -816,6 +854,8 @@ instanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
 layer = 0
 name = 'mixamorig:LeftHand'
 parent = 'mixamorig:LeftForeArm'
+
+parentInstanceId = 'ae41fe4e-aad0-40f0-aff8-58e4ec50efec'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -837,6 +877,8 @@ instanceId = 'cb0b3e0d-1ddd-4e99-bcd9-14ad89c8b888'
 layer = 0
 name = 'mixamorig:LeftHandThumb1'
 parent = 'mixamorig:LeftHand'
+
+parentInstanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -858,6 +900,8 @@ instanceId = '8ef702ce-d352-4543-9290-883d7069429f'
 layer = 0
 name = 'mixamorig:LeftHandThumb2'
 parent = 'mixamorig:LeftHandThumb1'
+
+parentInstanceId = 'cb0b3e0d-1ddd-4e99-bcd9-14ad89c8b888'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -879,6 +923,8 @@ instanceId = 'b2ac81b9-a3bd-45c0-a9f5-c1ae01bbc5bd'
 layer = 0
 name = 'mixamorig:LeftHandThumb3'
 parent = 'mixamorig:LeftHandThumb2'
+
+parentInstanceId = '8ef702ce-d352-4543-9290-883d7069429f'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -900,6 +946,8 @@ instanceId = '23d242ff-b0f3-476c-983d-ddeef5eacb32'
 layer = 0
 name = 'mixamorig:LeftHandThumb4'
 parent = 'mixamorig:LeftHandThumb3'
+
+parentInstanceId = 'b2ac81b9-a3bd-45c0-a9f5-c1ae01bbc5bd'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -921,6 +969,8 @@ instanceId = 'b1cbfd2a-1219-4d2d-9556-956af8576070'
 layer = 0
 name = 'mixamorig:LeftHandIndex1'
 parent = 'mixamorig:LeftHand'
+
+parentInstanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -942,6 +992,8 @@ instanceId = '0e6e371b-a4dc-46c1-a9b7-c94567be3add'
 layer = 0
 name = 'mixamorig:LeftHandIndex2'
 parent = 'mixamorig:LeftHandIndex1'
+
+parentInstanceId = 'b1cbfd2a-1219-4d2d-9556-956af8576070'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -963,6 +1015,8 @@ instanceId = '5dde1b8d-314d-42c5-ad26-b8cf248da328'
 layer = 0
 name = 'mixamorig:LeftHandIndex3'
 parent = 'mixamorig:LeftHandIndex2'
+
+parentInstanceId = '0e6e371b-a4dc-46c1-a9b7-c94567be3add'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -984,6 +1038,8 @@ instanceId = '4591315d-f43f-4a1c-a5ef-de42efe527be'
 layer = 0
 name = 'mixamorig:LeftHandIndex4'
 parent = 'mixamorig:LeftHandIndex3'
+
+parentInstanceId = '5dde1b8d-314d-42c5-ad26-b8cf248da328'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1005,6 +1061,8 @@ instanceId = 'adb8f539-697c-415a-a8e3-c1064d2f964e'
 layer = 0
 name = 'mixamorig:LeftHandMiddle1'
 parent = 'mixamorig:LeftHand'
+
+parentInstanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1026,6 +1084,8 @@ instanceId = 'd01549c2-0053-4673-beaa-612ef952e0ff'
 layer = 0
 name = 'mixamorig:LeftHandMiddle2'
 parent = 'mixamorig:LeftHandMiddle1'
+
+parentInstanceId = 'adb8f539-697c-415a-a8e3-c1064d2f964e'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1047,6 +1107,8 @@ instanceId = '0e39d5f3-10b8-43ae-9e21-0dd8a73e20e6'
 layer = 0
 name = 'mixamorig:LeftHandMiddle3'
 parent = 'mixamorig:LeftHandMiddle2'
+
+parentInstanceId = 'd01549c2-0053-4673-beaa-612ef952e0ff'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1068,6 +1130,8 @@ instanceId = 'ada66269-585a-4a1c-bd53-56809d3a59e3'
 layer = 0
 name = 'mixamorig:LeftHandMiddle4'
 parent = 'mixamorig:LeftHandMiddle3'
+
+parentInstanceId = '0e39d5f3-10b8-43ae-9e21-0dd8a73e20e6'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1089,6 +1153,8 @@ instanceId = '12c41e3a-7506-44b0-b2a9-4fe022cd5669'
 layer = 0
 name = 'mixamorig:LeftHandRing1'
 parent = 'mixamorig:LeftHand'
+
+parentInstanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1110,6 +1176,8 @@ instanceId = '0bf7f40e-95b4-46e4-9bf8-cb9219ebbbc0'
 layer = 0
 name = 'mixamorig:LeftHandRing2'
 parent = 'mixamorig:LeftHandRing1'
+
+parentInstanceId = '12c41e3a-7506-44b0-b2a9-4fe022cd5669'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1131,6 +1199,8 @@ instanceId = '4f739062-bd49-4a35-bf47-5aca71c63a91'
 layer = 0
 name = 'mixamorig:LeftHandRing3'
 parent = 'mixamorig:LeftHandRing2'
+
+parentInstanceId = '0bf7f40e-95b4-46e4-9bf8-cb9219ebbbc0'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1152,6 +1222,8 @@ instanceId = 'f169e1dd-fa56-40ec-8123-f135eb0cbab0'
 layer = 0
 name = 'mixamorig:LeftHandRing4'
 parent = 'mixamorig:LeftHandRing3'
+
+parentInstanceId = '4f739062-bd49-4a35-bf47-5aca71c63a91'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1173,6 +1245,8 @@ instanceId = '42e229ad-3e39-456f-8b48-65863d1e3e38'
 layer = 0
 name = 'mixamorig:LeftHandPinky1'
 parent = 'mixamorig:LeftHand'
+
+parentInstanceId = 'fcc383bf-251b-48d9-9e39-faad172e1065'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1194,6 +1268,8 @@ instanceId = 'e51df4fe-bd15-483e-96aa-53ab73a72d1b'
 layer = 0
 name = 'mixamorig:LeftHandPinky2'
 parent = 'mixamorig:LeftHandPinky1'
+
+parentInstanceId = '42e229ad-3e39-456f-8b48-65863d1e3e38'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1215,6 +1291,8 @@ instanceId = '6f8bbc6f-88bb-4c59-9492-6eaae095f281'
 layer = 0
 name = 'mixamorig:LeftHandPinky3'
 parent = 'mixamorig:LeftHandPinky2'
+
+parentInstanceId = 'e51df4fe-bd15-483e-96aa-53ab73a72d1b'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1236,6 +1314,8 @@ instanceId = '93a92bc0-d8b9-46a6-a26b-04409343bfed'
 layer = 0
 name = 'mixamorig:LeftHandPinky4'
 parent = 'mixamorig:LeftHandPinky3'
+
+parentInstanceId = '6f8bbc6f-88bb-4c59-9492-6eaae095f281'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1257,6 +1337,8 @@ instanceId = '033412d2-0ab4-4fc8-a748-53ff01ad7d0e'
 layer = 0
 name = 'mixamorig:RightShoulder'
 parent = 'mixamorig:Spine2'
+
+parentInstanceId = '69f953d7-c0c5-4d58-b4d1-23e24ddcc45b'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1278,6 +1360,8 @@ instanceId = '50e7240b-06a8-49e9-bfb4-7cf479cbadd3'
 layer = 0
 name = 'mixamorig:RightArm'
 parent = 'mixamorig:RightShoulder'
+
+parentInstanceId = '033412d2-0ab4-4fc8-a748-53ff01ad7d0e'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1299,6 +1383,8 @@ instanceId = '50aca9e4-7df9-4174-9426-439c579005ed'
 layer = 0
 name = 'mixamorig:RightForeArm'
 parent = 'mixamorig:RightArm'
+
+parentInstanceId = '50e7240b-06a8-49e9-bfb4-7cf479cbadd3'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1320,6 +1406,8 @@ instanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
 layer = 0
 name = 'mixamorig:RightHand'
 parent = 'mixamorig:RightForeArm'
+
+parentInstanceId = '50aca9e4-7df9-4174-9426-439c579005ed'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1341,6 +1429,8 @@ instanceId = 'b13a015c-4b92-4300-97d8-cd09c2cebba3'
 layer = 0
 name = 'mixamorig:RightHandThumb1'
 parent = 'mixamorig:RightHand'
+
+parentInstanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1362,6 +1452,8 @@ instanceId = '6f0bd885-fcf3-45e1-9737-29c394e9c2e7'
 layer = 0
 name = 'mixamorig:RightHandThumb2'
 parent = 'mixamorig:RightHandThumb1'
+
+parentInstanceId = 'b13a015c-4b92-4300-97d8-cd09c2cebba3'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1383,6 +1475,8 @@ instanceId = '07e65d21-c86c-4593-b091-bb6ee40496bd'
 layer = 0
 name = 'mixamorig:RightHandThumb3'
 parent = 'mixamorig:RightHandThumb2'
+
+parentInstanceId = '6f0bd885-fcf3-45e1-9737-29c394e9c2e7'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1404,6 +1498,8 @@ instanceId = '5eb30863-a1db-4877-b5c3-8163b16fc9e9'
 layer = 0
 name = 'mixamorig:RightHandThumb4'
 parent = 'mixamorig:RightHandThumb3'
+
+parentInstanceId = '07e65d21-c86c-4593-b091-bb6ee40496bd'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1425,6 +1521,8 @@ instanceId = 'f56cf4d9-e086-47c0-9fc8-8d90cfae4e11'
 layer = 0
 name = 'mixamorig:RightHandIndex1'
 parent = 'mixamorig:RightHand'
+
+parentInstanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1446,6 +1544,8 @@ instanceId = 'ccfc3bc2-13f3-44b8-94b3-5f6633e63b1a'
 layer = 0
 name = 'mixamorig:RightHandIndex2'
 parent = 'mixamorig:RightHandIndex1'
+
+parentInstanceId = 'f56cf4d9-e086-47c0-9fc8-8d90cfae4e11'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1467,6 +1567,8 @@ instanceId = 'a1bb834d-730f-40c1-bbc2-cc920922a58b'
 layer = 0
 name = 'mixamorig:RightHandIndex3'
 parent = 'mixamorig:RightHandIndex2'
+
+parentInstanceId = 'ccfc3bc2-13f3-44b8-94b3-5f6633e63b1a'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1488,6 +1590,8 @@ instanceId = '6646d1f1-b732-459d-bad8-2765e118f931'
 layer = 0
 name = 'mixamorig:RightHandIndex4'
 parent = 'mixamorig:RightHandIndex3'
+
+parentInstanceId = 'a1bb834d-730f-40c1-bbc2-cc920922a58b'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1509,6 +1613,8 @@ instanceId = '7ab8c974-5b90-4b17-a3af-9d3521b7d42e'
 layer = 0
 name = 'mixamorig:RightHandMiddle1'
 parent = 'mixamorig:RightHand'
+
+parentInstanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1530,6 +1636,8 @@ instanceId = 'a9e7840d-3e84-413a-9c71-29e54f099a5c'
 layer = 0
 name = 'mixamorig:RightHandMiddle2'
 parent = 'mixamorig:RightHandMiddle1'
+
+parentInstanceId = '7ab8c974-5b90-4b17-a3af-9d3521b7d42e'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1551,6 +1659,8 @@ instanceId = '581fdc48-143b-4a68-ae21-47cd01eabb96'
 layer = 0
 name = 'mixamorig:RightHandMiddle3'
 parent = 'mixamorig:RightHandMiddle2'
+
+parentInstanceId = 'a9e7840d-3e84-413a-9c71-29e54f099a5c'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1572,6 +1682,8 @@ instanceId = '7eda2398-e5b4-4c19-8802-145c7b992b23'
 layer = 0
 name = 'mixamorig:RightHandMiddle4'
 parent = 'mixamorig:RightHandMiddle3'
+
+parentInstanceId = '581fdc48-143b-4a68-ae21-47cd01eabb96'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1593,6 +1705,8 @@ instanceId = '796169bc-8fa6-410a-b52d-428d30cb5942'
 layer = 0
 name = 'mixamorig:RightHandRing1'
 parent = 'mixamorig:RightHand'
+
+parentInstanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1614,6 +1728,8 @@ instanceId = 'aebb89f9-1fdb-414a-81f5-5b0fde31daa9'
 layer = 0
 name = 'mixamorig:RightHandRing2'
 parent = 'mixamorig:RightHandRing1'
+
+parentInstanceId = '796169bc-8fa6-410a-b52d-428d30cb5942'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1635,6 +1751,8 @@ instanceId = '917a9444-6e94-4e19-b37c-7becd2c6b255'
 layer = 0
 name = 'mixamorig:RightHandRing3'
 parent = 'mixamorig:RightHandRing2'
+
+parentInstanceId = 'aebb89f9-1fdb-414a-81f5-5b0fde31daa9'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1656,6 +1774,8 @@ instanceId = 'd39c286e-4c3c-4bf9-80a4-c4191b1bbe8c'
 layer = 0
 name = 'mixamorig:RightHandRing4'
 parent = 'mixamorig:RightHandRing3'
+
+parentInstanceId = '917a9444-6e94-4e19-b37c-7becd2c6b255'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1677,6 +1797,8 @@ instanceId = '05075131-5126-4cfb-b850-9e9b80eb4561'
 layer = 0
 name = 'mixamorig:RightHandPinky1'
 parent = 'mixamorig:RightHand'
+
+parentInstanceId = '0b792afe-0296-428a-9d99-1ca49c0b80e5'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1698,6 +1820,8 @@ instanceId = '279e6b08-0838-4f05-8016-cf2373bf7109'
 layer = 0
 name = 'mixamorig:RightHandPinky2'
 parent = 'mixamorig:RightHandPinky1'
+
+parentInstanceId = '05075131-5126-4cfb-b850-9e9b80eb4561'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1719,6 +1843,8 @@ instanceId = '2520010e-2a2b-410c-a189-bfa0c3b30529'
 layer = 0
 name = 'mixamorig:RightHandPinky3'
 parent = 'mixamorig:RightHandPinky2'
+
+parentInstanceId = '279e6b08-0838-4f05-8016-cf2373bf7109'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1740,6 +1866,8 @@ instanceId = '10c32862-b5e1-4597-8b03-3cdb4e44aa80'
 layer = 0
 name = 'mixamorig:RightHandPinky4'
 parent = 'mixamorig:RightHandPinky3'
+
+parentInstanceId = '2520010e-2a2b-410c-a189-bfa0c3b30529'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1761,6 +1889,8 @@ instanceId = '40782709-5fa6-4005-af0b-6ec16023a160'
 layer = 0
 name = 'mixamorig:LeftUpLeg'
 parent = 'mixamorig:Hips'
+
+parentInstanceId = '5fadfe70-733e-40eb-b05d-95faab080efa'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1782,6 +1912,8 @@ instanceId = 'b1f7e766-d6a2-4a17-b9b5-8d5f74f875aa'
 layer = 0
 name = 'mixamorig:LeftLeg'
 parent = 'mixamorig:LeftUpLeg'
+
+parentInstanceId = '40782709-5fa6-4005-af0b-6ec16023a160'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1803,6 +1935,8 @@ instanceId = 'aab50f55-8d07-461b-8dda-2548625e04c4'
 layer = 0
 name = 'mixamorig:LeftFoot'
 parent = 'mixamorig:LeftLeg'
+
+parentInstanceId = 'b1f7e766-d6a2-4a17-b9b5-8d5f74f875aa'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1824,6 +1958,8 @@ instanceId = '15d51758-e8f4-4476-ad28-81cf3e5b7e30'
 layer = 0
 name = 'mixamorig:LeftToeBase'
 parent = 'mixamorig:LeftFoot'
+
+parentInstanceId = 'aab50f55-8d07-461b-8dda-2548625e04c4'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1845,6 +1981,8 @@ instanceId = '944dce4d-c85f-475d-8ffb-a32d5e2b46f2'
 layer = 0
 name = 'mixamorig:LeftToe_End'
 parent = 'mixamorig:LeftToeBase'
+
+parentInstanceId = '15d51758-e8f4-4476-ad28-81cf3e5b7e30'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1866,6 +2004,8 @@ instanceId = '464d769b-eae5-47de-9ba0-cebdf55536f9'
 layer = 0
 name = 'mixamorig:RightUpLeg'
 parent = 'mixamorig:Hips'
+
+parentInstanceId = '5fadfe70-733e-40eb-b05d-95faab080efa'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1887,6 +2027,8 @@ instanceId = 'caad1d91-ad4d-451c-9ebc-ef9cf0004017'
 layer = 0
 name = 'mixamorig:RightLeg'
 parent = 'mixamorig:RightUpLeg'
+
+parentInstanceId = '464d769b-eae5-47de-9ba0-cebdf55536f9'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1908,6 +2050,8 @@ instanceId = 'd1497b21-3312-4d44-94f8-bbdfba3f4e67'
 layer = 0
 name = 'mixamorig:RightFoot'
 parent = 'mixamorig:RightLeg'
+
+parentInstanceId = 'caad1d91-ad4d-451c-9ebc-ef9cf0004017'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1929,6 +2073,8 @@ instanceId = 'a3dc6b39-ed9b-44db-a3c2-ef8b9af58698'
 layer = 0
 name = 'mixamorig:RightToeBase'
 parent = 'mixamorig:RightFoot'
+
+parentInstanceId = 'd1497b21-3312-4d44-94f8-bbdfba3f4e67'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1950,6 +2096,8 @@ instanceId = '0f29a4d3-6637-49fd-81c3-9107c7536dff'
 layer = 0
 name = 'mixamorig:RightToe_End'
 parent = 'mixamorig:RightToeBase'
+
+parentInstanceId = 'a3dc6b39-ed9b-44db-a3c2-ef8b9af58698'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1971,6 +2119,8 @@ instanceId = '987f7658-e97d-4f64-9fc8-afb1432d6655'
 layer = 0
 name = 'Alpha_Surface'
 parent = 'RootNode'
+
+parentInstanceId = '4dedb0c6-520d-4bc5-a263-05dd743e597e'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -1992,6 +2142,8 @@ instanceId = 'badade77-b138-42e2-8354-6822da2f9be8'
 layer = 0
 name = 'Alpha_Joints'
 parent = 'RootNode'
+
+parentInstanceId = '4dedb0c6-520d-4bc5-a263-05dd743e597e'
 tag = 'Untagged'
 
     [gameobjects.BoneComponent]
@@ -2013,6 +2165,8 @@ instanceId = '30b1b0e3-b278-4df9-9d0f-10614348de7c'
 layer = 0
 name = 'Terrain'
 parent = ''
+
+parentInstanceId = ''
 tag = 'Untagged'
 
     [gameobjects.TerrainColliderComponent]
@@ -2047,6 +2201,8 @@ instanceId = 'b3c8a1f2-4d5e-6a7b-8c9d-0e1f2a3b4c5d'
 layer = 0
 name = 'Sea'
 parent = ''
+
+parentInstanceId = ''
 tag = 'Untagged'
 
     [gameobjects.BoxColliderComponent]

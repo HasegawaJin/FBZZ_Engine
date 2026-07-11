@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Skinned/SkinnedLit.hlsl"
+shader = "guid:0999dc28100b44ce92afbd0b65399875"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

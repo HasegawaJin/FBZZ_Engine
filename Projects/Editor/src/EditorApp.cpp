@@ -9,7 +9,6 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/EditorTaskOverlay.hpp>
-#include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -36,6 +35,7 @@
 #include "Tools/DetailTool.hpp"
 #include "Tools/FoliageTool.hpp"
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -45,12 +45,14 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Core/Window.hpp>
+#include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -290,11 +292,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
-    {
-        auto graph = std::make_unique<AnimationGraphPanel>();
-        graph->visible = false;
-        m_panels.push_back(std::move(graph));
-    }
+    m_panels.push_back(std::make_unique<AnimationGraphPanel>());
     {
         auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::Scene);
         m_sceneViewportPanel = vp.get();
@@ -317,54 +315,39 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_panels.push_back(std::move(assets));
     }
     m_statusBar = std::make_unique<StatusBar>();
-    {
-        auto hist = std::make_unique<UndoHistoryPanel>();
-        hist->visible = false;
-        m_panels.push_back(std::move(hist));
-    }
-    {
-        auto hk = std::make_unique<HotkeyEditorPanel>();
-        hk->visible = false;
-        m_panels.push_back(std::move(hk));
-    }
+    m_panels.push_back(std::make_unique<UndoHistoryPanel>());
+    m_panels.push_back(std::make_unique<HotkeyEditorPanel>());
     {
         auto ps = std::make_unique<ProjectSettingsPanel>();
-        ps->visible = false;
         m_projectSettingsPanel = ps.get();
         m_panels.push_back(std::move(ps));
     }
     {
         auto bs = std::make_unique<BuildSettingsPanel>();
-        bs->visible = false;
         m_buildSettingsPanel = bs.get();
         m_panels.push_back(std::move(bs));
     }
     {
         auto analysis = std::make_unique<AnalysisPanel>();
-        analysis->visible = false;
         m_analysisPanel = analysis.get();
         m_panels.push_back(std::move(analysis));
     }
     {
         auto mapEditor = std::make_unique<MapEditorPanel>();
-        mapEditor->visible = false;
         m_mapEditorPanel = mapEditor.get();
         m_panels.push_back(std::move(mapEditor));
     }
-    {
-        auto dep = std::make_unique<DependencyViewPanel>();
-        dep->visible = false;
-        m_panels.push_back(std::move(dep));
-    }
+    m_panels.push_back(std::make_unique<DependencyViewPanel>());
     {
         auto iblBake = std::make_unique<IblBakePanel>();
-        iblBake->visible = false;
         m_iblBakePanel = iblBake.get();
         m_panels.push_back(std::move(iblBake));
     }
 
-    for (auto& panel : m_panels)
+    for (auto& panel : m_panels) {
+        panel->visible = panel->GetDefaultVisibility();
         panel->OnInit(m_ctx);
+    }
 
     RegisterDefaultHotkeys();
     // 保存済みのオーバーライドを適用する
@@ -442,9 +425,21 @@ void EditorApp::Shutdown()
     m_settings.showDetailTool     = m_ctx.showDetailTool;
     m_settings.showFoliageTool    = m_ctx.showFoliageTool;
     m_settings.gameViewportAspect = static_cast<int>(m_ctx.gameViewportAspect);
+    m_settings.playFocusMode      = static_cast<int>(m_ctx.playFocusMode);
     m_settings.cameraSpeed           = m_ctx.cameraSpeed;
     m_settings.cameraSensitivity     = m_ctx.cameraSensitivity;
+    if (m_ctx.editorCamera) {
+        m_settings.cameraLastPx = m_ctx.editorCamera->m_position.x;
+        m_settings.cameraLastPy = m_ctx.editorCamera->m_position.y;
+        m_settings.cameraLastPz = m_ctx.editorCamera->m_position.z;
+        m_settings.cameraLastRx = m_ctx.editorCamera->m_rotation.x;
+        m_settings.cameraLastRy = m_ctx.editorCamera->m_rotation.y;
+        m_settings.cameraLastRz = m_ctx.editorCamera->m_rotation.z;
+        m_settings.cameraLastRw = m_ctx.editorCamera->m_rotation.w;
+    }
+    m_settings.editorUiScale         = m_ctx.editorUiScale;
     m_settings.assetBrowserIconSize  = m_ctx.assetBrowserIconSize;
+    m_settings.assetBrowserTreeWidth = m_ctx.assetBrowserTreeWidth;
     m_settings.assetBrowserBookmarks = m_ctx.assetBrowserBookmarks;
     m_settings.defaultImportOptions  = m_ctx.defaultImportOptions;
     // ホットキーバインドをオーバーライドとして保存 (デフォルト値でも全件保存して確実に復元)
@@ -498,39 +493,7 @@ void EditorApp::Shutdown()
     m_settings.showDecalBounds      = m_ctx.projectSettings.render.showDecalBounds;
     m_settings.showNavMesh          = m_ctx.projectSettings.render.showNavMesh;
     m_settings.showNavSensors       = m_ctx.projectSettings.render.showNavSensors;
-    m_settings.viewMode        = static_cast<int>(m_ctx.projectSettings.render.viewMode);
-    m_settings.shadowEnabled   = m_ctx.projectSettings.render.shadowEnabled;
-    // Debug メニュー - Post Process
-    {
-        const auto& pp             = m_ctx.projectSettings.render.postProcess;
-        m_settings.ppFxaaEnabled              = pp.fxaaEnabled;
-        m_settings.ppExposure                 = pp.exposure;
-        m_settings.ppBloomEnabled             = pp.bloom.enabled;
-        m_settings.ppBloomIntensity           = pp.bloom.intensity;
-        m_settings.ppAoEnabled                = pp.ambientOcclusion.enabled;
-        m_settings.ppFogEnabled               = pp.fog.enabled;
-        m_settings.ppFogDensity               = pp.fog.density;
-        m_settings.ppFogFar                   = pp.fog.farDistance;
-        m_settings.ppColorGradingEnabled      = pp.colorGrading.enabled;
-        m_settings.ppContrast                 = pp.colorGrading.contrast;
-        m_settings.ppSaturation               = pp.colorGrading.saturation;
-        m_settings.ppHueShift                 = pp.colorGrading.hueShift;
-        m_settings.ppVignetteEnabled          = pp.vignette.enabled;
-        m_settings.ppFilmGrainEnabled         = pp.filmGrain.enabled;
-        m_settings.ppSharpenEnabled           = pp.sharpen.enabled;
-        m_settings.ppSharpenStrength          = pp.sharpen.strength;
-        m_settings.ppDofEnabled               = pp.depthOfField.enabled;
-        m_settings.ppDofFocus                 = pp.depthOfField.focusDistance;
-        m_settings.ppDofBlur                  = pp.depthOfField.blurRadius;
-        m_settings.ppChromaticAberrationEnabled = pp.lens.chromaticAberrationEnabled;
-        m_settings.ppLensDistortionEnabled    = pp.lens.distortionEnabled;
-        m_settings.ppSepiaEnabled             = pp.stylized.sepiaEnabled;
-        m_settings.ppInvertEnabled            = pp.stylized.invertEnabled;
-        m_settings.ppPosterizeEnabled         = pp.stylized.posterizeEnabled;
-        m_settings.ppPixelateEnabled          = pp.stylized.pixelateEnabled;
-        m_settings.ppPosterizeLevels          = pp.stylized.posterizeLevels;
-        m_settings.ppPixelSize                = pp.stylized.pixelSize;
-    }
+    m_settings.viewMode = static_cast<int>(m_ctx.projectSettings.render.viewMode);
 
     m_settings.Save(m_ctx.projectRoot + "/Assets/EditorConfig/editor_settings.toml", m_ctx.projectRoot);
     m_ctx.projectSettings.Save(m_projectSettingsPath);
@@ -577,9 +540,17 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         m_ctx.showDetailTool     = m_settings.showDetailTool;
         m_ctx.showFoliageTool    = m_settings.showFoliageTool;
         m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(m_settings.gameViewportAspect);
+        m_ctx.playFocusMode      = static_cast<EditorContext::PlayFocusMode>(m_settings.playFocusMode);
         m_ctx.cameraSpeed        = m_settings.cameraSpeed;
         m_ctx.cameraSensitivity  = m_settings.cameraSensitivity;
+        if (m_ctx.editorCamera) {
+            m_ctx.editorCamera->m_position = { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz };
+            m_ctx.editorCamera->m_rotation = { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz, m_settings.cameraLastRw };
+        }
+        m_ctx.editorUiScale = m_settings.editorUiScale;
+        EditorTheme::SetUiScale(m_ctx.editorUiScale); // ロードしたスケールを即適用
         m_ctx.assetBrowserIconSize = m_settings.assetBrowserIconSize;
+        m_ctx.assetBrowserTreeWidth = m_settings.assetBrowserTreeWidth;
         m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
         m_ctx.defaultImportOptions  = m_settings.defaultImportOptions;
         for (std::size_t i = 0; i < 9; ++i) {
@@ -638,38 +609,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     m_ctx.projectSettings.render.showDecalBounds      = m_settings.showDecalBounds;
     m_ctx.projectSettings.render.showNavMesh          = m_settings.showNavMesh;
     m_ctx.projectSettings.render.showNavSensors       = m_settings.showNavSensors;
-    m_ctx.projectSettings.render.viewMode        = static_cast<renderer::ViewMode>(m_settings.viewMode);
-    m_ctx.projectSettings.render.shadowEnabled   = m_settings.shadowEnabled;
-    {
-        auto& pp                          = m_ctx.projectSettings.render.postProcess;
-        pp.fxaaEnabled                    = m_settings.ppFxaaEnabled;
-        pp.exposure                       = m_settings.ppExposure;
-        pp.bloom.enabled                  = m_settings.ppBloomEnabled;
-        pp.bloom.intensity                = m_settings.ppBloomIntensity;
-        pp.ambientOcclusion.enabled       = m_settings.ppAoEnabled;
-        pp.fog.enabled                    = m_settings.ppFogEnabled;
-        pp.fog.density                    = m_settings.ppFogDensity;
-        pp.fog.farDistance                = m_settings.ppFogFar;
-        pp.colorGrading.enabled           = m_settings.ppColorGradingEnabled;
-        pp.colorGrading.contrast          = m_settings.ppContrast;
-        pp.colorGrading.saturation        = m_settings.ppSaturation;
-        pp.colorGrading.hueShift          = m_settings.ppHueShift;
-        pp.vignette.enabled               = m_settings.ppVignetteEnabled;
-        pp.filmGrain.enabled              = m_settings.ppFilmGrainEnabled;
-        pp.sharpen.enabled                = m_settings.ppSharpenEnabled;
-        pp.sharpen.strength               = m_settings.ppSharpenStrength;
-        pp.depthOfField.enabled           = m_settings.ppDofEnabled;
-        pp.depthOfField.focusDistance     = m_settings.ppDofFocus;
-        pp.depthOfField.blurRadius        = m_settings.ppDofBlur;
-        pp.lens.chromaticAberrationEnabled = m_settings.ppChromaticAberrationEnabled;
-        pp.lens.distortionEnabled         = m_settings.ppLensDistortionEnabled;
-        pp.stylized.sepiaEnabled          = m_settings.ppSepiaEnabled;
-        pp.stylized.invertEnabled         = m_settings.ppInvertEnabled;
-        pp.stylized.posterizeEnabled      = m_settings.ppPosterizeEnabled;
-        pp.stylized.pixelateEnabled       = m_settings.ppPixelateEnabled;
-        pp.stylized.posterizeLevels       = m_settings.ppPosterizeLevels;
-        pp.stylized.pixelSize             = m_settings.ppPixelSize;
-    }
+    m_ctx.projectSettings.render.viewMode = static_cast<renderer::ViewMode>(m_settings.viewMode);
 
     // WHY: SceneIO::Load() がシーン内の ScriptComponent を復元する際に
     //      ScriptFactory からファクトリ関数を引く。DLL が未ロードだとスクリプトインスタンスが
@@ -708,7 +648,6 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         scene::FlushWorldTransforms(*m_ctx.activeScene);
         m_settings.lastScenePath = sceneToOpen;
         m_ctx.currentScenePath   = sceneToOpen;
-        GraphLayoutSerializer::Load(m_ctx.graphLayouts, sceneToOpen);
         m_ctx.selectedEntities.clear();
         RebuildEditorUIFromScene();
         CaptureCleanScene();
@@ -791,6 +730,8 @@ void EditorApp::BeginFrame()
         ImGui::NewFrame();
     }
 
+    UpdatePlayFocusModeControls();
+
     // WHY: Unity 同様、Play 中・Pause 中はエディターとの区別を一目で把握できるようにする。
     //      ImGui のスタイルカラーをフレームごとに上書きすることで
     //      全ウィンドウ背景にティントを掛けられる。
@@ -861,6 +802,7 @@ void EditorApp::BeginFrame()
 
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
         ProcessMapEditingModeTransition(static_cast<uint32_t>(dockId));
+        ProcessPlayViewportLayoutTransition(static_cast<uint32_t>(dockId));
         ImGui::DockSpace(dockId, { 0, 0 }, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_AutoHideTabBar);
 
         // ModalDialog::OpenPopup は ImGui ウィンドウ (Begin/End) のスコープ内でしか機能しない。
@@ -951,6 +893,19 @@ void EditorApp::ProcessMapEditingModeTransition(uint32_t dockId)
         EnterMapEditingMode(dockId);
 }
 
+void EditorApp::ProcessPlayViewportLayoutTransition(uint32_t dockId)
+{
+    const bool shouldExpandGameView =
+        m_ctx.playFocusMode == EditorContext::PlayFocusMode::Maximized
+        && !m_playMode.IsInEditor()
+        && !m_playMode.HasPendingRestore();
+    if (shouldExpandGameView && !m_playViewportLayoutActive) {
+        EnterPlayViewportLayout(dockId);
+    } else if (!shouldExpandGameView && m_playViewportLayoutActive) {
+        ExitPlayViewportLayout(dockId);
+    }
+}
+
 void EditorApp::EnterMapEditingMode(uint32_t dockId)
 {
     if (m_ctx.mapEditingMode)
@@ -1019,6 +974,57 @@ void EditorApp::ExitMapEditingMode(uint32_t dockId)
     }
 }
 
+void EditorApp::EnterPlayViewportLayout(uint32_t dockId)
+{
+    if (m_playViewportLayoutActive)
+        return;
+
+    size_t iniSize = 0;
+    const char* iniData = ImGui::SaveIniSettingsToMemory(&iniSize);
+    m_playLayoutIni.assign(iniData, iniSize);
+
+    m_playPanelVisibility.clear();
+    m_playPanelVisibility.reserve(m_panels.size());
+    for (const auto& panel : m_panels)
+        m_playPanelVisibility.push_back(panel->visible);
+
+    // WHY: Unity の Maximize On Play に近い挙動として、Play 中だけ Game View を中央 Dock 全体へ広げる。
+    //      Stop 時に保存済みレイアウトを復元するため、ユーザーの通常レイアウトは変更しない。
+    m_playViewportLayoutActive = true;
+    m_playIniFilename = ImGui::GetIO().IniFilename;
+    ImGui::GetIO().IniFilename = nullptr;
+
+    for (auto& panel : m_panels)
+        panel->visible = (panel.get() == m_gameViewportPanel);
+
+    if (m_gameViewportPanel)
+        m_gameViewportPanel->visible = true;
+    m_ctx.requestGameViewportFocus = true;
+
+    BuildPlayViewportLayout(dockId);
+}
+
+void EditorApp::ExitPlayViewportLayout(uint32_t dockId)
+{
+    if (!m_playViewportLayoutActive)
+        return;
+
+    m_playViewportLayoutActive = false;
+    ImGui::GetIO().IniFilename = m_playIniFilename;
+
+    if (m_playPanelVisibility.size() == m_panels.size()) {
+        for (size_t index = 0; index < m_panels.size(); ++index)
+            m_panels[index]->visible = m_playPanelVisibility[index];
+    }
+
+    ImGui::DockBuilderRemoveNode(static_cast<ImGuiID>(dockId));
+    if (!m_playLayoutIni.empty()) {
+        ImGui::ClearIniSettings();
+        ImGui::LoadIniSettingsFromMemory(
+            m_playLayoutIni.data(), m_playLayoutIni.size());
+    }
+}
+
 void EditorApp::BuildMapEditingLayout(uint32_t dockId)
 {
     const ImGuiID root = static_cast<ImGuiID>(dockId);
@@ -1027,25 +1033,74 @@ void EditorApp::BuildMapEditingLayout(uint32_t dockId)
         root, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
     ImGui::DockBuilderSetNodeSize(root, ImGui::GetMainViewport()->WorkSize);
 
-    ImGuiID center = root;
+    ImGuiID center    = root;
+    ImGuiID leftCol   = 0;
+    ImGuiID tools     = 0;
     ImGuiID hierarchy = 0;
     ImGuiID inspector = 0;
-    ImGuiID tools = 0;
-    ImGuiID assets = 0;
+    ImGuiID assets    = 0;
+
+    // 左カラムを Map Tools(上) と Scene Hierarchy(下) に分割し、ツールパネルへ専用領域を与える。
+    // WHY: 以前は Map Tools を Inspector と同じノードへドックしていたため、オブジェクト選択中は
+    //      Inspector の裏のタブへ隠れ、ツール操作のたびにタブ切替が必要で使いづらかった。
+    //      Map 編集はツールパネルが主役なので常時見える左カラムへ固定し、Viewport を広く保つ。
     ImGui::DockBuilderSplitNode(
-        center, ImGuiDir_Left, 0.16f, &hierarchy, &center);
+        center, ImGuiDir_Left, 0.18f, &leftCol, &center);
     ImGui::DockBuilderSplitNode(
-        center, ImGuiDir_Right, 0.24f, &inspector, &center);
+        leftCol, ImGuiDir_Down, 0.45f, &hierarchy, &tools);
+    ImGui::DockBuilderSplitNode(
+        center, ImGuiDir_Right, 0.22f, &inspector, &center);
     ImGui::DockBuilderSplitNode(
         center, ImGuiDir_Down, 0.24f, &assets, &center);
 
-    tools = inspector;
+    ImGui::DockBuilderDockWindow("Map Tools", tools);
     ImGui::DockBuilderDockWindow("Scene Hierarchy", hierarchy);
     ImGui::DockBuilderDockWindow("Inspector", inspector);
-    ImGui::DockBuilderDockWindow("Map Tools", tools);
     ImGui::DockBuilderDockWindow("Asset Browser", assets);
     ImGui::DockBuilderDockWindow("Scene", center);
     ImGui::DockBuilderFinish(root);
+}
+
+void EditorApp::BuildPlayViewportLayout(uint32_t dockId)
+{
+    const ImGuiID root = static_cast<ImGuiID>(dockId);
+    ImGui::DockBuilderRemoveNode(root);
+    ImGui::DockBuilderAddNode(
+        root, ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_PassthruCentralNode);
+    ImGui::DockBuilderSetNodeSize(root, ImGui::GetMainViewport()->WorkSize);
+    ImGui::DockBuilderDockWindow("Game", root);
+    ImGui::DockBuilderFinish(root);
+}
+
+void EditorApp::UpdatePlayFocusModeControls()
+{
+    const bool focusedPlay =
+        m_ctx.playFocusMode == EditorContext::PlayFocusMode::Focused
+        && !m_playMode.IsInEditor()
+        && !m_playMode.HasPendingRestore();
+
+    if (focusedPlay && !m_playFocusedCursorHidden) {
+        // WHY: 非表示だけでは OS カーソルが画面端に到達して入力が止まる。
+        //      Unity の Focused 実行と同様にカーソルを隠し、ウィンドウ中央へロックする。
+        core::Cursor::SetLockMode(core::CursorLockMode::Locked);
+        core::Cursor::SetVisible(false);
+        m_playFocusedCursorHidden = true;
+    } else if (!focusedPlay && m_playFocusedCursorHidden) {
+        core::Cursor::ResetForEditor();
+        m_playFocusedCursorHidden = false;
+    }
+
+    if (focusedPlay)
+        core::Cursor::ApplyLock();
+
+    if (focusedPlay && m_ctx.activeScene && input::Input::KeyDown(input::KeyCode::ESCAPE)) {
+        // WHAT: Focused 実行中の Escape はゲーム入力の解放と PlayMode 終了を兼ねる。
+        scene::ScriptRuntime::Override(nullptr);
+        m_playMode.Stop(*m_ctx.activeScene);
+        m_undoStack.Clear();
+        core::Cursor::ResetForEditor();
+        m_playFocusedCursorHidden = false;
+    }
 }
 
 void EditorApp::EndFrame(renderer::IImGuiRenderer& imguiRenderer)
@@ -1104,7 +1159,12 @@ bool EditorApp::OnInit()
     m_runtime.BindExternalScene(m_scene.get());
     m_runtime.RegisterScenes(util::FileSystem::PathFromUtf8(m_ctx.projectRoot), *m_resources);
 
-    m_debugCamera.camera.m_position = { 0.0f, 2.5f, -8.0f };
+    // WHY: OpenProject() 時点では editorCamera が nullptr のため設定を直接適用できない。
+    //      OnInit() で editorCamera を確定させた後に保存値を適用する。
+    //      EditorSettings のデフォルト値が従来のハードコード値 {0,2.5,-8} と一致するため
+    //      初回起動時も同じ初期位置になる。
+    m_debugCamera.camera.m_position = { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz };
+    m_debugCamera.camera.m_rotation = { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz, m_settings.cameraLastRw };
     m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
     m_ctx.editorCamera = &m_debugCamera.camera;
 
@@ -1322,9 +1382,13 @@ void EditorApp::UpdateFocusAnim(float dt)
         const math::Vector3 camDir = (dist > 0.01f)
             ? dir * (1.0f / dist)
             : math::Vector3{ 0.0f, 0.5f, -1.0f }.Normalized();
+        // WHY: Unity の Frame Selected と同様、対象バウンズの大きさに応じて
+        //      カメラ距離を変える。半径 0 (バウンズ不明) は従来の固定距離。
+        const float focusDist = (std::max)(kFocusDist, m_ctx.focusTargetRadius * 2.2f);
+        m_ctx.focusTargetRadius = 0.0f;
         m_focusAnim.active   = true;
         m_focusAnim.startPos = m_debugCamera.camera.m_position;
-        m_focusAnim.endPos   = target + camDir * kFocusDist;
+        m_focusAnim.endPos   = target + camDir * focusDist;
         m_focusAnim.target   = target;
         m_focusAnim.t        = 0.0f;
     }

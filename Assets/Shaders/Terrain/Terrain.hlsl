@@ -98,8 +98,15 @@ cbuffer ShadowConstants : register(CB_SHADOW)
     float    shadowBias;
     float    shadowStrength;   // 0=影なし, 1=完全な影
     int      shadowPcfRadius;  // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
-    float    _shadowPcfPad[3];
+    float    cloudShadowStrength;
+    float    cloudShadowCoverage;
+    float    cloudShadowScale;
+    float    cloudShadowSpeed;
+    float    cloudShadowTime;
+    float    cloudShadowWindX;
+    float    cloudShadowWindZ;
 };
+#define HAVE_CLOUD_SHADOW 1
 
 // WHY: LightConstants の ambientColor グローバルを参照するため cbuffer 宣言の後に include する。
 #include "Rendering/Lighting.hlsli"
@@ -169,26 +176,6 @@ TerrainPSInput VSMain(TerrainVSInput v)
     return o;
 }
 
-float3 BlendTerrainNormal(float3 worldTangent, float3 geometricNormal, float2 uv, float4 splat)
-{
-    // TBN を頂点シェーダーから受け取ったタンジェントで構築する。
-    // DDX/DDY による画面空間微分を廃止し、ピクセルシェーダーの計算コストを削減する。
-    float3 T = normalize(worldTangent);
-    float3 B = normalize(cross(geometricNormal, T));
-
-    float3 blended = float3(0.0f, 0.0f, 0.0f);
-    [unroll]
-    for (int i = 0; i < 4; ++i)
-    {
-        float2 tiledUV = uv * layerTiling[i].xy;
-        float3 tn = g_normal[i].Sample(g_sampler, tiledUV).xyz * 2.0f - 1.0f;
-        tn.xy *= layerNormalStrength[i];
-        tn = normalize(tn);
-        blended += normalize(T * tn.x + B * tn.y + geometricNormal * tn.z) * splat[i];
-    }
-    return normalize(blended);
-}
-
 float TerrainBandMask(float value, float minValue, float maxValue, float fade)
 {
     // WHAT: [minValue, maxValue] の範囲内を 1、範囲外を 0 に近づける滑らかなマスク。
@@ -241,7 +228,8 @@ float4 ApplyAutoBlend(float4 paintedSplat, float localHeight, float slope)
 // ============================================================================
 float4 PSMain(TerrainPSInput p) : SV_Target0
 {
-    float3 N = normalize(p.worldNormal);
+    // 幾何法線 (頂点補間) を TBN 基準に使う。法線マップ適用後の N はループで組み立てる。
+    float3 Ng = normalize(p.worldNormal);
     float3 V = normalize(cameraPos - p.worldPos);
     float3 L = normalize(-lightDir);
 
@@ -254,7 +242,7 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     // 4 チャンネルの合計で正規化（ペイントツールが保証するが数値誤差を安全に処理）
     float wsum = splat.r + splat.g + splat.b + splat.a;
     if (wsum > 0.001f) splat /= wsum;
-    float slope = saturate(1.0f - abs(N.y));
+    float slope = saturate(1.0f - abs(Ng.y));
     splat = ApplyAutoBlend(splat, p.localHeight, slope);
 
     // ── 4 レイヤーのアルベドをウェイトブレンド ───────────────────
@@ -263,30 +251,68 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     //      テクスチャフェッチが最適化されない場合がある。
     //      [unroll] で展開することで各テクスチャフェッチが独立したコンパイル済み
     //      命令になり、GPU パイプラインが並列フェッチを行いやすくなる。
-    float3 albedo = float3(0.0f, 0.0f, 0.0f);
+    // TBN をループ前に一度だけ構築する (Gram-Schmidt 直交化)。
+    // WHY: 補間後の worldTangent は法線と厳密には直交しないため、法線成分を除去してから組む。
+    //      DDX/DDY の画面空間微分を使わず頂点タンジェントから復元し PS コストを抑える。
+    float3 T = normalize(p.worldTangent - Ng * dot(Ng, p.worldTangent));
+    float3 B = normalize(cross(Ng, T));
+
+    // 画面空間の UV 勾配をループ外で一度だけ求める。
+    // WHY: 下のレイヤーループは splat≈0 のレイヤーを動的分岐でスキップする。分岐内で通常の Sample を
+    //      使うと、レイヤー境界でクアッド内制御フローが分岐したとき異方性/ミップ勾配が未定義になり
+    //      継ぎ目のちらつきが出る。勾配を分岐外で計算し SampleGrad に渡せば、フェッチを省きつつ
+    //      異方性フィルタ品質を Sample と同一に保てる (tiledUV = uv * tiling なので勾配も tiling 倍)。
+    float2 duvdx = ddx(p.uv);
+    float2 duvdy = ddy(p.uv);
+
+    // NOTE: diffuse / AO-Roughness / normal の 3 枚を同一 tiledUV で同じループ内サンプルし、法線ブレンドを融合する。
+    //       法線を別ループに分けないことで tiledUV 再計算とテクスチャキャッシュミスを削減する。
+    float3 albedo    = float3(0.0f, 0.0f, 0.0f);
+    float3 blendedN  = float3(0.0f, 0.0f, 0.0f);
     float  roughness = 0.0f;
     float  ao = 0.0f;
     [unroll]
     for (int i = 0; i < 4; ++i)
     {
-        float2 tiledUV = p.uv * layerTiling[i].xy;
-        float3 d       = g_diffuse[i].Sample(g_sampler, tiledUV).rgb;
-        float2 aoRoughnessTex = g_aoRoughness[i].Sample(g_sampler, tiledUV).rg;
-        float hasAoRoughnessTex = saturate(layerTextureFlags[i]);
-        float layerAO = lerp(saturate(layerMaterial[i].y), aoRoughnessTex.r, hasAoRoughnessTex);
-        float layerRoughness = lerp(saturate(layerMaterial[i].x), aoRoughnessTex.g, hasAoRoughnessTex);
-        albedo        += d * splat[i];
-        roughness     += layerRoughness * splat[i];
-        ao            += layerAO * splat[i];
+        // 寄与ゼロのレイヤーはテクスチャフェッチ (diffuse/AO/normal の異方性 3 枚) を丸ごと省く。
+        // WHY: 地形の大半のピクセルは 1〜2 レイヤーしか使わない。splat≈0 のレイヤーを飛ばすと、
+        //      単一レイヤー領域では最大 9 枚のフェッチを削減でき、TerrainForward の主コストを大きく下げる。
+        //      寄与は最終的に splat[i]≈0 倍されるため、スキップしても結果は数値的に等価。
+        // NOTE: ここで `continue` を使うとデータ依存の制御フローが生まれ、FXC が [unroll] を
+        //       展開できず g_diffuse[i] の i がリテラルにならない (X3512/X3511)。
+        //       正の if ガードで囲むことで各反復が i=0..3 のリテラル添字に確実に展開される。
+        if (splat[i] > 0.001f)
+        {
+            float2 tiledUV = p.uv * layerTiling[i].xy;
+            float2 gradX   = duvdx * layerTiling[i].xy;
+            float2 gradY   = duvdy * layerTiling[i].xy;
+            float3 d       = g_diffuse[i].SampleGrad(g_sampler, tiledUV, gradX, gradY).rgb;
+            float2 aoRoughnessTex = g_aoRoughness[i].SampleGrad(g_sampler, tiledUV, gradX, gradY).rg;
+            float3 tn      = g_normal[i].SampleGrad(g_sampler, tiledUV, gradX, gradY).xyz * 2.0f - 1.0f;
+            tn.xy *= layerNormalStrength[i];
+            tn = normalize(tn);
+            float hasAoRoughnessTex = saturate(layerTextureFlags[i]);
+            float layerAO = lerp(saturate(layerMaterial[i].y), aoRoughnessTex.r, hasAoRoughnessTex);
+            float layerRoughness = lerp(saturate(layerMaterial[i].x), aoRoughnessTex.g, hasAoRoughnessTex);
+            albedo        += d * splat[i];
+            roughness     += layerRoughness * splat[i];
+            ao            += layerAO * splat[i];
+            blendedN      += normalize(T * tn.x + B * tn.y + Ng * tn.z) * splat[i];
+        }
     }
 
-    N = BlendTerrainNormal(p.worldTangent, N, p.uv, splat);
+    float3 N = normalize(blendedN);
 
     float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
         lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
 
-    float3 result = Lighting_BlinnPhong(
-        N, V, L, albedo, roughness, lightColor, lightIntensity, shadow);
+    // AO は間接光（環境光）成分のみを遮蔽する物理的に正しい扱いにする。
+    // WHY: 以前は最終結果全体に AO を乗算しており、直射日光やポイントライトまで
+    //      谷地形で不自然に暗くなっていた。ambient を分離し AO はそこだけに掛ける。
+    float3 ambient = albedo * ambientColor * ao;
+    float3 direct  = Lighting_BlinnPhong_Direct(
+        N, V, L, albedo, roughness, lightColor, lightIntensity) * shadow;
+    float3 result  = ambient + direct;
 
     [loop]
     for (int pi = 0; pi < pointLightCount; ++pi)
@@ -312,9 +338,6 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
             N, V, Ls, albedo, roughness,
             spotLights[si].color, spotLights[si].intensity * atten * cone);
     }
-
-    // AO は直接光を完全に消さず、地形の谷・泥・岩陰の環境光成分を中心に抑える。
-    result *= lerp(0.35f + ao * 0.65f, 1.0f, saturate(dot(N, L)));
 
     return float4(result, 1.0f);
 }

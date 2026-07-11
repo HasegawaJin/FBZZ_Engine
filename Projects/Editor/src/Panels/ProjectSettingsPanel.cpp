@@ -110,15 +110,27 @@ void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 void ProjectSettingsPanel::DrawSidebar()
 {
     ImGui::BeginChild("##ProjectSettingsSidebar", { SIDEBAR_WIDTH, 0.0f }, true);
-    SectionButton("Application", Section::Application, m_currentSection);
-    SectionButton("Import",      Section::Import,      m_currentSection);
-    SectionButton("Render",      Section::Render,      m_currentSection);
-    SectionButton("Post Process",Section::PostProcess, m_currentSection);
-    SectionButton("Physics",     Section::Physics,     m_currentSection);
-    SectionButton("Audio",       Section::Audio,       m_currentSection);
-    SectionButton("Screen",      Section::Screen,      m_currentSection);
-    SectionButton("Tags",        Section::Tags,        m_currentSection);
-    SectionButton("Layers",      Section::Layers,      m_currentSection);
+
+    // 検索バー — 入力文字列に部分一致するセクションのみ表示する。
+    static char s_filter[64] = {};
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##search", "Search...", s_filter, sizeof(s_filter));
+    ImGui::Separator();
+
+    // 空フィルター時は全表示、入力時は大文字小文字無視の部分一致フィルタリング。
+    auto btn = [&](const char* name, Section sec) {
+        if (s_filter[0] == '\0' || util::StringUtils::ContainsCI(name, s_filter))
+            SectionButton(name, sec, m_currentSection);
+    };
+    btn("Application", Section::Application);
+    btn("Import",      Section::Import);
+    btn("Render",      Section::Render);
+    btn("Post Process",Section::PostProcess);
+    btn("Physics",     Section::Physics);
+    btn("Audio",       Section::Audio);
+    btn("Screen",      Section::Screen);
+    btn("Tags",        Section::Tags);
+    btn("Layers",      Section::Layers);
     ImGui::EndChild();
 }
 
@@ -176,6 +188,8 @@ std::vector<PresetEntry> LoadImportPresets(const std::string& presetsDir)
             p.name = entry.path().stem().string();
             p.path = util::FileSystem::PathToUtf8(entry.path());
             const auto& tbl = parsed.table();
+            if (auto v = tbl["options"]["source_dcc"].value<int64_t>())
+                p.options.sourceDcc = static_cast<FbxSourceDcc>(*v);
             if (auto v = tbl["options"]["normal_map_convention"].value<int64_t>())
                 p.options.normalMapConvention = static_cast<NormalMapConvention>(*v);
             if (auto v = tbl["options"]["generate_tex_descriptors"].value<bool>())
@@ -206,13 +220,20 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
     if (ImGui::CollapsingHeader("FBX Defaults", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Indent();
         {
+            static constexpr const char* kSourceDccNames[] = { "Auto Detect", "Maya / FBX SDK", "Blender" };
+            int sourceDccIdx = static_cast<int>(opt.sourceDcc);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3))
+                opt.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
+        }
+        {
             static constexpr const char* kConvNames[] = { "DirectX (keep G)", "OpenGL (flip G)" };
             int convIdx = static_cast<int>(opt.normalMapConvention);
             ImGui::SetNextItemWidth(180.0f);
             if (ImGui::Combo("Normal Map Convention", &convIdx, kConvNames, 2))
                 opt.normalMapConvention = static_cast<NormalMapConvention>(convIdx);
         }
-        ImGui::Checkbox("Auto-generate .tex descriptors", &opt.generateTexDescriptors);
+        ImGui::Checkbox("Auto-generate texture .meta sidecars", &opt.generateTexDescriptors);
         {
             static constexpr const char* kCompNames[] = {
                 "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
@@ -265,7 +286,9 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
                     ImGui::TextUnformatted(p.name.c_str());
 
                     ImGui::TableSetColumnIndex(1);
-                    ImGui::TextDisabled("Conv=%s  GenTex=%s",
+                    ImGui::TextDisabled("DCC=%s  Conv=%s  GenTex=%s",
+                        p.options.sourceDcc == FbxSourceDcc::Blender ? "Blender" :
+                        p.options.sourceDcc == FbxSourceDcc::Maya ? "Maya" : "Auto",
                         p.options.normalMapConvention == NormalMapConvention::OpenGL ? "OpenGL" : "DirectX",
                         p.options.generateTexDescriptors ? "on" : "off");
 
@@ -398,18 +421,26 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
 
         ImGui::Unindent();
     }
-    ImGui::SameLine();
+    ImGui::Spacing();
     {
         const char* kViewModeLabels[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
         int idx = static_cast<int>(render.viewMode);
-        ImGui::SetNextItemWidth(130.0f);
+        ImGui::SetNextItemWidth(160.0f);
         if (ImGui::Combo("View Mode", &idx, kViewModeLabels, 4))
             render.viewMode = static_cast<renderer::ViewMode>(idx);
     }
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Debug Visualization");
+    ImGui::Checkbox("Colliders",         &render.showColliders);
     ImGui::SameLine();
-    ImGui::Checkbox("Colliders",    &render.showColliders);
+    ImGui::Checkbox("Terrain Collision", &render.showTerrainCollision);
     ImGui::SameLine();
-    ImGui::Checkbox("Decal Bounds", &render.showDecalBounds);
+    ImGui::Checkbox("NavMesh",           &render.showNavMesh);
+    ImGui::Checkbox("AI Sensors",        &render.showNavSensors);
+    ImGui::SameLine();
+    ImGui::Checkbox("Decal Bounds",      &render.showDecalBounds);
+    ImGui::SameLine();
     ImGui::Checkbox("Selection Outline", &render.showSelectionOutline);
 
     ImGui::Spacing();

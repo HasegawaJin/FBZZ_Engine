@@ -2,6 +2,7 @@
 // MaterialAsset.cpp | fbzz::asset
 // .mat マテリアルアセットの TOML シリアライズ / デシリアライズ
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
@@ -65,6 +66,8 @@ RenderPath RenderPathFromString(std::string_view value)
 {
     if (value == "forward" || value == "Forward") return RenderPath::Forward;
     if (value == "deferred" || value == "Deferred") return RenderPath::Deferred;
+    if (value == "particle" || value == "Particle") return RenderPath::Particle;
+    if (value == "trail" || value == "Trail") return RenderPath::Trail;
     return RenderPath::Auto;
 }
 
@@ -73,6 +76,8 @@ const char* RenderPathToString(RenderPath rp)
     switch (rp) {
     case RenderPath::Forward:  return "forward";
     case RenderPath::Deferred: return "deferred";
+    case RenderPath::Particle: return "particle";
+    case RenderPath::Trail:    return "trail";
     case RenderPath::Auto:
     default:                   return "auto";
     }
@@ -172,6 +177,8 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
     }
 
     MaterialAsset asset;
+    // guid: 参照を "Assets/..." パスへ戻してから読む (ランタイムは常にパスを持つ)。
+    DecodeGuidRefs(parsed.table());
     const toml::table& table = parsed.table();
     asset.shaderPath = table["shader"].value_or(std::string{});
     asset.blendMode = BlendModeFromString(table["blend_mode"].value_or(std::string{ "Opaque" }));
@@ -234,6 +241,9 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
             params.insert(name, FloatArrayToToml(values));
     }
     table.insert("params", std::move(params));
+
+    // ディスク上のテクスチャ / シェーダー参照は guid: 形式にする (リネーム・移動耐性)。
+    EncodeGuidRefs(table);
 
     std::ostringstream out;
     out << table << '\n';

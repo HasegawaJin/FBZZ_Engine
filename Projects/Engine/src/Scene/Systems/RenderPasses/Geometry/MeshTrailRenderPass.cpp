@@ -3,6 +3,8 @@
 // MeshTrailComponent の過去姿勢サンプリング、Skinned bone palette 保存、半透明 DrawCall 発行 (IRenderPass 実装)
 #include "Engine/Scene/Systems/RenderPasses/Geometry/MeshTrailRenderPass.hpp"
 
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -150,7 +152,9 @@ void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::Resource
     sample.position = go.transform.worldPosition;
     sample.world = go.transform.GetWorldMatrix();
 
-    if (auto* animator = go.GetComponent<AnimatorComponent>()) {
+    // 子SkinnedMeshRendererは親GameObjectのAnimatorを共有する。
+    // WHY: 自GOだけを見るとbone paletteが空になり、武器残像がbind poseで描画されるため。
+    if (auto* animator = FindAnimator(go)) {
         sample.boneMatrices = animator->boneMatrices;
         if (sample.boneMatrices.size() > asset::MAX_SKINNING_BONES)
             sample.boneMatrices.resize(asset::MAX_SKINNING_BONES);
@@ -183,7 +187,30 @@ void EnsureComponentResources(MeshTrailComponent& trail, renderer::ResourceManag
     if (!trail.meshTrailCB.IsValid())
         trail.meshTrailCB = resources.CreateConstantBuffer(sizeof(MeshTrailCB));
 
-    if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
+    // materialPath が設定されている場合: .mat の albedo テクスチャと doubleSided を優先する。
+    if (!trail.materialPath.empty()) {
+        const bool matChanged = (trail.loadedMaterialPath != trail.materialPath);
+        if (matChanged) {
+            trail.loadedMaterialPath = trail.materialPath;
+            trail.loadedTexturePath.clear();
+        }
+        const auto matHandle = asset::AssetManager::LoadMaterial(trail.materialPath);
+        if (const auto* mat = asset::AssetManager::GetMaterial(matHandle)) {
+            const auto it = mat->textures.find("albedo");
+            const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
+            if (!trail.texture.IsValid() || trail.loadedTexturePath != resolvedTex) {
+                if (resolvedTex.empty()) {
+                    static const uint8_t white[4] = { 255, 255, 255, 255 };
+                    trail.texture = resources.CreateTexture(white, 1, 1);
+                } else {
+                    trail.texture = resources.LoadTexture(resolvedTex);
+                }
+                trail.loadedTexturePath = resolvedTex;
+            }
+            trail.doubleSided = mat->doubleSided;
+        }
+    } else if (!trail.texture.IsValid() || trail.loadedTexturePath != trail.texturePath) {
+        // フォールバック: texturePath を直接使用する (materialPath 未設定時の既存挙動を維持)。
         if (trail.texturePath.empty()) {
             static const uint8_t white[4] = { 255, 255, 255, 255 };
             trail.texture = resources.CreateTexture(white, 1, 1);
@@ -293,6 +320,9 @@ void DrawSkinnedMeshSample(
     const auto skinCB = EnsureSampleSkinningCB(sample, resources, h.bindPoseSkinningCB);
 
     for (size_t meshIndex = 0; meshIndex < smr.model->meshes.size(); ++meshIndex) {
+        // 子GOが担当するsubmeshだけを描画し、剣Trailでキャラクター全身が残像化するのを防ぐ。
+        if (smr.meshIndex >= 0 && static_cast<int>(meshIndex) != smr.meshIndex)
+            continue;
         if (IsMeshIndexExcluded(trail, static_cast<int>(meshIndex)))
             continue;
         const auto& meshPtr = smr.model->meshes[meshIndex];

@@ -1,7 +1,7 @@
 mesh_type = 'surface'
 name = 'tree_small_02_leaves'
 render_path = 'deferred'
-shader = 'Assets/Shaders/Material/Surface/PBR.hlsl'
+shader = 'guid:73d100e5a351425aaf52953c23425438'
 version = 1
 
 [params]

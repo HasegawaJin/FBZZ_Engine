@@ -14,10 +14,12 @@ namespace fbzz::asset {
 
 // fzmat の render_path フィールドが取れる値。
 // WHY: カスタムシェーダーのレンダーパス振り分けをエンジンコード変更なしに制御するため。
-//      "auto" → IsForwardOnlyShader() 名前チェックにフォールバック (従来動作)。
-//      "forward" → 常に Forward パスで描画 (カスタムエフェクト・Unlit 系)。
+//      "auto"     → IsForwardOnlyShader() 名前チェックにフォールバック (従来動作)。
+//      "forward"  → 常に Forward パスで描画 (カスタムエフェクト・Unlit 系)。
 //      "deferred" → 常に GBuffer Deferred パスで描画 (PBR 系)。
-enum class RenderPath { Auto, Deferred, Forward };
+//      "particle" → ParticleEmitter 専用。ParticlePass が albedo テクスチャと blendMode を参照する。
+//      "trail"    → TrailComponent / MeshTrailComponent 専用。TrailRenderPass が albedo テクスチャを参照する。
+enum class RenderPath { Auto, Deferred, Forward, Particle, Trail };
 
 // fzmat の mesh_type フィールドが取れる値。
 // WHY: Surface シェーダー判定をパス文字列検索から fzmat 宣言へ移し、
@@ -43,7 +45,7 @@ struct MaterialAsset {
     RenderPath renderPath = RenderPath::Auto;
     MeshType   meshType   = MeshType::Any;
 
-    // slot 名 → assets/ 相対パス（.tex descriptor または .png/.dds 直参照、どちらも可）
+    // slot 名 → assets/ 相対パス（元画像 .png/.dds 等を直参照。インポート設定は隣の .meta が担う）
     std::unordered_map<std::string, std::string> textures;
 
     // シェーダー変数名 → float 要素列。float / float2 / float3 / float4 を同じ形式で保存する。
