@@ -70,6 +70,23 @@ void ApplyMaterialAssetParams(const asset::MaterialAsset& asset,
     }
 }
 
+// MaterialComponent::paramOverrides を共有アセット適用後の paramData へ「この GO 専用」で重ねる。
+// WHY: 同じ .mat を共有する複数インスタンスでも、ディゾルブ量・色などを個別に動かせるようにする。
+void ApplyMaterialParamOverrides(
+    const std::unordered_map<std::string, std::vector<float>>& overrides,
+    const renderer::ShaderDescriptor& desc,
+    std::vector<uint8_t>& paramData)
+{
+    for (const auto& [name, values] : overrides) {
+        if (values.empty()) continue;
+        const auto* v = desc.FindVar(name);
+        if (!v || v->varType != renderer::ShaderVarType::Float) continue;
+        if (v->offset + v->size > static_cast<uint32_t>(paramData.size())) continue;
+        const size_t count = (std::min<size_t>)(v->columns, values.size());
+        std::memcpy(paramData.data() + v->offset, values.data(), count * sizeof(float));
+    }
+}
+
 void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vector<uint8_t>& paramData)
 {
     // Step 1: シェーダーの全 float 変数を 1.0f で初期化する。
@@ -122,8 +139,11 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vect
 
 AnimatorComponent* FindAnimator(GameObject& go)
 {
-    if (auto* a = go.GetComponent<AnimatorComponent>()) return a;
-    if (auto* parent = go.GetParent()) return parent->GetComponent<AnimatorComponent>();
+    // Skinned submesh はモデル構造により複数階層下へ配置されるため、直親だけで打ち切らない。
+    // WHY: Animatorを見失うとbind pose用CBへフォールバックし、Trailの初期位置もずれる。
+    for (GameObject* current = &go; current; current = current->GetParent())
+        if (auto* animator = current->GetComponent<AnimatorComponent>())
+            return animator;
     return nullptr;
 }
 
@@ -160,17 +180,31 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
 
     if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
         mc.materialAsset = asset::AssetManager::LoadMaterial(mc.materialPath);
-    if (!mc.materialAsset.IsValid() && !mc.materialPath.empty())
-        return nullptr;
-    if (!mc.materialAsset.IsValid() && mc.materialPath.empty())
-        return nullptr;
+
+    auto activeAsset = mc.materialAsset;
+    if (!activeAsset.IsValid()) {
+        // .mat が読めない / 未割当でも、メッシュを画面から絶対に消さない。
+        // 原色紫のフォールバック材質で描画を続け、問題を可視化する (Unity のマゼンタ相当)。
+        // WHY: mc.materialAsset には書き戻さず毎フレーム再解決させる。壊れた .mat を
+        //      修復・再インポートした瞬間 (FlushFailed 後) に正規材質へ自動復帰できる。
+        const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
+        static std::unordered_set<std::string> s_warnedMissingMaterials;
+        const std::string warnKey =
+            mc.materialPath.empty() ? std::string("<unassigned>") : mc.materialPath;
+        if (s_warnedMissingMaterials.insert(warnKey).second) {
+            FBZZ_LOG_WARN("Material load failed '%s' -> using fallback %s.",
+                          warnKey.c_str(), fallbackPath);
+        }
+        activeAsset = asset::AssetManager::LoadMaterial(fallbackPath);
+        // フォールバック .mat 自体が存在しない場合だけは描画を諦める。
+        if (!activeAsset.IsValid()) return nullptr;
+    }
 
     if (!mc.material)
         mc.material = std::make_unique<renderer::Material>();
 
     auto& material = *mc.material;
     const std::string& shaderPath = mc.GetShaderPath();
-    auto activeAsset = mc.materialAsset;
     const auto* matAsset = asset::AssetManager::GetMaterial(activeAsset);
     if (matAsset && shaderPath.empty()) {
         const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
@@ -201,6 +235,9 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
         InitDefaultMaterialParams(*desc, material.paramData);
     if (desc && matAsset)
         ApplyMaterialAssetParams(*matAsset, *desc, material.paramData);
+    // 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
+    if (desc && !mc.paramOverrides.empty())
+        ApplyMaterialParamOverrides(mc.paramOverrides, *desc, material.paramData);
 
     std::array<std::string, kTextureSlotNames.size()> texturePaths{};
     if (matAsset) {

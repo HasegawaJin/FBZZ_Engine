@@ -16,15 +16,18 @@
 #include <Physics/World.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include "RenderPasses/PostProcess/PostProcessPasses.hpp"
+#include "RenderPasses/PostProcess/CloudNoiseBake.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include "RenderPasses/Debug/SelectionPasses.hpp"
 #include "Engine/Core/Time.hpp"
+#include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/EnvironmentLightComponent.hpp"
 #include "Engine/Scene/Components/AtmosphericScatteringComponent.hpp"
+#include "Engine/Scene/Components/SkyRenderer.hpp"
 #include "Engine/Scene/Components/PostProcessVolumeComponent.hpp"
 #include "Engine/Scene/Components/ReflectionProbeComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
@@ -163,6 +166,13 @@ struct ViewRenderTargets {
     renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             // GTAO RAW CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            // GTAO Blur CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult; // Contact Shadow CS 出力
+    // ---- ビュー別定数バッファ / 再投影行列 ----
+    // WHY: sPrevVP を static で共有すると複数ビュー (SceneView + GameView) で
+    //      フレームをまたいで互いのカメラ行列を誤って参照し、MotionBlur / TAA が
+    //      常に壊れた再投影を行う。viewKey で分離した ViewRenderTargets に持つことで正しく分離する。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
+    math::Matrix4 prevViewProjection    = math::Matrix4::Identity();
+    math::Matrix4 invPrevViewProjection = math::Matrix4::Identity();
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -191,7 +201,16 @@ void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceMana
     if (targets.gtaoRaw.IsValid())               resources.Release(targets.gtaoRaw);
     if (targets.gtaoBlur.IsValid())              resources.Release(targets.gtaoBlur);
     if (targets.contactShadowResult.IsValid())   resources.Release(targets.contactShadowResult);
+    // WHY: advancedGraphicsCB / prevViewProjection は解像度非依存。
+    //      リサイズのたびに破棄・再生成するとコストが発生し、prevVP が Identity にリセットされて
+    //      MotionBlur / TAA が 1 フレーム乱れる。保存して復元することで連続性を維持する。
+    auto savedCB         = targets.advancedGraphicsCB;
+    auto savedPrevVP     = targets.prevViewProjection;
+    auto savedPrevInvVP  = targets.invPrevViewProjection;
     targets = {};
+    targets.advancedGraphicsCB  = savedCB;
+    targets.prevViewProjection    = savedPrevVP;
+    targets.invPrevViewProjection = savedPrevInvVP;
 }
 
 void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
@@ -300,9 +319,12 @@ void RenderSystem(Scene& scene,
     // ── コンポーネントによる設定上書き (ProjectSettings < runtimePostProcess < Component) ───
     // EnvironmentLightComponent — シーン Inspector から IBL を上書きする。
     // 最初のアクティブなコンポーネントのみ採用する。複数置かれた場合は先着優先。
+    IblSource activeIblSource = IblSource::StaticDDS; // 空連動 IBL: 採用された EnvironmentLight の source
     for (auto [tf, elc] : scene.View<Transform, EnvironmentLightComponent>()) {
         if (!elc.enabled) continue;
-        effectiveSettings.ibl.enabled       = !elc.irradiancePath.empty() && !elc.prefilterPath.empty();
+        activeIblSource = elc.source;
+        effectiveSettings.ibl.enabled       = elc.source == IblSource::DynamicSky
+            || (!elc.irradiancePath.empty() && !elc.prefilterPath.empty());
         effectiveSettings.ibl.irradiancePath = elc.irradiancePath;
         effectiveSettings.ibl.prefilterPath  = elc.prefilterPath;
         effectiveSettings.ibl.intensity      = elc.intensity;
@@ -316,6 +338,7 @@ void RenderSystem(Scene& scene,
         if (!atm.enabled) continue;
         auto& fog      = effectiveSettings.postProcess.fog;
         fog.enabled    = atm.fogEnabled;
+        fog.source     = static_cast<int>(atm.fogSource);
         fog.density    = atm.fogDensity;
         fog.farDistance = atm.fogFar;
         fog.color[0]   = atm.fogColor.x;
@@ -360,6 +383,8 @@ void RenderSystem(Scene& scene,
 
     static auto compositeShader         = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
     static auto causticsShader          = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
+    static auto volumetricCloudShader   = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/VolumetricCloud.hlsl");
+    static auto cloudUpscaleShader      = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/CloudUpscale.hlsl");
     static auto ssaoShader              = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
     static auto ssaoBlurShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
     static auto bloomDownShader         = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
@@ -386,7 +411,39 @@ void RenderSystem(Scene& scene,
     static uint64_t proceduralColorLutHash = 0u;
 
     static auto skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
+    static auto sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
     static auto skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
+
+    // 空連動 IBL (環境システム Phase A): 空を焼くキューブマップ RT と、面ごとの view/proj 用 CB。
+    // EnvironmentResources はフレームをまたいで保持し、SkyRenderer が変化した時だけ再キャプチャする。
+    static constexpr uint32_t kSkyEnvCubeSize = 128;
+    static EnvironmentResources sEnvironmentResources;
+    static uint64_t sEnvResetVersion = resources.GetResetVersion();
+    static renderer::ResourceHandle<renderer::RenderTargetTag>   skyEnvCubeRT;
+    static renderer::ResourceHandle<renderer::ConstantBufferTag> skyCaptureFrameCB;
+    if (!skyEnvCubeRT.IsValid() || sEnvResetVersion != resources.GetResetVersion()) {
+        sEnvResetVersion  = resources.GetResetVersion();
+        skyEnvCubeRT      = resources.CreateCubemapRenderTarget(kSkyEnvCubeSize, 1);
+        skyCaptureFrameCB = resources.CreateConstantBuffer(sizeof(PerFrameCB));
+        // リソース再生成後 (デバイスリセット等) は古い動的 IBL ハンドルが無効。クリアして焼き直す。
+        sEnvironmentResources.skyEnvCube    = {};
+        sEnvironmentResources.skyIrradiance = {};
+        sEnvironmentResources.skyPrefilter  = {};
+        sEnvironmentResources.needsConvolution = false;
+        sEnvironmentResources.MarkDirty();
+    }
+
+    // ボリューメトリック雲の 3D ノイズ (Shape 128³ + Detail 32³) を起動時に 1 回だけ CPU 焼きする。
+    // タイラブルなので WRAP サンプルで無限に並べられる。デバイスリセット後は SRV が無効になるため焼き直す。
+    static renderer::ResourceHandle<renderer::TextureTag> cloudShapeTex;
+    static renderer::ResourceHandle<renderer::TextureTag> cloudDetailTex;
+    if (resources.Get(cloudShapeTex) == nullptr || resources.Get(cloudDetailTex) == nullptr) {
+        const std::vector<uint8_t> shape  = cloudnoise::BakeShape(128);
+        const std::vector<uint8_t> detail = cloudnoise::BakeDetail(32);
+        cloudShapeTex  = resources.CreateTexture3D(shape.data(),  128, 128, 128);
+        cloudDetailTex = resources.CreateTexture3D(detail.data(),  32,  32,  32);
+        FBZZ_LOG_INFO("VolumetricCloud: baked tileable 3D noise (shape 128^3, detail 32^3)");
+    }
 
     static auto gbufferShader          = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
     static auto deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
@@ -404,8 +461,12 @@ void RenderSystem(Scene& scene,
     static auto detailMeshShader      = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
     static auto detailBillboardShader = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl"); // 同一ソース、isBillboard フラグで切り替え
     static auto detailGrassShader     = resources.LoadShader("Assets/Shaders/Detail/DetailGrass.hlsl");
+    // Deferred 用 GBuffer 書き込み変種。
+    static auto detailGBufferShader      = resources.LoadShader("Assets/Shaders/Detail/DetailGBuffer.hlsl");
+    static auto detailGrassGBufferShader = resources.LoadShader("Assets/Shaders/Detail/DetailGrassGBuffer.hlsl");
     static auto detailGrassCB         = resources.CreateConstantBuffer(sizeof(DetailGrassCB));
     static auto foliageShader         = resources.LoadShader("Assets/Shaders/Foliage/Foliage.hlsl");
+    static auto foliageGBufferShader  = resources.LoadShader("Assets/Shaders/Foliage/FoliageGBuffer.hlsl");
     static auto detailMeshPSO   = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::OPAQUE_BLEND,
@@ -435,6 +496,7 @@ void RenderSystem(Scene& scene,
     static auto outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
     static auto atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
     static auto decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
+    static auto volumetricCloudCB = resources.CreateConstantBuffer(80);
 
     // WHY: static handle は通常フレームでは再利用し、ResourceManager::Reset() 後だけ世代差分で再生成する。
     //      これによりデバイスロスト復帰時も旧ネイティブリソースへ触らない。
@@ -456,6 +518,11 @@ void RenderSystem(Scene& scene,
     static auto skydomePSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID_NOCULL,
         renderer::BlendMode::OPAQUE_BLEND,
+        renderer::DepthMode::DEPTH_SKY
+    });
+    static auto sunMoonPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_SKY
     });
     static auto particlePSO = resources.CreatePipelineState({
@@ -503,6 +570,11 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_OFF
     });
+    static auto volumetricCloudPSO = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID,
+        renderer::BlendMode::ALPHA_BLEND,
+        renderer::DepthMode::DEPTH_OFF
+    });
     // ---- Advanced Graphics PSO / 定数バッファ ----
     // taaPSO: OPAQUE — TAA は ping-pong バッファへ上書きするため α ブレンドは不要
     static auto taaPSO = resources.CreatePipelineState({
@@ -516,8 +588,6 @@ void RenderSystem(Scene& scene,
         renderer::BlendMode::ADDITIVE,
         renderer::DepthMode::DEPTH_OFF
     });
-    // advancedGraphicsCB: IBL/SSR/TAA/GTAO 等の詳細パラメータをまとめて b8 に転送する
-    static auto advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
     static auto decalPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
         renderer::BlendMode::ALPHA_BLEND,
@@ -539,6 +609,8 @@ void RenderSystem(Scene& scene,
         skinnedShadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/SkinnedShadowMap.hlsl");
         compositeShader     = resources.LoadShader("Assets/Shaders/PostProcess/Color/Composite.hlsl");
         causticsShader      = resources.LoadShader("Assets/Shaders/PostProcess/Water/Caustics.hlsl");
+        volumetricCloudShader = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/VolumetricCloud.hlsl");
+        cloudUpscaleShader    = resources.LoadShader("Assets/Shaders/PostProcess/Cloud/CloudUpscale.hlsl");
         ssaoShader          = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAO.cs.hlsl");
         ssaoBlurShader      = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
         bloomDownShader     = resources.LoadShader("Assets/Shaders/PostProcess/Bloom/BloomDownsample.cs.hlsl");
@@ -548,6 +620,7 @@ void RenderSystem(Scene& scene,
         selectionOutlineShader = resources.LoadShader("Assets/Shaders/PostProcess/Outline/SelectionOutline.hlsl");
         fxaaShader = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/FXAA.hlsl");
         skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
+        sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
         skydomeMesh   = renderer::PrimitiveMesh::Sphere(resources, 32);
         gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
         deferredLightingShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl");
@@ -563,8 +636,11 @@ void RenderSystem(Scene& scene,
         detailMeshShader      = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
         detailBillboardShader = resources.LoadShader("Assets/Shaders/Detail/Detail.hlsl");
         detailGrassShader     = resources.LoadShader("Assets/Shaders/Detail/DetailGrass.hlsl");
+        detailGBufferShader      = resources.LoadShader("Assets/Shaders/Detail/DetailGBuffer.hlsl");
+        detailGrassGBufferShader = resources.LoadShader("Assets/Shaders/Detail/DetailGrassGBuffer.hlsl");
         detailGrassCB         = resources.CreateConstantBuffer(sizeof(DetailGrassCB));
         foliageShader         = resources.LoadShader("Assets/Shaders/Foliage/Foliage.hlsl");
+        foliageGBufferShader  = resources.LoadShader("Assets/Shaders/Foliage/FoliageGBuffer.hlsl");
         detailMeshPSO   = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         detailNoCullPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         foliagePSO       = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
@@ -582,7 +658,6 @@ void RenderSystem(Scene& scene,
         lensFlareShader     = resources.LoadShader("Assets/Shaders/PostProcess/Flare/LensFlare.hlsl");
         taaPSO              = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
         lensFlarePSO        = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE,      renderer::DepthMode::DEPTH_OFF });
-        advancedGraphicsCB  = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
         // WHY: デバイスリセット後は iblBrdfLut の内容が失われるため再生成する。
         //      IBLBakePass は焼き済み対象を世代付きハンドルで追跡し、新ハンドルを次フレームで再生成する。
         iblBrdfLut          = resources.CreateComputeTexture(512, 512);
@@ -603,11 +678,13 @@ void RenderSystem(Scene& scene,
         outlineCB  = resources.CreateConstantBuffer(sizeof(OutlineCB));
         atmCB      = resources.CreateConstantBuffer(sizeof(AtmosphereCB));
         decalCB    = resources.CreateConstantBuffer(sizeof(DecalCB));
+        volumetricCloudCB = resources.CreateConstantBuffer(80);
 
         defaultPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         wireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         selectionMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
         skydomePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_SKY });
+        sunMoonPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_SKY });
         particlePSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
         particleAlphaPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         particleGpuPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ });
@@ -617,6 +694,7 @@ void RenderSystem(Scene& scene,
         meshTrailDoubleSidedPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ });
         postprocPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
         causticsPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_OFF });
+        volumetricCloudPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
         decalPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_OFF });
         decalMaskPso = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF });
     }
@@ -687,6 +765,11 @@ void RenderSystem(Scene& scene,
     auto& contactShadowResult     = viewTargets.contactShadowResult;
     uint32_t& sHdrW               = viewTargets.width;
     uint32_t& sHdrH               = viewTargets.height;
+    // advancedGraphicsCB はビュー別に生成する。
+    // s_viewTargets.clear() によるデバイスリセット後は無効になるため、ここで lazily 再生成する。
+    if (!viewTargets.advancedGraphicsCB.IsValid())
+        viewTargets.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(AdvancedGraphicsCB));
+    auto& advancedGraphicsCB = viewTargets.advancedGraphicsCB;
 
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::ResizeRenderTargets");
@@ -708,17 +791,20 @@ void RenderSystem(Scene& scene,
             decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1);
             bloomHalf       = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             bloomFull       = resources.CreateComputeTexture(curW, curH);
-            ssaoRaw         = resources.CreateComputeTexture(curW, curH);
-            ssaoBlur        = resources.CreateComputeTexture(curW, curH);
+            // AO / 接触影は低周波なので半解像度で焼き、消費側 (DeferredLighting) が正規化 UV の
+            // linear サンプルでアップスケールする。フル解像度比でコスト約 1/4。SSR は鏡面が崩れる
+            // ためフル解像度のまま維持する。
+            ssaoRaw         = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
+            ssaoBlur        = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             // ---- Advanced Graphics per-view テクスチャ ----
             ssrResult           = resources.CreateComputeTexture(curW, curH);
             volumetricResult    = resources.CreateComputeTexture(curW, curH);
             taaHistoryA         = resources.CreateRenderTarget(curW, curH, 1);
             taaHistoryB         = resources.CreateRenderTarget(curW, curH, 1);
             motionBlurResult    = resources.CreateComputeTexture(curW, curH);
-            gtaoRaw             = resources.CreateComputeTexture(curW, curH);
-            gtaoBlur            = resources.CreateComputeTexture(curW, curH);
-            contactShadowResult = resources.CreateComputeTexture(curW, curH);
+            gtaoRaw             = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 AO
+            gtaoBlur            = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 AO
+            contactShadowResult = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2)); // 半解像度 接触影
             sHdrW = curW;
             sHdrH = curH;
         }
@@ -773,6 +859,47 @@ void RenderSystem(Scene& scene,
         }
     }
 
+    // ── 昼夜の色・強度カーブ (Phase B) ─────────────────────────────────────────────
+    // WHY: 太陽の「向き」は DirectionalLight の transform を唯一のソースとする (ここで lightDir は上書きしない)。
+    //      SkyRenderer.dayNightEnabled のときは、その光源の「仰角 (太陽の高さ)」から色・強度の昼夜遷移だけを駆動する。
+    //      → DirectionalLight を回すと 太陽ディスク(SunMoon)・空・月(アンチ太陽)・空連動 IBL・ライティングが一緒に動く。
+    //      時刻アニメをしたい場合はスクリプトでライトの向きを回す。
+    // 雲シャドウ params (Phase C) も SkyRenderer から読む。passCtx へ後で転送する。
+    float skyCloudShadowStrength = 0.0f, skyCloudShadowCoverage = 0.5f,
+          skyCloudShadowScale = 0.02f, skyCloudShadowSpeed = 1.0f;
+    for (auto [tf, sky] : scene.View<Transform, SkyRenderer>()) {
+        (void)tf; // 太陽の向きは DirectionalLight 側で決まるため SkyRenderer の Transform は使わない
+        if (!sky.enabled) continue;
+
+        // 雲シャドウは昼夜サイクルとは独立に常に反映する。
+        skyCloudShadowStrength = sky.cloudShadowStrength;
+        skyCloudShadowCoverage = sky.cloudShadowCoverage;
+        skyCloudShadowScale    = sky.cloudShadowScale;
+        skyCloudShadowSpeed    = sky.cloudShadowSpeed;
+
+        if (sky.dayNightEnabled) {
+        // 太陽方向 (toward sun) = -lightDir。その仰角 elev=y で 夜→昼→薄明(夕焼け) を補間する。
+        math::Vector3 sunToSun =
+            math::Vector3{ -lightData.lightDir.x, -lightData.lightDir.y, -lightData.lightDir.z }.Normalized();
+
+        auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+        auto lerp3   = [](const math::Vector3& a, const math::Vector3& b, float t) {
+            return math::Vector3{ a.x + (b.x - a.x) * t,
+                                  a.y + (b.y - a.y) * t,
+                                  a.z + (b.z - a.z) * t };
+        };
+        const float elev       = sunToSun.y;                                  // -1(真下)..1(真上)
+        const float dayMix     = clamp01((elev + 0.05f) / 0.30f);             // 地平線少し上で昼へ
+        const float horizonMix = clamp01(1.0f - std::fabs(elev) / 0.25f) * dayMix; // 日の出/日没の暖色
+
+        math::Vector3 col = lerp3(sky.nightColor, sky.dayColor, dayMix);
+        col = lerp3(col, sky.sunsetColor, horizonMix);
+        lightData.lightColor     = col;
+        lightData.lightIntensity = sky.nightIntensity + (sky.dayIntensity - sky.nightIntensity) * dayMix;
+        } // if (sky.dayNightEnabled)
+        break;
+    }
+
     // ambientColor: Lit モードでは AMBIENT_SCALE 相当値、Unlit 系では白に上書き
     lightData.ambientColor = { 0.08f, 0.08f, 0.08f };
     if (rs.IsUnlit()) {
@@ -809,9 +936,18 @@ void RenderSystem(Scene& scene,
                                                            shadowRadius * 2.0f + 40.0f);
     math::Matrix4 lightVP   = lightProj * lightView;
 
-    const bool isDeferred = (rs.pipeline == renderer::RenderingPipeline::Deferred);
+    // Forward / Deferred の切り替えで見た目が変わらないよう、不透明物は可能な限り共通の
+    // GBuffer → AO → DeferredLighting 経路を通す。
+    // WHY: Forward 直描き経路では SSAO/GTAO/ContactShadows/SSR/IBL が Terrain/Detail/Foliage に
+    //      乗らず、Unity のようなレンダリングモード切り替え時の見た目互換性を保てない。
+    //      必須リソースが欠ける場合だけ従来 Forward にフォールバックする。
+    const bool useGBufferOpaquePipeline =
+        gbufferRT.IsValid() &&
+        gbufferShader.IsValid() &&
+        deferredLightingShader.IsValid() &&
+        depthCopyShader.IsValid();
     const bool ssaoEnabled =
-        isDeferred &&
+        useGBufferOpaquePipeline &&
         rs.postProcess.ambientOcclusion.enabled &&
         ssaoShader.IsValid() &&
         ssaoBlurShader.IsValid() &&
@@ -846,6 +982,8 @@ void RenderSystem(Scene& scene,
     passHandles.bloomUpShader     = bloomUpShader;
     passHandles.compositeShader   = compositeShader;
     passHandles.causticsShader    = causticsShader;
+    passHandles.volumetricCloudShader = volumetricCloudShader;
+    passHandles.cloudUpscaleShader    = cloudUpscaleShader;
     passHandles.selectionMaskShader       = selectionMaskShader;
     passHandles.selectionMaskSkinnedShader = selectionMaskSkinnedShader;
     passHandles.selectionOutlineShader    = selectionOutlineShader;
@@ -863,12 +1001,16 @@ void RenderSystem(Scene& scene,
     passHandles.selectionMaskPSO  = selectionMaskPso;
     passHandles.postprocPSO       = postprocPSO;
     passHandles.causticsPSO       = causticsPSO;
+    passHandles.volumetricCloudPSO = volumetricCloudPSO;
     passHandles.frameCB           = frameCB;
     passHandles.objectCB          = objectCB;
     passHandles.lightCB           = lightCB;
     passHandles.bindPoseSkinningCB = bindPoseSkinningCB;
     passHandles.postprocCB        = postprocCB;
     passHandles.outlineCB         = outlineCB;
+    passHandles.volumetricCloudCB = volumetricCloudCB;
+    passHandles.cloudShapeTex     = cloudShapeTex;
+    passHandles.cloudDetailTex    = cloudDetailTex;
     passHandles.decalDepthRT      = decalDepthRT;
     passHandles.decalMaskRT       = decalMaskRT;
     passHandles.decalShader       = decalShader;
@@ -883,13 +1025,17 @@ void RenderSystem(Scene& scene,
     passHandles.defaultPSO           = defaultPSO;
     passHandles.wireframePSO         = wireframePSO;
     passHandles.skyShader            = skydomeShader;
+    passHandles.sunMoonShader        = sunMoonShader;
     passHandles.skyPSO               = skydomePSO;
+    passHandles.sunMoonPSO           = sunMoonPSO;
     if (skydomeMesh) {
         passHandles.skyVB         = skydomeMesh->vertexBuffer;
         passHandles.skyIB         = skydomeMesh->indexBuffer;
         passHandles.skyIndexCount = skydomeMesh->indexCount;
     }
     passHandles.atmosphereCB         = atmCB;
+    passHandles.skyEnvCubeRT         = skyEnvCubeRT;
+    passHandles.skyCaptureFrameCB    = skyCaptureFrameCB;
     passHandles.particleShader       = particleShader;
     passHandles.particlePSO          = particlePSO;
     passHandles.particleAlphaPSO     = particleAlphaPSO;
@@ -909,10 +1055,13 @@ void RenderSystem(Scene& scene,
     passHandles.detailMeshShader      = detailMeshShader;
     passHandles.detailBillboardShader = detailBillboardShader;
     passHandles.detailGrassShader     = detailGrassShader;
+    passHandles.detailGBufferShader      = detailGBufferShader;
+    passHandles.detailGrassGBufferShader = detailGrassGBufferShader;
     passHandles.detailGrassCB         = detailGrassCB;
     passHandles.detailMeshPSO         = detailMeshPSO;
     passHandles.detailNoCullPSO       = detailNoCullPSO;
     passHandles.foliageShader          = foliageShader;
+    passHandles.foliageGBufferShader   = foliageGBufferShader;
     passHandles.foliagePSO             = foliagePSO;
     passHandles.foliageNoCullPSO       = foliageNoCullPSO;
     passHandles.gbufferShader        = gbufferShader;
@@ -980,16 +1129,40 @@ void RenderSystem(Scene& scene,
         scene, renderer, resources, camera, rs,
         outputRT, cullingMask, passHandles,
         sHdrW, sHdrH, selectionOutlineEnabled,
-        lightData, lightVP, isDeferred, ssaoEnabled, 0.0f, 1.0f,
+        lightData, lightVP, useGBufferOpaquePipeline, ssaoEnabled, 0.0f, 1.0f,
+        0.0f, 0.5f, 0.02f, 1.0f, 1.0f, 0.3f, 0.0f,
         &cameraFrustum, &lightFrustum, &occlusionCuller
     };
     passCtx.physicsWorld  = physicsWorld;
+    passCtx.environmentResources = &sEnvironmentResources; // 空連動 IBL の永続状態 (フレームをまたぐ)
+    // 雲シャドウ (Phase C): SkyRenderer から読んだ params + 現在時刻を影パスへ渡す。
+    passCtx.cloudShadowStrength = skyCloudShadowStrength;
+    passCtx.cloudShadowCoverage = skyCloudShadowCoverage;
+    passCtx.cloudShadowScale    = skyCloudShadowScale;
+    passCtx.cloudShadowSpeed    = skyCloudShadowSpeed;
+    passCtx.cloudShadowTime     = Time::time;
     // near=1.0, far=shadowRadius*2+40 の深度範囲でスケール正規化したバイアス。
     // 固定 NDC 値はシーンが広がるほど Peter Panning が悪化するため、
     // ワールド空間で約 5mm 相当の一定バイアスになるよう depthRange で除算する。
     // dirShadowBias でスケールし、Inspector から Peter Panning / アクネをチューニング可能にする。
     passCtx.shadowBiasNDC  = (0.005f * dirShadowBias) / (shadowRadius * 2.0f + 39.0f);
     passCtx.shadowStrength = dirCastShadows ? dirShadowStrength : 0.0f;
+
+    // ── 空連動 IBL (環境システム Phase A): source=DynamicSky のとき空→動的 IBL を用意する ──
+    // WHY: AdvancedGraphicsCB / 各 Lit パスより前に焼くことで、同フレームで動的 IBL を消費できる。
+    //      キャプチャ先・畳み込み出力は RenderGraph 管理外のため、グラフ実行前に直接呼ぶ
+    //      (順序が消費パスと厳密化する必要が出た段階で §4-2 のグラフ統合へ移す)。
+    //      SkyCapture/SkyLightBake は dirty を内部判定し、不要フレームは即 return する (キャッシュ)。
+    bool dynamicIblReady = false;
+    if (activeIblSource == IblSource::DynamicSky) {
+        ExecuteSkyCapturePass(passCtx);
+        ExecuteSkyLightBakePass(passCtx);
+        if (sEnvironmentResources.HasBakedTextures()) {
+            passHandles.iblIrradiance = sEnvironmentResources.skyIrradiance;
+            passHandles.iblPrefilter  = sEnvironmentResources.skyPrefilter;
+            dynamicIblReady = true;
+        }
+    }
 
     // ---- AdvancedGraphicsCB を毎フレーム更新 ----
     // WHAT: IBL・SSR・TAA・GTAO・ContactShadow 等の詳細設定を AdvancedGraphicsCB(b8) に転送する。
@@ -998,12 +1171,18 @@ void RenderSystem(Scene& scene,
         AdvancedGraphicsCB agData{};
         // WHY: IBL が無効、または必要なキューブマップが欠けている場合は未バインド SRV を
         //      サンプルさせず、従来の ambient ライティングへ確実にフォールバックする。
-        const bool iblResourcesReady = rs.ibl.enabled && rs.HasValidIblAssets() &&
+        // 動的 IBL (DynamicSky) は .dds アセット (rs.HasValidIblAssets) を持たないため、
+        // dynamicIblReady を別経路として許可する。どちらもハンドルが揃っていることを必須にする。
+        const bool iblResourcesReady =
+            (dynamicIblReady || (rs.ibl.enabled && rs.HasValidIblAssets())) &&
             passHandles.iblIrradiance.IsValid() && passHandles.iblPrefilter.IsValid();
         agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity : 0.0f;
         agData.iblDiffuseScale       = rs.ibl.diffuseScale;
         agData.iblSpecularScale      = rs.ibl.specularScale;
-        agData.iblMaxMipLevel        = rs.ibl.maxMipLevel;
+        // 動的 IBL は SkyLightBake が焼いた prefilter mip 数に合わせる (maxMip = mip 数 - 1)。
+        agData.iblMaxMipLevel        = dynamicIblReady
+            ? static_cast<int>(sEnvironmentResources.prefilteredMipCount) - 1
+            : rs.ibl.maxMipLevel;
         agData.ssrMaxDistance        = rs.ssr.maxDistance;
         agData.ssrThickness          = rs.ssr.thickness;
         agData.ssrSteps              = rs.ssr.steps;
@@ -1015,6 +1194,8 @@ void RenderSystem(Scene& scene,
         agData.taaFeedback           = rs.taa.feedback;
         agData.motionBlurStrength    = rs.motionBlur.enabled ? rs.motionBlur.strength : 0.0f;
         agData.motionBlurSamples     = rs.motionBlur.samples;
+        agData.screenWidth           = static_cast<float>(sHdrW);
+        agData.screenHeight          = static_cast<float>(sHdrH);
         agData.gtaoIntensity         = rs.IsGtaoActive()   ? rs.gtao.intensity : 0.0f;
         agData.gtaoRadius            = rs.gtao.radius;
         agData.gtaoSlices            = rs.gtao.slices;
@@ -1032,15 +1213,13 @@ void RenderSystem(Scene& scene,
         agData.lutBlend              = (rs.lutColorGrading.enabled && resources.Get(proceduralColorLut) != nullptr)
             ? rs.lutColorGrading.blend : 0.0f;
         // 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使用する。
-        // WHY: static で保持し、フレーム末尾に現フレームの VP で上書きすることで
-        //      「前フレームの VP をパラメータとして受け取る」セマンティクスを実現する。
-        static math::Matrix4 sPrevVP    = math::Matrix4::Identity();
-        static math::Matrix4 sPrevInvVP = math::Matrix4::Identity();
-        agData.prevViewProjection    = sPrevVP;
-        agData.invPrevViewProjection = sPrevInvVP;
+        // WHY: viewTargets に持つことでビュー別に分離し、SceneView と GameView が
+        //      互いのカメラ行列を参照して壊れる問題を防ぐ。
+        agData.prevViewProjection    = viewTargets.prevViewProjection;
+        agData.invPrevViewProjection = viewTargets.invPrevViewProjection;
         resources.Update(advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
-        sPrevVP    = camera.GetViewProjection();
-        sPrevInvVP = math::Matrix4::Inverse(camera.GetViewProjection());
+        viewTargets.prevViewProjection    = camera.GetViewProjection();
+        viewTargets.invPrevViewProjection = math::Matrix4::Inverse(camera.GetViewProjection());
     } // end AdvancedGraphicsCB update
 
     // =========================================================================
@@ -1059,10 +1238,17 @@ void RenderSystem(Scene& scene,
     pipeline.DeclareResource("CustomPostProcess0", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     pipeline.DeclareResource("CustomPostProcess1", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
     pipeline.DeclareResource("Bloom",      { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
-    if (isDeferred)
+    if (useGBufferOpaquePipeline)
         pipeline.DeclareResource("GBuffer", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, false });
     if (ssaoEnabled)
-        pipeline.DeclareResource("SSAO", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+        pipeline.DeclareResource("SSAO",               { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    // GTAO / ContactShadows は GBuffer を読んで独自の UAV テクスチャに書く。
+    // WHY: "GBuffer"→"GBuffer" で宣言すると GBuffer への偽書き込みとみなされ、
+    //      DeferredLighting との依存順が崩れる可能性があるため専用名で宣言する。
+    if (useGBufferOpaquePipeline && rs.IsGtaoActive())
+        pipeline.DeclareResource("GTAOResult",          { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
+    if (useGBufferOpaquePipeline && rs.contactShadow.enabled)
+        pipeline.DeclareResource("ContactShadowResult", { renderer::RenderGraph::ResourceKind::Texture, sHdrW, sHdrH, 0, false, true });
     pipeline.SetOutputs({ "Output" });
 
     // IBL BRDF LUT 焼き付け — IBLBakePass が対象テクスチャの世代を追跡し、初回のみ実行する。
@@ -1093,51 +1279,75 @@ void RenderSystem(Scene& scene,
     });
 
     // ── Forward or Deferred ───────────────────────────────────────────────────
-    if (!isDeferred) {
+    if (!useGBufferOpaquePipeline) {
         pipeline.AddRawPass("ForwardOpaque", { "ShadowMap" }, { "HDR" }, [&]() {
             ExecuteForwardPasses(passCtx);
         });
     }
 
-    if (isDeferred) {
+    if (useGBufferOpaquePipeline) {
         pipeline.AddRawPass("DeferredGBuffer", { "ShadowMap" }, { "GBuffer" }, [&]() {
             ExecuteGBufferPass(passCtx);
         });
+
+        // Deferred Terrain / Detail / Foliage — すべて GBuffer へ書き込む。DepthCopy / AO / Lighting より
+        // 前に描くことで、GTAO/SSAO/ContactShadows/SSR/DeferredLighting/IBL が地形・草・樹木へも効く。
+        // WHY: forward 描画では GBuffer に入らず、AO/接触影/SSR/PBR ライティングが乗らなかった。
+        //      Detail/Foliage はアルファテスト（clip）の不透明として GBuffer へ描く。
+        pipeline.AddPass<TerrainRenderPass>();
+        pipeline.AddPass<DetailRenderPass>();
+        pipeline.AddPass<FoliageRenderPass>();
 
         pipeline.AddRawPass("DeferredDepthCopy", { "GBuffer" }, { "HDR" }, [&]() {
             ExecuteDeferredDepthCopyPass(passCtx);
         });
     }
 
-    // ── Terrain / Detail / Foliage ────────────────────────────────────────────
-    // ForwardOpaque / GBuffer DepthCopy の後・Sky の前に描画する。
-    // WHY: Sky より前に描画することで地形の上に空が被らない。
-    //      ForwardOpaque と同じ HDR RT (depth buffer 共有) で描画することで
-    //      Player 等の不透明オブジェクトと正しく depth test される。
-    //      RenderSystem 内に統合することでポストプロセス（bloom/SSAO等）も適用される。
-    pipeline.AddPass<TerrainRenderPass>();
-    pipeline.AddPass<DetailRenderPass>();
-    pipeline.AddPass<FoliageRenderPass>();
+    // ── Terrain / Detail / Foliage (Forward パイプライン用) ────────────────────
+    // GBuffer 経路が使えないフォールバック Forward では ForwardOpaque / Sky の間に HDR RT (depth 共有) へ描く。
+    // WHY: Sky より前に描くことで地形の上に空が被らず、Player 等とも正しく depth test される。
+    //      通常は上の GBuffer フェーズで描画済みのためここでは描かない。
+    if (!useGBufferOpaquePipeline) {
+        pipeline.AddPass<TerrainRenderPass>();
+        pipeline.AddPass<DetailRenderPass>();
+        pipeline.AddPass<FoliageRenderPass>();
+    }
 
-    pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteSkyPass(passCtx);
-    });
+    // Sky / SunMoon — GBuffer フォールバックの Forward ではここ（不透明描画後・雲前）。
+    // 通常の GBuffer 経路では DeferredLighting 後に描く（下のブロック）。
+    // WHY: GBuffer 経路では Terrain/Detail/Foliage が HDR を書かず GBuffer へ描くため、Sky の HDR 書き込みが
+    //      DeferredDepthCopy（HDR をクリアする）との順序保証を失い、グラフが Sky を DepthCopy より前に
+    //      並べるとクリアでスカイが消える。Lighting 後に置くと HDR 依存チェーンで DepthCopy より確実に後になる。
+    if (!useGBufferOpaquePipeline) {
+        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSkyPass(passCtx);
+        });
+        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSunMoonPass(passCtx);
+        });
+
+        // VolumetricCloud — GBuffer フォールバックの Forward では Sky 後・透明物前に HDR へ合成する。
+        // WHY: 空を背景にしつつ、後続の水面・透明エフェクトで上書きできる順序にする。
+        pipeline.AddRawPass("VolumetricCloud", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteVolumetricCloudPass(passCtx);
+        });
+    }
 
     // ── SSAO + Deferred Lighting ──────────────────────────────────────────────
-    if (isDeferred) {
+    if (useGBufferOpaquePipeline) {
         // GTAO — DeferredLighting より前に GBuffer から AO を計算する。
-        // WHY: DeferredLighting は t23 (TEX_GTAO) を SRV として読むため、
-        //      その前に gtaoBlur テクスチャへの書き込みを完了させる必要がある。
+        // WHY: DeferredLighting は t23 (TEX_GTAO) を SRV として読む。
+        //      "GTAOResult" として宣言することで GBuffer への偽書き込みを除去し、
+        //      DeferredLighting が正確な依存でこの出力を待てるようにする。
         if (rs.IsGtaoActive()) {
-            pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GBuffer" }, [&]() {
+            pipeline.AddRawPass("GTAO", { "GBuffer" }, { "GTAOResult" }, [&]() {
                 ExecuteGTAOPass(passCtx);
             });
         }
         // ContactShadows — DeferredLighting より前に深度から接触影マスクを生成する。
-        // WHY: DeferredLighting は t24 (TEX_CONTACT_SHADOW) を乗算係数として使うため、
-        //      gtaoBlur と同様に事前計算が必要。
+        // WHY: GTAO と同様に ContactShadowResult として宣言し偽依存を除去する。
         if (rs.contactShadow.enabled) {
-            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "GBuffer" }, [&]() {
+            pipeline.AddRawPass("ContactShadows", { "GBuffer" }, { "ContactShadowResult" }, [&]() {
                 ExecuteContactShadowsPass(passCtx);
             });
         }
@@ -1145,14 +1355,42 @@ void RenderSystem(Scene& scene,
             pipeline.AddRawPass("SSAO", { "GBuffer" }, { "SSAO" }, [&]() {
                 ExecuteSSAOPass(passCtx);
             });
-            pipeline.AddRawPass("DeferredLighting", { "GBuffer", "HDR", "SSAO" }, { "HDR" }, [&]() {
-                ExecuteDeferredLightingPass(passCtx);
-            });
-        } else {
-            pipeline.AddRawPass("DeferredLighting", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+        }
+        // DeferredLighting の reads を動的に構築し、GTAO/ContactShadows/SSAO が有効な
+        // ときだけその出力への依存を宣言する。
+        // WHY: 静的な reads 文字列では有効/無効の組み合わせごとに分岐が必要になり、
+        //      将来の AO 種類追加時にも変更が局所化されない。
+        {
+            using RA = renderer::RenderGraph::ResourceAccess;
+            using RU = renderer::RenderGraph::ResourceUsage;
+            std::vector<RA> deferredAccesses = {
+                { "GBuffer", RU::Read     },
+                { "HDR",     RU::ReadWrite }, // 深度を読み、ライティング結果を書く
+            };
+            if (ssaoEnabled)              deferredAccesses.push_back({ "SSAO",               RU::Read });
+            if (rs.IsGtaoActive())        deferredAccesses.push_back({ "GTAOResult",          RU::Read });
+            if (rs.contactShadow.enabled) deferredAccesses.push_back({ "ContactShadowResult", RU::Read });
+            pipeline.AddRawPass("DeferredLighting", std::move(deferredAccesses), [&]() {
                 ExecuteDeferredLightingPass(passCtx);
             });
         }
+
+        // Sky / SunMoon — GBuffer ライティング後に HDR へ描く。
+        // WHY: スカイドームは深度==1.0（最遠面）のピクセルにだけ描かれる。Lighting 後に描くことで
+        //      ジオメトリ確定後の背景を埋め、かつ HDR 依存チェーンで DeferredDepthCopy の HDR クリアより
+        //      確実に後段になり、クリアでスカイが消える問題を避ける。
+        pipeline.AddRawPass("Sky", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSkyPass(passCtx);
+        });
+        pipeline.AddRawPass("SunMoon", { "HDR" }, { "HDR" }, [&]() {
+            ExecuteSunMoonPass(passCtx);
+        });
+
+        // VolumetricCloud — GBuffer Lighting / Sky 後・透明物前に HDR へ合成する。
+        // WHY: Lighting・空に上書きされず、透明物や水面を雲の手前に描ける順序にする。
+        pipeline.AddRawPass("VolumetricCloud", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
+            ExecuteVolumetricCloudPass(passCtx);
+        });
 
         pipeline.AddRawPass("DeferredSkinnedForward", { "HDR" }, { "HDR" }, [&]() {
             ExecuteDeferredSkinnedForwardPass(passCtx);
@@ -1163,7 +1401,7 @@ void RenderSystem(Scene& scene,
         });
 
         // SSR — 全透明オブジェクト描画後に GBuffer の法線・深度・金属度を使って反射を計算する。
-        // WHY: Deferred パイプラインでのみ有効 (GBuffer 必須)。
+        // WHY: 選択中の Forward/Deferred ではなく GBuffer の有無が実行条件。
         //      透明オブジェクト通過後の深度を使うため、DeferredForwardTransparent の後に配置する。
         if (rs.ssr.enabled) {
             pipeline.AddRawPass("SSR", { "GBuffer", "HDR" }, { "HDR" }, [&]() {
@@ -1171,6 +1409,12 @@ void RenderSystem(Scene& scene,
             });
         }
     }
+
+    // WaterCaustics — 水面下の不透明ジオメトリへコースティクスを投影してから、水面本体を透明描画する。
+    // WHY: Water の後に加算すると水面そのものへ模様が乗りやすいため、深度が不透明物だけを指す段階で実行する。
+    pipeline.AddRawPass("WaterCaustics", { "HDR" }, { "HDR" }, [&]() {
+        ExecuteCausticsPass(passCtx);
+    });
 
     pipeline.AddPass<WaterRenderPass>();
 
@@ -1191,7 +1435,7 @@ void RenderSystem(Scene& scene,
 
     // ── デカール用深度スナップショット ────────────────────────────────────────
     pipeline.DeclareResource("DecalDepth", { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, false, true });
-    pipeline.AddRawPass("DecalDepthCopy", { isDeferred ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
+    pipeline.AddRawPass("DecalDepthCopy", { useGBufferOpaquePipeline ? "GBuffer" : "HDR" }, { "DecalDepth" }, [&]() {
         renderer.SetRenderTarget(decalDepthRT, resources);
         renderer.ClearDepth();
         if (depthCopyShader.IsValid()) {
@@ -1199,7 +1443,7 @@ void RenderSystem(Scene& scene,
             dc.shader        = depthCopyShader;
             dc.pipelineState = defaultPSO;
             dc.vertexCount   = 3;
-            dc.textures[7]   = isDeferred
+            dc.textures[7]   = useGBufferOpaquePipeline
                 ? resources.GetDepthTexture(gbufferRT)
                 : resources.GetDepthTexture(hdrRT);
             renderer.Submit(dc, resources);
@@ -1221,10 +1465,6 @@ void RenderSystem(Scene& scene,
     appendQueuedUserPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
     // ── Selection / Debug ─────────────────────────────────────────────────────
-    pipeline.AddRawPass("UnderwaterCaustics", { "HDR" }, { "HDR" }, [&]() {
-        ExecuteCausticsPass(passCtx);
-    });
-
     if (selectionOutlineEnabled) {
         pipeline.AddRawPass("SelectionMask", { "HDR" }, { "SelectionMask" }, [&]() {
             ExecuteSelectionMaskPass(passCtx);
@@ -1327,84 +1567,92 @@ void RenderSystem(Scene& scene,
         !customPostProcessIndices.empty() &&
         customPostProcessRT[0].IsValid() &&
         customPostProcessRT[1].IsValid();
-    // WHY: TAA は Composite (トーンマップ後) の LDR バッファを入力として使う。
-    //      TAA 有効時は Composite が直接 Output に書かず、ldrRT に書く必要がある。
-    const bool needsLdrIntermediate =
-        rs.postProcess.fxaaEnabled || selectionOutlineEnabled || customPostProcessEnabled || rs.IsTaaActive();
+    // hasPostCompositeEffects: Composite の出力先が "LDR" か "Output" かを決める。
+    // WHY: このフラグが true なら Composite は ldrRT に書き、後続エフェクトがチェーンを形成する。
+    const bool hasPostCompositeEffects =
+        rs.IsTaaActive() || customPostProcessEnabled || selectionOutlineEnabled || rs.postProcess.fxaaEnabled;
 
     if (rs.postProcess.bloom.enabled) {
-        pipeline.AddRawPass("Composite", { "HDR", "Bloom" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+        pipeline.AddRawPass("Composite", { "HDR", "Bloom" }, { hasPostCompositeEffects ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
         });
     } else {
-        pipeline.AddRawPass("Composite", { "HDR" }, { needsLdrIntermediate ? "LDR" : "Output" }, [&]() {
+        pipeline.AddRawPass("Composite", { "HDR" }, { hasPostCompositeEffects ? "LDR" : "Output" }, [&]() {
             ExecuteCompositePass(passCtx);
         });
     }
 
-    std::string postCustomResource = "LDR";
-    if (customPostProcessEnabled) {
-        std::string inputResource = "LDR";
-        for (uint32_t passIndex = 0; passIndex < static_cast<uint32_t>(customPostProcessIndices.size()); ++passIndex) {
-            const bool lastCustomPass = passIndex + 1 == static_cast<uint32_t>(customPostProcessIndices.size());
-            const bool writesOutput   = lastCustomPass && !rs.postProcess.fxaaEnabled && !selectionOutlineEnabled;
-            const uint32_t outputIndex = writesOutput ? 2u : (passIndex % 2u);
-            const std::string outputResource = writesOutput
-                ? std::string("Output")
-                : std::string(outputIndex == 0 ? "CustomPostProcess0" : "CustomPostProcess1");
-            const std::string passName    = "CustomPostProcess" + std::to_string(passIndex);
-            const uint32_t    customIndex = customPostProcessIndices[passIndex];
+    // ---- Post-composite チェーン ----
+    // ppCurrent: 「LDR 空間の最新フレームを持つ RenderGraph リソース名」を追跡する。
+    // WHY: エフェクトごとに条件分岐でリソース名を手動管理する代わりに ppCurrent を
+    //      進めることで、TAA/CustomPP/SelectionOutline/FXAA の組み合わせを
+    //      単一の直列チェーンとして表現できる。
+    std::string ppCurrent  = hasPostCompositeEffects ? "LDR" : "Output";
+    int         ppPingPong = 0; // customPostProcessRT の ping-pong インデックス
 
-            pipeline.AddRawPass(
-                std::string_view(passName),
-                { std::string_view(inputResource) },
-                { std::string_view(outputResource) },
-                [&, customIndex, outputIndex]() {
-                    ExecuteCustomPostProcessPass(passCtx, customIndex, outputIndex);
-                });
-
-            inputResource = outputResource;
-        }
-        postCustomResource = inputResource;
-    }
-
-    if (selectionOutlineEnabled) {
-        pipeline.AddRawPass("SelectionOutline",
-            { std::string_view(postCustomResource), "SelectionMask" },
-            { rs.postProcess.fxaaEnabled ? "Outline" : "Output" },
-            [&]() { ExecuteSelectionOutlinePass(passCtx); });
-    }
-
-    // TAA — Composite 後の LDR フレームを前フレーム履歴とブレンドしてエイリアスを除去する。
-    // WHY: LDR 空間で TAA を走らせることで SRV/RTV 競合を回避しシンプルに統合できる。
-    //      TAA が有効な場合は fxaaInput を TAA 出力に差し替え、後続 FXAA がそれを読む。
+    // TAA — 最初に適用することで後続の CustomPP/SelectionOutline が TAA 済み映像に乗る。
+    // WHY: CustomPP より前に登録することで RenderGraph が TAA → CustomPP の
+    //      依存順を正しく解決する (Kahn's algorithm は登録順をタイブレークに使う)。
     if (rs.IsTaaActive()) {
-        pipeline.AddRawPass("TAA", { "LDR" }, { "LDR" }, [&]() {
+        pipeline.AddRawPass("TAA", { ppCurrent }, { ppCurrent }, [&]() {
             ExecuteTAAPass(passCtx);
-            // ExecuteTAAPass 内で taaFlip が反転済み — 反転後のフラグで「書いた方」を特定する。
-            // flip=true  → B に書いた → getColorTexture(B), flip=false → A に書いた → getColorTexture(A)
+            // taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
             auto& taaOut = passHandles.taaFlip ? passHandles.taaHistoryB : passHandles.taaHistoryA;
             passHandles.fxaaInput = resources.GetColorTexture(taaOut, 0);
+            // WHY: CustomPP / SelectionOutline は postProcessInput を参照する。
+            //      TAA 後は履歴バッファが最新フレームなので postProcessInput も更新する。
+            //      更新しないと後続エフェクトが TAA 適用前の ldrRT を誤読する。
+            passHandles.postProcessInput = passHandles.fxaaInput;
         });
     }
-    // TAA_Blit — TAA 出力 (fxaaInput = taaHistoryA/B) を OutputRT に転送する。
+
+    // Custom PostProcess チェーン
+    for (uint32_t i = 0; i < static_cast<uint32_t>(customPostProcessIndices.size()); ++i) {
+        const uint32_t customIndex  = customPostProcessIndices[i];
+        const bool     isLastEffect = (i + 1 == static_cast<uint32_t>(customPostProcessIndices.size()))
+                                       && !selectionOutlineEnabled
+                                       && !rs.postProcess.fxaaEnabled;
+        // outputIndex == 2 → ExecuteCustomPostProcessPass が ctx.outputRT に直書きする規約
+        const uint32_t    outputIndex = isLastEffect ? 2u : static_cast<uint32_t>(ppPingPong % 2);
+        const std::string outRes      = isLastEffect
+            ? "Output"
+            : ("CustomPostProcess" + std::to_string(outputIndex));
+        pipeline.AddRawPass(
+            "CustomPostProcess" + std::to_string(i),
+            { ppCurrent },
+            { outRes },
+            [&, customIndex, outputIndex]() {
+                ExecuteCustomPostProcessPass(passCtx, customIndex, outputIndex);
+            });
+        ppCurrent = outRes;
+        ++ppPingPong;
+    }
+
+    // SelectionOutline
+    if (selectionOutlineEnabled) {
+        const bool        isLastEffect = !rs.postProcess.fxaaEnabled;
+        const std::string outRes       = isLastEffect ? "Output" : "Outline";
+        pipeline.AddRawPass("SelectionOutline",
+            { ppCurrent, "SelectionMask" },
+            { outRes },
+            [&]() { ExecuteSelectionOutlinePass(passCtx); });
+        ppCurrent = outRes;
+    }
+
+    // FXAA
+    if (rs.postProcess.fxaaEnabled) {
+        pipeline.AddRawPass("FXAA", { ppCurrent }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
+        ppCurrent = "Output";
+    }
+
+    // TAA_Blit — TAA が有効で後続エフェクトが何もない場合のみ OutputRT への転送が必要。
     // WHY: TAA は ping-pong 履歴バッファにのみ書き OutputRT には書かない。
-    //      後続に FXAA / SelectionOutline / CustomPostProcess がない場合、
-    //      OutputRT に書くパスが存在せずビューポートが黒になる。
-    //      ExecuteTAABlitPass が FXAA シェーダーを blit として流用する。
-    if (rs.IsTaaActive() && !selectionOutlineEnabled && !customPostProcessEnabled) {
-        pipeline.AddRawPass("TAA_Blit", { "LDR" }, { "Output" }, [&]() {
+    //      FXAA/SelectionOutline/CustomPP がすべて無効のとき ppCurrent は "LDR" のままなので
+    //      ここで Output に届ける。ppCurrent が "Output" なら既に書かれているためスキップ。
+    if (ppCurrent != "Output") {
+        pipeline.AddRawPass("TAA_Blit", { ppCurrent }, { "Output" }, [&]() {
             ExecuteTAABlitPass(passCtx);
         });
-    }
-    if (rs.postProcess.fxaaEnabled) {
-        if (selectionOutlineEnabled) {
-            pipeline.AddRawPass("FXAA", { "Outline" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
-        } else if (customPostProcessEnabled) {
-            pipeline.AddRawPass("FXAA", { std::string_view(postCustomResource) }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
-        } else {
-            pipeline.AddRawPass("FXAA", { "LDR" }, { "Output" }, [&]() { ExecuteFxaaPass(passCtx); });
-        }
     }
 
     if (uiOptions && uiOptions->enabled && uiOptions->context) {

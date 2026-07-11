@@ -1,0 +1,13 @@
+version = 1
+shader = "guid:1708951fce5840a2bd88941a3503cf45"
+blend_mode = "Opaque"
+double_sided = false
+render_queue = 2000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = ""
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]

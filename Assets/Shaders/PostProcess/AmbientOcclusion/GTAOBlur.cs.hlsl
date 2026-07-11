@@ -26,11 +26,15 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 {
     uint2 pixel = id.xy;
 
-    // 画面範囲外のスレッドは早期リターン
-    if (pixel.x >= (uint)screenSize.x || pixel.y >= (uint)screenSize.y)
+    // 出力バッファ (半解像度対応) の実サイズを基準にする。ブラーは AO バッファ自身のテクセル幅で行う。
+    // WHY: texelSize(b5) はフル解像度のため、半解像度バッファに使うとブラー半径が半分になり平滑化不足。
+    float2 outSize;
+    OutputGTAO.GetDimensions(outSize.x, outSize.y);
+    if (pixel.x >= (uint)outSize.x || pixel.y >= (uint)outSize.y)
         return;
 
-    float2 uv = (float2(pixel) + 0.5f) * texelSize;
+    float2 texel = 1.0f / outSize;
+    float2 uv = (float2(pixel) + 0.5f) * texel;
 
     // ── 4x4 ボックスフィルター ───────────────────────────────────────────────────
     // WHY: SSAO ブラーと同じ [-2, 1] x [-2, 1] の 16 タップを使い、
@@ -43,7 +47,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         [unroll]
         for (int x = -2; x <= 1; ++x)
         {
-            float2 offset = float2(x, y) * texelSize;
+            float2 offset = float2(x, y) * texel;
             result += texGTAORaw.SampleLevel(sampDefault, uv + offset, 0);
         }
     }

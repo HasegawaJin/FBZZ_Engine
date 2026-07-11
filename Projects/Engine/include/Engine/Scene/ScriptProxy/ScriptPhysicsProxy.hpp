@@ -29,11 +29,17 @@ struct ScriptPhysicsProxy {
     void AddForce(const math::Vector3& v) const;
     void AddImpulse(const math::Vector3& v) const;
     void AddForceAtPoint(const math::Vector3& force, const math::Vector3& worldPoint) const;
+    bool HasRigidBody() const;
+    bool HasRigidBody(GameObject* go) const;
     float GetMass() const;
     void SetMass(float mass) const;
     void SetStatic(bool isStatic) const;
     void SetVelocity(const math::Vector3& v) const;
     math::Vector3 GetVelocity() const;
+    void SetVelocity(GameObject* go, const math::Vector3& v) const;
+    math::Vector3 GetVelocity(GameObject* go) const;
+    void AddImpulse(GameObject* go, const math::Vector3& v) const;
+    float GetMass(GameObject* go) const;
     void SetAngularVelocity(const math::Vector3& v) const;
     math::Vector3 GetAngularVelocity() const;
     void AddTorque(const math::Vector3& v) const;

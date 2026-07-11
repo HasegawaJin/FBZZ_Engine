@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/Toon.hlsl"
+shader = "guid:98a418ed09be4b38881d9b715d2dedae"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

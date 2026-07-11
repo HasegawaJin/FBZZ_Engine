@@ -18,7 +18,8 @@ namespace fbzz::editor {
 
 class AnimationGraphPanel final : public IPanel {
 public:
-    const char* GetWindowName() const override { return "Animation Graph"; }
+    const char* GetWindowName()        const override { return "Animation Graph"; }
+    bool        GetDefaultVisibility() const override { return false; }
     void OnInit(EditorContext& ctx) override;
     void OnShutdown() override;
 

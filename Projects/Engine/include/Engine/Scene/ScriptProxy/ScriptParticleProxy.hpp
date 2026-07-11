@@ -37,6 +37,9 @@ struct ScriptParticleProxy {
     Script* script = nullptr;
 
     void SetEmitRate(float rate) const;
+    void SetEmitPosition(const math::Vector3& position) const;
+    void SetEmitVelocity(const math::Vector3& velocity) const;
+    void SetVelocitySpread(float spread) const;
     void SetEnabled(bool enabled) const;
     void Play(bool restart = true) const;
     void Stop(bool clear = false) const;
@@ -45,11 +48,19 @@ struct ScriptParticleProxy {
     void SetGravity(const math::Vector3& gravity) const;
     void SetColor(const math::Vector4& start, const math::Vector4& end) const;
     void SetSize(float start, float end) const;
+    void SetLifetime(float seconds) const;
+    void SetMaxParticles(int maxParticles) const;
+    void SetPlayback(bool loop, float duration, bool clearOnStop = false) const;
     void SetTexture(std::string_view texturePath, int columns = 1, int rows = 1) const;
     void SetShape(ParticleEmitterShape shape) const;
+    void SetSphereShape(float radius) const;
+    void SetConeShape(float radius, float angleDegrees) const;
+    void SetBoxShape(const math::Vector3& extents) const;
     void SetBlendMode(ParticleBlendMode blendMode) const;
     void SetSortMode(ParticleSortMode sortMode) const;
     void SetSimulationMode(ParticleSimulationMode simulationMode) const;
+    void SetVelocityDamping(float damping) const;
+    void SetAngularVelocity(float minValue, float maxValue) const;
 };
 
 } // namespace fbzz::scene

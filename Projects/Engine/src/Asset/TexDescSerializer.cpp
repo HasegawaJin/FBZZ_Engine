@@ -5,6 +5,8 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <sstream>
 
@@ -127,7 +129,7 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     const TextureImportSettings& s = asset.settings;
 
     toml::table tex;
-    tex.insert("source",              asset.sourcePath);
+    // source= は持たない。元画像は "<name>.<ext>.meta" から末尾 ".meta" を除いて導出する。
     tex.insert("type",                std::string(TypeToStr(s.type)));
     tex.insert("srgb",                s.srgb);
     tex.insert("compression",         std::string(CompToStr(s.compression)));
@@ -147,6 +149,20 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     tex.insert("alpha_dither",        s.alphaDither);
 
     toml::table root;
+
+    // 既存 .meta の [meta] セクション (guid 等) を保持する。
+    // WHY: guid は AssetDatabase が発行する恒久 ID。テクスチャ設定の保存で消してしまうと
+    //      この画像への guid 参照が全て切れるため、[texture] 以外は必ず引き継ぐ。
+    std::string existing;
+    if (util::FileSystem::ReadText(absPath, existing)) {
+        std::istringstream iss(existing);
+        const auto parsed = toml::parse(iss);
+        if (parsed) {
+            if (const auto* meta = parsed.table()["meta"].as_table())
+                root.insert("meta", *meta);
+        }
+    }
+
     root.insert("texture", std::move(tex));
 
     std::ostringstream ss;
@@ -170,17 +186,16 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     const auto& tbl = parsed.table();
     const auto* tex = tbl["texture"].as_table();
     if (!tex) {
-        FBZZ_LOG_ERROR("TexDescSerializer: missing [texture] section [%s]", absPath.c_str());
+        // guid のみの .meta ([meta] セクションだけ) は正当な形式。
+        // テクスチャ設定なし = デフォルト適用なので、エラーではなく静かに false を返す。
         return false;
     }
 
-    if (auto v = (*tex)["source"].value<std::string>()) outAsset.sourcePath = *v;
-
+    // sourcePath はサイドカーには書かれない。呼び出し元 (ImageImporter) が元画像パスを設定する。
     TextureImportSettings& s = outAsset.settings;
     if (auto v = (*tex)["type"].value<std::string>())              s.type = StrToType(*v);
     // type が決まったらデフォルトを入れる (明示フィールドで上書き)
     s = DefaultSettingsForType(s.type);
-    if (auto v = (*tex)["source"].value<std::string>())            outAsset.sourcePath = *v;
 
     if (auto v = (*tex)["srgb"].value<bool>())                     s.srgb              = *v;
     if (auto v = (*tex)["compression"].value<std::string>())       s.compression       = StrToComp(*v);
@@ -199,6 +214,40 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     if (auto v = (*tex)["alpha_mode"].value<std::string>())        s.alphaMode         = StrToAlphaMode(*v);
     if (auto v = (*tex)["alpha_dither"].value<bool>())             s.alphaDither       = *v;
 
+    return true;
+}
+
+bool TexDescSerializer::ResolveSourcePath(
+    std::string_view texturePath, std::string& outSourcePath)
+{
+    outSourcePath.clear();
+    if (texturePath.empty()) return false;
+
+    const std::string inputPath(texturePath);
+    std::string extension = util::FileSystem::GetExtension(inputPath);
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    // 生画像は既存パスをそのままロードする。
+    if (extension != ".meta") {
+        outSourcePath = inputPath;
+        return true;
+    }
+
+    // 二重拡張子サイドカー: "Foo.png.meta" から末尾 ".meta" を除いた "Foo.png" が元画像。
+    // WHY: source= を持たず、ファイル名だけで元画像を一意に導出する (TOML パース不要で高速)。
+    constexpr std::string_view kMetaExt = ".meta";
+    outSourcePath = inputPath.substr(0, inputPath.size() - kMetaExt.size());
+
+    // メタの入れ子 ("Foo.meta.meta") や拡張子なしは不正。元画像拡張子が再び .meta なら失敗させる。
+    std::string sourceExtension = util::FileSystem::GetExtension(outSourcePath);
+    std::transform(sourceExtension.begin(), sourceExtension.end(), sourceExtension.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (sourceExtension.empty() || sourceExtension == ".meta") {
+        FBZZ_LOG_ERROR("TexDescSerializer: invalid .meta source path [%s]", inputPath.c_str());
+        outSourcePath.clear();
+        return false;
+    }
     return true;
 }
 

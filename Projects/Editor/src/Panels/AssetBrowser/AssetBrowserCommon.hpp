@@ -13,6 +13,7 @@
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
+#include <Editor/Util/SelectionVisuals.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>

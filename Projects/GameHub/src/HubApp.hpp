@@ -11,11 +11,18 @@
 #include <array>
 #include <string>
 
+namespace fbzz::renderer {
+class ResourceManager;
+class IImGuiRenderer;
+} // namespace fbzz::renderer
+
 namespace fbzz::hub {
 
 class HubApp {
 public:
-    bool Init(ID3D11Device* device);
+    // GPU リソース生成用 ResourceManager と ImGui 表示 ID 解決用 IImGuiRenderer を受け取る。
+    // WHY: サムネイル表示のために DX11 デバイスを直接受けていたが、抽象層経由に切り替える。
+    bool Init(fbzz::renderer::ResourceManager& resources, fbzz::renderer::IImGuiRenderer& imgui);
     void Shutdown();
     void Render();
 

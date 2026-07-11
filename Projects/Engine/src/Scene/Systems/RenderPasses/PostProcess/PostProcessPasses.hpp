@@ -30,6 +30,9 @@ void ExecuteSSRPass(RenderPassContext& ctx);
 // Volumetric Lighting — レイマーチで体積光（ゴッドレイ・光柱）を生成する。
 void ExecuteVolumetricLightPass(RenderPassContext& ctx);
 
+// Volumetric Cloud — 深度で遮蔽しながら雲層をレイマーチし、HDR へ合成する。
+void ExecuteVolumetricCloudPass(RenderPassContext& ctx);
+
 // Contact Shadows — スクリーンスペースで小物直下の接触影を高精度に生成する。
 void ExecuteContactShadowsPass(RenderPassContext& ctx);
 

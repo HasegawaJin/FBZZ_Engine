@@ -6,9 +6,8 @@
 //      DLL 未ビルド時の起動フォールバック、および RuntimeBuild した Standalone exe の
 //      スクリプト登録として機能する。
 // WHY (マーカーコメント方式):
-//      ScriptCodeGen がスクリプトを新規生成した際に @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間に
-//      #include を自動追記する。エントリは Scripts/ScriptList.inl で一元管理し、
-//      ScriptCodeGen は ScriptList.inl だけを更新する (このファイルの ENTRIES 編集は不要)。
+//      ScriptCodeGen が Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンし、
+//      @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間を自動同期する。エントリは Scripts/ScriptList.inl で一元管理する。
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により

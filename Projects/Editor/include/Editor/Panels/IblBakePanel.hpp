@@ -16,10 +16,10 @@ namespace fbzz::editor {
 
 class IblBakePanel final : public IPanel {
 public:
-    const char* GetWindowName()   const override { return "IBL Baker"; }
-    const char* GetViewMenuName() const override { return "IBL Baker"; }
-    // Tools メニューから明示的に開く。View > Panels には表示しない。
-    bool ShowInViewMenu() const override { return false; }
+    const char* GetWindowName()        const override { return "IBL Baker"; }
+    const char* GetViewMenuName()      const override { return "IBL Baker"; }
+    bool        ShowInViewMenu()       const override { return false; }
+    bool        GetDefaultVisibility() const override { return false; }
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;

@@ -56,6 +56,12 @@ public:
     int         GetChildCount()     const;
     GameObject* GetChild(int index) const;
 
+    // Unity: transform.GetSiblingIndex / SetSiblingIndex
+    // 兄弟内の表示順 (Hierarchy の並び)。親がいない場合はルート同士の並び順を指す。
+    // WHY: Hierarchy パネルのドラッグ並べ替え (挿入ライン) に必要。
+    int  GetSiblingIndex() const;
+    bool SetSiblingIndex(int index);
+
     // Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
     static GameObject*              Find(const std::string& n);
     static GameObject*              FindByGuid(const std::string& guid);

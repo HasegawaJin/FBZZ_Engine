@@ -6,7 +6,6 @@
 //      これらはいずれも「シーンファイル」という単一の概念を中心とした処理群であり、
 //      ライフサイクル管理 (Init/Shutdown/BeginFrame) や UI (MenuBar) とは関心が異なる。
 #include <Editor/EditorApp.hpp>
-#include <Editor/GraphLayoutSerializer.hpp>
 #include <Editor/ToolchainLocator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/ModalDialog.hpp>
@@ -81,12 +80,15 @@ FILETIME GetLatestWriteTimeInTree(const std::filesystem::path& root)
 }
 
 // Scripts DLLの鮮度判定に使う、ユーザー編集ソースの最新更新時刻を返す。
-// WHY: GenerateReflectAllは起動時に.generated.hppを書き直すため、それを含めると内容が
-//      同じでも毎回DLLを古いと誤判定する。生成元の.hpp/.cpp等だけで再ビルド要否を決める。
+// WHY: 新方式では .generated.hpp は生成しないが、旧プロジェクト互換のため残存ファイルは
+//      鮮度判定から除外する (生成物のタイムスタンプで誤って再ビルド要と判定しないため)。
 FILETIME GetLatestScriptSourceWriteTime(const std::filesystem::path& root)
 {
     FILETIME latest{};
     for (const std::filesystem::path& path : util::FileSystem::ListFilesRecursive(root)) {
+        const std::wstring extension = path.extension().wstring();
+        if (extension != L".hpp" && extension != L".cpp" && extension != L".inl")
+            continue;
         if (path.filename().wstring().ends_with(L".generated.hpp"))
             continue;
 
@@ -95,6 +97,13 @@ FILETIME GetLatestScriptSourceWriteTime(const std::filesystem::path& root)
             latest = ft;
     }
     return latest;
+}
+
+std::filesystem::path GetScriptScanRoot(const std::filesystem::path& scriptsSourceDir)
+{
+    if (scriptsSourceDir.filename() == L"Scripts")
+        return scriptsSourceDir.parent_path();
+    return scriptsSourceDir;
 }
 
 // HLSL の再コンパイル結果を現在開いているプロジェクトへ反映する。
@@ -297,7 +306,6 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_undoStack.Clear();
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
-    GraphLayoutSerializer::Load(m_ctx.graphLayouts, path);
     m_ctx.selectedEntities.clear();
     m_ctx.editorHiddenGuids.clear();
     RebuildEditorUIFromScene();
@@ -323,7 +331,6 @@ bool EditorApp::SaveScene()
         return false;
     }
     m_ctx.projectSettings.Save(m_projectSettingsPath);
-    GraphLayoutSerializer::Save(m_ctx.graphLayouts, m_settings.lastScenePath);
 
     m_ctx.currentScenePath = m_settings.lastScenePath;
     CaptureCleanScene();
@@ -350,7 +357,6 @@ bool EditorApp::SaveSceneAsDialog()
 
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
-    GraphLayoutSerializer::Save(m_ctx.graphLayouts, path);
     CaptureCleanScene();
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
     return true;
@@ -405,7 +411,6 @@ void EditorApp::CheckHotReload()
         if (!SceneIO::Load(*m_ctx.activeScene, m_settings.lastScenePath))
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
-            GraphLayoutSerializer::Load(m_ctx.graphLayouts, m_settings.lastScenePath);
             m_ctx.selectedEntities.clear();
             RebuildEditorUIFromScene();
             CaptureCleanScene();
@@ -476,7 +481,7 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     //      エディタが Development 構成で VS プロジェクトを生成させるために明示的に上書きする。
     //      スペースを含むフラグは引数全体を "" で括ることで CreateProcessW に正しく渡せる。
     cmd += L" -DCMAKE_CONFIGURATION_TYPES=Debug;Release;Development";
-    cmd += L" \"-DCMAKE_CXX_FLAGS_DEVELOPMENT=/Zi /O2 /Ob1\"";
+    cmd += L" \"-DCMAKE_CXX_FLAGS_DEVELOPMENT=/Zi /O2 /Ob1 /FS\"";
     cmd += L" \"-DCMAKE_EXE_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
     cmd += L" \"-DCMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT=/DEBUG:FULL /INCREMENTAL:NO\"";
     std::vector<wchar_t> mutableCmd(cmd.begin(), cmd.end());
@@ -531,7 +536,8 @@ void EditorApp::InitScriptDll()
         if constexpr (kConfig == "Development") {
             m_scriptDllPath = !toolchain.scriptsDllDevelopment.empty()
                 ? toolchain.scriptsDllDevelopment
-                : toolchain.buildDir.parent_path() / L"Binaries" / L"Development" / L"Scripts.dll";
+                // WHY: SandboxScripts.dll は exe 整理後 Binaries/<Config>/Sandbox/ に出力される。
+            : toolchain.buildDir.parent_path() / L"Binaries" / L"Development" / L"Sandbox" / L"SandboxScripts.dll";
         } else if constexpr (kConfig == "Release") {
             m_scriptDllPath = !toolchain.scriptsDllRelease.empty()
                 ? toolchain.scriptsDllRelease
@@ -550,8 +556,8 @@ void EditorApp::InitScriptDll()
         m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
         m_ctx.hlslSourceDir    = util::FileSystem::PathToUtf8(m_hlslSourceDir);
 
-        // エディタ起動時: 全スクリプトの .generated.hpp を最新化する
-        ScriptCodeGen::GenerateReflectAll(m_ctx.scriptsSourceDir);
+        // 新方式: Reflect() はヘッダ内の FBZZ_REFLECT が生成するため、起動時の
+        //         .generated.hpp 一括生成 (旧 FHT) は不要になった。
 
         if (!m_ctx.projectTargetName.empty()) {
             const std::filesystem::path projRoot = util::FileSystem::PathFromUtf8(m_ctx.projectRoot);
@@ -611,6 +617,12 @@ void EditorApp::InitScriptDll()
 
     // DLL ロード (toolchain の成否に関わらず実行)
     m_ctx.scriptsDllPath = util::FileSystem::PathToUtf8(m_scriptDllPath);
+    if (!m_ctx.scriptsSourceDir.empty()) {
+        // WHY: Scripts/ の実ファイルを登録の正とし、手動追加・削除を Unity 風に自動反映する。
+        ScriptCodeGen::SyncScriptRegistry(m_ctx.scriptsSourceDir,
+                                          m_ctx.scriptsDllCppPath,
+                                          m_ctx.scriptsStaticCppPath);
+    }
     if (!m_scriptDllPath.empty() && util::FileSystem::Exists(m_scriptDllPath)) {
         if (m_scriptDll.Load(m_scriptDllPath)) {
             FBZZ_LOG_INFO("ScriptDll: loaded %ls (%d types)",
@@ -618,6 +630,19 @@ void EditorApp::InitScriptDll()
                 static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
         } else {
             FBZZ_LOG_WARN("ScriptDll: load failed; scripts are kept as serialized data until DLL rebuild succeeds");
+            if (toolchain.found) {
+                // WHY: Engine 側の Scene / Component レイアウトだけが変わった場合、
+                //      スクリプトソースのタイムスタンプ比較では古い DLL を検出できない。
+                //      ABI 不一致でロードを拒否した時点で依存ターゲット込みの再ビルドを予約する。
+                m_scriptCompilePending = true;
+                m_scriptInitialBuild   = true;
+                m_scriptDebounceTimer  = 0.0f;
+                m_ctx.scriptReloadBusy = true;
+                SetHotReloadState(EditorContext::HotReloadState::Compiling,
+                                  "Scripts: ABI mismatch, rebuilding...");
+                m_ctx.hotReloadProgress = 0.0f;
+                FBZZ_LOG_INFO("ScriptDll: load failed; scheduling dependency rebuild");
+            }
         }
     } else if (toolchain.found) {
         // WHY: cmake configure 直後は DLL がまだ存在しない。
@@ -678,12 +703,13 @@ void EditorApp::InitScriptDll()
 
     // 最終更新時刻をキャッシュする (初回は変更なしと判定)
     if (!m_scriptsSourceDir.empty()) {
-        m_lastScriptWriteTime = GetLatestWriteTimeInTree(m_scriptsSourceDir);
+        const std::filesystem::path scriptScanRoot = GetScriptScanRoot(m_scriptsSourceDir);
+        m_lastScriptWriteTime = GetLatestScriptSourceWriteTime(scriptScanRoot);
 
         // WHY: 既存DLLをロードできても、ソースより古ければSceneManagerScript等の修正が
         //      Editor Playへ反映されない。Standaloneビルドへ依存せず起動時に自動更新する。
         FILETIME dllWriteTime{};
-        const FILETIME sourceWriteTime = GetLatestScriptSourceWriteTime(m_scriptsSourceDir);
+        const FILETIME sourceWriteTime = GetLatestScriptSourceWriteTime(scriptScanRoot);
         if (!m_scriptCompilePending
             && !IsEmptyFileTime(sourceWriteTime)
             && (!TryGetWriteTime(m_scriptDllPath, dllWriteTime)
@@ -710,7 +736,7 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     if (m_scriptCompiler.GetState() == Compiler::State::Building) return;
     if (m_scriptCompilePending) return;
 
-    // WHY: Scripts/ 配下の全ファイル時刻確認はディスク I/O と path 確保を伴うため、
+    // WHY: Assets/ 配下のスクリプト候補確認はディスク I/O と path 確保を伴うため、
     //      BeginFrame 毎に走らせるとエディター操作が CPU ボトルネック化する。
     // WHAT: ホットリロードの体感遅延として許容できる 0.5 秒間隔に制限し、
     //       ファイル保存後の再ビルドは既存のデバウンスでまとめる。
@@ -718,9 +744,10 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     if (m_scriptDirtyPollTimer < HOT_RELOAD_TREE_POLL_INTERVAL) return;
     m_scriptDirtyPollTimer = 0.0f;
 
-    // Scripts ツリー全体の最終変更時刻を確認する。
+    // Assets/ 配下のスクリプト候補の最終変更時刻を確認する。
     FBZZ_PROFILE_SCOPE("HotReload::ScanScripts");
-    const FILETIME ft = GetLatestWriteTimeInTree(m_scriptsSourceDir);
+    const std::filesystem::path scriptScanRoot = GetScriptScanRoot(m_scriptsSourceDir);
+    const FILETIME ft = GetLatestScriptSourceWriteTime(scriptScanRoot);
     if (IsEmptyFileTime(ft))
         return;
 
@@ -730,7 +757,10 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     }
     if (CompareFileTime(&ft, &m_lastScriptWriteTime) == 0) return;
 
-    m_lastScriptWriteTime  = ft;
+    ScriptCodeGen::SyncScriptRegistry(m_ctx.scriptsSourceDir,
+                                      m_ctx.scriptsDllCppPath,
+                                      m_ctx.scriptsStaticCppPath);
+    m_lastScriptWriteTime  = GetLatestScriptSourceWriteTime(scriptScanRoot);
     m_scriptCompilePending = true;
     m_scriptDebounceTimer  = 0.5f;  // 500ms デバウンス
     m_ctx.scriptReloadBusy = true;
@@ -738,13 +768,7 @@ void EditorApp::CheckScriptDirtyAndRebuild()
     m_ctx.hotReloadProgress = 0.0f;
     FBZZ_LOG_DEBUG("ScriptDll: change detected in %s; rebuilding after 500 ms debounce",
                    m_ctx.scriptsSourceDir.c_str());
-    // ビルド前に .generated.hpp を最新化する
-    ScriptCodeGen::GenerateReflectAll(m_ctx.scriptsSourceDir);
-    // WHY: GenerateReflectAll が .generated.hpp を書き出すと、そのタイムスタンプが
-    //      m_lastScriptWriteTime (= ft) より新しくなり、コンパイル完了後の次回ポーリングで
-    //      "変更あり" と誤検知して再コンパイルが無限ループする。
-    //      生成直後に再サンプルして生成ファイルのタイムスタンプを吸収する。
-    m_lastScriptWriteTime = GetLatestWriteTimeInTree(m_scriptsSourceDir);
+    // 新方式: Reflect() はヘッダ内生成のため、ビルド前の .generated.hpp 一括生成は不要。
 }
 
 void EditorApp::TickScriptCompile()

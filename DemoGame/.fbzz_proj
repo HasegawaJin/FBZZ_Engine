@@ -1,0 +1,20 @@
+[project]
+name = "DemoGame"
+project_id = "demogame"
+cpp_namespace = "demogame"
+target_name = "DemoGame"
+standalone_target_name = "DemoGameStandalone"
+engine_version = "0.1.0"
+created_at = "2026-06-23T14:39:01Z"
+default_scene = "Assets/Scenes/Main.scene"
+asset_root = "Assets/"
+settings_path = "ProjectSettings/ProjectSettings.toml"
+api_root = "Include/"
+public_api_header = "Include/DemoGame/ProjectAPI.hpp"
+script_root = "Src/Scripts/"
+library_root = "Lib/"
+binary_root = "Binaries/"
+build_root = "Build/"
+
+[engine]
+root = "C:/Users/jinhs/Downloads/FBZZ_Engine"

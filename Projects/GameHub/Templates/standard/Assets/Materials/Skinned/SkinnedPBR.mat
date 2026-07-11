@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl"
+shader = "guid:16968af1c2fd4876b74c6339309ff2c2"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

@@ -9,8 +9,9 @@ namespace fbzz::editor {
 
 class HotkeyEditorPanel final : public IPanel {
 public:
-    const char* GetWindowName()   const override { return "Hotkey Editor"; }
-    const char* GetViewMenuName() const override { return "Hotkey Editor"; }
+    const char* GetWindowName()        const override { return "Hotkey Editor"; }
+    const char* GetViewMenuName()      const override { return "Hotkey Editor"; }
+    bool        GetDefaultVisibility() const override { return false; }
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;

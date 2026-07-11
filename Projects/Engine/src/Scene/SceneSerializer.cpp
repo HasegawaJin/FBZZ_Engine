@@ -4,6 +4,7 @@
 // GameObject 階層と登録済み Component を .fbzz へ書き出す。
 // ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -26,6 +27,7 @@
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
@@ -42,9 +44,11 @@
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Scene/Components/FoliageComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
@@ -651,8 +655,13 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         goTbl.insert("layer",           (int64_t)go.layer);
         goTbl.insert("active",          go.activeSelf());
         goTbl.insert("prefabAssetPath", go.prefabAssetPath);
-        goTbl.insert("parent",
-            go.GetParent() ? go.GetParent()->name : std::string{});
+        if (auto* parent = go.GetParent()) {
+            goTbl.insert("parent", parent->name);
+            goTbl.insert("parentInstanceId", parent->instanceId);
+        } else {
+            goTbl.insert("parent", std::string{});
+            goTbl.insert("parentInstanceId", std::string{});
+        }
 
         // Transform
         {
@@ -763,6 +772,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
         if (auto* elc = go.GetComponent<EnvironmentLightComponent>()) {
             toml::table elcTbl;
             elcTbl.insert("enabled",        elc->enabled);
+            elcTbl.insert("source",         (int64_t)static_cast<uint8_t>(elc->source));
             elcTbl.insert("irradiancePath", elc->irradiancePath);
             elcTbl.insert("prefilterPath",  elc->prefilterPath);
             elcTbl.insert("intensity",      (double)elc->intensity);
@@ -789,6 +799,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             toml::table ascAtmTbl;
             ascAtmTbl.insert("enabled",    asc->enabled);
             ascAtmTbl.insert("fogEnabled", asc->fogEnabled);
+            ascAtmTbl.insert("fogSource",  (int64_t)static_cast<uint8_t>(asc->fogSource));
             ascAtmTbl.insert("fogDensity", (double)asc->fogDensity);
             ascAtmTbl.insert("fogFar",     (double)asc->fogFar);
             ascAtmTbl.insert("fogColor",   Vec3ToArr(asc->fogColor));
@@ -865,6 +876,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             peTbl.insert("blendMode",      (int64_t)static_cast<int>(pe->blendMode));
             peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
             peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
+            peTbl.insert("materialPath",   pe->materialPath);
             peTbl.insert("texturePath",    pe->texturePath);
             peTbl.insert("spriteColumns",  (int64_t)pe->spriteColumns);
             peTbl.insert("spriteRows",     (int64_t)pe->spriteRows);
@@ -897,6 +909,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("attachBone",         trail->attachBone);
             trailTbl.insert("attachOffset",       Vec3ToArr(trail->attachOffset));
             trailTbl.insert("clearOnDisable",     trail->clearOnDisable);
+            trailTbl.insert("materialPath",       trail->materialPath);
             trailTbl.insert("texturePath",        trail->texturePath);
             trailTbl.insert("uvMode",             (int64_t)static_cast<int>(trail->uvMode));
             trailTbl.insert("uvScrollSpeed",      (double)trail->uvScrollSpeed);
@@ -916,6 +929,7 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             trailTbl.insert("colorEnd",       Vec4ToArr(trail->colorEnd));
             trailTbl.insert("doubleSided",    trail->doubleSided);
             trailTbl.insert("clearOnDisable", trail->clearOnDisable);
+            trailTbl.insert("materialPath",   trail->materialPath);
             trailTbl.insert("texturePath",    trail->texturePath);
             toml::array excludedMeshIndices;
             for (int meshIndex : trail->excludedMeshIndices)
@@ -1063,7 +1077,51 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             srTbl.insert("atmosphereRadius",   (double)sr->atmosphereRadius);
             srTbl.insert("mieG",               (double)sr->mieG);
             srTbl.insert("enabled",            sr->enabled);
+            srTbl.insert("dayNightEnabled",    sr->dayNightEnabled);
+            srTbl.insert("dayColor",           Vec3ToArr(sr->dayColor));
+            srTbl.insert("sunsetColor",        Vec3ToArr(sr->sunsetColor));
+            srTbl.insert("nightColor",         Vec3ToArr(sr->nightColor));
+            srTbl.insert("dayIntensity",       (double)sr->dayIntensity);
+            srTbl.insert("nightIntensity",     (double)sr->nightIntensity);
+            srTbl.insert("cloudShadowStrength",(double)sr->cloudShadowStrength);
+            srTbl.insert("cloudShadowCoverage",(double)sr->cloudShadowCoverage);
+            srTbl.insert("cloudShadowScale",   (double)sr->cloudShadowScale);
+            srTbl.insert("cloudShadowSpeed",   (double)sr->cloudShadowSpeed);
             goTbl.insert("SkyRenderer", std::move(srTbl));
+        }
+
+        // SunMoonRenderer
+        if (auto* smr = go.GetComponent<SunMoonRenderer>()) {
+            toml::table smrTbl;
+            smrTbl.insert("enabled",        smr->enabled);
+            smrTbl.insert("sunEnabled",     smr->sunEnabled);
+            smrTbl.insert("sunIntensity",   (double)smr->sunIntensity);
+            smrTbl.insert("moonEnabled",    smr->moonEnabled);
+            smrTbl.insert("moonSize",       (double)smr->moonSize);
+            smrTbl.insert("moonBrightness", (double)smr->moonBrightness);
+            smrTbl.insert("moonColor",      Vec3ToArr(smr->moonColor));
+            goTbl.insert("SunMoonRenderer", std::move(smrTbl));
+        }
+
+        // VolumetricCloudComponent
+        if (auto* cloud = go.GetComponent<VolumetricCloudComponent>()) {
+            toml::table cloudTbl;
+            cloudTbl.insert("enabled",          cloud->enabled);
+            cloudTbl.insert("bottomHeight",     (double)cloud->bottomHeight);
+            cloudTbl.insert("thickness",        (double)cloud->thickness);
+            cloudTbl.insert("coverage",         (double)cloud->coverage);
+            cloudTbl.insert("density",          (double)cloud->density);
+            cloudTbl.insert("noiseScale",       (double)cloud->noiseScale);
+            cloudTbl.insert("detailScale",      (double)cloud->detailScale);
+            cloudTbl.insert("windSpeed",        (double)cloud->windSpeed);
+            cloudTbl.insert("windDirection",    Vec2ToArr(cloud->windDirection));
+            cloudTbl.insert("lightAbsorption",  (double)cloud->lightAbsorption);
+            cloudTbl.insert("ambientStrength",  (double)cloud->ambientStrength);
+            cloudTbl.insert("silverLining",     (double)cloud->silverLining);
+            cloudTbl.insert("albedo",           Vec3ToArr(cloud->albedo));
+            cloudTbl.insert("stepCount",        (int64_t)cloud->stepCount);
+            cloudTbl.insert("maxDistance",      (double)cloud->maxDistance);
+            goTbl.insert("VolumetricCloudComponent", std::move(cloudTbl));
         }
 
         // SkinnedMeshRenderer
@@ -1326,6 +1384,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             uiTbl.insert("referenceHeight", (double)canvas->referenceHeight);
             uiTbl.insert("matchWidthOrHeight", (double)canvas->matchWidthOrHeight);
             uiTbl.insert("worldScale",   (double)canvas->worldScale);
+            uiTbl.insert("planeDistance",(double)canvas->planeDistance);
+            uiTbl.insert("faceCamera",   canvas->faceCamera);
             goTbl.insert("UICanvas", std::move(uiTbl));
         }
 
@@ -1338,6 +1398,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             uiTbl.insert("uvMin",             Vec2ToArr(image->uvMin));
             uiTbl.insert("uvMax",             Vec2ToArr(image->uvMax));
             uiTbl.insert("sortOrder",         (int64_t)image->sortOrder);
+            uiTbl.insert("fillAmount",        (double)image->fillAmount);
+            uiTbl.insert("fillOrigin",        (int64_t)static_cast<int>(image->fillOrigin));
             goTbl.insert("UIImage", std::move(uiTbl));
         }
 
@@ -1579,6 +1641,21 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("NavMeshAgentComponent", std::move(agentTbl));
         }
 
+        // NavMeshOffMeshLinkComponent — 非連続ポリゴン接続の設計値のみ保存する。
+        // WHY: Bake 後の内部接続は navMesh と同じランタイム生成物なので、Prefab/Scene には
+        //      編集可能な端点・方向・通過条件だけを永続化する。
+        if (auto* link = go.GetComponent<NavMeshOffMeshLinkComponent>()) {
+            toml::table linkTbl;
+            linkTbl.insert("enabled",       link->enabled);
+            linkTbl.insert("startPoint",    Vec3ToArr(link->startPoint));
+            linkTbl.insert("endPoint",      Vec3ToArr(link->endPoint));
+            linkTbl.insert("bidirectional", link->bidirectional);
+            linkTbl.insert("activated",     link->activated);
+            linkTbl.insert("traversalTime", static_cast<double>(link->traversalTime));
+            linkTbl.insert("agentTypeMask", static_cast<int64_t>(link->agentTypeMask));
+            goTbl.insert("NavMeshOffMeshLinkComponent", std::move(linkTbl));
+        }
+
         // NavMeshPatrolComponent — ウェイポイント・巡回設定を保存。進行状態はランタイムのため非保存。
         if (auto* patrol = go.GetComponent<NavMeshPatrolComponent>()) {
             toml::table patrolTbl;
@@ -1641,6 +1718,10 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
 
     NormalizeTomlFloats(doc);
 
+    // ディスク上のアセット参照は guid: 形式にする (リネーム・移動耐性)。
+    // ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
+    asset::EncodeGuidRefs(doc);
+
     std::ostringstream oss;
     oss << doc;
 
@@ -1666,6 +1747,9 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         return nullptr;
     }
     auto& doc = result.table();
+
+    // guid: 参照を "Assets/..." パスへ戻す。以降の全コンポーネント読み込みはパス前提で動く。
+    asset::DecodeGuidRefs(doc);
 
     auto scene = std::make_unique<Scene>();
 
@@ -1821,6 +1905,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
             EnvironmentLightComponent elc{};
             elc.enabled        = (*elcTbl)["enabled"].value_or(true);
+            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
             elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
             elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
             elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
@@ -1847,6 +1932,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             AtmosphericScatteringComponent atm{};
             atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
             atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
+            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
             atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
             atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
             atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
@@ -2001,6 +2087,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
+            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
             pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
@@ -2039,6 +2126,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             trail.attachBone     = (*trailTbl)["attachBone"].value_or(std::string{});
             trail.attachOffset   = ArrToVec3((*trailTbl)["attachOffset"].as_array(), math::Vector3::ZERO);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
+            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
             trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             int uvMode = (int)(*trailTbl)["uvMode"].value_or((int64_t)0);
             uvMode = uvMode < 0 ? 0 : (uvMode > 1 ? 1 : uvMode);
@@ -2062,6 +2150,7 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                                                { 0.35f, 0.75f, 1.0f, 0.0f });
             trail.doubleSided    = (*trailTbl)["doubleSided"].value_or(true);
             trail.clearOnDisable = (*trailTbl)["clearOnDisable"].value_or(true);
+            trail.materialPath   = (*trailTbl)["materialPath"].value_or(std::string{});
             trail.texturePath    = (*trailTbl)["texturePath"].value_or(std::string{});
             if (const auto* excludedArr = (*trailTbl)["excludedMeshIndices"].as_array()) {
                 for (const auto& node : *excludedArr) {
@@ -2205,7 +2294,51 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             sr.atmosphereRadius = (float)(*srTbl)["atmosphereRadius"].value_or(6471.0);
             sr.mieG          = (float)(*srTbl)["mieG"].value_or(0.76);
             sr.enabled       = (*srTbl)["enabled"].value_or(true);
+            sr.dayNightEnabled = (*srTbl)["dayNightEnabled"].value_or(false);
+            sr.dayColor      = ArrToVec3((*srTbl)["dayColor"].as_array(), { 1.0f, 0.98f, 0.95f });
+            sr.sunsetColor   = ArrToVec3((*srTbl)["sunsetColor"].as_array(), { 1.0f, 0.5f, 0.2f });
+            sr.nightColor    = ArrToVec3((*srTbl)["nightColor"].as_array(), { 0.1f, 0.15f, 0.3f });
+            sr.dayIntensity  = (float)(*srTbl)["dayIntensity"].value_or(1.5);
+            sr.nightIntensity = (float)(*srTbl)["nightIntensity"].value_or(0.1);
+            sr.cloudShadowStrength = (float)(*srTbl)["cloudShadowStrength"].value_or(0.0);
+            sr.cloudShadowCoverage = (float)(*srTbl)["cloudShadowCoverage"].value_or(0.5);
+            sr.cloudShadowScale    = (float)(*srTbl)["cloudShadowScale"].value_or(0.02);
+            sr.cloudShadowSpeed    = (float)(*srTbl)["cloudShadowSpeed"].value_or(1.0);
             go.AddComponent<SkyRenderer>(sr);
+        }
+
+        // SunMoonRenderer
+        if (auto* smrTbl = (*goTbl)["SunMoonRenderer"].as_table()) {
+            SunMoonRenderer smr{};
+            smr.enabled        = (*smrTbl)["enabled"].value_or(true);
+            smr.sunEnabled     = (*smrTbl)["sunEnabled"].value_or(true);
+            smr.sunIntensity   = (float)(*smrTbl)["sunIntensity"].value_or(20.0);
+            smr.moonEnabled    = (*smrTbl)["moonEnabled"].value_or(false);
+            smr.moonSize       = (float)(*smrTbl)["moonSize"].value_or(1.0);
+            smr.moonBrightness = (float)(*smrTbl)["moonBrightness"].value_or(0.6);
+            smr.moonColor      = ArrToVec3((*smrTbl)["moonColor"].as_array(), { 0.85f, 0.9f, 1.0f });
+            go.AddComponent<SunMoonRenderer>(smr);
+        }
+
+        // VolumetricCloudComponent
+        if (auto* cloudTbl = (*goTbl)["VolumetricCloudComponent"].as_table()) {
+            VolumetricCloudComponent cloud{};
+            cloud.enabled         = (*cloudTbl)["enabled"].value_or(true);
+            cloud.bottomHeight    = (float)(*cloudTbl)["bottomHeight"].value_or(650.0);
+            cloud.thickness       = (float)(*cloudTbl)["thickness"].value_or(420.0);
+            cloud.coverage        = (float)(*cloudTbl)["coverage"].value_or(0.48);
+            cloud.density         = (float)(*cloudTbl)["density"].value_or(0.72);
+            cloud.noiseScale      = (float)(*cloudTbl)["noiseScale"].value_or(0.0018);
+            cloud.detailScale     = (float)(*cloudTbl)["detailScale"].value_or(5.0);
+            cloud.windSpeed       = (float)(*cloudTbl)["windSpeed"].value_or(18.0);
+            cloud.windDirection   = ArrToVec2((*cloudTbl)["windDirection"].as_array(), { 1.0f, 0.25f });
+            cloud.lightAbsorption = (float)(*cloudTbl)["lightAbsorption"].value_or(1.35);
+            cloud.ambientStrength = (float)(*cloudTbl)["ambientStrength"].value_or(0.28);
+            cloud.silverLining    = (float)(*cloudTbl)["silverLining"].value_or(0.42);
+            cloud.albedo          = ArrToVec3((*cloudTbl)["albedo"].as_array(), { 1.0f, 0.96f, 0.88f });
+            cloud.stepCount       = (int)(*cloudTbl)["stepCount"].value_or((int64_t)48);
+            cloud.maxDistance     = (float)(*cloudTbl)["maxDistance"].value_or(6000.0);
+            go.AddComponent<VolumetricCloudComponent>(cloud);
         }
 
         // SkinnedMeshRenderer
@@ -2499,6 +2632,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             canvas.referenceHeight = (float)(*uiTbl)["referenceHeight"].value_or(1080.0);
             canvas.matchWidthOrHeight = (float)(*uiTbl)["matchWidthOrHeight"].value_or(0.0);
             canvas.worldScale   = (float)(*uiTbl)["worldScale"].value_or(0.01);
+            canvas.planeDistance = (float)(*uiTbl)["planeDistance"].value_or(2.0);
+            canvas.faceCamera   = (*uiTbl)["faceCamera"].value_or(false);
             go.AddComponent<UICanvas>(canvas);
         }
 
@@ -2511,6 +2646,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             image.uvMin            = ArrToVec2((*uiTbl)["uvMin"].as_array(), { 0.0f, 0.0f });
             image.uvMax            = ArrToVec2((*uiTbl)["uvMax"].as_array(), { 1.0f, 1.0f });
             image.sortOrder        = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
+            image.fillAmount       = (float)(*uiTbl)["fillAmount"].value_or(1.0);
+            image.fillOrigin       = static_cast<UIImageFillOrigin>((*uiTbl)["fillOrigin"].value_or((int64_t)0));
             go.AddComponent<UIImage>(image);
         }
 
@@ -2807,6 +2944,18 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<NavMeshAgentComponent>(std::move(agent));
         }
 
+        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
+            NavMeshOffMeshLinkComponent link{};
+            link.enabled       = (*linkTbl)["enabled"].value_or(true);
+            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
+            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
+            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
+            link.activated     = (*linkTbl)["activated"].value_or(true);
+            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
+            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
+            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
+        }
+
         if (auto* patrolTbl = (*goTbl)["NavMeshPatrolComponent"].as_table()) {
             NavMeshPatrolComponent patrol{};
             patrol.enabled  = (*patrolTbl)["enabled"].value_or(true);
@@ -2882,12 +3031,14 @@ std::unique_ptr<Scene> SceneSerializer::Load(
         auto* goTbl = item.as_table();
         if (!goTbl) continue;
 
-        std::string parentName = (*goTbl)["parent"].value_or(std::string{});
-        if (parentName.empty()) continue;
+        std::string parentGuid = (*goTbl)["parentInstanceId"].value_or(std::string{});
+        if (parentGuid.empty()) continue;
 
-        std::string childName = (*goTbl)["name"].value_or(std::string{});
-        auto* child  = scene->Find(childName);
-        auto* parent = scene->Find(parentName);
+        std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (childGuid.empty()) continue;
+
+        auto* child = scene->FindByGuid(childGuid);
+        auto* parent = scene->FindByGuid(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 
@@ -2991,6 +3142,9 @@ bool SceneSerializer::AppendObjects(
     if (!result) return false;
     auto& doc = result.table();
 
+    // Prefab 等の TOML 断片にも guid: 参照が含まれるため Load と同じくデコードする。
+    asset::DecodeGuidRefs(doc);
+
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr || goArr->empty()) return false;
 
@@ -3066,6 +3220,7 @@ bool SceneSerializer::AppendObjects(
         if (auto* elcTbl = (*goTbl)["EnvironmentLightComponent"].as_table()) {
             EnvironmentLightComponent elc{};
             elc.enabled        = (*elcTbl)["enabled"].value_or(true);
+            elc.source         = static_cast<IblSource>(static_cast<uint8_t>((*elcTbl)["source"].value_or((int64_t)0)));
             elc.irradiancePath = (*elcTbl)["irradiancePath"].value_or(std::string{});
             elc.prefilterPath  = (*elcTbl)["prefilterPath"].value_or(std::string{});
             elc.intensity      = (float)(*elcTbl)["intensity"].value_or(1.0);
@@ -3092,6 +3247,7 @@ bool SceneSerializer::AppendObjects(
             AtmosphericScatteringComponent atm{};
             atm.enabled    = (*ascAtmTbl)["enabled"].value_or(true);
             atm.fogEnabled = (*ascAtmTbl)["fogEnabled"].value_or(false);
+            atm.fogSource  = static_cast<FogSource>(static_cast<uint8_t>((*ascAtmTbl)["fogSource"].value_or((int64_t)0)));
             atm.fogDensity = (float)(*ascAtmTbl)["fogDensity"].value_or(0.04);
             atm.fogFar     = (float)(*ascAtmTbl)["fogFar"].value_or(80.0);
             atm.fogColor   = ArrToVec3((*ascAtmTbl)["fogColor"].as_array(), {0.55f, 0.65f, 0.75f});
@@ -3167,6 +3323,7 @@ bool SceneSerializer::AppendObjects(
             int sim = (int)(*peTbl)["simulationMode"].value_or((int64_t)0);
             sim = sim < 0 ? 0 : (sim > 1 ? 1 : sim);
             pe.simulationMode = static_cast<ParticleSimulationMode>(sim);
+            pe.materialPath   = (*peTbl)["materialPath"].value_or(std::string{});
             pe.texturePath    = (*peTbl)["texturePath"].value_or(std::string{});
             pe.spriteColumns  = (int)(*peTbl)["spriteColumns"].value_or((int64_t)1);
             pe.spriteRows     = (int)(*peTbl)["spriteRows"].value_or((int64_t)1);
@@ -3250,6 +3407,18 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<RigidBodyComponent>(std::move(rb));
         }
 
+        if (auto* linkTbl = (*goTbl)["NavMeshOffMeshLinkComponent"].as_table()) {
+            NavMeshOffMeshLinkComponent link{};
+            link.enabled       = (*linkTbl)["enabled"].value_or(true);
+            link.startPoint    = ArrToVec3((*linkTbl)["startPoint"].as_array(), math::Vector3::ZERO);
+            link.endPoint      = ArrToVec3((*linkTbl)["endPoint"].as_array(), math::Vector3::ZERO);
+            link.bidirectional = (*linkTbl)["bidirectional"].value_or(true);
+            link.activated     = (*linkTbl)["activated"].value_or(true);
+            link.traversalTime = static_cast<float>((*linkTbl)["traversalTime"].value_or(0.3));
+            link.agentTypeMask = static_cast<int>((*linkTbl)["agentTypeMask"].value_or(int64_t{-1}));
+            go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
+        }
+
         auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
             std::string type = scTbl["type"].value_or(std::string{});
             if (type.empty()) return;
@@ -3292,11 +3461,14 @@ bool SceneSerializer::AppendObjects(
     for (auto& item : *goArr) {
         auto* goTbl = item.as_table();
         if (!goTbl) continue;
-        std::string parentName = (*goTbl)["parent"].value_or(std::string{});
-        if (parentName.empty()) continue;
-        std::string childName = (*goTbl)["name"].value_or(std::string{});
-        auto* child  = scene.Find(childName);
-        auto* parent = scene.Find(parentName);
+        std::string parentGuid = (*goTbl)["parentInstanceId"].value_or(std::string{});
+        if (parentGuid.empty()) continue;
+
+        std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (childGuid.empty()) continue;
+
+        auto* child = scene.FindByGuid(childGuid);
+        auto* parent = scene.FindByGuid(parentGuid);
         if (child && parent) child->SetParent(*parent);
     }
 

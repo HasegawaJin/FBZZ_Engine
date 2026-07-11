@@ -87,6 +87,7 @@ call :CompileVSPS Material\Effects\MeshTrail.hlsl Material.Effects.MeshTrail || 
 call :CompileVSPS Material\Effects\SkinnedMeshTrail.hlsl Material.Effects.SkinnedMeshTrail || goto :error
 call :CompileVSPS Material\Sky\Skybox.hlsl Material.Sky.Skybox || goto :error
 call :CompileVSPS Material\Sky\Skydome.hlsl Material.Sky.Skydome || goto :error
+call :CompileVSPS Material\Sky\SunMoon.hlsl Material.Sky.SunMoon || goto :error
 call :CompileVSPS Material\Decal\Decal.hlsl     Material.Decal.Decal     || goto :error
 call :CompileVSPS Material\Decal\DecalMask.hlsl Material.Decal.DecalMask || goto :error
 

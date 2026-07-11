@@ -16,6 +16,7 @@ Texture2D      texGBuffer1  : register(TEX_GBUFFER1);   // normal(RGB) + metalli
 Texture2D      texDepth     : register(TEX_DEPTH);
 Texture2D<float>       texShadow    : register(TEX_SHADOW);
 Texture2D              texSSAO      : register(TEX_SSAO);
+Texture2D<float>       texContactShadow : register(TEX_CONTACT_SHADOW); // t24: 接触影マスク (1=非遮蔽, 0=遮蔽)
 SamplerState           sampDefault  : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow   : register(SAMPLER_SHADOW);
 SamplerState           sampGBuffer  : register(SAMPLER_POINT_CLAMP);
@@ -88,6 +89,13 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+
+    // コンタクトシャドウ: 有効時 (contactShadowStrength>0) のみスクリーンスペース接触影を乗算する。
+    // WHY: contactShadowStrength は無効時に 0 が CB に入る (RenderSystem) ため、無効時は未バインドの
+    //      t24 をサンプルせずに済む。マスクは ContactShadows.cs が strength を織り込み済み (1=非遮蔽)。
+    //      半解像度で焼いても sampLinearClamp の正規化 UV サンプルでバイリニアにアップスケールされる。
+    if (contactShadowStrength > 0.0f)
+        shadow *= texContactShadow.Sample(sampLinearClamp, uv);
 
     // ---- ディレクショナルライト + アンビエント --------------------------------
     // IBL が有効 (iblIntensity > 0) のとき: Lighting_PBR_IBL で

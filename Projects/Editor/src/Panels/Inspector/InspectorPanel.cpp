@@ -16,6 +16,7 @@
 #include "InspectorRendering.hpp"
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
+#include <Editor/PlayModeController.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
@@ -79,12 +80,10 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
             }
             if (!changed && !ImGui::IsItemDeactivatedAfterEdit()) return;
             if (!ImGui::IsItemDeactivatedAfterEdit()) {
-                // drag 中の毎フレームコピー: apply value to all others
-                if (changed) {
-                    const auto& primary = gos.front()->transform;
-                    for (std::size_t i = 1; i < gos.size(); ++i)
-                        gos[i]->transform = primary;
-                }
+                // WHY: 編集したフィールドの反映は各フィールド (Position/Rotation/Scale) の
+                //      changed ハンドラ側で行っている。ここで transform 全体をコピーすると、
+                //      Position を編集しただけで他オブジェクトの回転・スケールまで
+                //      primary の値に潰れてしまう (Unity は編集した値だけを揃える)。
                 return;
             }
             // drag 完了: push undo command
@@ -239,7 +238,7 @@ void InspectorPanel::OnShutdown()
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Render");
-    widgets::DrawAssetPickerModal();
+    widgets::DrawAssetPickerModal(ctx.resources, ctx.imguiRenderer);
 
     if (ctx.mapEditingMode) {
         ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
@@ -282,6 +281,21 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         assetPathToInspect = m_inspectedAssetPath;
     } else {
         go = selectedGo;
+    }
+
+    // --- Play 中の編集警告バナー ---
+    // WHY: Play 中の Inspector 編集は Stop 時のスナップショット復元で巻き戻る。
+    //      Unity が Play 中に UI を tint して知らせるのと同様、目立つバナーで注意を促す。
+    if (ctx.playMode && !ctx.playMode->IsInEditor()) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.35f, 0.22f, 0.05f, 0.55f));
+        ImGui::BeginChild("##play_mode_warning",
+            { 0.0f, ImGui::GetTextLineHeightWithSpacing() + 8.0f }, false,
+            ImGuiWindowFlags_NoScrollbar);
+        ImGui::SetCursorPos({ 8.0f, 4.0f });
+        ImGui::TextColored({ 1.0f, 0.8f, 0.35f, 1.0f },
+            "PLAY MODE \xe2\x80\x94 changes will be lost on Stop");
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
     }
 
     // ------------------------------------------------------------------
@@ -532,7 +546,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::Separator();
 
     { FBZZ_PROFILE_SCOPE("Inspector::Transform");
-      DrawTransformInspector(go, ctx); }
+      DrawTransformInspectors(go, ctx); }
     if (ctx.mapEditingMode && ctx.mapInspectorFilter) {
         const bool hasMapComponent =
             go->GetComponent<scene::TerrainComponent>()
@@ -552,26 +566,26 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
     { FBZZ_PROFILE_SCOPE("Inspector::Rendering");
       DrawRenderingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Animation");
-      DrawAnimationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Material");
       DrawMaterialInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Lighting");
       DrawLightingInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Effects");
-      DrawEffectsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Audio");
-      DrawAudioInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Physics");
       DrawPhysicsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Animation");
+      DrawAnimationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Audio");
+      DrawAudioInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Effects");
+      DrawEffectsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::Environment");
       DrawEnvironmentInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
+    { FBZZ_PROFILE_SCOPE("Inspector::Navigation");
+      DrawNavigationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::UI");
       DrawUIInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     { FBZZ_PROFILE_SCOPE("Inspector::TerrainWater");
       DrawTerrainWaterInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
-    { FBZZ_PROFILE_SCOPE("Inspector::Navigation");
-      DrawNavigationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     DrawScriptInspectors(go, ctx);
 
     ImGui::Spacing();

@@ -15,7 +15,9 @@ std::array<bool, 3>                Input::s_mouseCurrent  = {};
 std::array<bool, 3>                Input::s_mousePrevious = {};
 math::Vector2                      Input::s_mousePos      = {};
 math::Vector2                      Input::s_prevMousePos  = {};
+math::Vector2                      Input::s_overrideMouseDelta = {};
 float                              Input::s_scrollDelta   = 0.0f;
+bool                               Input::s_hasOverrideMouseDelta = false;
 
 void Input::Init()
 {
@@ -30,7 +32,9 @@ void Input::Reset()
     s_mousePrevious.fill(false);
     s_mousePos     = {};
     s_prevMousePos = {};
+    s_overrideMouseDelta = {};
     s_scrollDelta  = 0.0f;
+    s_hasOverrideMouseDelta = false;
 }
 
 void Input::Update()
@@ -38,7 +42,9 @@ void Input::Update()
     s_previous      = s_current;
     s_mousePrevious = s_mouseCurrent;
     s_prevMousePos  = s_mousePos;
+    s_overrideMouseDelta = {};
     s_scrollDelta   = 0.0f;
+    s_hasOverrideMouseDelta = false;
 }
 
 bool Input::KeyDown(KeyCode key)
@@ -65,7 +71,15 @@ bool Input::MouseButtonUp  (int b) { return !s_mouseCurrent[b] &&  s_mousePrevio
 math::Vector2 Input::MousePosition() { return s_mousePos; }
 math::Vector2 Input::MouseDelta()
 {
+    if (s_hasOverrideMouseDelta)
+        return s_overrideMouseDelta;
     return { s_mousePos.x - s_prevMousePos.x, s_mousePos.y - s_prevMousePos.y };
+}
+
+void Input::OverrideMouseDelta(const math::Vector2& delta)
+{
+    s_overrideMouseDelta = delta;
+    s_hasOverrideMouseDelta = true;
 }
 
 void Input::HandleKeyMessage(UINT msg, WPARAM wParam)

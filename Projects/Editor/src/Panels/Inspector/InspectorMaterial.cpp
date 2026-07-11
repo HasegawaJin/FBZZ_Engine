@@ -113,19 +113,8 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 };
                 auto drawTexSlot = [&](const char* slot) {
                     std::string& path = mat.textures[slot];
-                    char texBuf[512];
-                    std::snprintf(texBuf, sizeof(texBuf), "%s", path.c_str());
-                    if (ImGui::InputText(slot, texBuf, sizeof(texBuf))) {
-                        path = NormalizeAssetPath(texBuf);
+                    if (widgets::AssetPathField(slot, path, ".fztex,.png,.dds", ctx.projectRoot))
                         materialDirty = true;
-                    }
-                    if (ImGui::BeginDragDropTarget()) {
-                        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                            path = NormalizeAssetPath(static_cast<const char*>(p->Data));
-                            materialDirty = true;
-                        }
-                        ImGui::EndDragDropTarget();
-                    }
                 };
                 if (desc && !desc->textures.empty()) {
                     for (const auto& tex : desc->textures)

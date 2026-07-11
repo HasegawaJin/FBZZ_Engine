@@ -10,6 +10,7 @@
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Systems/RenderPasses/EnvironmentResources.hpp>
 #include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
@@ -92,7 +93,14 @@ struct ShadowConstantsCB {
     float         shadowBias;
     float         shadowStrength;  // 0=影なし, 1=完全な影 (HLSL ShadowConstants と一致)
     int           shadowPcfRadius; // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
-    float         _pad[3];         // 16-byte アライメント
+    // 雲シャドウ (Phase C) — HLSL ShadowConstants と一致 (_pad[3] を置換し reg6 を追加)。
+    float         cloudShadowStrength; // 0=無効
+    float         cloudShadowCoverage;
+    float         cloudShadowScale;
+    float         cloudShadowSpeed;
+    float         cloudShadowTime;
+    float         cloudShadowWindX;
+    float         cloudShadowWindZ;
 };
 
 struct AtmosphereCB {
@@ -102,6 +110,13 @@ struct AtmosphereCB {
     float atmosphereRadius;
     float sunIntensity;
     float mieG;
+    // ── 月 (Phase B) ── HLSL AtmosphereConstants と一致させること (末尾追加・16byte 整列)。
+    float moonEnabled;     // 0/1
+    float moonSize;
+    float moonBrightness;
+    float _moonPad0;
+    float moonColor[3];
+    float _moonPad1;
 };
 
 // AdvancedGraphicsCB — IBL・SSR・TAA・GTAO・Contact Shadow 等の詳細設定。
@@ -117,7 +132,8 @@ struct AdvancedGraphicsCB {
     // TAA
     float taaFeedback;        float taaJitterX;          float taaJitterY;         float _taaPad;
     // Motion Blur
-    float motionBlurStrength; int   motionBlurSamples;   float _mblurPad0;         float _mblurPad1;
+    // screenWidth/screenHeight は MotionBlur CS が b5 非バインド下で screenSize の代替として参照する
+    float motionBlurStrength; int   motionBlurSamples;   float screenWidth;         float screenHeight;
     // GTAO
     float gtaoIntensity;      float gtaoRadius;          int   gtaoSlices;         int   gtaoStepsPerSlice;
     // Contact Shadows
@@ -190,6 +206,20 @@ struct PostProcCB {
     // 画面フェード — Composite パスの最終出力に適用する。alpha=0 で通常, 1 で全面フェード色。
     float screenFadeColor[3];
     float screenFadeAlpha;
+    // 大気フォグ統合 (環境システム §3-3): フォグ色の出どころ。0=指数(従来), 1=大気散乱(エアリアル)。
+    // WHY: 末尾に追加し既存フィールドのオフセットを変えない (HLSL PostProcConstants と一致)。
+    float fogSource;
+    float _fogPad[3];
+    // 投影コースティクス改良 (Phase C-2): 水域 XZ 範囲フェード + 波連動 UV ゆらぎ。
+    // HalfExtent<=0 で範囲無制限 (後方互換)。WaveAmp=0 でゆらぎ無し。
+    float causticsCenterX;
+    float causticsCenterZ;
+    float causticsHalfExtentX;
+    float causticsHalfExtentZ;
+    float causticsWaveAmp;
+    float causticsWaveFreq;
+    float causticsWaveSpeed;
+    float _causticsPad;
 };
 
 struct OutlineCB {
@@ -288,11 +318,18 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::PipelineStateTag>  wireframePSO;
 
     renderer::ResourceHandle<renderer::ShaderTag>         skyShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         sunMoonShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  skyPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  sunMoonPSO;
     renderer::ResourceHandle<renderer::BufferTag>         skyVB;
     renderer::ResourceHandle<renderer::BufferTag>         skyIB;
     uint32_t                                              skyIndexCount = 0;
     renderer::ResourceHandle<renderer::ConstantBufferTag> atmosphereCB;
+
+    // 空連動 IBL (環境システム Phase A): SkyCapture の描画先キューブマップと、
+    // 6 面それぞれの view/projection を渡す b0 用 CB (カメラ frameCB とは別に持つ)。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   skyEnvCubeRT;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> skyCaptureFrameCB;
 
     renderer::ResourceHandle<renderer::ShaderTag>         particleShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
@@ -323,12 +360,16 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         detailMeshShader;
     renderer::ResourceHandle<renderer::ShaderTag>         detailBillboardShader;
     renderer::ResourceHandle<renderer::ShaderTag>         detailGrassShader;
+    // Deferred 用: GBuffer(MRT) へ書き出す変種（AO/接触影/SSR/PBR を地形・メッシュと同様に適用）。
+    renderer::ResourceHandle<renderer::ShaderTag>         detailGBufferShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         detailGrassGBufferShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  detailMeshPSO;    // SOLID + OPAQUE + DEPTH_ON
     renderer::ResourceHandle<renderer::PipelineStateTag>  detailNoCullPSO;  // SOLID_NOCULL + OPAQUE + DEPTH_ON
     renderer::ResourceHandle<renderer::ConstantBufferTag> detailGrassCB;    // b2: DetailGrassCB
 
     // Foliage System (樹木・大型植生 — SubMesh Material + GPU Instancing)
     renderer::ResourceHandle<renderer::ShaderTag>         foliageShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         foliageGBufferShader; // Deferred 用 GBuffer 書き込み変種
     renderer::ResourceHandle<renderer::PipelineStateTag>  foliagePSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  foliageNoCullPSO;
 
@@ -353,6 +394,15 @@ struct RenderPassHandles {
     // Volumetric Lighting
     renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;
     renderer::ResourceHandle<renderer::ShaderTag>         volumetricShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         volumetricCloudShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         cloudUpscaleShader; // ハーフ解像度→HDR 合成
+    renderer::ResourceHandle<renderer::PipelineStateTag>  volumetricCloudPSO;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> volumetricCloudCB;
+    // 3D ボリューメトリック雲ノイズ (起動時 CPU 焼き・タイラブル)。
+    //   shape  = 128³ 低周波 Perlin-Worley + Worley FBM 帯 (RGBA)
+    //   detail = 32³  高周波 Worley FBM (縁の侵食用)
+    renderer::ResourceHandle<renderer::TextureTag>        cloudShapeTex;
+    renderer::ResourceHandle<renderer::TextureTag>        cloudDetailTex;
 
     // TAA (Temporal Anti-Aliasing)
     // WHY: taaHistory は前フレームの TAA 出力を保持する永続 RT。
@@ -400,6 +450,8 @@ struct RenderPassContext {
 
     renderer::LightConstantsCB lightData;
     math::Matrix4               lightVP;
+    // GBuffer を使う不透明パイプラインが有効かどうか。
+    // WHY: RenderSettings の Forward/Deferred 名ではなく、各パスが GBuffer 入力を読めるかを判定する。
     bool                        isDeferred  = false;
     bool                        ssaoEnabled = false;
     // ライト正射影の深度範囲で正規化済みの NDC バイアス。
@@ -409,9 +461,20 @@ struct RenderPassContext {
     float                       shadowBiasNDC  = 0.0f;
     float                       shadowStrength = 1.0f;  // LightComponent から流れてくる影の濃さ
 
+    // 雲シャドウ (Phase C) — RenderSystem が SkyRenderer から設定し、影パスが ShadowConstantsCB へ転送する。
+    float                       cloudShadowStrength = 0.0f; // 0=無効
+    float                       cloudShadowCoverage = 0.5f;
+    float                       cloudShadowScale    = 0.02f;
+    float                       cloudShadowSpeed    = 1.0f;
+    float                       cloudShadowWindX    = 1.0f;
+    float                       cloudShadowWindZ    = 0.3f;
+    float                       cloudShadowTime     = 0.0f; // RenderSystem が Time::time を設定
+
     const math::Frustum* cameraFrustum = nullptr;
     const math::Frustum* lightFrustum  = nullptr;
     OcclusionCuller*      occlusionCuller = nullptr;
+    // 空連動 IBL の永続状態 (フレームをまたぐ。RenderSystem が static 実体を指す)。
+    EnvironmentResources* environmentResources = nullptr;
     const physics::World* physicsWorld   = nullptr;
 
     int statsTotalObjects    = 0;

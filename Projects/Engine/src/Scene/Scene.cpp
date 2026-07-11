@@ -232,6 +232,76 @@ bool Scene::MoveGameObjectToIndex(EntityID id, size_t newIndex)
     return true;
 }
 
+bool Scene::SetRootSiblingIndex(EntityID id, int newRootIndex)
+{
+    if (!IsValid(id)) return false;
+    GameObject* target = GetGameObject(id);
+    if (!target || target->m_parent.IsValid()) return false;
+
+    // 対象を除いたルート一覧をフラット index 付きで集める
+    std::vector<size_t> otherRootFlatIndices;
+    size_t currentFlat = SIZE_MAX;
+    for (size_t i = 0; i < m_gameObjects.size(); ++i) {
+        const auto& go = m_gameObjects[i];
+        if (go->m_parent.IsValid()) continue;
+        if (go->GetID() == id) { currentFlat = i; continue; }
+        otherRootFlatIndices.push_back(i);
+    }
+    if (currentFlat == SIZE_MAX) return false;
+
+    newRootIndex = std::clamp(newRootIndex, 0, static_cast<int>(otherRootFlatIndices.size()));
+
+    // 挿入先フラット index (対象を取り除いた後の座標系で求める)
+    size_t targetFlat;
+    if (newRootIndex >= static_cast<int>(otherRootFlatIndices.size())) {
+        targetFlat = m_gameObjects.size() - 1;  // 最後のルートより後ろ = 配列末尾
+    } else {
+        targetFlat = otherRootFlatIndices[static_cast<size_t>(newRootIndex)];
+        if (targetFlat > currentFlat) --targetFlat;  // 削除で 1 つ前へ詰まる分を補正
+    }
+    return MoveGameObjectToIndex(id, targetFlat);
+}
+
+bool Scene::SyncSiblingFlatOrder(EntityID id)
+{
+    GameObject* go = GetGameObject(id);
+    if (!go) return false;
+    if (!go->m_parent.IsValid()) return true;  // ルートは flat 順そのものが正本
+    GameObject* parent = GetGameObject(go->m_parent);
+    if (!parent) return false;
+
+    const auto& siblings = parent->m_children;
+    const auto pos = std::find(siblings.begin(), siblings.end(), id);
+    if (pos == siblings.end()) return false;
+    const size_t k = static_cast<size_t>(std::distance(siblings.begin(), pos));
+    if (siblings.size() <= 1) return true;
+
+    auto flatIndexOf = [this](EntityID target) -> size_t {
+        for (size_t i = 0; i < m_gameObjects.size(); ++i)
+            if (m_gameObjects[i]->GetID() == target) return i;
+        return SIZE_MAX;
+    };
+    const size_t curFlat = flatIndexOf(id);
+    if (curFlat == SIZE_MAX) return false;
+
+    // 兄弟順が「直前の兄弟の後 / 先頭なら次の兄弟の前」になるよう flat 位置を移す。
+    // (削除後の座標系で挿入位置を求める)
+    size_t insertPos;
+    if (k > 0) {
+        size_t prevFlat = flatIndexOf(siblings[k - 1]);
+        if (prevFlat == SIZE_MAX) return false;
+        if (prevFlat > curFlat) --prevFlat;
+        insertPos = prevFlat + 1;
+    } else {
+        size_t nextFlat = flatIndexOf(siblings[1]);
+        if (nextFlat == SIZE_MAX) return false;
+        if (nextFlat > curFlat) --nextFlat;
+        insertPos = nextFlat;
+    }
+    if (insertPos == curFlat) return true;
+    return MoveGameObjectToIndex(id, insertPos);
+}
+
 // -----------------------------------------------------------------------
 // EntityID → GameObject* O(1) 逆引き
 // -----------------------------------------------------------------------
@@ -373,6 +443,15 @@ void Scene::DuplicateComponents(EntityID src, EntityID dst)
         (..., CopyIfHas(arrs, src, dst));
     }, m_arrays);
 
+}
+
+void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst)
+{
+    std::apply([&](const auto&... srcArrs) {
+        std::apply([&](auto&... dstArrs) {
+            (..., CopyFromOtherIfHas(srcArrs, dstArrs, src, dst));
+        }, m_arrays);
+    }, srcScene.m_arrays);
 }
 
 void Scene::FixupOwnership()

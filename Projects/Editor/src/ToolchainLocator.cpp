@@ -61,6 +61,8 @@ bool ReadBuildConfig(const std::filesystem::path& path, ToolchainLocator::Result
             out.exeDebug = NormalizeConfigPath(path, value);
         } else if (key == "exe_release") {
             out.exeRelease = NormalizeConfigPath(path, value);
+        } else if (key == "exe_development") {
+            out.exeDevelopment = NormalizeConfigPath(path, value);
         } else if (key == "scripts_dll_debug") {
             out.scriptsDllDebug = NormalizeConfigPath(path, value);
         } else if (key == "scripts_dll_release") {

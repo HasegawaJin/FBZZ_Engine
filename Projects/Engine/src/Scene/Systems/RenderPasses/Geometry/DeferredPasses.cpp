@@ -104,6 +104,13 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     shadowData.shadowBias            = ctx.shadowBiasNDC;
     shadowData.shadowStrength        = ctx.shadowStrength;
     shadowData.shadowPcfRadius       = ctx.settings.shadow.pcfRadius;
+    shadowData.cloudShadowStrength   = ctx.cloudShadowStrength;
+    shadowData.cloudShadowCoverage   = ctx.cloudShadowCoverage;
+    shadowData.cloudShadowScale      = ctx.cloudShadowScale;
+    shadowData.cloudShadowSpeed      = ctx.cloudShadowSpeed;
+    shadowData.cloudShadowTime       = ctx.cloudShadowTime;
+    shadowData.cloudShadowWindX      = ctx.cloudShadowWindX;
+    shadowData.cloudShadowWindZ      = ctx.cloudShadowWindZ;
     resources.Update(h.shadowCB, &shadowData, sizeof(ShadowConstantsCB));
 
     renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
@@ -252,10 +259,25 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     // s3: Depth/GBuffer はテクセル中心を厳密に読み、隣接マテリアル値の混入を防ぐ。
     renderer.SetSampler(3, renderer::SamplerMode::CLAMP_POINT);
 
+    // AO 入力の選択: GTAO が有効ならそれを、無ければ SSAO を DeferredLighting の AO として供給する。
+    // WHY: GTAO は SSAO の高品質な代替。DeferredLighting は AO テクスチャ (TEX_SSAO=t9) を
+    //      ssaoIntensity>0 のとき乗算する 1 経路設計なので、GTAO もこの共通経路に流し込む。
+    // NOTE: GTAO.cs は出力に gtaoIntensity を織り込み済みのため、二重適用を避けて ssaoIntensity=1.0 で
+    //       「そのまま乗算」する。SSAO は raw 出力なので intensity をここで適用する。
+    const bool underwater = IsCameraUnderwater(ctx);
+    const bool gtaoActive = rs.IsGtaoActive() && h.gtaoBlur.IsValid();
+    renderer::ResourceHandle<renderer::TextureTag> aoTex{};
+    float aoIntensity = 0.0f;
+    if (gtaoActive && !underwater) {
+        aoTex       = h.gtaoBlur;
+        aoIntensity = 1.0f; // GTAO 出力は intensity 適用済み
+    } else if (ctx.ssaoEnabled && !underwater) {
+        aoTex       = h.ssaoBlur;
+        aoIntensity = rs.postProcess.ambientOcclusion.intensity;
+    }
+
     PostProcCB lightingPostData{};
-    lightingPostData.ssaoIntensity = ctx.ssaoEnabled && !IsCameraUnderwater(ctx)
-        ? rs.postProcess.ambientOcclusion.intensity
-        : 0.0f;
+    lightingPostData.ssaoIntensity = aoIntensity;
     resources.Update(h.postprocCB, &lightingPostData, sizeof(PostProcCB));
 
     if (!h.deferredLightingShader.IsValid() || !h.gbufferRT.IsValid()) return;
@@ -275,9 +297,12 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     dc.textures[6]        = resources.GetColorTexture(h.gbufferRT, 1);  // TEX_GBUFFER1
     dc.textures[7]        = resources.GetDepthTexture(h.gbufferRT);     // TEX_DEPTH
     dc.textures[8]        = resources.GetDepthTexture(h.shadowMapRT);   // TEX_SHADOW
-    dc.textures[9]        = ctx.ssaoEnabled
-        ? h.ssaoBlur
-        : renderer::ResourceHandle<renderer::TextureTag>{};              // TEX_SSAO
+    dc.textures[9]        = aoTex;   // TEX_SSAO スロット: GTAO(優先) or SSAO の AO テクスチャ
+    // TEX_CONTACT_SHADOW: 有効時のみ接触影マスクを供給。無効時は未バインド (シェーダーが
+    // contactShadowStrength>0 のガードでサンプルを回避する)。
+    dc.textures[24]       = (rs.contactShadow.enabled && h.contactShadowResult.IsValid())
+        ? h.contactShadowResult
+        : renderer::ResourceHandle<renderer::TextureTag>{};              // TEX_CONTACT_SHADOW
     dc.textures[16]       = h.iblIrradiance;  // TEX_IBL_IRRADIANCE: 拡散 IBL キューブマップ
     dc.textures[17]       = h.iblPrefilter;   // TEX_IBL_PREFILTER:  鏡面 IBL キューブマップ
     dc.textures[18]       = h.iblBrdfLut;     // TEX_IBL_BRDF_LUT:   BRDF 積分テーブル

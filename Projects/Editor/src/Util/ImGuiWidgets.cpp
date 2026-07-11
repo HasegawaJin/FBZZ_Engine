@@ -3,15 +3,22 @@
 // プロジェクト固有の ImGui カスタムウィジェット実装
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Renderer/IImGuiRenderer.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Math/Vector3.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <bit>
+#include <cstdint>
 #include <cstring>
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::editor::widgets {
@@ -31,6 +38,61 @@ struct AssetPickerState {
     ImVec2                   anchorPos        = {};  // "..." ボタンの直下位置
 };
 AssetPickerState s_picker;
+
+// ピッカー行のサムネイル。texId があれば画像を、無ければ color スウォッチを描く。
+struct PickerThumb {
+    void*  texId = nullptr;              // 画像 / マテリアルのアルベドテクスチャ
+    ImVec4 color = { 0.0f, 0.0f, 0.0f, 0.0f }; // マテリアルのアルベド色 (テクスチャ無し時, a>0 で有効)
+};
+// パス → サムネイル。ピッカーを開くたびにクリアして最新の見た目を反映する。
+std::unordered_map<std::string, PickerThumb> s_thumbCache;
+
+// このプロジェクトの ImGui は ImTextureID を ImU64 として扱うため、void* を数値経由で変換する。
+ImTextureID ToImTextureID(void* ptr)
+{
+    return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
+}
+
+bool IsImageExt(const std::string& ext)
+{
+    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" ||
+           ext == ".dds" || ext == ".bmp" || ext == ".hdr"  || ext == ".exr";
+}
+
+// 画像 / マテリアルのサムネイルを解決してキャッシュする (GPU ロードは ResourceManager がキャッシュ)。
+const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& rel,
+                                const std::string& ext,
+                                renderer::ResourceManager* res,
+                                renderer::IImGuiRenderer* imgui)
+{
+    if (auto it = s_thumbCache.find(absPath); it != s_thumbCache.end())
+        return it->second;
+
+    PickerThumb t;
+    if (res && imgui) {
+        if (IsImageExt(ext)) {
+            const auto h = res->LoadTexture(absPath);
+            if (h.IsValid()) t.texId = imgui->GetImTextureID(h, *res);
+        } else if (ext == ".mat") {
+            const auto mh = asset::AssetManager::LoadMaterial(rel);
+            if (const asset::MaterialAsset* m = asset::AssetManager::GetMaterial(mh)) {
+                // アルベドテクスチャがあればそれを、無ければアルベド色をスウォッチにする。
+                if (auto tx = m->textures.find("albedo");
+                    tx != m->textures.end() && !tx->second.empty()) {
+                    const auto h = res->LoadTexture(
+                        asset::AssetManager::ResolveAssetPath(tx->second));
+                    if (h.IsValid()) t.texId = imgui->GetImTextureID(h, *res);
+                }
+                if (!t.texId) {
+                    if (auto pa = m->params.find("albedo");
+                        pa != m->params.end() && pa->second.size() >= 3)
+                        t.color = { pa->second[0], pa->second[1], pa->second[2], 1.0f };
+                }
+            }
+        }
+    }
+    return s_thumbCache.emplace(absPath, t).first->second;
+}
 
 // 拡張子 → バッジ色
 ImVec4 ExtBadgeColor(const std::string& ext)
@@ -93,6 +155,21 @@ void ScanProjectFiles(const std::string& projectRoot,
 
 } // namespace
 
+bool AcceptAssetPathDrop(std::string& outPath)
+{
+    bool dropped = false;
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            outPath = NormalizeAssetPath(
+                std::string(static_cast<const char*>(p->Data),
+                            static_cast<size_t>(p->DataSize) - 1));
+            dropped = true;
+        }
+        ImGui::EndDragDropTarget();
+    }
+    return dropped;
+}
+
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
                     const std::string& projectRoot)
@@ -107,9 +184,15 @@ bool AssetPathField(const char* label, std::string& path,
     }
 
     constexpr float kBtnW = 26.0f;
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    // InputText 幅を CalcItemWidth() ベースにすることで、
+    // ラベルが ImGui 標準のラベル列（右側 ~35% 幅）に収まるようにする。
+    // GetContentRegionAvail() を使うとラベルがウィンドウ外に押し出される。
+    const float inputW = std::max(40.0f,
+        ImGui::CalcItemWidth() - kBtnW - style.ItemSpacing.x);
     const float fieldLeft = ImGui::GetCursorScreenPos().x;  // ピッカー位置決め用
-    ImGui::SetNextItemWidth(
-        ImGui::GetContentRegionAvail().x - kBtnW - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::SetNextItemWidth(inputW);
 
     char buf[512];
     std::snprintf(buf, sizeof(buf), "%s", path.c_str());
@@ -117,19 +200,12 @@ bool AssetPathField(const char* label, std::string& path,
         path    = NormalizeAssetPath(buf);
         changed = true;
     }
-    if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            path = NormalizeAssetPath(
-                std::string(static_cast<const char*>(p->Data),
-                            static_cast<size_t>(p->DataSize) - 1));
-            changed = true;
-        }
-        ImGui::EndDragDropTarget();
-    }
+    if (AcceptAssetPathDrop(path))
+        changed = true;
 
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemSpacing.x);
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        { 3.0f, ImGui::GetStyle().FramePadding.y });
+                        { 3.0f, style.FramePadding.y });
     const bool browse = ImGui::Button("...", { kBtnW, 0.0f });
     ImGui::PopStyleVar();
     if (ImGui::IsItemHovered())
@@ -144,18 +220,34 @@ bool AssetPathField(const char* label, std::string& path,
         ScanProjectFiles(projectRoot, s_picker.filterExts, s_picker.files);
     }
 
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    // ラベルを ImGui 標準ラベル列（右側）に配置。ウィンドウ幅でクリップされる。
+    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
     ImGui::TextUnformatted(label);
 
     ImGui::PopID();
     return changed;
 }
 
-void DrawAssetPickerModal()
+void OpenAssetPicker(std::string& target, const char* filterExts,
+                     const std::string& projectRoot, ImVec2 anchorPos)
+{
+    s_picker.open        = true;
+    s_picker.target      = &target;
+    s_picker.projectRoot = projectRoot;
+    s_picker.filterExts  = SplitFilterExts(filterExts);
+    s_picker.search[0]   = '\0';
+    s_picker.anchorPos   = anchorPos;
+    ScanProjectFiles(projectRoot, s_picker.filterExts, s_picker.files);
+}
+
+void DrawAssetPickerModal(renderer::ResourceManager* resources,
+                          renderer::IImGuiRenderer* imgui)
 {
     if (s_picker.open) {
         ImGui::OpenPopup("##asset_picker");
         s_picker.open = false;
+        // 開くたびにサムネイルを作り直し、直近のアセット編集を反映する。
+        s_thumbCache.clear();
     }
 
     // ── パネル位置: フィールド左端の直下。画面端でクランプ ──────────────────
@@ -240,18 +332,43 @@ void DrawAssetPickerModal()
                 IM_COL32(55, 95, 170, 130), 3.0f);
         }
 
-        // バッジ（[EXT]）
+        // 左端のサムネイル枠 (Unity のオブジェクトピッカー風の可視化)。
+        // 画像 → 実プレビュー、.mat → アルベドのテクスチャ/色、その他 → 拡張子バッジ色の四角。
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const float thumbSz = rowH - 6.0f;
+        const ImVec2 thumbMin = { rowMin.x + 4.0f, rowMin.y + 3.0f };
+        const ImVec2 thumbMax = { thumbMin.x + thumbSz, thumbMin.y + thumbSz };
+        const ImVec4 badgeCol = ExtBadgeColor(ext);
+        const PickerThumb& thumb = ResolveThumb(absPath, rel, ext, resources, imgui);
+        if (thumb.texId) {
+            // 市松模様の下地 (アルファ付きテクスチャの視認性)
+            dl->AddRectFilled(thumbMin, thumbMax, IM_COL32(40, 40, 40, 255), 3.0f);
+            dl->AddImageRounded(ToImTextureID(thumb.texId),
+                                thumbMin, thumbMax, { 0, 0 }, { 1, 1 },
+                                IM_COL32_WHITE, 3.0f);
+        } else if (thumb.color.w > 0.0f) {
+            dl->AddRectFilled(thumbMin, thumbMax, ImGui::GetColorU32(thumb.color), 3.0f);
+        } else {
+            // 型アイコン: バッジ色の四角 + 拡張子頭2文字
+            const ImU32 fill = ImGui::GetColorU32({ badgeCol.x, badgeCol.y, badgeCol.z, 0.28f });
+            dl->AddRectFilled(thumbMin, thumbMax, fill, 3.0f);
+            dl->AddRect(thumbMin, thumbMax, ImGui::GetColorU32(badgeCol), 3.0f);
+        }
+        dl->AddRect(thumbMin, thumbMax, IM_COL32(0, 0, 0, 90), 3.0f);
+
+        const float textLeft = thumbMax.x + 8.0f;
+
+        // バッジ（[EXT]）+ 名前
         std::string badge = ext.size() > 1 ? ext.substr(1) : ext;
         for (char& c : badge) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-        const ImVec4 badgeCol = ExtBadgeColor(ext);
 
-        ImGui::SetCursorScreenPos({ rowMin.x + 4.0f, rowMin.y + 2.0f });
+        ImGui::SetCursorScreenPos({ textLeft, rowMin.y + 2.0f });
         ImGui::TextColored(badgeCol, "[%s]", badge.c_str());
         ImGui::SameLine();
         ImGui::TextUnformatted(stem.c_str());
 
         // 相対パス（薄い色）
-        ImGui::SetCursorScreenPos({ rowMin.x + 6.0f,
+        ImGui::SetCursorScreenPos({ textLeft + 2.0f,
             rowMin.y + ImGui::GetTextLineHeightWithSpacing() + 2.0f });
         ImGui::TextDisabled("%s", rel.c_str());
 
@@ -301,11 +418,41 @@ bool ColorEdit3(const char* label, math::Vector3& color)
     return changed;
 }
 
+bool RangeField(const char* label, float& value, float min, float max, const char* fmt)
+{
+    ImGui::PushID(label);
+    bool changed = false;
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    constexpr float kInputW = 58.0f; // 右側の数値入力ボックス幅
+    const float total   = ImGui::CalcItemWidth();
+    const float sliderW = std::max(40.0f, total - kInputW - style.ItemSpacing.x);
+
+    // ゲージ (バー)。数値は右の入力ボックスで表示するため、バー上の数値は消す ("")。
+    ImGui::SetNextItemWidth(sliderW);
+    if (ImGui::SliderFloat("##slider", &value, min, max, "")) changed = true;
+
+    // 数値入力ボックス: DragFloat を流用し、ダブルクリックで直接タイプ・ドラッグで微調整。
+    // min/max クランプはスライダーと共通なので、範囲外の値が入らない。
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    ImGui::SetNextItemWidth(kInputW);
+    const float dragSpeed = (max > min) ? (max - min) * 0.005f : 0.01f;
+    if (ImGui::DragFloat("##input", &value, dragSpeed, min, max, fmt)) changed = true;
+
+    // ラベルを右に配置する。ただし "##" 始まりは「ラベル非表示」指定として描画を省く
+    // (呼び出し側が左カラムへ別途ラベルを描くレイアウトで使う)。
+    if (!(label[0] == '#' && label[1] == '#')) {
+        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+        ImGui::TextUnformatted(label);
+    }
+
+    ImGui::PopID();
+    return changed;
+}
+
 void SectionHeader(const char* label)
 {
-    ImGui::Separator();
-    ImGui::TextColored({ 0.9f, 0.7f, 0.3f, 1.0f }, "%s", label);
-    ImGui::Separator();
+    ImGui::SeparatorText(label);
 }
 
 void ColoredText(const char* text, ImVec4 color)

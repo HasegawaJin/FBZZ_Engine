@@ -90,6 +90,7 @@ private:
     std::string   m_projectRoot;
     std::string   m_buildRoot;
     std::string   m_targetName = "SandboxStandalone";
+    std::string   m_runtimeConfiguration = "Development";
     std::string   m_scriptsDllSrcPath; // 配布物にコピーするスクリプト DLL の絶対パス
     BuildSettings m_settings;
     Compiler      m_compiler;

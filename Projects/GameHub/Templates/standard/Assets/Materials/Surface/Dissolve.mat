@@ -1,5 +1,5 @@
 version = 1
-shader = "Assets/Shaders/Material/Surface/Dissolve.hlsl"
+shader = "guid:a9fea4f5c44e43c2a0f470d09757b7c5"
 blend_mode = "Opaque"
 double_sided = false
 render_queue = 2000

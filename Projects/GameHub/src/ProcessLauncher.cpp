@@ -84,15 +84,18 @@ std::wstring ProcessLauncher::ResolveEditorPath(const HubConfig& config)
     const std::string exeDirText = engine_util::FileSystem::PathToUtf8(exeDir);
     const bool isDebugHub = engine_util::StringUtils::ContainsCI(exeDirText, "/debug");
     const bool isDevelopmentHub = engine_util::StringUtils::ContainsCI(exeDirText, "/development");
+    // WHY: exe 出力先を整理後、Hub は Binaries/<Config>/Hub/ に、Editor は Binaries/<Config>/Editor/ に分離した。
+    //      matchingBuildEditor は兄弟ディレクトリ Editor/ を参照する。
     const std::filesystem::path matchingBuildEditor = isDebugHub
-        ? cwd / L"build" / L"debug" / L"Binaries" / L"Debug" / L"FBZZEditor.exe"
+        ? cwd / L"build" / L"debug" / L"Binaries" / L"Debug" / L"Editor" / L"FBZZEditor.exe"
         : isDevelopmentHub
-            ? cwd / L"build" / L"development" / L"Binaries" / L"Development" / L"FBZZEditor.exe"
-            : cwd / L"build" / L"release" / L"Binaries" / L"Release" / L"FBZZEditor.exe";
+            ? cwd / L"build" / L"development" / L"Binaries" / L"Development" / L"Editor" / L"FBZZEditor.exe"
+            : cwd / L"build" / L"release" / L"Binaries" / L"Release" / L"Editor" / L"FBZZEditor.exe";
 
+    // Hub は Hub/ 配下に、Editor は同階層の Editor/ に配置されるため parent_path() で共通親に上がる。
     const std::array<std::filesystem::path, 3> candidates = {
-        exeDir / L"FBZZEditor.exe",
-        exeDir.parent_path() / L"EditorLauncher" / L"FBZZEditor.exe",
+        exeDir.parent_path() / L"Editor" / L"FBZZEditor.exe",
+        exeDir / L"Editor" / L"FBZZEditor.exe",
         matchingBuildEditor
     };
 

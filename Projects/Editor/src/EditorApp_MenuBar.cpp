@@ -7,16 +7,15 @@
 //      独立ファイルに分離することで、メニュー項目の追加・変更を局所化できる。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
-#include <Editor/Util/StandaloneLauncher.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
-#include <Windows.h>
 #include <cmath>
 
 namespace fbzz::editor {
@@ -204,6 +203,20 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             }
             ImGui::EndMenu();
         }
+
+        // UI 全体スケール (フォント + 余白)。設定に永続化される。
+        ImGui::Separator();
+        ImGui::TextDisabled("UI Scale");
+        float uiScale = m_ctx.editorUiScale;
+        ImGui::SetNextItemWidth(150.0f);
+        if (ImGui::SliderFloat("##ui_scale", &uiScale, 0.7f, 2.0f, "%.2fx")) {
+            m_ctx.editorUiScale = uiScale;
+            EditorTheme::SetUiScale(uiScale);
+        }
+        if (ImGui::MenuItem("Reset UI Scale", nullptr, false, m_ctx.editorUiScale != 1.0f)) {
+            m_ctx.editorUiScale = 1.0f;
+            EditorTheme::SetUiScale(1.0f);
+        }
         ImGui::EndMenu();
     }
 
@@ -241,36 +254,14 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
         ImGui::Separator();
         if (ImGui::BeginMenu("Post Process")) {
-            ImGui::MenuItem("Shadow",              nullptr, &ctx.projectSettings.render.shadowEnabled);
-            auto& pp = ctx.projectSettings.render.postProcess;
-            ImGui::MenuItem("Bloom",               nullptr, &pp.bloom.enabled);
-            ImGui::MenuItem("Fog",                 nullptr, &pp.fog.enabled);
-            ImGui::MenuItem("FXAA",                nullptr, &pp.fxaaEnabled);
-            ImGui::MenuItem("Color Grading",       nullptr, &pp.colorGrading.enabled);
-            ImGui::MenuItem("Vignette",            nullptr, &pp.vignette.enabled);
-            ImGui::MenuItem("Film Grain",          nullptr, &pp.filmGrain.enabled);
-            ImGui::MenuItem("Sharpen",             nullptr, &pp.sharpen.enabled);
-            ImGui::MenuItem("Depth of Field",      nullptr, &pp.depthOfField.enabled);
-            ImGui::MenuItem("Chromatic Aberration",nullptr, &pp.lens.chromaticAberrationEnabled);
-            ImGui::MenuItem("Lens Distortion",     nullptr, &pp.lens.distortionEnabled);
-            ImGui::MenuItem("Sepia",               nullptr, &pp.stylized.sepiaEnabled);
-            ImGui::MenuItem("Invert",              nullptr, &pp.stylized.invertEnabled);
-            ImGui::MenuItem("Posterize",           nullptr, &pp.stylized.posterizeEnabled);
-            ImGui::MenuItem("Pixelate",            nullptr, &pp.stylized.pixelateEnabled);
-            ImGui::MenuItem("Ambient Occlusion",   nullptr, &pp.ambientOcclusion.enabled);
+            // よく切り替える主要トグルのみ残す。全設定は ProjectSettings で編集する。
+            if (ImGui::MenuItem("Open Post Process Settings..."))
+                ctx.requestOpenProjectSettings = true;
             ImGui::Separator();
-            ImGui::SliderFloat("Exposure",        &pp.exposure,                0.1f, 4.0f);
-            ImGui::SliderFloat("Bloom Intensity", &pp.bloom.intensity,         0.0f, 3.0f);
-            ImGui::SliderFloat("Contrast",        &pp.colorGrading.contrast,  -1.0f, 1.0f);
-            ImGui::SliderFloat("Saturation",      &pp.colorGrading.saturation, 0.0f, 2.0f);
-            ImGui::SliderFloat("Hue Shift",       &pp.colorGrading.hueShift, -180.0f, 180.0f);
-            ImGui::SliderFloat("Sharpen Strength", &pp.sharpen.strength,        0.0f, 2.0f);
-            ImGui::SliderFloat("DOF Focus",        &pp.depthOfField.focusDistance, 0.1f, 100.0f);
-            ImGui::SliderFloat("DOF Blur",         &pp.depthOfField.blurRadius, 0.0f, 12.0f);
-            ImGui::SliderFloat("Posterize Levels", &pp.stylized.posterizeLevels, 2.0f, 32.0f);
-            ImGui::SliderFloat("Pixel Size",       &pp.stylized.pixelSize,      1.0f, 32.0f);
-            ImGui::SliderFloat("Fog Density",     &pp.fog.density,             0.0f, 1.0f);
-            ImGui::SliderFloat("Fog Far",         &pp.fog.farDistance,         1.0f, 100.0f);
+            auto& pp = ctx.projectSettings.render.postProcess;
+            ImGui::MenuItem("Bloom",  nullptr, &pp.bloom.enabled);
+            ImGui::MenuItem("Shadow", nullptr, &ctx.projectSettings.render.shadowEnabled);
+            ImGui::MenuItem("FXAA",   nullptr, &pp.fxaaEnabled);
             ImGui::EndMenu();
         }
         ImGui::EndMenu();
@@ -281,33 +272,13 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         if (ImGui::MenuItem("Map Editing Mode", nullptr, &mapMode))
             ctx.requestMapEditingModeToggle = true;
         ImGui::Separator();
-        ImGui::MenuItem("Terrain Tool", nullptr, &ctx.showTerrainTool);
-        ImGui::MenuItem("Water Tool",   nullptr, &ctx.showWaterTool);
-        ImGui::MenuItem("Detail Tool",  nullptr, &ctx.showDetailTool);
-        ImGui::MenuItem("Foliage Tool", nullptr, &ctx.showFoliageTool);
-        ImGui::Separator();
-
-        // WHY: Standalone ボタンは Play と独立した位置に置き、
-        //      「配布版と同じ状態を手軽に確認できる」という意図を明示する。
-        const bool hasProject = !ctx.projectRoot.empty();
-        if (ImGui::MenuItem("Standalone", nullptr, false, hasProject)) {
-            // GetModuleFileNameW で自身のパスを取得して子プロセスとして起動する
-            wchar_t exePathBuf[MAX_PATH]{};
-            GetModuleFileNameW(nullptr, exePathBuf, MAX_PATH);
-            std::wstring exePathW(exePathBuf);
-            const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0,
-                exePathW.c_str(), -1, nullptr, 0, nullptr, nullptr);
-            std::string exePath(static_cast<size_t>(sizeNeeded - 1), '\0');
-            WideCharToMultiByte(CP_UTF8, 0, exePathW.c_str(), -1,
-                exePath.data(), sizeNeeded, nullptr, nullptr);
-
-            StandaloneLauncher::Launch(exePath, ctx.projectRoot);
+        if (ImGui::BeginMenu("Terrain & Map")) {
+            ImGui::MenuItem("Terrain Tool", nullptr, &ctx.showTerrainTool);
+            ImGui::MenuItem("Water Tool",   nullptr, &ctx.showWaterTool);
+            ImGui::MenuItem("Detail Tool",  nullptr, &ctx.showDetailTool);
+            ImGui::MenuItem("Foliage Tool", nullptr, &ctx.showFoliageTool);
+            ImGui::EndMenu();
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-            ImGui::SetTooltip("Launch game without editor UI");
-        }
-
-        ImGui::Separator();
         if (ImGui::MenuItem("Build Settings...", "Ctrl+Shift+B")) {
             ctx.requestOpenBuildSettings = true;
         }
@@ -388,28 +359,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         isPlaying,
         playColor,
         BUTTON_SIZE)) {
-        m_undoStack.Clear();
-        RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
-        // navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
-        // Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
-        m_navMeshPlayCache.clear();
-        for (scene::EntityID eid : ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
-            auto* surf = ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
-            auto* go   = ctx.activeScene->GetGameObject(eid);
-            if (surf && go && surf->navMesh.IsValid())
-                m_navMeshPlayCache[go->instanceId] = surf->navMesh;
-        }
-        // WHY: ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。
-        //      エディタは共通ProjectRuntimeのSceneManagerをUpdateするため、Play開始時に
-        //      ScriptRuntime をオーバーライドして正しい参照先を指す。
-        m_runtime.ActivateScriptRuntime(
-            core::Application::Get().GetRenderer(),
-            static_cast<uint32_t>(m_ctx.gameViewportWidth),
-            static_cast<uint32_t>(m_ctx.gameViewportHeight)
-        );
-        pm->Play(*ctx.activeScene);
-        if (pm->IsPlaying())
-            ctx.requestGameViewportFocus = true;
+        StartPlayMode();
     }
 
     ImGui::SameLine();
@@ -421,9 +371,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         isEditor,
         stopColor,
         BUTTON_SIZE)) {
-        scene::ScriptRuntime::Override(nullptr);
-        pm->Stop(*ctx.activeScene);
-        m_undoStack.Clear();
+        StopPlayMode();
     }
 
     ImGui::SameLine();
@@ -530,18 +478,81 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 // ホットキー登録
 // =============================================================================
 
+void EditorApp::StartPlayMode()
+{
+    // WHY: Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
+    //      ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
+    const bool scriptReloadBusy =
+        m_ctx.scriptReloadBusy ||
+        m_ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
+        m_ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
+    if (!m_ctx.activeScene || !m_playMode.IsInEditor() || scriptReloadBusy)
+        return;
+
+    m_undoStack.Clear();
+    RemoveEditorHiding();  // Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
+    // navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
+    // Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
+    m_navMeshPlayCache.clear();
+    for (scene::EntityID eid : m_ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
+        auto* surf = m_ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
+        auto* go   = m_ctx.activeScene->GetGameObject(eid);
+        if (surf && go && surf->navMesh.IsValid())
+            m_navMeshPlayCache[go->instanceId] = surf->navMesh;
+    }
+    // WHY: ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。
+    //      エディタは共通ProjectRuntimeのSceneManagerをUpdateするため、Play開始時に
+    //      ScriptRuntime をオーバーライドして正しい参照先を指す。
+    m_runtime.ActivateScriptRuntime(
+        core::Application::Get().GetRenderer(),
+        static_cast<uint32_t>(m_ctx.gameViewportWidth),
+        static_cast<uint32_t>(m_ctx.gameViewportHeight)
+    );
+    m_playMode.Play(*m_ctx.activeScene);
+    if (m_playMode.IsPlaying() && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
+        m_ctx.requestGameViewportFocus = true;
+}
+
+void EditorApp::StopPlayMode()
+{
+    if (!m_ctx.activeScene || m_playMode.IsInEditor())
+        return;
+    scene::ScriptRuntime::Override(nullptr);
+    m_playMode.Stop(*m_ctx.activeScene);
+    m_undoStack.Clear();
+}
+
+void EditorApp::TogglePlayMode()
+{
+    if (m_playMode.IsInEditor())
+        StartPlayMode();
+    else
+        StopPlayMode();
+}
+
 void EditorApp::RegisterDefaultHotkeys()
 {
     m_hotkeys.Register({ "Undo",           ImGuiKey_Z, true,  false, false,
         [this]() { m_undoStack.Undo(); } });
     m_hotkeys.Register({ "Redo",           ImGuiKey_Y, true,  false, false,
         [this]() { m_undoStack.Redo(); } });
+    // WHY: Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させ、
+    //      どちらの操作習慣のユーザーでも迷わないようにする。
+    m_hotkeys.Register({ "Redo (Alt)",     ImGuiKey_Z, true,  true,  false,
+        [this]() { m_undoStack.Redo(); } });
+    m_hotkeys.Register({ "New Scene",      ImGuiKey_N, true,  false, false,
+        [this]() { RequestNewScene(); } });
     m_hotkeys.Register({ "Open Scene",     ImGuiKey_O, true,  false, false,
         [this]() { RequestOpenSceneFromDialog(); } });
     m_hotkeys.Register({ "Save Scene",     ImGuiKey_S, true,  false, false,
         [this]() { SaveScene(); } });
     m_hotkeys.Register({ "Save Scene As",  ImGuiKey_S, true,  true,  false,
         [this]() { SaveSceneAsDialog(); } });
+    // Unity 互換の Play 系ショートカット
+    m_hotkeys.Register({ "Play/Stop",      ImGuiKey_P, true,  false, false,
+        [this]() { TogglePlayMode(); } });
+    m_hotkeys.Register({ "Pause",          ImGuiKey_P, true,  true,  false,
+        [this]() { if (!m_playMode.IsInEditor()) m_playMode.Pause(); } });
 }
 
 } // namespace fbzz::editor

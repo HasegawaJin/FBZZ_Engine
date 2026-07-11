@@ -65,7 +65,14 @@ public:
     ResourceHandle<ConstantBufferTag> CreateConstantBuffer(size_t sizeBytes);
     ResourceHandle<PipelineStateTag> CreatePipelineState(const PipelineStateDesc& desc);
     ResourceHandle<RenderTargetTag> CreateRenderTarget(uint32_t width, uint32_t height, uint32_t colorCount = 1);
+    // 6 面キューブマップ描画先を生成する (空連動 IBL の SkyCapture 用)。
+    // 面の描画は IRenderer::SetRenderTargetFace、サンプリングは GetCubemapTexture() で取得した
+    // TextureTag を DrawCall.textures[] へ束縛して行う。未対応バックエンドでは Null を返す。
+    ResourceHandle<RenderTargetTag> CreateCubemapRenderTarget(uint32_t size, uint32_t mipCount = 1);
     ResourceHandle<TextureTag> CreateComputeTexture(uint32_t width, uint32_t height);
+    // 外部 (IRenderer) が生成済みの ITexture を ResourcePool に引き取り TextureTag を返す。
+    // WHY: 空連動 IBL の BakeSkyLight が畳み込んだキューブ SRV ラッパーを Lit パスへ束縛可能にする。
+    ResourceHandle<TextureTag> RegisterTexture(std::unique_ptr<ITexture> texture);
     // GPU Instancing 用 StructuredBuffer。elementCount 個・stride バイトの DYNAMIC バッファを作成する。
     ResourceHandle<StructuredBufferTag> CreateStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride);
     // CS が RWStructuredBuffer として書き込む DEFAULT バッファ (SRV + UAV)。GPU パーティクルプール等に使う。
@@ -81,6 +88,8 @@ public:
 
     ResourceHandle<TextureTag> GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index = 0);
     ResourceHandle<TextureTag> GetDepthTexture(ResourceHandle<RenderTargetTag> rt);
+    // キューブマップ RT の TextureCube SRV ハンドル (CreateCubemapRenderTarget で作った RT 用)。
+    ResourceHandle<TextureTag> GetCubemapTexture(ResourceHandle<RenderTargetTag> rt);
 
     void Update(ResourceHandle<BufferTag> h, const void* data, size_t sizeBytes);
     void Update(ResourceHandle<ConstantBufferTag> h, const void* data, size_t sizeBytes);

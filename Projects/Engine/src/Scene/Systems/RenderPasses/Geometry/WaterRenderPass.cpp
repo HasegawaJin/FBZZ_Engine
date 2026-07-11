@@ -314,6 +314,36 @@ inline std::string WGetTex(const asset::MaterialAsset* m, const char* name)
     return {};
 }
 
+renderer::ResourceHandle<renderer::TextureTag> GetProceduralRiverFlowMap(renderer::ResourceManager& resources)
+{
+    // WHAT: 外部 flowMap が未設定でも River プリセットが動くよう、川方向の簡易 FlowMap を生成する。
+    // WHY: アーティスト製フローマップが揃う前の段階でも Phase D の水流シェーダー挙動を確認できる。
+    static renderer::ResourceHandle<renderer::TextureTag> s_flowMap;
+    static uint64_t s_resetVersion = 0;
+    if (s_flowMap.IsValid() && s_resetVersion == resources.GetResetVersion())
+        return s_flowMap;
+
+    constexpr uint32_t size = 128;
+    std::vector<uint8_t> pixels(static_cast<size_t>(size) * static_cast<size_t>(size) * 4u, 255u);
+    for (uint32_t y = 0; y < size; ++y) {
+        for (uint32_t x = 0; x < size; ++x) {
+            const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(size);
+            const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(size);
+            const float meander = std::sin(v * math::TWO_PI * 3.0f + std::sin(u * math::TWO_PI * 2.0f) * 0.7f);
+            const math::Vector2 flow = math::Vector2(0.92f, meander * 0.26f).Normalized();
+            const size_t p = (static_cast<size_t>(y) * size + x) * 4u;
+            pixels[p + 0] = static_cast<uint8_t>(math::Clamp01(flow.x * 0.5f + 0.5f) * 255.0f);
+            pixels[p + 1] = static_cast<uint8_t>(math::Clamp01(flow.y * 0.5f + 0.5f) * 255.0f);
+            pixels[p + 2] = 0u;
+            pixels[p + 3] = 255u;
+        }
+    }
+
+    s_flowMap = resources.CreateTexture(pixels.data(), size, size);
+    s_resetVersion = resources.GetResetVersion();
+    return s_flowMap;
+}
+
 WaterTextures BuildTextureSet(
     const asset::MaterialAsset* mat,
     const WaterComponent& water,
@@ -340,9 +370,9 @@ WaterTextures BuildTextureSet(
     textures.foamTex    = foamTexPath.empty()    ? white      : resources.LoadTexture(foamTexPath);
     textures.foamMask   = BuildFoamMask(scene, water, waterTransform, foamThreshold, foamFade, resources);
     textures.envTex     = envCubemapPath.empty() ? black      : resources.LoadTexture(envCubemapPath);
-    textures.flowMap    = (!enableFlow || flowMapPath.empty())
+    textures.flowMap    = !enableFlow
         ? neutralFlow
-        : resources.LoadTexture(flowMapPath);
+        : (flowMapPath.empty() ? GetProceduralRiverFlowMap(resources) : resources.LoadTexture(flowMapPath));
     return textures;
 }
 
@@ -672,6 +702,56 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         s_sceneColorW = 0;
         s_sceneColorH = 0;
     }
+    // 無効になったエンティティのキャッシュを解放する
+    {
+        std::unordered_set<uint32_t> validIndices;
+        for (EntityID eid : scene.GetEntities<WaterComponent>())
+            validIndices.insert(eid.index);
+
+        std::erase_if(s_meshCache, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            for (auto& chunk : kv.second.chunks) {
+                resources.Release(chunk.vertexBuffer);
+                resources.Release(chunk.indexBuffer);
+            }
+            return true;
+        });
+        std::erase_if(s_texCache, [&validIndices](auto& kv) {
+            return !validIndices.count(kv.first);
+        });
+        std::erase_if(s_rippleStates, [&validIndices, &resources](auto& kv) {
+            if (validIndices.count(kv.first)) return false;
+            if (kv.second.gpuTex.IsValid()) resources.Release(kv.second.gpuTex);
+            return true;
+        });
+    }
+
+    const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+    bool hasVisibleWater = false;
+    for (auto [water, transform] : scene.View<WaterComponent, Transform>()) {
+        if (!water.enabled) continue;
+        EntityID eid = FindEntityForWater(scene, water);
+        if (!scene.IsValid(eid)) continue;
+
+        const auto* go = scene.GetGameObject(eid);
+        if (!go || !go->activeInHierarchy()) continue;
+        if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
+
+        float maxAmp = 0.0f;
+        for (const auto& wave : water.waves) maxAmp += wave.amplitude;
+        const float yMargin = maxAmp + 0.5f;
+        const math::Vector3 waterMin = { -water.extentX * 0.5f, -yMargin, -water.extentZ * 0.5f };
+        const math::Vector3 waterMax = {  water.extentX * 0.5f,  yMargin,  water.extentZ * 0.5f };
+        if (AabbVisible(frustum, transform.position, waterMin, waterMax)) {
+            hasVisibleWater = true;
+            break;
+        }
+    }
+    if (!hasVisibleWater) {
+        s_pendingSplashes.clear();
+        return;
+    }
+
     if (ctx.width != s_sceneColorW || ctx.height != s_sceneColorH
         || !s_sceneColorRT.IsValid() || !s_sceneDepthRT.IsValid()) {
         if (s_sceneColorRT.IsValid()) resources.Release(s_sceneColorRT);
@@ -709,30 +789,6 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
     const auto sceneDepth = resources.GetDepthTexture(s_sceneDepthRT);
 
     renderer.SetRenderTarget(ctx.handles.hdrRT, resources);
-
-    // 無効になったエンティティのキャッシュを解放する
-    {
-        std::unordered_set<uint32_t> validIndices;
-        for (EntityID eid : scene.GetEntities<WaterComponent>())
-            validIndices.insert(eid.index);
-
-        std::erase_if(s_meshCache, [&validIndices, &resources](auto& kv) {
-            if (validIndices.count(kv.first)) return false;
-            for (auto& chunk : kv.second.chunks) {
-                resources.Release(chunk.vertexBuffer);
-                resources.Release(chunk.indexBuffer);
-            }
-            return true;
-        });
-        std::erase_if(s_texCache, [&validIndices](auto& kv) {
-            return !validIndices.count(kv.first);
-        });
-        std::erase_if(s_rippleStates, [&validIndices, &resources](auto& kv) {
-            if (validIndices.count(kv.first)) return false;
-            if (kv.second.gpuTex.IsValid()) resources.Release(kv.second.gpuTex);
-            return true;
-        });
-    }
 
     // スプラッシュ GO 生成（前フレームのキューを消費）
     for (const SplashEvent& ev : s_pendingSplashes) {
@@ -817,20 +873,33 @@ void WaterRenderPass::Execute(RenderPassContext& ctx)
         resources.Update(cameraCBH, &camData, sizeof(camData));
     }
 
-    const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
     static float s_lastElapsedTime = elapsedTime;
     const float dt = math::Clamp(elapsedTime - s_lastElapsedTime, 0.0f, 0.1f);
     s_lastElapsedTime = elapsedTime;
 
     for (auto [water, transform] : scene.View<WaterComponent, Transform>()) {
         if (!water.enabled) continue;
+        water.resolutionX = std::clamp(water.resolutionX, 1u, 512u);
+        water.resolutionZ = std::clamp(water.resolutionZ, 1u, 512u);
+        water.chunkCount  = std::clamp(water.chunkCount,  1u, 64u);
+        water.extentX     = std::clamp(water.extentX, 0.1f, 10000.0f);
+        water.extentZ     = std::clamp(water.extentZ, 0.1f, 10000.0f);
 
         EntityID eid = FindEntityForWater(scene, water);
         if (!scene.IsValid(eid)) continue;
         {
             const auto* go = scene.GetGameObject(eid);
             if (!go || !go->activeInHierarchy()) continue;
+            if (!fbzz::Layer::Contains(ctx.cullingMask, go->layer)) continue;
         }
+
+        float maxAmp = 0.0f;
+        for (const auto& wave : water.waves) maxAmp += wave.amplitude;
+        const float yMargin = maxAmp + 0.5f;
+        const math::Vector3 waterMin = { -water.extentX * 0.5f, -yMargin, -water.extentZ * 0.5f };
+        const math::Vector3 waterMax = {  water.extentX * 0.5f,  yMargin,  water.extentZ * 0.5f };
+        if (!AabbVisible(frustum, transform.position, waterMin, waterMax))
+            continue;
 
         const asset::MaterialAsset* mat = nullptr;
         if (!water.materialPath.empty()) {

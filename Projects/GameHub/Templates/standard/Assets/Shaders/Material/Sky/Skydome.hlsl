@@ -1,11 +1,10 @@
 // FBZZ Engine
 // Skydome.hlsl | Material/Sky
-// Rayleigh + Mie 大気散乱 + FBM 手続き型雲
+// Rayleigh + Mie 大気散乱によるスカイドーム
 
 #include "Common/Constants.hlsli"
 #include "Platform/DX11.hlsli"
 #include "Rendering/Atmosphere.hlsli"
-#include "Rendering/Cloud.hlsli"
 #include "Rendering/ToneMap.hlsli"
 
 struct SkyVSInput
@@ -43,17 +42,9 @@ float4 PSMain(SkyPSInput p) : SV_Target0
         ray, sunDir,
         rayleighScattering, mieScattering, mieG,
         scaled);
-    sky += SunDisk(ray, sunDir, scaled);
 
     // lightColor で空全体をティント (月光なら青白く、夕焼けなら橙色になる)
     sky *= lightColor;
-
-    // 雲レイヤー (地平線より上のみサンプル)
-    if (ray.y > 0.0f)
-    {
-        float4 cloud = ComputeCloud(ray, sunDir, sky, time, scaled);
-        sky = lerp(sky, cloud.rgb, cloud.a);
-    }
 
     sky = ToneMap_ACES(sky * exposure);
     return float4(sky, 1.0f);

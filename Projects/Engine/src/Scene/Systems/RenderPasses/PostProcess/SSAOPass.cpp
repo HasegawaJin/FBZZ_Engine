@@ -38,8 +38,8 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
     ssaoDC.srvInputs[6] = resources.GetColorTexture(h.gbufferRT, 1);
     ssaoDC.srvInputs[7] = resources.GetDepthTexture(h.gbufferRT);
     ssaoDC.uavOutputs[0] = h.ssaoRaw;
-    ssaoDC.dispatchX = (ctx.width + 7) / 8;
-    ssaoDC.dispatchY = (ctx.height + 7) / 8;
+    ssaoDC.dispatchX = (ctx.width / 2 + 7) / 8;
+    ssaoDC.dispatchY = (ctx.height / 2 + 7) / 8;
     ssaoDC.dispatchZ = 1;
     r.Dispatch(ssaoDC, resources);
 
@@ -48,8 +48,8 @@ void ExecuteSSAOPass(RenderPassContext& ctx)
     blurDC.constantBuffers[5] = h.postprocCB;
     blurDC.srvInputs[9] = h.ssaoRaw;
     blurDC.uavOutputs[0] = h.ssaoBlur;
-    blurDC.dispatchX = (ctx.width + 7) / 8;
-    blurDC.dispatchY = (ctx.height + 7) / 8;
+    blurDC.dispatchX = (ctx.width / 2 + 7) / 8;
+    blurDC.dispatchY = (ctx.height / 2 + 7) / 8;
     blurDC.dispatchZ = 1;
     r.Dispatch(blurDC, resources);
 }

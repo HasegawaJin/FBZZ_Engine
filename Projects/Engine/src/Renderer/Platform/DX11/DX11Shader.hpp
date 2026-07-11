@@ -5,10 +5,11 @@
 // InputLayout は頂点シェーダーの反射情報から作る。
 //
 // 設計方針:
-//   実行時コンパイル (D3DCompile) ではなく、ビルド済み CSO (Compiled Shader Object) を
-//   ロードする方式を採用。理由:
-//     - d3dcompiler.dll への依存をなくし、配布バイナリを軽量化できる
-//     - ランタイムコンパイルエラーを事前に検出できる
+//   通常はビルド済み CSO (Compiled Shader Object) をロードする。
+//   CSO が存在しない場合 (初回起動・compile_shaders.bat 未実行) は
+//   D3DCompileFromFile でオンデマンドコンパイルし、生成した CSO をキャッシュする。
+//   WHY: DemoGame / StandaloneApp が compile_shaders.bat なしに動作するよう。
+//        エディター向けの本番ワークフローは compile_shaders.bat が担う。
 //   シェーダーパスは "assets/shaders/Phong.hlsl" 形式で受け取り、
 //   "assets/shaders/compiled/Phong.vs.cso" / ".ps.cso" に解決する。
 //

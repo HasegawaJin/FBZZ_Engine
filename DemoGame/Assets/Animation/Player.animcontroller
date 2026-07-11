@@ -1,0 +1,112 @@
+clipSources = []
+defaultStateName = 'Locomotion'
+version = 4
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Speed'
+type = 0
+
+[[parameters]]
+boolValue = false
+floatValue = 0.0
+intValue = 0
+name = 'Combat'
+type = 2
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = true
+mode = 1
+name = 'Locomotion'
+sourcePath = ''
+speed = 1.0
+
+    [states.blendTree1D]
+    dampTime = 0.18000000715255737
+    paramName = 'Speed'
+    syncNormalizedTime = true
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/MyPlayer@Idle/anims/MyPlayer@Idle@Scene.anim'
+        speed = 1.0
+        threshold = 0.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/MyPlayer@Walk/anims/MyPlayer@Walk@Scene.anim'
+        speed = 1.0
+        threshold = 2.0
+
+        [[states.blendTree1D.motions]]
+        clipIndex = -1
+        clipName = 'Scene'
+        ikWeight = 1.0
+        posX = 0.0
+        posY = 0.0
+        sourcePath = 'Assets/Models/MyPlayer@Run/anims/MyPlayer@Run@Scene.anim'
+        speed = 1.0
+        threshold = 7.199999809265137
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Idle_Combat'
+    transitionDuration = 0.15000000596046448
+
+        [[states.transitions.conditions]]
+        op = 4
+        paramName = 'Combat'
+        threshold = 0.0
+
+[[states]]
+clipIndex = -1
+clipName = 'Scene'
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'Idle_Combat'
+sourcePath = 'Assets/Models/MyPlayer@Idle_Combat/anims/MyPlayer@Idle_Combat@Scene.anim'
+speed = 1.0
+
+    [[states.transitions]]
+    exitTime = 1.0
+    fixedDuration = true
+    hasExitTime = false
+    toStateName = 'Locomotion'
+    transitionDuration = 0.15000000596046448
+
+        [[states.transitions.conditions]]
+        op = 5
+        paramName = 'Combat'
+        threshold = 0.0
+
+[editorLayout]
+entryX = -220.0
+entryY = 80.0
+anyStateX = -220.0
+anyStateY = 200.0
+
+[[editorLayout.nodes]]
+stateName = 'Locomotion'
+x = 80.0
+y = 80.0
+
+[[editorLayout.nodes]]
+stateName = 'Idle_Combat'
+x = 380.0
+y = 80.0

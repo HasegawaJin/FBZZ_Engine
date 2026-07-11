@@ -14,6 +14,7 @@
 #include "Components/CameraComponent.hpp"
 #include "Components/AudioSourceComponent.hpp"
 #include "Components/SkyRenderer.hpp"
+#include "Components/SunMoonRenderer.hpp"
 #include "Components/AnimatorComponent.hpp"
 #include "Components/SkinnedMeshRenderer.hpp"
 #include "Components/BoneComponent.hpp"
@@ -35,6 +36,7 @@
 #include "Components/TerrainDetailComponent.hpp"
 #include "Components/FoliageComponent.hpp"
 #include "Components/WaterComponent.hpp"
+#include "Components/VolumetricCloudComponent.hpp"
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
 #include "Components/LifetimeComponent.hpp"
@@ -66,6 +68,7 @@ using ComponentList = std::tuple<
     CameraComponent,
     AudioSourceComponent,
     SkyRenderer,
+    SunMoonRenderer,
     AnimatorComponent,
     SkinnedMeshRenderer,
     BoneComponent,
@@ -84,6 +87,7 @@ using ComponentList = std::tuple<
     TerrainDetailComponent,
     FoliageComponent,
     WaterComponent,
+    VolumetricCloudComponent,
     TrailComponent,
     MeshTrailComponent,
     LifetimeComponent,

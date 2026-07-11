@@ -1,0 +1,14 @@
+mesh_type = 'skinned'
+name = 'CustomSkinned'
+render_path = 'forward'
+shader = 'guid:13b73274037b47a99034f8c07c35b103'
+version = 1
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+roughness = 0.5
+normalStrength = 1.0
+emissiveScale = 0.0
+alphaCutoff = 0.0
+uvTiling = [ 1.0, 1.0 ]
+uvOffset = [ 0.0, 0.0 ]

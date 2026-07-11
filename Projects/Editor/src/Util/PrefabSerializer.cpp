@@ -5,6 +5,9 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -43,12 +46,13 @@ bool HasSelectedAncestor(const scene::GameObject& go, const std::vector<scene::E
     return false;
 }
 
-void CollectHierarchyNames(scene::GameObject& go, std::unordered_set<std::string>& names)
+void CollectHierarchyIds(scene::GameObject& go, std::unordered_set<std::string>& ids)
 {
-    names.insert(go.name);
+    if (!go.instanceId.empty())
+        ids.insert(go.instanceId);
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (auto* child = go.GetChild(i))
-            CollectHierarchyNames(*child, names);
+            CollectHierarchyIds(*child, ids);
     }
 }
 
@@ -97,10 +101,10 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
     }
     if (rootSelection.empty()) return false;
 
-    std::unordered_set<std::string> includedNames;
+    std::unordered_set<std::string> includedIds;
     for (scene::EntityID id : rootSelection) {
         if (auto* go = scene.GetGameObject(id))
-            CollectHierarchyNames(*go, includedNames);
+            CollectHierarchyIds(*go, includedIds);
     }
 
     const std::string sceneText = SceneIO::Serialize(scene);
@@ -125,14 +129,16 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
             const auto* source = item.as_table();
             if (!source) continue;
 
-            const std::string name = (*source)["name"].value_or(std::string{});
-            if (!includedNames.contains(name)) continue;
+            const std::string instanceId = (*source)["instanceId"].value_or(std::string{});
+            if (instanceId.empty() || !includedIds.contains(instanceId)) continue;
 
             toml::table copied = *source;
-            const std::string parent = copied["parent"].value_or(std::string{});
-            if (!parent.empty() && !includedNames.contains(parent)) {
+            const std::string parentId = copied["parentInstanceId"].value_or(std::string{});
+            if (parentId.empty() || !includedIds.contains(parentId)) {
                 copied.erase("parent");
                 copied.insert("parent", std::string{});
+                copied.erase("parentInstanceId");
+                copied.insert("parentInstanceId", std::string{});
             }
             prefabObjects.push_back(std::move(copied));
         }
@@ -198,6 +204,7 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
         toml::table copied = *source;
         const std::string oldName = copied["name"].value_or(std::string{"GameObject"});
         const std::string oldParent = copied["parent"].value_or(std::string{});
+        const std::string oldParentGuid = copied["parentInstanceId"].value_or(std::string{});
         const std::string newName = nameMap.contains(oldName) ? nameMap[oldName] : oldName;
 
         copied.erase("name");
@@ -208,6 +215,13 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
             copied.insert("parent", nameMap[oldParent]);
         } else {
             copied.insert("parent", std::string{});
+        }
+
+        copied.erase("parentInstanceId");
+        if (!oldParentGuid.empty() && guidMap.contains(oldParentGuid)) {
+            copied.insert("parentInstanceId", guidMap[oldParentGuid]);
+        } else {
+            copied.insert("parentInstanceId", std::string{});
         }
 
         // instanceId: インスタンスごとに新規 UUID を割り当てる。
@@ -287,7 +301,75 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
 
     std::ostringstream ss;
     ss << doc;
+
     if (!SceneIO::AppendObjects(scene, ss.str(), outRootEntities)) return false;
+
+    // WHAT: 既存 AppendObjects で生成した GO に、通常 Scene ロード経路で復元できる
+    //       Component のうち未追加のものだけを補完する。
+    // WHY: AppendObjects は Script フィールド復元など既存のインスタンス化挙動を持つ一方、
+    //      全 Component への追従が漏れやすい。通常ロードを補完元にすることで、
+    //      Prefab が Scene 保存と同じ Component セットを扱えるようにする。
+    scene::Scene prefabScene;
+    if (SceneIO::Deserialize(prefabScene, ss.str())) {
+        for (auto& srcGo : prefabScene.GameObjects()) {
+            if (srcGo.instanceId.empty()) continue;
+            auto* dstGo = scene.FindByGuid(srcGo.instanceId);
+            if (!dstGo) continue;
+            scene.CopyComponentsFrom(prefabScene, srcGo.GetID(), dstGo->GetID());
+        }
+    }
+
+    // WHAT: 補完コピーした Component 内の EntityID 参照を、現在の Scene の EntityID に張り直す。
+    // WHY: 一時 Scene から Component をコピーすると EntityID は一時 Scene の値を指すため、
+    //      GUID / name を正として現在 Scene 側へ再解決する必要がある。
+    for (auto& dstGo : scene.GameObjects()) {
+        if (auto* grid = dstGo.GetComponent<scene::TerrainGridComponent>())
+            grid->ResolveFromScene(scene);
+
+        if (auto* ik = dstGo.GetComponent<scene::IKSolverComponent>()) {
+            for (auto& chain : ik->chains) {
+                if (!chain.targetGuid.empty()) {
+                    if (auto* target = scene.FindByGuid(chain.targetGuid))
+                        chain.targetEntity = target->GetID();
+                } else if (!chain.targetName.empty()) {
+                    if (auto* target = scene.Find(chain.targetName))
+                        chain.targetEntity = target->GetID();
+                }
+
+                if (!chain.poleGuid.empty()) {
+                    if (auto* pole = scene.FindByGuid(chain.poleGuid))
+                        chain.poleEntity = pole->GetID();
+                } else if (!chain.poleName.empty()) {
+                    if (auto* pole = scene.Find(chain.poleName))
+                        chain.poleEntity = pole->GetID();
+                }
+            }
+        }
+    }
+
+    if (auto* objects = doc["gameobjects"].as_array()) {
+        for (const auto& item : *objects) {
+            const auto* goTbl = item.as_table();
+            if (!goTbl) continue;
+            const auto* boneTbl = (*goTbl)["BoneComponent"].as_table();
+            if (!boneTbl) continue;
+
+            const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
+            const std::string boneName = (*goTbl)["name"].value_or(std::string{});
+            scene::GameObject* boneGo = !boneGuid.empty() ? scene.FindByGuid(boneGuid) : nullptr;
+            if (!boneGo && !boneName.empty()) boneGo = scene.Find(boneName);
+            if (!boneGo) continue;
+
+            auto* bone = boneGo->GetComponent<scene::BoneComponent>();
+            if (!bone) continue;
+
+            const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
+            const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
+            scene::GameObject* owner = !ownerGuid.empty() ? scene.FindByGuid(ownerGuid) : nullptr;
+            if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
+            if (owner) bone->skinnedMeshEntity = owner->GetID();
+        }
+    }
 
     FBZZ_LOG_INFO("Instantiated prefab: %s", path.c_str());
 

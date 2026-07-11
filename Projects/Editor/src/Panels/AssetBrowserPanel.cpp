@@ -20,48 +20,66 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     }
 
     // ── 左ペイン: フォルダツリー ─────────────────────────────────────────
-    ImGui::BeginChild("##tree", { 150.0f, 0.0f }, true);
+    // セクション見出し (FAVORITES / FOLDERS) を控えめなラベルで描く小ヘルパー。
+    const auto sectionHeader = [](const char* label) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextUnformatted(label);
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+    };
+
+    // 高さを確保し、ツリー / スプリッター / コンテンツを同じ高さで並べる。
+    const float paneH = ImGui::GetContentRegionAvail().y;
+
+    ImGui::BeginChild("##tree", { m_treeWidth, paneH }, true);
 
     // Favorites セクション
     if (!ctx.assetBrowserBookmarks.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.2f, 1.0f));
-        const bool favOpen = ImGui::TreeNodeEx("##favs",
-            ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "\xe2\x98\x85 Favorites");
-        ImGui::PopStyleColor();
-        if (favOpen) {
-            for (const auto& bk : ctx.assetBrowserBookmarks) {
-                const std::string label = util::FileSystem::GetFilename(bk).empty()
-                    ? bk : util::FileSystem::GetFilename(bk);
-                const bool sel = util::FileSystem::SamePathText(m_currentPath, bk);
-                if (ImGui::Selectable(label.c_str(), sel,
-                        ImGuiSelectableFlags_SpanAllColumns)) {
-                    if (util::FileSystem::Exists(bk)) {
-                        m_currentPath = bk;
-                        RefreshDirectory();
-                    }
-                }
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Remove from Favorites")) {
-                        auto& bks = ctx.assetBrowserBookmarks;
-                        bks.erase(std::remove(bks.begin(), bks.end(), bk), bks.end());
-                        ImGui::CloseCurrentPopup();
-                        ImGui::EndPopup();
-                        break; // iterator invalidated
-                    }
-                    ImGui::EndPopup();
+        sectionHeader("FAVORITES");
+        for (const auto& bk : ctx.assetBrowserBookmarks) {
+            const std::string label = util::FileSystem::GetFilename(bk).empty()
+                ? bk : util::FileSystem::GetFilename(bk);
+            const bool sel = util::FileSystem::SamePathText(m_currentPath, bk);
+            // 先頭に星を付けてお気に入りであることを示す。
+            ImGui::PushStyleColor(ImGuiCol_Text, sel
+                ? ImGui::GetStyleColorVec4(ImGuiCol_Text)
+                : ImVec4(1.0f, 0.82f, 0.28f, 1.0f));
+            const std::string row = "\xe2\x98\x85 " + label;
+            if (ImGui::Selectable(row.c_str(), sel, ImGuiSelectableFlags_SpanAllColumns)) {
+                if (util::FileSystem::Exists(bk)) {
+                    m_currentPath = bk;
+                    RefreshDirectory();
                 }
             }
-            ImGui::TreePop();
+            ImGui::PopStyleColor();
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Remove from Favorites")) {
+                    auto& bks = ctx.assetBrowserBookmarks;
+                    bks.erase(std::remove(bks.begin(), bks.end(), bk), bks.end());
+                    ImGui::CloseCurrentPopup();
+                    ImGui::EndPopup();
+                    break; // iterator invalidated
+                }
+                ImGui::EndPopup();
+            }
         }
-        ImGui::Separator();
     }
+
+    sectionHeader("FOLDERS");
 
     ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow
                                  | ImGuiTreeNodeFlags_SpanAvailWidth
                                  | ImGuiTreeNodeFlags_DefaultOpen;
-    if (util::FileSystem::SamePathText(m_currentPath, m_rootPath)) rootFlags |= ImGuiTreeNodeFlags_Selected;
+    const bool rootIsCurrent = util::FileSystem::SamePathText(m_currentPath, m_rootPath);
+    if (rootIsCurrent) rootFlags |= ImGuiTreeNodeFlags_Selected;
 
+    // WHY: 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
+    if (rootIsCurrent)
+        ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
     bool rootOpen = ImGui::TreeNodeEx("##root", rootFlags, "Assets");
+    if (rootIsCurrent)
+        ImGui::PopStyleColor();
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
         m_currentPath = m_rootPath;
         RefreshDirectory();
@@ -79,11 +97,71 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TreePop();
     }
 
+    // ── EXTERNAL: マウント (外部ソースフォルダ) を専用セクションに分離 ──
+    // WHY: 以前は Assets ツリーの子に混ぜていたが、由来が異なる外部フォルダは見出しで分けた方が分かりやすい。
+    if (!m_mounts.empty()) {
+        sectionHeader("EXTERNAL");
+        for (const AssetMount& mount : m_mounts) {
+            ImGui::PushID(mount.path.c_str());
+            ImGuiTreeNodeFlags mflags = ImGuiTreeNodeFlags_OpenOnArrow
+                                      | ImGuiTreeNodeFlags_SpanAvailWidth;
+            const bool mCurrent = util::FileSystem::SamePathText(m_currentPath, mount.path);
+            if (mCurrent) mflags |= ImGuiTreeNodeFlags_Selected;
+            if (mCurrent)
+                ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+            // 表示名は Assets 側の仮想名、ID は実パスにして同名マウントでも衝突しない。
+            const bool mOpen = ImGui::TreeNodeEx(mount.path.c_str(), mflags, "%s", mount.name.c_str());
+            if (mCurrent)
+                ImGui::PopStyleColor();
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
+                m_currentPath = mount.path;
+                RefreshDirectory();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", mount.path.c_str());
+            // 外部フォルダへのドロップ → そのフォルダへ Prefab 保存
+            if (ImGui::BeginDragDropTarget()) {
+                if (SaveHierarchyPayloadAsPrefab(
+                        ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, mount.path)) {
+                    RefreshDirectory();
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (mOpen) {
+                DrawFolderTree(mount.path, ctx);
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+    }
+
     ImGui::EndChild();
-    ImGui::SameLine();
+
+    // ── スプリッター: 左ツリーの幅をドラッグで可変にする ───────────────────
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::InvisibleButton("##tree_splitter", { 6.0f, paneH });
+    const bool splitActive = ImGui::IsItemActive();
+    if (ImGui::IsItemHovered() || splitActive)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    if (splitActive) {
+        m_treeWidth = std::clamp(m_treeWidth + ImGui::GetIO().MouseDelta.x, 140.0f, 420.0f);
+        ctx.assetBrowserTreeWidth = m_treeWidth; // EditorSettings 経由で永続化される
+    }
+    {
+        // ホバー / ドラッグ中だけアクセント色の縦線を見せる。
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 p0 = ImGui::GetItemRectMin();
+        const ImVec2 p1 = ImGui::GetItemRectMax();
+        const float  cx = (p0.x + p1.x) * 0.5f;
+        const ImU32  col = (ImGui::IsItemHovered() || splitActive)
+            ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered)
+            : ImGui::GetColorU32(ImGuiCol_Separator);
+        dl->AddLine({ cx, p0.y + 2.0f }, { cx, p1.y - 2.0f }, col, 1.5f);
+    }
+    ImGui::SameLine(0.0f, 0.0f);
 
     // ── 右ペイン: コンテンツエリア ───────────────────────────────────────
-    ImGui::BeginChild("##content", { 0.0f, 0.0f }, false);
+    ImGui::BeginChild("##content", { 0.0f, paneH }, false);
     // ディレクトリ移動後にスクロールをトップへ戻す。
     // WHY: 深いディレクトリで下にスクロールした後に親へ戻ると、
     //      前のスクロール位置が残りトップにある Fonts 等が見えなくなる。
@@ -104,63 +182,85 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     // 未変換ファイルがあれば警告バーを表示
     DrawPendingImportBar(ctx);
 
-    // ツールバー: 検索 / Type フィルタ / Sort / アイコンサイズ / Save Modified / Create / Refresh
-    ImGui::SetNextItemWidth(-470.0f);
-    ImGui::InputText("##search", m_searchBuf.data(), m_searchBuf.size());
-    ImGui::SameLine();
-
+    // ── ツールバー: 検索(伸縮) | Type / Sort / Size | Save / Create / Refresh / View | 件数 ──
+    // WHY: 旧実装は検索欄を固定 -470px で予約していたが、フォントサイズ変更でズレるため、
+    //      右側コントロール群の幅を実測して検索欄を動的に伸縮させ、どの DPI/フォントでも揃える。
     static constexpr const char* kTypeLabels[] = {
         "All", "Scene", "Material", "Script", "Texture", "Audio",
         "Mesh", "Shader", "Prefab", "Animation", "Skeleton", "Asset" };
-    ImGui::SetNextItemWidth(80.0f);
-    {
-        int tf = static_cast<int>(m_typeFilter);
-        if (ImGui::Combo("##type", &tf, kTypeLabels, 12))
-            m_typeFilter = static_cast<TypeFilter>(tf);
-    }
-    ImGui::SameLine();
-
     static constexpr const char* kSortLabels[] = { "Name ^", "Name v", "Type", "Modified" };
-    ImGui::SetNextItemWidth(80.0f);
     {
-        int sm = static_cast<int>(m_sortMode);
-        if (ImGui::Combo("##sort", &sm, kSortLabels, 4)) {
-            m_sortMode = static_cast<SortMode>(sm);
-            RefreshDirectory();
-        }
-    }
-    ImGui::SameLine();
+        const ImGuiStyle& st = ImGui::GetStyle();
+        const float sp = st.ItemSpacing.x;
+        const auto  btnW = [&](const char* s) {
+            return ImGui::CalcTextSize(s).x + st.FramePadding.x * 2.0f;
+        };
 
-    ImGui::SetNextItemWidth(80.0f);
-    if (ImGui::SliderFloat("##sz", &m_iconSize, 56.0f, 132.0f, "%.0f"))
-        ctx.assetBrowserIconSize = m_iconSize;
-    ImGui::SameLine();
+        constexpr float kComboW  = 78.0f;
+        constexpr float kSliderW = 84.0f;
 
-    if (AssetDirtyRegistry::HasAny()) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.38f, 0.05f, 1.0f));
-        const int n = static_cast<int>(AssetDirtyRegistry::GetAll().size());
-        char btnLabel[32];
-        std::snprintf(btnLabel, sizeof(btnLabel), "Save* (%d)", n);
-        if (ImGui::SmallButton(btnLabel)) {
-            m_showSaveModifiedDialog = true;
-            m_saveModifiedSelected.assign(AssetDirtyRegistry::GetAll().size(), true);
-        }
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-    }
+        const bool dirty = AssetDirtyRegistry::HasAny();
+        char saveLabel[32] = {};
+        if (dirty)
+            std::snprintf(saveLabel, sizeof(saveLabel), "Save* (%d)",
+                          static_cast<int>(AssetDirtyRegistry::GetAll().size()));
 
-    if (ImGui::SmallButton("Create")) ImGui::OpenPopup("##content_ctx");
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Refresh")) RefreshDirectory();
-    ImGui::SameLine();
-    {
+        const char* viewLabel = (m_viewMode == ViewMode::Grid) ? "List" : "Grid";
+
         int files = 0, dirs = 0;
         for (const auto& e : m_entries) { if (e.isDir) ++dirs; else ++files; }
-        ImGui::TextDisabled("(%d files, %d dirs)", files, dirs);
+        char countStr[48];
+        std::snprintf(countStr, sizeof(countStr), "%d files, %d dirs", files, dirs);
+
+        // 右クラスタの合計幅を実測して検索欄の幅を決める。
+        float rightW = kComboW + sp + kComboW + sp + kSliderW + sp;          // Type / Sort / Size
+        if (dirty) rightW += btnW(saveLabel) + sp;
+        rightW += btnW("Create") + sp + btnW("Refresh") + sp + btnW(viewLabel) + sp;
+        rightW += ImGui::CalcTextSize(countStr).x;
+
+        const float avail   = ImGui::GetContentRegionAvail().x;
+        const float searchW = std::max(120.0f, avail - rightW - sp);
+
+        ImGui::SetNextItemWidth(searchW);
+        ImGui::InputTextWithHint("##search", "Search assets...",
+                                 m_searchBuf.data(), m_searchBuf.size());
+        ImGui::SameLine(0.0f, sp);
+
+        ImGui::SetNextItemWidth(kComboW);
+        { int tf = static_cast<int>(m_typeFilter);
+          if (ImGui::Combo("##type", &tf, kTypeLabels, 12)) m_typeFilter = static_cast<TypeFilter>(tf); }
+        ImGui::SameLine(0.0f, sp);
+
+        ImGui::SetNextItemWidth(kComboW);
+        { int sm = static_cast<int>(m_sortMode);
+          if (ImGui::Combo("##sort", &sm, kSortLabels, 4)) { m_sortMode = static_cast<SortMode>(sm); RefreshDirectory(); } }
+        ImGui::SameLine(0.0f, sp);
+
+        ImGui::SetNextItemWidth(kSliderW);
+        if (ImGui::SliderFloat("##sz", &m_iconSize, 56.0f, 132.0f, "%.0f"))
+            ctx.assetBrowserIconSize = m_iconSize;
+        ImGui::SameLine(0.0f, sp);
+
+        if (dirty) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.38f, 0.05f, 1.0f));
+            if (ImGui::Button(saveLabel)) {
+                m_showSaveModifiedDialog = true;
+                m_saveModifiedSelected.assign(AssetDirtyRegistry::GetAll().size(), true);
+            }
+            ImGui::PopStyleColor();
+            ImGui::SameLine(0.0f, sp);
+        }
+
+        if (ImGui::Button("Create")) ImGui::OpenPopup("##content_ctx");
+        ImGui::SameLine(0.0f, sp);
+        if (ImGui::Button("Refresh")) RefreshDirectory();
+        ImGui::SameLine(0.0f, sp);
+        if (ImGui::Button(viewLabel))
+            m_viewMode = (m_viewMode == ViewMode::Grid) ? ViewMode::List : ViewMode::Grid;
+        ImGui::SameLine(0.0f, sp);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", countStr);
     }
-    ImGui::SameLine();
-    if (ImGui::SmallButton(m_viewMode == ViewMode::Grid ? "List" : "Grid"))
-        m_viewMode = (m_viewMode == ViewMode::Grid) ? ViewMode::List : ViewMode::Grid;
 
     DrawSaveModifiedDialog();
 
@@ -325,12 +425,12 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
     case TypeFilter::Audio:    return e.ext == ".wav" || e.ext == ".mp3" || e.ext == ".ogg"
                                    || e.ext == ".flac";
     case TypeFilter::Mesh:      return e.ext == ".fbx"    || e.ext == ".obj"    || e.ext == ".gltf"
-                                    || e.ext == ".glb"    || e.ext == ".mesh"   || e.ext == ".fzasset";
+                                     || e.ext == ".glb"    || e.ext == ".mesh";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
     case TypeFilter::Prefab:    return e.ext == ".prefab";
     case TypeFilter::Animation: return e.ext == ".anim";
     case TypeFilter::Skeleton:  return e.ext == ".skel";
-    case TypeFilter::Asset:     return e.ext == ".asset" || e.ext == ".fzasset";
+    case TypeFilter::Asset:     return e.ext == ".asset";
     default:                    return true;
     }
 }
@@ -347,15 +447,67 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
 
     constexpr ImGuiTableFlags kTableFlags =
         ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_Resizable |
-        ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg;
+        ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Sortable;
     if (!ImGui::BeginTable("##list", 4, kTableFlags)) return;
 
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Name",     ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Name",     ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort);
     ImGui::TableSetupColumn("Type",     ImGuiTableColumnFlags_WidthFixed, 70.0f);
     ImGui::TableSetupColumn("Size",     ImGuiTableColumnFlags_WidthFixed, 62.0f);
     ImGui::TableSetupColumn("Modified", ImGuiTableColumnFlags_WidthFixed, 116.0f);
     ImGui::TableHeadersRow();
+
+    // 列ヘッダクリックでソート。フォルダは常に先頭に固定し、その中で指定列順に並べる。
+    // WHY: サイズ/更新日時のソートだけ stat が要るため、この並べ替えの間だけローカルにキャッシュする。
+    if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs && specs->SpecsCount > 0) {
+        const int  col = specs->Specs[0].ColumnIndex;
+        const bool asc = specs->Specs[0].SortDirection != ImGuiSortDirection_Descending;
+
+        std::unordered_map<size_t, uintmax_t>     sizeCache;
+        std::unordered_map<size_t, long long>     timeCache;
+        auto fileSizeOf = [&](size_t idx) -> uintmax_t {
+            if (auto it = sizeCache.find(idx); it != sizeCache.end()) return it->second;
+            std::error_code ec;
+            const uintmax_t v = m_entries[idx].isDir ? 0
+                : std::filesystem::file_size(util::FileSystem::PathFromUtf8(m_entries[idx].path), ec);
+            return sizeCache[idx] = (ec ? 0 : v);
+        };
+        auto fileTimeOf = [&](size_t idx) -> long long {
+            if (auto it = timeCache.find(idx); it != timeCache.end()) return it->second;
+            std::error_code ec;
+            const auto ft = std::filesystem::last_write_time(
+                util::FileSystem::PathFromUtf8(m_entries[idx].path), ec);
+            return timeCache[idx] = (ec ? 0 : static_cast<long long>(ft.time_since_epoch().count()));
+        };
+
+        // 大文字小文字を無視した比較 (プラットフォーム拡張に依存しない)。
+        auto ciCmp = [](const std::string& a, const std::string& b) -> int {
+            const size_t n = std::min(a.size(), b.size());
+            for (size_t i = 0; i < n; ++i) {
+                const int ca = std::tolower(static_cast<unsigned char>(a[i]));
+                const int cb = std::tolower(static_cast<unsigned char>(b[i]));
+                if (ca != cb) return ca < cb ? -1 : 1;
+            }
+            return (a.size() == b.size()) ? 0 : (a.size() < b.size() ? -1 : 1);
+        };
+
+        std::stable_sort(visIndices.begin(), visIndices.end(), [&](size_t a, size_t b) {
+            const Entry& ea = m_entries[a];
+            const Entry& eb = m_entries[b];
+            if (ea.isDir != eb.isDir) return ea.isDir; // フォルダ先頭固定 (昇降に関わらず)
+            int cmp = 0;
+            switch (col) {
+            case 1:  cmp = ciCmp(ea.ext, eb.ext); break;
+            case 2:  { const auto sa = fileSizeOf(a), sb = fileSizeOf(b);
+                       cmp = (sa < sb) ? -1 : (sa > sb) ? 1 : 0; } break;
+            case 3:  { const auto ta = fileTimeOf(a), tb = fileTimeOf(b);
+                       cmp = (ta < tb) ? -1 : (ta > tb) ? 1 : 0; } break;
+            default: cmp = ciCmp(ea.name, eb.name); break;
+            }
+            if (cmp == 0) cmp = ciCmp(ea.name, eb.name);
+            return asc ? (cmp < 0) : (cmp > 0);
+        });
+    }
 
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(visIndices.size()));

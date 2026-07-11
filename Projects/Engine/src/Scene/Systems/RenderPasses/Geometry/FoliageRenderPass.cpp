@@ -137,14 +137,20 @@ void BakeSpecies(FoliageSpeciesCache& cache,
 std::string_view FoliageRenderPass::Name() const { return "FoliagePass"; }
 
 std::vector<renderer::RenderGraph::ResourceAccess> FoliageRenderPass::DeclareAccesses(
-    const RenderPassContext&) const
+    const RenderPassContext& ctx) const
 {
-    return { { "HDR", renderer::RenderGraph::ResourceUsage::ReadWrite } };
+    using U = renderer::RenderGraph::ResourceUsage;
+    // Deferred では GBuffer へ書き、AO/接触影/SSR/PBR ライティングを樹木にも効かせる。
+    if (ctx.isDeferred)
+        return { { "GBuffer", U::ReadWrite } };
+    return { { "HDR", U::ReadWrite } };
 }
 
 void FoliageRenderPass::Execute(RenderPassContext& ctx)
 {
-    ctx.renderer.SetRenderTarget(ctx.handles.hdrRT, ctx.resources);
+    // Deferred: GBuffer(MRT) へ書く。Forward: HDR へ直接描く。
+    ctx.renderer.SetRenderTarget(
+        ctx.isDeferred ? ctx.handles.gbufferRT : ctx.handles.hdrRT, ctx.resources);
 
     if (!ctx.handles.foliageShader.IsValid())
         return;
@@ -258,7 +264,8 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
                 ctx.resources.Update(materialCB, &materialData, sizeof(materialData));
 
                 renderer::DrawCall draw{};
-                draw.shader = ctx.handles.foliageShader;
+                draw.shader = ctx.isDeferred ? ctx.handles.foliageGBufferShader
+                                             : ctx.handles.foliageShader;
                 // ビューモードに応じて PSO を切り替える。ワイヤーフレーム時は共用 wireframePSO を使う。
                 draw.pipelineState = ctx.settings.IsWireframe()
                     ? ctx.handles.wireframePSO

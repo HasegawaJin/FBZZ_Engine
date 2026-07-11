@@ -3,6 +3,7 @@
 // .animcontroller の TOML 入出力と AnimatorComponent への適用
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
@@ -86,6 +87,83 @@ scene::AnimationTransition ReadTransition(const toml::table& table)
     return transition;
 }
 
+toml::table WriteEditorLayout(const AnimatorGraphLayout& layout)
+{
+    toml::table table;
+    table.insert("entryX", static_cast<double>(layout.entryPosition.x));
+    table.insert("entryY", static_cast<double>(layout.entryPosition.y));
+    table.insert("anyStateX", static_cast<double>(layout.anyStatePosition.x));
+    table.insert("anyStateY", static_cast<double>(layout.anyStatePosition.y));
+
+    toml::array nodes;
+    for (const auto& [stateName, pos] : layout.nodePositions) {
+        toml::table node;
+        node.insert("stateName", stateName);
+        node.insert("x", static_cast<double>(pos.x));
+        node.insert("y", static_cast<double>(pos.y));
+        nodes.push_back(std::move(node));
+    }
+    table.insert("nodes", std::move(nodes));
+
+    toml::array blendTreeMotions;
+    for (const auto& [stateName, positions] : layout.blendTreeMotionPositions) {
+        for (size_t motionIndex = 0; motionIndex < positions.size(); ++motionIndex) {
+            toml::table motion;
+            motion.insert("stateName", stateName);
+            motion.insert("motionIndex", static_cast<int64_t>(motionIndex));
+            motion.insert("x", static_cast<double>(positions[motionIndex].x));
+            motion.insert("y", static_cast<double>(positions[motionIndex].y));
+            blendTreeMotions.push_back(std::move(motion));
+        }
+    }
+    table.insert("blendTreeMotions", std::move(blendTreeMotions));
+    return table;
+}
+
+AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
+{
+    AnimatorGraphLayout layout;
+    layout.entryPosition = {
+        static_cast<float>(table["entryX"].value_or(-220.0)),
+        static_cast<float>(table["entryY"].value_or(80.0))
+    };
+    layout.anyStatePosition = {
+        static_cast<float>(table["anyStateX"].value_or(-220.0)),
+        static_cast<float>(table["anyStateY"].value_or(260.0))
+    };
+
+    if (const auto* nodes = table["nodes"].as_array()) {
+        for (const auto& element : *nodes) {
+            const auto* node = element.as_table();
+            if (!node) continue;
+            const std::string stateName = (*node)["stateName"].value_or(std::string{});
+            if (stateName.empty()) continue;
+            layout.nodePositions[stateName] = {
+                static_cast<float>((*node)["x"].value_or(0.0)),
+                static_cast<float>((*node)["y"].value_or(0.0))
+            };
+        }
+    }
+
+    if (const auto* motions = table["blendTreeMotions"].as_array()) {
+        for (const auto& element : *motions) {
+            const auto* motion = element.as_table();
+            if (!motion) continue;
+            const std::string stateName = (*motion)["stateName"].value_or(std::string{});
+            const int motionIndex = static_cast<int>((*motion)["motionIndex"].value_or(int64_t{-1}));
+            if (stateName.empty() || motionIndex < 0) continue;
+            auto& positions = layout.blendTreeMotionPositions[stateName];
+            if (positions.size() <= static_cast<size_t>(motionIndex))
+                positions.resize(static_cast<size_t>(motionIndex) + 1);
+            positions[static_cast<size_t>(motionIndex)] = {
+                static_cast<float>((*motion)["x"].value_or(0.0)),
+                static_cast<float>((*motion)["y"].value_or(0.0))
+            };
+        }
+    }
+    return layout;
+}
+
 } // namespace
 
 bool SaveAnimatorControllerAsset(const std::string& path,
@@ -155,6 +233,10 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         parameters.push_back(std::move(parameterTable));
     }
     root.insert("parameters", std::move(parameters));
+    root.insert("editorLayout", WriteEditorLayout(asset.editorLayout));
+
+    // .anim クリップ参照 (sourcePath / clipSources) を guid: 形式で保存する (リネーム・移動耐性)。
+    EncodeGuidRefs(root);
 
     std::ostringstream stream;
     stream << root;
@@ -168,8 +250,11 @@ bool LoadAnimatorControllerAsset(const std::string& path,
     std::string text;
     if (!util::FileSystem::ReadText(
             AssetManager::ResolveAssetPath(path), text)) return false;
-    const toml::parse_result result = toml::parse(text);
+    toml::parse_result result = toml::parse(text);
     if (!result) return false;
+
+    // guid: 参照を "Assets/..." パスへ戻してから読む。
+    DecodeGuidRefs(result.table());
 
     AnimatorControllerAsset loaded;
     loaded.defaultStateName = result["defaultStateName"].value_or(std::string{});
@@ -268,6 +353,8 @@ bool LoadAnimatorControllerAsset(const std::string& path,
             loaded.parameters.push_back(std::move(parameter));
         }
     }
+    if (const auto* editorLayout = result["editorLayout"].as_table())
+        loaded.editorLayout = ReadEditorLayout(*editorLayout);
     outAsset = std::move(loaded);
     return true;
 }

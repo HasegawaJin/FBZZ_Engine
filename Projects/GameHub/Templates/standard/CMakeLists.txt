@@ -5,11 +5,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# WHY: ゲームプロジェクトはエンジン本体と独立した CMake ルートを持つため、
+#      エンジン側で設定している Development 構成をここでも明示的に宣言する。
+#      これがないと VS プロジェクトに Development が生成されず、
+#      エディタが --config Development でスクリプトをビルドしようとしたときに MSB8013 が発生する。
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
+set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1 /FS"            CACHE STRING "Development CXX flags"        FORCE)
+set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development EXE linker flags" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO" CACHE STRING "Development DLL linker flags" FORCE)
+
 # WHY: GameHub 生成プロジェクトはエンジン本体とは独立した CMake ルートを持つ。
 #      ここでも MSVC に UTF-8 ソースとして読ませないと、日本語コメントや assert 文字列が
 #      CP932 として解釈され、プリプロセッサや文字列リテラルが壊れる。
 if(MSVC)
-    add_compile_options(/utf-8)
+    add_compile_options(/utf-8 /FS)
 endif()
 
 if(NOT DEFINED FBZZ_ENGINE_ROOT OR FBZZ_ENGINE_ROOT STREQUAL "")
@@ -43,9 +52,9 @@ add_subdirectory("${FBZZ_ENGINE_ROOT}/Projects/Editor" "${CMAKE_BINARY_DIR}/FBZZ
 # WHY (OUTPUT_NAME "Scripts"): プロジェクト名に依存しない固定名にすることで
 #      config.target = m_scriptDllPath.stem() が常に "Scripts" と解決し、
 #      EditorApp がプロジェクト名を知らなくてもビルドターゲットを特定できる。
-file(GLOB_RECURSE SCRIPTS_DLL_SOURCES
-    Assets/Scripts/*.cpp
-    Assets/Scripts/*.hpp
+file(GLOB_RECURSE SCRIPTS_DLL_SOURCES CONFIGURE_DEPENDS
+    Assets/*.cpp
+    Assets/*.hpp
     Src/Scripts/*.cpp
     Src/Scripts/*.hpp
     Src/{{TARGET_NAME}}ScriptsDll.cpp
@@ -74,6 +83,12 @@ add_executable({{TARGET_NAME}}Standalone
 )
 add_dependencies({{TARGET_NAME}}Standalone Scripts)
 target_compile_definitions({{TARGET_NAME}}Standalone PRIVATE FBZZ_STANDALONE_TARGET)
+# WHY: 配布用 Release ではコンソールウィンドウを出さない。
+#      AppMain.cpp は main() を持つため、Windows subsystem でも CRT の main 起動点を明示する。
+target_link_options({{TARGET_NAME}}Standalone PRIVATE
+    "$<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>"
+    "$<$<CONFIG:Release>:/ENTRY:mainCRTStartup>"
+)
 
 target_include_directories({{TARGET_NAME}}
     PRIVATE

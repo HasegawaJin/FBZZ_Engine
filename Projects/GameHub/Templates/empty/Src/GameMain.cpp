@@ -3,23 +3,30 @@
 // スクリプト静的登録 (RuntimeBuild Standalone exe 用)
 //
 // WHAT: RegisterScripts() は editor / standalone どちらの起動でも呼ばれる。
-//       ScriptCodeGen が新規スクリプト生成時に @@FBZZ_SCRIPT_INCLUDES_BEGIN/END と
-//       @@FBZZ_SCRIPT_ENTRIES_BEGIN/END の間に自動追記する。
+//       ScriptCodeGen が Assets/**/*.hpp の FBZZ_SCRIPT(...) をスキャンし、
+//       @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間を自動同期する。
 //       エントリポイント (main) は AppMain.cpp にある — ここには書かないこと。
 //
 // WHY (DLL と静的の二重登録):
 //   エディタのホットリロードは {{TARGET_NAME}}Scripts.dll をロードして ScriptFactory を更新する。
 //   RuntimeBuild Standalone exe は DLL をロードせず、ここの FBZZ_REGISTER_SCRIPT で解決する。
-//   ScriptCodeGen は両方のファイルを自動更新するため、手動同期は不要。
+//   ScriptCodeGen は ScriptList.inl と include ブロックを同期するため、登録の手動編集は不要。
 #include "{{TARGET_NAME}}/ProjectAPI.hpp"
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Scene/Scene.hpp>
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 // @@FBZZ_SCRIPT_INCLUDES_END
 
-// @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// @@FBZZ_SCRIPT_ENTRIES_END
+#define FBZZ_SCRIPT_ENTRY(ns, T) FBZZ_REGISTER_SCRIPT(::ns::T)
+#include "Scripts/ScriptList.inl"
+#undef FBZZ_SCRIPT_ENTRY
+
+// DataAsset 型を DataAssetFactory へ静的登録する (純共有 ScriptableObject)。
+#define FBZZ_DATA_ASSET_ENTRY(ns, T) FBZZ_REGISTER_DATA_ASSET(::ns::T)
+#include "Scripts/DataAssetList.inl"
+#undef FBZZ_DATA_ASSET_ENTRY
 
 namespace {{CPP_NAMESPACE}} {
 

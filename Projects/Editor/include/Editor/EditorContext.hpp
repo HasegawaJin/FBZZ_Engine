@@ -76,7 +76,8 @@ struct EditorContext {
     std::string       selectedAssetPath; // アセットブラウザーで選択中のファイル絶対パス (空 = なし)
     bool              sceneDirty = false;
     // Animation Graph Editor のノード配置。Editor 専用のため SceneSerializer には渡さない。
-    // WHY: AnimatorComponent はランタイム構造体なので、キャンバス座標は instanceId keyed の別データとして保持する。
+    // WHY: AnimatorComponent はランタイム構造体なので、キャンバス座標は Scene 内 GO の
+    //      instanceId または Controller アセットパスをキーにした別データとして保持する。
     std::unordered_map<std::string, GraphLayout> graphLayouts;
     AnimationGraphSelection animationGraphSelection;
     // Animation Graph と Inspector が共有する Controller アセット編集モデル。
@@ -118,6 +119,12 @@ struct EditorContext {
     float gameViewportWidth   = 1280.0f;
     float gameViewportHeight  = 720.0f;
     bool  requestGameViewportFocus = false; // Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
+    enum class PlayFocusMode {
+        Focused,
+        Maximized,
+        Unfocused
+    };
+    PlayFocusMode playFocusMode = PlayFocusMode::Maximized; // Unity の Play Focused / Maximized / Unfocused 相当
     bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
     bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
     bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water/Detail/Foliage だけ表示
@@ -195,6 +202,8 @@ struct EditorContext {
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア
     bool            requestFocusOnSelected = false;
     math::Vector3   focusTargetPosition    = {};
+    // 選択バウンディング球の半径。0 は「バウンズ不明」で従来の固定距離フォーカスになる。
+    float           focusTargetRadius      = 0.0f;
 
     // カメラブックマーク呼び出し: ViewportPanel がセット → EditorApp が Teleport してクリア
     bool             requestTeleportCamera  = false;
@@ -238,6 +247,8 @@ struct EditorContext {
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
     float                                   assetBrowserIconSize       = 84.0f;
+    float                                   assetBrowserTreeWidth      = 180.0f; // 左フォルダツリーの幅 (永続化)
+    float                                   editorUiScale              = 1.0f;   // UI 全体スケール (永続化)
     std::vector<std::string>                assetBrowserBookmarks;
 
     // カメラブックマーク (最大 9 件、Shift+1~9 で保存・1~9 で呼び出し)

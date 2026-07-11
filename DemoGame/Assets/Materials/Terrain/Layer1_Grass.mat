@@ -1,0 +1,34 @@
+blend_mode = 'Opaque'
+double_sided = false
+mesh_type = 'surface'
+render_path = 'deferred'
+render_queue = 2000
+shader = 'guid:eabf7f6f83ff43fcb2a868f5ef8fe323'
+version = 1
+
+[params]
+ambientOcclusion = 0.15000000596046448
+autoBlendEnabled = 0.0
+autoBlendStrength = 1.0
+autoHeightFade = 1.0
+autoMaxHeight = 10000.0
+autoMaxSlope = 1.0
+autoMinHeight = -10000.0
+autoMinSlope = 0.0
+autoSlopeFade = 0.07999999821186066
+normalStrength = 1.0
+roughness = 1.0
+tilingX = 8.0
+tilingZ = 8.0
+
+[textures]
+albedo = ''
+ao = ''
+ao_roughness = 'guid:d1c65b33285045059da7d4494f2e6242'
+diffuse = 'guid:63051708101647ab94a1f722c5769298'
+emissive = ''
+metallic = ''
+normal = 'guid:5c13069837fa4f79846ff1c254b27516'
+tex5 = ''
+tex6 = ''
+tex7 = ''

@@ -15,8 +15,7 @@
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
-#include "../Renderer/Platform/DX11/DX11ImGuiRenderer.hpp"
-#include "../Renderer/Platform/DX11/DX11Renderer.hpp"
+#include "Engine/Renderer/RendererFactory.hpp"
 
 namespace fbzz::core {
 
@@ -48,16 +47,16 @@ bool Application::Init(const Window::Config& windowConfig) {
 
     input::Input::Init();
 
-    auto dx11 = std::make_unique<renderer::DX11Renderer>();
-    if (!dx11->Init(m_window->GetHandle(), m_window->GetWidth(), m_window->GetHeight()))
+    // WHY: バックエンド具象 (DX11 / 将来の DX12) の選択と生成は RendererFactory に集約する。
+    //      合成ルートである Application は RendererBackend を指定するだけで DX11 を直接知らない。
+    auto rendererBundle = renderer::CreateRenderer(
+        renderer::RendererBackend::DX11,
+        m_window->GetHandle(), m_window->GetWidth(), m_window->GetHeight());
+    if (!rendererBundle.renderer || !rendererBundle.imguiRenderer)
         return false;
 
-    auto dx11ImGui = std::make_unique<renderer::DX11ImGuiRenderer>();
-    if (!dx11ImGui->Init(dx11->GetDevice(), dx11->GetDeviceContext()))
-        return false;
-
-    m_renderer = std::move(dx11);
-    m_imguiRenderer = std::move(dx11ImGui);
+    m_renderer = std::move(rendererBundle.renderer);
+    m_imguiRenderer = std::move(rendererBundle.imguiRenderer);
 
     m_window->SetResizeCallback([this](uint32_t w, uint32_t h) {
         m_renderer->Resize(w, h);

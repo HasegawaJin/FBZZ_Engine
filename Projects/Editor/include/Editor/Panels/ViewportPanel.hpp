@@ -49,6 +49,14 @@ private:
     int m_lastGizmoMode = -1;
     bool m_prevGizmoOver = false;
     bool m_prevGizmoUsing = false;
+
+    // Scene View の矩形 (ドラッグ) 選択状態
+    bool   m_rectSelecting = false;
+    ImVec2 m_rectStart = {};
+
+    // 前フレームでビューポート上のオーバーレイ UI (ツールバー・ブックマーク等) を
+    // ホバーしていたか。true の間はクリックピッキング / 矩形選択開始を抑制する。
+    bool   m_prevOverlayHovered = false;
 };
 
 } // namespace fbzz::editor

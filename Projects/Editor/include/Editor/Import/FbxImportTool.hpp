@@ -3,10 +3,11 @@
 // FBX ファイルをエンジンネイティブ形式に変換するインポートツール
 //
 // 新パイプライン出力構造:
-//   outputDir/<name>.fzasset     ← 統合モデルバイナリ (FZMD)
+//   Library/Baked/<fbx-guid>/<name>.fzasset ← 統合モデルバイナリ (FZMD)
 //   outputDir/anims/<name>@<clip>.anim ← アニメーションクリップ v2
 //   outputDir/materials/<MaterialName>.mat ← マテリアル TOML
-//   outputDir/textures/*.png     ← テクスチャコピー + *.tex 自動生成
+//   outputDir/textures/*.png     ← テクスチャコピー + *.png.meta 自動生成
+//   <source>.fbx.meta            ← GUID + モデル import 設定
 //
 // BuildPipeline() で IFbxSubExporter のリストを構築する。
 // 各 Export() を順に呼び、失敗時は outputDir ごとロールバックする。
@@ -22,6 +23,7 @@ namespace fbzz::editor {
 // NormalMapConvention は IFbxSubExporter.hpp で定義 (循環インクルード回避)
 
 struct FbxImportOptions {
+    FbxSourceDcc                 sourceDcc              = FbxSourceDcc::Auto;
     NormalMapConvention           normalMapConvention    = NormalMapConvention::DirectX;
     bool                          generateTexDescriptors = true;
     asset::TextureCompression     defaultCompression     = asset::TextureCompression::Auto;
@@ -32,6 +34,7 @@ struct FbxImportOptions {
 struct FbxScanResult {
     std::vector<std::string> meshNames;
     std::vector<std::string> animNames;
+    FbxSourceDcc             detectedSourceDcc = FbxSourceDcc::Auto;
     bool                     valid = false;
 };
 
