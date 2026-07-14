@@ -58,7 +58,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
 
         if (h.selectionMaskShader.IsValid()) {
             auto* mr = go.GetComponent<MeshRenderer>();
-            if (mr && mr->enabled && mr->mesh && !mr->mesh->isSkinned &&
+    if (mr && mr->enabled && mr->lodVisible && mr->mesh && !mr->mesh->isSkinned &&
                 mr->mesh->vertexBuffer.IsValid() && mr->mesh->indexBuffer.IsValid())
             {
                 renderer::DrawCall dc;
@@ -81,7 +81,7 @@ void ExecuteSelectionMaskPass(RenderPassContext& ctx)
             //      bind pose CB へフォールバックしてアウトラインが T ポーズのまま止まる。
             //      通常描画パスと同じ FindAnimator (親方向探索) で解決する。
             auto* anim = FindAnimator(go);
-            if (smr && smr->enabled && smr->model) {
+    if (smr && smr->enabled && smr->lodVisible && smr->model) {
                 const auto skinCB = (anim && anim->skinningBuffer.IsValid())
                     ? anim->skinningBuffer : h.bindPoseSkinningCB;
 

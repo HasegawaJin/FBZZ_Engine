@@ -30,6 +30,11 @@ struct RenderPassContext;
 
 class RenderPipeline {
 public:
+    // 前フレームの登録内容だけを破棄し、Plan とトランジェント RT のキャッシュは維持する。
+    // WHY: Scene/Game View ごとに RenderPipeline を永続化しつつ、フレーム固有のラムダが
+    //      前フレームの RenderPassContext を参照し続けないよう毎フレーム登録し直す。
+    void BeginBuild();
+
     // 型付きパスを末尾に追加する。コンストラクタ引数を渡せる。
     template<typename T, typename... Args>
     void AddPass(Args&&... args)
@@ -74,6 +79,10 @@ public:
     //      DeclareResource で transient=true と宣言されたリソースのみ有効。
     renderer::ResourceHandle<renderer::RenderTargetTag> GetTransientRT(std::string_view name) const;
 
+    // 保持中のトランジェント RT を ResourceManager へ返し、次回 Execute で再構築する。
+    // WHAT: Viewport のリサイズなど、物理 RT を直ちに破棄すべき境界で呼び出す。
+    void ReleaseTransientPool(renderer::ResourceManager& resources);
+
 private:
     struct Entry {
         std::unique_ptr<IRenderPass> pass;  // 型付きパス (null = raw pass)
@@ -97,9 +106,6 @@ private:
     // リソース名 → aliasGroup (GetTransientRT の高速引き当て用)
     std::unordered_map<std::string, int>     m_nameToAliasGroup;
     bool                                     m_poolDirty = true;
-
-    // パイプライン構成変更時にプールを破棄して次フレームの再構築を促す。
-    void MarkPoolDirty() { m_poolDirty = true; }
 
     // 直前の Plan() 結果を使ってトランジェント RT プールを再構築する。
     // WHY: 毎フレーム呼ぶとアロケーションが走るため、m_poolDirty フラグで

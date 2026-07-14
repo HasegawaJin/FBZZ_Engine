@@ -134,7 +134,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
+        if (!mr || !mr->enabled || !mr->lodVisible || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
         // 半透明・加算マテリアルは GBuffer に書き込まない。フォワードパスで描画する。
@@ -335,7 +335,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
         auto* mat  = go.GetComponent<MaterialComponent>();
         auto* anim = FindAnimator(go);
-        if (!smr || !smr->enabled || !smr->model) continue;
+        if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) continue;
         if (!mat || !mat->EnsureMaterialAsset()) continue;
         if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;
         if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) continue;
@@ -398,7 +398,7 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
         auto* mat  = go.GetComponent<MaterialComponent>();
         auto* anim = FindAnimator(go);
-        if (!smr || !smr->enabled || !smr->model) continue;
+        if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) continue;
         if (!mat || !mat->EnsureMaterialAsset()) continue;
         if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;
         if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) continue;
@@ -486,7 +486,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
+        if (!mr || !mr->enabled || !mr->lodVisible || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
         if (mat->GetBlendMode() == renderer::BlendMode::OPAQUE_BLEND) continue;  // 透明のみ
@@ -536,7 +536,7 @@ void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
+        if (!mr || !mr->enabled || !mr->lodVisible || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
         if (mat->GetBlendMode() != renderer::BlendMode::OPAQUE_BLEND) continue;  // 不透明のみ

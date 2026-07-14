@@ -17,7 +17,7 @@
 //   b8  = AdvancedGraphicsConstants
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D    texHDR      : register(TEX_GBUFFER0); // HDR カラー入力
 SamplerState sampDefault : register(SAMPLER_DEFAULT);

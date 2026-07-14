@@ -27,6 +27,11 @@ namespace fbzz::core
         bool Initialize(const Config& config);
         void Shutdown();
 
+        // OS のタイトルバー文字列を実行時に差し替える。
+        // WHY: 起動後にシーン名や使用中の描画バックエンド (DirectX 11/12) を反映させたい上位が、
+        //      生の Win32 (SetWindowTextW) を直接叩かずに済むよう Window 抽象へ集約する。
+        void SetTitle(const std::wstring& title);
+
         // メッセージポンプ。WM_QUIT を受け取ったら ShouldClose() が true になる
         void PollEvents();
 

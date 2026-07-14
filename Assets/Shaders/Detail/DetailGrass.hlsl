@@ -25,7 +25,7 @@
 //      ambientColor を乗算するだけで分岐なしに Unlit が自然に機能する。
 #define FBZZ_MATERIAL_CONSTANTS  // DetailGrassCB で MaterialConstants を上書きするため
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 // ============================================================
 // b2 = DetailGrassCB

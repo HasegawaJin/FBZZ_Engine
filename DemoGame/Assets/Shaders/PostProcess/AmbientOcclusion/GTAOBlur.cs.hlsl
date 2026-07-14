@@ -14,7 +14,7 @@
 // Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D<float> texGTAORaw  : register(TEX_GTAO);      // GTAO RAW 入力
 SamplerState     sampDefault : register(SAMPLER_DEFAULT);

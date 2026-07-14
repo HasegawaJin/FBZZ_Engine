@@ -3,7 +3,7 @@
 // Default user-editable full-screen post-process shader
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Common/Color.hlsli"
 
 Texture2D    texInput   : register(TEX_GBUFFER0);

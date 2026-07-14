@@ -4,7 +4,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D        g_causticsTex : register(TEX_ALBEDO);
 Texture2D<float> g_depth       : register(TEX_DEPTH);

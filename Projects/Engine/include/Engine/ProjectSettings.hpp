@@ -7,6 +7,7 @@
 #include <array>
 #include <Math/Vector3.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Renderer/RendererBackend.hpp>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,12 @@ struct ScreenSettings {
 
 struct AppSettings {
     int targetFps = 60;  // 0 = unlimited
+    // 描画バックエンド (dx11 / dx12)。Standalone / Editor とも「起動時プロジェクト」のこの値で
+    // レンダラーを生成する (EditorLauncher が Application::Init より前に先読みして渡す)。
+    // WHY: プロジェクトごとに DX11 / DX12 を選べるようにする。コマンドライン (--renderer=) があれば優先。
+    //      レンダラーは起動時に一度だけ生成するため、Editor 起動後に別プロジェクトを開いても
+    //      バックエンドは切り替わらない (起動時プロジェクト基準)。
+    renderer::RendererBackend rendererBackend = renderer::RendererBackend::DX12;
 };
 
 // Standalone モード (配布ゲーム) のウィンドウ設定。

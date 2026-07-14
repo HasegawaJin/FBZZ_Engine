@@ -1,13 +1,14 @@
 // FBZZ Engine
 // DX11Shader.cpp | fbzz::renderer
 // DX11 シェーダーバイナリと InputLayout の管理
-// CSO が存在しない場合は D3DCompileFromFile で HLSL をオンデマンドコンパイルする。
+// CSOが存在しない、またはHLSL/includeより古い場合はオンデマンドコンパイルする。
 // WHY: DemoGame / StandaloneApp 初回起動時や compile_shaders.bat 未実行環境でも
 //      シェーダーロードが成功するよう、ランタイムフォールバックを備える。
 //      エディター向けの本番ワークフローは compile_shaders.bat が担う。
 #include "DX11Shader.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
+#include <Engine/Renderer/ShaderDependencyTracker.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
 #include <d3dcompiler.h>
@@ -40,7 +41,7 @@ std::wstring JoinWidePath(const std::wstring& lhs, const std::wstring& rhs)
 }
 
 // 相対アセットパスをカレントディレクトリから上方向に探索して実ファイルへ解決する。
-// WHY: Editor / Standalone の起動場所が build/development/... の場合でも、
+// WHY: Editor / Standalone の起動場所が build/Development/... の場合でも、
 //      "Assets/Shaders/..." のようなリポジトリルート相対パスを D3DCompileFromFile が開けるようにする。
 std::wstring ResolveReadablePath(const std::string& path)
 {
@@ -199,6 +200,10 @@ std::vector<uint8_t> CompileHlslToBlob(
     const std::wstring wRoot = util::StringUtils::ToWide(norm.substr(0, a + anchor.size() - 1));
 
     ShadersRootInclude includeHandler(wRoot);
+    const D3D_SHADER_MACRO defines[] = {
+        {"FBZZ_BACKEND_DX11", "1"},
+        {nullptr, nullptr}
+    };
 
     Microsoft::WRL::ComPtr<ID3DBlob> codeBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> errBlob;
@@ -211,7 +216,7 @@ std::vector<uint8_t> CompileHlslToBlob(
 
     const HRESULT hr = D3DCompileFromFile(
         resolvedHlslWide.c_str(),
-        nullptr,
+        defines,
         &includeHandler,
         entryPoint.c_str(),
         target.c_str(),
@@ -468,11 +473,12 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
     if (isCompute)
     {
         const std::string csPath = base + ".cso";
-        auto csBlob = LoadBinary(csPath);
-        // CSO が存在しない場合は HLSL をオンデマンドコンパイルしてキャッシュする
+        const bool stale = shader_dependency::IsBinaryStale(path, csPath);
+        auto csBlob = stale ? std::vector<uint8_t>{} : LoadBinary(csPath);
+        // HLSLまたは依存includeが新しい場合も、古いCSOを使わず再生成する。
         if (csBlob.empty())
         {
-            FBZZ_LOG_WARN("[ShaderCompile] CSO not found, compiling from source: %s", path.c_str());
+            FBZZ_LOG_WARN("[ShaderCompile] CSO missing/stale, compiling from source: %s", path.c_str());
             csBlob = CompileHlslToBlob(path, "CSMain", "cs_5_0", csPath);
         }
         if (csBlob.empty()) return false;
@@ -490,11 +496,12 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
     //   CSO byte 列を CreateVertexShader に渡す。
     //   input layout のリフレクション用に vsBlob を保持する。
     // -------------------------------------------------------------------------
-    auto vsBlob = LoadBinary(vsPath);
-    // CSO が存在しない場合は HLSL をオンデマンドコンパイルしてキャッシュする
+    const bool vsStale = shader_dependency::IsBinaryStale(path, vsPath);
+    auto vsBlob = vsStale ? std::vector<uint8_t>{} : LoadBinary(vsPath);
+    // CSO欠落だけでなく、HLSL/include更新時にもオンデマンド再コンパイルする。
     if (vsBlob.empty())
     {
-        FBZZ_LOG_WARN("[ShaderCompile] VS CSO not found, compiling from source: %s", path.c_str());
+        FBZZ_LOG_WARN("[ShaderCompile] VS CSO missing/stale, compiling from source: %s", path.c_str());
         vsBlob = CompileHlslToBlob(path, "VSMain", "vs_5_0", vsPath);
     }
     if (vsBlob.empty()) return false;
@@ -505,10 +512,11 @@ bool DX11Shader::Init(ID3D11Device* device, const std::string& path)
     // -------------------------------------------------------------------------
     // Pixel Shader
     // -------------------------------------------------------------------------
-    auto psBlob = LoadBinary(psPath);
+    const bool psStale = shader_dependency::IsBinaryStale(path, psPath);
+    auto psBlob = psStale ? std::vector<uint8_t>{} : LoadBinary(psPath);
     if (psBlob.empty())
     {
-        FBZZ_LOG_WARN("[ShaderCompile] PS CSO not found, compiling from source: %s", path.c_str());
+        FBZZ_LOG_WARN("[ShaderCompile] PS CSO missing/stale, compiling from source: %s", path.c_str());
         psBlob = CompileHlslToBlob(path, "PSMain", "ps_5_0", psPath);
     }
     if (psBlob.empty()) return false;

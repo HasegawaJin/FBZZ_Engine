@@ -7,16 +7,14 @@
 //      全シェーダーを書き換える必要があった。バックエンド選択を本ファイルへ集約し、
 //      シェーダー側は常に "Platform/Backend.hlsli" だけを include すれば済むようにする。
 //
-//      コンパイル時に FBZZ_BACKEND_DX12 を定義すると DX12.hlsli を選択する
-//      (compile_shaders.bat / DXC 呼び出し側で /D FBZZ_BACKEND_DX12 を付与)。
-//      未定義時は既存挙動どおり DX11 をデフォルトとする。
+//      DX12を既定とし、互換用DX11シェーダーを作る場合だけFBZZ_BACKEND_DX11を定義する。
 #ifndef FBZZ_PLATFORM_BACKEND_HLSLI
 #define FBZZ_PLATFORM_BACKEND_HLSLI
 
-#if defined(FBZZ_BACKEND_DX12)
-    #include "Platform/DX12.hlsli"  // Step 6b で追加予定
-#else
+#if defined(FBZZ_BACKEND_DX11)
     #include "Platform/DX11.hlsli"
+#else
+    #include "Platform/DX12.hlsli"
 #endif
 
 #endif // FBZZ_PLATFORM_BACKEND_HLSLI

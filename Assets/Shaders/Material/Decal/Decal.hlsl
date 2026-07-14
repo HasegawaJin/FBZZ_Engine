@@ -18,7 +18,7 @@
 
 #include "Common/Binding.hlsli"
 #include "Common/Space.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D    texAlbedo    : register(TEX_ALBEDO);
 Texture2D    texNormal    : register(TEX_NORMAL);
