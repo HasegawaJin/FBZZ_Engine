@@ -5,7 +5,9 @@
 // 上位は IAudioDevice 経由で操作し、XAudio2 型へ依存しない。
 #include "Engine/Audio/XAudio2Device.hpp"
 #include "Engine/Core/Logger.hpp"
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 
 #pragma comment(lib, "xaudio2.lib")
 
@@ -21,6 +23,7 @@ bool XAudio2Device::Init()
         FBZZ_LOG_ERROR("XAudio2Device: CoInitializeEx failed");
         return false;
     }
+    m_comInitialized = true;
 
     UINT32 flags = 0;
 #if defined(_DEBUG)
@@ -30,6 +33,7 @@ bool XAudio2Device::Init()
     if (FAILED(hr))
     {
         FBZZ_LOG_ERROR("XAudio2Device: XAudio2Create failed");
+        Shutdown();
         return false;
     }
 
@@ -37,6 +41,7 @@ bool XAudio2Device::Init()
     if (FAILED(hr))
     {
         FBZZ_LOG_ERROR("XAudio2Device: CreateMasteringVoice failed");
+        Shutdown();
         return false;
     }
 
@@ -62,7 +67,11 @@ void XAudio2Device::Shutdown()
     }
 
     m_xaudio2.Reset();
-    CoUninitialize();
+    if (m_comInitialized)
+    {
+        CoUninitialize();
+        m_comInitialized = false;
+    }
 }
 
 uint32_t XAudio2Device::PlayBuffer(
@@ -81,7 +90,8 @@ uint32_t XAudio2Device::PlayBuffer(
     wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
 
     IXAudio2SourceVoice* voice = nullptr;
-    HRESULT hr = m_xaudio2->CreateSourceVoice(&voice, &wfx);
+    HRESULT hr = m_xaudio2->CreateSourceVoice(
+        &voice, &wfx, 0, XAUDIO2_MAX_FREQ_RATIO);
     if (FAILED(hr)) return 0;
 
     XAUDIO2_BUFFER buf{};
@@ -100,7 +110,7 @@ uint32_t XAudio2Device::PlayBuffer(
     voice->Start();
 
     uint32_t id = m_nextId++;
-    m_voices[id] = VoiceEntry{ voice, loop };
+    m_voices[id] = VoiceEntry{ voice, loop, fmt.channels };
     return id;
 }
 
@@ -119,6 +129,50 @@ void XAudio2Device::SetVolume(uint32_t voiceId, float volume)
     auto it = m_voices.find(voiceId);
     if (it == m_voices.end()) return;
     it->second.voice->SetVolume(volume);
+}
+
+void XAudio2Device::SetPitch(uint32_t voiceId, float pitch)
+{
+    auto it = m_voices.find(voiceId);
+    if (it == m_voices.end()) return;
+
+    // WHY: XAudio2 の許容範囲外は HRESULT 失敗になるため、公開 API 境界で制限する。
+    pitch = (std::max)(XAUDIO2_MIN_FREQ_RATIO, (std::min)(pitch, XAUDIO2_MAX_FREQ_RATIO));
+    it->second.voice->SetFrequencyRatio(pitch);
+}
+
+void XAudio2Device::SetPan(uint32_t voiceId, float pan)
+{
+    auto it = m_voices.find(voiceId);
+    if (it == m_voices.end() || it->second.channels != 1 || !m_masterVoice) return;
+
+    XAUDIO2_VOICE_DETAILS masterDetails{};
+    m_masterVoice->GetVoiceDetails(&masterDetails);
+    if (masterDetails.InputChannels < 2) return;
+
+    // WHAT: モノラル音源を等電力パンで左右へ配分し、音像移動時の音量落ちを抑える。
+    pan = (std::max)(-1.0f, (std::min)(pan, 1.0f));
+    const float left  = std::sqrt(0.5f * (1.0f - pan));
+    const float right = std::sqrt(0.5f * (1.0f + pan));
+    std::vector<float> matrix(masterDetails.InputChannels, 0.0f);
+    matrix[0] = left;
+    matrix[1] = right;
+    it->second.voice->SetOutputMatrix(
+        m_masterVoice, 1, masterDetails.InputChannels, matrix.data());
+}
+
+bool XAudio2Device::IsPlaying(uint32_t voiceId)
+{
+    auto it = m_voices.find(voiceId);
+    if (it == m_voices.end()) return false;
+
+    XAUDIO2_VOICE_STATE state{};
+    it->second.voice->GetState(&state);
+    if (state.BuffersQueued != 0) return true;
+
+    it->second.voice->DestroyVoice();
+    m_voices.erase(it);
+    return false;
 }
 
 void XAudio2Device::PurgeFinishedVoices()

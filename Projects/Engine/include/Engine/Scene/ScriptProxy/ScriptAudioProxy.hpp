@@ -21,6 +21,8 @@ struct ScriptAudioProxy {
     bool  IsPlaying() const;
     float GetVolume() const;
     void  SetPitch(float pitch) const;
+    void  SetSpatialBlend(float blend) const;
+    void  Set3DDistances(float minDistance, float maxDistance, float rolloff = 1.0f) const;
     void  PlayOneShot(std::string_view clipPath) const;
 };
 
