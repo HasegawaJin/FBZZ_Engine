@@ -22,7 +22,7 @@
 //   法線はカメラ方向に固定。
 
 #include "Common/Binding.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 // ============================================================
 // 定数バッファ

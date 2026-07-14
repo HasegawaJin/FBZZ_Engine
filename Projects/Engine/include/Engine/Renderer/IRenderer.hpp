@@ -46,6 +46,11 @@ class IRenderer {
 public:
     virtual ~IRenderer() = default;
 
+    // アクティブな描画バックエンドの表示名 ("DirectX 11" / "DirectX 12")。
+    // WHY: ウィンドウタイトル等の UI 表示用。上位が具象型へダウンキャストせず
+    //      (禁止事項) どちらのバックエンドで動作中かを判別できるようにする、純粋に情報提供的な API。
+    virtual const char* GetBackendName() const { return "Unknown"; }
+
     // GPU バックエンドが保持するパイプライン参照を解除し、デバイス破棄前の状態を確定する。
     // WHY: ResourceManager がネイティブリソースを破棄しても、描画コンテキストにバインド中の
     //      リソースはバックエンド側の参照が残るため、デバイス破棄前に明示的な終了処理が必要。

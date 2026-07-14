@@ -259,7 +259,7 @@ void DrawStaticMeshSample(
     RenderPassContext& ctx,
     float currentTime)
 {
-    if (!mr.enabled || !mr.mesh || mr.mesh->isSkinned)
+    if (!mr.enabled || !mr.lodVisible || !mr.mesh || mr.mesh->isSkinned)
         return;
     if (!mr.mesh->vertexBuffer.IsValid() || !mr.mesh->indexBuffer.IsValid())
         return;
@@ -302,7 +302,7 @@ void DrawSkinnedMeshSample(
     RenderPassContext& ctx,
     float currentTime)
 {
-    if (!smr.enabled || !smr.model)
+    if (!smr.enabled || !smr.lodVisible || !smr.model)
         return;
 
     auto& resources = ctx.resources;

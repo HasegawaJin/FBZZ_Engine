@@ -7,7 +7,7 @@
 // view/projection を差し替えてセットする運用を想定している。
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 struct SMVSInput
 {

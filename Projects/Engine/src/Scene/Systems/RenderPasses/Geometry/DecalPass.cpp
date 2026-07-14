@@ -56,7 +56,7 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
 
         // 静的メッシュ
         auto* mr = go.GetComponent<MeshRenderer>();
-        if (mr && mr->enabled && mr->mesh && !mr->mesh->isSkinned &&
+    if (mr && mr->enabled && mr->lodVisible && mr->mesh && !mr->mesh->isSkinned &&
             mr->mesh->vertexBuffer.IsValid() && mr->mesh->indexBuffer.IsValid())
         {
             renderer::DrawCall dc;
@@ -74,7 +74,7 @@ static void RenderDecalMask(RenderPassContext& ctx, fbzz::LayerMask receiverLaye
         if (h.selectionMaskSkinnedShader.IsValid()) {
             auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
             auto* anim = go.GetComponent<AnimatorComponent>();
-            if (smr && smr->enabled && smr->model) {
+    if (smr && smr->enabled && smr->lodVisible && smr->model) {
                 const auto skinCB = (anim && anim->skinningBuffer.IsValid())
                     ? anim->skinningBuffer : h.bindPoseSkinningCB;
 

@@ -267,6 +267,9 @@ struct RenderSettings {
     // true のとき、各パスの RT サムネイルと CPU タイミングを ImGui ウィンドウで表示する。
     // ImGui フレーム内 (ImGuiNewFrame〜Render の間) で RenderSystem を呼ぶ構成が前提。
     bool passViewerEnabled = false;
+    // 全Particleのフレーム予算。0以下は無制限。RenderPassがエミッター順に残量を配分する。
+    int particleBudget = 20000;
+    bool particleBudgetEnabled = true;
 
     bool IsWireframe() const { return viewMode == ViewMode::WireframeLit || viewMode == ViewMode::WireframeUnlit; }
     bool IsUnlit()     const { return viewMode == ViewMode::Unlit        || viewMode == ViewMode::WireframeUnlit; }

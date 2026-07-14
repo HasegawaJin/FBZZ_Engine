@@ -18,7 +18,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D        texCurrent : register(TEX_GBUFFER0);    // 現フレームカラー
 Texture2D        texHistory : register(TEX_TAA_HISTORY); // 前フレーム TAA 出力

@@ -169,6 +169,12 @@ void Window::Shutdown()
     m_hwnd = nullptr;
 }
 
+void Window::SetTitle(const std::wstring& title)
+{
+    if (m_hwnd)
+        SetWindowTextW(m_hwnd, title.c_str());
+}
+
 void Window::PollEvents()
 {
     MSG msg{};

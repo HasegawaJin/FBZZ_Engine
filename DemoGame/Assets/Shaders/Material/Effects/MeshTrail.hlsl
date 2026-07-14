@@ -13,7 +13,7 @@ cbuffer MeshTrailConstants : register(CB_MATERIAL)
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D    gMeshTrailTex : register(TEX_ALBEDO);
 SamplerState gSampler      : register(SAMPLER_DEFAULT);

@@ -24,7 +24,7 @@
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
 #include "Common/Random.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D        texGBuffer1 : register(TEX_GBUFFER1); // 法線(RGB) + metallic(A)
 Texture2D<float> texDepth    : register(TEX_DEPTH);    // 深度バッファ

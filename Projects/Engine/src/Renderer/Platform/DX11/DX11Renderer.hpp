@@ -33,6 +33,8 @@ namespace fbzz::renderer
 class DX11Renderer : public IRenderer
 {
 public:
+    const char* GetBackendName() const override { return "DirectX 11"; }
+
     // Win32 ウィンドウハンドルと初期解像度を受け取ってデバイス・スワップチェーンを構築する
     bool Init(HWND hwnd, std::uint32_t width, std::uint32_t height);
 

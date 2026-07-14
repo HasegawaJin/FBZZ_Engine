@@ -25,6 +25,18 @@ const char* InternRenderPassProfileName(std::string_view name)
 
 } // namespace
 
+void RenderPipeline::BeginBuild()
+{
+    // WHAT: パス本体と raw pass のラムダは RenderPassContext を参照するため毎フレーム破棄する。
+    // WHY: Plan 結果とトランジェント RT プールは別の永続状態として残すことで、
+    //      構成不変フレームの依存解析と D3D リソース再生成を省略できる。
+    m_entries.clear();
+    m_resources.clear();
+    m_outputs.clear();
+    m_gpuBegin = {};
+    m_gpuEnd = {};
+}
+
 void RenderPipeline::AddRawPass(
     std::string_view name,
     std::initializer_list<std::string_view> reads,
@@ -77,8 +89,9 @@ void RenderPipeline::AddRawPass(
 void RenderPipeline::DeclareResource(std::string_view name,
                                       renderer::RenderGraph::ResourceDesc desc)
 {
-    // transient リソースが追加・変更されたらプールを再構築するフラグを立てる。
-    if (desc.transient) MarkPoolDirty();
+    // リソース記述の変更検出は Execute() のグラフ指紋で一括して行う。
+    // WHY: 毎フレーム同じ transient 宣言を登録するだけでプールを dirty にすると、
+    //      永続化した物理 RT を再利用できず毎フレーム再生成へ戻ってしまうため。
     m_resources.emplace_back(std::string(name), desc);
 }
 
@@ -129,6 +142,19 @@ void RenderPipeline::RebuildTransientPool(
     }
 
     m_poolDirty = false;
+}
+
+void RenderPipeline::ReleaseTransientPool(renderer::ResourceManager& resources)
+{
+    // ResourceHandle は非所有の整数 ID なので、ResourceManager 経由で明示的に解放する。
+    for (auto& [group, pooled] : m_aliasGroupPool) {
+        (void)group;
+        if (pooled.handle.IsValid())
+            resources.Release(pooled.handle);
+    }
+    m_aliasGroupPool.clear();
+    m_nameToAliasGroup.clear();
+    m_poolDirty = true;
 }
 
 renderer::ResourceHandle<renderer::RenderTargetTag>
@@ -199,6 +225,17 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
         const char separator = '\0'; // "ab"+"c" と "a"+"bc" を区別するための区切り
         mixBytes(&separator, 1);
     };
+    // リソース寸法・形式も指紋へ含める。
+    // WHY: パス依存が同じでも Viewport リサイズ時は旧寸法の物理 RT を再利用できないため。
+    for (const auto& [name, desc] : m_resources) {
+        mixString(name);
+        mixBytes(&desc.kind, sizeof(desc.kind));
+        mixBytes(&desc.width, sizeof(desc.width));
+        mixBytes(&desc.height, sizeof(desc.height));
+        mixBytes(&desc.format, sizeof(desc.format));
+        mixBytes(&desc.external, sizeof(desc.external));
+        mixBytes(&desc.transient, sizeof(desc.transient));
+    }
     for (const auto& output : m_outputs)
         mixString(output);
     for (const auto& pass : graph.GetPasses()) {
@@ -265,18 +302,6 @@ bool RenderPipeline::Execute(RenderPassContext& ctx)
         ok = graph.Execute();
     }
     m_lastReport = graph.GetLastReport();
-
-    // トランジェント RT を解放する。
-    // WHY: RenderPipeline はフレームごとにスタック上で生成・破棄される。
-    //      ResourceHandle は整数 ID に過ぎず、デストラクタは ResourceManager に
-    //      通知しないため、Execute 完了後に明示的に解放しないと D3D11 リソースが漏れる。
-    {
-        FBZZ_PROFILE_SCOPE("RenderPipeline::ReleaseTransientPool");
-        for (auto& [group, pr] : m_aliasGroupPool)
-            ctx.resources.Release(pr.handle);
-        m_aliasGroupPool.clear();
-        m_nameToAliasGroup.clear();
-    }
 
     return ok;
 }

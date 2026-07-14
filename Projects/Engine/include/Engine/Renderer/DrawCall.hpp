@@ -23,7 +23,7 @@ struct DrawCall {
     //   [2] = MaterialConstants (b2) [3] = LightConstants (b3)
     //   [4] = ShadowConstants (b4)   [5] = PostProcConstants (b5)
     //   [6] = AtmosphereConstants (b6) [7] = SkinningConstants (b7)
-    // DX11は各Shader Stageでb0〜b13を使用できる。Advanced Graphicsはb8を使用する。
+    // 両バックエンドで b0〜b13 を共通契約とし、DX12 は root CBV へ Submit 時の GPU VA を記録する。
     std::array<ResourceHandle<ConstantBufferTag>, 14> constantBuffers = {};
 
     // スロット割り当て (Constants.hlsli と同期すること):

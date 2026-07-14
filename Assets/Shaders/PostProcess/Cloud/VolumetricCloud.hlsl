@@ -9,7 +9,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D<float>  g_depth       : register(TEX_DEPTH);
 Texture3D<float4> g_cloudShape  : register(TEX_CLOUD_SHAPE);   // R=Perlin-Worley, GBA=Worley FBM 帯

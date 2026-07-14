@@ -7,7 +7,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 

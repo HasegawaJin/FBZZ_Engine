@@ -54,7 +54,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Color.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/PostProcess.hlsli"
 
 // 入力テクスチャ — t5 は RenderSystem が自動バインドする LDR カラーバッファ
