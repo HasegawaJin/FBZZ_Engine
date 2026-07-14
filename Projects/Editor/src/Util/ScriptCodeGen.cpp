@@ -461,7 +461,7 @@ bool ScriptCodeGen::SyncScriptRegistry(const std::string& scriptsDir,
     }
 
     if (ok) {
-        FBZZ_LOG_INFO("ScriptCodeGen: synced registry (%d scripts, %d data assets)",
+    FBZZ_LOG_DEBUG("ScriptCodeGen: synced registry (%d scripts, %d data assets)",
                       static_cast<int>(scripts.size()),
                       static_cast<int>(dataAssets.size()));
     }
