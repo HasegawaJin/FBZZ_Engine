@@ -6,7 +6,7 @@
             "displayName": "Debug",
             "generator": "Visual Studio 18 2026",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/debug",
+            "binaryDir": "${sourceDir}/build/Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -19,7 +19,7 @@
             "displayName": "Release",
             "generator": "Visual Studio 18 2026",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/release",
+            "binaryDir": "${sourceDir}/build/Release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
@@ -30,7 +30,7 @@
             "displayName": "Development",
             "generator": "Visual Studio 18 2026",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/development",
+            "binaryDir": "${sourceDir}/build/Development",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Development",
                 "CMAKE_SYSTEM_VERSION": "10.0.26100.0"
