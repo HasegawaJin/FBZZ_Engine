@@ -16,6 +16,8 @@ namespace fbzz::scene {
 struct MeshRenderer {
     renderer::Mesh* mesh = nullptr;
     bool enabled = true;
+    // LODSystem 専用のランタイム可視性。enabled と分離してユーザー設定を保持する。
+    bool lodVisible = true;
 
     // "primitive:cube" / "primitive:sphere" / "models/foo.fbx:0"
     std::string meshPath;

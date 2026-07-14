@@ -1,37 +1,41 @@
 // FBZZ Engine
 // Foliage/Foliage.hlsl | VS + PS
 // 複数SubMesh樹木・大型植生向けGPU Instancingシェーダー
-#include "Common/Binding.hlsli"
-#include "Platform/DX11.hlsli"
+//
+// WHY: LightConstants の ambientColor を参照するため Common/Constants.hlsli を使用する。
+//      Unlit モードで RenderSystem が ambientColor={1,1,1}/lightIntensity=0 を設定するため、
+//      ambientColor を乗算するだけで分岐なしに Unlit が自然に機能する。
+#define FBZZ_MATERIAL_CONSTANTS  // FoliageMaterialCB で MaterialConstants を上書きするため
+#include "Common/Constants.hlsli"
+#include "Platform/Backend.hlsli"
 
-cbuffer CameraConstants : register(CB_CAMERA)
-{
-    float4x4 view;
-    float4x4 projection;
-    float4x4 viewProjection;
-    float4x4 invViewProjection;
-    float3 cameraPos;
-    float nearZ;
-    float farZ;
-    float3 _camPad;
-};
-
-#define FBZZ_MATERIAL_CONSTANTS
 cbuffer FoliageMaterialCB : register(CB_MATERIAL)
 {
     float4 baseColor;
     uint hasAlbedo;
     float alphaCutoff;
     float2 _foliagePad;
+    // ── 風スウェイ (WindZone) ── C++ FoliageMaterialCB と一致させること
+    float3 windDir;       // ワールド風向き (正規化済み)
+    float  windTime;      // 累積時間
+    float  windStrength;  // 揺れ振幅スケール。0 で無効
+    float  windFrequency; // 揺れ周波数
+    float2 _windPad;
 };
 
-cbuffer LightConstants : register(CB_LIGHT)
+// 風スウェイ: 根元 (ローカル Y=0) を固定し、高い頂点ほど大きく風下へ振る (高さ二乗重み)。
+// WHY: 位相をインスタンス位置でずらして全樹木の同期揺れを避け、
+//      周波数の異なる 2 波を合成して単調な sin 揺れに見えないようにする。
+float3 WindSway(float3 worldPosition, float localHeight, float2 instanceXZ)
 {
-    float3 lightDir;
-    float _lightPad0;
-    float3 lightColor;
-    float lightIntensity;
-};
+    if (windStrength <= 0.0f)
+        return worldPosition;
+    const float height = max(localHeight, 0.0f);
+    const float phase  = dot(instanceXZ, float2(0.37f, 0.71f));
+    const float wave   = sin(windTime * windFrequency + phase) * 0.7f
+                       + sin(windTime * windFrequency * 2.33f + phase * 1.7f) * 0.3f;
+    return worldPosition + windDir * (wave * windStrength * 0.02f * height * height);
+}
 
 struct FoliageInstance
 {
@@ -69,8 +73,9 @@ PsIn VSMain(VsIn input, uint instanceId : SV_InstanceID)
          0.0f, 1.0f, 0.0f,
         -s, 0.0f, c);
 
-    const float3 worldPosition =
+    float3 worldPosition =
         mul(rotation, input.position * instance.scale) + instance.pos;
+    worldPosition = WindSway(worldPosition, input.position.y * instance.scale, instance.pos.xz);
 
     PsIn output;
     output.svPos = mul(float4(worldPosition, 1.0f), viewProjection);
@@ -88,6 +93,8 @@ float4 PSMain(PsIn input) : SV_Target0
         clip(color.a - alphaCutoff);
 
     const float ndotl = saturate(dot(normalize(input.normal), normalize(-lightDir)));
-    color.rgb *= (0.30f + ndotl * lightIntensity * 0.70f) * lightColor;
+    // ambientColor は Lit モードで {0.08,...}、Unlit モードで RenderSystem が {1,1,1} に設定する。
+    // lightIntensity は Unlit モードで 0 になるため、Unlit 時は ambientColor のみが乗算される。
+    color.rgb *= ambientColor + lightColor * (ndotl * lightIntensity);
     return color;
 }
