@@ -1,4 +1,5 @@
 [app]
+renderer = 'dx12'
 targetFps = 0
 
 [audio]

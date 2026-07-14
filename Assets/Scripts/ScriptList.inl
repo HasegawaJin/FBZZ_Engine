@@ -18,6 +18,6 @@
 
 // @@FBZZ_SCRIPT_ENTRIES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
 FBZZ_SCRIPT_ENTRY(sandbox, PlayerControllerComponent)
-FBZZ_SCRIPT_ENTRY(sandbox, TpsCameraComponent)
 FBZZ_SCRIPT_ENTRY(sandbox, SceneManagerScript)
+FBZZ_SCRIPT_ENTRY(sandbox, TpsCameraComponent)
 // @@FBZZ_SCRIPT_ENTRIES_END
