@@ -1,18 +1,21 @@
 // FBZZ Engine
 // ComponentRegistry.hpp | fbzz::scene
-// Scene が扱う全コンポーネント型の登録点
-// 新しい Component 型を追加するときの編集箇所を一箇所に集約する。
-// SceneSerializer や Inspector が同じ型一覧を参照できるようにする。
+// コンポーネント型とEditor／永続化メタデータの単一登録表
 #pragma once
+
 #include "Components/MeshRenderer.hpp"
 #include "Components/MaterialComponent.hpp"
 #include "Components/ParticleEmitter.hpp"
+#include "Components/ParticleForceField.hpp"
+#include "Components/WindZoneComponent.hpp"
 #include "Components/ColliderComponent.hpp"
 #include "Components/RigidBodyComponent.hpp"
 #include "Components/VolumeComponent.hpp"
 #include "Components/LightComponent.hpp"
 #include "Components/CameraComponent.hpp"
 #include "Components/AudioSourceComponent.hpp"
+#include "Components/AudioListenerComponent.hpp"
+#include "Components/LODGroupComponent.hpp"
 #include "Components/SkyRenderer.hpp"
 #include "Components/SunMoonRenderer.hpp"
 #include "Components/AnimatorComponent.hpp"
@@ -47,61 +50,174 @@
 #include "Components/NavMeshPatrolComponent.hpp"
 #include "Components/NavMeshSensorComponent.hpp"
 #include "ScriptComponent.hpp"
+
+#include <cstddef>
 #include <tuple>
+#include <type_traits>
+#include <utility>
 
 namespace fbzz::scene {
 
-using ComponentList = std::tuple<
-    MeshRenderer,
-    MaterialComponent,
-    ParticleEmitter,
-    AabbColliderComponent,
-    BoxColliderComponent,
-    SphereColliderComponent,
-    CapsuleColliderComponent,
-    MeshColliderComponent,
-    ConvexHullColliderComponent,
-    TerrainColliderComponent,
-    RigidBodyComponent,
-    VolumeComponent,
-    LightComponent,
-    CameraComponent,
-    AudioSourceComponent,
-    SkyRenderer,
-    SunMoonRenderer,
-    AnimatorComponent,
-    SkinnedMeshRenderer,
-    BoneComponent,
-    UICanvas,
-    UIImage,
-    UIButton,
-    UIText,
-    UILayoutGroup,
-    UIAnimator,
-    ScriptComponent,
-    DecalComponent,
-    IKSolverComponent,
-    CharacterControllerComponent,
-    TerrainComponent,
-    TerrainGridComponent,
-    TerrainDetailComponent,
-    FoliageComponent,
-    WaterComponent,
-    VolumetricCloudComponent,
-    TrailComponent,
-    MeshTrailComponent,
-    LifetimeComponent,
-    NavMeshSurfaceComponent,
-    NavMeshModifierComponent,
-    NavMeshAgentComponent,
-    NavMeshOffMeshLinkComponent,
-    NavMeshPatrolComponent,
-    NavMeshSensorComponent,
-    EnvironmentLightComponent,
-    ReflectionProbeComponent,
-    AtmosphericScatteringComponent,
-    PostProcessVolumeComponent
-    // 新型はここに1行追加するだけ
+// Editor上の分類。依存方向を増やさずEngine側の登録情報だけでメニューを構築する。
+enum class ComponentCategory {
+    Rendering,
+    Lighting,
+    Physics,
+    Animation,
+    Audio,
+    Effects,
+    Environment,
+    Navigation,
+    Terrain,
+    UI,
+    Misc,
+    Internal
+};
+
+// AutomaticはReflect()から描画し、Customは専用Editor、Hiddenは内部型として扱う。
+enum class ComponentInspectorMode { Automatic, Custom, Hidden };
+
+// AutomaticはReflect()でTOML化し、Customは既存の複合データ専用処理を使う。
+enum class ComponentSerializationMode { Automatic, Custom };
+
+// C++20の文字列NTTP。型名と表示名を登録型そのものへ保持する。
+template<size_t N>
+struct ComponentString {
+    char value[N]{};
+
+    constexpr ComponentString(const char (&text)[N])
+    {
+        for (size_t i = 0; i < N; ++i) value[i] = text[i];
+    }
+};
+
+// 1コンポーネント分の登録情報。単純型はAutomaticを選ぶだけで全標準経路へ接続される。
+template<typename T,
+         ComponentCategory CategoryValue,
+         ComponentString SerializedName,
+         ComponentString DisplayName,
+         ComponentInspectorMode InspectorModeValue = ComponentInspectorMode::Automatic,
+         ComponentSerializationMode SerializationModeValue = ComponentSerializationMode::Automatic,
+         bool AddableValue = true>
+struct ComponentRegistration {
+    using Type = T;
+    static constexpr bool hasReflect = requires(T& component, IReflector& reflector) {
+        component.Reflect(reflector);
+    };
+    static_assert(InspectorModeValue != ComponentInspectorMode::Automatic
+                  || (hasReflect && std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>),
+                  "Automatic Inspector requires Reflect() and a copyable component");
+    static_assert(SerializationModeValue != ComponentSerializationMode::Automatic
+                  || (hasReflect && std::is_default_constructible_v<T> && std::is_move_constructible_v<T>),
+                  "Automatic serialization requires Reflect(), default construction, and move construction");
+    static constexpr ComponentCategory category = CategoryValue;
+    static constexpr ComponentInspectorMode inspectorMode = InspectorModeValue;
+    static constexpr ComponentSerializationMode serializationMode = SerializationModeValue;
+    static constexpr bool addable = AddableValue;
+    static constexpr const char* serializedName = SerializedName.value;
+    static constexpr const char* displayName = DisplayName.value;
+};
+
+#define FBZZ_COMPONENT(Type, Category, DisplayName) \
+    ComponentRegistration<Type, ComponentCategory::Category, #Type, DisplayName>
+
+#define FBZZ_CUSTOM_COMPONENT(Type, Category, DisplayName) \
+    ComponentRegistration<Type, ComponentCategory::Category, #Type, DisplayName, \
+        ComponentInspectorMode::Custom, ComponentSerializationMode::Custom>
+
+#define FBZZ_AUTO_INSPECTOR_COMPONENT(Type, Category, DisplayName) \
+    ComponentRegistration<Type, ComponentCategory::Category, #Type, DisplayName, \
+        ComponentInspectorMode::Automatic, ComponentSerializationMode::Custom>
+
+#define FBZZ_INTERNAL_COMPONENT(Type, DisplayName) \
+    ComponentRegistration<Type, ComponentCategory::Internal, #Type, DisplayName, \
+        ComponentInspectorMode::Hidden, ComponentSerializationMode::Custom, false>
+
+// 登録順はSceneのSoA tuple順とScript DLL ABIへ影響するため、既存順を維持する。
+// 新しい単純型はFBZZ_COMPONENTを1行追加すれば、標準の追加・Inspector・保存経路へ入る。
+using ComponentRegistry = std::tuple<
+    FBZZ_CUSTOM_COMPONENT(MeshRenderer, Rendering, "Mesh Renderer"),
+    FBZZ_CUSTOM_COMPONENT(MaterialComponent, Rendering, "Material"),
+    FBZZ_CUSTOM_COMPONENT(ParticleEmitter, Effects, "Particle Emitter"),
+    FBZZ_CUSTOM_COMPONENT(ParticleForceField, Effects, "Particle Force Field"),
+    FBZZ_CUSTOM_COMPONENT(WindZoneComponent, Environment, "Wind Zone"),
+    FBZZ_CUSTOM_COMPONENT(AabbColliderComponent, Physics, "AABB Collider"),
+    FBZZ_CUSTOM_COMPONENT(BoxColliderComponent, Physics, "Box Collider"),
+    FBZZ_CUSTOM_COMPONENT(SphereColliderComponent, Physics, "Sphere Collider"),
+    FBZZ_CUSTOM_COMPONENT(CapsuleColliderComponent, Physics, "Capsule Collider"),
+    FBZZ_CUSTOM_COMPONENT(MeshColliderComponent, Physics, "Mesh Collider"),
+    FBZZ_CUSTOM_COMPONENT(ConvexHullColliderComponent, Physics, "Convex Hull Collider"),
+    FBZZ_CUSTOM_COMPONENT(TerrainColliderComponent, Physics, "Terrain Collider"),
+    FBZZ_CUSTOM_COMPONENT(RigidBodyComponent, Physics, "Rigid Body"),
+    FBZZ_CUSTOM_COMPONENT(VolumeComponent, Physics, "Volume"),
+    FBZZ_CUSTOM_COMPONENT(LightComponent, Lighting, "Light"),
+    FBZZ_CUSTOM_COMPONENT(CameraComponent, Lighting, "Camera"),
+    FBZZ_COMPONENT(AudioSourceComponent, Audio, "Audio Source"),
+    FBZZ_COMPONENT(AudioListenerComponent, Audio, "Audio Listener"),
+    FBZZ_CUSTOM_COMPONENT(LODGroupComponent, Rendering, "LOD Group"),
+    FBZZ_CUSTOM_COMPONENT(SkyRenderer, Environment, "Sky Renderer"),
+    FBZZ_CUSTOM_COMPONENT(SunMoonRenderer, Environment, "Sun Moon Renderer"),
+    FBZZ_CUSTOM_COMPONENT(AnimatorComponent, Animation, "Animator"),
+    FBZZ_CUSTOM_COMPONENT(SkinnedMeshRenderer, Rendering, "Skinned Mesh Renderer"),
+    FBZZ_INTERNAL_COMPONENT(BoneComponent, "Bone"),
+    FBZZ_COMPONENT(UICanvas, UI, "UI Canvas"),
+    FBZZ_COMPONENT(UIImage, UI, "UI Image"),
+    FBZZ_COMPONENT(UIButton, UI, "UI Button"),
+    FBZZ_COMPONENT(UIText, UI, "UI Text"),
+    FBZZ_COMPONENT(UILayoutGroup, UI, "UI Layout Group"),
+    FBZZ_COMPONENT(UIAnimator, UI, "UI Animator"),
+    FBZZ_INTERNAL_COMPONENT(ScriptComponent, "Scripts"),
+    FBZZ_CUSTOM_COMPONENT(DecalComponent, Environment, "Decal"),
+    FBZZ_CUSTOM_COMPONENT(IKSolverComponent, Animation, "IK Solver"),
+    FBZZ_CUSTOM_COMPONENT(CharacterControllerComponent, Physics, "Character Controller"),
+    FBZZ_CUSTOM_COMPONENT(TerrainComponent, Terrain, "Terrain"),
+    FBZZ_CUSTOM_COMPONENT(TerrainGridComponent, Terrain, "Terrain Grid"),
+    FBZZ_CUSTOM_COMPONENT(TerrainDetailComponent, Terrain, "Terrain Detail"),
+    FBZZ_CUSTOM_COMPONENT(FoliageComponent, Terrain, "Foliage"),
+    FBZZ_CUSTOM_COMPONENT(WaterComponent, Terrain, "Water"),
+    FBZZ_CUSTOM_COMPONENT(VolumetricCloudComponent, Environment, "Volumetric Cloud"),
+    FBZZ_CUSTOM_COMPONENT(TrailComponent, Effects, "Trail"),
+    FBZZ_CUSTOM_COMPONENT(MeshTrailComponent, Effects, "Mesh Trail"),
+    FBZZ_COMPONENT(LifetimeComponent, Effects, "Lifetime"),
+    FBZZ_CUSTOM_COMPONENT(NavMeshSurfaceComponent, Navigation, "NavMesh Surface"),
+    FBZZ_CUSTOM_COMPONENT(NavMeshModifierComponent, Navigation, "NavMesh Modifier"),
+    FBZZ_CUSTOM_COMPONENT(NavMeshAgentComponent, Navigation, "NavMesh Agent"),
+    FBZZ_CUSTOM_COMPONENT(NavMeshOffMeshLinkComponent, Navigation, "Off-Mesh Link"),
+    FBZZ_CUSTOM_COMPONENT(NavMeshPatrolComponent, Navigation, "NavMesh Patrol"),
+    FBZZ_CUSTOM_COMPONENT(NavMeshSensorComponent, Navigation, "NavMesh Sensor"),
+    FBZZ_CUSTOM_COMPONENT(EnvironmentLightComponent, Environment, "Environment Light"),
+    FBZZ_CUSTOM_COMPONENT(ReflectionProbeComponent, Environment, "Reflection Probe"),
+    FBZZ_CUSTOM_COMPONENT(AtmosphericScatteringComponent, Environment, "Atmospheric Scattering"),
+    FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume")
 >;
+
+template<typename Registry>
+struct ComponentTypeList;
+
+template<typename... Registrations>
+struct ComponentTypeList<std::tuple<Registrations...>> {
+    using Type = std::tuple<typename Registrations::Type...>;
+};
+
+// Sceneストレージと既存APIが参照する純粋な型リストはRegistryから自動生成する。
+using ComponentList = typename ComponentTypeList<ComponentRegistry>::Type;
+
+template<typename Fn, typename... Registrations>
+constexpr void ForEachRegisteredComponentImpl(Fn&& fn, std::tuple<Registrations...>*)
+{
+    (fn.template operator()<typename Registrations::Type, Registrations>(), ...);
+}
+
+// Editor／Serializerが同じ登録情報を型安全に反復する入口。
+template<typename Fn>
+constexpr void ForEachRegisteredComponent(Fn&& fn)
+{
+    ForEachRegisteredComponentImpl(std::forward<Fn>(fn), static_cast<ComponentRegistry*>(nullptr));
+}
+
+#undef FBZZ_INTERNAL_COMPONENT
+#undef FBZZ_AUTO_INSPECTOR_COMPONENT
+#undef FBZZ_CUSTOM_COMPONENT
+#undef FBZZ_COMPONENT
 
 } // namespace fbzz::scene

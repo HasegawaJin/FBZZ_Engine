@@ -29,6 +29,12 @@ public:
 
     static void Line(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
                      const math::Vector4& color = {1,1,1,1});
+    // 深度テストありの線分。シーンジオメトリに正しく遮蔽される。
+    // WHY: Line (深度なし) はコライダーギズモ等をメッシュ越しに見せるための仕様。
+    //      一方でエディターのグリッド線のような「世界に置かれた線」は、メッシュの
+    //      手前に浮いて見えると空間の前後関係が壊れるため、遮蔽される版を分ける。
+    static void LineDepthTested(IRenderer& r, const math::Vector3& from, const math::Vector3& to,
+                                const math::Vector4& color = {1,1,1,1});
     static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,
                     const math::Vector4& color = {0,1,0,1});
     static void Box(IRenderer& r, const math::Vector3& center, const math::Vector3& halfExtents,

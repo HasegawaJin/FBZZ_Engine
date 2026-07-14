@@ -10,6 +10,7 @@
 //   instanceBuffer (VS t0) = StructuredBuffer<DetailInstance or GrassInstance>
 //   PS t0 = アルベドテクスチャ
 #include "Engine/Scene/Systems/RenderPasses/Geometry/DetailRenderPass.hpp"
+#include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -258,6 +259,8 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
 
     const math::Frustum* frustum = ctx.cameraFrustum;
     const float curTime = fbzz::Time::time;
+    // シーングローバル風。WindZone がなければ従来のハードコード値と同じ既定が返る。
+    const ActiveWindZone windZone = FindActiveWindZone(scene);
 
     if (shadersReady)
         renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
@@ -387,12 +390,16 @@ void DetailRenderPass::Execute(RenderPassContext& ctx)
                         albedoTex = resources.LoadTexture(layer.texturePath);
 
                     DetailGrassCB gcb{};
-                    gcb.windDir[0]    = 0.7071f;
-                    gcb.windDir[1]    = 0.0f;
-                    gcb.windDir[2]    = 0.7071f;
+                    // WindZone の風向きをそのまま使う (未設置時は従来と同じ既定値)。
+                    // 強さ・周波数は WindZone をグローバル係数、レイヤー値を固有係数として乗算する。
+                    gcb.windDir[0]    = windZone.direction.x;
+                    gcb.windDir[1]    = windZone.direction.y;
+                    gcb.windDir[2]    = windZone.direction.z;
                     gcb.gTime         = curTime;
-                    gcb.windStrength  = layer.windStrength;
-                    gcb.windFrequency = layer.windFrequency;
+                    gcb.windStrength  = layer.windStrength
+                                      * (windZone.active ? windZone.strength : 1.0f);
+                    gcb.windFrequency = layer.windFrequency
+                                      * (windZone.active ? windZone.pulseFrequency : 1.0f);
                     gcb.bladeHeight   = layer.bladeHeight;
                     gcb.bladeWidth    = layer.bladeWidth;
                     gcb.bladeSegments = layer.bladeSegments;

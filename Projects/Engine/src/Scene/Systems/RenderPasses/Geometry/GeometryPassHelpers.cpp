@@ -9,6 +9,7 @@
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
+#include "Engine/Scene/Components/WindZoneComponent.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -436,6 +437,27 @@ bool IsSkinnedVisibleInFrustum(const math::Frustum& frustum,
     WorldBounds bounds{};
     if (!ComputeSkinnedWorldBounds(tf, smr, bounds)) return true;
     return frustum.IntersectsSphere(bounds.center, bounds.radius);
+}
+
+ActiveWindZone FindActiveWindZone(Scene& scene)
+{
+    ActiveWindZone result;
+    for (auto& go : scene.GameObjects()) {
+        if (!go.activeInHierarchy()) continue;
+        const auto* wind = go.GetComponent<WindZoneComponent>();
+        if (!wind || !wind->enabled) continue;
+        // direction はローカル指定。GameObject を回せば風向きも回る。
+        const math::Vector3 worldDir = go.transform.worldRotation * wind->direction;
+        const float len = worldDir.Length();
+        if (len > 1.0e-4f)
+            result.direction = worldDir * (1.0f / len);
+        result.active         = true;
+        result.strength       = (std::max)(wind->strength, 0.0f);
+        result.turbulence     = (std::max)(wind->turbulence, 0.0f);
+        result.pulseFrequency = (std::max)(wind->pulseFrequency, 0.0f);
+        break; // シーンに 1 つ想定。複数ある場合は最初の有効な 1 つを使う
+    }
+    return result;
 }
 
 } // namespace fbzz::scene

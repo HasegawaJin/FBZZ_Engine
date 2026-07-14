@@ -36,6 +36,8 @@ bool StandaloneProjectModule::OnInit()
     m_runtime.RegisterScenes(m_projectRoot, m_resources);
     m_runtime.LoadScene(m_startSceneFile);
     auto& app = core::Application::Get();
+    // GameHubを経由しない各プロジェクトのStandaloneでもScene Audioを有効にする。
+    m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
     return true;

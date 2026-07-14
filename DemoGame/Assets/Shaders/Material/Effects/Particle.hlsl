@@ -5,7 +5,7 @@
 
 #include "Common/Binding.hlsli"
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D    gParticleTex : register(TEX_ALBEDO);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);

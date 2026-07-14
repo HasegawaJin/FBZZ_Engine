@@ -11,7 +11,7 @@
 //   SV_Target1: RGB=worldNormal*0.5+0.5, A=metallic
 #include "Common/Binding.hlsli"
 #include "Common/Color.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 cbuffer CameraConstants : register(CB_CAMERA)
 {

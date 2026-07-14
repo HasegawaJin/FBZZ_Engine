@@ -6,6 +6,7 @@ add_library(imgui SHARED
     ImGui/imgui_widgets.cpp
     ImGui/backends/imgui_impl_win32.cpp
     ImGui/backends/imgui_impl_dx11.cpp
+    ImGui/backends/imgui_impl_dx12.cpp
 )
 
 target_include_directories(imgui
@@ -22,6 +23,8 @@ target_compile_definitions(imgui
     INTERFACE
         FBZZ_IMGUI_IMPORTS
 )
+
+target_link_libraries(imgui PRIVATE d3d12 dxgi dxguid)
 
 # imnodes
 # WHY: AnimationGraphPanel は AnimatorComponent をノードグラフ編集するため、

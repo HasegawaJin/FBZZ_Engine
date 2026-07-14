@@ -35,6 +35,12 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
+#include <Engine/Scene/Components/TerrainDetailComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/WindZoneComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
@@ -753,6 +759,21 @@ void ScriptAudioProxy::SetPitch(float pitch) const
         audio->pitch = std::clamp(pitch, 0.01f, 4.0f);
 }
 
+void ScriptAudioProxy::SetSpatialBlend(float blend) const
+{
+    if (auto* audio = SelfComponent<AudioSourceComponent>(script))
+        audio->spatialBlend = std::clamp(blend, 0.0f, 1.0f);
+}
+
+void ScriptAudioProxy::Set3DDistances(float minDistance, float maxDistance, float rolloff) const
+{
+    if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
+        audio->minDistance = (std::max)(minDistance, 0.0f);
+        audio->maxDistance = (std::max)(maxDistance, audio->minDistance + 0.001f);
+        audio->rolloffFactor = (std::max)(rolloff, 0.01f);
+    }
+}
+
 void ScriptAudioProxy::PlayOneShot(std::string_view clipPath) const
 {
     if (auto* audio = SelfComponent<AudioSourceComponent>(script)) {
@@ -1132,6 +1153,10 @@ void ScriptParticleProxy::Play(bool restart) const
             p->delayTime = 0.0f;
             p->emitAccum = 0.0f;
             p->randomState = p->randomSeed;
+            p->burstCyclesFired.clear();
+            p->prewarmed = false;
+            p->prewarmSpawnPending = 0;
+            p->hasLastEmitterPosition = false;
         }
     }
 }
@@ -1163,6 +1188,11 @@ void ScriptParticleProxy::Clear() const
         p->burstPending = 0;
         p->playTime = 0.0f;
         p->delayTime = 0.0f;
+        p->gpuClearPending = true;
+        p->gpuWriteHead = 0;
+        p->gpuSpawnCount = 0;
+        p->collisionCountThisFrame = 0;
+        p->prewarmSpawnPending = 0;
     }
 }
 
@@ -1194,7 +1224,14 @@ void ScriptParticleProxy::SetLifetime(float seconds) const
 
 void ScriptParticleProxy::SetMaxParticles(int maxParticles) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->maxParticles = (std::max)(maxParticles, 1);
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        const int clamped = (std::max)(maxParticles, 1);
+        if (p->maxParticles != clamped) {
+            p->maxParticles = clamped;
+            p->gpuInitialized = false;
+            p->gpuCapacity = 0;
+        }
+    }
 }
 
 void ScriptParticleProxy::SetPlayback(bool loop, float duration, bool clearOnStop) const
@@ -1251,6 +1288,22 @@ void ScriptParticleProxy::SetBoxShape(const math::Vector3& extents) const
     }
 }
 
+void ScriptParticleProxy::SetMeshShape(std::string_view modelPath, int meshIndex, float scale,
+                                       bool followSkinnedAnimation) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->shape = ParticleEmitterShape::MeshSurface;
+        p->meshShapePath = std::string(modelPath);
+        p->meshShapeIndex = meshIndex;
+        p->meshShapeScale = (std::max)(scale, 0.0001f);
+        p->meshShapeFollowSkinnedAnimation = followSkinnedAnimation;
+        // パス・サブメッシュ変更時は次のスポーンでFBX頂点を再構築する。
+        p->loadedMeshShapePath.clear();
+        p->loadedMeshShapeIndex = -2;
+        p->meshShapeVertices.clear();
+    }
+}
+
 void ScriptParticleProxy::SetBlendMode(ParticleBlendMode blendMode) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->blendMode = blendMode;
@@ -1263,7 +1316,92 @@ void ScriptParticleProxy::SetSortMode(ParticleSortMode sortMode) const
 
 void ScriptParticleProxy::SetSimulationMode(ParticleSimulationMode simulationMode) const
 {
-    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->simulationMode = simulationMode;
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        if (p->simulationMode != simulationMode) p->gpuClearPending = true;
+        p->simulationMode = simulationMode;
+    }
+}
+
+void ScriptParticleProxy::SetSimulationSpace(ParticleSimulationSpace space) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->simulationSpace = space;
+        if (space == ParticleSimulationSpace::Local)
+            p->simulationMode = ParticleSimulationMode::Cpu;
+    }
+}
+
+void ScriptParticleProxy::SetRenderMode(ParticleRenderMode mode, float stretchScale) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->renderMode = mode;
+        p->stretchedVelocityScale = (std::max)(stretchScale, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetCollision(ParticleCollisionMode mode,
+                                       ParticleCollisionResponse response,
+                                       float radius, float bounciness) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->collisionMode = mode;
+        p->collisionResponse = response;
+        p->collisionRadius = (std::max)(radius, 0.0f);
+        p->collisionBounciness = (std::max)(0.0f, (std::min)(bounciness, 1.0f));
+        if (mode == ParticleCollisionMode::Physics)
+            p->simulationMode = ParticleSimulationMode::Cpu;
+    }
+}
+
+int ScriptParticleProxy::GetCollisionCount() const
+{
+    if (const auto* p = SelfComponent<ParticleEmitter>(script))
+        return p->collisionCountThisFrame;
+    return 0;
+}
+
+void ScriptParticleProxy::SetRateOverDistance(float particlesPerMeter) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script))
+        p->rateOverDistance = (std::max)(particlesPerMeter, 0.0f);
+}
+
+void ScriptParticleProxy::SetPrewarm(bool enabled) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->prewarm = enabled;
+        p->prewarmed = false;
+        p->prewarmSpawnPending = 0;
+    }
+}
+
+void ScriptParticleProxy::SetSoftParticles(bool enabled, float fadeDistance) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->softParticles = enabled;
+        p->softParticleFadeDistance = (std::max)(fadeDistance, 0.001f);
+    }
+}
+
+void ScriptParticleProxy::SetFlipbookMode(ParticleFlipbookMode mode, float framesPerSecond) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->flipbookMode = mode;
+        p->flipbookFramesPerSecond = (std::max)(framesPerSecond, 0.0f);
+    }
+}
+
+void ScriptParticleProxy::SetSubEmitters(std::string_view birthEmitter,
+                                         std::string_view deathEmitter,
+                                         std::string_view collisionEmitter,
+                                         int burstCount) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->birthSubEmitter = std::string(birthEmitter);
+        p->deathSubEmitter = std::string(deathEmitter);
+        p->collisionSubEmitter = std::string(collisionEmitter);
+        p->subEmitterBurstCount = (std::max)(burstCount, 1);
+    }
 }
 
 void ScriptParticleProxy::SetVelocityDamping(float damping) const
@@ -1277,6 +1415,20 @@ void ScriptParticleProxy::SetAngularVelocity(float minValue, float maxValue) con
         p->angularVelocityMin = minValue;
         p->angularVelocityMax = maxValue;
     }
+}
+
+void ScriptParticleProxy::SetNoise(float strength, float frequency, float speed) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) {
+        p->noiseStrength  = (std::max)(strength, 0.0f);
+        p->noiseFrequency = (std::max)(frequency, 0.0001f);
+        p->noiseSpeed     = speed;
+    }
+}
+
+void ScriptParticleProxy::SetReceiveForceFields(bool receive) const
+{
+    if (auto* p = SelfComponent<ParticleEmitter>(script)) p->receiveForceFields = receive;
 }
 
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const
@@ -2921,6 +3073,242 @@ void ScriptLifetimeProxy::Kill() const
 {
     // remaining = 0 にして LifetimeSystem に次フレームで GO を破棄させる。
     if (auto* lc = SelfLifetime(script)) lc->remaining = 0.0f;
+}
+
+// ScriptParticleForceFieldProxy
+void ScriptParticleForceFieldProxy::SetEnabled(bool enabled) const
+{
+    if (auto* field = SelfComponent<ParticleForceField>(script)) field->enabled = enabled;
+}
+void ScriptParticleForceFieldProxy::SetType(ScriptParticleForceFieldType type) const
+{
+    if (auto* field = SelfComponent<ParticleForceField>(script)) {
+        const int value = (std::max)(0, (std::min)(static_cast<int>(type), 5));
+        field->fieldType = static_cast<ParticleForceFieldType>(value);
+    }
+}
+void ScriptParticleForceFieldProxy::SetStrength(float strength) const
+{
+    if (auto* field = SelfComponent<ParticleForceField>(script)) field->strength = strength;
+}
+void ScriptParticleForceFieldProxy::SetRadius(float radius, float falloffPower) const
+{
+    if (auto* field = SelfComponent<ParticleForceField>(script)) {
+        field->radius = radius;
+        field->falloffPower = (std::max)(falloffPower, 0.01f);
+    }
+}
+void ScriptParticleForceFieldProxy::SetDirection(const math::Vector3& direction) const
+{
+    if (auto* field = SelfComponent<ParticleForceField>(script)) field->direction = direction;
+}
+void ScriptParticleForceFieldProxy::SetTurbulence(float frequency, float speed) const
+{
+    if (auto* field = SelfComponent<ParticleForceField>(script)) {
+        field->noiseFrequency = (std::max)(frequency, 0.0f);
+        field->noiseSpeed = speed;
+    }
+}
+
+// ScriptCloudProxy
+void ScriptCloudProxy::SetEnabled(bool enabled) const
+{
+    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) cloud->enabled = enabled;
+}
+void ScriptCloudProxy::SetLayer(float bottomHeight, float thickness) const
+{
+    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) {
+        cloud->bottomHeight = bottomHeight;
+        cloud->thickness = (std::max)(thickness, 1.0f);
+    }
+}
+void ScriptCloudProxy::SetCoverage(float coverage, float density) const
+{
+    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) {
+        cloud->coverage = (std::max)(0.0f, (std::min)(coverage, 1.0f));
+        cloud->density = (std::max)(density, 0.0f);
+    }
+}
+void ScriptCloudProxy::SetWind(const math::Vector2& direction, float speed) const
+{
+    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) {
+        cloud->windDirection = direction;
+        cloud->windSpeed = speed;
+    }
+}
+void ScriptCloudProxy::SetLighting(float absorption, float ambientStrength,
+                                   float silverLining, const math::Vector3& albedo) const
+{
+    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) {
+        cloud->lightAbsorption = (std::max)(absorption, 0.0f);
+        cloud->ambientStrength = (std::max)(0.0f, (std::min)(ambientStrength, 1.0f));
+        cloud->silverLining = (std::max)(silverLining, 0.0f);
+        cloud->albedo = albedo;
+    }
+}
+void ScriptCloudProxy::SetQuality(int stepCount, float maxDistance) const
+{
+    if (auto* cloud = SelfComponent<VolumetricCloudComponent>(script)) {
+        cloud->stepCount = (std::max)(8, (std::min)(stepCount, 96));
+        cloud->maxDistance = (std::max)(maxDistance, 100.0f);
+    }
+}
+
+// ScriptSunMoonProxy
+void ScriptSunMoonProxy::SetEnabled(bool enabled) const
+{
+    if (auto* sunMoon = SelfComponent<SunMoonRenderer>(script)) sunMoon->enabled = enabled;
+}
+void ScriptSunMoonProxy::SetSun(bool enabled, float intensity) const
+{
+    if (auto* sunMoon = SelfComponent<SunMoonRenderer>(script)) {
+        sunMoon->sunEnabled = enabled;
+        sunMoon->sunIntensity = (std::max)(intensity, 0.0f);
+    }
+}
+void ScriptSunMoonProxy::SetMoon(bool enabled, float size, float brightness,
+                                 const math::Vector3& color) const
+{
+    if (auto* sunMoon = SelfComponent<SunMoonRenderer>(script)) {
+        sunMoon->moonEnabled = enabled;
+        sunMoon->moonSize = (std::max)(size, 0.0f);
+        sunMoon->moonBrightness = (std::max)(brightness, 0.0f);
+        sunMoon->moonColor = color;
+    }
+}
+
+// ScriptTerrainDetailProxy
+void ScriptTerrainDetailProxy::SetEnabled(bool enabled) const
+{
+    if (auto* detail = SelfComponent<TerrainDetailComponent>(script)) detail->enabled = enabled;
+}
+int ScriptTerrainDetailProxy::GetLayerCount() const
+{
+    const auto* detail = SelfComponent<TerrainDetailComponent>(script);
+    return detail ? static_cast<int>(detail->layers.size()) : 0;
+}
+bool ScriptTerrainDetailProxy::SetDensity(size_t layerIndex, float density) const
+{
+    auto* detail = SelfComponent<TerrainDetailComponent>(script);
+    if (!detail || layerIndex >= detail->layers.size()) return false;
+    detail->layers[layerIndex].density = (std::max)(density, 0.0f);
+    detail->needsBake = true;
+    return true;
+}
+bool ScriptTerrainDetailProxy::SetScaleRange(size_t layerIndex, float minScale, float maxScale) const
+{
+    auto* detail = SelfComponent<TerrainDetailComponent>(script);
+    if (!detail || layerIndex >= detail->layers.size()) return false;
+    minScale = (std::max)(minScale, 0.001f);
+    detail->layers[layerIndex].minScale = minScale;
+    detail->layers[layerIndex].maxScale = (std::max)(maxScale, minScale);
+    detail->needsBake = true;
+    return true;
+}
+bool ScriptTerrainDetailProxy::SetDrawDistance(size_t layerIndex, float fadeStartDistance,
+                                                float drawDistance) const
+{
+    auto* detail = SelfComponent<TerrainDetailComponent>(script);
+    if (!detail || layerIndex >= detail->layers.size()) return false;
+    drawDistance = (std::max)(drawDistance, 0.0f);
+    detail->layers[layerIndex].drawDistance = drawDistance;
+    detail->layers[layerIndex].fadeStartDist = (std::max)(0.0f, (std::min)(fadeStartDistance, drawDistance));
+    return true;
+}
+bool ScriptTerrainDetailProxy::SetWind(size_t layerIndex, float strength, float frequency) const
+{
+    auto* detail = SelfComponent<TerrainDetailComponent>(script);
+    if (!detail || layerIndex >= detail->layers.size()) return false;
+    detail->layers[layerIndex].windStrength = strength;
+    detail->layers[layerIndex].windFrequency = (std::max)(frequency, 0.0f);
+    return true;
+}
+void ScriptTerrainDetailProxy::RequestBake() const
+{
+    if (auto* detail = SelfComponent<TerrainDetailComponent>(script)) detail->needsBake = true;
+}
+
+// ScriptPatrolProxy
+void ScriptPatrolProxy::SetEnabled(bool enabled) const
+{
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) patrol->enabled = enabled;
+}
+void ScriptPatrolProxy::SetMode(ScriptPatrolMode mode) const
+{
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) {
+        patrol->mode = mode == ScriptPatrolMode::PING_PONG
+            ? NavMeshPatrolComponent::Mode::PING_PONG
+            : NavMeshPatrolComponent::Mode::LOOP;
+    }
+}
+void ScriptPatrolProxy::SetWaitTime(float seconds) const
+{
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) patrol->waitTime = (std::max)(seconds, 0.0f);
+}
+void ScriptPatrolProxy::ClearWaypoints() const
+{
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) {
+        patrol->waypoints.clear();
+        patrol->waypointWaitTimes.clear();
+        patrol->waypointSpeeds.clear();
+        patrol->currentIndex = 0;
+        patrol->started = false;
+        patrol->waiting = false;
+    }
+}
+void ScriptPatrolProxy::AddWaypoint(const math::Vector3& position, float waitTime, float speed) const
+{
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) {
+        patrol->waypoints.push_back(position);
+        patrol->waypointWaitTimes.push_back(waitTime < 0.0f ? patrol->waitTime : waitTime);
+        patrol->waypointSpeeds.push_back((std::max)(speed, 0.0f));
+        patrol->started = false;
+    }
+}
+bool ScriptPatrolProxy::SetWaypoint(size_t index, const math::Vector3& position) const
+{
+    auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
+    if (!patrol || index >= patrol->waypoints.size()) return false;
+    patrol->waypoints[index] = position;
+    patrol->started = false;
+    return true;
+}
+void ScriptPatrolProxy::Restart(size_t startIndex) const
+{
+    if (auto* patrol = SelfComponent<NavMeshPatrolComponent>(script)) {
+        patrol->currentIndex = patrol->waypoints.empty() ? 0 : (std::min)(startIndex, patrol->waypoints.size() - 1);
+        patrol->direction = 1;
+        patrol->waiting = false;
+        patrol->waitTimer = 0.0f;
+        patrol->started = false;
+    }
+}
+int ScriptPatrolProxy::GetCurrentIndex() const
+{
+    const auto* patrol = SelfComponent<NavMeshPatrolComponent>(script);
+    return patrol ? static_cast<int>(patrol->currentIndex) : -1;
+}
+
+// ScriptWindProxy
+void ScriptWindProxy::SetEnabled(bool enabled) const
+{
+    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->enabled = enabled;
+}
+void ScriptWindProxy::SetDirection(const math::Vector3& direction) const
+{
+    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->direction = direction;
+}
+void ScriptWindProxy::SetStrength(float strength) const
+{
+    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->strength = strength;
+}
+void ScriptWindProxy::SetTurbulence(float turbulence) const
+{
+    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->turbulence = (std::max)(turbulence, 0.0f);
+}
+void ScriptWindProxy::SetPulseFrequency(float frequency) const
+{
+    if (auto* wind = SelfComponent<WindZoneComponent>(script)) wind->pulseFrequency = (std::max)(frequency, 0.0f);
 }
 
 } // namespace fbzz::scene

@@ -13,6 +13,8 @@ namespace fbzz::scene {
 
 struct SkinnedMeshRenderer {
     bool enabled = true;
+    // LODSystem 専用のランタイム可視性。Scene には保存しない。
+    bool lodVisible = true;
     std::string modelPath;
     int meshIndex = -1; // -1 = 全 submesh, >=0 = 子 GO が担当する特定 submesh
 

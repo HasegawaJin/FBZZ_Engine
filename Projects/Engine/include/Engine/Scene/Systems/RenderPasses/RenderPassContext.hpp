@@ -49,7 +49,21 @@ struct UserRenderPassDesc {
     bool allowCulling = true;
 };
 
-// GPU パーティクル CS 用定数バッファ (b0) — 112 bytes, 16-byte aligned
+// GPU パーティクル CS が参照する力場 1 本分 (48 bytes)。
+// LAYOUT: ParticleGpuSim.cs.hlsl の GpuForceField と完全に一致させること。
+struct GpuForceField {
+    math::Vector4 posRadius;   // xyz=ワールド位置, w=影響半径 (<=0 で無限)
+    math::Vector4 dirStrength; // xyz=風向き/渦軸 (ワールド・正規化済み), w=強さ
+    math::Vector4 params;      // x=種類(ParticleForceFieldType), y=falloffPower,
+                               // z=noiseFrequency, w=noiseSpeed
+};
+
+// 1 フレームに GPU パーティクルへ渡せる力場の上限。
+// WHY: cbuffer は固定長のため上限を切る。超過分は ParticlePass が近い順ではなく
+//      シーン順で切り捨てる (力場が 8 本を超えるシーンは想定しない)。
+inline constexpr int kMaxGpuForceFields = 8;
+
+// GPU パーティクル CS 用定数バッファ (b0) — 688 bytes, 16-byte aligned
 struct GpuParticleEmitterCB {
     math::Vector3 emitterPos;
     float         deltaTime;
@@ -69,7 +83,26 @@ struct GpuParticleEmitterCB {
     uint32_t      spriteRows;
     uint32_t      spriteStartFrame;
     uint32_t      spriteEndFrame;
+    // ── ノイズモジュール + 力場 (末尾追加で既存オフセットを変えない) ──
+    float         time;             // カールノイズのスクロールに使う経過時間
+    float         noiseStrength;    // エミッター固有乱流の強さ (0 で無効)
+    float         noiseFrequency;
+    float         noiseSpeed;
+    uint32_t      forceFieldCount;  // gForceFields の有効本数
+    uint32_t      flipbookMode;
+    float         flipbookFramesPerSecond;
+    float         pad1;
+    GpuForceField forceFields[kMaxGpuForceFields];
+    math::Vector4 curveFlags;       // x=size, y=velocity, z=gradient, w=frameBlend
+    math::Vector4 sizeCurveKeys01;  // time0,value0,time1,value1
+    math::Vector4 sizeCurveKeys23;
+    math::Vector4 velocityCurveKeys01;
+    math::Vector4 velocityCurveKeys23;
+    math::Vector4 gradientTimes;
+    math::Vector4 gradientColors[4];
 };
+static_assert(sizeof(GpuParticleEmitterCB) == 688,
+    "GpuParticleEmitterCB must match GpuEmitterCB in ParticleGpuSim.cs.hlsl (688 bytes)");
 
 struct PerFrameCB {
     math::Matrix4 view;
@@ -483,6 +516,10 @@ struct RenderPassContext {
     int statsDrawCalls       = 0;
     int statsVertexCount     = 0;
     int statsTriangleCount   = 0;
+    int statsParticleEmitters = 0;
+    int statsParticleVisible = 0;
+    int statsParticleCulled = 0;
+    int statsParticleBudgetDropped = 0;
 
     // トランジェント RT リゾルバ。RenderPipeline::Execute() が設定する。
     // WHY: パスコールバックが RenderPipeline を直接参照しないよう、

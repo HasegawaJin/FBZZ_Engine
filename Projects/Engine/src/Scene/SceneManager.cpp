@@ -18,7 +18,9 @@
 #include "Engine/Scene/Systems/IKSystem.hpp"
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
 #include "Engine/Scene/Systems/AudioSystem.hpp"
+#include "Engine/Scene/Systems/LODSystem.hpp"
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
+#include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <string>
@@ -70,8 +72,10 @@ void SceneManager::BuildScheduler()
     // LateUpdate
     m_scheduler.AddSystem<UIAnimatorSystem>();
     m_scheduler.AddSystem<TransformLateUpdate>();
+    m_scheduler.AddSystem<LODSystem>();
     m_scheduler.AddSystem<AnimatorSystem>();
     m_scheduler.AddSystem<IKSystem>();
+    m_scheduler.AddSystem<ParticleSimulationSystem>();
 
     m_scheduler.Build();
 }

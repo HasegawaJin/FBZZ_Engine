@@ -134,7 +134,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* mr  = go.GetComponent<MeshRenderer>();
         auto* mat = go.GetComponent<MaterialComponent>();
-        if (!mr || !mr->enabled || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
+        if (!mr || !mr->enabled || !mr->lodVisible || !mr->mesh || !mat || !mat->EnsureMaterialAsset()) continue;
         if (!mr->mesh->vertexBuffer.IsValid() || !mr->mesh->indexBuffer.IsValid()) continue;
         if (mr->mesh->isSkinned) continue;
 
@@ -189,7 +189,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         auto* smr  = go.GetComponent<SkinnedMeshRenderer>();
         auto* mat  = go.GetComponent<MaterialComponent>();
         auto* anim = FindAnimator(go);
-        if (!smr || !smr->enabled || !smr->model || !mat || !mat->EnsureMaterialAsset()) continue;
+        if (!smr || !smr->enabled || !smr->lodVisible || !smr->model || !mat || !mat->EnsureMaterialAsset()) continue;
 
         ++ctx.statsTotalObjects;
         if (!IsSkinnedVisibleInFrustum(frustum, go.transform, *smr)) {

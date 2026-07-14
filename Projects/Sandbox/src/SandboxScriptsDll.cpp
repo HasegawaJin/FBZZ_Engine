@@ -10,13 +10,9 @@
 //   境界が明確なまま保てる。
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
-//      Assets/Scripts/Foo.hpp に解決される。
-// WHY: 新方式のスクリプトは実装を inline 化したため _IMPL ガードや専用 .cpp は不要。
-//      ヘッダを include するだけで実装もこの TU に取り込まれる (複数 TU でも ODR 安全)。
 #include "Scripts/PlayerControllerComponent.hpp"
-#include "Scripts/TpsCameraComponent.hpp"
 #include "Scripts/SceneManagerScript.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。

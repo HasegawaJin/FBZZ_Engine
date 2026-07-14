@@ -34,6 +34,16 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::DragFloat("Cloud Shadow Speed", &sr.cloudShadowSpeed, 0.01f, 0.0f, 10.0f);
         });
 
+    DrawComponentSection<scene::WindZoneComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Wind Zone",
+        [](scene::WindZoneComponent& wind, EditorContext&) {
+            widgets::DragVec3("Direction", wind.direction, 0.01f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Local direction; rotated by the GameObject transform");
+            ImGui::DragFloat("Strength", &wind.strength, 0.01f, 0.0f, 100.0f);
+            ImGui::DragFloat("Turbulence", &wind.turbulence, 0.01f, 0.0f, 100.0f);
+            ImGui::DragFloat("Pulse Frequency", &wind.pulseFrequency, 0.01f, 0.0f, 20.0f);
+        });
+
     DrawComponentSection<scene::SunMoonRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Sun Moon Renderer",
         [](scene::SunMoonRenderer& smr, EditorContext&) {
             ImGui::SeparatorText("Sun");

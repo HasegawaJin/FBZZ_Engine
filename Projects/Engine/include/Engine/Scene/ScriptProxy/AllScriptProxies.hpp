@@ -17,6 +17,12 @@
 #include <Engine/Scene/ScriptProxy/ScriptCameraProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptParticleForceFieldProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptCloudProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptSunMoonProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptTerrainDetailProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptPatrolProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptWindProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptTrailProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMeshTrailProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptSceneProxy.hpp>

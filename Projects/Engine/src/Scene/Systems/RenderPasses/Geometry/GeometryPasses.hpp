@@ -37,7 +37,23 @@ struct ParticleVertex {
     float size;       // TEXCOORD1    4 bytes
     float rotation;   // TEXCOORD2    4 bytes
     float uvRect[4];  // TEXCOORD3   16 bytes
-};                    // 60 bytes
+    float velocity[3];// TEXCOORD4   12 bytes
+    float nextUvRect[4]; // TEXCOORD5 16 bytes
+    float spriteBlend;   // TEXCOORD6  4 bytes
+};                       // 92 bytes
+static_assert(sizeof(ParticleVertex) == 92, "ParticleVertex must match ParticleVSIn (92 bytes)");
+
+// Particle描画専用CB (b2)。CPU/GPUシェーダーで同じRenderer設定を使う。
+struct ParticleRenderCB {
+    uint32_t renderMode = 0;
+    float stretchedVelocityScale = 0.1f;
+    float stretchedLengthScale = 1.0f;
+    float softParticleFadeDistance = 0.5f;
+    uint32_t softParticles = 0;
+    uint32_t maxParticles = 0;
+    uint32_t pad[2]{};
+};
+static_assert(sizeof(ParticleRenderCB) == 32);
 
 // ---- パス宣言 ---------------------------------------------------------------
 void ExecuteShadowPass                     (RenderPassContext& ctx);
@@ -76,6 +92,21 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
 
 bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask);
 bool IsSurfaceMaterialShader(std::string_view path);
+
+// シーングローバル風 (WindZoneComponent) の解決結果。
+// active=false のとき direction/strength は従来のハードコード既定値のままなので、
+// 呼び出し側は WindZone の有無を気にせず direction をそのまま使える。
+struct ActiveWindZone {
+    bool          active         = false;
+    math::Vector3 direction      = { 0.7071f, 0.0f, 0.7071f }; // ワールド空間・正規化済み
+    float         strength       = 1.0f;
+    float         turbulence     = 0.0f;
+    float         pulseFrequency = 1.0f;
+};
+
+// シーンから最初の有効な WindZoneComponent を探し、ワールド空間へ解決する。
+// WHY: 草・雲・パーティクルが同じ風を参照するための単一の入口。毎フレーム軽量な走査で済む。
+ActiveWindZone FindActiveWindZone(Scene& scene);
 
 // ── カリング ヘルパー ────────────────────────────────────────────────────────
 

@@ -1,0 +1,15 @@
+# FBZZ Engine
+# fbzz-sdk.toml | SDK
+# SDK の版数・ツールチェーン・ABI 契約
+
+[sdk]
+version = "@PROJECT_VERSION@"
+architecture = "x64"
+compiler = "MSVC"
+msvc_version = "@FBZZ_SDK_MSVC_VERSION@"
+compiler_version = "@FBZZ_SDK_COMPILER_VERSION@"
+toolset_version = "@FBZZ_SDK_MSVC_TOOLSET_VERSION@"
+runtime_debug = "MultiThreadedDebugDLL"
+runtime_development = "MultiThreadedDLL"
+runtime_release = "MultiThreadedDLL"
+abi_policy = "exact"

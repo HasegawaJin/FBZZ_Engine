@@ -17,14 +17,9 @@
 
 #include "IImGuiRenderer.hpp"
 #include "IRenderer.hpp"
+#include "RendererBackend.hpp" // RendererBackend enum (旧: 本ファイル内で定義。共有のため分離)
 
 namespace fbzz::renderer {
-
-// 生成対象のグラフィックスバックエンド。DX12 実装追加時にここへ列挙子を足す。
-enum class RendererBackend : uint8_t {
-    DX11,
-    // DX12,  // Step 6b で追加予定
-};
 
 // CreateRenderer が返す IRenderer + ImGui バックエンドのペア。
 // WHY: 両者は同一デバイスを共有するため、個別生成では合成ルートが再びデバイス配線を知る必要が出る。

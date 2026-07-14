@@ -2,11 +2,14 @@
 // DetailTool.cpp | fbzz::editor
 // Detail ペイントツールの実装
 #include "DetailTool.hpp"
+#include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <memory>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Math/Matrix4.hpp>
@@ -37,7 +40,8 @@ void DetailTool::Update(
     bool                      viewportHovered,
     const ImVec2&             viewportMin,
     const ImVec2&             viewportSize,
-    const std::function<void()>& markDirty)
+    const std::function<void()>& markDirty,
+    UndoStack*                undoStack)
 {
     // チャンクデバッグ表示は常時 (アクティブ/非アクティブ問わず)
     if (m_showChunkBounds || m_showCounts)
@@ -46,10 +50,38 @@ void DetailTool::Update(
     // ドラッグ中に Terrain 全体を毎フレーム再 Bake すると編集操作が停止するため、
     // 密度変更をストローク終了時にまとめて一度だけ Bake する。
     if (m_strokeDirty && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-        if (auto* detail = scene.GetComponent<scene::TerrainDetailComponent>(m_strokeEntity))
+        if (auto* detail = scene.GetComponent<scene::TerrainDetailComponent>(m_strokeEntity)) {
             detail->needsBake = true;
-        m_strokeDirty  = false;
-        m_strokeEntity = {};
+
+            // ストロークを 1 操作として Undo 履歴へ積む。
+            // WHY: Sculpt/Paint は Undo が効くのに Detail だけ効かないと Ctrl+Z の挙動が不揃いで
+            //      信頼を損なう。密度マップ全体の before/after を guid 経由で入れ替える。
+            if (undoStack && undoStack->IsRecordingEnabled()
+                && m_strokeCaptured && !m_strokeInstanceId.empty()) {
+                std::vector<scene::DetailDensityMap> after = detail->densityMaps;
+                scene::Scene* scenePtr = &scene;
+                const std::string iid = m_strokeInstanceId;
+                const auto md = markDirty;
+                auto apply = [scenePtr, iid, md](const std::vector<scene::DetailDensityMap>& maps) {
+                    if (auto* go = scenePtr->FindByGuid(iid)) {
+                        if (auto* d = go->GetComponent<scene::TerrainDetailComponent>()) {
+                            d->densityMaps = maps;
+                            d->needsBake   = true;
+                            if (md) md();
+                        }
+                    }
+                };
+                undoStack->Push(std::make_unique<LambdaCommand>(
+                    m_mode == Mode::Paint ? "Paint Detail" : "Erase Detail",
+                    [apply, after]()                        { apply(after); },
+                    [apply, before = m_strokeBeforeMaps]()  { apply(before); }));
+            }
+        }
+        m_strokeDirty    = false;
+        m_strokeEntity   = {};
+        m_strokeCaptured = false;
+        m_strokeInstanceId.clear();
+        m_strokeBeforeMaps.clear();
         markDirty();
     }
 
@@ -97,6 +129,14 @@ void DetailTool::Update(
             && m_layerIndex >= 0
             && m_layerIndex < static_cast<int>(detail->layers.size()))
         {
+            // ストローク開始フレームで密度マップ全体を退避する (ApplyBrush で書き換わる前)。
+            // EnsureDensityMap で新規レイヤーが 0 埋め生成される前の状態を保存し、
+            // Undo でストローク前へ正しく戻せるようにする。
+            if (!m_strokeCaptured) {
+                m_strokeBeforeMaps = detail->densityMaps;
+                m_strokeInstanceId = go->instanceId;
+                m_strokeCaptured   = true;
+            }
             const float dt = ImGui::GetIO().DeltaTime;
             if (ApplyBrush(*detail, *terrain, go->transform, hitWorld, dt)) {
                 m_strokeDirty  = true;

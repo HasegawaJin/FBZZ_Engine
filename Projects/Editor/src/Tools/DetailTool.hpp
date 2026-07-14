@@ -20,19 +20,25 @@
 #include <Math/Vector3.hpp>
 #include <Math/Ray.hpp>
 #include <functional>
+#include <string>
+#include <vector>
 #include <imgui.h>
 
 namespace fbzz::editor {
 
+class UndoStack;
+
 class DetailTool {
 public:
     // ビューポートで毎フレーム呼ぶ。入力処理 + ブラシ描画 + チャンクデバッグ表示。
+    // undoStack を渡すとブラシストロークを 1 操作として Undo 履歴へ積む (nullptr で無効)。
     void Update(scene::Scene&             scene,
                 const renderer::Camera&   camera,
                 bool                      viewportHovered,
                 const ImVec2&             viewportMin,
                 const ImVec2&             viewportSize,
-                const std::function<void()>& markDirty);
+                const std::function<void()>& markDirty,
+                UndoStack*                undoStack = nullptr);
 
     // ImGui ツールウィンドウを描画する。
     void OnEditorGUI(scene::Scene& scene, const std::function<void()>& markDirty);
@@ -77,6 +83,12 @@ private:
     scene::EntityID  m_hitEntity  = {};
     bool             m_strokeDirty = false;
     scene::EntityID  m_strokeEntity = {};
+
+    // Undo 用ストロークスナップショット。ストローク開始時に密度マップ全体を退避し、
+    // 終了時に before/after を LambdaCommand へ渡す。instanceId(guid) で対象を再解決する。
+    bool                                   m_strokeCaptured = false;
+    std::string                            m_strokeInstanceId;
+    std::vector<scene::DetailDensityMap>   m_strokeBeforeMaps;
 
     // レイキャスト (TerrainTool と同じアルゴリズム)
     bool RaycastTerrain(scene::Scene&           scene,

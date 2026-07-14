@@ -4,7 +4,7 @@
 // フォグ: 深度バッファから線形距離を復元して指数フォグを適用する
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/ToneMap.hlsli"
 #include "Rendering/Fog.hlsli"
 #include "Rendering/PostProcess.hlsli"

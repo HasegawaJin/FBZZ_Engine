@@ -10,7 +10,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Color.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 cbuffer FoliageMaterialCB : register(CB_MATERIAL)
 {
@@ -18,7 +18,25 @@ cbuffer FoliageMaterialCB : register(CB_MATERIAL)
     uint   hasAlbedo;
     float  alphaCutoff;
     float2 _foliagePad;
+    // ── 風スウェイ (WindZone) ── C++ FoliageMaterialCB と一致させること
+    float3 windDir;       // ワールド風向き (正規化済み)
+    float  windTime;      // 累積時間
+    float  windStrength;  // 揺れ振幅スケール。0 で無効
+    float  windFrequency; // 揺れ周波数
+    float2 _windPad;
 };
+
+// 風スウェイ: Foliage.hlsl と同一の式 (Deferred でも Forward と揺れを一致させる)。
+float3 WindSway(float3 worldPosition, float localHeight, float2 instanceXZ)
+{
+    if (windStrength <= 0.0f)
+        return worldPosition;
+    const float height = max(localHeight, 0.0f);
+    const float phase  = dot(instanceXZ, float2(0.37f, 0.71f));
+    const float wave   = sin(windTime * windFrequency + phase) * 0.7f
+                       + sin(windTime * windFrequency * 2.33f + phase * 1.7f) * 0.3f;
+    return worldPosition + windDir * (wave * windStrength * 0.02f * height * height);
+}
 
 struct FoliageInstance
 {
@@ -63,8 +81,9 @@ PsIn VSMain(VsIn input, uint instanceId : SV_InstanceID)
          0.0f, 1.0f, 0.0f,
         -s, 0.0f, c);
 
-    const float3 worldPosition =
+    float3 worldPosition =
         mul(rotation, input.position * instance.scale) + instance.pos;
+    worldPosition = WindSway(worldPosition, input.position.y * instance.scale, instance.pos.xz);
 
     PsIn output;
     output.svPos  = mul(float4(worldPosition, 1.0f), viewProjection);

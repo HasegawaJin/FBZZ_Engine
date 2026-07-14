@@ -60,23 +60,48 @@ bool TryGetWriteTime(const std::filesystem::path& path, FILETIME& out)
     return true;
 }
 
-// ディレクトリ配下で最も新しい更新時刻を返す。
-// WHY: Windows では既存ファイルの中身を書き換えても親ディレクトリの更新時刻は変わらない。
-//      Scripts/ や shaders/ のディレクトリ時刻だけを監視すると、ホットリロード対象の .hpp / .hlsl
-//      編集を検知できないため、ツリー内の各エントリを確認する。
-FILETIME GetLatestWriteTimeInTree(const std::filesystem::path& root)
+// HLSL本体とincludeのうち、最も新しい更新時刻を返す。
+// WHY: compiled配下のCSOやmeta更新を監視対象へ混ぜると、再コンパイル直後に再度Dirtyになるため。
+FILETIME GetLatestShaderSourceWriteTime(const std::filesystem::path& root)
 {
     FILETIME latest{};
-    if (!TryGetWriteTime(root, latest))
-        return latest;
-
     for (const std::filesystem::path& path : util::FileSystem::ListFilesRecursive(root)) {
-        FILETIME ft{};
-        if (TryGetWriteTime(path, ft) && CompareFileTime(&ft, &latest) > 0)
-            latest = ft;
+        const std::wstring extension = path.extension().wstring();
+        if (extension != L".hlsl" && extension != L".hlsli") continue;
+        FILETIME writeTime{};
+        if (TryGetWriteTime(path, writeTime) && CompareFileTime(&writeTime, &latest) > 0)
+            latest = writeTime;
     }
-
     return latest;
+}
+
+// コンパイル済みディレクトリ内で最も古いCSO時刻を返す。
+// 全Shaderを一括生成する現行フローでは、一つでも古ければセット全体を再生成する必要がある。
+bool TryGetOldestCsoWriteTime(const std::filesystem::path& root, FILETIME& oldest)
+{
+    bool found = false;
+    for (const std::filesystem::path& path : util::FileSystem::ListFilesRecursive(root)) {
+        if (path.extension() != L".cso") continue;
+        FILETIME writeTime{};
+        if (!TryGetWriteTime(path, writeTime)) continue;
+        if (!found || CompareFileTime(&writeTime, &oldest) < 0) oldest = writeTime;
+        found = true;
+    }
+    return found;
+}
+
+// Editor起動前に変更されたHLSL/includeも初回スキャンで検出する。
+bool HasStaleCompiledShaderSet(const std::filesystem::path& shaderRoot)
+{
+    const FILETIME latestSource = GetLatestShaderSourceWriteTime(shaderRoot);
+    if (IsEmptyFileTime(latestSource)) return false;
+    for (const std::filesystem::path directory : {L"compiled", L"compiled_dx12"}) {
+        FILETIME oldestCso{};
+        if (!TryGetOldestCsoWriteTime(shaderRoot / directory, oldestCso)
+            || CompareFileTime(&latestSource, &oldestCso) > 0)
+            return true;
+    }
+    return false;
 }
 
 // Scripts DLLの鮮度判定に使う、ユーザー編集ソースの最新更新時刻を返す。
@@ -107,38 +132,49 @@ std::filesystem::path GetScriptScanRoot(const std::filesystem::path& scriptsSour
 }
 
 // HLSL の再コンパイル結果を現在開いているプロジェクトへ反映する。
-// WHY: compile_shaders.bat はエンジンソース側 Assets/shaders/compiled に CSO を出力する。
-//      しかし実行中の renderer はプロジェクト側 Assets/shaders/compiled を読むため、
+// WHY: compile_shaders.bat はエンジンソース側へDX11/DX12別のCSOを出力する。
+//      しかし実行中の renderer はプロジェクト側 Assets/shaders を読むため、
 //      ReloadAllShaders() の前に CSO を同期しないと古いバイナリを再ロードしてしまう。
 bool SyncCompiledShadersToProject(const std::filesystem::path& hlslSourceDir,
                                   const std::string& projectRoot)
 {
     if (hlslSourceDir.empty() || projectRoot.empty()) return false;
 
-    const std::filesystem::path src = hlslSourceDir / L"compiled";
-    const std::filesystem::path dst = util::FileSystem::PathFromUtf8(projectRoot) /
-                                      L"Assets" / L"shaders" / L"compiled";
-
-    if (!util::FileSystem::Exists(src)) return false;
-    if (util::FileSystem::SamePath(src, dst)) return true;
-    return util::FileSystem::CopyDirectoryRecursive(src, dst);
+    const std::filesystem::path shaderDestination =
+        util::FileSystem::PathFromUtf8(projectRoot) / L"Assets" / L"shaders";
+    bool copiedAny = false;
+    for (const std::filesystem::path directory : {L"compiled", L"compiled_dx12"}) {
+        const std::filesystem::path src = hlslSourceDir / directory;
+        const std::filesystem::path dst = shaderDestination / directory;
+        if (!util::FileSystem::Exists(src)) continue;
+        if (!util::FileSystem::SamePath(src, dst)
+            && !util::FileSystem::CopyDirectoryRecursive(src, dst)) return false;
+        copiedAny = true;
+    }
+    return copiedAny;
 }
 
 // HLSL の再コンパイル結果を renderer の実際の読込先へ反映する。
 // WHY: EditorLauncher / sandbox は起動時にカレントディレクトリを exe 隣へ変更する。
-//      DX11Shader は "assets/shaders/compiled/..." を相対パスで開くため、
+//      Rendererはバックエンド別compiledディレクトリを相対パスで開くため、
 //      ReloadAllShaders() の前に exe 隣の Assets にも CSO を同期する必要がある。
 bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceDir)
 {
     if (hlslSourceDir.empty()) return false;
 
-    const std::filesystem::path src = hlslSourceDir / L"compiled";
-    const std::filesystem::path dst = util::FileSystem::GetCurrentDirectory() /
-                                      L"Assets" / L"shaders" / L"compiled";
-    if (dst.empty()) return false;
-    if (!util::FileSystem::Exists(src)) return false;
-    if (util::FileSystem::SamePath(src, dst)) return true;
-    return util::FileSystem::CopyDirectoryRecursive(src, dst);
+    const std::filesystem::path shaderDestination =
+        util::FileSystem::GetCurrentDirectory() / L"Assets" / L"shaders";
+    if (shaderDestination.empty()) return false;
+    bool copiedAny = false;
+    for (const std::filesystem::path directory : {L"compiled", L"compiled_dx12"}) {
+        const std::filesystem::path src = hlslSourceDir / directory;
+        const std::filesystem::path dst = shaderDestination / directory;
+        if (!util::FileSystem::Exists(src)) continue;
+        if (!util::FileSystem::SamePath(src, dst)
+            && !util::FileSystem::CopyDirectoryRecursive(src, dst)) return false;
+        copiedAny = true;
+    }
+    return copiedAny;
 }
 
 } // namespace
@@ -437,9 +473,19 @@ void EditorApp::CheckHotReload()
 
 namespace {
 
-// WHY: GameHub プロジェクトは初回開封時に cmake configure が済んでいない場合がある。
-//      build.config がないと ToolchainLocator が失敗してスクリプトが動かないため、
-//      CMakePresets.json が存在すれば自動で cmake --preset fbzz-vs を実行する。
+bool CMakeCacheUsesSdkRoot(const std::filesystem::path& buildDir, const std::string& sdkRoot)
+{
+    if (sdkRoot.empty()) return true;
+    std::string cacheText;
+    if (!util::FileSystem::ReadText(buildDir / L"CMakeCache.txt", cacheText)) return false;
+
+    const std::string normalizedCache = util::FileSystem::NormalizePathSeparators(cacheText);
+    const std::string normalizedSdk = util::FileSystem::NormalizePathSeparators(sdkRoot);
+    return normalizedCache.find("FBZZ_SDK_ROOT:PATH=" + normalizedSdk) != std::string::npos;
+}
+
+// WHY: GameHub プロジェクトは初回開封時、または共有 SDK 移行直後に cache が古い場合がある。
+//      stale な Scripts.dll を先に読むと偽の ABI 詳細を出すため、ロード前に configure を完了させる。
 bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engineRoot)
 {
     wchar_t cmakeBuf[MAX_PATH]{};
@@ -453,7 +499,7 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
         if (sz > 0) {
             std::wstring w(static_cast<size_t>(sz - 1), L'\0');
             MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, w.data(), sz);
-            SetEnvironmentVariableW(L"FBZZ_ENGINE_ROOT", w.c_str());
+            SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", w.c_str());
         }
     }
 
@@ -464,7 +510,7 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
         MultiByteToWideChar(CP_UTF8, 0, projectRoot.c_str(), -1, projRootW.data(), projSz);
     }
 
-    // WHY: --preset の cacheVariables に "$env{FBZZ_ENGINE_ROOT}" があっても
+    // WHY: --preset の cacheVariables に "$env{FBZZ_SDK_ROOT}" があっても
     //      既に CMakeCache.txt が存在する場合はキャッシュ値が優先される。
     //      -D で明示的に上書きすることで既存キャッシュがあっても正しいパスが使われる。
     const int engSz = MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, nullptr, 0);
@@ -475,7 +521,7 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     }
     std::wstring cmd = std::wstring(L"\"") + cmakeBuf + L"\" --preset fbzz-vs";
     if (!engineRootW.empty())
-        cmd += L" -DFBZZ_ENGINE_ROOT:PATH=\"" + engineRootW + L"\"";
+        cmd += L" -DFBZZ_SDK_ROOT:PATH=\"" + engineRootW + L"\"";
     // WHY: cmake --preset の cacheVariables は -D で上書きできる (cmake docs: "preset variables can be overridden using normal -D options")。
     //      CMakePresets.json に "Debug;Release" しか書かれていないプロジェクトでも
     //      エディタが Development 構成で VS プロジェクトを生成させるために明示的に上書きする。
@@ -501,12 +547,20 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
         return false;
     }
 
-    // WHY: cmake configure はメインスレッドをブロックしない。
-    //      バックグラウンドで実行し、完了後にエディタを再起動するよう促す。
+    // 初回または SDK 切替時だけ同期的に待つ。
+    // WHY: configure と Script build を並行起動すると generate.stamp と CMakeCache が競合し、
+    //      正常な SDK でも ABI エラーと compile error を繰り返すため。
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    FBZZ_LOG_INFO("ScriptDll: cmake --preset fbzz-vs をバックグラウンドで起動しました。完了後にエディタを再起動してください。");
-    return false;
+    if (exitCode != 0) {
+        FBZZ_LOG_ERROR("ScriptDll: SDK cache configure failed (exit=%lu)", exitCode);
+        return false;
+    }
+    FBZZ_LOG_DEBUG("ScriptDll: SDK cache configured");
+    return true;
 }
 
 } // namespace
@@ -517,14 +571,19 @@ void EditorApp::InitScriptDll()
 
     ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
         util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
+    bool sdkCacheRefreshed = false;
 
-    // WHY: GameHub プロジェクトは初回開封時に cmake configure が済んでいない場合がある。
-    //      CMakePresets.json が存在するなら自動 configure を実行し再度解決を試みる。
-    if (!toolchain.found && !m_ctx.projectRoot.empty()) {
+    // build.config があっても、共有 SDK 移行前の cache なら configure をやり直す。
+    if (!m_ctx.projectRoot.empty()) {
         const std::filesystem::path presetsJson = util::FileSystem::PathFromUtf8(m_ctx.projectRoot) / L"CMakePresets.json";
-        if (util::FileSystem::Exists(presetsJson)) {
-            if (TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot))
-                toolchain = ToolchainLocator::Locate(util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
+        const bool sdkCacheMatches = toolchain.found && CMakeCacheUsesSdkRoot(toolchain.buildDir, m_ctx.engineRoot);
+        if (util::FileSystem::Exists(presetsJson) && !sdkCacheMatches) {
+            if (!TryCMakeConfigure(m_ctx.projectRoot, m_ctx.engineRoot)) {
+                SetHotReloadState(EditorContext::HotReloadState::Failed, "Scripts: SDK configure failed");
+                return;
+            }
+            sdkCacheRefreshed = true;
+            toolchain = ToolchainLocator::Locate(util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
         }
     }
 
@@ -623,13 +682,13 @@ void EditorApp::InitScriptDll()
                                           m_ctx.scriptsDllCppPath,
                                           m_ctx.scriptsStaticCppPath);
     }
-    if (!m_scriptDllPath.empty() && util::FileSystem::Exists(m_scriptDllPath)) {
+    if (!sdkCacheRefreshed && !m_scriptDllPath.empty() && util::FileSystem::Exists(m_scriptDllPath)) {
         if (m_scriptDll.Load(m_scriptDllPath)) {
             FBZZ_LOG_INFO("ScriptDll: loaded %ls (%d types)",
                 m_scriptDllPath.wstring().c_str(),
                 static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
         } else {
-            FBZZ_LOG_WARN("ScriptDll: load failed; scripts are kept as serialized data until DLL rebuild succeeds");
+            FBZZ_LOG_INFO("ScriptDll: stale DLL was rejected; rebuild scheduled");
             if (toolchain.found) {
                 // WHY: Engine 側の Scene / Component レイアウトだけが変わった場合、
                 //      スクリプトソースのタイムスタンプ比較では古い DLL を検出できない。
@@ -724,7 +783,12 @@ void EditorApp::InitScriptDll()
         }
     }
     if (!m_hlslSourceDir.empty()) {
-        m_lastHlslWriteTime = GetLatestWriteTimeInTree(m_hlslSourceDir);
+        m_lastHlslWriteTime = GetLatestShaderSourceWriteTime(m_hlslSourceDir);
+        if (HasStaleCompiledShaderSet(m_hlslSourceDir)) {
+            m_hlslCompilePending = true;
+            m_hlslDebounceTimer = 0.0f;
+            FBZZ_LOG_INFO("HLSL: 起動時に古いCSOを検出、再コンパイルを予約します");
+        }
     }
 }
 
@@ -800,6 +864,7 @@ void EditorApp::TickScriptCompile()
         //      FBZZ_CMAKE_CONFIG を使う理由: Development は NDEBUG なし・最適化 ON の第三の構成であり、
         //      #ifdef NDEBUG では正しく判定できない。
         config.configuration = FBZZ_CMAKE_CONFIG;
+        config.sdkRoot       = m_ctx.engineRoot;
         // WHY: 初回ビルド (DLL 未存在) はエンジン libs がまだないため依存ターゲットも含めてビルドする。
         //      ホットリロード時はエディタがエンジン DLL をロック中のためスキップする。
         config.skipDeps      = !m_scriptInitialBuild;
@@ -893,12 +958,17 @@ void EditorApp::CheckHlslDirty()
     m_hlslDirtyPollTimer = 0.0f;
 
     FBZZ_PROFILE_SCOPE("HotReload::ScanHlsl");
-    const FILETIME ft = GetLatestWriteTimeInTree(m_hlslSourceDir);
+    const FILETIME ft = GetLatestShaderSourceWriteTime(m_hlslSourceDir);
     if (IsEmptyFileTime(ft))
         return;
 
     if (IsEmptyFileTime(m_lastHlslWriteTime)) {
         m_lastHlslWriteTime = ft;
+        if (HasStaleCompiledShaderSet(m_hlslSourceDir)) {
+            m_hlslCompilePending = true;
+            m_hlslDebounceTimer = 0.0f;
+            FBZZ_LOG_INFO("HLSL: 初回スキャンで古いCSOを検出、再コンパイルします");
+        }
         return;
     }
     if (CompareFileTime(&ft, &m_lastHlslWriteTime) == 0) return;
@@ -934,6 +1004,7 @@ void EditorApp::TickHlslCompile()
         config.buildDir      = toolchain.buildDir;
         config.exePath       = std::filesystem::path{};
         config.target        = "compile_shaders";
+        config.sdkRoot       = m_ctx.engineRoot;
         config.configuration = FBZZ_CMAKE_CONFIG;
 
         if (!m_hlslCompiler.Start(config)) {

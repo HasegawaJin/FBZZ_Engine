@@ -6,6 +6,7 @@
 //      太陽方向ライトマーチによるセルフシャドウ + 空白スキップで負荷を抑える。
 //      レンダー解像度は kCloudResShift で Full/Half を切り替える (既定 Full)。
 #include "PostProcessPasses.hpp"
+#include "../Geometry/GeometryPasses.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -49,7 +50,19 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
         || !ctx.handles.volumetricCloudCB.IsValid())
         return;
 
-    const math::Vector2 wind = cloud->windDirection.Normalized();
+    // WindZone があればシーングローバル風で雲を流す (XZ 平面へ射影)。
+    // WHY: 草・パーティクルと雲の流れる向きを 1 コンポーネントで揃えるため。
+    //      WindZone のないシーンは従来どおりコンポーネント固有の windDirection を使う。
+    math::Vector2 wind = cloud->windDirection.Normalized();
+    float windSpeed = cloud->windSpeed;
+    const ActiveWindZone windZone = FindActiveWindZone(ctx.scene);
+    if (windZone.active) {
+        const float xzLen = std::sqrt(windZone.direction.x * windZone.direction.x
+                                    + windZone.direction.z * windZone.direction.z);
+        if (xzLen > 1.0e-4f)
+            wind = { windZone.direction.x / xzLen, windZone.direction.z / xzLen };
+        windSpeed = cloud->windSpeed * windZone.strength;
+    }
     const float topHeight = cloud->bottomHeight + (std::max)(cloud->thickness, 1.0f);
 
     // WHAT: レイ終端判定に使う depth は専用 RT へコピーしてから SRV として読む。
@@ -100,7 +113,7 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     };
     cb.cloudWind = {
         wind.x,
-        cloud->windSpeed,
+        windSpeed,
         wind.y,
         static_cast<float>(cloud->stepCount < 8 ? 8 : (cloud->stepCount > 96 ? 96 : cloud->stepCount))
     };

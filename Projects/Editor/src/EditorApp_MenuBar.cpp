@@ -12,6 +12,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -518,6 +519,10 @@ void EditorApp::StopPlayMode()
     if (!m_ctx.activeScene || m_playMode.IsInEditor())
         return;
     scene::ScriptRuntime::Override(nullptr);
+    // AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
+    // PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
+    if (auto* audioManager = core::Application::Get().GetAudioManager())
+        audioManager->StopAllVoices();
     m_playMode.Stop(*m_ctx.activeScene);
     m_undoStack.Clear();
 }

@@ -143,6 +143,10 @@ std::vector<uint8_t> GenerateProceduralColorLut(const renderer::LUTColorGradingS
 // WHY: Scene View と Game View は解像度が異なるため、単一の static RT 群を共有すると
 //      1 フレーム内で互いのサイズへリサイズし続け、D3D11 リソース生成待ちが発生する。
 struct ViewRenderTargets {
+    // View ごとの RenderGraph 計画と transient RT をフレーム間で保持する。
+    // WHY: RenderPipeline をスタック生成すると DX12 の descriptor heap と committed resource を
+    //      毎フレーム再生成するため、GPU が空いていても CPU がボトルネックになる。
+    RenderPipeline pipeline;
     renderer::ResourceHandle<renderer::RenderTargetTag> hdr;
     renderer::ResourceHandle<renderer::RenderTargetTag> ldr;
     renderer::ResourceHandle<renderer::RenderTargetTag> selectionMask;
@@ -180,6 +184,8 @@ struct ViewRenderTargets {
 // Resize 前のネイティブリソースを ResourceManager から確実に解放する。
 void ReleaseViewRenderTargets(ViewRenderTargets& targets, renderer::ResourceManager& resources)
 {
+    // transient RT も同じ Viewport 寿命に属するため、固定 RT より先に明示解放する。
+    targets.pipeline.ReleaseTransientPool(resources);
     if (targets.hdr.IsValid())                  resources.Release(targets.hdr);
     if (targets.ldr.IsValid())                  resources.Release(targets.ldr);
     if (targets.selectionMask.IsValid())        resources.Release(targets.selectionMask);
@@ -442,7 +448,7 @@ void RenderSystem(Scene& scene,
         const std::vector<uint8_t> detail = cloudnoise::BakeDetail(32);
         cloudShapeTex  = resources.CreateTexture3D(shape.data(),  128, 128, 128);
         cloudDetailTex = resources.CreateTexture3D(detail.data(),  32,  32,  32);
-        FBZZ_LOG_INFO("VolumetricCloud: baked tileable 3D noise (shape 128^3, detail 32^3)");
+        FBZZ_LOG_DEBUG("VolumetricCloud: baked tileable 3D noise (shape 128^3, detail 32^3)");
     }
 
     static auto gbufferShader          = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
@@ -1225,7 +1231,8 @@ void RenderSystem(Scene& scene,
     // =========================================================================
     // RenderPipeline にパスを登録
     // =========================================================================
-    RenderPipeline pipeline;
+    RenderPipeline& pipeline = viewTargets.pipeline;
+    pipeline.BeginBuild();
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
     pipeline.DeclareResource("Output",     { renderer::RenderGraph::ResourceKind::RenderTarget, sHdrW, sHdrH, 0, true,  false });
@@ -1458,7 +1465,7 @@ void RenderSystem(Scene& scene,
     pipeline.AddPass<MeshTrailRenderPass>();
     pipeline.AddPass<TrailRenderPass>();
 
-    pipeline.AddRawPass("Particle", { "HDR" }, { "HDR" }, [&]() {
+    pipeline.AddRawPass("Particle", { "HDR", "DecalDepth" }, { "HDR" }, [&]() {
         ExecuteParticlePass(passCtx);
     });
 

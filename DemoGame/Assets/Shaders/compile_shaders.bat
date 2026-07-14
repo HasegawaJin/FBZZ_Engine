@@ -1,6 +1,15 @@
 @echo off
 setlocal
 
+REM No argument builds both DX11 and DX12 shader sets.
+if "%~1"=="" (
+    call "%~f0" DX11
+    if errorlevel 1 exit /b 1
+    call "%~f0" DX12
+    if errorlevel 1 exit /b 1
+    exit /b 0
+)
+
 REM Use fxc.exe (SM5.0 / DXBC) for DX11. dxc.exe outputs DXIL (DX12 only).
 set "FXC="
 if defined FBZZ_FXC set "FXC=%FBZZ_FXC%" & goto :found_fxc
@@ -14,7 +23,13 @@ if "%FXC%"=="" (
 )
 
 set SRC=%~dp0
-set OUT=%~dp0compiled
+if /I "%~1"=="DX12" (
+    set OUT=%~dp0compiled_dx12
+    set BACKEND_DEFINE=/D FBZZ_BACKEND_DX12=1
+) else (
+    set OUT=%~dp0compiled
+    set BACKEND_DEFINE=/D FBZZ_BACKEND_DX11=1
+)
 REM %~dp0 ends with a backslash; strip it so /I "path" does not mis-parse the closing quote.
 set SRCDIR=%SRC:~0,-1%
 set INC=/nologo /I "%SRCDIR%"
@@ -161,15 +176,15 @@ exit /b 0
 
 :CompileVSPS
 echo [VS/PS] %~1
-"%FXC%" %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\%~2.vs.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+"%FXC%" %INC% %BACKEND_DEFINE% /T vs_5_0 /E VSMain /Fo "%OUT%\%~2.vs.cso" "%SRC%%~1" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] %~1 VS & exit /b 1 )
-"%FXC%" %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\%~2.ps.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+"%FXC%" %INC% %BACKEND_DEFINE% /T ps_5_0 /E PSMain /Fo "%OUT%\%~2.ps.cso" "%SRC%%~1" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] %~1 PS & exit /b 1 )
 exit /b 0
 
 :CompileCS
 echo [CS] %~1
-"%FXC%" %INC% /T cs_5_0 /E CSMain /Fo "%OUT%\%~2.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+"%FXC%" %INC% %BACKEND_DEFINE% /T cs_5_0 /E CSMain /Fo "%OUT%\%~2.cso" "%SRC%%~1" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] %~1 CS & exit /b 1 )
 exit /b 0
 

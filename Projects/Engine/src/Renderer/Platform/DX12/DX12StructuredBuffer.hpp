@@ -1,0 +1,41 @@
+// FBZZ Engine
+// DX12StructuredBuffer.hpp | fbzz::renderer
+// StructuredBuffer / RWStructuredBuffer のDirectX 12実装
+#pragma once
+
+#include <Engine/Renderer/IStructuredBuffer.hpp>
+#include <d3d12.h>
+#include <wrl/client.h>
+
+namespace fbzz::renderer {
+
+class DX12Context;
+class DX12StateTracker;
+
+class DX12StructuredBuffer final : public IStructuredBuffer {
+public:
+    ~DX12StructuredBuffer() override;
+    bool Init(DX12Context* context, DX12StateTracker* tracker, const void* data,
+              uint32_t elementCount, uint32_t stride, bool readWrite);
+    void Update(const void* data, size_t sizeBytes) override;
+    uint32_t GetElementCount() const override { return m_elementCount; }
+    uint32_t GetStride() const override { return m_stride; }
+    size_t GetSize() const override { return static_cast<size_t>(m_elementCount) * m_stride; }
+    bool IsReadWrite() const { return m_readWrite; }
+    ID3D12Resource* GetResource() const { return m_resource.Get(); }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetSrv() const;
+    D3D12_CPU_DESCRIPTOR_HANDLE GetUav() const;
+
+private:
+    DX12StateTracker* m_tracker = nullptr;
+    DX12Context* m_context = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
+    uint8_t* m_mapped = nullptr;
+    uint32_t m_descriptorIncrement = 0;
+    uint32_t m_elementCount = 0;
+    uint32_t m_stride = 0;
+    bool m_readWrite = false;
+};
+
+} // namespace fbzz::renderer

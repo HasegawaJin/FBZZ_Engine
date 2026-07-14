@@ -1,6 +1,6 @@
 // FBZZ Engine
 // InspectorUI.hpp | fbzz::editor
-// UI 系 Component の Inspector 描画
+// RegistryでAutomatic指定されたコンポーネントを共通Inspectorへ接続する宣言
 #pragma once
 
 #include "InspectorCommon.hpp"

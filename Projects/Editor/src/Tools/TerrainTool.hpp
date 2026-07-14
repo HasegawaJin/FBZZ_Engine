@@ -122,6 +122,10 @@ private:
     bool        m_active  = false;  // false のとき入力処理・ブラシ描画をスキップする
     Mode        m_mode    = Mode::Sculpt;
     SculptMode  m_sculpt  = SculptMode::Raise;
+    // 修飾キーで一時的に切り替わる実効サブモード。Update() が毎フレーム設定し、
+    // ApplySculpt はこちらを参照する。WHY: Unity の Terrain と同じく Shift+drag=Smooth /
+    //      Ctrl+drag=Lower をパネルへ視線を戻さず使えるようにする。修飾を離せば m_sculpt に戻る。
+    SculptMode  m_activeSculpt = SculptMode::Raise;
     BrushSettings m_brush;
 
     uint32_t m_paintLayer    = 0;      // Paint モード: 塗るレイヤーインデックス [0, 3]

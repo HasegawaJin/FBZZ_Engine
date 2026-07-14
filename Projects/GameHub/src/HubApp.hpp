@@ -33,6 +33,13 @@ private:
         Settings
     };
 
+    // プロジェクト一覧で選択できる安定ソートの基準を表す。
+    enum class ProjectSort {
+        Recent,
+        Name,
+        EngineVersion
+    };
+
     void RenderSidebar();
     void RenderProjectsPanel();
     void RenderProjectCard(const ProjectEntry& project);
@@ -42,6 +49,8 @@ private:
     void RenderLearnPanel();
     void RenderSettingsPanel();
     void RenderErrorModal();
+    void PrepareNewProjectDialog();
+    void SyncSettingsBuffers();
 
     void AddExistingProject();
     void OpenProject(const ProjectEntry& project);
@@ -61,7 +70,12 @@ private:
     std::array<char, 128> m_searchBuffer{};
     std::array<char, 128> m_newProjectNameBuffer{};
     std::array<char, 260> m_newProjectDestinationBuffer{};
+    std::array<char, 260> m_editorExeBuffer{};
+    std::array<char, 260> m_engineRootBuffer{};
     int m_selectedTemplateIndex = 0;
+    int m_selectedThemeIndex = 0;
+    ProjectSort m_projectSort = ProjectSort::Recent;
+    bool m_sortAscending = false;
     bool m_showNewProjectDialog = false;
     bool m_reloadProjectsAfterRender = false;
     std::string m_pendingRemoveProject;

@@ -25,14 +25,16 @@ struct UILayoutGroup {
     void Reflect(IReflector& r)
     {
         r.Field("enabled",      enabled);
+        static constexpr const char* kAxisLabels[] = { "Horizontal", "Vertical" };
         int axisInt = static_cast<int>(axis);
-        r.Field("axis",         axisInt);
+        r.Enum("axis", axisInt, kAxisLabels);
+        axisInt = (axisInt < 0 || axisInt > 1) ? 0 : axisInt;
         axis = static_cast<UILayoutAxis>(axisInt);
-        r.Field("spacing",      spacing);
-        r.Field("paddingLeft",  paddingLeft);
-        r.Field("paddingRight", paddingRight);
-        r.Field("paddingTop",   paddingTop);
-        r.Field("paddingBottom",paddingBottom);
+        r.FloatRange("spacing", spacing, 0.0f, 1024.0f);
+        r.FloatRange("paddingLeft", paddingLeft, 0.0f, 512.0f);
+        r.FloatRange("paddingRight", paddingRight, 0.0f, 512.0f);
+        r.FloatRange("paddingTop", paddingTop, 0.0f, 512.0f);
+        r.FloatRange("paddingBottom", paddingBottom, 0.0f, 512.0f);
         r.Field("reverseOrder", reverseOrder);
     }
 };

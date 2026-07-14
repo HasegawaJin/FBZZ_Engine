@@ -121,31 +121,39 @@ struct UIAnimator {
     {
         r.Field("enabled", enabled);
         // Inspector で編集する Tween パラメーター
+        static constexpr const char* kEasingLabels[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
+
+        r.Group("Color Tween");
         r.Field("colorFrom",        colorTween.from);
         r.Field("colorTo",          colorTween.to);
-        r.Field("colorDuration",    colorTween.duration);
+        r.FloatRange("colorDuration", colorTween.duration, 0.01f, 60.0f);
         int colorEasing = static_cast<int>(colorTween.easing);
-        r.Field("colorEasing",      colorEasing);
+        r.Enum("colorEasing", colorEasing, kEasingLabels);
+        colorEasing = (colorEasing < 0 || colorEasing > 3) ? 0 : colorEasing;
         colorTween.easing = static_cast<UIEasingType>(colorEasing);
         r.Field("colorLoop",        colorTween.loop);
         r.Field("colorPingPong",    colorTween.pingPong);
         r.Field("colorActive",      colorTween.active);
 
+        r.Group("Position Tween");
         r.Field("posFrom",          positionTween.from);
         r.Field("posTo",            positionTween.to);
-        r.Field("posDuration",      positionTween.duration);
+        r.FloatRange("posDuration", positionTween.duration, 0.01f, 60.0f);
         int posEasing = static_cast<int>(positionTween.easing);
-        r.Field("posEasing",        posEasing);
+        r.Enum("posEasing", posEasing, kEasingLabels);
+        posEasing = (posEasing < 0 || posEasing > 3) ? 0 : posEasing;
         positionTween.easing = static_cast<UIEasingType>(posEasing);
         r.Field("posLoop",          positionTween.loop);
         r.Field("posPingPong",      positionTween.pingPong);
         r.Field("posActive",        positionTween.active);
 
+        r.Group("Scale Tween");
         r.Field("scaleFrom",        scaleTween.from);
         r.Field("scaleTo",          scaleTween.to);
-        r.Field("scaleDuration",    scaleTween.duration);
+        r.FloatRange("scaleDuration", scaleTween.duration, 0.01f, 60.0f);
         int scaleEasing = static_cast<int>(scaleTween.easing);
-        r.Field("scaleEasing",      scaleEasing);
+        r.Enum("scaleEasing", scaleEasing, kEasingLabels);
+        scaleEasing = (scaleEasing < 0 || scaleEasing > 3) ? 0 : scaleEasing;
         scaleTween.easing = static_cast<UIEasingType>(scaleEasing);
         r.Field("scaleLoop",        scaleTween.loop);
         r.Field("scalePingPong",    scaleTween.pingPong);

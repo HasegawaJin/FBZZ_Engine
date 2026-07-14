@@ -7,6 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# WHY: 共有 SDK とゲーム側で CRT の選択が暗黙値に依存すると、同じ構成名でも
+#      STL オブジェクトを DLL 境界へ渡した時点で ABI が壊れる。全ターゲットを
+#      Debug=/MDd、Development/Release=/MD に固定し、SDK package 側でも同値を検証する。
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
 # Development: 最適化ON + デバッグシンボルあり + NDEBUG なし（アサート有効）
 if(CMAKE_GENERATOR MATCHES "Visual Studio")
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
@@ -58,6 +63,10 @@ add_subdirectory(Projects/Editor)
 add_subdirectory(Projects/EditorLauncher)
 add_subdirectory(Projects/GameHub)
 add_subdirectory(Projects/Sandbox)
+
+# 共有 Engine SDK を SDK/<engine-version>/ に生成する。
+# 通常ビルド成果物と分離し、外部ゲームはソースツリーを add_subdirectory せず IMPORTED target を参照する。
+include(CMake/FBZZSDK.cmake)
 
 # VS ソリューションを開いたときのデフォルトスタートアッププロジェクトを sandbox に設定する
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT sandbox)

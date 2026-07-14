@@ -3,7 +3,7 @@
 // Rayleigh + Mie 大気散乱によるスカイドーム
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/Atmosphere.hlsli"
 #include "Rendering/ToneMap.hlsli"
 

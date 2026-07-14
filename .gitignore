@@ -3,6 +3,7 @@ build/
 out/
 build_log.txt
 .cache/
+/SDK/
 
 # CMake
 CMakeCache.txt

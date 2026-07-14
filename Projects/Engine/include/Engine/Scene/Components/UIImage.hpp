@@ -54,9 +54,11 @@ struct UIImage {
         r.Field("uvMin",       uvMin);
         r.Field("uvMax",       uvMax);
         r.Field("sortOrder",   sortOrder);
-        r.Field("fillAmount",  fillAmount);
+        r.FloatRange("fillAmount", fillAmount, 0.0f, 1.0f);
+        static constexpr const char* kFillOriginLabels[] = { "Left", "Right", "Bottom", "Top" };
         int fill = static_cast<int>(fillOrigin);
-        r.Field("fillOrigin",  fill);
+        r.Enum("fillOrigin", fill, kFillOriginLabels);
+        fill = (fill < 0 || fill > 3) ? 0 : fill;
         fillOrigin = static_cast<UIImageFillOrigin>(fill);
     }
 };
