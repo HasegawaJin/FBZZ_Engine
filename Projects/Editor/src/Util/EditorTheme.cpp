@@ -23,7 +23,7 @@ constexpr float FONT_SIZE = 13.0f;
 
 [[nodiscard]] std::string ResolveBundledFontPath()
 {
-    // WHY: Visual Studio から起動すると CWD が build/debug/... になる場合があり、
+    // WHY: Visual Studio から起動すると CWD が build/Debug/... になる場合があり、
     //      エンジンルート基準の相対パスだけでは ImGui バンドルフォントを見つけられない。
     // WHAT: 現在ディレクトリから親方向へたどり、FBZZ_Engine 直下の ThirdParty を探索する。
     constexpr const char* RELATIVE_FONT_PATH = "ThirdParty/ImGui/misc/fonts/Roboto-Medium.ttf";

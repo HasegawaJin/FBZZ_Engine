@@ -216,8 +216,8 @@ bool ScriptDllLoader::ValidateAbi() const
     const auto infoFn = reinterpret_cast<AbiInfoFnPtr>(
         GetProcAddress(m_hDll, kAbiInfoFnName));
     if (!infoFn) {
-        FBZZ_LOG_ERROR(
-            "ScriptDllLoader: export %s not found. Scripts DLL を再ビルドしてください。",
+        FBZZ_LOG_INFO(
+            "ScriptDllLoader: stale Scripts DLL has no %s export; rebuild required",
             kAbiInfoFnName);
         return false;
     }
@@ -227,32 +227,62 @@ bool ScriptDllLoader::ValidateAbi() const
 
     if (host.signature == dll.signature) return true;
 
-    // ミスマッチの詳細を出力して再ビルドすべき原因を特定しやすくする。
-    FBZZ_LOG_ERROR("ScriptDllLoader: ABI mismatch — Engine / Scripts DLL を同じ構成で再ビルドしてください。");
+    // 旧 ABI は拡張フィールドを持たないため、末尾を詳細表示すると未初期化値をエラーとして報告してしまう。
+    const bool hasCurrentSchema = dll.msvcFullVersion >= 190000000ull
+        && (dll.pointerSize == 4 || dll.pointerSize == 8)
+        && dll.buildConfiguration >= 1 && dll.buildConfiguration <= 3
+        && dll.dynamicRuntime <= 1;
+    if (!hasCurrentSchema) {
+        FBZZ_LOG_INFO("ScriptDllLoader: legacy ABI DLL detected; rebuild scheduled");
+        return false;
+    }
+
+    // 現行 schema 同士の差だけを診断する。自動再ビルド対象なので ERROR ではなく WARNING とする。
+    FBZZ_LOG_WARN("ScriptDllLoader: ABI mismatch; Scripts DLL rebuild required");
     if (host.sizeofScript != dll.sizeofScript)
-        FBZZ_LOG_ERROR("  sizeof(Script):          host=%llu  dll=%llu",
+        FBZZ_LOG_WARN("  sizeof(Script):          host=%llu  dll=%llu",
             static_cast<unsigned long long>(host.sizeofScript),
             static_cast<unsigned long long>(dll.sizeofScript));
     if (host.sizeofScene != dll.sizeofScene)
-        FBZZ_LOG_ERROR("  sizeof(Scene):           host=%llu  dll=%llu",
+        FBZZ_LOG_WARN("  sizeof(Scene):           host=%llu  dll=%llu",
             static_cast<unsigned long long>(host.sizeofScene),
             static_cast<unsigned long long>(dll.sizeofScene));
     if (host.sizeofScriptComponent != dll.sizeofScriptComponent)
-        FBZZ_LOG_ERROR("  sizeof(ScriptComponent): host=%llu  dll=%llu",
+        FBZZ_LOG_WARN("  sizeof(ScriptComponent): host=%llu  dll=%llu",
             static_cast<unsigned long long>(host.sizeofScriptComponent),
             static_cast<unsigned long long>(dll.sizeofScriptComponent));
     if (host.componentCount != dll.componentCount)
-        FBZZ_LOG_ERROR("  ComponentList count:     host=%llu  dll=%llu",
+        FBZZ_LOG_WARN("  ComponentList count:     host=%llu  dll=%llu",
             static_cast<unsigned long long>(host.componentCount),
             static_cast<unsigned long long>(dll.componentCount));
     if (host.msvcVersion != dll.msvcVersion)
-        FBZZ_LOG_ERROR("  _MSC_VER:                host=%llu  dll=%llu",
+        FBZZ_LOG_WARN("  _MSC_VER:                host=%llu  dll=%llu",
             static_cast<unsigned long long>(host.msvcVersion),
             static_cast<unsigned long long>(dll.msvcVersion));
+    if (host.msvcFullVersion != dll.msvcFullVersion)
+        FBZZ_LOG_WARN("  _MSC_FULL_VER:           host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.msvcFullVersion),
+            static_cast<unsigned long long>(dll.msvcFullVersion));
     if (host.iteratorDebugLevel != dll.iteratorDebugLevel)
-        FBZZ_LOG_ERROR("  _ITERATOR_DEBUG_LEVEL:   host=%llu  dll=%llu  (Debug/Release 設定の不一致)",
+        FBZZ_LOG_WARN("  _ITERATOR_DEBUG_LEVEL:   host=%llu  dll=%llu  (Debug/Release 設定の不一致)",
             static_cast<unsigned long long>(host.iteratorDebugLevel),
             static_cast<unsigned long long>(dll.iteratorDebugLevel));
+    if (host.engineVersion != dll.engineVersion)
+        FBZZ_LOG_WARN("  Engine version:          host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.engineVersion),
+            static_cast<unsigned long long>(dll.engineVersion));
+    if (host.buildConfiguration != dll.buildConfiguration)
+        FBZZ_LOG_WARN("  Build configuration:     host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.buildConfiguration),
+            static_cast<unsigned long long>(dll.buildConfiguration));
+    if (host.pointerSize != dll.pointerSize)
+        FBZZ_LOG_WARN("  Pointer size:            host=%llu  dll=%llu",
+            static_cast<unsigned long long>(host.pointerSize),
+            static_cast<unsigned long long>(dll.pointerSize));
+    if (host.dynamicRuntime != dll.dynamicRuntime)
+        FBZZ_LOG_WARN("  Runtime library:         host=%llu  dll=%llu (/MD or /MDd required)",
+            static_cast<unsigned long long>(host.dynamicRuntime),
+            static_cast<unsigned long long>(dll.dynamicRuntime));
     return false;
 }
 
