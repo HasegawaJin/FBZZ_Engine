@@ -1,0 +1,144 @@
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000001'
+layer = 0
+name = 'Canvas'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    matchWidthOrHeight = 0.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    scaleMode = 1
+    sortOrder = 0
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000002'
+layer = 0
+name = 'Background'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    color = [ 0.158104, 0.891129, 0.766988, 1.0 ]
+    enabled = true
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1920.0, 1080.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000003'
+layer = 0
+name = 'TitleText'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 84.0
+    letterSpacing = 4.0
+    text = 'EMBER HUNTER'
+
+    [gameobjects.transform]
+    position = [ 693.406311, 250.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 478.736816, 84.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000004'
+layer = 0
+name = 'SubText'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    color = [ 0.7, 0.7, 0.7, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 32.0
+    letterSpacing = 4.0
+    text = 'WASD MOVE  /  HOLD + RELEASE LMB FIRE  /  E VACUUM'
+
+    [gameobjects.transform]
+    position = [ 460.0, 150.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1000.0, 42.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a1000001-0000-0000-0000-000000000005'
+layer = 0
+name = 'StartButton'
+parent = 'Canvas'
+parentInstanceId = 'a1000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIButton]
+    enabled = true
+    hoverColor = [ 0.3, 0.3, 0.4, 1.0 ]
+    isInteractable = true
+    normalColor = [ 0.18, 0.18, 0.25, 1.0 ]
+    pressedColor = [ 0.1, 0.1, 0.15, 1.0 ]
+
+    [gameobjects.UIImage]
+    color = [ 0.18, 0.18, 0.25, 1.0 ]
+    enabled = true
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.UIText]
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 36.0
+    letterSpacing = 4.0
+    text = 'START'
+
+    [gameobjects.transform]
+    position = [ 895.578674, 423.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 113.473686, 36.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'SceneManagerScript'
+
+        [gameobjects.ScriptComponents.fields]
+        'Auto Delay' = 1.5
+        'Auto Transition' = false
+        'Target Scene' = 'Main'
+        'Via Scene' = 'Load'
