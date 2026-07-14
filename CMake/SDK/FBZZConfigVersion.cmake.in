@@ -1,0 +1,11 @@
+# FBZZ Engine
+# FBZZConfigVersion.cmake | CMake
+# 完全一致 ABI 方針に従う package version 判定
+
+set(PACKAGE_VERSION "@PROJECT_VERSION@")
+if("${PACKAGE_FIND_VERSION}" VERSION_EQUAL "${PACKAGE_VERSION}")
+    set(PACKAGE_VERSION_COMPATIBLE TRUE)
+    set(PACKAGE_VERSION_EXACT TRUE)
+else()
+    set(PACKAGE_VERSION_COMPATIBLE FALSE)
+endif()

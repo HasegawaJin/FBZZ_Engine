@@ -5,6 +5,7 @@
 #include <Engine/Util/FileSystem.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -66,6 +67,79 @@ bool EnsureTextFile(const std::filesystem::path& path, const std::string& text, 
         return false;
     }
     return true;
+}
+
+std::filesystem::path FindStandardTemplateFile(const std::filesystem::path& relative)
+{
+    const std::filesystem::path runtime =
+        engine_util::FileSystem::GetExecutableDirectory() / "Templates" / "standard" / relative;
+    if (engine_util::FileSystem::Exists(runtime)) return runtime;
+
+    std::filesystem::path current = engine_util::FileSystem::GetCurrentDirectory();
+    for (int i = 0; i < 8 && !current.empty(); ++i) {
+        const std::filesystem::path source =
+            current / "Projects" / "GameHub" / "Templates" / "standard" / relative;
+        if (engine_util::FileSystem::Exists(source)) return source;
+        current = current.parent_path();
+    }
+    return {};
+}
+
+size_t FindTomlKey(const std::string& text, const std::string& key)
+{
+    size_t keyPos = 0;
+    while ((keyPos = text.find(key, keyPos)) != std::string::npos) {
+        const bool lineStart = keyPos == 0 || text[keyPos - 1] == '\n' || text[keyPos - 1] == '\r';
+        const size_t after = keyPos + key.size();
+        const bool keyEnd = after == text.size() || text[after] == ' ' || text[after] == '\t' || text[after] == '=';
+        if (lineStart && keyEnd) return keyPos;
+        keyPos = after;
+    }
+    return std::string::npos;
+}
+
+std::string ReadProjectString(const std::string& text, const std::string& key)
+{
+    const size_t keyPos = FindTomlKey(text, key);
+    if (keyPos == std::string::npos) return {};
+    const size_t equalsPos = text.find('=', keyPos + key.size());
+    const size_t firstQuote = equalsPos == std::string::npos ? std::string::npos : text.find('"', equalsPos);
+    const size_t secondQuote = firstQuote == std::string::npos ? std::string::npos : text.find('"', firstQuote + 1);
+    if (firstQuote == std::string::npos || secondQuote == std::string::npos) return {};
+    return text.substr(firstQuote + 1, secondQuote - firstQuote - 1);
+}
+
+void ReplaceAll(std::string& text, const std::string& from, const std::string& to)
+{
+    size_t pos = 0;
+    while ((pos = text.find(from, pos)) != std::string::npos) {
+        text.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+}
+
+bool ReplaceTomlString(std::string& text, const std::string& key, const std::string& value)
+{
+    const size_t keyPos = FindTomlKey(text, key);
+    if (keyPos == std::string::npos) return false;
+    const size_t equalsPos = text.find('=', keyPos + key.size());
+    const size_t lineEnd = text.find_first_of("\r\n", keyPos);
+    if (equalsPos == std::string::npos || (lineEnd != std::string::npos && equalsPos > lineEnd)) return false;
+    const size_t valueEnd = lineEnd == std::string::npos ? text.size() : lineEnd;
+    text.replace(equalsPos + 1, valueEnd - equalsPos - 1, " \"" + value + "\"");
+    return true;
+}
+
+std::string CurrentSdkRoot()
+{
+    char* value = nullptr;
+    size_t length = 0;
+    _dupenv_s(&value, &length, "FBZZ_SDK_ROOT");
+    const std::string result = value && length > 1
+        ? engine_util::FileSystem::NormalizePathSeparators(value)
+        : "";
+    free(value);
+    return result;
 }
 
 } // namespace
@@ -154,41 +228,45 @@ bool MigrationManager::PatchCMakeLists(const std::filesystem::path& projectRoot,
         return false;
     }
 
-    // すでに設定済みなら何もしない
-    if (text.find("CMAKE_CONFIGURATION_TYPES") != std::string::npos)
+    if (text.find("find_package(FBZZ") != std::string::npos)
         return true;
+    if (text.find("FBZZ_ENGINE_ROOT") == std::string::npos ||
+        text.find("add_subdirectory") == std::string::npos) {
+        errorMessage = "CMakeLists.txt is customized and cannot be migrated automatically. The backup was preserved.";
+        return false;
+    }
 
-    // "set(CMAKE_CXX_EXTENSIONS OFF)" の直後を挿入ポイントにする
-    const std::string marker = "set(CMAKE_CXX_EXTENSIONS OFF)";
-    const size_t markerPos = text.find(marker);
-    if (markerPos == std::string::npos)
-        return true; // マーカーが見つからない場合は警告なしでスキップ
+    const std::string sdkRoot = CurrentSdkRoot();
+    if (sdkRoot.empty() || !engine_util::FileSystem::Exists(
+            engine_util::FileSystem::PathFromUtf8(sdkRoot) / "fbzz-sdk.toml")) {
+        errorMessage = "A valid FBZZ_SDK_ROOT is required before migration.";
+        return false;
+    }
 
-    const size_t lineEnd   = text.find('\n', markerPos);
-    const size_t insertPos = (lineEnd == std::string::npos) ? text.size() : lineEnd + 1;
+    const std::filesystem::path templatePath = FindStandardTemplateFile("CMakeLists.txt");
+    std::string projectText;
+    std::string migrated;
+    engine_util::FileSystem::ReadText(projectRoot / ".fbzz_proj", projectText);
+    if (templatePath.empty()) {
+        errorMessage = "Failed to resolve the shared-SDK CMake migration template.";
+        return false;
+    }
+    engine_util::FileSystem::ReadText(templatePath, migrated);
+    const std::string targetName = ReadProjectString(projectText, "target_name");
+    if (migrated.empty() || targetName.empty()) {
+        errorMessage = "Failed to read target_name or the shared-SDK CMake migration template.";
+        return false;
+    }
+    ReplaceAll(migrated, "{{TARGET_NAME}}", targetName);
+    ReplaceAll(migrated, "{{ENGINE_VERSION}}", FBZZ_VERSION);
 
-    // WHY: エンジン側で設定している Development 構成をゲームプロジェクト側でも宣言する。
-    //      これがないと VS プロジェクトに Development が生成されず MSB8013 が発生する。
-    const std::string insertion =
-        "\n"
-        "# WHY: ゲームプロジェクトはエンジン本体と独立した CMake ルートを持つため、\n"
-        "#      エンジン側で設定している Development 構成をここでも明示的に宣言する。\n"
-        "#      これがないと VS プロジェクトに Development が生成されず、\n"
-        "#      エディタが --config Development でビルドしようとしたときに MSB8013 が発生する。\n"
-        "set(CMAKE_CONFIGURATION_TYPES \"Debug;Release;Development\" CACHE STRING \"Build configurations\" FORCE)\n"
-        "set(CMAKE_CXX_FLAGS_DEVELOPMENT           \"/Zi /O2 /Ob1 /FS\"            CACHE STRING \"Development CXX flags\"        FORCE)\n"
-        "set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    \"/DEBUG:FULL /INCREMENTAL:NO\" CACHE STRING \"Development EXE linker flags\" FORCE)\n"
-        "set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT \"/DEBUG:FULL /INCREMENTAL:NO\" CACHE STRING \"Development DLL linker flags\" FORCE)\n";
-
-    text.insert(insertPos, insertion);
-
-    if (!engine_util::FileSystem::WriteText(cmakePath, text)) {
+    if (!engine_util::FileSystem::WriteText(cmakePath, migrated)) {
         errorMessage = "Failed to write patched CMakeLists.txt.";
         return false;
     }
 
-    // WHY: 古い Build/VS には Development なしで生成された vcxproj が残っているため削除する。
-    //      次回 cmake --preset fbzz-vs 実行時に Development 付きで再生成される。
+    // WHY: 古い Build/VS は Engine ソースの add_subdirectory をキャッシュしているため削除する。
+    //      次回 configure で IMPORTED target だけを持つ solution へ確実に切り替える。
     const std::filesystem::path buildVS = projectRoot / "Build" / "VS";
     if (engine_util::FileSystem::Exists(buildVS))
         engine_util::FileSystem::RemoveAll(buildVS);
@@ -208,44 +286,17 @@ bool MigrationManager::PatchCMakePresets(const std::filesystem::path& projectRoo
         return false;
     }
 
-    // WHY: cmake preset の cacheVariables は CMakeLists.txt より先にキャッシュへ書き込まれる。
-    //      ここに Development が含まれていないと VS プロジェクトが Debug;Release のみで生成され、
-    //      エディタが --config Development でビルドしたときに MSB8013 が発生する。
-    const std::string oldTypes = "\"Debug;Release\"";
-    const std::string newTypes = "\"Debug;Release;Development\"";
-    if (text.find("Development") != std::string::npos)
-        return true; // すでにパッチ済み
+    if (text.find("FBZZ_SDK_ROOT") != std::string::npos) return true;
+    if (text.find("FBZZ_ENGINE_ROOT") == std::string::npos) {
+        errorMessage = "CMakePresets.json is customized and cannot be migrated automatically.";
+        return false;
+    }
 
-    const size_t pos = text.find(oldTypes);
-    if (pos == std::string::npos)
-        return true; // 期待するパターンがなければスキップ
-
-    text.replace(pos, oldTypes.size(), newTypes);
-
-    // Development ビルドプリセットを追加する
-    const std::string releaseBuildPreset =
-        "    {\n"
-        "      \"name\": \"fbzz-release\",\n"
-        "      \"configurePreset\": \"fbzz-vs\",\n"
-        "      \"configuration\": \"Release\"\n"
-        "    }\n"
-        "  ]";
-    const std::string releasePlusDevPreset =
-        "    {\n"
-        "      \"name\": \"fbzz-release\",\n"
-        "      \"configurePreset\": \"fbzz-vs\",\n"
-        "      \"configuration\": \"Release\"\n"
-        "    },\n"
-        "    {\n"
-        "      \"name\": \"fbzz-development\",\n"
-        "      \"configurePreset\": \"fbzz-vs\",\n"
-        "      \"configuration\": \"Development\"\n"
-        "    }\n"
-        "  ]";
-
-    const size_t releasePos = text.find(releaseBuildPreset);
-    if (releasePos != std::string::npos)
-        text.replace(releasePos, releaseBuildPreset.size(), releasePlusDevPreset);
+    const std::filesystem::path templatePath = FindStandardTemplateFile("CMakePresets.json");
+    if (templatePath.empty() || !engine_util::FileSystem::ReadText(templatePath, text)) {
+        errorMessage = "Failed to resolve the shared-SDK preset migration template.";
+        return false;
+    }
 
     if (!engine_util::FileSystem::WriteText(presetsPath, text)) {
         errorMessage = "Failed to write patched CMakePresets.json.";
@@ -270,22 +321,24 @@ bool MigrationManager::UpdateProjectVersion(const std::filesystem::path& project
         return false;
     }
 
-    const std::string key = "engine_version";
-    const size_t keyPos = text.find(key);
-    if (keyPos == std::string::npos) {
+    if (!ReplaceTomlString(text, "engine_version", FBZZ_VERSION)) {
         errorMessage = "project.engine_version was not found.";
         return false;
     }
 
-    const size_t equalsPos = text.find('=', keyPos);
-    const size_t lineEnd = text.find_first_of("\r\n", keyPos);
-    if (equalsPos == std::string::npos || (lineEnd != std::string::npos && equalsPos > lineEnd)) {
-        errorMessage = "project.engine_version is invalid.";
+    const std::string sdkRoot = CurrentSdkRoot();
+    if (sdkRoot.empty()) {
+        errorMessage = "FBZZ_SDK_ROOT is not set; select a versioned SDK in GameHub Settings.";
         return false;
     }
-
-    const size_t valueEnd = lineEnd == std::string::npos ? text.size() : lineEnd;
-    text.replace(equalsPos + 1, valueEnd - equalsPos - 1, " \"" FBZZ_VERSION "\"");
+    if (ReplaceTomlString(text, "sdk_root", sdkRoot)) {
+        // すでに新形式。
+    } else if (ReplaceTomlString(text, "root", sdkRoot)) {
+        const size_t rootKey = FindTomlKey(text, "root");
+        text.replace(rootKey, std::string("root").size(), "sdk_root");
+    } else {
+        text += "\n[engine]\nsdk_root = \"" + sdkRoot + "\"\n";
+    }
 
     if (!engine_util::FileSystem::WriteText(projectFile, text)) {
         errorMessage = "Failed to update .fbzz_proj.";

@@ -96,6 +96,8 @@ bool StandaloneApp::OnInit()
     m_runtime.RegisterScenes(m_project.root, m_resources);
     m_runtime.LoadScene(m_project.sceneFile);
     auto& app = core::Application::Get();
+    // StandaloneのProjectRuntimeにもApplication所有のAudioManagerを共有する。
+    m_runtime.GetSceneManager().SetAudioManager(app.GetAudioManager());
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
 

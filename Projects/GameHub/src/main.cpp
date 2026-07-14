@@ -203,9 +203,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     const uint32_t clientWidth  = static_cast<uint32_t>(clientRect.right - clientRect.left);
     const uint32_t clientHeight = static_cast<uint32_t>(clientRect.bottom - clientRect.top);
 
-    // バックエンド具象の選択は RendererFactory に集約する (GameHub は DX11 を直接知らない)。
+    // バックエンド具象の選択は RendererFactory に集約し、GameHub自身もDX12を既定にする。
     auto bundle = fbzz::renderer::CreateRenderer(
-        fbzz::renderer::RendererBackend::DX11, hwnd, clientWidth, clientHeight);
+        fbzz::renderer::RendererBackend::DX12, hwnd, clientWidth, clientHeight);
     if (!bundle.renderer || !bundle.imguiRenderer) {
         DestroyWindow(hwnd);
         UnregisterClassW(WINDOW_CLASS_NAME, instance);
