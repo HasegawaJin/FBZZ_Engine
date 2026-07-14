@@ -367,6 +367,12 @@ private:
     friend struct ScriptCameraProxy;
     friend struct ScriptMaterialProxy;
     friend struct ScriptParticleProxy;
+    friend struct ScriptParticleForceFieldProxy;
+    friend struct ScriptCloudProxy;
+    friend struct ScriptSunMoonProxy;
+    friend struct ScriptTerrainDetailProxy;
+    friend struct ScriptPatrolProxy;
+    friend struct ScriptWindProxy;
     friend struct ScriptTrailProxy;
     friend struct ScriptMeshTrailProxy;
     friend struct ScriptSceneProxy;
