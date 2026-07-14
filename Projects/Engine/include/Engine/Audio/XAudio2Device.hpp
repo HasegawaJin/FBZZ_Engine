@@ -25,18 +25,24 @@ public:
 
     void StopBuffer(uint32_t voiceId)             override;
     void SetVolume(uint32_t voiceId, float volume) override;
+    void SetPitch(uint32_t voiceId, float pitch) override;
+    void SetPan(uint32_t voiceId, float pan) override;
+    [[nodiscard]] bool IsPlaying(uint32_t voiceId) override;
 
 private:
     struct VoiceEntry
     {
         IXAudio2SourceVoice* voice = nullptr;
         bool                 loop  = false;
+        uint16_t             channels = 0;
     };
 
     void PurgeFinishedVoices();
 
     Microsoft::WRL::ComPtr<IXAudio2> m_xaudio2;
     IXAudio2MasteringVoice*          m_masterVoice = nullptr;
+    // CoInitializeEx成功時だけCoUninitializeを対にし、初期化途中の失敗でも安全に後始末する。
+    bool                             m_comInitialized = false;
 
     uint32_t                              m_nextId = 1;
     std::unordered_map<uint32_t, VoiceEntry> m_voices;

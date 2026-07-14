@@ -52,6 +52,7 @@ bool AudioManager::Init()
     if (FAILED(hr))
     {
         FBZZ_LOG_ERROR("AudioManager: MFStartup failed (hr=0x%08X)", hr);
+        m_device.Shutdown();
         return false;
     }
 
@@ -60,7 +61,7 @@ bool AudioManager::Init()
 
 void AudioManager::Shutdown()
 {
-    StopBGM();
+    StopAllVoices();
     m_cache.clear();
     MFShutdown();
     m_device.Shutdown();
@@ -90,7 +91,57 @@ void AudioManager::PlaySE(const std::string& path)
     if (!wav) return;
 
     uint32_t id = m_device.PlayBuffer(wav->pcm.data(), wav->pcm.size(), wav->fmt, false);
-    if (id != 0) m_device.SetVolume(id, m_seVolume);
+    if (id != 0) {
+        m_voiceIds.insert(id);
+        m_device.SetVolume(id, m_seVolume);
+    }
+}
+
+uint32_t AudioManager::PlayVoice(const std::string& path, bool loop)
+{
+    const WavBuffer* wav = GetOrLoad(path);
+    if (!wav) return 0;
+    const uint32_t voiceId = m_device.PlayBuffer(wav->pcm.data(), wav->pcm.size(), wav->fmt, loop);
+    if (voiceId != 0) m_voiceIds.insert(voiceId);
+    return voiceId;
+}
+
+void AudioManager::StopVoice(uint32_t voiceId)
+{
+    if (voiceId == 0) return;
+    m_device.StopBuffer(voiceId);
+    m_voiceIds.erase(voiceId);
+}
+
+void AudioManager::StopAllVoices()
+{
+    StopBGM();
+    for (const uint32_t voiceId : m_voiceIds)
+        m_device.StopBuffer(voiceId);
+    m_voiceIds.clear();
+}
+
+void AudioManager::SetVoiceVolume(uint32_t voiceId, float volume)
+{
+    if (voiceId != 0) m_device.SetVolume(voiceId, volume);
+}
+
+void AudioManager::SetVoicePitch(uint32_t voiceId, float pitch)
+{
+    if (voiceId != 0) m_device.SetPitch(voiceId, pitch);
+}
+
+void AudioManager::SetVoicePan(uint32_t voiceId, float pan)
+{
+    if (voiceId != 0) m_device.SetPan(voiceId, pan);
+}
+
+bool AudioManager::IsVoicePlaying(uint32_t voiceId)
+{
+    if (voiceId == 0) return false;
+    if (m_device.IsPlaying(voiceId)) return true;
+    m_voiceIds.erase(voiceId);
+    return false;
 }
 
 void AudioManager::SetBGMVolume(float volume)
