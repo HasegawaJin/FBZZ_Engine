@@ -2,6 +2,13 @@
 # 各モジュールを独立した実行ファイルとしてビルドする。
 # GLOB を避け、追加したファイルが意図せずテストに混入しないよう明示列挙する。
 
+# SDK テンプレートは実行ファイルを必要としないため、CMake script で参照契約を検証する。
+add_test(NAME fbzz_tests_sdk_templates
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/TestSharedSDKTemplates.cmake"
+)
+
 # テスト exe をゲーム本体の exe と分離するため Binaries/<Config>/Tests/ に出力する。
 # CMakeLists.txt スコープ内の上書きはサブディレクトリにのみ効き、上位に影響しない。
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY             "${CMAKE_BINARY_DIR}/Binaries/Tests")
@@ -33,6 +40,7 @@ add_custom_target(copy_dlls_to_tests ALL
 add_executable(fbzz_tests_physics
     Physics/main.cpp
 )
+set_target_properties(fbzz_tests_physics PROPERTIES OUTPUT_NAME "FBZZTestsPhysics")
 target_link_libraries(fbzz_tests_physics
     PRIVATE
         fbzz_physics
@@ -44,6 +52,7 @@ add_dependencies(fbzz_tests_physics copy_dlls_to_tests)
 add_executable(fbzz_tests_math
     Math/main.cpp
 )
+set_target_properties(fbzz_tests_math PROPERTIES OUTPUT_NAME "FBZZTestsMath")
 target_link_libraries(fbzz_tests_math
     PRIVATE
         fbzz_math
@@ -56,6 +65,7 @@ add_dependencies(fbzz_tests_math copy_dlls_to_tests)
 add_executable(fbzz_tests_memory
     Memory/main.cpp
 )
+set_target_properties(fbzz_tests_memory PROPERTIES OUTPUT_NAME "FBZZTestsMemory")
 target_link_libraries(fbzz_tests_memory
     PRIVATE
         fbzz_engine
@@ -67,6 +77,7 @@ add_dependencies(fbzz_tests_memory copy_dlls_to_tests)
 add_executable(fbzz_tests_eventbus
     EventBus/main.cpp
 )
+set_target_properties(fbzz_tests_eventbus PROPERTIES OUTPUT_NAME "FBZZTestsEventBus")
 target_link_libraries(fbzz_tests_eventbus
     PRIVATE
         fbzz_engine
@@ -78,6 +89,7 @@ add_dependencies(fbzz_tests_eventbus copy_dlls_to_tests)
 add_executable(fbzz_tests_transform
     Transform/main.cpp
 )
+set_target_properties(fbzz_tests_transform PROPERTIES OUTPUT_NAME "FBZZTestsTransform")
 target_link_libraries(fbzz_tests_transform
     PRIVATE
         fbzz_engine
@@ -89,6 +101,7 @@ add_dependencies(fbzz_tests_transform copy_dlls_to_tests)
 add_executable(fbzz_tests_time
     Time/main.cpp
 )
+set_target_properties(fbzz_tests_time PROPERTIES OUTPUT_NAME "FBZZTestsTime")
 target_link_libraries(fbzz_tests_time
     PRIVATE
         fbzz_engine
@@ -100,6 +113,7 @@ add_dependencies(fbzz_tests_time copy_dlls_to_tests)
 add_executable(fbzz_tests_logger
     Logger/main.cpp
 )
+set_target_properties(fbzz_tests_logger PROPERTIES OUTPUT_NAME "FBZZTestsLogger")
 target_link_libraries(fbzz_tests_logger
     PRIVATE
         fbzz_engine
@@ -111,6 +125,7 @@ add_dependencies(fbzz_tests_logger copy_dlls_to_tests)
 add_executable(fbzz_tests_tasksystem
     TaskSystem/main.cpp
 )
+set_target_properties(fbzz_tests_tasksystem PROPERTIES OUTPUT_NAME "FBZZTestsTaskSystem")
 target_link_libraries(fbzz_tests_tasksystem
     PRIVATE
         fbzz_engine
@@ -124,6 +139,7 @@ add_dependencies(fbzz_tests_tasksystem copy_dlls_to_tests)
 add_executable(fbzz_tests_scene
     Scene/main.cpp
 )
+set_target_properties(fbzz_tests_scene PROPERTIES OUTPUT_NAME "FBZZTestsScene")
 target_link_libraries(fbzz_tests_scene
     PRIVATE
         fbzz_engine

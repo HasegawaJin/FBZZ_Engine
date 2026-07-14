@@ -10,11 +10,9 @@
 //      @@FBZZ_SCRIPT_INCLUDES_BEGIN/END の間を自動同期する。エントリは Scripts/ScriptList.inl で一元管理する。
 
 // @@FBZZ_SCRIPT_INCLUDES_BEGIN — ScriptCodeGen が自動挿入するため編集しないこと
-// WHY: #include "Scripts/Foo.hpp" は CMakeLists の include_directories(Assets/) により
-//      Assets/Scripts/Foo.hpp に解決される。
 #include "Scripts/PlayerControllerComponent.hpp"
-#include "Scripts/TpsCameraComponent.hpp"
 #include "Scripts/SceneManagerScript.hpp"
+#include "Scripts/TpsCameraComponent.hpp"
 // @@FBZZ_SCRIPT_INCLUDES_END
 
 // WHY: ScriptSceneProxy::GetComponent<T>() のテンプレート定義は Scene.hpp 末尾にある。

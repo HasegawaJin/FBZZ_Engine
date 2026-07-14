@@ -12,12 +12,15 @@
 #include <ShlObj.h>
 #include <imgui.h>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <string_view>
+#include <vector>
 
 namespace fbzz::hub {
 
@@ -25,14 +28,125 @@ namespace {
 
 namespace engine_util = fbzz::util;
 
-constexpr float SIDEBAR_WIDTH = 160.0f;
-constexpr float TOOLBAR_HEIGHT = 40.0f;
-constexpr float CARD_HEIGHT = 116.0f;
-constexpr float THUMBNAIL_SIZE = 72.0f;
+constexpr float SIDEBAR_WIDTH = 196.0f;
+constexpr float COMPACT_SIDEBAR_WIDTH = 164.0f;
+constexpr float CARD_HEIGHT = 146.0f;
+constexpr float THUMBNAIL_SIZE = 88.0f;
+const ImVec4 ACCENT_COLOR = ImVec4(0.31f, 0.62f, 1.0f, 1.0f);
+const ImVec4 SUCCESS_COLOR = ImVec4(0.34f, 0.78f, 0.55f, 1.0f);
+const ImVec4 WARNING_COLOR = ImVec4(1.0f, 0.68f, 0.25f, 1.0f);
+const ImVec4 ERROR_COLOR = ImVec4(1.0f, 0.36f, 0.36f, 1.0f);
 
-bool IsProjectOpenRequested()
+// Hub 全体のテーマを一箇所で構築し、画面ごとの PushStyleColor の重複を避ける。
+void ApplyHubTheme(std::string_view theme)
 {
-    return ImGui::IsItemClicked(0) && ImGui::IsMouseDoubleClicked(0);
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowPadding = { 18.0f, 18.0f };
+    style.FramePadding = { 12.0f, 7.0f };
+    style.CellPadding = { 10.0f, 7.0f };
+    style.ItemSpacing = { 10.0f, 9.0f };
+    style.ItemInnerSpacing = { 8.0f, 6.0f };
+    style.WindowRounding = 0.0f;
+    style.ChildRounding = 9.0f;
+    style.FrameRounding = 6.0f;
+    style.PopupRounding = 9.0f;
+    style.ScrollbarRounding = 9.0f;
+    style.GrabRounding = 6.0f;
+    style.TabRounding = 6.0f;
+    style.WindowBorderSize = 0.0f;
+    style.ChildBorderSize = 1.0f;
+    style.FrameBorderSize = 1.0f;
+    style.PopupBorderSize = 1.0f;
+
+    const bool midnight = theme == "midnight";
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_Text] = ImVec4(0.91f, 0.93f, 0.97f, 1.0f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.48f, 0.53f, 0.62f, 1.0f);
+    colors[ImGuiCol_WindowBg] = midnight
+        ? ImVec4(0.035f, 0.047f, 0.075f, 1.0f)
+        : ImVec4(0.070f, 0.076f, 0.090f, 1.0f);
+    colors[ImGuiCol_ChildBg] = midnight
+        ? ImVec4(0.055f, 0.071f, 0.108f, 1.0f)
+        : ImVec4(0.095f, 0.102f, 0.120f, 1.0f);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.075f, 0.086f, 0.120f, 0.99f);
+    colors[ImGuiCol_Border] = ImVec4(0.18f, 0.22f, 0.30f, 0.72f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.125f, 0.17f, 1.0f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.18f, 0.25f, 1.0f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.17f, 0.22f, 0.31f, 1.0f);
+    colors[ImGuiCol_TitleBg] = colors[ImGuiCol_WindowBg];
+    colors[ImGuiCol_TitleBgActive] = colors[ImGuiCol_WindowBg];
+    colors[ImGuiCol_Button] = ImVec4(0.13f, 0.19f, 0.28f, 1.0f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.19f, 0.34f, 0.52f, 1.0f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.23f, 0.45f, 0.70f, 1.0f);
+    colors[ImGuiCol_Header] = ImVec4(0.12f, 0.18f, 0.27f, 1.0f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.16f, 0.29f, 0.44f, 1.0f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.20f, 0.40f, 0.62f, 1.0f);
+    colors[ImGuiCol_CheckMark] = ACCENT_COLOR;
+    colors[ImGuiCol_SliderGrab] = ACCENT_COLOR;
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.45f, 0.72f, 1.0f, 1.0f);
+    colors[ImGuiCol_Separator] = ImVec4(0.17f, 0.21f, 0.28f, 0.8f);
+    colors[ImGuiCol_ResizeGrip] = ImVec4(0.31f, 0.62f, 1.0f, 0.18f);
+    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.31f, 0.62f, 1.0f, 0.55f);
+    colors[ImGuiCol_ResizeGripActive] = ACCENT_COLOR;
+    colors[ImGuiCol_NavHighlight] = ACCENT_COLOR;
+    colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.01f, 0.015f, 0.025f, 0.76f);
+}
+
+// ASCII を中心としたプロジェクト名とパスの検索・並び替え用に小文字コピーを作る。
+std::string LowerCopy(std::string_view value)
+{
+    std::string result(value);
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return result;
+}
+
+// 長いパスを操作ボタンへ重ねず、省略記号付きでカード内の利用可能幅へ収める。
+std::string EllipsizeText(std::string_view value, float maxWidth)
+{
+    constexpr std::string_view ellipsis = "...";
+    if (maxWidth <= ImGui::CalcTextSize(ellipsis.data()).x) return std::string(ellipsis);
+    if (ImGui::CalcTextSize(value.data(), value.data() + value.size()).x <= maxWidth)
+        return std::string(value);
+
+    std::string result(value);
+    while (!result.empty()) {
+        size_t eraseAt = result.size() - 1;
+        while (eraseAt > 0 &&
+               (static_cast<unsigned char>(result[eraseAt]) & 0xC0u) == 0x80u)
+            --eraseAt;
+        result.erase(eraseAt);
+
+        const std::string candidate = result + ellipsis.data();
+        if (ImGui::CalcTextSize(candidate.c_str()).x <= maxWidth) return candidate;
+    }
+    return std::string(ellipsis);
+}
+
+// カード内の状態を色と文言の両方で示し、色覚だけに依存しないフィードバックを提供する。
+void DrawStatusPill(const char* label, const ImVec4& color)
+{
+    const ImVec2 textSize = ImGui::CalcTextSize(label);
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImVec2 size(textSize.x + 18.0f, textSize.y + 8.0f);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(pos, { pos.x + size.x, pos.y + size.y },
+        ImGui::ColorConvertFloat4ToU32({ color.x, color.y, color.z, 0.15f }), 12.0f);
+    drawList->AddRect(pos, { pos.x + size.x, pos.y + size.y },
+        ImGui::ColorConvertFloat4ToU32({ color.x, color.y, color.z, 0.55f }), 12.0f);
+    drawList->AddText({ pos.x + 9.0f, pos.y + 4.0f },
+        ImGui::ColorConvertFloat4ToU32(color), label);
+    ImGui::Dummy(size);
+}
+
+// 補足文を無効色で折り返し、狭いウィンドウでも右端へはみ出さないよう描画する。
+void DrawMutedWrappedText(const char* text)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
 }
 
 int ParseVersionMajor(const std::string& version)
@@ -79,49 +193,59 @@ bool SelectFolder(const wchar_t* title, std::string& outPath)
     return true;
 }
 
-bool IsEngineRoot(const std::filesystem::path& path)
+bool IsSdkRoot(const std::filesystem::path& path)
 {
-    return engine_util::FileSystem::Exists(path / "CMakeLists.txt")
-        && engine_util::FileSystem::Exists(path / "Projects" / "Engine")
-        && engine_util::FileSystem::Exists(path / "Projects" / "Math");
+    return engine_util::FileSystem::Exists(path / "fbzz-sdk.toml")
+        && engine_util::FileSystem::Exists(path / "cmake" / "FBZZ" / "FBZZConfig.cmake")
+        && engine_util::FileSystem::Exists(path / "include" / "Engine");
 }
 
-std::string ResolveEngineRootForTemplate(const HubConfig& config)
+std::string ResolveSdkRootForTemplate(const HubConfig& config)
 {
-    if (!config.GetEngineRoot().empty()) {
-        return engine_util::FileSystem::PathToUtf8(engine_util::FileSystem::PathFromUtf8(config.GetEngineRoot()));
+    if (!config.GetSdkRoot().empty()) {
+        const std::filesystem::path configured = engine_util::FileSystem::PathFromUtf8(config.GetSdkRoot());
+        if (IsSdkRoot(configured))
+            return engine_util::FileSystem::PathToUtf8(configured);
+        // 旧 engine_root がソースルートを指す設定は、同 checkout の版別 SDK へ移行する。
+        const std::filesystem::path versioned = configured / "SDK" / FBZZ_VERSION;
+        if (IsSdkRoot(versioned))
+            return engine_util::FileSystem::PathToUtf8(versioned);
     }
 
     std::filesystem::path current = engine_util::FileSystem::GetCurrentDirectory();
-    if (IsEngineRoot(current)) {
+    if (IsSdkRoot(current)) {
         return engine_util::FileSystem::PathToUtf8(current);
     }
+    if (IsSdkRoot(current / "SDK" / FBZZ_VERSION))
+        return engine_util::FileSystem::PathToUtf8(current / "SDK" / FBZZ_VERSION);
 
     current = engine_util::FileSystem::GetExecutableDirectory();
     for (int i = 0; i < 8 && !current.empty(); ++i) {
-        if (IsEngineRoot(current)) {
+        if (IsSdkRoot(current)) {
             return engine_util::FileSystem::PathToUtf8(current);
         }
+        if (IsSdkRoot(current / "SDK" / FBZZ_VERSION))
+            return engine_util::FileSystem::PathToUtf8(current / "SDK" / FBZZ_VERSION);
         current = current.parent_path();
     }
 
     return {};
 }
 
-void ApplyEngineEnvironment(const std::string& engineRoot)
+void ApplySdkEnvironment(const std::string& sdkRoot)
 {
-    if (engineRoot.empty()) {
+    if (sdkRoot.empty()) {
         return;
     }
 
-    const std::wstring rootW = engine_util::StringUtils::ToWide(engineRoot);
-    SetEnvironmentVariableW(L"FBZZ_ENGINE_ROOT", rootW.c_str());
+    const std::wstring rootW = engine_util::StringUtils::ToWide(sdkRoot);
+    SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", rootW.c_str());
 
     HKEY key{};
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &key) == ERROR_SUCCESS) {
         RegSetValueExW(
             key,
-            L"FBZZ_ENGINE_ROOT",
+            L"FBZZ_SDK_ROOT",
             0,
             REG_EXPAND_SZ,
             reinterpret_cast<const BYTE*>(rootW.c_str()),
@@ -144,10 +268,34 @@ bool HubApp::Init(fbzz::renderer::ResourceManager& resources, fbzz::renderer::II
 {
     m_thumbnailCache.Init(resources, imgui);
     m_config.Load();
-    ApplyEngineEnvironment(ResolveEngineRootForTemplate(m_config));
+    SyncSettingsBuffers();
+    ApplyHubTheme(m_config.GetTheme());
+    ApplySdkEnvironment(ResolveSdkRootForTemplate(m_config));
     m_templateManager.Refresh();
     m_projectManager.LoadFromConfig(m_config);
     return true;
+}
+
+// 新規作成を毎回初期状態で開き、古い入力やテンプレート選択の持ち越しを防ぐ。
+void HubApp::PrepareNewProjectDialog()
+{
+    m_templateManager.Refresh();
+    m_newProjectNameBuffer.fill('\0');
+    m_newProjectDestinationBuffer.fill('\0');
+    m_selectedTemplateIndex = 0;
+    m_showNewProjectDialog = true;
+}
+
+// 永続化済み設定を編集用バッファへ複製し、Reload 時にも UI と設定値を一致させる。
+void HubApp::SyncSettingsBuffers()
+{
+    m_editorExeBuffer.fill('\0');
+    m_engineRootBuffer.fill('\0');
+    strncpy_s(m_editorExeBuffer.data(), m_editorExeBuffer.size(),
+              m_config.GetEditorExe().c_str(), _TRUNCATE);
+    strncpy_s(m_engineRootBuffer.data(), m_engineRootBuffer.size(),
+        m_config.GetSdkRoot().c_str(), _TRUNCATE);
+    m_selectedThemeIndex = m_config.GetTheme() == "midnight" ? 0 : 1;
 }
 
 void HubApp::Shutdown()
@@ -170,7 +318,9 @@ void HubApp::Render()
         ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_NoBringToFrontOnFocus;
 
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::Begin("FBZZ Hub", nullptr, flags);
+    ImGui::PopStyleVar();
 
     RenderSidebar();
     ImGui::SameLine();
@@ -190,66 +340,147 @@ void HubApp::Render()
 
 void HubApp::RenderSidebar()
 {
-    ImGui::BeginChild("Sidebar", ImVec2(SIDEBAR_WIDTH, 0), true);
-    ImGui::TextUnformatted("FBZZ Hub");
-    ImGui::TextDisabled("v0.1.0");
-    ImGui::Separator();
+    const float sidebarWidth = ImGui::GetMainViewport()->WorkSize.x < 820.0f
+        ? COMPACT_SIDEBAR_WIDTH : SIDEBAR_WIDTH;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.035f, 0.050f, 0.080f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 18.0f));
+    ImGui::BeginChild("Sidebar", ImVec2(sidebarWidth, 0), false);
 
-    if (ImGui::Selectable("Projects", m_activePanel == Panel::Projects)) {
+    const ImVec2 logoPos = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        logoPos, { logoPos.x + 38.0f, logoPos.y + 38.0f },
+        ImGui::ColorConvertFloat4ToU32(ACCENT_COLOR), 9.0f);
+    ImGui::GetWindowDrawList()->AddText(
+        { logoPos.x + 9.0f, logoPos.y + 10.0f }, IM_COL32_WHITE, "FZ");
+    ImGui::Dummy({ 46.0f, 38.0f });
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    ImGui::TextUnformatted("FBZZ Hub");
+    ImGui::TextDisabled("Game workspace");
+    ImGui::EndGroup();
+
+    ImGui::Dummy({ 0.0f, 24.0f });
+    ImGui::TextDisabled("WORKSPACE");
+    ImGui::Dummy({ 0.0f, 4.0f });
+
+    if (ImGui::Selectable("  Projects", m_activePanel == Panel::Projects, 0, { 0.0f, 42.0f })) {
         m_activePanel = Panel::Projects;
     }
-    if (ImGui::Selectable("Learn", m_activePanel == Panel::Learn)) {
+    if (ImGui::Selectable("  Learn", m_activePanel == Panel::Learn, 0, { 0.0f, 42.0f })) {
         m_activePanel = Panel::Learn;
     }
-    if (ImGui::Selectable("Settings", m_activePanel == Panel::Settings)) {
+    if (ImGui::Selectable("  Settings", m_activePanel == Panel::Settings, 0, { 0.0f, 42.0f })) {
         m_activePanel = Panel::Settings;
     }
 
+    ImGui::SetCursorPosY((std::max)(ImGui::GetCursorPosY(), ImGui::GetWindowHeight() - 72.0f));
+    ImGui::Separator();
+    ImGui::TextDisabled("ENGINE");
+    ImGui::Text("FBZZ %s", FBZZ_VERSION);
+
     ImGui::EndChild();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
 }
 
 void HubApp::RenderProjectsPanel()
 {
-    ImGui::BeginChild("Toolbar", ImVec2(0, TOOLBAR_HEIGHT), false);
-    if (ImGui::Button("New Project")) {
-        m_templateManager.Refresh();
-        m_newProjectNameBuffer.fill('\0');
-        m_newProjectDestinationBuffer.fill('\0');
-        m_selectedTemplateIndex = 0;
-        m_showNewProjectDialog = true;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Add Existing")) {
-        AddExistingProject();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Refresh")) {
-        m_config.Load();
-        m_templateManager.Refresh();
-        m_projectManager.LoadFromConfig(m_config);
-    }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(220.0f);
-    ImGui::InputText("Search", m_searchBuffer.data(), m_searchBuffer.size());
-    ImGui::EndChild();
-
-    ImGui::Separator();
-
     if (m_reloadProjectsAfterRender) {
         m_projectManager.LoadFromConfig(m_config);
         m_reloadProjectsAfterRender = false;
     }
 
     const auto& projects = m_projectManager.GetProjects();
-    if (projects.empty()) {
-        ImGui::TextDisabled("No projects registered.");
-        return;
+    std::vector<const ProjectEntry*> visibleProjects;
+    visibleProjects.reserve(projects.size());
+    for (const auto& project : projects)
+        if (MatchesSearch(project)) visibleProjects.push_back(&project);
+
+    const auto compareText = [](std::string_view left, std::string_view right) {
+        const std::string lowerLeft = LowerCopy(left);
+        const std::string lowerRight = LowerCopy(right);
+        return lowerLeft < lowerRight ? -1 : (lowerLeft > lowerRight ? 1 : 0);
+    };
+    std::stable_sort(visibleProjects.begin(), visibleProjects.end(), [&](const ProjectEntry* left,
+                                                                         const ProjectEntry* right) {
+        int comparison = 0;
+        if (m_projectSort == ProjectSort::Name)
+            comparison = compareText(left->name, right->name);
+        else if (m_projectSort == ProjectSort::EngineVersion)
+            comparison = compareText(left->engineVersion, right->engineVersion);
+        else
+            comparison = left->lastOpened < right->lastOpened ? -1
+                       : (left->lastOpened > right->lastOpened ? 1 : 0);
+        return m_sortAscending ? comparison < 0 : comparison > 0;
+    });
+
+    const float panelWidth = ImGui::GetContentRegionAvail().x;
+    const bool stackFilters = panelWidth < 480.0f;
+    const bool stackActions = panelWidth < 330.0f;
+    ImGui::BeginChild("Toolbar", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY);
+    ImGui::TextColored(ACCENT_COLOR, "PROJECTS");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu registered / %zu shown", projects.size(), visibleProjects.size());
+    DrawMutedWrappedText("Create, validate, and launch FBZZ projects from one workspace.");
+
+    if (ImGui::Button("New Project", { 118.0f, 0.0f })) PrepareNewProjectDialog();
+    if (!stackActions) ImGui::SameLine();
+    if (ImGui::Button("Add Existing", { 118.0f, 0.0f })) AddExistingProject();
+    ImGui::SameLine();
+    if (ImGui::Button("Refresh")) {
+        m_config.Load();
+        SyncSettingsBuffers();
+        ApplyHubTheme(m_config.GetTheme());
+        m_templateManager.Refresh();
+        m_projectManager.LoadFromConfig(m_config);
     }
 
+    const float filterWidth = ImGui::GetContentRegionAvail().x;
+    ImGui::SetNextItemWidth(stackFilters ? -1.0f : filterWidth * 0.46f);
+    ImGui::InputTextWithHint("##ProjectSearch", "Search projects or paths...",
+                             m_searchBuffer.data(), m_searchBuffer.size());
+    if (!stackFilters) ImGui::SameLine();
+    const char* sortLabels[] = { "Last opened", "Name", "Engine version" };
+    int sortIndex = static_cast<int>(m_projectSort);
+    ImGui::SetNextItemWidth((std::max)(100.0f, ImGui::GetContentRegionAvail().x - 106.0f));
+    if (ImGui::Combo("##ProjectSort", &sortIndex, sortLabels, 3))
+        m_projectSort = static_cast<ProjectSort>(sortIndex);
+    ImGui::SameLine();
+    if (ImGui::Button(m_sortAscending ? "Ascending" : "Descending", { 96.0f, 0.0f }))
+        m_sortAscending = !m_sortAscending;
+    ImGui::EndChild();
+
+    ImGui::Separator();
+
     ImGui::BeginChild("ProjectsList", ImVec2(0, 0), false);
-    for (const auto& project : projects) {
-        if (MatchesSearch(project)) {
-            RenderProjectCard(project);
+    if (projects.empty()) {
+        ImGui::Dummy({ 0.0f, 70.0f });
+        const char* title = "No projects yet";
+        const char* detail = "Create a project from a template or register an existing FBZZ project.";
+        ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(),
+            (ImGui::GetWindowWidth() - ImGui::CalcTextSize(title).x) * 0.5f));
+        ImGui::TextUnformatted(title);
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
+        ImGui::TextDisabled("%s", detail);
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy({ 0.0f, 10.0f });
+        ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(),
+            (ImGui::GetWindowWidth() - 250.0f) * 0.5f));
+        if (ImGui::Button("Create New Project", { 150.0f, 38.0f })) PrepareNewProjectDialog();
+        if (ImGui::GetContentRegionAvail().x >= 110.0f) ImGui::SameLine();
+        if (ImGui::Button("Add Existing", { 100.0f, 38.0f })) AddExistingProject();
+    } else if (visibleProjects.empty()) {
+        ImGui::Dummy({ 0.0f, 70.0f });
+        const char* noMatch = "No projects match your search.";
+        ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(),
+            (ImGui::GetWindowWidth() - ImGui::CalcTextSize(noMatch).x) * 0.5f));
+        ImGui::TextDisabled("%s", noMatch);
+        ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(),
+            (ImGui::GetWindowWidth() - 112.0f) * 0.5f));
+        if (ImGui::Button("Clear Search", { 112.0f, 0.0f })) m_searchBuffer.fill('\0');
+    } else {
+        for (const ProjectEntry* project : visibleProjects) {
+            RenderProjectCard(*project);
         }
     }
     ImGui::EndChild();
@@ -267,73 +498,99 @@ void HubApp::RenderProjectsPanel()
 void HubApp::RenderProjectCard(const ProjectEntry& project)
 {
     ImGui::PushID(project.path.c_str());
-    ImGui::BeginChild("Card", ImVec2(0, CARD_HEIGHT), true);
 
-    RenderProjectThumbnail(project);
-    ImGui::SameLine();
+    const char* statusLabel = "Ready";
+    ImVec4 statusColor = SUCCESS_COLOR;
+    if (!project.pathExists) {
+        statusLabel = "Path missing";
+        statusColor = ERROR_COLOR;
+    } else if (project.path == m_failedMigrationProject) {
+        statusLabel = "Migration failed";
+        statusColor = ERROR_COLOR;
+    } else if (!project.projFileValid || !project.layoutValid || !project.cmakeExists ||
+               !project.apiHeaderExists || !project.settingsExists) {
+        statusLabel = "Layout warning";
+        statusColor = WARNING_COLOR;
+    } else if (project.migrationRequired) {
+        statusLabel = "Migration required";
+        statusColor = WARNING_COLOR;
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.075f, 0.095f, 0.135f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 10.0f));
+    ImGui::BeginChild("Card", ImVec2(0, CARD_HEIGHT), ImGuiChildFlags_Borders,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+
+    const ImVec2 cardMin = ImGui::GetWindowPos();
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        cardMin, { cardMin.x + 4.0f, cardMin.y + ImGui::GetWindowHeight() },
+        ImGui::ColorConvertFloat4ToU32(statusColor), 8.0f,
+        ImDrawFlags_RoundCornersLeft);
+
+    const float cardContentWidth = ImGui::GetContentRegionAvail().x;
+    const bool showThumbnail = cardContentWidth >= 500.0f;
+    if (showThumbnail) {
+        RenderProjectThumbnail(project);
+        ImGui::SameLine();
+    }
 
     ImGui::BeginGroup();
-    ImGui::TextUnformatted(project.name.c_str());
-    if (IsProjectOpenRequested() && project.pathExists) {
-        OpenProject(project);
-    }
+    const float metadataWidth = (std::max)(80.0f,
+        cardContentWidth - (showThumbnail ? THUMBNAIL_SIZE + ImGui::GetStyle().ItemSpacing.x : 0.0f) - 112.0f);
+    const std::string displayName = EllipsizeText(project.name, metadataWidth);
+    const std::string displayPath = EllipsizeText(project.path, metadataWidth);
+    ImGui::TextColored(ImVec4(0.95f, 0.97f, 1.0f, 1.0f), "%s", displayName.c_str());
+    ImGui::TextDisabled("%s", displayPath.c_str());
+    if (ImGui::IsItemHovered() && displayPath != project.path)
+        ImGui::SetTooltip("%s", project.path.c_str());
+    ImGui::TextDisabled("Last opened  %s", project.lastOpened.empty() ? "Never" : project.lastOpened.c_str());
+    ImGui::TextDisabled("Engine  %s",
+        project.engineVersion.empty() ? "Unknown" : project.engineVersion.c_str());
+    DrawStatusPill(statusLabel, statusColor);
+    ImGui::EndGroup();
 
-    ImGui::TextDisabled("%s", project.path.c_str());
-    ImGui::TextDisabled("last: %s   engine: %s",
-        project.lastOpened.empty() ? "-" : project.lastOpened.c_str(),
-        project.engineVersion.empty() ? "-" : project.engineVersion.c_str());
-
-    if (project.path == m_failedMigrationProject) {
-        ImGui::TextColored(ImVec4(1.0f, 0.38f, 0.32f, 1.0f), "Migration failed");
-    } else if (!project.projFileValid || !project.layoutValid || !project.cmakeExists || !project.apiHeaderExists || !project.settingsExists) {
-        ImGui::TextColored(ImVec4(1.0f, 0.74f, 0.24f, 1.0f), "Project layout warning");
-    } else if (project.engineVersionMismatch) {
-        const char* label = project.migrationRequired ? "Migration recommended" : "Update available";
-        ImGui::TextColored(ImVec4(0.55f, 0.78f, 1.0f, 1.0f), "%s", label);
-        if (project.migrationRequired) {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Migrate")) {
-                RequestMigration(project);
-            }
-        }
-    } else {
-        ImGui::TextDisabled("Ready");
-    }
-
-    ImGui::SameLine();
-    ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - 88.0f));
+    ImGui::SetCursorPos({ ImGui::GetWindowWidth() - 112.0f, 20.0f });
     ImGui::BeginDisabled(!project.pathExists);
-    if (ImGui::Button("Open", ImVec2(72.0f, 0.0f))) {
-        OpenProject(project);
-    }
+    if (ImGui::Button("Open", { 88.0f, 34.0f })) OpenProject(project);
     ImGui::EndDisabled();
+    ImGui::SetCursorPos({ ImGui::GetWindowWidth() - 112.0f, 63.0f });
+    if (ImGui::Button("Actions", { 88.0f, 30.0f })) ImGui::OpenPopup("ProjectMenu");
 
-    if (ImGui::BeginPopupContextWindow("ProjectMenu", ImGuiPopupFlags_MouseButtonRight)) {
-        if (ImGui::MenuItem("Open", nullptr, false, project.pathExists)) {
-            OpenProject(project);
-        }
-        if (ImGui::MenuItem("Reveal in Explorer", nullptr, false, project.pathExists)) {
-            RevealProject(project);
-        }
-        if (ImGui::MenuItem("Migrate", nullptr, false, project.pathExists && project.migrationRequired)) {
-            RequestMigration(project);
-        }
+    if (project.migrationRequired) {
+        ImGui::SetCursorPos({ ImGui::GetWindowWidth() - 112.0f, 101.0f });
+        if (ImGui::SmallButton("Migrate now")) RequestMigration(project);
+    }
+
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        ImGui::OpenPopup("ProjectMenu");
+    if (ImGui::BeginPopup("ProjectMenu")) {
+        ImGui::TextDisabled("PROJECT ACTIONS");
         ImGui::Separator();
-        if (ImGui::MenuItem("Remove from List")) {
-            RemoveProject(project);
-        }
+        if (ImGui::MenuItem("Open in Editor", nullptr, false, project.pathExists)) OpenProject(project);
+        if (ImGui::MenuItem("Reveal in Explorer", nullptr, false, project.pathExists)) RevealProject(project);
+        if (ImGui::MenuItem("Migrate Project", nullptr, false,
+                            project.pathExists && project.migrationRequired)) RequestMigration(project);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Remove from Hub")) RemoveProject(project);
         ImGui::EndPopup();
     }
 
-    if (!project.pathExists && ImGui::IsWindowHovered()) {
-        ImGui::SetTooltip("Project path was not found.");
+    const bool cardHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    const bool openByDoubleClick = cardHovered && !ImGui::IsAnyItemHovered() &&
+        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && project.pathExists;
+
+    if (!project.pathExists && cardHovered) {
+        ImGui::SetTooltip("Project path was not found: %s", project.path.c_str());
     }
 
-    ImGui::EndGroup();
     ImGui::EndChild();
+    if (openByDoubleClick) OpenProject(project);
     ImGui::Spacing();
     ImGui::PopID();
 }
+
 
 void HubApp::RenderProjectThumbnail(const ProjectEntry& project)
 {
@@ -386,55 +643,112 @@ void HubApp::RenderNewProjectDialog()
         m_showNewProjectDialog = false;
     }
 
-    if (!ImGui::BeginPopupModal("New Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    const ImVec2 workSize = ImGui::GetMainViewport()->WorkSize;
+    const ImVec2 dialogSize(
+        (std::max)(420.0f, (std::min)(760.0f, workSize.x - 32.0f)),
+        (std::max)(460.0f, (std::min)(600.0f, workSize.y - 32.0f)));
+    ImGui::SetNextWindowSize(dialogSize, ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("New Project", nullptr, ImGuiWindowFlags_NoCollapse)) {
         return;
     }
 
     const auto& templates = m_templateManager.GetTemplates();
-    if (templates.empty()) {
-        ImGui::TextDisabled("No templates found.");
-    } else {
-        if (m_selectedTemplateIndex < 0 || m_selectedTemplateIndex >= static_cast<int>(templates.size())) {
-            m_selectedTemplateIndex = 0;
-        }
-
-        const char* currentTemplate = templates[static_cast<size_t>(m_selectedTemplateIndex)].displayName.c_str();
-        if (ImGui::BeginCombo("Template", currentTemplate)) {
-            for (int i = 0; i < static_cast<int>(templates.size()); ++i) {
-                const bool selected = i == m_selectedTemplateIndex;
-                if (ImGui::Selectable(templates[static_cast<size_t>(i)].displayName.c_str(), selected)) {
-                    m_selectedTemplateIndex = i;
-                }
-                if (selected) {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::TextWrapped("%s", templates[static_cast<size_t>(m_selectedTemplateIndex)].description.c_str());
-    }
-
-    ImGui::InputText("Name", m_newProjectNameBuffer.data(), m_newProjectNameBuffer.size());
-    ImGui::InputText("Location", m_newProjectDestinationBuffer.data(), m_newProjectDestinationBuffer.size());
-    ImGui::SameLine();
-    if (ImGui::Button("Browse")) {
-        std::string selectedPath;
-        if (SelectFolder(L"Select project parent folder", selectedPath)) {
-            strncpy_s(m_newProjectDestinationBuffer.data(), m_newProjectDestinationBuffer.size(), selectedPath.c_str(), _TRUNCATE);
-        }
-    }
+    if (!templates.empty() &&
+        (m_selectedTemplateIndex < 0 || m_selectedTemplateIndex >= static_cast<int>(templates.size())))
+        m_selectedTemplateIndex = 0;
 
     const ProjectNameInfo nameInfo = TemplateManager::MakeProjectNameInfo(m_newProjectNameBuffer.data());
-    const bool canCreate = !templates.empty()
-        && TemplateManager::IsValidProjectNameInfo(nameInfo)
-        && m_newProjectDestinationBuffer[0] != '\0';
+    const bool validName = TemplateManager::IsValidProjectNameInfo(nameInfo);
+    const bool hasDestination = m_newProjectDestinationBuffer[0] != '\0';
+    const std::filesystem::path targetPath = hasDestination
+        ? Utf8ToPath(m_newProjectDestinationBuffer.data()) / nameInfo.targetName
+        : std::filesystem::path{};
+    const bool targetExists = hasDestination && !nameInfo.targetName.empty() &&
+        engine_util::FileSystem::Exists(targetPath);
+    const bool canCreate = !templates.empty() && validName && hasDestination && !targetExists;
 
-    if (!canCreate) {
-        ImGui::TextColored(ImVec4(1.0f, 0.74f, 0.24f, 1.0f), "Enter an ASCII project name and destination.");
+    ImGui::TextColored(ACCENT_COLOR, "CREATE PROJECT");
+    DrawMutedWrappedText("Choose a starting point, then configure the project identity and location.");
+    ImGui::Separator();
+
+    const ImVec2 bodyAvailable = ImGui::GetContentRegionAvail();
+    const bool useColumns = bodyAvailable.x >= 620.0f;
+    const float bodyHeight = (std::max)(250.0f, bodyAvailable.y - 58.0f);
+    const float templateWidth = useColumns ? (std::min)(230.0f, bodyAvailable.x * 0.34f) : 0.0f;
+    const float templateHeight = useColumns ? bodyHeight : (std::min)(150.0f, bodyHeight * 0.38f);
+
+    ImGui::BeginChild("TemplateBrowser", { templateWidth, templateHeight }, true);
+    ImGui::TextDisabled("TEMPLATE");
+    ImGui::Dummy({ 0.0f, 4.0f });
+    if (templates.empty()) {
+        ImGui::TextWrapped("No templates were found. Check the GameHub Templates directory.");
+    } else {
+        for (int i = 0; i < static_cast<int>(templates.size()); ++i) {
+            const auto& item = templates[static_cast<size_t>(i)];
+            ImGui::PushID(i);
+            if (ImGui::Selectable(item.displayName.c_str(), i == m_selectedTemplateIndex,
+                                  0, { 0.0f, 46.0f }))
+                m_selectedTemplateIndex = i;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", item.description.c_str());
+            ImGui::PopID();
+        }
+        ImGui::Separator();
+        ImGui::TextWrapped("%s",
+            templates[static_cast<size_t>(m_selectedTemplateIndex)].description.c_str());
+    }
+    ImGui::EndChild();
+
+    if (useColumns) ImGui::SameLine();
+    const float setupHeight = useColumns
+        ? bodyHeight
+        : (std::max)(180.0f, bodyHeight - templateHeight - ImGui::GetStyle().ItemSpacing.y);
+    ImGui::BeginChild("ProjectSetup", { 0.0f, setupHeight }, true);
+    ImGui::TextDisabled("PROJECT DETAILS");
+    ImGui::Dummy({ 0.0f, 5.0f });
+    ImGui::TextUnformatted("Project name");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##ProjectName", "Example: My Adventure",
+                             m_newProjectNameBuffer.data(), m_newProjectNameBuffer.size());
+    ImGui::TextDisabled("ASCII letters, numbers, spaces, '-' and '_' are supported.");
+
+    ImGui::Dummy({ 0.0f, 8.0f });
+    ImGui::TextUnformatted("Parent folder");
+    ImGui::SetNextItemWidth(-88.0f);
+    ImGui::InputTextWithHint("##ProjectLocation", "Choose where the project folder will be created",
+                             m_newProjectDestinationBuffer.data(), m_newProjectDestinationBuffer.size());
+    ImGui::SameLine();
+    if (ImGui::Button("Browse", { 78.0f, 0.0f })) {
+        std::string selectedPath;
+        if (SelectFolder(L"Select project parent folder", selectedPath))
+            strncpy_s(m_newProjectDestinationBuffer.data(), m_newProjectDestinationBuffer.size(),
+                      selectedPath.c_str(), _TRUNCATE);
     }
 
+    ImGui::Dummy({ 0.0f, 10.0f });
+    ImGui::TextDisabled("GENERATED IDENTITY");
+    ImGui::Text("Target      %s", nameInfo.targetName.empty() ? "-" : nameInfo.targetName.c_str());
+    ImGui::Text("Namespace   %s", nameInfo.cppNamespace.empty() ? "-" : nameInfo.cppNamespace.c_str());
+    ImGui::Text("Project ID  %s", nameInfo.projectId.empty() ? "-" : nameInfo.projectId.c_str());
+
+    ImGui::Dummy({ 0.0f, 8.0f });
+    if (!validName) {
+        DrawStatusPill("Enter a valid project name", WARNING_COLOR);
+    } else if (!hasDestination) {
+        DrawStatusPill("Choose a destination folder", WARNING_COLOR);
+    } else if (targetExists) {
+        DrawStatusPill("A folder with this target name already exists", ERROR_COLOR);
+    } else {
+        DrawStatusPill("Ready to create", SUCCESS_COLOR);
+        ImGui::TextWrapped("%s", engine_util::FileSystem::PathToUtf8(targetPath).c_str());
+    }
+    ImGui::EndChild();
+
+    ImGui::Separator();
+    const float footerStart = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 220.0f;
+    ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(), footerStart));
+
     ImGui::BeginDisabled(!canCreate);
-    if (ImGui::Button("Create", ImVec2(96.0f, 0.0f))) {
+    if (ImGui::Button("Create Project", ImVec2(124.0f, 36.0f))) {
         std::string error;
         const auto& selectedTemplate = templates[static_cast<size_t>(m_selectedTemplateIndex)];
         const std::string createdAt = CurrentTimestamp();
@@ -443,7 +757,7 @@ void HubApp::RenderNewProjectDialog()
                 Utf8ToPath(m_newProjectDestinationBuffer.data()),
                 nameInfo,
                 createdAt,
-                ResolveEngineRootForTemplate(m_config),
+        ResolveSdkRootForTemplate(m_config),
                 error)) {
             const std::string projectPath = ToStoredPath(Utf8ToPath(m_newProjectDestinationBuffer.data()) / nameInfo.targetName);
             m_config.AddProject(projectPath, createdAt);
@@ -457,7 +771,7 @@ void HubApp::RenderNewProjectDialog()
     ImGui::EndDisabled();
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(96.0f, 0.0f))) {
+    if (ImGui::Button("Cancel", ImVec2(86.0f, 36.0f))) {
         ImGui::CloseCurrentPopup();
     }
 
@@ -510,22 +824,34 @@ void HubApp::RenderMigrationDialog()
 
 void HubApp::RenderLearnPanel()
 {
-    ImGui::TextUnformatted("Learn");
+    ImGui::TextColored(ACCENT_COLOR, "LEARN");
+    ImGui::TextDisabled("Documentation and integration references for FBZZ Engine projects.");
     ImGui::Separator();
-    if (ImGui::Button("Design")) {
-        ShellExecuteW(nullptr, L"open", L"docs\\Design.md", nullptr, nullptr, SW_SHOWNORMAL);
+
+    ImGui::BeginChild("LearnDesign", { 0.0f, 0.0f },
+                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    ImGui::TextUnformatted("Engine design");
+    DrawMutedWrappedText("Architecture, conventions, and system-level design notes.");
+    if (ImGui::Button("Open Design Docs")) {
+        ShellExecuteW(nullptr, L"open", L"Docs\\design", nullptr, nullptr, SW_SHOWNORMAL);
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Hub Design")) {
-        ShellExecuteW(nullptr, L"open", L"docs\\hub\\Design.md", nullptr, nullptr, SW_SHOWNORMAL);
+    if (ImGui::GetContentRegionAvail().x >= 120.0f) ImGui::SameLine();
+    if (ImGui::Button("Open UI Design")) {
+        ShellExecuteW(nullptr, L"open", L"Docs\\design\\editor-ui-refactor.md", nullptr, nullptr, SW_SHOWNORMAL);
     }
-    ImGui::SameLine();
+    ImGui::EndChild();
+
+    ImGui::BeginChild("LearnRepository", { 0.0f, 0.0f },
+                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    ImGui::TextUnformatted("Source repository");
+    DrawMutedWrappedText("Review source history and collaborate on the engine.");
     if (ImGui::Button("Repository")) {
-        ShellExecuteW(nullptr, L"open", L"https://github.com/", nullptr, nullptr, SW_SHOWNORMAL);
+        ShellExecuteW(nullptr, L"open", L"https://github.com/HasegawaJin/FBZZ_Engine", nullptr, nullptr, SW_SHOWNORMAL);
     }
+    ImGui::EndChild();
 
     ImGui::Spacing();
-    ImGui::TextUnformatted("References");
+    ImGui::TextDisabled("PROJECT CONTRACTS");
     ImGui::BulletText("Project metadata: .fbzz_proj");
     ImGui::BulletText("Generated public API: Include/<ProjectName>/ProjectAPI.hpp");
     ImGui::BulletText("Launch contract: FBZZEditor.exe --project <path>");
@@ -533,11 +859,89 @@ void HubApp::RenderLearnPanel()
 
 void HubApp::RenderSettingsPanel()
 {
-    ImGui::TextUnformatted("Settings");
+    ImGui::TextColored(ACCENT_COLOR, "SETTINGS");
+    DrawMutedWrappedText("Configure how GameHub locates the engine and launches the Editor.");
     ImGui::Separator();
-    ImGui::Text("Config: %s", engine_util::FileSystem::PathToUtf8(m_config.GetConfigPath()).c_str());
-    ImGui::Text("Editor: %s", m_config.GetEditorExe().empty() ? "(same directory)" : m_config.GetEditorExe().c_str());
-    ImGui::Text("Engine: %s", m_config.GetEngineRoot().empty() ? "(auto)" : m_config.GetEngineRoot().c_str());
+
+    ImGui::BeginChild("LaunchSettings", { 0.0f, 0.0f },
+                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    ImGui::TextUnformatted("Launch and engine paths");
+    DrawMutedWrappedText("Leave a field empty to use automatic discovery relative to GameHub.");
+    ImGui::Dummy({ 0.0f, 8.0f });
+
+    const bool stackPathControls = ImGui::GetContentRegionAvail().x < 460.0f;
+
+    ImGui::TextUnformatted("Editor executable");
+    ImGui::SetNextItemWidth(stackPathControls ? -1.0f : -92.0f);
+    ImGui::InputTextWithHint("##EditorExe", "Automatic (same directory)",
+                             m_editorExeBuffer.data(), m_editorExeBuffer.size());
+    if (!stackPathControls) ImGui::SameLine();
+    if (ImGui::Button("Auto##Editor", { 82.0f, 0.0f })) m_editorExeBuffer.fill('\0');
+
+    ImGui::TextUnformatted("SDK root");
+    ImGui::SetNextItemWidth(stackPathControls ? -1.0f : -178.0f);
+    ImGui::InputTextWithHint("##EngineRoot", "Automatic discovery",
+                             m_engineRootBuffer.data(), m_engineRootBuffer.size());
+    if (!stackPathControls) ImGui::SameLine();
+    if (ImGui::Button("Browse##Engine", { 82.0f, 0.0f })) {
+        std::string selectedPath;
+        if (SelectFolder(L"Select versioned FBZZ SDK root", selectedPath))
+            strncpy_s(m_engineRootBuffer.data(), m_engineRootBuffer.size(),
+                      selectedPath.c_str(), _TRUNCATE);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Auto##Engine", { 82.0f, 0.0f })) m_engineRootBuffer.fill('\0');
+
+    ImGui::Dummy({ 0.0f, 7.0f });
+    const bool validEngineRoot = m_engineRootBuffer[0] == '\0' ||
+        IsSdkRoot(Utf8ToPath(m_engineRootBuffer.data()));
+    const char* engineStatus = m_engineRootBuffer[0] == '\0'
+        ? "Automatic engine discovery is enabled"
+        : (validEngineRoot ? "SDK path is valid" : "Selected folder is not a versioned FBZZ SDK root");
+    DrawStatusPill(engineStatus,
+                   validEngineRoot ? SUCCESS_COLOR : ERROR_COLOR);
+    ImGui::EndChild();
+
+    ImGui::BeginChild("AppearanceSettings", { 0.0f, 0.0f },
+                      ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    ImGui::TextUnformatted("Appearance");
+    DrawMutedWrappedText("Choose a low-contrast graphite surface or a deeper blue workspace.");
+    const char* themes[] = { "Midnight", "Graphite" };
+    ImGui::SetNextItemWidth((std::min)(220.0f, ImGui::GetContentRegionAvail().x));
+    if (ImGui::Combo("Theme", &m_selectedThemeIndex, themes, 2)) {
+        const char* theme = m_selectedThemeIndex == 0 ? "midnight" : "dark";
+        ApplyHubTheme(theme);
+    }
+    ImGui::EndChild();
+
+    const std::string configPath = engine_util::FileSystem::PathToUtf8(m_config.GetConfigPath());
+    ImGui::TextDisabled("Config: %s",
+        EllipsizeText(configPath, ImGui::GetContentRegionAvail().x).c_str());
+    ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(),
+        ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 218.0f));
+    if (ImGui::Button("Reload", { 82.0f, 36.0f })) {
+        m_config.Load();
+        SyncSettingsBuffers();
+        ApplyHubTheme(m_config.GetTheme());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save Settings", { 126.0f, 36.0f })) {
+        const std::string engineRoot = m_engineRootBuffer.data();
+        if (!engineRoot.empty() && !IsSdkRoot(Utf8ToPath(engineRoot))) {
+            m_errorMessage = "The selected folder is not a versioned FBZZ SDK root.";
+        } else {
+            m_config.SetEditorExe(m_editorExeBuffer.data());
+            m_config.SetSdkRoot(engineRoot);
+            m_config.SetTheme(m_selectedThemeIndex == 0 ? "midnight" : "dark");
+            if (!m_config.Save()) {
+                m_errorMessage = "Failed to save GameHub settings.";
+            } else {
+                ApplyHubTheme(m_config.GetTheme());
+            ApplySdkEnvironment(ResolveSdkRootForTemplate(m_config));
+                m_templateManager.Refresh();
+            }
+        }
+    }
 }
 
 void HubApp::AddExistingProject()
