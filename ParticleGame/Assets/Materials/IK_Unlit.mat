@@ -1,0 +1,16 @@
+version = 1
+shader = "guid:e28590c1368b4d389483546dbe283212"
+blend_mode = "Opaque"
+double_sided = false
+render_queue = 2000
+
+[textures]
+albedo = ""
+normal = ""
+metallic = ""
+roughness = ""
+ao = ""
+emissive = ""
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
