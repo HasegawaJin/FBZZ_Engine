@@ -28,6 +28,7 @@
 #include <Editor/Panels/BuildSettingsPanel.hpp>
 #include <Editor/Panels/AnalysisPanel.hpp>
 #include <Editor/Panels/AnimationGraphPanel.hpp>
+#include <Editor/Panels/VFXEditorPanel.hpp>
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include "Tools/TerrainTool.hpp"
@@ -208,16 +209,18 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
     const std::string standaloneTarget = table["project"]["standalone_target_name"].value_or(std::string{});
     if (!standaloneTarget.empty() && standaloneTarget.rfind("{{", 0) != 0) {
         ctx.standaloneTargetName = standaloneTarget;
-        return;
     }
 
     const std::string targetName = table["project"]["target_name"].value_or(std::string{});
     if (!targetName.empty() && targetName.rfind("{{", 0) != 0) {
-        ctx.standaloneTargetName = targetName + "Standalone";
+        if (standaloneTarget.empty())
+            ctx.standaloneTargetName = targetName + "Standalone";
         ctx.projectTargetName    = targetName;
     }
 
-    const std::string engineRoot = table["engine"]["root"].value_or(std::string{});
+    // sdk_root が共有参照モデルの正本。root は移行前プロジェクトを開くためのフォールバック。
+    const std::string engineRoot = table["engine"]["sdk_root"].value_or(
+        table["engine"]["root"].value_or(std::string{}));
     if (!engineRoot.empty() && engineRoot.rfind("{{", 0) != 0) {
         std::filesystem::path path = util::FileSystem::PathFromUtf8(engineRoot);
         if (!path.is_absolute())
@@ -243,6 +246,7 @@ EditorApp::~EditorApp() = default;
 bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window)
 {
     m_hwnd          = window.GetHandle();
+    m_window        = &window;
     m_renderer      = &renderer;
     m_imguiRenderer = &imguiRenderer;
     m_resources     = &resources;
@@ -278,7 +282,10 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_ctx.renderer    = &renderer;
     m_ctx.imguiRenderer = &imguiRenderer;
     m_ctx.resources   = &resources;
-    m_ctx.memorySystem = &core::Application::Get().GetMemorySystem();
+    auto& application = core::Application::Get();
+    m_ctx.memorySystem = &application.GetMemorySystem();
+    // EditorはApplication所有とは別のProjectRuntimeを更新するため、音響を明示的に接続する。
+    m_runtime.GetSceneManager().SetAudioManager(application.GetAudioManager());
     m_terrainTool     = std::make_unique<TerrainTool>();
     m_ctx.terrainTool = m_terrainTool.get();
     m_waterTool       = std::make_unique<WaterTool>();
@@ -293,6 +300,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
     m_panels.push_back(std::make_unique<AnimationGraphPanel>());
+    m_panels.push_back(std::make_unique<VFXEditorPanel>());
     {
         auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::Scene);
         m_sceneViewportPanel = vp.get();
@@ -704,7 +712,13 @@ void EditorApp::UpdateWindowTitle()
 
     std::string title = "FBZZ Editor - " + sceneName;
     if (m_ctx.sceneDirty) title += "*";
-    SetWindowTextW(m_hwnd, util::StringUtils::ToWide(title).c_str());
+    // 使用中の描画バックエンド (DirectX 11 / 12) をタイトルに付す。
+    // WHY: app 起動時に付けたタイトルは本メソッドで上書きされるため、ここでも同じタグを付け直す。
+    //      バックエンド名は IRenderer 抽象越しに取得しダウンキャストしない。
+    if (m_ctx.renderer)
+        title += std::string(" [") + m_ctx.renderer->GetBackendName() + "]";
+    if (m_window)
+        m_window->SetTitle(util::StringUtils::ToWide(title));
 }
 
 // =============================================================================

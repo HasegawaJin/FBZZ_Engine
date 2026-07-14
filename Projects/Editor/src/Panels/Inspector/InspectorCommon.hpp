@@ -24,11 +24,16 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/WindZoneComponent.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/AudioListenerComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <cstring>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
@@ -385,15 +390,22 @@ void DrawComponentSection(scene::GameObject* go,
 
     ImGui::PushID(label);
 
-    T beforeEnabled{};
-    if (CanRecordEditorUndo(ctx))
-        beforeEnabled = *comp;
-    if (ImGui::Checkbox("##en", &comp->enabled)) {
-        PushComponentValueCommand(
-            *go, ctx, std::string("Toggle ") + label, beforeEnabled, *comp);
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
+    // WHY: BoneComponent のような構造上常に有効な補助 Component は enabled を持たない。
+    //      共通 Inspector を利用できるよう、bool enabled がある型だけ有効チェックを描画する。
+    constexpr bool hasEnabled = requires(T& value) {
+        static_cast<bool&>(value.enabled);
+    };
+    if constexpr (hasEnabled) {
+        T beforeEnabled{};
+        if (CanRecordEditorUndo(ctx))
+            beforeEnabled = *comp;
+        if (ImGui::Checkbox("##en", &comp->enabled)) {
+            PushComponentValueCommand(
+                *go, ctx, std::string("Toggle ") + label, beforeEnabled, *comp);
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        ImGui::SameLine();
     }
-    ImGui::SameLine();
 
 
     bool open = ImGui::CollapsingHeader(label,
@@ -408,9 +420,13 @@ void DrawComponentSection(scene::GameObject* go,
     if (ImGui::BeginPopup("##comp_opts")) {
         if (ImGui::MenuItem("Reset")) {
             const T before = *comp;
-            const bool wasEnabled = comp->enabled;
-            *comp = T{};
-            comp->enabled = wasEnabled;
+            if constexpr (hasEnabled) {
+                const bool wasEnabled = comp->enabled;
+                *comp = T{};
+                comp->enabled = wasEnabled;
+            } else {
+                *comp = T{};
+            }
             PushComponentValueCommand(
                 *go, ctx, std::string("Reset ") + label, before, *comp);
             if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -425,9 +441,13 @@ void DrawComponentSection(scene::GameObject* go,
         if (ImGui::MenuItem("Paste Component Values", nullptr, false, canPaste))
         {
             const T before = *comp;
-            const bool wasEnabled = comp->enabled;
-            *comp = std::any_cast<T>(compClipboard);
-            comp->enabled = wasEnabled;
+            if constexpr (hasEnabled) {
+                const bool wasEnabled = comp->enabled;
+                *comp = std::any_cast<T>(compClipboard);
+                comp->enabled = wasEnabled;
+            } else {
+                *comp = std::any_cast<T>(compClipboard);
+            }
             PushComponentValueCommand(
                 *go, ctx, std::string("Paste ") + label, before, *comp);
             if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -484,6 +504,56 @@ void DrawComponentSection(scene::GameObject* go,
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     }
 }
+
+// EngineコンポーネントのReflect()からInspector本体を自動生成するReflector。
+// WHY: enabledはDrawComponentSectionの共通ヘッダーがUndo付きで描画するため、
+//      Reflect()内の同名フィールドだけを省き、二重表示を防ぐ。
+struct ComponentImGuiReflector final : ImGuiReflector {
+    void Field(const char* name, bool& value) override
+    {
+        if (std::strcmp(name, "enabled") == 0) return;
+        ImGuiReflector::Field(name, value);
+    }
+};
+
+// Reflect()を持つコピー可能コンポーネントを、共通のヘッダー・Undo・本文描画へ接続する。
+template<typename T>
+void DrawReflectedComponentSection(scene::GameObject* go,
+                                   EditorContext& ctx,
+                                   std::any& compClipboard,
+                                   const std::type_info*& compClipboardType,
+                                   const char* label)
+{
+    DrawComponentSection<T>(
+        go, ctx, compClipboard, compClipboardType, label,
+        [](T& component, EditorContext& editorContext) {
+            ComponentImGuiReflector reflector;
+            reflector.m_projectRoot = editorContext.projectRoot;
+            component.Reflect(reflector);
+        });
+}
+
+// RegistryカテゴリをEditor表示名へ変換する。
+inline const char* ComponentCategoryLabel(scene::ComponentCategory category)
+{
+    using Category = scene::ComponentCategory;
+    switch (category) {
+    case Category::Rendering:   return "Rendering";
+    case Category::Lighting:    return "Lighting";
+    case Category::Physics:     return "Physics";
+    case Category::Animation:   return "Animation";
+    case Category::Audio:       return "Audio";
+    case Category::Effects:     return "Effects";
+    case Category::Environment: return "Environment";
+    case Category::Navigation:  return "Navigation";
+    case Category::Terrain:     return "Terrain & Water";
+    case Category::UI:          return "UI";
+    case Category::Misc:        return "Misc";
+    case Category::Internal:    return "Internal";
+    }
+    return "Misc";
+}
+
 // DrawComponentSection の Snapshot カスタマイズ版。
 // WHY: unique_ptr を含むコンポーネント (MeshCollider 等) では、コンポーネント全体のコピーが
 //      physics body を消去してしまう。CaptureFn / ApplyFn を渡すことで
@@ -877,6 +947,84 @@ inline scene::RigidBodyComponent CreateDefaultRigidBody()
     rb.rigidBody->SetMass(1.0f);
     return rb;
 }
+
+// コンポーネント追加時の特殊な既定値・依存コンポーネントだけを集約する。
+// 新しい単純型は最後のデフォルト経路だけで追加できる。
+template<typename T>
+void AddRegisteredComponent(scene::GameObject& go)
+{
+    if constexpr (std::is_same_v<T, scene::MeshRenderer>) {
+        go.AddComponent<T>(CreateDefaultMeshRenderer());
+        if (!go.GetComponent<scene::MaterialComponent>())
+            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
+    } else if constexpr (std::is_same_v<T, scene::SkinnedMeshRenderer>) {
+        go.AddComponent<T>();
+        if (!go.GetComponent<scene::MaterialComponent>())
+            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+    } else if constexpr (std::is_same_v<T, scene::MaterialComponent>) {
+        go.AddComponent<T>(
+            CreateDefaultMaterialComponent(go.GetComponent<scene::SkinnedMeshRenderer>() != nullptr));
+    } else if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
+        T terrain{};
+        terrain.columns = 65;
+        terrain.rows = 65;
+        terrain.cellSize = 2.0f;
+        terrain.maxHeight = 20.0f;
+        terrain.chunkSize = 32;
+        for (int layer = 0; layer < 4; ++layer)
+            terrain.layerMaterials[layer] = DefaultTerrainLayerMaterialPath(layer);
+        terrain.InitFlat(0.0f);
+        terrain.heightDirty = true;
+        terrain.colliderDirty = true;
+        go.AddComponent<T>(std::move(terrain));
+        if (!go.GetComponent<scene::TerrainColliderComponent>())
+            go.AddComponent<scene::TerrainColliderComponent>();
+    } else if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+        T water{};
+        water.resolutionX = 64;
+        water.resolutionZ = 64;
+        water.extentX = 80.0f;
+        water.extentZ = 80.0f;
+        water.materialPath = DefaultWaterMaterialPath();
+        water.meshDirty = true;
+        water.foamDirty = true;
+        water.texDirty = true;
+        go.AddComponent<T>(std::move(water));
+    } else if constexpr (std::is_same_v<T, scene::RigidBodyComponent>) {
+        go.AddComponent<T>(CreateDefaultRigidBody());
+    } else if constexpr (std::is_same_v<T, scene::AabbColliderComponent>) {
+        go.AddComponent<T>(colliderfit::MakeFittedAabbCollider(go));
+    } else if constexpr (std::is_same_v<T, scene::BoxColliderComponent>) {
+        go.AddComponent<T>(colliderfit::MakeFittedBoxCollider(go));
+    } else if constexpr (std::is_same_v<T, scene::SphereColliderComponent>) {
+        go.AddComponent<T>(colliderfit::MakeFittedSphereCollider(go));
+    } else if constexpr (std::is_same_v<T, scene::CapsuleColliderComponent>) {
+        go.AddComponent<T>(colliderfit::MakeFittedCapsuleCollider(go));
+    } else if constexpr (std::is_same_v<T, scene::MeshColliderComponent>) {
+        T collider;
+        auto mesh = SourceMeshFromGameObject(go, collider.meshPath, collider.meshIndex);
+        BuildMeshCollider(collider, mesh);
+        go.AddComponent<T>(std::move(collider));
+    } else if constexpr (std::is_same_v<T, scene::ConvexHullColliderComponent>) {
+        T collider;
+        auto mesh = SourceMeshFromGameObject(go, collider.meshPath, collider.meshIndex);
+        BuildConvexHullCollider(collider, mesh);
+        go.AddComponent<T>(std::move(collider));
+    } else if constexpr (std::is_same_v<T, scene::AnimatorComponent>) {
+        go.AddComponent<T>();
+        if (!go.GetComponent<scene::SkinnedMeshRenderer>())
+            go.AddComponent<scene::SkinnedMeshRenderer>();
+        if (!go.GetComponent<scene::MaterialComponent>())
+            go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+    } else if constexpr (std::is_same_v<T, scene::NavMeshPatrolComponent>) {
+        go.AddComponent<T>();
+        if (!go.GetComponent<scene::NavMeshAgentComponent>())
+            go.AddComponent<scene::NavMeshAgentComponent>();
+    } else {
+        go.AddComponent<T>();
+    }
+}
+
 inline bool ComponentMatchesFilter(const char* label, const char* filter)
 {
     if (filter[0] == '\0') return true;
@@ -956,222 +1104,42 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         return true;
     };
 
-    anyShown |= AddComponentCategory("Rendering", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "Mesh Renderer", !go.GetComponent<scene::MeshRenderer>(), [&]() {
-            go.AddComponent<scene::MeshRenderer>(CreateDefaultMeshRenderer());
-            if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent());
-        });
-        shown |= addItem(category, "Skinned Mesh Renderer", !go.GetComponent<scene::SkinnedMeshRenderer>(), [&]() {
-            go.AddComponent<scene::SkinnedMeshRenderer>();
-            if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
-        });
-        shown |= addItem(category, "Material", !go.GetComponent<scene::MaterialComponent>(), [&]() {
-            go.AddComponent<scene::MaterialComponent>(
-                CreateDefaultMaterialComponent(go.GetComponent<scene::SkinnedMeshRenderer>() != nullptr));
-        });
-        shown |= addItem(category, "Light", !go.GetComponent<scene::LightComponent>(), [&]() {
-            go.AddComponent<scene::LightComponent>();
-        });
-        shown |= addItem(category, "Camera", !go.GetComponent<scene::CameraComponent>(), [&]() {
-            go.AddComponent<scene::CameraComponent>();
-        });
-        shown |= addItem(category, "Lifetime", !go.GetComponent<scene::LifetimeComponent>(), [&]() {
-            go.AddComponent<scene::LifetimeComponent>();
-        });
-        shown |= addItem(category, "Particle Emitter", !go.GetComponent<scene::ParticleEmitter>(), [&]() {
-            go.AddComponent<scene::ParticleEmitter>();
-        });
-        shown |= addItem(category, "Trail", !go.GetComponent<scene::TrailComponent>(), [&]() {
-            go.AddComponent<scene::TrailComponent>();
-        });
-        shown |= addItem(category, "Mesh Trail", !go.GetComponent<scene::MeshTrailComponent>(), [&]() {
-            go.AddComponent<scene::MeshTrailComponent>();
-        });
-        shown |= addItem(category, "Sky Renderer", !go.GetComponent<scene::SkyRenderer>(), [&]() {
-            go.AddComponent<scene::SkyRenderer>();
-        });
-        shown |= addItem(category, "Sun Moon Renderer", !go.GetComponent<scene::SunMoonRenderer>(), [&]() {
-            go.AddComponent<scene::SunMoonRenderer>();
-        });
-        shown |= addItem(category, "Volumetric Cloud", !go.GetComponent<scene::VolumetricCloudComponent>(), [&]() {
-            go.AddComponent<scene::VolumetricCloudComponent>();
-        });
-        shown |= addItem(category, "Environment Light", !go.GetComponent<scene::EnvironmentLightComponent>(), [&]() {
-            go.AddComponent<scene::EnvironmentLightComponent>();
-        });
-        shown |= addItem(category, "Atmospheric Scattering", !go.GetComponent<scene::AtmosphericScatteringComponent>(), [&]() {
-            go.AddComponent<scene::AtmosphericScatteringComponent>();
-        });
-        shown |= addItem(category, "Decal", !go.GetComponent<scene::DecalComponent>(), [&]() {
-            go.AddComponent<scene::DecalComponent>();
-        });
-        shown |= addItem(category, "Terrain", !go.GetComponent<scene::TerrainComponent>(), [&]() {
-            scene::TerrainComponent tc{};
-            tc.columns   = 65;
-            tc.rows      = 65;
-            tc.cellSize  = 2.0f;
-            tc.maxHeight = 20.0f;
-            tc.chunkSize = 32;
-            for (int li = 0; li < 4; ++li)
-                tc.layerMaterials[li] = DefaultTerrainLayerMaterialPath(li);
-            tc.InitFlat(0.0f);
-            tc.heightDirty   = true;
-            tc.colliderDirty = true;
-            go.AddComponent<scene::TerrainComponent>(std::move(tc));
-            if (!go.GetComponent<scene::TerrainColliderComponent>())
-                go.AddComponent<scene::TerrainColliderComponent>();
-        });
-        shown |= addItem(category, "Water", !go.GetComponent<scene::WaterComponent>(), [&]() {
-            scene::WaterComponent water{};
-            water.resolutionX = 64;
-            water.resolutionZ = 64;
-            water.extentX = 80.0f;
-            water.extentZ = 80.0f;
-            water.materialPath = DefaultWaterMaterialPath();
-            water.meshDirty = true;
-            water.foamDirty = true;
-            water.texDirty = true;
-            go.AddComponent<scene::WaterComponent>(std::move(water));
-        });
-        shown |= addItem(category, "Terrain Detail", !go.GetComponent<scene::TerrainDetailComponent>(), [&]() {
-            go.AddComponent<scene::TerrainDetailComponent>();
-        });
-        shown |= addItem(category, "Foliage", !go.GetComponent<scene::FoliageComponent>(), [&]() {
-            go.AddComponent<scene::FoliageComponent>();
-        });
-        return shown;
-    });
+    static constexpr scene::ComponentCategory kCategories[] = {
+        scene::ComponentCategory::Rendering,
+        scene::ComponentCategory::Lighting,
+        scene::ComponentCategory::Physics,
+        scene::ComponentCategory::Animation,
+        scene::ComponentCategory::Audio,
+        scene::ComponentCategory::Effects,
+        scene::ComponentCategory::Environment,
+        scene::ComponentCategory::Navigation,
+        scene::ComponentCategory::Terrain,
+        scene::ComponentCategory::UI,
+        scene::ComponentCategory::Misc
+    };
 
-    anyShown |= AddComponentCategory("Physics", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "Rigidbody", !go.GetComponent<scene::RigidBodyComponent>(), [&]() {
-            go.AddComponent<scene::RigidBodyComponent>(CreateDefaultRigidBody());
+    for (const scene::ComponentCategory selectedCategory : kCategories) {
+        bool hasRegisteredItems = false;
+        scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+            if constexpr (Registration::addable)
+                hasRegisteredItems |= Registration::category == selectedCategory;
         });
-        // Collider はアタッチ時にメッシュ bounds から寸法を自動計算する (Unity と同じ挙動)。
-        shown |= addItem(category, "AABB Collider", !go.GetComponent<scene::AabbColliderComponent>(), [&]() {
-            go.AddComponent<scene::AabbColliderComponent>(colliderfit::MakeFittedAabbCollider(go));
-        });
-        shown |= addItem(category, "Box Collider", !go.GetComponent<scene::BoxColliderComponent>(), [&]() {
-            go.AddComponent<scene::BoxColliderComponent>(colliderfit::MakeFittedBoxCollider(go));
-        });
-        shown |= addItem(category, "Sphere Collider", !go.GetComponent<scene::SphereColliderComponent>(), [&]() {
-            go.AddComponent<scene::SphereColliderComponent>(colliderfit::MakeFittedSphereCollider(go));
-        });
-        shown |= addItem(category, "Capsule Collider", !go.GetComponent<scene::CapsuleColliderComponent>(), [&]() {
-            go.AddComponent<scene::CapsuleColliderComponent>(colliderfit::MakeFittedCapsuleCollider(go));
-        });
-        shown |= addItem(category, "Mesh Collider", !go.GetComponent<scene::MeshColliderComponent>(), [&]() {
-            scene::MeshColliderComponent col;
-            auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
-            BuildMeshCollider(col, mesh);
-            go.AddComponent<scene::MeshColliderComponent>(std::move(col));
-        });
-        shown |= addItem(category, "Convex Hull Collider", !go.GetComponent<scene::ConvexHullColliderComponent>(), [&]() {
-            scene::ConvexHullColliderComponent col;
-            auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
-            BuildConvexHullCollider(col, mesh);
-            go.AddComponent<scene::ConvexHullColliderComponent>(std::move(col));
-        });
-        shown |= addItem(category, "Terrain Collider", !go.GetComponent<scene::TerrainColliderComponent>(), [&]() {
-            go.AddComponent<scene::TerrainColliderComponent>();
-        });
-        shown |= addItem(category, "Volume", !go.GetComponent<scene::VolumeComponent>(), [&]() {
-            go.AddComponent<scene::VolumeComponent>();
-        });
-        shown |= addItem(category, "Character Controller", !go.GetComponent<scene::CharacterControllerComponent>(), [&]() {
-            go.AddComponent<scene::CharacterControllerComponent>();
-        });
-        return shown;
-    });
+        if (!hasRegisteredItems) continue;
 
-    anyShown |= AddComponentCategory("Animation", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "Animator", !go.GetComponent<scene::AnimatorComponent>(), [&]() {
-            go.AddComponent<scene::AnimatorComponent>();
-            if (!go.GetComponent<scene::SkinnedMeshRenderer>())
-                go.AddComponent<scene::SkinnedMeshRenderer>();
-            if (!go.GetComponent<scene::MaterialComponent>())
-                go.AddComponent<scene::MaterialComponent>(CreateDefaultMaterialComponent(true));
+        const char* categoryLabel = ComponentCategoryLabel(selectedCategory);
+        anyShown |= AddComponentCategory(categoryLabel, filter, [&](const char* category, const char*) {
+            bool shown = false;
+            scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+                if constexpr (Registration::addable) {
+                    if (Registration::category != selectedCategory) return;
+                    shown |= addItem(category, Registration::displayName, !go.GetComponent<T>(), [&]() {
+                        AddRegisteredComponent<T>(go);
+                    });
+                }
+            });
+            return shown;
         });
-        shown |= addItem(category, "IK Solver", !go.GetComponent<scene::IKSolverComponent>(), [&]() {
-            go.AddComponent<scene::IKSolverComponent>();
-        });
-        return shown;
-    });
-
-    anyShown |= AddComponentCategory("Audio", filter, [&](const char* category, const char*) {
-        return addItem(category, "Audio Source", !go.GetComponent<scene::AudioSourceComponent>(), [&]() {
-            go.AddComponent<scene::AudioSourceComponent>();
-        });
-    });
-
-    anyShown |= AddComponentCategory("Environment", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "Environment Light", !go.GetComponent<scene::EnvironmentLightComponent>(), [&]() {
-            go.AddComponent<scene::EnvironmentLightComponent>();
-        });
-        shown |= addItem(category, "Reflection Probe", !go.GetComponent<scene::ReflectionProbeComponent>(), [&]() {
-            go.AddComponent<scene::ReflectionProbeComponent>();
-        });
-        shown |= addItem(category, "Atmospheric Scattering", !go.GetComponent<scene::AtmosphericScatteringComponent>(), [&]() {
-            go.AddComponent<scene::AtmosphericScatteringComponent>();
-        });
-        shown |= addItem(category, "Post Process Volume", !go.GetComponent<scene::PostProcessVolumeComponent>(), [&]() {
-            go.AddComponent<scene::PostProcessVolumeComponent>();
-        });
-        return shown;
-    });
-
-    anyShown |= AddComponentCategory("Navigation", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "NavMesh Surface", !go.GetComponent<scene::NavMeshSurfaceComponent>(), [&]() {
-            go.AddComponent<scene::NavMeshSurfaceComponent>();
-        });
-        shown |= addItem(category, "NavMesh Modifier", !go.GetComponent<scene::NavMeshModifierComponent>(), [&]() {
-            go.AddComponent<scene::NavMeshModifierComponent>();
-        });
-        shown |= addItem(category, "Off-Mesh Link", !go.GetComponent<scene::NavMeshOffMeshLinkComponent>(), [&]() {
-            go.AddComponent<scene::NavMeshOffMeshLinkComponent>();
-        });
-        shown |= addItem(category, "NavMesh Agent", !go.GetComponent<scene::NavMeshAgentComponent>(), [&]() {
-            go.AddComponent<scene::NavMeshAgentComponent>();
-        });
-        shown |= addItem(category, "NavMesh Patrol", !go.GetComponent<scene::NavMeshPatrolComponent>(), [&]() {
-            go.AddComponent<scene::NavMeshPatrolComponent>();
-            if (!go.GetComponent<scene::NavMeshAgentComponent>())
-                go.AddComponent<scene::NavMeshAgentComponent>();
-        });
-        shown |= addItem(category, "NavMesh Sensor", !go.GetComponent<scene::NavMeshSensorComponent>(), [&]() {
-            go.AddComponent<scene::NavMeshSensorComponent>();
-        });
-        return shown;
-    });
-
-    anyShown |= AddComponentCategory("UI", filter, [&](const char* category, const char*) {
-        bool shown = false;
-        shown |= addItem(category, "UICanvas", !go.GetComponent<scene::UICanvas>(), [&]() {
-            go.AddComponent<scene::UICanvas>();
-        });
-        shown |= addItem(category, "UIImage", !go.GetComponent<scene::UIImage>(), [&]() {
-            go.AddComponent<scene::UIImage>();
-        });
-        shown |= addItem(category, "UIButton", !go.GetComponent<scene::UIButton>(), [&]() {
-            go.AddComponent<scene::UIButton>();
-        });
-        shown |= addItem(category, "UIText", !go.GetComponent<scene::UIText>(), [&]() {
-            go.AddComponent<scene::UIText>();
-        });
-        shown |= addItem(category, "UILayout Group", !go.GetComponent<scene::UILayoutGroup>(), [&]() {
-            go.AddComponent<scene::UILayoutGroup>();
-        });
-        shown |= addItem(category, "UIAnimator", !go.GetComponent<scene::UIAnimator>(), [&]() {
-            go.AddComponent<scene::UIAnimator>();
-        });
-        return shown;
-    });
+    }
 
     anyShown |= AddComponentCategory("Scripts", filter, [&](const char* category, const char*) {
         bool shown = false;
@@ -1216,10 +1184,13 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
-void DrawAudioInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
-void DrawUIInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
+void DrawAutomaticInspectors(scene::ComponentCategory category,
+                             scene::GameObject* go,
+                             EditorContext& ctx,
+                             std::any& componentClipboard,
+                             const std::type_info*& componentClipboardType);
 void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType);
 void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx);

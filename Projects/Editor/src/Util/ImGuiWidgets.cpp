@@ -192,16 +192,81 @@ bool AssetPathField(const char* label, std::string& path,
     const float inputW = std::max(40.0f,
         ImGui::CalcItemWidth() - kBtnW - style.ItemSpacing.x);
     const float fieldLeft = ImGui::GetCursorScreenPos().x;  // ピッカー位置決め用
-    ImGui::SetNextItemWidth(inputW);
 
-    char buf[512];
-    std::snprintf(buf, sizeof(buf), "%s", path.c_str());
-    if (ImGui::InputText("##path", buf, sizeof(buf))) {
-        path    = NormalizeAssetPath(buf);
-        changed = true;
+    // Unity 風: 非フォーカス時はフルパスではなく [拡張子バッジ] + ファイル名だけを表示する。
+    // WHY: "Assets/Nature/Rock/Rock/materials/namaqualand_boulder_03.mat" のような長い相対パスを
+    //      そのまま InputText に出すと欄の幅で切れて視認性が悪い。クリックした瞬間だけフルパス
+    //      編集用の InputText に切り替え、そこでは従来通りタイプ入力・ドラッグ&ドロップができる。
+    ImGuiStorage* storage = ImGui::GetStateStorage();
+    const ImGuiID editingId    = ImGui::GetID("##editing");
+    const ImGuiID focusReqId   = ImGui::GetID("##focusReq");
+    const bool editing = path.empty() || storage->GetBool(editingId, false);
+
+    if (editing) {
+        ImGui::SetNextItemWidth(inputW);
+        if (storage->GetBool(focusReqId, false)) {
+            ImGui::SetKeyboardFocusHere();
+            storage->SetBool(focusReqId, false);
+        }
+        char buf[512];
+        std::snprintf(buf, sizeof(buf), "%s", path.c_str());
+        if (ImGui::InputText("##path", buf, sizeof(buf))) {
+            path    = NormalizeAssetPath(buf);
+            changed = true;
+        }
+        if (ImGui::IsItemDeactivated())
+            storage->SetBool(editingId, false);
+        if (AcceptAssetPathDrop(path))
+            changed = true;
+    } else {
+        const std::string ext  = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
+        const std::string stem = util::FileSystem::PathToUtf8(
+            util::FileSystem::PathFromUtf8(path).stem());
+        std::string badge = ext.size() > 1 ? ext.substr(1) : ext;
+        for (char& c : badge) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        const ImVec4 badgeCol = ExtBadgeColor(ext);
+
+        const ImVec2 boxMin  = ImGui::GetCursorScreenPos();
+        const ImVec2 boxSize = { inputW, ImGui::GetFrameHeight() };
+        ImGui::InvisibleButton("##display", boxSize);
+        const bool hovered = ImGui::IsItemHovered();
+        const bool clicked = ImGui::IsItemClicked();
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 boxMax = { boxMin.x + boxSize.x, boxMin.y + boxSize.y };
+        dl->AddRectFilled(boxMin, boxMax,
+            ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg),
+            style.FrameRounding);
+        dl->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding);
+
+        float tx = boxMin.x + style.FramePadding.x;
+        const float ty = boxMin.y + style.FramePadding.y;
+        if (!badge.empty()) {
+            char badgeLabel[16];
+            std::snprintf(badgeLabel, sizeof(badgeLabel), "[%s]", badge.c_str());
+            dl->AddText({ tx, ty }, ImGui::GetColorU32(badgeCol), badgeLabel);
+            tx += ImGui::CalcTextSize(badgeLabel).x + style.ItemInnerSpacing.x;
+        }
+        // 右端に収まらない場合は先頭を "…" で省略し、常にファイル名の末尾が見えるようにする。
+        const float availTextW = boxMax.x - style.FramePadding.x - tx;
+        std::string shown = stem.empty() ? path : stem;
+        bool truncated = false;
+        while (ImGui::CalcTextSize(shown.c_str()).x > availTextW && shown.size() > 1) {
+            shown.erase(0, 1);
+            truncated = true;
+        }
+        if (truncated) shown = "\xE2\x80\xA6" + shown; // "…"
+        dl->AddText({ tx, ty }, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
+
+        if (hovered)
+            ImGui::SetTooltip("%s", path.c_str());
+        if (clicked) {
+            storage->SetBool(editingId, true);
+            storage->SetBool(focusReqId, true);
+        }
+        if (AcceptAssetPathDrop(path))
+            changed = true;
     }
-    if (AcceptAssetPathDrop(path))
-        changed = true;
 
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
@@ -221,8 +286,13 @@ bool AssetPathField(const char* label, std::string& path,
     }
 
     // ラベルを ImGui 標準ラベル列（右側）に配置。ウィンドウ幅でクリップされる。
-    ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
-    ImGui::TextUnformatted(label);
+    // "##" 始まりは共通 Reflector が左カラムへラベルを描画済みであることを示す。
+    // WHY: 同じ AssetPathField を手書き Inspector と自動生成 Inspector の両方で使い、
+    //      自動生成側で内部 ID が画面へ重複表示されるのを防ぐ。
+    if (!(label[0] == '#' && label[1] == '#')) {
+        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+        ImGui::TextUnformatted(label);
+    }
 
     ImGui::PopID();
     return changed;

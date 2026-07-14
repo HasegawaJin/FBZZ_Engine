@@ -21,6 +21,7 @@ public:
         std::filesystem::path exePath;
         std::string           target;
         std::string           configuration;
+        std::string           sdkRoot; // CMake 自動再生成時にも FBZZ_SDK_ROOT を継承させる
         // WHY: ホットリロード時はエディタプロセスがエンジン DLL をロック中のため、
         //      依存ターゲットの再ビルドをスキップしないとリンカが失敗する。
         bool                  skipDeps = false;

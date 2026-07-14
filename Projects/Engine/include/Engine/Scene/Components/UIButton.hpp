@@ -45,6 +45,11 @@ struct UIButton {
         r.Field("hoverColor",     hoverColor);
         r.Field("pressedColor",   pressedColor);
         r.Field("disabledColor",  disabledColor);
+        static constexpr const char* kStateLabels[] = { "Normal", "Hovered", "Pressed" };
+        const int stateIndex = static_cast<int>(state);
+        r.Readonly("state", isInteractable && stateIndex >= 0 && stateIndex < 3
+            ? std::string(kStateLabels[stateIndex])
+            : std::string("Disabled"));
     }
 };
 

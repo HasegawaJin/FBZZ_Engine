@@ -42,12 +42,15 @@ constexpr float    PI                 = 3.14159265358979f;
 static IRenderer* s_renderer = nullptr;
 static ResourceManager* s_resources = nullptr;
 static ResourceHandle<BufferTag>        s_vb;
+static ResourceHandle<BufferTag>        s_depthVb;
 static ResourceHandle<BufferTag>        s_triVb;
 static ResourceHandle<ShaderTag>        s_shader;
 static ResourceHandle<ConstantBufferTag> s_cameraCB;
 static ResourceHandle<PipelineStateTag> s_pso;
+static ResourceHandle<PipelineStateTag> s_depthPso;
 static ResourceHandle<PipelineStateTag> s_triPso;
 static std::vector<DebugVertex>         s_batch;
+static std::vector<DebugVertex>         s_depthBatch;
 static std::vector<DebugVertex>         s_triBatch;
 
 // =============================================================================
@@ -61,6 +64,9 @@ static void EnsureInit(ResourceManager& resources)
     s_vb       = resources.CreateVertexBuffer(nullptr,
                                        MAX_DEBUG_VERTICES * sizeof(DebugVertex),
                                        sizeof(DebugVertex));
+    s_depthVb  = resources.CreateVertexBuffer(nullptr,
+                                       MAX_DEBUG_VERTICES * sizeof(DebugVertex),
+                                       sizeof(DebugVertex));
     s_triVb    = resources.CreateVertexBuffer(nullptr,
                                        MAX_DEBUG_VERTICES * sizeof(DebugVertex),
                                        sizeof(DebugVertex));
@@ -69,12 +75,17 @@ static void EnsureInit(ResourceManager& resources)
     s_pso      = resources.CreatePipelineState({ RasterizerMode::SOLID,
                                          BlendMode::OPAQUE_BLEND,
                                          DepthMode::DEPTH_OFF });
+    // 深度テストあり (書き込みなし) の線分用。グリッドなど「世界に置かれた線」を
+    // シーンジオメトリに遮蔽させる。深度書き込みをしないのは後続の半透明パスを乱さないため。
+    s_depthPso = resources.CreatePipelineState({ RasterizerMode::SOLID,
+                                         BlendMode::OPAQUE_BLEND,
+                                         DepthMode::DEPTH_READ });
     s_triPso   = resources.CreatePipelineState({ RasterizerMode::SOLID_NOCULL,
                                          BlendMode::ALPHA_BLEND,
                                          DepthMode::DEPTH_READ });
 
-    assert(s_vb.IsValid() && s_triVb.IsValid() && s_shader.IsValid() &&
-           s_cameraCB.IsValid() && s_pso.IsValid() && s_triPso.IsValid() &&
+    assert(s_vb.IsValid() && s_depthVb.IsValid() && s_triVb.IsValid() && s_shader.IsValid() &&
+           s_cameraCB.IsValid() && s_pso.IsValid() && s_depthPso.IsValid() && s_triPso.IsValid() &&
            "DebugDraw initialization failed");
 }
 
@@ -87,6 +98,17 @@ static void AddSegment(const math::Vector3& a, const math::Vector3& b, const mat
     }
     s_batch.push_back({ a, color });
     s_batch.push_back({ b, color });
+}
+
+static void AddSegmentDepthTested(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color)
+{
+    if (s_depthBatch.size() + 2 > MAX_DEBUG_VERTICES)
+    {
+        FBZZ_LOG_WARN("DebugDraw: depth-tested vertex batch reached max capacity (%u)", MAX_DEBUG_VERTICES);
+        return;
+    }
+    s_depthBatch.push_back({ a, color });
+    s_depthBatch.push_back({ b, color });
 }
 
 // axis1/axis2 が張る平面に円弧を追加
@@ -143,12 +165,31 @@ void DebugDraw::BeginFrame(IRenderer& r, ResourceManager& resources, const math:
     resources.Update(s_cameraCB, &cb, sizeof(cb));
 
     s_batch.clear();
+    s_depthBatch.clear();
     s_triBatch.clear();
 }
 
 void DebugDraw::Flush()
 {
-    if (!s_renderer) { s_batch.clear(); s_triBatch.clear(); return; }
+    if (!s_renderer) { s_batch.clear(); s_depthBatch.clear(); s_triBatch.clear(); return; }
+
+    // 深度テストありの線分を先に描く。
+    // WHY: 深度なしの線 (ギズモ) を後に描くことで、グリッドとギズモが重なった場合に
+    //      「メッシュ越しでも見える」ギズモの性質を優先する。
+    if (!s_depthBatch.empty()) {
+        s_resources->Update(s_depthVb, s_depthBatch.data(), s_depthBatch.size() * sizeof(DebugVertex));
+
+        DrawCall depthCall;
+        depthCall.vertexBuffer       = s_depthVb;
+        depthCall.shader             = s_shader;
+        depthCall.pipelineState      = s_depthPso;
+        depthCall.constantBuffers[0] = s_cameraCB;
+        depthCall.vertexCount        = static_cast<uint32_t>(s_depthBatch.size());
+        depthCall.topology           = PrimitiveTopology::LINE_LIST;
+
+        s_renderer->Submit(depthCall, *s_resources);
+        s_depthBatch.clear();
+    }
 
     if (!s_batch.empty()) {
         s_resources->Update(s_vb, s_batch.data(), s_batch.size() * sizeof(DebugVertex));
@@ -187,6 +228,14 @@ void DebugDraw::Line(IRenderer& /*r*/,
 {
     assert(s_renderer && "DebugDraw::BeginFrame must be called first");
     AddSegment(from, to, color);
+}
+
+void DebugDraw::LineDepthTested(IRenderer& /*r*/,
+                                const math::Vector3& from, const math::Vector3& to,
+                                const math::Vector4& color)
+{
+    assert(s_renderer && "DebugDraw::BeginFrame must be called first");
+    AddSegmentDepthTested(from, to, color);
 }
 
 void DebugDraw::Box(IRenderer& /*r*/,

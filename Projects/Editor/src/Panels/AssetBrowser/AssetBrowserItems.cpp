@@ -685,6 +685,14 @@ static void DrawThumbnailFrame(ImVec2 origin, float sz, bool hovered)
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImU32 bg = hovered ? IM_COL32(42, 45, 52, 255) : IM_COL32(30, 32, 38, 255);
     dl->AddRectFilled(origin, { origin.x + sz, origin.y + sz }, bg, 4.0f);
+    // 上明→下暗の縦グラデーションで背景に奥行きを持たせ、プレビューの立体感を補強する。
+    // WHY: AddRectFilledMultiColor は角丸非対応のため、角丸 (4px) の欠けが届かない
+    //      2px 内側へ矩形で重ね、ベースの角丸輪郭を保つ。
+    const ImU32 gradTop    = hovered ? IM_COL32(56, 60, 70, 255) : IM_COL32(44, 47, 56, 255);
+    const ImU32 gradBottom = hovered ? IM_COL32(30, 32, 38, 255) : IM_COL32(19, 20, 24, 255);
+    dl->AddRectFilledMultiColor({ origin.x + 2.0f, origin.y + 2.0f },
+                                { origin.x + sz - 2.0f, origin.y + sz - 2.0f },
+                                gradTop, gradTop, gradBottom, gradBottom);
     dl->AddRect(origin, { origin.x + sz, origin.y + sz }, IM_COL32(95, 100, 112, 230), 4.0f, 0, 1.0f);
 }
 
@@ -1021,7 +1029,10 @@ static bool RenderMeshThumbnail(
 
     const math::Vector3 center = (overrideRadius >= 0.0f) ? overrideCenter : MeshBoundsCenter(mesh);
     const float radius = std::max(0.0001f, (overrideRadius >= 0.0f) ? overrideRadius : MeshBoundsRadius(mesh, center));
-    const float cameraDistance = radius * 4.0f;
+    // WHY: 望遠 (FOV 30) + 遠距離の組み合わせはパースがほぼ消えて正射影に近づき、
+    //      球が円板のように平坦に見える。FOV を広げてカメラを寄せ、フレーミングを
+    //      ほぼ保ったまま遠近感による立体感を出す。
+    const float cameraDistance = radius * 2.9f;
 
     renderer::Camera camera;
     // WHY: Unity の Material Preview に近い、少し上からの 3/4 ビューにする。
@@ -1032,7 +1043,7 @@ static bool RenderMeshThumbnail(
         center.z - cameraDistance
     };
     camera.m_aspect = 1.0f;
-    camera.m_fovY = 30.0f;
+    camera.m_fovY = 38.0f;
     camera.m_near = 0.01f;
     camera.m_far = std::max(10.0f, cameraDistance + radius * 6.0f);
     camera.LookAt(center);
@@ -1091,12 +1102,39 @@ static bool RenderMeshThumbnail(
         resources.Update(s_tr.materialCB, &materialData, sizeof(materialData));
     }
 
+    // ── 3 点照明リグ (キー / フィル / リム) ──
+    // WHY: 単一平行光 + 高いアンビエントでは陰影のグラデーションが浅く、球が円板の
+    //      ように平坦に見える。アンビエントを落として明暗差を作り、寒色フィルで陰側の
+    //      丸みを読ませ、背後からのリムライトで輪郭を背景から分離して立体感を出す。
     renderer::LightConstantsCB lightData{};
     const math::Vector3 keyLight = (camera.m_position + math::Vector3{ radius * 1.4f, radius * 1.8f, radius * 0.8f } - center).Normalized();
     lightData.lightDir = { -keyLight.x, -keyLight.y, -keyLight.z };
-    lightData.lightColor = { 1.0f, 0.97f, 0.92f };
-    lightData.lightIntensity = 1.65f;
-    lightData.ambientColor = { 0.24f, 0.27f, 0.31f };
+    lightData.lightColor = { 1.0f, 0.96f, 0.90f }; // キー: わずかに暖色
+    lightData.lightIntensity = 1.8f;
+    lightData.ambientColor = { 0.10f, 0.11f, 0.14f }; // 陰が黒潰れしない下限まで低減
+
+    // WHY: LightAttenuation は 1/(dist^2+1) の絶対距離減衰を含むため、そのままでは
+    //      メッシュ半径によってライトの効きが大きく変わる。狙いの明るさになるよう
+    //      距離補正を強度へ掛け、どのサイズのプレビューでも同じ見た目にする。
+    const auto placeThumbnailLight = [&](renderer::PointLight& light,
+                                         const math::Vector3&  offsetFromCenter,
+                                         const math::Vector3&  color,
+                                         float                 targetIntensity) {
+        light.position = center + offsetFromCenter;
+        light.color    = color;
+        light.range    = radius * 20.0f;
+        const float dist = offsetFromCenter.Length();
+        light.intensity = targetIntensity * (dist * dist + 1.0f);
+    };
+    // フィル: カメラ側右下から寒色を弱く当て、キーの逆サイドの形状を読ませる
+    placeThumbnailLight(lightData.pointLights[0],
+                        { radius * 2.6f, -radius * 1.4f, -radius * 2.2f },
+                        { 0.55f, 0.65f, 1.0f }, 0.4f);
+    // リム: 右上背後からの白。グレージング角のハイライトで輪郭を浮かせる
+    placeThumbnailLight(lightData.pointLights[1],
+                        { radius * 1.6f, radius * 2.4f, radius * 2.8f },
+                        { 1.0f, 1.0f, 1.0f }, 1.1f);
+    lightData.pointLightCount = 2;
     resources.Update(s_tr.lightCB, &lightData, sizeof(lightData));
 
     scene::ShadowConstantsCB shadowData{};

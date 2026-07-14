@@ -35,14 +35,17 @@ struct UIText {
     {
         r.Field("enabled",       enabled);
         r.Field("text",          text);
-        r.Field("fontSize",      fontSize);
-        r.Field("letterSpacing", letterSpacing);
+        r.FloatRange("fontSize", fontSize, 1.0f, 512.0f);
+        r.FloatRange("letterSpacing", letterSpacing, 0.0f, 128.0f);
         r.Field("color",         color);
         r.Field("sortOrder",     sortOrder);
+        static constexpr const char* kAlignLabels[] = { "Left", "Center", "Right" };
         int alignInt = static_cast<int>(align);
-        r.Field("align",         alignInt);
+        r.Enum("align", alignInt, kAlignLabels);
+        alignInt = (alignInt < 0 || alignInt > 2) ? 0 : alignInt;
         align = static_cast<TextAlign>(alignInt);
         r.Field("fontPath",      fontPath);
+        r.Tooltip("生成済みフォントアトラスのベースパス。空欄では内蔵SDFフォントを使用します。");
     }
 };
 

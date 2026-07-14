@@ -7,9 +7,12 @@
 #include <Engine/Input/KeyCode.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <cctype>
 #include <cfloat>
+#include <cstring>
 #include <cstdio>
 #include <functional>
 #include <string>
@@ -40,6 +43,42 @@ struct ImGuiReflector : scene::IReflector {
     // 各 Field はこれが false (閉) の間は描画をスキップする。グループ前の項目は true (既定)。
     bool m_groupOpen = true;
 
+    // シリアライズ用 lowerCamelCase キーを Inspector 用の読みやすい表示名へ変換する。
+    // WHY: Reflect() のキーを表示名に流用しても、シーン互換性を壊すキー変更なしで
+    //      "fontSize" を "Font Size" のような Editor 表示へ自動変換できる。
+    static std::string HumanizeName(const char* name)
+    {
+        std::string result;
+        for (size_t i = 0; name[i] != '\0'; ++i) {
+            const unsigned char current = static_cast<unsigned char>(name[i]);
+            if (name[i] == '_') {
+                result.push_back(' ');
+                continue;
+            }
+            if (i > 0 && std::isupper(current) && name[i - 1] != ' ')
+                result.push_back(' ');
+            result.push_back(i == 0
+                ? static_cast<char>(std::toupper(current))
+                : name[i]);
+        }
+        return result;
+    }
+
+    // フィールド名の規約からアセット種別を決める。
+    // WHY: 各コンポーネントにEditor専用メタデータを重複記述せず、xxxPathだけで
+    //      ドラッグ＆ドロップと検索ピッカーを自動提供する。
+    static const char* AssetFilterFor(const char* name)
+    {
+        if (std::strcmp(name, "texturePath") == 0) return ".fztex,.png,.dds";
+        if (std::strcmp(name, "fontPath") == 0)    return ".png,.fnt";
+        if (std::strcmp(name, "materialPath") == 0) return ".mat";
+        if (std::strcmp(name, "meshPath") == 0 || std::strcmp(name, "modelPath") == 0)
+            return ".fbx,.fzmodel";
+        if (std::strcmp(name, "controllerPath") == 0) return ".animcontroller";
+        if (std::strcmp(name, "clipPath") == 0) return ".wav,.ogg,.mp3";
+        return nullptr;
+    }
+
     // ── レイアウト補助 (ラベル左 + 値が右いっぱいの 2 カラム) ──────────────────
     // WHY: 全フィールドで値の左端をそろえると Unity ライクで整然と見える。
     //      従来は ImGui 既定のラベル右寄せ + 参照スロットは手書きで名前を右に追記しており、
@@ -58,7 +97,8 @@ struct ImGuiReflector : scene::IReflector {
         if (!m_groupOpen) return false;
         ImGui::PushID(name);
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(name);
+        const std::string displayName = HumanizeName(name);
+        ImGui::TextUnformatted(displayName.c_str());
         ImGui::SameLine();
         const float col = ValueColumnX();
         if (ImGui::GetCursorPosX() < col)
@@ -122,10 +162,25 @@ struct ImGuiReflector : scene::IReflector {
     void Field(const char* name, std::string& v) override
     {
         if (!BeginRow(name)) return;
-        std::string buf = v;
-        buf.resize(buf.size() + 128);
-        if (ImGui::InputText("##v", buf.data(), buf.capacity()))
-            v = buf.data();
+        if (const char* filter = AssetFilterFor(name)) {
+            if (widgets::AssetPathField("##v", v, filter, m_projectRoot)
+                && std::strcmp(name, "fontPath") == 0) {
+                std::filesystem::path path = util::FileSystem::PathFromUtf8(v);
+                path.replace_extension();
+                v = util::FileSystem::PathToUtf8(path);
+            }
+        } else {
+            std::string buf = v;
+            const size_t extraCapacity = std::strcmp(name, "text") == 0 ? 1024 : 128;
+            buf.resize(buf.size() + extraCapacity);
+            if (std::strcmp(name, "text") == 0) {
+                if (ImGui::InputTextMultiline("##v", buf.data(), buf.size(),
+                                              { -FLT_MIN, ImGui::GetTextLineHeight() * 3.0f }))
+                    v = buf.data();
+            } else if (ImGui::InputText("##v", buf.data(), buf.size())) {
+                v = buf.data();
+            }
+        }
         EndRow();
     }
 

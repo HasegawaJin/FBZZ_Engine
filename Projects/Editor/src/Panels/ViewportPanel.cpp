@@ -2,9 +2,83 @@
 // ViewportPanel.cpp | fbzz::editor
 // Scene / Game / UI Viewport のレイアウトと入力ルーティング
 #include "Viewport/ViewportCommon.hpp"
+#include "MapToolCommon.hpp"
 #include <Editor/Util/SceneEditUtils.hpp>
 
 namespace fbzz::editor {
+
+// Map Editing Mode 中に Scene ビューポート上端へ重ねる半透明ツールバー。
+// WHY: ツール切替のたびに MapEditorPanel まで視線とマウスを往復するのを無くす。
+//      Unreal Landscape / Unity Terrain と同じく、編集対象の上でツールを持ち替えられるようにする。
+//      アクティブなサブモード・ブラシ径も右端に常時表示し、状態確認もビューポート内で完結させる。
+void DrawMapToolOverlay(EditorContext& ctx, const ImVec2& viewportMin)
+{
+    if (!ctx.mapEditingMode) return;
+
+    // 表示モードツールバー (上段 y+6) と重ならないよう 1 段下げる。
+    const float rowY = viewportMin.y + 6.0f + ImGui::GetFrameHeight() + 6.0f;
+    ImGui::SetCursorScreenPos({ viewportMin.x + 6.0f, rowY });
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3.0f, 0.0f });
+
+    for (const MapToolDef& def : kMapToolDefs) {
+        const bool active = ctx.mapActiveTool == def.tool;
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            active ? ImVec4(0.22f, 0.55f, 0.32f, 0.95f)
+                   : ImVec4(0.15f, 0.15f, 0.15f, 0.78f));
+        char label[24];
+        std::snprintf(label, sizeof(label), "%s %s", def.shortcut, def.label);
+        if (ImGui::SmallButton(label))
+            ActivateMapTool(ctx, def.tool);
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", def.tooltip);
+        ImGui::SameLine();
+    }
+
+    // 右側: 現在のサブモード / ブラシ径を常時表示する。
+    if (ctx.terrainTool
+        && (ctx.mapActiveTool == EditorContext::MapTool::TerrainSculpt
+            || ctx.mapActiveTool == EditorContext::MapTool::TerrainPaint)) {
+        char info[64];
+        if (ctx.mapActiveTool == EditorContext::MapTool::TerrainSculpt) {
+            static const char* kSub[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
+            std::snprintf(info, sizeof(info), "  %s  |  Brush %.1f",
+                          kSub[static_cast<int>(ctx.terrainTool->GetSculptMode())],
+                          ctx.terrainTool->GetBrush().radius);
+        } else {
+            std::snprintf(info, sizeof(info), "  Layer %u  |  Brush %.1f",
+                          ctx.terrainTool->GetPaintLayer(),
+                          ctx.terrainTool->GetBrush().radius);
+        }
+        ImGui::TextColored({ 0.95f, 0.85f, 0.4f, 1.0f }, "%s", info);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Shift+drag: Smooth   Ctrl+drag: Lower   [ ]: brush size");
+    }
+
+    ImGui::PopStyleVar(2);
+}
+
+// Scene View フォーカス中の数字キー (1-6) で Map ツールを切り替える。
+// WHY: カメラブックマークと同じ 1-9 キーを使うため、Map Editing Mode 中だけツール切替を優先する。
+// @return true if a key consumed the input (呼び出し側はブックマーク処理をスキップする)
+bool HandleMapToolHotkeys(EditorContext& ctx)
+{
+    if (!ctx.mapEditingMode) return false;
+    if (ImGui::GetIO().WantTextInput) return false;
+    static const ImGuiKey kNumKeys[6] = {
+        ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4, ImGuiKey_5, ImGuiKey_6
+    };
+    bool consumed = false;
+    for (int i = 0; i < 6; ++i) {
+        if (ImGui::IsKeyPressed(kNumKeys[i], false)) {
+            ActivateMapTool(ctx, kMapToolDefs[i].tool);
+            consumed = true;
+        }
+    }
+    return consumed;
+}
 
 float GetGameViewportAspectRatio(EditorContext::GameViewportAspect aspect)
 {
@@ -351,6 +425,10 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     if (isSceneView && !inPlayOrPause)
         DrawViewModeToolbar(ctx, viewportMin);
 
+    // Map Editing Mode のツールバーオーバーレイ (半透明ストリップ + 状態表示)
+    if (isSceneView && !inPlayOrPause)
+        DrawMapToolOverlay(ctx, viewportMin);
+
     if (isSceneView && !inPlayOrPause) {
         DrawSceneIcons(ctx, viewportMin, size);
         DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
@@ -473,8 +551,14 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                     ctx.selectedEntities.push_back(go.GetID());
         }
 
+        // Map Editing Mode 中は数字キー 1-6 をツール切替に使う (下のブックマークより優先)。
+        // WHY: ブックマークとツール切替が同じ 1-9 キーを共有するため、Map モードでは
+        //      Sculpt/Paint/Water/... の持ち替えを優先し、往復操作を無くす。
+        const bool mapToolConsumed = ctx.viewportFocused && HandleMapToolHotkeys(ctx);
+
         // Camera bookmarks: Shift+1~9 to save, 1~9 to recall.
-        if (ctx.viewportFocused && ctx.editorCamera) {
+        // Map モードでツール切替に消費されたフレームはブックマーク処理を丸ごとスキップする。
+        if (ctx.viewportFocused && ctx.editorCamera && !mapToolConsumed) {
             static const ImGuiKey kNumKeys[9] = {
                 ImGuiKey_1, ImGuiKey_2, ImGuiKey_3,
                 ImGuiKey_4, ImGuiKey_5, ImGuiKey_6,
@@ -484,6 +568,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                                 || ImGui::IsKeyDown(ImGuiKey_RightShift);
             for (int i = 0; i < 9; ++i) {
                 if (!ImGui::IsKeyPressed(kNumKeys[i])) continue;
+                // Map モード中は 1-6 をツールへ譲り、7-9 のみブックマークとして残す。
+                if (ctx.mapEditingMode && i < 6) continue;
                 auto& bm = ctx.cameraBookmarks[i];
                 if (shiftHeld) {
                     bm.position = ctx.editorCamera->m_position;
@@ -558,7 +644,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             vpHovered,
             viewportMin,
             size,
-            ctx.markSceneDirty);
+            ctx.markSceneDirty,
+            ctx.undoStack);
         if (ctx.showDetailTool && !ctx.mapEditingMode)
             ctx.detailTool->OnEditorGUI(*ctx.activeScene, ctx.markSceneDirty);
     }

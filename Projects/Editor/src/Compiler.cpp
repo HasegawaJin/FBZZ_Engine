@@ -71,12 +71,28 @@ bool Compiler::Start(const Config& config)
     }
     SetEnvironmentVariableW(L"CL", childCl.c_str());
 
+    std::wstring oldSdkRoot;
+    const DWORD oldSdkRootSize = GetEnvironmentVariableW(L"FBZZ_SDK_ROOT", nullptr, 0);
+    if (oldSdkRootSize > 0) {
+        oldSdkRoot.resize(static_cast<size_t>(oldSdkRootSize));
+        GetEnvironmentVariableW(L"FBZZ_SDK_ROOT", oldSdkRoot.data(), oldSdkRootSize);
+        if (!oldSdkRoot.empty() && oldSdkRoot.back() == L'\0') oldSdkRoot.pop_back();
+    }
+    if (!config.sdkRoot.empty()) {
+        const std::wstring sdkRoot = util::StringUtils::ToWide(config.sdkRoot);
+        SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", sdkRoot.c_str());
+    }
+
     const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
                                    CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
     if (oldClSize > 0)
         SetEnvironmentVariableW(L"CL", oldCl.c_str());
     else
         SetEnvironmentVariableW(L"CL", nullptr);
+    if (oldSdkRootSize > 0)
+        SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", oldSdkRoot.c_str());
+    else if (!config.sdkRoot.empty())
+        SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", nullptr);
 
     CloseHandle(stdoutWrite);
 

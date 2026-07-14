@@ -214,6 +214,7 @@ private:
 
     FILETIME                                 m_lastSceneWriteTime = {};
     HWND                                     m_hwnd          = nullptr;
+    core::Window*                            m_window        = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
     renderer::IImGuiRenderer*                m_imguiRenderer = nullptr;
     renderer::ResourceManager*               m_resources     = nullptr;
