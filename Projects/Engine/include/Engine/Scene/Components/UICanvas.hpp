@@ -45,20 +45,32 @@ struct UICanvas {
     void Reflect(IReflector& r)
     {
         r.Field("enabled",      enabled);
-        r.Field("canvasWidth",  canvasWidth);
-        r.Field("canvasHeight", canvasHeight);
+        r.FloatRange("canvasWidth",  canvasWidth,  1.0f, 16384.0f);
+        r.FloatRange("canvasHeight", canvasHeight, 1.0f, 16384.0f);
         r.Field("sortOrder",    sortOrder);
+        static constexpr const char* kRenderModeLabels[] = {
+            "Screen Space Overlay", "World Space", "Screen Space Camera"
+        };
         int mode = static_cast<int>(renderMode);
-        r.Field("renderMode",   mode);
+        r.Enum("renderMode", mode, kRenderModeLabels);
+        mode = (mode < 0 || mode > 2) ? 0 : mode;
         renderMode = static_cast<UIRenderMode>(mode);
+
+        r.Group("Canvas Scaler");
+        static constexpr const char* kScaleModeLabels[] = {
+            "Constant Pixel Size", "Scale With Screen Size"
+        };
         int scaler = static_cast<int>(scaleMode);
-        r.Field("scaleMode", scaler);
+        r.Enum("scaleMode", scaler, kScaleModeLabels);
+        scaler = (scaler < 0 || scaler > 1) ? 0 : scaler;
         scaleMode = static_cast<UICanvasScaleMode>(scaler);
-        r.Field("referenceWidth", referenceWidth);
-        r.Field("referenceHeight", referenceHeight);
-        r.Field("matchWidthOrHeight", matchWidthOrHeight);
-        r.Field("worldScale",    worldScale);
-        r.Field("planeDistance", planeDistance);
+        r.FloatRange("referenceWidth", referenceWidth, 1.0f, 16384.0f);
+        r.FloatRange("referenceHeight", referenceHeight, 1.0f, 16384.0f);
+        r.FloatRange("matchWidthOrHeight", matchWidthOrHeight, 0.0f, 1.0f);
+
+        r.Group("World & Camera Space");
+        r.FloatRange("worldScale", worldScale, 0.00001f, 1.0f);
+        r.FloatRange("planeDistance", planeDistance, 0.01f, 10000.0f);
         r.Field("faceCamera",    faceCamera);
     }
 };

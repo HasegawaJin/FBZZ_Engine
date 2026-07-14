@@ -250,7 +250,7 @@ MSVC の環境変数 (vcvarsall.bat) が設定されていないためコンパ�
 ### VS 更新後に CMake Configure が失敗する場合
 
 `CMAKE_CXX_COMPILER` のフルパスが cmake キャッシュに残るため、VS (MSVC ツールセット) を更新すると古いパスを参照してエラーになる。
-対処: `build/debug/` と `build/release/` を削除してから VS Code で再 Configure する。
+対処: `build/Debug/` と `build/Release/` を削除してから VS Code で再 Configure する。
 VS Code CMake Tools の場合は `...` → **Delete Cache and Reconfigure**。
 
 ---

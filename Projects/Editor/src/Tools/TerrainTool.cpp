@@ -163,6 +163,17 @@ void TerrainTool::Update(
         }
     }
 
+    // 修飾キーによる Sculpt サブモードの一時上書き (Unity Terrain 互換)。
+    // Shift+drag = Smooth / Ctrl+drag = Lower。修飾を離せば選択中のサブモード(m_sculpt)に戻る。
+    // WHY: 平滑化・掘り下げは頻繁に切り替えるため、パネルのラジオボタンへ視線を戻さず手元で操作できるようにする。
+    //      Ctrl を優先し、Ctrl+Shift 同時押しは Lower とする。
+    m_activeSculpt = m_sculpt;
+    if (m_mode == Mode::Sculpt && viewportHovered) {
+        const ImGuiIO& io = ImGui::GetIO();
+        if (io.KeyCtrl)       m_activeSculpt = SculptMode::Lower;
+        else if (io.KeyShift) m_activeSculpt = SculptMode::Smooth;
+    }
+
     // レイキャストで地形ヒット判定
     math::Vector3     hitWorld;
     scene::GameObject* hitGO = nullptr;
@@ -209,7 +220,7 @@ void TerrainTool::Update(
         const math::Vector3 hitLocal = ToTerrainLocal(tf, m_hitPoint);
 
         // Flatten モード: 最初のクリックで基準高さを固定する
-        if (m_mode == Mode::Sculpt && m_sculpt == SculptMode::Flatten && !m_flattenLocked) {
+        if (m_mode == Mode::Sculpt && m_activeSculpt == SculptMode::Flatten && !m_flattenLocked) {
             m_flattenTarget = terrainComp->GetHeightAt(hitLocal.x, hitLocal.z);
             m_flattenLocked = true;
         }
@@ -554,7 +565,7 @@ void TerrainTool::ApplySculpt(
                              + static_cast<size_t>(x);
             float& h = terrain.heightData[idx];
 
-            switch (m_sculpt) {
+            switch (m_activeSculpt) {
                 case SculptMode::Raise:
                     h = std::clamp(h + m_brush.strength * w * dt, -1.0f, 1.0f);
                     break;

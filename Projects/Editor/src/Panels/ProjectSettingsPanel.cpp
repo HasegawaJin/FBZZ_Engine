@@ -446,6 +446,9 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
     ImGui::Spacing();
     ImGui::SeparatorText("Debug");
     ImGui::Checkbox("Pass Viewer", &render.passViewerEnabled);
+    ImGui::Checkbox("Particle Budget", &render.particleBudgetEnabled);
+    if (render.particleBudgetEnabled)
+        ImGui::DragInt("Particle Budget Count", &render.particleBudget, 100, 0, 1000000);
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) {

@@ -508,6 +508,18 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
         });
 
+    // Bone は FBX インポートで自動付与される内部コンポーネント。編集は想定しないが、
+    // ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
+    // IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
+    DrawComponentSection<scene::BoneComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Bone",
+        [](scene::BoneComponent& bone, EditorContext&) {
+            ImGui::BeginDisabled();
+            ImGui::Text("Bone Name: %s", bone.boneName.c_str());
+            ImGui::Text("Node Index: %d   Bone Index: %d", bone.nodeIndex, bone.boneIndex);
+            ImGui::Text("Generated: %s", bone.generated ? "Yes" : "No");
+            ImGui::EndDisabled();
+        });
+
     DrawComponentSection<scene::IKSolverComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "IK Solver",
         [go](scene::IKSolverComponent& ik, EditorContext& ctx) {
 

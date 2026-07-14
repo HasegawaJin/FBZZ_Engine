@@ -62,7 +62,7 @@ struct EditorContext {
     core::MemorySystem* memorySystem = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
-    std::string       engineRoot;          // .fbzz_proj の [engine] root (cmake configure で FBZZ_ENGINE_ROOT に使う)
+    std::string       engineRoot;          // .fbzz_proj の [engine] sdk_root (cmake configure で FBZZ_SDK_ROOT に使う)
     std::string       standaloneTargetName = "SandboxStandalone";
     std::string       projectTargetName;   // .fbzz_proj の target_name (GameHub プロジェクトの識別に使う)
 
@@ -127,6 +127,18 @@ struct EditorContext {
     PlayFocusMode playFocusMode = PlayFocusMode::Maximized; // Unity の Play Focused / Maximized / Unfocused 相当
     bool  mapEditingMode = false; // Scene Viewport 中心の Map 専用 Workspace が有効か
     bool  requestMapEditingModeToggle = false; // Toolbar/Menu からの Workspace 切替要求
+    // Map Editing Mode の選択中ツール。
+    // WHY: MapEditorPanel (設定 UI) と Scene Viewport のオーバーレイツールバー / 数字キーが
+    //      同じ選択状態を共有するため、パネルのローカル変数ではなく Context に置く。
+    enum class MapTool {
+        TerrainSculpt,
+        TerrainPaint,
+        Water,
+        Detail,
+        Foliage,
+        Grid
+    };
+    MapTool mapActiveTool = MapTool::TerrainSculpt;
     bool  mapHierarchyFilter = true; // Map Mode 中に TerrainGrid/Terrain/Water/Detail/Foliage だけ表示
     bool  mapInspectorFilter = true; // Map Mode 中に Map 関連 Component だけ表示
     bool  uiViewportFocused = false;

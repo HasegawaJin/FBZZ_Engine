@@ -24,7 +24,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D        texColor : register(TEX_GBUFFER0); // 入力カラー（LDR/HDR）
 Texture2D<float> texDepth : register(TEX_DEPTH);    // 深度バッファ

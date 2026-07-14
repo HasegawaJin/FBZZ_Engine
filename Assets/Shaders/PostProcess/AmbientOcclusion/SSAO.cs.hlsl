@@ -8,7 +8,7 @@
 #include "Common/Math.hlsli"
 #include "Common/Space.hlsli"
 #include "Common/Random.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D    texGBuffer1 : register(TEX_GBUFFER1);  // normal(RGB) + metallic(A)
 Texture2D    texDepth    : register(TEX_DEPTH);

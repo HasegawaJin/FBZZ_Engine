@@ -59,7 +59,9 @@ bool HubConfig::Load()
 
     auto& table = result.table();
     m_editorExe = table["hub"]["editor_exe"].value_or(std::string{});
-    m_engineRoot = table["hub"]["engine_root"].value_or(std::string{});
+    // sdk_root が新しい正本。engine_root は共有 SDK 移行前の設定を一度だけ引き継ぐ。
+    m_engineRoot = table["hub"]["sdk_root"].value_or(
+        table["hub"]["engine_root"].value_or(std::string{}));
     m_theme = table["hub"]["theme"].value_or(std::string{ "dark" });
 
     m_projects.clear();
@@ -86,7 +88,7 @@ bool HubConfig::Save() const
 
     toml::table hub;
     hub.insert("editor_exe", m_editorExe);
-    hub.insert("engine_root", m_engineRoot);
+    hub.insert("sdk_root", m_engineRoot);
     hub.insert("theme", m_theme);
 
     toml::array projects;

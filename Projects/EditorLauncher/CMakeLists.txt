@@ -36,8 +36,6 @@ target_link_libraries(fbzz_editor_launcher
         fbzz_physics
         tomlplusplus
         user32
-        d3d11
-        dxgi
         dwmapi
         shell32
 )

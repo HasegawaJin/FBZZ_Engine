@@ -13,7 +13,8 @@ namespace fbzz::renderer
     public:
         virtual ~IConstantBuffer() = default;
 
-        // CPU からデータを書き込む
+        // CPU からデータを書き込む。この呼び出し時点の内容は、次に行われる Submit が
+        // キャプチャし、同じバッファへの後続 Update から独立して使われる。
         // DX11: UpdateSubresource / Map+Unmap
         // DX12: Upload ヒープへの memcpy
 

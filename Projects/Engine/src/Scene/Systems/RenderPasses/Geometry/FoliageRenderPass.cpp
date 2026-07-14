@@ -2,7 +2,9 @@
 // RenderPasses/Geometry/FoliageRenderPass.cpp | fbzz::scene
 // 樹木・大型岩向けの複数SubMesh/Material対応GPU Instancing描画 (IRenderPass 実装)
 #include "Engine/Scene/Systems/RenderPasses/Geometry/FoliageRenderPass.hpp"
+#include "GeometryPasses.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
+#include "Engine/Core/Time.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/FoliageComponent.hpp"
@@ -30,8 +32,14 @@ struct FoliageMaterialCB {
     uint32_t hasAlbedo;
     float alphaCutoff;
     float _pad[2];
+    // ── 風スウェイ (WindZone) ── Foliage.hlsl / FoliageGBuffer.hlsl の cbuffer と一致させること
+    float windDir[3];    // ワールド風向き (正規化済み)
+    float windTime;      // 累積時間
+    float windStrength;  // 揺れ振幅スケール。0 で無効 (WindZone なしのシーン)
+    float windFrequency; // 揺れ周波数
+    float _windPad[2];
 };
-static_assert(sizeof(FoliageMaterialCB) == 32, "FoliageMaterialCB size mismatch");
+static_assert(sizeof(FoliageMaterialCB) == 64, "FoliageMaterialCB size mismatch");
 
 float Random01(uint32_t& seed)
 {
@@ -157,6 +165,10 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
 
     ctx.renderer.SetSampler(0, renderer::SamplerMode::WRAP_ANISOTROPIC);
 
+    // シーングローバル風。WindZone がないときは windStrength 0 でスウェイ無効 (従来挙動)。
+    const ActiveWindZone windZone = FindActiveWindZone(ctx.scene);
+    const float windTime = Time::time;
+
     for (auto [foliage, terrain, transform] :
          ctx.scene.View<FoliageComponent, TerrainComponent, Transform>()) {
         if (!foliage.enabled || foliage.species.empty()) continue;
@@ -235,6 +247,12 @@ void FoliageRenderPass::Execute(RenderPassContext& ctx)
                 materialData.baseColor[2] = 0.60f;
                 materialData.baseColor[3] = 1.0f;
                 materialData.alphaCutoff = 0.0f;
+                materialData.windDir[0]    = windZone.direction.x;
+                materialData.windDir[1]    = windZone.direction.y;
+                materialData.windDir[2]    = windZone.direction.z;
+                materialData.windTime      = windTime;
+                materialData.windStrength  = windZone.active ? windZone.strength : 0.0f;
+                materialData.windFrequency = windZone.active ? windZone.pulseFrequency : 1.0f;
 
                 renderer::ResourceHandle<renderer::TextureTag> albedo;
                 bool doubleSided = false;

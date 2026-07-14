@@ -17,6 +17,7 @@
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/Core/IModule.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
@@ -602,7 +603,9 @@ private:
         return 1;
     }
 
-    if (!app.Init(fbzz::scene::MakeWindowConfig(settings))) return 1;
+    // WHY: ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する
+    //      (--renderer= があれば Application::Init 内でそちらが優先)。
+    if (!app.Init(fbzz::scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
     auto& renderer = app.GetRenderer();
     fbzz::renderer::ResourceManager resources(renderer);
@@ -622,7 +625,11 @@ private:
     (void)project;
     return 1;
 #else
-    if (!app.Init()) return 1;
+    // WHY: Editor も起動時プロジェクトの renderer 設定 (dx11/dx12) に従う (--renderer= 優先)。
+    //      レンダラーはプロジェクト読込前に生成するため設定をここで先読みする。
+    fbzz::ProjectSettings settings;
+    settings.Load(PathToUtf8(project.settingsFile));
+    if (!app.Init(fbzz::core::Window::Config{}, settings.app.rendererBackend)) return 1;
 
     auto& renderer = app.GetRenderer();
     auto& imguiRenderer = app.GetImGuiRenderer();
@@ -643,6 +650,11 @@ private:
 
 int Run()
 {
+    // WHY: FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
+    //      新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
+    if (fbzz::core::CheckEngineFreshnessAndRelaunch())
+        return 0;
+
     const LaunchArgs args = ParseArgs();
 
     if (args.projectPath.empty()) {

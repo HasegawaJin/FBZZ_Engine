@@ -3,7 +3,7 @@
 // スカイドーム上へ太陽・月ディスクだけを加算描画する
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/Atmosphere.hlsli"
 
 struct SkyVSInput

@@ -1,20 +1,67 @@
 @echo off
 setlocal
 
-REM Use fxc.exe (SM5.0 / DXBC) for DX11. dxc.exe outputs DXIL (DX12 only).
+REM 引数なしなら DX11 / DX12 の両方を生成する。
+if "%~1"=="" (
+    call "%~f0" DX11
+    if errorlevel 1 exit /b 1
+    call "%~f0" DX12
+    if errorlevel 1 exit /b 1
+    exit /b 0
+)
+
+set SRC=%~dp0
+if /I "%~1"=="DX12" goto :find_dxc
+
+:find_fxc
 set "FXC="
-if defined FBZZ_FXC set "FXC=%FBZZ_FXC%" & goto :found_fxc
-for /f "delims=" %%F in ('where fxc.exe 2^>nul') do set "FXC=%%F" & goto :found_fxc
-if defined WindowsSdkDir if defined WindowsSDKVersion if exist "%WindowsSdkDir%bin\%WindowsSDKVersion%x64\fxc.exe" set "FXC=%WindowsSdkDir%bin\%WindowsSDKVersion%x64\fxc.exe" & goto :found_fxc
+if defined FBZZ_FXC (
+    set "FXC=%FBZZ_FXC%"
+    goto :found_fxc
+)
+for /f "delims=" %%F in ('where fxc.exe 2^>nul') do (
+    set "FXC=%%F"
+    goto :found_fxc
+)
+if defined WindowsSdkDir if defined WindowsSDKVersion if exist "%WindowsSdkDir%bin\%WindowsSDKVersion%x64\fxc.exe" (
+    set "FXC=%WindowsSdkDir%bin\%WindowsSDKVersion%x64\fxc.exe"
+    goto :found_fxc
+)
 
 :found_fxc
 if "%FXC%"=="" (
     echo fxc.exe was not found. Install the Windows SDK or set FBZZ_FXC to fxc.exe.
     exit /b 1
 )
-
-set SRC=%~dp0
 set OUT=%~dp0compiled
+set BACKEND_DEFINE=/D FBZZ_BACKEND_DX11=1
+goto :compiler_ready
+
+:find_dxc
+set "DXC="
+if defined FBZZ_DXC (
+    set "DXC=%FBZZ_DXC%"
+    goto :found_dxc
+)
+for /f "delims=" %%F in ('where dxc.exe 2^>nul') do (
+    set "DXC=%%F"
+    goto :found_dxc
+)
+if defined WindowsSdkDir if defined WindowsSDKVersion if exist "%WindowsSdkDir%bin\%WindowsSDKVersion%x64\dxc.exe" (
+    set "DXC=%WindowsSdkDir%bin\%WindowsSDKVersion%x64\dxc.exe"
+    goto :found_dxc
+)
+
+:found_dxc
+if "%DXC%"=="" (
+    echo dxc.exe was not found. Install a recent Windows SDK or set FBZZ_DXC to dxc.exe.
+    exit /b 1
+)
+set OUT=%~dp0compiled_dx12
+set BACKEND_DEFINE=-D FBZZ_BACKEND_DX12=1
+set SHADER_MODEL=6_8
+
+:compiler_ready
 REM %~dp0 ends with a backslash; strip it so /I "path" does not mis-parse the closing quote.
 set SRCDIR=%SRC:~0,-1%
 set INC=/nologo /I "%SRCDIR%"
@@ -129,15 +176,27 @@ exit /b 0
 
 :CompileVSPS
 echo [VS/PS] %~1
-"%FXC%" %INC% /T vs_5_0 /E VSMain /Fo "%OUT%\%~2.vs.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+if defined DXC (
+    "%DXC%" -nologo -I "%SRCDIR%" %BACKEND_DEFINE% -HV 2021 -O3 -T vs_%SHADER_MODEL% -E VSMain -Fo "%OUT%\%~2.vs.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+    if errorlevel 1 ( echo [FAILED] %~1 VS & exit /b 1 )
+    "%DXC%" -nologo -I "%SRCDIR%" %BACKEND_DEFINE% -HV 2021 -O3 -T ps_%SHADER_MODEL% -E PSMain -Fo "%OUT%\%~2.ps.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+    if errorlevel 1 ( echo [FAILED] %~1 PS & exit /b 1 )
+    exit /b 0
+)
+"%FXC%" %INC% %BACKEND_DEFINE% /T vs_5_0 /E VSMain /Fo "%OUT%\%~2.vs.cso" "%SRC%%~1" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] %~1 VS & exit /b 1 )
-"%FXC%" %INC% /T ps_5_0 /E PSMain /Fo "%OUT%\%~2.ps.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+"%FXC%" %INC% %BACKEND_DEFINE% /T ps_5_0 /E PSMain /Fo "%OUT%\%~2.ps.cso" "%SRC%%~1" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] %~1 PS & exit /b 1 )
 exit /b 0
 
 :CompileCS
 echo [CS] %~1
-"%FXC%" %INC% /T cs_5_0 /E CSMain /Fo "%OUT%\%~2.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+if defined DXC (
+    "%DXC%" -nologo -I "%SRCDIR%" %BACKEND_DEFINE% -HV 2021 -O3 -T cs_%SHADER_MODEL% -E CSMain -Fo "%OUT%\%~2.cso" "%SRC%%~1" >> "%LOG%" 2>&1
+    if errorlevel 1 ( echo [FAILED] %~1 CS & exit /b 1 )
+    exit /b 0
+)
+"%FXC%" %INC% %BACKEND_DEFINE% /T cs_5_0 /E CSMain /Fo "%OUT%\%~2.cso" "%SRC%%~1" >> "%LOG%" 2>&1
 if %ERRORLEVEL% neq 0 ( echo [FAILED] %~1 CS & exit /b 1 )
 exit /b 0
 

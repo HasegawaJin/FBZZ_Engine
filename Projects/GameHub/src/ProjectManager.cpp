@@ -71,20 +71,7 @@ bool HasRequiredProjectFields(toml::table& table)
         && HasStringField(table, "project", "library_root")
         && HasStringField(table, "project", "binary_root")
         && HasStringField(table, "project", "build_root")
-        && HasStringField(table, "engine", "root");
-}
-
-int ParseVersionPart(const std::string& version, size_t& offset)
-{
-    int value = 0;
-    while (offset < version.size() && version[offset] >= '0' && version[offset] <= '9') {
-        value = value * 10 + (version[offset] - '0');
-        ++offset;
-    }
-    if (offset < version.size() && version[offset] == '.') {
-        ++offset;
-    }
-    return value;
+        && (HasStringField(table, "engine", "sdk_root") || HasStringField(table, "engine", "root"));
 }
 
 bool NeedsMigration(const std::string& projectVersion)
@@ -92,14 +79,8 @@ bool NeedsMigration(const std::string& projectVersion)
     if (projectVersion.empty() || projectVersion == "-") {
         return false;
     }
-
-    size_t projectOffset = 0;
-    size_t currentOffset = 0;
-    const int projectMajor = ParseVersionPart(projectVersion, projectOffset);
-    const int currentMajor = ParseVersionPart(FBZZ_VERSION, currentOffset);
-    const int projectMinor = ParseVersionPart(projectVersion, projectOffset);
-    const int currentMinor = ParseVersionPart(FBZZ_VERSION, currentOffset);
-    return projectMajor != currentMajor || projectMinor != currentMinor;
+    // 完全一致 ABI 方針では patch 差分も同じ SDK として扱えないため、必ず Migration を要求する。
+    return projectVersion != FBZZ_VERSION;
 }
 
 } // namespace

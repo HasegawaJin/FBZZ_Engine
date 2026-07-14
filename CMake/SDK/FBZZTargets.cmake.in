@@ -1,0 +1,33 @@
+# FBZZ Engine
+# FBZZTargets.cmake | CMake
+# 共有 SDK の構成別 IMPORTED target 定義
+
+if(TARGET FBZZ::Engine)
+    return()
+endif()
+
+set(_FBZZ_CONFIGS Debug Development Release)
+foreach(_FBZZ_TARGET Math Physics Engine)
+    add_library(FBZZ::${_FBZZ_TARGET} SHARED IMPORTED GLOBAL)
+    set_property(TARGET FBZZ::${_FBZZ_TARGET} PROPERTY IMPORTED_CONFIGURATIONS ${_FBZZ_CONFIGS})
+    set_target_properties(FBZZ::${_FBZZ_TARGET} PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${FBZZ_SDK_ROOT}/include"
+        MAP_IMPORTED_CONFIG_RELWITHDEBINFO Development
+        MAP_IMPORTED_CONFIG_MINSIZEREL Release
+    )
+    foreach(_FBZZ_CONFIG IN LISTS _FBZZ_CONFIGS)
+        string(TOUPPER "${_FBZZ_CONFIG}" _FBZZ_CONFIG_UPPER)
+        set_target_properties(FBZZ::${_FBZZ_TARGET} PROPERTIES
+            "IMPORTED_LOCATION_${_FBZZ_CONFIG_UPPER}" "${FBZZ_SDK_ROOT}/bin/${_FBZZ_CONFIG}/FBZZ${_FBZZ_TARGET}.dll"
+            "IMPORTED_IMPLIB_${_FBZZ_CONFIG_UPPER}" "${FBZZ_SDK_ROOT}/lib/${_FBZZ_CONFIG}/FBZZ${_FBZZ_TARGET}.lib"
+        )
+    endforeach()
+endforeach()
+
+set_target_properties(FBZZ::Physics PROPERTIES INTERFACE_LINK_LIBRARIES FBZZ::Math)
+set_target_properties(FBZZ::Engine PROPERTIES
+    INTERFACE_LINK_LIBRARIES "FBZZ::Physics;FBZZ::Math;xaudio2;mfplat;mfreadwrite;mfuuid;winmm;d3d12;dxgi;dxguid;d3dcompiler"
+    INTERFACE_COMPILE_DEFINITIONS
+        "TOML_EXCEPTIONS=0;FBZZ_ENGINE_VERSION_MAJOR=@PROJECT_VERSION_MAJOR@;FBZZ_ENGINE_VERSION_MINOR=@PROJECT_VERSION_MINOR@;FBZZ_ENGINE_VERSION_PATCH=@PROJECT_VERSION_PATCH@;FBZZ_ENGINE_VERSION_STRING=\"@PROJECT_VERSION@\";FBZZ_BUILD_CONFIG_ID=$<IF:$<CONFIG:Debug>,1,$<IF:$<CONFIG:Development>,2,3>>;FBZZ_BUILD_CONFIG_NAME=$<IF:$<CONFIG:Debug>,\"Debug\",$<IF:$<CONFIG:Development>,\"Development\",\"Release\">>"
+)
+unset(_FBZZ_CONFIGS)

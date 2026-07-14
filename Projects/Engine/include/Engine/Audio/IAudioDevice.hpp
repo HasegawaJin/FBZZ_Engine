@@ -32,6 +32,12 @@ public:
 
     virtual void StopBuffer(uint32_t voiceId)              = 0;
     virtual void SetVolume(uint32_t voiceId, float volume) = 0;
+    // pitch は再生速度比。1.0 が原音、0.5 が 1 オクターブ下、2.0 が 1 オクターブ上。
+    virtual void SetPitch(uint32_t voiceId, float pitch) = 0;
+    // pan は -1(左)〜+1(右)。spatialBlend=0 の 2D 音源では 0 を渡す。
+    virtual void SetPan(uint32_t voiceId, float pan) = 0;
+    // 終了済み voice を AudioSystem が検出してランタイム状態を戻すための問い合わせ。
+    [[nodiscard]] virtual bool IsPlaying(uint32_t voiceId) = 0;
 };
 
 } // namespace fbzz::audio

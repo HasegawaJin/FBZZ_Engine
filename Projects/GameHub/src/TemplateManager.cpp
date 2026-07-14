@@ -500,7 +500,10 @@ std::string TemplateManager::ApplyPlaceholders(
     result = ReplaceAll(result, "{{LIBRARY_ROOT}}", "Lib/");
     result = ReplaceAll(result, "{{BINARY_ROOT}}", "Binaries/");
     result = ReplaceAll(result, "{{BUILD_ROOT}}", "Build/");
-    result = ReplaceAll(result, "{{ENGINE_ROOT}}", engineRoot);
+    // WHY: 外部プロジェクトは Engine ソースではなく版別 SDK を参照する。
+    //      引数名は API 互換のため維持し、テンプレート上の新しい語彙へ割り当てる。
+    result = ReplaceAll(result, "{{SDK_ROOT}}", engineRoot);
+    result = ReplaceAll(result, "{{ENGINE_ROOT}}", engineRoot); // 旧カスタムテンプレート互換
     return result;
 }
 

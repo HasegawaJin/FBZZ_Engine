@@ -1,0 +1,99 @@
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000001'
+layer = 0
+name = 'Canvas'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UICanvas]
+    canvasHeight = 1080.0
+    canvasWidth = 1920.0
+    enabled = true
+    matchWidthOrHeight = 0.0
+    referenceHeight = 1080.0
+    referenceWidth = 1920.0
+    renderMode = 0
+    scaleMode = 1
+    sortOrder = 0
+    worldScale = 0.01
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000002'
+layer = 0
+name = 'Background'
+parent = 'Canvas'
+parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIImage]
+    color = [ 0.02, 0.02, 0.02, 1.0 ]
+    enabled = true
+    texturePath = ''
+    uvMax = [ 1.0, 1.0 ]
+    uvMin = [ 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1920.0, 1080.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000003'
+layer = 0
+name = 'LoadingText'
+parent = 'Canvas'
+parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.UIText]
+    color = [ 0.8, 0.8, 0.8, 1.0 ]
+    enabled = true
+    fontPath = ''
+    fontSize = 40.0
+    letterSpacing = 4.0
+    text = 'NOW LOADING...'
+
+    [gameobjects.transform]
+    position = [ 820.0, 341.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 310.736816, 40.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a2000001-0000-0000-0000-000000000004'
+layer = 0
+name = 'LoadController'
+parent = 'Canvas'
+parentInstanceId = 'a2000001-0000-0000-0000-000000000001'
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'SceneManagerScript'
+
+        [gameobjects.ScriptComponents.fields]
+        'Auto Delay' = 1.5
+        'Auto Transition' = true
+        'Target Scene' = ''
+        'Via Scene' = ''

@@ -13,9 +13,10 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
-#include <Engine/Scene/Components/AudioSourceComponent.hpp>
-#include <Engine/Scene/Components/LifetimeComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/WindZoneComponent.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
@@ -33,12 +34,6 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
-#include <Engine/Scene/Components/UICanvas.hpp>
-#include <Engine/Scene/Components/UIImage.hpp>
-#include <Engine/Scene/Components/UIButton.hpp>
-#include <Engine/Scene/Components/UIText.hpp>
-#include <Engine/Scene/Components/UILayoutGroup.hpp>
-#include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainDetailComponent.hpp>
@@ -73,6 +68,7 @@
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/SphereCollider.hpp>
 #include <toml++/toml.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <sstream>
@@ -513,6 +509,40 @@ private:
     const toml::table& m_table;
 };
 
+// RegistryでAutomatic指定された標準コンポーネントをReflect()だけで保存する。
+// WHY: 新型追加時にSceneSerializerへ型別ifブロックを増やさず、単純データを共通経路へ流す。
+void WriteAutomaticComponents(GameObject& go, toml::table& gameObjectTable)
+{
+    ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if constexpr (Registration::serializationMode == ComponentSerializationMode::Automatic
+                      && requires(T& component, IReflector& reflector) { component.Reflect(reflector); }) {
+            if (T* component = go.GetComponent<T>()) {
+                toml::table componentTable;
+                TomlWriteReflector reflector(componentTable);
+                component->Reflect(reflector);
+                gameObjectTable.insert(Registration::serializedName, std::move(componentTable));
+            }
+        }
+    });
+}
+
+// RegistryでAutomatic指定された標準コンポーネントを既定値へReflect()で復元する。
+void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
+{
+    ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if constexpr (Registration::serializationMode == ComponentSerializationMode::Automatic
+                      && requires(T& component, IReflector& reflector) { component.Reflect(reflector); }) {
+            if (const toml::table* componentTable =
+                    gameObjectTable[Registration::serializedName].as_table()) {
+                T component{};
+                TomlReadReflector reflector(*componentTable);
+                component.Reflect(reflector);
+                go.AddComponent<T>(std::move(component));
+            }
+        }
+    });
+}
+
 std::string TomlTableToString(const toml::table& table)
 {
     std::ostringstream oss;
@@ -748,24 +778,29 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("CameraComponent", std::move(ccTbl));
         }
 
-        // LifetimeComponent
-        if (auto* lc = go.GetComponent<LifetimeComponent>()) {
-            toml::table lcTbl;
-            lcTbl.insert("remaining", (double)lc->remaining);
-            goTbl.insert("LifetimeComponent", std::move(lcTbl));
-        }
-
-        // AudioSourceComponent
-        if (auto* asc = go.GetComponent<AudioSourceComponent>();
-            asc && !asc->clipPath.empty())
-        {
-            toml::table ascTbl;
-            ascTbl.insert("clipPath",    asc->clipPath);
-            ascTbl.insert("playOnAwake", asc->playOnAwake);
-            ascTbl.insert("loop",        asc->loop);
-            ascTbl.insert("volume",      (double)asc->volume);
-            ascTbl.insert("enabled",     asc->enabled);
-            goTbl.insert("AudioSourceComponent", std::move(ascTbl));
+        // LODGroupComponent
+        if (auto* lodGroup = go.GetComponent<LODGroupComponent>()) {
+            toml::table lodTbl;
+            lodTbl.insert("enabled", lodGroup->enabled);
+            lodTbl.insert("size", (double)lodGroup->size);
+            lodTbl.insert("cullBelowLastLevel", lodGroup->cullBelowLastLevel);
+            toml::array levelsArr;
+            for (auto& level : lodGroup->levels) {
+                toml::table levelTbl;
+                levelTbl.insert("screenRelativeHeight", (double)level.screenRelativeHeight);
+                toml::array renderersArr;
+                for (auto& reference : level.renderers) {
+                    if (scene.IsValid(reference.entity)) {
+                        if (const auto* rendererGo = scene.GetGameObject(reference.entity))
+                            reference.instanceId = rendererGo->instanceId;
+                    }
+                    renderersArr.push_back(reference.instanceId);
+                }
+                levelTbl.insert("renderers", std::move(renderersArr));
+                levelsArr.push_back(std::move(levelTbl));
+            }
+            lodTbl.insert("levels", std::move(levelsArr));
+            goTbl.insert("LODGroupComponent", std::move(lodTbl));
         }
 
         // EnvironmentLightComponent
@@ -873,6 +908,10 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             peTbl.insert("coneAngleDegrees", (double)pe->coneAngleDegrees);
             peTbl.insert("coneRadius",     (double)pe->coneRadius);
             peTbl.insert("boxExtents",     Vec3ToArr(pe->boxExtents));
+            peTbl.insert("meshShapePath",  pe->meshShapePath);
+            peTbl.insert("meshShapeIndex", (int64_t)pe->meshShapeIndex);
+            peTbl.insert("meshShapeScale", (double)pe->meshShapeScale);
+            peTbl.insert("meshShapeFollowSkinnedAnimation", pe->meshShapeFollowSkinnedAnimation);
             peTbl.insert("blendMode",      (int64_t)static_cast<int>(pe->blendMode));
             peTbl.insert("sortMode",       (int64_t)static_cast<int>(pe->sortMode));
             peTbl.insert("simulationMode", (int64_t)static_cast<int>(pe->simulationMode));
@@ -887,8 +926,98 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             peTbl.insert("velocityDamping", (double)pe->velocityDamping);
             peTbl.insert("angularVelocityMin", (double)pe->angularVelocityMin);
             peTbl.insert("angularVelocityMax", (double)pe->angularVelocityMax);
+            peTbl.insert("noiseStrength",  (double)pe->noiseStrength);
+            peTbl.insert("noiseFrequency", (double)pe->noiseFrequency);
+            peTbl.insert("noiseSpeed",     (double)pe->noiseSpeed);
+            peTbl.insert("receiveForceFields", pe->receiveForceFields);
+            peTbl.insert("lifetimeRandom", (double)pe->lifetimeRandom);
+            peTbl.insert("simulationSpace", (int64_t)pe->simulationSpace);
+            peTbl.insert("renderMode", (int64_t)pe->renderMode);
+            peTbl.insert("stretchedVelocityScale", (double)pe->stretchedVelocityScale);
+            peTbl.insert("stretchedLengthScale", (double)pe->stretchedLengthScale);
+            peTbl.insert("collisionMode", (int64_t)pe->collisionMode);
+            peTbl.insert("collisionResponse", (int64_t)pe->collisionResponse);
+            peTbl.insert("collisionRadius", (double)pe->collisionRadius);
+            peTbl.insert("collisionBounciness", (double)pe->collisionBounciness);
+            peTbl.insert("collisionDamping", (double)pe->collisionDamping);
+            peTbl.insert("collisionPlaneY", (double)pe->collisionPlaneY);
+            peTbl.insert("flipbookMode", (int64_t)pe->flipbookMode);
+            peTbl.insert("flipbookFramesPerSecond", (double)pe->flipbookFramesPerSecond);
+            peTbl.insert("flipbookFrameBlending", pe->flipbookFrameBlending);
+            peTbl.insert("useSizeCurve", pe->useSizeCurve);
+            peTbl.insert("useVelocityCurve", pe->useVelocityCurve);
+            peTbl.insert("useColorGradient", pe->useColorGradient);
+            peTbl.insert("rateOverDistance", (double)pe->rateOverDistance);
+            peTbl.insert("prewarm", pe->prewarm);
+            peTbl.insert("birthSubEmitter", pe->birthSubEmitter);
+            peTbl.insert("deathSubEmitter", pe->deathSubEmitter);
+            peTbl.insert("collisionSubEmitter", pe->collisionSubEmitter);
+            peTbl.insert("subEmitterBurstCount", (int64_t)pe->subEmitterBurstCount);
+            peTbl.insert("softParticles", pe->softParticles);
+            peTbl.insert("softParticleFadeDistance", (double)pe->softParticleFadeDistance);
+            peTbl.insert("cullingEnabled", pe->cullingEnabled);
+            peTbl.insert("cullingBoundsPadding", (double)pe->cullingBoundsPadding);
+            peTbl.insert("lodEnabled", pe->lodEnabled);
+            peTbl.insert("lodNearDistance", (double)pe->lodNearDistance);
+            peTbl.insert("lodFarDistance", (double)pe->lodFarDistance);
+            peTbl.insert("lodNearRateScale", (double)pe->lodNearRateScale);
+            peTbl.insert("lodFarRateScale", (double)pe->lodFarRateScale);
+            peTbl.insert("screenCoverageThreshold", (double)pe->screenCoverageThreshold);
+            peTbl.insert("pauseWhenCulled", pe->pauseWhenCulled);
+
+            auto curveToArray = [](const ParticleCurve& curve) {
+                toml::array array;
+                for (uint32_t index = 0; index < curve.keyCount && index < curve.keys.size(); ++index)
+                    array.push_back(toml::array{ (double)curve.keys[index].time, (double)curve.keys[index].value });
+                return array;
+            };
+            peTbl.insert("sizeCurve", curveToArray(pe->sizeCurve));
+            peTbl.insert("velocityCurve", curveToArray(pe->velocityCurve));
+            toml::array gradient;
+            for (uint32_t index = 0; index < pe->colorGradient.keyCount && index < pe->colorGradient.keys.size(); ++index) {
+                const auto& key = pe->colorGradient.keys[index];
+                gradient.push_back(toml::array{ (double)key.time, (double)key.color.x,
+                    (double)key.color.y, (double)key.color.z, (double)key.color.w });
+            }
+            peTbl.insert("colorGradient", std::move(gradient));
+            toml::array bursts;
+            for (const ParticleBurst& burst : pe->bursts) {
+                toml::table burstTable;
+                burstTable.insert("time", (double)burst.time);
+                burstTable.insert("count", (int64_t)burst.count);
+                burstTable.insert("cycles", (int64_t)burst.cycles);
+                burstTable.insert("interval", (double)burst.interval);
+                burstTable.insert("probability", (double)burst.probability);
+                bursts.push_back(std::move(burstTable));
+            }
+            peTbl.insert("bursts", std::move(bursts));
             peTbl.insert("enabled",        pe->enabled);
             goTbl.insert("ParticleEmitter", std::move(peTbl));
+        }
+
+        // ParticleForceField
+        if (auto* ff = go.GetComponent<ParticleForceField>()) {
+            toml::table ffTbl;
+            ffTbl.insert("enabled",        ff->enabled);
+            ffTbl.insert("fieldType",      (int64_t)static_cast<int>(ff->fieldType));
+            ffTbl.insert("strength",       (double)ff->strength);
+            ffTbl.insert("radius",         (double)ff->radius);
+            ffTbl.insert("falloffPower",   (double)ff->falloffPower);
+            ffTbl.insert("direction",      Vec3ToArr(ff->direction));
+            ffTbl.insert("noiseFrequency", (double)ff->noiseFrequency);
+            ffTbl.insert("noiseSpeed",     (double)ff->noiseSpeed);
+            goTbl.insert("ParticleForceField", std::move(ffTbl));
+        }
+
+        // WindZoneComponent
+        if (auto* wind = go.GetComponent<WindZoneComponent>()) {
+            toml::table windTbl;
+            windTbl.insert("enabled",        wind->enabled);
+            windTbl.insert("direction",      Vec3ToArr(wind->direction));
+            windTbl.insert("strength",       (double)wind->strength);
+            windTbl.insert("turbulence",     (double)wind->turbulence);
+            windTbl.insert("pulseFrequency", (double)wind->pulseFrequency);
+            goTbl.insert("WindZoneComponent", std::move(windTbl));
         }
 
         // TrailComponent
@@ -1371,97 +1500,6 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("IKSolverComponent", std::move(ikTbl));
         }
 
-        // UICanvas
-        if (auto* canvas = go.GetComponent<UICanvas>()) {
-            toml::table uiTbl;
-            uiTbl.insert("enabled",      canvas->enabled);
-            uiTbl.insert("canvasWidth",  (double)canvas->canvasWidth);
-            uiTbl.insert("canvasHeight", (double)canvas->canvasHeight);
-            uiTbl.insert("sortOrder",    (int64_t)canvas->sortOrder);
-            uiTbl.insert("renderMode",   (int64_t)static_cast<int>(canvas->renderMode));
-            uiTbl.insert("scaleMode",    (int64_t)static_cast<int>(canvas->scaleMode));
-            uiTbl.insert("referenceWidth",  (double)canvas->referenceWidth);
-            uiTbl.insert("referenceHeight", (double)canvas->referenceHeight);
-            uiTbl.insert("matchWidthOrHeight", (double)canvas->matchWidthOrHeight);
-            uiTbl.insert("worldScale",   (double)canvas->worldScale);
-            uiTbl.insert("planeDistance",(double)canvas->planeDistance);
-            uiTbl.insert("faceCamera",   canvas->faceCamera);
-            goTbl.insert("UICanvas", std::move(uiTbl));
-        }
-
-        // UIImage
-        if (auto* image = go.GetComponent<UIImage>()) {
-            toml::table uiTbl;
-            uiTbl.insert("enabled",           image->enabled);
-            uiTbl.insert("texturePath",       image->texturePath);
-            uiTbl.insert("color",             Vec4ToArr(image->color));
-            uiTbl.insert("uvMin",             Vec2ToArr(image->uvMin));
-            uiTbl.insert("uvMax",             Vec2ToArr(image->uvMax));
-            uiTbl.insert("sortOrder",         (int64_t)image->sortOrder);
-            uiTbl.insert("fillAmount",        (double)image->fillAmount);
-            uiTbl.insert("fillOrigin",        (int64_t)static_cast<int>(image->fillOrigin));
-            goTbl.insert("UIImage", std::move(uiTbl));
-        }
-
-        // UIButton
-        if (auto* button = go.GetComponent<UIButton>()) {
-            toml::table uiTbl;
-            uiTbl.insert("enabled", button->enabled);
-            uiTbl.insert("isInteractable", button->isInteractable);
-            uiTbl.insert("normalColor", Vec4ToArr(button->normalColor));
-            uiTbl.insert("hoverColor", Vec4ToArr(button->hoverColor));
-            uiTbl.insert("pressedColor", Vec4ToArr(button->pressedColor));
-            goTbl.insert("UIButton", std::move(uiTbl));
-        }
-
-        // UIText
-        if (auto* text = go.GetComponent<UIText>()) {
-            toml::table uiTbl;
-            uiTbl.insert("enabled",       text->enabled);
-            uiTbl.insert("text",          text->text);
-            uiTbl.insert("fontSize",      (double)text->fontSize);
-            uiTbl.insert("letterSpacing", (double)text->letterSpacing);
-            uiTbl.insert("color",         Vec4ToArr(text->color));
-            uiTbl.insert("fontPath",      text->fontPath);
-            uiTbl.insert("sortOrder",     (int64_t)text->sortOrder);
-            goTbl.insert("UIText", std::move(uiTbl));
-        }
-
-        // UILayoutGroup
-        if (auto* layout = go.GetComponent<UILayoutGroup>()) {
-            toml::table tbl;
-            tbl.insert("enabled",      layout->enabled);
-            tbl.insert("axis",         (int64_t)static_cast<int>(layout->axis));
-            tbl.insert("spacing",      (double)layout->spacing);
-            tbl.insert("paddingLeft",  (double)layout->paddingLeft);
-            tbl.insert("paddingRight", (double)layout->paddingRight);
-            tbl.insert("paddingTop",   (double)layout->paddingTop);
-            tbl.insert("paddingBottom",(double)layout->paddingBottom);
-            tbl.insert("reverseOrder", layout->reverseOrder);
-            goTbl.insert("UILayoutGroup", std::move(tbl));
-        }
-
-        // UIAnimator
-        if (auto* anim = go.GetComponent<UIAnimator>()) {
-            toml::table tbl;
-            tbl.insert("enabled",         anim->enabled);
-            tbl.insert("colorFrom",       Vec4ToArr(anim->colorTween.from));
-            tbl.insert("colorTo",         Vec4ToArr(anim->colorTween.to));
-            tbl.insert("colorDuration",   (double)anim->colorTween.duration);
-            tbl.insert("colorEasing",     (int64_t)static_cast<int>(anim->colorTween.easing));
-            tbl.insert("colorLoop",       anim->colorTween.loop);
-            tbl.insert("colorPingPong",   anim->colorTween.pingPong);
-            tbl.insert("colorActive",     anim->colorTween.active);
-            tbl.insert("posFrom",         Vec2ToArr(anim->positionTween.from));
-            tbl.insert("posTo",           Vec2ToArr(anim->positionTween.to));
-            tbl.insert("posDuration",     (double)anim->positionTween.duration);
-            tbl.insert("posEasing",       (int64_t)static_cast<int>(anim->positionTween.easing));
-            tbl.insert("posLoop",         anim->positionTween.loop);
-            tbl.insert("posPingPong",     anim->positionTween.pingPong);
-            tbl.insert("posActive",       anim->positionTween.active);
-            goTbl.insert("UIAnimator", std::move(tbl));
-        }
-
         // ScriptComponent
         // TerrainComponent
         if (auto* tc = go.GetComponent<TerrainComponent>()) {
@@ -1682,6 +1720,8 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
             goTbl.insert("NavMeshSensorComponent", std::move(sensorTbl));
         }
 
+        WriteAutomaticComponents(go, goTbl);
+
         if (auto* sc = go.GetComponent<ScriptComponent>()) {
             toml::array scriptsArr;
             for (auto& entry : sc->scripts) {
@@ -1883,22 +1923,30 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<CameraComponent>(cc);
         }
 
-        // LifetimeComponent
-        if (auto* lcTbl = (*goTbl)["LifetimeComponent"].as_table()) {
-            LifetimeComponent lc{};
-            lc.remaining = (float)(*lcTbl)["remaining"].value_or(5.0);
-            go.AddComponent<LifetimeComponent>(lc);
-        }
-
-        // AudioSourceComponent
-        if (auto* ascTbl = (*goTbl)["AudioSourceComponent"].as_table()) {
-            AudioSourceComponent asc{};
-            asc.clipPath    = (*ascTbl)["clipPath"].value_or(std::string{});
-            asc.playOnAwake = (*ascTbl)["playOnAwake"].value_or(false);
-            asc.loop        = (*ascTbl)["loop"].value_or(false);
-            asc.volume      = (float)(*ascTbl)["volume"].value_or(1.0);
-            asc.enabled     = (*ascTbl)["enabled"].value_or(true);
-            go.AddComponent<AudioSourceComponent>(asc);
+        // LODGroupComponent — Renderer の EntityID は LODSystem が instanceId から遅延解決する。
+        if (auto* lodTbl = (*goTbl)["LODGroupComponent"].as_table()) {
+            LODGroupComponent lodGroup{};
+            lodGroup.enabled = (*lodTbl)["enabled"].value_or(true);
+            lodGroup.size = (float)(*lodTbl)["size"].value_or(1.0);
+            lodGroup.cullBelowLastLevel = (*lodTbl)["cullBelowLastLevel"].value_or(false);
+            if (const auto* levelsArr = (*lodTbl)["levels"].as_array()) {
+                for (const auto& levelNode : *levelsArr) {
+                    const auto* levelTbl = levelNode.as_table();
+                    if (!levelTbl) continue;
+                    LODLevel level{};
+                    level.screenRelativeHeight =
+                        (float)(*levelTbl)["screenRelativeHeight"].value_or(0.5);
+                    if (const auto* renderersArr = (*levelTbl)["renderers"].as_array()) {
+                        for (const auto& rendererNode : *renderersArr) {
+                            LODRendererReference reference{};
+                            reference.instanceId = rendererNode.value_or(std::string{});
+                            level.renderers.push_back(std::move(reference));
+                        }
+                    }
+                    lodGroup.levels.push_back(std::move(level));
+                }
+            }
+            go.AddComponent<LODGroupComponent>(std::move(lodGroup));
         }
 
         // EnvironmentLightComponent
@@ -2072,12 +2120,17 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
             pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
             int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
-            shape = shape < 0 ? 0 : (shape > 3 ? 3 : shape);
+            shape = shape < 0 ? 0 : (shape > 4 ? 4 : shape);
             pe.shape          = static_cast<ParticleEmitterShape>(shape);
             pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
             pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
             pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
             pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
+            pe.meshShapePath  = (*peTbl)["meshShapePath"].value_or(std::string{});
+            pe.meshShapeIndex = (int)(*peTbl)["meshShapeIndex"].value_or((int64_t)-1);
+            pe.meshShapeScale = (float)(*peTbl)["meshShapeScale"].value_or(1.0);
+            pe.meshShapeFollowSkinnedAnimation =
+                (*peTbl)["meshShapeFollowSkinnedAnimation"].value_or(false);
             int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
             blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
             pe.blendMode      = static_cast<ParticleBlendMode>(blend);
@@ -2098,8 +2151,110 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
             pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
             pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
+            pe.noiseStrength  = (float)(*peTbl)["noiseStrength"].value_or(0.0);
+            pe.noiseFrequency = (float)(*peTbl)["noiseFrequency"].value_or(0.5);
+            pe.noiseSpeed     = (float)(*peTbl)["noiseSpeed"].value_or(1.0);
+            pe.receiveForceFields = (*peTbl)["receiveForceFields"].value_or(true);
+            pe.lifetimeRandom = (float)(*peTbl)["lifetimeRandom"].value_or(0.0);
+            pe.simulationSpace = static_cast<ParticleSimulationSpace>(std::clamp((int)(*peTbl)["simulationSpace"].value_or((int64_t)0), 0, 1));
+            pe.renderMode = static_cast<ParticleRenderMode>(std::clamp((int)(*peTbl)["renderMode"].value_or((int64_t)0), 0, 3));
+            pe.stretchedVelocityScale = (float)(*peTbl)["stretchedVelocityScale"].value_or(0.1);
+            pe.stretchedLengthScale = (float)(*peTbl)["stretchedLengthScale"].value_or(1.0);
+            pe.collisionMode = static_cast<ParticleCollisionMode>(std::clamp((int)(*peTbl)["collisionMode"].value_or((int64_t)0), 0, 2));
+            pe.collisionResponse = static_cast<ParticleCollisionResponse>(std::clamp((int)(*peTbl)["collisionResponse"].value_or((int64_t)0), 0, 2));
+            pe.collisionRadius = (float)(*peTbl)["collisionRadius"].value_or(0.05);
+            pe.collisionBounciness = (float)(*peTbl)["collisionBounciness"].value_or(0.5);
+            pe.collisionDamping = (float)(*peTbl)["collisionDamping"].value_or(0.0);
+            pe.collisionPlaneY = (float)(*peTbl)["collisionPlaneY"].value_or(0.0);
+            pe.flipbookMode = static_cast<ParticleFlipbookMode>(std::clamp((int)(*peTbl)["flipbookMode"].value_or((int64_t)0), 0, 3));
+            pe.flipbookFramesPerSecond = (float)(*peTbl)["flipbookFramesPerSecond"].value_or(24.0);
+            pe.flipbookFrameBlending = (*peTbl)["flipbookFrameBlending"].value_or(false);
+            pe.useSizeCurve = (*peTbl)["useSizeCurve"].value_or(false);
+            pe.useVelocityCurve = (*peTbl)["useVelocityCurve"].value_or(false);
+            pe.useColorGradient = (*peTbl)["useColorGradient"].value_or(false);
+            pe.rateOverDistance = (float)(*peTbl)["rateOverDistance"].value_or(0.0);
+            pe.prewarm = (*peTbl)["prewarm"].value_or(false);
+            pe.birthSubEmitter = (*peTbl)["birthSubEmitter"].value_or(std::string{});
+            pe.deathSubEmitter = (*peTbl)["deathSubEmitter"].value_or(std::string{});
+            pe.collisionSubEmitter = (*peTbl)["collisionSubEmitter"].value_or(std::string{});
+            pe.subEmitterBurstCount = (int)(*peTbl)["subEmitterBurstCount"].value_or((int64_t)1);
+            pe.softParticles = (*peTbl)["softParticles"].value_or(false);
+            pe.softParticleFadeDistance = (float)(*peTbl)["softParticleFadeDistance"].value_or(0.5);
+            pe.cullingEnabled = (*peTbl)["cullingEnabled"].value_or(true);
+            pe.cullingBoundsPadding = (float)(*peTbl)["cullingBoundsPadding"].value_or(0.25);
+            pe.lodEnabled = (*peTbl)["lodEnabled"].value_or(true);
+            pe.lodNearDistance = (float)(*peTbl)["lodNearDistance"].value_or(12.0);
+            pe.lodFarDistance = (float)(*peTbl)["lodFarDistance"].value_or(40.0);
+            pe.lodNearRateScale = (float)(*peTbl)["lodNearRateScale"].value_or(1.0);
+            pe.lodFarRateScale = (float)(*peTbl)["lodFarRateScale"].value_or(0.25);
+            pe.screenCoverageThreshold = (float)(*peTbl)["screenCoverageThreshold"].value_or(0.0);
+            pe.pauseWhenCulled = (*peTbl)["pauseWhenCulled"].value_or(false);
+            auto loadCurve = [&](const char* name, ParticleCurve& curve) {
+                if (auto* array = (*peTbl)[name].as_array()) {
+                    curve.keyCount = static_cast<uint32_t>((std::min)(array->size(), curve.keys.size()));
+                    for (uint32_t index = 0; index < curve.keyCount; ++index) {
+                        if (auto* key = (*array)[index].as_array(); key && key->size() >= 2) {
+                            curve.keys[index].time = (float)(*key)[0].value_or(0.0);
+                            curve.keys[index].value = (float)(*key)[1].value_or(0.0);
+                        }
+                    }
+                }
+            };
+            loadCurve("sizeCurve", pe.sizeCurve);
+            loadCurve("velocityCurve", pe.velocityCurve);
+            if (auto* gradient = (*peTbl)["colorGradient"].as_array()) {
+                pe.colorGradient.keyCount = static_cast<uint32_t>((std::min)(gradient->size(), pe.colorGradient.keys.size()));
+                for (uint32_t index = 0; index < pe.colorGradient.keyCount; ++index) {
+                    if (auto* key = (*gradient)[index].as_array(); key && key->size() >= 5) {
+                        pe.colorGradient.keys[index].time = (float)(*key)[0].value_or(0.0);
+                        pe.colorGradient.keys[index].color = {
+                            (float)(*key)[1].value_or(1.0), (float)(*key)[2].value_or(1.0),
+                            (float)(*key)[3].value_or(1.0), (float)(*key)[4].value_or(1.0) };
+                    }
+                }
+            }
+            if (auto* bursts = (*peTbl)["bursts"].as_array()) {
+                for (auto&& burstNode : *bursts) {
+                    auto* burstTable = burstNode.as_table();
+                    if (!burstTable) continue;
+                    ParticleBurst burst;
+                    burst.time = (float)(*burstTable)["time"].value_or(0.0);
+                    burst.count = (int)(*burstTable)["count"].value_or((int64_t)10);
+                    burst.cycles = (int)(*burstTable)["cycles"].value_or((int64_t)1);
+                    burst.interval = (float)(*burstTable)["interval"].value_or(0.1);
+                    burst.probability = (float)(*burstTable)["probability"].value_or(1.0);
+                    pe.bursts.push_back(burst);
+                }
+            }
             pe.enabled        = (*peTbl)["enabled"].value_or(true);
             go.AddComponent<ParticleEmitter>(pe);
+        }
+
+        // ParticleForceField
+        if (auto* ffTbl = (*goTbl)["ParticleForceField"].as_table()) {
+            ParticleForceField ff{};
+            ff.enabled      = (*ffTbl)["enabled"].value_or(true);
+            int fieldType   = (int)(*ffTbl)["fieldType"].value_or((int64_t)0);
+            fieldType       = fieldType < 0 ? 0 : (fieldType > 5 ? 5 : fieldType);
+            ff.fieldType    = static_cast<ParticleForceFieldType>(fieldType);
+            ff.strength     = (float)(*ffTbl)["strength"].value_or(5.0);
+            ff.radius       = (float)(*ffTbl)["radius"].value_or(5.0);
+            ff.falloffPower = (float)(*ffTbl)["falloffPower"].value_or(2.0);
+            ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
+            ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
+            ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
+            go.AddComponent<ParticleForceField>(ff);
+        }
+
+        // WindZoneComponent
+        if (auto* windTbl = (*goTbl)["WindZoneComponent"].as_table()) {
+            WindZoneComponent wind{};
+            wind.enabled        = (*windTbl)["enabled"].value_or(true);
+            wind.direction      = ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
+            wind.strength       = (float)(*windTbl)["strength"].value_or(1.0);
+            wind.turbulence     = (float)(*windTbl)["turbulence"].value_or(0.0);
+            wind.pulseFrequency = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
+            go.AddComponent<WindZoneComponent>(wind);
         }
 
         // TrailComponent
@@ -2619,97 +2774,6 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<IKSolverComponent>(std::move(ikSolver));
         }
 
-        // UICanvas
-        if (auto* uiTbl = (*goTbl)["UICanvas"].as_table()) {
-            UICanvas canvas{};
-            canvas.enabled      = (*uiTbl)["enabled"].value_or(true);
-            canvas.canvasWidth  = (float)(*uiTbl)["canvasWidth"].value_or(1920.0);
-            canvas.canvasHeight = (float)(*uiTbl)["canvasHeight"].value_or(1080.0);
-            canvas.sortOrder    = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
-            canvas.renderMode   = static_cast<UIRenderMode>((*uiTbl)["renderMode"].value_or((int64_t)0));
-            canvas.scaleMode    = static_cast<UICanvasScaleMode>((*uiTbl)["scaleMode"].value_or((int64_t)0));
-            canvas.referenceWidth  = (float)(*uiTbl)["referenceWidth"].value_or(1920.0);
-            canvas.referenceHeight = (float)(*uiTbl)["referenceHeight"].value_or(1080.0);
-            canvas.matchWidthOrHeight = (float)(*uiTbl)["matchWidthOrHeight"].value_or(0.0);
-            canvas.worldScale   = (float)(*uiTbl)["worldScale"].value_or(0.01);
-            canvas.planeDistance = (float)(*uiTbl)["planeDistance"].value_or(2.0);
-            canvas.faceCamera   = (*uiTbl)["faceCamera"].value_or(false);
-            go.AddComponent<UICanvas>(canvas);
-        }
-
-        // UIImage
-        if (auto* uiTbl = (*goTbl)["UIImage"].as_table()) {
-            UIImage image{};
-            image.enabled          = (*uiTbl)["enabled"].value_or(true);
-            image.texturePath      = (*uiTbl)["texturePath"].value_or(std::string{});
-            image.color            = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
-            image.uvMin            = ArrToVec2((*uiTbl)["uvMin"].as_array(), { 0.0f, 0.0f });
-            image.uvMax            = ArrToVec2((*uiTbl)["uvMax"].as_array(), { 1.0f, 1.0f });
-            image.sortOrder        = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
-            image.fillAmount       = (float)(*uiTbl)["fillAmount"].value_or(1.0);
-            image.fillOrigin       = static_cast<UIImageFillOrigin>((*uiTbl)["fillOrigin"].value_or((int64_t)0));
-            go.AddComponent<UIImage>(image);
-        }
-
-        // UIButton
-        if (auto* uiTbl = (*goTbl)["UIButton"].as_table()) {
-            UIButton button{};
-            button.enabled = (*uiTbl)["enabled"].value_or(true);
-            button.isInteractable = (*uiTbl)["isInteractable"].value_or(true);
-            button.normalColor = ArrToVec4((*uiTbl)["normalColor"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
-            button.hoverColor = ArrToVec4((*uiTbl)["hoverColor"].as_array(), { 0.85f, 0.85f, 0.85f, 1.0f });
-            button.pressedColor = ArrToVec4((*uiTbl)["pressedColor"].as_array(), { 0.7f, 0.7f, 0.7f, 1.0f });
-            go.AddComponent<UIButton>(button);
-        }
-
-        // UIText
-        if (auto* uiTbl = (*goTbl)["UIText"].as_table()) {
-            UIText text{};
-            text.enabled       = (*uiTbl)["enabled"].value_or(true);
-            text.text          = (*uiTbl)["text"].value_or(std::string{"Text"});
-            text.fontSize      = (float)(*uiTbl)["fontSize"].value_or(42.0);
-            text.letterSpacing = (float)(*uiTbl)["letterSpacing"].value_or(4.0);
-            text.color         = ArrToVec4((*uiTbl)["color"].as_array(), { 1.0f, 1.0f, 1.0f, 1.0f });
-            text.fontPath      = (*uiTbl)["fontPath"].value_or(std::string{});
-            text.sortOrder     = (int)(*uiTbl)["sortOrder"].value_or((int64_t)0);
-            go.AddComponent<UIText>(text);
-        }
-
-        // UILayoutGroup
-        if (auto* tbl = (*goTbl)["UILayoutGroup"].as_table()) {
-            UILayoutGroup layout{};
-            layout.enabled       = (*tbl)["enabled"].value_or(true);
-            layout.axis          = static_cast<UILayoutAxis>((*tbl)["axis"].value_or((int64_t)0));
-            layout.spacing       = (float)(*tbl)["spacing"].value_or(8.0);
-            layout.paddingLeft   = (float)(*tbl)["paddingLeft"].value_or(0.0);
-            layout.paddingRight  = (float)(*tbl)["paddingRight"].value_or(0.0);
-            layout.paddingTop    = (float)(*tbl)["paddingTop"].value_or(0.0);
-            layout.paddingBottom = (float)(*tbl)["paddingBottom"].value_or(0.0);
-            layout.reverseOrder  = (*tbl)["reverseOrder"].value_or(false);
-            go.AddComponent<UILayoutGroup>(layout);
-        }
-
-        // UIAnimator
-        if (auto* tbl = (*goTbl)["UIAnimator"].as_table()) {
-            UIAnimator anim{};
-            anim.enabled = (*tbl)["enabled"].value_or(true);
-            anim.colorTween.from     = ArrToVec4((*tbl)["colorFrom"].as_array(), { 1,1,1,1 });
-            anim.colorTween.to       = ArrToVec4((*tbl)["colorTo"].as_array(),   { 1,1,1,0 });
-            anim.colorTween.duration = (float)(*tbl)["colorDuration"].value_or(1.0);
-            anim.colorTween.easing   = static_cast<UIEasingType>((*tbl)["colorEasing"].value_or((int64_t)0));
-            anim.colorTween.loop     = (*tbl)["colorLoop"].value_or(false);
-            anim.colorTween.pingPong = (*tbl)["colorPingPong"].value_or(false);
-            anim.colorTween.active   = (*tbl)["colorActive"].value_or(false);
-            anim.positionTween.from     = ArrToVec2((*tbl)["posFrom"].as_array(), { 0,0 });
-            anim.positionTween.to       = ArrToVec2((*tbl)["posTo"].as_array(),   { 100,0 });
-            anim.positionTween.duration = (float)(*tbl)["posDuration"].value_or(1.0);
-            anim.positionTween.easing   = static_cast<UIEasingType>((*tbl)["posEasing"].value_or((int64_t)0));
-            anim.positionTween.loop     = (*tbl)["posLoop"].value_or(false);
-            anim.positionTween.pingPong = (*tbl)["posPingPong"].value_or(false);
-            anim.positionTween.active   = (*tbl)["posActive"].value_or(false);
-            go.AddComponent<UIAnimator>(anim);
-        }
-
         // TerrainComponent
         if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
             TerrainComponent tc{};
@@ -2982,6 +3046,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
             go.AddComponent<NavMeshSensorComponent>(std::move(sensor));
         }
 
+        ReadAutomaticComponents(go, *goTbl);
+
         auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
             std::string type = scTbl["type"].value_or(std::string{});
             if (type.empty()) return;
@@ -3007,7 +3073,8 @@ std::unique_ptr<Scene> SceneSerializer::Load(
                 }
                 entry.script = std::move(script);
             } else {
-                FBZZ_LOG_WARN("SceneSerializer: ScriptFactory could not create script type '%s'", type.c_str());
+                // DLL 再ビルド待ちでも serialized data は保持されるため、起動時の通常経路では警告にしない。
+                FBZZ_LOG_DEBUG("SceneSerializer: script type pending registration '%s'", type.c_str());
             }
         };
 
@@ -3308,12 +3375,17 @@ bool SceneSerializer::AppendObjects(
             pe.startDelay     = (float)(*peTbl)["startDelay"].value_or(0.0);
             pe.clearOnStop    = (*peTbl)["clearOnStop"].value_or(false);
             int shape = (int)(*peTbl)["shape"].value_or((int64_t)0);
-            shape = shape < 0 ? 0 : (shape > 3 ? 3 : shape);
+            shape = shape < 0 ? 0 : (shape > 4 ? 4 : shape);
             pe.shape          = static_cast<ParticleEmitterShape>(shape);
             pe.sphereRadius   = (float)(*peTbl)["sphereRadius"].value_or(1.0);
             pe.coneAngleDegrees = (float)(*peTbl)["coneAngleDegrees"].value_or(25.0);
             pe.coneRadius     = (float)(*peTbl)["coneRadius"].value_or(1.0);
             pe.boxExtents     = ArrToVec3((*peTbl)["boxExtents"].as_array(), { 1.0f, 1.0f, 1.0f });
+            pe.meshShapePath  = (*peTbl)["meshShapePath"].value_or(std::string{});
+            pe.meshShapeIndex = (int)(*peTbl)["meshShapeIndex"].value_or((int64_t)-1);
+            pe.meshShapeScale = (float)(*peTbl)["meshShapeScale"].value_or(1.0);
+            pe.meshShapeFollowSkinnedAnimation =
+                (*peTbl)["meshShapeFollowSkinnedAnimation"].value_or(false);
             int blend = (int)(*peTbl)["blendMode"].value_or((int64_t)0);
             blend = blend < 0 ? 0 : (blend > 1 ? 1 : blend);
             pe.blendMode      = static_cast<ParticleBlendMode>(blend);
@@ -3334,14 +3406,108 @@ bool SceneSerializer::AppendObjects(
             pe.velocityDamping = (float)(*peTbl)["velocityDamping"].value_or(0.0);
             pe.angularVelocityMin = (float)(*peTbl)["angularVelocityMin"].value_or(0.0);
             pe.angularVelocityMax = (float)(*peTbl)["angularVelocityMax"].value_or(0.0);
+            pe.noiseStrength  = (float)(*peTbl)["noiseStrength"].value_or(0.0);
+            pe.noiseFrequency = (float)(*peTbl)["noiseFrequency"].value_or(0.5);
+            pe.noiseSpeed     = (float)(*peTbl)["noiseSpeed"].value_or(1.0);
+            pe.receiveForceFields = (*peTbl)["receiveForceFields"].value_or(true);
+            pe.lifetimeRandom = (float)(*peTbl)["lifetimeRandom"].value_or(0.0);
+            pe.simulationSpace = static_cast<ParticleSimulationSpace>(std::clamp((int)(*peTbl)["simulationSpace"].value_or((int64_t)0), 0, 1));
+            pe.renderMode = static_cast<ParticleRenderMode>(std::clamp((int)(*peTbl)["renderMode"].value_or((int64_t)0), 0, 3));
+            pe.stretchedVelocityScale = (float)(*peTbl)["stretchedVelocityScale"].value_or(0.1);
+            pe.stretchedLengthScale = (float)(*peTbl)["stretchedLengthScale"].value_or(1.0);
+            pe.collisionMode = static_cast<ParticleCollisionMode>(std::clamp((int)(*peTbl)["collisionMode"].value_or((int64_t)0), 0, 2));
+            pe.collisionResponse = static_cast<ParticleCollisionResponse>(std::clamp((int)(*peTbl)["collisionResponse"].value_or((int64_t)0), 0, 2));
+            pe.collisionRadius = (float)(*peTbl)["collisionRadius"].value_or(0.05);
+            pe.collisionBounciness = (float)(*peTbl)["collisionBounciness"].value_or(0.5);
+            pe.collisionDamping = (float)(*peTbl)["collisionDamping"].value_or(0.0);
+            pe.collisionPlaneY = (float)(*peTbl)["collisionPlaneY"].value_or(0.0);
+            pe.flipbookMode = static_cast<ParticleFlipbookMode>(std::clamp((int)(*peTbl)["flipbookMode"].value_or((int64_t)0), 0, 3));
+            pe.flipbookFramesPerSecond = (float)(*peTbl)["flipbookFramesPerSecond"].value_or(24.0);
+            pe.flipbookFrameBlending = (*peTbl)["flipbookFrameBlending"].value_or(false);
+            pe.useSizeCurve = (*peTbl)["useSizeCurve"].value_or(false);
+            pe.useVelocityCurve = (*peTbl)["useVelocityCurve"].value_or(false);
+            pe.useColorGradient = (*peTbl)["useColorGradient"].value_or(false);
+            pe.rateOverDistance = (float)(*peTbl)["rateOverDistance"].value_or(0.0);
+            pe.prewarm = (*peTbl)["prewarm"].value_or(false);
+            pe.birthSubEmitter = (*peTbl)["birthSubEmitter"].value_or(std::string{});
+            pe.deathSubEmitter = (*peTbl)["deathSubEmitter"].value_or(std::string{});
+            pe.collisionSubEmitter = (*peTbl)["collisionSubEmitter"].value_or(std::string{});
+            pe.subEmitterBurstCount = (int)(*peTbl)["subEmitterBurstCount"].value_or((int64_t)1);
+            pe.softParticles = (*peTbl)["softParticles"].value_or(false);
+            pe.softParticleFadeDistance = (float)(*peTbl)["softParticleFadeDistance"].value_or(0.5);
+            pe.cullingEnabled = (*peTbl)["cullingEnabled"].value_or(true);
+            pe.cullingBoundsPadding = (float)(*peTbl)["cullingBoundsPadding"].value_or(0.25);
+            pe.lodEnabled = (*peTbl)["lodEnabled"].value_or(true);
+            pe.lodNearDistance = (float)(*peTbl)["lodNearDistance"].value_or(12.0);
+            pe.lodFarDistance = (float)(*peTbl)["lodFarDistance"].value_or(40.0);
+            pe.lodNearRateScale = (float)(*peTbl)["lodNearRateScale"].value_or(1.0);
+            pe.lodFarRateScale = (float)(*peTbl)["lodFarRateScale"].value_or(0.25);
+            pe.screenCoverageThreshold = (float)(*peTbl)["screenCoverageThreshold"].value_or(0.0);
+            pe.pauseWhenCulled = (*peTbl)["pauseWhenCulled"].value_or(false);
+            auto loadCurve = [&](const char* name, ParticleCurve& curve) {
+                if (auto* array = (*peTbl)[name].as_array()) {
+                    curve.keyCount = static_cast<uint32_t>((std::min)(array->size(), curve.keys.size()));
+                    for (uint32_t index = 0; index < curve.keyCount; ++index) {
+                        if (auto* key = (*array)[index].as_array(); key && key->size() >= 2) {
+                            curve.keys[index].time = (float)(*key)[0].value_or(0.0);
+                            curve.keys[index].value = (float)(*key)[1].value_or(0.0);
+                        }
+                    }
+                }
+            };
+            loadCurve("sizeCurve", pe.sizeCurve);
+            loadCurve("velocityCurve", pe.velocityCurve);
+            if (auto* gradient = (*peTbl)["colorGradient"].as_array()) {
+                pe.colorGradient.keyCount = static_cast<uint32_t>((std::min)(gradient->size(), pe.colorGradient.keys.size()));
+                for (uint32_t index = 0; index < pe.colorGradient.keyCount; ++index) {
+                    if (auto* key = (*gradient)[index].as_array(); key && key->size() >= 5) {
+                        pe.colorGradient.keys[index].time = (float)(*key)[0].value_or(0.0);
+                        pe.colorGradient.keys[index].color = {
+                            (float)(*key)[1].value_or(1.0), (float)(*key)[2].value_or(1.0),
+                            (float)(*key)[3].value_or(1.0), (float)(*key)[4].value_or(1.0) };
+                    }
+                }
+            }
+            if (auto* bursts = (*peTbl)["bursts"].as_array()) {
+                for (auto&& burstNode : *bursts) {
+                    auto* burstTable = burstNode.as_table();
+                    if (!burstTable) continue;
+                    ParticleBurst burst;
+                    burst.time = (float)(*burstTable)["time"].value_or(0.0);
+                    burst.count = (int)(*burstTable)["count"].value_or((int64_t)10);
+                    burst.cycles = (int)(*burstTable)["cycles"].value_or((int64_t)1);
+                    burst.interval = (float)(*burstTable)["interval"].value_or(0.1);
+                    burst.probability = (float)(*burstTable)["probability"].value_or(1.0);
+                    pe.bursts.push_back(burst);
+                }
+            }
             pe.enabled        = (*peTbl)["enabled"].value_or(true);
             go.AddComponent<ParticleEmitter>(pe);
         }
 
-        if (auto* lcTbl = (*goTbl)["LifetimeComponent"].as_table()) {
-            LifetimeComponent lc{};
-            lc.remaining = (float)(*lcTbl)["remaining"].value_or(5.0);
-            go.AddComponent<LifetimeComponent>(lc);
+        if (auto* ffTbl = (*goTbl)["ParticleForceField"].as_table()) {
+            ParticleForceField ff{};
+            ff.enabled      = (*ffTbl)["enabled"].value_or(true);
+            int fieldType   = (int)(*ffTbl)["fieldType"].value_or((int64_t)0);
+            fieldType       = fieldType < 0 ? 0 : (fieldType > 5 ? 5 : fieldType);
+            ff.fieldType    = static_cast<ParticleForceFieldType>(fieldType);
+            ff.strength     = (float)(*ffTbl)["strength"].value_or(5.0);
+            ff.radius       = (float)(*ffTbl)["radius"].value_or(5.0);
+            ff.falloffPower = (float)(*ffTbl)["falloffPower"].value_or(2.0);
+            ff.direction    = ArrToVec3((*ffTbl)["direction"].as_array(), { 1.0f, 0.0f, 0.0f });
+            ff.noiseFrequency = (float)(*ffTbl)["noiseFrequency"].value_or(0.5);
+            ff.noiseSpeed   = (float)(*ffTbl)["noiseSpeed"].value_or(1.0);
+            go.AddComponent<ParticleForceField>(ff);
+        }
+
+        if (auto* windTbl = (*goTbl)["WindZoneComponent"].as_table()) {
+            WindZoneComponent wind{};
+            wind.enabled        = (*windTbl)["enabled"].value_or(true);
+            wind.direction      = ArrToVec3((*windTbl)["direction"].as_array(), { 0.7071f, 0.0f, 0.7071f });
+            wind.strength       = (float)(*windTbl)["strength"].value_or(1.0);
+            wind.turbulence     = (float)(*windTbl)["turbulence"].value_or(0.0);
+            wind.pulseFrequency = (float)(*windTbl)["pulseFrequency"].value_or(1.0);
+            go.AddComponent<WindZoneComponent>(wind);
         }
 
         if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
@@ -3419,6 +3585,8 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<NavMeshOffMeshLinkComponent>(std::move(link));
         }
 
+        ReadAutomaticComponents(go, *goTbl);
+
         auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
             std::string type = scTbl["type"].value_or(std::string{});
             if (type.empty()) return;
@@ -3440,7 +3608,7 @@ bool SceneSerializer::AppendObjects(
                 }
                 entry.script = std::move(script);
             } else {
-                FBZZ_LOG_WARN("AppendObjects: ScriptFactory could not create '%s'", type.c_str());
+                FBZZ_LOG_DEBUG("AppendObjects: script type pending registration '%s'", type.c_str());
             }
         };
 

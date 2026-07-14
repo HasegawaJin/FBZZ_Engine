@@ -12,8 +12,10 @@
 //   SV_VertexID % 6 = クワッドの三角形頂点インデックス
 
 #include "Common/Binding.hlsli"
+#define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Common/Space.hlsli"
+#include "Platform/Backend.hlsli"
 
 // ---------- 構造体 --------------------------------------------------------
 
@@ -27,7 +29,7 @@ struct GpuParticle
     float  lifetime;
     float  rotation;
     float  angularVelocity;
-    float  pad1;
+    float  spriteSeed;
     float4 uvRect;
 };
 
@@ -35,7 +37,14 @@ struct GpuParticle
 
 StructuredBuffer<GpuParticle> gParticles : register(SB_GPU_PARTICLES);
 Texture2D                     gTex       : register(TEX_ALBEDO);
+Texture2D                     gSceneDepth: register(TEX_DEPTH);
 SamplerState                  gSampler   : register(SAMPLER_DEFAULT);
+
+cbuffer ParticleRenderConstants : register(CB_MATERIAL)
+{
+    uint gRenderMode; float gStretchedVelocityScale; float gStretchedLengthScale; float gSoftParticleFadeDistance;
+    uint gSoftParticles; uint gMaxParticles; uint2 gParticleRenderPad;
+};
 
 // ---------- VS / PS 間 ---------------------------------------------------
 
@@ -79,7 +88,7 @@ PsIn VSMain(uint vertId : SV_VertexID)
     PsIn o;
 
     // 死亡粒子: クリップ空間外に出力してラスタライザが棄却するようにする
-    if (p.age >= p.lifetime)
+    if (p.age >= p.lifetime || (gMaxParticles > 0 && pIdx >= gMaxParticles))
     {
         o.svPos   = float4(0.0f, 0.0f, -2.0f, 1.0f); // z=-2 → NDC 外
         o.uv      = (float2)0;
@@ -91,6 +100,10 @@ PsIn VSMain(uint vertId : SV_VertexID)
     // カメラ空間 X/Y 軸のワールド向き (row-major view 行列の列 0, 1)
     float3 right = float3(view[0][0], view[1][0], view[2][0]);
     float3 up    = float3(view[0][1], view[1][1], view[2][1]);
+    float lengthScale = 1.0f;
+    if (gRenderMode == 1) { float speed = length(p.velocity); if (speed > 1.0e-4f) { up = p.velocity / speed; right = normalize(cross(up, normalize(cameraPos - p.position))); lengthScale = max(gStretchedLengthScale + speed * gStretchedVelocityScale, 0.0f); } }
+    else if (gRenderMode == 2) { right = float3(1,0,0); up = float3(0,0,1); }
+    else if (gRenderMode == 3) { up = float3(0,1,0); right = normalize(cross(up, normalize(cameraPos - p.position))); }
 
     float2 localUv = QUAD_UVS[corner];
     float2 c       = QUAD_CORNERS[corner];
@@ -102,7 +115,7 @@ PsIn VSMain(uint vertId : SV_VertexID)
 
     float3 worldPos = p.position
                     + right * c.x * p.size
-                    + up    * c.y * p.size;
+                    + up    * c.y * p.size * lengthScale;
 
     o.svPos   = mul(float4(worldPos, 1.0f), viewProjection);
     o.uv      = lerp(p.uvRect.xy, p.uvRect.zw, localUv);
@@ -120,5 +133,6 @@ float4 PSMain(PsIn p) : SV_Target0
     float  fade = saturate(1.0f - dot(d, d));
     fade *= fade;
     float4 tex = gTex.Sample(gSampler, p.uv);
+    if (gSoftParticles != 0) { float sceneDepth = gSceneDepth.Load(int3(int2(p.svPos.xy), 0)).r; fade *= saturate((LinearizeDepth(sceneDepth, nearZ, farZ) - LinearizeDepth(p.svPos.z, nearZ, farZ)) / gSoftParticleFadeDistance); }
     return tex * float4(p.color.rgb, p.color.a * fade);
 }

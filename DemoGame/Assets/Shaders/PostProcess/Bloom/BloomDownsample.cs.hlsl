@@ -6,7 +6,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Color.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D          texSrc      : register(TEX_BLOOM);
 SamplerState       sampDefault : register(SAMPLER_DEFAULT);

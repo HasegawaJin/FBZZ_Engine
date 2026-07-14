@@ -200,6 +200,8 @@ bool ProjectSettings::Load(const std::string& path)
         render.showDecalBounds = (*renderTbl)["showDecalBounds"].value_or(render.showDecalBounds);
         render.showSelectionOutline = (*renderTbl)["showSelectionOutline"].value_or(render.showSelectionOutline);
         render.passViewerEnabled = (*renderTbl)["passViewerEnabled"].value_or(render.passViewerEnabled);
+        render.particleBudget = (int)(*renderTbl)["particleBudget"].value_or((int64_t)render.particleBudget);
+        render.particleBudgetEnabled = (*renderTbl)["particleBudgetEnabled"].value_or(render.particleBudgetEnabled);
         pp.exposure = (float)(*renderTbl)["exposure"].value_or((double)pp.exposure);
         pp.bloom.intensity = (float)(*renderTbl)["bloomIntensity"].value_or((double)pp.bloom.intensity);
         pp.bloom.threshold = ReadFloat(*renderTbl, "bloomThreshold", pp.bloom.threshold);
@@ -398,6 +400,8 @@ bool ProjectSettings::Load(const std::string& path)
     if (auto* appTbl = tbl["app"].as_table()) {
         app.targetFps = (int)(*appTbl)["targetFps"].value_or((int64_t)app.targetFps);
         if (app.targetFps < 0) app.targetFps = 0;
+        if (auto backend = (*appTbl)["renderer"].value<std::string>())
+            app.rendererBackend = renderer::BackendFromString(*backend);
     }
 
     if (auto* windowTbl = tbl["window"].as_table()) {
@@ -504,6 +508,8 @@ bool ProjectSettings::Save(const std::string& path) const
     renderTbl.insert("showDecalBounds", render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("passViewerEnabled", render.passViewerEnabled);
+    renderTbl.insert("particleBudget", (int64_t)render.particleBudget);
+    renderTbl.insert("particleBudgetEnabled", render.particleBudgetEnabled);
     renderTbl.insert("exposure",     (double)pp.exposure);
     renderTbl.insert("bloomIntensity", (double)pp.bloom.intensity);
     renderTbl.insert("bloomThreshold", (double)pp.bloom.threshold);
@@ -621,6 +627,7 @@ bool ProjectSettings::Save(const std::string& path) const
 
     toml::table appTbl;
     appTbl.insert("targetFps", (int64_t)app.targetFps);
+    appTbl.insert("renderer", renderer::ToString(app.rendererBackend));
 
     toml::table windowTbl;
     windowTbl.insert("title",      window.title);

@@ -80,6 +80,66 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
         });
 
+    DrawComponentSection<scene::LODGroupComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "LOD Group",
+        [](scene::LODGroupComponent& group, EditorContext& ctx) {
+            ImGui::DragFloat("Size", &group.size, 0.05f, 0.001f, 100000.0f);
+            ImGui::Checkbox("Cull Below Last LOD", &group.cullBelowLastLevel);
+
+            int removeLevel = -1;
+            for (size_t levelIndex = 0; levelIndex < group.levels.size(); ++levelIndex) {
+                auto& level = group.levels[levelIndex];
+                ImGui::PushID(static_cast<int>(levelIndex));
+                const std::string label = "LOD " + std::to_string(levelIndex);
+                if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::SliderFloat("Screen Relative Height", &level.screenRelativeHeight, 0.0f, 1.0f);
+
+                    int removeRenderer = -1;
+                    for (size_t rendererIndex = 0; rendererIndex < level.renderers.size(); ++rendererIndex) {
+                        auto& reference = level.renderers[rendererIndex];
+                        const scene::GameObject* rendererGo = ctx.activeScene
+                            ? ctx.activeScene->FindByGuid(reference.instanceId) : nullptr;
+                        ImGui::PushID(static_cast<int>(rendererIndex));
+                        ImGui::TextUnformatted(rendererGo ? rendererGo->name.c_str() : "Missing Renderer");
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Remove")) removeRenderer = static_cast<int>(rendererIndex);
+                        ImGui::PopID();
+                    }
+                    if (removeRenderer >= 0) {
+                        level.renderers.erase(level.renderers.begin() + removeRenderer);
+                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    }
+
+                    ImGui::Button("Drop Renderer Here", { -1.0f, 0.0f });
+                    if (scene::GameObject* dropped = AcceptHierarchyDrop(ctx.activeScene)) {
+                        if (dropped->GetComponent<scene::MeshRenderer>() ||
+                            dropped->GetComponent<scene::SkinnedMeshRenderer>()) {
+                            scene::LODRendererReference reference{};
+                            reference.instanceId = dropped->instanceId;
+                            reference.entity = dropped->GetID();
+                            level.renderers.push_back(std::move(reference));
+                            if (ctx.markSceneDirty) ctx.markSceneDirty();
+                        }
+                    }
+
+                    if (ImGui::SmallButton("Remove LOD")) removeLevel = static_cast<int>(levelIndex);
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+            if (removeLevel >= 0) {
+                group.levels.erase(group.levels.begin() + removeLevel);
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
+
+            if (ImGui::Button("Add LOD")) {
+                scene::LODLevel level{};
+                level.screenRelativeHeight = group.levels.empty()
+                    ? 0.5f : group.levels.back().screenRelativeHeight * 0.5f;
+                group.levels.push_back(std::move(level));
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
+        });
+
 }
 
 

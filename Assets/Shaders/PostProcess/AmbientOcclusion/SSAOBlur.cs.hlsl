@@ -5,7 +5,7 @@
 // Dispatch サイズ: ceil(width/8) x ceil(height/8) x 1
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D          texSSAO     : register(TEX_SSAO);
 SamplerState       sampDefault : register(SAMPLER_DEFAULT);
