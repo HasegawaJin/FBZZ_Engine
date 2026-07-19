@@ -22,7 +22,7 @@ struct GpuParticle
     float  lifetime;
     float  rotation;
     float  angularVelocity;
-    float  pad1;
+    float  spriteSeed;
     float4 uvRect;
 };
 
@@ -37,7 +37,7 @@ struct GpuSpawnEntry
     float4 uvRect;
     float  rotation;
     float  angularVelocity;
-    float  pad0;
+    float  spriteSeed;
     float  pad1;
 };
 
@@ -89,8 +89,17 @@ cbuffer GpuEmitterCB : register(b0)
     float    gNoiseFrequency;
     float    gNoiseSpeed;
     uint     gForceFieldCount;  // gForceFields の有効本数
-    float3   gPad1;
+    uint     gFlipbookMode;
+    float    gFlipbookFramesPerSecond;
+    float    gPad1;
     GpuForceField gForceFields[MAX_FORCE_FIELDS];
+    float4   gCurveFlags;       // x=size, y=velocity, z=gradient, w=frameBlend
+    float4   gSizeCurveKeys01;
+    float4   gSizeCurveKeys23;
+    float4   gVelocityCurveKeys01;
+    float4   gVelocityCurveKeys23;
+    float4   gGradientTimes;
+    float4   gGradientColors[4];
 };
 
 StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
@@ -221,6 +230,39 @@ void ApplyForceFields(float3 position, inout float3 velocity)
     }
 }
 
+// 4キー線形カーブを評価する。xy/zwに(time,value)を2点ずつ格納する。
+float EvaluateCurve4(float4 keys01, float4 keys23, float t)
+{
+    float2 keys[4] = { keys01.xy, keys01.zw, keys23.xy, keys23.zw };
+    if (t <= keys[0].x) return keys[0].y;
+    [unroll]
+    for (uint i = 1; i < 4; ++i)
+    {
+        if (t <= keys[i].x)
+        {
+            float alpha = saturate((t - keys[i - 1].x) / max(keys[i].x - keys[i - 1].x, 1.0e-4f));
+            return lerp(keys[i - 1].y, keys[i].y, alpha);
+        }
+    }
+    return keys[3].y;
+}
+
+float4 EvaluateGradient4(float t)
+{
+    if (t <= gGradientTimes.x) return gGradientColors[0];
+    [unroll]
+    for (uint i = 1; i < 4; ++i)
+    {
+        if (t <= gGradientTimes[i])
+        {
+            float alpha = saturate((t - gGradientTimes[i - 1])
+                / max(gGradientTimes[i] - gGradientTimes[i - 1], 1.0e-4f));
+            return lerp(gGradientColors[i - 1], gGradientColors[i], alpha);
+        }
+    }
+    return gGradientColors[3];
+}
+
 // ---------- カーネル -------------------------------------------------------
 
 [numthreads(64, 1, 1)]
@@ -246,7 +288,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         p.color           = s.colorStart;
         p.rotation        = s.rotation;
         p.angularVelocity = s.angularVelocity;
-        p.pad1            = 0.0f;
+        p.spriteSeed      = s.spriteSeed;
         p.uvRect          = s.uvRect;
     }
     else
@@ -268,7 +310,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         p.velocity += CurlNoise(TurbulenceSamplePoint(
             p.position, gNoiseFrequency, gNoiseSpeed, gTime)) * (gNoiseStrength * gDeltaTime);
     }
-    p.position += p.velocity * gDeltaTime;
+    float normalizedAge = saturate((p.age + gDeltaTime) / max(p.lifetime, 1.0e-4f));
+    float velocityScale = gCurveFlags.y > 0.5f
+        ? max(EvaluateCurve4(gVelocityCurveKeys01, gVelocityCurveKeys23, normalizedAge), 0.0f)
+        : 1.0f;
+    p.position += p.velocity * (gDeltaTime * velocityScale);
     p.age      += gDeltaTime;
 
     // 回転更新
@@ -276,12 +322,27 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     // 寿命 t [0, 1] で色・サイズ補間 (CPU の colorCurvePower / sizeCurvePower と一致)
     float t = saturate(p.age / p.lifetime);
-    p.color = lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower));
-    p.size  = gSizeStart + (gSizeEnd - gSizeStart) * pow(t, gSizeCurvePower);
+    p.color = gCurveFlags.z > 0.5f
+        ? EvaluateGradient4(t)
+        : lerp(gColorStart, gColorEnd, pow(t, gColorCurvePower));
+    float sizeT = gCurveFlags.x > 0.5f
+        ? saturate(EvaluateCurve4(gSizeCurveKeys01, gSizeCurveKeys23, t))
+        : pow(t, gSizeCurvePower);
+    p.size = lerp(gSizeStart, gSizeEnd, sizeT);
 
     // スプライトアニメーション (CPU の ComputeSpriteRect と一致)
     uint spriteSpan = gSpriteEndFrame - gSpriteStartFrame;
-    uint frame      = gSpriteStartFrame + (uint)(t * (float)spriteSpan);
+    uint relativeFrame = (uint)(t * (float)spriteSpan);
+    if (gFlipbookMode == 1 && spriteSpan > 0)
+        relativeFrame = (uint)(p.age * gFlipbookFramesPerSecond) % (spriteSpan + 1);
+    else if (gFlipbookMode == 2)
+        relativeFrame = (uint)(saturate(p.spriteSeed) * (float)spriteSpan);
+    else if (gFlipbookMode == 3 && spriteSpan > 0)
+    {
+        uint cycle = (uint)(p.age * gFlipbookFramesPerSecond) % max(spriteSpan * 2, 1u);
+        relativeFrame = cycle <= spriteSpan ? cycle : spriteSpan * 2 - cycle;
+    }
+    uint frame = gSpriteStartFrame + relativeFrame;
     uint sx         = frame % gSpriteColumns;
     uint sy         = frame / gSpriteColumns;
     float invCols   = 1.0f / (float)gSpriteColumns;

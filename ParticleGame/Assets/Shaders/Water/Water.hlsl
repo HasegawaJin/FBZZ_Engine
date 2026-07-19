@@ -8,6 +8,8 @@
 
 #define MAX_POINT_LIGHTS 8
 #define MAX_SPOT_LIGHTS 4
+// Water SSR はピクセルシェーダー内で走るため、全画面 Compute SSR より低い上限にして水面の面積負荷を抑える。
+#define WATER_SSR_MAX_STEPS 16
 
 struct PointLightData
 {
@@ -38,7 +40,19 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float3   cameraPos;
     float    nearZ;
     float    farZ;
-    float3   _camPad;
+    float    waterSsrEnabled;
+    float2   _camPad;
+};
+
+// Water は半透明 Forward 描画で GBuffer に法線を書かないため、通常の SSR Compute の
+// 反射元にはなれない。共通設定だけを受け取り、水面 PS 内でコピー済み深度を追跡する。
+cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
+{
+    float4 _iblParams;
+    float  ssrMaxDistance;
+    float  ssrThickness;
+    int    ssrSteps;
+    float  ssrIntensity;
 };
 
 // WaterCB は C++ の WaterCB と 16 byte 単位で同期する。
@@ -91,8 +105,17 @@ cbuffer ShadowConstants : register(CB_SHADOW)
     float4x4 lightViewProjection;
     float2   shadowMapTexelSize;
     float    shadowBias;
-    float    _shadowPad;
+    float    shadowStrength;   // 0=影なし, 1=完全な影
+    int      shadowPcfRadius;  // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    float    cloudShadowStrength;
+    float    cloudShadowCoverage;
+    float    cloudShadowScale;
+    float    cloudShadowSpeed;
+    float    cloudShadowTime;
+    float    cloudShadowWindX;
+    float    cloudShadowWindZ;
 };
+#define HAVE_CLOUD_SHADOW 1
 
 #include "Rendering/Shadow.hlsli"
 
@@ -221,11 +244,52 @@ float LinearizeDepth(float rawDepth)
     return (nearZ * farZ) / max(farZ - rawDepth * (farZ - nearZ), 0.0001f);
 }
 
-float3 SoftWaterTonemap(float3 color)
+// 水面専用 SSR。Water 描画直前の sceneDepth / sceneColor を使うため、現在の水面を
+// 読み戻す競合を起こさず、既に描画済みの不透明・半透明オブジェクトを反射できる。
+float4 TraceWaterSSR(float3 worldPos, float3 normal)
 {
-    // WHAT: 強い specular / foam を緩やかに圧縮し、白飛びした板のような水面を避ける。
-    // WHY: Water は HDR 上で反射と泡を加算するため、最後に軽い肩を作ると見た目が安定する。
-    return color / (1.0f + color * 0.18f);
+    if (waterSsrEnabled < 0.5f || ssrIntensity <= 0.0f || ssrSteps <= 0)
+        return float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    float3 incident = normalize(worldPos - cameraPos);
+    float3 rayDirVS = normalize(mul(float4(reflect(incident, normal), 0.0f), view).xyz);
+    float3 rayPosVS = mul(float4(worldPos, 1.0f), view).xyz + rayDirVS * max(ssrThickness, 0.02f);
+    // WHY: RenderSettings の SSR 品質をそのまま水面 PS に流すと、広い水面で step 数×ピクセル数の負荷が跳ねる。
+    int waterSsrSteps = min(ssrSteps, WATER_SSR_MAX_STEPS);
+    float stepLength = ssrMaxDistance / max((float)waterSsrSteps, 1.0f);
+
+    [loop]
+    for (int step = 0; step < waterSsrSteps; ++step)
+    {
+        rayPosVS += rayDirVS * stepLength;
+        if (rayPosVS.z <= nearZ || rayPosVS.z >= farZ)
+            break;
+
+        float4 clip = mul(float4(rayPosVS, 1.0f), projection);
+        if (clip.w <= 0.0f)
+            break;
+
+        float2 rayUV = clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f;
+        if (any(rayUV <= 0.0f) || any(rayUV >= 1.0f))
+            break;
+
+        float sceneRawDepth = g_sceneDepth.SampleLevel(g_samplerClamp, rayUV, 0).r;
+        if (sceneRawDepth >= 0.9999f)
+            continue;
+
+        float sceneViewDepth = LinearizeDepth(sceneRawDepth);
+        float depthDelta = rayPosVS.z - sceneViewDepth;
+        float hitThickness = max(ssrThickness, stepLength * abs(rayDirVS.z));
+        if (depthDelta >= 0.0f && depthDelta <= hitThickness)
+        {
+            // 画面端では不安定なヒットを環境反射へ滑らかにフォールバックする。
+            float2 edgeDistance = min(rayUV, 1.0f - rayUV);
+            float confidence = saturate(min(edgeDistance.x, edgeDistance.y) * 12.0f);
+            return float4(g_sceneColor.SampleLevel(g_samplerClamp, rayUV, 0).rgb,
+                          confidence * saturate(ssrIntensity));
+        }
+    }
+    return float4(0.0f, 0.0f, 0.0f, 0.0f);
 }
 
 float4 PSMain(WaterPSInput p) : SV_Target0
@@ -266,6 +330,14 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float refractionMask = shallowFactor * (1.0f - backgroundMask);
     float2 refrOffset = tangentNormal.xy * g_refractionFlowParams.x * (1.0f - saturate(fresnel)) * refractionMask;
     float2 refrUV = saturate(screenUV + refrOffset);
+
+    // WHAT: 屈折先のピクセルが水面より手前にある（= カメラと水面の間に物体がある）場合は屈折させない。
+    // WHY: そのまま UV をずらすと手前オブジェクトのシルエットが水中に滲み出す典型的なアーティファクトになる。
+    //      屈折先の深度が水面より手前なら、その物体は水中ではないのでオフセットを破棄し素の screenUV を使う。
+    float refrRawDepth    = g_sceneDepth.Sample(g_samplerClamp, refrUV).r;
+    float refrLinearDepth = LinearizeDepth(refrRawDepth);
+    if (refrLinearDepth < linearSurfDepth)
+        refrUV = screenUV;
     float3 refractColor = g_sceneColor.Sample(g_samplerClamp, refrUV).rgb;
     // sceneColor が未コピーの場合 refractColor ≈ (0,0,0) になるため、
     // シーンの輝度がゼロのときは waterColor を透過色として代用し、
@@ -277,7 +349,20 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 envSample = g_envTex.Sample(g_samplerEnv, screenUV + tangentNormal.xy * 0.015f).rgb;
     float envAvailable = saturate(dot(envSample, float3(1.0f, 1.0f, 1.0f)));
     float3 reflectColor = lerp(skyReflectTint, envSample, envMapBlend * envAvailable);
+
+    // 反射ウェイト(フレネル)を先に求め、SSR は寄与が実際に見えるピクセルだけトレースする。
+    // WHY: TraceWaterSSR は上限付きでも複数回レイマーチする WaterForward の主コスト。水面を見下ろす
+    //      (NdotV 大 → 低フレネル) ピクセルは反射がほぼ見えないため、レイマーチを丸ごと省いても
+    //      結果はほぼ不変。背景ピクセルはヒット候補が薄く長い空走査になりやすいため環境反射へフォールバックする。
+    //      逆に浅い角度(高フレネル・反射が目立つ)では従来どおりトレースする。
+    //      SSR は SampleLevel(明示 LOD) を使うため分岐内でも勾配の問題は起きない。
     float reflectionWeight = saturate(fresnel) * lerp(1.0f, 0.45f, backgroundMask);
+    [branch]
+    if (reflectionWeight > 0.04f && backgroundMask < 0.5f)
+    {
+        float4 ssrReflection = TraceWaterSSR(p.worldPos, N);
+        reflectColor = lerp(reflectColor, ssrReflection.rgb, ssrReflection.a);
+    }
     float3 color = lerp(waterColor, reflectColor, reflectionWeight);
 
     float3 L = normalize(-lightDir);
@@ -296,16 +381,29 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float rim = pow(1.0f - NdotV, 3.0f) * rimGlowStrength;
     color += lerp(waterColor, skyReflectTint, 0.35f) * rim;
 
+    // WHAT: 波打ち際（地形と水面が交差する浅瀬）に発生する接岸泡。
+    // WHY: g_foamParams.x(threshold)/.y(fade) はこれまでシェーダー内で未使用だった。
+    //      waterDepth が threshold より浅いほど泡を強くし、岸辺に沿った白い帯を作ることで
+    //      Unity の Ocean 的な接岸表現に寄せる。テクスチャ泡と max 合成してムラを残す。
+    float foamThreshold = g_foamParams.x;
+    float foamFade      = max(g_foamParams.y, 0.0001f);
+    float shoreFoam     = (1.0f - smoothstep(foamThreshold, foamThreshold + foamFade, waterDepth)) * (1.0f - backgroundMask);
+
     float foamMaskVal = g_foamMask.Sample(g_samplerClamp, p.uv).r;
-    float foamTexVal = g_foamTex.Sample(g_sampler, p.uv * g_foamParams.w + time * 0.03f).r;
-    float foam = smoothstep(0.05f, 1.0f, foamMaskVal * foamTexVal) * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
+    float foamTexVal  = g_foamTex.Sample(g_sampler, p.uv * g_foamParams.w + time * 0.03f).r;
+    // ペイント泡マスクと接岸泡を統合し、テクスチャでブレイクアップして自然なムラを与える。
+    float foamAmount  = max(foamMaskVal, shoreFoam) * foamTexVal;
+    float foam = smoothstep(0.05f, 1.0f, foamAmount) * g_foamParams.z * lerp(0.80f, 1.0f, shadow);
     float3 foamColor = lerp(float3(0.72f, 0.88f, 0.92f), float3(1.0f, 1.0f, 1.0f), saturate(foamTexVal));
     color = lerp(color, foamColor, saturate(foam));
 
     float2 rippleRG = g_rippleTex.Sample(g_samplerClamp, p.uv).rg * 2.0f - 1.0f;
     float rippleRing = saturate(length(rippleRG) * rippleRingStrength);
     color = lerp(color, rippleRingColor, rippleRing);
-    color = SoftWaterTonemap(max(color, 0.0f));
+    // NOTE: 以前はここで色を事前圧縮 (color/(1+color*0.18)) していたが、水面は HDR バッファへ
+    //       ブレンド描画され、露出・ACES トーンマップは Composite パスが一括で行う。事前圧縮すると
+    //       スペキュラ／きらめき／太陽反射が Bloom に乗らず平坦になるため、リニア HDR のまま出力する。
+    color = max(color, 0.0f);
 
     float alpha = g_surfaceParams.x * lerp(minShallowAlpha, 1.0f, depthFactor);
     alpha = max(alpha, backgroundMask * 0.92f);
