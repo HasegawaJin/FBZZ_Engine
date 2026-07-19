@@ -875,6 +875,8 @@ void EditorApp::TickScriptCompile()
             SetHotReloadState(EditorContext::HotReloadState::Failed, "Script: failed to start compile");
             return;
         }
+        // ビルドコンソールへ新規ビルドを通知する (診断・ライブログ・履歴の起点)。
+        m_buildConsole.BeginBuild(BuildRecord::Kind::Script);
         FBZZ_LOG_DEBUG("ScriptDll: starting compile: target=%s cfg=%s",
             config.target.c_str(), config.configuration.c_str());
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "Scripts: compiling...");
@@ -884,6 +886,8 @@ void EditorApp::TickScriptCompile()
     if (m_scriptCompiler.GetState() == Compiler::State::Building) {
         m_ctx.scriptReloadBusy = true;
         m_scriptCompiler.Tick();
+        // コンパイラの stdout 差分を取り込み、現在コンパイル中ファイルと診断を更新する。
+        m_buildConsole.IngestFullLog(m_scriptCompiler.GetLog());
         // WHAT: 総コンパイル単位を取得できないため、残り幅に比例して増える段階進捗を使う。
         // WHY: 90% を上限にすることで、ビルド完了前にリロード段階へ到達したように見せない。
         const float deltaTime = ImGui::GetIO().DeltaTime;
@@ -895,6 +899,9 @@ void EditorApp::TickScriptCompile()
 
     if (m_scriptCompiler.GetState() == Compiler::State::Done) {
         m_ctx.scriptReloadBusy = true;
+        // コンパイル成功を確定する (この後の DLL リロードは別工程として扱う)。
+        m_buildConsole.IngestFullLog(m_scriptCompiler.GetLog());
+        m_buildConsole.EndBuild(true, 0);
         SetHotReloadState(EditorContext::HotReloadState::Reloading, "Scripts: reloading...");
         m_ctx.hotReloadProgress = SCRIPT_PROGRESS_BUILD_END;
 
@@ -929,8 +936,13 @@ void EditorApp::TickScriptCompile()
     }
 
     if (m_scriptCompiler.GetState() == Compiler::State::Failed) {
-        const std::string msg = "Scripts: compile error (exit=" +
-                                std::to_string(m_scriptCompiler.GetExitCode()) + ")";
+        // 失敗ログを取り込み、診断を確定する。Build Output パネルへ件数と file:line が並ぶ。
+        m_buildConsole.IngestFullLog(m_scriptCompiler.GetLog());
+        m_buildConsole.EndBuild(false, m_scriptCompiler.GetExitCode());
+        const int errs = m_buildConsole.Latest() ? m_buildConsole.Latest()->errorCount : 0;
+        const std::string msg = errs > 0
+            ? "Scripts: " + std::to_string(errs) + " error(s)"
+            : "Scripts: compile error (exit=" + std::to_string(m_scriptCompiler.GetExitCode()) + ")";
         FBZZ_LOG_ERROR("ScriptDll: %s\n%s", msg.c_str(), m_scriptCompiler.GetLog().c_str());
         SetHotReloadState(EditorContext::HotReloadState::Failed, msg);
         m_ctx.hotReloadDoneTimer = 8.0f;
@@ -1011,16 +1023,20 @@ void EditorApp::TickHlslCompile()
             SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: failed to start compile");
             return;
         }
+        m_buildConsole.BeginBuild(BuildRecord::Kind::Hlsl);
         SetHotReloadState(EditorContext::HotReloadState::Compiling, "HLSL: compiling shaders...");
         m_ctx.hotReloadProgress = -1.0f;
     }
 
     if (m_hlslCompiler.GetState() == Compiler::State::Building) {
         m_hlslCompiler.Tick();
+        m_buildConsole.IngestFullLog(m_hlslCompiler.GetLog());
         return;
     }
 
     if (m_hlslCompiler.GetState() == Compiler::State::Done) {
+        m_buildConsole.IngestFullLog(m_hlslCompiler.GetLog());
+        m_buildConsole.EndBuild(true, 0);
         if (!SyncCompiledShadersToProject(m_hlslSourceDir, m_ctx.projectRoot)) {
             FBZZ_LOG_WARN("HLSL: compiled CSO sync failed; renderer may still use stale shader binaries");
         }
@@ -1036,6 +1052,8 @@ void EditorApp::TickHlslCompile()
     }
 
     if (m_hlslCompiler.GetState() == Compiler::State::Failed) {
+        m_buildConsole.IngestFullLog(m_hlslCompiler.GetLog());
+        m_buildConsole.EndBuild(false, m_hlslCompiler.GetExitCode());
         SetHotReloadState(EditorContext::HotReloadState::Failed,
                           "HLSL: compile error (exit=" +
                           std::to_string(m_hlslCompiler.GetExitCode()) + ")");

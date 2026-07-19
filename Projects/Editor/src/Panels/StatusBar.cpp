@@ -4,6 +4,7 @@
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/BuildConsole.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
@@ -201,11 +202,20 @@ void StatusBar::Draw(EditorContext& ctx)
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
             const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
             const float progress    = hasProgress ? ctx.hotReloadProgress : t;
+            // コンパイル中は現在コンパイル対象のファイル名を重畳し、擬似進捗を実感のある表示にする。
+            const char* curFile = (compiling && ctx.buildConsole && !ctx.buildConsole->CurrentFile().empty())
+                                      ? ctx.buildConsole->CurrentFile().c_str() : nullptr;
             char progressLabel[256];
-            if (hasProgress) {
+            if (curFile) {
+                std::snprintf(progressLabel, sizeof(progressLabel), "%s  %s", label, curFile);
+            } else if (hasProgress) {
                 std::snprintf(progressLabel, sizeof(progressLabel), "%s %.0f%%", label, progress * 100.0f);
             }
-            ImGui::ProgressBar(progress, { pbW, barH - 4.0f }, hasProgress ? progressLabel : label);
+            const bool hasLabel = curFile || hasProgress;
+            ImGui::ProgressBar(progress, { pbW, barH - 4.0f }, hasLabel ? progressLabel : label);
+            // クリックで Build Output を開けるようにする。
+            if (ImGui::IsItemClicked()) ctx.requestOpenBuildOutput = true;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to open Build Output");
             ImGui::PopStyleColor(2);
         } else if (detailBaking) {
             if (rightX > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(rightX);
@@ -215,18 +225,34 @@ void StatusBar::Draw(EditorContext& ctx)
             ImGui::ProgressBar(t, { pbW, barH - 4.0f }, "Baking Detail...");
             ImGui::PopStyleColor(2);
         } else {
+            // 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
+            // ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
             const char* reloadText  = nullptr;
             ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-            if (hrs == EditorContext::HotReloadState::Done) {
-                reloadText  = ctx.hotReloadMessage.empty() ? "Reload OK" : ctx.hotReloadMessage.c_str();
-                reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };
-            } else if (hrs == EditorContext::HotReloadState::Failed) {
-                reloadText  = ctx.hotReloadMessage.empty() ? "Reload Failed" : ctx.hotReloadMessage.c_str();
-                reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };
-            } else if (!m_message.empty()) {
+            char        summary[160] = {};
+
+            const BuildRecord* latest = ctx.buildConsole ? ctx.buildConsole->Latest() : nullptr;
+            if (!m_message.empty()) {
+                // 一時的な操作メッセージ (保存など) を最優先で表示する。
                 reloadText  = m_message.c_str();
                 reloadColor = { 0.6f, 0.85f, 1.0f, 1.0f };
+            } else if (latest && latest->result == BuildRecord::Result::Failed) {
+                std::snprintf(summary, sizeof(summary), "Build failed  %d error(s)  %s",
+                              latest->errorCount, latest->startClock.c_str());
+                reloadText  = summary;
+                reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };
+            } else if (latest && latest->result == BuildRecord::Result::Success) {
+                const char* kind = latest->kind == BuildRecord::Kind::Script ? "Scripts" : "HLSL";
+                if (latest->warnCount > 0)
+                    std::snprintf(summary, sizeof(summary), "%s OK  %dW  %s (%.1fs)",
+                                  kind, latest->warnCount, latest->startClock.c_str(), latest->durationSec);
+                else
+                    std::snprintf(summary, sizeof(summary), "%s OK  %s (%.1fs)",
+                                  kind, latest->startClock.c_str(), latest->durationSec);
+                reloadText  = summary;
+                reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };
             }
+
             if (reloadText) {
                 const float msgW = ImGui::CalcTextSize(reloadText).x + 8.0f;
                 const float rx   = ImGui::GetWindowWidth() - msgW;
@@ -234,6 +260,9 @@ void StatusBar::Draw(EditorContext& ctx)
                 ImGui::PushStyleColor(ImGuiCol_Text, reloadColor);
                 ImGui::TextUnformatted(reloadText);
                 ImGui::PopStyleColor();
+                // ビルド結果テキストのクリックで Build Output を開く。
+                if (latest && ImGui::IsItemClicked())  ctx.requestOpenBuildOutput = true;
+                if (latest && ImGui::IsItemHovered())  ImGui::SetTooltip("Click to open Build Output");
             }
         }
     }
