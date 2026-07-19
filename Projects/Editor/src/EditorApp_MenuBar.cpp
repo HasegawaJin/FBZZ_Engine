@@ -476,6 +476,45 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
 }
 
 // =============================================================================
+// ビルド失敗通知バー
+// =============================================================================
+
+// WHY: 従来はビルド失敗が StatusBar に数秒表示されて消えるだけで見落としやすかった。
+//      失敗が残っている間、ツールバー直下に消えない赤帯を出し、[Show] で該当エラーへ、
+//      [Dismiss] で明示的に閉じられるようにする。成功ビルドで自動的に消える。
+void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
+{
+    if (!ctx.buildConsole || !ctx.buildConsole->HasActiveFailure()) return;
+
+    const BuildRecord* fail = ctx.buildConsole->LatestFailure();
+    if (!fail) return;
+
+    const float barH = ImGui::GetFrameHeight() + 4.0f;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.30f, 0.10f, 0.10f, 1.0f));
+    ImGui::BeginChild("##BuildFailBar", ImVec2(0.0f, barH), false, ImGuiWindowFlags_NoScrollbar);
+
+    ImGui::AlignTextToFramePadding();
+    const char* kind = fail->kind == BuildRecord::Kind::Script ? "Script" : "HLSL";
+    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.50f, 1.0f),
+                       "  %s build failed  \xE2\x80\x94  %d error(s), %d warning(s)  [%s]",
+                       kind, fail->errorCount, fail->warnCount, fail->startClock.c_str());
+
+    // 右寄せで操作ボタンを置く。
+    const float btnW = 150.0f;
+    ImGui::SameLine(ImGui::GetWindowWidth() - btnW);
+    if (ImGui::SmallButton("Show")) {
+        ctx.requestFocusBuildError = true;   // Build Output を開いて最初のエラーへスクロール
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Dismiss")) {
+        ctx.buildConsole->DismissNotification();
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+}
+
+// =============================================================================
 // ホットキー登録
 // =============================================================================
 

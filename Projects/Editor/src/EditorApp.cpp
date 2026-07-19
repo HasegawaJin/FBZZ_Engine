@@ -19,6 +19,7 @@
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/ViewportPanel.hpp>
 #include <Editor/Panels/ConsolePanel.hpp>
+#include <Editor/Panels/BuildOutputPanel.hpp>
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/Panels/DependencyViewPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
@@ -278,6 +279,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     m_ctx.hotkeyManager = &m_hotkeys;
     m_ctx.undoStack   = &m_undoStack;
+    m_ctx.buildConsole = &m_buildConsole;
     m_ctx.playMode    = &m_playMode;
     m_ctx.renderer    = &renderer;
     m_ctx.imguiRenderer = &imguiRenderer;
@@ -317,6 +319,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_panels.push_back(std::move(vp));
     }
     m_panels.push_back(std::make_unique<ConsolePanel>(m_consoleSink));
+    {
+        auto buildOutput = std::make_unique<BuildOutputPanel>();
+        m_buildOutputPanel = buildOutput.get();
+        m_panels.push_back(std::move(buildOutput));
+    }
     {
         auto assets = std::make_unique<AssetBrowserPanel>("Assets");
         m_assetBrowserPanel = assets.get();
@@ -812,6 +819,7 @@ void EditorApp::BeginFrame()
 
         BuildMenuBar(m_ctx);
         BuildPlayToolbar(m_ctx);
+        DrawBuildNotificationBar(m_ctx);
         m_statusBar->Draw(m_ctx);
 
         ImGuiID dockId = ImGui::GetID("MainDockSpace");
@@ -831,6 +839,20 @@ void EditorApp::RenderPanels(EditorContext& ctx)
 {
     // Play ボタンは BeginFrame 内で状態を変えるため、同じフレームの Panel 描画前にも同期する。
     m_undoStack.SetRecordingEnabled(m_playMode.IsInEditor());
+
+    // Build Output パネルの表示要求を処理する (StatusBar クリック / 失敗通知バーの Show)。
+    if (m_buildOutputPanel) {
+        if (ctx.requestFocusBuildError) {
+            m_buildOutputPanel->RequestFocusFirstError();  // 表示 ON + 最初のエラーへスクロール
+            ctx.requestFocusBuildError = false;
+            ctx.requestOpenBuildOutput = false;
+            ImGui::SetWindowFocus(m_buildOutputPanel->GetWindowName());
+        } else if (ctx.requestOpenBuildOutput) {
+            m_buildOutputPanel->visible = true;
+            ctx.requestOpenBuildOutput = false;
+            ImGui::SetWindowFocus(m_buildOutputPanel->GetWindowName());
+        }
+    }
 
     for (auto& panel : m_panels) {
         if (!panel->visible) continue;

@@ -21,7 +21,7 @@ namespace fbzz::renderer { class Camera; }
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::core     { class MemorySystem; }
 namespace fbzz::scene    { struct AnimatorComponent; }
-namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; }
+namespace fbzz::editor   { class UndoStack; class PlayModeController; class TerrainTool; class WaterTool; class DetailTool; class FoliageTool; class HotkeyManager; class BuildConsole; }
 
 namespace fbzz::editor {
 
@@ -203,6 +203,12 @@ struct EditorContext {
     float          hotReloadProgress = -1.0f;
     float          hotReloadDoneTimer = 0.0f; // Done / Failed 表示を消すカウントダウン (秒)
     bool           scriptReloadBusy = false;  // Script DLL のビルド待ち / ロード中は Play 開始を止める
+
+    // ビルドコンソール: Script / HLSL コンパイルの出力・診断・履歴の唯一の情報源。
+    // WHY: EditorApp が所有し、Build Output パネル・StatusBar・通知バーが読み取る。
+    BuildConsole*  buildConsole = nullptr;
+    bool           requestOpenBuildOutput  = false; // Build Output パネルを開く要求 (StatusBar クリック等)
+    bool           requestFocusBuildError  = false; // 開いた上で最初のエラーへスクロールする要求 (通知バー)
 
     // パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings  = false;

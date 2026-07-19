@@ -10,6 +10,7 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
+#include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/SceneDirtyTracker.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -38,6 +39,7 @@ namespace fbzz::core     { class Window; }
 namespace fbzz::editor {
 
 class ViewportPanel;
+class BuildOutputPanel;
 class ProjectSettingsPanel;
 class BuildSettingsPanel;
 class AssetBrowserPanel;
@@ -107,6 +109,8 @@ private:
 
     void BuildMenuBar(EditorContext& ctx);
     void BuildPlayToolbar(EditorContext& ctx);
+    // ビルド失敗時に、ツールバー下へ消えない通知バーを描画する (Show / Dismiss)。
+    void DrawBuildNotificationBar(EditorContext& ctx);
     void ProcessMapEditingModeTransition(uint32_t dockId);
     void ProcessPlayViewportLayoutTransition(uint32_t dockId);
     void EnterMapEditingMode(uint32_t dockId);
@@ -191,6 +195,11 @@ private:
     bool                            m_waterToolWasActive = false;
     bool                            m_detailToolWasActive = false;
     bool                            m_foliageToolWasActive = false;
+
+    // ビルドコンソール: Script / HLSL コンパイルの出力・診断・履歴を集約する。
+    // WHY: m_ctx.buildConsole がこれを指し、Build Output パネル・StatusBar・通知バーが共有する。
+    BuildConsole             m_buildConsole;
+    BuildOutputPanel*        m_buildOutputPanel = nullptr;
 
     // スクリプト DLL ホットリロード
     ScriptDllLoader          m_scriptDll;
