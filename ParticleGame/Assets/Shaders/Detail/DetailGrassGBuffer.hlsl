@@ -11,7 +11,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Color.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 cbuffer DetailGrassCB : register(CB_MATERIAL)
 {

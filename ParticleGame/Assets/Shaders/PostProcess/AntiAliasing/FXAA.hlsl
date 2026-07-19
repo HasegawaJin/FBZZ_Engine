@@ -4,7 +4,7 @@
 // 入力: TEX_GBUFFER0 (t5) = Composite 出力 LDR カラー
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D    texLDR     : register(TEX_GBUFFER0);
 SamplerState sampLinear : register(SAMPLER_DEFAULT);
