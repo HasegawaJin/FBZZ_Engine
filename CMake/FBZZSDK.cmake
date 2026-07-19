@@ -72,5 +72,5 @@ add_custom_target(fbzz_sdk
 )
 set_target_properties(fbzz_sdk PROPERTIES FOLDER "SDK")
 
-# GameHub を単体ビルドしても、新規プロジェクトが直ちに参照できる同一構成 SDK を用意する。
-add_dependencies(fbzz_hub fbzz_sdk)
+# GameHubはTypeScript版へ分離したため、SDKは明示的にfbzz_sdkターゲットをビルドして生成する。
+# WHY: CMakeに存在しないfbzz_hubへ依存を追加するとConfigureが失敗するため、逆向きの依存を持たせない。
