@@ -6,7 +6,7 @@
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Common/Color.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 // ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で提供される

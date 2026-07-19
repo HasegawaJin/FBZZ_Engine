@@ -3,7 +3,7 @@
 // TextureCube スカイボックス — 無限遠に描画するため SV_Position.z = .w を設定する
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 TextureCube  texEnvCube  : register(TEX_ENV_CUBE);
 SamplerState sampDefault : register(SAMPLER_DEFAULT);

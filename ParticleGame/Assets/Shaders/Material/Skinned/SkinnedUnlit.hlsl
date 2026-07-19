@@ -6,7 +6,7 @@
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {

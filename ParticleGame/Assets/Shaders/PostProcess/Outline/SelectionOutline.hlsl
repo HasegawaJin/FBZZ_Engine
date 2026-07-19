@@ -3,7 +3,7 @@
 // Pixel-width editor selection outline from a selected-object mask
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D          texLDR            : register(TEX_GBUFFER0);
 Texture2D          texSelectionMask  : register(TEX_GBUFFER1);

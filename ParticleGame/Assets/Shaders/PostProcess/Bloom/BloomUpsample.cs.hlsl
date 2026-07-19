@@ -5,7 +5,7 @@
 // Dispatch サイズ: ceil(dstWidth/8) x ceil(dstHeight/8) x 1
 
 #include "Common/Constants.hlsli"
-#include "Platform/DX11.hlsli"
+#include "Platform/Backend.hlsli"
 
 Texture2D           texSrc     : register(TEX_BLOOM);
 SamplerState        sampDefault: register(SAMPLER_DEFAULT);
