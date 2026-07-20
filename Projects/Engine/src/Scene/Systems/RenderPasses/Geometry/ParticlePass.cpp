@@ -400,6 +400,14 @@ math::Vector3 InverseTransformEmitterVector(const Transform& transform, const ma
     return transform.worldRotation.Inverse() * worldVector;
 }
 
+const AnimatorComponent* FindParticleAnimator(GameObject& object)
+{
+    // VFX Graphの生成Particleはownerの子になるため、Skinned Mesh spawnは祖先Animatorも参照する。
+    for (GameObject* current = &object; current != nullptr; current = current->GetParent())
+        if (const auto* animator = current->GetComponent<AnimatorComponent>()) return animator;
+    return nullptr;
+}
+
 // FBX / Modelの頂点をMeshSurface Shape用の軽量な点群へ変換する。
 // WHY: AssetManagerのModel所有権を侵さず、スポーンごとのモデル走査も避ける。
 void EnsureMeshShapePoints(ParticleEmitter& emitter)
@@ -506,6 +514,12 @@ renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
 
 void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& resources)
 {
+    if (emitter.motionVectorFlipbook && !emitter.motionVectorTexturePath.empty()
+        && (!emitter.motionVectorTexture.IsValid()
+            || emitter.loadedMotionVectorTexturePath != emitter.motionVectorTexturePath)) {
+        emitter.motionVectorTexture = LoadParticleTextureOrWhite(resources, emitter.motionVectorTexturePath);
+        emitter.loadedMotionVectorTexturePath = emitter.motionVectorTexturePath;
+    }
     // materialPath が設定されている場合: .mat の albedo テクスチャと blendMode を優先する。
     // WHY: materialPath が単一の描画設定の信頼元になることで、複数エミッターで同じ .mat を共有できる。
     if (!emitter.materialPath.empty()) {
@@ -550,6 +564,13 @@ void UpdateParticleRenderConstants(ParticleEmitter& emitter,
     cb.softParticleFadeDistance = (std::max)(emitter.softParticleFadeDistance, 0.001f);
     cb.softParticles = emitter.softParticles ? 1u : 0u;
     cb.maxParticles = static_cast<uint32_t>((std::max)(maxParticles, 0));
+    cb.effectsFlags = (emitter.distortion ? 1u : 0u)
+        | (emitter.sixWayLighting ? 2u : 0u)
+        | (emitter.motionVectorFlipbook && emitter.motionVectorTexture.IsValid() ? 4u : 0u);
+    cb.distortionStrength = (std::max)(emitter.distortionStrength, 0.0f);
+    cb.lightingStrength = (std::max)(emitter.lightingStrength, 0.0f);
+    cb.emissiveScale = (std::max)(emitter.emissiveScale, 0.0f);
+    cb.motionVectorStrength = (std::max)(emitter.motionVectorStrength, 0.0f);
     resources.Update(emitter.renderCB, &cb, sizeof(cb));
 }
 
@@ -814,6 +835,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
                     float                                time,
                     bool                                 canEmit,
                     const std::vector<ActiveForceField>& forceFields,
+                    renderer::ResourceHandle<renderer::TextureTag> sceneColor,
                     RenderPassContext&                   ctx)
 {
     auto& resources = ctx.resources;
@@ -981,6 +1003,14 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     };
     for (size_t index = 0; index < emitter.colorGradient.keys.size(); ++index)
         cb.gradientColors[index] = emitter.colorGradient.keys[(std::min)(index, lastGradientKey)].color;
+    cb.viewProjection = ctx.camera.GetViewProjection();
+    cb.screenWidth = static_cast<float>(ctx.width);
+    cb.screenHeight = static_cast<float>(ctx.height);
+    cb.depthThickness = (std::max)(0.001f, emitter.collisionRadius * 0.002f);
+    cb.depthBounciness = std::clamp(emitter.collisionBounciness, 0.0f, 1.0f);
+    cb.depthCollision = emitter.collisionMode == ParticleCollisionMode::Depth ? 1u : 0u;
+    cb.depthResponse = static_cast<std::uint32_t>(emitter.collisionResponse);
+    cb.depthDamping = std::clamp(emitter.collisionDamping, 0.0f, 1.0f);
     resources.Update(emitter.gpuEmitterCB, &cb, sizeof(cb));
 
     // リングバッファヘッドを進める
@@ -992,6 +1022,7 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     cc.shader        = h.particleGpuSimCS;
     cc.constantBuffers[0] = emitter.gpuEmitterCB;
     cc.srvBuffers[1] = emitter.gpuSpawnBuffer;   // t15
+    cc.srvInputs[7] = resources.GetDepthTexture(h.decalDepthRT);
     cc.uavBuffers[0] = emitter.gpuParticleBuffer; // u2
     cc.dispatchX = (static_cast<uint32_t>(maxP) + 63u) / 64u;
     cc.dispatchY = 1;
@@ -1003,9 +1034,10 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     }
 
     // SV_VertexID ベース描画: 頂点バッファなし、VS が StructuredBuffer<GpuParticle> を t14 で読む
-    const auto gpuShader = emitter.blendMode == ParticleBlendMode::Alpha
+    const bool alphaBlend = emitter.blendMode == ParticleBlendMode::Alpha || emitter.distortion;
+    const auto gpuShader = alphaBlend
         ? h.particleGpuAlphaShader : h.particleGpuShader;
-    const auto gpuPSO = emitter.blendMode == ParticleBlendMode::Alpha
+    const auto gpuPSO = alphaBlend
         ? h.particleGpuAlphaPSO : h.particleGpuPSO;
     if (!gpuShader.IsValid() || !gpuPSO.IsValid() || !emitter.texture.IsValid())
         return;
@@ -1016,6 +1048,8 @@ void TickGpuEmitter(ParticleEmitter&                     emitter,
     dc.constantBuffers[0] = h.frameCB;
     dc.constantBuffers[2] = emitter.renderCB;
     dc.textures[0]        = emitter.texture;
+    dc.textures[5]        = sceneColor;
+    dc.textures[6]        = emitter.motionVectorTexture;
     dc.textures[7]        = resources.GetDepthTexture(h.decalDepthRT);
     dc.vsBuffers[0]       = emitter.gpuParticleBuffer; // t14: StructuredBuffer<GpuParticle>
     dc.vertexCount        = static_cast<uint32_t>(maxP) * 6u;
@@ -1027,10 +1061,13 @@ bool CanUseGpuSimulation(const ParticleEmitter& emitter)
 {
     return emitter.simulationMode == ParticleSimulationMode::Gpu
         && emitter.simulationSpace == ParticleSimulationSpace::World
-        && emitter.collisionMode == ParticleCollisionMode::None
+        && (emitter.collisionMode == ParticleCollisionMode::None
+            || emitter.collisionMode == ParticleCollisionMode::Depth)
         && emitter.sortMode == ParticleSortMode::None
         && !emitter.prewarm
         && !emitter.flipbookFrameBlending
+        && !emitter.motionVectorFlipbook
+        && emitter.meshParticlePath.empty()
         && emitter.birthSubEmitter.empty()
         && emitter.deathSubEmitter.empty()
         && emitter.collisionSubEmitter.empty();
@@ -1065,6 +1102,7 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
 {
     emitter.lastCpuSimulationFrame = Time::frameCount;
     emitter.collisionCountThisFrame = 0;
+    emitter.deathCountThisFrame = 0;
     const int particleCapacity = (std::max)(emitter.maxParticles, 0);
     const bool canEmit = emitter.emitThisFrame;
     if (canEmit || emitter.burstPending > 0) {
@@ -1103,6 +1141,7 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
     for (auto it = emitter.particles.begin(); it != emitter.particles.end();) {
         it->age += dt;
         if (it->age >= it->lifetime) {
+            ++emitter.deathCountThisFrame;
             QueueSubEmitter(scene, emitter.deathSubEmitter, emitter.subEmitterBurstCount);
             it = emitter.particles.erase(it);
             continue;
@@ -1174,7 +1213,7 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
         if (emitter->simulationMode == ParticleSimulationMode::Gpu)
             emitter->gpuClearPending = true;
         if (emitter->lastCpuSimulationFrame == Time::frameCount) continue;
-        const auto* animator = gameObject->GetComponent<AnimatorComponent>();
+        const auto* animator = FindParticleAnimator(*gameObject);
         // VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) をエミッター単位で dt へ注入する。
         const float scaledDt = deltaTime * emitter->GetEditorTimeScale(Time::frameCount);
         SimulateCpuEmitter(*emitter, gameObject->transform, animator, scaledDt, time,
@@ -1201,7 +1240,7 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
     const float target = (std::min)((std::max)(targetTime, 0.0f), kMaxScrubSeconds);
 
     const std::vector<ActiveForceField> forceFields = GatherForceFields(scene, ~0u);
-    const auto* animator = gameObject.GetComponent<AnimatorComponent>();
+    const auto* animator = FindParticleAnimator(gameObject);
 
     float simulated = 0.0f;
     while (simulated < target) {
@@ -1270,6 +1309,40 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     const float dt   = Time::deltaTime;
     const float time = Time::time;
 
+    // Distortionは現在のHDRを読みながら同じHDRへ書けないため、Particle描画前に背景を専用RTへ退避する。
+    renderer::ResourceHandle<renderer::TextureTag> particleSceneColor;
+    const bool needsSceneColor = std::any_of(ctx.scene.GameObjects().begin(), ctx.scene.GameObjects().end(),
+        [](GameObject& object) {
+            const auto* emitter = object.GetComponent<ParticleEmitter>();
+            return emitter != nullptr && emitter->enabled && emitter->distortion;
+        });
+    if (needsSceneColor) {
+        static renderer::ResourceHandle<renderer::RenderTargetTag> sceneColorRT;
+        static std::uint64_t resetVersion = 0;
+        static std::uint32_t sceneColorWidth = 0;
+        static std::uint32_t sceneColorHeight = 0;
+        static renderer::ResourceHandle<renderer::ShaderTag> copyShader;
+        if (resetVersion != resources.GetResetVersion()) {
+            resetVersion = resources.GetResetVersion();
+            sceneColorRT = {}; sceneColorWidth = 0; sceneColorHeight = 0;
+            copyShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+        }
+        if (!sceneColorRT.IsValid() || sceneColorWidth != ctx.width || sceneColorHeight != ctx.height) {
+            if (sceneColorRT.IsValid()) resources.Release(sceneColorRT);
+            sceneColorRT = resources.CreateRenderTarget(ctx.width, ctx.height, 1);
+            sceneColorWidth = ctx.width; sceneColorHeight = ctx.height;
+        }
+        renderer.SetRenderTarget(sceneColorRT, resources);
+        if (copyShader.IsValid()) {
+            renderer::DrawCall copy;
+            copy.shader = copyShader; copy.pipelineState = h.postprocPSO; copy.vertexCount = 3;
+            copy.textures[5] = resources.GetColorTexture(h.hdrRT, 0);
+            renderer.Submit(copy, resources);
+        }
+        particleSceneColor = resources.GetColorTexture(sceneColorRT, 0);
+        renderer.SetRenderTarget(h.hdrRT, resources);
+    }
+
     // シーン内の力場を 1 回だけ収集し、全エミッター (CPU/GPU) で共有する
     const std::vector<ActiveForceField> forceFields = GatherForceFields(ctx);
     int particleBudget = ctx.settings.particleBudgetEnabled
@@ -1279,7 +1352,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         auto* emitter = go.GetComponent<ParticleEmitter>();
         if (!emitter || !emitter->enabled) continue;
-        const auto* animator = go.GetComponent<AnimatorComponent>();
+        const auto* animator = FindParticleAnimator(go);
         const Transform& tf = go.transform;
         ++ctx.statsParticleEmitters;
 
@@ -1399,7 +1472,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
             EnsureParticleTexture(*emitter, resources);
             UpdateParticleRenderConstants(*emitter, resources, drawLimit);
             ctx.statsParticleVisible += drawLimit;
-            TickGpuEmitter(*emitter, tf, animator, dtEmitter, time, canEmit, forceFields, ctx);
+            TickGpuEmitter(*emitter, tf, animator, dtEmitter, time, canEmit, forceFields, particleSceneColor, ctx);
             continue;
         }
 
@@ -1407,6 +1480,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         if (simulateCpuThisFrame) {
         emitter->lastCpuSimulationFrame = Time::frameCount;
         emitter->collisionCountThisFrame = 0;
+        emitter->deathCountThisFrame = 0;
         // パーティクル生成
         const int particleCapacity = (std::max)(emitter->maxParticles, 0);
         const bool hasBurst = emitter->burstPending > 0;
@@ -1453,6 +1527,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         for (auto it = emitter->particles.begin(); it != emitter->particles.end(); ) {
             it->age += dtEmitter;
             if (it->age >= it->lifetime) {
+                ++emitter->deathCountThisFrame;
                 QueueSubEmitter(ctx.scene, emitter->deathSubEmitter, emitter->subEmitterBurstCount);
                 it = emitter->particles.erase(it);
                 continue;
@@ -1523,6 +1598,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         if (available > count) ++ctx.statsParticleBudgetDropped;
         ctx.statsParticleVisible += count;
         if (count == 0) continue;
+        // MeshTrail passが同じCPU粒子列を静的Meshとして描く。billboardとの二重描画を避ける。
+        if (!emitter->meshParticlePath.empty()) continue;
         UpdateParticleRenderConstants(*emitter, resources, count);
         if (emitter->sortMode == ParticleSortMode::BackToFront) {
             const math::Vector3 cameraPos = ctx.camera.m_position;
@@ -1580,7 +1657,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         resources.Update(h.particleVB, verts.data(),
                          static_cast<uint32_t>(verts.size() * sizeof(ParticleVertex)));
 
-        const auto particlePSO = emitter->blendMode == ParticleBlendMode::Alpha
+        const auto particlePSO = (emitter->blendMode == ParticleBlendMode::Alpha || emitter->distortion)
             ? h.particleAlphaPSO : h.particlePSO;
         if (!particlePSO.IsValid() || !emitter->texture.IsValid())
             continue;
@@ -1594,6 +1671,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[2] = emitter->renderCB;
         dc.textures[0]        = emitter->texture;
+        dc.textures[5]        = particleSceneColor;
+        dc.textures[6]        = emitter->motionVectorTexture;
         dc.textures[7]        = resources.GetDepthTexture(h.decalDepthRT);
         renderer.SetSampler(0, renderer::SamplerMode::WRAP_BILINEAR);
         renderer.Submit(dc, resources);

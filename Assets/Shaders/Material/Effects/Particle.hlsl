@@ -11,6 +11,8 @@
 
 Texture2D    gParticleTex : register(TEX_ALBEDO);
 Texture2D    gSceneDepth  : register(TEX_DEPTH);
+Texture2D    gSceneColor  : register(t5);
+Texture2D    gMotionVectors : register(t6);
 SamplerState gSampler     : register(SAMPLER_DEFAULT);
 
 cbuffer ParticleRenderConstants : register(CB_MATERIAL)
@@ -21,7 +23,12 @@ cbuffer ParticleRenderConstants : register(CB_MATERIAL)
     float gSoftParticleFadeDistance;
     uint  gSoftParticles;
     uint  gMaxParticles;
-    uint2 gParticleRenderPad;
+    uint  gEffectsFlags;
+    float gDistortionStrength;
+    float gLightingStrength;
+    float gEmissiveScale;
+    float gMotionVectorStrength;
+    uint  gParticleRenderPad;
 };
 
 struct ParticleVSIn
@@ -101,8 +108,16 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
     float2 d    = p.localUv * 2.0f - 1.0f;
     float  fade = saturate(1.0f - dot(d, d));
     fade *= fade;
-    float4 tex = lerp(gParticleTex.Sample(gSampler, p.uv),
-                      gParticleTex.Sample(gSampler, p.nextUv), saturate(p.spriteBlend));
+    float2 currentUv = p.uv;
+    float2 nextUv = p.nextUv;
+    if ((gEffectsFlags & 4u) != 0u)
+    {
+        float2 motion = gMotionVectors.Sample(gSampler, p.uv).rg * 2.0f - 1.0f;
+        currentUv += motion * (p.spriteBlend * gMotionVectorStrength);
+        nextUv -= motion * ((1.0f - p.spriteBlend) * gMotionVectorStrength);
+    }
+    float4 tex = lerp(gParticleTex.Sample(gSampler, currentUv),
+                      gParticleTex.Sample(gSampler, nextUv), saturate(p.spriteBlend));
     if (gSoftParticles != 0)
     {
         float sceneDepth = gSceneDepth.Load(int3(int2(p.svPosition.xy), 0)).r;
@@ -110,5 +125,22 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
         float particleLinear = LinearizeDepth(p.svPosition.z, nearZ, farZ);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
-    return tex * float4(p.color.rgb, p.color.a * fade);
+    float4 result = tex * float4(p.color.rgb, p.color.a * fade);
+    if ((gEffectsFlags & 2u) != 0u)
+    {
+        float2 normalXY = p.localUv * 2.0f - 1.0f;
+        float3 normal = normalize(float3(normalXY, sqrt(saturate(1.0f - dot(normalXY, normalXY)))));
+        float diffuse = saturate(dot(normal, normalize(-lightDir)));
+        float3 lit = ambientColor + lightColor * diffuse;
+        result.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
+    }
+    result.rgb *= gEmissiveScale;
+    if ((gEffectsFlags & 1u) != 0u)
+    {
+        float2 screenUv = p.svPosition.xy / max(screenSize, float2(1.0f, 1.0f));
+        float2 offset = (tex.rg * 2.0f - 1.0f) * gDistortionStrength;
+        float3 refracted = gSceneColor.Sample(gSampler, saturate(screenUv + offset)).rgb;
+        result = float4(refracted, result.a);
+    }
+    return result;
 }

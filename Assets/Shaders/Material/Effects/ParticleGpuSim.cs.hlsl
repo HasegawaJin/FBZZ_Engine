@@ -100,10 +100,20 @@ cbuffer GpuEmitterCB : register(b0)
     float4   gVelocityCurveKeys23;
     float4   gGradientTimes;
     float4   gGradientColors[4];
+    float4x4 gViewProjection;
+    float    gScreenWidth;
+    float    gScreenHeight;
+    float    gDepthThickness;
+    float    gDepthBounciness;
+    uint     gDepthCollision;
+    uint     gDepthResponse;
+    float    gDepthDamping;
+    float    gDepthPad;
 };
 
 StructuredBuffer<GpuSpawnEntry>   gSpawnBuffer : register(SB_GPU_SPAWN);
 RWStructuredBuffer<GpuParticle>   gParticles   : register(UAV_GPU_PARTICLES);
+Texture2D<float>                   gSceneDepth : register(TEX_DEPTH);
 
 // ---------- カールノイズ (乱流ベクトルフィールド) ---------------------------
 // 式は ParticlePass.cpp の同名関数と一致させること (CPU/GPU で挙動を揃える)。
@@ -195,7 +205,9 @@ void ApplyForceFields(float3 position, inout float3 velocity)
         {
             float dist = length(toParticle);
             if (dist >= radius) continue;
-            influence = pow(1.0f - dist / radius, f.params.y);
+            // WHY: dist < radius により底は数学的に正だが、FXC は分岐条件を考慮せず
+            // X3571 を出すため、abs で非負値であることを明示する。
+            influence = pow(abs(1.0f - dist / radius), f.params.y);
         }
         float impulse   = f.dirStrength.w * influence * gDeltaTime;
         uint  fieldType = (uint)f.params.x;
@@ -314,7 +326,37 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float velocityScale = gCurveFlags.y > 0.5f
         ? max(EvaluateCurve4(gVelocityCurveKeys01, gVelocityCurveKeys23, normalizedAge), 0.0f)
         : 1.0f;
+    float3 previousPosition = p.position;
     p.position += p.velocity * (gDeltaTime * velocityScale);
+    if (gDepthCollision != 0u)
+    {
+        float4 clip = mul(float4(p.position, 1.0f), gViewProjection);
+        if (clip.w > 1.0e-5f)
+        {
+            float3 ndc = clip.xyz / clip.w;
+            float2 uv = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
+            if (all(uv >= 0.0f) && all(uv <= 1.0f) && ndc.z >= 0.0f && ndc.z <= 1.0f)
+            {
+            // UV=1.0 は解像度ちょうどの範囲外座標になるため、右端・下端を必ず有効画素へ収める。
+            int2 pixel = clamp(int2(uv * float2(gScreenWidth, gScreenHeight)),
+                               int2(0, 0), int2(gScreenWidth - 1u, gScreenHeight - 1u));
+                float sceneDepth = gSceneDepth.Load(int3(pixel, 0));
+                if (ndc.z >= sceneDepth && ndc.z - sceneDepth <= gDepthThickness)
+                {
+                    p.position = previousPosition;
+                    if (gDepthResponse == 1u)
+                    {
+                        p.age = p.lifetime;
+                        gParticles[i] = p;
+                        return;
+                    }
+                    if (gDepthResponse == 2u) p.velocity = 0.0f;
+                    else p.velocity = -p.velocity * gDepthBounciness;
+                    p.velocity *= max(0.0f, 1.0f - gDepthDamping);
+                }
+            }
+        }
+    }
     p.age      += gDeltaTime;
 
     // 回転更新

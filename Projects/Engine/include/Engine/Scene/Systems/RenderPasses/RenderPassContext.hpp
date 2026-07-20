@@ -100,9 +100,18 @@ struct GpuParticleEmitterCB {
     math::Vector4 velocityCurveKeys23;
     math::Vector4 gradientTimes;
     math::Vector4 gradientColors[4];
+    math::Matrix4 viewProjection;
+    float         screenWidth;
+    float         screenHeight;
+    float         depthThickness;
+    float         depthBounciness;
+    uint32_t      depthCollision;
+    uint32_t      depthResponse;
+    float         depthDamping;
+    float         depthPad;
 };
-static_assert(sizeof(GpuParticleEmitterCB) == 688,
-    "GpuParticleEmitterCB must match GpuEmitterCB in ParticleGpuSim.cs.hlsl (688 bytes)");
+static_assert(sizeof(GpuParticleEmitterCB) == 784,
+    "GpuParticleEmitterCB must match GpuEmitterCB in ParticleGpuSim.cs.hlsl (784 bytes)");
 
 struct PerFrameCB {
     math::Matrix4 view;

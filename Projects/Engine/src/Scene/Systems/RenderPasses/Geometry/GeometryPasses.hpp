@@ -51,9 +51,14 @@ struct ParticleRenderCB {
     float softParticleFadeDistance = 0.5f;
     uint32_t softParticles = 0;
     uint32_t maxParticles = 0;
-    uint32_t pad[2]{};
+    uint32_t effectsFlags = 0; // bit0 distortion / bit1 six-way lighting / bit2 motion-vector flipbook
+    float distortionStrength = 0.015f;
+    float lightingStrength = 1.0f;
+    float emissiveScale = 1.0f;
+    float motionVectorStrength = 1.0f;
+    uint32_t pad = 0;
 };
-static_assert(sizeof(ParticleRenderCB) == 32);
+static_assert(sizeof(ParticleRenderCB) == 48);
 
 // ---- パス宣言 ---------------------------------------------------------------
 void ExecuteShadowPass                     (RenderPassContext& ctx);
