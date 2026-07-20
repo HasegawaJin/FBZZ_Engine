@@ -50,6 +50,7 @@ enum class ParticleCollisionMode : uint8_t {
     None = 0,
     Physics,
     Plane,
+    Depth,
 };
 
 enum class ParticleCollisionResponse : uint8_t {

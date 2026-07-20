@@ -55,6 +55,10 @@ struct TrailComponent {
 
     float widthStart = 0.20f;
     float widthEnd   = 0.02f;
+    // Beamは移動履歴ではなくローカル2端点を毎フレーム固定リボンとして描く。
+    bool beamMode = false;
+    math::Vector3 beamStart = math::Vector3::ZERO;
+    math::Vector3 beamEnd = { 0.0f, 0.0f, 5.0f };
     TrailWidthEasing widthEasing = TrailWidthEasing::Linear;
     math::Vector4 colorStart = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector4 colorEnd   = { 1.0f, 1.0f, 1.0f, 0.0f };
@@ -109,6 +113,9 @@ struct TrailComponent {
         r.Field("minVertexDist", minVertexDist);
         r.Field("widthStart", widthStart);
         r.Field("widthEnd", widthEnd);
+        r.Field("beamMode", beamMode);
+        r.Field("beamStart", beamStart);
+        r.Field("beamEnd", beamEnd);
         int widthEasingValue = static_cast<int>(widthEasing);
         r.Field("widthEasing", widthEasingValue);
         widthEasingValue = widthEasingValue < 0 ? 0 : (widthEasingValue > 3 ? 3 : widthEasingValue);

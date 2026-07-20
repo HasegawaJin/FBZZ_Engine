@@ -201,11 +201,14 @@ struct ParticleEmitter {
     float collisionDamping = 0.0f;
     float collisionPlaneY = 0.0f;
     int collisionCountThisFrame = 0;
+    int deathCountThisFrame = 0; // VFX GraphのOnDeath eventがフレーム単位で消費する。
 
     // .mat アセットへの参照。albedo テクスチャ・blendMode を .mat から解決する。
     // WHY: シェーダー・テクスチャ・ブレンドを .mat に集約し複数エミッター間で共有できるようにする。
     //      空文字のとき texturePath へフォールバックするため既存シーンデータは無変更で動く。
     std::string materialPath;
+    // 空でない場合はbillboardの代わりに静的Meshを各CPU粒子のTRSで描画する。
+    std::string meshParticlePath;
     // texturePath — deprecated。materialPath が空のときのフォールバック。
     std::string texturePath;
     int spriteColumns = 1;
@@ -215,6 +218,10 @@ struct ParticleEmitter {
     ParticleFlipbookMode flipbookMode = ParticleFlipbookMode::Lifetime;
     float flipbookFramesPerSecond = 24.0f;
     bool flipbookFrameBlending = false;
+    // Motion Vector atlasは各frameのRGを[-1,1]速度として読み、隣接frameを双方向warpする。
+    bool motionVectorFlipbook = false;
+    std::string motionVectorTexturePath;
+    float motionVectorStrength = 1.0f;
     float sizeCurvePower = 1.0f;
     float colorCurvePower = 1.0f;
     float velocityDamping = 0.0f;
@@ -240,6 +247,12 @@ struct ParticleEmitter {
 
     bool softParticles = false;
     float softParticleFadeDistance = 0.5f;
+    // Heat hazeは不透明シーンcopyを背景として屈折し、lit smokeはbillboard疑似法線で照明応答する。
+    bool distortion = false;
+    float distortionStrength = 0.015f;
+    bool sixWayLighting = false;
+    float lightingStrength = 1.0f;
+    float emissiveScale = 1.0f;
 
     // Culling/LOD — 粒子の現在Boundsを使い、遠距離では発生数と描画数を段階的に削減する。
     bool cullingEnabled = true;
@@ -275,6 +288,8 @@ struct ParticleEmitter {
     int                   burstPending = 0;
     renderer::ResourceHandle<renderer::TextureTag> texture;
     std::string           loadedTexturePath;
+    renderer::ResourceHandle<renderer::TextureTag> motionVectorTexture;
+    std::string           loadedMotionVectorTexturePath;
     std::string           loadedMaterialPath; // materialPath の変更検出用。シーン保存対象外。
 
     // GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
@@ -375,6 +390,7 @@ struct ParticleEmitter {
             randomState = randomSeed;
         }
         r.Field("materialPath", materialPath);
+        r.Field("meshParticlePath", meshParticlePath);
         r.Field("texturePath", texturePath);
         int shapeValue = static_cast<int>(shape);
         r.Field("shape", shapeValue);
@@ -414,7 +430,7 @@ struct ParticleEmitter {
         r.Field("stretchedLengthScale", stretchedLengthScale);
         int collisionModeValue = static_cast<int>(collisionMode);
         r.Field("collisionMode", collisionModeValue);
-        collisionMode = static_cast<ParticleCollisionMode>(collisionModeValue < 0 ? 0 : (collisionModeValue > 2 ? 2 : collisionModeValue));
+        collisionMode = static_cast<ParticleCollisionMode>(collisionModeValue < 0 ? 0 : (collisionModeValue > 3 ? 3 : collisionModeValue));
         int collisionResponseValue = static_cast<int>(collisionResponse);
         r.Field("collisionResponse", collisionResponseValue);
         collisionResponse = static_cast<ParticleCollisionResponse>(collisionResponseValue < 0 ? 0 : (collisionResponseValue > 2 ? 2 : collisionResponseValue));
@@ -432,6 +448,9 @@ struct ParticleEmitter {
         flipbookMode = static_cast<ParticleFlipbookMode>(flipbookModeValue < 0 ? 0 : (flipbookModeValue > 3 ? 3 : flipbookModeValue));
         r.Field("flipbookFramesPerSecond", flipbookFramesPerSecond);
         r.Field("flipbookFrameBlending", flipbookFrameBlending);
+        r.Field("motionVectorFlipbook", motionVectorFlipbook);
+        r.Field("motionVectorTexturePath", motionVectorTexturePath);
+        r.Field("motionVectorStrength", motionVectorStrength);
         r.Field("sizeCurvePower", sizeCurvePower);
         r.Field("colorCurvePower", colorCurvePower);
         r.Field("velocityDamping", velocityDamping);
@@ -448,6 +467,11 @@ struct ParticleEmitter {
         r.Field("subEmitterBurstCount", subEmitterBurstCount);
         r.Field("softParticles", softParticles);
         r.Field("softParticleFadeDistance", softParticleFadeDistance);
+        r.Field("distortion", distortion);
+        r.Field("distortionStrength", distortionStrength);
+        r.Field("sixWayLighting", sixWayLighting);
+        r.Field("lightingStrength", lightingStrength);
+        r.Field("emissiveScale", emissiveScale);
         r.Field("cullingEnabled", cullingEnabled);
         r.Field("cullingBoundsPadding", cullingBoundsPadding);
         r.Field("lodEnabled", lodEnabled);
