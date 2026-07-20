@@ -8,6 +8,9 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Asset/VFXGraphAsset.hpp>
+#include <Engine/Asset/VFXParameterRuntime.hpp>
+#include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
 
 #include "../TestHelper.hpp"
 
@@ -294,6 +297,150 @@ static void TestScene_EntityId()
     check(!scene.IsValid(invalid), "Scene: IsValid for bogus EntityID == false");
 }
 
+static void TestVFXGraph_ScheduleAndValidation()
+{
+    std::printf("\n=== VFX Graph: schedule / validation ===\n");
+    fbzz::asset::VFXGraphAsset graph;
+    graph.nodes.push_back({ .id = 1, .type = fbzz::asset::VFXNodeType::Entry,
+                            .name = "Entry", .duration = 0.0f });
+    graph.nodes.push_back({ .id = 2, .type = fbzz::asset::VFXNodeType::Particle,
+                            .name = "Spark", .duration = 1.0f });
+    graph.nodes.push_back({ .id = 3, .type = fbzz::asset::VFXNodeType::Delay,
+                            .name = "Delay", .duration = 0.5f });
+    graph.nodes.push_back({ .id = 4, .type = fbzz::asset::VFXNodeType::Light,
+                            .name = "Flash", .duration = 0.2f });
+    graph.links = { { 1, 2 }, { 2, 3 }, { 3, 4 } };
+
+    std::vector<float> starts;
+    float duration = 0.0f;
+    std::string error;
+    check(fbzz::asset::ValidateVFXGraphAsset(graph, &error),
+          "VFX Graph: valid DAG is accepted");
+    check(fbzz::asset::BuildVFXGraphSchedule(graph, starts, duration, &error),
+          "VFX Graph: schedule builds");
+    check(starts.size() == 4 && starts[1] == 0.0f && starts[2] == 1.0f
+          && starts[3] == 1.5f,
+          "VFX Graph: sequential links accumulate duration");
+    check(duration > 1.69f && duration < 1.71f,
+          "VFX Graph: graph duration includes final node");
+
+    graph.links[0].trigger = fbzz::asset::VFXLinkTrigger::OnStart;
+    graph.links[0].delay = 0.25f;
+    check(fbzz::asset::BuildVFXGraphSchedule(graph, starts, duration, &error)
+          && starts[1] == 0.25f,
+          "VFX Graph: OnStart link and event delay affect schedule");
+    const auto budget = fbzz::asset::CalculateVFXGraphBudget(graph);
+    check(budget.particles == 300 && budget.lights == 1 && budget.audioVoices == 0,
+          "VFX Graph: authoring budget is calculated");
+
+    // On CollisionはParticleノードだけが発火元になれる。Entryを発火元にすると保存を拒否する。
+    graph.links[0].trigger = fbzz::asset::VFXLinkTrigger::OnCollision;
+    check(!fbzz::asset::ValidateVFXGraphAsset(graph, &error),
+          "VFX Graph: On Collision rejects a non-Particle source");
+    graph.links[0].trigger = fbzz::asset::VFXLinkTrigger::OnStart;
+
+    graph.links[1].trigger = fbzz::asset::VFXLinkTrigger::OnDeath;
+    check(fbzz::asset::ValidateVFXGraphAsset(graph, &error),
+          "VFX Graph: On Death accepts a Particle source");
+    graph.links[1].trigger = fbzz::asset::VFXLinkTrigger::OnComplete;
+
+    fbzz::scene::ParticleEmitter source;
+    source.simulationMode = fbzz::scene::ParticleSimulationMode::Gpu;
+    source.meshShapePath = "Assets/Meshes/Fire.fbx";
+    source.useSizeCurve = true;
+    source.sizeCurve.keyCount = 3;
+    source.sizeCurve.keys[1] = { 0.4f, 2.0f };
+    source.bursts = { { 0.1f, 64, 3, 0.2f, 0.75f } };
+    source.distortion = true;
+    source.sixWayLighting = true;
+    source.motionVectorFlipbook = true;
+    source.motionVectorTexturePath = "Assets/VFX/ExplosionMotion.tex";
+    source.meshParticlePath = "Assets/Meshes/Shard.fbx";
+    source.collisionMode = fbzz::scene::ParticleCollisionMode::Depth;
+    const toml::table particleTable = fbzz::asset::SerializeParticleEmitterSettings(source);
+    fbzz::scene::ParticleEmitter restored;
+    fbzz::asset::DeserializeParticleEmitterSettings(particleTable, restored);
+    check(restored.simulationMode == fbzz::scene::ParticleSimulationMode::Gpu
+          && restored.meshShapePath == source.meshShapePath
+          && restored.sizeCurve.keyCount == 3
+          && restored.bursts.size() == 1 && restored.bursts[0].count == 64
+           && restored.distortion && restored.sixWayLighting && restored.motionVectorFlipbook
+           && restored.motionVectorTexturePath == source.motionVectorTexturePath
+           && restored.meshParticlePath == source.meshParticlePath
+           && restored.collisionMode == fbzz::scene::ParticleCollisionMode::Depth,
+          "VFX Graph: full Particle modules survive asset round-trip");
+
+    graph.links.push_back({ 4, 2 });
+    check(!fbzz::asset::ValidateVFXGraphAsset(graph, &error),
+          "VFX Graph: cycle is rejected");
+}
+
+static void TestVFXGraph_ParametersAndSchema()
+{
+    std::printf("\n=== VFX Graph: parameters / schema ===\n");
+    fbzz::asset::VFXGraphAsset graph;
+    graph.nodes.push_back({ .id = 1, .type = fbzz::asset::VFXNodeType::Entry,
+                            .name = "Entry", .duration = 0.0f });
+    graph.nodes.push_back({ .id = 2, .type = fbzz::asset::VFXNodeType::Particle,
+                            .name = "Particle", .duration = 1.0f });
+    graph.links.push_back({ 1, 2 });
+    fbzz::asset::VFXParamDefinition intensity;
+    intensity.name = "Intensity";
+    intensity.type = fbzz::asset::VFXParamType::Float;
+    intensity.defaultValue.source = fbzz::asset::VFXConstant{ 48.0f };
+    graph.parameters.push_back(intensity);
+    graph.bindings.push_back({ "Intensity", 2, "particle.emitRate" });
+    fbzz::asset::VFXVariantSet largeVariant;
+    largeVariant.name = "Large";
+    fbzz::asset::VFXParamValue largeIntensity;
+    largeIntensity.source = fbzz::asset::VFXConstant{ 96.0f };
+    largeVariant.overrides.push_back({ "Intensity", largeIntensity });
+    graph.variants.push_back(std::move(largeVariant));
+    graph.signalNodes.push_back({ .id = 1, .operation = fbzz::asset::VFXSignalOperation::Time });
+    graph.signalOutputs.push_back({ "Pulse", 1 });
+    std::string error;
+    check(fbzz::asset::ValidateVFXGraphAsset(graph, &error),
+          "VFX Graph: schemaPath binding validates");
+
+    fbzz::scene::VFXGraphComponent component;
+    fbzz::asset::VFXGraphNode node = graph.nodes[1];
+    fbzz::asset::ApplyVFXBindings(graph, component, node, 0.0f);
+    check(node.particle.emitRate == 48.0f,
+          "VFX Graph: default parameter applies through schema");
+
+    fbzz::asset::VFXParamValue overrideValue;
+    overrideValue.source = fbzz::asset::VFXConstant{ 96.0f };
+    component.parameterOverrides.push_back({ "Intensity", overrideValue });
+    node = graph.nodes[1];
+    fbzz::asset::ApplyVFXBindings(graph, component, node, 0.0f);
+    check(node.particle.emitRate == 96.0f,
+          "VFX Graph: instance override wins over default");
+
+    const std::string encoded = fbzz::asset::SerializeVFXOverrides(component.parameterOverrides);
+    std::vector<fbzz::asset::VFXParamOverride> decoded;
+    check(fbzz::asset::DeserializeVFXOverrides(encoded, decoded)
+          && decoded.size() == 1
+          && std::get<float>(std::get<fbzz::asset::VFXConstant>(decoded[0].value.source)) == 96.0f,
+          "VFX Graph: component overrides survive scene string codec");
+
+    fbzz::asset::VFXParamValue attributeValue;
+    attributeValue.source = fbzz::asset::VFXAttributeRef{ "self.physics.speed" };
+    fbzz::asset::VFXParamValue signalValue;
+    signalValue.source = fbzz::asset::VFXSignalRef{ "Pulse" };
+    const std::string dynamicEncoded = fbzz::asset::SerializeVFXOverrides({
+        { "Speed", attributeValue }, { "PulseValue", signalValue }
+    });
+    check(fbzz::asset::DeserializeVFXOverrides(dynamicEncoded, decoded)
+          && decoded.size() == 2
+          && std::get<fbzz::asset::VFXAttributeRef>(decoded[0].value.source).path == "self.physics.speed"
+          && std::get<fbzz::asset::VFXSignalRef>(decoded[1].value.source).signalName == "Pulse",
+          "VFX Graph: Attribute/Signal sources survive scene string codec");
+
+    graph.bindings[0].schemaPath = "particle.missingField";
+    check(!fbzz::asset::ValidateVFXGraphAsset(graph, &error),
+          "VFX Graph: unknown schemaPath is rejected");
+}
+
 // ─── エントリポイント ─────────────────────────────────────────────────────────
 
 int main()
@@ -310,6 +457,8 @@ int main()
     TestScene_DestroyQueue();
     TestScene_Clear();
     TestScene_EntityId();
+    TestVFXGraph_ScheduleAndValidation();
+    TestVFXGraph_ParametersAndSchema();
 
     std::printf("\n================\n");
     std::printf("Results: %d passed, %d failed\n", g_passed, g_failed);

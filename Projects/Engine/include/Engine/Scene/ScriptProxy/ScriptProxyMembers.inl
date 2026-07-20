@@ -56,3 +56,5 @@ FBZZ_PROXY_MEMBER(ScriptDecalProxy,         decal)
 FBZZ_PROXY_MEMBER(ScriptVolumeProxy,        volume)
 FBZZ_PROXY_MEMBER(ScriptReflectionProbeProxy, reflectionProbe)
 FBZZ_PROXY_MEMBER(ScriptLifetimeProxy,      lifetime)
+// WHY: ScriptのDLL ABIで既存Proxyのオフセットを維持するため、新規Proxyは末尾へ追加する。
+FBZZ_PROXY_MEMBER(ScriptVFXProxy,           vfx)
