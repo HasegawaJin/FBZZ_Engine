@@ -5,9 +5,13 @@
 // HWND は必要なバックエンドへ渡すために公開する。
 #pragma once
 #include <string>
+#include <vector>
 #include <cstdint>
 #include <functional>
 #include <Windows.h>
+
+// COM の IDropTarget は <oleidl.h> で定義される。ヘッダに OLE 依存を波及させないよう前方宣言に留める。
+struct IDropTarget;
 
 namespace fbzz::core
 {
@@ -48,6 +52,35 @@ namespace fbzz::core
         using WndProcHook = std::function<bool(HWND, UINT, WPARAM, LPARAM)>;
         void SetWndProcHook(WndProcHook hook) { m_wndProcHook = std::move(hook); }
 
+        // Explorer からファイルがドロップされた時のコールバック (OLE IDropTarget::Drop)。
+        // WHY: Unity のようにエクスプローラーから素材を D&D で取り込めるよう、
+        //      OS レベルのドロップを Editor (AssetBrowser) へ橋渡しする。パスは UTF-8、
+        //      x/y はクライアント座標でのドロップ位置 (ドロップ先フォルダの判定に使う)。
+        using FileDropCallback =
+            std::function<void(const std::vector<std::string>&, int x, int y)>;
+        void SetFileDropCallback(FileDropCallback cb) { m_fileDropCallback = std::move(cb); }
+
+        // ドラッグ中 (DragEnter/DragOver) にファイルがウィンドウ上を移動した時のコールバック。
+        // WHY: OLE ドロップターゲットはドロップ確定前にカーソル位置を通知できる。これを使い、
+        //      ドロップ先フォルダを Unity のようにリアルタイムでハイライトする。x/y はクライアント座標。
+        using FileDragOverCallback = std::function<void(int x, int y)>;
+        void SetFileDragOverCallback(FileDragOverCallback cb) { m_fileDragOverCallback = std::move(cb); }
+
+        // ドラッグがウィンドウ外へ出た / ドロップで終わった時のコールバック (ハイライト解除用)。
+        using FileDragLeaveCallback = std::function<void()>;
+        void SetFileDragLeaveCallback(FileDragLeaveCallback cb) { m_fileDragLeaveCallback = std::move(cb); }
+
+        // FileDropTarget (OLE 実装) からコールバックを叩くための内部アクセサ。
+        void InvokeFileDrop(const std::vector<std::string>& paths, int x, int y) const {
+            if (m_fileDropCallback && !paths.empty()) m_fileDropCallback(paths, x, y);
+        }
+        void InvokeFileDragOver(int x, int y) const {
+            if (m_fileDragOverCallback) m_fileDragOverCallback(x, y);
+        }
+        void InvokeFileDragLeave() const {
+            if (m_fileDragLeaveCallback) m_fileDragLeaveCallback();
+        }
+
     private:
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam);
@@ -57,7 +90,13 @@ namespace fbzz::core
         uint32_t m_height      = 0;
         bool     m_shouldClose = false;
 
-        ResizeCallback m_resizeCallback;
-        WndProcHook    m_wndProcHook;
+        ResizeCallback        m_resizeCallback;
+        WndProcHook           m_wndProcHook;
+        FileDropCallback      m_fileDropCallback;
+        FileDragOverCallback  m_fileDragOverCallback;
+        FileDragLeaveCallback m_fileDragLeaveCallback;
+        // OLE ドロップターゲット (RegisterDragDrop に登録)。Shutdown で Revoke + Release する。
+        IDropTarget*          m_dropTarget = nullptr;
+        bool                  m_oleInitialized = false;
     };
 } // namespace fbzz::core

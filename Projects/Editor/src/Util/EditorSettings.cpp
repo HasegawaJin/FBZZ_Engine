@@ -57,6 +57,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
     // その他
     if (auto v = tbl["misc"]["hot_reload"].value<bool>()) hotReloadEnabled = *v;
+    if (auto v = tbl["misc"]["ai_command_bus"].value<bool>()) aiCommandBusEnabled = *v;
 
     // ツールウィンドウ
     if (auto v = tbl["tools"]["show_terrain"].value<bool>()) showTerrainTool = *v;
@@ -128,6 +129,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
     // UI
     if (auto v = tbl["ui"]["scale"].value<float>()) editorUiScale = *v;
+    if (auto v = tbl["ui"]["multi_viewport"].value<bool>()) multiViewportEnabled = *v;
 
     // Asset Browser
     if (auto v = tbl["asset_browser"]["icon_size"].value<float>()) assetBrowserIconSize = *v;
@@ -160,19 +162,34 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         }
     }
 
-    // シーン
-    if (auto v = tbl["scene"]["last_path"].value<std::string>()) {
-        lastScenePath = *v;
-        // 相対パスで保存されていた場合は projectRoot と組み合わせて絶対パスに戻す
-        if (!projectRoot.empty() && !lastScenePath.empty()) {
-            std::filesystem::path p = util::FileSystem::PathFromUtf8(lastScenePath);
-            if (p.is_relative()) {
+    // 相対パスで保存されたシーンパスを projectRoot と組み合わせて絶対パスへ戻すヘルパー。
+    const auto toAbsScenePath = [&projectRoot](std::string p) -> std::string {
+        if (!projectRoot.empty() && !p.empty()) {
+            std::filesystem::path fp = util::FileSystem::PathFromUtf8(p);
+            if (fp.is_relative()) {
                 const auto abs = util::FileSystem::MakeAbsolute(
-                    util::FileSystem::PathFromUtf8(projectRoot) / p);
-                lastScenePath = util::FileSystem::PathToUtf8(abs);
+                    util::FileSystem::PathFromUtf8(projectRoot) / fp);
+                return util::FileSystem::PathToUtf8(abs);
             }
         }
+        return p;
+    };
+
+    // シーン
+    if (auto v = tbl["scene"]["last_path"].value<std::string>())
+        lastScenePath = toAbsScenePath(*v);
+
+    // 最近開いたシーン
+    recentScenes.clear();
+    if (auto* arr = tbl["scene"]["recent"].as_array()) {
+        for (auto& elem : *arr)
+            if (auto v = elem.value<std::string>())
+                recentScenes.push_back(toAbsScenePath(*v));
     }
+
+    // オートセーブ
+    if (auto v = tbl["autosave"]["enabled"].value<bool>())       autoSaveEnabled     = *v;
+    if (auto v = tbl["autosave"]["interval_sec"].value<int64_t>()) autoSaveIntervalSec = static_cast<int>(*v);
 
     return true;
 }
@@ -219,6 +236,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     // その他
     toml::table miscTbl;
     miscTbl.insert("hot_reload", hotReloadEnabled);
+    miscTbl.insert("ai_command_bus", aiCommandBusEnabled);
 
     // ツールウィンドウ
     toml::table toolsTbl;
@@ -281,18 +299,30 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table inspectorTbl;
     inspectorTbl.insert("states", std::move(statesArr));
 
-    // シーン
-    std::string scenePathToSave = lastScenePath;
-    if (!projectRoot.empty() && !lastScenePath.empty()) {
-        const std::filesystem::path rel = util::FileSystem::RelativePath(
-            util::FileSystem::PathFromUtf8(lastScenePath),
-            util::FileSystem::PathFromUtf8(projectRoot));
-        if (!rel.empty())
-            scenePathToSave = rel.generic_string();
-    }
+    // シーン (絶対パスを projectRoot 相対へ変換して保存)
+    const auto toRelScenePath = [&projectRoot](const std::string& p) -> std::string {
+        if (!projectRoot.empty() && !p.empty()) {
+            const std::filesystem::path rel = util::FileSystem::RelativePath(
+                util::FileSystem::PathFromUtf8(p),
+                util::FileSystem::PathFromUtf8(projectRoot));
+            if (!rel.empty())
+                return rel.generic_string();
+        }
+        return p;
+    };
 
     toml::table sceneTbl;
-    sceneTbl.insert("last_path", scenePathToSave);
+    sceneTbl.insert("last_path", toRelScenePath(lastScenePath));
+    {
+        toml::array recentArr;
+        for (const auto& s : recentScenes) recentArr.push_back(toRelScenePath(s));
+        sceneTbl.insert("recent", std::move(recentArr));
+    }
+
+    // オートセーブ
+    toml::table autosaveTbl;
+    autosaveTbl.insert("enabled",      autoSaveEnabled);
+    autosaveTbl.insert("interval_sec", static_cast<int64_t>(autoSaveIntervalSec));
 
     // Debug メニュー - レンダリングオーバーレイ
     toml::table debugTbl;
@@ -327,6 +357,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     // UI スケール
     toml::table uiTbl;
     uiTbl.insert("scale", editorUiScale);
+    uiTbl.insert("multi_viewport", multiViewportEnabled);
 
     toml::table root;
     root.insert("ui",                 std::move(uiTbl));
@@ -346,6 +377,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     root.insert("asset_browser",      std::move(assetBrowserTbl));
     root.insert("inspector_sections", std::move(inspectorTbl));
     root.insert("scene",              std::move(sceneTbl));
+    root.insert("autosave",           std::move(autosaveTbl));
     root.insert("debug",              std::move(debugTbl));
 
     std::ostringstream ss;

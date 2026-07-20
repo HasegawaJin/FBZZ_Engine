@@ -2,9 +2,9 @@
 // DX11Shader.cpp | fbzz::renderer
 // DX11 シェーダーバイナリと InputLayout の管理
 // CSOが存在しない、またはHLSL/includeより古い場合はオンデマンドコンパイルする。
-// WHY: DemoGame / StandaloneApp 初回起動時や compile_shaders.bat 未実行環境でも
+// WHY: DemoGame / StandaloneApp 初回起動時や compile_shaders.ps1 未実行環境でも
 //      シェーダーロードが成功するよう、ランタイムフォールバックを備える。
-//      エディター向けの本番ワークフローは compile_shaders.bat が担う。
+//      エディター向けの本番ワークフローは compile_shaders.ps1 が担う。
 #include "DX11Shader.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>

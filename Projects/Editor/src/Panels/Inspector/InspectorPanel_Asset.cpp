@@ -3,6 +3,7 @@
 // Asset Browser から選択したファイル用 Inspector
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
+#include <Editor/Panels/AnimationPreviewPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -19,6 +20,7 @@
 #include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Asset/PostProcessAsset.hpp>
 #include <Engine/Asset/TerrainAsset.hpp>
@@ -343,7 +345,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
     } else if (ext == ".animcontroller") {
-        if (!DrawAnimationGraphAssetInspector(ctx)) {
+        if (DrawAnimationGraphAssetInspector(ctx)) {
+            // Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
+            ImGui::SeparatorText("Preview");
+            DrawAnimationPreviewWidget(ctx, 240.0f);
+        } else {
             ImGui::TextDisabled("Select a State or Transition in Animation Graph.");
             ImGui::Spacing();
             ImGui::TextDisabled("The controller can be edited without selecting a Hierarchy object.");
@@ -380,6 +386,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ImGui::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
                 if (m->IsSkinned() && m->skeleton)
                     ImGui::LabelText("Skeleton Nodes", "%zu", m->skeleton->nodes.size());
+            }
+
+            // クリップを持つスキンモデルはその場で再生確認できるようにする。
+            if (const asset::Model* previewModel = asset::AssetManager::LoadModel(absPath);
+                previewModel && previewModel->skeleton && !previewModel->clips.empty()) {
+                ImGui::SeparatorText("Animation Preview");
+                DrawAnimationPreviewWidget(ctx, 240.0f);
             }
         } else {
             ImGui::TextColored({ 1.0f, 0.6f, 0.1f, 1.0f }, "Status: Not Imported");
@@ -441,6 +454,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ImGui::SeparatorText("Material Slots");
                 for (const auto& slotName : m->materialSlotNames)
                     ImGui::TextDisabled("  %s  ->  (unbound)", slotName.c_str());
+            }
+
+            // クリップを持つスキンモデルはその場で再生確認できるようにする。
+            if (const asset::Model* previewModel = asset::AssetManager::LoadModel(absPath);
+                previewModel && previewModel->skeleton && !previewModel->clips.empty()) {
+                ImGui::SeparatorText("Animation Preview");
+                DrawAnimationPreviewWidget(ctx, 240.0f);
             }
         }
 
@@ -543,6 +563,12 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     ctx.requestOpenImportModal = fbxCandidate;
             }
         }
+
+        // ── Preview ────────────────────────────────────────────────────
+        // 同じフォルダー階層のモデル (.fbx / .fzasset) を自動解決してクリップを再生する。
+        ImGui::SeparatorText("Preview");
+        if (!DrawAnimationPreviewWidget(ctx, 240.0f))
+            ImGui::TextDisabled("No companion model found for this clip.");
     } else if (ext == ".meta") {
         const std::string sourcePath = absPath.size() > 5 ? absPath.substr(0, absPath.size() - 5) : std::string{};
         const std::string sourceExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(sourcePath));

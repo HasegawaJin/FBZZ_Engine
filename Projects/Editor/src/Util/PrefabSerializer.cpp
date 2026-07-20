@@ -159,6 +159,31 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
     return true;
 }
 
+bool PrefabSerializer::SaveSelectionAndConnect(scene::Scene& scene,
+                                               const std::vector<scene::EntityID>& selectedEntities,
+                                               const std::string& path,
+                                               std::vector<scene::EntityID>& outRoots)
+{
+    outRoots.clear();
+    if (selectedEntities.empty()) return false;
+
+    const std::string outputPath = WithPrefabExtension(path);
+    if (!SaveSelection(scene, selectedEntities, outputPath)) return false;
+
+    // Assets 起点の相対パスをルートに書き込んでインスタンス接続する。
+    // WHY: prefabAssetPath は配布後も壊れない Assets 相対で保持する。SaveSelection の後に
+    //      設定することで、保存されたアセット側には空の prefabAssetPath が入る (自己参照回避)。
+    const std::string relPath = NormalizeAssetPath(outputPath);
+    for (scene::EntityID id : selectedEntities) {
+        auto* go = scene.GetGameObject(id);
+        // 選択された祖先を持つものは子。ルートのみ接続する (SaveSelection のルート判定に合わせる)。
+        if (!go || HasSelectedAncestor(*go, selectedEntities)) continue;
+        go->prefabAssetPath = relPath;
+        outRoots.push_back(id);
+    }
+    return true;
+}
+
 bool PrefabSerializer::Instantiate(scene::Scene& scene,
                                    const std::string& path,
                                    std::vector<scene::EntityID>& outRootEntities)
@@ -178,22 +203,31 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
     for (auto& go : scene.GameObjects())
         usedNames.insert(go.name);
 
-    std::unordered_map<std::string, std::string> nameMap;
-    // guidMap: プレファブ内の instanceId (旧) → 新規 UUID (新)
-    // WHY: インスタンス化のたびに新しい UUID を割り当てることで、
-    //      同一プレファブを複数インスタンス化した場合でも GUID が衝突しない。
+    // guidMap:        プレファブ内の instanceId (旧) → 新規 UUID (新)
+    // guidToNewName:   プレファブ内の instanceId (旧) → 一意化した新名
+    // nameMap:         旧名 → 新名 (名前ベース参照のフォールバック。重複名では最後の1件のみ)
+    // WHY: インスタンス化のたびに新しい UUID を割り当てることで、同一プレファブを複数
+    //      インスタンス化しても GUID が衝突しない。加えて改名は "名前" ではなく instanceId を
+    //      キーにする。旧実装は nameMap[oldName] を上書きしていたため、プレファブ内に同名
+    //      オブジェクト (骨の "Bone" など) が複数あると全員が同じ新名へ潰れ、親子・参照解決が
+    //      壊れていた。guid をキーにすれば同名でも 1 オブジェクト 1 新名を保証できる。
     std::unordered_map<std::string, std::string> guidMap;
+    std::unordered_map<std::string, std::string> guidToNewName;
+    std::unordered_map<std::string, std::string> nameMap;
 
     for (const auto& item : *prefabObjects) {
         const auto* source = item.as_table();
         if (!source) continue;
 
         const std::string oldName = (*source)["name"].value_or(std::string{"GameObject"});
-        nameMap[oldName] = UniqueName(oldName, usedNames);
+        const std::string newName = UniqueName(oldName, usedNames);
+        nameMap[oldName] = newName;
 
         const std::string oldGuid = (*source)["instanceId"].value_or(std::string{});
-        if (!oldGuid.empty())
-            guidMap[oldGuid] = util::GenerateUUID();
+        if (!oldGuid.empty()) {
+            guidMap[oldGuid]       = util::GenerateUUID();
+            guidToNewName[oldGuid] = newName;
+        }
     }
 
     toml::array newObjects;
@@ -203,19 +237,29 @@ bool PrefabSerializer::Instantiate(scene::Scene& scene,
 
         toml::table copied = *source;
         const std::string oldName = copied["name"].value_or(std::string{"GameObject"});
+        const std::string oldGuidForName = copied["instanceId"].value_or(std::string{});
         const std::string oldParent = copied["parent"].value_or(std::string{});
         const std::string oldParentGuid = copied["parentInstanceId"].value_or(std::string{});
-        const std::string newName = nameMap.contains(oldName) ? nameMap[oldName] : oldName;
+
+        // 自身の新名は instanceId から引く (同名オブジェクトでも一意)。guid が無い旧アセットは
+        // 名前フォールバックに退避する。
+        const std::string newName =
+            (!oldGuidForName.empty() && guidToNewName.contains(oldGuidForName))
+                ? guidToNewName.at(oldGuidForName)
+                : (nameMap.contains(oldName) ? nameMap.at(oldName) : oldName);
 
         copied.erase("name");
         copied.insert("name", newName);
 
+        // parent 名前フィールドも親の guid → 新名で解決する。実際の親子付けは
+        // AppendObjects が parentInstanceId(guid) で行うため、ここは表示・root 判定用。
         copied.erase("parent");
-        if (!oldParent.empty() && nameMap.contains(oldParent)) {
-            copied.insert("parent", nameMap[oldParent]);
-        } else {
-            copied.insert("parent", std::string{});
-        }
+        std::string newParentName;
+        if (!oldParentGuid.empty() && guidToNewName.contains(oldParentGuid))
+            newParentName = guidToNewName.at(oldParentGuid);
+        else if (!oldParent.empty() && nameMap.contains(oldParent))
+            newParentName = nameMap.at(oldParent);
+        copied.insert("parent", newParentName);
 
         copied.erase("parentInstanceId");
         if (!oldParentGuid.empty() && guidMap.contains(oldParentGuid)) {
@@ -430,22 +474,32 @@ bool PrefabSerializer::Revert(scene::Scene& scene,
     }
 
     // prefabAssetPath は相対パスのため、絶対パスへ解決してから Instantiate に渡す。
-    const std::string diskPath     = ToProjectAssetDiskPath(projectRoot, go->prefabAssetPath);
+    const std::string diskPath      = ToProjectAssetDiskPath(projectRoot, go->prefabAssetPath);
     const scene::Transform savedTransform = go->transform;
-    scene::GameObject* savedParent = go->GetParent();
+    scene::GameObject* savedParent  = go->GetParent();
+    const scene::EntityID savedParentId =
+        savedParent ? savedParent->GetID() : scene::EntityID{};
 
-    // 旧階層を破棄 (delay=0 → 次フレーム末尾削除)
-    scene::GameObject::Destroy(*go, 0.0f);
+    // 旧階層を「即時」破棄する。
+    // WHY: 旧実装は GameObject::Destroy(*go, 0.0f) で破棄を破棄キューへ積んでいたが、実際の
+    //      削除は次フレーム末尾まで遅延する。その間に直後の Instantiate が走ると旧階層がまだ
+    //      生存しており、新インスタンスが UniqueName で "Xxx (1)" に押し出され、シーンに重複が
+    //      残ってしまう。DestroyGameObject は DestroyImmediate 経由で子孫ごと同フレーム内に
+    //      消すため、名前も元に戻り重複も生じない。
+    scene.DestroyGameObject(rootEntity);
 
     // 再インスタンス化
     if (!Instantiate(scene, diskPath, outNewRoots) || outNewRoots.empty())
         return false;
 
-    // 先頭ルートに旧 Transform を復元する。
+    // 先頭ルートに旧 Transform / 親を復元する。
     // WHY: 複数ルートを持つプレファブは稀で、複数ある場合は先頭のみ位置を合わせる。
     if (auto* newGo = scene.GetGameObject(outNewRoots.front())) {
         newGo->transform = savedTransform;
-        if (savedParent) newGo->SetParent(*savedParent);
+        if (savedParentId.IsValid()) {
+            if (auto* parent = scene.GetGameObject(savedParentId))
+                newGo->SetParent(*parent);
+        }
     }
 
     return true;

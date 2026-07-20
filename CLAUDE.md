@@ -45,7 +45,7 @@
 | 新コンポーネント追加 | `Engine/include/Engine/Scene/Components/XxxComponent.hpp` + `ScriptProxy/ScriptXxxProxy.hpp` |
 | 新システム追加 | `Engine/include/Engine/Scene/Systems/XxxSystem.hpp` + `Engine/src/Core/Scheduler/SystemScheduler.cpp` に登録 |
 | Inspector UI 追加 | `Editor/src/Panels/Inspector/InspectorXxx.cpp/.hpp` |
-| 新シェーダー追加 | `Assets/Shaders/<Category>/Xxx.hlsl` → `compile_shaders.bat` 実行 |
+| 新シェーダー追加 | `Assets/Shaders/<Category>/Xxx.hlsl`へ保存（Editor/CMakeが自動収集・差分コンパイル） |
 | アセット形式追加 | `Engine/include/Engine/Asset/FzAssetFormat.hpp` |
 | シーンシリアライズ変更 | `Engine/src/Scene/SceneSerializer.cpp` |
 | エディターパネル追加 | `Editor/include/Editor/Panels/XxxPanel.hpp` + `Editor/src/EditorApp.cpp` に登録 |

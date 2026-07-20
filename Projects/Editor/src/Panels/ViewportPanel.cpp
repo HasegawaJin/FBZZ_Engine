@@ -265,6 +265,45 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         ImGui::EndPopup();
     }
 
+    // ── Gizmo / Snap クイックトグル ─────────────────────────────────────────
+    // WHY: これまで Gizmo Mode/Space・Snap の切替はホットキーかメニュー/ステータスバー依存だった。
+    //      シーンビュー上に置くことで、視線移動ゼロでモード切替できる (Unity/Godot のツールバー相当)。
+    ImGui::SameLine(0.0f, 10.0f);
+    const auto gizmoBtn = [&](const char* label, EditorContext::GizmoMode mode, const char* tip) {
+        const bool active = ctx.gizmoMode == mode;
+        ImGui::PushStyleColor(ImGuiCol_Button,
+            active ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
+                   : ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+        if (ImGui::SmallButton(label)) ctx.gizmoMode = mode;
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+        ImGui::SameLine();
+    };
+    gizmoBtn("Move",  EditorContext::GizmoMode::Translate, "Translate gizmo");
+    gizmoBtn("Rot",   EditorContext::GizmoMode::Rotate,    "Rotate gizmo");
+    gizmoBtn("Scale", EditorContext::GizmoMode::Scale,     "Scale gizmo");
+
+    {
+        const bool world = ctx.gizmoSpace == EditorContext::GizmoSpace::World;
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+        if (ImGui::SmallButton(world ? "World" : "Local"))
+            ctx.gizmoSpace = world ? EditorContext::GizmoSpace::Local
+                                   : EditorContext::GizmoSpace::World;
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Gizmo space: %s (click to toggle)", world ? "World" : "Local");
+        ImGui::SameLine();
+    }
+    {
+        ImGui::PushStyleColor(ImGuiCol_Button, ctx.snapEnabled
+            ? ImVec4(0.20f, 0.45f, 0.65f, 0.9f)
+            : ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+        if (ImGui::SmallButton("Snap")) ctx.snapEnabled = !ctx.snapEnabled;
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Toggle gizmo snapping (also in the status bar)");
+    }
+
     ImGui::PopStyleVar(2);
 }
 

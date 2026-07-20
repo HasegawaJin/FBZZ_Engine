@@ -14,6 +14,8 @@
 #include "DX12RenderTarget.hpp"
 #include "DX12StructuredBuffer.hpp"
 #include <Engine/Renderer/ResourceManager.hpp>
+#include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
+#include <DirectXTex.h>
 #include <cstring>
 #include <algorithm>
 #include <cstdio>
@@ -476,6 +478,25 @@ std::unique_ptr<IIblBaker> DX12Renderer::CreateIblBaker()
 {
     // Editor が所有する一時ベイカー。m_context / m_psoCache はレンダラー寿命内で有効。
     return std::make_unique<DX12HdriBaker>(&m_context, &m_psoCache);
+}
+
+bool DX12Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                            std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
+{
+    auto* target = static_cast<DX12RenderTarget*>(resources.Get(rt));
+    if (target == nullptr) return false;
+    ID3D12Resource* resource = target->GetColorResource(0);
+    if (resource == nullptr) return false;
+
+    // Scene View RT は直前フレームで ImGui サンプリング用に PIXEL_SHADER_RESOURCE へ遷移済み。
+    // CaptureTexture は自前の CommandQueue/フェンス同期で COPY_SOURCE へ遷移→読み戻し→元状態へ戻す。
+    // 呼び出しはフレーム外 (OnUpdate) なのでレンダラーの CommandList とは競合しない。
+    DirectX::ScratchImage captured;
+    const HRESULT hr = DirectX::CaptureTexture(m_context.GetCommandQueue(), resource, /*isCubeMap*/ false, captured,
+                                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    if (FAILED(hr)) return false;
+    return detail::EncodeCapturedImageToPng(captured, outPng, outWidth, outHeight);
 }
 
 std::unique_ptr<IBuffer> DX12Renderer::CreateNativeVertexBuffer(

@@ -53,6 +53,7 @@ struct EditorSettings {
 
     // --- その他 -----------------------------------------------------------
     bool        hotReloadEnabled = true;
+    bool        aiCommandBusEnabled = false; // AI 連携 (Claude/MCP) の Named Pipe 待受を起動時に自動開始するか
 
     // --- ツールウィンドウ表示 ---------------------------------------------
     bool        showTerrainTool  = false;
@@ -95,6 +96,17 @@ struct EditorSettings {
     //      Load/Save 時に projectRoot との相対パスへ変換している。
     std::string lastScenePath;
 
+    // 最近開いた/保存したシーン (新しい順, 最大 kMaxRecentScenes 件)。
+    // WHY: シーン往復を File > Open Recent から素早く行えるようにする。
+    //      lastScenePath と同様に projectRoot 相対で永続化し、ロード時に絶対へ戻す。
+    static constexpr int         kMaxRecentScenes = 10;
+    std::vector<std::string>     recentScenes;
+
+    // --- オートセーブ -----------------------------------------------------
+    // WHY: 編集中シーンを一定間隔で Library/AutoSave/ へ退避し、クラッシュ時に復旧できるようにする。
+    bool  autoSaveEnabled     = true;
+    int   autoSaveIntervalSec = 300; // 既定 5 分
+
     // --- Camera Bookmarks (最大 9 件) -------------------------------------
     struct CameraBookmark {
         float px = 0.0f, py = 0.0f, pz = 0.0f;   // position
@@ -118,6 +130,9 @@ struct EditorSettings {
 
     // --- UI ---------------------------------------------------------------
     float                    editorUiScale = 1.0f; // UI 全体スケール (フォント+余白)
+    // パネルを OS ウィンドウとして DockSpace 外へ分離できるマルチビューポート。
+    // WHY: 既定 OFF。単一ウィンドウ前提の挙動 (OLE D&D 等) を壊さないよう、opt-in で有効化する。
+    bool                     multiViewportEnabled = false;
 
     // --- Asset Browser ----------------------------------------------------
     float                    assetBrowserIconSize = 84.0f;

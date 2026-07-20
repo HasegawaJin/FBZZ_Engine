@@ -1,0 +1,318 @@
+[asset_browser]
+bookmarks = []
+icon_size = 84.0
+tree_width = 180.0
+
+[autosave]
+enabled = true
+interval_sec = 300
+
+[camera]
+last_pos_x = -16.563203811645508
+last_pos_y = 5.248400688171387
+last_pos_z = 0.5699370503425598
+last_rot_w = 0.7910618185997009
+last_rot_x = 0.03315531834959984
+last_rot_y = 0.6103013157844543
+last_rot_z = -0.02557920664548874
+sensitivity = 0.15000000596046448
+speed = 5.0
+
+[debug]
+show_colliders = false
+show_decal_bounds = false
+show_nav_sensors = false
+show_navmesh = true
+show_terrain_collision = false
+view_mode = 0
+
+[detail_tool]
+brush_radius = 6.0
+brush_strength = 0.6000000238418579
+layer_index = 0
+mode = 0
+show_chunk_bounds = false
+show_counts = false
+
+[game_view]
+aspect = 0
+play_focus_mode = 1
+
+[gizmo]
+mode = 1
+space = 1
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 571
+name = 'Undo'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 570
+name = 'Redo'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 571
+name = 'Redo (Alt)'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 559
+name = 'New Scene'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 560
+name = 'Open Scene'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 564
+name = 'Save Scene'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 564
+name = 'Save Scene As'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 561
+name = 'Play/Stop'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 561
+name = 'Pause'
+shift = true
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 556
+name = 'Command Palette'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = true
+key = 567
+name = 'Open VFX Editor'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = false
+key = 572
+name = 'Shortcuts Overlay'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 513
+name = 'Selection Back'
+shift = false
+
+[[hotkeys.overrides]]
+alt = true
+ctrl = false
+key = 514
+name = 'Selection Forward'
+shift = false
+
+[[hotkeys.overrides]]
+alt = false
+ctrl = true
+key = 551
+name = 'Search Everything'
+shift = true
+
+[import]
+default_compression = 0
+generate_tex_descriptors = true
+normal_map_convention = 0
+source_dcc = 0
+
+[[inspector_sections.states]]
+k = 3021343248
+v = true
+
+[[inspector_sections.states]]
+k = 3021343249
+v = true
+
+[[inspector_sections.states]]
+k = 3021343250
+v = true
+
+[[inspector_sections.states]]
+k = 3021343251
+v = true
+
+[[inspector_sections.states]]
+k = 3021343252
+v = true
+
+[[inspector_sections.states]]
+k = 3021343253
+v = true
+
+[[inspector_sections.states]]
+k = 3021343254
+v = true
+
+[[inspector_sections.states]]
+k = 3021343255
+v = true
+
+[map_mode]
+hierarchy_filter = true
+inspector_filter = true
+
+[misc]
+ai_command_bus = true
+hot_reload = true
+
+[scene]
+last_path = 'Assets/Scenes/Main.scene'
+recent = [ 'Assets/Scenes/Main.scene' ]
+
+[snap]
+enabled = false
+pos = 1.0
+rot = 15.0
+scale = 0.25
+
+[terrain_tool]
+brush_falloff = 1
+brush_radius = 5.0
+brush_strength = 0.05000000074505806
+paint_layer = 0
+sculpt_mode = 0
+
+[tools]
+show_detail = false
+show_foliage = false
+show_terrain = false
+show_water = false
+
+[ui]
+multi_viewport = false
+scale = 1.0
+
+[view]
+grid_size = 1.0
+show_grid = true
+show_light_range = true
+show_skeleton = false
+show_stats = true
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false
+
+[[camera_bookmarks]]
+px = 0.0
+py = 0.0
+pz = 0.0
+rw = 1.0
+rx = 0.0
+ry = 0.0
+rz = 0.0
+valid = false

@@ -44,7 +44,7 @@ public:
     ResourceHandle<ShaderTag> ReloadShader(std::string_view path);
 
     // HLSL ホットリロード: キャッシュ済みシェーダーをすべて再読み込みする。
-    // WHY: HLSL ファイル変更時に compile_shaders.bat が全シェーダーを再コンパイルするため、
+    // WHY: HLSL変更時にcompile_shaders.ps1が影響を受けたシェーダーを再コンパイルするため、
     //      個別パスではなく一括で呼ぶ方が効率的。
     void ReloadAllShaders();
     // デバイスロスト復帰用に全 GPU リソースを破棄し、次フレームの遅延再生成を促す。

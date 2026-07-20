@@ -104,6 +104,30 @@ private:
     void TryQueuePendingImport(const std::string& relPath);
     // dirAbsPath 以下を再帰スキャンして未変換ファイルをキューに積む
     void ScanAndQueueUnimported(const std::string& dirAbsPath);
+    // ── エクスプローラーからの外部ファイル D&D 取り込み ─────────────────────
+    // WHY: ドロップ位置のフォルダへ入れるには、フォルダの矩形が分かる描画フェーズで
+    //      当たり判定する必要がある。そのためコピーは即時ではなく OnRenderContent 末尾へ遅延する。
+    struct ExternalDrop {
+        std::vector<std::string> files;             // 取り込む外部ファイルの絶対パス
+        ImVec2                   point{ 0.0f, 0.0f }; // ドロップ位置 (クライアント座標 = ImGui 座標)
+        std::string              targetDir;          // ヒットしたフォルダ (空 = 現在フォルダ)
+        bool                     active = false;     // 解決待ちのドロップがあるか
+        bool                     hit    = false;     // 既にフォルダにヒット済みか (最初のヒットを採用)
+    };
+    ExternalDrop m_externalDrop;
+
+    // ドラッグ中 (ドロップ確定前) のライブハイライト状態。OnBeforeBegin で ctx から取り込む。
+    bool   m_extDragActive = false;
+    ImVec2 m_extDragPoint{ 0.0f, 0.0f };
+
+    // ctx.droppedExternalFiles を受理し、遅延解決用の m_externalDrop へ移す。
+    void AcceptExternalDrop(EditorContext& ctx);
+    // 描画済みフォルダアイテムの矩形にドロップ位置が入るか判定し、入れば取り込み先に採用する。
+    void ConsiderExternalDropTarget(const std::string& folderAbs, const ImVec2& mn, const ImVec2& mx);
+    // 解決済み (または現在フォルダ) へ実際にコピーし、m_externalDrop をクリアする。
+    void FinalizeExternalDrop();
+    // sources を destDirUtf8 へコピーする共通処理 (同名は採番、Assets 配下の自己コピーは除外)。
+    void CopyExternalFilesInto(const std::vector<std::string>& sources, const std::string& destDirUtf8);
     // 未変換ファイルかどうか判定する
     [[nodiscard]] static bool IsImportableRaw(const std::string& ext);
     [[nodiscard]] static bool IsTextureRaw(const std::string& ext);

@@ -3,6 +3,7 @@
 // 選択 Entity / Asset の Inspector ルーティング
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
+#include <Editor/Panels/AnimationPreviewPanel.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorCommon.hpp"
 #include "InspectorCore.hpp"
@@ -376,7 +377,15 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     if (!go) {
+        // 空状態ガイド: 何を選べば編集できるかを案内し、初見の迷いを消す。
+        ImGui::Spacing();
         ImGui::TextDisabled("Nothing selected");
+        ImGui::Spacing();
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Select a GameObject in the Scene or Hierarchy to edit its components here.");
+        ImGui::Spacing();
+        ImGui::TextDisabled("Tip: press Ctrl+K to jump to any object or asset, F1 for shortcuts.");
+        ImGui::PopTextWrapPos();
         return;
     }
 
@@ -384,8 +393,12 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     // WHY: Graph は遷移関係の操作に専念し、State / Transition の設定は Inspector に集約する。
     {
         FBZZ_PROFILE_SCOPE("Inspector::AnimationGraphSelection");
-        if (DrawAnimationGraphInspector(ctx, *go))
+        if (DrawAnimationGraphInspector(ctx, *go)) {
+            // Unity と同じく、State / Transition の詳細の下でアニメーションを直接確認できる。
+            ImGui::SeparatorText("Preview");
+            DrawAnimationPreviewWidget(ctx, 240.0f);
             return;
+        }
     }
 
     // ── Save as Prefab ───────────────────────────────────────────────────────

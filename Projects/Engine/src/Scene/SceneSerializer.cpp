@@ -3681,13 +3681,17 @@ bool SceneSerializer::AppendObjects(
     }
 
     // root 収集
+    // WHY: instanceId(guid) で GO を引く。同じプレファブを複数配置すると同名ルートが
+    //      並ぶため、Find(name) では常に先頭の 1 体しか拾えず、2 体目以降のインスタンス化が
+    //      「root 無し」で失敗扱いになっていた。guid を正としてフォールバックのみ名前引きにする。
     for (const auto& item : *goArr) {
         const auto* tbl = item.as_table();
         if (!tbl) continue;
         if (!(*tbl)["parent"].value_or(std::string{}).empty()) continue;
-        const std::string name = (*tbl)["name"].value_or(std::string{});
-        if (auto* go = scene.Find(name))
-            outRoots.push_back(go->GetID());
+        const std::string guid = (*tbl)["instanceId"].value_or(std::string{});
+        GameObject* go = !guid.empty() ? scene.FindByGuid(guid) : nullptr;
+        if (!go) go = scene.Find((*tbl)["name"].value_or(std::string{}));
+        if (go) outRoots.push_back(go->GetID());
     }
     return !outRoots.empty();
 }

@@ -246,18 +246,27 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
 
     // Camera position: pos = -R^T * t. The 3x3 part of view is R^T.
     const float tx = viewRow.m[0][3], ty = viewRow.m[1][3], tz = viewRow.m[2][3];
-    ctx.editorCamera->m_position = {
+    const math::Vector3 newPos = {
         -(viewRow.m[0][0]*tx + viewRow.m[1][0]*ty + viewRow.m[2][0]*tz),
         -(viewRow.m[0][1]*tx + viewRow.m[1][1]*ty + viewRow.m[2][1]*tz),
         -(viewRow.m[0][2]*tx + viewRow.m[1][2]*ty + viewRow.m[2][2]*tz)
     };
 
     // Camera rotation: rebuild the world rotation matrix from the view matrix.
+    // view の 3x3 は R^T なので、転置して world 回転 R を得る。
     math::Matrix4 rotMat = math::Matrix4::Identity();
     rotMat.m[0][0] = viewRow.m[0][0]; rotMat.m[0][1] = viewRow.m[1][0]; rotMat.m[0][2] = viewRow.m[2][0];
     rotMat.m[1][0] = viewRow.m[0][1]; rotMat.m[1][1] = viewRow.m[1][1]; rotMat.m[1][2] = viewRow.m[2][1];
     rotMat.m[2][0] = viewRow.m[0][2]; rotMat.m[2][1] = viewRow.m[1][2]; rotMat.m[2][2] = viewRow.m[2][2];
-    ctx.editorCamera->m_rotation = math::Quaternion::FromMatrix4(rotMat);
+    const math::Quaternion newRot = math::Quaternion::FromMatrix4(rotMat);
+
+    // WHY: Camera へ直接 m_position/m_rotation を書くと、DebugCamera が保持する
+    //      yaw/pitch/pivot と乖離する。次に FPS ルック (右ドラッグ) やオービット (中/Alt+左)
+    //      を始めた瞬間、ApplyRotation() が古い yaw/pitch から回転を作り直すため視点が飛ぶ。
+    //      カメラブックマークと同じ Teleport 要求経由にして、内部状態まで一括同期する。
+    ctx.teleportPosition      = newPos;
+    ctx.teleportRotation      = newRot;
+    ctx.requestTeleportCamera = true;
 }
 
 void DrawGizmo(EditorContext& ctx,

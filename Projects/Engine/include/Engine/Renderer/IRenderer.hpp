@@ -111,6 +111,16 @@ public:
     //      Editor が DX11Renderer に直接ダウンキャストしなくて済むようにする。
     virtual std::unique_ptr<IIblBaker> CreateIblBaker() { return nullptr; }
 
+    // CaptureRenderTargetToPng — 指定 RenderTarget のカラーを PNG バイト列として CPU へ読み戻す。
+    // WHY: AI 連携 (MCP viewport.capture) が「現在の Scene View を Claude に見せる」ために使う。
+    //      GPU テクスチャ読み戻し・PNG エンコードはバックエンド固有 (DX11: CopyResource + DirectXTex /
+    //      DX12: CommandQueue + DirectXTex) のため、上位 Editor が具象へダウンキャストせずに済むよう
+    //      抽象入口だけ提供し、実装は各 Platform に閉じる。DX11/DX12 が実装し、他は未対応 (false)。
+    //      outPng は PNG ファイル全体のバイト列、out{Width,Height} は実 RT サイズ (要求サイズではない)。
+    virtual bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> /*rt*/, ResourceManager& /*resources*/,
+                                          std::vector<uint8_t>& /*outPng*/,
+                                          uint32_t& /*outWidth*/, uint32_t& /*outHeight*/) { return false; }
+
 private:
     friend class ResourceManager;
 

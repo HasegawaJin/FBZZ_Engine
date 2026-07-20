@@ -270,7 +270,7 @@ DX11 の `Map(DISCARD)` がドライバ内部でやっていたリネームを�
   - 同一シーン (DemoGame) を `--renderer=dx11` / `--renderer=dx12` で起動し画像比較。PIX / RenderDoc でパス単位照合。
   - GPU 時間は既存 `GpuProf*` (DX12 は `ID3D12QueryHeap(TIMESTAMP)` + readback、実装済み) をパス別に両バックエンドで比較。
 - 🔵 **DXC / SM 6.8 / DXIL 化**
-  - コード実装済み。`compile_shaders.bat` / `compile_ui_shaders.bat` は引数なしで DX11 と DX12 の両セットを生成する。
+- コード実装済み。統合済みの`compile_shaders.ps1`は全HLSLを再帰収集し、推移的なinclude依存を含む差分だけをDX11/DX12向けに生成する。追加時の列挙更新は不要で、削除・改名後の孤立CSOも正常完了後に除去する。
   - VS 実機で DXC の全シェーダーエラー、DXIL reflection、PSO 作成、A/B 描画を確認する。
 - ⚪ **RenderGraph メタデータによるバリア一括化**
   - A/Bデータに基づいて判断する後続最適化。`--renderer=dx11`による比較・退避を維持する。

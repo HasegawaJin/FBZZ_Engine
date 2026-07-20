@@ -1152,8 +1152,15 @@ void VFXEditorPanel::AddGraphNode(asset::VFXNodeType type)
     node.id = nextId;
     node.type = type;
     node.name = asset::VFXNodeTypeName(type);
-    node.editorX = 260.0f + static_cast<float>((m_graph.nodes.size() % 3) * 220);
-    node.editorY = 80.0f + static_cast<float>((m_graph.nodes.size() / 3) * 170);
+    if (m_pendingNodeSpawnValid) {
+        // Canvas右クリックで開いたAddメニューはクリック位置へそのまま生成する(Unity Shader/VFX Graph相当のUX)。
+        node.editorX = m_pendingNodeSpawnGridX;
+        node.editorY = m_pendingNodeSpawnGridY;
+        m_pendingNodeSpawnValid = false;
+    } else {
+        node.editorX = 260.0f + static_cast<float>((m_graph.nodes.size() % 3) * 220);
+        node.editorY = 80.0f + static_cast<float>((m_graph.nodes.size() / 3) * 170);
+    }
     node.duration = type == asset::VFXNodeType::Delay ? 0.25f
         : (type == asset::VFXNodeType::Particle ? node.particle.duration : 1.0f);
     m_graph.nodes.push_back(std::move(node));
@@ -1232,6 +1239,26 @@ void VFXEditorPanel::DeleteSelectedGraphNode()
     });
     m_selectedGraphNodeId = -1;
     m_graphDirty = true;
+}
+
+void VFXEditorPanel::DuplicateGraphNode(int nodeId)
+{
+    const auto* source = FindGraphNode(m_graph, nodeId);
+    if (source == nullptr || source->type == asset::VFXNodeType::Entry) return;
+    PushGraphUndo();
+    int nextId = 1;
+    for (const auto& node : m_graph.nodes) nextId = (std::max)(nextId, node.id + 1);
+    asset::VFXGraphNode node = *source;
+    node.id = nextId;
+    node.name = source->name + " Copy";
+    // 元ノードへ重ねず視認できるよう、少しずらした位置へ複製する。リンクは複製しない(接続の意図が
+    // 不明瞭になるため、複製は「設定を引き継いだ新規ノード」として空の接続から始める)。
+    node.editorX = source->editorX + 40.0f;
+    node.editorY = source->editorY + 40.0f;
+    m_graph.nodes.push_back(std::move(node));
+    m_selectedGraphNodeId = nextId;
+    m_graphDirty = true;
+    m_graphPositionsPending = true;
 }
 
 void VFXEditorPanel::PushGraphUndo()
@@ -1586,6 +1613,9 @@ void VFXEditorPanel::DrawGraphCanvas(EditorContext&)
     const asset::VFXGraphAsset graphBeforeCanvasEdit = m_graph;
     ImNodes::SetCurrentContext(m_nodesContext);
     ImNodes::EditorContextSet(m_graphEditorContext);
+    // ImNodesはBeginNodeEditor直後のカーソル位置をCanvas原点とするため、右クリックAddの
+    // スポーン座標算出(Screen space -> Grid space)にはこのタイミングで取得した値を使う。
+    const ImVec2 canvasOriginScreenPos = ImGui::GetCursorScreenPos();
     ImNodes::BeginNodeEditor();
     if (m_graphPositionsPending) {
         for (const auto& node : m_graph.nodes)
@@ -1646,17 +1676,53 @@ void VFXEditorPanel::DrawGraphCanvas(EditorContext&)
         ImGui::EndDragDropTarget();
     }
 
-    if (ImNodes::IsEditorHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+    // ノード上の右クリックはノードコンテキストメニュー、空きスペースはAdd Effectメニューへ振り分ける
+    // (UnityのShader/VFX Graphと同じ使い分け)。
+    int hoveredNodeId = -1;
+    const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNodeId);
+    if (nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        m_graphContextMenuNodeId = hoveredNodeId;
+        m_selectedGraphNodeId = hoveredNodeId;
+        ImGui::OpenPopup("##VFXNodeContext");
+    } else if (!nodeHovered && ImNodes::IsEditorHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        const ImVec2 mouseScreenPos = ImGui::GetMousePos();
+        const ImVec2 panning = ImNodes::EditorContextGetPanning();
+        m_pendingNodeSpawnGridX = mouseScreenPos.x - canvasOriginScreenPos.x - panning.x;
+        m_pendingNodeSpawnGridY = mouseScreenPos.y - canvasOriginScreenPos.y - panning.y;
+        m_pendingNodeSpawnValid = true;
         ImGui::OpenPopup("##VFXCanvasAddNode");
+    }
     if (ImGui::BeginPopup("##VFXCanvasAddNode")) {
         ImGui::TextDisabled("Add Effect Node");
         ImGui::Separator();
         DrawAddNodeMenu();
         ImGui::EndPopup();
+    } else {
+        m_pendingNodeSpawnValid = false;
+    }
+    if (ImGui::BeginPopup("##VFXNodeContext")) {
+        const auto* contextNode = FindGraphNode(m_graph, m_graphContextMenuNodeId);
+        if (contextNode != nullptr) {
+            ImGui::TextDisabled("%s", contextNode->name.c_str());
+            ImGui::Separator();
+            if (contextNode->type != asset::VFXNodeType::Entry) {
+                if (ImGui::MenuItem("Duplicate", "Ctrl+D")) DuplicateGraphNode(m_graphContextMenuNodeId);
+                if (ImGui::MenuItem("Delete", "Del")) {
+                    m_selectedGraphNodeId = m_graphContextMenuNodeId;
+                    DeleteSelectedGraphNode();
+                }
+            } else {
+                ImGui::TextDisabled("Entry node can't be duplicated or deleted");
+            }
+        }
+        ImGui::EndPopup();
     }
 
     if (!ImGui::GetIO().WantTextInput && ImGui::Shortcut(ImGuiKey_F))
         m_focusSelectionRequested = true;
+    if (!ImGui::GetIO().WantTextInput
+        && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D) && m_selectedGraphNodeId > 0)
+        DuplicateGraphNode(m_selectedGraphNodeId);
     if (m_focusSelectionRequested && m_selectedGraphNodeId > 0) {
         ImNodes::EditorContextMoveToNode(m_selectedGraphNodeId);
         m_focusSelectionRequested = false;

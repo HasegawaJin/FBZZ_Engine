@@ -97,6 +97,11 @@ public:
                       std::unique_ptr<ITexture>& outIrradiance,
                       std::unique_ptr<ITexture>& outPrefilter) override;
 
+    // AI 連携 (viewport.capture): Scene View RT を PNG バイト列へ読み戻す。
+    bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                  std::vector<uint8_t>& outPng,
+                                  uint32_t& outWidth, uint32_t& outHeight) override;
+
     // DX11Buffer 等の DX11 サブシステムが Init 時にデバイスを必要とする場合に使用
     ID3D11Device*        GetDevice()       const { return m_device.Get(); }
     ID3D11DeviceContext* GetDeviceContext() const { return m_context.Get(); }

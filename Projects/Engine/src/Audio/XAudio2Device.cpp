@@ -17,13 +17,24 @@ namespace fbzz::audio
 bool XAudio2Device::Init()
 {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    // S_FALSE はすでに初期化済みなので問題なし
-    if (FAILED(hr) && hr != S_FALSE)
+    if (hr == RPC_E_CHANGED_MODE)
     {
+        // WHY: Window が OLE ドラッグ&ドロップ (IDropTarget) のためにこのスレッドを先に STA で
+        //      初期化していると、MTA 要求は RPC_E_CHANGED_MODE を返す。XAudio2 は STA でも動作するため、
+        //      この COM 初期化を「所有しない」形でそのまま続行する (対の CoUninitialize は呼ばない)。
+        m_comInitialized = false;
+    }
+    else if (FAILED(hr) && hr != S_FALSE)
+    {
+        // S_FALSE はすでに初期化済みなので問題なし。それ以外の失敗のみエラー扱いにする。
         FBZZ_LOG_ERROR("XAudio2Device: CoInitializeEx failed");
         return false;
     }
-    m_comInitialized = true;
+    else
+    {
+        // S_OK / S_FALSE: このスレッドの COM 参照を保持し、Shutdown で対に CoUninitialize する。
+        m_comInitialized = true;
+    }
 
     UINT32 flags = 0;
 #if defined(_DEBUG)

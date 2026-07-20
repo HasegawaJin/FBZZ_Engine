@@ -3,6 +3,7 @@
 // AssetBrowser の未変換アセット検出とバックグラウンドインポート
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Util/Toast.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
@@ -191,6 +192,22 @@ bool IsExcludedByPattern(const std::string& absPath)
     }
     return false;
 }
+
+// 同名衝突を避けたコピー先パスを返す ("Foo.png" が存在すれば "Foo (1).png" …)。
+// WHY: エクスプローラーからの取り込みで既存アセットを黙って上書きしないよう、Unity 同様に採番する。
+std::filesystem::path MakeUniqueDestPath(const std::filesystem::path& desired)
+{
+    if (!util::FileSystem::Exists(desired)) return desired;
+    const std::filesystem::path dir  = desired.parent_path();
+    const std::string           stem = util::FileSystem::PathToUtf8(desired.stem());
+    const std::string           ext  = util::FileSystem::PathToUtf8(desired.extension());
+    for (int i = 1; i < 10000; ++i) {
+        const std::filesystem::path candidate =
+            dir / (stem + " (" + std::to_string(i) + ")" + ext);
+        if (!util::FileSystem::Exists(candidate)) return candidate;
+    }
+    return desired; // 事実上到達しない
+}
 } // namespace
 
 bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
@@ -296,6 +313,103 @@ void AssetBrowserPanel::ScanAndQueueUnimported(const std::string& dirAbsPath)
     }
 }
 
+// ─── エクスプローラーからの D&D 取り込み ──────────────────────────────────────
+
+void AssetBrowserPanel::AcceptExternalDrop(EditorContext& ctx)
+{
+    // ドラッグ中のライブハイライト状態を毎フレーム取り込む (ドロップ確定前のフォルダ強調に使う)。
+    m_extDragActive = ctx.externalDragActive;
+    m_extDragPoint  = { ctx.externalDragX, ctx.externalDragY };
+
+    if (ctx.droppedExternalFiles.empty()) return;
+    // 実コピーは OnRenderContent 末尾で確定する。ここではドロップ内容と位置を退避するだけ。
+    m_externalDrop.files     = std::move(ctx.droppedExternalFiles);
+    m_externalDrop.point     = { ctx.droppedExternalFilesX, ctx.droppedExternalFilesY };
+    m_externalDrop.targetDir.clear();
+    m_externalDrop.active    = true;
+    m_externalDrop.hit       = false;
+    ctx.droppedExternalFiles.clear();
+}
+
+void AssetBrowserPanel::ConsiderExternalDropTarget(
+    const std::string& folderAbs, const ImVec2& mn, const ImVec2& mx)
+{
+    const auto contains = [&](const ImVec2& p) {
+        return p.x >= mn.x && p.x < mx.x && p.y >= mn.y && p.y < mx.y;
+    };
+
+    // (1) 実ドロップ: 最初にヒットしたフォルダを取り込み先に採用する。
+    if (m_externalDrop.active && !m_externalDrop.hit && contains(m_externalDrop.point)) {
+        m_externalDrop.targetDir = folderAbs;
+        m_externalDrop.hit       = true;
+    }
+
+    // (2) ドラッグ中: ドロップ確定前のフォルダをハイライトして落とし先を明示する (Unity 風)。
+    if (m_extDragActive && contains(m_extDragPoint)) {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(mn, mx, ImGui::GetColorU32(ImVec4(0.35f, 0.62f, 0.95f, 0.16f)), 3.0f);
+        dl->AddRect(mn, mx, ImGui::GetColorU32(ImVec4(0.40f, 0.68f, 1.0f, 0.95f)), 3.0f, 0, 2.0f);
+    }
+}
+
+void AssetBrowserPanel::FinalizeExternalDrop()
+{
+    if (!m_externalDrop.active) return;
+    // ヒットしたフォルダが無ければ現在フォルダへ取り込む。
+    const std::string target = m_externalDrop.targetDir.empty()
+        ? m_currentPath : m_externalDrop.targetDir;
+    CopyExternalFilesInto(m_externalDrop.files, target);
+    m_externalDrop = ExternalDrop{}; // クリア
+}
+
+void AssetBrowserPanel::CopyExternalFilesInto(
+    const std::vector<std::string>& sources, const std::string& destDirUtf8)
+{
+    if (sources.empty()) return;
+
+    namespace fs = std::filesystem;
+    // 取り込み先が無効ならルートへフォールバック。
+    const std::string destUtf8 =
+        util::FileSystem::IsDirectory(destDirUtf8) ? destDirUtf8 : m_rootPath;
+    const fs::path destDir = util::FileSystem::PathFromUtf8(destUtf8);
+
+    int  copiedCount = 0;
+    bool anyCopied = false;
+    for (const std::string& src : sources) {
+        if (!util::FileSystem::Exists(src)) continue;
+        // 既に Assets 配下にあるものはコピーしない (自分自身への複製を防ぐ)。
+        if (util::FileSystem::IsChildPathText(src, m_rootPath)) continue;
+
+        const fs::path srcPath = util::FileSystem::PathFromUtf8(src);
+        const fs::path dest    = MakeUniqueDestPath(destDir / srcPath.filename());
+
+        const bool ok = util::FileSystem::IsDirectory(src)
+            ? util::FileSystem::CopyDirectoryRecursive(srcPath, dest, /*overwrite=*/false)
+            : util::FileSystem::CopyFile(srcPath, dest, /*overwrite=*/false);
+
+        if (ok) {
+            anyCopied = true;
+            ++copiedCount;
+            FBZZ_LOG_INFO("Imported dropped asset: %s -> %s",
+                          src.c_str(),
+                          util::FileSystem::PathToUtf8(dest).c_str());
+        } else {
+            FBZZ_LOG_WARN("Failed to import dropped asset: %s", src.c_str());
+            Toast::Error("Import failed: " + util::FileSystem::GetFilename(src));
+        }
+    }
+
+    // ウォッチャーが Added を拾ってインポート設定モーダルを自動表示するが、
+    // 表示中フォルダのグリッドは即座に反映されるよう明示的に更新する。
+    if (anyCopied) {
+        const std::string where = util::FileSystem::GetFilename(destUtf8);
+        Toast::Success(std::to_string(copiedCount) +
+                       (copiedCount == 1 ? " asset imported" : " assets imported") +
+                       (where.empty() ? "" : "  \xE2\x86\x92 " + where));
+        RefreshDirectory();
+    }
+}
+
 // ─── インポートバッジバー ─────────────────────────────────────────────────────
 
 void AssetBrowserPanel::DrawPendingImportBar(EditorContext&)
@@ -329,8 +443,15 @@ void AssetBrowserPanel::DrawPendingImportBar(EditorContext&)
 // WHY: OnRenderContent はウィンドウが collapsed のとき呼ばれないため
 //      OnBeforeBegin (毎フレーム確実に呼ばれる) でウォッチャーとインポートを処理する。
 
-void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
+void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
 {
+    // ── エクスプローラーからの D&D 取り込み ────────────────────────────────
+    // WHY: 実コピーはドロップ位置のフォルダを判定できる OnRenderContent 末尾で行う。
+    //      前フレームで解決されなかったドロップ (パネルが畳まれていた等) はここで現在フォルダへ確定する。
+    if (m_externalDrop.active)
+        FinalizeExternalDrop();
+    AcceptExternalDrop(ctx);
+
     // ── ファイルシステム監視 ──────────────────────────────────────────────
     // WHY: Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でも
     //      イベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
@@ -390,6 +511,10 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext&)
         for (const std::string& path : completedImports) {
             asset::AssetManager::Unload<asset::ModelAsset>(path);
             ResetAssetPreviewCache(path);
+        }
+        if (!completedImports.empty()) {
+            Toast::Success(std::to_string(completedImports.size()) +
+                           (completedImports.size() == 1 ? " model imported" : " models imported"));
         }
         RefreshDirectory();
         return;

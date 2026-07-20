@@ -16,6 +16,19 @@ public:
                               const std::vector<scene::EntityID>& selectedEntities,
                               const std::string& path);
 
+    // SaveSelectionAndConnect: 選択を .prefab に保存し、選択ルートを「そのプレファブの
+    // インスタンス」として接続する (Unity の Create Prefab 相当)。
+    // WHAT: SaveSelection で書き出したうえで、選択のうち選択された祖先を持たないルート GO の
+    //       prefabAssetPath に Assets 起点の相対パスを設定する。接続したルートを outRoots に返す。
+    // WHY: 保存するだけではソース GO が通常オブジェクトのままで、青色表示も Apply / Revert も
+    //      出ない「作ったのに繋がっていない」状態になる。保存と接続を 1 箇所に集約して、
+    //      Hierarchy の "Save As Prefab" と AssetBrowser への D&D で挙動を揃える。
+    //      Undo (ファイル削除 + prefabAssetPath クリア) は UI 層が outRoots を使って構築する。
+    static bool SaveSelectionAndConnect(scene::Scene& scene,
+                                        const std::vector<scene::EntityID>& selectedEntities,
+                                        const std::string& path,
+                                        std::vector<scene::EntityID>& outRoots);
+
     static bool Instantiate(scene::Scene& scene,
                             const std::string& path,
                             std::vector<scene::EntityID>& outRootEntities);

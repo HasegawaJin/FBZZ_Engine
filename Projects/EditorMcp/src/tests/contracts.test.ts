@@ -1,0 +1,181 @@
+// FBZZ Engine
+// contracts.test.ts | EditorMcp
+// ローカル接続制約と Editor Command / Query の入力検証を確認する
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { IsEditorPipeEndpoint, LoadConfig } from '../config.js';
+import { EditorCommandSchema, EditorQuerySchema } from '../editorContracts.js';
+
+test('Command Bus は FBZZ 専用 Named Pipe だけを許可する', () => {
+    assert.equal(IsEditorPipeEndpoint('\\\\.\\pipe\\FBZZEditorCommandBus'), true);
+    assert.equal(IsEditorPipeEndpoint('\\\\.\\pipe\\FBZZEditorTest'), true);
+    assert.equal(IsEditorPipeEndpoint('\\\\server\\pipe\\FBZZEditorCommandBus'), false);
+    assert.equal(IsEditorPipeEndpoint('C:\\temp\\FBZZEditorCommandBus'), false);
+});
+
+test('不正な環境変数は read と loopback の安全な既定値へ戻る', () => {
+    const config = LoadConfig({
+        FBZZ_EDITOR_PIPE: '\\\\server\\pipe\\Editor',
+        FBZZ_MCP_PERMISSION: 'admin',
+        FBZZ_EDITOR_BUS_TIMEOUT_MS: '999999',
+    });
+    assert.equal(config.busEndpoint, '\\\\.\\pipe\\FBZZEditorCommandBus');
+    assert.equal(config.permission, 'read');
+    assert.equal(config.requestTimeoutMs, 60000);
+});
+
+test('空の transform.set は拒否し、有効な transaction は受理する', () => {
+    const nodeId = '11111111-1111-4111-8111-111111111111';
+    assert.equal(EditorCommandSchema.safeParse({ t: 'transform.set', id: nodeId }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'editor.transaction',
+        label: 'Create and place object',
+        cmds: [
+            { t: 'node.create', name: 'Cube' },
+            { t: 'transform.set', id: nodeId, pos: [1, 2, 3] },
+        ],
+    }).success, true);
+});
+
+test('viewport.capture は既定上限を超える要求を拒否する', () => {
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'vfx' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 3840, h: 2160 }).success, false);
+});
+
+test('catalog・scene.find・node.duplicate の契約を検証する', () => {
+    const nodeId = '11111111-1111-4111-8111-111111111111';
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.catalog' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({
+        t: 'scene.find',
+        name: 'player',
+        comp: 'CameraComponent',
+        limit: 100,
+    }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'scene.find' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'node.duplicate', id: nodeId }).success, true);
+    // GameObject プロパティ設定。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'node.setActive', id: nodeId, active: false }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'node.setActive', id: nodeId }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'node.setTag', id: nodeId, tag: 'Enemy' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'node.setLayer', id: nodeId, layer: 8 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'node.setLayer', id: nodeId, layer: 99 }).success, false);
+});
+
+test('実行制御・物理Query・Prefab・検索フィルタの契約を検証する', () => {
+    const nodeId = '11111111-1111-4111-8111-111111111111';
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.state' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.undoHistory' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.undoHistory', limit: 20 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.undoHistory', limit: 999 }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({
+        t: 'console.logs', minLevel: 'warning', limit: 50, afterSequence: 123,
+    }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'console.logs', afterSequence: -1 }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({
+        t: 'physics.raycast', origin: [0, 10, 0], direction: [0, -1, 0], maxDistance: 100,
+    }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({
+        t: 'scene.find',
+        components: ['RigidBodyComponent', 'BoxColliderComponent'],
+        properties: [{ comp: 'RigidBodyComponent', field: 'mass', op: 'greater', value: 10 }],
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'play.control', action: 'step' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'prefab.instantiate', path: 'Assets/Prefabs/Enemy.prefab', parent: nodeId,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'viewport.camera' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'viewport.camera', targetId: nodeId }).success, true);
+});
+
+test('意味付き知覚・診断Queryと入力・マテリアル・アニメーションCommandを検証する', () => {
+    const nodeId = '11111111-1111-4111-8111-111111111111';
+    assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.semantic', w: 960, h: 540 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.catalog.search', query: 'camera', limit: 10 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'editor.catalog.search' }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'scene.snapshot' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'scene.validate' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'asset.inspect', path: 'Assets/Test.mat' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'profiler.snapshot', limit: 20 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'animation.pose', id: nodeId, limit: 128 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'animation.graph', id: nodeId }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'animation.blendTree', id: nodeId, state: 'Locomotion' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'animation.blendTree', id: nodeId }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'material.override', id: nodeId, parameter: 'BaseColor', value: [1, 0.5, 0, 1],
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.control', id: nodeId, action: 'seek', frame: 12,
+    }).success, true);
+    // float/int は数値、bool/trigger は真偽、trigger は value 省略で発火を許可する。
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setParameter', id: nodeId, name: 'Speed', value: 1.5,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setParameter', id: nodeId, name: 'Grounded', value: true,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setParameter', id: nodeId, name: 'Jump',
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setParameter', id: nodeId, name: 'Speed', value: 'fast',
+    }).success, false);
+    // 構造編集: 遷移追加 (from 省略 = Any State) と条件編集。
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.addTransition', id: nodeId, from: 'Idle', to: 'Run', transitionDuration: 0.2,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.addTransition', id: nodeId, to: 'Hit',
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setCondition', id: nodeId, from: 'Idle', transitionIndex: 0, action: 'add', parameter: 'Speed', op: 'greater', threshold: 0.1,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setCondition', id: nodeId, transitionIndex: 0, action: 'clear',
+    }).success, true);
+    // add には parameter と op が必要、remove には conditionIndex が必要。
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setCondition', id: nodeId, transitionIndex: 0, action: 'add', parameter: 'Speed',
+    }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setCondition', id: nodeId, transitionIndex: 0, action: 'remove',
+    }).success, false);
+    // ステート CRUD と BlendTree Motion。
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.addState', id: nodeId, name: 'Jump', mode: 'clip', sourcePath: 'Assets/Anim/Jump.fbx', setAsDefault: true,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.addState', id: nodeId }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setState', id: nodeId, state: 'Idle', name: 'Idle2', speed: 1.5, blend2DType: 'freeformCartesian',
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.setState', id: nodeId }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.addMotion', id: nodeId, state: 'Locomotion', clipName: 'Run', threshold: 3.0,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setMotion', id: nodeId, state: 'Locomotion', motionIndex: 1, posX: 0.5, posY: -0.5,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.setMotion', id: nodeId, state: 'Locomotion',
+    }).success, false);
+    // 削除系とパラメーター CRUD。
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeState', id: nodeId, state: 'Run' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeMotion', id: nodeId, state: 'Locomotion', motionIndex: 2 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeTransition', id: nodeId, transitionIndex: 1 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeTransition', id: nodeId, from: 'Idle', transitionIndex: 0 }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeTransition', id: nodeId }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'animation.addParameter', id: nodeId, name: 'Speed', type: 'float', value: 0.5,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.addParameter', id: nodeId, name: 'Jump', type: 'trigger' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.addParameter', id: nodeId, name: 'Bad', type: 'vector' }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeParameter', id: nodeId, name: 'Speed' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'animation.removeParameter', id: nodeId }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'input.inject', kind: 'key', key: 'space', pressed: true,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({
+        t: 'input.inject', kind: 'gamepadButton', buttonName: 'South', pressed: true,
+    }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'input.inject', kind: 'gamepadButton' }).success, false);
+});

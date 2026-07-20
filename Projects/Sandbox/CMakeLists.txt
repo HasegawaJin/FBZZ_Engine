@@ -107,37 +107,31 @@ set_target_properties(SandboxStandalone PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Sandbox"
 )
 
-# シェーダーを HLSL ファイルが更新されるたびに自動コンパイルする
-set(SHADER_SCRIPT    "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.bat")
-set(SHADER_UI_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_ui_shaders.bat")
-set(SHADER_STAMP     "${CMAKE_BINARY_DIR}/shaders_compiled.stamp")
+# シェーダーターゲットは毎回軽量な差分走査を行い、影響を受けたCSOだけを更新する。
+# WHY: ファイル削除・改名はタイムスタンプ型stampでは検知できないため、収集も差分判定も統合スクリプトへ委ねる。
+set(SHADER_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.ps1")
 
-file(GLOB_RECURSE HLSL_FILES "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsl")
-
-find_program(FBZZ_FXC_EXECUTABLE
-    NAMES fxc.exe
-    PATHS
-        "$ENV{WindowsSdkDir}/bin/$ENV{WindowsSDKVersion}/x64"
-    DOC "Path to fxc.exe from the Windows SDK"
+file(GLOB_RECURSE HLSL_FILES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsl"
+    "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsli"
 )
 
-if(FBZZ_FXC_EXECUTABLE)
-    set(FBZZ_FXC_ENV "FBZZ_FXC=${FBZZ_FXC_EXECUTABLE}")
-else()
-    set(FBZZ_FXC_ENV "FBZZ_FXC=")
-endif()
+# WHY: Visual Studio の FXCompile による main 固定の二重コンパイルを防ぎ、
+#      VSMain / PSMain / CSMain の処理を compile_shaders.ps1 だけに集約する。
+set_source_files_properties(${HLSL_FILES} PROPERTIES
+    HEADER_FILE_ONLY TRUE
+    VS_TOOL_OVERRIDE "None"
+)
 
-add_custom_command(
-    OUTPUT  ${SHADER_STAMP}
-    COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_SCRIPT}"
-    COMMAND ${CMAKE_COMMAND} -E env "${FBZZ_FXC_ENV}" cmd /c "${SHADER_UI_SCRIPT}"
-    COMMAND ${CMAKE_COMMAND} -E touch ${SHADER_STAMP}
-    DEPENDS ${HLSL_FILES} "${SHADER_SCRIPT}" "${SHADER_UI_SCRIPT}"
+find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
+
+add_custom_target(compile_shaders
+    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders..."
+    SOURCES ${HLSL_FILES} "${SHADER_SCRIPT}"
+    VERBATIM
 )
-
-add_custom_target(compile_shaders DEPENDS ${SHADER_STAMP})
 add_dependencies(sandbox compile_shaders)
 add_dependencies(SandboxStandalone compile_shaders)
 

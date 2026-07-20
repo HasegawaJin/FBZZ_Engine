@@ -45,6 +45,9 @@ private:
 
     void DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawZoomControls();
+    // ホイールズーム (カーソル位置固定) + Shift/Alt ホイールパン。
+    // メインキャンバスと Blend Tree キャンバスで同じ操作感を共有する。
+    void HandleCanvasWheel(float canvasOriginX, float canvasOriginY);
     void DrawParameterSidebar(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawNodeCanvas(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
     void DrawBlendTreeCanvas(EditorContext& ctx,
@@ -52,6 +55,18 @@ private:
                              const std::string& instanceId);
     void PublishSelection(EditorContext& ctx, const scene::GameObject& gameObject) const;
     void AddState(EditorContext& ctx, scene::AnimatorComponent& animator, const char* baseName);
+    // 右クリック位置やドロップ位置など、論理グリッド座標を指定してステートを作成する。
+    void AddStateAt(EditorContext& ctx,
+                    scene::AnimatorComponent& animator,
+                    const char* baseName,
+                    const std::string& instanceId,
+                    float spawnX,
+                    float spawnY);
+    // 複製元の隣へ配置する。AutoLayout で全体を崩さないための専用経路。
+    void DuplicateState(EditorContext& ctx,
+                        scene::AnimatorComponent& animator,
+                        int stateIndex,
+                        const std::string& instanceId);
     void AddTransition(EditorContext& ctx, scene::AnimatorComponent& animator, int fromStateIndex, int toStateIndex);
     void AutoLayoutStates(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
     void DeleteState(EditorContext& ctx, scene::AnimatorComponent& animator, int stateIndex, const std::string& instanceId);
@@ -75,6 +90,12 @@ private:
     std::string           m_selectionOwnerInstanceId;
     int                   m_renamingNode = -1;
     char                  m_renameBuffer[128] = {};
+    // Unity の "Make Transition" モード。-1: 非アクティブ / -2: Any State / -3: Entry / 0以上: ステート index。
+    // アクティブ中はソースノードからマウスへ矢印付きプレビュー線を描き、ノードクリックで遷移を確定する。
+    int                   m_pendingTransitionFrom = -1;
+    // 右クリックメニューを開いた瞬間の論理グリッド座標。"New State" をカーソル位置に生成するために保持する。
+    float                 m_contextSpawnX = 80.0f;
+    float                 m_contextSpawnY = 80.0f;
 };
 
 } // namespace fbzz::editor

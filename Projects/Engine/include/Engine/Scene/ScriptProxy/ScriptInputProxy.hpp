@@ -24,6 +24,9 @@ struct ScriptInputProxy {
     bool GetKeyDown(input::KeyCode key) const;
     bool GetKeyUp(input::KeyCode key) const;
     float GetAxis(std::string_view name) const;
+    bool GetButton(std::string_view name) const;
+    bool GetButtonDown(std::string_view name) const;
+    bool GetButtonUp(std::string_view name) const;
     math::Vector2 GetMouseDelta() const;
     math::Vector2 GetMousePosition() const;
     float GetMouseScrollDelta() const;
