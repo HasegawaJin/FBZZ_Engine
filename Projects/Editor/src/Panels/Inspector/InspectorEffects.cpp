@@ -4,6 +4,46 @@
 #include "InspectorEffects.hpp"
 
 #include <Editor/Util/ParticleEmitterModules.hpp>
+#include <Engine/Asset/VFXGraphAsset.hpp>
+#include <algorithm>
+#include <iterator>
+
+namespace {
+
+bool DrawVFXOverrideValue(const char* label, fbzz::asset::VFXParamType type,
+                          fbzz::asset::VFXParamValue& value,
+                          const fbzz::asset::VFXParamDefinition& definition,
+                          const std::string& projectRoot)
+{
+    auto* constant = std::get_if<fbzz::asset::VFXConstant>(&value.source);
+    if (constant == nullptr) { ImGui::TextDisabled("Dynamic source"); return false; }
+    if (type == fbzz::asset::VFXParamType::Float) {
+        auto* item = std::get_if<float>(constant); if (item == nullptr) return false;
+        return definition.hasRange ? ImGui::SliderFloat(label, item, definition.minimum, definition.maximum)
+                                   : ImGui::DragFloat(label, item, 0.01f);
+    }
+    if (type == fbzz::asset::VFXParamType::Int) {
+        auto* item = std::get_if<int>(constant); if (item == nullptr) return false;
+        return definition.hasRange ? ImGui::SliderInt(label, item, static_cast<int>(definition.minimum),
+                                                       static_cast<int>(definition.maximum))
+                                   : ImGui::DragInt(label, item);
+    }
+    if (type == fbzz::asset::VFXParamType::Bool) {
+        auto* item = std::get_if<bool>(constant); return item != nullptr && ImGui::Checkbox(label, item);
+    }
+    if (type == fbzz::asset::VFXParamType::Color) {
+        auto* item = std::get_if<fbzz::math::Vector4>(constant);
+        return item != nullptr && ImGui::ColorEdit4(label, &item->x);
+    }
+    if (type == fbzz::asset::VFXParamType::Vector3) {
+        auto* item = std::get_if<fbzz::math::Vector3>(constant);
+        return item != nullptr && ImGui::DragFloat3(label, &item->x, 0.01f);
+    }
+    auto* item = std::get_if<std::string>(constant);
+    return item != nullptr && fbzz::editor::widgets::AssetPathField(label, *item, "", projectRoot);
+}
+
+} // namespace
 
 namespace fbzz::editor {
 
@@ -15,6 +55,55 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawComponentSection<scene::ParticleEmitter>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Emitter",
         [](scene::ParticleEmitter& pe, EditorContext& ctx) {
             DrawParticleEmitterModules(pe, ctx);
+        });
+
+    DrawComponentSection<scene::VFXGraphComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "VFX Graph",
+        [](scene::VFXGraphComponent& component, EditorContext& ctx) {
+            ImGui::Checkbox("Enabled", &component.enabled);
+            widgets::AssetPathField("Graph (.vfx)", component.graphPath, ".vfx", ctx.projectRoot);
+            ImGui::Checkbox("Play On Awake", &component.playOnAwake);
+            ImGui::Checkbox("Loop", &component.loop);
+            ImGui::DragFloat("Speed", &component.speed, 0.01f, 0.0f, 8.0f);
+            asset::VFXGraphAsset graph;
+            std::string error;
+            if (component.graphPath.empty() || !asset::ParseVFXGraphAsset(component.graphPath, graph, &error)) {
+                if (!component.graphPath.empty()) ImGui::TextColored({1, 0.35f, 0.25f, 1}, "%s", error.c_str());
+                return;
+            }
+            if (ImGui::BeginCombo("Variant", component.variant.empty() ? "Default" : component.variant.c_str())) {
+                if (ImGui::Selectable("Default", component.variant.empty())) component.variant.clear();
+                for (const auto& variant : graph.variants)
+                    if (ImGui::Selectable(variant.name.c_str(), component.variant == variant.name))
+                        component.variant = variant.name;
+                ImGui::EndCombo();
+            }
+            if (graph.parameters.empty()) return;
+            ImGui::SeparatorText("Exposed Parameters");
+            for (const auto& definition : graph.parameters) {
+                ImGui::PushID(definition.name.c_str());
+                auto iterator = std::find_if(component.parameterOverrides.begin(), component.parameterOverrides.end(),
+                    [&](const asset::VFXParamOverride& item) { return item.paramName == definition.name; });
+                bool overridden = iterator != component.parameterOverrides.end();
+                if (ImGui::Checkbox("##override", &overridden)) {
+                    if (overridden) {
+                        component.parameterOverrides.push_back({ definition.name, definition.defaultValue });
+                        iterator = std::prev(component.parameterOverrides.end());
+                    } else {
+                        component.parameterOverrides.erase(iterator);
+                        iterator = component.parameterOverrides.end();
+                    }
+                    component.reloadRequested = true;
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!overridden);
+                if (overridden && iterator != component.parameterOverrides.end()
+                    && DrawVFXOverrideValue(definition.name.c_str(), definition.type, iterator->value,
+                                            definition, ctx.projectRoot))
+                    component.reloadRequested = true;
+                else if (!overridden) ImGui::TextDisabled("%s (default)", definition.name.c_str());
+                ImGui::EndDisabled();
+                ImGui::PopID();
+            }
         });
 
     DrawComponentSection<scene::ParticleForceField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Force Field",
