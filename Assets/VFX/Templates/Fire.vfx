@@ -1,0 +1,17 @@
+version = 3
+name = "Fire"
+maxParticles = 1800
+maxLights = 1
+maxAudioVoices = 1
+nodes = [
+  { id = 1, type = 0, name = "Entry", duration = 0.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0] },
+  { id = 2, type = 2, name = "Flame", duration = 5.0, editorX = 260.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0], particle = { duration = 5.0, loop = true, emitRate = 90.0, maxParticles = 1000, lifetime = 1.25, sizeStart = 0.75, sizeEnd = 0.08, emitVelocity = [0.0,2.8,0.0], velocitySpread = 0.9, gravity = [0.0,1.0,0.0], texturePath = "Assets/Textures/Particles/flame_03.png", emissiveScale = 3.5, noiseStrength = 2.0, noiseFrequency = 1.4 } },
+  { id = 3, type = 5, name = "Warm Light", duration = 5.0, editorX = 260.0, editorY = 210.0, position = [0.0,0.5,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0], light = { color = [1.0,0.38,0.08], intensity = 5.0, range = 7.0 } }
+]
+links = [{ from = 1, to = 2, trigger = 1, delay = 0.0 }, { from = 1, to = 3, trigger = 1, delay = 0.0 }]
+parameters = [
+  { name = "Intensity", type = 0, minimum = 0.0, maximum = 300.0, hasRange = true, default = { source = 0, constantType = 0, float = 90.0 } },
+  { name = "Turbulence", type = 0, minimum = 0.0, maximum = 12.0, hasRange = true, default = { source = 0, constantType = 0, float = 2.0 } }
+]
+bindings = [{ paramName = "Intensity", nodeId = 2, schemaPath = "particle.emitRate" }, { paramName = "Turbulence", nodeId = 2, schemaPath = "particle.noiseStrength" }]
+
