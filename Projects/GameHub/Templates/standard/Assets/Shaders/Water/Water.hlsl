@@ -91,8 +91,17 @@ cbuffer ShadowConstants : register(CB_SHADOW)
     float4x4 lightViewProjection;
     float2   shadowMapTexelSize;
     float    shadowBias;
-    float    _shadowPad;
+    float    shadowStrength;   // 0=影なし, 1=完全な影
+    int      shadowPcfRadius;  // PCF カーネル半径: 0=ハード, 1=3x3, 2=5x5, 3=7x7
+    float    cloudShadowStrength;
+    float    cloudShadowCoverage;
+    float    cloudShadowScale;
+    float    cloudShadowSpeed;
+    float    cloudShadowTime;
+    float    cloudShadowWindX;
+    float    cloudShadowWindZ;
 };
+#define HAVE_CLOUD_SHADOW 1
 
 #include "Rendering/Shadow.hlsli"
 

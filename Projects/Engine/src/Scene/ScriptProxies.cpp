@@ -35,6 +35,7 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/Components/ParticleForceField.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
@@ -391,7 +392,7 @@ float ScriptInputProxy::GetAxis(std::string_view name) const
 {
     // WHAT: Unity 互換の代表的な仮想軸だけを Script 層で合成する。
     // WHY: InputSystem のアクションマップをまだ持たないため、現状の KeyCode API から決定的に作れる範囲に絞る。
-    float value = 0.0f;
+    float value = input::Input::GetVirtualAxis(name);
     if (name == "Horizontal") {
         if (GetKey(input::KeyCode::A) || GetKey(input::KeyCode::LEFT)) value -= 1.0f;
         if (GetKey(input::KeyCode::D) || GetKey(input::KeyCode::RIGHT)) value += 1.0f;
@@ -403,8 +404,14 @@ float ScriptInputProxy::GetAxis(std::string_view name) const
     } else if (name == "Mouse Y") {
         value = input::Input::MouseDelta().y;
     }
+    if (name == "Horizontal" || name == "Vertical")
+        return std::clamp(value, -1.0f, 1.0f);
     return value;
 }
+
+bool ScriptInputProxy::GetButton(std::string_view name) const { return input::Input::GetVirtualButton(name); }
+bool ScriptInputProxy::GetButtonDown(std::string_view name) const { return input::Input::GetVirtualButtonDown(name); }
+bool ScriptInputProxy::GetButtonUp(std::string_view name) const { return input::Input::GetVirtualButtonUp(name); }
 
 math::Vector2 ScriptInputProxy::GetMouseDelta() const { return input::Input::MouseDelta(); }
 math::Vector2 ScriptInputProxy::GetMousePosition() const { return input::Input::MousePosition(); }
@@ -1429,6 +1436,87 @@ void ScriptParticleProxy::SetNoise(float strength, float frequency, float speed)
 void ScriptParticleProxy::SetReceiveForceFields(bool receive) const
 {
     if (auto* p = SelfComponent<ParticleEmitter>(script)) p->receiveForceFields = receive;
+}
+
+void ScriptVFXProxy::Play(bool restart) const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script)) {
+        if (restart) graph->Restart();
+        else graph->Resume();
+    }
+}
+
+void ScriptVFXProxy::Pause() const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script)) graph->Pause();
+}
+
+void ScriptVFXProxy::Stop() const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script)) graph->Stop();
+}
+
+void ScriptVFXProxy::SetSpeed(float speed) const
+{
+    if (auto* graph = SelfComponent<VFXGraphComponent>(script))
+        graph->speed = (std::max)(speed, 0.0f);
+}
+
+namespace {
+bool SetVFXOverride(Script* script, std::string_view name, asset::VFXParamValue value)
+{
+    auto* graph = SelfComponent<VFXGraphComponent>(script);
+    if (graph == nullptr || name.empty()) return false;
+    auto iterator = std::find_if(graph->parameterOverrides.begin(), graph->parameterOverrides.end(),
+        [name](const asset::VFXParamOverride& item) { return item.paramName == name; });
+    if (iterator == graph->parameterOverrides.end())
+        graph->parameterOverrides.push_back({ std::string(name), std::move(value) });
+    else iterator->value = std::move(value);
+    graph->reloadRequested = true;
+    return true;
+}
+}
+
+bool ScriptVFXProxy::SetFloat(std::string_view name, float value) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ value } }); }
+bool ScriptVFXProxy::SetInt(std::string_view name, int value) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ value } }); }
+bool ScriptVFXProxy::SetBool(std::string_view name, bool value) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ value } }); }
+bool ScriptVFXProxy::SetColor(std::string_view name, float r, float g, float b, float a) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ math::Vector4{ r, g, b, a } } }); }
+bool ScriptVFXProxy::SetVector3(std::string_view name, float x, float y, float z) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ math::Vector3{ x, y, z } } }); }
+bool ScriptVFXProxy::SetAsset(std::string_view name, std::string_view path) const
+{ return SetVFXOverride(script, name, { asset::VFXConstant{ std::string(path) } }); }
+bool ScriptVFXProxy::ClearOverride(std::string_view name) const
+{
+    auto* graph = SelfComponent<VFXGraphComponent>(script);
+    if (graph == nullptr) return false;
+    const auto oldSize = graph->parameterOverrides.size();
+    std::erase_if(graph->parameterOverrides,
+        [name](const asset::VFXParamOverride& item) { return item.paramName == name; });
+    if (graph->parameterOverrides.size() == oldSize) return false;
+    graph->reloadRequested = true;
+    return true;
+}
+
+bool ScriptVFXProxy::IsPlaying() const
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    return graph != nullptr && graph->playing;
+}
+
+float ScriptVFXProxy::GetTime() const
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    return graph != nullptr ? graph->playTime : 0.0f;
+}
+
+float ScriptVFXProxy::GetDuration() const
+{
+    const auto* graph = SelfComponent<VFXGraphComponent>(script);
+    return graph != nullptr ? graph->graphDuration : 0.0f;
 }
 
 void ScriptTrailProxy::SetEnabled(bool enabled, bool clearWhenDisabled) const

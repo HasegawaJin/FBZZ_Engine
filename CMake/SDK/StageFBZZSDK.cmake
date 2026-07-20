@@ -37,6 +37,8 @@ foreach(OPTIONAL_DLL dxcompiler.dll dxil.dll)
 endforeach()
 
 file(COPY "${EDITOR_DIR}/" DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
+# WHY: Editor出力側のPOST_BUILD状態に依存せず、SDK生成時にも起動必須のimgui.dllをexe隣へ保証する。
+file(COPY "${IMGUI_DLL}" DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
 file(COPY "${SOURCE_ROOT}/Assets/" DESTINATION "${SDK_ROOT}/Assets")
 file(COPY "${GENERATED_ROOT}/FBZZConfig.cmake" "${GENERATED_ROOT}/FBZZConfigVersion.cmake"
      "${GENERATED_ROOT}/FBZZTargets.cmake"

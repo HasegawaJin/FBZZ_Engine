@@ -24,6 +24,8 @@ set(REQUIRED_PATHS
     "bin/${CONFIG}/FBZZPhysics.dll"
     "bin/${CONFIG}/FBZZEngine.dll"
     "tools/${CONFIG}/Editor/FBZZEditor.exe"
+    # WHY: Editor は imgui 共有 DLL を起動時に読み込むため、exe と同じ階層への配置をSDK契約として検証する。
+    "tools/${CONFIG}/Editor/imgui.dll"
 )
 foreach(REQUIRED_PATH IN LISTS REQUIRED_PATHS)
     if(NOT EXISTS "${SDK_ROOT}/${REQUIRED_PATH}")

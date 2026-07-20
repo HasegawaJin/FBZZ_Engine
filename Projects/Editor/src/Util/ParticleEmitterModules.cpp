@@ -370,9 +370,9 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
         }
         if (open) {
             if (pe.collisionMode != scene::ParticleCollisionMode::None) {
-                const char* collisionModeItems[] = { "None", "Physics", "Plane" };
+                const char* collisionModeItems[] = { "None", "Physics", "Plane", "GPU Depth" };
                 int collisionMode = static_cast<int>(pe.collisionMode);
-                if (ImGui::Combo("Mode", &collisionMode, collisionModeItems, 3)) {
+                if (ImGui::Combo("Mode", &collisionMode, collisionModeItems, 4)) {
                     pe.collisionMode = static_cast<scene::ParticleCollisionMode>(collisionMode);
                     changed = true;
                 }
@@ -387,6 +387,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
                 changed |= ImGui::DragFloat("Damping", &pe.collisionDamping, 0.01f, 0.0f, 1.0f);
                 if (pe.collisionMode == scene::ParticleCollisionMode::Plane)
                     changed |= ImGui::DragFloat("Plane Y", &pe.collisionPlaneY, 0.01f, -10000.0f, 10000.0f);
+                if (pe.collisionMode == scene::ParticleCollisionMode::Depth)
+                    ImGui::TextDisabled("GPU simulation only. Uses opaque scene depth without CPU readback.");
                 ImGui::Text("Collisions this frame: %d", pe.collisionCountThisFrame);
             } else {
                 ImGui::TextDisabled("Enable to collide particles with Physics World or a ground plane.");
@@ -422,6 +424,15 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             && pe.flipbookMode != scene::ParticleFlipbookMode::RandomFrame)
             changed |= ImGui::DragFloat("FPS", &pe.flipbookFramesPerSecond, 0.1f, 0.0f, 240.0f);
         changed |= ImGui::Checkbox("Frame Blending", &pe.flipbookFrameBlending);
+        changed |= ImGui::Checkbox("Motion Vector Blending", &pe.motionVectorFlipbook);
+        if (pe.motionVectorFlipbook) {
+            if (widgets::AssetPathField("Motion Vector Atlas", pe.motionVectorTexturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
+                pe.motionVectorTexture = {};
+                pe.loadedMotionVectorTexturePath.clear();
+                changed = true;
+            }
+            changed |= ImGui::DragFloat("Motion Strength", &pe.motionVectorStrength, 0.01f, 0.0f, 8.0f);
+        }
         EndModule();
     }
 
@@ -457,6 +468,10 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             pe.loadedTexturePath.clear();
             changed = true;
         }
+        changed |= widgets::AssetPathField("Mesh Particle (optional)", pe.meshParticlePath,
+                                           ".fbx,.obj,.mesh,.fzasset", ctx.projectRoot);
+        if (!pe.meshParticlePath.empty())
+            ImGui::TextDisabled("Mesh Particle uses deterministic CPU simulation.");
         // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
         if (widgets::AssetPathField("Texture (fallback)", pe.texturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
             pe.texture = {};
@@ -467,6 +482,13 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
         changed |= ImGui::Checkbox("Soft Particles", &pe.softParticles);
         if (pe.softParticles)
             changed |= ImGui::DragFloat("Soft Fade Distance", &pe.softParticleFadeDistance, 0.01f, 0.001f, 100.0f);
+        changed |= ImGui::DragFloat("HDR Emissive", &pe.emissiveScale, 0.01f, 0.0f, 100.0f);
+        changed |= ImGui::Checkbox("Distortion / Heat Haze", &pe.distortion);
+        if (pe.distortion)
+            changed |= ImGui::DragFloat("Distortion Strength", &pe.distortionStrength, 0.001f, 0.0f, 0.25f, "%.4f");
+        changed |= ImGui::Checkbox("Six-way Lit Smoke", &pe.sixWayLighting);
+        if (pe.sixWayLighting)
+            changed |= ImGui::DragFloat("Lighting Strength", &pe.lightingStrength, 0.01f, 0.0f, 8.0f);
         EndModule();
     }
 

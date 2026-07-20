@@ -12,6 +12,7 @@
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
+#include <Editor/Util/Toast.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -22,7 +23,9 @@
 #include <imgui.h>
 #include <Windows.h>
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::editor {
@@ -60,48 +63,65 @@ bool TryGetWriteTime(const std::filesystem::path& path, FILETIME& out)
     return true;
 }
 
-// HLSL本体とincludeのうち、最も新しい更新時刻を返す。
-// WHY: compiled配下のCSOやmeta更新を監視対象へ混ぜると、再コンパイル直後に再度Dirtyになるため。
-FILETIME GetLatestShaderSourceWriteTime(const std::filesystem::path& root)
+// HLSLツリー指紋へ64bit値をFNV-1aで混ぜる。
+// WHY: 更新時刻の最大値だけでは、ファイル削除や時刻を維持した改名を検知できない。
+void MixShaderFingerprint(std::uint64_t& fingerprint, std::uint64_t value)
 {
-    FILETIME latest{};
-    for (const std::filesystem::path& path : util::FileSystem::ListFilesRecursive(root)) {
+    for (int byteIndex = 0; byteIndex < 8; ++byteIndex) {
+        fingerprint ^= static_cast<std::uint8_t>(value >> (byteIndex * 8));
+        fingerprint *= 1099511628211ull;
+    }
+}
+
+// HLSL/HLSLIと統合スクリプトのパス・更新時刻・サイズから決定的なツリー指紋を作る。
+// WHAT: 追加・更新・削除・改名のすべてを一つの比較で検知し、CSO/metaは監視対象から除外する。
+std::uint64_t GetShaderSourceFingerprint(const std::filesystem::path& root)
+{
+    std::vector<std::filesystem::path> sourcePaths;
+    std::error_code error;
+    std::filesystem::recursive_directory_iterator iterator(
+        root, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::recursive_directory_iterator end;
+    while (iterator != end) {
+        if (error) {
+            error.clear();
+            iterator.increment(error);
+            continue;
+        }
+
+        const std::filesystem::path path = iterator->path();
+        if (iterator->is_directory(error)) {
+            const std::wstring directoryName = path.filename().wstring();
+            if (directoryName == L"compiled" || directoryName == L"compiled_dx12")
+                iterator.disable_recursion_pending();
+            iterator.increment(error);
+            continue;
+        }
+
         const std::wstring extension = path.extension().wstring();
-        if (extension != L".hlsl" && extension != L".hlsli") continue;
-        FILETIME writeTime{};
-        if (TryGetWriteTime(path, writeTime) && CompareFileTime(&writeTime, &latest) > 0)
-            latest = writeTime;
+        if (extension == L".hlsl" || extension == L".hlsli"
+            || path.filename() == L"compile_shaders.ps1")
+            sourcePaths.push_back(path);
+        iterator.increment(error);
     }
-    return latest;
-}
+    if (sourcePaths.empty()) return 0;
 
-// コンパイル済みディレクトリ内で最も古いCSO時刻を返す。
-// 全Shaderを一括生成する現行フローでは、一つでも古ければセット全体を再生成する必要がある。
-bool TryGetOldestCsoWriteTime(const std::filesystem::path& root, FILETIME& oldest)
-{
-    bool found = false;
-    for (const std::filesystem::path& path : util::FileSystem::ListFilesRecursive(root)) {
-        if (path.extension() != L".cso") continue;
-        FILETIME writeTime{};
-        if (!TryGetWriteTime(path, writeTime)) continue;
-        if (!found || CompareFileTime(&writeTime, &oldest) < 0) oldest = writeTime;
-        found = true;
-    }
-    return found;
-}
+    std::sort(sourcePaths.begin(), sourcePaths.end());
+    std::uint64_t fingerprint = 1469598103934665603ull;
+    MixShaderFingerprint(fingerprint, sourcePaths.size());
+    for (const std::filesystem::path& path : sourcePaths) {
+        const std::wstring relativePath = path.lexically_relative(root).generic_wstring();
+        for (const wchar_t codeUnit : relativePath)
+            MixShaderFingerprint(fingerprint, static_cast<std::uint16_t>(codeUnit));
 
-// Editor起動前に変更されたHLSL/includeも初回スキャンで検出する。
-bool HasStaleCompiledShaderSet(const std::filesystem::path& shaderRoot)
-{
-    const FILETIME latestSource = GetLatestShaderSourceWriteTime(shaderRoot);
-    if (IsEmptyFileTime(latestSource)) return false;
-    for (const std::filesystem::path directory : {L"compiled", L"compiled_dx12"}) {
-        FILETIME oldestCso{};
-        if (!TryGetOldestCsoWriteTime(shaderRoot / directory, oldestCso)
-            || CompareFileTime(&latestSource, &oldestCso) > 0)
-            return true;
+        WIN32_FILE_ATTRIBUTE_DATA info{};
+        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info)) continue;
+        MixShaderFingerprint(fingerprint, info.ftLastWriteTime.dwHighDateTime);
+        MixShaderFingerprint(fingerprint, info.ftLastWriteTime.dwLowDateTime);
+        MixShaderFingerprint(fingerprint, info.nFileSizeHigh);
+        MixShaderFingerprint(fingerprint, info.nFileSizeLow);
     }
-    return false;
+    return fingerprint;
 }
 
 // Scripts DLLの鮮度判定に使う、ユーザー編集ソースの最新更新時刻を返す。
@@ -132,7 +152,7 @@ std::filesystem::path GetScriptScanRoot(const std::filesystem::path& scriptsSour
 }
 
 // HLSL の再コンパイル結果を現在開いているプロジェクトへ反映する。
-// WHY: compile_shaders.bat はエンジンソース側へDX11/DX12別のCSOを出力する。
+// WHY: compile_shaders.ps1 はエンジンソース側へDX11/DX12別のCSOを出力する。
 //      しかし実行中の renderer はプロジェクト側 Assets/shaders を読むため、
 //      ReloadAllShaders() の前に CSO を同期しないと古いバイナリを再ロードしてしまう。
 bool SyncCompiledShadersToProject(const std::filesystem::path& hlslSourceDir,
@@ -346,6 +366,8 @@ bool EditorApp::OpenScenePath(const std::string& path)
     m_ctx.editorHiddenGuids.clear();
     RebuildEditorUIFromScene();
     CaptureCleanScene();
+    AddRecentScene(path);
+    Toast::Info("Opened: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Opened scene: %s", path.c_str());
     return true;
 }
@@ -370,6 +392,8 @@ bool EditorApp::SaveScene()
 
     m_ctx.currentScenePath = m_settings.lastScenePath;
     CaptureCleanScene();
+    AddRecentScene(m_settings.lastScenePath);
+    Toast::Success("Saved: " + util::FileSystem::GetFilename(m_settings.lastScenePath));
     FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
     return true;
 }
@@ -394,8 +418,140 @@ bool EditorApp::SaveSceneAsDialog()
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
     CaptureCleanScene();
+    AddRecentScene(path);
+    Toast::Success("Saved: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
     return true;
+}
+
+// =============================================================================
+// 最近開いたシーン
+// =============================================================================
+
+void EditorApp::AddRecentScene(const std::string& path)
+{
+    if (path.empty()) return;
+    auto& recent = m_settings.recentScenes;
+    // 同一パス (大小・区切り無視) を除去してから先頭へ差し込む。
+    recent.erase(std::remove_if(recent.begin(), recent.end(),
+        [&](const std::string& p) { return util::FileSystem::SamePathText(p, path); }),
+        recent.end());
+    recent.insert(recent.begin(), path);
+    if (static_cast<int>(recent.size()) > EditorSettings::kMaxRecentScenes)
+        recent.resize(EditorSettings::kMaxRecentScenes);
+}
+
+// =============================================================================
+// オートセーブ / クラッシュ復旧
+// =============================================================================
+
+std::string EditorApp::AutoSaveDir() const
+{
+    if (m_ctx.projectRoot.empty()) return {};
+    return m_ctx.projectRoot + "/Library/AutoSave";
+}
+
+std::string EditorApp::AutoSavePath() const
+{
+    const std::string dir = AutoSaveDir();
+    if (dir.empty()) return {};
+    // 現在シーン名を基にした固定パス。無題シーンは "Untitled" を使う。
+    // WHY: path::string() は非 ASCII で例外を投げうるため、UTF-8 変換ユーティリティを使う。
+    const std::string base = m_ctx.currentScenePath.empty()
+        ? std::string("Untitled")
+        : util::FileSystem::PathToUtf8(
+              util::FileSystem::PathFromUtf8(m_ctx.currentScenePath).stem());
+    return dir + "/" + base + ".autosave.scene";
+}
+
+std::string EditorApp::SessionLockPath() const
+{
+    const std::string dir = AutoSaveDir();
+    if (dir.empty()) return {};
+    return dir + "/.session_active";
+}
+
+void EditorApp::WriteSessionLock()
+{
+    const std::string dir = AutoSaveDir();
+    if (dir.empty()) return;
+    util::FileSystem::EnsureDirectory(dir);
+    // 生存しているセッションの印。クリーンシャットダウンで消す。残っていればクラッシュとみなす。
+    util::FileSystem::WriteText(SessionLockPath(), m_ctx.currentScenePath);
+}
+
+void EditorApp::ClearSessionLock()
+{
+    const std::string lock = SessionLockPath();
+    if (!lock.empty() && util::FileSystem::Exists(lock))
+        util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(lock));
+    // 正常終了時はオートセーブの中間ファイルも掃除する (残すと次回誤検知する)。
+    const std::string autos = AutoSavePath();
+    if (!autos.empty() && util::FileSystem::Exists(autos))
+        util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(autos));
+}
+
+void EditorApp::TickAutoSave(float dt)
+{
+    if (!m_settings.autoSaveEnabled) return;
+    if (!m_ctx.activeScene) return;
+    // Play 中は編集シーンを触らない。ダーティでなければ何もしない。
+    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
+    if (!m_ctx.sceneDirty) { m_autoSaveTimer = 0.0f; return; }
+
+    m_autoSaveTimer += dt;
+    const float interval = static_cast<float>(std::max(30, m_settings.autoSaveIntervalSec));
+    if (m_autoSaveTimer < interval) return;
+    m_autoSaveTimer = 0.0f;
+
+    const std::string path = AutoSavePath();
+    if (path.empty()) return;
+    util::FileSystem::EnsureDirectory(AutoSaveDir());
+
+    // 本保存 (SaveScene) とは別の中間ファイルへ書き出す。dirty 状態や lastScenePath は変えない。
+    RemoveEditorHiding();
+    const bool ok = SceneIO::Save(*m_ctx.activeScene, path);
+    RestoreEditorHiding();
+    if (ok) {
+        Toast::Info("Auto-saved");
+        FBZZ_LOG_DEBUG("AutoSave: wrote %s", path.c_str());
+    } else {
+        FBZZ_LOG_WARN("AutoSave failed: %s", path.c_str());
+    }
+}
+
+void EditorApp::ProcessCrashRecovery()
+{
+    if (m_crashRecoveryChecked) return;
+    m_crashRecoveryChecked = true;
+    if (m_pendingRecoveryAutoSave.empty()) return;
+
+    const std::string autosavePath = m_pendingRecoveryAutoSave;
+    m_pendingRecoveryAutoSave.clear();
+
+    ModalDialog::OpenConfirm(
+        "Recover Unsaved Work",
+        "The previous session did not exit cleanly.\n"
+        "An auto-saved version of the scene was found.\n\n"
+        "Restore it? (Choosing No keeps the last saved scene.)",
+        [this, autosavePath]() {
+            if (!m_ctx.activeScene) return;
+            if (SceneIO::Load(*m_ctx.activeScene, autosavePath)) {
+                scene::FlushWorldTransforms(*m_ctx.activeScene);
+                m_undoStack.Clear();
+                m_ctx.selectedEntities.clear();
+                m_ctx.editorHiddenGuids.clear();
+                RebuildEditorUIFromScene();
+                // 復旧直後は未保存状態にして、ユーザーに保存を促す。
+                m_dirtyTracker.MarkDirty();
+                m_ctx.sceneDirty = true;
+                UpdateWindowTitle();
+                Toast::Success("Recovered auto-saved scene");
+                FBZZ_LOG_INFO("CrashRecovery: restored %s", autosavePath.c_str());
+            } else {
+                Toast::Error("Failed to load auto-saved scene");
+            }
+        });
 }
 
 // =============================================================================
@@ -484,10 +640,48 @@ bool CMakeCacheUsesSdkRoot(const std::filesystem::path& buildDir, const std::str
     return normalizedCache.find("FBZZ_SDK_ROOT:PATH=" + normalizedSdk) != std::string::npos;
 }
 
+// コピーされたテンプレートのCMakeCacheは生成元を指すため、configure前に破棄する。
+// WHY: CMakeはCMAKE_HOME_DIRECTORYが現在のプロジェクトと異なるキャッシュを安全上再利用せず、
+//      -DでSDKパスだけ上書きしてもexit=1になる。
+bool RemoveForeignCMakeCache(const std::string& projectRoot)
+{
+    const std::filesystem::path projectPath =
+        util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(projectRoot));
+    const std::filesystem::path buildDir = projectPath / L"Build" / L"VS";
+    std::string cacheText;
+    if (!util::FileSystem::ReadText(buildDir / L"CMakeCache.txt", cacheText)) return true;
+
+    static constexpr std::string_view kHomeKey = "CMAKE_HOME_DIRECTORY:INTERNAL=";
+    const std::size_t valueBegin = cacheText.find(kHomeKey);
+    if (valueBegin == std::string::npos) return true;
+    const std::size_t pathBegin = valueBegin + kHomeKey.size();
+    const std::size_t pathEnd = cacheText.find_first_of("\r\n", pathBegin);
+    const std::string cachedSource = cacheText.substr(pathBegin, pathEnd - pathBegin);
+    if (util::FileSystem::SamePath(util::FileSystem::PathFromUtf8(cachedSource), projectPath)) return true;
+
+    // 対象を project/Build/VS に固定し、プロジェクト外のパスを削除しない。
+    if (!util::FileSystem::IsChildPathText(
+            util::FileSystem::PathToUtf8(buildDir),
+            util::FileSystem::PathToUtf8(projectPath))) {
+        FBZZ_LOG_ERROR("ScriptDll: foreign CMake cache path is outside project: %s",
+                       util::FileSystem::PathToUtf8(buildDir).c_str());
+        return false;
+    }
+    if (!util::FileSystem::RemoveAll(buildDir)) {
+        FBZZ_LOG_ERROR("ScriptDll: stale CMake cache cleanup failed: %s",
+                       util::FileSystem::PathToUtf8(buildDir).c_str());
+        return false;
+    }
+    FBZZ_LOG_INFO("ScriptDll: removed copied CMake cache: %s", cachedSource.c_str());
+    return true;
+}
+
 // WHY: GameHub プロジェクトは初回開封時、または共有 SDK 移行直後に cache が古い場合がある。
 //      stale な Scripts.dll を先に読むと偽の ABI 詳細を出すため、ロード前に configure を完了させる。
 bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engineRoot)
 {
+    if (!RemoveForeignCMakeCache(projectRoot)) return false;
+
     wchar_t cmakeBuf[MAX_PATH]{};
     if (!SearchPathW(nullptr, L"cmake.exe", nullptr, MAX_PATH, cmakeBuf, nullptr)) {
         FBZZ_LOG_WARN("ScriptDll: cmake.exe が PATH に見つかりません。cmake --preset fbzz-vs を手動実行してください。");
@@ -495,30 +689,16 @@ bool TryCMakeConfigure(const std::string& projectRoot, const std::string& engine
     }
 
     if (!engineRoot.empty()) {
-        const int sz = MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, nullptr, 0);
-        if (sz > 0) {
-            std::wstring w(static_cast<size_t>(sz - 1), L'\0');
-            MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, w.data(), sz);
-            SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", w.c_str());
-        }
+        const std::wstring sdkRootW = util::StringUtils::ToWide(engineRoot);
+        if (!sdkRootW.empty()) SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", sdkRootW.c_str());
     }
 
-    const int projSz = MultiByteToWideChar(CP_UTF8, 0, projectRoot.c_str(), -1, nullptr, 0);
-    std::wstring projRootW;
-    if (projSz > 0) {
-        projRootW.resize(static_cast<size_t>(projSz - 1));
-        MultiByteToWideChar(CP_UTF8, 0, projectRoot.c_str(), -1, projRootW.data(), projSz);
-    }
+    const std::wstring projRootW = util::StringUtils::ToWide(projectRoot);
 
     // WHY: --preset の cacheVariables に "$env{FBZZ_SDK_ROOT}" があっても
     //      既に CMakeCache.txt が存在する場合はキャッシュ値が優先される。
     //      -D で明示的に上書きすることで既存キャッシュがあっても正しいパスが使われる。
-    const int engSz = MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, nullptr, 0);
-    std::wstring engineRootW;
-    if (engSz > 0) {
-        engineRootW.resize(static_cast<size_t>(engSz - 1));
-        MultiByteToWideChar(CP_UTF8, 0, engineRoot.c_str(), -1, engineRootW.data(), engSz);
-    }
+    const std::wstring engineRootW = util::StringUtils::ToWide(engineRoot);
     std::wstring cmd = std::wstring(L"\"") + cmakeBuf + L"\" --preset fbzz-vs";
     if (!engineRootW.empty())
         cmd += L" -DFBZZ_SDK_ROOT:PATH=\"" + engineRootW + L"\"";
@@ -610,7 +790,7 @@ void EditorApp::InitScriptDll()
         const std::filesystem::path engineRoot = toolchain.buildDir.parent_path().parent_path();
         m_scriptsSourceDir     = engineRoot / L"Assets" / L"Scripts";
         m_hlslSourceDir        = engineRoot / L"Assets" / L"shaders";
-        m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.bat";
+        m_compileShadersScript = m_hlslSourceDir / L"compile_shaders.ps1";
 
         m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(m_scriptsSourceDir);
         m_ctx.hlslSourceDir    = util::FileSystem::PathToUtf8(m_hlslSourceDir);
@@ -783,11 +963,12 @@ void EditorApp::InitScriptDll()
         }
     }
     if (!m_hlslSourceDir.empty()) {
-        m_lastHlslWriteTime = GetLatestShaderSourceWriteTime(m_hlslSourceDir);
-        if (HasStaleCompiledShaderSet(m_hlslSourceDir)) {
+        m_hlslSourceFingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
+        if (m_hlslSourceFingerprint != 0) {
             m_hlslCompilePending = true;
             m_hlslDebounceTimer = 0.0f;
-            FBZZ_LOG_INFO("HLSL: 起動時に古いCSOを検出、再コンパイルを予約します");
+            // WHY: 起動していない間の削除もstampでは判定できないため、差分スクリプトを一度走らせる。
+            FBZZ_LOG_INFO("HLSL: 起動時の差分検証を予約します");
         }
     }
 }
@@ -970,22 +1151,17 @@ void EditorApp::CheckHlslDirty()
     m_hlslDirtyPollTimer = 0.0f;
 
     FBZZ_PROFILE_SCOPE("HotReload::ScanHlsl");
-    const FILETIME ft = GetLatestShaderSourceWriteTime(m_hlslSourceDir);
-    if (IsEmptyFileTime(ft))
+    const std::uint64_t fingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
+    if (fingerprint == 0)
         return;
 
-    if (IsEmptyFileTime(m_lastHlslWriteTime)) {
-        m_lastHlslWriteTime = ft;
-        if (HasStaleCompiledShaderSet(m_hlslSourceDir)) {
-            m_hlslCompilePending = true;
-            m_hlslDebounceTimer = 0.0f;
-            FBZZ_LOG_INFO("HLSL: 初回スキャンで古いCSOを検出、再コンパイルします");
-        }
+    if (m_hlslSourceFingerprint == 0) {
+        m_hlslSourceFingerprint = fingerprint;
         return;
     }
-    if (CompareFileTime(&ft, &m_lastHlslWriteTime) == 0) return;
+    if (fingerprint == m_hlslSourceFingerprint) return;
 
-    m_lastHlslWriteTime  = ft;
+    m_hlslSourceFingerprint = fingerprint;
     m_hlslCompilePending = true;
     m_hlslDebounceTimer  = 0.5f;
     FBZZ_LOG_DEBUG("HLSL: change detected in %s; recompiling after 500 ms debounce",
@@ -1000,24 +1176,25 @@ void EditorApp::TickHlslCompile()
 
         m_hlslCompilePending = false;
 
-        // WHY: HLSL コンパイルは cmake --build ではなく compile_shaders.bat を直接実行する。
-        //      Compiler クラスは cmake --build 用だが、exePath を空にして
-        //      target に bat 実行コマンドを渡す方法は複雑なため、
-        //      cmake --build で compile_shaders ターゲットを指定して間接実行する。
-        ToolchainLocator::Result toolchain = ToolchainLocator::Locate(
-            util::FileSystem::PathFromUtf8(m_ctx.projectBuildRoot));
-        if (!toolchain.found) {
-            SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: toolchain not resolved");
+        // WHY: ホットリロードは未Configureのゲームプロジェクトでも動く必要があるため、
+        //      正式ビルド用CMakeターゲットを経由せず、差分対応PowerShellを直接非同期実行する。
+        if (!util::FileSystem::Exists(m_compileShadersScript)) {
+            SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: compile_shaders.ps1 not found");
             return;
         }
 
+        wchar_t systemRoot[MAX_PATH]{};
+        const DWORD systemRootLength = GetEnvironmentVariableW(L"SystemRoot", systemRoot, MAX_PATH);
+        const std::filesystem::path powerShellPath =
+            systemRootLength > 0 && systemRootLength < MAX_PATH
+                ? std::filesystem::path(systemRoot) / L"System32" / L"WindowsPowerShell" / L"v1.0" / L"powershell.exe"
+                : std::filesystem::path(L"powershell.exe");
+
         Compiler::Config config;
-        config.cmakeExe      = toolchain.cmakeExe;
-        config.buildDir      = toolchain.buildDir;
-        config.exePath       = std::filesystem::path{};
-        config.target        = "compile_shaders";
-        config.sdkRoot       = m_ctx.engineRoot;
-        config.configuration = FBZZ_CMAKE_CONFIG;
+        config.commandLine = L"\"" + powerShellPath.wstring()
+            + L"\" -NoProfile -ExecutionPolicy Bypass -File \""
+            + m_compileShadersScript.wstring() + L"\"";
+        config.workingDirectory = m_hlslSourceDir;
 
         if (!m_hlslCompiler.Start(config)) {
             SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: failed to start compile");

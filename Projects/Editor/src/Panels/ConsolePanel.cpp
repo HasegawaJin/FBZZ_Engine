@@ -87,12 +87,21 @@ void ConsolePanel::OnRenderContent(EditorContext& /*ctx*/)
     if (logRegion.y < 1.0f) logRegion.y = 1.0f;
 
     ImGui::BeginChild("##log", logRegion, true, ImGuiWindowFlags_HorizontalScrollbar);
+    int shownCount = 0;
     for (const auto& entry : m_sink.GetEntries()) {
         if (!isVisible(entry)) continue;
 
         ImGui::PushStyleColor(ImGuiCol_Text, LogLevelColor(entry.level));
         ImGui::TextUnformatted(entry.message.c_str());
         ImGui::PopStyleColor();
+        ++shownCount;
+    }
+    // 空状態ガイド: ログが無いのか、フィルタで隠れているのかを区別して案内する。
+    if (shownCount == 0) {
+        const bool hasAny = !m_sink.GetEntries().empty();
+        ImGui::TextDisabled("%s", hasAny
+            ? "No logs match the current filters (level toggles / filter text)."
+            : "No logs yet. Engine and script messages will appear here.");
     }
 
     if (m_autoScroll && !m_visibleLogText.empty())

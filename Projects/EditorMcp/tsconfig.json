@@ -1,0 +1,22 @@
+{
+    // FBZZ Editor MCP — Node ESM 前提の TypeScript ビルド設定。
+    // dist/ の .js / .d.ts / .map レイアウトを再現し、`npm run build` で完全再生成できる状態へ戻す。
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "rootDir": "src",
+        "outDir": "dist",
+        "declaration": true,
+        "sourceMap": true,
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noImplicitOverride": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true,
+        "types": ["node"]
+    },
+    "include": ["src/**/*.ts"]
+}

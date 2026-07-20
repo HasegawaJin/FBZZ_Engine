@@ -21,6 +21,8 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
+#include "../RenderTargetCapture.hpp" // AI 連携: RT → PNG エンコード共通処理
+#include <DirectXTex.h>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <dxgi1_5.h>
 #include <string>
@@ -705,6 +707,26 @@ void DX11Renderer::BindRenderTarget(IRenderTarget* rt)
 void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources)
 {
     BindRenderTarget(resources.Get(rt));
+}
+
+bool DX11Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                            std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
+{
+    // Platform 層内なので IRenderTarget → 具象へのキャストは許容 (上位からのダウンキャスト禁止規約の対象外)。
+    auto* target = static_cast<DX11RenderTarget*>(resources.Get(rt));
+    if (target == nullptr) return false;
+    ID3D11ShaderResourceView* srv = target->GetColorSRV(0);
+    if (srv == nullptr) return false;
+
+    // SRV から元テクスチャ (R16G16B16A16_FLOAT) を取り出す。CaptureTexture が内部で STAGING コピーする。
+    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+    srv->GetResource(resource.GetAddressOf());
+    if (!resource) return false;
+
+    DirectX::ScratchImage captured;
+    const HRESULT hr = DirectX::CaptureTexture(m_device.Get(), m_context.Get(), resource.Get(), captured);
+    if (FAILED(hr)) return false;
+    return detail::EncodeCapturedImageToPng(captured, outPng, outWidth, outHeight);
 }
 
 void DX11Renderer::SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,

@@ -6,10 +6,10 @@
 //
 // 設計方針:
 //   通常はビルド済み CSO (Compiled Shader Object) をロードする。
-//   CSO が存在しない場合 (初回起動・compile_shaders.bat 未実行) は
+//   CSO が存在しない場合 (初回起動・compile_shaders.ps1 未実行) は
 //   D3DCompileFromFile でオンデマンドコンパイルし、生成した CSO をキャッシュする。
-//   WHY: DemoGame / StandaloneApp が compile_shaders.bat なしに動作するよう。
-//        エディター向けの本番ワークフローは compile_shaders.bat が担う。
+//   WHY: DemoGame / StandaloneApp が compile_shaders.ps1 なしに動作するよう。
+//        エディター向けの本番ワークフローは compile_shaders.ps1 が担う。
 //   シェーダーパスは "assets/shaders/Phong.hlsl" 形式で受け取り、
 //   "assets/shaders/compiled/Phong.vs.cso" / ".ps.cso" に解決する。
 //

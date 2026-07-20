@@ -50,6 +50,10 @@ public:
     void GpuProfEndPass(const char* name) override;
     void GpuProfCollect() override;
     const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuResults; }
+    // AI 連携 (viewport.capture): Scene View RT を PNG バイト列へ読み戻す。
+    bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                  std::vector<uint8_t>& outPng,
+                                  uint32_t& outWidth, uint32_t& outHeight) override;
     uint32_t GetWidth() const override { return m_context.GetWidth(); }
     uint32_t GetHeight() const override { return m_context.GetHeight(); }
     DX12Context& GetContext() { return m_context; }

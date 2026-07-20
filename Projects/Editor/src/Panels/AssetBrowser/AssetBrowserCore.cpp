@@ -40,23 +40,48 @@ bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
     auto* go = ctx.activeScene->GetGameObject(droppedId);
     if (!go) return false;
 
+    // ドラッグ中の GO が現在の選択に含まれるなら選択全体を、そうでなければその 1 体だけを
+    // プレファブ化する。
+    // WHY: Unity と同様、複数選択したまま 1 体を掴んで AssetBrowser へ落とすと選択全体が
+    //      1 つのプレファブになる。ドラッグ payload は掴んだ 1 体しか運ばないため、ここで
+    //      選択集合と突き合わせて対象を決める。命名は掴んだ GO を代表名にする。
+    std::vector<scene::EntityID> selection;
+    if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), droppedId)
+        != ctx.selectedEntities.end())
+        selection = ctx.selectedEntities;
+    else
+        selection = { droppedId };
+
     const std::string path = UniquePrefabPathInDir(targetDir, go->name);
-    if (!PrefabSerializer::SaveSelection(*ctx.activeScene, { droppedId }, path))
+    std::vector<scene::EntityID> connectedRoots;
+    if (!PrefabSerializer::SaveSelectionAndConnect(*ctx.activeScene, selection, path, connectedRoots))
         return false;
+
+    const std::string relPath = NormalizeAssetPath(path);
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
 
     if (ctx.undoStack) {
         std::string content;
         if (util::FileSystem::ReadText(path, content)) {
             EditorContext* context = &ctx;
+            const std::vector<scene::EntityID> roots = connectedRoots;
             auto refresh = [context]() { context->requestAssetBrowserRefresh = true; };
             ctx.undoStack->Push(std::make_unique<LambdaCommand>(
                 "Create Prefab",
-                [path, content, refresh]() {
+                [path, content, relPath, roots, context, refresh]() {
                     util::FileSystem::WriteText(path, content);
+                    if (context->activeScene)
+                        for (scene::EntityID id : roots)
+                            if (auto* g = context->activeScene->GetGameObject(id))
+                                g->prefabAssetPath = relPath;
                     refresh();
                 },
-                [path, refresh]() {
+                [path, roots, context, refresh]() {
                     util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+                    if (context->activeScene)
+                        for (scene::EntityID id : roots)
+                            if (auto* g = context->activeScene->GetGameObject(id))
+                                g->prefabAssetPath.clear();
                     refresh();
                 }));
         }
@@ -320,10 +345,8 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
 
     // シェーダー配布物を作る補助スクリプトとログはエディタ内部の保守用ファイル。
     static constexpr const char* kShaderToolFiles[] = {
-        "compile_shaders.bat",
-        "compile_ui_shaders.bat",
+        "compile_shaders.ps1",
         "compile_log.txt",
-        "compile_ui_log.txt",
     };
     for (const char* toolFile : kShaderToolFiles) {
         if (lowerName == toolFile) return false;

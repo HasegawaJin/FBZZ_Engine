@@ -50,8 +50,9 @@ bool CanEditAnimationGraph(const EditorContext& ctx)
 }
 
 constexpr float SIDEBAR_WIDTH = 260.0f;
-constexpr float MIN_CANVAS_ZOOM = 0.50f;
-constexpr float MAX_CANVAS_ZOOM = 1.80f;
+// WHY: 大きなステートマシンを一望するには Unity 同等の広いズームレンジが必要。
+constexpr float MIN_CANVAS_ZOOM = 0.30f;
+constexpr float MAX_CANVAS_ZOOM = 2.00f;
 constexpr float ZOOM_STEP = 0.10f;
 constexpr float WHEEL_PAN_STEP = 56.0f;
 constexpr float BASE_NODE_CARD_WIDTH = 188.0f;
@@ -1057,6 +1058,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             m_openBlendTreeState = -1;
             m_selectedMotion = -1;
             m_selectedAnyState = false;
+            m_pendingTransitionFrom = -1;
             ctx.animationGraphSelection.Clear();
         }
 
@@ -1179,6 +1181,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         m_openBlendTreeState = -1;
         m_selectedMotion = -1;
         m_selectedAnyState = false;
+        m_pendingTransitionFrom = -1;
         ctx.animationGraphSelection.Clear();
     }
 
@@ -1294,6 +1297,50 @@ void AnimationGraphPanel::DrawZoomControls()
             "Wheel: Zoom | Shift + Wheel: Horizontal pan | Alt + Wheel: Vertical pan");
 }
 
+void AnimationGraphPanel::HandleCanvasWheel(float canvasOriginX, float canvasOriginY)
+{
+    const ImGuiIO& io = ImGui::GetIO();
+    const bool canvasHovered = ImGui::IsWindowHovered(CANVAS_HOVER_FLAGS);
+    const bool hasVerticalWheel = io.MouseWheel != 0.0f;
+    const bool canZoomWithWheel =
+        canvasHovered && !io.KeyShift && !io.KeyAlt && hasVerticalWheel;
+    if (canZoomWithWheel) {
+        // WHY: imnodes 本体にはズーム API がないため、パネル側でノード座標と描画寸法を拡縮する。
+        //      カーソル直下のグラフ座標を固定するようパン量も補正し、拡大時の視点移動を防ぐ。
+        const float oldZoom = m_canvasZoom;
+        const float zoomSpeed = io.KeyCtrl ? ZOOM_STEP * 1.5f : ZOOM_STEP;
+        const float newZoom = ClampZoom(oldZoom + io.MouseWheel * zoomSpeed);
+        if (std::abs(newZoom - oldZoom) > 0.0001f) {
+            const ImVec2 oldPanning = ImNodes::EditorContextGetPanning();
+            const ImVec2 mouseInCanvas(
+                io.MousePos.x - canvasOriginX,
+                io.MousePos.y - canvasOriginY);
+            const float ratio = newZoom / oldZoom;
+            const ImVec2 newPanning(
+                mouseInCanvas.x - (mouseInCanvas.x - oldPanning.x) * ratio,
+                mouseInCanvas.y - (mouseInCanvas.y - oldPanning.y) * ratio);
+            ImNodes::EditorContextResetPanning(newPanning);
+            m_canvasZoom = newZoom;
+        }
+    }
+
+    if (canvasHovered && (io.KeyShift || io.MouseWheelH != 0.0f)) {
+        // Shift+縦ホイールと横ホイールを同じ横パン操作として扱う。
+        const float horizontalWheel =
+            io.MouseWheelH != 0.0f ? io.MouseWheelH : io.MouseWheel;
+        if (horizontalWheel != 0.0f) {
+            ImVec2 panning = ImNodes::EditorContextGetPanning();
+            panning.x += horizontalWheel * WHEEL_PAN_STEP;
+            ImNodes::EditorContextResetPanning(panning);
+        }
+    }
+    if (canvasHovered && io.KeyAlt && !io.KeyShift && hasVerticalWheel) {
+        ImVec2 panning = ImNodes::EditorContextGetPanning();
+        panning.y += io.MouseWheel * WHEEL_PAN_STEP;
+        ImNodes::EditorContextResetPanning(panning);
+    }
+}
+
 void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::AnimatorComponent& animator)
 {
     ImGui::BeginChild("##AnimationGraphParameters", ImVec2(SIDEBAR_WIDTH, 0.0f), true);
@@ -1380,44 +1427,7 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
     const ImGuiIO& io = ImGui::GetIO();
     const bool canvasHovered = ImGui::IsWindowHovered(CANVAS_HOVER_FLAGS);
     const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
-    const bool hasVerticalWheel = io.MouseWheel != 0.0f;
-    const bool canZoomWithWheel =
-        canvasHovered && !io.KeyShift && !io.KeyAlt && hasVerticalWheel;
-    if (canZoomWithWheel) {
-        // WHY: imnodes 本体にはズーム API がないため、パネル側でノード座標と描画寸法を拡縮する。
-        //      カーソル直下のグラフ座標を固定するようパン量も補正し、拡大時の視点移動を防ぐ。
-        const float oldZoom = m_canvasZoom;
-        const float zoomSpeed = io.KeyCtrl ? ZOOM_STEP * 1.5f : ZOOM_STEP;
-        const float newZoom = ClampZoom(oldZoom + io.MouseWheel * zoomSpeed);
-        if (std::abs(newZoom - oldZoom) > 0.0001f) {
-            const ImVec2 oldPanning = ImNodes::EditorContextGetPanning();
-            const ImVec2 mouseInCanvas(
-                io.MousePos.x - canvasOrigin.x,
-                io.MousePos.y - canvasOrigin.y);
-            const float ratio = newZoom / oldZoom;
-            const ImVec2 newPanning(
-                mouseInCanvas.x - (mouseInCanvas.x - oldPanning.x) * ratio,
-                mouseInCanvas.y - (mouseInCanvas.y - oldPanning.y) * ratio);
-            ImNodes::EditorContextResetPanning(newPanning);
-            m_canvasZoom = newZoom;
-        }
-    }
-
-    if (canvasHovered && (io.KeyShift || io.MouseWheelH != 0.0f)) {
-        // Shift+縦ホイールと横ホイールを同じ横パン操作として扱う。
-        const float horizontalWheel =
-            io.MouseWheelH != 0.0f ? io.MouseWheelH : io.MouseWheel;
-        if (horizontalWheel != 0.0f) {
-            ImVec2 panning = ImNodes::EditorContextGetPanning();
-            panning.x += horizontalWheel * WHEEL_PAN_STEP;
-            ImNodes::EditorContextResetPanning(panning);
-        }
-    }
-    if (canvasHovered && io.KeyAlt && !io.KeyShift && hasVerticalWheel) {
-        ImVec2 panning = ImNodes::EditorContextGetPanning();
-        panning.y += io.MouseWheel * WHEEL_PAN_STEP;
-        ImNodes::EditorContextResetPanning(panning);
-    }
+    HandleCanvasWheel(canvasOrigin.x, canvasOrigin.y);
 
     GraphLayout& layout = ctx.graphLayouts[instanceId];
 
@@ -1526,7 +1536,19 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
         ++pushedColors;
         ImNodes::PushColorStyle(ImNodesCol_NodeBackgroundSelected, IM_COL32(48, 67, 82, 255));
         ++pushedColors;
-        ImNodes::PushColorStyle(ImNodesCol_NodeOutline, NodeOutlineColor(isCurrent, isDefault));
+        // 再生中ステートはアウトラインを脈動させ、グラフのどこが生きているか一目で追えるようにする。
+        const float activePulse = isCurrent
+            ? 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 5.0f)
+            : 0.0f;
+        unsigned int outlineColor = NodeOutlineColor(isCurrent, isDefault);
+        if (isCurrent) {
+            outlineColor = IM_COL32(
+                60 + static_cast<int>(60.0f * activePulse),
+                200 + static_cast<int>(55.0f * activePulse),
+                120 + static_cast<int>(70.0f * activePulse),
+                255);
+        }
+        ImNodes::PushColorStyle(ImNodesCol_NodeOutline, outlineColor);
         ++pushedColors;
         ImNodes::PushColorStyle(ImNodesCol_TitleBar, titleColor);
         ++pushedColors;
@@ -1535,6 +1557,9 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
         ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, titleColor);
         ++pushedColors;
 
+        if (isCurrent)
+            ImNodes::PushStyleVar(ImNodesStyleVar_NodeBorderThickness,
+                                  (2.0f + 1.6f * activePulse) * m_canvasZoom);
         ImNodes::BeginNode(NodeId(i));
         ImNodes::BeginNodeTitleBar();
         ImGui::TextUnformatted(state.name.empty() ? "(Unnamed)" : state.name.c_str());
@@ -1634,8 +1659,8 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
             static_cast<int>(state.transitions.size()),
             state.transitions.size() == 1 ? "" : "s");
         if (isCurrent) {
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(55, 210, 115, 220));
-            ImGui::ProgressBar(animator.GetNormalizedTime(), ImVec2(cardWidth, 3.0f), "");
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(70, 235, 130, 255));
+            ImGui::ProgressBar(animator.GetNormalizedTime(), ImVec2(cardWidth, 5.0f), "");
             ImGui::PopStyleColor();
         } else if (!animator.blendToState.empty() && state.name == animator.blendToState) {
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(75, 140, 225, 180));
@@ -1655,6 +1680,7 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
         ImNodes::PopColorStyle();
 
         ImNodes::EndNode();
+        if (isCurrent) ImNodes::PopStyleVar();
         while (pushedColors-- > 0) ImNodes::PopColorStyle();
     }
 
@@ -1750,7 +1776,6 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
                                    bool isAnyState,
                                    bool isActive) {
         const bool selected = ImNodes::IsLinkSelected(linkId);
-        if (m_canvasZoom < 0.65f && !selected) return;
 
         const ImVec2 fromPos = ImNodes::GetNodeScreenSpacePos(fromNodeId);
         const ImVec2 fromSize = ImNodes::GetNodeDimensions(fromNodeId);
@@ -1762,6 +1787,74 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
         const ImVec2 toCenter(
             toPos.x,
             inputPinScreenY.count(toNodeId) ? inputPinScreenY.at(toNodeId) : toPos.y + toSize.y * 0.5f);
+
+        // Unity の Animator と同じく、リンク上に進行方向の矢印を常時描画する。
+        // WHY: 双方向遷移では線の色だけで向きを読めず、どちら行きか Inspector を開くまで分からないため。
+        {
+            // imnodes と同じ「水平ハンドル = 距離の 25%」のベジェで曲線上の点と接線を求める。
+            const float dx = toCenter.x - fromCenter.x;
+            const float dy = toCenter.y - fromCenter.y;
+            const float linkLength = std::sqrt(dx * dx + dy * dy);
+            const ImVec2 p0 = fromCenter;
+            const ImVec2 p1(fromCenter.x + 0.25f * linkLength, fromCenter.y);
+            const ImVec2 p2(toCenter.x - 0.25f * linkLength, toCenter.y);
+            const ImVec2 p3 = toCenter;
+            const auto bezierAt = [&](float t) {
+                const float u = 1.0f - t;
+                return ImVec2(
+                    u * u * u * p0.x + 3.0f * u * u * t * p1.x + 3.0f * u * t * t * p2.x + t * t * t * p3.x,
+                    u * u * u * p0.y + 3.0f * u * u * t * p1.y + 3.0f * u * t * t * p2.y + t * t * t * p3.y);
+            };
+            // バッジ (リンク中央) と重ならないよう 3/4 地点へ置く。
+            constexpr float ARROW_T = 0.75f;
+            const ImVec2 tip = bezierAt(ARROW_T);
+            const ImVec2 behind = bezierAt(ARROW_T - 0.04f);
+            float dirX = tip.x - behind.x;
+            float dirY = tip.y - behind.y;
+            const float dirLength = std::sqrt(dirX * dirX + dirY * dirY);
+            if (dirLength > 0.0001f && linkLength > 24.0f) {
+                dirX /= dirLength;
+                dirY /= dirLength;
+                const float arrowSize = 7.0f * m_canvasZoom;
+                const ImVec2 base(tip.x - dirX * arrowSize * 1.6f, tip.y - dirY * arrowSize * 1.6f);
+                const ImVec2 normal(-dirY, dirX);
+                const ImU32 arrowColor = isActive
+                    ? IM_COL32(91, 239, 148, 255)
+                    : isAnyState
+                        ? IM_COL32(205, 130, 236, 255)
+                        : transition.hasExitTime
+                            ? IM_COL32(240, 187, 96, 255)
+                            : IM_COL32(126, 188, 240, 255);
+                ImDrawList* arrowDrawList = ImGui::GetWindowDrawList();
+                arrowDrawList->AddTriangleFilled(
+                    ImVec2(tip.x + dirX * arrowSize * 0.6f, tip.y + dirY * arrowSize * 0.6f),
+                    ImVec2(base.x + normal.x * arrowSize, base.y + normal.y * arrowSize),
+                    ImVec2(base.x - normal.x * arrowSize, base.y - normal.y * arrowSize),
+                    arrowColor);
+            }
+
+            // 再生中の遷移はリンクに沿って光の粒を流し、方向と活性を同時に示す。
+            if (isActive && linkLength > 24.0f) {
+                ImDrawList* flowDrawList = ImGui::GetWindowDrawList();
+                const float flowTime = static_cast<float>(ImGui::GetTime());
+                constexpr int FLOW_DOT_COUNT = 3;
+                for (int k = 0; k < FLOW_DOT_COUNT; ++k) {
+                    const float flowT = std::fmod(
+                        flowTime * 0.45f +
+                            static_cast<float>(k) / static_cast<float>(FLOW_DOT_COUNT),
+                        1.0f);
+                    const ImVec2 dot = bezierAt(flowT);
+                    // 端点付近でフェードさせ、粒の出現・消滅を滑らかにする。
+                    const float fade =
+                        std::clamp((std::min)(flowT, 1.0f - flowT) * 6.0f, 0.0f, 1.0f);
+                    flowDrawList->AddCircleFilled(
+                        dot, 3.2f * m_canvasZoom,
+                        IM_COL32(140, 255, 190, static_cast<int>(230.0f * fade)));
+                }
+            }
+        }
+
+        if (m_canvasZoom < 0.65f && !selected) return;
         const float offsetY =
             static_cast<float>((parallelIndex % 3) - 1) * 18.0f * m_canvasZoom;
         const ImVec2 center(
@@ -1846,6 +1939,27 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
                 !animator.blendToState.empty() &&
                 transition.toStateName == animator.blendToState);
     }
+
+    // 再生中ステートは脈動する多重リングで発光させ、離れたズームでも現在地を見失わないようにする。
+    if (currentStateIndex >= 0 &&
+        currentStateIndex < static_cast<int>(animator.states.size())) {
+        const float glowPulse =
+            0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 5.0f);
+        const ImVec2 nodePos = ImNodes::GetNodeScreenSpacePos(NodeId(currentStateIndex));
+        const ImVec2 nodeSize = ImNodes::GetNodeDimensions(NodeId(currentStateIndex));
+        ImDrawList* glowDrawList = ImGui::GetWindowDrawList();
+        for (int ring = 0; ring < 3; ++ring) {
+            const float expand =
+                (3.0f + static_cast<float>(ring) * 3.5f + glowPulse * 2.5f) * m_canvasZoom;
+            const int alpha = static_cast<int>(
+                static_cast<float>(110 - ring * 32) * (0.55f + 0.45f * glowPulse));
+            glowDrawList->AddRect(
+                ImVec2(nodePos.x - expand, nodePos.y - expand),
+                ImVec2(nodePos.x + nodeSize.x + expand, nodePos.y + nodeSize.y + expand),
+                IM_COL32(86, 240, 150, alpha),
+                6.0f * m_canvasZoom + expand, 0, 2.0f);
+        }
+    }
     ImGui::GetWindowDrawList()->PopClipRect();
 
     if (canvasHovered && ImGui::IsKeyPressed(ImGuiKey_F) &&
@@ -1860,12 +1974,119 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
     ImGui::GetWindowDrawList()->AddText(
         helpPos,
         IM_COL32(155, 165, 178, canvasHovered ? 230 : 145),
-        "Wheel: Zoom | Shift/Alt+Wheel: Pan | Middle Drag: Pan | F: Focus");
+        "Wheel: Zoom | Middle Drag: Pan | RClick: Make Transition | F: Focus | F2: Rename | Del: Delete | Ctrl+D: Duplicate");
 
     int activePin = 0;
     if (ImNodes::IsLinkStarted(&activePin)) {
-        const bool fromOutput = (activePin % 2) == 0;
-        ImGui::SetTooltip(fromOutput ? "Drop on a blue < To pin" : "Drop on an orange From > pin");
+        // ノード本体へのドロップも受け付けるため、ピンを狙う必要はない。
+        ImGui::SetTooltip("Drop on a state to connect");
+    }
+
+    int hoveredNode = 0;
+    const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
+    int hoveredLink = 0;
+    const bool linkHovered = ImNodes::IsLinkHovered(&hoveredLink);
+    const int hoveredStateIndex =
+        nodeHovered && hoveredNode >= NodeId(0) &&
+        hoveredNode < NodeId(static_cast<int>(animator.states.size()))
+            ? hoveredNode - NodeId(0)
+            : -1;
+
+    // Any State 遷移は同一ターゲットへの重複を禁止し、追加後は選択して Inspector で編集できるようにする。
+    auto addAnyStateTransition = [&](int toIndex) {
+        if (toIndex < 0 || toIndex >= static_cast<int>(animator.states.size())) return;
+        const std::string& toStateName = animator.states[static_cast<size_t>(toIndex)].name;
+        const bool alreadyExists = std::any_of(
+            animator.anyStateTransitions.begin(),
+            animator.anyStateTransitions.end(),
+            [&](const scene::AnimationTransition& transition) {
+                return transition.toStateName == toStateName;
+            });
+        if (alreadyExists) return;
+        scene::AnimationTransition transition;
+        transition.toStateName = toStateName;
+        animator.anyStateTransitions.push_back(std::move(transition));
+        m_selectedLink = { -2, static_cast<int>(animator.anyStateTransitions.size()) - 1 };
+        MarkDirty(ctx);
+    };
+    // Entry からの接続はデフォルトステートの指定として扱う (Unity の Entry 遷移と同じ)。
+    auto setDefaultState = [&](int toIndex) {
+        if (toIndex < 0 || toIndex >= static_cast<int>(animator.states.size())) return;
+        animator.defaultStateName = animator.states[static_cast<size_t>(toIndex)].name;
+        animator.currentStateName.clear();
+        MarkDirty(ctx);
+    };
+
+    // Unity の "Make Transition" モード。
+    // WHAT: ソースノード中心からマウスへ矢印付きの白線を描き、ステート左クリックで遷移を確定する。
+    //       右クリック / Esc / 空白クリックでキャンセル。ピンドラッグより粗い操作で遷移を作れる。
+    const bool pendingTransitionActive = m_pendingTransitionFrom != -1;
+    bool pendingModeConsumedClick = false;
+    if (pendingTransitionActive) {
+        int sourceNodeId = -1;
+        if (m_pendingTransitionFrom >= 0 &&
+            m_pendingTransitionFrom < static_cast<int>(animator.states.size()))
+            sourceNodeId = NodeId(m_pendingTransitionFrom);
+        else if (m_pendingTransitionFrom == -2)
+            sourceNodeId = AnyStateNodeId();
+        else if (m_pendingTransitionFrom == -3)
+            sourceNodeId = EntryNodeId();
+
+        if (sourceNodeId < 0) {
+            m_pendingTransitionFrom = -1;
+        } else {
+            const ImVec2 sourcePos = ImNodes::GetNodeScreenSpacePos(sourceNodeId);
+            const ImVec2 sourceSize = ImNodes::GetNodeDimensions(sourceNodeId);
+            const ImVec2 lineStart(
+                sourcePos.x + sourceSize.x * 0.5f,
+                sourcePos.y + sourceSize.y * 0.5f);
+            const ImVec2 lineEnd = io.MousePos;
+            ImDrawList* previewDrawList = ImGui::GetWindowDrawList();
+            previewDrawList->PushClipRect(
+                canvasOrigin,
+                ImVec2(canvasWindowPos.x + canvasWindowSize.x,
+                       canvasWindowPos.y + canvasWindowSize.y),
+                true);
+            previewDrawList->AddLine(
+                lineStart, lineEnd, IM_COL32(240, 240, 240, 235), 2.5f);
+            float dirX = lineEnd.x - lineStart.x;
+            float dirY = lineEnd.y - lineStart.y;
+            const float dirLength = std::sqrt(dirX * dirX + dirY * dirY);
+            if (dirLength > 0.001f) {
+                dirX /= dirLength;
+                dirY /= dirLength;
+                constexpr float ARROW_SIZE = 8.0f;
+                const ImVec2 normal(-dirY, dirX);
+                const ImVec2 base(
+                    lineEnd.x - dirX * ARROW_SIZE * 1.6f,
+                    lineEnd.y - dirY * ARROW_SIZE * 1.6f);
+                previewDrawList->AddTriangleFilled(
+                    lineEnd,
+                    ImVec2(base.x + normal.x * ARROW_SIZE, base.y + normal.y * ARROW_SIZE),
+                    ImVec2(base.x - normal.x * ARROW_SIZE, base.y - normal.y * ARROW_SIZE),
+                    IM_COL32(240, 240, 240, 235));
+            }
+            previewDrawList->PopClipRect();
+            ImGui::SetTooltip("Click a state to connect | Esc / Right Click: Cancel");
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                pendingModeConsumedClick = true;
+                if (hoveredStateIndex >= 0) {
+                    if (m_pendingTransitionFrom >= 0 &&
+                        hoveredStateIndex != m_pendingTransitionFrom)
+                        AddTransition(ctx, animator, m_pendingTransitionFrom, hoveredStateIndex);
+                    else if (m_pendingTransitionFrom == -2)
+                        addAnyStateTransition(hoveredStateIndex);
+                    else if (m_pendingTransitionFrom == -3)
+                        setDefaultState(hoveredStateIndex);
+                }
+                m_pendingTransitionFrom = -1;
+            } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
+                       ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                pendingModeConsumedClick = true;
+                m_pendingTransitionFrom = -1;
+            }
+        }
     }
 
     if (CanEditAnimationGraph(ctx)) {
@@ -1897,35 +2118,44 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
     int startedPin = 0;
     int endedPin = 0;
     if (ImNodes::IsLinkCreated(&startedPin, &endedPin)) {
+        const bool fromEntry =
+            startedPin == EntryOutputPinId() || endedPin == EntryOutputPinId();
         const bool fromAnyState =
             startedPin == AnyStateOutputPinId() || endedPin == AnyStateOutputPinId();
         const bool startIsOutput = (startedPin % 2) == 0;
         const bool endIsOutput = (endedPin % 2) == 0;
         const int from = startIsOutput ? (startedPin - 2) / 2 : (endedPin - 2) / 2;
         const int to = startIsOutput ? (endedPin - 1) / 2 : (startedPin - 1) / 2;
-        if (fromAnyState && startIsOutput != endIsOutput &&
-            to >= 0 && to < static_cast<int>(animator.states.size())) {
-            const std::string& toStateName =
-                animator.states[static_cast<size_t>(to)].name;
-            const bool alreadyExists = std::any_of(
-                animator.anyStateTransitions.begin(),
-                animator.anyStateTransitions.end(),
-                [&](const scene::AnimationTransition& transition) {
-                    return transition.toStateName == toStateName;
-                });
-            if (!alreadyExists) {
-                scene::AnimationTransition transition;
-                transition.toStateName = toStateName;
-                animator.anyStateTransitions.push_back(std::move(transition));
-                m_selectedLink = {
-                    -2, static_cast<int>(animator.anyStateTransitions.size()) - 1
-                };
-                MarkDirty(ctx);
-            }
+        if (fromEntry && startIsOutput != endIsOutput) {
+            setDefaultState(to);
+        } else if (fromAnyState && startIsOutput != endIsOutput) {
+            addAnyStateTransition(to);
         } else if (startIsOutput != endIsOutput &&
             from >= 0 && from < static_cast<int>(animator.states.size()) &&
             to >= 0 && to < static_cast<int>(animator.states.size())) {
             AddTransition(ctx, animator, from, to);
+        }
+    }
+
+    // ピンに命中しなくても、ノード本体の上でドロップされたら遷移を作成する。
+    // WHY: 小さなピン同士を正確に結ぶ操作は Unity のノード全体ドロップに比べて精度要求が高すぎるため。
+    int droppedPin = 0;
+    if (ImNodes::IsLinkDropped(&droppedPin, false) && hoveredStateIndex >= 0) {
+        if (droppedPin == EntryOutputPinId()) {
+            setDefaultState(hoveredStateIndex);
+        } else if (droppedPin == AnyStateOutputPinId()) {
+            addAnyStateTransition(hoveredStateIndex);
+        } else if ((droppedPin % 2) == 0) {
+            const int from = (droppedPin - 2) / 2;
+            if (from >= 0 && from < static_cast<int>(animator.states.size()) &&
+                from != hoveredStateIndex)
+                AddTransition(ctx, animator, from, hoveredStateIndex);
+        } else {
+            // 入力ピンから逆向きに引いた場合は「hovered → ピン所有ステート」として解釈する。
+            const int to = (droppedPin - 1) / 2;
+            if (to >= 0 && to < static_cast<int>(animator.states.size()) &&
+                to != hoveredStateIndex)
+                AddTransition(ctx, animator, hoveredStateIndex, to);
         }
     }
 
@@ -1970,43 +2200,85 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
     }
 
     if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
-        if (m_selectedLink.fromStateIndex == -2) {
-            animator.anyStateTransitions.erase(
-                animator.anyStateTransitions.begin() + m_selectedLink.transitionIndex);
+        // Unity と同じく複数選択をまとめて削除する。
+        // WHAT: リンク → ノードの順に、コンテナ index の大きい方から消して index ずれを防ぐ。
+        bool deletedAnything = false;
+
+        std::vector<LinkRef> linkRefs;
+        const int numSelectedLinks = ImNodes::NumSelectedLinks();
+        if (numSelectedLinks > 0) {
+            std::vector<int> links(static_cast<size_t>(numSelectedLinks));
+            ImNodes::GetSelectedLinks(links.data());
+            for (const int linkId : links) {
+                const LinkRef ref = ResolveLink(linkId, animator);
+                if (ref.transitionIndex >= 0) linkRefs.push_back(ref);
+            }
+        } else if (m_selectedLink.transitionIndex >= 0) {
+            linkRefs.push_back(m_selectedLink);
+        }
+        std::sort(linkRefs.begin(), linkRefs.end(),
+            [](const LinkRef& a, const LinkRef& b) {
+                if (a.fromStateIndex != b.fromStateIndex)
+                    return a.fromStateIndex > b.fromStateIndex;
+                return a.transitionIndex > b.transitionIndex;
+            });
+        for (const LinkRef& ref : linkRefs) {
+            if (ref.fromStateIndex == -2) {
+                if (ref.transitionIndex <
+                    static_cast<int>(animator.anyStateTransitions.size())) {
+                    animator.anyStateTransitions.erase(
+                        animator.anyStateTransitions.begin() + ref.transitionIndex);
+                    deletedAnything = true;
+                }
+            } else if (ref.fromStateIndex >= 0 &&
+                       ref.fromStateIndex < static_cast<int>(animator.states.size())) {
+                auto& transitions =
+                    animator.states[static_cast<size_t>(ref.fromStateIndex)].transitions;
+                if (ref.transitionIndex < static_cast<int>(transitions.size())) {
+                    transitions.erase(transitions.begin() + ref.transitionIndex);
+                    deletedAnything = true;
+                }
+            }
+        }
+
+        std::vector<int> stateIndices;
+        const int numSelectedNodes = ImNodes::NumSelectedNodes();
+        if (numSelectedNodes > 0) {
+            std::vector<int> nodes(static_cast<size_t>(numSelectedNodes));
+            ImNodes::GetSelectedNodes(nodes.data());
+            for (const int nodeId : nodes) {
+                if (nodeId >= NodeId(0) &&
+                    nodeId < NodeId(static_cast<int>(animator.states.size())))
+                    stateIndices.push_back(nodeId - NodeId(0));
+            }
+        } else if (m_selectedNode >= 0 &&
+                   m_selectedNode < static_cast<int>(animator.states.size())) {
+            stateIndices.push_back(m_selectedNode);
+        }
+        std::sort(stateIndices.rbegin(), stateIndices.rend());
+        for (const int stateIndex : stateIndices) {
+            DeleteState(ctx, animator, stateIndex, instanceId);
+            deletedAnything = true;
+        }
+
+        if (deletedAnything) {
             m_selectedLink = {};
-            ImNodes::ClearLinkSelection();
-            MarkDirty(ctx);
-        } else if (m_selectedLink.fromStateIndex >= 0) {
-            auto& transitions = animator.states[static_cast<size_t>(m_selectedLink.fromStateIndex)].transitions;
-            transitions.erase(transitions.begin() + m_selectedLink.transitionIndex);
-            m_selectedLink = {};
-            ImNodes::ClearLinkSelection();
-            MarkDirty(ctx);
-        } else if (m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
-            DeleteState(ctx, animator, m_selectedNode, instanceId);
             m_selectedNode = -1;
             ImNodes::ClearNodeSelection();
+            ImNodes::ClearLinkSelection();
+            MarkDirty(ctx);
         }
     }
     if (ImGui::IsWindowFocused() && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D) &&
         m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
-        scene::AnimationState copied = animator.states[static_cast<size_t>(m_selectedNode)];
-        copied.name = MakeUniqueStateName(animator, (copied.name + "_Copy").c_str());
-        animator.states.push_back(std::move(copied));
-        m_selectedNode = static_cast<int>(animator.states.size()) - 1;
-        AutoLayoutStates(ctx, animator, instanceId);
-        MarkDirty(ctx);
+        DuplicateState(ctx, animator, m_selectedNode, instanceId);
     }
 
-    int hoveredNode = 0;
-    const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
-    int hoveredLink = 0;
-    const bool linkHovered = ImNodes::IsLinkHovered(&hoveredLink);
+    bool openRenameModal = false;
     if (nodeHovered &&
         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-        hoveredNode >= NodeId(0) &&
-        hoveredNode < NodeId(static_cast<int>(animator.states.size()))) {
-        const int stateIndex = hoveredNode - NodeId(0);
+        hoveredStateIndex >= 0) {
+        const int stateIndex = hoveredStateIndex;
         const auto mode = animator.states[static_cast<size_t>(stateIndex)].mode;
         if (mode == scene::AnimationStateMode::BlendTree1D ||
             mode == scene::AnimationStateMode::BlendTree2D) {
@@ -2017,7 +2289,21 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
             ImNodes::ClearNodeSelection();
             ImNodes::ClearLinkSelection();
             ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
+        } else {
+            // Clip ステートのダブルクリックはリネーム開始 (Unity と同じ操作感)。
+            m_selectedNode = stateIndex;
+            m_renamingNode = stateIndex;
+            snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s",
+                animator.states[static_cast<size_t>(stateIndex)].name.c_str());
+            openRenameModal = true;
         }
+    }
+    if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_F2) &&
+        m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
+        m_renamingNode = m_selectedNode;
+        snprintf(m_renameBuffer, sizeof(m_renameBuffer), "%s",
+            animator.states[static_cast<size_t>(m_selectedNode)].name.c_str());
+        openRenameModal = true;
     }
     if (linkHovered) {
         const LinkRef hoveredRef = ResolveLink(hoveredLink, animator);
@@ -2081,7 +2367,8 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
     if (canvasHovered &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
         !nodeHovered &&
-        !linkHovered) {
+        !linkHovered &&
+        !pendingModeConsumedClick) {
         // 空白クリックは Graph 要素の選択解除として扱い、通常の GameObject Inspector へ戻す。
         m_selectedNode = -1;
         m_selectedAnyState = false;
@@ -2089,10 +2376,10 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
         ImNodes::ClearNodeSelection();
         ImNodes::ClearLinkSelection();
     }
-    bool openRenameModal = false;
-    if (nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    if (nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+        !pendingTransitionActive) {
         m_selectedAnyState = hoveredNode == AnyStateNodeId();
-        m_selectedNode = m_selectedAnyState ? -1 : hoveredNode - 1;
+        m_selectedNode = hoveredStateIndex;
         m_selectedLink = {};
         ImNodes::ClearLinkSelection();
         ImGui::OpenPopup("##AnimationGraphNodeMenu");
@@ -2100,6 +2387,10 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
     if (ImGui::BeginPopup("##AnimationGraphNodeMenu")) {
         if (m_selectedNode >= 0 && m_selectedNode < static_cast<int>(animator.states.size())) {
             auto& state = animator.states[static_cast<size_t>(m_selectedNode)];
+            // Unity と同じ先頭項目。選択後はマウスへ追従する矢印が出て、ステートクリックで確定する。
+            if (ImGui::MenuItem("Make Transition")) {
+                m_pendingTransitionFrom = m_selectedNode;
+            }
             if (ImGui::MenuItem("Set as Default")) {
                 animator.defaultStateName = state.name;
                 animator.currentStateName.clear();
@@ -2131,17 +2422,19 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
                 openRenameModal = true;
             }
             if (ImGui::MenuItem("Duplicate")) {
-                scene::AnimationState copied = state;
-                copied.name = MakeUniqueStateName(animator, (state.name + "_Copy").c_str());
-                animator.states.push_back(std::move(copied));
-                AutoLayoutStates(ctx, animator, instanceId);
-                MarkDirty(ctx);
+                DuplicateState(ctx, animator, m_selectedNode, instanceId);
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Delete")) {
                 DeleteState(ctx, animator, m_selectedNode, instanceId);
                 m_selectedNode = -1;
             }
+        } else if (m_selectedAnyState) {
+            if (ImGui::MenuItem("Make Transition")) m_pendingTransitionFrom = -2;
+        } else {
+            // Entry ノードの右クリック。Unity と同じくデフォルトステートの繋ぎ替えを提供する。
+            if (ImGui::MenuItem("Make Transition (Set Default State)"))
+                m_pendingTransitionFrom = -3;
         }
         ImGui::EndPopup();
     }
@@ -2169,7 +2462,8 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
         ImGui::EndPopup();
     }
 
-    if (linkHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    if (linkHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+        !pendingTransitionActive) {
         m_selectedLink = ResolveLink(hoveredLink, animator);
         m_selectedNode = -1;
         m_selectedAnyState = false;
@@ -2195,15 +2489,62 @@ void AnimationGraphPanel::DrawNodeCanvas(EditorContext& ctx,
         ImGui::EndPopup();
     }
 
-    if (!nodeHovered && !linkHovered && ImNodes::IsEditorHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    if (!nodeHovered && !linkHovered && ImNodes::IsEditorHovered() &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+        !pendingTransitionActive && !pendingModeConsumedClick) {
+        // "New State" をカーソル位置に生成できるよう、開いた瞬間の論理グリッド座標を控える。
+        const ImVec2 panning = ImNodes::EditorContextGetPanning();
+        m_contextSpawnX = (io.MousePos.x - canvasOrigin.x - panning.x) / m_canvasZoom;
+        m_contextSpawnY = (io.MousePos.y - canvasOrigin.y - panning.y) / m_canvasZoom;
         ImGui::OpenPopup("##AnimationGraphCanvasMenu");
     }
     if (ImGui::BeginPopup("##AnimationGraphCanvasMenu")) {
-        if (ImGui::MenuItem("+ New State")) AddState(ctx, animator, "NewState");
+        if (ImGui::MenuItem("+ New State"))
+            AddStateAt(ctx, animator, "NewState", instanceId,
+                       m_contextSpawnX, m_contextSpawnY);
         if (ImGui::MenuItem("Auto Layout")) AutoLayoutStates(ctx, animator, instanceId);
         if (ImGui::MenuItem("Reset Zoom")) m_canvasZoom = 1.0f;
         if (ImGui::MenuItem("Center View")) ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
         ImGui::EndPopup();
+    }
+
+    // Asset Browser からアニメーションソースをキャンバスへドロップしてステートを生成する。
+    // WHY: Unity は Clip のドラッグ&ドロップだけでステートを作れる。同じ導線が最短の作成手段になる。
+    if (CanEditAnimationGraph(ctx)) {
+        const ImRect canvasRect(
+            canvasOrigin,
+            ImVec2(canvasWindowPos.x + canvasWindowSize.x,
+                   canvasWindowPos.y + canvasWindowSize.y));
+        if (ImGui::BeginDragDropTargetCustom(
+                canvasRect, ImGui::GetID("##AnimationGraphCanvasDrop"))) {
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                const std::string droppedPath =
+                    NormalizeAssetPath(static_cast<const char*>(payload->Data));
+                const bool isAnimationSource =
+                    util::StringUtils::EndsWith(droppedPath, ".fbx") ||
+                    util::StringUtils::EndsWith(droppedPath, ".asset") ||
+                    util::StringUtils::EndsWith(droppedPath, ".fzasset");
+                if (isAnimationSource) {
+                    const ImVec2 panning = ImNodes::EditorContextGetPanning();
+                    const float spawnX =
+                        (io.MousePos.x - canvasOrigin.x - panning.x) / m_canvasZoom;
+                    const float spawnY =
+                        (io.MousePos.y - canvasOrigin.y - panning.y) / m_canvasZoom;
+                    std::string stateName = util::FileSystem::GetFilename(droppedPath);
+                    if (const size_t dot = stateName.find_last_of('.');
+                        dot != std::string::npos)
+                        stateName = stateName.substr(0, dot);
+                    AddStateAt(ctx, animator, stateName.c_str(), instanceId, spawnX, spawnY);
+                    auto& newState = animator.states.back();
+                    newState.sourcePath = droppedPath;
+                    newState.clipName.clear();
+                    newState.clipIndex = -1;
+                    MarkDirty(ctx);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
     }
 
     ImGui::SetWindowFontScale(1.0f);
@@ -2282,9 +2623,16 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
         }
         ImGui::SameLine();
     }
-    if (ImGui::SmallButton("+ Motion")) {
+    // Motion 追加の共通処理。ツールバー / 右クリックメニュー / ドロップの 3 導線から使う。
+    // atPosition=true のときはカーソルやドロップ地点 (論理グリッド座標) に配置する。
+    auto addMotion = [&](const std::string& sourcePath,
+                         bool atPosition,
+                         float posX,
+                         float posY) {
         scene::BlendTreeMotion motion;
-        if (!animator.clips.empty()) {
+        if (!sourcePath.empty()) {
+            motion.sourcePath = sourcePath;
+        } else if (!animator.clips.empty()) {
             motion.clipName = animator.clips.front().name;
             motion.clipIndex = 0;
         }
@@ -2294,12 +2642,16 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
         if (state.mode == scene::AnimationStateMode::BlendTree2D)
             motion.posX = static_cast<float>(motions.size());
         motions.push_back(std::move(motion));
-        positions.emplace_back(
-            160.0f + static_cast<float>((motions.size() - 1) % 3) * 280.0f,
-            50.0f + static_cast<float>((motions.size() - 1) / 3) * 230.0f);
+        if (atPosition)
+            positions.emplace_back(posX, posY);
+        else
+            positions.emplace_back(
+                160.0f + static_cast<float>((motions.size() - 1) % 3) * 280.0f,
+                50.0f + static_cast<float>((motions.size() - 1) / 3) * 230.0f);
         m_selectedMotion = static_cast<int>(motions.size()) - 1;
         MarkDirty(ctx);
-    }
+    };
+    if (ImGui::SmallButton("+ Motion")) addMotion({}, false, 0.0f, 0.0f);
     if (state.mode == scene::AnimationStateMode::BlendTree1D) {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(130.0f);
@@ -2315,6 +2667,10 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
 
     if (m_nodesContext) ImNodes::SetCurrentContext(m_nodesContext);
     if (m_editorContext) ImNodes::EditorContextSet(m_editorContext);
+
+    // メインキャンバスと同じズーム / パン操作を Blend Tree でも提供する。
+    const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
+    HandleCanvasWheel(canvasOrigin.x, canvasOrigin.y);
 
     constexpr int ROOT_NODE_ID = 2000000;
     constexpr int ROOT_OUTPUT_ID = 2000002;
@@ -2521,6 +2877,87 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
             ImGui::IsKeyPressed(ImGuiKey_Delete))
             removeMotion = m_selectedMotion;
     }
+
+    // メインキャンバスと同等の右クリック操作を Blend Tree にも提供する。
+    int hoveredNode = 0;
+    const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
+    const int hoveredMotion =
+        nodeHovered && hoveredNode >= MOTION_NODE_BASE &&
+        hoveredNode < MOTION_NODE_BASE + static_cast<int>(motions.size())
+            ? hoveredNode - MOTION_NODE_BASE
+            : -1;
+    if (hoveredMotion >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        m_selectedMotion = hoveredMotion;
+        ImGui::OpenPopup("##BlendTreeMotionMenu");
+    }
+    if (ImGui::BeginPopup("##BlendTreeMotionMenu")) {
+        if (m_selectedMotion >= 0 &&
+            m_selectedMotion < static_cast<int>(motions.size())) {
+            if (ImGui::MenuItem("Duplicate")) duplicateMotion = m_selectedMotion;
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete")) removeMotion = m_selectedMotion;
+        }
+        ImGui::EndPopup();
+    }
+
+    if (!nodeHovered && ImNodes::IsEditorHovered() &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        const ImVec2 panning = ImNodes::EditorContextGetPanning();
+        m_contextSpawnX =
+            (ImGui::GetIO().MousePos.x - canvasOrigin.x - panning.x) / m_canvasZoom;
+        m_contextSpawnY =
+            (ImGui::GetIO().MousePos.y - canvasOrigin.y - panning.y) / m_canvasZoom;
+        ImGui::OpenPopup("##BlendTreeCanvasMenu");
+    }
+    if (ImGui::BeginPopup("##BlendTreeCanvasMenu")) {
+        if (ImGui::MenuItem("+ New Motion"))
+            addMotion({}, true, m_contextSpawnX, m_contextSpawnY);
+        if (ImGui::MenuItem("Reset Zoom")) m_canvasZoom = 1.0f;
+        if (ImGui::MenuItem("Center View"))
+            ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
+        ImGui::Separator();
+        if (ImGui::MenuItem("Back to Base Layer")) {
+            m_openBlendTreeState = -1;
+            m_selectedMotion = -1;
+            ImNodes::ClearNodeSelection();
+            ImNodes::EditorContextResetPanning(ImVec2(0.0f, 0.0f));
+        }
+        ImGui::EndPopup();
+    }
+
+    // アニメーションソースのドロップで Motion を追加する (メインキャンバスのステート生成と同じ導線)。
+    if (CanEditAnimationGraph(ctx)) {
+        const ImVec2 blendCanvasWindowPos = ImGui::GetWindowPos();
+        const ImVec2 blendCanvasWindowSize = ImGui::GetWindowSize();
+        const ImRect canvasRect(
+            canvasOrigin,
+            ImVec2(blendCanvasWindowPos.x + blendCanvasWindowSize.x,
+                   blendCanvasWindowPos.y + blendCanvasWindowSize.y));
+        if (ImGui::BeginDragDropTargetCustom(
+                canvasRect, ImGui::GetID("##BlendTreeCanvasDrop"))) {
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                const std::string droppedPath =
+                    NormalizeAssetPath(static_cast<const char*>(payload->Data));
+                const bool isAnimationSource =
+                    util::StringUtils::EndsWith(droppedPath, ".fbx") ||
+                    util::StringUtils::EndsWith(droppedPath, ".asset") ||
+                    util::StringUtils::EndsWith(droppedPath, ".fzasset");
+                if (isAnimationSource) {
+                    const ImVec2 panning = ImNodes::EditorContextGetPanning();
+                    const float spawnX =
+                        (ImGui::GetIO().MousePos.x - canvasOrigin.x - panning.x) /
+                        m_canvasZoom;
+                    const float spawnY =
+                        (ImGui::GetIO().MousePos.y - canvasOrigin.y - panning.y) /
+                        m_canvasZoom;
+                    addMotion(droppedPath, true, spawnX, spawnY);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+    }
+
     if (duplicateMotion >= 0) {
         motions.insert(
             motions.begin() + duplicateMotion + 1,
@@ -2548,7 +2985,7 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     ImGui::GetWindowDrawList()->AddText(
         helpPos,
         IM_COL32(155, 165, 178, 190),
-        "Drag: Move Motion | Ctrl+D: Duplicate | Delete: Remove | Base Layer: Back");
+        "Wheel: Zoom | RClick: Menu | Drop FBX: Add Motion | Ctrl+D: Duplicate | Del: Remove");
 
     ImGui::SetWindowFontScale(1.0f);
     ImGui::EndChild();
@@ -2827,6 +3264,49 @@ void AnimationGraphPanel::AddState(EditorContext& ctx, scene::AnimatorComponent&
     if (!animator.clips.empty()) state.clipName = animator.clips.front().name;
     if (animator.defaultStateName.empty()) animator.defaultStateName = state.name;
     animator.states.push_back(std::move(state));
+    MarkDirty(ctx);
+}
+
+void AnimationGraphPanel::AddStateAt(EditorContext& ctx,
+                                     scene::AnimatorComponent& animator,
+                                     const char* baseName,
+                                     const std::string& instanceId,
+                                     float spawnX,
+                                     float spawnY)
+{
+    scene::AnimationState state;
+    state.name = MakeUniqueStateName(animator, baseName);
+    if (!animator.clips.empty()) state.clipName = animator.clips.front().name;
+    if (animator.defaultStateName.empty()) animator.defaultStateName = state.name;
+    // 生成前に位置を確定しておくことで、デフォルトのグリッド整列配置を経由せず即カーソル位置へ出す。
+    ctx.graphLayouts[instanceId].nodePositions[state.name] = ImVec2(spawnX, spawnY);
+    animator.states.push_back(std::move(state));
+    m_selectedNode = static_cast<int>(animator.states.size()) - 1;
+    m_selectedLink = {};
+    MarkDirty(ctx);
+}
+
+void AnimationGraphPanel::DuplicateState(EditorContext& ctx,
+                                         scene::AnimatorComponent& animator,
+                                         int stateIndex,
+                                         const std::string& instanceId)
+{
+    if (stateIndex < 0 || stateIndex >= static_cast<int>(animator.states.size())) return;
+    const auto& source = animator.states[static_cast<size_t>(stateIndex)];
+    scene::AnimationState copied = source;
+    copied.name = MakeUniqueStateName(animator, (source.name + "_Copy").c_str());
+
+    // WHY: AutoLayout で全ノードを並べ直すと手作業のレイアウトが失われる。
+    //      Unity と同じく複製元の右下へずらして置くだけに留める。
+    auto& positions = ctx.graphLayouts[instanceId].nodePositions;
+    ImVec2 spawn(80.0f, 80.0f);
+    if (const auto it = positions.find(source.name); it != positions.end())
+        spawn = ImVec2(it->second.x + 44.0f, it->second.y + 44.0f);
+    positions[copied.name] = spawn;
+
+    animator.states.push_back(std::move(copied));
+    m_selectedNode = static_cast<int>(animator.states.size()) - 1;
+    m_selectedLink = {};
     MarkDirty(ctx);
 }
 

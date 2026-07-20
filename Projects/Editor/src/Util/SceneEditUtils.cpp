@@ -136,6 +136,7 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
         src->name + (addCloneSuffix ? " (Clone)" : ""));
     dst.tag       = src->tag;
     dst.layer     = src->layer;
+    dst.prefabAssetPath = src->prefabAssetPath;
     dst.transform = src->transform;
     ctx.activeScene->DuplicateComponents(srcId, dst.GetID());
 

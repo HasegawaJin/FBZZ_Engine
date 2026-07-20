@@ -1,0 +1,156 @@
+bindings = []
+links = []
+maxAudioVoices = 16
+maxLights = 8
+maxParticles = 100000
+name = 'VFX Graph'
+parameters = []
+signalNodes = []
+signalOutputs = []
+subGraphForwards = []
+variants = []
+version = 3
+
+[[nodes]]
+attachBone = ''
+duration = 0.0
+editorX = 40.0
+editorY = 120.0
+id = 1
+name = 'Entry'
+position = [ 0.0, 0.0, 0.0 ]
+rotation = [ 0.0, 0.0, 0.0 ]
+scale = [ 1.0, 1.0, 1.0 ]
+startOffset = 0.0
+type = 0
+
+    [nodes.audio]
+    clipPath = ''
+    loop = false
+    pitch = 1.0
+    spatialBlend = 1.0
+    volume = 1.0
+
+    [nodes.decal]
+    albedoPath = ''
+    color = [ 1.0, 1.0, 1.0, 1.0 ]
+    emissivePath = ''
+    emissiveScale = 0.0
+    fadeTime = 0.25
+    normalPath = ''
+    normalStrength = 1.0
+
+    [nodes.light]
+    color = [ 1.0, 0.699999988079071, 0.30000001192092896 ]
+    intensity = 4.0
+    range = 8.0
+
+    [nodes.particle]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blendMode = 0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    bursts = []
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05000000074505806
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 1.0, 0.10000000149011612, 0.0, 0.0 ]
+    colorGradient = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+    colorStart = [ 1.0, 0.699999988079071, 0.20000000298023224, 1.0 ]
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = true
+    deathSubEmitter = ''
+    distortion = false
+    distortionStrength = 0.014999999664723873
+    duration = 5.0
+    emissiveScale = 1.0
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 30.0
+    emitVelocity = [ 0.0, 4.0, 0.0 ]
+    enabled = true
+    flipbookFrameBlending = false
+    flipbookFramesPerSecond = 24.0
+    flipbookMode = 0
+    gravity = [ 0.0, -5.0, 0.0 ]
+    lifetime = 2.0
+    lifetimeRandom = 0.0
+    lightingStrength = 1.0
+    lodEnabled = true
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = ''
+    maxParticles = 300
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    motionVectorFlipbook = false
+    motionVectorStrength = 1.0
+    motionVectorTexturePath = ''
+    noiseFrequency = 0.5
+    noiseSpeed = 1.0
+    noiseStrength = 0.0
+    pauseWhenCulled = false
+    playing = true
+    prewarm = false
+    randomSeed = 1
+    rateOverDistance = 0.0
+    receiveForceFields = true
+    renderMode = 0
+    screenCoverageThreshold = 0.0
+    shape = 0
+    simulationMode = 0
+    simulationSpace = 0
+    sixWayLighting = false
+    sizeCurve = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+    sizeCurvePower = 1.0
+    sizeEnd = 0.05000000074505806
+    sizeStart = 0.4000000059604645
+    softParticleFadeDistance = 0.5
+    softParticles = false
+    sortMode = 0
+    sphereRadius = 1.0
+    spriteColumns = 1
+    spriteEndFrame = 0
+    spriteRows = 1
+    spriteStartFrame = 0
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.10000000149011612
+    subEmitterBurstCount = 1
+    texturePath = ''
+    useColorGradient = false
+    useSizeCurve = false
+    useVelocityCurve = false
+    velocityCurve = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+    velocityDamping = 0.0
+    velocitySpread = 1.5
+
+    [nodes.subGraph]
+    graphPath = ''
+
+    [nodes.trail]
+    beamEnd = [ 0.0, 0.0, 5.0 ]
+    beamMode = false
+    beamStart = [ 0.0, 0.0, 0.0 ]
+    colorEnd = [ 1.0, 1.0, 1.0, 0.0 ]
+    colorStart = [ 1.0, 1.0, 1.0, 1.0 ]
+    lifetime = 1.0
+    materialPath = ''
+    meshPath = ''
+    texturePath = ''
+    widthEnd = 0.019999999552965164
+    widthStart = 0.20000000298023224

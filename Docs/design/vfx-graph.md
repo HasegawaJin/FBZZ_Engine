@@ -339,7 +339,9 @@ authoring スキーマに新フィールドを1つ追加すれば、Inspector・
   アセットパスを専用IPCへ送る。Graph編集中は素材からEffect Nodeを追加し、Emitter編集時はPreview Worldだけに生成する。
 - Graph UI: Graphドキュメントの画面構成を`VFXGraphEditor`へ分離し、`Graph Canvas | Viewport | Inspector`を
   常時同時表示する3列ワークスペースへ変更した。各境界はドラッグでリサイズでき、Viewportは列全体へ追従して
-  Graph配線中も実描画結果を隠さない。
+  Graph配線中も実描画結果を隠さない。Canvas空きスペースの右クリックはクリック位置へそのままノードを生成し、
+  ノード上の右クリックはDuplicate/Deleteのコンテキストメニューへ切り替わる(Unity Shader/VFX Graph相当)。
+  `Ctrl+D`で選択ノードを複製できる。
 
 EditorMcpのTypeScriptテストは25件成功。C++／HLSLの最終コンパイル確認は本リポジトリ規約どおり
 Visual Studio 2022のソリューションビルドで行う。

@@ -80,6 +80,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     bool rootOpen = ImGui::TreeNodeEx("##root", rootFlags, "Assets");
     if (rootIsCurrent)
         ImGui::PopStyleColor();
+    // エクスプローラーからのドロップが Assets ルート行に落ちたらルートを取り込み先にする。
+    ConsiderExternalDropTarget(m_rootPath, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
         m_currentPath = m_rootPath;
         RefreshDirectory();
@@ -113,6 +115,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             const bool mOpen = ImGui::TreeNodeEx(mount.path.c_str(), mflags, "%s", mount.name.c_str());
             if (mCurrent)
                 ImGui::PopStyleColor();
+            ConsiderExternalDropTarget(mount.path, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
             if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
                 m_currentPath = mount.path;
                 RefreshDirectory();
@@ -347,6 +350,12 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     DrawFbxContents(ctx);
 
     ImGui::EndChild();
+
+    // ドロップ先フォルダの当たり判定が全て終わった後にコピーを確定する。
+    // WHY: ツリー / グリッドの各フォルダ描画で m_externalDrop.targetDir が決まる。
+    //      いずれにもヒットしなければ現在フォルダへ取り込まれる。
+    if (m_externalDrop.active)
+        FinalizeExternalDrop();
 }
 
 void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
@@ -525,6 +534,9 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                 HandleEntryClick(e, ctx, true);
             }
             const bool hov = ImGui::IsItemHovered();
+            // エクスプローラーからのドロップがこのフォルダ行に落ちたら取り込み先にする。
+            if (e.isDir)
+                ConsiderExternalDropTarget(e.path, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
             if (hov && ImGui::IsMouseDoubleClicked(0))
                 HandleEntryDoubleClick(e, ctx, true);
             DrawEntryContextMenu(e, ctx);

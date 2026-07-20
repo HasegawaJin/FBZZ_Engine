@@ -88,6 +88,7 @@ private:
     void AddGraphNodeFromAsset(const std::string& path);
     void CreatePreviewEmitterFromAsset(EditorContext& ctx, const std::string& path);
     void DeleteSelectedGraphNode();
+    void DuplicateGraphNode(int nodeId);
     void PushGraphUndo();
     void PushGraphUndo(const asset::VFXGraphAsset& before);
     void UndoGraphEdit();
@@ -108,6 +109,11 @@ private:
     std::string m_requestedAssetPath;
     int m_selectedGraphNodeId = -1;
     int m_selectedGraphLinkIndex = -1;
+    int m_graphContextMenuNodeId = -1;
+    // 右クリックAddで生成したノードをクリック位置へ置くための1回限りの座標(Grid space)。
+    float m_pendingNodeSpawnGridX = 0.0f;
+    float m_pendingNodeSpawnGridY = 0.0f;
+    bool m_pendingNodeSpawnValid = false;
     bool m_graphDirty = false;
     bool m_graphPositionsPending = false;
     bool m_previewRequested = false;

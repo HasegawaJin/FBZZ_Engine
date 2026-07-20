@@ -1,0 +1,9 @@
+# 依存は package.json から `npm install` で再現するため追跡しない。
+node_modules/
+
+# dist/ はコミットして残す：npm install/build 無しでも Claude 登録が即動くようにするため。
+# 再生成する場合は `npm run build`。
+
+# ログ・エディタ雑多
+*.log
+.DS_Store

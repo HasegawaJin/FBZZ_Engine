@@ -5,40 +5,43 @@
             "name": "GameHub (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Hub/FBZZHub.exe",
+            "program": "${workspaceFolder}/Projects/GameHub/out/Debug/FBZZGameHub-win32-x64/FBZZGameHub.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Hub",
+            "cwd": "${workspaceFolder}/Projects/GameHub/out/Debug/FBZZGameHub-win32-x64",
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build GameHub (Debug)"
-        },
-        {
-            "name": "GameHub (Release)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Release/Binaries/Release/Hub/FBZZHub.exe",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Release/Binaries/Release/Hub",
-            "environment": [],
-            "console": "integratedTerminal",
-            "requireExactSource": false,
-            "preLaunchTask": "CMake: Build GameHub (Release)"
+            "preLaunchTask": "GameHub: Rebuild Engine SDK + Build (Debug)",
+            "postDebugTask": "GameHub: Kill Processes"
         },
         {
             "name": "GameHub (Development)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Hub/FBZZHub.exe",
+            "program": "${workspaceFolder}/Projects/GameHub/out/Development/FBZZGameHub-win32-x64/FBZZGameHub.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Hub",
+            "cwd": "${workspaceFolder}/Projects/GameHub/out/Development/FBZZGameHub-win32-x64",
             "environment": [],
             "console": "integratedTerminal",
             "requireExactSource": false,
-            "preLaunchTask": "CMake: Build GameHub (Development)"
+            "preLaunchTask": "GameHub: Rebuild Engine SDK + Build (Development)",
+            "postDebugTask": "GameHub: Kill Processes"
+        },
+        {
+            "name": "GameHub (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Projects/GameHub/out/Release/FBZZGameHub-win32-x64/FBZZGameHub.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/Projects/GameHub/out/Release/FBZZGameHub-win32-x64",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "GameHub: Rebuild Engine SDK + Build (Release)",
+            "postDebugTask": "GameHub: Kill Processes"
         },
         {
             "name": "Sandbox (Debug)",
@@ -126,6 +129,69 @@
             "console": "integratedTerminal",
             "requireExactSource": false,
             "preLaunchTask": "CMake: Build EditorLauncher (Development)"
+        },
+        {
+            "name": "FBZZVFXEditor (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor/FBZZVFXEditor.exe",
+            "args": [
+                "--project",
+                "${input:fbzzProjectPath}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build VFXEditor (Debug)"
+        },
+        {
+            "name": "FBZZVFXEditor (Development)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZVFXEditor.exe",
+            "args": [
+                "--project",
+                "${input:fbzzProjectPath}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build VFXEditor (Development)"
+        },
+        {
+            "name": "FBZZVFXEditor (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Release/Binaries/Release/Editor/FBZZVFXEditor.exe",
+            "args": [
+                "--project",
+                "${input:fbzzProjectPath}"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Release/Binaries/Release/Editor",
+            "environment": [],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build VFXEditor (Release)"
+        },
+        {
+            "name": "EditorMcp Server (Build & Run)",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/Projects/EditorMcp/dist/stdio.js",
+            "cwd": "${workspaceFolder}/Projects/EditorMcp",
+            "console": "integratedTerminal",
+            "env": {
+                "FBZZ_MCP_PERMISSION": "write"
+            },
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "preLaunchTask": "EditorMcp: Build"
         },
         {
             "name": "Test Physics (Development)",

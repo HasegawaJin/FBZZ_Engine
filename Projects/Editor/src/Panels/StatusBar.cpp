@@ -4,6 +4,7 @@
 #include <Editor/Panels/StatusBar.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/BuildConsole.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -71,11 +72,26 @@ void StatusBar::Draw(EditorContext& ctx)
         Sep();
     }
 
-    // ── シーン名 + FPS ────────────────────────────────────────────────
+    // ── シーン名 + 未保存インジケーター ───────────────────────────────
+    // WHY: 未保存状態は「タイトルバーの *」「AssetBrowser の Save* (N)」に分散していた。
+    //      ここへ シーン未保存の橙ドットと 未保存アセット件数を集約し、一目で保存漏れを把握できるようにする。
     const std::string sceneName = ctx.currentScenePath.empty()
         ? "Untitled"
         : util::FileSystem::GetFilename(ctx.currentScenePath);
-    ImGui::Text("Scene: %s%s", sceneName.c_str(), ctx.sceneDirty ? "*" : "");
+    ImGui::Text("Scene: %s", sceneName.c_str());
+    if (ctx.sceneDirty) {
+        ImGui::SameLine(0.0f, 4.0f);
+        ImGui::TextColored(ImVec4(0.98f, 0.62f, 0.20f, 1.0f), "\xE2\x97\x8F"); // ● 未保存
+        // クリックで即保存できるようにする (タイトルバー * と StatusBar 表示の導線を一致させる)。
+        if (ImGui::IsItemClicked()) ctx.requestSaveScene = true;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Scene has unsaved changes \xe2\x80\x94 click to save (Ctrl+S)");
+    }
+    if (const int dirtyAssets = static_cast<int>(AssetDirtyRegistry::GetAll().size()); dirtyAssets > 0) {
+        ImGui::SameLine(0.0f, 6.0f);
+        ImGui::TextColored(ImVec4(0.98f, 0.62f, 0.20f, 1.0f), "%d unsaved asset%s",
+                           dirtyAssets, dirtyAssets == 1 ? "" : "s");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Unsaved assets — Save from the Asset Browser");
+    }
     Sep();
     ImGui::Text("FPS: %.1f  (%.2f ms)", m_fps, ms);
 

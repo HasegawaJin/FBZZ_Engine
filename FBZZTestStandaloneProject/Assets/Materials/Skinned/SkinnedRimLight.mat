@@ -1,0 +1,18 @@
+version = 1
+shader = "guid:25726aa49fcb45c98918fb317b7d3f09"
+blend_mode = "Opaque"
+double_sided = false
+render_queue = 2000
+render_path = "auto"
+mesh_type = "skinned"
+
+[textures]
+albedo = ""
+normal = ""
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+roughness = [0.65]
+rimPower = [3.0]
+rimIntensity = [1.0]
+rimColor = [1.0, 1.0, 1.0]

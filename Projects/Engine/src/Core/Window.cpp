@@ -6,13 +6,23 @@
 
 #include "Engine/Core/Window.hpp"
 #include "Engine/Input/Input.hpp"
+#include "Engine/Util/FileSystem.hpp"
 
 #include <dwmapi.h>
 #include <windowsx.h>
+#include <shellapi.h>
+#include <ole2.h>
+#include <oleidl.h>
 #include <algorithm>
 #include <cassert>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 #pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "uuid.lib") // IID_IDropTarget / IID_IUnknown
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
@@ -91,6 +101,114 @@ namespace
         };
     }
 
+    // ── OLE ドロップターゲット ────────────────────────────────────────────────
+    // WHY: WM_DROPFILES はドロップ確定時しか発火せず、ドラッグ中のカーソル位置が取れない。
+    //      OLE の IDropTarget は DragEnter/DragOver でドロップ前の位置を通知できるため、
+    //      Unity のように「落とす前にフォルダをハイライト」する体験を実現できる。
+
+    // IDataObject から CF_HDROP のファイルパス群を UTF-8 で取り出す。
+    std::vector<std::string> ExtractHdropPaths(IDataObject* data)
+    {
+        std::vector<std::string> paths;
+        if (!data) return paths;
+        FORMATETC fmt{ CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+        STGMEDIUM stg{};
+        if (data->GetData(&fmt, &stg) != S_OK) return paths;
+        if (HDROP hdrop = static_cast<HDROP>(GlobalLock(stg.hGlobal))) {
+            const UINT count = DragQueryFileW(hdrop, 0xFFFFFFFFu, nullptr, 0);
+            paths.reserve(count);
+            for (UINT i = 0; i < count; ++i) {
+                const UINT len = DragQueryFileW(hdrop, i, nullptr, 0);
+                if (len == 0) continue;
+                std::wstring wpath(len, L'\0');
+                DragQueryFileW(hdrop, i, wpath.data(), len + 1);
+                paths.push_back(fbzz::util::FileSystem::PathToUtf8(std::filesystem::path(wpath)));
+            }
+            GlobalUnlock(stg.hGlobal);
+        }
+        ReleaseStgMedium(&stg);
+        return paths;
+    }
+
+    bool DataHasFiles(IDataObject* data)
+    {
+        if (!data) return false;
+        FORMATETC fmt{ CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+        return data->QueryGetData(&fmt) == S_OK;
+    }
+
+    class FileDropTarget final : public IDropTarget
+    {
+    public:
+        FileDropTarget(Window* window, HWND hwnd) : m_window(window), m_hwnd(hwnd) {}
+
+        // IUnknown
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
+        {
+            if (riid == IID_IUnknown || riid == IID_IDropTarget) {
+                *ppv = static_cast<IDropTarget*>(this);
+                AddRef();
+                return S_OK;
+            }
+            *ppv = nullptr;
+            return E_NOINTERFACE;
+        }
+        ULONG STDMETHODCALLTYPE AddRef() override { return ++m_refCount; }
+        ULONG STDMETHODCALLTYPE Release() override
+        {
+            const ULONG r = --m_refCount;
+            if (r == 0) delete this;
+            return r;
+        }
+
+        // IDropTarget
+        HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override
+        {
+            m_hasFiles = DataHasFiles(data);
+            if (effect) *effect = m_hasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+            if (m_hasFiles) NotifyOver(pt);
+            return S_OK;
+        }
+        HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt, DWORD* effect) override
+        {
+            if (effect) *effect = m_hasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+            if (m_hasFiles) NotifyOver(pt);
+            return S_OK;
+        }
+        HRESULT STDMETHODCALLTYPE DragLeave() override
+        {
+            m_hasFiles = false;
+            if (m_window) m_window->InvokeFileDragLeave();
+            return S_OK;
+        }
+        HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override
+        {
+            if (effect) *effect = DROPEFFECT_COPY;
+            POINT p{ pt.x, pt.y };
+            ScreenToClient(m_hwnd, &p);
+            const std::vector<std::string> paths = ExtractHdropPaths(data);
+            if (m_window) {
+                m_window->InvokeFileDrop(paths, p.x, p.y);
+                m_window->InvokeFileDragLeave();
+            }
+            m_hasFiles = false;
+            return S_OK;
+        }
+
+    private:
+        void NotifyOver(POINTL pt)
+        {
+            POINT p{ pt.x, pt.y };
+            ScreenToClient(m_hwnd, &p);
+            if (m_window) m_window->InvokeFileDragOver(p.x, p.y);
+        }
+
+        Window* m_window  = nullptr;
+        HWND    m_hwnd    = nullptr;
+        ULONG   m_refCount = 1;
+        bool    m_hasFiles = false;
+    };
+
     HICON LoadApplicationIcon(HINSTANCE instance, int size)
     {
         // WHY: Window クラスにアイコンを設定しないと、exe に埋め込んだアイコンがタイトルバーや Alt+Tab に
@@ -149,6 +267,22 @@ bool Window::Initialize(const Config& config)
     BOOL darkMode = TRUE;
     DwmSetWindowAttribute(m_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
 
+    // エクスプローラーからのファイル D&D を OLE ドロップターゲットとして受け付ける。
+    // WHY: OLE を使うことでドロップ確定前のドラッグオーバー位置を取得でき、取り込み先フォルダを
+    //      リアルタイムでハイライトできる (WM_DROPFILES では不可能)。
+    if (SUCCEEDED(OleInitialize(nullptr))) {
+        m_oleInitialized = true;
+        auto* target = new FileDropTarget(this, m_hwnd); // ref=1 (自分の参照)
+        if (RegisterDragDrop(m_hwnd, target) == S_OK) {
+            // RegisterDragDrop が AddRef 済み。自分の初期参照は手放し、OLE 側の 1 参照だけ残す。
+            // Shutdown の RevokeDragDrop がその最後の参照を解放して delete させる。
+            m_dropTarget = target;
+            target->Release();
+        } else {
+            target->Release();
+        }
+    }
+
     ShowWindow(m_hwnd, SW_SHOW);
     UpdateWindow(m_hwnd);
 
@@ -164,6 +298,16 @@ void Window::Shutdown()
 {
     if (!m_hwnd)
         return;
+
+    // OLE ドロップターゲットを解除する。RevokeDragDrop が最後の参照を解放し FileDropTarget を delete する。
+    if (m_dropTarget) {
+        RevokeDragDrop(m_hwnd);
+        m_dropTarget = nullptr;
+    }
+    if (m_oleInitialized) {
+        OleUninitialize();
+        m_oleInitialized = false;
+    }
 
     DestroyWindow(m_hwnd);
     m_hwnd = nullptr;
@@ -259,6 +403,8 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         return 0;
     }
     }
+    // WHY: エクスプローラーからのファイルドロップは OLE の IDropTarget (FileDropTarget) で扱う。
+    //      WM_DROPFILES は使わない (ドラッグ中の位置が取れずハイライトできないため)。
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }

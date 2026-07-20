@@ -3,6 +3,7 @@
 // Scene GameObject hierarchy and selection editing
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ColliderFit.hpp>
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
@@ -411,9 +412,11 @@ void DrawCreateObjectMenu(EditorContext& ctx, std::function<void()>& deferred,
             const std::string name = util::FileSystem::GetFilename(path);
             if (ImGui::MenuItem(name.c_str())) {
                 deferred = [&ctx, path]() {
-                    std::vector<scene::EntityID> roots;
-                    if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots))
-                        ctx.selectedEntities = roots;
+                    ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, path]() {
+                        std::vector<scene::EntityID> roots;
+                        if (PrefabSerializer::Instantiate(*ctx.activeScene, path, roots))
+                            ctx.selectedEntities = roots;
+                    });
                 };
             }
         }
@@ -464,26 +467,42 @@ std::string UniquePrefabPath(const EditorContext& ctx, const std::string& object
 void SaveSelectedAsPrefab(EditorContext& ctx, const std::string& objectName)
 {
     if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
+    scene::Scene& scene = *ctx.activeScene;
 
+    // 保存 + インスタンス接続をまとめて実行する (Unity 互換の Create Prefab)。
+    // 接続したルート GO は rootSelection に返り、Undo でファイル削除と接続解除に使う。
     const std::string path = UniquePrefabPath(ctx, objectName);
-    if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, path)) {
-        if (ctx.undoStack) {
-            std::string content;
-            util::FileSystem::ReadText(path, content);
-            EditorContext* context = &ctx;
-            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                "Create Prefab",
-                [path, content, context]() {
-                    util::FileSystem::WriteText(path, content);
-                    context->requestAssetBrowserRefresh = true;
-                },
-                [path, context]() {
-                    util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
-                    context->requestAssetBrowserRefresh = true;
-                }));
-        }
-        ctx.requestAssetBrowserRefresh = true;
+    std::vector<scene::EntityID> rootSelection;
+    if (!PrefabSerializer::SaveSelectionAndConnect(scene, ctx.selectedEntities, path, rootSelection))
+        return;
+    const std::string relPath = NormalizeAssetPath(path);
+
+    if (ctx.undoStack) {
+        std::string content;
+        util::FileSystem::ReadText(path, content);
+        EditorContext* context = &ctx;
+        const std::vector<scene::EntityID> roots = rootSelection;
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Create Prefab",
+            [path, content, relPath, roots, context]() {
+                util::FileSystem::WriteText(path, content);
+                if (context->activeScene)
+                    for (scene::EntityID id : roots)
+                        if (auto* go = context->activeScene->GetGameObject(id))
+                            go->prefabAssetPath = relPath;
+                context->requestAssetBrowserRefresh = true;
+            },
+            [path, roots, context]() {
+                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(path));
+                if (context->activeScene)
+                    for (scene::EntityID id : roots)
+                        if (auto* go = context->activeScene->GetGameObject(id))
+                            go->prefabAssetPath.clear();
+                context->requestAssetBrowserRefresh = true;
+            }));
     }
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    ctx.requestAssetBrowserRefresh = true;
 }
 
 bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
@@ -676,6 +695,22 @@ void DrawHierarchyNode(EditorContext& ctx,
                         isLocked ? IM_COL32(255, 175, 50, 240) : IM_COL32(120, 120, 120, 140), "L");
         }
 
+        // prefab インスタンスバッジ (右端 4 番目スロット, 常時表示の水色ダイヤ)
+        // WHY: 青いテキストだけだと非アクティブ(グレー)や選択ハイライトと重なった際に
+        //      プレファブ由来か判別しづらい。Unity のプレファブアイコンに相当する常設マーカーを
+        //      置き、ホバーで参照パスをツールチップ表示して出所を即座に確認できるようにする。
+        if (isPrefabInstance) {
+            const ImVec2 pfMin = { rx - btnW * 4.0f, nodeMin.y };
+            const ImVec2 pfMax = { rx - btnW * 3.0f, nodeMax.y };
+            const ImVec2 pfCenter = { (pfMin.x + pfMax.x) * 0.5f, (pfMin.y + pfMax.y) * 0.5f };
+            const float  pfRadius = h * 0.22f;
+            // 外周を少し濃く、内側を塗って小さなダイヤ(菱形)にする
+            dl->AddNgonFilled(pfCenter, pfRadius, IM_COL32(100, 180, 255, 235), 4);
+            dl->AddNgon(pfCenter, pfRadius, IM_COL32(40, 90, 150, 235), 4, 1.0f);
+            if (ImGui::IsMouseHoveringRect(pfMin, pfMax, false))
+                ImGui::SetTooltip("Prefab instance\n%s", go.prefabAssetPath.c_str());
+        }
+
         // ノードのクリック/ダブルクリック判定 (アイコン領域は除外)
         const bool iconAreaClick = ehClick || visClick || lockClick;
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()
@@ -752,14 +787,16 @@ void DrawHierarchyNode(EditorContext& ctx,
                 };
             } else if (ext == ".prefab") {
                 deferred = [&ctx, assetPath, id, pendingExpand]() {
-                    std::vector<scene::EntityID> roots;
-                    if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots)) return;
-                    for (scene::EntityID rootId : roots) {
-                        auto* root = ctx.activeScene->GetGameObject(rootId);
-                        auto* parent = ctx.activeScene->GetGameObject(id);
-                        if (root && parent) root->SetParent(parent);
-                    }
-                    ctx.selectedEntities = roots;
+                    ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, assetPath, id]() {
+                        std::vector<scene::EntityID> roots;
+                        if (!PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots)) return;
+                        for (scene::EntityID rootId : roots) {
+                            auto* root = ctx.activeScene->GetGameObject(rootId);
+                            auto* parent = ctx.activeScene->GetGameObject(id);
+                            if (root && parent) root->SetParent(parent);
+                        }
+                        ctx.selectedEntities = roots;
+                    });
                     if (pendingExpand) *pendingExpand = id;
                 };
             }
@@ -990,11 +1027,11 @@ void DrawHierarchyNode(EditorContext& ctx,
             if (ImGui::MenuItem("Revert from Prefab")) {
                 deferred = [&ctx, id]() {
                     if (!ctx.activeScene) return;
-                    std::vector<scene::EntityID> newRoots;
-                    if (PrefabSerializer::Revert(*ctx.activeScene, id, newRoots, ctx.projectRoot)) {
-                        if (!newRoots.empty()) ctx.selectedEntities = newRoots;
-                        if (ctx.markSceneDirty) ctx.markSceneDirty();
-                    }
+                    ExecuteSceneEditWithUndo(ctx, "Revert Prefab", [&ctx, id]() {
+                        std::vector<scene::EntityID> newRoots;
+                        if (PrefabSerializer::Revert(*ctx.activeScene, id, newRoots, ctx.projectRoot))
+                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                    });
                 };
             }
             if (ImGui::IsItemHovered())
@@ -1124,6 +1161,15 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     // --- 検索バー ---
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
+
+    // 空状態ガイド: シーンにオブジェクトが無いときは作成導線を案内する。
+    if (ctx.activeScene->GameObjectCount() == 0 && m_searchFilter[0] == '\0') {
+        ImGui::Spacing();
+        ImGui::TextDisabled("Scene is empty");
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Right-click here to create objects, or drag a model / prefab from the Asset Browser into the Scene.");
+        ImGui::PopTextWrapPos();
+    }
 
     // F2 リネームはツリー内インライン編集 (DrawHierarchyNode / 検索リスト側) で行う
 
@@ -1353,9 +1399,11 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 };
             } else if (ext == ".prefab") {
                 deferred = [&ctx, assetPath]() {
-                    std::vector<scene::EntityID> roots;
-                    if (PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
-                        ctx.selectedEntities = roots;
+                    ExecuteSceneEditWithUndo(ctx, "Instantiate Prefab", [&ctx, assetPath]() {
+                        std::vector<scene::EntityID> roots;
+                        if (PrefabSerializer::Instantiate(*ctx.activeScene, assetPath, roots))
+                            ctx.selectedEntities = roots;
+                    });
                 };
             }
         }

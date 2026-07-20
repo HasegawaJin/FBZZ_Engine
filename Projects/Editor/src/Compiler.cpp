@@ -31,14 +31,18 @@ bool Compiler::Start(const Config& config)
         return false;
     SetHandleInformation(m_hStdoutRead, HANDLE_FLAG_INHERIT, 0);
 
-    std::wstring command =
-        L"\"" + config.cmakeExe.wstring() + L"\""
-        L" --build \"" + config.buildDir.wstring() + L"\""
-        L" --target " + util::StringUtils::ToWide(config.target) +
-        L" --config " + util::StringUtils::ToWide(config.configuration) +
-        L" --parallel";  // MSBuild: /m — 全 CPU コアで並列コンパイル
+    const bool usesExplicitCommand = !config.commandLine.empty();
+    std::wstring command = config.commandLine;
+    if (!usesExplicitCommand) {
+        command =
+            L"\"" + config.cmakeExe.wstring() + L"\""
+            L" --build \"" + config.buildDir.wstring() + L"\""
+            L" --target " + util::StringUtils::ToWide(config.target) +
+            L" --config " + util::StringUtils::ToWide(config.configuration) +
+            L" --parallel";  // MSBuild: /m — 全 CPU コアで並列コンパイル
+    }
 
-    if (config.skipDeps)
+    if (!usesExplicitCommand && config.skipDeps)
         command += L" -- /p:BuildProjectReferences=false /p:DebugSymbols=false /p:TrackFileAccess=false";
 
     // WHY: 失敗時に target / configuration / buildDir を UI ログだけで特定できるようにする。
@@ -83,8 +87,11 @@ bool Compiler::Start(const Config& config)
         SetEnvironmentVariableW(L"FBZZ_SDK_ROOT", sdkRoot.c_str());
     }
 
+    const std::wstring workingDirectory = config.workingDirectory.wstring();
     const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
-                                   CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+                                   CREATE_NO_WINDOW, nullptr,
+                                   workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
+                                   &si, &pi);
     if (oldClSize > 0)
         SetEnvironmentVariableW(L"CL", oldCl.c_str());
     else

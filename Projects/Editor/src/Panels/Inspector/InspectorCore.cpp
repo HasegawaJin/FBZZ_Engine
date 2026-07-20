@@ -69,11 +69,81 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
     if (!TransformEquals(before, after) && ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
+// ── Transform の値クリップボード (オブジェクト間コピー/ペースト用) ─────────────
+// WHY: 「A の Transform を B にそのまま移す」は頻出操作。プロセス内で 1 つ保持すれば足りる。
+struct TransformClipboard {
+    bool             has = false;
+    math::Vector3    position{};
+    math::Quaternion rotation{};
+    math::Vector3    scale{ 1.0f, 1.0f, 1.0f };
+};
+TransformClipboard& TransformClip() { static TransformClipboard c; return c; }
+
+// Transform をメニュー操作で書き換えた際の Undo コマンドを積む (連続ドラッグ用の TrackTransformEdit とは別経路)。
+void PushTransformSnapshotUndo(EditorContext& ctx, const std::string& before, const char* desc)
+{
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    if (!ctx.activeScene || !ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) return;
+    const std::string after = SceneIO::Serialize(*ctx.activeScene);
+    if (before.empty() || before == after) return;
+    scene::Scene*  scene   = ctx.activeScene;
+    EditorContext* context = &ctx;
+    const auto markDirty   = ctx.markSceneDirty;
+    auto restore = [scene, context, markDirty](const std::string& snapshot) {
+        if (SceneIO::Deserialize(*scene, snapshot)) {
+            context->selectedEntities.clear();
+            if (markDirty) markDirty();
+        }
+    };
+    ctx.undoStack->Push(std::make_unique<LambdaCommand>(desc,
+        [restore, after]()  { restore(after); },
+        [restore, before]() { restore(before); }));
+}
+
+// Transform ヘッダー右クリックの Copy / Paste / Reset メニュー。
+void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
+{
+    if (!ImGui::BeginPopupContextItem("##transform_hdr_ctx")) return;
+    auto& t = go.transform;
+    TransformClipboard& clip = TransformClip();
+
+    const bool canUndo = ctx.activeScene && ctx.undoStack && ctx.undoStack->IsRecordingEnabled();
+    const auto snapshot = [&]() -> std::string {
+        return canUndo ? SceneIO::Serialize(*ctx.activeScene) : std::string{};
+    };
+
+    if (ImGui::MenuItem("Copy Transform")) {
+        clip.position = t.position;
+        clip.rotation = t.rotation;
+        clip.scale    = t.scale;
+        clip.has      = true;
+    }
+    if (ImGui::MenuItem("Paste Transform", nullptr, false, clip.has)) {
+        const std::string before = snapshot();
+        t.position = clip.position;
+        t.rotation = clip.rotation;
+        t.scale    = clip.scale;
+        PushTransformSnapshotUndo(ctx, before, "Paste Transform");
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Reset Transform")) {
+        const std::string before = snapshot();
+        t.position = math::Vector3::ZERO;
+        t.rotation = math::Quaternion::Identity();
+        t.scale    = { 1.0f, 1.0f, 1.0f };
+        PushTransformSnapshotUndo(ctx, before, "Reset Transform");
+    }
+    ImGui::EndPopup();
+}
+
 } // namespace
 
 void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
 {
-    if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+    const bool transformOpen = ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen);
+    // ヘッダー右クリック: Copy / Paste / Reset (開閉状態に関わらず有効)
+    DrawTransformHeaderMenu(*go, ctx);
+    if (transformOpen) {
         auto& t = go->transform;
         ImGui::Spacing();
 

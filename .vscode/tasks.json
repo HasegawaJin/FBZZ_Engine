@@ -85,9 +85,9 @@
             }
         },
         {
-            "label": "CMake: Build GameHub (Debug)",
+            "label": "CMake: Build SDK (Debug)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_hub",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_sdk",
             "group": "build",
             "dependsOn": "CMake: Configure (Debug)",
             "problemMatcher": "$msCompile",
@@ -97,9 +97,9 @@
             }
         },
         {
-            "label": "CMake: Build GameHub (Release)",
+            "label": "CMake: Build SDK (Release)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target fbzz_hub",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target fbzz_sdk",
             "group": "build",
             "dependsOn": "CMake: Configure (Release)",
             "problemMatcher": "$msCompile",
@@ -109,12 +109,115 @@
             }
         },
         {
-            "label": "CMake: Build GameHub (Development)",
+            "label": "CMake: Build SDK (Development)",
             "type": "shell",
-            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_hub",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_sdk",
             "group": "build",
             "dependsOn": "CMake: Configure (Development)",
             "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "GameHub: Rebuild Engine SDK + Build (Debug)",
+            "dependsOn": ["CMake: Build SDK (Debug)", "GameHub: Build (Debug)"],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Rebuild Engine SDK + Build (Development)",
+            "dependsOn": ["CMake: Build SDK (Development)", "GameHub: Build (Development)"],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Rebuild Engine SDK + Build (Release)",
+            "dependsOn": ["CMake: Build SDK (Release)", "GameHub: Build (Release)"],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "GameHub: Typecheck",
+            "type": "npm",
+            "script": "typecheck",
+            "path": "Projects/GameHub",
+            "problemMatcher": "$tsc",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "GameHub: Build (Debug)",
+            "type": "npm",
+            "script": "build:debug",
+            "path": "Projects/GameHub",
+            "group": "build",
+            "dependsOn": "GameHub: Typecheck",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "GameHub: Build (Development)",
+            "type": "npm",
+            "script": "build:development",
+            "path": "Projects/GameHub",
+            "group": "build",
+            "dependsOn": "GameHub: Typecheck",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "GameHub: Build (Release)",
+            "type": "npm",
+            "script": "build:release",
+            "path": "Projects/GameHub",
+            "group": "build",
+            "dependsOn": "GameHub: Typecheck",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "EditorMcp: Build",
+            "type": "npm",
+            "script": "build",
+            "path": "Projects/EditorMcp",
+            "group": "build",
+            "problemMatcher": "$tsc",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "GameHub: Kill Processes",
+            "type": "shell",
+            "command": "taskkill /F /T /IM FBZZGameHub.exe >nul 2>&1 || exit 0",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "shared",
+                "reveal": "silent",
+                "close": true
+            }
+        },
+        {
+            "label": "EditorMcp: Test",
+            "type": "npm",
+            "script": "test",
+            "path": "Projects/EditorMcp",
+            "group": "test",
+            "problemMatcher": "$tsc",
             "presentation": {
                 "panel": "shared",
                 "reveal": "always"
@@ -186,6 +289,42 @@
             "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_editor_launcher",
             "group": "build",
             "dependsOn": "CMake: Configure (Development)",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "CMake: Build VFXEditor (Debug)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset debug --target fbzz_vfx_editor",
+            "group": "build",
+            "dependsOn": "CMake: Configure (Debug)",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "CMake: Build VFXEditor (Development)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset development --target fbzz_vfx_editor",
+            "group": "build",
+            "dependsOn": "CMake: Configure (Development)",
+            "problemMatcher": "$msCompile",
+            "presentation": {
+                "panel": "shared",
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "CMake: Build VFXEditor (Release)",
+            "type": "shell",
+            "command": "\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat\" && cmake --build --preset release --target fbzz_vfx_editor",
+            "group": "build",
+            "dependsOn": "CMake: Configure (Release)",
             "problemMatcher": "$msCompile",
             "presentation": {
                 "panel": "shared",
