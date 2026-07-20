@@ -425,7 +425,20 @@ void TrailRenderPass::Execute(RenderPassContext& ctx)
 
         EnsureResources(*trail, ctx);
 
-        if (trail->enabled) {
+        if (trail->enabled && trail->beamMode) {
+            const auto transformPoint = [&go](const math::Vector3& local) {
+                const math::Vector3 scaled{ local.x * go.transform.worldScale.x,
+                                            local.y * go.transform.worldScale.y,
+                                            local.z * go.transform.worldScale.z };
+                return go.transform.worldPosition + go.transform.worldRotation * scaled;
+            };
+            trail->ringHead = 0;
+            trail->ringTail = 0;
+            trail->ringCount = 0;
+            RingPushBack(*trail, { transformPoint(trail->beamStart), currentTime });
+            RingPushBack(*trail, { transformPoint(trail->beamEnd), currentTime });
+            trail->lastSampleTime = currentTime;
+        } else if (trail->enabled) {
             const math::Vector3 samplePos = ResolveTrailSamplePosition(ctx.scene, go, *trail);
             UpdateTrailPoints(*trail, samplePos, currentTime);
         }

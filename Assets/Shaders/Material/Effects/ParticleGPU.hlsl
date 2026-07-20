@@ -38,6 +38,7 @@ struct GpuParticle
 StructuredBuffer<GpuParticle> gParticles : register(SB_GPU_PARTICLES);
 Texture2D                     gTex       : register(TEX_ALBEDO);
 Texture2D                     gSceneDepth: register(TEX_DEPTH);
+Texture2D                     gSceneColor: register(t5);
 SamplerState                  gSampler   : register(SAMPLER_DEFAULT);
 
 cbuffer ParticleRenderConstants : register(CB_MATERIAL)
@@ -48,7 +49,12 @@ cbuffer ParticleRenderConstants : register(CB_MATERIAL)
     float gSoftParticleFadeDistance;
     uint  gSoftParticles;
     uint  gMaxParticles;
-    uint2 gParticleRenderPad;
+    uint  gEffectsFlags;
+    float gDistortionStrength;
+    float gLightingStrength;
+    float gEmissiveScale;
+    float gMotionVectorStrength;
+    uint  gParticleRenderPad;
 };
 
 // ---------- VS / PS 間 ---------------------------------------------------
@@ -164,5 +170,21 @@ float4 PSMain(PsIn p) : SV_Target0
         float particleLinear = LinearizeDepth(p.svPos.z, nearZ, farZ);
         fade *= saturate((sceneLinear - particleLinear) / gSoftParticleFadeDistance);
     }
-    return tex * float4(p.color.rgb, p.color.a * fade);
+    float4 result = tex * float4(p.color.rgb, p.color.a * fade);
+    if ((gEffectsFlags & 2u) != 0u)
+    {
+        float2 normalXY = p.localUv * 2.0f - 1.0f;
+        float3 normal = normalize(float3(normalXY, sqrt(saturate(1.0f - dot(normalXY, normalXY)))));
+        float diffuse = saturate(dot(normal, normalize(-lightDir)));
+        float3 lit = ambientColor + lightColor * diffuse;
+        result.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));
+    }
+    result.rgb *= gEmissiveScale;
+    if ((gEffectsFlags & 1u) != 0u)
+    {
+        float2 screenUv = p.svPos.xy / max(screenSize, float2(1.0f, 1.0f));
+        float2 offset = (tex.rg * 2.0f - 1.0f) * gDistortionStrength;
+        result = float4(gSceneColor.Sample(gSampler, saturate(screenUv + offset)).rgb, result.a);
+    }
+    return result;
 }

@@ -13,6 +13,7 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -404,6 +405,37 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
             continue;
 
         EnsureComponentResources(*trail, resources);
+        if (auto* emitter = go.GetComponent<ParticleEmitter>();
+            emitter != nullptr && !emitter->meshParticlePath.empty()) {
+            auto* mesh = go.GetComponent<MeshRenderer>();
+            if (mesh == nullptr) continue;
+            const math::Vector4 savedStart = trail->colorStart;
+            const math::Vector4 savedEnd = trail->colorEnd;
+            const std::size_t particleCount = (std::min)(emitter->particles.size(),
+                static_cast<std::size_t>((std::max)(emitter->visibleParticleCount, 0)));
+            for (std::size_t particleIndex = 0; particleIndex < particleCount; ++particleIndex) {
+                const Particle& particle = emitter->particles[particleIndex];
+                math::Vector3 position = particle.position;
+                if (emitter->simulationSpace == ParticleSimulationSpace::Local) {
+                    const math::Vector3 scaled{ position.x * go.transform.worldScale.x,
+                                                position.y * go.transform.worldScale.y,
+                                                position.z * go.transform.worldScale.z };
+                    position = go.transform.worldPosition + go.transform.worldRotation * scaled;
+                }
+                MeshTrailSample sample;
+                sample.timestamp = currentTime;
+                sample.position = position;
+                sample.world = math::Matrix4::TRS(position,
+                    math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, particle.rotation),
+                    { particle.size, particle.size, particle.size });
+                trail->colorStart = particle.color;
+                trail->colorEnd = particle.color;
+                DrawStaticMeshSample(*trail, sample, *mesh, ctx, currentTime);
+            }
+            trail->colorStart = savedStart;
+            trail->colorEnd = savedEnd;
+            continue;
+        }
         ExpireSamples(*trail, resources, currentTime);
 
         if (trail->enabled && ShouldSample(*trail, go.transform.worldPosition, currentTime))
