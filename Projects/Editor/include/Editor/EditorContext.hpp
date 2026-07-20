@@ -55,6 +55,11 @@ struct EditorContext {
 
     // エンジンオブジェクト (非所有)
     scene::Scene*     activeScene  = nullptr;
+    // VFXEditor 専用の一時 World。編集 Scene の階層・Undo・保存へ Preview Object を混入させない。
+    scene::Scene*     vfxPreviewScene = nullptr;
+    // AI の決定論プレビュー要求は VFXEditor が閉じていても専用 World を数フレームだけ駆動する。
+    // WHY: query 応答と GPU 描画は同一フレームで完結しないため、capture までの猶予を frame 値で共有する。
+    std::uint64_t     vfxAiPreviewUntilFrame = 0;
     renderer::Camera* editorCamera = nullptr;
     renderer::IRenderer* renderer = nullptr;
     renderer::IImGuiRenderer* imguiRenderer = nullptr;
@@ -215,6 +220,9 @@ struct EditorContext {
     bool requestOpenBuildSettings    = false;
     bool requestOpenAnalysis         = false;
     bool requestOpenAnimationGraph   = false; // .animcontroller ダブルクリック → AnimationGraphPanel を開く
+    bool requestOpenVFXEditor        = false; // .vfx ダブルクリック → VFXEditorPanel を開く
+    // 独立VFXEditorの File > Open からホスト側のネイティブダイアログを要求する。
+    std::function<void()> requestOpenVFXAssetDialog;
     bool requestScriptReload         = false;  // StatusBar の ↻ ボタン → TickScriptCompile が処理
 
     // F キーフォーカス: ViewportPanel がセット → main.cpp が DebugCamera に適用してクリア

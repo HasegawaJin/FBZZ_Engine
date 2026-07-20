@@ -39,6 +39,7 @@ namespace fbzz::core     { class Window; }
 namespace fbzz::editor {
 
 class ViewportPanel;
+class VFXEditorPanel;
 class BuildOutputPanel;
 class ProjectSettingsPanel;
 class BuildSettingsPanel;
@@ -99,10 +100,15 @@ private:
     void UpdateFocusAnim(float dt);
     void RenderSceneView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
     void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
+    void RenderVFXPreview();
 
     std::unique_ptr<scene::Scene>  m_scene;
+    std::unique_ptr<scene::Scene>  m_vfxPreviewScene;
+    scene::SceneManager            m_vfxPreviewSceneManager;
+    physics::World                 m_vfxPreviewPhysicsWorld;
     scene::ProjectRuntime          m_runtime;
     renderer::DebugCamera          m_debugCamera;
+    renderer::DebugCamera          m_vfxPreviewCamera;
     scene::UISystemContext         m_sceneUICtx;
     FocusAnim                      m_focusAnim;
     float                          m_simulationDt = 0.0f;
@@ -230,6 +236,7 @@ private:
     ViewportPanel*                           m_sceneViewportPanel     = nullptr;
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
     ViewportPanel*                           m_uiViewportPanel        = nullptr;
+    VFXEditorPanel*                          m_vfxEditorPanel         = nullptr;
     ProjectSettingsPanel*                    m_projectSettingsPanel   = nullptr;
     BuildSettingsPanel*                      m_buildSettingsPanel     = nullptr;
     AssetBrowserPanel*                       m_assetBrowserPanel      = nullptr;
@@ -238,6 +245,7 @@ private:
     IblBakePanel*                            m_iblBakePanel           = nullptr;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
+    renderer::ResourceHandle<renderer::RenderTargetTag> m_vfxPreviewRT;
 };
 
 } // namespace fbzz::editor

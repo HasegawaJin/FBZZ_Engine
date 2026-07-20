@@ -3,6 +3,7 @@
 // AssetBrowser のフォルダツリーとファイルアイコン描画
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Windows.h>
 #include <toml++/toml.hpp>
@@ -221,6 +222,7 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".asset", nullptr },                                 { 0.85f, 0.55f, 0.08f, 1.0f }, "ASSET"   },
     { { ".anim", nullptr },                                  { 0.95f, 0.75f, 0.20f, 1.0f }, "ANIM"    },
     { { ".animcontroller", nullptr },                        { 0.75f, 0.40f, 0.85f, 1.0f }, "ANIM CTRL" },
+    { { ".vfx", nullptr },                                   { 0.95f, 0.35f, 0.55f, 1.0f }, "VFX"     },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
     { { ".fzpp", nullptr },                                  { 0.65f, 0.35f, 0.85f, 1.0f }, "POST FX" },
     { { ".tex", nullptr },                                   { 0.40f, 0.80f, 0.90f, 1.0f }, "TEX"     },
@@ -2350,6 +2352,8 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
         }
     } else if (ext == ".animcontroller") {
         ctx.requestOpenAnimationGraph = true;
+    } else if (ext == ".vfx") {
+        ctx.requestOpenVFXEditor = true;
     }
 }
 
@@ -2500,7 +2504,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             const std::string scanExt  = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(scanPath));
             if (scanExt != ".scene" && scanExt != ".mat" && scanExt != ".prefab"
-                && scanExt != ".animcontroller") continue;
+                && scanExt != ".animcontroller" && scanExt != ".vfx") continue;
             std::string content;
             util::FileSystem::ReadText(scanPath, content);
             if (content.find(filename) != std::string::npos ||
@@ -2680,6 +2684,8 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
         m_entryDragStarted = true;  // ドラッグ中はリリース時の選択変更を抑制
         const std::string payloadPath = ToProjectAssetPath(e.path, ctx);
         ImGui::SetDragDropPayload("ASSET_PATH", payloadPath.c_str(), payloadPath.size() + 1);
+        // ImGui payloadはプロセス境界を越えないため、同じdragを独立VFXEditor向けIPCでも追跡する。
+        VFXEditorLauncher::TrackAssetDrag(ctx.projectRoot, payloadPath);
         ImGui::TextUnformatted(e.name.c_str());
         ImGui::EndDragDropSource();
     }

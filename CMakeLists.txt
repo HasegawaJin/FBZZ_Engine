@@ -61,6 +61,7 @@ add_subdirectory(Projects/Physics)
 add_subdirectory(Projects/Engine)
 add_subdirectory(Projects/Editor)
 add_subdirectory(Projects/EditorLauncher)
+add_subdirectory(Projects/VFXEditorLauncher)
 # GameHubはElectron / TypeScript版へ移行したため、CMakeのビルド対象には含めない。
 # WHY: HubのUIとOS連携はProjects/GameHubNext側で完結し、EngineのC++依存グラフから分離する。
 add_subdirectory(Projects/Sandbox)

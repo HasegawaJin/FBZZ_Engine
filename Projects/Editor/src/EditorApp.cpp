@@ -15,6 +15,7 @@
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/ViewportPanel.hpp>
@@ -302,7 +303,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_panels.push_back(std::make_unique<SceneHierarchyPanel>());
     m_panels.push_back(std::make_unique<InspectorPanel>());
     m_panels.push_back(std::make_unique<AnimationGraphPanel>());
-    m_panels.push_back(std::make_unique<VFXEditorPanel>());
+    // VFX Editorは別プロセスで専用Preview Worldを所有する。
+    // WHY: Editor SceneへPreview Entityが混入する経路をプロセス境界で完全に断つため。
+    m_vfxEditorPanel = nullptr;
     {
         auto vp = std::make_unique<ViewportPanel>(ViewportPanel::Kind::Scene);
         m_sceneViewportPanel = vp.get();
@@ -390,11 +393,17 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_uiViewportPanel->renderer  = &renderer;
         m_uiViewportPanel->resources = &resources;
     }
+    if (m_vfxEditorPanel)
+        m_vfxEditorPanel->previewRT = m_vfxPreviewRT;
 
     // シーンはここで生成し activeScene にバインドする。
     // OpenProject() が activeScene を参照するため Init() で確立しておく必要がある。
     m_scene = std::make_unique<scene::Scene>();
     m_ctx.activeScene = m_scene.get();
+    // VFX Preview は編集 Scene と別の SceneManager で駆動し、生成物を Scene 保存・Undo から隔離する。
+    // VFX Preview WorldはFBZZVFXEditor.exeが所有する。Editorプロセスには生成しない。
+    m_vfxPreviewScene.reset();
+    m_ctx.vfxPreviewScene = nullptr;
 
     FBZZ_LOG_INFO("EditorApp init done");
     UpdateWindowTitle();
@@ -514,6 +523,7 @@ void EditorApp::Shutdown()
     m_ctx.projectSettings.Save(m_projectSettingsPath);
     m_sceneViewportRT = {};
     m_gameViewportRT  = {};
+    m_vfxPreviewRT    = {};
     m_imguiRenderer->ImGuiShutdown();
     ImGui::DestroyContext();
 }
@@ -903,6 +913,12 @@ void EditorApp::RenderPanels(EditorContext& ctx)
         }
     }
 
+    if (ctx.requestOpenVFXEditor) {
+        ctx.requestOpenVFXEditor = false;
+        if (!VFXEditorLauncher::Launch(ctx.projectRoot, ctx.selectedAssetPath))
+            FBZZ_LOG_WARN("FBZZVFXEditor.exeを起動できません。VFX Editorターゲットをビルドしてください。");
+    }
+
     // WHY: すべての通常ウィンドウの後に呼ぶことで、オーバーレイが最前面に描画される。
     //      IsActive() == false のときは何もしないのでパネルのないフレームでも安全。
     {
@@ -1180,6 +1196,22 @@ void EditorApp::ResizeViewportRTsIfNeeded()
     //      リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
     if (m_uiViewportPanel)
         m_uiViewportPanel->hdrRT = m_gameViewportRT;
+
+    // VFX Preview は独立ウィンドウ内の利用可能領域にだけ追従する。
+    // 1px 単位の揺れで毎フレーム RT を作り直さないよう Panel 側で整数化した寸法を受ける。
+    if (m_vfxEditorPanel && m_vfxPreviewRT.IsValid()) {
+        const uint32_t width = static_cast<uint32_t>(m_vfxEditorPanel->previewWidth);
+        const uint32_t height = static_cast<uint32_t>(m_vfxEditorPanel->previewHeight);
+        if (width > 0 && height > 0) {
+            auto* currentRT = m_resources->Get(m_vfxPreviewRT);
+            if (currentRT && (currentRT->GetWidth() != width || currentRT->GetHeight() != height)) {
+                const auto previousRT = m_vfxPreviewRT;
+                m_vfxPreviewRT = m_resources->CreateRenderTarget(width, height);
+                m_resources->Release(previousRT);
+                m_vfxEditorPanel->previewRT = m_vfxPreviewRT;
+            }
+        }
+    }
 }
 
 // =============================================================================
@@ -1203,6 +1235,10 @@ bool EditorApp::OnInit()
     m_debugCamera.camera.m_rotation = { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz, m_settings.cameraLastRw };
     m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
     m_ctx.editorCamera = &m_debugCamera.camera;
+
+    // VFX Preview は原点に生成されるため、Scene View Camera と独立した再現可能な初期構図を持つ。
+    m_vfxPreviewCamera.camera.m_position = { 0.0f, 1.0f, -5.0f };
+    m_vfxPreviewCamera.LookAt({ 0.0f, 0.5f, 0.0f });
 
     if (auto* rt = m_resources->Get(m_sceneViewportRT))
         m_debugCamera.camera.m_aspect =
@@ -1256,7 +1292,10 @@ void EditorApp::OnUpdate(float dt)
     if (!playMode->IsPlaying()) {
         m_debugCamera.moveSpeed = m_ctx.cameraSpeed;
         m_debugCamera.mouseSens = m_ctx.cameraSensitivity;
-        m_debugCamera.Update(dt, m_ctx.sceneViewportHovered);
+        const bool vfxViewportHovered = m_vfxEditorPanel != nullptr
+            && m_vfxEditorPanel->IsPreviewHovered();
+        if (!vfxViewportHovered)
+            m_debugCamera.Update(dt, m_ctx.sceneViewportHovered);
         UpdateFocusAnim(dt);
     }
 
@@ -1273,12 +1312,32 @@ void EditorApp::OnUpdate(float dt)
 
     m_runtime.Update(m_simulationDt, m_ctx.projectSettings,
                      playMode->IsPlaying() || stepFrame, stepFrame);
+
+    const bool aiVfxPreviewActive = m_ctx.vfxAiPreviewUntilFrame != 0
+        && Time::frameCount <= m_ctx.vfxAiPreviewUntilFrame;
+    if (m_vfxEditorPanel
+        && (m_vfxEditorPanel->WantsPreviewRender() || aiVfxPreviewActive)
+        && m_vfxEditorPanel->UsesIsolatedPreviewWorld() && m_vfxPreviewScene) {
+        m_vfxPreviewSceneManager.SetPhysicsHz(m_ctx.projectSettings.physics.hz);
+        m_vfxPreviewSceneManager.Update(m_simulationDt, m_vfxPreviewPhysicsWorld);
+    }
+    // VFX専用Viewportだけがホバーされている間、専用Cameraへ入力を渡す。
+    // WHY: Scene View Cameraを共有すると、VFXの構図調整がメインEditorの視点を壊すため。
+    if (m_vfxEditorPanel && m_vfxEditorPanel->WantsPreviewRender()
+        && m_vfxEditorPanel->IsPreviewHovered())
+        m_vfxPreviewCamera.Update(dt, true);
 }
 
 void EditorApp::OnLateUpdate(float dt)
 {
     (void)dt;
     m_runtime.LateUpdate(m_simulationDt);
+    const bool aiVfxPreviewActive = m_ctx.vfxAiPreviewUntilFrame != 0
+        && Time::frameCount <= m_ctx.vfxAiPreviewUntilFrame;
+    if (m_vfxEditorPanel
+        && (m_vfxEditorPanel->WantsPreviewRender() || aiVfxPreviewActive)
+        && m_vfxEditorPanel->UsesIsolatedPreviewWorld() && m_vfxPreviewScene)
+        m_vfxPreviewSceneManager.LateUpdate(m_simulationDt, m_vfxPreviewPhysicsWorld);
 }
 
 void EditorApp::OnRender()
@@ -1303,6 +1362,7 @@ void EditorApp::OnRender()
 
     RenderSceneView(gameCamera, gameCullingMask);
     RenderGameView(gameCamera, gameCullingMask);
+    RenderVFXPreview();
 
     m_renderer->SetRenderTarget({}, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
@@ -1321,6 +1381,8 @@ void EditorApp::OnRender()
         m_ctx.activeScene = nextActive;
     }
     RenderPanels(m_ctx);
+    // AssetBrowserから独立VFXEditorウィンドウ上でreleaseされたdragをIPC dropへ変換する。
+    VFXEditorLauncher::UpdateTrackedAssetDrag();
     EndFrame(*m_imguiRenderer);
 
     m_renderer->EndFrame();
@@ -1332,8 +1394,10 @@ void EditorApp::OnShutdown()
     //      DLL コードが有効なうちに実行する。ProjectRuntime::Shutdown はEditor外部Sceneと
     //      Play中のシーン遷移で残ったManager所有Sceneの両方を破棄する。
     m_runtime.Shutdown();
+    m_vfxPreviewSceneManager.ClearScenes();
     // Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
     m_ctx.activeScene = nullptr;
+    m_ctx.vfxPreviewScene = nullptr;
     Shutdown();
 }
 
@@ -1481,6 +1545,46 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
                             m_debugCamera.camera, sceneRT, &sceneRenderSettings,
                         fbzz::Layer::Everything, &uiOptions, &m_runtime.GetPhysicsWorld());
     }
+}
+
+void EditorApp::RenderVFXPreview()
+{
+    const bool aiVfxPreviewActive = m_ctx.vfxAiPreviewUntilFrame != 0
+        && Time::frameCount <= m_ctx.vfxAiPreviewUntilFrame;
+    if (!m_vfxEditorPanel
+        || (!m_vfxEditorPanel->WantsPreviewRender() && !aiVfxPreviewActive)
+        || !m_vfxPreviewRT.IsValid()) return;
+
+    scene::Scene* renderScene = m_vfxPreviewScene.get();
+    if (!renderScene) return;
+
+    renderer::Camera previewCamera = m_vfxPreviewCamera.camera;
+    if (auto* rt = m_resources->Get(m_vfxPreviewRT)) {
+        if (rt->GetHeight() > 0)
+            previewCamera.m_aspect = static_cast<float>(rt->GetWidth())
+                / static_cast<float>(rt->GetHeight());
+    }
+
+    m_renderer->SetRenderTarget(m_vfxPreviewRT, *m_resources);
+    m_renderer->Clear({ 0.018f, 0.021f, 0.028f, 1.0f });
+
+    // WHY: 専用 Preview は見た目の評価画像なので、Scene View の選択輪郭・Grid・Gizmo・UI を混ぜない。
+    //      AI capture も同じ RT を読むことで、操作 UI と評価対象の画を分離できる。
+    auto settings = m_ctx.projectSettings.render;
+    settings.selectedObjects.clear();
+    settings.showGrid = false;
+    settings.showSkeleton = false;
+    settings.showLightRange = false;
+    settings.showConstraints = false;
+    settings.showColliders = false;
+    settings.showNavMesh = false;
+    settings.showSelectionOutline = false;
+    scene::RenderSystemUIOptions uiOptions{};
+    uiOptions.enabled = false;
+    scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
+                        previewCamera, m_vfxPreviewRT, &settings,
+                        fbzz::Layer::Everything, &uiOptions,
+                        &m_vfxPreviewPhysicsWorld);
 }
 
 void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask)

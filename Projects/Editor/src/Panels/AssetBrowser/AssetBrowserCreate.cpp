@@ -4,6 +4,7 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/PostProcessAsset.hpp>
 
@@ -247,6 +248,24 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         asset::AnimatorControllerAsset controller;
         if (!asset::SaveAnimatorControllerAsset(newPath, controller)) {
             FBZZ_LOG_ERROR("Animator Controller creation failed: %s", newPath.c_str());
+            return;
+        }
+        RegisterCreatedPath(ctx, newPath);
+        RefreshDirectory();
+        BeginRenameForPath(newPath, &ctx);
+    }
+    if (ImGui::MenuItem("VFX Graph")) {
+        std::string newPath = m_currentPath + "/New VFX Graph.vfx";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New VFX Graph " + std::to_string(suffix++) + ".vfx";
+        asset::VFXGraphAsset graph;
+        graph.nodes.push_back({ .id = 1, .type = asset::VFXNodeType::Entry,
+                                .name = "Entry", .editorX = 40.0f, .editorY = 120.0f,
+                                .duration = 0.0f });
+        std::string error;
+        if (!asset::SaveVFXGraphAsset(newPath, graph, &error)) {
+            FBZZ_LOG_ERROR("VFX Graph creation failed: %s (%s)", newPath.c_str(), error.c_str());
             return;
         }
         RegisterCreatedPath(ctx, newPath);

@@ -269,6 +269,9 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     }
 
     if (ImGui::BeginMenu("Tools")) {
+        if (ImGui::MenuItem("VFX Editor..."))
+            ctx.requestOpenVFXEditor = true;
+        ImGui::Separator();
         bool mapMode = ctx.mapEditingMode;
         if (ImGui::MenuItem("Map Editing Mode", nullptr, &mapMode))
             ctx.requestMapEditingModeToggle = true;
@@ -597,6 +600,9 @@ void EditorApp::RegisterDefaultHotkeys()
         [this]() { TogglePlayMode(); } });
     m_hotkeys.Register({ "Pause",          ImGuiKey_P, true,  true,  false,
         [this]() { if (!m_playMode.IsInEditor()) m_playMode.Pause(); } });
+    // 独立VFXEditorはEditorのDock/Focus状態に依存せず、専用プロセスとして起動する。
+    m_hotkeys.Register({ "Open VFX Editor", ImGuiKey_V, true, false, true,
+        [this]() { m_ctx.requestOpenVFXEditor = true; } });
 }
 
 } // namespace fbzz::editor
