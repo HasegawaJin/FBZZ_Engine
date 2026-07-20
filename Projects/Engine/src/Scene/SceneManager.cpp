@@ -21,6 +21,7 @@
 #include "Engine/Scene/Systems/LODSystem.hpp"
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
 #include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
+#include "Engine/Scene/Systems/VFXGraphSystem.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <string>
@@ -63,6 +64,7 @@ void SceneManager::BuildScheduler()
 
     // LateScript
     m_scheduler.AddSystem<LateScriptSystem>();
+    m_scheduler.AddSystem<VFXGraphSystem>();
     m_scheduler.AddSystem<AudioSystem>();
 
     // Cleanup
