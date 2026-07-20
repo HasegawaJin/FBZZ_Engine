@@ -1,0 +1,13 @@
+version = 3
+name = "Smoke"
+maxParticles = 1200
+maxLights = 0
+maxAudioVoices = 0
+nodes = [
+  { id = 1, type = 0, name = "Entry", duration = 0.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0] },
+  { id = 2, type = 2, name = "Lit Smoke", duration = 6.0, editorX = 260.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0], particle = { duration = 6.0, loop = true, emitRate = 24.0, maxParticles = 900, lifetime = 3.8, sizeStart = 0.5, sizeEnd = 3.5, emitVelocity = [0.0,1.4,0.0], velocitySpread = 0.55, gravity = [0.0,0.2,0.0], texturePath = "Assets/Textures/Particles/smoke_08.png", sixWayLighting = true, lightingStrength = 1.5, noiseStrength = 1.1, noiseFrequency = 0.7 } }
+]
+links = [{ from = 1, to = 2, trigger = 1, delay = 0.0 }]
+parameters = [{ name = "Smokiness", type = 0, minimum = 0.0, maximum = 120.0, hasRange = true, default = { source = 0, constantType = 0, float = 24.0 } }]
+bindings = [{ paramName = "Smokiness", nodeId = 2, schemaPath = "particle.emitRate" }]
+

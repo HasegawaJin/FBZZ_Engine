@@ -1,0 +1,13 @@
+version = 3
+name = "Magic"
+maxParticles = 2200
+maxLights = 2
+maxAudioVoices = 2
+nodes = [
+  { id = 1, type = 0, name = "Entry", duration = 0.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0] },
+  { id = 2, type = 2, name = "Arcane Orbit", duration = 4.0, editorX = 260.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0], particle = { duration = 4.0, loop = true, emitRate = 72.0, maxParticles = 1400, lifetime = 1.8, sizeStart = 0.3, sizeEnd = 0.02, velocitySpread = 2.5, gravity = [0.0,0.3,0.0], texturePath = "Assets/Textures/Particles/magic_04.png", emissiveScale = 4.0, noiseStrength = 3.0, noiseFrequency = 1.2 } },
+  { id = 3, type = 3, name = "Ribbon", duration = 4.0, editorX = 260.0, editorY = 210.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0], trail = { texturePath = "Assets/Textures/Particles/trace_03.png", colorStart = [0.25,0.65,1.0,0.8], colorEnd = [0.5,0.1,1.0,0.0], lifetime = 0.8, widthStart = 0.22, widthEnd = 0.0 } }
+]
+links = [{ from = 1, to = 2, trigger = 1, delay = 0.0 }, { from = 1, to = 3, trigger = 1, delay = 0.0 }]
+parameters = [{ name = "Turbulence", type = 0, minimum = 0.0, maximum = 12.0, hasRange = true, default = { source = 0, constantType = 0, float = 3.0 } }]
+bindings = [{ paramName = "Turbulence", nodeId = 2, schemaPath = "particle.noiseStrength" }]
