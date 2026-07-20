@@ -43,6 +43,7 @@
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
 #include "Components/LifetimeComponent.hpp"
+#include "Components/VFXGraphComponent.hpp"
 #include "Components/NavMeshSurfaceComponent.hpp"
 #include "Components/NavMeshModifierComponent.hpp"
 #include "Components/NavMeshAgentComponent.hpp"
@@ -188,7 +189,9 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(EnvironmentLightComponent, Environment, "Environment Light"),
     FBZZ_CUSTOM_COMPONENT(ReflectionProbeComponent, Environment, "Reflection Probe"),
     FBZZ_CUSTOM_COMPONENT(AtmosphericScatteringComponent, Environment, "Atmospheric Scattering"),
-    FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume")
+    FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume"),
+    // WHY: ComponentRegistryはScript DLL ABIへ影響するため、新規型は既存順を崩さず末尾へ追加する。
+    FBZZ_CUSTOM_COMPONENT(VFXGraphComponent, Effects, "VFX Graph")
 >;
 
 template<typename Registry>
