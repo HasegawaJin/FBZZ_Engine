@@ -12,12 +12,13 @@
 | `MeshRenderer` | `MaterialComponent`（`.mat` パス） | ✅ 対応済み |
 | `SkinnedMeshRenderer` | `MaterialComponent`（`.mat` パス） | ✅ 対応済み |
 | `TerrainComponent` | `layerMaterials[4]`（`.mat` パス×4） | ✅ 対応済み |
-| `ParticleEmitter` | `texturePath`・`blendMode`・`colorStart/End` を直接保持 | ❌ 未対応 |
-| `TrailComponent` | `texturePath`・`colorStart/End` を直接保持 | ❌ 未対応 |
-| `MeshTrailComponent` | `texturePath`・`colorStart/End` を直接保持 | ❌ 未対応 |
+| `ParticleEmitter` | `materialPath`（`.mat`）+ 旧 `texturePath` フォールバック | ✅ 対応済み |
+| `TrailComponent` | `materialPath`（`.mat`）+ 旧 `texturePath` フォールバック | ✅ 対応済み |
+| `MeshTrailComponent` | `materialPath`（`.mat`）+ 旧 `texturePath` フォールバック | ✅ 対応済み |
 
 **結論:** MeshRenderer・SkinnedMeshRenderer・Terrain は既に `.mat` 対応済み。
-未対応なのは **ParticleEmitter・TrailComponent・MeshTrailComponent の 3 コンポーネント**のみ。
+ParticleEmitter・TrailComponent・MeshTrailComponent も `.mat` を優先し、既存 Scene のために
+`texturePath` をフォールバックとして残す。従って全対象が `.mat` ベースの統一経路へ移行済み。
 
 ---
 
