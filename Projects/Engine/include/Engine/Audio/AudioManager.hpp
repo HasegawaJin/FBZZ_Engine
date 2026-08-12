@@ -37,6 +37,7 @@ public:
     void SetVoiceVolume(uint32_t voiceId, float volume);
     void SetVoicePitch(uint32_t voiceId, float pitch);
     void SetVoicePan(uint32_t voiceId, float pan);
+    void SetVoiceLowPass(uint32_t voiceId, float normalizedCutoff);
     [[nodiscard]] bool IsVoicePlaying(uint32_t voiceId);
 
     void SetBGMVolume(float volume);  // 0.0f ~ 1.0f

@@ -9,7 +9,9 @@
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/AudioListenerComponent.hpp"
 #include "Engine/Scene/Components/AudioSourceComponent.hpp"
+#include "Engine/Scene/Components/AudioSpatialComponents.hpp"
 #include "Engine/Audio/AudioManager.hpp"
+#include <Physics/World.hpp>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -46,9 +48,29 @@ void AudioSystem::Update(SystemContext& ctx)
         bestPriority = candidate->priority;
     }
 
+    float zoneWet = 0.0f;
+    float zoneHighFrequency = 1.0f;
+    if (listenerTransform) {
+        for (auto [zone, transform] : ctx.scene.View<AudioReverbZoneComponent, Transform>()) {
+            if (!zone.enabled)
+                continue;
+            const float distance = (listenerTransform->worldPosition - transform.worldPosition).Length();
+            if (distance > zone.outerRadius)
+                continue;
+            const float blend = distance <= zone.innerRadius ? 1.0f
+                : 1.0f - (distance - zone.innerRadius)
+                    / (std::max)(zone.outerRadius - zone.innerRadius, 0.001f);
+            if (zone.wetLevel * blend > zoneWet) {
+                zoneWet = zone.wetLevel * blend;
+                zoneHighFrequency = zone.highFrequencyRatio;
+            }
+        }
+    }
+
     const auto applyVoiceParameters = [&](uint32_t voiceId,
                                           const AudioSourceComponent& source,
-                                          const Transform& sourceTransform) {
+                                          const Transform& sourceTransform,
+                                          GameObject* sourceObject) {
         if (voiceId == 0) return;
 
         float attenuation = 1.0f;
@@ -70,14 +92,47 @@ void AudioSystem::Update(SystemContext& ctx)
             }
         }
 
+        float effectGain = 1.0f;
+        float lowPass = 1.0f - zoneWet * (1.0f - zoneHighFrequency);
+        if (sourceObject) {
+            if (const auto* send = sourceObject->GetComponent<AudioMixerSendComponent>();
+                send && send->enabled)
+                effectGain *= std::clamp(send->sendLevel, 0.0f, 1.0f);
+            if (auto* occlusion = sourceObject->GetComponent<AudioOcclusionComponent>();
+                occlusion && occlusion->enabled && listenerTransform) {
+                occlusion->updateTimer -= ctx.dt;
+                if (occlusion->updateTimer <= 0.0f) {
+                    const math::Vector3 offset =
+                        listenerTransform->worldPosition - sourceTransform.worldPosition;
+                    physics::World::RaycastHit hit{};
+                    const float distance = offset.Length();
+                    const bool blocked = distance > 0.001f
+                        && ctx.world.Raycast(sourceTransform.worldPosition, offset / distance,
+                                             distance - 0.001f, hit);
+                    occlusion->currentOcclusion = blocked ? 1.0f : 0.0f;
+                    occlusion->updateTimer = (std::max)(occlusion->updateInterval, 0.01f);
+                }
+                effectGain *= 1.0f - occlusion->currentOcclusion
+                    * std::clamp(occlusion->volumeAttenuation, 0.0f, 1.0f);
+                lowPass = (std::min)(lowPass, 1.0f - occlusion->currentOcclusion
+                    * std::clamp(occlusion->lowPass, 0.0f, 1.0f));
+            }
+        }
         const float listenerVolume = listener ? (std::max)(listener->volume, 0.0f) : 1.0f;
         audioManager.SetVoiceVolume(
-            voiceId, (std::max)(source.volume, 0.0f) * attenuation * listenerVolume);
+            voiceId, (std::max)(source.volume, 0.0f) * attenuation * listenerVolume * effectGain);
         audioManager.SetVoicePitch(voiceId, (std::max)(source.pitch, 0.01f));
         audioManager.SetVoicePan(voiceId, pan);
+        audioManager.SetVoiceLowPass(voiceId, lowPass);
     };
 
-    for (auto [source, transform] : ctx.scene.View<AudioSourceComponent, Transform>()) {
+    for (EntityID id : ctx.scene.GetEntities<AudioSourceComponent>()) {
+        auto* sourcePointer = ctx.scene.GetComponent<AudioSourceComponent>(id);
+        GameObject* sourceObject = ctx.scene.GetGameObject(id);
+        if (!sourcePointer || !sourceObject)
+            continue;
+        AudioSourceComponent& source = *sourcePointer;
+        Transform& transform = sourceObject->transform;
         if (source.m_voiceId != 0 && !audioManager.IsVoicePlaying(source.m_voiceId)) {
             source.m_voiceId = 0;
             source.m_isPlaying = false;
@@ -125,12 +180,12 @@ void AudioSystem::Update(SystemContext& ctx)
             source.m_pendingOneShot = false;
             if (!source.m_oneShotPath.empty()) {
                 const uint32_t oneShot = audioManager.PlayVoice(source.m_oneShotPath, false);
-                applyVoiceParameters(oneShot, source, transform);
+                applyVoiceParameters(oneShot, source, transform, sourceObject);
             }
             source.m_oneShotPath.clear();
         }
 
-        applyVoiceParameters(source.m_voiceId, source, transform);
+        applyVoiceParameters(source.m_voiceId, source, transform, sourceObject);
     }
 }
 
