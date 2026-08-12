@@ -1,6 +1,6 @@
 // FBZZ Engine
 // PostProcessInspectorWidgets.hpp | fbzz::editor
-// Project Settings と .fzpp で共有するポストプロセス編集 UI
+// Project Settings と PostProcessProfile (.fzdata) で共有するポストプロセス編集 UI
 #pragma once
 
 namespace fbzz::renderer { struct PostProcessSettings; }
@@ -15,7 +15,7 @@ struct PostProcessInspectorResult {
 
 // PostProcessSettings の既存効果とカスタムパスを一貫した UI で編集する。
 // ctx を渡すと TAA/GTAO との排他スロット競合を検出してグレーアウトする。
-// .fzpp Inspector など RenderSettings を持たない呼び出し元は nullptr のまま使用可。
+// PostProcessProfile Inspector など RenderSettings を持たない呼び出し元は nullptr のまま使用可。
 PostProcessInspectorResult DrawPostProcessInspector(
     renderer::PostProcessSettings& settings,
     const renderer::RenderSettings* ctx = nullptr);
