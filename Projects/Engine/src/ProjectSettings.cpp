@@ -6,8 +6,10 @@
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Input/InputActionMap.hpp>
 #include <toml++/toml.hpp>
 #include <cmath>
+#include <filesystem>
 #include <sstream>
 #include <utility>
 
@@ -415,6 +417,22 @@ bool ProjectSettings::Load(const std::string& path)
 
     if (auto* uiTbl = tbl["ui"].as_table())
         ui.defaultFontPath = (*uiTbl)["default_font"].value_or(ui.defaultFontPath);
+
+    // ── 入力バインド ─────────────────────────────────────────────────────────
+    // ProjectSettings.toml と同じディレクトリの Input.inputactions を読む。
+    // WHY 別ファイルにするか: バインド定義は配列の入れ子が深く、ProjectSettings.toml へ
+    //     混ぜると設定全体が読みにくくなる。またキーコンフィグはプレイヤーが実行時に
+    //     書き換える対象で、開発者が編集する他の設定とは更新頻度も責務も異なる。
+    // WHY 失敗しても Load 全体を失敗させないか: 入力ファイルは無くて当然 (既定バインドで動く)。
+    //     ここで false を返すとプロジェクト設定そのものが読めなかった扱いになってしまう。
+    {
+        const std::filesystem::path settingsPath(path);
+        const std::filesystem::path inputPath =
+            settingsPath.has_parent_path()
+                ? settingsPath.parent_path() / "Input.inputactions"
+                : std::filesystem::path("Input.inputactions");
+        (void)input::InputActionMap::LoadFromFile(inputPath.string());
+    }
 
     return true;
 }
