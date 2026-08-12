@@ -11,7 +11,8 @@ namespace fbzz::editor {
 
 struct EditorContext;
 
-// .fbx を読み込み、描画に必要な SkinnedMeshRenderer / MaterialComponent を持つ GO 階層を生成する。
+// .fbx を読み込み、メッシュ種別に応じた MeshRenderer / SkinnedMeshRenderer と
+// MaterialComponent を持つ GO 階層を生成する。
 // WHY: AssetBrowser / Viewport / Hierarchy の D&D 配置経路で同じ生成規則を共有し、
 //      .asset 廃止後も「モデルを置く」という操作を UI ごとに分岐させないため。
 scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,

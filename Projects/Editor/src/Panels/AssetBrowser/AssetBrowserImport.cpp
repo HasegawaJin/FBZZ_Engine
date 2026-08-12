@@ -3,7 +3,10 @@
 // AssetBrowser の未変換アセット検出とバックグラウンドインポート
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Import/ImportSettingsSchema.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Editor/Util/Toast.hpp>
+#include <Editor/Util/AssetSearch.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
@@ -227,6 +230,16 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
 
     const fs::path modelFile = GetExistingImportedModelPath(p);
     if (modelFile.empty()) return false;
+
+    // インポータ自体が更新されていたら FBX の更新時刻に関係なく作り直す。
+    // WHY: 判定材料が「生成物の有無」と「FBX の更新時刻」だけだと、
+    //      インポータのコードを直しても古い生成物が使われ続けてしまう。
+    //      FBX を消して入れ直しても source_hash が変わらないため同じ罠にはまる。
+    //      (詳細は FbxMetaSerializer::kModelImporterVersion のコメント)
+    if (FbxMetaSerializer::LoadImporterVersion(absPath)
+        < FbxMetaSerializer::kModelImporterVersion)
+        return true;
+
     std::error_code ec;
     const auto srcTime   = fs::last_write_time(p,         ec); if (ec) return false;
     const auto assetTime = fs::last_write_time(modelFile,  ec); if (ec) return false;
@@ -417,12 +430,12 @@ void AssetBrowserPanel::DrawPendingImportBar(EditorContext&)
     // 初回スキャンで積まれた m_pendingImports のみ表示（ウォッチャー経由は Import Settings 経由）
     if (m_pendingImports.empty()) return;
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.30f, 0.18f, 0.05f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, EditorTheme::Color(ThemeColor::SurfaceRaised));
     ImGui::BeginChild("##pending_bar", { 0.0f, 36.0f }, false);
 
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f);
 
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.2f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
     ImGui::Text("  ! 未変換ファイル %zu 件", m_pendingImports.size());
     ImGui::PopStyleColor();
 
@@ -456,7 +469,15 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
     // WHY: Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でも
     //      イベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
     bool needsDirectoryRefresh = false;
-    for (const auto& ev : m_watcher.Poll())
+    const std::vector<AssetFileWatcher::FileEvent> watcherEvents = m_watcher.Poll();
+
+    // 共通アセット索引へ同じイベントを流し、検索結果を実ファイルに追従させる。
+    // WHY ここで流すか: AssetBrowser が唯一の AssetFileWatcher 所有者であり、
+    //     Poll() はイベントを消費してキューを空にする。ここを通さないと
+    //     索引は次のフル再構築まで古いままになる。
+    AssetSearch::ApplyFileEvents(watcherEvents);
+
+    for (const auto& ev : watcherEvents)
     {
         // WHY: 文字列連結では m_rootPath 末尾に '/' がない場合、監視パスが壊れる。
         const std::filesystem::path watcherRoot = util::FileSystem::PathFromUtf8(m_rootPath);
@@ -485,8 +506,27 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
                 needsDirectoryRefresh = true;
         }
 
-        if (ev.type == AssetFileWatcher::EventType::Added)
+        if (ev.type == AssetFileWatcher::EventType::Added) {
             TryQueuePendingImport(ev.path);
+            // 追加された対象に guid (.meta) を発行する。フォルダもここを通る。
+            // WHY: 生成箇所 (Create メニュー / ツリー右クリック / エクスプローラー D&D /
+            //      OS 側の操作) ごとに .meta 発行を書くと必ずどれかが抜ける。
+            //      ウォッチャーの Added は全経路が合流する唯一の地点なので、ここ 1 箇所に集約する。
+            //      対象外 (生成物・従属フォルダ) は GuidFromPath が空を返して何もしない。
+            (void)asset::AssetDatabase::GuidFromPath(absPath);
+        }
+
+        // .prefab の内容が変わったら、シーンに置いてあるインスタンスへ反映させる。
+        // WHY: アセットを直したのに配置済みの実体が古いままだと、シーンとアセットの
+        //      内容が黙って食い違う。反映の実行は EditorApp 側 (シーンを作り直すため
+        //      パネル描画中に走らせられない)。ここでは対象パスを積むだけにする。
+        //      自分の Apply / Prefab 保存で起きた変更は PrefabSerializer 側で弾かれる。
+        if ((ev.type == AssetFileWatcher::EventType::Modified ||
+             ev.type == AssetFileWatcher::EventType::Added) &&
+            util::FileSystem::GetExtension(absPath) == ".prefab")
+        {
+            ctx.pendingPrefabReloads.push_back(absPath);
+        }
     }
 
     if (needsDirectoryRefresh) {
@@ -584,22 +624,28 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
     if (!ctx.requestOpenImportModal.empty()
         && !m_importSettings.visible
         && !m_textureImportSettings.visible) {
-        const std::string reqExt = util::StringUtils::ToLower(
-            util::FileSystem::GetExtension(ctx.requestOpenImportModal));
-        if (IsTextureRaw(reqExt)) {
+        // 拡張子の分類で開くウィンドウを決める。
+        // WHY: 以前は「テクスチャでなければモデル」という二分岐だったため、.mat や .wav に
+        //      Reimport をかけると Model Import Settings が開き、Source DCC など
+        //      そのアセットに存在しない項目が並んでいた。分類外は単に無視する。
+        const ImportCategory reqCategory = CategoryForExtension(util::StringUtils::ToLower(
+            util::FileSystem::GetExtension(ctx.requestOpenImportModal)));
+        if (IsTextureCategory(reqCategory)) {
             m_textureImportSettings.path        = ctx.requestOpenImportModal;
             m_textureImportSettings.open        = true;
             m_textureImportSettings.visible     = true;
             m_textureImportSettings.needsInit   = true;
             m_textureImportSettings.fromWatcher = false;
-        } else {
+        } else if (reqCategory == ImportCategory::Model) {
             m_importSettings.path        = ctx.requestOpenImportModal;
             m_importSettings.options     = ctx.defaultImportOptions;
             m_importSettings.open        = true;
             m_importSettings.visible     = true;
             m_importSettings.needsInit   = true;
             m_importSettings.fromWatcher = false;
-            m_importSettings.isTexture   = false;
+        } else {
+            FBZZ_LOG_WARN("AssetBrowser: no import settings for [%s]",
+                          ctx.requestOpenImportModal.c_str());
         }
         ctx.requestOpenImportModal.clear();
     }
@@ -616,7 +662,6 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         m_importSettings.visible     = true;
         m_importSettings.needsInit   = true;
         m_importSettings.fromWatcher = true;
-        m_importSettings.isTexture   = false;
     }
 
     // テクスチャ確認キューはモデルインポートと別ウィンドウでまとめて扱う。
@@ -705,57 +750,110 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
 
             ImGui::Separator();
             auto& s = m_textureImportSettings.settings;
+
+            // 拡張子で分類し、その分類で意味を持つ項目だけを描く。
+            // WHY: 以前は全項目を無条件に並べていたため、.hdr に sRGB、Color テクスチャに
+            //      Flip Green / Normalize Mipmaps といった無関係な項目が出ていた。
+            // NOTE: 複数選択時は先頭ファイルの分類を代表として使う。混在時は
+            //       いちばん制約の緩い分類ではなく先頭に合わせ、Apply 時に個別 Sanitize する。
+            const std::string categoryPath = m_textureImportSettings.fromWatcher
+                && !m_pendingTextureConfirmImports.empty()
+                ? m_pendingTextureConfirmImports.front()
+                : m_textureImportSettings.path;
+            const ImportCategory category = CategoryForExtension(
+                util::StringUtils::ToLower(util::FileSystem::GetExtension(categoryPath)));
+            if (initTexturePanel) SanitizeTextureSettings(category, s);
+            const TextureFieldMask mask = TextureFieldsFor(category, s);
+
             ImGui::SeparatorText("Type");
-            static constexpr const char* kTypeNames[] = { "Color", "Normal", "Data", "HDR", "UI" };
-            int typeIdx = static_cast<int>(s.type);
             ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::Combo("Type##tex_batch", &typeIdx, kTypeNames, 5)) {
-                s.type = static_cast<asset::TextureType>(typeIdx);
+            if (DrawTextureTypeCombo("Type##tex_batch", category, s.type)) {
+                // 型が変わると適切な既定値一式も変わるため作り直す。
                 s = asset::DefaultSettingsForType(s.type);
+                SanitizeTextureSettings(category, s);
             }
             ImGui::SameLine();
-            if (ImGui::SmallButton("Reset Defaults##tex_batch"))
+            if (ImGui::SmallButton("Reset Defaults##tex_batch")) {
                 s = asset::DefaultSettingsForType(s.type);
-
-            ImGui::SeparatorText("Encoding");
-            ImGui::Checkbox("sRGB##tex_batch", &s.srgb);
-            ImGui::SameLine(140.0f);
-            ImGui::Checkbox("Mipmaps##tex_batch", &s.mipmaps);
-            ImGui::Checkbox("Flip Green Channel##tex_batch", &s.flipGreen);
-            ImGui::SameLine(140.0f);
-            ImGui::Checkbox("Normalize Mipmaps##tex_batch", &s.normalizeMipmaps);
-
-            ImGui::SeparatorText("Compression");
-            static constexpr const char* kCompNames[] = {
-                "Auto", "BC1 (RGB)", "BC3 (RGBA)", "BC4 (R)", "BC5 (RG)", "BC6H (HDR)", "BC7 (High)", "None"
-            };
-            int compIdx = static_cast<int>(s.compression);
-            ImGui::SetNextItemWidth(200.0f);
-            if (ImGui::Combo("Format##tex_batch_comp", &compIdx, kCompNames, 8))
-                s.compression = static_cast<asset::TextureCompression>(compIdx);
-            static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
-            int qualIdx = static_cast<int>(s.compressionQuality);
+                SanitizeTextureSettings(category, s);
+            }
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(80.0f);
-            if (ImGui::Combo("##tex_batch_compq", &qualIdx, kQualNames, 3))
-                s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
+            ImGui::TextDisabled("(%s)", ImportCategoryLabel(category));
 
-            ImGui::SeparatorText("Sampling");
-            int maxSize = static_cast<int>(s.maxSize);
-            ImGui::SetNextItemWidth(100.0f);
-            if (ImGui::InputInt("Max Size##tex_batch", &maxSize))
-                s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
-            static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
-            int wrapU = static_cast<int>(s.wrapU);
-            int wrapV = static_cast<int>(s.wrapV);
-            ImGui::SetNextItemWidth(100.0f);
-            if (ImGui::Combo("Wrap U##tex_batch", &wrapU, kWrapNames, 4)) s.wrapU = static_cast<asset::TextureWrap>(wrapU);
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(100.0f);
-            if (ImGui::Combo("Wrap V##tex_batch", &wrapV, kWrapNames, 4)) s.wrapV = static_cast<asset::TextureWrap>(wrapV);
-            int anisoLv = static_cast<int>(s.anisoLevel);
-            if (ImGui::SliderInt("Aniso Level##tex_batch", &anisoLv, 1, 16))
-                s.anisoLevel = static_cast<uint32_t>(anisoLv);
+            if (mask.srgb || mask.mipmaps || mask.flipGreen || mask.normalizeMips) {
+                ImGui::SeparatorText("Encoding");
+                // 表示される項目だけを 2 列へ詰める。
+                // WHY: 項目を条件で消すと、固定で書いた SameLine が空振りして
+                //      次の項目が思わぬ位置に流れる。描いた個数で列を決めて回避する。
+                int drawnInRow = 0;
+                const auto beginField = [&drawnInRow]() {
+                    if (drawnInRow % 2 == 1) ImGui::SameLine(140.0f);
+                    ++drawnInRow;
+                };
+
+                if (mask.srgb) {
+                    beginField();
+                    ImGui::Checkbox("sRGB##tex_batch", &s.srgb);
+                }
+                if (mask.mipmaps) {
+                    beginField();
+                    ImGui::Checkbox("Mipmaps##tex_batch", &s.mipmaps);
+                }
+                if (mask.flipGreen) {
+                    beginField();
+                    ImGui::Checkbox("Flip Green Channel##tex_batch", &s.flipGreen);
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip(
+                            "法線マップの Y 成分を反転します。\n"
+                            "Blender / Maya がデフォルト出力する OpenGL 形式の場合にチェック。");
+                }
+                if (mask.normalizeMips) {
+                    beginField();
+                    ImGui::Checkbox("Normalize Mipmaps##tex_batch", &s.normalizeMipmaps);
+                }
+            }
+
+            if (mask.compression) {
+                ImGui::SeparatorText("Compression");
+                ImGui::SetNextItemWidth(200.0f);
+                DrawCompressionCombo("Format##tex_batch_comp", category, s.type, s.compression);
+                static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
+                int qualIdx = static_cast<int>(s.compressionQuality);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(80.0f);
+                if (ImGui::Combo("##tex_batch_compq", &qualIdx, kQualNames, 3))
+                    s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
+            }
+
+            if (mask.maxSize || mask.sampling) {
+                ImGui::SeparatorText("Sampling");
+                if (mask.maxSize) {
+                    int maxSize = static_cast<int>(s.maxSize);
+                    ImGui::SetNextItemWidth(100.0f);
+                    if (ImGui::InputInt("Max Size##tex_batch", &maxSize))
+                        s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
+                }
+                if (mask.sampling) {
+                    static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
+                    int wrapU = static_cast<int>(s.wrapU);
+                    int wrapV = static_cast<int>(s.wrapV);
+                    ImGui::SetNextItemWidth(100.0f);
+                    if (ImGui::Combo("Wrap U##tex_batch", &wrapU, kWrapNames, 4)) s.wrapU = static_cast<asset::TextureWrap>(wrapU);
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(100.0f);
+                    if (ImGui::Combo("Wrap V##tex_batch", &wrapV, kWrapNames, 4)) s.wrapV = static_cast<asset::TextureWrap>(wrapV);
+                    int anisoLv = static_cast<int>(s.anisoLevel);
+                    if (ImGui::SliderInt("Aniso Level##tex_batch", &anisoLv, 1, 16))
+                        s.anisoLevel = static_cast<uint32_t>(anisoLv);
+                }
+            }
+
+            if (mask.sprite) {
+                // Sprite の矩形編集は Sprite Editor / Inspector の担当。
+                // ここは「Sprite として取り込む」ことだけ確定させる。
+                ImGui::SeparatorText("Sprite");
+                ImGui::TextDisabled("Sprite rects can be edited in the Sprite Editor after import.");
+            }
 
             ImGui::Separator();
             auto closeTextureWindow = [&]() {
@@ -766,16 +864,26 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 m_textureImportSettings.fromWatcher = false;
                 m_textureImportSettings.needsInit = false;
             };
+            // 保存前に、その 1 枚の拡張子に照らして設定を正す。
+            // WHY: 一括適用では .png と .hdr が同じチェックリストに混在しうる。
+            //      画面上の値をそのまま全ファイルへ書くと、.hdr の .meta に sRGB=true の
+            //      ような「その拡張子ではありえない設定」が残る。
+            auto saveSanitized = [](const std::string& path, asset::TextureImportSettings settings) {
+                const ImportCategory perFile = CategoryForExtension(
+                    util::StringUtils::ToLower(util::FileSystem::GetExtension(path)));
+                SanitizeTextureSettings(perFile, settings);
+                SaveTexMeta(path, settings);
+            };
             auto applyTextureSettings = [&]() {
                 if (m_textureImportSettings.fromWatcher) {
                     for (int i = 0; i < static_cast<int>(m_pendingTextureConfirmImports.size()); ++i) {
                         const bool inc = i < static_cast<int>(m_pendingTextureConfirmIncludes.size())
                             && m_pendingTextureConfirmIncludes[i];
                         if (inc)
-                            SaveTexMeta(m_pendingTextureConfirmImports[i], m_textureImportSettings.settings);
+                            saveSanitized(m_pendingTextureConfirmImports[i], m_textureImportSettings.settings);
                     }
                 } else {
-                    SaveTexMeta(m_textureImportSettings.path, m_textureImportSettings.settings);
+                    saveSanitized(m_textureImportSettings.path, m_textureImportSettings.settings);
                 }
                 closeTextureWindow();
                 RefreshDirectory();
@@ -825,7 +933,6 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             m_importSettings.visible     = true;
             m_importSettings.needsInit   = true;
             m_importSettings.fromWatcher = true;
-            m_importSettings.isTexture   = false;
         } else {
             m_importSettings.open        = false;
             m_importSettings.visible     = false;
@@ -858,99 +965,23 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
         return;
     }
 
-    // ── テクスチャ専用 UI ─────────────────────────────────────────────────────
     const bool initPanel = ImGui::IsWindowAppearing() || m_importSettings.needsInit;
     m_importSettings.needsInit = false;
-    m_importSettings.isTexture = false;
 
-    if (false) {
+    // このウィンドウが扱えるのはモデルソースだけ。
+    // WHY: Inspector の Reimport は拡張子を問わずここへ流れてくるため、モデルでない
+    //      アセットに対して Source DCC / Normal Map Convention / Contents といった
+    //      まったく無関係な項目が並んでいた。開く前に弾いて誤操作の余地をなくす。
+    if (CategoryForExtension(util::StringUtils::ToLower(
+            util::FileSystem::GetExtension(m_importSettings.path))) != ImportCategory::Model) {
         ImGui::TextUnformatted(util::FileSystem::GetFilename(m_importSettings.path).c_str());
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", m_importSettings.path.c_str());
         ImGui::Separator();
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
+                           "このアセットにはモデルインポート設定がありません。");
+        ImGui::TextDisabled("Model Import Settings は .fbx / .obj / .gltf / .glb 専用です。");
         ImGui::Spacing();
-
-        if (initPanel)
-            LoadTexMeta(m_importSettings.path, m_importSettings.texSettings);
-
-        auto& s = m_importSettings.texSettings;
-
-        // ── Type ─────────────────────────────────────────────────────────────
-        ImGui::SeparatorText("Type");
-        static constexpr const char* kTypeNames[] = { "Color", "Normal", "Data", "HDR", "UI" };
-        int typeIdx = static_cast<int>(s.type);
-        ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::Combo("Type##tex", &typeIdx, kTypeNames, 5)) {
-            s.type = static_cast<asset::TextureType>(typeIdx);
-            s = asset::DefaultSettingsForType(s.type); // デフォルトを再適用
-        }
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Reset Defaults"))
-            s = asset::DefaultSettingsForType(s.type);
-
-        // ── Encoding ─────────────────────────────────────────────────────────
-        ImGui::SeparatorText("Encoding");
-        ImGui::Checkbox("sRGB", &s.srgb);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("カラーテクスチャ（Albedo 等）は ON。\n法線マップ・ラフネス等リニアデータは OFF。");
-        ImGui::SameLine(140.0f);
-        ImGui::Checkbox("Mipmaps", &s.mipmaps);
-        ImGui::Checkbox("Flip Green Channel", &s.flipGreen);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("法線マップの Y 成分を反転します。\nBlender / Maya がデフォルト出力する OpenGL 形式の場合にチェック。");
-        ImGui::SameLine(140.0f);
-        ImGui::Checkbox("Normalize Mipmaps", &s.normalizeMipmaps);
-
-        // ── Compression ───────────────────────────────────────────────────────
-        ImGui::SeparatorText("Compression");
-        static constexpr const char* kCompNames[] = {
-            "Auto", "BC1 (RGB)", "BC3 (RGBA)", "BC4 (R)", "BC5 (RG)", "BC6H (HDR)", "BC7 (High)", "None"
-        };
-        int compIdx = static_cast<int>(s.compression);
-        ImGui::SetNextItemWidth(200.0f);
-        if (ImGui::Combo("Format##comp", &compIdx, kCompNames, 8))
-            s.compression = static_cast<asset::TextureCompression>(compIdx);
-        static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
-        int qualIdx = static_cast<int>(s.compressionQuality);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(80.0f);
-        if (ImGui::Combo("##compq", &qualIdx, kQualNames, 3))
-            s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
-
-        // ── Sampling ──────────────────────────────────────────────────────────
-        ImGui::SeparatorText("Sampling");
-        int maxSize = static_cast<int>(s.maxSize);
-        ImGui::SetNextItemWidth(100.0f);
-        if (ImGui::InputInt("Max Size", &maxSize))
-            s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
-
-        static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
-        int wrapU = static_cast<int>(s.wrapU);
-        int wrapV = static_cast<int>(s.wrapV);
-        ImGui::SetNextItemWidth(100.0f);
-        if (ImGui::Combo("Wrap U", &wrapU, kWrapNames, 4)) s.wrapU = static_cast<asset::TextureWrap>(wrapU);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(100.0f);
-        if (ImGui::Combo("Wrap V##w", &wrapV, kWrapNames, 4)) s.wrapV = static_cast<asset::TextureWrap>(wrapV);
-
-        int anisoLv = static_cast<int>(s.anisoLevel);
-        if (ImGui::SliderInt("Aniso Level", &anisoLv, 1, 16))
-            s.anisoLevel = static_cast<uint32_t>(anisoLv);
-
-        ImGui::Spacing();
-        ImGui::TextDisabled("Settings saved as  %s.meta",
-            util::FileSystem::GetFilename(m_importSettings.path).c_str());
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        if (ImGui::Button("Apply", { 90.0f, 0.0f })) {
-            SaveTexMeta(m_importSettings.path, m_importSettings.texSettings);
+        if (ImGui::Button("Close", { 90.0f, 0.0f }))
             advanceConfirmQueue();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", { 90.0f, 0.0f }))
-            advanceConfirmQueue();
-
         ImGui::End();
         return;
     }
@@ -1038,7 +1069,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             ImGui::SameLine();
 
             const std::string fname = util::FileSystem::GetFilename(m_pendingConfirmImports[i]);
-            if (!inc) ImGui::PushStyleColor(ImGuiCol_Text, { 0.45f, 0.45f, 0.45f, 1.0f });
+            if (!inc) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
             ImGui::TextUnformatted(fname.c_str());
             if (!inc) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered())

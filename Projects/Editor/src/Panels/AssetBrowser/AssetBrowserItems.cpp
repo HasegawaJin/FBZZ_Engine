@@ -2,9 +2,12 @@
 // AssetBrowserItems.cpp | fbzz::editor
 // AssetBrowser のフォルダツリーとファイルアイコン描画
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/VFXEditorLauncher.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 #include <Windows.h>
 #include <toml++/toml.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
@@ -151,6 +154,33 @@ std::string UniqueDuplicatePath(const std::string& srcPath, bool isDir)
     return {};
 }
 
+// UniqueDuplicatePath は常に「元と同じフォルダ」に採番先を作る (その場複製用)。
+// Ctrl+V は別フォルダへ貼り付けることが多いため、まず同名そのままを試し、
+// 衝突する場合だけ "(2)" 以降を採番する。
+std::string UniqueDestPath(const std::string& srcPath, const std::string& destDir, bool isDir)
+{
+    const std::string name = isDir
+        ? util::FileSystem::GetFilename(srcPath)
+        : std::filesystem::path(srcPath).stem().string();
+    const std::string ext = isDir ? std::string{} : util::StringUtils::ToLower(
+        util::FileSystem::GetExtension(srcPath));
+    std::string dir = util::FileSystem::NormalizePathSeparators(destDir);
+    if (!dir.empty() && dir.back() != '/') dir += "/";
+
+    const std::string plain = util::FileSystem::NormalizePathSeparators(dir + name + ext);
+    if (util::FileSystem::NormalizePathSeparators(srcPath) != plain &&
+        !util::FileSystem::Exists(plain))
+        return plain;
+
+    for (int n = 2; n <= 999; ++n) {
+        const std::string candidate = util::FileSystem::NormalizePathSeparators(
+            dir + name + "(" + std::to_string(n) + ")" + ext);
+        if (!util::FileSystem::Exists(candidate))
+            return candidate;
+    }
+    return {};
+}
+
 bool CopyAssetPath(const std::string& srcPath, const std::string& dstPath, bool isDir)
 {
     if (srcPath.empty() || dstPath.empty()) return false;
@@ -222,9 +252,11 @@ static constexpr ExtGroup kExtGroups[] = {
     { { ".asset", nullptr },                                 { 0.85f, 0.55f, 0.08f, 1.0f }, "ASSET"   },
     { { ".anim", nullptr },                                  { 0.95f, 0.75f, 0.20f, 1.0f }, "ANIM"    },
     { { ".animcontroller", nullptr },                        { 0.75f, 0.40f, 0.85f, 1.0f }, "ANIM CTRL" },
+    // Avatar Mask: アニメーションレイヤーの適用ボーン集合。Animator 系と同系色にする。
+    { { ".mask", nullptr },                                  { 0.55f, 0.45f, 0.90f, 1.0f }, "MASK"    },
     { { ".vfx", nullptr },                                   { 0.95f, 0.35f, 0.55f, 1.0f }, "VFX"     },
+    { { ".behaviortree", nullptr },                          { 0.45f, 0.80f, 0.65f, 1.0f }, "AI"      },
     { { ".mat", nullptr },                                   { 0.20f, 0.70f, 0.80f, 1.0f }, "MAT"     },
-    { { ".fzpp", nullptr },                                  { 0.65f, 0.35f, 0.85f, 1.0f }, "POST FX" },
     { { ".tex", nullptr },                                   { 0.40f, 0.80f, 0.90f, 1.0f }, "TEX"     },
     { { ".mesh", nullptr },                                  { 0.80f, 0.45f, 0.10f, 1.0f }, "MESH"    },
     { { ".animctrl", nullptr },                              { 0.35f, 0.75f, 0.45f, 1.0f }, "CTRL"    },
@@ -714,6 +746,58 @@ static void DrawTextureThumbnail(void* rawID, uint32_t width, uint32_t height, I
         ToImTextureID(rawID),
         imageMin,
         { imageMin.x + imageSize.x, imageMin.y + imageSize.y });
+}
+
+// Sprite Texture の元素材は atlas 全体、仮想サブアセットは個別 SpriteRect を切り抜いて表示する。
+// WHY: 元画像と個々の Sprite の見た目を同時に比較できる Unity 風の展開表示にする。
+static void DrawSpriteThumbnail(void* rawID, uint32_t width, uint32_t height,
+                                const asset::SpriteRect* sprite,
+                                const char* badge,
+                                ImVec2 origin, float sz, bool hovered)
+{
+    DrawThumbnailFrame(origin, sz, hovered);
+    const float textureWidth = static_cast<float>(std::max<uint32_t>(1, width));
+    const float textureHeight = static_cast<float>(std::max<uint32_t>(1, height));
+    ImVec2 uvMin = { 0.0f, 0.0f };
+    ImVec2 uvMax = { 1.0f, 1.0f };
+    float spriteWidth = textureWidth;
+    float spriteHeight = textureHeight;
+
+    if (sprite) {
+        spriteWidth = sprite->width > 0 ? static_cast<float>(sprite->width) : textureWidth;
+        spriteHeight = sprite->height > 0 ? static_cast<float>(sprite->height) : textureHeight;
+        uvMin = {
+            std::clamp(static_cast<float>(sprite->x) / textureWidth, 0.0f, 1.0f),
+            std::clamp(static_cast<float>(sprite->y) / textureHeight, 0.0f, 1.0f)
+        };
+        uvMax = {
+            std::clamp((static_cast<float>(sprite->x) + spriteWidth) / textureWidth, 0.0f, 1.0f),
+            std::clamp((static_cast<float>(sprite->y) + spriteHeight) / textureHeight, 0.0f, 1.0f)
+        };
+    }
+
+    const float scale = std::min((sz - 8.0f) / std::max(1.0f, spriteWidth),
+                                 (sz - 8.0f) / std::max(1.0f, spriteHeight));
+    const ImVec2 imageSize = {
+        std::max(1.0f, spriteWidth * scale),
+        std::max(1.0f, spriteHeight * scale)
+    };
+    const ImVec2 imageMin = {
+        origin.x + (sz - imageSize.x) * 0.5f,
+        origin.y + (sz - imageSize.y) * 0.5f
+    };
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddImage(ToImTextureID(rawID), imageMin,
+                       { imageMin.x + imageSize.x, imageMin.y + imageSize.y },
+                       uvMin, uvMax);
+
+    if (!badge || badge[0] == '\0') return;
+    const ImVec2 textSize = ImGui::CalcTextSize(badge);
+    const ImVec2 badgeMin = { origin.x + 4.0f, origin.y + 4.0f };
+    const ImVec2 badgeMax = { badgeMin.x + textSize.x + 8.0f, badgeMin.y + textSize.y + 4.0f };
+    drawList->AddRectFilled(badgeMin, badgeMax, IM_COL32(20, 26, 22, 220), 3.0f);
+    drawList->AddText({ badgeMin.x + 4.0f, badgeMin.y + 2.0f },
+                       IM_COL32(105, 235, 135, 255), badge);
 }
 
 struct ThumbnailMaterialCB {
@@ -1238,6 +1322,27 @@ static void EnsureThumbnailRT(T& t, EditorContext& ctx) {
     }
 }
 
+// マテリアルサムネイルの GPU 側キャッシュ (シェーダー / CB / テクスチャ) を捨て、
+// 次フレームで RebuildMaterialThumbnailGpuData から作り直させる。
+// WHY: .mat の再読み込み経路がディスク更新と Inspector 編集の 2 つあり、
+//      どちらも同じ後始末を必要とするため 1 箇所にまとめる。
+template<typename T>
+static void ResetMaterialPreviewGpuState(T& preview, renderer::ResourceManager* resources) {
+    preview.previewTexture = {};
+    preview.previewTexturePath.clear();
+    preview.previewTextureWidth = 0;
+    preview.previewTextureHeight = 0;
+    preview.shaderPath.clear();
+    preview.shader = {};
+    if (resources && preview.materialCB.IsValid()) {
+        resources->Release(preview.materialCB);
+        preview.materialCB = {};
+    }
+    preview.textures.clear();
+    preview.paramData.clear();
+    preview.thumbnailRendered = false;
+}
+
 // Returns true if the thumbnail was drawn; caller should `return` immediately.
 template<typename T>
 static bool DrawThumbnailIfReady(T& t, ImVec2 origin, float sz,
@@ -1488,17 +1593,46 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         return;
     }
 
-    if (IsTextureExt(e.ext) && ctx.resources && ctx.imguiRenderer) {
-        TexturePreview& preview = m_texturePreviews[e.path];
+    if ((IsTextureExt(e.ext) || e.isSpriteSubAsset) && ctx.resources && ctx.imguiRenderer) {
+        const std::string& texturePath = e.isSpriteSubAsset ? e.sourceAssetPath : e.path;
+        TexturePreview& preview = m_texturePreviews[texturePath];
         if (!preview.handle.IsValid() && !preview.failed && !preview.queued) {
             preview.queued = true;
-            m_texLoadQueue.push_back(e.path);
+            m_texLoadQueue.push_back(texturePath);
         }
 
         if (!preview.failed) {
             void* rawID = ctx.imguiRenderer->GetImTextureID(preview.handle, *ctx.resources);
             if (rawID) {
-                DrawTextureThumbnail(rawID, preview.width, preview.height, origin, sz, hovered);
+                SpritePreview& spritePreview = m_spritePreviews[texturePath];
+                const std::string metaPath = texturePath + ".meta";
+                const auto metaWriteTime = ReadLastWriteTime(metaPath);
+                if (!spritePreview.loaded || spritePreview.lastWriteTime != metaWriteTime) {
+                    spritePreview = {};
+                    spritePreview.lastWriteTime = metaWriteTime;
+                    asset::TextureAsset textureAsset;
+                    asset::TexDescSerializer serializer;
+                    if (serializer.Load(metaPath, textureAsset))
+                        spritePreview.settings = std::move(textureAsset.settings);
+                    spritePreview.loaded = true;
+                }
+                if (spritePreview.settings.type == asset::TextureType::Sprite) {
+                    if (e.isSpriteSubAsset) {
+                        const asset::SpriteRect* sprite =
+                            e.spriteIndex < spritePreview.settings.sprites.size()
+                            ? &spritePreview.settings.sprites[e.spriteIndex]
+                            : nullptr;
+                        DrawSpriteThumbnail(rawID, preview.width, preview.height,
+                                            sprite, nullptr, origin, sz, hovered);
+                    } else {
+                        const std::string badge = spritePreview.settings.sprites.size() > 1
+                            ? "SPRITE x" + std::to_string(spritePreview.settings.sprites.size())
+                            : "SPRITE";
+                        DrawSpriteThumbnail(rawID, preview.width, preview.height,
+                                            nullptr, badge.c_str(), origin, sz, hovered);
+                    }
+                } else
+                    DrawTextureThumbnail(rawID, preview.width, preview.height, origin, sz, hovered);
                 return;
             }
         }
@@ -1546,19 +1680,31 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.failed = !asset::LoadMaterialAssetFromFile(e.path, preview.asset);
             preview.loaded = true;
             preview.lastWriteTime = currentWriteTime;
-            preview.previewTexture = {};
-            preview.previewTexturePath.clear();
-            preview.previewTextureWidth = 0;
-            preview.previewTextureHeight = 0;
-            preview.shaderPath.clear();
-            preview.shader = {};
-            if (m_resources && preview.materialCB.IsValid()) {
-                m_resources->Release(preview.materialCB);
-                preview.materialCB = {};
+            ResetMaterialPreviewGpuState(preview, m_resources);
+        }
+
+        // Inspector で編集中の .mat は、保存を待たずにサムネイルへ反映する。
+        // WHY: ファイル更新時刻だけを見ていると、スライダーを動かしている最中の見た目が
+        //      AssetBrowser 側だけ古いままになる。Inspector が値変更のたびに進める
+        //      リビジョンを検知して、AssetManager 上の (未保存の) 実体からサムネイルを描き直す。
+        if (!ctx.materialPreviewRevisions.empty()) {
+            const std::string relPath = NormalizeAssetPath(e.path);
+            const uint64_t revision = ctx.MaterialPreviewRevision(relPath);
+            if (revision != 0 && revision != preview.liveRevision) {
+                preview.liveRevision = revision;
+                if (const auto* live = asset::AssetManager::GetMaterial(
+                        asset::AssetManager::LoadMaterial(relPath))) {
+                    preview.asset  = *live;
+                    preview.failed = false;
+                    preview.loaded = true;
+                    // ここでは GPU リソースを捨てない。RebuildMaterialThumbnailGpuData が
+                    // シェーダー変更を検知して張り替え、テクスチャと定数バッファは毎回更新するため、
+                    // 再描画フラグを落とすだけで足りる。
+                    // WHY: スライダーをドラッグしている間は毎フレームここを通るので、
+                    //      定数バッファを作り直すとハンドルの生成/破棄が延々と続いてしまう。
+                    preview.thumbnailRendered = false;
+                }
             }
-            preview.textures.clear();
-            preview.paramData.clear();
-            preview.thumbnailRendered = false;
         }
 
         // シェーダーファイルが変更された場合もサムネイルをリセットする
@@ -1570,15 +1716,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 util::FileSystem::NormalizePathSeparators(ctx.projectRoot + "/" + resolvedShader));
             if (shaderWriteTime != preview.shaderLastWriteTime && shaderWriteTime != std::filesystem::file_time_type{}) {
                 preview.shaderLastWriteTime = shaderWriteTime;
-                preview.shaderPath.clear();
-                preview.shader = {};
-                if (m_resources && preview.materialCB.IsValid()) {
-                    m_resources->Release(preview.materialCB);
-                    preview.materialCB = {};
-                }
-                preview.textures.clear();
-                preview.paramData.clear();
-                preview.thumbnailRendered = false;
+                ResetMaterialPreviewGpuState(preview, m_resources);
             }
         }
 
@@ -2114,6 +2252,7 @@ void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
 void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
 {
     m_texturePreviews.erase(path);
+    m_spritePreviews.erase(path);
     auto releaseAndErase = [&](auto& map) {
         auto it = map.find(path);
         if (it == map.end()) return;
@@ -2171,10 +2310,7 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
 
 void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz, const Entry& e)
 {
-    // 選択ハイライト (単一 = 金枠、複数追加 = 薄い青枠)
-    if (!e.isDir && e.path == m_lastClickedPath && m_selectedPaths.empty()) {
-        // primary は DrawEntry から渡された ctx に依存するため外側で描画済み
-    }
+    // 選択・ホバー表現は DrawEntry 側 (SelectionVisuals) が担当する。ここは状態バッジのみ。
     // ! バッジ: 未変換モデルファイルに赤丸で警告表示
     // WHY: FBX は正規モデルアセットとして扱うため、未変換警告は出さない。
     if (!e.isDir && IsImportableRaw(e.ext) && e.ext != ".fbx") {
@@ -2202,13 +2338,21 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         const float cy = origin.y + r + 2.0f;
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
-    // ▶/▼ 展開トグル: FBX はサブアセットを持つ
-    if (!e.isDir && e.ext == ".fbx") {
-        const bool expanded = m_expandedAssets.count(e.path) > 0;
-        const float ts  = sz * 0.18f; // 三角サイズ
-        const float bx  = origin.x + 2.0f;
-        const float by  = origin.y + sz - ts - 2.0f;
-        const ImU32 col = IM_COL32(255, 220, 80, 230);
+    // ▶/▼ 展開トグル: FBX と Sprite Texture はサブアセットを持つ。
+    // WHY: 素の三角形はサムネイルの絵柄に溶けて「押せる場所」に見えなかった。
+    //      暗いチップ (角丸の下地) に乗せてボタンらしさを与え、展開中は
+    //      アクセント色にしてサブアセットの帯と対応付ける。
+    if (!e.isDir && !e.isSubAsset && e.hasSubAssets) {
+        const bool  expanded = m_expandedAssets.count(e.path) > 0;
+        const float ts   = sz * 0.18f;                 // 三角サイズ (クリック判定と共通)
+        const float bx   = origin.x + 2.0f;
+        const float by   = origin.y + sz - ts - 2.0f;
+        const float pad  = ts * 0.35f;
+        dl->AddRectFilled({ bx - pad, by - pad }, { bx + ts + pad, by + ts + pad },
+                          IM_COL32(18, 20, 24, 190), 4.0f);
+        const ImU32 col = expanded
+            ? EditorTheme::ColorU32(ThemeColor::Accent, 1.0f)
+            : IM_COL32(226, 232, 240, 235);
         if (expanded) {
             // ▼ (pointing down)
             dl->AddTriangleFilled(
@@ -2225,13 +2369,7 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
                 col);
         }
     }
-    // 金の左ボーダー: サブアセットエントリ
-    if (e.isSubAsset) {
-        dl->AddRectFilled(
-            { origin.x,        origin.y },
-            { origin.x + 3.0f, origin.y + sz },
-            IM_COL32(255, 200, 50, 200));
-    }
+    // サブアセットの帯 (親と子を繋ぐ面) は DrawEntry 側の DrawSubAssetBand が描く。
 }
 
 void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, bool hov)
@@ -2273,8 +2411,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
     } else {
         // 選択済み & 単体選択状態での再クリック → 遅延リネーム (Unity スタイル)
         // 合成パス (::mesh:: 仮想サブアセット) はリネーム不可
-        const bool canRename = !e.isMount && !e.isPackageAsset &&
-            e.path.find("::mesh::") == std::string::npos;
+        const bool canRename = !e.isMount && !e.isPackageAsset && !e.isSubAsset;
         if (canRename && ctx.selectedAssetPath == e.path && m_selectedPaths.empty()) {
             m_pendingRenamePath  = e.path;
             m_pendingRenameTimer = static_cast<float>(ImGui::GetTime());
@@ -2310,7 +2447,9 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
 
     if (isDir) { m_pendingNavigate = path; return; }
 
-    if (ext == ".scene" && ctx.activeScene) {
+    if (e.isSpriteSubAsset && ctx.openSpriteEditor) {
+        ctx.openSpriteEditor(e.sourceAssetPath + ".meta");
+    } else if (ext == ".scene" && ctx.activeScene) {
         if (ctx.requestOpenScene) {
             ctx.requestOpenScene(path);
         } else if (SceneIO::Load(*ctx.activeScene, path)) {
@@ -2321,6 +2460,11 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
         } else {
             FBZZ_LOG_ERROR("Failed to open scene: %s", path.c_str());
         }
+    } else if (ext == ".prefab" && ctx.activeScene && ImGui::GetIO().KeyAlt) {
+        // Alt+ダブルクリック: シーンへ置くのではなく、プレファブ本体を編集面で開く。
+        // WHY: 既定はこれまでどおり「配置」。編集は破壊的になりうるので、
+        //      明示的な修飾キーと右クリックメニューからだけ入れるようにする。
+        ctx.requestOpenPrefabEdit = NormalizeAssetPath(path);
     } else if (ext == ".prefab" && ctx.activeScene) {
         const bool canRecordUndo =
             ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
@@ -2354,7 +2498,84 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
         ctx.requestOpenAnimationGraph = true;
     } else if (ext == ".vfx") {
         ctx.requestOpenVFXEditor = true;
+    } else if (ext == ".behaviortree") {
+        ctx.requestOpenBehaviorTree = true;
     }
+}
+
+// 選択中パスのスナップショットをクリップボードに積む。
+// WHY: OS クリップボードではなく panel ローカルに持つのは、ファイル実体コピーは
+//      アプリ終了後に有効である必要がなく (プロセス跨ぎの貼り付けは対象外)、
+//      パス文字列コピー (Copy Path) と役割を混同させないため。
+void AssetBrowserPanel::CopySelectionToClipboard()
+{
+    m_clipboardPaths.clear();
+    if (!m_selectedPaths.empty()) {
+        m_clipboardPaths.assign(m_selectedPaths.begin(), m_selectedPaths.end());
+    } else if (!m_lastClickedPath.empty() && util::FileSystem::Exists(m_lastClickedPath)) {
+        m_clipboardPaths.push_back(m_lastClickedPath);
+    }
+}
+
+// 現在開いているフォルダへクリップボードの内容を複製する (Duplicate と同じ Undo 経路)。
+void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
+{
+    if (m_clipboardPaths.empty()) return;
+    const std::string destDir = m_currentPath;
+
+    auto command = std::make_unique<CompositeCommand>("Paste Assets");
+    std::vector<std::string> pastedPaths;
+    for (const auto& srcPath : m_clipboardPaths) {
+        if (!util::FileSystem::Exists(srcPath)) continue;  // 元がリネーム/削除済みなら黙ってスキップ
+        if (m_packageAssetPaths.count(srcPath) > 0) continue;
+        const bool isDir = util::FileSystem::IsDirectory(srcPath);
+        const std::string dstPath = UniqueDestPath(srcPath, destDir, isDir);
+        if (dstPath.empty()) continue;
+        if (!CopyAssetPath(srcPath, dstPath, isDir)) {
+            FBZZ_LOG_ERROR("Paste failed: %s -> %s", srcPath.c_str(), dstPath.c_str());
+            continue;
+        }
+        pastedPaths.push_back(dstPath);
+
+        EditorContext* context = &ctx;
+        command->Add(std::make_unique<LambdaCommand>(
+            "Paste Asset",
+            [srcPath, dstPath, isDir, context]() {
+                CopyAssetPath(srcPath, dstPath, isDir);
+                context->requestAssetBrowserRefresh = true;
+            },
+            [dstPath, context]() {
+                util::FileSystem::RemoveAll(util::FileSystem::PathFromUtf8(dstPath));
+                context->requestAssetBrowserRefresh = true;
+            }));
+    }
+    if (ctx.undoStack && !command->Empty())
+        ctx.undoStack->Push(std::move(command));
+
+    RefreshDirectory();
+
+    // 貼り付けた項目をそのまま選択状態にする (Unity と同じく直後にリネーム/移動しやすくする)。
+    m_selectedPaths.clear();
+    if (pastedPaths.size() == 1) {
+        ctx.selectedAssetPath = pastedPaths.front();
+        m_lastClickedPath     = pastedPaths.front();
+    } else if (pastedPaths.size() > 1) {
+        m_selectedPaths.insert(pastedPaths.begin(), pastedPaths.end());
+        ctx.selectedAssetPath = pastedPaths.front();
+    }
+}
+
+void AssetBrowserPanel::HandleClipboardShortcuts(EditorContext& ctx)
+{
+    if (!ctx.assetBrowserFocused) return;
+    // リネーム中や検索ボックス入力中の Ctrl+C/V はテキスト編集として扱う (横取りしない)。
+    if (ImGui::GetIO().WantTextInput) return;
+
+    const ImGuiIO& io = ImGui::GetIO();
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false))
+        CopySelectionToClipboard();
+    else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false))
+        PasteClipboardAssets(ctx);
 }
 
 void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
@@ -2373,6 +2594,13 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                 break;
             }
         }
+
+        std::snprintf(label, sizeof(label), "Copy %d items", n);
+        if (ImGui::MenuItem(label, "Ctrl+C"))
+            CopySelectionToClipboard();
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, !m_clipboardPaths.empty()))
+            PasteClipboardAssets(ctx);
+        ImGui::Separator();
 
         std::snprintf(label, sizeof(label), "Duplicate %d items", n);
         ImGui::BeginDisabled(includesPackageAsset);
@@ -2425,6 +2653,39 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         return;
     }
 
+    // Sprite サブアセットは実ファイルではないため、複製・削除・リネームを出さず、
+    // 元画像を編集する操作と安定参照のコピーだけを提供する。
+    if (e.isSpriteSubAsset) {
+        if (ctx.openSpriteEditor && ImGui::MenuItem("Open in Sprite Editor"))
+            ctx.openSpriteEditor(e.sourceAssetPath + ".meta");
+        if (ImGui::MenuItem("Copy Sprite Reference")) {
+            const std::string projectReference = ToProjectAssetPath(e.path, ctx);
+            ImGui::SetClipboardText(projectReference.c_str());
+        }
+        if (ImGui::MenuItem("Reveal Source in Explorer")) {
+            const std::wstring sourcePath =
+                util::FileSystem::PathFromUtf8(e.sourceAssetPath).wstring();
+            const std::wstring args = L"/select," + sourcePath;
+            ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+        }
+        ImGui::EndPopup();
+        return;
+    }
+
+    // プレファブ本体の編集面へ入る動線。
+    // WHY: 既定のダブルクリックは「シーンへ配置」なので、アセットそのものを直したい
+    //      ときの入口が無かった。シーンに 1 個も置いていないプレファブも編集できる。
+    if (!e.isDir && e.ext == ".prefab") {
+        if (ImGui::MenuItem("Open Prefab (edit asset)")) {
+            ctx.requestOpenPrefabEdit = NormalizeAssetPath(e.path);
+            ImGui::CloseCurrentPopup();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Edit the .prefab itself — every instance follows on save\n"
+                              "(Alt + double-click does the same)");
+        ImGui::Separator();
+    }
+
     if (!e.isDir && IsImportableRaw(e.ext)) {
         const bool outdated = m_outdatedPaths.count(e.path) > 0;
         if (outdated) {
@@ -2449,11 +2710,41 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             m_importSettings.open      = true;
             m_importSettings.visible   = true;
             m_importSettings.needsInit = true;
-            m_importSettings.isTexture = false;
         }
         ImGui::Separator();
     }
     if (!e.isDir && IsTextureRaw(e.ext)) {
+        const std::string metaPath = e.path + ".meta";
+        const bool hasPendingImportSettings = AssetDirtyRegistry::IsDirty(metaPath);
+        if (ctx.openSpriteEditor) {
+            if (hasPendingImportSettings) ImGui::BeginDisabled();
+            if (ImGui::MenuItem("Open in Sprite Editor")) {
+                asset::TextureAsset textureAsset;
+                asset::TexDescSerializer serializer;
+                (void)serializer.Load(metaPath, textureAsset);
+                if (textureAsset.settings.type != asset::TextureType::Sprite) {
+                    textureAsset.settings =
+                        asset::DefaultSettingsForType(asset::TextureType::Sprite);
+                }
+                textureAsset.sourcePath = e.path;
+                if (textureAsset.settings.sprites.empty()) {
+                    asset::SpriteRect sprite;
+                    sprite.id = util::GenerateUUID();
+                    sprite.name = util::FileSystem::PathToUtf8(
+                        util::FileSystem::PathFromUtf8(e.path).stem());
+                    textureAsset.settings.sprites.push_back(std::move(sprite));
+                }
+                if (serializer.Save(textureAsset, metaPath)) {
+                    ctx.requestAssetBrowserRefresh = true;
+                    ctx.openSpriteEditor(metaPath);
+                }
+            }
+            if (hasPendingImportSettings) ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)
+                && hasPendingImportSettings) {
+                ImGui::SetTooltip("Apply or Revert the Inspector Import Settings first");
+            }
+        }
         if (ImGui::MenuItem("Import Settings...")) {
             m_textureImportSettings.path        = e.path;
             m_textureImportSettings.open        = true;
@@ -2461,6 +2752,15 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             m_textureImportSettings.needsInit   = true;
             m_textureImportSettings.fromWatcher = false;
         }
+        ImGui::Separator();
+    }
+    if (!e.isMount && !e.isPackageAsset) {
+        // 右クリックした e が事前に左クリック選択されているとは限らないため、
+        // m_lastClickedPath 頼みの CopySelectionToClipboard() ではなくこの項目自体を積む。
+        if (ImGui::MenuItem("Copy", "Ctrl+C"))
+            m_clipboardPaths = { e.path };
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, !m_clipboardPaths.empty()))
+            PasteClipboardAssets(ctx);
         ImGui::Separator();
     }
     if (!e.isMount && !e.isPackageAsset && ImGui::MenuItem("Duplicate")) {
@@ -2495,9 +2795,21 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         m_findRefs.results.clear();
         m_findRefs.open = true;
 
-        // プロジェクトファイルをスキャンして参照を検索
-        const std::string filename = util::FileSystem::GetFilename(e.path);
-        const std::string stem     = std::filesystem::path(e.path).stem().string();
+        // 探すのは (1) GUID 参照、(2) パス参照 の 2 通り。
+        //
+        // WHY: ディスク上の参照は保存時に "guid:<32hex>" へ変換されているため
+        //      (GuidRefCodec)、ファイル名で探しても .scene からは 1 件も見つからない。
+        //      一方 baked アセットや guid を持たない参照はパスのまま残るので、両方を見る。
+        //
+        // NOTE: 以前はファイル名に加えて「拡張子を除いた stem」でも一致とみなしていたが、
+        //       これは "Fire" のような短い名前が無関係なファイルの本文へ大量に当たり、
+        //       結果一覧が使い物にならなかった。stem 単独の一致は採らない。
+        const std::string guid = asset::AssetDatabase::GuidFromPath(e.path);
+        const std::string guidRef = guid.empty()
+            ? std::string{} : std::string(asset::AssetDatabase::kGuidPrefix) + guid;
+        // パス参照は "Assets/..." 起点で書かれる。
+        const std::string relativePath = NormalizeAssetPath(e.path);
+
         for (const auto& p : util::FileSystem::ListFilesRecursive(
                 util::FileSystem::PathFromUtf8(m_rootPath))) {
             const std::string scanPath = util::FileSystem::PathToUtf8(p);
@@ -2505,14 +2817,32 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                 util::FileSystem::GetExtension(scanPath));
             if (scanExt != ".scene" && scanExt != ".mat" && scanExt != ".prefab"
                 && scanExt != ".animcontroller" && scanExt != ".vfx") continue;
+            // 自分自身は参照元に数えない。
+            if (util::FileSystem::NormalizePathSeparators(scanPath)
+                == util::FileSystem::NormalizePathSeparators(e.path)) continue;
             std::string content;
             util::FileSystem::ReadText(scanPath, content);
-            if (content.find(filename) != std::string::npos ||
-                content.find(stem)     != std::string::npos) {
+            const bool byGuid = !guidRef.empty() && content.find(guidRef) != std::string::npos;
+            const bool byPath = !relativePath.empty() && content.find(relativePath) != std::string::npos;
+            if (byGuid || byPath) {
                 m_findRefs.results.push_back(
                     util::FileSystem::NormalizePathSeparators(scanPath));
             }
         }
+    }
+    // 横断検索の結果からその場所へ移動する。
+    // WHY: 検索でアセットを見つけた後、周辺のファイルも見たいことが多い。
+    //      Explorer を開かずにブラウザ内で辿れるようにする。
+    if (IsGlobalSearchActive() && !e.isDir && ImGui::MenuItem("Go to Containing Folder")) {
+        // GetDirectory は末尾に '/' を付けて返すため落とす (パス比較が壊れる)。
+        std::string folder = util::FileSystem::GetDirectory(e.path);
+        while (folder.size() > 1 && (folder.back() == '/' || folder.back() == '\\'))
+            folder.pop_back();
+        m_pendingNavigate = std::move(folder);
+        // 移動先では検索を解除しないと、そのフォルダの中身が見えない。
+        m_searchBuf[0] = '\0';
+        m_searchResultsQuery.clear();
+        m_searchResultsTypeFilter = -1;
     }
     if (ImGui::MenuItem("Reveal in Explorer")) {
         const std::wstring wpath = util::FileSystem::PathFromUtf8(e.path).wstring();
@@ -2558,27 +2888,39 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
 void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
 {
     if (m_renamingPath == e.path) {
-        ImGui::SetNextItemWidth(m_iconSize);
-        const bool applyInitialSelection = m_renameNeedFocus;
+        // 入力欄は拡張子ぶんの幅を空けて置き、拡張子はその右へ編集不可の文字として描く。
+        // WHY: 単に編集させないだけだと「最終的にどんなファイル名になるのか」が見えない。
+        //      並べて出すことで、固定されていることと結果の両方が一目で分かる。
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        const float extWidth = m_renameExtension.empty()
+            ? 0.0f
+            : ImGui::CalcTextSize(m_renameExtension.c_str()).x + spacing;
+        // グリッドのセル幅は可変なので、名前が 1 文字も打てない幅にならないよう下限を設ける。
+        const float inputWidth = (std::max)(m_iconSize - extWidth, 40.0f);
+
+        ImGui::SetNextItemWidth(inputWidth);
+        // WHY: バッファが拡張子を含まなくなったので、ImGui 既定の「フォーカス時に全選択」が
+        //      そのまま望みの挙動 (名前部分だけ選択) になる。手動の範囲指定は不要。
         if (m_renameNeedFocus) { ImGui::SetKeyboardFocusHere(); m_renameNeedFocus = false; }
         constexpr ImGuiInputTextFlags renameFlags = ImGuiInputTextFlags_EnterReturnsTrue;
         const bool enterPressed = ImGui::InputText("##rename", m_renameBuffer,
                                                    sizeof(m_renameBuffer), renameFlags);
-        if (applyInitialSelection && ImGui::IsItemActive()) {
-            int selectionEnd = static_cast<int>(std::strlen(m_renameBuffer));
-            if (!e.isDir) {
-                const std::string name = m_renameBuffer;
-                const size_t dot = name.rfind('.');
-                if (dot != std::string::npos && dot > 0)
-                    selectionEnd = static_cast<int>(dot);
-            }
-            if (ImGuiInputTextState* state = ImGui::GetInputTextState(ImGui::GetItemID()))
-                state->SetSelection(0, selectionEnd);
+        // WHY: 直後に拡張子ラベルを描くと IsItemDeactivated() の対象がそちらへ移り、
+        //      「他所をクリックしてリネームを中断する」経路が死ぬ。ここで確定させる。
+        const bool inputDeactivated = ImGui::IsItemDeactivated();
+
+        if (!m_renameExtension.empty()) {
+            ImGui::SameLine(0.0f, spacing);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", m_renameExtension.c_str());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("The extension is fixed: it identifies the asset type");
         }
+
         if (enterPressed) {
             if (m_renameBuffer[0] != '\0') {
                 const std::string dir     = util::FileSystem::GetDirectory(e.path);
-                const std::string newPath = dir + m_renameBuffer;
+                const std::string newPath = dir + m_renameBuffer + m_renameExtension;
                 if (newPath != e.path) {
                     auto doRename = [this, oldPath = e.path, newPath, context = &ctx]() {
                         // .meta サイドカーも一緒に動かし、GUID 索引を追随させる。
@@ -2617,8 +2959,10 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
                 }
             }
             m_renamingPath.clear();
-        } else if (ImGui::IsItemDeactivated()) {
+            m_renameExtension.clear();
+        } else if (inputDeactivated) {
             m_renamingPath.clear();
+            m_renameExtension.clear();
         }
     } else {
         std::string display = e.name;
@@ -2637,7 +2981,7 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
     }
 }
 
-void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
+void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubAssetBand& band)
 {
     // 遅延リネームタイマー: ダブルクリック判定後 0.5s 経過でリネーム開始
     if (!m_pendingRenamePath.empty() && m_pendingRenamePath == e.path) {
@@ -2660,24 +3004,39 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     const bool primarySelected = !e.isDir && e.path == ctx.selectedAssetPath;
     const bool selected = primarySelected || m_selectedPaths.count(e.path) > 0;
+    // 複数選択中は「主選択 = Inspector に出ている 1 件」だけを濃く描き分ける。
+    // 単一選択のときは主選択かどうかを区別する意味がないので常に濃い表現にする。
+    const bool multiSelection = m_selectedPaths.size() > 1;
+    const bool emphasized     = primarySelected || !multiSelection;
+    // フォーカスを失っている間は彩度を落とす (Unity の Project ウィンドウと同じ)。
+    const bool panelFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    ui::DrawSelectionBackground(
-        dl,
-        { origin.x - 4.0f, origin.y - 4.0f },
-        { origin.x + sz + 4.0f, origin.y + sz + 22.0f },
-        selected,
-        hov,
-        primarySelected,
-        5.0f);
+    const ImVec2 tileMin = { origin.x - 4.0f, origin.y - 4.0f };
+    const ImVec2 tileMax = { origin.x + sz + 4.0f, origin.y + sz + 22.0f };
+
+    // サブアセット (FBX 内メッシュ / 画像内スプライト) と展開元の親を 1 本の帯で繋ぐ。
+    // 帯は隣接タイルとセル間の中点で接合するため、左右へ bleed だけ伸ばす。
+    if (band.active) {
+        ui::DrawSubAssetBand(
+            dl,
+            { tileMin.x - (band.joinLeft  ? band.bleed : 0.0f), tileMin.y },
+            { tileMax.x + (band.joinRight ? band.bleed : 0.0f), tileMax.y },
+            band.isParent, band.OpenLeft(), band.OpenRight(), 5.0f);
+    }
+
+    ui::DrawTileSelection(dl, tileMin, tileMax, selected, hov, emphasized, panelFocused, 5.0f);
 
     DrawAssetPreviewIconAt(origin, sz, e, ctx, hov);
-
-    // 選択中の対象はアイコン本体にも細い枠を重ね、サムネイル背景との差を残す。
-    if (selected)
-        dl->AddRect(origin, { origin.x + sz, origin.y + sz },
-                    ui::SelectionBorderColor(primarySelected), 3.0f, 0,
-                    primarySelected ? 2.0f : 1.35f);
     DrawEntryBadges(dl, origin, sz, e);
+
+    // 名前欄: 選択中は面で塗って白文字にし、サムネイルの絵柄に左右されず読めるようにする。
+    if (selected && m_renamingPath != e.path) {
+        ui::DrawTileLabelPlate(dl,
+                               { tileMin.x + 2.0f, origin.y + sz + 2.0f },
+                               { tileMax.x - 2.0f, tileMax.y - 1.0f },
+                               emphasized, panelFocused, 4.0f);
+    }
 
     // ドラッグソース。フォルダも移動対象にし、左ペインのフォルダツリーへ直接整理できるようにする。
     if (!e.isMount && !e.isPackageAsset && ImGui::BeginDragDropSource()) {
@@ -2722,13 +3081,18 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
 
     DrawEntryContextMenu(e, ctx);
 
-    // FBX の ▶/▼ 三角クリックで展開トグル
-    if (hov && e.ext == ".fbx" && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    // FBX / Sprite Texture の ▶/▼ 三角クリックで展開トグル。
+    if (hov && !e.isSubAsset && e.hasSubAssets &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // 当たり判定はチップ (角丸の下地) の大きさに合わせる。見た目より狭いと
+        // 「押したのに開かない」が起きるため、DrawEntryBadges と同じ pad を使う。
         const float ts  = sz * 0.18f;
-        const float bx  = origin.x + 2.0f;
-        const float by  = origin.y + sz - ts - 2.0f;
+        const float pad = ts * 0.35f;
+        const float bx  = origin.x + 2.0f - pad;
+        const float by  = origin.y + sz - ts - 2.0f - pad;
+        const float ext = ts + pad * 2.0f;
         const ImVec2 mp = ImGui::GetIO().MousePos;
-        if (mp.x >= bx && mp.x <= bx + ts && mp.y >= by && mp.y <= by + ts) {
+        if (mp.x >= bx && mp.x <= bx + ext && mp.y >= by && mp.y <= by + ext) {
             if (m_expandedAssets.count(e.path))
                 m_expandedAssets.erase(e.path);
             else
@@ -2740,7 +3104,12 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx)
     }
     HandleEntryClick(e, ctx, hov);
     HandleEntryDoubleClick(e, ctx, hov);
-    DrawEntryRenameLabel(e, ctx);
+    {
+        const bool tintLabel = selected && m_renamingPath != e.path;
+        if (tintLabel) ImGui::PushStyleColor(ImGuiCol_Text, ui::TileSelectedTextColor());
+        DrawEntryRenameLabel(e, ctx);
+        if (tintLabel) ImGui::PopStyleColor();
+    }
 
     // FindRefs ポップアップは1つのエントリが最初にレンダリングされた後に開く
     if (m_findRefs.open) {
@@ -2764,7 +3133,10 @@ void AssetBrowserPanel::DrawFindRefsPopup()
     ImGui::Separator();
 
     if (m_findRefs.results.empty()) {
+        // 「見つからない」を「使われていない」と読ませない。走査対象を必ず添える。
         ImGui::TextDisabled("(no references found)");
+        ImGui::TextDisabled("scanned: .scene / .mat / .prefab / .animcontroller / .vfx");
+        ImGui::TextDisabled("GUID 参照とパス参照の両方を検索しています。");
     } else {
         ImGui::TextDisabled("%zu file(s) reference this asset:", m_findRefs.results.size());
         ImGui::Spacing();

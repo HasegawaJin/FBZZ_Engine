@@ -5,6 +5,7 @@
 #include <Editor/AssetFileWatcher.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/VFXEditor/Services/VFXTemplateCatalog.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
@@ -45,11 +46,34 @@ private:
         bool        isMount   = false;
         bool        isSubAsset = false; // FBX の展開で挿入された仮想サブエントリ
         bool        isPackageAsset = false; // 旧パッケージ仮想エントリ互換用。新規 UI では生成しない
+        bool        hasSubAssets = false; // FBX または Sprite Texture の展開トグルを表示する
+        bool        isSpriteSubAsset = false; // 元画像の SpriteRect を指す仮想サブエントリ
+        std::string sourceAssetPath; // 仮想サブエントリのプレビューに使う元素材
+        uint32_t    spriteIndex = 0; // .meta 内 sprites 配列の添字
     };
 
     struct AssetMount {
         std::string name;
         std::string path;
+    };
+
+    // 展開した親アセットとそのサブアセットを 1 本の帯で繋ぐための隣接情報。
+    // WHY: グリッドは折り返すため「親 → 子 → 子 …」を 1 つの矩形では描けない。
+    //      タイルごとに帯を描き、同じ行で隣接する帯どうしをセル間の中点で
+    //      「ぴったり」接合することで、途切れのない 1 本の帯として見せる。
+    //      (半透明色なので重ねると継ぎ目が濃くなる。重複させず接合させるのが要点)
+    struct SubAssetBand {
+        bool  active    = false; // このタイルが帯の一部 (親 or サブアセット)
+        bool  isParent  = false; // 帯の起点となる展開中の親アセット
+        bool  joinLeft  = false; // 同じ行の左隣も同じ帯 (中点まで伸ばして接合する)
+        bool  joinRight = false; // 同じ行の右隣も同じ帯
+        bool  wrapLeft  = false; // 前の行から折り返して続いている
+        bool  wrapRight = false; // 次の行へ折り返して続く
+        float bleed     = 0.0f;  // セル間の中点まで伸ばす量 (呼び出し側のパディング依存)
+
+        // 端を角丸で閉じない = その向きへ帯が続いている、という意味。
+        [[nodiscard]] bool OpenLeft()  const { return joinLeft  || wrapLeft; }
+        [[nodiscard]] bool OpenRight() const { return joinRight || wrapRight; }
     };
 
     void OnRenderContent(EditorContext& ctx) override;
@@ -58,7 +82,7 @@ private:
     void OnBeforeBegin(EditorContext& ctx) override;
     void RefreshDirectory();
     void DrawFolderTree(const std::string& dirPath, EditorContext& ctx);
-    void DrawEntry(const Entry& e, EditorContext& ctx);
+    void DrawEntry(const Entry& e, EditorContext& ctx, const SubAssetBand& band = {});
     void DrawCreateMenu(EditorContext& ctx);
     void UpdateMounts(const EditorContext& ctx);
 
@@ -96,8 +120,16 @@ private:
     void HandleEntryDoubleClick(const Entry& e, EditorContext& ctx, bool hov);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
 
-    // FBX パッケージ配下の従属アセットを列挙して、展開時のグリッドに挿入する。
-    std::vector<Entry> GetAssetSubEntries(const std::string& modelSourcePath);
+    // --- Ctrl+C / Ctrl+V (複数選択対応のアセットコピー&ペースト) -----------------
+    // WHY: 既存の "Copy Path"/"Duplicate" はパス文字列コピーやその場複製のみで、
+    //      Unity のように選択群を「コピーして別フォルダへ貼り付け」る動線がなかった。
+    void HandleClipboardShortcuts(EditorContext& ctx);
+    void CopySelectionToClipboard();
+    void PasteClipboardAssets(EditorContext& ctx);
+    std::vector<std::string> m_clipboardPaths; // Ctrl+C でスナップショットした絶対パス群
+
+    // FBX または Sprite Texture の従属アセットを列挙して、展開時のグリッドに挿入する。
+    std::vector<Entry> GetAssetSubEntries(const std::string& sourceAssetPath);
 
     // 未変換モデルファイルを検出してインポートキューに積む (relPath は m_rootPath 相対)。
     // WHY: PNG / JPG 等のテクスチャは ResourceManager が原本を直接読むため変換しない。
@@ -149,12 +181,47 @@ private:
     bool m_showSaveModifiedDialog = false;
     std::vector<bool> m_saveModifiedSelected; // GetAll() の各エントリに対応
 
+    // Create > VFX Graph > From Template のカタログ。
+    // WHY: 新規作成の入口が「空 Entry 1 個」しか無いと、VFX で最も難しい
+    //      層構成を毎回ゼロから積み直すことになる。VFX Editor と同じ
+    //      カタログサービスを共有し、表示の食い違いを作らない。
+    VFXTemplateCatalog    m_vfxTemplates;
+
     std::string           m_rootPath;
     std::string           m_currentPath;
     std::string           m_pendingNavigate;
     std::vector<AssetMount> m_mounts;
     std::vector<Entry>    m_entries;
     std::array<char, 256> m_searchBuf = {};
+
+    // ── 横断検索 ─────────────────────────────────────────────────────────────
+    // WHY 必要か: 従来の検索欄は「現在フォルダのエントリを名前で絞る」だけで、
+    //      別フォルダにあるアセットは見つけられなかった。目的のファイルが
+    //      どこにあるか分かっていないと使えず、検索としては半分しか機能していない。
+    //      索引と一致判定は AssetSearch (Editor/Util/AssetSearch.hpp) を共用し、
+    //      Search パネル / アセットピッカーと同じ結果・同じ並び順にする。
+    bool m_searchAllFolders = false;
+
+    // 横断検索の結果を Entry へ変換したもの。m_entries の代わりに描画される。
+    std::vector<Entry> m_searchResults;
+
+    // m_searchResults を組み直した時点の検索語とフィルタ。
+    // 毎フレーム再検索しないための差分検知に使う。
+    std::string m_searchResultsQuery;
+    int         m_searchResultsTypeFilter = -1;
+
+    // 横断検索が有効か (トグル ON かつ検索語が空でない)。
+    [[nodiscard]] bool IsGlobalSearchActive() const;
+
+    // 描画対象のエントリ列。横断検索中は m_searchResults を返す。
+    [[nodiscard]] const std::vector<Entry>& VisibleEntries() const;
+
+    // 検索語 / タイプフィルタが変わっていれば m_searchResults を組み直す。
+    void RefreshSearchResults();
+
+    // TypeFilter を AssetSearch へ渡す拡張子リストへ変換する。
+    // All の場合は空 (絞り込みなし) を返す。
+    [[nodiscard]] std::vector<std::string> TypeFilterExtensions() const;
     float                 m_iconSize  = 84.0f;
     float                 m_treeWidth = 180.0f; // 左フォルダツリーの幅 (スプリッターでドラッグ可変)
     bool                  m_resetScroll    = false; // ディレクトリ移動後に右ペインをトップへ戻す
@@ -216,6 +283,9 @@ private:
         std::vector<renderer::ResourceHandle<renderer::TextureTag>> textures;
         std::vector<uint8_t> paramData;
         bool loaded = false;
+        // Inspector が最後に通知した編集リビジョン (EditorContext::materialPreviewRevisions)。
+        // 0 = 未編集。ディスク由来のサムネイルと未保存編集の反映を区別するために持つ。
+        uint64_t liveRevision = 0;
     };
     struct MeshPreview : ThumbnailBase {
         asset::Model* model = nullptr;
@@ -247,6 +317,12 @@ private:
         std::filesystem::file_time_type lastWriteTime{};
         bool failed = false;
     };
+    // 画像の .meta から Sprite 切り抜き情報を保持し、グリッド描画中の再解析を避ける。
+    struct SpritePreview {
+        asset::TextureImportSettings settings;
+        std::filesystem::file_time_type lastWriteTime{};
+        bool loaded = false;
+    };
     // .mat の shaderPath / ShaderDescriptor に合わせて、サムネイル描画用の Material CB と Texture を更新する。
     // WHY: AssetBrowser の Material サムネイルも実際のマテリアルと同じ HLSL を使い、Lit 固定による見た目のズレを避ける。
     bool RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx);
@@ -260,10 +336,16 @@ private:
     std::unordered_map<std::string, TerrainPreview>       m_terrainPreviews;
     std::unordered_map<std::string, ModelAssetPreview>    m_modelAssetPreviews;
     std::unordered_map<std::string, TexDescPreview>       m_texDescPreviews;
+    std::unordered_map<std::string, SpritePreview>        m_spritePreviews;
 
     // Rename state
+    // m_renameBuffer は「拡張子を除いた名前」だけを持つ。
+    // WHY: 拡張子はアセットの種類そのもので、リネームのついでに変えてよいものではない。
+    //      .mat を .txt にされるとインポータもシリアライザも解決できなくなり、
+    //      しかも壊れたことに気づくのはずっと後になる。編集対象から外して固定する。
     std::string m_renamingPath;
     char        m_renameBuffer[256] = {};
+    std::string m_renameExtension;          // 固定表示する拡張子 (".prefab" 等 / フォルダは空)
     bool        m_renameNeedFocus   = false;
     // Unity 風の遅延リネーム: 選択済みアイテムを再クリック後 0.5s 経過でリネーム開始
     std::string m_pendingRenamePath;
@@ -304,9 +386,10 @@ private:
         bool             visible      = false;
         bool             needsInit    = false;
         bool             fromWatcher  = false; // true = ウォッチャー自動起動（キュー継続が必要）
-        // テクスチャ設定
-        bool                         isTexture   = false;
-        asset::TextureImportSettings texSettings;  // 全フィールド (新設計)
+        // NOTE: テクスチャ設定はここには持たない。
+        // WHY: モデル用の状態にテクスチャ用フィールドを同居させていたため、
+        //      同じウィンドウで両方を描く死んだ分岐が残り、無関係な項目の表示源になっていた。
+        //      テクスチャは TextureImportSettingsState / 専用ウィンドウに完全分離する。
     };
     ImportSettingsState m_importSettings;
 

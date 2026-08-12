@@ -2,7 +2,16 @@
 // ViewportSceneGizmos.cpp | fbzz::editor
 // Scene View のカメラ・ライトアイコンと3D Gizmo
 #include "ViewportCommon.hpp"
+#include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/UndoStack.hpp>
+// メッシュを持たないコンポーネントのアイコン描画に必要な型。
+#include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/DecalComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/ParticleForceField.hpp>
+#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/WindZoneComponent.hpp>
 
 namespace fbzz::editor {
 
@@ -153,71 +162,191 @@ void DrawCameraFrustum(EditorContext& ctx,
     }
 }
 
+namespace {
+
+// コンポーネント型をラムダ引数として渡すためのタグ。
+// WHY: ジェネリックラムダはテンプレート引数を直接受け取れず、実体を作らせると
+//      非デフォルト構築のコンポーネントで壊れる。型だけを運ぶ空のタグを使う。
+template<typename T> struct ComponentTag { using Type = T; };
+
+// アイコン 1 個ぶんの描画コンテキスト。
+struct IconDraw {
+    ImDrawList* dl        = nullptr;
+    ImVec2      screenPos{};
+    ImU32       color     = 0;
+    bool        selected  = false;
+};
+
+// ワールド座標をスクリーンへ投影しつつ、視錐台の内外を判定する。
+// WHY: 従来は「カメラ背面か」と「画面矩形内か」しか見ておらず、遠平面より奥のオブジェクトも
+//      投影して描いていた。NDC の z も見て、視錐台の外は描画前に切り捨てる。
+bool ProjectIcon(const math::Vector3& world,
+                 const EditorContext& ctx,
+                 const ImVec2& vpMin, const ImVec2& vpSize,
+                 ImVec2& out)
+{
+    if (!ctx.editorCamera) return false;
+    const math::Matrix4 vp = ctx.editorCamera->GetProjectionMatrix()
+                           * ctx.editorCamera->GetViewMatrix();
+    const math::Vector4 clip = vp * math::Vector4{ world.x, world.y, world.z, 1.0f };
+    if (clip.w <= 0.001f) return false;
+
+    const float ndcX =  clip.x / clip.w;
+    const float ndcY = -clip.y / clip.w;
+    const float ndcZ =  clip.z / clip.w;
+    // 近平面手前・遠平面より奥は描かない (DirectX の NDC は z ∈ [0,1])。
+    if (ndcZ < 0.0f || ndcZ > 1.0f) return false;
+    // 画面外は少しだけ余裕を持って切る (アイコンの半径ぶん)。
+    constexpr float kMargin = 24.0f;
+    const float sx = vpMin.x + (ndcX * 0.5f + 0.5f) * vpSize.x;
+    const float sy = vpMin.y + (ndcY * 0.5f + 0.5f) * vpSize.y;
+    if (sx < vpMin.x - kMargin || sx > vpMin.x + vpSize.x + kMargin ||
+        sy < vpMin.y - kMargin || sy > vpMin.y + vpSize.y + kMargin) return false;
+
+    out = { sx, sy };
+    return true;
+}
+
+// 汎用バッジアイコン (角丸の四角 + 1 文字)。
+// WHY: メッシュを持たないコンポーネントは種類が多く、1 つずつ専用の図形を描くと
+//      コード量に見合わない。色と頭文字で識別できれば選択とデバッグには足りる。
+void DrawBadgeIcon(const IconDraw& icon, const char* glyph)
+{
+    constexpr float kHalf = 9.0f;
+    const ImVec2 a = { icon.screenPos.x - kHalf, icon.screenPos.y - kHalf };
+    const ImVec2 b = { icon.screenPos.x + kHalf, icon.screenPos.y + kHalf };
+
+    icon.dl->AddRectFilled(a, b, icon.color, 4.0f);
+    icon.dl->AddRect(a, b, IM_COL32(0, 0, 0, 140), 4.0f, 0, 1.5f);
+    if (icon.selected)
+        icon.dl->AddRect({ a.x - 3.0f, a.y - 3.0f }, { b.x + 3.0f, b.y + 3.0f },
+                         IM_COL32(255, 220, 60, 255), 6.0f, 0, 2.0f);
+
+    const ImVec2 textSize = ImGui::CalcTextSize(glyph);
+    icon.dl->AddText({ icon.screenPos.x - textSize.x * 0.5f,
+                       icon.screenPos.y - textSize.y * 0.5f },
+                     IM_COL32(15, 15, 15, 230), glyph);
+}
+
+// 色の不透明度を差し替える (非アクティブ表示用)。
+ImU32 WithAlpha(ImU32 color, int alpha)
+{
+    return (color & 0x00FFFFFFu) | (static_cast<ImU32>(alpha) << IM_COL32_A_SHIFT);
+}
+
+} // namespace
+
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
 {
     if (!ctx.activeScene || !ctx.editorCamera) return;
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const ImVec2 vpMax = { vpMin.x + vpSize.x, vpMin.y + vpSize.y };
 
-    for (auto& go : ctx.activeScene->GameObjects()) {
-        if (!go.activeSelf()) continue;
+    auto isSelected = [&ctx](scene::EntityID id) {
+        return std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
+            != ctx.selectedEntities.end();
+    };
 
-        ImVec2 sp;
-        if (!WorldToScreen(go.transform.position, ctx, vpMin, vpSize, sp)) continue;
-        if (sp.x < vpMin.x || sp.x > vpMax.x || sp.y < vpMin.y || sp.y > vpMax.y) continue;
+    // コンポーネント種別ごとにアイコンを描く共通ループ。
+    //
+    // WHY: 以前は Scene の全 GameObject を毎フレーム走査し、1 体ずつ投影していた。
+    //      VFX Graph は 1 エフェクトにつきノード数ぶんの GameObject を作るため、
+    //      アイコンを持たない数千体まで投影計算にかけることになる。
+    //      GetEntities<T>() で「そのコンポーネントを持つ実体」だけを引けば走査量が桁で減る。
+    auto forEachIcon = [&](auto componentTag, ImU32 baseColor, auto&& draw) {
+        using T = typename decltype(componentTag)::Type;
+        for (const scene::EntityID id : ctx.activeScene->GetEntities<T>()) {
+            scene::GameObject* go = ctx.activeScene->GetGameObject(id);
+            if (!go) continue;
 
-        const bool isSelected = std::find(ctx.selectedEntities.begin(),
-                                          ctx.selectedEntities.end(),
-                                          go.GetID()) != ctx.selectedEntities.end();
-        const ImU32 selCol = IM_COL32(255, 220, 60, 255);
+            ImVec2 sp;
+            if (!ProjectIcon(go->transform.position, ctx, vpMin, vpSize, sp)) continue;
 
-        if (auto* light = go.GetComponent<scene::LightComponent>()) {
-            // Light icon: center point with rays.
-            constexpr float kR = 8.0f;
-            constexpr float kRay = 14.0f;
-            constexpr int   kRays = 8;
-            const ImU32 col = isSelected ? selCol : IM_COL32(255, 200, 60, 200);
-            dl->AddCircleFilled(sp, kR, col);
-            dl->AddCircle(sp, kR, IM_COL32(0, 0, 0, 120), 16, 1.5f);
-            for (int i = 0; i < kRays; ++i) {
-                const float ang = static_cast<float>(i) * (2.0f * 3.14159265f / kRays);
-                const ImVec2 a = { sp.x + std::cosf(ang) * (kR + 3.0f),
-                                   sp.y + std::sinf(ang) * (kR + 3.0f) };
-                const ImVec2 b = { sp.x + std::cosf(ang) * (kR + kRay),
-                                   sp.y + std::sinf(ang) * (kR + kRay) };
-                dl->AddLine(a, b, col, 1.5f);
-            }
-            if (light->enabled && light->type == scene::LightComponent::Type::Directional) {
-                DrawDirectionLine(ctx, dl, go.transform.position, go.transform.forward,
-                                  2.5f, vpMin, vpSize, col);
-            }
-        } else if (auto* camera = go.GetComponent<scene::CameraComponent>()) {
-            // Camera icon: body rectangle and lens trapezoid.
-            constexpr float kW = 16.0f, kH = 11.0f;
-            constexpr float kLW = 7.0f, kLH = 5.0f, kLX = 9.0f;
-            const ImU32 col  = isSelected ? selCol : IM_COL32(120, 200, 255, 200);
-            const ImU32 dark = IM_COL32(0, 0, 0, 140);
-            // Body.
-            dl->AddRectFilled({ sp.x - kW, sp.y - kH * 0.5f },
-                              { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, col, 2.0f);
-            dl->AddRect({ sp.x - kW, sp.y - kH * 0.5f },
-                        { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, dark, 2.0f);
-            // Lens.
-            ImVec2 lens[4] = {
-                { sp.x + kW * 0.4f, sp.y - kLH },
-                { sp.x + kLX,       sp.y - kLW  },
-                { sp.x + kLX,       sp.y + kLW  },
-                { sp.x + kW * 0.4f, sp.y + kLH  },
-            };
-            dl->AddConvexPolyFilled(lens, 4, col);
-            dl->AddPolyline(lens, 4, dark, ImDrawFlags_Closed, 1.0f);
-            DrawDirectionLine(ctx, dl, go.transform.position, go.transform.forward,
-                              2.0f, vpMin, vpSize, col);
-            if (camera->enabled)
-                DrawCameraFrustum(ctx, dl, go.transform, *camera, vpMin, vpSize, col);
+            // WHY: 非アクティブなオブジェクトを完全に隠すと、ビューポートから選び直せなくなる
+            //      (Hierarchy でしか触れない)。半透明にして「居るが無効」を表す。
+            const bool active = go->activeInHierarchy();
+            IconDraw icon;
+            icon.dl        = dl;
+            icon.screenPos = sp;
+            icon.selected  = isSelected(id);
+            icon.color     = active ? baseColor : WithAlpha(baseColor, 70);
+
+            draw(icon, *go, active);
         }
-    }
+    };
+
+    // ── ライト ────────────────────────────────────────────────────────────────
+    forEachIcon(ComponentTag<scene::LightComponent>{}, IM_COL32(255, 200, 60, 200),
+                [&](const IconDraw& icon, scene::GameObject& go, bool active) {
+        auto* light = go.GetComponent<scene::LightComponent>();
+        if (!light) return;
+
+        constexpr float kR   = 8.0f;
+        constexpr float kRay = 14.0f;
+        constexpr int   kRays = 8;
+        const ImU32 col = icon.selected ? IM_COL32(255, 220, 60, 255) : icon.color;
+
+        icon.dl->AddCircleFilled(icon.screenPos, kR, col);
+        icon.dl->AddCircle(icon.screenPos, kR, IM_COL32(0, 0, 0, 120), 16, 1.5f);
+        for (int i = 0; i < kRays; ++i) {
+            const float ang = static_cast<float>(i) * (2.0f * 3.14159265f / kRays);
+            const ImVec2 a = { icon.screenPos.x + std::cosf(ang) * (kR + 3.0f),
+                               icon.screenPos.y + std::sinf(ang) * (kR + 3.0f) };
+            const ImVec2 b = { icon.screenPos.x + std::cosf(ang) * (kR + kRay),
+                               icon.screenPos.y + std::sinf(ang) * (kR + kRay) };
+            icon.dl->AddLine(a, b, col, 1.5f);
+        }
+        if (active && light->enabled && light->type == scene::LightComponent::Type::Directional)
+            DrawDirectionLine(ctx, icon.dl, go.transform.position, go.transform.forward,
+                              2.5f, vpMin, vpSize, col);
+    });
+
+    // ── カメラ ────────────────────────────────────────────────────────────────
+    forEachIcon(ComponentTag<scene::CameraComponent>{}, IM_COL32(120, 200, 255, 200),
+                [&](const IconDraw& icon, scene::GameObject& go, bool active) {
+        auto* camera = go.GetComponent<scene::CameraComponent>();
+        if (!camera) return;
+
+        constexpr float kW = 16.0f, kH = 11.0f;
+        constexpr float kLW = 7.0f, kLH = 5.0f, kLX = 9.0f;
+        const ImU32 col  = icon.selected ? IM_COL32(255, 220, 60, 255) : icon.color;
+        const ImU32 dark = IM_COL32(0, 0, 0, 140);
+        const ImVec2 sp  = icon.screenPos;
+
+        icon.dl->AddRectFilled({ sp.x - kW, sp.y - kH * 0.5f },
+                               { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, col, 2.0f);
+        icon.dl->AddRect({ sp.x - kW, sp.y - kH * 0.5f },
+                         { sp.x + kW * 0.4f, sp.y + kH * 0.5f }, dark, 2.0f);
+        ImVec2 lens[4] = {
+            { sp.x + kW * 0.4f, sp.y - kLH },
+            { sp.x + kLX,       sp.y - kLW },
+            { sp.x + kLX,       sp.y + kLW },
+            { sp.x + kW * 0.4f, sp.y + kLH },
+        };
+        icon.dl->AddConvexPolyFilled(lens, 4, col);
+        icon.dl->AddPolyline(lens, 4, dark, ImDrawFlags_Closed, 1.0f);
+        DrawDirectionLine(ctx, icon.dl, go.transform.position, go.transform.forward,
+                          2.0f, vpMin, vpSize, col);
+        if (active && camera->enabled)
+            DrawCameraFrustum(ctx, icon.dl, go.transform, *camera, vpMin, vpSize, col);
+    });
+
+    // ── メッシュを持たないその他のコンポーネント ──────────────────────────────
+    // WHY: これらはビューポート上に一切表示されず、Hierarchy からしか選べなかった。
+    //      配置を目で確認できないと、音源やフォースフィールドの位置調整ができない。
+    const auto badge = [](const char* glyph) {
+        return [glyph](const IconDraw& icon, scene::GameObject&, bool) {
+            DrawBadgeIcon(icon, glyph);
+        };
+    };
+
+    forEachIcon(ComponentTag<scene::AudioSourceComponent>{},      IM_COL32(140, 220, 150, 210), badge("A"));
+    forEachIcon(ComponentTag<scene::ParticleEmitter>{},           IM_COL32(230, 150, 230, 210), badge("P"));
+    forEachIcon(ComponentTag<scene::ParticleForceField>{},        IM_COL32(200, 120, 240, 210), badge("F"));
+    forEachIcon(ComponentTag<scene::WindZoneComponent>{},         IM_COL32(150, 220, 235, 210), badge("W"));
+    forEachIcon(ComponentTag<scene::NavMeshAgentComponent>{},     IM_COL32(120, 190, 120, 210), badge("N"));
+    forEachIcon(ComponentTag<scene::ReflectionProbeComponent>{},  IM_COL32(190, 190, 240, 210), badge("R"));
+    forEachIcon(ComponentTag<scene::DecalComponent>{},            IM_COL32(240, 180, 120, 210), badge("D"));
 }
 
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
@@ -283,11 +412,32 @@ void DrawGizmo(EditorContext& ctx,
     scene::GameObject* go = ctx.activeScene->GetGameObject(selected);
     if (!go) return;
 
-    HandleGizmoShortcuts(ctx);
 
     math::Matrix4 viewCol = ToColumnMajor(ctx.editorCamera->GetViewMatrix());
     math::Matrix4 projCol = ToColumnMajor(ctx.editorCamera->GetProjectionMatrix());
-    math::Matrix4 worldCol = ToColumnMajor(go->transform.GetWorldMatrix());
+
+    // ギズモを置くワールド行列を決める。
+    //  Pivot  : プライマリの Transform をそのまま使う (従来どおり、行列を直接書き戻せる)
+    //  Center : 選択全体のバウンズ中心へ置く。回転成分は Local のときだけプライマリから借り、
+    //           スケール成分は持たせない (掴んだ点を基準にした素直な相対変換にするため)
+    // WHY: Center ではギズモ行列がどのオブジェクトの Transform とも一致しないため、
+    //      「ギズモの移動量」を全対象へ相対適用する経路に一本化する。
+    const bool centerPivot = (ctx.gizmoPivot == EditorContext::GizmoPivot::Center);
+    math::Matrix4 gizmoWorldRow = go->transform.GetWorldMatrix();
+    if (centerPivot) {
+        math::Vector3 center{};
+        float         radius = 0.0f;
+        if (ComputeSelectionBounds(ctx, center, radius)) {
+            math::Matrix4 basis = math::Matrix4::Identity();
+            if (ctx.gizmoSpace == EditorContext::GizmoSpace::Local)
+                basis = math::Matrix4::Rotate(go->transform.rotation);
+            basis.m[0][3] = center.x;
+            basis.m[1][3] = center.y;
+            basis.m[2][3] = center.z;
+            gizmoWorldRow = basis;
+        }
+    }
+    math::Matrix4 worldCol = ToColumnMajor(gizmoWorldRow);
 
     auto& style = ImGuizmo::GetStyle();
     style.Colors[ImGuizmo::SELECTION] = ImVec4(1.0f, 0.95f, 0.05f, 1.0f);
@@ -342,9 +492,13 @@ void DrawGizmo(EditorContext& ctx,
         std::vector<std::string> instanceIds;
         std::vector<scene::Transform> before;
         std::vector<math::Matrix4> startWorld;
-        std::vector<bool> applyDelta;  // true: プライマリの移動量を相対適用する対象
-        math::Matrix4 primaryStartWorldInv = math::Matrix4::Identity();
+        std::vector<bool> applyDelta;  // true: ギズモの移動量を相対適用する対象
+        // ドラッグ開始時のギズモ行列の逆。delta = 現在のギズモ行列 * これ。
+        math::Matrix4 gizmoStartWorldInv = math::Matrix4::Identity();
         EditorContext::GizmoMode mode = EditorContext::GizmoMode::Translate;
+        // Center ピボット中はギズモ行列がどの Transform とも一致しないため、
+        // プライマリにも delta を相対適用する (直接書き戻しはできない)。
+        bool centerPivot = false;
         bool active = false;
     };
     static GizmoEdit edit;
@@ -367,11 +521,13 @@ void DrawGizmo(EditorContext& ctx,
             return false;
         };
 
-        // プライマリを先頭に登録する (ギズモのワールド行列を直接書き込む対象)
+        // プライマリを先頭に登録する。
+        // Pivot ピボットではギズモ行列 = プライマリのワールド行列なので直接書き戻す
+        // (applyDelta = false)。Center ピボットでは一致しないため delta 適用側へ回す。
         edit.instanceIds.push_back(go->instanceId);
         edit.before.push_back(go->transform);
         edit.startWorld.push_back(go->transform.GetWorldMatrix());
-        edit.applyDelta.push_back(false);
+        edit.applyDelta.push_back(centerPivot && !hasSelectedAncestor(go));
 
         for (scene::EntityID id : ctx.selectedEntities) {
             if (id == selected) continue;
@@ -383,9 +539,10 @@ void DrawGizmo(EditorContext& ctx,
             edit.applyDelta.push_back(!hasSelectedAncestor(sel));
         }
 
-        edit.primaryStartWorldInv = math::Matrix4::Inverse(go->transform.GetWorldMatrix());
-        edit.mode = ctx.gizmoMode;
-        edit.active = true;
+        edit.gizmoStartWorldInv = math::Matrix4::Inverse(gizmoWorldRow);
+        edit.mode        = ctx.gizmoMode;
+        edit.centerPivot = centerPivot;
+        edit.active      = true;
     }
 
     if (gizmoOver != prevOver || gizmoUsing != prevUsing) {
@@ -435,19 +592,23 @@ void DrawGizmo(EditorContext& ctx,
 
     const math::Matrix4 worldRow = math::Matrix4::Transpose(worldCol);
 
-    // マルチ選択: プライマリの移動量 (delta) を他の top-level 選択へ相対適用する。
-    // WHY: プライマリより先に他オブジェクトへ適用する。選択中の「親」が動いた後に
-    //      プライマリのワールド行列を書き込むことで、プライマリは常にギズモ位置へ一致する。
-    if (edit.active && edit.instanceIds.size() > 1) {
-        const math::Matrix4 delta = worldRow * edit.primaryStartWorldInv;
-        for (std::size_t i = 1; i < edit.instanceIds.size(); ++i) {
+    // ギズモの移動量 (delta) を、選択済みの祖先を持たない対象へ相対適用する。
+    // WHY: 添字 0 (プライマリ) より先に他オブジェクトへ適用する。選択中の「親」が動いた
+    //      後にプライマリのワールド行列を書き込むことで、プライマリはギズモ位置へ一致する。
+    //      Center ピボットではプライマリも delta 側に含まれるため、この順序で問題ない。
+    if (edit.active) {
+        const math::Matrix4 delta = worldRow * edit.gizmoStartWorldInv;
+        for (std::size_t i = edit.instanceIds.size(); i-- > 0; ) {
             if (!edit.applyDelta[i]) continue;
             if (auto* other = ctx.activeScene->FindByGuid(edit.instanceIds[i]))
                 ApplyWorldRowToTransform(*other, delta * edit.startWorld[i]);
         }
     }
 
-    ApplyWorldRowToTransform(*go, worldRow);
+    // Pivot ピボットのみ: ギズモ行列はプライマリのワールド行列そのものなので、
+    // 丸め誤差を挟まず直接書き戻す。
+    if (!edit.centerPivot)
+        ApplyWorldRowToTransform(*go, worldRow);
 }
 
 } // namespace fbzz::editor
