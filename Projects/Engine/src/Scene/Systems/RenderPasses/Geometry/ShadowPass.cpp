@@ -76,8 +76,9 @@ void SubmitSkinnedMeshShadowCasters(RenderPassContext& ctx, const math::Frustum&
         objData.world = go.transform.GetWorldMatrix();
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
-        const auto skinCB = (anim && anim->skinningBuffer.IsValid())
-            ? anim->skinningBuffer : h.bindPoseSkinningCB;
+        const auto skinCB = ResolveSkinningCB(
+            anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
+            smr->model, h.bindPoseSkinningCB);
 
         const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
         const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
@@ -87,7 +88,8 @@ void SubmitSkinnedMeshShadowCasters(RenderPassContext& ctx, const math::Frustum&
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = meshPtr->vertexBuffer;
+            dc.vertexBuffer       = smr->ResolveVertexBuffer(
+                static_cast<size_t>(mi), meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.shader             = h.shadowSkinnedShader;

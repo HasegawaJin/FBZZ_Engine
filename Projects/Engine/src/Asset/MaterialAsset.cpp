@@ -49,16 +49,19 @@ renderer::BlendMode BlendModeFromString(std::string_view value)
         return renderer::BlendMode::ALPHA_BLEND;
     if (value == "Additive")
         return renderer::BlendMode::ADDITIVE;
+    if (value == "Premultiplied" || value == "PremultipliedAlpha")
+        return renderer::BlendMode::PREMULTIPLIED;
     return renderer::BlendMode::OPAQUE_BLEND;
 }
 
 const char* BlendModeToString(renderer::BlendMode mode)
 {
     switch (mode) {
-    case renderer::BlendMode::ALPHA_BLEND: return "AlphaBlend";
-    case renderer::BlendMode::ADDITIVE:    return "Additive";
+    case renderer::BlendMode::ALPHA_BLEND:  return "AlphaBlend";
+    case renderer::BlendMode::ADDITIVE:     return "Additive";
+    case renderer::BlendMode::PREMULTIPLIED: return "Premultiplied";
     case renderer::BlendMode::OPAQUE_BLEND:
-    default:                               return "Opaque";
+    default:                                return "Opaque";
     }
 }
 

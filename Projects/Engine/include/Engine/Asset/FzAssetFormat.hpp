@@ -71,7 +71,7 @@ static_assert(sizeof(FzBoneData) == 136, "FzBoneData size mismatch");
 // ── .anim ──────────────────────────────────────────────────────────────
 // ヘッダー | FzAnimTrackHeader × trackCount | 各トラックの keyframe 配列
 
-constexpr uint32_t FZANIM_VERSION = 1;
+constexpr uint32_t FZANIM_VERSION = 3;
 
 struct FzAnimHeader {
     char     magic[4];        // "FZAN"

@@ -28,32 +28,15 @@ namespace fbzz::scene {
 
 namespace {
 
-// TrailVertex — Assets/Shaders/Material/Effects/Trail.hlsl の VS 入力と一致する CPU 頂点。
-struct TrailVertex {
-    math::Vector3 position;
-    float         age;
-    float         v;
-    float         u;
-};
-
-// TrailCB — TrailConstants(cbuffer b2) の C++ ミラー。
-struct TrailCB {
-    math::Vector4 colorStart;
-    math::Vector4 colorEnd;
-    float uvScrollSpeed = 0.0f;
-    float uvTiling = 1.0f;
-    float time = 0.0f;
-    float _pad = 0.0f;
-};
+// TrailVertex / TrailCB の定義は GeometryPasses.hpp。
+// WHY: per-particle Trail のリボン (ParticlePass.cpp) が同じ頂点・同じ CB・同じシェーダーを使う。
+//      ここに閉じたままだと、片方だけ直して「Trail ノードは正しいが粒子の帯は崩れる」形で壊れる。
 
 // TrailDrawItem — Trail の透明描画をカメラから遠い順へ並べるための一時データ。
 struct TrailDrawItem {
     renderer::DrawCall drawCall;
     float distanceSq = 0.0f;
 };
-
-static_assert(sizeof(TrailVertex) == 24, "TrailVertex layout mismatch");
-static_assert(sizeof(TrailCB) == 48, "TrailCB layout mismatch");
 
 void InitTrailStorage(TrailComponent& trail)
 {

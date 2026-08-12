@@ -333,7 +333,7 @@ void DrawSkinnedMeshSample(
             continue;
 
         renderer::DrawCall dc;
-        dc.vertexBuffer = meshPtr->vertexBuffer;
+        dc.vertexBuffer = smr.ResolveVertexBuffer(meshIndex, meshPtr->vertexBuffer);
         dc.indexBuffer = meshPtr->indexBuffer;
         dc.indexCount = meshPtr->indexCount;
         dc.vertexCount = meshPtr->vertexCount;
@@ -425,9 +425,13 @@ void MeshTrailRenderPass::Execute(RenderPassContext& ctx)
                 MeshTrailSample sample;
                 sample.timestamp = currentTime;
                 sample.position = position;
+                // Mesh Particle は billboard と違い 3 軸すべてを使えるため、
+                // sizeAxisScale の z も反映する (billboard 経路は xy のみ)。
                 sample.world = math::Matrix4::TRS(position,
                     math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, particle.rotation),
-                    { particle.size, particle.size, particle.size });
+                    { particle.size * emitter->sizeAxisScale.x,
+                      particle.size * emitter->sizeAxisScale.y,
+                      particle.size * emitter->sizeAxisScale.z });
                 trail->colorStart = particle.color;
                 trail->colorEnd = particle.color;
                 DrawStaticMeshSample(*trail, sample, *mesh, ctx, currentTime);

@@ -57,6 +57,10 @@ cbuffer DecalConstants : register(CB_MATERIAL)
     float    _pad2;
     float3   decalNormal;     // Decal projection-plane normal in world space.
     float    _pad3;
+    // 角度フェード。受け面が投影軸から傾くほど薄める (0 = 従来どおりフェードなし)。
+    float    angleFadeStrength;
+    float    angleFadeCos;    // この cos より寝た面では完全に消える
+    float2   _pad4;
 };
 
 // b3: The HDR decal pass keeps the existing composite path and only needs
@@ -109,17 +113,27 @@ float4 PSMain(FSTriOut p) : SV_Target
 {
     float2 uv = p.uv;
 
-    // 空 / 背景ピクセルをスキップ
+    // --- ワールド座標と受け面の法線 --------------------------------------------
+    //
+    // IMPORTANT: ddx / ddy はクワッド内の隣接ピクセルを参照するため、
+    //   discard したレーンが混ざると結果が未定義になる。
+    //   微分に使う値の計算は必ず全ての discard より前で済ませること。
     float ndcDepth = texDepth.Sample(sampDefault, uv).r;
+    float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
+    // 受け面の法線をスクリーン空間微分から求める。
+    // GBuffer 法線を使わないのは、このパスが DeferredLighting 後の HDR へ合成されるうえ
+    // Forward 経路でも走るため、GBuffer が読める保証が無いから。
+    // NOTE: 深度の不連続 (シルエット境界) では微分が跳ねて法線が暴れる。
+    //       そこは角度フェードで薄くなる側に倒れるだけなので、破綻としては安全側。
+    float3 receiverNormal = normalize(cross(ddy(worldPos), ddx(worldPos)));
+
+    // 空 / 背景ピクセルをスキップ
     if (ndcDepth >= 1.0f)
         discard;
 
     // receiverLayerMask で除外されたオブジェクトのピクセルをスキップ
     if ((textureMask & 8u) && texDecalMask.Sample(sampDefault, uv).r > 0.5f)
         discard;
-
-    // 深度からワールド座標を復元
-    float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
 
     // デカールローカル空間へ変換
     float3 localPos = mul(float4(worldPos, 1.0f), invDecalWorld).xyz;
@@ -131,19 +145,40 @@ float4 PSMain(FSTriOut p) : SV_Target
     // ローカル XZ 平面に投影して UV 算出 (ローカル -Y 方向が投影軸)
     float2 decalUV = localPos.xz + 0.5f;
 
+    // --- 角度フェード -----------------------------------------------------------
+    //
+    // WHY: OBB 投影は投影軸に対して斜めな面へ当てるとテクスチャが引き伸ばされ、
+    //      長い筋になる。着弾痕が壁と床の角をまたいだ瞬間に「伸びた汚れ」として
+    //      露見する、デカールで最も目立つ破綻がこれ。角度で薄めれば
+    //      破綻する範囲がそのまま消える (Unity / Unreal の Angle Fade と同じ考え方)。
+    //
+    // 投影軸に対して正面を向いているか。表裏どちらの向きでも同じ扱いにしたいので abs を取る。
+    float facing = abs(dot(receiverNormal, normalize(decalNormal)));
+    float angleFactor = angleFadeCos < 1.0f
+        ? saturate((facing - angleFadeCos) / max(1.0f - angleFadeCos, 1.0e-3f))
+        : 1.0f;
+    // 端で硬く切れると縁が線として見えるため、なめらかに落とす。
+    angleFactor = angleFactor * angleFactor * (3.0f - 2.0f * angleFactor);
+    float angleFade = lerp(1.0f, angleFactor, saturate(angleFadeStrength));
+    if (angleFade < 0.001f)
+        discard;
+
     // --- Albedo (テクスチャがなければ albedoTint をそのまま使用) ---
     float4 albedoSample = (textureMask & 1u)
         ? texAlbedo.Sample(sampDefault, decalUV) * albedoTint
         : albedoTint;
 
-    float finalAlpha = albedoSample.a * alpha;
+    float finalAlpha = albedoSample.a * alpha * angleFade;
     if (finalAlpha < 0.001f)
         discard;
 
     float3 decalColor = albedoSample.rgb;
     if ((textureMask & 2u) && normalStrength > 0.0f)
     {
-        float3 baseNormal = normalize(decalNormal);
+        // 法線マップの相対ライティングは「受け面の法線」を基準に取る。
+        // WHY: 従来は投影面の法線を基準にしていたため、斜めな面では
+        //      法線マップの陰影が実際の面の向きと食い違い、凹凸が逆に見えていた。
+        float3 baseNormal = receiverNormal;
         float3 normalSample = texNormal.Sample(sampDefault, decalUV).rgb;
         float3 mappedNormal = DecodeDecalNormal(normalSample);
         float normalRatio = ComputeDirectionalLightRatio(baseNormal, mappedNormal);

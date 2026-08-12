@@ -11,9 +11,15 @@
 #include "Engine/Scene/Components/UIButton.hpp"
 #include "Engine/Scene/Components/UIText.hpp"
 #include "Engine/Scene/Components/UILayoutGroup.hpp"
+#include "Engine/Scene/Components/UIControls.hpp"
+#include "Engine/Input/Input.hpp"
+#include "Engine/Asset/AssetManager.hpp"
+#include "Engine/Asset/TexDescSerializer.hpp"
+#include "Engine/Asset/TextureAsset.hpp"
 #include "Engine/Renderer/DrawCall.hpp"
 #include "Engine/Renderer/FontAtlas.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
+#include "Engine/Renderer/ITexture.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RenderLayer.hpp"
 #include "Engine/Renderer/RenderState.hpp"
@@ -468,6 +474,90 @@ void SubmitImage(renderer::IRenderer& renderer,
     renderer.Submit(call, resources);
 }
 
+// Sprite Borderを保った9-slice描画。四隅は固定サイズ、辺は一方向、中央だけを両方向へ伸縮する。
+void SubmitSlicedImage(renderer::IRenderer& renderer,
+                       renderer::ResourceManager& resources,
+                       UISystemContext& ctx,
+                       const math::Matrix4& canvasToClip,
+                       renderer::ResourceHandle<renderer::PipelineStateTag> pso,
+                       renderer::RenderLayer layer,
+                       const math::Vector2& position,
+                       const math::Vector2& size,
+                       const math::Vector4& color,
+                       const math::Vector2& uvMin,
+                       const math::Vector2& uvMax,
+                       const math::Vector4& border,
+                       const math::Vector2& textureSize,
+                       renderer::ResourceHandle<renderer::TextureTag> texture,
+                       float zAngle)
+{
+    if (textureSize.x <= 0.0f || textureSize.y <= 0.0f
+        || (border.x <= 0.0f && border.y <= 0.0f
+            && border.z <= 0.0f && border.w <= 0.0f)) {
+        SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
+                    position, size, color, uvMin, uvMax, texture, zAngle);
+        return;
+    }
+
+    const float sourceWidth = (uvMax.x - uvMin.x) * textureSize.x;
+    const float sourceHeight = (uvMax.y - uvMin.y) * textureSize.y;
+    const float sourceLeft = std::min(border.x, sourceWidth * 0.5f);
+    const float sourceTop = std::min(border.y, sourceHeight * 0.5f);
+    const float sourceRight = std::min(border.z, sourceWidth - sourceLeft);
+    const float sourceBottom = std::min(border.w, sourceHeight - sourceTop);
+    const float left = std::min(sourceLeft, size.x * 0.5f);
+    const float top = std::min(sourceTop, size.y * 0.5f);
+    const float right = std::min(sourceRight, size.x - left);
+    const float bottom = std::min(sourceBottom, size.y - top);
+    const float x[4] = { 0.0f, left, size.x - right, size.x };
+    const float y[4] = { 0.0f, top, size.y - bottom, size.y };
+    const float u[4] = {
+        uvMin.x,
+        uvMin.x + sourceLeft / textureSize.x,
+        uvMax.x - sourceRight / textureSize.x,
+        uvMax.x
+    };
+    const float v[4] = {
+        uvMin.y,
+        uvMin.y + sourceTop / textureSize.y,
+        uvMax.y - sourceBottom / textureSize.y,
+        uvMax.y
+    };
+
+    const math::Vector2 fullCenter = {
+        position.x + size.x * 0.5f,
+        position.y + size.y * 0.5f
+    };
+    const float cosZ = std::cosf(zAngle);
+    const float sinZ = std::sinf(zAngle);
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            const math::Vector2 cellSize = {
+                x[column + 1] - x[column],
+                y[row + 1] - y[row]
+            };
+            if (cellSize.x <= 0.0f || cellSize.y <= 0.0f) continue;
+            const math::Vector2 localCenter = {
+                x[column] + cellSize.x * 0.5f - size.x * 0.5f,
+                y[row] + cellSize.y * 0.5f - size.y * 0.5f
+            };
+            const math::Vector2 rotatedCenter = {
+                fullCenter.x + localCenter.x * cosZ - localCenter.y * sinZ,
+                fullCenter.y + localCenter.x * sinZ + localCenter.y * cosZ
+            };
+            const math::Vector2 cellPosition = {
+                rotatedCenter.x - cellSize.x * 0.5f,
+                rotatedCenter.y - cellSize.y * 0.5f
+            };
+            SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
+                        cellPosition, cellSize, color,
+                        { u[column], v[row] },
+                        { u[column + 1], v[row + 1] },
+                        texture, zAngle);
+        }
+    }
+}
+
 void SubmitRect(renderer::IRenderer& renderer,
                 renderer::ResourceManager& resources,
                 UISystemContext& ctx,
@@ -753,12 +843,25 @@ bool ProcessUIEventsRecursive(GameObject& go,
         ? ComposeUITransform(parentTransform, go.transform)
         : parentTransform;
 
+    const Rect selfRect = RectFromTransform(go.transform, resolved);
+    const bool insideSelf = mouseInCanvasSpace.x >= selfRect.pos.x
+        && mouseInCanvasSpace.x <= selfRect.pos.x + selfRect.size.x
+        && mouseInCanvasSpace.y >= selfRect.pos.y
+        && mouseInCanvasSpace.y <= selfRect.pos.y + selfRect.size.y;
+    bool childrenInputAvailable = inputAvailable;
+    if (const auto* mask = go.GetComponent<UIMask>();
+        mask && mask->enabled && mask->affectChildren && !insideSelf)
+        childrenInputAvailable = false;
+    UITransform2D childTransform = resolved;
+    if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled)
+        childTransform.position -= Rotate2D(scroll->scrollPosition, resolved.rotationZ);
+
     // 描画順の逆から入力を解決し、重なった UI では最前面の要素だけがポインターを受け取る。
     bool consumed = false;
     auto children = SortedUIChildren(go);
     for (auto it = children.rbegin(); it != children.rend(); ++it) {
-        consumed |= ProcessUIEventsRecursive(**it, resolved, mouseInCanvasSpace, mousePressed,
-                                             inputAvailable && !consumed);
+        consumed |= ProcessUIEventsRecursive(**it, childTransform, mouseInCanvasSpace, mousePressed,
+                                             childrenInputAvailable && !consumed);
     }
 
     auto* button = go.GetComponent<UIButton>();
@@ -780,6 +883,165 @@ bool ProcessUIEventsRecursive(GameObject& go,
             button->wasPressedOnThis = false;
             button->lastMouseState   = mousePressed;
         }
+    }
+
+    const Rect rect = RectFromTransform(go.transform, resolved);
+    const bool hit = mouseInCanvasSpace.x >= rect.pos.x
+        && mouseInCanvasSpace.x <= rect.pos.x + rect.size.x
+        && mouseInCanvasSpace.y >= rect.pos.y
+        && mouseInCanvasSpace.y <= rect.pos.y + rect.size.y;
+    const bool canReceive = inputAvailable && !consumed;
+
+    if (auto* slider = go.GetComponent<UISlider>()) {
+        slider->onValueChanged = false;
+        const bool justPressed = mousePressed && !slider->runtimeLastMouse;
+        if (slider->enabled && slider->interactable && canReceive && justPressed && hit)
+            slider->runtimeDragging = true;
+        if (!mousePressed)
+            slider->runtimeDragging = false;
+        if (slider->runtimeDragging) {
+            const float axisSize = slider->vertical ? rect.size.y : rect.size.x;
+            const float axisPosition = slider->vertical
+                ? mouseInCanvasSpace.y - rect.pos.y
+                : mouseInCanvasSpace.x - rect.pos.x;
+            float normalized = axisSize > 0.0f
+                ? std::clamp(axisPosition / axisSize, 0.0f, 1.0f) : 0.0f;
+            if (slider->vertical)
+                normalized = 1.0f - normalized;
+            float next = slider->minimum + (slider->maximum - slider->minimum) * normalized;
+            if (slider->wholeNumbers)
+                next = std::round(next);
+            next = std::clamp(next, (std::min)(slider->minimum, slider->maximum),
+                              (std::max)(slider->minimum, slider->maximum));
+            slider->onValueChanged = next != slider->value;
+            slider->value = next;
+            if (auto* sliderImage = go.GetComponent<UIImage>()) {
+                const float range = slider->maximum - slider->minimum;
+                sliderImage->fillAmount = std::abs(range) > 0.000001f
+                    ? std::clamp((slider->value - slider->minimum) / range, 0.0f, 1.0f)
+                    : 0.0f;
+                sliderImage->fillOrigin = slider->vertical
+                    ? UIImageFillOrigin::Bottom : UIImageFillOrigin::Left;
+            }
+            consumed = true;
+        }
+        slider->runtimeLastMouse = mousePressed;
+    }
+
+    if (auto* toggle = go.GetComponent<UIToggle>()) {
+        toggle->onValueChanged = false;
+        const bool justPressed = mousePressed && !toggle->runtimeLastMouse;
+        const bool justReleased = !mousePressed && toggle->runtimeLastMouse;
+        if (toggle->enabled && toggle->interactable && canReceive && justPressed && hit)
+            toggle->runtimePressedHere = true;
+        if (justReleased) {
+            if (toggle->runtimePressedHere && hit) {
+                toggle->isOn = !toggle->isOn;
+                toggle->onValueChanged = true;
+                consumed = true;
+            }
+            toggle->runtimePressedHere = false;
+        }
+        toggle->runtimeLastMouse = mousePressed;
+    }
+
+    if (auto* scroll = go.GetComponent<UIScrollView>()) {
+        scroll->onValueChanged = false;
+        const float wheel = input::Input::MouseScrollDelta();
+        if (scroll->enabled && canReceive && hit && wheel != 0.0f) {
+            if (scroll->vertical)
+                scroll->scrollPosition.y -= wheel * scroll->sensitivity;
+            if (scroll->horizontal)
+                scroll->scrollPosition.x -= wheel * scroll->sensitivity;
+            scroll->scrollPosition.x = std::clamp(scroll->scrollPosition.x, 0.0f,
+                (std::max)(0.0f, scroll->contentSize.x - rect.size.x));
+            scroll->scrollPosition.y = std::clamp(scroll->scrollPosition.y, 0.0f,
+                (std::max)(0.0f, scroll->contentSize.y - rect.size.y));
+            scroll->onValueChanged = true;
+            consumed = true;
+        }
+    }
+
+    if (auto* field = go.GetComponent<UIInputField>()) {
+        field->onValueChanged = false;
+        field->onSubmit = false;
+        if (mousePressed && canReceive)
+            field->focused = hit;
+        if (field->enabled && field->interactable && field->focused) {
+            for (const char character : input::Input::TextInput()) {
+                if (character == '\b') {
+                    if (!field->text.empty()) {
+                        size_t characterStart = field->text.size() - 1;
+                        while (characterStart > 0
+                               && (static_cast<unsigned char>(field->text[characterStart]) & 0xC0u) == 0x80u)
+                            --characterStart;
+                        field->text.erase(characterStart);
+                        field->onValueChanged = true;
+                    }
+                } else if (character == '\r' || character == '\n') {
+                    if (field->multiline) {
+                        field->text.push_back('\n');
+                        field->onValueChanged = true;
+                    } else {
+                        field->onSubmit = true;
+                        field->focused = false;
+                    }
+                } else if ((field->contentType == UIInputContentType::Standard
+                            || field->contentType == UIInputContentType::Password
+                            || (field->contentType == UIInputContentType::Integer
+                                && (character >= '0' && character <= '9'
+                                    || character == '-' && field->text.empty()))
+                            || (field->contentType == UIInputContentType::Decimal
+                                && (character >= '0' && character <= '9'
+                                    || character == '-' && field->text.empty()
+                                    || character == '.' && field->text.find('.') == std::string::npos)))
+                           && (field->characterLimit <= 0
+                               || static_cast<int>(field->text.size()) < field->characterLimit)) {
+                    field->text.push_back(character);
+                    field->onValueChanged = true;
+                }
+            }
+            field->caretPosition = field->text.size();
+            consumed |= hit;
+        }
+        if (auto* inputText = go.GetComponent<UIText>()) {
+            if (field->text.empty()) {
+                inputText->text = field->placeholder;
+            } else if (field->contentType == UIInputContentType::Password) {
+                inputText->text.assign(field->text.size(), '*');
+            } else {
+                inputText->text = field->text;
+            }
+        }
+    }
+
+    if (auto* trigger = go.GetComponent<UIEventTrigger>()) {
+        trigger->pointerEnter = trigger->pointerExit = false;
+        trigger->pointerDown = trigger->pointerUp = trigger->pointerClick = false;
+        trigger->beginDrag = trigger->drag = trigger->endDrag = false;
+        trigger->pointerPosition = mouseInCanvasSpace;
+        trigger->dragDelta = mouseInCanvasSpace - trigger->runtimeLastPointer;
+        const bool currentHit = trigger->enabled && canReceive && hit;
+        trigger->pointerEnter = currentHit && !trigger->runtimeHovered;
+        trigger->pointerExit = !currentHit && trigger->runtimeHovered;
+        trigger->pointerDown = currentHit && mousePressed && !trigger->runtimeLastMouse;
+        trigger->pointerUp = !mousePressed && trigger->runtimeLastMouse
+            && trigger->runtimePressedHere;
+        if (trigger->pointerDown) {
+            trigger->runtimePressedHere = true;
+            trigger->beginDrag = true;
+        }
+        trigger->drag = trigger->runtimePressedHere && mousePressed
+            && trigger->dragDelta != math::Vector2::ZERO;
+        if (trigger->pointerUp) {
+            trigger->pointerClick = currentHit;
+            trigger->endDrag = true;
+            trigger->runtimePressedHere = false;
+        }
+        trigger->runtimeHovered = currentHit;
+        trigger->runtimeLastMouse = mousePressed;
+        trigger->runtimeLastPointer = mouseInCanvasSpace;
+        consumed |= trigger->pointerDown || trigger->drag;
     }
     return consumed;
 }
@@ -848,8 +1110,51 @@ void RenderCanvasRecursive(GameObject& go,
 
     if (image && image->enabled) {
         if (!image->texturePath.empty() && image->texturePath != image->loadedTexturePath) {
-            image->texture           = resources.LoadTexture(image->texturePath);
+            std::string texturePath;
+            std::string spriteName;
+            const bool isSprite = asset::ParseSpriteReference(
+                image->texturePath, texturePath, spriteName);
+            image->texture = resources.LoadTexture(texturePath);
             image->loadedTexturePath = image->texturePath;
+            image->hasResolvedSprite = false;
+            image->resolvedSpriteBorder = {};
+            image->resolvedTextureSize = {};
+
+            if (isSprite) {
+                asset::TextureAsset textureAsset;
+                asset::TexDescSerializer serializer;
+                const std::string metaPath =
+                    asset::AssetManager::ResolveAssetPath(texturePath + ".meta");
+                if (serializer.Load(metaPath, textureAsset)) {
+                    if (const asset::SpriteRect* sprite =
+                            asset::FindSprite(textureAsset.settings, spriteName)) {
+                        if (const renderer::ITexture* texture = resources.Get(image->texture)) {
+                            const float width = static_cast<float>(texture->GetWidth());
+                            const float height = static_cast<float>(texture->GetHeight());
+                            if (width > 0.0f && height > 0.0f) {
+                                image->resolvedTextureSize = { width, height };
+                                const float spriteWidth = sprite->width > 0
+                                    ? static_cast<float>(sprite->width) : width;
+                                const float spriteHeight = sprite->height > 0
+                                    ? static_cast<float>(sprite->height) : height;
+                                image->resolvedSpriteUvMin = {
+                                    static_cast<float>(sprite->x) / width,
+                                    static_cast<float>(sprite->y) / height
+                                };
+                                image->resolvedSpriteUvMax = {
+                                    (static_cast<float>(sprite->x) + spriteWidth) / width,
+                                    (static_cast<float>(sprite->y) + spriteHeight) / height
+                                };
+                                image->resolvedSpriteBorder = {
+                                    sprite->borderLeft, sprite->borderTop,
+                                    sprite->borderRight, sprite->borderBottom
+                                };
+                                image->hasResolvedSprite = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Rect          r     = RectFromTransform(go.transform, resolved);
@@ -859,17 +1164,27 @@ void RenderCanvasRecursive(GameObject& go,
 
         // 塗り潰し量に応じて矩形と UV を fillOrigin 方向へクリップする (体力ゲージ等)。
         // transform.scale は変えず描画時だけ削るので、レイアウトや当たり判定には影響しない。
-        math::Vector2 uvMin = image->uvMin;
-        math::Vector2 uvMax = image->uvMax;
+        math::Vector2 uvMin = image->hasResolvedSprite
+            ? image->resolvedSpriteUvMin : image->uvMin;
+        math::Vector2 uvMax = image->hasResolvedSprite
+            ? image->resolvedSpriteUvMax : image->uvMax;
         if (image->fillAmount < 1.0f)
             ApplyFill(image->fillAmount, image->fillOrigin, r.pos, r.size, uvMin, uvMax);
 
         if (r.size.x > 0.0f && r.size.y > 0.0f) {
-            SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
-                        r.pos, r.size, color,
-                        uvMin, uvMax,
-                        image->texture.IsValid() ? image->texture : ctx.whiteTexture,
-                        resolved.rotationZ);
+            const auto texture = image->texture.IsValid() ? image->texture : ctx.whiteTexture;
+            if (image->imageType == UIImageType::Sliced
+                && image->hasResolvedSprite && image->fillAmount >= 1.0f) {
+                SubmitSlicedImage(renderer, resources, ctx, canvasToClip, pso, layer,
+                                  r.pos, r.size, color, uvMin, uvMax,
+                                  image->resolvedSpriteBorder,
+                                  image->resolvedTextureSize,
+                                  texture, resolved.rotationZ);
+            } else {
+                SubmitImage(renderer, resources, ctx, canvasToClip, pso, layer,
+                            r.pos, r.size, color, uvMin, uvMax,
+                            texture, resolved.rotationZ);
+            }
         }
     }
 
@@ -877,8 +1192,11 @@ void RenderCanvasRecursive(GameObject& go,
         SubmitText(renderer, resources, ctx, canvasToClip, pso, layer, *text, resolved.position);
     }
 
+    UITransform2D childTransform = resolved;
+    if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled)
+        childTransform.position -= Rotate2D(scroll->scrollPosition, resolved.rotationZ);
     for (GameObject* child : SortedUIChildren(go))
-        RenderCanvasRecursive(*child, resolved, renderer, resources, ctx, canvasToClip, pso, layer);
+        RenderCanvasRecursive(*child, childTransform, renderer, resources, ctx, canvasToClip, pso, layer);
 }
 
 // ── サブシステム ──────────────────────────────────────────────────────────────

@@ -4,6 +4,8 @@
 #include "GeometryPasses.hpp"
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
+#include "Engine/Asset/TexDescSerializer.hpp"
+#include "Engine/Asset/TextureAsset.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
@@ -12,17 +14,23 @@
 #include "Engine/Scene/Components/WindZoneComponent.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
+#include "Engine/Renderer/ITexture.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RenderState.hpp"
+#include "Engine/Util/FileSystem.hpp"
+#include <Math/MathUtils.hpp>
 #include <Math/Matrix4.hpp>
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
+#include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace fbzz::scene {
@@ -136,6 +144,96 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc, std::vect
     setFloat3("emissiveColor", white3);
 }
 
+// albedo に Sprite サブアセットが指定された場合、Sprite矩形を標準UV変換へ合成する。
+// WHY: GPU Texture 自体はatlas全体を共有するため、3D Materialで個別Spriteを使うには
+//      頂点UVを矩形のscale/offsetへ写像する必要がある。
+void ApplyAlbedoSpriteUv(const asset::MaterialAsset& materialAsset,
+                         const renderer::ShaderDescriptor& desc,
+                         renderer::ResourceManager& resources,
+                         std::vector<uint8_t>& paramData)
+{
+    const auto albedo = materialAsset.textures.find("albedo");
+    if (albedo == materialAsset.textures.end()) return;
+
+    std::string texturePath;
+    std::string spriteName;
+    if (!asset::ParseSpriteReference(albedo->second, texturePath, spriteName)) return;
+
+    struct CachedTransform {
+        std::filesystem::file_time_type metaWriteTime{};
+        float scaleX = 1.0f;
+        float scaleY = 1.0f;
+        float offsetX = 0.0f;
+        float offsetY = 0.0f;
+        bool resolved = false;
+    };
+    static std::unordered_map<std::string, CachedTransform> s_cache;
+
+    const std::string absoluteTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
+    const std::string metaPath = absoluteTexturePath + ".meta";
+    std::error_code ec;
+    const auto metaWriteTime = std::filesystem::last_write_time(metaPath, ec);
+    CachedTransform& transform = s_cache[albedo->second];
+    if (!transform.resolved || transform.metaWriteTime != metaWriteTime) {
+        transform = {};
+        transform.metaWriteTime = metaWriteTime;
+        transform.resolved = true;
+        if (!ec) {
+            asset::TextureAsset textureAsset;
+            asset::TexDescSerializer serializer;
+            if (serializer.Load(metaPath, textureAsset)) {
+                asset::SpriteRect implicitSingle;
+                const asset::SpriteRect* sprite = asset::FindSprite(textureAsset.settings, spriteName);
+                if (sprite == nullptr
+                    && textureAsset.settings.type == asset::TextureType::Sprite
+                    && textureAsset.settings.spriteMode == asset::SpriteMode::Single) {
+                    implicitSingle.name = util::FileSystem::PathToUtf8(
+                        util::FileSystem::PathFromUtf8(absoluteTexturePath).stem());
+                    if (implicitSingle.name == spriteName) sprite = &implicitSingle;
+                }
+                const auto textureHandle = resources.LoadTexture(absoluteTexturePath);
+                const renderer::ITexture* texture = resources.Get(textureHandle);
+                if (sprite != nullptr && texture != nullptr) {
+                    const float width = static_cast<float>(std::max<uint32_t>(1, texture->GetWidth()));
+                    const float height = static_cast<float>(std::max<uint32_t>(1, texture->GetHeight()));
+                    const float sourceSpriteWidth = sprite->width > 0
+                        ? static_cast<float>(sprite->width) : width;
+                    const float sourceSpriteHeight = sprite->height > 0
+                        ? static_cast<float>(sprite->height) : height;
+                    const float spriteX = std::clamp(static_cast<float>(sprite->x), 0.0f, width);
+                    const float spriteY = std::clamp(static_cast<float>(sprite->y), 0.0f, height);
+                    const float spriteWidth = std::clamp(sourceSpriteWidth, 0.0f, width - spriteX);
+                    const float spriteHeight = std::clamp(sourceSpriteHeight, 0.0f, height - spriteY);
+                    transform.scaleX = spriteWidth / width;
+                    transform.scaleY = spriteHeight / height;
+                    transform.offsetX = spriteX / width;
+                    transform.offsetY = spriteY / height;
+                }
+            }
+        }
+    }
+
+    const auto* tilingVar = desc.FindVar("uvTiling");
+    const auto* offsetVar = desc.FindVar("uvOffset");
+    if (tilingVar == nullptr || offsetVar == nullptr
+        || tilingVar->varType != renderer::ShaderVarType::Float || tilingVar->columns < 2
+        || offsetVar->varType != renderer::ShaderVarType::Float || offsetVar->columns < 2
+        || tilingVar->offset + 2u * sizeof(float) > paramData.size()
+        || offsetVar->offset + 2u * sizeof(float) > paramData.size())
+        return;
+
+    float tiling[2] = { 1.0f, 1.0f };
+    float offset[2] = { 0.0f, 0.0f };
+    std::memcpy(tiling, paramData.data() + tilingVar->offset, sizeof(tiling));
+    std::memcpy(offset, paramData.data() + offsetVar->offset, sizeof(offset));
+    tiling[0] *= transform.scaleX;
+    tiling[1] *= transform.scaleY;
+    offset[0] = offset[0] * transform.scaleX + transform.offsetX;
+    offset[1] = offset[1] * transform.scaleY + transform.offsetY;
+    std::memcpy(paramData.data() + tilingVar->offset, tiling, sizeof(tiling));
+    std::memcpy(paramData.data() + offsetVar->offset, offset, sizeof(offset));
+}
+
 } // namespace
 
 AnimatorComponent* FindAnimator(GameObject& go)
@@ -239,6 +337,8 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
     // 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
     if (desc && !mc.paramOverrides.empty())
         ApplyMaterialParamOverrides(mc.paramOverrides, *desc, material.paramData);
+    if (desc && matAsset)
+        ApplyAlbedoSpriteUv(*matAsset, *desc, resources, material.paramData);
 
     std::array<std::string, kTextureSlotNames.size()> texturePaths{};
     if (matAsset) {
@@ -246,6 +346,11 @@ renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManage
             const auto it = matAsset->textures.find(kTextureSlotNames[i]);
             texturePaths[i] = it != matAsset->textures.end() ? it->second : std::string{};
         }
+    }
+    for (size_t i = 0; i < kTextureSlotNames.size(); ++i) {
+        const auto overrideIt = mc.textureOverrides.find(kTextureSlotNames[i]);
+        if (overrideIt != mc.textureOverrides.end())
+            texturePaths[i] = overrideIt->second;
     }
 
     const size_t slotCount = texturePaths.size();
@@ -456,8 +561,25 @@ ActiveWindZone FindActiveWindZone(Scene& scene)
         result.turbulence     = (std::max)(wind->turbulence, 0.0f);
         result.pulseFrequency = (std::max)(wind->pulseFrequency, 0.0f);
         break; // シーンに 1 つ想定。複数ある場合は最初の有効な 1 つを使う
+
     }
     return result;
+}
+
+math::Vector3 ComputeCameraFacingRibbonNormal(
+    const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point)
+{
+    // 帯の面をカメラへ向けるには、幅方向を「進行方向 × 視線方向」に取る。
+    math::Vector3 up = cameraPos - point;
+    if (up.LengthSq() > math::EPSILON * math::EPSILON) up = up.Normalized();
+    else up = math::Vector3::UP;
+    // 進行方向と視線がほぼ平行だと外積が退化して帯が消える。安定な軸へ逃がす。
+    if (std::abs(math::Vector3::Dot(direction, up)) > 0.99f) up = math::Vector3::UP;
+    if (std::abs(math::Vector3::Dot(direction, up)) > 0.99f) up = math::Vector3::RIGHT;
+
+    const math::Vector3 normal = math::Vector3::Cross(direction, up);
+    return normal.LengthSq() > math::EPSILON * math::EPSILON
+        ? normal.Normalized() : math::Vector3::RIGHT;
 }
 
 } // namespace fbzz::scene
