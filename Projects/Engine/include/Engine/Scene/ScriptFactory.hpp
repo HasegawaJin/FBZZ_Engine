@@ -22,10 +22,18 @@ public:
     static bool Register()
     {
         static_assert(std::is_base_of_v<Script, T>);
-        return Register(T::TYPE_NAME, []() { return std::make_unique<T>(); });
+        const bool registered = Register(T::TYPE_NAME, []() { return std::make_unique<T>(); });
+        if constexpr (requires { T::FORMER_TYPE_NAMES; }) {
+            for (const char* formerName : T::FORMER_TYPE_NAMES)
+                RegisterAlias(formerName, T::TYPE_NAME);
+        }
+        return registered;
     }
 
     static bool Register(const std::string& typeName, Factory factory);
+    // 旧Script型名を現在の型名へ解決し、クラスrename後もScene / Prefabを復元する。
+    static bool RegisterAlias(const std::string& formerTypeName,
+                              const std::string& currentTypeName);
     static std::unique_ptr<Script> Create(const std::string& typeName);
     static std::vector<std::string> RegisteredTypeNames();
 
@@ -49,3 +57,9 @@ public:
             return true; \
         }(); \
     }
+
+// Scriptクラス内で旧型名を宣言する。ScriptFactory登録時にaliasへ自動登録される。
+// 例: FBZZ_SCRIPT_FORMERLY_NAMED("OldPlayerController", "LegacyPlayer")
+#define FBZZ_SCRIPT_FORMERLY_NAMED(...) \
+    public: \
+    static constexpr const char* FORMER_TYPE_NAMES[] = { __VA_ARGS__ };

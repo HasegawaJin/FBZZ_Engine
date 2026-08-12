@@ -101,6 +101,7 @@ void ScriptDllLoader::Unload(scene::Scene* scene)
     }
 
     scene::ScriptFactory::UnregisterAll();
+    scene::ScriptSerializableFactory::UnregisterAll();
     FBZZ_LOG_DEBUG("ScriptDllLoader: ScriptFactory unregistered all");
 
     // DataAsset も DLL コード内に仮想デストラクタ/ファクトリを持つため、FreeLibrary 前に
