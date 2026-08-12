@@ -54,6 +54,10 @@ public:
     bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
                                   std::vector<uint8_t>& outPng,
                                   uint32_t& outWidth, uint32_t& outHeight) override;
+    // AI 連携 (vfx.previewMetrics): 同じ RT を HDR 線形値のまま数値評価用に読み戻す。
+    bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                         std::vector<float>& outRgba,
+                                         uint32_t& outWidth, uint32_t& outHeight) override;
     uint32_t GetWidth() const override { return m_context.GetWidth(); }
     uint32_t GetHeight() const override { return m_context.GetHeight(); }
     DX12Context& GetContext() { return m_context; }

@@ -21,6 +21,7 @@ public:
     void ImGuiShutdown() override;
     void ImGuiNewFrame() override;
     void ImGuiRenderDrawData() override;
+    void ImGuiRenderPlatformWindows() override;
     void* GetImTextureID(ResourceHandle<RenderTargetTag>, ResourceManager&, int = 0) override;
     void* GetImTextureID(ResourceHandle<TextureTag>, ResourceManager&) override;
 

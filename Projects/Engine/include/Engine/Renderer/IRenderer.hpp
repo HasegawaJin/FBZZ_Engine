@@ -121,6 +121,15 @@ public:
                                           std::vector<uint8_t>& /*outPng*/,
                                           uint32_t& /*outWidth*/, uint32_t& /*outHeight*/) { return false; }
 
+    // CaptureRenderTargetToLinearRGBA — 同じ RT を「絵」ではなく「数値」として読み戻す。
+    // WHY: PNG は 8bit UNORM へクランプされるため、白飛びしているのか単に明るいのかが
+    //      エンコードの時点で失われる。露出・画面占有・動きの量を機械的に判定するには
+    //      HDR のままの線形値が要る (AI の VFX 評価 = vfx.previewMetrics が使う)。
+    //      outRgba は width*height*4 の行優先 float 列。トーンマップもガンマ変換も行わない。
+    virtual bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> /*rt*/, ResourceManager& /*resources*/,
+                                                 std::vector<float>& /*outRgba*/,
+                                                 uint32_t& /*outWidth*/, uint32_t& /*outHeight*/) { return false; }
+
 private:
     friend class ResourceManager;
 

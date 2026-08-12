@@ -102,6 +102,11 @@ public:
                                   std::vector<uint8_t>& outPng,
                                   uint32_t& outWidth, uint32_t& outHeight) override;
 
+    // AI 連携 (vfx.previewMetrics): 同じ RT を HDR 線形値のまま数値評価用に読み戻す。
+    bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                         std::vector<float>& outRgba,
+                                         uint32_t& outWidth, uint32_t& outHeight) override;
+
     // DX11Buffer 等の DX11 サブシステムが Init 時にデバイスを必要とする場合に使用
     ID3D11Device*        GetDevice()       const { return m_device.Get(); }
     ID3D11DeviceContext* GetDeviceContext() const { return m_context.Get(); }

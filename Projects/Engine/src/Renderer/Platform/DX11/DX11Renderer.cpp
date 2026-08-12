@@ -573,7 +573,12 @@ void DX11Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     // WHY: StructuredBuffer<T> を SV_InstanceID でインデックスする方式は、
     //      通常 Draw に切り替えると VS が未バインドのインスタンスデータを読み、
     //      1 個だけ生成された Detail や Particle が描画されなくなるため。
-    const bool isInstanced = call.instanceCount > 0 && call.instanceBuffer.IsValid();
+    // instanceCount が 2 以上なら instanceBuffer が無くてもインスタンス描画する。
+    // WHY: GPU メッシュパーティクルは per-instance データを t0 ではなく t14
+    //      (vsBuffers, StructuredBuffer<GpuParticle>) から SV_InstanceID で引く。
+    //      同じ .hlsl に t0 の Texture2D (albedo) があるため t0 は使えない。
+    const bool isInstanced = call.instanceCount > 1
+        || (call.instanceCount > 0 && call.instanceBuffer.IsValid());
     if (isInstanced)
     {
         if (auto* sb = resources.Get(call.instanceBuffer))
@@ -709,11 +714,13 @@ void DX11Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceM
     BindRenderTarget(resources.Get(rt));
 }
 
-bool DX11Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
-                                            std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
+// RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。
+// WHY: 2 つの入口が別々に CaptureTexture を呼ぶと、片方だけ RT 形式の変更に追従し損ねる。
+static bool CaptureDX11RenderTargetImage(ID3D11Device* device, ID3D11DeviceContext* context,
+                                         IRenderTarget* base, DirectX::ScratchImage& outImage)
 {
     // Platform 層内なので IRenderTarget → 具象へのキャストは許容 (上位からのダウンキャスト禁止規約の対象外)。
-    auto* target = static_cast<DX11RenderTarget*>(resources.Get(rt));
+    auto* target = static_cast<DX11RenderTarget*>(base);
     if (target == nullptr) return false;
     ID3D11ShaderResourceView* srv = target->GetColorSRV(0);
     if (srv == nullptr) return false;
@@ -722,11 +729,23 @@ bool DX11Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, 
     Microsoft::WRL::ComPtr<ID3D11Resource> resource;
     srv->GetResource(resource.GetAddressOf());
     if (!resource) return false;
+    return SUCCEEDED(DirectX::CaptureTexture(device, context, resource.Get(), outImage));
+}
 
+bool DX11Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                            std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
+{
     DirectX::ScratchImage captured;
-    const HRESULT hr = DirectX::CaptureTexture(m_device.Get(), m_context.Get(), resource.Get(), captured);
-    if (FAILED(hr)) return false;
+    if (!CaptureDX11RenderTargetImage(m_device.Get(), m_context.Get(), resources.Get(rt), captured)) return false;
     return detail::EncodeCapturedImageToPng(captured, outPng, outWidth, outHeight);
+}
+
+bool DX11Renderer::CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                                   std::vector<float>& outRgba, uint32_t& outWidth, uint32_t& outHeight)
+{
+    DirectX::ScratchImage captured;
+    if (!CaptureDX11RenderTargetImage(m_device.Get(), m_context.Get(), resources.Get(rt), captured)) return false;
+    return detail::ReadCapturedImageAsLinearRGBA(captured, outRgba, outWidth, outHeight);
 }
 
 void DX11Renderer::SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,

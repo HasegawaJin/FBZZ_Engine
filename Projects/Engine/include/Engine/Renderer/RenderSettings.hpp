@@ -262,6 +262,11 @@ struct RenderSettings {
     bool showSkeleton         = false;
     bool showGrid             = false;
     bool showLightRange       = false;
+    // パーティクル力場の影響半径・向きと、エミッターの発生形状をワイヤーで描く。
+    // WHY: 力場もエミッター形状も「見えない体積」なので、radius 3.2 と 4.0 の違いを
+    //      粒子の挙動から逆算するしかなかった。炎が横に千切れる/広がらない類の
+    //      調整はここが見えるかどうかで作業時間が桁で変わる。
+    bool showVFXGizmos        = false;
     bool showConstraints      = false;
     bool showSelectionOutline = true;
     // true のとき、各パスの RT サムネイルと CPU タイミングを ImGui ウィンドウで表示する。
@@ -270,6 +275,18 @@ struct RenderSettings {
     // 全Particleのフレーム予算。0以下は無制限。RenderPassがエミッター順に残量を配分する。
     int particleBudget = 20000;
     bool particleBudgetEnabled = true;
+    // true のとき、パーティクル描画の上へ「重なり枚数」のヒートマップを上書きする診断表示。
+    // WHY: パーティクルの実コストは粒子数ではなく fill rate で決まるが、
+    //      重なりは通常の絵からは読めない。VFX Editor のプレビューから切り替えて使う。
+    bool particleOverdrawView = false;
+    // trueならヒートマップ未描画領域に通常のMesh/SkinnedMesh表示を残す。
+    bool particleOverdrawIncludeModels = false;
+    // true のとき、重なり枚数を GPU から CPU へ読み戻して統計を取る (ParticleOverdrawStats)。
+    // WHY: ヒートマップは「見れば判る」が、AI は数値でないと閾値を持てず、
+    //      「重なりすぎ」を毎回違う基準で判定してしまう。
+    //      読み戻しは GPU 同期を伴ってフレームを止めるため、既定は false。
+    //      AI の決定論プレビューのように、実時間性能より正確さが要る場面だけで立てる。
+    bool particleOverdrawReadback = false;
 
     bool IsWireframe() const { return viewMode == ViewMode::WireframeLit || viewMode == ViewMode::WireframeUnlit; }
     bool IsUnlit()     const { return viewMode == ViewMode::Unlit        || viewMode == ViewMode::WireframeUnlit; }

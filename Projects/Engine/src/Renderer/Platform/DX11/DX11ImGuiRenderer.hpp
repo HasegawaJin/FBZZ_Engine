@@ -31,6 +31,9 @@ public:
     // ImGui::Render() 後の DrawData を DX11 へ送信する。
     void ImGuiRenderDrawData() override;
 
+    // Docking Window をメイン HWND 外へ出した時の追加 SwapChain を描画する。
+    void ImGuiRenderPlatformWindows() override;
+
     // DX11RenderTarget が保持する SRV を ImGui 用の TextureID として返す。
     void* GetImTextureID(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources, int slot = 0) override;
 
