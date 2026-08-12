@@ -19,4 +19,11 @@ bool EncodeCapturedImageToPng(const DirectX::ScratchImage& captured,
                               std::vector<std::uint8_t>& outPng,
                               std::uint32_t& outWidth, std::uint32_t& outHeight);
 
+// captured の mip0/slice0 を線形 RGBA float 列 (画素あたり 4 要素・行優先) へ展開する。
+// WHY: PNG 化は [0,1] へクランプするため、露出の破綻 (白飛び) と「単に明るい」を区別できない。
+//      数値評価には HDR のままの線形値が必要なので、8bit 化と別経路で読み出す。
+bool ReadCapturedImageAsLinearRGBA(const DirectX::ScratchImage& captured,
+                                   std::vector<float>& outRgba,
+                                   std::uint32_t& outWidth, std::uint32_t& outHeight);
+
 } // namespace fbzz::renderer::detail

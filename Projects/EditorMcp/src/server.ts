@@ -17,6 +17,7 @@ export function CreateEditorMcpServer(bus: EditorBus, permission: PermissionMode
             `現在の権限モードは ${permission} です。`,
             '編集前に editor_catalog で正確なコンポーネント型・フィールド契約を確認し、scene_find / scene_get_tree と node_get_components で対象を特定してください。',
             '自律作業は editor_perceive → dry-run/write Command → editor_perceive を反復し、見た目と Scene 状態の両方で完了条件を確認してください。',
+            'VFX制作は vfx_knowledge_catalog → vfx_candidate_fork → schema駆動編集 → vfx_candidate_evaluate → vfx_candidate_accept → vfx_knowledge_promote の閉ループを使い、元アセットを直接試行錯誤で上書きしないでください。',
             '実行確認は可能なら playtest_run を使い、今回発生したログ、性能、意味付きviewportを一つのレポートで検証してください。',
         ].join(' '),
     });

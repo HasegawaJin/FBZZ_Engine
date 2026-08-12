@@ -9,6 +9,7 @@
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <string>
+#include <vector>
 
 namespace fbzz::editor { struct EditorContext; }
 
@@ -34,6 +35,12 @@ private:
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT{};
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT{};
     renderer::ResourceHandle<renderer::RenderTargetTag> m_vfxPreviewRT{};
+
+    // 直前に vfx.previewMetrics が測ったフレームの輝度。次の呼び出しで「動いているか」を出すために保持する。
+    // WHY: 動きは 1 枚では測れず、2 枚を突き合わせるしかない。MCP 側は PNG しか受け取らないので
+    //      比較はここでしかできない。連続スクラブすると自然に「前の時刻との差」になる。
+    std::vector<float> m_previousPreviewLuminance;
+    std::string m_previousPreviewKey;   // 比較対象を取り違えないよう path + view + サイズで識別する
 };
 
 } // namespace fbzz::editor::ai
