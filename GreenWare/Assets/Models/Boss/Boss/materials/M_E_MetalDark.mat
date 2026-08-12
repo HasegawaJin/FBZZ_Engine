@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'M_E_MetalDark'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.054999999701976776, 0.05999999865889549, 0.07000000029802322, 1.0 ]
+metallic = 0.0
+roughness = 0.33000004291534424

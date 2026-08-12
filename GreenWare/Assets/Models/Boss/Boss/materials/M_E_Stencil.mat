@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'M_E_Stencil'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.699999988079071, 0.7099999785423279, 0.7200000286102295, 1.0 ]
+metallic = 0.0
+roughness = 0.550000011920929

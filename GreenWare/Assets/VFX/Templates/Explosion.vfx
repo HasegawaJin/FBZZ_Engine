@@ -1,0 +1,766 @@
+version = 3
+name = "Explosion"
+maxParticles = 4200
+maxLights = 2
+maxAudioVoices = 2
+
+# ------------------------------------------------------------------------------
+# Explosion — 多層構成の爆発。
+# 層: コアフラッシュ / 火球 / 熱歪み / 火花 / 破片 / 煙柱 / 残り火
+#     + 点光源 + 画面フラッシュ + 力場(外向き圧 + 上昇乱流) + 焦げ跡デカール
+# WHY: 単一エミッターの爆発は「花火」にしかならない。実在の爆発は
+#      発光 -> 膨張 -> 空気の歪み -> 飛散物 -> 煙の上昇 という時間差の層で読める。
+#      各層を別ノードに分け、Entry からの delay で時間差を付けている。
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# --- 0.00s: 発光の芯。数粒だけ巨大に出して即座に消す --------------------------
+[[nodes]]
+id = 2
+type = 2
+name = "Core Flash"
+duration = 0.18
+editorX = 260.0
+editorY = -60.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 0.18
+loop = false
+emitRate = 0.0
+maxParticles = 8
+shape = 0
+sizeStart = 4.5
+sizeEnd = 0.6
+sizeCurvePower = 2.4
+lifetime = 0.14
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+texturePath = "Assets/Textures/Particles/flare_01.png"
+# 閃光: 8 粒子だけなので強くてよい。ここが白飛びの主役ではない
+blendMode = 0
+sortMode = 0
+emissiveScale = 5.0
+softParticles = true
+softParticleFadeDistance = 0.6
+simulationSpace = 0
+# 芯は最前面。ここが煙や破片に隠れると爆発の「頭」が消える。
+renderPriority = 60
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.05, probability = 1.0 }]
+
+# --- 0.00s: 火球本体。膨張しながら白 -> 赤 -> 黒へ落ちる ----------------------
+[[nodes]]
+id = 3
+type = 2
+name = "Fireball"
+duration = 1.2
+editorX = 260.0
+editorY = 120.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 1.2
+loop = false
+emitRate = 0.0
+maxParticles = 900
+shape = 1
+sphereRadius = 0.6
+sizeStart = 1.6
+sizeEnd = 3.4
+sizeCurvePower = 0.45
+lifetime = 0.9
+lifetimeRandom = 0.35
+velocitySpread = 6.5
+velocityDamping = 3.2
+gravity = [0.0, -1.2, 0.0]
+angularVelocityMin = -2.5
+angularVelocityMax = 2.5
+texturePath = "Assets/Textures/Particles/fire_02.png"
+# 火球: 900 粒子。旧 6.0 では重なった瞬間に白飽和していた
+blendMode = 0
+sortMode = 0
+emissiveScale = 2.0
+softParticles = true
+softParticleFadeDistance = 0.5
+noiseStrength = 1.6
+noiseFrequency = 1.1
+noiseSpeed = 1.4
+renderPriority = 50
+# 火球は上へ膨らむ。等方だと「オレンジの球」で終わってしまう。
+sizeAxisScale = [1.0, 1.0, 1.0]   # 転がる火球なので回転を残し、縦伸ばしを捨てる
+# 粒子ごとの色温度差。これが無いと 900 粒が同じ色で塗りつぶされる。
+colorVariation = 0.20
+# 初速は勢いよく回り、減速に合わせて回転も止める。
+useRotationCurve = true
+rotationCurve = [[0.0, 1.0], [1.0, 0.15]]
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 0.95, 0.72, 1.0],
+  [0.18, 1.0, 0.62, 0.18, 1.0],
+  [0.55, 0.72, 0.20, 0.04, 0.9],
+  [1.0, 0.12, 0.08, 0.06, 0.0],
+]
+bursts = [{ time = 0.0, count = 170, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.01s: 衝撃波の熱歪み。シーンカラーを屈折させる --------------------------
+# WHY: 爆発が「空気を殴る」感触は輝度ではなく背景の歪みで出る。
+#      distortion=true のパーティクルはテクスチャの RG を UV オフセットとして
+#      シーンカラーをサンプルするため、専用のメッシュもシェーダーも要らない。
+[[nodes]]
+id = 4
+type = 2
+name = "Shockwave Haze"
+duration = 0.55
+editorX = 260.0
+editorY = 300.0
+position = [0.0, 0.4, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 0.55
+loop = false
+emitRate = 0.0
+maxParticles = 6
+shape = 0
+sizeStart = 1.2
+sizeEnd = 11.0
+sizeCurvePower = 0.35
+lifetime = 0.45
+velocitySpread = 0.0
+gravity = [0.0, 0.0, 0.0]
+texturePath = "Assets/Textures/Particles/twirl_01.png"
+blendMode = 1
+sortMode = 1
+distortion = true
+distortionStrength = 0.075
+softParticles = true
+softParticleFadeDistance = 0.8
+emissiveScale = 0.0
+# 歪みはシーンカラーを読むため必ず最後。火球より先に描くと、
+# まだ描かれていない火球を屈折させることになり衝撃波が背景だけを歪ませる。
+renderPriority = 100
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 1.0, 1.0, 0.95],
+  [0.6, 1.0, 1.0, 1.0, 0.45],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+bursts = [{ time = 0.0, count = 2, cycles = 1, interval = 0.04, probability = 1.0 }]
+
+# --- 0.02s: 火花。伸びるビルボード + 深度衝突で地面を跳ねる -------------------
+[[nodes]]
+id = 5
+type = 2
+name = "Sparks"
+duration = 1.8
+editorX = 560.0
+editorY = -60.0
+position = [0.0, 0.2, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 1.8
+loop = false
+emitRate = 0.0
+maxParticles = 700
+shape = 1
+sphereRadius = 0.3
+sizeStart = 0.16
+sizeEnd = 0.02
+lifetime = 1.4
+lifetimeRandom = 0.6
+velocitySpread = 14.0
+velocityDamping = 1.1
+gravity = [0.0, -16.0, 0.0]
+texturePath = "Assets/Textures/Particles/spark_04.png"
+# 火花
+blendMode = 0
+renderMode = 1
+stretchedVelocityScale = 0.12
+stretchedLengthScale = 2.2
+collisionMode = 3
+collisionResponse = 0
+collisionRadius = 0.03
+collisionBounciness = 0.35
+collisionDamping = 0.35
+emissiveScale = 3.5
+# 火の粉は最前面。小さく明るいので煙に隠れると存在が消える。
+renderPriority = 70
+# 粒ごとに尾を引かせる。飛散の軌跡が読めるようになり速度感が跳ね上がる。
+# NOTE: トレイルは粒子ごとの位置履歴を使うため GPU シミュレーションでは動かない。
+#       simulationMode は CPU (0) を明示している。260 粒なら CPU で十分軽い。
+simulationMode = 0
+trailEnabled = true
+trailPointCount = 7
+trailSampleInterval = 0.02
+trailWidthScale = 0.25
+trailAlphaScale = 0.25
+bursts = [{ time = 0.0, count = 260, cycles = 1, interval = 0.02, probability = 1.0 }]
+
+# --- 0.03s: 破片。重く、跳ねずに止まる ----------------------------------------
+[[nodes]]
+id = 6
+type = 2
+name = "Debris"
+duration = 2.2
+editorX = 560.0
+editorY = 150.0
+position = [0.0, 0.15, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 2.2
+loop = false
+emitRate = 0.0
+maxParticles = 220
+shape = 2
+coneAngleDegrees = 62.0
+coneRadius = 0.4
+sizeStart = 0.22
+sizeEnd = 0.14
+lifetime = 1.9
+lifetimeRandom = 0.5
+emitVelocity = [0.0, 6.0, 0.0]
+velocitySpread = 5.5
+gravity = [0.0, -18.0, 0.0]
+angularVelocityMin = -8.0
+angularVelocityMax = 8.0
+texturePath = "Assets/Textures/Particles/dirt_02.png"
+# 破片: 不透明な小片。Premultiplied
+blendMode = 2
+sortMode = 1
+collisionMode = 3
+collisionResponse = 2
+collisionRadius = 0.06
+collisionDamping = 0.8
+softParticles = true
+renderPriority = 40
+# 土塊は非発光。影を受けないと爆発の明るさの中で浮いて見える。
+receiveShadows = true
+shadowStrength = 0.85
+colorVariation = 0.22
+bursts = [{ time = 0.0, count = 90, cycles = 1, interval = 0.03, probability = 1.0 }]
+
+# --- 0.10s: 煙柱。six-way lighting で塊として光を受ける -----------------------
+[[nodes]]
+id = 7
+type = 2
+name = "Smoke Column"
+duration = 3.4
+editorX = 560.0
+editorY = 380.0
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 3.4
+loop = false
+emitRate = 42.0
+maxParticles = 800
+shape = 1
+sphereRadius = 0.9
+sizeStart = 1.4
+sizeEnd = 5.2
+sizeCurvePower = 0.7
+lifetime = 2.8
+lifetimeRandom = 0.8
+emitVelocity = [0.0, 2.6, 0.0]
+velocitySpread = 1.6
+velocityDamping = 0.5
+gravity = [0.0, 0.55, 0.0]
+angularVelocityMin = -0.6
+angularVelocityMax = 0.6
+texturePath = "Assets/Textures/Particles/smoke_07.png"
+# 煙柱: 背景を隠す本体
+blendMode = 2
+sortMode = 1
+sixWayLighting = true
+lightingStrength = 0.70
+softParticles = true
+softParticleFadeDistance = 0.7
+noiseStrength = 1.1
+noiseFrequency = 0.5
+noiseSpeed = 0.35
+# 煙柱は最奥。火球より手前に来ると爆発の明るさが濁る。
+renderPriority = 0
+receiveShadows = true
+shadowStrength = 0.85
+colorVariation = 0.12
+sizeAxisScale = [1.0, 1.0, 1.0]   # 渦を巻く煙柱なので回転を残し、横伸ばしを捨てる
+useDragCurve = true
+dragCurve = [[0.0, 0.5], [1.0, 2.0]]
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.42, 0.34, 0.30, 0.0],
+  [0.12, 0.30, 0.26, 0.24, 0.85],
+  [0.65, 0.22, 0.21, 0.21, 0.6],
+  [1.0, 0.18, 0.18, 0.18, 0.0],
+]
+bursts = [{ time = 0.0, count = 40, cycles = 1, interval = 0.05, probability = 1.0 }]
+
+# --- 0.25s: 残り火。ゆっくり上昇して消える ------------------------------------
+[[nodes]]
+id = 8
+type = 2
+name = "Embers"
+duration = 2.6
+editorX = 860.0
+editorY = -60.0
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 2.6
+loop = false
+emitRate = 26.0
+maxParticles = 260
+shape = 1
+sphereRadius = 1.1
+sizeStart = 0.09
+sizeEnd = 0.01
+lifetime = 2.1
+lifetimeRandom = 0.7
+emitVelocity = [0.0, 1.4, 0.0]
+velocitySpread = 1.2
+velocityDamping = 0.6
+gravity = [0.0, 0.8, 0.0]
+texturePath = "Assets/Textures/Particles/spark_01.png"
+# 残り火
+blendMode = 0
+emissiveScale = 3.0
+noiseStrength = 0.9
+noiseFrequency = 0.8
+noiseSpeed = 0.6
+renderPriority = 65
+colorVariation = 0.25
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 0.72, 0.30, 1.0],
+  [0.6, 1.0, 0.34, 0.08, 0.8],
+  [1.0, 0.5, 0.10, 0.02, 0.0],
+]
+
+# --- 光源: 火球と同じ時間だけ強く光る -----------------------------------------
+[[nodes]]
+id = 9
+type = 5
+name = "Blast Light"
+duration = 0.45
+editorX = 860.0
+editorY = 150.0
+position = [0.0, 0.8, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.light]
+color = [1.0, 0.52, 0.16]
+intensity = 26.0
+range = 18.0
+# 閃光は「一瞬で立ち上がり、すっと落ちる」。
+# WHY: 定数の明るさで 0.45 秒点灯すると、爆発が終わった後も周囲が同じ明るさで
+#      照らされ続け、電灯が点いたようにしか見えない。減衰こそが爆発光の本体。
+useIntensityCurve = true
+intensityCurve = [[0.0, 1.0], [0.08, 0.85], [0.35, 0.25], [1.0, 0.0]]
+# 色温度の変化。白熱 -> 橙 -> 暗赤。alpha は明るさ倍率として RGB へ掛かる。
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 0.92, 0.75, 1.0],
+  [0.2, 1.0, 0.58, 0.22, 0.9],
+  [0.6, 1.0, 0.32, 0.08, 0.5],
+  [1.0, 0.6, 0.14, 0.03, 0.0],
+]
+
+# --- 画面演出: 白飛び + ブルーム + 色収差 -------------------------------------
+[[nodes]]
+id = 10
+type = 11
+name = "Blast Flash"
+duration = 0.5
+editorX = 860.0
+editorY = 300.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.screenEffect]
+flashColor = [1.0, 0.88, 0.72]
+flashIntensity = 0.34
+bloomBoost = 1.1
+chromaticAberration = 0.008
+lensDistortion = 0.06
+vignette = 0.18
+fadeInTime = 0.02
+fadeOutTime = 0.38
+
+# --- 力場: 外向きの圧。火球と火花を押し広げる ---------------------------------
+[[nodes]]
+id = 11
+type = 9
+name = "Blast Pressure"
+duration = 0.35
+editorX = 1160.0
+editorY = -60.0
+position = [0.0, 0.3, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 2
+strength = 26.0
+radius = 9.0
+falloffPower = 1.6
+
+# --- 力場: 上昇乱流。煙をきれいな球のまま終わらせない -------------------------
+[[nodes]]
+id = 12
+type = 9
+name = "Updraft Turbulence"
+duration = 3.4
+editorX = 1160.0
+editorY = 130.0
+position = [0.0, 1.5, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 4
+strength = 3.4
+radius = 10.0
+falloffPower = 1.2
+noiseFrequency = 0.35
+noiseSpeed = 0.55
+
+# --- 焦げ跡 -------------------------------------------------------------------
+[[nodes]]
+id = 13
+type = 7
+name = "Scorch Decal"
+duration = 6.0
+editorX = 1160.0
+editorY = 310.0
+position = [0.0, 0.02, 0.0]
+rotation = [-90.0, 0.0, 0.0]
+scale = [4.5, 4.5, 1.0]
+[nodes.decal]
+albedoPath = "Assets/Textures/Particles/scorch_01.png"
+color = [0.12, 0.10, 0.09, 0.9]
+normalStrength = 0.0
+emissiveScale = 0.0
+fadeTime = 1.2
+# 焦げ跡は「しばらく濃く残ってから消える」。線形フェードだと最初から薄まり始めて
+# 跡が残った感じにならない。終盤まで濃度を保ち、最後に落とす。
+useFadeCurve = true
+fadeCurve = [[0.0, 1.0], [0.6, 0.95], [0.85, 0.6], [1.0, 0.0]]
+
+# --- 0.00s: 膨張する衝撃波シェル ----------------------------------------------
+# WHY: 歪みだけだと背景が無地のときに何も起きていないように見える。
+#      加算の球シェルを重ねることで、どんな背景でも輪郭が読める。
+#      マテリアル未割当なので VFXMeshFallback.mat (加算/両面/Unlit) が使われ、
+#      色とフェードは Color Start -> Color End が albedo を毎フレーム上書きする。
+[[nodes]]
+id = 14
+type = 10
+name = "Shockwave Shell"
+duration = 0.42
+editorX = 260.0
+editorY = 480.0
+position = [0.0, 0.35, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.mesh]
+meshPath = "primitive:sphere"
+materialPath = ""
+scaleStart = 0.3
+scaleEnd = 9.5
+scaleEasePower = 0.3
+colorStart = [1.0, 0.72, 0.34, 1.0]
+colorEnd = [0.0, 0.0, 0.0, 0.0]
+
+# --- 0.00s: カメラ揺れ。距離で減衰するので近いほど強く効く --------------------
+[[nodes]]
+id = 15
+type = 12
+name = "Blast Shake"
+duration = 0.55
+editorX = 560.0
+editorY = 560.0
+position = [0.0, 0.5, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.cameraShake]
+amplitude = 0.22
+rotationAmplitude = 1.8
+frequency = 26.0
+falloffPower = 2.4
+radius = 30.0
+
+# --- 0.00s: ヒットストップ。極短く入れて質量感を出す --------------------------
+[[nodes]]
+id = 16
+type = 13
+name = "Impact Stop"
+duration = 0.14
+editorX = 860.0
+editorY = 460.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.timeScale]
+timeScale = 0.25
+blendInTime = 0.0
+blendOutTime = 0.1
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 0.01
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.02
+[[links]]
+from = 1
+to = 6
+trigger = 1
+delay = 0.03
+[[links]]
+from = 1
+to = 7
+trigger = 1
+delay = 0.1
+[[links]]
+from = 1
+to = 8
+trigger = 1
+delay = 0.25
+[[links]]
+from = 1
+to = 9
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 10
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 11
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 12
+trigger = 1
+delay = 0.1
+[[links]]
+from = 1
+to = 13
+trigger = 1
+delay = 0.05
+[[links]]
+from = 1
+to = 14
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 15
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 16
+trigger = 1
+delay = 0.0
+
+[[groups]]
+id = 1
+title = "Impact (0.0 - 0.1s)"
+note = "発光・膨張・空気の歪み・衝撃波シェル。ここのタイミングが硬さを決める。"
+x = 230.0
+y = -110.0
+width = 290.0
+height = 740.0
+color = [0.82, 0.42, 0.20, 0.16]
+
+[[groups]]
+id = 2
+title = "Ejecta (0.02 - 0.3s)"
+note = "飛散物と煙柱。速度と寿命で規模感が決まる。"
+x = 530.0
+y = -110.0
+width = 290.0
+height = 640.0
+color = [0.62, 0.52, 0.30, 0.14]
+
+[[groups]]
+id = 3
+title = "Aftermath"
+note = "残り火・光源・画面演出。"
+x = 830.0
+y = -110.0
+width = 290.0
+height = 500.0
+color = [0.34, 0.44, 0.66, 0.14]
+
+[[groups]]
+id = 4
+title = "Fields & Ground"
+note = "力場は範囲内の全パーティクルへ効く。焦げ跡は最後まで残す。"
+x = 1130.0
+y = -110.0
+width = 290.0
+height = 520.0
+color = [0.30, 0.58, 0.50, 0.14]
+
+[[parameters]]
+name = "Blast Scale"
+type = 0
+minimum = 0.2
+maximum = 4.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 1.6
+[[bindings]]
+paramName = "Blast Scale"
+nodeId = 3
+schemaPath = "particle.sizeStart"
+
+[[parameters]]
+name = "Heat Distortion"
+type = 0
+minimum = 0.0
+maximum = 0.25
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.075
+[[bindings]]
+paramName = "Heat Distortion"
+nodeId = 4
+schemaPath = "particle.distortionStrength"
+
+[[parameters]]
+name = "Smokiness"
+type = 0
+minimum = 0.0
+maximum = 140.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 42.0
+[[bindings]]
+paramName = "Smokiness"
+nodeId = 7
+schemaPath = "particle.emitRate"
+
+[[parameters]]
+name = "Ember Heat"
+type = 0
+minimum = 0.0
+maximum = 8.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 3.0
+[[bindings]]
+paramName = "Ember Heat"
+nodeId = 8
+schemaPath = "particle.emissiveScale"
+
+# 火の粉の尾の長さ。0 に近づけると点の飛散、大きくすると流星のような軌跡になる。
+[[parameters]]
+name = "Spark Trail"
+type = 1
+minimum = 1.0
+maximum = 8.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 1
+int = 7
+[[bindings]]
+paramName = "Spark Trail"
+nodeId = 5
+schemaPath = "particle.trailPointCount"
+
+# 煙・破片が影を受ける強さ。屋外の強い日差しでは 1.0 まで上げると地面に馴染む。
+[[parameters]]
+name = "Shadow Response"
+type = 0
+minimum = 0.0
+maximum = 1.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.85
+[[bindings]]
+paramName = "Shadow Response"
+nodeId = 7
+schemaPath = "particle.shadowStrength"
+[[bindings]]
+paramName = "Shadow Response"
+nodeId = 6
+schemaPath = "particle.shadowStrength"
+
+# 火球の色ばらつき。0 で単色、上げるほど内部に色温度差が出て体積感が増す。
+[[parameters]]
+name = "Fireball Variation"
+type = 0
+minimum = 0.0
+maximum = 0.6
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.20
+[[bindings]]
+paramName = "Fireball Variation"
+nodeId = 3
+schemaPath = "particle.colorVariation"

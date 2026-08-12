@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'M_LampGreen'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.029999999329447746, 0.4000000059604645, 0.09000000357627869, 1.0 ]
+metallic = 0.0
+roughness = 0.25
