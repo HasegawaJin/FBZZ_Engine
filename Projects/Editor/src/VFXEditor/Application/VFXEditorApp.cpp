@@ -1,14 +1,16 @@
 // FBZZ Engine
 // VFXEditorApp.cpp | fbzz::editor
 // 独立VFX制作Applicationと専用Preview Worldの実装
-#include <Editor/VFX/VFXEditorApp.hpp>
+#include <Editor/VFXEditor/Application/VFXEditorApp.hpp>
 
 #include <Editor/Ai/EditorBusDispatcher.hpp>
 #include <Editor/Ai/EditorBusProtocol.hpp>
 #include <Editor/Ai/Json.hpp>
 #include <Editor/Ai/NamedPipeServer.hpp>
+#include <Editor/Ai/VFXPreviewCamera.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/FileDialog.hpp>
+#include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -16,22 +18,26 @@
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Components/VFXGraphComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <ImGuizmo.h>
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <Windows.h>
 #include <algorithm>
 #include <filesystem>
 #include <utility>
+#include <vector>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
     HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace fbzz::editor {
 
+VFXEditorApp::VFXEditorApp() = default;
 VFXEditorApp::~VFXEditorApp() = default;
 
 bool VFXEditorApp::Init(renderer::IRenderer& renderer,
@@ -100,7 +106,16 @@ bool VFXEditorApp::Init(renderer::IRenderer& renderer,
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // 各制作領域を独立ウィンドウとして並べ替えられるよう、StandaloneでもDockingを有効化する。
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    // Graph / Preview / Inspector 等を VFX Editor 本体の外や別モニターへ移動可能にする。
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     EditorTheme::Apply();
+    if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0) {
+        ImGuiStyle& style = ImGui::GetStyle();
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
 
     const std::filesystem::path configDirectory =
         util::FileSystem::PathFromUtf8(projectRoot) / L"Assets" / L"EditorConfig";
@@ -113,11 +128,20 @@ bool VFXEditorApp::Init(renderer::IRenderer& renderer,
     m_panel.SetStandaloneApplicationMode(true);
     m_panel.visible = true;
     m_panel.OnInit(m_context);
+    // Asset Browser はVFX制作で頻繁に使うため、画面下部へ既定表示する。
+    // WHY: テクスチャやマテリアルを探してInspectorへ割り当てる動線を起動直後から確保する。
+    const std::string assetRoot = util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(projectRoot) / L"Assets");
+    // projectRootはInitで初めて確定するため、引数必須のAssetBrowserPanelもここで構築する。
+    m_assetBrowser = std::make_unique<AssetBrowserPanel>(assetRoot);
+    m_assetBrowser->visible = true;
+    m_assetBrowser->OnInit(m_context);
+    m_panel.Session().assetBrowserVisible = &m_assetBrowser->visible;
     if (!initialAssetPath.empty())
         m_panel.OpenDroppedAsset(m_context, initialAssetPath);
     m_previewRT = resources.CreateRenderTarget(960, 540);
     m_aiPreviewRT = resources.CreateRenderTarget(960, 540);
-    m_panel.previewRT = m_previewRT;
+    m_panel.Session().preview.renderTarget = m_previewRT;
     m_previewCamera.camera.m_position = { 0.0f, 1.0f, -5.0f };
     m_previewCamera.LookAt({ 0.0f, 0.5f, 0.0f });
 
@@ -147,6 +171,9 @@ void VFXEditorApp::OnUpdate(float dt)
     ResizePreviewIfNeeded();
     m_imguiRenderer->ImGuiNewFrame();
     ImGui::NewFrame();
+    // Preview のノード操作ギズモが使う。ImGuizmo は ImGui::NewFrame の直後に
+    // 呼ばないと矩形・マウス状態が前フレームのまま残る (埋め込み版は EditorApp が呼ぶ)。
+    ImGuizmo::BeginFrame();
     if (m_aiPipeServer && m_aiPipeServer->IsRunning() && m_aiDispatcher) {
         m_aiDispatcher->SetVFXPreviewRT(m_aiPreviewRT);
         m_aiPipeServer->DrainRequests([this](const std::string& request) {
@@ -154,6 +181,9 @@ void VFXEditorApp::OnUpdate(float dt)
         });
     }
     m_panel.OnRender(m_context);
+    // Asset Browserも同じDockSpaceへ参加させ、固定ドロワーではなく通常のDockingWindowとして扱う。
+    if (m_assetBrowser && m_assetBrowser->visible)
+        m_assetBrowser->OnRender(m_context);
 
     m_previewSceneManager.SetPhysicsHz(m_context.projectSettings.physics.hz);
     m_previewSceneManager.Update(dt, m_previewPhysicsWorld);
@@ -185,6 +215,7 @@ void VFXEditorApp::OnRender()
     m_renderer->Clear({ 0.018f, 0.021f, 0.028f, 1.0f });
     ImGui::Render();
     m_imguiRenderer->ImGuiRenderDrawData();
+    m_imguiRenderer->ImGuiRenderPlatformWindows();
     m_renderer->EndFrame();
 }
 
@@ -196,6 +227,8 @@ void VFXEditorApp::OnShutdown()
     }
     m_aiDispatcher.reset();
     m_panel.OnShutdown();
+    m_panel.Session().assetBrowserVisible = nullptr;
+    m_assetBrowser.reset();
     m_context.requestOpenVFXAssetDialog = {};
     m_context.activeScene = nullptr;
     m_context.vfxPreviewScene = nullptr;
@@ -208,7 +241,7 @@ void VFXEditorApp::OnShutdown()
     if (m_previewRT.IsValid()) {
         m_resources->Release(m_previewRT);
         m_previewRT = {};
-        m_panel.previewRT = {};
+        m_panel.Session().preview.renderTarget = {};
     }
     if (m_aiPreviewRT.IsValid()) {
         m_resources->Release(m_aiPreviewRT);
@@ -335,15 +368,15 @@ bool VFXEditorApp::ConfirmDocumentSwitch()
 
 void VFXEditorApp::ResizePreviewIfNeeded()
 {
-    const uint32_t width = static_cast<uint32_t>((std::max)(m_panel.previewWidth, 1.0f));
-    const uint32_t height = static_cast<uint32_t>((std::max)(m_panel.previewHeight, 1.0f));
+    const uint32_t width = static_cast<uint32_t>((std::max)(m_panel.Session().preview.width, 1.0f));
+    const uint32_t height = static_cast<uint32_t>((std::max)(m_panel.Session().preview.height, 1.0f));
     auto* current = m_resources->Get(m_previewRT);
     if (current != nullptr && current->GetWidth() == width && current->GetHeight() == height)
         return;
     const auto previous = m_previewRT;
     m_previewRT = m_resources->CreateRenderTarget(width, height);
     if (previous.IsValid()) m_resources->Release(previous);
-    m_panel.previewRT = m_previewRT;
+    m_panel.Session().preview.renderTarget = m_previewRT;
 }
 
 void VFXEditorApp::RenderPreview()
@@ -353,22 +386,68 @@ void VFXEditorApp::RenderPreview()
     renderer::Camera camera = m_previewCamera.camera;
     if (auto* target = m_resources->Get(m_previewRT); target != nullptr && target->GetHeight() > 0)
         camera.m_aspect = static_cast<float>(target->GetWidth()) / static_cast<float>(target->GetHeight());
+    // Preview上のTransformギズモが、描画に使ったのと同じ行列で投影できるようにする。
+    m_panel.Session().preview.camera = camera;
+    m_panel.Session().preview.cameraValid = true;
 
     m_renderer->SetRenderTarget(m_previewRT, *m_resources);
-    m_renderer->Clear({ 0.018f, 0.021f, 0.028f, 1.0f });
+    // 背景色は環境プリセット由来。暗所固定だと昼のマップでの破綻に制作中は気づけない。
+    // 適用するのは操作用 Preview だけで、AI capture 用 World には持ち込まない。
+    const auto& environment = m_panel.Session().preview.environment;
+    m_renderer->Clear({ environment.backgroundColor.x, environment.backgroundColor.y,
+                        environment.backgroundColor.z, environment.backgroundColor.w });
     auto settings = m_context.projectSettings.render;
     settings.selectedObjects.clear();
-    settings.showGrid = false;
+    settings.showGrid = m_panel.Session().preview.showFloorGrid; // 床グリッドの任意表示 (操作用Previewのみ)
+    // Overdraw 診断も操作用 Preview だけ。AI capture は常に通常の絵を返す。
+    settings.particleOverdrawView = m_panel.Session().preview.overdrawView;
+    settings.particleOverdrawIncludeModels =
+        m_panel.Session().preview.includeModelsInOverdraw;
+    settings.particleOverdrawReadback = m_panel.Session().preview.overdrawReadbackRequested;
+    settings.showVFXGizmos = m_panel.Session().preview.showGizmos;
     settings.showSkeleton = false;
     settings.showLightRange = false;
     settings.showConstraints = false;
     settings.showColliders = false;
     settings.showNavMesh = false;
-    settings.showSelectionOutline = false;
+    // 選択対象を専用Maskへ描き、ポストプロセスでシルエット輪郭を合成する。
+    // Entryまたは未選択時はエフェクト全体、Effect Node選択時はそのノードだけを囲む。
+    const auto& session = m_panel.Session();
+    const auto appendSelection = [&](scene::EntityID id) {
+        if (id.IsValid()) settings.selectedObjects.push_back({ id.index, id.generation });
+    };
+    if (session.graphMode) {
+        bool wholeEffect = session.selectedNodeId <= 0;
+        for (const auto& node : session.document.graph.nodes)
+            if (node.id == session.selectedNodeId && node.type == asset::VFXNodeType::Entry)
+                wholeEffect = true;
+        std::vector<scene::EntityID> graphRoots{ session.preview.graphEntity };
+        graphRoots.insert(graphRoots.end(), session.preview.copyEntities.begin(),
+                          session.preview.copyEntities.end());
+        for (const scene::EntityID rootId : graphRoots) {
+            auto* root = m_previewScene->GetGameObject(rootId);
+            auto* graph = root != nullptr
+                ? root->GetComponent<scene::VFXGraphComponent>() : nullptr;
+            if (graph == nullptr) continue;
+            for (const auto& state : graph->runtimeNodes)
+                if (wholeEffect || state.nodeId == session.selectedNodeId)
+                    appendSelection(state.entity);
+        }
+    } else {
+        appendSelection(session.preview.selectedEntity);
+    }
+    settings.showSelectionOutline = !settings.selectedObjects.empty();
+    settings.outlineWidth = 0.025f;
+    settings.outlineColor[0] = 1.0f;
+    settings.outlineColor[1] = 0.58f;
+    settings.outlineColor[2] = 0.12f;
+    settings.outlineColor[3] = 1.0f;
     scene::RenderSystemUIOptions uiOptions{};
     uiOptions.enabled = false;
     scene::RenderSystem(*m_previewScene, *m_renderer, *m_resources, camera, m_previewRT,
                         &settings, fbzz::Layer::Everything, &uiOptions, &m_previewPhysicsWorld);
+    // 同期readbackを毎フレーム行わない。次の計測はDebugメニューから明示要求する。
+    m_panel.Session().preview.overdrawReadbackRequested = false;
 }
 
 void VFXEditorApp::RenderAiPreview()
@@ -377,14 +456,25 @@ void VFXEditorApp::RenderAiPreview()
         && Time::frameCount <= m_aiContext.vfxAiPreviewUntilFrame;
     if (!active || !m_aiPreviewRT.IsValid() || !m_aiPreviewScene) return;
 
-    renderer::Camera camera = m_previewCamera.camera;
+    float aspect = 0.0f;
     if (auto* target = m_resources->Get(m_aiPreviewRT); target != nullptr && target->GetHeight() > 0)
-        camera.m_aspect = static_cast<float>(target->GetWidth()) / static_cast<float>(target->GetHeight());
+        aspect = static_cast<float>(target->GetWidth()) / static_cast<float>(target->GetHeight());
+    // camera 引数が来ていればそちらを使う。無ければ従来どおり操作用プレビューの視点を流用する。
+    const renderer::Camera camera = ai::MakeVFXPreviewCamera(
+        m_aiContext.vfxAiPreviewCamera, m_previewCamera.camera, aspect);
     m_renderer->SetRenderTarget(m_aiPreviewRT, *m_resources);
     m_renderer->Clear({ 0.018f, 0.021f, 0.028f, 1.0f });
     auto settings = m_aiContext.projectSettings.render;
     settings.selectedObjects.clear();
     settings.showGrid = false;
+    // 環境プリセットと担当者の表示設定は AI capture へ持ち込まない。
+    // WHY: 評価画が担当者の表示設定で変わると、AI の視覚判断が再現しなくなる。
+    //      例外は vfx.preview の view で AI 自身が明示要求した診断表示だけ
+    //      (埋め込み版 EditorApp::RenderVFXPreview と同じ規則に揃える)。
+    settings.particleOverdrawView = m_aiContext.vfxAiPreviewOverdraw;
+    // AI capture は実時間性能を要求されないので、overdraw 要求時は数値も併せて取る。
+    settings.particleOverdrawReadback = m_aiContext.vfxAiPreviewOverdraw;
+    settings.showVFXGizmos = m_aiContext.vfxAiPreviewGizmos;
     settings.showSkeleton = false;
     settings.showLightRange = false;
     settings.showConstraints = false;

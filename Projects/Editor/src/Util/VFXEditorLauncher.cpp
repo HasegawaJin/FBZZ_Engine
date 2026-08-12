@@ -146,6 +146,13 @@ bool VFXEditorLauncher::ShouldRouteRequest(const std::string& request)
     if (!envelope.has_value()) return false;
     const std::string type = envelope->PayloadType();
     if (type == "vfx.preview") return true;
+    // 指標は「直前に描いた画」を読み戻すので、描いた側と同じプロセスで処理しないと意味が無い。
+    if (type == "vfx.previewMetrics") return true;
+    // 実行状態も Preview World にしか無い。ここを転送しないと、Editor 本体の
+    // 空の Context が評価され、常に NO_PREVIEW_WORLD が返る。
+    if (type == "vfx.runtime") return true;
+    // Preview World の存在確認そのもの。転送先が居なければ EnsureAndForward が起動する。
+    if (type == "vfx.previewEnsure") return true;
     if (type != "viewport.capture") return false;
     const ai::JsonValue* view = envelope->payload.Find("view");
     return view != nullptr && view->IsString() && view->AsString() == "vfx";
@@ -186,12 +193,23 @@ bool VFXEditorLauncher::EnsureAndForward(const std::string& projectRoot,
                                          std::string& response)
 {
     if (SendRequest(request, response, 50)) return true;
-    if (!Launch(projectRoot)) return false;
+    // ここから先は「独立プロセスがまだ居ない」ケース。起動して初期化を待つ。
+    // WHY: 失敗したときに理由が一切残らないと、呼び出し側 (AI) には
+    //      「Preview World がありません」としか見えず、exe が無いのか
+    //      起動したが Pipe を開けていないのかを切り分けられない。
+    FBZZ_LOG_INFO("VFXEditorLauncher: VFX要求の転送先が居ないため FBZZVFXEditor.exe を起動します");
+    if (!Launch(projectRoot)) {
+        FBZZ_LOG_ERROR("VFXEditorLauncher: FBZZVFXEditor.exe を起動できませんでした "
+                       "(VFX Preview World を必要とする要求は処理できません)");
+        return false;
+    }
     // 新規プロセスのEngine/Renderer/Command Bus初期化だけを待つ。通常は数百msで接続可能になる。
     for (int attempt = 0; attempt < 80; ++attempt) {
         Sleep(75);
         if (SendRequest(request, response, 75)) return true;
     }
+    FBZZ_LOG_ERROR("VFXEditorLauncher: FBZZVFXEditor.exe は起動しましたが、"
+                   "6秒以内に専用Command Bus へ接続できませんでした");
     return false;
 }
 

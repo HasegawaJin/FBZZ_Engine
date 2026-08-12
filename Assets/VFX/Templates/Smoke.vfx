@@ -1,13 +1,474 @@
-version = 3
+version = 5
 name = "Smoke"
-maxParticles = 1200
+description = "立ち上る煙 (煙突 / くすぶり / 蒸気)。本体と上層のたなびきの2層 + 弱い上昇風。発光を持たないので背景の明暗で見え方が大きく変わる。"
+tags = ["smoke", "loop", "ambient", "environment"]
+requiredRoles = ["body"]
+# 上層のたなびきまで届いた時刻。早すぎると本体しか写らない。
+thumbnailTime = 3.0
+maxParticles = 2200
 maxLights = 0
-maxAudioVoices = 0
-nodes = [
-  { id = 1, type = 0, name = "Entry", duration = 0.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0] },
-  { id = 2, type = 2, name = "Lit Smoke", duration = 6.0, editorX = 260.0, position = [0.0,0.0,0.0], rotation = [0.0,0.0,0.0], scale = [1.0,1.0,1.0], particle = { duration = 6.0, loop = true, emitRate = 24.0, maxParticles = 900, lifetime = 3.8, sizeStart = 0.5, sizeEnd = 3.5, emitVelocity = [0.0,1.4,0.0], velocitySpread = 0.55, gravity = [0.0,0.2,0.0], texturePath = "Assets/Textures/Particles/smoke_08.png", sixWayLighting = true, lightingStrength = 1.5, noiseStrength = 1.1, noiseFrequency = 0.7 } }
-]
-links = [{ from = 1, to = 2, trigger = 1, delay = 0.0 }]
-parameters = [{ name = "Smokiness", type = 0, minimum = 0.0, maximum = 120.0, hasRange = true, default = { source = 0, constantType = 0, float = 24.0 } }]
-bindings = [{ paramName = "Smokiness", nodeId = 2, schemaPath = "particle.emitRate" }]
+maxAudioVoices = 1
 
+# ------------------------------------------------------------------------------
+# Smoke — 立ち上る煙 (煙突 / くすぶり / 蒸気)。
+# 層: 濃い根元 / 拡散する本体 / 薄い上層 / 空気の歪み + 渦 + 上昇風
+# WHY: 煙の説得力は密度ではなく「上昇に伴って崩れていく過程」で決まる。
+#      根元は濃く速く、上へ行くほど薄く遅く広がるよう3層に分け、
+#      Vortex 力場でまっすぐ立ち上らせないようにしている。
+#
+# 受け影 (receiveShadows) を全層で有効にしている。
+# WHY: 煙が背景から浮いて見える最大の原因は「影の中でも明るいまま」であること。
+#      非発光の粒子は影を受けて初めてシーンに埋まる。
+#
+# renderPriority で層の前後を固定している (小さいほど奥)。
+# WHY: エミッター間の描画順を GameObject の並びに任せると、シーンを編集しただけで
+#      煙の重なりが入れ替わる。歪み (Warm Air) は背景色を読むため必ず最後に描く。
+# ------------------------------------------------------------------------------
+
+[[nodes]]
+id = 1
+type = 0
+name = "Entry"
+duration = 0.0
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+
+# --- 根元: 濃く小さく速い ------------------------------------------------------
+[[nodes]]
+id = 2
+type = 2
+name = "Base Smoke"
+duration = 8.0
+editorX = 260.0
+editorY = -40.0
+position = [0.0, 0.05, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 8.0
+loop = true
+emitRate = 26.0
+maxParticles = 340
+shape = 1
+sphereRadius = 0.18
+sizeStart = 0.5
+sizeEnd = 1.5
+sizeCurvePower = 0.85
+lifetime = 2.0
+lifetimeRandom = 0.6
+emitVelocity = [0.0, 2.0, 0.0]
+velocitySpread = 0.35
+velocityDamping = 0.5
+gravity = [0.0, 0.6, 0.0]
+angularVelocityMin = -0.7
+angularVelocityMax = 0.7
+texturePath = "Assets/Textures/Particles/smoke_04.png"
+# 下層の煙
+blendMode = 2
+sortMode = 1
+sixWayLighting = true
+lightingStrength = 0.55
+softParticles = true
+softParticleFadeDistance = 0.4
+noiseStrength = 0.8
+noiseFrequency = 0.7
+noiseSpeed = 0.5
+renderPriority = 0
+receiveShadows = true
+shadowStrength = 0.9   # "Shadow Response" が両ノードを駆動するため値を揃える
+# 粒子ごとに濃さを散らす。全部同じ灰色だと群れが一枚の板に見える。
+colorVariation = 0.10
+# 湧き出しは勢いよく回り、上昇に伴って回転が止まる。
+useRotationCurve = true
+rotationCurve = [[0.0, 1.0], [1.0, 0.15]]
+# 前半は素直に上がり、後半で空気抵抗が効いて頭打ちになる。
+useDragCurve = true
+dragCurve = [[0.0, 0.6], [1.0, 1.9]]
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.46, 0.44, 0.42, 0.0],
+  [0.15, 0.40, 0.38, 0.37, 0.85],
+  [0.7, 0.46, 0.45, 0.44, 0.5],
+  [1.0, 0.52, 0.52, 0.52, 0.0],
+]
+
+# --- 本体: 大きく広がる --------------------------------------------------------
+[[nodes]]
+id = 3
+type = 2
+name = "Body Smoke"
+duration = 8.0
+editorX = 260.0
+editorY = 200.0
+position = [0.0, 1.2, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 8.0
+loop = true
+emitRate = 16.0
+maxParticles = 520
+shape = 1
+sphereRadius = 0.45
+sizeStart = 1.3
+sizeEnd = 4.2
+sizeCurvePower = 0.7
+lifetime = 4.0
+lifetimeRandom = 1.4
+emitVelocity = [0.0, 1.4, 0.0]
+velocitySpread = 0.5
+velocityDamping = 0.3
+gravity = [0.0, 0.35, 0.0]
+angularVelocityMin = -0.4
+angularVelocityMax = 0.4
+texturePath = "Assets/Textures/Particles/smoke_08.png"
+# 本体の煙
+blendMode = 2
+sortMode = 1
+sixWayLighting = true
+lightingStrength = 0.65
+softParticles = true
+softParticleFadeDistance = 0.6
+noiseStrength = 1.3
+noiseFrequency = 0.4
+noiseSpeed = 0.3
+renderPriority = 10
+receiveShadows = true
+shadowStrength = 0.9
+colorVariation = 0.12
+# 上昇するほど横へ広がる。等方のままだと球が並んでいるように見える。
+sizeAxisScale = [1.0, 1.0, 1.0]   # ゆっくり回る本体なので回転を残し、横伸ばしを捨てる
+useDragCurve = true
+dragCurve = [[0.0, 0.5], [1.0, 2.0]]
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.50, 0.49, 0.48, 0.0],
+  [0.18, 0.48, 0.47, 0.46, 0.6],
+  [0.7, 0.56, 0.56, 0.56, 0.32],
+  [1.0, 0.62, 0.62, 0.62, 0.0],
+]
+
+# --- 上層: 薄く広く、ほぼ消えかけ ---------------------------------------------
+[[nodes]]
+id = 4
+type = 2
+name = "Upper Haze"
+duration = 8.0
+editorX = 260.0
+editorY = 430.0
+position = [0.0, 3.4, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 8.0
+loop = true
+emitRate = 7.0
+maxParticles = 300
+shape = 1
+sphereRadius = 1.0
+sizeStart = 3.0
+sizeEnd = 7.5
+sizeCurvePower = 0.6
+lifetime = 5.5
+lifetimeRandom = 2.0
+emitVelocity = [0.0, 0.7, 0.0]
+velocitySpread = 0.35
+velocityDamping = 0.2
+gravity = [0.0, 0.15, 0.0]
+texturePath = "Assets/Textures/Particles/smoke_10.png"
+# 上層のたなびき
+blendMode = 2
+sortMode = 1
+sixWayLighting = true
+lightingStrength = 0.75
+softParticles = true
+softParticleFadeDistance = 0.9
+noiseStrength = 0.7
+noiseFrequency = 0.25
+noiseSpeed = 0.2
+renderPriority = 20
+receiveShadows = true
+shadowStrength = 0.75
+colorVariation = 0.08
+# 最上層は最も平たく伸びる。上空で薄く広がる形を作る。
+sizeAxisScale = [1.5, 0.85, 1.0]
+useColorGradient = true
+colorGradient = [
+  [0.0, 0.60, 0.60, 0.60, 0.0],
+  [0.25, 0.62, 0.62, 0.62, 0.24],
+  [1.0, 0.68, 0.68, 0.68, 0.0],
+]
+
+# --- 熱による空気の歪み。蒸気/熱煙として使うときに効く ------------------------
+[[nodes]]
+id = 5
+type = 2
+name = "Warm Air"
+duration = 8.0
+editorX = 580.0
+editorY = -40.0
+position = [0.0, 0.4, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.particle]
+# テンプレートは複数Emitterで一つの演出Boundsを作るため、Emitter単位のカリングと距離LODを使わない。
+cullingEnabled = false
+lodEnabled = false
+duration = 8.0
+loop = true
+emitRate = 9.0
+maxParticles = 90
+shape = 1
+sphereRadius = 0.25
+sizeStart = 0.7
+sizeEnd = 2.2
+lifetime = 2.0
+lifetimeRandom = 0.7
+emitVelocity = [0.0, 1.8, 0.0]
+velocitySpread = 0.3
+gravity = [0.0, 0.5, 0.0]
+texturePath = "Assets/Textures/Particles/smoke_02.png"
+blendMode = 1
+sortMode = 1
+distortion = true
+distortionStrength = 0.014
+softParticles = true
+softParticleFadeDistance = 0.6
+emissiveScale = 0.0
+# 歪みは背景色を読むため必ず最後に描く。手前の煙より先に描くと、
+# まだ描かれていない煙を屈折させることになり結果が変わる。
+renderPriority = 100
+useColorGradient = true
+colorGradient = [
+  [0.0, 1.0, 1.0, 1.0, 0.0],
+  [0.35, 1.0, 1.0, 1.0, 0.55],
+  [1.0, 1.0, 1.0, 1.0, 0.0],
+]
+
+# --- 渦: まっすぐ立ち上らせない ------------------------------------------------
+[[nodes]]
+id = 6
+type = 9
+name = "Rising Vortex"
+duration = 8.0
+editorX = 580.0
+editorY = 210.0
+position = [0.0, 2.0, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 3
+strength = 1.1
+radius = 5.0
+falloffPower = 1.5
+direction = [0.0, 1.0, 0.0]
+
+# --- 乱流: 輪郭を崩す ----------------------------------------------------------
+[[nodes]]
+id = 7
+type = 9
+name = "Drift Turbulence"
+duration = 8.0
+editorX = 580.0
+editorY = 400.0
+position = [0.0, 2.5, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 4
+strength = 1.5
+radius = 7.0
+falloffPower = 1.0
+noiseFrequency = 0.28
+noiseSpeed = 0.35
+
+# --- 横風: 風下へ流す ----------------------------------------------------------
+[[nodes]]
+id = 8
+type = 9
+name = "Ambient Wind"
+duration = 8.0
+editorX = 880.0
+editorY = -40.0
+position = [0.0, 2.5, 0.0]
+rotation = [0.0, 0.0, 0.0]
+scale = [1.0, 1.0, 1.0]
+[nodes.forceField]
+fieldType = 0
+strength = 0.9
+radius = 0.0
+falloffPower = 1.0
+direction = [1.0, 0.1, 0.3]
+
+[[links]]
+from = 1
+to = 2
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 3
+trigger = 1
+delay = 0.4
+[[links]]
+from = 1
+to = 4
+trigger = 1
+delay = 1.0
+[[links]]
+from = 1
+to = 5
+trigger = 1
+delay = 0.1
+[[links]]
+from = 1
+to = 6
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 7
+trigger = 1
+delay = 0.0
+[[links]]
+from = 1
+to = 8
+trigger = 1
+delay = 0.0
+
+[[groups]]
+id = 1
+title = "Density Layers"
+note = "根元は濃く速く、上へ行くほど薄く遅く。この差が高さ感を作る。"
+x = 230.0
+y = -90.0
+width = 290.0
+height = 640.0
+color = [0.42, 0.44, 0.50, 0.16]
+
+[[groups]]
+id = 2
+title = "Air Motion"
+note = "渦 + 乱流。煙が円柱に見えるときはここを強める。"
+x = 550.0
+y = -90.0
+width = 290.0
+height = 600.0
+color = [0.28, 0.56, 0.52, 0.14]
+
+[[groups]]
+id = 3
+title = "Environment"
+note = "radius=0 の Wind はシーン全体へ減衰なしに効く。"
+x = 850.0
+y = -90.0
+width = 290.0
+height = 220.0
+color = [0.34, 0.44, 0.66, 0.14]
+
+[[parameters]]
+name = "Density"
+type = 0
+minimum = 0.0
+maximum = 120.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 26.0
+[[bindings]]
+paramName = "Density"
+nodeId = 2
+schemaPath = "particle.emitRate"
+
+[[parameters]]
+name = "Plume Height"
+type = 0
+minimum = 0.5
+maximum = 10.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 2.0
+[[bindings]]
+paramName = "Plume Height"
+nodeId = 2
+schemaPath = "particle.lifetime"
+
+[[parameters]]
+name = "Spread"
+type = 0
+minimum = 0.5
+maximum = 16.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 4.2
+[[bindings]]
+paramName = "Spread"
+nodeId = 3
+schemaPath = "particle.sizeEnd"
+
+[[parameters]]
+name = "Warm Air Distortion"
+type = 0
+minimum = 0.0
+maximum = 0.08
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.014
+[[bindings]]
+paramName = "Warm Air Distortion"
+nodeId = 5
+schemaPath = "particle.distortionStrength"
+
+# 影の受け具合。屋外の強い日差しでは 1.0、屋内や夜は下げて煙自体の明度を残す。
+[[parameters]]
+name = "Shadow Response"
+type = 0
+minimum = 0.0
+maximum = 1.0
+hasRange = true
+[parameters.default]
+source = 0
+constantType = 0
+float = 0.9
+[[bindings]]
+paramName = "Shadow Response"
+nodeId = 3
+schemaPath = "particle.shadowStrength"
+[[bindings]]
+paramName = "Shadow Response"
+nodeId = 2
+schemaPath = "particle.shadowStrength"
+
+# 上層の潰れ方。風の強い場面ほど X を上げると横へ流れて見える。
+# sizeAxisScale は Vector3 の leaf なので、成分ごとには bind できず 3 軸まとめて指定する。
+[[parameters]]
+name = "Haze Shape"
+type = 4
+minimum = 0.0
+maximum = 0.0
+hasRange = false
+[parameters.default]
+source = 0
+constantType = 4
+vector3 = [1.5, 0.85, 1.0]
+[[bindings]]
+paramName = "Haze Shape"
+nodeId = 4
+schemaPath = "particle.sizeAxisScale"
