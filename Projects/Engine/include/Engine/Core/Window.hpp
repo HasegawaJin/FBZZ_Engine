@@ -8,6 +8,7 @@
 #include <vector>
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <Windows.h>
 
 // COM の IDropTarget は <oleidl.h> で定義される。ヘッダに OLE 依存を波及させないよう前方宣言に留める。
@@ -15,9 +16,18 @@ struct IDropTarget;
 
 namespace fbzz::core
 {
-    class Window
-    {
-    public:
+class Window
+{
+public:
+    // OSのメニューバーへ移す項目。Editor層がWin32 HMENUを直接扱わないための境界。
+    struct NativeMenuItem {
+        std::wstring label;
+        uint16_t commandId = 0;
+        bool separator = false;
+        std::vector<NativeMenuItem> children;
+    };
+    using NativeMenuCommandCallback = std::function<bool(uint16_t)>;
+
         struct Config
         {
             std::wstring title      = L"FBZZ Engine";
@@ -35,6 +45,9 @@ namespace fbzz::core
         // WHY: 起動後にシーン名や使用中の描画バックエンド (DirectX 11/12) を反映させたい上位が、
         //      生の Win32 (SetWindowTextW) を直接叩かずに済むよう Window 抽象へ集約する。
         void SetTitle(const std::wstring& title);
+        // Unityのようなネイティブメニューバーを設定する。WindowがHMENUの所有権を持つ。
+        void SetNativeMenu(std::vector<NativeMenuItem> menus, NativeMenuCommandCallback callback);
+        void ClearNativeMenu();
 
         // メッセージポンプ。WM_QUIT を受け取ったら ShouldClose() が true になる
         void PollEvents();
@@ -95,6 +108,8 @@ namespace fbzz::core
         FileDropCallback      m_fileDropCallback;
         FileDragOverCallback  m_fileDragOverCallback;
         FileDragLeaveCallback m_fileDragLeaveCallback;
+        HMENU m_nativeMenu = nullptr;
+        NativeMenuCommandCallback m_nativeMenuCommandCallback;
         // OLE ドロップターゲット (RegisterDragDrop に登録)。Shutdown で Revoke + Release する。
         IDropTarget*          m_dropTarget = nullptr;
         bool                  m_oleInitialized = false;

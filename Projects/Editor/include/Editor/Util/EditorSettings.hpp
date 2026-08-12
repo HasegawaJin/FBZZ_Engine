@@ -31,6 +31,8 @@ struct EditorSettings {
     bool  showGrid            = true;
     float gridSize            = 1.0f;
     bool  showLightRange      = true;
+    // 力場の影響体積とエミッター発生形状。常時出すと邪魔なので既定は off。
+    bool  showVFXGizmos       = false;
     bool  showSkeleton        = false;
     bool  showStats           = true;  // Game Viewport の Stats オーバーレイ
 
@@ -45,6 +47,7 @@ struct EditorSettings {
     //      enum クラスを TOML に直接書くと tomlplusplus の型変換が複雑になるため。
     int   gizmoMode           = 0; // 0=Translate, 1=Rotate, 2=Scale
     int   gizmoSpace          = 0; // 0=World, 1=Local
+    int   gizmoPivot          = 0; // 0=Pivot, 1=Center
 
     // --- ゲームビュー -----------------------------------------------------
     // WHY: EditorContext::GameViewportAspect の整数値として保存する (上記と同理由)

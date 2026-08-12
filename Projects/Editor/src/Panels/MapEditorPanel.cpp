@@ -3,6 +3,7 @@
 // Map Editing Mode のツール選択・設定パネル実装
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include "MapToolCommon.hpp"
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -292,7 +293,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
             if (column > 0) ImGui::SameLine();
             const bool active = ctx.mapActiveTool == def.tool;
             if (active)
-                ImGui::PushStyleColor(ImGuiCol_Button, { 0.22f, 0.55f, 0.32f, 1.0f });
+        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Secondary));
             char label[32];
             std::snprintf(label, sizeof(label), "%s (%s)", def.label, def.shortcut);
             if (ImGui::Button(label, { buttonW, 0.0f }))

@@ -83,13 +83,29 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
         [](scene::DecalComponent& dc, EditorContext& ctx) {
 
             ImGui::SeparatorText("Textures");
-            widgets::AssetPathField("Albedo (t0)",   dc.albedoTexPath,   ".fztex,.png,.dds", ctx.projectRoot);
-            widgets::AssetPathField("Normal (t1)",   dc.normalTexPath,   ".fztex,.png,.dds", ctx.projectRoot);
-            widgets::AssetPathField("Emissive (t3)", dc.emissiveTexPath, ".fztex,.png,.dds", ctx.projectRoot);
+            widgets::AssetPathField("Albedo (t0)", dc.albedoTexPath,
+                                    widgets::kTextureAssetFilter, ctx.projectRoot);
+            widgets::AssetPathField("Normal (t1)", dc.normalTexPath,
+                                    widgets::kTextureAssetFilter, ctx.projectRoot);
+            widgets::AssetPathField("Emissive (t3)", dc.emissiveTexPath,
+                                    widgets::kTextureAssetFilter, ctx.projectRoot);
 
             ImGui::SeparatorText("Surface");
             ImGui::ColorEdit4("Albedo Color",     dc.albedoColor);
             ImGui::SliderFloat("Normal Strength", &dc.normalStrength, 0.0f, 2.0f);
+
+            ImGui::SeparatorText("Angle Fade");
+            ImGui::SliderFloat("Angle Fade", &dc.angleFadeStrength, 0.0f, 1.0f);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "受け面が投影軸から傾くほどデカールを薄くします (0 で無効)。\n"
+                    "OBB 投影は斜めな面へ当てるとテクスチャが引き伸ばされ、長い筋になります。\n"
+                    "着弾痕や血痕が壁と床の角をまたいだ瞬間に「伸びた汚れ」として露見する、\n"
+                    "デカールで最も目立つ破綻がこれです。");
+            }
+            ImGui::SliderFloat("Fade Limit (deg)", &dc.angleFadeDegrees, 0.0f, 89.0f, "%.0f\xc2\xb0");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("これ以上寝た面ではデカールが完全に消えます。");
 
             ImGui::SeparatorText("Emissive");
             ImGui::ColorEdit3("Emissive Color", dc.emissiveColor);
@@ -205,18 +221,74 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     // ── PostProcessVolumeComponent ───────────────────────────────────────────────
     DrawComponentSection<scene::PostProcessVolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Post Process Volume",
-        [](scene::PostProcessVolumeComponent& ppv, EditorContext&) {
+        [](scene::PostProcessVolumeComponent& ppv, EditorContext& ctx) {
+
+            ImGui::SeparatorText("Profile");
+
+            // プロファイル参照スロット。.fzdata をドロップすると参照モードになる。
+            // WHY 参照を上に置くか: 参照が入るとインライン設定は使われなくなるため、
+            //     「今どちらが効いているか」を最初に見せる必要がある。
+            widgets::AssetPathField("Profile", ppv.profile.ref.path, ".fzdata", ctx.projectRoot);
+            widgets::AcceptAssetPathDrop(ppv.profile.ref.path, ".fzdata");
+
+            const auto* resolvedProfile = ppv.profile.Get();
+            const bool usingProfile = resolvedProfile != nullptr;
+            if (!ppv.profile.ref.path.empty() && !usingProfile) {
+                ImGui::TextColored({ 1.0f, 0.4f, 0.4f, 1.0f },
+                    "プロファイルを解決できません — インライン設定にフォールバック中");
+            }
+
+            // このボリュームが実際に何を変えるのかを一覧で見せる。
+            // WHY: プロファイル側で override を絞っている場合、ボリュームを置いても
+            //      「一部しか変わらない」のが正しい挙動になる。それを知らずに
+            //      「効いていない」と誤解されるのを防ぐ。
+            if (usingProfile) {
+                const auto& ov = resolvedProfile->overrides;
+                const struct { const char* label; bool value; } SECTIONS[] = {
+                    { "FXAA",       ov.fxaa },          { "Exposure",     ov.exposure },
+                    { "Bloom",      ov.bloom },         { "AO",           ov.ambientOcclusion },
+                    { "Fog",        ov.fog },           { "ColorGrading", ov.colorGrading },
+                    { "Vignette",   ov.vignette },      { "FilmGrain",    ov.filmGrain },
+                    { "Sharpen",    ov.sharpen },       { "DoF",          ov.depthOfField },
+                    { "Lens",       ov.lens },          { "Stylized",     ov.stylized },
+                    { "ImageQuality", ov.imageQuality },{ "CustomFX",     ov.customEffects },
+                };
+                std::string driven;
+                for (const auto& section : SECTIONS) {
+                    if (!section.value) continue;
+                    if (!driven.empty()) driven += ", ";
+                    driven += section.label;
+                }
+                if (driven.empty())
+                    ImGui::TextColored({ 1.0f, 0.75f, 0.3f, 1.0f },
+                        "このプロファイルは何も上書きしません (Overrides が全て未チェック)");
+                else
+                    ImGui::TextDisabled("上書きするセクション: %s", driven.c_str());
+            }
 
             ImGui::SeparatorText("Volume");
             ImGui::Checkbox("Global",          &ppv.isGlobal);
+            ImGui::DragInt("Priority",         &ppv.priority);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("小さいものから順に合成する。大きいほど後勝ちで強く出る。");
             ImGui::DragFloat("Blend Weight",   &ppv.blendWeight,     0.01f, 0.0f, 1.0f);
-            if (!ppv.isGlobal)
+            if (!ppv.isGlobal) {
                 ImGui::DragFloat("Influence Radius (m)", &ppv.influenceRadius, 0.5f, 0.1f, 1000.0f);
+                ImGui::DragFloat("Blend Distance (m)",   &ppv.blendDistance,   0.1f, 0.0f, 1000.0f);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("境界の内側でこの距離だけかけてフェードする。\n"
+                                      "0 にすると半径をまたいだ瞬間にルックが飛ぶ。");
+            }
 
-            ImGui::SeparatorText("Post Process Settings");
-            // DrawPostProcessInspector は ProjectSettings Inspector と共用のウィジェット。
-            // RenderSettings* に nullptr を渡すと TAA/GTAO 排他スロット警告は出ないが動作に影響しない。
-            DrawPostProcessInspector(ppv.settings, nullptr);
+            ImGui::SeparatorText("Inline Settings");
+            if (usingProfile) {
+                ImGui::TextDisabled("プロファイル参照中のため、以下のインライン設定は使われません。");
+                ImGui::TextDisabled("編集するにはプロファイルアセット側を開いてください。");
+            } else {
+                // DrawPostProcessInspector は ProjectSettings Inspector と共用のウィジェット。
+                // RenderSettings* に nullptr を渡すと TAA/GTAO 排他スロット警告は出ないが動作に影響しない。
+                DrawPostProcessInspector(ppv.settings, nullptr);
+            }
         });
 
 } // DrawEnvironmentInspectors

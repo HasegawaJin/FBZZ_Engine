@@ -168,7 +168,8 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 trail.loadedTexturePath.clear();
             }
             // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
-            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
+            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath,
+                                        widgets::kTextureAssetFilter, ctx.projectRoot)) {
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }
@@ -204,7 +205,8 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 trail.loadedTexturePath.clear();
             }
             // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
-            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
+            if (widgets::AssetPathField("Texture (fallback)", trail.texturePath,
+                                        widgets::kTextureAssetFilter, ctx.projectRoot)) {
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }

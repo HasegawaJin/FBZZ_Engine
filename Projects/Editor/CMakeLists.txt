@@ -29,7 +29,10 @@ set(EDITOR_ASSIMP_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assi
 
 set(EDITOR_STB_INCLUDE     "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Stb")
 set(EDITOR_TINYEXR_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/TinyExr")
-set(EDITOR_IMNODES_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/ImNodes")
+# NOTE: ImNodes のヘッダ検索パスは imnodes ターゲットが PUBLIC で伝播させる。
+#       ここで手動の include パスを持つと「.lib はリンクしていないがヘッダは見える」
+#       という状態を作れてしまい、#include <imnodes.cpp> で実装を各 .obj へ抱え込む
+#       回避策が成立してしまう (実際そうなっていた)。パスは持たない。
 
 target_compile_definitions(fbzz_editor
     PRIVATE
@@ -46,13 +49,18 @@ target_include_directories(fbzz_editor
     PRIVATE ${EDITOR_ASSIMP_INCLUDE}
     PRIVATE ${EDITOR_STB_INCLUDE}
     PRIVATE ${EDITOR_TINYEXR_INCLUDE}
-    PRIVATE ${EDITOR_IMNODES_INCLUDE}
 )
 
 target_link_libraries(fbzz_editor
     PUBLIC
         fbzz_engine
         imgui
+        # WHY PUBLIC か: ノードエディタは GraphCanvas / VFX / Animation / BehaviorTree の
+        #      4 か所が使う。以前は imnodes.lib をリンクせず AnimationGraphPanel.cpp が
+        #      #include <imnodes.cpp> で実装を自分の .obj へ抱えていたため、
+        #      「他のどの .cpp も同じことをしてはならない」という規約をヘッダの
+        #      コメントで守るしかなかった。正式リンクにすれば二重定義はリンカが弾く。
+        imnodes
         imguizmo
         tomlplusplus
         # fbzz_editor は STATIC lib なので直接使う Assimp/DirectXTex シンボルを

@@ -3,9 +3,13 @@
 // プロジェクト固有の ImGui カスタムウィジェット実装
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
+#include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -18,6 +22,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <system_error>
 #include <unordered_map>
 #include <vector>
 
@@ -43,15 +48,25 @@ AssetPickerState s_picker;
 struct PickerThumb {
     void*  texId = nullptr;              // 画像 / マテリアルのアルベドテクスチャ
     ImVec4 color = { 0.0f, 0.0f, 0.0f, 0.0f }; // マテリアルのアルベド色 (テクスチャ無し時, a>0 で有効)
+    uint32_t width = 0;
+    uint32_t height = 0;
 };
 // パス → サムネイル。ピッカーを開くたびにクリアして最新の見た目を反映する。
 std::unordered_map<std::string, PickerThumb> s_thumbCache;
+std::unordered_map<std::string, std::vector<asset::SpriteRect>> s_spriteCache;
+renderer::ResourceManager* s_thumbnailResources = nullptr;
+renderer::IImGuiRenderer* s_thumbnailImGui = nullptr;
 
-// このプロジェクトの ImGui は ImTextureID を ImU64 として扱うため、void* を数値経由で変換する。
-ImTextureID ToImTextureID(void* ptr)
-{
-    return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
-}
+struct AssignedSpriteThumb {
+    void* texId = nullptr;
+    ImVec2 uvMin = { 0.0f, 0.0f };
+    ImVec2 uvMax = { 1.0f, 1.0f };
+    std::string displayName;
+    std::filesystem::file_time_type metaWriteTime{};
+    std::uint64_t resetVersion = 0;
+    bool resolved = false;
+};
+std::unordered_map<std::string, AssignedSpriteThumb> s_assignedSpriteCache;
 
 bool IsImageExt(const std::string& ext)
 {
@@ -72,7 +87,13 @@ const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& r
     if (res && imgui) {
         if (IsImageExt(ext)) {
             const auto h = res->LoadTexture(absPath);
-            if (h.IsValid()) t.texId = imgui->GetImTextureID(h, *res);
+            if (h.IsValid()) {
+                t.texId = imgui->GetImTextureID(h, *res);
+                if (const renderer::ITexture* texture = res->Get(h)) {
+                    t.width = texture->GetWidth();
+                    t.height = texture->GetHeight();
+                }
+            }
         } else if (ext == ".mat") {
             const auto mh = asset::AssetManager::LoadMaterial(rel);
             if (const asset::MaterialAsset* m = asset::AssetManager::GetMaterial(mh)) {
@@ -94,6 +115,96 @@ const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& r
     return s_thumbCache.emplace(absPath, t).first->second;
 }
 
+// Sprite型Textureのサブアセット矩形を.metaから取得する。
+// ピッカーを開いている間はキャッシュし、候補行ごとのTOML再解析を避ける。
+const std::vector<asset::SpriteRect>& ResolveSprites(const std::string& absPath)
+{
+    if (auto found = s_spriteCache.find(absPath); found != s_spriteCache.end())
+        return found->second;
+
+    std::vector<asset::SpriteRect> sprites;
+    asset::TextureAsset textureAsset;
+    asset::TexDescSerializer serializer;
+    const std::string metaPath = absPath + ".meta";
+    if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(metaPath))
+        && serializer.Load(metaPath, textureAsset)
+        && textureAsset.settings.type == asset::TextureType::Sprite) {
+        sprites = textureAsset.settings.sprites;
+        if (sprites.empty()) {
+            asset::SpriteRect sprite;
+            sprite.name = util::FileSystem::PathToUtf8(
+                util::FileSystem::PathFromUtf8(absPath).stem());
+            sprites.push_back(std::move(sprite));
+        }
+    }
+    return s_spriteCache.emplace(absPath, std::move(sprites)).first->second;
+}
+
+// Inspector に割り当て済みの Sprite 参照を、元 Texture と UV 矩形へ解決する。
+// WHY: 名前だけでは atlas 内のどの絵か確認できないため、閉じたフィールドにも切り抜き画像を表示する。
+const AssignedSpriteThumb& ResolveAssignedSpriteThumb(const std::string& reference)
+{
+    static const AssignedSpriteThumb EMPTY;
+    if (s_thumbnailResources == nullptr || s_thumbnailImGui == nullptr) return EMPTY;
+
+    std::string texturePath;
+    std::string spriteName;
+    if (!asset::ParseSpriteReference(reference, texturePath, spriteName)) return EMPTY;
+
+    const std::string absPath = asset::AssetManager::ResolveAssetPath(texturePath);
+    const std::string metaPath = absPath + ".meta";
+    std::error_code ec;
+    const auto metaWriteTime = std::filesystem::last_write_time(
+        util::FileSystem::PathFromUtf8(metaPath), ec);
+    const std::uint64_t resetVersion = s_thumbnailResources->GetResetVersion();
+
+    AssignedSpriteThumb& cached = s_assignedSpriteCache[reference];
+    if (cached.resolved && cached.metaWriteTime == metaWriteTime
+        && cached.resetVersion == resetVersion)
+        return cached;
+
+    cached = {};
+    cached.metaWriteTime = metaWriteTime;
+    cached.resetVersion = resetVersion;
+    cached.resolved = true;
+
+    asset::TextureAsset textureAsset;
+    asset::TexDescSerializer serializer;
+    if (ec || !serializer.Load(metaPath, textureAsset)) return cached;
+    asset::SpriteRect implicitSingleSprite;
+    const asset::SpriteRect* sprite = asset::FindSprite(textureAsset.settings, spriteName);
+    if (sprite == nullptr
+        && textureAsset.settings.type == asset::TextureType::Sprite
+        && textureAsset.settings.spriteMode == asset::SpriteMode::Single) {
+        implicitSingleSprite.name = util::FileSystem::PathToUtf8(
+            util::FileSystem::PathFromUtf8(absPath).stem());
+        if (implicitSingleSprite.name == spriteName)
+            sprite = &implicitSingleSprite;
+    }
+    if (sprite == nullptr) return cached;
+    cached.displayName = sprite->name;
+
+    const auto handle = s_thumbnailResources->LoadTexture(absPath);
+    const renderer::ITexture* texture = handle.IsValid()
+        ? s_thumbnailResources->Get(handle) : nullptr;
+    if (texture == nullptr) return cached;
+
+    cached.texId = s_thumbnailImGui->GetImTextureID(handle, *s_thumbnailResources);
+    const float width = static_cast<float>(std::max<uint32_t>(1, texture->GetWidth()));
+    const float height = static_cast<float>(std::max<uint32_t>(1, texture->GetHeight()));
+    const float spriteWidth = sprite->width > 0 ? static_cast<float>(sprite->width) : width;
+    const float spriteHeight = sprite->height > 0 ? static_cast<float>(sprite->height) : height;
+    cached.uvMin = {
+        std::clamp(static_cast<float>(sprite->x) / width, 0.0f, 1.0f),
+        std::clamp(static_cast<float>(sprite->y) / height, 0.0f, 1.0f)
+    };
+    cached.uvMax = {
+        std::clamp((static_cast<float>(sprite->x) + spriteWidth) / width, 0.0f, 1.0f),
+        std::clamp((static_cast<float>(sprite->y) + spriteHeight) / height, 0.0f, 1.0f)
+    };
+    return cached;
+}
+
 // 拡張子 → バッジ色
 ImVec4 ExtBadgeColor(const std::string& ext)
 {
@@ -109,61 +220,94 @@ ImVec4 ExtBadgeColor(const std::string& ext)
     return { 0.6f, 0.6f, 0.6f, 1.0f }; // gray
 }
 
+// 拡張子フィルタの分解は AssetSearch と共通にする。
+// WHY 薄いラッパーを残すか: 呼び出し側が 3 箇所あり、シグネチャ (const char*) も
+//     既存のまま維持したい。実体を共通化しつつ呼び出しは変えない。
 std::vector<std::string> SplitFilterExts(const char* exts)
 {
-    std::vector<std::string> result;
-    if (!exts || !exts[0]) return result;
-    const std::string s = exts;
-    size_t pos = 0;
-    while (pos <= s.size()) {
-        const size_t comma = s.find(',', pos);
-        const size_t end = (comma == std::string::npos) ? s.size() : comma;
-        std::string ext = s.substr(pos, end - pos);
-        while (!ext.empty() && ext.front() == ' ') ext.erase(ext.begin());
-        while (!ext.empty() && ext.back()  == ' ') ext.pop_back();
-        if (!ext.empty()) result.push_back(util::StringUtils::ToLower(ext));
-        if (comma == std::string::npos) break;
-        pos = comma + 1;
-    }
-    return result;
-}
-
-void ScanProjectFiles(const std::string& projectRoot,
-                      const std::vector<std::string>& exts,
-                      std::vector<std::string>& out)
-{
-    out.clear();
-    namespace fs = std::filesystem;
-    const fs::path root = util::FileSystem::PathFromUtf8(projectRoot);
-    if (!util::FileSystem::Exists(root)) return;
-    try {
-        for (const auto& entry : fs::recursive_directory_iterator(
-                root, fs::directory_options::skip_permission_denied)) {
-            if (!entry.is_regular_file()) continue;
-            const std::string ext = util::StringUtils::ToLower(
-                util::FileSystem::PathToUtf8(entry.path().extension()));
-            if (!exts.empty()) {
-                bool match = false;
-                for (const auto& e : exts) if (e == ext) { match = true; break; }
-                if (!match) continue;
-            }
-            out.push_back(util::FileSystem::PathToUtf8(entry.path()));
-        }
-    } catch (...) {}
-    std::sort(out.begin(), out.end());
+    if (!exts || !exts[0]) return {};
+    return AssetSearch::ParseExtensionFilter(exts);
 }
 
 } // namespace
 
-bool AcceptAssetPathDrop(std::string& outPath)
+bool InputString(const char* label, std::string& value, std::size_t capacity)
+{
+    // ImGui::InputText は生バッファしか受け取らないため、毎回作り直して書き戻す。
+    // capacity より現在値が長い場合は現在値に合わせる (切り詰めて黙って壊さない)。
+    std::vector<char> buffer((std::max)(capacity, value.size() + 2), '\0');
+    std::memcpy(buffer.data(), value.data(), value.size());
+    if (!ImGui::InputText(label, buffer.data(), buffer.size())) return false;
+    value = buffer.data();
+    return true;
+}
+
+ImTextureID ToImTextureID(void* ptr)
+{
+    return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
+}
+
+void* ResolveAssetThumbnail(const std::string& relativePath,
+                            renderer::ResourceManager* resources,
+                            renderer::IImGuiRenderer* imguiRenderer)
+{
+    if (relativePath.empty() || resources == nullptr || imguiRenderer == nullptr) return nullptr;
+
+    // デバイスリセット後は過去のテクスチャ ID が全て無効になる。世代が変わったら丸ごと捨てる。
+    static std::unordered_map<std::string, void*> cache;
+    static std::uint64_t cachedResetVersion = 0;
+    if (const std::uint64_t version = resources->GetResetVersion(); version != cachedResetVersion) {
+        cachedResetVersion = version;
+        cache.clear();
+    }
+    if (auto found = cache.find(relativePath); found != cache.end()) return found->second;
+
+    void* textureId = nullptr;
+    std::string texturePath;
+    std::string spriteName;
+    asset::ParseSpriteReference(relativePath, texturePath, spriteName);
+    const std::string extension =
+        util::StringUtils::ToLower(util::FileSystem::GetExtension(texturePath));
+    if (IsImageExt(extension)) {
+        const auto handle = resources->LoadTexture(asset::AssetManager::ResolveAssetPath(texturePath));
+        if (handle.IsValid()) textureId = imguiRenderer->GetImTextureID(handle, *resources);
+    } else if (extension == ".mat") {
+        // .mat は albedo を代表画にする。マテリアルを割り当てた Particle でも
+        // 「どんな絵が出るのか」がノードから読めるようにするため。
+        const auto materialHandle = asset::AssetManager::LoadMaterial(relativePath);
+        if (const asset::MaterialAsset* material = asset::AssetManager::GetMaterial(materialHandle)) {
+            if (auto albedo = material->textures.find("albedo");
+                albedo != material->textures.end() && !albedo->second.empty()) {
+                const auto handle = resources->LoadTexture(
+                    asset::AssetManager::ResolveAssetPath(albedo->second));
+                if (handle.IsValid()) textureId = imguiRenderer->GetImTextureID(handle, *resources);
+            }
+        }
+    }
+    // 解決できなかった場合も nullptr を覚える。毎フレーム同じ探索を繰り返さないため。
+    cache.emplace(relativePath, textureId);
+    return textureId;
+}
+
+bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts)
 {
     bool dropped = false;
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            outPath = NormalizeAssetPath(
+            const std::string candidate = NormalizeAssetPath(
                 std::string(static_cast<const char*>(p->Data),
                             static_cast<size_t>(p->DataSize) - 1));
-            dropped = true;
+            std::string texturePath;
+            std::string spriteName;
+            asset::ParseSpriteReference(candidate, texturePath, spriteName);
+            const std::string extension = util::StringUtils::ToLower(
+                util::FileSystem::GetExtension(texturePath));
+            const std::vector<std::string> allowed = SplitFilterExts(filterExts);
+            if (allowed.empty()
+                || std::find(allowed.begin(), allowed.end(), extension) != allowed.end()) {
+                outPath = candidate;
+                dropped = true;
+            }
         }
         ImGui::EndDragDropTarget();
     }
@@ -216,18 +360,28 @@ bool AssetPathField(const char* label, std::string& path,
         }
         if (ImGui::IsItemDeactivated())
             storage->SetBool(editingId, false);
-        if (AcceptAssetPathDrop(path))
+        if (AcceptAssetPathDrop(path, filterExts))
             changed = true;
     } else {
-        const std::string ext  = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
-        const std::string stem = util::FileSystem::PathToUtf8(
-            util::FileSystem::PathFromUtf8(path).stem());
-        std::string badge = ext.size() > 1 ? ext.substr(1) : ext;
+        std::string texturePath;
+        std::string spriteName;
+        const bool isSprite = asset::ParseSpriteReference(path, texturePath, spriteName);
+        const std::string ext =
+            util::StringUtils::ToLower(util::FileSystem::GetExtension(texturePath));
+        const AssignedSpriteThumb& spriteThumb = ResolveAssignedSpriteThumb(path);
+        const std::string stem = isSprite
+            ? (spriteThumb.displayName.empty() ? spriteName : spriteThumb.displayName)
+            : util::FileSystem::PathToUtf8(
+                util::FileSystem::PathFromUtf8(texturePath).stem());
+        std::string badge = isSprite ? "SPRITE" : (ext.size() > 1 ? ext.substr(1) : ext);
         for (char& c : badge) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         const ImVec4 badgeCol = ExtBadgeColor(ext);
 
         const ImVec2 boxMin  = ImGui::GetCursorScreenPos();
-        const ImVec2 boxSize = { inputW, ImGui::GetFrameHeight() };
+        const ImVec2 boxSize = {
+            inputW,
+            isSprite ? std::max(34.0f, ImGui::GetFrameHeight()) : ImGui::GetFrameHeight()
+        };
         ImGui::InvisibleButton("##display", boxSize);
         const bool hovered = ImGui::IsItemHovered();
         const bool clicked = ImGui::IsItemClicked();
@@ -240,7 +394,33 @@ bool AssetPathField(const char* label, std::string& path,
         dl->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding);
 
         float tx = boxMin.x + style.FramePadding.x;
-        const float ty = boxMin.y + style.FramePadding.y;
+        const float ty = boxMin.y + (boxSize.y - ImGui::GetTextLineHeight()) * 0.5f;
+        if (isSprite && spriteThumb.texId) {
+            const float previewSize = boxSize.y - 4.0f;
+            const ImVec2 previewMin = { boxMin.x + 2.0f, boxMin.y + 2.0f };
+            const ImVec2 previewMax = { previewMin.x + previewSize, previewMin.y + previewSize };
+            constexpr int CHECKER_COUNT = 4;
+            const float checkerSize = previewSize / static_cast<float>(CHECKER_COUNT);
+            for (int y = 0; y < CHECKER_COUNT; ++y) {
+                for (int x = 0; x < CHECKER_COUNT; ++x) {
+                    const ImVec2 cellMin = {
+                        previewMin.x + checkerSize * static_cast<float>(x),
+                        previewMin.y + checkerSize * static_cast<float>(y)
+                    };
+                    const ImVec2 cellMax = {
+                        std::min(cellMin.x + checkerSize, previewMax.x),
+                        std::min(cellMin.y + checkerSize, previewMax.y)
+                    };
+                    dl->AddRectFilled(cellMin, cellMax, ((x + y) & 1) == 0
+                        ? IM_COL32(70, 70, 70, 255) : IM_COL32(42, 42, 42, 255));
+                }
+            }
+            dl->AddImageRounded(ToImTextureID(spriteThumb.texId), previewMin, previewMax,
+                                spriteThumb.uvMin, spriteThumb.uvMax,
+                                IM_COL32_WHITE, 2.0f);
+            dl->AddRect(previewMin, previewMax, IM_COL32(0, 0, 0, 100), 2.0f);
+            tx = previewMax.x + style.ItemInnerSpacing.x;
+        }
         if (!badge.empty()) {
             char badgeLabel[16];
             std::snprintf(badgeLabel, sizeof(badgeLabel), "[%s]", badge.c_str());
@@ -258,13 +438,21 @@ bool AssetPathField(const char* label, std::string& path,
         if (truncated) shown = "\xE2\x80\xA6" + shown; // "…"
         dl->AddText({ tx, ty }, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
 
-        if (hovered)
-            ImGui::SetTooltip("%s", path.c_str());
+        if (hovered) {
+            ImGui::BeginTooltip();
+            if (isSprite && spriteThumb.texId) {
+                ImGui::Image(ToImTextureID(spriteThumb.texId), { 160.0f, 160.0f },
+                             spriteThumb.uvMin, spriteThumb.uvMax);
+                ImGui::Separator();
+            }
+            ImGui::TextUnformatted(path.c_str());
+            ImGui::EndTooltip();
+        }
         if (clicked) {
             storage->SetBool(editingId, true);
             storage->SetBool(focusReqId, true);
         }
-        if (AcceptAssetPathDrop(path))
+        if (AcceptAssetPathDrop(path, filterExts))
             changed = true;
     }
 
@@ -282,7 +470,11 @@ bool AssetPathField(const char* label, std::string& path,
         s_picker.filterExts  = SplitFilterExts(filterExts);
         s_picker.search[0]   = '\0';
         s_picker.anchorPos   = { fieldLeft, ImGui::GetItemRectMax().y + 2.0f };
-        ScanProjectFiles(projectRoot, s_picker.filterExts, s_picker.files);
+        // 索引は AssetSearch が保持する。ルートが同じなら再走査は起きない。
+        // WHY 変更したか: 以前はピッカーを開くたびにプロジェクトルート全体を
+        //     recursive_directory_iterator で舐めており、build/ や ThirdParty/ まで
+        //     含めて数万ファイルを走査していた。開くたびに待ちが発生していた。
+        AssetSearch::SetProjectRoot(projectRoot);
     }
 
     // ラベルを ImGui 標準ラベル列（右側）に配置。ウィンドウ幅でクリップされる。
@@ -307,34 +499,41 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
     s_picker.filterExts  = SplitFilterExts(filterExts);
     s_picker.search[0]   = '\0';
     s_picker.anchorPos   = anchorPos;
-    ScanProjectFiles(projectRoot, s_picker.filterExts, s_picker.files);
+    AssetSearch::SetProjectRoot(projectRoot);
 }
 
 void DrawAssetPickerModal(renderer::ResourceManager* resources,
                           renderer::IImGuiRenderer* imgui)
 {
+    s_thumbnailResources = resources;
+    s_thumbnailImGui = imgui;
     if (s_picker.open) {
         ImGui::OpenPopup("##asset_picker");
         s_picker.open = false;
         // 開くたびにサムネイルを作り直し、直近のアセット編集を反映する。
         s_thumbCache.clear();
+        s_spriteCache.clear();
     }
 
     // ── パネル位置: フィールド左端の直下。画面端でクランプ ──────────────────
-    constexpr float kW = 370.0f;
-    constexpr float kH = 400.0f;
+    // Texture の絵と名前を同時に判別できるよう、Inspector 幅より少し広い
+    // Unity 風オブジェクトピッカーとして表示する。
+    constexpr float kW = 460.0f;
+    constexpr float kH = 480.0f;
     const ImVec2 vpPos  = ImGui::GetMainViewport()->Pos;
     const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
+    const float windowW = std::max(280.0f, std::min(kW, vpSize.x - 8.0f));
+    const float windowH = std::max(240.0f, std::min(kH, vpSize.y - 8.0f));
     ImVec2 pos = s_picker.anchorPos;
     pos.x = std::max(pos.x, vpPos.x + 4.0f);
-    if (pos.x + kW > vpPos.x + vpSize.x - 4.0f)
-        pos.x = vpPos.x + vpSize.x - kW - 4.0f;
-    if (pos.y + kH > vpPos.y + vpSize.y - 4.0f)
-        pos.y = s_picker.anchorPos.y - kH - ImGui::GetFrameHeightWithSpacing();
+    if (pos.x + windowW > vpPos.x + vpSize.x - 4.0f)
+        pos.x = vpPos.x + vpSize.x - windowW - 4.0f;
+    if (pos.y + windowH > vpPos.y + vpSize.y - 4.0f)
+        pos.y = s_picker.anchorPos.y - windowH - ImGui::GetFrameHeightWithSpacing();
     pos.y = std::max(pos.y, vpPos.y + 4.0f);
 
     ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize({ kW, kH }, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({ windowW, windowH }, ImGuiCond_Always);
     if (!ImGui::BeginPopup("##asset_picker",
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar))
@@ -372,91 +571,152 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
     }
 
     const std::string searchStr = s_picker.search;
-    const float rowH = ImGui::GetTextLineHeightWithSpacing() * 2.0f + 6.0f;
+    const float rowH = 62.0f;
 
-    for (const auto& absPath : s_picker.files) {
-        namespace fs = std::filesystem;
-        const std::string fname = util::FileSystem::GetFilename(absPath);
-        const std::string ext   = util::StringUtils::ToLower(
-            util::FileSystem::GetExtension(absPath));
-        const std::string stem  = util::FileSystem::PathToUtf8(
-            util::FileSystem::PathFromUtf8(absPath).stem());
+    auto drawEntry = [&](const std::string& absPath, const std::string& ext,
+                         const std::string& displayName, const std::string& reference,
+                         const asset::SpriteRect* sprite) {
+        // 一致判定は AssetSearch と共通にする。
+        // WHY: 以前は単純な部分一致だったため、"ppvol" のような略記では
+        //      "PostProcessVolume" に辿り着けなかった。Search パネルとも
+        //      当たり方が違い、同じ語で結果が食い違っていた。
+        if (!searchStr.empty()
+            && AssetSearch::Match(displayName, searchStr) == 0
+            && AssetSearch::Match(reference, searchStr) == 0) {
+            return;
+        }
 
-        // 名前検索フィルタ（stem でも fname でも通す）
-        if (!searchStr.empty() &&
-            !util::StringUtils::ContainsCI(stem,  searchStr) &&
-            !util::StringUtils::ContainsCI(fname, searchStr))
-            continue;
-
-        const std::string rel      = NormalizeAssetPath(absPath);
-        const bool        selected = (s_picker.target && *s_picker.target == rel);
-        ImGui::PushID(rel.c_str());
-
+        const bool selected = s_picker.target && *s_picker.target == reference;
+        ImGui::PushID(reference.c_str());
         const ImVec2 rowMin = ImGui::GetCursorScreenPos();
-        const float  rowW   = ImGui::GetContentRegionAvail().x;
-
-        // 選択ハイライト背景
+        const float rowW = ImGui::GetContentRegionAvail().x;
         if (selected) {
             ImGui::GetWindowDrawList()->AddRectFilled(
                 rowMin, { rowMin.x + rowW, rowMin.y + rowH },
                 IM_COL32(55, 95, 170, 130), 3.0f);
         }
 
-        // 左端のサムネイル枠 (Unity のオブジェクトピッカー風の可視化)。
-        // 画像 → 実プレビュー、.mat → アルベドのテクスチャ/色、その他 → 拡張子バッジ色の四角。
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        const float thumbSz = rowH - 6.0f;
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const float thumbSize = rowH - 8.0f;
         const ImVec2 thumbMin = { rowMin.x + 4.0f, rowMin.y + 3.0f };
-        const ImVec2 thumbMax = { thumbMin.x + thumbSz, thumbMin.y + thumbSz };
-        const ImVec4 badgeCol = ExtBadgeColor(ext);
-        const PickerThumb& thumb = ResolveThumb(absPath, rel, ext, resources, imgui);
-        if (thumb.texId) {
-            // 市松模様の下地 (アルファ付きテクスチャの視認性)
-            dl->AddRectFilled(thumbMin, thumbMax, IM_COL32(40, 40, 40, 255), 3.0f);
-            dl->AddImageRounded(ToImTextureID(thumb.texId),
-                                thumbMin, thumbMax, { 0, 0 }, { 1, 1 },
-                                IM_COL32_WHITE, 3.0f);
-        } else if (thumb.color.w > 0.0f) {
-            dl->AddRectFilled(thumbMin, thumbMax, ImGui::GetColorU32(thumb.color), 3.0f);
-        } else {
-            // 型アイコン: バッジ色の四角 + 拡張子頭2文字
-            const ImU32 fill = ImGui::GetColorU32({ badgeCol.x, badgeCol.y, badgeCol.z, 0.28f });
-            dl->AddRectFilled(thumbMin, thumbMax, fill, 3.0f);
-            dl->AddRect(thumbMin, thumbMax, ImGui::GetColorU32(badgeCol), 3.0f);
+        const ImVec2 thumbMax = { thumbMin.x + thumbSize, thumbMin.y + thumbSize };
+        const ImVec4 badgeColor = ExtBadgeColor(ext);
+        const std::string textureReference = NormalizeAssetPath(absPath);
+        const PickerThumb& thumb =
+            ResolveThumb(absPath, textureReference, ext, resources, imgui);
+
+        ImVec2 uvMin = { 0.0f, 0.0f };
+        ImVec2 uvMax = { 1.0f, 1.0f };
+        if (sprite != nullptr && thumb.width > 0 && thumb.height > 0) {
+            const float width = static_cast<float>(thumb.width);
+            const float height = static_cast<float>(thumb.height);
+            const float spriteWidth = sprite->width > 0
+                ? static_cast<float>(sprite->width) : width;
+            const float spriteHeight = sprite->height > 0
+                ? static_cast<float>(sprite->height) : height;
+            uvMin = {
+                static_cast<float>(sprite->x) / width,
+                static_cast<float>(sprite->y) / height
+            };
+            uvMax = {
+                (static_cast<float>(sprite->x) + spriteWidth) / width,
+                (static_cast<float>(sprite->y) + spriteHeight) / height
+            };
         }
-        dl->AddRect(thumbMin, thumbMax, IM_COL32(0, 0, 0, 90), 3.0f);
+
+        if (thumb.texId) {
+            constexpr int CHECKER_COUNT = 6;
+            const float checkerSize = thumbSize / static_cast<float>(CHECKER_COUNT);
+            for (int y = 0; y < CHECKER_COUNT; ++y) {
+                for (int x = 0; x < CHECKER_COUNT; ++x) {
+                    const ImU32 color = ((x + y) & 1) == 0
+                        ? IM_COL32(70, 70, 70, 255)
+                        : IM_COL32(42, 42, 42, 255);
+                    const ImVec2 checkerMin = {
+                        thumbMin.x + checkerSize * static_cast<float>(x),
+                        thumbMin.y + checkerSize * static_cast<float>(y)
+                    };
+                    const ImVec2 checkerMax = {
+                        std::min(checkerMin.x + checkerSize, thumbMax.x),
+                        std::min(checkerMin.y + checkerSize, thumbMax.y)
+                    };
+                    drawList->AddRectFilled(checkerMin, checkerMax, color);
+                }
+            }
+            drawList->AddImageRounded(ToImTextureID(thumb.texId),
+                                      thumbMin, thumbMax, uvMin, uvMax,
+                                      IM_COL32_WHITE, 3.0f);
+        } else if (thumb.color.w > 0.0f) {
+            drawList->AddRectFilled(
+                thumbMin, thumbMax, ImGui::GetColorU32(thumb.color), 3.0f);
+        } else {
+            const ImU32 fill = ImGui::GetColorU32(
+                { badgeColor.x, badgeColor.y, badgeColor.z, 0.28f });
+            drawList->AddRectFilled(thumbMin, thumbMax, fill, 3.0f);
+            drawList->AddRect(
+                thumbMin, thumbMax, ImGui::GetColorU32(badgeColor), 3.0f);
+        }
+        drawList->AddRect(thumbMin, thumbMax, IM_COL32(0, 0, 0, 90), 3.0f);
 
         const float textLeft = thumbMax.x + 8.0f;
+        std::string badge = sprite != nullptr
+            ? "SPRITE" : (ext.size() > 1 ? ext.substr(1) : ext);
+        for (char& c : badge)
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
-        // バッジ（[EXT]）+ 名前
-        std::string badge = ext.size() > 1 ? ext.substr(1) : ext;
-        for (char& c : badge) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-
-        ImGui::SetCursorScreenPos({ textLeft, rowMin.y + 2.0f });
-        ImGui::TextColored(badgeCol, "[%s]", badge.c_str());
+        ImGui::SetCursorScreenPos({ textLeft, rowMin.y + 8.0f });
+        ImGui::TextColored(badgeColor, "[%s]", badge.c_str());
         ImGui::SameLine();
-        ImGui::TextUnformatted(stem.c_str());
+        ImGui::TextUnformatted(displayName.c_str());
+        ImGui::SetCursorScreenPos({
+            textLeft + 2.0f,
+            rowMin.y + ImGui::GetTextLineHeightWithSpacing() + 10.0f
+        });
+        ImGui::TextDisabled("%s", reference.c_str());
 
-        // 相対パス（薄い色）
-        ImGui::SetCursorScreenPos({ textLeft + 2.0f,
-            rowMin.y + ImGui::GetTextLineHeightWithSpacing() + 2.0f });
-        ImGui::TextDisabled("%s", rel.c_str());
-
-        // クリック判定（透明な Selectable を行全体に重ねる）
         ImGui::SetCursorScreenPos(rowMin);
         if (ImGui::Selectable("##row", selected,
                 ImGuiSelectableFlags_AllowOverlap, { rowW, rowH })) {
             if (s_picker.target) {
-                *s_picker.target          = rel;
+                *s_picker.target = reference;
                 s_picker.justPickedTarget = s_picker.target;
             }
             ImGui::CloseCurrentPopup();
         }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", absPath.c_str());
-
+        if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            if (thumb.texId) {
+                ImGui::Image(ToImTextureID(thumb.texId), { 160.0f, 160.0f }, uvMin, uvMax);
+                ImGui::Separator();
+            }
+            ImGui::TextUnformatted(displayName.c_str());
+            ImGui::TextDisabled("%s", reference.c_str());
+            ImGui::EndTooltip();
+        }
         ImGui::PopID();
         ImGui::Dummy({ 0.0f, 2.0f });
+    };
+
+    // 索引から拡張子で絞った候補を取り出す。
+    // 検索語による絞り込みは drawEntry 側で行う (スプライトのサブ項目も
+    // 同じ規則で弾く必要があるため、ここでは拡張子だけを見る)。
+    const auto candidates = AssetSearch::Query(
+        {}, s_picker.filterExts, /*maxResults=*/AssetSearch::Count());
+
+    for (const AssetSearchHit& candidate : candidates) {
+        const std::string& absPath  = candidate.entry->absolutePath;
+        const std::string& ext      = candidate.entry->extension;
+        const std::string& filename = candidate.entry->filename;
+        const std::string textureReference = NormalizeAssetPath(absPath);
+        drawEntry(absPath, ext, filename, textureReference, nullptr);
+
+        if (!IsImageExt(ext)) continue;
+        for (const asset::SpriteRect& sprite : ResolveSprites(absPath)) {
+            drawEntry(absPath, ext, sprite.name,
+                      asset::MakeSpriteReference(
+                          textureReference, sprite.id.empty() ? sprite.name : sprite.id),
+                      &sprite);
+        }
     }
 
     ImGui::EndChild();
@@ -522,7 +782,31 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
 
 void SectionHeader(const char* label)
 {
-    ImGui::SeparatorText(label);
+    // WHAT: 左のブランドライン、見出し、残り幅の細い罫線を一行で描く。
+    // WHY: SeparatorText の標準表現だけでは情報階層が弱く、長い Inspector で区切りを見失うため。
+    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+    const float lineHeight = ImGui::GetTextLineHeight();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(
+        cursor,
+        { cursor.x + 3.0f, cursor.y + lineHeight },
+        EditorTheme::ColorU32(ThemeColor::Accent),
+        1.5f);
+
+    ImGui::SetCursorScreenPos({ cursor.x + 9.0f, cursor.y });
+    ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Text));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+
+    const ImVec2 textMax = ImGui::GetItemRectMax();
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    if (textMax.x + 10.0f < right) {
+        const float y = cursor.y + lineHeight * 0.5f;
+        drawList->AddLine(
+            { textMax.x + 10.0f, y },
+            { right, y },
+            EditorTheme::ColorU32(ThemeColor::Border));
+    }
 }
 
 void ColoredText(const char* text, ImVec4 color)

@@ -15,6 +15,18 @@ namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
 namespace fbzz::editor::widgets {
 
+// 画像パス選択欄で共通利用する、ImageImporter 対応拡張子の検索フィルター。
+// WHY: 呼び出し側ごとの列挙漏れにより、読み込める画像がピッカーに表示されない状態を防ぐ。
+inline constexpr const char* kTextureAssetFilter =
+    ".fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp,.hdr,.exr";
+
+// std::string を直接編集する InputText。
+// WHY ここに置くか: 元は VFXEditorUiCommon にあり、VFX 以外のパネルが使うには
+//     VFX のヘッダを引く必要があった。文字列編集はどのパネルでも要る汎用部品なので、
+//     ウィジェット層へ移して VFX 側は転送するだけにする。
+// @return true if the value changed
+bool InputString(const char* label, std::string& value, std::size_t capacity = 512);
+
 // Vector3 の DragFloat3 (ラベル幅を統一)
 bool DragVec3(const char* label, math::Vector3& v, float speed = 0.1f,
               float min = 0.0f, float max = 0.0f);
@@ -31,6 +43,23 @@ inline bool ColorEdit4(const char* label, math::Vector4& color) {
     }
     return false;
 }
+
+// アセットのサムネイル用テクスチャ ID を解決する。画像なら本体、.mat なら albedo を返す。
+// 解決できない (画像でない / 見つからない) 場合は nullptr。
+//
+// WHY: 「このノードはどの素材を使っているか」をパス文字列だけで判断させると、
+//      名前が似た素材を取り違える。絵を出せば一目で分かる。
+//      ResourceManager 側でも GPU ロードはキャッシュされるが、パス解決と .mat の
+//      albedo 探索は毎フレームやるには重いので、ここでも結果を覚える。
+// NOTE: ResourceManager の resetVersion が変わったらキャッシュ全体を捨てる
+//       (デバイスリセット後は古いテクスチャ ID が無効になるため)。
+// @param relativePath projectRoot 相対のアセットパス
+[[nodiscard]] void* ResolveAssetThumbnail(const std::string& relativePath,
+                                          renderer::ResourceManager* resources,
+                                          renderer::IImGuiRenderer* imguiRenderer);
+
+// このプロジェクトの ImGui は ImTextureID を ImU64 として扱う。void* からの変換を 1 か所に置く。
+[[nodiscard]] ImTextureID ToImTextureID(void* ptr);
 
 // セクションヘッダー (太字テキスト + 区切り線)
 void SectionHeader(const char* label);
@@ -91,8 +120,9 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
 // WHY: BeginDragDropTarget / AcceptDragDropPayload("ASSET_PATH") / Normalize / End の
 //      定型がパス欄やリスト行に散在していたため集約する。ドロップ後の処理 (拡張子除去・
 //      リロード等の特殊挙動) は呼び出し側に委ねるので、既存挙動を保ったまま重複だけ消せる。
+// filterExts が指定された場合は手入力欄と同じ拡張子制約をドロップにも適用する。
 // @return true if an asset path was dropped (outPath に正規化済みパスを格納)
-bool AcceptAssetPathDrop(std::string& outPath);
+bool AcceptAssetPathDrop(std::string& outPath, const char* filterExts = nullptr);
 
 // Quaternion → オイラー角 (度, YXZ 順)。InspectorPanel と ImGuiReflector で共用
 // YXZ 内因順: X(Pitch) が中間角で ±90° 制約、Y(Yaw) は ±180° 任意範囲。

@@ -16,6 +16,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -254,6 +255,18 @@ void EditorApp::RefreshSceneDirtyState(bool force)
 
 void EditorApp::MarkSceneDirty()
 {
+    // Prefab 編集モード中の変更は「シーン」ではなく「プレファブアセット」への変更。
+    // WHY: ここで sceneDirty を立ててしまうと、編集モードを抜けて元のシーンへ戻った
+    //      あとも未保存扱いが残り、触っていないシーンの保存を促すことになる。
+    //      退避したシーンの dirty 状態は ExitPrefabEditMode がそのまま復元する。
+    if (m_ctx.InPrefabEditMode()) {
+        if (!m_ctx.prefabEditDirty) {
+            m_ctx.prefabEditDirty = true;
+            UpdateWindowTitle();
+        }
+        return;
+    }
+
     m_dirtyTracker.MarkDirty();
     if (!m_ctx.sceneDirty) {
         m_ctx.sceneDirty = true;
@@ -267,6 +280,14 @@ void EditorApp::MarkSceneDirty()
 
 void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::function<void()> action)
 {
+    // Prefab 編集モード中はシーンの新規作成 / 差し替えを受け付けない。
+    // WHY: これらは m_scene の中身を作り替えるが、そこに入っているのはプレファブで、
+    //      退避してあるシーンを取り違えて壊す。先に編集面から出てもらう。
+    if (m_ctx.InPrefabEditMode()) {
+        FBZZ_LOG_WARN("%s: close the prefab edit mode first", actionName.c_str());
+        return;
+    }
+
     const bool assetsDirty = AssetDirtyRegistry::HasAny();
     if (!m_ctx.sceneDirty && !assetsDirty) {
         if (action) action();
@@ -379,6 +400,11 @@ bool EditorApp::OpenScenePath(const std::string& path)
 bool EditorApp::SaveScene()
 {
     if (!m_ctx.activeScene) return false;
+    // Prefab 編集モード中は m_scene の中身がプレファブなので、シーンとして保存すると
+    // 元のシーンファイルをプレファブの内容で上書きしてしまう。
+    // WHY: Ctrl+S は反射的に押される操作なので、ここで止めないと確実に事故になる。
+    //      同じキーで「プレファブを保存」へ読み替える。
+    if (m_ctx.InPrefabEditMode()) return SavePrefabEdit();
     if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog();
 
     RemoveEditorHiding();
@@ -1196,7 +1222,10 @@ void EditorApp::TickHlslCompile()
             + m_compileShadersScript.wstring() + L"\"";
         config.workingDirectory = m_hlslSourceDir;
 
+        renderer::ClearShaderCompileDiagnostics();
         if (!m_hlslCompiler.Start(config)) {
+            renderer::ReportShaderCompileDiagnostic(
+                "HLSL batch", {}, {}, "compile_shaders.ps1 の起動に失敗しました", true);
             SetHotReloadState(EditorContext::HotReloadState::Failed, "HLSL: failed to start compile");
             return;
         }
@@ -1231,6 +1260,8 @@ void EditorApp::TickHlslCompile()
     if (m_hlslCompiler.GetState() == Compiler::State::Failed) {
         m_buildConsole.IngestFullLog(m_hlslCompiler.GetLog());
         m_buildConsole.EndBuild(false, m_hlslCompiler.GetExitCode());
+        renderer::ReportShaderCompileDiagnostic(
+            "HLSL batch", {}, {}, m_hlslCompiler.GetLog(), true);
         SetHotReloadState(EditorContext::HotReloadState::Failed,
                           "HLSL: compile error (exit=" +
                           std::to_string(m_hlslCompiler.GetExitCode()) + ")");
