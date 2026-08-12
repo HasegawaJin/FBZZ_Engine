@@ -7,6 +7,7 @@ import type { CreateProjectRequest, GameHubApi, HubSettings } from './shared/con
 
 const api: GameHubApi = {
   bootstrap: () => ipcRenderer.invoke('hub:bootstrap'),
+  listProjects: () => ipcRenderer.invoke('project:list'),
   chooseDirectory: () => ipcRenderer.invoke('dialog:directory'),
   chooseEditorExecutable: () => ipcRenderer.invoke('dialog:editor'),
   addProject: () => ipcRenderer.invoke('project:add'),

@@ -95,6 +95,7 @@ h1, h2, h3, p { margin: 0; }
 .status-pill { position: absolute; z-index: 1; right: 11px; top: 10px; padding: 4px 8px; border-radius: 10px; backdrop-filter: blur(9px); font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .status-pill.healthy { color: #a3f0cb; background: rgba(24,126,87,.35); border: 1px solid rgba(84,214,161,.18); }
 .status-pill.warning { color: #ffd08a; background: rgba(150,91,25,.4); border: 1px solid rgba(255,178,72,.2); }
+.status-pill.pending { color: #b9c9ff; background: rgba(70,91,164,.34); border: 1px solid rgba(132,155,255,.2); }
 .project-body { padding: 16px; }
 .project-heading { display: flex; justify-content: space-between; align-items: start; }
 .project-heading h3 { font: 600 15px "Bahnschrift", "Segoe UI", sans-serif; }

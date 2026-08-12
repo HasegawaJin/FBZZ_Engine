@@ -52,21 +52,32 @@ async function isSdkRoot(candidate: string): Promise<boolean> {
 
 async function detectSdkRoot(configuredPath: string): Promise<string> {
   const configured = configuredPath ? path.resolve(configuredPath) : '';
-  if (configured && await isSdkRoot(configured)) return configured;
-
-  // 旧C++版でEngineソースルートが保存されていた場合は、版別SDKへ自動移行する。
   const configuredVersion = configured ? path.join(configured, 'SDK', ENGINE_VERSION) : '';
-  if (configuredVersion && await isSdkRoot(configuredVersion)) return configuredVersion;
+  if (configured) {
+    // 設定済みパスと旧Engineルートからの移行候補は独立しているため同時に確認する。
+    const [configuredValid, versionValid] = await Promise.all([
+      isSdkRoot(configured),
+      isSdkRoot(configuredVersion),
+    ]);
+    if (configuredValid) return configured;
+    if (versionValid) return configuredVersion;
+  }
 
-  const starts = [process.cwd(), app.getAppPath(), path.dirname(process.execPath)];
-  for (const start of starts) {
-    let current = path.resolve(start);
-    for (let depth = 0; depth < 8; depth += 1) {
-      const direct = path.join(current, 'SDK', ENGINE_VERSION);
-      if (await isSdkRoot(direct)) return direct;
-      if (path.dirname(current) === current) break;
-      current = path.dirname(current);
-    }
+  // 各起点を一つずつ最上位まで走査すると、存在しないパスへのaccessを最大24段直列に待つ。
+  // 同じ深さの候補を並列確認し、最寄りのSDKが見つかった時点で終了する。
+  let currentRoots = [...new Set(
+    [process.cwd(), app.getAppPath(), path.dirname(process.execPath)].map((start) => path.resolve(start)),
+  )];
+  for (let depth = 0; depth < 8 && currentRoots.length > 0; depth += 1) {
+    const candidates = [...new Set(currentRoots.map((current) => path.join(current, 'SDK', ENGINE_VERSION)))];
+    const validity = await Promise.all(candidates.map(isSdkRoot));
+    const foundIndex = validity.findIndex(Boolean);
+    if (foundIndex >= 0) return candidates[foundIndex] ?? configured;
+
+    const parents = currentRoots
+      .map((current) => path.dirname(current))
+      .filter((parent, index) => parent !== currentRoots[index]);
+    currentRoots = [...new Set(parents)];
   }
   return configured;
 }

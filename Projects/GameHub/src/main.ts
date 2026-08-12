@@ -45,8 +45,10 @@ const createWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(async () => {
-  await registerIpcHandlers();
+app.whenReady().then(() => {
+  // IPC側の設定・SDK探索を待たず、先にウィンドウとRendererを起動する。
+  // WHY: 遅いディスクや切断済みパスがあっても、真っ黒な無反応時間を発生させない。
+  registerIpcHandlers();
   createWindow();
 });
 

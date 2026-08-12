@@ -49,6 +49,30 @@ async function FindEditorInAncestors(start: string): Promise<string | null> {
 }
 
 export class ProjectService {
+  createPendingProjects(configProjects: ConfigProject[]): ProjectEntry[] {
+    return configProjects
+      .map((project) => {
+        const projectRoot = path.resolve(project.path);
+        return {
+          name: path.basename(projectRoot),
+          projectId: '',
+          path: projectRoot,
+          engineVersion: '-',
+          lastOpened: project.lastOpened,
+          thumbnailDataUrl: '',
+          pathExists: false,
+          projectFileValid: false,
+          cmakeExists: false,
+          layoutValid: false,
+          generatedRootsExist: false,
+          engineVersionMismatch: false,
+          migrationRequired: false,
+          validationPending: true,
+        };
+      })
+      .sort((left, right) => right.lastOpened.localeCompare(left.lastOpened));
+  }
+
   async inspectProjects(configProjects: ConfigProject[]): Promise<ProjectEntry[]> {
     const projects = await Promise.all(configProjects.map((project) => this.inspectProject(project)));
     return projects.sort((left, right) => right.lastOpened.localeCompare(left.lastOpened));
@@ -59,17 +83,27 @@ export class ProjectService {
     const empty: ProjectEntry = {
       name: path.basename(projectRoot), projectId: '', path: projectRoot, engineVersion: '-', lastOpened: configProject.lastOpened,
       thumbnailDataUrl: '', pathExists: false, projectFileValid: false, cmakeExists: false, layoutValid: false,
-      generatedRootsExist: false, engineVersionMismatch: false, migrationRequired: false,
+      generatedRootsExist: false, engineVersionMismatch: false, migrationRequired: false, validationPending: false,
     };
     if (!await exists(projectRoot)) return empty;
     empty.pathExists = true;
-    empty.cmakeExists = await exists(path.join(projectRoot, 'CMakeLists.txt'));
-    empty.layoutValid = (await Promise.all(['Assets', 'Src', 'Include'].map((name) => exists(path.join(projectRoot, name))))).every(Boolean);
-    empty.generatedRootsExist = (await Promise.all(['Lib', 'Binaries', 'Build'].map((name) => exists(path.join(projectRoot, name))))).every(Boolean);
-    empty.thumbnailDataUrl = await this.loadThumbnail(projectRoot);
+
+    // 独立した検証I/Oを同時に開始し、プロジェクトごとの直列待ちをなくす。
+    const [cmakeExists, layoutChecks, generatedChecks, thumbnailDataUrl, projectFile] = await Promise.all([
+      exists(path.join(projectRoot, 'CMakeLists.txt')),
+      Promise.all(['Assets', 'Src', 'Include'].map((name) => exists(path.join(projectRoot, name)))),
+      Promise.all(['Lib', 'Binaries', 'Build'].map((name) => exists(path.join(projectRoot, name)))),
+      this.loadThumbnail(projectRoot),
+      readFile(path.join(projectRoot, '.fbzz_proj'), 'utf8').catch(() => null),
+    ]);
+    empty.cmakeExists = cmakeExists;
+    empty.layoutValid = layoutChecks.every(Boolean);
+    empty.generatedRootsExist = generatedChecks.every(Boolean);
+    empty.thumbnailDataUrl = thumbnailDataUrl;
 
     try {
-      const document = parse(await readFile(path.join(projectRoot, '.fbzz_proj'), 'utf8')) as Record<string, unknown>;
+      if (projectFile === null) return empty;
+      const document = parse(projectFile) as Record<string, unknown>;
       const project = (document.project ?? {}) as Record<string, unknown>;
       empty.name = stringField(project, 'name', empty.name);
       empty.projectId = stringField(project, 'project_id');
