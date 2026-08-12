@@ -36,6 +36,8 @@ public:
     virtual void SetPitch(uint32_t voiceId, float pitch) = 0;
     // pan は -1(左)〜+1(右)。spatialBlend=0 の 2D 音源では 0 を渡す。
     virtual void SetPan(uint32_t voiceId, float pan) = 0;
+    // normalizedCutoff=1 は無加工、0 に近いほど高域を減衰する。
+    virtual void SetLowPass(uint32_t voiceId, float normalizedCutoff) = 0;
     // 終了済み voice を AudioSystem が検出してランタイム状態を戻すための問い合わせ。
     [[nodiscard]] virtual bool IsPlaying(uint32_t voiceId) = 0;
 };
