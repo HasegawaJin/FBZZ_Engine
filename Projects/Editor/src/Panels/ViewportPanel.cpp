@@ -3,7 +3,9 @@
 // Scene / Game / UI Viewport のレイアウトと入力ルーティング
 #include "Viewport/ViewportCommon.hpp"
 #include "MapToolCommon.hpp"
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
+#include <Engine/Util/StringUtils.hpp>
 
 namespace fbzz::editor {
 
@@ -21,12 +23,14 @@ void DrawMapToolOverlay(EditorContext& ctx, const ImVec2& viewportMin)
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3.0f, 0.0f });
+    ImVec4 overlaySurface = EditorTheme::Color(ThemeColor::SurfaceRaised);
+    overlaySurface.w = 0.90f;
 
     for (const MapToolDef& def : kMapToolDefs) {
         const bool active = ctx.mapActiveTool == def.tool;
         ImGui::PushStyleColor(ImGuiCol_Button,
-            active ? ImVec4(0.22f, 0.55f, 0.32f, 0.95f)
-                   : ImVec4(0.15f, 0.15f, 0.15f, 0.78f));
+            active ? EditorTheme::Color(ThemeColor::Secondary)
+                   : overlaySurface);
         char label[24];
         std::snprintf(label, sizeof(label), "%s %s", def.shortcut, def.label);
         if (ImGui::SmallButton(label))
@@ -228,12 +232,14 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     ImGui::SetCursorScreenPos({ viewportMin.x + 6.0f, viewportMin.y + 6.0f });
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3.0f, 0.0f });
+    ImVec4 overlaySurface = EditorTheme::Color(ThemeColor::SurfaceRaised);
+    overlaySurface.w = 0.90f;
 
     for (const auto& entry : kModes) {
         const bool active = current == entry.mode;
         ImGui::PushStyleColor(ImGuiCol_Button,
             active ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
-                   : ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+                   : overlaySurface);
 
         if (ImGui::SmallButton(entry.label))
             current = entry.mode;
@@ -247,7 +253,7 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     }
 
     // Overlays ▼ ドロップダウン
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+    ImGui::PushStyleColor(ImGuiCol_Button, overlaySurface);
     if (ImGui::SmallButton("Overlays \xe2\x96\xbc"))
         ImGui::OpenPopup("##overlays_popup");
     ImGui::PopStyleColor();
@@ -257,11 +263,17 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     if (ImGui::BeginPopup("##overlays_popup")) {
         ImGui::Checkbox("Grid",        &ctx.showGrid);
         ImGui::Checkbox("Light Range", &ctx.showLightRange);
+        ImGui::Checkbox("VFX Gizmos", &ctx.showVFXGizmos);
         ImGui::Checkbox("Colliders",   &ctx.projectSettings.render.showColliders);
         ImGui::Checkbox("NavMesh",     &ctx.projectSettings.render.showNavMesh);
         ImGui::Checkbox("AI Sensors",  &ctx.projectSettings.render.showNavSensors);
         ImGui::Checkbox("Skeleton",    &ctx.showSkeleton);
         ImGui::Checkbox("Stats",       &ctx.showStats);
+        ImGui::Separator();
+        ImGui::Checkbox("Surface snap aligns to normal", &ctx.surfaceSnapAlignToNormal);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Ctrl+Shift drag: also rotate the object so its up axis "
+                              "matches the surface normal");
         ImGui::EndPopup();
     }
 
@@ -273,7 +285,7 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         const bool active = ctx.gizmoMode == mode;
         ImGui::PushStyleColor(ImGuiCol_Button,
             active ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
-                   : ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+                   : overlaySurface);
         if (ImGui::SmallButton(label)) ctx.gizmoMode = mode;
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
@@ -285,19 +297,33 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
 
     {
         const bool world = ctx.gizmoSpace == EditorContext::GizmoSpace::World;
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+        ImGui::PushStyleColor(ImGuiCol_Button, overlaySurface);
         if (ImGui::SmallButton(world ? "World" : "Local"))
             ctx.gizmoSpace = world ? EditorContext::GizmoSpace::Local
                                    : EditorContext::GizmoSpace::World;
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Gizmo space: %s (click to toggle)", world ? "World" : "Local");
+            ImGui::SetTooltip("Gizmo space: %s (Q to toggle)", world ? "World" : "Local");
+        ImGui::SameLine();
+    }
+    {
+        // Pivot / Center トグル (Unity 互換, Z キー)。
+        const bool pivot = ctx.gizmoPivot == EditorContext::GizmoPivot::Pivot;
+        ImGui::PushStyleColor(ImGuiCol_Button, overlaySurface);
+        if (ImGui::SmallButton(pivot ? "Pivot" : "Center"))
+            ctx.gizmoPivot = pivot ? EditorContext::GizmoPivot::Center
+                                   : EditorContext::GizmoPivot::Pivot;
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(pivot
+                ? "Pivot: gizmo sits on the active object's origin (Z to toggle)"
+                : "Center: gizmo sits at the center of the whole selection (Z to toggle)");
         ImGui::SameLine();
     }
     {
         ImGui::PushStyleColor(ImGuiCol_Button, ctx.snapEnabled
-            ? ImVec4(0.20f, 0.45f, 0.65f, 0.9f)
-            : ImVec4(0.15f, 0.15f, 0.15f, 0.75f));
+            ? EditorTheme::Color(ThemeColor::AccentActive)
+            : overlaySurface);
         if (ImGui::SmallButton("Snap")) ctx.snapEnabled = !ctx.snapEnabled;
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered())
@@ -396,16 +422,43 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     if (isUIView && !inPlayOrPause)
         DrawCanvasEditorGuides(ctx, viewportMin, size);
 
+    // 仮適用したまま Scene View のドロップ処理を通らなくなった場合 (Play 開始・
+    // パネル種別の切り替え等) の保険。ドラッグ自体が終わっていれば必ず巻き戻す。
+    if (m_materialDrag.applied && (!isSceneView || inPlayOrPause || !ImGui::IsDragDropActive()))
+        CancelMaterialDragPreview(ctx, m_materialDrag);
+
     if (isSceneView && !inPlayOrPause) {
         const ImGuiID viewportDropId = ImGui::GetID("##scene_view_prefab_drop_target");
+        // ドラッグ中の .mat を「カーソル下へ仮適用 → 外れたら戻す → リリースで確定」
+        // という Unity と同じ挙動にするため、AcceptBeforeDelivery で配送前の状態も受け取る。
+        bool materialDragHandled = false;
         if (ImGui::BeginDragDropTargetCustom(ImRect(viewportMin, viewportMax), viewportDropId)) {
+            const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+                "ASSET_PATH", ImGuiDragDropFlags_AcceptBeforeDelivery);
             std::string assetPath;
-            if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath) &&
-                InstantiateAssetAtViewport(ctx, assetPath, viewportMin)) {
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (ReadAssetPayload(payload, assetPath)) {
+                const std::string ext =
+                    util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath));
+                if (ext == ".mat") {
+                    materialDragHandled = true;
+                    // 仮適用 → (リリース) → 確定。ビューポート外から入ってきて
+                    // 1 フレーム目でリリースされた場合も取りこぼさないよう、
+                    // 配送フレームでも未適用なら先に仮適用してから確定する。
+                    if (!payload->IsDelivery() || !m_materialDrag.applied)
+                        UpdateMaterialDragPreview(ctx, m_materialDrag, assetPath, viewportMin);
+                    if (payload->IsDelivery() && CommitMaterialDragPreview(ctx, m_materialDrag)) {
+                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    }
+                } else if (payload->IsDelivery() &&
+                           InstantiateAssetAtViewport(ctx, assetPath, viewportMin)) {
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                }
             }
             ImGui::EndDragDropTarget();
         }
+        // ビューポート外へ出た / ドラッグがキャンセルされたフレームで仮適用を巻き戻す。
+        if (!materialDragHandled && m_materialDrag.applied)
+            CancelMaterialDragPreview(ctx, m_materialDrag);
     }
 
     const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver()
@@ -415,9 +468,16 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         (ctx.waterTool   && ctx.waterTool->IsActive())   ||
         (ctx.detailTool  && ctx.detailTool->IsActive())  ||
         (ctx.foliageTool && ctx.foliageTool->IsActive());
+    // 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。
+    // WHY: これらは同じ左ドラッグを使うため、選択・矩形選択・ギズモより先に処理して
+    //      「掴んでいる」間は他の解釈をさせない。
+    const bool snapping = (isSceneView && !inPlayOrPause)
+                        ? HandleViewportSnapping(ctx, viewportMin, size)
+                        : false;
+
     // Alt+左ドラッグはカメラオービットに割り当てられているため、選択操作から除外する
     const bool altHeld = ImGui::GetIO().KeyAlt;
-    if (isSceneView && !inPlayOrPause && viewportHovered && !altHeld &&
+    if (isSceneView && !inPlayOrPause && viewportHovered && !altHeld && !snapping &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse &&
         !m_prevOverlayHovered)
         PickEntity(ctx, viewportMin);
@@ -426,7 +486,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     // WHY: 複数オブジェクトをまとめて動かす作業は Unity の箱選択が前提。
     //      クリック位置からしきい値以上ドラッグしたら矩形選択モードへ移行し、
     //      離した時点で矩形内の GO を選択する (クリック選択の結果は上書きされる)。
-    if (isSceneView && !inPlayOrPause) {
+    if (isSceneView && !inPlayOrPause && !snapping) {
         constexpr float kDragThreshold = 5.0f;  // px: クリックと区別するしきい値
 
         if (viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
@@ -470,8 +530,28 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     if (isSceneView && !inPlayOrPause) {
         DrawSceneIcons(ctx, viewportMin, size);
-        DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
+        // WHY: スナップドラッグ中はギズモを出さない。同じ左ドラッグを ImGuizmo が
+        //      掴んでしまうと、吸着とギズモ移動が同時に走って挙動が二重になる。
+        if (!snapping)
+            DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
         DrawOrientationGizmo(ctx, viewportMin, size);
+
+        // ── スナップモードのヒント (修飾キーを押している間だけ) ─────────────
+        // WHY: モーメンタリ操作は「今その状態に入っている」ことが画面で分からないと
+        //      使われない。押した瞬間に何が起きるかを一行で出す。
+        if (ctx.vertexSnapActive || ctx.surfaceSnapActive) {
+            const char* hint = ctx.vertexSnapActive
+                ? "Vertex Snap — drag to snap a vertex onto another mesh's vertex"
+                : "Surface Snap — drag to place the selection on the surface under the cursor";
+            const ImVec2 textSize = ImGui::CalcTextSize(hint);
+            const ImVec2 pos = { viewportMin.x + (size.x - textSize.x) * 0.5f,
+                                 viewportMin.y + size.y - textSize.y - 28.0f };
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled({ pos.x - 8.0f, pos.y - 4.0f },
+                              { pos.x + textSize.x + 8.0f, pos.y + textSize.y + 4.0f },
+                              IM_COL32(20, 20, 20, 200), 4.0f);
+            dl->AddText(pos, IM_COL32(255, 225, 120, 255), hint);
+        }
 
         // ── Snap インジケーター (ツールバー右隣、ON 時のみ) ─────────────────
         if (ctx.snapEnabled) {
@@ -548,47 +628,15 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             }
         }
 
-        // F: focus the editor camera on the selected object when the Scene viewport has keyboard focus.
-        // WHY: マルチ選択時は全選択を包含するバウンディング球を注視し、
-        //      対象の大きさに応じてカメラ距離が決まる (Unity の Frame Selected 互換)。
-        if (ctx.viewportFocused && !ImGui::GetIO().WantTextInput &&
-            input::Input::KeyDown(input::KeyCode::F)) {
-            math::Vector3 center{};
-            float radius = 0.0f;
-            if (ComputeSelectionBounds(ctx, center, radius)) {
-                ctx.focusTargetPosition    = center;
-                ctx.focusTargetRadius      = radius;
-                ctx.requestFocusOnSelected = true;
-            }
-        }
-
         // WHY: オーバーレイ UI (表示モードボタン等の ImGui アイテム、ブックマークスロット) を
         //      クリックした瞬間に背後の 3D ピッキングが同時に走ると選択が意図せず変わる。
         //      このフレームのホバー状態を記録し、次フレームの PickEntity / 矩形選択開始を抑制する。
         m_prevOverlayHovered = bookmarkRowHovered || ImGui::IsAnyItemHovered();
 
-        // Delete / Ctrl+D: Scene View フォーカス中でも Hierarchy と同じ編集操作を受け付ける。
-        // WHY: Unity では Scene View で選択したまま Delete / Ctrl+D が効く。
-        //      Hierarchy へフォーカスを移さないと消せないのは操作動線として遠回り。
-        if (ctx.viewportFocused && !ImGui::GetIO().WantTextInput &&
-            !ctx.selectedEntities.empty())
-        {
-            if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
-                DeleteSelectedWithUndo(ctx);
-            else if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D, false))
-                DuplicateSelectedWithUndo(ctx);
-            else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
-                ctx.selectedEntities.clear();  // Esc: 選択解除 (Unity 互換)
-        }
-
-        // Ctrl+A: シーン内の全 GO を選択 (ロック中は除外)
-        if (ctx.viewportFocused && !ImGui::GetIO().WantTextInput && ctx.activeScene &&
-            ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
-            ctx.selectedEntities.clear();
-            for (auto& go : ctx.activeScene->GameObjects())
-                if (!ctx.IsLocked(go.GetID()))
-                    ctx.selectedEntities.push_back(go.GetID());
-        }
+        // NOTE: F フォーカス / Delete / Ctrl+D / Esc / Ctrl+A は
+        //       EditorApp::RegisterDefaultHotkeys が HotkeyScope::SceneViewport として
+        //       登録している。ここで直接キーを見ると、リバインドしても効かない
+        //       ショートカットが増え、F1 の一覧とも食い違うため書かない。
 
         // Map Editing Mode 中は数字キー 1-6 をツール切替に使う (下のブックマークより優先)。
         // WHY: ブックマークとツール切替が同じ 1-9 キーを共有するため、Map モードでは

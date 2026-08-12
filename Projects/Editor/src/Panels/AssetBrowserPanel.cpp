@@ -2,11 +2,109 @@
 // AssetBrowserPanel.cpp | fbzz::editor
 // AssetBrowserPanel のフォルダツリーとアセットグリッド描画
 #include "AssetBrowser/AssetBrowserCommon.hpp"
+#include <Editor/Util/AssetSearch.hpp>
 
 namespace fbzz::editor {
 
+namespace {
+
+// FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
+// パス比較やナビゲート先として使う前に落とす。
+std::string DirectoryOf(const std::string& path)
+{
+    std::string directory = util::FileSystem::GetDirectory(path);
+    while (directory.size() > 1 && (directory.back() == '/' || directory.back() == '\\'))
+        directory.pop_back();
+    return directory;
+}
+
+} // namespace
+
+// ── 横断検索 ─────────────────────────────────────────────────────────────────
+
+bool AssetBrowserPanel::IsGlobalSearchActive() const
+{
+    return m_searchAllFolders && m_searchBuf[0] != '\0';
+}
+
+const std::vector<AssetBrowserPanel::Entry>& AssetBrowserPanel::VisibleEntries() const
+{
+    return IsGlobalSearchActive() ? m_searchResults : m_entries;
+}
+
+std::vector<std::string> AssetBrowserPanel::TypeFilterExtensions() const
+{
+    // WHY PassesTypeFilter を再利用しないか: あちらは Entry を受け取る述語で、
+    //     AssetSearch へ渡すのは拡張子の列。同じ分類を二重に書くことになるが、
+    //     索引側で先に絞る方が候補を大幅に減らせる (全件を Entry 化してから
+    //     捨てるのは無駄)。分類の対応は PassesTypeFilter と揃えること。
+    switch (m_typeFilter) {
+    case TypeFilter::Scene:     return { ".scene" };
+    case TypeFilter::Material:  return { ".mat" };
+    case TypeFilter::Script:    return { ".hpp", ".cpp", ".h", ".c", ".cc", ".cxx",
+                                         ".py", ".lua", ".cs" };
+    case TypeFilter::Texture:   return { ".png", ".jpg", ".jpeg", ".dds", ".bmp", ".tga",
+                                         ".fnt", ".ttf", ".otf" };
+    case TypeFilter::Audio:     return { ".wav", ".mp3", ".ogg", ".flac" };
+    case TypeFilter::Mesh:      return { ".fbx", ".obj", ".gltf", ".glb", ".mesh" };
+    case TypeFilter::Shader:    return { ".hlsl", ".hlsli" };
+    case TypeFilter::Prefab:    return { ".prefab" };
+    case TypeFilter::Animation: return { ".anim", ".animcontroller", ".animctrl", ".mask" };
+    case TypeFilter::Skeleton:  return { ".skel" };
+    case TypeFilter::Asset:     return { ".asset" };
+    case TypeFilter::All:
+    default:                    return {};
+    }
+}
+
+void AssetBrowserPanel::RefreshSearchResults()
+{
+    const std::string query(m_searchBuf.data());
+    const int typeFilter = static_cast<int>(m_typeFilter);
+
+    // 検索語もフィルタも変わっていなければ組み直さない。
+    // WHY: 毎フレーム数千件を走査すると、入力していない間もフレーム時間を食う。
+    if (query == m_searchResultsQuery && typeFilter == m_searchResultsTypeFilter)
+        return;
+
+    m_searchResultsQuery      = query;
+    m_searchResultsTypeFilter = typeFilter;
+    m_searchResults.clear();
+
+    if (query.empty()) return;
+
+    // 表示件数の上限。これを超えるヒットは絞り込みを促す。
+    // WHY: グリッドは ImGuiListClipper で間引くが、Entry の構築自体は全件走るため、
+    //      上限がないと曖昧な 1 文字検索で数千件を組み立てることになる。
+    constexpr std::size_t MAX_SEARCH_RESULTS = 500;
+
+    const std::vector<std::string> extensions = TypeFilterExtensions();
+    const auto hits = AssetSearch::Query(query, extensions, MAX_SEARCH_RESULTS);
+
+    m_searchResults.reserve(hits.size());
+    for (const AssetSearchHit& hit : hits) {
+        // Asset Browser の表示規則 (生成物・中間物を隠す) は横断検索でも適用する。
+        // WHY: 索引は「参照されうるファイル」を広く持つが、ブラウザに出すのは
+        //      ユーザーが直接編集・選択する対象だけ、という方針は変えない。
+        if (!ShouldDisplayEntry(hit.entry->absolutePath, hit.entry->filename, false))
+            continue;
+
+        Entry entry;
+        entry.path  = hit.entry->absolutePath;
+        entry.name  = hit.entry->filename;
+        entry.ext   = hit.entry->extension;
+        entry.isDir = false;
+        m_searchResults.push_back(std::move(entry));
+    }
+}
+
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
+    // HotkeyManager の Scope::AssetBrowser 判定用。以前は誰も立てておらず
+    // 該当スコープのショートカットが常に無効化されていた。
+    ctx.assetBrowserFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    HandleClipboardShortcuts(ctx);
+
     DrawImportSettingsModal(ctx);
 
     // テクスチャ遅延ロードキューを処理 (3件/フレームに分散)
@@ -16,14 +114,20 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     if (ctx.requestAssetBrowserRefresh) {
         RefreshDirectory();
+        // 横断検索の結果も作り直す (アセットが増減している可能性があるため)。
+        m_searchResultsQuery.clear();
+        m_searchResultsTypeFilter = -1;
         ctx.requestAssetBrowserRefresh = false;
     }
+
+    // 横断検索の索引はプロジェクトルート基準。ルートが変わったときだけ再構築される。
+    AssetSearch::SetProjectRoot(ctx.projectRoot);
 
     // ── 左ペイン: フォルダツリー ─────────────────────────────────────────
     // セクション見出し (FAVORITES / FOLDERS) を控えめなラベルで描く小ヘルパー。
     const auto sectionHeader = [](const char* label) {
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
         ImGui::TextUnformatted(label);
         ImGui::PopStyleColor();
         ImGui::Separator();
@@ -44,7 +148,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             // 先頭に星を付けてお気に入りであることを示す。
             ImGui::PushStyleColor(ImGuiCol_Text, sel
                 ? ImGui::GetStyleColorVec4(ImGuiCol_Text)
-                : ImVec4(1.0f, 0.82f, 0.28f, 1.0f));
+                : EditorTheme::Color(ThemeColor::Warning));
             const std::string row = "\xe2\x98\x85 " + label;
             if (ImGui::Selectable(row.c_str(), sel, ImGuiSelectableFlags_SpanAllColumns)) {
                 if (util::FileSystem::Exists(bk)) {
@@ -179,13 +283,22 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     };
     const ImGuiID contentDropId = ImGui::GetID("##content_drop_target");
 
+    // Windows Explorerと同じく、通常ホイールは一覧スクロール、Ctrl+ホイールは表示サイズ変更に使う。
+    // WHY: Sizeスライダーが検索欄を圧迫していたため、ポインターを一覧から離さず調整できる操作へ移す。
+    const ImGuiIO& io = ImGui::GetIO();
+    if (m_viewMode == ViewMode::Grid && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)
+        && io.KeyCtrl && std::fabs(io.MouseWheel) > 0.001f) {
+        m_iconSize = std::clamp(m_iconSize + io.MouseWheel * 8.0f, 56.0f, 132.0f);
+        ctx.assetBrowserIconSize = m_iconSize;
+    }
+
     // パンくずリスト
     DrawBreadcrumb(ctx);
 
     // 未変換ファイルがあれば警告バーを表示
     DrawPendingImportBar(ctx);
 
-    // ── ツールバー: 検索(伸縮) | Type / Sort / Size | Save / Create / Refresh / View | 件数 ──
+    // ── ツールバー: 検索(伸縮) | Type / Sort | Save / Create / Refresh / View | 件数 ──
     // WHY: 旧実装は検索欄を固定 -470px で予約していたが、フォントサイズ変更でズレるため、
     //      右側コントロール群の幅を実測して検索欄を動的に伸縮させ、どの DPI/フォントでも揃える。
     static constexpr const char* kTypeLabels[] = {
@@ -199,8 +312,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             return ImGui::CalcTextSize(s).x + st.FramePadding.x * 2.0f;
         };
 
-        constexpr float kComboW  = 78.0f;
-        constexpr float kSliderW = 84.0f;
+        constexpr float kComboW = 78.0f;
 
         const bool dirty = AssetDirtyRegistry::HasAny();
         char saveLabel[32] = {};
@@ -210,13 +322,22 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
         const char* viewLabel = (m_viewMode == ViewMode::Grid) ? "List" : "Grid";
 
-        int files = 0, dirs = 0;
-        for (const auto& e : m_entries) { if (e.isDir) ++dirs; else ++files; }
+        // 検索範囲トグル。押下状態が一目で分かるようラベル自体を切り替える。
+        const char* scopeLabel = m_searchAllFolders ? "All Assets" : "This Folder";
+
         char countStr[48];
-        std::snprintf(countStr, sizeof(countStr), "%d files, %d dirs", files, dirs);
+        if (IsGlobalSearchActive()) {
+            std::snprintf(countStr, sizeof(countStr), "%d hits",
+                          static_cast<int>(m_searchResults.size()));
+        } else {
+            int files = 0, dirs = 0;
+            for (const auto& e : m_entries) { if (e.isDir) ++dirs; else ++files; }
+            std::snprintf(countStr, sizeof(countStr), "%d files, %d dirs", files, dirs);
+        }
 
         // 右クラスタの合計幅を実測して検索欄の幅を決める。
-        float rightW = kComboW + sp + kComboW + sp + kSliderW + sp;          // Type / Sort / Size
+        float rightW = btnW(scopeLabel) + sp;          // 検索範囲トグル
+        rightW += kComboW + sp + kComboW + sp;         // Type / Sort
         if (dirty) rightW += btnW(saveLabel) + sp;
         rightW += btnW("Create") + sp + btnW("Refresh") + sp + btnW(viewLabel) + sp;
         rightW += ImGui::CalcTextSize(countStr).x;
@@ -225,8 +346,28 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         const float searchW = std::max(120.0f, avail - rightW - sp);
 
         ImGui::SetNextItemWidth(searchW);
-        ImGui::InputTextWithHint("##search", "Search assets...",
+        ImGui::InputTextWithHint("##search",
+                                 m_searchAllFolders ? "Search all assets..."
+                                                    : "Search this folder...",
                                  m_searchBuf.data(), m_searchBuf.size());
+        ImGui::SameLine(0.0f, sp);
+
+        // 検索範囲の切り替え。ON の間はアクセント色で状態を示す。
+        if (m_searchAllFolders)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ImGui::Button(scopeLabel)) {
+            m_searchAllFolders = !m_searchAllFolders;
+            // トグル直後に確実に組み直させる。
+            m_searchResultsQuery.clear();
+            m_searchResultsTypeFilter = -1;
+        }
+        if (m_searchAllFolders) ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "検索範囲を切り替えます。\n"
+                "This Folder : 現在のフォルダ内だけを名前で絞り込む\n"
+                "All Assets  : プロジェクト全体を横断検索する (略記・部分列も一致)");
+        }
         ImGui::SameLine(0.0f, sp);
 
         ImGui::SetNextItemWidth(kComboW);
@@ -239,13 +380,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
           if (ImGui::Combo("##sort", &sm, kSortLabels, 4)) { m_sortMode = static_cast<SortMode>(sm); RefreshDirectory(); } }
         ImGui::SameLine(0.0f, sp);
 
-        ImGui::SetNextItemWidth(kSliderW);
-        if (ImGui::SliderFloat("##sz", &m_iconSize, 56.0f, 132.0f, "%.0f"))
-            ctx.assetBrowserIconSize = m_iconSize;
-        ImGui::SameLine(0.0f, sp);
-
         if (dirty) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.38f, 0.05f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Warning));
             if (ImGui::Button(saveLabel)) {
                 m_showSaveModifiedDialog = true;
                 m_saveModifiedSelected.assign(AssetDirtyRegistry::GetAll().size(), true);
@@ -260,6 +396,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SameLine(0.0f, sp);
         if (ImGui::Button(viewLabel))
             m_viewMode = (m_viewMode == ViewMode::Grid) ? ViewMode::List : ViewMode::Grid;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Grid size: Ctrl + Mouse Wheel");
         ImGui::SameLine(0.0f, sp);
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("%s", countStr);
@@ -269,7 +407,18 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     ImGui::Separator();
 
-    std::string filter(m_searchBuf.data());
+    // 横断検索が有効なら結果を組み直す (検索語 / フィルタが変わったときのみ実走)。
+    RefreshSearchResults();
+
+    const std::string filter(m_searchBuf.data());
+    const bool globalSearch = IsGlobalSearchActive();
+    const std::vector<Entry>& entries = VisibleEntries();
+
+    if (globalSearch && entries.empty()) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("\"%s\" に一致するアセットはありません。", filter.c_str());
+        ImGui::TextDisabled("Type フィルタが絞り込みすぎていないか確認してください。");
+    }
 
     if (m_viewMode == ViewMode::List) {
         DrawListView(ctx, filter);
@@ -280,16 +429,36 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         const float rowH     = m_iconSize + ImGui::GetTextLineHeightWithSpacing() * 1.6f;
 
         std::vector<size_t> visIndices;
-        for (size_t i = 0; i < m_entries.size(); ++i) {
-            const auto& e = m_entries[i];
-            if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) continue;
-            if (!PassesTypeFilter(e)) continue;
+        for (size_t i = 0; i < entries.size(); ++i) {
+            const auto& e = entries[i];
+            // 横断検索の結果は AssetSearch 側で名前・タイプとも絞り済み。
+            // ここで再度フィルタすると、部分列一致でヒットした項目まで落ちてしまう。
+            if (!globalSearch) {
+                if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) continue;
+                if (!PassesTypeFilter(e)) continue;
+            }
             visIndices.push_back(i);
         }
 
         const int totalRows = cols > 0
             ? static_cast<int>((visIndices.size() + cols - 1) / cols)
             : 0;
+
+        // 展開した親アセット + 直後に並ぶサブアセット群を 1 本の帯として描くための判定。
+        // WHY: サブアセットは RefreshDirectory が親の直後へ挿入するため、帯の範囲は
+        //      「展開中の親から、連続する isSubAsset が途切れるまで」という並び順だけで決まる。
+        //      パス命名 (FBX の ::mesh:: / materials 配下の .mat 等) には依存させない。
+        // 横断検索の結果はサブアセットを展開しないため、帯は常に無効。
+        const auto isBandParent = [this, &entries, globalSearch](size_t entryIndex) {
+            if (globalSearch) return false;
+            const Entry& en = entries[entryIndex];
+            return !en.isDir && !en.isSubAsset && en.hasSubAssets &&
+                   m_expandedAssets.count(en.path) > 0;
+        };
+        const auto inBand = [&entries, &isBandParent, globalSearch](size_t entryIndex) {
+            if (globalSearch) return false;
+            return entries[entryIndex].isSubAsset || isBandParent(entryIndex);
+        };
 
         ImGuiListClipper clipper;
         clipper.Begin(totalRows, rowH);
@@ -299,8 +468,31 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                     const int idx = row * cols + c;
                     if (idx >= static_cast<int>(visIndices.size())) break;
                     if (c > 0) ImGui::SameLine(0.0f, padding);
+
+                    const size_t entryIndex = visIndices[idx];
+                    SubAssetBand band;
+                    if (inBand(entryIndex)) {
+                        band.active   = true;
+                        band.isParent = isBandParent(entryIndex);
+                        // 帯はセルの中点で接合させる。タイル矩形は左右 4px 張り出しているため、
+                        // 中点までの残りは padding/2 - 4px。半透明色なので重ねず「ぴったり」繋ぐ。
+                        band.bleed = padding * 0.5f - 4.0f;
+                        // 左へ続く = 自分がサブアセットで、直前の可視エントリも同じ帯。
+                        const bool continuesLeft = entries[entryIndex].isSubAsset &&
+                                                   idx > 0 && inBand(visIndices[idx - 1]);
+                        // 右へ続く = 次の可視エントリがサブアセット (= 自分の子か兄弟)。
+                        const bool continuesRight = idx + 1 < static_cast<int>(visIndices.size()) &&
+                                                    entries[visIndices[idx + 1]].isSubAsset;
+                        // 同じ行なら接合、行端なら折り返し。どちらも角は閉じないが、
+                        // 矩形を伸ばすのは接合のときだけ (行端に余白を作らない)。
+                        band.joinLeft  = continuesLeft  && c > 0;
+                        band.wrapLeft  = continuesLeft  && c == 0;
+                        band.joinRight = continuesRight && c < cols - 1;
+                        band.wrapRight = continuesRight && c == cols - 1;
+                    }
+
                     ImGui::BeginGroup();
-                    DrawEntry(m_entries[visIndices[idx]], ctx);
+                    DrawEntry(entries[entryIndex], ctx, band);
                     ImGui::EndGroup();
                 }
             }
@@ -437,7 +629,11 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
                                      || e.ext == ".glb"    || e.ext == ".mesh";
     case TypeFilter::Shader:    return e.ext == ".hlsl" || e.ext == ".hlsli";
     case TypeFilter::Prefab:    return e.ext == ".prefab";
-    case TypeFilter::Animation: return e.ext == ".anim";
+    // Animator Controller と Avatar Mask もアニメーション制作物として一緒に絞り込む。
+    // WHY: 上半身レイヤーを組むときは .anim / .animcontroller / .mask を行き来するため、
+    //      同じフィルタで一望できないと毎回 All に戻すことになる。
+    case TypeFilter::Animation: return e.ext == ".anim" || e.ext == ".animcontroller"
+                                     || e.ext == ".animctrl" || e.ext == ".mask";
     case TypeFilter::Skeleton:  return e.ext == ".skel";
     case TypeFilter::Asset:     return e.ext == ".asset";
     default:                    return true;
@@ -446,11 +642,17 @@ bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
 
 void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filter)
 {
+    const bool globalSearch = IsGlobalSearchActive();
+    const std::vector<Entry>& entries = VisibleEntries();
+
     std::vector<size_t> visIndices;
-    for (size_t i = 0; i < m_entries.size(); ++i) {
-        const auto& e = m_entries[i];
-        if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) continue;
-        if (!PassesTypeFilter(e)) continue;
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto& e = entries[i];
+        // 横断検索の結果は AssetSearch 側で絞り済み (部分列一致を落とさない)。
+        if (!globalSearch) {
+            if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) continue;
+            if (!PassesTypeFilter(e)) continue;
+        }
         visIndices.push_back(i);
     }
 
@@ -468,7 +670,11 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
 
     // 列ヘッダクリックでソート。フォルダは常に先頭に固定し、その中で指定列順に並べる。
     // WHY: サイズ/更新日時のソートだけ stat が要るため、この並べ替えの間だけローカルにキャッシュする。
-    if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs && specs->SpecsCount > 0) {
+    // WHY 横断検索中はソートしないか: AssetSearch がスコア順に並べており、
+    //     完全一致・前方一致が上に来るのが検索結果として正しい。
+    //     名前順に並べ替えると、その利点が失われる。
+    if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs();
+        !globalSearch && specs && specs->SpecsCount > 0) {
         const int  col = specs->Specs[0].ColumnIndex;
         const bool asc = specs->Specs[0].SortDirection != ImGuiSortDirection_Descending;
 
@@ -477,15 +683,15 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
         auto fileSizeOf = [&](size_t idx) -> uintmax_t {
             if (auto it = sizeCache.find(idx); it != sizeCache.end()) return it->second;
             std::error_code ec;
-            const uintmax_t v = m_entries[idx].isDir ? 0
-                : std::filesystem::file_size(util::FileSystem::PathFromUtf8(m_entries[idx].path), ec);
+            const uintmax_t v = entries[idx].isDir ? 0
+                : std::filesystem::file_size(util::FileSystem::PathFromUtf8(entries[idx].path), ec);
             return sizeCache[idx] = (ec ? 0 : v);
         };
         auto fileTimeOf = [&](size_t idx) -> long long {
             if (auto it = timeCache.find(idx); it != timeCache.end()) return it->second;
             std::error_code ec;
             const auto ft = std::filesystem::last_write_time(
-                util::FileSystem::PathFromUtf8(m_entries[idx].path), ec);
+                util::FileSystem::PathFromUtf8(entries[idx].path), ec);
             return timeCache[idx] = (ec ? 0 : static_cast<long long>(ft.time_since_epoch().count()));
         };
 
@@ -501,8 +707,8 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
         };
 
         std::stable_sort(visIndices.begin(), visIndices.end(), [&](size_t a, size_t b) {
-            const Entry& ea = m_entries[a];
-            const Entry& eb = m_entries[b];
+            const Entry& ea = entries[a];
+            const Entry& eb = entries[b];
             if (ea.isDir != eb.isDir) return ea.isDir; // フォルダ先頭固定 (昇降に関わらず)
             int cmp = 0;
             switch (col) {
@@ -522,18 +728,35 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
     clipper.Begin(static_cast<int>(visIndices.size()));
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
-            const Entry& e = m_entries[visIndices[i]];
+            const Entry& e = entries[visIndices[i]];
             ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
 
-            const bool selected = m_selectedPaths.count(e.path) > 0;
+            // 主選択 (Inspector に出ている 1 件) もハイライト対象にする。
+            // WHY: グリッドでは主選択が強調されるのに、リストでは Ctrl 選択した
+            //      ものしか光らず「選んだはずの行が光らない」状態だった。
+            const bool primarySelected = !e.isDir && e.path == ctx.selectedAssetPath;
+            const bool selected = primarySelected || m_selectedPaths.count(e.path) > 0;
+            const bool emphasized = primarySelected || m_selectedPaths.size() <= 1;
+            const bool panelFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+            if (selected)
+                ImGui::PushStyleColor(ImGuiCol_Header,
+                                      ImGui::ColorConvertU32ToFloat4(
+                                          ui::TileSelectionFill(emphasized, panelFocused)));
             if (ImGui::Selectable("##row", selected,
                     ImGuiSelectableFlags_SpanAllColumns |
                     ImGuiSelectableFlags_AllowOverlap, { 0.0f, 0.0f })) {
                 HandleEntryClick(e, ctx, true);
             }
+            if (selected) ImGui::PopStyleColor();
             const bool hov = ImGui::IsItemHovered();
+            // 主選択の行だけ左端にアクセントバーを立て、複数選択の中の「現在の対象」を示す。
+            if (selected && emphasized) {
+                ui::DrawSelectionAccent(ImGui::GetWindowDrawList(),
+                                        ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                        true, true, 2.0f);
+            }
             // エクスプローラーからのドロップがこのフォルダ行に落ちたら取り込み先にする。
             if (e.isDir)
                 ConsiderExternalDropTarget(e.path, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
@@ -542,10 +765,31 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
             DrawEntryContextMenu(e, ctx);
 
             ImGui::SameLine();
+            // サブアセットは親の下にぶら下がる形で字下げし、罫線で従属関係を示す。
+            if (e.isSubAsset) {
+                ImGui::Dummy({ 14.0f, 0.0f });
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextDisabled("\xe2\x94\x94");  // └
+                ImGui::SameLine();
+            }
             const ImVec4 col = EntryColor(e);
             ImGui::TextColored(col, "%s", e.isDir ? "[D]" : EntryLabel(e));
             ImGui::SameLine();
             ImGui::TextUnformatted(e.name.c_str());
+
+            // 横断検索中は所在フォルダを併記する。
+            // WHY: 名前だけでは同名アセットを区別できず、「どこの Player.mat か」が分からない。
+            if (globalSearch) {
+                ImGui::SameLine();
+                const std::string folder = DirectoryOf(e.path);
+                std::string relative = folder;
+                if (util::FileSystem::IsChildPathText(folder, m_rootPath)) {
+                    relative = folder.size() > m_rootPath.size()
+                        ? "Assets/" + folder.substr(m_rootPath.size() + 1)
+                        : "Assets";
+                }
+                ImGui::TextDisabled("- %s", relative.c_str());
+            }
 
             ImGui::TableSetColumnIndex(1);
             ImGui::TextDisabled("%s", e.isDir ? "Folder" : e.ext.c_str());

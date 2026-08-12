@@ -3,41 +3,14 @@
 // シーン + アセット横断検索パネルの実装
 #include <Editor/Panels/SearchEverythingPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/AssetSearch.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
-#include <unordered_set>
+#include <cstddef>
 
 namespace fbzz::editor {
-
-void SearchEverythingPanel::RebuildAssetIndex(const std::string& projectRoot)
-{
-    m_assetIndex.clear();
-    m_indexedRoot = projectRoot;
-    if (projectRoot.empty()) return;
-
-    const std::filesystem::path assetsDir =
-        util::FileSystem::PathFromUtf8(projectRoot) / L"Assets";
-    if (!util::FileSystem::Exists(assetsDir)) return;
-
-    // 「開きたい」主要アセットのみ索引する (中間/生成物はノイズなので除外)。
-    static const std::unordered_set<std::string> kIncludeExt = {
-        ".scene", ".prefab", ".mat", ".fbx", ".obj", ".gltf", ".glb",
-        ".png", ".jpg", ".jpeg", ".tga", ".dds", ".hdr",
-        ".hlsl", ".hlsli", ".hpp", ".cpp", ".h", ".cs", ".lua",
-        ".anim", ".animcontroller", ".vfx", ".skel",
-        ".wav", ".mp3", ".ogg", ".terrain", ".asset", ".fzdata",
-    };
-    for (const auto& p : util::FileSystem::ListFilesRecursive(assetsDir)) {
-        const std::string ext = util::StringUtils::ToLower(
-            util::FileSystem::PathToUtf8(p.extension()));
-        if (kIncludeExt.find(ext) == kIncludeExt.end()) continue;
-        m_assetIndex.push_back(util::FileSystem::PathToUtf8(p));
-        if (m_assetIndex.size() >= 5000) break; // 暴走防止の上限
-    }
-}
 
 void SearchEverythingPanel::OnBeforeBegin(EditorContext&)
 {
@@ -49,9 +22,8 @@ void SearchEverythingPanel::OnBeforeBegin(EditorContext&)
 
 void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
 {
-    // 初回、または projectRoot が変わったら索引を作り直す。手動更新も可能。
-    if (m_indexedRoot != ctx.projectRoot)
-        RebuildAssetIndex(ctx.projectRoot);
+    // 索引は AssetSearch が保持する。ルートが変わったときだけ作り直される。
+    AssetSearch::SetProjectRoot(ctx.projectRoot);
 
     // ── 検索欄 + 更新ボタン ─────────────────────────────────────────────────
     if (m_refocusInput) {
@@ -64,7 +36,7 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
                              m_query, sizeof(m_query));
     ImGui::SameLine();
     if (ImGui::Button("Refresh"))
-        RebuildAssetIndex(ctx.projectRoot);
+        AssetSearch::Rebuild();
 
     const std::string query = m_query;
     if (query.empty()) {
@@ -100,18 +72,21 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
         }
     }
 
-    // ── アセット検索 (ファイル名一致) ───────────────────────────────────────
+    // ── アセット検索 (共通 AssetSearch 経由) ────────────────────────────────
+    // スコア順に並ぶため、完全一致・前方一致が上に来る。
     {
-        int shown = 0;
+        constexpr std::size_t MAX_ASSET_RESULTS = 200;
+        const auto hits = AssetSearch::Query(query, {}, MAX_ASSET_RESULTS);
+
         bool headerDrawn = false;
-        for (const std::string& path : m_assetIndex) {
-            const std::string name = util::FileSystem::GetFilename(path);
-            if (!util::StringUtils::ContainsCI(name, query)) continue;
+        for (const AssetSearchHit& hit : hits) {
+            const std::string& path = hit.entry->absolutePath;
+            const std::string& name = hit.entry->filename;
             if (!headerDrawn) { ImGui::SeparatorText("Assets"); headerDrawn = true; }
 
             ImGui::PushID(path.c_str());
             if (ImGui::Selectable(name.c_str())) {
-                const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
+                const std::string& ext = hit.entry->extension;
                 if (ext == ".scene") {
                     if (ctx.requestOpenScene) ctx.requestOpenScene(path);
                 } else if (ext == ".animcontroller") {
@@ -124,16 +99,16 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
                     ctx.selectedAssetPath = path; // Inspector にアセットを表示
                 }
             }
-            // フルパスをツールチップで示し、同名ファイルの区別を助ける。
+            // 相対パスを添えて、同名ファイルをその場で区別できるようにする。
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", hit.entry->relativePath.c_str());
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", path.c_str());
             ImGui::PopID();
-
-            if (++shown >= 200) {
-                ImGui::TextDisabled("... more results hidden, refine your query");
-                break;
-            }
         }
+
+        if (hits.size() >= MAX_ASSET_RESULTS)
+            ImGui::TextDisabled("... more results hidden, refine your query");
     }
 
     ImGui::EndChild();

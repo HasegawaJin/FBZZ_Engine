@@ -12,6 +12,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -43,18 +44,22 @@ std::string SanitizeMaterialFileName(std::string name, uint32_t fallbackIndex)
 
 std::string ResolveImportedMaterialPath(const std::string& modelPath,
                                         const asset::ModelAsset* modelAsset,
-                                        int meshIndex)
+                                        int meshIndex,
+                                        bool skinned)
 {
+    const char* fallbackPath = skinned
+        ? "Assets/Materials/Fallback/FallbackSkinned.mat"
+        : "Assets/Materials/Fallback/Fallback.mat";
     if (!modelAsset || modelAsset->lods.empty() || meshIndex < 0)
-        return "Assets/Materials/Fallback/FallbackSkinned.mat";
+        return fallbackPath;
 
     const auto& submeshes = modelAsset->lods[0].submeshes;
     if (meshIndex >= static_cast<int>(submeshes.size()))
-        return "Assets/Materials/Fallback/FallbackSkinned.mat";
+        return fallbackPath;
 
     const uint32_t slotIndex = submeshes[static_cast<size_t>(meshIndex)].materialSlotIndex;
     if (slotIndex >= modelAsset->materialSlotNames.size())
-        return "Assets/Materials/Fallback/FallbackSkinned.mat";
+        return fallbackPath;
 
     const std::filesystem::path modelFilePath =
         util::FileSystem::PathFromUtf8(modelPath);
@@ -76,7 +81,7 @@ std::string ResolveImportedMaterialPath(const std::string& modelPath,
     std::filesystem::path matFsPath =
         modelDir / "materials" / (fileStem + ".mat");
     if (!util::FileSystem::Exists(matFsPath))
-        return "Assets/Materials/Fallback/FallbackSkinned.mat";
+        return fallbackPath;
 
     std::string normalized = util::FileSystem::NormalizePathSeparators(
         util::FileSystem::PathToUtf8(matFsPath));
@@ -215,28 +220,40 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         root.SetParent(parent);
 
     const int meshCount = static_cast<int>(model->meshes.size());
-    std::vector<scene::SkinnedMeshRenderer*> renderers;
-    renderers.reserve(static_cast<size_t>(meshCount));
+    std::vector<scene::SkinnedMeshRenderer*> skinnedRenderers;
+    skinnedRenderers.reserve(static_cast<size_t>(meshCount));
 
     auto addRenderer = [&](scene::GameObject& target, int meshIndex) {
-        scene::SkinnedMeshRenderer smr;
-        smr.modelPath = modelPath;
-        smr.meshIndex = meshIndex;
-        smr.model     = model;
-        auto& renderer = target.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
-        renderers.push_back(&renderer);
+        renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
+        const bool isSkinned = mesh && mesh->isSkinned;
+        if (isSkinned) {
+            scene::SkinnedMeshRenderer smr;
+            smr.modelPath = modelPath;
+            smr.meshIndex = meshIndex;
+            smr.model     = model;
+            auto& renderer = target.AddComponent<scene::SkinnedMeshRenderer>(std::move(smr));
+            skinnedRenderers.push_back(&renderer);
+        } else {
+            // 頂点フォーマットが静的なら MeshRenderer を使う。
+            // WHY: SkinnedMeshRenderer はボーンパレット用の入力レイアウトを要求するため、
+            //      静的メッシュへ無差別に付けると描画経路・マテリアル種別が不一致になる。
+            scene::MeshRenderer mr;
+            mr.mesh     = mesh;
+            mr.meshPath = modelPath + ":" + std::to_string(meshIndex);
+            target.AddComponent<scene::MeshRenderer>(std::move(mr));
+        }
 
         // FBX の内部モデルコンテナはジオメトリの実体だけを持つため、配置直後に見える最低限の既定材を割り当てる。
         // WHY: MaterialComponent が空だと GeometryPass が描画をスキップするため、
         //      D&D した結果がユーザーに見えない状態になる。
         scene::MaterialComponent mc;
-        mc.materialPath = ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex);
+        mc.materialPath = ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex, isSkinned);
         target.AddComponent<scene::MaterialComponent>(std::move(mc));
     };
 
     if (meshCount == 1) {
         addRenderer(root, 0);
-        CreateBoneHierarchyForModel(*ctx.activeScene, root, renderers, *model);
+        CreateBoneHierarchyForModel(*ctx.activeScene, root, skinnedRenderers, *model);
         return root.GetID();
     }
 
@@ -247,7 +264,7 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         addRenderer(child, meshIndex);
     }
 
-    CreateBoneHierarchyForModel(*ctx.activeScene, root, renderers, *model);
+    CreateBoneHierarchyForModel(*ctx.activeScene, root, skinnedRenderers, *model);
     return root.GetID();
 }
 

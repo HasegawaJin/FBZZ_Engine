@@ -307,7 +307,6 @@ bool DrawUIGizmo(EditorContext& ctx,
                  float& startAngle,
                  float& startZ)
 {
-    HandleGizmoShortcuts(ctx);
 
     scene::GameObject* go = ctx.GetSelectedGO();
     if (!go || !ctx.activeScene) return false;

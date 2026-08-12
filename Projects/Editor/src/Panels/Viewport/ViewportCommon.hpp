@@ -54,8 +54,17 @@ bool WorldToScreen(const math::Vector3& world, const EditorContext& ctx,
                    const ImVec2& vpMin, const ImVec2& vpSize, ImVec2& out);
 bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath);
 bool InstantiateAssetAtViewport(EditorContext& ctx, const std::string& assetPath, const ImVec2& viewportMin);
-void HandleGizmoShortcuts(EditorContext& ctx);
 bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin);
+// 選択を変えずにカーソル下の GameObject を返す (見つからなければ INVALID)。
+scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportMin);
+// .mat ドラッグ中のホバープレビュー。カーソル下のオブジェクトへ仮適用し、
+// 対象が変わったら前の対象を元へ戻す。ドロップ前の毎フレーム呼び出しを想定。
+void UpdateMaterialDragPreview(EditorContext& ctx, MaterialDragPreviewState& state,
+                               const std::string& materialPath, const ImVec2& viewportMin);
+// 仮適用を破棄して元に戻す (ビューポート外へ出た / ドラッグがキャンセルされた場合)。
+void CancelMaterialDragPreview(EditorContext& ctx, MaterialDragPreviewState& state);
+// 仮適用をそのまま確定し、Undo を積む。何も適用していなければ false。
+bool CommitMaterialDragPreview(EditorContext& ctx, MaterialDragPreviewState& state);
 // 矩形 (ドラッグ) 選択: 投影位置が矩形内へ入る GameObject を選択へ加える。
 // Ctrl なしは選択の置き換え、Ctrl ありは追加。
 void RectSelectEntities(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize,
@@ -68,5 +77,9 @@ void HandleUINudge(EditorContext& ctx, bool allowed);
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& lastOp, int& lastMode, bool& prevOver, bool& prevUsing);
+// 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。
+// true を返している間はスナップドラッグ中なので、呼び出し側はギズモ・ピッキング・
+// 矩形選択をスキップすること (同じ左ドラッグを二重に解釈しないため)。
+bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
 
 } // namespace fbzz::editor

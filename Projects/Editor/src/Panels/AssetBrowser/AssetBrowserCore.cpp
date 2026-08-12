@@ -4,6 +4,7 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/TexDescSerializer.hpp>
 
 namespace fbzz::editor {
 
@@ -253,6 +254,7 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_meshPreviews);
     evictStaleEntries(m_prefabPreviews);
     evictStaleEntries(m_terrainPreviews);
+    evictStaleEntries(m_spritePreviews);
     m_texLoadQueue.clear();
     const std::string currentPath = util::FileSystem::NormalizePathSeparators(m_currentPath);
     for (const auto& p : util::FileSystem::ListAll(currentPath)) {
@@ -263,6 +265,14 @@ void AssetBrowserPanel::RefreshDirectory()
         e.ext   = util::StringUtils::ToLower(util::FileSystem::GetExtension(p));
         e.isDir = util::FileSystem::IsDirectory(p);
         if (!ShouldDisplayEntry(e.path, e.name, e.isDir)) continue;
+        if (!e.isDir) {
+            e.hasSubAssets = e.ext == ".fbx";
+            if (e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg" ||
+                e.ext == ".tga" || e.ext == ".dds" || e.ext == ".hdr" ||
+                e.ext == ".exr" || e.ext == ".bmp") {
+                e.hasSubAssets = !GetAssetSubEntries(e.path).empty();
+            }
+        }
         m_entries.push_back(std::move(e));
     }
 
@@ -287,13 +297,14 @@ void AssetBrowserPanel::RefreshDirectory()
         }
     });
 
-    // 展開済み FBX のサブエントリをその直後に挿入する
+    // 展開済み FBX / Sprite Texture のサブエントリを元素材の直後に挿入する。
+    // WHY: 元画像と切り抜かれた各 Sprite を同時に見せ、atlas 内の見た目を一覧で比較できるようにする。
     if (!m_expandedAssets.empty()) {
         std::vector<Entry> withSubs;
         withSubs.reserve(m_entries.size() * 2);
         for (const Entry& e : m_entries) {
             withSubs.push_back(e);
-            if (e.ext == ".fbx" && m_expandedAssets.count(e.path)) {
+            if (e.hasSubAssets && m_expandedAssets.count(e.path)) {
                 for (auto& sub : GetAssetSubEntries(e.path))
                     withSubs.push_back(std::move(sub));
             }
@@ -449,21 +460,61 @@ bool AssetBrowserPanel::IsRootOrMountedPath(const std::string& path) const
 }
 
 std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
-    const std::string& modelSourcePath)
+    const std::string& sourceAssetPath)
 {
-    AssetSubItems& cached = m_assetSubItemsCache[modelSourcePath];
+    AssetSubItems& cached = m_assetSubItemsCache[sourceAssetPath];
 
-    const std::string modelExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(modelSourcePath));
+    const std::string modelExt = util::StringUtils::ToLower(util::FileSystem::GetExtension(sourceAssetPath));
+    const bool isTexture =
+        modelExt == ".png" || modelExt == ".jpg" || modelExt == ".jpeg" ||
+        modelExt == ".tga" || modelExt == ".dds" || modelExt == ".hdr" ||
+        modelExt == ".exr" || modelExt == ".bmp";
+    if (isTexture) {
+        const std::string metaPath = sourceAssetPath + ".meta";
+        const auto metaWriteTime = util::FileSystem::LastWriteTime(
+            util::FileSystem::PathFromUtf8(metaPath));
+        if (cached.lastWriteTime == metaWriteTime && !cached.items.empty())
+            return cached.items;
+
+        cached = {};
+        cached.lastWriteTime = metaWriteTime;
+
+        asset::TextureAsset textureAsset;
+        asset::TexDescSerializer serializer;
+        if (!serializer.Load(metaPath, textureAsset) ||
+            textureAsset.settings.type != asset::TextureType::Sprite)
+            return cached.items;
+
+        // WHAT: 各 SpriteRect を永続 ID 付き参照へ変換し、実ファイルを増やさず Unity 風の
+        //       サブアセットとして公開する。Single / Multiple のどちらも同じ表示規則にする。
+        for (size_t index = 0; index < textureAsset.settings.sprites.size(); ++index) {
+            const asset::SpriteRect& sprite = textureAsset.settings.sprites[index];
+            const std::string token = sprite.id.empty() ? sprite.name : sprite.id;
+            Entry entry;
+            entry.path = asset::MakeSpriteReference(sourceAssetPath, token);
+            entry.name = sprite.name.empty()
+                ? ("Sprite " + std::to_string(index))
+                : std::string(sprite.name);
+            entry.ext = ".sprite";
+            entry.isSubAsset = true;
+            entry.isSpriteSubAsset = true;
+            entry.sourceAssetPath = sourceAssetPath;
+            entry.spriteIndex = static_cast<uint32_t>(index);
+            cached.items.push_back(std::move(entry));
+        }
+        return cached.items;
+    }
+
     if (modelExt != ".fbx" && modelExt != ".fzasset")
         return cached.items;
 
     // .fbx は Unity のように展開可能なモデルノードとして扱う。
     // WHY: 内部 .fzasset コンテナは Library の再生成物であり、UI と保存パスは原本 .fbx に一本化する。
-    const std::filesystem::path sourcePath = util::FileSystem::PathFromUtf8(modelSourcePath);
+    const std::filesystem::path sourcePath = util::FileSystem::PathFromUtf8(sourceAssetPath);
     const std::filesystem::path packageDir = (modelExt == ".fbx")
         ? sourcePath.parent_path() / sourcePath.stem()
         : sourcePath.parent_path();
-    std::string modelWritePath = asset::AssetManager::ResolveAssetPath(modelSourcePath);
+    std::string modelWritePath = asset::AssetManager::ResolveAssetPath(sourceAssetPath);
     if (modelExt == ".fbx") {
         const std::string containerLogical = util::FileSystem::NormalizePathSeparators(
             util::FileSystem::PathToUtf8(packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".fzasset")));
@@ -537,7 +588,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         // WHY: .fzasset 生成前に一度失敗した Null cache が残っていると、
         //      ファイル更新後もサブアセット展開が importer まで到達しない。
         asset::AssetManager::FlushFailed();
-        auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(modelSourcePath);
+        auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(sourceAssetPath);
         if (const auto* model = asset::AssetManager::Get(modelHandle)) {
             if (!model->lods.empty()) {
                 for (size_t i = 0; i < model->lods[0].submeshes.size(); ++i) {
@@ -547,7 +598,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
                         ? model->materialSlotNames[sub.materialSlotIndex]
                         : ("Mesh " + std::to_string(i));
                     Entry e;
-                    e.path       = modelSourcePath + "::mesh::" + std::to_string(i);
+                    e.path       = sourceAssetPath + "::mesh::" + std::to_string(i);
                     e.name       = meshName + ".mesh";
                     e.ext        = ".mesh";
                     e.isDir      = false;

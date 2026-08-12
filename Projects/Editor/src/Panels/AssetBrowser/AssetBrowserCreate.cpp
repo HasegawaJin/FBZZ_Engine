@@ -4,9 +4,14 @@
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Asset/VFXGraphAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
-#include <Engine/Asset/PostProcessAsset.hpp>
+#include <Engine/Asset/PostProcessProfile.hpp>
+#include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/AI/BehaviorTreeAsset.hpp>
+#include <Editor/VFXEditor/Services/VFXRecipeLibrary.hpp>
+#include <filesystem>
 
 namespace fbzz::editor {
 
@@ -49,8 +54,27 @@ void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContex
     if (ctx && !util::FileSystem::IsDirectory(path))
         ctx->selectedAssetPath = path;
 
-    std::strncpy(m_renameBuffer, util::FileSystem::GetFilename(path).c_str(),
-                 sizeof(m_renameBuffer) - 1);
+    // 編集させるのは拡張子より前だけ。拡張子は m_renameExtension に退避して固定表示する。
+    //
+    // WHY: 拡張子はアセットの種類そのものなので、名前を直すついでに変えられると困る。
+    //      ここは新規作成・複製・F2・遅延リネームの全経路が通る唯一の開始地点なので、
+    //      分割をここでやれば呼び出し側に手を入れずに全リネームへ効く。
+    //
+    //      フォルダと、先頭がドットのファイル (.gitignore 等) は分割しない。
+    //      後者は「拡張子だけの名前」であり、切り出すと編集できる部分が無くなる。
+    const std::string fileName = util::FileSystem::GetFilename(path);
+    std::string       stem     = fileName;
+    m_renameExtension.clear();
+
+    if (!util::FileSystem::IsDirectory(path)) {
+        const std::size_t dot = fileName.rfind('.');
+        if (dot != std::string::npos && dot > 0) {
+            stem              = fileName.substr(0, dot);
+            m_renameExtension = fileName.substr(dot);
+        }
+    }
+
+    std::strncpy(m_renameBuffer, stem.c_str(), sizeof(m_renameBuffer) - 1);
     m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
     m_renameNeedFocus = true;
 }
@@ -223,15 +247,17 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         BeginRenameForPath(newPath, &ctx);
     }
     if (ImGui::MenuItem("Post Process Profile")) {
-        std::string newPath = m_currentPath + "/New Post Process Profile.fzpp";
+        std::string newPath = m_currentPath + "/New Post Process Profile.fzdata";
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Post Process Profile " +
-                std::to_string(suffix++) + ".fzpp";
+                std::to_string(suffix++) + ".fzdata";
 
-        // WHY: Serializer を経由し、Inspector が期待する全セクションを持つ互換プロファイルを生成する。
-        const renderer::PostProcessSettings defaults;
-        if (!asset::SavePostProcessAssetToFile(newPath, defaults)) {
+        // WHY DataAssetRegistry::Create を使うか: 型名から実体を生成して
+        //     既定値のまま保存するため、Inspector が期待する全セクションが
+        //     Reflect() 経由で自動的に揃う。専用のテンプレート文字列を持たなくて済む。
+        if (!asset::DataAssetRegistry::Create(
+                newPath, asset::PostProcessProfile::TYPE_NAME)) {
             FBZZ_LOG_ERROR("Post Process Profile creation failed: %s", newPath.c_str());
             return;
         }
@@ -254,18 +280,116 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
     }
-    if (ImGui::MenuItem("VFX Graph")) {
-        std::string newPath = m_currentPath + "/New VFX Graph.vfx";
+    // Avatar Mask: アニメーションレイヤーを「どのボーンに効かせるか」の再利用アセット。
+    // WHY: 上半身だけ / 下半身だけの制御はこれが無いと毎回ボーンパスを手書きすることになる。
+    if (ImGui::MenuItem("Avatar Mask")) {
+        std::string newPath = m_currentPath + "/New Avatar Mask.mask";
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
-            newPath = m_currentPath + "/New VFX Graph " + std::to_string(suffix++) + ".vfx";
-        asset::VFXGraphAsset graph;
-        graph.nodes.push_back({ .id = 1, .type = asset::VFXNodeType::Entry,
-                                .name = "Entry", .editorX = 40.0f, .editorY = 120.0f,
-                                .duration = 0.0f });
+            newPath = m_currentPath + "/New Avatar Mask " + std::to_string(suffix++) + ".mask";
+        asset::AvatarMaskAsset mask;
+        mask.name = "New Avatar Mask";
+        // 既定は「何も含まない」。Inspector の Humanoid プリセットで足していく想定。
+        mask.defaultInclude = false;
+        if (!asset::SaveAvatarMaskAsset(newPath, mask)) {
+            FBZZ_LOG_ERROR("Avatar Mask creation failed: %s", newPath.c_str());
+            return;
+        }
+        RegisterCreatedPath(ctx, newPath);
+        RefreshDirectory();
+        BeginRenameForPath(newPath, &ctx);
+    }
+    // VFX Graph は「空 Entry 1 個」から始めるのが最も難しいアセットなので、
+    // 作る時点で骨格を選べるようにする。
+    // WHY: VFX の難所は「どの層をどの順にどのブレンドで重ねるか」であって、
+    //      ノードを置く作業ではない。空から始めさせるのは、その難所を毎回
+    //      ゼロから解かせているのと同じ。Template と Recipe を同じ入口に置く。
+    if (ImGui::BeginMenu("VFX Graph")) {
+        const auto createGraph = [&](const asset::VFXGraphAsset& graph, const char* baseName) {
+            std::string newPath = m_currentPath + "/" + baseName + ".vfx";
+            int suffix = 1;
+            while (util::FileSystem::Exists(newPath))
+                newPath = m_currentPath + "/" + baseName + " " + std::to_string(suffix++) + ".vfx";
+            asset::VFXGraphAsset output = graph;
+            output.name = std::filesystem::path(newPath).stem().generic_string();
+            // Template / Recipe の説明はそこのものであって、この .vfx のものではない。
+            // 引き継ぐと全ての .vfx が同じ説明を持つことになる。
+            output.description.clear();
+            output.tags.clear();
+            std::string error;
+            if (!asset::SaveVFXGraphAsset(newPath, output, &error)) {
+                FBZZ_LOG_ERROR("VFX Graph creation failed: %s (%s)", newPath.c_str(), error.c_str());
+                return;
+            }
+            RegisterCreatedPath(ctx, newPath);
+            RefreshDirectory();
+            BeginRenameForPath(newPath, &ctx);
+        };
+
+        if (ImGui::MenuItem("Empty")) {
+            asset::VFXGraphAsset graph;
+            graph.nodes.push_back({ .id = 1, .type = asset::VFXNodeType::Entry,
+                                    .name = "Entry", .editorX = 40.0f, .editorY = 120.0f,
+                                    .duration = 0.0f });
+            createGraph(graph, "New VFX Graph");
+        }
+        // Recipe は素材を割り当てずに骨格だけを出す。素材は VFX Editor で
+        // Inspector から差せばよく、ここで素材ピッカーまで抱えると入口が重くなる。
+        if (ImGui::BeginMenu("From Recipe")) {
+            for (const VFXRecipe& recipe : GetVFXRecipes()) {
+                if (!ImGui::MenuItem(recipe.name)) continue;
+                VFXRecipeBuildOptions options;
+                options.loop = recipe.loopByDefault;
+                createGraph(BuildGraphFromRecipe(recipe, options), recipe.name);
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("層構成・ブレンド・描画順が揃った骨格を作ります。\n"
+                              "素材は生成後に VFX Editor で割り当ててください。");
+        if (ImGui::BeginMenu("From Template")) {
+            m_vfxTemplates.Scan(ctx, false);
+            if (m_vfxTemplates.entries.empty())
+                ImGui::TextDisabled("Assets/VFX/Templates に .vfx がありません");
+            for (const GraphTemplateEntry& entry : m_vfxTemplates.entries) {
+                const std::string label = entry.category.empty()
+                    ? entry.name : entry.category + " / " + entry.name;
+                if (!ImGui::MenuItem(label.c_str(), nullptr, false, entry.valid)) continue;
+                asset::VFXGraphAsset graph;
+                if (asset::ParseVFXGraphAsset(entry.path, graph, nullptr))
+                    createGraph(graph, entry.name.c_str());
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::MenuItem("Behavior Tree")) {
+        std::string newPath = m_currentPath + "/New Behavior Tree.behaviortree";
+        int suffix = 1;
+        while (util::FileSystem::Exists(newPath))
+            newPath = m_currentPath + "/New Behavior Tree " + std::to_string(suffix++)
+                    + ".behaviortree";
+
+        // ルート 1 個の最小構成で作る。
+        // WHY 空にしないか: ValidateBehaviorTreeAsset が「ルート 0 個」を拒否するため、
+        //      空のまま保存できない。すぐ編集を始められる形で生成する。
+        ai::BehaviorTreeAsset tree;
+        ai::EnsureReservedBlackboardKeys(tree);
+
+        ai::BTNodeDef root;
+        root.id      = 1;
+        root.type    = ai::BTNodeType::Selector;
+        root.name    = "Root";
+        root.editorX = 80.0f;
+        root.editorY = 80.0f;
+        tree.nodes.push_back(root);
+        tree.nextNodeId = 2;
+
         std::string error;
-        if (!asset::SaveVFXGraphAsset(newPath, graph, &error)) {
-            FBZZ_LOG_ERROR("VFX Graph creation failed: %s (%s)", newPath.c_str(), error.c_str());
+        if (!ai::SaveBehaviorTreeAsset(newPath, tree, &error)) {
+            FBZZ_LOG_ERROR("Behavior Tree creation failed: %s (%s)",
+                           newPath.c_str(), error.c_str());
             return;
         }
         RegisterCreatedPath(ctx, newPath);

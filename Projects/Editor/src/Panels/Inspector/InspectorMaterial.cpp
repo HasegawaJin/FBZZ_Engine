@@ -67,13 +67,16 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     materialDirty = true;
                 }
 
-                static constexpr const char* kBlendNames[] = { "Opaque", "AlphaBlend", "Additive" };
+                static constexpr const char* kBlendNames[] = {
+                    "Opaque", "AlphaBlend", "Additive", "Premultiplied" };
                 int blendIndex = 0;
                 if (mat.blendMode == renderer::BlendMode::ALPHA_BLEND) blendIndex = 1;
                 else if (mat.blendMode == renderer::BlendMode::ADDITIVE) blendIndex = 2;
-                if (ImGui::Combo("Blend", &blendIndex, kBlendNames, 3)) {
+                else if (mat.blendMode == renderer::BlendMode::PREMULTIPLIED) blendIndex = 3;
+                if (ImGui::Combo("Blend", &blendIndex, kBlendNames, 4)) {
                     mat.blendMode = blendIndex == 1 ? renderer::BlendMode::ALPHA_BLEND
                         : blendIndex == 2 ? renderer::BlendMode::ADDITIVE
+                        : blendIndex == 3 ? renderer::BlendMode::PREMULTIPLIED
                         : renderer::BlendMode::OPAQUE_BLEND;
                     materialDirty = true;
                 }
@@ -113,7 +116,7 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 };
                 auto drawTexSlot = [&](const char* slot) {
                     std::string& path = mat.textures[slot];
-                    if (widgets::AssetPathField(slot, path, ".fztex,.png,.dds", ctx.projectRoot))
+                    if (widgets::AssetPathField(slot, path, widgets::kTextureAssetFilter, ctx.projectRoot))
                         materialDirty = true;
                 };
                 if (desc && !desc->textures.empty()) {
@@ -193,6 +196,8 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 
             if (materialDirty) {
                 mc.material.reset();
+                // AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
+                ctx.BumpMaterialPreviewRevision(NormalizeAssetPath(mc.materialPath));
                 if (ctx.activeScene) {
                     const std::string changedPath = NormalizeAssetPath(mc.materialPath);
                     for (auto [terrain] : ctx.activeScene->View<scene::TerrainComponent>()) {
@@ -214,9 +219,12 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                 if (!ctx.undoStack) return;
                 const auto handle = mc.materialAsset;
                 const auto markDirty = ctx.markSceneDirty;
-                auto apply = [handle, markDirty](const asset::MaterialAsset& value) {
+                EditorContext* context = &ctx;
+                const std::string relPath = NormalizeAssetPath(mc.materialPath);
+                auto apply = [handle, markDirty, context, relPath](const asset::MaterialAsset& value) {
                     if (auto* target = asset::AssetManager::GetMaterial(handle)) {
                         *target = value;
+                        context->BumpMaterialPreviewRevision(relPath);
                         if (markDirty) markDirty();
                     }
                 };

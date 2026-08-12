@@ -26,13 +26,13 @@ protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
-    void RebuildAssetIndex(const std::string& projectRoot);
-
-    char                     m_query[128] = {};
-    std::vector<std::string> m_assetIndex;   // projectRoot/Assets の主要アセット絶対パス
-    std::string              m_indexedRoot;  // 索引を作った projectRoot (切替検知用)
-    bool                     m_requestFocus  = false; // 次フレームでウィンドウをフォーカス
-    bool                     m_refocusInput  = false; // 次フレームで入力欄へキーボードフォーカス
+    // WHY 自前の索引を持たなくなったか: 走査・除外規則・一致判定は
+    //     AssetSearch (Editor/Util/AssetSearch.hpp) に集約した。
+    //     以前はこのパネルとアセットピッカーが別々の規則で走査しており、
+    //     同じ語で検索しても画面によって結果が違っていた。
+    char m_query[128] = {};
+    bool m_requestFocus  = false; // 次フレームでウィンドウをフォーカス
+    bool m_refocusInput  = false; // 次フレームで入力欄へキーボードフォーカス
 };
 
 } // namespace fbzz::editor
