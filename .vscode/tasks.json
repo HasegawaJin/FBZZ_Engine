@@ -121,20 +121,38 @@
             }
         },
         {
-            "label": "GameHub: Rebuild Engine SDK + Build (Debug)",
-            "dependsOn": ["CMake: Build SDK (Debug)", "GameHub: Build (Debug)"],
+            "label": "GameHub: Build Editor Tools + SDK + App (Debug)",
+            "dependsOn": [
+                "GameHub: Kill Processes",
+                "CMake: Build EditorLauncher (Debug)",
+                "CMake: Build VFXEditor (Debug)",
+                "CMake: Build SDK (Debug)",
+                "GameHub: Build (Debug)"
+            ],
             "dependsOrder": "sequence",
             "problemMatcher": []
         },
         {
-            "label": "GameHub: Rebuild Engine SDK + Build (Development)",
-            "dependsOn": ["CMake: Build SDK (Development)", "GameHub: Build (Development)"],
+            "label": "GameHub: Build Editor Tools + SDK + App (Development)",
+            "dependsOn": [
+                "GameHub: Kill Processes",
+                "CMake: Build EditorLauncher (Development)",
+                "CMake: Build VFXEditor (Development)",
+                "CMake: Build SDK (Development)",
+                "GameHub: Build (Development)"
+            ],
             "dependsOrder": "sequence",
             "problemMatcher": []
         },
         {
-            "label": "GameHub: Rebuild Engine SDK + Build (Release)",
-            "dependsOn": ["CMake: Build SDK (Release)", "GameHub: Build (Release)"],
+            "label": "GameHub: Build Editor Tools + SDK + App (Release)",
+            "dependsOn": [
+                "GameHub: Kill Processes",
+                "CMake: Build EditorLauncher (Release)",
+                "CMake: Build VFXEditor (Release)",
+                "CMake: Build SDK (Release)",
+                "GameHub: Build (Release)"
+            ],
             "dependsOrder": "sequence",
             "problemMatcher": []
         },
@@ -203,7 +221,7 @@
         {
             "label": "GameHub: Kill Processes",
             "type": "shell",
-            "command": "taskkill /F /T /IM FBZZGameHub.exe >nul 2>&1 || exit 0",
+            "command": "taskkill /F /T /IM FBZZGameHub.exe >nul 2>&1 & taskkill /F /T /IM FBZZEditor.exe >nul 2>&1 & taskkill /F /T /IM FBZZVFXEditor.exe >nul 2>&1 & exit 0",
             "problemMatcher": [],
             "presentation": {
                 "panel": "shared",

@@ -51,7 +51,10 @@ configure_file(
 
 # MSVC source files are UTF-8.
 if(MSVC)
-    add_compile_options(/utf-8 /MP /FS)
+    # WHY: Inspector / schema の大きな翻訳単位はテンプレート展開によって通常 COFF の
+    #      セクション数上限を超えることがある。/bigobj は形式上限だけを拡張し、
+    #      実行コードや ABI を変えず C1128 を防ぐ。
+    add_compile_options(/utf-8 /MP /FS $<$<COMPILE_LANGUAGE:CXX>:/bigobj>)
 endif()
 
 # Add subdirectories in dependency order.
