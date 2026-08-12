@@ -5,6 +5,7 @@
 // CPU 側頂点配列はデバッグや再生成用に必要な範囲だけ保持する。
 #pragma once
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "ResourceHandle.hpp"
 #include <Math/Vector2.hpp>
@@ -28,6 +29,14 @@ struct SkinnedVertex {
     float boneWeights[4] = {};
 };
 
+// DCC の BlendShape / Shape Key を基準頂点からの差分として保持する。
+struct MorphTarget {
+    std::string name;
+    std::vector<math::Vector3> positionDeltas;
+    std::vector<math::Vector3> normalDeltas;
+    std::vector<math::Vector3> tangentDeltas;
+};
+
 struct Mesh {
     ResourceHandle<BufferTag> vertexBuffer;
     ResourceHandle<BufferTag> indexBuffer;
@@ -37,6 +46,7 @@ struct Mesh {
     std::vector<Vertex>        cpuVertices;
     std::vector<SkinnedVertex> cpuSkinnedVertices;
     std::vector<uint32_t>      cpuIndices;
+    std::vector<MorphTarget>   morphTargets;
 
     // フラスタム/オクルージョンカリング用バウンディング球 (ローカル空間)
     // ComputeBounds() を呼ぶと cpuVertices / cpuSkinnedVertices から算出される。

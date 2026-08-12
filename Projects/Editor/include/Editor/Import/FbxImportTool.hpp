@@ -29,6 +29,8 @@ struct FbxImportOptions {
     asset::TextureCompression     defaultCompression     = asset::TextureCompression::Auto;
     std::vector<std::string>      selectedMeshNames;
     std::vector<std::string>      selectedAnimNames;
+    // ルートモーションを取り出すノード名 (空 = 候補名から自動判定)。
+    std::string                   rootMotionNodeName;
 };
 
 struct FbxScanResult {

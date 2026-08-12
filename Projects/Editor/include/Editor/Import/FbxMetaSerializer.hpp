@@ -21,6 +21,27 @@ public:
     // import 成功後に、元 FBX と設定の fingerprint を記録する。
     // WHY: source mtime だけでは import 設定変更を検出できないため、cache 情報を .meta 側に残す。
     [[nodiscard]] static bool SaveCacheInfo(const std::string& fbxAbsPath, const FbxImportOptions& options);
+
+    // ── インポータ版数 ────────────────────────────────────────────────────
+    // インポータのコードを変更して「同じ FBX から違う結果が出るようになった」ときに
+    // この値を +1 する。既存アセットの .meta に書かれた版数と食い違ったら
+    // IsOutdated() が true を返し、再インポートが走る。
+    //
+    // WHY: 再インポート判定は従来「生成物の有無」と「FBX の更新時刻」だけで、
+    //   インポータ側の変更を検知できなかった。そのため軸補正の実装を直しても
+    //   古い Bake が使われ続け、「直したのに何も変わらない」状態になっていた。
+    //   FBX を消して入れ直しても source_hash が同じなので同様に効かない。
+    //
+    // 履歴:
+    //   1 : 初版 (現行)。軸補正の回転はルート直下ノードに残す方針。
+    //
+    // NOTE: 2026-08 に軸補正の扱いを変える試み (左掛け / 基底変換) を行い版数 2 を
+    //   採番したが、いずれも不整合が出たため revert し 1 へ戻した。
+    //   次にインポータの出力を変えたときに 2 を使うこと。
+    static constexpr int kModelImporterVersion = 1;
+
+    // .meta に記録された版数を返す。未記録・読めない場合は 0。
+    [[nodiscard]] static int LoadImporterVersion(const std::string& fbxAbsPath);
 };
 
 } // namespace fbzz::editor

@@ -3,11 +3,11 @@
 // AnimatorComponent のステートマシンをノードグラフとして編集するパネル
 // WHY: Inspector の縦リストでは遷移関係が追いづらいため、状態と遷移を同じ画面で直接編集できる UI を提供する。
 #pragma once
+#include <Editor/GraphEditor/GraphCanvas.hpp>
+#include <Editor/GraphEditor/GraphView.hpp>
 #include <Editor/Panels/IPanel.hpp>
 #include <string>
 
-struct ImNodesContext;
-struct ImNodesEditorContext;
 
 namespace fbzz::scene {
 class GameObject;
@@ -43,11 +43,13 @@ private:
     static int EntryOutputPinId();
     static int EntryLinkId();
 
+    // 編集対象レイヤー (Base Layer / 各 AnimationLayer) を切り替えるツールバー。
+    void DrawLayerSelector(EditorContext& ctx, scene::AnimatorComponent& animator,
+                           bool allowEditing);
     void DrawToolbar(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawZoomControls();
     // ホイールズーム (カーソル位置固定) + Shift/Alt ホイールパン。
     // メインキャンバスと Blend Tree キャンバスで同じ操作感を共有する。
-    void HandleCanvasWheel(float canvasOriginX, float canvasOriginY);
     void DrawParameterSidebar(EditorContext& ctx, scene::AnimatorComponent& animator);
     void DrawNodeCanvas(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& instanceId);
     void DrawBlendTreeCanvas(EditorContext& ctx,
@@ -79,11 +81,16 @@ private:
     void ClearInvalidSelection(const scene::AnimatorComponent& animator);
     LinkRef ResolveLink(int linkId, const scene::AnimatorComponent& animator) const;
 
-    ImNodesContext*       m_nodesContext = nullptr;
-    ImNodesEditorContext* m_editorContext = nullptr;
+    // VFX と Animation のパン・ズーム・選択・リンク操作を同じ実装へ集約する。
+    // 旧コンテキストは移行中の比較用フォールバックとして残し、通常経路では使わない。
+    GraphCanvas           m_graphCanvas;
     LinkRef               m_selectedLink;
     int                   m_selectedNode = -1;
     int                   m_openBlendTreeState = -1;
+    // 編集中のレイヤー名。空 = Base Layer。
+    // WHY: 上半身レイヤーに独自の遷移グラフを組むには、どのグラフを見ているかを
+    //      パネル側で保持する必要がある。描画時に LayerGraphScope で差し替える。
+    std::string           m_editingLayer;
     int                   m_selectedMotion = -1;
     bool                  m_selectedAnyState = false;
     float                 m_canvasZoom = 1.0f;

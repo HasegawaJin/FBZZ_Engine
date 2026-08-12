@@ -164,13 +164,99 @@ AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
     return layout;
 }
 
+
+// AnimationState 1 件を TOML へ書き出す。
+// WHY: Base Layer (asset.states) と各 AnimationLayer::states の両方が同じ形式を使うため、
+//      Save/Load へインライン展開せず 1 箇所に集約する。片方だけ直す事故を防ぐ。
+toml::table WriteState(const scene::AnimationState& state)
+{
+    toml::table stateTable;
+    stateTable.insert("name", state.name);
+    stateTable.insert("mode", static_cast<int64_t>(state.mode));
+    stateTable.insert("sourcePath", state.sourcePath);
+    stateTable.insert("clipName", state.clipName);
+    stateTable.insert("clipIndex", static_cast<int64_t>(state.clipIndex));
+    stateTable.insert("speed", static_cast<double>(state.speed));
+    stateTable.insert("loop", state.loop);
+    stateTable.insert("ikWeight", static_cast<double>(state.ikWeight));
+
+    toml::array transitions;
+    for (const auto& transition : state.transitions)
+        transitions.push_back(WriteTransition(transition));
+    stateTable.insert("transitions", std::move(transitions));
+
+    toml::table blendTree1D;
+    blendTree1D.insert("paramName", state.blendTree1D.paramName);
+    blendTree1D.insert("dampTime", static_cast<double>(state.blendTree1D.dampTime));
+    blendTree1D.insert("syncNormalizedTime", state.blendTree1D.syncNormalizedTime);
+    toml::array motions1D;
+    for (const auto& motion : state.blendTree1D.motions)
+        motions1D.push_back(WriteMotion(motion));
+    blendTree1D.insert("motions", std::move(motions1D));
+    stateTable.insert("blendTree1D", std::move(blendTree1D));
+
+    toml::table blendTree2D;
+    blendTree2D.insert("paramX", state.blendTree2D.paramX);
+    blendTree2D.insert("paramY", state.blendTree2D.paramY);
+    blendTree2D.insert("type", static_cast<int64_t>(state.blendTree2D.type));
+    toml::array motions2D;
+    for (const auto& motion : state.blendTree2D.motions)
+        motions2D.push_back(WriteMotion(motion));
+    blendTree2D.insert("motions", std::move(motions2D));
+    stateTable.insert("blendTree2D", std::move(blendTree2D));
+    return stateTable;
+}
+
+// TOML から AnimationState 1 件を読む。旧 clipIndex からの Source 移行は呼び出し側で行う。
+scene::AnimationState ReadState(const toml::table& stateTable)
+{
+    scene::AnimationState state;
+    state.name = stateTable["name"].value_or(std::string{});
+    state.mode = static_cast<scene::AnimationStateMode>(
+        stateTable["mode"].value_or(int64_t{0}));
+    state.sourcePath = stateTable["sourcePath"].value_or(std::string{});
+    state.clipName = stateTable["clipName"].value_or(std::string{});
+    state.clipIndex = static_cast<int>(stateTable["clipIndex"].value_or(int64_t{-1}));
+    state.speed = static_cast<float>(stateTable["speed"].value_or(1.0));
+    state.loop = stateTable["loop"].value_or(true);
+    state.ikWeight = static_cast<float>(stateTable["ikWeight"].value_or(1.0));
+
+    if (const auto* transitions = stateTable["transitions"].as_array())
+        for (const auto& transitionElement : *transitions)
+            if (const auto* transitionTable = transitionElement.as_table())
+                state.transitions.push_back(ReadTransition(*transitionTable));
+
+    if (const auto* blend1D = stateTable["blendTree1D"].as_table()) {
+        state.blendTree1D.paramName = (*blend1D)["paramName"].value_or(std::string{});
+        state.blendTree1D.dampTime =
+            static_cast<float>((*blend1D)["dampTime"].value_or(0.0));
+        state.blendTree1D.syncNormalizedTime =
+            (*blend1D)["syncNormalizedTime"].value_or(false);
+        if (const auto* motions = (*blend1D)["motions"].as_array())
+            for (const auto& motionElement : *motions)
+                if (const auto* motionTable = motionElement.as_table())
+                    state.blendTree1D.motions.push_back(ReadMotion(*motionTable));
+    }
+    if (const auto* blend2D = stateTable["blendTree2D"].as_table()) {
+        state.blendTree2D.paramX = (*blend2D)["paramX"].value_or(std::string{});
+        state.blendTree2D.paramY = (*blend2D)["paramY"].value_or(std::string{});
+        state.blendTree2D.type = static_cast<scene::BlendTree2DType>(
+            (*blend2D)["type"].value_or(int64_t{0}));
+        if (const auto* motions = (*blend2D)["motions"].as_array())
+            for (const auto& motionElement : *motions)
+                if (const auto* motionTable = motionElement.as_table())
+                    state.blendTree2D.motions.push_back(ReadMotion(*motionTable));
+    }
+    return state;
+}
+
 } // namespace
 
 bool SaveAnimatorControllerAsset(const std::string& path,
                                  const AnimatorControllerAsset& asset)
 {
     toml::table root;
-    root.insert("version", int64_t{4});
+    root.insert("version", int64_t{6});
     root.insert("defaultStateName", asset.defaultStateName);
 
     toml::array clipSources;
@@ -178,43 +264,8 @@ bool SaveAnimatorControllerAsset(const std::string& path,
     root.insert("clipSources", std::move(clipSources));
 
     toml::array states;
-    for (const auto& state : asset.states) {
-        toml::table stateTable;
-        stateTable.insert("name", state.name);
-        stateTable.insert("mode", static_cast<int64_t>(state.mode));
-        stateTable.insert("sourcePath", state.sourcePath);
-        stateTable.insert("clipName", state.clipName);
-        stateTable.insert("clipIndex", static_cast<int64_t>(state.clipIndex));
-        stateTable.insert("speed", static_cast<double>(state.speed));
-        stateTable.insert("loop", state.loop);
-        stateTable.insert("ikWeight", static_cast<double>(state.ikWeight));
-
-        toml::array transitions;
-        for (const auto& transition : state.transitions)
-            transitions.push_back(WriteTransition(transition));
-        stateTable.insert("transitions", std::move(transitions));
-
-        toml::table blendTree1D;
-        blendTree1D.insert("paramName", state.blendTree1D.paramName);
-        blendTree1D.insert("dampTime", static_cast<double>(state.blendTree1D.dampTime));
-        blendTree1D.insert("syncNormalizedTime", state.blendTree1D.syncNormalizedTime);
-        toml::array motions1D;
-        for (const auto& motion : state.blendTree1D.motions)
-            motions1D.push_back(WriteMotion(motion));
-        blendTree1D.insert("motions", std::move(motions1D));
-        stateTable.insert("blendTree1D", std::move(blendTree1D));
-
-        toml::table blendTree2D;
-        blendTree2D.insert("paramX", state.blendTree2D.paramX);
-        blendTree2D.insert("paramY", state.blendTree2D.paramY);
-        blendTree2D.insert("type", static_cast<int64_t>(state.blendTree2D.type));
-        toml::array motions2D;
-        for (const auto& motion : state.blendTree2D.motions)
-            motions2D.push_back(WriteMotion(motion));
-        blendTree2D.insert("motions", std::move(motions2D));
-        stateTable.insert("blendTree2D", std::move(blendTree2D));
-        states.push_back(std::move(stateTable));
-    }
+    for (const auto& state : asset.states)
+        states.push_back(WriteState(state));
     root.insert("states", std::move(states));
 
     toml::array anyStateTransitions;
@@ -233,6 +284,68 @@ bool SaveAnimatorControllerAsset(const std::string& path,
         parameters.push_back(std::move(parameterTable));
     }
     root.insert("parameters", std::move(parameters));
+
+    toml::array layers;
+    for (const auto& layer : asset.layers) {
+        toml::table layerTable;
+        layerTable.insert("name", layer.name);
+        layerTable.insert("stateName", layer.stateName);
+        layerTable.insert("weight", static_cast<double>(layer.weight));
+        layerTable.insert("mode", static_cast<int64_t>(layer.mode));
+        layerTable.insert("enabled", layer.enabled);
+        layerTable.insert("maskIncludesChildren", layer.maskIncludesChildren);
+        toml::array maskPaths;
+        for (const auto& maskPath : layer.avatarMaskPaths) maskPaths.push_back(maskPath);
+        layerTable.insert("avatarMaskPaths", std::move(maskPaths));
+
+        // .mask アセット参照 (旧 avatarMaskPaths より優先される)。
+        layerTable.insert("maskPath", layer.mask.path);
+
+        // 加算レイヤーの基準ポーズ。未設定なら空文字列で保存し、読込側は
+        // 「加算クリップ自身の先頭キー」という従来動作にフォールバックする。
+        toml::table additiveReference;
+        additiveReference.insert("sourcePath", layer.additiveReference.sourcePath);
+        additiveReference.insert("clipName", layer.additiveReference.clipName);
+        additiveReference.insert("time", static_cast<double>(layer.additiveReference.time));
+        layerTable.insert("additiveReference", std::move(additiveReference));
+
+        // レイヤー独自ステートマシン。空配列なら旧来の stateName 単体再生。
+        layerTable.insert("defaultStateName", layer.defaultStateName);
+        toml::array layerStates;
+        for (const auto& state : layer.states)
+            layerStates.push_back(WriteState(state));
+        layerTable.insert("states", std::move(layerStates));
+        toml::array layerAnyState;
+        for (const auto& transition : layer.anyStateTransitions)
+            layerAnyState.push_back(WriteTransition(transition));
+        layerTable.insert("anyStateTransitions", std::move(layerAnyState));
+
+        // Slot は「今この瞬間割り込んでいるモーション」であってレイヤー定義ではないため、
+        // ランタイム状態 (active / time / weight) は保存しない。既定のフェード時間だけ残す。
+        toml::table slot;
+        slot.insert("fadeInDuration", static_cast<double>(layer.slot.fadeInDuration));
+        slot.insert("fadeOutDuration", static_cast<double>(layer.slot.fadeOutDuration));
+        layerTable.insert("slot", std::move(slot));
+
+        toml::array mappings;
+        for (const auto& mapping : layer.retargetMappings) {
+            toml::table mappingTable;
+            mappingTable.insert("sourcePath", mapping.sourcePath);
+            mappingTable.insert("targetPath", mapping.targetPath);
+            mappingTable.insert("translationScale", static_cast<double>(mapping.translationScale));
+            toml::array rotation;
+            rotation.push_back(static_cast<double>(mapping.rotationOffset.x));
+            rotation.push_back(static_cast<double>(mapping.rotationOffset.y));
+            rotation.push_back(static_cast<double>(mapping.rotationOffset.z));
+            rotation.push_back(static_cast<double>(mapping.rotationOffset.w));
+            mappingTable.insert("rotationOffset", std::move(rotation));
+            mappings.push_back(std::move(mappingTable));
+        }
+        layerTable.insert("retargetMappings", std::move(mappings));
+        layers.push_back(std::move(layerTable));
+    }
+    root.insert("layers", std::move(layers));
+    root.insert("baseLayerMaskPath", asset.baseLayerMaskPath);
     root.insert("editorLayout", WriteEditorLayout(asset.editorLayout));
 
     // .anim クリップ参照 (sourcePath / clipSources) を guid: 形式で保存する (リネーム・移動耐性)。
@@ -267,46 +380,7 @@ bool LoadAnimatorControllerAsset(const std::string& path,
         for (const auto& element : *states) {
             const auto* stateTable = element.as_table();
             if (!stateTable) continue;
-            scene::AnimationState state;
-            state.name = (*stateTable)["name"].value_or(std::string{});
-            state.mode = static_cast<scene::AnimationStateMode>(
-                (*stateTable)["mode"].value_or(int64_t{0}));
-            state.sourcePath =
-                (*stateTable)["sourcePath"].value_or(std::string{});
-            state.clipName = (*stateTable)["clipName"].value_or(std::string{});
-            state.clipIndex = static_cast<int>(
-                (*stateTable)["clipIndex"].value_or(int64_t{-1}));
-            state.speed = static_cast<float>((*stateTable)["speed"].value_or(1.0));
-            state.loop = (*stateTable)["loop"].value_or(true);
-            state.ikWeight = static_cast<float>((*stateTable)["ikWeight"].value_or(1.0));
-
-            if (const auto* transitions = (*stateTable)["transitions"].as_array())
-                for (const auto& transitionElement : *transitions)
-                    if (const auto* transitionTable = transitionElement.as_table())
-                        state.transitions.push_back(ReadTransition(*transitionTable));
-
-            if (const auto* blend1D = (*stateTable)["blendTree1D"].as_table()) {
-                state.blendTree1D.paramName =
-                    (*blend1D)["paramName"].value_or(std::string{});
-                state.blendTree1D.dampTime =
-                    static_cast<float>((*blend1D)["dampTime"].value_or(0.0));
-                state.blendTree1D.syncNormalizedTime =
-                    (*blend1D)["syncNormalizedTime"].value_or(false);
-                if (const auto* motions = (*blend1D)["motions"].as_array())
-                    for (const auto& motionElement : *motions)
-                        if (const auto* motionTable = motionElement.as_table())
-                            state.blendTree1D.motions.push_back(ReadMotion(*motionTable));
-            }
-            if (const auto* blend2D = (*stateTable)["blendTree2D"].as_table()) {
-                state.blendTree2D.paramX = (*blend2D)["paramX"].value_or(std::string{});
-                state.blendTree2D.paramY = (*blend2D)["paramY"].value_or(std::string{});
-                state.blendTree2D.type = static_cast<scene::BlendTree2DType>(
-                    (*blend2D)["type"].value_or(int64_t{0}));
-                if (const auto* motions = (*blend2D)["motions"].as_array())
-                    for (const auto& motionElement : *motions)
-                        if (const auto* motionTable = motionElement.as_table())
-                            state.blendTree2D.motions.push_back(ReadMotion(*motionTable));
-            }
+            scene::AnimationState state = ReadState(*stateTable);
 
             // version 1 Controller は Source を全体配列と clipIndex で保持していた。
             // Node 側 Source が空なら旧 index を Source 配列へ対応付けて自動移行する。
@@ -353,6 +427,74 @@ bool LoadAnimatorControllerAsset(const std::string& path,
             loaded.parameters.push_back(std::move(parameter));
         }
     }
+    if (const auto* layers = result["layers"].as_array()) {
+        for (const auto& element : *layers) {
+            const auto* layerTable = element.as_table();
+            if (!layerTable) continue;
+            scene::AnimationLayer layer;
+            layer.name = (*layerTable)["name"].value_or(std::string{"Layer"});
+            layer.stateName = (*layerTable)["stateName"].value_or(std::string{});
+            layer.weight = static_cast<float>((*layerTable)["weight"].value_or(1.0));
+            layer.mode = static_cast<scene::AnimationLayerMode>(
+                (*layerTable)["mode"].value_or(int64_t{0}));
+            layer.enabled = (*layerTable)["enabled"].value_or(true);
+            layer.maskIncludesChildren = (*layerTable)["maskIncludesChildren"].value_or(true);
+            if (const auto* maskPaths = (*layerTable)["avatarMaskPaths"].as_array())
+                for (const auto& maskPath : *maskPaths)
+                    if (const auto value = maskPath.value<std::string>())
+                        layer.avatarMaskPaths.push_back(*value);
+
+            // 新フィールドはすべて value_or で既定へ落ちるため、旧 Controller もそのまま読める。
+            layer.mask.path = (*layerTable)["maskPath"].value_or(std::string{});
+            if (const auto* additive = (*layerTable)["additiveReference"].as_table()) {
+                layer.additiveReference.sourcePath =
+                    (*additive)["sourcePath"].value_or(std::string{});
+                layer.additiveReference.clipName =
+                    (*additive)["clipName"].value_or(std::string{});
+                layer.additiveReference.time =
+                    static_cast<float>((*additive)["time"].value_or(0.0));
+            }
+            layer.defaultStateName = (*layerTable)["defaultStateName"].value_or(std::string{});
+            if (const auto* layerStates = (*layerTable)["states"].as_array())
+                for (const auto& stateElement : *layerStates)
+                    if (const auto* stateTable = stateElement.as_table())
+                        layer.states.push_back(ReadState(*stateTable));
+            if (const auto* layerAnyState = (*layerTable)["anyStateTransitions"].as_array())
+                for (const auto& transitionElement : *layerAnyState)
+                    if (const auto* transitionTable = transitionElement.as_table())
+                        layer.anyStateTransitions.push_back(ReadTransition(*transitionTable));
+            if (const auto* slot = (*layerTable)["slot"].as_table()) {
+                layer.slot.fadeInDuration =
+                    static_cast<float>((*slot)["fadeInDuration"].value_or(0.15));
+                layer.slot.fadeOutDuration =
+                    static_cast<float>((*slot)["fadeOutDuration"].value_or(0.15));
+            }
+
+            if (const auto* mappings = (*layerTable)["retargetMappings"].as_array()) {
+                for (const auto& mappingElement : *mappings) {
+                    const auto* mappingTable = mappingElement.as_table();
+                    if (!mappingTable) continue;
+                    scene::RetargetBoneMapping mapping;
+                    mapping.sourcePath = (*mappingTable)["sourcePath"].value_or(std::string{});
+                    mapping.targetPath = (*mappingTable)["targetPath"].value_or(std::string{});
+                    mapping.translationScale = static_cast<float>(
+                        (*mappingTable)["translationScale"].value_or(1.0));
+                    if (const auto* rotation = (*mappingTable)["rotationOffset"].as_array();
+                        rotation && rotation->size() >= 4) {
+                        mapping.rotationOffset = {
+                            static_cast<float>((*rotation)[0].value_or(0.0)),
+                            static_cast<float>((*rotation)[1].value_or(0.0)),
+                            static_cast<float>((*rotation)[2].value_or(0.0)),
+                            static_cast<float>((*rotation)[3].value_or(1.0))
+                        };
+                    }
+                    layer.retargetMappings.push_back(std::move(mapping));
+                }
+            }
+            loaded.layers.push_back(std::move(layer));
+        }
+    }
+    loaded.baseLayerMaskPath = result["baseLayerMaskPath"].value_or(std::string{});
     if (const auto* editorLayout = result["editorLayout"].as_table())
         loaded.editorLayout = ReadEditorLayout(*editorLayout);
     outAsset = std::move(loaded);
@@ -367,12 +509,17 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
     animator.states = asset.states;
     animator.anyStateTransitions = asset.anyStateTransitions;
     animator.parameters = asset.parameters;
+    animator.layers = asset.layers;
+    animator.baseLayerMask.path = asset.baseLayerMaskPath;
+    animator.baseLayerMask.Invalidate();
     animator.currentStateName.clear();
     animator.blendToState.clear();
     animator.stateTime = 0.0f;
     animator.clips.clear();
     animator.clipSourcePaths.clear();
     animator.clipsLoaded = false;
+    // clips を捨てるとルートモーションのサンプルキャッシュが持つ clip ポインタが無効になる。
+    animator.rootMotionSamples.clear();
 }
 
 AnimatorControllerAsset MakeAnimatorControllerAsset(
@@ -405,6 +552,8 @@ AnimatorControllerAsset MakeAnimatorControllerAsset(
     }
     asset.anyStateTransitions = animator.anyStateTransitions;
     asset.parameters = animator.parameters;
+    asset.layers = animator.layers;
+    asset.baseLayerMaskPath = animator.baseLayerMask.path;
     return asset;
 }
 

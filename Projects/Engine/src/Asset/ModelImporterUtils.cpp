@@ -2,9 +2,43 @@
 // ModelImporterUtils.cpp | fbzz::asset
 // Assimp 型変換および静的・スキンメッシュ両パスで共有するメッシュ変換の実装。
 #include "ModelImporterInternal.hpp"
+#include <Engine/Asset/Skeleton.hpp>
 #include <algorithm>
 
 namespace fbzz::asset {
+
+namespace {
+
+// 再帰でバインド TRS を積み上げ、ボーンごとのリファレンス行列を求める。
+void BuildReferencePoseRecursive(Skeleton& skeleton,
+                                 int nodeIndex,
+                                 const math::Matrix4& parentGlobal)
+{
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
+    const SkeletonNode& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
+    const math::Matrix4 global = parentGlobal * math::Matrix4::TRS(
+        node.bindTranslation, node.bindRotation, node.bindScale);
+
+    if (node.boneIndex >= 0 &&
+        node.boneIndex < static_cast<int>(skeleton.referencePose.size())) {
+        const Bone& bone = skeleton.bones[static_cast<size_t>(node.boneIndex)];
+        skeleton.referencePose[static_cast<size_t>(node.boneIndex)] =
+            skeleton.rootInverseTransform * global * bone.offsetMatrix;
+    }
+
+    for (int child : node.children)
+        BuildReferencePoseRecursive(skeleton, child, global);
+}
+
+} // namespace
+
+void BuildReferencePose(Skeleton& skeleton)
+{
+    skeleton.referencePose.assign(skeleton.bones.size(), math::Matrix4::Identity());
+    if (skeleton.rootNodeIndex < 0 || skeleton.nodes.empty()) return;
+    BuildReferencePoseRecursive(skeleton, skeleton.rootNodeIndex,
+                                math::Matrix4::Identity());
+}
 
 std::string ToString(const aiString& s)
 {
