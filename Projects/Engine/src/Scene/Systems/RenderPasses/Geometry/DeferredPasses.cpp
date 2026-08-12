@@ -371,7 +371,8 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = meshPtr->vertexBuffer;
+            dc.vertexBuffer       = smr->ResolveVertexBuffer(
+                static_cast<size_t>(mi), meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;
@@ -430,7 +431,8 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = meshPtr->vertexBuffer;
+            dc.vertexBuffer       = smr->ResolveVertexBuffer(
+                static_cast<size_t>(mi), meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;

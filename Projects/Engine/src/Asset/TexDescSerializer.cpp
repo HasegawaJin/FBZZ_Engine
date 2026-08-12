@@ -7,12 +7,42 @@
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <sstream>
 
 namespace fbzz::asset {
 
 namespace {
+
+std::uint64_t HashSpriteIdentity(std::string_view value, std::uint64_t seed)
+{
+    std::uint64_t hash = seed;
+    for (const unsigned char c : value) {
+        hash ^= c;
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+// ID を持たない旧 .meta へ、パス・名前・並び順から再現可能な ID を割り当てる。
+// WHY: 読み込みのたびにランダム ID を作ると、移行保存前に生成した参照が次回起動で切れるため。
+std::string MakeLegacySpriteId(
+    std::string_view assetIdentity, std::string_view name, std::size_t index)
+{
+    std::string key(assetIdentity);
+    key.push_back('|');
+    key.append(name);
+    key.push_back('|');
+    key.append(std::to_string(index));
+    const std::uint64_t high = HashSpriteIdentity(key, 1469598103934665603ULL);
+    const std::uint64_t low = HashSpriteIdentity(key, 1099511628211ULL);
+    char buffer[40];
+    std::snprintf(buffer, sizeof(buffer), "sprite-%016llx%016llx",
+        static_cast<unsigned long long>(high),
+        static_cast<unsigned long long>(low));
+    return buffer;
+}
 
 const char* TypeToStr(TextureType t) {
     switch (t) {
@@ -21,6 +51,7 @@ const char* TypeToStr(TextureType t) {
     case TextureType::Data:   return "data";
     case TextureType::HDR:    return "hdr";
     case TextureType::UI:     return "ui";
+    case TextureType::Sprite: return "sprite";
     }
     return "color";
 }
@@ -30,6 +61,7 @@ TextureType StrToType(std::string_view s) {
     if (s == "data")   return TextureType::Data;
     if (s == "hdr")    return TextureType::HDR;
     if (s == "ui")     return TextureType::UI;
+    if (s == "sprite") return TextureType::Sprite;
     return TextureType::Color;
 }
 
@@ -147,6 +179,47 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     tex.insert("aniso",               static_cast<int64_t>(s.anisoLevel));
     tex.insert("alpha_mode",          std::string(AlphaModeToStr(s.alphaMode)));
     tex.insert("alpha_dither",        s.alphaDither);
+    if (s.type == TextureType::Sprite) {
+        tex.insert("sprite_mode",
+                   s.spriteMode == SpriteMode::Multiple ? "Multiple" : "Single");
+        tex.insert("pixels_per_unit", static_cast<double>(s.pixelsPerUnit));
+
+        std::vector<SpriteRect> spriteSources = s.sprites;
+        if (spriteSources.empty()) {
+            SpriteRect sprite;
+            sprite.name = util::FileSystem::PathToUtf8(
+                util::FileSystem::PathFromUtf8(asset.sourcePath).stem());
+            if (sprite.name.empty()) sprite.name = "Sprite";
+            spriteSources.push_back(std::move(sprite));
+        }
+
+        toml::array sprites;
+        for (std::size_t index = 0; index < spriteSources.size(); ++index) {
+            const SpriteRect& source = spriteSources[index];
+            toml::table sprite;
+            sprite.insert("id", source.id.empty()
+                ? MakeLegacySpriteId(absPath, source.name, index) : source.id);
+            sprite.insert("name", source.name);
+            if (!source.legacyNames.empty()) {
+                toml::array legacyNames;
+                for (const std::string& legacyName : source.legacyNames)
+                    legacyNames.push_back(legacyName);
+                sprite.insert("legacy_names", std::move(legacyNames));
+            }
+            sprite.insert("x", static_cast<int64_t>(source.x));
+            sprite.insert("y", static_cast<int64_t>(source.y));
+            sprite.insert("width", static_cast<int64_t>(source.width));
+            sprite.insert("height", static_cast<int64_t>(source.height));
+            sprite.insert("pivot_x", static_cast<double>(source.pivotX));
+            sprite.insert("pivot_y", static_cast<double>(source.pivotY));
+            sprite.insert("border_left", static_cast<double>(source.borderLeft));
+            sprite.insert("border_top", static_cast<double>(source.borderTop));
+            sprite.insert("border_right", static_cast<double>(source.borderRight));
+            sprite.insert("border_bottom", static_cast<double>(source.borderBottom));
+            sprites.push_back(std::move(sprite));
+        }
+        tex.insert("sprites", std::move(sprites));
+    }
 
     toml::table root;
 
@@ -193,6 +266,8 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
 
     // sourcePath はサイドカーには書かれない。呼び出し元 (ImageImporter) が元画像パスを設定する。
     TextureImportSettings& s = outAsset.settings;
+    const std::string spriteIdentity = tbl["meta"]["guid"].value<std::string>()
+        .value_or(absPath);
     if (auto v = (*tex)["type"].value<std::string>())              s.type = StrToType(*v);
     // type が決まったらデフォルトを入れる (明示フィールドで上書き)
     s = DefaultSettingsForType(s.type);
@@ -213,6 +288,43 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     if (auto v = (*tex)["aniso"].value<int64_t>())                 s.anisoLevel        = static_cast<uint32_t>(*v);
     if (auto v = (*tex)["alpha_mode"].value<std::string>())        s.alphaMode         = StrToAlphaMode(*v);
     if (auto v = (*tex)["alpha_dither"].value<bool>())             s.alphaDither       = *v;
+    if (auto v = (*tex)["sprite_mode"].value<std::string>())
+        s.spriteMode = *v == "Multiple" ? SpriteMode::Multiple : SpriteMode::Single;
+    if (auto v = (*tex)["pixels_per_unit"].value<double>())
+        s.pixelsPerUnit = std::max(0.001f, static_cast<float>(*v));
+    if (const auto* sprites = (*tex)["sprites"].as_array()) {
+        s.sprites.clear();
+        std::size_t spriteIndex = 0;
+        for (const auto& node : *sprites) {
+            const auto* spriteTable = node.as_table();
+            if (spriteTable == nullptr) continue;
+            SpriteRect sprite;
+            if (auto v = (*spriteTable)["id"].value<std::string>()) sprite.id = *v;
+            if (auto v = (*spriteTable)["name"].value<std::string>()) sprite.name = *v;
+            if (const auto* legacyNames = (*spriteTable)["legacy_names"].as_array()) {
+                for (const auto& legacyName : *legacyNames)
+                    if (auto value = legacyName.value<std::string>())
+                        sprite.legacyNames.push_back(*value);
+            }
+            if (auto v = (*spriteTable)["x"].value<int64_t>()) sprite.x = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["y"].value<int64_t>()) sprite.y = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["width"].value<int64_t>()) sprite.width = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["height"].value<int64_t>()) sprite.height = static_cast<uint32_t>(std::max<int64_t>(0, *v));
+            if (auto v = (*spriteTable)["pivot_x"].value<double>()) sprite.pivotX = std::clamp(static_cast<float>(*v), 0.0f, 1.0f);
+            if (auto v = (*spriteTable)["pivot_y"].value<double>()) sprite.pivotY = std::clamp(static_cast<float>(*v), 0.0f, 1.0f);
+            if (auto v = (*spriteTable)["border_left"].value<double>()) sprite.borderLeft = std::max(0.0f, static_cast<float>(*v));
+            if (auto v = (*spriteTable)["border_top"].value<double>()) sprite.borderTop = std::max(0.0f, static_cast<float>(*v));
+            if (auto v = (*spriteTable)["border_right"].value<double>()) sprite.borderRight = std::max(0.0f, static_cast<float>(*v));
+            if (auto v = (*spriteTable)["border_bottom"].value<double>()) sprite.borderBottom = std::max(0.0f, static_cast<float>(*v));
+            if (!sprite.name.empty()) {
+                if (sprite.id.empty())
+                    sprite.id = MakeLegacySpriteId(
+                        spriteIdentity, sprite.name, spriteIndex);
+                s.sprites.push_back(std::move(sprite));
+                ++spriteIndex;
+            }
+        }
+    }
 
     return true;
 }
@@ -223,7 +335,9 @@ bool TexDescSerializer::ResolveSourcePath(
     outSourcePath.clear();
     if (texturePath.empty()) return false;
 
-    const std::string inputPath(texturePath);
+    std::string inputPath;
+    std::string spriteName;
+    ParseSpriteReference(texturePath, inputPath, spriteName);
     std::string extension = util::FileSystem::GetExtension(inputPath);
     std::transform(extension.begin(), extension.end(), extension.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });

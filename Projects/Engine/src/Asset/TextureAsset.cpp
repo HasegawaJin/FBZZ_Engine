@@ -67,6 +67,21 @@ TextureImportSettings DefaultSettingsForType(TextureType type)
         s.anisoLevel  = 1;
         s.flipGreen   = false;
         break;
+
+    case TextureType::Sprite:
+        // SpriteはUIと同じサンプリング既定値を使い、矩形境界からの色漏れを防ぐ。
+        s.type          = TextureType::Sprite;
+        s.srgb          = true;
+        s.compression   = TextureCompression::BC3;
+        s.mipmaps       = false;
+        s.filter        = TextureFilter::Bilinear;
+        s.wrapU         = TextureWrap::Clamp;
+        s.wrapV         = TextureWrap::Clamp;
+        s.anisoLevel    = 1;
+        s.flipGreen     = false;
+        s.spriteMode    = SpriteMode::Single;
+        s.pixelsPerUnit = 100.0f;
+        break;
     }
     return s;
 }
@@ -118,6 +133,46 @@ TextureType GuessTextureType(std::string_view filename)
         return TextureType::Color;
 
     return TextureType::Color;
+}
+
+std::string MakeSpriteReference(
+    std::string_view texturePath, std::string_view spriteIdOrLegacyName)
+{
+    constexpr std::string_view MARKER = "::sprite::";
+    std::string result(texturePath);
+    result.append(MARKER);
+    result.append(spriteIdOrLegacyName);
+    return result;
+}
+
+bool ParseSpriteReference(
+    std::string_view reference, std::string& outTexturePath, std::string& outSpriteName)
+{
+    constexpr std::string_view MARKER = "::sprite::";
+    const size_t markerPos = reference.find(MARKER);
+    if (markerPos == std::string_view::npos || markerPos == 0
+        || markerPos + MARKER.size() >= reference.size()) {
+        outTexturePath.assign(reference);
+        outSpriteName.clear();
+        return false;
+    }
+    outTexturePath.assign(reference.substr(0, markerPos));
+    outSpriteName.assign(reference.substr(markerPos + MARKER.size()));
+    return true;
+}
+
+const SpriteRect* FindSprite(
+    const TextureImportSettings& settings, std::string_view spriteName)
+{
+    const auto found = std::find_if(settings.sprites.begin(), settings.sprites.end(),
+        [&](const SpriteRect& sprite) {
+            // 新規参照は永続 ID、旧 .scene / .mat は表示名を保持しているため両方を解決する。
+            return (!sprite.id.empty() && sprite.id == spriteName)
+                || sprite.name == spriteName
+                || std::find(sprite.legacyNames.begin(), sprite.legacyNames.end(), spriteName)
+                    != sprite.legacyNames.end();
+        });
+    return found != settings.sprites.end() ? &*found : nullptr;
 }
 
 } // namespace fbzz::asset

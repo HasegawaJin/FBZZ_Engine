@@ -29,6 +29,14 @@ struct MaterialComponent {
         , enabled(o.enabled)
         , materialPath(o.materialPath)
         , paramOverrides(o.paramOverrides)
+        , textureOverrides(o.textureOverrides)
+        , propertyNameCache(o.propertyNameCache)
+        , hasBlendModeOverride(o.hasBlendModeOverride)
+        , blendModeOverride(o.blendModeOverride)
+        , hasDoubleSidedOverride(o.hasDoubleSidedOverride)
+        , doubleSidedOverride(o.doubleSidedOverride)
+        , hasRenderQueueOverride(o.hasRenderQueueOverride)
+        , renderQueueOverride(o.renderQueueOverride)
     {}
     MaterialComponent& operator=(const MaterialComponent& o)
     {
@@ -38,6 +46,16 @@ struct MaterialComponent {
             enabled      = o.enabled;
             materialPath = o.materialPath;
             paramOverrides = o.paramOverrides;
+            textureOverrides = o.textureOverrides;
+            propertyNameCache = o.propertyNameCache;
+            propertyValidationCache.clear();
+            propertyValidationDescriptor = nullptr;
+            hasBlendModeOverride = o.hasBlendModeOverride;
+            blendModeOverride = o.blendModeOverride;
+            hasDoubleSidedOverride = o.hasDoubleSidedOverride;
+            doubleSidedOverride = o.doubleSidedOverride;
+            hasRenderQueueOverride = o.hasRenderQueueOverride;
+            renderQueueOverride = o.renderQueueOverride;
         }
         return *this;
     }
@@ -55,6 +73,21 @@ struct MaterialComponent {
     //      波及する。ここに積むと SyncMaterial が共有アセット適用後に「この GO 専用」で上書きするので、
     //      ディゾルブ量や色などをインスタンス単位でアニメーションできる。ランタイム専用 (非シリアライズ)。
     std::unordered_map<std::string, std::vector<float>> paramOverrides;
+    // Textureと描画状態も共有.matを変更せず、GameObject単位で上書きする。
+    std::unordered_map<std::string, std::string> textureOverrides;
+    // PropertyId のhashから実名を引き、毎フレームの文字列生成と線形検索を避ける。
+    // hash衝突時は呼び出し側が実名を照合して上書きする。
+    std::unordered_map<uint64_t, std::string> propertyNameCache;
+    // bitはMaterialInstanceのPropertyKindごとのShader reflection検証済み状態。
+    std::unordered_map<uint64_t, uint8_t> propertyValidationCache;
+    // Shader descriptorがhot reloadで差し替わったら検証cacheを破棄する非所有識別子。
+    const void* propertyValidationDescriptor = nullptr;
+    bool hasBlendModeOverride = false;
+    renderer::BlendMode blendModeOverride = renderer::BlendMode::OPAQUE_BLEND;
+    bool hasDoubleSidedOverride = false;
+    bool doubleSidedOverride = false;
+    bool hasRenderQueueOverride = false;
+    int32_t renderQueueOverride = renderer::RenderQueue::GEOMETRY;
 
     const char* GetTypeName() const { return "Material"; }
 
@@ -69,18 +102,21 @@ struct MaterialComponent {
 
     renderer::BlendMode GetBlendMode() const
     {
+        if (hasBlendModeOverride) return blendModeOverride;
         const auto* a = asset::AssetManager::GetMaterial(materialAsset);
         return a ? a->blendMode : renderer::BlendMode::OPAQUE_BLEND;
     }
 
     bool IsDoubleSided() const
     {
+        if (hasDoubleSidedOverride) return doubleSidedOverride;
         const auto* a = asset::AssetManager::GetMaterial(materialAsset);
         return a ? a->doubleSided : false;
     }
 
     int32_t GetRenderQueue() const
     {
+        if (hasRenderQueueOverride) return renderQueueOverride;
         const auto* a = asset::AssetManager::GetMaterial(materialAsset);
         return a ? a->renderQueue : renderer::RenderQueue::GEOMETRY;
     }

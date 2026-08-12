@@ -10,6 +10,7 @@
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/Model.hpp>
 #include <Engine/Scene/Systems/RenderPasses/EnvironmentResources.hpp>
 #include <Engine/Scene/Systems/RenderPasses/OcclusionCuller.hpp>
 #include <Math/Frustum.hpp>
@@ -109,9 +110,47 @@ struct GpuParticleEmitterCB {
     uint32_t      depthResponse;
     float         depthDamping;
     float         depthPad;
+    // ── over-lifetime モジュール追加分 (末尾追加で既存オフセットを変えない) ──
+    // 既存 curveFlags が埋まっているため 2 本目のフラグ束を持つ。
+    math::Vector4 curveFlags2;          // x=rotation, y=drag, z/w=予約
+    math::Vector4 rotationCurveKeys01;  // time0,value0,time1,value1
+    math::Vector4 rotationCurveKeys23;
+    math::Vector4 dragCurveKeys01;
+    math::Vector4 dragCurveKeys23;
+    math::Vector3 orbitalAxis;          // 正規化済み
+    float         orbitalVelocity;
+    float         radialVelocity;
+    // bit0 = spriteRandomStartFrame / bit1 = spriteRandomRow
+    uint32_t      spriteRandomFlags;
+    float         velocityPad0;
+    float         velocityPad1;
+    // ── カーブ 8 キー化の追加分 ──────────────────────────────────────────────
+    // WHY: 既存の *Keys01/23 (キー 0〜3) はオフセットを変えずそのまま残し、
+    //      キー 4〜7 を末尾へ足す。CB は「末尾追加のみ」を規約にしてあり、
+    //      途中へ挿すと HLSL 側の全オフセットがずれて静かに壊れる。
+    math::Vector4 sizeCurveKeys45;
+    math::Vector4 sizeCurveKeys67;
+    math::Vector4 velocityCurveKeys45;
+    math::Vector4 velocityCurveKeys67;
+    math::Vector4 rotationCurveKeys45;
+    math::Vector4 rotationCurveKeys67;
+    math::Vector4 dragCurveKeys45;
+    math::Vector4 dragCurveKeys67;
+    math::Vector4 gradientTimes47;
+    math::Vector4 gradientColors47[4];
+    // 実キー数。4 キー固定だった頃は不要だったが、8 キー化で「どこまでが有効か」を
+    // GPU 側も知らないと、末尾のダミーキーを踏んで CPU と違う値を返す。
+    math::Vector4 curveKeyCounts;   // x=size, y=velocity, z=rotation, w=drag
+    // 補間モード (0=Linear, 1=Step, 2=Smooth)。CPU の ApplyCurveInterpolation と対。
+    math::Vector4 curveModes;       // x=size, y=velocity, z=rotation, w=drag
+    math::Vector4 gradientMeta;     // x=キー数, y=補間モード, z/w=予約
 };
-static_assert(sizeof(GpuParticleEmitterCB) == 784,
-    "GpuParticleEmitterCB must match GpuEmitterCB in ParticleGpuSim.cs.hlsl (784 bytes)");
+// 内訳: 従来 784 + over-lifetime 追加分 112
+//   (float4 × 5 = 80) + (orbitalAxis 12 + orbitalVelocity 4 = 16)
+//   + (radialVelocity 4 + spriteRandomFlags 4 + pad 4 × 2 = 16)
+// + カーブ 8 キー化 256 (float4 × 16: curve 4 本 × 2 + gradient 1 + 色 4 + meta 3)
+static_assert(sizeof(GpuParticleEmitterCB) == 1152,
+    "GpuParticleEmitterCB must match GpuEmitterCB in ParticleGpuSim.cs.hlsl (1152 bytes)");
 
 struct PerFrameCB {
     math::Matrix4 view;
@@ -302,6 +341,14 @@ struct DecalCB {
     float         _pad2;
     math::Vector3 decalNormal;
     float         _pad3;
+    // 角度フェード。受け面の法線が投影軸から傾くほどデカールを薄くする。
+    // WHY: OBB 投影は投影軸に対して斜めな面へ当てると、テクスチャが引き伸ばされて
+    //      長い筋になる。着弾痕や血痕が壁の角をまたいだ瞬間に「伸びた汚れ」として
+    //      露見する、デカールで最も目立つ破綻がこれ。
+    //      角度で薄めれば、破綻する範囲がそのまま消える。
+    float         angleFadeStrength = 1.0f; // 0 = フェードなし (従来の挙動)
+    float         angleFadeCos = 0.34f;     // この cos より寝た面では完全に消える (既定 70 度)
+    float         _pad4[2] = { 0.0f, 0.0f };
 };
 
 struct RenderPassHandles {
@@ -329,6 +376,8 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag> causticsShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionMaskSkinnedShader;
+    renderer::ResourceHandle<renderer::ShaderTag> selectionMaskParticleShader;
+    renderer::ResourceHandle<renderer::ShaderTag> selectionMaskParticleGpuShader;
     renderer::ResourceHandle<renderer::ShaderTag> selectionOutlineShader;
     renderer::ResourceHandle<renderer::ShaderTag> fxaaShader;
     std::vector<renderer::ResourceHandle<renderer::ShaderTag>> customPostProcessShaders;
@@ -340,6 +389,9 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
+    // 最終フォールバックの単位行列パレット。スケルトンが解決できない場合のみ使う。
+    // 通常は Model::referencePoseCB (リファレンスポーズ) が優先される。
+    // ResolveSkinningCB() を必ず経由すること。
     renderer::ResourceHandle<renderer::ConstantBufferTag> bindPoseSkinningCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> postprocCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> outlineCB;
@@ -376,15 +428,34 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ShaderTag>         particleShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particlePSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleAlphaPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particlePremultipliedPSO;
     renderer::ResourceHandle<renderer::BufferTag>         particleVB;
     renderer::ResourceHandle<renderer::BufferTag>         particleIB;
 
     // GPU パーティクル
     renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSimCS;   // CS: シミュレーション+スポーン
+    // GPU ソート 3 段。半透明を大量に出すとき、描画順をカメラ距離で並べ替えるために使う。
+    // WHY: .cs.hlsl はエントリ 1 本なので、キー生成 / グローバル段 / LDS 段で 3 本に分かれる。
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSortKeysCS;
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSortStepCS;
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuSortLocalCS;
+    // メッシュパーティクルのインスタンス描画 (VS が SV_InstanceID で粒子を引く)。
+    renderer::ResourceHandle<renderer::ShaderTag>         particleGpuMeshShader;
+    // 自己影: 光源から見た密度を積む専用 RT / シェーダー / 光源行列を入れた frame CB。
+    // WHY: 頂点展開ロジックを Particle.hlsl と共有するため、b0 の view/viewProjection だけを
+    //      光源のものへ差し替える。h.frameCB を書き換えると後続パスへ漏れるので別 CB を持つ。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   particleSelfShadowRT;
+    renderer::ResourceHandle<renderer::ShaderTag>         particleSelfShadowShader;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> particleSelfShadowFrameCB;
+    // 自己影の密度バッファ 1 辺の解像度 [px]。
+    // WHY: 自己影が拾うのは「煙の内部で光がどれだけ減るか」という低周波の情報で、
+    //      輪郭の鮮鋭さは要らない。シャドウマップより粗くしてフィルレートを抑える。
+    static constexpr std::uint32_t kSelfShadowResolution = 512u;
     renderer::ResourceHandle<renderer::ShaderTag>         particleGpuShader;  // VS+PS: billboard 描画 (加算合成)
     renderer::ResourceHandle<renderer::ShaderTag>         particleGpuAlphaShader; // VS+PS: billboard 描画 (アルファ合成)
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuAlphaPSO;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  particleGpuPremultipliedPSO;
 
     renderer::ResourceHandle<renderer::ShaderTag>         trailShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  trailPSO;
@@ -492,6 +563,10 @@ struct RenderPassContext {
 
     renderer::LightConstantsCB lightData;
     math::Matrix4               lightVP;
+    // 影の光源視点。ビルボードを光源へ正対させる必要があるパス
+    // (パーティクル自己影の密度積み) が lightVP の内訳を要求する。
+    math::Matrix4               lightView;
+    math::Vector3               lightEyePos;
     // GBuffer を使う不透明パイプラインが有効かどうか。
     // WHY: RenderSettings の Forward/Deferred 名ではなく、各パスが GBuffer 入力を読めるかを判定する。
     bool                        isDeferred  = false;
@@ -537,5 +612,23 @@ struct RenderPassContext {
     //      未設定 (nullptr) の場合は空ハンドルを返す。
     std::function<renderer::ResourceHandle<renderer::RenderTargetTag>(std::string_view)> getTransientRT;
 };
+
+// スキンメッシュ描画に使う b3 パレットを解決する。優先順位:
+//   1. AnimatorComponent が評価したパレット (アニメーション中)
+//   2. Model のリファレンスポーズ (無アニメ時の既定。Unity / Unreal と同じ考え方)
+//   3. 単位行列 (スケルトン未解決時のみ。本来は到達しない)
+//
+// WHY: 以前は 2 が無く、AnimatorComponent が無いだけで単位行列パレットが使われていた。
+//   単位行列が正しい姿勢になるのは頂点がモデル空間そのままのアセットに限られ、
+//   ノード階層にバインド変換を持つアセット (Blender 由来など) は倒れて描画された。
+inline renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveSkinningCB(
+    const renderer::ResourceHandle<renderer::ConstantBufferTag>& animatorPalette,
+    const asset::Model* model,
+    const renderer::ResourceHandle<renderer::ConstantBufferTag>& identityFallback)
+{
+    if (animatorPalette.IsValid()) return animatorPalette;
+    if (model && model->referencePoseCB.IsValid()) return model->referencePoseCB;
+    return identityFallback;
+}
 
 } // namespace fbzz::scene

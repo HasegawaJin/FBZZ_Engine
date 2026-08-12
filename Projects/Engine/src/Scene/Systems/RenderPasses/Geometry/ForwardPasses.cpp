@@ -221,8 +221,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             PerObjectCB objData{};
             objData.world             = go.transform.GetWorldMatrix();
             objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
-            const auto skinCB = (anim && anim->skinningBuffer.IsValid())
-                ? anim->skinningBuffer : h.bindPoseSkinningCB;
+            const auto skinCB = ResolveSkinningCB(
+                anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
+                smr->model, h.bindPoseSkinningCB);
 
             const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
             const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
@@ -232,7 +233,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                 if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
                 renderer::DrawCall dc;
-                dc.vertexBuffer       = meshPtr->vertexBuffer;
+                dc.vertexBuffer       = smr->ResolveVertexBuffer(
+                    static_cast<size_t>(mi), meshPtr->vertexBuffer);
                 dc.indexBuffer        = meshPtr->indexBuffer;
                 dc.indexCount         = meshPtr->indexCount;
                 dc.vertexCount        = meshPtr->vertexCount;
@@ -355,8 +357,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         objData.worldInvTranspose = math::Matrix4::Transpose(math::Matrix4::Inverse(objData.world));
         resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
 
-        const auto skinCB = (anim && anim->skinningBuffer.IsValid())
-            ? anim->skinningBuffer : h.bindPoseSkinningCB;
+        const auto skinCB = ResolveSkinningCB(
+            anim ? anim->skinningBuffer : decltype(anim->skinningBuffer){},
+            smr->model, h.bindPoseSkinningCB);
 
         const int meshStart = (smr->meshIndex < 0) ? 0 : smr->meshIndex;
         const int meshEnd   = (smr->meshIndex < 0) ? static_cast<int>(smr->model->meshes.size()) : smr->meshIndex + 1;
@@ -366,7 +369,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             if (!meshPtr->vertexBuffer.IsValid() || !meshPtr->indexBuffer.IsValid()) continue;
 
             renderer::DrawCall dc;
-            dc.vertexBuffer       = meshPtr->vertexBuffer;
+                dc.vertexBuffer       = smr->ResolveVertexBuffer(
+                    static_cast<size_t>(mi), meshPtr->vertexBuffer);
             dc.indexBuffer        = meshPtr->indexBuffer;
             dc.indexCount         = meshPtr->indexCount;
             dc.vertexCount        = meshPtr->vertexCount;

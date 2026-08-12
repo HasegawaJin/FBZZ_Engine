@@ -2,7 +2,10 @@
 // AssetDatabase.hpp | fbzz::asset
 // GUID ⇄ アセットパスの双方向インデックス。
 //
-// 各アセットは隣接する "<ファイル名>.meta" サイドカーの [meta] guid で恒久 ID を持つ。
+// 各アセット (ファイルおよびフォルダ) は隣接する "<名前>.meta" サイドカーの
+// [meta] guid で恒久 ID を持つ。フォルダの .meta は親ディレクトリに置く
+// (例: Assets/Textures/ → Assets/Textures.meta)。
+
 // 参照側 (.mat / .scene / コンポーネント) は "guid:<32hex>" 形式の文字列を保存でき、
 // AssetManager::ResolvePath がロード時に実パスへ解決する。
 // WHY: パス文字列参照はリネーム・移動で全参照が壊れる。GUID は生成後不変なので、
@@ -48,6 +51,12 @@ public:
 
     // この拡張子のアセットは .meta を持つべきか (baked 生成物・.meta 自身は対象外)。
     [[nodiscard]] static bool ShouldHaveMeta(std::string_view lowerExt);
+
+    // このフォルダは .meta ("<フォルダ名>.meta" を隣に置く) を持つべきか。
+    // WHY: フォルダも参照対象になりうる (デフォルト保存先、検索スコープ、パック単位)。
+    //      パスで覚えるとリネームで壊れるのはファイルと同じなので、guid を持たせる。
+    //      引数はフォルダ名のみ (パスではない)。ドット始まり・生成物置き場は除外する。
+    [[nodiscard]] static bool ShouldHaveFolderMeta(std::string_view folderName);
 
     // 登録済みアセット数 (デバッグ / EditorUI 表示用)。
     [[nodiscard]] static size_t Count();

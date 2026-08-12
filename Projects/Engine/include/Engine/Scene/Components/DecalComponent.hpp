@@ -23,6 +23,15 @@ struct DecalComponent {
     float albedoColor[4]   = { 1.0f, 1.0f, 1.0f, 1.0f };
     float normalStrength   = 1.0f;
 
+    // ── 角度フェード ─────────────────────────────────────────────────────────
+    // 受け面の法線が投影軸から傾くほどデカールを薄くする。
+    // WHY: OBB 投影は投影軸に対して斜めな面へ当てるとテクスチャが引き伸ばされ、
+    //      長い筋になる。着弾痕や血痕が壁と床の角をまたいだ瞬間に
+    //      「伸びた汚れ」として露見する、デカールで最も目立つ破綻がこれ。
+    //      角度で薄めれば、破綻する範囲がそのまま消える。
+    float angleFadeStrength = 1.0f;  // 0 = フェードなし
+    float angleFadeDegrees  = 70.0f; // これ以上寝た面では完全に消える [0, 89]
+
     // ── エミッシブ ───────────────────────────────────────────────────────────
     float emissiveColor[3] = { 1.0f, 1.0f, 1.0f };
     float emissiveScale    = 0.0f;
@@ -49,6 +58,8 @@ struct DecalComponent {
         r.Field("albedoB",         albedoColor[2]);
         r.Field("albedoA",         albedoColor[3]);
         r.Field("normalStrength",  normalStrength);
+        r.Field("angleFadeStrength", angleFadeStrength);
+        r.Field("angleFadeDegrees",  angleFadeDegrees);
         r.Field("emissiveR",       emissiveColor[0]);
         r.Field("emissiveG",       emissiveColor[1]);
         r.Field("emissiveB",       emissiveColor[2]);

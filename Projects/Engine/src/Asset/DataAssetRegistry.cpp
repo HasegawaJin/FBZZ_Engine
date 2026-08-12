@@ -18,9 +18,11 @@
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
 #include <toml++/toml.hpp>
+#include <cstddef>
 #include <memory>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 namespace fbzz::asset {
 
@@ -66,39 +68,154 @@ math::Quaternion ArrToQuat(const toml::array* a, math::Quaternion def)
 }
 
 // ── 書き込みリフレクタ (DataAsset → toml::table) ─────────────────────────────
+//
+// 入れ子オブジェクトと構造体配列に対応するため、書き込み先をスタックで管理する。
+// WHY スタックが要るか: BeginObject / BeginObjectElement は「現在の書き込み先」を
+//      一時的に子テーブルへ差し替える。ネストは任意の深さになりうるため、
+//      復帰先を LIFO で覚えておく必要がある。
 class TomlWriteReflector : public scene::IReflector {
 public:
-    explicit TomlWriteReflector(toml::table& table) : m_table(table) {}
+    explicit TomlWriteReflector(toml::table& table) { m_stack.push_back(&table); }
 
-    void Field(const char* name, float& v) override { m_table.insert_or_assign(name, (double)v); }
-    void Field(const char* name, int& v) override { m_table.insert_or_assign(name, (int64_t)v); }
-    void Field(const char* name, bool& v) override { m_table.insert_or_assign(name, v); }
-    void Field(const char* name, std::string& v) override { m_table.insert_or_assign(name, v); }
-    void Field(const char* name, math::Vector2& v) override { m_table.insert_or_assign(name, Vec2ToArr(v)); }
-    void Field(const char* name, math::Vector3& v) override { m_table.insert_or_assign(name, Vec3ToArr(v)); }
-    void Field(const char* name, math::Vector4& v) override { m_table.insert_or_assign(name, Vec4ToArr(v)); }
-    void Field(const char* name, math::Quaternion& v) override { m_table.insert_or_assign(name, QuatToArr(v)); }
+    void Field(const char* name, float& v) override { Current().insert_or_assign(PersistentKey(name), (double)v); }
+    void Field(const char* name, int& v) override { Current().insert_or_assign(PersistentKey(name), (int64_t)v); }
+    void Field(const char* name, bool& v) override { Current().insert_or_assign(PersistentKey(name), v); }
+    void Field(const char* name, std::string& v) override { Current().insert_or_assign(PersistentKey(name), v); }
+    void Field(const char* name, math::Vector2& v) override { Current().insert_or_assign(PersistentKey(name), Vec2ToArr(v)); }
+    void Field(const char* name, math::Vector3& v) override { Current().insert_or_assign(PersistentKey(name), Vec3ToArr(v)); }
+    void Field(const char* name, math::Vector4& v) override { Current().insert_or_assign(PersistentKey(name), Vec4ToArr(v)); }
+    void Field(const char* name, math::Quaternion& v) override { Current().insert_or_assign(PersistentKey(name), QuatToArr(v)); }
+
+    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
+    void BeginObject(const char* name) override
+    {
+        // 親へ空テーブルを挿入し、その実体を書き込み先に積む。
+        // WHY 先に挿入するか: toml::table を後から move で挿入すると、
+        //      構築中に取得したポインタが無効化される。先に置いて実体の
+        //      アドレスを確定させてから書き込む方が安全。
+        auto [iterator, inserted] =
+            Current().insert_or_assign(PersistentKey(name), toml::table{});
+        toml::table* child = iterator->second.as_table();
+        // 挿入直後なので as_table() は必ず成功する。防御的に親を積み直して破綻を避ける。
+        m_stack.push_back(child ? child : &Current());
+    }
+
+    void EndObject() override
+    {
+        // ルート (最初の 1 枚) は決して pop しない。
+        if (m_stack.size() > 1) m_stack.pop_back();
+    }
+
+    // ── 構造体配列 ───────────────────────────────────────────────────────────
+    std::size_t BeginObjectList(const char* name, std::size_t count) override
+    {
+        auto [iterator, inserted] =
+            Current().insert_or_assign(PersistentKey(name), toml::array{});
+        m_listStack.push_back(iterator->second.as_array());
+        return count;   // 書き込みは要素数を変えない
+    }
+
+    void BeginObjectElement(std::size_t index) override
+    {
+        (void)index;
+        toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
+        if (!array) { m_stack.push_back(&Current()); return; }
+
+        array->push_back(toml::table{});
+        toml::table* element = array->back().as_table();
+        m_stack.push_back(element ? element : &Current());
+    }
+
+    void EndObjectElement() override { EndObject(); }
+
+    std::size_t EndObjectList() override
+    {
+        if (!m_listStack.empty()) m_listStack.pop_back();
+        return NO_REMOVE;   // 永続化は要素を削除しない
+    }
 
 private:
-    toml::table& m_table;
+    toml::table& Current() { return *m_stack.back(); }
+
+    std::vector<toml::table*> m_stack;
+    std::vector<toml::array*> m_listStack;
 };
 
 // ── 読み込みリフレクタ (toml::table → DataAsset) ─────────────────────────────
+//
+// 書き込み側と同じくスタックで読み込み元を管理する。
+// 対応するテーブルが存在しない入れ子は「欠損スコープ」として積み、
+// 中のフィールドはすべて既定値のまま残す (部分的に古いファイルでも壊れない)。
 class TomlReadReflector : public scene::IReflector {
 public:
-    explicit TomlReadReflector(const toml::table& table) : m_table(table) {}
+    explicit TomlReadReflector(const toml::table& table) { m_stack.push_back(&table); }
 
-    void Field(const char* name, float& v) override { v = (float)m_table[name].value_or((double)v); }
-    void Field(const char* name, int& v) override { v = (int)m_table[name].value_or((int64_t)v); }
-    void Field(const char* name, bool& v) override { v = m_table[name].value_or(v); }
-    void Field(const char* name, std::string& v) override { v = m_table[name].value_or(v); }
-    void Field(const char* name, math::Vector2& v) override { v = ArrToVec2(m_table[name].as_array(), v); }
-    void Field(const char* name, math::Vector3& v) override { v = ArrToVec3(m_table[name].as_array(), v); }
-    void Field(const char* name, math::Vector4& v) override { v = ArrToVec4(m_table[name].as_array(), v); }
-    void Field(const char* name, math::Quaternion& v) override { v = ArrToQuat(m_table[name].as_array(), v); }
+    void Field(const char* name, float& v) override { if (const auto* n = Find(name)) v = (float)n->value_or((double)v); }
+    void Field(const char* name, int& v) override { if (const auto* n = Find(name)) v = (int)n->value_or((int64_t)v); }
+    void Field(const char* name, bool& v) override { if (const auto* n = Find(name)) v = n->value_or(v); }
+    void Field(const char* name, std::string& v) override { if (const auto* n = Find(name)) v = n->value_or(v); }
+    void Field(const char* name, math::Vector2& v) override { const auto* n = Find(name); v = ArrToVec2(n ? n->as_array() : nullptr, v); }
+    void Field(const char* name, math::Vector3& v) override { const auto* n = Find(name); v = ArrToVec3(n ? n->as_array() : nullptr, v); }
+    void Field(const char* name, math::Vector4& v) override { const auto* n = Find(name); v = ArrToVec4(n ? n->as_array() : nullptr, v); }
+    void Field(const char* name, math::Quaternion& v) override { const auto* n = Find(name); v = ArrToQuat(n ? n->as_array() : nullptr, v); }
+
+    // ── 入れ子オブジェクト ───────────────────────────────────────────────────
+    void BeginObject(const char* name) override
+    {
+        const toml::node* node = Find(name);
+        // 見つからなければ nullptr を積む。以降の Field は Current() が null なので
+        // 何も読まず、呼び出し側の既定値がそのまま残る。
+        m_stack.push_back(node ? node->as_table() : nullptr);
+    }
+
+    void EndObject() override
+    {
+        if (m_stack.size() > 1) m_stack.pop_back();
+    }
+
+    // ── 構造体配列 ───────────────────────────────────────────────────────────
+    std::size_t BeginObjectList(const char* name, std::size_t count) override
+    {
+        const toml::node* node  = Find(name);
+        const toml::array* array = node ? node->as_array() : nullptr;
+        m_listStack.push_back(array);
+        // 保存されていた要素数を返す。呼び出し側はこの値で vector を resize する。
+        // 配列が無い場合は 0 を返し、既存要素を消す (ファイルの内容を正とする)。
+        return array ? array->size() : 0u;
+    }
+
+    void BeginObjectElement(std::size_t index) override
+    {
+        const toml::array* array = m_listStack.empty() ? nullptr : m_listStack.back();
+        if (!array || index >= array->size()) { m_stack.push_back(nullptr); return; }
+        m_stack.push_back(array->at(index).as_table());
+    }
+
+    void EndObjectElement() override { EndObject(); }
+
+    std::size_t EndObjectList() override
+    {
+        if (!m_listStack.empty()) m_listStack.pop_back();
+        return NO_REMOVE;
+    }
 
 private:
-    const toml::table& m_table;
+    const toml::table* Current() const { return m_stack.back(); }
+
+    const toml::node* Find(const char* fallback) const
+    {
+        const toml::table* table = Current();
+        if (!table) return nullptr;   // 欠損スコープの内側
+
+        if (const toml::node* node = table->get(PersistentKey(fallback))) return node;
+        for (const char* formerKey : FormerKeys())
+            if (formerKey)
+                if (const toml::node* node = table->get(formerKey)) return node;
+        return nullptr;
+    }
+
+    std::vector<const toml::table*> m_stack;
+    std::vector<const toml::array*> m_listStack;
 };
 
 // ── キャッシュ ───────────────────────────────────────────────────────────────
