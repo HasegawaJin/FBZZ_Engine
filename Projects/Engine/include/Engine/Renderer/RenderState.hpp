@@ -21,6 +21,12 @@ namespace fbzz::renderer {
         OPAQUE_BLEND, // 不透明 (デフォルト)
         ALPHA_BLEND, // アルファブレンド (半透明)
         ADDITIVE,    // 加算合成 (パーティクル・エフェクト)
+        // 事前乗算アルファ: out = src.rgb + dst.rgb * (1 - src.a)
+        // WHY: 1 枚のテクスチャの中で「発光する芯」と「煙のように背景を隠す縁」を
+        //      同時に表現できる (alpha=0 かつ RGB>0 の画素が加算として振る舞う)。
+        //      Alpha と Additive を別エミッターに分けて重ねる必要がなくなり、
+        //      爆炎のようにコアと煙が連続する表現でソート順の破綻も減る。
+        PREMULTIPLIED,
     };
 
     enum class DepthMode {

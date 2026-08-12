@@ -139,16 +139,18 @@ function Get-ShaderDependencyInfo {
     }
 }
 
-# 全hlslを再帰収集し、ソース内に実在する標準エントリーポイントだけをジョブ化する。
-# WHY: 新しいカテゴリやUIシェーダーを追加しても、手動の列挙表を更新せず自動で対象になる。
+# 全hlslを再帰収集し、ソースと推移的include内に実在する標準エントリーポイントだけをジョブ化する。
+# WHY: Standalone側の薄いラッパーHLSLはEngine正本をincludeするため、ラッパー本文だけでは誤って未定義扱いになる。
 function Get-ShaderJobs {
     $jobs = New-Object System.Collections.Generic.List[object]
+    $errors = New-Object System.Collections.Generic.List[object]
     $outputNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $sources = @(Get-ChildItem -LiteralPath $shaderRoot -Recurse -File -Filter "*.hlsl" | Sort-Object FullName)
 
     foreach ($source in $sources) {
         $relativePath = Get-ShaderRelativePath -FullPath $source.FullName
-        $sourceText = [IO.File]::ReadAllText($source.FullName)
+        $dependencyInfo = Get-ShaderDependencyInfo -SourcePath $source.FullName
+        $sourceText = ($dependencyInfo.Files | ForEach-Object { [IO.File]::ReadAllText($_) }) -join "`n"
         $stages = New-Object System.Collections.Generic.List[object]
 
         if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bVSMain\s*\(')) {
@@ -162,10 +164,16 @@ function Get-ShaderJobs {
         }
 
         if ($stages.Count -eq 0) {
-            throw "No VSMain, PSMain, or CSMain entry point was found: $relativePath. Include-only files must use .hlsli."
+            $errors.Add([PSCustomObject]@{
+                Backend = "PRECHECK"
+                Stage = "DISCOVERY"
+                Entry = "-"
+                Source = $relativePath
+                Message = "No VSMain, PSMain, or CSMain entry point was found. Include-only files must use .hlsli."
+            })
+            continue
         }
 
-        $dependencyInfo = Get-ShaderDependencyInfo -SourcePath $source.FullName
         $outputBase = ($relativePath -replace '\.hlsl$', '') -replace '[/\\]', '.'
 
         foreach ($stage in $stages) {
@@ -180,7 +188,14 @@ function Get-ShaderJobs {
             }
 
             if (-not $outputNames.Add($outputName)) {
-                throw "Multiple shaders produce the same output: $outputName"
+                $errors.Add([PSCustomObject]@{
+                    Backend = "PRECHECK"
+                    Stage = $stage.Name
+                    Entry = $stage.Entry
+                    Source = $relativePath
+                    Message = "Multiple shaders produce the same output: $outputName"
+                })
+                continue
             }
 
             $jobs.Add([PSCustomObject]@{
@@ -197,6 +212,7 @@ function Get-ShaderJobs {
     return [PSCustomObject]@{
         SourceCount = $sources.Count
         Jobs = $jobs.ToArray()
+        Errors = $errors.ToArray()
     }
 }
 
@@ -319,7 +335,7 @@ function Invoke-ShaderJob {
         $outputWasGenerated = (Test-Path -LiteralPath $temporaryPath -PathType Leaf) -and
             ((Get-Item -LiteralPath $temporaryPath).Length -gt 0)
         if (-not $outputWasGenerated) {
-            throw "Shader compilation failed with exit code $exitCode."
+            throw "source=$($Job.RelativePath) backend=$TargetBackend stage=$($Job.Stage) entry=$($Job.Entry) exitCode=$exitCode"
         }
         if ($exitCode -ne 0) {
             $warningMessage = "[compile_shaders][WARNING] Compiler returned exit code $exitCode but generated a valid shader; continuing."
@@ -346,9 +362,19 @@ function Write-CompileMessage {
 
 try {
     $catalog = Get-ShaderJobs
+    $failures = New-Object System.Collections.Generic.List[object]
+    foreach ($catalogError in $catalog.Errors) {
+        $failures.Add($catalogError)
+    }
     $missingIncludes = @($catalog.Jobs | ForEach-Object { $_.Dependencies.Missing } | Sort-Object -Unique)
-    if ($missingIncludes.Count -gt 0) {
-        throw "Unresolved shader includes:`n  $($missingIncludes -join "`n  ")"
+    foreach ($missingInclude in $missingIncludes) {
+        $failures.Add([PSCustomObject]@{
+            Backend = "PRECHECK"
+            Stage = "INCLUDE"
+            Entry = "-"
+            Source = ($missingInclude -split ' -> ', 2)[0]
+            Message = "Unresolved shader include: $missingInclude"
+        })
     }
 
     $targetBackends = if ($Backend -eq "All") { @("DX11", "DX12") } else { @($Backend) }
@@ -403,16 +429,25 @@ try {
                 Write-Host "[PLAN][$($orphanPlan.Backend)][REMOVE] orphan $($orphanPlan.File.Name)"
             }
         }
+        if ($failures.Count -gt 0) {
+            foreach ($failure in $failures) {
+                Write-Host "[compile_shaders][ERROR][$($failure.Backend)][$($failure.Stage)] source=$($failure.Source): $($failure.Message)" -ForegroundColor Red
+            }
+            exit 1
+        }
         exit 0
     }
 
     # 完全なno-opではログも触らず、CMakeの毎回走査を作業ツリーへの副作用なしで終える。
-    if ($plans.Count -eq 0 -and $orphanPlans.Count -eq 0) {
+    if ($plans.Count -eq 0 -and $orphanPlans.Count -eq 0 -and $failures.Count -eq 0) {
         Write-Host "[compile_shaders] completed=0 skipped=$($targetBackends.Count * $catalog.Jobs.Count)"
         exit 0
     }
 
     Set-Content -LiteralPath $logPath -Value "[compile_shaders] $(Get-Date -Format 'o')" -Encoding UTF8
+    # WHY: 最初のHLSLエラーで停止すると別ファイルの問題が隠れるため、ジョブ単位で失敗を集約する。
+    # WHAT: 各失敗にはバックエンド・ステージ・エントリーポイント・ソースパスを保持し、最後に全件を列挙する。
+    $completedCount = 0
 
     foreach ($targetBackend in $targetBackends) {
         $backendPlans = @($plans | Where-Object { $_.Backend -eq $targetBackend })
@@ -421,25 +456,64 @@ try {
         $compilerPath = $null
 
         if ($backendPlans.Count -gt 0) {
-            $compilerPath = Find-ShaderCompiler -TargetBackend $targetBackend
+            try {
+                $compilerPath = Find-ShaderCompiler -TargetBackend $targetBackend
+            } catch {
+                foreach ($plan in $backendPlans) {
+                    $failures.Add([PSCustomObject]@{
+                        Backend = $targetBackend
+                        Stage = $plan.Job.Stage
+                        Entry = $plan.Job.Entry
+                        Source = $plan.Job.RelativePath
+                        Message = $_.Exception.Message
+                    })
+                }
+                Write-CompileMessage "[compile_shaders][ERROR][$targetBackend] compiler setup failed: $($_.Exception.Message)"
+                continue
+            }
             if (-not (Test-Path -LiteralPath $outputDirectory -PathType Container)) {
                 New-Item -ItemType Directory -Path $outputDirectory | Out-Null
             }
         }
 
+        $backendFailureCount = $failures.Count
         foreach ($plan in $backendPlans) {
-            Write-CompileMessage "[$targetBackend][$($plan.Job.Stage)] $($plan.Job.RelativePath)"
-            Invoke-ShaderJob -Job $plan.Job -TargetBackend $targetBackend -CompilerPath $compilerPath -OutputPath $plan.OutputPath
+            Write-CompileMessage "[$targetBackend][$($plan.Job.Stage)][COMPILE] source=$($plan.Job.RelativePath) entry=$($plan.Job.Entry)"
+            try {
+                Invoke-ShaderJob -Job $plan.Job -TargetBackend $targetBackend -CompilerPath $compilerPath -OutputPath $plan.OutputPath
+                $completedCount++
+            } catch {
+                $failure = [PSCustomObject]@{
+                    Backend = $targetBackend
+                    Stage = $plan.Job.Stage
+                    Entry = $plan.Job.Entry
+                    Source = $plan.Job.RelativePath
+                    Message = $_.Exception.Message
+                }
+                $failures.Add($failure)
+                Write-CompileMessage "[compile_shaders][ERROR][$targetBackend][$($plan.Job.Stage)] source=$($plan.Job.RelativePath) entry=$($plan.Job.Entry): $($failure.Message)"
+            }
         }
 
         # 正常完了したbackendだけを掃除し、削除・改名済みソースの孤立CSOを残さない。
-        foreach ($orphanPlan in @($orphanPlans | Where-Object { $_.Backend -eq $targetBackend })) {
-            Write-CompileMessage "[$targetBackend][REMOVE] orphan $($orphanPlan.File.Name)"
-            Remove-Item -LiteralPath $orphanPlan.File.FullName -Force
+        if ($failures.Count -eq $backendFailureCount) {
+            foreach ($orphanPlan in @($orphanPlans | Where-Object { $_.Backend -eq $targetBackend })) {
+                Write-CompileMessage "[$targetBackend][REMOVE] orphan $($orphanPlan.File.Name)"
+                Remove-Item -LiteralPath $orphanPlan.File.FullName -Force
+            }
         }
     }
 
-    Write-CompileMessage "[compile_shaders] completed=$($plans.Count) skipped=$($targetBackends.Count * $catalog.Jobs.Count - $plans.Count)"
+    if ($failures.Count -gt 0) {
+        Write-CompileMessage "[compile_shaders][FAILED] errors=$($failures.Count) completed=$completedCount"
+        for ($index = 0; $index -lt $failures.Count; $index++) {
+            $failure = $failures[$index]
+            Write-CompileMessage "[ERROR $($index + 1)/$($failures.Count)][$($failure.Backend)][$($failure.Stage)] source=$($failure.Source) entry=$($failure.Entry): $($failure.Message)"
+        }
+        exit 1
+    }
+
+    Write-CompileMessage "[compile_shaders] completed=$completedCount skipped=$($targetBackends.Count * $catalog.Jobs.Count - $plans.Count)"
     exit 0
 } catch {
     $errorMessage = "[compile_shaders][FAILED] $($_.Exception.Message)"

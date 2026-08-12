@@ -8,6 +8,7 @@
 #include "DX11Shader.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/HResult.hpp>
+#include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
 #include <Engine/Renderer/ShaderDependencyTracker.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Windows.h>
@@ -183,6 +184,7 @@ std::vector<uint8_t> CompileHlslToBlob(
     const std::string& target,
     const std::string& csoSavePath)
 {
+    ClearShaderCompileDiagnosticsFor(hlslPath, entryPoint, target);
     // hlslPath から shaders/ アンカーより前を shaders ルートとする
     const std::wstring resolvedHlslWide = ResolveReadablePath(hlslPath);
     std::string norm = NarrowSlashes(resolvedHlslWide);
@@ -193,7 +195,9 @@ std::vector<uint8_t> CompileHlslToBlob(
     const std::string anchor = "shaders/";
     const size_t a = lower.find(anchor);
     if (a == std::string::npos) {
-        FBZZ_LOG_ERROR("CompileHlsl: shaders/ not found in path: %s", hlslPath.c_str());
+        const std::string message = "shaders/ がパス内に見つかりません";
+        FBZZ_LOG_ERROR("CompileHlsl: %s: %s", message.c_str(), hlslPath.c_str());
+        ReportShaderCompileDiagnostic(hlslPath, entryPoint, target, message, true);
         return {};
     }
     // "Assets/Shaders" (末尾スラッシュなし)
@@ -227,10 +231,13 @@ std::vector<uint8_t> CompileHlslToBlob(
     if (errBlob && errBlob->GetBufferSize() > 0)
     {
         const char* msg = static_cast<const char*>(errBlob->GetBufferPointer());
+        std::string message(msg, errBlob->GetBufferSize());
+        while (!message.empty() && message.back() == '\0') message.pop_back();
         if (FAILED(hr))
-            FBZZ_LOG_ERROR("[ShaderCompile] %s (%s %s)\n%s", hlslPath.c_str(), entryPoint.c_str(), target.c_str(), msg);
+            FBZZ_LOG_ERROR("[ShaderCompile] %s (%s %s)\n%s", hlslPath.c_str(), entryPoint.c_str(), target.c_str(), message.c_str());
         else
-            FBZZ_LOG_WARN("[ShaderCompile] warning in %s: %s", hlslPath.c_str(), msg);
+            FBZZ_LOG_WARN("[ShaderCompile] warning in %s: %s", hlslPath.c_str(), message.c_str());
+        ReportShaderCompileDiagnostic(hlslPath, entryPoint, target, message, FAILED(hr));
     }
 
     if (FAILED(hr) || !codeBlob)

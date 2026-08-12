@@ -480,10 +480,11 @@ std::unique_ptr<IIblBaker> DX12Renderer::CreateIblBaker()
     return std::make_unique<DX12HdriBaker>(&m_context, &m_psoCache);
 }
 
-bool DX12Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
-                                            std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
+// RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。
+static bool CaptureDX12RenderTargetImage(DX12Context& context, IRenderTarget* base,
+                                         DirectX::ScratchImage& outImage)
 {
-    auto* target = static_cast<DX12RenderTarget*>(resources.Get(rt));
+    auto* target = static_cast<DX12RenderTarget*>(base);
     if (target == nullptr) return false;
     ID3D12Resource* resource = target->GetColorResource(0);
     if (resource == nullptr) return false;
@@ -491,12 +492,25 @@ bool DX12Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, 
     // Scene View RT は直前フレームで ImGui サンプリング用に PIXEL_SHADER_RESOURCE へ遷移済み。
     // CaptureTexture は自前の CommandQueue/フェンス同期で COPY_SOURCE へ遷移→読み戻し→元状態へ戻す。
     // 呼び出しはフレーム外 (OnUpdate) なのでレンダラーの CommandList とは競合しない。
+    return SUCCEEDED(DirectX::CaptureTexture(context.GetCommandQueue(), resource, /*isCubeMap*/ false, outImage,
+                                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+}
+
+bool DX12Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                            std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
+{
     DirectX::ScratchImage captured;
-    const HRESULT hr = DirectX::CaptureTexture(m_context.GetCommandQueue(), resource, /*isCubeMap*/ false, captured,
-                                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    if (FAILED(hr)) return false;
+    if (!CaptureDX12RenderTargetImage(m_context, resources.Get(rt), captured)) return false;
     return detail::EncodeCapturedImageToPng(captured, outPng, outWidth, outHeight);
+}
+
+bool DX12Renderer::CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+                                                   std::vector<float>& outRgba, uint32_t& outWidth, uint32_t& outHeight)
+{
+    DirectX::ScratchImage captured;
+    if (!CaptureDX12RenderTargetImage(m_context, resources.Get(rt), captured)) return false;
+    return detail::ReadCapturedImageAsLinearRGBA(captured, outRgba, outWidth, outHeight);
 }
 
 std::unique_ptr<IBuffer> DX12Renderer::CreateNativeVertexBuffer(

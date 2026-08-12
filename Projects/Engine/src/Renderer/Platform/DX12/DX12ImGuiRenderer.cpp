@@ -119,6 +119,17 @@ void DX12ImGuiRenderer::ImGuiRenderDrawData()
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_context->GetCommandList());
 }
 
+// ImGui DX12 backend が追加 Window ごとに管理する SwapChain と CommandList を描画する。
+void DX12ImGuiRenderer::ImGuiRenderPlatformWindows()
+{
+    if (!m_imguiInitialized
+        || (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) == 0) {
+        return;
+    }
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+}
+
 bool DX12ImGuiRenderer::AllocateDescriptor(
     uint32_t& index, D3D12_CPU_DESCRIPTOR_HANDLE& cpu, D3D12_GPU_DESCRIPTOR_HANDLE& gpu)
 {

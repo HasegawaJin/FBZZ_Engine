@@ -68,6 +68,19 @@ bool DX11PipelineState::Init(ID3D11Device* device, const PipelineStateDesc& desc
             rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
             break;
 
+        case BlendMode::PREMULTIPLIED:
+            // src.rgb は既に alpha が乗った値として扱うため SrcBlend は ONE。
+            // alpha=0 で RGB>0 の画素は加算、alpha=1 の画素は不透明合成になり、
+            // 発光する芯と背景を隠す煙が 1 枚のテクスチャで両立する。
+            rt.BlendEnable    = TRUE;
+            rt.SrcBlend       = D3D11_BLEND_ONE;
+            rt.DestBlend      = D3D11_BLEND_INV_SRC_ALPHA;
+            rt.BlendOp        = D3D11_BLEND_OP_ADD;
+            rt.SrcBlendAlpha  = D3D11_BLEND_ONE;
+            rt.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+            rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
+            break;
+
         default: // OPAQUE_BLEND
             rt.BlendEnable = FALSE;
             break;
