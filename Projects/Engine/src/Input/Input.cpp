@@ -4,6 +4,7 @@
 // Win32 メッセージで現在状態を更新し、Update で前フレーム状態を保存する。
 // KeyDown / MouseButtonDown は現在と前回の差分から判定する。
 #include "Engine/Input/Input.hpp"
+#include "Engine/Input/Gamepad.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -25,6 +26,7 @@ std::array<bool, 3>                Input::s_injectedMouseButtons = {};
 std::unordered_map<std::string, float> Input::s_virtualAxes;
 std::unordered_map<std::string, bool> Input::s_virtualButtons;
 std::unordered_map<std::string, bool> Input::s_previousVirtualButtons;
+std::string Input::s_textInput;
 
 void Input::Init()
 {
@@ -47,10 +49,22 @@ void Input::Reset()
     s_virtualAxes.clear();
     s_virtualButtons.clear();
     s_previousVirtualButtons.clear();
+    s_textInput.clear();
+
+    // ゲームパッドの押下状態も一緒に落とす。
+    // WHY: Play モードの開始・終了で Input だけリセットすると、パッドのボタンが
+    //      押されたままの状態で持ち越され、Play 開始直後に意図しない入力が発火する。
+    Gamepad::Reset();
 }
 
 void Input::Update()
 {
+    // ゲームパッドは Win32 メッセージポンプに乗らないため、ここで明示的にポーリングする。
+    // WHY Input::Update() に内包するか: 入力更新の呼び出し点は Editor / Standalone /
+    //     Sandbox に散らばっており、それぞれへ追記させると呼び忘れで
+    //     「特定の実行経路でだけパッドが効かない」再現困難な不具合になる。
+    Gamepad::Update();
+
     // 物理入力とAI注入を合成した値を前フレームへ保存し、注入でもDown/Upを正しく生成する。
     for (size_t index = 0; index < s_current.size(); ++index) {
         s_previous[index] = s_current[index] || s_injectedKeys[index];
@@ -63,6 +77,7 @@ void Input::Update()
     s_overrideMouseDelta = {};
     s_scrollDelta   = 0.0f;
     s_hasOverrideMouseDelta = false;
+    s_textInput.clear();
 }
 
 bool Input::KeyDown(KeyCode key)
@@ -118,6 +133,27 @@ float Input::MouseScrollDelta()
 }
 
 void Input::HandleMouseScroll(float delta) { s_scrollDelta += delta; }
+
+void Input::HandleTextInput(wchar_t character)
+{
+    if (character < 0x20 && character != L'\n' && character != L'\r' && character != L'\b')
+        return;
+    if (character == L'\b') {
+        s_textInput.push_back('\b');
+        return;
+    }
+
+    char buffer[4] = {};
+    const int count = WideCharToMultiByte(CP_UTF8, 0, &character, 1, buffer,
+                                           static_cast<int>(sizeof(buffer)), nullptr, nullptr);
+    if (count > 0)
+        s_textInput.append(buffer, static_cast<size_t>(count));
+}
+
+std::string_view Input::TextInput()
+{
+    return s_textInput;
+}
 
 void Input::HandleMouseButton(UINT msg)
 {
@@ -214,6 +250,7 @@ void Input::ClearInjected()
     s_overrideMouseDelta = {};
     s_scrollDelta = 0.0f;
     s_hasOverrideMouseDelta = false;
+    s_textInput.clear();
 }
 
 } // namespace fbzz::input

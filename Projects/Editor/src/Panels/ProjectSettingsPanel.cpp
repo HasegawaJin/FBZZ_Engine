@@ -8,6 +8,8 @@
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
+#include <Engine/Input/Gamepad.hpp>
+#include <Engine/Input/InputActionMap.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -19,7 +21,9 @@
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <sstream>
+#include <string>
 #include <vector>
 
 namespace fbzz::editor {
@@ -118,19 +122,26 @@ void ProjectSettingsPanel::DrawSidebar()
     ImGui::Separator();
 
     // 空フィルター時は全表示、入力時は大文字小文字無視の部分一致フィルタリング。
-    auto btn = [&](const char* name, Section sec) {
-        if (s_filter[0] == '\0' || util::StringUtils::ContainsCI(name, s_filter))
-            SectionButton(name, sec, m_currentSection);
+    // keywords は「そのセクションに含まれるが名前には出てこない語」。
+    // WHY 必要か: 項目を統合したことで "Screen" や "Bloom" のような
+    //      旧項目名・内容語で引いたときに何も出なくなる。検索の当たりを維持する。
+    auto btn = [&](const char* name, Section sec, const char* keywords = "") {
+        const bool match = s_filter[0] == '\0'
+            || util::StringUtils::ContainsCI(name, s_filter)
+            || (keywords[0] != '\0' && util::StringUtils::ContainsCI(keywords, s_filter));
+        if (match) SectionButton(name, sec, m_currentSection);
     };
-    btn("Application", Section::Application);
-    btn("Import",      Section::Import);
-    btn("Render",      Section::Render);
-    btn("Post Process",Section::PostProcess);
-    btn("Physics",     Section::Physics);
-    btn("Audio",       Section::Audio);
-    btn("Screen",      Section::Screen);
-    btn("Tags",        Section::Tags);
-    btn("Layers",      Section::Layers);
+
+    btn("Application",    Section::Application,
+        "screen resolution window fps scene startup 解像度 画面");
+    btn("Graphics",       Section::Graphics,
+        "render post process shadow bloom fog debug outline navmesh 描画 影");
+    btn("Physics",        Section::Physics, "gravity substep 重力");
+    btn("Input",          Section::Input,   "gamepad key binding pad キー 入力");
+    btn("Audio",          Section::Audio,   "volume bgm se 音量");
+    btn("Tags & Layers",  Section::TagsAndLayers, "tag layer タグ レイヤー");
+    btn("Import",         Section::Import,  "fbx preset model texture インポート");
+
     ImGui::EndChild();
 }
 
@@ -138,15 +149,13 @@ void ProjectSettingsPanel::DrawSection(EditorContext& ctx)
 {
     auto& settings = ctx.projectSettings;
     switch (m_currentSection) {
-    case Section::Application: DrawApplication(settings); break;
-    case Section::Import:      DrawImport(ctx); break;
-    case Section::Render:      DrawRender(settings.render); break;
-    case Section::PostProcess: DrawPostProcess(settings.render); break;
-    case Section::Physics:     DrawPhysics(settings); break;
-    case Section::Audio:       DrawAudio(settings); break;
-    case Section::Screen:      DrawScreen(settings); break;
-    case Section::Tags:        DrawTags(settings); break;
-    case Section::Layers:      DrawLayers(settings); break;
+    case Section::Application:   DrawApplication(settings); break;
+    case Section::Graphics:      DrawGraphics(settings.render); break;
+    case Section::Physics:       DrawPhysics(settings); break;
+    case Section::Input:         DrawInput(ctx); break;
+    case Section::Audio:         DrawAudio(settings); break;
+    case Section::TagsAndLayers: DrawTagsAndLayers(settings); break;
+    case Section::Import:        DrawImport(ctx); break;
     }
 }
 
@@ -367,12 +376,36 @@ void ProjectSettingsPanel::DrawApplication(ProjectSettings& settings)
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputText("Start Scene", startScene, sizeof(startScene)))
         settings.game.runtime.startScene = startScene;
+
+    // 旧 Screen セクション。解像度はウィンドウ設定であり、
+    // Target FPS と並べた方が「起動時の画面まわり」として一望できる。
+    ImGui::Spacing();
+    ImGui::SeparatorText("Screen");
+    ImGui::DragInt("Width",  &settings.screen.width,  1.0f, 1, 7680);
+    ImGui::DragInt("Height", &settings.screen.height, 1.0f, 1, 4320);
 }
 
-void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
+void ProjectSettingsPanel::DrawGraphics(renderer::RenderSettings& render)
 {
-    ImGui::TextUnformatted("Render");
+    ImGui::TextUnformatted("Graphics");
     ImGui::Separator();
+
+    // 3 つの折りたたみに分ける。既定では Rendering だけ開いた状態にする。
+    // WHY Post Process を既定で閉じるか: 中身が 12 セクション 50 項目以上あり、
+    //     開いたままだと Rendering や Debug までスクロールしないと辿り着けない。
+    if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
+        DrawRenderCore(render);
+
+    if (ImGui::CollapsingHeader("Post Process"))
+        DrawPostProcess(render);
+
+    if (ImGui::CollapsingHeader("Debug"))
+        DrawRenderDebug(render);
+}
+
+void ProjectSettingsPanel::DrawRenderCore(renderer::RenderSettings& render)
+{
+    ImGui::Indent();
 
     const char* pipelineItems[] = { "Forward", "Deferred" };
     int pipelineIdx = static_cast<int>(render.pipeline);
@@ -430,7 +463,13 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
             render.viewMode = static_cast<renderer::ViewMode>(idx);
     }
 
-    ImGui::Spacing();
+    ImGui::Unindent();
+}
+
+void ProjectSettingsPanel::DrawRenderDebug(renderer::RenderSettings& render)
+{
+    ImGui::Indent();
+
     ImGui::SeparatorText("Debug Visualization");
     ImGui::Checkbox("Colliders",         &render.showColliders);
     ImGui::SameLine();
@@ -458,8 +497,11 @@ void ProjectSettingsPanel::DrawRender(renderer::RenderSettings& render)
     }
 
     ImGui::Spacing();
+    ImGui::SeparatorText("Selection Outline");
     ImGui::SliderFloat("Outline Width", &render.outlineWidth, 0.005f, 0.2f);
     ImGui::ColorEdit4("Outline Color", render.outlineColor);
+
+    ImGui::Unindent();
 }
 
 void ProjectSettingsPanel::DrawPostProcess(renderer::RenderSettings& render)
@@ -502,6 +544,332 @@ void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)
         settings.physics.gravity = { gravity[0], gravity[1], gravity[2] };
 }
 
+namespace {
+
+// .inputactions の保存先。ProjectSettings.toml と同じディレクトリに置く。
+// WHY: ランタイム側 (ProjectSettings::Load) が同じ規則で探すため、ここを唯一の定義とする。
+std::string InputActionsPath(const EditorContext& ctx)
+{
+    const std::string root = ctx.projectRoot.empty() ? "." : ctx.projectRoot;
+    return util::FileSystem::PathToUtf8(
+        util::FileSystem::PathFromUtf8(root) / "ProjectSettings" / "Input.inputactions");
+}
+
+// バインド 1 件の行。削除が要求されたら true を返す。
+bool DrawBindingRow(const input::InputBinding& binding, int index,
+                    const char* rebindLabel, bool rebinding,
+                    bool& outRebindRequested)
+{
+    ImGui::PushID(index);
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::Bullet();
+    ImGui::SameLine();
+
+    // リバインド待機中のバインドは目立たせる。
+    // WHY: 「押してください」の対象がどれか分からないと、別のバインドを潰す事故になる。
+    if (rebinding) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{ 1.0f, 0.85f, 0.3f, 1.0f });
+        ImGui::TextUnformatted("< 入力してください... (Esc で取消) >");
+        ImGui::PopStyleColor();
+    } else {
+        ImGui::TextUnformatted(input::InputActionMap::DescribeBinding(binding).c_str());
+    }
+
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 110.0f);
+    if (ImGui::SmallButton(rebindLabel)) outRebindRequested = true;
+
+    ImGui::SameLine();
+    const bool removeRequested = ImGui::SmallButton("Remove");
+
+    ImGui::PopID();
+    return removeRequested;
+}
+
+// バインド配列 1 本ぶんの編集 UI。
+void DrawBindingList(const char* label,
+                     std::vector<input::InputBinding>& bindings,
+                     const std::function<void(int bindingIndex)>& beginRebind,
+                     const std::function<bool(int bindingIndex)>& isRebindTarget,
+                     bool& outDirty)
+{
+    ImGui::TextDisabled("%s", label);
+    ImGui::Indent();
+
+    int removeIndex = -1;
+    for (int i = 0; i < static_cast<int>(bindings.size()); ++i) {
+        bool rebindRequested = false;
+        const bool removeRequested =
+            DrawBindingRow(bindings[static_cast<size_t>(i)], i, "Rebind",
+                           isRebindTarget(i), rebindRequested);
+        if (rebindRequested) beginRebind(i);
+        if (removeRequested) removeIndex = i;
+    }
+
+    if (removeIndex >= 0) {
+        bindings.erase(bindings.begin() + removeIndex);
+        outDirty = true;
+    }
+
+    if (ImGui::SmallButton("+ Add Binding")) {
+        // 末尾に追加してすぐリバインド待機に入る。
+        // WHY: 空のバインドを置いたまま放置されると「反応しないバインド」が残る。
+        beginRebind(static_cast<int>(bindings.size()));
+    }
+
+    ImGui::Unindent();
+}
+
+} // namespace
+
+void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
+{
+    ImGui::TextUnformatted("Input");
+    ImGui::Separator();
+
+    ImGui::TextDisabled(
+        "ゲーム入力のバインド定義。エディタ操作のショートカットは Hotkey Editor で編集します。");
+    ImGui::Spacing();
+
+    const std::string path = InputActionsPath(ctx);
+
+    // ── ファイル操作 ─────────────────────────────────────────────────────────
+    if (ImGui::Button("Save")) {
+        if (input::InputActionMap::SaveToFile(path))
+            FBZZ_LOG_INFO("Input: %s へ保存しました", path.c_str());
+        else
+            FBZZ_LOG_ERROR("Input: %s へ保存できませんでした", path.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reload")) {
+        if (!input::InputActionMap::LoadFromFile(path))
+            FBZZ_LOG_WARN("Input: %s を読み込めませんでした — 現在のバインドを維持します",
+                          path.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset to Defaults")) {
+        input::InputActionMap::LoadDefaults();
+        FBZZ_LOG_INFO("Input: 既定バインドへリセットしました");
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", path.c_str());
+
+    // リバインド中は他の操作を誤爆させないよう明示する。
+    if (input::InputActionMap::IsRebinding()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{ 1.0f, 0.85f, 0.3f, 1.0f });
+        ImGui::TextUnformatted("リバインド待機中 — 割り当てたい入力を押してください (Esc で取消)");
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Cancel")) input::InputActionMap::CancelRebind();
+    }
+
+    // ── ライブプレビュー ─────────────────────────────────────────────────────
+    // WHY 必要か: アクション層は Play 中のみ有効 (エディット中の誤発火を防ぐため) なので、
+    //     そのままではこのタブの "Current:" 表示やアクションのハイライトが常に 0 / 消灯になり、
+    //     「今設定したバインドが効いているか」をここで確認できない。
+    // WHY 安全か: Play 中でなければスクリプトは走っておらず、アクションを消費する側が居ない。
+    //     評価するだけならシーンに影響しない。
+    {
+        static bool s_livePreview = false;
+        if (ImGui::Checkbox("Live Preview", &s_livePreview))
+            input::InputActionMap::SetEnabled(s_livePreview);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("バインドの動作をこのタブ上で確認できるようにします。\n"
+                              "Play を開始・終了すると自動で切り替わります。");
+        ImGui::SameLine();
+        ImGui::TextDisabled(input::InputActionMap::IsEnabled() ? "(評価中)" : "(停止中)");
+
+        // 外部 (PlayModeController) が状態を変えた場合にチェックボックス表示を追従させる。
+        s_livePreview = input::InputActionMap::IsEnabled();
+    }
+
+    ImGui::Spacing();
+
+    // ── 接続中のゲームパッド ─────────────────────────────────────────────────
+    // WHY 実測値を出すか: スティックのドリフト量を目で見てデッドゾーンを決められる。
+    //     「デッドゾーンをいくつにすべきか」は個体差があり、数値だけでは決められない。
+    if (ImGui::CollapsingHeader("Connected Gamepads")) {
+        bool anyConnected = false;
+        for (int pad = 0; pad < input::Gamepad::MAX_PADS; ++pad) {
+            if (!input::Gamepad::IsConnected(pad)) continue;
+            anyConnected = true;
+
+            ImGui::PushID(pad);
+            ImGui::Text("Pad %d", pad);
+            ImGui::Indent();
+
+            const float leftX  = input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_X, pad);
+            const float leftY  = input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_Y, pad);
+            const float rightX = input::Gamepad::Axis(input::GamepadAxis::RIGHT_STICK_X, pad);
+            const float rightY = input::Gamepad::Axis(input::GamepadAxis::RIGHT_STICK_Y, pad);
+            ImGui::Text("Left Stick : %+.3f, %+.3f", leftX, leftY);
+            ImGui::Text("Right Stick: %+.3f, %+.3f", rightX, rightY);
+            ImGui::Text("Triggers   : L %.3f  R %.3f",
+                        input::Gamepad::Axis(input::GamepadAxis::LEFT_TRIGGER, pad),
+                        input::Gamepad::Axis(input::GamepadAxis::RIGHT_TRIGGER, pad));
+
+            // 押下中のボタンを列挙する。
+            std::string pressed;
+            for (uint16_t i = 0; i < static_cast<uint16_t>(input::GamepadButton::COUNT); ++i) {
+                const auto button = static_cast<input::GamepadButton>(i);
+                if (!input::Gamepad::ButtonHeld(button, pad)) continue;
+                if (!pressed.empty()) pressed += ", ";
+                pressed += input::ToString(button);
+            }
+            ImGui::Text("Buttons    : %s", pressed.empty() ? "-" : pressed.c_str());
+
+            if (ImGui::SmallButton("Test Vibration"))
+                input::Gamepad::SetVibration(0.5f, 0.5f, 0.3f, pad);
+
+            ImGui::Unindent();
+            ImGui::PopID();
+        }
+        if (!anyConnected)
+            ImGui::TextDisabled("接続されているゲームパッドはありません。");
+    }
+
+    ImGui::Spacing();
+
+    // 編集はランタイムのマップを直接書き換える。保存は明示的な Save のみ。
+    // WHY 自動保存しないか: リバインド途中の中途半端な状態がファイルへ落ちると、
+    //     次回起動時に壊れたバインドで立ち上がる。確定操作をユーザーに握らせる。
+    bool dirty = false;
+
+    // ── 軸 ───────────────────────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Axes", ImGuiTreeNodeFlags_DefaultOpen)) {
+        std::string axisToRemove;
+
+        // GetAxes() は const 参照。編集には FindAxis() の可変参照を使う。
+        std::vector<std::string> axisNames;
+        axisNames.reserve(input::InputActionMap::GetAxes().size());
+        for (const input::InputAxis& axis : input::InputActionMap::GetAxes())
+            axisNames.push_back(axis.name);
+
+        for (const std::string& name : axisNames) {
+            input::InputAxis* axis = input::InputActionMap::FindAxis(name);
+            if (!axis) continue;
+
+            ImGui::PushID(name.c_str());
+            if (ImGui::TreeNode(name.c_str())) {
+                if (ImGui::DragFloat("Dead Zone", &axis->deadZone, 0.01f, 0.0f, 0.9f))
+                    dirty = true;
+                if (ImGui::DragFloat("Gravity", &axis->gravity, 0.1f, 0.0f, 100.0f))
+                    dirty = true;
+                if (ImGui::DragFloat("Sensitivity", &axis->sensitivity, 0.1f, 0.0f, 100.0f))
+                    dirty = true;
+                if (ImGui::Checkbox("Snap", &axis->snap)) dirty = true;
+                ImGui::SameLine();
+                if (ImGui::Checkbox("Raw", &axis->raw)) dirty = true;
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Raw: デッドゾーンと平滑化を適用しない。\n"
+                                      "マウス移動量のように既に相対量である入力へ使う。");
+
+                // 現在値のライブ表示。バインドが期待どおり効いているかを即確認できる。
+                ImGui::Text("Current: %+.3f", input::InputActionMap::GetAxis(name));
+
+                ImGui::Spacing();
+
+                DrawBindingList("Positive (押している間 +1)", axis->positive,
+                    [&](int i) { input::InputActionMap::BeginRebindAxis(name, 0, i); },
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 0, i); },
+                    dirty);
+                DrawBindingList("Negative (押している間 -1)", axis->negative,
+                    [&](int i) { input::InputActionMap::BeginRebindAxis(name, 1, i); },
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 1, i); },
+                    dirty);
+                DrawBindingList("Analog (スティック / マウス軸)", axis->analog,
+                    [&](int i) { input::InputActionMap::BeginRebindAxis(name, 2, i); },
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, 2, i); },
+                    dirty);
+
+                ImGui::Spacing();
+                if (ImGui::SmallButton("Remove Axis")) axisToRemove = name;
+
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+
+        if (!axisToRemove.empty()) {
+            input::InputActionMap::RemoveAxis(axisToRemove);
+            dirty = true;
+        }
+
+        ImGui::Spacing();
+        static char s_newAxis[64] = {};
+        ImGui::SetNextItemWidth(180.0f);
+        ImGui::InputTextWithHint("##newaxis", "New axis name", s_newAxis, sizeof(s_newAxis));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Add Axis") && s_newAxis[0] != '\0') {
+            input::InputAxis axis{};
+            axis.name = s_newAxis;
+            if (input::InputActionMap::AddAxis(axis)) {
+                s_newAxis[0] = '\0';
+                dirty = true;
+            }
+        }
+    }
+
+    ImGui::Spacing();
+
+    // ── アクション ───────────────────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Actions", ImGuiTreeNodeFlags_DefaultOpen)) {
+        std::string actionToRemove;
+
+        std::vector<std::string> actionNames;
+        actionNames.reserve(input::InputActionMap::GetActions().size());
+        for (const input::InputAction& action : input::InputActionMap::GetActions())
+            actionNames.push_back(action.name);
+
+        for (const std::string& name : actionNames) {
+            input::InputAction* action = input::InputActionMap::FindAction(name);
+            if (!action) continue;
+
+            ImGui::PushID(name.c_str());
+
+            // 押下中のアクションは名前を光らせる。動作確認が Play を挟まずにできる。
+            const bool held = input::InputActionMap::GetAction(name);
+            if (held) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{ 0.4f, 1.0f, 0.5f, 1.0f });
+            const bool open = ImGui::TreeNode(name.c_str());
+            if (held) ImGui::PopStyleColor();
+
+            if (open) {
+                DrawBindingList("Bindings", action->bindings,
+                    [&](int i) { input::InputActionMap::BeginRebindAction(name, i); },
+                    [&](int i) { return input::InputActionMap::IsRebindTarget(name, -1, i); },
+                    dirty);
+
+                ImGui::Spacing();
+                if (ImGui::SmallButton("Remove Action")) actionToRemove = name;
+
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+
+        if (!actionToRemove.empty()) {
+            input::InputActionMap::RemoveAction(actionToRemove);
+            dirty = true;
+        }
+
+        ImGui::Spacing();
+        static char s_newAction[64] = {};
+        ImGui::SetNextItemWidth(180.0f);
+        ImGui::InputTextWithHint("##newaction", "New action name", s_newAction, sizeof(s_newAction));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Add Action") && s_newAction[0] != '\0') {
+            input::InputAction action{};
+            action.name = s_newAction;
+            if (input::InputActionMap::AddAction(action)) {
+                s_newAction[0] = '\0';
+                dirty = true;
+            }
+        }
+    }
+
+    if (dirty) ++m_editGeneration;
+}
+
 void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
 {
     ImGui::TextUnformatted("Audio");
@@ -511,20 +879,28 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     ImGui::SliderFloat("SE Volume", &settings.audio.seVolume, 0.0f, 1.0f);
 }
 
-void ProjectSettingsPanel::DrawScreen(ProjectSettings& settings)
+void ProjectSettingsPanel::DrawTagsAndLayers(ProjectSettings& settings)
 {
-    ImGui::TextUnformatted("Screen");
+    ImGui::TextUnformatted("Tags & Layers");
     ImGui::Separator();
 
-    ImGui::DragInt("Width", &settings.screen.width, 1.0f, 1, 7680);
-    ImGui::DragInt("Height", &settings.screen.height, 1.0f, 1, 4320);
+    // WHY 同居させるか: どちらも「GameObject を分類する ID テーブル」で、
+    //      編集タイミングもほぼ同時 (新しい敵種別を足すときにタグとレイヤーを両方触る)。
+    //      別項目に分けると往復が必要になるだけで、分離の利点がない。
+    if (ImGui::CollapsingHeader("Tags", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+        DrawTags(settings);
+        ImGui::Unindent();
+    }
+    if (ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+        DrawLayers(settings);
+        ImGui::Unindent();
+    }
 }
 
 void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
 {
-    ImGui::TextUnformatted("Tags");
-    ImGui::Separator();
-
     if (ImGui::SmallButton("Reset Unity Preset")) {
         settings.game.tags = { "Untagged", "Respawn", "Finish", "EditorOnly",
                                "MainCamera", "Player", "GameController" };
@@ -564,10 +940,7 @@ void ProjectSettingsPanel::DrawTags(ProjectSettings& settings)
 
 void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
 {
-    ImGui::TextUnformatted("Layers");
-    ImGui::Separator();
-
-    if (ImGui::SmallButton("Reset Unity Preset")) {
+    if (ImGui::SmallButton("Reset Unity Preset##layers")) {
         settings.game.layerNames = {
             "Default", "TransparentFX", "Ignore Raycast", "", "Water", "UI",
             "", "", "", "", "", "", "", "", "", "",

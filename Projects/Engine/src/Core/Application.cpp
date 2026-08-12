@@ -14,6 +14,7 @@
 #include "Engine/Audio/AudioManager.hpp"
 #include "Engine/Audio/XAudio2Device.hpp"
 #include "Engine/Input/Input.hpp"
+#include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
@@ -96,6 +97,13 @@ bool Application::Init(const Window::Config& windowConfig,
 
     input::Input::Init();
 
+    // WHY ここで既定バインドを入れるか:
+    //   プロジェクト固有の .inputactions は「どのプロジェクトを開くか」が決まってから
+    //   ProjectRuntime 側で読み込まれる。Application::Init の時点ではまだ確定していないため、
+    //   まず既定バインドで動く状態を作っておく。設定ファイルがあれば後から上書きされる。
+    //   これにより「プロジェクト未読込のエディタでも入力が完全に死なない」状態を保証する。
+    input::InputActionMap::LoadDefaults();
+
     // WHY: バックエンド具象 (DX11 / DX12) の選択と生成は RendererFactory に集約する。
     //      合成ルートである Application は RendererBackend を指定するだけで具象を直接知らない。
     FBZZ_LOG_INFO("Application::Init: レンダラー生成を開始します");
@@ -176,6 +184,17 @@ void Application::Run() {
             FBZZ_PROFILE_SCOPE("Window::PollEvents");
             m_window->PollEvents();
         }
+
+        // WHY PollEvents の「後」か:
+        //   Input::Update() はフレーム先頭で前フレーム状態を退避するだけで、
+        //   キーボード/マウスの現在状態は PollEvents 内の Win32 メッセージで更新される。
+        //   アクション層をその前で評価すると、常に 1 フレーム古い入力を見ることになる。
+        {
+            FBZZ_PROFILE_SCOPE("InputActionMap::Update");
+            // WHY unscaledDeltaTime か: 入力の平滑化はプレイヤーの操作感であり、
+            //      スローモーション演出 (TimeScale) に引きずられて鈍くなるべきではない。
+            input::InputActionMap::Update(Time::unscaledDeltaTime);
+        }
         if (m_window->ShouldClose()) {
             profiler::Profiler::EndFrame();
             m_memorySystem.EndFrame();
@@ -220,6 +239,17 @@ void Application::Run(IModule& module) {
         {
             FBZZ_PROFILE_SCOPE("Window::PollEvents");
             m_window->PollEvents();
+        }
+
+        // WHY PollEvents の「後」か:
+        //   Input::Update() はフレーム先頭で前フレーム状態を退避するだけで、
+        //   キーボード/マウスの現在状態は PollEvents 内の Win32 メッセージで更新される。
+        //   アクション層をその前で評価すると、常に 1 フレーム古い入力を見ることになる。
+        {
+            FBZZ_PROFILE_SCOPE("InputActionMap::Update");
+            // WHY unscaledDeltaTime か: 入力の平滑化はプレイヤーの操作感であり、
+            //      スローモーション演出 (TimeScale) に引きずられて鈍くなるべきではない。
+            input::InputActionMap::Update(Time::unscaledDeltaTime);
         }
         if (m_window->ShouldClose()) {
             // WHY: BeginFrame() 済みの Profiler / MemorySystem を必ず対で閉じる。

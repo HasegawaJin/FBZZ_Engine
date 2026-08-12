@@ -10,6 +10,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <string>
 #include <unordered_map>
 #include <Windows.h>
 
@@ -51,6 +52,8 @@ public:
     static void HandleMouseMove   (int x, int y);
     static void HandleMouseButton (UINT msg);
     static void HandleMouseScroll (float delta);
+    static void HandleTextInput   (wchar_t character);
+    static std::string_view TextInput();
 
     // AI 自動プレイテスト用の入力注入。通常入力と同じフレーム状態へ合成する。
     // WHY: EditorMCP が Pause+Step と組み合わせてゲームを決定的に操作できるようにする。
@@ -84,6 +87,7 @@ private:
     static std::unordered_map<std::string, float> s_virtualAxes;
     static std::unordered_map<std::string, bool> s_virtualButtons;
     static std::unordered_map<std::string, bool> s_previousVirtualButtons;
+    static std::string s_textInput;
 };
 
 } // namespace fbzz::input
