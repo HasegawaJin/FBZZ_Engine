@@ -60,7 +60,12 @@ enum ImNodesStyleVar_
     ImNodesStyleVar_NodeBorderThickness,
     ImNodesStyleVar_LinkThickness,
     ImNodesStyleVar_LinkLineSegmentsPerLength,
+    ImNodesStyleVar_LinkCurveStrength,
+    ImNodesStyleVar_LinkCurveMaxTangent,
+    ImNodesStyleVar_LinkArrowSize,
+    ImNodesStyleVar_LinkArrowPosition,
     ImNodesStyleVar_LinkHoverDistance,
+    ImNodesStyleVar_LinkPattern,
     ImNodesStyleVar_PinCircleRadius,
     ImNodesStyleVar_PinQuadSideLength,
     ImNodesStyleVar_PinTriangleSideLength,
@@ -70,6 +75,14 @@ enum ImNodesStyleVar_
     ImNodesStyleVar_MiniMapPadding,
     ImNodesStyleVar_MiniMapOffset,
     ImNodesStyleVar_COUNT
+};
+
+// リンクを一定間隔で分割して描くためのパターン。
+enum ImNodesLinkPattern_
+{
+    ImNodesLinkPattern_Solid = 0,
+    ImNodesLinkPattern_Dashed,
+    ImNodesLinkPattern_Dotted,
 };
 
 enum ImNodesStyleFlags_
@@ -172,7 +185,15 @@ struct ImNodesStyle
 
     float LinkThickness;
     float LinkLineSegmentsPerLength;
+    // Horizontal tangent length = horizontal distance * strength + a small vertical-distance term.
+    // Capping the tangent prevents nearly vertical links from ballooning far outside their nodes.
+    float LinkCurveStrength;
+    float LinkCurveMaxTangent;
+    // Arrowhead rendered on the curve. Set size to zero to disable it.
+    float LinkArrowSize;
+    float LinkArrowPosition;
     float LinkHoverDistance;
+    float LinkPattern;
 
     // The following variables control the look and behavior of the pins. The default size of each
     // pin shape is balanced to occupy approximately the same surface area on the screen.

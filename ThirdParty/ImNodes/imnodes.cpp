@@ -94,12 +94,10 @@ inline float GetDistanceToCubicBezier(
     return ImSqrt(ImLengthSqr(to_curve));
 }
 
-inline ImRect GetContainingRectForCubicBezier(const CubicBezier& cb)
+inline ImRect GetContainingRectForCubicBezier(const CubicBezier& cb, const float hover_distance)
 {
     const ImVec2 min = ImVec2(ImMin(cb.P0.x, cb.P3.x), ImMin(cb.P0.y, cb.P3.y));
     const ImVec2 max = ImVec2(ImMax(cb.P0.x, cb.P3.x), ImMax(cb.P0.y, cb.P3.y));
-
-    const float hover_distance = GImNodes->Style.LinkHoverDistance;
 
     ImRect rect(min, max);
     rect.Add(cb.P1);
@@ -113,7 +111,9 @@ inline CubicBezier GetCubicBezier(
     ImVec2                     start,
     ImVec2                     end,
     const ImNodesAttributeType start_type,
-    const float                line_segments_per_length)
+    const float                line_segments_per_length,
+    const float                curve_strength,
+    const float                curve_max_tangent)
 {
     IM_ASSERT(
         (start_type == ImNodesAttributeType_Input) || (start_type == ImNodesAttributeType_Output));
@@ -122,8 +122,18 @@ inline CubicBezier GetCubicBezier(
         ImSwap(start, end);
     }
 
-    const float  link_length = ImSqrt(ImLengthSqr(end - start));
-    const ImVec2 offset = ImVec2(0.25f * link_length, 0.f);
+    const ImVec2 delta = end - start;
+    const float link_length = ImSqrt(ImLengthSqr(delta));
+    // WHY: 旧式の「直線距離の25%」は上下に離れたノードほど水平へ大きく膨らみ、
+    //      接続先より曲線そのものが目立っていた。横距離を主成分にし、縦距離の寄与を
+    //      小さく制限することで、短い接続も逆向き接続もコンパクトに収める。
+    const float horizontal = ImAbs(delta.x);
+    const float vertical_contribution = ImMin(ImAbs(delta.y) * 0.08f, 28.0f);
+    const float tangent = ImClamp(
+        horizontal * curve_strength + vertical_contribution,
+        18.0f,
+        curve_max_tangent);
+    const ImVec2 offset = ImVec2(tangent, 0.f);
     CubicBezier  cubic_bezier;
     cubic_bezier.P0 = start;
     cubic_bezier.P1 = start + offset;
@@ -244,7 +254,13 @@ inline bool RectangleOverlapsLink(
         // link
 
         const CubicBezier cubic_bezier =
-            GetCubicBezier(start, end, start_type, GImNodes->Style.LinkLineSegmentsPerLength);
+            GetCubicBezier(
+                start,
+                end,
+                start_type,
+                GImNodes->Style.LinkLineSegmentsPerLength,
+                GImNodes->Style.LinkCurveStrength,
+                GImNodes->Style.LinkCurveMaxTangent);
         return RectangleOverlapsBezier(rectangle, cubic_bezier);
     }
 
@@ -1042,7 +1058,12 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
                                    : GImNodes->MousePos;
 
         const CubicBezier cubic_bezier = GetCubicBezier(
-            start_pos, end_pos, start_pin.Type, GImNodes->Style.LinkLineSegmentsPerLength);
+            start_pos,
+            end_pos,
+            start_pin.Type,
+            GImNodes->Style.LinkLineSegmentsPerLength,
+            GImNodes->Style.LinkCurveStrength,
+            GImNodes->Style.LinkCurveMaxTangent);
 #if IMGUI_VERSION_NUM < 18000
         GImNodes->CanvasDrawList->AddBezierCurve(
 #else
@@ -1270,11 +1291,16 @@ ImOptionalIndex ResolveHoveredLink(
         // rendering the links
 
         const CubicBezier cubic_bezier = GetCubicBezier(
-            start_pin.Pos, end_pin.Pos, start_pin.Type, GImNodes->Style.LinkLineSegmentsPerLength);
+            start_pin.Pos,
+            end_pin.Pos,
+            start_pin.Type,
+            link.Style.LineSegmentsPerLength,
+            link.Style.CurveStrength,
+            link.Style.CurveMaxTangent);
 
         // The distance test
         {
-            const ImRect link_rect = GetContainingRectForCubicBezier(cubic_bezier);
+            const ImRect link_rect = GetContainingRectForCubicBezier(cubic_bezier, link.Style.HoverDistance);
 
             // First, do a simple bounding box test against the box containing the link
             // to see whether calculating the distance to the link is worth doing.
@@ -1283,11 +1309,7 @@ ImOptionalIndex ResolveHoveredLink(
                 const float distance = GetDistanceToCubicBezier(
                     GImNodes->MousePos, cubic_bezier, cubic_bezier.NumSegments);
 
-                // TODO: GImNodes->Style.LinkHoverDistance could be also copied into ImLinkData,
-                // since we're not calling this function in the same scope as ImNodes::Link(). The
-                // rendered/detected link might have a different hover distance than what the user
-                // had specified when calling Link()
-                if (distance < GImNodes->Style.LinkHoverDistance && distance < smallest_distance)
+                if (distance < link.Style.HoverDistance && distance < smallest_distance)
                 {
                     smallest_distance = distance;
                     link_idx_with_smallest_distance = idx;
@@ -1594,7 +1616,12 @@ void DrawLink(ImNodesEditorContext& editor, const int link_idx)
     const ImPinData&  end_pin = editor.Pins.Pool[link.EndPinIdx];
 
     const CubicBezier cubic_bezier = GetCubicBezier(
-        start_pin.Pos, end_pin.Pos, start_pin.Type, GImNodes->Style.LinkLineSegmentsPerLength);
+        start_pin.Pos,
+        end_pin.Pos,
+        start_pin.Type,
+        link.Style.LineSegmentsPerLength,
+        link.Style.CurveStrength,
+        link.Style.CurveMaxTangent);
 
     const bool link_hovered =
         GImNodes->HoveredLinkIdx == link_idx &&
@@ -1625,18 +1652,91 @@ void DrawLink(ImNodesEditorContext& editor, const int link_idx)
         link_color = link.ColorStyle.Hovered;
     }
 
+    const int link_pattern = static_cast<int>(link.Style.Pattern + 0.5f);
+    if (link_pattern == ImNodesLinkPattern_Solid)
+    {
 #if IMGUI_VERSION_NUM < 18000
-    GImNodes->CanvasDrawList->AddBezierCurve(
+        GImNodes->CanvasDrawList->AddBezierCurve(
 #else
-    GImNodes->CanvasDrawList->AddBezierCubic(
+        GImNodes->CanvasDrawList->AddBezierCubic(
 #endif
-        cubic_bezier.P0,
-        cubic_bezier.P1,
-        cubic_bezier.P2,
-        cubic_bezier.P3,
-        link_color,
-        GImNodes->Style.LinkThickness,
-        cubic_bezier.NumSegments);
+            cubic_bezier.P0,
+            cubic_bezier.P1,
+            cubic_bezier.P2,
+            cubic_bezier.P3,
+            link_color,
+            link.Style.Thickness,
+            cubic_bezier.NumSegments);
+    }
+    else
+    {
+        // 点線・破線は同じBezierを短い線分へ分解して描く。
+        // WHY ImDrawListのBezier一発描画を使わないか: ImGuiには破線BezierのAPIが
+        //      ないため、リンク単位のパターンを維持するには線分化が必要になる。
+        const int sample_count = ImMax(cubic_bezier.NumSegments * 4, 16);
+        const float visible_length = link_pattern == ImNodesLinkPattern_Dotted ? 3.0f : 14.0f;
+        const float hidden_length = link_pattern == ImNodesLinkPattern_Dotted ? 7.0f : 8.0f;
+        bool visible = true;
+        float phase_length = 0.0f;
+        ImVec2 previous = cubic_bezier.P0;
+        for (int sample = 1; sample <= sample_count; ++sample)
+        {
+            const float t = static_cast<float>(sample) / static_cast<float>(sample_count);
+            const ImVec2 current = EvalCubicBezier(
+                t, cubic_bezier.P0, cubic_bezier.P1, cubic_bezier.P2, cubic_bezier.P3);
+            if (visible)
+            {
+                GImNodes->CanvasDrawList->AddLine(
+                    previous, current, link_color, link.Style.Thickness);
+            }
+            phase_length += ImSqrt(ImLengthSqr(current - previous));
+            const float phase_limit = visible ? visible_length : hidden_length;
+            if (phase_length >= phase_limit)
+            {
+                visible = !visible;
+                phase_length = 0.0f;
+            }
+            previous = current;
+        }
+    }
+
+    // 接続先へ向く矢印を曲線の接線上へ描く。
+    // WHY: 双方向リンクや上下配置では曲線だけから方向を判別しづらいため、
+    //      リンクの色・Hover・選択状態を継承した矢印を共通描画する。
+    const float arrow_size = link.Style.ArrowSize;
+    if (arrow_size > 0.0f)
+    {
+        const float t = ImClamp(link.Style.ArrowPosition, 0.1f, 1.0f);
+        const ImVec2 tip = EvalCubicBezier(
+            t,
+            cubic_bezier.P0,
+            cubic_bezier.P1,
+            cubic_bezier.P2,
+            cubic_bezier.P3);
+        // 終端の厳密なBezier接線は制御点の都合で常に水平になる。
+        // WHY: 上下に離れたリンクでも矢印だけ真横を向く不自然さを避けるため、
+        //      曲線の終端直前から先端までの平均進行方向を使って滑らかな入射角を得る。
+        const float direction_t = ImMax(t - 0.08f, 0.0f);
+        const ImVec2 direction_origin = EvalCubicBezier(
+            direction_t,
+            cubic_bezier.P0,
+            cubic_bezier.P1,
+            cubic_bezier.P2,
+            cubic_bezier.P3);
+        ImVec2 tangent = tip - direction_origin;
+        const float tangent_length = ImSqrt(ImLengthSqr(tangent));
+        if (tangent_length > 0.0001f)
+        {
+            tangent = tangent * (1.0f / tangent_length);
+            const ImVec2 normal(-tangent.y, tangent.x);
+            const ImVec2 base = tip - tangent * (arrow_size * 1.45f);
+            GImNodes->CanvasDrawList->AddTriangleFilled(
+                tip,
+                base + normal * (arrow_size * 0.62f),
+                base - normal * (arrow_size * 0.62f),
+                link_color);
+        }
+    }
 }
 
 void BeginPinAttribute(
@@ -1839,7 +1939,9 @@ static void MiniMapDrawLink(ImNodesEditorContext& editor, const int link_idx)
         ScreenSpaceToMiniMapSpace(editor, start_pin.Pos),
         ScreenSpaceToMiniMapSpace(editor, end_pin.Pos),
         start_pin.Type,
-        GImNodes->Style.LinkLineSegmentsPerLength / editor.MiniMapScaling);
+        link.Style.LineSegmentsPerLength / editor.MiniMapScaling,
+        link.Style.CurveStrength,
+        link.Style.CurveMaxTangent / editor.MiniMapScaling);
 
     // It's possible for a link to be deleted in begin_link_interaction. A user
     // may detach a link, resulting in the link wire snapping to the mouse
@@ -1866,7 +1968,7 @@ static void MiniMapDrawLink(ImNodesEditorContext& editor, const int link_idx)
         cubic_bezier.P2,
         cubic_bezier.P3,
         link_color,
-        GImNodes->Style.LinkThickness * editor.MiniMapScaling,
+        link.Style.Thickness * editor.MiniMapScaling,
         cubic_bezier.NumSegments);
 }
 
@@ -2001,7 +2103,9 @@ ImNodesIO::ImNodesIO()
 
 ImNodesStyle::ImNodesStyle()
     : GridSpacing(24.f), NodeCornerRounding(4.f), NodePadding(8.f, 8.f), NodeBorderThickness(1.f),
-      LinkThickness(3.f), LinkLineSegmentsPerLength(0.1f), LinkHoverDistance(10.f),
+       LinkThickness(3.f), LinkLineSegmentsPerLength(0.1f), LinkCurveStrength(0.35f),
+       LinkCurveMaxTangent(96.f), LinkArrowSize(0.f), LinkArrowPosition(1.0f),
+       LinkHoverDistance(10.f), LinkPattern(ImNodesLinkPattern_Solid),
       PinCircleRadius(4.f), PinQuadSideLength(7.f), PinTriangleSideLength(9.5),
       PinLineThickness(1.f), PinHoverRadius(10.f), PinOffset(0.f), MiniMapPadding(8.0f, 8.0f),
       MiniMapOffset(4.0f, 4.0f), Flags(ImNodesStyleFlags_NodeOutline | ImNodesStyleFlags_GridLines),
@@ -2619,6 +2723,16 @@ void Link(const int id, const int start_attr_id, const int end_attr_id)
     link.ColorStyle.Base = GImNodes->Style.Colors[ImNodesCol_Link];
     link.ColorStyle.Hovered = GImNodes->Style.Colors[ImNodesCol_LinkHovered];
     link.ColorStyle.Selected = GImNodes->Style.Colors[ImNodesCol_LinkSelected];
+    // Link() 呼び出し時の値を保存する。描画は EndNodeEditor 後に一括実行されるため、
+    // ここで退避しないと、最後に設定されたリンクの見た目が全リンクへ適用されてしまう。
+    link.Style.Thickness = GImNodes->Style.LinkThickness;
+    link.Style.LineSegmentsPerLength = GImNodes->Style.LinkLineSegmentsPerLength;
+    link.Style.CurveStrength = GImNodes->Style.LinkCurveStrength;
+    link.Style.CurveMaxTangent = GImNodes->Style.LinkCurveMaxTangent;
+    link.Style.ArrowSize = GImNodes->Style.LinkArrowSize;
+    link.Style.ArrowPosition = GImNodes->Style.LinkArrowPosition;
+    link.Style.HoverDistance = GImNodes->Style.LinkHoverDistance;
+    link.Style.Pattern = GImNodes->Style.LinkPattern;
 
     // Check if this link was created by the current link event
     if ((editor.ClickInteraction.Type == ImNodesClickInteractionType_LinkCreation &&
@@ -2667,8 +2781,18 @@ static const ImNodesStyleVarInfo GStyleVarInfo[] = {
     {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkThickness)},
     // ImNodesStyleVar_LinkLineSegmentsPerLength
     {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkLineSegmentsPerLength)},
+    // ImNodesStyleVar_LinkCurveStrength
+    {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkCurveStrength)},
+    // ImNodesStyleVar_LinkCurveMaxTangent
+    {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkCurveMaxTangent)},
+    // ImNodesStyleVar_LinkArrowSize
+    {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkArrowSize)},
+    // ImNodesStyleVar_LinkArrowPosition
+    {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkArrowPosition)},
     // ImNodesStyleVar_LinkHoverDistance
     {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkHoverDistance)},
+    // ImNodesStyleVar_LinkPattern
+    {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, LinkPattern)},
     // ImNodesStyleVar_PinCircleRadius
     {ImGuiDataType_Float, 1, (ImU32)offsetof(ImNodesStyle, PinCircleRadius)},
     // ImNodesStyleVar_PinQuadSideLength
