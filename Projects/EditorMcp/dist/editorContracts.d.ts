@@ -19,6 +19,20 @@ export declare const ScenePropertyFilterSchema: z.ZodObject<{
     value: z.ZodType<JsonValue, unknown, z.core.$ZodTypeInternals<JsonValue, unknown>>;
 }, z.core.$strict>;
 export type ScenePropertyFilter = z.infer<typeof ScenePropertyFilterSchema>;
+export declare const VFXPreviewCameraSchema: z.ZodObject<{
+    preset: z.ZodOptional<z.ZodEnum<{
+        angle: "angle";
+        front: "front";
+        side: "side";
+        top: "top";
+    }>>;
+    target: z.ZodOptional<z.ZodTuple<[z.ZodNumber, z.ZodNumber, z.ZodNumber], null>>;
+    distance: z.ZodOptional<z.ZodNumber>;
+    yaw: z.ZodOptional<z.ZodNumber>;
+    pitch: z.ZodOptional<z.ZodNumber>;
+    fovY: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
+export type VFXPreviewCamera = z.infer<typeof VFXPreviewCameraSchema>;
 export type EditorQuery = {
     t: 'editor.catalog';
 } | {
@@ -39,6 +53,7 @@ export type EditorQuery = {
     afterSequence?: number | undefined;
 } | {
     t: 'scene.tree';
+    includeGenerated?: boolean | undefined;
 } | {
     t: 'scene.snapshot';
 } | {
@@ -72,6 +87,20 @@ export type EditorQuery = {
 } | {
     t: 'vfx.graph';
     path: string;
+    detail?: 'summary' | 'full' | undefined;
+} | {
+    t: 'vfx.nodeField';
+    path: string;
+    nodeId: number;
+    schemaPath?: string | undefined;
+    prefix?: string | undefined;
+} | {
+    t: 'vfx.lint';
+    path: string;
+} | {
+    t: 'vfx.diff';
+    base: string;
+    target: string;
 } | {
     t: 'vfx.params';
     path: string;
@@ -79,11 +108,54 @@ export type EditorQuery = {
 } | {
     t: 'vfx.schema';
 } | {
+    t: 'vfx.guide';
+} | {
+    t: 'vfx.templateCatalog';
+    query?: string | undefined;
+    limit?: number | undefined;
+} | {
+    t: 'bt.tree';
+    path: string;
+} | {
+    t: 'bt.lint';
+    path: string;
+} | {
+    t: 'bt.guide';
+} | {
+    t: 'vfx.runtime';
+} | {
+    t: 'vfx.previewEnsure';
+} | {
+    t: 'vfx.textureAnalyze';
+    path: string;
+} | {
+    t: 'vfx.materialAnalyze';
+    path: string;
+} | {
+    t: 'vfx.assetSurvey';
+    directory?: string | undefined;
+    limit?: number | undefined;
+    detail?: 'summary' | 'full' | undefined;
+    refresh?: boolean | undefined;
+} | {
+    t: 'shader.inspect';
+    path: string;
+} | {
+    t: 'shader.diagnostics';
+} | {
+    t: 'vfx.curvePresets';
+} | {
     t: 'vfx.preview';
     path: string;
     time: number;
     w?: number | undefined;
     h?: number | undefined;
+    view?: 'normal' | 'overdraw' | 'gizmos' | undefined;
+    camera?: VFXPreviewCamera | undefined;
+} | {
+    t: 'vfx.previewMetrics';
+    path: string;
+    view?: 'normal' | 'overdraw' | 'gizmos' | undefined;
 } | {
     t: 'material.inspect';
     id: string;
@@ -93,6 +165,10 @@ export type EditorQuery = {
 } | {
     t: 'animation.graph';
     id: string;
+    layer?: string | undefined;
+} | {
+    t: 'avatarMask.get';
+    path: string;
 } | {
     t: 'animation.blendTree';
     id: string;
@@ -217,16 +293,47 @@ export type EditorCommand = {
     path: string;
     shaderPath: string;
 } | {
+    t: 'vfx.graph.set';
+    path: string;
+    name?: string | undefined;
+    maxParticles?: number | undefined;
+    maxLights?: number | undefined;
+    maxAudioVoices?: number | undefined;
+} | {
     t: 'vfx.node.add';
     path: string;
-    nodeType: 'particle' | 'trail' | 'meshTrail' | 'light' | 'audio' | 'decal' | 'delay' | 'subGraph';
+    nodeType: 'particle' | 'trail' | 'meshTrail' | 'light' | 'audio' | 'decal' | 'delay' | 'subGraph' | 'forceField' | 'mesh' | 'screenEffect' | 'cameraShake' | 'timeScale' | 'wind' | 'reroute';
     name?: string | undefined;
     from?: number | undefined;
     assetPath?: string | undefined;
 } | {
+    t: 'vfx.node.duplicate';
+    path: string;
+    nodeId: number;
+    name?: string | undefined;
+    editorX?: number | undefined;
+    editorY?: number | undefined;
+} | {
     t: 'vfx.node.remove';
     path: string;
     nodeId: number;
+} | {
+    t: 'vfx.node.setEnabled';
+    path: string;
+    nodeId: number;
+    enabled: boolean;
+} | {
+    t: 'vfx.node.setMetadata';
+    path: string;
+    nodeId: number;
+    name?: string | undefined;
+    editorX?: number | undefined;
+    editorY?: number | undefined;
+} | {
+    t: 'vfx.node.setParent';
+    path: string;
+    nodeId: number;
+    parentNodeId?: number | undefined;
 } | {
     t: 'vfx.node.setField';
     path: string;
@@ -238,6 +345,14 @@ export type EditorCommand = {
     path: string;
     from: number;
     to: number;
+    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
+    delay?: number | undefined;
+} | {
+    t: 'vfx.link.update';
+    path: string;
+    index: number;
+    from?: number | undefined;
+    to?: number | undefined;
     trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
     delay?: number | undefined;
 } | {
@@ -253,11 +368,21 @@ export type EditorCommand = {
     minimum?: number | undefined;
     maximum?: number | undefined;
 } | {
+    t: 'vfx.param.remove';
+    path: string;
+    name: string;
+} | {
     t: 'vfx.param.bind';
     path: string;
     name: string;
     nodeId: number;
     schemaPath: string;
+} | {
+    t: 'vfx.param.unbind';
+    path: string;
+    name: string;
+    nodeId?: number | undefined;
+    schemaPath?: string | undefined;
 } | {
     t: 'vfx.param.setDefault';
     path: string;
@@ -277,10 +402,69 @@ export type EditorCommand = {
     template: 'explosion' | 'fire' | 'smoke' | 'impact' | 'magic' | string;
     path: string;
     name?: string | undefined;
+    description?: string | undefined;
+    tags?: string[] | undefined;
+    mode?: 'replace' | 'merge' | 'subgraph' | undefined;
+    groups?: number[] | undefined;
+    anchorNodeId?: number | undefined;
+    trigger?: 'onComplete' | 'onStart' | 'onCollision' | 'onDeath' | undefined;
+    delay?: number | undefined;
+    parentNodeId?: number | undefined;
+    variant?: string | undefined;
+    raiseBudget?: boolean | undefined;
 } | {
     t: 'vfx.optimize';
     path: string;
-    targetParticles: number;
+    targetParticles?: number | undefined;
+    strategy?: 'particles' | 'fillRate' | 'both' | undefined;
+} | {
+    t: 'vfx.repair';
+    path: string;
+    connectOrphans?: boolean | undefined;
+    fixAssets?: boolean | undefined;
+    fixSprites?: boolean | undefined;
+    fixLighting?: boolean | undefined;
+    fixSorting?: boolean | undefined;
+    fixMeshFade?: boolean | undefined;
+    fixParents?: boolean | undefined;
+} | {
+    t: 'bt.node.add';
+    path: string;
+    nodeType: string;
+    parentId?: number | undefined;
+    name?: string | undefined;
+} | {
+    t: 'bt.node.remove';
+    path: string;
+    nodeId: number;
+} | {
+    t: 'bt.node.setParent';
+    path: string;
+    nodeId: number;
+    parentId: number;
+} | {
+    t: 'bt.node.setOrder';
+    path: string;
+    nodeId: number;
+    order: number;
+} | {
+    t: 'bt.node.setField';
+    path: string;
+    nodeId: number;
+    field: string;
+    value: JsonValue;
+} | {
+    t: 'bt.blackboard.add';
+    path: string;
+    name: string;
+    type?: 'bool' | 'int' | 'float' | 'vector3' | 'entity' | 'string' | undefined;
+} | {
+    t: 'bt.blackboard.remove';
+    path: string;
+    name: string;
+} | {
+    t: 'bt.autoLayout';
+    path: string;
 } | {
     t: 'vfx.variant.upsert';
     path: string;
@@ -288,6 +472,42 @@ export type EditorCommand = {
     values: {
         [key: string]: JsonValue;
     };
+} | {
+    t: 'vfx.variant.remove';
+    path: string;
+    name: string;
+} | {
+    t: 'vfx.group.add';
+    path: string;
+    title?: string | undefined;
+    note?: string | undefined;
+    x?: number | undefined;
+    y?: number | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    color?: [number, number, number, number] | undefined;
+} | {
+    t: 'vfx.group.update';
+    path: string;
+    groupId: number;
+    title?: string | undefined;
+    note?: string | undefined;
+    x?: number | undefined;
+    y?: number | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+    color?: [number, number, number, number] | undefined;
+} | {
+    t: 'vfx.group.remove';
+    path: string;
+    groupId: number;
+} | {
+    t: 'vfx.generateMotionVectors';
+    texturePath: string;
+    columns: number;
+    rows: number;
+    searchRadius?: number | undefined;
+    loop?: boolean | undefined;
 } | {
     t: 'animation.control';
     id: string;
@@ -305,6 +525,7 @@ export type EditorCommand = {
 } | {
     t: 'animation.addTransition';
     id: string;
+    layer?: string | undefined;
     from?: string | undefined;
     to: string;
     hasExitTime?: boolean | undefined;
@@ -314,6 +535,7 @@ export type EditorCommand = {
 } | {
     t: 'animation.setCondition';
     id: string;
+    layer?: string | undefined;
     from?: string | undefined;
     transitionIndex: number;
     action: 'add' | 'update' | 'remove' | 'clear';
@@ -324,6 +546,7 @@ export type EditorCommand = {
 } | {
     t: 'animation.addState';
     id: string;
+    layer?: string | undefined;
     name: string;
     mode?: 'clip' | 'blendTree1D' | 'blendTree2D' | undefined;
     sourcePath?: string | undefined;
@@ -339,6 +562,7 @@ export type EditorCommand = {
 } | {
     t: 'animation.setState';
     id: string;
+    layer?: string | undefined;
     state: string;
     name?: string | undefined;
     mode?: 'clip' | 'blendTree1D' | 'blendTree2D' | undefined;
@@ -356,6 +580,7 @@ export type EditorCommand = {
 } | {
     t: 'animation.addMotion';
     id: string;
+    layer?: string | undefined;
     state: string;
     sourcePath?: string | undefined;
     clipName?: string | undefined;
@@ -368,6 +593,7 @@ export type EditorCommand = {
 } | {
     t: 'animation.setMotion';
     id: string;
+    layer?: string | undefined;
     state: string;
     motionIndex: number;
     sourcePath?: string | undefined;
@@ -381,15 +607,18 @@ export type EditorCommand = {
 } | {
     t: 'animation.removeState';
     id: string;
+    layer?: string | undefined;
     state: string;
 } | {
     t: 'animation.removeMotion';
     id: string;
+    layer?: string | undefined;
     state: string;
     motionIndex: number;
 } | {
     t: 'animation.removeTransition';
     id: string;
+    layer?: string | undefined;
     from?: string | undefined;
     transitionIndex: number;
 } | {
@@ -402,6 +631,63 @@ export type EditorCommand = {
     t: 'animation.removeParameter';
     id: string;
     name: string;
+} | {
+    t: 'animation.addLayer';
+    id: string;
+    name: string;
+    weight?: number | undefined;
+    mode?: 'override' | 'additive' | undefined;
+    enabled?: boolean | undefined;
+    maskPath?: string | undefined;
+    stateName?: string | undefined;
+    additiveSourcePath?: string | undefined;
+    additiveClipName?: string | undefined;
+    additiveTime?: number | undefined;
+} | {
+    t: 'animation.setLayer';
+    id: string;
+    layer: string;
+    name?: string | undefined;
+    weight?: number | undefined;
+    mode?: 'override' | 'additive' | undefined;
+    enabled?: boolean | undefined;
+    maskPath?: string | undefined;
+    stateName?: string | undefined;
+    defaultStateName?: string | undefined;
+    additiveSourcePath?: string | undefined;
+    additiveClipName?: string | undefined;
+    additiveTime?: number | undefined;
+} | {
+    t: 'animation.removeLayer';
+    id: string;
+    layer: string;
+} | {
+    t: 'avatarMask.write';
+    path: string;
+    action: 'create' | 'setBone' | 'removeBone' | 'clear' | 'setDefaultInclude';
+    name?: string | undefined;
+    overwrite?: boolean | undefined;
+    defaultInclude?: boolean | undefined;
+    skeletonSourcePath?: string | undefined;
+    bone?: string | undefined;
+    weight?: number | undefined;
+    includeChildren?: boolean | undefined;
+    blendDepth?: number | undefined;
+} | {
+    t: 'animation.playSlot';
+    id: string;
+    layer: string;
+    sourcePath?: string | undefined;
+    clipName?: string | undefined;
+    fadeIn?: number | undefined;
+    fadeOut?: number | undefined;
+    speed?: number | undefined;
+    loop?: boolean | undefined;
+} | {
+    t: 'animation.stopSlot';
+    id: string;
+    layer: string;
+    fadeOut?: number | undefined;
 } | {
     t: 'input.inject';
     kind: 'key' | 'axis' | 'gamepadButton' | 'gamepadAxis' | 'mouseButton' | 'mousePosition' | 'mouseDelta' | 'mouseScroll' | 'clear';

@@ -7,13 +7,13 @@
 //   「登録」と「Bus 有効化」だけ。しかし登録は claude_desktop_config.json の手編集や CLI 実行が
 //   必要で、Editor の外に出る摩擦になっていた。本サービスは環境診断 (node / dist / 登録状態) と
 //   Claude Desktop への登録書き込みを Editor 内の 1 クリックへ集約する。
-//   ファイル IO / Win32 詳細は .cpp に閉じ、UI (AI メニュー) はここの結果を表示するだけにする。
+//   ファイル IO / Win32 詳細は .cpp に閉じ、UI (AI Settings Panel) はここの結果を表示するだけにする。
 #pragma once
 #include <string>
 
 namespace fbzz::editor::ai {
 
-// AI メニューが表示する環境診断の結果。Inspect() が一括で埋める。
+// AI Settings Panel が表示する環境診断の結果。Inspect() が一括で埋める。
 struct AiSetupStatus {
     bool        nodeFound = false;           // node.exe が PATH 上にある
     bool        mcpDistFound = false;        // EditorMcp/dist/stdio.js を発見した
