@@ -26,6 +26,8 @@ export interface ProjectEntry {
   generatedRootsExist: boolean;
   engineVersionMismatch: boolean;
   migrationRequired: boolean;
+  // true の間はファイルシステム検証をバックグラウンドで実行中。
+  validationPending: boolean;
 }
 
 export interface TemplateInfo {
@@ -55,6 +57,7 @@ export interface OperationResult<T = undefined> {
 
 export interface GameHubApi {
   bootstrap(): Promise<OperationResult<BootstrapData>>;
+  listProjects(): Promise<OperationResult<ProjectEntry[]>>;
   chooseDirectory(): Promise<string | null>;
   chooseEditorExecutable(): Promise<string | null>;
   addProject(): Promise<OperationResult<ProjectEntry>>;

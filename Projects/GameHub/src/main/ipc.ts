@@ -13,6 +13,14 @@ import { TemplateService } from './templateService';
 const configStore = new ConfigStore();
 const projectService = new ProjectService();
 const templateService = new TemplateService();
+let configLoadPromise: Promise<void> | null = null;
+
+function ensureConfigLoaded(): Promise<void> {
+  if (!configLoadPromise) {
+    configLoadPromise = configStore.load().then(() => undefined);
+  }
+  return configLoadPromise;
+}
 
 function success<T>(value?: T): OperationResult<T> {
   return { ok: true, value };
@@ -23,20 +31,29 @@ function failure(error: unknown): OperationResult<never> {
 }
 
 async function bootstrap(): Promise<BootstrapData> {
+  await ensureConfigLoaded();
   const config = configStore.snapshot();
   return {
     engineVersion: ENGINE_VERSION,
     settings: config.settings,
-    projects: await projectService.inspectProjects(config.projects),
+    // 実ファイル検証とサムネイル読込はproject:listへ分離し、初期画面を先に返す。
+    projects: projectService.createPendingProjects(config.projects),
     templates: await templateService.listTemplates(),
   };
 }
 
-export async function registerIpcHandlers(): Promise<void> {
-  await configStore.load();
+export function registerIpcHandlers(): void {
+  // 読込は開始するが、BrowserWindow生成側をブロックしない。
+  void ensureConfigLoaded();
 
   ipcMain.handle('hub:bootstrap', async () => {
     try { return success(await bootstrap()); } catch (error) { return failure(error); }
+  });
+  ipcMain.handle('project:list', async () => {
+    try {
+      await ensureConfigLoaded();
+      return success(await projectService.inspectProjects(configStore.snapshot().projects));
+    } catch (error) { return failure(error); }
   });
   ipcMain.handle('dialog:directory', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
@@ -48,6 +65,7 @@ export async function registerIpcHandlers(): Promise<void> {
   });
   ipcMain.handle('project:add', async () => {
     try {
+      await ensureConfigLoaded();
       const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
       if (result.canceled || !result.filePaths[0]) return failure('プロジェクトの追加をキャンセルしました。');
       const projectPath = path.resolve(result.filePaths[0]);
@@ -59,16 +77,22 @@ export async function registerIpcHandlers(): Promise<void> {
   });
   ipcMain.handle('project:create', async (_event, request: CreateProjectRequest) => {
     try {
+      await ensureConfigLoaded();
       const projectPath = await templateService.create(request, configStore.snapshot().settings.sdkRoot);
       const lastOpened = await configStore.touchProject(projectPath);
       return success(await projectService.inspectProject({ path: projectPath, lastOpened }));
     } catch (error) { return failure(error); }
   });
   ipcMain.handle('project:remove', async (_event, projectPath: string) => {
-    try { await configStore.removeProject(projectPath); return success(); } catch (error) { return failure(error); }
+    try {
+      await ensureConfigLoaded();
+      await configStore.removeProject(projectPath);
+      return success();
+    } catch (error) { return failure(error); }
   });
   ipcMain.handle('project:open', async (_event, projectPath: string) => {
     try {
+      await ensureConfigLoaded();
       await projectService.openProject(projectPath, configStore.snapshot().settings);
       await configStore.touchProject(projectPath);
       return success();
@@ -78,7 +102,11 @@ export async function registerIpcHandlers(): Promise<void> {
     try { await projectService.revealProject(projectPath); return success(); } catch (error) { return failure(error); }
   });
   ipcMain.handle('settings:save', async (_event, settings: HubSettings) => {
-    try { await configStore.setSettings(settings); return success(await bootstrap()); } catch (error) { return failure(error); }
+    try {
+      await ensureConfigLoaded();
+      await configStore.setSettings(settings);
+      return success(await bootstrap());
+    } catch (error) { return failure(error); }
   });
 
   ipcMain.on('window:minimize', (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());

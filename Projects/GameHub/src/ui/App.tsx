@@ -2,7 +2,7 @@
 // App.tsx | renderer
 // プロジェクト管理、作成、設定画面をまとめるGameHubのルートUI
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BootstrapData, CreateProjectRequest, HubSettings, ProjectEntry, TemplateInfo } from '../shared/contracts';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
@@ -21,12 +21,14 @@ function ProjectCard({ project, onOpen, onReveal, onRemove }: {
   onReveal: () => void;
   onRemove: () => void;
 }) {
-  const healthy = project.pathExists && project.projectFileValid && project.layoutValid;
+  const healthy = !project.validationPending && project.pathExists && project.projectFileValid && project.layoutValid;
+  const statusClass = project.validationPending ? 'pending' : healthy ? 'healthy' : 'warning';
+  const statusText = project.validationPending ? 'Inspecting…' : healthy ? 'Ready' : 'Check project';
   return (
     <article className="project-card">
       <div className="project-art" style={project.thumbnailDataUrl ? { backgroundImage: `url(${project.thumbnailDataUrl})` } : undefined}>
         {!project.thumbnailDataUrl && <div className="project-monogram">{project.name.slice(0, 2).toUpperCase()}</div>}
-        <span className={`status-pill ${healthy ? 'healthy' : 'warning'}`}>{healthy ? 'Ready' : 'Check project'}</span>
+        <span className={`status-pill ${statusClass}`}>{statusText}</span>
       </div>
       <div className="project-body">
         <div className="project-heading">
@@ -122,10 +124,27 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const refreshGeneration = useRef(0);
 
   const refresh = async () => {
+    const generation = ++refreshGeneration.current;
     const result = await window.gameHub.bootstrap();
-    if (result.ok && result.value) setData(result.value); else setError(result.error ?? 'GameHubを初期化できませんでした。');
+    if (generation !== refreshGeneration.current) return;
+    if (!result.ok || !result.value) {
+      setError(result.error ?? 'GameHubを初期化できませんでした。');
+      return;
+    }
+
+    // 設定・テンプレート・仮カードを先に表示し、重い検証結果は後から差し替える。
+    setData(result.value);
+    void window.gameHub.listProjects().then((projectsResult) => {
+      if (generation !== refreshGeneration.current) return;
+      if (projectsResult.ok && projectsResult.value) {
+        setData((current) => current ? { ...current, projects: projectsResult.value ?? [] } : current);
+      } else {
+        setError(projectsResult.error ?? 'プロジェクト情報を更新できませんでした。');
+      }
+    });
   };
   useEffect(() => { void refresh(); }, []);
   useEffect(() => { if (data) document.documentElement.dataset.theme = data.settings.theme; }, [data?.settings.theme]);
