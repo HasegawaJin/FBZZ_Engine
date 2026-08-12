@@ -66,7 +66,8 @@ add_custom_target(fbzz_sdk
         "-DSDK_ROOT=${FBZZ_SDK_ROOT}"
         "-DCONFIG=$<CONFIG>"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/ValidateFBZZSDK.cmake"
-    DEPENDS fbzz_math fbzz_physics fbzz_engine fbzz_editor_launcher
+    # WHY: GameHubからVFXを開く際もSDK内の実行ファイルを使うため、EditorとVFXEditorを同じ版へ揃える。
+    DEPENDS fbzz_math fbzz_physics fbzz_engine fbzz_editor_launcher fbzz_vfx_editor
     COMMENT "Staging FBZZ SDK ${PROJECT_VERSION}"
     VERBATIM
 )
