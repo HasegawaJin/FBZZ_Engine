@@ -4,6 +4,7 @@
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationPreviewPanel.hpp>
+#include <Editor/Util/EditorTheme.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorCommon.hpp"
 #include "InspectorCore.hpp"
@@ -11,6 +12,7 @@
 #include "InspectorEnvironment.hpp"
 #include "InspectorLighting.hpp"
 #include "InspectorMaterial.hpp"
+#include "InspectorMultiEdit.hpp"
 #include "InspectorNavigation.hpp"
 #include "InspectorPhysics.hpp"
 #include "InspectorRendering.hpp"
@@ -18,175 +20,15 @@
 #include "InspectorUI.hpp"
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <imgui_internal.h>
 
 namespace fbzz::editor {
 
 namespace {
-
-// 複数選択中の Transform 一括編集
-void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
-{
-    // 有効な GO のみ収集
-    std::vector<scene::GameObject*> gos;
-    gos.reserve(ids.size());
-    for (auto id : ids)
-        if (auto* g = ctx.activeScene->GetGameObject(id))
-            gos.push_back(g);
-    if (gos.empty()) return;
-
-    ImGui::TextColored({ 0.7f, 0.85f, 1.0f, 1.0f },
-        "%zu objects selected", gos.size());
-    ImGui::Separator();
-    ImGui::Spacing();
-
-    // ── Transform (一括) ──────────────────────────────────────────────────────
-    if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Spacing();
-
-        // 値が全エンティティで一致するか調べる
-        const auto& refT = gos.front()->transform;
-        bool posAllSame = true, rotAllSame = true, scaleAllSame = true;
-        for (std::size_t i = 1; i < gos.size(); ++i) {
-            const auto& t = gos[i]->transform;
-            if (t.position.x != refT.position.x || t.position.y != refT.position.y || t.position.z != refT.position.z)
-                posAllSame = false;
-            if (t.rotation.x != refT.rotation.x || t.rotation.y != refT.rotation.y ||
-                t.rotation.z != refT.rotation.z || t.rotation.w != refT.rotation.w)
-                rotAllSame = false;
-            if (t.scale.x != refT.scale.x || t.scale.y != refT.scale.y || t.scale.z != refT.scale.z)
-                scaleAllSame = false;
-        }
-
-        // 値が異なる場合は "---" を DisplayFormat に使い、灰色表示する
-        struct MultiTransformEdit {
-            std::vector<std::string> guids;
-            std::vector<scene::Transform> before;
-            bool active = false;
-        };
-        static MultiTransformEdit edit;
-
-        auto trackMultiEdit = [&](bool changed, const char* description) {
-            if (ImGui::IsItemActivated()) {
-                edit.guids.clear();
-                edit.before.clear();
-                for (auto* g : gos) {
-                    edit.guids.push_back(g->instanceId);
-                    edit.before.push_back(g->transform);
-                }
-                edit.active = true;
-            }
-            if (!changed && !ImGui::IsItemDeactivatedAfterEdit()) return;
-            if (!ImGui::IsItemDeactivatedAfterEdit()) {
-                // WHY: 編集したフィールドの反映は各フィールド (Position/Rotation/Scale) の
-                //      changed ハンドラ側で行っている。ここで transform 全体をコピーすると、
-                //      Position を編集しただけで他オブジェクトの回転・スケールまで
-                //      primary の値に潰れてしまう (Unity は編集した値だけを揃える)。
-                return;
-            }
-            // drag 完了: push undo command
-            if (edit.active && ctx.undoStack && ctx.activeScene) {
-                const std::vector<std::string> guids = edit.guids;
-                const std::vector<scene::Transform> before = edit.before;
-                std::vector<scene::Transform> after;
-                after.reserve(gos.size());
-                for (auto* g : gos) after.push_back(g->transform);
-                scene::Scene* scene = ctx.activeScene;
-                const auto markDirty = ctx.markSceneDirty;
-                auto applyAll = [scene, guids, markDirty](const std::vector<scene::Transform>& values) {
-                    for (std::size_t i = 0; i < guids.size(); ++i)
-                        if (auto* target = scene->FindByGuid(guids[i]))
-                            target->transform = values[i];
-                    if (markDirty) markDirty();
-                };
-                ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                    description,
-                    [applyAll, after]() { applyAll(after); },
-                    [applyAll, before]() { applyAll(before); }));
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
-            }
-            edit.active = false;
-        };
-
-        // Position
-        float pos[3] = { refT.position.x, refT.position.y, refT.position.z };
-        if (!posAllSame)
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-        const bool posChanged = ImGui::DragFloat3(
-            posAllSame ? "Position" : "Position (---)", pos, 0.1f);
-        if (!posAllSame) ImGui::PopStyleColor();
-        if (posChanged) {
-            gos.front()->transform.position = { pos[0], pos[1], pos[2] };
-            for (std::size_t i = 1; i < gos.size(); ++i)
-                gos[i]->transform.position = gos.front()->transform.position;
-        }
-        trackMultiEdit(posChanged, "Move (Multi)");
-
-        // Rotation (primary euler)
-        {
-            math::Vector3 euler = widgets::QuatToEulerDeg(refT.rotation);
-            float rot[3] = { euler.x, euler.y, euler.z };
-            if (!rotAllSame)
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-            const bool rotChanged = ImGui::DragFloat3(
-                rotAllSame ? "Rotation" : "Rotation (---)", rot, 0.5f);
-            if (!rotAllSame) ImGui::PopStyleColor();
-            if (rotChanged) {
-                const auto newRot = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
-                gos.front()->transform.rotation = newRot;
-                for (std::size_t i = 1; i < gos.size(); ++i)
-                    gos[i]->transform.rotation = newRot;
-            }
-            trackMultiEdit(rotChanged, "Rotate (Multi)");
-        }
-
-        // Scale
-        float scale[3] = { refT.scale.x, refT.scale.y, refT.scale.z };
-        if (!scaleAllSame)
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-        const bool scaleChanged = ImGui::DragFloat3(
-            scaleAllSame ? "Scale" : "Scale (---)", scale, 0.01f, 0.001f, 1000.0f);
-        if (!scaleAllSame) ImGui::PopStyleColor();
-        if (scaleChanged) {
-            gos.front()->transform.scale = { scale[0], scale[1], scale[2] };
-            for (std::size_t i = 1; i < gos.size(); ++i)
-                gos[i]->transform.scale = gos.front()->transform.scale;
-        }
-        trackMultiEdit(scaleChanged, "Scale (Multi)");
-
-        ImGui::Spacing();
-    }
-
-    // ── 共通コンポーネント一覧 ───────────────────────────────────────────────
-    ImGui::Spacing();
-    ImGui::TextDisabled("Common Components");
-    ImGui::Separator();
-
-    // 全エンティティが持つコンポーネント名を列挙する
-    // (単純に primary の全コンポーネントを確認し、他にも存在するかチェック)
-    auto checkAll = [&](auto check) {
-        for (auto* g : gos) if (!check(g)) return false;
-        return true;
-    };
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::MeshRenderer>() != nullptr; }))
-        ImGui::BulletText("Mesh Renderer");
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::SkinnedMeshRenderer>() != nullptr; }))
-        ImGui::BulletText("Skinned Mesh Renderer");
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::MaterialComponent>() != nullptr; }))
-        ImGui::BulletText("Material");
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::LightComponent>() != nullptr; }))
-        ImGui::BulletText("Light");
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::RigidBodyComponent>() != nullptr; }))
-        ImGui::BulletText("Rigidbody");
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::AnimatorComponent>() != nullptr; }))
-        ImGui::BulletText("Animator");
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::AudioSourceComponent>() != nullptr; }))
-        ImGui::BulletText("Audio Source");
-    if (checkAll([](scene::GameObject* g) { return g->GetComponent<scene::ScriptComponent>() != nullptr; }))
-        ImGui::BulletText("Script");
-}
 
 template<typename T, typename Setter>
 void PushGameObjectPropertyCommand(EditorContext& ctx,
@@ -287,12 +129,14 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     // WHY: Play 中の Inspector 編集は Stop 時のスナップショット復元で巻き戻る。
     //      Unity が Play 中に UI を tint して知らせるのと同様、目立つバナーで注意を促す。
     if (ctx.playMode && !ctx.playMode->IsInEditor()) {
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.35f, 0.22f, 0.05f, 0.55f));
+        ImVec4 warningBg = EditorTheme::Color(ThemeColor::Warning);
+        warningBg.w = 0.16f;
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, warningBg);
         ImGui::BeginChild("##play_mode_warning",
             { 0.0f, ImGui::GetTextLineHeightWithSpacing() + 8.0f }, false,
             ImGuiWindowFlags_NoScrollbar);
         ImGui::SetCursorPos({ 8.0f, 4.0f });
-        ImGui::TextColored({ 1.0f, 0.8f, 0.35f, 1.0f },
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
             "PLAY MODE \xe2\x80\x94 changes will be lost on Stop");
         ImGui::EndChild();
         ImGui::PopStyleColor();
@@ -313,7 +157,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - btnW);
 
         if (wasLocked)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.55f, 0.85f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
 
         const bool canLock = wasLocked || hasSelectedAsset || go;
         if (!canLock)
@@ -431,11 +275,18 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             for (int i = 1; util::FileSystem::Exists(savePath) && i < 10000; ++i)
                 savePath = base + " " + std::to_string(i) + ".prefab";
 
-            if (PrefabSerializer::SaveSelection(*ctx.activeScene, ctx.selectedEntities, savePath))
+            // WHY: SaveSelection だけだと元の GO が通常オブジェクトのまま残り、
+            //      「プレファブを作ったのに繋がっていない」(Apply/Revert が出ない) 状態になる。
+            //      保存と同時にインスタンスとして接続する。
+            std::vector<scene::EntityID> connectedRoots;
+            if (PrefabSerializer::SaveSelectionAndConnect(
+                    *ctx.activeScene, ctx.selectedEntities, savePath, connectedRoots)) {
                 ctx.requestAssetBrowserRefresh = true;
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
         }
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Save selected object as prefab to Assets/Prefabs");
+            ImGui::SetTooltip("Save selected object as prefab to Assets/Prefabs and link it");
     }
 
     // プレファブインスタンスには出所プレファブ名と Apply / Revert ボタンを表示する。
@@ -446,17 +297,35 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         const std::string displayName =
             util::FileSystem::GetFilename(go->prefabAssetPath);
 
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.7f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
         ImGui::TextUnformatted(("Prefab: " + displayName).c_str());
         ImGui::PopStyleColor();
 
+        // シーン内の同一プレファブのインスタンス数。Apply の波及範囲を事前に見せる。
+        const int instanceCount =
+            PrefabSerializer::CountInstances(*ctx.activeScene, go->prefabAssetPath);
+
         ImGui::SameLine();
         if (ImGui::SmallButton("Apply")) {
-            PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot);
-            ctx.requestAssetBrowserRefresh = true;
+            if (PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot)) {
+                // WHY: アセットを書き換えただけでは、既に配置済みの他インスタンスは
+                //      古い定義のまま残る。プレファブの意味を成すよう、その場で揃える。
+                const int updated = PrefabSerializer::PropagateToInstances(
+                    *ctx.activeScene, go->prefabAssetPath, go->GetID(), ctx.projectRoot);
+                ctx.requestAssetBrowserRefresh = true;
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                FBZZ_LOG_INFO("Prefab applied: %s (%d other instance(s) updated)",
+                              displayName.c_str(), updated);
+                // 他インスタンスが作り直され EntityID が変わっているため、
+                // このフレームの描画は打ち切る。
+                if (updated > 0) return;
+            }
         }
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Write instance state back to the source .prefab asset");
+            ImGui::SetTooltip(instanceCount > 1
+                ? "Write instance state back to the .prefab asset,\n"
+                  "then update every other instance in this scene"
+                : "Write instance state back to the source .prefab asset");
 
         ImGui::SameLine();
         if (ImGui::SmallButton("Revert")) {
@@ -469,6 +338,175 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Discard instance changes and restore from the source .prefab asset");
+
+        // 同じプレファブのインスタンスをまとめて選ぶ動線。
+        // WHY: 「このプレファブは今どこに何個置かれているか」を確かめる手段が無かった。
+        if (instanceCount > 1) {
+            ImGui::SameLine();
+            char selectLabel[64];
+            std::snprintf(selectLabel, sizeof(selectLabel), "Select All (%d)", instanceCount);
+            if (ImGui::SmallButton(selectLabel)) {
+                const std::string prefabPath = go->prefabAssetPath;
+                std::vector<scene::EntityID> instances;
+                for (auto& candidate : ctx.activeScene->GameObjects())
+                    if (candidate.prefabAssetPath == prefabPath)
+                        instances.push_back(candidate.GetID());
+                if (!instances.empty()) ctx.selectedEntities = instances;
+                return; // 選択が複数になったので、この後の単体 Inspector は描かない
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Select every instance of this prefab in the open scene");
+        }
+
+        // ── Overrides: このインスタンスがアセット定義とどこで違うか ────────────
+        //
+        // WHY: これが見えないと「Apply したら何がアセットへ行くのか」「Revert したら
+        //      何が消えるのか」が分からず、どちらのボタンも怖くて押せない。
+        //
+        // 差分の算出はシーン全体のシリアライズを伴うため毎フレームは回さない。
+        // Undo のリビジョン (= 何か編集された) と選択が変わったときだけ取り直す。
+        {
+            struct OverrideCache {
+                std::string       guid;
+                std::size_t       undoRevision = static_cast<std::size_t>(-1);
+                PrefabOverrideSet set;
+                bool              valid = false;
+            };
+            static OverrideCache cache;
+
+            const std::size_t revision =
+                ctx.undoStack ? ctx.undoStack->GetRevision() : 0;
+            if (cache.guid != go->instanceId || cache.undoRevision != revision) {
+                cache.guid         = go->instanceId;
+                cache.undoRevision = revision;
+                cache.valid = ComputePrefabOverrides(*ctx.activeScene, go->GetID(),
+                                                     ctx.projectRoot, cache.set);
+                if (!cache.valid) cache.set = {};
+            }
+
+            const int overrideCount = static_cast<int>(cache.set.entries.size());
+            char overridesLabel[64];
+            std::snprintf(overridesLabel, sizeof(overridesLabel),
+                          "Overrides (%d)", overrideCount);
+
+            if (overrideCount > 0)
+                ImGui::PushStyleColor(ImGuiCol_Button,
+                                      EditorTheme::Color(ThemeColor::AccentSoft));
+            if (ImGui::SmallButton(overridesLabel))
+                ImGui::OpenPopup("##prefab_overrides");
+            if (overrideCount > 0) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(overrideCount > 0
+                    ? "Properties on this instance that differ from the prefab asset"
+                    : "This instance matches the prefab asset");
+
+            if (ImGui::BeginPopup("##prefab_overrides")) {
+                if (!cache.valid) {
+                    ImGui::TextDisabled("Could not read the prefab asset.");
+                } else if (cache.set.entries.empty()) {
+                    ImGui::TextDisabled("No overrides — this instance matches the asset.");
+                } else {
+                    ImGui::TextDisabled("%d overridden propert%s",
+                                        overrideCount, overrideCount == 1 ? "y" : "ies");
+                    ImGui::Separator();
+
+                    // 「1 件だけ元に戻す」。その 1 件を除いた差分で作り直すのが実装。
+                    const PrefabOverride* revertRequest = nullptr;
+
+                    constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_BordersInnerH
+                                                     | ImGuiTableFlags_RowBg
+                                                     | ImGuiTableFlags_SizingStretchProp;
+                    if (ImGui::BeginTable("##ov_list", 4, kFlags, { 620.0f, 0.0f })) {
+                        ImGui::TableSetupColumn("Object",   ImGuiTableColumnFlags_WidthStretch, 0.9f);
+                        ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthStretch, 1.2f);
+                        ImGui::TableSetupColumn("Prefab -> Instance",
+                                                                 ImGuiTableColumnFlags_WidthStretch, 1.8f);
+                        ImGui::TableSetupColumn("",         ImGuiTableColumnFlags_WidthFixed, 60.0f);
+                        ImGui::TableHeadersRow();
+
+                        int rowId = 0;
+                        for (const PrefabOverride& entry : cache.set.entries) {
+                            ImGui::TableNextRow();
+                            ImGui::PushID(rowId++);
+
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::TextUnformatted(entry.objectName.c_str());
+
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::TextColored(EditorTheme::Color(ThemeColor::Accent),
+                                               "%s", entry.path.c_str());
+
+                            ImGui::TableSetColumnIndex(2);
+                            ImGui::TextDisabled("%s", entry.prefabValue.c_str());
+                            ImGui::SameLine();
+                            ImGui::TextUnformatted("->");
+                            ImGui::SameLine();
+                            ImGui::TextUnformatted(entry.instanceValue.c_str());
+
+                            ImGui::TableSetColumnIndex(3);
+                            if (ImGui::SmallButton("Revert")) revertRequest = &entry;
+
+                            ImGui::PopID();
+                        }
+                        ImGui::EndTable();
+                    }
+
+                    ImGui::Separator();
+                    if (ImGui::Button("Revert All")) {
+                        std::vector<scene::EntityID> newRoots;
+                        if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
+                                                     newRoots, ctx.projectRoot)) {
+                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                            if (ctx.markSceneDirty) ctx.markSceneDirty();
+                            cache.valid = false;
+                            cache.guid.clear();
+                            ImGui::EndPopup();
+                            return;
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Apply All to Prefab")) {
+                        if (PrefabSerializer::Apply(*ctx.activeScene, go->GetID(), ctx.projectRoot)) {
+                            const int updated = PrefabSerializer::PropagateToInstances(
+                                *ctx.activeScene, go->prefabAssetPath, go->GetID(), ctx.projectRoot);
+                            ctx.requestAssetBrowserRefresh = true;
+                            if (ctx.markSceneDirty) ctx.markSceneDirty();
+                            cache.guid.clear();
+                            FBZZ_LOG_INFO("Prefab applied: %s (%d other instance(s) updated)",
+                                          displayName.c_str(), updated);
+                            ImGui::EndPopup();
+                            if (updated > 0) return;
+                        }
+                    }
+
+                    // 1 件だけ戻す: その 1 件を除いた差分でインスタンスを作り直す。
+                    // WHY: ライブなコンポーネントへ値を書き戻すと型ごとの分岐が必要になる。
+                    //      「差分集合を編集して展開し直す」なら経路が 1 本で済む。
+                    if (revertRequest) {
+                        const PrefabOverrideSet kept = WithoutEntry(cache.set, *revertRequest);
+                        std::vector<scene::EntityID> newRoots;
+                        if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
+                                                     newRoots, ctx.projectRoot, &kept)) {
+                            if (!newRoots.empty()) ctx.selectedEntities = newRoots;
+                            if (ctx.markSceneDirty) ctx.markSceneDirty();
+                            cache.guid.clear();
+                            ImGui::EndPopup();
+                            return;
+                        }
+                    }
+                }
+                ImGui::EndPopup();
+            }
+        }
+
+        // プレファブ本体を隔離シーンで開く動線。
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Open Prefab")) {
+            ctx.requestOpenPrefabEdit = go->prefabAssetPath;
+            return;   // このフレーム中にシーンが差し替わるため描画を打ち切る
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Open the .prefab on its own so edits apply to every instance");
     }
 
     char nameBuf[256];
@@ -616,6 +654,19 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::Spacing();
     { FBZZ_PROFILE_SCOPE("Inspector::AddComponent");
       DrawAddComponentMenu(*go, m_addComponentFilter, ctx); }
+
+    // ── Animator を持つ GameObject は Inspector 最下部にプレビューを出す ──
+    // WHY: Unity と同じ動線。Animator 付きオブジェクトを選ぶだけでモーションを
+    //   確認できるようにする。SkinnedMeshRenderer は子に分かれている構成も
+    //   あるため、判定は Animator の有無だけで行う。
+    // 対象未解決のときに空の "Preview" 見出しだけ残らないよう、
+    // 直前フレームの解決結果 (HasAnimationPreviewTarget) で出し分ける。
+    if (go->GetComponent<scene::AnimatorComponent>() && HasAnimationPreviewTarget()) {
+        FBZZ_PROFILE_SCOPE("Inspector::AnimationPreview");
+        ImGui::Spacing();
+        ImGui::SeparatorText("Preview");
+        DrawAnimationPreviewWidget(ctx, 240.0f);
+    }
 }
 
 } // namespace fbzz::editor

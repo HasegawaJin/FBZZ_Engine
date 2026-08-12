@@ -16,6 +16,15 @@ protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
+    // HotkeyManager へ「今 Hierarchy にフォーカスがある」ことを伝え、
+    // パネル内部の状態を要する要求 (F2 リネーム) だけをここで処理する。
+    //
+    // WHY: Delete / Ctrl+D / Ctrl+C / Ctrl+V / Ctrl+A / Esc はすべて
+    //      EditorApp::RegisterDefaultHotkeys へ移した。以前はこの 3 つの表示モード
+    //      それぞれに同じ判定が丸ごとコピーされており、片方だけ直る事故の温床だった。
+    //      リネームだけは編集バッファとフォーカス制御がこのパネル内にあるため残す。
+    void PublishFocusAndHandleRequests(EditorContext& ctx);
+
     // SetParent 成功後、次フレームで強制 open するノードの EntityID
     scene::EntityID m_pendingExpand;
     scene::EntityID m_lastClickedEntity;               // Shift+クリック範囲選択のアンカー

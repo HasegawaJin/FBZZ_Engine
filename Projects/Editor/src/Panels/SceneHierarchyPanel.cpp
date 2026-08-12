@@ -178,6 +178,9 @@ void CreatePrimitiveObject(EditorContext& ctx, const char* name, PrimitiveTempla
     if (type == PrimitiveTemplate::Quad) {
         auto script = scene::ScriptFactory::Create("QuadBillboardComponent");
         if (script) {
+            script->SetContext(ctx.activeScene, &go);
+            script->Reset();
+            script->OnValidate();
             scene::ScriptComponent sc;
             scene::ScriptEntry entry;
             entry.script = std::move(script);
@@ -524,6 +527,45 @@ void MarkDescendantsVisited(scene::GameObject& go,
     }
 }
 
+// ランタイム生成 GO を Hierarchy から隠すか。ctx.showGeneratedObjects が真なら全部見せる。
+// WHY: 隠す判断を 1 箇所に集約する。ツリー・検索リスト・展開矢印の 3 箇所が
+//      別々の条件を持つと、「矢印は出るが開いても空」のような不整合が必ず起きる。
+bool IsHiddenGenerated(const EditorContext& ctx, const scene::GameObject& go)
+{
+    return go.runtimeGenerated && !ctx.showGeneratedObjects;
+}
+
+// 実際に描画される子の数。生成物を隠しているときは、それを除いた数を返す。
+// WHY: GetChildCount() をそのまま展開矢印の有無に使うと、子が生成物だけのノードで
+//      「開けるのに何も出ない」状態になる。
+int VisibleChildCount(const EditorContext& ctx, const scene::GameObject& go)
+{
+    int count = 0;
+    for (int i = 0; i < go.GetChildCount(); ++i) {
+        auto* child = go.GetChild(i);
+        if (child && !IsHiddenGenerated(ctx, *child)) ++count;
+    }
+    return count;
+}
+
+// 隠している生成物の総数 (子孫すべて)。行末のバッジに出し、
+// 「Hierarchy に出ていない = 存在しない」と誤解させないための表示。
+int HiddenGeneratedCount(const EditorContext& ctx, const scene::GameObject& go)
+{
+    int count = 0;
+    for (int i = 0; i < go.GetChildCount(); ++i) {
+        auto* child = go.GetChild(i);
+        if (!child) continue;
+        if (IsHiddenGenerated(ctx, *child)) {
+            ++count;
+            count += child->GetChildCount(); // 生成物の下はまとめて 1 段だけ数える
+        } else {
+            count += HiddenGeneratedCount(ctx, *child);
+        }
+    }
+    return count;
+}
+
 // F2 インラインリネームの状態一式 (パネルメンバーへの参照)
 struct InlineRenameState {
     scene::EntityID& id;        // リネーム対象 (無効 = リネーム中でない)
@@ -546,6 +588,13 @@ void DrawHierarchyNode(EditorContext& ctx,
 {
     const scene::EntityID id = go.GetID();
     if (ContainsEntity(visited, id)) return;
+    // ランタイム生成物は既定で描かない。visited へは入れて、第2ループが
+    // これを「孤立オブジェクト」と誤認して root レベルへ描くのを防ぐ。
+    if (IsHiddenGenerated(ctx, go)) {
+        visited.push_back(id);
+        MarkDescendantsVisited(go, visited);
+        return;
+    }
     visited.push_back(id);
     outVisible.push_back(id);
 
@@ -582,7 +631,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         return;
     }
 
-    const bool hasChildren    = go.GetChildCount() > 0;
+    const bool hasChildren    = VisibleChildCount(ctx, go) > 0;
     const bool selected       = ContainsEntity(ctx.selectedEntities, id);
     const bool isRoot         = go.GetParent() == nullptr;
     const bool isActive       = go.activeInHierarchy();
@@ -611,18 +660,39 @@ void DrawHierarchyNode(EditorContext& ctx,
     // エディタ専用非表示はシアン（runtime 非アクティブより優先）、非アクティブはグレー、
     // ロック中はオレンジ、プレファブインスタンスは水色
     ui::PushHierarchySelectionColors();
-    if (isEditorHidden)         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(80,  180, 200, 255));
-    else if (!isActive)         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 130, 130, 255));
-    else if (isLocked)          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 175,  80, 255));
-    else if (isPrefabInstance)  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(100, 180, 255, 255));
+    if (isEditorHidden)         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Info));
+    else if (!isActive)         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
+    else if (isLocked)          ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
+    else if (isPrefabInstance)  ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
     const bool opened = ImGui::TreeNodeEx(go.name.c_str(), flags);
     if (isEditorHidden || !isActive || isLocked || isPrefabInstance) ImGui::PopStyleColor();
     ui::PopHierarchySelectionColors();
 
+    // ノード本体のアイテム状態は TreeNodeEx 直後に確定させ、以降で使い回す。
+    // WHY: この後に描く「隠し生成物」バッジ (TextDisabled) が新しい item として
+    //      ImGui の LastItemData を上書きしてしまい、それより後段で呼ぶ
+    //      IsItemClicked()/GetItemRectMin() 等がバッジ側を指してしまっていた。
+    //      バッジを持つノード(=ランタイム生成物を子孫に持つノード)ほど
+    //      「クリックしても選択されない/矩形がずれてアイコン誤動作する」不具合の原因だった。
+    const ImVec2 nodeMin         = ImGui::GetItemRectMin();
+    const ImVec2 nodeMax         = ImGui::GetItemRectMax();
+    const bool   nodeHovered     = ImGui::IsItemHovered();
+    const bool   nodeClicked     = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+    const bool   nodeToggledOpen = ImGui::IsItemToggledOpen();
+
+    // 隠している生成物の件数バッジ。「Hierarchy に出ていない = 存在しない」ではないことを示す。
+    // WHY: VFX を再生すると裏では十数個の GameObject が動いている。行が増えないのは
+    //      正しい既定だが、何も出さないと「エフェクトが生成されていない」と誤診断させる。
+    if (const int hiddenCount = HiddenGeneratedCount(ctx, go); hiddenCount > 0) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(+%d)", hiddenCount);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("%d generated object(s) hidden\nView > Show Generated Objects to reveal",
+                              hiddenCount);
+    }
+
     // --- 右端 visibility/editor-hide/lock アイコン (DrawList で直接描画) ---
     {
-        const ImVec2 nodeMin = ImGui::GetItemRectMin();
-        const ImVec2 nodeMax = ImGui::GetItemRectMax();
         const float  h       = nodeMax.y - nodeMin.y;
         const float  btnW    = h + 2.0f;
         // SpanAvailWidth のためnodeMax.x = ウィンドウコンテンツ右端
@@ -713,7 +783,7 @@ void DrawHierarchyNode(EditorContext& ctx,
 
         // ノードのクリック/ダブルクリック判定 (アイコン領域は除外)
         const bool iconAreaClick = ehClick || visClick || lockClick;
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()
+        if (nodeClicked && !nodeToggledOpen
             && !isLocked && !iconAreaClick) {
             ctx.selectedAssetPath.clear();
             const bool shiftHeld = ImGui::GetIO().KeyShift;
@@ -739,7 +809,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                 lastClicked = id;
             }
         }
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
+        if (nodeHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
             && !isLocked && !iconAreaClick) {
             // WHY: メッシュバウンズ基準で注視点・距離を決める (Unity の Frame Selected 互換)
             math::Vector3 focusCenter = go.transform.position;
@@ -798,6 +868,19 @@ void DrawHierarchyNode(EditorContext& ctx,
                         ctx.selectedEntities = roots;
                     });
                     if (pendingExpand) *pendingExpand = id;
+                };
+            } else if (ext == ".mat") {
+                // Viewport 上のドロップと同じく、ドロップ先の GameObject (このノード自身) へ
+                // マテリアルを直接割り当てる (Unity と同じ操作感)。
+                deferred = [&ctx, assetPath, id]() {
+                    auto* go = ctx.activeScene->GetGameObject(id);
+                    if (!go) return;
+                    auto* mc = go->GetComponent<scene::MaterialComponent>();
+                    if (!mc) mc = &go->AddComponent<scene::MaterialComponent>();
+                    mc->materialPath = assetPath;
+                    mc->materialAsset = {};  // 次フレームの SyncMaterial に新パスを再解決させる
+                    ctx.selectedEntities = { id };
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
                 };
             }
         }
@@ -1018,12 +1101,26 @@ void DrawHierarchyNode(EditorContext& ctx,
             if (ImGui::MenuItem("Apply to Prefab")) {
                 deferred = [&ctx, id]() {
                     if (!ctx.activeScene) return;
-                    PrefabSerializer::Apply(*ctx.activeScene, id, ctx.projectRoot);
+                    auto* target = ctx.activeScene->GetGameObject(id);
+                    if (!target) return;
+                    const std::string prefabPath = target->prefabAssetPath;
+                    if (!PrefabSerializer::Apply(*ctx.activeScene, id, ctx.projectRoot)) return;
+                    // WHY: アセットを書き戻しただけでは配置済みの他インスタンスが
+                    //      古い定義のまま残る。Inspector の Apply と挙動を揃える。
+                    //      各インスタンスの個別調整 (override) は保持される。
+                    const int updated = PrefabSerializer::PropagateToInstances(
+                        *ctx.activeScene, prefabPath, id, ctx.projectRoot);
+                    if (updated > 0) {
+                        // 作り直しで EntityID が変わるため選択は捨てる。
+                        ctx.selectedEntities.clear();
+                        if (ctx.markSceneDirty) ctx.markSceneDirty();
+                    }
                     ctx.requestAssetBrowserRefresh = true;
                 };
             }
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Write instance state back to the source .prefab asset");
+                ImGui::SetTooltip("Write instance state back to the .prefab asset,\n"
+                                  "then update every other instance in this scene");
             if (ImGui::MenuItem("Revert from Prefab")) {
                 deferred = [&ctx, id]() {
                     if (!ctx.activeScene) return;
@@ -1036,6 +1133,12 @@ void DrawHierarchyNode(EditorContext& ctx,
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Discard instance changes and restore from the source .prefab asset");
+            if (ImGui::MenuItem("Open Prefab")) {
+                const std::string prefabPath = go.prefabAssetPath;
+                deferred = [&ctx, prefabPath]() { ctx.requestOpenPrefabEdit = prefabPath; };
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Edit the .prefab itself in isolation — every instance follows on save");
         }
         if (ImGui::BeginMenu("Hierarchy")) {
             const bool hasParent = go.GetParent() != nullptr;
@@ -1086,53 +1189,25 @@ void DrawHierarchyNode(EditorContext& ctx,
     ImGui::PopID();
 }
 
-// Ctrl+A 全選択 / Esc 選択解除 (Hierarchy の各表示モード共通)
-// WHY: Unity 標準の選択系ショートカット。テキスト入力中は入力側を優先する。
-void HandleSelectionShortcuts(EditorContext& ctx)
-{
-    if (!ctx.activeScene) return;
-    if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) ||
-        ImGui::GetIO().WantTextInput)
-        return;
-
-    if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A, false)) {
-        ctx.selectedEntities.clear();
-        for (auto& go : ctx.activeScene->GameObjects())
-            if (!ctx.IsLocked(go.GetID()))
-                ctx.selectedEntities.push_back(go.GetID());
-    }
-    if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false) &&
-        !ctx.selectedEntities.empty()) {
-        CopySelectedToClipboard(ctx);
-    }
-    if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false) &&
-        HasGameObjectClipboard()) {
-        const bool pasteAsChild = ImGui::GetIO().KeyShift && ctx.selectedEntities.size() == 1;
-        PasteClipboardWithUndo(ctx, pasteAsChild ? ctx.selectedEntities[0] : scene::EntityID{});
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ctx.selectedEntities.empty())
-        ctx.selectedEntities.clear();
-}
-
-void DuplicateAllSelected(EditorContext& ctx, std::function<void()>& deferred)
-{
-    if (ctx.selectedEntities.empty() || !ctx.activeScene) return;
-    const std::vector<scene::EntityID> toDup = ctx.selectedEntities;
-    deferred = [&ctx, toDup]() {
-        std::vector<scene::EntityID> newIds;
-        for (auto eid : toDup) {
-            auto* src = ctx.activeScene->GetGameObject(eid);
-            const scene::EntityID parentId = src && src->GetParent()
-                ? src->GetParent()->GetID() : scene::EntityID{};
-            const scene::EntityID newId = DuplicateHierarchyRecursive(ctx, eid, parentId, true);
-            if (newId != scene::EntityID::INVALID)
-                newIds.push_back(newId);
-        }
-        if (!newIds.empty()) ctx.selectedEntities = newIds;
-    };
-}
-
 } // namespace
+
+void SceneHierarchyPanel::PublishFocusAndHandleRequests(EditorContext& ctx)
+{
+    // 次フレームの HotkeyManager が Hierarchy 用のキーを受け付けるかの判定材料。
+    ctx.hierarchyFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    if (!ctx.requestRenameSelected) return;
+    ctx.requestRenameSelected = false;
+
+    if (!ctx.activeScene || ctx.selectedEntities.size() != 1) return;
+    auto* go = ctx.activeScene->GetGameObject(ctx.selectedEntities[0]);
+    if (!go) return;
+
+    m_renamingId = ctx.selectedEntities[0];
+    std::strncpy(m_renameBuffer, go->name.c_str(), sizeof(m_renameBuffer) - 1);
+    m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
+    m_renameFocusPending = true;
+}
 
 void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -1159,8 +1234,22 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     }
 
     // --- 検索バー ---
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
+    // 生成物トグルを右端へ置き、検索欄はその残り幅を使う。
+    // WHY: 「見えているのが全部か」は Hierarchy を読むうえでの前提なので、
+    //      メニューの奥ではなく常に目に入る位置へ出す。
+    {
+        const float toggleWidth = ImGui::CalcTextSize("Generated").x
+                                + ImGui::GetFrameHeight()
+                                + ImGui::GetStyle().ItemSpacing.x * 2.0f;
+        ImGui::SetNextItemWidth(-toggleWidth);
+        ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
+        ImGui::SameLine();
+        ImGui::Checkbox("Generated", &ctx.showGeneratedObjects);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("Show objects created at runtime by systems\n"
+                              "(VFX Graph nodes, foliage bake, water splash).\n"
+                              "These are never saved into the scene.");
+    }
 
     // 空状態ガイド: シーンにオブジェクトが無いときは作成導線を案内する。
     if (ctx.activeScene->GameObjectCount() == 0 && m_searchFilter[0] == '\0') {
@@ -1179,6 +1268,9 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
         for (auto& go : ctx.activeScene->GameObjects()) {
             if (!util::StringUtils::ContainsCI(go.name, m_searchFilter)) continue;
+            // ツリー表示と同じ基準で隠す。検索したときだけ生成物が現れると、
+            // 「同じ名前の GO が 2 つある」ように見えて混乱する。
+            if (IsHiddenGenerated(ctx, go)) continue;
             if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
                 const bool isMapObject =
                     go.GetComponent<scene::TerrainGridComponent>()
@@ -1262,27 +1354,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             ImGui::PopID();
         }
 
-        if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-            ImGui::IsKeyPressed(ImGuiKey_Delete) && !ctx.selectedEntities.empty()) {
-            std::vector<scene::EntityID> ids = ctx.selectedEntities;
-            deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
-        }
-        if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-            ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D) && !ctx.selectedEntities.empty())
-            DuplicateAllSelected(ctx, deferred);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-            ImGui::IsKeyPressed(ImGuiKey_F2) && ctx.selectedEntities.size() == 1) {
-            if (auto* g = ctx.activeScene->GetGameObject(ctx.selectedEntities[0])) {
-                m_renamingId = ctx.selectedEntities[0];
-                std::strncpy(m_renameBuffer, g->name.c_str(), sizeof(m_renameBuffer) - 1);
-                m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-                m_renameFocusPending = true;
-            }
-        }
-        HandleSelectionShortcuts(ctx);
+        PublishFocusAndHandleRequests(ctx);
         if (deferred)
             ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
         return;
@@ -1312,27 +1384,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
         }
 
-        if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-            ImGui::IsKeyPressed(ImGuiKey_Delete) && !ctx.selectedEntities.empty()) {
-            std::vector<scene::EntityID> ids = ctx.selectedEntities;
-            deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
-        }
-        if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-            ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D) && !ctx.selectedEntities.empty())
-            DuplicateAllSelected(ctx, deferred);
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-            ImGui::IsKeyPressed(ImGuiKey_F2) && ctx.selectedEntities.size() == 1) {
-            if (auto* g = ctx.activeScene->GetGameObject(ctx.selectedEntities[0])) {
-                m_renamingId = ctx.selectedEntities[0];
-                std::strncpy(m_renameBuffer, g->name.c_str(), sizeof(m_renameBuffer) - 1);
-                m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-                m_renameFocusPending = true;
-            }
-        }
-        HandleSelectionShortcuts(ctx);
+        PublishFocusAndHandleRequests(ctx);
         if (deferred)
             ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
         return;
@@ -1410,27 +1462,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndDragDropTarget();
     }
 
-    if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-        ImGui::IsKeyPressed(ImGuiKey_Delete) && !ctx.selectedEntities.empty()) {
-        std::vector<scene::EntityID> ids = ctx.selectedEntities;
-        deferred = [&ctx, ids]() { DestroySelected(ctx, ids); };
-    }
-    if (!deferred && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-        ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D) && !ctx.selectedEntities.empty())
-        DuplicateAllSelected(ctx, deferred);
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        !ImGui::GetIO().WantTextInput &&
-        ImGui::IsKeyPressed(ImGuiKey_F2) && ctx.selectedEntities.size() == 1) {
-        if (auto* g = ctx.activeScene->GetGameObject(ctx.selectedEntities[0])) {
-            m_renamingId = ctx.selectedEntities[0];
-            std::strncpy(m_renameBuffer, g->name.c_str(), sizeof(m_renameBuffer) - 1);
-            m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
-            m_renameFocusPending = true;
-        }
-    }
-    HandleSelectionShortcuts(ctx);
+    PublishFocusAndHandleRequests(ctx);
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsWindowHovered() &&
         !ImGui::IsAnyItemHovered()) {

@@ -96,9 +96,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <functional>
 #include <string>
 #include <type_traits>
+#include <typeindex>
 #include <typeinfo>
+#include <utility>
 #include <vector>
 
 
@@ -1025,6 +1028,150 @@ void AddRegisteredComponent(scene::GameObject& go)
     }
 }
 
+// ある GameObject が現在持っている「登録済みコンポーネント型」の一覧を返す。
+// WHY: Add Component の Undo を作るための基準点。追加前後でこの集合を比べれば、
+//      依存で一緒に付いたコンポーネントも含めて「増えたぶん」だけが取り出せる。
+inline std::vector<std::type_index> CapturePresentComponentTypes(scene::GameObject& go)
+{
+    std::vector<std::type_index> types;
+    scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if (go.GetComponent<T>()) types.emplace_back(typeid(T));
+    });
+    return types;
+}
+
+// before に無かった型だけを対象に、Redo 用の「再追加関数」と Undo 用の「削除関数」を集める。
+inline void CollectAddedComponentOps(
+    scene::GameObject& go,
+    const std::vector<std::type_index>& before,
+    std::vector<std::function<void(scene::GameObject&)>>& outAdders,
+    std::vector<std::function<void(scene::GameObject&)>>& outRemovers)
+{
+    scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        auto* comp = go.GetComponent<T>();
+        if (!comp) return;
+        if (std::find(before.begin(), before.end(), std::type_index(typeid(T))) != before.end())
+            return;
+
+        // Redo は「追加直後の値」をそのまま復元する。
+        // unique_ptr を含むなどコピーできない型 (MeshCollider 等) は値を持ち運べないため、
+        // 既定の追加経路をもう一度走らせる — 追加直後と同じ結果になる。
+        if constexpr (std::is_copy_constructible_v<T>) {
+            T value = *comp;
+            outAdders.push_back([value](scene::GameObject& target) {
+                if (!target.GetComponent<T>()) target.AddComponent<T>(value);
+            });
+        } else {
+            outAdders.push_back([](scene::GameObject& target) {
+                if (!target.GetComponent<T>()) AddRegisteredComponent<T>(target);
+            });
+        }
+        outRemovers.push_back([](scene::GameObject& target) {
+            if (target.GetComponent<T>()) target.RemoveComponent<T>();
+        });
+    });
+}
+
+// 登録済みコンポーネントを追加し、この操作で増えた型だけを戻す Undo コマンドを返す。
+//
+// WHY: 以前はシーン全体を TOML 化して before/after スナップショットにしていた。
+//      1 コンポーネント追加のたびに全文シリアライズが 2 回走るうえ、Undo が
+//      Scene の Deserialize による全再構築になるため EntityID が振り直され、
+//      選択・ロック・エディタ非表示・Inspector のスクロール位置が毎回消えていた。
+//      増えたコンポーネントだけを足し引きすれば、シーンの他の部分には一切触れない。
+template<typename T>
+std::unique_ptr<ICommand> AddRegisteredComponentWithUndo(scene::GameObject& go,
+                                                         EditorContext& ctx,
+                                                         const char* label)
+{
+    const bool canRecordUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
+    std::vector<std::type_index> before;
+    if (canRecordUndo) before = CapturePresentComponentTypes(go);
+
+    AddRegisteredComponent<T>(go);
+    if (!canRecordUndo) return nullptr;
+
+    std::vector<std::function<void(scene::GameObject&)>> adders;
+    std::vector<std::function<void(scene::GameObject&)>> removers;
+    CollectAddedComponentOps(go, before, adders, removers);
+    if (adders.empty()) return nullptr;   // 何も増えなかった (既に付いていた)
+
+    scene::Scene* scene = ctx.activeScene;
+    const std::string instanceId = go.instanceId;
+    const auto markDirty = ctx.markSceneDirty;
+
+    // WHY: GameObject* は Undo までの間に無効化され得るため、instanceId から引き直す。
+    auto apply = [scene, instanceId, markDirty](
+                     const std::vector<std::function<void(scene::GameObject&)>>& ops) {
+        auto* target = scene->FindByGuid(instanceId);
+        if (!target) return;
+        for (const auto& op : ops) op(*target);
+        if (markDirty) markDirty();
+    };
+
+    return std::make_unique<LambdaCommand>(
+        std::string("Add ") + label,
+        [apply, adders]()   { apply(adders); },
+        [apply, removers]() { apply(removers); });
+}
+
+// スクリプトを 1 件追加し、その 1 件だけを戻す Undo コマンドを返す。
+// WHY: スクリプト追加は ScriptComponent::scripts への要素追加であり、
+//      「型が増えたか」を見る汎用差分では ScriptComponent が既にある場合を検出できない。
+inline std::unique_ptr<ICommand> AddScriptWithUndo(scene::GameObject& go,
+                                                   EditorContext& ctx,
+                                                   const std::string& typeName)
+{
+    auto script = scene::ScriptFactory::Create(typeName);
+    if (!script) return nullptr;
+    script->SetContext(ctx.activeScene, &go);
+    script->Reset();
+    script->OnValidate();
+
+    // この操作で ScriptComponent 自体も新設したかを覚えておく (Undo でそこまで戻すため)。
+    const bool hadComponent = go.GetComponent<scene::ScriptComponent>() != nullptr;
+    auto* sc = go.GetComponent<scene::ScriptComponent>();
+    if (!sc) sc = &go.AddComponent<scene::ScriptComponent>();
+
+    scene::ScriptEntry& entry = sc->scripts.emplace_back();
+    entry.script = std::move(script);
+    const std::size_t addedIndex = sc->scripts.size() - 1;
+
+    if (!(CanRecordEditorUndo(ctx) && ctx.activeScene)) return nullptr;
+
+    scene::Scene* scene = ctx.activeScene;
+    const std::string instanceId = go.instanceId;
+    const auto markDirty = ctx.markSceneDirty;
+
+    return std::make_unique<LambdaCommand>(
+        std::string("Add Script ") + typeName,
+        [scene, instanceId, typeName, markDirty]() {
+            auto* target = scene->FindByGuid(instanceId);
+            if (!target) return;
+            auto newScript = scene::ScriptFactory::Create(typeName);
+            if (!newScript) return;
+            auto* comp = target->GetComponent<scene::ScriptComponent>();
+            if (!comp) comp = &target->AddComponent<scene::ScriptComponent>();
+            newScript->SetContext(scene, target);
+            newScript->Reset();
+            newScript->OnValidate();
+            comp->scripts.emplace_back().script = std::move(newScript);
+            if (markDirty) markDirty();
+        },
+        [scene, instanceId, addedIndex, hadComponent, markDirty]() {
+            auto* target = scene->FindByGuid(instanceId);
+            if (!target) return;
+            auto* comp = target->GetComponent<scene::ScriptComponent>();
+            if (!comp) return;
+            if (addedIndex < comp->scripts.size())
+                comp->scripts.erase(comp->scripts.begin()
+                                    + static_cast<std::ptrdiff_t>(addedIndex));
+            if (!hadComponent && comp->scripts.empty())
+                target->RemoveComponent<scene::ScriptComponent>();
+            if (markDirty) markDirty();
+        });
+}
+
 inline bool ComponentMatchesFilter(const char* label, const char* filter)
 {
     if (filter[0] == '\0') return true;
@@ -1044,9 +1191,21 @@ inline bool AddComponentCategory(const char* label, const char* filter, DrawItem
 
     return drawItems(label, filter);
 }
-inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64], EditorContext& ctx)
+// Add Component メニュー。targets が複数なら、選択全体へまとめて追加する。
+//
+// WHY: 「選んだ 20 個全部に AudioSource を足す」はレベル調整で普通に出る操作なのに、
+//      この UI が単一 GameObject 前提だったため 20 回繰り返すしかなかった。
+//      対象をリストで受ければ、単体は「要素 1 個のリスト」として同じ経路に乗る。
+//      追加は 1 回の Undo でまとめて戻る (対象数だけ Ctrl+Z を叩かせない)。
+inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& targets,
+                                      char (&filterBuffer)[64],
+                                      EditorContext& ctx,
+                                      const char* buttonLabel)
 {
-    if (ImGui::Button("Add Component", { -1.0f, 0.0f }))
+    if (targets.empty()) return;
+    scene::GameObject& go = *targets.front();   // フィルタ表示や単体経路の基準
+
+    if (ImGui::Button(buttonLabel, { -1.0f, 0.0f }))
         ImGui::OpenPopup("##add_component");
 
     if (!ImGui::BeginPopup("##add_component")) return;
@@ -1063,7 +1222,24 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
     bool        anyShown = false;
     bool        didAdd = false;
 
-    auto addItem = [&](const char* category, const char* label, bool enabled, auto action) -> bool {
+    // 全対象へ addOne を適用し、返ってきた Undo コマンドを 1 つにまとめる。
+    // WHY: 対象ごとにコマンドを積むと、20 個へ足した操作を戻すのに Ctrl+Z を
+    //      20 回叩くことになる。ユーザー視点の 1 操作は 1 コマンドに保つ。
+    auto AddToAllTargets = [&targets](auto addOne, const std::string& description)
+        -> std::unique_ptr<ICommand> {
+        auto composite = std::make_unique<CompositeCommand>(description);
+        for (auto* target : targets) {
+            if (!target) continue;
+            if (auto cmd = addOne(*target)) composite->Add(std::move(cmd));
+        }
+        if (composite->Empty()) return nullptr;
+        return composite;
+    };
+
+    // perform() は追加を実行し、その操作を戻す Undo コマンド (不要なら nullptr) を返す。
+    // WHY: 「何が増えたか」を知っているのは呼び出し側なので、差分の作り方はそちらに任せる。
+    //      addItem 側はフィルタ照合とメニュー項目の描画だけに責務を絞る。
+    auto addItem = [&](const char* category, const char* label, bool enabled, auto perform) -> bool {
         char path[128];
         std::snprintf(path, sizeof(path), "%s/%s", category, label);
         char colonPath[128];
@@ -1073,30 +1249,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             !ComponentMatchesFilter(label, filter))
             return false;
         if (ImGui::MenuItem(filter[0] == '\0' ? label : path, nullptr, false, enabled)) {
-            const bool canRecordUndo =
-                CanRecordEditorUndo(ctx) && ctx.activeScene;
-            const std::string before = canRecordUndo
-                ? SceneIO::Serialize(*ctx.activeScene)
-                : std::string{};
-            action();
-            if (canRecordUndo) {
-                const std::string after = SceneIO::Serialize(*ctx.activeScene);
-                if (before != after) {
-                    scene::Scene* scene = ctx.activeScene;
-                    EditorContext* context = &ctx;
-                    const auto markDirty = ctx.markSceneDirty;
-                    auto restore = [scene, context, markDirty](const std::string& snapshot) {
-                        if (SceneIO::Deserialize(*scene, snapshot)) {
-                            context->selectedEntities.clear();
-                            if (markDirty) markDirty();
-                        }
-                    };
-                    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                        std::string("Add ") + label,
-                        [restore, after]() { restore(after); },
-                        [restore, before]() { restore(before); }));
-                }
-            }
+            std::unique_ptr<ICommand> command = perform();
+            if (command && CanRecordEditorUndo(ctx))
+                ctx.undoStack->Push(std::move(command));
             if (ctx.markSceneDirty) ctx.markSceneDirty();
             didAdd = true;
             ImGui::CloseCurrentPopup();
@@ -1132,8 +1287,18 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
             scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
                 if constexpr (Registration::addable) {
                     if (Registration::category != selectedCategory) return;
-                    shown |= addItem(category, Registration::displayName, !go.GetComponent<T>(), [&]() {
-                        AddRegisteredComponent<T>(go);
+                    // 1 体でも未所持なら追加できる (所持済みの対象は飛ばす)。
+                    bool anyMissing = false;
+                    for (auto* target : targets)
+                        if (!target->GetComponent<T>()) { anyMissing = true; break; }
+
+                    shown |= addItem(category, Registration::displayName, anyMissing, [&]() {
+                        return AddToAllTargets([&](scene::GameObject& target) {
+                            return target.GetComponent<T>()
+                                ? nullptr
+                                : AddRegisteredComponentWithUndo<T>(target, ctx,
+                                                                    Registration::displayName);
+                        }, std::string("Add ") + Registration::displayName);
                     });
                 }
             });
@@ -1146,15 +1311,9 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
         const auto scriptTypeNames = scene::ScriptFactory::RegisteredTypeNames();
         for (const std::string& typeName : scriptTypeNames) {
             shown |= addItem(category, typeName.c_str(), true, [&]() {
-                auto script = scene::ScriptFactory::Create(typeName);
-                if (!script) return;
-
-                auto* sc = go.GetComponent<scene::ScriptComponent>();
-                if (!sc)
-                    sc = &go.AddComponent<scene::ScriptComponent>();
-
-                scene::ScriptEntry& entry = sc->scripts.emplace_back();
-                entry.script = std::move(script);
+                return AddToAllTargets([&](scene::GameObject& target) {
+                    return AddScriptWithUndo(target, ctx, typeName);
+                }, "Add Script " + typeName);
             });
         }
         return shown;
@@ -1168,6 +1327,13 @@ inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64]
     if (didAdd)
         filterBuffer[0] = '\0';
 }
+
+// 単一 GameObject 版 (要素 1 個のリストとして同じ経路へ乗せる)。
+inline void DrawAddComponentMenu(scene::GameObject& go, char (&filterBuffer)[64], EditorContext& ctx)
+{
+    DrawAddComponentMenuMulti({ &go }, filterBuffer, ctx, "Add Component");
+}
+
 inline bool DragVec2(const char* label, math::Vector2& value, float speed = 0.1f, float min = 0.0f, float max = 0.0f)
 {
     float data[2] = { value.x, value.y };

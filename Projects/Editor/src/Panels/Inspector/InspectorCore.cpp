@@ -3,6 +3,7 @@
 // Transform / Script の Inspector 描画
 #include "InspectorCore.hpp"
 #include <Editor/Util/SceneIO.hpp>
+#include <Editor/Util/ScriptSnapshot.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <imgui_internal.h>
@@ -80,24 +81,35 @@ struct TransformClipboard {
 TransformClipboard& TransformClip() { static TransformClipboard c; return c; }
 
 // Transform をメニュー操作で書き換えた際の Undo コマンドを積む (連続ドラッグ用の TrackTransformEdit とは別経路)。
-void PushTransformSnapshotUndo(EditorContext& ctx, const std::string& before, const char* desc)
+//
+// WHY: 以前はシーン全体を TOML 化して before/after にしていたが、戻すのが 1 つの
+//      GameObject の Transform だけなのにシーン全体を Deserialize で再構築していた。
+//      EntityID が振り直されるため選択・ロック・エディタ非表示が毎回消え、
+//      大きなシーンでは Paste/Reset のたびに全文シリアライズ 2 回ぶんのヒッチが出ていた。
+void PushTransformSnapshotUndo(scene::GameObject& go,
+                               EditorContext& ctx,
+                               const scene::Transform& before,
+                               const char* desc)
 {
     if (ctx.markSceneDirty) ctx.markSceneDirty();
     if (!ctx.activeScene || !ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) return;
-    const std::string after = SceneIO::Serialize(*ctx.activeScene);
-    if (before.empty() || before == after) return;
-    scene::Scene*  scene   = ctx.activeScene;
-    EditorContext* context = &ctx;
-    const auto markDirty   = ctx.markSceneDirty;
-    auto restore = [scene, context, markDirty](const std::string& snapshot) {
-        if (SceneIO::Deserialize(*scene, snapshot)) {
-            context->selectedEntities.clear();
+
+    const scene::Transform after = go.transform;
+    if (TransformEquals(before, after)) return;
+
+    scene::Scene*     scene      = ctx.activeScene;
+    const std::string instanceId = go.instanceId;
+    const auto        markDirty  = ctx.markSceneDirty;
+
+    auto apply = [scene, instanceId, markDirty](const scene::Transform& value) {
+        if (auto* target = scene->FindByGuid(instanceId)) {
+            target->transform = value;
             if (markDirty) markDirty();
         }
     };
     ctx.undoStack->Push(std::make_unique<LambdaCommand>(desc,
-        [restore, after]()  { restore(after); },
-        [restore, before]() { restore(before); }));
+        [apply, after]()  { apply(after); },
+        [apply, before]() { apply(before); }));
 }
 
 // Transform ヘッダー右クリックの Copy / Paste / Reset メニュー。
@@ -107,11 +119,6 @@ void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
     auto& t = go.transform;
     TransformClipboard& clip = TransformClip();
 
-    const bool canUndo = ctx.activeScene && ctx.undoStack && ctx.undoStack->IsRecordingEnabled();
-    const auto snapshot = [&]() -> std::string {
-        return canUndo ? SceneIO::Serialize(*ctx.activeScene) : std::string{};
-    };
-
     if (ImGui::MenuItem("Copy Transform")) {
         clip.position = t.position;
         clip.rotation = t.rotation;
@@ -119,19 +126,19 @@ void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
         clip.has      = true;
     }
     if (ImGui::MenuItem("Paste Transform", nullptr, false, clip.has)) {
-        const std::string before = snapshot();
+        const scene::Transform before = t;
         t.position = clip.position;
         t.rotation = clip.rotation;
         t.scale    = clip.scale;
-        PushTransformSnapshotUndo(ctx, before, "Paste Transform");
+        PushTransformSnapshotUndo(go, ctx, before, "Paste Transform");
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Reset Transform")) {
-        const std::string before = snapshot();
+        const scene::Transform before = t;
         t.position = math::Vector3::ZERO;
         t.rotation = math::Quaternion::Identity();
         t.scale    = { 1.0f, 1.0f, 1.0f };
-        PushTransformSnapshotUndo(ctx, before, "Reset Transform");
+        PushTransformSnapshotUndo(go, ctx, before, "Reset Transform");
     }
     ImGui::EndPopup();
 }
@@ -212,27 +219,46 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
     if (!sc)
         return;
 
+    // スクリプト 1 個ぶんの編集を 1 コマンドとして記録する。
+    //
+    // WHY: 以前はシーン全体を TOML 化して before/after にしていた。スクリプトの実体は
+    //      DLL の向こうにあり、型を知らないエディタからは値を取り出せないというのが理由。
+    //      だが Script は Reflect() を実装しているので、IReflector を 1 つ用意すれば
+    //      型を知らないまま「そのスクリプトだけ」を読み書きできる。
+    //      これで Undo が全シーン再構築ではなく値の復元になり、EntityID も選択も維持される。
     struct ScriptUndoTracker {
-        ImGuiID activeId = 0;
-        std::string before;
-        bool active = false;
+        ImGuiID     activeId = 0;
+        std::string before;        // 編集開始時のスナップショット
+        std::string instanceId;    // 対象 GameObject
+        std::string typeName;      // 対象スクリプトの型 (index だけだと取り違える)
+        int         scriptIndex = -1;
+        bool        active = false;
     };
     static ScriptUndoTracker undo;
+
     const bool canTrackUndo =
         ctx.activeScene != nullptr &&
         ctx.undoStack != nullptr &&
         ctx.undoStack->IsRecordingEnabled();
     const ImGuiID activeBefore = ImGui::GetActiveID();
-    // WHY: Scene 全体の Serialize は高コストなので、Inspector を眺めているだけのフレームでは実行しない。
-    //      Mouse/Keyboard による操作開始候補だけを捕捉し、連続編集では tracker の before を再利用する。
+    // WHY: 眺めているだけのフレームでスナップショットを取らない。操作の開始候補
+    //      (クリック / Enter / Space) が来たフレームだけ各スクリプトの現在値を控える。
     const bool mayStartEdit =
         !undo.active &&
         (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
          ImGui::IsKeyPressed(ImGuiKey_Enter) ||
          ImGui::IsKeyPressed(ImGuiKey_Space));
-    const std::string beforeDraw = canTrackUndo && mayStartEdit
-        ? SceneIO::Serialize(*ctx.activeScene)
-        : std::string{};
+
+    // index → 描画前スナップショット。どのスクリプトが編集対象になるかは
+    // ActiveID が確定するまで分からないため、候補フレームでは全件控えておく。
+    std::vector<std::string> beforeSnapshots;
+    if (canTrackUndo && mayStartEdit) {
+        beforeSnapshots.reserve(sc->scripts.size());
+        for (const auto& e : sc->scripts)
+            beforeSnapshots.push_back(e.script ? CaptureScriptSnapshot(*e.script) : std::string{});
+    }
+    // ImGui のアイテム ID から「どのスクリプトを描画中だったか」を辿るための記録。
+    int editingScriptIndex = -1;
 
     int removeIndex = -1;
     for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i) {
@@ -275,6 +301,17 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                                 out.emplace_back(go.GetID(), go.name);
                             return out;
                         };
+                    reflector.m_tagListProvider =
+                        [scene = ctx.activeScene]() -> std::vector<std::string> {
+                            std::vector<std::string> tags;
+                            for (auto& object : scene->GameObjects()) {
+                                if (!object.tag.empty() &&
+                                    std::find(tags.begin(), tags.end(), object.tag) == tags.end())
+                                    tags.push_back(object.tag);
+                            }
+                            std::sort(tags.begin(), tags.end());
+                            return tags;
+                        };
                     // 型付き参照 (FBZZ_REF<T>) の型チェック: 対象 GO が typeName の Script を持つか。
                     // typeName が空 (任意 GameObject) なら常に true。
                     reflector.m_refTypeValidator =
@@ -290,7 +327,17 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
                             return false;
                         };
                 }
+                // WHY: どのスクリプトが編集対象になったかは、その Reflect() の描画中に
+                //      ActiveID が確定したかどうかで判別する。index だけを後から推測すると
+                //      複数スクリプトを付けた GameObject で取り違える。
+                const ImGuiID activeBeforeScript = ImGui::GetActiveID();
                 entry.script->Reflect(reflector);
+                if (reflector.m_changed)
+                    entry.script->OnValidate();
+                const ImGuiID activeAfterScript = ImGui::GetActiveID();
+                if (activeAfterScript != 0 && activeAfterScript != activeBeforeScript)
+                    editingScriptIndex = i;
+
                 ImGui::Spacing();
             }
         } else if (entry.serialized && !entry.serialized->type.empty()) {
@@ -340,34 +387,64 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
         undo.active = false;
         return;
     }
-    const ImGuiID activeAfter = ImGui::GetActiveID();
-    auto pushCommand = [&](const std::string& before, const std::string& after) {
-        if (before == after) return;
-        scene::Scene* scene = ctx.activeScene;
-        EditorContext* context = &ctx;
-        const auto markDirty = ctx.markSceneDirty;
-        auto restore = [scene, context, markDirty](const std::string& snapshot) {
-            if (SceneIO::Deserialize(*scene, snapshot)) {
-                context->selectedEntities.clear();
-                if (markDirty) markDirty();
-            }
-        };
-        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-            "Edit Script",
-            [restore, after]() { restore(after); },
-            [restore, before]() { restore(before); }));
+
+    // 対象スクリプトの現在値を撮る (追跡中のものを Undo コマンドの after にする)。
+    const auto captureTracked = [&]() -> std::string {
+        if (undo.scriptIndex < 0 ||
+            undo.scriptIndex >= static_cast<int>(sc->scripts.size()))
+            return {};
+        auto& e = sc->scripts[static_cast<std::size_t>(undo.scriptIndex)];
+        if (!e.script || e.script->GetTypeName() != undo.typeName) return {};
+        return CaptureScriptSnapshot(*e.script);
     };
 
-    if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
-        undo.activeId = activeAfter;
-        undo.before = beforeDraw;
-        undo.active = true;
+    auto pushCommand = [&](const std::string& before, const std::string& after) {
+        if (before == after || before.empty()) return;
+
+        scene::Scene* scene       = ctx.activeScene;
+        const std::string guid    = undo.instanceId;
+        const std::string type    = undo.typeName;
+        const int         index   = undo.scriptIndex;
+        const auto        markDirty = ctx.markSceneDirty;
+
+        // WHY: GameObject* も Script* も Undo までの間に無効化され得るので、
+        //      GUID → ScriptComponent → index の順で毎回引き直す。型名も照合して、
+        //      間にスクリプトを付け外しされていた場合に別物へ書き込むのを防ぐ。
+        auto apply = [scene, guid, type, index, markDirty](const std::string& snapshot) {
+            auto* target = scene->FindByGuid(guid);
+            if (!target) return;
+            auto* comp = target->GetComponent<scene::ScriptComponent>();
+            if (!comp || index < 0 || index >= static_cast<int>(comp->scripts.size())) return;
+            auto& e = comp->scripts[static_cast<std::size_t>(index)];
+            if (!e.script || e.script->GetTypeName() != type) return;
+            ApplyScriptSnapshot(*e.script, snapshot);
+            e.script->OnValidate();
+            if (markDirty) markDirty();
+        };
+
+        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+            "Edit Script (" + type + ")",
+            [apply, after]()  { apply(after); },
+            [apply, before]() { apply(before); }));
+    };
+
+    const ImGuiID activeAfter = ImGui::GetActiveID();
+
+    if (!undo.active && activeAfter != 0 && activeAfter != activeBefore &&
+        editingScriptIndex >= 0 &&
+        editingScriptIndex < static_cast<int>(beforeSnapshots.size())) {
+        // 編集開始: 対象スクリプトの控えを Undo の before にする。
+        auto& e = sc->scripts[static_cast<std::size_t>(editingScriptIndex)];
+        undo.activeId    = activeAfter;
+        undo.before      = beforeSnapshots[static_cast<std::size_t>(editingScriptIndex)];
+        undo.instanceId  = go->instanceId;
+        undo.typeName    = e.script ? e.script->GetTypeName() : "";
+        undo.scriptIndex = editingScriptIndex;
+        undo.active      = true;
     } else if (undo.active && activeAfter != undo.activeId) {
-        pushCommand(undo.before, SceneIO::Serialize(*ctx.activeScene));
+        // 編集終了 (別のウィジェットへ移った / 入力欄から離れた)。
+        pushCommand(undo.before, captureTracked());
         undo.active = false;
-    } else if (!undo.active && GImGui && GImGui->ActiveIdHasBeenEditedThisFrame &&
-               activeAfter == 0) {
-        pushCommand(beforeDraw, SceneIO::Serialize(*ctx.activeScene));
     }
 }
 

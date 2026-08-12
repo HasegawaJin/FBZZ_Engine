@@ -268,7 +268,16 @@ void ComputeGameObjectBounds(scene::GameObject& go,
     }
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-        for (const auto& meshPtr : smr->model->meshes) {
+        // meshIndex は「-1 = 全 submesh」「>=0 = この GO が担当する 1 つの submesh」。
+        // WHY: 全走査すると FBX 配置で作られる _Mesh0 / _Mesh1 ... の全ての子が
+        //      モデル全体の境界を返し、どの子を選んでも Frame Selected やギズモの
+        //      基準がモデル全体の中心に張り付いてしまう。
+        const size_t meshCount = smr->model->meshes.size();
+        const size_t begin = (smr->meshIndex >= 0)
+            ? (std::min)(static_cast<size_t>(smr->meshIndex), meshCount) : 0;
+        const size_t end = (smr->meshIndex >= 0) ? (std::min)(begin + 1, meshCount) : meshCount;
+        for (size_t i = begin; i < end; ++i) {
+            const auto& meshPtr = smr->model->meshes[i];
             if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
             const math::Vector3 c = worldPoint(meshPtr->boundsCenter);
             const float r = meshPtr->boundsRadius * (std::max)(maxScale, 0.0001f);
