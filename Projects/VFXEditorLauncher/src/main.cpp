@@ -1,7 +1,7 @@
 // FBZZ Engine
 // main.cpp | fbzz::vfx_editor_launcher
 // 独立VFXEditorのWin32エントリポイント
-#include <Editor/VFX/VFXEditorApp.hpp>
+#include <Editor/VFXEditor/Application/VFXEditorApp.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>

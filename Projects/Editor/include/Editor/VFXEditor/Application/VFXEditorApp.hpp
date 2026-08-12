@@ -4,7 +4,8 @@
 #pragma once
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/Panels/VFXEditorPanel.hpp>
+#include <Editor/Panels/AssetBrowserPanel.hpp>
+#include <Editor/VFXEditor/Views/VFXEditorPanel.hpp>
 #include <Engine/Core/IModule.hpp>
 #include <Engine/Renderer/DebugCamera.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -23,7 +24,8 @@ namespace fbzz::editor {
 // WHY: Preview Entity、Undo、選択をEditor Sceneからプロセス境界で隔離し、誤配置を構造的に防止する。
 class VFXEditorApp final : public core::IModule {
 public:
-    VFXEditorApp() = default;
+    // 前方宣言したAIサービスのunique_ptrを安全に初期化できるよう、完全型が見えるcpp側で定義する。
+    VFXEditorApp();
     ~VFXEditorApp() override;
 
     [[nodiscard]] bool Init(renderer::IRenderer& renderer,
@@ -47,7 +49,6 @@ private:
     void ResizePreviewIfNeeded();
     void RenderPreview();
     void RenderAiPreview();
-
     renderer::IRenderer* m_renderer = nullptr;
     renderer::IImGuiRenderer* m_imguiRenderer = nullptr;
     renderer::ResourceManager* m_resources = nullptr;
@@ -55,6 +56,9 @@ private:
     EditorContext m_context;
     EditorContext m_aiContext;
     VFXEditorPanel m_panel;
+    // 独立 VFX Editor でもテクスチャ・マテリアルを一覧して Inspector へ D&D できるようにする。
+    // WHY: これが無いと、割り当てたいアセットのパスを外部で調べて手打ちするしかない。
+    std::unique_ptr<AssetBrowserPanel> m_assetBrowser;
     std::unique_ptr<scene::Scene> m_previewScene;
     scene::SceneManager m_previewSceneManager;
     physics::World m_previewPhysicsWorld;
