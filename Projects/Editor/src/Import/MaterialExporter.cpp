@@ -8,10 +8,6 @@
 #include <wincodec.h>
 #include <assimp/material.h>
 #include <assimp/scene.h>
-// FBX 埋め込み画像のメモリデコード実装をこの翻訳単位だけに閉じ込める。
-// WHY: STB_IMAGE_STATIC により HdriLoader.cpp の実装とシンボル衝突しない。
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC
 #include <stb_image.h>
 #include <toml++/toml.hpp>
 #include <filesystem>

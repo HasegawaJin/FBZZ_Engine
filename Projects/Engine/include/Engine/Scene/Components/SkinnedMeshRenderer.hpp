@@ -7,6 +7,7 @@
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace fbzz::scene {
@@ -25,6 +26,18 @@ struct SkinnedMeshRenderer {
     // rebuilt at load/runtime and point at the visible Bone GameObjects.
     EntityID skeletonRootEntity = EntityID::INVALID;
     std::vector<EntityID> nodeEntities;
+    // Morph は共有 Mesh を変更せず、この Renderer インスタンス専用の頂点バッファへ反映する。
+    std::unordered_map<std::string, float> morphWeights;
+    std::unordered_map<std::string, float> appliedMorphWeights;
+    std::vector<renderer::ResourceHandle<renderer::BufferTag>> morphVertexBuffers;
+
+    renderer::ResourceHandle<renderer::BufferTag> ResolveVertexBuffer(
+        size_t index,
+        renderer::ResourceHandle<renderer::BufferTag> fallback) const
+    {
+        return index < morphVertexBuffers.size() && morphVertexBuffers[index].IsValid()
+            ? morphVertexBuffers[index] : fallback;
+    }
 
     const char* GetTypeName() const { return "Skinned Mesh Renderer"; }
     void Reflect(IReflector& r)

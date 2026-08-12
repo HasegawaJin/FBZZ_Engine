@@ -250,6 +250,9 @@ std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
 
+    // 無アニメ時の既定パレット。単位行列を使わないための前提データ。
+    if (model->skeleton) BuildReferencePose(*model->skeleton);
+
     ImportAnimations(scene, unitScale, *model);
     return model;
 }

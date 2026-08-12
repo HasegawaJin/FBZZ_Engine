@@ -22,7 +22,7 @@
 
 namespace fbzz::asset {
 
-constexpr uint32_t FZMODEL_VERSION      = 1;
+constexpr uint32_t FZMODEL_VERSION      = 2;
 constexpr uint32_t FZMODEL_FLAG_SKINNED = 1u << 0;
 constexpr uint32_t FZMODEL_FLAG_LOD     = 1u << 1;
 constexpr uint32_t FZMODEL_SLOT_NAME_LEN = 64;
@@ -54,6 +54,23 @@ struct FzSubmeshHeader {
     float    boundsRadius;
 };
 static_assert(sizeof(FzSubmeshHeader) == 32, "FzSubmeshHeader size mismatch");
+
+// v2 では各 FzSubmeshHeader の直後に置き、頂点/Indexの後へ Morph データを追加する。
+struct FzSubmeshExtensionV2 {
+    uint32_t morphTargetCount;
+};
+
+struct FzMorphTargetHeader {
+    char name[128];
+    uint32_t vertexCount;
+};
+
+struct FzMorphDelta {
+    float position[3];
+    float normal[3];
+    float tangent[3];
+};
+static_assert(sizeof(FzMorphDelta) == 36, "FzMorphDelta size mismatch");
 
 // FzSkelHeader / FzSkeletonNodeData / FzBoneData / FZSKEL_VERSION は
 // FzAssetFormat.hpp で定義済み (上記 include 経由で参照可)

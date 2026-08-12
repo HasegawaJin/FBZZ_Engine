@@ -17,6 +17,7 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -335,7 +336,8 @@ struct PreviewTarget {
 };
 
 // Manual = プレビュー画面へ直接ドロップされた対象。選択に追従せず、次の選択操作まで維持する。
-enum class TargetOrigin { None, Graph, Asset, Manual };
+// GameObject = Animator を持つシーン上のオブジェクト選択由来 (Unity の既定動線)。
+enum class TargetOrigin { None, Graph, Asset, GameObject, Manual };
 
 struct PreviewGpu {
     renderer::ResourceHandle<renderer::ShaderTag>         skinnedShader;
@@ -363,6 +365,16 @@ struct PreviewMaterialCB {
 struct PreviewState {
     PreviewTarget target;
     TargetOrigin origin = TargetOrigin::None;
+
+    // ユーザーが明示的に指定したジオメトリ (プレビューへ D&D したモデル)。
+    // WHY: FBZZ は「1 クリップ = 1 FBX」規約のため、.anim の隣に
+    //   スキンメッシュを持つモデルが存在しない。Unity が .anim プレビューで
+    //   モデルを差し替えられるのと同じく、一度指定したジオメトリを
+    //   セッション中は覚えておき、以降すべてのクリップに使い回す。
+    std::string userModelPath;
+
+    // Animator 付き GameObject の選択変化検出用
+    scene::EntityID lastSelectedEntity = scene::EntityID::INVALID;
 
     // 直前フレームの選択スナップショット。「後から変わった方」をプレビュー対象にする。
     EditorContext::AnimationGraphSelection::Type lastGraphType =
@@ -490,6 +502,86 @@ bool StatePreviewSource(const scene::AnimationState& state,
     return true;
 }
 
+// ジオメトリ探索ヘルパの前方宣言。
+// 実体は ResolvePathTarget の直前 (パス解決まわりをまとめた位置) に置いている。
+bool        LoadsAsPreviewableGeometry(const std::string& path);
+std::string FindGeometryForAnim(const std::string& animPath);
+
+// State / Animator の sourcePath を PreviewTarget の適切なスロットへ振り分ける。
+//
+// WHY: FBZZ の sourcePath は「1 クリップ = 1 FBX」規約により .anim を指すことが多い。
+//   これをそのまま modelPath に入れると LoadModel が失敗してプレビューが真っ黒になる。
+//   .anim ならクリップ側スロットへ入れ、器は別途探す。
+void AssignClipSource(PreviewTarget& out, const std::string& source,
+                      const std::string& clipName)
+{
+    if (source.empty()) return;
+    if (util::StringUtils::EndsWith(util::StringUtils::ToLower(source), ".anim")) {
+        out.animAssetPath = source;
+        out.clipName.clear();
+        std::string geometry = FindGeometryForAnim(source);
+        if (geometry.empty()) geometry = s_state.userModelPath;
+        out.modelPath = geometry;
+    } else {
+        out.modelPath = source;
+        out.clipName = clipName;
+    }
+}
+
+// GameObject 階層から最初のスキンメッシュを探し、その modelPath を返す。
+// WHY: MiniBot は本体 GO に Animator、子 GO 群に SkinnedMeshRenderer という構成のため、
+//   自分自身だけを見ると器が見つからない。
+std::string FindGeometryInHierarchy(scene::GameObject* go, int depth = 0)
+{
+    if (!go || depth > 4) return {};
+    if (auto* smr = go->GetComponent<scene::SkinnedMeshRenderer>()) {
+        if (!smr->modelPath.empty() && LoadsAsPreviewableGeometry(smr->modelPath))
+            return NormalizeAssetPath(smr->modelPath);
+    }
+    const int count = go->GetChildCount();
+    for (int i = 0; i < count; ++i) {
+        std::string found = FindGeometryInHierarchy(go->GetChild(i), depth + 1);
+        if (!found.empty()) return found;
+    }
+    return {};
+}
+
+// 選択中の GameObject (Animator 付き) からプレビュー対象を解決する。
+// Unity と同じく、Animator を持つオブジェクトを選ぶだけでプレビューできるようにする。
+bool ResolveGameObjectTarget(EditorContext& ctx, PreviewTarget& out)
+{
+    scene::GameObject* go = ctx.GetSelectedGO();
+    if (!go) return false;
+    auto* animator = go->GetComponent<scene::AnimatorComponent>();
+    if (!animator) return false;
+
+    // クリップ: 現在ステート → デフォルトステート → 先頭ステート → clipSources 先頭
+    std::string source, clipName;
+    auto tryState = [&](const std::string& name) {
+        if (name.empty() || !source.empty()) return;
+        for (const auto& st : animator->states)
+            if (st.name == name) { StatePreviewSource(st, source, clipName); return; }
+    };
+    tryState(animator->currentStateName);
+    tryState(animator->defaultStateName);
+    if (source.empty() && !animator->states.empty())
+        StatePreviewSource(animator->states.front(), source, clipName);
+    if (source.empty() && !animator->clipSources.empty())
+        source = animator->clipSources.front();
+
+    out.mode = PreviewTarget::Mode::Clip;
+    out.label = go->name;
+    AssignClipSource(out, source, clipName);
+
+    // 器はシーン上の実物 (SkinnedMeshRenderer) を最優先で使う。
+    if (std::string geometry = FindGeometryInHierarchy(go); !geometry.empty())
+        out.modelPath = geometry;
+    if (out.modelPath.empty()) out.modelPath = s_state.userModelPath;
+
+    // クリップも器も無ければプレビューする意味がない。
+    return !out.modelPath.empty() || !out.animAssetPath.empty();
+}
+
 // 現在の Animation Graph 選択からプレビュー対象を解決する。
 bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
 {
@@ -523,8 +615,14 @@ bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
         std::string source, clip;
         if (!StatePreviewSource(state, source, clip) || source.empty()) return false;
         out.mode = PreviewTarget::Mode::Clip;
-        out.modelPath = source;
-        out.clipName = clip;
+        AssignClipSource(out, source, clip);
+        // Graph 側でも器はシーン上の SkinnedMeshRenderer を優先する。
+        if (selection.entityId.IsValid() && ctx.activeScene) {
+            if (auto* owner = ctx.activeScene->GetGameObject(selection.entityId)) {
+                if (std::string geo = FindGeometryInHierarchy(owner); !geo.empty())
+                    out.modelPath = geo;
+            }
+        }
         out.label = state.name;
         if (state.mode != scene::AnimationStateMode::Clip)
             out.label += "  (Blend Tree: first motion)";
@@ -593,39 +691,111 @@ bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
 
 // アセットパス (.anim / .fbx / .fzasset / .asset) からプレビュー対象を解決する。
 // Asset Browser の選択と、プレビュー画面へのドラッグ&ドロップの両方から使う。
+// スキンメッシュとスケルトンを両方持ち、プレビューの器として使えるモデルか。
+// WHY: FBZZ の「1 クリップ = 1 FBX」で書き出されたクリップ FBX は
+//   アーマチュアと Empty しか含まないため、器としては使えない。
+bool IsPreviewableGeometry(const asset::Model* model)
+{
+    return model && model->skeleton && !model->skeleton->bones.empty() &&
+           !model->meshes.empty();
+}
+
+bool LoadsAsPreviewableGeometry(const std::string& path)
+{
+    if (!util::FileSystem::Exists(path)) return false;
+    return IsPreviewableGeometry(asset::AssetManager::LoadModel(path));
+}
+
+// .anim からスキンメッシュを持つモデルを探す。
+//   Assets/Models/MiniBot/Walk/anims/Walk@Walk.anim
+//     → Assets/Models/MiniBot/Walk.fbx  (クリップ FBX: メッシュ無しなので不採用)
+//     → Assets/Models/MiniBot.fbx       (パッケージ本体: 採用)
+// AssetManager の「パッケージフォルダ Foo/ の隣に原本 Foo.fbx」規約を利用し、
+// 親ディレクトリを遡って最初に見つかったスキンメッシュ付きモデルを返す。
+std::string FindGeometryForAnim(const std::string& animPath)
+{
+    namespace fs = std::filesystem;
+    static constexpr const char* kExts[] = { ".fbx", ".FBX", ".fzasset", ".asset",
+                                             ".gltf", ".glb", ".obj" };
+    fs::path dir = util::FileSystem::PathFromUtf8(animPath).parent_path();
+
+    // anims/ → クリップパッケージ → モデルパッケージ … と最大 5 階層遡る
+    for (int depth = 0; depth < 5 && !dir.empty(); ++depth) {
+        const std::string dirName = util::FileSystem::PathToUtf8(dir.filename());
+        if (!dirName.empty()) {
+            for (const char* ext : kExts) {
+                const std::string candidate =
+                    util::FileSystem::PathToUtf8(dir.parent_path() / (dirName + ext));
+                if (LoadsAsPreviewableGeometry(candidate))
+                    return NormalizeAssetPath(candidate);
+            }
+        }
+        const fs::path parent = dir.parent_path();
+        if (parent == dir) break;
+        dir = parent;
+    }
+    return {};
+}
+
+// モデルのパッケージ配下にある .anim を全部集める。
+//   Assets/Models/MiniBot.fbx
+//     → Assets/Models/MiniBot/*/anims/*.anim   (Idle, Walk, Run …)
+//     → Assets/Models/MiniBot/anims/*.anim     (モデル自身に同梱された場合)
+// 結果はモデルパスをキーにキャッシュする (毎フレーム走査すると重いため)。
+const std::vector<std::string>& CollectPackageAnims(const std::string& modelPath)
+{
+    static std::string cachedKey;
+    static std::vector<std::string> cached;
+    static std::vector<std::string> empty;
+    if (modelPath.empty()) return empty;
+    if (modelPath == cachedKey) return cached;
+
+    namespace fs = std::filesystem;
+    cachedKey = modelPath;
+    cached.clear();
+
+    const fs::path model = util::FileSystem::PathFromUtf8(modelPath);
+    const fs::path packageDir = model.parent_path() /
+                                util::FileSystem::PathToUtf8(model.stem());
+    std::error_code ec;
+    if (!fs::exists(packageDir, ec)) return cached;
+
+    // パッケージ直下の anims/ と、その 1 階層下 (クリップパッケージ) の anims/ を見る。
+    auto scanAnimsDir = [&](const fs::path& dir) {
+        if (!fs::exists(dir, ec)) return;
+        for (const auto& e : fs::directory_iterator(dir, ec)) {
+            if (ec) break;
+            if (!e.is_regular_file(ec)) continue;
+            if (util::StringUtils::ToLower(
+                    util::FileSystem::PathToUtf8(e.path().extension())) != ".anim") continue;
+            cached.push_back(NormalizeAssetPath(util::FileSystem::PathToUtf8(e.path())));
+        }
+    };
+    scanAnimsDir(packageDir / "anims");
+    for (const auto& e : fs::directory_iterator(packageDir, ec)) {
+        if (ec) break;
+        if (e.is_directory(ec)) scanAnimsDir(e.path() / "anims");
+    }
+    std::sort(cached.begin(), cached.end());
+    return cached;
+}
+
 bool ResolvePathTarget(const std::string& path, PreviewTarget& out)
 {
     if (path.empty()) return false;
     const std::string lower = util::StringUtils::ToLower(path);
 
     if (util::StringUtils::EndsWith(lower, ".anim")) {
-        // "Model@Clip.anim" → "Model" の .fbx / .fzasset を近傍から探す (Reimport と同じ規約)。
-        namespace fs = std::filesystem;
-        const fs::path animPath = util::FileSystem::PathFromUtf8(path);
-        const fs::path parentDir = animPath.parent_path();
-        const std::string stem = util::FileSystem::PathToUtf8(animPath.stem());
-        const std::string baseStem = stem.find('@') != std::string::npos
-            ? stem.substr(0, stem.find('@')) : stem;
-
-        std::string modelCandidate;
-        for (const auto* ext : { ".fbx", ".FBX", ".fzasset", ".obj", ".gltf", ".glb" }) {
-            const fs::path same = parentDir / (baseStem + ext);
-            if (util::FileSystem::Exists(util::FileSystem::PathToUtf8(same))) {
-                modelCandidate = util::FileSystem::PathToUtf8(same);
-                break;
-            }
-            const fs::path up = parentDir.parent_path() / (baseStem + ext);
-            if (util::FileSystem::Exists(util::FileSystem::PathToUtf8(up))) {
-                modelCandidate = util::FileSystem::PathToUtf8(up);
-                break;
-            }
-        }
-        if (modelCandidate.empty()) return false;
-
         out.mode = PreviewTarget::Mode::Clip;
-        out.modelPath = NormalizeAssetPath(modelCandidate);
         out.animAssetPath = path;
         out.label = util::FileSystem::GetFilename(path);
+
+        // ジオメトリは (1) パッケージ規約から自動発見 (2) ユーザー指定の使い回し の順。
+        // どちらも無ければ modelPath は空のままにし、UI がドロップ待ち表示を出す。
+        // WHY: 以前はここで false を返していたため、クリップ単体を選ぶと
+        //   プレビュー自体が消えて「真っ黒」に見えていた。
+        out.modelPath = FindGeometryForAnim(path);
+        if (out.modelPath.empty()) out.modelPath = s_state.userModelPath;
         return true;
     }
 
@@ -633,13 +803,18 @@ bool ResolvePathTarget(const std::string& path, PreviewTarget& out)
         util::StringUtils::EndsWith(lower, ".fzasset") ||
         util::StringUtils::EndsWith(lower, ".asset")) {
         const asset::Model* model = asset::AssetManager::LoadModel(path);
-        if (!model || !model->skeleton || model->clips.empty()) return false;
+        // クリップを持たないモデルでも器として成立させる (バインドポーズを表示し、
+        // クリップは後からコンボ / ドロップで指定できる)。
+        // WHY: FBZZ のスキンメッシュ本体 FBX は clips が常に空。
+        //   以前の clips.empty() 判定では MiniBot.fbx が必ず弾かれていた。
+        if (!IsPreviewableGeometry(model)) return false;
         out.mode = PreviewTarget::Mode::Clip;
-        out.modelPath = path;
+        out.modelPath = NormalizeAssetPath(path);
         // 直前と同じモデルならクリップ選択 (コンボ) を維持する。
-        if (s_state.target.modelPath == out.modelPath &&
-            s_state.target.animAssetPath.empty())
+        if (s_state.target.modelPath == out.modelPath) {
             out.clipName = s_state.target.clipName;
+            out.animAssetPath = s_state.target.animAssetPath;
+        }
         out.label = util::FileSystem::GetFilename(path);
         return true;
     }
@@ -657,11 +832,28 @@ void AdoptManualTarget(const PreviewTarget& target)
     const bool identityChanged = !target.SameIdentity(s_state.target);
     s_state.target = target;
     s_state.origin = TargetOrigin::Manual;
+    if (!target.modelPath.empty()) s_state.userModelPath = target.modelPath;
     if (identityChanged) {
         s_state.time = 0.0f;
         s_state.playing = true;
         s_state.needsFraming = true;
     }
+}
+
+// 現在のクリップを保ったままジオメトリだけ差し替える。
+// WHY: Unity の .anim プレビューと同じく「動きは今のまま、器だけ別モデルで見たい」
+//   という操作を成立させる。モデルをドロップしてもクリップが消えないようにする。
+void SwapPreviewGeometry(const std::string& modelPath)
+{
+    if (modelPath.empty()) return;
+    s_state.userModelPath = modelPath;
+    s_state.target.modelPath = modelPath;
+    if (s_state.target.mode == PreviewTarget::Mode::None)
+        s_state.target.mode = PreviewTarget::Mode::Clip;
+    if (s_state.target.label.empty())
+        s_state.target.label = util::FileSystem::GetFilename(modelPath);
+    s_state.origin = TargetOrigin::Manual;
+    s_state.needsFraming = true;
 }
 
 // ImGui の直前アイテムを ASSET_PATH ドロップターゲットとして扱い、
@@ -671,11 +863,26 @@ bool AcceptPreviewAssetDrop()
     bool accepted = false;
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            PreviewTarget dropped;
-            if (ResolvePathTarget(
-                    NormalizeAssetPath(static_cast<const char*>(payload->Data)), dropped)) {
-                AdoptManualTarget(dropped);
+            const std::string dropped =
+                NormalizeAssetPath(static_cast<const char*>(payload->Data));
+            const std::string lower = util::StringUtils::ToLower(dropped);
+
+            // モデルのドロップで、既にクリップが載っている場合は器だけ差し替える。
+            const bool isModelDrop =
+                util::StringUtils::EndsWith(lower, ".fbx") ||
+                util::StringUtils::EndsWith(lower, ".fzasset") ||
+                util::StringUtils::EndsWith(lower, ".asset");
+            const bool hasClip = !s_state.target.animAssetPath.empty() ||
+                                 !s_state.target.clipName.empty();
+            if (isModelDrop && hasClip && LoadsAsPreviewableGeometry(dropped)) {
+                SwapPreviewGeometry(dropped);
                 accepted = true;
+            } else {
+                PreviewTarget target;
+                if (ResolvePathTarget(dropped, target)) {
+                    AdoptManualTarget(target);
+                    accepted = true;
+                }
             }
         }
         ImGui::EndDragDropTarget();
@@ -708,12 +915,24 @@ void UpdatePreviewTarget(EditorContext& ctx)
     bool resolved = false;
     TargetOrigin origin = s_state.origin;
 
+    // Animator 付き GameObject の選択変化も対象切り替えのトリガーにする。
+    scene::GameObject* selectedGo = ctx.GetSelectedGO();
+    const scene::EntityID selectedEntity =
+        selectedGo ? selectedGo->GetID() : scene::EntityID::INVALID;
+    const bool goChanged = !(selectedEntity == s_state.lastSelectedEntity);
+    s_state.lastSelectedEntity = selectedEntity;
+
     if (graphChanged && ResolveGraphTarget(ctx, candidate)) {
         origin = TargetOrigin::Graph;
         resolved = true;
     } else if (assetChanged && ResolveAssetTarget(ctx, candidate)) {
         origin = TargetOrigin::Asset;
         resolved = true;
+    } else if (goChanged && ResolveGameObjectTarget(ctx, candidate)) {
+        origin = TargetOrigin::GameObject;
+        resolved = true;
+    } else if (s_state.origin == TargetOrigin::GameObject) {
+        resolved = ResolveGameObjectTarget(ctx, candidate);
     } else if (s_state.origin == TargetOrigin::Graph) {
         // 継続中の対象は毎フレーム再解決し、Duration 等のパラメーター編集を即反映する。
         resolved = ResolveGraphTarget(ctx, candidate);
@@ -1087,32 +1306,55 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         const auto& mesh = model->meshes[i];
         if (!mesh || !mesh->vertexBuffer.IsValid() || !mesh->indexBuffer.IsValid()) continue;
 
-        // マテリアルからアルベドテクスチャだけ拝借し、ライティングは共通のプレビュー用にする。
-        PreviewMaterialCB materialData{};
-        renderer::ResourceHandle<renderer::TextureTag> albedoTexture;
-        if (i < model->materials.size() && model->materials[i] &&
-            !model->materials[i]->textures.empty() &&
-            model->materials[i]->textures[0].IsValid()) {
-            albedoTexture = model->materials[i]->textures[0];
-            materialData.textureMask = 1u;
-        }
-        resources.Update(s_gpu.materialCB, &materialData, sizeof(materialData));
+        // ── マテリアル解決 ──────────────────────────────────────────────
+        // モデルが持つマテリアルの shader / paramsBuffer / textures をそのまま使い、
+        // シーンビューと同じ見た目にする。
+        // WHY: 以前はアルベドテクスチャだけ拝借してグレー固定のフラット CB を
+        //   流し込んでいたため、色・エミッシブ・法線マップなどが一切反映されず、
+        //   プレビューだけ別物の見た目になっていた。
+        renderer::Material* material =
+            (i < model->materials.size()) ? model->materials[i].get() : nullptr;
+
+        // スキンメッシュに非スキニングシェーダーが割り当たっている場合は使えない
+        // (頂点入力レイアウトが合わない)。描画パスと同じくフォールバックする。
+        const bool materialSupportsSkinning =
+            material && material->shaderPath.find("/Skinned/") != std::string::npos;
+        const bool useMaterial =
+            material && material->shader.IsValid() && material->paramsBuffer.IsValid() &&
+            (!mesh->isSkinned || materialSupportsSkinning);
 
         renderer::DrawCall dc;
         dc.vertexBuffer = mesh->vertexBuffer;
         dc.indexBuffer = mesh->indexBuffer;
         dc.indexCount = mesh->indexCount;
         dc.vertexCount = mesh->vertexCount;
-        dc.shader = mesh->isSkinned ? s_gpu.skinnedShader : s_gpu.surfaceShader;
         dc.pipelineState = s_gpu.pso;
         dc.constantBuffers[0] = s_gpu.frameCB;
         dc.constantBuffers[1] = s_gpu.objectCB;
-        dc.constantBuffers[2] = s_gpu.materialCB;
         dc.constantBuffers[3] = s_gpu.lightCB;
         dc.constantBuffers[4] = s_gpu.shadowCB;
         if (mesh->isSkinned)
             dc.constantBuffers[7] = s_gpu.skinningCB;
-        dc.textures[0] = albedoTexture;
+
+        if (useMaterial) {
+            dc.shader             = material->shader;
+            dc.constantBuffers[2] = material->paramsBuffer;
+            for (size_t ti = 0; ti < material->textures.size() && ti < 8; ++ti)
+                if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
+        } else {
+            // フォールバック: プレビュー既定のフラットマテリアル。
+            // アルベドテクスチャがあればそれだけは反映する。
+            PreviewMaterialCB materialData{};
+            renderer::ResourceHandle<renderer::TextureTag> albedoTexture;
+            if (material && !material->textures.empty() && material->textures[0].IsValid()) {
+                albedoTexture = material->textures[0];
+                materialData.textureMask = 1u;
+            }
+            resources.Update(s_gpu.materialCB, &materialData, sizeof(materialData));
+            dc.shader             = mesh->isSkinned ? s_gpu.skinnedShader : s_gpu.surfaceShader;
+            dc.constantBuffers[2] = s_gpu.materialCB;
+            dc.textures[0]        = albedoTexture;
+        }
         renderer.Submit(dc, resources);
     }
 
@@ -1159,6 +1401,56 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
     if (s_state.target.mode == PreviewTarget::Mode::Transition) {
         ImGui::SameLine();
         ImGui::TextDisabled("Blend %.0f%%", s_state.currentBlendWeight * 100.0f);
+    }
+
+    // ── ジオメトリ枠 (Unity の Preview 下部にあるモデル差し替えと同じ役割) ──
+    // WHY: FBZZ は 1 クリップ = 1 FBX なので、.anim の隣にスキンメッシュが無い。
+    //   どのモデルで再生しているかを常に見せ、D&D で差し替えられるようにする。
+    const bool hasGeometry =
+        !s_state.target.modelPath.empty() &&
+        LoadsAsPreviewableGeometry(s_state.target.modelPath);
+    {
+        ImGui::TextDisabled("Model:");
+        ImGui::SameLine();
+        const std::string geoName = hasGeometry
+            ? util::FileSystem::GetFilename(s_state.target.modelPath)
+            : std::string("(drop a skinned model here)");
+        if (!hasGeometry)
+            ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(120, 64, 48, 255));
+        ImGui::Button(geoName.c_str(), ImVec2(-1.0f, 0.0f));
+        if (!hasGeometry) ImGui::PopStyleColor();
+        AcceptPreviewAssetDrop();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Skinned model used as the preview body.\n"
+                "Drag a .fbx / .fzasset here to swap it (the clip is kept).");
+    }
+
+    // ジオメトリが無い間は黒画面を出さず、何をすればよいか明示する。
+    if (!hasGeometry) {
+        const float width  = (std::max)(ImGui::GetContentRegionAvail().x, 64.0f);
+        const float height = (std::max)(previewHeight, 96.0f);
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##PreviewDropZone", ImVec2(width, height));
+        AcceptPreviewAssetDrop();
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height),
+                          IM_COL32(28, 30, 34, 255), 4.0f);
+        dl->AddRect(origin, ImVec2(origin.x + width, origin.y + height),
+                    IM_COL32(120, 130, 145, 200), 4.0f, 0, 1.5f);
+        const char* line1 = "No skinned model for this clip";
+        const char* line2 = "Drag a model (.fbx / .fzasset) here to preview it";
+        const ImVec2 s1 = ImGui::CalcTextSize(line1);
+        const ImVec2 s2 = ImGui::CalcTextSize(line2);
+        dl->AddText(ImVec2(origin.x + (width - s1.x) * 0.5f,
+                           origin.y + height * 0.5f - s1.y),
+                    IM_COL32(220, 225, 235, 255), line1);
+        dl->AddText(ImVec2(origin.x + (width - s2.x) * 0.5f,
+                           origin.y + height * 0.5f + 4.0f),
+                    IM_COL32(150, 158, 172, 255), line2);
+        ImGui::PopID();
+        return true;
     }
 
     // ── デバッグ表示トグルバー ──
@@ -1670,27 +1962,62 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
         ImGui::TextDisabled("Curves: click a bone in the preview to inspect its channels.");
     }
 
-    // ── モデル直接プレビュー時のクリップ選択 (選択・ドロップどちら由来でも) ──
-    if ((s_state.origin == TargetOrigin::Asset || s_state.origin == TargetOrigin::Manual) &&
-        s_state.target.animAssetPath.empty() &&
-        s_state.target.mode == PreviewTarget::Mode::Clip) {
-        if (const asset::Model* model = asset::AssetManager::LoadModel(s_state.target.modelPath);
-            model && model->clips.size() > 1) {
-            const asset::AnimationClip* current =
-                FindModelClip(model, s_state.target.clipName);
+    // ── クリップ選択 ────────────────────────────────────────────────────────
+    // モデル内蔵クリップに加え、パッケージ配下の .anim も列挙する。
+    // WHY: FBZZ は 1 クリップ = 1 FBX なのでモデル内蔵クリップは常に空。
+    //   MiniBot.fbx を選んだときに Idle / Walk / Run … を切り替えられないと
+    //   「モデルは出るが動かせない」状態になる。
+    if (s_state.target.mode == PreviewTarget::Mode::Clip) {
+        const auto& anims = CollectPackageAnims(s_state.target.modelPath);
+        const asset::Model* model = asset::AssetManager::LoadModel(s_state.target.modelPath);
+        const bool hasEmbedded = model && model->clips.size() > 1;
+
+        if (hasEmbedded || !anims.empty()) {
+            std::string currentLabel = "<bind pose>";
+            if (!s_state.target.animAssetPath.empty())
+                currentLabel = util::FileSystem::GetFilename(s_state.target.animAssetPath);
+            else if (const asset::AnimationClip* c = FindModelClip(model, s_state.target.clipName))
+                currentLabel = c->name;
+
+            ImGui::TextDisabled("Clip:");
+            ImGui::SameLine();
             ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::BeginCombo("##PreviewClip",
-                                  current ? current->name.c_str() : "<none>")) {
-                for (const auto& clip : model->clips) {
-                    const bool selected = current && clip.name == current->name;
-                    if (ImGui::Selectable(clip.name.c_str(), selected)) {
-                        s_state.target.clipName = clip.name;
+            if (ImGui::BeginCombo("##PreviewClip", currentLabel.c_str())) {
+                // バインドポーズ (クリップ無し) へ戻す選択肢
+                if (ImGui::Selectable("<bind pose>", s_state.target.animAssetPath.empty() &&
+                                                     s_state.target.clipName.empty())) {
+                    s_state.target.animAssetPath.clear();
+                    s_state.target.clipName.clear();
+                    s_state.time = 0.0f;
+                }
+                if (hasEmbedded) {
+                    for (const auto& clip : model->clips) {
+                        const bool selected = s_state.target.animAssetPath.empty() &&
+                                              clip.name == s_state.target.clipName;
+                        if (ImGui::Selectable(clip.name.c_str(), selected)) {
+                            s_state.target.animAssetPath.clear();
+                            s_state.target.clipName = clip.name;
+                            s_state.time = 0.0f;
+                        }
+                        if (selected) ImGui::SetItemDefaultFocus();
+                    }
+                }
+                for (const auto& animPath : anims) {
+                    const std::string name = util::FileSystem::GetFilename(animPath);
+                    const bool selected = animPath == s_state.target.animAssetPath;
+                    if (ImGui::Selectable(name.c_str(), selected)) {
+                        s_state.target.animAssetPath = animPath;
+                        s_state.target.clipName.clear();
                         s_state.time = 0.0f;
+                        s_state.playing = true;
                     }
                     if (selected) ImGui::SetItemDefaultFocus();
                 }
                 ImGui::EndCombo();
             }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Clips found in this model's package (%zu .anim files).",
+                                  anims.size());
         }
     }
 

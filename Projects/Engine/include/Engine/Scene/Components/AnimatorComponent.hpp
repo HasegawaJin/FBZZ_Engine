@@ -13,6 +13,7 @@
 #pragma once
 
 #include <Engine/Asset/AnimationClip.hpp>
+#include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Matrix4.hpp>
@@ -26,6 +27,15 @@
 #include <vector>
 
 namespace fbzz::scene {
+
+// AnimatorSystemが当該フレームに通過したEvent。VFXGraphなどScript以外の購読者も利用する。
+struct FiredAnimationEvent {
+    std::string name;
+    int intParam = 0;
+    float floatParam = 0.0f;
+    float time = 0.0f;
+    std::uint64_t frame = 0;
+};
 
 // ── ステートマシン用データ型 ─────────────────────────────────────────────────
 
@@ -148,6 +158,202 @@ struct AnimatorParameter {
     bool        boolValue  = false;
 };
 
+// Base Layer の結果へ重ねる追加レイヤー。
+enum class AnimationLayerMode : int { Override = 0, Additive = 1 };
+
+struct RetargetBoneMapping {
+    std::string sourcePath;
+    std::string targetPath;
+    math::Quaternion rotationOffset = math::Quaternion::Identity();
+    float translationScale = 1.0f;
+};
+
+// .mask アセットへの参照と、そのロード済みキャッシュ。
+// WHY: Base Layer と各 AnimationLayer が同じ「マスク参照 + キャッシュ」を持つ。
+//      別々のフィールド名で二重に持つと、ロード処理も差し替え処理も二重化する。
+struct AnimationMaskRef {
+    // .mask アセットのパス。空ならマスクなし (全ボーンに効く)。
+    std::string path;
+    // ── ランタイム専用。Controller / Scene には保存しない。────────────────
+    std::string            loadedPath;
+    bool                   loaded = false;
+    asset::AvatarMaskAsset asset;
+
+    // path を書き換えたあと、次フレームに読み直させる。
+    void Invalidate()
+    {
+        loaded = false;
+        loadedPath.clear();
+    }
+};
+
+// ステートマシンのランタイム状態。Base Layer と追加 Layer が同じ形を共有する。
+// WHY: レイヤーごとに独立したステートマシンを回すには、currentState / blend の一式を
+//      レイヤー本数ぶん持つ必要がある。AnimatorComponent 直下のフィールドは
+//      Base Layer 用として残し (既存 Script / Editor / MCP の参照を壊さないため)、
+//      追加レイヤーはこの構造体を各自 1 つずつ持つ。
+struct AnimatorStateMachineRuntime {
+    std::string currentStateName;
+    float       stateTime     = 0.0f;
+    std::string blendToState;
+    float       blendToTime   = 0.0f;
+    float       blendWeight   = 0.0f;
+    float       blendDuration = 0.25f;
+};
+
+// 加算レイヤーの基準ポーズ。加算量は「評価ポーズ - 基準ポーズ」で求める。
+// WHY: 基準を加算クリップ自身の先頭フレームに固定すると、そのクリップの 1 フレーム目を
+//      必ず「無変化」として作らねばならず、既存のアニメーションを加算に流用できない。
+//      別クリップの任意フレームを基準に取れると、素材の制約がなくなる。
+struct AdditiveReferencePose {
+    // 空なら従来動作 (加算クリップ自身の先頭キー) にフォールバックする。
+    std::string sourcePath;
+    std::string clipName;
+    float       time = 0.0f; // 基準として抜き出す秒位置
+};
+
+// レイヤーへ一時的に差し込むワンショット再生 (Unreal の Montage / Slot 相当)。
+// WHY: 「移動は流したまま上半身だけ攻撃モーションを差し込み、終わったら戻す」を
+//      ステートマシンに専用ステートと復帰遷移を足さずに実現する。スクリプトから
+//      1 行で投げて終わり、という導線がないとコンボやリアクションの実装が重くなる。
+struct AnimationSlotPlayback {
+    std::string sourcePath;
+    std::string clipName;
+    float speed           = 1.0f;
+    bool  loop            = false;
+    float fadeInDuration  = 0.15f;
+    float fadeOutDuration = 0.15f;
+    // ランタイム専用。Controller / Scene には保存しない。
+    bool  active   = false;
+    bool  stopping = false;  // フェードアウト中
+    float time     = 0.0f;   // クリップ内の再生秒数
+    float weight   = 0.0f;   // 0..1。ステートマシン出力に対するこの Slot の被せ量
+};
+
+struct AnimationLayer {
+    std::string name = "Layer";
+    // 旧形式の単一ステート指定。states が空のときだけ使う (後方互換)。
+    std::string stateName;
+    float weight = 1.0f;
+    AnimationLayerMode mode = AnimationLayerMode::Override;
+    bool enabled = true;
+
+    // ── マスク ───────────────────────────────────────────────────────────────
+    // .mask アセットへの参照。空でなければこちらを優先する。
+    AnimationMaskRef mask;
+    // 旧インライン形式。mask.path が空のときのフォールバック (0/1 の二値マスク)。
+    bool maskIncludesChildren = true;
+    std::vector<std::string> avatarMaskPaths;
+
+    // ── 加算 ─────────────────────────────────────────────────────────────────
+    AdditiveReferencePose additiveReference;
+
+    // ── レイヤー独自ステートマシン ───────────────────────────────────────────
+    // 空なら stateName の単一ステートを再生する (後方互換)。
+    std::string defaultStateName;
+    std::vector<AnimationState> states;
+    std::vector<AnimationTransition> anyStateTransitions;
+
+    std::vector<RetargetBoneMapping> retargetMappings;
+
+    // ── Slot ─────────────────────────────────────────────────────────────────
+    AnimationSlotPlayback slot;
+
+    // ── ランタイム専用。Controller / Scene には保存しない。────────────────────
+    float time = 0.0f;                    // 旧単一ステート再生用の時刻
+    AnimatorStateMachineRuntime runtime;  // states を使うときのステートマシン状態
+};
+
+// ── Root Motion ──────────────────────────────────────────────────────────────
+//
+// WHY: 旧実装は bool applyRootMotion 1 本だった。true なら「エンジンが owner Transform を
+//      直接動かし、delta も公開する」、false なら「Transform も動かさず delta もゼロにする」
+//      の 2 択しかなく、
+//        - 抽出だけして移動は Script / CharacterController に任せる
+//        - RigidBody の速度として消費する
+//        - ポーズにルート移動を残したまま抽出を止める
+//      のいずれも表現できなかった。適用先 (Mode) / 解決方法 (Source) / 軸マスクを
+//      直交した設定に分解する。
+
+// 抽出したルートモーションを誰が消費するか。
+enum class RootMotionMode : int {
+    // 抽出しない。poseMode に従ってクリップのルート移動を残す / 除去する。
+    None             = 0,
+    // エンジンが適用先 Transform を直接動かす (従来の applyRootMotion = true)。
+    ApplyToTransform = 1,
+    // Transform には触れず、delta の公開と OnAnimatorMove の発火だけ行う。
+    // 移動の適用は Script / CharacterController の責任になる。
+    ExtractOnly      = 2,
+    // 適用先の RigidBody 水平速度へ反映する。落下と衝突解決は物理側に任せる。
+    // WHY: Transform 直書きはスイープも押し戻しもないテレポートになり、壁を抜ける。
+    ApplyToRigidBody = 3,
+};
+
+// ルートモーショントラックをどう特定するか。
+enum class RootMotionSource : int {
+    // .anim が指定したトラックのみを使う (既定・従来動作)。
+    ClipDefined = 0,
+    // 候補名 → スケルトンのルートノード名の順に自動解決する。
+    // WHY: エクスポーターが "rootmotion" 完全一致しか見ていなかった時代の .anim でも、
+    //      再インポートせずに Hips / Armature 等からルートモーションを取り出せる。
+    AutoDetect  = 1,
+    // rootMotionNodeName で明示指定する。
+    NodeName    = 2,
+};
+
+// クリップ側の軸フラグを Animator から上書きするための三値。
+enum class RootMotionAxisOverride : int {
+    UseClip  = 0,  // .anim に焼かれた値を使う
+    Disabled = 1,  // この軸は抽出しない
+    Enabled  = 2,  // この軸を抽出する
+};
+
+// mode == None のときにポーズのルート移動をどう扱うか。
+enum class RootMotionPoseMode : int {
+    // ルート移動をポーズから除去する (その場再生)。
+    Strip = 0,
+    // クリップのまま残す。ルートごと前進する DCC そのままの見た目になる。
+    // WHY: 旧実装は「抽出オフ」にすると除去だけが残り、前進成分がどこにも行かず消滅した。
+    Keep  = 1,
+};
+
+struct RootMotionSettings {
+    RootMotionMode         mode        = RootMotionMode::ApplyToTransform;
+    RootMotionSource       source      = RootMotionSource::ClipDefined;
+    RootMotionPoseMode     poseMode    = RootMotionPoseMode::Strip;
+    // source == NodeName のときに参照するトラック名。正規化一致で解決する。
+    std::string            nodeName;
+    // 適用先 GameObject への相対パス。空なら Animator 自身。
+    // ".." を先頭に並べると親を遡れる (例: Animator が子メッシュ、RigidBody が親のとき "..")。
+    std::string            targetPath;
+    RootMotionAxisOverride applyXZ       = RootMotionAxisOverride::UseClip;
+    RootMotionAxisOverride applyY        = RootMotionAxisOverride::UseClip;
+    RootMotionAxisOverride applyRotation = RootMotionAxisOverride::UseClip;
+    // 抽出した移動量 / 回転量へ掛ける倍率。アニメの歩幅とゲームの移動速度を合わせる調整用。
+    float                  positionScale = 1.0f;
+    float                  rotationScale = 1.0f;
+
+    // 抽出そのものを行うか。None 以外なら常に抽出する。
+    // 抽出する場合、ポーズからのルート成分除去は強制になる
+    // (残すと Transform 移動とポーズ移動で二重に進む)。軸ごとの確定は
+    // AnimatorSystem::ResolveRootMotion が行う。
+    bool Extracts() const { return mode != RootMotionMode::None; }
+};
+
+// AnimatorSystem がクリップごとに保持する前フレームのサンプル。
+// WHY: 旧実装は「支配クリップ 1 本 + ステート時刻の前後差分」で delta を求めていたため、
+//      BlendTree のクリップが切り替わる / 遷移でステートが変わるたびに移動が飛んだり
+//      1 フレーム落ちたりした。クリップ単位で自分の前回サンプル位置を覚えておけば、
+//      ブレンド構成が毎フレーム変わっても各クリップの delta は連続する。
+struct RootMotionClipSample {
+    // 同一性キー。LoadClips でクリップ配列を作り直したときはキャッシュごと破棄する。
+    const asset::AnimationClip* clip = nullptr;
+    double           ticks    = 0.0;   // 前回サンプルした tick
+    math::Vector3    position = math::Vector3::ZERO;
+    math::Quaternion rotation = math::Quaternion::Identity();
+    std::uint64_t    frame    = 0;     // 前回サンプルしたフレーム番号
+};
+
 // ── AnimatorComponent ────────────────────────────────────────────────────────
 
 struct AnimatorComponent {
@@ -163,6 +369,9 @@ struct AnimatorComponent {
     float       speed      = 1.0f;
     bool        loop       = true;
     bool        playing    = true;
+    // ルートモーションの適用先・解決方法・軸マスク。
+    // VFX の決定論的 Preview は mode = None を使い、姿勢だけを評価して Transform を動かさない。
+    RootMotionSettings rootMotion;
 
     // アニメーションクリップを含む FBX ファイルパス。シリアライズ対象
     std::vector<std::string> clipSources;
@@ -184,6 +393,12 @@ struct AnimatorComponent {
     // 現在ステートを問わず評価する割り込み遷移。通常遷移より後に評価する。
     std::vector<AnimationTransition> anyStateTransitions;
     std::vector<AnimatorParameter> parameters;
+    // index 0 の Base Layer は既存 state machine が担い、この配列は追加 Layer のみを保持する。
+    std::vector<AnimationLayer> layers;
+    // Base Layer 自身のマスク。空なら全身に効く (従来動作)。
+    // WHY: Unity 同様、Base Layer からも一部のボーンを外せるようにする。
+    //      マスク外のボーンはバインドポーズのまま残り、上のレイヤーだけが動かす形になる。
+    AnimationMaskRef baseLayerMask;
     // 現在の BlendTree 評価結果。Script/Editor のデバッグ表示に使用する。
     std::vector<std::pair<std::string, float>> currentBlendWeights;
     float currentBlendDuration = 0.0f;
@@ -199,6 +414,30 @@ struct AnimatorComponent {
     float       blendToTime   = 0.0f;  // 遷移先ステートの再生秒数
     float       blendWeight   = 0.0f;  // 0=現ステート, 1=遷移先
     float       blendDuration = 0.25f; // 今回の遷移のクロスフェード時間キャッシュ
+    // Animation Event の区間評価に使う前フレーム時刻。
+    float       previousEventTime = 0.0f;
+    std::string previousEventClipName;
+
+    // ── Root Motion 出力 (ランタイム専用) ──────────────────────────────────
+    // 適用先 GameObject のローカル空間での 1 フレーム移動量 / 回転量。
+    math::Vector3    rootMotionDeltaPosition = math::Vector3::ZERO;
+    math::Quaternion rootMotionDeltaRotation = math::Quaternion::Identity();
+    // deltaPosition をワールド空間へ変換した値と、それを dt で割った速度。
+    // WHY: Script 側で Time::deltaTime を掛け直すと Animator が実際に進めた時間とずれる。
+    //      速度制御へそのまま渡せる形で公開する。
+    math::Vector3    rootMotionWorldDelta    = math::Vector3::ZERO;
+    math::Vector3    rootMotionWorldVelocity = math::Vector3::ZERO;
+    float            rootMotionDeltaTime     = 0.0f;
+    // エンジンが Transform / RigidBody へ適用したフレームは true。ExtractOnly では false。
+    bool             rootMotionAppliedByEngine = false;
+    // クリップごとの前フレームサンプル。BlendTree / 遷移をまたいでも delta を連続させる。
+    std::vector<RootMotionClipSample> rootMotionSamples;
+    // 当該フレームの Skeleton ルートノード名。AutoDetect のフォールバック解決に使う。
+    // WHY: トラック解決は BuildStateClips (Skeleton を持たない) からも呼ばれるため、
+    //      AnimatorSystem::Update が毎フレーム先頭でここへ焼いておく。
+    std::string skeletonRootNodeName;
+
+    std::vector<FiredAnimationEvent> firedEvents;
 
     const char* GetTypeName() const { return "Animator"; }
 
@@ -212,6 +451,17 @@ struct AnimatorComponent {
         r.Field("speed",            speed);
         r.Field("loop",             loop);
         r.Field("playing",          playing);
+        r.Field("rootMotionMode",     reinterpret_cast<int&>(rootMotion.mode));
+        r.Field("rootMotionSource",   reinterpret_cast<int&>(rootMotion.source));
+        r.Field("rootMotionPoseMode", reinterpret_cast<int&>(rootMotion.poseMode));
+        r.Field("rootMotionNodeName", rootMotion.nodeName);
+        r.Field("rootMotionTarget",   rootMotion.targetPath);
+        r.Field("rootMotionApplyXZ",  reinterpret_cast<int&>(rootMotion.applyXZ));
+        r.Field("rootMotionApplyY",   reinterpret_cast<int&>(rootMotion.applyY));
+        r.Field("rootMotionApplyRotation",
+                reinterpret_cast<int&>(rootMotion.applyRotation));
+        r.Field("rootMotionPositionScale", rootMotion.positionScale);
+        r.Field("rootMotionRotationScale", rootMotion.rotationScale);
         r.Field("defaultStateName", defaultStateName);
         // clipSources / states / parameters は vector のため SceneSerializer で直接変換する
     }
@@ -275,6 +525,112 @@ struct AnimatorComponent {
     [[nodiscard]] bool IsInState(std::string_view stateName) const
     {
         return currentStateName == stateName;
+    }
+
+    // ── レイヤー API ────────────────────────────────────────────────────────
+    // WHY: 上半身 / 下半身の出し分けはレイヤー操作が入口になる。
+    //      名前引きを Script / Editor / MCP がそれぞれ書くと実装が散るため、ここに集約する。
+
+    [[nodiscard]] AnimationLayer* FindLayer(std::string_view layerName)
+    {
+        for (auto& l : layers)
+            if (l.name == layerName) return &l;
+        return nullptr;
+    }
+
+    [[nodiscard]] const AnimationLayer* FindLayer(std::string_view layerName) const
+    {
+        for (const auto& l : layers)
+            if (l.name == layerName) return &l;
+        return nullptr;
+    }
+
+    void SetLayerWeight(std::string_view layerName, float w)
+    {
+        if (AnimationLayer* l = FindLayer(layerName))
+            l->weight = std::clamp(w, 0.0f, 1.0f);
+    }
+
+    [[nodiscard]] float GetLayerWeight(std::string_view layerName) const
+    {
+        const AnimationLayer* l = FindLayer(layerName);
+        return l ? l->weight : 0.0f;
+    }
+
+    // レイヤーの現在ステート名。独自ステートマシンを持たないレイヤーは stateName を返す。
+    [[nodiscard]] std::string GetLayerState(std::string_view layerName) const
+    {
+        const AnimationLayer* l = FindLayer(layerName);
+        if (!l) return {};
+        return l->states.empty() ? l->stateName : l->runtime.currentStateName;
+    }
+
+    [[nodiscard]] bool IsLayerInState(std::string_view layerName, std::string_view stateName) const
+    {
+        return GetLayerState(layerName) == stateName;
+    }
+
+    // レイヤーのステートマシンを指定ステートへ即座に飛ばす (クロスフェードなし)。
+    void PlayLayerState(std::string_view layerName, std::string_view stateName)
+    {
+        AnimationLayer* l = FindLayer(layerName);
+        if (!l) return;
+        if (l->states.empty()) {
+            l->stateName = std::string(stateName);
+            l->time = 0.0f;
+            return;
+        }
+        l->runtime.currentStateName = std::string(stateName);
+        l->runtime.stateTime   = 0.0f;
+        l->runtime.blendToState.clear();
+        l->runtime.blendWeight = 0.0f;
+    }
+
+    // ── Slot API ────────────────────────────────────────────────────────────
+    // 指定レイヤーへワンショットのクリップを差し込む。既に再生中なら差し替える。
+    // WHY: 「上半身だけ攻撃を割り込ませて終わったら元に戻す」を 1 呼び出しで済ませる。
+    void PlaySlot(std::string_view layerName,
+                  std::string_view sourcePath,
+                  std::string_view clipName,
+                  float fadeIn  = 0.15f,
+                  float fadeOut = 0.15f,
+                  float slotSpeed = 1.0f,
+                  bool  slotLoop = false)
+    {
+        AnimationLayer* l = FindLayer(layerName);
+        if (!l) return;
+        l->slot.sourcePath      = std::string(sourcePath);
+        l->slot.clipName        = std::string(clipName);
+        l->slot.fadeInDuration  = (std::max)(fadeIn, 0.0f);
+        l->slot.fadeOutDuration = (std::max)(fadeOut, 0.0f);
+        l->slot.speed           = slotSpeed;
+        l->slot.loop            = slotLoop;
+        l->slot.time            = 0.0f;
+        l->slot.stopping        = false;
+        l->slot.active          = true;
+        // weight は 0 から立ち上げる。差し替え時も現在の被せ量から続けたいので保持する。
+    }
+
+    // Slot をフェードアウトさせる。fadeOut < 0 なら登録済みの値を使う。
+    void StopSlot(std::string_view layerName, float fadeOut = -1.0f)
+    {
+        AnimationLayer* l = FindLayer(layerName);
+        if (!l || !l->slot.active) return;
+        if (fadeOut >= 0.0f) l->slot.fadeOutDuration = fadeOut;
+        l->slot.stopping = true;
+    }
+
+    [[nodiscard]] bool IsSlotPlaying(std::string_view layerName) const
+    {
+        const AnimationLayer* l = FindLayer(layerName);
+        return l && l->slot.active && !l->slot.stopping;
+    }
+
+    // Slot の被せ量 0..1。フェードの進行を Script から見たいときに使う。
+    [[nodiscard]] float GetSlotWeight(std::string_view layerName) const
+    {
+        const AnimationLayer* l = FindLayer(layerName);
+        return l ? l->slot.weight : 0.0f;
     }
 
     // 現在ステート（遷移中はブレンド込み）の IK Weight を返す。

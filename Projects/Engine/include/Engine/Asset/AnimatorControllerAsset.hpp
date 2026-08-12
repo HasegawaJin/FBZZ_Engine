@@ -31,6 +31,9 @@ struct AnimatorControllerAsset {
     std::vector<scene::AnimationState>      states;
     std::vector<scene::AnimationTransition> anyStateTransitions;
     std::vector<scene::AnimatorParameter>   parameters;
+    std::vector<scene::AnimationLayer>      layers;
+    // Base Layer 自身のマスク (.mask アセットパス)。空なら全身。
+    std::string                             baseLayerMaskPath;
     // Editor 専用のノード配置。ランタイム Animator には適用しない。
     // WHY: Unity と同じく Controller アセット単体でグラフ編集状態を完結させるため。
     AnimatorGraphLayout                     editorLayout;

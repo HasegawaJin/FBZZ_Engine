@@ -111,7 +111,10 @@ std::string Hex64(uint64_t value)
 
 std::string ComputeSettingsHash(const FbxImportOptions& options)
 {
-    uint64_t hash = Fnv1a(FbxSourceDccToString(options.sourceDcc));
+    // インポータ版数をハッシュへ含める。これで版数を上げると settings_hash が変わり、
+    // Library/Baked のコンテナも別キーになるので古い Bake が再利用されない。
+    uint64_t hash = Fnv1a("iv:" + std::to_string(FbxMetaSerializer::kModelImporterVersion));
+    hash = Fnv1a(FbxSourceDccToString(options.sourceDcc), hash);
     hash = Fnv1a(NormalMapConventionToString(options.normalMapConvention), hash);
     hash = Fnv1a(options.generateTexDescriptors ? "tex:1" : "tex:0", hash);
     hash = Fnv1a(TextureCompressionToString(options.defaultCompression), hash);
@@ -163,7 +166,8 @@ void WriteOptionsToRoot(toml::table& root, const FbxImportOptions& options)
 {
     toml::table model;
     model.insert("importer", "ModelImporter");
-    model.insert("importer_version", static_cast<int64_t>(1));
+    model.insert("importer_version",
+                 static_cast<int64_t>(FbxMetaSerializer::kModelImporterVersion));
     model.insert("source_dcc", FbxSourceDccToString(options.sourceDcc));
     model.insert("normal_map_convention", NormalMapConventionToString(options.normalMapConvention));
     model.insert("generate_tex_descriptors", options.generateTexDescriptors);
@@ -200,6 +204,16 @@ bool FbxMetaSerializer::LoadOptions(const std::string& fbxAbsPath, FbxImportOpti
     outOptions.selectedMeshNames = ReadStringArray((*model)["selected_meshes"].as_array());
     outOptions.selectedAnimNames = ReadStringArray((*model)["selected_animations"].as_array());
     return true;
+}
+
+int FbxMetaSerializer::LoadImporterVersion(const std::string& fbxAbsPath)
+{
+    const toml::table root = LoadExistingRoot(MetaPathForSource(fbxAbsPath));
+    const toml::table* model = root["model"].as_table();
+    if (!model) return 0;
+    if (auto value = (*model)["importer_version"].value<int64_t>())
+        return static_cast<int>(*value);
+    return 0;
 }
 
 bool FbxMetaSerializer::SaveOptions(const std::string& fbxAbsPath, const FbxImportOptions& options)
