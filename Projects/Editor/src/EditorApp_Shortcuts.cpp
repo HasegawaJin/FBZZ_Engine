@@ -14,23 +14,13 @@
 
 namespace fbzz::editor {
 
-namespace {
-
-// Hotkey を "Ctrl+Shift+K" のような表示文字列へ整形する (HotkeyEditorPanel と同じ規則)。
-std::string FormatBinding(const Hotkey& hk)
-{
-    std::string s;
-    if (hk.ctrl)  s += "Ctrl+";
-    if (hk.shift) s += "Shift+";
-    if (hk.alt)   s += "Alt+";
-    s += ImGui::GetKeyName(static_cast<ImGuiKey>(hk.imguiKey));
-    return s;
-}
-
-} // namespace
-
 // =============================================================================
 // ショートカット一覧オーバーレイ (F1)
+//
+// WHY: 表の中身は HotkeyManager の登録内容から丸ごと生成する。以前はここに
+//      「Viewport / Selection」の表が手書きで並んでおり、実装にキーを足しても
+//      更新されず、実際に Ctrl+A / Esc / W・E・R・Q が一覧から抜け落ちていた。
+//      生成にしておけば、登録した時点で必ず一覧へ出る。
 // =============================================================================
 
 void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
@@ -40,64 +30,71 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, { 0.5f, 0.5f });
-    ImGui::SetNextWindowSize({ 560.0f, 0.0f }, ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize({ 620.0f, 640.0f }, ImGuiCond_Appearing);
     ImGui::SetNextWindowBgAlpha(0.96f);
 
-    constexpr ImGuiWindowFlags kFlags =
-        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
     bool open = true;
-    if (ImGui::Begin("Keyboard Shortcuts", &open, kFlags)) {
+    if (ImGui::Begin("Keyboard Shortcuts", &open, ImGuiWindowFlags_NoCollapse)) {
         ImGui::TextDisabled("Press F1 or Esc to close");
+        ImGui::SameLine();
+        ImGui::TextDisabled("|  greyed-out rows are not available right now");
         ImGui::Separator();
 
-        // ── 登録ホットキー (リバインド可能) ──────────────────────────────────
-        if (ctx.hotkeyManager) {
-            constexpr ImGuiTableFlags kTbl =
-                ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg;
-            if (ImGui::BeginTable("##hk_list", 2, kTbl)) {
-                ImGui::TableSetupColumn("Action",   ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthFixed, 170.0f);
-                ImGui::TableHeadersRow();
-                for (const Hotkey& hk : ctx.hotkeyManager->GetHotkeys()) {
-                    ImGui::TableNextRow();
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::TextUnformatted(hk.name.c_str());
-                    ImGui::TableSetColumnIndex(1);
-                    ImGui::TextColored({ 0.55f, 0.80f, 1.0f, 1.0f }, "%s",
-                                       FormatBinding(hk).c_str());
-                }
-                ImGui::EndTable();
-            }
+        if (!ctx.hotkeyManager) {
+            ImGui::TextDisabled("HotkeyManager is not available.");
+            ImGui::End();
+            return;
         }
 
-        // ── リバインド不可の主要操作 (視点・選択) を補足 ──────────────────────
-        ImGui::Separator();
-        ImGui::TextDisabled("Viewport / Selection");
-        static constexpr struct { const char* action; const char* input; } kTips[] = {
-            { "Look around",        "RMB drag" },
-            { "Fly (while RMB)",    "W / A / S / D / Q / E" },
-            { "Pan",                "MMB drag" },
-            { "Zoom",               "Mouse wheel" },
-            { "Focus selected",     "F" },
-            { "Multi-select",       "Ctrl+Click" },
-            { "Duplicate",          "Ctrl+D" },
-            { "Delete",             "Del" },
-            { "Selection back / forward", "Alt+Left / Alt+Right" },
+        // カテゴリごとに区切って出す。並び順は HotkeyCategory の宣言順。
+        static constexpr HotkeyCategory kOrder[] = {
+            HotkeyCategory::File,      HotkeyCategory::Edit,
+            HotkeyCategory::Selection, HotkeyCategory::Viewport,
+            HotkeyCategory::Gizmo,     HotkeyCategory::Play,
+            HotkeyCategory::Panels,
         };
-        constexpr ImGuiTableFlags kTbl2 =
-            ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg;
-        if (ImGui::BeginTable("##tips", 2, kTbl2)) {
-            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Input",  ImGuiTableColumnFlags_WidthFixed, 200.0f);
-            for (const auto& t : kTips) {
+
+        const auto& hotkeys = ctx.hotkeyManager->GetHotkeys();
+        for (const HotkeyCategory category : kOrder) {
+            bool headerDrawn = false;
+            for (const Hotkey& hk : hotkeys) {
+                if (hk.category != category) continue;
+
+                if (!headerDrawn) {
+                    ImGui::SeparatorText(HotkeyManager::CategoryLabel(category));
+                    constexpr ImGuiTableFlags kFlags =
+                        ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg;
+                    if (!ImGui::BeginTable(HotkeyManager::CategoryLabel(category), 2, kFlags))
+                        break;
+                    ImGui::TableSetupColumn("Action",   ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthFixed, 210.0f);
+                    headerDrawn = true;
+                }
+
+                // 今この瞬間に発火しうるかで濃淡を変える。
+                // WHY: 「一覧に出ているのに押しても何も起きない」が一番混乱する。
+                //      条件 (選択がある / Play 中でない 等) を見た目に出す。
+                const bool active = ctx.hotkeyManager->IsCurrentlyActive(hk);
+
                 ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(t.action);
-                ImGui::TableSetColumnIndex(1); ImGui::TextDisabled("%s", t.input);
+                ImGui::TableSetColumnIndex(0);
+                if (active) ImGui::TextUnformatted(hk.name.c_str());
+                else        ImGui::TextDisabled("%s", hk.name.c_str());
+
+                ImGui::TableSetColumnIndex(1);
+                const std::string binding = HotkeyManager::FormatBinding(hk);
+                if (hk.infoOnly)
+                    ImGui::TextDisabled("%s", binding.c_str());
+                else if (active)
+                    ImGui::TextColored({ 0.55f, 0.80f, 1.0f, 1.0f }, "%s", binding.c_str());
+                else
+                    ImGui::TextDisabled("%s", binding.c_str());
             }
-            ImGui::EndTable();
+            if (headerDrawn) ImGui::EndTable();
         }
     }
     ImGui::End();
+
     if (!open) m_showShortcutsOverlay = false;
 }
 

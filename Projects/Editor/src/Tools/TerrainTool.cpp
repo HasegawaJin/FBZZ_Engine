@@ -2,6 +2,7 @@
 // TerrainTool.cpp | fbzz::editor
 // TerrainTool の実装: レイキャスト・ブラシアルゴリズム・ImGui UI
 #include "TerrainTool.hpp"
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
@@ -775,7 +776,7 @@ void TerrainTool::DrawSculptContent(
     const char* sculptLabels[] = { "Raise", "Lower", "Smooth", "Flatten", "Stamp" };
     for (int i = 0; i < 5; ++i) {
         const bool active = static_cast<int>(m_sculpt) == i;
-        if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.7f, 0.4f, 1.0f));
+    if (active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Success));
         if (ImGui::SmallButton(sculptLabels[i]))
             m_sculpt = static_cast<SculptMode>(i);
         if (active) ImGui::PopStyleColor();
@@ -801,7 +802,7 @@ void TerrainTool::DrawPaintContent(
     ImGui::TextDisabled("Splat Layer");
     for (int i = 0; i < 4; ++i) {
         const bool active = static_cast<int>(m_paintLayer) == i;
-        if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
+    if (active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
         std::string label = "Layer " + std::to_string(i);
         if (referenceTerrain)
             label += "  " + std::string(LayerDisplayName(referenceTerrain->layerMaterials[i]));
@@ -931,11 +932,11 @@ void TerrainTool::OnEditorGUI(
 
     {
         const bool sculpt = m_mode == Mode::Sculpt, paint = m_mode == Mode::Paint;
-        if (sculpt) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.6f, 0.3f, 1.0f));
+    if (sculpt) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Success));
         if (ImGui::Button("Sculpt", { 95.0f, 0.0f })) m_mode = Mode::Sculpt;
         if (sculpt) ImGui::PopStyleColor();
         ImGui::SameLine();
-        if (paint) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.4f, 0.7f, 1.0f));
+    if (paint) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
         if (ImGui::Button("Paint",  { 95.0f, 0.0f })) m_mode = Mode::Paint;
         if (paint) ImGui::PopStyleColor();
     }

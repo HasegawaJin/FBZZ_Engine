@@ -2,6 +2,7 @@
 // DetailTool.cpp | fbzz::editor
 // Detail ペイントツールの実装
 #include "DetailTool.hpp"
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -583,7 +584,7 @@ void DetailTool::DrawContent(
         std::snprintf(btnLabel, sizeof(btnLabel), "[%s]  %s###DL_%d", typeName, shortName.c_str(), li);
 
         if (selected)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.55f, 0.75f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
         if (ImGui::Button(btnLabel, { -1.0f, 0.0f }))
             m_layerIndex = li;
         if (selected)
@@ -623,12 +624,12 @@ void DetailTool::DrawContent(
             // Mesh パス警告
             if (layer.type == scene::DetailLayerType::Mesh) {
                 if (layer.meshPath.empty()) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
                     ImGui::TextWrapped("! Mesh Path not set.");
                     ImGui::PopStyleColor();
                 } else if (!util::FileSystem::Exists(
                                asset::AssetManager::ResolveAssetPath(layer.meshPath))) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Danger));
                     ImGui::TextWrapped("! Not found: %s", layer.meshPath.c_str());
                     ImGui::PopStyleColor();
                 }
@@ -644,11 +645,11 @@ void DetailTool::DrawContent(
     {
         const float halfW  = (ImGui::GetContentRegionAvail().x - 4.0f) * 0.5f;
         const bool  isPaint = (m_mode == Mode::Paint);
-        if (isPaint)  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+    if (isPaint)  ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Success));
         if (ImGui::Button("Paint", { halfW, 0.0f })) m_mode = Mode::Paint;
         if (isPaint)  ImGui::PopStyleColor();
         ImGui::SameLine(0.0f, 4.0f);
-        if (!isPaint) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.25f, 0.25f, 1.0f));
+    if (!isPaint) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Danger));
         if (ImGui::Button("Erase", { -1.0f, 0.0f })) m_mode = Mode::Erase;
         if (!isPaint) ImGui::PopStyleColor();
     }
@@ -664,8 +665,8 @@ void DetailTool::DrawContent(
     ImGui::Spacing();
     if (detail->needsBake) {
         const float t = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
-        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.30f, 0.75f, 0.40f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBg,       ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, EditorTheme::Color(ThemeColor::Success));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg,       EditorTheme::Color(ThemeColor::Field));
         ImGui::ProgressBar(t, ImVec2(-1.0f, 0.0f), "Baking...");
         ImGui::PopStyleColor(2);
     }
@@ -684,7 +685,7 @@ void DetailTool::DrawContent(
 
         if (m_isHovering && scene.IsValid(m_hitEntity)) {
             if (!scene.GetComponent<scene::TerrainDetailComponent>(m_hitEntity)) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
                 ImGui::TextWrapped("! Terrain under cursor has no TerrainDetailComponent.");
                 ImGui::PopStyleColor();
             }

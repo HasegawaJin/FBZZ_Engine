@@ -38,6 +38,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     if (auto v = tbl["view"]["show_grid"].value<bool>())      showGrid      = *v;
     if (auto v = tbl["view"]["grid_size"].value<float>())     gridSize      = *v;
     if (auto v = tbl["view"]["show_light_range"].value<bool>()) showLightRange = *v;
+    if (auto v = tbl["view"]["show_vfx_gizmos"].value<bool>()) showVFXGizmos = *v;
     if (auto v = tbl["view"]["show_skeleton"].value<bool>())  showSkeleton  = *v;
     if (auto v = tbl["view"]["show_stats"].value<bool>())     showStats = *v;
 
@@ -50,6 +51,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     // ギズモ
     if (auto v = tbl["gizmo"]["mode"].value<int64_t>())       gizmoMode     = static_cast<int>(*v);
     if (auto v = tbl["gizmo"]["space"].value<int64_t>())      gizmoSpace    = static_cast<int>(*v);
+    if (auto v = tbl["gizmo"]["pivot"].value<int64_t>())      gizmoPivot    = static_cast<int>(*v);
 
     // ゲームビュー
     if (auto v = tbl["game_view"]["aspect"].value<int64_t>()) gameViewportAspect = static_cast<int>(*v);
@@ -213,6 +215,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     viewTbl.insert("show_grid",        showGrid);
     viewTbl.insert("grid_size",        gridSize);
     viewTbl.insert("show_light_range", showLightRange);
+    viewTbl.insert("show_vfx_gizmos", showVFXGizmos);
     viewTbl.insert("show_skeleton",    showSkeleton);
     viewTbl.insert("show_stats",       showStats);
 
@@ -227,6 +230,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table gizmoTbl;
     gizmoTbl.insert("mode",  static_cast<int64_t>(gizmoMode));
     gizmoTbl.insert("space", static_cast<int64_t>(gizmoSpace));
+    gizmoTbl.insert("pivot", static_cast<int64_t>(gizmoPivot));
 
     // ゲームビュー
     toml::table gameViewTbl;

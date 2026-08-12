@@ -4,12 +4,12 @@
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/BuildConsole.hpp>
+#include <Editor/Util/SourceOpen.hpp>
 
 #include <Engine/Util/StringUtils.hpp>
 
 #include <imgui.h>
 
-#include <Windows.h>   // ShellExecuteW / SearchPathW / CreateProcessW
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -17,29 +17,6 @@
 namespace fbzz::editor {
 
 namespace {
-
-// 診断のダブルクリックで該当ファイルを開く。
-// WHY: VSCode があれば `code -g <file>:<line>` で行ジャンプまで行う。
-//      無ければ OS 既定の関連付けでファイルを開く (行ジャンプなしのフォールバック)。
-void OpenInEditor(const std::string& file, int line)
-{
-    if (file.empty()) return;
-    const std::wstring wfile = util::StringUtils::ToWide(file);
-
-    // 1) VSCode CLI (code.cmd) を PATH から探す。
-    wchar_t codeBuf[MAX_PATH]{};
-    if (SearchPathW(nullptr, L"code", L".cmd", MAX_PATH, codeBuf, nullptr)) {
-        std::wstring args = L"-g \"" + wfile;
-        if (line > 0) args += L":" + std::to_wstring(line);
-        args += L"\"";
-        // ShellExecute は .cmd をシェル経由で正しく起動できる。SW_HIDE でコンソール点滅を抑える。
-        const HINSTANCE r = ShellExecuteW(nullptr, L"open", codeBuf, args.c_str(), nullptr, SW_HIDE);
-        if (reinterpret_cast<INT_PTR>(r) > 32) return;
-    }
-
-    // 2) フォールバック: 既定の関連付けで開く。
-    ShellExecuteW(nullptr, L"open", wfile.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
 
 ImVec4 SeverityColor(BuildDiagnostic::Severity sev)
 {
@@ -210,7 +187,7 @@ void BuildOutputPanel::DrawDiagnostics(const BuildRecord& rec)
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("%s", d.raw.c_str());
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                OpenInEditor(d.file, d.line);
+                OpenSourceInExternalEditor(d.file, d.line);
         }
 
         // 通知経由で開かれた場合、最初のエラー行へスクロールする。

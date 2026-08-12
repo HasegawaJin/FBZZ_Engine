@@ -11,6 +11,7 @@ void ConsoleSink::OnLog(const core::LogEntry& entry)
         m_entries.pop_front();
     m_entries.push_back(entry);
     ++m_nextSequence;
+    ++m_revision;
 }
 
 } // namespace fbzz::editor

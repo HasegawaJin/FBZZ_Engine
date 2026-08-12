@@ -2,6 +2,7 @@
 // WaterTool.cpp | fbzz::editor
 // WaterTool の実装: ビューポート可視化・アセット管理・波エディタ UI
 #include "WaterTool.hpp"
+#include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
@@ -457,8 +458,8 @@ void WaterTool::OnEditorGUI(
     if (!ImGui::Begin(title, nullptr, kFlags)) { ImGui::End(); return; }
 
     {
-        if (m_active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.5f, 0.8f, 1.0f));
-        else          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+    if (m_active) ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::AccentActive));
+    else          ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::SurfaceRaised));
         if (ImGui::Button(m_active ? "  Active  " : " Inactive ", { -1.0f, 0.0f }))
             m_active = !m_active;
         ImGui::PopStyleColor();

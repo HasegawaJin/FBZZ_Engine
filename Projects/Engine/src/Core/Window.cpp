@@ -17,6 +17,7 @@
 #include <cassert>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 #pragma comment(lib, "dwmapi.lib")
@@ -221,6 +222,26 @@ namespace
             size,
             LR_DEFAULTCOLOR | LR_SHARED));
     }
+
+    void AppendNativeMenuItems(HMENU menu,
+                               const std::vector<Window::NativeMenuItem>& items)
+    {
+        for (const auto& item : items) {
+            if (item.separator) {
+                AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+                continue;
+            }
+
+            if (!item.children.empty()) {
+                HMENU submenu = CreatePopupMenu();
+                AppendNativeMenuItems(submenu, item.children);
+                AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), item.label.c_str());
+                continue;
+            }
+
+            AppendMenuW(menu, MF_STRING, item.commandId, item.label.c_str());
+        }
+    }
 }
 
 bool Window::Initialize(const Config& config)
@@ -309,6 +330,7 @@ void Window::Shutdown()
         m_oleInitialized = false;
     }
 
+    ClearNativeMenu();
     DestroyWindow(m_hwnd);
     m_hwnd = nullptr;
 }
@@ -317,6 +339,33 @@ void Window::SetTitle(const std::wstring& title)
 {
     if (m_hwnd)
         SetWindowTextW(m_hwnd, title.c_str());
+}
+
+void Window::SetNativeMenu(std::vector<NativeMenuItem> menus,
+                           NativeMenuCommandCallback callback)
+{
+    ClearNativeMenu();
+    if (!m_hwnd) return;
+
+    m_nativeMenu = CreateMenu();
+    if (!m_nativeMenu) return;
+    AppendNativeMenuItems(m_nativeMenu, menus);
+    m_nativeMenuCommandCallback = std::move(callback);
+    SetMenu(m_hwnd, m_nativeMenu);
+    DrawMenuBar(m_hwnd);
+}
+
+void Window::ClearNativeMenu()
+{
+    if (m_hwnd) {
+        SetMenu(m_hwnd, nullptr);
+        DrawMenuBar(m_hwnd);
+    }
+    if (m_nativeMenu) {
+        DestroyMenu(m_nativeMenu);
+        m_nativeMenu = nullptr;
+    }
+    m_nativeMenuCommandCallback = {};
 }
 
 void Window::PollEvents()
@@ -348,6 +397,12 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         if (window->m_wndProcHook(hwnd, msg, wParam, lParam))
             return true;
 
+    if (window && msg == WM_COMMAND && HIWORD(wParam) == 0 && lParam == 0
+        && window->m_nativeMenuCommandCallback) {
+        if (window->m_nativeMenuCommandCallback(LOWORD(wParam)))
+            return 0;
+    }
+
     switch (msg)
     {
     case WM_CLOSE:
@@ -370,6 +425,10 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             window->m_resizeCallback(w, h);
         return 0;
     }
+
+    case WM_CHAR:
+        fbzz::input::Input::HandleTextInput(static_cast<wchar_t>(wParam));
+        return 0;
 
     case WM_KEYDOWN:
     case WM_KEYUP:
