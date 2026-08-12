@@ -1,0 +1,38 @@
+anyStateTransitions = []
+baseLayerMaskPath = ''
+clipSources = []
+defaultStateName = 'NewState'
+layers = []
+parameters = []
+version = 6
+
+[editorLayout]
+anyStateX = -220.0
+anyStateY = 260.0
+blendTreeMotions = []
+entryX = -220.0
+entryY = 80.0
+nodes = []
+
+[[states]]
+clipIndex = -1
+clipName = ''
+ikWeight = 1.0
+loop = true
+mode = 0
+name = 'NewState'
+sourcePath = ''
+speed = 1.0
+transitions = []
+
+    [states.blendTree1D]
+    dampTime = 0.0
+    motions = []
+    paramName = ''
+    syncNormalizedTime = false
+
+    [states.blendTree2D]
+    motions = []
+    paramX = ''
+    paramY = ''
+    type = 0

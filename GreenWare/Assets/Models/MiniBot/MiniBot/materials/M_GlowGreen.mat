@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'M_GlowGreen'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.029999999329447746, 0.4399999976158142, 0.10000000149011612, 1.0 ]
+metallic = 0.0
+roughness = 0.25

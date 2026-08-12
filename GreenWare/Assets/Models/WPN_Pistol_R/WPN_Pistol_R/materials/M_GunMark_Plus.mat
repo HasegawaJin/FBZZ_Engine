@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'M_GunMark_Plus'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.6200000047683716, 0.019999999552965164, 0.02500000037252903, 1.0 ]
+metallic = 0.0
+roughness = 0.1499999761581421

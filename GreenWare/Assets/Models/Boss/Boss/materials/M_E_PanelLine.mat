@@ -1,0 +1,10 @@
+mesh_type = 'skinned'
+name = 'M_E_PanelLine'
+render_path = 'deferred'
+shader = 'Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl'
+version = 1
+
+[params]
+albedo = [ 0.019999999552965164, 0.02199999988079071, 0.02800000086426735, 1.0 ]
+metallic = 0.0
+roughness = 0.5199999809265137

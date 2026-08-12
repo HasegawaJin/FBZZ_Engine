@@ -1,0 +1,19 @@
+file_format_version = 1
+
+[cache]
+baked_container = 'Library/Baked/<asset-guid>'
+settings_hash = 'c08f40409c30a037'
+source_hash = '0e7742f5858d9864'
+
+[meta]
+guid = 'b58c79ecebad186dd5b5a338a78ff920'
+
+[model]
+default_compression = 'Auto'
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 1
+normal_map_convention = 'DirectX'
+selected_animations = [ 'Scene' ]
+selected_meshes = []
+source_dcc = 'Auto'

@@ -1,0 +1,85 @@
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
+layer = 0
+name = 'MainCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'MainCamera'
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 2.580071
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 1000.0
+    fovY = 60.0
+    isMain = true
+    nearZ = 0.1
+
+    [gameobjects.transform]
+    position = [ 68.398079, 1.070739, 84.211967 ]
+    rotation = [ 0.005337, -0.994608, -0.067806, -0.078285 ]
+    scale = [ 1.000005, 1.0, 1.000005 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'TpsCameraComponent'
+
+        [gameobjects.ScriptComponents.fields]
+        distance = 5.0
+        followSpeed = 10.0
+        height = 1.6
+        maxPitch = 65.0
+        minPitch = -20.0
+        mouseOrbit = true
+        mouseSensitivity = 0.2
+        pitch = 15.0
+        targetTag = 'Player'
+        yaw = 0.0
+
+[[gameobjects]]
+active = true
+instanceId = '722eb808-617e-4bc9-9813-d759993dc762'
+layer = 0
+name = 'DirectionalLight'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    color = [ 1.0, 0.956863, 0.839216 ]
+    enabled = true
+    intensity = 1.0
+    type = 'Directional'
+
+    [gameobjects.transform]
+    position = [ 0.0, 3.0, 0.0 ]
+    rotation = [ 0.501514, -0.501395, 0.477734, 0.518515 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'b4a1f2c3-1111-4444-8888-abcdefabcdef'
+layer = 0
+name = 'PlayerSpawner'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+    [[gameobjects.ScriptComponents]]
+    enabled = true
+    type = 'PlayerSpawnerComponent'
