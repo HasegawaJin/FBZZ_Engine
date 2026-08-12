@@ -11,6 +11,7 @@
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
+#include "Engine/Scene/Systems/BehaviorTreeSystem.hpp"
 #include "Engine/Scene/Systems/NavigationSystem.hpp"
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "Engine/Scene/Systems/ScriptSystem.hpp"
@@ -22,6 +23,7 @@
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
 #include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
 #include "Engine/Scene/Systems/VFXGraphSystem.hpp"
+#include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <string>
@@ -58,7 +60,12 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<TransformPostPhysics>();
 
     // Navigation
+    // 実行順は各 System の OrderingHints が決める:
+    //   Sensor → BehaviorTree → Patrol → Navigation
+    // BehaviorTree を Patrol より前に置くのは、BT が SetTarget を呼んだ同じフレームで
+    // NavMeshPatrolSystem の `agent->target.IsValid()` による巡回抑止を効かせるため。
     m_scheduler.AddSystem<NavMeshSensorSystem>();
+    m_scheduler.AddSystem<BehaviorTreeSystem>();
     m_scheduler.AddSystem<NavMeshPatrolSystem>();
     m_scheduler.AddSystem<NavigationSystem>();
 
@@ -77,6 +84,12 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<LODSystem>();
     m_scheduler.AddSystem<AnimatorSystem>();
     m_scheduler.AddSystem<IKSystem>();
+    // DCC Bone姿勢をAnimator/IKが確定した後にSocket、Camera、表示補助を評価する。
+    m_scheduler.AddSystem<ConstraintSystem>();
+    m_scheduler.AddSystem<SplineSystem>();
+    m_scheduler.AddSystem<CameraRigSystem>();
+    m_scheduler.AddSystem<BillboardSystem>();
+    m_scheduler.AddSystem<PresentationSystem>();
     m_scheduler.AddSystem<ParticleSimulationSystem>();
 
     m_scheduler.Build();

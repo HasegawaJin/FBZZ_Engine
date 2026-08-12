@@ -22,6 +22,8 @@ enum class ParticleEmitterShape : uint8_t {
 enum class ParticleBlendMode : uint8_t {
     Additive = 0,
     Alpha    = 1,
+    // 事前乗算アルファ。発光する芯と背景を隠す煙を 1 枚のテクスチャで両立できる。
+    Premultiplied = 2,
 };
 
 enum class ParticleSortMode : uint8_t {
@@ -57,6 +59,23 @@ enum class ParticleCollisionResponse : uint8_t {
     Bounce = 0,
     Kill,
     Stop,
+};
+
+// テクスチャからアルファをどう取り出すか。
+// WHY: パーティクル素材は RGBA でアルファを持つものばかりではない。加算合成前提の
+//      素材は黒背景の RGB だけでアルファが無い (または全面 1) ことが多く、
+//      そのままアルファブレンドすると黒い矩形が出る。逆に印刷用途由来の素材は
+//      白背景のことがある。素材を加工させずエミッター側で吸収する。
+// 値は Rendering/Mask.hlsli の FBZZ_MASK_* と一致させること。
+// パーティクル専用の番号体系を作らず、全マテリアル共通のチャンネル語彙を使う。
+enum class ParticleAlphaSource : uint8_t {
+    TextureAlpha      = 0, // 通常 (アルファ付き素材)
+    Luminance         = 1, // 黒 = 透明 (加算用の黒背景素材)
+    LuminanceInverted = 2, // 白 = 透明 (白背景素材)
+    Red               = 3, // R チャンネル (パック済みマスクの1枚目)
+    Green             = 4, // G チャンネル
+    Blue              = 5, // B チャンネル
+    AlphaInverted     = 6, // アルファ反転
 };
 
 enum class ParticleFlipbookMode : uint8_t {

@@ -3,6 +3,7 @@
 // Scriptから同じGameObjectのVFXGraphComponent再生状態を制御する
 #pragma once
 
+#include <Engine/Scene/ScriptAssetRef.hpp>
 #include <string_view>
 
 namespace fbzz::scene {
@@ -17,6 +18,10 @@ struct ScriptVFXProxy {
     void Pause() const;
     void Stop() const;
     void SetSpeed(float speed) const;
+    // SerializeFieldのVFXRefから同じGameObjectのGraphを差し替える。
+    bool SetGraph(const VFXRef& graph, bool restart = true) const;
+    // On Triggerリンクを同名で発火する。空名は明示的に許可しない。
+    bool Trigger(std::string_view name) const;
     bool SetFloat(std::string_view name, float value) const;
     bool SetInt(std::string_view name, int value) const;
     bool SetBool(std::string_view name, bool value) const;
