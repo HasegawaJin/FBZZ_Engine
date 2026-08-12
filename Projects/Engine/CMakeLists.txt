@@ -62,6 +62,9 @@ target_link_libraries(fbzz_engine
         fbzz_math
         tomlplusplus
         xaudio2
+        # ゲームパッド入力 (Engine/Input/Gamepad.cpp)。
+        # xinput.lib は XInput 1.4 (Windows 8 以降) を指す。旧 xinput9_1_0 は使わない。
+        xinput
         mfplat
         mfreadwrite
         mfuuid

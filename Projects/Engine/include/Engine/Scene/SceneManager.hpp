@@ -11,6 +11,7 @@
 namespace fbzz::audio { class AudioManager; }
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <string>
 #include <unordered_map>
 
@@ -61,9 +62,10 @@ public:
 
     Scene* GetActive();
 
-    // 型で System インスタンスを取得（エディタ統合用）
-    template<typename T>
-    T* GetSystem() const { return m_scheduler.GetSystem<T>(); }
+    // 名前で System インスタンスを取得（エディタ統合用）。
+    [[nodiscard]] ISystem* FindSystem(std::string_view name) const {
+        return m_scheduler.FindSystem(name);
+    }
 
 private:
     Scene* CurrentScene() const;

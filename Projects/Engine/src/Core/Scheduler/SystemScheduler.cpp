@@ -250,6 +250,16 @@ void SystemScheduler::Shutdown()
 
 // ─── デバッグ ──────────────────────────────────────────────────────────────
 
+ISystem* SystemScheduler::FindSystem(std::string_view name) const
+{
+    for (const auto& system : m_systems) {
+        if (system->Name() == name) {
+            return system.get();
+        }
+    }
+    return nullptr;
+}
+
 void SystemScheduler::DumpGraph() const
 {
     static const char* phaseNames[] = {

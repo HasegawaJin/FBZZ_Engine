@@ -46,3 +46,4 @@
 #include <Engine/Scene/ScriptProxy/ScriptVolumeProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptReflectionProbeProxy.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptLifetimeProxy.hpp>
+#include <Engine/Scene/ScriptProxy/ScriptGameplayProxy.hpp>
