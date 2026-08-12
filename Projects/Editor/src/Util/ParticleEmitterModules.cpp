@@ -4,17 +4,50 @@
 #include <Editor/Util/ParticleEmitterModules.hpp>
 
 #include <Editor/EditorContext.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/ParticleEditWidgets.hpp>
+#include <Engine/Asset/FlipbookMotionVectors.hpp>
+#include <Engine/Asset/ProceduralVFXTextures.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
+#include <string>
 
 namespace fbzz::editor {
 namespace {
+
+// モーションベクター生成の結果メッセージ。生成は数秒かかる同期処理で、
+// 押した直後に何が起きたか分からないと不安になるため結果をパネルへ残す。
+// Inspector は 1 つしか開かないため static で足りる。
+std::string s_motionVectorStatus;
+bool s_motionVectorStatusIsError = false;
+
+struct ProceduralFlipbookUiState {
+    int preset = 0;
+    int frameSize = 128;
+    int columns = 8;
+    int rows = 2;
+    int seed = 1;
+    float noiseScale = 4.0f;
+    float warpStrength = 0.65f;
+    bool generateMotionVectors = false;
+    bool clearMaterialOverride = true;
+    std::string status;
+    bool statusIsError = false;
+};
+
+// ProjectごとのGenerated配下へ出し、Engine同梱Assetsを誤って変更しない。
+std::string ProceduralVFXOutputDirectory(const std::string& projectRoot)
+{
+    if (projectRoot.empty()) return "Assets/Textures/Generated/VFX";
+    return projectRoot + "/Assets/Textures/Generated/VFX";
+}
 
 // チェックボックス付き折りたたみモジュールヘッダー (Unity Shuriken 風)。
 // enabled == nullptr のモジュールは常時有効でチェックボックスを出さない。
@@ -161,6 +194,15 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
         changed |= ImGui::DragFloat("Lifetime Random", &pe.lifetimeRandom, 0.01f, 0.0f, 1.0f);
         changed |= ImGui::DragFloat("Size Start", &pe.sizeStart, 0.005f, 0.0f, 10.0f);
         changed |= ImGui::DragFloat("Size End", &pe.sizeEnd, 0.005f, 0.0f, 10.0f);
+        changed |= widgets::DragVec3("Size Axis Scale", pe.sizeAxisScale, 0.01f, 0.0f, 100.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("軸ごとのサイズ倍率。X<Y で縦長 (立ち上る炎)、X>Y で平たい (衝撃波)。\n"
+                              "Billboard は XY のみ、Mesh Particle は Z も使います。");
+        if (ImGui::SmallButton("Uniform##SizeAxis")) { pe.sizeAxisScale = { 1, 1, 1 }; changed = true; }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Tall##SizeAxis")) { pe.sizeAxisScale = { 0.5f, 2.0f, 1 }; changed = true; }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Flat##SizeAxis")) { pe.sizeAxisScale = { 2.0f, 0.4f, 1 }; changed = true; }
 
         float cs[4] = { pe.colorStart.x, pe.colorStart.y, pe.colorStart.z, pe.colorStart.w };
         if (ImGui::ColorEdit4("Color Start", cs)) {
@@ -172,6 +214,12 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             pe.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
             changed = true;
         }
+
+        changed |= ImGui::SliderFloat("Color Variation", &pe.colorVariation, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("粒子ごとに RGB を独立してばらつかせます。\n"
+                              "同色の粒子が集まって一枚のベタ塗りに見えるのを防ぎ、\n"
+                              "炎・火花に明度差と軽い色相差が出ます。");
 
         changed |= widgets::DragVec3("Gravity", pe.gravity, 0.05f);
         changed |= ImGui::DragFloat("Velocity Damping", &pe.velocityDamping, 0.01f, 0.0f, 100.0f);
@@ -191,6 +239,18 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             pe.simulationMode = static_cast<scene::ParticleSimulationMode>(sim);
             pe.gpuClearPending = true;
             changed = true;
+        }
+        // GPU を選んでも、条件のどれか 1 つを外すと黙って CPU へ落ちる。
+        // WHY: これが見えないと、縮退したまま粒子数だけ増やし続けることになる。
+        //      原因の設定名をコンボの真下に出し、設定を触ったその場で気づけるようにする。
+        if (const auto fallback = scene::GetParticleGpuFallbackReason(pe);
+            fallback != scene::ParticleGpuFallbackReason::None
+            && fallback != scene::ParticleGpuFallbackReason::NotRequested) {
+            ImGui::TextColored({ 1.0f, 0.65f, 0.3f, 1.0f },
+                               "GPU 指定ですが %s のため CPU で実行されます",
+                               scene::ParticleGpuFallbackFieldName(fallback));
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", scene::ParticleGpuFallbackDescription(fallback));
         }
         const char* spaceItems[] = { "World", "Local" };
         int simulationSpace = static_cast<int>(pe.simulationSpace);
@@ -326,6 +386,90 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
     if (BeginModule("Rotation over Lifetime", nullptr, /*defaultOpen=*/false, changed)) {
         changed |= ImGui::DragFloat("Angular Velocity Min", &pe.angularVelocityMin, 0.01f, -100.0f, 100.0f);
         changed |= ImGui::DragFloat("Angular Velocity Max", &pe.angularVelocityMax, 0.01f, -100.0f, 100.0f);
+        changed |= ImGui::Checkbox("Use Rotation Curve", &pe.useRotationCurve);
+        if (pe.useRotationCurve) {
+            changed |= widgets::CurveEditor("Spin Multiplier", pe.rotationCurve, 2.0f);
+            ImGui::TextDisabled("角速度への時間倍率。頭を高く末尾を 0 にすると"
+                                "「勢いよく回り始めて止まる」破片になります。");
+        }
+        EndModule();
+    }
+
+    // ── Drag over Lifetime: velocityDamping への時間倍率 ────────────────────
+    if (BeginModule("Drag over Lifetime", &pe.useDragCurve, /*defaultOpen=*/false, changed)) {
+        if (pe.useDragCurve) {
+            changed |= widgets::CurveEditor("Drag Multiplier", pe.dragCurve, 4.0f);
+            ImGui::TextDisabled("Main の Velocity Damping に掛かります。"
+                                "後半を高くすると噴き出した後で急に空気抵抗が効きます。");
+        } else {
+            ImGui::TextDisabled("Enable to modulate Velocity Damping over lifetime.");
+        }
+        EndModule();
+    }
+
+    // ── Orbital / Radial / Inherit: エミッター原点まわりの運動と移動の引き継ぎ ──
+    if (BeginModule("Velocity Modules", nullptr, /*defaultOpen=*/false, changed)) {
+        changed |= widgets::DragVec3("Orbital Axis", pe.orbitalAxis, 0.01f);
+        changed |= ImGui::DragFloat("Orbital Velocity", &pe.orbitalVelocity, 0.05f, -100.0f, 100.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("軸まわりの接線加速度。渦・竜巻・魔法陣の回転に使います");
+        changed |= ImGui::DragFloat("Radial Velocity", &pe.radialVelocity, 0.05f, -100.0f, 100.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("原点から外向きの加速度。負値で吸い込みになります");
+        ImGui::Separator();
+        changed |= ImGui::SliderFloat("Inherit Velocity", &pe.inheritVelocity, 0.0f, 1.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("発生時にエミッター自身の移動速度を初速へ加算する割合。\n"
+                              "移動する剣・ロケットの火花が引きずられて見えます。\n"
+                              "Local space シミュレーションでは二重に効くため無効です。");
+        if (pe.inheritVelocity > 0.0f && pe.simulationSpace == scene::ParticleSimulationSpace::Local)
+            ImGui::TextDisabled("Simulation Space が Local のため Inherit Velocity は効きません。");
+        EndModule();
+    }
+
+    // ── Trails: 粒子1つ1つに尾を付ける (火の粉・魔法の軌跡) ────────────────────
+    if (BeginModule("Trails", &pe.trailEnabled, /*defaultOpen=*/false, changed)) {
+        if (pe.trailEnabled) {
+            changed |= ImGui::DragInt("Trail Points", &pe.trailPointCount, 1, 1,
+                                      scene::kMaxParticleTrailPoints);
+            changed |= ImGui::DragFloat("Sample Interval", &pe.trailSampleInterval,
+                                        0.001f, 0.001f, 1.0f, "%.3fs");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("履歴を刻む間隔。短いほど尾が滑らかになりますが、"
+                                  "同じ点数でも尾は短くなります。");
+            changed |= ImGui::SliderFloat("Tip Width", &pe.trailWidthScale, 0.0f, 1.0f);
+            changed |= ImGui::SliderFloat("Tip Alpha", &pe.trailAlphaScale, 0.0f, 1.0f);
+            float tint[4] = { pe.trailColorTint.x, pe.trailColorTint.y,
+                              pe.trailColorTint.z, pe.trailColorTint.w };
+            if (ImGui::ColorEdit4("Trail Tint", tint)) {
+                pe.trailColorTint = { tint[0], tint[1], tint[2], tint[3] };
+                changed = true;
+            }
+            changed |= ImGui::Checkbox("Continuous Ribbon", &pe.trailRibbon);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "履歴点をポリラインとみなし、1 枚の連続した帯として描きます。\n"
+                    "剣閃・魔法の軌跡のように「幅のある帯」が主役の表現に使います。\n"
+                    "ビルボード方式は太くすると粒の連なりが露見するため、太い帯には向きません。");
+            }
+            if (pe.trailRibbon) {
+                changed |= ImGui::DragFloat("Ribbon Width", &pe.trailRibbonWidth, 0.01f, 0.0f, 20.0f,
+                                            "%.3f m");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("0 のときは粒子サイズをそのまま帯の幅として使います。");
+                ImGui::TextDisabled("帯は 1 エミッターぶんをまとめて 1 DrawCall で描くため、"
+                                    "色は粒子ごとではなく Color Start / End を帯の長さ方向へ配ります。");
+                ImGui::TextDisabled("粒子ごとの色ゆらぎを尾へ乗せたい場合はビルボード方式のままにしてください。");
+            } else {
+                ImGui::TextDisabled("尾は履歴点へビルボードを連ねて描きます"
+                                    "(本体と同じマテリアル・ブレンドが自動的に適用されます)。");
+            }
+            if (pe.simulationMode == scene::ParticleSimulationMode::Gpu)
+                ImGui::TextDisabled("GPU シミュレーションは履歴を保持できないため、"
+                                    "Trail 有効時は CPU で実行されます。");
+        } else {
+            ImGui::TextDisabled("Enable to give each particle its own trail.");
+        }
         EndModule();
     }
 
@@ -424,14 +568,168 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             && pe.flipbookMode != scene::ParticleFlipbookMode::RandomFrame)
             changed |= ImGui::DragFloat("FPS", &pe.flipbookFramesPerSecond, 0.1f, 0.0f, 240.0f);
         changed |= ImGui::Checkbox("Frame Blending", &pe.flipbookFrameBlending);
+        changed |= ImGui::Checkbox("Random Start Frame", &pe.spriteRandomStartFrame);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("粒子ごとに再生位相をずらします。\n"
+                              "同時に湧いた煙が全部同じコマで回って一枚板に見えるのを防ぎます。");
+        changed |= ImGui::Checkbox("Random Row", &pe.spriteRandomRow);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("アトラスの各行を別バリエーションとして扱い、粒子ごとに1行を選びます。\n"
+                              "1枚のアトラスで見た目の異なる煙・爆炎を混ぜられます。\n"
+                              "有効時は Start/End Frame より行の範囲が優先されます。");
+
+        if (ImGui::TreeNode("Procedural Flipbook Generator")) {
+            // 関数ローカルstaticならグローバル状態を増やさず、Inspectorを閉じても設定を保持できる。
+            static ProceduralFlipbookUiState procedural;
+            constexpr const char* presetNames[] = { "Smoke", "Fire", "Explosion", "Distortion" };
+            ImGui::Combo("Preset", &procedural.preset, presetNames, 4);
+            ImGui::DragInt("Frame Size", &procedural.frameSize, 8.0f, 32, 512);
+            ImGui::DragInt("Frames", &procedural.columns, 1.0f, 2, 32);
+            ImGui::DragInt("Variants", &procedural.rows, 1.0f, 1, 16);
+            ImGui::DragInt("Seed", &procedural.seed, 1.0f, 0, 1000000);
+            ImGui::DragFloat("Noise Scale", &procedural.noiseScale, 0.05f, 0.25f, 32.0f);
+            ImGui::DragFloat("Warp Strength", &procedural.warpStrength, 0.01f, 0.0f, 3.0f);
+            const bool distortionPreset = procedural.preset
+                == static_cast<int>(asset::ProceduralFlipbookPreset::Distortion);
+            ImGui::BeginDisabled(distortionPreset);
+            ImGui::Checkbox("Generate Motion Vectors", &procedural.generateMotionVectors);
+            ImGui::EndDisabled();
+            if (distortionPreset)
+                ImGui::TextDisabled("DistortionはRG自体が変位なのでMotion Vectorを生成しません。");
+            if (!pe.materialPath.empty()) {
+                ImGui::Checkbox("Replace .mat Texture", &procedural.clearMaterialOverride);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(".matはTexture欄より優先されます。ONなら生成物を見える状態にするため"
+                                      "Material参照を解除します。");
+            }
+
+            if (ImGui::Button("Generate & Assign", { -1.0f, 0.0f })) {
+                asset::ProceduralFlipbookSettings settings;
+                settings.preset = static_cast<asset::ProceduralFlipbookPreset>(procedural.preset);
+                settings.frameSize = procedural.frameSize;
+                settings.columns = procedural.columns;
+                settings.rows = procedural.rows;
+                settings.seed = static_cast<std::uint32_t>((std::max)(procedural.seed, 0));
+                settings.noiseScale = procedural.noiseScale;
+                settings.warpStrength = procedural.warpStrength;
+                const auto result = asset::GenerateProceduralFlipbook(
+                    ProceduralVFXOutputDirectory(ctx.projectRoot), settings);
+                procedural.status = result.message;
+                procedural.statusIsError = !result.success;
+                if (result.success) {
+                    if (procedural.clearMaterialOverride && !pe.materialPath.empty()) {
+                        pe.materialPath.clear();
+                        pe.loadedMaterialPath.clear();
+                    }
+                    pe.texturePath = NormalizeAssetPath(result.albedoPath);
+                    pe.texture = {};
+                    pe.loadedTexturePath.clear();
+                    pe.spriteColumns = settings.columns;
+                    pe.spriteRows = settings.rows;
+                    pe.spriteStartFrame = 0;
+                    pe.spriteEndFrame = settings.columns * settings.rows - 1;
+                    pe.flipbookFrameBlending = true;
+                    pe.spriteRandomStartFrame = false;
+                    pe.spriteRandomRow = settings.rows > 1;
+                    pe.motionVectorFlipbook = false;
+                    pe.motionVectorTexturePath.clear();
+                    pe.motionVectorTexture = {};
+                    pe.loadedMotionVectorTexturePath.clear();
+
+                    if (distortionPreset) {
+                        pe.flipbookMode = scene::ParticleFlipbookMode::FramesPerSecond;
+                        pe.flipbookFramesPerSecond = 24.0f;
+                        pe.blendMode = scene::ParticleBlendMode::Alpha;
+                        pe.distortion = true;
+                    } else {
+                        pe.flipbookMode = scene::ParticleFlipbookMode::Lifetime;
+                        pe.distortion = false;
+                        if (settings.preset == asset::ProceduralFlipbookPreset::Fire)
+                            pe.blendMode = scene::ParticleBlendMode::Additive;
+                        else if (settings.preset == asset::ProceduralFlipbookPreset::Explosion)
+                            pe.blendMode = scene::ParticleBlendMode::Premultiplied;
+                        else
+                            pe.blendMode = scene::ParticleBlendMode::Alpha;
+
+                        if (procedural.generateMotionVectors) {
+                            asset::FlipbookMotionVectorSettings mvSettings;
+                            mvSettings.columns = settings.columns;
+                            mvSettings.rows = settings.rows;
+                            mvSettings.loop = false;
+                            mvSettings.rowSequences = settings.rows > 1;
+                            const auto mvResult = asset::GenerateFlipbookMotionVectors(
+                                result.albedoPath, mvSettings);
+                            if (mvResult.success) {
+                                pe.motionVectorFlipbook = true;
+                                pe.motionVectorTexturePath = NormalizeAssetPath(mvResult.outputPath);
+                                procedural.status += "\n" + mvResult.message;
+                            } else {
+                                procedural.status += "\nMV生成失敗: " + mvResult.message;
+                                procedural.statusIsError = true;
+                            }
+                        }
+                    }
+                    changed = true;
+                }
+            }
+            if (!procedural.status.empty()) {
+                if (procedural.statusIsError)
+                    ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", procedural.status.c_str());
+                else
+                    ImGui::TextWrapped("%s", procedural.status.c_str());
+            }
+            if (!pe.materialPath.empty() && !procedural.clearMaterialOverride)
+                ImGui::TextColored({ 1.0f, 0.72f, 0.35f, 1.0f },
+                    ".matが設定中です。生成TextureよりMaterial側Albedoが優先されます。");
+            ImGui::TreePop();
+        }
+
         changed |= ImGui::Checkbox("Motion Vector Blending", &pe.motionVectorFlipbook);
         if (pe.motionVectorFlipbook) {
-            if (widgets::AssetPathField("Motion Vector Atlas", pe.motionVectorTexturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
+            if (widgets::AssetPathField("Motion Vector Atlas", pe.motionVectorTexturePath,
+                                        widgets::kTextureAssetFilter, ctx.projectRoot)) {
                 pe.motionVectorTexture = {};
                 pe.loadedMotionVectorTexturePath.clear();
                 changed = true;
             }
             changed |= ImGui::DragFloat("Motion Strength", &pe.motionVectorStrength, 0.01f, 0.0f, 8.0f);
+
+            // MV アトラスは外部ツールでしか作れず「機能はあるのに使えない」状態だったため、
+            // 現在のアトラスから生成してそのまま割り当てられるようにする。
+            ImGui::Separator();
+            const std::string& atlasPath = !pe.texturePath.empty() ? pe.texturePath : pe.materialPath;
+            ImGui::BeginDisabled(pe.texturePath.empty());
+            if (ImGui::Button("Generate From Texture", { -1.0f, 0.0f })) {
+                asset::FlipbookMotionVectorSettings mvSettings;
+                mvSettings.columns = pe.spriteColumns;
+                mvSettings.rows = pe.spriteRows;
+                mvSettings.loop = pe.flipbookMode == scene::ParticleFlipbookMode::FramesPerSecond
+                    || pe.spriteRandomStartFrame;
+                mvSettings.rowSequences = pe.spriteRandomRow;
+                // texturePath は Assets 起点の可搬パス。ディスクを読むのは Editor 側の責務なので
+                // ここで projectRoot を補完してから渡す (Engine 側は実パスだけを扱う)。
+                const std::string diskPath = ToProjectAssetDiskPath(ctx.projectRoot, pe.texturePath);
+                const auto result = asset::GenerateFlipbookMotionVectors(diskPath, mvSettings);
+                s_motionVectorStatus = result.message;
+                s_motionVectorStatusIsError = !result.success;
+                if (result.success) {
+                    // 生成結果をそのまま割り当てる。手で貼り直す手間を残さない。
+                    pe.motionVectorTexturePath = NormalizeAssetPath(result.outputPath);
+                    pe.motionVectorTexture = {};
+                    pe.loadedMotionVectorTexturePath.clear();
+                    changed = true;
+                }
+            }
+            ImGui::EndDisabled();
+            if (pe.texturePath.empty())
+                ImGui::TextDisabled("Renderer の Texture にアトラスを設定すると生成できます。");
+            if (!s_motionVectorStatus.empty()) {
+                if (s_motionVectorStatusIsError)
+                    ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f }, "%s", s_motionVectorStatus.c_str());
+                else
+                    ImGui::TextWrapped("%s", s_motionVectorStatus.c_str());
+            }
+            (void)atlasPath;
         }
         EndModule();
     }
@@ -448,18 +746,55 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
             changed |= ImGui::DragFloat("Stretch Velocity", &pe.stretchedVelocityScale, 0.01f, 0.0f, 100.0f);
             changed |= ImGui::DragFloat("Stretch Length", &pe.stretchedLengthScale, 0.01f, 0.0f, 100.0f);
         }
-        const char* blendItems[] = { "Additive", "Alpha" };
+        // テクスチャの作りの違いを吸収する。素材を画像編集ソフトで加工させないための設定。
+        // 並びは Rendering/Mask.hlsli の FBZZ_MASK_* と一致させること。
+        const char* alphaItems[] = {
+            "Texture Alpha", "Luminance (black = clear)",
+            "Inverted Luminance (white = clear)", "Red Channel",
+            "Green Channel", "Blue Channel", "Inverted Alpha" };
+        int alphaSource = static_cast<int>(pe.alphaSource);
+        if (ImGui::Combo("Alpha Source", &alphaSource, alphaItems, 7)) {
+            pe.alphaSource = static_cast<scene::ParticleAlphaSource>(alphaSource);
+            changed = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "テクスチャのどこを「不透明度」として読むかを選びます。\n\n"
+                "Texture Alpha : アルファ付き素材 (通常の PNG/TGA)\n"
+                "Luminance     : 黒背景でアルファが無い素材。明るいほど濃く出ます\n"
+                "Inverted      : 白背景の素材。暗いほど濃く出ます\n"
+                "R/G/B Channel : 1枚に複数のマスクを詰めたパック済み素材\n"
+                "Inverted Alpha: アルファの意味が逆になっている素材\n\n"
+                "素材を Alpha Blend にしたら黒い四角が出る場合は Luminance を選びます。\n"
+                "この選択肢は全マテリアル共通の語彙です (Rendering/Mask.hlsli)。");
+        // 黒背景素材 + アルファブレンドは典型的な事故なので、その組み合わせだけ助言を出す。
+        if (pe.alphaSource == scene::ParticleAlphaSource::TextureAlpha
+            && pe.blendMode != scene::ParticleBlendMode::Additive) {
+            ImGui::TextDisabled("黒い矩形が出る場合はアルファ無し素材です。Luminance を試してください。");
+        }
+
+        const char* blendItems[] = { "Additive", "Alpha", "Premultiplied" };
         int blend = static_cast<int>(pe.blendMode);
-        if (ImGui::Combo("Blend Mode", &blend, blendItems, 2)) {
+        if (ImGui::Combo("Blend Mode", &blend, blendItems, 3)) {
             pe.blendMode = static_cast<scene::ParticleBlendMode>(blend);
             changed = true;
         }
+        if (pe.blendMode == scene::ParticleBlendMode::Premultiplied && ImGui::IsItemHovered())
+            ImGui::SetTooltip("RGB に alpha が乗ったテクスチャ用。alpha=0 で RGB>0 の画素は\n"
+                              "加算として振る舞うため、発光する芯と背景を隠す煙を1枚で両立できます。");
+        if (!pe.materialPath.empty())
+            ImGui::TextDisabled("Blend Mode は .mat 側の設定で毎フレーム上書きされます。");
         const char* sortItems[] = { "None", "Back To Front" };
         int sort = static_cast<int>(pe.sortMode);
         if (ImGui::Combo("Sort Mode", &sort, sortItems, 2)) {
             pe.sortMode = static_cast<scene::ParticleSortMode>(sort);
             changed = true;
         }
+        changed |= ImGui::DragInt("Render Priority", &pe.renderPriority, 1, -1000, 1000);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("エミッター間の描画順。小さいほど先に描かれ、奥に見えます。\n"
+                              "炎(小さい値)と煙(大きい値)のように重ねると前後が安定します。\n"
+                              "同値のときはカメラから遠い順に描画されます。");
 
         // .mat 参照。変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
         if (widgets::AssetPathField("Material (.mat)", pe.materialPath, ".mat", ctx.projectRoot)) {
@@ -473,7 +808,8 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
         if (!pe.meshParticlePath.empty())
             ImGui::TextDisabled("Mesh Particle uses deterministic CPU simulation.");
         // texturePath — deprecated フォールバック。materialPath が空のときだけ使われる。
-        if (widgets::AssetPathField("Texture (fallback)", pe.texturePath, ".fztex,.png,.dds", ctx.projectRoot)) {
+        if (widgets::AssetPathField("Texture (fallback)", pe.texturePath,
+                                    widgets::kTextureAssetFilter, ctx.projectRoot)) {
             pe.texture = {};
             pe.loadedTexturePath.clear();
             changed = true;
@@ -486,9 +822,65 @@ bool DrawParticleEmitterModules(scene::ParticleEmitter& pe, EditorContext& ctx)
         changed |= ImGui::Checkbox("Distortion / Heat Haze", &pe.distortion);
         if (pe.distortion)
             changed |= ImGui::DragFloat("Distortion Strength", &pe.distortionStrength, 0.001f, 0.0f, 0.25f, "%.4f");
-        changed |= ImGui::Checkbox("Six-way Lit Smoke", &pe.sixWayLighting);
-        if (pe.sixWayLighting)
-            changed |= ImGui::DragFloat("Lighting Strength", &pe.lightingStrength, 0.01f, 0.0f, 8.0f);
+        if (ImGui::Checkbox("Six-way Lit Smoke", &pe.sixWayLighting)) {
+            // 役割が重複するため排他にする (両方掛けると二重に陰影が付いて濁る)。
+            if (pe.sixWayLighting) pe.volumetric = false;
+            changed = true;
+        }
+        if (pe.sixWayLighting) {
+            // シェーダー側が saturate するため 1.0 が上限。それ以上は「元の色を捨てて
+            // (ambient + N·L) で塗る」だけになり、暗い環境で煙が真っ黒に潰れる。
+            changed |= ImGui::SliderFloat("Lighting Strength", &pe.lightingStrength, 0.0f, 1.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("0 = 元の色そのまま / 1 = 完全にライティングで置換");
+        }
+        if (ImGui::Checkbox("Volumetric Smoke", &pe.volumetric)) {
+            if (pe.volumetric) pe.sixWayLighting = false;
+            changed = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("ビルボード内で密度場をレイマーチして厚みを出します。\n"
+                              "カメラが回り込んでも「紙が回った」ように見えません。\n"
+                              "テクスチャは使わず密度場で色を作るため Six-way とは排他です。");
+        if (pe.volumetric) {
+            changed |= ImGui::DragInt("Volumetric Steps", &pe.volumetricSteps, 1, 1, 64);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("1 ピクセルあたりのループ回数です。増やすほど滑らかですが重くなります。");
+            changed |= ImGui::DragFloat("Density", &pe.volumetricDensity, 0.01f, 0.0f, 20.0f);
+            changed |= ImGui::SliderFloat("Anisotropy", &pe.volumetricAnisotropy, -0.95f, 0.95f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("正で前方散乱。逆光のとき煙の縁が光ります。");
+            changed |= ImGui::DragFloat("Noise Scale", &pe.volumetricNoiseScale, 0.05f, 0.0f, 32.0f);
+            if (pe.blendMode == scene::ParticleBlendMode::Additive)
+                ImGui::TextDisabled("出力は事前乗算アルファです。Premultiplied ブレンドを推奨します。");
+        }
+        changed |= ImGui::Checkbox("Receive Shadows", &pe.receiveShadows);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("影の中で粒子を暗くします。\n"
+                              "煙・埃が背景から浮いて見える最大の原因がこれです。\n"
+                              "発光エフェクト(加算)では通常オフのままにします。");
+        if (pe.receiveShadows) {
+            changed |= ImGui::SliderFloat("Shadow Strength", &pe.shadowStrength, 0.0f, 1.0f);
+            if (pe.blendMode == scene::ParticleBlendMode::Additive)
+                ImGui::TextDisabled("加算ブレンドでは影が暗くしても見えにくくなります。"
+                                    "煙は Alpha / Premultiplied を推奨。");
+        }
+        // 自己影。受け影とは別の現象なので、別のスライダーとして並べる。
+        changed |= ImGui::DragFloat("Self Shadow", &pe.selfShadowStrength, 0.01f, 0.0f, 8.0f, "%.2f");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "粒子群が自分自身へ落とす影の濃さ (0 で無効)。\n"
+                "受け影は「他の物体が落とす影」だけを扱うため、これが無いと\n"
+                "粒子をいくら重ねても光の当たり方が一様で、厚みのある煙・雲が平坦に見えます。\n"
+                "有効にすると光源から見た密度を積む追加パスが走り、GPU シミュレーションは使えません。");
+        }
+        if (pe.selfShadowStrength > 0.0f) {
+            ImGui::TextDisabled("光源側の密度から Beer-Lambert 則で減衰させる近似です。"
+                                "厚みの表現が目的で、物理的な正確さは狙っていません。");
+            if (pe.simulationMode == scene::ParticleSimulationMode::Gpu)
+                ImGui::TextColored({ 1.0f, 0.65f, 0.3f, 1.0f },
+                                   "自己影は CPU 頂点バッファを要求するため、GPU 指定でも CPU で実行されます。");
+        }
         EndModule();
     }
 

@@ -3,6 +3,9 @@
 // ParticleCurve / ParticleGradient のドラッグ編集ウィジェット実装
 #include <Editor/Util/ParticleEditWidgets.hpp>
 
+// プリセット表は Engine 側に 1 つだけ置き、Editor UI と AI が同じ語彙を使う。
+#include <Engine/Asset/ParticleCurvePresets.hpp>
+
 #include <imgui.h>
 #include <algorithm>
 #include <cmath>
@@ -34,6 +37,15 @@ ImU32 ToImColor(const math::Vector4& c, float alphaOverride = -1.0f)
                     static_cast<int>(Clamp01(a) * 255.0f));
 }
 
+// カーブ / グラデーションのクリップボード。
+// WHY: 同じ減衰カーブを size / velocity / drag へ揃えたい、あるアセットの色遷移を
+//      別アセットへ持っていきたい、という要求は制作中に必ず出る。
+//      これが無いと 8 キーぶんのドラッグを目分量でやり直すことになる。
+scene::ParticleCurve    s_curveClipboard;
+bool                    s_hasCurveClipboard = false;
+scene::ParticleGradient s_gradientClipboard;
+bool                    s_hasGradientClipboard = false;
+
 } // namespace
 
 bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue, float height)
@@ -44,6 +56,92 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
 
     ImGui::PushID(label);
     ImGui::TextUnformatted(label);
+
+    // 補間モード。キー単位ではなくカーブ単位 (GPU パッキングの都合、詳細は ParticleEmitter.hpp)。
+    {
+        static const char* kModes[] = { "Linear", "Step", "Smooth" };
+        int mode = static_cast<int>(curve.interpolation);
+        ImGui::SetNextItemWidth(110.0f);
+        if (ImGui::Combo("##curve_interp", &mode, kModes, IM_ARRAYSIZE(kModes))) {
+            curve.interpolation = static_cast<scene::ParticleCurveInterpolation>(mode);
+            changed = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Linear: 直線 / Step: 次のキーまで保持 (点滅・段階切替)\n"
+                              "Smooth: smoothstep (始点と終点で速度 0。折れ線に見えない)");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%u/%u keys", curve.keyCount,
+                            static_cast<unsigned>(curve.keys.size()));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("...")) ImGui::OpenPopup("##curve_menu");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("プリセット / コピー & ペースト / 数値でのキー入力");
+
+        if (ImGui::BeginPopup("##curve_menu")) {
+            if (ImGui::BeginMenu("Preset")) {
+                for (const asset::ParticleCurvePreset& preset : asset::ParticleCurvePresets()) {
+                    // string_view は null 終端を保証しないが、この表はリテラル由来なので安全。
+                    if (!ImGui::MenuItem(preset.name.data())) continue;
+                    asset::ApplyParticleCurvePreset(curve, preset, maxValue);
+                    changed = true;
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", preset.description.data());
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Copy Curve")) {
+                s_curveClipboard = curve;
+                s_hasCurveClipboard = true;
+            }
+            if (ImGui::MenuItem("Paste Curve", nullptr, false, s_hasCurveClipboard)) {
+                curve = s_curveClipboard;
+                changed = true;
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("同じ減衰を size / velocity / drag へ揃えるときに使います");
+            ImGui::Separator();
+            // 数値入力。ドラッグでは 0.5 や 1.0 をちょうど掴めないため、
+            // 「ここは厳密に 0 にしたい」類の指定はこちらで行う。
+            ImGui::TextDisabled("Keys");
+            for (uint32_t i = 0; i < curve.keyCount; ++i) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::SetNextItemWidth(70.0f);
+                if (ImGui::DragFloat("##t", &curve.keys[i].time, 0.005f, 0.0f, 1.0f, "t %.3f")) {
+                    curve.keys[i].time = Clamp01(curve.keys[i].time);
+                    changed = true;
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(80.0f);
+                if (ImGui::DragFloat("##v", &curve.keys[i].value, maxValue * 0.005f,
+                                     0.0f, maxValue, "v %.3f"))
+                    changed = true;
+                ImGui::SameLine();
+                // 最小 2 キーは Evaluate の前提なので割り込ませない。
+                if (curve.keyCount > 2 && ImGui::SmallButton("-")) {
+                    for (uint32_t j = i; j + 1 < curve.keyCount; ++j) curve.keys[j] = curve.keys[j + 1];
+                    --curve.keyCount;
+                    changed = true;
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::PopID();
+            }
+            if (curve.keyCount < curve.keys.size() && ImGui::SmallButton("+ Add Key")) {
+                // 末尾の 1 つ手前へ、時間・値とも中点を挿す (末尾を動かさないので形が壊れない)。
+                const auto& last = curve.keys[curve.keyCount - 1];
+                const auto& previous = curve.keys[curve.keyCount - 2];
+                curve.keys[curve.keyCount] = last;
+                curve.keys[curve.keyCount - 1] = {
+                    (previous.time + last.time) * 0.5f, (previous.value + last.value) * 0.5f
+                };
+                ++curve.keyCount;
+                changed = true;
+            }
+            if (changed) SortKeysByTime(curve.keys, curve.keyCount);
+            ImGui::EndPopup();
+        }
+    }
 
     const float  width = (std::max)(ImGui::GetContentRegionAvail().x, 120.0f);
     const ImVec2 size(width, height);
@@ -73,11 +171,19 @@ bool CurveEditor(const char* label, scene::ParticleCurve& curve, float maxValue,
     }
     draw->AddRect(rectMin, rectMax, IM_COL32(70, 76, 90, 255), 3.0f);
 
-    // カーブ折れ線 (Evaluate と同じ線形補間なので、キー間を直線で結ぶだけで正確)
-    for (uint32_t i = 0; i + 1 < curve.keyCount; ++i) {
-        const ImVec2 a = toScreen(curve.keys[i].time, curve.keys[i].value);
-        const ImVec2 b = toScreen(curve.keys[i + 1].time, curve.keys[i + 1].value);
-        draw->AddLine(a, b, IM_COL32(120, 200, 255, 255), 2.0f);
+    // カーブ本体は Evaluate() を等間隔サンプルして描く。
+    // WHY: 以前はキー間を直線で結んでいた。線形補間しか無かった頃はそれで正確だったが、
+    //      Step / Smooth を足した今は「表示は直線、実際は階段」という嘘になる。
+    //      評価関数そのものを描けば、補間モードを増やしても表示は自動で追従する。
+    {
+        constexpr int kSamples = 96;
+        ImVec2 previous = toScreen(0.0f, curve.Evaluate(0.0f));
+        for (int i = 1; i <= kSamples; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(kSamples);
+            const ImVec2 current = toScreen(t, curve.Evaluate(t));
+            draw->AddLine(previous, current, IM_COL32(120, 200, 255, 255), 2.0f);
+            previous = current;
+        }
     }
     // 端の外側は端値でクランプされることを点線ふうの薄い線で示す
     {
@@ -165,6 +271,79 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient)
     ImGui::PushID(label);
     ImGui::TextUnformatted(label);
 
+    {
+        static const char* kModes[] = { "Linear", "Step", "Smooth" };
+        int mode = static_cast<int>(gradient.interpolation);
+        ImGui::SetNextItemWidth(110.0f);
+        if (ImGui::Combo("##gradient_interp", &mode, kModes, IM_ARRAYSIZE(kModes))) {
+            gradient.interpolation = static_cast<scene::ParticleCurveInterpolation>(mode);
+            changed = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Step は「炎から煙へ切り替わる瞬間」のような硬い変化に使う");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%u/%u keys", gradient.keyCount,
+                            static_cast<unsigned>(gradient.keys.size()));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("...")) ImGui::OpenPopup("##gradient_menu");
+        if (ImGui::BeginPopup("##gradient_menu")) {
+            if (ImGui::MenuItem("Copy Gradient")) {
+                s_gradientClipboard = gradient;
+                s_hasGradientClipboard = true;
+            }
+            if (ImGui::MenuItem("Paste Gradient", nullptr, false, s_hasGradientClipboard)) {
+                gradient = s_gradientClipboard;
+                changed = true;
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("芯炎と外炎で色温度を揃えるときに使います");
+            ImGui::Separator();
+            // 「終端のアルファを厳密に 0 にする」はグラデーション調整で最頻出の要求で、
+            // マーカーのドラッグでは正確に 0 を掴めない。数値で入れられるようにする。
+            ImGui::TextDisabled("Keys");
+            for (uint32_t i = 0; i < gradient.keyCount; ++i) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::SetNextItemWidth(80.0f);
+                if (ImGui::DragFloat("##t", &gradient.keys[i].time, 0.005f, 0.0f, 1.0f, "t %.3f")) {
+                    gradient.keys[i].time = Clamp01(gradient.keys[i].time);
+                    changed = true;
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(200.0f);
+                if (ImGui::ColorEdit4("##c", &gradient.keys[i].color.x,
+                                      ImGuiColorEditFlags_AlphaBar
+                                          | ImGuiColorEditFlags_AlphaPreviewHalf
+                                          | ImGuiColorEditFlags_Float
+                                          | ImGuiColorEditFlags_HDR))
+                    changed = true;
+                ImGui::SameLine();
+                if (gradient.keyCount > 2 && ImGui::SmallButton("-")) {
+                    for (uint32_t j = i; j + 1 < gradient.keyCount; ++j)
+                        gradient.keys[j] = gradient.keys[j + 1];
+                    --gradient.keyCount;
+                    changed = true;
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::PopID();
+            }
+            if (gradient.keyCount < gradient.keys.size() && ImGui::SmallButton("+ Add Key")) {
+                const auto last = gradient.keys[gradient.keyCount - 1];
+                const auto previous = gradient.keys[gradient.keyCount - 2];
+                gradient.keys[gradient.keyCount] = last;
+                gradient.keys[gradient.keyCount - 1].time = (previous.time + last.time) * 0.5f;
+                gradient.keys[gradient.keyCount - 1].color = {
+                    (previous.color.x + last.color.x) * 0.5f, (previous.color.y + last.color.y) * 0.5f,
+                    (previous.color.z + last.color.z) * 0.5f, (previous.color.w + last.color.w) * 0.5f
+                };
+                ++gradient.keyCount;
+                changed = true;
+            }
+            if (changed) SortKeysByTime(gradient.keys, gradient.keyCount);
+            ImGui::EndPopup();
+        }
+    }
+
     const float  width     = (std::max)(ImGui::GetContentRegionAvail().x, 120.0f);
     const float  barHeight = 22.0f;
     const float  markerH   = 14.0f;
@@ -187,23 +366,23 @@ bool GradientEditor(const char* label, scene::ParticleGradient& gradient)
         }
     }
 
-    // グラデーションバー本体。Evaluate と同じ線形補間なので、キー区間ごとの水平グラデで正確に描ける
+    // グラデーションバー本体は Evaluate() の等間隔サンプルを細い短冊で並べて描く。
+    // WHY: カーブ側と同じ理由。キー間を水平グラデで結ぶ描き方は線形補間専用で、
+    //      Step / Smooth を足すと表示と実際の色が食い違う。
     auto timeToX = [&](float time) { return rectMin.x + Clamp01(time) * width; };
     {
-        const math::Vector4& first = gradient.keys[0].color;
-        draw->AddRectFilledMultiColor({ rectMin.x, rectMin.y }, { timeToX(gradient.keys[0].time), barMax.y },
-                                      ToImColor(first), ToImColor(first), ToImColor(first), ToImColor(first));
-        for (uint32_t i = 0; i + 1 < gradient.keyCount; ++i) {
-            const ImU32 c0 = ToImColor(gradient.keys[i].color);
-            const ImU32 c1 = ToImColor(gradient.keys[i + 1].color);
-            draw->AddRectFilledMultiColor({ timeToX(gradient.keys[i].time), rectMin.y },
-                                          { timeToX(gradient.keys[i + 1].time), barMax.y },
-                                          c0, c1, c1, c0);
+        constexpr int kSamples = 128;
+        const float stripe = width / static_cast<float>(kSamples);
+        for (int i = 0; i < kSamples; ++i) {
+            const float t0 = static_cast<float>(i) / static_cast<float>(kSamples);
+            const float t1 = static_cast<float>(i + 1) / static_cast<float>(kSamples);
+            const ImU32 c0 = ToImColor(gradient.Evaluate(t0));
+            const ImU32 c1 = ToImColor(gradient.Evaluate(t1));
+            draw->AddRectFilledMultiColor(
+                { rectMin.x + static_cast<float>(i) * stripe, rectMin.y },
+                { rectMin.x + static_cast<float>(i + 1) * stripe, barMax.y },
+                c0, c1, c1, c0);
         }
-        const math::Vector4& last = gradient.keys[gradient.keyCount - 1].color;
-        draw->AddRectFilledMultiColor({ timeToX(gradient.keys[gradient.keyCount - 1].time), rectMin.y },
-                                      { barMax.x, barMax.y },
-                                      ToImColor(last), ToImColor(last), ToImColor(last), ToImColor(last));
     }
     draw->AddRect({ rectMin.x, rectMin.y }, barMax, IM_COL32(70, 76, 90, 255));
 

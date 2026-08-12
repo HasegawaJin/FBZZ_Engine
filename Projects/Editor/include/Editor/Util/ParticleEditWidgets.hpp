@@ -11,7 +11,10 @@ namespace fbzz::editor::widgets {
 
 // 折れ線カーブエディタ。キャンバス上でキーをドラッグして編集する。
 //   maxValue : 縦軸の最大値 (Size カーブ = 1.0, Velocity カーブ = 10.0 など)
-//   空きスペースをダブルクリックでキー追加 (最大4)、キーを右クリックで削除 (最小2)。
+//   空きスペースをダブルクリックでキー追加 (最大 kMaxParticleCurveKeys)、
+//   キーを右クリックで削除 (最小2)。上部のコンボで補間モード (Linear/Step/Smooth) を選ぶ。
+//   曲線・バーはキーを直線で結ぶのではなく Evaluate() をサンプルして描くため、
+//   補間モードを増やしても表示は自動で追従する。
 // @return true if curve was changed
 bool CurveEditor(const char* label, scene::ParticleCurve& curve,
                  float maxValue, float height = 96.0f);

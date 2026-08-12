@@ -5,6 +5,7 @@
 // 描画リソースの所有は Renderer 側に分ける。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <algorithm>
 #include <array>
@@ -18,7 +19,7 @@ namespace fbzz::renderer { class ResourceManager; }
 
 namespace fbzz::scene {
 
-// CS/VS 共通の GPU パーティクル 1 粒子レイアウト (80 bytes, 16-byte aligned)
+// CS/VS 共通の GPU パーティクル 1 粒子レイアウト (96 bytes, 16-byte aligned)
 // StructuredBuffer<GpuParticle> に格納し、CS が lifetime/age を更新、VS が位置を読む。
 struct GpuParticle {
     math::Vector3 position;        // 12B
@@ -31,6 +32,12 @@ struct GpuParticle {
     float         angularVelocity; // 4B
     float         spriteSeed;      // 4B
     math::Vector4 uvRect;          // 16B
+    // 粒子ごとの色倍率 (colorVariation の結果)。
+    // WHY: CS は毎フレーム色を CB の colorStart/End (または gradient) から作り直すため、
+    //      スポーン時に配ったゆらぎがそのままでは翌フレームに消える。倍率として保持し、
+    //      再計算した色へ毎フレーム掛け直すことで CPU 経路と同じ見た目になる。
+    math::Vector3 colorScale;      // 12B
+    float         colorScalePad;   // 4B
 };
 
 // CPU → CS へのスポーンリクエスト 1 件 (96 bytes, 16-byte aligned)
@@ -49,8 +56,13 @@ struct GpuSpawnEntry {
     float         pad1;            // 4B
 };
 
-static_assert(sizeof(GpuParticle) == 80, "GpuParticle must match ParticleGpuSim.cs.hlsl (80 bytes)");
+static_assert(sizeof(GpuParticle) == 96, "GpuParticle must match ParticleGpuSim.cs.hlsl (96 bytes)");
 static_assert(sizeof(GpuSpawnEntry) == 96, "GpuSpawnEntry must match ParticleGpuSim.cs.hlsl (96 bytes)");
+
+// 1 粒子が保持するトレイル履歴の最大点数。
+// WHY: 固定長にして Particle を POD のまま保つ。粒子ごとに vector を持たせると
+//      スポーン/消滅のたびにヒープ確保が走り、数千粒子では確保コストが支配的になる。
+inline constexpr int kMaxParticleTrailPoints = 8;
 
 struct Particle {
     math::Vector3 position;
@@ -69,19 +81,54 @@ struct Particle {
     math::Vector4 uvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
     math::Vector4 nextUvRect = { 0.0f, 0.0f, 1.0f, 1.0f };
     float spriteBlend = 0.0f;
+    // トレイル履歴。[0] が最新で、後ろほど古い (＝尾の先端側)。
+    // 位置はシミュレーション空間で持ち、描画時に粒子本体と同じ変換を通す。
+    std::array<math::Vector3, kMaxParticleTrailPoints> trailPoints{};
+    uint8_t trailCount = 0;
+    float   trailSampleTimer = 0.0f;
 };
 
 // ParticleCurveKey — 正規化時間に対する値 1 点。
-// 最大4点の固定長にしてGPU定数バッファへそのまま転送できるようにする。
+// 固定長にしてGPU定数バッファへそのまま転送できるようにする。
 struct ParticleCurveKey {
     float time = 0.0f;
     float value = 0.0f;
 };
 
-// ParticleCurve — 線形補間の軽量カーブ。Editorで最大4キーを編集する。
+// カーブ / グラデーションのキー上限。
+// WHY: 4 キーでは「立ち上がり → 保持 → 減衰 → 余韻」のような 4 区間すら表せず、
+//      爆発の閃光やループする炎の呼吸を作るのに足りなかった。8 キーあれば
+//      実用上の作り込みは足りる。GPU 定数バッファは float4 が 1 キー 2 点なので
+//      curve 1 本あたり 4 レジスタで収まる (上限を上げる場合は HLSL 側も対で直すこと)。
+inline constexpr uint32_t kMaxParticleCurveKeys = 8;
+
+// キー間の繋ぎ方。キー単位ではなくカーブ単位に持つ。
+// WHY: キー単位にすると GPU へ 1 キーあたり追加の float が要り、パッキングが崩れる。
+//      実用上「このカーブ全体をなめらかにしたい / 階段にしたい」が大半で、
+//      混在が要る場面はキーを増やして近似できる。
+enum class ParticleCurveInterpolation : uint8_t {
+    Linear = 0, // 直線
+    Step,       // 次のキーまで前の値を保持 (フリップブックの段階切替・点滅)
+    Smooth,     // smoothstep。始点と終点で速度 0 になり、機械的な折れ線に見えない
+};
+
+// 補間係数へ曲線モードを適用する。CPU/GPU で必ず同じ式にすること
+// (GPU 側は ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation)。
+inline float ApplyCurveInterpolation(float alpha, ParticleCurveInterpolation mode)
+{
+    if (mode == ParticleCurveInterpolation::Step) return 0.0f;
+    if (mode == ParticleCurveInterpolation::Smooth) return alpha * alpha * (3.0f - 2.0f * alpha);
+    return alpha;
+}
+
+// ParticleCurve — 軽量カーブ。Editorで最大 kMaxParticleCurveKeys キーを編集する。
 struct ParticleCurve {
-    std::array<ParticleCurveKey, 4> keys{{ {0.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f} }};
+    std::array<ParticleCurveKey, kMaxParticleCurveKeys> keys{{
+        {0.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f},
+        {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 1.0f}
+    }};
     uint32_t keyCount = 2;
+    ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear;
 
     float Evaluate(float time) const
     {
@@ -90,7 +137,8 @@ struct ParticleCurve {
         for (uint32_t index = 1; index < count; ++index) {
             if (time <= keys[index].time) {
                 const float span = (std::max)(keys[index].time - keys[index - 1].time, 0.0001f);
-                const float alpha = (std::max)(0.0f, (std::min)(1.0f, (time - keys[index - 1].time) / span));
+                float alpha = (std::max)(0.0f, (std::min)(1.0f, (time - keys[index - 1].time) / span));
+                alpha = ApplyCurveInterpolation(alpha, interpolation);
                 return keys[index - 1].value + (keys[index].value - keys[index - 1].value) * alpha;
             }
         }
@@ -103,13 +151,17 @@ struct ParticleGradientKey {
     math::Vector4 color = { 1, 1, 1, 1 };
 };
 
-// ParticleGradient — GPU転送可能な最大4色の線形Gradient。
+// ParticleGradient — GPU転送可能な色Gradient。キー上限はカーブと共通。
+// Step 補間は「炎から煙へ切り替わる瞬間」のような硬い変化を作るのに使う。
 struct ParticleGradient {
-    std::array<ParticleGradientKey, 4> keys{{
+    std::array<ParticleGradientKey, kMaxParticleCurveKeys> keys{{
         {0.0f, {1, 1, 1, 1}}, {1.0f, {1, 1, 1, 0}},
+        {1.0f, {1, 1, 1, 0}}, {1.0f, {1, 1, 1, 0}},
+        {1.0f, {1, 1, 1, 0}}, {1.0f, {1, 1, 1, 0}},
         {1.0f, {1, 1, 1, 0}}, {1.0f, {1, 1, 1, 0}}
     }};
     uint32_t keyCount = 2;
+    ParticleCurveInterpolation interpolation = ParticleCurveInterpolation::Linear;
 
     math::Vector4 Evaluate(float time) const
     {
@@ -118,7 +170,8 @@ struct ParticleGradient {
         for (uint32_t index = 1; index < count; ++index) {
             if (time <= keys[index].time) {
                 const float span = (std::max)(keys[index].time - keys[index - 1].time, 0.0001f);
-                const float alpha = (std::max)(0.0f, (std::min)(1.0f, (time - keys[index - 1].time) / span));
+                float alpha = (std::max)(0.0f, (std::min)(1.0f, (time - keys[index - 1].time) / span));
+                alpha = ApplyCurveInterpolation(alpha, interpolation);
                 const math::Vector4& a = keys[index - 1].color;
                 const math::Vector4& b = keys[index].color;
                 return { a.x + (b.x - a.x) * alpha, a.y + (b.y - a.y) * alpha,
@@ -150,11 +203,19 @@ struct MeshShapeVertex {
 struct ParticleEmitter {
     math::Vector3 emitPosition   = {};
     math::Vector3 emitVelocity   = { 0.0f, 4.0f, 0.0f };
+    // 初速のばらつき [m/s]。emitVelocity の 3 軸へ等方に ±velocitySpread を加える。
+    // Sphere / Cone 形状が持つ方向成分 (shapeVelocity) とは別枠で、こちらは純粋な揺らぎ。
     float         velocitySpread = 1.5f;
     math::Vector4 colorStart     = { 1.0f, 0.7f, 0.2f, 1.0f };
     math::Vector4 colorEnd       = { 1.0f, 0.1f, 0.0f, 0.0f };
     float         sizeStart      = 0.4f;
     float         sizeEnd        = 0.05f;
+    // ビルボードの縦横比。size に対する軸ごとの倍率で、xy のみ使う (z は Mesh Particle 用)。
+    // WHY: 粒子サイズが等方の正方形しか作れないと、縦に伸びる炎・平たい衝撃波・
+    //      横に流れる煙といった AAA で常用する形が組めない。粒子ごとではなく
+    //      エミッター単位の値なので、per-particle データではなく定数バッファへ載せる
+    //      (頂点フォーマットを太らせずに済む)。
+    math::Vector3 sizeAxisScale  = { 1.0f, 1.0f, 1.0f };
     float         lifetime       = 2.0f;
     float         lifetimeRandom = 0.0f;
     float         emitRate       = 30.0f;
@@ -187,6 +248,12 @@ struct ParticleEmitter {
 
     ParticleBlendMode blendMode = ParticleBlendMode::Additive;
     ParticleSortMode  sortMode  = ParticleSortMode::None;
+    // エミッター間の描画順。小さいほど先に描かれる (＝奥に見える)。
+    // WHY: sortMode は 1 エミッター内の粒子しか並べ替えない。炎と煙のように
+    //      別エミッターが重なる構成では、GameObject の並び順で前後が決まってしまい、
+    //      シーンを編集しただけで見た目が変わる。優先度を明示して安定させる。
+    //      同値のときはカメラから遠い順に描く (半透明の一般的な描画順)。
+    int renderPriority = 0;
     ParticleSimulationMode simulationMode = ParticleSimulationMode::Cpu;
     ParticleSimulationSpace simulationSpace = ParticleSimulationSpace::World;
     ParticleRenderMode renderMode = ParticleRenderMode::Billboard;
@@ -211,6 +278,9 @@ struct ParticleEmitter {
     std::string meshParticlePath;
     // texturePath — deprecated。materialPath が空のときのフォールバック。
     std::string texturePath;
+    // テクスチャからアルファをどう取り出すか。素材の作りの違いを吸収する。
+    // 既定は TextureAlpha なので、既存アセットの見た目は変わらない。
+    ParticleAlphaSource alphaSource = ParticleAlphaSource::TextureAlpha;
     int spriteColumns = 1;
     int spriteRows    = 1;
     int spriteStartFrame = 0;
@@ -218,10 +288,21 @@ struct ParticleEmitter {
     ParticleFlipbookMode flipbookMode = ParticleFlipbookMode::Lifetime;
     float flipbookFramesPerSecond = 24.0f;
     bool flipbookFrameBlending = false;
+    // 粒子ごとに再生位相をずらす。同時に湧いた煙が全部同じコマで回るのを防ぐ。
+    bool spriteRandomStartFrame = false;
+    // アトラスの各行を「見た目の異なるバリエーション」として扱い、粒子ごとに1行を選ぶ。
+    // 選ばれた行の中だけでアニメーションする (spriteStartFrame/EndFrame より優先)。
+    bool spriteRandomRow = false;
     // Motion Vector atlasは各frameのRGを[-1,1]速度として読み、隣接frameを双方向warpする。
     bool motionVectorFlipbook = false;
     std::string motionVectorTexturePath;
     float motionVectorStrength = 1.0f;
+    // 粒子ごとの色ゆらぎ [0,1]。発生時に RGB を各チャンネル独立で ±colorVariation 倍する。
+    // WHY: 同じエミッターから出た粒子が完全に同色だと、群れが一枚のベタ塗りに見える。
+    //      チャンネル独立にすることで明度差と軽い色相差が同時に出て、炎・火花に厚みが出る。
+    //      per-particle の startColor/endColor は CPU/GPU 双方のスポーン経路に既にあるため、
+    //      頂点フォーマットも定数バッファも増やさずに効かせられる。
+    float colorVariation = 0.0f;
     float sizeCurvePower = 1.0f;
     float colorCurvePower = 1.0f;
     float velocityDamping = 0.0f;
@@ -233,17 +314,76 @@ struct ParticleEmitter {
     ParticleCurve velocityCurve;
     bool useColorGradient = false;
     ParticleGradient colorGradient;
+    // 角速度に掛ける時間倍率。定数の angularVelocity だけでは
+    // 「勢いよく回り始めて減速する」火の粉・破片の動きが作れない。
+    bool useRotationCurve = false;
+    ParticleCurve rotationCurve;
+    // velocityDamping に掛ける時間倍率。噴き出し直後は素直に飛び、
+    // 後半で急に空気抵抗が効く、といった減衰の作り分けに使う。
+    bool useDragCurve = false;
+    ParticleCurve dragCurve;
+
+    // ── 速度モジュール (エミッター原点まわりの周回・放射) ──
+    // WHY: 重力とノイズだけでは「渦を巻きながら広がる」魔法陣・竜巻・吸い込みが作れない。
+    //      ForceField はシーン全体の場だが、こちらはエミッターに追従する固有の運動として効く。
+    math::Vector3 orbitalAxis = { 0.0f, 1.0f, 0.0f }; // 周回の回転軸 (正規化して使う)
+    float orbitalVelocity = 0.0f;  // 軸まわりの接線加速度 [m/s^2]
+    float radialVelocity  = 0.0f;  // 原点から外向きの加速度 [m/s^2]。負で吸い込み
+    // 発生時にエミッター自身の移動速度を初速へ加算する割合 [0,1]。
+    // 移動する剣・ロケットから出る火花が置き去りにならず、引きずられて見えるようになる。
+    float inheritVelocity = 0.0f;
 
     // Emission拡張: 移動距離、Prewarm、時刻指定Burst。
     float rateOverDistance = 0.0f;
     bool prewarm = false;
     std::vector<ParticleBurst> bursts;
 
+    // ── per-particle Trail ──
+    // 粒子 1 つ 1 つに尾を付ける。火の粉・魔法の軌跡のように「粒が線を引く」表現用。
+    // 実装は履歴点へビルボードを連ねる方式で、専用の ribbon シェーダーは持たない。
+    // WHY: 既存のパーティクル描画 (シェーダー・PSO・テクスチャ・ブレンド) をそのまま
+    //      使えるため、素材やブレンド設定が本体と自動的に揃う。サンプル間隔を十分
+    //      短くすれば連続した尾として見える。真の連続リボンが要るケース (太い帯) は
+    //      従来どおり Trail ノードを使う。
+    // GPU シミュレーションでは履歴を保持できないため、有効時は CPU へ縮退する
+    // (CanUseGpuSimulation を参照)。
+    bool  trailEnabled = false;
+    int   trailPointCount = 6;          // 使用する履歴点数 [1, kMaxParticleTrailPoints]
+    float trailSampleInterval = 0.03f;  // 履歴を刻む間隔 [秒]。短いほど滑らか
+    float trailWidthScale = 0.6f;       // 尾の先端 (最古) 側のサイズ倍率
+    float trailAlphaScale = 0.5f;       // 尾の先端側の不透明度倍率
+    math::Vector4 trailColorTint = { 1.0f, 1.0f, 1.0f, 1.0f };
+    // 履歴点へビルボードを並べるのではなく、連続した 1 枚の帯として描く。
+    // WHY: ビルボード方式は「点を細かく打てば線に見える」だけで、太くすると必ず粒の連なりが露見する。
+    //      剣閃・魔法の軌跡・リボン状の炎のように「幅のある帯」が主役の表現はこれでは作れない。
+    //      有効時は履歴点をポリラインとみなし、隣り合う点をマイター接合した帯を張る
+    //      (Trail ノードと同じリボン生成・同じシェーダーを使う)。
+    // NOTE: 帯は 1 エミッターぶんをまとめて 1 DrawCall で描くため、色は粒子ごとではなく
+    //       エミッターの colorStart / colorEnd を帯の長さ方向へ配る。
+    //       粒子ごとの色ゆらぎを尾へ乗せたい場合はビルボード方式のままにすること。
+    // 自己影。粒子群が自分自身へ落とす影の濃さ。0 で無効。
+    // WHY: 受け影 (receiveShadows) は他の物体が落とす影しか扱えない。厚みのある煙・雲は
+    //      自分の内部で光が減衰することで初めて立体に見え、これが無いと
+    //      どれだけ粒子を重ねても平坦な塊のままになる。
+    // NOTE: 有効にすると光源から見た密度を 1 枚 RT へ積む追加パスが走る
+    //       (エミッター単位ではなくシーン全体で 1 パス)。
+    float selfShadowStrength = 0.0f;
+    bool  trailRibbon = false;
+    // 帯の幅 [m]。0 以下なら粒子サイズをそのまま使う。
+    // WHY: 帯は粒子サイズと独立に太さを決めたいことが多い (小さな火の粉が太い軌跡を引く等)。
+    float trailRibbonWidth = 0.0f;
+
     // SubEmitterはGameObject名で参照し、各イベントで対象EmitterへBurstを積む。
     std::string birthSubEmitter;
     std::string deathSubEmitter;
     std::string collisionSubEmitter;
     int subEmitterBurstCount = 1;
+    // 名前引きの探索範囲を限定するルート GameObject。INVALID でシーン全体 (従来どおり)。
+    // WHY: VFX Graph が生成するノード実体は、同じ .vfx を複数配置すれば同名の GO が並ぶ。
+    //      シーン全体を名前で引くと、隣に置いた別インスタンスの粒子を誤って吹かせてしまう。
+    //      VFXGraphSystem がここへ owner を入れ、参照をそのエフェクト内へ閉じる。
+    // NOTE: ランタイム専用。シーン保存対象ではない (シーン上の手置き Emitter は INVALID のまま)。
+    EntityID subEmitterScopeRoot = EntityID::INVALID;
 
     bool softParticles = false;
     float softParticleFadeDistance = 0.5f;
@@ -253,6 +393,20 @@ struct ParticleEmitter {
     bool sixWayLighting = false;
     float lightingStrength = 1.0f;
     float emissiveScale = 1.0f;
+    // 影を受けるか。既定は無効 (発光エフェクトは影の中でも光るのが自然なため)。
+    // WHY: 煙・埃のような非発光の粒子は、影の中で暗くならないと背景から浮いて見える。
+    //      AAA で「パーティクルが浮く」最大の原因がこれ。
+    bool receiveShadows = false;
+    float shadowStrength = 1.0f;
+    // ボリュメトリック煙: ビルボード内で球状密度場をレイマーチして厚みを出す。
+    // WHY: 板にテクスチャを貼るだけでは、カメラが回り込むと紙が回ったように見える。
+    //      視線方向へ積分すると立体感と逆光での前方散乱が出る。
+    // 役割が重複するため sixWayLighting とは排他 (Inspector 側で相互に落とす)。
+    bool volumetric = false;
+    int volumetricSteps = 8;
+    float volumetricDensity = 1.0f;
+    float volumetricAnisotropy = 0.3f;
+    float volumetricNoiseScale = 2.0f;
 
     // Culling/LOD — 粒子の現在Boundsを使い、遠距離では発生数と描画数を段階的に削減する。
     bool cullingEnabled = true;
@@ -297,6 +451,18 @@ struct ParticleEmitter {
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;    // DYNAMIC SRV: CPU がスポーンデータを書く
     renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuEmitterCB;      // CS 用エミッター定数バッファ
     renderer::ResourceHandle<renderer::ConstantBufferTag>   renderCB;          // VS/PS 描画モード・Soft Particle
+    // GPU ソート。sortMode != None のときだけ確保する。
+    // WHY: 粒子プールそのものは並べ替えられない (リングバッファ位置が動くとスポーンが壊れる)。
+    //      並べ替えるのは (キー, 粒子 index) の対だけで、描画 VS がその順に粒子を引く。
+    // 連続リボン (trailRibbon)。帯の頂点は毎フレーム CPU で作り直す。
+    // WHY: 履歴点はビルボード用にしか持っていないため、帯の形は粒子の運動から
+    //      その場で組み立てるしかない (GPU シミュレーションでは履歴を持てないので CPU 限定)。
+    renderer::ResourceHandle<renderer::BufferTag>           trailRibbonVB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag>   trailRibbonCB;
+    uint32_t trailRibbonVertexCapacity = 0;
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSortBuffer;     // RWStructuredBuffer<uint2>
+    renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuSortCB;         // bitonic の (k, j) を段ごとに更新
+    uint32_t gpuSortCapacity = 0;   // gpuSortBuffer の要素数 (2 のべき乗、maxParticles 以上)
     uint32_t gpuWriteHead    = 0;   // gpuSpawnBuffer の次書き込み位置 (リングバッファインデックス)
     uint32_t gpuSpawnCount   = 0;   // 今フレームのスポーン数
     bool     gpuInitialized  = false;
@@ -316,6 +482,9 @@ struct ParticleEmitter {
     int prewarmSpawnPending = 0;
     bool hasLastEmitterPosition = false;
     math::Vector3 lastEmitterPosition = {};
+    // エミッター自身のワールド速度 [m/s]。inheritVelocity がスポーン時に参照する。
+    // ParticleSimulationSystem が lastEmitterPosition を更新するのと同じ場所で毎フレーム求める。
+    math::Vector3 emitterVelocity = {};
     float distanceEmitAccum = 0.0f;
     std::vector<int> burstCyclesFired;
 
@@ -354,6 +523,7 @@ struct ParticleEmitter {
         prewarmed              = false;
         prewarmSpawnPending    = 0;
         hasLastEmitterPosition = false;
+        emitterVelocity        = {};
         distanceEmitAccum      = 0.0f;
         randomState            = randomSeed != 0 ? randomSeed : 1;
         particles.clear();
@@ -407,7 +577,8 @@ struct ParticleEmitter {
 
         int blendValue = static_cast<int>(blendMode);
         r.Field("blendMode", blendValue);
-        blendValue = blendValue < 0 ? 0 : (blendValue > 1 ? 1 : blendValue);
+        // Premultiplied(2)を保存後も維持する。上限1のままだとExplosion生成時の設定がAlphaへ戻る。
+        blendValue = blendValue < 0 ? 0 : (blendValue > 2 ? 2 : blendValue);
         blendMode = static_cast<ParticleBlendMode>(blendValue);
 
         int sortValue = static_cast<int>(sortMode);

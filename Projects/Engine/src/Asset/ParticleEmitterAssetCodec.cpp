@@ -63,30 +63,117 @@ T ReadEnum(const toml::table& table, const char* key, T fallback, int maximum)
     return static_cast<T>(std::clamp(ReadInt(table, key, static_cast<int>(fallback)), 0, maximum));
 }
 
+// 旧名のまま残す薄いラッパー。実体は公開関数側にあり、VFX ノードの codec と共有する。
 void WriteCurve(toml::table& table, const char* name, const scene::ParticleCurve& curve)
+{
+    table.insert(name, SerializeParticleCurve(curve));
+}
+
+void ReadCurve(const toml::table& table, const char* name, scene::ParticleCurve& curve)
+{
+    DeserializeParticleCurve(table, name, curve);
+}
+
+} // namespace
+
+// カーブ / グラデーションは 2 形式を読める。
+//   旧: sizeCurve = [[t,v], ...]                  (補間モードが無い時代のアセット)
+//   新: sizeCurve = { interp = 2, keys = [[t,v], ...] }
+// WHY: 補間モードを別キー (sizeCurveInterp 等) にすると「TOML キー ⊆ スキーマ leaf」を
+//      検証している VFXSchema テストが落ちる。スキーマ上 Curve は 1 leaf なので、
+//      TOML でも 1 キーの中に閉じ込めるのが筋。読み込みだけ旧形式へ後方互換を残す。
+namespace {
+
+toml::array WriteCurveKeys(const scene::ParticleCurve& curve)
 {
     toml::array array;
     const std::uint32_t count = (std::min)(curve.keyCount,
         static_cast<std::uint32_t>(curve.keys.size()));
     for (std::uint32_t index = 0; index < count; ++index)
         array.push_back(toml::array{ curve.keys[index].time, curve.keys[index].value });
-    table.insert(name, std::move(array));
+    return array;
 }
 
-void ReadCurve(const toml::table& table, const char* name, scene::ParticleCurve& curve)
+// 補間モードを int から復元する。範囲外は Linear へ倒す (壊れたアセットで落とさない)。
+scene::ParticleCurveInterpolation ReadInterpolation(const toml::node_view<const toml::node>& value)
 {
-    const auto* array = table[name].as_array();
-    if (array == nullptr || array->empty()) return;
-    curve.keyCount = static_cast<std::uint32_t>((std::min)(array->size(), curve.keys.size()));
-    for (std::uint32_t index = 0; index < curve.keyCount; ++index) {
-        const auto* key = (*array)[index].as_array();
-        if (key == nullptr || key->size() < 2) continue;
-        curve.keys[index].time = static_cast<float>((*key)[0].value_or(0.0));
-        curve.keys[index].value = static_cast<float>((*key)[1].value_or(0.0));
-    }
+    const int mode = static_cast<int>(value.value_or(std::int64_t{0}));
+    return static_cast<scene::ParticleCurveInterpolation>(
+        std::clamp(mode, 0, static_cast<int>(scene::ParticleCurveInterpolation::Smooth)));
+}
+
+// 旧形式(配列) / 新形式(テーブル) のどちらからでもキー配列を取り出す。
+const toml::array* CurveKeyArray(const toml::node_view<const toml::node>& value)
+{
+    if (const auto* array = value.as_array()) return array;
+    if (const auto* table = value.as_table()) return (*table)["keys"].as_array();
+    return nullptr;
 }
 
 } // namespace
+
+toml::table SerializeParticleCurve(const scene::ParticleCurve& curve)
+{
+    toml::table table;
+    table.insert("interp", static_cast<std::int64_t>(curve.interpolation));
+    table.insert("keys", WriteCurveKeys(curve));
+    return table;
+}
+
+void DeserializeParticleCurve(const toml::table& table, const char* key,
+                              scene::ParticleCurve& outCurve)
+{
+    const auto value = table[key];
+    const auto* array = CurveKeyArray(value);
+    if (array == nullptr || array->empty()) return;
+    if (const auto* asTable = value.as_table())
+        outCurve.interpolation = ReadInterpolation((*asTable)["interp"]);
+    outCurve.keyCount = static_cast<std::uint32_t>((std::min)(array->size(), outCurve.keys.size()));
+    for (std::uint32_t index = 0; index < outCurve.keyCount; ++index) {
+        const auto* entry = (*array)[index].as_array();
+        if (entry == nullptr || entry->size() < 2) continue;
+        outCurve.keys[index].time = static_cast<float>((*entry)[0].value_or(0.0));
+        outCurve.keys[index].value = static_cast<float>((*entry)[1].value_or(0.0));
+    }
+}
+
+toml::table SerializeParticleGradient(const scene::ParticleGradient& gradient)
+{
+    toml::array array;
+    const std::uint32_t count = (std::min)(gradient.keyCount,
+        static_cast<std::uint32_t>(gradient.keys.size()));
+    for (std::uint32_t index = 0; index < count; ++index) {
+        const auto& key = gradient.keys[index];
+        array.push_back(toml::array{ key.time, key.color.x, key.color.y, key.color.z, key.color.w });
+    }
+    toml::table table;
+    table.insert("interp", static_cast<std::int64_t>(gradient.interpolation));
+    table.insert("keys", std::move(array));
+    return table;
+}
+
+void DeserializeParticleGradient(const toml::table& table, const char* key,
+                                 scene::ParticleGradient& outGradient)
+{
+    const auto value = table[key];
+    const auto* array = CurveKeyArray(value);
+    if (array == nullptr || array->empty()) return;
+    if (const auto* asTable = value.as_table())
+        outGradient.interpolation = ReadInterpolation((*asTable)["interp"]);
+    outGradient.keyCount =
+        static_cast<std::uint32_t>((std::min)(array->size(), outGradient.keys.size()));
+    for (std::uint32_t index = 0; index < outGradient.keyCount; ++index) {
+        const auto* entry = (*array)[index].as_array();
+        if (entry == nullptr || entry->size() < 5) continue;
+        outGradient.keys[index].time = static_cast<float>((*entry)[0].value_or(0.0));
+        outGradient.keys[index].color = {
+            static_cast<float>((*entry)[1].value_or(1.0)),
+            static_cast<float>((*entry)[2].value_or(1.0)),
+            static_cast<float>((*entry)[3].value_or(1.0)),
+            static_cast<float>((*entry)[4].value_or(1.0))
+        };
+    }
+}
 
 toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitter)
 {
@@ -101,6 +188,7 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     table.insert("colorEnd", WriteVector4(emitter.colorEnd));
     table.insert("gravity", WriteVector3(emitter.gravity));
     table.insert("boxExtents", WriteVector3(emitter.boxExtents));
+    table.insert("sizeAxisScale", WriteVector3(emitter.sizeAxisScale));
     FBZZ_VFX_FLOAT(velocitySpread); FBZZ_VFX_FLOAT(sizeStart); FBZZ_VFX_FLOAT(sizeEnd);
     FBZZ_VFX_FLOAT(lifetime); FBZZ_VFX_FLOAT(lifetimeRandom); FBZZ_VFX_FLOAT(emitRate);
     FBZZ_VFX_INT(maxParticles); FBZZ_VFX_INT(randomSeed); FBZZ_VFX_BOOL(enabled);
@@ -110,21 +198,35 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
     FBZZ_VFX_STRING(meshShapePath); FBZZ_VFX_INT(meshShapeIndex); FBZZ_VFX_FLOAT(meshShapeScale);
     FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation); FBZZ_VFX_INT(blendMode); FBZZ_VFX_INT(sortMode);
     FBZZ_VFX_INT(simulationMode); FBZZ_VFX_INT(simulationSpace); FBZZ_VFX_INT(renderMode);
+    FBZZ_VFX_INT(alphaSource);
     FBZZ_VFX_FLOAT(stretchedVelocityScale); FBZZ_VFX_FLOAT(stretchedLengthScale);
+    FBZZ_VFX_INT(renderPriority);
     FBZZ_VFX_INT(collisionMode); FBZZ_VFX_INT(collisionResponse); FBZZ_VFX_FLOAT(collisionRadius);
     FBZZ_VFX_FLOAT(collisionBounciness); FBZZ_VFX_FLOAT(collisionDamping); FBZZ_VFX_FLOAT(collisionPlaneY);
     FBZZ_VFX_STRING(materialPath); FBZZ_VFX_STRING(meshParticlePath); FBZZ_VFX_STRING(texturePath); FBZZ_VFX_INT(spriteColumns);
     FBZZ_VFX_INT(spriteRows); FBZZ_VFX_INT(spriteStartFrame); FBZZ_VFX_INT(spriteEndFrame);
     FBZZ_VFX_INT(flipbookMode); FBZZ_VFX_FLOAT(flipbookFramesPerSecond); FBZZ_VFX_BOOL(flipbookFrameBlending);
     FBZZ_VFX_BOOL(motionVectorFlipbook); FBZZ_VFX_STRING(motionVectorTexturePath); FBZZ_VFX_FLOAT(motionVectorStrength);
+    FBZZ_VFX_FLOAT(colorVariation);
     FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
     FBZZ_VFX_BOOL(useSizeCurve); FBZZ_VFX_BOOL(useVelocityCurve); FBZZ_VFX_BOOL(useColorGradient);
+    FBZZ_VFX_BOOL(useRotationCurve); FBZZ_VFX_BOOL(useDragCurve);
+    FBZZ_VFX_FLOAT(orbitalVelocity); FBZZ_VFX_FLOAT(radialVelocity); FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
     FBZZ_VFX_STRING(deathSubEmitter); FBZZ_VFX_STRING(collisionSubEmitter); FBZZ_VFX_INT(subEmitterBurstCount);
+    FBZZ_VFX_BOOL(trailEnabled); FBZZ_VFX_INT(trailPointCount);
+    FBZZ_VFX_FLOAT(trailSampleInterval); FBZZ_VFX_FLOAT(trailWidthScale);
+    FBZZ_VFX_FLOAT(trailAlphaScale);
+    FBZZ_VFX_BOOL(trailRibbon); FBZZ_VFX_FLOAT(trailRibbonWidth);
+    FBZZ_VFX_FLOAT(selfShadowStrength);
     FBZZ_VFX_BOOL(softParticles); FBZZ_VFX_FLOAT(softParticleFadeDistance);
     FBZZ_VFX_BOOL(distortion); FBZZ_VFX_FLOAT(distortionStrength); FBZZ_VFX_BOOL(sixWayLighting);
     FBZZ_VFX_FLOAT(lightingStrength); FBZZ_VFX_FLOAT(emissiveScale);
+    FBZZ_VFX_BOOL(receiveShadows); FBZZ_VFX_FLOAT(shadowStrength);
+    FBZZ_VFX_BOOL(volumetric); FBZZ_VFX_INT(volumetricSteps);
+    FBZZ_VFX_FLOAT(volumetricDensity); FBZZ_VFX_FLOAT(volumetricAnisotropy);
+    FBZZ_VFX_FLOAT(volumetricNoiseScale);
     FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
     FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
     FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
@@ -135,17 +237,13 @@ toml::table SerializeParticleEmitterSettings(const scene::ParticleEmitter& emitt
 #undef FBZZ_VFX_BOOL
 #undef FBZZ_VFX_STRING
 
+    table.insert("orbitalAxis", WriteVector3(emitter.orbitalAxis));
+    table.insert("trailColorTint", WriteVector4(emitter.trailColorTint));
     WriteCurve(table, "sizeCurve", emitter.sizeCurve);
     WriteCurve(table, "velocityCurve", emitter.velocityCurve);
-    toml::array gradient;
-    const std::uint32_t gradientCount = (std::min)(emitter.colorGradient.keyCount,
-        static_cast<std::uint32_t>(emitter.colorGradient.keys.size()));
-    for (std::uint32_t index = 0; index < gradientCount; ++index) {
-        const auto& key = emitter.colorGradient.keys[index];
-        gradient.push_back(toml::array{ key.time, key.color.x, key.color.y,
-                                        key.color.z, key.color.w });
-    }
-    table.insert("colorGradient", std::move(gradient));
+    WriteCurve(table, "rotationCurve", emitter.rotationCurve);
+    WriteCurve(table, "dragCurve", emitter.dragCurve);
+    table.insert("colorGradient", SerializeParticleGradient(emitter.colorGradient));
     toml::array bursts;
     for (const auto& burst : emitter.bursts) {
         toml::table item;
@@ -176,6 +274,8 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     emitter.colorEnd = ReadVector4(table["colorEnd"], emitter.colorEnd);
     emitter.gravity = ReadVector3(table["gravity"], emitter.gravity);
     emitter.boxExtents = ReadVector3(table["boxExtents"], emitter.boxExtents);
+    // 旧アセットにキーが無ければ既定の等方 {1,1,1} が保たれる (見た目は無変化)。
+    emitter.sizeAxisScale = ReadVector3(table["sizeAxisScale"], emitter.sizeAxisScale);
     FBZZ_VFX_FLOAT(velocitySpread); FBZZ_VFX_FLOAT(sizeStart); FBZZ_VFX_FLOAT(sizeEnd);
     FBZZ_VFX_FLOAT(lifetime); FBZZ_VFX_FLOAT(lifetimeRandom); FBZZ_VFX_FLOAT(emitRate);
     FBZZ_VFX_INT(maxParticles);
@@ -186,14 +286,17 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_FLOAT(sphereRadius); FBZZ_VFX_FLOAT(coneAngleDegrees); FBZZ_VFX_FLOAT(coneRadius);
     FBZZ_VFX_STRING(meshShapePath); FBZZ_VFX_INT(meshShapeIndex); FBZZ_VFX_FLOAT(meshShapeScale);
     FBZZ_VFX_BOOL(meshShapeFollowSkinnedAnimation);
-    emitter.blendMode = ReadEnum(table, "blendMode", emitter.blendMode, 1);
+    // Premultiplied 追加で上限が 1 → 2 へ。旧アセットの 0/1 はそのまま同じ意味を保つ。
+    emitter.blendMode = ReadEnum(table, "blendMode", emitter.blendMode, 2);
     emitter.sortMode = ReadEnum(table, "sortMode", emitter.sortMode, 1);
     emitter.simulationMode = ReadEnum(table, "simulationMode", emitter.simulationMode, 1);
     if (!table.contains("simulationMode") && table["gpu"].value_or(false))
         emitter.simulationMode = scene::ParticleSimulationMode::Gpu;
     emitter.simulationSpace = ReadEnum(table, "simulationSpace", emitter.simulationSpace, 1);
     emitter.renderMode = ReadEnum(table, "renderMode", emitter.renderMode, 3);
+    emitter.alphaSource = ReadEnum(table, "alphaSource", emitter.alphaSource, 6);
     FBZZ_VFX_FLOAT(stretchedVelocityScale); FBZZ_VFX_FLOAT(stretchedLengthScale);
+    FBZZ_VFX_INT(renderPriority);
     emitter.collisionMode = ReadEnum(table, "collisionMode", emitter.collisionMode, 3);
     emitter.collisionResponse = ReadEnum(table, "collisionResponse", emitter.collisionResponse, 2);
     FBZZ_VFX_FLOAT(collisionRadius); FBZZ_VFX_FLOAT(collisionBounciness);
@@ -202,15 +305,28 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
     FBZZ_VFX_INT(spriteRows); FBZZ_VFX_INT(spriteStartFrame); FBZZ_VFX_INT(spriteEndFrame);
     emitter.flipbookMode = ReadEnum(table, "flipbookMode", emitter.flipbookMode, 3);
     FBZZ_VFX_FLOAT(flipbookFramesPerSecond); FBZZ_VFX_BOOL(flipbookFrameBlending);
+    FBZZ_VFX_BOOL(spriteRandomStartFrame); FBZZ_VFX_BOOL(spriteRandomRow);
     FBZZ_VFX_BOOL(motionVectorFlipbook); FBZZ_VFX_STRING(motionVectorTexturePath); FBZZ_VFX_FLOAT(motionVectorStrength);
+    FBZZ_VFX_FLOAT(colorVariation);
     FBZZ_VFX_FLOAT(sizeCurvePower); FBZZ_VFX_FLOAT(colorCurvePower); FBZZ_VFX_FLOAT(velocityDamping);
     FBZZ_VFX_FLOAT(angularVelocityMin); FBZZ_VFX_FLOAT(angularVelocityMax);
     FBZZ_VFX_BOOL(useSizeCurve); FBZZ_VFX_BOOL(useVelocityCurve); FBZZ_VFX_BOOL(useColorGradient);
+    FBZZ_VFX_BOOL(useRotationCurve); FBZZ_VFX_BOOL(useDragCurve);
+    FBZZ_VFX_FLOAT(orbitalVelocity); FBZZ_VFX_FLOAT(radialVelocity); FBZZ_VFX_FLOAT(inheritVelocity);
     FBZZ_VFX_FLOAT(rateOverDistance); FBZZ_VFX_BOOL(prewarm); FBZZ_VFX_STRING(birthSubEmitter);
     FBZZ_VFX_STRING(deathSubEmitter); FBZZ_VFX_STRING(collisionSubEmitter); FBZZ_VFX_INT(subEmitterBurstCount);
+    FBZZ_VFX_BOOL(trailEnabled); FBZZ_VFX_INT(trailPointCount);
+    FBZZ_VFX_FLOAT(trailSampleInterval); FBZZ_VFX_FLOAT(trailWidthScale);
+    FBZZ_VFX_FLOAT(trailAlphaScale);
+    FBZZ_VFX_BOOL(trailRibbon); FBZZ_VFX_FLOAT(trailRibbonWidth);
+    FBZZ_VFX_FLOAT(selfShadowStrength);
     FBZZ_VFX_BOOL(softParticles); FBZZ_VFX_FLOAT(softParticleFadeDistance);
     FBZZ_VFX_BOOL(distortion); FBZZ_VFX_FLOAT(distortionStrength); FBZZ_VFX_BOOL(sixWayLighting);
     FBZZ_VFX_FLOAT(lightingStrength); FBZZ_VFX_FLOAT(emissiveScale);
+    FBZZ_VFX_BOOL(receiveShadows); FBZZ_VFX_FLOAT(shadowStrength);
+    FBZZ_VFX_BOOL(volumetric); FBZZ_VFX_INT(volumetricSteps);
+    FBZZ_VFX_FLOAT(volumetricDensity); FBZZ_VFX_FLOAT(volumetricAnisotropy);
+    FBZZ_VFX_FLOAT(volumetricNoiseScale);
     FBZZ_VFX_BOOL(cullingEnabled); FBZZ_VFX_FLOAT(cullingBoundsPadding); FBZZ_VFX_BOOL(lodEnabled);
     FBZZ_VFX_FLOAT(lodNearDistance); FBZZ_VFX_FLOAT(lodFarDistance); FBZZ_VFX_FLOAT(lodNearRateScale);
     FBZZ_VFX_FLOAT(lodFarRateScale); FBZZ_VFX_FLOAT(screenCoverageThreshold); FBZZ_VFX_BOOL(pauseWhenCulled);
@@ -221,23 +337,13 @@ void DeserializeParticleEmitterSettings(const toml::table& table,
 #undef FBZZ_VFX_BOOL
 #undef FBZZ_VFX_STRING
 
+    emitter.orbitalAxis = ReadVector3(table["orbitalAxis"], emitter.orbitalAxis);
+    emitter.trailColorTint = ReadVector4(table["trailColorTint"], emitter.trailColorTint);
     ReadCurve(table, "sizeCurve", emitter.sizeCurve);
     ReadCurve(table, "velocityCurve", emitter.velocityCurve);
-    if (const auto* gradient = table["colorGradient"].as_array(); gradient != nullptr && !gradient->empty()) {
-        emitter.colorGradient.keyCount = static_cast<std::uint32_t>(
-            (std::min)(gradient->size(), emitter.colorGradient.keys.size()));
-        for (std::uint32_t index = 0; index < emitter.colorGradient.keyCount; ++index) {
-            const auto* key = (*gradient)[index].as_array();
-            if (key == nullptr || key->size() < 5) continue;
-            emitter.colorGradient.keys[index].time = static_cast<float>((*key)[0].value_or(0.0));
-            emitter.colorGradient.keys[index].color = {
-                static_cast<float>((*key)[1].value_or(1.0)),
-                static_cast<float>((*key)[2].value_or(1.0)),
-                static_cast<float>((*key)[3].value_or(1.0)),
-                static_cast<float>((*key)[4].value_or(1.0))
-            };
-        }
-    }
+    ReadCurve(table, "rotationCurve", emitter.rotationCurve);
+    ReadCurve(table, "dragCurve", emitter.dragCurve);
+    DeserializeParticleGradient(table, "colorGradient", emitter.colorGradient);
     emitter.bursts.clear();
     if (const auto* bursts = table["bursts"].as_array()) {
         for (const auto& node : *bursts) {
