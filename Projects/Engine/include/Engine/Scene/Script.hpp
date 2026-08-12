@@ -10,12 +10,17 @@
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/PrefabRef.hpp>
 #include <Engine/Scene/DataAssetRef.hpp> // DataAsset (純共有 ScriptableObject) 参照スロット
+#include <Engine/Scene/ScriptAssetRef.hpp>
 #include <Engine/Scene/Reflection.hpp>  // 自己登録リフレクション基盤 (ReflectTag / DisplayOr)
 #include <Engine/Scene/Ref.hpp>          // 型安全オブジェクト参照ハンドル Ref<T>
 // 全プロキシヘッダーのアンブレラインクルード。新プロキシ追加時はこちらを編集すること。
 #include <Engine/Scene/ScriptProxy/AllScriptProxies.hpp>
 #include <Engine/Scene/Coroutine.hpp>
 #include <Engine/Input/KeyCode.hpp>
+// WHY ここで include するか: ユーザースクリプトは Script.hpp しか include しない前提のため、
+//     input.GetPadButton(GamepadButton::A) を書くのに必要な列挙をここで供給する。
+//     GamepadButton.hpp は Windows.h に依存しない軽量ヘッダなのでコストは小さい。
+#include <Engine/Input/GamepadButton.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -24,12 +29,16 @@
 //      ほぼ必ず使う標準ヘッダー (clamp/min/max・数学関数・文字列・コンテナ) をここへ集約し、
 //      各スクリプトが <algorithm> 等を個別に並べる定型を不要にする。
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -39,6 +48,32 @@ struct ColliderComponent;
 struct Transform;
 class GameObject;
 class Scene;
+struct IReflector;
+
+// Script内のネスト値型が同じReflect経路へ参加するための最小interface。
+struct IScriptSerializable {
+    virtual ~IScriptSerializable() = default;
+    virtual void Reflect(IReflector& reflector) = 0;
+};
+
+class ScriptSerializableFactory {
+public:
+    using Factory = std::function<std::unique_ptr<IScriptSerializable>()>;
+
+    static bool Register(std::string_view typeName, Factory factory);
+    static std::unique_ptr<IScriptSerializable> Create(std::string_view typeName);
+    static std::vector<std::string> RegisteredTypeNames();
+    static void UnregisterAll();
+};
+
+struct ScriptSerializedReference {
+    std::string type;
+    std::unique_ptr<IScriptSerializable> value;
+    std::string preservedFieldsToml;
+
+    bool SetType(std::string_view typeName);
+    void Clear();
+};
 
 } // namespace fbzz::scene
 
@@ -71,7 +106,77 @@ struct CollisionInfo {
 // Inspector が ImGui を介してフィールドを表示・編集し、
 // SceneSerializer が JSON にシリアライズ/デシリアライズする際にこれを実装する。
 struct IReflector {
+    enum class FieldHint {
+        Default,
+        Multiline,
+        Color,
+        Angle,
+        LayerMask,
+        Tag,
+        File,
+    };
+
     virtual ~IReflector() = default;
+
+    // Reflect宣言の永続キーとInspector表示名を分離するため、各Field直前に呼ばれる。
+    // WHY: 表示名を変更してもScene / Prefabの保存キーが変わらないようにする。
+    void BeginField(const char* persistentKey,
+                    const char* displayName,
+                    std::span<const char* const> formerKeys = {})
+    {
+        m_persistentKey = persistentKey ? persistentKey : "";
+        m_displayName = displayName ? displayName : m_persistentKey;
+        m_formerKeys = formerKeys;
+        m_fieldVisible = true;
+        m_fieldEnabled = true;
+        m_fieldReadOnly = false;
+        m_fieldHidden = false;
+        m_fieldHint = FieldHint::Default;
+        m_fieldMin = 0.0f;
+        m_hasFieldMin = false;
+        m_fieldStep = 0.0f;
+        m_fileExtensions.clear();
+        m_fixedList = false;
+    }
+
+    [[nodiscard]] const char* PersistentKey(const char* fallback) const
+    {
+        return m_persistentKey.empty() ? fallback : m_persistentKey.c_str();
+    }
+
+    [[nodiscard]] const char* DisplayName(const char* fallback) const
+    {
+        return m_displayName.empty() ? fallback : m_displayName.c_str();
+    }
+
+    [[nodiscard]] std::span<const char* const> FormerKeys() const
+    {
+        return m_formerKeys;
+    }
+
+    void SetFieldVisible(bool visible) { m_fieldVisible = visible; }
+    void SetFieldEnabled(bool enabled) { m_fieldEnabled = enabled; }
+    void SetFieldReadOnly(bool readOnly) { m_fieldReadOnly = readOnly; }
+    void SetFieldHidden(bool hidden) { m_fieldHidden = hidden; }
+    void SetFieldHint(FieldHint hint) { m_fieldHint = hint; }
+    void SetFieldMin(float minimum) { m_fieldMin = minimum; m_hasFieldMin = true; }
+    void SetFieldStep(float step) { m_fieldStep = step; }
+    void SetFileExtensions(std::string_view extensions)
+    {
+        m_fileExtensions = extensions;
+        m_fieldHint = FieldHint::File;
+    }
+    void SetFixedList(bool fixed) { m_fixedList = fixed; }
+
+    [[nodiscard]] bool FieldVisible() const { return m_fieldVisible && !m_fieldHidden; }
+    [[nodiscard]] bool FieldEnabled() const { return m_fieldEnabled && !m_fieldReadOnly; }
+    [[nodiscard]] bool FieldReadOnly() const { return m_fieldReadOnly; }
+    [[nodiscard]] FieldHint CurrentFieldHint() const { return m_fieldHint; }
+    [[nodiscard]] float FieldMin() const { return m_fieldMin; }
+    [[nodiscard]] bool HasFieldMin() const { return m_hasFieldMin; }
+    [[nodiscard]] float FieldStep() const { return m_fieldStep; }
+    [[nodiscard]] const std::string& FileExtensions() const { return m_fileExtensions; }
+    [[nodiscard]] bool FixedList() const { return m_fixedList; }
 
     virtual void Field(const char* name, float& v) = 0;
     virtual void Field(const char* name, int& v) = 0;
@@ -90,20 +195,156 @@ struct IReflector {
     // TOML リフレクタは何も変更不要。Inspector の ImGuiReflector だけがアセットスロット UI を上書きする。
     virtual void Field(const char* name, DataAssetRef& v) { Field(name, v.path); }
     virtual void Field(const char* name, input::KeyCode& v) {}  // キー名ドロップダウン
+    // Script用型付きAsset参照。SerializerはGUIDとpath、Inspectorは型フィルター付きslotを扱う。
+    virtual void AssetField(const char* name,
+                            ScriptAssetReference& v,
+                            ScriptAssetType type)
+    {
+        (void)type;
+        Field(name, v.path);
+    }
+    virtual void ListField(const char* name, std::vector<float>& values) { (void)name; (void)values; }
+    virtual void ListField(const char* name, std::vector<int>& values) { (void)name; (void)values; }
+    virtual void ListField(const char* name, std::vector<bool>& values) { (void)name; (void)values; }
+    virtual void ListField(const char* name, std::vector<std::string>& values) { (void)name; (void)values; }
+    virtual void ListField(const char* name, std::vector<math::Vector2>& values) { (void)name; (void)values; }
+    virtual void ListField(const char* name, std::vector<math::Vector3>& values) { (void)name; (void)values; }
+    virtual void ListField(const char* name, std::vector<math::Vector4>& values) { (void)name; (void)values; }
+    virtual void ListField(const char* name, std::vector<EntityRef>& values) { (void)name; (void)values; }
+    virtual void AssetListField(const char* name,
+                                std::vector<ScriptAssetReference>& values,
+                                ScriptAssetType type)
+    {
+        (void)name;
+        (void)values;
+        (void)type;
+    }
+    virtual void ObjectField(const char* name, IScriptSerializable& value)
+    {
+        // BeginObject / EndObject へ委譲する。これにより BeginObject を実装した
+        // リフレクタは ObjectField の入れ子化も自動的に手に入る。
+        BeginObject(name);
+        value.Reflect(*this);
+        EndObject();
+    }
+    virtual void ReferenceField(const char* name, ScriptSerializedReference& value)
+    {
+        (void)name;
+        if (value.value)
+            value.value->Reflect(*this);
+    }
 
     // 付加情報付き (デフォルトは Field へフォールバック)
     virtual void FloatRange(const char* name, float& v, float min, float max)  { Field(name, v); }
     virtual void IntRange(const char* name, int& v, int min, int max)          { Field(name, v); }
     virtual void Enum(const char* name, int& v, std::span<const char* const> labels) { Field(name, v); }
+    virtual void Flags(const char* name, int& v, std::span<const char* const> labels) { Enum(name, v, labels); }
     // 型付きオブジェクト参照スロット。typeName が非空ならその Script 型を持つ GameObject だけを
     // 受け付ける (Inspector のドロップ型チェック用)。既定はシリアライズと同じく EntityID を保存する。
     virtual void RefField(const char* name, EntityRef& v, const char* typeName) { Field(name, v.id); }
     // 直前に描画したフィールドへ説明ツールチップを付ける (Inspector のみ表示、シリアライズ非対象)。
     virtual void Tooltip(const char* text) {}
     virtual void Group(const char* label) {}
+    virtual void Space(float height) { (void)height; }
     virtual void Readonly(const char* name, const std::string& v) {}
     virtual void Readonly(const char* name, float v)  {}
     virtual void Readonly(const char* name, int v)    {}
+
+    // ── 入れ子オブジェクト / 構造体配列 ─────────────────────────────────────
+    // WHY 新しい仮想関数を必ずクラス末尾へ追記するか:
+    //     スクリプト DLL の Reflect() は vtable インデックスで仮想呼び出しする。
+    //     途中に挿入すると既存関数のインデックスまでずれ、ABI チェックを
+    //     すり抜けた場合の被害が大きくなる。追記した際は ScriptDllAbi.hpp の
+    //     kReflectionAbiVersion を必ずインクリメントすること。
+
+    // BeginObject / EndObject で挟んだ範囲を 1 つの入れ子オブジェクトとして扱う。
+    // 既定実装は何もしない = 従来どおり親と同じ階層へフラット展開される。
+    // これにより未対応のリフレクタでも挙動が変わらない (後方互換)。
+    //
+    // WHY ObjectField ではなくスコープ対を用意するか:
+    //     ObjectField は入れ子の型が IScriptSerializable を継承していることを要求する。
+    //     しかし反映したい構造体 (renderer::BloomSettings 等) はレンダラー層に住み、
+    //     Scene 層のインターフェースを継承させると RenderSettings.hpp が
+    //     Script.hpp を include することになり、依存方向が逆流する。
+    //     スコープ対なら継承を要求せず、自由関数のヘルパーで任意の構造体を反映できる。
+    virtual void BeginObject(const char* name) { (void)name; }
+    virtual void EndObject() {}
+
+    // 構造体の配列。現在の要素数を渡し、リフレクタが決めた新しい要素数を返す。
+    //   - 読み込みリフレクタ: 保存されていた要素数を返す
+    //   - Inspector:          ユーザーが Add / Remove した後の要素数を返す
+    //   - 書き込みリフレクタ: 受け取った値をそのまま返す
+    //
+    // 呼び出し側は戻り値で vector を resize してから、要素ごとに
+    // BeginObjectElement / EndObjectElement で挟んで反映する。
+    //
+    // WHY 戻り値で要素数を返す形にするか:
+    //     読み込み・UI 編集・書き込みの 3 方向すべてで要素数の変更が起こりうる。
+    //     コールバックを渡す設計にすると DLL 境界を越える std::function が増え、
+    //     ScriptDllAbi の互換管理が複雑になる。戻り値なら vtable への追加で済む。
+    [[nodiscard]] virtual std::size_t BeginObjectList(const char* name, std::size_t count)
+    {
+        (void)name;
+        return count;
+    }
+    virtual void BeginObjectElement(std::size_t index) { (void)index; }
+    virtual void EndObjectElement() {}
+
+    // 削除要求のインデックスを返す。要素数未満なら呼び出し側がその要素を erase する。
+    // 削除要求が無い場合は NO_REMOVE を返す。
+    //
+    // WHY 戻り値で削除を伝えるか: 配列の実体を所有しているのは呼び出し側であり、
+    //     リフレクタは触れない。要素数の増加は BeginObjectList の戻り値 + resize で
+    //     表現できるが、「途中の要素を消す」は resize では表現できない
+    //     (resize は必ず末尾を落とすため、消したい要素と実際に消える要素がずれる)。
+    //     削除だけは別の経路で伝える必要がある。
+    static constexpr std::size_t NO_REMOVE = static_cast<std::size_t>(-1);
+    [[nodiscard]] virtual std::size_t EndObjectList() { return NO_REMOVE; }
+
+private:
+    std::string m_persistentKey;
+    std::string m_displayName;
+    std::span<const char* const> m_formerKeys;
+    bool m_fieldVisible = true;
+    bool m_fieldEnabled = true;
+    bool m_fieldReadOnly = false;
+    bool m_fieldHidden = false;
+    FieldHint m_fieldHint = FieldHint::Default;
+    float m_fieldMin = 0.0f;
+    bool m_hasFieldMin = false;
+    float m_fieldStep = 0.0f;
+    std::string m_fileExtensions;
+    bool m_fixedList = false;
+};
+
+// AnimationClip の Event Track から Script へ渡す DLL 安全な値型。
+struct AnimationEventInfo {
+    const char* name = "";
+    int32_t intParam = 0;
+    float floatParam = 0.0f;
+    float clipTime = 0.0f;
+};
+
+// OnAnimatorMove へ渡すルートモーション 1 フレーム分の移動量。
+//
+// WHY: 以前は Script が ScriptAnimatorProxy 経由で「前フレームの値」をポーリングするしか
+//      なかった。AnimatorSystem は Phase::LateUpdate に居るため、Phase::Script の OnUpdate は
+//      常に 1 フレーム遅れた delta を読むことになる。抽出直後に同期コールバックを飛ばすことで、
+//      移動の権威を Script / CharacterController 側へ渡せるようにする。
+struct RootMotionInfo {
+    // Animator 所有 GameObject のローカル空間 (親回転を掛ける前) での移動量。
+    math::Vector3    deltaPosition = math::Vector3::ZERO;
+    math::Quaternion deltaRotation = math::Quaternion::Identity();
+    // deltaPosition をワールド空間へ変換した値。速度制御へそのまま渡せる。
+    math::Vector3    worldDeltaPosition = math::Vector3::ZERO;
+    // worldDeltaPosition / deltaTime。dt が 0 のフレームではゼロ。
+    math::Vector3    worldVelocity = math::Vector3::ZERO;
+    // この delta を生成したフレーム時間。Script 側で Time::deltaTime を使うと
+    // Animator が実際に進めた時間とずれることがあるため、明示的に渡す。
+    float            deltaTime = 0.0f;
+    // エンジンが既に Transform / RigidBody へ適用済みなら true。
+    // ExtractOnly のときだけ false になり、移動の適用は Script の責任になる。
+    bool             appliedByEngine = false;
 };
 
 // FBZZ_REF(T, ...) が RefField へ渡す型名を解決する。
@@ -158,6 +399,16 @@ struct InvokeHandle {
     void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
                        ::fbzz::scene::IReflector&) {}
 
+// Script以外のネスト値型へ同じ宣言式Reflectを与える。
+#define FBZZ_SERIALIZABLE(T)                                                    \
+    public:                                                                     \
+    using FbzzSelf = T;                                                         \
+    static constexpr const char* TYPE_NAME = #T;                               \
+    void Reflect(::fbzz::scene::IReflector& r_) override;                       \
+    static constexpr int _fbzz_base = __COUNTER__;                              \
+    void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
+                       ::fbzz::scene::IReflector&) {}
+
 // 1 エントリ分の登録。直前タグ (= 1 つ前のフィールド/グループ) を先に処理してから
 // 自分を反映することで宣言順を保つ。UniqueTok はメンバー名や行番号で一意化する。
 // WHY (可変長): リフレクション文に含まれるトップレベルのカンマ (FBZZ_FIELD_ENUM の
@@ -178,37 +429,259 @@ struct InvokeHandle {
 
 #define FBZZ_FIELD(Type, Name, Default, Display)                                \
     Type Name = Default;                                                        \
-    FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name))
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+// 旧保存キーを読み込み、新しいメンバー名で保存し直すフィールド。
+// 例: FBZZ_FIELD_MIGRATED(float, moveSpeed, 4.0f, "Move Speed", "speed", "walkSpeed")
+#define FBZZ_FIELD_MIGRATED(Type, Name, Default, Display, ...)                  \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        static const char* const _fbzz_former_keys[] = { __VA_ARGS__ };         \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name),                         \
+            ::std::span<const char* const>(_fbzz_former_keys));                 \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_MIN(Type, Name, Default, Display, Min)                       \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldMin(static_cast<float>(Min));                                \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_STEP(Type, Name, Default, Display, Step)                     \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldStep(static_cast<float>(Step));                              \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_MULTILINE(Name, Default, Display)                            \
+    std::string Name = Default;                                                 \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldHint(::fbzz::scene::IReflector::FieldHint::Multiline);       \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_COLOR(Name, Default, Display)                                \
+    ::fbzz::math::Vector4 Name = Default;                                       \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldHint(::fbzz::scene::IReflector::FieldHint::Color);           \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_ANGLE(Name, Default, Display)                                \
+    float Name = Default;                                                       \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldHint(::fbzz::scene::IReflector::FieldHint::Angle);           \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_LAYER_MASK(Name, Default, Display)                           \
+    int Name = Default;                                                         \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldHint(::fbzz::scene::IReflector::FieldHint::LayerMask);       \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_TAG(Name, Default, Display)                                  \
+    std::string Name = Default;                                                 \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldHint(::fbzz::scene::IReflector::FieldHint::Tag);             \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_FILE(Name, Default, Display, Extensions)                     \
+    std::string Name = Default;                                                 \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFileExtensions(Extensions);                                       \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_READ_ONLY(Type, Name, Default, Display)                      \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldReadOnly(true);                                              \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_HIDDEN(Type, Name, Default)                                  \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, #Name);                                            \
+        r_.SetFieldHidden(true);                                                \
+        r_.Field(#Name, Name);                                                  \
+    })
+
+#define FBZZ_FIELD_SHOW_IF(Type, Name, Default, Display, Condition)             \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldVisible(static_cast<bool>(Condition));                       \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_ENABLE_IF(Type, Name, Default, Display, Condition)           \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldEnabled(static_cast<bool>(Condition));                       \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_LIST_FIELD(Type, Name, Display)                                    \
+    std::vector<Type> Name;                                                     \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.ListField(FBZZ_DISP_(Display, Name), Name);                          \
+    })
+
+#define FBZZ_LIST_FIELD_DEFAULT(Type, Name, Default, Display)                   \
+    std::vector<Type> Name = Default;                                           \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.ListField(FBZZ_DISP_(Display, Name), Name);                          \
+    })
+
+#define FBZZ_FIXED_ARRAY_FIELD(Type, Name, Count, Default, Display)             \
+    std::array<Type, Count> Name = Default;                                     \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFixedList(true);                                                  \
+        std::vector<Type> _fbzz_values(Name.begin(), Name.end());               \
+        r_.ListField(FBZZ_DISP_(Display, Name), _fbzz_values);                  \
+        const std::size_t _fbzz_count = (std::min)(Name.size(), _fbzz_values.size());\
+        for (std::size_t _fbzz_i = 0; _fbzz_i < _fbzz_count; ++_fbzz_i)        \
+            Name[_fbzz_i] = _fbzz_values[_fbzz_i];                             \
+    })
+
+#define FBZZ_OBJECT_FIELD(Type, Name, Display)                                  \
+    Type Name = {};                                                             \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.ObjectField(FBZZ_DISP_(Display, Name), Name);                        \
+    })
+
+// 構造体の配列。要素型は IScriptSerializable を実装していること。
+// 要素数の増減と途中要素の削除をリフレクタから受け取り、vector へ反映する。
+//
+// WHY 削除を戻り値で受けるか: resize は必ず末尾を落とすため、
+//     「途中の要素を消す」を要素数の変更だけでは表現できない。
+#define FBZZ_OBJECT_LIST_FIELD(Type, Name, Display)                             \
+    std::vector<Type> Name;                                                     \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        const std::size_t _fbzz_n =                                             \
+            r_.BeginObjectList(FBZZ_DISP_(Display, Name), Name.size());         \
+        Name.resize(_fbzz_n);                                                   \
+        for (std::size_t _fbzz_i = 0; _fbzz_i < _fbzz_n; ++_fbzz_i) {          \
+            r_.BeginObjectElement(_fbzz_i);                                     \
+            Name[_fbzz_i].Reflect(r_);                                          \
+            r_.EndObjectElement();                                              \
+        }                                                                       \
+        const std::size_t _fbzz_rm = r_.EndObjectList();                        \
+        if (_fbzz_rm < Name.size())                                             \
+            Name.erase(Name.begin() + static_cast<std::ptrdiff_t>(_fbzz_rm));   \
+    })
+
+#define FBZZ_ASSET_LIST_FIELD(Type, Name, Display)                              \
+    std::vector<Type> Name;                                                     \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        std::vector<::fbzz::scene::ScriptAssetReference> _fbzz_values;          \
+        _fbzz_values.reserve(Name.size());                                      \
+        for (const auto& _fbzz_value : Name)                                   \
+            _fbzz_values.push_back(_fbzz_value.reference);                     \
+        r_.AssetListField(FBZZ_DISP_(Display, Name), _fbzz_values,              \
+                          Type::ASSET_TYPE);                                    \
+        Name.resize(_fbzz_values.size());                                       \
+        for (std::size_t _fbzz_i = 0; _fbzz_i < Name.size(); ++_fbzz_i)        \
+            Name[_fbzz_i].reference = _fbzz_values[_fbzz_i];                   \
+    })
+
+#define FBZZ_SERIALIZE_REFERENCE(Name, Display)                                 \
+    ::fbzz::scene::ScriptSerializedReference Name;                              \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.ReferenceField(FBZZ_DISP_(Display, Name), Name);                     \
+    })
 
 #define FBZZ_FIELD_RANGE(Type, Name, Default, Display, Min, Max)                \
     Type Name = Default;                                                        \
-    FBZZ_REFLECT_ENTRY_(Name,                                                   \
-        r_.FloatRange(FBZZ_DISP_(Display, Name), Name, Min, Max))
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.FloatRange(FBZZ_DISP_(Display, Name), Name, Min, Max);               \
+    })
 
 // int 用レンジフィールド (スライダー)。FBZZ_FIELD_RANGE の int 版。
 #define FBZZ_FIELD_RANGE_INT(Type, Name, Default, Display, Min, Max)            \
     Type Name = Default;                                                        \
-    FBZZ_REFLECT_ENTRY_(Name,                                                   \
-        r_.IntRange(FBZZ_DISP_(Display, Name), Name, Min, Max))
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.IntRange(FBZZ_DISP_(Display, Name), Name, Min, Max);                 \
+    })
 
 #define FBZZ_FIELD_ENUM(Type, Name, Default, Display, ...)                      \
     Type Name = Default;                                                        \
     FBZZ_REFLECT_ENTRY_(Name, {                                                 \
         static const char* const _fbzz_labels[] = { __VA_ARGS__ };             \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        int _fbzz_value = static_cast<int>(Name);                               \
         r_.Enum(FBZZ_DISP_(Display, Name),                                      \
-                reinterpret_cast<int&>(Name),                                   \
+                _fbzz_value,                                                    \
                 ::std::span<const char* const>(_fbzz_labels));                  \
+        Name = static_cast<Type>(_fbzz_value);                                  \
     })
 
 // 参照型のデフォルト値省略版 — PrefabRef / EntityRef 等のデフォルトが {} のフィールドに使う。
 #define FBZZ_FIELD_REF(Type, Name, Display)                                     \
     Type Name = {};                                                            \
-    FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name))
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.Field(FBZZ_DISP_(Display, Name), Name);                              \
+    })
+
+#define FBZZ_FIELD_FLAGS(Type, Name, Default, Display, ...)                     \
+    Type Name = Default;                                                        \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        static const char* const _fbzz_labels[] = { __VA_ARGS__ };             \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        int _fbzz_value = static_cast<int>(Name);                               \
+        r_.Flags(FBZZ_DISP_(Display, Name),                                     \
+                 _fbzz_value,                                                   \
+                 ::std::span<const char* const>(_fbzz_labels));                 \
+        Name = static_cast<Type>(_fbzz_value);                                  \
+    })
+
+// GUID付き型安全Asset参照フィールド。
+// TypeにはMaterialRef / TextureRef / SpriteRef / VFXRef等を指定する。
+#define FBZZ_ASSET_FIELD(Type, Name, Display)                                   \
+    Type Name = {};                                                             \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.AssetField(FBZZ_DISP_(Display, Name), Name.reference,                \
+            Type::ASSET_TYPE);                                                  \
+    })
 
 // Inspector 表示のみ・Serializer 非保存の計算値ラベル。
 #define FBZZ_COMPUTED(Type, Name, Display)                                      \
     Type Name = {};                                                            \
-    FBZZ_REFLECT_ENTRY_(Name, r_.Readonly(FBZZ_DISP_(Display, Name), Name))
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.Readonly(FBZZ_DISP_(Display, Name), Name);                           \
+    })
 // 後方互換 alias — 新規コードでは FBZZ_COMPUTED を使うこと。
 #define FBZZ_FIELD_READONLY(Type, Name, Display) FBZZ_COMPUTED(Type, Name, Display)
 
@@ -217,8 +690,11 @@ struct InvokeHandle {
 // シリアライズは内包する EntityRef (= EntityID) を対象にする。
 #define FBZZ_REF(Type, Name, Display)                                           \
     ::fbzz::scene::Ref<Type> Name { this };                                     \
-    FBZZ_REFLECT_ENTRY_(Name, r_.RefField(FBZZ_DISP_(Display, Name), Name.ref,  \
-        ::fbzz::scene::RefTypeNameOf<Type>()))
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.RefField(FBZZ_DISP_(Display, Name), Name.ref,                        \
+            ::fbzz::scene::RefTypeNameOf<Type>());                              \
+    })
 
 // Inspector グループ見出し。順序保持のためタグを 1 つ消費する。
 #define FBZZ_GROUP(Label)     FBZZ_GROUP_(Label, __LINE__)
@@ -229,6 +705,16 @@ struct InvokeHandle {
                        ::fbzz::scene::IReflector& r_) {                         \
         _fbzz_reflect(::fbzz::scene::detail::ReflectTag<(_fbzz_grp_##L - 1)>{}, r_); \
         r_.Group(Label);                                                        \
+    }
+
+#define FBZZ_SPACE(Height)     FBZZ_SPACE_(Height, __LINE__)
+#define FBZZ_SPACE_(Height, L) FBZZ_SPACE__(Height, L)
+#define FBZZ_SPACE__(Height, L)                                                 \
+    enum { _fbzz_space_##L = __COUNTER__ - _fbzz_base };                        \
+    void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<_fbzz_space_##L>,      \
+                       ::fbzz::scene::IReflector& r_) {                         \
+        _fbzz_reflect(::fbzz::scene::detail::ReflectTag<(_fbzz_space_##L - 1)>{}, r_); \
+        r_.Space(static_cast<float>(Height));                                   \
     }
 
 // 直前のフィールドへ Inspector ツールチップを付ける (設計意図コメントを UI に出す用)。
@@ -251,6 +737,17 @@ struct InvokeHandle {
     inline void T::Reflect(::fbzz::scene::IReflector& r_) {                     \
         _fbzz_reflect(::fbzz::scene::detail::ReflectTag<                        \
                           (__COUNTER__ - T::_fbzz_base - 1)>{}, r_);            \
+    }
+
+#define FBZZ_SERIALIZABLE_CONCAT_INNER_(A, B) A##B
+#define FBZZ_SERIALIZABLE_CONCAT_(A, B) FBZZ_SERIALIZABLE_CONCAT_INNER_(A, B)
+#define FBZZ_REGISTER_SERIALIZABLE(T) FBZZ_REGISTER_SERIALIZABLE_(T, __COUNTER__)
+#define FBZZ_REGISTER_SERIALIZABLE_(T, N)                                       \
+    namespace {                                                                 \
+        [[maybe_unused]] const bool FBZZ_SERIALIZABLE_CONCAT_(                   \
+            s_fbzzSerializableRegistered_, N) =                                 \
+            ::fbzz::scene::ScriptSerializableFactory::Register(                 \
+                T::TYPE_NAME, []() { return std::make_unique<T>(); });          \
     }
 
 // ── Script 基底クラス ─────────────────────────────────────────────────────────
@@ -279,6 +776,16 @@ public:
     virtual void OnNavMeshPathFailed() {}          // 目的地までのパスが見つからなかったとき
     virtual void OnNavMeshTargetSpotted() {}       // NavMeshSensorComponent が対象を視界内に検知したとき
     virtual void OnNavMeshTargetLost() {}          // 検知していた対象を見失ったとき
+    virtual void OnAnimationEvent(const AnimationEventInfo&) {}
+    // AnimatorComponent がルートモーションを抽出した直後に、同じフレーム内で呼ばれる。
+    // rootMotion.mode が None 以外なら毎フレーム発火する (delta がゼロでも呼ばれる)。
+    // ExtractOnly のときはエンジンが何も動かさないため、ここで移動を適用する。
+    virtual void OnAnimatorMove(const RootMotionInfo&) {}
+    // Editor authoring / serialization lifecycle。
+    virtual void Reset() {}
+    virtual void OnValidate() {}
+    virtual void OnBeforeSerialize() {}
+    virtual void OnAfterDeserialize() {}
     virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 
@@ -366,6 +873,7 @@ private:
     friend struct ScriptLightProxy;
     friend struct ScriptCameraProxy;
     friend struct ScriptMaterialProxy;
+    friend class MaterialInstance;
     friend struct ScriptParticleProxy;
     friend struct ScriptParticleForceFieldProxy;
     friend struct ScriptCloudProxy;
