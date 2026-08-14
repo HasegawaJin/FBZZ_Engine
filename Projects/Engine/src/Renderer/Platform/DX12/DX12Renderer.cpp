@@ -251,7 +251,16 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     if (auto* vertexBase = resources.Get(call.vertexBuffer)) {
-        const auto view = static_cast<DX12Buffer*>(vertexBase)->GetVertexView();
+        auto* vertexBuffer = static_cast<DX12Buffer*>(vertexBase);
+        // コンピュートスキニングの出力を頂点として読む場合、CS が書いた直後は
+        // UNORDERED_ACCESS のままなので VERTEX_AND_CONSTANT_BUFFER へ遷移させる。
+        // WHY: DX11 と違い DX12 は状態遷移が明示的。抜けると読み出しが未定義になる
+        //      (デバッグレイヤーが警告、実機では古い内容やゴミが出る)。
+        if (vertexBuffer->IsGpuWritable()) {
+            m_stateTracker.Transition(commands, vertexBuffer->GetResource(),
+                                      D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        }
+        const auto view = vertexBuffer->GetVertexView();
         commands->IASetVertexBuffers(0, 1, &view);
     }
     if (auto* indexBase = resources.Get(call.indexBuffer)) {
@@ -361,6 +370,20 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                 writtenResources[writtenCount++] = buffer->GetResource();
             }
         }
+        // u4: GPU 書き込み可能な頂点バッファ (コンピュートスキニングの出力)。
+        // WHY: 直前のフレームでは頂点バッファとして読まれているので、
+        //      書き込む前に UNORDERED_ACCESS へ戻す遷移が要る。
+        if (slot == 4) {
+            if (auto* bufferBase = resources.Get(call.uavVertexBuffer)) {
+                auto* buffer = static_cast<DX12Buffer*>(bufferBase);
+                if (buffer->IsGpuWritable()) {
+                    m_stateTracker.QueueTransition(buffer->GetResource(),
+                                                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                    source = buffer->GetUav();
+                    writtenResources[writtenCount++] = buffer->GetResource();
+                }
+            }
+        }
         m_context.GetDevice()->CopyDescriptorsSimple(
             1, uavDestination, source, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         uavDestination.ptr += m_context.GetSrvDescriptorIncrement();
@@ -428,6 +451,24 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
                             static_cast<float>(m_currentRenderTarget->GetHeight()), 0.0f, 1.0f};
     D3D12_RECT scissor{0, 0, static_cast<LONG>(m_currentRenderTarget->GetWidth()),
                        static_cast<LONG>(m_currentRenderTarget->GetHeight())};
+    commands->RSSetViewports(1, &viewport);
+    commands->RSSetScissorRects(1, &scissor);
+}
+
+void DX12Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+{
+    // SetRenderTarget が RT 全体へ張ったビューポートを、その一部へ絞り込む。
+    // カスケードシャドウが 1 枚のアトラスをタイル分割して使う (IRenderer::SetViewport 参照)。
+    if (!m_context.IsFrameOpen() || width == 0u || height == 0u) return;
+    auto* commands = m_context.GetCommandList();
+    if (!commands) return;
+
+    D3D12_VIEWPORT viewport{ static_cast<float>(x), static_cast<float>(y),
+                             static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f };
+    // シザーもタイルへ合わせる。DX12 はビューポート外でもシザーが広いままだと
+    // 隣のタイルへピクセルが漏れる (DX11 と違いシザーが既定で無制限ではない)。
+    D3D12_RECT scissor{ static_cast<LONG>(x), static_cast<LONG>(y),
+                        static_cast<LONG>(x + width), static_cast<LONG>(y + height) };
     commands->RSSetViewports(1, &viewport);
     commands->RSSetScissorRects(1, &scissor);
 }
@@ -518,6 +559,15 @@ std::unique_ptr<IBuffer> DX12Renderer::CreateNativeVertexBuffer(
 {
     auto buffer = std::make_unique<DX12Buffer>();
     if (!buffer->Init(&m_context, data, sizeBytes, stride, DX12Buffer::Kind::Vertex))
+        return nullptr;
+    return buffer;
+}
+
+std::unique_ptr<IBuffer> DX12Renderer::CreateNativeGpuWritableVertexBuffer(
+    size_t sizeBytes, uint32_t stride)
+{
+    auto buffer = std::make_unique<DX12Buffer>();
+    if (!buffer->InitGpuWritableVertex(&m_context, &m_stateTracker, sizeBytes, stride))
         return nullptr;
     return buffer;
 }

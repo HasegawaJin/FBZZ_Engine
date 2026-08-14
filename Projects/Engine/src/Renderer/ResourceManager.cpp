@@ -195,6 +195,12 @@ ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, 
     return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride), "VertexBuffer", __FILE__, __LINE__);
 }
 
+ResourceHandle<BufferTag> ResourceManager::CreateGpuWritableVertexBuffer(size_t bytes, uint32_t stride)
+{
+    return m_buffers.Insert(m_renderer.CreateNativeGpuWritableVertexBuffer(bytes, stride),
+                            "GpuWritableVertexBuffer", __FILE__, __LINE__);
+}
+
 ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count)
 {
     return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count), "IndexBuffer", __FILE__, __LINE__);

@@ -50,6 +50,15 @@
 // GPU パーティクルのソートキー書き込み先。キー生成 CS では u2 (粒子 SRV) と同時に使うため u3 へ置く。
 // UAV_SSR / UAV_CONTACT_SHADOW と同じスロットだが、いずれも逐次パスで同時実行しない。
 #define UAV_GPU_SORT        u3   // RWStructuredBuffer<uint2> (key, particleIndex)
+// コンピュートスキニングの出力頂点。CS が書き、以降のパスは同じバッファを
+// 通常の頂点バッファとして読む (スキニングを 1 フレーム 1 回だけにするため)。
+#define UAV_SKINNED_VERTICES u4  // RWStructuredBuffer<SkinnedOutVertex>
+
+// ---- SRV (コンピュートスキニング入力) ---------------------------------
+// ComputeCall::srvBuffers[0..1] が t14/t15 へ束縛される。GPU パーティクルの
+// SB_GPU_PARTICLES / SB_GPU_SORT と同じスロットだが、別ディスパッチなので競合しない。
+#define SB_SKIN_SRC_VERTICES t14 // StructuredBuffer<SkinSrcVertex>
+#define SB_SKIN_BONES        t15 // StructuredBuffer<float4x4> (ボーンパレット)
 
 // ---- Sampler ---------------------------------------------------------
 #define SAMPLER_DEFAULT      s0

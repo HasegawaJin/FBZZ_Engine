@@ -1,0 +1,302 @@
+// FBZZ Engine
+// RenderPasses/Geometry/SkinningComputePass.cpp | fbzz::scene
+// コンピュートスキニング — ボーン変形を 1 フレームに 1 回だけ計算して共有する
+//
+// WHY: スキニングは各マテリアルの VS 内で行われていたため、同じキャラクターを
+//      シャドウマップと画面へ描くたびに同じ変形を計算し直していた。計測では
+//      DeferredSkinnedForward 単体で 8.8ms、Shadow 22.1ms のかなりの割合が
+//      この重複した頂点処理だった。
+//
+//      ここで一度だけ変形して静的メッシュと同じ頂点レイアウト (renderer::Vertex) へ
+//      書き出すと、後続パスは「ただの静的メッシュ」として扱える。
+//
+// 制約 (この経路を使わず従来の VS スキニングへフォールバックする条件):
+//   - Animator がいない / パレット未評価  → 変形結果が bind pose と同じで得がない
+//   - モーフが有効                        → 入力頂点がインスタンス固有になるため未対応
+//   - バックエンドが GPU 書き込み頂点バッファ非対応 (DX12 は現状未実装)
+#include "GeometryPasses.hpp"
+#include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/Transform.hpp"
+#include "Engine/Renderer/Mesh.hpp"
+#include "Engine/Renderer/ComputeCall.hpp"
+#include "Engine/Renderer/ResourceManager.hpp"
+#include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Scene/Components/AnimatorComponent.hpp"
+#include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
+#include <Math/Matrix4.hpp>
+#include <cstdint>
+#include <functional>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace fbzz::scene {
+
+namespace {
+
+// CS のスレッドグループ幅。SkinningCompute.cs.hlsl の SKINNING_GROUP_SIZE と一致させること。
+constexpr uint32_t kSkinningGroupSize = 64u;
+
+// StructuredBuffer は密詰め (cbuffer のような 16 バイト整列パディングが入らない) なので、
+// HLSL 側の struct と C++ 側でオフセットが 1 対 1 に対応する。
+// ここがずれると頂点が明後日の方向へ飛ぶ形で壊れるため、サイズで固定しておく。
+static_assert(sizeof(renderer::SkinnedVertex) == 76,
+    "SkinSrcVertex in SkinningCompute.cs.hlsl must match renderer::SkinnedVertex (76 bytes)");
+static_assert(sizeof(renderer::Vertex) == 44,
+    "SkinnedOutVertex in SkinningCompute.cs.hlsl must match renderer::Vertex (44 bytes)");
+
+// SkinningConstants (b0) — CS 側と一致させること。
+struct SkinningCB {
+    uint32_t vertexCount = 0;
+    uint32_t _pad0 = 0;
+    uint32_t _pad1 = 0;
+    uint32_t _pad2 = 0;
+};
+
+struct EntityIDHash {
+    size_t operator()(const EntityID& id) const noexcept
+    {
+        size_t result = std::hash<uint32_t>{}(id.index);
+        result ^= std::hash<uint32_t>{}(id.generation) + 0x9e3779b9u +
+                  (result << 6u) + (result >> 2u);
+        return result;
+    }
+};
+
+struct SourceVertexCacheKey {
+    const renderer::SkinnedVertex* cpuData = nullptr;
+    uint32_t vertexCount = 0;
+    renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
+
+    bool operator==(const SourceVertexCacheKey&) const = default;
+};
+
+struct SourceVertexCacheKeyHash {
+    size_t operator()(const SourceVertexCacheKey& key) const noexcept
+    {
+        size_t result = std::hash<const renderer::SkinnedVertex*>{}(key.cpuData);
+        result ^= static_cast<size_t>(key.vertexCount) + 0x9e3779b9u +
+                  (result << 6u) + (result >> 2u);
+        result ^= static_cast<size_t>(key.vertexBuffer.id) + 0x9e3779b9u +
+                  (result << 6u) + (result >> 2u);
+        result ^= static_cast<size_t>(key.vertexBuffer.gen) + 0x9e3779b9u +
+                  (result << 6u) + (result >> 2u);
+        return result;
+    }
+};
+
+struct BonePaletteCacheEntry {
+    renderer::ResourceHandle<renderer::StructuredBufferTag> handle;
+    uint32_t boneCount = 0;
+};
+
+// 入力頂点の StructuredBuffer は Mesh 単位で共有する (ポーズに依存しない生データのため)。
+// WHY: 同じモデルを何体出しても入力は 1 本で足りる。ポインタだけを信頼すると Mesh の
+//      破棄・再生成で同じ Mesh アドレスが再利用されても古い頂点バッファを掴まないよう、
+//      CPU 配列と元の GPU バッファの世代を値としてキーにする。
+std::unordered_map<SourceVertexCacheKey,
+                   renderer::ResourceHandle<renderer::StructuredBufferTag>,
+                   SourceVertexCacheKeyHash> g_srcVertexCache;
+
+// ボーンパレットは Animator を所有する GameObject の EntityID ごとに保持する。
+// WHY: ComponentArray::Remove は末尾要素を swap するため、AnimatorComponent* は安定した
+//      識別子ではない。EntityID は generation を含むので、削除後の再利用も区別できる。
+std::unordered_map<EntityID,
+                   BonePaletteCacheEntry,
+                   EntityIDHash> g_bonePaletteCache;
+
+// EnsureSourceVertexBuffer — スキニング入力の StructuredBuffer を Mesh 単位で用意する。
+renderer::ResourceHandle<renderer::StructuredBufferTag> EnsureSourceVertexBuffer(
+    renderer::ResourceManager& resources, const renderer::Mesh& mesh)
+{
+    // cpuSkinnedVertices はインポート時に保持される。空なら GPU スキニングは行えない。
+    if (mesh.cpuSkinnedVertices.empty())
+        return {};
+
+    const SourceVertexCacheKey key{
+        mesh.cpuSkinnedVertices.data(),
+        static_cast<uint32_t>(mesh.cpuSkinnedVertices.size()),
+        mesh.vertexBuffer};
+    const auto it = g_srcVertexCache.find(key);
+    if (it != g_srcVertexCache.end()) {
+        return it->second;
+    }
+
+    const auto handle = resources.CreateStructuredBuffer(
+        mesh.cpuSkinnedVertices.data(),
+        static_cast<uint32_t>(mesh.cpuSkinnedVertices.size()),
+        static_cast<uint32_t>(sizeof(renderer::SkinnedVertex)));
+
+    g_srcVertexCache[key] = handle;
+    return handle;
+}
+
+// EnsureBonePalette — アニメーターのボーンパレットを StructuredBuffer へ転送する。
+// WHY cbuffer ではなく StructuredBuffer: 頂点あたり 4 回の動的インデックスアクセスが走る。
+//     128 要素の cbuffer 配列への動的アクセスは定数キャッシュの高速経路を外れやすい。
+renderer::ResourceHandle<renderer::StructuredBufferTag> EnsureBonePalette(
+    renderer::ResourceManager& resources,
+    EntityID animatorEntity,
+    const AnimatorComponent& anim)
+{
+    if (anim.boneMatrices.empty()) return {};
+
+    const uint32_t count  = static_cast<uint32_t>(anim.boneMatrices.size());
+    const size_t   bytes  = count * sizeof(math::Matrix4);
+
+    auto it = g_bonePaletteCache.find(animatorEntity);
+    if (it == g_bonePaletteCache.end()) {
+        const auto handle = resources.CreateStructuredBuffer(
+            anim.boneMatrices.data(), count, static_cast<uint32_t>(sizeof(math::Matrix4)));
+        g_bonePaletteCache[animatorEntity] = BonePaletteCacheEntry{ handle, count };
+        return handle;
+    }
+
+    if (it->second.boneCount != count) {
+        if (it->second.handle.IsValid()) resources.Release(it->second.handle);
+        const auto handle = resources.CreateStructuredBuffer(
+            anim.boneMatrices.data(), count, static_cast<uint32_t>(sizeof(math::Matrix4)));
+        it->second = BonePaletteCacheEntry{ handle, count };
+        return handle;
+    }
+
+    // 毎フレームポーズが変わるので中身を更新する。
+    resources.Update(it->second.handle, anim.boneMatrices.data(), bytes);
+    return it->second.handle;
+}
+
+} // namespace
+
+void ExecuteSkinningComputePass(RenderPassContext& ctx)
+{
+    auto& resources = ctx.resources;
+    auto& h         = ctx.handles;
+
+    if (!h.skinningComputeCS.IsValid()) return;
+
+    std::unordered_set<SourceVertexCacheKey, SourceVertexCacheKeyHash> usedSourceKeys;
+    std::unordered_set<EntityID, EntityIDHash> usedAnimators;
+
+    for (auto& go : ctx.scene.GameObjects()) {
+        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
+        auto* smr = go.GetComponent<SkinnedMeshRenderer>();
+        if (!smr || !smr->enabled || !smr->lodVisible || !smr->model) continue;
+
+        AnimatorComponent* anim = nullptr;
+        EntityID animatorEntity = EntityID::INVALID;
+        for (GameObject* current = &go; current; current = current->GetParent()) {
+            if (auto* candidate = current->GetComponent<AnimatorComponent>()) {
+                anim = candidate;
+                animatorEntity = current->GetID();
+                break;
+            }
+        }
+        if (!anim || anim->boneMatrices.empty()) {
+            // パレット未評価。bind pose のままなら VS 経路で十分。
+            smr->gpuSkinnedThisFrame = false;
+            continue;
+        }
+
+        usedAnimators.insert(animatorEntity);
+        const auto bonePalette = EnsureBonePalette(resources, animatorEntity, *anim);
+        if (!bonePalette.IsValid()) {
+            smr->gpuSkinnedThisFrame = false;
+            continue;
+        }
+
+        // モデルが差し替わったら、旧モデルの頂点数で確保したバッファを捨てる。
+        if (smr->skinnedBufferModel != smr->model) {
+            for (auto& handle : smr->skinnedVertexBuffers)
+                if (handle.IsValid()) resources.Release(handle);
+            smr->skinnedVertexBuffers.clear();
+            smr->skinnedBufferModel = smr->model;
+        }
+
+        const size_t meshCount = smr->model->meshes.size();
+        smr->skinnedVertexBuffers.resize(meshCount);
+
+        bool anySkinned = false;
+        for (size_t mi = 0; mi < meshCount; ++mi) {
+            const auto& meshPtr = smr->model->meshes[mi];
+            if (!meshPtr) continue;
+            usedSourceKeys.insert(SourceVertexCacheKey{
+                meshPtr->cpuSkinnedVertices.data(),
+                static_cast<uint32_t>(meshPtr->cpuSkinnedVertices.size()),
+                meshPtr->vertexBuffer});
+
+            // モーフが実際に適用されている submesh だけ従来の VS 経路へ落とす。
+            // WHY: 入力 StructuredBuffer は Mesh 単位で共有しているので、インスタンス固有の
+            //      モーフ差分を混ぜると同じモデルの他インスタンスまで巻き込む。
+            // NOTE: morphVertexBuffers はモーフを持たないモデルでも meshCount ぶん resize される
+            //       (AnimatorSystem::UpdateMorphVertexBuffers)。空判定では全スキンドメッシュが
+            //       この経路から外れてしまうので、ハンドルが有効かどうかで見ること。
+            if (mi < smr->morphVertexBuffers.size() && smr->morphVertexBuffers[mi].IsValid())
+                continue;
+
+            const auto srcVertices = EnsureSourceVertexBuffer(resources, *meshPtr);
+            if (!srcVertices.IsValid()) continue;
+
+            const uint32_t vertexCount = static_cast<uint32_t>(meshPtr->cpuSkinnedVertices.size());
+            if (vertexCount == 0) continue;
+
+            // 出力バッファはレンダラーインスタンスごと (ポーズが違うため)。初回のみ確保。
+            auto& outBuffer = smr->skinnedVertexBuffers[mi];
+            if (!outBuffer.IsValid()) {
+                outBuffer = resources.CreateGpuWritableVertexBuffer(
+                    static_cast<size_t>(vertexCount) * sizeof(renderer::Vertex),
+                    static_cast<uint32_t>(sizeof(renderer::Vertex)));
+                // バックエンド未対応 (DX12) ならここで無効ハンドルが返る。VS 経路へ落とす。
+                if (!outBuffer.IsValid()) break;
+            }
+
+            SkinningCB cbData{};
+            cbData.vertexCount = vertexCount;
+            resources.Update(h.skinningCB, &cbData, sizeof(SkinningCB));
+
+            renderer::ComputeCall call;
+            call.shader             = h.skinningComputeCS;
+            call.constantBuffers[0] = h.skinningCB;
+            call.srvBuffers[0]      = srcVertices;   // t14: 入力頂点
+            call.srvBuffers[1]      = bonePalette;   // t15: ボーンパレット
+            call.uavVertexBuffer    = outBuffer;     // u4:  出力頂点
+            call.dispatchX          = (vertexCount + kSkinningGroupSize - 1) / kSkinningGroupSize;
+            call.dispatchY          = 1;
+            call.dispatchZ          = 1;
+            ctx.renderer.Dispatch(call, resources);
+
+            anySkinned = true;
+        }
+
+        smr->gpuSkinnedThisFrame = anySkinned;
+    }
+
+    // GameObject / Component の破棄はこのキャッシュへ通知されないため、毎フレームの使用集合
+    // との差分で所有者を検出し、削除済みポインタのエントリと GPU リソースを回収する。
+    for (auto it = g_srcVertexCache.begin(); it != g_srcVertexCache.end();) {
+        if (usedSourceKeys.contains(it->first)) {
+            ++it;
+            continue;
+        }
+        if (it->second.IsValid()) resources.Release(it->second);
+        it = g_srcVertexCache.erase(it);
+    }
+    for (auto it = g_bonePaletteCache.begin(); it != g_bonePaletteCache.end();) {
+        if (usedAnimators.contains(it->first)) {
+            ++it;
+            continue;
+        }
+        if (it->second.handle.IsValid()) resources.Release(it->second.handle);
+        it = g_bonePaletteCache.erase(it);
+    }
+}
+
+// ReleaseSkinningComputeCaches — シーン切り替え / リソースリセット時にキャッシュを捨てる。
+// WHY: キャッシュの GPU ハンドルはデバイス世代に属するため、デバイスリセット後に
+//      古い世代のハンドルを再利用しない。通常のシーン上の破棄は Execute 側で回収する。
+void ReleaseSkinningComputeCaches()
+{
+    g_srcVertexCache.clear();
+    g_bonePaletteCache.clear();
+}
+
+} // namespace fbzz::scene

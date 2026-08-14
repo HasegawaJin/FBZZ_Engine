@@ -44,6 +44,13 @@ public:
     const std::string&      GetPath()       const override { return m_path; }
     const ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
 
+    // 深度だけを書き出すシャドウマップ用シェーダーか (PS が空実装)。
+    // WHY: Submit() は colorCount=0 の RT へ描くとき PS を外す判定にこれを使う。
+    //      以前は DrawCall ごとに GetPath().find("ShadowMap") を走らせていたが、
+    //      これはシャドウパスに限らず全描画のホットパスに乗る文字列検索だった。
+    //      パスは Init 後に変わらないので、そこで 1 度だけ判定して保持する。
+    bool IsShadowMapShader() const { return m_isShadowMapShader; }
+
 private:
     // "assets/shaders/Phong.hlsl" → "assets/shaders/compiled/Phong" に変換するヘルパー
     static std::string           CompiledBase(const std::string& path);
@@ -60,6 +67,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11InputLayout>   m_inputLayout;
     std::string                                 m_path;
     ShaderDescriptor                            m_descriptor;
+    bool                                        m_isShadowMapShader = false;
 };
 
 } // namespace fbzz::renderer

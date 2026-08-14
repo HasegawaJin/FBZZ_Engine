@@ -21,6 +21,7 @@ namespace fbzz::scene {
 
 class  GameObject;
 struct AnimatorComponent;
+struct MaterialSlot;
 struct MaterialComponent;
 struct ReflectionProbeComponent;
 struct SkinnedMeshRenderer;
@@ -152,6 +153,12 @@ static_assert(sizeof(TrailCB) == 48, "TrailCB layout mismatch");
     const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point);
 
 // ---- パス宣言 ---------------------------------------------------------------
+// コンピュートスキニング。ボーン変形を 1 フレーム 1 回だけ計算し、静的メッシュと同じ
+// 頂点レイアウトへ書き出す。Shadow より前に実行すること (結果を各パスが共有するため)。
+void ExecuteSkinningComputePass            (RenderPassContext& ctx);
+// Mesh* / AnimatorComponent* をキーにした内部キャッシュを破棄する。
+// シーン切り替えやリソースリセットの際に呼ぶこと。
+void ReleaseSkinningComputeCaches          ();
 void ExecuteShadowPass                     (RenderPassContext& ctx);
 void ExecuteForwardPasses                  (RenderPassContext& ctx);
 void ExecuteGBufferPass                    (RenderPassContext& ctx);
@@ -175,8 +182,22 @@ void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
 void ExecuteDecalPass                      (RenderPassContext& ctx);
 
 // ---- ヘルパー宣言 (定義は GeometryPassHelpers.cpp) -------------------------
+
+// UpdateShadowConstants — ShadowConstants (b4) を組み立てて handles.shadowCB へ書き込む。
+// WHY: Forward と Deferred が同じ内容を別々に手書きしていたため、カスケードのように
+//      フィールドが増えるたびに片方だけ直し忘れるリスクがあった。埋める場所を 1 か所にする。
+//      HLSL 側の定義も Assets/Shaders/Common/ShadowConstants.hlsli の 1 か所に集約してある。
+void UpdateShadowConstants(RenderPassContext& ctx);
+// 主スロット (submesh 0) を同期する。単一マテリアルのオブジェクト向け。
 renderer::Material* SyncMaterial(
     MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback = false);
+
+// submesh 単位でスロットを同期する。SkinnedMeshRenderer のように 1 GameObject が
+// 複数 submesh を描くケースで使う。slotIndex が SlotCount() を超える場合は
+// MaterialComponent::SlotAt() が主スロットへフォールバックする。
+renderer::Material* SyncMaterialSlot(
+    MaterialComponent& mc, size_t slotIndex, renderer::ResourceManager& resources,
+    bool preferSkinnedFallback = false);
 
 renderer::Material* GetFallbackMaterial(
     renderer::ResourceManager& resources, bool skinned);
@@ -195,8 +216,6 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     bool                       doubleSided);
 
 bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask);
-bool IsSurfaceMaterialShader(std::string_view path);
-
 // シーングローバル風 (WindZoneComponent) の解決結果。
 // active=false のとき direction/strength は従来のハードコード既定値のままなので、
 // 呼び出し側は WindZone の有無を気にせず direction をそのまま使える。
@@ -240,22 +259,15 @@ bool IsSkinnedVisibleInFrustum(const math::Frustum& frustum,
                                const Transform& tf,
                                const SkinnedMeshRenderer& smr);
 
-// Deferred GBuffer に書き込めないエフェクト系シェーダーかどうかをシェーダーパス名で判定する。
-// 後方互換のため残す。新規呼び出しは IsForwardOnly(MaterialComponent) を使うこと。
-bool IsForwardOnlyShader(std::string_view shaderPath);
-
-// fzmat の render_path フィールドを優先し、"auto" の場合は名前チェックにフォールバックする。
+// fzmat の render_path フィールドから描画パスを決定する。
 // WHY: カスタムシェーダーはエンジンコードを触らず render_path = "forward"/"deferred" で
 //      自分のレンダーパスを制御できるようにするため。
-bool IsForwardOnly(const MaterialComponent& mc);
+// NOTE: MaterialSlot を受けるので MaterialComponent (= スロット 0) も submesh 別スロットも渡せる。
+bool IsForwardOnly(const MaterialSlot& slot);
 
-// static mesh 専用シェーダー (Surface) かどうかをシェーダーパス名で判定する。
-// 後方互換のため残す。新規呼び出しは IsSurfaceMaterial(MaterialComponent) を使うこと。
-bool IsSurfaceMaterialShader(std::string_view shaderPath);
-
-// fzmat の mesh_type フィールドを優先し、"any" の場合はパス名チェックにフォールバックする。
+// fzmat の mesh_type フィールドから static mesh 専用かを決定する。
 // WHY: カスタムシェーダーはエンジンコードを触らず mesh_type = "surface"/"skinned"/"any" で
 //      対応するメッシュタイプを宣言できるようにするため。
-bool IsSurfaceMaterial(const MaterialComponent& mc);
+bool IsSurfaceMaterial(const MaterialSlot& slot);
 
 } // namespace fbzz::scene
