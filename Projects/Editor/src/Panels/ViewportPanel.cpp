@@ -462,7 +462,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     }
 
     const bool gizmoWantsMouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver()
-                              || ImGuizmo::IsUsingViewManipulate() || ImGuizmo::IsViewManipulateHovered();
+                              || IsOrientationGizmoHovered() || IsOrientationGizmoActive();
     const bool anyToolActive =
         (ctx.terrainTool && ctx.terrainTool->IsActive()) ||
         (ctx.waterTool   && ctx.waterTool->IsActive())   ||
@@ -813,6 +813,11 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             fmtK(triBuf, rs.triangleCount);
             ImGui::Text("Vertices   %s", vtxBuf);
             ImGui::Text("Triangles  %s", triBuf);
+
+            // シャドウマップは光源視点でジオメトリを描き直す別コストなので内訳として出す。
+            char shadowTriBuf[32];
+            fmtK(shadowTriBuf, rs.shadowTriangleCount);
+            ImGui::Text("Shadow     %d dc / %s tri", rs.shadowDrawCalls, shadowTriBuf);
 
             // ── カリング統計 ───────────────────────────────────────────────────
             ImGui::Spacing();

@@ -349,53 +349,290 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
     forEachIcon(ComponentTag<scene::DecalComponent>{},            IM_COL32(240, 180, 120, 210), badge("D"));
 }
 
+// ---------------------------------------------------------------------------
+// ナビゲーションギズモ (Blender / Godot 風の軸ボール)
+// ---------------------------------------------------------------------------
+// WHY: 以前は ImGuizmo::ViewManipulate の立方体を出していたが、
+//      「今どの面を向いているか」「クリックするとどこへ回り込むか」が読み取りづらく、
+//      軸名も出ないため方向感覚を保てなかった。Blender / Godot と同じく
+//      ±X / ±Y / ±Z をボールで直接示し、操作を次の 2 つだけに整理する。
+//        ボールをクリック   : その軸から見る視点へスムーズに回り込む
+//        ギズモ内をドラッグ : ピボット周回 (オービット)
+namespace {
+
+constexpr float kNavSize      = 104.0f;  // ギズモ全体の一辺 (px)
+constexpr float kNavPadding   = 10.0f;   // ビューポート右上からの余白
+constexpr float kNavBallNearR = 11.0f;   // 手前側のボール半径
+constexpr float kNavBallFarR  = 7.5f;    // 奥側のボール半径 (小さくして奥行きを出す)
+constexpr float kNavSnapTime  = 0.26f;   // 軸クリック時の視点移動にかける秒数
+constexpr float kNavDragSlop  = 4.0f;    // クリックとドラッグを分けるしきい値 (px)
+constexpr float kNavOrbitSens = 0.45f;   // ドラッグ 1px あたりの回転角度
+
+// 6 方向の定義。描画・当たり判定はこの並びの添字で参照する。
+struct NavAxis {
+    math::Vector3 dir;         // ワールド方向
+    int           colorIndex;  // kNavAxisColor の添字
+    const char*   label;       // ボールに出す軸名
+    bool          positive;    // 正方向のみ中心から線を引き、ラベルを常時出す
+};
+
+const NavAxis kNavAxes[6] = {
+    { {  1.0f,  0.0f,  0.0f }, 0, "X", true  },
+    { { -1.0f,  0.0f,  0.0f }, 0, "X", false },
+    { {  0.0f,  1.0f,  0.0f }, 1, "Y", true  },
+    { {  0.0f, -1.0f,  0.0f }, 1, "Y", false },
+    { {  0.0f,  0.0f,  1.0f }, 2, "Z", true  },
+    { {  0.0f,  0.0f, -1.0f }, 2, "Z", false },
+};
+
+const ImU32 kNavAxisColor[3] = {
+    IM_COL32(238,  86, 100, 255),  // X
+    IM_COL32(150, 208,  72, 255),  // Y
+    IM_COL32( 74, 144, 236, 255),  // Z
+};
+
+// フレームをまたぐ操作状態。ViewportPanel が「ギズモがマウスを取っているか」を
+// 前フレームの結果で問い合わせるため、静的に保持する。
+struct NavGizmoState {
+    bool   hovered     = false;  // ギズモ円内にカーソルがある
+    int    hoveredAxis = -1;     // ホバー中のボール (なければ -1)
+    bool   pressed     = false;  // ギズモ内で左ボタンを押している
+    bool   dragging    = false;  // しきい値を超えて回した (= クリック扱いにしない)
+    int    pressedAxis = -1;
+    ImVec2 pressPos{};
+    float  orbitYaw    = 0.0f;   // ドラッグ中に積む yaw / pitch (度)
+    float  orbitPitch  = 0.0f;
+
+    // 軸クリック時の補間。回転を Slerp せず yaw/pitch で補間するのは、
+    // DebugCamera が yaw/pitch から姿勢を組み立てる以上、
+    // 途中でロール成分が入ると着地時に水平がずれて見えるため。
+    bool  animActive = false;
+    float animT      = 0.0f;
+    float fromYaw = 0.0f, fromPitch = 0.0f;
+    float toYaw   = 0.0f, toPitch   = 0.0f;
+};
+
+NavGizmoState g_navGizmo;
+
+// 明度と不透明度をまとめて調整する (奥行きフェードとホバー強調で使う)。
+ImU32 NavShade(ImU32 color, float brightness, float alpha)
+{
+    const auto ch = [&](int shift) {
+        const float v = static_cast<float>((color >> shift) & 0xFFu) * brightness;
+        return static_cast<ImU32>(math::Clamp(v, 0.0f, 255.0f));
+    };
+    return IM_COL32(ch(IM_COL32_R_SHIFT), ch(IM_COL32_G_SHIFT), ch(IM_COL32_B_SHIFT),
+                    static_cast<ImU32>(math::Clamp(alpha * 255.0f, 0.0f, 255.0f)));
+}
+
+// forward からエンジン規約の yaw / pitch (度) を取り出す。
+// WHY: DebugCamera::Teleport と同じ式にしないと、適用後に内部 yaw/pitch がずれて
+//      次のオービットで視点が飛ぶ。
+void NavForwardToYawPitch(const math::Vector3& fwd, float& yaw, float& pitch)
+{
+    pitch = math::ToDeg(std::asin(math::Clamp(-fwd.y, -1.0f, 1.0f)));
+    yaw   = math::ToDeg(std::atan2(fwd.x, fwd.z));
+}
+
+// yaw / pitch からカメラ姿勢を組み立て、ピボットと距離を保ったまま Teleport 要求へ流す。
+// WHY: Camera へ直接 m_position/m_rotation を書くと DebugCamera が持つ
+//      yaw/pitch/pivot と乖離し、次に FPS ルックやオービットを始めた瞬間に視点が飛ぶ。
+//      カメラブックマークと同じ Teleport 要求経由にして内部状態まで一括同期する。
+void NavApplyYawPitch(EditorContext& ctx, float yaw, float pitch)
+{
+    // ±90 ちょうどにすると forward が真上/真下になり、Teleport 側の atan2(0, 0) から
+    // yaw を復元できず 0 に落ちる。DebugCamera のオービット上限と揃えつつ、
+    // 見た目には真上・真下と区別が付かない角度で止める。
+    pitch = math::Clamp(pitch, -89.9f, 89.9f);
+
+    const math::Quaternion yawQ =
+        math::Quaternion::FromAxisAngle({ 0.0f, 1.0f, 0.0f }, math::ToRad(yaw));
+    const math::Quaternion pitchQ =
+        math::Quaternion::FromAxisAngle({ 1.0f, 0.0f, 0.0f }, math::ToRad(pitch));
+    const math::Quaternion rot = yawQ * pitchQ;
+    const math::Vector3    fwd = rot * math::Vector3::FORWARD;
+
+    ctx.teleportRotation      = rot;
+    ctx.teleportPosition      = ctx.editorCameraPivot - fwd * ctx.editorCameraFocusDistance;
+    ctx.requestTeleportCamera = true;
+}
+
+// from → to の角度差を -180..180 に畳む (補間で遠回りさせないため)。
+float NavShortestAngle(float from, float to)
+{
+    float d = std::fmod(to - from + 540.0f, 360.0f);
+    if (d < 0.0f) d += 360.0f;
+    return d - 180.0f;
+}
+
+} // namespace
+
+bool IsOrientationGizmoHovered() { return g_navGizmo.hovered; }
+bool IsOrientationGizmoActive()  { return g_navGizmo.pressed || g_navGizmo.animActive; }
+
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize)
 {
-    if (!ctx.editorCamera) return;
+    NavGizmoState& s = g_navGizmo;
+    if (!ctx.editorCamera) {
+        s = NavGizmoState{};
+        return;
+    }
 
-    constexpr float kSize = 120.0f;
-    const ImVec2 pos = { viewportMin.x + viewportSize.x - kSize - 8.0f, viewportMin.y + 8.0f };
+    const ImVec2 center  = { viewportMin.x + viewportSize.x - kNavSize * 0.5f - kNavPadding,
+                             viewportMin.y + kNavSize * 0.5f + kNavPadding };
+    const float  radius  = kNavSize * 0.5f;
+    const float  axisLen = radius - kNavBallNearR - 1.0f;
 
-    math::Matrix4 viewCol = ToColumnMajor(ctx.editorCamera->GetViewMatrix());
+    // --- 各軸をビュー空間へ落として、スクリーン位置と奥行きを求める ---
+    // view 行列の 3x3 は R^T (ワールド → ビュー) なので、
+    // ワールド軸 e_i のビュー空間表現はその i 列目そのものになる。
+    // ビュー空間は x=右 / y=上 / z=奥 (左手系) なので、z がそのまま奥行き値になる。
+    const math::Matrix4 view = ctx.editorCamera->GetViewMatrix();
 
-    ImGuizmo::SetDrawlist();
-    ImGuizmo::SetRect(viewportMin.x, viewportMin.y, viewportSize.x, viewportSize.y);
-
-    const float dist = ctx.editorCamera->m_position.Length();
-    ImGuizmo::ViewManipulate(
-        &viewCol.m[0][0],
-        (dist > 0.1f ? dist : 10.0f),
-        pos, { kSize, kSize },
-        0x40000000);
-
-    if (!ImGuizmo::IsUsingViewManipulate()) return;
-
-    // Convert column-major back to row-major.
-    const math::Matrix4 viewRow = math::Matrix4::Transpose(viewCol);
-
-    // Camera position: pos = -R^T * t. The 3x3 part of view is R^T.
-    const float tx = viewRow.m[0][3], ty = viewRow.m[1][3], tz = viewRow.m[2][3];
-    const math::Vector3 newPos = {
-        -(viewRow.m[0][0]*tx + viewRow.m[1][0]*ty + viewRow.m[2][0]*tz),
-        -(viewRow.m[0][1]*tx + viewRow.m[1][1]*ty + viewRow.m[2][1]*tz),
-        -(viewRow.m[0][2]*tx + viewRow.m[1][2]*ty + viewRow.m[2][2]*tz)
+    struct NavBall {
+        int    axis  = 0;
+        ImVec2 pos{};
+        float  depth = 0.0f;  // ビュー空間 z: 大きいほど奥
     };
+    NavBall balls[6];
+    for (int i = 0; i < 6; ++i) {
+        const math::Vector3& d = kNavAxes[i].dir;
+        const math::Vector3  v = {
+            view.m[0][0] * d.x + view.m[0][1] * d.y + view.m[0][2] * d.z,
+            view.m[1][0] * d.x + view.m[1][1] * d.y + view.m[1][2] * d.z,
+            view.m[2][0] * d.x + view.m[2][1] * d.y + view.m[2][2] * d.z,
+        };
+        balls[i].axis  = i;
+        balls[i].pos   = { center.x + v.x * axisLen, center.y - v.y * axisLen };
+        balls[i].depth = v.z;
+    }
 
-    // Camera rotation: rebuild the world rotation matrix from the view matrix.
-    // view の 3x3 は R^T なので、転置して world 回転 R を得る。
-    math::Matrix4 rotMat = math::Matrix4::Identity();
-    rotMat.m[0][0] = viewRow.m[0][0]; rotMat.m[0][1] = viewRow.m[1][0]; rotMat.m[0][2] = viewRow.m[2][0];
-    rotMat.m[1][0] = viewRow.m[0][1]; rotMat.m[1][1] = viewRow.m[1][1]; rotMat.m[1][2] = viewRow.m[2][1];
-    rotMat.m[2][0] = viewRow.m[0][2]; rotMat.m[2][1] = viewRow.m[1][2]; rotMat.m[2][2] = viewRow.m[2][2];
-    const math::Quaternion newRot = math::Quaternion::FromMatrix4(rotMat);
+    // 奥 → 手前の描画順。手前のボールが奥のボールを覆い隠すようにする。
+    int order[6] = { 0, 1, 2, 3, 4, 5 };
+    std::sort(order, order + 6,
+              [&](int a, int b) { return balls[a].depth > balls[b].depth; });
 
-    // WHY: Camera へ直接 m_position/m_rotation を書くと、DebugCamera が保持する
-    //      yaw/pitch/pivot と乖離する。次に FPS ルック (右ドラッグ) やオービット (中/Alt+左)
-    //      を始めた瞬間、ApplyRotation() が古い yaw/pitch から回転を作り直すため視点が飛ぶ。
-    //      カメラブックマークと同じ Teleport 要求経由にして、内部状態まで一括同期する。
-    ctx.teleportPosition      = newPos;
-    ctx.teleportRotation      = newRot;
-    ctx.requestTeleportCamera = true;
+    // --- ホバー判定 ---
+    const ImVec2 mouse = ImGui::GetMousePos();
+    const float  mdx   = mouse.x - center.x;
+    const float  mdy   = mouse.y - center.y;
+    const bool   inRegion = ImGui::IsWindowHovered()
+                         && (mdx * mdx + mdy * mdy) <= radius * radius;
+
+    // 重なったボールは手前を優先する (order の後ろほど手前)。
+    int hoverAxis = -1;
+    if (inRegion && !s.pressed) {
+        constexpr float kHitR = kNavBallNearR + 2.0f;
+        for (int k = 5; k >= 0; --k) {
+            const NavBall& b  = balls[order[k]];
+            const float    hx = mouse.x - b.pos.x;
+            const float    hy = mouse.y - b.pos.y;
+            if (hx * hx + hy * hy <= kHitR * kHitR) { hoverAxis = b.axis; break; }
+        }
+    }
+    s.hovered     = inRegion;
+    s.hoveredAxis = s.dragging ? -1 : (s.pressed ? s.pressedAxis : hoverAxis);
+
+    // --- 入力: クリック = 軸へ回り込み / ドラッグ = オービット ---
+    // WHY: Alt+左ドラッグは DebugCamera 側のオービットに割り当て済み。ここでも掴むと
+    //      同じドラッグで 2 系統の回転が同時に走り、回転量が二重になる。
+    if (inRegion && !ImGui::GetIO().KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        s.pressed     = true;
+        s.dragging    = false;
+        s.pressedAxis = hoverAxis;
+        s.pressPos    = mouse;
+        s.animActive  = false;  // 補間中に掴んだら、その場から手動操作へ引き継ぐ
+        NavForwardToYawPitch(ctx.editorCamera->GetForward(), s.orbitYaw, s.orbitPitch);
+    }
+
+    if (s.pressed) {
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            const float mx = mouse.x - s.pressPos.x;
+            const float my = mouse.y - s.pressPos.y;
+            if (!s.dragging && (mx * mx + my * my) > kNavDragSlop * kNavDragSlop)
+                s.dragging = true;
+            if (s.dragging) {
+                const ImVec2 delta = ImGui::GetIO().MouseDelta;
+                s.orbitYaw   += delta.x * kNavOrbitSens;
+                s.orbitPitch += delta.y * kNavOrbitSens;
+                s.orbitPitch  = math::Clamp(s.orbitPitch, -89.0f, 89.0f);
+                NavApplyYawPitch(ctx, s.orbitYaw, s.orbitPitch);
+            }
+        } else {
+            // 離した: 回していなければ「その軸から見る」視点移動を始める。
+            if (!s.dragging && s.pressedAxis >= 0) {
+                const math::Vector3 targetFwd = kNavAxes[s.pressedAxis].dir * -1.0f;
+                float toYaw = 0.0f, toPitch = 0.0f;
+                NavForwardToYawPitch(targetFwd, toYaw, toPitch);
+                NavForwardToYawPitch(ctx.editorCamera->GetForward(), s.fromYaw, s.fromPitch);
+                // 真上・真下は yaw が定まらない。今の向きを保ったまま見下ろす / 見上げる。
+                if (kNavAxes[s.pressedAxis].dir.y != 0.0f) toYaw = s.fromYaw;
+                s.toYaw      = s.fromYaw + NavShortestAngle(s.fromYaw, toYaw);
+                s.toPitch    = math::Clamp(toPitch, -89.9f, 89.9f);
+                s.animT      = 0.0f;
+                s.animActive = true;
+            }
+            s.pressed  = false;
+            s.dragging = false;
+        }
+    }
+
+    if (s.animActive) {
+        s.animT += ImGui::GetIO().DeltaTime / kNavSnapTime;
+        const float t = math::Clamp(s.animT, 0.0f, 1.0f);
+        const float e = t * t * (3.0f - 2.0f * t);  // smoothstep: 始点と終点で減速する
+        NavApplyYawPitch(ctx,
+                         s.fromYaw   + (s.toYaw   - s.fromYaw)   * e,
+                         s.fromPitch + (s.toPitch - s.fromPitch) * e);
+        if (t >= 1.0f) s.animActive = false;
+    }
+
+    // --- 描画 ---
+    // 背景の円は描かない (シーンの見通しを塞がないため)。
+    // 明るい背景でも埋もれないよう、ボールと軸線それぞれに暗い縁取りを持たせている。
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    for (int k = 0; k < 6; ++k) {
+        const NavBall& b  = balls[order[k]];
+        const NavAxis& ax = kNavAxes[b.axis];
+
+        // depth は -1..1。奥ほど小さく・暗く描いて前後を判別できるようにする。
+        const float far01 = math::Clamp(b.depth * 0.5f + 0.5f, 0.0f, 1.0f);
+        const float ballR = kNavBallNearR + (kNavBallFarR - kNavBallNearR) * far01;
+        const float fade  = 1.0f - far01 * 0.45f;
+        const bool  hot   = (s.hoveredAxis == b.axis);
+        const ImU32 base  = kNavAxisColor[ax.colorIndex];
+
+        // 中心からの線は正方向だけに引く (負方向は線を持たないのが Blender の見た目)。
+        // 背景円を持たないぶん、暗い縁取りを一本下に敷いて明るいシーン上でも軸線を残す。
+        if (ax.positive) {
+            const float w = hot ? 3.0f : 2.2f;
+            dl->AddLine(center, b.pos, IM_COL32(0, 0, 0, static_cast<int>(90 * fade)), w + 2.0f);
+            dl->AddLine(center, b.pos, NavShade(base, hot ? 1.15f : 1.0f, 0.9f * fade), w);
+        }
+
+        if (ax.positive || hot) {
+            dl->AddCircleFilled(b.pos, ballR, NavShade(base, hot ? 1.2f : 1.0f, fade), 20);
+            dl->AddCircle(b.pos, ballR, NavShade(IM_COL32(0, 0, 0, 255), 1.0f, 0.47f * fade),
+                          20, 1.5f);
+        } else {
+            // 負方向は中空。軸色の輪郭 + 暗い塗りで「裏側」を表す。
+            dl->AddCircleFilled(b.pos, ballR, NavShade(base, 0.30f, 0.85f * fade), 20);
+            dl->AddCircle(b.pos, ballR, NavShade(base, 1.0f, 0.90f * fade), 20, 1.8f);
+        }
+
+        // ラベルは正方向を常時、負方向はホバー時だけ (Blender と同じ情報量)。
+        // 奥に回って縮んだボールは文字が潰れるので出さない。
+        if ((ax.positive || hot) && ballR >= 9.0f) {
+            const ImVec2 ts = ImGui::CalcTextSize(ax.label);
+            dl->AddText({ b.pos.x - ts.x * 0.5f, b.pos.y - ts.y * 0.5f },
+                        NavShade(IM_COL32(18, 18, 20, 255), 1.0f, 0.92f * fade), ax.label);
+        }
+
+        // ホバー中のボールは外側にリングを足して、クリック先を明示する。
+        if (hot)
+            dl->AddCircle(b.pos, ballR + 3.0f, IM_COL32(255, 255, 255, 210), 24, 1.6f);
+    }
 }
 
 void DrawGizmo(EditorContext& ctx,

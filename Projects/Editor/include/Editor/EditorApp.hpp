@@ -165,6 +165,7 @@ private:
     bool OpenScenePath(const std::string& path);
     bool SaveScene();
     bool SaveSceneAsDialog();
+    bool SaveScenePath(const std::string& requestedPath); // 保存の実体 (ダイアログ / AI 共通)
     void RemoveEditorHiding();   // Play/Save 前に editor-only 非表示を一時解除
     void RestoreEditorHiding();  // Play 復元/Save 後に editor-only 非表示を再適用
 

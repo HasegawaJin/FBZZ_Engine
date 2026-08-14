@@ -261,18 +261,14 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         }
 
         if (smr && smr->model) {
-            // meshIndex は「-1 = 全 submesh を担当」「>=0 = この子 GO が担当する submesh」。
-            // WHY: これを見ずに全 submesh を総当たりすると、FBX 配置で作られる
-            //      _Mesh0 / _Mesh1 ... の全ての子が「モデル全体」という同一の当たり判定を
-            //      持ってしまう。どこをクリックしても全ての子が同じ距離でヒットし、
-            //      最初に走査された子だけが勝つ (= 常に一番上の index の子が選ばれる) 状態になる。
-            //      描画と同じ担当範囲だけを判定することで、クリックした部位の子が正しく選ばれる。
-            const int meshCount = static_cast<int>(smr->model->meshes.size());
-            const int begin = (smr->meshIndex >= 0) ? smr->meshIndex : 0;
-            const int end   = (smr->meshIndex >= 0) ? smr->meshIndex + 1 : meshCount;
-            for (int mi = begin; mi < end && mi < meshCount; ++mi) {
-                const auto& meshPtr = smr->model->meshes[static_cast<size_t>(mi)];
+            // 1 GameObject = モデル全体。submesh ごとの子 GO は無くなったので、
+            // どの submesh に当たっても選ばれるのはこの GameObject 自身。
+            // 描画されていない (非表示スロットの) submesh は判定から外す。
+            const auto* mat = go.GetComponent<scene::MaterialComponent>();
+            for (size_t mi = 0; mi < smr->model->meshes.size(); ++mi) {
+                const auto& meshPtr = smr->model->meshes[mi];
                 if (!meshPtr) continue;
+                if (mat && !mat->SlotAt(mi).visible) continue;
                 // WHY: スキンメッシュはアニメーションでバインドポーズより外へ動くため、
                 //      バウンディング球を 2 倍に膨らませて事前カットの取りこぼしを防ぐ。
                 testMeshWithBounds(*meshPtr, meshPtr->cpuSkinnedVertices, world, go.transform, go.GetID(), 2.0f);

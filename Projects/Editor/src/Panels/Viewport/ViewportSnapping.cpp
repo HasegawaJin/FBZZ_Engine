@@ -95,15 +95,13 @@ void ForEachWorldVertex(scene::GameObject& go, const math::Ray& cursorRay, Fn&& 
                 fn(TransformPoint(world, v.position));
     }
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-        // meshIndex は「-1 = 全 submesh」「>=0 = この GO が担当する 1 つの submesh」。
-        // 担当外の submesh の頂点まで拾うと、自分が描画していないジオメトリへ吸着してしまう。
-        const size_t meshCount = smr->model->meshes.size();
-        const size_t begin = (smr->meshIndex >= 0)
-            ? (std::min)(static_cast<size_t>(smr->meshIndex), meshCount) : 0;
-        const size_t end = (smr->meshIndex >= 0) ? (std::min)(begin + 1, meshCount) : meshCount;
-        for (size_t i = begin; i < end; ++i) {
+        // 1 GameObject = モデル全体。描画していない (非表示スロットの) submesh へ
+        // 吸着しないよう、可視スロットの頂点だけを対象にする。
+        const auto* mat = go.GetComponent<scene::MaterialComponent>();
+        for (size_t i = 0; i < smr->model->meshes.size(); ++i) {
             const auto& meshPtr = smr->model->meshes[i];
             if (!meshPtr) continue;
+            if (mat && !mat->SlotAt(i).visible) continue;
             // スキンメッシュはバインドポーズより外へ動くため球を大きめに取る。
             if (!RayHitsMeshBounds(cursorRay, *meshPtr, world, go.transform, kInflate * 2.0f))
                 continue;
@@ -210,15 +208,13 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
         if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh)
             testMesh(*mr->mesh, mr->mesh->cpuVertices, mr->mesh->cpuIndices, 1.0f);
         if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
-            // 担当 submesh のみ (meshIndex >= 0 は 1 つ、-1 は全部)。
-            const size_t meshCount = smr->model->meshes.size();
-            const size_t begin = (smr->meshIndex >= 0)
-                ? (std::min)(static_cast<size_t>(smr->meshIndex), meshCount) : 0;
-            const size_t end = (smr->meshIndex >= 0) ? (std::min)(begin + 1, meshCount) : meshCount;
-            for (size_t i = begin; i < end; ++i) {
+            // 1 GameObject = モデル全体。描画されている submesh だけを判定対象にする。
+            const auto* mat = go.GetComponent<scene::MaterialComponent>();
+            for (size_t i = 0; i < smr->model->meshes.size(); ++i) {
                 const auto& meshPtr = smr->model->meshes[i];
-                if (meshPtr)
-                    testMesh(*meshPtr, meshPtr->cpuSkinnedVertices, meshPtr->cpuIndices, 2.0f);
+                if (!meshPtr) continue;
+                if (mat && !mat->SlotAt(i).visible) continue;
+                testMesh(*meshPtr, meshPtr->cpuSkinnedVertices, meshPtr->cpuIndices, 2.0f);
             }
         }
     }
